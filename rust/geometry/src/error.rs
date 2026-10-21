@@ -10,6 +10,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Errors that can occur during geometry processing
 #[derive(Error, Debug)]
 pub enum Error {
+    #[error(transparent)]
+    ProgramStopped(#[from] crate::resource::ProgramStop),
+
     #[error("Triangulation failed: {0}")]
     TriangulationError(String),
 

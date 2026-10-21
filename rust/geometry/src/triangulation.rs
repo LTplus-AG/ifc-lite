@@ -15,6 +15,7 @@
 pub(crate) mod alt_oracle;
 mod hole_overlap;
 mod ring_geom;
+pub(crate) mod straight_corners;
 use ring_geom::{point_in_ring, ring_bbox};
 
 use crate::{Error, Point2, Point3, Result, Vector3};
@@ -405,7 +406,9 @@ pub fn triangulate_polygon_with_holes(
 /// coplanar-consolidation path), NOT from callers that map indices onto a fixed
 /// input ring — those must use [`triangulate_polygon_with_holes`]. Returns the
 /// outer+holes vertex list and an earcut index list (no Steiner) if the CDT
-/// declines, so the caller always gets a usable result.
+/// declines, so the caller always gets a usable result. A caller that cannot
+/// afford earcut on a large declined ring uses
+/// [`triangulate_polygon_with_holes_refined_bounded`].
 ///
 /// Refinement is interior-only and NEVER touches the outer/hole rings, so a
 /// region whose boundary is SHARED with neighbouring plane buckets (the
@@ -416,6 +419,31 @@ pub fn triangulate_polygon_with_holes_refined(
     outer: &[Point2<f64>],
     holes: &[Vec<Point2<f64>>],
 ) -> Result<(Vec<Point2<f64>>, Vec<usize>)> {
+    refined_impl(outer, holes, usize::MAX)
+}
+
+/// The most vertices [`triangulate_polygon_with_holes_refined_bounded`] hands
+/// to earcut. The rings the quality CDT declines include degenerate ones, and
+/// earcut can be quadratic on those: about a second at 3,500 vertices and
+/// minutes at 50,000, on one thread while the rest of the geometry pool waits.
+pub const EARCUT_FALLBACK_MAX_VERTICES: usize = 4096;
+
+/// [`triangulate_polygon_with_holes_refined`] with its earcut fallback limited
+/// to `max_earcut_vertices`: a larger ring set the quality CDT declines is an
+/// `Err`. At or below the limit the two functions are identical.
+pub fn triangulate_polygon_with_holes_refined_bounded(
+    outer: &[Point2<f64>],
+    holes: &[Vec<Point2<f64>>],
+    max_earcut_vertices: usize,
+) -> Result<(Vec<Point2<f64>>, Vec<usize>)> {
+    refined_impl(outer, holes, max_earcut_vertices)
+}
+
+fn refined_impl(
+    outer: &[Point2<f64>],
+    holes: &[Vec<Point2<f64>>],
+    max_earcut_vertices: usize,
+) -> Result<(Vec<Point2<f64>>, Vec<usize>)> {
     if outer.len() < 3 {
         return Err(Error::TriangulationError(
             "Need at least 3 points in outer boundary".to_string(),
@@ -423,6 +451,17 @@ pub fn triangulate_polygon_with_holes_refined(
     }
     let valid_holes: Vec<Vec<Point2<f64>>> =
         holes.iter().filter(|h| h.len() >= 3).cloned().collect();
+
+    // Past the caller's earcut limit, the quality CDT or nothing.
+    let total = outer.len() + valid_holes.iter().map(Vec::len).sum::<usize>();
+    if total > max_earcut_vertices {
+        return crate::cdt::triangulate_refined(outer, &valid_holes).ok_or_else(|| {
+            Error::TriangulationError(format!(
+                "the quality CDT declined {total} vertices, past the earcut limit of \
+                 {max_earcut_vertices}"
+            ))
+        });
+    }
 
     // Quality CDT + bounded refinement.
     if let Some((pts, idx)) = crate::cdt::triangulate_refined(outer, &valid_holes) {
@@ -502,6 +541,46 @@ pub fn triangulate_planar_face(
             "planar face triangulation with holes failed: {error}"
         ))),
     }
+}
+
+/// Corners of a hole-free planar `ring` at which the exact-axis ear-clip of
+/// [`triangulate_planar_face`] loses a ring edge: no triangle of real area
+/// (`> 1e-9` of the ring's own) carries the edge, which is what downstream
+/// hygiene keeps, because the clipper filtered a collinear corner out or cut it
+/// as a zero-area ear. Rings under five corners are not ear-clipped.
+pub(crate) fn corners_losing_an_edge(ring: &[Point3<f64>]) -> Vec<bool> {
+    let n = ring.len();
+    let mut lost = vec![false; n];
+    if n < 5 {
+        return lost;
+    }
+    let Ok(idx) = axis_earcut(ring, &calculate_polygon_normal(ring)) else {
+        return lost;
+    };
+    let twice_area = (0..n)
+        .fold(Vector3::zeros(), |acc, i| acc + ring[i].coords.cross(&ring[(i + 1) % n].coords))
+        .norm();
+    let mut carried = vec![false; n];
+    for t in idx.chunks_exact(3) {
+        if (ring[t[1]] - ring[t[0]]).cross(&(ring[t[2]] - ring[t[0]])).norm() <= 1e-9 * twice_area {
+            continue;
+        }
+        for k in 0..3 {
+            let (a, b) = (t[k], t[(k + 1) % 3]);
+            if (a + 1) % n == b {
+                carried[a] = true;
+            } else if (b + 1) % n == a {
+                carried[b] = true;
+            }
+        }
+    }
+    for i in 0..n {
+        if !carried[i] {
+            lost[i] = true;
+            lost[(i + 1) % n] = true;
+        }
+    }
+    lost
 }
 
 /// Triangles of `idx` over the planar `ring` whose area is zero relative to

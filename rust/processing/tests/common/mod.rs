@@ -18,6 +18,10 @@ pub mod fn_scan;
 #[allow(dead_code)]
 pub mod quick_metadata;
 #[allow(dead_code)]
+pub mod positional_canary;
+#[allow(dead_code)]
+pub mod read_scan;
+#[allow(dead_code)]
 pub mod source_walk;
 #[allow(dead_code)]
 pub mod wall_frame_seams;

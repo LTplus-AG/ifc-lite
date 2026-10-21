@@ -12,7 +12,7 @@ index 07c78251cb..5e7f46601c 100644
      }
      out.push({ name: entity, attributes });
 diff --git b/rust/core/src/decoder/schema_layout.rs a/rust/core/src/decoder/schema_layout.rs
-index ae05757e1d..df81a663a0 100644
+index 84a8eea5b0..1198991851 100644
 --- b/rust/core/src/decoder/schema_layout.rs
 +++ a/rust/core/src/decoder/schema_layout.rs
 @@ -60,7 +60,7 @@ impl EntityDecoder<'_> {
@@ -23,7 +23,7 @@ index ae05757e1d..df81a663a0 100644
 +        slot.at(self.schema_version().unwrap_or(SchemaVersion::Ifc4x3))
      }
  
-     /// The `IfcGrid` that lists `axis_id` among its `UAxes`/`VAxes`/`WAxes`
+     /// [`Self::slot`] for a reader that must keep working on a file whose
 diff --git b/rust/core/src/generated/slots.rs a/rust/core/src/generated/slots.rs
 index c77ffaf563..55fba771b3 100644
 --- b/rust/core/src/generated/slots.rs
@@ -38,10 +38,10 @@ index c77ffaf563..55fba771b3 100644
  
  /// `IfcProjectLibrary` attribute slots.
 diff --git b/rust/core/src/slot.rs a/rust/core/src/slot.rs
-index 66c5b77253..3b532cff1c 100644
+index e3dcebd200..14a98996c7 100644
 --- b/rust/core/src/slot.rs
 +++ a/rust/core/src/slot.rs
-@@ -153,8 +153,8 @@ const fn schema_ordinal(schema: SchemaVersion) -> usize {
+@@ -160,8 +160,8 @@ const fn schema_ordinal(schema: SchemaVersion) -> usize {
      match schema {
          SchemaVersion::Ifc2x3 => 0,
          SchemaVersion::Ifc4 => 1,
@@ -52,7 +52,7 @@ index 66c5b77253..3b532cff1c 100644
          // A newer schema (the enum is non-exhaustive) reads as the newest
          // bundled layout, like an undeclared FILE_SCHEMA does.
          _ => 4,
-@@ -287,9 +287,6 @@ fn assert_owner(entity: &DecodedEntity, owner: u32, index: usize) {
+@@ -294,9 +294,6 @@ fn assert_owner(entity: &DecodedEntity, owner: u32, index: usize) {
      let Some(owner_type) = IfcType::from_id(owner) else {
          return;
      };
@@ -62,7 +62,7 @@ index 66c5b77253..3b532cff1c 100644
      // An unknown keyword has no hierarchy to check.
      if matches!(entity.ifc_type, IfcType::Unknown(_)) || entity.ifc_type == owner_type {
          return;
-@@ -359,7 +359,7 @@ impl DecodedEntity {
+@@ -369,7 +366,7 @@ impl DecodedEntity {
      /// `None`.
      #[inline]
      pub fn logical_at(&self, slot: impl Into<SlotIx<Logical>>) -> Option<bool> {

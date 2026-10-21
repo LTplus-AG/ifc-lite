@@ -67,12 +67,12 @@
       "bytes": 250
     },
     "c6_data_model_synthetic:entities": {
-      "fnv1a64": "fd88c8bd1b52e949",
-      "bytes": 758
+      "fnv1a64": "23747f7f9719205c",
+      "bytes": 994
     },
     "c6_data_model_synthetic:properties": {
-      "fnv1a64": "eace6471dcb77b22",
-      "bytes": 989
+      "fnv1a64": "cdbf0ed36e1dea7f",
+      "bytes": 1599
     },
     "c6_data_model_synthetic:quantities": {
       "fnv1a64": "cb2b779030b258e7",

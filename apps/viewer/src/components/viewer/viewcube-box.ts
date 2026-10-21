@@ -11,10 +11,13 @@
  */
 
 /** Edge length of the cube, in CSS px. */
-export const VIEW_CUBE_SIZE_PX = 60;
+export const VIEW_CUBE_SIZE_PX = 72;
 
 /** Inset of the cube's box from the viewport's top and right edges, in CSS px. */
 export const VIEW_CUBE_INSET_PX = 24;
 
 /** Inset plus size: how far the cube reaches in from the top-right corner. */
 export const VIEW_CUBE_REACH_PX = VIEW_CUBE_INSET_PX + VIEW_CUBE_SIZE_PX;
+
+/** Width of the edge and corner bands on each face, in CSS px. */
+export const VIEW_CUBE_EDGE_BAND_PX = 16;

@@ -400,8 +400,14 @@ carry their own bounds until their next shared-placement stage (#7779). Nothing 
 `RelativePlacement`) and a linear or grid frame that cannot be sampled are each
 refused and counted (`EntityDecoder::refused_records`), so the element is lost
 visibly instead of drawn at its parent's origin. A 2D `RelativePlacement` is
-honoured. A `$` `ObjectPlacement` is the only identity ("genuinely missing"), and
-a chain of any length resolves in full.
+honoured. An absent, `$` or `*` `ObjectPlacement` remains identity ("genuinely
+missing"); a present value of the wrong kind is refused. An authored linear
+`CartesianPosition` is authoritative: an unreadable authored frame does not
+fall through to curve sampling. Missing optional directions and readable
+degenerate frames retain their existing repair rules. A chain of any length
+resolves in full. Execution cancellations and resource refusals propagate as
+`PlacementError::ProgramStopped`, retain their terminal source authority, and
+do not increment the malformed-record counter.
 The result is memoised on the decoder, **unscaled** and column-major, so
 readers with different unit contexts share entries; the caller scales.
 

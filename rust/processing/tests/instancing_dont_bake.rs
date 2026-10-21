@@ -17,8 +17,7 @@
 //! instanced path is WHICH occurrence carries the geometry, never a world triangle.
 
 use ifc_lite_processing::{
-    process_geometry_streaming_filtered_with_options, InstanceRecord, MeshCoordinateSpace,
-    MeshData, OpeningFilterMode, ProcessingResult, StreamingOptions,
+    process, InstanceRecord, MeshCoordinateSpace, MeshData, ProcessingRequest, ProcessingResult,
 };
 use rustc_hash::FxHashMap;
 
@@ -47,17 +46,7 @@ fn fixture_bytes(name: &str) -> Vec<u8> {
 }
 
 fn run(content: &[u8], enable_instancing: bool) -> ProcessingResult {
-    process_geometry_streaming_filtered_with_options(
-        content,
-        OpeningFilterMode::Default,
-        StreamingOptions {
-            enable_instancing,
-            ..StreamingOptions::default()
-        },
-        |_, _, _| {},
-        |_| {},
-        |_| {},
-    )
+    process(content, &ProcessingRequest::default().instancing(enable_instancing), &mut ())
 }
 
 /// World vertices of a mesh = `origin + position` per vertex (the renderer's

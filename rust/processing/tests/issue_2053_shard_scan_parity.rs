@@ -31,22 +31,17 @@
 //! specifically so a parity regression fails CI instead of only ever being
 //! caught locally.
 
+use ifc_lite_core::parser::StepRecord;
 use ifc_lite_processing::{classify_type_name, scan_shard, scan_shard_classified};
 
-/// Parse the raw STEP keyword at a record start (`#id=KEYWORD(...`). Mirrors
-/// `issue_1910_shard_class_ci_coverage.rs`'s copy of the same helper —
-/// duplicated rather than shared because integration tests are separate
-/// crates and the original (`prepass_discovery.rs::keyword_at`) is private to
-/// the excluded wasm crate.
+/// The raw STEP keyword at a record start (`#id=KEYWORD(...`), read through
+/// core's `StepRecord` like the wasm prepass does (PROCESSING-15).
 fn keyword_at(content: &[u8], start: usize, end: usize) -> &str {
-    let span = &content[start..end.min(content.len())];
-    let eq = span.iter().position(|&b| b == b'=').map(|p| p + 1).unwrap_or(0);
-    let kw_end = span[eq..]
-        .iter()
-        .position(|&b| b == b'(')
-        .map(|p| eq + p)
-        .unwrap_or(span.len());
-    std::str::from_utf8(&span[eq..kw_end]).unwrap_or("").trim()
+    content
+        .get(start..end.min(content.len()))
+        .and_then(StepRecord::parse)
+        .and_then(|record| record.keyword())
+        .unwrap_or("")
 }
 
 /// A small synthetic DATA section with enough entities, and varied enough

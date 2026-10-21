@@ -1,0 +1,163 @@
+{
+  "schemaVersion": 1,
+  "status": "DURABLE_SAVED_GEOMETRY_EVIDENCE_WITH_EXPLICIT_UNRESOLVED_CASES_NOT_MERGE_ACCEPTANCE",
+  "archive": {
+    "filename": "issue-7292-a8e-saved-geometry-evidence-cas-v1.tar.gz",
+    "sha256": "aa612be457a873df1cf9b0da811773f7776a5a0e493749c63eb483668d9471c7",
+    "bytes": 13160212,
+    "format": "gzip-compressed tar, SHA256 CAS objects; no IFC fixtures",
+    "objectMapPath": "object-map.json",
+    "objectMapSHA256": "433fdebf71ad382c55db7af940e3ac6893eafb92984386453b4b1c12c95a28ae",
+    "logicalFiles": 1115,
+    "uniqueObjects": 525,
+    "uniqueObjectBytes": 48625425,
+    "original1100InputsRecoverableByteExactly": true,
+    "allObjectsReadAndHashVerified": true,
+    "restoreCommand": "python3 restore.py --out NEW_DIRECTORY"
+  },
+  "scope": {
+    "rawCaptureHead": "5f4baa5979557ce3d8f31035a0f158e64acdc7e7 plus recorded older proof inputs",
+    "whole18ObservedHead": "826d4400d03fde7b5d8830728e9e20f848ac5327",
+    "testOnlyRegressionHead": "a8e01fe2fd1915d7e9fc47fb4e98622d5058c43c",
+    "whole18ExitCodePreserved": 101,
+    "raw54IdentityReceiptSHA256": "1bc35c6d842c60b74f8dd25bf256b21191aa68de60b4ea2a01ec893d3621b57b",
+    "sourceWideQualificationTransfer": false,
+    "toleranceMetres": 0.0001,
+    "sharedWorkCapPerComparison": 2000000,
+    "certificate": "Filled-surface set coverage only at exact archived phase/inputs; no winding/multiplicity/exactvolume/topology/universalBoolean/perf/CI/mergePASS."
+  },
+  "proofSummary": {
+    "supportedGate2Ids": [
+      384,
+      7013,
+      7075,
+      7137,
+      11753,
+      13797,
+      26681,
+      57084,
+      92642,
+      96778,
+      869947,
+      953100
+    ],
+    "successfulCasePhases": {
+      "384": [
+        "DEFAULT"
+      ],
+      "7013": [
+        "DEFAULT"
+      ],
+      "7075": [
+        "DEFAULT"
+      ],
+      "7137": [
+        "ALT",
+        "DEFAULT"
+      ],
+      "11753": [
+        "DEFAULT"
+      ],
+      "13797": [
+        "ALT",
+        "DEFAULT"
+      ],
+      "26681": [
+        "ALT",
+        "DEFAULT"
+      ],
+      "26832": [
+        "ALT",
+        "DEFAULT"
+      ],
+      "57084": [
+        "DEFAULT"
+      ],
+      "58297": [
+        "DEFAULT"
+      ],
+      "92642": [
+        "DEFAULT"
+      ],
+      "96778": [
+        "DEFAULT"
+      ],
+      "869947": [
+        "DEFAULT"
+      ],
+      "953100": [
+        "ALT",
+        "DEFAULT"
+      ]
+    },
+    "fullProofIndexLogicalPath": "proof-index.json",
+    "fullProofIndexSHA256": "29d5ca1b3d50cab5e1d53d8211388597b88e117b9ce80a31caa54683d45160ed",
+    "384": "Full derived-geometry checkedIOSreference PASS,621394units,zero missing/extra. Originalmaterial export remainsinvalid; exact77-byte association deletion only, allremainingentity definitions/graphs/frame/settings verified. Derived IFC excluded; recipe+workerfiles retained.",
+    "outstanding": [
+      {
+        "id": 9094,
+        "proofReceipt": "/tmp/7292-d4e-9094-exact-prescan-index-v1/receipt.json",
+        "proofReceiptSHA256": "5e9ac850a18a78dc0b87d0d59d2a93ec2cc9ede0958722d5bb4bd4220de01a8f",
+        "status": "FAIL_OR_UNRESOLVED",
+        "error": "WorkLimit('Finite coverage work limit exhausted: unresolved')",
+        "verdict": "NO_VERDICT",
+        "pinsUnchanged": true
+      },
+      {
+        "id": 295370,
+        "proofReceipt": "/tmp/7292-e8ca-d4e-295370-conservative-localized-v1/receipt.json",
+        "proofReceiptSHA256": "fa34c70bcbe0dbf4320f8cc886e1bf12f9565d316527e058c87fc88967665a45",
+        "status": "UNRESOLVED",
+        "error": "WorkLimit: Finite coverage work limit exhausted: unresolved",
+        "verdict": "NO_VERDICT",
+        "pinsUnchanged": true
+      }
+    ]
+  },
+  "practicalPinReview": {
+    "counts43": {
+      "RETESSELLATED": 16,
+      "VOLUME MOVED": 5,
+      "RECLASSIFIED": 22
+    },
+    "sameHostKeys": true,
+    "hostCount": 1640,
+    "missingHosts": 0,
+    "addedHosts": 0,
+    "maxTriangleShrinkPercent": 34.065934065934066,
+    "maxIntegerVolumeChangeCm3": 12,
+    "maxAbsoluteVolumeChangePercent": 0.001090060825394057,
+    "reclassifiedStrictlyClosedCount": 21,
+    "all43Disposition": "Every row and disposition retained verbatim insidearchive. Coarseclosure/roundedvolume/magnitude review does not certifyfullsurface/Boolean equality.",
+    "9094": {
+      "triangles": {
+        "before": 805,
+        "after": 785
+      },
+      "exactCommonOrientedTriangles": 458,
+      "sameBounds": true,
+      "approxAreaChangeM2": -0.010968896143822349,
+      "approxAreaChangePercent": -0.0010970556994172043,
+      "globalFiniteOutcome": "WorkLimit/NO_VERDICT remains; this magnitude review does not change it",
+      "disposition": "Small NONZERO approximate surface-area adjustment explicitly recorded; global full finite coverage remains unverified. Not exact area preservation, proof PASS, or threshold waiver."
+    },
+    "fullReportLogicalPrefix": "new-public-metadata/final-census-pin-adjudication/",
+    "fullReportSHA256": {
+      "must-bless43.json": "c911629e3e7ef46c3185758bb076a5b431426f9f320ebd32238ee4d96e714dbd",
+      "9094-shrink.json": "19cb7e3f57879e0d17d8a14cc1ed52626f092fedcb9595a74f7bef67d62a8de9",
+      "input-pins.json": "58a84161809fe2a4f0743db689f08c14c9e489ca8790ee83f5d9f07f3f027f34",
+      "read.py": "d3128cb39d5a7895a64f95033ca2e448d42abbf681e94a8460d52dd319ac4b11"
+    },
+    "pinReviewLogicalPath": "new-public-metadata/pin-review.json",
+    "pinReviewSHA256": "d74593db3f0412d28f2743d221ec0ac02c7aecae7d021f53d9783d7703560ad2"
+  },
+  "sourceFixtures": {
+    "included": false,
+    "derive384IFCIncluded": false,
+    "source": "repository tests/models/manifest.json plus archived original hashes",
+    "credentialsSSHDependenciesBinariesIncluded": false
+  },
+  "completeInventoryLogicalPath": "staging-inventory.json",
+  "completeInventorySHA256": "6baa6ea847b38d7b9fc7d0eb11b1563a6ad16b720a850442af0d508b5b237b26",
+  "originalArchivePreservedSHA256": "1aa266624f2d621183beada9c99023109f6762ee773c6d35524556de50b2e211"
+}

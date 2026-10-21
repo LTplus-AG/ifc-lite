@@ -26,7 +26,7 @@ const BAD_LEAVES: [&str; 5] = [
 /// Every reader of an `IfcAxis2Placement3D` (#2) whose Location is #1.
 fn placement_3d_readers(content: &str) -> Vec<(&'static str, Result<(), crate::Error>, u64)> {
     type Reader = fn(&mut EntityDecoder) -> Result<(), crate::Error>;
-    let readers: [(&str, Reader); 6] = [
+    let readers: [(&str, Reader); 7] = [
         ("EntityDecoder::point3", |d| d.point3(1).map(drop).map_err(Into::into)),
         ("EntityDecoder::point3_at", |d| {
             let placement = d.decode_by_id(2)?;
@@ -44,6 +44,10 @@ fn placement_3d_readers(content: &str) -> Vec<(&'static str, Result<(), crate::E
         ("resolve_chain", |d| {
             let placement = d.decode_by_id(4)?;
             resolve_chain(&placement, d).map(drop).map_err(Into::into)
+        }),
+        ("Axis2Placement::read_2d", |d| {
+            let placement = d.decode_by_id(3)?;
+            Axis2Placement::read_2d(&placement, d).map(drop).map_err(Into::into)
         }),
     ];
     readers
@@ -81,6 +85,10 @@ fn a_malformed_axis_or_ref_direction_is_refused_and_counted() {
     for bad in ["((0.,'x'))", "((1.))", "((0.,0.,1.,5.))", "((IFCREAL(1.),0.,0.))"] {
         for (axis, ref_direction, record) in [(bad, "((1.,0.,0.))", 10), ("((0.,0.,1.))", bad, 11)] {
             for (reader, result, refused) in placement_3d_readers(&doc("((1.,2.,3.))", axis, ref_direction)) {
+                if reader == "Axis2Placement::read_2d" && record == 10 {
+                    assert!(result.is_ok(), "the 2D reader never reads #10");
+                    continue;
+                }
                 if reader.starts_with("EntityDecoder::point3") {
                     assert!(result.is_ok(), "{reader} reads only the point");
                     continue;
@@ -179,7 +187,7 @@ fn degenerate_axes_stay_repaired_bit_for_bit() {
     }
 }
 
-/// X1 moves `parse_axis2_placement_2d` onto `build_axis2_matrix`. Axis-aligned
+/// The canonical 2D reader uses `build_axis2_matrix` (#7779). Axis-aligned
 /// RefDirections are bit-exact; a rotated one may differ from the old direct
 /// assembly by rounding only (X normalised twice, Y once), never more.
 #[test]

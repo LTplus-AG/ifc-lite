@@ -73,6 +73,10 @@ export function drawSectionOverlays(
     const { options, viewProj, modelBounds } = ctx;
     const extras = ctx.extraPlanes ?? [];
 
+    // The selected / hovered elements' cap polygons take their highlight colour (a
+    // no-op while unchanged), so the cut face reads as part of the element.
+    cap?.setCapHighlight(options.capHighlight ?? null);
+
     // Draw section plane visual BEFORE pass.end() (within same MSAA render pass)
     // Always show plane when sectionPlane options are provided (as preview or active)
     if (options.sectionPlane && gizmo && modelBounds) {

@@ -2,8 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use crate::{Error, Mesh, Result, TessellationQuality};
-use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcSchema, IfcType};
+use super::polygonal_plan;
+use crate::{Mesh, Result, TessellationQuality};
+use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
 use crate::router::GeometryProcessor;
 
@@ -16,129 +17,24 @@ impl PolygonalFaceSetProcessor {
         Self
     }
 
-    /// One face loop as 1-based corners for `triangulate_polygon`, under the
-    /// shared index rule and `PnIndex` remap; an invalid corner is `0`, which
-    /// drops the whole face rather than a vertex of it (#7689).
-    #[inline]
-    fn parse_index_loop(indices: &[AttributeValue], pn_index: Option<&[u32]>) -> Vec<u32> {
-        indices.iter().map(|value| super::indices::polygon_corner(value, pn_index)).collect()
-    }
-
-    #[inline]
-    fn parse_face_inner_indices(
-        face_entity: &DecodedEntity,
-        pn_index: Option<&[u32]>,
-    ) -> Vec<Vec<u32>> {
-        if face_entity.ifc_type != IfcType::IfcIndexedPolygonalFaceWithVoids {
-            return Vec::new();
-        }
-
-        let Some(inner_attr) = face_entity.get(1).and_then(|a| a.as_list()) else {
-            return Vec::new();
-        };
-
-        let mut result = Vec::with_capacity(inner_attr.len());
-        for loop_attr in inner_attr {
-            let Some(loop_values) = loop_attr.as_list() else {
-                continue;
-            };
-            let parsed = Self::parse_index_loop(loop_values, pn_index);
-            if parsed.len() >= 3 {
-                result.push(parsed);
-            }
-        }
-
-        result
-    }
-
-    /// Mesh the face set; `rtc_file_units` rebases before f32 narrowing
-    /// (see `read_point_list`), so triangulation and orientation also run on
-    /// the rebased, collapse-free positions.
+    /// Lower source polygons before evaluating them with the existing builders.
     fn process_rebased(
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         rtc_file_units: Option<(f64, f64, f64)>,
     ) -> Result<Mesh> {
-        // IfcPolygonalFaceSet attributes:
-        // 0: Coordinates (IfcCartesianPointList3D)
-        // 1: Closed (optional BOOLEAN)
-        // 2: Faces (LIST of IfcIndexedPolygonalFace)
-        // 3: PnIndex (optional - point index remapping)
-
-        let coord_entity_id = entity
-            .get(0)
-            .ok_or_else(|| Error::geometry("PolygonalFaceSet missing Coordinates".to_string()))?
-            .as_entity_ref()
-            .ok_or_else(|| {
-                Error::geometry("Expected entity reference for Coordinates".to_string())
-            })?;
-        let positions = super::read_point_list(decoder, coord_entity_id, rtc_file_units)?;
-
-        if positions.is_empty() {
-            return Ok(Mesh::new());
-        }
-
-        // Get faces list (attribute 2)
-        let faces_attr = entity
-            .get(2)
-            .ok_or_else(|| Error::geometry("PolygonalFaceSet missing Faces".to_string()))?;
-
-        let face_refs = faces_attr
-            .as_list()
-            .ok_or_else(|| Error::geometry("Expected faces list".to_string()))?;
-
-        // Optional point remapping list (attribute 3): CoordIndex values
-        // index it when present.
-        let pn_index = super::indices::read_pn_index(entity, 3);
-
-        // Pre-allocate indices - estimate 2 triangles per face average
-        let mut indices = Vec::with_capacity(face_refs.len() * 6);
-
-        // Process each face
-        for face_ref in face_refs {
-            let face_id = face_ref
-                .as_entity_ref()
-                .ok_or_else(|| Error::geometry("Expected entity reference for face".to_string()))?;
-
-            let face_entity = decoder.decode_by_id(face_id)?;
-
-            // IfcIndexedPolygonalFace has CoordIndex at attribute 0
-            // IfcIndexedPolygonalFaceWithVoids has CoordIndex at 0 and InnerCoordIndices at 1
-            let coord_index_attr = face_entity.get(0).ok_or_else(|| {
-                Error::geometry("IndexedPolygonalFace missing CoordIndex".to_string())
-            })?;
-
-            let coord_indices = coord_index_attr
-                .as_list()
-                .ok_or_else(|| Error::geometry("Expected coord index list".to_string()))?;
-
-            // Parse face indices (1-based in IFC), with optional PnIndex remapping.
-            let face_indices = Self::parse_index_loop(coord_indices, pn_index.as_deref());
-            if face_indices.len() < 3 {
-                continue;
-            }
-
-            // Parse optional inner loops for IfcIndexedPolygonalFaceWithVoids.
-            let inner_indices = Self::parse_face_inner_indices(&face_entity, pn_index.as_deref());
-
-            // Triangulate the polygon face (including holes when present).
-            Self::triangulate_polygon(&face_entity.ifc_type, &face_indices, &inner_indices, &positions, &mut indices);
-        }
-
-        // Closed shells from some exporters may be consistently inward.
-        // Flip globally to outward winding when needed, under the one
-        // `Closed` policy shared with the triangulated processor.
-        if super::orients_outward(entity.get(1)) {
-            Self::orient_closed_shell_outward(&positions, &mut indices);
-        }
-
-        let mut mesh = Self::build_flat_shaded_mesh(&positions, &indices);
-        mesh.rtc_applied = rtc_file_units.is_some();
-        Ok(mesh)
+        Ok(polygonal_plan::lower(entity, decoder, rtc_file_units)?.evaluate())
     }
 }
 
 impl GeometryProcessor for PolygonalFaceSetProcessor {
+    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
+        _quality: crate::TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
+        -> Option<crate::Result<crate::program::OwnedConstructor>> {
+        use crate::program::constructor::Constructor;
+        Some(polygonal_plan::lower(entity, decoder, rtc_file_units).map(|plan| crate::program::OwnedConstructor::new(Constructor::Polygons(plan))))
+    }
+
     fn process(
         &self,
         entity: &DecodedEntity,

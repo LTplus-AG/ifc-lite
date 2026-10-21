@@ -27,6 +27,24 @@ fn full_policy() -> RebarFabricationPolicy {
     }
 }
 
+/// One entry per check `full_policy()` requests. A source that cannot be
+/// measured must still report each requested check as Uncheckable rather than
+/// drop it, so the checks are compared by kind, not just counted.
+const FULL_POLICY_KINDS: [&str; 5] = [
+    "bend_angle",
+    "developed_centreline_length",
+    "inside_bend_radius",
+    "nominal_geometric_diameter_delta",
+    "straight_segment_length",
+];
+
+fn requested_kinds(checks: &[RebarFabricationCheck]) -> Vec<&'static str> {
+    let mut kinds: Vec<&'static str> = checks.iter().map(|check| check.kind).collect();
+    kinds.sort_unstable();
+    kinds.dedup();
+    kinds
+}
+
 #[test]
 fn issue_5797_optional_policy_reports_arc_and_straight_provenance() {
     let view = schedule(U_BAR, full_policy());
@@ -62,9 +80,17 @@ fn issue_5797_modified_and_unsupported_sources_cannot_pass_geometry() {
         "#1001=IFCBOOLEANRESULT(.UNION.,#43,#43);\n#44=IFCSHAPEREPRESENTATION(#16,'Body','AdvancedSweptSolid',(#1001));",
     );
     let view = schedule(&modified, full_policy());
-    let reports = view.rows[&50].sweeps.iter().map(|sweep| sweep.fabrication_precheck.as_ref().unwrap());
+    let reports: Vec<_> = view.rows[&50]
+        .sweeps
+        .iter()
+        .map(|sweep| sweep.fabrication_precheck.as_ref().unwrap())
+        .collect();
+    // `all` over nothing is true: require the sweeps and the requested checks
+    // to be present before asserting that none of them passed.
+    assert!(!reports.is_empty());
     for report in reports {
         assert!(report.source_modified);
+        assert_eq!(requested_kinds(&report.checks), FULL_POLICY_KINDS);
         assert!(report.checks.iter().all(|check| check.status == RebarFabricationCheckStatus::Uncheckable));
     }
     let unsupported = MAPPED.replace(
@@ -73,6 +99,7 @@ fn issue_5797_modified_and_unsupported_sources_cannot_pass_geometry() {
     );
     let report = schedule(&unsupported, full_policy()).rows[&50].sweeps[0]
         .fabrication_precheck.clone().unwrap();
+    assert_eq!(requested_kinds(&report.checks), FULL_POLICY_KINDS);
     assert!(report.checks.iter().all(|check| check.status == RebarFabricationCheckStatus::Uncheckable));
     assert!(report.limitations.iter().any(|reason| reason.contains("unsupported")));
 }

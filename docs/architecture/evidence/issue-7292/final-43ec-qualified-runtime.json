@@ -1,0 +1,1046 @@
+{
+  "status": "RESTORED_O3_FROZEN_PAIR_ALL_THREE_FIXTURES_QUALIFIED_CURRENT_MAIN_COMPOSITION_LOCAL_CHECKS_COMPLETE",
+  "createdUTC": "2026-10-18T11:26:19.909017+00:00",
+  "issue": 7292,
+  "pullRequest": 7607,
+  "runtimeSourcePair": {
+    "base": "b0b670f0cfd704ceb7c78a622f5730d0cd9510de",
+    "branch": "43ecf3aa3e240e1a7c41c5c799212b60df010ebd"
+  },
+  "currentMainComposition": "17a271904ada165e8e90998234dd102ee8ed9937",
+  "currentMain": "1bd0505602e0d650971d5cdc590bf780c56f8d5f",
+  "sourceScopes": "Browser timings/function/geometry retain their actual43ec execution head versusB0. Main integration ced was independently compiled/tested on Pop. The final17a integration adds only two main renderer-lifetime/test fixes; all Rust/WASM/build inputs are exact ced subtrees, independently verified. Final17a root viewer build and all bundle gates pass on Pop. No runtime artifact or measurement is relabelled to either integration. Final documentation commit changes no production/test source from17a.",
+  "timing": {
+    "acceptedFreshRows": 30,
+    "freshInterleavedPairsPerFixture": 5,
+    "fixtures": [
+      "FZK",
+      "ISSUE129",
+      "Holter"
+    ],
+    "sameSourceControls": {
+      "FZK": [
+        398,
+        401,
+        382
+      ],
+      "ISSUE129": [
+        1748,
+        1759,
+        1725
+      ],
+      "Holter": [
+        3031,
+        3028,
+        3002
+      ]
+    },
+    "protocol": "Explicitly user-approved integrated mean of three consecutive1second readings<=10% on fixed sixphysical-core CPU domain, mask4095; every24processor counter/interval/max and whole-host observation retained. Linux>=40GiB available. Owned Chrome only affinity, not OS-exclusive; no whole-host idle claim.",
+    "gpuAndSource": "Native Windows Node/ownedChrome NVIDIA Blackwell DPR1.5, actual four-worker pool, fresh tab/targetfirst, exactsource and every actual delivered JS/WASM body, protectedbrowser checks and strict cleanup verified.",
+    "allPriorFailedAndPartialCohortsExcluded": true,
+    "allSuccessfulRowsIndependentlyReverified": true,
+    "approvedAmendmentRecord": "protocol/actual-user-amendment.json in partition archive",
+    "allCaptureChildrenReaped": true,
+    "sharedHoldCreated": false
+  },
+  "performanceVerdict": "Existing unchanged six-milestone+50% regression check passes for every fixture against matched local base medians. ISSUE129 has a real measured cost; no performance-neutral or optimization-win claim.",
+  "metricDefinitions": {
+    "parserWorkerSpanMs": "Single existing parser.worker trace span end-start, milliseconds. Includes authored waiting/serialization scope; not parser.parse compute-only duration, not native probe parse or metadataComplete-loadstart. Missing/ambiguous span gives null and no reporting verdict.",
+    "geometryStreamingMs": "Original stored runColdSample metric, canonical metricsFromLoadTrace aliases streamCompleteMs: milestone end minus LOAD start roundedms; NOT pure geometry-worker compute duration.",
+    "totalWallClockMs": "Original stored runColdSample metric, trace root end minus start roundedms; excludes untimed setup and later body proof/screenshots/strict cleanup.",
+    "overlap": "Parser and geometry overlap; these are not additive phase timings.",
+    "deltas": "Branch minus base; percentage relative to base. Median-of-five arm difference and median-of-five paired differences reported separately. No threshold/verdict invented."
+  },
+  "mediansAndDeltas": {
+    "FZK": {
+      "base": {
+        "parserWorkerSpanMs": {
+          "medianMs": 278.33999997377396,
+          "fiveValuesMs": [
+            256.99000000953674,
+            283.25999999046326,
+            285.0549999475479,
+            278.33999997377396,
+            273.99000000953674
+          ],
+          "count": 5,
+          "allFiveAvailable": true
+        },
+        "geometryStreamingMs": {
+          "medianMs": 257,
+          "fiveValuesMs": [
+            257,
+            261,
+            258,
+            253,
+            255
+          ],
+          "count": 5,
+          "allFiveAvailable": true
+        },
+        "totalWallClockMs": {
+          "medianMs": 390,
+          "fiveValuesMs": [
+            390,
+            395,
+            397,
+            390,
+            386
+          ],
+          "count": 5,
+          "allFiveAvailable": true
+        },
+        "firstVisibleGeometryMs": {
+          "medianMs": 241,
+          "fiveValuesMs": [
+            248,
+            232,
+            241,
+            359,
+            239
+          ],
+          "count": 5,
+          "allFiveAvailable": true
+        },
+        "renderCompleteMs": {
+          "medianMs": 668,
+          "fiveValuesMs": [
+            648,
+            668,
+            679,
+            661,
+            668
+          ],
+          "count": 5,
+          "allFiveAvailable": true
+        }
+      },
+      "branch": {
+        "parserWorkerSpanMs": {
+          "medianMs": 273.24000000953674,
+          "fiveValuesMs": [
+            271.8550000190735,
+            250.20999997854233,
+            273.82499998807907,
+            278.35999995470047,
+            273.24000000953674
+          ],
+          "count": 5,
+          "allFiveAvailable": true
+        },
+        "geometryStreamingMs": {
+          "medianMs": 255,
+          "fiveValuesMs": [
+            260,
+            255,
+            255,
+            256,
+            255
+          ],
+          "count": 5,
+          "allFiveAvailable": true
+        },
+        "totalWallClockMs": {
+          "medianMs": 386,
+          "fiveValuesMs": [
+            389,
+            380,
+            386,
+            388,
+            386
+          ],
+          "count": 5,
+          "allFiveAvailable": true
+        },
+        "firstVisibleGeometryMs": {
+          "medianMs": 231,
+          "fiveValuesMs": [
+            243,
+            229,
+            237,
+            231,
+            227
+          ],
+          "count": 5,
+          "allFiveAvailable": true
+        },
+        "renderCompleteMs": {
+          "medianMs": 666,
+          "fiveValuesMs": [
+            668,
+            672,
+            662,
+            666,
+            641
+          ],
+          "count": 5,
+          "allFiveAvailable": true
+        }
+      },
+      "parserWorkerSpanMsMedianDifference": {
+        "branchMinusBaseMs": -5.099999964237213,
+        "percentOfBase": -1.832291429445193
+      },
+      "geometryStreamingMsMedianDifference": {
+        "branchMinusBaseMs": -2,
+        "percentOfBase": -0.7782101167315175
+      },
+      "totalWallClockMsMedianDifference": {
+        "branchMinusBaseMs": -4,
+        "percentOfBase": -1.0256410256410255
+      },
+      "firstVisibleGeometryMsMedianDifference": {
+        "branchMinusBaseMs": -10,
+        "percentOfBase": -4.149377593360996
+      },
+      "renderCompleteMsMedianDifference": {
+        "branchMinusBaseMs": -2,
+        "percentOfBase": -0.2994011976047904
+      },
+      "parserWorkerSpanMsPairedDifference": {
+        "medianBranchMinusBaseMs": -0.75,
+        "medianPairedPercent": -0.27373261796923054
+      },
+      "geometryStreamingMsPairedDifference": {
+        "medianBranchMinusBaseMs": 0,
+        "medianPairedPercent": 0.0
+      },
+      "totalWallClockMsPairedDifference": {
+        "medianBranchMinusBaseMs": -2,
+        "medianPairedPercent": -0.5128205128205128
+      },
+      "firstVisibleGeometryMsPairedDifference": {
+        "medianBranchMinusBaseMs": -5,
+        "medianPairedPercent": -2.0161290322580645
+      },
+      "renderCompleteMsPairedDifference": {
+        "medianBranchMinusBaseMs": 4,
+        "medianPairedPercent": 0.5988023952095808
+      }
+    },
+    "ISSUE129": {
+      "base": {
+        "parserWorkerSpanMs": {
+          "medianMs": 415.90499997138977,
+          "fiveValuesMs": [
+            437.3100000023842,
+            415.90499997138977,
+            413.6100000143051,
+            439.7699999809265,
+            380.84500002861023
+          ],
+          "count": 5,
+          "allFiveAvailable": true
+        },
+        "geometryStreamingMs": {
+          "medianMs": 1681,
+          "fiveValuesMs": [
+            1679,
+            1690,
+            1681,
+            1711,
+            1676
+          ],
+          "count": 5,
+          "allFiveAvailable": true
+        },
+        "totalWallClockMs": {
+          "medianMs": 1740,
+          "fiveValuesMs": [
+            1735,
+            1747,
+            1739,
+            1767,
+            1740
+          ],
+          "count": 5,
+          "allFiveAvailable": true
+        },
+        "firstVisibleGeometryMs": {
+          "medianMs": 823,
+          "fiveValuesMs": [
+            815,
+            818,
+            835,
+            823,
+            828
+          ],
+          "count": 5,
+          "allFiveAvailable": true
+        },
+        "renderCompleteMs": {
+          "medianMs": 3834,
+          "fiveValuesMs": [
+            3816,
+            3980,
+            3834,
+            3926,
+            3819
+          ],
+          "count": 5,
+          "allFiveAvailable": true
+        }
+      },
+      "branch": {
+        "parserWorkerSpanMs": {
+          "medianMs": 444.9699999690056,
+          "fiveValuesMs": [
+            468.914999961853,
+            444.9699999690056,
+            449.4800000190735,
+            394.17500001192093,
+            406.0149999856949
+          ],
+          "count": 5,
+          "allFiveAvailable": true
+        },
+        "geometryStreamingMs": {
+          "medianMs": 1924,
+          "fiveValuesMs": [
+            1941,
+            1924,
+            1898,
+            1918,
+            1928
+          ],
+          "count": 5,
+          "allFiveAvailable": true
+        },
+        "totalWallClockMs": {
+          "medianMs": 1991,
+          "fiveValuesMs": [
+            2008,
+            1991,
+            1965,
+            1972,
+            1995
+          ],
+          "count": 5,
+          "allFiveAvailable": true
+        },
+        "firstVisibleGeometryMs": {
+          "medianMs": 826,
+          "fiveValuesMs": [
+            832,
+            826,
+            812,
+            831,
+            813
+          ],
+          "count": 5,
+          "allFiveAvailable": true
+        },
+        "renderCompleteMs": {
+          "medianMs": 4134,
+          "fiveValuesMs": [
+            4196,
+            4131,
+            4119,
+            4134,
+            4186
+          ],
+          "count": 5,
+          "allFiveAvailable": true
+        }
+      },
+      "parserWorkerSpanMsMedianDifference": {
+        "branchMinusBaseMs": 29.064999997615814,
+        "percentOfBase": 6.988374748948727
+      },
+      "geometryStreamingMsMedianDifference": {
+        "branchMinusBaseMs": 243,
+        "percentOfBase": 14.455681142177275
+      },
+      "totalWallClockMsMedianDifference": {
+        "branchMinusBaseMs": 251,
+        "percentOfBase": 14.425287356321839
+      },
+      "firstVisibleGeometryMsMedianDifference": {
+        "branchMinusBaseMs": 3,
+        "percentOfBase": 0.3645200486026732
+      },
+      "renderCompleteMsMedianDifference": {
+        "branchMinusBaseMs": 300,
+        "percentOfBase": 7.82472613458529
+      },
+      "parserWorkerSpanMsPairedDifference": {
+        "medianBranchMinusBaseMs": 29.064999997615814,
+        "medianPairedPercent": 6.988374748948727
+      },
+      "geometryStreamingMsPairedDifference": {
+        "medianBranchMinusBaseMs": 234,
+        "medianPairedPercent": 13.846153846153847
+      },
+      "totalWallClockMsPairedDifference": {
+        "medianBranchMinusBaseMs": 244,
+        "medianPairedPercent": 13.966800228963939
+      },
+      "firstVisibleGeometryMsPairedDifference": {
+        "medianBranchMinusBaseMs": 8,
+        "medianPairedPercent": 0.9720534629404617
+      },
+      "renderCompleteMsPairedDifference": {
+        "medianBranchMinusBaseMs": 285,
+        "medianPairedPercent": 7.433489827856025
+      }
+    },
+    "Holter": {
+      "base": {
+        "parserWorkerSpanMs": {
+          "medianMs": 2508.800000011921,
+          "fiveValuesMs": [
+            2589.3299999833107,
+            2503.514999985695,
+            2413.0099999904633,
+            2508.800000011921,
+            2538.514999985695
+          ],
+          "count": 5,
+          "allFiveAvailable": true
+        },
+        "geometryStreamingMs": {
+          "medianMs": 2342,
+          "fiveValuesMs": [
+            2756,
+            2342,
+            2287,
+            2320,
+            2765
+          ],
+          "count": 5,
+          "allFiveAvailable": true
+        },
+        "totalWallClockMs": {
+          "medianMs": 3083,
+          "fiveValuesMs": [
+            3127,
+            3057,
+            2985,
+            3083,
+            3326
+          ],
+          "count": 5,
+          "allFiveAvailable": true
+        },
+        "firstVisibleGeometryMs": {
+          "medianMs": 884,
+          "fiveValuesMs": [
+            892,
+            884,
+            871,
+            830,
+            885
+          ],
+          "count": 5,
+          "allFiveAvailable": true
+        },
+        "renderCompleteMs": {
+          "medianMs": 4135,
+          "fiveValuesMs": [
+            4099,
+            4239,
+            4135,
+            4053,
+            4208
+          ],
+          "count": 5,
+          "allFiveAvailable": true
+        }
+      },
+      "branch": {
+        "parserWorkerSpanMs": {
+          "medianMs": 2458.5,
+          "fiveValuesMs": [
+            2478.485000014305,
+            2406.7599999904633,
+            2485.8900000452995,
+            2429.0,
+            2458.5
+          ],
+          "count": 5,
+          "allFiveAvailable": true
+        },
+        "geometryStreamingMs": {
+          "medianMs": 2339,
+          "fiveValuesMs": [
+            2669,
+            2299,
+            2339,
+            2352,
+            2314
+          ],
+          "count": 5,
+          "allFiveAvailable": true
+        },
+        "totalWallClockMs": {
+          "medianMs": 3010,
+          "fiveValuesMs": [
+            3263,
+            2998,
+            3038,
+            2978,
+            3010
+          ],
+          "count": 5,
+          "allFiveAvailable": true
+        },
+        "firstVisibleGeometryMs": {
+          "medianMs": 881,
+          "fiveValuesMs": [
+            872,
+            861,
+            881,
+            881,
+            891
+          ],
+          "count": 5,
+          "allFiveAvailable": true
+        },
+        "renderCompleteMs": {
+          "medianMs": 4169,
+          "fiveValuesMs": [
+            4336,
+            4167,
+            4148,
+            4202,
+            4169
+          ],
+          "count": 5,
+          "allFiveAvailable": true
+        }
+      },
+      "parserWorkerSpanMsMedianDifference": {
+        "branchMinusBaseMs": -50.30000001192093,
+        "percentOfBase": -2.0049426025064543
+      },
+      "geometryStreamingMsMedianDifference": {
+        "branchMinusBaseMs": -3,
+        "percentOfBase": -0.12809564474807855
+      },
+      "totalWallClockMsMedianDifference": {
+        "branchMinusBaseMs": -73,
+        "percentOfBase": -2.367823548491729
+      },
+      "firstVisibleGeometryMsMedianDifference": {
+        "branchMinusBaseMs": -3,
+        "percentOfBase": -0.3393665158371041
+      },
+      "renderCompleteMsMedianDifference": {
+        "branchMinusBaseMs": 34,
+        "percentOfBase": 0.8222490931076178
+      },
+      "parserWorkerSpanMsPairedDifference": {
+        "medianBranchMinusBaseMs": -80.01499998569489,
+        "medianPairedPercent": -3.180803571888622
+      },
+      "geometryStreamingMsPairedDifference": {
+        "medianBranchMinusBaseMs": -43,
+        "medianPairedPercent": -1.8360375747224595
+      },
+      "totalWallClockMsPairedDifference": {
+        "medianBranchMinusBaseMs": -59,
+        "medianPairedPercent": -1.9299967288191038
+      },
+      "firstVisibleGeometryMsPairedDifference": {
+        "medianBranchMinusBaseMs": 6,
+        "medianPairedPercent": 0.6779661016949152
+      },
+      "renderCompleteMsPairedDifference": {
+        "medianBranchMinusBaseMs": 13,
+        "medianPairedPercent": 0.3143893591293833
+      }
+    }
+  },
+  "geometry": {
+    "FZK": {
+      "withinSides": {
+        "base": {
+          "flatTypedSHA256ByRound": [
+            "62ce7516c16a3eb4eb65d7ddf51b88e9142b4ca7fd22472440b33b59efbc55f0",
+            "62ce7516c16a3eb4eb65d7ddf51b88e9142b4ca7fd22472440b33b59efbc55f0",
+            "62ce7516c16a3eb4eb65d7ddf51b88e9142b4ca7fd22472440b33b59efbc55f0",
+            "62ce7516c16a3eb4eb65d7ddf51b88e9142b4ca7fd22472440b33b59efbc55f0",
+            "62ce7516c16a3eb4eb65d7ddf51b88e9142b4ca7fd22472440b33b59efbc55f0"
+          ],
+          "flatTypedStableWithinSide": true,
+          "completeFingerprintStableWithinSide": true,
+          "componentSHA256ByRound": {
+            "flatTypedSHA256": [
+              "ebcb6a042a99c13866d7c185b8866f86cf2d352f84dcb44832f609f8d09e9c9d",
+              "ebcb6a042a99c13866d7c185b8866f86cf2d352f84dcb44832f609f8d09e9c9d",
+              "ebcb6a042a99c13866d7c185b8866f86cf2d352f84dcb44832f609f8d09e9c9d",
+              "ebcb6a042a99c13866d7c185b8866f86cf2d352f84dcb44832f609f8d09e9c9d",
+              "ebcb6a042a99c13866d7c185b8866f86cf2d352f84dcb44832f609f8d09e9c9d"
+            ],
+            "flatMeshCount": [
+              "3a1dfb05d7257530e6349233688c3e121945c5de50f1273a7620537755d61e45",
+              "3a1dfb05d7257530e6349233688c3e121945c5de50f1273a7620537755d61e45",
+              "3a1dfb05d7257530e6349233688c3e121945c5de50f1273a7620537755d61e45",
+              "3a1dfb05d7257530e6349233688c3e121945c5de50f1273a7620537755d61e45",
+              "3a1dfb05d7257530e6349233688c3e121945c5de50f1273a7620537755d61e45"
+            ],
+            "allMeshCount": [
+              "3a1dfb05d7257530e6349233688c3e121945c5de50f1273a7620537755d61e45",
+              "3a1dfb05d7257530e6349233688c3e121945c5de50f1273a7620537755d61e45",
+              "3a1dfb05d7257530e6349233688c3e121945c5de50f1273a7620537755d61e45",
+              "3a1dfb05d7257530e6349233688c3e121945c5de50f1273a7620537755d61e45",
+              "3a1dfb05d7257530e6349233688c3e121945c5de50f1273a7620537755d61e45"
+            ],
+            "totalTriangles": [
+              "b3ceaaf89331dada323c4c9b224e0ed512dd0c49f15ad9ac7c51663e2276a4d6",
+              "b3ceaaf89331dada323c4c9b224e0ed512dd0c49f15ad9ac7c51663e2276a4d6",
+              "b3ceaaf89331dada323c4c9b224e0ed512dd0c49f15ad9ac7c51663e2276a4d6",
+              "b3ceaaf89331dada323c4c9b224e0ed512dd0c49f15ad9ac7c51663e2276a4d6",
+              "b3ceaaf89331dada323c4c9b224e0ed512dd0c49f15ad9ac7c51663e2276a4d6"
+            ],
+            "totalVertices": [
+              "a341663c2f045083aaa731495cfbca541366394d745d64bc2daf9700835b4e81",
+              "a341663c2f045083aaa731495cfbca541366394d745d64bc2daf9700835b4e81",
+              "a341663c2f045083aaa731495cfbca541366394d745d64bc2daf9700835b4e81",
+              "a341663c2f045083aaa731495cfbca541366394d745d64bc2daf9700835b4e81",
+              "a341663c2f045083aaa731495cfbca541366394d745d64bc2daf9700835b4e81"
+            ],
+            "instancedCanonicalHashes": [
+              "e925b1d462c4abb4f2ffce28994c025423dc4c911de4d2efe2f9ddfd543b6f7b",
+              "e925b1d462c4abb4f2ffce28994c025423dc4c911de4d2efe2f9ddfd543b6f7b",
+              "e925b1d462c4abb4f2ffce28994c025423dc4c911de4d2efe2f9ddfd543b6f7b",
+              "e925b1d462c4abb4f2ffce28994c025423dc4c911de4d2efe2f9ddfd543b6f7b",
+              "e925b1d462c4abb4f2ffce28994c025423dc4c911de4d2efe2f9ddfd543b6f7b"
+            ],
+            "instancedAabbs": [
+              "f8fe6fffcc14a5a4c5b5a1e3cf024a412a6f5519c4e9a0e97dab8b0518b9f730",
+              "f8fe6fffcc14a5a4c5b5a1e3cf024a412a6f5519c4e9a0e97dab8b0518b9f730",
+              "f8fe6fffcc14a5a4c5b5a1e3cf024a412a6f5519c4e9a0e97dab8b0518b9f730",
+              "f8fe6fffcc14a5a4c5b5a1e3cf024a412a6f5519c4e9a0e97dab8b0518b9f730",
+              "f8fe6fffcc14a5a4c5b5a1e3cf024a412a6f5519c4e9a0e97dab8b0518b9f730"
+            ],
+            "instancedVolumes": [
+              "f0d0b3ca4bd3476ef5d9c96c54fdb259e6f646718cf8d2efc7f8815f7dda2150",
+              "f0d0b3ca4bd3476ef5d9c96c54fdb259e6f646718cf8d2efc7f8815f7dda2150",
+              "f0d0b3ca4bd3476ef5d9c96c54fdb259e6f646718cf8d2efc7f8815f7dda2150",
+              "f0d0b3ca4bd3476ef5d9c96c54fdb259e6f646718cf8d2efc7f8815f7dda2150",
+              "f0d0b3ca4bd3476ef5d9c96c54fdb259e6f646718cf8d2efc7f8815f7dda2150"
+            ],
+            "coordinateInfo": [
+              "ea7c20e74ff3e33243f6e5b1ab9d7916372d52b26ddcef3a3b4f5dfd07871cd7",
+              "ea7c20e74ff3e33243f6e5b1ab9d7916372d52b26ddcef3a3b4f5dfd07871cd7",
+              "ea7c20e74ff3e33243f6e5b1ab9d7916372d52b26ddcef3a3b4f5dfd07871cd7",
+              "ea7c20e74ff3e33243f6e5b1ab9d7916372d52b26ddcef3a3b4f5dfd07871cd7",
+              "ea7c20e74ff3e33243f6e5b1ab9d7916372d52b26ddcef3a3b4f5dfd07871cd7"
+            ]
+          },
+          "countsByRound": [
+            {
+              "flatMeshCount": 275,
+              "allMeshCount": 275,
+              "totalTriangles": 32852,
+              "totalVertices": 56698
+            },
+            {
+              "flatMeshCount": 275,
+              "allMeshCount": 275,
+              "totalTriangles": 32852,
+              "totalVertices": 56698
+            },
+            {
+              "flatMeshCount": 275,
+              "allMeshCount": 275,
+              "totalTriangles": 32852,
+              "totalVertices": 56698
+            },
+            {
+              "flatMeshCount": 275,
+              "allMeshCount": 275,
+              "totalTriangles": 32852,
+              "totalVertices": 56698
+            },
+            {
+              "flatMeshCount": 275,
+              "allMeshCount": 275,
+              "totalTriangles": 32852,
+              "totalVertices": 56698
+            }
+          ]
+        },
+        "branch": {
+          "flatTypedSHA256ByRound": [
+            "62ce7516c16a3eb4eb65d7ddf51b88e9142b4ca7fd22472440b33b59efbc55f0",
+            "62ce7516c16a3eb4eb65d7ddf51b88e9142b4ca7fd22472440b33b59efbc55f0",
+            "62ce7516c16a3eb4eb65d7ddf51b88e9142b4ca7fd22472440b33b59efbc55f0",
+            "62ce7516c16a3eb4eb65d7ddf51b88e9142b4ca7fd22472440b33b59efbc55f0",
+            "62ce7516c16a3eb4eb65d7ddf51b88e9142b4ca7fd22472440b33b59efbc55f0"
+          ],
+          "flatTypedStableWithinSide": true,
+          "completeFingerprintStableWithinSide": true,
+          "componentSHA256ByRound": {
+            "flatTypedSHA256": [
+              "ebcb6a042a99c13866d7c185b8866f86cf2d352f84dcb44832f609f8d09e9c9d",
+              "ebcb6a042a99c13866d7c185b8866f86cf2d352f84dcb44832f609f8d09e9c9d",
+              "ebcb6a042a99c13866d7c185b8866f86cf2d352f84dcb44832f609f8d09e9c9d",
+              "ebcb6a042a99c13866d7c185b8866f86cf2d352f84dcb44832f609f8d09e9c9d",
+              "ebcb6a042a99c13866d7c185b8866f86cf2d352f84dcb44832f609f8d09e9c9d"
+            ],
+            "flatMeshCount": [
+              "3a1dfb05d7257530e6349233688c3e121945c5de50f1273a7620537755d61e45",
+              "3a1dfb05d7257530e6349233688c3e121945c5de50f1273a7620537755d61e45",
+              "3a1dfb05d7257530e6349233688c3e121945c5de50f1273a7620537755d61e45",
+              "3a1dfb05d7257530e6349233688c3e121945c5de50f1273a7620537755d61e45",
+              "3a1dfb05d7257530e6349233688c3e121945c5de50f1273a7620537755d61e45"
+            ],
+            "allMeshCount": [
+              "3a1dfb05d7257530e6349233688c3e121945c5de50f1273a7620537755d61e45",
+              "3a1dfb05d7257530e6349233688c3e121945c5de50f1273a7620537755d61e45",
+              "3a1dfb05d7257530e6349233688c3e121945c5de50f1273a7620537755d61e45",
+              "3a1dfb05d7257530e6349233688c3e121945c5de50f1273a7620537755d61e45",
+              "3a1dfb05d7257530e6349233688c3e121945c5de50f1273a7620537755d61e45"
+            ],
+            "totalTriangles": [
+              "b3ceaaf89331dada323c4c9b224e0ed512dd0c49f15ad9ac7c51663e2276a4d6",
+              "b3ceaaf89331dada323c4c9b224e0ed512dd0c49f15ad9ac7c51663e2276a4d6",
+              "b3ceaaf89331dada323c4c9b224e0ed512dd0c49f15ad9ac7c51663e2276a4d6",
+              "b3ceaaf89331dada323c4c9b224e0ed512dd0c49f15ad9ac7c51663e2276a4d6",
+              "b3ceaaf89331dada323c4c9b224e0ed512dd0c49f15ad9ac7c51663e2276a4d6"
+            ],
+            "totalVertices": [
+              "a341663c2f045083aaa731495cfbca541366394d745d64bc2daf9700835b4e81",
+              "a341663c2f045083aaa731495cfbca541366394d745d64bc2daf9700835b4e81",
+              "a341663c2f045083aaa731495cfbca541366394d745d64bc2daf9700835b4e81",
+              "a341663c2f045083aaa731495cfbca541366394d745d64bc2daf9700835b4e81",
+              "a341663c2f045083aaa731495cfbca541366394d745d64bc2daf9700835b4e81"
+            ],
+            "instancedCanonicalHashes": [
+              "e925b1d462c4abb4f2ffce28994c025423dc4c911de4d2efe2f9ddfd543b6f7b",
+              "e925b1d462c4abb4f2ffce28994c025423dc4c911de4d2efe2f9ddfd543b6f7b",
+              "e925b1d462c4abb4f2ffce28994c025423dc4c911de4d2efe2f9ddfd543b6f7b",
+              "e925b1d462c4abb4f2ffce28994c025423dc4c911de4d2efe2f9ddfd543b6f7b",
+              "e925b1d462c4abb4f2ffce28994c025423dc4c911de4d2efe2f9ddfd543b6f7b"
+            ],
+            "instancedAabbs": [
+              "f8fe6fffcc14a5a4c5b5a1e3cf024a412a6f5519c4e9a0e97dab8b0518b9f730",
+              "f8fe6fffcc14a5a4c5b5a1e3cf024a412a6f5519c4e9a0e97dab8b0518b9f730",
+              "f8fe6fffcc14a5a4c5b5a1e3cf024a412a6f5519c4e9a0e97dab8b0518b9f730",
+              "f8fe6fffcc14a5a4c5b5a1e3cf024a412a6f5519c4e9a0e97dab8b0518b9f730",
+              "f8fe6fffcc14a5a4c5b5a1e3cf024a412a6f5519c4e9a0e97dab8b0518b9f730"
+            ],
+            "instancedVolumes": [
+              "f0d0b3ca4bd3476ef5d9c96c54fdb259e6f646718cf8d2efc7f8815f7dda2150",
+              "f0d0b3ca4bd3476ef5d9c96c54fdb259e6f646718cf8d2efc7f8815f7dda2150",
+              "f0d0b3ca4bd3476ef5d9c96c54fdb259e6f646718cf8d2efc7f8815f7dda2150",
+              "f0d0b3ca4bd3476ef5d9c96c54fdb259e6f646718cf8d2efc7f8815f7dda2150",
+              "f0d0b3ca4bd3476ef5d9c96c54fdb259e6f646718cf8d2efc7f8815f7dda2150"
+            ],
+            "coordinateInfo": [
+              "ea7c20e74ff3e33243f6e5b1ab9d7916372d52b26ddcef3a3b4f5dfd07871cd7",
+              "ea7c20e74ff3e33243f6e5b1ab9d7916372d52b26ddcef3a3b4f5dfd07871cd7",
+              "ea7c20e74ff3e33243f6e5b1ab9d7916372d52b26ddcef3a3b4f5dfd07871cd7",
+              "ea7c20e74ff3e33243f6e5b1ab9d7916372d52b26ddcef3a3b4f5dfd07871cd7",
+              "ea7c20e74ff3e33243f6e5b1ab9d7916372d52b26ddcef3a3b4f5dfd07871cd7"
+            ]
+          },
+          "countsByRound": [
+            {
+              "flatMeshCount": 275,
+              "allMeshCount": 275,
+              "totalTriangles": 32852,
+              "totalVertices": 56698
+            },
+            {
+              "flatMeshCount": 275,
+              "allMeshCount": 275,
+              "totalTriangles": 32852,
+              "totalVertices": 56698
+            },
+            {
+              "flatMeshCount": 275,
+              "allMeshCount": 275,
+              "totalTriangles": 32852,
+              "totalVertices": 56698
+            },
+            {
+              "flatMeshCount": 275,
+              "allMeshCount": 275,
+              "totalTriangles": 32852,
+              "totalVertices": 56698
+            },
+            {
+              "flatMeshCount": 275,
+              "allMeshCount": 275,
+              "totalTriangles": 32852,
+              "totalVertices": 56698
+            }
+          ]
+        }
+      },
+      "fiveActualPairs": [
+        {
+          "round": 0,
+          "differentComponents": [],
+          "flatTypedBytesEqual": true,
+          "instancedCanonicalHashesEqual": true,
+          "instancedAabbsEqual": true,
+          "instancedVolumesEqual": true
+        },
+        {
+          "round": 1,
+          "differentComponents": [],
+          "flatTypedBytesEqual": true,
+          "instancedCanonicalHashesEqual": true,
+          "instancedAabbsEqual": true,
+          "instancedVolumesEqual": true
+        },
+        {
+          "round": 2,
+          "differentComponents": [],
+          "flatTypedBytesEqual": true,
+          "instancedCanonicalHashesEqual": true,
+          "instancedAabbsEqual": true,
+          "instancedVolumesEqual": true
+        },
+        {
+          "round": 3,
+          "differentComponents": [],
+          "flatTypedBytesEqual": true,
+          "instancedCanonicalHashesEqual": true,
+          "instancedAabbsEqual": true,
+          "instancedVolumesEqual": true
+        },
+        {
+          "round": 4,
+          "differentComponents": [],
+          "flatTypedBytesEqual": true,
+          "instancedCanonicalHashesEqual": true,
+          "instancedAabbsEqual": true,
+          "instancedVolumesEqual": true
+        }
+      ]
+    },
+    "ISSUE129": {
+      "allMeshesBothSides": 1402,
+      "sameOwnersAndPerOwnerMeshCounts": true,
+      "changedFlatOwners": [
+        "12381",
+        "141060",
+        "145270",
+        "227053",
+        "244479",
+        "247953",
+        "272072",
+        "272180",
+        "295370",
+        "296868",
+        "315763",
+        "57084",
+        "61300",
+        "6891",
+        "8756",
+        "9094"
+      ],
+      "same16OwnersDifferEveryPair": true,
+      "trianglesBase": 134259,
+      "trianglesBranch": 134046,
+      "verticesBase": 217003,
+      "verticesBranch": 216441,
+      "allFiveCompleteFingerprintsStableWithinEachSide": true,
+      "instancedCanonicalHashesAabbsVolumesUnchangedAcrossSides": true,
+      "interpretation": "This is a correctness-change workload, not byte-identical geometry. Same mesh owners/counts remain;16 actual cut outputs change,213 fewer triangles. Existing four curated reporter/source proofs and native/parity regressions establish their own scopes; this comparison does not certify every solid in ISSUE129 against an oracle.",
+      "notClaimed": [
+        "fullUVmaterialtexturetextbyteidentity",
+        "originalinstancebufferbyteidentity",
+        "universalclosedsolidconformance",
+        "neworaclecomparisonforall1402outputs"
+      ]
+    },
+    "Holter": {
+      "fixtureBytes": 177465622,
+      "flatMeshes": 60001,
+      "instancedCanonicalHashEntries": 49910,
+      "triangles": 881218,
+      "vertices": 1764955,
+      "allFiveFullCanonicalFingerprintsEqualAcrossSides": true,
+      "withinArmAllFiveFingerprintsStable": true,
+      "fullRawCompressedAndDecodedPins": "all-ten-original-complete-raw-pins.json in Holter archive",
+      "rootInspectedNativeWindowsScreenshot": true
+    },
+    "identityScope": "Canonical fingerprint: all flat mesh exactposition/normalF32bit arrays,indices,originF64bits,localToWorldF64bits and owner/itemIDs, sorted per-mesh strings SHA256. Instanced identity only canonical per-owner hashes/AABBs/volumes; no original instancedbuffer bytes. No completeUV/text/material/texture/instancebyteidentity or universal geometry acceptance.",
+    "notUniversalClosedSolidOrAllMaterialUvTextureTextOracleClaim": true
+  },
+  "conditionalEngineBudget": {
+    "approvedCeiling": 2299706,
+    "unchangedRelativeTolerance": 0.005,
+    "allowed": 2311204,
+    "frozen43ecMeasuredBrotli": 2300876,
+    "currentCedMeasuredBrotli": 2302261,
+    "currentCedViewerEntryBytes": 3119260,
+    "currentCedViewerEntryAllowed": 3119506,
+    "passed": true,
+    "approvedRestoredO3RuntimeQualificationConditionFulfilledForActuallyMeasuredFrozenPair": true,
+    "currentCompositionHasSeparateActualOfficialWasmViewerBuildAndWasmContractProof": true
+  },
+  "currentMainLocalValidation": {
+    "composition": "ced41577dc4898bc257148889cee284d3da754dd",
+    "host": "pop-os",
+    "geometryLibrarySerialPassed": 1523,
+    "geometryLibraryIgnored": 1,
+    "exactWorkspaceAllTargetsClippyPass": true,
+    "rootTurboTypecheckTasksPassed": 127,
+    "freshCorrectedTailPass": true,
+    "auditTestFiles": 4247,
+    "auditPackages": 67,
+    "finalRootViewerBuildTasksPassed": 56,
+    "currentActualWasmContractPasses": 102,
+    "currentActualWasmContractMissingFixtureSkips": 4,
+    "allBundleCeilingsUnchangedAndPass": true,
+    "sourceBeforeAfterCleanUnchanged": true,
+    "actualOriginalFailuresRetained": {
+      "status": "CURRENT_MAIN_COMPOSITION_NATIVE_CLIPPY_AND_ROOT_TYPECHECK_COMPOSITE_COMPLETE",
+      "composition": "ced41577dc4898bc257148889cee284d3da754dd",
+      "main": "db45d717226ddaac682121dbf39289ba53bcda0e",
+      "productBenchmarkHeadRetainsActual43ecScope": true,
+      "actualHost": "pop-os",
+      "geometryLibrary": {
+        "passed": 1523,
+        "ignored": 1,
+        "testThreads": 1,
+        "originalParallelFailureRetained": "Full four-thread run1522pass1fail: near-coplanar union returned empty. Full serial run passes every same assertion. Tests mutate process-global exact-work caps; interference is a plausible explanation, not a proved root cause. The parallel failure remains retained and is not relabelled as a pass."
+      },
+      "exactWorkspaceAllTargetsClippyPass": true,
+      "typecheck": {
+        "rootTurboTasksPassed": 127,
+        "successfulBroadRootTurboFollowedByFreshTail": true,
+        "freshTailExitCode": 0,
+        "auditTestFiles": 4247,
+        "auditPackages": 67,
+        "notOriginalSingleFullCommandSuccess": true,
+        "originalOperatorErrorPreserved": "Appending --filter to rootscript reached tsc tail as unknownoption; rootTurbo127tasks succeeded. Tail rerun correctly with no extraneous flag.",
+        "separateLowHeapRepeatPreserved": "A fresh whole-root retry under8GiB envelope failed viewer tsc heap; successful broad rootTurbo ran under16GiB."
+      },
+      "allSourceBeforeAfterUnchanged": true,
+      "receipts": {
+        "8efe1807-0208-42d7-b905-8167ae05d057.output.log": "dd6b64df45f3e05bed8fc8bd984926ab26d78fa7baf0e872144ff1f38c7618b8",
+        "90c5341e-e374-4300-a15d-169c01a1b9df.output.log": "f350d2a93334b4073ba904c132f40da55e1f28c75b7f0f41f02693c6ca8dd4d6",
+        "1e291d62-0271-4289-aa4b-0a959c3144d4.output.log": "6619a2dce8176d768d6971e03a7a69c6da9a49349e0c2551a0a33f61be4efd2a",
+        "cf6fd319-37ef-4896-856b-6400a171c2bf.output.log": "903510768d09b735d281a40dc96bb4a98f1af5fbd53979823ca299c05d0aff0a",
+        "cf6fd319-37ef-4896-856b-6400a171c2bf.receipt.json": "7d9031bfe6db2dcdc3ec8d5df54e3451fec3a1dad411ae29b17887f92cc74761",
+        "1e291d62-0271-4289-aa4b-0a959c3144d4.receipt.json": "94ef645671ed5ba669777386cc53cecac2e6dc320af5c4bdf065d6add2e7e6c1",
+        "8efe1807-0208-42d7-b905-8167ae05d057.receipt.json": "d6b6f802584fa359979978bd0176bfb2e8cca0bf36dc541475078337488bb2e2",
+        "90c5341e-e374-4300-a15d-169c01a1b9df.receipt.json": "dafa5f3d1f6d4e5705dbf8b2a01db47244dff31a42b389a0f1ab28c7bab7ea36"
+      }
+    },
+    "currentBuildReceiptSHA256": "d7ddcd0c38f558e2fe3a1b241cf875f612437a3168fefe54191d2a4f710e4ccd",
+    "currentBundleMeasurement": {
+      "family": "bundle",
+      "commit": "ced41577dc4898bc257148889cee284d3da754dd",
+      "measuredAt": "2026-10-18T11:18:48.840Z",
+      "metrics": [
+        {
+          "id": "engine-wasm-brotli",
+          "value": 2302261,
+          "detail": "raw 10012280 bytes"
+        },
+        {
+          "id": "viewer-entry-js-bytes",
+          "value": 3119260,
+          "detail": "main-BdE2tobO.js"
+        },
+        {
+          "id": "viewer-eager-js-bytes",
+          "value": 19254858,
+          "detail": "268 files; main-BdE2tobO.js rolldown-runtime-C0FnF6B9.js modulepreload-polyfill-P2Xu9kJm.js bcf-FSy2EVxq.js exporters-rwTYZ4Dq.js analytics-DSyuNyBz.js flags-CoEhKTyG.js visibilityWitness-02nc2DgO.js grid-layout-VQ3UNSzC.js createLucideIcon--qg9ELYL.js api-keys-CuaWilQH.js x-CixL8QE2.js check-CFU2kzoe.js toast-DfTfkWSH.js terminal-BaWVRAwJ.js lens-BjNf9o3K.js ids-hxphr_kh.js sandbox-DZlI-Wgq.js types-CvWreHZs.js typeVisibilityFilter-BJHsZOGO.js download-CeoHegq-.js idb-connection-CCnDNRdj.js src-DrjQ87g-.js drawing-2d-Ca4_jb_o.js persistence-CsqTKcfe.js migrate-saved-lens-DUGGwzhh.js src-DXMZ9o7I.js models-BT1TSJ5_.js config-BaJVX9BS.js store-Cr58U2nd.js shallow-B2oJiu3n.js dist-CJe1XjoM.js correlation-CHQNg-w_.js activity-journal-6UJTnBN0.js sourceContentHash-C_X3CE2n.js loadReport-BuqRHzkk.js activeLoadTrace-CvEcimIv.js ifcConfig-aA820c8n.js viewerModelIngest-CGeFEDDk.js bcfIdLookup-Zz7tKBar.js viewpoint-world-frame-BJ-nCg7D.js useBCF-C1UpPt-0.js server-client-VWJUpUCE.js sourceSpatialReference-BHdslEkF.js federationAlign-D9PUkSmR.js model-indices-B9Xnna7G.js frameWait-dsGezdXE.js useIfcLoader-CHhxOEqY.js arrow-BVCFhSCE.js radix-ui-CDpYLHYk.js portal-container-DGcad-l_.js button-Mt3nGhSY.js icon-button-E77eOzVD.js richInterpolate-BCRC9vz5.js arrow-down-D5NH6Zo_.js arrow-left-CydMvCSk.js runtime-loader-BYo-BzoP.js arrow-up-right-BJonkdXy.js arrow-up-Bk1kUPW4.js circle-check-C8-r2fIh.js circle-question-mark-CSK1lwUG.js circle-x-BOIqQxmr.js spinner-DdJvF4vT.js shield-alert-DMO7LCic.js sparkles-CL9DEwHy.js triangle-alert-Bux_UCtE.js StatusChip-CyefXKNY.js model-adapter-m8d8Mnzm.js model-authoring-read-target-BVo5Jq_A.js useAnalysisStaleness-BcGjsHlu.js proposal-json-BDw6olhZ.js cost-graph-proposal-Dxmras5r.js ghost-shapes-CQMa6OJJ.js model-authoring-By_32bID.js zones-DY-C6KR9.js model-authoring-replacement-Ck-0Novh.js useRenderFrameOffsets-CjYC80Ca.js cost-graph-evidence-0xQdfpfx.js evaluator-models-BFYC26OO.js query-adapter-CASUaTP3.js effectiveStructuralData-CHkvbigf.js manual-groups-Br8_CYJD.js compare-analysis-state-BgMS0i3l.js param-kinds-yVOgaMMW.js effective-elements-DbBBYMKY.js display-D79c5K2u.js list-column-units-DKQfvu1B.js source-filter-B0dzsOpi.js validation-source-choice-xG7aion2.js cost-tree-DEswcKeK.js bindings-rGG_HKed.js evidence-ljv_BMoq.js send-H7WZUhyG.js copy-B5fE0jWt.js download-CU6QFlDS.js eye-BM1KwfJp.js tag-DxuI0CYs.js funnel-BAEhbkao.js hammer-D9W_A3ri.js key-round-MviXUGYd.js lock-open-BCmCDMFa.js maximize-2-CiGCTTR1.js scissors-C3_876bl.js settings-DVP0qzPA.js shield-check-BuaEuvwu.js wrench-7WxTCpKN.js viewer-D4BkoGxb.js group-applications-D5yqmNVC.js group-continuity-BhPwDJER.js draft-codec-DG4xGR1N.js draft-footer-BOaG2VXX.js ports-Do9lqtr5.js bcf-api-oUJ6ntv9.js exceljs.min-DY52sMnL.js bcf-server-config-u8JDAcH4.js outbox-store-BLbHi6Qn.js runner-BGpsQEWz.js backend-write-capture-C2F-fD7-.js mutate-adapter-DlTER_-p.js workplane-DvR3_zwC.js prepare-alignment-2A5tdqoJ.js mutation-element-replacement-Cym1lWN_.js mutation-wall-joins-Dcm9Hd7R.js ensure-wasm-DfdVEv6A.js effective-spatial-groups-DXwCC-w4.js workspace-storeys-OttlQjRf.js store-adapter-room-R8aNIrn5.js serialization-DsCxtnHK.js ExtensionHostProvider-BjHnmAk8.js input-B33A1Ayy.js dialog-D8vWnjlg.js tabs-uaj7V2if.js scroll-area-BjE-Cmzm.js useSandbox-C0ZLJ84Q.js export-model-default-BQGzGGlX.js section-plane-inputs-CEGFHgOC.js overlay-parse-Dl9obCQR.js source-handoff-CX07cTqy.js drawing-runtime-D6arbnwV.js chevron-down-DeDfOef4.js chevron-left-CFFzF-I6.js chevron-up-JhBFG2zt.js chevron-right-DbtETjwf.js sliders-horizontal-D6wuqB2g.js dropdown-menu-Bp9UoIOZ.js pending-Cq0zKXGM.js activity-status-CK2kPlxc.js ellipsis-Brzktjg4.js basketCommands-BozAeZd6.js play-9TAk_Xki.js square-CvkoiUja.js alert-DJDeRSfb.js budget-DIuumJRJ.js conversation-1-mAZ0kK.js layout-preset-reset-CeHuDCAQ.js panel-windows-CXF8v2CG.js placement-B_2ukxoe.js AssistantAction-D3pPMthq.js bcf-bridge-ChvmDuqf.js original-baseline-Br-AL3eU.js external-link-BExaBnSj.js eye-off-Bp1rEV0A.js refresh-cw-DMMrpAq-.js dist-nc5HONHG.js src-BcZh1QMe.js loadQueue-REL0WlxN.js SourceDownloadStatus-LKSvnKVK.js folder-open-DRKIbBb8.js message-square-plus-CrnLLJ-J.js grip-vertical-R8Kosyrs.js layout-template-DdQe2VFA.js minus-2JpC79DU.js model-change-DQAwOhQR.js table-mapping-o64m1mSW.js pen-line-Cv_5sP3q.js pencil-CPDEpntD.js plus-BDdnaG5Y.js redo-2-Dlc4g9o2.js rotate-ccw-CH_VR-5k.js save-CpglhWag.js search-ZWHaST-8.js ResultState-DF6Qi6mE.js trash-Cy1lWMos.js undo-2-EWatTLSd.js upload-BYiqZiJz.js user-DM86ysPt.js SearchModal.filter.selector-DfnT557r.js zap-BbIHiQZX.js sectionConstants-BcVQTkKS.js placed-geometry-fnavqhWk.js placement-snapshot-z6F_bcvb.js useIfc-C-40mxTV.js energy-export-source-C-FZDIUC.js edited-model-bytes-IzRGl3bo.js label-yeV35cpb.js field-qfesuakE.js select-v79hHco7.js pointer-capture-DcjZnraT.js useSectionDistance-BFW76Jht.js useExportDialogOpenGuard-BeLPeIj6.js ExportDialogShell-B1wwBlRL.js viewport-face-picker-BhQNPSBD.js instancedExport-CgYlinhJ.js terrainImageryPlan-CxhGODAq.js useMutationDenialReason-kPNQmqG7.js badge-CII7lZrf.js switch-BAoa-cS5.js ChunkErrorBoundary-CLtHGh7P.js view-pdf-shading-DT2LA_3f.js view-section-plane-amK3BT9U.js entity-viewport-capture-CJ-gQPTr.js step-Do7ENn2c.js useClash-Ci1c8NKz.js layoutReset-BERaTzti.js anchors-DWc5HgVr.js share-link---qiZ1nf.js useArtifactEditorRequest-Cu-YuOm_.js usePanelControls-BejDWq8s.js resolve-global-id-K9BhCAqd.js ghost-B2_XDfH-.js align-ghosts-6uubTzxn.js select-changed-entity-mDyYfYbt.js receipts-CX0gKx8l.js ModelChangeReview-DZBAJG5t.js byok-guard-Ckgza63M.js usage-DZ4rPs6e.js prompt-cache--QFJFReM.js request-receipts-6mTFIjho.js usage-quota-B-eRGaRZ.js request-service-0Psyjrhi.js loadIdsContent-BsP_OpLf.js demo-stack-Sk3zEo_0.js idsDataAccessor-DWjkd00W.js run-information-check-Bc64omhO.js productTree-DbEDkE4M.js confirm-dialog-D46KttUe.js library-focus-BSFxSlix.js persistence.flavor-BBk6ZspV.js scene-DKjk-MrR.js export-csv-BAlvfhLy.js createBlankIfc-BFVNHFox.js collapsible-DfwDc1DT.js comparison-navigation-lease-BorDLSU4.js artifact-link-BSqLp3D-.js startup-preference-QrlKJ1K3.js comparison-recipe-io-B_LXcMLL.js ReportDeletionPreview-DGLVtSdk.js sources-BCn62Wzl.js library-VC50Iqrv.js draft-library-BTP_1CQd.js workspace-C_Em4rhy.js library-DOuldt9L.js preferences-DQG3mzKP.js saved-analysis-runs-BTd4yafW.js saved-filters-CLpvtPMD.js ContentStorageNotice-BKJ7bvga.js prepare-providers-PQwTG6iF.js useListProviders-Cko994fh.js evidence-focus-Camp8-g0.js model-BwlKd6OS.js list-table-utils-Bt63ovoB.js evaluate-lens-groups-DpUZ1AVg.js ClashGroupApplicationCard-1YjAoseP.js recipe-catalogue-BqBjfrhz.js recipe-steps-D4kv-3H7.js formatLocaleCount-CNBHRI9f.js linked-receipt-E5Nh0Mfl.js templates-4fU-ZOyd.js"
+        }
+      ],
+      "informational": [
+        {
+          "id": "viewer-entry-js-brotli",
+          "value": 732113,
+          "unit": "bytes",
+          "detail": "main-BdE2tobO.js"
+        },
+        {
+          "id": "viewer-eager-js-brotli",
+          "value": 3198219,
+          "unit": "bytes",
+          "detail": "268 files, each compressed on its own"
+        }
+      ]
+    }
+  },
+  "ciExceptions": {
+    "status": "EXACT_SOURCE_COMPARISON_AND_COMPLETED_TARGETED_HOST_PINNED_REPRODUCTIONS",
+    "unchangedPaths": [
+      "apps/viewer/src/components/viewer/assistant",
+      "apps/viewer/src/lib/assistant",
+      "apps/viewer/src/hooks/useAnalysisStaleness.ts",
+      "apps/viewer/src/lib/llm",
+      "tests/e2e/assistant-check-authoring.e2e.spec.ts",
+      "packages/flow-nodes/src/bcf-publication-local-bounds.test.ts"
+    ],
+    "sourcePair": [
+      "b0b670f0cfd704ceb7c78a622f5730d0cd9510de",
+      "43ecf3aa3e240e1a7c41c5c799212b60df010ebd"
+    ],
+    "nodeBCF": {
+      "actualHost": "pop-os",
+      "passed": 23,
+      "turboTasksPassed": 36,
+      "sourceUnchangedBeforeAfter": true,
+      "receipt": "/tmp/7292-partition-analysis-v1/pop-bcf-receipt.json",
+      "hostedOriginalStillFailed": true,
+      "rootCauseNotEstablished": true
+    },
+    "assistantE2E": {
+      "actualHost": "pop-os",
+      "exactCandidateFrozenDistVerified951Members": true,
+      "exactBaseFrozenDistVerified": true,
+      "candidateResult": "FAIL at103: attached loadReport evidence becomes Out of date and disables suggestions",
+      "baseResult": "FAIL at105: no AI model configured in this built artifact; cannot produce recorded AI answer",
+      "sameFailureCauseEstablished": false,
+      "noBlanketPassingClaim": true,
+      "configurationDifference": "Original CI project flags; cached Playwright Chromium1248 substituted for system channel Chrome, private ports and exact transferred frozen dist. Local artifacts have no configured free proxy AI model; not an exact hosted build environment.",
+      "sourceScope": "Assistant/evidence/staleness/LLM/test sources unchanged; no source change made to hide either failure",
+      "looseEnd": "Hosted Assistant integration remains red; keep actual failures disclosed when assessing admin bypass.",
+      "subsequentMainCorrection": {
+        "pullRequest": 7922,
+        "commit": "1bd0505602e0d650971d5cdc590bf780c56f8d5f",
+        "integratedInFinalSource": true,
+        "description": "Refresh attached evidence after configuration changes, before check authoring. Historical failed receipts remain retained; no fresh full AI-journey pass claimed."
+      }
+    }
+  },
+  "reviewScope": "Earlier independently reviewed stack source and all prior finite proof limits remain unchanged. Oversize automated Claude review did not execute; no complete automated-review pass is claimed. Current CSG/kernel source is unchanged by later main integration.",
+  "supportingOriginalValidation": "final-43ec-validation.json and final-43ec-follow-up.json retain historical exact command/source scope, including49 Python tests, four quick parity fixtures and actual arm64/wasm32 determinism.",
+  "archiveSelection": "Partition archive includes all20 original proof rows and one complete raw pair per fixture. Holter archive includes full producer/cohort/native proofs and all raw pins; full compressed geometry remains local. Every captured raw was independently verified; publication selection does not reduce measurement byte coverage.",
+  "archives": {
+    "final-43ec-partition": {
+      "archive": "final-43ec-partition-evidence.tar.gz",
+      "bytes": 42479585,
+      "sha256": "13bdf9f475ffe9843c86122ffd4947dc2b2b32f4f36c1c36a89fd78258446324",
+      "members": 607,
+      "manifest": "final-43ec-partition-evidence.manifest.json"
+    },
+    "final-43ec-holter": {
+      "archive": "final-43ec-holter-evidence.tar.gz",
+      "bytes": 48052816,
+      "sha256": "986ec55b86b62511d25975888147430423a2c8d78064147a6bad550fe39d854a",
+      "members": 345,
+      "manifest": "final-43ec-holter-evidence.manifest.json"
+    }
+  },
+  "noNewIssueCreated": true,
+  "retiredReviewOnlyPullRequests": [
+    7730,
+    7731,
+    7802
+  ],
+  "finalLandingBuild": {
+    "exitCode": 0,
+    "composition": "17a271904ada165e8e90998234dd102ee8ed9937",
+    "actual56TaskRootViewerBuildPassed": true,
+    "allBundleGatesPass": true,
+    "engineBrotliBytes": 2302261,
+    "viewerEntryBytes": 3119260,
+    "viewerEagerBytes": 19255478,
+    "proof": "final-landing-build.json",
+    "sourceApplicability": "final-landing-source-applicability.json",
+    "fullLogSHA256": "b6ad8a366494a09c4836c3fdde5a7644c72eb9515ba6fa6a7d915dd1ede10ee7"
+  }
+}

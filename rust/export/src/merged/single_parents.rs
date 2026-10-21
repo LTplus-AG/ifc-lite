@@ -150,7 +150,7 @@ fn read_side(line: &str, index: usize) -> Option<Side> {
 /// fold recorded against an owner never finds its record
 /// (`ifc2x3_folds_into_an_owner_line_that_spaces_its_equals_sign`).
 fn rel_id(line: &str) -> Option<u32> {
-    line.strip_prefix('#')?.split('=').next()?.trim().parse().ok()
+    ifc_lite_core::parser::StepRecord::parse(line.as_bytes())?.id()
 }
 
 /// Which final ids already fill each single-valued inverse of the output

@@ -4,7 +4,7 @@ Out-of-band tooling: NOT a pnpm workspace package, NOT a Cargo workspace
 member. It builds and runs only when its own CI jobs or a developer invoke
 it. The geometry kernel's correctness was previously anchored to six numbers
 hand-copied from one pip 0.8.2 run; this harness replaces them with a live,
-re-runnable differential against a pinned reference engine.
+re-runnable differential against the latest stable reference engine.
 
 ## Layout
 
@@ -16,7 +16,7 @@ signed volume, watertightness), computed from plain vertex/face arrays so
   real committed reference dump and asserts `compare.py` actually exits
   non-zero - proof the "quick" CI lane's red path has teeth, not just that
   `classify()` is correct in isolation.
-- `dump_reference.py` - canonical per-element JSON from the PINNED
+- `dump_reference.py` - canonical per-element JSON from the installed
   IfcOpenShell (world coords + welded, matching the provenance of the old
   baked constants). Engine failures become first-class `skip:<reason>` rows.
 - `dump_ifclite.py` - the same schema from the shipped `ifclite_geom`
@@ -27,8 +27,8 @@ signed volume, watertightness), computed from plain vertex/face arrays so
 - `allowlist.json` - reviewed, accepted divergences with investigation
   notes; allowlisted rows report but do not fail.
 - `reference/` - committed reference JSON for the hard corpus, generated
-  with the pinned engine. Refreshing it (or bumping the pin) is an explicit,
-  reviewed change.
+  with the recorded engine version. Refreshing committed references is an
+  explicit, reviewed change.
 
 ## Gating policy (calibrated on real models, see compare.py docstring)
 
@@ -59,7 +59,7 @@ accepted. The full downloaded reference corpus was not regenerated here.
 ## Running locally
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install -r requirements.lock
+python3 -m venv .venv && .venv/bin/pip install --upgrade -r requirements.lock
 # build + install the ifclite_geom wheel
 .venv/bin/pip install maturin && .venv/bin/maturin build --release \
     -m ../../rust/python/Cargo.toml -o /tmp/wheels && .venv/bin/pip install /tmp/wheels/*.whl
@@ -71,7 +71,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.lock
 ```
 
 To replay #6533 after fetching `tests/models/various/rvt01.ifc` with `pnpm fixtures`,
-run from this directory with the pinned engine installed:
+run from this directory with the reference engine installed:
 
 ```python
 import hashlib
@@ -93,7 +93,7 @@ for disable_openings in (False, True):
     print(disable_openings, canonical.element_record(host.id(), host.is_a(), vertices, faces))
 ```
 
-Regenerating the committed reference (pin bump or intentional acceptance):
+Regenerating the committed reference (engine update or intentional acceptance):
 
 ```bash
 .venv/bin/python dump_reference.py <models...> --out-dir reference/
@@ -107,9 +107,21 @@ Both lanes live in the `IfcOpenShell parity` workflow
 - Per-PR (`quick` job): ifc-lite side only vs the committed
   reference over the IN-TREE fixtures (no fixture download, no reference
   engine install). Catches kernel drift on every geometry-affecting PR.
-- Nightly (`full` job): installs the pinned engine, runs the
+- Nightly (`full` job): installs the latest stable engine, runs the
   full committed corpus (fetched fixtures included), regenerates reference
   dumps to detect reference-staleness, and uploads the diff reports.
+
+IfcOpenShell is deliberately unpinned in `requirements.lock` (#7732). CI
+upgrades it on installation, so each run uses the latest stable PyPI release;
+prereleases require an explicit opt-in. Canonical dumps and diagnostic receipts
+record the actual engine version. The worker must match the installed package,
+and surface caches must match the running engine before reuse. Historical
+evidence retains its original version. The nightly lane runs the reference
+validation and comparator tests against the installed engine before replaying
+the corpus. An engine upgrade does not relax the
+diagnostic or geometry checks: terminal Boolean failures, unknown errors and
+incomplete logs still refuse publication. CI uploads reference logs and receipts
+even when admission fails before comparison reports exist.
 
 ## Rejecting invalid Boolean references (#7723)
 

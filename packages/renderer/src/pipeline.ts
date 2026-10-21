@@ -7,6 +7,7 @@
  */
 
 import { WebGPUDevice } from './device.js';
+import { OpaqueVisibilityPass } from './opaque-visibility-pass.js';
 import { mainShaderSource } from './shaders/main.wgsl.js';
 import { ghostShaderSource } from './shaders/ghost.wgsl.js';
 import { INSTANCED_VERTEX_BUFFERS } from './instanced-vertex-layout.js';
@@ -30,6 +31,7 @@ import { SelectionColorUniform } from './overlay-theme-uniforms.js';
 const SHADOW_UNIFORM_SIZE = 96;
 
 export class RenderPipeline {
+    readonly visibility: OpaqueVisibilityPass;
     private device: GPUDevice;
     private webgpuDevice: WebGPUDevice;
     private pipeline: GPURenderPipeline;
@@ -105,6 +107,7 @@ export class RenderPipeline {
         // 4x MSAA provides good anti-aliasing for thin geometry
         const maxSampleCount = (this.device.limits as unknown as Record<string, number>)?.maxSampleCount ?? 4;
         this.sampleCount = Math.min(4, maxSampleCount);
+        this.visibility = new OpaqueVisibilityPass(this.device, this.sampleCount);
 
         // Create depth texture with MSAA support
         this.depthTexture = this.device.createTexture({
@@ -265,7 +268,7 @@ export class RenderPipeline {
             },
         } as GPURenderPipelineDescriptor;
 
-        this.pipeline = this.device.createRenderPipeline(pipelineDescriptor);
+        this.pipeline = this.visibility.create(pipelineDescriptor);
 
         // GPU-instancing pipeline: same fragment/targets/depth/MSAA as the opaque
         // pipeline, but vs_instanced + a SECOND vertex buffer (slot 1, stepMode
@@ -278,7 +281,7 @@ export class RenderPipeline {
             buffers: INSTANCED_VERTEX_BUFFERS,
         };
 
-        this.instancedPipeline = this.device.createRenderPipeline({
+        this.instancedPipeline = this.visibility.create({
             ...pipelineDescriptor,
             vertex: instancedVertex,
         } as GPURenderPipelineDescriptor);
@@ -316,9 +319,8 @@ export class RenderPipeline {
                 format: this.depthFormat,
                 depthWriteEnabled: false,  // Don't overwrite depth - selected objects render on top of existing depth
                 depthCompare: 'greater-equal',  // Allow rendering at same depth, but still respect objects in front
-                // No depth bias: the highlight mesh's VBO is built to be
-                // BIT-IDENTICAL to how its source surface renders (same shared
-                // origin + same f32 relativization — see createMeshFromData), so
+                // No extra highlight bias. Its canonical upload matches the base.
+                // Same shared origin and f32 reconstruction as its base, so
                 // it sits exactly coincident and 'greater-equal' draws it on top
                 // without a bias. A bias here would x-ray the highlight through
                 // neighbouring geometry and spike at grazing angles.
@@ -331,7 +333,7 @@ export class RenderPipeline {
             },
         } as GPURenderPipelineDescriptor;
 
-        this.selectionPipeline = this.device.createRenderPipeline(selectionPipelineDescriptor);
+        this.selectionPipeline = this.visibility.create(selectionPipelineDescriptor);
 
         // Create transparent pipeline descriptor (same shader, but with alpha blending)
         const transparentPipelineDescriptor: GPURenderPipelineDescriptor = {
@@ -382,7 +384,7 @@ export class RenderPipeline {
             },
         } as GPURenderPipelineDescriptor;
 
-        this.transparentPipeline = this.device.createRenderPipeline(transparentPipelineDescriptor);
+        this.transparentPipeline = this.visibility.create(transparentPipelineDescriptor);
 
         // Transparent instanced pipeline: the transparent descriptor (src-alpha blend,
         // no depth write) but with the instanced vertex stage. Drives the second
@@ -397,7 +399,7 @@ export class RenderPipeline {
         // real WebGPU builds it on demand when an overlay first needs it. A creation
         // failure leaves it null and the renderer skips the transparent instanced pass.
         this.makeInstancedTransparentPipeline = () =>
-            this.device.createRenderPipeline({
+            this.visibility.create({
                 ...transparentPipelineDescriptor,
                 vertex: instancedVertexStage,
             } as GPURenderPipelineDescriptor);
@@ -448,7 +450,7 @@ export class RenderPipeline {
             },
         } as GPURenderPipelineDescriptor;
 
-        this.makeOverlayPipeline = () => this.device.createRenderPipeline(overlayPipelineDescriptor);
+        this.makeOverlayPipeline = () => this.visibility.create(overlayPipelineDescriptor);
 
         // ── Quantized-vertex pipeline variants (issue #1682 phase 6) ──
         // Same fragment/blend/depth state as their f32 bases, but the
@@ -471,15 +473,15 @@ export class RenderPipeline {
         };
         this.makeQuantizedPipelineAsync = (kind) => {
             const base = kind === 'opaque' ? pipelineDescriptor : transparentPipelineDescriptor;
-            return this.device.createRenderPipelineAsync({ ...base, vertex: quantizedVertex });
+            return this.visibility.createAsync({ ...base, vertex: quantizedVertex });
         };
         // X-Ray ghosts: the transparent descriptor with the ghost fragment stage
         // (ghost.wgsl.ts). Built on first use, like the instanced transparent pipeline.
-        this.makeGhostPipelineAsync = (quantized) => this.device.createRenderPipelineAsync({
+        this.makeGhostPipelineAsync = (quantized) => this.visibility.createAsync({
             ...transparentPipelineDescriptor,
             ...(quantized && { vertex: quantizedVertex }),
             fragment: { ...transparentPipelineDescriptor.fragment!, module: this.device.createShaderModule({ code: ghostShaderSource }) },
-        });
+        }, ghostShaderSource);
 
         // ── Textured pipeline (#961) ──
         // A separate pipeline for meshes carrying an IFC surface texture. It
@@ -505,7 +507,7 @@ export class RenderPipeline {
             label: 'textured-shader',
             code: texturedShaderSource,
         });
-        this.texturedPipeline = this.device.createRenderPipeline({
+        this.texturedPipeline = this.visibility.create({
             label: 'textured-pipeline',
             layout: this.device.createPipelineLayout({
                 bindGroupLayouts: [this.texturedBindGroupLayout, this.environmentBindGroupLayout],
@@ -542,7 +544,7 @@ export class RenderPipeline {
                 depthCompare: 'greater', // Reverse-Z, matches the opaque pipeline
             },
             multisample: { count: this.sampleCount },
-        } as GPURenderPipelineDescriptor);
+        } as GPURenderPipelineDescriptor, texturedShaderSource);
         // Create bind group using the explicit bind group layout
         this.bindGroup = this.device.createBindGroup({
             layout: this.bindGroupLayout,
@@ -616,27 +618,24 @@ export class RenderPipeline {
         this.device.queue.writeBuffer(this.uniformBuffer, 0, buffer);
     }
 
-    /** Write the raw 84-float RTE uniform for instancing; model/colour come from its instance buffer. */
-    /**
-     * Create-and-VALIDATE the quantized pipeline variants. Uses
-     * createRenderPipelineAsync so WebGPU's asynchronous validation completes
-     * before anything is cached — a sync createRenderPipeline can hand back a
-     * pipeline whose validation later fails on the device, and caching that
-     * would make every quantized draw error. This is the ONLY creator; the
-     * sync getter below reads the cache. Returns whether all variants exist.
-     */
+    /** Validate BOTH variants before admitting quantized batches. A synchronous
+     * createRenderPipeline result is not proof that GPU validation succeeded.
+     * #7655: an async completion belongs only to this live device lifetime. */
     async ensureQuantizedPipelines(): Promise<boolean> {
         const factory = this.makeQuantizedPipelineAsync;
-        if (!factory) return false;
+        if (this.destroyed || !factory) return false;
         const kinds = ['opaque', 'transparent'] as const;
         try {
             for (const kind of kinds) {
                 if (!this.quantizedPipelines[kind]) {
-                    this.quantizedPipelines[kind] = await factory(kind);
+                    const pipeline = await factory(kind);
+                    if (this.destroyed) return false;
+                    this.quantizedPipelines[kind] = pipeline;
                 }
             }
             return true;
         } catch (err) {
+            if (this.destroyed) return false;
             console.warn('[Pipeline] quantized pipeline validation failed; staying on f32 vertices:', err);
             this.makeQuantizedPipelineAsync = null;
             return false;
@@ -932,8 +931,11 @@ export class RenderPipeline {
      * Safe to call multiple times.
      */
     destroy(): void {
+        this.visibility.destroy();
         if (this.destroyed) return;
         this.destroyed = true;
+        this.makeQuantizedPipelineAsync = null;
+        this.quantizedPipelines = {};
         this.depthTexture.destroy();
         this.objectIdTexture.destroy();
         this.multisampleTexture?.destroy();

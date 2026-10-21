@@ -8,10 +8,11 @@
 //! operand arm gained its diagnostic record (#3821).
 
 use super::brep_voids::brep_with_voids_shell_kind;
-use super::{BooleanClippingProcessor, CsgSolidProcessor};
+use super::half_space_plan::HalfSpacePlan;
+use super::BooleanClippingProcessor;
 use crate::diagnostics::{BoolFailureReason, BoolOp};
 use crate::router::builtin_processor;
-use crate::{Mesh, Point3, Result, TessellationQuality, Vector3};
+use crate::{Error, Mesh, Point3, Result, TessellationQuality, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
 /// Boolean/CSG operand nodes one `process` call (one representation item)
@@ -48,7 +49,7 @@ pub(crate) const MAX_OPERAND_VISITS: u32 = 1024;
 /// walk's `spine_seen`) are NOT frame counts and must not be compared to the
 /// bound. Carries the per-item visit budget alongside, because the two
 /// travel together through every operand hop (the `IfcCsgSolid` hop threads
-/// it without charging; its tree root re-enters `process_with_depth`, which
+/// it without charging; its tree root re-enters the continuation's boolean entry, which
 /// does) and a budget on a separate parameter would be one more thing a new
 /// hop could forget to thread.
 #[derive(Default)]
@@ -91,7 +92,7 @@ impl OperandPath {
 /// DIFFERENCE and defaulting would execute a subtraction the file never
 /// asked for. An `IfcBooleanClippingResult` has DIFFERENCE as its only legal
 /// operator, so there the default is what the schema says.
-pub(super) fn boolean_operator(entity: &DecodedEntity) -> std::result::Result<BoolOp, &str> {
+pub(crate) fn boolean_operator(entity: &DecodedEntity) -> std::result::Result<BoolOp, &str> {
     let Some(keyword) = entity.get(0).and_then(|v| v.as_enum()) else {
         return match entity.ifc_type {
             IfcType::IfcBooleanClippingResult => Ok(BoolOp::Difference),
@@ -125,16 +126,18 @@ impl BooleanClippingProcessor {
     }
 
     /// A half-space cutter's plane, or `None` with the dropped cut on record
-    /// (#7688 PROC-S17). `parse_half_space_solid` refuses a base surface that
+    /// (#7688 PROC-S17). `HalfSpacePlan::lower` refuses a base surface that
     /// is not an `IfcPlane` or a plane without a usable Position; through `?`
     /// that refusal deleted the host. Now the host stays uncut, exactly as for
-    /// every other unreadable cutter (see `process_operand_checked`).
+    /// every other unreadable cutter (see `leaf_operand`).
     pub(super) fn half_space_plane_or_record(
         &self,
         half_space: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Option<(Point3<f64>, Vector3<f64>, bool)> {
-        let plane = self.parse_half_space_solid(half_space, decoder).ok();
+        let plane = HalfSpacePlan::lower(half_space, decoder)
+            .map(HalfSpacePlan::components)
+            .ok();
         if plane.is_none() {
             self.record_failure(
                 BoolOp::Difference,
@@ -144,81 +147,41 @@ impl BooleanClippingProcessor {
         plane
     }
 
-    /// Process a solid operand, reporting whether it meshed empty with that
-    /// loss already on record: its type had NO meshing branch here, or it is
-    /// a nested boolean or `IfcCsgSolid` whose own walk ended empty on a loss
-    /// it recorded.
+    /// Mesh one non-recursive operand with a FRESH built-in processor, never a
+    /// router override, reporting whether it meshed empty with that loss
+    /// already on record: its type had NO meshing branch here.
     ///
     /// The flag exists because one dropped operand must produce ONE record. An
     /// unsupported SECOND operand meshes empty, so the `EmptyOperand` arm at
     /// the caller would fire straight after the `UnsupportedOperand` record
-    /// below, counting the same step twice — and since the reason breakdown
+    /// below, counting the same step twice -- and since the reason breakdown
     /// breaks ties alphabetically, the viewer's "top failure reason" would name
     /// `EmptyOperand`, the CONSEQUENCE, over `UnsupportedOperand`, the cause.
-    /// Callers pass this to [`Self::record_empty_operand`]. A nested operand
-    /// reported only its OWN type here until #4691, so `DIFFERENCE(host,
-    /// UNION(unsupported, unsupported))` recorded `EmptyOperand` on top of the
-    /// inner records.
+    /// Callers pass this to [`Self::record_empty_operand`]. The continuation
+    /// carries the same flag out of a nested boolean or `IfcCsgSolid` whose own
+    /// walk ended empty on a loss it recorded (#4691).
     ///
     /// `op` is the operation whose operand this is, and it goes into the
     /// `UnsupportedOperand` record. Since that record is then the ONLY one for
     /// the dropped step, recording `Unknown` for an operand of an authored
     /// `.DIFFERENCE.` would render "UNKNOWN failed" as the whole story a
-    /// consumer of `take_csg_failures` ever gets for it.
+    /// consumer of `take_csg_failures` ever gets for it. The BASE solid at the
+    /// bottom of a left spine passes [`BoolOp::Unknown`]: it is read before any
+    /// node's operator is, so naming one would claim an attribution that path
+    /// does not have.
     ///
-    /// The BASE solid at the bottom of a left spine passes [`BoolOp::Unknown`]:
-    /// it is read before any node's operator is, so naming one would claim an
-    /// attribution that path does not have.
-    pub(super) fn process_operand_checked(
+    /// `IfcCsgSolid` and the boolean types never arrive here: the continuation
+    /// dispatches them as frames, carrying `depth` and the cycle guard.
+    pub(super) fn leaf_operand(
         &self,
         op: BoolOp,
         operand: &DecodedEntity,
         decoder: &mut EntityDecoder,
-        depth: u32,
         quality: TessellationQuality,
-        visited: &mut OperandPath,
     ) -> Result<(Mesh, bool)> {
-        // Only the two arms that must NOT run on a fresh processor are spelled
-        // out here: both carry `depth` and the cycle guard across the hop.
-        // Every other operand type goes to the same built-in table the router
-        // dispatches representation items from (#4560), so an operand is
-        // supported exactly when the engine can mesh it at all. This path used
-        // to keep its own six-arm copy of that table; `IfcPolygonalFaceSet`,
-        // the tessellated cutter Bonsai/IfcOpenShell emits for a wall clipped
-        // by a roof, was never in it and the wall rendered up to the ridge.
         match &operand.ifc_type {
-            // `CsgSolidProcessor::process` builds a FRESH BooleanClippingProcessor
-            // for a boolean TreeRootExpression, so routing through it used to reset
-            // both `depth` and the cycle guard. `#10 IfcBooleanResult -> FirstOperand
-            // #20 IfcCsgSolid -> TreeRootExpression #10` then recursed forever with
-            // depth never passing 1, and a Rust stack overflow ABORTS (#2866).
-            // `depth` restarts at 0 here, as it did before this guard existed
-            // (the hop built a fresh processor). Carrying it would tighten
-            // MAX_BOOLEAN_DEPTH, which #960 calibrated against a per-processor
-            // reset: 8 booleans + a CsgSolid + 8 more is valid, resolves on
-            // main, and would error as "depth 11 exceeds limit 10", dropping
-            // the element. MAX_OPERAND_PATH_NODES bounds the stack across the
-            // hop instead, counting frames of both kinds.
-            IfcType::IfcCsgSolid => {
-                // Transient, like the `ClippingProcessor`s below: it is not on
-                // any router, so its log has to come back here or it dies with
-                // it. `self` IS router-held, so this is the whole route out
-                // (#3821) — no thread-local, no cross-router leak.
-                let csg = CsgSolidProcessor::with_skip_small_cuts(self.skip_small_cuts);
-                let out = csg.process_with_boolean_cycle_guard(
-                    operand,
-                    decoder,
-                    &self.schema,
-                    0,
-                    quality,
-                    visited,
-                );
-                self.absorb_failures(csg.take_failures());
-                out
-            }
-            IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
-                // Recursive case with depth tracking
-                self.process_with_depth(operand, decoder, &self.schema, depth + 1, quality, visited)
+            IfcType::IfcCsgSolid | IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
+                Err(Error::geometry("Recursive operand requires continuation dispatch"))
             }
             // An open swept surface bounds no volume and is not an
             // `IfcBooleanOperand`. Main refused it here (the type had no
@@ -249,15 +212,11 @@ impl BooleanClippingProcessor {
                 // boolean result and the element's item renders nothing; as a
                 // SECOND operand it means an unsupported cutter and the host
                 // renders un-cut. Returning `Err` here would be wrong for the
-                // second case — it would delete the host as well — so the arm
+                // second case -- it would delete the host as well -- so the arm
                 // keeps returning an empty mesh and RECORDS the loss instead
-                // (#3821). Before this, the only base-operand drop in the whole
-                // boolean path left no trace at all, not even in a debug build.
+                // (#3821).
                 None => {
-                    self.record_failure(
-                        op,
-                        BoolFailureReason::UnsupportedOperand(other.to_string()),
-                    );
+                    self.record_failure(op, BoolFailureReason::UnsupportedOperand(other.to_string()));
                     Ok((Mesh::new(), true))
                 }
             },

@@ -17,6 +17,7 @@
  * that picks between these three lives in `from-ifcx-attributes.ts`.
  */
 
+import type { IfcxPointSource } from '../point-source.js';
 import type { DecodedPointChunk, PointCloudBBox } from '../types.js';
 
 export interface PointsArrayAttribute {
@@ -30,6 +31,15 @@ export interface PointsBase64Attribute {
 }
 
 export function decodePointsArray(attr: PointsArrayAttribute): DecodedPointChunk {
+  const source = decodePointsArraySource(attr);
+  const positions = new Float32Array(source.positions);
+  return {
+    positions, colors: source.colors ? new Float32Array(source.colors) : undefined,
+    normalState: 'absent', pointCount: source.pointCount, bbox: computeBBox(positions),
+  };
+}
+
+export function decodePointsArraySource(attr: PointsArrayAttribute): IfcxPointSource {
   if (!Array.isArray(attr.positions)) {
     throw new Error('points::array: positions must be an array of [x,y,z] triples');
   }
@@ -40,7 +50,7 @@ export function decodePointsArray(attr: PointsArrayAttribute): DecodedPointChunk
     // instead of returning a sentinel "empty cloud".
     throw new Error('points::array: positions must contain at least one point');
   }
-  const positions = new Float32Array(count * 3);
+  const positions = new Float64Array(count * 3);
   for (let i = 0; i < count; i++) {
     const p = attr.positions[i];
     if (!Array.isArray(p) || p.length < 3) {
@@ -50,7 +60,7 @@ export function decodePointsArray(attr: PointsArrayAttribute): DecodedPointChunk
     positions[i * 3 + 1] = p[1];
     positions[i * 3 + 2] = p[2];
   }
-  let colors: Float32Array | undefined;
+  let colors: Float64Array | undefined;
   if (attr.colors) {
     if (!Array.isArray(attr.colors)) {
       throw new Error('points::array: colors must be an array of [r,g,b] triples');
@@ -59,7 +69,7 @@ export function decodePointsArray(attr: PointsArrayAttribute): DecodedPointChunk
       throw new Error(`points::array: colors length (${attr.colors.length}) ` +
         `does not match positions length (${count})`);
     }
-    colors = new Float32Array(count * 3);
+    colors = new Float64Array(count * 3);
     for (let i = 0; i < count; i++) {
       const c = attr.colors[i];
       if (!Array.isArray(c) || c.length < 3) {
@@ -73,13 +83,26 @@ export function decodePointsArray(attr: PointsArrayAttribute): DecodedPointChunk
   return {
     positions,
     colors,
-    normalState: 'absent',
+    sourcePrecision: 'f64', sourceEncoding: 'points-array',
     pointCount: count,
-    bbox: computeBBox(positions),
   };
 }
 
 export function decodePointsBase64(attr: PointsBase64Attribute): DecodedPointChunk {
+  const channels = decodeBase64Channels(attr);
+  return { ...channels, normalState: 'absent', bbox: computeBBox(channels.positions) };
+}
+
+export function decodePointsBase64Source(attr: PointsBase64Attribute): IfcxPointSource {
+  const channels = decodeBase64Channels(attr);
+  return {
+    positions: new Float64Array(channels.positions),
+    colors: channels.colors ? new Float64Array(channels.colors) : undefined,
+    pointCount: channels.pointCount, sourcePrecision: 'f32', sourceEncoding: 'points-base64',
+  };
+}
+
+function decodeBase64Channels(attr: PointsBase64Attribute): Pick<DecodedPointChunk, 'positions' | 'colors' | 'pointCount'> {
   if (typeof attr.positions !== 'string' || attr.positions.length === 0) {
     throw new Error('points::base64: positions must be a non-empty base64 string');
   }
@@ -109,9 +132,7 @@ export function decodePointsBase64(attr: PointsBase64Attribute): DecodedPointChu
   return {
     positions,
     colors,
-    normalState: 'absent',
     pointCount: count,
-    bbox: computeBBox(positions),
   };
 }
 
@@ -137,8 +158,7 @@ function base64ToBytes(b64: string): Uint8Array {
     for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
     return out;
   }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const buf: any = (globalThis as unknown as { Buffer?: { from: (s: string, e: string) => Uint8Array } }).Buffer;
+  const buf = (globalThis as unknown as { Buffer?: { from: (s: string, e: string) => Uint8Array } }).Buffer;
   if (buf && typeof buf.from === 'function') {
     return new Uint8Array(buf.from(b64, 'base64'));
   }

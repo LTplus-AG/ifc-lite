@@ -11,7 +11,7 @@
    "volume": null
   }
  ],
- "engine": "ifcopenshell 0.8.2",
+ "engine": "ifcopenshell 0.9.0.post1",
  "fixture": "1030-sphere.ifc",
  "settings": {
   "use_world_coords": true,

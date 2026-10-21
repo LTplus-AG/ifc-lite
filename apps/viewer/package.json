@@ -136,7 +136,7 @@
     "@webgpu/types": "^0.1.74",
     "ajv": "^8.17.1",
     "fake-indexeddb": "^6.2.5",
-    "happy-dom": "^20.14.6",
+    "happy-dom": "^21.0.3",
     "jszip": "^3.10.2",
     "oxigraph": "^0.5.11",
     "playwright-core": "1.64.0",

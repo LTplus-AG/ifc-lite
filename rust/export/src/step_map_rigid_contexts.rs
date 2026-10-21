@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Validate reachable shape/aspect engineering contexts without changing geometry.
 use super::{preflight, Record};
-use ifc_lite_core::{EntityDecoder, IfcType, MAX_CONTEXT_DEPTH};
+use ifc_lite_core::{slot, EntityDecoder, IfcType, MAX_CONTEXT_DEPTH};
 use std::collections::{HashMap, HashSet};
 
 /// All representation identifiers remain local to their product. Follow only
@@ -32,10 +32,10 @@ pub(super) fn representation_contexts(
         let aspect = decoder
             .decode_by_id(record.id)
             .map_err(|error| error.to_string())?;
-        if let Some(parent) = aspect.get_ref(4) {
+        if let Some(parent) = aspect.ref_at(slot::IfcShapeAspect::PART_OF_PRODUCT_DEFINITION_SHAPE) {
             aspects.entry(parent).or_default().extend(
                 aspect
-                    .get_refs(0)
+                    .ref_list_at(slot::IfcShapeAspect::SHAPE_REPRESENTATIONS)
                     .ok_or("ShapeAspect has invalid ShapeRepresentations")?,
             );
         }
@@ -93,7 +93,7 @@ pub(super) fn representation_contexts(
             ));
         }
         let mut current = rep
-            .get_ref(0)
+            .ref_at(slot::IfcRepresentation::CONTEXT_OF_ITEMS)
             .ok_or("representation has no ContextOfItems")?;
         let mut contexts = HashSet::new();
         while !validated.contains(&current) {
@@ -115,10 +115,10 @@ pub(super) fn representation_contexts(
                     "representation #{id} belongs to another map context"
                 ));
             }
-            current = node.get_ref(6).ok_or("subcontext has no ParentContext")?;
+            current = node.ref_at(slot::IfcGeometricRepresentationSubContext::PARENT_CONTEXT).ok_or("subcontext has no ParentContext")?;
         }
         let items = rep
-            .get_refs(3)
+            .ref_list_at(slot::IfcRepresentation::ITEMS)
             .filter(|refs| !refs.is_empty())
             .ok_or("representation has no Items")?;
         work = work
@@ -134,7 +134,7 @@ pub(super) fn representation_contexts(
             }
             if item.ifc_type == IfcType::IfcMappedItem {
                 let source = decoder
-                    .decode_by_id(item.get_ref(0).ok_or("mapped item has no MappingSource")?)
+                    .decode_by_id(item.ref_at(slot::IfcMappedItem::MAPPING_SOURCE).ok_or("mapped item has no MappingSource")?)
                     .map_err(|error| error.to_string())?;
                 if source.ifc_type != IfcType::IfcRepresentationMap {
                     return Err("invalid MappingSource type".into());
@@ -150,7 +150,7 @@ pub(super) fn representation_contexts(
                         .ok_or("ShapeAspect context walk exceeded its reference-work bound")?;
                     aspect_roots.extend(reps.iter().copied());
                 }
-                let child = source.get_ref(1).ok_or("map has no MappedRepresentation")?;
+                let child = source.ref_at(slot::IfcRepresentationMap::MAPPED_REPRESENTATION).ok_or("map has no MappedRepresentation")?;
                 if active.contains(&child) {
                     return Err("mapped representation context is cyclic".into());
                 }

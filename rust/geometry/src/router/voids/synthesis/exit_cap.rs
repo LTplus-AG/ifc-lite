@@ -4,18 +4,11 @@
 
 //! Which end caps of an opening cutter may be pushed through the host.
 //!
-//! A guard here is only as safe as the DIRECTION it fails in. Suppressing the
-//! veto degrades to the pre-fix behaviour, which the corpus is blessed against,
-//! so a wrong suppression costs nothing that was not already accepted. The same
-//! guard on qualification would be unsound: declining to qualify cannot restore
-//! a push, it can only withhold one, and a withheld push leaves a coplanar
-//! graze that tears. Same threshold, opposite safety, decided entirely by which
-//! way it fails.
-//!
-//! `extend_opening_mesh_through_host` grows a cutter so a cap that sits flush
-//! against a host surface becomes a clean transversal crossing instead of a
-//! coplanar graze. Growing the WRONG cap removes host material no authored
-//! opening ever occupied, so the decision is isolated here, behind one call.
+//! Exit clearance retains the established global parallel-plane qualification.
+//! A jamb pull-in additionally needs a finite host facet in the cutter's
+//! footprint: an unrelated recess floor must not shorten a new blind recess.
+//! Occupancy beyond a cap still separates an exit from a jamb, independent of
+//! host winding. Uncertain finite-contact arithmetic retains the old verdict.
 
 use super::super::geom::{mesh_point, point_inside_mesh_agreed, project_aabb_in_frame};
 use super::super::{OpeningFrame, NORMALIZE_EPSILON};
@@ -28,6 +21,9 @@ pub(in crate::router::voids) use super::exit_cap_far_field::any_vertex_is_large;
 #[cfg(test)]
 pub(in crate::router::voids) use super::exit_cap_far_field::EXIT_CAP_FAR_FIELD_THRESHOLD_METERS;
 use crate::{Mesh, Point3, Vector3};
+
+#[path = "exit_cap_local.rs"]
+mod local;
 
 /// A facet counts as parallel to a cap at |n·d| ≥ this. 0.985 ≈ 10°: absorbs
 /// the ~0.1° facet scatter and a tilted roof's wobble without admitting a
@@ -205,8 +201,8 @@ impl CutterFrame {
 /// move. Encoding it this way makes "not an exit cap, but here is its offset"
 /// unrepresentable.
 pub(super) enum Cap {
-    /// No host facet coincident with this cap: a floating slot end. Leave it
-    /// exactly where the author put it.
+    /// No qualifying contact that needs a move: leave the cap exactly where
+    /// the author put it, including blind ends below unrelated remote floors.
     Free,
     /// A genuine exit. Push it clear of the host surface at this offset so the
     /// interface becomes a transversal crossing (#1007).
@@ -284,13 +280,10 @@ pub(super) fn detect(host: &Mesh, f: &CutterFrame, pad: f64) -> ExitCaps {
     let (d, band) = (f.depth(), f.cap_band());
     let (mut min_has_surface, mut max_has_surface) = (false, false);
     let (mut host_at_min, mut host_at_max) = (omn, omx);
-    // QUALIFICATION is main's test, unchanged and unfiltered: a cap qualifies
-    // when some host facet is ~parallel to it and lies on its plane. No
-    // footprint filter here, and none on `host_at_*` either. Filtering
-    // qualification was measured to decline pushes main made, on hosts whose
-    // only coincident facets sit outside the cutter's own cross-section, and a
-    // declined push is a coplanar graze. Locality is the probe's job below,
-    // which samples where the host and cutter actually meet.
+    let (mut min_local, mut max_local) = (false, false);
+    // Keep global qualification and exit offsets: remote coplanar facets can
+    // still require exit clearance. Only a jamb pull-in needs finite contact;
+    // otherwise an unrelated floor shortens a new authored blind recess.
     for t in host.indices.chunks_exact(3) {
         let (Some(a), Some(b), Some(c)) = (
             mesh_point(host, t[0]),
@@ -311,10 +304,12 @@ pub(super) fn detect(host: &Mesh, f: &CutterFrame, pad: f64) -> ExitCaps {
         let s = a.coords.dot(&d);
         if (s - omn).abs() <= band {
             min_has_surface = true;
+            min_local |= local::overlaps(f, [a, b, c]);
             host_at_min = host_at_min.min(s);
         }
         if (s - omx).abs() <= band {
             max_has_surface = true;
+            max_local |= local::overlaps(f, [a, b, c]);
             host_at_max = host_at_max.max(s);
         }
     }
@@ -379,18 +374,22 @@ pub(super) fn detect(host: &Mesh, f: &CutterFrame, pad: f64) -> ExitCaps {
     // Probe ONLY a cap that qualified: `occupied_along` casts up to three points
     // and two rays each, and for a cap that is already `Free` every one of
     // those traversals is discarded.
-    let classify = |has_surface: bool, from: f64, dir: f64, host_at: f64| {
+    let classify = |has_surface: bool, local: bool, from: f64, dir: f64, host_at: f64| {
         if !has_surface {
             return Cap::Free;
         }
         if occupied_along(from, dir) {
-            Cap::Jamb
+            if local {
+                Cap::Jamb
+            } else {
+                Cap::Free
+            }
         } else {
             Cap::Exit(host_at)
         }
     };
     ExitCaps {
-        min: classify(min_has_surface, omn, -1.0, host_at_min),
-        max: classify(max_has_surface, omx, 1.0, host_at_max),
+        min: classify(min_has_surface, min_local, omn, -1.0, host_at_min),
+        max: classify(max_has_surface, max_local, omx, 1.0, host_at_max),
     }
 }

@@ -36,9 +36,8 @@ use ifc_lite_geometry::{
     collate_refs_in_basis, InstanceMeshRef, InstanceMeta, InstanceTemplate, Matrix4,
 };
 use ifc_lite_processing::{
-    build_entity_index_parallel, process_geometry_filtered_with_quality,
-    process_geometry_streaming_filtered_with_options, MeshCoordinateSpace, MeshData, MeshFrame,
-    OpeningFilterMode, ProcessingResult, StreamingOptions, TessellationQuality,
+    build_entity_index_parallel, process, MeshCoordinateSpace, MeshData, MeshFrame, OnBatch,
+    ProcessingRequest, ProcessingResult, TessellationQuality,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -113,6 +112,13 @@ pub struct GltfOptions {
     /// Tessellation density. `Medium` is the golden-output identity; coarser
     /// levels trade curve fidelity for vertex count on tube-heavy models.
     pub tessellation_quality: TessellationQuality,
+    /// Bytes the bounded single-GLB assembler may spend keeping the distinct
+    /// shapes of its first pass, so the second pass writes them from memory
+    /// instead of meshing the model again. Past the budget it keeps nothing and
+    /// meshes twice. The output is identical either way, and peak memory adds
+    /// up to about the budget to the output. Default `0`: never keep, so the bounded
+    /// assembler's peak stays the output plus one batch.
+    pub single_pass_budget_bytes: u64,
 }
 
 impl Default for GltfOptions {
@@ -127,11 +133,19 @@ impl Default for GltfOptions {
             model_id: None,
             quantize: false,
             tessellation_quality: TessellationQuality::Medium,
+            single_pass_budget_bytes: 0,
         }
     }
 }
 
 impl GltfOptions {
+    /// See [`GltfOptions::single_pass_budget_bytes`].
+    #[must_use]
+    pub fn with_single_pass_budget_bytes(mut self, bytes: u64) -> Self {
+        self.single_pass_budget_bytes = bytes;
+        self
+    }
+
     /// See [`GltfOptions::include_metadata`].
     #[must_use]
     pub fn with_include_metadata(mut self, yes: bool) -> Self {
@@ -1514,10 +1528,10 @@ pub fn try_export_glb_with_stats(
         return try_export_glb_streaming_bounded(content, opts);
     }
     try_export_glb_from_result(
-        process_geometry_filtered_with_quality(
+        process(
             content,
-            OpeningFilterMode::Default,
-            opts.tessellation_quality,
+            &ProcessingRequest::full_pass().quality(opts.tessellation_quality),
+            &mut (),
         ),
         opts,
     )
@@ -1537,19 +1551,10 @@ pub fn try_export_glb_with_stats_with_index(
     index: Arc<EntityIndex>,
 ) -> Result<(Vec<u8>, GltfStats), ExportError> {
     try_export_glb_from_result(
-        process_geometry_streaming_filtered_with_options(
+        process(
             content,
-            OpeningFilterMode::Default,
-            StreamingOptions {
-                initial_batch_size: usize::MAX,
-                throughput_batch_size: usize::MAX,
-                entity_index: Some(index),
-                tessellation_quality: opts.tessellation_quality,
-                ..StreamingOptions::default()
-            },
-            |_, _, _| {},
-            |_| {},
-            |_| {},
+            &ProcessingRequest::full_pass().quality(opts.tessellation_quality).index(index),
+            &mut (),
         ),
         opts,
     )
@@ -1702,14 +1707,9 @@ fn export_gltf_streaming_impl(
     // `plan_bounded_glb` -- the single-GLB bounded path -- does both; the
     // decision needs a plan rather than co-resident vertices, and that path
     // keeps one. This one does not.
-    // A shared `index` (when present) is injected into BOTH passes' StreamingOptions so
+    // A shared `index` (when present) is injected into BOTH passes' request so
     // neither re-scans `content` for its entity index (#1516).
-    let stream_opts = || StreamingOptions {
-        retain_emitted_meshes: false,
-        entity_index: index.clone(),
-        tessellation_quality: opts.tessellation_quality,
-        ..StreamingOptions::default()
-    };
+    let stream_request = || streamed_request(opts, &index);
     let filter = VisibilityFilter::new(opts);
     // One reusable Y-up scratch for BOTH passes (they run sequentially, so the mutable
     // borrow never overlaps) instead of 3 fresh allocations per mesh per pass.
@@ -1721,11 +1721,10 @@ fn export_gltf_streaming_impl(
     // is why this path kept emitting the site-local frame after the plain path
     // stopped, so the same file moved when it grew past the streaming
     // threshold.
-    let meta_result = process_geometry_streaming_filtered_with_options(
+    let meta_result = process(
         content,
-        OpeningFilterMode::Default,
-        stream_opts(),
-        |batch, _, _| {
+        &stream_request(),
+        &mut OnBatch::new(|batch, _, _| {
             for m in batch {
                 if !filter.visible(m) {
                     continue;
@@ -1740,9 +1739,7 @@ fn export_gltf_streaming_impl(
                     }
                 }
             }
-        },
-        |_| {},
-        |_| {},
+        }),
     );
     let scene_center = if wmin[0].is_finite() {
         [
@@ -1764,11 +1761,10 @@ fn export_gltf_streaming_impl(
     let mut adapt = |name: String, bytes: Vec<u8>| sink(GltfBuffer { name, bytes });
     let mut ch = Chunker::new(if opts.quantize { 8 } else { 12 }, chunk_cap, Some(&mut adapt));
 
-    process_geometry_streaming_filtered_with_options(
+    process(
         content,
-        OpeningFilterMode::Default,
-        stream_opts(),
-        |batch, _, _| {
+        &stream_request(),
+        &mut OnBatch::new(|batch, _, _| {
             for m in batch {
                 if !filter.visible(m) {
                     continue;
@@ -1832,9 +1828,7 @@ fn export_gltf_streaming_impl(
                 });
                 element_node_indices.push(node_idx);
             }
-        },
-        |_| {},
-        |_| {},
+        }),
     );
     stats.materials = materials.len();
     // Decided before the final flush, so a refused export hands `sink` nothing.
@@ -1999,7 +1993,10 @@ pub struct GlbSizeProjection {
 /// their bytes straight into the output at precomputed offsets. Peak memory = the
 /// final artifact + one batch + metadata — never the whole model's `MeshData`,
 /// never a growing three-run scratch, and never a second full copy from a final
-/// concatenation.
+/// concatenation. With [`GltfOptions::single_pass_budget_bytes`] set, pass 1
+/// also keeps each distinct shape it meshes, up to that budget; if every shape
+/// fits, pass 2 writes from them instead of meshing again, and peak memory adds
+/// the kept shapes.
 ///
 /// Fail-closed on both ends, decided after pass 1 so neither costs the second
 /// meshing pass or the output allocation: an empty visible set returns
@@ -2015,7 +2012,8 @@ pub struct GlbSizeProjection {
 ///   Quantized, the dequant rides a child node under the placement node, as in
 ///   `build_gltf`.
 /// - content-hash dedup is kept (the hash is computed batch-locally on pass 1).
-/// - the model is meshed twice (the price of bounded memory).
+/// - the model is meshed twice (the price of bounded memory), or once when its
+///   distinct shapes fit [`GltfOptions::single_pass_budget_bytes`].
 /// - **the #3666 reconstruction check does not run here.** The in-memory
 ///   assembler reconstructs each exact-tier occurrence from its template and
 ///   relative transform and compares it against that occurrence's own baked
@@ -2061,7 +2059,7 @@ fn try_export_glb_streaming_bounded_impl(
     // the fail-closed large-model path, exactly where the parallel scan pays off;
     // with `index=None` it otherwise paid two internal serial scans.
     let index = index.or_else(|| Some(Arc::new(build_entity_index_parallel(content))));
-    let plan = plan_bounded_glb(content, opts, index.clone());
+    let plan = plan_bounded_glb(content, opts, index.clone(), opts.single_pass_budget_bytes);
     refuse_empty(&plan.stats)?;
     if plan.bin_total > u32::MAX as u64 || plan.total > u32::MAX as u64 {
         return Err(ExportError::TooLarge { bytes: plan.total });
@@ -2092,7 +2090,7 @@ fn project_glb_size_impl(
     index: Option<Arc<EntityIndex>>,
 ) -> GlbSizeProjection {
     let index = index.or_else(|| Some(Arc::new(build_entity_index_parallel(content))));
-    let plan = plan_bounded_glb(content, opts, index);
+    let plan = plan_bounded_glb(content, opts, index, 0);
     GlbSizeProjection {
         total_bytes: plan.total,
         bin_bytes: plan.bin_total,
@@ -2119,6 +2117,84 @@ struct BoundedGlbPlan {
     /// an oversize model does not truncate on wasm32 (32-bit `usize`).
     total: u64,
     stats: GltfStats,
+    /// Pass 1's shapes by content key, when they fit the single-pass budget.
+    /// `None` means pass 2 meshes the model again.
+    retained: Option<FxHashMap<u128, RetainedMesh>>,
+}
+
+/// One distinct shape as pass 1 computed it, Y-up and before baking.
+struct RetainedMesh {
+    positions: Vec<f32>,
+    normals: Vec<f32>,
+    indices: Vec<u32>,
+}
+
+/// Pass 1's shapes by content key, kept while they fit a budget. The key
+/// hashes the exact Y-up geometry and colour, and pass 2 already treats it as
+/// a mesh's identity, so meshes sharing a key share one kept shape.
+struct Retention {
+    kept: Option<FxHashMap<u128, RetainedMesh>>,
+    bytes: u64,
+    budget: u64,
+}
+
+impl Retention {
+    fn new(budget: u64) -> Self {
+        Self { kept: (budget > 0).then(FxHashMap::default), bytes: 0, budget }
+    }
+
+    /// Keep the shape of a planned mesh unless its key is already kept. Each
+    /// shape is charged its vertex data plus three map entries for the table;
+    /// the first shape that would pass the budget drops everything instead of
+    /// being copied. A resize of the table, and the move in `finish`, briefly
+    /// hold more than that.
+    fn keep(&mut self, key: u128, y: &crate::frame::YUpScratch) {
+        let Some(kept) = &mut self.kept else { return };
+        if kept.contains_key(&key) {
+            return;
+        }
+        let (positions, normals, indices) = (&y.positions, &y.normals, &y.indices);
+        let cost = 4 * (positions.len() + normals.len() + indices.len()) as u64
+            + 3 * std::mem::size_of::<(u128, RetainedMesh)>() as u64;
+        if self.bytes + cost > self.budget {
+            self.kept = None;
+            return;
+        }
+        self.bytes += cost;
+        kept.insert(
+            key,
+            RetainedMesh {
+                positions: positions.to_vec(),
+                normals: normals.to_vec(),
+                indices: indices.to_vec(),
+            },
+        );
+    }
+
+    /// The shapes writing meshes use, moved out so the rest are freed before
+    /// pass 2 allocates the output. `None` when nothing was kept or a writing
+    /// mesh has no shape, so pass 2 meshes again.
+    fn finish(self, metas: &[StreamedMeshMeta]) -> Option<FxHashMap<u128, RetainedMesh>> {
+        let mut kept = self.kept?;
+        let mut written = FxHashMap::default();
+        for meta in metas.iter().filter(|m| m.write.is_some()) {
+            if let std::collections::hash_map::Entry::Vacant(slot) = written.entry(meta.key) {
+                slot.insert(kept.remove(&meta.key)?);
+            }
+        }
+        Some(written)
+    }
+}
+
+/// The request each streamed pass of the bounded assemblers makes: batches are
+/// consumed as they arrive and never retained, over the caller's shared entity
+/// index when there is one (#1516).
+fn streamed_request(opts: &GltfOptions, index: &Option<Arc<EntityIndex>>) -> ProcessingRequest {
+    let request = ProcessingRequest::default().quality(opts.tessellation_quality).retain_meshes(false);
+    match index {
+        Some(index) => request.index(index.clone()),
+        None => request,
+    }
 }
 
 /// Pass 1 of the bounded assembler: mesh the model once to gather per-mesh
@@ -2130,15 +2206,11 @@ fn plan_bounded_glb(
     content: &[u8],
     opts: &GltfOptions,
     index: Option<Arc<EntityIndex>>,
+    retain_budget: u64,
 ) -> BoundedGlbPlan {
-    // A shared `index` (when present) is injected into BOTH passes' StreamingOptions
+    // A shared `index` (when present) is injected into BOTH passes' request
     // so neither re-scans `content` for its entity index (#1516).
-    let stream_opts = || StreamingOptions {
-        retain_emitted_meshes: false,
-        entity_index: index.clone(),
-        tessellation_quality: opts.tessellation_quality,
-        ..StreamingOptions::default()
-    };
+    let stream_request = || streamed_request(opts, &index);
 
     // ── Pass 1: metadata + world AABB ────────────────────────────────────────
     let filter = VisibilityFilter::new(opts);
@@ -2148,17 +2220,17 @@ fn plan_bounded_glb(
     let mut metas: Vec<StreamedMeshMeta> = Vec::new();
     let mut reps: Vec<(u128, [f64; 16])> = Vec::new();
     let mut rep_of: FxHashMap<u32, u32> = FxHashMap::default();
+    let mut retention = Retention::new(retain_budget);
     let mut wmin = [f64::INFINITY; 3];
     let mut wmax = [f64::NEG_INFINITY; 3];
     // Pass 1's result carries `site_transform` and the RTC offset. Dropping it
     // is why this path kept emitting the site-local frame after the plain path
     // stopped, so the same file moved when it grew past the streaming
     // threshold.
-    let meta_result = process_geometry_streaming_filtered_with_options(
+    let meta_result = process(
         content,
-        OpeningFilterMode::Default,
-        stream_opts(),
-        |batch, _, _| {
+        &stream_request(),
+        &mut OnBatch::new(|batch, _, _| {
             for m in batch {
                 if !filter.visible(m) {
                     continue;
@@ -2229,6 +2301,7 @@ fn plan_bounded_glb(
                     rep_of.insert(metas.len() as u32, reps.len() as u32);
                     reps.push((inst.rep_identity, compose_world_meta(inst)));
                 }
+                let key = geom_color_key(&y.positions, &y.normals, &y.indices, m.color);
                 metas.push(StreamedMeshMeta {
                     express_id: m.express_id,
                     ifc_type,
@@ -2239,13 +2312,12 @@ fn plan_bounded_glb(
                     nidx: y.indices.len() as u32,
                     local_min: lmin,
                     local_max: lmax,
-                    key: geom_color_key(&y.positions, &y.normals, &y.indices, m.color),
+                    key,
                     write: None,
                 });
+                retention.keep(key, y);
             }
-        },
-        |_| {},
-        |_| {},
+        }),
     );
     let scene_center = if metas.is_empty() {
         [0.0, 0.0, 0.0]
@@ -2758,7 +2830,8 @@ fn plan_bounded_glb(
     // here — the size has to stay a reliable > 4 GiB fail-fast signal.
     let total = glb_container_size(json.len() as u64, bin_total);
 
-    BoundedGlbPlan { metas, json, pos_len, norm_len, bin_total, total, stats }
+    let retained = retention.finish(&metas);
+    BoundedGlbPlan { metas, json, pos_len, norm_len, bin_total, total, stats, retained }
 }
 
 /// Pass 2 of the bounded assembler: preallocate the exact GLB container from
@@ -2774,13 +2847,8 @@ fn write_bounded_glb(
 ) -> (Vec<u8>, GltfStats) {
     // Re-stream with the same (optionally shared) index so pass 2 never re-scans
     // for its entity index either (#1516).
-    let stream_opts = || StreamingOptions {
-        retain_emitted_meshes: false,
-        entity_index: index.clone(),
-        tessellation_quality: opts.tessellation_quality,
-        ..StreamingOptions::default()
-    };
-    let BoundedGlbPlan { metas, json, pos_len, norm_len, bin_total, total, stats } = plan;
+    let stream_request = || streamed_request(opts, &index);
+    let BoundedGlbPlan { metas, json, pos_len, norm_len, bin_total, total, stats, retained } = plan;
 
     // ── Preallocate the exact GLB container, then pass 2 writes into it ─────
     // Safe to narrow to usize here: the caller validated `total`/`bin_total` fit
@@ -2807,14 +2875,40 @@ fn write_bounded_glb(
     let norm_base = bin_base + pos_len as usize;
     let idx_base = bin_base + (pos_len + norm_len) as usize;
 
+    // Pass 1 kept every shape: write them from memory and skip meshing the
+    // model a second time.
+    if let Some(shapes) = retained {
+        let mut ticks = 0u32;
+        for meta in &metas {
+            ifc_lite_geometry::progress::tick_strided(&mut ticks, 0x3FF);
+            if let Some(w) = &meta.write {
+                let mesh = &shapes[&meta.key];
+                assert!(
+                    meta.nverts as usize * 3 == mesh.positions.len()
+                        && meta.nidx as usize == mesh.indices.len(),
+                    "GLB single pass: kept shape for #{} does not match its plan",
+                    meta.express_id,
+                );
+                bake_mesh(
+                    &mut out,
+                    [pos_base, norm_base, idx_base],
+                    w,
+                    &mesh.positions,
+                    &mesh.normals,
+                    &mesh.indices,
+                );
+            }
+        }
+        return (out, stats);
+    }
+
     let filter = VisibilityFilter::new(opts);
     let mut yscratch = crate::frame::YUpScratch::new();
     let mut cursor = 0usize;
-    process_geometry_streaming_filtered_with_options(
+    process(
         content,
-        OpeningFilterMode::Default,
-        stream_opts(),
-        |batch, _, _| {
+        &stream_request(),
+        &mut OnBatch::new(|batch, _, _| {
             for m in batch {
                 if !filter.visible(m) {
                     continue;
@@ -2845,76 +2939,18 @@ fn write_bounded_glb(
                     m.express_id, y.positions.len() / 3, y.indices.len(),
                 );
                 if let Some(w) = &meta.write {
-                    if let Some((center, half, small)) = &w.quant {
-                        // SHORT-normalized encoding, identical to push_mesh_quantized;
-                        // the 2-byte stride pads and the index-run 4-alignment pads
-                        // are already zero from the container prefill.
-                        let mut po = pos_base + w.pos_off as usize;
-                        for p in y.positions.chunks_exact(3) {
-                            for (k, &v) in p.iter().enumerate() {
-                                let n = ((v as f64 - center[k]) / half[k]).clamp(-1.0, 1.0);
-                                let q = (n * 32767.0).round() as i16;
-                                out[po..po + 2].copy_from_slice(&q.to_le_bytes());
-                                po += 2;
-                            }
-                            po += 2; // 8-byte stride pad
-                        }
-                        let mut no = norm_base + w.norm_off as usize;
-                        for nrm in y.normals.chunks_exact(3) {
-                            let mut v = [
-                                nrm[0] as f64 * half[0],
-                                nrm[1] as f64 * half[1],
-                                nrm[2] as f64 * half[2],
-                            ];
-                            let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
-                            if len > 0.0 {
-                                v = [v[0] / len, v[1] / len, v[2] / len];
-                            }
-                            for c in v {
-                                let q = (c.clamp(-1.0, 1.0) * 32767.0).round() as i16;
-                                out[no..no + 2].copy_from_slice(&q.to_le_bytes());
-                                no += 2;
-                            }
-                            no += 2; // 8-byte stride pad
-                        }
-                        let mut io = idx_base + w.idx_off as usize;
-                        if *small {
-                            for &i in &y.indices {
-                                out[io..io + 2].copy_from_slice(&(i as u16).to_le_bytes());
-                                io += 2;
-                            }
-                        } else {
-                            for &i in &y.indices {
-                                out[io..io + 4].copy_from_slice(&i.to_le_bytes());
-                                io += 4;
-                            }
-                        }
-                    } else {
-                        let mut po = pos_base + w.pos_off as usize;
-                        for p in y.positions.chunks_exact(3) {
-                            for (&pv, &off) in p.iter().zip(&w.vertex_offset) {
-                                let baked = (pv as f64 + off) as f32;
-                                out[po..po + 4].copy_from_slice(&baked.to_le_bytes());
-                                po += 4;
-                            }
-                        }
-                        let mut no = norm_base + w.norm_off as usize;
-                        for &n in &y.normals {
-                            out[no..no + 4].copy_from_slice(&n.to_le_bytes());
-                            no += 4;
-                        }
-                        let mut io = idx_base + w.idx_off as usize;
-                        for &i in &y.indices {
-                            out[io..io + 4].copy_from_slice(&i.to_le_bytes());
-                            io += 4;
-                        }
-                    }
+                    bake_mesh(
+                        &mut out,
+                        [pos_base, norm_base, idx_base],
+                        w,
+                        &y.positions,
+                        &y.normals,
+                        &y.indices,
+                    );
                 }
                 cursor += 1;
             }
-        },
-        |_| {},
-        |_| {},
+        }),
     );
     assert!(
         cursor == metas.len(),
@@ -2923,6 +2959,84 @@ fn write_bounded_glb(
     );
 
     (out, stats)
+}
+
+
+/// Bake one emitted mesh's Y-up geometry into the BIN region of `out` at the
+/// offsets pass 1 planned for it. Both pass-2 sources go through here, so a mesh
+/// written from memory and a mesh meshed again produce the same bytes.
+fn bake_mesh(
+    out: &mut [u8],
+    [pos_base, norm_base, idx_base]: [usize; 3],
+    w: &StreamedWrite,
+    positions: &[f32],
+    normals: &[f32],
+    indices: &[u32],
+) {
+    if let Some((center, half, small)) = &w.quant {
+        // SHORT-normalized encoding, identical to push_mesh_quantized;
+        // the 2-byte stride pads and the index-run 4-alignment pads
+        // are already zero from the container prefill.
+        let mut po = pos_base + w.pos_off as usize;
+        for p in positions.chunks_exact(3) {
+            for (k, &v) in p.iter().enumerate() {
+                let n = ((v as f64 - center[k]) / half[k]).clamp(-1.0, 1.0);
+                let q = (n * 32767.0).round() as i16;
+                out[po..po + 2].copy_from_slice(&q.to_le_bytes());
+                po += 2;
+            }
+            po += 2; // 8-byte stride pad
+        }
+        let mut no = norm_base + w.norm_off as usize;
+        for nrm in normals.chunks_exact(3) {
+            let mut v = [
+                nrm[0] as f64 * half[0],
+                nrm[1] as f64 * half[1],
+                nrm[2] as f64 * half[2],
+            ];
+            let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+            if len > 0.0 {
+                v = [v[0] / len, v[1] / len, v[2] / len];
+            }
+            for c in v {
+                let q = (c.clamp(-1.0, 1.0) * 32767.0).round() as i16;
+                out[no..no + 2].copy_from_slice(&q.to_le_bytes());
+                no += 2;
+            }
+            no += 2; // 8-byte stride pad
+        }
+        let mut io = idx_base + w.idx_off as usize;
+        if *small {
+            for &i in indices {
+                out[io..io + 2].copy_from_slice(&(i as u16).to_le_bytes());
+                io += 2;
+            }
+        } else {
+            for &i in indices {
+                out[io..io + 4].copy_from_slice(&i.to_le_bytes());
+                io += 4;
+            }
+        }
+    } else {
+        let mut po = pos_base + w.pos_off as usize;
+        for p in positions.chunks_exact(3) {
+            for (&pv, &off) in p.iter().zip(&w.vertex_offset) {
+                let baked = (pv as f64 + off) as f32;
+                out[po..po + 4].copy_from_slice(&baked.to_le_bytes());
+                po += 4;
+            }
+        }
+        let mut no = norm_base + w.norm_off as usize;
+        for &n in normals {
+            out[no..no + 4].copy_from_slice(&n.to_le_bytes());
+            no += 4;
+        }
+        let mut io = idx_base + w.idx_off as usize;
+        for &i in indices {
+            out[io..io + 4].copy_from_slice(&i.to_le_bytes());
+            io += 4;
+        }
+    }
 }
 
 

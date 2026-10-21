@@ -22,6 +22,10 @@
 use std::cell::RefCell;
 use std::fmt;
 
+#[path = "pending_diagnostics.rs"]
+mod pending;
+pub use pending::PendingDiagnosticState;
+
 thread_local! {
     /// Pending boolean failures from contexts that have no direct router
     /// handle. Historically fed by `MappedItemProcessor`'s transient
@@ -131,7 +135,7 @@ pub enum BoolFailureReason {
     /// diagnostics rather than as a silently missing element.
     DifferenceEmptiedHost,
     /// A boolean operand's `IfcRepresentationItem` type has no meshing branch
-    /// in `BooleanClippingProcessor::process_operand_checked`, so the operand
+    /// in `BooleanClippingProcessor::leaf_operand`, so the operand
     /// resolved to an EMPTY mesh. Carries the operand's IFC type name.
     ///
     /// As a FIRST operand this is a real element-geometry loss: the base solid

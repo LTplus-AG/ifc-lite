@@ -20,6 +20,23 @@ All crates live in one Cargo workspace (versioned together, MPL-2.0 licensed):
 
 The Python bindings (`rust/python`, PyPI package `ifclite-geom`) are excluded from the workspace and documented on the [Python API page](python.md).
 
+## Placement readers
+
+Use `ifc_lite_geometry::placement::Axis2Placement::{read_3d, read_2d, read_id}`
+and call `.matrix()` on the returned placement for a frame in file units.
+`EntityDecoder::{point3, direction3}` read point coordinates or raw direction
+ratios by id; `point3_at` and `direction3_at` read a referenced attribute.
+These leaf readers accept two or three finite numbers, promote two dimensions
+with `z = 0`, and count malformed-input refusals. For an already decoded
+direction when no decoder is available, `EntityDecoder::direction3_of` returns
+`Option<[f64; 3]>` and cannot count refusals.
+
+The geometry crate's former `parse_axis2_placement_3d`,
+`parse_axis2_placement_3d_from_id`, `parse_cartesian_point`,
+`parse_cartesian_point_from_id`, `parse_direction`, and `parse_direction_from_id`
+exports are removed in the pending Rust major. `rotation_angle_about_z` remains
+available at the crate root and through `placement`.
+
 ## ifc-lite-core
 
 Core parsing functionality.
@@ -62,6 +79,29 @@ items are not all plain `#n` references is refused whole (`ref_list_at`), and
 `parse_ref` accepts `#` and digits only. `fast_parse::extract_entity_type_name`,
 `extract_first_entity_ref`, `extract_entity_refs_from_list` and
 `EntityDecoder::get_first_entity_ref_fast` are removed in favour of it.
+
+The native merged exporter also uses `StepRecord::attrs()` and `StepListItems`
+for relationship edits. A legal comment such as `#10=/* ( */IFCRELDEFINESBYPROPERTIES(...)`
+does not change the attribute boundaries: folding into the first relationship,
+removing duplicate members, and pruning empty containers edit only the selected
+values and separators. Unrelated comments and whitespace stay as authored.
+An unreadable argument list remains unedited and blocks unsafe pruning.
+List edits require the complete attribute to be one value under
+`parser::is_step_value`: a closed list followed by another value is not an
+editable list, and all its references conservatively block pruning. Legal
+trivia after a complete list remains allowed.
+
+`ifc_lite_core::parser::is_step_value(text)` and `parser::split_step_slots(inner)` are the
+strict reads for STEP WRITERS: whether text is exactly one well-formed value
+(the grammar the tokenizer reads: no bare keyword, no `1..2`, no empty list
+element, a binary is `[0-3]` plus hex, STEP whitespace only), and an argument
+list cut into untrimmed slots that rejoin byte for byte, or `None` when a
+by-index edit cannot trust it. The export crate's `step_slot` is a thin
+wrapper over them.
+
+`ifc_lite_core::optional_text(Option<&str>)` is the one "no value" rule for a decoded
+name or label: trimmed of STEP whitespace, and an empty result or a bare `$` is
+`None`. `get_string()` is already decoded, so never call `decode_ifc_string` on it.
 
 #### Token
 
@@ -366,6 +406,13 @@ impl<'a> EntityDecoder<'a> {
 ```
 
 The decoder also exposes fast single-purpose accessors used by the geometry pipeline (`get_cartesian_point_fast`, `get_polyloop_coords_cached`, `get_entity_ref_list_fast`, ...); see `rust/core/src/decoder.rs`.
+
+`EntityDecoder::direction3_of(&entity)` reads an already decoded `IfcDirection`
+when no decoder is available. It accepts exactly one `DirectionRatios` attribute
+containing two or three finite plain numeric values and returns the raw
+`Option<[f64; 3]>`, promoting two ratios with `z = 0` without normalizing or
+rejecting a zero vector. A wrong record type, extra attributes, malformed list
+or non-finite ratio returns `None`. This read does not decode or count refusals.
 
 `DenseEntityIndex::try_from_columns(ids, starts, lengths)` accepts sorted, unique
 IDs and `u32` span columns. It returns `None` if the columns disagree or direct
@@ -687,9 +734,12 @@ Key re-exports:
 ```rust
 // One-call pipeline: IFC bytes -> per-element meshes
 pub use processor::{
-    process_geometry, process_geometry_filtered, process_geometry_with_index,
-    process_geometry_streaming, /* ...streaming variants with options... */
-    OpeningFilterMode, ProcessingResult, StreamingOptions,
+    process, process_geometry,
+    Batching, Features, FrameEvent, OnBatch, OpeningFilterMode, ProcessingRequest,
+    ProcessingResult, ProcessingSink,
+    /* deprecated, deleted in the next major: process_geometry_filtered,
+       process_geometry_with_index, process_geometry_streaming and the other
+       `process_geometry_*` variants; StreamingOptions */
 };
 
 // Analysis-ready export document (welded, Z-up, world metres)
@@ -719,6 +769,41 @@ pub use types::mesh::{InstanceRecord, MeshData, RawInstanceOccurrence};
 pub use types::response::{CoordinateInfo, ModelMetadata, ParseResponse, ProcessingStats};
 pub use parallel_scan::build_entity_index_parallel;
 ```
+
+`process(content, &ProcessingRequest, &mut sink)` is the one native entry point.
+`ProcessingRequest` is a `#[non_exhaustive]` value type with a builder; the two
+named shapes are `ProcessingRequest::default()` (the streaming shape, 50-job
+chunks) and `ProcessingRequest::full_pass()` (one chunk, for the server routes,
+exporters and bindings). It carries the opening filter, tessellation quality,
+`Batching` (initial and throughput chunk sizes, `fast_first`), `Features`
+(properties, presentation layers, quick-metadata bootstrap), whether to retain
+the emitted meshes, instancing, an id allow-list (`None` is the unfiltered pass,
+`Some(empty)` meshes nothing), an injected entity index and a cancel flag.
+
+A `ProcessingSink` hears the pass while it runs; every event has a no-op default
+and `()` listens to nothing. Order: `on_bootstrap` at most once, then `on_frame`
+exactly once (the frame and the baked basis, before the first batch and also for
+a file with no geometry), then `on_batch` interleaved with `on_color_update`
+(deferred styles, replayed after the first batch). Events fire once per chunk.
+`OnBatch::new(|meshes, processed, total| ..)` is the sink for a caller that only
+streams meshes out.
+
+```rust
+use ifc_lite_processing::{process, Batching, ProcessingRequest, TessellationQuality};
+
+let request = ProcessingRequest::full_pass().quality(TessellationQuality::High);
+let result = process(&bytes, &request, &mut ());
+```
+
+`ifc_lite_processing::scan::ScanClass::classify(keyword)` is the one table of STEP
+keywords a scan loop reacts to (styled items, relationships, project / site /
+building, mapped items, property records, ...). The native scan, `PrepassSpans::stash`
+and the sharded scan's `classify_type_name` all match on it; `u8::from(class)`
+is the shard wire code.
+
+`process_geometry(content)` stays as the convenience for the default full pass.
+The other ten `process_geometry_*` functions are `#[deprecated]` delegates onto
+`process` and are deleted in the next major release.
 
 `extract_swept_disk_descriptions(ifc_bytes, ids)` returns the outer `Radius`,
 optional `InnerRadius`, and ordered exact line/circular-arc `Directrix` for

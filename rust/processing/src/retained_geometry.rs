@@ -9,8 +9,8 @@
 //!
 //! Every admitted mesh is a display approximation of the processed element,
 //! never authored geometry: no source, analytic or solidity claim is made.
-//! Worker identity and the retained/display distinction arrive with the
-//! retained-request layer (F2b, #7955).
+//! Retained authored sources and worker requests live separately, in
+//! [`crate::retained_requests`].
 
 use crate::ProcessingResult;
 use ifc_lite_geometry::document::{

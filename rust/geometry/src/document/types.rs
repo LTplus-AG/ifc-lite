@@ -47,6 +47,8 @@ pub enum DocumentError {
     UnsupportedFrame,
     #[error("occurrence transform must be finite, affine and invertible")]
     InvalidTransform,
+    #[error("geometry document changed since this request was prepared")]
+    StaleRevision,
     #[error("geometry document revision space exhausted")]
     RevisionExhausted,
 }

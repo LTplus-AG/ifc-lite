@@ -1,0 +1,101 @@
+// SPDX-License-Identifier: MPL-2.0
+// #8019: audited IFC4/IFC4X3 IfcDistributionElement occurrence descendants
+// absent from IFC2X3, grouped by their nearest native IFC2X3 ancestor.
+// Preserve the existing distribution-board -> distribution-point semantic
+// rename (including IFC4X3's board). Type objects are deliberately excluded.
+// Explicit scope: never apply an ancestor fallback to arbitrary unknown types.
+export const MEP_IFC2X3_TYPES: ReadonlyMap<string, string> = new Map(
+  Object.entries({
+    IFCDISTRIBUTIONCONTROLELEMENT: [
+      'IFCACTUATOR',
+      'IFCALARM',
+      'IFCCONTROLLER',
+      'IFCFLOWINSTRUMENT',
+      'IFCPROTECTIVEDEVICETRIPPINGUNIT',
+      'IFCSENSOR',
+      'IFCUNITARYCONTROLELEMENT',
+    ],
+    IFCFLOWTERMINAL: [
+      'IFCAIRTERMINAL',
+      'IFCAUDIOVISUALAPPLIANCE',
+      'IFCCOMMUNICATIONSAPPLIANCE',
+      'IFCELECTRICAPPLIANCE',
+      'IFCFIRESUPPRESSIONTERMINAL',
+      'IFCLAMP',
+      'IFCLIGHTFIXTURE',
+      'IFCLIQUIDTERMINAL',
+      'IFCMEDICALDEVICE',
+      'IFCMOBILETELECOMMUNICATIONSAPPLIANCE',
+      'IFCOUTLET',
+      'IFCSANITARYTERMINAL',
+      'IFCSIGNAL',
+      'IFCSPACEHEATER',
+      'IFCSTACKTERMINAL',
+      'IFCWASTETERMINAL',
+    ],
+    IFCFLOWCONTROLLER: [
+      'IFCAIRTERMINALBOX',
+      'IFCDAMPER',
+      'IFCELECTRICTIMECONTROL',
+      'IFCFLOWMETER',
+      'IFCPROTECTIVEDEVICE',
+      'IFCSWITCHINGDEVICE',
+      'IFCVALVE',
+    ],
+    IFCENERGYCONVERSIONDEVICE: [
+      'IFCAIRTOAIRHEATRECOVERY',
+      'IFCBOILER',
+      'IFCBURNER',
+      'IFCCHILLER',
+      'IFCCOIL',
+      'IFCCONDENSER',
+      'IFCCOOLEDBEAM',
+      'IFCCOOLINGTOWER',
+      'IFCELECTRICGENERATOR',
+      'IFCELECTRICMOTOR',
+      'IFCENGINE',
+      'IFCEVAPORATIVECOOLER',
+      'IFCEVAPORATOR',
+      'IFCHEATEXCHANGER',
+      'IFCHUMIDIFIER',
+      'IFCMOTORCONNECTION',
+      'IFCSOLARDEVICE',
+      'IFCTRANSFORMER',
+      'IFCTUBEBUNDLE',
+      'IFCUNITARYEQUIPMENT',
+    ],
+    IFCFLOWFITTING: [
+      'IFCCABLECARRIERFITTING',
+      'IFCCABLEFITTING',
+      'IFCDUCTFITTING',
+      'IFCJUNCTIONBOX',
+      'IFCPIPEFITTING',
+    ],
+    IFCFLOWSEGMENT: [
+      'IFCCABLECARRIERSEGMENT',
+      'IFCCABLESEGMENT',
+      'IFCCONVEYORSEGMENT',
+      'IFCDUCTSEGMENT',
+      'IFCPIPESEGMENT',
+    ],
+    IFCFLOWMOVINGDEVICE: [
+      'IFCCOMPRESSOR',
+      'IFCFAN',
+      'IFCPUMP',
+    ],
+    IFCELECTRICDISTRIBUTIONPOINT: [
+      'IFCDISTRIBUTIONBOARD',
+      'IFCELECTRICDISTRIBUTIONBOARD',
+    ],
+    IFCFLOWTREATMENTDEVICE: [
+      'IFCDUCTSILENCER',
+      'IFCELECTRICFLOWTREATMENTDEVICE',
+      'IFCFILTER',
+      'IFCINTERCEPTOR',
+    ],
+    IFCFLOWSTORAGEDEVICE: [
+      'IFCELECTRICFLOWSTORAGEDEVICE',
+      'IFCTANK',
+    ],
+  }).flatMap(([target, sources]) => sources.map((source): [string, string] => [source, target])),
+);

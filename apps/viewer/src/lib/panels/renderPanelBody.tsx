@@ -17,7 +17,7 @@ import { panelModelGateMode, type WorkspacePanelId } from './registry';
 import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
 import { HierarchyPanel } from '@/components/viewer/HierarchyPanel';
 import { PropertiesPanel } from '@/components/viewer/PropertiesPanel';
-import { ComparePanel } from '@/components/viewer/ComparePanel';
+const ComparePanel = lazy(() => import('@/components/viewer/ComparePanel').then(module => ({ default: module.ComparePanel })));
 import { BCFPanel } from '@/components/viewer/BCFPanel';
 import { ValidationPanel } from '@/components/viewer/validation/ValidationPanel';
 import { LensPanel } from '@/components/viewer/LensPanel';
@@ -178,7 +178,7 @@ function panelBody(id: WorkspacePanelId, onClose: () => void): ReactNode {
     // multi-selection, empty): the welcome tour's "Read its data" step broke
     // whenever the panel showed one of the branches that lacked it.
     case 'properties': return <div {...tourAnchor(TOUR_ANCHORS.propertiesPanel)} className="h-full"><PropertiesPanel /></div>;
-    case 'compare': return <ComparePanel onClose={onClose} />;
+    case 'compare': return <ChunkErrorBoundary label="Compare models"><Suspense fallback={null}><ComparePanel onClose={onClose} /></Suspense></ChunkErrorBoundary>;
     case 'bcf': return <BCFPanel onClose={onClose} />;
     case 'validation': return <ValidationPanel onClose={onClose} />;
     case 'lens': return <LensPanel onClose={onClose} />;

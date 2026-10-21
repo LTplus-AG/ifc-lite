@@ -10,7 +10,7 @@
  * selected change's detail as evidence.
  */
 
-import { lazy, Suspense, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
@@ -21,8 +21,6 @@ import type { ProductTypeSplit } from '@/lib/compare/productTypeCounts';
 import { typeObjectHint } from '@/lib/compare/productTypeCounts';
 import { CountBadge } from './CompareResultsList';
 import { ResultCoverage, ResultSource, ResultView } from '../result/ResultView';
-
-const CompareResultFilters = lazy(() => import('./CompareResultFilters').then(module => ({ default: module.CompareResultFilters })));
 
 const SCOPE_KEY: Record<CompareResult['scope'], TranslationKey> = {
   both: 'comparePanel.runControls.scopeBoth',
@@ -93,7 +91,31 @@ export function CompareResultView({ result, filter = ALL_COMPARE_RESULTS, onFilt
       summary={summary}
       summaryProps={tourAnchor(TOUR_ANCHORS.compareCounts)}
       filters={result && onFilter ? (
-        <Suspense fallback={null}><CompareResultFilters filter={filter} onFilter={onFilter} /></Suspense>
+        <div className="px-3 py-2 space-y-2 border-b border-border">
+          <p className="text-2xs text-muted-foreground">{t('comparePanel.filters.hint')}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="text-xs flex items-center gap-2">
+              {t('comparePanel.filters.kind')}
+              <select aria-label={t('comparePanel.filters.kind')} value={filter.kind ?? ''}
+                className="min-w-0 rounded border border-border bg-background px-2 py-1"
+                onChange={(event) => {
+                  const kind = event.target.value;
+                  if (kind === 'data' || kind === 'geometry' || kind === 'container') onFilter({ category: 'modified', kind });
+                  else onFilter({ ...filter, kind: null });
+                }}>
+                <option value="">{t('comparePanel.filters.allKinds')}</option>
+                <option value="data">{t('comparePanel.filters.data')}</option>
+                <option value="geometry">{t('comparePanel.changeDetail.geometryLabel')}</option>
+                <option value="container">{t('comparePanel.filters.container')}</option>
+              </select>
+            </label>
+            <button type="button" onClick={() => onFilter(ALL_COMPARE_RESULTS)}
+              disabled={!filter.category && !filter.kind}
+              className="text-xs rounded px-2 py-1 hover:bg-muted disabled:opacity-50">
+              {t('comparePanel.filters.reset')}
+            </button>
+          </div>
+        </div>
       ) : null}
       actions={exportBar}
       rows={list}

@@ -75,7 +75,11 @@ it('retained engine: listing sources is read-only; only the executor reaches /sm
     assert.deepEqual(seen.workers, [], 'no transport means no Worker');
     executor.free(); sources.free(); api.free();
   } finally { seen.restore(); }
-  assert.ok(seen.errors.every((line) => /retained worker startup/.test(line)), seen.errors.join('\n'));
+  // Fail-closed is proven by the rejects above; this pins that nothing else
+  // is logged. The startup-failure line itself is asynchronous, so its
+  // presence is not asserted (requiring it would race the test's end).
+  const unexpected = seen.errors.filter((line) => !/retained worker startup/.test(line));
+  assert.deepEqual(unexpected, [], 'no error beyond the expected startup failure');
 });
 
 it('the loader imports a deployed bundle once per URL and retries a failed load', async (t) => {

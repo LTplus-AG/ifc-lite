@@ -8,6 +8,8 @@ pub mod protocol;
 #[cfg(not(target_arch = "wasm32"))]
 mod process_control;
 #[cfg(not(target_arch = "wasm32"))]
+mod runtime_owner;
+#[cfg(not(target_arch = "wasm32"))]
 mod supervision;
 #[cfg(not(target_arch = "wasm32"))]
 mod worker;
@@ -17,4 +19,9 @@ pub use supervision::{
     PendingCommand, SupervisedWorker, SupervisionError, WorkerCommand, WorkerResult,
 };
 #[cfg(not(target_arch = "wasm32"))]
-pub use worker::{BrepHandle, MeshLimits, SmlibWorker, TessellatedMesh, WorkerError};
+pub use runtime_owner::RuntimeOwner;
+#[cfg(not(target_arch = "wasm32"))]
+pub use worker::{
+    BrepHandle, MeshLimits, RegionQualificationReport, RetainedRealization, SmlibWorker,
+    TessellatedMesh, WorkerError,
+};

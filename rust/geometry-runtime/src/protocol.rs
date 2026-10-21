@@ -18,6 +18,8 @@ pub const MAX_PAYLOAD_BYTES: usize = 4096;
 pub const MAX_REQUEST_BYTES: usize = MAX_PAYLOAD_BYTES;
 pub const MAX_RESPONSE_BYTES: usize = MAX_PAYLOAD_BYTES;
 pub const MAX_MESH_CHUNK_SCALARS: u32 = 480;
+/// Largest staged recipe chunk; a chunk request stays below the request bound.
+pub const MAX_SWEEP_CHUNK_BYTES: usize = 3840;
 
 /// Kernel-side token. Execution clients must separately enforce worker affinity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -79,6 +81,27 @@ pub enum KernelCommand {
     AbiVersion,
     /// Additive capability negotiation; v1 commands stay unchanged.
     Capabilities,
+    /// Declare one staged authored recipe (formats 1 and 2, see the C ABI).
+    SweepBegin {
+        session: u64,
+        format: u32,
+        length: u32,
+        loops: u32,
+        segments: u32,
+    },
+    /// Next sequential recipe bytes at `offset`.
+    SweepChunk {
+        session: u64,
+        upload: u64,
+        offset: u32,
+        bytes: Vec<u8>,
+    },
+    /// Consume the upload and publish its validated solid. The ABI's abort
+    /// (opcode 16) is not needed: a rejected chunk already discards the upload.
+    SweepCommit {
+        session: u64,
+        upload: u64,
+    },
     /// Copy then apply a proper rigid column-major metre transform.
     CopyTransform {
         session: u64,
@@ -182,6 +205,9 @@ pub fn encode_request(request_id: u32, command: &KernelCommand) -> Result<Vec<u8
     let opcode: u32 = match command {
         KernelCommand::AbiVersion => 0,
         KernelCommand::Capabilities => 12,
+        KernelCommand::SweepBegin { .. } => 13,
+        KernelCommand::SweepChunk { .. } => 14,
+        KernelCommand::SweepCommit { .. } => 15,
         KernelCommand::CopyTransform { .. } => 17,
         KernelCommand::CreateSession => 1,
         KernelCommand::DestroySession { .. } => 2,
@@ -207,6 +233,41 @@ fn encode_arguments(command: &KernelCommand, out: &mut Vec<u8>) -> Result<(), Pr
     use KernelCommand::*;
     match command {
         AbiVersion | Capabilities | CreateSession => {}
+        SweepBegin {
+            session,
+            format,
+            length,
+            loops,
+            segments,
+        } => {
+            out.extend(session.to_le_bytes());
+            for value in [format, length, loops, segments] {
+                out.extend(value.to_le_bytes());
+            }
+        }
+        SweepChunk {
+            session,
+            upload,
+            offset,
+            bytes,
+        } => {
+            let length = u32::try_from(bytes.len()).map_err(|_| ProtocolError::PayloadSize)?;
+            if bytes.is_empty()
+                || bytes.len() > MAX_SWEEP_CHUNK_BYTES
+                || offset.checked_add(length).is_none()
+            {
+                return Err(ProtocolError::PayloadSize);
+            }
+            out.extend(session.to_le_bytes());
+            out.extend(upload.to_le_bytes());
+            out.extend(offset.to_le_bytes());
+            out.extend(length.to_le_bytes());
+            out.extend(bytes);
+        }
+        SweepCommit { session, upload } => {
+            out.extend(session.to_le_bytes());
+            out.extend(upload.to_le_bytes());
+        }
         CopyTransform {
             session,
             solid,

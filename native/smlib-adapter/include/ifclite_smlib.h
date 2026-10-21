@@ -85,10 +85,37 @@ ifclite_smlib_status ifclite_smlib_mesh_copy(ifclite_smlib_session session,
     ifclite_smlib_handle mesh, uint32_t stream, uint32_t offset, uint32_t count,
     void* out, uint32_t capacity_bytes);
 /* Additive extension negotiation, independent of unchanged ABI/protocol v1.
+ * Bit 0 (numeric 1): staged sweep recipe format 1 (ordered planar region).
+ * Bit 1 (numeric 2): staged format 2 capped open rational-path solid disk.
  * Bit 3 (numeric 8): copied rigid transform. Capability indicates
  * implementation, never execution qualification. */
+#define IFCLITE_SMLIB_CAPABILITY_SWEEP_REGION 1u
+#define IFCLITE_SMLIB_CAPABILITY_SWEEP_DISK 2u
 #define IFCLITE_SMLIB_CAPABILITY_RIGID_COPY 8u
 uint32_t ifclite_smlib_capabilities(void);
+/* Staged authored recipes, local metres. One upload per session; at most
+ * 1 MiB, 8192 curves and 128 loops.
+ * Format 1 LE: u32 format,loops,segments,reserved; f64 unit direction XYZ,depth;
+ * per loop u32 role (0 outer first, 1 inner thereafter),count; per curve u32
+ * kind,reserved and 12 f64. Line(1): start XYZ,end XYZ,6 zeros. Circle(2):
+ * centre XYZ,normal XYZ,x-axis XYZ,radius,start radians,signed sweep (+/-2pi).
+ * Arc(3): same fields with a partial signed interval. XY profiles; normal +/-Z,
+ * unit XY x-axis. Multiple loops require outer CCW, holes CW.
+ * Format 2 LE: u32 2,1,1,0; f64 radius,inner radius (0); u32 kind 4,0,degree,
+ * control count,unique knot count,0; f64 trim start,end; per control f64 XYZ,
+ * weight; per unique knot f64 knot,u32 multiplicity,u32 0. Open paths only.
+ * Begin declares exact size/counts. Chunks are sequential and <=3840 bytes.
+ * An invalid chunk discards the transaction. Each matching commit with
+ * non-null output consumes it, including incomplete/failed commits; null
+ * output leaves the upload active. Abort/session destroy discard incomplete
+ * input. New solids publish only after manifold/positive-volume checks. */
+ifclite_smlib_status ifclite_smlib_sweep_begin(uint64_t session, uint32_t format,
+    uint32_t length, uint32_t loops, uint32_t segments, uint64_t* out);
+ifclite_smlib_status ifclite_smlib_sweep_chunk(uint64_t session, uint64_t upload,
+    uint32_t offset, const uint8_t* bytes, uint32_t length);
+ifclite_smlib_status ifclite_smlib_sweep_abort(uint64_t session, uint64_t upload);
+ifclite_smlib_status ifclite_smlib_sweep_commit(uint64_t session, uint64_t upload,
+    ifclite_smlib_handle* out);
 /* Returns required bytes INCLUDING NUL. Copies a terminated, possibly truncated
  * message when capacity > 0 and buffer != NULL. Buffer may be NULL for sizing. */
 uint32_t ifclite_smlib_error_copy(char* buffer, uint32_t capacity);

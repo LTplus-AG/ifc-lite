@@ -165,3 +165,64 @@ fn rigid_copy_is_additive_opcode_17_and_preserves_matrix_bits() {
         assert_eq!(&bytes[36 + 8 * i..44 + 8 * i], &value.to_le_bytes());
     }
 }
+
+#[test]
+fn staged_sweep_chunks_are_additive_opcodes_and_bound_their_frame() {
+    let session = 0xfedc_ba98_7654_3210;
+    let bytes = encode_request(
+        99,
+        &KernelCommand::SweepChunk {
+            session,
+            upload: 123,
+            offset: 3840,
+            bytes: vec![17; MAX_SWEEP_CHUNK_BYTES],
+        },
+    )
+    .unwrap();
+    // A full chunk frame stays inside the unchanged v1 request bound.
+    assert_eq!(bytes.len(), 3876);
+    assert!(bytes.len() <= MAX_REQUEST_BYTES);
+    assert_eq!(&bytes[..4], &VERSION.to_le_bytes());
+    assert_eq!(&bytes[8..12], &14u32.to_le_bytes());
+    assert_eq!(&bytes[12..20], &session.to_le_bytes());
+    assert_eq!(&bytes[20..28], &123u64.to_le_bytes());
+    assert_eq!(&bytes[28..32], &3840u32.to_le_bytes());
+    assert_eq!(&bytes[32..36], &3840u32.to_le_bytes());
+    assert_eq!(&bytes[36..], vec![17; MAX_SWEEP_CHUNK_BYTES]);
+    for (offset, chunk) in [
+        (u32::MAX, vec![1]),
+        (0, vec![]),
+        (0, vec![0; MAX_SWEEP_CHUNK_BYTES + 1]),
+    ] {
+        assert_eq!(
+            encode_request(
+                1,
+                &KernelCommand::SweepChunk {
+                    session,
+                    upload: 123,
+                    offset,
+                    bytes: chunk
+                }
+            ),
+            Err(ProtocolError::PayloadSize)
+        );
+    }
+    let begin = encode_request(
+        2,
+        &KernelCommand::SweepBegin {
+            session,
+            format: 2,
+            length: 168,
+            loops: 1,
+            segments: 1,
+        },
+    )
+    .unwrap();
+    assert_eq!(&begin[8..12], &13u32.to_le_bytes());
+    assert_eq!(begin.len(), 12 + 8 + 16);
+    assert_eq!(&begin[20..24], &2u32.to_le_bytes());
+    assert_eq!(&begin[24..28], &168u32.to_le_bytes());
+    let consume = encode_request(3, &KernelCommand::SweepCommit { session, upload: 9 }).unwrap();
+    assert_eq!(&consume[8..12], &15u32.to_le_bytes());
+    assert_eq!(&consume[20..], &9u64.to_le_bytes());
+}

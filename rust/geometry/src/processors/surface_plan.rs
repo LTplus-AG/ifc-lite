@@ -2,7 +2,7 @@
 //! Owned curve samples, f64 placement/extrusion and RTC for an open swept strip.
 //! Lengths remain in file units and f64 work precedes output narrowing. This
 //! construction is an open surface, not a solid boolean operand.
-use crate::processors::{helpers::get_direction_by_id, SurfaceOfLinearExtrusionProcessor};
+use crate::processors::SurfaceOfLinearExtrusionProcessor;
 use crate::{math::tol, Error, Mesh, Point2, Point3, Result, Vector3};
 use ifc_lite_core::{slot, DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
@@ -36,7 +36,7 @@ pub(super) fn lower(
             Error::geometry("SurfaceOfLinearExtrusion missing ExtrudedDirection".to_string())
         })?;
     let direction = match direction_attr.as_entity_ref() {
-        Some(dir_id) => get_direction_by_id(dir_id, decoder)?,
+        Some(dir_id) => Vector3::from(decoder.direction3(dir_id)?),
         None => Vector3::new(0.0, 0.0, 1.0), // Default to Z-up
     };
     // `IfcPositiveLengthMeasure`: zero or negative is refused, not meshed

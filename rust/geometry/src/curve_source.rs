@@ -211,7 +211,7 @@ pub(crate) fn circle_basis(
         .filter(|r| r.is_finite() && *r > 0.0)
         .ok_or_else(|| invalid("Circle has invalid Radius"))?;
     let (normal, x, y) = if placement.ifc_type == IfcType::IfcAxis2Placement3D {
-        let frame = crate::transform::parse_axis2_placement_3d(&placement, decoder)?;
+        let frame = crate::placement::Axis2Placement::read_3d(&placement, decoder)?.matrix();
         (
             [frame[(0, 2)], frame[(1, 2)], frame[(2, 2)]],
             [frame[(0, 0)], frame[(1, 0)], frame[(2, 0)]],

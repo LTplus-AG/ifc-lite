@@ -42,7 +42,7 @@
 //! push `transform.rs` (513 lines) past its 525-line ratchet budget.
 
 use ifc_lite_core::EntityDecoder;
-use ifc_lite_geometry::parse_axis2_placement_3d;
+use ifc_lite_geometry::placement::Axis2Placement;
 
 #[test]
 fn a_rotated_placement_does_not_rotate_its_own_location() {
@@ -57,7 +57,7 @@ fn a_rotated_placement_does_not_rotate_its_own_location() {
     let mut decoder = EntityDecoder::new(content);
     let placement = decoder.decode_by_id(4).unwrap();
 
-    let m = parse_axis2_placement_3d(&placement, &mut decoder).unwrap();
+    let m = Axis2Placement::read_3d(&placement, &mut decoder).unwrap().matrix();
 
     // Sanity: the rotation really is non-trivial (local X -> world +Y) ...
     assert!((m[(0, 0)] - 0.0).abs() < 1e-9, "m00 {}", m[(0, 0)]);

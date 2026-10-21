@@ -22,7 +22,7 @@ enum State<'a> {
 }
 
 pub(super) enum CacheReply {
-    Begin(CacheAdmission),
+    Begin(Result<CacheAdmission>),
     Item(ItemStep),
     Hash(Mesh, Option<u128>),
 }
@@ -72,15 +72,19 @@ impl<'a> CacheControl<'a> {
 
     pub(super) fn accept(&mut self, reply: CacheReply, router: &GeometryRouter) {
         self.state = match (std::mem::replace(&mut self.state, State::Taken), reply) {
-            (State::Begin, CacheReply::Begin(CacheAdmission::Hit(mesh))) => State::Complete(Ok(mesh)),
-            (State::Begin, CacheReply::Begin(CacheAdmission::Miss(context))) => {
+            (State::Begin, CacheReply::Begin(Ok(CacheAdmission::Hit(mesh)))) => State::Complete(Ok(mesh)),
+            (State::Begin, CacheReply::Begin(Err(error))) => State::Complete(Err(error)),
+            (State::Begin, CacheReply::Begin(Ok(CacheAdmission::Miss(context)))) => {
                 State::Child(context, ItemControl::new(self.item, self.offset))
             }
             (State::Child(context, mut item), CacheReply::Item(step)) => {
                 item.accept(step, router);
                 match item.take_result() {
                     None => State::Child(context, item),
-                    Some(Ok(mesh)) => State::Hash(context, router.accept_local_item_cache(mesh)),
+                    Some(Ok(mesh)) => match router.accept_local_item_cache(mesh) {
+                        Ok(mesh) => State::Hash(context, mesh),
+                        Err(error) => State::Complete(Err(error)),
+                    },
                     Some(Err(error)) => State::Complete(Err(error)),
                 }
             }

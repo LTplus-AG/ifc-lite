@@ -76,6 +76,10 @@ Writer dispatch(Reader& reader) {
             const auto solid = reader.handle(); reader.end(); uint32_t value = 0;
             status = ifclite_smlib_manifold(session,solid,&value); payload.u32(value); break;
         }
+        case 19: {
+            const auto solid = reader.handle(); reader.end(); uint32_t value = 0;
+            status = ifclite_smlib_is_empty(session,solid,&value); payload.u32(value); break;
+        }
         case 8: {
             const auto solid = reader.handle(); reader.end();
             status = ifclite_smlib_release(session,solid); break;

@@ -8,6 +8,7 @@
 #include <limits>
 extern "C" uint32_t header_works_in_c(void);
 void run_mesh_tests();
+void run_empty_tests();
 void run_context_metadata_tests();
 namespace {
 void expect(bool value, const char* label) {
@@ -26,6 +27,8 @@ void near(double actual, double expected) {
 }
 int main() try {
     run_mesh_tests();
+    std::fprintf(stderr,"owned boundary BEGIN semantic empty outcomes\n");
+    run_empty_tests();
     std::fprintf(stderr,"owned boundary BEGIN legacy C ABI transactions\n");
     expect(header_works_in_c() == 1, "version from pure C translation unit");
     uint64_t session, other;

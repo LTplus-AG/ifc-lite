@@ -57,6 +57,17 @@ with subprocess.Popen([worker], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
     vertices, triangles, faces, boundary, spine, failed = struct.unpack("<6I", info)
     assert status == 0 and vertices and triangles and faces == 6
     assert boundary == spine == failed == 0
+    # Opcode 19 classifies the actual solid; a mesh handle is no solid.
+    status, caps = call(12)
+    assert status == 0 and struct.unpack("<II", caps)[0] == 1 and struct.unpack("<II", caps)[1] & 32
+    assert call(19, session + solid) == (0, struct.pack("<I", 0))
+    assert call(19, session + mesh)[0] == 3
+    status, empty = call(5, session + solid + solid + struct.pack("<I", 3))
+    assert status == 0 and call(19, session + empty) == (0, struct.pack("<I", 1))
+    status, empty_mesh = call(9, session + empty + struct.pack("<dd", 0.001, 5))
+    assert status == 0 and call(10, session + empty_mesh) == (0, bytes(24))
+    assert call(8, session + empty_mesh) == (0, b"") and call(8, session + empty) == (0, b"")
+    assert call(19, session + empty)[0] == 3
     status, positions = call(11, session + mesh + struct.pack("<3I", 1, 0, vertices*3))
     assert status == 0 and len(positions) == vertices*3*8
     status, error = call(11, session + mesh + struct.pack("<3I", 1, 0, 481))

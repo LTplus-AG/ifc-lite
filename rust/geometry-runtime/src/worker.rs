@@ -16,6 +16,9 @@ pub use error::WorkerError;
 #[path = "worker_mesh.rs"]
 mod mesh;
 pub use mesh::{MeshLimits, TessellatedMesh};
+#[path = "worker_empty.rs"]
+mod empty;
+pub use empty::NumericalOutcome;
 #[path = "worker_handles.rs"]
 mod handles;
 #[path = "worker_upload.rs"]
@@ -252,6 +255,15 @@ impl SmlibWorker {
             column_major,
         })?;
         self.handle(bytes)
+    }
+
+    /// Additive adapter extension bits. They name implementations, never
+    /// same-incarnation numerical qualification.
+    fn capabilities(&mut self) -> Result<u32, WorkerError> {
+        match self.call(KernelCommand::Capabilities)?.as_slice() {
+            [1, 0, 0, 0, a, b, c, d] => Ok(u32::from_le_bytes([*a, *b, *c, *d])),
+            _ => Err(self.poison("invalid capability response")),
+        }
     }
 
     fn call(&mut self, command: KernelCommand) -> Result<Vec<u8>, WorkerError> {

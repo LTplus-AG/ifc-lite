@@ -4,6 +4,7 @@
 #include "failure.hpp"
 #include "rigid.hpp"
 #include "copy.hpp"
+#include "empty.hpp"
 #include "sweep.hpp"
 #include <SmApiBrep.h>
 #include <SmApiGeneral.h>
@@ -239,6 +240,13 @@ int32_t ifclite_smlib_manifold(uint64_t session, ifclite_smlib_handle handle, ui
         *out = manifold ? 1 : 0;
     });
 }
+int32_t ifclite_smlib_is_empty(uint64_t session, ifclite_smlib_handle handle, uint32_t* out) {
+    return boundary([&] {
+        require(out != nullptr, IFCLITE_SMLIB_INVALID_ARGUMENT, "null empty query output");
+        *out = 0;
+        *out = semantically_empty_brep(solid(session, handle)) ? 1u : 0u;
+    });
+}
 int32_t ifclite_smlib_release(uint64_t session, ifclite_smlib_handle handle) {
     return boundary([&] {
         Slot& slot = lookup(session, handle);
@@ -295,7 +303,7 @@ int32_t ifclite_smlib_transform(uint64_t session, ifclite_smlib_handle handle,
 }
 uint32_t ifclite_smlib_capabilities(void) {
     return IFCLITE_SMLIB_CAPABILITY_SWEEP_REGION | IFCLITE_SMLIB_CAPABILITY_SWEEP_DISK |
-        IFCLITE_SMLIB_CAPABILITY_RIGID_COPY;
+        IFCLITE_SMLIB_CAPABILITY_RIGID_COPY | IFCLITE_SMLIB_CAPABILITY_SEMANTIC_EMPTY;
 }
 int32_t ifclite_smlib_sweep_begin(uint64_t session, uint32_t format,
     uint32_t length, uint32_t loops, uint32_t segments, uint64_t* out) {

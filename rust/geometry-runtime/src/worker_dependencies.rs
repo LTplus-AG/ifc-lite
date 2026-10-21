@@ -3,7 +3,8 @@
 //! result owns its solid through its own managed lease, independently of the
 //! receipts it was built from.
 use super::{
-    rigid, BrepHandle, MeshLimits, RetainedRealization, SmlibWorker, TessellatedMesh, WorkerError,
+    rigid, BrepHandle, MeshLimits, NumericalOutcome, RetainedRealization, SmlibWorker,
+    TessellatedMesh, WorkerError,
 };
 use crate::protocol::BooleanOperation;
 use ifc_lite_geometry::document::RetainedRequest;
@@ -61,7 +62,15 @@ impl RetainedDependencyResult {
     pub fn solid(&self) -> BrepHandle {
         self.solid
     }
-    /// Display mesh in the result's evaluation frame.
+    /// Sealed from the actual result solid. An empty result is a valid,
+    /// independently owned operand of later Booleans, not a failure.
+    pub fn outcome(&self) -> NumericalOutcome {
+        self.mesh.outcome()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.mesh.is_empty()
+    }
+    /// Display mesh in the result's evaluation frame; no buffers when empty.
     pub fn mesh(&self) -> &TessellatedMesh {
         &self.mesh
     }
@@ -125,6 +134,7 @@ impl SmlibWorker {
     /// Evaluate two sealed operands. The left operand's frame is the common
     /// local frame, so world coordinates never enter the SDK; the right operand
     /// is copied into it and the copy is released. Both inputs stay unchanged.
+    /// A certified-empty result is sealed as [`NumericalOutcome::Empty`].
     pub fn evaluate_retained_boolean(
         &mut self,
         left: RetainedDependency<'_>,

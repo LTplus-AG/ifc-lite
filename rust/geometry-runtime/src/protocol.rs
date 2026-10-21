@@ -138,6 +138,12 @@ pub enum KernelCommand {
         session: u64,
         solid: WireHandle,
     },
+    /// Semantic emptiness of the actual retained solid (opcode 19, capability
+    /// bit 32): boundary topology and known-void regions, not mesh or volume.
+    IsEmpty {
+        session: u64,
+        solid: WireHandle,
+    },
     Release {
         session: u64,
         object: WireHandle,
@@ -216,6 +222,7 @@ pub fn encode_request(request_id: u32, command: &KernelCommand) -> Result<Vec<u8
         KernelCommand::Boolean { .. } => 5,
         KernelCommand::Volume { .. } => 6,
         KernelCommand::Manifold { .. } => 7,
+        KernelCommand::IsEmpty { .. } => 19,
         KernelCommand::Release { .. } => 8,
         KernelCommand::Tessellate { .. } => 9,
         KernelCommand::MeshInfo { .. } => 10,
@@ -324,7 +331,9 @@ fn encode_arguments(command: &KernelCommand, out: &mut Vec<u8>) -> Result<(), Pr
             write_solid(out, *session, *solid);
             out.extend(relative_accuracy.to_le_bytes());
         }
-        Manifold { session, solid } => write_solid(out, *session, *solid),
+        Manifold { session, solid } | IsEmpty { session, solid } => {
+            write_solid(out, *session, *solid)
+        }
         Release { session, object } => write_solid(out, *session, *object),
         Tessellate {
             session,

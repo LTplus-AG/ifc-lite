@@ -68,6 +68,14 @@ ifclite_smlib_status ifclite_smlib_volume(ifclite_smlib_session session,
     ifclite_smlib_handle solid, double integration_tolerance, double* out);
 ifclite_smlib_status ifclite_smlib_manifold(ifclite_smlib_session session,
     ifclite_smlib_handle solid, uint32_t* out);
+/* Semantic emptiness of the actual retained solid: no boundary or lower-
+ * dimensional topology and only known-void regions (a material or UNSURE
+ * infinite region is full space, not empty). Not a mesh or volume heuristic.
+ * Writes exactly 0 or 1; the solid is not consumed. Strict tessellation of a
+ * solid certified empty yields an owned mesh whose six counts are all zero.
+ * Additive opcode 19, capability bit 5 (numeric 32). */
+ifclite_smlib_status ifclite_smlib_is_empty(ifclite_smlib_session session,
+    ifclite_smlib_handle solid, uint32_t* out);
 ifclite_smlib_status ifclite_smlib_release(ifclite_smlib_session session,
     ifclite_smlib_handle solid);
 /* Strict tessellation. Positive chord in model units and angle in (0,180].
@@ -87,11 +95,13 @@ ifclite_smlib_status ifclite_smlib_mesh_copy(ifclite_smlib_session session,
 /* Additive extension negotiation, independent of unchanged ABI/protocol v1.
  * Bit 0 (numeric 1): staged sweep recipe format 1 (ordered planar region).
  * Bit 1 (numeric 2): staged format 2 capped open rational-path solid disk.
- * Bit 3 (numeric 8): copied rigid transform. Capability indicates
+ * Bit 3 (numeric 8): copied rigid transform.
+ * Bit 5 (numeric 32): semantic empty query (opcode 19). Capability indicates
  * implementation, never execution qualification. */
 #define IFCLITE_SMLIB_CAPABILITY_SWEEP_REGION 1u
 #define IFCLITE_SMLIB_CAPABILITY_SWEEP_DISK 2u
 #define IFCLITE_SMLIB_CAPABILITY_RIGID_COPY 8u
+#define IFCLITE_SMLIB_CAPABILITY_SEMANTIC_EMPTY 32u
 uint32_t ifclite_smlib_capabilities(void);
 /* Staged authored recipes, local metres. One upload per session; at most
  * 1 MiB, 8192 curves and 128 loops.

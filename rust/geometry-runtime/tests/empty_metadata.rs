@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Malformed or uncertified empty metadata refuses and retires the process.
 //! A fault peer is never SDK evidence; `sealed_empty.rs` is the actual proof.
-#![cfg(all(unix, not(target_arch = "wasm32")))]
+#![cfg(unix)]
 use ifc_lite_geometry_runtime::{MeshLimits, NumericalOutcome, SmlibWorker, WorkerError};
 use std::path::Path;
 

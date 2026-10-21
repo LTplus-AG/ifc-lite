@@ -876,11 +876,18 @@ jobs:
           E2E_GPU_STRICT: '0'
         run: |
           oracle_args=(--base origin/main --ci --json)
+          # #7714: whole-file inversion removes the new module/test wiring,
+          # collecting no certificate tests. Keep every API and test; disable
+          # only cross-decoder cache reuse. Real concurrent success/decline
+          # witnesses must observe repeated whole-source certification.
+          # Once this module is on main, whole-change inversion resumes.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/decoder/precision_certificate.rs | grep -Fxq 'rust/core/src/decoder/precision_certificate.rs'; then
+            oracle_args+=(--mutation tests/evidence/planar-carrier-7714/source-cache.oracle.patch)
           # #6729: keep the newly introduced GPU pass importable and remove
           # only its geometric visibility constraint. The paired projection
           # witness must then assert the original wrong foreground ownership.
           # Once the module is on main, ordinary whole-change reverts resume.
-          if git diff --name-only --diff-filter=A origin/main...HEAD -- packages/renderer/src/opaque-visibility-pass.ts | grep -Fxq 'packages/renderer/src/opaque-visibility-pass.ts'; then
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- packages/renderer/src/opaque-visibility-pass.ts | grep -Fxq 'packages/renderer/src/opaque-visibility-pass.ts'; then
             oracle_args+=(--mutation tests/evidence/reporter-6729/visibility.oracle.patch)
           # #7974: whole-change revert deletes the new bounds helper imported
           # by the changed tests, so collection fails before an assertion runs.
@@ -1473,8 +1480,40 @@ jobs:
           # whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/inner.rs | grep -Fxq 'rust/geometry/src/program/inner.rs'; then
             oracle_args+=(--mutation tests/evidence/item-cache-controller-d2/behaviour.oracle.patch)
+          # #7955 F2b: retained extrusion requests add document/retained.rs and
+          # processing retained_requests.rs, which their tests name, so a
+          # whole-change revert cannot compile them (INCONCLUSIVE). Keep the
+          # types and break ONLY the behaviour: any worker incarnation and
+          # stale revisions are accepted, completion frames go unchecked, every
+          # display claim is admitted, inner loops keep authored winding, depth
+          # skips unit scaling, boolean operands and non-rigid placements are
+          # admitted (RED). Checked before F2a so the stacked branch uses its
+          # own patch. Once rust/geometry/src/document/retained.rs is on main,
+          # ordinary whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/document/retained.rs | grep -Fxq 'rust/geometry/src/document/retained.rs'; then
+            oracle_args+=(--mutation tests/evidence/retained-requests-f2b/behaviour.oracle.patch)
+          # #7955 F2a: the geometry document adds document/mod.rs and processing
+          # retained_geometry.rs, which their tests name, so a whole-change
+          # revert cannot compile them (INCONCLUSIVE). Keep the types and break
+          # ONLY the behaviour: foreign handles resolve, framed origins and
+          # singular transforms are admitted, definitions stop advancing the
+          # revision and instances drop the template origin (RED). Once
+          # rust/geometry/src/document/mod.rs is on main, ordinary whole-change
+          # revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/document/mod.rs | grep -Fxq 'rust/geometry/src/document/mod.rs'; then
+            oracle_args+=(--mutation tests/evidence/geometry-document-f2a/behaviour.oracle.patch)
+          # #7955 F1b: adds analytic/owned_directrix.rs, whose types the changed
+          # disk and definitions tests import. Keep it and never open the swept-
+          # disk capture: the directrix source and owned rational must turn RED.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/analytic/owned_directrix.rs | grep -Fxq 'rust/geometry/src/analytic/owned_directrix.rs'; then
+            oracle_args+=(--mutation tests/evidence/analytic-directrix-source-7955/behaviour.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/decoder/precision_certificate.rs | grep -Fxq 'rust/core/src/decoder/precision_certificate.rs'; then
+            # The oracle restored the source; also execute the positive side
+            # after mutation rather than treating clean status as a test run.
+            cargo test --locked -p ifc-lite-core --lib decoder::precision_certificate::tests::
+          fi
           # #7512: observe cleanup independently of scoped admission/schema.
           # Keep the admitted pin valid, then reverse ONLY cleanup deferral:
           # the paused real transfer's object must be deleted and turn RED.

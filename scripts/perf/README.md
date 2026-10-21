@@ -43,6 +43,7 @@ slice by the phases it changes and by output identity, not by a ±2% move in an 
 | C1 #7995 source-free construction graph | identical | BWK +3.2% (±2), Holter −3.6% (±13), ISSUE_098 +0.5% (±11), ISSUE_068 +2.7% (±16), schependomlaan +1.0% (±4), ISSUE_129 +1.0% (±7) | neutral: parse +3–4% on four models is layout jitter (C1 touches no parser code); deterministic FZK instruction counts vs main 92672d1a0a: parse +0.02%, geometry −0.004%, total +0.001%; synthetic 300-wall BrepWithVoids-cutter fixture (480 void subtracts) geometry +0.1% (±5) |
 | C5a #7991 opening telemetry transaction | identical | BWK −0.3% (±3), Holter −0.3% (±16), ISSUE_098 −2.1% (±13), ISSUE_068 −0.8% (±19), schependomlaan +0.6% (±7), ISSUE_129 −1.2% (±5) | neutral: the per-event thread-local borrow on the opening paths is below noise on all six models |
 | F1a #7992 analytic original-source capture | identical (6 models; meshing path untouched) | meshing A/B within noise; analytic export (`extract_extrusion_definitions` / `extract_analytic_quantity_sources`, 2×7 interleaved): unconditional capture measured +3% to +24%, so capture is now opt-in (`analytic::with_source_capture`); default path +0.7% to +1.1% on every model (IQR 0.4–2.4%) | neutral on the default path after opt-in; a consistent ~1% residual on analytic export remains below the 2% bar |
+| F1b swept-disk directrix source | identical (output SHA-256 on 6 models) | analytic export default path (definitions / descriptions / quantity sources, 7 interleaved rounds vs 78d7bd9cf5): worst +0.27%, most −0.2% to −2.3% (IQR 0.3–3.9%) | neutral: capture is opt-in (`with_source_capture`); the default walk records nothing |
 
 ## Exact rectangular opening union (#7941)
 
@@ -4332,6 +4333,34 @@ and reads finalized sidecars at their actual case paths. Lesson: verify final
 checker contracts and receipt discovery against retained real captures before
 spending another capture window. This integration fix grants no timing verdict.
 
+
+## Engine transfer ceiling acceptance (#8000, #8003)
+
+The maintainer accepted the accumulated engine transfer cost measured on main
+`141285f828`. The [hosted measurement](https://github.com/LTplus-AG/ifc-lite/actions/runs/39490083745)
+supplies the value and exact timestamp in the bundle ratchet provenance. Its
+retained `perf-ratchet-measured/bundle.json` artifact has SHA-256
+`5376ae3b2ef9af8fdebc7832419abf93b2269a1aeb21b600cfe7f0b18712723a`.
+The observed engine transfer measurement was 2,365,134 bytes; the maintainer
+set the ceiling to that same value, retaining the existing relative tolerance.
+These identify the accepted measurement rather than a performance claim. The
+earlier execution-ownership slice (#7956) was already incorporated in the old
+ceiling; this decision does not count that growth again. Only the engine ceiling
+was reset, with its relative tolerance unchanged. No speed improvement is claimed.
+
+The accepted code supports bounded resource accounts, source-free construction,
+transactional opening diagnostics, explicit CSG continuations and canonical
+analytic source capture. Browser extrusion-definition bindings consume shared
+analytic extraction, but the new opt-in original-source capture has no production
+caller at the measured commit. Individual compressed-byte contributions have
+not been isolated.
+
+Runtime opt-in is not evidence of a measured linked-byte reduction. Excluding
+capture-only code from WASM remains proposed, unimplemented and unmeasured;
+no proven main-byte reduction is claimed here. Accept this measured cost
+explicitly, retain the current build policy and automatic lowering, and require
+a new measurement and maintainer decision for any later increase. Source-matched
+performance acceptance and transfer-size acceptance remain separate decisions.
 
 ## Standalone placement refusal reconciliation (#7877)
 

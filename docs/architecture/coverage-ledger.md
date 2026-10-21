@@ -681,7 +681,7 @@ Columns:
 | IfcVirtualGridIntersection | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcVolumeMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcVolumetricFlowRateMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcWall | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc |
+| IfcWall | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/issue_7714_soffice_carrier.ifc |
 | IfcWallStandardCase | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_098_wall_V5C.ifc |
 | IfcWallType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcWarpingConstantMeasure | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |

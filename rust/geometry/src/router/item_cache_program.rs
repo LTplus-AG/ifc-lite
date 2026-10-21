@@ -40,7 +40,10 @@ impl GeometryRouter {
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
         offset_meters: (f64, f64, f64),
-    ) -> CacheAdmission {
+    ) -> crate::Result<CacheAdmission> {
+        // The shared content-dedup cache has no admission owner: bounded
+        // execution refuses it before any lookup.
+        self.check_item_dedup_coverage()?;
         let dedup_key = self.item_dedup_key_in_frame(item, decoder, offset_meters);
         if let (Some(key), Some(cache)) = (dedup_key, self.item_dedup_cache.as_ref()) {
             let hit = cache
@@ -51,7 +54,7 @@ impl GeometryRouter {
                 .cloned();
             if let Some(entry) = hit {
                 let (mesh, rep) = (entry.0.clone(), entry.1);
-                return CacheAdmission::Hit(stamp_direct_instance(mesh, rep));
+                return Ok(CacheAdmission::Hit(stamp_direct_instance(mesh, rep)));
             }
         }
 
@@ -67,16 +70,35 @@ impl GeometryRouter {
                 .get(&item.ifc_type, self.schema)
                 .map(|p| p.bool_failure_count())
         });
-        CacheAdmission::Miss(CacheContext { dedup_key, failure_mark })
+        Ok(CacheAdmission::Miss(CacheContext { dedup_key, failure_mark }))
     }
 
     /// Router-local content-hash dedup of a freshly meshed item: buildings with
     /// repeated floors have identical geometry.
-    pub(crate) fn accept_local_item_cache(&self, mesh: Mesh) -> Mesh {
+    ///
+    /// Accounted execution admits the moved backing (spare Vec capacity
+    /// included) before publication and keeps the publishing account alive with
+    /// the router, so the residency outlives the request; every occurrence's
+    /// returned copy is charged, hit or miss.
+    pub(crate) fn accept_local_item_cache(&self, mesh: Mesh) -> crate::Result<Mesh> {
         if mesh.positions.is_empty() {
-            return mesh;
+            return Ok(mesh);
         }
-        (*self.get_or_cache_by_hash(mesh)).clone()
+        if !crate::resource::is_active() {
+            return Ok((*self.get_or_cache_by_hash(mesh)).clone());
+        }
+        let bytes = crate::resource::mesh::resident_bytes(&mesh)
+            .map_err(|_| crate::resource::overflow())?;
+        crate::resource::charge(crate::resource::Cost {
+            live_bytes: bytes,
+            ..Default::default()
+        })?
+        .retain();
+        self.retain_local_resource_account()?;
+        let cached = self.get_or_cache_by_hash(mesh);
+        let (mesh, permit) = crate::resource::mesh::clone_mesh(&cached)?;
+        permit.retain();
+        Ok(mesh)
     }
 
     /// Publish a freshly meshed item under its structural hash and stamp the

@@ -11,6 +11,7 @@ use super::frame_parts::SourceParts;
 use super::GeometryRouter;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use std::sync::Arc;
+use crate::{Error, Result};
 
 impl GeometryRouter {
     /// #1623 Phase 2 eligibility: if this `MappedRepresentation` resolves to exactly
@@ -59,18 +60,18 @@ impl GeometryRouter {
         mapped_repr: &DecodedEntity,
         source_id: u32,
         decoder: &mut EntityDecoder,
-    ) {
+    ) -> Result<()> {
         let Some(shared) = self.shared_mapped_item_cache.as_ref() else {
             // Without a shared registry there is nothing to recover from; callers
             // that arm output instancing always enable the shared cache too.
-            return;
+            return Ok(());
         };
         if shared
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .contains_key(&source_id)
         {
-            return;
+            return Ok(());
         }
         // Same two rules the other three walks apply, from one place: a non-Body
         // source's dropped items are not a content loss, and this source's drops
@@ -95,7 +96,7 @@ impl GeometryRouter {
                         // record nothing — losing its drops rather than duplicating
                         // them. Releasing the claim belongs with whatever makes this
                         // branch reachable.
-                        return;
+                        return Ok(());
                     }
                     // A missing processor or a failing one leaves the mesh short of
                     // the source's real geometry, and the insert below publishes
@@ -107,23 +108,32 @@ impl GeometryRouter {
                     // is the one place instancing removed. `mapped_item.rs` writes
                     // this same cache entry, so both mesh the item through the one
                     // per-item step (RTC rebase, curve-cap drain; #7690).
-                    self.merge_source_item(&sub_item, decoder, &mut source, "shared-source");
+                    self.merge_source_item(&sub_item, decoder, &mut source, "shared-source")?;
                 }
             }
         }
-        let Ok(mut parts) = source.into_parts() else {
-            return;
+        // A refused merge is a typed terminal, not a skipped registration.
+        let mut parts = match source.into_parts() {
+            Ok(parts) => parts,
+            Err(error @ Error::ProgramStopped(_)) => return Err(error),
+            Err(_) => return Ok(()),
         };
         if parts.len() == 1
             && !parts[0].positions.is_empty()
             && !crate::kernel::budget::tripped()
         {
+            // The moved mesh is published as is: under accounting its merges
+            // were already admitted, so only the cache owner must be retained.
+            if crate::resource::is_active() {
+                self.retain_mapped_cache_account()?;
+            }
             let mesh = parts.pop().unwrap_or_default();
             shared
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .insert(source_id, Arc::new(mesh));
         }
+        Ok(())
     }
 }
 
@@ -152,7 +162,7 @@ mod tests {
         router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache());
 
         let rep = decoder.decode_by_id(9).expect("decode #9");
-        router.ensure_shared_mapped_source(&rep, 100, &mut decoder);
+        router.ensure_shared_mapped_source(&rep, 100, &mut decoder).unwrap();
 
         assert_eq!(
             router.mapped_shared_unique_count(),
@@ -189,7 +199,7 @@ mod tests {
         router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache());
 
         let rep = decoder.decode_by_id(9).expect("decode #9");
-        router.ensure_shared_mapped_source(&rep, 101, &mut decoder);
+        router.ensure_shared_mapped_source(&rep, 101, &mut decoder).unwrap();
 
         let unsupported = router.take_unsupported_items();
         assert!(
@@ -211,7 +221,7 @@ mod tests {
         router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache());
 
         let rep = decoder.decode_by_id(9).expect("decode #9");
-        router.ensure_shared_mapped_source(&rep, 102, &mut decoder);
+        router.ensure_shared_mapped_source(&rep, 102, &mut decoder).unwrap();
 
         let unsupported = router.take_unsupported_items();
         assert_eq!(
@@ -244,7 +254,7 @@ mod tests {
         router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache());
 
         let nested_rep = decoder.decode_by_id(20).expect("decode #20");
-        router.ensure_shared_mapped_source(&nested_rep, 21, &mut decoder);
+        router.ensure_shared_mapped_source(&nested_rep, 21, &mut decoder).unwrap();
         assert_eq!(
             router.mapped_shared_unique_count(),
             0,
@@ -254,7 +264,7 @@ mod tests {
         // Negative half: the inner map's representation `#13` is a single solid,
         // the shape the caller actually reaches here, and it IS registered.
         let flat_rep = decoder.decode_by_id(13).expect("decode #13");
-        router.ensure_shared_mapped_source(&flat_rep, 14, &mut decoder);
+        router.ensure_shared_mapped_source(&flat_rep, 14, &mut decoder).unwrap();
         assert_eq!(router.mapped_shared_unique_count(), 1);
     }
 
@@ -276,7 +286,7 @@ mod tests {
         router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache());
 
         let empty_rep = decoder.decode_by_id(40).expect("decode #40");
-        router.ensure_shared_mapped_source(&empty_rep, 999, &mut decoder);
+        router.ensure_shared_mapped_source(&empty_rep, 999, &mut decoder).unwrap();
         assert_eq!(
             router.mapped_shared_unique_count(),
             0,
@@ -284,7 +294,7 @@ mod tests {
         );
 
         let flat_rep = decoder.decode_by_id(13).expect("decode #13");
-        router.ensure_shared_mapped_source(&flat_rep, 999, &mut decoder);
+        router.ensure_shared_mapped_source(&flat_rep, 999, &mut decoder).unwrap();
         assert_eq!(
             router.mapped_shared_unique_count(),
             1,

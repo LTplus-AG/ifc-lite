@@ -904,6 +904,15 @@ jobs:
           # and timeout. Once source_axes.rs is on main, whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/kernel/plane_weld/source_axes.rs | grep -Fxq 'rust/geometry/src/kernel/plane_weld/source_axes.rs'; then
             oracle_args+=(--mutation docs/architecture/evidence/issue-7292/signed-zero.oracle.patch)
+          # #7955 D1b: cache ownership adds mapped_cache_ownership.rs, which
+          # the tests name, so a whole-change revert cannot compile them
+          # (REVERT-BROKE-BUILD). Keep the module and break ONLY the behaviour:
+          # caches stop retaining the publishing account, coverage refusals
+          # never fire, a source-walk stop becomes an ordinary drop and observe
+          # stops translating typed stops. Once
+          # mapped_cache_ownership.rs is on main, whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/router/mapped_cache_ownership.rs | grep -Fxq 'rust/geometry/src/router/mapped_cache_ownership.rs'; then
+            oracle_args+=(--mutation tests/evidence/d1b-resource-raii-terminal/behaviour.oracle.patch)
           # #7955 D1: the new resource module carries the audited mesh clone and
           # merge admission. Whole-change revert removes the module the tests
           # import, so no assertion runs; this reverses ONLY the cost charged

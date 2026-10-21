@@ -1,0 +1,65 @@
+diff --git b/rust/geometry/src/resource/mod.rs a/rust/geometry/src/resource/mod.rs
+index 7badc2a7bd..7a5e0c82ef 100644
+--- b/rust/geometry/src/resource/mod.rs
++++ a/rust/geometry/src/resource/mod.rs
+@@ -148,6 +148,8 @@ mod tests;
+ /// Translate the typed legacy callback error at the first audited boundary.
+ /// Source faults (including identical diagnostic text) retain ordinary recovery.
+ pub(crate) fn observe<T>(result: crate::Result<T>) -> crate::Result<T> {
++    if let Err(crate::Error::ProgramStopped(error)) = &result { stop(*error); }
++    check_current()?;
+     result
+ }
+ 
+diff --git b/rust/geometry/src/router/caching.rs a/rust/geometry/src/router/caching.rs
+index 48401a3656..d8ccca41b6 100644
+--- b/rust/geometry/src/router/caching.rs
++++ a/rust/geometry/src/router/caching.rs
+@@ -169,6 +169,7 @@ impl GeometryRouter {
+             ..Default::default()
+         })?
+         .retain();
++        self.retain_local_resource_account()?;
+         let cached = self.get_or_cache_by_hash(mesh);
+         let (mesh, permit) = crate::resource::mesh::clone_mesh(&cached)?;
+         permit.retain();
+diff --git b/rust/geometry/src/router/mapped_cache_ownership.rs a/rust/geometry/src/router/mapped_cache_ownership.rs
+index 70fac074f3..fe1ef42b1e 100644
+--- b/rust/geometry/src/router/mapped_cache_ownership.rs
++++ a/rust/geometry/src/router/mapped_cache_ownership.rs
+@@ -63,7 +63,7 @@ fn retain_account(
+     accounts
+         .try_reserve_exact(1)
+         .map_err(|_| resource::allocation_failure())?;
+-    drop(account);
++    accounts.push(account);
+     permit.retain();
+     Ok(())
+ }
+@@ -116,7 +116,7 @@ impl GeometryRouter {
+ 
+     pub(crate) fn check_mapped_cache_coverage(&self) -> Result<(), ProgramStop> {
+         resource::check_current()?;
+-        if false
++        if resource::is_active()
+             && self.shared_mapped_item_cache.is_some()
+             && self.accounted_mapped_cache.is_none()
+         {
+@@ -128,7 +128,7 @@ impl GeometryRouter {
+     /// The shared content-dedup cache stores unaccounted deep copies with no
+     /// admission owner: bounded execution refuses it rather than claim coverage.
+     pub(super) fn check_item_dedup_coverage(&self) -> Result<(), ProgramStop> {
+-        if false && self.item_dedup_cache.is_some() {
++        if self.item_dedup_cache.is_some() && resource::is_active() {
+             return Err(unsupported_coverage());
+         }
+         Ok(())
+@@ -170,7 +170,7 @@ impl GeometryRouter {
+     /// any other item failure stays an ordinary recoverable drop.
+     pub(super) fn recoverable_source_error(error: Error) -> crate::Result<Error> {
+         match crate::resource::observe::<()>(Err(error)) {
+-            Err(stop @ Error::ProgramStopped(_)) => Ok(stop),
++            Err(stop @ Error::ProgramStopped(_)) => Err(stop),
+             Err(error) => Ok(error),
+             Ok(()) => Ok(Error::geometry("source item failed")),
+         }

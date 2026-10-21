@@ -127,8 +127,15 @@ fn issue_7887_later_shape_error_keeps_partial_profiles_but_fails_public_meshes()
     let mut decoder = EntityDecoder::new(&content);
     let router = GeometryRouter::with_units(&content, &mut decoder);
     let wall = decoder.decode_by_id(100).unwrap();
+    // #7887: assert the public variant and payload; Display adds its own prefix.
     let expected = "IfcShapeRepresentation missing Items";
-    assert_eq!(router.process_element_parts(&wall, &mut decoder).unwrap_err().to_string(), expected);
-    assert_eq!(router.process_element_with_submeshes(&wall, &mut decoder).unwrap_err().to_string(), expected);
+    match router.process_element_parts(&wall, &mut decoder).unwrap_err() {
+        crate::Error::GeometryError(message) => assert_eq!(message, expected, "process_element_parts payload"),
+        error => panic!("process_element_parts expected GeometryError, got {error:?}"),
+    }
+    match router.process_element_with_submeshes(&wall, &mut decoder).unwrap_err() {
+        crate::Error::GeometryError(message) => assert_eq!(message, expected, "process_element_with_submeshes payload"),
+        error => panic!("process_element_with_submeshes expected GeometryError, got {error:?}"),
+    }
     assert!(router.take_unsupported_items().is_empty(), "shape errors propagate, not count-and-continue");
 }

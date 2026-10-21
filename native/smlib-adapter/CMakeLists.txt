@@ -39,7 +39,7 @@ target_include_directories(ifclite_smlib PUBLIC include)
 target_link_libraries(ifclite_smlib PRIVATE smlib_api)
 
 add_executable(ifclite_smlib_tests tests/adapter_tests.cpp tests/mesh_tests.cpp
-  tests/context_metadata_tests.cpp tests/c_header.c)
+  tests/empty_tests.cpp tests/context_metadata_tests.cpp tests/c_header.c)
 target_compile_features(ifclite_smlib_tests PRIVATE c_std_11 cxx_std_17)
 target_link_libraries(ifclite_smlib_tests PRIVATE ifclite_smlib smlib_api)
 target_include_directories(ifclite_smlib_tests PRIVATE src)

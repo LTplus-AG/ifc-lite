@@ -30,11 +30,7 @@ impl SmlibWorker {
         {
             return Err(WorkerError::ResourceLimit("sweep declaration"));
         }
-        let capabilities = self.call(KernelCommand::Capabilities)?;
-        let bits = match capabilities.as_slice() {
-            [1, 0, 0, 0, a, b, c, d] => u32::from_le_bytes([*a, *b, *c, *d]),
-            _ => return Err(self.poison("invalid capability response")),
-        };
+        let bits = self.capabilities()?;
         if bits & (1 << (format - 1)) == 0 {
             return Err(WorkerError::Protocol("staged sweep extension unavailable"));
         }

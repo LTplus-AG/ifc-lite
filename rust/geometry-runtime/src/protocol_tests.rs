@@ -226,3 +226,23 @@ fn staged_sweep_chunks_are_additive_opcodes_and_bound_their_frame() {
     assert_eq!(&consume[8..12], &15u32.to_le_bytes());
     assert_eq!(&consume[20..], &9u64.to_le_bytes());
 }
+
+#[test]
+fn semantic_empty_query_is_additive_opcode_19_and_preserves_solid_identity() {
+    let solid = WireHandle {
+        session: 0xfedc_ba98_7654_3210,
+        slot: 77,
+        generation: 19,
+    };
+    let bytes = encode_request(
+        43,
+        &KernelCommand::IsEmpty {
+            session: solid.session,
+            solid,
+        },
+    )
+    .unwrap();
+    assert_eq!(&bytes[8..12], &19u32.to_le_bytes());
+    assert_eq!(&bytes[12..20], &solid.session.to_le_bytes());
+    assert_eq!(&bytes[20..], &solid.to_bytes());
+}

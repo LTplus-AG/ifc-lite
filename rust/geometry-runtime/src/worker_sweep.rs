@@ -99,6 +99,12 @@ impl SmlibWorker {
                 return Err(error);
             }
         };
+        // The adapter publishes sweeps only after manifold/positive-volume
+        // checks: a certified-empty construction is a contract breach.
+        if mesh.is_empty() {
+            self.retire();
+            return Err(WorkerError::Protocol("retained construction sealed empty"));
+        }
         let (source_from_evaluation, evaluation_from_source) = (
             payload.source_from_evaluation,
             payload.evaluation_from_source,

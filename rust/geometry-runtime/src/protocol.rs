@@ -12,6 +12,10 @@ pub enum BooleanOperation {
     Difference,
 }
 
+#[path = "protocol_response.rs"]
+mod response;
+pub use response::{decode_response, KernelResponse, ProtocolError};
+
 pub const VERSION: u32 = 1;
 /// Original request and legacy response frame bound, including the 12-byte header.
 pub const MAX_PAYLOAD_BYTES: usize = 4096;
@@ -138,6 +142,12 @@ pub enum KernelCommand {
         session: u64,
         solid: WireHandle,
     },
+    /// Semantic emptiness of the actual retained solid (opcode 19, capability
+    /// bit 32): boundary topology and known-void regions, not mesh or volume.
+    IsEmpty {
+        session: u64,
+        solid: WireHandle,
+    },
     Release {
         session: u64,
         object: WireHandle,
@@ -161,41 +171,6 @@ pub enum KernelCommand {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProtocolError {
-    PayloadSize,
-    Version,
-    RequestId,
-    InvalidUtf8,
-    MeshChunkSize,
-    ResultSize,
-}
-impl ProtocolError {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::PayloadSize => "invalid kernel payload size",
-            Self::Version => "unsupported kernel protocol version",
-            Self::RequestId => "kernel response request ID mismatch",
-            Self::InvalidUtf8 => "invalid UTF-8 in kernel error",
-            Self::MeshChunkSize => "mesh transfer exceeds scalar chunk limit",
-            Self::ResultSize => "unexpected kernel result size",
-        }
-    }
-}
-impl std::fmt::Display for ProtocolError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-impl std::error::Error for ProtocolError {}
-
-/// A borrowed response; callers copy/consume it before disposing the transport buffer.
-#[derive(Debug, PartialEq, Eq)]
-pub enum KernelResponse<'a> {
-    Success(&'a [u8]),
-    Failure { status: i32, message: &'a str },
-}
-
 /// Encode one bounded payload. IEEE float bits and every u64 token are preserved.
 /// Geometric-domain validation is the executing boundary's responsibility.
 pub fn encode_request(request_id: u32, command: &KernelCommand) -> Result<Vec<u8>, ProtocolError> {
@@ -216,6 +191,7 @@ pub fn encode_request(request_id: u32, command: &KernelCommand) -> Result<Vec<u8
         KernelCommand::Boolean { .. } => 5,
         KernelCommand::Volume { .. } => 6,
         KernelCommand::Manifold { .. } => 7,
+        KernelCommand::IsEmpty { .. } => 19,
         KernelCommand::Release { .. } => 8,
         KernelCommand::Tessellate { .. } => 9,
         KernelCommand::MeshInfo { .. } => 10,
@@ -324,7 +300,9 @@ fn encode_arguments(command: &KernelCommand, out: &mut Vec<u8>) -> Result<(), Pr
             write_solid(out, *session, *solid);
             out.extend(relative_accuracy.to_le_bytes());
         }
-        Manifold { session, solid } => write_solid(out, *session, *solid),
+        Manifold { session, solid } | IsEmpty { session, solid } => {
+            write_solid(out, *session, *solid)
+        }
         Release { session, object } => write_solid(out, *session, *object),
         Tessellate {
             session,
@@ -359,25 +337,6 @@ fn encode_arguments(command: &KernelCommand, out: &mut Vec<u8>) -> Result<(), Pr
 fn write_solid(out: &mut Vec<u8>, session: u64, solid: WireHandle) {
     out.extend(session.to_le_bytes());
     out.extend(solid.to_bytes());
-}
-
-/// Validate response framing fields before any result bytes are trusted.
-pub fn decode_response(request_id: u32, bytes: &[u8]) -> Result<KernelResponse<'_>, ProtocolError> {
-    if !(12..=MAX_RESPONSE_BYTES).contains(&bytes.len()) {
-        return Err(ProtocolError::PayloadSize);
-    }
-    if bytes[..4] != VERSION.to_le_bytes() {
-        return Err(ProtocolError::Version);
-    }
-    if bytes[4..8] != request_id.to_le_bytes() {
-        return Err(ProtocolError::RequestId);
-    }
-    let status = i32::from_le_bytes(bytes[8..12].try_into().expect("four bytes"));
-    if status == 0 {
-        return Ok(KernelResponse::Success(&bytes[12..]));
-    }
-    let message = std::str::from_utf8(&bytes[12..]).map_err(|_| ProtocolError::InvalidUtf8)?;
-    Ok(KernelResponse::Failure { status, message })
 }
 
 #[cfg(test)]

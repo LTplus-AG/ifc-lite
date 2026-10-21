@@ -22,6 +22,7 @@ impl SmlibWorker {
             KernelCommand::CopyTransform { solid, .. }
             | KernelCommand::Volume { solid, .. }
             | KernelCommand::Manifold { solid, .. }
+            | KernelCommand::IsEmpty { solid, .. }
             | KernelCommand::Tessellate { solid, .. } => check(*solid),
             KernelCommand::MeshInfo { mesh, .. } | KernelCommand::MeshRead { mesh, .. } => {
                 check(*mesh)

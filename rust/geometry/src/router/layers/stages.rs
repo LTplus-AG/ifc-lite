@@ -171,7 +171,8 @@ pub(super) struct LayerSliceResult {
 }
 
 impl LayerSliceResult {
-    pub(super) fn publish(self, router: &GeometryRouter, element_id: u32) -> SubMeshCollection {
+    pub(super) fn publish(self, router: &GeometryRouter, element_id: u32) -> crate::Result<SubMeshCollection> {
+        crate::resource::check_current()?;
         router.push_layer_slice_diag(
             element_id,
             if self.collection.sub_meshes.len() >= 2 {
@@ -180,6 +181,6 @@ impl LayerSliceResult {
                 "skip:cut-produced-<2"
             },
         );
-        self.collection
+        Ok(self.collection)
     }
 }

@@ -130,7 +130,7 @@ fn layer_numerical_slice_owns_unpublished_result_after_source_disposal() {
         router.take_layer_slice_diag().is_empty(),
         "execution does not publish accept-time effects"
     );
-    let collection = reply.publish(&router, 9);
+    let collection = reply.publish(&router, 9).unwrap();
     assert_eq!(collection.sub_meshes.len(), 2);
     assert!(collection.ids_are_materials);
     assert_eq!(
@@ -182,3 +182,6 @@ fn issue_7887_layer_gateway_admits_raw_items_before_probe_or_member_decode() {
     assert_eq!(router.take_unsupported_items().get("IfcShapeRepresentation"), Some(&1));
     assert_eq!(decoder.refused_records(), 0);
 }
+
+#[path = "terminal_tests.rs"]
+mod terminal_tests;

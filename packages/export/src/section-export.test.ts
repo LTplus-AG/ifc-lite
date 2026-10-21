@@ -11,7 +11,6 @@ import { IfcParser, EntityExtractor } from '@ifc-lite/parser';
 import { GeometryProcessor } from '@ifc-lite/geometry';
 import { exportSectionedStep } from './section-export-entry.js';
 import { MergedExporter } from './merged-exporter.js';
-import { StepExporter } from './step-exporter.js';
 
 const source = (schema = 'IFC4') => new TextEncoder().encode(`ISO-10303-21;
 HEADER;
@@ -48,6 +47,49 @@ DATA;
 ENDSEC;
 END-ISO-10303-21;`);
 const planes = [{ normal: [1,0,0] as const, offset: 0 }, { normal: [0,1,0] as const, offset: 0 }];
+// #7908: native IFC2X3 products, not IFC4 products passed through a separate
+// schema converter. IFC2X3 represents the duct occurrence as IfcFlowSegment.
+const source2x3 = () => new TextEncoder().encode(`ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('native IFC2X3 section regression'),'2;1');
+FILE_NAME('section-2x3.ifc','',(''),(''),'','','');
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0M7tQ9Jbj1BAeHd7rqnDmQ',#5,'Project',$,$,$,$,(#10),#4);
+#2=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#4=IFCUNITASSIGNMENT((#2));
+#5=IFCOWNERHISTORY(#8,#9,$,.ADDED.,$,$,$,0);
+#6=IFCPERSON($,'Fixture',$,$,$,$,$,$);
+#7=IFCORGANIZATION($,'IFC-Lite synthetic fixture',$,$,$);
+#8=IFCPERSONANDORGANIZATION(#6,#7,$);
+#9=IFCAPPLICATION(#7,'1','Section regression','ifc-lite');
+#10=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#11,$);
+#11=IFCAXIS2PLACEMENT3D(#12,$,$);
+#12=IFCCARTESIANPOINT((0.,0.,0.));
+#13=IFCAXIS2PLACEMENT2D(#14,$);
+#14=IFCCARTESIANPOINT((0.,0.));
+#22=IFCLOCALPLACEMENT($,#11);
+#41=IFCRECTANGLEPROFILEDEF(.AREA.,$,#13,10.,8.);
+#42=IFCEXTRUDEDAREASOLID(#41,#11,#43,2.);
+#43=IFCDIRECTION((0.,0.,1.));
+#44=IFCSHAPEREPRESENTATION(#10,'Body','SweptSolid',(#42));
+#45=IFCPRODUCTDEFINITIONSHAPE($,$,(#44));
+#50=IFCSLAB('0M7tQ9Jbj1BAeHd7rqnDmR',#5,'Slab',$,$,#22,#45,$,.FLOOR.);
+#51=IFCWALL('0M7tQ9Jbj1BAeHd7rqnDmS',#5,'Wall',$,$,#22,#45,$);
+#52=IFCFLOWSEGMENT('0M7tQ9Jbj1BAeHd7rqnDmT',#5,'Duct',$,$,#22,#45,$);
+#60=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('2h'),$);
+#61=IFCPROPERTYSET('0M7tQ9Jbj1BAeHd7rqnDmU',#5,'Pset_ExportTest',$,(#60));
+#62=IFCRELDEFINESBYPROPERTIES('0M7tQ9Jbj1BAeHd7rqnDmV',#5,$,$,(#50,#51,#52),#61);
+#70=IFCMATERIAL('Concrete');
+#71=IFCRELASSOCIATESMATERIAL('0M7tQ9Jbj1BAeHd7rqnDmW',#5,$,$,(#50,#51,#52),#70);
+#80=IFCCLASSIFICATION('Uniclass','1',$,'Uniclass');
+#81=IFCCLASSIFICATIONREFERENCE($,'Ss_25','Walls',#80);
+#82=IFCRELASSOCIATESCLASSIFICATION('0M7tQ9Jbj1BAeHd7rqnDmX',#5,$,$,(#50,#51,#52),#81);
+#90=IFCBUILDINGSTOREY('0M7tQ9Jbj1BAeHd7rqnDmY',#5,'Level 0',$,$,#22,$,$,.ELEMENT.,0.);
+#91=IFCRELCONTAINEDINSPATIALSTRUCTURE('0M7tQ9Jbj1BAeHd7rqnDmZ',#5,$,$,(#50,#51,#52),#90);
+ENDSEC;
+END-ISO-10303-21;`);
 const parse = (bytes: Uint8Array) => new IfcParser().parseColumnar(bytes.slice().buffer as ArrayBuffer, { disableWorkerScan: true });
 
 async function meshes(bytes: Uint8Array) {
@@ -157,22 +199,64 @@ ENDSEC;\nEND-ISO`));
   });
 
   it('writes IFC2X3-compatible cropped boundary representations without retyping products', async () => {
-    const store = await parse(source());
-    const converted = new StepExporter(store).export({schema:'IFC2X3'}).content;
-    const cropped = await exportSectionedStep(converted, {planes});
-    const reopened = await parse(cropped.content);
-    expect(reopened.schemaVersion).toBe('IFC2X3');
-    expect(reopened.entities.getTypeName(50)).toBe('IfcSlab');
-    expect(reopened.entityIndex.byType.get('IFCTRIANGULATEDFACESET')?.length ?? 0).toBe(0);
-    // #7908: the authored slab, wall and duct each contribute one mesh; the
-    // expected count must not follow the same mesher if it drops or splits one.
-    const original = (await meshes(converted)).meshes;
+    const bytes = source2x3(), store = await parse(bytes);
+    const before = new EntityExtractor(store.source!);
+    const products = [[50,'IfcSlab','0M7tQ9Jbj1BAeHd7rqnDmR'],[51,'IfcWall','0M7tQ9Jbj1BAeHd7rqnDmS'],[52,'IfcFlowSegment','0M7tQ9Jbj1BAeHd7rqnDmT']] as const;
+    expect(store.schemaVersion).toBe('IFC2X3');
+    for (const [id,type,guid] of products) {
+      expect(store.entities.getTypeName(id)).toBe(type);
+      expect(store.entities.getGlobalId(id)).toBe(guid);
+    }
+    const original = (await meshes(bytes)).meshes;
     expect(original).toHaveLength(3);
     expect(original.map(mesh => mesh.expressId).sort((a,b) => a-b)).toEqual([50,51,52]);
+    for (const mesh of original) expect(meshVolume(mesh)).toBeCloseTo(160,4);
+    const cropped = await exportSectionedStep(bytes, {planes});
+    expect(cropped.trimmed).toEqual([50,51,52]);
+    const reopened = await parse(cropped.content);
+    const after = new EntityExtractor(reopened.source!);
+    expect(reopened.schemaVersion).toBe('IFC2X3');
+    const reachableBreps = new Set<number>();
+    for (const [id,type,guid] of products) {
+      expect(reopened.entities.getTypeName(id)).toBe(type);
+      expect(reopened.entities.getGlobalId(id)).toBe(guid);
+      const originalAttrs = before.extractEntity(store.entityIndex.byId.get(id)!)!.attributes;
+      const attrs = after.extractEntity(reopened.entityIndex.byId.get(id)!)!.attributes;
+      expect(attrs.map((value,i) => i === 6 ? null : value)).toEqual(originalAttrs.map((value,i) => i === 6 ? null : value));
+      const representation = attrs[6];
+      if (typeof representation !== 'number') throw new Error(`Product #${id} lost its representation`);
+      const shapes = after.extractEntity(reopened.entityIndex.byId.get(representation)!)!.attributes[2];
+      if (!Array.isArray(shapes)) throw new Error(`Product #${id} lost its shape list`);
+      for (const shape of shapes) {
+        if (typeof shape !== 'number') throw new Error('Shape reference must be an entity ID');
+        const items = after.extractEntity(reopened.entityIndex.byId.get(shape)!)!.attributes[3];
+        if (!Array.isArray(items)) throw new Error('Shape items must be a list');
+        expect(items).toHaveLength(1);
+        for (const item of items) {
+          if (typeof item !== 'number') throw new Error('BRep reference must be an entity ID');
+          expect(reopened.entities.getTypeName(item)).toBe('IfcFacetedBrep');
+          reachableBreps.add(item);
+        }
+      }
+    }
+    for (const id of [5,6,7,8,9,60,61,62,70,71,80,81,82,90,91]) {
+      expect(after.extractEntity(reopened.entityIndex.byId.get(id)!)?.attributes)
+        .toEqual(before.extractEntity(store.entityIndex.byId.get(id)!)?.attributes);
+    }
+    expect(reopened.entityIndex.byType.get('IFCTRIANGULATEDFACESET')?.length ?? 0).toBe(0);
     expect(reopened.entityIndex.byType.get('IFCFACETEDBREP')).toHaveLength(3);
+    expect([...reachableBreps].sort((a,b) => a-b)).toEqual([...reopened.entityIndex.byType.get('IFCFACETEDBREP')!].sort((a,b) => a-b));
     const croppedMeshes = (await meshes(cropped.content)).meshes;
     expect(croppedMeshes).toHaveLength(3);
     expect(croppedMeshes.map(mesh => mesh.expressId).sort((a,b) => a-b)).toEqual([50,51,52]);
+    for (const mesh of croppedMeshes) {
+      expect(meshVolume(mesh)).toBeCloseTo(40,4);
+      const origin = mesh.origin ?? [0,0,0];
+      for (let i=0;i<mesh.positions.length;i+=3) {
+        expect(mesh.positions[i]+origin[0]).toBeLessThanOrEqual(1e-5);
+        expect(mesh.positions[i+2]+origin[2]).toBeGreaterThanOrEqual(-1e-5);
+      }
+    }
   });
 
   it('retains clipped representations through the canonical mixed-unit federated merge and id remap', async () => {

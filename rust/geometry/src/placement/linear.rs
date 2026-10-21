@@ -4,7 +4,7 @@
 
 //! IfcLinearPlacement resolution (#859): sample the basis curve at the authored distance.
 
-use super::Axis2Placement;
+use super::{missing, sampled, unsupported, Axis2Placement, PlacementResult};
 use crate::alignment::AlignmentCurve;
 use crate::math::tol;
 use crate::alignment_arc_length::ArcLengthMap;
@@ -28,15 +28,21 @@ use nalgebra::Matrix4;
 pub(crate) fn local_frame(
     placement: &DecodedEntity,
     decoder: &mut EntityDecoder,
-) -> Option<Matrix4<f64>> {
-    try_resolve_cartesian_position(placement, decoder)
-        .or_else(|| try_resolve_axis2_placement_linear(placement, decoder))
+) -> PlacementResult<Matrix4<f64>> {
+    // Authored CartesianPosition is authoritative when present. A malformed
+    // authored frame must not silently fall through to a different curve frame.
+    if let Some(slot) = decoder.slot_or(slot::IfcLinearPlacement::CARTESIAN_POSITION, SchemaVersion::Ifc4x3) {
+        if let Some(cart) = decoder.resolve_optional(placement, slot.index())? {
+            return Axis2Placement::read_3d(&cart, decoder).map(|a| a.matrix());
+        }
+    }
+    try_resolve_axis2_placement_linear(placement, decoder)
 }
 
 /// Strict column-major local frame of an `IfcLinearPlacement` relative to
 /// its `PlacementRelTo`, exactly as rendering composes it, in file units.
-/// Unlike rendering there is no identity fallback: a writer baking this
-/// frame must refuse a placement it cannot resolve (#7335).
+/// A writer baking this frame uses the same refusal contract as rendering
+/// (#7335, #7779/7877).
 pub(crate) fn local_strict(
     placement: &DecodedEntity,
     decoder: &mut EntityDecoder,
@@ -47,47 +53,31 @@ pub(crate) fn local_strict(
             placement.id
         )));
     }
-    let frame = local_frame(placement, decoder).ok_or_else(|| {
-        crate::Error::geometry(format!(
-            "IfcLinearPlacement #{} cannot be resolved",
-            placement.id
-        ))
-    })?;
+    let frame = local_frame(placement, decoder)?;
     Ok(crate::math::mat4::col_major_array(&frame))
 }
 
 /// Decode `IfcLinearPlacement.RelativePlacement` → sample the basis
-/// curve → build the local transform. Returns `None` if any required
-/// piece is missing so the caller can fall back to `CartesianPosition`.
+/// curve → build the local transform. Unreadable required pieces refuse the
+/// frame. Authored CartesianPosition
+/// is selected before sampling.
 fn try_resolve_axis2_placement_linear(
     placement: &DecodedEntity,
     decoder: &mut EntityDecoder,
-) -> Option<Matrix4<f64>> {
-    // IFC4X3 position of RelativePlacement; IFC4X1/4X2 have no such
-    // attribute (their slot 1 is `Distance`), so those placements are
-    // resolved from `CartesianPosition` alone. A file whose declared schema
-    // predates `IfcLinearPlacement` (IFC2X3, IFC4) is a mislabelled IFC4X3
-    // export and keeps being read with the IFC4X3 layout.
-    let slot = decoder.slot_or(slot::IfcLinearPlacement::RELATIVE_PLACEMENT, SchemaVersion::Ifc4x3)?;
-    let rel_attr = placement.get(slot.index())?;
-    if rel_attr.is_null() {
-        return None;
-    }
-    let rel = decoder.resolve_ref(rel_attr).ok().flatten()?;
+) -> PlacementResult<Matrix4<f64>> {
+    // slot_or follows the declared layout when the entity exists there. Only
+    // mislabelled schemas predating the entity use the established IFC4X3 layout.
+    let slot = decoder.slot_or(slot::IfcLinearPlacement::RELATIVE_PLACEMENT, SchemaVersion::Ifc4x3)
+        .ok_or_else(|| missing(decoder, placement.id, "a resolvable CartesianPosition or RelativePlacement"))?;
+    let rel = decoder.resolve_optional(placement, slot.index())?
+        .ok_or_else(|| missing(decoder, placement.id, "a resolvable CartesianPosition or RelativePlacement"))?;
     if rel.ifc_type != IfcType::IfcAxis2PlacementLinear {
-        return None;
+        return Err(unsupported(decoder, rel.id, rel.ifc_type));
     }
-
-    // IfcAxis2PlacementLinear: 0 Location (IfcPointByDistanceExpression),
-    //                          1 Axis (IfcDirection, optional, default up),
-    //                          2 RefDirection (IfcDirection, optional).
-    let location_attr = rel.get(0)?;
-    if location_attr.is_null() {
-        return None;
-    }
-    let location = decoder.resolve_ref(location_attr).ok().flatten()?;
+    let location = decoder.resolve_optional(&rel, slot::IfcAxis2PlacementLinear::LOCATION.index())?
+        .ok_or_else(|| missing(decoder, rel.id, "Location"))?;
     if location.ifc_type != IfcType::IfcPointByDistanceExpression {
-        return None;
+        return Err(unsupported(decoder, location.id, location.ifc_type));
     }
 
     // IfcPointByDistanceExpression: 0 DistanceAlong (IfcLengthMeasure),
@@ -95,33 +85,21 @@ fn try_resolve_axis2_placement_linear(
     //                               2 OffsetVertical (optional),
     //                               3 OffsetLongitudinal (optional),
     //                               4 BasisCurve (IfcCurve).
-    let distance_along = location.get_float(0)?;
-    let offset_lateral = location.get_float(1).unwrap_or(0.0);
-    let offset_vertical = location.get_float(2).unwrap_or(0.0);
-    let offset_longitudinal = location.get_float(3).unwrap_or(0.0);
+    let distance_along = location.attr(slot::IfcPointByDistanceExpression::DISTANCE_ALONG)
+        .and_then(|v| v.as_float()).filter(|v| v.is_finite())
+        .ok_or_else(|| missing(decoder, location.id, "a readable DistanceAlong"))?;
+    let offset_lateral = optional_offset(&location, slot::IfcPointByDistanceExpression::OFFSET_LATERAL.index())
+        .ok_or_else(|| missing(decoder, location.id, "a readable OffsetLateral"))?;
+    let offset_vertical = optional_offset(&location, slot::IfcPointByDistanceExpression::OFFSET_VERTICAL.index())
+        .ok_or_else(|| missing(decoder, location.id, "a readable OffsetVertical"))?;
+    let offset_longitudinal = optional_offset(&location, slot::IfcPointByDistanceExpression::OFFSET_LONGITUDINAL.index())
+        .ok_or_else(|| missing(decoder, location.id, "a readable OffsetLongitudinal"))?;
 
-    let basis_attr = location.get(4)?;
-    if basis_attr.is_null() {
-        return None;
-    }
-    let basis_curve = decoder.resolve_ref(basis_attr).ok().flatten()?;
+    let basis_curve = decoder.resolve_optional(&location, slot::IfcPointByDistanceExpression::BASIS_CURVE.index())?
+        .ok_or_else(|| missing(decoder, location.id, "BasisCurve"))?;
 
-    let (origin, tangent) = if basis_curve.ifc_type == IfcType::IfcGradientCurve {
-        // `DistanceAlong` is 3D arc length. Use the same mapping and
-        // authored-station rebase as sectioned solids and centerlines.
-        let alignment = AlignmentCurve::parse(&basis_curve, decoder).ok().flatten()?;
-        let station = ArcLengthMap::new(&alignment).horizontal_station(distance_along);
-        let station = station.max(0.0).min(alignment.horizontal_length());
-        let frame = alignment.evaluate(station);
-        (frame.origin, frame.tangent)
-    } else {
-        // Other basis curves retain the existing polyline sampler.
-        let samples = ProfileProcessor::new(IfcSchema::new())
-            .get_curve_points(&basis_curve, decoder, TessellationQuality::Medium)
-            .ok()
-            .filter(|pts| pts.len() >= 2)?;
-        sample_polyline_at_distance(&samples, distance_along)?
-    };
+    let (origin, tangent) = sample_basis(&basis_curve, distance_along, decoder)?
+        .ok_or_else(|| missing(decoder, placement.id, "a resolvable CartesianPosition or RelativePlacement"))?;
 
     // Build the curve-aligned frame with world-up. Railway alignments
     // are near-horizontal so this is well-conditioned; in the
@@ -153,11 +131,12 @@ fn try_resolve_axis2_placement_linear(
     // offsets already used the unrotated curve frame. Unreadable or
     // degenerate directions leave the placement unresolvable.
     let (axis, ref_direction) = (
-        read_linear_direction(&rel, 1, decoder)?,
-        read_linear_direction(&rel, 2, decoder)?,
+        read_linear_direction(&rel, slot::IfcAxis2PlacementLinear::AXIS.index(), decoder)?,
+        read_linear_direction(&rel, slot::IfcAxis2PlacementLinear::REF_DIRECTION.index(), decoder)?,
     );
     let [x_axis, y_axis, z_axis] = if axis.is_some() || ref_direction.is_some() {
-        linear_placement_axes([x_axis, y_axis, z_axis], axis, ref_direction)?
+        linear_placement_axes([x_axis, y_axis, z_axis], axis, ref_direction)
+            .ok_or_else(|| missing(decoder, rel.id, "a usable linear orientation"))?
     } else {
         [x_axis, y_axis, z_axis]
     };
@@ -169,45 +148,56 @@ fn try_resolve_axis2_placement_linear(
     m[(0, 3)] = position.x;
     m[(1, 3)] = position.y;
     m[(2, 3)] = position.z;
-    Some(m)
+    Ok(m)
+}
+
+/// Existing gradient/polyline sampling, before local orientation and offsets.
+fn sample_basis(
+    basis_curve: &DecodedEntity,
+    distance_along: f64,
+    decoder: &mut EntityDecoder,
+) -> PlacementResult<Option<(Point3<f64>, Vector3<f64>)>> {
+    if basis_curve.ifc_type == IfcType::IfcGradientCurve {
+        // DistanceAlong is 3D arc length; keep the existing station rebase.
+        let Some(alignment) = sampled(AlignmentCurve::parse(basis_curve, decoder))?.flatten() else {
+            return Ok(None);
+        };
+        let station = ArcLengthMap::new(&alignment).horizontal_station(distance_along);
+        let station = station.max(0.0).min(alignment.horizontal_length());
+        let frame = alignment.evaluate(station);
+        Ok(Some((frame.origin, frame.tangent)))
+    } else {
+        let Some(samples) = sampled(ProfileProcessor::new(IfcSchema::new())
+            .get_curve_points(basis_curve, decoder, TessellationQuality::Medium))?
+            .filter(|pts| pts.len() >= 2) else {
+                return Ok(None);
+            };
+        Ok(sample_polyline_at_distance(&samples, distance_along))
+    }
+}
+
+/// Null/absent offsets default to zero; authored unreadable or nonfinite values
+/// must not be silently replaced with zero (#7779/7877).
+fn optional_offset(entity: &DecodedEntity, index: usize) -> Option<f64> {
+    match entity.get(index) {
+        None | Some(ifc_lite_core::AttributeValue::Null | ifc_lite_core::AttributeValue::Derived) => Some(0.0),
+        Some(value) => value.as_float().filter(|v| v.is_finite()),
+    }
 }
 
 /// An optional `IfcAxis2PlacementLinear` direction (`Axis`, `RefDirection`):
-/// `Some(None)` when absent or `$`, `Some(Some(unit))` when authored, and
-/// `None` (unresolvable) when it is not a readable non-zero `IfcDirection`.
+/// `Ok(None)` when absent or `$`, `Ok(Some(unit))` when authored, and
+/// a refusal when it is not a readable non-zero `IfcDirection`.
 fn read_linear_direction(
     rel: &DecodedEntity,
     slot: usize,
     decoder: &mut EntityDecoder,
-) -> Option<Option<Vector3<f64>>> {
-    let attr = match rel.get(slot) {
-        Some(attr) if !attr.is_null() => attr,
-        _ => return Some(None),
-    };
-    let direction = decoder.resolve_ref(attr).ok().flatten()?;
-    let v = crate::transform::parse_direction(&direction).ok()?;
-    v.try_normalize(tol::DIRECTION_MIN_LEN).map(Some)
-}
-
-/// `IfcLinearPlacement.CartesianPosition` (IFC4X3 attr 2, IFC4X1 attr 3,
-/// IFC4X2 attr 4: the position follows the file's schema) is an optional
-/// pre-baked `IfcAxis2Placement3D` carrying the exporter's own answer
-/// to the linear sampling. `None` when absent, null, or unparseable —
-/// the caller then samples the curve itself.
-fn try_resolve_cartesian_position(
-    placement: &DecodedEntity,
-    decoder: &mut EntityDecoder,
-) -> Option<Matrix4<f64>> {
-    let slot = decoder.slot_or(slot::IfcLinearPlacement::CARTESIAN_POSITION, SchemaVersion::Ifc4x3)?;
-    let cart_attr = placement.get(slot.index())?;
-    if cart_attr.is_null() {
-        return None;
+) -> PlacementResult<Option<Vector3<f64>>> {
+    match decoder.direction3_at(rel, slot)? {
+        None => Ok(None),
+        Some(ratios) => Vector3::from(ratios).try_normalize(tol::DIRECTION_MIN_LEN)
+            .map(Some).ok_or_else(|| missing(decoder, rel.id, "a non-zero linear direction")),
     }
-    let cart = decoder.resolve_ref(cart_attr).ok().flatten()?;
-    if cart.ifc_type != IfcType::IfcAxis2Placement3D {
-        return None;
-    }
-    Axis2Placement::read_3d(&cart, decoder).ok().map(|a| a.matrix())
 }
 
 /// Walk a polyline-sampled curve and interpolate to a target arc length.

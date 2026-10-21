@@ -396,8 +396,19 @@ let world = resolve_object_placement(&product, &mut decoder)?;
 `resolve_chain` is the placement walk of the router and the 2D profile
 extractor. The symbolic, analytic-export and export-preflight walks still
 carry their own depth caps until they move onto `ifc_lite_geometry::placement`
-(#7779). A cyclic chain is refused and counted
-(`EntityDecoder::refused_records`); a chain of any length resolves in full.
+(#7779). Nothing in the chain is defaulted: a cyclic chain, a `$`
+`RelativePlacement`, a record that is not a placement (as `PlacementRelTo` or as
+`RelativePlacement`) and a linear or grid frame that cannot be sampled are each
+refused and counted (`EntityDecoder::refused_records`), so the element is lost
+visibly instead of drawn at its parent's origin. A 2D `RelativePlacement` is
+honoured. An absent, `$` or `*` `ObjectPlacement` remains identity ("genuinely
+missing"); a present value of the wrong kind is refused. An authored linear
+`CartesianPosition` is authoritative: an unreadable authored frame does not
+fall through to curve sampling. Missing optional directions and readable
+degenerate frames retain their existing repair rules. A chain of any length
+resolves in full. Execution cancellations and resource refusals propagate as
+`PlacementError::ProgramStopped`, retain their terminal source authority, and
+do not increment the malformed-record counter.
 The result is memoised on the decoder, **unscaled** and column-major, so
 readers with different unit contexts share entries; the caller scales.
 

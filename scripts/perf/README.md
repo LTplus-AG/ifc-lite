@@ -4376,6 +4376,34 @@ explicitly, retain the current build policy and automatic lowering, and require
 a new measurement and maintainer decision for any later increase. Source-matched
 performance acceptance and transfer-size acceptance remain separate decisions.
 
+## Standalone placement refusal reconciliation (#7877)
+
+The standalone native comparison preserves ordered mesh payloads, exact float/frame/metadata identity and complete diagnostic bytes on the catalog corpus. The stock reporter remains inconclusive; all-sample block summaries are retained beside the stock selected-row report, including the adverse parse observations and geometry offsets. The maintainer accepts the observed native cost for consistently refusing unreadable authored local, linear and grid placements while retaining absent-placement identity and readable degenerate-direction repair. This is a correctness tradeoff, not a speedup or statistical-neutrality claim. This is a maintainer judgment, not a statistical test result. The evidence does not waive browser/WASM qualification, WASM size budgets or required gates, and the later combined placement/memo measurements must not be relabelled as this standalone result.
+
+[Retained native observations](evidence/placement-refusal-7877-recovery/README.md) bind the exact standalone source. Keep strict malformed-placement reporting and output preservation separate from claims about native speed or the browser pipeline.
+
+The separate [historical recovery cohort](../../tests/evidence/placement-7779/native-5a834675-to-2f53f794/README.md)
+binds its own frozen base and candidate, with matching complete declared payload
+and diagnostic witnesses. Its stock report is inconclusive; faster entity-scan
+flags coexist with adverse geometry and complete-call observations. Raw block
+medians and stock best-of-five rows remain separate. Verdict: Class X guard
+correctness with disclosed native timing observations, without a speedup,
+neutrality or new cost-acceptance claim. Lesson: preserve each arm's original
+protocol/compiler/receipt identity and retain adverse phases when publishing a
+mixed report. The packet is prepared as a document-only descendant of the
+actual published measured candidate, with baseline source entries unchanged.
+It does not measure the previous private integration or a new document head.
+Supported reduced plain-file publication completed and was verified: 82 artifacts
+(81 unique original payloads plus alias inventory), representing 108 original
+paths with 47 omissions explained. All four receipt/output links and all 155
+unchanged local originals were verified. The packet's normalized verification
+manifest binds that scope. Full-155 vault/archive completion remains unproven;
+the tar bundle stays PREPARED_NOT_PUBLISHED under its unchanged archive guard.
+Three earlier publication failures remain preserved. One owner closure attempt
+was refused by safety.idle (“benchmark queued or active”); the task remains
+ACTIVE under the closure hold, rather than evidence pending for this selection.
+Inherited main holds and required hosted/oracle qualification remain outstanding.
+
 ### Missing polygonal-face records (#7911)
 
 Correctness change, with no performance improvement or neutrality claim. The

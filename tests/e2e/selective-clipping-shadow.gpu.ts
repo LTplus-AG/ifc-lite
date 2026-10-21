@@ -4,10 +4,10 @@
 
 import { ShadowPass, type ShadowClip } from '../../packages/renderer/src/shadow-pass.js';
 import { collectShadowOccluders } from '../../packages/renderer/src/shadow-occluders.js';
-import type { SceneContents } from '../../packages/renderer/src/scene-contents.js';
+import type { Scene } from '../../packages/renderer/src/scene.js';
 
 /** Read actual shadow-map texels at the same six analytical sample points (#8015). */
-export function shadowProbe(device: GPUDevice, scene: SceneContents) {
+export function shadowProbe(device: GPUDevice, scene: Pick<Scene, 'getBatchedMeshes' | 'getInstancedTemplates' | 'getTexturedMeshes' | 'getMeshes'>) {
   const shadow = new ShadowPass(device, 256);
   const result = device.createBuffer({ size: 24, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
   const readback = device.createBuffer({ size: 24, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });

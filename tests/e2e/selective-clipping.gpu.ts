@@ -74,7 +74,7 @@ export async function runSelectiveClippingWitness(): Promise<SelectiveClippingRe
     }
     renderer.getScene().addInstancedShard(device, shard());
     renderer.getScene().addInstancedShard(device, shard(54, 0x40000065));
-    shadow = shadowProbe(device, renderer.getScene());
+    shadow = shadowProbe(device, renderer['scene']);
     for (const family of ['batched', 'instanced', 'wide-instanced', 'individual'] as const) {
       const cx = family === 'batched' ? -18 : family === 'instanced' ? 18 : family === 'wide-instanced' ? 54 : 0;
       const first = family === 'batched' ? 101 : family === 'instanced' ? 201 : family === 'wide-instanced' ? 0x40000065 : 301;

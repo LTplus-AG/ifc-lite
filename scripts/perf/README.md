@@ -4459,3 +4459,14 @@ evidence. The charter requires a performance verdict for this class; this is an
 adverse verdict, with causal attribution still unproven, rather than a neutrality
 claim. Existing native-instruction, bundle, parity and required CI ceilings stay
 binding. No benchmark rerun, baseline, acceptance band or pin change is made.
+
+
+## Section-export measured engine budget decision
+
+The human approved retaining the section-export stack at its measured local
+engine budget, with the inherited tolerance and viewer budgets unchanged.
+The [decision evidence](../../docs/architecture/evidence/section-export-budget/README.md)
+binds the source, runtime custody, original size failure and completed consumer
+proof. Accepting this budget does not establish isolated feature cost or browser
+runtime cost. Preserve the original failures and unknown consumer attempt;
+hosted/parity and current performance remain holds, and merge is not approved.

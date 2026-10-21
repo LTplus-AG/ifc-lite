@@ -33,6 +33,7 @@ pub(super) fn extract_grid(
         let Some(axes_attr) = grid.get(axis_attr_idx) else { continue };
         let Ok(axes) = decoder.resolve_ref_list(axes_attr) else { continue };
         for axis in axes {
+            if out.is_exhausted() { return; }
             if axis.ifc_type != IfcType::IfcGridAxis {
                 continue;
             }

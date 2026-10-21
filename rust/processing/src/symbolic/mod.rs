@@ -115,6 +115,10 @@ use transform::{compose_transforms, parse_axis2_placement_2d, resolve_object_pla
 /// Annotation / FootPrint / Axis representation, and return the full
 /// symbolic primitive collection. Pure-Rust (no `wasm_bindgen`), so it
 /// works inside the HTTP server.
+///
+/// In controlled execution, a terminal stop discards all staged symbols and
+/// provenance. This legacy collection ABI carries no execution error: callers
+/// must inspect their account/source terminal state before publishing a result.
 pub fn extract_symbolic_data<T>(content: &T) -> SymbolicData
 where
     T: AsRef<[u8]> + ?Sized,
@@ -182,6 +186,7 @@ fn extract_symbolic_data_into_frame<T>(
 where
     T: AsRef<[u8]> + ?Sized,
 {
+    if out.is_exhausted() { return; }
     let content = content.as_ref();
     let entity_index = build_entity_index(content);
     // Symbolic geometry refuses unrepresentable reals (#7678, D15).
@@ -207,6 +212,8 @@ where
     let mut scanner = EntityScanner::new(content);
 
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
+        #[cfg(test)]
+        output_cap::execution_tests::on_entity(id, out);
         // Stop the SCAN, not just the innermost item loop. Breaking only the
         // inner loop still decodes every remaining product, resolves its
         // placements and composes its transforms, which is not the "stop" this
@@ -263,6 +270,7 @@ where
 
         let single_representation = representations.len() == 1;
         for shape_rep in representations {
+            if out.is_exhausted() { break; }
             if shape_rep.ifc_type != IfcType::IfcShapeRepresentation {
                 continue;
             }
@@ -282,38 +290,7 @@ where
             // accumulated directly, rotations accumulated to orient symbols).
             let placement_transform = resolve_object_placement(&entity, &mut decoder, unit_scale);
 
-            // ContextOfItems WCS: some Plan reps use a different coord
-            // system than Body. Compose it in when present and non-trivial.
-            // `ContextOfItems` (IfcRepresentation attr 0) and
-            // `WorldCoordinateSystem` (IfcGeometricRepresentationContext
-            // attr 4) are both MANDATORY, so a dangling ref or absent
-            // attribute is malformed data, not a legitimate default —
-            // `unresolved()` per #2352's convention. A resolved
-            // `IfcGeometricRepresentationSubContext`, in contrast, derives
-            // its WCS from `ParentContext` and legitimately does not store
-            // one inline, so it alone stays `identity()`.
-            let context_transform = match shape_rep.get_ref(0) {
-                Some(context_ref) => match decoder.decode_by_id(context_ref) {
-                    Ok(context) if context.ifc_type == IfcType::IfcGeometricRepresentationContext => {
-                        match context.get_ref(4) {
-                            Some(wcs_ref) => match decoder.decode_by_id(wcs_ref) {
-                                Ok(wcs) => parse_axis2_placement_2d(&wcs, &mut decoder, unit_scale),
-                                Err(_) => Transform2D::unresolved(),
-                            },
-                            None => Transform2D::unresolved(),
-                        }
-                    }
-                    // SubContext inherits WCS from ParentContext — legitimately
-                    // has none inline (the wasm pipeline does the same).
-                    Ok(context) if context.ifc_type == IfcType::IfcGeometricRepresentationSubContext => {
-                        Transform2D::identity()
-                    }
-                    // Dangling context_ref, or a ref resolving to neither
-                    // Context nor SubContext: malformed data.
-                    _ => Transform2D::unresolved(),
-                },
-                None => Transform2D::unresolved(),
-            };
+            let context_transform = transform::resolve_context_transform(&shape_rep, &mut decoder, unit_scale);
             // A small 3D WCS rotation can couple a large local Z into plan
             // XY. Compose before projection without an approximate identity
             // shortcut, even when its XY block appears unchanged (#7779).

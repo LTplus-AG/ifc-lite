@@ -16,6 +16,7 @@ pub(in super::super) fn resolve_mapping_target(
     match router.resolve_scaled_mapped_item_transform_with_origin_loader(item, decoder, |_| Ok(None)) {
         Ok(Some(matrix)) => Transform2D::from_matrix_xy(&Matrix4::from_column_slice(&matrix), 1.0),
         Ok(None) => Transform2D::unresolved(),
+        Err(Error::ProgramStopped(stop)) => Transform2D::stopped(stop),
         Err(Error::CoreError(CoreError::MalformedRecord(_) | CoreError::UnrepresentableReal(_))) => Transform2D::refused(),
         Err(_) => Transform2D::unresolved(),
     }

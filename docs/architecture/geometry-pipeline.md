@@ -408,6 +408,12 @@ degenerate frames retain their existing repair rules. A chain of any length
 resolves in full. Execution cancellations and resource refusals propagate as
 `PlacementError::ProgramStopped`, retain their terminal source authority, and
 do not increment the malformed-record counter.
+Symbolic extraction observes the same terminal authority at scan, item and
+append boundaries. A terminal stop discards its staged primitives and direct-fill
+provenance; it is not converted into malformed input or geometric truncation.
+The legacy collection-returning symbolic APIs do not carry an execution error,
+so controlled callers must inspect their account/source terminal state before
+publishing a result.
 The result is memoised on the decoder, **unscaled** and column-major, so
 readers with different unit contexts share entries; the caller scales.
 

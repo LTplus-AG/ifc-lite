@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder};
+use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 use ifc_lite_geometry::placement::{self, Axis2Placement, PlacementError};
 use nalgebra::Matrix4;
 
@@ -99,6 +99,13 @@ impl Transform2D {
         Self { tx: f64::NAN, ty: f64::NAN, tz: f64::NAN, ..Self::identity() }
     }
 
+    /// Poison a stopped frame while retaining its exact source-owned error.
+    /// The accumulator rejects it and discards staged output, not input records.
+    pub(super) fn stopped(stop: ifc_lite_geometry::resource::ProgramStop) -> Self {
+        ifc_lite_geometry::resource::stop(stop);
+        Self::refused()
+    }
+
     /// The transform for a placement record that failed to decode:
     /// [`Self::refused`] when input admission refused it, otherwise
     /// [`Self::unresolved`] (#2256).
@@ -129,10 +136,13 @@ impl Transform2D {
 
     /// The transform for a placement that could not be read (D30): input
     /// admission, a malformed leaf or a missing mandatory attribute drops the
-    /// symbol ([`Self::refused`], D15); every other error (dangling, wrong
-    /// type, cycle) keeps it at the origin as [`Self::unresolved`] (#2256,
-    /// until C5 decides).
+    /// symbol ([`Self::refused`], D15). Execution stops preserve their source
+    /// authority and poison the frame without counting malformed input. Other
+    /// errors (dangling, wrong type, cycle) remain unresolved (#2256, until C5).
     pub(super) fn from_placement_error(error: &PlacementError) -> Self {
+        if let PlacementError::ProgramStopped(stop) = error {
+            return Self::stopped(*stop);
+        }
         if error.is_admission_refusal() { Self::refused() } else { Self::unresolved() }
     }
 
@@ -228,6 +238,45 @@ pub(super) fn resolve_object_placement(
     match placement::resolve_chain(&placement, decoder) {
         Ok(world) => Transform2D::from_matrix_xy(&world, unit_scale),
         Err(error) => Transform2D::from_placement_error(&error),
+    }
+}
+
+pub(super) fn resolve_context_transform(
+    shape_rep: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+    unit_scale: f64,
+) -> Transform2D {
+    // ContextOfItems WCS: some Plan reps use a different coord
+    // system than Body. Compose it in when present and non-trivial.
+    // `ContextOfItems` (IfcRepresentation attr 0) and
+    // `WorldCoordinateSystem` (IfcGeometricRepresentationContext
+    // attr 4) are both MANDATORY, so a dangling ref or absent
+    // attribute is malformed data, not a legitimate default —
+    // `unresolved()` per #2352's convention. A resolved
+    // `IfcGeometricRepresentationSubContext`, in contrast, derives
+    // its WCS from `ParentContext` and legitimately does not store
+    // one inline, so it alone stays `identity()`.
+    match shape_rep.get_ref(0) {
+        Some(context_ref) => match decoder.decode_by_id(context_ref) {
+            Ok(context) if context.ifc_type == IfcType::IfcGeometricRepresentationContext => {
+                match context.get_ref(4) {
+                    Some(wcs_ref) => match decoder.decode_by_id(wcs_ref) {
+                        Ok(wcs) => parse_axis2_placement_2d(&wcs, decoder, unit_scale),
+                        Err(_) => Transform2D::unresolved(),
+                    },
+                    None => Transform2D::unresolved(),
+                }
+            }
+            // SubContext inherits WCS from ParentContext — legitimately
+            // has none inline (the wasm pipeline does the same).
+            Ok(context) if context.ifc_type == IfcType::IfcGeometricRepresentationSubContext => {
+                Transform2D::identity()
+            }
+            // Dangling context_ref, or a ref resolving to neither
+            // Context nor SubContext: malformed data.
+            _ => Transform2D::unresolved(),
+        },
+        None => Transform2D::unresolved(),
     }
 }
 

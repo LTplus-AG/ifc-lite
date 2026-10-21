@@ -152,7 +152,19 @@ impl GeometryRouter {
                     // already scaled inside the cached path
                     Ok(sub_parts) => sub_parts.iter().for_each(|part| untextured.merge(part)),
                     Err(error) => {
-                        self.drop_recoverable_item(&item, error, "nested IfcMappedItem in representation map")?;
+                        let _e = Self::recoverable_source_error(error)?;
+                        self.record_unsupported_item(item.ifc_type.clone());
+                        crate::diag::diag_debug!(
+                            { item_id = item.id, error = %_e,
+                              "skipping unsupported nested IfcMappedItem in representation map" }
+                            else {
+                                #[cfg(debug_assertions)]
+                                eprintln!(
+                                    "[ifc-lite] Skipping unsupported nested IfcMappedItem #{} in representation map: {}",
+                                    item.id, _e
+                                );
+                            }
+                        );
                     }
                 }
                 continue;
@@ -241,7 +253,21 @@ impl GeometryRouter {
     ) -> Result<()> {
         match self.mesh_item(item, decoder, ItemFrame::MappedSource) {
             Ok(mesh) => source.merge(&mesh),
-            Err(error) => self.drop_recoverable_item(item, error, "representation-map item")?,
+            Err(error) => {
+                let _e = Self::recoverable_source_error(error)?;
+                self.record_unsupported_item(item.ifc_type.clone());
+                crate::diag::diag_debug!(
+                    { item_id = item.id, ifc_type = ?item.ifc_type, walk = "representation-map",
+                      error = %_e, "skipping unsupported source item" }
+                    else {
+                        #[cfg(debug_assertions)]
+                        eprintln!(
+                            "[ifc-lite] Skipping unsupported representation-map item #{} ({:?}): {}",
+                            item.id, item.ifc_type, _e
+                        );
+                    }
+                );
+            }
         }
         Ok(())
     }

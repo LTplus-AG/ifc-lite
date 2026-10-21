@@ -117,31 +117,44 @@ impl GeometryRouter {
         UnsupportedSourceScope { router: self }
     }
 
-    /// The one drop of a representation item the walks skip: counts it under
-    /// its own type (see [`Self::record_unsupported_item`]) and logs why. `what`
-    /// names the walk or item kind for the log line only. A typed resource stop
-    /// propagates before any unsupported-item count or log is recorded.
-    pub(crate) fn drop_recoverable_item(
+    /// Count and log a dropped nested occurrence item; the caller continues.
+    pub(crate) fn record_unsupported_nested_geometry(
         &self,
-        item: &ifc_lite_core::DecodedEntity,
-        error: crate::Error,
-        what: &str,
-    ) -> crate::Result<()> {
-        let error = Self::recoverable_source_error(error)?;
-        self.record_unsupported_item(item.ifc_type.clone());
-        let _ = (&error, what);
+        nested_item: &DecodedEntity,
+        _e: crate::Error,
+    ) {
+        self.record_unsupported_item(nested_item.ifc_type.clone());
         crate::diag::diag_debug!(
-            { item_id = item.id, ifc_type = ?item.ifc_type, what, error = %error,
-              "skipping unsupported item" }
+            { item_id = nested_item.id, ifc_type = ?nested_item.ifc_type,
+              error = %_e, "skipping unsupported nested geometry item" }
             else {
                 #[cfg(debug_assertions)]
                 eprintln!(
-                    "[ifc-lite] Skipping unsupported {what} #{} ({:?}): {}",
-                    item.id, item.ifc_type, error
+                    "[ifc-lite] Skipping unsupported nested geometry #{} ({:?}): {}",
+                    nested_item.id, nested_item.ifc_type, _e
                 );
             }
         );
-        Ok(())
+    }
+
+    /// Count and log a dropped occurrence item; the caller continues.
+    pub(crate) fn record_unsupported_geometry(
+        &self,
+        item: &DecodedEntity,
+        _e: crate::Error,
+    ) {
+        self.record_unsupported_item(item.ifc_type.clone());
+        crate::diag::diag_debug!(
+            { item_id = item.id, ifc_type = ?item.ifc_type, error = %_e,
+              "skipping unsupported geometry item" }
+            else {
+                #[cfg(debug_assertions)]
+                eprintln!(
+                    "[ifc-lite] Skipping unsupported geometry #{} ({:?}): {}",
+                    item.id, item.ifc_type, _e
+                );
+            }
+        );
     }
 
     /// Open scopes; zero between walks.

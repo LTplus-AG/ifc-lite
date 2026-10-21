@@ -2,29 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * Row cap on the content-match sections (#1891 review, Codex P1).
- *
- * The Added / Changed / Deleted buckets have been capped at
- * `MAX_ROWS_PER_GROUP` since #924; the Matched / Needs review sections shipped
- * uncapped. That is the worse place for it to be missing: content matching is
- * ON by default and a from-scratch re-export produces roughly one match record
- * per element, so the headline scenario - the one the whole feature exists for
- * - is the one that pushes tens of thousands of buttons into the DOM and stalls
- * the panel.
- *
- * The cap is display-only, and these tests pin all three halves of that: the
- * button count, the reported overflow (a silently-shown subset would be worse
- * than a slow one), and that the header count plus the header's "select all in
- * 3D" action still cover the FULL set - matching how the other groups behave.
- */
+/** Matched results stay bounded in the DOM and reachable beyond 1,000 (#8017). */
 
 import '@/test/setup-dom.js';
+import { installLayout } from '@/test/dom-layout.js';
+installLayout();
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { MAX_ROWS_PER_GROUP, type CompareMatchRow } from './changeRow.js';
+import { type CompareMatchRow } from './changeRow.js';
 import { CompareMatchGroups } from './CompareMatchGroups.js';
 
 /** `retiring: true` rows are the Matched section; `false` rows belong to Suggestions. */
@@ -76,7 +63,7 @@ function rowButtons(container: HTMLElement): HTMLButtonElement[] {
   return [...container.querySelectorAll('button')].slice(1) as HTMLButtonElement[];
 }
 
-describe('CompareMatchGroups - row cap (#1891 review)', () => {
+describe('CompareMatchGroups - virtual rows (#8017)', () => {
   it('renders every row when the group is under the cap', () => {
     const container = render(rows(3, true));
     assert.strictEqual(rowButtons(container).length, 3);
@@ -86,24 +73,27 @@ describe('CompareMatchGroups - row cap (#1891 review)', () => {
   it('caps the rendered rows of a huge Matched group', () => {
     // The default-on re-export case. Pre-fix this rendered one button per
     // match, unbounded.
-    const container = render(rows(MAX_ROWS_PER_GROUP + 7, true));
-    assert.strictEqual(rowButtons(container).length, MAX_ROWS_PER_GROUP);
+    const container = render(rows(1007, true));
+    assert.ok(rowButtons(container).length > 0 && rowButtons(container).length < 100);
   });
 
-  it('reports the truncated remainder rather than dropping it silently', () => {
-    const container = render(rows(MAX_ROWS_PER_GROUP + 7, true));
-    assert.ok(
-      container.textContent?.includes('+7 more not shown'),
-      'must use the same overflow wording as the Added/Changed/Deleted groups',
-    );
+  it('reaches the last matched row by scrolling beyond the old cap (#8017)', () => {
+    const container = render(rows(1007, true));
+    const scroller = container.querySelector('.overflow-auto')!;
+    act(() => {
+      scroller.scrollTop = 1006 * 800;
+      scroller.dispatchEvent(new Event('scroll'));
+    });
+    assert.ok(rowButtons(container).some((button) => button.textContent?.includes('Wall 1006')));
+    assert.ok(!container.textContent?.includes('more not shown'));
   });
 
   it('keeps the header count at the FULL group size, not the rendered size', () => {
-    const container = render(rows(MAX_ROWS_PER_GROUP + 7, true));
+    const container = render(rows(1007, true));
     const header = container.querySelector('button');
     assert.ok(header);
     assert.ok(
-      header.textContent?.includes(`(${MAX_ROWS_PER_GROUP + 7})`),
+      header.textContent?.includes(`(${1007})`),
       `header read "${header.textContent}"`,
     );
   });
@@ -113,13 +103,13 @@ describe('CompareMatchGroups - row cap (#1891 review)', () => {
     // capped rows; a capped match header that only selected what it drew would
     // quietly disagree with its own count.
     let selected: CompareMatchRow[] = [];
-    const container = render(rows(MAX_ROWS_PER_GROUP + 7, true), (r) => {
+    const container = render(rows(1007, true), (r) => {
       selected = r;
     });
     act(() => {
       container.querySelector('button')!.click();
     });
-    assert.strictEqual(selected.length, MAX_ROWS_PER_GROUP + 7);
+    assert.strictEqual(selected.length, 1007);
   });
 
   it('does not list an unresolved group here: those are Suggestions (#4955)', () => {

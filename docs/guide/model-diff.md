@@ -7,6 +7,18 @@
 
 The `@ifc-lite/diff` package compares two revisions of a model and classifies every entity as **added**, **modified**, **deleted**, or **unchanged**. It is a pure, headless, store-agnostic engine: you supply fingerprints, it matches and classifies. The viewer's Compare UI and the [CLI](cli.md) both build on the same core.
 
+## Filtering viewer results
+
+After running **Compare models**, click **Changed**, **Added**, **Deleted**, or
+**Matched** to filter the result list and isolate that category in the viewport.
+Click the active count again, or **Show all results**, to restore the comparison.
+**Change kind** narrows changed elements to **Data / properties**, **Geometry**,
+or **Container**; an element with both data and geometry changes appears under
+either kind. These controls filter the completed result without re-running it.
+Headline counts and downloaded reports continue to describe the full comparison.
+Scroll the panel body to reach controls, results and selected change details;
+large result groups scroll within a virtual list without truncating their rows.
+
 ## What the engine does
 
 `diffModels(base, head, options?)` takes two iterables of `EntityFingerprint`s and returns a `ModelDiff`:

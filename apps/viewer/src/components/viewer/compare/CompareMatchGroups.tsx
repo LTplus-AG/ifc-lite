@@ -22,7 +22,8 @@ import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
 import { COMPARE_COLORS, rgbaCss, type RGBA } from '@/lib/compare/overlay';
 import { MATCH_KIND_HINT, MATCH_KIND_LABEL } from '@/lib/compare/contentMatches';
-import { MAX_ROWS_PER_GROUP, type CompareMatchRow } from './changeRow';
+import { type CompareMatchRow } from './changeRow';
+import { AnalysisResultList } from '../analysis/AnalysisResultList';
 
 /** Right-hand summary for a row: the kind, plus the group shape when the match
  *  is not a simple pair, plus the move distance when the engine measured one. */
@@ -50,15 +51,7 @@ function MatchSection({
   color,
   Icon,
 }: MatchSectionProps & { label: string; title: string; color: RGBA; Icon: typeof Link2 }) {
-  const { t } = useTranslation();
   if (rows.length === 0) return null;
-  // Same display cap as the Added/Changed/Deleted buckets. Content matching is
-  // on by default and a from-scratch re-export can produce one match record per
-  // element, so without this the default-on path is the one that floods the DOM.
-  // Header count and `onFocusGroup` keep the FULL set - only the buttons are
-  // capped, and the remainder is reported rather than silently dropped.
-  const shown = rows.length > MAX_ROWS_PER_GROUP ? rows.slice(0, MAX_ROWS_PER_GROUP) : rows;
-  const truncated = rows.length - shown.length;
   return (
     <div>
       <button
@@ -72,8 +65,8 @@ function MatchSection({
         <span className="text-muted-foreground">({rows.length})</span>
         <MousePointerClick className="h-3 w-3 ml-auto opacity-0 group-hover:opacity-60 transition-opacity" />
       </button>
-      <div className="space-y-0.5">
-        {shown.map((row) => (
+      <AnalysisResultList className="max-h-80" items={rows} getKey={(row) => row.key}
+        estimateSize={() => 26} renderRow={(row) => (
           <button
             key={row.key}
             onClick={() => onFocus(row)}
@@ -87,13 +80,8 @@ function MatchSection({
             <span className="min-w-0 flex-1 truncate text-xs">{row.name || row.ifcType}</span>
             <span className="shrink-0 text-2xs text-muted-foreground">{matchRowSummary(row)}</span>
           </button>
-        ))}
-        {truncated > 0 && (
-          <p className="px-2 py-1 text-2xs text-muted-foreground">
-            {t('comparePanel.moreNotShown', { count: truncated })}
-          </p>
         )}
-      </div>
+      />
     </div>
   );
 }

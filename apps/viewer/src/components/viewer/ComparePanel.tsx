@@ -9,7 +9,7 @@
  * `useCompareOverlay`) and listed here. Row click selects + frames the element.
  */
 
-import { lazy, Suspense, useEffect, useMemo } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { GitCompareArrows, ChevronLeft } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
@@ -37,20 +37,16 @@ import { changedTypeCounts, contentMatchRows, hasReportableChanges, type Compare
 import { contentMatchCounts, contentMatchingRan } from '@/lib/compare/contentMatches';
 import { productTypeSplit } from '@/lib/compare/productTypeCounts';
 import { duplicateAuthoredKeyInfo } from '@/lib/compare/authoredKeys';
-import type { DiffState, DiffEntry } from '@ifc-lite/diff';
+import type { DiffState } from '@ifc-lite/diff';
+import { drawableEntryRef } from '@/lib/compare/drawableRefs';
+import { ALL_COMPARE_RESULTS, matchesCompareEntry, matchesCompareMatch, type CompareResultFilter } from '@/lib/compare/resultFilter';
 
 interface ComparePanelProps {
   onClose?: () => void;
 }
 
-/** The side actually drawn for an entry: base for deletions, head otherwise. */
-function renderRef(entry: DiffEntry<CompareRef>): CompareRef | undefined {
-  return (entry.state === 'deleted' ? entry.base?.ref : entry.head?.ref) ?? entry.base?.ref;
-}
-
 export function ComparePanel({ onClose }: ComparePanelProps) {
   const { t } = useTranslation();
-  useCompareOverlay();
 
   const liveModels = useViewerStore((s) => s.models);
   const baseModelId = useViewerStore((s) => s.compareBaseModelId);
@@ -77,6 +73,13 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
   // THIS wrapper get called, so every clear in this panel must go through it
   // or a stale result can resurrect itself once the run resolves.
   const { running, result, error, runComparison, cancelComparison, clearCompare } = useCompare();
+  // Filters belong to this result. A re-run, clear or saved-run replacement
+  // starts unfiltered without a stale visibility effect in between (#8017).
+  const [filterState, setFilterState] = useState({ result, filter: ALL_COMPARE_RESULTS });
+  const filter = filterState.result === result ? filterState.filter : ALL_COMPARE_RESULTS;
+  const setFilter = (filter: CompareResultFilter) => setFilterState({ result, filter });
+  useCompareOverlay(filter);
+  const filtering = !!(filter.category || filter.kind);
   // Row names and change details read the stores the diff was computed from (#5312).
   const models = useMemo(() => modelsAsCompared(liveModels, result?.comparedStores), [liveModels, result]);
 
@@ -118,8 +121,8 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
 
     for (const entry of result.diff.entries) {
       const bucket = out.get(entry.state);
-      if (!bucket) continue; // skip unchanged
-      const ref = renderRef(entry);
+      if (!bucket || !matchesCompareEntry(entry, filter)) continue; // skip unchanged / filtered
+      const ref = drawableEntryRef(entry);
       if (!ref) continue;
       const store = models.get(ref.modelId)?.ifcDataStore;
       const name = store?.entities.getName(ref.localId) || '';
@@ -127,18 +130,19 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
       bucket.rows.push({ key: entry.key, ifcType, name, state: entry.state, changeKinds: entry.changeKinds, ref });
     }
     return out;
-  }, [result, models]);
+  }, [result, models, filter]);
 
   // Content-match rows (#1891). They live on `diff.contentMatches`, NOT in
   // `diff.entries` - a retiring match removed its entries outright - so this is
   // separate plumbing rather than another bucket of `groups`.
-  const matchRows = useMemo<CompareMatchRow[]>(
+  const allMatchRows = useMemo<CompareMatchRow[]>(
     () =>
       contentMatchRows(result?.diff.contentMatches, (ref) =>
         models.get(ref.modelId)?.ifcDataStore?.entities.getName(ref.localId) || '',
       ),
     [result, models],
   );
+  const matchRows = useMemo(() => allMatchRows.filter((row) => matchesCompareMatch(row, filter)), [allMatchRows, filter]);
   const matchCounts = useMemo(() => contentMatchCounts(result?.diff.contentMatches), [result]);
 
   // Suggestions (#4955): claims the engine reports but will not decide.
@@ -188,8 +192,8 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
   const focusGroup = (groupState: DiffState) => {
     if (!result) return;
     const refs = result.diff.entries
-      .filter((e) => e.state === groupState)
-      .map(renderRef)
+      .filter((e) => e.state === groupState && matchesCompareEntry(e, filter))
+      .map(drawableEntryRef)
       .filter((r): r is CompareRef => !!r);
     focusRefs(refs, null);
   };
@@ -224,6 +228,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
       progress={running ? { label: t('comparePanel.panel.comparing') } : null}
       staleFor={result}
     >
+      <div className="flex-1 min-h-0 overflow-y-auto" data-compare-scroll>
       {!bcfComposing && <SavedComparisonLibrary result={result} running={running} />}
       {modelList.length < 2 ? (
         <AnalysisEmptyState
@@ -273,33 +278,36 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
                 onClearExcludedTypes={clearExcludedTypes}
               />
 
-              <AnalysisStaleRegion className="flex-1 min-h-0 flex flex-col">
+              <AnalysisStaleRegion>
                 <CompareResultView
                   result={result}
+                  filter={filter}
+                  onFilter={setFilter}
                   split={split}
                   matchedElements={contentMatchingRan(result?.diff.contentMatches) ? matchCounts.matchedElements : null}
                   // Export the full change report (#1202): the report bar is the exact negation of the
                   // results list's empty state; the sidecar bar (#4955) is always offered.
-                  exportBar={result && counts ? <CompareExportBar result={result} reportable={hasReportableChanges(counts, matchRows)} /> : null}
+                  exportBar={result && counts ? <CompareExportBar result={result} reportable={hasReportableChanges(counts, allMatchRows)} /> : null}
                   list={(
                     <CompareResultsList
                       result={result}
                       groups={groups}
                       counts={counts}
-                      split={split}
+                      split={filtering ? null : split}
+                      filtering={filtering}
                       matchRows={matchRows}
                       selectedKey={selectedKey}
                       onFocus={focusEntry}
                       onFocusGroup={focusGroup}
                       onFocusMatch={focusMatch}
                       onFocusMatchGroup={focusMatchGroup}
-                      suggestions={suggest.suggestions}
+                      suggestions={filtering ? [] : suggest.suggestions}
                       suggestionDecisions={suggest.decisions}
                       onFocusSuggestion={(row) => focusRefs(row.refs, row.key)}
                       onFocusSuggestionGroup={(rows) => focusRefs(rows.flatMap((row) => row.refs), null)}
                       onAcceptSuggestion={suggest.accept}
                       onRejectSuggestion={suggest.reject}
-                      header={result ? <Suspense fallback={null}><CompareAnalysisSections result={result} /></Suspense> : null}
+                      header={result && !filtering ? <Suspense fallback={null}><CompareAnalysisSections result={result} /></Suspense> : null}
                     />
                   )}
                   detail={detail && selectedRow ? <ChangeDetailView row={selectedRow} detail={detail} /> : null}
@@ -347,6 +355,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
           )}
         </>
       )}
+      </div>
     </AnalysisPanel>
   );
 }

@@ -106,3 +106,50 @@ test('comparison impact and run reconciliation on the demo revision pair', async
   await expect(assistant.locator('pre')).toContainText('"code":"settingsDiffer"');
   await shoot(page, assistant, n => testInfo.outputPath(n), 'compare-assistant-evidence');
 });
+
+// #8017: real demo comparison, normal laptop height. The old results-only
+// scroller collapsed after setup/source/export chrome consumed the column.
+test('comparison categories isolate results and remain reachable on a short panel (#8017)', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const viewer = new ViewerBenchmarkPage(page);
+  await viewer.setup();
+  await state(page, s => s.openPanelInHome('compare'));
+  await page.getByRole('button', { name: 'Try with demo data', exact: true }).click();
+  await expect.poll(() => state(page, s => s.models.size === 2 && !s.loading && !s.geometryStreamingActive), { timeout: 120_000 }).toBe(true);
+  await page.getByRole('button', { name: 'Run comparison', exact: true }).click();
+  await expect.poll(() => state(page, s => !!s.compareResult && !s.compareRunning), { timeout: 120_000 }).toBe(true);
+  const results = page.locator('[data-tour="compare-results"]');
+  const before = await page.evaluate(() => [...(globalThis as unknown as {
+    __ifc_lite_viewer_store__: { getState(): { hiddenEntities: Set<number> } }
+  }).__ifc_lite_viewer_store__.getState().hiddenEntities].sort((a, b) => a - b));
+  for (const [label, diffState] of [['Added', 'added'], ['Deleted', 'deleted'], ['Changed', 'modified']] as const) {
+    const badge = page.getByRole('button', { name: label, exact: true });
+    await badge.click();
+    await expect(badge).toHaveAttribute('aria-pressed', 'true');
+    const visibility = await page.evaluate((category) => {
+      const s = (globalThis as unknown as { __ifc_lite_viewer_store__: { getState(): {
+        hiddenEntities: Set<number>; compareResult: { diff: { entries: Array<{
+          state: string; base?: { ref: { globalId: number } }; head?: { ref: { globalId: number } };
+        }> } };
+      } } }).__ifc_lite_viewer_store__.getState();
+      return s.compareResult.diff.entries.filter(e => e.state !== category).every(e =>
+        [e.base, e.head].every(f => !f || s.hiddenEntities.has(f.ref.globalId)));
+    }, diffState);
+    expect(visibility).toBe(true);
+    await results.scrollIntoViewIfNeeded();
+    await expect(results).toContainText(label);
+    expect(await results.evaluate(el => el.getBoundingClientRect().height)).toBeGreaterThan(26);
+    await page.screenshot({ path: testInfo.outputPath(`compare-8017-${diffState}.png`) });
+    await badge.click();
+    await expect(badge).toHaveAttribute('aria-pressed', 'false');
+  }
+  await page.getByLabel('Change kind', { exact: true }).selectOption('data');
+  await expect(page.getByRole('button', { name: 'Changed', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Show all results', exact: true }).click();
+  const after = await page.evaluate(() => [...(globalThis as unknown as {
+    __ifc_lite_viewer_store__: { getState(): { hiddenEntities: Set<number> } }
+  }).__ifc_lite_viewer_store__.getState().hiddenEntities].sort((a, b) => a - b));
+  expect(after).toEqual(before);
+  const scroll = page.locator('[data-compare-scroll]');
+  expect(await scroll.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
+});

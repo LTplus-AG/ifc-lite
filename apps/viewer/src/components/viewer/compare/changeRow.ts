@@ -9,6 +9,7 @@
  */
 
 import type { CompareRef } from '@/lib/compare/buildFingerprints';
+import { drawableMatchRefs } from '@/lib/compare/drawableRefs';
 import { isRetiringMatch } from '@/lib/compare/contentMatches';
 import type { ChangeDetail } from '@/lib/compare/describeChange';
 import type {
@@ -95,8 +96,8 @@ export function contentMatchRows(
     const sample = match.head[0] ?? match.base[0];
     if (!sample) return; // an empty match record carries nothing to show
     const refs = retiring
-      ? match.head.map((f) => f.ref)
-      : [...match.base.map((f) => f.ref), ...match.head.map((f) => f.ref)];
+      ? drawableMatchRefs(match)
+      : [...match.base.map((f) => f.ref), ...drawableMatchRefs(match)];
     rows.push({
       key: `match:${index}`,
       kind: match.kind,

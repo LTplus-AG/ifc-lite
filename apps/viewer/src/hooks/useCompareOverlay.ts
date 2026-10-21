@@ -22,6 +22,7 @@ import { useEffect, useRef } from 'react';
 import { useViewerStore } from '@/store';
 import { analysisStampOf, useAnalysisStaleness } from './useAnalysisStaleness';
 import { buildCompareOverlay } from '@/lib/compare/overlay';
+import { ALL_COMPARE_RESULTS, type CompareResultFilter } from '@/lib/compare/resultFilter';
 
 type ViewerStore = ReturnType<typeof useViewerStore.getState>;
 
@@ -76,7 +77,7 @@ function reconcileHidden(
   ownedRef.current = next;
 }
 
-export function useCompareOverlay(): void {
+export function useCompareOverlay(filter: CompareResultFilter = ALL_COMPARE_RESULTS): void {
   // global id → "was the user already hiding this when we took over?"
   const ownedHiddenRef = useRef<Map<number, boolean>>(new Map());
   const colorActiveRef = useRef(false);
@@ -101,6 +102,7 @@ export function useCompareOverlay(): void {
       compareResult.diff,
       showUnchanged,
       compareResult.excludedHiddenIds,
+      filter,
     );
     reconcileHidden(hiddenIds, ownedHiddenRef, store);
     // Empty map signals the consumer to clear overlays (lens contract).
@@ -109,7 +111,7 @@ export function useCompareOverlay(): void {
     // override map clobbered any prior lens colours — so teardown must hand the
     // channel back regardless of the map size (don't gate on `.size`).
     colorActiveRef.current = true;
-  }, [compareResult, showUnchanged, stale]);
+  }, [compareResult, showUnchanged, stale, filter]);
 
   // Teardown on unmount (panel closed) — restore the scene we touched.
   useEffect(() => {

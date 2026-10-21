@@ -1,0 +1,473 @@
+{
+  "job": "f81bc3cd-557a-4dd7-8f60-a4ef8f053761",
+  "state": "completed0/RECONCILED",
+  "refs": {
+    "main": "141285f8287bbc88a420d0ce1168cb7f1a6aa72c",
+    "placement": "63129ea719529678250cc4f2ebf1fce3f12997da",
+    "memo": "da7bd10975272c8edbfb39d61c0171fe26b65bdb"
+  },
+  "nativeOnly": true,
+  "sourceUnchanged": true,
+  "identityCalls": 9,
+  "timingProcesses": 20,
+  "fullModelLoads": 300,
+  "allThreeArmsMeshRawFloatsFramesAndDiagnosticsEqual": true,
+  "comparison": {
+    "placement-v-main": {
+      "stockVerdict": {
+        "fingerprintDrift": false,
+        "tooNoisy": false,
+        "realChange": true,
+        "inconclusive": true,
+        "zeroBaselineIncrease": false
+      },
+      "fixtures": {
+        "AC20-FZK-Haus.ifc": {
+          "parseMs": {
+            "median": {
+              "base": 12,
+              "branch": 13
+            },
+            "deltaPercent": 8.333333333333325
+          },
+          "entityScanMs": {
+            "median": {
+              "base": 6,
+              "branch": 6
+            },
+            "deltaPercent": 0.0
+          },
+          "lookupMs": {
+            "median": {
+              "base": 2,
+              "branch": 2
+            },
+            "deltaPercent": 0.0
+          },
+          "preprocessMs": {
+            "median": {
+              "base": 3,
+              "branch": 3
+            },
+            "deltaPercent": 0.0
+          },
+          "geometryMs": {
+            "median": {
+              "base": 26,
+              "branch": 26
+            },
+            "deltaPercent": 0.0
+          },
+          "totalMs": {
+            "median": {
+              "base": 39,
+              "branch": 39
+            },
+            "deltaPercent": 0.0
+          },
+          "fullCallWallMs": {
+            "median": {
+              "base": 42.122092,
+              "branch": 42.007601
+            },
+            "deltaPercent": -0.2718074876243093
+          }
+        },
+        "ISSUE_053_20181220Holter_Tower_10.ifc": {
+          "parseMs": {
+            "median": {
+              "base": 753,
+              "branch": 764
+            },
+            "deltaPercent": 1.4608233731739695
+          },
+          "entityScanMs": {
+            "median": {
+              "base": 590,
+              "branch": 600
+            },
+            "deltaPercent": 1.6949152542372836
+          },
+          "lookupMs": {
+            "median": {
+              "base": 156,
+              "branch": 158
+            },
+            "deltaPercent": 1.2820512820512775
+          },
+          "preprocessMs": {
+            "median": {
+              "base": 5,
+              "branch": 4
+            },
+            "deltaPercent": -19.999999999999996
+          },
+          "geometryMs": {
+            "median": {
+              "base": 1882,
+              "branch": 1865
+            },
+            "deltaPercent": -0.9032943676939409
+          },
+          "totalMs": {
+            "median": {
+              "base": 2632,
+              "branch": 2633
+            },
+            "deltaPercent": 0.03799392097263432
+          },
+          "fullCallWallMs": {
+            "median": {
+              "base": 3021.372014,
+              "branch": 3016.551906
+            },
+            "deltaPercent": -0.15953374750494742
+          }
+        },
+        "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc": {
+          "parseMs": {
+            "median": {
+              "base": 34,
+              "branch": 35
+            },
+            "deltaPercent": 2.941176470588225
+          },
+          "entityScanMs": {
+            "median": {
+              "base": 33,
+              "branch": 33
+            },
+            "deltaPercent": 0.0
+          },
+          "lookupMs": {
+            "median": {
+              "base": 0,
+              "branch": 0
+            },
+            "deltaPercent": null
+          },
+          "preprocessMs": {
+            "median": {
+              "base": 1,
+              "branch": 1
+            },
+            "deltaPercent": 0.0
+          },
+          "geometryMs": {
+            "median": {
+              "base": 3982,
+              "branch": 3969
+            },
+            "deltaPercent": -0.3264691109994944
+          },
+          "totalMs": {
+            "median": {
+              "base": 4017,
+              "branch": 4007
+            },
+            "deltaPercent": -0.24894199651480653
+          },
+          "fullCallWallMs": {
+            "median": {
+              "base": 4035.5976800000003,
+              "branch": 4026.194389
+            },
+            "deltaPercent": -0.23300863330857347
+          }
+        }
+      }
+    },
+    "memo-v-placement": {
+      "stockVerdict": {
+        "fingerprintDrift": false,
+        "tooNoisy": false,
+        "realChange": true,
+        "inconclusive": true,
+        "zeroBaselineIncrease": false
+      },
+      "fixtures": {
+        "AC20-FZK-Haus.ifc": {
+          "parseMs": {
+            "median": {
+              "base": 13,
+              "branch": 12
+            },
+            "deltaPercent": -7.692307692307687
+          },
+          "entityScanMs": {
+            "median": {
+              "base": 6,
+              "branch": 6
+            },
+            "deltaPercent": 0.0
+          },
+          "lookupMs": {
+            "median": {
+              "base": 2,
+              "branch": 2
+            },
+            "deltaPercent": 0.0
+          },
+          "preprocessMs": {
+            "median": {
+              "base": 3,
+              "branch": 3
+            },
+            "deltaPercent": 0.0
+          },
+          "geometryMs": {
+            "median": {
+              "base": 26,
+              "branch": 26
+            },
+            "deltaPercent": 0.0
+          },
+          "totalMs": {
+            "median": {
+              "base": 40,
+              "branch": 39
+            },
+            "deltaPercent": -2.500000000000002
+          },
+          "fullCallWallMs": {
+            "median": {
+              "base": 42.595783,
+              "branch": 41.412037
+            },
+            "deltaPercent": -2.7790215759151526
+          }
+        },
+        "ISSUE_053_20181220Holter_Tower_10.ifc": {
+          "parseMs": {
+            "median": {
+              "base": 766,
+              "branch": 750
+            },
+            "deltaPercent": -2.088772845953002
+          },
+          "entityScanMs": {
+            "median": {
+              "base": 600,
+              "branch": 578
+            },
+            "deltaPercent": -3.6666666666666625
+          },
+          "lookupMs": {
+            "median": {
+              "base": 159,
+              "branch": 158
+            },
+            "deltaPercent": -0.6289308176100628
+          },
+          "preprocessMs": {
+            "median": {
+              "base": 5,
+              "branch": 5
+            },
+            "deltaPercent": 0.0
+          },
+          "geometryMs": {
+            "median": {
+              "base": 1866,
+              "branch": 1869
+            },
+            "deltaPercent": 0.1607717041800738
+          },
+          "totalMs": {
+            "median": {
+              "base": 2647,
+              "branch": 2616
+            },
+            "deltaPercent": -1.1711371363808065
+          },
+          "fullCallWallMs": {
+            "median": {
+              "base": 3034.0576499999997,
+              "branch": 2997.054777
+            },
+            "deltaPercent": -1.219583714897443
+          }
+        },
+        "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc": {
+          "parseMs": {
+            "median": {
+              "base": 35,
+              "branch": 34
+            },
+            "deltaPercent": -2.857142857142858
+          },
+          "entityScanMs": {
+            "median": {
+              "base": 33,
+              "branch": 33
+            },
+            "deltaPercent": 0.0
+          },
+          "lookupMs": {
+            "median": {
+              "base": 0,
+              "branch": 0
+            },
+            "deltaPercent": null
+          },
+          "preprocessMs": {
+            "median": {
+              "base": 1,
+              "branch": 1
+            },
+            "deltaPercent": 0.0
+          },
+          "geometryMs": {
+            "median": {
+              "base": 3986,
+              "branch": 3997
+            },
+            "deltaPercent": 0.27596588058202975
+          },
+          "totalMs": {
+            "median": {
+              "base": 4021,
+              "branch": 4038
+            },
+            "deltaPercent": 0.4227804028848592
+          },
+          "fullCallWallMs": {
+            "median": {
+              "base": 4041.603459,
+              "branch": 4056.994403
+            },
+            "deltaPercent": 0.3808128173912628
+          }
+        }
+      }
+    }
+  },
+  "verdict": "No full-load speedup or neutrality proof. Memo parse signal on Holter, end-to-end stock report inconclusive; all raw block medians retained. Combinedplacement631 not standalone03/R891 qualification.",
+  "files": {
+    "source-bindings.json": "5b6d6f2e9a3d1e93a738a5bc5a7b376abebe868bdb409e6c7d9eb533cb6bec42",
+    "output.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "receipt.json": "b9bc6d1a02665e413a1d937306f090ccbaa5599e49c2b6da97400004cd028aa2",
+    "timing/order.txt": "f783b7463dba3de6d1701f1edf5c19b2bc26da849e95b503412f45cd5e26272c",
+    "timing/terminal.json": "194e65029529fc499b8f686846ef08770dcaf7c64d75f4813563a540b319be01",
+    "timing/environment.json": "f0470fb67ec7b163d945879ddb0d53899b70d14f80e5df1196e9ed7c928623bf",
+    "timing/identity-after.json": "d1a6acd7aee1264885173364b96ccad98b69e66806aa9fff0239f3b51b2eb4ca",
+    "timing/identity-before.json": "d1a6acd7aee1264885173364b96ccad98b69e66806aa9fff0239f3b51b2eb4ca",
+    "identity/placement-1.command.json": "41337c595572b07dd994040157e0a5f21b9ff8d544a6ce5935a8469fff0a3457",
+    "identity/memo-0.stdout": "7a980fd870a807979bce1826df8bff2864bce2f5aa2f9105298839cd9ef92032",
+    "identity/placement-0.stdout": "7a980fd870a807979bce1826df8bff2864bce2f5aa2f9105298839cd9ef92032",
+    "identity/memo-0.diagnostics.json": "d3ba8ad41eb3804761b58408f45775a46a62d7c21a4f0960d001c4ee121edf07",
+    "identity/memo-0.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "identity/memo-1.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "identity/memo-2.command.json": "7ab2210d3faf87c7e509069dea6767e289cce311f35137044821e7b14475cba8",
+    "identity/memo-1.diagnostics.json": "d1a2e40a36ee734a3898d7b467b21a0c00e7d463def70d9a5623b9fcb6802bd2",
+    "identity/main-1.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "identity/main-1.diagnostics.json": "d1a2e40a36ee734a3898d7b467b21a0c00e7d463def70d9a5623b9fcb6802bd2",
+    "identity/placement-1.stdout": "c4652b83d40ee5f1b4f16dd3f29b027779ac3421840b60893b5d1c83dd2ebdda",
+    "identity/main-0.stdout": "7a980fd870a807979bce1826df8bff2864bce2f5aa2f9105298839cd9ef92032",
+    "identity/main-2.command.json": "806c7af1e4e02833937d8d6296584f4f2cd515e7e3ec100ddfbf6bd1e92861ab",
+    "identity/placement-0.command.json": "029725ce480f5d2408c4b8bef7c9b9b7c0b95cf8be945abc3ff93c1d8afc7b64",
+    "identity/main-0.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "identity/main-0.command.json": "eca28cb63151483e8dffd81728109eccc474e7a7bf34497cc3421327c4f45249",
+    "identity/terminal.json": "29d8c3ec4494a976c22cd76e5348bb0c4d74cec0312a7d1ebc549935bcf65239",
+    "identity/placement-0.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "identity/main-2.stdout": "95cce4841943c29dd4750e365ef8ed6dd33abca90cfa7d312303722adc2da8b7",
+    "identity/memo-2.stdout": "95cce4841943c29dd4750e365ef8ed6dd33abca90cfa7d312303722adc2da8b7",
+    "identity/main-1.stdout": "c4652b83d40ee5f1b4f16dd3f29b027779ac3421840b60893b5d1c83dd2ebdda",
+    "identity/placement-2.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "identity/main-2.diagnostics.json": "31da8fec0b5a96e898ee37692788dd3f89bd4f6ce593cb2891ab369c49f00c83",
+    "identity/identity-after.json": "d1a6acd7aee1264885173364b96ccad98b69e66806aa9fff0239f3b51b2eb4ca",
+    "identity/memo-2.diagnostics.json": "31da8fec0b5a96e898ee37692788dd3f89bd4f6ce593cb2891ab369c49f00c83",
+    "identity/main-1.command.json": "354b613111736f91ca5308e6357bea176c64200b6313e05424e1807860b58741",
+    "identity/placement-2.diagnostics.json": "31da8fec0b5a96e898ee37692788dd3f89bd4f6ce593cb2891ab369c49f00c83",
+    "identity/placement-1.diagnostics.json": "d1a2e40a36ee734a3898d7b467b21a0c00e7d463def70d9a5623b9fcb6802bd2",
+    "identity/placement-2.stdout": "95cce4841943c29dd4750e365ef8ed6dd33abca90cfa7d312303722adc2da8b7",
+    "identity/memo-1.stdout": "c4652b83d40ee5f1b4f16dd3f29b027779ac3421840b60893b5d1c83dd2ebdda",
+    "identity/identity-before.json": "d1a6acd7aee1264885173364b96ccad98b69e66806aa9fff0239f3b51b2eb4ca",
+    "identity/memo-2.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "identity/main-2.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "identity/main-0.diagnostics.json": "d3ba8ad41eb3804761b58408f45775a46a62d7c21a4f0960d001c4ee121edf07",
+    "identity/placement-2.command.json": "848785c43b860e06cbe7f04109e55292ed6501a1f1eb1f357f4426708687e78a",
+    "identity/placement-0.diagnostics.json": "d3ba8ad41eb3804761b58408f45775a46a62d7c21a4f0960d001c4ee121edf07",
+    "identity/memo-1.command.json": "5c8707bd3843c8ab8ee092836e7732018cce160d18afeb5b085b5d653ab78a15",
+    "identity/placement-1.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "identity/memo-0.command.json": "b85813150d84aa7c8f9d497c434e063bbe9270d3ea8773ccde0810ec9746f973",
+    "timing/placement-v-main/2-base.command.json": "331c5febb06566bf35baf4164d37b43ab54708805bdd4561b6c1fa6c6ed99432",
+    "timing/placement-v-main/1-base.stdout": "a1c7331f73eb499e8120eacb828cb432e8759b7a52b00392be187561b7175a94",
+    "timing/placement-v-main/2-branch.stdout": "1d855b15defa2363e06674986729df07580c283956ead90a759cb59e68054c7e",
+    "timing/placement-v-main/1-base.stderr": "66d8f3d3c7c643f9373d1ca3529f49182807058c85332febe6380c4492cd2c8c",
+    "timing/placement-v-main/5-branch.stderr": "796feb4f039e19b7381b5a741f5e4495fe4e37a4c14bc17f513dd0c266064905",
+    "timing/placement-v-main/5-base.command.json": "42f6d6f4a29c7974b108da301052ae5d7a1397d0989de8da43400009e52c21dd",
+    "timing/placement-v-main/1-branch.stderr": "1d3522181f6fa437c3b238e3a58533f572f5607e45ba8c85bd6a79b528f2913f",
+    "timing/placement-v-main/1-branch.stdout": "1fc761b27f6722c272768c14bb17492837e250b70718c55f2ef99ff38742748f",
+    "timing/placement-v-main/3-base.command.json": "5dec2d498d909d4c8441fbd621829823048d3ac0cd4534f977ff7a99e1e39691",
+    "timing/placement-v-main/3-base.stdout": "43d97d5092ce4c14f216e5453b9eccc4f91af76e19d540a79198e7d7b944b157",
+    "timing/placement-v-main/4-base.stderr": "3d52c70a0d59c7cef40e92accca4adebba4977cb3c824fe0ab781b561faa329f",
+    "timing/placement-v-main/5-branch.stdout": "f3360faf92ebc8ddc72cefcc7edf3f3b7ae7d8ca9f6595ebea02c938e42c1225",
+    "timing/placement-v-main/1-base.command.json": "4594d80a876d3a64b69d8e63c15df73032e01780ca1c115ab58a45b611fa13ea",
+    "timing/placement-v-main/1-branch.command.json": "a83b1e403eb9d6a7cc32593195ed83249a4aa2bff72471f6bdacde04d153159a",
+    "timing/placement-v-main/3-branch.stdout": "ca2946e37694cde05d2c6bb28cdd5b8d53052c7705af8fafd7dbc57822c52e75",
+    "timing/placement-v-main/2-branch.stderr": "9d1f7a1c4a601496ee527a06971a00e74fd11b7b6e3e5c5b46727dcd04de0b81",
+    "timing/placement-v-main/4-branch.stdout": "10969579d67d712bbe12b954de244cf61c5be68c5a37df0d9694065ce66dcf73",
+    "timing/placement-v-main/4-branch.command.json": "ec862274d14fb5af336253b39c1adbe7d804b6819d7f06df87cdb2e298407865",
+    "timing/placement-v-main/2-branch.command.json": "4449ff763ff0421ba7fcbb5f37e1fa660a2a813087abdcbdcf8ffef5687ceb28",
+    "timing/placement-v-main/3-branch.command.json": "f52f93ed59048cad3c668e27da08a47185858461f306ec10ae21fc6a808d2838",
+    "timing/placement-v-main/per-iteration.jsonl": "06d1c3b1c97c819064036d54cf74b4b332148ccc7d2cd0e55ac0b80ab1d18065",
+    "timing/placement-v-main/4-base.stdout": "05674281413ec86f3047520724aca83dac2622e311fdb4665972c8e9774b9224",
+    "timing/placement-v-main/runs.jsonl": "0d6b571d6bad7134e4e92d23e265a7bb330a96cc130bcb331d007eeeb6814639",
+    "timing/placement-v-main/report.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "timing/placement-v-main/3-base.stderr": "60bc5176f78531ae7d1c9a0ef832dc618bdf64c0aeb2e26a5e6124c76baab03d",
+    "timing/placement-v-main/5-base.stdout": "1f53c64c66d6dcac8500471148e05662099f673851ff378a37440d9765c79f86",
+    "timing/placement-v-main/3-branch.stderr": "cfaf699ec4e174673dd766e520895c13d8a65f9948db398908f38b9593f0ba60",
+    "timing/placement-v-main/2-base.stderr": "9bcc4a457f18a7b78ea452d8fe9e9d880c50f690b47add93cef9b99bab31ccb2",
+    "timing/placement-v-main/5-branch.command.json": "30d166b700f568d2fd1a66f40f2167801c879c4cd996ac2e343dda264f7c3837",
+    "timing/placement-v-main/report.command.json": "8817a9b9715a4a33db54ff4b3c4875dc894059caa25d581495a32db059972a6a",
+    "timing/placement-v-main/2-base.stdout": "24e6004984021a2a2cde8d85e0f3f0629a5bf38ec567f878a112db354f4cf472",
+    "timing/placement-v-main/comparison.json": "b08fd3204d1dae51c27093d973b767768346b3cbf8ca77f75c3f54d75dbff951",
+    "timing/placement-v-main/5-base.stderr": "2bc7a0bd34cdeb85ea7fe53b7af13a9e2890e0078981a18a759fd7f033a00372",
+    "timing/placement-v-main/report.stdout": "17be751a0ecd4746fbd20f78daceae889c901358b12bfef8d8769fb3bd2600d5",
+    "timing/placement-v-main/report.json": "837e3518024e30f6decb9d7a1c2f4fb655cb0d9eefd941335f7801efcca61bfb",
+    "timing/placement-v-main/4-base.command.json": "f8011fb9a7319a5d9beb6c669d5bb7e18b944a2f02a173966a2f895e393eda2c",
+    "timing/placement-v-main/4-branch.stderr": "5536c4b26fc1d641b78ebf5a4e8f4c1b71dfef1400c19b0ec6d4f77a1eddcf85",
+    "timing/memo-v-placement/2-base.command.json": "936d29f4cc45028d1e69a44ebb9ce9c81be7411241e67802534072a9335534a6",
+    "timing/memo-v-placement/1-base.stdout": "bb8470eff9723bf37222097b8de596951704098770d44fed480403bd9513f0be",
+    "timing/memo-v-placement/2-branch.stdout": "4b32cdf44303aa53b142720a27cf69f017d9f5d4bd426d8495a9b4d389a3336c",
+    "timing/memo-v-placement/1-base.stderr": "6f8e2cf01336efe5b19633d858e5be4e24838c7814c4f0446c70aca1e134e918",
+    "timing/memo-v-placement/5-branch.stderr": "0fdd71427b771ca3df7292470d13f97c5155e4066eff63220a4fa016cae0a6c0",
+    "timing/memo-v-placement/5-base.command.json": "aeaf90421da26a2825bd9c8cfa472c6f7861b28a9cc862466212886cf46c3e77",
+    "timing/memo-v-placement/1-branch.stderr": "3abadc1aaab2e98a4b5258326c0da1aff507c9f0361a34545b3ed501a51f685e",
+    "timing/memo-v-placement/1-branch.stdout": "e8f71a7b122e46217ca2536308aaf369c0a0e1e35e64ded13472cab048f79167",
+    "timing/memo-v-placement/3-base.command.json": "c6a27e342573e876f5640b93bd926bc052a12e253ba518f89ba18c4ef532b0d5",
+    "timing/memo-v-placement/3-base.stdout": "2d5f13d6a82f5c6be51a9faf51d6af16c00db13560c9d2eedb51c9b955063a25",
+    "timing/memo-v-placement/4-base.stderr": "51f5bde273453a780f209551b0c36593f832b142c54659ac3e4dafe3ac6671d5",
+    "timing/memo-v-placement/5-branch.stdout": "f117ca96788d62f7a9b28bdb65318524622dfc3893d09174986731ab54837cfc",
+    "timing/memo-v-placement/1-base.command.json": "e017634bad80ee2c7200668c5c00d7b9f0f7ee1301cd2655b0c3684ae8beb09e",
+    "timing/memo-v-placement/1-branch.command.json": "143b797641d553cbc92df483155f231e7d937fa8dd835579875bfc0b1af4dd0b",
+    "timing/memo-v-placement/3-branch.stdout": "64d732b18fb1a3e94f04acc0be41bd8923c0898b8573e95eea837058ea072ef4",
+    "timing/memo-v-placement/2-branch.stderr": "babb87926dd1d981f4fe89cced762509fc782913c002188583c9b6ef7f8b4b01",
+    "timing/memo-v-placement/4-branch.stdout": "8b65702d2b8b028e702dfcbefa073cca068d36488dc87892afb09eba931e3bed",
+    "timing/memo-v-placement/4-branch.command.json": "e39bff5b7fa51100d3257bb7ec1ae3072624b449a2565dd5fa2c6a14f83551a3",
+    "timing/memo-v-placement/2-branch.command.json": "c38bf864e90cc615f9a585d2d3daec4f98616b31ba559f4a44fd48a7d01fab29",
+    "timing/memo-v-placement/3-branch.command.json": "aee0c23adec42fff85e870ba59921a7c89ca3412422a013f79b565c2a4a6827b",
+    "timing/memo-v-placement/per-iteration.jsonl": "9a730cb92e52b96f2fabafee41fb25b0792c3842b80fb25c387f3960e3114d08",
+    "timing/memo-v-placement/4-base.stdout": "e289857c66f9a3b8b2c792c22e9798c6a4d88adbecfbc8388a75f12d434eadf9",
+    "timing/memo-v-placement/runs.jsonl": "63084d1f54e76f2793dcba09bb6d0110ead0e7b9fcdd1b4f20b8dcaf434631b5",
+    "timing/memo-v-placement/report.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "timing/memo-v-placement/3-base.stderr": "850cc8689767207e320b199d2517a175e779ac73a037215266a508abb1e6731d",
+    "timing/memo-v-placement/5-base.stdout": "2bea4429b31abbc822442b04f5e436e432c57bb27c07465c79f4d64d06081db5",
+    "timing/memo-v-placement/3-branch.stderr": "5402a9eb15e3292f51853ac719728fa61aa9d0877d7e94e4fdc245d56ee19769",
+    "timing/memo-v-placement/2-base.stderr": "e598b677cf88a5409d468210908b13f4a1a4cb3e994b6835917e3ed20c743974",
+    "timing/memo-v-placement/5-branch.command.json": "16c62c81de40eb17fd237bf02f45fb4efb95b8d772ad23e10e4311e5394d9855",
+    "timing/memo-v-placement/report.command.json": "56ff6af02d75dcaba2bc404c5e3c72a0c9a26cc07bd8dfbbc6d4353aabbba648",
+    "timing/memo-v-placement/2-base.stdout": "43cc1a43b13f00e3ee76054cd531d8f5debb2809b67e217933ae81aa178018f8",
+    "timing/memo-v-placement/comparison.json": "cc9816e0f7093baf3cc296c05738b7f9cef0aea8585e31eaaec8fce3067f91de",
+    "timing/memo-v-placement/5-base.stderr": "e1de9741334eb3750b2dce217ca695d92760c03b3741ad2a571e02c4b4197b6d",
+    "timing/memo-v-placement/report.stdout": "40f7e5ededfcc87c2df20e7d711c17b4d6462a7c71e06b684bd841f2e00663c8",
+    "timing/memo-v-placement/report.json": "ba5e4612e5e1e935ff5493228bb9d2bb90f995ab0f5d9daa9b27c15f9a171660",
+    "timing/memo-v-placement/4-base.command.json": "d211d845d9a38eccbdc52486571f136bf897c61bc478310f08e6f0f5bb3b7c0f",
+    "timing/memo-v-placement/4-branch.stderr": "16e305858bd7b85d96d951a1f5eda180b49ad9921d5b25fcf282475a53ff86c0"
+  },
+  "disposition": "Deferred: close optional raw-leaf memo; no demonstrated current end-to-end or browser-worker bottleneck benefit sufficient to justify decoder cache/invalidation complexity. Correctness controls pass; not rejected as unsafe.",
+  "revisit": "Require a new actual consumer profile showing repeated strict raw-leaf parsing is a material user-visible bottleneck; do not repeat this experiment merely to obtain a green timing verdict.",
+  "retainedArchiveSha256": "1728ef1927045dec13b667ed366c926613a65d063863864a3abefe09d60d8283",
+  "SPDX-License-Identifier": "MPL-2.0"
+}

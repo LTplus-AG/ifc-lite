@@ -4391,3 +4391,8 @@ now uses the reviewed first-frame clock contract in both cadence and markers,
 and reads finalized sidecars at their actual case paths. Lesson: verify final
 checker contracts and receipt discovery against retained real captures before
 spending another capture window. This integration fix grants no timing verdict.
+
+
+### Deferred raw-leaf success memo recovery (#7917)
+
+The current-main recovery kept strict source-span and execution-authority checks and passed the raw-read correctness controls. The matched full-load cohort retained identical mesh/frame/diagnostic outputs on the real-model sample, with a promising parse signal but an inconclusive end-to-end report and mixed native wall results. Defer the optional cache: its extra decoder state and invalidation obligations do not yet have a demonstrated user-visible bottleneck benefit, and it is not needed for placement-reader consolidation. Preserve the source and [original measured evidence](evidence/raw-leaf-memo-7917-recovery/README.md). Revisit only for a new actual consumer profile, not another attempt to obtain a desired timing verdict. No browser speed or neutrality claim is made.

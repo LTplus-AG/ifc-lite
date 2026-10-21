@@ -4369,6 +4369,21 @@ The standalone native comparison preserves ordered mesh payloads, exact float/fr
 
 [Retained native observations](evidence/placement-refusal-7877-recovery/README.md) bind the exact standalone source. Keep strict malformed-placement reporting and output preservation separate from claims about native speed or the browser pipeline.
 
+The separate [historical recovery cohort](../../tests/evidence/placement-7779/native-5a834675-to-2f53f794/README.md)
+binds its own frozen base and candidate, with matching complete declared payload
+and diagnostic witnesses. Its stock report is inconclusive; faster entity-scan
+flags coexist with adverse geometry and complete-call observations. Raw block
+medians and stock best-of-five rows remain separate. Verdict: Class X guard
+correctness with disclosed native timing observations, without a speedup,
+neutrality or new cost-acceptance claim. Lesson: preserve each arm's original
+protocol/compiler/receipt identity and retain adverse phases when publishing a
+mixed report. The packet is prepared as a document-only descendant of the
+actual published measured candidate, with baseline source entries unchanged.
+It does not measure the previous private integration or a new document head.
+Selected publication remains EVIDENCE_PENDING after vault lock failures; the
+compact bundle is PREPARED_NOT_PUBLISHED pending archive digest review.
+Inherited main holds and required hosted/oracle qualification remain outstanding.
+
 ### Missing polygonal-face records (#7911)
 
 Correctness change, with no performance improvement or neutrality claim. The

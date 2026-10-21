@@ -1,0 +1,652 @@
+{
+  "status": "HISTORICAL_COMPLETED_COHORT_PUBLICATION_AUDIT_PENDING",
+  "base": {
+    "ref": "5a834675c8e6d1935442763246c85baa0cd1d372",
+    "tree": "e6c70a83fde5d80970adc7885879e5b7b072a794",
+    "blobs": {
+      "Cargo.toml": "4a8d7f2ce0bde0afcc2b1774eaf222f0c146e08e",
+      "Cargo.lock": "d94ff20af86fb15f85e977f7648340e0bc4483fe",
+      "rust-toolchain.toml": "481488eb349c6f022f238b6226e9d5a69125df1f",
+      ".cargo/config.toml": "5e7efdc5525a8e68c33dc48b0e6c21ee178dfbac",
+      "scripts/perf/build-at-ref.sh": "017314d18b89b759254e18542e170532abce0c2d",
+      "rust/processing/examples/perf_probe.rs": "9f3ba330fed0fa5087ef54bbd42025f5a22e860b",
+      "scripts/perf/ab-order.mjs": "dfdd4588de6f90cc7f8933815fda981fb09233d0",
+      "scripts/perf/ab-report.mjs": "6053c2a3d9d6e4cce91dfccfe91d0f0570fa6ffb"
+    }
+  },
+  "branch": {
+    "ref": "2f53f7941ad3fe330de749c7124d8a7e20d30cd4",
+    "tree": "774869cc7c8b8483d5221e07db0fbd21a0d53930",
+    "blobs": {
+      "Cargo.toml": "4a8d7f2ce0bde0afcc2b1774eaf222f0c146e08e",
+      "Cargo.lock": "d94ff20af86fb15f85e977f7648340e0bc4483fe",
+      "rust-toolchain.toml": "481488eb349c6f022f238b6226e9d5a69125df1f",
+      ".cargo/config.toml": "5e7efdc5525a8e68c33dc48b0e6c21ee178dfbac",
+      "scripts/perf/build-at-ref.sh": "017314d18b89b759254e18542e170532abce0c2d",
+      "rust/processing/examples/perf_probe.rs": "9f3ba330fed0fa5087ef54bbd42025f5a22e860b",
+      "scripts/perf/ab-order.mjs": "dfdd4588de6f90cc7f8933815fda981fb09233d0",
+      "scripts/perf/ab-report.mjs": "6053c2a3d9d6e4cce91dfccfe91d0f0570fa6ffb"
+    }
+  },
+  "origins": {
+    "main": {
+      "ref": "5a834675c8e6d1935442763246c85baa0cd1d372",
+      "tree": "e6c70a83fde5d80970adc7885879e5b7b072a794",
+      "actualCriticalCrates": [
+        "ifc_lite_core",
+        "ifc_lite_geometry",
+        "ifc_lite_processing",
+        "perf_probe",
+        "recovery_payload_diagnostics"
+      ],
+      "actualRustcRecords": 5,
+      "origin": {
+        "path": "<jobs>/05fb2817-57b7-4dc7-bf22-c8c49763c06a/receipt.json",
+        "sha256": "bbcbb68c246c48e79a948b95f81ca88b2f4d167b5621698a8bac8415b41fec89",
+        "target": "<storage-tasks>/05fb2817-57b7-4dc7-bf22-c8c49763c06a/target",
+        "protocolDirectory": "<recovery-artifacts>/perf/placement-7877-current-native-v3",
+        "freezeSha256": "75620e9f4fe18be0b27d32cb396c9ef295a412ae6e097139703edfb625052096",
+        "entrypoint": "<recovery-artifacts>/perf/placement-7877-current-native-v3/prepare-arms.py"
+      },
+      "binaries": {
+        "perf-probe": {
+          "file": "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/main/perf-probe",
+          "sha256": "2c421ef0b1f1b972c202d58adf2c7d6cfbb003ba4266f72e63f8ac9af1b1b0b6"
+        },
+        "payload-diagnostics": {
+          "file": "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/main/payload-diagnostics",
+          "sha256": "7adcb83f666d4758e182b763fd32b9316f1ac2ad3a2e30621999c7547df909d8"
+        }
+      }
+    },
+    "placement": {
+      "ref": "2f53f7941ad3fe330de749c7124d8a7e20d30cd4",
+      "tree": "774869cc7c8b8483d5221e07db0fbd21a0d53930",
+      "actualCriticalCrates": [
+        "ifc_lite_core",
+        "ifc_lite_geometry",
+        "ifc_lite_processing",
+        "perf_probe",
+        "recovery_payload_diagnostics"
+      ],
+      "actualRustcRecords": 5,
+      "origin": {
+        "path": "<jobs>/7e823548-b381-4b84-a89a-364c2efc2487/receipt.json",
+        "sha256": "32f1c143a02ce6f997aaf71d9b46c7a6042d5907f4303ea23308e8d3eca65e57",
+        "target": "<storage-tasks>/7e823548-b381-4b84-a89a-364c2efc2487/target",
+        "protocolDirectory": "<recovery-artifacts>/perf/placement-7877-current-native-v4",
+        "freezeSha256": "134b8052bcb54a9b0b34f792e4dcc8097eb8e2d4203a3657ab008a555bffc33c",
+        "entrypoint": "<recovery-artifacts>/perf/placement-7877-current-native-v4/prepare-arms.py"
+      },
+      "binaries": {
+        "perf-probe": {
+          "file": "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/placement/perf-probe",
+          "sha256": "c0dc439f376f2d540c4d1ecfb50c5e5df3d6181b20b18d7f2cff423eee35cb3b"
+        },
+        "payload-diagnostics": {
+          "file": "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/placement/payload-diagnostics",
+          "sha256": "9a18a90691b70facccdd1488c1f3ba4a435b50d1385c38afa2e9c30cd9b24b88"
+        }
+      }
+    }
+  },
+  "sourceBindings": {
+    "version": 2,
+    "qualification": "placement-7877-current-native-v4",
+    "freezeSha256": "134b8052bcb54a9b0b34f792e4dcc8097eb8e2d4203a3657ab008a555bffc33c",
+    "tools": {
+      "cargo": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)",
+      "rustc": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+    },
+    "arms": {
+      "main": {
+        "ref": "5a834675c8e6d1935442763246c85baa0cd1d372",
+        "tree": "e6c70a83fde5d80970adc7885879e5b7b072a794",
+        "tools": {
+          "cargo": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)",
+          "rustc": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+        },
+        "profile": "profiling",
+        "features": [],
+        "admissionReceipt": "<jobs>/05fb2817-57b7-4dc7-bf22-c8c49763c06a/receipt.json",
+        "target": "<storage-tasks>/05fb2817-57b7-4dc7-bf22-c8c49763c06a/target",
+        "checksumFreshness": true,
+        "buildEnvironment": {
+          "RUSTFLAGS": null,
+          "CARGO_ENCODED_RUSTFLAGS": null,
+          "CARGO_PROFILE_PROFILING_OPT_LEVEL": null,
+          "CARGO_PROFILE_PROFILING_DEBUG": null,
+          "CARGO_UNSTABLE_CHECKSUM_FRESHNESS": "true",
+          "CARGO_BUILD_JOBS": "4",
+          "BASH_ENV": "<recovery-artifacts>/perf/placement-7877-current-native-v3/cargo-verbose.sh"
+        },
+        "injections": {
+          "perf_probe-observed.rs": "dd50137fdc1cdfd980743afe7692e5c70bdba782f9b18d78d715624c6b7f053b",
+          "measurement-observed.rs": "a3dcc5b964c5e8d289f74ef6c5f10cbed3f904fa9184c19583756f222382783e",
+          "payload-diagnostics-v2.rs": "95143c5e25f362bc46f566929fb0b9eb61f746d017165b024e334528ae7ceba6"
+        },
+        "binaries": {
+          "perf-probe": {
+            "file": "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/main/perf-probe",
+            "sha256": "2c421ef0b1f1b972c202d58adf2c7d6cfbb003ba4266f72e63f8ac9af1b1b0b6"
+          },
+          "payload-diagnostics": {
+            "file": "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/main/payload-diagnostics",
+            "sha256": "7adcb83f666d4758e182b763fd32b9316f1ac2ad3a2e30621999c7547df909d8"
+          }
+        },
+        "commands": [
+          {
+            "argv": [
+              "bash",
+              "<launcher-checkout>/scripts/perf/build-at-ref.sh",
+              "--ref",
+              "5a834675c8e6d1935442763246c85baa0cd1d372",
+              "--target-dir",
+              "<storage-tasks>/05fb2817-57b7-4dc7-bf22-c8c49763c06a/target",
+              "--out",
+              "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/main/perf-probe",
+              "--inject",
+              "<recovery-artifacts>/perf/placement-7877-current-native-v3/perf_probe-observed.rs=rust/processing/examples/perf_probe.rs",
+              "--inject",
+              "<recovery-artifacts>/perf/placement-7877-current-native-v3/measurement-observed.rs=rust/processing/examples/perf_probe/measurement.rs"
+            ],
+            "cwd": "<launcher-checkout>",
+            "startedAt": 1792590431.7429206,
+            "timeoutSeconds": 1800,
+            "complete": true,
+            "exitCode": 0,
+            "finishedAt": 1792590634.1095026,
+            ".stdout": {
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            },
+            ".stderr": {
+              "sha256": "3ab1be869b976153e4991949bc21931eeb4c1b6dd865e60fe8a64a1eee872687",
+              "bytes": 480894
+            }
+          },
+          {
+            "argv": [
+              "bash",
+              "<launcher-checkout>/scripts/perf/build-at-ref.sh",
+              "--ref",
+              "5a834675c8e6d1935442763246c85baa0cd1d372",
+              "--target-dir",
+              "<storage-tasks>/05fb2817-57b7-4dc7-bf22-c8c49763c06a/target",
+              "--example",
+              "recovery_payload_diagnostics",
+              "--inject",
+              "<recovery-artifacts>/perf/placement-7877-current-native-v3/payload-diagnostics-v2.rs=rust/processing/examples/recovery_payload_diagnostics.rs",
+              "--out",
+              "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/main/payload-diagnostics"
+            ],
+            "cwd": "<launcher-checkout>",
+            "startedAt": 1792590634.110718,
+            "timeoutSeconds": 1800,
+            "complete": true,
+            "exitCode": 0,
+            "finishedAt": 1792590709.3976464,
+            ".stdout": {
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            },
+            ".stderr": {
+              "sha256": "aa33136c84cd1d6d3e518af21e633e6151a551f10b175e04a4462d68224e4c2b",
+              "bytes": 179545
+            }
+          }
+        ],
+        "compilerProofSha256": "69379a1f978af41c339ab87c0641714e696a7b8065a6f0eea4bb877b357f1282"
+      },
+      "placement": {
+        "ref": "2f53f7941ad3fe330de749c7124d8a7e20d30cd4",
+        "tree": "774869cc7c8b8483d5221e07db0fbd21a0d53930",
+        "tools": {
+          "cargo": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)",
+          "rustc": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+        },
+        "profile": "profiling",
+        "features": [],
+        "admissionReceipt": "<jobs>/7e823548-b381-4b84-a89a-364c2efc2487/receipt.json",
+        "target": "<storage-tasks>/7e823548-b381-4b84-a89a-364c2efc2487/target",
+        "checksumFreshness": true,
+        "buildEnvironment": {
+          "RUSTFLAGS": null,
+          "CARGO_ENCODED_RUSTFLAGS": null,
+          "CARGO_PROFILE_PROFILING_OPT_LEVEL": null,
+          "CARGO_PROFILE_PROFILING_DEBUG": null,
+          "CARGO_UNSTABLE_CHECKSUM_FRESHNESS": "true",
+          "CARGO_BUILD_JOBS": "4",
+          "BASH_ENV": "<recovery-artifacts>/perf/placement-7877-current-native-v4/cargo-verbose.sh"
+        },
+        "injections": {
+          "perf_probe-observed.rs": "dd50137fdc1cdfd980743afe7692e5c70bdba782f9b18d78d715624c6b7f053b",
+          "measurement-observed.rs": "a3dcc5b964c5e8d289f74ef6c5f10cbed3f904fa9184c19583756f222382783e",
+          "payload-diagnostics-v2.rs": "95143c5e25f362bc46f566929fb0b9eb61f746d017165b024e334528ae7ceba6"
+        },
+        "binaries": {
+          "perf-probe": {
+            "file": "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/placement/perf-probe",
+            "sha256": "c0dc439f376f2d540c4d1ecfb50c5e5df3d6181b20b18d7f2cff423eee35cb3b"
+          },
+          "payload-diagnostics": {
+            "file": "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/placement/payload-diagnostics",
+            "sha256": "9a18a90691b70facccdd1488c1f3ba4a435b50d1385c38afa2e9c30cd9b24b88"
+          }
+        },
+        "commands": [
+          {
+            "argv": [
+              "bash",
+              "<launcher-checkout>/scripts/perf/build-at-ref.sh",
+              "--ref",
+              "2f53f7941ad3fe330de749c7124d8a7e20d30cd4",
+              "--target-dir",
+              "<storage-tasks>/7e823548-b381-4b84-a89a-364c2efc2487/target",
+              "--out",
+              "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/placement/perf-probe",
+              "--inject",
+              "<recovery-artifacts>/perf/placement-7877-current-native-v4/perf_probe-observed.rs=rust/processing/examples/perf_probe.rs",
+              "--inject",
+              "<recovery-artifacts>/perf/placement-7877-current-native-v4/measurement-observed.rs=rust/processing/examples/perf_probe/measurement.rs"
+            ],
+            "cwd": "<launcher-checkout>",
+            "startedAt": 1792593267.576246,
+            "timeoutSeconds": 1800,
+            "complete": true,
+            "exitCode": 0,
+            "finishedAt": 1792593468.3818579,
+            ".stdout": {
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            },
+            ".stderr": {
+              "sha256": "2d120056c2628190bd0985ca66bdd6182143c8914f086d52e56b3aef02bc5a77",
+              "bytes": 480899
+            }
+          },
+          {
+            "argv": [
+              "bash",
+              "<launcher-checkout>/scripts/perf/build-at-ref.sh",
+              "--ref",
+              "2f53f7941ad3fe330de749c7124d8a7e20d30cd4",
+              "--target-dir",
+              "<storage-tasks>/7e823548-b381-4b84-a89a-364c2efc2487/target",
+              "--example",
+              "recovery_payload_diagnostics",
+              "--inject",
+              "<recovery-artifacts>/perf/placement-7877-current-native-v4/payload-diagnostics-v2.rs=rust/processing/examples/recovery_payload_diagnostics.rs",
+              "--out",
+              "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/placement/payload-diagnostics"
+            ],
+            "cwd": "<launcher-checkout>",
+            "startedAt": 1792593468.3917155,
+            "timeoutSeconds": 1800,
+            "complete": true,
+            "exitCode": 0,
+            "finishedAt": 1792593543.7511868,
+            ".stdout": {
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            },
+            ".stderr": {
+              "sha256": "491841aac8aa9e0809f5e74f134fd4fbf4b09781dd30e5a65daa656c6f8a853a",
+              "bytes": 179481
+            }
+          }
+        ],
+        "compilerProofSha256": "a14c65ecccc8838a1af187b7b03516ac2a59c818443ad39cd2168863aa77ddf2"
+      }
+    },
+    "evidence": {
+      "<jobs>/05fb2817-57b7-4dc7-bf22-c8c49763c06a/receipt.json": "bbcbb68c246c48e79a948b95f81ca88b2f4d167b5621698a8bac8415b41fec89",
+      "<jobs>/05fb2817-57b7-4dc7-bf22-c8c49763c06a/output.log": "6ca9f7072e6f0b7143aa5e9ba0ef2d8676bc04fa8fa33c6f52d5af942c0a94a4",
+      "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/preparation-main.json": "8306d38583198f0ff11f16e6596b44787a2e9663014f42ddf34f1e2dc508129e",
+      "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/main/build-probe.stderr": "3ab1be869b976153e4991949bc21931eeb4c1b6dd865e60fe8a64a1eee872687",
+      "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/main/build-payload.command.json": "52147f774ba30cd0e5e534968cc8f55ae41df795a758f323ef4509da15a34b96",
+      "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/main/build-payload.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/main/build-payload.stderr": "aa33136c84cd1d6d3e518af21e633e6151a551f10b175e04a4462d68224e4c2b",
+      "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/main/compiler-proof.json": "69379a1f978af41c339ab87c0641714e696a7b8065a6f0eea4bb877b357f1282",
+      "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/main/build-probe.command.json": "87b38cd17ffc43d5b014b4007fe3cd5bf19a037c216751d69211291289698630",
+      "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/main/build-probe.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/main/source-binding.json": "9b5d81379f8c500716402d26db0e35e02625925338980e5b12f9f36c05a5a865",
+      "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/checksum-config.command.json": "3e2a5498c6c5f8ab25224736121e96c444b0ae00cc24ab652addda781a6ab153",
+      "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/checksum-config.stdout": "5a0536d91eee3664b48a9f65d847fb9f9075b4a3f79e2f4f9738fea714387388",
+      "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/checksum-config.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "<jobs>/7e823548-b381-4b84-a89a-364c2efc2487/receipt.json": "32f1c143a02ce6f997aaf71d9b46c7a6042d5907f4303ea23308e8d3eca65e57",
+      "<jobs>/7e823548-b381-4b84-a89a-364c2efc2487/output.log": "aeed06cf86261c66f6a70988a489436f1b981a03204d8b8a3366720013cb4a66",
+      "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/preparation-placement.json": "c318000e771e40b860e43d7ee83d82f250c35f816b573580793c528f08c6c969",
+      "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/placement/build-probe.stderr": "2d120056c2628190bd0985ca66bdd6182143c8914f086d52e56b3aef02bc5a77",
+      "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/placement/build-payload.command.json": "6f84f11f25df58d954d5919078f08efbc6f5b70c547e0ad4a5293755a7e329cc",
+      "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/placement/build-payload.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/placement/build-payload.stderr": "491841aac8aa9e0809f5e74f134fd4fbf4b09781dd30e5a65daa656c6f8a853a",
+      "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/placement/compiler-proof.json": "a14c65ecccc8838a1af187b7b03516ac2a59c818443ad39cd2168863aa77ddf2",
+      "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/placement/build-probe.command.json": "440d3ac35c1cee1b0f154c928198a32c1a938467bb6d22cbfb8b7d9a48d3b6dd",
+      "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/placement/build-probe.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/placement/source-binding.json": "cbffe73cee68b73b484ba028108af507a3b2d3adae361382438aed286fc09765",
+      "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/placement-checksum-config.command.json": "e924d75219cba1680ae539c10c88cf33172d4309bef92bb10007ebc1c401d1bf",
+      "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/placement-checksum-config.stdout": "5a0536d91eee3664b48a9f65d847fb9f9075b4a3f79e2f4f9738fea714387388",
+      "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/placement-checksum-config.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "preparationReceipts": {
+      "main": {
+        "path": "<jobs>/05fb2817-57b7-4dc7-bf22-c8c49763c06a/receipt.json",
+        "sha256": "bbcbb68c246c48e79a948b95f81ca88b2f4d167b5621698a8bac8415b41fec89",
+        "target": "<storage-tasks>/05fb2817-57b7-4dc7-bf22-c8c49763c06a/target",
+        "protocolDirectory": "<recovery-artifacts>/perf/placement-7877-current-native-v3",
+        "freezeSha256": "75620e9f4fe18be0b27d32cb396c9ef295a412ae6e097139703edfb625052096",
+        "entrypoint": "<recovery-artifacts>/perf/placement-7877-current-native-v3/prepare-arms.py"
+      },
+      "placement": {
+        "path": "<jobs>/7e823548-b381-4b84-a89a-364c2efc2487/receipt.json",
+        "sha256": "32f1c143a02ce6f997aaf71d9b46c7a6042d5907f4303ea23308e8d3eca65e57",
+        "target": "<storage-tasks>/7e823548-b381-4b84-a89a-364c2efc2487/target",
+        "protocolDirectory": "<recovery-artifacts>/perf/placement-7877-current-native-v4",
+        "freezeSha256": "134b8052bcb54a9b0b34f792e4dcc8097eb8e2d4203a3657ab008a555bffc33c",
+        "entrypoint": "<recovery-artifacts>/perf/placement-7877-current-native-v4/prepare-arms.py"
+      }
+    },
+    "priorMainPinsSha256": "f1cf58d328be1477c5b95f95fe66e9d164c85731212655f71b91405127275fb2",
+    "assembledAt": 1792595722.4311042
+  },
+  "compilerSummary": {
+    "main": {
+      "originalSHA256": "69379a1f978af41c339ab87c0641714e696a7b8065a6f0eea4bb877b357f1282",
+      "records": [
+        {
+          "crate": "ifc_lite_core",
+          "example": "perf_probe",
+          "sourceSha256": "f952ab4b01df549504091e5083e27ffdc64032f46166dd63dc127f4b9fd3ed5e"
+        },
+        {
+          "crate": "ifc_lite_geometry",
+          "example": "perf_probe",
+          "sourceSha256": "1a57b174c3b9fe7db0d1adbf06332426ac82831b218d889f968f5c3885d37cb3"
+        },
+        {
+          "crate": "ifc_lite_processing",
+          "example": "perf_probe",
+          "sourceSha256": "aa7c254ee56cccc098054be87f959bed519c23b10de42f101c222286d360024c"
+        },
+        {
+          "crate": "perf_probe",
+          "example": "perf_probe",
+          "sourceSha256": "dd50137fdc1cdfd980743afe7692e5c70bdba782f9b18d78d715624c6b7f053b"
+        },
+        {
+          "crate": "recovery_payload_diagnostics",
+          "example": "recovery_payload_diagnostics",
+          "sourceSha256": "95143c5e25f362bc46f566929fb0b9eb61f746d017165b024e334528ae7ceba6"
+        }
+      ],
+      "sourceAttestations": [
+        {
+          "example": "perf_probe",
+          "cargoArgv": [
+            "build",
+            "--profile",
+            "profiling",
+            "-p",
+            "ifc-lite-processing",
+            "--example",
+            "perf_probe"
+          ],
+          "fileCount": 1028,
+          "fileManifestSHA256": "ff246d94f2c0f939824ccda30f065494a24f9b5f4992e2d05feb2657d361958d"
+        },
+        {
+          "example": "recovery_payload_diagnostics",
+          "cargoArgv": [
+            "build",
+            "--profile",
+            "profiling",
+            "-p",
+            "ifc-lite-processing",
+            "--example",
+            "recovery_payload_diagnostics"
+          ],
+          "fileCount": 1027,
+          "fileManifestSHA256": "0617413f696fcfda73c4fcd002af440c0f35bd1684eae0b4c23bbc6192643501"
+        }
+      ]
+    },
+    "placement": {
+      "originalSHA256": "a14c65ecccc8838a1af187b7b03516ac2a59c818443ad39cd2168863aa77ddf2",
+      "records": [
+        {
+          "crate": "ifc_lite_core",
+          "example": "perf_probe",
+          "sourceSha256": "f952ab4b01df549504091e5083e27ffdc64032f46166dd63dc127f4b9fd3ed5e"
+        },
+        {
+          "crate": "ifc_lite_geometry",
+          "example": "perf_probe",
+          "sourceSha256": "1a57b174c3b9fe7db0d1adbf06332426ac82831b218d889f968f5c3885d37cb3"
+        },
+        {
+          "crate": "ifc_lite_processing",
+          "example": "perf_probe",
+          "sourceSha256": "aa7c254ee56cccc098054be87f959bed519c23b10de42f101c222286d360024c"
+        },
+        {
+          "crate": "perf_probe",
+          "example": "perf_probe",
+          "sourceSha256": "dd50137fdc1cdfd980743afe7692e5c70bdba782f9b18d78d715624c6b7f053b"
+        },
+        {
+          "crate": "recovery_payload_diagnostics",
+          "example": "recovery_payload_diagnostics",
+          "sourceSha256": "95143c5e25f362bc46f566929fb0b9eb61f746d017165b024e334528ae7ceba6"
+        }
+      ],
+      "sourceAttestations": [
+        {
+          "example": "perf_probe",
+          "cargoArgv": [
+            "build",
+            "--profile",
+            "profiling",
+            "-p",
+            "ifc-lite-processing",
+            "--example",
+            "perf_probe"
+          ],
+          "fileCount": 1028,
+          "fileManifestSHA256": "7715b72f31a52451fa23114eb26cb8e6e1f092745577e4c2984613657629dcea"
+        },
+        {
+          "example": "recovery_payload_diagnostics",
+          "cargoArgv": [
+            "build",
+            "--profile",
+            "profiling",
+            "-p",
+            "ifc-lite-processing",
+            "--example",
+            "recovery_payload_diagnostics"
+          ],
+          "fileCount": 1027,
+          "fileManifestSHA256": "9bb02ceb8d4c6a776b7b01dd59c2862282ce3c8ae951a489b1bc0b384f28a7c1"
+        }
+      ]
+    }
+  },
+  "receipts": [
+    {
+      "job": "05fb2817-57b7-4dc7-bf22-c8c49763c06a",
+      "originalReceiptSHA256": "bbcbb68c246c48e79a948b95f81ca88b2f4d167b5621698a8bac8415b41fec89",
+      "state": "completed",
+      "exitCode": 0,
+      "sourceBefore": {
+        "commit": "2f53f7941ad3fe330de749c7124d8a7e20d30cd4",
+        "tree": "774869cc7c8b8483d5221e07db0fbd21a0d53930",
+        "clean": true,
+        "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "toolchainInputs": {
+          "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+          "Cargo.lock": "55d7c4deaf4afe5281b77119a9a1759f9dde9ba8c325cfd59ce4b43bebb571a6",
+          "pnpm-lock.yaml": "4ef03ad9b34812de9d0e6c309d04ae315c09f887c3927f67ab6e31f8131e5283",
+          "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937"
+        }
+      },
+      "sourceAfter": {
+        "commit": "2f53f7941ad3fe330de749c7124d8a7e20d30cd4",
+        "tree": "774869cc7c8b8483d5221e07db0fbd21a0d53930",
+        "clean": true,
+        "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "toolchainInputs": {
+          "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+          "Cargo.lock": "55d7c4deaf4afe5281b77119a9a1759f9dde9ba8c325cfd59ce4b43bebb571a6",
+          "pnpm-lock.yaml": "4ef03ad9b34812de9d0e6c309d04ae315c09f887c3927f67ab6e31f8131e5283",
+          "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937"
+        }
+      },
+      "role": "base build under v3",
+      "outputSHA256": "6ca9f7072e6f0b7143aa5e9ba0ef2d8676bc04fa8fa33c6f52d5af942c0a94a4"
+    },
+    {
+      "job": "7e823548-b381-4b84-a89a-364c2efc2487",
+      "originalReceiptSHA256": "32f1c143a02ce6f997aaf71d9b46c7a6042d5907f4303ea23308e8d3eca65e57",
+      "state": "completed",
+      "exitCode": 0,
+      "sourceBefore": {
+        "commit": "2f53f7941ad3fe330de749c7124d8a7e20d30cd4",
+        "tree": "774869cc7c8b8483d5221e07db0fbd21a0d53930",
+        "clean": true,
+        "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "toolchainInputs": {
+          "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+          "Cargo.lock": "55d7c4deaf4afe5281b77119a9a1759f9dde9ba8c325cfd59ce4b43bebb571a6",
+          "pnpm-lock.yaml": "4ef03ad9b34812de9d0e6c309d04ae315c09f887c3927f67ab6e31f8131e5283",
+          "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937"
+        }
+      },
+      "sourceAfter": {
+        "commit": "2f53f7941ad3fe330de749c7124d8a7e20d30cd4",
+        "tree": "774869cc7c8b8483d5221e07db0fbd21a0d53930",
+        "clean": true,
+        "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "toolchainInputs": {
+          "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+          "Cargo.lock": "55d7c4deaf4afe5281b77119a9a1759f9dde9ba8c325cfd59ce4b43bebb571a6",
+          "pnpm-lock.yaml": "4ef03ad9b34812de9d0e6c309d04ae315c09f887c3927f67ab6e31f8131e5283",
+          "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937"
+        }
+      },
+      "role": "candidate build under v4",
+      "outputSHA256": "aeed06cf86261c66f6a70988a489436f1b981a03204d8b8a3366720013cb4a66"
+    },
+    {
+      "job": "064500da-088e-4211-a6ba-aeaa0790485f",
+      "originalReceiptSHA256": "32dd57d3612190ad5a9f98373d0230057bc3e56b9d9efa036810309bb7020b81",
+      "state": "completed",
+      "exitCode": 0,
+      "sourceBefore": {
+        "commit": "2f53f7941ad3fe330de749c7124d8a7e20d30cd4",
+        "tree": "774869cc7c8b8483d5221e07db0fbd21a0d53930",
+        "clean": true,
+        "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "toolchainInputs": {
+          "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+          "Cargo.lock": "55d7c4deaf4afe5281b77119a9a1759f9dde9ba8c325cfd59ce4b43bebb571a6",
+          "pnpm-lock.yaml": "4ef03ad9b34812de9d0e6c309d04ae315c09f887c3927f67ab6e31f8131e5283",
+          "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937"
+        }
+      },
+      "sourceAfter": {
+        "commit": "2f53f7941ad3fe330de749c7124d8a7e20d30cd4",
+        "tree": "774869cc7c8b8483d5221e07db0fbd21a0d53930",
+        "clean": true,
+        "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "toolchainInputs": {
+          "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+          "Cargo.lock": "55d7c4deaf4afe5281b77119a9a1759f9dde9ba8c325cfd59ce4b43bebb571a6",
+          "pnpm-lock.yaml": "4ef03ad9b34812de9d0e6c309d04ae315c09f887c3927f67ab6e31f8131e5283",
+          "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937"
+        }
+      },
+      "role": "assembly",
+      "outputSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "job": "e2d8cb8c-ff7a-411e-995c-f55abe31ac3f",
+      "originalReceiptSHA256": "045c7b675ca4ef02a70c36457c30c93aed6a8cfd4cf55d04640e7bc6cd0b320d",
+      "state": "completed",
+      "exitCode": 0,
+      "sourceBefore": {
+        "commit": "2f53f7941ad3fe330de749c7124d8a7e20d30cd4",
+        "tree": "774869cc7c8b8483d5221e07db0fbd21a0d53930",
+        "clean": true,
+        "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "toolchainInputs": {
+          "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+          "Cargo.lock": "55d7c4deaf4afe5281b77119a9a1759f9dde9ba8c325cfd59ce4b43bebb571a6",
+          "pnpm-lock.yaml": "4ef03ad9b34812de9d0e6c309d04ae315c09f887c3927f67ab6e31f8131e5283",
+          "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937"
+        }
+      },
+      "sourceAfter": {
+        "commit": "2f53f7941ad3fe330de749c7124d8a7e20d30cd4",
+        "tree": "774869cc7c8b8483d5221e07db0fbd21a0d53930",
+        "clean": true,
+        "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "toolchainInputs": {
+          "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+          "Cargo.lock": "55d7c4deaf4afe5281b77119a9a1759f9dde9ba8c325cfd59ce4b43bebb571a6",
+          "pnpm-lock.yaml": "4ef03ad9b34812de9d0e6c309d04ae315c09f887c3927f67ab6e31f8131e5283",
+          "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937"
+        }
+      },
+      "role": "witness and measurement",
+      "outputSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "counts": {
+    "untimedWitnesses": 6,
+    "timedProcesses": 10,
+    "selectedRows": 30,
+    "innerRows": 150
+  },
+  "stockVerdict": {
+    "fingerprintDrift": false,
+    "tooNoisy": false,
+    "realChange": true,
+    "inconclusive": true,
+    "zeroBaselineIncrease": false
+  },
+  "stockRealPhaseFlags": [
+    {
+      "fixture": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "phase": "entity-scan",
+      "baseMedianMs": 34,
+      "branchMedianMs": 32,
+      "deltaPct": -5.88235294117647,
+      "noisePct": 2.941176470588235,
+      "real": true,
+      "direction": "faster"
+    },
+    {
+      "fixture": "ISSUE_053_20181220Holter_Tower_10.ifc",
+      "phase": "entity-scan",
+      "baseMedianMs": 593,
+      "branchMedianMs": 569,
+      "deltaPct": -4.0472175379426645,
+      "noisePct": 3.204047217537943,
+      "real": true,
+      "direction": "faster"
+    }
+  ],
+  "reporterVerification": {
+    "scope": "Pure frozen reporter recomputation from retained selected rows; no probe, build, timing or evidence overwrite.",
+    "reporter": "<launcher-checkout>/scripts/perf/ab-report.mjs",
+    "reporterSHA256": "d7d36f307e99b5b7544b1a36ae76474710039e82f31ad1f5b1a1bf7f9f380f3b",
+    "reportMatchesOriginal": true,
+    "exitCode": 0
+  },
+  "previousPreparationUnmeasured": {
+    "commit": "0f8185339ee2f218f15a7f8b9b84004c6aa720be",
+    "tree": "9c6445bf25305a379ad59b9e5b0c3abb4ba35bbe"
+  }
+}

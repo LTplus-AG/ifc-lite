@@ -1,0 +1,27 @@
+{
+  "baseCommit": "2f53f7941ad3fe330de749c7124d8a7e20d30cd4",
+  "baseTree": "774869cc7c8b8483d5221e07db0fbd21a0d53930",
+  "method": "Exact git ls-tree -r -z entry equality for every baseline path except scripts/perf/README.md. New files may exist only in this packet directory. Includes all production, test and build inputs and all prior evidence packets. Aggregate is SHA256 of lexically Git-ordered NUL-terminated retained entries.",
+  "unchangedBaselineEntries": 20272,
+  "unchangedEntriesSHA256": "f33c2bdd0278b2240e27328d9b4e7efe5eb7abc342d1fcbcf6befc2f4fa52575",
+  "allowedChangedExistingPaths": [
+    "scripts/perf/README.md"
+  ],
+  "allowedAddedDirectory": "tests/evidence/placement-7779/native-5a834675-to-2f53f794",
+  "appliesTo": "The document-only descendant containing this proof; the measured candidate remains baseCommit. No descendant is claimed as newly measured.",
+  "previousPreparation": {
+    "status": "HISTORICAL_PRIVATE_PREPARATION_NOT_CURRENT_BASELINE",
+    "packetCommit": "8b9ca3b636cef530629ffd53e9cebee7f2919a7b",
+    "sourceIdentity": {
+      "baseCommit": "0f8185339ee2f218f15a7f8b9b84004c6aa720be",
+      "baseTree": "9c6445bf25305a379ad59b9e5b0c3abb4ba35bbe",
+      "method": "Exact git ls-tree -r -z entry equality for every baseline path except scripts/perf/README.md. New files may exist only in this packet directory. Includes all production, test and build inputs and all prior evidence packets. Aggregate is SHA256 of lexically Git-ordered NUL-terminated retained entries.",
+      "unchangedBaselineEntries": 20316,
+      "unchangedEntriesSHA256": "fb7f84456fac8d967819816d2cd19836cca7b71b878e1c68d5b26d6a48e08f48",
+      "allowedChangedExistingPaths": [
+        "scripts/perf/README.md"
+      ],
+      "allowedAddedDirectory": "tests/evidence/placement-7779/native-5a834675-to-2f53f794"
+    }
+  }
+}

@@ -22,11 +22,11 @@ try {
       ? BEGIN_FRAME_CHROME_ARGS.filter(arg => arg !== '--use-angle=swiftshader')
       : BEGIN_FRAME_CHROME_ARGS), '--enable-logging=stderr'];
     const browser = await chromium.launch({ headless: true, args });
+    const deadline = setTimeout(() => { void browser.close(); }, 90_000);
+    deadline.unref();
     try {
       const page = await browser.newPage();
       page.setDefaultTimeout(30_000);
-      const deadline = setTimeout(() => { void browser.close(); }, 90_000);
-      deadline.unref();
       page.on('console', message => console.log(`[${variant}] ${message.text()}`));
       await page.goto(`http://127.0.0.1:${address.port}`);
       // tsx may emit this helper in functions serialized into the page.
@@ -102,13 +102,17 @@ try {
         device.destroy();
         return result;
       }, mainShaderSource);
-      clearTimeout(deadline);
       results.push({ round, variant, browser: browser.version(), args, result });
       console.log(JSON.stringify(results.at(-1)));
       if (variant === 'fixed' && (result.lost || result.events.some(event => (event as { ok?: boolean }).ok === false))) {
         throw new Error('Corrected SwiftShader configuration failed real pipeline/queue/readback checks');
       }
-    } finally { await browser.close(); }
+    } catch (error) {
+      // The broken configuration can lose its GPU channel even before adapter
+      // acquisition. Retain that outcome without skipping the fixed comparison.
+      results.push({ round, variant, browser: browser.version(), args, error: String(error) });
+      if (variant === 'fixed') throw error;
+    } finally { clearTimeout(deadline); await browser.close(); }
   }
 } finally {
   server.close();

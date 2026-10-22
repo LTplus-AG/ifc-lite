@@ -136,7 +136,7 @@ async function showOnlyModelAndFrame(page: Page, modelId: string): Promise<void>
 export async function rendererColorFrame(page: Page): Promise<Buffer> {
   // #7655: retry completed null captures while lazy visibility shaders compile.
   // Await each in-flight GPU readback under the enclosing test's deadline:
-  // expect.poll's 5s callback deadline interrupted healthy Revit captures.
+  // expect.poll's 5s callback deadline interrupted in-flight Revit captures.
   const retryDeadline = Date.now() + 5_000;
   const capture = () => page.evaluate(async () => globalThis.__ifc_lite_capture_color_frame__?.() ?? null);
   let dataUrl = await capture();

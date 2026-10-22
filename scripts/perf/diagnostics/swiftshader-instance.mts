@@ -23,10 +23,19 @@ try {
       : BEGIN_FRAME_CHROME_ARGS), '--enable-logging=stderr'];
     let browser: Browser | undefined;
     let deadline: ReturnType<typeof setTimeout> | undefined;
+    let closing: Promise<void> | undefined;
+    // Preserve the comparison even when deadline-triggered or final cleanup fails.
+    const closeBrowser = (): Promise<void> => {
+      if (!browser) return Promise.resolve();
+      return closing ??= browser.close().catch(error => {
+        results.push({ round, variant, stage: 'cleanup', error: String(error) });
+        console.error(`[${variant}] browser close failed: ${String(error)}`);
+        process.exitCode = 1;
+      });
+    };
     try {
       browser = await chromium.launch({ headless: true, args, timeout: 30_000 });
-      const launchedBrowser = browser;
-      deadline = setTimeout(() => { void launchedBrowser.close(); }, 90_000);
+      deadline = setTimeout(() => { void closeBrowser(); }, 90_000);
       deadline.unref();
       const page = await browser.newPage();
       page.setDefaultTimeout(30_000);
@@ -118,7 +127,7 @@ try {
       // acquisition. Retain that outcome without skipping the fixed comparison.
       results.push({ round, variant, browser: browser?.version(), args, error: String(error) });
       if (variant === 'fixed') throw error;
-    } finally { clearTimeout(deadline); await browser?.close(); }
+    } finally { clearTimeout(deadline); await closeBrowser(); }
   }
 } finally {
   server.close();

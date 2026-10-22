@@ -2747,6 +2747,11 @@ Reuse checked ID-prefix accumulation and the scanner's existing ASCII proof; obt
   on both sides** — which reads exactly like "no regression" but is a control,
   not a measurement. If the diff is under `rust/processing/src/symbolic/`, say so
   and drive `extract_symbolic_data` directly, rather than pasting a zero.
+  The `symbolic_probe` processing example times that public API and reports
+  complete symbolic JSON fingerprints outside the timed interval. Build the
+  same example at both source pins, then interleave the binaries; pass a fixture
+  and `1` for one extraction per fresh process. This supplements the geometry
+  worker-pool probe and does not establish browser performance.
   - **And pick the fixture by whether it exercises the branch, not by the default.**
     #2358 only does extra work when a symbolic rep's `ContextOfItems` is a full
     `IfcGeometricRepresentationContext`. The default fixture AC20-FZK-Haus has
@@ -4395,6 +4400,59 @@ checker contracts and receipt discovery against retained real captures before
 spending another capture window. This integration fix grants no timing verdict.
 
 
+## Recovered frame and placement validation: mixed, held (#7779)
+
+**Performance acceptance and merging remain held.** The single admitted,
+matched idle cohort compared the ordered tail/currentmain base with the recovered
+private integration using already-built source-pinned binaries. Haus wall time,
+public Viadotto planner time and public Duplex symbolic extraction time increased;
+the symbolic increase and the Haus increase are acceptance barriers, not dismissed
+as noise. Other worker-pool fixtures improved in that cohort; Holter is only a
+sanity sample. This is neither a blanket win nor an accepted correctness cost.
+
+All four worker-pool fixture mesh payload hashes and counts matched, and the
+complete Viadotto planner payload matched. Symbolic Duplex output has the separately
+qualified, sampling-order-only pair of near-zero float changes; its full JSON is
+not identical. Mesh hashing does not cover every exported appearance or auxiliary
+payload. Native single-thread phase instruction counts were flat or lower and both
+arms passed the unchanged canonical ceilings. Those phases do not execute the
+public symbolic API and cannot explain its measured slowdown.
+
+The [source identities and lossless reports](https://github.com/LTplus-AG/ifc-lite/blob/4c6534a7050f77f6cd2fbc734b40d14893d5071a/scripts/perf/evidence/f3b-recovered-7779/README.md)
+retain the balanced order, raw samples, CLI, fixture and manifest identities,
+all binary/tool/source checks before and after, numerical deltas and limits.
+Private integrated measurements do not substitute for raw support qualification.
+Root Turbo, source-matched Python wheel/parity and fresh WASM consumers have
+separate states and must not be called ready from native instruction results.
+Lesson: preserve full frames for correctness, retain every negative measurement,
+and attribute public API work separately before any performance acceptance.
+No new profile, rerun, optimization, repin, publication, merge or issue closure is
+authorized by this evidence.
+
+### Raw symbolic takeover qualification (#7914)
+
+The [raw-layer qualification packet](https://github.com/LTplus-AG/ifc-lite/blob/4c6534a7050f77f6cd2fbc734b40d14893d5071a/tests/evidence/f3b-recovered-symbolic-7779/takeover-42fa/README.md)
+records a separate, exclusively admitted paired comparison of the ordered parent
+and corrected symbolic source. Its verdict is **mixed, held**: some fixture wall
+medians increased and others decreased; this is no overall win or neutral result.
+It does not waive the distinct private integration regressions or the upstream
+instruction-budget hold. Full native mesh counts and hashes matched; full symbolic
+payloads needed their own comparison because the native probe does not execute
+the public symbolic API. The larger real-model coordinate changes are corrected
+negative-Z placement projection, independently checked using IfcOpenShell
+placements and authored curve equations, then the actual browser WASM boundary.
+
+Lesson: check executable provenance before timing. Cargo's shared relocation
+cache reused a baseline artifact during the first branch preparation despite a
+clean, correctly pinned checkout. That pair was rejected before measurements;
+fresh workspace compilation, embedded source paths and frozen executable hashes
+established the replacement pair. Keep source correctness, complete output
+identity and performance acceptance as separate evidence questions.
+
+The later [placement-stack reconciliation](https://github.com/LTplus-AG/ifc-lite/blob/4c6534a7050f77f6cd2fbc734b40d14893d5071a/tests/evidence/f3b-recovered-symbolic-7779/reconciliation-6fa/README.md)
+has separate native correctness and Clippy qualification. These earlier paired
+measurements do not qualify that combined source's performance or consumers.
+
 ## Engine transfer ceiling acceptance (#8000, #8003)
 
 The maintainer accepted the accumulated engine transfer cost measured on main
@@ -4570,3 +4628,32 @@ and do not qualify this head. No new runtime, oracle or performance result is
 claimed, and no output pin, digest/floor protection, baseline, ceiling or
 acceptance band is changed. Root independent review and qualification remain
 required before publication or landing.
+
+
+## Current-parent symbolic correctness cost accepted (#7914)
+
+The [current-parent packet](../../tests/evidence/f3b-recovered-symbolic-7779/current-parent-64430/README.md)
+separates the actual parent, unoptimized correction and fresh boolean-poll source.
+The measured symbolic cost is adverse and was explicitly accepted by the
+maintainer for that source. This is a correctness tradeoff, not neutrality or a
+regression-free claim. Original observations and prior held/rejected experiments
+remain retained; the decision does not qualify a later main integration or each
+intermediate publication layer. Other parent, CI and review requirements remain.
+
+Lesson: a boolean return boundary can remove empty-path aggregate transport
+without caching absence, but smaller generated code does not establish an
+end-to-end win. The full-policy mapper and authority consolidation trials lost
+end to end. Ordinary and forced inlining trials either left calls in the native
+scanner or introduced aggregate transport on official WASM. They remain rejected;
+do not reopen them from an isolated instruction reduction. Native pipeline
+phase gates do not execute public symbolic extraction, and a sparse profile
+cannot explain its wall cost. Preserve fresh authority observations, source
+precedence, sticky stops and unwind restoration before considering a new lever.
+
+The later [per-layer campaign](../../tests/evidence/f3b-recovered-symbolic-7779/current-parent-64430/publication-layer-performance.md)
+reproduces the symbolic cost on the frame increment, but native wall observations
+and a timer-resolution limitation leave qualification held. A concurrent metadata
+publisher is disclosed; the run is not pristine otherwise-idle evidence. Passing
+native instruction limits does not settle wall neutrality. Keep both cohorts and
+their exact approval scopes separate; no causality claim or adaptive rerun is a
+performance remedy.

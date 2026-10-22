@@ -152,7 +152,9 @@ pub fn read_step_number(bytes: &[u8]) -> Option<(StepNumber<'_>, usize)> {
     let (len, real) = scan_step_numeric_literal(bytes)?;
     let literal = &bytes[..len];
     if real {
-        let value = fast_float2::parse::<f64, _>(literal).ok()?;
+        // The grammar scan already validated this entire literal, so the
+        // converter need not check its consumed length again (#7779).
+        let (value, _) = fast_float2::parse_partial::<f64, _>(literal).ok()?;
         let number = admit_step_real(value)
             .map_or(StepNumber::Unrepresentable(literal), StepNumber::Real);
         return Some((number, len));

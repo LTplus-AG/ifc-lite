@@ -5,6 +5,10 @@ against actual parent `46cc72ff79ad88569409f42d9d0ce81171ba771c`.
 It does not qualify a later main integration or every intermediate publication layer.
 The exact measured sources are publicly retained under the qualification tags below.
 
+The separate [publication-layer checkpoint](publication-layers.md) records T's
+completed functional, output-witness and instruction checks. Its wall cohort
+remains pending at that checkpoint.
+
 The three measured, identically instrumented source pins are:
 
 | Arm | Source | Meaning |

@@ -4476,3 +4476,30 @@ evidence. The charter requires a performance verdict for this class; this is an
 adverse verdict, with causal attribution still unproven, rather than a neutrality
 claim. Existing native-instruction, bundle, parity and required CI ceilings stay
 binding. No benchmark rerun, baseline, acceptance band or pin change is made.
+
+
+### Element presentation source admission (E1b, #7955, #8049)
+
+The source-admission and decoder-free assembly refactor was measured against
+its landed E1 parent using an exclusive native cohort with interleaved rounds
+on FZK, ISSUE_129 and Holter. Mesh, vertex and triangle counts match across
+both arms on every model; these counts do not establish byte identity.
+
+The overall timing verdict is noisy and inconclusive: FZK's total spread fails
+the reporter's noise bound, and ISSUE_129's lookup phase is below timer
+resolution. Total and geometry timing changes on the two large models remain
+inside their measured noise. Holter's parse and entity-scan phases nevertheless
+show a slowdown beyond their phase noise; preserve that adverse observation.
+Those source paths are unchanged, but binary layout as a cause is unproven.
+No whole-pipeline neutrality, speedup or browser worker-pool claim follows.
+
+CI also detects a small geometry instruction increase over E1. The geometry
+ceiling alone is raised to the measured value under the approved per-slice
+policy, with its tolerance unchanged and exact measured merge provenance.
+Other instruction and bundle ceilings stay unchanged. The disclosed phase
+cost is accepted for the source/numerical boundary; it is not an optimization.
+
+Lesson: a sub-millisecond phase and a noisy small control can prevent a global
+verdict while a larger model still exposes an adverse phase signal. Keep
+output-count equivalence, phase timing and deterministic instruction cost as
+separate evidence, and do not label an architectural refactor performance-neutral.

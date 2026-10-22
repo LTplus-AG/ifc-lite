@@ -21,17 +21,16 @@
 //! from [`single_frame`] instead of silently rounded geometry.
 
 use super::processing::SourceHygiene;
-use super::transforms::LARGE_MAPPED_ORIGIN_M;
+use super::transforms::{ObjectPlacement, LARGE_MAPPED_ORIGIN_M};
 use super::GeometryRouter;
 use crate::{Error, Mesh, Result};
-use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
 /// Whether `Mesh::merge` may rebase a mesh framed at `b` into one framed at `a`
 /// without pushing its f32 positions past the mapped-origin precision limit.
 ///
 /// Written as a negated `>=` so a NaN origin (already-broken input) keeps the
 /// historical merge instead of opening a new part.
-pub(super) fn frames_mergeable(a: [f64; 3], b: [f64; 3]) -> bool {
+pub(crate) fn frames_mergeable(a: [f64; 3], b: [f64; 3]) -> bool {
     !(0..3).any(|axis| (a[axis] - b[axis]).abs() >= LARGE_MAPPED_ORIGIN_M)
 }
 
@@ -53,7 +52,7 @@ pub(super) fn single_frame(element_id: u32, mut parts: Vec<Mesh>) -> Result<Mesh
 /// [`single_frame`] for one mapped source (#6446): `entity` names the
 /// `IfcMappedItem` or `IfcRepresentationMap` whose source items would share
 /// the single mesh.
-pub(super) fn single_frame_source(entity: &str, id: u32, mut parts: Vec<Mesh>) -> Result<Mesh> {
+pub(crate) fn single_frame_source(entity: &str, id: u32, mut parts: Vec<Mesh>) -> Result<Mesh> {
     if parts.len() <= 1 {
         return Ok(parts.pop().unwrap_or_default());
     }
@@ -75,7 +74,7 @@ fn frame_span(parts: &[Mesh]) -> f64 {
 }
 
 /// Object-frame AABB of a mesh's f32 positions.
-pub(super) fn mesh_bounds(mesh: &Mesh) -> [f32; 6] {
+pub(crate) fn mesh_bounds(mesh: &Mesh) -> [f32; 6] {
     let mut bounds = [
         f32::INFINITY,
         f32::INFINITY,
@@ -93,7 +92,7 @@ pub(super) fn mesh_bounds(mesh: &Mesh) -> [f32; 6] {
     bounds
 }
 
-pub(super) fn union_bounds(accumulator: &mut Option<[f32; 6]>, incoming: [f32; 6]) {
+pub(crate) fn union_bounds(accumulator: &mut Option<[f32; 6]>, incoming: [f32; 6]) {
     if let Some(bounds) = accumulator {
         for axis in 0..3 {
             bounds[axis] = bounds[axis].min(incoming[axis]);
@@ -107,14 +106,14 @@ pub(super) fn union_bounds(accumulator: &mut Option<[f32; 6]>, incoming: [f32; 6
 /// Items that could not join the element's primary accumulator, grouped by
 /// frame. Each entry keeps the object-frame bounds of the items it holds.
 #[derive(Default)]
-pub(super) struct FrameParts {
+pub(crate) struct FrameParts {
     parts: Vec<(Mesh, Option<[f32; 6]>)>,
 }
 
 impl FrameParts {
     /// Merge a non-empty `mesh` into the first part sharing its frame, or
     /// open a new part.
-    pub(super) fn merge(&mut self, mesh: &Mesh, bounds: [f32; 6]) {
+    pub(crate) fn merge(&mut self, mesh: &Mesh, bounds: [f32; 6]) {
         let index = match matching_frame(self.parts.iter().map(|(part, _)| part.origin), mesh.origin) {
             Ok(index) => index,
             Err(_) => return,
@@ -136,7 +135,7 @@ impl FrameParts {
         }
     }
 
-    pub(super) fn into_parts(self) -> impl Iterator<Item = (Mesh, Option<[f32; 6]>)> {
+    pub(crate) fn into_parts(self) -> impl Iterator<Item = (Mesh, Option<[f32; 6]>)> {
         self.parts.into_iter()
     }
 }
@@ -226,13 +225,13 @@ impl SourceParts {
 }
 
 impl GeometryRouter {
-    /// Finish `process_element_parts`: place each far part like the already
+    /// Finish a merged product walk: place each far part like the already
     /// placed primary part, then fold the RTC-frame (`rebased`) items into the
     /// first part sharing their placed frame, or keep them as their own part.
-    pub(super) fn place_frame_parts(
+    /// Reads no source: `placement` was resolved once for the product.
+    pub(crate) fn place_frame_parts(
         &self,
-        element: &DecodedEntity,
-        decoder: &mut EntityDecoder,
+        placement: &ObjectPlacement,
         hygiene: SourceHygiene,
         primary: Mesh,
         far_parts: FrameParts,
@@ -251,7 +250,7 @@ impl GeometryRouter {
         for (mut part, bounds) in far_parts.into_parts() {
             part.local_bounds = bounds;
             hygiene.for_router(self).apply(&mut part);
-            self.apply_placement(element, decoder, &mut part)?;
+            self.place_mesh(&mut part, placement);
             if accounted {
                 crate::resource::reserve_headers(&mut parts, 1)?.retain();
             }
@@ -261,7 +260,7 @@ impl GeometryRouter {
             return Ok(parts);
         }
         hygiene.for_router(self).apply(&mut rebased);
-        self.apply_placement(element, decoder, &mut rebased)?;
+        self.place_mesh(&mut rebased, placement);
         // Mesh::merge accounts for each mesh's f64 origin. Keep the local
         // bucket's origin so a distant raw item cannot quantize it early;
         // a raw item too far from every part stays its own part (#6349).
@@ -300,7 +299,7 @@ mod tests;
 /// Merge `incoming` into `target`. Without an installed account this is exactly
 /// `Mesh::merge`; with one, admission precedes reserve/copy and a refusal leaves
 /// `target` untouched, recorded as the account's sticky terminal stop.
-pub(super) fn merge_admitted(target: &mut Mesh, incoming: &Mesh) -> bool {
+pub(crate) fn merge_admitted(target: &mut Mesh, incoming: &Mesh) -> bool {
     if !crate::resource::is_active() {
         target.merge(incoming);
         return true;

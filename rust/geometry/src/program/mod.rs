@@ -10,6 +10,8 @@ mod item;
 mod mapping;
 mod opening;
 mod opening_bounds;
+mod product;
+mod voids;
 pub(crate) mod openings;
 pub(crate) use inner::GeometryProgram;
 #[cfg(test)]

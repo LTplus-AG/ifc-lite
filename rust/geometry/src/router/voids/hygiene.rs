@@ -13,7 +13,7 @@ pub(crate) fn clean_opening_item(mut mesh: Mesh, hygiene: super::SourceHygiene) 
     (!mesh.indices.is_empty()).then_some(mesh)
 }
 
-pub(super) fn clean_void_output(mesh: &mut Mesh) {
+pub(crate) fn clean_void_output(mesh: &mut Mesh) {
     if !mesh.needs_degenerate_cleanup() {
         return;
     }

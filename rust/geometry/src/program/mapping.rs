@@ -91,8 +91,9 @@ struct Level {
     sink: Sink,
 }
 
-/// A reached item: the walk's borrowed root, or one owned by its source.
-enum Reached<'a> {
+/// A reached item: the walk's borrowed root, or one owned by its source
+/// (or by the product walk that reached it).
+pub(super) enum Reached<'a> {
     Root(&'a DecodedEntity),
     Nested(DecodedEntity),
 }
@@ -269,8 +270,8 @@ impl<'a> MappingControl<'a> {
         }
     }
 
-    pub(super) fn occurrence(item: &'a DecodedEntity) -> Self {
-        Self::new(Walk::Occurrence, Action::Enter(Reached::Root(item)))
+    pub(super) fn occurrence(item: Reached<'a>) -> Self {
+        Self::new(Walk::Occurrence, Action::Enter(item))
     }
 
     #[cfg(test)]
@@ -280,9 +281,9 @@ impl<'a> MappingControl<'a> {
 
     /// One styled representation item, appending to `meshes`. A plain item
     /// is meshed under its own id; a mapped item walks its source.
-    pub(super) fn styled(item: &'a DecodedEntity, meshes: SubMeshCollection, allow_instancing: bool,
+    pub(super) fn styled(root: Reached<'a>, meshes: SubMeshCollection, allow_instancing: bool,
         textures: Textures<'a>, offset: (f64, f64, f64)) -> Self {
-        let root = Reached::Root(item);
+        let item = root.item();
         let action = if item.ifc_type == ifc_lite_core::IfcType::IfcMappedItem {
             Action::EnterStyled(root)
         } else if textures.is_some_and(|index| index.contains_key(&item.id)) {

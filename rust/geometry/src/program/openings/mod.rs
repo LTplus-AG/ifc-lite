@@ -127,8 +127,9 @@ impl<'a> OpeningControl<'a> {
     }
 }
 
-/// Capture a host's void context for the void gateway. A stop reached by any
-/// stage, including an Option-returning fast-path probe, is returned.
+/// Capture a host's void context, as the void program does. A stop reached by
+/// any stage, including an Option-returning fast-path probe, is returned.
+#[cfg(test)]
 pub(crate) fn context(
     host: &DecodedEntity,
     ids: &[u32],

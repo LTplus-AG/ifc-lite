@@ -9,7 +9,7 @@
 //! Split out of `boolean/mod.rs` (module-size ratchet) when the one-record-
 //! per-step rule needed a home (#3821).
 
-use super::{BooleanClippingProcessor, OperandPath};
+use super::BooleanClippingProcessor;
 use crate::diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
 use crate::router::GeometryProcessor;
 use crate::{Mesh, Result, TessellationQuality};
@@ -23,9 +23,13 @@ impl GeometryProcessor for BooleanClippingProcessor {
         _schema: &IfcSchema,
         quality: TessellationQuality,
     ) -> Result<Mesh> {
-        let mut visited = OperandPath::default();
-        self.execute_boolean(entity, decoder, 0, quality, &mut visited)
-            .map(|(mesh, _)| mesh)
+        // The program's continuation, drained with this processor as its
+        // recorder; the router drives the same continuation step by step.
+        crate::program::BooleanMachine::new(entity, quality).drain(self, decoder).map(|(mesh, _)| mesh)
+    }
+
+    fn boolean_recorder(&self) -> Option<&BooleanClippingProcessor> {
+        Some(self)
     }
 
     fn supported_types(&self) -> Vec<IfcType> {
@@ -55,7 +59,7 @@ impl BooleanClippingProcessor {
         std::mem::take(&mut *self.failures.borrow_mut())
     }
 
-    pub(super) fn record_failure(&self, op: BoolOp, reason: BoolFailureReason) {
+    pub(crate) fn record_failure(&self, op: BoolOp, reason: BoolFailureReason) {
         self.failures.borrow_mut().push(BoolFailure::new(op, reason));
     }
 
@@ -64,19 +68,19 @@ impl BooleanClippingProcessor {
     /// `IfcCsgSolid` operand — is about to drop and would take its records
     /// with it. Takes the drained `Vec` rather than the producer, so one
     /// method covers every transient kind.
-    pub(super) fn absorb_failures(&self, failures: Vec<BoolFailure>) {
+    pub(crate) fn absorb_failures(&self, failures: Vec<BoolFailure>) {
         self.failures.borrow_mut().extend(failures);
     }
 
     /// A mark in the failure log, for [`Self::rewind_to`].
-    pub(super) fn failure_mark(&self) -> usize {
+    pub(crate) fn failure_mark(&self) -> usize {
         self.failures.borrow().len()
     }
 
     /// Discard everything recorded since `mark`.
     ///
     /// Only for a SPECULATIVE attempt whose work the caller is about to redo.
-    /// `cut_polygonal_chain` is a batched attempt at a chain the
+    /// The batched polygonal chain is an attempt at a chain the
     /// sequential walk also resolves; when it gives up, the spine walk
     /// re-meshes the same base operand and the same cutters and records the
     /// same losses again. Its trial subtracts already dropped their own probe
@@ -90,7 +94,7 @@ impl BooleanClippingProcessor {
     /// walk. A failure the sequential path does NOT re-encounter (the
     /// `CutterUnionUnavailable` the union attempt alone can see) must be
     /// recorded AFTER the rewind, not before it.
-    pub(super) fn rewind_to(&self, mark: usize) {
+    pub(crate) fn rewind_to(&self, mark: usize) {
         self.failures.borrow_mut().truncate(mark);
     }
 
@@ -99,7 +103,7 @@ impl BooleanClippingProcessor {
     /// already on record (an unsupported operand, or a nested one emptied by
     /// a drop inside it). One dropped step, one record: see the flag's
     /// rationale there.
-    pub(super) fn record_empty_operand(&self, op: BoolOp, already_recorded: bool) {
+    pub(crate) fn record_empty_operand(&self, op: BoolOp, already_recorded: bool) {
         if !already_recorded {
             self.record_failure(op, BoolFailureReason::EmptyOperand);
         }

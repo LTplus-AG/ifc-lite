@@ -3,14 +3,20 @@
 //! the common item/cache/mapping controller that drives them for a reached item.
 
 pub(crate) mod constructor;
+mod boolean;
 mod execute;
 mod inner;
 mod inner_cache;
 mod item;
+mod layers;
 mod mapping;
 mod opening;
 mod opening_bounds;
+mod product;
+mod styled;
+mod voids;
 pub(crate) mod openings;
+pub(crate) use boolean::BooleanMachine;
 pub(crate) use inner::GeometryProgram;
 #[cfg(test)]
 pub(crate) use inner::{ProgramError, ProgramStage};

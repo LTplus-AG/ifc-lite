@@ -23,7 +23,7 @@ impl BooleanClippingProcessor {
     /// — issue #821 TallBuilding.ifc walls #615, #1297, #2401 and similar
     /// Revit exports where the spec-correct cut would erase the wall —
     /// hits the fallback.
-    pub(super) fn guard_against_full_host_removal(
+    pub(crate) fn guard_against_full_host_removal(
         &self,
         host: Mesh,
         result: Mesh,

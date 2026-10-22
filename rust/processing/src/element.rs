@@ -19,17 +19,20 @@
 //! while the interactive viewer renders it tagged for its Model/Types switch.
 //!
 //! The converged decision tree (union of the strongest behaviours of both
-//! former copies):
+//! former copies) runs in three phases: `plan` picks the strategy once,
+//! `execution` runs and classifies each strategy's router work, and the
+//! emitters below present the executed parts (colour, palette, UV/texture,
+//! metadata, geometry_class).
 //!
 //! ```text
-//! representation gate (IfcAlignment exempt)
+//! plan: representation gate (IfcAlignment exempt)
 //! ├─ TypeProduct job (#957): render each planned RepresentationMap
 //! │    (textures #961, geometry_class tag, styled-item colour)
 //! └─ Product job:
 //!    ├─ has openings → submesh-aware void cut (per-part colours survive)
 //!    ├─ else        → submesh path for ALL types (per-item colours,
 //!    │                per-item error skipping, #858 palette split per item)
-//!    └─ fallback chain when the submesh path produced nothing:
+//!    └─ execution fallback chain when the submesh path produced nothing:
 //!         void-aware single mesh → plain element → element-level #858 split
 //!         → single coloured mesh
 //! ```
@@ -58,177 +61,12 @@ use element_color::{find_indexed_colour_for_element, infer_opening_subpart_mater
 pub(crate) use element_color::{find_geometry_item_color, resolve_color_for_representation_map};
 pub(crate) use element_color::{find_geometry_item_style_source, product_shape_style_source, representation_map_style_source};
 
-/// Element-level metadata stamped on every produced [`MeshData`]. The native
-/// pipeline resolves these during its metadata phase; the browser passes
-/// `None` (its viewer gets metadata from the parser worker instead).
-#[derive(Debug, Clone, Default)]
-pub struct ElementMeshMetadata {
-    pub global_id: Option<String>,
-    pub name: Option<String>,
-    pub presentation_layer: Option<String>,
-    pub space_zone_properties: Option<BTreeMap<String, String>>,
-}
-
-/// What the job renders.
-#[derive(Debug, Clone)]
-pub enum ElementJobKind {
-    /// Ordinary product occurrence — walk its IfcProductDefinitionShape.
-    Product,
-    /// #957 type geometry: render these RepresentationMaps directly (baking
-    /// their MappingOrigin), each pre-tagged with its geometry_class
-    /// (1 = orphan, 2 = instanced). Produce the list with
-    /// [`plan_type_geometry`] — callers must not hand-roll the filter.
-    TypeProduct { rep_maps: Vec<(u32, u8)> },
-}
-
-/// One unit of mesh production.
-pub struct ElementMeshJob<'a> {
-    pub id: u32,
-    pub ifc_type: IfcType,
-    /// The decoded product (or type-product) entity. Callers decode it —
-    /// they own skip-set checks and decode-failure policy.
-    pub entity: &'a DecodedEntity,
-    pub kind: ElementJobKind,
-    /// Caller-resolved element fallback colour (direct style > material
-    /// chain > type default). `None` ⇒ `default_color_for_type`.
-    pub element_color: Option<[f32; 4]>,
-    pub metadata: Option<&'a ElementMeshMetadata>,
-}
-
-/// Read-only shared state for one production run. Every field is a borrow of
-/// `Sync` data, so `&MeshProductionContext` can be captured by a rayon
-/// closure (native) or used serially (wasm).
-pub struct MeshProductionContext<'a> {
-    /// Host element id → opening ids (post void-propagation / opening filter).
-    pub void_index: &'a FxHashMap<u32, Vec<u32>>,
-    /// Geometry item id → resolved style (styled-item index).
-    pub geometry_style_index: &'a FxHashMap<u32, GeometryStyleInfo>,
-    /// Geometry item id → full per-triangle palette (#858).
-    pub indexed_colour_full: &'a FxHashMap<u32, FullIndexedColourMap>,
-    /// Element id → material colour list (#407/#913 transparent/opaque
-    /// alternation). Empty map when the caller has no material chain data.
-    pub element_material_colors: &'a FxHashMap<u32, Vec<[f32; 4]>>,
-    /// Surface textures + UV maps keyed by face-set id (#961).
-    pub texture_index: &'a FxHashMap<u32, ResolvedTextureMap>,
-    /// Site-local rotation (native `site_local` coordinate space only).
-    /// `None` for the browser — its Z-up→Y-up swap happens at the FFI
-    /// boundary, after this function.
-    pub site_local_rotation: Option<&'a Vec<f64>>,
-}
-
-/// RTC-invariant per-element fingerprint configuration (#971/#924).
-#[derive(Debug, Clone, Copy)]
-pub struct GeometryHashConfig {
-    /// Quantization grid in metres.
-    pub tolerance: f64,
-    /// World-reconstruction offset added back to local positions (the batch
-    /// RTC when a shift was applied, else zeros) so the file's RTC choice
-    /// never registers as a geometry change.
-    pub world_rtc: [f64; 3],
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct MeshProductionOptions {
-    /// `Some` ⇒ compute one fingerprint per element (browser diff feature).
-    /// Type-product jobs are never hashed (diffing type-library shapes is a
-    /// separate feature decision).
-    pub geometry_hash: Option<GeometryHashConfig>,
-}
-
-/// The #957 suppress-vs-tag decision — an explicit product-requirement fork,
-/// not drift. See [`plan_type_geometry`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TypeGeometryMode {
-    /// Native/export: instanced types are suppressed entirely (an export must
-    /// never duplicate geometry); orphan maps emit with geometry_class 1.
-    SuppressInstanced,
-    /// Viewer: instanced types emit too, tagged geometry_class 2, so the
-    /// Model/Types view switch can filter at render time.
-    EmitTagged,
-}
-
-/// The single home of the #957 orphan/instanced RepresentationMap decision.
-///
-/// A map referenced by an `IfcMappedItem` always draws through its occurrence
-/// — emitting it again would double-render at the MappingOrigin (the
-/// AC20/ArchiCAD duplicate-boxes regression), so referenced maps are filtered
-/// in every mode. What remains is classified by whether the type has an
-/// occurrence (`IfcRelDefinesByType`): orphans are class 1 (part of the
-/// model — nothing else renders them), instanced types are class 2 (the
-/// type-library shape) and only emitted in [`TypeGeometryMode::EmitTagged`].
-pub fn plan_type_geometry(
-    rep_map_ids: &[u32],
-    referenced_representation_maps: &FxHashSet<u32>,
-    type_is_instantiated: bool,
-    mode: TypeGeometryMode,
-) -> Vec<(u32, u8)> {
-    if mode == TypeGeometryMode::SuppressInstanced && type_is_instantiated {
-        return Vec::new();
-    }
-    let class: u8 = if type_is_instantiated { 2 } else { 1 };
-    rep_map_ids
-        .iter()
-        .filter(|rm| !referenced_representation_maps.contains(rm))
-        .map(|rm| (*rm, class))
-        .collect()
-}
-
-/// Everything one element produced.
-pub struct ProducedElementMeshes {
-    pub meshes: Vec<MeshData>,
-    /// #1623 Phase 2 don't-bake output: this element's occurrences of a repeated
-    /// `IfcRepresentationMap` that skipped the per-occurrence materialize. Empty
-    /// unless the router was armed with an instancing plan
-    /// (`GeometryRouter::enable_output_instancing`); the streaming finalize resolves
-    /// each into a [`crate::InstanceRecord`] against the shared template MeshData.
-    pub instance_occurrences: Vec<RawInstanceOccurrence>,
-    /// Per-ELEMENT fingerprint, accumulated across all of the element's
-    /// meshes in the native IFC frame (pre-split, pre-site-rotation).
-    /// `None` when hashing is off, nothing was produced, or the job is a
-    /// TypeProduct.
-    pub geometry_hash: Option<u64>,
-    /// The same pass's world-space AABB, `[minx, miny, minz, maxx, maxy, maxz]`
-    /// in unquantized `f64` world coordinates (the file's RTC folded back in),
-    /// over every triangle corner the hasher saw. `Some` exactly when
-    /// [`Self::geometry_hash`] is `Some`, so the two stay index-parallel at the
-    /// FFI boundary.
-    ///
-    /// Why the diff engine needs it: the hash conflates moved / reshaped /
-    /// re-tessellated into one "different" bit. The box separates them — same
-    /// extent at a new centre is a MOVE, a different extent is a reshape, an
-    /// identical box with a different hash is retriangulation.
-    pub geometry_aabb: Option<[f64; 6]>,
-    /// The element's enclosed volume in m³ from the SAME pass — `Some` ONLY
-    /// when the produced geometry was provably a single closed orientable
-    /// solid, `None` otherwise (#1891). `None` is the common case for
-    /// material-layered walls, open `SurfaceModel` geometry, and any element
-    /// assembled from more than one representation item.
-    ///
-    /// Read `ifc_lite_geometry::GeometryHasher::volume` before widening any
-    /// clause of that gate: the alternative is not a slightly-off volume, it is
-    /// a confidently wrong one with nothing about it that looks wrong.
-    pub geometry_volume: Option<f64>,
-    /// The folded per-segment topology verdict behind [`Self::geometry_volume`]
-    /// — which clause held and which refused. `Some` exactly when
-    /// [`Self::geometry_hash`] is. A model checker wants it: "open shell" and
-    /// "multi-item assembly" are different findings with different fixes.
-    pub geometry_closure: Option<ifc_lite_geometry::GeometryClosure>,
-    /// CSG diagnostics recorded while producing THIS element, attributed by
-    /// product id. The router is fully drained on return, so a warm router
-    /// reused across a batch never leaks one element's failures into the
-    /// next. Failures from a superseded strategy (a fallback re-attempting
-    /// the same cuts) are discarded — only the path that produced the
-    /// returned meshes contributes.
-    pub csg_failures: FxHashMap<u32, Vec<BoolFailure>>,
-    /// Triangles dropped by the f32-collapse degenerate-triangle backstop
-    /// (see the `degenerate` child module) across ALL of this element's meshes.
-    /// Zero when the backstop is disabled or nothing was degenerate.
-    /// Request-local (scoped per `produce_element_meshes` call) so concurrent
-    /// passes never cross-contaminate. Non-zero also RETRACTS
-    /// [`Self::geometry_closure`] and [`Self::geometry_volume`] — the drop
-    /// happens after the verdict was taken and can open a certified shell.
-    pub degenerate_triangles_dropped: u64,
-}
+mod types;
+pub use types::*;
+mod plan;
+pub use plan::plan_type_geometry;
+mod execution;
+use execution::TypePart;
 
 /// THE canonical per-element mesh producer.
 ///
@@ -281,7 +119,9 @@ fn produce_in_scope(
     let keep_order = !ctx.indexed_colour_full.is_empty()
         && element_color::element_reaches_indexed_colour(job.entity, ctx.indexed_colour_full, decoder);
     let previous_order = router.set_preserve_triangle_order(keep_order);
-    let (mut meshes, mut instance_occurrences) = produce_inner(job, ctx, decoder, router, &mut hasher);
+    let plan = plan::plan_element(job, ctx, decoder, router);
+    let (mut meshes, mut instance_occurrences) =
+        execution::execute(plan, job, ctx, decoder, router, &mut hasher);
     router.set_preserve_triangle_order(previous_order);
 
     // A class with a fixed display colour (openings, #5409) overrides whatever
@@ -333,125 +173,6 @@ fn produce_in_scope(
         csg_failures,
         degenerate_triangles_dropped,
     }
-}
-
-fn produce_inner(
-    job: &ElementMeshJob<'_>,
-    ctx: &MeshProductionContext<'_>,
-    decoder: &mut EntityDecoder,
-    router: &GeometryRouter,
-    hasher: &mut Option<GeometryHasher>,
-) -> (Vec<MeshData>, Vec<RawInstanceOccurrence>) {
-    // Representation gate, with the IfcAlignment exception: alignments carry
-    // their geometry on IfcAlignment*Segment children, so a null
-    // Representation attribute does not mean "nothing to render".
-    let has_representation = job.entity.get(6).is_some_and(|a| !a.is_null());
-    if !has_representation && job.ifc_type != IfcType::IfcAlignment {
-        return (Vec::new(), Vec::new());
-    }
-
-    let element_color = job
-        .element_color
-        .unwrap_or_else(|| crate::style::default_color_for_type(job.ifc_type.clone()).to_array());
-
-    if let ElementJobKind::TypeProduct { rep_maps } = &job.kind {
-        // Type-product geometry (orphan/instanced RepresentationMaps) never rides the
-        // don't-bake path — it is view-mode-gated by geometry_class, not instanced.
-        return (
-            produce_type_geometry(job, rep_maps, element_color, ctx, decoder, router),
-            Vec::new(),
-        );
-    }
-
-    let has_openings = ctx
-        .void_index
-        .get(&job.id)
-        .is_some_and(|openings| openings.iter().any(|&id| router.opening_requires_subtraction(id, decoder)));
-
-    // Material-layer wall: tag its per-layer slices GEOM_CLASS_LAYER_SLICE so the
-    // 2D/section cut can split the cut into per-layer fills (one sub-mesh = one
-    // layer = one colour). Since #1311 the slices are OPEN bands whose union is
-    // the wall's watertight outer skin (no coincident interface caps), and the
-    // renderer draws them DOUBLE-SIDED like all other IFC geometry — IFC winding
-    // is not reliably outward, so the previous backface-culling of these slices
-    // dropped inward-wound faces and made the wall read hollow. The tag no longer
-    // drives any culling; it is purely the per-layer-fill marker.
-    let layer_class = if router.is_material_layer_sliceable(job.id) {
-        GEOM_CLASS_LAYER_SLICE
-    } else {
-        0
-    };
-
-    if has_openings {
-        // Voided elements: submesh-aware cut FIRST, so per-part colours
-        // survive the void subtraction (a voided window keeps frame/glass
-        // split; a voided multi-layer wall keeps its layer colours).
-        if let Ok(sub_meshes) =
-            router.process_element_with_submeshes_and_voids(job.entity, decoder, ctx.void_index)
-        {
-            if !sub_meshes.is_empty() {
-                let (out, occ) =
-                    emit_sub_meshes(job, sub_meshes, element_color, ctx, decoder, hasher, layer_class);
-                if !out.is_empty() || !occ.is_empty() {
-                    return (out, occ);
-                }
-            }
-        }
-    } else {
-        // Submesh path for ALL types: per-geometry-item colours (window glass
-        // transparency, multi-material doors) and per-item error skipping —
-        // one unsupported representation item no longer blanks the whole
-        // element (`process_element` aborts with `?`). #858 palette split
-        // happens per item inside `emit_sub_meshes`.
-        let submeshes = router.process_element_with_submeshes_textured(job.entity, decoder, ctx.texture_index);
-        // Annotation validation failures are terminal, not another meshing strategy.
-        // Retrying the fallback chain would count one refused fill three times.
-        if job.ifc_type == IfcType::IfcAnnotation && submeshes.is_err() { return (Vec::new(), Vec::new()); }
-        if let Ok(sub_meshes) = submeshes {
-            if !sub_meshes.is_empty() {
-                let (out, occ) =
-                    emit_sub_meshes(job, sub_meshes, element_color, ctx, decoder, hasher, layer_class);
-                // #1623 Phase 2: a pure don't-bake occurrence produces NO flat mesh
-                // (only instance placeholders); treat that as success so the fallback
-                // chain below does not re-materialize the element flat.
-                if !out.is_empty() || !occ.is_empty() {
-                    return (out, occ);
-                }
-            }
-        }
-    }
-
-    // Fallback chain. A superseding strategy is about to re-process this
-    // element's representation and re-attempt the same (deterministic)
-    // cuts/booleans; discard the abandoned attempt's diagnostics so
-    // re-failures aren't double-counted. (The voids→plain-element
-    // mini-fallback below intentionally keeps its records: a failed/emptying
-    // cut that leaves the host uncut IS the diagnostic.)
-    let _ = router.take_csg_failures();
-
-    // #6349: frame parts, not one Mesh. A product whose items lie in frames
-    // >= 1 km apart keeps each part at full precision; an ordinary one has one.
-    let mut parts_candidate = router
-        .process_element_with_voids_parts(job.entity, decoder, ctx.void_index)
-        .ok();
-    let needs_fallback = match parts_candidate.as_ref() {
-        // An empty void-cut result normally means the cut FAILED and emptied
-        // the host, so we re-render it un-cut. But when a containing void
-        // genuinely CONSUMED the host (`host_consumed_by_void`), the empty
-        // result is correct — keep it, or the un-cut host re-appears as a
-        // spurious solid.
-        Some(parts) => parts.iter().all(|mesh| mesh.is_empty()) && !router.host_consumed_by_void(job.id),
-        None => true,
-    };
-    if needs_fallback {
-        parts_candidate = router.process_element_parts(job.entity, decoder).ok();
-    }
-
-    let mut out = Vec::new();
-    for mesh in parts_candidate.into_iter().flatten().filter(|mesh| !mesh.is_empty()) {
-        out.extend(emit_fallback_mesh(job, mesh, element_color, ctx, decoder, hasher));
-    }
-    (out, Vec::new())
 }
 
 /// Emit one assembled fallback body (a single frame part): outward winding,
@@ -697,57 +418,41 @@ fn emit_sub_meshes(
 /// culled) for its per-layer fills.
 pub const GEOM_CLASS_LAYER_SLICE: u8 = 3;
 
-/// Render a type-product's planned RepresentationMaps (#957), texture-aware
-/// (#961), each mesh tagged with its planned geometry_class.
-fn produce_type_geometry(
+/// Present one executed type map's parts (#957/#961), each mesh tagged with
+/// its planned geometry_class. The map's style colour is resolved once, after
+/// the map's own geometry ran.
+fn emit_type_parts(
     job: &ElementMeshJob<'_>,
-    rep_maps: &[(u32, u8)],
+    rep_map_id: u32,
+    geometry_class: u8,
+    parts: Vec<TypePart>,
     element_color: [f32; 4],
     ctx: &MeshProductionContext<'_>,
     decoder: &mut EntityDecoder,
-    router: &GeometryRouter,
 ) -> Vec<MeshData> {
+    let color = resolve_color_for_representation_map(rep_map_id, ctx.geometry_style_index, decoder)
+        .unwrap_or(element_color);
     let mut out: Vec<MeshData> = Vec::new();
-    for &(rep_map_id, geometry_class) in rep_maps {
-        let Ok(rep_map) = decoder.decode_by_id(rep_map_id) else {
-            continue;
-        };
-        // One part per output mesh: each textured face set carries its own
-        // UVs + decoded image; untextured items merge into one part (#961).
-        let Ok(parts) =
-            router.process_representation_map_with_texture(&rep_map, decoder, ctx.texture_index)
-        else {
-            continue;
-        };
-        if parts.is_empty() {
+    for (mut mesh, uvs, texture) in parts {
+        if mesh.is_empty() {
             continue;
         }
-
-        let color =
-            resolve_color_for_representation_map(rep_map_id, ctx.geometry_style_index, decoder)
-                .unwrap_or(element_color);
-
-        for (mut mesh, uvs, texture) in parts {
-            if mesh.is_empty() {
-                continue;
-            }
-            if mesh.normals.len() != mesh.positions.len() {
-                calculate_normals(&mut mesh);
-            }
-            // Thread the per-vertex UVs through `build_mesh_data` so the source
-            // weld remaps them WITH the deduped positions (and keeps texture
-            // seams split). Only textured parts carry UVs; untextured parts pass
-            // `None` and get the full position+normal weld.
-            let part_uvs = if texture.is_some() { Some(uvs) } else { None };
-            let mut mesh_data =
-                build_mesh_data(job, mesh, color, None, None, false, geometry_class, ctx, part_uvs);
-            if let Some(tex) = texture {
-                // UVs were already welded onto `mesh_data`; attach only the
-                // texture (decoded image or #1781 external reference) here.
-                mesh_data.texture = Some(MeshTextureData::from_attachment(&tex));
-            }
-            out.push(mesh_data);
+        if mesh.normals.len() != mesh.positions.len() {
+            calculate_normals(&mut mesh);
         }
+        // Thread the per-vertex UVs through `build_mesh_data` so the source
+        // weld remaps them WITH the deduped positions (and keeps texture
+        // seams split). Only textured parts carry UVs; untextured parts pass
+        // `None` and get the full position+normal weld.
+        let part_uvs = if texture.is_some() { Some(uvs) } else { None };
+        let mut mesh_data =
+            build_mesh_data(job, mesh, color, None, None, false, geometry_class, ctx, part_uvs);
+        if let Some(tex) = texture {
+            // UVs were already welded onto `mesh_data`; attach only the
+            // texture (decoded image or #1781 external reference) here.
+            mesh_data.texture = Some(MeshTextureData::from_attachment(&tex));
+        }
+        out.push(mesh_data);
     }
     out
 }
@@ -759,3 +464,6 @@ use element_mesh_build::build_mesh_data;
 #[cfg(test)]
 #[path = "element_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod phase_tests;

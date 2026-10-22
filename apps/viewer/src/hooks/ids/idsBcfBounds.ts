@@ -3,7 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { EntityBoundsInput, IDSReportInput } from '@ifc-lite/bcf';
+import { isSpatialStructureTypeName } from '@ifc-lite/data';
 import type { GeometryResult } from '@ifc-lite/geometry';
+import { resolvePresentationIds } from '@/lib/presentation/resolvePresentationIds';
 import { createEntityBoundsLookup } from '@/utils/viewportUtils';
 
 type BoundsGeometry = Pick<GeometryResult, 'meshes' | 'instancedGeometryAabbs'>;
@@ -21,6 +23,7 @@ export function collectIdsBcfEntityBounds(
   legacyGeometry: BoundsGeometry | null,
   toViewerGlobalId: (modelId: string, expressId: number) => number | undefined,
   sceneBounds: (id: number) => EntityBoundsInput | null | undefined,
+  resolveHighlightIds?: (ids: number[]) => number[],
 ): Map<string, EntityBoundsInput> {
   const result = new Map<string, EntityBoundsInput>();
   const seen = new Set<string>();
@@ -43,23 +46,47 @@ export function collectIdsBcfEntityBounds(
         ?? (models.size <= 1 ? singleGeometry ?? legacyGeometry : undefined);
       // The scene unions flat and instanced pieces of a hybrid entity. Reading
       // only its retained flat pieces would silently frame a partial element.
-      let bounds = sceneBounds(id);
-      if (!bounds && geometry) {
-        let read = meshReaders.get(geometry);
-        if (!read) {
-          read = createEntityBoundsLookup(geometry.meshes);
-          meshReaders.set(geometry, read);
+      const boxes: EntityBoundsInput[] = [];
+      // Spatial contents use containment as well as decomposition. Aggregate-only
+      // descendants alone do not represent the contained physical model (#7974).
+      // Keep direct spatial geometry; otherwise the exporter supplies model context.
+      const presentationIds = isSpatialStructureTypeName(entity.entityType)
+        ? [id] : resolvePresentationIds(resolveHighlightIds, [id]);
+      for (const presentationId of presentationIds) {
+        let bounds = sceneBounds(presentationId);
+        if (!bounds && geometry) {
+          let read = meshReaders.get(geometry);
+          if (!read) {
+            read = createEntityBoundsLookup(geometry.meshes);
+            meshReaders.set(geometry, read);
+          }
+          bounds = read(presentationId);
+          const occurrence = geometry.instancedGeometryAabbs?.get(presentationId);
+          if (occurrence) {
+            if (bounds) boxes.push(bounds);
+            bounds = {
+              min: { x: occurrence.min[0], y: occurrence.min[1], z: occurrence.min[2] },
+              max: { x: occurrence.max[0], y: occurrence.max[1], z: occurrence.max[2] },
+            };
+          }
         }
-        bounds = read(id);
-        const occurrence = geometry.instancedGeometryAabbs?.get(id);
-        if (!bounds && occurrence) {
-          bounds = {
-            min: { x: occurrence.min[0], y: occurrence.min[1], z: occurrence.min[2] },
-            max: { x: occurrence.max[0], y: occurrence.max[1], z: occurrence.max[2] },
-          };
-        }
+        if (bounds) boxes.push(bounds);
       }
+      const bounds = unionIdsBcfBounds(boxes);
       if (bounds) result.set(key, bounds);
+    }
+  }
+  return result;
+}
+
+/** Bounds remain in the viewer render frame until the completed project is translated. */
+function unionIdsBcfBounds(boxes: readonly EntityBoundsInput[]): EntityBoundsInput | undefined {
+  if (boxes.length === 0) return undefined;
+  const result = { min: { ...boxes[0].min }, max: { ...boxes[0].max } };
+  for (const box of boxes) {
+    for (const axis of ['x', 'y', 'z'] as const) {
+      result.min[axis] = Math.min(result.min[axis], box.min[axis]);
+      result.max[axis] = Math.max(result.max[axis], box.max[axis]);
     }
   }
   return result;

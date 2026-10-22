@@ -12,7 +12,7 @@ use crate::{calculate_normals, Error, Mesh, Point2, Point3, Profile2D, Result, V
 impl BoundedPrismPlan {
     /// Build the prism clamped against `host_mesh` for the half-space plane
     /// `(plane_point, plane_normal, agreement)`.
-    pub(super) fn build_mesh(
+    pub(crate) fn build_mesh(
         self,
         host_mesh: &Mesh,
         (plane_point, plane_normal, agreement): (Point3<f64>, Vector3<f64>, bool),

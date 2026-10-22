@@ -19,11 +19,11 @@ impl BooleanClippingProcessor {
     /// the base solid the chain bottoms out on.
     ///
     /// Returns `(base_entity, cutters)` with `cutters` ordered innermost-first.
-    /// Consumed by `cut_polygonal_chain`, which unions the cutter
+    /// Consumed by the program continuation's batched chain, which unions the cutter
     /// prisms (a true CSG union -- overlap-safe, unlike the old mesh-*merge*
     /// batching) and subtracts once (issue #960: seam slivers + deep-chain
     /// depth-limit drops).
-    pub(super) fn collect_polygonal_chain(
+    pub(crate) fn collect_polygonal_chain(
         &self,
         entity: DecodedEntity,
         decoder: &mut EntityDecoder,

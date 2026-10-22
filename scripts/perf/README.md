@@ -14,6 +14,21 @@ off the viewer's own telemetry (below).
 
 ## Geometry platform migration slices (#7955)
 
+**E1 element planning/execution (#8044): mixed phase timing, no measurable
+end-to-end change.** An exclusive, interleaved comparison of `1400b53b24` against
+`9b68e212de` on ISSUE_129 and Holter left geometry and total time within the
+base's timing spread; mesh, vertex and triangle counts matched every round.
+Holter's lookup phase was slower beyond the reporter's noise floor. That phase's
+source is unchanged by E1; binary layout is a possible explanation, not a proven
+cause. Accept this small phase tradeoff for the shared planning/execution seam,
+without claiming a speedup or complete timing neutrality. The initial FZK run
+was too noisy, and ISSUE_129's lookup phase remained below timer resolution, so
+neither report certifies every phase unchanged. CI's instruction/bundle ceilings
+and committed-reference geometry parity pass without a ceiling increase. Lesson:
+inspect the per-phase results even when an unresolved timer makes the report's
+overall verdict inconclusive, and distinguish matching output counts from a
+content hash.
+
 **Behaviour-preserving refactor slices; measured neutral.** Each slice is a base-vs-branch
 `scripts/perf/ab.sh` run (interleaved, order-balanced, 7 rounds) on the large corpus models
 O-S1-BWK-BIM (327 MB), Holter (169 MB), ISSUE_098 (68 MB, georeferenced), ISSUE_068,

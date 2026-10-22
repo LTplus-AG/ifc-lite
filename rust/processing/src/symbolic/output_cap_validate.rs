@@ -8,7 +8,7 @@
 //! Split out of `output_cap.rs` rather than added inline: that file sits at
 //! its 400-line ratchet ceiling, and four new guards push it over.
 //!
-//! `parse_axis2_placement_2d` and `parse_cartesian_transformation_operator`
+//! `parse_axis2_placement_2d` and `resolve_mapping_target`
 //! deliberately do NOT refuse a non-finite ambient placement themselves --
 //! routing to `Transform2D::unresolved()` would set `tx = ty = 0.0`, which is
 //! finite, and would stop every `tx`/`ty`-keyed guard downstream from firing.

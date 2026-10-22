@@ -1460,6 +1460,10 @@ jobs:
           # ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/data_model/mod.rs | grep -Fxq 'rust/processing/src/data_model/mod.rs'; then
             oracle_args+=(--mutation tests/evidence/data-model-move-7783/behaviour.oracle.patch)
+          # #7779 recovered P1/P2 retain the new transform API and regress only
+          # the projected conic behavior, so public geometry tests still build.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/symbolic/projected_conic_tests.rs | grep -Fxq 'rust/processing/src/symbolic/projected_conic_tests.rs'; then
+            oracle_args+=(--mutation tests/evidence/f3b-recovered-symbolic-7779/behaviour.oracle.patch)
           # #7779: F3b-R1 moves `build_axis2_matrix`, the chain walk and the
           # Linear/Grid resolvers into the new `placement` module, which the
           # changed tests import, so a whole-change revert cannot compile them

@@ -27,6 +27,16 @@ pub(super) enum CacheReply {
     Hash(Mesh, Option<u128>),
 }
 
+impl CacheReply {
+    pub(super) fn tag(&self) -> u8 {
+        match self {
+            Self::Begin(_) => 0,
+            Self::Item(_) => 1,
+            Self::Hash(..) => 2,
+        }
+    }
+}
+
 /// The cache controller owns only its state; like [`ItemControl`], its item
 /// is lent by its owner on every step, so an owning walk can drive it.
 pub(super) struct CacheControl {

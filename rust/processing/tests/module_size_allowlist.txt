@@ -199,12 +199,6 @@
 # did that and it makes an unrelated comment the currency of an unrelated
 # change, leaving no record of either.
      727 rust/geometry/src/router/mod.rs
-# +65: #1623 Phase 2 don't-bake — the top-level mapped-item intercept (template retag + instance placeholder) + the public/impl process_element_with_submeshes split; the two eligibility/ensure helpers were extracted to router/instancing.rs (new, 92 lines) to hold the net down.
-# +7: #858 palette guard — exclude an indexed-colour single-solid source from the don't-bake decision (one .filter on the resolved solid id + explanatory comment) so its per-triangle palette survives the flat split.
-# +16: #1623 Phase 3 — thread the batch-local vs global template decision through the mapped-item intercept (is_template match arm + retag guard).
-# +3: hoist the item-dedup mesh clone out of the cache Mutex critical section (let-binding + 2-line rationale) so a dedup miss no longer serializes the worker pool on a deep-copy.
-# +18: #1293 dedup rep_identity: store rep beside the cached mesh, split tag_direct_instance into direct_rep_identity + stamp_direct_instance, and the flagged IFC_LITE_DEDUP_EXTRA type gate in item_dedup_key.
-     864 rust/geometry/src/router/processing.rs
 # +1: reveal-quads comment expanded to 2 lines (dead-symbol reference fix, no code change).
      619 rust/geometry/src/router/voids/aabb_clip.rs
 # +36: `parity_along` extracted so the single-ray `point_inside_mesh` and the
@@ -234,7 +228,8 @@
 # `Mesh::origin`) instead of a centre-baking transform, and the relativizing
 # branch now COMPOSES the inner cut's origin rather than assigning over it.
 # `voids/geom.rs` sheds 27 in the same change.
-    1759 rust/geometry/src/router/voids/mod.rs
+# -51: the voided-host gateways drain the common void program (#7955 D4).
+    1708 rust/geometry/src/router/voids/mod.rs
 # NEW: analytic prism (stepped-extrusion) subtraction on the host mesh — the
 # CSG-heavy-corpus lever (ISSUE_098/129: exact void booleans are ~75-82% of
 # geometry time; rebated masonry openings on brep/clipped hosts had no fast

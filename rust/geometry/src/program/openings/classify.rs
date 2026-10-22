@@ -5,7 +5,6 @@
 use super::requests::{OpeningReady, OpeningReply, OpeningSource};
 use super::{protocol, source_option, OpeningOutput, OpeningPoll};
 use crate::program::opening::{OpeningBounds, OpeningChild, OpeningProgram};
-use crate::router::processing::SourceHygiene;
 use crate::router::voids::OpeningType;
 use crate::router::OpeningDiagnostic;
 use crate::{GeometryRouter, Mesh, Result};
@@ -125,7 +124,7 @@ impl<'a> Classifier<'a> {
                     self.requested = id;
                     return OpeningPoll::Source(OpeningSource::Decode);
                 }
-                Phase::Body => return OpeningPoll::Source(OpeningSource::Body),
+                Phase::Body => return OpeningPoll::Geometry,
                 Phase::Bounds | Phase::Fallback => {
                     self.phase = phase;
                     self.probe = Some(OpeningProgram::new(false));
@@ -170,24 +169,19 @@ impl<'a> Classifier<'a> {
             (None, _, OpeningSource::Decode) => {
                 OpeningReply::Decoded(decoder.decode_by_id(self.requested).map_err(Into::into))
             }
-            // The cutter is kept in WHATEVER frame the product pipeline gives
-            // it (world, or the opening's own local frame on wasm); an opening
-            // whose items lie >= 1 km apart is several frame parts (#6349).
-            (None, Some(current), OpeningSource::Body) => OpeningReply::Parts(
-                router.process_element_parts_with_hygiene(
-                    &current.entity,
-                    decoder,
-                    SourceHygiene::BooleanOperand,
-                ),
-            ),
             _ => OpeningReply::Refused(protocol("classifier source")),
         }
     }
 
+    /// A probe's item child, or the occurrence's merged body: its product
+    /// program. The cutter is kept in WHATEVER frame the product pipeline
+    /// gives it (world, or the opening's own local frame on wasm); an opening
+    /// whose items lie >= 1 km apart is several frame parts (#6349).
     pub(super) fn child(&self, router: &GeometryRouter) -> Result<OpeningChild<'_>> {
-        match &self.probe {
-            Some(probe) => probe.child(router),
-            None => Err(protocol("classifier child")),
+        match (&self.probe, &self.current) {
+            (Some(probe), _) => probe.child(router),
+            (None, Some(current)) => Ok(OpeningChild::body(&current.entity)),
+            (None, None) => Err(protocol("classifier child")),
         }
     }
 

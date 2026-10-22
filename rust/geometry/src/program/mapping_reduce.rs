@@ -91,8 +91,9 @@ impl MappingControl<'_> {
         Self::record_drop(item, error, policy, walk, router)
     }
 
-    /// A styled walk's failed root plain item (`GeometryProgram::styled_item`):
-    /// recorded like the walk's own root drop, or the program stop it carried.
+    /// A styled product walk's failed plain item (`ProductControl`, run in
+    /// place without a mapping walk): recorded like the styled walk's own root
+    /// drop, or the program stop it carried.
     #[cold]
     #[inline(never)]
     pub(in crate::program) fn drop_styled_root(item: &DecodedEntity, error: Error, router: &GeometryRouter)

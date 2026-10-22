@@ -97,11 +97,13 @@ impl SourceHygiene {
     }
 
     pub(crate) fn apply(self, mesh: &mut Mesh) {
+        if std::env::var_os("IFCLITE_DIAG_PATCH").is_some() { eprintln!("HYGIENE {} before={} closed={}", self as u8, mesh.triangle_count(), crate::exact_topology::strict_closed_mesh(mesh)); }
         match self {
             Self::Watertight => mesh.clean_degenerate_watertight(),
             Self::IndexOnly => mesh.clean_degenerate(),
             Self::BooleanOperand => mesh.clean_degenerate_exact_indexed(),
         }
+        if std::env::var_os("IFCLITE_DIAG_PATCH").is_some() { eprintln!("HYGIENE {} after={} closed={}", self as u8, mesh.triangle_count(), crate::exact_topology::strict_closed_mesh(mesh)); }
     }
 }
 

@@ -4494,6 +4494,18 @@ timing or establish byte identity. Preserve the original adverse observations
 and their source identity rather than treating a successful probe exit as
 performance acceptance.
 
+The [sole final-source comparison](evidence/allplan-polyline-7983/final-891152455a/README.md)
+measures the merged candidate against its matching main parent under exclusive
+Pop admission. The unchanged reporter again rejects the timing spread. Ordered
+mesh payload fingerprints match on every sample, with the fingerprint's declared
+metadata/texture/instancing exclusions. No speedup, neutrality or browser
+worker-pool verdict follows. Both the original adverse observations and this
+final-source rejection remain evidence; neither is replaced by a passing probe
+exit. Sample telemetry excludes cgroup quota throttling but does not prove the
+remaining noise's cause. Lesson: short-model timing can remain unqualified after
+exclusive admission and a passing idle guard; preserve that limit rather than
+changing acceptance or running replacement cohorts.
+
 ### Element presentation source admission (E1b, #7955, #8049)
 
 The source-admission and decoder-free assembly refactor was measured against

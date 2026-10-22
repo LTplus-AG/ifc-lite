@@ -150,3 +150,31 @@ fn raw_singleton_edge_conforms_to_two_non_coplanar_peers_3977() {
         "the long raw edge must split at the non-coplanar peers' midpoint"
     );
 }
+
+/// #8051: the #8047 thin-floor witness remains geometry in either file unit.
+/// Operand acceptance must apply its physical hygiene threshold after scaling,
+/// not treat a millimetre-authored face as a thousand times more substantial.
+#[test]
+fn issue_8051_thin_floor_operand_certificate_is_unit_consistent() {
+    let a_min = [-8.68571626363443, -6.408187754704774, -3.4812969546765014];
+    let a_size = [1.2189531809273544, 3.735440451911921, 1.326755257819986];
+    let b_min = [-10.179294614250146, -4.686592242221465, -3.4810893784472334];
+    let b_size = [3.2296299479453636, 5.322463937444525, 0.1];
+    for unit in [1.0, 1000.0] {
+        let make_box = |min: [f64; 3], size: [f64; 3]| {
+            let lo = min.map(|v| (v as f32 as f64) * unit);
+            let hi = std::array::from_fn(|i| ((min[i] + size[i]) as f32 as f64) * unit);
+            tris_to_mesh(&box_mesh(lo, hi))
+        };
+        let host = make_box(a_min, a_size);
+        let cutter = make_box(b_min, b_size);
+        let output = ClippingProcessor::with_unit_scale(1.0 / unit)
+            .subtract_operand(&host, &cutter).into_mesh().expect("thin-floor cut");
+        assert!(crate::exact_topology::strict_closed_mesh(&output),
+            "represented thin-floor boundary must remain closed, unit={unit}");
+        let mut physical = output;
+        crate::router::processing::scale_positions(&mut physical, 1.0 / unit);
+        assert!(!physical.needs_degenerate_cleanup(),
+            "the retained floor must survive physical source hygiene, unit={unit}");
+    }
+}

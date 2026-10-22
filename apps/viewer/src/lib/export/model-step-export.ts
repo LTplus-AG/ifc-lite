@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { StepExporter, type StepExportOptions } from '@ifc-lite/export';
+import { StepExporter, countStepEntities, type SectionExportOptions, type StepExportOptions } from '@ifc-lite/export';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { prepareAppearanceSerialization } from '../appearance/serialization.js';
@@ -15,6 +15,7 @@ import { spliceScheduleIntoExport, type ExportScheduleState } from '@/sdk/adapte
  */
 export async function exportModelStep(input: {
   modelId: string;
+  section?: SectionExportOptions;
   dataStore: IfcDataStore;
   mutationView?: MutablePropertyView;
   options: StepExportOptions;
@@ -33,5 +34,9 @@ export async function exportModelStep(input: {
   const spliced = input.scheduleState
     ? spliceScheduleIntoExport(result, modelId, dataStore, input.scheduleState)
     : result;
-  return { content: spliced.content, stats: result.stats, resources: serialized.resources };
+  if (!input.section) return { content: spliced.content, stats: result.stats, resources: serialized.resources };
+  const bytes = typeof spliced.content === 'string' ? new TextEncoder().encode(spliced.content) : spliced.content;
+  const { exportSectionedStep } = await import('@ifc-lite/export');
+  const cropped = await exportSectionedStep(bytes, input.section);
+  return { content: cropped.content, stats: { ...result.stats, entityCount: countStepEntities(cropped.content) }, resources: serialized.resources };
 }

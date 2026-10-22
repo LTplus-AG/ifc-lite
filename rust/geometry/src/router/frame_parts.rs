@@ -37,7 +37,7 @@ pub(crate) fn frames_mergeable(a: [f64; 3], b: [f64; 3]) -> bool {
 /// Collapse frame parts to the single mesh a legacy single-mesh API returns.
 ///
 /// Refuses (rather than rounds) a product whose parts cannot share one frame.
-pub(super) fn single_frame(element_id: u32, mut parts: Vec<Mesh>) -> Result<Mesh> {
+pub(crate) fn single_frame(element_id: u32, mut parts: Vec<Mesh>) -> Result<Mesh> {
     if parts.len() <= 1 {
         return Ok(parts.pop().unwrap_or_default());
     }

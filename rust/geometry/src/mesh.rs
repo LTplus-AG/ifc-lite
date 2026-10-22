@@ -158,7 +158,7 @@ pub struct SubMeshCollection {
     /// Deliberately NOT `geometry_class == GEOM_CLASS_LAYER_SLICE`, which cannot
     /// answer it: that class is stamped from `is_material_layer_sliceable`, a
     /// static check made BEFORE the geometry runs, while
-    /// `try_layered_sub_meshes` can still return `None` and fall through to the
+    /// the layer control can still decline and fall through to the
     /// rep-item path — so rep-item ids can carry class 3 (#3199).
     /// SCOPE: it decides only which FIELD `emit_sub_meshes` emits the id under —
     /// five style lookups in `element.rs` still read `geometry_id` as a rep item

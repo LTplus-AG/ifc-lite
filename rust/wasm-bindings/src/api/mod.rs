@@ -157,7 +157,7 @@ pub struct IfcAPI {
     /// and slabs carrying an `IfcMaterialLayerSetUsage` are sliced into one
     /// sub-mesh per layer (geometry_id = the layer's `IfcMaterial`) so the
     /// build-up is visible in 3D. Built once per load and attached to EVERY
-    /// batch router via `set_material_layer_index` so `try_layered_sub_meshes`
+    /// batch router via `set_material_layer_index` so the layer control
     /// can fire — #874 dropped that wiring and silently disabled slicing for
     /// the whole browser stream. Cleared by `clearPrePassCache` between loads.
     cached_material_layer_index:
@@ -775,7 +775,7 @@ impl IfcAPI {
     /// slice single-solid walls/slabs with an `IfcMaterialLayerSetUsage` into one
     /// sub-mesh per layer. Built once per load (one IFCRELASSOCIATESMATERIAL
     /// decode scan, with a cheap substring bail-out on files that carry no layer
-    /// set) and `Arc`-shared with every batch router so `try_layered_sub_meshes`
+    /// set) and `Arc`-shared with every batch router so the layer control
     /// fires. Subsequent batches are an `Arc::clone`.
     pub(crate) fn get_or_build_material_layer_index(
         &self,

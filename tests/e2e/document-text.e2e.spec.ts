@@ -409,7 +409,9 @@ test('#6506 three real model pairs survive reload and export the selected saved 
     [models[0].id, models[1].id], [models[0].id, models[2].id], [models[1].id, models[2].id],
   ]);
   expect(history[0].report.counts).toMatchObject({ added: 1, deleted: 1, modified: 1 });
-  expect(history.map(({ report }) => report.rows.length)).toEqual([3, 95, 95]);
+  // #8040: A/B share all 16 types. Each architecture/bridge pair additionally
+  // reports 15 deleted and 17 added types; their geo-reference type is shared.
+  expect(history.map(({ report }) => report.rows.length)).toEqual([3, 127, 127]);
   await page.getByRole('combobox', { name: 'Saved comparison', exact: true }).selectOption(history[0].id);
   await page.locator('[data-saved-comparisons]').screenshot({ path: testInfo.outputPath('saved-model-comparison-history.png') });
   // Only A is loaded after a fresh page; historical B/C results remain portable.

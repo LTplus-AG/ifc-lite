@@ -23,7 +23,10 @@ export function compareProperties(store: IfcDataStore, localId: number): Extract
     : extractPropertiesOnDemand(store, localId);
 }
 
-export function compareQuantities(store: IfcDataStore, localId: number) {
+export function compareQuantities(
+  store: IfcDataStore,
+  localId: number,
+): ReturnType<typeof extractQuantitiesOnDemand> {
   return isTypeObjectClass(store.entities.getTypeName(localId))
     ? extractTypeEntityOwnQuantities(store, localId)
     : extractQuantitiesOnDemand(store, localId);

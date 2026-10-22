@@ -192,9 +192,7 @@ impl ClippingProcessor {
                     return GroupCut::Rejected(GroupReject::Nonconforming);
                 }
             };
-            if std::env::var_os("IFCLITE_DIAG_PATCH").is_some() { eprintln!("GROUP host={} cutters={} raw={} changed={changed} conforming={conforming} rawclosed={}", current.triangle_count(), chunk.len(), raw.triangle_count(), crate::exact_topology::strict_closed_mesh(&raw)); }
             let next = self.consolidate(raw);
-            if std::env::var_os("IFCLITE_DIAG_PATCH").is_some() { eprintln!("GROUP RESULT triangles={} closed={}", next.triangle_count(), crate::exact_topology::strict_closed_mesh(&next)); }
             // Validate each intermediate BEFORE it becomes the next chunk's host:
             // a non-watertight / invalid intermediate would silently corrupt every
             // subsequent subtraction. Same guard as `subtract_mesh`, per chunk.

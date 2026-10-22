@@ -302,7 +302,6 @@ impl ClippingProcessor {
         #[cfg(feature = "opening-perf-trace")]
         crate::opening_perf_trace::record(|c| c.single_subtract_calls = c.single_subtract_calls.saturating_add(1));
         record_csg_op(0, host_mesh.triangle_count(), opening_mesh.triangle_count());
-        if std::env::var_os("IFCLITE_DIAG_PATCH").is_some() { eprintln!("SUB ENTRY host={} cutter={} opening={opening}", host_mesh.triangle_count(), opening_mesh.triangle_count()); }
         if host_mesh.is_empty() {
             return GroupCut::Rejected(GroupReject::EmptyHost);
         }
@@ -346,18 +345,7 @@ impl ClippingProcessor {
             );
             return GroupCut::Rejected(GroupReject::BudgetTripped);
         }
-        if std::env::var_os("IFCLITE_DIAG_PATCH").is_some() {
-            eprintln!("SUB host={} cutter={} raw={} changed={changed} conforming={conforming} opening={opening} rawclosed={}", host_mesh.triangle_count(), opening_mesh.triangle_count(), raw.triangle_count(), crate::exact_topology::strict_closed_mesh(&raw));
-            if raw.triangle_count() == 28 || host_mesh.triangle_count() == 28 {
-                eprintln!("SUB_HOST positions={:?} indices={:?}", host_mesh.positions, host_mesh.indices);
-                eprintln!("SUB_CUTTER positions={:?} indices={:?}", opening_mesh.positions, opening_mesh.indices);
-                eprintln!("SUB_RAW positions={:?} indices={:?}", raw.positions, raw.indices);
-            }
-        }
         let result = self.consolidate(raw);
-        if std::env::var_os("IFCLITE_DIAG_PATCH").is_some() {
-            eprintln!("SUB RESULT triangles={} closed={}", result.triangle_count(), crate::exact_topology::strict_closed_mesh(&result));
-        }
         if !result.is_empty() && !self.validate_mesh(&result) {
             self.record_failure(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid);
             return GroupCut::Rejected(GroupReject::InvalidOutput);

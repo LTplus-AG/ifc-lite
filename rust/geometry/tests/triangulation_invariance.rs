@@ -2563,7 +2563,7 @@ fn issue_6940_subgrid_coaxial_depths_keep_dental_hosts_closed() {
 
 /// #8051 expanded thin-cell retention to convex patches. These actual CSG
 /// hosts exposed a downstream regression that a local patch certificate cannot
-/// detect: a later cut may lose the wall or reopen a previously closed solid.
+/// detect: source hygiene may reopen the solid before its opening cut.
 #[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
 #[test]
 fn issue_8051_office_thin_patch_retention_preserves_existing_hosts() {

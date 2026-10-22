@@ -493,7 +493,6 @@ impl Execution {
         ctx: &VoidContext,
         element_id: u32,
     ) -> Mesh {
-        if std::env::var_os("IFCLITE_DIAG_PATCH").is_some() { eprintln!("VOID ENTRY id={element_id} tris={} closed={}", mesh.triangle_count(), crate::exact_topology::strict_closed_mesh(&mesh)); }
         // PARAMETRIC fast path (flag-gated). ORIGIN-AWARE: it handles both the world
         // mesh (origin 0, native default) AND a per-element local-frame mesh (origin != 0,
         // the wasm default — the precision-critical case this path is FOR), since it
@@ -537,7 +536,6 @@ impl Execution {
             let prism_bounds = world_host_bounds(&mesh);
             let prism_tris_before = mesh.triangle_count();
             if let Some((cut, residual)) = self.try_prism_cut(&mesh, ctx) {
-                if std::env::var_os("IFCLITE_DIAG_PATCH").is_some() { eprintln!("VOID PRISM id={element_id} tris={} closed={}", cut.triangle_count(), crate::exact_topology::strict_closed_mesh(&cut)); }
                 return match residual {
                     None => {
                         // Same per-host cut-effect snapshot the exact path

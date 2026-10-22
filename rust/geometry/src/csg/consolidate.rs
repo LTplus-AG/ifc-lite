@@ -238,11 +238,15 @@ impl ClippingProcessor {
             // Connected thin patches change the input to subsequent boolean
             // cuts. A partial boundary improvement cannot certify that input
             // (#8051): require closure before adopting a connected rescue.
-            if supported.has_connected_patch && std::env::var_os("IFCLITE_DIAG_PATCH").is_some() {
-                eprintln!("PATCH input={} output={} baseline={} exact={exact} public={public} certified={certified} open={} baseopen={}", mesh.indices.len()/3, output.indices.len()/3, baseline.indices.len()/3, count_open_boundary_edges(&output), count_open_boundary_edges(&baseline));
-            }
-            if supported.has_connected_patch && (!exact || !public) {
-                return baseline;
+            if supported.has_connected_patch {
+                // Boolean source hygiene runs after file-unit output is scaled
+                // to metres. A locally closed patch that this established
+                // cleanup removes is not a usable rescue (#8051, S_Office).
+                let mut physical = output.clone();
+                crate::router::processing::scale_positions(&mut physical, length_unit_scale);
+                if !exact || !public || physical.needs_degenerate_cleanup() {
+                    return baseline;
+                }
             }
             if (!certified || !exact || !public)
                 && (!certified

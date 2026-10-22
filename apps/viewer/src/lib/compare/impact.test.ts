@@ -20,10 +20,12 @@ import assert from 'node:assert/strict';
 import { addViewpointToTopic, createBCFTopic, type BCFTopic } from '@ifc-lite/bcf';
 import { executeList, type ListDefinition } from '@ifc-lite/lists';
 import { IfcTypeEnum } from '@ifc-lite/data';
+import type { DiffEntry } from '@ifc-lite/diff';
 import { createListDataProvider } from '@/lib/lists/adapter';
 import type { ViewerState } from '@/store';
 import { stampAnalysisReport } from '@/hooks/useAnalysisStaleness';
 import { compareImpactOf } from './compare-analysis-state';
+import type { CompareRef } from './buildFingerprints';
 import { computeCompareImpact, type ImpactInput, type ImpactRow } from './impact';
 import { PINS, revisionPair, runClash, runIds, type RevisionPair } from './revision-pair.test-support';
 
@@ -95,7 +97,7 @@ describe('comparison impact on the committed revision pair (#6921)', () => {
     // #8040 also includes the fixture's 16 unchanged type objects.
     assert.deepEqual(pair.compare.diff.counts, { added: 1, deleted: 1, modified: 2, unchanged: 35 });
     for (const [localId, globalId, ifcType] of DEMO_TYPES) {
-      const entry = pair.compare.diff.byKey.get(globalId);
+      const entry: DiffEntry<CompareRef> | undefined = pair.compare.diff.byKey.get(globalId);
       assert.ok(entry, `fixture type #${localId} ${ifcType} must reach Compare`);
       assert.equal(entry.state, 'unchanged', globalId);
       for (const ref of [entry.base, entry.head]) {

@@ -1,0 +1,47 @@
+--- a/rust/processing/src/element/session_canonical.rs
++++ b/rust/processing/src/element/session_canonical.rs
+@@ -53,7 +53,7 @@ fn inherited_half(identity: ExecutionIdentity, router: bool) -> Result<Option<Ex
+         // Fully independent canonical children must not hide still-live
+         // ancestor owners from a later synchronous grandchild. Search each
+         // actual supplied half independently, preferring the innermost frame.
+-        for owner in active.borrow().iter().rev().take(1) {
++        for owner in active.borrow().iter().rev() {
+             let capability = if router { &owner.router } else { &owner.decoder };
+             match capability.try_lease(identity) {
+                 Ok(lease) => return Ok(Some(lease)),
+--- a/rust/processing/src/element/session_protocol.rs
++++ b/rust/processing/src/element/session_protocol.rs
+@@ -142,7 +142,8 @@ impl Protocol {
+             return Err(WorkError::WrongContext);
+         }
+         match self.pending {
+-            Some((pending, _)) if pending == request => Ok(()),
++            Some((pending, false)) if pending == request => Ok(()),
++            Some((pending, true)) if pending == request => Err(WorkError::AlreadyExecuted),
+             _ => Err(WorkError::StaleTicket),
+         }
+     }
+--- a/rust/processing/src/element/session_run.rs
++++ b/rust/processing/src/element/session_run.rs
+@@ -70,7 +70,7 @@ impl ProductState<'_> {
+         // Final hooks run here, in the epoch, so a hook that produces a nested
+         // child on this router inherits this product's owners. Draining on
+         // every return path leaves a warm router clean for the next element.
+-        match Ok::<_, ProgramStop>(router.take_csg_failures()) {
++        match router.take_csg_failures_checked() {
+             Ok(failures) => {
+                 *output = Some(self.publish(failures, degenerate::dropped_this_element()));
+                 Ok(None)
+--- a/rust/processing/src/element/session_state.rs
++++ b/rust/processing/src/element/session_state.rs
+@@ -33,8 +33,8 @@ impl Scopes {
+     /// Every scope restores the caller's counters and reports on return and
+     /// on unwind.
+     pub fn with_scope<R>(&mut self, work: impl FnOnce() -> R) -> R {
+-        let Self { budget: _, degenerate, pending } = self;
+-        degenerate.with_scope(|| pending.with_scope(work))
++        let Self { budget, degenerate, pending } = self;
++        budget.with_scope(|| degenerate.with_scope(|| pending.with_scope(work)))
+     }
+ }
+ 

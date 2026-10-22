@@ -904,6 +904,18 @@ jobs:
           # and timeout. Once source_axes.rs is on main, whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/kernel/plane_weld/source_axes.rs | grep -Fxq 'rust/geometry/src/kernel/plane_weld/source_axes.rs'; then
             oracle_args+=(--mutation docs/architecture/evidence/issue-7292/signed-zero.oracle.patch)
+          # #7955 E3: the linear product protocol adds element/session*.rs and
+          # owned_session.rs and deletes element/execution.rs, so a
+          # whole-change revert cannot compile the changed session tests
+          # (INCONCLUSIVE). Keep the protocol and break ONLY four rules: an
+          # executed ticket executes again, a grandchild product reaches only
+          # the innermost live frame instead of any ancestor's owners, a
+          # product's exact-work budget leaks into its caller's, and a stop
+          # reached in the final drain no longer discards the product. Listed
+          # before the E2b parent it is stacked on; once
+          # element/session_protocol.rs is on main, whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/element/session_protocol.rs | grep -Fxq 'rust/processing/src/element/session_protocol.rs'; then
+            oracle_args+=(--mutation tests/evidence/product-state-e3/behaviour.oracle.patch)
           # #7955 E2b: the native and browser consumers add
           # processor/run_snapshot.rs, and the changed browser test names the
           # new IfcAPI model field, so a whole-change revert cannot compile it

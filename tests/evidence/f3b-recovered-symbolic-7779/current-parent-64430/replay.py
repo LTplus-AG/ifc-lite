@@ -22,52 +22,64 @@ for row in manifest['files']:
     assert row['originalPath'] not in records
     records[row['originalPath']] = raw
 
-statistics_bytes = records['current-parent-perf-v1/statistics.py']
-assert (ROOT / 'paired_statistics.py').read_bytes() == statistics_bytes
-spec = importlib.util.spec_from_file_location('frozen_statistics', ROOT / 'paired_statistics.py')
-module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(module)
-rows = [json.loads(line) for line in records['current-parent-perf-v1/cohort/rows.jsonl'].splitlines()]
-assert len(rows) == 840 and {r['index'] for r in rows} == set(range(840))
-expected = json.loads(records['current-parent-perf-v1/cohort/summary.json'])
-groups = collections.defaultdict(list)
-for row in rows:
-    assert row['exitCode'] == 0
-    groups['-'.join(row[k] for k in ['section', 'fixture', 'mode'])].append(row)
-assert set(groups) == set(expected) and len(groups) == 20
-contrasts_replayed = 0
-for label, members in groups.items():
-    section = members[0]['section']
-    active = section == 'active'
-    arms = ['unoptimized', 'optimized'] if active else ['parent', 'unoptimized', 'optimized']
-    contrasts = {'C/B': ('optimized', 'unoptimized')} if active else {
-        'B/A': ('unoptimized', 'parent'), 'C/B': ('optimized', 'unoptimized'),
-        'C/A': ('optimized', 'parent'),
-    }
-    by_block = collections.defaultdict(dict)
-    for row in members:
-        block = by_block[row['block']]
-        assert row['arm'] not in block
-        data = row['data']
+def replay(prefix, helper, arms, contrasts, counts, allow_active=False):
+    # Each cohort keeps its own original seed, observations and source names.
+    assert (ROOT / helper).read_bytes() == records[prefix + '/statistics.py']
+    spec = importlib.util.spec_from_file_location(Path(helper).stem, ROOT / helper)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    rows = [json.loads(line) for line in records[prefix + '/cohort/rows.jsonl'].splitlines()]
+    assert len(rows) == counts[0] and {r['index'] for r in rows} == set(range(counts[0]))
+    expected = json.loads(records[prefix + '/cohort/summary.json'])
+    groups = collections.defaultdict(list)
+    for row in rows:
+        assert row['exitCode'] == 0
+        groups['-'.join(row[k] for k in ['section', 'fixture', 'mode'])].append(row)
+    assert set(groups) == set(expected) and len(groups) == counts[1]
+    contrasted = 0
+    for label, members in groups.items():
+        section = members[0]['section']
+        active = section == 'active'
+        assert section in (['symbolic', 'native', 'active'] if allow_active else ['symbolic', 'native'])
+        selected_arms = arms[1:] if active else arms
+        comparisons = {'C/B': ('optimized', 'unoptimized')} if active else contrasts
+        by_block = collections.defaultdict(dict)
+        for row in members:
+            block = by_block[row['block']]
+            assert row['arm'] not in block
+            data = row['data']
+            if section == 'native':
+                assert len(data['allWallMs']) == 5
+                value = statistics.median(data['allWallMs'])
+            else:
+                assert data['authority'] == row['mode']
+                value = data['elapsedNs'] / 1e6
+            block[row['arm']] = value
+        blocks = [by_block[k] for k in sorted(by_block)]
+        assert len(blocks) == (20 if active else 6 if section == 'native' else 24)
+        assert all(set(block) == set(selected_arms) for block in blocks)
+        assert {arm: [b[arm] for b in blocks] for arm in selected_arms} == expected[label]['armSamplesMs']
+        computed = module.compare_blocks(blocks, comparisons, label)
         if section == 'native':
-            assert len(data['allWallMs']) == 5
-            value = statistics.median(data['allWallMs'])
-        else:
-            assert data['authority'] == row['mode']
-            value = data['elapsedNs'] / 1e6
-        block[row['arm']] = value
-    blocks = [by_block[k] for k in sorted(by_block)]
-    assert len(blocks) == (20 if active else 6 if section == 'native' else 24)
-    assert all(set(block) == set(arms) for block in blocks)
-    assert {arm: [b[arm] for b in blocks] for arm in arms} == expected[label]['armSamplesMs']
-    computed = module.compare_blocks(blocks, contrasts, label)
-    if section == 'native':
-        # The runner adds report links after computing the frozen statistics.
-        for contrast, result in computed.items():
-            result['stockReport'] = f"{label}-{contrast.replace('/', '-')}-stock.json"
-    assert computed == expected[label]['contrasts']
-    contrasts_replayed += len(contrasts)
-assert contrasts_replayed == 36
-print(json.dumps({'verifiedDocuments': len(records), 'observations': len(rows),
-                  'groups': len(groups), 'contrasts': contrasts_replayed,
-                  'scope': 'Exact retained-data/statistics replay only; no new measurement, raw-process custody or merge acceptance.'}))
+            # Report links are metadata added after the statistical calculation.
+            for contrast, result in computed.items():
+                result['stockReport'] = f"{label}-{contrast.replace('/', '-')}-stock.json"
+        assert computed == expected[label]['contrasts']
+        fields = (['meshes', 'vertices', 'triangles', 'meshFingerprintsFnv1a64'] if section == 'native'
+                  else ['symbolicJsonFnv1a64', 'symbolicJsonBytes', 'polylineCount', 'circleCount', 'fillCount', 'textCount', 'gridCount'])
+        identities = {arm: {field: sorted({json.dumps(r['data'][field]) for r in members if r['arm'] == arm})
+                            for field in fields} for arm in selected_arms}
+        assert identities == expected[label]['outputIdentity']
+        contrasted += len(comparisons)
+    assert contrasted == counts[2]
+    return {'cohort': prefix, 'observations': len(rows), 'groups': len(groups), 'contrasts': contrasted}
+
+results = [
+    replay('current-parent-perf-v1', 'paired_statistics.py', ['parent', 'unoptimized', 'optimized'],
+           {'B/A': ('unoptimized', 'parent'), 'C/B': ('optimized', 'unoptimized'), 'C/A': ('optimized', 'parent')},
+           (840, 20, 36), allow_active=True),
+    replay('publication-layer-perf-v1', 'publication_statistics.py', ['A', 'T', 'C'],
+           {'T/A': ('T', 'A'), 'C/T': ('C', 'T'), 'C/A': ('C', 'A')}, (360, 8, 24)),
+]
+print(json.dumps({'verifiedDocuments': len(records), 'separateCohorts': results,
+                  'scope': 'Exact retained-data/statistics/row-identity replay only; no pooling, new measurement, raw-process custody, neutrality or merge acceptance.'}))

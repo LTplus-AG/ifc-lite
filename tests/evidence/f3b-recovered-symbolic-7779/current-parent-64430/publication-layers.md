@@ -48,10 +48,10 @@ file to inspect its original bytes. The existing replay verifies each document's
 compressed and original hashes, then replays the separate historical 840-row
 cohort. It does not replay models or extend that historical timing verdict to T.
 
-At this packet checkpoint, the independently reviewed new 360-command wall
-cohort is registered and queued, with no observations collected. Native
-instruction counts do not establish public-symbolic wall neutrality. No new T
-active-authority performance claim is made. The exact old C/A cost approval
-does not automatically approve new adverse observations. The original README's
-acceptance limits, parent ownership, final-main qualification, CI and adversarial
-review requirements still apply. This checkpoint is not merge approval.
+The subsequent fixed 360-command wall cohort completed and its
+[audited result is HOLD](publication-layer-performance.md). Native instruction
+counts do not establish public-symbolic wall neutrality. No new T active-authority
+performance claim is made. The exact old C/A cost approval does not automatically
+approve new adverse observations. The original README's acceptance limits, parent
+ownership, final-main qualification, CI and adversarial review requirements still
+apply. This checkpoint is not merge approval.

@@ -4649,3 +4649,11 @@ do not reopen them from an isolated instruction reduction. Native pipeline
 phase gates do not execute public symbolic extraction, and a sparse profile
 cannot explain its wall cost. Preserve fresh authority observations, source
 precedence, sticky stops and unwind restoration before considering a new lever.
+
+The later [per-layer campaign](../../tests/evidence/f3b-recovered-symbolic-7779/current-parent-64430/publication-layer-performance.md)
+reproduces the symbolic cost on the frame increment, but native wall observations
+and a timer-resolution limitation leave qualification held. A concurrent metadata
+publisher is disclosed; the run is not pristine otherwise-idle evidence. Passing
+native instruction limits does not settle wall neutrality. Keep both cohorts and
+their exact approval scopes separate; no causality claim or adaptive rerun is a
+performance remedy.

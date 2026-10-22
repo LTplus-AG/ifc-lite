@@ -6,8 +6,8 @@ It does not qualify a later main integration or every intermediate publication l
 The exact measured sources are publicly retained under the qualification tags below.
 
 The separate [publication-layer checkpoint](publication-layers.md) records T's
-completed functional, output-witness and instruction checks. Its wall cohort
-remains pending at that checkpoint.
+completed functional, output-witness and instruction checks. The subsequent
+[per-layer wall result remains HOLD](publication-layer-performance.md).
 
 The three measured, identically instrumented source pins are:
 
@@ -71,9 +71,10 @@ Run from the repository root with Python 3:
 python3 -B tests/evidence/f3b-recovered-symbolic-7779/current-parent-64430/replay.py
 ```
 
-The replay verifies every document's original and compressed SHA256, reconstructs
-all twenty matched-block groups and exactly replays all 36 descriptive contrasts
-with 10,000 whole-block bootstrap draws. It does not execute models or manufacture
+The replay verifies every document's original and compressed SHA256. It separately
+replays the historical 840 observations, twenty groups and 36 contrasts, and the
+new 360 observations, eight groups and 24 contrasts, using each cohort's original
+10,000-draw whole-block bootstrap. It does not pool observations, execute models or manufacture
 raw custody. The manifest contains one original document per gzip member; no
 runtime, source tree, credentials, build target or dependency tree is bundled.
 

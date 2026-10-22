@@ -575,6 +575,10 @@ fn box_difference_thin_floor_is_watertight_8047() {
     let GroupCut::Cut(result) = ClippingProcessor::new().subtract_mesh(&a, &b) else {
         panic!("the #8047 cutter must cut the host");
     };
+    for (name, mesh) in [("raw", &raw), ("consolidated", &result)] {
+        std::fs::write(format!("/tmp/ifc-8047-{name}.json"),
+            format!("{{\"positions\":{:?},\"indices\":{:?}}}", mesh.positions, mesh.indices)).unwrap();
+    }
     assert_eq!(watertight_violation(&result), None, "consolidated topology");
     let expected = a_size.iter().product::<f64>()
         - aabb_intersection_volume(a_min, a_size, b_min, b_size);

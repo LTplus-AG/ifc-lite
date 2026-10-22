@@ -165,6 +165,7 @@ fn retain_supported_patches(
         if valid && supported_boundary && touched.into_iter().all(|key| {
             *disjoint.entry(key).or_insert_with(|| nonoverlapping(&buckets[&key]))
         }) {
+            if patch.len() > 1 && std::env::var_os("IFCLITE_DIAG_DISABLE_PATCH").is_some() { continue; }
             out.has_connected_patch |= patch.len() > 1;
             for i in patch {
                 out.cells.insert(cell_key(&faces[i].1.v));

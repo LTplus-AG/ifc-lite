@@ -238,6 +238,9 @@ impl ClippingProcessor {
             // Connected thin patches change the input to subsequent boolean
             // cuts. A partial boundary improvement cannot certify that input
             // (#8051): require closure before adopting a connected rescue.
+            if supported.has_connected_patch && std::env::var_os("IFCLITE_DIAG_PATCH").is_some() {
+                eprintln!("PATCH input={} output={} baseline={} exact={exact} public={public} certified={certified} open={} baseopen={}", mesh.indices.len()/3, output.indices.len()/3, baseline.indices.len()/3, count_open_boundary_edges(&output), count_open_boundary_edges(&baseline));
+            }
             if supported.has_connected_patch && (!exact || !public) {
                 return baseline;
             }

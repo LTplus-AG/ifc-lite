@@ -136,12 +136,12 @@ async function showOnlyModelAndFrame(page: Page, modelId: string): Promise<void>
 export async function rendererColorFrame(page: Page): Promise<Buffer> {
   // #7655: a first orthographic frame can defer while its visibility pipeline
   // compiles. Require a submitted readback, within the existing test deadline.
-  let dataUrl: string | null = null;
+  const capture: { dataUrl: string | null } = { dataUrl: null };
   await expect.poll(async () => {
-    dataUrl = await page.evaluate(async () => globalThis.__ifc_lite_capture_color_frame__?.() ?? null);
-    return dataUrl !== null;
+    capture.dataUrl = await page.evaluate(async () => globalThis.__ifc_lite_capture_color_frame__?.() ?? null);
+    return capture.dataUrl !== null;
   }, { message: 'renderer color capture is available after the viewport submits a frame' }).toBe(true);
-  const encoded = dataUrl!.match(/^data:image\/png;base64,(.+)$/);
+  const encoded = capture.dataUrl!.match(/^data:image\/png;base64,(.+)$/);
   expect(encoded, 'renderer color capture is a PNG data URL').not.toBeNull();
   return Buffer.from(encoded![1]!, 'base64');
 }

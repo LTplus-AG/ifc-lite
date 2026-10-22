@@ -6,6 +6,7 @@ import {
   createViewpoint, perspectiveToCamera, orthogonalToCamera,
   type BCFProject, type BCFViewpoint, type EntityBoundsInput, type IDSReportInput,
 } from '@ifc-lite/bcf';
+import { isSpatialStructureTypeName } from '@ifc-lite/data';
 import type { Renderer } from '@ifc-lite/renderer';
 import { resolvePresentationIds } from '@/lib/presentation/resolvePresentationIds';
 import { captureViewportFrame } from '@/lib/viewport-capture';
@@ -28,7 +29,7 @@ export async function completeIdsBcfViewpoints(
   if (settings.includeSnapshots && !renderer) {
     throw new Error('Cannot capture IDS BCF snapshots: open the model in the 3D viewer and retry.');
   }
-  const entitiesByGuid = new Map<string, { id: number | undefined; bounds: EntityBoundsInput | undefined }[]>();
+  const entitiesByGuid = new Map<string, { id: number | undefined; bounds: EntityBoundsInput | undefined; spatial: boolean }[]>();
   const seenEntities = new Set<string>();
   for (const spec of report.specificationResults) {
     for (const entity of spec.entityResults) {
@@ -36,7 +37,7 @@ export async function completeIdsBcfViewpoints(
       if (!entity.globalId || seenEntities.has(key)) continue;
       seenEntities.add(key);
       const entries = entitiesByGuid.get(entity.globalId) ?? [];
-      entries.push({ id: toViewerGlobalId(entity.modelId, entity.expressId), bounds: bounds?.get(`${entity.modelId}:${entity.expressId}`) });
+      entries.push({ id: toViewerGlobalId(entity.modelId, entity.expressId), bounds: bounds?.get(key), spatial: isSpatialStructureTypeName(entity.entityType) });
       entitiesByGuid.set(entity.globalId, entries);
     }
   }
@@ -48,7 +49,14 @@ export async function completeIdsBcfViewpoints(
       component.ifcGuid ? entitiesByGuid.get(component.ifcGuid) ?? [] : []);
     const knownBounds = entries.flatMap(entry => entry.bounds ? [entry.bounds] : []);
     const rawIds = entries.flatMap(entry => entry.id == null ? [] : [entry.id]);
-    const ids = new Set(resolvePresentationIds(resolveHighlightIds, rawIds));
+    const spatialContext = entries.some(entry => entry.spatial && !entry.bounds);
+    const expansionIds = entries.flatMap(entry => entry.id == null || entry.spatial ? [] : [entry.id]);
+    const ids = new Set([...rawIds, ...resolvePresentationIds(resolveHighlightIds, expansionIds)]);
+    if (spatialContext && viewpoint) {
+      viewpoint.components ??= {};
+      viewpoint.components.visibility = { defaultVisibility: true };
+      topic.description = [topic.description, 'The spatial container has no direct geometry; model context remains visible.'].filter(Boolean).join('\n\n');
+    }
     // BCF consumers apply explicit component visibility; they need descendant
     // GUIDs as well as the assembly's own GUID, just as our renderer needs IDs.
     const rawIdSet = new Set(rawIds);

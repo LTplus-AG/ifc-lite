@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { EntityBoundsInput, IDSReportInput } from '@ifc-lite/bcf';
+import { isSpatialStructureTypeName } from '@ifc-lite/data';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { resolvePresentationIds } from '@/lib/presentation/resolvePresentationIds';
 import { createEntityBoundsLookup } from '@/utils/viewportUtils';
@@ -46,7 +47,12 @@ export function collectIdsBcfEntityBounds(
       // The scene unions flat and instanced pieces of a hybrid entity. Reading
       // only its retained flat pieces would silently frame a partial element.
       const boxes: EntityBoundsInput[] = [];
-      for (const presentationId of resolvePresentationIds(resolveHighlightIds, [id])) {
+      // Spatial contents use containment as well as decomposition. Aggregate-only
+      // descendants alone do not represent the contained physical model (#7974).
+      // Keep direct spatial geometry; otherwise the exporter supplies model context.
+      const presentationIds = isSpatialStructureTypeName(entity.entityType)
+        ? [id] : resolvePresentationIds(resolveHighlightIds, [id]);
+      for (const presentationId of presentationIds) {
         let bounds = sceneBounds(presentationId);
         if (!bounds && geometry) {
           let read = meshReaders.get(geometry);

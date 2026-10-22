@@ -10,7 +10,8 @@ import { Camera, type Renderer, type RenderOptions } from '@ifc-lite/renderer';
 import { writeBCF, type BCFProject } from '@ifc-lite/bcf';
 import type { ValidationReport } from '@ifc-lite/ids';
 import { useViewerStore } from '@/store';
-import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
+import { fixtureDataStore, fixtureModel, fixtureModels } from '@/test/store-fixture.js';
+import { expandToGeometryBearingIds } from '@/utils/aggregation';
 import { registerViewportCapture } from '@/lib/viewport-capture';
 import { setGlobalRendererRef } from '../useBCF';
 import { runIdsBcfExport, type RunIdsBcfExportParams } from './idsBcfExport';
@@ -133,6 +134,41 @@ describe('#7974 actual viewer IDS BCF export', () => {
     assert.ok(components?.visibility?.exceptions?.some(component => component.ifcGuid === childGuid));
     assert.ok(components?.coloring?.[0].components.some(component => component.ifcGuid === childGuid));
     assert.doesNotMatch(result.topic.description ?? '', /current viewer camera/);
+  });
+
+  it('keeps model context for a geometry-less spatial container with meshed spatial aggregates (#7974)', async () => {
+    const run = setup(true, true);
+    const spec = run.params.report.specificationResults[0];
+    spec.entityResults = [spec.entityResults[1]];
+    spec.entityResults[0].entityType = 'IfcBuilding';
+    spec.applicableCount = 1; spec.failedCount = 1;
+    const store = fixtureDataStore([
+      { expressId: 20, type: 'IfcBuilding', globalId: guidB },
+      { expressId: 21, type: 'IfcSpace', globalId: childGuid },
+      { expressId: 22, type: 'IfcWall', globalId: guidA },
+    ], { aggregates: { 20: [21] } });
+    const model = run.params.models.get('B')!;
+    model.ifcDataStore = store;
+    useViewerStore.setState({ cameraCallbacks: { resolveHighlightIds: ids =>
+      expandToGeometryBearingIds(ids, id => id === 1_000_021, {
+        resolve: id => ({ modelId: 'B', expressId: id - 1_000_000 }),
+        relationshipsFor: () => store.relationships,
+        toGlobalId: (_modelId, id) => 1_000_000 + id,
+      }) } });
+    await runIdsBcfExport(run.params);
+    const result = await archive(run.exported());
+    const vp = result.topic.viewpoints[0];
+    assert.deepEqual(vp.components?.selection, [{ ifcGuid: guidB }]);
+    assert.equal(vp.components?.visibility?.defaultVisibility, true,
+      'aggregate-only spatial geometry must not hide the physically contained building elements');
+    assert.equal(run.renders[0].isolatedIds, null, 'snapshot must show the physical model context');
+    assert.deepEqual(vp.perspectiveCamera?.cameraViewPoint, { x: 130, y: 175, z: 50 },
+      'spatial descendant bounds must not replace the current useful house view');
+    assert.match(result.topic.description ?? '', /spatial container has no direct geometry/);
+    assert.match(result.topic.description ?? '', /current viewer camera/);
+    assert.match(result.markup, /<Snapshot>/);
+    assert.doesNotMatch(result.viewpoint, new RegExp(childGuid.replace(/\$/g, '\\$')),
+      'spatial decomposition alone is not the building visibility or colour group');
   });
 
   for (const mode of ['perspective', 'orthographic'] as const) {

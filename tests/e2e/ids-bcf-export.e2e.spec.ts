@@ -72,6 +72,11 @@ test('#7974 actual validation exports cameras and snapshots for physical and spa
     expect(viewpoint.perspectiveCamera ?? viewpoint.orthogonalCamera, topic.title).toBeTruthy();
     expect(viewpoint.components?.selection?.length, topic.title).toBeGreaterThan(0);
     expect(viewpoint.snapshotData?.length, topic.title).toBeGreaterThan(1000);
+    if (topic.title.includes('IfcBuilding')) {
+      expect(viewpoint.components?.visibility?.defaultVisibility, topic.title).toBe(true);
+      expect(topic.description).toContain('The spatial container has no direct geometry; model context remains visible.');
+      expect(topic.description).toContain('current viewer camera');
+    }
   }
   await page.screenshot({ path: info.outputPath('7974-validation-export.png') });
   if (process.env.IDS_BCF_EVIDENCE_DIR) {

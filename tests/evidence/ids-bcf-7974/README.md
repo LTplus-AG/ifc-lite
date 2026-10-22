@@ -27,8 +27,18 @@ active clipping, and failed capture. Restoring only the original
 the fixed source was restored afterward.
 
 The earlier `bounds.oracle.patch` documents #7988's mesh-only regression.
-It did not cover geometry-less failures or grouped snapshots. No direct
-BIMcollab import result is claimed by this receipt.
+It did not cover geometry-less failures or grouped snapshots. Native BIMcollab Zoom 9.9.3.0 activated both corrected viewpoints: 13 walls
+selected/framed, and the building framed with 123 selected elements. Louis
+independently confirmed both, then confirmed failure with `main-negative-export.bcfzip`
+(exported through the actual UI with main export code at `81a93228c4`). That
+negative archive has no building camera and no topic snapshots.
+
+`bimcollab-walls.png` and `bimcollab-building.png` record native activation before
+the final spatial-context thumbnail refinement. The final archive here was
+verified in the strict production browser: geometry-less spatial containers
+retain visible model context and the same real camera in BCF and snapshot,
+rather than isolating only aggregated storeys/spaces. The full-export spatial
+regression fails against the previous production code and passes with the fix.
 
 The browser test uses the shared `gpu-device-loss.ts` guard around model loading
 and GPU snapshot capture. Hosted CI (`E2E_GPU_STRICT=0`) skips only on recorded

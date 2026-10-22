@@ -1,11 +1,11 @@
 {
-  "date": "2026-10-21",
+  "date": "2026-10-22",
   "model": "tests/models/ara3d/AC20-FZK-Haus.ifc",
   "modelSha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
   "build": "root pnpm build --filter=@ifc-lite/viewer, production preview on port 3000",
   "browser": "native headed Google Chrome with repository viewer-e2e flags",
   "browserTest": "tests/e2e/ids-bcf-export.e2e.spec.ts",
-  "archiveSha256": "e60ab1f08c23c3fa762beb233ce6f2ca152efad18b1b8a4f84ff7129cb4d7bd9",
+  "archiveSha256": "ceaf78a4c646a57fdc8bc1a9b9521b653f451e444049d5d5a14cd64268d85cd0",
   "schemaValidation": [
     {
       "entry": "bcf.version",
@@ -18,25 +18,32 @@
       "exitCode": 0
     },
     {
-      "entry": "7c651e9d-af60-43c5-924b-355308be35cd/markup.bcf",
+      "entry": "9fd067a8-c262-4d93-91aa-1841d43ebb71/markup.bcf",
       "schema": "markup.xsd",
       "exitCode": 0
     },
     {
-      "entry": "7c651e9d-af60-43c5-924b-355308be35cd/viewpoint.bcfv",
+      "entry": "9fd067a8-c262-4d93-91aa-1841d43ebb71/viewpoint.bcfv",
       "schema": "visinfo.xsd",
       "exitCode": 0
     },
     {
-      "entry": "b973535d-b57a-4da1-9716-b7005a20fb7e/markup.bcf",
+      "entry": "da14537d-e27b-430c-a681-cc69196a646e/markup.bcf",
       "schema": "markup.xsd",
       "exitCode": 0
     },
     {
-      "entry": "b973535d-b57a-4da1-9716-b7005a20fb7e/viewpoint.bcfv",
+      "entry": "da14537d-e27b-430c-a681-cc69196a646e/viewpoint.bcfv",
       "schema": "visinfo.xsd",
       "exitCode": 0
     }
   ],
-  "externalBimcollabRetest": "pending; no app import result claimed"
+  "externalBimcollabRetest": "Mac BIMcollab Zoom 9.9.3.0: both original corrected topics activated and framed, walls selected 13 and building selected 123; Louis independently confirmed both and confirmed the main negative archive fails. Native screenshots precede final spatial-context thumbnail refinement; final archive verified in strict production browser.",
+  "negativeExport": {
+    "file": "main-negative-export.bcfzip",
+    "mainRef": "81a93228c417fdf43defa314dccb2441550b0632",
+    "result": "IfcBuilding has no camera; both topics lack snapshots; Louis confirmed failure in BIMcollab",
+    "archiveSha256": "19ee6713db973fc816474893e09b47b13142fbe6c40041e894a754414eaceb63"
+  },
+  "spatialRegression": "Previous code: 6 passed / 1 failed; corrected code: 14 targeted tests passed. Strict production browser passed and building PNG visually shows full house context."
 }

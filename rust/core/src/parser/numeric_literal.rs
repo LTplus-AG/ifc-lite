@@ -31,6 +31,13 @@ use super::lexical::is_step_space;
 /// the geometry hot path.
 #[inline]
 pub fn step_numeric_literal_len(bytes: &[u8]) -> Option<usize> {
+    scan_step_numeric_literal(bytes).map(|(len, _)| len)
+}
+
+/// Keep the kind found by the grammar walk so the number reader does not
+/// scan the admitted literal again to distinguish INTEGER from REAL (#7779).
+#[inline]
+fn scan_step_numeric_literal(bytes: &[u8]) -> Option<(usize, bool)> {
     let digits_from = |mut i: usize| {
         while bytes.get(i).is_some_and(u8::is_ascii_digit) {
             i += 1;
@@ -41,7 +48,8 @@ pub fn step_numeric_literal_len(bytes: &[u8]) -> Option<usize> {
     let int_end = digits_from(i);
     let mut digits = int_end - i;
     i = int_end;
-    if bytes.get(i) == Some(&b'.') {
+    let mut real = bytes.get(i) == Some(&b'.');
+    if real {
         let frac_end = digits_from(i + 1);
         digits += frac_end - (i + 1);
         i = frac_end;
@@ -50,6 +58,7 @@ pub fn step_numeric_literal_len(bytes: &[u8]) -> Option<usize> {
         return None;
     }
     if matches!(bytes.get(i), Some(b'e' | b'E')) {
+        real = true;
         let exp_start = i + 1 + usize::from(matches!(bytes.get(i + 1), Some(b'+' | b'-')));
         let exp_end = digits_from(exp_start);
         if exp_end == exp_start {
@@ -58,9 +67,9 @@ pub fn step_numeric_literal_len(bytes: &[u8]) -> Option<usize> {
         i = exp_end;
     }
     match bytes.get(i) {
-        None => Some(i),
-        Some(&b) if b == b',' || b == b')' || is_step_space(b) => Some(i),
-        Some(&b'/') if bytes.get(i + 1) == Some(&b'*') => Some(i),
+        None => Some((i, real)),
+        Some(&b) if b == b',' || b == b')' || is_step_space(b) => Some((i, real)),
+        Some(&b'/') if bytes.get(i + 1) == Some(&b'*') => Some((i, real)),
         _ => None,
     }
 }
@@ -140,9 +149,9 @@ pub enum StepNumber<'a> {
 /// not exactly one literal, and for an `INTEGER` beyond `i64`.
 #[inline]
 pub fn read_step_number(bytes: &[u8]) -> Option<(StepNumber<'_>, usize)> {
-    let len = step_numeric_literal_len(bytes)?;
+    let (len, real) = scan_step_numeric_literal(bytes)?;
     let literal = &bytes[..len];
-    if literal.iter().any(|&b| matches!(b, b'.' | b'e' | b'E')) {
+    if real {
         let value = fast_float2::parse::<f64, _>(literal).ok()?;
         let number = admit_step_real(value)
             .map_or(StepNumber::Unrepresentable(literal), StepNumber::Real);

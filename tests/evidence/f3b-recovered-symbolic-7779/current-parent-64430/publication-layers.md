@@ -11,8 +11,21 @@ The publication lower tip `8be12c7a5a76172151bbb52b06d73b3c6a7dd112` adds only
 the missing Rust return-type break account in `rust-major-offset.json` to T.
 The existing offset remains eleven; earlier accounts and references are kept.
 Rust sources, Cargo inputs and the measured implementation are unchanged. The
-crates.io API gate remains queued at this checkpoint; no API-gate verdict is
-claimed. Actual publication-source detached consumers completed separately in Pop
+crates.io API gate completed on this exact publication source in Pop job
+`9ce141e0-72e3-4d19-82d9-b1d43ed8607a`. The original repository gate compared
+all eight published crates against their crates.io baselines: the declared
+20.4.0 to 21.4.0 major release covers the detected Rust API changes. A complete
+task-owned Rust 1.99.1 toolchain and the verified official cargo-semver-checks
+0.50.0 binary were used; the repository gate and its baseline fallback policy
+were unchanged. The original source/receipt, ten raw log hashes and completion
+were independently reconciled. Six lossless records are retained under
+`publication-rust-semver-v2`, including the actual gate stdout. Metadata replay
+checks these documents; it does not rerun the API comparisons. Earlier failed
+Cargo-prerequisite and admission-timeout attempts remain separately retained.
+This is API-surface/version adequacy, without a behavior, C ABI, non-default
+feature, performance, final-main or merge verdict.
+
+Actual publication-source detached consumers completed separately in Pop
 job `6983686a-18a6-4572-85d2-9d7635483c18`: 50 Python abi3 wheel tests passed,
 with zero failures or skips; the detached CSG build and its one test passed.
 The original receipt, source identity, output hash, JUnit counts, wheel and lock

@@ -1,0 +1,28 @@
+[package]
+name = "ifc-lite-diff"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Store-agnostic entity diff engine for IFC models: canonical fingerprints, content matching and lineage"
+keywords = ["ifc", "bim", "diff", "versioning", "aec"]
+categories = ["algorithms", "data-structures"]
+readme = "../../README.md"
+
+[dependencies]
+# ECMAScript-compliant f64 formatting. The data fingerprint is a hash over
+# `JSON.stringify` output, so a number must render exactly as V8 renders it:
+# `1e+21`, not `1000000000000000000000`. Rust's `Display` disagrees in both
+# directions (exponent threshold and form), and this crate implements the
+# `Number::toString` algorithm itself. Licence: Apache-2.0 OR BSL-1.0.
+ryu-js = "1.0.3"
+
+[dev-dependencies]
+# Fixture parsing only. The crate's own types stay serde-free: deriving on the
+# public input shapes would make serde part of this crate's public contract
+# for the sake of a test.
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

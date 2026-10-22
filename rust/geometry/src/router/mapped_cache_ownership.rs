@@ -96,6 +96,8 @@ impl GeometryRouter {
     /// element). Takes precedence over the per-router RefCell `mapped_item_cache`;
     /// leaving it unset keeps the per-router fallback for single-shot callers.
     pub fn enable_shared_mapped_item_cache(&mut self, cache: SharedMappedItemCache) {
+        // A different cache is different configuration for outstanding work.
+        self.execution_owner.changed();
         self.shared_mapped_item_cache = Some(cache);
         self.accounted_mapped_cache = None;
     }
@@ -103,6 +105,7 @@ impl GeometryRouter {
     /// Bind retained cache storage to its admission owner. Ordinary borrowed
     /// cache APIs remain compatible and cannot qualify bounded publication.
     pub fn enable_accounted_mapped_item_cache(&mut self, cache: AccountedMappedItemCache) {
+        self.execution_owner.changed();
         self.shared_mapped_item_cache = Some(Arc::clone(&cache.cache));
         self.accounted_mapped_cache = Some(cache);
     }

@@ -10,7 +10,7 @@ use super::*;
 #[derive(Debug)]
 pub struct ExecutionWork<'a> {
     pub(super) lease: &'a mut ExecutionLease,
-    pub(super) epoch: OnceLock<Arc<WorkEpoch>>,
+    pub(super) epoch: std::cell::OnceCell<Arc<WorkEpoch>>,
     pub(super) _thread_bound: std::marker::PhantomData<*const ()>,
 }
 impl ExecutionWork<'_> {
@@ -24,6 +24,7 @@ impl ExecutionWork<'_> {
                 parent: self.lease.parent.clone(),
                 parent_source: self.lease.source_borrow,
                 resource_stop: Mutex::new(None),
+                stopped: AtomicBool::new(false),
             })
         });
         ExecutionChildCapability {
@@ -51,7 +52,7 @@ impl ExecutionWork<'_> {
             .state
             .active_source
             .lock()
-            .expect("source borrow lock")
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .push((
                 scope_id,
                 ActiveSource {
@@ -97,6 +98,9 @@ pub(super) struct WorkEpoch {
     pub(super) parent: Option<Arc<WorkEpoch>>,
     pub(super) parent_source: bool,
     pub(super) resource_stop: Mutex<Option<crate::resource_stop::ProgramStop>>,
+    /// Set after `resource_stop` is first written, so an unstopped chain is
+    /// checked without taking a lock.
+    pub(super) stopped: AtomicBool,
 }
 impl WorkEpoch {
     pub(super) fn validate(&self, mut source_borrow: bool) -> Result<(), ExecutionLeaseError> {
@@ -170,7 +174,7 @@ impl Drop for ExecutionSourceScope {
         // Remove exactly this scope's entry so non-LIFO drops never revive
         // or clobber another scope's authority. No allocation under the lock.
         let displaced = {
-            let mut active = self.state.active_source.lock().expect("source borrow lock");
+            let mut active = self.state.active_source.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
             active
                 .iter()
                 .rposition(|(id, _)| *id == self.scope_id)

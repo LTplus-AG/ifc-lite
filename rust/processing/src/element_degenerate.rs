@@ -130,7 +130,8 @@ pub(crate) fn clean(mesh: &mut Mesh) {
     }
 }
 
-/// Triangles dropped in the installed element scope, across every mesh of this element.
+/// Triangles dropped in the installed element scope, across every mesh of this
+/// element.
 pub(crate) fn dropped_this_element() -> u64 {
     DROPPED.with(|c| c.get())
 }

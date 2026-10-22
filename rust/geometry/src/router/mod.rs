@@ -14,6 +14,7 @@ mod brep_signatures;
 mod content_hash;
 mod diagnostics;
 mod diagnostics_recording;
+mod diagnostics_checked;
 pub(crate) mod frame_parts;
 pub(crate) mod instancing;
 pub(crate) mod item_cache_program;

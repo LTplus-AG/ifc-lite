@@ -58,18 +58,31 @@ impl SourceStopHandle {
     pub(super) fn new(epoch: Arc<WorkEpoch>) -> Self {
         Self(epoch)
     }
+    #[inline]
     pub fn check(&self) -> Result<(), crate::resource_stop::ProgramStop> {
+        // The common case, checked on every geometry step: a root epoch that
+        // nothing has stopped is one atomic load.
+        if self.0.parent.is_none() && !self.0.stopped.load(std::sync::atomic::Ordering::Acquire) {
+            return Ok(());
+        }
+        self.check_chain()
+    }
+    #[cold]
+    #[inline(never)]
+    fn check_chain(&self) -> Result<(), crate::resource_stop::ProgramStop> {
         // Iterative oldest-ancestor precedence: a fresh descendant epoch must
         // never hide a stop established before its scoped worker entered.
         let mut first = None;
         let mut cursor = Some(self.0.as_ref());
         while let Some(epoch) = cursor {
-            if let Some(stop) = *epoch
-                .resource_stop
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-            {
-                first = Some(stop);
+            if epoch.stopped.load(std::sync::atomic::Ordering::Acquire) {
+                if let Some(stop) = *epoch
+                    .resource_stop
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                {
+                    first = Some(stop);
+                }
             }
             cursor = epoch.parent.as_deref();
         }
@@ -87,6 +100,7 @@ impl SourceStopHandle {
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .get_or_insert(stop);
+            epoch.stopped.store(true, std::sync::atomic::Ordering::Release);
             cursor = epoch.parent.as_deref();
         }
         self.check().err().unwrap_or(stop)

@@ -8,7 +8,7 @@
 //! `welded_in_object_frame` (#4122), instancing/placement capture, style and
 //! metadata stamping, site-local rotation).
 
-use super::{degenerate, ElementMeshJob, MeshProductionContext};
+use super::{degenerate, AssemblyJob};
 use crate::processor::{
     convert_mesh_to_site_local, site_local_rotation_invalidates_captured_transforms,
 };
@@ -22,7 +22,7 @@ use ifc_lite_geometry::Mesh;
 /// hasher has already ruled on.
 #[allow(clippy::too_many_arguments)] // distinct per-mesh funnel inputs
 pub(super) fn build_mesh_data(
-    job: &ElementMeshJob<'_>,
+    job: &AssemblyJob<'_>,
     mut mesh: Mesh,
     color: [f32; 4],
     material_name: Option<String>,
@@ -31,7 +31,7 @@ pub(super) fn build_mesh_data(
     source_id: Option<u32>,
     id_is_material: bool,
     geometry_class: u8,
-    ctx: &MeshProductionContext<'_>,
+    site_local_rotation: Option<&Vec<f64>>,
     // Per-vertex texture coordinates (2 per vertex, 1:1 with `mesh.positions`),
     // present only for textured type geometry (#961). Threaded through the weld
     // so the UVs are remapped WITH the deduped positions and stay aligned; a UV
@@ -71,7 +71,7 @@ pub(super) fn build_mesh_data(
     // actually rotates something — a translation-only site-local frame (#4176)
     // leaves the captured object-frame transforms valid.
     let site_local_rotates =
-        site_local_rotation_invalidates_captured_transforms(ctx.site_local_rotation);
+        site_local_rotation_invalidates_captured_transforms(site_local_rotation);
     // Instancing metadata is kept UNCONDITIONALLY (#4118 part B). It describes
     // the mesh in the native frame, which a rotating site-local frame does not
     // change: `convert_mesh_to_site_local` re-expresses the POSITIONS, and what
@@ -103,7 +103,7 @@ pub(super) fn build_mesh_data(
     .with_instance(instance)
     .with_local_bounds(local_bounds)
     .with_local_to_world(local_to_world);
-    if let Some(meta) = job.metadata {
+    if let Some(meta) = job.metadata() {
         mesh_data = mesh_data
             .with_element_metadata(
                 meta.global_id.clone(),
@@ -122,6 +122,6 @@ pub(super) fn build_mesh_data(
     // The texture IMAGE is attached by the caller; here we only carry the
     // per-vertex coordinates through the funnel so they can't desync.
     mesh_data.uvs = welded_uvs;
-    convert_mesh_to_site_local(&mut mesh_data, ctx.site_local_rotation);
+    convert_mesh_to_site_local(&mut mesh_data, site_local_rotation);
     mesh_data
 }

@@ -68,7 +68,6 @@
    180 rust/processing/src/appearance/mod.rs plan_with_source
    250 rust/processing/src/appearance/pdf_fill.rs plan_pdf_fill_annotation_with_clip
    158 rust/processing/src/appearance/transfer_points.rs PointSurface::observe
-   156 rust/processing/src/element.rs emit_sub_meshes
    181 rust/processing/src/pdf_vector/interpret_ops.rs Interpreter::operation
    259 rust/processing/src/processor/jobs.rs process_entity_job
    749 rust/processing/src/processor/mod.rs process

@@ -252,3 +252,7 @@ impl GeometryRouter {
 #[cfg(test)]
 #[path = "processing_hygiene_tests.rs"]
 mod hygiene_tests;
+
+#[cfg(test)]
+#[path = "processing_budget_tests.rs"]
+mod budget_tests;

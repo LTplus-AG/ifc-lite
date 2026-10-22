@@ -60,7 +60,12 @@ for label, members in groups.items():
     assert len(blocks) == (20 if active else 6 if section == 'native' else 24)
     assert all(set(block) == set(arms) for block in blocks)
     assert {arm: [b[arm] for b in blocks] for arm in arms} == expected[label]['armSamplesMs']
-    assert module.compare_blocks(blocks, contrasts, label) == expected[label]['contrasts']
+    computed = module.compare_blocks(blocks, contrasts, label)
+    if section == 'native':
+        # The runner adds report links after computing the frozen statistics.
+        for contrast, result in computed.items():
+            result['stockReport'] = f"{label}-{contrast.replace('/', '-')}-stock.json"
+    assert computed == expected[label]['contrasts']
     contrasts_replayed += len(contrasts)
 assert contrasts_replayed == 36
 print(json.dumps({'verifiedDocuments': len(records), 'observations': len(rows),

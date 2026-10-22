@@ -3,15 +3,15 @@
 This is evidence for corrected production source `64430aa0ed686671037679aeb51a8ba824f811bb`
 against actual parent `46cc72ff79ad88569409f42d9d0ce81171ba771c`.
 It does not qualify a later main integration or every intermediate publication layer.
-The source pins remain retained in the controller checkout pending publication.
+The exact measured sources are publicly retained under the qualification tags below.
 
 The three measured, identically instrumented source pins are:
 
 | Arm | Source | Meaning |
 | --- | --- | --- |
-| A | `cf73cfca5566d5e04f223527bd914b29a987af3d` | Actual parent plus common public-symbolic probe |
-| B | `35b7a6f53772a5dbab8e8c5d883b27462cf1034d` | Unoptimized terminal/frame correction plus identical probe |
-| C | `64430aa0ed686671037679aeb51a8ba824f811bb` | Corrected source with fresh boolean stop polling |
+| A | [cf73cfca5566](https://github.com/LTplus-AG/ifc-lite/tree/qualification/bf7d2a91-7914-measured-a) | Actual parent plus common public-symbolic probe |
+| B | [35b7a6f53772](https://github.com/LTplus-AG/ifc-lite/tree/qualification/bf7d2a91-7914-measured-b) | Unoptimized terminal/frame correction plus identical probe |
+| C | [64430aa0ed68](https://github.com/LTplus-AG/ifc-lite/tree/qualification/bf7d2a91-7914-measured-c) | Corrected source with fresh boolean stop polling |
 
 ## Original observations and acceptance
 

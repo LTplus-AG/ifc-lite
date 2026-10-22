@@ -288,6 +288,9 @@ impl SweptDiskSolidProcessor {
         let directrix = decoder
             .resolve_ref(directrix_attr)?
             .ok_or_else(|| Error::geometry("Failed to resolve Directrix".to_string()))?;
+        let (start_param, end_param) = crate::swept_disk_range::effective_range(
+            directrix.ifc_type.clone(), start_param, end_param, decoder,
+        );
         let curve_points = self.profile_processor.get_directrix_points(
             &directrix,
             decoder,

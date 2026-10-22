@@ -1,0 +1,304 @@
+{
+  "rows": [
+    {
+      "side": "base",
+      "path": "/home/louistrue/build-workers/ifc-lite/tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "fileMb": 2.409,
+      "entities": 44249,
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 20322,
+      "indexBuildMs": 2.97,
+      "parseMs": 15,
+      "entityScanMs": 8,
+      "lookupMs": 2,
+      "preprocessMs": 3,
+      "geometryMs": 26,
+      "facetedBrepMs": 0,
+      "totalMs": 42,
+      "allTotalsMs": [
+        42
+      ],
+      "allWallMs": [
+        44.999300999999996
+      ],
+      "pointCacheHits": 51788,
+      "pointCacheMisses": 9116,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "meshFingerprintsFnv1a64": [
+        "7377db33331a3523"
+      ]
+    },
+    {
+      "side": "branch",
+      "path": "/home/louistrue/build-workers/ifc-lite/tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "fileMb": 2.409,
+      "entities": 44249,
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 20322,
+      "indexBuildMs": 3.14,
+      "parseMs": 14,
+      "entityScanMs": 7,
+      "lookupMs": 2,
+      "preprocessMs": 3,
+      "geometryMs": 28,
+      "facetedBrepMs": 0,
+      "totalMs": 43,
+      "allTotalsMs": [
+        43
+      ],
+      "allWallMs": [
+        46.681634
+      ],
+      "pointCacheHits": 51756,
+      "pointCacheMisses": 9100,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "meshFingerprintsFnv1a64": [
+        "7377db33331a3523"
+      ]
+    },
+    {
+      "side": "branch",
+      "path": "/home/louistrue/build-workers/ifc-lite/tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "fileMb": 2.409,
+      "entities": 44249,
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 20322,
+      "indexBuildMs": 3.12,
+      "parseMs": 14,
+      "entityScanMs": 7,
+      "lookupMs": 2,
+      "preprocessMs": 3,
+      "geometryMs": 25,
+      "facetedBrepMs": 0,
+      "totalMs": 39,
+      "allTotalsMs": [
+        39
+      ],
+      "allWallMs": [
+        41.955656
+      ],
+      "pointCacheHits": 51724,
+      "pointCacheMisses": 9084,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "meshFingerprintsFnv1a64": [
+        "7377db33331a3523"
+      ]
+    },
+    {
+      "side": "base",
+      "path": "/home/louistrue/build-workers/ifc-lite/tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "fileMb": 2.409,
+      "entities": 44249,
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 20322,
+      "indexBuildMs": 3.63,
+      "parseMs": 14,
+      "entityScanMs": 8,
+      "lookupMs": 2,
+      "preprocessMs": 3,
+      "geometryMs": 42,
+      "facetedBrepMs": 0,
+      "totalMs": 56,
+      "allTotalsMs": [
+        56
+      ],
+      "allWallMs": [
+        59.010422999999996
+      ],
+      "pointCacheHits": 51724,
+      "pointCacheMisses": 9084,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "meshFingerprintsFnv1a64": [
+        "7377db33331a3523"
+      ]
+    },
+    {
+      "side": "branch",
+      "path": "/home/louistrue/build-workers/ifc-lite/tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "fileMb": 2.409,
+      "entities": 44249,
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 20322,
+      "indexBuildMs": 3.28,
+      "parseMs": 14,
+      "entityScanMs": 7,
+      "lookupMs": 2,
+      "preprocessMs": 3,
+      "geometryMs": 31,
+      "facetedBrepMs": 0,
+      "totalMs": 45,
+      "allTotalsMs": [
+        45
+      ],
+      "allWallMs": [
+        48.123104
+      ],
+      "pointCacheHits": 51844,
+      "pointCacheMisses": 9132,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "meshFingerprintsFnv1a64": [
+        "7377db33331a3523"
+      ]
+    },
+    {
+      "side": "base",
+      "path": "/home/louistrue/build-workers/ifc-lite/tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "fileMb": 2.409,
+      "entities": 44249,
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 20322,
+      "indexBuildMs": 3.12,
+      "parseMs": 14,
+      "entityScanMs": 8,
+      "lookupMs": 2,
+      "preprocessMs": 3,
+      "geometryMs": 33,
+      "facetedBrepMs": 0,
+      "totalMs": 48,
+      "allTotalsMs": [
+        48
+      ],
+      "allWallMs": [
+        52.042736999999995
+      ],
+      "pointCacheHits": 51708,
+      "pointCacheMisses": 9076,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "meshFingerprintsFnv1a64": [
+        "7377db33331a3523"
+      ]
+    },
+    {
+      "side": "base",
+      "path": "/home/louistrue/build-workers/ifc-lite/tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "fileMb": 2.409,
+      "entities": 44249,
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 20322,
+      "indexBuildMs": 2.98,
+      "parseMs": 14,
+      "entityScanMs": 8,
+      "lookupMs": 2,
+      "preprocessMs": 3,
+      "geometryMs": 39,
+      "facetedBrepMs": 0,
+      "totalMs": 53,
+      "allTotalsMs": [
+        53
+      ],
+      "allWallMs": [
+        57.447313
+      ],
+      "pointCacheHits": 51916,
+      "pointCacheMisses": 9156,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "meshFingerprintsFnv1a64": [
+        "7377db33331a3523"
+      ]
+    },
+    {
+      "side": "branch",
+      "path": "/home/louistrue/build-workers/ifc-lite/tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "fileMb": 2.409,
+      "entities": 44249,
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 20322,
+      "indexBuildMs": 3.13,
+      "parseMs": 14,
+      "entityScanMs": 8,
+      "lookupMs": 2,
+      "preprocessMs": 3,
+      "geometryMs": 40,
+      "facetedBrepMs": 0,
+      "totalMs": 54,
+      "allTotalsMs": [
+        54
+      ],
+      "allWallMs": [
+        57.344235
+      ],
+      "pointCacheHits": 51892,
+      "pointCacheMisses": 9132,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "meshFingerprintsFnv1a64": [
+        "7377db33331a3523"
+      ]
+    },
+    {
+      "side": "base",
+      "path": "/home/louistrue/build-workers/ifc-lite/tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "fileMb": 2.409,
+      "entities": 44249,
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 20322,
+      "indexBuildMs": 3.2,
+      "parseMs": 14,
+      "entityScanMs": 8,
+      "lookupMs": 2,
+      "preprocessMs": 3,
+      "geometryMs": 29,
+      "facetedBrepMs": 0,
+      "totalMs": 43,
+      "allTotalsMs": [
+        43
+      ],
+      "allWallMs": [
+        46.328147
+      ],
+      "pointCacheHits": 51708,
+      "pointCacheMisses": 9076,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "meshFingerprintsFnv1a64": [
+        "7377db33331a3523"
+      ]
+    },
+    {
+      "side": "branch",
+      "path": "/home/louistrue/build-workers/ifc-lite/tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "fileMb": 2.409,
+      "entities": 44249,
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 20322,
+      "indexBuildMs": 3.13,
+      "parseMs": 14,
+      "entityScanMs": 7,
+      "lookupMs": 2,
+      "preprocessMs": 3,
+      "geometryMs": 41,
+      "facetedBrepMs": 0,
+      "totalMs": 55,
+      "allTotalsMs": [
+        55
+      ],
+      "allWallMs": [
+        58.492779
+      ],
+      "pointCacheHits": 51836,
+      "pointCacheMisses": 9116,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "meshFingerprintsFnv1a64": [
+        "7377db33331a3523"
+      ]
+    }
+  ]
+}

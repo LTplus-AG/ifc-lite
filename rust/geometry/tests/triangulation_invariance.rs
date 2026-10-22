@@ -1529,10 +1529,10 @@ fn issue_4627_candidate_failures_preserve_prior_analytic_cuts() {
                 // #7292: preserve the ordinary exactly closed boundary; the
                 // stronger exact fixture below checks both triangulators.
                 (10191, 0, 0, 172, 0),
-                // #7292: the current DEFAULT retessellation preserves the
-                // measured finite surface within 100um. These coarse 1mm counts
-                // are representation pins, not an exact-closure assertion.
-                (26681, 44, 44, 210, 10),
+                // #8047: retain the supported convex thin patches instead of
+                // dropping their finite faces. DEFAULT now closes; the exact
+                // boundary is checked separately below, beyond this 1mm pin.
+                (26681, 0, 0, 270, 10),
             ][..],
         ),
         (
@@ -2473,6 +2473,30 @@ fn issue_7292_rvt_void_cut_hygiene_preserves_exact_closed_boundaries() {
             assert_eq!(edge_stats(&mesh).open, 0, "host {id}, alt={alt}");
         }
     }
+}
+
+/// #8047: this real Revit host contains adjacent finite thin cells. Retaining
+/// their supported convex patch closes its physical boundary, rather than just
+/// hiding unmatched edges on the census's coarser millimetre grid.
+#[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
+#[test]
+fn issue_8047_rvt26681_supported_thin_patches_preserve_exact_closure() {
+    let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _reset = AltTriangulatorReset;
+    set_alt(false);
+    let Some(content) = ifc_lite_testkit::fixture_text("various/rvt01.ifc") else {
+        eprintln!("Skipping #8047 real thin-patch regression: run pnpm fixtures");
+        return;
+    };
+    let frame = ModelFrame::new(&content);
+    let mesh = process(&frame, 26681, &void_index(&content))
+        .expect("actual void-cut Revit host must mesh");
+    assert!(!mesh.indices.is_empty(), "thin-patch host must remain nonempty");
+    let exact = edge_stats_exact(&mesh);
+    assert_eq!((exact.open, exact.strict, exact.degenerate), (0, 0, 0),
+        "retained finite patches must pair at the actual represented coordinates");
+    assert_eq!(edge_stats(&mesh).open, 0,
+        "the public millimetre boundary must remain closed too");
 }
 
 #[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]

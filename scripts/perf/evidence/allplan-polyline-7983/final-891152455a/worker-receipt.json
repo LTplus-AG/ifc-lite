@@ -1,0 +1,109 @@
+{
+  "id": "db796657-47e2-441d-a371-bd78a6a7dff6",
+  "host": {
+    "host": "pop-os",
+    "os": "Linux",
+    "arch": "x86_64",
+    "cpus": 32,
+    "availableMemoryBytes": 114527387648,
+    "totalMemoryBytes": 134644969472,
+    "python": "3.12.3",
+    "time": 1792685553.9211595
+  },
+  "cwd": "/home/louistrue/build-workers/worker-state/checkouts/891152455ab75c73341c878c0c55ccde9feece92",
+  "sourceBefore": {
+    "commit": "891152455ab75c73341c878c0c55ccde9feece92",
+    "tree": "64ba7a394235f8f0167d0169fd60f090392f98fa",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "06db1c681de3c3ac17093f5e52d324261b7680acd61f9d518e0d49b8774feb28",
+      "pnpm-lock.yaml": "4ef03ad9b34812de9d0e6c309d04ae315c09f887c3927f67ab6e31f8131e5283",
+      "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937"
+    }
+  },
+  "command": [
+    "python3",
+    "/home/louistrue/build-workers/pr8052-cohort.py"
+  ],
+  "kind": "benchmark",
+  "requestedAt": 1792685553.9198797,
+  "resources": [
+    "/home/louistrue/build-workers/worker-state/checkouts/891152455ab75c73341c878c0c55ccde9feece92",
+    "/home/louistrue/build-workers/worker-state/storage-tasks/db796657-47e2-441d-a371-bd78a6a7dff6/target"
+  ],
+  "state": "completed",
+  "cpu": 8,
+  "memoryGiB": 24,
+  "storageTask": "pr8052-final-public-891152455a",
+  "storageTaskExplicit": true,
+  "storageResources": [
+    {
+      "path": "/home/louistrue/build-workers/worker-state/storage-tasks/db796657-47e2-441d-a371-bd78a6a7dff6/target",
+      "role": "target"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/checkouts/891152455ab75c73341c878c0c55ccde9feece92",
+      "role": "worktree"
+    }
+  ],
+  "fixtures": {},
+  "tools": {
+    "git": {
+      "path": "/usr/bin/git",
+      "exitCode": 0,
+      "version": "git version 2.43.0"
+    },
+    "rustc": {
+      "path": "/home/louistrue/build-workers/toolchains/cargo/bin/rustc",
+      "exitCode": 0,
+      "version": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+    },
+    "cargo": {
+      "path": "/home/louistrue/build-workers/toolchains/cargo/bin/cargo",
+      "exitCode": 0,
+      "version": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)"
+    },
+    "node": {
+      "path": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+      "exitCode": 0,
+      "version": "v24.22.0"
+    },
+    "pnpm": {
+      "path": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/pnpm",
+      "exitCode": 0,
+      "version": "10.8.1"
+    }
+  },
+  "runnerSha256": "086190b0495aec8d7608a80241396e8fe90ca69c80dea8110eb4770fed2ca6f9",
+  "startedAt": 1792685644.0757773,
+  "queueSeconds": 90.15589785575867,
+  "resourceScope": true,
+  "exitCode": 0,
+  "finishedAt": 1792686032.1200056,
+  "sourceAfter": {
+    "commit": "891152455ab75c73341c878c0c55ccde9feece92",
+    "tree": "64ba7a394235f8f0167d0169fd60f090392f98fa",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "06db1c681de3c3ac17093f5e52d324261b7680acd61f9d518e0d49b8774feb28",
+      "pnpm-lock.yaml": "4ef03ad9b34812de9d0e6c309d04ae315c09f887c3927f67ab6e31f8131e5283",
+      "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937"
+    }
+  },
+  "sourceUnchanged": true,
+  "artifacts": {
+    "/home/louistrue/build-workers/pr8052-cohort.py": "cdea43356348f2487eda61a9947ee8a601bf85cbf2fe5e031adf5a790743c2e1",
+    "/home/louistrue/build-workers/pr8052-final-public/metadata.json": "b427c8e3400b3d8c30f29eaeef8531467fb36ab5658a9788100fd1a73a50c21f",
+    "/home/louistrue/build-workers/pr8052-final-public/idle.json": "93880b395fbeb1cf21a11790d15785764d0f3dbb04fd04d7e81f40aae764f230",
+    "/home/louistrue/build-workers/pr8052-final-public/report.json": "038f35b6a5dae4652303fd76678479232c2b71602ad54deeb06443a4c1273b51",
+    "/home/louistrue/build-workers/pr8052-final-public/identity.json": "f8e45d96bbe9e7d265d27faec6cb85775e6f02972627ee592a819ef134edfc7b",
+    "/home/louistrue/build-workers/pr8052-final-public/runs.jsonl": "3873bd88df34e14a736fb81f884d76a6773b2ddb195f3ad4bc1dd2ab44bb1cb1",
+    "/home/louistrue/build-workers/pr8052-final-public/order.txt": "952e15b8a3b227fcf566d319d13b11a433d6b3f30d07ff249d5112dc7d96ea56",
+    "/home/louistrue/build-workers/pr8052-final-public/telemetry.json": "d82be4c95719e7d7a57dde0d4871f35da0b5fd451fa903c47968f10d9b65e3a2"
+  },
+  "outputSha256": "b17ea9a1e7d27be167644867492150ce9ee809e4332a8a4daa3f3edcd8f67651"
+}

@@ -958,6 +958,29 @@ process, allowances, jurisdiction and physical bar count remain unchecked.
 Authored `BarLength` is not a verified cutting length. A reinforcing-bar entity
 may represent more than one manufactured bar.
 
+### Owned production contexts
+
+`ifc_lite_processing::element::ProductionModel` represents one model load.
+Call `snapshot(OwnedMeshProductionData)` once per effective batch to capture
+its opening, style, indexed-colour, material, texture and site-rotation maps.
+The maps are shared through `Arc`; products borrow them through the returned
+`OwnedMeshProductionContext` without copying them. Snapshots remain usable
+after the caller drops its map owners or creates a newer configuration revision.
+
+Pass the snapshot to `element::produce_element_meshes_owned` with the same
+job, options, decoder and router used by the canonical borrowed producer.
+It checks the model's source epoch before work and before returning a result.
+Call `ProductionModel::invalidate_source` when replacing or mutating the source:
+earlier snapshots then return `ProductionContextError::StaleSource`, including
+when invalidation occurs inside a geometry callback. Create a fresh snapshot
+before producing from the replacement source.
+
+The context identity distinguishes loads, source epochs and configuration
+revisions within the process. It does not authenticate IFC bytes or indexes;
+the caller must still pair the decoder, router and captured maps with the
+correct source. The appearance authoring pipeline uses these snapshots and
+refreshes its cached context after style edits or authored-entity injection.
+
 ### Appearance authoring
 
 `ifc_lite_processing::appearance::calibrate_appearance_plane` establishes one

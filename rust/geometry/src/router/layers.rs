@@ -30,7 +30,7 @@ use crate::material_layer_index::LayerBuildup;
 use crate::{Result, SubMeshCollection};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use rustc_hash::FxHashMap;
-use stages::LayerProgram;
+use stages::{LayerProgram, LayerSkip};
 
 impl GeometryRouter {
     /// Helper that consults the attached [`MaterialLayerIndex`][crate::MaterialLayerIndex]
@@ -48,57 +48,57 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
         void_index: Option<&FxHashMap<u32, Vec<u32>>>,
-    ) -> Option<SubMeshCollection> {
-        let index = self.material_layer_index()?;
-        let buildup = index.get(element.id)?;
+    ) -> Result<Option<SubMeshCollection>> {
+        crate::resource::check_current()?;
+        let Some(index) = self.material_layer_index() else { return Ok(None) };
+        let Some(buildup) = index.get(element.id) else { return Ok(None) };
         if !buildup.is_sliceable() {
-            return None;
+            return Ok(None);
         }
         let empty: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
         let voids = void_index.unwrap_or(&empty);
-        let collection = match self.process_element_with_material_layers(element, decoder, buildup, voids) {
+        let outcome = self.process_element_with_material_layers(element, decoder, buildup, voids);
+        self.finish_layer_attempt(element.id, outcome)
+    }
+
+    // Observe the terminal account before any fallback diagnostic, including
+    // when a lower stage returned ordinary content failure or apparent success.
+    fn finish_layer_attempt(
+        &self,
+        element_id: u32,
+        outcome: Result<Option<SubMeshCollection>>,
+    ) -> Result<Option<SubMeshCollection>> {
+        let collection = match crate::resource::observe(outcome) {
             Ok(Some(c)) => c,
-            Ok(None) => return None,
+            Ok(None) => return Ok(None),
+            Err(error @ crate::Error::ProgramStopped(_)) => return Err(error),
             Err(_e) => {
-                // A sliceable wall whose base-mesh build errored falls back to a
-                // single solid. Record for the browser; warn for native.
-                self.push_layer_slice_diag(element.id, "skip:base-mesh-error");
+                self.push_layer_slice_diag(element_id, "skip:base-mesh-error");
                 crate::diag::diag_warn!(
-                    { element_id = element.id, reason = "base-mesh-error",
+                    { element_id = element_id, reason = "base-mesh-error",
                       "material-layers: sliceable element failed to slice, keeping single solid" }
                     else {
-                        eprintln!("[material-layers] #{}: sliceable but slicing errored", element.id);
+                        eprintln!("[material-layers] #{}: sliceable but slicing errored", element_id);
                     }
                 );
-                return None;
+                return Ok(None);
             }
         };
         if collection.sub_meshes.len() < 2 {
             crate::diag::diag_warn!(
-                { element_id = element.id, sub_meshes = collection.sub_meshes.len(),
+                { element_id = element_id, sub_meshes = collection.sub_meshes.len(),
                   reason = "fewer-than-two-sub-meshes",
                   "material-layers: sliceable element produced too few sub-meshes, keeping single solid" }
                 else {
                     eprintln!(
                         "[material-layers] #{}: sliceable but produced {} sub-mesh(es) (<2) — keeping single solid",
-                        element.id,
+                        element_id,
                         collection.sub_meshes.len()
                     );
                 }
             );
-            return None;
+            return Ok(None);
         }
-        crate::diag::diag_debug!(
-            { element_id = element.id, sub_meshes = collection.sub_meshes.len(),
-              "material-layers: sliced element into layer sub-meshes" }
-            else {
-                eprintln!(
-                    "[material-layers] #{}: sliced into {} layer sub-meshes",
-                    element.id,
-                    collection.sub_meshes.len()
-                );
-            }
-        );
         // Mesh hygiene: slicing the base mesh by layer-interface planes can
         // introduce zero-area/collinear slivers at the cut, and this layered
         // path early-returns to its callers (process_element_with_submeshes /
@@ -108,7 +108,19 @@ impl GeometryRouter {
         for sub in &mut collection.sub_meshes {
             sub.mesh.clean_degenerate();
         }
-        Some(collection)
+        crate::resource::check_current()?;
+        crate::diag::diag_debug!(
+            { element_id = element_id, sub_meshes = collection.sub_meshes.len(),
+              "material-layers: sliced element into layer sub-meshes" }
+            else {
+                eprintln!(
+                    "[material-layers] #{}: sliced into {} layer sub-meshes",
+                    element_id,
+                    collection.sub_meshes.len()
+                );
+            }
+        );
+        Ok(Some(collection))
     }
 
     /// Process an element into per-layer sub-meshes, subtracting any
@@ -127,29 +139,58 @@ impl GeometryRouter {
         buildup: &LayerBuildup,
         void_index: &FxHashMap<u32, Vec<u32>>,
     ) -> Result<Option<SubMeshCollection>> {
-        let program = match LayerProgram::admit(element, decoder, buildup, self.unit_scale) {
-            Ok(Some(program)) => program,
-            Ok(None) => return Ok(None),
-            Err(skip) => return Ok(self.skip_layers(element.id, skip.reason())),
+        // Eligibility can decode representation members before host meshing.
+        // Run the same source-only admission first, without reporting/claiming:
+        // a refusal abstains so ordinary production renders its completed roots.
+        // Alignments retain their dedicated directrix processor in host meshing.
+        if element.ifc_type != ifc_lite_core::IfcType::IfcAlignment {
+            let mut plan = crate::representation::product_budget::admit_product(
+                element, decoder, crate::representation::MAX_WALK_LEVELS, self,
+            );
+            plan.strict()?;
+            plan.validate(self, decoder)?;
+            if plan.refusal.is_some() { return Ok(None); }
+        }
+        crate::resource::check_current()?;
+        let outcome = LayerProgram::admit(element, decoder, buildup, self.unit_scale);
+        let Some(program) = self.accept_layer_stage(element.id, outcome)?.flatten() else {
+            return Ok(None);
         };
 
         // Void subtraction happens on the merged mesh (cheap + topology-safe).
-        let host = self.process_element_with_voids(element, decoder, void_index)?;
-        let request = match program.accept_host(host) {
-            Ok(request) => request,
-            Err(skip) => return Ok(self.skip_layers(element.id, skip.reason())),
+        let host = crate::resource::observe(
+            self.process_element_with_voids(element, decoder, void_index),
+        )?;
+        let Some(request) = self.accept_layer_stage(element.id, program.accept_host(host))? else {
+            return Ok(None);
         };
         // Planes live in the host's frame: world - rtc - per-element origin.
-        let ready = match request.admit_frame(element, decoder, self).and_then(|r| r.execute()) {
-            Ok(ready) => ready,
-            Err(skip) => return Ok(self.skip_layers(element.id, skip.reason())),
+        let outcome = request.admit_frame(element, decoder, self);
+        let Some(planes) = self.accept_layer_stage(element.id, outcome)? else {
+            return Ok(None);
         };
-        Ok(Some(ready.execute().publish(self, element.id)))
+        let Some(ready) = self.accept_layer_stage(element.id, planes.execute())? else {
+            return Ok(None);
+        };
+        // Numerical execution owns an unpublished result. Observe any stop it
+        // reached before publication can report success or ordinary fallback.
+        let result = ready.execute();
+        Ok(Some(result.publish(self, element.id)?))
     }
 
-    fn skip_layers(&self, element_id: u32, reason: &'static str) -> Option<SubMeshCollection> {
-        self.push_layer_slice_diag(element_id, reason);
-        None
+    fn accept_layer_stage<T>(
+        &self,
+        element_id: u32,
+        outcome: std::result::Result<T, LayerSkip>,
+    ) -> Result<Option<T>> {
+        crate::resource::check_current()?;
+        match outcome {
+            Ok(value) => Ok(Some(value)),
+            Err(skip) => {
+                self.push_layer_slice_diag(element_id, skip.reason());
+                Ok(None)
+            }
+        }
     }
 }
 

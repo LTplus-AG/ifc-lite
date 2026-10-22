@@ -845,7 +845,7 @@ fn the_wire_spellings_match_serde() {
 // ────────────────────────────────────────────────────────────────────────────
 // `push_*` finiteness guards (follow-up to #4189/#4190).
 //
-// `parse_axis2_placement_2d` and `parse_cartesian_transformation_operator`
+// `parse_axis2_placement_2d` and `resolve_mapping_target`
 // deliberately do not refuse a non-finite ambient placement, so every
 // CONSUMER of a resolved placement must guard itself. Only `push_circle` did.
 // The four tests below call `push_grid_axis`/`push_polyline`/`push_text`/

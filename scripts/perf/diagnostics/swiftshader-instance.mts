@@ -4,7 +4,7 @@
 
 // #7655 diagnostic, not a benchmark: no IFC, React, renderer recovery or mocks.
 // Run with DEBUG=pw:browser to retain GPU-process stderr alongside this JSON.
-import { chromium } from '@playwright/test';
+import { chromium, type Browser } from '@playwright/test';
 import { createServer } from 'node:http';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -21,10 +21,13 @@ try {
     const args = [...(variant === 'original'
       ? BEGIN_FRAME_CHROME_ARGS.filter(arg => arg !== '--use-angle=swiftshader')
       : BEGIN_FRAME_CHROME_ARGS), '--enable-logging=stderr'];
-    const browser = await chromium.launch({ headless: true, args });
-    const deadline = setTimeout(() => { void browser.close(); }, 90_000);
-    deadline.unref();
+    let browser: Browser | undefined;
+    let deadline: ReturnType<typeof setTimeout> | undefined;
     try {
+      browser = await chromium.launch({ headless: true, args, timeout: 30_000 });
+      const launchedBrowser = browser;
+      deadline = setTimeout(() => { void launchedBrowser.close(); }, 90_000);
+      deadline.unref();
       const page = await browser.newPage();
       page.setDefaultTimeout(30_000);
       page.on('console', message => console.log(`[${variant}] ${message.text()}`));
@@ -104,15 +107,18 @@ try {
       }, mainShaderSource);
       results.push({ round, variant, browser: browser.version(), args, result });
       console.log(JSON.stringify(results.at(-1)));
-      if (variant === 'fixed' && (result.lost || result.events.some(event => (event as { ok?: boolean }).ok === false))) {
+      if (variant === 'fixed' && (result.lost || result.events.some(event => {
+        const recorded = event as { step?: string; ok?: boolean };
+        return recorded.ok === false || recorded.step === 'uncaptured';
+      }))) {
         throw new Error('Corrected SwiftShader configuration failed real pipeline/queue/readback checks');
       }
     } catch (error) {
       // The broken configuration can lose its GPU channel even before adapter
       // acquisition. Retain that outcome without skipping the fixed comparison.
-      results.push({ round, variant, browser: browser.version(), args, error: String(error) });
+      results.push({ round, variant, browser: browser?.version(), args, error: String(error) });
       if (variant === 'fixed') throw error;
-    } finally { clearTimeout(deadline); await browser.close(); }
+    } finally { clearTimeout(deadline); await browser?.close(); }
   }
 } finally {
   server.close();

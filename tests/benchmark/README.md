@@ -120,7 +120,7 @@ Each result JSON also carries two #6993 blocks:
 
 - **`gpuHealth`**: whether the sample lost its WebGPU device. `contaminated`
   is true when the renderer's device was lost (`gpu.deviceLost`, or the
-  renderer's `[WebGPU] Device lost` line with any reason but `destroyed`) or
+  renderer's `[WebGPU] Device lost` line with any reason, including `destroyed`) or
   replaced by its own renderer (`gpu.deviceReplacements`, the recovery path
   that re-uploads the scene; two live renderers are not a replacement). The counters are session totals, so a loss before the load window
   opens counts too. `benchmark:check` excludes a contaminated sample instead
@@ -130,8 +130,9 @@ Each result JSON also carries two #6993 blocks:
   one (all contaminated: every previous entry is kept, exit 0), and the
   cold A/B (`scripts/perf/browser-cold-ab.mts`) records it as a failed sample.
   Uncaptured errors and Dawn `Instance reference no longer exists` lines are
-  kept as evidence only when no device-loss witness accompanies them. The
-  message alone does not identify the affected device. In particular,
+  always retained as evidence, even alongside a device-loss witness; they do
+  not independently contaminate a sample. The message alone does not identify
+  the affected device. In particular,
   `reason: destroyed` does not prove application teardown: Chromium also
   destroys devices when its GPU channel fails (#7655).
 - **`interactionCommits`**: React commits caused by one hierarchy-row select,

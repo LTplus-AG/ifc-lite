@@ -135,6 +135,16 @@ impl Frame {
         )
     }
 
+    /// The failure-log mark of a pending batched attempt, in whichever of its
+    /// frames is on the stack.
+    pub(super) fn batch_mark(&self) -> Option<usize> {
+        match self {
+            Self::AfterBatch { mark, .. } => Some(*mark),
+            Self::BatchLower(batch) | Self::BatchBuild(batch, ..) | Self::BatchGroup(batch) => Some(batch.mark),
+            _ => None,
+        }
+    }
+
     /// Pure control: settled after any step, reading no source.
     pub(super) fn is_control(&self) -> bool {
         match self {

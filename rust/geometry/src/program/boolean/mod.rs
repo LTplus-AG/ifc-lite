@@ -128,10 +128,7 @@ impl BooleanMachine {
     /// Retract the provisional records of the outermost pending batched
     /// attempt (marks only grow up the stack, so the first is the lowest).
     pub(crate) fn abandon(&mut self, recorder: &BooleanClippingProcessor) {
-        let pending = self.frames.iter().find_map(|frame| match frame {
-            Frame::AfterBatch { mark, .. } => Some(*mark),
-            _ => None,
-        });
+        let pending = self.frames.iter().find_map(Frame::batch_mark);
         if let Some(mark) = pending {
             recorder.rewind_to(mark);
         }

@@ -110,32 +110,43 @@ const BATCHED_CHAIN: &str = "#1=IFCCARTESIANPOINT((0.,0.,0.));\n#2=IFCDIRECTION(
 /// A stop that lands after the batched chain's base was meshed, before the
 /// attempt commits or defers, drops the continuation with the attempt
 /// pending. Its provisional records go with it: the shared recorder's log is
-/// what it was before the item started.
+/// what it was before the item started. The stop is placed at every step the
+/// attempt spends (base meshed, each cutter admitted and built, the group).
 #[test]
 fn a_stop_during_a_batched_attempt_retracts_its_provisional_records() {
     let content = wrap_ifc(BATCHED_CHAIN);
     let router = GeometryRouter::new();
-    let mut decoder = EntityDecoder::new(&content);
-    let item = decoder.decode_by_id(21).unwrap();
-    let recorder = router.processor_for(&item.ifc_type).expect("the boolean processor is selected");
-    let before = recorder.bool_failure_count();
-    let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
-    let (result, recorded_at_stop) = account.scope(|| {
-        let mut program = GeometryProgram::item(&item, (0., 0., 0.));
-        let mut recorded_at_stop = None;
-        while let Some(request) = program.request().unwrap() {
-            let reply = program.execute(request, &router, &mut decoder).unwrap();
-            program.accept(reply, &router).ok().unwrap();
-            if recorded_at_stop.is_none() && recorder.bool_failure_count() > before {
-                recorded_at_stop = Some(recorder.bool_failure_count() - before);
-                resource::stop(ProgramStop::Cancelled);
+    let mut stopped_after_recording = 0;
+    for offset in 0..8 {
+        let mut decoder = EntityDecoder::new(&content);
+        let item = decoder.decode_by_id(21).unwrap();
+        let recorder = router.processor_for(&item.ifc_type).expect("the boolean processor is selected");
+        let before = recorder.bool_failure_count();
+        let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
+        let (result, recorded_at_stop) = account.scope(|| {
+            let mut program = GeometryProgram::item(&item, (0., 0., 0.));
+            let (mut recorded_at_stop, mut steps_since) = (None, 0);
+            while let Some(request) = program.request().unwrap() {
+                let reply = program.execute(request, &router, &mut decoder).unwrap();
+                program.accept(reply, &router).ok().unwrap();
+                if recorded_at_stop.is_none() && recorder.bool_failure_count() > before {
+                    recorded_at_stop = Some(recorder.bool_failure_count() - before);
+                } else if recorded_at_stop.is_some() {
+                    steps_since += 1;
+                }
+                if recorded_at_stop.is_some() && steps_since == offset {
+                    resource::stop(ProgramStop::Cancelled);
+                }
             }
+            (program.finish(), recorded_at_stop)
+        });
+        assert!(recorded_at_stop.is_some(), "the base operand records a loss while it is meshed");
+        if matches!(result, Err(crate::Error::ProgramStopped(_))) {
+            stopped_after_recording += 1;
+            assert_eq!(recorder.bool_failure_count(), before, "offset {offset}: the provisional record outlived the stop");
         }
-        (program.finish(), recorded_at_stop)
-    });
-    assert!(recorded_at_stop.is_some(), "the base operand records a loss while it is meshed");
-    assert!(matches!(result, Err(crate::Error::ProgramStopped(_))), "{:?}", result.err());
-    assert_eq!(recorder.bool_failure_count(), before, "the provisional record outlived the stopped attempt");
+    }
+    assert!(stopped_after_recording >= 4, "the stop reached only {stopped_after_recording} batched frames");
 }
 
 /// Malformed trees still end in their own errors through the program.

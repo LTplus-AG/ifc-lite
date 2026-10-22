@@ -1,0 +1,42 @@
+{
+  "pr": 8052,
+  "issue": 7983,
+  "host": "pop-os",
+  "job": "db796657-47e2-441d-a371-bd78a6a7dff6",
+  "storageTask": "pr8052-final-public-891152455a",
+  "base": "a4fc04cf1f1a04ed1ad3cff89b3d32d9c97f8751",
+  "candidate": "891152455ab75c73341c878c0c55ccde9feece92",
+  "fixtureSha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+  "verdict": "UNQUALIFIED: unchanged reporter rejects base TOTAL spread >15%; no speedup, neutrality or regression conclusion",
+  "reporterVerdict": {
+    "fingerprintDrift": false,
+    "tooNoisy": true,
+    "realChange": true,
+    "inconclusive": false,
+    "zeroBaselineIncrease": false
+  },
+  "roundsPerArm": 5,
+  "idleCpuBusyPercent": 2.1851584788538103,
+  "idleAvailableMemoryKiB": 113130288,
+  "runtimeThreads": 8,
+  "threadingClarification": "Harness does not override threading; registered launcher supplies RAYON_NUM_THREADS=8. The metadata threading prose refers to that inherited launcher default, not an unset variable.",
+  "outputIdentity": {
+    "orderedMeshFnv1a64": "7377db33331a3523",
+    "samplesMatching": 10,
+    "meshes": 285,
+    "vertices": 35940,
+    "triangles": 20322,
+    "scope": "exact float-bit ordered positions, normals, indices, RGBA, origin, local bounds, transform and express/item/material IDs plus geometry class; excludes text metadata, material definitions, UVs, textures, instancing and complete diagnostic bytes"
+  },
+  "noiseInvestigation": {
+    "original": "Terminal exit 0 does not accept noisy timings. Original sample-level traces unavailable; original idle CPU was 2.027%, report base total spread 43.18%. Causal attribution cannot be reconstructed.",
+    "final": "Exclusive managed admission and idle CPU passed. Geometry varies 26-42 ms on base and 25-41 ms on candidate, while parse varies 14-15 ms on base and stays 14 ms on candidate. Full-call wall values vary too, so integer rounding alone cannot explain the spread. cgroup cpu.max=max 100000 and nr_throttled=0 throughout exclude scope CPU-quota throttling. Sample snapshots include benchmark/collector CPU and are too short to attribute residual work to any foreign process. No proven root cause.",
+    "limits": "No historical process cleanup justified; no private model/harness access, threshold change, repetition or replacement sample."
+  },
+  "fullCallWallMediansMs": {
+    "base": 52.042736999999995,
+    "branch": 48.123104
+  },
+  "scope": "native process_geometry only; no browser/WASM worker-pool qualification",
+  "publication": "see storage-completion.json after owner closure"
+}

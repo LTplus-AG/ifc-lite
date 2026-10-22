@@ -6,7 +6,8 @@
 // Run with DEBUG=pw:browser to retain GPU-process stderr alongside this JSON.
 import { chromium } from '@playwright/test';
 import { createServer } from 'node:http';
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { mainShaderSource } from '../../../packages/renderer/src/shaders/main.wgsl.js';
 import { BEGIN_FRAME_CHROME_ARGS } from '../../../tests/benchmark/frames/begin-frame-driver.js';
 
@@ -23,6 +24,8 @@ try {
     try {
       const page = await browser.newPage();
       page.setDefaultTimeout(30_000);
+      const deadline = setTimeout(() => { void browser.close(); }, 90_000);
+      deadline.unref();
       page.on('console', message => console.log(`[${variant}] ${message.text()}`));
       await page.goto(`http://127.0.0.1:${address.port}`);
       // tsx may emit this helper in functions serialized into the page.
@@ -39,8 +42,10 @@ try {
         });
         device.addEventListener('uncapturederror', event => events.push({ step: 'uncaptured', message: event.error.message }));
         const run = async (step: string, work: () => unknown) => {
+          console.log(`starting ${step}`);
           try { await work(); events.push({ step, ok: true, lost }); }
           catch (error) { events.push({ step, ok: false, error: String(error), lost }); }
+          console.log(JSON.stringify(events.at(-1)));
         };
         const simple = device.createShaderModule({ code: `
           @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
@@ -52,7 +57,11 @@ try {
           vertex: { module: simple, entryPoint: 'vs' },
           fragment: { module: simple, entryPoint: 'fs', targets: [{ format: 'bgra8unorm' }] } };
         await run('simple-async-before-canvas', () => device.createRenderPipelineAsync(descriptor));
-        await run('scope-before-canvas', async () => { device.pushErrorScope('validation'); return device.popErrorScope(); });
+        await run('scope-before-canvas', async () => {
+          device.pushErrorScope('validation');
+          const error = await device.popErrorScope();
+          if (error) throw error;
+        });
         const canvas = document.querySelector('canvas')!;
         const context = canvas.getContext('webgpu')!;
         await run('configure', () => context.configure({ device, format: 'bgra8unorm' }));
@@ -72,17 +81,34 @@ try {
             multisample: { count: 4 } }));
         }
         await run('queue-finished', () => device.queue.onSubmittedWorkDone());
+        await run('same-device-readback', async () => {
+          const source = device.createBuffer({ size: 4, usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST });
+          const target = device.createBuffer({ size: 4, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+          try {
+            device.queue.writeBuffer(source, 0, new Uint32Array([0x7655]));
+            const encoder = device.createCommandEncoder();
+            encoder.copyBufferToBuffer(source, 0, target, 0, 4);
+            device.queue.submit([encoder.finish()]);
+            await target.mapAsync(GPUMapMode.READ);
+            const actual = new Uint32Array(target.getMappedRange())[0];
+            target.unmap();
+            if (actual !== 0x7655) throw new Error(`readback mismatch: ${actual}`);
+          } finally { source.destroy(); target.destroy(); }
+        });
         await new Promise(resolve => setTimeout(resolve, 200));
-        const result = { adapter: { vendor: adapter.info.vendor, architecture: adapter.info.architecture }, lost, events };
+        const result = { adapter: { vendor: adapter.info.vendor, architecture: adapter.info.architecture }, lost, events: [...events] };
         context.unconfigure();
         device.destroy();
         return result;
       }, mainShaderSource);
+      clearTimeout(deadline);
       results.push({ variant, browser: browser.version(), args, result });
       console.log(JSON.stringify(results.at(-1)));
     } finally { await browser.close(); }
   }
 } finally {
   server.close();
-  writeFileSync(process.env.INSTANCE_DIAGNOSTIC_OUT ?? '/tmp/swiftshader-instance.json', JSON.stringify(results, null, 2));
+  const output = process.env.INSTANCE_DIAGNOSTIC_OUT ?? '/tmp/swiftshader-instance.json';
+  mkdirSync(dirname(output), { recursive: true });
+  writeFileSync(output, JSON.stringify(results, null, 2));
 }

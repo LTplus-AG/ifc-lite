@@ -20,12 +20,21 @@ on:
   schedule:
     - cron: '41 2 * * *'
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Measurement or isolated SwiftShader diagnostics (#7655)
+        type: choice
+        default: frames
+        options:
+          - frames
+          - instance
+          - diagnostic-frames
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.mode || 'frames' }}
   cancel-in-progress: true
 
 env:
@@ -33,6 +42,7 @@ env:
 
 jobs:
   frames:
+    if: github.event_name != 'workflow_dispatch' || inputs.mode != 'instance'
     name: BeginFrame 120 Hz rig (FZK + Snowdon)
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -106,22 +116,26 @@ jobs:
       - name: Run deterministic frame rig
         env:
           FRAME_RIG_OUT: test-results/browser-frames.json
+          FRAME_INSTANCE_DIAGNOSTICS: ${{ inputs.mode == 'diagnostic-frames' && '1' || '' }}
+          DEBUG: ${{ inputs.mode == 'diagnostic-frames' && 'pw:browser' || '' }}
         run: pnpm test:benchmark:frames
 
       - name: Require complete uncontaminated frame evidence
-        if: always()
+        if: always() && inputs.mode != 'diagnostic-frames'
         run: node scripts/perf/check-frame-results.mjs test-results/browser-frames.json
 
-      # `browser-frames` ratchet family (#6975, M4 #6959). No `if:`, so it runs
-      # only when admission above passed: a partial or GPU-contaminated
+      # `browser-frames` ratchet family (#6975, M4 #6959). Runs only for
+      # measurements when admission above passed: a partial or GPU-contaminated
       # artifact never reaches a ceiling. The measurer re-admits anyway and
       # refuses (exit 2) instead of evaluating. Only the rows the same-build
       # evidence supports are gated; the rest print as informational. A breach
       # turns this lane red, and a scheduled red run opens the lane's issue.
       - name: Measure perf-ratchet browser-frames family
+        if: inputs.mode != 'diagnostic-frames'
         run: node scripts/perf-ratchet/measure-browser-frames.mjs --frames test-results/browser-frames.json --out "$RUNNER_TEMP/perf-ratchet/browser-frames.json" --commit "$(git rev-parse HEAD)"
 
       - name: Check the browser-frames ceilings
+        if: inputs.mode != 'diagnostic-frames'
         run: |
           set +e
           node scripts/perf-ratchet/perf-ratchet.mjs check \
@@ -136,8 +150,49 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: browser-frames
+          name: ${{ inputs.mode == 'diagnostic-frames' && format('diagnostic-frames-{0}', github.sha) || 'browser-frames' }}
           # The rows JSON on success, Playwright's error contexts on failure.
+          path: test-results/
+          if-no-files-found: error
+          retention-days: 90
+
+  instance:
+    name: Isolated SwiftShader instance diagnostic
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'instance'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install chrome-headless-shell
+        run: pnpm exec playwright install --with-deps chromium-headless-shell
+
+      - name: Run isolated instance diagnostic
+        env:
+          DEBUG: pw:browser
+          INSTANCE_DIAGNOSTIC_OUT: test-results/swiftshader-instance.json
+        run: pnpm exec tsx scripts/perf/diagnostics/swiftshader-instance.mts
+
+      - name: Upload instance diagnostic results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: swiftshader-instance-${{ github.sha }}
           path: test-results/
           if-no-files-found: error
           retention-days: 90

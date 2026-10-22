@@ -12,6 +12,19 @@ that also dominate in the browser; the WASM-only concerns (per-worker file
 re-decode, no threads, memory bandwidth) are orchestration-level and are read
 off the viewer's own telemetry (below).
 
+## Supported convex thin patches (#8047)
+
+**Correctness repair; native timing inconclusive.** Interleaved base/branch
+probes on FZK, ISSUE_129 and Holter preserve mesh, vertex and triangle counts
+(count identity, not a content hash). FZK and Holter baseline spread exceeds
+the reporter's noise gate despite an accepted idle-host sample; ISSUE_129's
+geometry and total changes remain inside the measured spread. This does not
+establish a speedup or performance neutrality. The certificate walk adds work
+only on inputs containing needles. Lesson: complete healthy boundary support
+alone also retains deliberately cleaned tiny openings; require strictly convex
+internal ridges and keep the physical-unit cleanup regression alongside the
+thin-floor closure witness.
+
 ## Geometry platform migration slices (#7955)
 
 **E1 element planning/execution (#8044): mixed phase timing, no measurable

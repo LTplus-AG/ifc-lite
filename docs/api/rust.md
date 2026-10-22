@@ -1533,6 +1533,11 @@ shape remain unchanged. An empty `Ok` means no symbols, while ordinary geometric
 truncation remains an `Ok` with `truncated`. A stop returns `Err` and discards
 all staged symbols and provenance.
 
+`ifc_lite_geometry::resource::is_stopped()` polls live source, account and
+terminal stop state when a consumer needs a boolean. It reconciles detected stops
+through the same policy as `check_current()`; a healthy result must not be cached
+across later polls or used in place of handling the extraction API's typed error.
+
 Serializing the enriched result adds optional `geometry_item_id` to each known
 fill while retaining the existing symbol JSON shape. Deserialization accepts
 older symbol JSON and leaves missing provenance unknown. WASM and the server

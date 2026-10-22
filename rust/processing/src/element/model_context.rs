@@ -156,6 +156,7 @@ fn stale_source() -> ProductionContextError {
 
 /// Why an owned production refused to start or to publish.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ProductionContextError {
     /// The model explicitly invalidated the snapshot's source.
     StaleSource,

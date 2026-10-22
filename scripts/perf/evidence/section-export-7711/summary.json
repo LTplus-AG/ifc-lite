@@ -1,0 +1,190 @@
+{
+  "worker": {
+    "jobId": "67a3deb5-1847-4581-89da-0f1840eb9c6f",
+    "state": "completed",
+    "exitCode": 0,
+    "sourceUnchanged": true,
+    "source": "4bf77c6566a9aca84acd1d67c28273525de2f2e9",
+    "outputSha256": "e3f2c7f08e32945d98173fb8afa7267ab295217356e7cd71ee341318f884cafd"
+  },
+  "after": {
+    "at": 1792288057.445927,
+    "guardExitCode": 0,
+    "guard": {
+      "workerAdmission": "pass",
+      "acOnline": true,
+      "MemAvailableKiB": 113749124,
+      "packageMilliC": 57000,
+      "thermalFallback": false,
+      "limits": {
+        "CARGO_BUILD_JOBS": 8,
+        "RAYON_NUM_THREADS": 8,
+        "RUST_TEST_THREADS": 4,
+        "TURBO_CONCURRENCY": 2
+      }
+    },
+    "receiptSourceUnchanged": true,
+    "workerExitCode": 0,
+    "all10813InputsVerifiedAfter": true
+  },
+  "nativeControl": [
+    {
+      "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "sampleCounts": "4 arms x 5 allWallMs and fingerprints",
+      "geometryPayloadIdentity": true,
+      "counts": [
+        285,
+        35940,
+        20322
+      ],
+      "deltas": {
+        "parseMs": {
+          "ms": 0.0,
+          "percent": 0.0
+        },
+        "geometryMs": {
+          "ms": 1.0,
+          "percent": 4.0000000000000036
+        },
+        "totalMs": {
+          "ms": 1.0,
+          "percent": 3.125
+        },
+        "fullPipelineWallMedianMs": {
+          "ms": -0.12518349999999856,
+          "percent": -0.35823373044283624
+        }
+      },
+      "summary": {
+        "base": {
+          "parseMs": 7.0,
+          "geometryMs": 25.0,
+          "totalMs": 32.0,
+          "fullPipelineWallMedianMs": 34.9446435
+        },
+        "branch": {
+          "parseMs": 7.0,
+          "geometryMs": 26.0,
+          "totalMs": 33.0,
+          "fullPipelineWallMedianMs": 34.81946
+        }
+      }
+    },
+    {
+      "fixture": "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "sampleCounts": "4 arms x 5 allWallMs and fingerprints",
+      "geometryPayloadIdentity": true,
+      "counts": [
+        1402,
+        219404,
+        136377
+      ],
+      "deltas": {
+        "parseMs": {
+          "ms": 0.0,
+          "percent": 0.0
+        },
+        "geometryMs": {
+          "ms": -3.0,
+          "percent": -0.12878300064391723
+        },
+        "totalMs": {
+          "ms": -2.5,
+          "percent": -0.1064509261230584
+        },
+        "fullPipelineWallMedianMs": {
+          "ms": 12.320604000000458,
+          "percent": 0.5198927413763155
+        }
+      },
+      "summary": {
+        "base": {
+          "parseMs": 19.0,
+          "geometryMs": 2329.5,
+          "totalMs": 2348.5,
+          "fullPipelineWallMedianMs": 2369.835741
+        },
+        "branch": {
+          "parseMs": 19.0,
+          "geometryMs": 2326.5,
+          "totalMs": 2346.0,
+          "fullPipelineWallMedianMs": 2382.1563450000003
+        }
+      }
+    },
+    {
+      "fixture": "tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "sampleCounts": "4 arms x 5 allWallMs and fingerprints",
+      "geometryPayloadIdentity": true,
+      "counts": [
+        109514,
+        4515161,
+        2895362
+      ],
+      "deltas": {
+        "parseMs": {
+          "ms": -1.5,
+          "percent": -0.3424657534246589
+        },
+        "geometryMs": {
+          "ms": 4.0,
+          "percent": 0.29574861367838157
+        },
+        "totalMs": {
+          "ms": 2.0,
+          "percent": 0.1116694584031297
+        },
+        "fullPipelineWallMedianMs": {
+          "ms": -6.7786660000001575,
+          "percent": -0.3269326943792117
+        }
+      },
+      "summary": {
+        "base": {
+          "parseMs": 438.0,
+          "geometryMs": 1352.5,
+          "totalMs": 1791.0,
+          "fullPipelineWallMedianMs": 2073.41331
+        },
+        "branch": {
+          "parseMs": 436.5,
+          "geometryMs": 1356.5,
+          "totalMs": 1793.0,
+          "fullPipelineWallMedianMs": 2066.6346439999998
+        }
+      }
+    }
+  ],
+  "export": {
+    "summary": {
+      "base": {
+        "parseMs": 36.6080864999999,
+        "serializeMs": 43.05552499999999,
+        "sectionMs": 0.0011109999999234788,
+        "totalMs": 80.22254300000009,
+        "bytes": 1269930
+      },
+      "branch": {
+        "parseMs": 36.610431500000004,
+        "serializeMs": 43.13095700000008,
+        "sectionMs": 0.001071000000024469,
+        "totalMs": 79.94418700000006,
+        "bytes": 1269930
+      },
+      "trim": {
+        "parseMs": 36.65514299999995,
+        "serializeMs": 23.324703000000227,
+        "sectionMs": 1266.6901710000002,
+        "totalMs": 1330.875414,
+        "bytes": 1161942
+      }
+    },
+    "ordinaryDataIdentity": true,
+    "ordinaryDataSha256": "8061138aeab4de07572498706d924d2f435267719c3aeaa2a57cc43341780478",
+    "ordinarySamples": 40,
+    "trimSamples": 5,
+    "trimBodyIdentityAcrossFive": true,
+    "trimBodySha256": "f3de5eeee1c4d7e1df411ddcd0c0532eb9d1b4fda5415b98ed515a0af0b101c6",
+    "scope": "Native binary arms CONTROL only; ordinary export is actual source A/B on shared verified parser/runtime; new trim operation cost has no equivalent baseline."
+  }
+}

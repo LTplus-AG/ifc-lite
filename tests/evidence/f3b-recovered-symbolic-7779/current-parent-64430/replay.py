@@ -23,8 +23,8 @@ for row in manifest['files']:
     records[row['originalPath']] = raw
 
 statistics_bytes = records['current-parent-perf-v1/statistics.py']
-assert (ROOT / 'statistics.py').read_bytes() == statistics_bytes
-spec = importlib.util.spec_from_file_location('frozen_statistics', ROOT / 'statistics.py')
+assert (ROOT / 'paired_statistics.py').read_bytes() == statistics_bytes
+spec = importlib.util.spec_from_file_location('frozen_statistics', ROOT / 'paired_statistics.py')
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 rows = [json.loads(line) for line in records['current-parent-perf-v1/cohort/rows.jsonl'].splitlines()]

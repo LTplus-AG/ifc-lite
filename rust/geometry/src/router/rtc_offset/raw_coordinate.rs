@@ -104,7 +104,7 @@ impl GeometryRouter {
     /// pulled through the placement's inverse linear transform, so placing
     /// a mesh rebased by it yields `M(p) - rtc`. `None` for a singular
     /// placement, where no object-frame offset exists.
-    pub(in crate::router) fn element_frame_rtc(
+    pub(crate) fn element_frame_rtc(
         &self,
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,

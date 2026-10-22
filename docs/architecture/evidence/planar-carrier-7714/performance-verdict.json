@@ -1,0 +1,32 @@
+{
+  "source": "f66a8d07648e354b8d488f760fce712257ff2759",
+  "base": "c53cfaa3a2034638f4c4ab40f7674b29e0528fed",
+  "context": "5c9157c05c5418b6d38658662d18faee3f131a18",
+  "job_id": "3206276b-31e6-4760-96d3-e0278a9fdc24",
+  "original_session": 33453,
+  "state": "completed",
+  "exit_code": 0,
+  "source_unchanged": true,
+  "started_at": 1792285777.8443277,
+  "finished_at": 1792286153.0463374,
+  "loads": 120,
+  "processes": 24,
+  "cpu_only": true,
+  "physical_gpu_verdict": null,
+  "host": {
+    "min_idle_fraction": 0.9723618090452262,
+    "all_guard_codes_zero": true,
+    "all_ac_online": true,
+    "package_milli_c_range": [
+      54000,
+      59000
+    ]
+  },
+  "performance_verdict": "Measured regressions remain: Haus and Holter phase total and wall increase; SOffice phase total decreases while wall increases. ISSUE_129 decreases. No overall speed or neutral-performance claim. No statistical significance or noise-dismissal claim from two process blocks. Acceptance remains open.",
+  "identity_verdict": "Haus, ISSUE_129 and Holter ordered mesh payload hashes/counts identical across all revisions and runs. SOffice base/context match; branch retains mesh count with six fewer vertices and triangles. Separate exact-base diagnostic isolates sole changed product489647; all other3496 product groups identical. Fingerprint scope is geometry payload, not entire ProcessingResult.",
+  "actual_all_metric_results": "performance-summary.json",
+  "all_raw_samples": "performance-cohort.ndjson",
+  "original_bytes_and_driver_receipt": "performance-raw.ndjson",
+  "no_cargo_build_install_in_cohort": true,
+  "private_perf_tools": "Private PATH supplied read-only; no Callgrind/instruction-count or GPU measurement was performed."
+}

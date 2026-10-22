@@ -1,0 +1,160 @@
+{
+  "issue": 7714,
+  "source_commit": "f66a8d07648e354b8d488f760fce712257ff2759",
+  "base_commit": "c53cfaa3a2034638f4c4ab40f7674b29e0528fed",
+  "context_commit": "5c9157c05c5418b6d38658662d18faee3f131a18",
+  "implementation_commit": "591e30b9324f14a53568a0f5aa20fa40c0d87e4c",
+  "native": {
+    "source_commit": "f66a8d07648e354b8d488f760fce712257ff2759",
+    "passed": 5486,
+    "failed": 0,
+    "ignored": 47,
+    "result_groups": 365,
+    "clippy_exit": 0,
+    "workspace_exit": 0
+  },
+  "browser": {
+    "source_wasm_strict_CI": 0,
+    "root_typecheck": {
+      "exit": 0,
+      "test_files": 4245,
+      "packages": 67
+    },
+    "viewer_cache": {
+      "passed": 15,
+      "failed": 0
+    },
+    "real_wasm_contract": {
+      "passed": 213,
+      "failed": 0,
+      "skipped": 1
+    },
+    "wasm32_manifest": {
+      "passed": 1,
+      "failed": 0
+    },
+    "native_manifest": "passed within workspace; existing pins unchanged",
+    "runtime_hashes_unchanged_through_gates": true
+  },
+  "excluded_benchmark_consumer": {
+    "exit": 0
+  },
+  "python": {
+    "initial_suite": {
+      "passed": 48,
+      "skipped": 1,
+      "failed": 0
+    },
+    "missing_fixture_recheck": {
+      "passed": 1,
+      "failed": 0,
+      "test": "test_6600_real_infrastructure_multiple_axes",
+      "reason": "Available issues/model844 fixture was not initially staged in private checkout; staged read-only and ran only skipped case."
+    }
+  },
+  "parity": {
+    "harness_tests": 35,
+    "failed": 0,
+    "committed_reference_fixtures": 4,
+    "all_match": true,
+    "existing_halfspace_triangle_density_advisory_retained": true,
+    "threshold_and_allowlist_changed": false,
+    "ifcopenshell": "0.9.0.post1"
+  },
+  "product_invariants": {
+    "source_commit": "f66a8d07648e354b8d488f760fce712257ff2759",
+    "source_sha256": "38c4ecbbc67d0759dfcffb2c90664f5b5231e6c48fc54597c62975b41bb629db",
+    "product": 489647,
+    "consumer": "source-built ifclite_geom geometry_data_buffers, welded absolute-world Z-up metres",
+    "vertices": 20,
+    "triangles": 32,
+    "undirected_edges": 48,
+    "finite": true,
+    "nondegenerate_triangles": true,
+    "closed_opposite_edge_incidence": true,
+    "signed_volume_m3": 0.01757283593673302,
+    "surface_area_m2": 7.147634671677139,
+    "vertices_sha256": "a4f8378273e82452e7ee73261370527a16151d28be451a1a54f14de4b1f895f1",
+    "faces_sha256": "b3ecb37b449708ca9d86543ef5000d0aca51491a48a937f9859a1ccd1b4b7c32",
+    "scope": "Actual final product invariant check, not OCC equivalence or a timing/hardware cohort",
+    "wheel_sha256": "30b192bbd098afb85476014c13fbd536f65e64b834a8f61bf0d79057772b8af8",
+    "installed_native_module_sha256": "57b00c6f5d50ceec4571a98d459b5336edce1f25c1bc44d7cdf9a6fe7e0be676",
+    "wheel_native_member": "ifclite_geom/ifclite_geom.abi3.so"
+  },
+  "perf_status": "completed once; measured regressions retained, acceptance pending",
+  "hardware_scope": "Native CPU qualification and actual WASM boundary; no physical-GPU browser timing result. Preview requestAdapter returned null.",
+  "logs": {
+    "workspace.log": {
+      "bytes": 572144,
+      "sha256": "3079c78429490283c6861c7a44762cd0c1f2625ff2fbb46224ee153160b73ee2"
+    },
+    "clippy.log": {
+      "bytes": 1389,
+      "sha256": "075316d838b9d99b6683d3d04a3a39530d2a78b82bb2155e5a80fc144ed16a1c"
+    },
+    "source-wasm.log": {
+      "bytes": 1422,
+      "sha256": "086fa55ef3102fa7f14d2dbe93523d0469df997a2a6905d52d045e2c1e7465b9"
+    },
+    "typecheck.log": {
+      "bytes": 54110,
+      "sha256": "2c3388d4abf5fc509f570e5b088ad65465fba642a9b70006dbb1c5c191fb8121"
+    },
+    "viewer-cache.log": {
+      "bytes": 103147,
+      "sha256": "6745bfd2a6b1b7df94c0dbe9e6768f262fbb6f34e7812fd4c02264a19961a118"
+    },
+    "wasm-contract.log": {
+      "bytes": 71513,
+      "sha256": "1710de73086d13fd525f72a330d7fab2c88548c7fd4f246f9b85b8fb5fabd2e3"
+    },
+    "wasm-determinism.log": {
+      "bytes": 1264,
+      "sha256": "e8fe69642114b4fbd9e20761f5d5bda3d6e04b6b5d489cd5412e68685bf79fde"
+    },
+    "detached-bench.log": {
+      "bytes": 721,
+      "sha256": "6cfad8875869b2ecd9c05cf32fe2ca29d66ef5dfa0121a24d24810988d9efb21"
+    },
+    "wheel-build.log": {
+      "bytes": 3478,
+      "sha256": "797f24df2547b122d83b502a4394b27cc08f3f61f95730048e6d76f79d48fcf4"
+    },
+    "python-wheel-tests.log": {
+      "bytes": 110,
+      "sha256": "4c692946b3aa3e8b93f8d7b446031cc358d8bb9d6aef593bcc1d89414659db94"
+    },
+    "python-wheel-fixture-recheck.log": {
+      "bytes": 98,
+      "sha256": "4bcefcc9f6c645923b9993ccf73ad92e6b400ca25458ea14e095857fc2131342"
+    },
+    "parity-unit.log": {
+      "bytes": 5162,
+      "sha256": "01e25b440e765c10f4ccfbcf20c1baae5b860134457ab55ab1ef7d383827438a"
+    },
+    "parity-dump.log": {
+      "bytes": 584,
+      "sha256": "e9ea931a768030ec2da1e217ba971e42d132003a988b48756c5592aee103c6c9"
+    },
+    "parity-compare.log": {
+      "bytes": 490,
+      "sha256": "df4335f2a588a4cb3fa1d4e1e46a640927569ca5f2894d3886f701c349f1f203"
+    },
+    "final-product-invariants.log": {
+      "bytes": 1004,
+      "sha256": "02feedfeab42355037b8965d3e12c8eeb6f0b516403354ef8c00d41d98ab63bd"
+    },
+    "parity-environment-freeze.txt": {
+      "bytes": 446,
+      "sha256": "f9f825ef48607eb754793918643a9debce169503e552e30e370f9640adc7a46f"
+    }
+  },
+  "performance": {
+    "verdict_file": "performance-verdict.json",
+    "summary_file": "performance-summary.json",
+    "job_id": "3206276b-31e6-4760-96d3-e0278a9fdc24",
+    "exit": 0,
+    "loads": 120,
+    "source_unchanged": true
+  }
+}

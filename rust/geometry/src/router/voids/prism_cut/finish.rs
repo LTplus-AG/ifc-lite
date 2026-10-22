@@ -12,13 +12,13 @@ use super::closed_enough_to_emit;
 /// planes (#7633). Keep untouched authored faces: a real thin component can be
 /// smaller than the cleanup grid, even when a cut elsewhere creates debris.
 /// This is index-only cleanup, with the same predicate used by the finalizer.
-pub(super) fn clean_generated_fragments(candidate: &mut Mesh, host: &Mesh) {
+pub(super) fn clean_generated_fragments(mut candidate: Mesh, host: &Mesh) -> Mesh {
     if !candidate.needs_degenerate_cleanup() {
-        return;
+        return candidate;
     }
     if !host.needs_degenerate_cleanup() {
         candidate.clean_degenerate();
-        return;
+        return candidate;
     }
     fn key(mesh: &Mesh, triangle: &[u32]) -> Option<[[u32; 3]; 3]> {
         let mut points = [[0; 3]; 3];
@@ -45,7 +45,7 @@ pub(super) fn clean_generated_fragments(candidate: &mut Mesh, host: &Mesh) {
     let mut kept = cleaned.chunks_exact(3).peekable();
     // Preserve emission order, since the first triangle defines a bucket plane.
     for triangle in original.chunks_exact(3) {
-        let retain_authored = key(candidate, triangle)
+        let retain_authored = key(&candidate, triangle)
             .and_then(|face| authored.get_mut(&face))
             .is_some_and(|remaining| {
                 if *remaining == 0 { return false; }
@@ -59,6 +59,7 @@ pub(super) fn clean_generated_fragments(candidate: &mut Mesh, host: &Mesh) {
             candidate.indices.extend_from_slice(triangle);
         }
     }
+    candidate
 }
 
 /// Return an audited cut, preferring the fully hygienic fixed point.

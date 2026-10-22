@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "status": "ROOT_REVIEWED_NATIVE_COST_ACCEPTED",
+  "files": [
+    {
+      "publicFile": "raw-phase-rows.jsonl.gz",
+      "publicSha256": "914188475369aa99ea5b3ea28365b19d9f0e9ab266b8fa3450963c880a412432",
+      "decodedSha256": "71e6cff11dc68aaa9e3bd32cabc31cd8ac829b32ffea3050cb325ea02c4f1455",
+      "rowCount": 150,
+      "originalArtifact": "cohort/timing/placement-v-main/per-iteration.jsonl",
+      "originalSha256": "065fd55d6344892986dc51ba429f08295486b72c00b71f43b489a738a94a4397",
+      "transformation": "Only canonical absolute fixture paths replaced with repository-relative tests/models paths. JSON compacted, deterministic gzip mtime0/emptyfilename."
+    },
+    {
+      "publicFile": "selected-runs.jsonl.gz",
+      "publicSha256": "2080d56d102752524e9ca0b169604540098500b8f7863d9d00887ac9d889e825",
+      "decodedSha256": "db87799bd9fafb957bfa57eaf77cf253b9a527abf8143a92bc33d0ccda6f6328",
+      "rowCount": 30,
+      "originalArtifact": "cohort/timing/placement-v-main/runs.jsonl",
+      "originalSha256": "548178514cac5e30d74c2b99f3ed80707e86d8193d2b9f1bb13c6067e91a7846",
+      "transformation": "Only canonical absolute fixture paths replaced with repository-relative tests/models paths. JSON compacted, deterministic gzip mtime0/emptyfilename."
+    },
+    {
+      "publicFile": "stock-report.json",
+      "publicSha256": "933f744b0de5ee0133a0676486eb79a5286c720e200fb0a1a1ada10fb6b27864",
+      "originalArtifact": "cohort/timing/placement-v-main/report.json",
+      "originalSha256": "fc7b00a386da54513172141039206fb09868cea749f83dc8ba42b3025d6a14eb",
+      "transformation": "Canonical absolute fixture paths replaced with repository-relative tests/models paths; JSON formatting normalized. All values retained."
+    },
+    {
+      "publicFile": "raw-block-comparison.json",
+      "publicSha256": "5650996a352422b2300560df704a1fffcba54db86937b428fe0bd3cfc19e1202",
+      "originalArtifact": "cohort/timing/placement-v-main/comparison.json",
+      "originalSha256": "e4f2f97046a0f605cfa0689f612eb6fa670842535542adefe1bd2f7355b8d379",
+      "transformation": "Canonical absolute fixture paths replaced with repository-relative tests/models paths; JSON formatting normalized. All values retained."
+    },
+    {
+      "publicFile": "summary.json",
+      "publicSha256": "87cf79bb254803eccf194f7bb3442e484888aa5f8e8190e8e67ee60431d1d683",
+      "originalArtifact": "reconciliation.json + authenticated source/compiler/sample bindings",
+      "originalSha256": "b77d8c408d7c38cc00f16a8eefba358ec2f6429b8201db8a294cd52ff32ac697",
+      "transformation": "Explicit public schema; no raw receipt, absolute path, machine/session owner labels, compiler logs or binaries included.",
+      "preparedSha256": "e301a3eda20f917066396ce69f2c1049108b6e5c11f6be54265f40bbcb1f430d",
+      "rootReviewTransformation": "Root acceptance wording/license header only; all numerical observations unchanged."
+    },
+    {
+      "publicFile": "README.md",
+      "publicSha256": "f4dbcc1b2b1f1a2f9c2d365d6640d4b23c75b92d7984495f5f8f70e894db48f4",
+      "transformation": "New draft narrative derived solely from preserved cohort; no additional measurement or publication.",
+      "preparedSha256": "13d204938c1e513183c2f1c79c54df422945278f66cdb4451f3f2185f54dbd27",
+      "rootReviewTransformation": "Root acceptance wording/license header only; all numerical observations unchanged."
+    }
+  ],
+  "originalProvenanceSha256": {
+    "benchmarkReceipt": "2d7dde8d3cdde04c301d3ed36ee7d22d962880929a419123c87bc689047398df",
+    "benchmarkOutput": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "standalonePreparationReceipt": "baf79f810bf2d0cc36c06d9511fed47d562010557555b871a8e6fa7c21fc74c7",
+    "standalonePreparationOutput": "0c0bf345842b52ba34ddca3d175b3bd13ef801ecd767d63ace5b61d391e1ca40",
+    "sourceBindings": "c307d6678b8d0e8227d7139c66f11be9b038071b3025c1acdab6d16bd84ed73f",
+    "currentAssemblyRecord": "3980ef124957f5beaeb03f030fe7b09e18571255b9634c730df101e31342ca11",
+    "currentPreparationRecord": "0ce1d32d4e608655e3fff93c6633d557ba088fcb1976bb8d5595b9e4ef24e82b",
+    "protocolFreeze": "5f3fd7bf3368e1f25b0df94c29bb0ccff89d08691ca09dd1c66bc4e354a1cd3c",
+    "protocol": "e781d9983ccb8f33804a4fe855c94d987162fa59d8f95f9c9e45b8c662ab1fc3",
+    "independentReconciliation": "b77d8c408d7c38cc00f16a8eefba358ec2f6429b8201db8a294cd52ff32ac697",
+    "armSourceBindings": {
+      "main": "ee21a2984f3a6eb1d9bf1bc91ab29a568438aaea09fd6e46e9e13a06291b9b2e",
+      "placement": "d586aac81e1938117a66e7bd61566f48715d5d13d284e459bcff35dd6c880256"
+    },
+    "compilerProofs": {
+      "main": "067b699b33b56ccc8adb2b33d67c52209342da03c127db3f09f320ddc0dcea14",
+      "placement": "f80a497a7c8fe6a4b8cfbfb261651b1c811f998d53096d424a9ebed1635b5f8f"
+    },
+    "retainedMainOriginal": {
+      "binding": "5b6d6f2e9a3d1e93a738a5bc5a7b376abebe868bdb409e6c7d9eb533cb6bec42",
+      "assemblyReceipt": "a7fe6b8c60606479291db01b54a616c66ddae6ea1ff7561dbdac72f2e6b8f461",
+      "assemblyLog": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "assemblyReport": "62f30b87f58485568c85e308d974e44ed6a0832cff37832555f1b63a050c91a3",
+      "receipt": "8a14be5934bb5bb34ad37cf8f3440772198c36bcf6bf2c8748f865845b711c3d",
+      "log": "fd580ee53af7c48db9adcd569fb4a3d67c483c94f825e50cd90f46ed0dc4f419",
+      "originalProtocol": "a464223f7508390649ccd6d0f4324424d081a37d5cef396ac9f975f3aa003e9f",
+      "originalFreeze": "1a7c47bcf0eb5723c7c87836d63a598374b91fca1a12794a380e7c7190509308"
+    }
+  },
+  "checks": {
+    "all150RawSamplesPreserved": true,
+    "all30SelectedRowsPreserved": true,
+    "allNumericValuesUnchanged": true,
+    "originalsUntouched": true,
+    "privatePathOwnerLabelScanPassed": true
+  },
+  "preparedManifestSha256": "d70812ecab3a792f64c33036de3df8729c6d32deba2cd6a2cbb4742de876b60b"
+}

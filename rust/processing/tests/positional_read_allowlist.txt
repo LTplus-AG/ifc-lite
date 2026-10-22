@@ -36,10 +36,7 @@
 19 rust/geometry/src/curve_source.rs
 13 rust/geometry/src/gradient.rs
 9 rust/geometry/src/material_layer_index.rs
-1 rust/geometry/src/placement/chain.rs
-5 rust/geometry/src/placement/grid.rs
-1 rust/geometry/src/placement/grid_frame.rs
-6 rust/geometry/src/placement/linear.rs
+2 rust/geometry/src/placement/grid.rs
 2 rust/geometry/src/placement/validate.rs
 2 rust/geometry/src/processors/advanced_face/bounds.rs
 2 rust/geometry/src/processors/advanced_face/bspline_parse.rs
@@ -76,6 +73,7 @@
 17 rust/geometry/src/router/rtc_offset.rs
 2 rust/geometry/src/router/rtc_offset/raw_coordinate.rs
 1 rust/geometry/src/router/transforms/mod.rs
+2 rust/geometry/src/router/transforms/mapped.rs
 15 rust/geometry/src/router/transforms/operator.rs
 40 rust/geometry/src/router/voids/probe.rs
 2 rust/geometry/src/router/voids/representation.rs

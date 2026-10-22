@@ -8,7 +8,7 @@
 use super::chain::LinkKind;
 use super::grid_frame::{owning_grid_frame, GridPlacementLayout, OwningFrame};
 use super::{PlacementError, PlacementResult};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::Matrix4;
 use rustc_hash::FxHashSet;
 use smallvec::SmallVec;
@@ -83,10 +83,7 @@ fn cyclic(decoder: &EntityDecoder, at: u32) -> PlacementError {
 }
 
 fn rel_to(placement: &DecodedEntity, slot: usize, decoder: &mut EntityDecoder) -> PlacementResult<Option<DecodedEntity>> {
-    match placement.get(slot) {
-        Some(attr) if !attr.is_null() => Ok(decoder.resolve_ref(attr)?),
-        _ => Ok(None),
-    }
+    Ok(decoder.resolve_optional(placement, slot)?)
 }
 
 /// Climb from `first` to the root into `out`. With `memo`, a memoised ancestor
@@ -120,15 +117,13 @@ pub(super) fn climb(
         let mut grid = None;
         let mut alias = None;
         let parent = match kind {
-            LinkKind::Local | LinkKind::Linear => rel_to(&current, 0, decoder)?,
+            LinkKind::Local | LinkKind::Linear => rel_to(&current, slot::IfcObjectPlacement::PLACEMENT_REL_TO.index(), decoder)?,
             LinkKind::Grid => {
                 let layout = GridPlacementLayout::of(decoder);
-                let location = layout
-                    .location
-                    .and_then(|i| current.get(i))
-                    .filter(|attr| !attr.is_null())
-                    .and_then(|attr| decoder.resolve_ref(attr).ok().flatten())
-                    .filter(|loc| loc.ifc_type == IfcType::IfcVirtualGridIntersection);
+                let location = match layout.location {
+                    Some(i) => decoder.resolve_optional(&current, i)?,
+                    None => None,
+                }.filter(|loc| loc.ifc_type == IfcType::IfcVirtualGridIntersection);
                 let parent = match layout.rel_to {
                     Some(i) => rel_to(&current, i, decoder)?,
                     None => match location.as_ref().map(|loc| owning_grid_frame(loc, decoder)) {

@@ -1,0 +1,268 @@
+{
+  "base": "141285f8287bbc88a420d0ce1168cb7f1a6aa72c",
+  "branch": "03e2ad0369b3c69cedcaac6496b9a14d4b951ad1",
+  "fixtures": [
+    {
+      "fixture": "AC20-FZK-Haus.ifc",
+      "phases": [
+        {
+          "phase": "parse",
+          "baseMedianMs": 12,
+          "branchMedianMs": 12,
+          "deltaPct": 0,
+          "noisePct": 0,
+          "real": false,
+          "direction": "unchanged"
+        },
+        {
+          "phase": "entity-scan",
+          "baseMedianMs": 6,
+          "branchMedianMs": 6,
+          "deltaPct": 0,
+          "noisePct": 0,
+          "real": false,
+          "direction": "unchanged"
+        },
+        {
+          "phase": "lookup/styles",
+          "baseMedianMs": 2,
+          "branchMedianMs": 2,
+          "deltaPct": 0,
+          "noisePct": 0,
+          "real": false,
+          "direction": "unchanged"
+        },
+        {
+          "phase": "preprocess",
+          "baseMedianMs": 3,
+          "branchMedianMs": 3,
+          "deltaPct": 0,
+          "noisePct": 0,
+          "real": false,
+          "direction": "unchanged"
+        },
+        {
+          "phase": "geometry",
+          "baseMedianMs": 26,
+          "branchMedianMs": 26,
+          "deltaPct": 0,
+          "noisePct": 3.8461538461538463,
+          "real": false,
+          "direction": "unchanged"
+        },
+        {
+          "phase": "TOTAL",
+          "baseMedianMs": 38,
+          "branchMedianMs": 39,
+          "deltaPct": 2.631578947368421,
+          "noisePct": 2.631578947368421,
+          "real": false,
+          "direction": "slower"
+        }
+      ],
+      "fingerprint": {
+        "meshes": {
+          "base": [
+            285
+          ],
+          "branch": [
+            285
+          ]
+        },
+        "vertices": {
+          "base": [
+            35940
+          ],
+          "branch": [
+            35940
+          ]
+        },
+        "triangles": {
+          "base": [
+            20322
+          ],
+          "branch": [
+            20322
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "phases": [
+        {
+          "phase": "parse",
+          "baseMedianMs": 34,
+          "branchMedianMs": 34,
+          "deltaPct": 0,
+          "noisePct": 2.941176470588235,
+          "real": false,
+          "direction": "unchanged"
+        },
+        {
+          "phase": "entity-scan",
+          "baseMedianMs": 33,
+          "branchMedianMs": 33,
+          "deltaPct": 0,
+          "noisePct": 0,
+          "real": false,
+          "direction": "unchanged"
+        },
+        {
+          "phase": "lookup/styles",
+          "baseMedianMs": 0,
+          "branchMedianMs": 0,
+          "deltaPct": null,
+          "noisePct": null,
+          "real": false,
+          "direction": null
+        },
+        {
+          "phase": "preprocess",
+          "baseMedianMs": 1,
+          "branchMedianMs": 1,
+          "deltaPct": 0,
+          "noisePct": 0,
+          "real": false,
+          "direction": "unchanged"
+        },
+        {
+          "phase": "geometry",
+          "baseMedianMs": 3969,
+          "branchMedianMs": 3950,
+          "deltaPct": -0.47871000251952633,
+          "noisePct": 1.2597631645250693,
+          "real": false,
+          "direction": "faster"
+        },
+        {
+          "phase": "TOTAL",
+          "baseMedianMs": 4003,
+          "branchMedianMs": 3984,
+          "deltaPct": -0.47464401698725955,
+          "noisePct": 1.2490632025980515,
+          "real": false,
+          "direction": "faster"
+        }
+      ],
+      "fingerprint": {
+        "meshes": {
+          "base": [
+            1402
+          ],
+          "branch": [
+            1402
+          ]
+        },
+        "vertices": {
+          "base": [
+            218966
+          ],
+          "branch": [
+            218966
+          ]
+        },
+        "triangles": {
+          "base": [
+            136257
+          ],
+          "branch": [
+            136257
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "ISSUE_053_20181220Holter_Tower_10.ifc",
+      "phases": [
+        {
+          "phase": "parse",
+          "baseMedianMs": 747,
+          "branchMedianMs": 760,
+          "deltaPct": 1.7402945113788488,
+          "noisePct": 0.2677376171352075,
+          "real": false,
+          "direction": "slower"
+        },
+        {
+          "phase": "entity-scan",
+          "baseMedianMs": 586,
+          "branchMedianMs": 599,
+          "deltaPct": 2.218430034129693,
+          "noisePct": 0.17064846416382254,
+          "real": false,
+          "direction": "slower"
+        },
+        {
+          "phase": "lookup/styles",
+          "baseMedianMs": 155,
+          "branchMedianMs": 155,
+          "deltaPct": 0,
+          "noisePct": 1.935483870967742,
+          "real": false,
+          "direction": "unchanged"
+        },
+        {
+          "phase": "preprocess",
+          "baseMedianMs": 4,
+          "branchMedianMs": 5,
+          "deltaPct": 25,
+          "noisePct": 25,
+          "real": false,
+          "direction": "slower"
+        },
+        {
+          "phase": "geometry",
+          "baseMedianMs": 1852,
+          "branchMedianMs": 1855,
+          "deltaPct": 0.16198704103671707,
+          "noisePct": 2.0518358531317493,
+          "real": false,
+          "direction": "slower"
+        },
+        {
+          "phase": "TOTAL",
+          "baseMedianMs": 2599,
+          "branchMedianMs": 2616,
+          "deltaPct": 0.6540977298961139,
+          "noisePct": 1.4236244709503656,
+          "real": false,
+          "direction": "slower"
+        }
+      ],
+      "fingerprint": {
+        "meshes": {
+          "base": [
+            109515
+          ],
+          "branch": [
+            109515
+          ]
+        },
+        "vertices": {
+          "base": [
+            4515185
+          ],
+          "branch": [
+            4515185
+          ]
+        },
+        "triangles": {
+          "base": [
+            2895374
+          ],
+          "branch": [
+            2895374
+          ]
+        }
+      }
+    }
+  ],
+  "verdict": {
+    "fingerprintDrift": false,
+    "tooNoisy": false,
+    "realChange": false,
+    "inconclusive": true,
+    "zeroBaselineIncrease": false
+  }
+}

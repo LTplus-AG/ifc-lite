@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: MPL-2.0
+✅ #7877/#7779: absent optional ObjectPlacement emits identity geometry
+✅ #7877/#7779: valid 2D placement chain translates and rotates real vertices
+✅ #7877/#7779: unreadable authored ObjectPlacement refuses geometry and preserves neighbor
+✅ #7877/#7779: missing PlacementRelTo parent refuses geometry and preserves neighbor
+✅ #7877/#7779: cyclic PlacementRelTo parents refuses geometry and preserves neighbor
+✅ #7877/#7779: malformed relative-placement direction refuses geometry and preserves neighbor
+Results: 218 passed, 0 failed, 1 skipped (matched historical fingerprint fallback).

@@ -693,7 +693,7 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
     ) -> Result<[f64; 16]> {
         self.admit_placement_scale()?;
-        let transform = self.element_world_placement(entity, decoder, false)?;
+        let transform = self.element_world_placement(entity, decoder)?;
         Ok(crate::math::mat4::col_major_array(&transform))
     }
 

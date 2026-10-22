@@ -2,7 +2,7 @@
 
 The private publication split has a separately qualified lower source,
 `ce0827a193098c3b11e578ba1d0136ed89619f3f` (T), containing terminal propagation,
-the accepted polling implementation and the common probe. Its parent is
+the accepted polling implementation and the common probe. The lower stack is based on
 `46cc72ff79ad88569409f42d9d0ce81171ba771c`. A and C retain the exact source
 identities documented in README.md; they are never relabelled as T or a later
 publication tip.
@@ -27,7 +27,7 @@ fingerprints do not prove appearance, fill provenance or diagnostic parity.
 
 The first witness-audit attempt incorrectly expected the pre-verification
 attempt log's final row to contain its subsequently verified identity. Its
-failure record is retained. The corrected audit checks the append-only log
+failure record is retained. The corrected audit checks the attempt log
 against completion, rehashes all original outputs, recomputes symbolic FNV and
 compares the full payloads. No model command was repeated or substituted.
 

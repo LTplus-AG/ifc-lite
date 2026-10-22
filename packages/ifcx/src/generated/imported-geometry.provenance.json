@@ -50,7 +50,7 @@
     "rust/imported-geometry/src/scene.rs": "3b3c9975843a31be8f9a406260a079beef8457fa4c598f54ceb759a00da66333",
     "rust/imported-geometry/src/scene_tests.rs": "2a0403e5d5738da5787055e4474fac94500d14bb564cb83085286250ea032c8c",
     "rust/imported-geometry/src/tests.rs": "31ae206aa7c988fca422ec127d8d877cb0e7ce3f54d45f1794ed859870f2605b",
-    "Cargo.toml#profile.release": "126fb1a643ac7ff044110025cded97ebcaa6010ed5f84c3b0689d5f075e1937e"
+    "Cargo.toml#profile.release": "d5c77f948d2f299f91438f13c2c5c269f6f470e1a9d963567ac7f316b4467e16"
   },
   "artifacts": {
     "imported-geometry.ts": "1bb90f22e49d29e77f559599b5ae75244f865e5147d70d20df36f3f0681f8765",

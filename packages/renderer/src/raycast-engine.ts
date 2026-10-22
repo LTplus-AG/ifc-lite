@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { entityClip } from './section-exclusions.js';
 /**
  * RaycastEngine - raycasting, BVH management and snap detection, composed into `Renderer`.
  * Textured enumeration is optional for existing custom SceneContents adapters.
@@ -244,7 +245,7 @@ export class RaycastEngine {
 
             // Perform raycasting
             const intersection = this.raycaster.raycast(ray, meshesToTest,
-                hit => !pointClipped(clip, hit.point.x, hit.point.y, hit.point.z));
+                hit => !pointClipped(entityClip(clip, hit.expressId), hit.point.x, hit.point.y, hit.point.z));
 
             if (!intersection) {
                 return null;
@@ -265,7 +266,7 @@ export class RaycastEngine {
                     intersection,
                     { position: cameraPos, fov: cameraFov },
                     viewport.height,
-                    options.snapOptions, target => !pointClipped(clip, target.position.x, target.position.y, target.position.z),
+                    options.snapOptions, target => !pointClipped(entityClip(clip, target.expressId), target.position.x, target.position.y, target.position.z),
                 ) || undefined;
             }
 

@@ -629,6 +629,7 @@ describe('captureColorFrame() lifecycle (#5051 strict GPU evidence)', () => {
         assert.strictEqual(await pendingFailure, null, 'a contained render failure cannot publish partial color evidence');
 
         const submitFailure = makeHarness();
+        submitFailure.render(); // Allocate shared frame resources before measuring the readback.
         const beforeReadback = submitFailure.stats.createdBuffers.length;
         submitFailure.knobs.submitThrows = true;
         const pendingSubmitFailure = submitFailure.renderer.captureColorFrame();
@@ -2213,7 +2214,7 @@ describe('colour overrides shade from the entity colour table, not overlay copie
 
         h.stats.writes.length = 0;
         h.render();
-        assert.deepEqual(overrideLanes(h, grey.uniformBuffer), [0, 0, 0, 0], 'nothing to paint after clearing');
+        assert.deepEqual(overrideLanes(h, grey.uniformBuffer), [1, 0, 0, 0], 'the entity anchor remains, with painting disabled after clearing');
     });
 
     it('keeps colour overrides available after CPU geometry is released (#6148 review)', async () => {
@@ -2321,7 +2322,7 @@ describe('colour overrides shade from the entity colour table, not overlay copie
         assert.equal(pipelineOfDraw(h, promoted.vertexBuffer), OPAQUE_PIPELINE, 'alpha >= 0.2 override promotes to opaque');
         assert.deepEqual(overrideLanes(h, promoted.uniformBuffer), [4, OVERRIDE_PARAM_PAINT, 0, 0]);
         assert.equal(pipelineOfDraw(h, ghost.vertexBuffer), TRANSPARENT_PIPELINE, 'ghost-tier override stays transparent');
-        assert.deepEqual(overrideLanes(h, ghost.uniformBuffer), [0, 0, 0, 0], 'a transparent draw is not painted');
+        assert.deepEqual(overrideLanes(h, ghost.uniformBuffer), [5, 0, 0, 0], 'a transparent draw keeps its entity anchor with painting disabled');
     });
 });
 

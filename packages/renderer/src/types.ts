@@ -313,6 +313,8 @@ export interface RenderOptions {
   sectionPlane?: SectionPlane;
   /** More cutting planes beyond `sectionPlane` (#7545), each resolved like it; enabled ones clip, and a fragment must survive all (max 7). */
   extraSectionPlanes?: SectionPlane[];
+  /** Full scene ids exempt from primary and extra section planes; crop boxes still apply. */
+  sectionExcludedIds?: ReadonlySet<number>;
   // Section / crop box: clip geometry to an axis-aligned world-space box (all six
   // sides). Independent of `sectionPlane`. The GPU picker mirrors the active
   // section plane + clip box from the last render, so cropped/sectioned-away

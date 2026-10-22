@@ -42,6 +42,7 @@ const SOURCE_RELS = [
   'packages/create/src/ifc-creator.ts',
   'packages/create/src/cost-authoring-rules.ts',
   'packages/export/src/schema-converter.ts',
+  'packages/export/src/schema-converter-mep.json',
 ];
 
 const IN_STORE_DIR = 'packages/create/src/in-store';
@@ -104,7 +105,7 @@ function fixtureDeclaredSchema(absPath) {
  * script the generator imports, and runs the generator on it. `generatorSrc`
  * lets a test run a MUTATED copy of the generator itself (not just its input
  * sources), for mutation-testing the generator's own logic. */
-function runOn(overrides = {}, generatorSrc = realGeneratorSrc) {
+function runOn(overrides = {}, generatorSrc = realGeneratorSrc, nodeArgs = []) {
   const dir = mkdtempSync(join(tmpdir(), 'coverage-ledger-'));
   try {
     for (const [rel, content] of real) {
@@ -147,7 +148,7 @@ function runOn(overrides = {}, generatorSrc = realGeneratorSrc) {
 
     const r = spawnSync(
       process.execPath,
-      [join(dir, 'scripts', 'generate-coverage-ledger.mjs'), '--root', dir],
+      [...nodeArgs, join(dir, 'scripts', 'generate-coverage-ledger.mjs'), '--root', dir],
       { encoding: 'utf8' },
     );
     const outPath = join(dir, 'docs/architecture/coverage-ledger.md');
@@ -531,4 +532,22 @@ test('fixture column: every resolved row in the real ledger cites a fixture decl
     }
   }
   assert.ok(checkedRows > 0, 'test anchor drifted — no resolved fixture rows found to check across the whole ledger');
+});
+
+test('IFC4 MEP occurrences with native IFC2X3 bases are convertible in the emitted ledger (#8019)', () => {
+  const { status, ledger } = runOn();
+  assert.equal(status, 0);
+  const section = sectionOf(ledger, 'IFC4');
+  for (const entity of ['IfcDuctSegment', 'IfcPipeFitting', 'IfcSensor', 'IfcSanitaryTerminal', 'IfcElectricDistributionBoard']) {
+    // @source-text-assertion-ok asserts on the executed generator's emitted ledger, not source text
+    const row = section.split('\n').find((line) => line.startsWith(`| ${entity} |`));
+    assert.ok(row, `missing ${entity} in emitted IFC4 ledger`);
+    assert.equal(row.split('|').map((column) => column.trim())[8], 'IFC2X3:✅ IFC4X3:✅');
+  }
+});
+
+test('ledger generation needs no TypeScript loader on supported Node versions (#8019)', () => {
+  const { status, ledger, log } = runOn({}, realGeneratorSrc, ['--no-experimental-strip-types']);
+  assert.equal(status, 0, log);
+  assert.ok(ledger, 'the actual generator must emit the ledger with type stripping disabled');
 });

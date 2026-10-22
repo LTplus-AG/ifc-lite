@@ -4476,3 +4476,20 @@ evidence. The charter requires a performance verdict for this class; this is an
 adverse verdict, with causal attribution still unproven, rather than a neutrality
 claim. Existing native-instruction, bundle, parity and required CI ceilings stay
 binding. No benchmark rerun, baseline, acceptance band or pin change is made.
+
+
+## Allplan polyline full-path compatibility (#7983)
+
+The [original native comparison](evidence/allplan-polyline-7983/summary.json)
+against the branch base passed its pre-timing idle guard, but the unchanged
+reporter rejected the timing spread. Parse medians were unchanged; geometry
+and total medians increased within that wide spread. The verdict is unqualified,
+with no speedup, neutrality or browser worker-pool performance claim. Mesh,
+vertex and triangle counts match; payload byte identity was not measured.
+The timed candidate precedes the final replacement of literal attribute
+positions with typed slots, so this is not a final-source timing result.
+
+Lesson: an idle preflight and matching output counts do not qualify noisy
+timing or establish byte identity. Preserve the original adverse observations
+and their source identity rather than treating a successful probe exit as
+performance acceptance.

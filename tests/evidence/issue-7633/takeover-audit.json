@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "issue": "https://github.com/LTplus-AG/ifc-lite/issues/7633",
   "auditedAt": "2026-10-22",
-  "verdict": "HISTORICAL_EVIDENCE_ONLY_CLOSURE_NOT_ESTABLISHED",
-  "scope": "Read-only reconciliation of retained qualification receipts. No historical pass is asserted for the current checkout; merged status is not test evidence.",
+  "verdict": "CURRENT_REAL_FIXTURE_FAILURE_CLOSURE_NOT_ESTABLISHED",
+  "scope": "Retained historical qualification audit plus actual local results on the explicitly identified clean takeover source. Historical passes do not transfer to that source; synthetic success does not waive the real fixture failure.",
   "historicalSource": {
     "commit": "6d905337fea27251cc073086498017578276263a",
     "tree": "06372135c825267018f70a79674f70cfd08c1b09",
@@ -261,7 +261,7 @@
     }
   },
   "openAcceptanceEvidence": [
-    "Current-source exact single-opening 136046 and 136094 four-frame behavior.",
+    "Resolve the observed six-edge failure for opening136094 in site-offset/world frame on clean690e14c, then complete exact single-opening136046/136094 four-frame qualification.",
     "Current-source source-built WASM/browser behavior and authored boundary/corner/volume invariants.",
     "Dedicated causal closure for ISSUE_129 host 61300 and ISSUE_068 host 892212.",
     "Fresh execution of current ALT and feature coverage; old assertion failures have later source-history dispositions listed here and are not presumed current blockers. Retained viewer qualification remains incomplete coverage, not failed assertions.",
@@ -318,5 +318,86 @@
       "disposition": "Later census update includes RVT11232 144-to-154 triangles and 39336-to-39344 cm3; commit describes authored-gap preservation from #7942. Therefore the retained old golden mismatch is not automatically a current test failure.",
       "limitation": "Earlier retained #7941 qualification explicitly leaves physical disposition pending. This audit located no later host-specific finite-surface certificate and does not infer physical acceptance from the pin change."
     }
-  ]
+  ],
+  "currentLocalQualification": {
+    "source": {
+      "commit": "690e14c5279a92d579aec1220722fd37782f0064",
+      "tree": "db828d93e2574dd7573b9bf0aa7fb6b32cf9cf15",
+      "clean": true
+    },
+    "date": "2026-10-22",
+    "status": "FAIL_NOT_MERGE_READY",
+    "results": {
+      "synthetic": {
+        "jobId": "83781ae7-8aeb-4cf6-8002-9f495b62cd41",
+        "state": "completed",
+        "exitCode": 0,
+        "command": [
+          "cargo",
+          "test",
+          "-p",
+          "ifc-lite-geometry",
+          "--lib",
+          "issue_7633",
+          "--",
+          "--nocapture"
+        ],
+        "evidence": {
+          "receipt.json": {
+            "path": "/home/louistrue/build-workers/worker-state/jobs/83781ae7-8aeb-4cf6-8002-9f495b62cd41/receipt.json",
+            "sha256": "bf53d6789add96466c101ca682c6a2c1b110dedefb7a5c86d59e0028d3c8b682"
+          },
+          "output.log": {
+            "path": "/home/louistrue/build-workers/worker-state/jobs/83781ae7-8aeb-4cf6-8002-9f495b62cd41/output.log",
+            "sha256": "a850e9a09e6c55c72247efd72be886b1d7f73175dbdd84812d31c09a0844fe55"
+          }
+        },
+        "counts": {
+          "passed": 21,
+          "failed": 0,
+          "ignored": 0,
+          "filteredOut": 1869
+        }
+      },
+      "realFixture": {
+        "jobId": "46c4a858-a676-4002-bae0-ea8c31e189ec",
+        "state": "failed",
+        "exitCode": 101,
+        "command": [
+          "bash",
+          "-c",
+          "IFC_LITE_REQUIRE_FIXTURES=1 cargo test -p ifc-lite-processing --test issue_6940_profile_cap_boundaries -- --nocapture && cargo clippy --workspace --all-targets -- -D warnings"
+        ],
+        "evidence": {
+          "receipt.json": {
+            "path": "/home/louistrue/build-workers/worker-state/jobs/46c4a858-a676-4002-bae0-ea8c31e189ec/receipt.json",
+            "sha256": "5c348cb64bc51b050ad1b98d2db6665b9cdba15417664ce8e617dc2837474b7e"
+          },
+          "output.log": {
+            "path": "/home/louistrue/build-workers/worker-state/jobs/46c4a858-a676-4002-bae0-ea8c31e189ec/output.log",
+            "sha256": "8f2555aa185604bf3414cfb22fd330ebbfe174f2cdf2df1acb54291cffde4245"
+          }
+        },
+        "counts": {
+          "passed": 0,
+          "failed": 1,
+          "ignored": 0
+        },
+        "failingTest": "issue_6940_source_cap_and_redundant_openings_close_in_all_frames",
+        "host": 135923,
+        "opening": 136094,
+        "offset": [
+          13.1347999999962,
+          11.9886000009908,
+          0.0
+        ],
+        "localFrame": false,
+        "unmatchedDirectedEdges": 6,
+        "gridCellsPerUnit": 65536,
+        "clippy": "NOT_EXECUTED: shell && stopped after fixture test exit 101.",
+        "coverageLimit": "Test stopped at the failing case; no pass inferred for later cases or frames."
+      }
+    },
+    "limitation": "These are exact source-labelled runs, not results for subsequent dirty instrumentation or future fixes."
+  }
 }

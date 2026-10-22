@@ -8,6 +8,59 @@ use super::{dedup_cut_vertices, ClosureVerdict, Mesh};
 #[cfg(test)]
 use super::closed_enough_to_emit;
 
+/// Remove newly generated subgrid fragments before they can seed consolidation
+/// planes (#7633). Keep untouched authored faces: a real thin component can be
+/// smaller than the cleanup grid, even when a cut elsewhere creates debris.
+/// This is index-only cleanup, with the same predicate used by the finalizer.
+pub(super) fn clean_generated_fragments(candidate: &mut Mesh, host: &Mesh) {
+    if !candidate.needs_degenerate_cleanup() {
+        return;
+    }
+    if !host.needs_degenerate_cleanup() {
+        candidate.clean_degenerate();
+        return;
+    }
+    fn key(mesh: &Mesh, triangle: &[u32]) -> Option<[[u32; 3]; 3]> {
+        let mut points = [[0; 3]; 3];
+        for (point, &index) in points.iter_mut().zip(triangle) {
+            for (axis, bits) in point.iter_mut().enumerate() {
+                let value = *mesh.positions.get(index as usize * 3 + axis)?;
+                if !value.is_finite() { return None; }
+                *bits = if value == 0.0 { 0 } else { value.to_bits() };
+            }
+        }
+        let positions = points.map(|p| p.map(|bits| f64::from(f32::from_bits(bits))));
+        crate::kernel::retriangulate::projection_axis(&positions)?;
+        let first = (0..3).min_by_key(|&i| points[i])?;
+        points.rotate_left(first);
+        Some(points)
+    }
+    let mut authored: rustc_hash::FxHashMap<_, usize> = Default::default();
+    for face in host.indices.chunks_exact(3).filter_map(|triangle| key(host, triangle)) {
+        *authored.entry(face).or_default() += 1;
+    }
+    let original = candidate.indices.clone();
+    candidate.clean_degenerate();
+    let cleaned = std::mem::take(&mut candidate.indices);
+    let mut kept = cleaned.chunks_exact(3).peekable();
+    // Preserve emission order, since the first triangle defines a bucket plane.
+    for triangle in original.chunks_exact(3) {
+        let retain_authored = key(candidate, triangle)
+            .and_then(|face| authored.get_mut(&face))
+            .is_some_and(|remaining| {
+                if *remaining == 0 { return false; }
+                *remaining -= 1;
+                true
+            });
+        if kept.peek().is_some_and(|next| *next == triangle) {
+            candidate.indices.extend_from_slice(triangle);
+            kept.next();
+        } else if retain_authored {
+            candidate.indices.extend_from_slice(triangle);
+        }
+    }
+}
+
 /// Return an audited cut, preferring the fully hygienic fixed point.
 ///
 /// Cleaning must precede the ulp weld: a removable sliver must not seed the

@@ -2861,6 +2861,7 @@ impl Execution {
         }
 
         let mut out = mesh_from_ptris(&tris, mesh);
+        finish::clean_generated_fragments(&mut out, mesh);
         // COPLANAR CONSOLIDATION: the conforming per-triangle CDT deliberately
         // over-fragments faces (every decomposed host triangle keeps its own
         // sub-triangulation, and caps carry their constraint scaffolding). Run

@@ -109,7 +109,13 @@ fn issue_6940_source_cap_and_redundant_openings_close_in_all_frames() {
         13,
         "fixture must contain the actual opening set"
     );
-    assert!(openings.contains(&135934));
+    // #7633: retain both authentic single-opening witnesses independently.
+    // Cutting all openings together can choose a different route and hide a
+    // remote-plane projection failure in either individual cut.
+    const SINGLE_OPENINGS: [u32; 3] = [135934, 136046, 136094];
+    for opening in SINGLE_OPENINGS {
+        assert!(openings.contains(&opening), "missing authored opening {opening}");
+    }
     let site = site.expect("authentic site placement");
     assert!(site.0.abs() > 1.0 && site.1.abs() > 1.0);
     for offset in [(0.0, 0.0, 0.0), site] {
@@ -133,8 +139,11 @@ fn issue_6940_source_cap_and_redundant_openings_close_in_all_frames() {
                 );
             }
             let mut baseline: Option<(f64, f64, f64, f64, usize)> = None;
-            for ids in [Vec::new(), vec![135934], openings.clone()] {
-                let frame = format!("offset={offset:?} local={local} openings={}", ids.len());
+            let cases = std::iter::once(Vec::new())
+                .chain(SINGLE_OPENINGS.into_iter().map(|id| vec![id]))
+                .chain(std::iter::once(openings.clone()));
+            for ids in cases {
+                let frame = format!("offset={offset:?} local={local} openings={ids:?}");
                 let voids: FxHashMap<u32, Vec<u32>> = if ids.is_empty() {
                     FxHashMap::default()
                 } else {

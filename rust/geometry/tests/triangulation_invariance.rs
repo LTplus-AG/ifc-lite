@@ -2598,3 +2598,32 @@ fn issue_8051_office_thin_patch_retention_preserves_existing_hosts() {
     assert_eq!((closed.open, closed.strict), (0, 0),
         "office #94664 must retain its previously paired boundary");
 }
+
+/// #8051 follow-up: rejecting a connected patch must not disable the older
+/// isolated-cell rescue elsewhere in the same CSG host.
+#[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
+#[test]
+fn issue_8051_office_979333_retains_isolated_cell_baseline() {
+    let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _reset = AltTriangulatorReset;
+    let Some(content) = ifc_lite_testkit::fixture_text("ara3d/S_Office_Integrated Design Archi.ifc") else {
+        eprintln!("Skipping #8051 office isolated-cell regression: run pnpm fixtures");
+        return;
+    };
+    let frame = ModelFrame::new(&content);
+    let voids = void_index(&content);
+    #[cfg(feature = "triangulation-alt")]
+    let triangulators = &[false, true][..];
+    #[cfg(not(feature = "triangulation-alt"))]
+    let triangulators = &[false][..];
+    for &alt in triangulators {
+        set_alt(alt);
+        let mesh = process(&frame, 979333, &voids).expect("actual office host must mesh");
+        let stats = edge_stats(&mesh);
+        let exact = edge_stats_exact(&mesh);
+        eprintln!("office #979333 alt={alt}: open={} strict={} tris={}; exact open={} strict={}",
+            stats.open, stats.strict, mesh.triangle_count(), exact.open, exact.strict);
+        assert!(!mesh.indices.is_empty(), "office #979333 must retain its solid");
+        assert_eq!((stats.open, stats.strict), (0, 0), "office #979333, alt={alt}");
+    }
+}

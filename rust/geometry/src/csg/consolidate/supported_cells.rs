@@ -27,10 +27,15 @@ pub(super) struct Supported {
     pub folded_buckets: Vec<Bucket>,
     pub fold_support_buckets: Vec<Bucket>,
 }
+#[cfg(test)]
 pub(super) fn find(buckets: &BTreeMap<Bucket, Vec<PlaneTri>>) -> Supported {
     find_with_folds(buckets, true)
 }
+#[cfg(test)]
 pub(super) fn find_with_folds(buckets: &BTreeMap<Bucket, Vec<PlaneTri>>, preserve_folds: bool) -> Supported {
+    find_with_policy(buckets, preserve_folds, true)
+}
+pub(super) fn find_with_policy(buckets: &BTreeMap<Bucket, Vec<PlaneTri>>, preserve_folds: bool, preserve_connected: bool) -> Supported {
     // Ordinary healthy partitions need no certificate tables. A later cut
     // can keep a finite fold after the original thin seed has been cleaned.
     let has_needle = buckets.values().flatten().any(|t| tri_is_needle(&t.v));
@@ -62,7 +67,7 @@ pub(super) fn find_with_folds(buckets: &BTreeMap<Bucket, Vec<PlaneTri>>, preserv
         }
     }
     if has_needle {
-        retain_supported_patches(&faces, &needles, &edges, buckets, &mut disjoint, &mut out);
+        retain_supported_patches(&faces, &needles, &edges, buckets, &mut disjoint, &mut out, preserve_connected);
     }
     // A partial source may have boundary edges, but no geometric edge may have
     // repeated uses in either direction. A nonmanifold source cannot certify
@@ -108,6 +113,7 @@ fn retain_supported_patches(
     buckets: &BTreeMap<Bucket, Vec<PlaneTri>>,
     disjoint: &mut FxHashMap<Bucket, bool>,
     out: &mut Supported,
+    preserve_connected: bool,
 ) {
     let mut visited = vec![false; faces.len()];
     for start in 0..faces.len() {
@@ -162,7 +168,8 @@ fn retain_supported_patches(
                 }
             }
         }
-        if valid && supported_boundary && touched.into_iter().all(|key| {
+        if valid && supported_boundary && (preserve_connected || patch.len() == 1)
+            && touched.into_iter().all(|key| {
             *disjoint.entry(key).or_insert_with(|| nonoverlapping(&buckets[&key]))
         }) {
             out.has_connected_patch |= patch.len() > 1;

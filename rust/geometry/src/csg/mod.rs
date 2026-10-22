@@ -345,7 +345,7 @@ impl ClippingProcessor {
             );
             return GroupCut::Rejected(GroupReject::BudgetTripped);
         }
-        let result = self.consolidate(raw);
+        let result = if opening { self.consolidate(raw) } else { self.consolidate_operand(raw) };
         if !result.is_empty() && !self.validate_mesh(&result) {
             self.record_failure(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid);
             return GroupCut::Rejected(GroupReject::InvalidOutput);

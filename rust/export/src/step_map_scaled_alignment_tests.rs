@@ -127,9 +127,9 @@ fn issue_7359_scaled_alignment_linear_placements_and_axis_curves_preserve_map_po
 fn issue_7359_unresolvable_linear_placement_and_foreign_context_still_refuse_atomically() {
     let source = scaled_aligned_model(1., "#100");
     let cases = [
-        // No CartesianPosition and a basis "curve" that is a point: rendering
-        // would fall back to identity; the writer must refuse instead.
-        (source.replace("IFCLENGTHMEASURE(4.),1.,0.5,$,#103)", "IFCLENGTHMEASURE(4.),1.,0.5,$,#12)"), "IfcLinearPlacement #109 cannot be resolved"),
+        // No CartesianPosition and a non-curve basis cannot produce a frame;
+        // the canonical resolver and writer must refuse normalization.
+        (source.replace("IFCLENGTHMEASURE(4.),1.,0.5,$,#103)", "IFCLENGTHMEASURE(4.),1.,0.5,$,#12)"), "#109: missing a resolvable CartesianPosition or RelativePlacement"),
         (source.replace("#120=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Axis','Model',*,*,*,*,#10,$,.MODEL_VIEW.,$)",
             "#120=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Plan',2,1.E-5,#136,$);\n#136=IFCAXIS2PLACEMENT2D(#121,$)"), "another map context"),
         (with_entities(&source, "#140=IFCGRIDPLACEMENT($,$);"), "IfcGridPlacement"),

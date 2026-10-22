@@ -1,0 +1,162 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+     License, v. 2.0. If a copy of the MPL was not distributed with this
+     file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
+
+# Historical placement refusal cohort (#7877, #7779)
+
+Document-only update based directly on published `f96b2c2a5b…`;
+the supported reduced plain-file publication is completed and verified. No merge or
+performance acceptance is granted here. Existing packets remain historical and
+unchanged. The parent session retains the issue claim.
+
+The measured pair is base `5a834675c8e6d1935442763246c85baa0cd1d372`
+(tree `e6c70a83fde5d80970adc7885879e5b7b072a794`) against candidate
+`2f53f7941ad3fe330de749c7124d8a7e20d30cd4`
+(tree `774869cc7c8b8483d5221e07db0fbd21a0d53930`).
+The containing document-only descendant is based directly on published
+`f96b2c2a5b85c6c56d4ec9a7145f0556fd18795a`, which descends from candidate
+`2f53f794…`, with unchanged production, test and build inputs. It is not a new
+measurement. `source-identity.json` proves the baseline entries. The prior
+private preparation `8b9ca3b636cef530629ffd53e9cebee7f2919a7b` was based on
+`0f8185339ee2f218f15a7f8b9b84004c6aa720be`
+(tree `9c6445bf25305a379ad59b9e5b0c3abb4ba35bbe`); that integration was not
+measured by this cohort and is not this descendant's baseline or ancestor.
+The original task's `main` label means only the frozen base above.
+
+`bindings.json` binds source/tool/build-input blobs, compiler-proof originals,
+critical compiler records, injected observation helpers, frozen binaries,
+protocol freezes and original receipts. Base build `05fb2817…` executed v3;
+candidate build `7e823548…` executed v4, retaining the completed v3 base.
+Assembly was `064500da…`; witness/measurement was `e2d8cb8c…`.
+The launcher receipt's source is distinct from the source compiled by each arm.
+No original job, protocol preparation status, timestamp or source is relabelled.
+
+The completed native production `process_geometry` worker pool used four Rayon
+threads, instancing off and extra dedup off on the recorded Linux x86_64 host.
+Six untimed witnesses cover Haus, ISSUE_129 and Holter on both arms.
+`identity.json` retains matching SHA256 witnesses for complete ordered MeshData
+JSON, exact float bits (including skipped instance/bounds/transforms), result
+metadata/frame/instances and complete GeometryDiagnostics bytes. Timings and
+separate material/texture-definition result fields are outside that identity
+scope. Fixture SHA256 values and matching stock counts/FNVs are retained.
+
+Ten interleaved commands completed in the fixed order `branch base`, `base
+branch`, `base branch`, `branch base`, `base branch`. Each command loaded all
+three models with five inner iterations: 30 stock-selected rows and 150 raw
+inner iterations. Inner calls within a block are correlated, not independent
+observations. `selected-and-inner-rows.jsonl` retains every selected row and its
+inner phase/wall arrays; `timing-terminal.json` retains all command outcomes.
+
+The unchanged stock reporter selects each block's best-of-five row. Its
+parse/geometry/TOTAL percentage deltas (candidate versus base) are:
+
+| Model | Parse | Geometry | TOTAL |
+| --- | ---: | ---: | ---: |
+| Haus | 0 | -3.846 | 0 |
+| ISSUE_129 | -2.857 | +0.835 | +0.777 |
+| Holter | -2.914 | +0.895 | -0.151 |
+
+Exact values and phase flags are in `stock-report.json`. Its flags are
+`fingerprintDrift=false`, `tooNoisy=false`, `realChange=true`,
+`inconclusive=true`, `zeroBaselineIncrease=false`. There are no real adverse
+flags in the stock report; this does not erase positive raw geometry, total or
+wall observations. The real-change flags are
+faster entity scans on ISSUE_129 and Holter; the zero-resolution ISSUE_129
+lookup/styles phase makes the overall report inconclusive.
+
+`raw-block-comparison.json` separately summarizes every inner sample through
+outer-block medians. These are different statistics from the stock-selected
+rows: for example Haus raw geometry is unchanged while its stock geometry
+median falls. Preserve the adverse ISSUE_129 geometry/total/full-call wall
+observations and Holter geometry observations in both interpretations. Complete
+raw values remain beside favorable observations. Completion and matching
+outputs establish neither speedup, statistical neutrality nor accepted cost.
+
+This is Class X guard correctness under #7779's reconcile-then-delete policy:
+unreadable authored local/linear/grid placements must be refused and reported;
+absent placement remains identity and readable degenerate directions retain
+repair. No optimization claim is needed. This valid-model native cohort does
+not prove those malformed-input behaviors or finish the charter stop line.
+
+Qualification boundaries supplied by the parent remain explicit: public candidate
+`2f53f794…` WASM evidence passed 112 with four non-placement skips and ten
+placement groups. The column was absent, so the full later IFC-backed contract
+was not executed. Native 6,155-pass/strict-Clippy-zero evidence belongs to
+`7948335296…`, whose Rust source is identical to `2f53f794…`; the only intervening
+change is the MJS boundary tests. This is source equivalence, not a fresh run.
+The integrated-upper `75…` native job `1f498…` completed 6,211 functional passes
+and strict Clippy zero, but omitted the checksum-freshness assertion;
+source-bound geometry fingerprints recorded `checksum:false`. Its stronger
+qualification condition was unmet. It is not promoted as qualification for this packet.
+Inherited main `1e…` holds, source-matched hosted checks, required oracles,
+WASM/browser qualification and existing ceilings remain binding. This packet
+records the measured Class X candidate under the all-18 land-or-close goal;
+it grants neither acceptance nor merge and finishes no charter stop line.
+
+`publication-manifest.json` maps logical path roots and binds original bytes
+before normalization separately from packet bytes afterward. The retained
+original collection is named `placement-current-native-e2d8-original`; timing
+terminal, report and comparison were checked byte-for-byte against their
+original storage-task records. Hashes authenticate absent private originals but
+do not reconstruct omitted bytes. The repository packet contains no credentials,
+binaries, target contents, full raw logs or private absolute host paths; the
+separate supported reduced publication retains the selected original payloads.
+Only lightweight JSON/hash/diff/source-blob checks were performed
+for this documentation descendant; no build, test or measurement was run.
+
+Supported reduced plain-file publication completed with exit code 0. The root
+agent verified all 82 stored/decoded artifact hashes and sizes, all four original
+receipt/output links and all 155 unchanged local originals. The selection is
+81 unique original payloads plus its alias inventory, representing 108 original
+paths; 47 omitted paths are explained individually. Both full protocol closures,
+independent checksum records, strict compiler proof/actual stderr, four binaries
+and receipt/log records, six full witness/custody/diagnostic records and all
+selected/inner rows, chronology and statistics remain in that selected scope.
+
+[Verification manifest](reduced-publication-verification.json) binds the original
+summary, manifest, selection freeze and proof files and lists all 82 artifact
+hashes/sizes. [Normalized aliases and omissions](reduced-publication-aliases.json)
+retains logical names, digests and reasons without private host paths. These are
+normalized documentation, not substitutes for the byte-identical stored originals.
+Historical `PREPARED_NOT_PUBLISHED` text inside the frozen selection records
+remains historical; it does not describe the completed reduced publication.
+
+Full-155 vault/archive completion is **not** established. Exact local originals
+and the three earlier publication failures remain preserved. The tar bundle is
+still `PREPARED_NOT_PUBLISHED`; its archive guard was not bypassed. One owner
+closure attempt was refused by `safety.idle` with “benchmark queued or active”.
+The task remains `ACTIVE` under that closure hold, but is no longer evidence
+pending for this reduced selection. No retry, override, new measurement,
+qualification, neutrality, speedup or cost acceptance follows from publication.
+
+## Supplemental six-fixture correctness observation
+
+[Supplemental records](supplemental-correctness/receipt.json) add the six missing
+named fixtures using the same four authenticated original binaries and exact
+`5a834675…` → `2f53f794…` compiled source pair. Twenty-four bounded sequential
+processes completed with exit 0, without skips: stock probe and strong witness on
+each arm for duplex, OpenHouse and four small in-tree geometry fixtures.
+[Bindings](supplemental-correctness/bindings.json) retain exact fixture sizes and
+hashes, source/compiler/binary pins and original manifest/custody bindings.
+[Observations](supplemental-correctness/observations.json) retain every declared
+stock/FNV and strong-witness comparison plus exact witness and diagnostic bytes;
+all six pairs match. Four in-tree diagnostics are literal `null` on both arms.
+Separate material/texture-definition result fields remain outside this scope.
+
+Together with the three retained original fixture pairs above, identity collection
+is complete for the nine named fixtures in this declared scope. The original
+three-model five-iteration timing cohort and strong witnesses were reused as
+separate retained evidence; those models were not rerun. This supplement is a
+small-fixture-only local Pop correctness observation under the explicit machine
+policy exemption, with no builds or cache access. The first local attempt stopped
+before any model call because a benchmark was queued/running; a newly reviewed
+one-shot attempt ran only after that external state changed and fresh safety
+checks passed. The prior PC admission timeout likewise executed no project
+commands. Neither failed attempt is relabelled as coverage.
+
+This is no new timing cohort, speedup, neutrality or cost acceptance, and supplies
+no qualification for later private integrations or other source pairs. Original
+raw hashes and normalized command outcomes are recorded without private host
+paths or PIDs. The containing documentation commit changes no production, build,
+Rust, test, golden or budget inputs; [source equivalence](supplemental-correctness/source-identity.json)
+binds its published parent. No new validation was run to prepare this supplement.

@@ -15,7 +15,7 @@ use super::GeometryRouter;
 use crate::math::mat4;
 use crate::placement;
 use crate::{Mesh, Result, SubMeshCollection};
-use ifc_lite_core::{slot, DecodedEntity, EntityDecoder};
+use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
 
 static LOCAL_FRAME_OVERRIDE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);
@@ -103,19 +103,16 @@ impl GeometryRouter {
         mesh: &mut Mesh,
     ) -> Result<()> {
         crate::mesh_weld::weld_mesh(mesh);
-        // No (or unresolvable) ObjectPlacement: the world frame IS the object
+        // Genuinely absent ObjectPlacement: the world frame IS the object
         // frame, so the ordinary world step runs with an identity placement.
         // This both records the #1474 frame capture AND applies the model RTC
         // shift / local-frame relativization exactly like every placed mesh —
         // consumers (renderer, demesher session) reconstruct
         // `true_world = origin + position + rtc` uniformly and must not
         // special-case placement-less geometry.
-        let has_placement = element.ref_at(slot::IfcProduct::OBJECT_PLACEMENT).is_some();
-        let transform = if has_placement {
-            self.element_world_placement(element, decoder, false)?
-        } else {
-            Matrix4::identity()
-        };
+        let placement = self.element_world_placement_if_present(element, decoder)?;
+        let has_placement = placement.is_some();
+        let transform = placement.unwrap_or_else(Matrix4::identity);
         // Instancing: record the full (scaled) world placement on the mesh's
         // instance metadata BEFORE it is baked + RTC-folded by transform_mesh_world.
         // Only fires when processing already marked this mesh instanceable (so the
@@ -151,12 +148,9 @@ impl GeometryRouter {
         // ObjectPlacement translation is in file units (e.g. mm) but geometry is
         // scaled to metres, so the transform MUST be scaled to match (inside
         // `element_world_placement`).
-        let has_placement = element.ref_at(slot::IfcProduct::OBJECT_PLACEMENT).is_some();
-        let transform = if has_placement {
-            self.element_world_placement(element, decoder, false)?
-        } else {
-            Matrix4::identity()
-        };
+        let placement = self.element_world_placement_if_present(element, decoder)?;
+        let has_placement = placement.is_some();
+        let transform = placement.unwrap_or_else(Matrix4::identity);
         // Instancing: record the per-element world placement on EACH sub-mesh's
         // instance metadata BEFORE it is baked into the vertices, mirroring
         // `apply_placement` for the single-mesh path. Without this, the sub-mesh
@@ -178,29 +172,28 @@ impl GeometryRouter {
         Ok(())
     }
 
-    /// The one resolver of an element's world placement, already unit-scaled to
-    /// metres. A missing or null `ObjectPlacement` is the identity. `strict`
-    /// (exact geometry descriptions) also refuses a reference that does not
-    /// resolve.
+    /// Resolve an authored world placement once, scaled to metres. Only a
+    /// genuinely absent ObjectPlacement is None; malformed or dangling authored
+    /// values use the canonical refusal policy already on main (#7877).
+    fn element_world_placement_if_present(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<Option<Matrix4<f64>>> {
+        let Some(mut transform) = placement::resolve_object_placement(element, decoder)? else {
+            return Ok(None);
+        };
+        self.scale_transform(&mut transform);
+        Ok(Some(transform))
+    }
+
+    /// The element's world placement in metres, or identity when absent.
     pub(super) fn element_world_placement(
         &self,
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
-        strict: bool,
     ) -> Result<Matrix4<f64>> {
-        if strict {
-            if let Some(attr) = element.get(5).filter(|attr| !attr.is_null()) {
-                if decoder.resolve_ref(attr)?.is_none() {
-                    return Err(crate::Error::geometry(format!(
-                        "ObjectPlacement for #{} cannot be resolved",
-                        element.id
-                    )));
-                }
-            }
-        }
-        let mut transform = self.get_placement_transform_from_element(element, decoder)?;
-        self.scale_transform(&mut transform);
-        Ok(transform)
+        Ok(self.element_world_placement_if_present(element, decoder)?.unwrap_or_else(Matrix4::identity))
     }
 
     /// Get placement transform from element without applying it
@@ -220,7 +213,7 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
     ) -> Result<[f64; 16]> {
         self.admit_placement_scale()?;
-        let transform = self.element_world_placement(element, decoder, true)?;
+        let transform = self.element_world_placement(element, decoder)?;
         Ok(mat4::col_major_array(&transform))
     }
 

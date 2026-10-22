@@ -19,23 +19,21 @@ fn element_world_placement_scales_and_defaults_to_identity() {
     let mut d = EntityDecoder::new(MODEL);
     let router = GeometryRouter::with_scale(0.001);
     let wall = d.decode_by_id(10).unwrap();
-    let t = router.element_world_placement(&wall, &mut d, false).unwrap();
+    let t = router.element_world_placement(&wall, &mut d).unwrap();
     assert_eq!((t[(0, 3)], t[(1, 3)], t[(2, 3)]), (1.0, 2.0, 3.0));
     for id in [12, 14, 15] {
         let bare = d.decode_by_id(id).unwrap();
-        assert_eq!(router.element_world_placement(&bare, &mut d, true).unwrap(), Matrix4::identity());
+        assert_eq!(router.element_world_placement(&bare, &mut d).unwrap(), Matrix4::identity());
     }
 }
 
 #[test]
-fn a_dangling_placement_is_the_decoders_error_on_both_readings() {
+fn a_dangling_placement_keeps_the_canonical_decoder_error() {
     let mut d = EntityDecoder::new(MODEL);
     let router = GeometryRouter::new();
     let wall = d.decode_by_id(11).unwrap();
-    for strict in [false, true] {
-        let err = router.element_world_placement(&wall, &mut d, strict).unwrap_err();
-        assert!(err.to_string().contains("Entity #99 not found"), "{err}");
-    }
+    let err = router.element_world_placement(&wall, &mut d).unwrap_err();
+    assert!(err.to_string().contains("Entity #99 not found"), "{err}");
 }
 
 /// Pure pipeline consolidation must preserve externally supplied instance
@@ -56,7 +54,7 @@ fn placement_application_preserves_unplaced_instance_metadata() {
     let supplied_transform = supplied.transform;
     mesh.instance_meta = Some(supplied);
 
-    for id in [12, 13, 14, 15, 10] {
+    for id in [12, 14, 15, 10] {
         for submesh_path in [false, true] {
             let element = decoder.decode_by_id(id).unwrap();
             let mut output = mesh.clone();
@@ -84,14 +82,24 @@ fn placement_application_preserves_unplaced_instance_metadata() {
     }
 }
 
-/// Wrong-shaped placement values remain lenient for meshing and are refused
-/// only by the existing strict exact-description entry point (#7867).
+/// Preserve main's #7877 refusal policy while consolidating #7867 helpers:
+/// a present non-reference value cannot become an identity placement.
 #[test]
-fn issue_7867_nonreference_placement_keeps_the_existing_strict_split() {
+fn issue_7867_main_7877_nonreference_placement_refuses_every_entry() {
+    use crate::{Mesh, SubMeshCollection};
+
     let mut decoder = EntityDecoder::new(MODEL);
     let router = GeometryRouter::with_scale(0.001);
     let element = decoder.decode_by_id(13).unwrap();
-    assert_eq!(router.element_world_placement(&element, &mut decoder, false).unwrap(), Matrix4::identity());
-    let error = router.resolve_scaled_placement_strict(&element, &mut decoder).unwrap_err();
-    assert!(error.to_string().contains("cannot be resolved"), "{error}");
+    assert!(router.element_world_placement(&element, &mut decoder).is_err());
+    assert!(router.resolve_scaled_placement_strict(&element, &mut decoder).is_err());
+
+    let mut mesh = Mesh::new();
+    mesh.positions = vec![0., 0., 0., 1., 0., 0., 0., 1., 0.];
+    mesh.normals = vec![0., 0., 1., 0., 0., 1., 0., 0., 1.];
+    mesh.indices = vec![0, 1, 2];
+    let mut parts = SubMeshCollection::new();
+    parts.add(20, mesh.clone());
+    assert!(router.apply_placement(&element, &mut decoder, &mut mesh).is_err());
+    assert!(router.apply_submesh_placement(&mut parts, &element, &mut decoder).is_err());
 }

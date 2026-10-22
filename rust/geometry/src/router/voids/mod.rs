@@ -7,8 +7,8 @@
 use super::processing::SourceHygiene;
 use super::GeometryRouter;
 use crate::csg::{ClippingProcessor, GroupCut};
-use crate::mesh::{SubMesh, SubMeshCollection};
-use crate::program::openings::execute::{execute, Execution};
+use crate::mesh::SubMeshCollection;
+use crate::program::openings::execute::Execution;
 use crate::{Mesh, Point3, Result, TessellationQuality, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use nalgebra::Matrix3;
@@ -126,12 +126,11 @@ impl OpeningFrame {
 /// Pre-computed per-element void subtraction data.
 ///
 /// Building this is expensive: the owned host-opening control
-/// (`program::openings::context`) re-runs the product pipeline on each
+/// (`program::openings::OpeningControl::host`) re-runs the product pipeline on each
 /// `IfcOpeningElement` and probes the host's parametrics. Once built, it can be
 /// reused across every sub-mesh of the same element without re-doing any of
-/// that work, so the per-sub-mesh void path in
-/// [`GeometryRouter::process_element_with_submeshes_and_voids`] pays the
-/// classification cost once per element rather than once per sub-mesh.
+/// that work, so the voided styled program pays the classification cost once
+/// per element rather than once per sub-mesh.
 pub(crate) struct VoidContext {
     /// All classified openings. The diagonal-opening pass needs the raw list
     /// (unmerged) so its per-item box rotation stays accurate.
@@ -325,26 +324,9 @@ impl GeometryRouter {
             }
         };
 
-        let parts =
-            self.process_element_parts_with_hygiene(element, decoder, SourceHygiene::BooleanOperand)?;
-        // Opening and clip geometry are resolved in world coordinates, the
-        // frame every part is in once placement has been applied.
-        let ctx = crate::program::openings::context(element, opening_ids, self, decoder)?;
-        parts
-            .into_iter()
-            .map(|part| {
-                let mut voided =
-                    execute(part, &ctx, element.id, self.tessellation_quality).publish(self)?;
-                // Clean slivers the CSG cut can introduce at opening seams — same
-                // closure-preserving hygiene as the untextured source chokepoints (#7292).
-                hygiene::clean_void_output(&mut voided);
-                // Instancing: a void-cut mesh no longer reproduces its representation's
-                // canonical geometry, so it can never be shared. Drop any metadata that
-                // rode along from the (pre-cut) mapped item.
-                voided.instance_meta = None;
-                Ok(voided)
-            })
-            .collect()
+        // The host walk, its void context and each part's cut: the common
+        // program's void control.
+        crate::program::GeometryProgram::voided(element, opening_ids).drain_parts(self, decoder)
     }
 }
 
@@ -1699,53 +1681,18 @@ impl GeometryRouter {
         }
 
         let opening_ids = match void_index.get(&element.id) {
-            Some(ids) if !ids.is_empty() => ids.clone(),
+            Some(ids) if !ids.is_empty() => ids,
             _ => return Ok(SubMeshCollection::new()),
         };
 
-        // Voided occurrences materialize cut geometry (#1623 don't-bake off) with no
-        // texture index (#1781: CSG rebuilds vertices, orphaning UVs — colour wins).
-        let sub_meshes = self.process_element_with_submeshes_impl(
-            element,
-            decoder,
-            false,
-            None,
-            SourceHygiene::BooleanOperand,
-        )?;
-        if sub_meshes.is_empty() {
-            return Ok(SubMeshCollection::new());
-        }
-
-        // Classify openings + resolve clipping planes ONCE per element. Doing
-        // this per sub-mesh would re-run `process_element` on every opening
-        // and re-extract clipping planes N times, multiplying the expensive
-        // parsing/CSG setup by the sub-mesh count on the exact elements this
-        // path targets (multi-layer walls with windows).
-        let ctx = crate::program::openings::context(element, &opening_ids, self, decoder)?;
-
-        // INHERIT the discriminator rather than assuming rep-item ids. This path
-        // is reached only when `try_layered_sub_meshes` declined above, so the
-        // flag is false today -- but hard-coding that would make a future
-        // layered producer silently relabel material ids as representation
-        // items, which is the exact confusion #3199 removes.
-        let mut voided = SubMeshCollection {
-            sub_meshes: Vec::new(),
-            ids_are_materials: sub_meshes.ids_are_materials,
-        };
-        for sub in sub_meshes.sub_meshes {
-            let geometry_id = sub.geometry_id;
-            let mut voided_mesh =
-                execute(sub.mesh, &ctx, element.id, self.tessellation_quality).publish(self)?;
-            // Same closure-preserving CSG-seam hygiene as the single-mesh path (#7292).
-            hygiene::clean_void_output(&mut voided_mesh);
-            if !voided_mesh.is_empty() {
-                voided
-                    .sub_meshes
-                    .push(SubMesh::new(geometry_id, voided_mesh));
-            }
-        }
-
-        Ok(voided)
+        // The host is the un-voided sub-mesh walk, which itself first tries
+        // the layered slicing without voids (an element whose voided slicing
+        // declined can still slice uncut, and then each layer is cut).
+        let layered = self.try_layered_sub_meshes(element, decoder, None);
+        // The host walk, its void context (classified ONCE per element, not
+        // per sub-mesh) and each sub-mesh's cut: the common program's void
+        // control.
+        crate::program::GeometryProgram::voided_styled(element, opening_ids, layered).drain_styled(self, decoder)
     }
 }
 
@@ -1757,3 +1704,5 @@ mod batch_cutter_tests;
 mod cut_effect_count_tests;
 #[cfg(test)]
 mod single_cut_outcome_tests;
+#[cfg(test)]
+mod program_tests;

@@ -18,6 +18,14 @@ use crate::{Mesh, Result, SubMeshCollection};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
 
+/// A product's resolved, scaled `ObjectPlacement`: what placement reads from
+/// source. `placed` is false for the identity fallback, which stamps no
+/// instance transform.
+pub(crate) struct ObjectPlacement {
+    transform: Matrix4<f64>,
+    placed: bool,
+}
+
 static LOCAL_FRAME_OVERRIDE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);
 
 /// Test/harness-only: force the target/env fallback on/off, or `None` for the
@@ -89,100 +97,78 @@ impl GeometryRouter {
         self.local_frame_enabled.unwrap_or_else(local_frame_enabled)
     }
 
-    /// Apply local placement transformation to mesh
+    /// The source half of placing a product's meshes: its `ObjectPlacement`,
+    /// resolved and scaled to metres. A genuinely absent placement is the
+    /// identity: the world frame IS the object frame, and placement still runs
+    /// the ordinary world step over it (the #1474 frame capture, the model RTC
+    /// shift and local-frame relativization), so consumers reconstruct
+    /// `true_world = origin + position + rtc` uniformly. A present but
+    /// unreadable placement chain is refused (#7877).
+    pub(crate) fn resolve_object_placement(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<ObjectPlacement> {
+        let Some(mut transform) = placement::resolve_object_placement(element, decoder)? else {
+            return Ok(ObjectPlacement { transform: Matrix4::identity(), placed: false });
+        };
+        self.scale_transform(&mut transform);
+        Ok(ObjectPlacement { transform, placed: true })
+    }
+
+    /// Place one mesh by a resolved [`ObjectPlacement`]; reads no source.
     ///
     /// Welds the source vertices FIRST (#4103). This is the last point at which
     /// the vertices are still in the object frame, and the weld keys on raw f32
     /// bits, so welding after the bake makes the merge depend on where the
     /// element sits and leaves two occurrences of one representation with
     /// different buffers. See `crate::mesh_weld`'s module doc.
-    pub(super) fn apply_placement(
-        &self,
-        element: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        mesh: &mut Mesh,
-    ) -> Result<()> {
+    pub(crate) fn place_mesh(&self, mesh: &mut Mesh, placement: &ObjectPlacement) {
         crate::mesh_weld::weld_mesh(mesh);
-        let mut transform = match placement::resolve_object_placement(element, decoder)? {
-            Some(transform) => transform,
-            None => {
-                // No ObjectPlacement: the world frame IS the object frame, so
-                // run the ordinary world step with an identity placement. This
-                // both records the #1474 frame capture AND applies the model
-                // RTC shift / local-frame relativization exactly like every
-                // placed mesh — consumers (renderer, demesher session)
-                // reconstruct `true_world = origin + position + rtc` uniformly
-                // and must not special-case placement-less geometry.
-                self.transform_mesh_world(mesh, &Matrix4::identity());
-                return Ok(());
-            }
-        };
-
-        self.scale_transform(&mut transform);
         // Instancing: record the full (scaled) world placement on the mesh's
         // instance metadata BEFORE it is baked + RTC-folded by transform_mesh_world.
         // Only fires when processing already marked this mesh instanceable (so the
         // metadata exists); a no-op otherwise, keeping the flat path untouched.
-        if let Some(im) = mesh.instance_meta.as_mut() {
-            im.transform = mat4::from_na(&transform);
+        if placement.placed {
+            if let Some(im) = mesh.instance_meta.as_mut() {
+                im.transform = mat4::from_na(&placement.transform);
+            }
         }
-        self.transform_mesh_world(mesh, &transform);
-        Ok(())
+        self.transform_mesh_world(mesh, &placement.transform);
     }
 
-    /// Apply the element's `ObjectPlacement` (scaled to metres) to every sub-mesh.
+    /// Place every sub-mesh by a resolved [`ObjectPlacement`]; reads no source.
     /// Placement is a rigid per-instance transform, kept OUT of the dedup cache so
     /// instances of one shared geometry land at their own positions.
-    /// (Moved here from `processing.rs` — placement logic lives with the other
-    /// placement appliers, and `processing.rs` sits at its ratchet budget.)
     ///
     /// Welds each sub-mesh's source vertices first, for the reason
-    /// [`Self::apply_placement`] gives. Every per-style channel (plain, layered,
+    /// [`Self::place_mesh`] gives. Every per-style channel (plain, layered,
     /// textured) converges here, so one loop covers them all, and the sub-mesh
     /// weld carries `SubMesh::uvs` through the same remap.
-    pub(super) fn apply_submesh_placement(
-        &self,
-        sub_meshes: &mut SubMeshCollection,
-        element: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-    ) -> Result<()> {
+    pub(crate) fn place_sub_meshes(&self, sub_meshes: &mut SubMeshCollection, placement: &ObjectPlacement) {
         for sub in &mut sub_meshes.sub_meshes {
             crate::mesh_weld::weld_sub_mesh(sub);
         }
-        // ObjectPlacement translation is in file units (e.g. mm) but geometry is
-        // scaled to metres, so the transform MUST be scaled to match.
-        if let Some(mut transform) = placement::resolve_object_placement(element, decoder)? {
-            self.scale_transform(&mut transform);
-            // Instancing: record the per-element world placement on EACH sub-mesh's
-            // instance metadata BEFORE it is baked into the vertices, mirroring
-            // `apply_placement` for the single-mesh path. Without this, the sub-mesh
-            // path (every multi-item element — all the Tekla steel: beams, plates,
-            // assemblies) leaves `instance_meta.transform` at the IDENTITY placeholder,
-            // so `collate_refs` computes rel_k = m_k · m_ref⁻¹ = identity for every
-            // occurrence and they all stack on the first one. The flat path was
-            // always correct (placement IS baked into the vertices below), so the
-            // dedup made it look like repeated geometry was "missing".
-            if instancing_enabled() {
-                let row_major = mat4::from_na(&transform);
-                for sub in &mut sub_meshes.sub_meshes {
-                    if let Some(im) = sub.mesh.instance_meta.as_mut() {
-                        im.transform = row_major;
-                    }
+        // Instancing: record the per-element world placement on EACH sub-mesh's
+        // instance metadata BEFORE it is baked into the vertices, mirroring
+        // `place_mesh` for the single-mesh path. Without this, the sub-mesh
+        // path (every multi-item element — all the Tekla steel: beams, plates,
+        // assemblies) leaves `instance_meta.transform` at the IDENTITY placeholder,
+        // so `collate_refs` computes rel_k = m_k · m_ref⁻¹ = identity for every
+        // occurrence and they all stack on the first one. The flat path was
+        // always correct (placement IS baked into the vertices below), so the
+        // dedup made it look like repeated geometry was "missing".
+        if placement.placed && instancing_enabled() {
+            let row_major = mat4::from_na(&placement.transform);
+            for sub in &mut sub_meshes.sub_meshes {
+                if let Some(im) = sub.mesh.instance_meta.as_mut() {
+                    im.transform = row_major;
                 }
             }
-            for sub in &mut sub_meshes.sub_meshes {
-                self.transform_mesh_world(&mut sub.mesh, &transform);
-            }
-            return Ok(());
         }
-        // Genuinely absent ObjectPlacement: run the ordinary world step with an
-        // identity placement — records the #1474 frame capture AND applies
-        // the model RTC shift / relativization, mirroring the same branch in
-        // `apply_placement` (single-mesh path).
         for sub in &mut sub_meshes.sub_meshes {
-            self.transform_mesh_world(&mut sub.mesh, &Matrix4::identity());
+            self.transform_mesh_world(&mut sub.mesh, &placement.transform);
         }
-        Ok(())
     }
 
     /// Get placement transform from element without applying it

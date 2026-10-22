@@ -5,6 +5,7 @@
 //! Existing numerical regression entry points drive the same owned execution
 //! the gateways use, publishing its diagnostics into the test's router.
 use super::*;
+use crate::program::openings::execute::execute;
 
 impl GeometryRouter {
     fn test_execution<T>(&self, run: impl FnOnce(&Execution) -> T) -> T {

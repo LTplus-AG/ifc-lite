@@ -14,7 +14,7 @@ use super::transforms::instancing_enabled;
 use crate::math::mat4;
 use super::GeometryRouter;
 use crate::{Error, InstanceMeta, Mesh, Result};
-use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
 use std::sync::Arc;
 
@@ -59,19 +59,6 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
     ) -> Result<Vec<Mesh>> {
         crate::program::GeometryProgram::mapped_item(item).drain_parts(self, decoder)
-    }
-
-    /// [`Self::process_representation_item`] as frame parts (#6446): only a
-    /// mapped item can yield more than one.
-    pub(in crate::router) fn process_representation_item_parts(
-        &self,
-        item: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-    ) -> Result<Vec<Mesh>> {
-        if item.ifc_type != IfcType::IfcMappedItem {
-            return self.process_representation_item(item, decoder).map(|mesh| vec![mesh]);
-        }
-        self.process_mapped_item_parts(item, decoder)
     }
 
     /// Admit one mapped item: resolve its `MappingSource` and transform, then

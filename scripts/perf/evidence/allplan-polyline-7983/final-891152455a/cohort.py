@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MPL-2.0
 import os,sys,json,time,subprocess,hashlib,resource
 from pathlib import Path
 root=Path.cwd(); out=Path('/home/louistrue/build-workers/pr8052-final-public'); target=Path(os.environ['CARGO_TARGET_DIR'])

@@ -159,7 +159,7 @@ impl SymbolicAccumulator {
     /// read THIS to stop early. A per-item bound marks truncation WITHOUT setting
     /// this, so one deep item does not abandon every later product.
     pub(super) fn is_exhausted(&self) -> bool {
-        self.exhausted || ifc_lite_geometry::resource::check_current().is_err()
+        self.exhausted || ifc_lite_geometry::resource::is_stopped()
     }
 
     /// Record that a per-item bound dropped content. Called by the walk, which

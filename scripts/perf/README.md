@@ -26,6 +26,11 @@ rather than extending readiness deadlines or replacing failed samples.
 The separate headed continuation also selected SwiftShader and stopped at the
 hardware preflight before loading any model. A desktop session alone does not
 establish hardware WebGPU availability.
+A subsequent model-free probe isolated browser backend initialization: ANGLE
+Vulkan alone still fell back, while explicitly enabling Chromium Vulkan passed
+compute and pixel readback on NVIDIA hardware in fresh default-adapter sessions.
+This qualifies the launch configuration only; current-base model measurements
+remain required (`tests/evidence/issue-7633/current-gpu-preflight.json`).
 Source identities, numeric observations and qualification status are retained
 in `tests/evidence/issue-7633/current-performance.json`.
 

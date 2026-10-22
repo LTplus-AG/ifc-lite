@@ -161,7 +161,7 @@ can undercount failures; they are not proof of healthy GPU execution.
 The `Browser frames (deterministic rig)` workflow has explicit dispatch modes:
 `instance` runs the isolated original/fixed comparison; `diagnostic-frames`
 captures device identities and browser stderr; `qualification-frames` runs
-ten normal FZK/Snowdon cohorts against one build and retains every attempt.
+five normal FZK/Snowdon cohorts against one build and retains every attempt.
 Diagnostic frame output is rejected by performance admission. The isolated
 probe is `scripts/perf/diagnostics/swiftshader-instance.mts`; it requires the
 Playwright headless shell and no viewer build or IFC fixture. See the initial

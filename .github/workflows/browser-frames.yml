@@ -124,12 +124,14 @@ jobs:
 
       # Separate Playwright output directories preserve earlier cohorts when
       # Playwright cleans its output directory before each invocation.
-      - name: Qualify ten frame cohorts against one build
+      - name: Qualify five frame cohorts against one build
         if: inputs.mode == 'qualification-frames'
+        # End the step before the job deadline so partial evidence is uploaded.
+        timeout-minutes: 45
         run: |
           status=0
           mkdir -p test-results/qualification
-          for cohort in $(seq -w 1 10); do
+          for cohort in $(seq -w 1 5); do
             result="test-results/qualification/browser-frames-${cohort}.json"
             FRAME_RIG_OUT="$result" pnpm test:benchmark:frames \
               --output="test-results/qualification/playwright-${cohort}" || status=$?

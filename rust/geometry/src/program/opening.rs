@@ -28,18 +28,26 @@ pub(crate) struct OpeningProgram {
 pub(crate) struct OpeningChild<'a> {
     program: GeometryProgram<'a>,
     parts: bool,
+    /// The occurrence's merged body: a product walk, which runs in place.
+    walk: bool,
 }
 
 impl<'a> OpeningChild<'a> {
     /// An opening occurrence's merged body under boolean-operand hygiene.
     pub(crate) fn body(entity: &'a DecodedEntity) -> Self {
-        Self { program: GeometryProgram::product(entity, SourceHygiene::BooleanOperand), parts: true }
+        Self { program: GeometryProgram::product(entity, SourceHygiene::BooleanOperand), parts: true, walk: true }
     }
 
     /// Drive the child's own requests. A stop reached by one request ends the
     /// child before its next one, so a sticky stop behind an ordinary miss can
     /// never select a later fallback callback.
     pub(crate) fn run(mut self, router: &GeometryRouter, decoder: &mut EntityDecoder) -> Result<Vec<Mesh>> {
+        if self.walk {
+            // The body is the product walk the host's own parts are: the
+            // sticky stop it can reach surfaces when the walk closes.
+            crate::resource::check_current()?;
+            return self.program.drain_parts(router, decoder);
+        }
         let fault = |error| protocol(&format!("opening child {error:?}"));
         loop {
             crate::resource::check_current()?;
@@ -139,10 +147,10 @@ impl OpeningProgram {
     pub(crate) fn child(&self, router: &GeometryRouter) -> Result<OpeningChild<'_>> {
         let item = self.item.as_ref().ok_or_else(|| protocol("opening probe child"))?;
         if item.ifc_type == IfcType::IfcMappedItem {
-            return Ok(OpeningChild { program: GeometryProgram::mapped_item(item), parts: true });
+            return Ok(OpeningChild { program: GeometryProgram::mapped_item(item), parts: true, walk: false });
         }
         let offset = self.offset.unwrap_or_else(|| router.rtc_offset());
-        Ok(OpeningChild { program: GeometryProgram::representation_item(item, offset), parts: false })
+        Ok(OpeningChild { program: GeometryProgram::representation_item(item, offset), parts: false, walk: false })
     }
 
     pub(crate) fn resume(&mut self, reply: OpeningReply) {

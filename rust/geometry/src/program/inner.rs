@@ -73,9 +73,7 @@ pub(crate) enum ProgramError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Payload {
     Item,
-    CacheBegin,
-    CacheItem,
-    CacheHash,
+    Cache(u8),
     Mapping(u8),
     Product(u8),
     Voids(u8),
@@ -96,9 +94,7 @@ impl ReplyValue {
     fn tag(&self) -> Payload {
         match self {
             Self::Item(_) => Payload::Item,
-            Self::Cache(CacheReply::Begin(_)) => Payload::CacheBegin,
-            Self::Cache(CacheReply::Item(_)) => Payload::CacheItem,
-            Self::Cache(CacheReply::Hash(..)) => Payload::CacheHash,
+            Self::Cache(reply) => Payload::Cache(reply.tag()),
             Self::Mapping(reply) => Payload::Mapping(reply.tag()),
             Self::Product(reply) => Payload::Product(reply.tag()),
             Self::Voids(reply) => Payload::Voids(reply.tag()),
@@ -334,9 +330,7 @@ impl<'a> GeometryProgram<'a> {
         -> Result<crate::SubMeshCollection> {
         self.run(router, decoder)?;
         match self.finish_output()? {
-            Output::Mapping(MappingOutput::Styled(meshes)) | Output::Product(ProductOutput::Styled(meshes)) => {
-                Ok(meshes)
-            }
+            Output::Mapping(MappingOutput::Styled(meshes)) | Output::Product(ProductOutput::Styled(meshes)) => Ok(meshes),
             _ => Err(Error::geometry("this program does not complete as sub-meshes")),
         }
     }
@@ -352,6 +346,11 @@ impl<'a> GeometryProgram<'a> {
     }
 
     fn run(&mut self, router: &GeometryRouter, decoder: &mut EntityDecoder) -> Result<()> {
+        // A walk no request was issued for runs in place, moving no ticket or reply per step.
+        if self.pending.is_none() && self.sequence == 0 {
+            if let Control::Product(c) = &mut self.control { return c.run(router, decoder).map_err(program_error) }
+            if let Control::Voids(c) = &mut self.control { return c.run(router, decoder).map_err(program_error) }
+        }
         while let Some(request) = self.request().map_err(program_error)? {
             let reply = self.execute(request, router, decoder).map_err(program_error)?;
             self.accept(reply, router).map_err(|rejected| program_error(rejected.error))?;

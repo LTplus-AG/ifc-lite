@@ -24,13 +24,16 @@ use rustc_hash::FxHashMap;
 
 mod accept;
 mod merged;
+mod run;
 use merged::{Merged, Prepared};
 
 type Textures<'a> = Option<&'a FxHashMap<u32, ResolvedTextureMap>>;
 
 /// What the walk's items feed.
 enum Sink {
-    Merged(Merged),
+    /// Boxed with `Prepared`: the accumulators are two meshes and more, and
+    /// would otherwise size every program and move with every step.
+    Merged(Box<Merged>),
     Styled(SubMeshCollection),
 }
 
@@ -39,7 +42,7 @@ enum Sink {
 /// step nor its reply carries a second copy of the accumulators.
 enum Body {
     Sink(Sink),
-    Prepared(Prepared),
+    Prepared(Box<Prepared>),
     /// Lent to a styled mapping child, or consumed.
     Empty,
 }
@@ -61,7 +64,7 @@ enum Role {
     Styled,
 }
 
-enum Action<'a> {
+enum Action {
     /// Read an `IfcAlignment`'s axis through the alignment processor.
     Alignment,
     /// Resolve the product's `IfcProductDefinitionShape`.
@@ -76,14 +79,14 @@ enum Action<'a> {
     Raw(DecodedEntity),
     /// Build a textured face set with its UVs (#1781).
     Texture(DecodedEntity),
-    /// One item through the content-dedup and hash caches; `raw` when it is
-    /// meshed in its element frame.
-    Cache { item: DecodedEntity, control: CacheControl, raw: bool },
+    /// One item through the content-dedup and hash caches (the walk's
+    /// `Child::Cache`); `raw` when it is meshed in its element frame.
+    Cache { item: DecodedEntity, raw: bool },
     /// A styled walk's plain item: no mapping to walk, so it runs the cache
     /// controller in place and lands in the sub-meshes under its own id.
-    StyledCache { item: DecodedEntity, control: CacheControl },
-    /// One item through the mapping controller.
-    Mapping { control: MappingControl<'a>, role: Role },
+    StyledCache { item: DecodedEntity },
+    /// One item through the mapping controller (the walk's `Child::Mapping`).
+    Mapping { role: Role },
     /// Merge an item's meshes into the accumulators, in item order.
     Merge(Vec<Mesh>),
     /// Close the accumulators under the requested hygiene.
@@ -140,6 +143,16 @@ struct Styled<'a> {
     textures: Textures<'a>,
 }
 
+/// The control the current item's action drives. It lives beside the action,
+/// not in it: the action is replaced on every step, and a large control
+/// inside it would be moved with each replacement.
+enum Child<'a> {
+    None,
+    Cache(CacheControl),
+    /// Boxed: mapped items are the rarer walk and the largest control.
+    Mapping(Box<MappingControl<'a>>),
+}
+
 pub(super) struct ProductControl<'a> {
     element: &'a DecodedEntity,
     hygiene: SourceHygiene,
@@ -153,13 +166,14 @@ pub(super) struct ProductControl<'a> {
     items: std::vec::IntoIter<DecodedEntity>,
     fill_only: bool,
     body: Body,
-    action: Action<'a>,
+    child: Child<'a>,
+    action: Action,
 }
 
 impl<'a> ProductControl<'a> {
     fn new(element: &'a DecodedEntity, hygiene: SourceHygiene, styled: Option<Styled<'a>>) -> Self {
         let sink = match styled {
-            None => Sink::Merged(Merged::default()),
+            None => Sink::Merged(Box::default()),
             Some(_) => Sink::Styled(SubMeshCollection::new()),
         };
         // IfcAlignment carries its directrix curve in a dedicated `Axis`
@@ -181,6 +195,7 @@ impl<'a> ProductControl<'a> {
             items: Vec::new().into_iter(),
             fill_only: false,
             body: Body::Sink(sink),
+            child: Child::None,
             action,
         }
     }
@@ -202,8 +217,13 @@ impl<'a> ProductControl<'a> {
             Action::Alignment => Some(ProgramStage::Extension),
             Action::Shape | Action::Items(_) | Action::Annotation(_) | Action::Raw(_)
             | Action::Texture(_) | Action::Placement => Some(ProgramStage::Source),
-            Action::Cache { control, .. } | Action::StyledCache { control, .. } => return control.stage(),
-            Action::Mapping { control, .. } => return control.stage(),
+            Action::Cache { .. } | Action::StyledCache { .. } | Action::Mapping { .. } => {
+                return match &self.child {
+                    Child::Cache(control) => control.stage(),
+                    Child::Mapping(control) => control.stage(),
+                    Child::None => Err(ProgramError::Outstanding),
+                }
+            }
             Action::AnnotationMesh(..) | Action::Merge(_) | Action::Finish | Action::Place(_) => {
                 Some(ProgramStage::Numerical)
             }
@@ -236,10 +256,14 @@ impl<'a> ProductControl<'a> {
                     .map(|offset| router.textured_face_set(item, decoder, map, offset));
                 return Ok(ProductReply::Texture(textured));
             }
-            Action::Cache { item, control, .. } | Action::StyledCache { item, control } => {
+            Action::Cache { item, .. } | Action::StyledCache { item } => {
+                let Child::Cache(control) = &mut self.child else { return Err(ProgramError::StaleRequest) };
                 return control.execute(item, router, decoder).map(ProductReply::Cache);
             }
-            Action::Mapping { control, .. } => return control.execute(router, decoder).map(ProductReply::Mapping),
+            Action::Mapping { .. } => {
+                let Child::Mapping(control) = &mut self.child else { return Err(ProgramError::StaleRequest) };
+                return control.execute(router, decoder).map(ProductReply::Mapping);
+            }
             Action::Placement => {
                 return Ok(ProductReply::Placement(router.resolve_object_placement(element, decoder)));
             }
@@ -253,7 +277,7 @@ impl<'a> ProductControl<'a> {
             },
             Action::Finish => match std::mem::replace(&mut self.body, Body::Empty) {
                 Body::Sink(sink) => ProductReply::Finished(merged::finish(sink, self.hygiene.for_router(router))
-                    .map(|prepared| self.body = Body::Prepared(prepared))),
+                    .map(|prepared| self.body = Body::Prepared(Box::new(prepared)))),
                 _ => return Err(ProgramError::StaleRequest),
             },
             Action::Place(placement) => match std::mem::replace(&mut self.body, Body::Empty) {

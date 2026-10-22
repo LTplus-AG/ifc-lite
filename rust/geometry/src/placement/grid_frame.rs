@@ -6,7 +6,7 @@
 //! (#6232 F2).
 
 use super::PlacementResult;
-use ifc_lite_core::{DecodedEntity, EntityDecoder};
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
 
 /// Where `IfcGridPlacement`'s attributes sit in this source's schema.
@@ -15,7 +15,7 @@ use nalgebra::Matrix4;
 /// reads `(PlacementRelTo, PlacementLocation, PlacementRefDirection)` and
 /// IFC2X3/IFC4 read `(PlacementLocation, PlacementRefDirection)`. The
 /// positions come from the declared schema's generated registry
-/// ([`EntityDecoder::attribute_index`]), never from a second hard-coded table.
+/// ([`EntityDecoder::slot`]), never from a second hard-coded table.
 /// `PlacementRefDirection` is an `IfcVirtualGridIntersection` on IFC2X3 and an
 /// `IfcGridPlacementDirectionSelect` (IfcDirection | IfcVirtualGridIntersection)
 /// from IFC4 on; `grid::ref_direction_vector` dispatches on
@@ -30,11 +30,10 @@ pub(super) struct GridPlacementLayout {
 
 impl GridPlacementLayout {
     pub(super) fn of(decoder: &mut EntityDecoder) -> Self {
-        let mut index = |name| decoder.attribute_index("IfcGridPlacement", name);
         Self {
-            rel_to: index("PlacementRelTo"),
-            location: index("PlacementLocation"),
-            ref_direction: index("PlacementRefDirection"),
+            rel_to: decoder.slot(slot::IfcGridPlacement::PLACEMENT_REL_TO).map(|s| s.index()),
+            location: decoder.slot(slot::IfcGridPlacement::PLACEMENT_LOCATION).map(|s| s.index()),
+            ref_direction: decoder.slot(slot::IfcGridPlacement::PLACEMENT_REF_DIRECTION).map(|s| s.index()),
         }
     }
 }
@@ -63,7 +62,7 @@ pub(super) fn owning_grid_frame(
     intersection: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> PlacementResult<OwningFrame> {
-    let Some(axis_id) = intersection.get_refs(0).and_then(|axes| axes.first().copied()) else {
+    let Some(axis_id) = intersection.ref_list_at(slot::IfcVirtualGridIntersection::INTERSECTING_AXES).and_then(|axes| axes.first().copied()) else {
         return Ok(OwningFrame::Identity);
     };
     if let Some(m) = decoder.get_placement_transform_cached(axis_id) {
@@ -72,11 +71,7 @@ pub(super) fn owning_grid_frame(
     let parent = match decoder.grid_of_axis(axis_id) {
         Some(grid_id) => {
             let grid = decoder.decode_by_id(grid_id)?;
-            let slot = decoder.attribute_index("IfcGrid", "ObjectPlacement");
-            match slot.and_then(|i| grid.get(i)).filter(|attr| !attr.is_null()) {
-                Some(attr) => decoder.resolve_ref(attr)?,
-                None => None,
-            }
+            decoder.resolve_optional(&grid, slot::IfcGrid::OBJECT_PLACEMENT.index())?
         }
         None => None,
     };

@@ -101,7 +101,14 @@ fn a_product_on_an_ifc4x2_linear_placement_lands_at_its_authored_position() {
     // The 2 m square profile is centred, so its minimum corner is (9, 19, 3).
     let placed = product_min(&model("IFC4X2", "IFCLINEARPLACEMENT($,$,$,$,#4)"));
     assert_eq!(placed, [9., 19., 3.], "placed by CartesianPosition");
-    let at_origin = product_min(&model("IFC4X2", "IFCLINEARPLACEMENT($,$,$,$,$)"));
-    assert_eq!(at_origin, [-1., -1., 0.], "anti-vacuity: with no CartesianPosition the product stays at the origin");
+    // #7779 D3/D30: the canonical chain refuses an unreadable local frame.
+    // Keep the invalid control, but do not certify fabricated origin geometry.
+    let content = model("IFC4X2", "IFCLINEARPLACEMENT($,$,$,$,$)");
+    let mut decoder = EntityDecoder::new(&content);
+    let product = decoder.decode_by_id(13).expect("product #13");
+    let error = GeometryRouter::new().process_element(&product, &mut decoder)
+        .expect_err("an empty LinearPlacement has no resolvable local frame");
+    assert!(error.to_string().contains("CartesianPosition or RelativePlacement"), "{error}");
+    assert_eq!(decoder.refused_records(), 1, "the canonical missing frame is counted once");
     assert_eq!(product_min(&model("IFC4X1", "IFCLINEARPLACEMENT($,$,$,#4)")), [9., 19., 3.]);
 }

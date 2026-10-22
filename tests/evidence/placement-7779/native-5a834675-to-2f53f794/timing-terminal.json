@@ -1,0 +1,275 @@
+{
+  "complete": true,
+  "collectionComplete": true,
+  "startedAt": 1792596315.070762,
+  "comparisons": {
+    "placement-v-main": {
+      "rows": 30,
+      "innerRows": 150,
+      "report": "unchanged stock reporter uses selected best-of-five phase rows; raw block medians retained separately"
+    }
+  },
+  "commands": [
+    {
+      "argv": [
+        "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/placement/perf-probe",
+        "<fixture-checkout>/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "<fixture-checkout>/tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "<fixture-checkout>/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+        "--iters",
+        "5",
+        "--json",
+        "--fingerprint"
+      ],
+      "cwd": "<launcher-checkout>",
+      "startedAt": 1792596316.00983,
+      "timeoutSeconds": 600,
+      "complete": true,
+      "exitCode": 0,
+      "finishedAt": 1792596355.31924,
+      ".stdout": {
+        "sha256": "44aeda8ceacf9f1f183662e3709f6e7febb72ea8f5541dccef5280f88a11244c",
+        "bytes": 2475
+      },
+      ".stderr": {
+        "sha256": "e8c6143e99d254a20c54c147638c87a2a1163c9090ec50d15737bcaf0768fdc2",
+        "bytes": 2761
+      }
+    },
+    {
+      "argv": [
+        "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/main/perf-probe",
+        "<fixture-checkout>/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "<fixture-checkout>/tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "<fixture-checkout>/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+        "--iters",
+        "5",
+        "--json",
+        "--fingerprint"
+      ],
+      "cwd": "<launcher-checkout>",
+      "startedAt": 1792596355.321984,
+      "timeoutSeconds": 600,
+      "complete": true,
+      "exitCode": 0,
+      "finishedAt": 1792596394.8884206,
+      ".stdout": {
+        "sha256": "945a5358f30a2b1401d61268c4d691318033d598f3468f92f89531f0520c8ce7",
+        "bytes": 2461
+      },
+      ".stderr": {
+        "sha256": "0cadeb671debdcca130103ec77b8bd4562ff663f2801e6e4b968b740caab0a45",
+        "bytes": 2748
+      }
+    },
+    {
+      "argv": [
+        "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/main/perf-probe",
+        "<fixture-checkout>/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "<fixture-checkout>/tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "<fixture-checkout>/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+        "--iters",
+        "5",
+        "--json",
+        "--fingerprint"
+      ],
+      "cwd": "<launcher-checkout>",
+      "startedAt": 1792596394.8908339,
+      "timeoutSeconds": 600,
+      "complete": true,
+      "exitCode": 0,
+      "finishedAt": 1792596433.9394016,
+      ".stdout": {
+        "sha256": "185c57ae2b202d734dd5efac576f2fa773a1f32bf1b99ca25aa951f6575af9f7",
+        "bytes": 2473
+      },
+      ".stderr": {
+        "sha256": "4c7ef42f5a9b2a4befd7d7d6ebf45f6acf373a068a58cc91d59a1a399ba79ba0",
+        "bytes": 2760
+      }
+    },
+    {
+      "argv": [
+        "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/placement/perf-probe",
+        "<fixture-checkout>/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "<fixture-checkout>/tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "<fixture-checkout>/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+        "--iters",
+        "5",
+        "--json",
+        "--fingerprint"
+      ],
+      "cwd": "<launcher-checkout>",
+      "startedAt": 1792596433.9410007,
+      "timeoutSeconds": 600,
+      "complete": true,
+      "exitCode": 0,
+      "finishedAt": 1792596473.3121333,
+      ".stdout": {
+        "sha256": "5273844f23cae2d0eb0d3869d1052c19b75f59705a8c22ffa15bb0a97df797a5",
+        "bytes": 2472
+      },
+      ".stderr": {
+        "sha256": "66497b2e0232834cb3b120f8a88100e11441794a4d97a1e0e08acbaa72361992",
+        "bytes": 2759
+      }
+    },
+    {
+      "argv": [
+        "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/main/perf-probe",
+        "<fixture-checkout>/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "<fixture-checkout>/tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "<fixture-checkout>/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+        "--iters",
+        "5",
+        "--json",
+        "--fingerprint"
+      ],
+      "cwd": "<launcher-checkout>",
+      "startedAt": 1792596473.314107,
+      "timeoutSeconds": 600,
+      "complete": true,
+      "exitCode": 0,
+      "finishedAt": 1792596512.5121927,
+      ".stdout": {
+        "sha256": "af1b8cde6f7d821ee5ef999d3408f8cea1c9240ef6d4460474ef636e3495ddfa",
+        "bytes": 2459
+      },
+      ".stderr": {
+        "sha256": "94fb2d9f1585caf8ab7eb1f3cb99fa03edcdddd2fa1dac3f46d6debeaa602571",
+        "bytes": 2746
+      }
+    },
+    {
+      "argv": [
+        "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/placement/perf-probe",
+        "<fixture-checkout>/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "<fixture-checkout>/tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "<fixture-checkout>/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+        "--iters",
+        "5",
+        "--json",
+        "--fingerprint"
+      ],
+      "cwd": "<launcher-checkout>",
+      "startedAt": 1792596512.5147564,
+      "timeoutSeconds": 600,
+      "complete": true,
+      "exitCode": 0,
+      "finishedAt": 1792596551.3127716,
+      ".stdout": {
+        "sha256": "3321e3bd34a468e35d1ad0e320ab5a7c754ef49b20abcea77bb49c61f41d8e77",
+        "bytes": 2481
+      },
+      ".stderr": {
+        "sha256": "f425907883be4c464513ce906f1132b88f089e1732ef71084371c8f8742708bb",
+        "bytes": 2768
+      }
+    },
+    {
+      "argv": [
+        "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/placement/perf-probe",
+        "<fixture-checkout>/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "<fixture-checkout>/tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "<fixture-checkout>/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+        "--iters",
+        "5",
+        "--json",
+        "--fingerprint"
+      ],
+      "cwd": "<launcher-checkout>",
+      "startedAt": 1792596551.3140607,
+      "timeoutSeconds": 600,
+      "complete": true,
+      "exitCode": 0,
+      "finishedAt": 1792596590.6551967,
+      ".stdout": {
+        "sha256": "65ab96e5ced83b9d7f5180eb6d6dae4b109b339a546541a1c822a11779288dff",
+        "bytes": 2450
+      },
+      ".stderr": {
+        "sha256": "5b334f14f462eaaa3a7e42005b50cc54d972ac3758a33fa925e22577ea12df0d",
+        "bytes": 2736
+      }
+    },
+    {
+      "argv": [
+        "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/main/perf-probe",
+        "<fixture-checkout>/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "<fixture-checkout>/tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "<fixture-checkout>/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+        "--iters",
+        "5",
+        "--json",
+        "--fingerprint"
+      ],
+      "cwd": "<launcher-checkout>",
+      "startedAt": 1792596590.6577988,
+      "timeoutSeconds": 600,
+      "complete": true,
+      "exitCode": 0,
+      "finishedAt": 1792596629.9078388,
+      ".stdout": {
+        "sha256": "f7ae0c5ed16d92d2732e9e88d69ac0c2ab83ce2729c8cd9faf6135fa8f4bea90",
+        "bytes": 2470
+      },
+      ".stderr": {
+        "sha256": "7f48b18a0ba4252431beee115b4b39e6b6ab99cabd42699ac0fbde5c248810e2",
+        "bytes": 2757
+      }
+    },
+    {
+      "argv": [
+        "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/main/perf-probe",
+        "<fixture-checkout>/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "<fixture-checkout>/tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "<fixture-checkout>/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+        "--iters",
+        "5",
+        "--json",
+        "--fingerprint"
+      ],
+      "cwd": "<launcher-checkout>",
+      "startedAt": 1792596629.909036,
+      "timeoutSeconds": 600,
+      "complete": true,
+      "exitCode": 0,
+      "finishedAt": 1792596668.7636368,
+      ".stdout": {
+        "sha256": "e78e4cc5f876ef7d86028367b84fd870a0d3c980542241abcdd904d5dae8fe75",
+        "bytes": 2472
+      },
+      ".stderr": {
+        "sha256": "883abde5a9cb70c305019b9bc30ab039a9c5046e4c9df6d5272a5761ca59ee27",
+        "bytes": 2759
+      }
+    },
+    {
+      "argv": [
+        "<storage-tasks>/placement-7877-current-native-v3-5be21541/snapshots/placement/perf-probe",
+        "<fixture-checkout>/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "<fixture-checkout>/tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "<fixture-checkout>/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+        "--iters",
+        "5",
+        "--json",
+        "--fingerprint"
+      ],
+      "cwd": "<launcher-checkout>",
+      "startedAt": 1792596668.7664971,
+      "timeoutSeconds": 600,
+      "complete": true,
+      "exitCode": 0,
+      "finishedAt": 1792596708.3330927,
+      ".stdout": {
+        "sha256": "09b578493d0d79037b7a45181095f7de785b03b16050993ebffe783613bc5080",
+        "bytes": 2490
+      },
+      ".stderr": {
+        "sha256": "405d23074e7ec85694e677ab0cdd79dd534d999f4f34bbd89f24f824c2924ec7",
+        "bytes": 2777
+      }
+    }
+  ],
+  "finishedAt": 1792596709.3064117
+}

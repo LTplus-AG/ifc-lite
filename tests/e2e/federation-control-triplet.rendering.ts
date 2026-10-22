@@ -134,14 +134,18 @@ async function showOnlyModelAndFrame(page: Page, modelId: string): Promise<void>
  * SwiftShader may discard; they are not a color-raster witness.
  */
 export async function rendererColorFrame(page: Page): Promise<Buffer> {
-  // #7655: a first orthographic frame can defer while its visibility pipeline
-  // compiles. Require a submitted readback, within the existing test deadline.
-  const capture: { dataUrl: string | null } = { dataUrl: null };
-  await expect.poll(async () => {
-    capture.dataUrl = await page.evaluate(async () => globalThis.__ifc_lite_capture_color_frame__?.() ?? null);
-    return capture.dataUrl !== null;
-  }, { message: 'renderer color capture is available after the viewport submits a frame' }).toBe(true);
-  const encoded = capture.dataUrl!.match(/^data:image\/png;base64,(.+)$/);
+  // #7655: retry completed null captures while lazy visibility shaders compile.
+  // Await each in-flight GPU readback under the enclosing test's deadline:
+  // expect.poll's 5s callback deadline interrupted healthy Revit captures.
+  const retryDeadline = Date.now() + 5_000;
+  const capture = () => page.evaluate(async () => globalThis.__ifc_lite_capture_color_frame__?.() ?? null);
+  let dataUrl = await capture();
+  while (dataUrl === null && Date.now() < retryDeadline) {
+    await page.waitForTimeout(100);
+    dataUrl = await capture();
+  }
+  expect(dataUrl, 'renderer color capture is available after the viewport submits a frame').not.toBeNull();
+  const encoded = dataUrl!.match(/^data:image\/png;base64,(.+)$/);
   expect(encoded, 'renderer color capture is a PNG data URL').not.toBeNull();
   return Buffer.from(encoded![1]!, 'base64');
 }

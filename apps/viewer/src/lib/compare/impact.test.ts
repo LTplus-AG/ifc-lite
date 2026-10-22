@@ -24,7 +24,6 @@ import { createListDataProvider } from '@/lib/lists/adapter';
 import type { ViewerState } from '@/store';
 import { stampAnalysisReport } from '@/hooks/useAnalysisStaleness';
 import { compareImpactOf } from './compare-analysis-state';
-import { isTypeObjectClass } from './typeObjectTag';
 import { computeCompareImpact, type ImpactInput, type ImpactRow } from './impact';
 import { PINS, revisionPair, runClash, runIds, type RevisionPair } from './revision-pair.test-support';
 
@@ -62,6 +61,28 @@ async function input(pair: RevisionPair, extra: Partial<ImpactInput> = {}): Prom
 const rowsOf = <K extends ImpactRow['kind']>(rows: ImpactRow[], kind: K) =>
   rows.filter((row): row is Extract<ImpactRow, { kind: K }> => row.kind === kind);
 
+// #8040: independently enumerated type definitions from the committed SketchUp
+// building-architecture.ifc, preserved in revision B. These are fixture facts,
+// not a population selected by the classifier used to build the comparison.
+const DEMO_TYPES = [
+  [50, '0hnSKr4LD8eRixcnqcc6X1', 'IfcSlabType'],
+  [87, '1hq0sM3Q5Cq9DOc93a74pc', 'IfcSpaceType'],
+  [174, '38qaFzdvb6KwnqDJqzAlhG', 'IfcFurnitureType'],
+  [201, '30wkH7SyH7gvhogulgnDi9', 'IfcSpaceType'],
+  [260, '2YJwrhcCv9v8UXU8cWK40m', 'IfcWallType'],
+  [289, '1t790TYSH528FFF32MjoC5', 'IfcWallType'],
+  [313, '3zoiwePjTDQAyswDZcvJRA', 'IfcWallType'],
+  [337, '10FwQBcdzD9ve3W6PvBTti', 'IfcChimneyType'],
+  [351, '2S9_r4C7nDjgFt_4z9uegR', 'IfcWallType'],
+  [380, '0GE$iSXKL8jAEeHi$mszPq', 'IfcRoofType'],
+  [393, '3eOsEo1q1CHfDNvWsh3ksD', 'IfcSlabType'],
+  [423, '3n9C2OuJjE89DiYlOaoccO', 'IfcSlabType'],
+  [446, '02tV5cCF9FyA9D1O5nS04E', 'IfcSpatialZoneType'],
+  [462, '3w6ICDipzDzBpAKGLlR62f', 'IfcBuildingElementProxyType'],
+  [480, '3mjKLn_DjE4Beriey9bTvr', 'IfcBuildingElementProxyType'],
+  [499, '2IpkHFcdnD3xuZl6H52fWn', 'IfcBuildingElementProxyType'],
+] as const;
+
 describe('comparison impact on the committed revision pair (#6921)', () => {
   it('joins the injected duct clash, the deleted furniture finding, the wall quantities and a topic — and nothing unchanged', async (t) => {
     const pair = await revisionPair(t);
@@ -73,10 +94,16 @@ describe('comparison impact on the committed revision pair (#6921)', () => {
     // Four native changes: one added, one deleted, two modified — each counted once.
     // #8040 also includes the fixture's 16 unchanged type objects.
     assert.deepEqual(pair.compare.diff.counts, { added: 1, deleted: 1, modified: 2, unchanged: 35 });
-    const typeEntries = pair.compare.diff.entries.filter(entry =>
-      isTypeObjectClass((entry.base ?? entry.head)!.ifcType));
-    assert.equal(typeEntries.length, 16);
-    assert.ok(typeEntries.every(entry => entry.state === 'unchanged'));
+    for (const [localId, globalId, ifcType] of DEMO_TYPES) {
+      const entry = pair.compare.diff.byKey.get(globalId);
+      assert.ok(entry, `fixture type #${localId} ${ifcType} must reach Compare`);
+      assert.equal(entry.state, 'unchanged', globalId);
+      for (const ref of [entry.base, entry.head]) {
+        assert.ok(ref, `${globalId} must appear in both revisions`);
+        assert.equal(ref.ref?.localId, localId);
+        assert.equal(ref.ifcType, ifcType);
+      }
+    }
     assert.equal(impact.changedElements, 4);
     assert.equal(impact.unresolvedChanges, 0);
     assert.deepEqual(impact.sources, { clash: 'available', validation: 'available', list: 'available', bcf: 'available' });

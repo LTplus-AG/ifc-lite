@@ -112,7 +112,7 @@ impl BooleanClippingProcessor {
     /// record when the reference does not resolve. A `?` here returned `Err`
     /// and deleted the HOST with its unreadable cutter (#7688, the PROC-S17
     /// shape): the caller keeps the mesh it has, like any dropped operand.
-    pub(super) fn second_operand_or_record(
+    pub(crate) fn second_operand_or_record(
         &self,
         op: BoolOp,
         node: &DecodedEntity,
@@ -130,7 +130,7 @@ impl BooleanClippingProcessor {
     /// is not an `IfcPlane` or a plane without a usable Position; through `?`
     /// that refusal deleted the host. Now the host stays uncut, exactly as for
     /// every other unreadable cutter (see `leaf_operand`).
-    pub(super) fn half_space_plane_or_record(
+    pub(crate) fn half_space_plane_or_record(
         &self,
         half_space: &DecodedEntity,
         decoder: &mut EntityDecoder,

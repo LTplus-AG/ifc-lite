@@ -2,31 +2,13 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use super::bounded_prism_plan::BoundedPrismPlan;
 use super::BooleanClippingProcessor;
-use crate::{
-    ClippingProcessor, GroupCut, GroupReject, Mesh, Point3, Result, TessellationQuality, Vector3,
-};
-use ifc_lite_core::{DecodedEntity, EntityDecoder};
+use crate::{ClippingProcessor, GroupCut, GroupReject, Mesh, Point3, Vector3};
 
 impl BooleanClippingProcessor {
-    pub(super) fn build_polygonal_bounded_half_space_mesh(
-        &self,
-        half_space: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        host_mesh: &Mesh,
-        plane: (Point3<f64>, Vector3<f64>, bool),
-        quality: TessellationQuality,
-    ) -> Result<Option<Mesh>> {
-        let Some(plan) = BoundedPrismPlan::lower(self, half_space, decoder, quality)? else {
-            return Ok(None);
-        };
-        plan.build_mesh(host_mesh, plane).map(Some)
-    }
-
     /// Subtract `cutter` from `base`; an accept-gate rejection (#3919) is `None`
     /// like an empty or degenerate result, and any other rejection hands `base`
-    /// back un-cut. Used by `cut_polygonal_chain`'s per-cutter trials and
+    /// back un-cut. Used by the batched chain's per-cutter trials and
     /// final subtract so a rejected gate always defers to the sequential path.
     /// Leaves any failures in `clipper` for the caller to drain.
     pub(super) fn subtract_checked(
@@ -50,7 +32,7 @@ impl BooleanClippingProcessor {
 /// own top) only hands the kernel a coplanar cut that tears it (census #63466,
 /// #7762) (within a relative `1e-6` of the host's extent). `agreement` puts the
 /// removed material on the negative normal side, as in the prism builder.
-pub(super) fn host_stays_on_kept_side(
+pub(crate) fn host_stays_on_kept_side(
     mesh: &Mesh,
     plane_point: Point3<f64>,
     plane_normal: Vector3<f64>,

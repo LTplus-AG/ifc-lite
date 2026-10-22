@@ -68,7 +68,7 @@ impl BooleanClippingProcessor {
     /// `IfcCsgSolid` operand — is about to drop and would take its records
     /// with it. Takes the drained `Vec` rather than the producer, so one
     /// method covers every transient kind.
-    pub(super) fn absorb_failures(&self, failures: Vec<BoolFailure>) {
+    pub(crate) fn absorb_failures(&self, failures: Vec<BoolFailure>) {
         self.failures.borrow_mut().extend(failures);
     }
 
@@ -80,7 +80,7 @@ impl BooleanClippingProcessor {
     /// Discard everything recorded since `mark`.
     ///
     /// Only for a SPECULATIVE attempt whose work the caller is about to redo.
-    /// `cut_polygonal_chain` is a batched attempt at a chain the
+    /// The batched polygonal chain is an attempt at a chain the
     /// sequential walk also resolves; when it gives up, the spine walk
     /// re-meshes the same base operand and the same cutters and records the
     /// same losses again. Its trial subtracts already dropped their own probe

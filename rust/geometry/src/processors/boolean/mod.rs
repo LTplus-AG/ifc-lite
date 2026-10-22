@@ -27,7 +27,6 @@ mod halfspace_cap;
 mod polygonal_boundary;
 mod polygonal_prism;
 mod single_cutter_gate;
-mod spine_step;
 mod polygonal_union;
 mod polygonal_removal;
 #[cfg(test)]
@@ -54,7 +53,11 @@ pub(crate) const MAX_BOOLEAN_DEPTH: u32 = 10;
 pub(crate) const MAX_OPERAND_PATH_NODES: usize = 64;
 
 pub(crate) use operand::{boolean_operator, OperandPath, MAX_OPERAND_VISITS};
-pub(crate) use spine_step::StepAdmission;
+pub(crate) use bounded_prism_plan::BoundedPrismPlan;
+pub(crate) use half_space_plan::HalfSpacePlan;
+pub(crate) use polygonal_group_execution::GroupExecution;
+pub(crate) use polygonal_prism::host_stays_on_kept_side;
+pub(crate) use single_cutter_gate::SingleCutterSubtract;
 
 /// BooleanResult processor
 /// Handles IfcBooleanResult and IfcBooleanClippingResult - CSG operations

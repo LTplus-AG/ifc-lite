@@ -13,7 +13,7 @@ import { isTypeObjectClass } from './typeObjectTag.js';
 
 export type ExtractedPropertySets = ReturnType<typeof extractPropertiesOnDemand>;
 
-/** The same own-data projection for fingerprints, authored keys and details.
+/** The same own-data projection for fingerprints and change details.
  * Types attach definitions directly through HasPropertySets, unlike products
  * whose definitions arrive through relationships (#8040). The type extractors
  * also include relationship-attached sets without double-counting them. */

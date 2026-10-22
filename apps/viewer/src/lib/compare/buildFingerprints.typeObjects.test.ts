@@ -119,9 +119,9 @@ describe('geometry-less type objects reach viewer Compare (#8040)', () => {
         const head = await buildEntityFingerprints({
           modelId: 'B', store: b, meshes: [], idOffset: 1_000_000, keyProperty: 'Pset_TestType.Code',
         });
-        assert.equal(base[0]?.key, 'prop:TYPE-001');
-        assert.equal(head[0]?.key, 'prop:TYPE-001');
-        const entry = diffModels(base, head, { scope: 'both' }).byKey.get('prop:TYPE-001');
+        assert.equal(base[0]?.key, TYPE_GUID, 'direct type psets do not change the shared CLI key scheme');
+        assert.equal(head[0]?.key, TYPE_GUID);
+        const entry = diffModels(base, head, { scope: 'both' }).byKey.get(TYPE_GUID);
         assert.ok(entry);
         assert.equal(entry.state, 'modified', 'the key pre-pass must preserve the type property sets');
         assert.deepEqual(entry.changedComponents, ['pset:Pset_TestType']);

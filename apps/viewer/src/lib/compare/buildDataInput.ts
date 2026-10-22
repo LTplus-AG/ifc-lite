@@ -47,7 +47,8 @@ export function buildDataInput(
   // Type objects are compared even without geometry (#8040). Tag is design
   // content on a type; on an occurrence it is the exporter's element id and
   // must stay out of content matching (#2021).
-  const tag = isTypeObjectClass(ifcType)
+  const isTypeObject = isTypeObjectClass(ifcType);
+  const tag = isTypeObject
     ? typeObjectTag(store, localId, ifcType)
     : undefined;
 
@@ -55,7 +56,13 @@ export function buildDataInput(
   // is owned by the geometry hash, so strip it from the data fingerprint — a
   // pure move must read as a geometry change only, never "data · geometry"
   // (see geometricData.ts).
-  const propertySets = (preExtractedPropertySets ?? compareProperties(store, localId))
+  // Authored-key extraction deliberately shares the CLI's relationship-only
+  // semantics. Its cache omits direct HasPropertySets, so types must read their
+  // own definitions here even when a key-property pre-pass populated the cache.
+  const ownProperties = isTypeObject
+    ? compareProperties(store, localId)
+    : preExtractedPropertySets ?? compareProperties(store, localId);
+  const propertySets = ownProperties
     .filter((set) => !isGeometricDataName(set.name))
     .map((set) => ({
       name: set.name,

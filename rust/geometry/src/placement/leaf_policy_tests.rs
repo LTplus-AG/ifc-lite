@@ -143,11 +143,11 @@ fn a_clean_read_counts_nothing_and_two_components_promote_to_z_zero() {
 }
 
 #[test]
-fn a_missing_location_is_an_error_but_is_not_a_malformed_record() {
+fn a_missing_location_is_refused_and_counted() {
     let content = "#11=IFCDIRECTION((1.,0.,0.));\n#2=IFCAXIS2PLACEMENT3D($,$,#11);\n";
     let mut decoder = EntityDecoder::new(content);
     assert!(matches!(Axis2Placement::read_id(2, &mut decoder), Err(PlacementError::Missing { at: 2, .. })));
-    assert_eq!(decoder.refused_records(), 0, "D30's counted `$` refusal is X2's");
+    assert_eq!(decoder.refused_records(), 1, "D30: the `$` Location is a counted refusal");
 }
 
 /// D25: readable-but-degenerate axes stay repaired, bit for bit, through the

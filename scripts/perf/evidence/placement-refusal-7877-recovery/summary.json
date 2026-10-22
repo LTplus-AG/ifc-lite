@@ -1,0 +1,755 @@
+{
+  "schemaVersion": 1,
+  "reviewStatus": "ROOT_REVIEWED_NATIVE_COST_ACCEPTED",
+  "purpose": "Standalone #7877 strict malformed-placement refusal qualification.",
+  "comparedArms": {
+    "main": {
+      "ref": "141285f8287bbc88a420d0ce1168cb7f1a6aa72c",
+      "tree": "5e3ccf230e05741973d34a02bb9ca4951111ba44",
+      "binarySha256": {
+        "perf-probe": "c7144fe0f2c525035019804639e48c00b070dbc01d119c8ae9d024ca7aa43198",
+        "payload-diagnostics": "79b360fd6b04490f3e9d9d1e324f48316646d7bec43bb8d6d2d059ca161c4946"
+      },
+      "compilerProof": {
+        "criticalCrates": [
+          "ifc_lite_core",
+          "ifc_lite_geometry",
+          "ifc_lite_processing",
+          "perf_probe",
+          "recovery_payload_diagnostics"
+        ],
+        "sourceAttestations": 2,
+        "checksumFreshness": true
+      }
+    },
+    "placement": {
+      "ref": "03e2ad0369b3c69cedcaac6496b9a14d4b951ad1",
+      "tree": "517ad037355f8eace3d14c1271f42bbdaa3d7d70",
+      "binarySha256": {
+        "perf-probe": "c5227418648f700becd0f3e7320ddc9bb496596b503e12ed84c30c840ae2fdb5",
+        "payload-diagnostics": "545c10f1b828baa44ccbff91208781b6a1500246311bdc76b16f6790d5c4146d"
+      },
+      "compilerProof": {
+        "criticalCrates": [
+          "ifc_lite_core",
+          "ifc_lite_geometry",
+          "ifc_lite_processing",
+          "perf_probe",
+          "recovery_payload_diagnostics"
+        ],
+        "sourceAttestations": 2,
+        "checksumFreshness": true
+      }
+    }
+  },
+  "orchestration": {
+    "ref": "da7bd10975272c8edbfb39d61c0171fe26b65bdb",
+    "sourceUnchanged": true,
+    "note": "Orchestration commit is not either compiled comparison arm. Candidate is standalone03; not combined631, R cleanup or memo."
+  },
+  "environment": {
+    "platform": "Linux x86_64",
+    "tools": {
+      "cargo": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)",
+      "rustc": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+    },
+    "node": "v24.22.0",
+    "profile": "profiling",
+    "features": [],
+    "RayonThreads": 4,
+    "buildJobs": 4,
+    "instancing": false,
+    "extraContentDeduplication": false,
+    "localFrameOverride": null,
+    "unreviewedRustFlags": false,
+    "injectedHarnessSha256": {
+      "perf_probe-observed.rs": "dd50137fdc1cdfd980743afe7692e5c70bdba782f9b18d78d715624c6b7f053b",
+      "measurement-observed.rs": "a3dcc5b964c5e8d289f74ef6c5f10cbed3f904fa9184c19583756f222382783e",
+      "payload-diagnostics-v2.rs": "95143c5e25f362bc46f566929fb0b9eb61f746d017165b024e334528ae7ceba6"
+    },
+    "evidence": "Actual compiler commands/source attestations bound to both arms; no build inside benchmark."
+  },
+  "sampling": {
+    "outerRounds": 5,
+    "innerIterations": 5,
+    "pairedTimingProcesses": 10,
+    "timedModelLoads": 150,
+    "untimedFullPayloadCalls": 6,
+    "seed": "1538397505",
+    "roundOrder": [
+      [
+        "branch",
+        "base"
+      ],
+      [
+        "base",
+        "branch"
+      ],
+      [
+        "base",
+        "branch"
+      ],
+      [
+        "branch",
+        "base"
+      ],
+      [
+        "base",
+        "branch"
+      ]
+    ],
+    "phaseFields": [
+      "parseMs",
+      "entityScanMs",
+      "lookupMs",
+      "preprocessMs",
+      "geometryMs",
+      "totalMs"
+    ],
+    "selectedRow": "Last minimum-total inner iteration; ties follow unchanged stock <= choice.",
+    "rawBlockStatistic": "Median of each five-inner block; median of the five outer-block medians. Inner measurements are correlated."
+  },
+  "fixturePins": [
+    {
+      "path": "ara3d/AC20-FZK-Haus.ifc",
+      "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "size": 2526511
+    },
+    {
+      "path": "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "sha256": "ffdfa9a91ac6a6c301d7da0d7861dfbc3958ceb55098c143a560468702642131",
+      "size": 12030684
+    },
+    {
+      "path": "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+      "size": 177465622
+    }
+  ],
+  "fullPayloadIdentity": {
+    "ara3d/AC20-FZK-Haus.ifc": {
+      "orderedMeshJsonMatch": true,
+      "rawDiagnosticsBytesMatch": true,
+      "geometry_diagnostics_present": true,
+      "geometry_diagnostics_sha256": "d3ba8ad41eb3804761b58408f45775a46a62d7c21a4f0960d001c4ee121edf07",
+      "identity_scope": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+      "input_sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+      "instance_count": 0,
+      "mesh_count": 285,
+      "metadata_frame_instances_sha256": "aa4bac6e743c3d35c45a3c8ca396e7cbdc9602e0af087aad4404a6a2d3a43bee",
+      "ordered_mesh_json_sha256": "4498bb7b8283165d60e11934db818d5540220049234aaa1aa72aa53cee0d7bd3",
+      "payload_float_bits_sha256": "2ff7a824a5da27c33e4cbea75a4f8e5e7f968a251e6db2057cbb00ef3cdb566b"
+    },
+    "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc": {
+      "orderedMeshJsonMatch": true,
+      "rawDiagnosticsBytesMatch": true,
+      "geometry_diagnostics_present": true,
+      "geometry_diagnostics_sha256": "d1a2e40a36ee734a3898d7b467b21a0c00e7d463def70d9a5623b9fcb6802bd2",
+      "identity_scope": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+      "input_sha256": "ffdfa9a91ac6a6c301d7da0d7861dfbc3958ceb55098c143a560468702642131",
+      "instance_count": 0,
+      "mesh_count": 1402,
+      "metadata_frame_instances_sha256": "e1924450a8ec06affc2fbb4b42cde6c0c39b90583a86fd765a8cbb0ee83ff2be",
+      "ordered_mesh_json_sha256": "4ac5053401c5c39838d7c98e9fb888cefeba87ea1feea8f70666233b3957abf9",
+      "payload_float_bits_sha256": "5e1b19fe546d01eb54f7f4ede0e33ab73ae3e876f8563740e8ca1256140b7783"
+    },
+    "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc": {
+      "orderedMeshJsonMatch": true,
+      "rawDiagnosticsBytesMatch": true,
+      "geometry_diagnostics_present": true,
+      "geometry_diagnostics_sha256": "31da8fec0b5a96e898ee37692788dd3f89bd4f6ce593cb2891ab369c49f00c83",
+      "identity_scope": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+      "input_sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+      "instance_count": 0,
+      "mesh_count": 109515,
+      "metadata_frame_instances_sha256": "13a9ac3198137581a86f49a7758704cb9301f8253f29b5435562b9a5a6648d18",
+      "ordered_mesh_json_sha256": "407d01b010c36a20956a9c55e269946aa90802209aa9967565e67305836da9d2",
+      "payload_float_bits_sha256": "dac5adcdb934e1292b4e11d5a38664d6e3d5c40031bb87b1a08c690395e28600"
+    }
+  },
+  "identityScope": "Complete ordered MeshData JSON, exact float bits including skipped instance/bounds/transforms, separate metadata/frame/instances, full raw GeometryDiagnostics bytes; timings excluded. Instancing mode is off.",
+  "identityBeforeAfterStable": true,
+  "allStockCountsAndFNVStable": true,
+  "stockSelectedRowVerdict": {
+    "fingerprintDrift": false,
+    "tooNoisy": false,
+    "realChange": false,
+    "inconclusive": true,
+    "zeroBaselineIncrease": false
+  },
+  "rawOuterBlockStatistics": {
+    "AC20-FZK-Haus.ifc": {
+      "phases": {
+        "fullCallWallMs": {
+          "outerBlockMedians": {
+            "base": [
+              43.313008,
+              41.627731000000004,
+              43.234329,
+              42.803907,
+              42.18557
+            ],
+            "branch": [
+              40.188555,
+              42.639807000000005,
+              42.561296999999996,
+              42.388683,
+              42.149401000000005
+            ]
+          },
+          "median": {
+            "base": 42.803907,
+            "branch": 42.388683
+          },
+          "deltaPercent": -0.9700609806483351
+        },
+        "parseMs": {
+          "outerBlockMedians": {
+            "base": [
+              12,
+              12,
+              13,
+              12,
+              13
+            ],
+            "branch": [
+              12,
+              13,
+              13,
+              12,
+              13
+            ]
+          },
+          "median": {
+            "base": 12,
+            "branch": 13
+          },
+          "deltaPercent": 8.333333333333325
+        },
+        "entityScanMs": {
+          "outerBlockMedians": {
+            "base": [
+              6,
+              6,
+              6,
+              6,
+              6
+            ],
+            "branch": [
+              6,
+              6,
+              6,
+              6,
+              6
+            ]
+          },
+          "median": {
+            "base": 6,
+            "branch": 6
+          },
+          "deltaPercent": 0.0
+        },
+        "lookupMs": {
+          "outerBlockMedians": {
+            "base": [
+              2,
+              2,
+              2,
+              2,
+              2
+            ],
+            "branch": [
+              2,
+              2,
+              2,
+              2,
+              2
+            ]
+          },
+          "median": {
+            "base": 2,
+            "branch": 2
+          },
+          "deltaPercent": 0.0
+        },
+        "preprocessMs": {
+          "outerBlockMedians": {
+            "base": [
+              3,
+              3,
+              3,
+              3,
+              3
+            ],
+            "branch": [
+              3,
+              3,
+              3,
+              3,
+              3
+            ]
+          },
+          "median": {
+            "base": 3,
+            "branch": 3
+          },
+          "deltaPercent": 0.0
+        },
+        "geometryMs": {
+          "outerBlockMedians": {
+            "base": [
+              27,
+              26,
+              27,
+              27,
+              26
+            ],
+            "branch": [
+              25,
+              27,
+              27,
+              27,
+              26
+            ]
+          },
+          "median": {
+            "base": 27,
+            "branch": 27
+          },
+          "deltaPercent": 0.0
+        },
+        "totalMs": {
+          "outerBlockMedians": {
+            "base": [
+              40,
+              39,
+              41,
+              40,
+              39
+            ],
+            "branch": [
+              38,
+              40,
+              40,
+              40,
+              39
+            ]
+          },
+          "median": {
+            "base": 40,
+            "branch": 40
+          },
+          "deltaPercent": 0.0
+        }
+      },
+      "counts": {
+        "entities": 44249,
+        "meshes": 285,
+        "vertices": 35940,
+        "triangles": 20322,
+        "csgFailures": 0,
+        "degenerateDropped": 0,
+        "meshFingerprintsFnv1a64": "7377db33331a3523"
+      }
+    },
+    "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc": {
+      "phases": {
+        "fullCallWallMs": {
+          "outerBlockMedians": {
+            "base": [
+              4102.867458000001,
+              4059.481506,
+              4053.4764150000005,
+              4011.516547,
+              4019.652901
+            ],
+            "branch": [
+              3988.5973799999997,
+              4070.012545,
+              4016.6548730000004,
+              3984.1954720000003,
+              4148.670698
+            ]
+          },
+          "median": {
+            "base": 4053.4764150000005,
+            "branch": 4016.6548730000004
+          },
+          "deltaPercent": -0.9083941345690572
+        },
+        "parseMs": {
+          "outerBlockMedians": {
+            "base": [
+              34,
+              34,
+              34,
+              34,
+              34
+            ],
+            "branch": [
+              34,
+              34,
+              34,
+              34,
+              34
+            ]
+          },
+          "median": {
+            "base": 34,
+            "branch": 34
+          },
+          "deltaPercent": 0.0
+        },
+        "entityScanMs": {
+          "outerBlockMedians": {
+            "base": [
+              33,
+              33,
+              33,
+              33,
+              33
+            ],
+            "branch": [
+              33,
+              33,
+              33,
+              33,
+              33
+            ]
+          },
+          "median": {
+            "base": 33,
+            "branch": 33
+          },
+          "deltaPercent": 0.0
+        },
+        "lookupMs": {
+          "outerBlockMedians": {
+            "base": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "branch": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "median": {
+            "base": 0,
+            "branch": 0
+          },
+          "deltaPercent": null
+        },
+        "preprocessMs": {
+          "outerBlockMedians": {
+            "base": [
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            "branch": [
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          "median": {
+            "base": 1,
+            "branch": 1
+          },
+          "deltaPercent": 0.0
+        },
+        "geometryMs": {
+          "outerBlockMedians": {
+            "base": [
+              4049,
+              4006,
+              4000,
+              3958,
+              3966
+            ],
+            "branch": [
+              3935,
+              4015,
+              3962,
+              3926,
+              4095
+            ]
+          },
+          "median": {
+            "base": 4000,
+            "branch": 3962
+          },
+          "deltaPercent": -0.9499999999999953
+        },
+        "totalMs": {
+          "outerBlockMedians": {
+            "base": [
+              4084,
+              4040,
+              4034,
+              3992,
+              4000
+            ],
+            "branch": [
+              3970,
+              4050,
+              3997,
+              3960,
+              4130
+            ]
+          },
+          "median": {
+            "base": 4034,
+            "branch": 3997
+          },
+          "deltaPercent": -0.9172037679722411
+        }
+      },
+      "counts": {
+        "entities": 202661,
+        "meshes": 1402,
+        "vertices": 218966,
+        "triangles": 136257,
+        "csgFailures": 9,
+        "degenerateDropped": 7,
+        "meshFingerprintsFnv1a64": "e96e7e6149ccd77b"
+      }
+    },
+    "ISSUE_053_20181220Holter_Tower_10.ifc": {
+      "phases": {
+        "fullCallWallMs": {
+          "outerBlockMedians": {
+            "base": [
+              2996.402787,
+              3044.739767,
+              3008.596764,
+              3048.14203,
+              3000.088796
+            ],
+            "branch": [
+              3013.4633719999997,
+              3005.3773389999997,
+              3012.937978,
+              3006.968361,
+              3016.349022
+            ]
+          },
+          "median": {
+            "base": 3008.596764,
+            "branch": 3012.937978
+          },
+          "deltaPercent": 0.14429364718946402
+        },
+        "parseMs": {
+          "outerBlockMedians": {
+            "base": [
+              749,
+              763,
+              748,
+              763,
+              747
+            ],
+            "branch": [
+              755,
+              772,
+              773,
+              774,
+              775
+            ]
+          },
+          "median": {
+            "base": 749,
+            "branch": 773
+          },
+          "deltaPercent": 3.204272363150862
+        },
+        "entityScanMs": {
+          "outerBlockMedians": {
+            "base": [
+              587,
+              602,
+              587,
+              601,
+              586
+            ],
+            "branch": [
+              595,
+              610,
+              611,
+              612,
+              614
+            ]
+          },
+          "median": {
+            "base": 587,
+            "branch": 611
+          },
+          "deltaPercent": 4.088586030664398
+        },
+        "lookupMs": {
+          "outerBlockMedians": {
+            "base": [
+              157,
+              155,
+              156,
+              156,
+              155
+            ],
+            "branch": [
+              154,
+              156,
+              156,
+              156,
+              155
+            ]
+          },
+          "median": {
+            "base": 156,
+            "branch": 156
+          },
+          "deltaPercent": 0.0
+        },
+        "preprocessMs": {
+          "outerBlockMedians": {
+            "base": [
+              4,
+              4,
+              4,
+              4,
+              5
+            ],
+            "branch": [
+              5,
+              5,
+              5,
+              5,
+              5
+            ]
+          },
+          "median": {
+            "base": 4,
+            "branch": 5
+          },
+          "deltaPercent": 25.0
+        },
+        "geometryMs": {
+          "outerBlockMedians": {
+            "base": [
+              1865,
+              1876,
+              1878,
+              1887,
+              1866
+            ],
+            "branch": [
+              1860,
+              1855,
+              1855,
+              1852,
+              1859
+            ]
+          },
+          "median": {
+            "base": 1876,
+            "branch": 1855
+          },
+          "deltaPercent": -1.1194029850746245
+        },
+        "totalMs": {
+          "outerBlockMedians": {
+            "base": [
+              2614,
+              2649,
+              2627,
+              2650,
+              2614
+            ],
+            "branch": [
+              2631,
+              2625,
+              2629,
+              2622,
+              2625
+            ]
+          },
+          "median": {
+            "base": 2627,
+            "branch": 2625
+          },
+          "deltaPercent": -0.07613247049866878
+        }
+      },
+      "counts": {
+        "entities": 2807815,
+        "meshes": 109515,
+        "vertices": 4515185,
+        "triangles": 2895374,
+        "csgFailures": 0,
+        "degenerateDropped": 0,
+        "meshFingerprintsFnv1a64": "9af337ef8f713ce5"
+      }
+    }
+  },
+  "provenanceSha256": {
+    "benchmarkReceipt": "2d7dde8d3cdde04c301d3ed36ee7d22d962880929a419123c87bc689047398df",
+    "benchmarkOutput": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "standalonePreparationReceipt": "baf79f810bf2d0cc36c06d9511fed47d562010557555b871a8e6fa7c21fc74c7",
+    "standalonePreparationOutput": "0c0bf345842b52ba34ddca3d175b3bd13ef801ecd767d63ace5b61d391e1ca40",
+    "sourceBindings": "c307d6678b8d0e8227d7139c66f11be9b038071b3025c1acdab6d16bd84ed73f",
+    "currentAssemblyRecord": "3980ef124957f5beaeb03f030fe7b09e18571255b9634c730df101e31342ca11",
+    "currentPreparationRecord": "0ce1d32d4e608655e3fff93c6633d557ba088fcb1976bb8d5595b9e4ef24e82b",
+    "protocolFreeze": "5f3fd7bf3368e1f25b0df94c29bb0ccff89d08691ca09dd1c66bc4e354a1cd3c",
+    "protocol": "e781d9983ccb8f33804a4fe855c94d987162fa59d8f95f9c9e45b8c662ab1fc3",
+    "independentReconciliation": "b77d8c408d7c38cc00f16a8eefba358ec2f6429b8201db8a294cd52ff32ac697",
+    "armSourceBindings": {
+      "main": "ee21a2984f3a6eb1d9bf1bc91ab29a568438aaea09fd6e46e9e13a06291b9b2e",
+      "placement": "d586aac81e1938117a66e7bd61566f48715d5d13d284e459bcff35dd6c880256"
+    },
+    "compilerProofs": {
+      "main": "067b699b33b56ccc8adb2b33d67c52209342da03c127db3f09f320ddc0dcea14",
+      "placement": "f80a497a7c8fe6a4b8cfbfb261651b1c811f998d53096d424a9ebed1635b5f8f"
+    },
+    "retainedMainOriginal": {
+      "binding": "5b6d6f2e9a3d1e93a738a5bc5a7b376abebe868bdb409e6c7d9eb533cb6bec42",
+      "assemblyReceipt": "a7fe6b8c60606479291db01b54a616c66ddae6ea1ff7561dbdac72f2e6b8f461",
+      "assemblyLog": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "assemblyReport": "62f30b87f58485568c85e308d974e44ed6a0832cff37832555f1b63a050c91a3",
+      "receipt": "8a14be5934bb5bb34ad37cf8f3440772198c36bcf6bf2c8748f865845b711c3d",
+      "log": "fd580ee53af7c48db9adcd569fb4a3d67c483c94f825e50cd90f46ed0dc4f419",
+      "originalProtocol": "a464223f7508390649ccd6d0f4324424d081a37d5cef396ac9f975f3aa003e9f",
+      "originalFreeze": "1a7c47bcf0eb5723c7c87836d63a598374b91fca1a12794a380e7c7190509308"
+    }
+  },
+  "interpretation": {
+    "stockReporter": "Inconclusive; no detected realChange; no fingerprint drift.",
+    "nativeCost": "Small full-call changes in this finite cohort; adverse raw parse changes are retained alongside geometry offsets.",
+    "notClaimed": [
+      "WASM/browser/GPU performance",
+      "instancing-on coverage",
+      "statistical neutrality",
+      "benefit from combined631/R/memo evidence",
+      "gate waiver or merge readiness",
+      "WASM size budget waiver",
+      "measurement of any later documentation/evidence descendant"
+    ],
+    "maintainerTradeoff": "Native-cost acceptance is the root maintainer\u2019s judgment for consistent strict malformed-placement reporting, subject to normal independent landing gates. This judgment is not a statistical-neutrality result or speedup, and waives no WASM size budget or required gate."
+  },
+  "limitations": [
+    "Three valid catalog models do not replace malformed-placement regression ground truth.",
+    "Retained main141 compiled in the original independently authenticated build; standalone03 freshly built with identical frozen observation injections and compiler/profile/default modes.",
+    "Stock best-of-five report and all-sample block summaries answer different questions; both are retained without selecting a preferred result.",
+    "No additional measurements or rerun selection were performed during preparation.",
+    "All measurements/witnesses bind exact03e2ad0369. Any later documentation/evidence descendant must separately disclose runtime/build-input identity; it was not benchmarked here."
+  ]
+}

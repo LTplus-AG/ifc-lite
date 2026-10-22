@@ -1,0 +1,47 @@
+diff --git a/rust/geometry/src/program/openings/execute.rs b/rust/geometry/src/program/openings/execute.rs
+--- a/rust/geometry/src/program/openings/execute.rs
++++ b/rust/geometry/src/program/openings/execute.rs
+@@ -27,9 +27,6 @@
+ 
+ impl Drop for FailureCapture<'_> {
+     fn drop(&mut self) {
+-        if std::thread::panicking() {
+-            return;
+-        }
+         let failures = self.clipper.take_failures();
+         if !failures.is_empty() {
+             self.execution.push(Effect::Failures(self.id, failures));
+@@ -134,8 +131,7 @@
+                     Ok(mesh)
+                 }
+                 Err(stop) => {
+-                    self.effects.publish(router);
+-                    self.telemetry.commit();
++                    self.effects.publish_failures(router);
+                     Err(stop.into())
+                 }
+             },
+diff --git a/rust/geometry/src/router/voids/staged.rs b/rust/geometry/src/router/voids/staged.rs
+--- a/rust/geometry/src/router/voids/staged.rs
++++ b/rust/geometry/src/router/voids/staged.rs
+@@ -41,7 +41,7 @@
+             let provisional = Execution::new(self.tessellation_quality);
+             #[cfg(feature = "opening-perf-trace")]
+             crate::opening_perf_trace::record(|c| c.staged_residual_calls = c.staged_residual_calls.saturating_add(1));
+-            let candidate = self.apply_void_context(holed, residual, element_id);
++            let candidate = provisional.apply_void_context(holed, residual, element_id);
+             let Some(candidate) = prism_cut::correct_planar_overlap(&candidate, &corrections) else {
+                 #[cfg(feature = "opening-perf-trace")]
+                 crate::opening_perf_trace::record(|c| c.staged_correction_refusals = c.staged_correction_refusals.saturating_add(1));
+diff --git a/rust/geometry/src/program/openings/classify.rs b/rust/geometry/src/program/openings/classify.rs
+--- a/rust/geometry/src/program/openings/classify.rs
++++ b/rust/geometry/src/program/openings/classify.rs
+@@ -77,7 +77,7 @@
+     /// A QUIET pass over owned residual ids.
+     pub(super) fn residual(host: &'a DecodedEntity, ids: Vec<u32>) -> Self {
+         let count = ids.len();
+-        Self::with_ids(host, Ids::Owned(ids.into_iter()), count, true)
++        Self::with_ids(host, Ids::Owned(ids.into_iter()), count, false)
+     }
+ 
+     fn with_ids(host: &'a DecodedEntity, ids: Ids<'a>, count: usize, recording: bool) -> Self {

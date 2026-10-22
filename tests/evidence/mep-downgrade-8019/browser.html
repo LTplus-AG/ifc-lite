@@ -1,0 +1,54 @@
+<!-- SPDX-License-Identifier: MPL-2.0 -->
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>MEP downgrade regression #8019</title>
+<style>body {font:16px system-ui;max-width:1000px;margin:40px auto;padding:0 24px} pre {white-space:pre-wrap;background:#f2f4f6;padding:20px} button {padding:12px 20px;font:inherit}</style>
+<h1>MEP downgrade regression #8019</h1>
+<p>Three authored solids: wall #50, slab #51, duct #52. Each is 2 × 1 × 3 metres (6 m³). The duct retains its identity, placement, representation and rigid duct type.</p>
+<button id="run">Export IFC2X3 and reopen geometry</button>
+<pre id="result" role="status">Ready</pre>
+<script type="module">
+import { IfcParser } from '/packages/parser/src/index.ts';
+import { StepExporter } from '/packages/export/src/step-exporter.ts';
+import init, { IfcAPI } from '/packages/wasm/pkg/ifc-lite.js';
+import { mepOccurrences } from '/packages/export/test/fixtures/mep-occurrences.ts';
+import { meshMepFixture } from '/packages/export/test/fixtures/mesh-mep-fixture.ts';
+const result = document.querySelector('#result');
+window.runMepRegression = async () => {
+  result.textContent = 'Running…';
+  let api;
+  try {
+    await init();
+    api = new IfcAPI();
+    const bytes = new TextEncoder().encode(mepOccurrences);
+    const store = await new IfcParser().parseColumnar(bytes.buffer, {disableWorkerScan:true});
+    const ts = new TextDecoder().decode(new StepExporter(store).export({schema:'IFC2X3'}).content);
+    const native = new TextDecoder().decode(api.exportStep(bytes, 'IFC2X3', undefined, ''));
+    const outputs = {source:mepOccurrences, typescript:ts, native};
+    const report = {};
+    for (const [name, text] of Object.entries(outputs)) {
+      const meshes = meshMepFixture(api, text).sort((a,b) => a.expressId-b.expressId);
+      if (JSON.stringify(meshes.map(m=>m.expressId)) !== '[50,51,52]') throw Error(`${name}: missing authored mesh: ${JSON.stringify(meshes)}`);
+      for (const [i, m] of meshes.entries()) {
+        const x = i*4;
+        if (m.triangles !== 12 || Math.abs(m.volume-6)>1e-6 || JSON.stringify(m.bounds)!==JSON.stringify([x-1,0,-0.5,x+1,3,0.5])) throw Error(`${name}: incorrect authored geometry: ${JSON.stringify(m)}`);
+      }
+      if (name !== 'source') {
+        for (const expected of ["#52=IFCFLOWSEGMENT('0000000000000000000052',#5,'Supply duct','Authored duct','Supply',#35,#37,'duct');", "#60=IFCDUCTSEGMENTTYPE('0000000000000000000060',#5,'Rigid duct type',$,$,$,$,$,'Supply',.RIGIDSEGMENT.);", "#61=IFCRELDEFINESBYTYPE('0000000000000000000061',#5,$,$,(#52),#60);", "#64=IFCRELDEFINESBYPROPERTIES('0000000000000000000064',#5,$,$,(#52),#63);"]) {
+          if (!text.includes(expected)) throw Error(`${name}: missing product/type/relationship record: ${expected}`);
+        }
+      }
+      report[name] = {meshes, ductRecord:text.split('\n').find(line=>line.startsWith('#52='))};
+    }
+    window.mepRegression = {passed:true, report};
+    result.textContent = JSON.stringify(window.mepRegression,null,2);
+  } catch (error) {
+    window.mepRegression = {passed:false,error:String(error),stack:error.stack};
+    result.textContent = JSON.stringify(window.mepRegression,null,2);
+  } finally {api?.free();}
+  return window.mepRegression;
+};
+document.querySelector('#run').onclick = window.runMepRegression;
+</script>
+</html>

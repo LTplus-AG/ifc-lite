@@ -110,6 +110,7 @@ function packMaskFrameUniforms(source: SelectionOutlineSource): Float32Array {
 export function packHoverUniforms(source: SelectionOutlineSource, mesh: Pick<Mesh, 'transform' | 'rteOrigin'>): Float32Array {
   const scratch = packMaskFrameUniforms(source);
   scratch.set(mesh.transform.m, MESH_UNIFORM_OFFSET.model);
+  new Uint32Array(scratch.buffer)[MESH_UNIFORM_OFFSET.overrideParams] = source.hoveredId ?? 0;
   const origin = mesh.rteOrigin ?? [mesh.transform.m[12], mesh.transform.m[13], mesh.transform.m[14]] as [number, number, number];
   source.relativeToEyeFrame.packDrawableOrigin(origin, scratch, MESH_UNIFORM_OFFSET.drawableDelta);
   return scratch;

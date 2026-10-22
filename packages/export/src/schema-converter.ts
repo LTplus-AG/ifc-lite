@@ -22,6 +22,7 @@ import type { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import type { EnumReconciliation } from './schema-converter-enums.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
 import { productProxy } from './schema-converter-product-proxy.js';
+import { MEP_IFC2X3_TYPES } from './schema-converter-mep.js';
 import { isStrictAttrPrefix } from './schema-converter-renames.js';
 
 export { computeWithheldRefIds } from './schema-untranslatable.js';
@@ -50,7 +51,6 @@ const IFC2X3_TO_IFC4: Map<string, string> = new Map([
 
 // ─── IFC4 → IFC2X3 type renames (reverse) ──────────────────────────────────
 const IFC4_TO_IFC2X3: Map<string, string> = new Map([
-  ['IFCELECTRICDISTRIBUTIONBOARD', 'IFCELECTRICDISTRIBUTIONPOINT'],
   ['IFCBURNERTYPE', 'IFCGASTERMINALTYPE'],
   // Types added in IFC4 that have no IFC2X3 equivalent → proxy
   ['IFCCHIMNEY', 'IFCBUILDINGELEMENTPROXY'],
@@ -165,8 +165,9 @@ export function convertEntityType(
   if (fromSchema === toSchema) return entityType;
 
   const upper = entityType.toUpperCase();
+  const mepTarget = toSchema === 'IFC2X3' ? MEP_IFC2X3_TYPES.get(upper) : undefined;
+  if (mepTarget) return mepTarget;
 
-  // Get the conversion map for this direction
   const map = getConversionMap(fromSchema, toSchema);
   return map?.get(upper) ?? upper;
 }
@@ -179,7 +180,6 @@ function getConversionMap(
   from: IfcSchemaVersion,
   to: IfcSchemaVersion,
 ): Map<string, string> | null {
-  // Direct conversions
   if (from === 'IFC2X3' && to === 'IFC4') return IFC2X3_TO_IFC4;
   if (from === 'IFC4' && to === 'IFC2X3') return IFC4_TO_IFC2X3;
   if (from === 'IFC4' && to === 'IFC4X3') return IFC4_TO_IFC4X3;
@@ -325,7 +325,6 @@ function convertRecord(
   // that would partially convert a record whose positions are untrustworthy.
   const args = requireTopLevelAttributes(attrsRaw);
 
-  // Convert entity type
   const newType = convertEntityType(entityType, fromSchema, toSchema);
 
   // A record whose attribute list references an id this export is OMITTING
@@ -413,8 +412,9 @@ function convertRecord(
       if (currentCount > 0 && currentCount < tgtAttrs.length) {
         finalAttrs = `${finalAttrs}${',$'.repeat(tgtAttrs.length - currentCount)}`;
       }
-    } else if (entityType !== newType && BY_NAME_ATTR_REMAP_TYPES.has(entityType)) {
-      // Neither list is a prefix of the other; see `BY_NAME_ATTR_REMAP_TYPES`.
+    } else if (entityType !== newType && (BY_NAME_ATTR_REMAP_TYPES.has(entityType)
+      || (toSchema === 'IFC2X3' && MEP_IFC2X3_TYPES.has(entityType)))) {
+      // MEP controls need ControlElementId, never the source PredefinedType (#8019).
       const remapped = remapRenamedAttributesByName(attrsRaw, srcAttrs, tgtAttrs);
       if (remapped === null) throw new Error('Schema conversion refused an invalid STEP argument list.');
       finalAttrs = remapped;

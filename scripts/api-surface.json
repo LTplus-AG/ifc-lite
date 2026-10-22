@@ -10417,5 +10417,9 @@
     "restashWasmPanicLocation: function",
     "takeWasmPanicStash: function"
   ],
+  "@ifc-lite/wasm/retained": [
+    "RetainedEngine: type",
+    "loadRetainedEngine: function"
+  ],
   "create-ifc-lite": []
 }

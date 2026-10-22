@@ -18,6 +18,8 @@ export interface Section2DOverlayCapStyle {
 }
 
 export interface Section2DOverlayOptions {
+  /** Scene ids whose pre-uploaded cut polygons and owned outlines must not draw. */
+  sectionExcludedIds?: ReadonlySet<number>;
   axis: 'down' | 'front' | 'side';
   position: number;
   bounds: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } };

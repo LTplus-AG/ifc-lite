@@ -1,0 +1,34 @@
+diff --git a/rust/wasm-bindings/src/retained_browser/mod.rs b/rust/wasm-bindings/src/retained_browser/mod.rs
+index 96aa988f6a..1253e38bcf 100644
+--- a/rust/wasm-bindings/src/retained_browser/mod.rs
++++ b/rust/wasm-bindings/src/retained_browser/mod.rs
+@@ -210,7 +210,7 @@ impl InFlight {
+ }
+ impl Drop for InFlight {
+     fn drop(&mut self) {
+-        if self.armed && false {
++        if self.armed {
+             self.owner.retire();
+         }
+     }
+diff --git a/rust/wasm-bindings/js/retained-driver.mjs b/rust/wasm-bindings/js/retained-driver.mjs
+index 2d9d590104..e15915a0a2 100644
+--- a/rust/wasm-bindings/js/retained-driver.mjs
++++ b/rust/wasm-bindings/js/retained-driver.mjs
+@@ -56,6 +56,7 @@ export class RetainedDriver {
+   releaseObject(object) {
+     const solid = this.#objects.get(object);
+     if (!solid) return;
++    this.#objects.delete(object);
+     this.#releases.push(solid);
+     this.#scheduleReleases();
+   }
+@@ -69,7 +70,7 @@ export class RetainedDriver {
+     }).finally(() => { this.#cleanup = undefined; this.#busy = false; this.#scheduleReleases(); });
+   }
+   async #awaitCleanup() {
+-    void this.#cleanup;
++    while (this.#cleanup) await this.#cleanup;
+   }
+   async #flushReleases() {
+     while (this.#releases.length) await this.#call(8, this.#session, this.#releases.shift());

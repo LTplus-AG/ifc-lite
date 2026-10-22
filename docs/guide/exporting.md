@@ -696,6 +696,14 @@ Inspect warnings before sending the result to another service. Synchronous
 export rejects this option. Ordinary exports preserve their existing coordinate
 structure and bytes.
 
+When downgrading IFC4 or IFC4X3 to IFC2X3, MEP occurrences that have a
+native IFC2X3 base use that base: for example, `IfcDuctSegment` becomes
+`IfcFlowSegment`. The conversion retains the product’s GlobalId, placement,
+representation and relationship endpoints. Existing `IfcDuctSegmentType`
+objects and their type assignments retain the duct classification. An
+occurrence-only `PredefinedType` has no corresponding slot on the IFC2X3 base
+and is dropped; the converter does not synthesize a type object.
+
 #### Which schema identifier is written
 
 A re-export that does not change schema keeps the source file's own

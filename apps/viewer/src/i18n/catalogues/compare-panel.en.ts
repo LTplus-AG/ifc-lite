@@ -55,6 +55,15 @@ export const comparePanelEn = {
   'comparePanel.saved.hint': '{count} report rows saved. Preview shows the first 100; downloads and Documentation use the saved report. Historical rows do not select current 3D elements.',
   'comparePanel.saved.change': 'Change',
 
+  // Result filtering (#8017)
+  'comparePanel.filters.hint': 'Click a count to filter the list and isolate that category in 3D.',
+  'comparePanel.filters.kind': 'Change kind',
+  'comparePanel.filters.allKinds': 'All changes',
+  'comparePanel.filters.data': 'Data / properties',
+  'comparePanel.filters.container': 'Container',
+  'comparePanel.filters.reset': 'Show all results',
+  'comparePanel.filters.empty': 'No results match these filters.',
+
   // ComparePanel
   'comparePanel.panel.title': 'Compare models',
   'comparePanel.panel.rerunTitle': 'Re-run the comparison',

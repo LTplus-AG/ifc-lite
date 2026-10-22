@@ -57,7 +57,8 @@
  *                    `packages/export/src/schema-converter.ts` exports
  *                    (`convertEntityType`'s own `IFC2X3_TO_IFC4` /
  *                    `IFC4_TO_IFC2X3` / `IFC4_TO_IFC4X3` / `IFC4X3_TO_IFC4`
- *                    Maps), parsed from that file's source rather than a
+ *                    Maps), parsed from that file's source, plus the audited
+ *                    `schema-converter-mep.json` data read directly, rather than a
  *                    restated copy.
  *   writable      — the entity's uppercase STEP keyword appears in a
  *                    dedicated `this.line(id, 'IFCXXX', ...)` call inside
@@ -239,6 +240,11 @@ const RENAME = {
 assertNonEmpty('convertible(IFC2X3_TO_IFC4)', RENAME['IFC2X3->IFC4']);
 assertNonEmpty('convertible(IFC4_TO_IFC2X3)', RENAME['IFC4->IFC2X3']);
 assertNonEmpty('convertible(IFC4X3_TO_IFC4)', RENAME['IFC4X3->IFC4']);
+// Share the runtime's audited data without requiring a TypeScript loader (#8019).
+const mep = JSON.parse(read('packages/export/src/schema-converter-mep.json'));
+const MEP_IFC2X3_TYPES = new Map(Object.entries(mep.types).flatMap(([target, sources]) => sources.map(source => [source, target])));
+assertNonEmpty('convertible(MEP_IFC2X3_TYPES)', MEP_IFC2X3_TYPES);
+for (const [source, target] of MEP_IFC2X3_TYPES) RENAME['IFC4->IFC2X3'].set(source, target);
 
 // ─── Fixture (committed .ifc corpus, per #4208 — see DERIVATION above) ──
 

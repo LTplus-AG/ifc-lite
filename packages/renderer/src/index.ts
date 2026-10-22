@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { sectionExclusions } from './section-exclusions.js';
 /**
  * @ifc-lite/renderer - WebGPU renderer
  */
@@ -528,7 +529,7 @@ export class Renderer {
     // One 336-byte buffer serves all frame batches/meshes (84 floats including RTE lanes).
     private readonly uniformScratch = new Float32Array(MESH_UNIFORM_FLOATS);
     private readonly uniformScratchU32 = new Uint32Array(this.uniformScratch.buffer, MESH_FLAGS_BYTE_OFFSET, 4);
-    // overrideParams lanes (#6076): zero except inside a painting renderBatch call.
+    // overrideParams: full entity anchor for clipping, plus colour-override mode (#6076).
     private readonly uniformOverrideU32 = new Uint32Array(this.uniformScratch.buffer, MESH_UNIFORM_OFFSET.overrideParams * 4, 4);
 
     // What the last render() actually clipped, so the GPU picker can mirror it and
@@ -536,6 +537,7 @@ export class Renderer {
     // every render; read by pick()/pickRect(). null = nothing clipped that frame.
     private _activePickSection: { normal: [number, number, number]; distance: number; flipped: boolean } | null = null;
     private _activePickClipBox: ClipBox | null = null;
+    private _sectionExcludedIds: ReadonlySet<number> = new Set();
     /** Snapshot of the extra planes the last frame clipped against (#7545), mirrored by the pickers. */
     private _activePickExtraPlanes: ExtraClipPlane[] | null = null;
     private _sectionFrameInput: SectionFrameInput | null = null; // what the last frame resolved the section planes from
@@ -1794,11 +1796,6 @@ export class Renderer {
         // overlay-routing.ts and is unit-tested there.
         const colorOverrides = this.scene.getColorOverrides();
 
-        // PERFORMANCE FIX: Use batch-level visibility filtering instead of creating individual meshes
-        // Only create individual meshes for selected elements (for highlighting)
-        // Batches are filtered at render time - fully visible batches render normally,
-        // partially visible batches are skipped (their visible elements will be in other batches or individual meshes)
-
         // Ensure all existing meshes have GPU resources
         this.ensureMeshResources();
 
@@ -1934,6 +1931,8 @@ export class Renderer {
                     flipped: !!options.sectionPlane?.flipped,
                 }
                 : null;
+            this._sectionExcludedIds = new Set(options.sectionExcludedIds);
+            sectionExclusions(device).update(this._sectionExcludedIds);
             this._activePickExtraPlanes = extraClipPlanes.length > 0 ? extraClipPlanes.map((p) => ({ normal: [...p.normal] as [number, number, number], distance: p.distance, flipped: p.flipped })) : null;
             this._activePickClipBox = options.clipBox?.enabled
                 ? {
@@ -1999,6 +1998,7 @@ export class Renderer {
                     }
                     meshFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
 
+                    new Uint32Array(meshBuf.buffer)[MESH_UNIFORM_OFFSET.overrideParams] = mesh.expressId;
                     device.queue.writeBuffer(mesh.uniformBuffer, 0, meshBuf);
                 }
             }
@@ -2099,6 +2099,7 @@ export class Renderer {
                     // floor it no longer covers. `sectionPlaneData` already
                     // folds in the terrain clip, so that is covered as well.
                     this.shadowPass.render(encoder, fit.lightViewProj, occluders, {
+                        sectionExcludedIds: this._sectionExcludedIds,
                         section: sectionPlaneData?.enabled
                             ? {
                                 normal: sectionPlaneData.normal,
@@ -2257,6 +2258,7 @@ export class Renderer {
             // valid for every main-family draw that follows.
             this.pipeline.setEntityColorTableBuffer(this.scene.getEntityColorTable().getBuffer());
             pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
+            pass.setBindGroup(3, sectionExclusions(device).bindGroup);
 
             // Selected meshes drawn this frame, for the selection-mask pass
             // (#5390) after `pass.end()` below. Populated inside the batched
@@ -2466,9 +2468,6 @@ export class Renderer {
                     this.scene.retireUnusedAlphaSlots(partialRequests.requestedKeys());
                 }
 
-                // Build a uniform template ONCE per frame — shared across all batches.
-                // Only the 4-float color (offset 32) differs per batch; everything else
-                // (viewProj, identity model, material, section plane, flags) is identical.
                 const tpl = this.uniformScratch;
                 const tplFlags = this.uniformScratchU32;
                 tpl.set(viewProj, 0);
@@ -2519,12 +2518,7 @@ export class Renderer {
                     tpl[35] = alphaForBatch(batch, batch.color[3]);
                     packMeshMaterial(tpl, batch.color[3], batch.finish);
 
-                    // Per-batch local frame: the batch's vertices are stored
-                    // RELATIVE to batch.origin (f32-small), so set the model
-                    // matrix translation column to origin (world = origin + pos).
-                    // The 12 rotation/scale floats stay identity from the template;
-                    // the translation lives at column-major indices 12/13/14 →
-                    // tpl[28/29/30]. [0,0,0] for legacy absolute batches.
+                    // Rebase batch-local vertices; translation lives in tpl[28..30].
                     const o = batch.origin;
                     tpl[28] = o ? o[0] : 0;
                     tpl[29] = o ? o[1] : 0;
@@ -2544,7 +2538,8 @@ export class Renderer {
                     tpl[59] = qz ? qz.step : 0;
 
                     const painted = paint && batchHasColorOverride(batch, colorOverrides, colorOverrideGen);
-                    packOverrideParams(this.uniformOverrideU32, painted ? batchEntityIdAnchor(batch) : null, painted, options.emphasizeOverrides === true);
+                    packOverrideParams(this.uniformOverrideU32, batchEntityIdAnchor(batch), painted, options.emphasizeOverrides === true);
+                    this.uniformOverrideU32[0] = batchEntityIdAnchor(batch) ?? 0xFFFFFFFF;
                     device.queue.writeBuffer(batch.uniformBuffer, 0, tpl);
                     this.uniformOverrideU32.fill(0);
 
@@ -2655,6 +2650,7 @@ export class Renderer {
                     pass.setPipeline(this.pipeline.getInstancedPipeline());
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
                     pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
+                    pass.setBindGroup(3, sectionExclusions(device).bindGroup);
                     for (const [i, it] of visibleInstanced.entries()) {
                         pass.setVertexBuffer(0, it.vertexBuffer);
                         pass.setVertexBuffer(1, it.instanceBuffer);
@@ -2727,6 +2723,7 @@ export class Renderer {
                         // CHOICE in the shader follows the same rule as everywhere
                         // else, for the same reason `tm.material` does.
                         packMeshMaterial(tpl, tm.color[3], tm.finish ?? tm.material);
+                        this.uniformOverrideU32[0] = tm.expressId;
                         device.queue.writeBuffer(tm.uniformBuffer, 0, tpl);
                         pass.setBindGroup(0, tm.bindGroup);
                         pass.setVertexBuffer(0, tm.vertexBuffer);
@@ -2867,6 +2864,7 @@ export class Renderer {
                     pass.setPipeline(instancedTransparentPipeline);
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
                     pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
+                    pass.setBindGroup(3, sectionExclusions(device).bindGroup);
                     for (const [i, it] of visibleInstanced.entries()) {
                         pass.setVertexBuffer(0, it.vertexBuffer);
                         pass.setVertexBuffer(1, it.instanceBuffer);
@@ -2912,6 +2910,7 @@ export class Renderer {
                         if (!relativeToEyeFrame.tryPackDrawableOrigin(transparentOrigin, tpl, MESH_UNIFORM_OFFSET.drawableDelta)) continue;
                         tplFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
 
+                        this.uniformOverrideU32[0] = mesh.expressId;
                         device.queue.writeBuffer(mesh.uniformBuffer, 0, tpl);
 
                         pass.setBindGroup(0, mesh.bindGroup);
@@ -2965,6 +2964,7 @@ export class Renderer {
                     if (!relativeToEyeFrame.tryPackDrawableOrigin(selectedOrigin, tpl, MESH_UNIFORM_OFFSET.drawableDelta)) continue;
                     tplFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
 
+                    this.uniformOverrideU32[0] = mesh.expressId;
                     device.queue.writeBuffer(mesh.uniformBuffer, 0, tpl);
 
                     pass.setPipeline(this.pipeline.getSelectionPipeline());
@@ -3201,7 +3201,7 @@ export class Renderer {
      * same fragments and clipped-away geometry can't be selected.
      */
     private activePickClip(): PickClipState {
-        return { sectionPlane: this._activePickSection, extraPlanes: this._activePickExtraPlanes, clipBox: this._activePickClipBox };
+        return { sectionExcludedIds: this._sectionExcludedIds, sectionPlane: this._activePickSection, extraPlanes: this._activePickExtraPlanes, clipBox: this._activePickClipBox };
     }
 
     /**

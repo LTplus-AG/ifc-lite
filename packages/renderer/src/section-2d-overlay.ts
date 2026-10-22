@@ -459,7 +459,8 @@ export class Section2DOverlayRenderer {
   }
 
   /**
-   * Check if there is geometry to draw
+   * Whether primary cap source is cached, even when exclusions currently hide it.
+   * Keep scheduling draws so a change to the exclusions can restore the cap.
    */
   hasGeometry(): boolean {
     return this.caps.has();
@@ -475,7 +476,7 @@ export class Section2DOverlayRenderer {
     this.caps.setHighlight(this.device, highlight);
   }
 
-  /** Whether any cutting plane beyond the first has a cap to draw (#7545). */
+  /** Whether an extra plane has cached cap source, including currently excluded caps (#7545). */
   hasExtraGeometry(): boolean {
     return this.caps.hasExtras();
   }

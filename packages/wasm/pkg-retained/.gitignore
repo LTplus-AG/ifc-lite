@@ -1,0 +1,4 @@
+*
+# The committed declarations are the drift baseline CI diffs against.
+!.gitignore
+!ifc-lite.d.ts

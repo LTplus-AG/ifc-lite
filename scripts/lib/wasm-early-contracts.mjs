@@ -12,6 +12,7 @@ import { runMapNormalizationContracts } from './wasm-map-normalization-contracts
 import { runProgressHeartbeatContracts } from './wasm-progress-heartbeat-contract.mjs';
 import { runReachablePanicContracts } from './wasm-reachable-panics-contract.mjs';
 import { runEmptyExportContracts } from './wasm-empty-export-contracts.mjs';
+import { runPlacementRefusalContracts } from './wasm-placement-refusal-contracts.mjs';
 import { runPlanarCarrierContracts } from './wasm-planar-carrier-contract.mjs';
 
 /** These suites have their own inputs and run even when the column fixture is absent. */
@@ -27,5 +28,6 @@ export function runEarlyContracts({ IfcAPI, api, test, skip, root }) {
   runProgressHeartbeatContracts(IfcAPI, test, skip, root);
   runReachablePanicContracts(IfcAPI, test, skip, root);
   runEmptyExportContracts(api, test, root); // #7695
+  runPlacementRefusalContracts(IfcAPI, test); // #7877/#7779
   runPlanarCarrierContracts(api, test, root);
 }

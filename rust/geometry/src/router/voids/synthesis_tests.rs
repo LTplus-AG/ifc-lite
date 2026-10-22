@@ -4,6 +4,8 @@
 
 use super::*;
 use crate::ClippingProcessor;
+use super::super::geom::*;
+use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
 // #7292 / review4304598525: a cleaned-away sibling must not survive as a
 // bounds-only rectangular opening in the real classification fallback.
@@ -65,7 +67,7 @@ fn issue_7292_cleaned_item_cannot_be_resurrected_by_rectangular_fallback() {
             let mut router = GeometryRouter::new();
             router.register(Box::new(MixedBoundsProducer7292));
             router.set_preserve_triangle_order(preserve_order);
-            let classified = router.classify_openings(&opening, &[20], &mut decoder);
+            let classified = crate::program::openings::classify(&opening, &[20], true, &router, &mut decoder).unwrap();
             assert_eq!(classified.len(), 1, "only the valid item may supply a cut");
             let OpeningType::Rectangular(min, max, _) = &classified[0] else {
                 panic!("the valid box retains its ordinary rectangular bounds path");
@@ -485,7 +487,7 @@ fn an_inward_wound_host_is_read_the_same_as_an_outward_one() {
 // --- issue #4119: opening classification gates on TRIANGLE count, not the
 // raw position-buffer length -----------------------------------------------
 //
-// `classify_openings_impl`'s high-complexity gate (this file, above) has TWO
+// `program::openings::classify`'s high-complexity gate (this file, above) has TWO
 // exits that both label an opening `NonRectangular`, but they hand back
 // DIFFERENT mesh data:
 //
@@ -764,7 +766,7 @@ DATA;
     /// caught here even though nothing else catches it.
     ///
     /// For each `n`, builds an opening whose mesh has EXACTLY `n` triangles
-    /// and checks which branch of `classify_openings_impl` ran, using the
+    /// and checks which branch of `program::openings::classify` ran, using the
     /// same welded-vs-raw vertex-count signal as
     /// `nonrectangular_opening_keeps_the_welded_mesh_not_the_raw_one`:
     /// `n > 100` must take the `if triangle_count > 100` branch (the WELDED
@@ -781,7 +783,7 @@ DATA;
             let opening_id = find_opening_id(&content, 100);
 
             let plate = decoder.decode_by_id(100).expect("decode plate #100");
-            let openings = router.classify_openings(&plate, &[opening_id], &mut decoder);
+            let openings = crate::program::openings::classify(&plate, &[opening_id], true, &router, &mut decoder).unwrap();
             assert_eq!(openings.len(), 1, "n={n}: exactly one opening classified");
 
             let mesh = match &openings[0] {
@@ -852,7 +854,7 @@ DATA;
         let opening_id = find_opening_id(&content, 100);
 
         let plate = decoder.decode_by_id(100).expect("decode plate #100");
-        let openings = router.classify_openings(&plate, &[opening_id], &mut decoder);
+        let openings = crate::program::openings::classify(&plate, &[opening_id], true, &router, &mut decoder).unwrap();
         assert_eq!(openings.len(), 1, "exactly one opening classified");
 
         let mesh = match &openings[0] {

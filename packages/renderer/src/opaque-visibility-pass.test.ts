@@ -10,13 +10,13 @@ Object.assign(globalThis, {
   GPUTextureUsage: { TEXTURE_BINDING: 4, RENDER_ATTACHMENT: 16 },
 });
 
-function harness() {
+function harness(sectionBinding?: GPUBindGroup) {
   let resolve!: () => void;
   let reject!: (error: Error) => void;
   const validation = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
-  const stats = { sync: 0, async: 0, draws: 0, pipelines: 0, textures: 0, destroyed: 0 };
+  const stats = { sync: 0, async: 0, draws: 0, pipelines: 0, textures: 0, destroyed: 0, bindings: [] as { index: number; group: GPUBindGroup }[] };
   const pipeline = () => ({ getBindGroupLayout: () => ({}) });
-  const pass = { setPipeline: () => { stats.pipelines++; }, setBindGroup: () => {},
+  const pass = { setPipeline: () => { stats.pipelines++; }, setBindGroup: (index: number, group: GPUBindGroup) => { stats.bindings.push({ index, group }); },
     drawIndexed: () => { stats.draws++; }, end: () => {} };
   const encoder = { beginRenderPass: () => pass, finish: () => ({}) } as unknown as GPUCommandEncoder;
   const device = {
@@ -27,7 +27,7 @@ function harness() {
     createCommandEncoder: () => encoder,
     createTexture: () => { stats.textures++; return { createView: () => ({}), destroy: () => { stats.destroyed++; } }; },
   } as unknown as GPUDevice;
-  const visibility = new OpaqueVisibilityPass(device, 1);
+  const visibility = new OpaqueVisibilityPass(device, 1, sectionBinding ? () => sectionBinding : undefined);
   const module = {} as GPUShaderModule;
   const base = visibility.create({ layout: 'auto', vertex: { module, entryPoint: 'vs_main' },
     fragment: { module, entryPoint: 'fs_main', targets: [{ format: 'rgba8unorm' }] },
@@ -74,4 +74,18 @@ test('#6729 perspective releases orthographic storage and a later orthographic f
     h.begin().end(); assert.equal(h.stats.textures, 2);
   } finally { h.visibility.destroy(); }
   assert.equal(h.stats.destroyed, 2, 'both allocated textures are released exactly once');
+});
+
+test('#8015 direct pipeline draws receive the same section exclusions in colour and geometric depth', async () => {
+  const group = {} as GPUBindGroup;
+  const h = harness(group);
+  try {
+    h.resolve(); await h.visibility.prepare();
+    const pass = h.begin();
+    pass.setPipeline(h.base); pass.drawIndexed(3); pass.end();
+    assert.equal(h.stats.draws, 2);
+    assert.deepEqual(h.stats.bindings.filter(binding => binding.index === 3), [
+      { index: 3, group }, { index: 3, group },
+    ], 'both passes bind exclusions when the caller sets only mesh and material groups');
+  } finally { h.visibility.destroy(); }
 });

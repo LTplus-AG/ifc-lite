@@ -46,6 +46,7 @@ import { join, resolve } from 'node:path';
 import { IfcParser } from '@ifc-lite/parser';
 import { StepExporter } from './step-exporter.js';
 import { MergedExporter, type MergeModelInput } from './merged-exporter.js';
+import { mepOccurrences } from '../test/fixtures/mep-occurrences.js';
 
 const MODELS_DIR = resolve(__dirname, '../../../tests/models');
 const TOOL_DIR = resolve(__dirname, '../../../tools/ifcopenshell_reference');
@@ -466,3 +467,17 @@ function runValidateOrThrow(files: string[]): void {
     );
   }
 }
+
+// The authored control needs no downloaded corpus fixture (#8019).
+describe.skipIf(!ifcopenshellAvailable())('MEP downgrade schema oracle (#8019)', () => {
+  it('validates both the IFC4 control and native-base IFC2X3 output with EXPRESS rules', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'ifc-lite-mep-8019-'));
+    const source = join(directory, 'source.ifc');
+    const output = join(directory, 'converted.ifc');
+    writeFileSync(source, mepOccurrences);
+    const bytes = new TextEncoder().encode(mepOccurrences);
+    const store = await new IfcParser().parseColumnar(bytes.buffer, { disableWorkerScan: true });
+    writeFileSync(output, new StepExporter(store).export({ schema: 'IFC2X3' }).content);
+    runValidateOrThrow([source, output]);
+  }, IFCOPENSHELL_TEST_TIMEOUT_MS);
+});

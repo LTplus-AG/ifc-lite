@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { sectionExclusions, withSectionExclusions } from './section-exclusions.js';
 /**
  * WebGPU render pipeline setup
  */
@@ -107,7 +108,7 @@ export class RenderPipeline {
         // 4x MSAA provides good anti-aliasing for thin geometry
         const maxSampleCount = (this.device.limits as unknown as Record<string, number>)?.maxSampleCount ?? 4;
         this.sampleCount = Math.min(4, maxSampleCount);
-        this.visibility = new OpaqueVisibilityPass(this.device, this.sampleCount);
+        this.visibility = new OpaqueVisibilityPass(this.device, this.sampleCount, () => sectionExclusions(this.device).bindGroup);
 
         // Create depth texture with MSAA support
         this.depthTexture = this.device.createTexture({
@@ -214,17 +215,16 @@ export class RenderPipeline {
         this.currentShadowView = this.dummyShadowView;
         this.emptyEntityColorTable = this.device.createBuffer({ label: 'entity-color-table-empty', size: 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
         this.entityColorTableBuffer = this.emptyEntityColorTable;
+        sectionExclusions(this.device).retain();
         this.environmentBindGroup = this.buildEnvironmentBindGroup();
         this.updateEnvironment();
 
-        // Create shader module with PBR lighting, section plane clipping, and selection outline
         const shaderModule = this.device.createShaderModule({
             code: mainShaderSource,
         });
 
-        // Create explicit pipeline layout (shared between main and selection pipelines)
         const pipelineLayout = this.device.createPipelineLayout({
-            bindGroupLayouts: [this.bindGroupLayout, this.environmentBindGroupLayout],
+            bindGroupLayouts: withSectionExclusions(this.device, [this.bindGroupLayout, this.environmentBindGroupLayout]),
         });
 
         // Create render pipeline descriptor
@@ -510,7 +510,7 @@ export class RenderPipeline {
         this.texturedPipeline = this.visibility.create({
             label: 'textured-pipeline',
             layout: this.device.createPipelineLayout({
-                bindGroupLayouts: [this.texturedBindGroupLayout, this.environmentBindGroupLayout],
+                bindGroupLayouts: withSectionExclusions(this.device, [this.texturedBindGroupLayout, this.environmentBindGroupLayout]),
             }),
             vertex: {
                 module: texturedModule,
@@ -947,5 +947,6 @@ export class RenderPipeline {
         this.selectionColorUniform.destroy();
         this.dummyShadowTexture.destroy();
         this.emptyEntityColorTable.destroy();
+        sectionExclusions(this.device).release();
     }
 }

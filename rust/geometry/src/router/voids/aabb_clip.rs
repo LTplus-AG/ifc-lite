@@ -4,7 +4,7 @@
 
 //! Legacy SAT + Sutherland-Hodgman AABB box clip (issue #635 fallback only).
 
-use super::GeometryRouter;
+use crate::program::openings::execute::Execution;
 use crate::csg::{tri_is_needle, ClippingProcessor, Plane, Triangle, TriangleVec};
 use crate::{Mesh, Point3, Vector3};
 
@@ -41,7 +41,7 @@ impl ClipBuffers {
     }
 }
 
-impl GeometryRouter {
+impl Execution {
 
     /// Cut a rectangular opening from a mesh using AABB clipping — the LEGACY
     /// Sutherland-Hodgman box clip, now retained ONLY as the issue-#635

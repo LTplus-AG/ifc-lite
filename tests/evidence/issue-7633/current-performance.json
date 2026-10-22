@@ -1,0 +1,362 @@
+{
+  "schemaVersion": 1,
+  "issue": 7633,
+  "verdict": "NOT QUALIFIED: native complete and output-identical; headless browser had GPU loss and software fallback. Separate headed cohort pending.",
+  "source": {
+    "base": "a4fc04cf1f1a04ed1ad3cff89b3d32d9c97f8751",
+    "branch": "4a58e7ddcde3641e460fdbf38e29ff52ab128c3c"
+  },
+  "native": {
+    "AC20-FZK-Haus.ifc": {
+      "completeFivePairs": true,
+      "identity": {
+        "base": [
+          [
+            285,
+            35940,
+            20322,
+            [
+              "7377db33331a3523"
+            ]
+          ]
+        ],
+        "branch": [
+          [
+            285,
+            35940,
+            20322,
+            [
+              "7377db33331a3523"
+            ]
+          ]
+        ]
+      },
+      "stableAndEqual": true,
+      "timings": {
+        "parseMs": {
+          "samples": {
+            "base": [
+              14,
+              15,
+              15,
+              14,
+              14
+            ],
+            "branch": [
+              18,
+              14,
+              14,
+              14,
+              14
+            ]
+          },
+          "baseMedian": 14,
+          "branchMedian": 14,
+          "delta": 0,
+          "deltaPercent": 0.0,
+          "verdict": "descriptive only; inspect spread and browser report"
+        },
+        "geometryMs": {
+          "samples": {
+            "base": [
+              25,
+              24,
+              30,
+              28,
+              43
+            ],
+            "branch": [
+              32,
+              35,
+              41,
+              42,
+              30
+            ]
+          },
+          "baseMedian": 28,
+          "branchMedian": 35,
+          "delta": 7,
+          "deltaPercent": 25.0,
+          "verdict": "descriptive only; inspect spread and browser report"
+        },
+        "totalMs": {
+          "samples": {
+            "base": [
+              40,
+              39,
+              45,
+              43,
+              57
+            ],
+            "branch": [
+              50,
+              50,
+              55,
+              57,
+              45
+            ]
+          },
+          "baseMedian": 43,
+          "branchMedian": 50,
+          "delta": 7,
+          "deltaPercent": 16.27906976744186,
+          "verdict": "descriptive only; inspect spread and browser report"
+        }
+      }
+    },
+    "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc": {
+      "completeFivePairs": true,
+      "identity": {
+        "base": [
+          [
+            1402,
+            218966,
+            136257,
+            [
+              "e96e7e6149ccd77b"
+            ]
+          ]
+        ],
+        "branch": [
+          [
+            1402,
+            218966,
+            136257,
+            [
+              "e96e7e6149ccd77b"
+            ]
+          ]
+        ]
+      },
+      "stableAndEqual": true,
+      "timings": {
+        "parseMs": {
+          "samples": {
+            "base": [
+              36,
+              36,
+              36,
+              36,
+              36
+            ],
+            "branch": [
+              36,
+              38,
+              37,
+              36,
+              36
+            ]
+          },
+          "baseMedian": 36,
+          "branchMedian": 36,
+          "delta": 0,
+          "deltaPercent": 0.0,
+          "verdict": "descriptive only; inspect spread and browser report"
+        },
+        "geometryMs": {
+          "samples": {
+            "base": [
+              3855,
+              4056,
+              4042,
+              4228,
+              3905
+            ],
+            "branch": [
+              3822,
+              4030,
+              3838,
+              3922,
+              3892
+            ]
+          },
+          "baseMedian": 4042,
+          "branchMedian": 3892,
+          "delta": -150,
+          "deltaPercent": -3.711034141514102,
+          "verdict": "descriptive only; inspect spread and browser report"
+        },
+        "totalMs": {
+          "samples": {
+            "base": [
+              3892,
+              4093,
+              4079,
+              4265,
+              3942
+            ],
+            "branch": [
+              3859,
+              4069,
+              3875,
+              3959,
+              3929
+            ]
+          },
+          "baseMedian": 4079,
+          "branchMedian": 3929,
+          "delta": -150,
+          "deltaPercent": -3.6773719048786466,
+          "verdict": "descriptive only; inspect spread and browser report"
+        }
+      }
+    },
+    "ISSUE_053_20181220Holter_Tower_10.ifc": {
+      "completeFivePairs": true,
+      "identity": {
+        "base": [
+          [
+            109515,
+            4515185,
+            2895374,
+            [
+              "9af337ef8f713ce5"
+            ]
+          ]
+        ],
+        "branch": [
+          [
+            109515,
+            4515185,
+            2895374,
+            [
+              "9af337ef8f713ce5"
+            ]
+          ]
+        ]
+      },
+      "stableAndEqual": true,
+      "timings": {
+        "parseMs": {
+          "samples": {
+            "base": [
+              840,
+              839,
+              841,
+              838,
+              838
+            ],
+            "branch": [
+              850,
+              848,
+              848,
+              866,
+              847
+            ]
+          },
+          "baseMedian": 839,
+          "branchMedian": 848,
+          "delta": 9,
+          "deltaPercent": 1.0727056019070322,
+          "verdict": "descriptive only; inspect spread and browser report"
+        },
+        "geometryMs": {
+          "samples": {
+            "base": [
+              1779,
+              1662,
+              1607,
+              1754,
+              1598
+            ],
+            "branch": [
+              1443,
+              1843,
+              1431,
+              1581,
+              1594
+            ]
+          },
+          "baseMedian": 1662,
+          "branchMedian": 1581,
+          "delta": -81,
+          "deltaPercent": -4.873646209386282,
+          "verdict": "descriptive only; inspect spread and browser report"
+        },
+        "totalMs": {
+          "samples": {
+            "base": [
+              2620,
+              2502,
+              2449,
+              2593,
+              2437
+            ],
+            "branch": [
+              2293,
+              2692,
+              2280,
+              2448,
+              2442
+            ]
+          },
+          "baseMedian": 2502,
+          "branchMedian": 2442,
+          "delta": -60,
+          "deltaPercent": -2.3980815347721824,
+          "verdict": "descriptive only; inspect spread and browser report"
+        }
+      }
+    }
+  },
+  "nativeLimitations": [
+    "CPU payload comparison is not GPU buffer/pixel identity. Native fingerprint excludes UV/texture/instancing metadata. No historical #6940 final30 qualification. No timing pass inferred from exit0."
+  ],
+  "browserV2": {
+    "job": "65c85553-2470-417d-a17f-e0e985ef749c",
+    "state": "owner-stopped after observed failures; original worker exit -15",
+    "completedRows": 6,
+    "failed": [
+      {
+        "side": "base",
+        "fixture": "AC20-FZK-Haus.ifc",
+        "round": 1,
+        "error": "Timed out awaiting metadata, geometry, renderer finalize and allocated canvas; sample incomplete"
+      },
+      {
+        "side": "base",
+        "fixture": "ISSUE_053_20181220Holter_Tower_10.ifc",
+        "round": 1,
+        "error": "GPU device lost during sample (GPU device lost \u22651x; renderer replaced its GPU device 1x: scene re-uploaded)"
+      },
+      {
+        "side": "branch",
+        "fixture": "AC20-FZK-Haus.ifc",
+        "round": 1,
+        "error": "Timed out awaiting metadata, geometry, renderer finalize and allocated canvas; sample incomplete"
+      },
+      {
+        "side": "branch",
+        "fixture": "ISSUE_053_20181220Holter_Tower_10.ifc",
+        "round": 1,
+        "error": "GPU device lost during sample (GPU device lost \u22651x; renderer replaced its GPU device 1x: scene re-uploaded)"
+      }
+    ],
+    "observedAdapter": "SwiftShader fallback=true",
+    "reason": "Both base and branch FZK readiness failed after device loss; Holter device loss also retained. Remaining samples not replaced.",
+    "originalResultStatus": "browser (process stopped; consult terminal worker receipt)",
+    "publicationManifest": "pop-os-65c85553-2470-417d-a17f-e0e985ef749c-905f0a6119fe"
+  },
+  "headedContinuation": {
+    "refusedOriginalJob": "6043fd14-3307-40b7-83cc-6edfd99ac220",
+    "refusal": "Storage job-open failed before project execution; lifecycle registration and publication subsequently reconciled.",
+    "activeJob": "ce9cc313-4588-4ef5-a43a-daf518e35963",
+    "requestId": "issue7633-browser-4a58e7dd-20261022-v3b",
+    "status": "queued",
+    "protocol": "Frozen build verification; active desktop environment; hardware/device preflight; separate five-pair cohort, abort after retained failed sample without replacements."
+  },
+  "evidence": {
+    "result.json": {
+      "path": "/home/louistrue/build-workers/qualification/issue7633-perf-4a58e7dd-20261022-v2/result.json",
+      "sha256": "b6713198f8ae170030b5d758348fe50e55d57c86b4e161daf58b5adf889ed999"
+    },
+    "browser.jsonl": {
+      "path": "/home/louistrue/build-workers/qualification/issue7633-perf-4a58e7dd-20261022-v2/browser.jsonl",
+      "sha256": "abc0da064a6308b492256e69ba50483b115da4c80b939e5634701ecb57081ab9"
+    },
+    "independent-review.json": {
+      "path": "/home/louistrue/build-workers/qualification/issue7633-perf-4a58e7dd-20261022-v2/independent-review.json",
+      "sha256": "f3cbc34a7a587bf438d455a3f921d54491760582cf56d4313e38845b95ce80cc"
+    }
+  }
+}

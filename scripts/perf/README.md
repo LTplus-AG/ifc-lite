@@ -12,6 +12,20 @@ that also dominate in the browser; the WASM-only concerns (per-worker file
 re-decode, no threads, memory bandwidth) are orchestration-level and are read
 off the viewer's own telemetry (below).
 
+## Remote near-plane recovery (#7633)
+
+**Native output identity established; browser performance remains unqualified.**
+The current-base interleaved native comparison retains identical ordered mesh
+fingerprints and mesh/vertex/triangle counts on FZK, ISSUE_129 and Holter. Its
+phase timings are descriptive; they do not establish worker-pool neutrality.
+The separate headless browser campaign selected SwiftShader and lost its GPU
+device on both base and branch. Preserve those failed samples; a successful
+geometry phase cannot substitute for renderer readiness. Reuse hash-verified
+builds for a separate hardware-adapter preflight and fresh browser cohort,
+rather than extending readiness deadlines or replacing failed samples.
+Source identities, numeric observations and qualification status are retained
+in `tests/evidence/issue-7633/current-performance.json`.
+
 ## Geometry platform migration slices (#7955)
 
 **E1 element planning/execution (#8044): mixed phase timing, no measurable

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "issue": "https://github.com/LTplus-AG/ifc-lite/issues/7633",
   "auditedAt": "2026-10-22",
-  "verdict": "NOT READY: current native corpus, strict all-feature Clippy, direct Node/Chromium four-frame WASM behavior, fixture parity and platform determinism pass. Original causal controls and current-base worker-pool performance/output qualification remain open.",
+  "verdict": "NOT READY: original causal controls, current native corpus, strict all-feature Clippy, direct Node/Chromium four-frame WASM behavior, fixture parity and platform determinism pass. Current-base worker-pool performance/output qualification remains open.",
   "scope": "Historical receipts, failed exploratory attempts and subsequent focused native pass are preserved under their own source identities. The latest focused pass resolves the reproduced native witness on its tested commit, not the full issue acceptance charter.",
   "historicalSource": {
     "commit": "6d905337fea27251cc073086498017578276263a",
@@ -251,9 +251,9 @@
   },
   "causalControls": {
     "ISSUE_129_host_61300": {
-      "status": "ORIGINAL_REGRESSION_NOT_REPRODUCED_BY_RETAINED_FINAL_CENSUS",
+      "status": "RESOLVED_WITH_ORIGINAL_EDGE_SET_AND_EXACT_COORDINATE_CONTROLS",
       "evidence": "alternate_log",
-      "detail": "Final census reports zero regressed hosts against its golden. Host 61300 appears separately in default/alternate triangulator variance (12-to-15 edges). This does not supply an independent causal before/after certificate against the original failing candidate.",
+      "detail": "Current185 strict defects vs original209/red659; all517 red-added edges absent, no new defects vs base, all2006 exact coordinates retained. See current-causal-controls.json; not a closed-mesh claim.",
       "recoveredOriginalRed": {
         "base": "ab1775a6b64f4fcad3a8eff83a1f29df3fb5bfcb",
         "failingCandidate": "f611e6f5b8b017de5dd71cc6b4b55ca170d835b2",
@@ -267,12 +267,11 @@
       }
     },
     "ISSUE_068_host_892212": {
-      "status": "DEDICATED_FINAL_CAUSAL_PROOF_NOT_LOCATED",
-      "detail": "No host-specific final volume/boundary certificate was recovered in the bounded audit. Aggregate census success is not asserted as that certificate."
+      "status": "RESOLVED_WITH_EXACT_CORNER_AND_GUARDED_FOLD_COUNTERFACTUAL",
+      "detail": "Original corner restored exactly. Current22triangle/+18cm3 difference isolated to existing healthy-fold policy: disabling only the guarded invocation reproduces entire historical base payload byte-for-byte. See current-causal-controls.json."
     }
   },
   "openAcceptanceEvidence": [
-    "Dedicated original ISSUE_12961300/ISSUE_068892212 causal boundary/surface controls; original red replay recovered and new single-host capture submitted",
     "Complete current-base native/worker-pool performance/output evidence and measured ledger lesson",
     "Finish reconciliation/publication and release generated task workspaces before declaring charter complete"
   ],
@@ -873,9 +872,9 @@
     },
     "limitations": [
       "Contract run222 passed/0 failed/1 optional retained-runtime comparison skipped; no missing current fixture coverage",
-      "Direct browser WASM cases do not establish canonical viewer four-worker payload/timing qualification",
-      "Current heavy census pins differ from original controls; causal closure is not inferred"
-    ]
+      "Direct browser WASM cases do not establish canonical viewer four-worker payload/timing qualification"
+    ],
+    "causalControls": "tests/evidence/issue-7633/current-causal-controls.json"
   },
   "currentPerformanceResubmission": {
     "requestId": "issue7633-perf-4a58e7dd-20261022-v2",

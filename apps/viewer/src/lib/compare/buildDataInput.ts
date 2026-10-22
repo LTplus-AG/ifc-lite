@@ -15,8 +15,6 @@ import {
   extractAllEntityAttributes,
   extractAllMaterialsOnDemand,
   extractClassificationsOnDemand,
-  extractPropertiesOnDemand,
-  extractQuantitiesOnDemand,
   quantitySiScale,
   roundToScale,
   scaledPropertyValue,
@@ -27,7 +25,7 @@ import { classificationLabel } from '../lens-classification-labels.js';
 import { lensMaterialNames } from '@ifc-lite/rules';
 import { isGeometricDataName } from './geometricData.js';
 import { isTypeObjectClass, typeObjectTag } from './typeObjectTag.js';
-import type { ExtractedPropertySets } from './authoredKeys.js';
+import { compareProperties, compareQuantities, type ExtractedPropertySets } from './comparePropertySets.js';
 
 /**
  * Assemble the canonical {@link DataFingerprintInput} for one entity from the
@@ -46,14 +44,9 @@ export function buildDataInput(
   const predefinedType = extractAllEntityAttributes(store, localId).find(
     (attribute) => attribute.name === 'PredefinedType',
   )?.value;
-  // `Tag`, and only for a TYPE OBJECT (issue #2021). Type objects reach this
-  // adapter because the wasm pass emits type geometry too (#957/#994 —
-  // geometryClass 1 orphan, 2 instanced type library), and they are exactly the
-  // entities the data hash cannot separate on its own: same name, same class,
-  // no occurrence attributes, differing only in `Tag`. On an OCCURRENCE it stays
-  // out, because there it is the authoring tool's element id rather than design
-  // content and `dataHash` is the content bucket key; see
-  // `DataFingerprintInput.tag`.
+  // Type objects are compared even without geometry (#8040). Tag is design
+  // content on a type; on an occurrence it is the exporter's element id and
+  // must stay out of content matching (#2021).
   const tag = isTypeObjectClass(ifcType)
     ? typeObjectTag(store, localId, ifcType)
     : undefined;
@@ -62,7 +55,7 @@ export function buildDataInput(
   // is owned by the geometry hash, so strip it from the data fingerprint — a
   // pure move must read as a geometry change only, never "data · geometry"
   // (see geometricData.ts).
-  const propertySets = (preExtractedPropertySets ?? extractPropertiesOnDemand(store, localId))
+  const propertySets = (preExtractedPropertySets ?? compareProperties(store, localId))
     .filter((set) => !isGeometricDataName(set.name))
     .map((set) => ({
       name: set.name,
@@ -80,7 +73,7 @@ export function buildDataInput(
   // numbers genuinely changed. A pure translation leaves Volume/Area/Length
   // untouched, so it stays a geometry-only change. Values are rounded to the
   // panel's display precision so re-export float noise can't fabricate a diff.
-  const quantitySets = extractQuantitiesOnDemand(store, localId)
+  const quantitySets = compareQuantities(store, localId)
     .filter((set) => !isGeometricDataName(set.name))
     .map((set) => ({
       name: set.name,

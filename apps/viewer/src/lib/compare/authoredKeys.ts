@@ -11,7 +11,6 @@
 import {
   EntityExtractor,
   authoredKeyValue,
-  extractPropertiesOnDemand,
   parseAuthoredKeySpec,
   type IfcDataStore,
 } from '@ifc-lite/parser';
@@ -19,7 +18,7 @@ import { findPropertyInSets } from '@ifc-lite/query';
 import type { EntityFingerprint } from '@ifc-lite/diff';
 import type { CompareRef } from './buildFingerprints.js';
 
-export type ExtractedPropertySets = ReturnType<typeof extractPropertiesOnDemand>;
+import { compareProperties, type ExtractedPropertySets } from './comparePropertySets.js';
 
 /** Prefix on a fingerprint key taken from an authored property rather than a GlobalId. */
 export const AUTHORED_KEY_PREFIX = 'prop:';
@@ -48,7 +47,7 @@ export async function resolveAuthoredKeys(
     if (spec.kind === 'property') {
       const { pset, property } = spec;
       if (!pset || !property) continue;
-      const sets = extractPropertiesOnDemand(store, localId);
+      const sets = compareProperties(store, localId);
       propertySetsById?.set(localId, sets);
       const raw = findPropertyInSets(sets, pset, property)?.value;
       if (raw !== null && raw !== undefined) {

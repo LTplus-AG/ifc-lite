@@ -20,14 +20,13 @@ import { RelationshipType } from '@ifc-lite/data';
 import {
   extractAllEntityAttributes,
   extractAllMaterialsOnDemand,
-  extractPropertiesOnDemand,
-  extractQuantitiesOnDemand,
   type IfcDataStore,
 } from '@ifc-lite/parser';
 import { lensMaterialNames } from '@ifc-lite/rules';
 import type { FederatedModel } from '../../store/types.js';
 import type { CompareRef } from './buildFingerprints.js';
 import { isGeometricDataName } from './geometricData.js';
+import { compareProperties, compareQuantities } from './comparePropertySets.js';
 import {
   meshBounds,
   placementMoveSummary,
@@ -134,7 +133,7 @@ function extractData(store: IfcDataStore, localId: number): ExtractedData {
   }
 
   const properties = new Map<string, ExtractedField>();
-  for (const set of extractPropertiesOnDemand(store, localId)) {
+  for (const set of compareProperties(store, localId)) {
     for (const prop of set.properties) {
       if (isGeometricDataName(prop.name) || isGeometricDataName(set.name)) continue;
       properties.set(`${set.name} ${prop.name}`, {
@@ -148,7 +147,7 @@ function extractData(store: IfcDataStore, localId: number): ExtractedData {
   // Quantities mirror the data fingerprint (buildFingerprints.ts) so an added /
   // removed / edited quantity surfaces here as a concrete field delta (#1198).
   const quantities = new Map<string, ExtractedField>();
-  for (const set of extractQuantitiesOnDemand(store, localId)) {
+  for (const set of compareQuantities(store, localId)) {
     if (isGeometricDataName(set.name)) continue;
     for (const qty of set.quantities) {
       if (isGeometricDataName(qty.name)) continue;

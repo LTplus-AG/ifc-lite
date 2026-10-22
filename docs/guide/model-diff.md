@@ -722,6 +722,8 @@ The comparison covers every `IfcObjectDefinition` in the model, read through the
 
 ## Viewer Compare mode
 
+Compare includes products and type objects with a GlobalId even when they have no mesh. A change to a geometry-less `IfcWallType`'s Name, Tag, or own property/quantity sets appears in the results and its change details. Type objects are counted separately from products. Tasks, groups and projects remain outside the viewer's geometry-less scope; the CLI compares the wider `IfcObjectDefinition` population.
+
 The viewer's Compare UI is a consumer of this engine. It extracts an `EntityFingerprint` per entity from each loaded revision — the data hash and the per-component sub-hashes from the store, the geometry hash from the WASM mesh pass — and feeds both sides to `diffModels`. The result colours the 3D scene by state (added, modified, deleted), lets you scope the comparison to data, geometry, or both, and drives an inspect panel that reports which signals changed for a picked entity. The persisted type-exclusion list flows straight into `excludeTypes`, so classes the team does not care about stay out of the change set.
 
 The panel shares its chrome with IDS, Clash and BCF: once a comparison is on screen the header offers **Re-run** (and **Cancel** while it runs) and **Clear results**, which keeps the A/B pair. Every changed element is listed, however many; the list mounts only what is scrolled into view. The report downloads as CSV or JSON from one split button. With fewer than two models loaded and none of your own open, **Try with demo data** loads the demo base and revision B side by side.

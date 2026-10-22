@@ -13,7 +13,7 @@
 //!
 //! Callers that own their model inputs capture them once into an immutable
 //! [`OwnedMeshProductionContext`] snapshot and run this same tree through the
-//! synchronous [`produce_element_meshes_owned`] driver (`model_context`).
+//! synchronous [`produce_element_meshes_owned`] driver (`owned_session`).
 //!
 //! History: the two pipelines used to carry diverging inline copies of this
 //! tree, and fixes had to land twice (#858, #913, #957, #961, #1071). Any
@@ -23,9 +23,10 @@
 //! while the interactive viewer renders it tagged for its Model/Types switch.
 //!
 //! The converged decision tree (union of the strongest behaviours of both
-//! former copies) runs in three phases: `plan` picks the strategy once,
-//! `execution` runs and classifies each strategy's router work, and late
-//! presentation turns the executed parts into meshes: `presentation_source`
+//! former copies) runs in three phases: `plan` picks the strategy once, one
+//! linear product continuation (`session`) issues, executes and accepts one
+//! typed ticket per strategy's router work, and late presentation at
+//! acceptance turns the executed parts into meshes: `presentation_source`
 //! resolves every source-dependent field (colour, material name, palette
 //! selection) into a source-free `presentation::ReadyBody`, and the
 //! decoder-free `assembly_*` modules apply UV/texture, the palette split,
@@ -39,7 +40,7 @@
 //!    ├─ has openings → submesh-aware void cut (per-part colours survive)
 //!    ├─ else        → submesh path for ALL types (per-item colours,
 //!    │                per-item error skipping, #858 palette split per item)
-//!    └─ execution fallback chain when the submesh path produced nothing:
+//!    └─ ticket fallback chain when the submesh path produced nothing:
 //!         void-aware single mesh → plain element → element-level #858 split
 //!         → single coloured mesh
 //! ```
@@ -59,8 +60,6 @@ use std::collections::BTreeMap;
 /// serve this file's produce/emit cycle.
 #[path = "element_degenerate.rs"]
 mod degenerate;
-#[path = "element_scopes.rs"]
-mod element_scopes;
 mod element_color;
 use element_color::{find_indexed_colour_for_element, infer_opening_subpart_material_name};
 // Re-exported because they have callers outside this module: the colour
@@ -72,7 +71,6 @@ mod types;
 pub use types::*;
 mod plan;
 pub use plan::plan_type_geometry;
-mod execution;
 mod assembly_job;
 use assembly_job::AssemblyJob;
 mod presentation;
@@ -82,9 +80,21 @@ mod assembly_fallback;
 mod assembly_types;
 mod model_context;
 pub use model_context::{
-    produce_element_meshes_owned, OwnedMeshProductionContext, OwnedMeshProductionData,
-    ProductionContextError, ProductionContextId, ProductionModel,
+    OwnedMeshProductionContext, OwnedMeshProductionData, ProductionContextError, ProductionContextId,
+    ProductionModel,
 };
+mod session;
+mod session_state;
+mod session_protocol;
+mod session_owner;
+mod session_work;
+mod session_accept;
+mod session_run;
+mod session_canonical;
+#[cfg(test)]
+mod session_resumable;
+mod owned_session;
+pub use owned_session::produce_element_meshes_owned;
 
 /// THE canonical per-element mesh producer.
 ///
@@ -101,96 +111,13 @@ pub fn produce_element_meshes(
     decoder: &mut EntityDecoder,
     router: &GeometryRouter,
 ) -> ProducedElementMeshes {
-    // Open a per-element CSG escalation scope (#1109). Every boolean this element
-    // issues (one per opening, plus clip cuts) accumulates into ONE deterministic
-    // budget, so a boolean-heavy element (a slab cut by 24+ openings, a Tekla
-    // member with stacked half-space clips) degrades as a UNIT — its remaining
-    // cuts bail to the #635 AABB fallback — instead of grinding the geometry
-    // stream past the 95% watchdog. The per-boolean cap alone could not see this
-    // distributed cost. Unbounded under the server/offline-export profile.
-    // The element's budget, degenerate tally and pending reports are one owned
-    // state, installed for this synchronous call and restored on return or
-    // unwind: a rayon work-steal can run another element to completion inside
-    // this one.
-    element_scopes::ElementScopes::new()
-        .with_scope(|| produce_in_scope(job, ctx, opts, decoder, router))
-}
-
-fn produce_in_scope(
-    job: &ElementMeshJob<'_>,
-    ctx: &MeshProductionContext<'_>,
-    opts: &MeshProductionOptions,
-    decoder: &mut EntityDecoder,
-    router: &GeometryRouter,
-) -> ProducedElementMeshes {
-    ifc_lite_geometry::progress::tick();
-
-    let mut hasher = match (&job.kind, opts.geometry_hash) {
-        (ElementJobKind::Product, Some(cfg)) => {
-            Some(GeometryHasher::new(cfg.tolerance, cfg.world_rtc))
-        }
-        _ => None,
-    };
-
-    // #858 splits a colour-mapped face set by triangle index, so its triangles
-    // must keep their order through source hygiene (#5313).
-    let keep_order = !ctx.indexed_colour_full.is_empty()
-        && element_color::element_reaches_indexed_colour(job.entity, ctx.indexed_colour_full, decoder);
-    let previous_order = router.set_preserve_triangle_order(keep_order);
-    let plan = plan::plan_element(job, ctx, decoder, router);
-    let (mut meshes, mut instance_occurrences) =
-        execution::execute(plan, job, ctx, decoder, router, &mut hasher);
-    router.set_preserve_triangle_order(previous_order);
-
-    // A class with a fixed display colour (openings, #5409) overrides whatever
-    // colour the style precedence resolved, on every mesh AND every don't-bake
-    // occurrence, so no path (sub-mesh, palette split, fallback) can leak one.
-    if let Some(fixed) = crate::style::fixed_display_color_for_type(&job.ifc_type) {
-        let fixed = fixed.to_array();
-        for mesh in &mut meshes {
-            mesh.color = fixed;
-            mesh.texture = None;
-            mesh.uvs = None;
-        }
-        for occurrence in &mut instance_occurrences {
-            occurrence.color = fixed;
-        }
-    }
-
-    // Drain the router's per-element CSG diagnostics on EVERY return path so
-    // a warm (batch-reused) router starts the next element clean.
-    let csg_failures = router.take_csg_failures();
-
-    // A hash with NO box is reachable and deliberately KEPT (a NaN axis hashes
-    // but never accumulates); `push_geometry_hash` reserves NaN slots so the FFI
-    // arrays still cannot misalign. Box-without-hash is impossible. VOLUME may
-    // likewise be `None` within an emitted entry (landing as NaN) — the normal
-    // answer for most elements. See `world_aabb` / `GeometryHasher::volume`.
-    let degenerate_triangles_dropped = degenerate::dropped_this_element();
-
-    // The verdict was taken where the orienter runs; `build_mesh_data` then ran
-    // the degenerate backstop over the same triangles, and a dropped triangle
-    // opens every neighbour along its three edges. Retract before reading, so
-    // what ships describes the mesh actually returned (see
-    // `retract_closure_if_mesh_edited`).
-    let (geometry_hash, geometry_aabb, geometry_volume, geometry_closure) = match hasher {
-        Some(mut h) if !h.is_empty() => {
-            h.retract_closure_if_mesh_edited(degenerate_triangles_dropped);
-            (Some(h.finish()), h.world_aabb(), h.volume(), Some(h.closure()))
-        }
-        _ => (None, None, None, None),
-    };
-
-    ProducedElementMeshes {
-        meshes,
-        instance_occurrences,
-        geometry_hash,
-        geometry_aabb,
-        geometry_volume,
-        geometry_closure,
-        csg_failures,
-        degenerate_triangles_dropped,
-    }
+    // One canonical continuation per element (`session`). Its per-element CSG
+    // escalation budget (#1109), degenerate tally and pending reports are one
+    // owned state, installed for each synchronous slice and restored on
+    // return or unwind: a rayon work-steal can run another element to
+    // completion inside this one, and a registered processor may produce a
+    // nested element on the same decoder and router.
+    session_canonical::produce(job, ctx, opts, decoder, router)
 }
 
 /// geometry_class for the per-layer slices of a material-layer wall. The wall's
@@ -220,3 +147,36 @@ mod presentation_palette_tests;
 
 #[cfg(test)]
 mod owned_context_tests;
+
+#[cfg(test)]
+mod session_tests;
+
+#[cfg(test)]
+mod session_work_tests;
+
+#[cfg(test)]
+mod session_canonical_tests;
+
+#[cfg(test)]
+mod session_threaded_tests;
+
+#[cfg(test)]
+mod session_diagnostic_tests;
+
+#[cfg(test)]
+mod session_extension_tests;
+
+#[cfg(test)]
+mod owned_reply_tests;
+
+#[cfg(test)]
+mod session_stack_tests;
+
+#[cfg(test)]
+mod session_unwind_tests;
+
+#[cfg(test)]
+mod session_retry_tests;
+
+#[cfg(test)]
+mod session_resource_tests;

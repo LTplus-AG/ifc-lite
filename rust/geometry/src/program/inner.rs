@@ -191,6 +191,10 @@ impl<'a> GeometryProgram<'a> {
             Control::Layers(control) => ReplyValue::Layers(control.execute(router, decoder)?),
             Control::Styled(control) => ReplyValue::Styled(control.execute(router, decoder)?),
         };
+        // Acknowledge configuration or cache maintenance a reached callback
+        // made with its own mutable decoder; only a foreign owner is refused.
+        self.expected_router = Some(router.execution_identity());
+        self.expected_decoder = Some(decoder.execution_identity());
         self.expected_payload = Some(value.tag());
         Ok(ProgramReply { request, value })
     }

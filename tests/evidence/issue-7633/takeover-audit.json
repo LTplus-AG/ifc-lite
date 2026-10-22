@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "issue": "https://github.com/LTplus-AG/ifc-lite/issues/7633",
   "auditedAt": "2026-10-22",
-  "verdict": "NOT READY: focused native witness passed on e2806c6d; subsequent merged candidate 4dc1e924 fails broad workspace acceptance. No later fix qualification inferred.",
+  "verdict": "NOT READY: current native corpus, strict all-feature Clippy, direct Node/Chromium four-frame WASM behavior, fixture parity and platform determinism pass. Original causal controls and current-base worker-pool performance/output qualification remain open.",
   "scope": "Historical receipts, failed exploratory attempts and subsequent focused native pass are preserved under their own source identities. The latest focused pass resolves the reproduced native witness on its tested commit, not the full issue acceptance charter.",
   "historicalSource": {
     "commit": "6d905337fea27251cc073086498017578276263a",
@@ -253,7 +253,18 @@
     "ISSUE_129_host_61300": {
       "status": "ORIGINAL_REGRESSION_NOT_REPRODUCED_BY_RETAINED_FINAL_CENSUS",
       "evidence": "alternate_log",
-      "detail": "Final census reports zero regressed hosts against its golden. Host 61300 appears separately in default/alternate triangulator variance (12-to-15 edges). This does not supply an independent causal before/after certificate against the original failing candidate."
+      "detail": "Final census reports zero regressed hosts against its golden. Host 61300 appears separately in default/alternate triangulator variance (12-to-15 edges). This does not supply an independent causal before/after certificate against the original failing candidate.",
+      "recoveredOriginalRed": {
+        "base": "ab1775a6b64f4fcad3a8eff83a1f29df3fb5bfcb",
+        "failingCandidate": "f611e6f5b8b017de5dd71cc6b4b55ca170d835b2",
+        "strictBadEdges": [
+          209,
+          659
+        ],
+        "metric": "Exact kernel-grid edge multiplicity !=[1,1], not just signed balance",
+        "replay": "/tmp/issue7633-original-61300-replay.json",
+        "sha256": "dc396c87eb6908b009a4e5c5bb56ef4936e434baeefc2b5784db5bc3b5fea70d"
+      }
     },
     "ISSUE_068_host_892212": {
       "status": "DEDICATED_FINAL_CAUSAL_PROOF_NOT_LOCATED",
@@ -261,12 +272,9 @@
     }
   },
   "openAcceptanceEvidence": [
-    "Latest focused native pass covers both single-opening witnesses across all four frames on e2806c6d56. Revalidate after production changes or integration; source-built WASM/browser and wider charter coverage remain outstanding.",
-    "Current-source source-built WASM/browser behavior and authored boundary/corner/volume invariants.",
-    "Dedicated causal closure for ISSUE_129 host 61300 and ISSUE_068 host 892212.",
-    "Fresh execution of current ALT and feature coverage; old assertion failures have later source-history dispositions listed here and are not presumed current blockers. Retained viewer qualification remains incomplete coverage, not failed assertions.",
-    "Current-source ordinary/heavy corpus and platform determinism qualification.",
-    "Idle, current-base interleaved native and end-to-end worker-pool performance/output qualification."
+    "Dedicated original ISSUE_12961300/ISSUE_068892212 causal boundary/surface controls; original red replay recovered and new single-host capture submitted",
+    "Complete current-base native/worker-pool performance/output evidence and measured ledger lesson",
+    "Finish reconciliation/publication and release generated task workspaces before declaring charter complete"
   ],
   "performance": {
     "status": "UNQUALIFIED_IN_PUBLISHED_HISTORICAL_EVIDENCE",
@@ -513,7 +521,32 @@
       "restoredCount": 181,
       "verification": "Coordinator reports all 182 manifested fixtures now verified; this audit checked the seed receipt only."
     },
-    "maintenance": "Coordinator reports one terminal managed job reclaimed; no foreign process terminated. No separate maintenance receipt has been bound by this audit."
+    "maintenance": "Coordinator reports one terminal managed job reclaimed; no foreign process terminated. No separate maintenance receipt has been bound by this audit.",
+    "managedIncrementalCleanup": {
+      "evidence": {
+        "path": "/tmp/issue7633-managed-incremental-cleanup.json",
+        "sha256": "d85ddd6ba019d1d5085b2fce38ae00cf0612380234c4f6f93f1f0828eafbe985"
+      },
+      "receipt": {
+        "path": "/home/louistrue/build-workers/worker-state/caches/c60392ba7cc96c8a44332038/debug/incremental",
+        "identity": [
+          2128,
+          2660822
+        ],
+        "removedBytes": 38662737920,
+        "extensions": {
+          ".lock": 2576,
+          ".bin": 8228,
+          ".bc": 24900,
+          ".o": 79950,
+          ".rmeta": 121
+        },
+        "time": 1792687949.5377133,
+        "guard": "original resource/legacy locks; no queued/running jobs, live processes or foreign T3 references; only inactive compiler intermediates; source, linked binaries, fixtures and evidence retained"
+      },
+      "scope": "Coordinator performed exact-identity inactive compiler intermediate cleanup under original locks; audit bound its receipt, did not perform cleanup.",
+      "followup": "Coordinator reports resource guard passes and scoped checks started; no test pass inferred."
+    }
   },
   "latestFocusedQualification": {
     "jobId": "49d6acc0-ad63-4980-b544-4b7320b10153",
@@ -694,5 +727,161 @@
       "status": "passed"
     },
     "disposition": "Original red retained. New typed certified-retry adoption scope is under preparation; no run or repair claim in this record. Perf remains held until focused and corpus controls pass."
+  },
+  "admissionRefusals": [
+    {
+      "jobId": "3f5a915c-cee5-43e5-9117-45c857b0b720",
+      "state": "failed",
+      "exitCode": 1,
+      "sourceCommit": "4a58e7ddcde3641e460fdbf38e29ff52ab128c3c",
+      "sourceUnchanged": true,
+      "error": "host capacity guard refused admission",
+      "execution": "NOT EXECUTED: no startedAt or process/tool execution recorded; capacity refusal is not a geometry/test result",
+      "evidence": {
+        "path": "/home/louistrue/build-workers/worker-state/jobs/3f5a915c-cee5-43e5-9117-45c857b0b720/receipt.json",
+        "sha256": "f203506275596aee51b01b0067c8ca0145ad9d2802f9e0a3bf678f7803da39bc"
+      },
+      "reconciliation": "Original terminal refusal preserved; next admitted run belongs to new task issue7633-scoped-20261022. No result inferred."
+    }
+  ],
+  "scopedCandidateQualification": {
+    "jobId": "d3042ac5-515c-4586-aa12-bcf4b18c5bbd",
+    "state": "completed",
+    "exitCode": 0,
+    "sourceBefore": {
+      "commit": "4a58e7ddcde3641e460fdbf38e29ff52ab128c3c",
+      "tree": "b2500ba9a8610d7780ba27b14060c99c51a106de",
+      "clean": true,
+      "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "toolchainInputs": {
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "Cargo.lock": "06db1c681de3c3ac17093f5e52d324261b7680acd61f9d518e0d49b8774feb28",
+        "pnpm-lock.yaml": "4ef03ad9b34812de9d0e6c309d04ae315c09f887c3927f67ab6e31f8131e5283",
+        "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937"
+      }
+    },
+    "sourceAfter": {
+      "commit": "4a58e7ddcde3641e460fdbf38e29ff52ab128c3c",
+      "tree": "b2500ba9a8610d7780ba27b14060c99c51a106de",
+      "clean": true,
+      "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "toolchainInputs": {
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "Cargo.lock": "06db1c681de3c3ac17093f5e52d324261b7680acd61f9d518e0d49b8774feb28",
+        "pnpm-lock.yaml": "4ef03ad9b34812de9d0e6c309d04ae315c09f887c3927f67ab6e31f8131e5283",
+        "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937"
+      }
+    },
+    "sourceUnchanged": true,
+    "evidence": {
+      "receipt.json": {
+        "path": "/home/louistrue/build-workers/worker-state/jobs/d3042ac5-515c-4586-aa12-bcf4b18c5bbd/receipt.json",
+        "sha256": "0ce801b369e7ca520d0e71d977954aed15bae8f5631f8dfce50eaefef0b2e10b"
+      },
+      "output.log": {
+        "path": "/home/louistrue/build-workers/worker-state/jobs/d3042ac5-515c-4586-aa12-bcf4b18c5bbd/output.log",
+        "sha256": "0f428e3f564731108ffc7d07aed5713dc364ed8460599045349dab24947d47fa"
+      }
+    },
+    "command": [
+      "env",
+      "CARGO_BUILD_JOBS=4",
+      "bash",
+      "/tmp/issue7633-scoped-checks.sh"
+    ],
+    "results": {
+      "testSummaries": [
+        "test result: ok. 17 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.43s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.44s",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s",
+        "test result: ok. 1893 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 11.76s",
+        "test result: ok. 73 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 6.55s",
+        "test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.32s"
+      ],
+      "realFixtureCases": 20,
+      "strictWorkspaceClippy": "passed",
+      "scope": "Focused restored regressions, geometry library, triangulation controls, exports, ratchets and strict Clippy; not a full repeated workspace or browser/perf verdict."
+    }
+  },
+  "officialWasmPreparation": {
+    "jobId": "3017362c-b86f-4999-8c9d-0b1d8f41c30e",
+    "state": "failed",
+    "exitCode": 1,
+    "sourceBefore": {
+      "commit": "4a58e7ddcde3641e460fdbf38e29ff52ab128c3c",
+      "tree": "b2500ba9a8610d7780ba27b14060c99c51a106de",
+      "clean": true,
+      "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "toolchainInputs": {
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "Cargo.lock": "06db1c681de3c3ac17093f5e52d324261b7680acd61f9d518e0d49b8774feb28",
+        "pnpm-lock.yaml": "4ef03ad9b34812de9d0e6c309d04ae315c09f887c3927f67ab6e31f8131e5283",
+        "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937"
+      }
+    },
+    "sourceAfter": {
+      "commit": "4a58e7ddcde3641e460fdbf38e29ff52ab128c3c",
+      "tree": "b2500ba9a8610d7780ba27b14060c99c51a106de",
+      "clean": true,
+      "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "toolchainInputs": {
+        "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+        "Cargo.lock": "06db1c681de3c3ac17093f5e52d324261b7680acd61f9d518e0d49b8774feb28",
+        "pnpm-lock.yaml": "4ef03ad9b34812de9d0e6c309d04ae315c09f887c3927f67ab6e31f8131e5283",
+        "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937"
+      }
+    },
+    "sourceUnchanged": true,
+    "evidence": {
+      "receipt.json": {
+        "path": "/home/louistrue/build-workers/worker-state/jobs/3017362c-b86f-4999-8c9d-0b1d8f41c30e/receipt.json",
+        "sha256": "68c673985ac3b0d054eb87e7bd0922fb5339745edebc99d9021398b31344d9f6"
+      },
+      "output.log": {
+        "path": "/home/louistrue/build-workers/worker-state/jobs/3017362c-b86f-4999-8c9d-0b1d8f41c30e/output.log",
+        "sha256": "dac10db0856efba16c60b0974c6dc07d98bd33d7e1e7d6090e8a150e580b0f17"
+      }
+    },
+    "command": [
+      "env",
+      "CARGO_BUILD_JOBS=4",
+      "bash",
+      "/tmp/issue7633-wasm-checks.sh"
+    ],
+    "disposition": "Official source WASM build completed; subsequent contract command failed to load packages/renderer/dist/scene.js (ERR_MODULE_NOT_FOUND) before test execution. This is missing built dependency evidence, not a failing geometry assertion. Follow-up root build and contract run pending."
+  },
+  "currentPerformanceSubmission": {
+    "requestId": "issue7633-perf-4a58e7dd-20261022-v1",
+    "jobId": "b2c3bc2c-5997-4ed1-92b1-3d7d1671b239",
+    "host": "ifc-pop-worker",
+    "status": "FAILED before project start: Broken pipe; no timing samples. Original receipt preserved.",
+    "base": "a4fc04cf1f1a04ed1ad3cff89b3d32d9c97f8751",
+    "branch": "4a58e7ddcde3641e460fdbf38e29ff52ab128c3c",
+    "receipt": "/home/louistrue/build-workers/worker-state/jobs/b2c3bc2c-5997-4ed1-92b1-3d7d1671b239/receipt.json",
+    "historicalScope": "New bounded current-main comparison; historical #6940 final30 failed/unqualified results unchanged."
+  },
+  "currentVerification": {
+    "geometryCommit": "4a58e7ddcde3641e460fdbf38e29ff52ab128c3c",
+    "followupCommit": "8ce1e9d9382e43a98b454e5db6fe70bd100d0058",
+    "followupScope": "Evidence and one print_literal formatting repair; production geometry unchanged",
+    "corpus": "tests/evidence/issue-7633/current-corpus.json",
+    "wasmBoundary": "tests/evidence/issue-7633/current-wasm-boundary.json",
+    "ci": {
+      "nativeRust": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39818622765/job/119964633769",
+      "fixtureParity": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39818622056/job/119963604345",
+      "arm64AndWasm32Determinism": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39818666354"
+    },
+    "limitations": [
+      "Contract run222 passed/0 failed/1 optional retained-runtime comparison skipped; no missing current fixture coverage",
+      "Direct browser WASM cases do not establish canonical viewer four-worker payload/timing qualification",
+      "Current heavy census pins differ from original controls; causal closure is not inferred"
+    ]
+  },
+  "currentPerformanceResubmission": {
+    "requestId": "issue7633-perf-4a58e7dd-20261022-v2",
+    "jobId": "65c85553-2470-417d-a17f-e0e985ef749c",
+    "state": "submitted; no verdict",
+    "reason": "Original failure reconciled; main-repair capacity window completed; strengthened per-sample payload/counter checks",
+    "protocol": "/tmp/issue7633-pop-protocol-v2"
   }
 }

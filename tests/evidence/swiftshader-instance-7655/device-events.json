@@ -1,0 +1,124 @@
+[
+  {
+    "fixture": "AC20-FZK-Haus",
+    "attempt": 1,
+    "boundary": "before context.close",
+    "events": [
+      {
+        "event": "installed",
+        "wallMs": 1792683336099,
+        "pageMs": 70.18000000005122
+      },
+      {
+        "event": "request-device",
+        "wallMs": 1792683338630,
+        "pageMs": 2600.95000000007,
+        "request": 1,
+        "adapter": 1,
+        "descriptor": {
+          "requiredLimits": {
+            "maxBufferSize": 1073741824,
+            "maxStorageBufferBindingSize": 1073741824
+          },
+          "requiredFeatures": [
+            "timestamp-query"
+          ]
+        }
+      },
+      {
+        "event": "device-created",
+        "wallMs": 1792683338634,
+        "pageMs": 2605.2900000000373,
+        "request": 1,
+        "adapter": 1,
+        "device": 1
+      },
+      {
+        "event": "pipeline-request",
+        "wallMs": 1792683338643,
+        "pageMs": 2614.390000000014,
+        "device": 1,
+        "pipeline": 1,
+        "label": null,
+        "vertexEntryPoint": "vs_main_quantized"
+      },
+      {
+        "event": "device-lost",
+        "wallMs": 1792683339074,
+        "pageMs": 3044.9000000000233,
+        "device": 1,
+        "reason": "destroyed",
+        "message": "Device was destroyed."
+      },
+      {
+        "event": "pipeline-rejected",
+        "wallMs": 1792683339098,
+        "pageMs": 3068.795000000042,
+        "device": 1,
+        "pipeline": 1,
+        "error": "GPUPipelineError: A valid external Instance reference no longer exists."
+      }
+    ]
+  },
+  {
+    "fixture": "Snowdon",
+    "attempt": 1,
+    "boundary": "before context.close",
+    "events": [
+      {
+        "event": "installed",
+        "wallMs": 1792683346760,
+        "pageMs": 94.36000000010245
+      },
+      {
+        "event": "request-device",
+        "wallMs": 1792683349551,
+        "pageMs": 2884.5100000000093,
+        "request": 1,
+        "adapter": 1,
+        "descriptor": {
+          "requiredLimits": {
+            "maxBufferSize": 1073741824,
+            "maxStorageBufferBindingSize": 1073741824
+          },
+          "requiredFeatures": [
+            "timestamp-query"
+          ]
+        }
+      },
+      {
+        "event": "device-created",
+        "wallMs": 1792683349556,
+        "pageMs": 2889.5350000000326,
+        "request": 1,
+        "adapter": 1,
+        "device": 1
+      },
+      {
+        "event": "pipeline-request",
+        "wallMs": 1792683349565,
+        "pageMs": 2899.280000000028,
+        "device": 1,
+        "pipeline": 1,
+        "label": null,
+        "vertexEntryPoint": "vs_main_quantized"
+      },
+      {
+        "event": "device-lost",
+        "wallMs": 1792683350145,
+        "pageMs": 3479.1600000000326,
+        "device": 1,
+        "reason": "destroyed",
+        "message": "Device was destroyed."
+      },
+      {
+        "event": "pipeline-rejected",
+        "wallMs": 1792683350163,
+        "pageMs": 3497.0050000000047,
+        "device": 1,
+        "pipeline": 1,
+        "error": "GPUPipelineError: A valid external Instance reference no longer exists."
+      }
+    ]
+  }
+]

@@ -16,7 +16,7 @@ export default defineConfig({
     deviceScaleFactor: 1, locale: 'en-US', actionTimeout: 30_000,
     screenshot: 'only-on-failure', trace: 'retain-on-failure',
     launchOptions: { args: [
-      '--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader',
+      '--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader', '--use-angle=swiftshader',
       '--disable-vulkan-surface', '--ignore-gpu-blocklist', '--enable-gpu',
     ] },
   },

@@ -1,0 +1,322 @@
+{
+  "schemaVersion": 1,
+  "issue": "https://github.com/LTplus-AG/ifc-lite/issues/7633",
+  "auditedAt": "2026-10-22",
+  "verdict": "HISTORICAL_EVIDENCE_ONLY_CLOSURE_NOT_ESTABLISHED",
+  "scope": "Read-only reconciliation of retained qualification receipts. No historical pass is asserted for the current checkout; merged status is not test evidence.",
+  "historicalSource": {
+    "commit": "6d905337fea27251cc073086498017578276263a",
+    "tree": "06372135c825267018f70a79674f70cfd08c1b09",
+    "host": "louistrue-pc",
+    "architecture": "x86_64"
+  },
+  "evidence": {
+    "native_result": {
+      "path": "/home/louistrue/build-workers/qualification/6940-final-native-batch-51558969-v2/result.json",
+      "sha256": "29466253536d2f2330554bbbb9b2d9c268624157f5fc6da44c7c49bc64e71ff5"
+    },
+    "alternate_log": {
+      "path": "/home/louistrue/build-workers/qualification/6940-final-native-batch-51558969-v2/alternate.log",
+      "sha256": "ef22ae1bdfb3d21965969605443a0bc0aaa3e260033ad149bf4b7e87397a80b3"
+    },
+    "wasm_result": {
+      "path": "/home/louistrue/build-workers/qualification/6940-final-wasm-consumers-51558969-v3/result.json",
+      "sha256": "9321a6fb2917a676c9223a81dc9f44f6b5c7857050ef9c048a77315d82a16aef"
+    },
+    "viewer_result": {
+      "path": "/home/louistrue/build-workers/qualification/6940-final-viewer-size-51558969-v4/result.json",
+      "sha256": "dd11fed12893cdeaf1578d9300d832f5b243972260c037783a8f993356704ea7"
+    },
+    "native_receipt": {
+      "path": "/home/louistrue/build-workers/worker-state/jobs/27970cde-496e-4591-98f9-74ec23e80a34/receipt.json",
+      "sha256": "55241fa641bcff0e1bc54e0502c69db2793b86f76600e25dfb6af0ace479b8d4"
+    },
+    "wasm_receipt": {
+      "path": "/home/louistrue/build-workers/worker-state/jobs/dee8c03c-7033-41f2-b0c1-a35998708c8e/receipt.json",
+      "sha256": "2c28871fc91606799e3d35c5633ca11ab5e6313b020f403a3497434fdd046e2d"
+    },
+    "parity_receipt": {
+      "path": "/home/louistrue/build-workers/worker-state/jobs/819fc863-aa86-46ad-9a80-30bf8ec37115/receipt.json",
+      "sha256": "56a35bb1ed54164d23958a35d44946390491508583b8ac61da806949d9ef0cce"
+    },
+    "viewer_receipt": {
+      "path": "/home/louistrue/build-workers/worker-state/jobs/3978bdf3-a03f-420c-a0db-06cd2e895f6f/receipt.json",
+      "sha256": "1dca3b6de273bf7525aff2c81d8dd9e6f2c625724fe4e6a88cf62ff058b5bae8"
+    },
+    "parity_result": {
+      "path": "/home/louistrue/build-workers/qualification/6940-final-parity-features-51558969-v2/run/result.json",
+      "sha256": "fbab1823190a8efb3260b9e83b5ba54bc413169e87cc8ed814a28e4ce2a42d4a"
+    }
+  },
+  "confirmedHistoricalResults": {
+    "native": {
+      "evidence": "native_result",
+      "commands": [
+        {
+          "name": "consolidation",
+          "command": [
+            "cargo",
+            "test",
+            "-p",
+            "ifc-lite-geometry",
+            "--lib",
+            "csg::consolidate"
+          ],
+          "exitCode": 0,
+          "completedCounts": {
+            "passed": 74,
+            "failed": 0,
+            "ignored": 0
+          }
+        },
+        {
+          "name": "clippy",
+          "command": [
+            "cargo",
+            "clippy",
+            "--workspace",
+            "--all-targets",
+            "--",
+            "-D",
+            "warnings"
+          ],
+          "exitCode": 0,
+          "completedCounts": {
+            "passed": 0,
+            "failed": 0,
+            "ignored": 0
+          }
+        },
+        {
+          "name": "clippy-debug",
+          "command": [
+            "cargo",
+            "clippy",
+            "-p",
+            "ifc-lite-geometry",
+            "--all-targets",
+            "--features",
+            "debug_geometry",
+            "--",
+            "-D",
+            "warnings"
+          ],
+          "exitCode": 0,
+          "completedCounts": {
+            "passed": 0,
+            "failed": 0,
+            "ignored": 0
+          }
+        },
+        {
+          "name": "clippy-observability",
+          "command": [
+            "cargo",
+            "clippy",
+            "-p",
+            "ifc-lite-geometry",
+            "--all-targets",
+            "--features",
+            "observability",
+            "--",
+            "-D",
+            "warnings"
+          ],
+          "exitCode": 0,
+          "completedCounts": {
+            "passed": 0,
+            "failed": 0,
+            "ignored": 0
+          }
+        },
+        {
+          "name": "clippy-all-features",
+          "command": [
+            "cargo",
+            "clippy",
+            "-p",
+            "ifc-lite-geometry",
+            "--all-features",
+            "--all-targets",
+            "--",
+            "-D",
+            "warnings"
+          ],
+          "exitCode": 0,
+          "completedCounts": {
+            "passed": 0,
+            "failed": 0,
+            "ignored": 0
+          }
+        },
+        {
+          "name": "default",
+          "command": [
+            "cargo",
+            "test",
+            "--workspace"
+          ],
+          "exitCode": 0,
+          "completedCounts": {
+            "passed": 5759,
+            "failed": 0,
+            "ignored": 47
+          }
+        },
+        {
+          "name": "alternate",
+          "command": [
+            "cargo",
+            "test",
+            "--workspace",
+            "--features",
+            "ifc-lite-geometry/triangulation-alt"
+          ],
+          "exitCode": 101,
+          "completedCounts": {
+            "passed": 3740,
+            "failed": 1,
+            "ignored": 30
+          }
+        }
+      ],
+      "verifiedFixtures": 182,
+      "overallStatus": "FAIL_RETAINED"
+    },
+    "alternateCensus": {
+      "evidence": "alternate_log",
+      "lineStart": 5162,
+      "models": 118,
+      "voidHosts": 1640,
+      "regressed": 0,
+      "coverageLoss": 0,
+      "reclassified": 0,
+      "volumeMoved": 1,
+      "failure": {
+        "fixture": "various/rvt01.ifc",
+        "host": 11232,
+        "volumeCm3": [
+          39336,
+          39344
+        ],
+        "triangles": [
+          144,
+          154
+        ]
+      },
+      "interpretation": "The remaining failure is volume movement, not the original ISSUE_129 wall 61300 209-to-659 edge regression. A later census pin change is recorded in laterSourceHistoryDispositions; physical acceptance is not inferred."
+    },
+    "wasm": {
+      "evidence": "wasm_result",
+      "passedCommands": [
+        "official-wasm-build",
+        "root-build",
+        "root-typecheck",
+        "real-wasm-contract",
+        "all-non-viewer-root-tests"
+      ],
+      "realContractCounts": {
+        "passed": 223,
+        "failed": 0,
+        "skipped": 0
+      },
+      "overallStatus": "FAIL_RETAINED",
+      "failure": "Qualification runner rejected skipped root-test coverage despite zero task exit codes."
+    },
+    "viewer": {
+      "evidence": "viewer_result",
+      "overallStatus": "FAIL_RETAINED",
+      "failure": "Shard 0 test command exited 0 but retained two skipped tests; strict qualification runner rejected skipped coverage and did not schedule later waves. This is not evidence of failed viewer assertions.",
+      "shard0": {
+        "exitCode": 0,
+        "skipped": 2
+      }
+    },
+    "parity": {
+      "evidence": "parity_result",
+      "state": "FAIL_RETAINED",
+      "comparisons": "All four in-tree fixture comparison commands exited 0.",
+      "actualFailure": "Later test-manifold feature run exited 101 with failures in rvt01_6305_window_cuts_outer_render, reveal_wall_openings_do_not_leave_flaps and v5c_dense_reveal_wall_not_torn.",
+      "limitation": "Combined parity/features job failure must not be described as failed fixture parity comparisons; full corpus parity was not established. Later source-history changes dispose of these old feature expectations; their old failures are not presumed current blockers."
+    },
+    "publishedMiniBIM": {
+      "reference": "docs/architecture/evidence/opening-tears-6940/README.md",
+      "runtimeCommit": "431571bdb96a20a73b19907c2c3ec05dc7733f43",
+      "baseCommit": "56a5f58c325997c4c7ec460456a9e150437718cd",
+      "reportedNativeNodeContexts": 27,
+      "reportedRetainedShapeBounds": 18,
+      "reportedViewerSlabs": 9,
+      "limitation": "Published historical evidence summary; this audit did not replay its payloads or certify current-source four-frame behavior."
+    }
+  },
+  "causalControls": {
+    "ISSUE_129_host_61300": {
+      "status": "ORIGINAL_REGRESSION_NOT_REPRODUCED_BY_RETAINED_FINAL_CENSUS",
+      "evidence": "alternate_log",
+      "detail": "Final census reports zero regressed hosts against its golden. Host 61300 appears separately in default/alternate triangulator variance (12-to-15 edges). This does not supply an independent causal before/after certificate against the original failing candidate."
+    },
+    "ISSUE_068_host_892212": {
+      "status": "DEDICATED_FINAL_CAUSAL_PROOF_NOT_LOCATED",
+      "detail": "No host-specific final volume/boundary certificate was recovered in the bounded audit. Aggregate census success is not asserted as that certificate."
+    }
+  },
+  "openAcceptanceEvidence": [
+    "Current-source exact single-opening 136046 and 136094 four-frame behavior.",
+    "Current-source source-built WASM/browser behavior and authored boundary/corner/volume invariants.",
+    "Dedicated causal closure for ISSUE_129 host 61300 and ISSUE_068 host 892212.",
+    "Fresh execution of current ALT and feature coverage; old assertion failures have later source-history dispositions listed here and are not presumed current blockers. Retained viewer qualification remains incomplete coverage, not failed assertions.",
+    "Current-source ordinary/heavy corpus and platform determinism qualification.",
+    "Idle, current-base interleaved native and end-to-end worker-pool performance/output qualification."
+  ],
+  "performance": {
+    "status": "UNQUALIFIED_IN_PUBLISHED_HISTORICAL_EVIDENCE",
+    "references": [
+      "scripts/perf/README.md",
+      "docs/architecture/evidence/opening-tears-6940/README.md"
+    ],
+    "detail": "No successful later complete worker-pool cohort was recovered; failed cohorts cannot be pooled or relabeled."
+  },
+  "sizeHold": {
+    "status": "HISTORICAL_HOLD_SUPERSEDED_BY_SEPARATE_MAINTAINER_ACCEPTANCE",
+    "reference": "scripts/perf/README.md, Engine transfer ceiling acceptance (#8000, #8003)",
+    "detail": "This does not establish a timing or geometry acceptance verdict."
+  },
+  "provenanceNotes": [
+    "Paths identify local retained evidence; SHA-256 hashes permit verification of the exact audited bytes.",
+    "qualification-prep result files are preparation records, not execution proof.",
+    "No tolerance, golden, oracle or ratchet modification is authorized or performed by this audit."
+  ],
+  "laterSourceHistoryDispositions": [
+    {
+      "commit": "c30d03184144f07639c1daabbabaa07c771a8931",
+      "pullRequest": "https://github.com/LTplus-AG/ifc-lite/pull/7990",
+      "references": [
+        "rust/geometry/tests/issue_098_reveal_wall.rs",
+        "rust/geometry/tests/issue_098_v5c.rs"
+      ],
+      "disposition": "Re-measured gated ISSUE_098 edge-count pins after #7607. Commit records unchanged fallback routing and surface/volume evidence for additional T-vertices. Test expectations changed; production code did not.",
+      "limitation": "Source-history disposition of the old feature assertions, not a fresh current-source execution pass."
+    },
+    {
+      "commit": "9b6be36069ef236090cd089c90d91a30c95b3a7c",
+      "pullRequest": "https://github.com/LTplus-AG/ifc-lite/pull/7981",
+      "references": [
+        "rust/geometry/src/router/voids/rvt01_6305_tests.rs"
+      ],
+      "disposition": "Pins measured RVT6305 fallback areas under csg_manifold_gate and asserts actual NonManifoldRejected diagnostics. Default and topology-only acceptance bars remain unchanged.",
+      "limitation": "Documents and tests known gated fallback behavior; does not claim that fallback emits the default jamb geometry or provide a fresh execution pass."
+    },
+    {
+      "commit": "7d6dea0a6d0cde8d3ef7cd3859017574f0fa83af",
+      "pullRequest": "https://github.com/LTplus-AG/ifc-lite/pull/7968",
+      "references": [
+        "rust/geometry/tests/manifests/watertightness_census.tsv",
+        "rust/geometry/tests/manifests/watertightness_census_heavy.tsv",
+        "docs/architecture/evidence/issue-7941/README.md",
+        "docs/architecture/evidence/issue-7941/repair-native-qualification.json"
+      ],
+      "disposition": "Later census update includes RVT11232 144-to-154 triangles and 39336-to-39344 cm3; commit describes authored-gap preservation from #7942. Therefore the retained old golden mismatch is not automatically a current test failure.",
+      "limitation": "Earlier retained #7941 qualification explicitly leaves physical disposition pending. This audit located no later host-specific finite-surface certificate and does not infer physical acceptance from the pin change."
+    }
+  ]
+}

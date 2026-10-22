@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { sectionExclusions, withSectionExclusions } from './section-exclusions.js';
 /**
  * The selection/hover mask pipelines (#5390), and the instanced variant that
  * outlines GPU-instanced occurrences (#5745): repeated windows, doors,
@@ -48,7 +49,7 @@ export type MaskPipelines = Record<MaskKind, GPURenderPipeline>;
 
 export function createGeometricMaskPipelines(device: GPUDevice, meshLayout: GPUBindGroupLayout, samples: number, hoverLayout?: GPUBindGroupLayout): MaskPipelines {
   const instanced = hoverLayout !== undefined;
-  const layout = device.createPipelineLayout({ bindGroupLayouts: [meshLayout, hoverLayout ?? device.createBindGroupLayout({ entries: [] }), opaqueVisibilityLayout(device, samples)] });
+  const layout = device.createPipelineLayout({ bindGroupLayouts: withSectionExclusions(device, [meshLayout, hoverLayout ?? device.createBindGroupLayout({ entries: [] }), opaqueVisibilityLayout(device, samples)]) });
   const vertex: GPUVertexState = {
     module: device.createShaderModule({ code: mainShaderSource.replace('@location(8) @interpolate(linear)', '@location(8) @interpolate(linear, sample)') }),
     entryPoint: instanced ? 'vs_instanced' : 'vs_main', buffers: instanced ? INSTANCED_VERTEX_BUFFERS : [INSTANCED_VERTEX_BUFFERS[0]],
@@ -152,7 +153,7 @@ export class InstancedSelectionMask {
     const groups: GPUBindGroupLayout[] = [];
     groups[0] = meshBindGroupLayout;
     groups[SELECTION_MASK_HOVER_GROUP] = hoverLayout;
-    const layout = device.createPipelineLayout({ label: 'selection-mask-instanced-layout', bindGroupLayouts: groups });
+    const layout = device.createPipelineLayout({ label: 'selection-mask-instanced-layout', bindGroupLayouts: withSectionExclusions(device, groups) });
     const vertex: GPUVertexState = {
       module: device.createShaderModule({ label: 'selection-mask-instanced-vs', code: mainShaderSource }),
       entryPoint: 'vs_instanced',
@@ -208,6 +209,7 @@ export class InstancedSelectionMask {
       this.geometricPipelines ??= createGeometricMaskPipelines(this.device, this.meshBindGroupLayout, this.sampleCount, this.hoverLayout);
       pass.setPipeline(this.geometricPipelines[kind]); pass.setBindGroup(OPAQUE_VISIBILITY_GROUP, geometricVisibility);
     } else pass.setPipeline(this.pipelines[kind]);
+    pass.setBindGroup(3, sectionExclusions(this.device).bindGroup);
     pass.setBindGroup(0, this.meshUniform.bindGroup);
     pass.setBindGroup(SELECTION_MASK_HOVER_GROUP, this.hoverBindGroup);
     for (const t of templates) {

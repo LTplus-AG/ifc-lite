@@ -6,9 +6,10 @@
 use crate::{exact_topology::strict_closed_mesh, Mesh};
 
 /// Mesh and bounds probes must retain exactly the same opening-item parts.
-pub(super) fn clean_opening_item(mut mesh: Mesh, router: &super::GeometryRouter) -> Option<Mesh> {
+/// `hygiene` is `BooleanOperand` as resolved for the probing router.
+pub(crate) fn clean_opening_item(mut mesh: Mesh, hygiene: super::SourceHygiene) -> Option<Mesh> {
     if mesh.is_empty() { return None; }
-    super::SourceHygiene::BooleanOperand.for_router(router).apply(&mut mesh);
+    hygiene.apply(&mut mesh);
     (!mesh.indices.is_empty()).then_some(mesh)
 }
 

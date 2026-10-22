@@ -1,0 +1,14 @@
+{
+  "license": "MPL-2.0",
+  "parentCommit": "890647d2717af08c73a17fdf8c134163f0fe056d",
+  "parentTree": "111fb6caf3550c47711076db3b7ac4e134b617e3",
+  "method": "Exact Git mode/type/blob/path equality of every parent entry except the listed README; new paths only under the listed evidence directory. SHA256 covers retained NUL-terminated git ls-tree -r -z entries in Git order.",
+  "unchangedParentEntries": 20284,
+  "unchangedEntriesSHA256": "1518ce9f867eaa087a884539ccdccc437a5c17d55db089863b03357a04266d07",
+  "allowedChangedExistingPaths": [
+    "tests/evidence/placement-7779/native-5a834675-to-2f53f794/README.md"
+  ],
+  "allowedAddedDirectory": "tests/evidence/placement-7779/native-5a834675-to-2f53f794/supplemental-correctness",
+  "productionTestBuildBudgetChanges": false,
+  "newHeadMeasured": false
+}

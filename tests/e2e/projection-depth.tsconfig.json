@@ -24,6 +24,8 @@
     "selection-mask-depth.gpu.ts",
     "selection-mask-depth.e2e.spec.ts",
     "projection-texture.gpu.ts",
-    "projection-texture.e2e.spec.ts"
+    "projection-texture.e2e.spec.ts",
+    "selective-clipping.gpu.ts",
+    "selective-clipping.e2e.spec.ts"
   ]
 }

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { batchEntityIdAnchor } from './entity-color-table.js';
 /**
  * Occluder collection for the sun shadow depth pass (issue #2670, Phase 2a).
  *
@@ -176,6 +177,7 @@ export function collectShadowOccluders(
     const q = batch.quantized;
     draws.push({
       kind: q ? 'quantized' : 'flat',
+      entityIdAnchor: batchEntityIdAnchor(batch) ?? 0xFFFFFFFF,
       vertexBuffer: batch.vertexBuffer,
       indexBuffer: batch.indexBuffer,
       indexCount: batch.indexCount,
@@ -205,6 +207,7 @@ export function collectShadowOccluders(
     if (!anyVisible([tm.expressId], visibility)) continue;
     draws.push({
       kind: 'textured',
+      entityIdAnchor: tm.expressId,
       vertexBuffer: tm.vertexBuffer,
       indexBuffer: tm.indexBuffer,
       indexCount: tm.indexCount,
@@ -224,6 +227,7 @@ export function collectShadowOccluders(
     if (!anyVisible([mesh.expressId], visibility)) continue;
     draws.push({
       kind: 'flat',
+      entityIdAnchor: mesh.expressId,
       vertexBuffer: mesh.vertexBuffer,
       indexBuffer: mesh.indexBuffer,
       indexCount: mesh.indexCount,

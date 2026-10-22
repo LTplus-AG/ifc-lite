@@ -62,7 +62,8 @@
 use std::sync::OnceLock;
 
 use super::geom::opening_mesh_thinnest_axis_dir;
-use super::{cutter_is_closed_manifold, GeometryRouter, OpeningType, VoidContext};
+use super::{cutter_is_closed_manifold, OpeningType, VoidContext};
+use crate::program::openings::execute::Execution;
 use crate::cdt::triangulate_pslg;
 use crate::mesh::Mesh;
 use nalgebra::Point2;
@@ -2654,14 +2655,14 @@ fn cap_cdt_impl(
 
 // ─────────────────────────────── the driver ─────────────────────────────────
 
-impl GeometryRouter {
+impl Execution {
     /// Try the analytic prism subtraction on `mesh`.
     ///
     /// Iterates the merged openings in order; each opening whose cutter is a
     /// clean prism AND whose cut passes every self-check is subtracted
     /// analytically; every other opening lands in the returned residual
     /// context (cut by the exact kernel on the analytic result — the caller
-    /// recurses through [`GeometryRouter::apply_void_context`], mirroring the
+    /// recurses through [`Execution::apply_void_context`], mirroring the
     /// 2D path's residual composition). `None` ⇒ no opening was cut and the
     /// caller must run the FULL original context through the exact kernel.
     pub(super) fn try_prism_cut(

@@ -13,6 +13,8 @@ export interface PickOptions {
 
 /** Clip state the GPU picker mirrors from the most recent rendered frame. */
 export interface PickClipState {
+  /** Full scene ids exempt from primary and extra section planes; crop boxes still apply. */
+  sectionExcludedIds?: ReadonlySet<number>;
   sectionPlane?: { normal: [number, number, number]; distance: number; flipped: boolean } | null;
   /** Further planes (#7545), world-space; the picker clips against all of them. */
   extraPlanes?: readonly ExtraClipPlane[] | null;

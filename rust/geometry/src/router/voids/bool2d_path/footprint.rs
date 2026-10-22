@@ -14,7 +14,7 @@ use nalgebra::{Matrix4, Point2, Point3, Vector3};
 /// test — a footprint that touches or crosses a boundary edge (a boundary notch)
 /// fails and is routed to the exact kernel rather than approximated. This gate
 /// says nothing about overlap between footprints; both routes remove their union.
-pub(super) fn footprint_interior(fp: &[Point2<f64>], profile: &Profile2D) -> bool {
+pub(crate) fn footprint_interior(fp: &[Point2<f64>], profile: &Profile2D) -> bool {
     fp.iter().all(|v| {
         crate::bool2d::point_in_contour(v, &profile.outer)
             && profile
@@ -29,7 +29,7 @@ pub(super) fn footprint_interior(fp: &[Point2<f64>], profile: &Profile2D) -> boo
 /// full host depth [`hz_min`, `hz_max`]. `None` (ineligible → exact kernel) for a
 /// perpendicular sweep, a partial-depth (recess) opening, an annular opening
 /// (its own profile holes), or a degenerate footprint.
-pub(super) fn opening_solid_footprint(
+pub(crate) fn opening_solid_footprint(
     op: &ExtrudedSolidLike,
     hm_inv: &Matrix4<f64>,
     host_axis: &Vector3<f64>,

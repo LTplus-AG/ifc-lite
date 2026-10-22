@@ -1,0 +1,591 @@
+{
+  "license": "MPL-2.0",
+  "kind": "NORMALIZED_LOCAL_SMALL_FIXTURE_OBSERVATION_NOT_WORKER_RECEIPT",
+  "originalTerminal": {
+    "sha256": "b494f4b6848ba5dd6b14f68875a0a1230df69e0f62e9a778b8028f70ed622629",
+    "bytes": 98866
+  },
+  "hostClass": "local Pop Linux x86_64",
+  "complete": true,
+  "actualCommands": 24,
+  "fixturePairs": 6,
+  "skips": 0,
+  "workerJobCreated": false,
+  "policy": "Explicit user small-fixture-only exemption; no build/cache access or heavy reservation. New one-shot r2 after verified external benchmark state changed; fresh safety checks before each call.",
+  "bounds": {
+    "cpuSeconds": 2,
+    "wallSeconds": 5,
+    "addressSpaceMiB": 512,
+    "perOutputFileBytes": 1048576,
+    "sequential": true,
+    "totalOwnedOutputBytesLimit": 67108864,
+    "firstFailureStops": true
+  },
+  "environment": {
+    "CARGO_BUILD_JOBS": "4",
+    "IFC_LITE_DEDUP_EXTRA": "0",
+    "IFC_LITE_INSTANCING": "0",
+    "IFC_LITE_LOCAL_FRAME": null,
+    "RAYON_NUM_THREADS": "4"
+  },
+  "commands": [
+    {
+      "record": "main-2-probe.command.json",
+      "argv": [
+        "<original-binaries>/main/perf-probe",
+        "tests/models/ara3d/duplex.ifc",
+        "--iters",
+        "1",
+        "--json",
+        "--fingerprint"
+      ],
+      "exitCode": 0,
+      "complete": true,
+      "startedAt": 1792611693.7672844,
+      "finishedAt": 1792611693.9378033,
+      "stdout": {
+        "sha256": "3d53b21e3ba68517cc4e1d2234ebecc4bfac94a7fdda9f1f6f728bd14a2d87a1",
+        "bytes": 500
+      },
+      "stderr": {
+        "sha256": "2e7e68ce91a49d4d5eec7e961d412c93894cdc33260d832fe3ca05849510c831",
+        "bytes": 653
+      }
+    },
+    {
+      "record": "main-2-payload.command.json",
+      "argv": [
+        "<original-binaries>/main/payload-diagnostics",
+        "tests/models/ara3d/duplex.ifc",
+        "<observation-output>/main-2-diagnostics.json"
+      ],
+      "exitCode": 0,
+      "complete": true,
+      "startedAt": 1792611693.9419978,
+      "finishedAt": 1792611694.1114073,
+      "stdout": {
+        "sha256": "2c8601a40265f74b33ec9e36d68fe4780b1082dee364d548c781e4a359e4b42b",
+        "bytes": 779
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "record": "placement-2-probe.command.json",
+      "argv": [
+        "<original-binaries>/placement/perf-probe",
+        "tests/models/ara3d/duplex.ifc",
+        "--iters",
+        "1",
+        "--json",
+        "--fingerprint"
+      ],
+      "exitCode": 0,
+      "complete": true,
+      "startedAt": 1792611694.1248772,
+      "finishedAt": 1792611694.243415,
+      "stdout": {
+        "sha256": "53649d1dbab18782e2d715e5f04786006f37a60ff8bc1d34a5c962b0c47fd1f8",
+        "bytes": 499
+      },
+      "stderr": {
+        "sha256": "ec2405958d043f9e31cd2d533a24e78650fb2b8ba194bfa0853e9069e071f0fb",
+        "bytes": 654
+      }
+    },
+    {
+      "record": "placement-2-payload.command.json",
+      "argv": [
+        "<original-binaries>/placement/payload-diagnostics",
+        "tests/models/ara3d/duplex.ifc",
+        "<observation-output>/placement-2-diagnostics.json"
+      ],
+      "exitCode": 0,
+      "complete": true,
+      "startedAt": 1792611694.247925,
+      "finishedAt": 1792611694.41786,
+      "stdout": {
+        "sha256": "2c8601a40265f74b33ec9e36d68fe4780b1082dee364d548c781e4a359e4b42b",
+        "bytes": 779
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "record": "main-3-probe.command.json",
+      "argv": [
+        "<original-binaries>/main/perf-probe",
+        "tests/models/ara3d/IfcOpenHouse_IFC4.ifc",
+        "--iters",
+        "1",
+        "--json",
+        "--fingerprint"
+      ],
+      "exitCode": 0,
+      "complete": true,
+      "startedAt": 1792611694.4323046,
+      "finishedAt": 1792611694.4524832,
+      "stdout": {
+        "sha256": "8446ae8093e835eb0e6e089f8ea153a937e6c2a567a990bb589e0f49f35b53ee",
+        "bytes": 498
+      },
+      "stderr": {
+        "sha256": "c55f51d454f2f462a4a1253f59d9da9fbf692352b8eda3707320d95ec7261a33",
+        "bytes": 658
+      }
+    },
+    {
+      "record": "main-3-payload.command.json",
+      "argv": [
+        "<original-binaries>/main/payload-diagnostics",
+        "tests/models/ara3d/IfcOpenHouse_IFC4.ifc",
+        "<observation-output>/main-3-diagnostics.json"
+      ],
+      "exitCode": 0,
+      "complete": true,
+      "startedAt": 1792611694.457367,
+      "finishedAt": 1792611694.4780354,
+      "stdout": {
+        "sha256": "0842bbaaccaaf19893e9ac1c9f1ae1575301a16b3162562fd7ddb262396b0328",
+        "bytes": 778
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "record": "placement-3-probe.command.json",
+      "argv": [
+        "<original-binaries>/placement/perf-probe",
+        "tests/models/ara3d/IfcOpenHouse_IFC4.ifc",
+        "--iters",
+        "1",
+        "--json",
+        "--fingerprint"
+      ],
+      "exitCode": 0,
+      "complete": true,
+      "startedAt": 1792611694.4839413,
+      "finishedAt": 1792611694.5047393,
+      "stdout": {
+        "sha256": "1a968331dd0c00aee399ba920a4c55750930515bc064198cd481806e4c076006",
+        "bytes": 501
+      },
+      "stderr": {
+        "sha256": "c0c749bf87334b559bf985e0cf78dd588a061fe8577821065874c0dcc49cdab7",
+        "bytes": 660
+      }
+    },
+    {
+      "record": "placement-3-payload.command.json",
+      "argv": [
+        "<original-binaries>/placement/payload-diagnostics",
+        "tests/models/ara3d/IfcOpenHouse_IFC4.ifc",
+        "<observation-output>/placement-3-diagnostics.json"
+      ],
+      "exitCode": 0,
+      "complete": true,
+      "startedAt": 1792611694.5101058,
+      "finishedAt": 1792611694.546965,
+      "stdout": {
+        "sha256": "0842bbaaccaaf19893e9ac1c9f1ae1575301a16b3162562fd7ddb262396b0328",
+        "bytes": 778
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "record": "main-4-probe.command.json",
+      "argv": [
+        "<original-binaries>/main/perf-probe",
+        "rust/geometry/tests/fixtures/bath_csg_solid.ifc",
+        "--iters",
+        "1",
+        "--json",
+        "--fingerprint"
+      ],
+      "exitCode": 0,
+      "complete": true,
+      "startedAt": 1792611694.5555706,
+      "finishedAt": 1792611694.592153,
+      "stdout": {
+        "sha256": "e734db60f9bbb34ddf36ccaff64d080b0943f52addb48372499be08812398432",
+        "bytes": 529
+      },
+      "stderr": {
+        "sha256": "5c783f7d6d131454af1d37c03e79b3864cb1ea0065fa528f575b7ac48699d00a",
+        "bytes": 686
+      }
+    },
+    {
+      "record": "main-4-payload.command.json",
+      "argv": [
+        "<original-binaries>/main/payload-diagnostics",
+        "rust/geometry/tests/fixtures/bath_csg_solid.ifc",
+        "<observation-output>/main-4-diagnostics.json"
+      ],
+      "exitCode": 0,
+      "complete": true,
+      "startedAt": 1792611694.5980103,
+      "finishedAt": 1792611694.6186638,
+      "stdout": {
+        "sha256": "4639347e70a87e0dcbb35a9902ec1d278b5f20f0fd0a2097add4e5a12184e44b",
+        "bytes": 778
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "record": "placement-4-probe.command.json",
+      "argv": [
+        "<original-binaries>/placement/perf-probe",
+        "rust/geometry/tests/fixtures/bath_csg_solid.ifc",
+        "--iters",
+        "1",
+        "--json",
+        "--fingerprint"
+      ],
+      "exitCode": 0,
+      "complete": true,
+      "startedAt": 1792611694.6258762,
+      "finishedAt": 1792611694.6465719,
+      "stdout": {
+        "sha256": "b02d9dc480f8f7b356d551216c537927d6b4c8d033013b5d64532108bd2dc85f",
+        "bytes": 527
+      },
+      "stderr": {
+        "sha256": "8614880c766a7998723287d9c77061be7815e8f9ae26a7a20f9c6e0c41b9efd7",
+        "bytes": 686
+      }
+    },
+    {
+      "record": "placement-4-payload.command.json",
+      "argv": [
+        "<original-binaries>/placement/payload-diagnostics",
+        "rust/geometry/tests/fixtures/bath_csg_solid.ifc",
+        "<observation-output>/placement-4-diagnostics.json"
+      ],
+      "exitCode": 0,
+      "complete": true,
+      "startedAt": 1792611694.656974,
+      "finishedAt": 1792611694.6939182,
+      "stdout": {
+        "sha256": "4639347e70a87e0dcbb35a9902ec1d278b5f20f0fd0a2097add4e5a12184e44b",
+        "bytes": 778
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "record": "main-5-probe.command.json",
+      "argv": [
+        "<original-binaries>/main/perf-probe",
+        "rust/geometry/tests/fixtures/issue_1155_halfspace_flyaway.ifc",
+        "--iters",
+        "1",
+        "--json",
+        "--fingerprint"
+      ],
+      "exitCode": 0,
+      "complete": true,
+      "startedAt": 1792611694.7037942,
+      "finishedAt": 1792611694.716855,
+      "stdout": {
+        "sha256": "1a640ecb37ae0735f0fc95d1900d754c773a1554f915378c3eb65eb327123d7f",
+        "bytes": 547
+      },
+      "stderr": {
+        "sha256": "331570faffb66bdefed25933bc9dfc4a2503fbb244357d2c1d38a0b5f6bb05ed",
+        "bytes": 707
+      }
+    },
+    {
+      "record": "main-5-payload.command.json",
+      "argv": [
+        "<original-binaries>/main/payload-diagnostics",
+        "rust/geometry/tests/fixtures/issue_1155_halfspace_flyaway.ifc",
+        "<observation-output>/main-5-diagnostics.json"
+      ],
+      "exitCode": 0,
+      "complete": true,
+      "startedAt": 1792611694.7236447,
+      "finishedAt": 1792611694.7359746,
+      "stdout": {
+        "sha256": "da73f2e58abb6ecaacb8dd257d434a92e810b5d2873e70ffc04eb641ca699482",
+        "bytes": 778
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "record": "placement-5-probe.command.json",
+      "argv": [
+        "<original-binaries>/placement/perf-probe",
+        "rust/geometry/tests/fixtures/issue_1155_halfspace_flyaway.ifc",
+        "--iters",
+        "1",
+        "--json",
+        "--fingerprint"
+      ],
+      "exitCode": 0,
+      "complete": true,
+      "startedAt": 1792611694.7460766,
+      "finishedAt": 1792611694.7608297,
+      "stdout": {
+        "sha256": "e0ba5f3d3197fa68f7d16189755a1d0c9eea8075afbb989a752297515ae207c5",
+        "bytes": 537
+      },
+      "stderr": {
+        "sha256": "9ee1e65297e2871dce61b0ca6fcbbd6134eabbbd5f73c0be1e7e109bf66b26d2",
+        "bytes": 697
+      }
+    },
+    {
+      "record": "placement-5-payload.command.json",
+      "argv": [
+        "<original-binaries>/placement/payload-diagnostics",
+        "rust/geometry/tests/fixtures/issue_1155_halfspace_flyaway.ifc",
+        "<observation-output>/placement-5-diagnostics.json"
+      ],
+      "exitCode": 0,
+      "complete": true,
+      "startedAt": 1792611694.7710044,
+      "finishedAt": 1792611694.7833245,
+      "stdout": {
+        "sha256": "da73f2e58abb6ecaacb8dd257d434a92e810b5d2873e70ffc04eb641ca699482",
+        "bytes": 778
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "record": "main-6-probe.command.json",
+      "argv": [
+        "<original-binaries>/main/perf-probe",
+        "rust/geometry/tests/fixtures/swept_disk_composite_arc_crankbar.ifc",
+        "--iters",
+        "1",
+        "--json",
+        "--fingerprint"
+      ],
+      "exitCode": 0,
+      "complete": true,
+      "startedAt": 1792611694.7940257,
+      "finishedAt": 1792611694.8063478,
+      "stdout": {
+        "sha256": "26329038004fd88e2b2fce2555dc4ee72c5994f4acc2f1c07ba172af15a49210",
+        "bytes": 552
+      },
+      "stderr": {
+        "sha256": "223c8c70d6bdb1b933004b92d4cd3beb5d276d53af84a1cd2a25848c2ccf2c55",
+        "bytes": 712
+      }
+    },
+    {
+      "record": "main-6-payload.command.json",
+      "argv": [
+        "<original-binaries>/main/payload-diagnostics",
+        "rust/geometry/tests/fixtures/swept_disk_composite_arc_crankbar.ifc",
+        "<observation-output>/main-6-diagnostics.json"
+      ],
+      "exitCode": 0,
+      "complete": true,
+      "startedAt": 1792611694.8142283,
+      "finishedAt": 1792611694.8265207,
+      "stdout": {
+        "sha256": "a35ddda6841ce9b222f137e502c886319d74bfeb54ed642f8fb9e137191b078c",
+        "bytes": 778
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "record": "placement-6-probe.command.json",
+      "argv": [
+        "<original-binaries>/placement/perf-probe",
+        "rust/geometry/tests/fixtures/swept_disk_composite_arc_crankbar.ifc",
+        "--iters",
+        "1",
+        "--json",
+        "--fingerprint"
+      ],
+      "exitCode": 0,
+      "complete": true,
+      "startedAt": 1792611694.8358908,
+      "finishedAt": 1792611694.8484142,
+      "stdout": {
+        "sha256": "9f7c48d28290fb86d8ede17ebaa3d4919411b208d4e5549dd06f8fa9fc480e1c",
+        "bytes": 542
+      },
+      "stderr": {
+        "sha256": "e85405bd7cdb62d534851d91932c45964ab8824ee561ef2882c47a11eba7fc8c",
+        "bytes": 702
+      }
+    },
+    {
+      "record": "placement-6-payload.command.json",
+      "argv": [
+        "<original-binaries>/placement/payload-diagnostics",
+        "rust/geometry/tests/fixtures/swept_disk_composite_arc_crankbar.ifc",
+        "<observation-output>/placement-6-diagnostics.json"
+      ],
+      "exitCode": 0,
+      "complete": true,
+      "startedAt": 1792611694.8560963,
+      "finishedAt": 1792611694.8688364,
+      "stdout": {
+        "sha256": "a35ddda6841ce9b222f137e502c886319d74bfeb54ed642f8fb9e137191b078c",
+        "bytes": 778
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "record": "main-7-probe.command.json",
+      "argv": [
+        "<original-binaries>/main/perf-probe",
+        "rust/geometry/tests/fixtures/swept_disk_trimmed_line.ifc",
+        "--iters",
+        "1",
+        "--json",
+        "--fingerprint"
+      ],
+      "exitCode": 0,
+      "complete": true,
+      "startedAt": 1792611694.8811007,
+      "finishedAt": 1792611694.8948302,
+      "stdout": {
+        "sha256": "f9e5b7e0ff853deba107a9c1622723e76bb732c5c9f28a14ca157f2e5c0fe3d1",
+        "bytes": 530
+      },
+      "stderr": {
+        "sha256": "d862a5d1a711f6549c85fd0a427191b15cd2bafd88e4d2f975774ee1e8ddbf08",
+        "bytes": 690
+      }
+    },
+    {
+      "record": "main-7-payload.command.json",
+      "argv": [
+        "<original-binaries>/main/payload-diagnostics",
+        "rust/geometry/tests/fixtures/swept_disk_trimmed_line.ifc",
+        "<observation-output>/main-7-diagnostics.json"
+      ],
+      "exitCode": 0,
+      "complete": true,
+      "startedAt": 1792611694.9034665,
+      "finishedAt": 1792611694.9118466,
+      "stdout": {
+        "sha256": "df285559a6b3115c0eacb17471e67ae2bbc25d75d7c454635ced57a94dda1aad",
+        "bytes": 778
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "record": "placement-7-probe.command.json",
+      "argv": [
+        "<original-binaries>/placement/perf-probe",
+        "rust/geometry/tests/fixtures/swept_disk_trimmed_line.ifc",
+        "--iters",
+        "1",
+        "--json",
+        "--fingerprint"
+      ],
+      "exitCode": 0,
+      "complete": true,
+      "startedAt": 1792611694.9228532,
+      "finishedAt": 1792611694.9357884,
+      "stdout": {
+        "sha256": "66a977f1fc44fc8a976a98b429a49cb9d54a2da454af02a2842bc1978f6f219a",
+        "bytes": 530
+      },
+      "stderr": {
+        "sha256": "05686b24d6d67ab0e3ec5d9a091d82127dec840b05da173a207e3e7b1c1e57a5",
+        "bytes": 690
+      }
+    },
+    {
+      "record": "placement-7-payload.command.json",
+      "argv": [
+        "<original-binaries>/placement/payload-diagnostics",
+        "rust/geometry/tests/fixtures/swept_disk_trimmed_line.ifc",
+        "<observation-output>/placement-7-diagnostics.json"
+      ],
+      "exitCode": 0,
+      "complete": true,
+      "startedAt": 1792611694.9443648,
+      "finishedAt": 1792611694.956953,
+      "stdout": {
+        "sha256": "df285559a6b3115c0eacb17471e67ae2bbc25d75d7c454635ced57a94dda1aad",
+        "bytes": 778
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    }
+  ],
+  "custodyEqual": true,
+  "scopeVerdict": "All six pairs match declared stock/FNV, ordered MeshData JSON, exact float bits, metadata/frame/instances and raw diagnostics scope.",
+  "timingVerdict": "NO_PERFORMANCE_OR_NEUTRALITY_CLAIM; single-iteration raw timing fields intentionally omitted from normalized record.",
+  "earlierAttempts": {
+    "localR1": {
+      "outcome": "NO_COLLECTION_NO_COVERAGE; running/queued benchmark precondition refusal",
+      "actualModelCommands": 0,
+      "originalTerminal": {
+        "sha256": "e924e8659cc51ca7beb916d0f3da9c2bda2134d16eea7c0aaa06b7d17d99d3a0",
+        "bytes": 900
+      }
+    },
+    "PC195": {
+      "outcome": "ADMISSION_TIMEOUT_NO_PROJECT_EXECUTION",
+      "actualModelCommands": 0,
+      "originalReceipt": {
+        "sha256": "718732950802099ae20d78bf117943ea75bad65e195ccab573683b13b98f8691",
+        "bytes": 737723
+      },
+      "originalSummary": {
+        "sha256": "4422d5f30f080b22d1ac5218c5e8118cd5b0ed7a9d2a8231488622dd35839f1f",
+        "bytes": 2572
+      }
+    }
+  },
+  "oldThree": [
+    {
+      "fixture": "ara3d/AC20-FZK-Haus.ifc",
+      "newModelCalls": 0,
+      "provenance": "existing original evidence retained by root, not reloaded/rearchived here"
+    },
+    {
+      "fixture": "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "newModelCalls": 0,
+      "provenance": "existing original evidence retained by root, not reloaded/rearchived here"
+    },
+    {
+      "fixture": "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "newModelCalls": 0,
+      "provenance": "existing original evidence retained by root, not reloaded/rearchived here"
+    }
+  ]
+}

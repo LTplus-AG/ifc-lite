@@ -1,0 +1,5 @@
+OK   /tmp/ifc8019-source.ifc: no issues
+OK   /tmp/ifc8019-converted.ifc: no issues
+OK   /tmp/ifc8019-native.ifc: no issues
+
+validate_export.py: validated 3 file(s), 0 issues. PASS.

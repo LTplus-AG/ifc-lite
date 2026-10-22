@@ -42,9 +42,9 @@ use ring_ops::{ring_is_noise, weld_near_coincident_2d};
 /// The cost of scale-relativity, documented behaviour rather than a defect
 /// (#4698): a REAL face thinner than `floor_pow2(max_edge) / 8192` is dropped
 /// with the needles — 7.8 mm across a 64 m span, so a 64 m × 5 mm plate edge
-/// does not survive the needle filter. Consolidation retains an isolated
-/// source cell only when its three exact edges have healthy opposite supports
-/// in nonoverlapping source buckets (#7292); the predicate stays unchanged. Its
+/// does not survive the needle filter. Consolidation retains a source cell, or a patch joined only along convex
+/// ridges, when its complete boundary has healthy opposite supports in
+/// nonoverlapping source buckets (#7292, #8047); the predicate stays unchanged. Its
 /// removal DOES leave a gap — the framing argument above covers a needle, not a
 /// face. No absolute floor is threaded here: this runs in the CALLER's unit
 /// (metres on the void path, millimetres on the file-unit boolean path, #2684),

@@ -69,6 +69,8 @@ Each `EntityFingerprint` carries two independent hashes, so data and geometry ch
 
 Property sets, quantity sets, their members, and type assignments are all sorted before hashing, so collection ordering never produces a spurious "modified", and two semantically equal entities in the base and head hash identically. The sort is **total**: records are ordered by name and then by their own serialized content, because sorting on name alone leaves same-named records in whatever order the adapter walked them (`Array.prototype.sort` is stable), which would put the adapter's iteration order into the hash. Same-named property sets are ordinary in IFC (a type pset and an occurrence pset of one name), so this is a reachable case rather than a theoretical one.
 
+Both the viewer and CLI fingerprint a type object's own property and quantity sets attached directly through `HasPropertySets`, as well as relationship-attached definitions. Editing those values is a data change even when the type has no occurrences or geometry.
+
 !!! warning "The assigned type's `GlobalId` is not hashed"
     `TypeAssignmentInput` still has a `globalId` field and callers may keep
     populating it — it is useful for display and for resolving the type entity

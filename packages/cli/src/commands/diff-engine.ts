@@ -43,6 +43,8 @@ import {
   extractProjectUnits,
   extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
+  extractTypeEntityOwnProperties,
+  extractTypeEntityOwnQuantities,
   authoredKeyValue,
   getAttributeNamesAcrossSchemas,
   parseAuthoredKeySpec,
@@ -230,7 +232,11 @@ function buildDataInput(
   // on (issue #2021, and `DataFingerprintInput.tag` for the full argument).
   const tag = isTypeObject ? attributeAcrossSchemas(store, expressId, ifcType, 'Tag') : undefined;
 
-  const propertySets = extractPropertiesOnDemand(store, expressId).map((set) => ({
+  // #8040: type definitions attach their own sets through HasPropertySets;
+  // occurrence extraction alone misses edits to those definitions.
+  const propertySets = (isTypeObject
+    ? extractTypeEntityOwnProperties(store, expressId)
+    : extractPropertiesOnDemand(store, expressId)).map((set) => ({
     name: set.name,
     properties: set.properties.map((property) => ({
       name: property.name,
@@ -238,7 +244,9 @@ function buildDataInput(
     })),
   }));
 
-  const quantitySets = extractQuantitiesOnDemand(store, expressId).map((set) => ({
+  const quantitySets = (isTypeObject
+    ? extractTypeEntityOwnQuantities(store, expressId)
+    : extractQuantitiesOnDemand(store, expressId)).map((set) => ({
     name: set.name,
     quantities: set.quantities.map((quantity) => ({
       name: quantity.name,

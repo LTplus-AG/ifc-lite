@@ -140,7 +140,7 @@ fn issue_8047_all_needle_closed_shell_cannot_support_itself() {
     let (a, b, c, d) = (
         [0., 0., 0.], [4., 0., 0.], [4., 0.0001, 0.], [0., 0., 0.0001],
     );
-    let faces = [[a, b, c], [a, c, d], [b, a, d], [c, b, d]];
+    let faces = [[a, c, b], [a, d, c], [b, d, a], [c, d, b]];
     assert!(faces.iter().all(|t| tri_is_needle(&t.map(Point3::from))));
     assert!(find(&buckets(&faces)).cells.is_empty());
 }

@@ -24,6 +24,7 @@ import { createListDataProvider } from '@/lib/lists/adapter';
 import type { ViewerState } from '@/store';
 import { stampAnalysisReport } from '@/hooks/useAnalysisStaleness';
 import { compareImpactOf } from './compare-analysis-state';
+import { isTypeObjectClass } from './typeObjectTag';
 import { computeCompareImpact, type ImpactInput, type ImpactRow } from './impact';
 import { PINS, revisionPair, runClash, runIds, type RevisionPair } from './revision-pair.test-support';
 
@@ -70,7 +71,12 @@ describe('comparison impact on the committed revision pair (#6921)', () => {
     const impact = computeCompareImpact(await input(pair, { list: { id: 'walls', name: 'Wall volumes', result: list, stale: false }, bcfTopics: topics }));
 
     // Four native changes: one added, one deleted, two modified — each counted once.
-    assert.deepEqual(pair.compare.diff.counts, { added: 1, deleted: 1, modified: 2, unchanged: 19 });
+    // #8040 also includes the fixture's 16 unchanged type objects.
+    assert.deepEqual(pair.compare.diff.counts, { added: 1, deleted: 1, modified: 2, unchanged: 35 });
+    const typeEntries = pair.compare.diff.entries.filter(entry =>
+      isTypeObjectClass((entry.base ?? entry.head)!.ifcType));
+    assert.equal(typeEntries.length, 16);
+    assert.ok(typeEntries.every(entry => entry.state === 'unchanged'));
     assert.equal(impact.changedElements, 4);
     assert.equal(impact.unresolvedChanges, 0);
     assert.deepEqual(impact.sources, { clash: 'available', validation: 'available', list: 'available', bcf: 'available' });

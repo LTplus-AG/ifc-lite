@@ -235,6 +235,12 @@ impl ClippingProcessor {
             let exact = crate::exact_topology::strict_closed_mesh(&output);
             let certified = !supported_cells::has_uncertified_needle(&output, &supported);
             let public = preservation::public_weld_closed(&output);
+            // Connected thin patches change the input to subsequent boolean
+            // cuts. A partial boundary improvement cannot certify that input
+            // (#8051): require closure before adopting a connected rescue.
+            if supported.has_connected_patch && (!exact || !public) {
+                return baseline;
+            }
             if (!certified || !exact || !public)
                 && (!certified
                     || (!public && preservation::public_weld_closed(&baseline))

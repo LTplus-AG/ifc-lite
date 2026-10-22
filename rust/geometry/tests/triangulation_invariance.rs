@@ -2560,3 +2560,41 @@ fn issue_6940_subgrid_coaxial_depths_keep_dental_hosts_closed() {
         }
     }
 }
+
+/// #8051 expanded thin-cell retention to convex patches. These actual CSG
+/// hosts exposed a downstream regression that a local patch certificate cannot
+/// detect: a later cut may lose the wall or reopen a previously closed solid.
+#[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
+#[test]
+fn issue_8051_office_thin_patch_retention_preserves_existing_hosts() {
+    let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _reset = AltTriangulatorReset;
+    let Some(content) = ifc_lite_testkit::fixture_text("ara3d/S_Office_Integrated Design Archi.ifc") else {
+        eprintln!("Skipping #8051 office patch regression: run pnpm fixtures");
+        return;
+    };
+    let frame = ModelFrame::new(&content);
+    let voids = void_index(&content);
+    // These ceilings belong to the production triangulator. The full census
+    // separately checks the alternate triangulator against its own readings.
+    set_alt(false);
+    let rows = [92642, 94664].map(|id| {
+        let mesh = process(&frame, id, &voids).expect("actual office void host must mesh");
+        let stats = edge_stats(&mesh);
+        let exact = edge_stats_exact(&mesh);
+        let triangles = mesh.indices.len() / 3;
+        eprintln!("office #{id}: open={} strict={} triangles={triangles}; exact open={} strict={}",
+            stats.open, stats.strict, exact.open, exact.strict);
+        (id, stats, triangles)
+    });
+    let (_, ref torn, triangles) = rows[0];
+    // This host was already torn; lower edge counts alone cannot justify
+    // deleting more of its surface (the committed census's existing rule).
+    assert!(torn.open <= 9 && torn.strict <= 10 && triangles >= 67,
+        "office #92642 lost geometry or worsened its existing boundary: open={}, strict={}, triangles={triangles}",
+        torn.open, torn.strict);
+    let (_, ref closed, triangles) = rows[1];
+    assert!(triangles > 0, "office #94664 must retain its solid");
+    assert_eq!((closed.open, closed.strict), (0, 0),
+        "office #94664 must retain its previously paired boundary");
+}

@@ -22,6 +22,7 @@ pub(super) fn cell_key(t: &[Point3<f64>; 3]) -> Cell {
 pub(super) struct Supported {
     pub buckets: FxHashSet<Bucket>,
     pub cells: FxHashSet<Cell>,
+    pub has_connected_patch: bool,
     // Healthy finite folds remain independent of thin-cell rescue/adoption.
     pub folded_buckets: Vec<Bucket>,
     pub fold_support_buckets: Vec<Bucket>,
@@ -164,6 +165,7 @@ fn retain_supported_patches(
         if valid && supported_boundary && touched.into_iter().all(|key| {
             *disjoint.entry(key).or_insert_with(|| nonoverlapping(&buckets[&key]))
         }) {
+            out.has_connected_patch |= patch.len() > 1;
             for i in patch {
                 out.cells.insert(cell_key(&faces[i].1.v));
                 out.buckets.insert(faces[i].0);

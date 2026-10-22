@@ -7,6 +7,14 @@ the accepted polling implementation and the common probe. The lower stack is bas
 identities documented in README.md; they are never relabelled as T or a later
 publication tip.
 
+The publication lower tip `8be12c7a5a76172151bbb52b06d73b3c6a7dd112` adds only
+the missing Rust return-type break account in `rust-major-offset.json` to T.
+The existing offset remains eleven; earlier accounts and references are kept.
+Rust sources, Cargo inputs and the measured implementation are unchanged. The
+crates.io API gate and actual lower-source detached Python/CSG consumer jobs
+have been submitted separately; their results remain pending at this checkpoint.
+Earlier C consumer qualification is not relabelled as a T consumer result.
+
 T's original Pop job `15b76f6a-80b3-44a2-bbcb-795d166ebb87` completed with
 unchanged source. Native workspace tests passed 6,249 cases, with zero failures
 and 46 declared ignores. Exact strict Clippy, the official fresh WASM build,

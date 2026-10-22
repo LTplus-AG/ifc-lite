@@ -302,6 +302,7 @@ impl ClippingProcessor {
         #[cfg(feature = "opening-perf-trace")]
         crate::opening_perf_trace::record(|c| c.single_subtract_calls = c.single_subtract_calls.saturating_add(1));
         record_csg_op(0, host_mesh.triangle_count(), opening_mesh.triangle_count());
+        if std::env::var_os("IFCLITE_DIAG_PATCH").is_some() { eprintln!("SUB ENTRY host={} cutter={} opening={opening}", host_mesh.triangle_count(), opening_mesh.triangle_count()); }
         if host_mesh.is_empty() {
             return GroupCut::Rejected(GroupReject::EmptyHost);
         }

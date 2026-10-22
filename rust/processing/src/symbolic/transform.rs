@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType};
 
 #[path = "operator.rs"]
 mod operator;
@@ -329,10 +329,12 @@ pub(super) fn resolve_representation_transform(
     // `IfcGeometricRepresentationSubContext`, in contrast, derives
     // its WCS from `ParentContext` and legitimately does not store
     // one inline, so it alone stays `identity()`.
-    let context_transform = match shape_rep.get_ref(0) {
+    // Named fixed slots preserve the existing malformed-reference recovery;
+    // this extraction does not add a typed accessor's debug owner assertion.
+    let context_transform = match shape_rep.get_ref(slot::IfcRepresentation::CONTEXT_OF_ITEMS.index()) {
         Some(context_ref) => match decoder.decode_by_id(context_ref) {
             Ok(context) if context.ifc_type == IfcType::IfcGeometricRepresentationContext => {
-                match context.get_ref(4) {
+                match context.get_ref(slot::IfcGeometricRepresentationContext::WORLD_COORDINATE_SYSTEM.index()) {
                     Some(wcs_ref) => match decoder.decode_by_id(wcs_ref) {
                         Ok(wcs) => parse_axis2_placement_2d(&wcs, decoder, unit_scale),
                         Err(_) => Transform2D::unresolved(),

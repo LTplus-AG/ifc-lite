@@ -220,6 +220,7 @@ fn execute_boolean(
         return ItemStep::Complete(ItemResult { result, reports: prior });
     };
     if let Err(stop) = crate::resource::check_current() {
+        machine.abandon(recorder);
         return ItemStep::Complete(ItemResult { result: Err(stop.into()), reports: prior });
     }
     let numerical = machine.stage() == Some(ProgramStage::Numerical);
@@ -239,7 +240,10 @@ fn execute_boolean(
             crate::router::processing::finish_item_mesh(&mut mesh, router.unit_scale(), None);
             Ok(mesh)
         }
-        Err(error) => Err(error),
+        Err(error) => {
+            machine.abandon_on_stop(&error, recorder);
+            Err(error)
+        }
     };
     ItemStep::Complete(ItemResult { result, reports })
 }

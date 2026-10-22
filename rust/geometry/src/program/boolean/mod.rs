@@ -93,12 +93,39 @@ impl BooleanMachine {
     pub(crate) fn drain(mut self, recorder: &BooleanClippingProcessor, decoder: &mut EntityDecoder)
         -> Result<Value> {
         while let Some(stage) = self.stage() {
-            match stage {
-                ProgramStage::Numerical => self.numerical(recorder)?,
-                _ => self.source(recorder, decoder)?,
+            let stepped = match stage {
+                ProgramStage::Numerical => self.numerical(recorder),
+                _ => self.source(recorder, decoder),
+            };
+            if let Err(error) = stepped {
+                self.abandon_on_stop(&error, recorder);
+                return Err(error);
             }
         }
         self.finish()
+    }
+
+    /// Drop this continuation because a resource stop ended its item. A
+    /// batched polygonal-chain attempt still pending holds records its base
+    /// meshing made provisionally, which only the attempt's own commit or
+    /// deferral retracts; the stop skips both, so retract them here. Other
+    /// errors keep what was recorded, as they always have.
+    pub(crate) fn abandon_on_stop(&mut self, error: &Error, recorder: &BooleanClippingProcessor) {
+        if matches!(error, Error::ProgramStopped(_)) {
+            self.abandon(recorder);
+        }
+    }
+
+    /// Retract the provisional records of the outermost pending batched
+    /// attempt (marks only grow up the stack, so the first is the lowest).
+    pub(crate) fn abandon(&mut self, recorder: &BooleanClippingProcessor) {
+        let pending = self.frames.iter().find_map(|frame| match frame {
+            Frame::AfterBatch { mark, .. } => Some(*mark),
+            _ => None,
+        });
+        if let Some(mark) = pending {
+            recorder.rewind_to(mark);
+        }
     }
 
     /// Pop the control frames at the top of the stack. None reads source.

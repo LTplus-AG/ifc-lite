@@ -92,6 +92,52 @@ fn a_stop_between_boolean_steps_is_returned() {
     assert!(!stages.contains(&ProgramStage::Numerical), "the boolean never ran");
 }
 
+/// A 2 x 2 x 2 block host whose base operand records a loss while it is
+/// meshed (a union with an unsupported point), under a chain of two
+/// polygonal-bounded cutters: the batched attempt meshes that base
+/// provisionally before it commits or defers.
+const BATCHED_CHAIN: &str = "#1=IFCCARTESIANPOINT((0.,0.,0.));\n#2=IFCDIRECTION((0.,0.,1.));\n\
+    #3=IFCDIRECTION((1.,0.,0.));\n#4=IFCAXIS2PLACEMENT3D(#1,#2,#3);\n\
+    #5=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,2.,2.);\n#6=IFCEXTRUDEDAREASOLID(#5,#4,#2,2.);\n\
+    #10=IFCCARTESIANPOINT((0.,0.,1.));\n#11=IFCAXIS2PLACEMENT3D(#10,#2,#3);\n#12=IFCPLANE(#11);\n\
+    #30=IFCCARTESIANPOINT((0.,0.));\n#31=IFCCARTESIANPOINT((2.,0.));\n#32=IFCCARTESIANPOINT((2.,2.));\n\
+    #33=IFCCARTESIANPOINT((0.,2.));\n#34=IFCPOLYLINE((#30,#31,#32,#33,#30));\n\
+    #13=IFCPOLYGONALBOUNDEDHALFSPACE(#12,.F.,#4,#34);\n#14=IFCPOLYGONALBOUNDEDHALFSPACE(#12,.F.,#4,#34);\n\
+    #50=IFCBOOLEANRESULT(.UNION.,#6,#51);\n#51=IFCCARTESIANPOINT((0.,0.,0.));\n\
+    #20=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#50,#13);\n\
+    #21=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#20,#14);\n";
+
+/// A stop that lands after the batched chain's base was meshed, before the
+/// attempt commits or defers, drops the continuation with the attempt
+/// pending. Its provisional records go with it: the shared recorder's log is
+/// what it was before the item started.
+#[test]
+fn a_stop_during_a_batched_attempt_retracts_its_provisional_records() {
+    let content = wrap_ifc(BATCHED_CHAIN);
+    let router = GeometryRouter::new();
+    let mut decoder = EntityDecoder::new(&content);
+    let item = decoder.decode_by_id(21).unwrap();
+    let recorder = router.processor_for(&item.ifc_type).expect("the boolean processor is selected");
+    let before = recorder.bool_failure_count();
+    let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
+    let (result, recorded_at_stop) = account.scope(|| {
+        let mut program = GeometryProgram::item(&item, (0., 0., 0.));
+        let mut recorded_at_stop = None;
+        while let Some(request) = program.request().unwrap() {
+            let reply = program.execute(request, &router, &mut decoder).unwrap();
+            program.accept(reply, &router).ok().unwrap();
+            if recorded_at_stop.is_none() && recorder.bool_failure_count() > before {
+                recorded_at_stop = Some(recorder.bool_failure_count() - before);
+                resource::stop(ProgramStop::Cancelled);
+            }
+        }
+        (program.finish(), recorded_at_stop)
+    });
+    assert!(recorded_at_stop.is_some(), "the base operand records a loss while it is meshed");
+    assert!(matches!(result, Err(crate::Error::ProgramStopped(_))), "{:?}", result.err());
+    assert_eq!(recorder.bool_failure_count(), before, "the provisional record outlived the stopped attempt");
+}
+
 /// Malformed trees still end in their own errors through the program.
 #[test]
 fn cycles_and_unresolved_operands_end_the_item() {

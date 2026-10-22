@@ -94,7 +94,7 @@ impl BooleanClippingProcessor {
     /// walk. A failure the sequential path does NOT re-encounter (the
     /// `CutterUnionUnavailable` the union attempt alone can see) must be
     /// recorded AFTER the rewind, not before it.
-    pub(super) fn rewind_to(&self, mark: usize) {
+    pub(crate) fn rewind_to(&self, mark: usize) {
         self.failures.borrow_mut().truncate(mark);
     }
 

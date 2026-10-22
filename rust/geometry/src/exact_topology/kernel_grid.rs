@@ -2,7 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Exact, private admission certificate for the optional remote-plane retry.
+//! Exact incidence and optional volume certificate on the existing kernel grid.
+//! Shared by remote-plane recovery and preservation of its analytic outputs.
 
 use crate::kernel::mesh_bridge::SNAP_GRID;
 use crate::mesh::Mesh;
@@ -12,13 +13,13 @@ use num_traits::ConstZero;
 use rustc_hash::FxHashMap;
 
 #[derive(Debug, PartialEq, Eq)]
-pub(super) struct Signature {
+pub(crate) struct Signature {
     bounds: [i64; 6],
     volume6: I256,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub(super) enum Rejected {
+pub(crate) enum Rejected {
     Empty,
     Invalid,
     Collapsed,
@@ -28,11 +29,11 @@ pub(super) enum Rejected {
     Overflow,
 }
 
-pub(super) fn is_closed(mesh: &Mesh) -> bool {
+pub(crate) fn is_closed(mesh: &Mesh) -> bool {
     analyze(mesh, false).is_ok()
 }
 
-pub(super) fn closed_signature(mesh: &Mesh) -> Result<Signature, Rejected> {
+pub(crate) fn closed_signature(mesh: &Mesh) -> Result<Signature, Rejected> {
     analyze(mesh, true)
 }
 
@@ -116,5 +117,5 @@ fn analyze(mesh: &Mesh, include_volume: bool) -> Result<Signature, Rejected> {
 }
 
 #[cfg(test)]
-#[path = "closure_tests.rs"]
+#[path = "kernel_grid_tests.rs"]
 mod tests;

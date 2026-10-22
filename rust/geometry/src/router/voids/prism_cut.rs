@@ -2860,7 +2860,7 @@ impl Execution {
             return None;
         }
 
-        let mut out = finish::clean_generated_fragments(mesh_from_ptris(&tris, mesh), mesh);
+        let mut out = mesh_from_ptris(&tris, mesh);
         // COPLANAR CONSOLIDATION: the conforming per-triangle CDT deliberately
         // over-fragments faces (every decomposed host triangle keeps its own
         // sub-triangulation, and caps carry their constraint scaffolding). Run
@@ -2869,7 +2869,7 @@ impl Execution {
         // watertight-preserving), collapsing each planar face back to a few
         // large triangles — 2-3x fewer output triangles on the advanced_model
         // walls, matching the exact kernel's tessellation density.
-        out = crate::csg::ClippingProcessor::consolidate_coplanar(out);
+        out = crate::csg::ClippingProcessor::consolidate_prism_cut(out, mesh);
         let consolidated_closure = ClosureVerdict::for_mesh(&out);
         if consolidated_closure.closed_enough_to_emit()
             && !consolidated_change_is_measurable(mesh, &out)
@@ -2928,7 +2928,7 @@ impl Execution {
                 }
                 let mut probe = refined.clone();
                 probe.clean_degenerate();
-                if directed_closed(&refined) && closed_enough_to_emit(&probe) {
+                if finish::can_adopt_refinement(&out, &refined, &probe) {
                     out = refined;
                 }
             }

@@ -153,10 +153,17 @@ impl ClippingProcessor {
     }
 
     fn consolidate_coplanar_with_unit_scale(mesh: Mesh, length_unit_scale: f64) -> Mesh {
-        Self::consolidate_with_supported_cells(mesh, length_unit_scale, true, true)
+        Self::consolidate_with_supported_cells(mesh, length_unit_scale, true, true, None)
     }
 
-    fn consolidate_with_supported_cells(mesh: Mesh, length_unit_scale: f64, preserve_supported: bool, preserve_folds: bool) -> Mesh {
+    /// Analytic prism output may contain newly generated subgrid fragments.
+    /// Keep ordinary consolidation unchanged; source provenance is available
+    /// only to the existing bounded remote-plane recovery (#7633).
+    pub(crate) fn consolidate_prism_cut(mesh: Mesh, host: &Mesh) -> Mesh {
+        Self::consolidate_with_supported_cells(mesh, 1.0, true, true, Some(host))
+    }
+
+    fn consolidate_with_supported_cells(mesh: Mesh, length_unit_scale: f64, preserve_supported: bool, preserve_folds: bool, prism_host: Option<&Mesh>) -> Mesh {
         if mesh.indices.len() < 6 {
             return mesh;
         }
@@ -191,7 +198,7 @@ impl ClippingProcessor {
             && preservation::tears_beyond_folds(&output, &buckets, &supported)
         {
             let ordinary = Self::consolidate_with_supported_cells(
-                mesh.clone(), length_unit_scale, preserve_supported, false);
+                mesh.clone(), length_unit_scale, preserve_supported, false, None);
             // Only a fully closed fold-free host replaces the fold output; one
             // that is merely less open gives up the fold's finite support for
             // nothing (rvt01 #26681 pins that trade).
@@ -217,7 +224,7 @@ impl ClippingProcessor {
             let public = preservation::public_weld_closed(&output);
             if !exact || !public {
                 let ordinary = fold_free.take().unwrap_or_else(|| Self::consolidate_with_supported_cells(
-                    mesh.clone(), length_unit_scale, preserve_supported, false));
+                    mesh.clone(), length_unit_scale, preserve_supported, false, None));
                 if ((!exact && crate::exact_topology::strict_closed_mesh(&ordinary))
                     || (!public && preservation::public_weld_closed(&ordinary)))
                     && !supported_cells::has_uncertified_needle(&ordinary, &supported) {
@@ -229,7 +236,7 @@ impl ClippingProcessor {
         // fallback (#1007, #5739). Preserve the established exact/public closure
         // and signed boundary bars, including partially conforming source meshes.
         if !supported.cells.is_empty() {
-            let baseline = Self::consolidate_with_supported_cells(mesh.clone(), length_unit_scale, false, preserve_folds);
+            let baseline = Self::consolidate_with_supported_cells(mesh.clone(), length_unit_scale, false, preserve_folds, None);
             // An already closed ordinary boundary needs no source-cell rescue.
             if crate::exact_topology::strict_closed_mesh(&baseline) { return baseline; }
             let exact = crate::exact_topology::strict_closed_mesh(&output);
@@ -244,7 +251,7 @@ impl ClippingProcessor {
             }
         }
         let mut output = recovery::retry_closed_input(
-            &mesh, output, &buckets, planned, length_unit_scale, &supported,
+            &mesh, output, &buckets, planned, length_unit_scale, &supported, prism_host,
         );
         // Carry the input's placement / frame metadata (`origin` local-frame
         // translation, `rtc_applied`, and the #1474 world-capture `local_bounds` /

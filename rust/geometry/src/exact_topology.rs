@@ -6,6 +6,9 @@
 //! No snapping/edge splits; not a simplicity or non-self-intersection proof.
 use rustc_hash::FxHashMap;
 
+/// Exact incidence and volume on the existing kernel grid.
+pub(crate) mod kernel_grid;
+
 /// Finite, exact nondegenerate, nonempty triangles with exactly one forward and
 /// reverse use of every geometric edge. Numeric signed zero shares one key.
 /// Conservatively rejects valid soups with unsplit collinear T-junctions.

@@ -9,7 +9,8 @@ use super::{candidates, plan, plans::Planned, preservation, supported_cells};
 use crate::mesh::Mesh;
 use std::collections::BTreeMap;
 
-mod closure;
+use crate::exact_topology::kernel_grid as closure;
+mod prism_source;
 
 /// Optional repair is restricted to consolidation tearing a closed input.
 /// A closed established output is a compatibility boundary, even when a new
@@ -18,9 +19,10 @@ pub(super) fn retry_closed_input(
     input: &Mesh,
     baseline: Mesh,
     buckets: &BTreeMap<(i64, i64, i64, i64), Vec<PlaneTri>>,
-    mut planned: Planned,
+    planned: Planned,
     length_unit_scale: f64,
     supported: &supported_cells::Supported,
+    prism_host: Option<&Mesh>,
 ) -> Mesh {
     if !planned.plans.iter().any(|plan| plan.retry.is_some()) {
         return baseline;
@@ -37,6 +39,16 @@ pub(super) fn retry_closed_input(
     }
     let source = match closure::closed_signature(input) {
         Ok(signature) => signature,
+        Err(closure::Rejected::Collapsed) if prism_host.is_some() => {
+            let Some(prepared) = prism_source::prepare(
+                input, prism_host.expect("guarded prism provenance"), buckets,
+                supported, length_unit_scale,
+            ) else { return baseline; };
+            return retry_from_source(
+                baseline, &prepared.buckets, prepared.planned, prepared.signature,
+                length_unit_scale, supported,
+            );
+        }
         Err(_reason) => {
             crate::diag::diag_debug!(
                 { reason = ?_reason, "remote-plane retry declined: input" }
@@ -48,6 +60,19 @@ pub(super) fn retry_closed_input(
             return baseline;
         }
     };
+    retry_from_source(baseline, buckets, planned, source, length_unit_scale, supported)
+}
+
+/// Both already-closed kernel sources and certified analytic sources use the
+/// same single split attempt, emitter and adoption certificates.
+fn retry_from_source(
+    baseline: Mesh,
+    buckets: &super::buckets::Buckets,
+    mut planned: Planned,
+    source: closure::Signature,
+    length_unit_scale: f64,
+    supported: &supported_cells::Supported,
+) -> Mesh {
     let mut next_bid = planned.plans.iter().map(|plan| plan.bid).max().unwrap_or(0) + 1;
     let mut replacement = Vec::with_capacity(planned.plans.len());
     let mut changed = false;

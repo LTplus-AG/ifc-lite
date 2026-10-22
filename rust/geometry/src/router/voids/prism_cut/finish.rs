@@ -5,61 +5,15 @@
 //! Final hygiene, ulp welding, and closure audit for analytic cuts.
 
 use super::{dedup_cut_vertices, ClosureVerdict, Mesh};
+use crate::exact_topology::kernel_grid;
 #[cfg(test)]
 use super::closed_enough_to_emit;
 
-/// Remove newly generated subgrid fragments before they can seed consolidation
-/// planes (#7633). Keep untouched authored faces: a real thin component can be
-/// smaller than the cleanup grid, even when a cut elsewhere creates debris.
-/// This is index-only cleanup, with the same predicate used by the finalizer.
-pub(super) fn clean_generated_fragments(mut candidate: Mesh, host: &Mesh) -> Mesh {
-    if !candidate.needs_degenerate_cleanup() {
-        return candidate;
-    }
-    if !host.needs_degenerate_cleanup() {
-        candidate.clean_degenerate();
-        return candidate;
-    }
-    fn key(mesh: &Mesh, triangle: &[u32]) -> Option<[[u32; 3]; 3]> {
-        let mut points = [[0; 3]; 3];
-        for (point, &index) in points.iter_mut().zip(triangle) {
-            for (axis, bits) in point.iter_mut().enumerate() {
-                let value = *mesh.positions.get(index as usize * 3 + axis)?;
-                if !value.is_finite() { return None; }
-                *bits = if value == 0.0 { 0 } else { value.to_bits() };
-            }
-        }
-        let positions = points.map(|p| p.map(|bits| f64::from(f32::from_bits(bits))));
-        crate::kernel::retriangulate::projection_axis(&positions)?;
-        let first = (0..3).min_by_key(|&i| points[i])?;
-        points.rotate_left(first);
-        Some(points)
-    }
-    let mut authored: rustc_hash::FxHashMap<_, usize> = Default::default();
-    for face in host.indices.chunks_exact(3).filter_map(|triangle| key(host, triangle)) {
-        *authored.entry(face).or_default() += 1;
-    }
-    let original = candidate.indices.clone();
-    candidate.clean_degenerate();
-    let cleaned = std::mem::take(&mut candidate.indices);
-    let mut kept = cleaned.chunks_exact(3).peekable();
-    // Preserve emission order, since the first triangle defines a bucket plane.
-    for triangle in original.chunks_exact(3) {
-        let retain_authored = key(&candidate, triangle)
-            .and_then(|face| authored.get_mut(&face))
-            .is_some_and(|remaining| {
-                if *remaining == 0 { return false; }
-                *remaining -= 1;
-                true
-            });
-        if kept.peek().is_some_and(|next| *next == triangle) {
-            candidate.indices.extend_from_slice(triangle);
-            kept.next();
-        } else if retain_authored {
-            candidate.indices.extend_from_slice(triangle);
-        }
-    }
-    candidate
+/// Optional refinement must retain a source boundary certified on the kernel
+/// grid; the established coarser probes alone can hide newly collapsed faces.
+pub(super) fn can_adopt_refinement(source: &Mesh, refined: &Mesh, probe: &Mesh) -> bool {
+    super::directed_closed(refined) && super::closed_enough_to_emit(probe)
+        && (!kernel_grid::is_closed(source) || kernel_grid::is_closed(refined))
 }
 
 /// Return an audited cut, preferring the fully hygienic fixed point.
@@ -81,6 +35,9 @@ pub(in crate::router::voids) fn finish_cut_verdict(
     candidate: Mesh,
     host: &Mesh,
 ) -> Option<(Mesh, bool)> {
+    // The coarser hairline contract cannot authorize tearing a boundary already
+    // certified at the kernel grid (#7633). Preserve that stronger property.
+    let preserve_grid_closure = kernel_grid::is_closed(&candidate);
     let mut hygienic = candidate.clone();
     let before = hygienic.indices.len();
     hygienic.clean_degenerate();
@@ -103,15 +60,24 @@ pub(in crate::router::voids) fn finish_cut_verdict(
         hygienic = dedup_cut_vertices(&hygienic, host);
     }
     let verdict = ClosureVerdict::for_mesh(&hygienic);
-    if verdict.closed_enough_to_emit() {
+    if verdict.closed_enough_to_emit()
+        && (!preserve_grid_closure || kernel_grid::is_closed(&hygienic))
+    {
         return Some((hygienic, verdict.is_directed_closed()));
     }
 
     let compatibility = dedup_cut_vertices(&candidate, host);
     let verdict = ClosureVerdict::for_mesh(&compatibility);
-    verdict
-        .closed_enough_to_emit()
-        .then(|| (compatibility, verdict.is_directed_closed()))
+    if verdict.closed_enough_to_emit()
+        && (!preserve_grid_closure || kernel_grid::is_closed(&compatibility))
+    {
+        return Some((compatibility, verdict.is_directed_closed()));
+    }
+    // Neither normalization may degrade a certified boundary. Retaining the
+    // unchanged candidate still requires the established emission contract.
+    let original = ClosureVerdict::for_mesh(&candidate);
+    (preserve_grid_closure && original.closed_enough_to_emit())
+        .then(|| (candidate, original.is_directed_closed()))
 }
 
 #[cfg(test)]
@@ -139,6 +105,33 @@ mod tests {
             push_triangle(&mut mesh, tri);
         }
         mesh
+    }
+
+    #[test]
+    fn issue_7633_finalizer_preserves_kernel_grid_closure_across_hygiene() {
+        let (a, b, c, d, apex) = (
+            [0.0, 0.000_049, 0.0], [1.0, 0.000_049, 0.0],
+            [0.0, 1.0, 0.0], [0.5, 0.000_061, 0.0], [0.0, 0.0, 1.0],
+        );
+        let mut candidate = Mesh::new();
+        for face in [[a, b, d], [a, d, c], [d, b, c], [a, apex, b],
+            [a, c, apex], [b, apex, c]] {
+            push_triangle(&mut candidate, face);
+        }
+        // One f32 seam copy differs within the SAME kernel cell. Exact-bit
+        // closure cannot stand in for the source's kernel-grid certificate.
+        candidate.positions[0] = 1e-7;
+        assert!(!crate::exact_topology::strict_closed_mesh(&candidate));
+        assert!(kernel_grid::is_closed(&candidate));
+        let mut cleaned = candidate.clone();
+        cleaned.clean_degenerate();
+        assert!(!kernel_grid::is_closed(&cleaned),
+            "dropping the 12 micrometre face opens a real grid boundary");
+        let finished = finish_cut(candidate.clone(), &candidate)
+            .expect("normalization must preserve the certified candidate");
+        assert!(kernel_grid::is_closed(&finished));
+        assert!(closed_enough_to_emit(&finished));
+        assert_eq!(finished.triangle_count(), candidate.triangle_count());
     }
 
     #[test]

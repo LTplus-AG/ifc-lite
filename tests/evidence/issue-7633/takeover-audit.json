@@ -399,5 +399,120 @@
       }
     },
     "limitation": "These are exact source-labelled runs, not results for subsequent dirty instrumentation or future fixes."
+  },
+  "exploratoryCandidateRuns": [
+    {
+      "jobId": "60bfd326-0bd8-436b-bb6c-dd2b255f628c",
+      "state": "failed",
+      "exitCode": 101,
+      "sourceBefore": {
+        "commit": "690e14c5279a92d579aec1220722fd37782f0064",
+        "tree": "db828d93e2574dd7573b9bf0aa7fb6b32cf9cf15",
+        "clean": false,
+        "worktreeDigest": "bc01a9f233c1edc6be9b28e749404a077d88c0cd7a8a1459884129a3442e385e"
+      },
+      "sourceAfter": {
+        "commit": "5b8cbe45d44e263e4b6e8db125694a9ba6bf8a04",
+        "tree": "75a40799d385dfd0abf1cf69db585e1e34445753",
+        "clean": true,
+        "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "evidence": {
+        "receipt.json": {
+          "path": "/home/louistrue/build-workers/worker-state/jobs/60bfd326-0bd8-436b-bb6c-dd2b255f628c/receipt.json",
+          "sha256": "fc37cdda7408255b98649f990df54a65c1e2c61e91f39a286f1e0d724e490ec0"
+        },
+        "output.log": {
+          "path": "/home/louistrue/build-workers/worker-state/jobs/60bfd326-0bd8-436b-bb6c-dd2b255f628c/output.log",
+          "sha256": "cea06c25c32f9f42ef1fd01b845dff494160f54664fedbeedc82fb47ef3c7075"
+        }
+      },
+      "disposition": "CANDIDATE_REJECTED_EXPLORATORY_FAILURE",
+      "observation": {
+        "opening": 136094,
+        "offset": [
+          0,
+          0,
+          0
+        ],
+        "localFrame": false,
+        "unmatchedDirectedEdges": 43
+      },
+      "limitation": "Source was dirty at submission and changed during the job. This is exploratory evidence rejecting the attempted candidate, not clean-commit qualification or a pass for sourceAfter."
+    },
+    {
+      "jobId": "d7437894-4c9c-46cf-9255-169a8eb9ef31",
+      "state": "failed",
+      "exitCode": 101,
+      "sourceBefore": {
+        "commit": "690e14c5279a92d579aec1220722fd37782f0064",
+        "tree": "db828d93e2574dd7573b9bf0aa7fb6b32cf9cf15",
+        "clean": false,
+        "worktreeDigest": "fb5fa07b273ac48f612a1311f220463e9c252924ff08733a88ced06b97b62a31"
+      },
+      "sourceAfter": {
+        "commit": "690e14c5279a92d579aec1220722fd37782f0064",
+        "tree": "db828d93e2574dd7573b9bf0aa7fb6b32cf9cf15",
+        "clean": false,
+        "worktreeDigest": "9bea4477128d22d206ffbb877beedc69b18a82b7514e8861c67732b11e1a6f3b"
+      },
+      "evidence": {
+        "receipt.json": {
+          "path": "/home/louistrue/build-workers/worker-state/jobs/d7437894-4c9c-46cf-9255-169a8eb9ef31/receipt.json",
+          "sha256": "902bcf03b3c4f0dcea0d2bd575705f1ea2678f2acf337f00b8f9c26bdc17abf0"
+        },
+        "output.log": {
+          "path": "/home/louistrue/build-workers/worker-state/jobs/d7437894-4c9c-46cf-9255-169a8eb9ef31/output.log",
+          "sha256": "730cbed847d486ca1de2de0685fb7cde72d0b8dab796a6f7aa0f0cf4898cda16"
+        }
+      },
+      "disposition": "EXPLORATORY_STAGE_DIAGNOSTIC",
+      "observations": {
+        "inputTriangles": 472,
+        "cleanedInputTriangles": 452,
+        "cleanedInputUnmatchedEdges": 0,
+        "cleanedInputConsolidationUnmatchedEdges": 0,
+        "sourceAndCandidateGridBounds": [
+          -352149,
+          118462,
+          239206,
+          1721240,
+          2648555,
+          255590
+        ],
+        "sourceAndCandidateVolume6": "286419242827186176",
+        "postCutConsolidationUnmatchedEdges": 8,
+        "finalUnmatchedEdges": 6,
+        "frame": "site-offset/world",
+        "opening": 136094
+      },
+      "limitation": "Dirty source digest changed during the run. Stage observations are diagnostic only; they do not qualify a committed repair."
+    }
+  ],
+  "localResourceActions": {
+    "incrementalCleanup": {
+      "evidence": {
+        "path": "/tmp/issue7633-incremental-cleanup.json",
+        "sha256": "6e7d4fdbbbecee5454a1dadf352b3e5cc8027bcec043cfa81674729c21751d2f"
+      },
+      "receipt": {
+        "path": "/home/louistrue/.cache/ifc6940/targets/integration-463d3b0-20261017/debug/incremental",
+        "device": 2128,
+        "inode": 7689532,
+        "bytes": 5124616192,
+        "time": 1792684844.236415,
+        "scope": "Only terminal October17 Cargo incremental intermediates; binaries, fixtures, source and evidence preserved",
+        "liveReferences": []
+      }
+    },
+    "fixtureSeeding": {
+      "evidence": {
+        "path": "/tmp/issue7633-fixture-seed.json",
+        "sha256": "1fd6243d4f9429442c07466c8659dd17e76776119f4ca8d471c1cb633f3aec24"
+      },
+      "restoredCount": 181,
+      "verification": "Coordinator reports all 182 manifested fixtures now verified; this audit checked the seed receipt only."
+    },
+    "maintenance": "Coordinator reports one terminal managed job reclaimed; no foreign process terminated. No separate maintenance receipt has been bound by this audit."
   }
 }

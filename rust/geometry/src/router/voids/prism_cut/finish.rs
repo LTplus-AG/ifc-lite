@@ -5,15 +5,17 @@
 //! Final hygiene, ulp welding, and closure audit for analytic cuts.
 
 use super::{dedup_cut_vertices, ClosureVerdict, Mesh};
+use crate::csg::ConsolidationBoundary;
+#[cfg(test)]
 use crate::exact_topology::kernel_grid;
 #[cfg(test)]
 use super::closed_enough_to_emit;
 
-/// Optional refinement must retain a source boundary certified on the kernel
-/// grid; the established coarser probes alone can hide newly collapsed faces.
-pub(super) fn can_adopt_refinement(source: &Mesh, refined: &Mesh, probe: &Mesh) -> bool {
+/// Optional refinement must retain the adopted remote repair's certificate;
+/// the established coarser probes alone can hide newly collapsed faces.
+pub(super) fn can_adopt_refinement(boundary: ConsolidationBoundary, refined: &Mesh, probe: &Mesh) -> bool {
     super::directed_closed(refined) && super::closed_enough_to_emit(probe)
-        && (!kernel_grid::is_closed(source) || kernel_grid::is_closed(refined))
+        && boundary.accepts(refined)
 }
 
 /// Return an audited cut, preferring the fully hygienic fixed point.
@@ -26,7 +28,7 @@ pub(super) fn can_adopt_refinement(source: &Mesh, refined: &Mesh, probe: &Mesh) 
 /// candidate welded once) provided that exact returned mesh passes closure.
 #[cfg(test)]
 pub(in crate::router::voids) fn finish_cut(candidate: Mesh, host: &Mesh) -> Option<Mesh> {
-    finish_cut_verdict(candidate, host).map(|(mesh, _)| mesh)
+    finish_cut_verdict(candidate, host, ConsolidationBoundary::Established).map(|(mesh, _)| mesh)
 }
 
 /// [`finish_cut`], also returning whether the returned mesh is strictly
@@ -34,10 +36,11 @@ pub(in crate::router::voids) fn finish_cut(candidate: Mesh, host: &Mesh) -> Opti
 pub(in crate::router::voids) fn finish_cut_verdict(
     candidate: Mesh,
     host: &Mesh,
+    boundary: ConsolidationBoundary,
 ) -> Option<(Mesh, bool)> {
-    // The coarser hairline contract cannot authorize tearing a boundary already
-    // certified at the kernel grid (#7633). Preserve that stronger property.
-    let preserve_grid_closure = kernel_grid::is_closed(&candidate);
+    // Only adopted remote repairs carry the stronger kernel-grid contract.
+    // Keep ordinary prism hygiene unchanged (#7633).
+    let preserve_grid_closure = boundary == ConsolidationBoundary::CertifiedRemote;
     let mut hygienic = candidate.clone();
     let before = hygienic.indices.len();
     hygienic.clean_degenerate();
@@ -61,7 +64,7 @@ pub(in crate::router::voids) fn finish_cut_verdict(
     }
     let verdict = ClosureVerdict::for_mesh(&hygienic);
     if verdict.closed_enough_to_emit()
-        && (!preserve_grid_closure || kernel_grid::is_closed(&hygienic))
+        && boundary.accepts(&hygienic)
     {
         return Some((hygienic, verdict.is_directed_closed()));
     }
@@ -69,14 +72,15 @@ pub(in crate::router::voids) fn finish_cut_verdict(
     let compatibility = dedup_cut_vertices(&candidate, host);
     let verdict = ClosureVerdict::for_mesh(&compatibility);
     if verdict.closed_enough_to_emit()
-        && (!preserve_grid_closure || kernel_grid::is_closed(&compatibility))
+        && boundary.accepts(&compatibility)
     {
         return Some((compatibility, verdict.is_directed_closed()));
     }
     // Neither normalization may degrade a certified boundary. Retaining the
     // unchanged candidate still requires the established emission contract.
+    if !preserve_grid_closure { return None; }
     let original = ClosureVerdict::for_mesh(&candidate);
-    (preserve_grid_closure && original.closed_enough_to_emit())
+    original.closed_enough_to_emit()
         .then(|| (candidate, original.is_directed_closed()))
 }
 
@@ -120,15 +124,16 @@ mod tests {
         }
         // One f32 seam copy differs within the SAME kernel cell. Exact-bit
         // closure cannot stand in for the source's kernel-grid certificate.
-        candidate.positions[0] = 1e-7;
+        candidate.positions[0] = f32::EPSILON;
         assert!(!crate::exact_topology::strict_closed_mesh(&candidate));
         assert!(kernel_grid::is_closed(&candidate));
         let mut cleaned = candidate.clone();
         cleaned.clean_degenerate();
         assert!(!kernel_grid::is_closed(&cleaned),
             "dropping the 12 micrometre face opens a real grid boundary");
-        let finished = finish_cut(candidate.clone(), &candidate)
-            .expect("normalization must preserve the certified candidate");
+        let (finished, _) = finish_cut_verdict(
+            candidate.clone(), &candidate, ConsolidationBoundary::CertifiedRemote,
+        ).expect("normalization must preserve the certified candidate");
         assert!(kernel_grid::is_closed(&finished));
         assert!(closed_enough_to_emit(&finished));
         assert_eq!(finished.triangle_count(), candidate.triangle_count());

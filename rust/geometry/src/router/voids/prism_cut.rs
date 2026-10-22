@@ -2861,15 +2861,15 @@ impl Execution {
         }
 
         let mut out = mesh_from_ptris(&tris, mesh);
-        // COPLANAR CONSOLIDATION: the conforming per-triangle CDT deliberately
-        // over-fragments faces (every decomposed host triangle keeps its own
-        // sub-triangulation, and caps carry their constraint scaffolding). Run
-        // the SAME coplanar merge the exact kernel and the rect/param fast
+        // Merge the per-triangle CDT fragments and cap scaffolding with the
+        // same coplanar consolidation the exact kernel and rect/param fast
         // paths apply (i_overlay union per plane bucket + CDT re-triangulation,
         // watertight-preserving), collapsing each planar face back to a few
         // large triangles — 2-3x fewer output triangles on the advanced_model
         // walls, matching the exact kernel's tessellation density.
-        out = crate::csg::ClippingProcessor::consolidate_prism_cut(out, mesh);
+        let consolidated = crate::csg::ClippingProcessor::consolidate_prism_cut(out, mesh);
+        let boundary = consolidated.boundary;
+        out = consolidated.mesh;
         let consolidated_closure = ClosureVerdict::for_mesh(&out);
         if consolidated_closure.closed_enough_to_emit()
             && !consolidated_change_is_measurable(mesh, &out)
@@ -2928,7 +2928,7 @@ impl Execution {
                 }
                 let mut probe = refined.clone();
                 probe.clean_degenerate();
-                if finish::can_adopt_refinement(&out, &refined, &probe) {
+                if finish::can_adopt_refinement(boundary, &refined, &probe) {
                     out = refined;
                 }
             }
@@ -2936,7 +2936,7 @@ impl Execution {
         // The finalizer cleans before the ulp weld so discarded slivers cannot
         // choose a surviving seam coordinate, then audits the exact mesh it
         // returns. A closed pre-clean result remains the compatibility fallback.
-        let Some((finished, directed)) = finish_cut_verdict(out, mesh) else {
+        let Some((finished, directed)) = finish_cut_verdict(out, mesh, boundary) else {
             defer(9);
             return None;
         };

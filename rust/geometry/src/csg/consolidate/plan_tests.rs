@@ -168,7 +168,13 @@ fn issue_7633_analytic_remote_retry_handles_generated_collapsed_fragment() {
         let ordinary = ClippingProcessor::consolidate_coplanar(input.clone());
         let ordinary_closed = topology(&ordinary) == (0, 0);
         exposes_tear |= !ordinary_closed;
-        let recovered = ClippingProcessor::consolidate_prism_cut(input, &source);
+        let outcome = ClippingProcessor::consolidate_prism_cut(input, &source);
+        assert_eq!(outcome.boundary, if ordinary_closed {
+            crate::csg::ConsolidationBoundary::Established
+        } else {
+            crate::csg::ConsolidationBoundary::CertifiedRemote
+        });
+        let recovered = outcome.mesh;
         assert_eq!(topology(&recovered), (0, 0), "reverse={reverse}");
         if ordinary_closed {
             assert_eq!(recovered.indices, ordinary.indices, "closed baseline remains unchanged");
@@ -213,7 +219,9 @@ fn issue_7633_analytic_remote_retry_declines_authored_thin_source() {
         input.indices.extend_from_slice(&[0, 0, 1]);
         let ordinary = ClippingProcessor::consolidate_coplanar(input.clone());
         exposes_tear |= topology(&ordinary) != (0, 0);
-        let declined = ClippingProcessor::consolidate_prism_cut(input, &source);
+        let outcome = ClippingProcessor::consolidate_prism_cut(input, &source);
+        assert_eq!(outcome.boundary, crate::csg::ConsolidationBoundary::Established);
+        let declined = outcome.mesh;
         assert_eq!(declined.indices, ordinary.indices, "reverse={reverse}");
         assert_eq!(declined.positions, ordinary.positions, "reverse={reverse}");
         assert_eq!(declined.normals, ordinary.normals, "reverse={reverse}");

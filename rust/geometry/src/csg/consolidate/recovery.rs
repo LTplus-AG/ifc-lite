@@ -5,6 +5,7 @@
 //! One established emission path and one bounded remote-plane retry.
 
 use super::plane_merge::PlaneTri;
+use super::ConsolidationOutcome;
 use super::{candidates, plan, plans::Planned, preservation, supported_cells};
 use crate::mesh::Mesh;
 use std::collections::BTreeMap;
@@ -23,9 +24,9 @@ pub(super) fn retry_closed_input(
     length_unit_scale: f64,
     supported: &supported_cells::Supported,
     prism_host: Option<&Mesh>,
-) -> Mesh {
+) -> ConsolidationOutcome {
     if !planned.plans.iter().any(|plan| plan.retry.is_some()) {
-        return baseline;
+        return ConsolidationOutcome::established(baseline);
     }
     if closure::is_closed(&baseline) {
         crate::diag::diag_debug!(
@@ -35,7 +36,7 @@ pub(super) fn retry_closed_input(
                 eprintln!("[ifc-lite] remote-plane retry declined: established output is strictly closed");
             }
         );
-        return baseline;
+        return ConsolidationOutcome::established(baseline);
     }
     let source = match closure::closed_signature(input) {
         Ok(signature) => signature,
@@ -43,7 +44,7 @@ pub(super) fn retry_closed_input(
             let Some(prepared) = prism_source::prepare(
                 input, prism_host.expect("guarded prism provenance"), buckets,
                 supported, length_unit_scale,
-            ) else { return baseline; };
+            ) else { return ConsolidationOutcome::established(baseline); };
             return retry_from_source(
                 baseline, &prepared.buckets, prepared.planned, prepared.signature,
                 length_unit_scale, supported,
@@ -57,7 +58,7 @@ pub(super) fn retry_closed_input(
                     eprintln!("[ifc-lite] remote-plane retry declined: input={_reason:?}");
                 }
             );
-            return baseline;
+            return ConsolidationOutcome::established(baseline);
         }
     };
     retry_from_source(baseline, buckets, planned, source, length_unit_scale, supported)
@@ -72,7 +73,7 @@ fn retry_from_source(
     source: closure::Signature,
     length_unit_scale: f64,
     supported: &supported_cells::Supported,
-) -> Mesh {
+) -> ConsolidationOutcome {
     let mut next_bid = planned.plans.iter().map(|plan| plan.bid).max().unwrap_or(0) + 1;
     let mut replacement = Vec::with_capacity(planned.plans.len());
     let mut changed = false;
@@ -106,7 +107,7 @@ fn retry_from_source(
                 eprintln!("[ifc-lite] remote-plane retry declined: no certified separated groups");
             }
         );
-        return baseline;
+        return ConsolidationOutcome::established(baseline);
     }
     // Protected plans have no retry. Keep their original bids and retained
     // cells in the shared emitter so an unrelated repair cannot drop a thin
@@ -120,7 +121,7 @@ fn retry_from_source(
                 eprintln!("[ifc-lite] remote-plane retry declined: incomplete triangulation");
             }
         );
-        return baseline;
+        return ConsolidationOutcome::established(baseline);
     };
     let signature = closure::closed_signature(&candidate);
     crate::diag::diag_debug!(
@@ -135,8 +136,8 @@ fn retry_from_source(
         && !preservation::signed_boundary_worse(&candidate, &baseline)
         && !supported_cells::has_uncertified_needle(&candidate, supported)
     {
-        candidate
+        ConsolidationOutcome::certified_remote(candidate)
     } else {
-        baseline
+        ConsolidationOutcome::established(baseline)
     }
 }

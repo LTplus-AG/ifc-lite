@@ -130,9 +130,10 @@ Each result JSON also carries two #6993 blocks:
   one (all contaminated: every previous entry is kept, exit 0), and the
   cold A/B (`scripts/perf/browser-cold-ab.mts`) records it as a failed sample.
   Uncaptured errors and Dawn `Instance reference no longer exists` lines are
-  kept as evidence only: on WSL SwiftShader every sample logs one from a
-  pipeline probe on an already-destroyed device while the renderer's device
-  keeps rendering.
+  kept as evidence only when no device-loss witness accompanies them. The
+  message alone does not identify the affected device. In particular,
+  `reason: destroyed` does not prove application teardown: Chromium also
+  destroys devices when its GPU channel fails (#7655).
 - **`interactionCommits`**: React commits caused by one hierarchy-row select,
   one pointer move onto the viewport centre and opening the Lens panel, each
   measured from a quiet page to the next quiet point after every timing has
@@ -146,6 +147,25 @@ fixed each fixture is compared in only about half the runs. Locally on WSL
 SwiftShader, FZK lost it in 7 of 9 fresh-page loads and Snowdon in none of 4;
 refusing WebGL in the page (FZK shows a WebGL minimap) still lost it in 1 of
 4, so the minimap is not the whole cause.
+
+The #7655 isolated reproduction traced a failure to the launch configuration:
+`--use-vulkan=swiftshader` selected the WebGPU backend while default ANGLE
+failed to open an X display. Acquiring a canvas texture then failed Chromium's
+shared-image allocation and closed the GPU channel. Selecting
+`--use-angle=swiftshader` as well preserves pipeline creation, queue completion
+and exact GPU-buffer readback. The renderer now distinguishes intentional
+teardown by ownership lifetime, so browser-initiated destruction is recovered
+and counted. Historical loss counts that excluded every `destroyed` reason
+can undercount failures; they are not proof of healthy GPU execution.
+
+The `Browser frames (deterministic rig)` workflow has explicit dispatch modes:
+`instance` runs the isolated original/fixed comparison; `diagnostic-frames`
+captures device identities and browser stderr; `qualification-frames` runs
+ten normal FZK/Snowdon cohorts against one build and retains every attempt.
+Diagnostic frame output is rejected by performance admission. The isolated
+probe is `scripts/perf/diagnostics/swiftshader-instance.mts`; it requires the
+Playwright headless shell and no viewer build or IFC fixture. See the initial
+[hosted reproduction](https://github.com/LTplus-AG/ifc-lite/actions/runs/39803660353).
 
 ## Geometry Correctness Validation
 

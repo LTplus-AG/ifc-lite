@@ -104,7 +104,7 @@ mod tests {
         invalid.points[0] = f32::NAN;
         accumulator.push_fill_with_provenance(invalid, Some(77));
         accumulator.push_fill_with_provenance(legacy.fills[0].clone(), Some(99));
-        let accepted = accumulator.into_provenance();
+        let accepted = accumulator.into_provenance().unwrap();
         assert_eq!(accepted.data().fills.len(), 1);
         assert_eq!(accepted.fill_items(), &[Some(99)], "refused appends cannot shift ordinal provenance");
         let enriched = SymbolicDataWithProvenance::new(legacy, vec![Some(99)]);

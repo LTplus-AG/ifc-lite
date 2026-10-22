@@ -180,7 +180,7 @@ pub async fn parse_parquet_optimized(
             Ok((
                 result,
                 dm_stats,
-                symbolic_data,
+                symbolic_data?,
                 parquet_data,
                 dm_parquet,
                 opt_stats,

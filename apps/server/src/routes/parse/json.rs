@@ -125,7 +125,7 @@ pub async fn parse_full(
         let symbolic = ifc_lite_processing::extract_symbolic_data_with_provenance_in_frame(
             &content,
             result.frame,
-        );
+        )?;
         // #5984: each mesh's IFC-authored finish, joined before the bytes go.
         let mut meshes = finish_meshes(&mut ModelFinishes::from_content(&content), result.meshes);
         drop(content);

@@ -41,9 +41,10 @@ impl IfcAPI {
     pub fn parse_symbolic_representations(
         &self,
         content: String,
-    ) -> crate::zero_copy::SymbolicRepresentationCollection {
-        let data = ifc_lite_processing::extract_symbolic_data_with_provenance(&content);
-        crate::zero_copy::SymbolicRepresentationCollection::from_data_with_provenance(data)
+    ) -> Result<crate::zero_copy::SymbolicRepresentationCollection, JsValue> {
+        let data = ifc_lite_processing::extract_symbolic_data_with_provenance(&content)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        Ok(crate::zero_copy::SymbolicRepresentationCollection::from_data_with_provenance(data))
     }
 
     /// Parse symbolic representations in the exact RTC frame selected by the
@@ -59,7 +60,7 @@ impl IfcAPI {
         let data = ifc_lite_processing::extract_symbolic_data_with_provenance_in_frame(
             &content,
             frame,
-        );
+        ).map_err(|error| JsValue::from_str(&error.to_string()))?;
         Ok(crate::zero_copy::SymbolicRepresentationCollection::from_data_with_provenance(data))
     }
 }

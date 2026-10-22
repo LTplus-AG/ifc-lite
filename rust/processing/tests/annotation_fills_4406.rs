@@ -122,7 +122,7 @@ fn annotation_4406_fill_style_list_is_read_by_the_symbolic_rule() {
             failures.push(format!("{label}: the fill item has no style entry"));
             continue;
         };
-        let symbolic = ifc_lite_processing::extract_symbolic_data(&source);
+        let symbolic = ifc_lite_processing::extract_symbolic_data(&source).expect("symbolic extraction must complete");
         let agrees = !symbolic.fills.is_empty()
             && symbolic.fills.iter().all(|fill| {
                 info.color

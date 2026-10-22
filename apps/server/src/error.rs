@@ -134,6 +134,12 @@ impl From<ifc_lite_core::Error> for ApiError {
     }
 }
 
+impl From<ifc_lite_core::resource_stop::ProgramStop> for ApiError {
+    fn from(err: ifc_lite_core::resource_stop::ProgramStop) -> Self {
+        ApiError::Processing(err.to_string())
+    }
+}
+
 impl From<ifc_lite_geometry::Error> for ApiError {
     fn from(err: ifc_lite_geometry::Error) -> Self {
         ApiError::Processing(err.to_string())

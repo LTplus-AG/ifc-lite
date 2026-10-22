@@ -85,6 +85,60 @@ fn produce(id: u32, data: &Data) -> ProducedElementMeshes {
 }
 
 #[test]
+fn presentation_repairs_winding_and_normals_against_analytic_tetrahedron_8049() {
+    // Unit-axis tetrahedron: outward area-weighted vertex normals are
+    // (-1,-1,-1)/sqrt(3) at the origin and +X/+Y/+Z at the other vertices.
+    // Unlike the style comparison below, these expectations are independent
+    // of another presentation path and of the production normal calculator.
+    for inward in [false, true] {
+        let mut mesh = ifc_lite_geometry::Mesh::new();
+        mesh.positions = vec![0., 0., 0., 1., 0., 0., 0., 1., 0., 0., 0., 1.];
+        mesh.indices = vec![0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3];
+        if inward {
+            for triangle in mesh.indices.chunks_exact_mut(3) {
+                triangle.swap(1, 2);
+            }
+            // Correct length, deliberately stale: a flip must recompute them.
+            mesh.normals = [0., 0., -1.].repeat(4);
+        } // The outward case instead requires repairing a missing channel.
+        let mut collection = SubMeshCollection::new();
+        collection.sub_meshes.push(ifc_lite_geometry::SubMesh::new(13, mesh));
+        let mut decoder = EntityDecoder::new(SOURCE);
+        let entity = decoder.decode_by_id(10).unwrap();
+        let meta = metadata(10);
+        let data = Data::default();
+        let (meshes, occurrences) = super::presentation_source::submeshes(
+            &AssemblyJob::from(&job(&entity, &meta)), collection, RED,
+            &data.ctx(), &mut decoder, &mut None, 0,
+        );
+        assert!(occurrences.is_empty());
+        assert_eq!(meshes.len(), 1);
+        let output = &meshes[0];
+        assert_eq!(output.indices.len(), 12);
+        assert_eq!(output.normals.len(), output.positions.len());
+        for (point, normal) in output.positions.chunks_exact(3).zip(output.normals.chunks_exact(3)) {
+            let expected = match point {
+                [0., 0., 0.] => [-1. / 3_f32.sqrt(); 3],
+                [1., 0., 0.] => [1., 0., 0.],
+                [0., 1., 0.] => [0., 1., 0.],
+                [0., 0., 1.] => [0., 0., 1.],
+                _ => panic!("unexpected tetrahedron vertex {point:?}"),
+            };
+            for axis in 0..3 {
+                assert!((normal[axis] - expected[axis]).abs() < 1e-6, "inward={inward}: {point:?}, {normal:?}");
+            }
+        }
+        for face in output.indices.chunks_exact(3) {
+            let vertex = |i: u32| nalgebra::Vector3::from_row_slice(&output.positions[i as usize * 3..i as usize * 3 + 3]);
+            let (a, b, c) = (vertex(face[0]), vertex(face[1]), vertex(face[2]));
+            let normal = (b - a).cross(&(c - a));
+            let from_inside = a - nalgebra::Vector3::repeat(0.25);
+            assert!(normal.dot(&from_inside) > 0., "every face must point away from the tetrahedron centroid");
+        }
+    }
+}
+
+#[test]
 fn presentation_direct_style_precedes_materials_on_real_extrusion_without_changing_hash_or_frames() {
     let plain = produce(10, &Data::default());
     let mut style = GeometryStyleInfo::from_color(RED);

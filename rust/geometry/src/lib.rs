@@ -84,6 +84,7 @@ pub mod analytic;
 mod axis_projection;
 mod curve_source;
 mod trimmed_curve;
+mod swept_disk_range;
 pub(crate) mod gradient;
 pub(crate) mod curve_segment;
 pub(crate) mod bool2d;

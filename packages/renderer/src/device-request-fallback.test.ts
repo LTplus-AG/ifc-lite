@@ -284,6 +284,32 @@ describe('WebGPUDevice.hasTimestampQueryFeature', () => {
 });
 
 describe('WebGPUDevice loss lifetime (#4885)', () => {
+  for (const intentional of [false, true]) {
+    it(`#7655 ${intentional ? 'owned teardown stays quiet' : 'browser destruction of the current device notifies recovery'}`, async () => {
+      const loss = deferred<{ message: string; reason: string }>();
+      let destroyCalls = 0;
+      installNavigator({
+        features: new Set<string>(), limits: {},
+        requestDevice: async () => ({
+          lost: loss.promise, features: new Set<string>(),
+          destroy: () => { destroyCalls++; loss.resolve({ message: 'Device was destroyed.', reason: 'destroyed' }); },
+        }),
+      });
+      const device = new WebGPUDevice();
+      const notifications: Array<{ message: string; reason: string }> = [];
+      device.onDeviceLost(info => notifications.push(info));
+      await device.init(makeCanvas());
+      const warnings = await withCapturedWarnings(async () => {
+        if (intentional) device.destroy();
+        else loss.resolve({ message: 'Device was destroyed.', reason: 'destroyed' });
+        await Promise.resolve();
+      });
+      assert.equal(destroyCalls, intentional ? 1 : 0);
+      assert.deepEqual(notifications, intentional ? [] : [{ message: 'Device was destroyed.', reason: 'destroyed' }]);
+      assert.equal(warnings.some(line => line.includes('Device lost:')), !intentional);
+    });
+  }
+
   it('ignores a delayed loss settlement from the GPUDevice replaced by destroy()+init()', async () => {
     const firstLoss = deferred<{ message: string; reason?: string }>();
     const secondLoss = deferred<{ message: string; reason?: string }>();

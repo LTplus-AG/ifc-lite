@@ -26,7 +26,7 @@ const log = (...a) => console.log('[walk]', ...a);
 
 const browser = await chromium.launch({
   headless: process.env.WALKTHROUGH_HEADLESS === '1', channel: 'chrome',
-  args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader', '--disable-vulkan-surface', '--ignore-gpu-blocklist', '--enable-gpu'],
+  args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader', '--use-angle=swiftshader', '--disable-vulkan-surface', '--ignore-gpu-blocklist', '--enable-gpu'],
 });
 const page = await (await browser.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
 const errors = [];

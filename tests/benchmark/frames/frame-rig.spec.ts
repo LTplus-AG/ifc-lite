@@ -28,6 +28,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { BeginFrameDriver } from './begin-frame-driver.js';
 import { frameProbeInitScript } from './frame-probe.js';
+import { instanceDiagnosticsInitScript } from './instance-diagnostics.js';
 import { drivenFrameRows, FRAME_BUDGET_MS, type BrowserFramesRow, type DrivenFrame } from './frame-stats.js';
 import { readGpuHealth, type GpuHealth } from '../gpu-health.js';
 import { probeMetadataRenderTrace, waitForMetadataRenderReadiness, type LoadTraceProbe } from '../metadata-render-readiness.js';
@@ -37,6 +38,8 @@ import { homeKey, hoverSweep, orbitGesture, type CanvasRect } from './frame-scen
 const ROOT = process.cwd();
 const FIXTURES = FRAME_FIXTURES;
 const OUT = resolve(ROOT, process.env.FRAME_RIG_OUT ?? 'test-results/browser-frames.json');
+// Pair with DEBUG=pw:browser for browser/GPU-process stderr (#7655).
+const INSTANCE_DIAGNOSTICS = process.env.FRAME_INSTANCE_DIAGNOSTICS === '1';
 const ORBIT_FRAMES = 120, INERTIA_FRAMES = 90, HOVER_FRAMES = 120, TAIL_FRAMES = 30, IDLE_FRAMES = 30;
 
 const rows: BrowserFramesRow[] = [];
@@ -47,6 +50,7 @@ const refusedAttempts: FrameSample[] = [];
 interface FrameSample {
   fixture: string; attempt: number; completed: boolean; error: string | null;
   readiness: LoadTraceProbe | null; readinessError: string | null; pageErrors: string[]; gpuHealth: GpuHealth | null;
+  instanceDiagnostics?: string;
 }
 
 test.describe.configure({ mode: 'serial' });
@@ -58,11 +62,22 @@ async function runAttempt(browser: Browser, fixture: (typeof FIXTURES)[number], 
   const attemptRows: BrowserFramesRow[] = [];
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
   const logs: string[] = [];
+  const diagnosticEvents: Array<{ wallMs: number; kind: string; text: string }> = [];
   let page: Page | null = null;
   try {
     page = await context.newPage();
-    page.on('console', message => logs.push(message.text()));
-    page.on('pageerror', error => sample.pageErrors.push(String(error)));
+    page.on('console', message => {
+      logs.push(message.text());
+      if (INSTANCE_DIAGNOSTICS) diagnosticEvents.push({ wallMs: Date.now(), kind: `console.${message.type()}`, text: message.text() });
+    });
+    page.on('pageerror', error => {
+      sample.pageErrors.push(String(error));
+      if (INSTANCE_DIAGNOSTICS) diagnosticEvents.push({ wallMs: Date.now(), kind: 'pageerror', text: String(error) });
+    });
+    if (INSTANCE_DIAGNOSTICS) {
+      page.on('crash', () => diagnosticEvents.push({ wallMs: Date.now(), kind: 'page-crash', text: 'Page crashed' }));
+      await context.addInitScript({ content: instanceDiagnosticsInitScript() });
+    }
     await context.addInitScript({ content: frameProbeInitScript({ workDone: false }) });
     const driver = await BeginFrameDriver.attach(context, page);
 
@@ -137,7 +152,20 @@ async function runAttempt(browser: Browser, fixture: (typeof FIXTURES)[number], 
         sample.gpuHealth = await readGpuHealth(page, logs);
       }
     }
-    finally { await context.close(); }
+    finally {
+      try {
+        if (INSTANCE_DIAGNOSTICS) {
+          const path = `${OUT}.fixture-${FIXTURES.indexOf(fixture)}.attempt-${attempt}.diagnostics.json`;
+          mkdirSync(dirname(path), { recursive: true });
+          sample.instanceDiagnostics = path;
+          writeFileSync(path, JSON.stringify({
+            issue: 7655, fixture: fixture.name, attempt, browser: browser.version(),
+            performanceEligible: false, boundary: 'before context.close',
+            capturedAt: new Date().toISOString(), events: diagnosticEvents,
+          }, null, 2));
+        }
+      } finally { await context.close(); }
+    }
   }
   return { sample, rows: attemptRows };
 }
@@ -174,6 +202,7 @@ test.afterAll(async ({ browser }) => {
     family: 'browser-frames',
     rig: 'deterministic-begin-frame',
     schema: 2,
+    ...(INSTANCE_DIAGNOSTICS ? { instanceDiagnostics: true, performanceEligible: false } : {}),
     frameBudgetMs: FRAME_BUDGET_MS,
     browser: `chrome-headless-shell ${browser.version()}`,
     gpuTime: 'excluded: WebGPU runs on SwiftShader (CPU rasteriser); no metric here measures GPU execution',

@@ -213,6 +213,16 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
     ) -> Result<[f64; 16]> {
         self.admit_placement_scale()?;
+        // Keep the public exact-description error contract from main. Meshing
+        // still delegates malformed authored values to the canonical reader.
+        if let Some(attr) = element.get(5).filter(|attr| !attr.is_null()) {
+            if decoder.resolve_ref(attr)?.is_none() {
+                return Err(crate::Error::geometry(format!(
+                    "ObjectPlacement for #{} cannot be resolved",
+                    element.id
+                )));
+            }
+        }
         let transform = self.element_world_placement(element, decoder)?;
         Ok(mat4::col_major_array(&transform))
     }

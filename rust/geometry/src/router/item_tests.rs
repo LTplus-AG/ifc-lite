@@ -92,7 +92,9 @@ fn issue_7867_main_7877_nonreference_placement_refuses_every_entry() {
     let router = GeometryRouter::with_scale(0.001);
     let element = decoder.decode_by_id(13).unwrap();
     assert!(router.element_world_placement(&element, &mut decoder).is_err());
-    assert!(router.resolve_scaled_placement_strict(&element, &mut decoder).is_err());
+    let strict_error = router.resolve_scaled_placement_strict(&element, &mut decoder).unwrap_err();
+    assert!(matches!(strict_error, crate::Error::GeometryError(ref message)
+        if message.contains("cannot be resolved")), "{strict_error}");
 
     let mut mesh = Mesh::new();
     mesh.positions = vec![0., 0., 0., 1., 0., 0., 0., 1., 0.];

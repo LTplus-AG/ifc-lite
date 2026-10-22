@@ -781,8 +781,8 @@ export class Renderer {
     }
 
     /**
-     * Subscribe to non-intentional GPU device loss (driver reset / VRAM
-     * exhaustion — NOT an intentional `destroy()`). Fired at most once per
+     * Subscribe to GPU device loss outside owned teardown (including browser
+     * destruction, driver reset or VRAM exhaustion). Fired at most once per
      * device. After it fires, `render()` is a no-op and the renderer reports
      * itself un-ready (`isReady()` false, `whenReady()` rejecting with
      * `RendererDeviceLostError`) until it is re-initialised, so the typical
@@ -3685,7 +3685,7 @@ export class Renderer {
         // above was created from it and has already been destroyed, so nothing
         // will touch the device after this. Without it, an app that spins up a
         // renderer per model keeps N live devices (and their VRAM) alive. The
-        // lost-handler special-cases reason 'destroyed' so this is not reported
+        // lost-handler excludes this retired lifetime so this is not reported
         // as a fault. render() early-returns while the device is uninitialised.
         this.device.destroy();
     }

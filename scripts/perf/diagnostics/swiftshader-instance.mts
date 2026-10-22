@@ -17,9 +17,9 @@ const address = server.address();
 if (!address || typeof address === 'string') throw new Error('Missing server address');
 const results: unknown[] = [];
 try {
-  for (const variant of ['rig', 'angle'] as const) {
-    const args = [...BEGIN_FRAME_CHROME_ARGS, '--enable-logging=stderr'];
-    if (variant === 'angle') args.push('--use-angle=swiftshader');
+  for (let round = 1; round <= 5; round++) for (const variant of ['original', 'fixed'] as const) {
+    const args = [...BEGIN_FRAME_CHROME_ARGS.filter(arg => arg !== '--use-angle=swiftshader'), '--enable-logging=stderr'];
+    if (variant === 'fixed') args.push('--use-angle=swiftshader');
     const browser = await chromium.launch({ headless: true, args });
     try {
       const page = await browser.newPage();
@@ -102,8 +102,11 @@ try {
         return result;
       }, mainShaderSource);
       clearTimeout(deadline);
-      results.push({ variant, browser: browser.version(), args, result });
+      results.push({ round, variant, browser: browser.version(), args, result });
       console.log(JSON.stringify(results.at(-1)));
+      if (variant === 'fixed' && (result.lost || result.events.some(event => (event as { ok?: boolean }).ok === false))) {
+        throw new Error('Corrected SwiftShader configuration failed real pipeline/queue/readback checks');
+      }
     } finally { await browser.close(); }
   }
 } finally {

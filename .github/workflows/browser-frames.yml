@@ -29,6 +29,7 @@ on:
           - frames
           - instance
           - diagnostic-frames
+          - qualification-frames
 
 permissions:
   contents: read
@@ -114,14 +115,30 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium-headless-shell
 
       - name: Run deterministic frame rig
+        if: inputs.mode != 'qualification-frames'
         env:
           FRAME_RIG_OUT: test-results/browser-frames.json
           FRAME_INSTANCE_DIAGNOSTICS: ${{ inputs.mode == 'diagnostic-frames' && '1' || '' }}
           DEBUG: ${{ inputs.mode == 'diagnostic-frames' && 'pw:browser' || '' }}
         run: pnpm test:benchmark:frames
 
+      # Separate Playwright output directories preserve earlier cohorts when
+      # Playwright cleans its output directory before each invocation.
+      - name: Qualify ten frame cohorts against one build
+        if: inputs.mode == 'qualification-frames'
+        run: |
+          status=0
+          mkdir -p test-results/qualification
+          for cohort in $(seq -w 1 10); do
+            result="test-results/qualification/browser-frames-${cohort}.json"
+            FRAME_RIG_OUT="$result" pnpm test:benchmark:frames \
+              --output="test-results/qualification/playwright-${cohort}" || status=$?
+            node scripts/perf/check-frame-results.mjs "$result" || status=$?
+          done
+          exit "$status"
+
       - name: Require complete uncontaminated frame evidence
-        if: always() && inputs.mode != 'diagnostic-frames'
+        if: always() && inputs.mode != 'diagnostic-frames' && inputs.mode != 'qualification-frames'
         run: node scripts/perf/check-frame-results.mjs test-results/browser-frames.json
 
       # `browser-frames` ratchet family (#6975, M4 #6959). Runs only for
@@ -131,11 +148,11 @@ jobs:
       # evidence supports are gated; the rest print as informational. A breach
       # turns this lane red, and a scheduled red run opens the lane's issue.
       - name: Measure perf-ratchet browser-frames family
-        if: inputs.mode != 'diagnostic-frames'
+        if: inputs.mode != 'diagnostic-frames' && inputs.mode != 'qualification-frames'
         run: node scripts/perf-ratchet/measure-browser-frames.mjs --frames test-results/browser-frames.json --out "$RUNNER_TEMP/perf-ratchet/browser-frames.json" --commit "$(git rev-parse HEAD)"
 
       - name: Check the browser-frames ceilings
-        if: inputs.mode != 'diagnostic-frames'
+        if: inputs.mode != 'diagnostic-frames' && inputs.mode != 'qualification-frames'
         run: |
           set +e
           node scripts/perf-ratchet/perf-ratchet.mjs check \
@@ -150,7 +167,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: ${{ inputs.mode == 'diagnostic-frames' && format('diagnostic-frames-{0}', github.sha) || 'browser-frames' }}
+          name: ${{ inputs.mode == 'qualification-frames' && format('qualification-frames-{0}', github.sha) || inputs.mode == 'diagnostic-frames' && format('diagnostic-frames-{0}', github.sha) || 'browser-frames' }}
           # The rows JSON on success, Playwright's error contexts on failure.
           path: test-results/
           if-no-files-found: error
@@ -178,6 +195,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Test frame-evidence admission
+        run: node --test scripts/perf/check-frame-results.test.mjs
 
       - name: Install chrome-headless-shell
         run: pnpm exec playwright install --with-deps chromium-headless-shell

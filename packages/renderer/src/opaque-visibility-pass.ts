@@ -51,7 +51,7 @@ export class OpaqueVisibilityPass {
   private height = 0;
   private active = false;
 
-  constructor(private readonly device: GPUDevice, private readonly samples: number) {}
+  constructor(private readonly device: GPUDevice, private readonly samples: number, private readonly sectionBinding?: () => GPUBindGroup) {}
 
   create(descriptor: GPURenderPipelineDescriptor, source = mainShaderSource): GPURenderPipeline {
     return this.register(this.device.createRenderPipeline(descriptor), descriptor, source);
@@ -106,7 +106,7 @@ export class OpaqueVisibilityPass {
     if (!fragment) return undefined;
     const module = this.device.createShaderModule({ code: guardedMeshShader(source, this.samples, fragment.entryPoint ?? 'fs_main') });
     const colour = await this.device.createRenderPipelineAsync({ ...d,
-      layout: this.device.createPipelineLayout({ bindGroupLayouts: [base.getBindGroupLayout(0), base.getBindGroupLayout(1), opaqueVisibilityLayout(this.device, this.samples)] }),
+      layout: this.device.createPipelineLayout({ bindGroupLayouts: [base.getBindGroupLayout(0), base.getBindGroupLayout(1), opaqueVisibilityLayout(this.device, this.samples), base.getBindGroupLayout(3)] }),
       vertex: { ...d.vertex, module }, fragment: { ...fragment, module } });
     let depth: GPURenderPipeline | null = null;
     if (d.depthStencil?.depthWriteEnabled) {
@@ -121,6 +121,8 @@ export class OpaqueVisibilityPass {
   begin(encoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor, orthographic: boolean, width: number, height: number): GPURenderPassEncoder {
     this.active = orthographic;
     const main = encoder.beginRenderPass(descriptor);
+    const section = this.sectionBinding?.();
+    if (section) main.setBindGroup(3, section);
     if (!orthographic) { this.releaseTexture(); return main; }
     this.ensureSize(width, height);
     const before = this.device.createCommandEncoder({ label: 'opaque-visibility-before-main' });
@@ -131,6 +133,7 @@ export class OpaqueVisibilityPass {
     });
     let variant: Variants | undefined;
     const groups = new Map<number, unknown[]>(), vertices = new Map<number, unknown[]>();
+    if (section) groups.set(3, [3, section]);
     let indices: unknown[] | undefined;
     const raster = new Map<string, unknown[]>();
     const methods = new Map<PropertyKey, unknown>();
@@ -138,7 +141,7 @@ export class OpaqueVisibilityPass {
     const draw = (name: PropertyKey, args: unknown[]) => {
       if (variant?.depth) {
         depthPass.setPipeline(variant.depth);
-        for (const [group, args] of groups) if (group < OPAQUE_VISIBILITY_GROUP) invoke(depthPass, 'setBindGroup', args);
+        for (const [group, args] of groups) if (group !== OPAQUE_VISIBILITY_GROUP) invoke(depthPass, 'setBindGroup', args);
         for (const args of vertices.values()) invoke(depthPass, 'setVertexBuffer', args);
         if (indices) invoke(depthPass, 'setIndexBuffer', indices);
         for (const [method, args] of raster) invoke(depthPass, method, args);

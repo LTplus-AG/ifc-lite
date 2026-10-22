@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use ifc_lite_core::{
-    keyword_eq, slot, DecodedEntity, EntityDecoder, EntityIndex, EntityScanner, IfcType,
+    keyword_eq, slot, AttributeValue, DecodedEntity, EntityDecoder, EntityIndex, EntityScanner, IfcType,
     EXPORTER_STRATUM_ALIASES,
 };
 use crate::element::{plan_type_geometry, TypeGeometryMode};
@@ -285,7 +285,7 @@ fn stream_rows(
         // for a broken one, so asking it would report every unplaced product as
         // sitting at the origin.
         let placement = router.as_ref().and_then(|r| {
-            entity.attr(slot::IfcProduct::OBJECT_PLACEMENT).filter(|a| !a.is_null())?;
+            entity.attr(slot::IfcProduct::OBJECT_PLACEMENT).filter(|a| !matches!(a, AttributeValue::Null | AttributeValue::Derived))?;
             r.resolve_scaled_placement(&entity, &mut decoder)
                 .ok()
                 .map(|matrix| Placement { matrix })

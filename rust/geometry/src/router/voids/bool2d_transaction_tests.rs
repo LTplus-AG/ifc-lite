@@ -6,7 +6,8 @@
 //! publish diagnostics for discarded geometry. Each mode has its own process
 //! because route flags are read once and public counters are process-global.
 
-use super::{tests::mixed_overlap_fixture, GeometryRouter, Mesh, VoidContext};
+use super::{tests::mixed_overlap_fixture, Mesh, VoidContext};
+use crate::GeometryRouter;
 use crate::kernel::budget;
 
 #[derive(Debug, PartialEq)]
@@ -80,6 +81,80 @@ fn mesh_opening(mesh: Mesh) -> super::super::OpeningType {
     super::super::OpeningType::NonRectangular(mesh, lo.cast(), hi.cast(), None)
 }
 
+/// The tapered recess requires exact CSG; a following engulf consumes the
+/// precursor, so correction rejects the candidate AFTER real work.
+fn rejected_residual(context: &mut VoidContext) {
+    let mut recess = mesh_box(1.0, 1.0, 3.0, 3.0, -1.0, 0.5);
+    for p in recess.positions.chunks_exact_mut(3) {
+        if p[2] > 0.0 {
+            p[0] = 2.0 + (p[0] - 2.0) * 0.5;
+            p[1] = 2.0 + (p[1] - 2.0) * 0.5;
+        }
+    }
+    let recess = mesh_opening(recess);
+    let engulf = mesh_opening(mesh_box(-1.0, -1.0, 11.0, 11.0, -1.0, 2.0));
+    *context.openings.last_mut().unwrap() = recess.clone();
+    context.openings.push(engulf.clone());
+    context.merged_openings = GeometryRouter::merge_rectangular_openings(&context.openings);
+    let residual = context.bool2d.as_mut().unwrap().residual.as_mut().unwrap();
+    residual.openings = vec![recess, engulf];
+    residual.merged_openings = residual.openings.clone();
+}
+
+/// #7955 C5c: the staged residual runs on a provisional child execution. The
+/// same real residual, cut on its own execution, consumes the host; inside a
+/// rejected staged composition none of that reaches the parent, whose earlier
+/// effects keep their order.
+#[test]
+fn rejected_staged_child_leaks_nothing_into_the_parent_execution() {
+    use crate::program::openings::execute::Execution;
+    const CHILD: &str = "IFC_LITE_STAGED_CHILD_LEAK_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "router::voids::bool2d_path::transaction_tests::rejected_staged_child_leaks_nothing_into_the_parent_execution", "--nocapture"])
+            .env(CHILD, "1")
+            .env("IFC_LITE_PRISM_CUT", "1")
+            .env("IFC_LITE_VOID_2D", "1")
+            .env("IFC_LITE_CSG_BUDGET", "0")
+            .output()
+            .expect("isolated staged regression");
+        assert!(
+            output.status.success() && String::from_utf8_lossy(&output.stdout).contains("1 passed"),
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return;
+    }
+    let (host, mut context) = mixed_overlap_fixture();
+    rejected_residual(&mut context);
+    let cut = context.bool2d.as_ref().unwrap();
+    let quality = crate::TessellationQuality::default();
+    let ((), _) = crate::telemetry_transaction::capture(|| {
+        let control = Execution::new(quality);
+        let (precursor, _) = control.try_bool2d_cut(&host, cut).expect("eligible staged prefix");
+        let residual = cut.residual.as_deref().unwrap();
+        let _ = control.apply_void_context(precursor, residual, 4617);
+        let router = GeometryRouter::new();
+        control.finish().publish(&router);
+        assert!(router.host_consumed_by_void(4617), "positive control: the residual records");
+    });
+    let bounds = ((0.0, 0.0, 0.0), (1.0, 1.0, 1.0));
+    let parent = Execution::new(quality);
+    parent.record_host_cut_effect(7, 12, 12, 0, bounds);
+    let mark = parent.mark();
+    let (staged, _) = crate::telemetry_transaction::capture(|| parent.try_staged_bool2d(&host, cut, 4617));
+    assert!(staged.is_none(), "correction rejects the composition after real work");
+    assert_eq!(parent.mark(), mark, "the rejected child left no effect in the parent");
+    let router = GeometryRouter::new();
+    parent.finish().publish(&router);
+    assert!(!router.host_consumed_by_void(4617));
+    assert!(router.take_csg_failures().is_empty());
+    let diagnostics = router.take_host_opening_diagnostics();
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[&7].tris_after, Some(12), "the parent's earlier effect is intact");
+}
+
 #[test]
 fn mixed_route_telemetry_is_atomic_4617() {
     const CHILD: &str = "IFC_LITE_4617_TELEMETRY_CHILD";
@@ -130,23 +205,7 @@ fn mixed_route_telemetry_is_atomic_4617() {
         residual.merged_openings = vec![opening];
     }
     if mode == "rejected" {
-        // The tapered recess requires exact CSG; a following engulf consumes
-        // the precursor, so correction rejects the candidate AFTER real work.
-        let mut recess = mesh_box(1.0, 1.0, 3.0, 3.0, -1.0, 0.5);
-        for p in recess.positions.chunks_exact_mut(3) {
-            if p[2] > 0.0 {
-                p[0] = 2.0 + (p[0] - 2.0) * 0.5;
-                p[1] = 2.0 + (p[1] - 2.0) * 0.5;
-            }
-        }
-        let recess = mesh_opening(recess);
-        let engulf = mesh_opening(mesh_box(-1.0, -1.0, 11.0, 11.0, -1.0, 2.0));
-        *context.openings.last_mut().unwrap() = recess.clone();
-        context.openings.push(engulf.clone());
-        context.merged_openings = GeometryRouter::merge_rectangular_openings(&context.openings);
-        let residual = context.bool2d.as_mut().unwrap().residual.as_mut().unwrap();
-        residual.openings = vec![recess, engulf];
-        residual.merged_openings = residual.openings.clone();
+        rejected_residual(&mut context);
         let router = GeometryRouter::new();
         let before = take(&router);
         take_work();

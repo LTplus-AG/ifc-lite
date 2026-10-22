@@ -1,0 +1,262 @@
+{
+  "adapter": {
+    "vendor": "intel",
+    "architecture": "gen-12lp"
+  },
+  "rows": [
+    {
+      "family": "batched",
+      "state": "baseline",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "batched",
+      "state": "clipped",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "batched",
+      "state": "first-whole",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "batched",
+      "state": "both-whole",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "batched",
+      "state": "second-whole",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "batched",
+      "state": "cleared",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "batched",
+      "state": "extra-only",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "batched",
+      "state": "hidden",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "batched",
+      "state": "crop-box",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "instanced",
+      "state": "baseline",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "instanced",
+      "state": "clipped",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "instanced",
+      "state": "first-whole",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "instanced",
+      "state": "both-whole",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "instanced",
+      "state": "second-whole",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "instanced",
+      "state": "cleared",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "instanced",
+      "state": "extra-only",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "instanced",
+      "state": "hidden",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "instanced",
+      "state": "crop-box",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "wide-instanced",
+      "state": "baseline",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "wide-instanced",
+      "state": "clipped",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "wide-instanced",
+      "state": "first-whole",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "wide-instanced",
+      "state": "both-whole",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "wide-instanced",
+      "state": "second-whole",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "wide-instanced",
+      "state": "cleared",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "wide-instanced",
+      "state": "extra-only",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "wide-instanced",
+      "state": "hidden",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "wide-instanced",
+      "state": "crop-box",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "individual",
+      "state": "baseline",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "individual",
+      "state": "clipped",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "individual",
+      "state": "first-whole",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "individual",
+      "state": "both-whole",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "individual",
+      "state": "second-whole",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "individual",
+      "state": "cleared",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "individual",
+      "state": "extra-only",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "individual",
+      "state": "hidden",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    },
+    {
+      "family": "individual",
+      "state": "crop-box",
+      "checked": 6,
+      "mismatches": [],
+      "shadowMismatches": []
+    }
+  ],
+  "errors": [],
+  "gpuErrors": 0
+}

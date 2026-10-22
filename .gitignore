@@ -176,3 +176,7 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+
+# Staged SMLib browser bundles (scripts/stage-retained-browser-assets.mjs)
+apps/viewer/public/smlib/
+rust/*/smlib/

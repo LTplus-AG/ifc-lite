@@ -1,0 +1,26 @@
+diff --git a/native/smlib-adapter/browser/client.mjs b/native/smlib-adapter/browser/client.mjs
+index 2eb6f6a662..eb2850a646 100644
+--- a/native/smlib-adapter/browser/client.mjs
++++ b/native/smlib-adapter/browser/client.mjs
+@@ -56,7 +56,7 @@ export class SmlibWorkerTransport {
+   }
+   // Retire only the captured owner; stale cleanup cannot kill a replacement.
+   retire(incarnation) {
+-    if (this.#worker) {
++    if (incarnation !== undefined && incarnation === this.#incarnation) {
+       this.#poison(new Error('worker incarnation retired'));
+     }
+   }
+diff --git a/native/smlib-adapter/browser/module.mjs b/native/smlib-adapter/browser/module.mjs
+index 2762b9de35..c64d164c80 100644
+--- a/native/smlib-adapter/browser/module.mjs
++++ b/native/smlib-adapter/browser/module.mjs
+@@ -18,7 +18,7 @@ export function dispatchOwned(module, frame) {
+     response = view.getUint32(outputs, true);
+     const size = view.getUint32(outputs + 4, true);
+     if (status !== 0) throw new Error(`malformed request or trapped dispatcher (${status})`);
+-    if (!response || size < 12 || size > 1 << 20 || response > module.HEAPU8.length - size)
++    if (!response || size < 12 || size > MAX_FRAME_BYTES || response > module.HEAPU8.length - size)
+       throw new Error('invalid response allocation');
+     return module.HEAPU8.slice(response, response + size).buffer;
+   } finally {

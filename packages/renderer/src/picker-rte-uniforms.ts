@@ -16,12 +16,15 @@ export function writePickUniforms(
   clipFlags: Uint32Array,
   viewProj: Float32Array,
   clip?: PickClipState | null,
+  expressId = 0,
+  slot = 0,
 ): void {
   scratch.fill(0);
   scratch.set(viewProj, 0);
   scratch[16] = 1; scratch[21] = 1; scratch[26] = 1; scratch[31] = 1;
   packPickClip(clip, scratch, clipFlags, 32);
-  device.queue.writeBuffer(buffer, 0, scratch);
+  clipFlags[1] = expressId;
+  device.queue.writeBuffer(buffer, slot * 256, scratch);
 }
 
 /**
@@ -50,6 +53,7 @@ export function writeFlatPickUniform(
   const camera = snapshot.getCameraWorld();
   packRteClipBox(clip?.clipBox, camera, scratch, 32);
   if (clip?.sectionPlane) scratch[43] = rtePlaneDistance(clip.sectionPlane.distance, clip.sectionPlane.normal, camera);
+  clipFlags[1] = mesh.expressId;
   device.queue.writeBuffer(buffer, slot * 256, scratch);
   return true;
 }

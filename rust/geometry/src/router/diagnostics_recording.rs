@@ -35,7 +35,7 @@ pub struct ClassificationStats {
 
 /// Per-host opening diagnostic captured during void processing.
 ///
-/// Populated incrementally: `classify_openings` fills in `host_type` and
+/// Populated incrementally: `program::openings::classify` fills in `host_type` and
 /// the per-opening classification list; `apply_void_context` adds the
 /// CSG failure tally drained from the kernel. Surfaced through
 /// [`GeometryRouter::take_host_opening_diagnostics`] for the WASM
@@ -71,7 +71,7 @@ pub struct HostOpeningDiagnostic {
     pub host_bounds: Option<((f32, f32, f32), (f32, f32, f32))>,
 }
 
-/// One opening's worth of diagnostic data — what `classify_openings`
+/// One opening's worth of diagnostic data — what `program::openings::classify`
 /// observed about it.
 ///
 /// A new field here of ANY visibility is a BREAKING change: re-exported from the
@@ -332,7 +332,7 @@ impl GeometryRouter {
     }
 
     /// Internal: bump the classification stats. Called from
-    /// `classify_openings` for each opening it processes.
+    /// `program::openings::classify` for each opening it processes.
     pub(crate) fn bump_classification(&self, kind: ClassificationKind) {
         let mut s = self.classification_stats.borrow_mut();
         match kind {
@@ -343,7 +343,7 @@ impl GeometryRouter {
     }
 
     /// Internal: record / merge per-host opening diagnostic. Called from
-    /// `classify_openings` once per host with the host type + the list of
+    /// `program::openings::classify` once per host with the host type + the list of
     /// openings it observed. `apply_void_context` later adds the CSG
     /// failure tally for the same host.
     pub(crate) fn record_host_opening_diagnostic(

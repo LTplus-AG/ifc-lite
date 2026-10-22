@@ -3,20 +3,22 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Atomic mixed planar/residual routing, including its diagnostics (#4617).
+//! The residual cut runs on a provisional child execution whose diagnostics
+//! reach the parent only when the whole composition is accepted.
 
-use super::attempt::AttemptGuard;
-use super::{bool2d_path::Bool2dCut, prism_cut, topology_defect_count, GeometryRouter};
+use super::{bool2d_path::Bool2dCut, prism_cut, topology_defect_count};
 use super::{MIXED_ROUTE_DEFECT_FLOOR, MIXED_ROUTE_DEFECT_GROWTH};
+use crate::program::openings::execute::Execution;
 use crate::Mesh;
 
-impl GeometryRouter {
+impl Execution {
     pub(super) fn try_staged_bool2d(
         &self,
         mesh: &Mesh,
         cut: &Bool2dCut,
         element_id: u32,
     ) -> Option<Mesh> {
-        let Some(residual) = self.bool2d_residual(cut) else {
+        let Some(residual) = cut.residual.as_deref() else {
             return self.try_bool2d_cut(mesh, cut).map(|(mesh, _)| mesh);
         };
         #[cfg(feature = "opening-perf-trace")]
@@ -36,10 +38,10 @@ impl GeometryRouter {
                 crate::opening_perf_trace::record(|c| c.staged_disabled_correction_refusals = c.staged_disabled_correction_refusals.saturating_add(1));
                 return None;
             }
-            let attempt = AttemptGuard::new(self, element_id);
+            let provisional = Execution::new(self.tessellation_quality);
             #[cfg(feature = "opening-perf-trace")]
             crate::opening_perf_trace::record(|c| c.staged_residual_calls = c.staged_residual_calls.saturating_add(1));
-            let candidate = self.apply_void_context(holed, residual, element_id);
+            let candidate = provisional.apply_void_context(holed, residual, element_id);
             let Some(candidate) = prism_cut::correct_planar_overlap(&candidate, &corrections) else {
                 #[cfg(feature = "opening-perf-trace")]
                 crate::opening_perf_trace::record(|c| c.staged_correction_refusals = c.staged_correction_refusals.saturating_add(1));
@@ -55,7 +57,7 @@ impl GeometryRouter {
             }
             #[cfg(feature = "opening-perf-trace")]
             crate::opening_perf_trace::record(|c| c.staged_commits = c.staged_commits.saturating_add(1));
-            attempt.accept();
+            self.accept(provisional);
             Some(candidate)
         });
         let candidate = candidate?;

@@ -18,8 +18,9 @@ if (!address || typeof address === 'string') throw new Error('Missing server add
 const results: unknown[] = [];
 try {
   for (let round = 1; round <= 5; round++) for (const variant of ['original', 'fixed'] as const) {
-    const args = [...BEGIN_FRAME_CHROME_ARGS.filter(arg => arg !== '--use-angle=swiftshader'), '--enable-logging=stderr'];
-    if (variant === 'fixed') args.push('--use-angle=swiftshader');
+    const args = [...(variant === 'original'
+      ? BEGIN_FRAME_CHROME_ARGS.filter(arg => arg !== '--use-angle=swiftshader')
+      : BEGIN_FRAME_CHROME_ARGS), '--enable-logging=stderr'];
     const browser = await chromium.launch({ headless: true, args });
     try {
       const page = await browser.newPage();

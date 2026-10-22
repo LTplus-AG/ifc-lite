@@ -199,8 +199,11 @@ jobs:
       - name: Test frame-evidence admission
         run: node --test scripts/perf/check-frame-results.test.mjs
 
+      # The isolated canvas needs no extra font/Xvfb packages; ubuntu-latest
+      # already supplies the shell's runtime libraries. Avoid an apt upgrade
+      # of unrelated packages in this small diagnostic job.
       - name: Install chrome-headless-shell
-        run: pnpm exec playwright install --with-deps chromium-headless-shell
+        run: pnpm exec playwright install chromium-headless-shell
 
       - name: Run isolated instance diagnostic
         env:

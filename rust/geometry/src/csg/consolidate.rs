@@ -124,6 +124,12 @@ fn count_spike_triangles(mesh: &Mesh) -> usize {
     n
 }
 
+#[derive(Clone, Copy)]
+enum ConsolidationUse {
+    ClosedOutput,
+    BooleanOperand,
+}
+
 impl ClippingProcessor {
     /// Re-merge the kernel's per-plane fragments via 2D polygon union, then
     /// earcut each result back to triangles. CSG over-fragments host faces
@@ -156,15 +162,27 @@ impl ClippingProcessor {
         Self::consolidate_with_supported_cells(mesh, length_unit_scale, true, true)
     }
 
+    /// IFC boolean operands receive source hygiene after scaling to metres;
+    /// void outputs instead retain represented closed subgrid boundaries.
+    pub(super) fn consolidate_operand(&self, mesh: Mesh) -> Mesh {
+        Self::consolidate_with_use(mesh, self.length_unit_scale, true, true,
+            ConsolidationUse::BooleanOperand, true)
+    }
+
     fn consolidate_with_supported_cells(mesh: Mesh, length_unit_scale: f64, preserve_supported: bool, preserve_folds: bool) -> Mesh {
+        Self::consolidate_with_use(mesh, length_unit_scale, preserve_supported, preserve_folds,
+            ConsolidationUse::ClosedOutput, true)
+    }
+
+    fn consolidate_with_use(mesh: Mesh, length_unit_scale: f64, preserve_supported: bool,
+        preserve_folds: bool, usage: ConsolidationUse, preserve_connected: bool) -> Mesh {
         if mesh.indices.len() < 6 {
             return mesh;
         }
         let mut buckets = buckets::build(&mesh);
         // Stitch only the adjacent rounding splits certified by the kernel tags.
         let merged_bucket_keys = plane_merge::merge_rounding_split_buckets(&mut buckets);
-        let mut supported = if preserve_folds { supported_cells::find(&buckets) }
-            else { supported_cells::find_with_folds(&buckets, false) };
+        let mut supported = supported_cells::find_with_policy(&buckets, preserve_folds, preserve_connected);
         if !preserve_supported {
             // Healthy folds have a separate exact source-topology certificate.
             // Keep their finite surface in the ordinary baseline while still
@@ -190,8 +208,8 @@ impl ClippingProcessor {
         if !supported.folded_buckets.is_empty()
             && preservation::tears_beyond_folds(&output, &buckets, &supported)
         {
-            let ordinary = Self::consolidate_with_supported_cells(
-                mesh.clone(), length_unit_scale, preserve_supported, false);
+            let ordinary = Self::consolidate_with_use(
+                mesh.clone(), length_unit_scale, preserve_supported, false, usage, preserve_connected);
             // Only a fully closed fold-free host replaces the fold output; one
             // that is merely less open gives up the fold's finite support for
             // nothing (rvt01 #26681 pins that trade).
@@ -216,8 +234,8 @@ impl ClippingProcessor {
             let exact = crate::exact_topology::strict_closed_mesh(&output);
             let public = preservation::public_weld_closed(&output);
             if !exact || !public {
-                let ordinary = fold_free.take().unwrap_or_else(|| Self::consolidate_with_supported_cells(
-                    mesh.clone(), length_unit_scale, preserve_supported, false));
+                let ordinary = fold_free.take().unwrap_or_else(|| Self::consolidate_with_use(
+                    mesh.clone(), length_unit_scale, preserve_supported, false, usage, preserve_connected));
                 if ((!exact && crate::exact_topology::strict_closed_mesh(&ordinary))
                     || (!public && preservation::public_weld_closed(&ordinary)))
                     && !supported_cells::has_uncertified_needle(&ordinary, &supported) {
@@ -229,12 +247,29 @@ impl ClippingProcessor {
         // fallback (#1007, #5739). Preserve the established exact/public closure
         // and signed boundary bars, including partially conforming source meshes.
         if !supported.cells.is_empty() {
-            let baseline = Self::consolidate_with_supported_cells(mesh.clone(), length_unit_scale, false, preserve_folds);
+            // Rejecting the connected extension must retain the established
+            // isolated-cell policy, not silently remove its certified cells.
+            let baseline = Self::consolidate_with_use(mesh.clone(), length_unit_scale,
+                supported.has_connected_patch, preserve_folds, usage, false);
             // An already closed ordinary boundary needs no source-cell rescue.
             if crate::exact_topology::strict_closed_mesh(&baseline) { return baseline; }
             let exact = crate::exact_topology::strict_closed_mesh(&output);
             let certified = !supported_cells::has_uncertified_needle(&output, &supported);
             let public = preservation::public_weld_closed(&output);
+            // Connected thin patches change the input to subsequent boolean
+            // cuts. A partial boundary improvement cannot certify that input
+            // (#8051): require closure before adopting a connected rescue.
+            if supported.has_connected_patch {
+                // Boolean source hygiene runs after file-unit output is scaled
+                // to metres. A locally closed patch that this established
+                // cleanup removes is not a usable rescue (#8051, S_Office).
+                if !exact || !public { return baseline; }
+                if matches!(usage, ConsolidationUse::BooleanOperand) {
+                    let mut physical = output.clone();
+                    crate::router::processing::scale_positions(&mut physical, length_unit_scale);
+                    if physical.needs_degenerate_cleanup() { return baseline; }
+                }
+            }
             if (!certified || !exact || !public)
                 && (!certified
                     || (!public && preservation::public_weld_closed(&baseline))

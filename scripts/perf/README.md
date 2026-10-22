@@ -25,6 +25,21 @@ alone also retains deliberately cleaned tiny openings; require strictly convex
 internal ridges and keep the physical-unit cleanup regression alongside the
 thin-floor closure witness.
 
+**Consumer-boundary follow-up (#8057).** Local exact closure is insufficient
+when the next consumer deletes the retained faces after conversion to metres.
+The Office regression demonstrated that source operand cleanup can undo a
+closed rescue before an analytic opening cut. Connected subtractive-operand
+rescues now also check the existing cleanup predicate in physical units;
+finished void results keep their closed-subgrid contract. The additional copy
+and scan are confined to connected-patch candidates. Rejecting a connected
+patch must retain the previously certified isolated-cell baseline; removing
+both policies also regresses real Office hosts.
+
+Performance verdict: not measured. The exclusive benchmark host was occupied
+by foreign WASM validation and PC timing is disabled. No replacement cohort
+was submitted and no neutrality or speedup is claimed; the earlier
+inconclusive measurements do not qualify this follow-up.
+
 ## Geometry platform migration slices (#7955)
 
 **E1 element planning/execution (#8044): mixed phase timing, no measurable

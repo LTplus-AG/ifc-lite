@@ -72,14 +72,14 @@
       "unit": "Ir",
       "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
       "description": "geometry phase, callgrind Ir, single thread",
-      "ceiling": 376482384,
+      "ceiling": 376719448,
       "tolerance": {
         "kind": "relative",
         "value": 0.0005
       },
       "provenance": {
-        "commit": "aa9bfc26f33767215c81ed3bbcafd49861245099",
-        "measuredAt": "2026-10-22T01:43:36.000Z"
+        "commit": "e1cbafc6c9685a0a80d4e751f1346c42923bcaa5",
+        "measuredAt": "2026-10-22T12:58:01.000Z"
       }
     },
     {

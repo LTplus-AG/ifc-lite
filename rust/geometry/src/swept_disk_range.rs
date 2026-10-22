@@ -4,7 +4,7 @@
 //! This is an exporter compatibility rule, not IFC polyline parametrisation
 //! (which remains one unit per edge). Limit it to swept disks with this exact
 //! range and an Allplan owning application on the project's OwnerHistory.
-use ifc_lite_core::{EntityDecoder, IfcType};
+use ifc_lite_core::{slot, EntityDecoder, IfcType};
 
 pub(crate) fn effective_range(
     directrix: IfcType,
@@ -29,17 +29,28 @@ pub(crate) fn effective_range(
 fn owning_application_is_allplan(decoder: &mut EntityDecoder) -> Option<bool> {
     let project_id = decoder.project_id()?;
     let project = decoder.decode_by_id(project_id).ok()?;
-    let history = decoder.decode_by_id(project.get_ref(1)?).ok()?;
+    let history = decoder
+        .decode_by_id(project.ref_at(slot::IfcProject::OWNER_HISTORY)?)
+        .ok()?;
     if history.ifc_type != IfcType::IfcOwnerHistory {
         return None;
     }
-    let application = decoder.decode_by_id(history.get_ref(1)?).ok()?;
+    let application = decoder
+        .decode_by_id(history.ref_at(slot::IfcOwnerHistory::OWNING_APPLICATION)?)
+        .ok()?;
     if application.ifc_type != IfcType::IfcApplication {
         return None;
     }
-    Some([2, 3].into_iter().any(|slot| {
-        application
-            .get_string(slot)
-            .is_some_and(|name| name.eq_ignore_ascii_case("Allplan"))
-    }))
+    Some(
+        [
+            slot::IfcApplication::APPLICATION_FULL_NAME,
+            slot::IfcApplication::APPLICATION_IDENTIFIER,
+        ]
+        .into_iter()
+        .any(|slot| {
+            application
+                .string_at(slot)
+                .is_some_and(|name| name.eq_ignore_ascii_case("Allplan"))
+        }),
+    )
 }

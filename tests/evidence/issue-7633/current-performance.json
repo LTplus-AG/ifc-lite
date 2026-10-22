@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "issue": 7633,
-  "verdict": "NOT QUALIFIED: native complete and output-identical; headless browser had GPU loss and software fallback. Separate headed cohort pending.",
+  "verdict": "NOT QUALIFIED: native complete and output-identical on recorded revisions; headless browser had GPU loss and software fallback; headed continuation also selected SwiftShader and failed hardware preflight.",
   "source": {
     "base": "a4fc04cf1f1a04ed1ad3cff89b3d32d9c97f8751",
     "branch": "4a58e7ddcde3641e460fdbf38e29ff52ab128c3c"
@@ -342,8 +342,27 @@
     "refusal": "Storage job-open failed before project execution; lifecycle registration and publication subsequently reconciled.",
     "activeJob": "ce9cc313-4588-4ef5-a43a-daf518e35963",
     "requestId": "issue7633-browser-4a58e7dd-20261022-v3b",
-    "status": "queued",
-    "protocol": "Frozen build verification; active desktop environment; hardware/device preflight; separate five-pair cohort, abort after retained failed sample without replacements."
+    "status": "failed hardware preflight before model samples",
+    "protocol": "Frozen build verification; active desktop environment; hardware/device preflight; separate five-pair cohort, abort after retained failed sample without replacements.",
+    "exitCode": 1,
+    "hardwarePreflight": {
+      "kind": "hardware-preflight-no-model",
+      "ok": false,
+      "executablePath": "/home/louistrue/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome",
+      "launch": {
+        "headless": false,
+        "args": [
+          "--enable-gpu",
+          "--enable-webgpu",
+          "--enable-unsafe-webgpu",
+          "--use-angle=default",
+          "--ignore-gpu-blocklist"
+        ]
+      },
+      "error": "Error: page.evaluate: Error: Hardware adapter not qualified: {\"architecture\":\"swiftshader\",\"vendor\":\"google\",\"device\":\"\",\"description\":\"\",\"fallback\":true}\n    at eval (eval at evaluate (:370:30), <anonymous>:1:525)\n    at async <anonymous>:396:30"
+    },
+    "idleHostQualified": true,
+    "modelSamples": 0
   },
   "evidence": {
     "result.json": {
@@ -358,5 +377,6 @@
       "path": "/home/louistrue/build-workers/qualification/issue7633-perf-4a58e7dd-20261022-v2/independent-review.json",
       "sha256": "f3cbc34a7a587bf438d455a3f921d54491760582cf56d4313e38845b95ce80cc"
     }
-  }
+  },
+  "mergedRevisionLimitation": "Main merged in 742e4adda2 includes geometry changes; prior measurements do not qualify the merged tree."
 }

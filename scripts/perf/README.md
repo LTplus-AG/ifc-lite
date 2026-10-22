@@ -23,6 +23,9 @@ device on both base and branch. Preserve those failed samples; a successful
 geometry phase cannot substitute for renderer readiness. Reuse hash-verified
 builds for a separate hardware-adapter preflight and fresh browser cohort,
 rather than extending readiness deadlines or replacing failed samples.
+The separate headed continuation also selected SwiftShader and stopped at the
+hardware preflight before loading any model. A desktop session alone does not
+establish hardware WebGPU availability.
 Source identities, numeric observations and qualification status are retained
 in `tests/evidence/issue-7633/current-performance.json`.
 

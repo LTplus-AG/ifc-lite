@@ -55,21 +55,28 @@ test('a pre-#6993 build is still classified from the console alone', () => {
   assert.equal(health.source, 'console');
 });
 
-test('an instance error from a probe on an already-destroyed device is evidence, not a lost sample', () => {
-  // Every WSL SwiftShader sample (FZK and Snowdon) logs this before the load
-  // while the renderer's own device lives on (gpu.devices 1, no loss).
+test('a pipeline instance error alone is evidence, not proof of renderer device loss', () => {
+  // The message identifies neither device ownership nor the failure cause.
   const probe = '[Pipeline] quantized pipeline validation failed; staying on f32 vertices: GPUPipelineError: A valid external Instance reference no longer exists.';
-  const health = gpuHealthFrom([DESTROYED, probe], { 'gpu.devices': 1 });
+  const health = gpuHealthFrom([probe], { 'gpu.devices': 1 });
   assert.equal(health.contaminated, false);
   assert.equal(health.instanceErrors, 1);
   assert.ok(health.events.includes(probe));
 });
 
-test('intentional teardown and uncaptured errors alone are reported, not flagged', () => {
-  const health = gpuHealthFrom([DESTROYED, UNCAPTURED, UNCAPTURED], { 'gpu.devices': 1, 'gpu.uncapturedErrors': 2 });
+test('uncaptured errors alone are reported, not flagged', () => {
+  const health = gpuHealthFrom([UNCAPTURED, UNCAPTURED], { 'gpu.devices': 1, 'gpu.uncapturedErrors': 2 });
   assert.equal(health.contaminated, false);
   assert.equal(health.deviceLost, 0);
   assert.equal(health.uncapturedErrors, 2);
+});
+
+test('#7655 browser destruction is a device loss even without session counters', () => {
+  const health = gpuHealthFrom([DESTROYED], null);
+  assert.equal(health.contaminated, true);
+  assert.equal(health.deviceLost, 1);
+  assert.equal(health.instanceErrors, 0);
+  assert.ok(health.events.includes(DESTROYED));
 });
 
 test('reads the viewer session counters through the page, and falls back when the page cannot answer', async () => {
@@ -112,7 +119,7 @@ for (const [site, line] of Object.entries(LOSS_LINES)) {
 }
 
 test('#6993 one loss reported through every site counts once, not three times', () => {
-  const health = gpuHealthFrom([INSTANCE, ...Object.values(LOSS_LINES), DESTROYED], null);
+  const health = gpuHealthFrom([INSTANCE, ...Object.values(LOSS_LINES)], null);
   assert.equal(health.deviceLost, 1);
   assert.equal(health.instanceErrors, 1);
 });
@@ -136,11 +143,12 @@ test('#6993 drift guard: the renderer\'s handleDeviceLost line is classified as 
   assert.equal(gpuHealthFrom(lines, null).contaminated, true, lines.join('\n'));
 });
 
-test('#6993 drift guard: WebGPUDevice\'s device.lost line is classified; its destroyed teardown line is not', async () => {
+test('#7655 drift guard: browser destruction is classified while owned teardown emits no loss', async () => {
   const { WebGPUDevice } = await tsImport('../packages/renderer/src/device.ts', import.meta.url);
-  const run = async (reason) => {
+  const run = async (reason, intentional = false) => {
     let settle;
-    const device = { lost: new Promise((r) => { settle = r; }), queue: {}, createBuffer() {}, addEventListener() {} };
+    const device = { lost: new Promise((r) => { settle = r; }), queue: {}, createBuffer() {}, addEventListener() {},
+      destroy() { settle({ message: 'Device was destroyed.', reason: 'destroyed' }); } };
     const adapter = { limits: {}, features: new Set(), requestDevice: async () => device };
     const saved = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
     Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { gpu: { requestAdapter: async () => adapter, getPreferredCanvasFormat: () => 'bgra8unorm' } } });
@@ -149,7 +157,8 @@ test('#6993 drift guard: WebGPUDevice\'s device.lost line is classified; its des
       return await captureWarnings(async () => {
         const wrapper = new WebGPUDevice();
         await wrapper.init({ width: 1, height: 1, getContext: () => ({ configure() {} }) });
-        settle({ message: 'A valid external Instance reference no longer exists.', reason });
+        if (intentional) wrapper.destroy();
+        else settle({ message: 'A valid external Instance reference no longer exists.', reason });
         await new Promise((r) => setImmediate(r));
       });
     } finally {
@@ -160,8 +169,11 @@ test('#6993 drift guard: WebGPUDevice\'s device.lost line is classified; its des
   assert.ok(lost.some((l) => l.includes('Device lost')), `guard: no loss line printed:\n${lost.join('\n')}`);
   assert.equal(gpuHealthFrom(lost, null).contaminated, true, lost.join('\n'));
   const destroyed = await run('destroyed');
-  assert.ok(destroyed.some((l) => l.includes('Device lost')), 'guard: no teardown line printed');
-  assert.equal(gpuHealthFrom(destroyed, null).contaminated, false, destroyed.join('\n'));
+  assert.ok(destroyed.some((l) => l.includes('Device lost')), 'guard: no browser destruction line printed');
+  assert.equal(gpuHealthFrom(destroyed, null).contaminated, true, destroyed.join('\n'));
+  const intentional = await run('destroyed', true);
+  assert.equal(intentional.some((l) => l.includes('Device lost')), false, intentional.join('\n'));
+  assert.equal(gpuHealthFrom(intentional, null).contaminated, false);
 });
 
 test('#6993 review: the loss count is always a lower bound, even when the counter agrees with every site', () => {

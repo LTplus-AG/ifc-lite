@@ -619,7 +619,7 @@ pub fn process(
 
     // Every request-local diagnostic sink for this pass, declared and drained as
     // one subject — see `diagnostics::DiagnosticCollectors`.
-    let diag_collectors = diagnostics::DiagnosticCollectors::new();
+    let diag_collectors = diagnostics::DiagnosticCollectors::new(sink.product_geometry_audit());
 
     // Shared content-dedup cache for the whole model: every per-job router dedups
     // against it, so byte-identical geometry the exporter failed to share via

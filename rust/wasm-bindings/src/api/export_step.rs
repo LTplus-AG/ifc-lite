@@ -9,6 +9,16 @@ use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 impl IfcAPI {
+    /// Export-only exact section intersections in IFC world metres.
+    #[wasm_bindgen(js_name = planSectionExport)]
+    pub fn plan_section_export(&self, content: &[u8], planes_json: &str, trim: bool) -> Result<String, JsError> {
+        let planes = serde_json::from_str::<Vec<ifc_lite_export::SectionExportPlane>>(planes_json)
+            .map_err(|error| JsError::new(&error.to_string()))?;
+        let plan = ifc_lite_export::plan_section_export(content, &planes, trim)
+            .map_err(|error| JsError::new(&error))?;
+        serde_json::to_string(&plan).map_err(|error| JsError::new(&error.to_string()))
+    }
+
     /// Plan opt-in map similarity normalization on a completed STEP export.
     /// Returns entity patches, allocated IDs and atomic refusal warnings as JSON.
     #[wasm_bindgen(js_name = planMapConversionNormalization)]

@@ -14,25 +14,23 @@ off the viewer's own telemetry (below).
 
 ## Remote near-plane recovery (#7633)
 
-**Native output identity established; browser performance remains unqualified.**
-The current-base interleaved native comparison retains identical ordered mesh
-fingerprints and mesh/vertex/triangle counts on FZK, ISSUE_129 and Holter. Its
-phase timings are descriptive; they do not establish worker-pool neutrality.
-The separate headless browser campaign selected SwiftShader and lost its GPU
-device on both base and branch. Preserve those failed samples; a successful
-geometry phase cannot substitute for renderer readiness. Reuse hash-verified
-builds for a separate hardware-adapter preflight and fresh browser cohort,
-rather than extending readiness deadlines or replacing failed samples.
-The separate headed continuation also selected SwiftShader and stopped at the
-hardware preflight before loading any model. A desktop session alone does not
-establish hardware WebGPU availability.
-A subsequent model-free probe isolated browser backend initialization: ANGLE
-Vulkan alone still fell back, while explicitly enabling Chromium Vulkan passed
-compute and pixel readback on NVIDIA hardware in fresh default-adapter sessions.
-This qualifies the launch configuration only; current-base model measurements
-remain required (`tests/evidence/issue-7633/current-gpu-preflight.json`).
-Source identities, numeric observations and qualification status are retained
-in `tests/evidence/issue-7633/current-performance.json`.
+**Correctness repair; end-to-end browser timings remain within measured noise.**
+The current-base interleaved comparison preserves native ordered mesh fingerprints
+and complete browser CPU geometry payload hashes on FZK, ISSUE_129 and Holter.
+The accepted hardware-browser cohort completes five pairs per fixture with four
+workers, qualified idle conditions, and no GPU errors or device losses. Native
+phase timings remain descriptive; the worker-pool verdict comes from the browser
+report with its unchanged noise thresholds. This establishes no speedup.
+
+The failed software-adapter and Vulkan presentation campaigns remain evidence,
+not replacement samples within the accepted cohort. The diagnostic lesson is
+that hardware selection and offscreen pixel readback do not establish canvas
+presentation: Vulkan external-memory import failed on both model arms despite
+an offscreen pass. A canvas-specific reproduction isolated the browser backend
+configuration; routing Vulkan through ANGLE fixed it without driver changes.
+The separate fresh cohort rejects every uncaptured GPU error. Exact source pins,
+artifacts, numerical observations and prior failures are retained in
+`tests/evidence/issue-7633/current-performance.json`.
 
 ## Supported convex thin patches (#8047)
 

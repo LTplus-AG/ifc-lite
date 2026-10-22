@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "issue": 7633,
+  "source": {
+    "base": "2f75f65d7843b08d172d2d9998bafe8b6d368906",
+    "branch": "98f52d74299d6ac39b3a33bde4b2ab7dfb09bc45"
+  },
+  "verdict": "Canvas-specific configuration and subsequent full browser cohort qualified; see current-performance.json. Prior browser timings remain rejected.",
+  "diagnosticJob": "1323fe3e-0df8-4eca-b11b-2bb7a52fc349",
+  "finding": "An offscreen texture readback does not qualify canvas presentation. Vulkan external-memory import failed in both model arms with the original configuration. VulkanFromANGLE and DefaultANGLEVulkan resolve the bounded canvas reproduction without a driver change.",
+  "cases": [
+    {
+      "name": "current",
+      "sha256": "2ede56f30885eb70c1526d39ef312ba5bd392888f2d2daf7e6a159c801f216fe",
+      "config": {
+        "executablePath": "/home/louistrue/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome",
+        "headless": false,
+        "args": [
+          "--enable-gpu",
+          "--enable-webgpu",
+          "--enable-unsafe-webgpu",
+          "--use-angle=vulkan",
+          "--enable-features=Vulkan",
+          "--ignore-gpu-blocklist",
+          "--enable-logging=stderr"
+        ]
+      },
+      "ok": false,
+      "error": "Error: page.evaluate: Error: Pixel readback mismatch [0,0,0,0]\n    at eval (eval at evaluate (:370:30), <anonymous>:26:53)\n    at async <anonymous>:396:30"
+    },
+    {
+      "name": "angle",
+      "sha256": "c3ec3e06a9739ef22e0626d2878815923478af9f421f06aa203d21bca213bcfb",
+      "config": {
+        "executablePath": "/home/louistrue/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome",
+        "headless": false,
+        "args": [
+          "--enable-gpu",
+          "--enable-webgpu",
+          "--enable-unsafe-webgpu",
+          "--use-angle=vulkan",
+          "--enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan",
+          "--ignore-gpu-blocklist",
+          "--enable-logging=stderr"
+        ]
+      },
+      "ok": true,
+      "proof": {
+        "adapter": {
+          "architecture": "lovelace",
+          "vendor": "nvidia",
+          "device": "",
+          "description": "",
+          "fallback": false
+        },
+        "compute": [
+          7,
+          10,
+          13,
+          16,
+          19,
+          22,
+          25,
+          28,
+          31,
+          34,
+          37,
+          40,
+          43,
+          46,
+          49,
+          52
+        ],
+        "pixel": [
+          0,
+          255,
+          0,
+          255
+        ],
+        "deviceLost": null,
+        "errors": []
+      }
+    }
+  ]
+}

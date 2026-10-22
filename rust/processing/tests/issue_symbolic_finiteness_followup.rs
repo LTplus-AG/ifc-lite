@@ -97,7 +97,7 @@ fn fixture(body: &str) -> String {
 /// for a degenerate `IfcCircle` (e.g. non-positive radius).
 #[test]
 fn circle_with_non_finite_ambient_placement_is_dropped() {
-    let data = extract_symbolic_data(&fixture(CIRCLE_WITH_INFINITE_AMBIENT_PLACEMENT));
+    let data = extract_symbolic_data(&fixture(CIRCLE_WITH_INFINITE_AMBIENT_PLACEMENT)).expect("symbolic extraction must complete");
     assert!(
         data.circles.is_empty(),
         "a circle whose post-transform center is non-finite must be dropped by push_circle, \
@@ -112,7 +112,7 @@ fn circle_with_non_finite_ambient_placement_is_dropped() {
 /// a droppable-point list).
 #[test]
 fn grid_axis_with_non_finite_endpoint_is_dropped() {
-    let data = extract_symbolic_data(&fixture(GRID_AXIS_WITH_INFINITE_ENDPOINT));
+    let data = extract_symbolic_data(&fixture(GRID_AXIS_WITH_INFINITE_ENDPOINT)).expect("symbolic extraction must complete");
     assert!(
         data.grid_axes.is_empty(),
         "a grid axis with a non-finite endpoint must be dropped, got {:?}",
@@ -135,7 +135,7 @@ fn grid_axis_with_non_finite_endpoint_is_dropped() {
 /// whole text item is dropped.
 #[test]
 fn text_literal_with_non_finite_placement_is_dropped() {
-    let data = extract_symbolic_data(&fixture(TEXT_LITERAL_WITH_INFINITE_AMBIENT_PLACEMENT));
+    let data = extract_symbolic_data(&fixture(TEXT_LITERAL_WITH_INFINITE_AMBIENT_PLACEMENT)).expect("symbolic extraction must complete");
     assert!(
         data.texts.is_empty(),
         "a text literal whose composed placement is non-finite must be dropped, got {:?}",

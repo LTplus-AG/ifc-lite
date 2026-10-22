@@ -74,7 +74,6 @@
    749 rust/processing/src/processor/mod.rs process
    165 rust/processing/src/simplify_session.rs simplify_element
    312 rust/processing/src/symbolic/items.rs extract_symbolic_item_inner
-   183 rust/processing/src/symbolic/mod.rs extract_symbolic_data_into_frame
    296 rust/wasm-bindings/src/api/csg_diagnostics.rs drain_and_log_csg_diagnostics
    158 rust/wasm-bindings/src/api/gpu_meshes/batch.rs IfcAPI::process_geometry_batch_partitioned
    589 rust/wasm-bindings/src/api/gpu_meshes/batch.rs IfcAPI::produce_batch

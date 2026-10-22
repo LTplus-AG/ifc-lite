@@ -409,6 +409,15 @@ degenerate frames retain their existing repair rules. A chain of any length
 resolves in full. Execution cancellations and resource refusals propagate as
 `PlacementError::ProgramStopped`, retain their terminal source authority, and
 do not increment the malformed-record counter.
+Symbolic extraction observes the same terminal authority at scan, item and
+append boundaries. A terminal stop discards its staged primitives and direct-fill
+provenance; it is not converted into malformed input or geometric truncation.
+The three public symbolic extraction APIs return `Result<_, ProgramStop>` and
+report the exact terminal stop before the execution domain exits. Extraction
+installs a lexical terminal domain even without an account, preserving an outer
+domain when present. WASM throws on a stop; HTTP parse routes fail before cache
+publication, and SSE sends `Error` instead of `Complete`. Successful collection
+and wire shapes are unchanged.
 The result is memoised on the decoder, **unscaled** and column-major, so
 readers with different unit contexts share entries; the caller scales.
 

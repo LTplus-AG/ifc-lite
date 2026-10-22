@@ -31,9 +31,14 @@ The Office regression demonstrated that source operand cleanup can undo a
 closed rescue before an analytic opening cut. Connected subtractive-operand
 rescues now also check the existing cleanup predicate in physical units;
 finished void results keep their closed-subgrid contract. The additional copy
-and scan are confined to connected-patch candidates. Timing qualification for
-this follow-up is recorded separately; the earlier inconclusive measurements
-do not establish its performance neutrality.
+and scan are confined to connected-patch candidates. Rejecting a connected
+patch must retain the previously certified isolated-cell baseline; removing
+both policies also regresses real Office hosts.
+
+Performance verdict: not measured. The exclusive benchmark host was occupied
+by foreign WASM validation and PC timing is disabled. No replacement cohort
+was submitted and no neutrality or speedup is claimed; the earlier
+inconclusive measurements do not qualify this follow-up.
 
 ## Geometry platform migration slices (#7955)
 

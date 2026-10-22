@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Owned control frames. A suspended operand owns its host and remaining spine.
+use crate::processors::boolean::solid_execution::SolidBooleanPlan;
 use crate::{BoolOp, Mesh};
-use ifc_lite_core::DecodedEntity;
+use ifc_lite_core::{DecodedEntity, IfcType};
 use std::collections::HashSet;
 
 /// A meshed operand and whether its emptiness is a loss already on record.
-pub(super) type Value = (Mesh, bool);
+pub(crate) type Value = (Mesh, bool);
 
 /// The left (FirstOperand) spine being descended.
 pub(super) struct Walk {
@@ -69,6 +70,28 @@ pub(super) enum Frame {
     /// The base of a batched polygonal chain is meshed.
     AfterBatch { walk: Walk, cutters: Vec<DecodedEntity>, mark: usize },
     Steps(Steps),
-    /// A solid second operand is meshed.
+    /// A solid second operand is meshed: read the late unit scale.
     AfterStep { steps: Steps, operator: BoolOp, host: Mesh },
+    /// The solid/solid boolean over the meshed host and operand: the only
+    /// numerical frame.
+    Solid { steps: Steps, plan: SolidBooleanPlan, host: Mesh, second: Value },
+}
+
+impl Frame {
+    /// A recursive operand continues on the stack rather than being meshed.
+    pub(super) fn dispatches(entity: &DecodedEntity) -> bool {
+        matches!(
+            entity.ifc_type,
+            IfcType::IfcCsgSolid | IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult
+        )
+    }
+
+    /// Pure control: settled after any step, reading no source.
+    pub(super) fn is_control(&self) -> bool {
+        match self {
+            Self::Boolean(..) | Self::ExitPath(_) | Self::AfterBase(_) => true,
+            Self::Operand { entity, .. } => Self::dispatches(entity),
+            _ => false,
+        }
+    }
 }

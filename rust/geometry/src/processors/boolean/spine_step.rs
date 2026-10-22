@@ -1,31 +1,33 @@
 // SPDX-License-Identifier: MPL-2.0
 //! One spine node's operator and SecondOperand, split at the only point that
-//! needs another operand meshed: the solid/solid case suspends here and
-//! resumes in [`BooleanClippingProcessor::finish_solid_step`].
+//! needs another operand meshed: the solid/solid case suspends here, and the
+//! program's continuation meshes the operand and runs the solid boolean as
+//! its own numerical step (`SolidBooleanPlan`).
 //!
 //! `solo_step`: true when this is the ONLY node the spine walk deferred to (a
 //! genuine single-PBHS-cutter DIFFERENCE, #3923's target shape); false when it
 //! is one of several nodes from a longer authored chain that could not be
 //! batched and is applied one cutter at a time. It gates the
 //! accept-gate-rejection fallback (see `single_cutter_gate.rs`).
-use super::super::half_space_plan::HalfSpacePlan;
-use super::super::single_cutter_gate::SingleCutterSubtract;
-use super::super::solid_execution::SolidBooleanPlan;
-use super::super::{boolean_operator, polygonal_prism, BooleanClippingProcessor};
-use super::state::Value;
+use super::half_space_plan::HalfSpacePlan;
+use super::single_cutter_gate::SingleCutterSubtract;
+use super::{boolean_operator, polygonal_prism, BooleanClippingProcessor};
 use crate::{BoolFailureReason, BoolOp, Mesh, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
+/// A meshed operand and whether its emptiness is a loss already on record.
+type Value = (Mesh, bool);
+
 /// The outcome of admitting one step's source.
-pub(super) enum StepAdmission {
+pub(crate) enum StepAdmission {
     /// The step resolved without meshing another operand.
     Done(Value),
-    /// Solid/solid: mesh `operand`, then call `finish_solid_step`.
+    /// Solid/solid: mesh `operand`, then run the solid boolean on it.
     Solid { operator: BoolOp, first: Mesh, operand: DecodedEntity },
 }
 
 impl BooleanClippingProcessor {
-    pub(super) fn begin_boolean_step(
+    pub(crate) fn begin_boolean_step(
         &self,
         entity: &DecodedEntity,
         mesh: Mesh,
@@ -123,24 +125,5 @@ impl BooleanClippingProcessor {
         self.record_failure(BoolOp::Difference, BoolFailureReason::PolygonalBoundedHalfSpaceFallback);
         let clipped = HalfSpacePlan::new(point, normal, agreement).clip(&mesh)?;
         Ok((self.guard_against_full_host_removal(mesh, clipped, point, normal), false))
-    }
-
-    /// Resume a suspended solid/solid step with its meshed operand.
-    pub(super) fn finish_solid_step(
-        &self,
-        operator: BoolOp,
-        host: Mesh,
-        (second, loss_recorded): Value,
-        decoder: &mut EntityDecoder,
-        quality: TessellationQuality,
-    ) -> Result<Value> {
-        // The unit scale is read after the operand: it can be discovered late.
-        SolidBooleanPlan {
-            operator,
-            length_unit_scale: decoder.length_unit_scale(),
-            quality,
-            skip_small_cuts: self.skip_small_cuts,
-        }
-        .evaluate(self, host, second, loss_recorded)
     }
 }

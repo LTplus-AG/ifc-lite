@@ -207,7 +207,9 @@ const SCAN_ROOTS = [
 // the common mapping controller's explicit level stack. Set to 30, a margin of one.
 // Re-measured at 30 when #7955 D3b moved the styled/type-map walk onto the same
 // controller. Set to 29, a margin of one.
-const CANDIDATE_FLOOR = 29;
+// Re-measured at 28 when #8007 replaced the decoder items/enter recursion
+// pair with an explicit task stack. Set to 27, a margin of one.
+const CANDIDATE_FLOOR = 27;
 
 /**
  * Allowlist for candidates that are genuinely unguarded and must stay that

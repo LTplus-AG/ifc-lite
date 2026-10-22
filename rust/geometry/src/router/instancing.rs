@@ -23,26 +23,19 @@ pub(crate) struct TemplateClaim {
 }
 
 impl GeometryRouter {
-    /// #1623 Phase 2 eligibility: if this `MappedRepresentation` resolves to exactly
-    /// ONE direct (non-mapped) geometry item, return that item's express id, else
-    /// `None`. The don't-bake template↔instance model represents an occurrence with a
-    /// SINGLE placeholder / a SINGLE re-tagged sub-mesh, so it only applies when the
-    /// source is one solid. Multi-item sources (each carrying its own per-item
-    /// colour/rep_identity) and nested-mapped sources fall through to the normal flat
-    /// materialize — never instanced, never lost. The returned id is used as the
-    /// placeholder's `geometry_id` so colour resolves EXACTLY as the flat/template
-    /// sub-mesh does (both key on the nested solid's id).
+    /// #1623 / #7873 eligibility accepts exactly one raw reference, then decodes
+    /// at most that member. Class X: ignored nonrefs no longer make malformed
+    /// multi-slot Items eligible; they materialize flat under the full-list guard.
+    /// No allocation or scan to find a reference among ignored members. Nested
+    /// mapped items also stay flat; the solid id preserves placeholder colour.
     pub(super) fn mapped_source_single_item(
         &self,
         mapped_repr: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Option<u32> {
-        let items_attr = mapped_repr.get(3)?;
-        let items = decoder.resolve_ref_list(items_attr).ok()?;
-        match items.as_slice() {
-            [only] if only.ifc_type != IfcType::IfcMappedItem => Some(only.id),
-            _ => None,
-        }
+        let [only] = mapped_repr.get(3)?.as_list()? else { return None };
+        let only = decoder.decode_by_id(only.as_entity_ref()?).ok()?;
+        (only.ifc_type != IfcType::IfcMappedItem).then_some(only.id)
     }
 
     /// #1623 Phase 2/3 eligibility of a TOP-LEVEL styled occurrence: its source
@@ -119,6 +112,16 @@ impl GeometryRouter {
         self.instanced_sources_materialized.borrow_mut().remove(&claim.source_id);
     }
 
+    /// Logical refusal withholds the template even without a resource account.
+    /// The caller owns this first-template marker; unrelated claims are untouched.
+    pub(crate) fn rollback_logical_template(&self, source_id: u32, claim: Option<TemplateClaim>) {
+        if let Some(claim) = claim {
+            self.settle_template(claim, false);
+        } else if self.instancing_batch_local() {
+            self.instanced_sources_materialized.borrow_mut().remove(&source_id);
+        }
+    }
+
     /// Whether a don't-bake occurrence must first mesh its source ONCE into the
     /// shared registry (source coords, pre-`MappingTarget`, pre-placement), so
     /// the streaming finalize can recover it in the (effectively unreachable)
@@ -181,11 +184,14 @@ impl GeometryRouter {
 
     /// The shared registry walk's items. A representation whose items do not
     /// resolve walks nothing and so registers nothing.
-    pub(crate) fn shared_source_items(mapped_repr: &DecodedEntity, decoder: &mut EntityDecoder) -> Vec<DecodedEntity> {
-        mapped_repr
-            .get(3)
-            .and_then(|items_attr| decoder.resolve_ref_list(items_attr).ok())
-            .unwrap_or_default()
+    pub(crate) fn shared_source_items(mapped_repr: &DecodedEntity, decoder: &mut EntityDecoder,
+        budget: &mut crate::program::mapping_budget::LogicalBudget)
+        -> crate::program::mapping_budget::SourceResult<Vec<DecodedEntity>> {
+        let Some(items_attr) = mapped_repr.get(3) else { return Ok(Vec::new()) };
+        budget.materialize_items(items_attr.as_list().map_or(0, |items| items.len()))?;
+        // Historical shared-source content failures walk nothing; logical
+        // refusal above must never enter this empty-content fallback.
+        Ok(decoder.resolve_ref_list(items_attr).unwrap_or_default())
     }
 
     /// Register a walked shared source. A missing processor or a failing one

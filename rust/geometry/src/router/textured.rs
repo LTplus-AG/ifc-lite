@@ -14,6 +14,7 @@ use nalgebra::Matrix4;
 use super::frame_parts::{single_frame_source, SourceParts};
 use super::GeometryRouter;
 use crate::processors::texture::TextureAttachment;
+use crate::program::mapping_budget::{LogicalBudget, SourceResult};
 use crate::{Error, Mesh, Result, SubMeshCollection};
 
 /// The accounted header admission for one retained UV-carrying part, out of line.
@@ -106,8 +107,8 @@ impl GeometryRouter {
 
     /// Admit a type's representation map for the type-map walk: its
     /// `MappedRepresentation` and that representation's whole Items list.
-    pub(crate) fn admit_type_map(&self, rep_map: &DecodedEntity, decoder: &mut EntityDecoder)
-        -> Result<(DecodedEntity, Vec<DecodedEntity>)> {
+    pub(crate) fn admit_type_map(&self, rep_map: &DecodedEntity, decoder: &mut EntityDecoder,
+        budget: &mut LogicalBudget) -> SourceResult<(DecodedEntity, Vec<DecodedEntity>)> {
         let mapped_rep_attr = rep_map.get(slot::IfcRepresentationMap::MAPPED_REPRESENTATION.index())
             .ok_or_else(|| Error::geometry("RepresentationMap missing MappedRepresentation".to_string()))?;
         let mapped_rep = decoder
@@ -116,6 +117,7 @@ impl GeometryRouter {
         let items_attr = mapped_rep
             .get(slot::IfcRepresentation::ITEMS.index())
             .ok_or_else(|| Error::geometry("Representation missing Items".to_string()))?;
+        budget.materialize_items(items_attr.as_list().map_or(0, |items| items.len()))?;
         let items = decoder.resolve_ref_list(items_attr)?;
         Ok((mapped_rep, items))
     }

@@ -11,9 +11,17 @@ The publication lower tip `8be12c7a5a76172151bbb52b06d73b3c6a7dd112` adds only
 the missing Rust return-type break account in `rust-major-offset.json` to T.
 The existing offset remains eleven; earlier accounts and references are kept.
 Rust sources, Cargo inputs and the measured implementation are unchanged. The
-crates.io API gate and actual lower-source detached Python/CSG consumer jobs
-have been submitted separately; their results remain pending at this checkpoint.
-Earlier C consumer qualification is not relabelled as a T consumer result.
+crates.io API gate remains queued at this checkpoint; no API-gate verdict is
+claimed. Actual publication-source detached consumers completed separately in Pop
+job `6983686a-18a6-4572-85d2-9d7635483c18`: 50 Python abi3 wheel tests passed,
+with zero failures or skips; the detached CSG build and its one test passed.
+The original receipt, source identity, output hash, JUnit counts, wheel and lock
+hashes were reconciled. Five new original records are retained under
+`publication-terminal-consumers-v1` in the manifest. The raw worker output and
+wheel remain separately retained; the metadata replay verifies document hashes,
+not a rerun of the consumer tests. Detached debug build/test output includes the
+existing `closed_or_hairline` dead-code warning; this is not a warning-free or
+new strict-Clippy claim. Earlier C qualification is not relabelled as T.
 
 T's original Pop job `15b76f6a-80b3-44a2-bbcb-795d166ebb87` completed with
 unchanged source. Native workspace tests passed 6,249 cases, with zero failures

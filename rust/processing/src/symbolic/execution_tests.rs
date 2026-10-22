@@ -141,6 +141,26 @@ fn issue_7914_mid_scan_stop_discards_prefix_and_provenance_and_stops_visits() {
 }
 
 #[test]
+fn issue_7914_boolean_poll_stops_scan_on_a_non_geometric_entity() {
+    let source = fixture(false).replace(
+        "#501=IFCANNOTATION('0M7tQ9Jbj1BAeHd7rqnDmR',$,'Before',$,$,#60,#221);",
+        "#501=IFCPERSON($,$,$,$,$,$,$,$);",
+    );
+    let positive = extract_symbolic_data_with_provenance_in_frame(&source, crate::MeshFrame::RawIfc).unwrap();
+    assert_eq!(positive.data().polylines.len(), 2);
+    for kind in [StopKind::Cancelled, StopKind::Refused] {
+        let account = account();
+        let (result, observer) = observe(Some(501), kind, || account.scope(|| {
+            extract_symbolic_data_with_provenance_in_frame(&source, crate::MeshFrame::RawIfc)
+        }));
+        assert_eq!(observer.seen, [501], "type filtering must not bypass a stop");
+        assert_eq!(observer.staged_at_stop, 0);
+        assert_eq!(result.unwrap_err(), observer.stop.unwrap());
+        assert_eq!(account.check(), Err(observer.stop.unwrap()));
+    }
+}
+
+#[test]
 fn issue_7914_append_admission_and_final_discard_are_independent() {
     let positive = extract_symbolic_data_with_provenance_in_frame(&fixture(false), crate::MeshFrame::RawIfc).unwrap();
     for kind in [StopKind::Cancelled, StopKind::Refused] {

@@ -177,6 +177,8 @@ pub fn allocation_failure() -> ProgramStop {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod boolean_tests;
 
 /// Translate the typed legacy callback error at the first audited boundary.
 /// Source faults (including identical diagnostic text) retain ordinary recovery.

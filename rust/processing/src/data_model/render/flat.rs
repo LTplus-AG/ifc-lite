@@ -202,18 +202,10 @@ fn decode_property_set_with_kinds(
 }
 
 /// Resolve a list of property/quantity set definition ids into non-empty
-/// `(property_sets, quantity_sets)`, dropping undecodable refs. Shared by the
-/// product path (ids from `IfcRelDefinesByProperties`) and the type-product path
-/// (ids from `IfcTypeObject.HasPropertySets`), so both classify a definition the
-/// same way.
-pub fn resolve_pset_defs(
-    props: &mut PropertyDecoder,
-    decoder: &mut EntityDecoder,
-    def_ids: &[u32],
-) -> (Vec<PropertySet>, Vec<QuantitySet>) {
-    resolve_pset_defs_with_kinds(props, decoder, def_ids, None)
-}
-
+/// `(property_sets, quantity_sets)`, dropping undecodable refs. `kinds`, when
+/// given, receives each kept property set's per-property kinds. Types read
+/// their sets through [`resolve_type_sets`], which classifies each definition
+/// with the same [`resolve_def`].
 pub(crate) fn resolve_pset_defs_with_kinds(
     props: &mut PropertyDecoder,
     decoder: &mut EntityDecoder,

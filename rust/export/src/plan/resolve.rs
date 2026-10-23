@@ -188,7 +188,13 @@ fn final_delete_pass(
 ) -> delete::DeleteResult {
     let run = || delete::resolve_deletes(index, schema, inputs.requested, inputs.detach, inputs.protected);
     if unchanged {
-        debug_assert_eq!(gating.removed, run().removed, "the gating pass is reused only when its inputs did not change");
+        debug_assert!(
+            {
+                let fresh = run();
+                fresh.removed == gating.removed && fresh.stripped == gating.stripped
+            },
+            "the gating pass is reused only when its inputs did not change"
+        );
         return gating;
     }
     let result = run();

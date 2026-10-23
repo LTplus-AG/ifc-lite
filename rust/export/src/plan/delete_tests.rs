@@ -165,17 +165,24 @@ fn a_long_shared_list_is_stripped_entry_by_entry_and_cascades_only_when_empty() 
     }
 }
 
-/// The opening goes with its host, not with its relationship alone, and not
-/// while a second host it (wrongly) also voids survives.
+/// Delete cascade of the export plan (#8078): an opening goes with its host
+/// or its voids relationship, but not while a second host it (wrongly) also
+/// voids survives.
 #[test]
-fn an_opening_goes_only_when_every_host_it_voids_is_deleted() {
+fn an_opening_goes_once_nothing_it_voids_is_left() {
     use crate::plan::test_fixtures::host_with_port_type_and_body;
     for schema in ["IFC2X3", "IFC4", "IFC4X3"] {
         let content = host_with_port_type_and_body(schema);
         let index = FileIndex::complete(&content);
         let rel_only: HashSet<u32> = [71].into_iter().collect();
         let result = resolve_deletes(&index, schema, &rel_only, &[], &HashSet::new());
-        assert!(!result.removed.contains(&70), "{schema}: deleting only the voids relationship keeps the opening");
+        assert!(result.removed.contains(&70), "{schema}: an opening voiding nothing goes with its relationship");
+        // Whichever goes first, the relationship or (through its body) the host.
+        for _ in 0..8 {
+            let rel_and_body: HashSet<u32> = [71, 60].into_iter().collect();
+            let result = resolve_deletes(&index, schema, &rel_and_body, &[], &HashSet::new());
+            assert!(result.removed.contains(&10) && result.removed.contains(&70), "{schema}");
+        }
 
         let text = String::from_utf8(content.clone()).unwrap();
         let line71 = text.lines().find(|l| l.starts_with("#71=")).unwrap();

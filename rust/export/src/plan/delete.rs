@@ -90,29 +90,23 @@ fn prunable(file_schema: &str, entity_type: &str) -> bool {
 }
 
 /// The opening or projection a removed `IfcRelVoidsElement` /
-/// `IfcRelProjectsElement` attached, once every element it voids or projects
-/// from is removed. IFC requires each to belong to exactly one element (the
-/// mandatory `VoidsElements` / `ProjectsElements` inverse), so it goes with
-/// its host, whatever else still names it. Deleting only the relationship
-/// keeps it, and so does a second host that survives (a file breaking the
-/// one-host rule). `None` too while the feature's referrers are not
-/// collected yet: the relationship itself always names it.
+/// `IfcRelProjectsElement` attached, once no relationship of that kind
+/// naming it survives. IFC requires each to belong to exactly one element
+/// (the mandatory `VoidsElements` / `ProjectsElements` inverse), so it goes
+/// with its host, or with the relationship itself, whatever else still names
+/// it. A second host that survives (a file breaking the one-host rule) keeps
+/// it. Every removed relationship asks, so the last one to go decides, in any
+/// order. `None` too while the feature's referrers are not collected yet:
+/// the relationship itself always names it.
 fn hosted_feature(index: &FileIndex, file_schema: &str, rel: u32, rel_type: &str, removed: &HashSet<u32>) -> Option<u32> {
-    let (host_attr, feature_attr) = match rel_type {
-        "IFCRELVOIDSELEMENT" => ("RelatingBuildingElement", "RelatedOpeningElement"),
-        "IFCRELPROJECTSELEMENT" => ("RelatingElement", "RelatedFeatureElement"),
+    let attr = match rel_type {
+        "IFCRELVOIDSELEMENT" => "RelatedOpeningElement",
+        "IFCRELPROJECTSELEMENT" => "RelatedFeatureElement",
         _ => return None,
     };
-    let scalar = |id, attr| super::props_lookup::scalar_attr(index, file_schema, id, rel_type, attr);
-    let feature = scalar(rel, feature_attr).filter(|&id| index.contains(id))?;
-    let feature_idx = super::attrs::attribute_index(file_schema, rel_type, feature_attr)?;
-    let hosts: Vec<Option<u32>> = index
-        .referrers(feature)
-        .iter()
-        .filter(|&&(r, idx)| idx == feature_idx && index.type_of(r).as_deref() == Some(rel_type))
-        .map(|&(r, _)| scalar(r, host_attr))
-        .collect();
-    (!hosts.is_empty() && hosts.iter().all(|host| host.is_none_or(|h| removed.contains(&h)))).then_some(feature)
+    let feature = super::props_lookup::scalar_attr(index, file_schema, rel, rel_type, attr).filter(|&id| index.contains(id))?;
+    let rels = super::props_lookup::sharing_referrers(index, file_schema, feature, &[attr]);
+    (!rels.is_empty() && rels.iter().all(|r| removed.contains(r))).then_some(feature)
 }
 
 /// One list attribute of a surviving record as the cascade strips it.
@@ -123,6 +117,8 @@ struct ListStrip {
     occurrences: FxHashMap<u32, usize>,
     /// Reference entries not stripped yet.
     remaining: usize,
+    /// Ids the slot also names nested (see [`list_strip`]).
+    nested: FxHashSet<u32>,
     /// The ids stripped so far.
     stripped: HashSet<u32>,
     /// Whether emptying it takes the record out ([`is_mandatory_members_attr`]).
@@ -149,13 +145,19 @@ impl Cascade<'_> {
 
     /// Strip `member` from `referrer`'s list attribute `idx`, taking the
     /// referrer out when that empties a mandatory member list. `false` when
-    /// the slot is not a top-level list holding `member`; nothing is
-    /// recorded then.
-    fn strip(&mut self, referrer: u32, idx: usize, member: u32) -> bool {
+    /// the slot is not a top-level list holding `member`, or the member also
+    /// appears nested and `through_nested` is off; nothing is recorded then.
+    /// A patch's detach strips through a nested use (the writer drops the
+    /// top-level entry); a delete does not, since the nested reference would
+    /// dangle.
+    fn strip(&mut self, referrer: u32, idx: usize, member: u32, through_nested: bool) -> bool {
         let (index, file_schema) = (self.index, self.file_schema);
         let list = self.lists.entry((referrer, idx)).or_insert_with(|| list_strip(index, file_schema, referrer, idx));
         let Some(list) = list.as_mut() else { return false };
         let Some(&count) = list.occurrences.get(&member) else { return false };
+        if !through_nested && list.nested.contains(&member) {
+            return false;
+        }
         if list.stripped.insert(member) {
             list.remaining -= count;
         }
@@ -166,23 +168,9 @@ impl Cascade<'_> {
     }
 }
 
-impl Cascade<'_> {
-    /// A patch's detach of `member` from `referrer`'s list `idx`: a strip,
-    /// but recorded even where the member also appears nested (not a
-    /// strippable entry), so the writer still drops its top-level entry.
-    fn detach(&mut self, referrer: u32, idx: usize, member: u32) {
-        if !self.strip(referrer, idx, member) {
-            if let Some(Some(list)) = self.lists.get_mut(&(referrer, idx)) {
-                list.stripped.insert(member);
-            }
-        }
-    }
-}
-
 /// `referrer`'s attribute `idx` as a [`ListStrip`], or `None` when it is not
-/// a top-level list. Only a top-level entry can be stripped: a reference in a
-/// nested list or typed value is dangling however it is fixed, so an id that
-/// also appears there is left out.
+/// a top-level list. A reference in a nested list or typed value cannot be
+/// stripped, so the ids that also appear there are kept apart.
 fn list_strip(index: &FileIndex, file_schema: &str, referrer: u32, idx: usize) -> Option<ListStrip> {
     let mut slots = index.attrs(referrer).unwrap_or_default();
     let slot = (idx < slots.len()).then(|| slots.swap_remove(idx))?;
@@ -192,9 +180,9 @@ fn list_strip(index: &FileIndex, file_schema: &str, referrer: u32, idx: usize) -
         *occurrences.entry(id).or_default() += 1;
     }
     let remaining = occurrences.values().sum();
-    occurrences.retain(|id, _| !slot.nested.contains(id));
+    let nested = slot.nested.into_iter().collect();
     let mandatory = is_mandatory_members_attr(file_schema, &index.type_of(referrer).unwrap_or_default(), idx);
-    Some(ListStrip { occurrences, remaining, stripped: HashSet::new(), mandatory })
+    Some(ListStrip { occurrences, remaining, nested, stripped: HashSet::new(), mandatory })
 }
 
 /// `resolve_deletes` also takes member removals that have nothing to do
@@ -241,7 +229,7 @@ pub(crate) fn resolve_deletes(
     // only looks empty from one source's point of view.
     for &(referrer, idx, member) in extra_detach {
         if !cascade.removed.contains(&referrer) {
-            cascade.detach(referrer, idx, member);
+            cascade.strip(referrer, idx, member, true);
         }
     }
 
@@ -252,7 +240,7 @@ pub(crate) fn resolve_deletes(
         //    `#ref`.
         if !orphaned.contains(&dead) {
             for &(referrer, idx) in index.referrers(dead) {
-                if !cascade.removed.contains(&referrer) && !cascade.strip(referrer, idx, dead) {
+                if !cascade.removed.contains(&referrer) && !cascade.strip(referrer, idx, dead, false) {
                     cascade.mark_removed(referrer);
                 }
             }

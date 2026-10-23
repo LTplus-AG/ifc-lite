@@ -59,3 +59,18 @@ fn issue_7779_indexed_point_rows_preserve_indices_or_refuse() {
         else { assert!(result.is_err(), "{list}"); }
     }
 }
+
+
+#[test]
+fn issue_7779_profile_conic_preserves_absent_bound_recovery() {
+    for trims in ["(),()", "(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(1.))"] {
+        let source = format!("#1=IFCCARTESIANPOINT((0.,0.));#2=IFCAXIS2PLACEMENT2D(#1,$);#3=IFCCIRCLE(#2,1.);#5=IFCTRIMMEDCURVE(#3,{trims},.T.,.PARAMETER.);");
+        let mut decoder = EntityDecoder::new(&source);
+        let curve = decoder.decode_by_id(5).unwrap();
+        let processor = ProfileProcessor::new(IfcSchema::new());
+        let points = processor.get_curve_points(&curve, &mut decoder, TessellationQuality::Medium).unwrap();
+        assert!(points.len() > 2);
+        assert!(points.iter().all(|p| (p.x * p.x + p.y * p.y - 1.).abs() < 1e-12 && p.z == 0.));
+        assert!((points[0] - Point3::new(1., 0., 0.)).norm() < 1e-12);
+    }
+}

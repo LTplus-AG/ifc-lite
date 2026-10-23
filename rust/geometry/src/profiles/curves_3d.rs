@@ -129,7 +129,7 @@ impl ProfileProcessor {
             // The source description rejects malformed circle bases; keep the
             // mesh sampler's prior recovery for those files (notably #5566).
             let decoded = match decode_trimmed_primitive(
-                trimmed, basis, decoder, TrimRecovery::BasisDefaults,
+                trimmed, basis, decoder, TrimRecovery::BasisDefaultsStrictPoints,
             ) {
                 Ok(decoded) => decoded,
                 Err(_) => return self.process_trimmed_ellipse_3d(trimmed, basis, decoder),

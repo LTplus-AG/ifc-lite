@@ -17,6 +17,9 @@ pub(crate) enum TrimRecovery {
     /// The mesh path historically recovers absent bounds from the basis domain
     /// and retains the authored span for invalid cyclically equal bounds.
     BasisDefaults,
+    /// Profile leaves recover absent bounds but never ignore an authored invalid
+    /// CartesianPoint (#7779). This does not change other mesh consumers.
+    BasisDefaultsStrictPoints,
 }
 
 pub(crate) enum TrimmedPrimitive {
@@ -51,7 +54,7 @@ pub(crate) fn decode_trimmed_primitive(
         IfcType::IfcLine => {
             let (origin, direction) = match recovery {
                 TrimRecovery::RequireBoth => line_basis(basis, decoder)?,
-                TrimRecovery::BasisDefaults => mesh_line_basis(basis, decoder)?,
+                TrimRecovery::BasisDefaults | TrimRecovery::BasisDefaultsStrictPoints => mesh_line_basis(basis, decoder)?,
             };
             let first = trim_point(
                 trimmed.get(1),
@@ -76,7 +79,7 @@ pub(crate) fn decode_trimmed_primitive(
                     };
                     (start, end)
                 }
-                TrimRecovery::BasisDefaults => {
+                TrimRecovery::BasisDefaults | TrimRecovery::BasisDefaultsStrictPoints => {
                     let basis_end = std::array::from_fn(|i| origin[i] + direction[i]);
                     (first.unwrap_or(origin), second.unwrap_or(basis_end))
                 }
@@ -110,7 +113,7 @@ pub(crate) fn decode_trimmed_primitive(
                     };
                     (start, end)
                 }
-                TrimRecovery::BasisDefaults => (first.unwrap_or(0.0), second.unwrap_or(TAU)),
+                TrimRecovery::BasisDefaults | TrimRecovery::BasisDefaultsStrictPoints => (first.unwrap_or(0.0), second.unwrap_or(TAU)),
             };
             let sweep_angle = match recovery {
                 TrimRecovery::RequireBoth => {
@@ -126,7 +129,7 @@ pub(crate) fn decode_trimmed_primitive(
                     }
                     sweep
                 }
-                TrimRecovery::BasisDefaults => {
+                TrimRecovery::BasisDefaults | TrimRecovery::BasisDefaultsStrictPoints => {
                     // Preserve the mesh sampler's raw span and single seam wrap
                     // for malformed out-of-range/equal authored parameters.
                     let mut end = end_angle;

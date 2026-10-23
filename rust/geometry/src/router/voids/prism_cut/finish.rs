@@ -112,6 +112,23 @@ mod tests {
     }
 
     #[test]
+    fn issue_7633_refinement_rejects_grid_collapse_only_for_certified_repairs() {
+        let probe = tetrahedron(0.0);
+        assert!(can_adopt_refinement(ConsolidationBoundary::CertifiedRemote, &probe, &probe));
+        let mut refined = probe.clone();
+        // A nonzero-area face whose three vertices collapse into one grid cell
+        // is invisible to the coarse closure walk, but invalidates the certificate.
+        push_triangle(&mut refined, [
+            [2.0, 0.0, 0.0], [2.000_001, 0.0, 0.0], [2.0, 0.000_001, 0.0],
+        ]);
+        assert!(super::super::directed_closed(&refined));
+        assert!(closed_enough_to_emit(&refined));
+        assert!(!kernel_grid::is_closed(&refined));
+        assert!(can_adopt_refinement(ConsolidationBoundary::Established, &refined, &probe));
+        assert!(!can_adopt_refinement(ConsolidationBoundary::CertifiedRemote, &refined, &probe));
+    }
+
+    #[test]
     fn issue_7633_finalizer_preserves_kernel_grid_closure_across_hygiene() {
         let (a, b, c, d, apex) = (
             [0.0, 0.000_049, 0.0], [1.0, 0.000_049, 0.0],

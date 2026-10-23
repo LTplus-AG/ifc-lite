@@ -200,6 +200,8 @@ pub(super) fn validate_affine(matrix: &nalgebra::Matrix4<f64>) -> crate::Result<
 #[derive(Debug)]
 pub struct RetainedProductPlan {
     pub values: Vec<LogicalRetainedValue>,
+    /// Conservatively unchecked obligations until a consumer proves them
+    /// unnecessary or discharges them; traversal alone does neither.
     pub remaining: Vec<RetainedRequirement>,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

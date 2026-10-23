@@ -167,7 +167,11 @@ impl<'a> RetainedProgram<'a> {
                 let _ = selection.program();
                 Ok(RetainedProductPlan {
                     values,
+                    // Construction and placement do not inspect or discharge
+                    // relationships, appearance, or persistent face identity.
                     remaining: vec![
+                        RetainedRequirement::OpeningClosure,
+                        RetainedRequirement::MaterialLayers,
                         RetainedRequirement::IfcAppearance,
                         RetainedRequirement::PersistentFaces,
                     ],

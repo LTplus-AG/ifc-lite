@@ -21,3 +21,25 @@
          },
          length_unit_scale: scale,
          placements: Vec::new(),
+--- a/rust/geometry/src/program/retained/capture.rs
++++ b/rust/geometry/src/program/retained/capture.rs
+@@ -20,7 +20,7 @@
+             length_unit_scale: scale,
+         })),
+         IfcType::IfcSweptDiskSolid => Ok(RetainedRecipe::SweptDisk(RetainedSweptDisk {
+-            solid_id: 0,
++            solid_id: item.id,
+             source: crate::analytic::extract_swept_disk(item, decoder)?,
+             length_unit_scale: scale,
+         })),
+--- a/rust/geometry/src/program/retained/program.rs
++++ b/rust/geometry/src/program/retained/program.rs
+@@ -170,6 +170,8 @@
+                     // Construction and placement do not inspect or discharge
+                     // relationships, appearance, or persistent face identity.
+                     remaining: vec![
++                        RetainedRequirement::OpeningClosure,
++                        RetainedRequirement::MaterialLayers,
+                         RetainedRequirement::IfcAppearance,
+                         RetainedRequirement::PersistentFaces,
+                     ],

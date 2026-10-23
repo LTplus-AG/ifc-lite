@@ -231,18 +231,18 @@ impl NewObject {
             Some(ValueUnit::Existing(r)) => Some(r),
             _ => None,
         });
-        let materials: Vec<&ObjectRef> = match &self.material {
-            Some(MaterialLink::Existing(r)) => vec![r],
-            Some(MaterialLink::NewLayerSet(set)) => set
-                .layers
-                .iter()
-                .filter_map(|l| match &l.material {
-                    Some(LayerMaterial::Existing(r)) => Some(r),
-                    _ => None,
-                })
-                .collect(),
-            _ => Vec::new(),
+        let material = match &self.material {
+            Some(MaterialLink::Existing(r)) => Some(r),
+            _ => None,
         };
+        let layer_materials = match &self.material {
+            Some(MaterialLink::NewLayerSet(set)) => set.layers.as_slice(),
+            _ => &[],
+        };
+        let layer_materials = layer_materials.iter().filter_map(|l| match &l.material {
+            Some(LayerMaterial::Existing(r)) => Some(r),
+            _ => None,
+        });
         let classifications = self.classifications.iter().filter_map(|c| match c {
             ClassificationLink::Existing(r) => Some(r),
             ClassificationLink::New(n) => match &n.system {
@@ -250,10 +250,10 @@ impl NewObject {
                 ClassificationSystem::New(_) => None,
             },
         });
-        [self.container.as_ref(), self.placement.relative_to.as_ref(), type_ref, self.opening.as_ref().map(|o| &o.host)]
+        [self.container.as_ref(), self.placement.relative_to.as_ref(), type_ref, self.opening.as_ref().map(|o| &o.host), material]
             .into_iter()
             .flatten()
-            .chain(materials)
+            .chain(layer_materials)
             .chain(classifications)
             .chain(units)
     }

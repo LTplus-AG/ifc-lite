@@ -26,7 +26,7 @@ pub enum MaterialLink {
 
 /// A new `IfcMaterial`. `category` is IFC4 and later only; an IFC2X3 file
 /// refuses it rather than dropping it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct NewMaterial {
     pub name: String,
     pub category: Option<String>,
@@ -84,7 +84,7 @@ pub enum ClassificationSystem {
 
 /// A new `IfcClassification`. IFC2X3 requires `source` and `edition`, and
 /// refuses a classification without them.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct NewClassification {
     pub name: String,
     pub source: Option<String>,

@@ -258,7 +258,7 @@ fn a_unit_or_association_the_schema_cannot_hold_is_refused() {
                 let layers = vec![NewMaterialLayer { material: Some(LayerMaterial::Existing(ObjectRef::Id(201))), thickness: 0.1 }];
                 w.material = Some(MaterialLink::NewLayerSet(NewLayerSet { name: None, layers }));
             }),
-            "not an IfcMaterial",
+            "not an IFCMATERIAL",
         ),
         ("IFC4", Box::new(|w: &mut NewObject| w.classifications = vec![reference("A"), reference("A")]), "appears twice"),
         ("IFC4", Box::new(|w: &mut NewObject| w.classifications = vec![ClassificationLink::Existing(ObjectRef::Id(200))]), "not a classification"),

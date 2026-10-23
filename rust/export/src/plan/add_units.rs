@@ -4,7 +4,7 @@
 //! prefix and name. A child of `add`, beside `add_assoc.rs`, whose
 //! [`Shared`] it builds through.
 
-use ifc_lite_core::project_units::{measure_unit, symbols::si_unit_name, MeasureUnit};
+use ifc_lite_core::project_units::{measure_unit, MeasureUnit};
 
 use crate::plan::add_assoc_types::ValueUnit;
 use crate::plan::add_types::{NewPropertySet, PropertyValue};
@@ -12,11 +12,11 @@ use crate::plan::attrs::attribute_index;
 use crate::plan::tessellation::Emit;
 use crate::plan::types::PsetKind;
 
-use super::assoc::{Shared, Target};
+use super::assoc::{Shared, SharedKey, Target};
 use super::AddState;
 
-/// `(prefix, name)` of a new `IfcSIUnit`.
-pub(super) type NewSi = (Option<String>, String);
+/// A new `IfcSIUnit`: prefix, name, and the unit type the name measures.
+pub(super) type NewSi = (Option<String>, String, &'static str);
 
 /// Per set, per property: the unit its value carries, if any.
 pub(super) type CheckedUnits = Vec<Vec<Option<Target<NewSi>>>>;
@@ -56,7 +56,7 @@ impl AddState<'_> {
                         if let Some(p) = prefix.as_deref().filter(|p| ifc_lite_core::unit_labels::si_prefix(p).is_none()) {
                             return Err(format!("{what}: {p} is not an IfcSIPrefix"));
                         }
-                        (Target::New((prefix, name)), "IFCSIUNIT".to_string(), Some(unit_type.to_string()))
+                        (Target::New((prefix, name, unit_type)), "IFCSIUNIT".to_string(), Some(unit_type.to_string()))
                     }
                 };
                 if set.kind == PsetKind::Quantity && !self.is_a(&unit_class, "IFCNAMEDUNIT") {
@@ -91,8 +91,8 @@ pub(super) fn build_units(emit: &mut Emit, shared: &mut Shared, units: &CheckedU
             ids.push(match unit {
                 None => None,
                 Some(Target::Existing(id)) => Some(*id),
-                Some(Target::New((prefix, name))) => Some(shared.get_or(format!("si\0{prefix:?}\0{name}"), || {
-                    let unit_type = si_unit_type(name).ok_or("not an SI unit name")?;
+                Some(Target::New(si)) => Some(shared.get_or(SharedKey::Si(si.clone()), || {
+                    let (prefix, name, unit_type) = si;
                     emit.record(
                         "IFCSIUNIT",
                         &[
@@ -110,10 +110,9 @@ pub(super) fn build_units(emit: &mut Emit, shared: &mut Shared, units: &CheckedU
     Ok(out)
 }
 
-/// The `IfcUnitEnum` an `IfcSIUnitName` measures, or `None` when `name` is
-/// not one.
+/// The `IfcUnitEnum` an UPPERCASE `IfcSIUnitName` measures, or `None` when
+/// `name` is not one.
 fn si_unit_type(name: &str) -> Option<&'static str> {
-    si_unit_name(name)?;
     Some(match name {
         "METRE" => "LENGTHUNIT",
         "SQUARE_METRE" => "AREAUNIT",

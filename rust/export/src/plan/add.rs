@@ -30,7 +30,7 @@ use super::props_synth::{defines_by_properties_record, ref_list, ref_or_unset};
 use super::tessellation::{find_body_context, synthesize_context, Emit};
 use super::types::{ObjectRef, PlanContext, Refusal};
 
-use assoc::{associate, Shared};
+use assoc::{associate, Shared, SharedKey};
 use units::build_units;
 use check::Checked;
 
@@ -54,7 +54,7 @@ pub(crate) struct AddState<'a> {
     records: Vec<(u32, String)>,
     /// New materials, classifications and units the built Adds wrote, by
     /// description, for later Adds to reuse.
-    shared: HashMap<String, u32>,
+    shared: HashMap<SharedKey, u32>,
 }
 
 impl<'a> AddState<'a> {
@@ -127,7 +127,7 @@ impl<'a> AddState<'a> {
         let gid = obj.global_id;
         self.placement_of_added.insert(built.object, Some(built.placement));
         self.added.insert(gid.encode(), Added { id: built.object, class: checked.class });
-        if let (Some(type_id), Some((class, _)), Some(TypeLink::New(t))) = (built.new_type, checked.new_type, &obj.type_link) {
+        if let (Some(type_id), Some((class, _, _)), Some(TypeLink::New(t))) = (built.new_type, checked.new_type, &obj.type_link) {
             self.placement_of_added.insert(type_id, None);
             self.added.insert(t.global_id_for(gid).encode(), Added { id: type_id, class });
         }
@@ -252,9 +252,9 @@ impl<'a> AddState<'a> {
         }
 
         let new_type = match (&obj.type_link, &c.new_type) {
-            (Some(TypeLink::New(t)), Some(class)) => {
-                let units = build_units(emit, &mut shared, &c.type_units)?;
-                Some(build_new_type(emit, t, gid, class, &units, owner_history)?)
+            (Some(TypeLink::New(t)), Some((class, predefined, units))) => {
+                let units = build_units(emit, &mut shared, units)?;
+                Some(build_new_type(emit, t, gid, (class, predefined), &units, owner_history)?)
             }
             _ => None,
         };
@@ -317,7 +317,7 @@ fn build_new_type(
     emit: &mut Emit,
     t: &NewType,
     occurrence: GlobalId,
-    class: &(String, Option<String>),
+    class: (&str, &Option<String>),
     units: &[Vec<Option<u32>>],
     owner_history: Option<u32>,
 ) -> Result<u32, String> {
@@ -341,7 +341,7 @@ fn build_new_type(
     fields.push(("OperationType", notdefined()));
     fields.push(("PartitioningType", notdefined()));
     fields.push(("AssemblyPlace", notdefined()));
-    let id = emit.record(&class.0, &fields)?;
+    let id = emit.record(class.0, &fields)?;
     require_filled(emit, id)?;
     Ok(id)
 }
@@ -364,7 +364,7 @@ struct Built {
     placement: u32,
     new_type: Option<u32>,
     new_context: Option<u32>,
-    shared: HashMap<String, u32>,
+    shared: HashMap<SharedKey, u32>,
 }
 
 #[path = "add_check.rs"]

@@ -24,13 +24,13 @@ pub(super) struct Checked {
     pub(super) parent_placement: Option<u32>,
     pub(super) container: Option<(u32, RelKind)>,
     pub(super) existing_type: Option<u32>,
-    pub(super) new_type: Option<(String, Option<String>)>,
+    /// Class, `PredefinedType` and value units of a new type.
+    pub(super) new_type: Option<(String, Option<String>, CheckedUnits)>,
     pub(super) host: Option<u32>,
     pub(super) fills: bool,
     pub(super) material: Option<CheckedMaterial>,
     pub(super) classifications: Vec<CheckedClassification>,
     pub(super) units: CheckedUnits,
-    pub(super) type_units: CheckedUnits,
 }
 
 impl AddState<'_> {
@@ -171,15 +171,15 @@ impl AddState<'_> {
         // The placement patch's rule, checked before any id is allocated.
         crate::plan::placement::check_matrix(&obj.placement.matrix)?;
 
-        let (existing_type, new_type, type_units) = match &obj.type_link {
-            None => (None, None, Vec::new()),
+        let (existing_type, new_type) = match &obj.type_link {
+            None => (None, None),
             Some(TypeLink::Existing(r)) => {
                 let (id, c) = self.lookup(r)?;
                 if !self.is_a(&c, "IFCTYPEPRODUCT") {
                     return Err(format!("type {r} is {c}, not a product type"));
                 }
                 self.check_type_pairing(&class, &c, &format!("type {r}"))?;
-                (Some(id), None, Vec::new())
+                (Some(id), None)
             }
             Some(TypeLink::New(t)) => {
                 validate_psets(self.schema, &t.psets)?;
@@ -193,7 +193,7 @@ impl AddState<'_> {
                 }
                 let (type_class, predefined) = self.check_class(&t.class, "IFCTYPEPRODUCT")?;
                 self.check_type_pairing(&class, &type_class, "new type")?;
-                (None, Some((type_class, predefined)), self.check_units(&t.psets)?)
+                (None, Some((type_class, predefined, self.check_units(&t.psets)?)))
             }
         };
 
@@ -239,7 +239,6 @@ impl AddState<'_> {
             material,
             classifications,
             units,
-            type_units,
         })
     }
 }

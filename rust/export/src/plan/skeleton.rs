@@ -85,6 +85,8 @@ pub fn skeleton(s: &Skeleton) -> Result<Vec<u8>, String> {
         emit.record(
             "IFCSIUNIT",
             &[
+                // Derived in IfcSIUnit, so written `*`.
+                ("Dimensions", "*".into()),
                 ("UnitType", format!(".{unit}.")),
                 ("Name", format!(".{name}.")),
             ],

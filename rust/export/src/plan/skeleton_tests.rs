@@ -88,6 +88,8 @@ fn a_skeleton_takes_a_storey_and_a_wall_and_validates() {
         );
         assert_eq!(count(&out, "IFCMAPCONVERSION"), usize::from(map.is_some()));
         assert_eq!(count(&out, "IFCPROJECTEDCRS"), usize::from(map.is_some()));
+        let text = String::from_utf8(out).expect("utf8");
+        assert!(text.contains("IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)"), "a derived attribute is written *");
     }
 }
 

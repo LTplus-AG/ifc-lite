@@ -63,13 +63,13 @@ use std::sync::OnceLock;
 
 use super::admission::{aabb_engulfs, min_opening_volume, ENGULF_TOLERANCE};
 use super::geom::opening_mesh_thinnest_axis_dir;
-use super::opening_frame::{cluster_face_normals, Facet, Merge};
+mod depth_axes;
 use super::parity::{forward_crossing, PARITY_DIR_A};
 use super::{cutter_is_closed_manifold, CutterKind, VoidContext};
 use crate::program::openings::execute::Execution;
 use crate::cdt::triangulate_pslg;
 use crate::mesh::Mesh;
-use nalgebra::{Point2, Point3, Vector3};
+use nalgebra::{Point2, Vector3};
 use rustc_hash::FxHashMap;
 
 /// `IFC_LITE_PRISM_CUT=0` disables the analytic prism-subtraction path (exact
@@ -955,18 +955,7 @@ fn detect_prism(verts: &[V3], tris: &[[usize; 3]], mesh_vol: f64) -> Option<Pris
         let (a, b, c) = (verts[t[0]], verts[t[1]], verts[t[2]]);
         normals.push(normalize(cross(sub(b, a), sub(c, a))));
     }
-    // More than 65 distinct directions is way past any stepped extrusion:
-    // bail early.
-    let facets = normals.iter().flatten().map(|n| Facet {
-        normal: Vector3::new(n[0], n[1], n[2]),
-        weight: 0.0,
-        anchor: Point3::origin(),
-    });
-    let clusters: Vec<V3> =
-        cluster_face_normals(facets, 0.999, Merge::FirstSeen, 65, |_, _, _| {})?
-            .into_iter()
-            .map(|(axis, _)| [axis.x, axis.y, axis.z])
-            .collect();
+    let clusters = depth_axes::cluster(&normals)?;
     let mut mag = 0.0f64;
     for v in verts {
         for c in v {

@@ -10,7 +10,7 @@
  * never transcribed, so the fixture cannot drift from the implementation it
  * pins through a copy error. Regenerate with:
  *
- *     pnpm --filter @ifc-lite/diff build
+ *     pnpm build --filter=@ifc-lite/diff
  *     node scripts/diff-parity-vectors.mjs
  *
  * A regenerated file that differs is a real behaviour change in one engine or

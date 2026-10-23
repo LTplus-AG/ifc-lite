@@ -367,3 +367,7 @@ mod entries;
 #[cfg(test)]
 #[path = "inner_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "mapping_budget_tests.rs"]
+mod mapping_budget_tests;

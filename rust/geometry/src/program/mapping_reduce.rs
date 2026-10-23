@@ -39,6 +39,7 @@ impl MappingControl<'_> {
         if let Sink::Shared(placeholder) = sink {
             // A refused merge is a typed terminal, not a skipped registration.
             let value = match value {
+                Ok(_) if self.logical_stopped => Ok(()),
                 Ok(parts) => router.publish_shared_mapped_source(source_id, parts),
                 Err(error @ Error::ProgramStopped(_)) => Err(error),
                 Err(_) => Ok(()),
@@ -50,7 +51,10 @@ impl MappingControl<'_> {
             return Event::Advance;
         }
         let published = value.and_then(|parts| {
-            router.publish_mapped_source(source_id, &parts, truncated).map(|()| parts)
+            if !self.logical_stopped {
+                router.publish_mapped_source(source_id, &parts, truncated)?;
+            }
+            Ok(parts)
         });
         match published {
             Ok(parts) => {

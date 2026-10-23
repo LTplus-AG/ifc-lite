@@ -1,5 +1,29 @@
 # @ifc-lite/renderer
 
+## 6.5.0
+
+### Minor Changes
+
+- [#7951](https://github.com/LTplus-AG/ifc-lite/pull/7951) [`b9ca25d`](https://github.com/LTplus-AG/ifc-lite/commit/b9ca25d0fbab3f4e7e52905a48ddc2f2936df5ed) Thanks [@louistrue](https://github.com/louistrue)! - Section caps can fill with each element's own colour: `DrawingPolygon.sourceColor` now carries the source sub-mesh colour on every cut polygon that has one, and the cap style gains an optional `fillMode` preference (`'element'`/`'uniform'`) for the app to turn that into per-polygon cap colours (the renderer draws whatever polygon colours it is given). Also, a selected or hovered element's cap polygons are drawn in the highlight colour via the new `RenderOptions.capHighlight`.
+
+- [#7574](https://github.com/LTplus-AG/ifc-lite/pull/7574) [`e41c13d`](https://github.com/LTplus-AG/ifc-lite/commit/e41c13dc7eb716b524ae682dce6ed964faf029f1) Thanks [@louistrue](https://github.com/louistrue)! - Clip against more than one cutting plane ([#7545](https://github.com/LTplus-AG/ifc-lite/issues/7545)). `RenderOptions.extraSectionPlanes` takes up to seven `SectionPlane`s beyond `sectionPlane`, each resolved by the same code as the primary plane (cardinal slider range, building rotation, explicit normal), and a fragment is kept only where every plane keeps it. The mesh, selection-outline, shadow, point-cloud, GPU-pick and CPU-raycast paths all clip against the same resolved list, and a single plane renders exactly as before.
+
+- [#7577](https://github.com/LTplus-AG/ifc-lite/pull/7577) [`996858c`](https://github.com/LTplus-AG/ifc-lite/commit/996858cc5f12e961eee556e8a74258b6e67437bd) Thanks [@louistrue](https://github.com/louistrue)! - Several cutting planes, part two ([#7545](https://github.com/LTplus-AG/ifc-lite/issues/7545)). A cap per plane: `uploadSection2DOverlay(…, planeId)` keys the cap of a plane in `extraSectionPlanes` (`clearSection2DOverlay(planeId)`, `clearSection2DExtraOverlays(keep)`), and every cap and its outline is discarded where another plane removes it. `Renderer.getSectionPlaneFrames()` reports each plane's world-space anchor and rectangle for labels and handles, `SectionPlane.showGizmo = false` hides only the primary preview quad, and `Camera.frameBounds` takes an optional padding multiple so a view can be framed with an exact margin.
+
+- [#8025](https://github.com/LTplus-AG/ifc-lite/pull/8025) [`2fa2916`](https://github.com/LTplus-AG/ifc-lite/commit/2fa291616f1b8f0f4194af3879f9640615926125) Thanks [@louistrue](https://github.com/louistrue)! - Add sectionExcludedIds to keep selected entities whole across section planes, mesh rendering, shadows, picking, raycasting and section caps. Section cutters omit excluded entities from cut segments and polygons. Crop boxes and visibility filters remain independent.
+
+- [#7953](https://github.com/LTplus-AG/ifc-lite/pull/7953) [`c31eb87`](https://github.com/LTplus-AG/ifc-lite/commit/c31eb8704431651aab6e8bf526e084321c025d2c) Thanks [@louistrue](https://github.com/louistrue)! - Add `Camera.setPresetDirection` for diagonal preset views (cube edges and corners), framed and animated like the named presets. The viewer's ViewCube now makes all 12 edges and 8 corners clickable with a hover preview, and follows orbiting without a frame of lag.
+
+### Patch Changes
+
+- [#8053](https://github.com/LTplus-AG/ifc-lite/pull/8053) [`f44a94e`](https://github.com/LTplus-AG/ifc-lite/commit/f44a94ecc67a563ec19c62f6e0efd87450f5ccfc) Thanks [@louistrue](https://github.com/louistrue)! - Treat browser-initiated destruction of the current GPU device as device loss, so recovery and benchmark health reporting run. Suppress intentional teardown by device ownership rather than the browser-reported reason.
+
+- [#7918](https://github.com/LTplus-AG/ifc-lite/pull/7918) [`dcc4fb4`](https://github.com/LTplus-AG/ifc-lite/commit/dcc4fb48a3cecd27e4c1597181a79733316d52e4) Thanks [@louistrue](https://github.com/louistrue)! - Preserve orthographic opaque-surface visibility with shared sample-matched geometric depth before coplanar ranking, including selection and textured draws.
+
+- [#7898](https://github.com/LTplus-AG/ifc-lite/pull/7898) [`8acd071`](https://github.com/LTplus-AG/ifc-lite/commit/8acd0715a5ad266cd57808b9889f6549fbf93631) Thanks [@louistrue](https://github.com/louistrue)! - Fence quantized pipeline validation and batch admission to the current GPU lifetime. Keep replacement uploads on f32 vertices until both replacement variants validate.
+- Updated dependencies [[`83088e0`](https://github.com/LTplus-AG/ifc-lite/commit/83088e02606bc19ff8b3fe055087baaa049f3235), [`c45ecba`](https://github.com/LTplus-AG/ifc-lite/commit/c45ecbac3fa3b38846bf3d68913a29385121a241), [`ad3d150`](https://github.com/LTplus-AG/ifc-lite/commit/ad3d1503394047426b12adb5d3da076a552ac3e0), [`f1d7254`](https://github.com/LTplus-AG/ifc-lite/commit/f1d7254b73845867a1c3120abb561672da035092), [`dffec73`](https://github.com/LTplus-AG/ifc-lite/commit/dffec73200c9b074946565f54770a93f49a50365), [`b174053`](https://github.com/LTplus-AG/ifc-lite/commit/b174053bb4ea1807143cfdd144dff86524068e92), [`d1fdb6f`](https://github.com/LTplus-AG/ifc-lite/commit/d1fdb6fb9fcd4a8904be3a6e7c707ada896e47af), [`c0f5bde`](https://github.com/LTplus-AG/ifc-lite/commit/c0f5bde4ec6794900697fbfa29be9be5a439980f)]:
+  - @ifc-lite/geometry@7.9.0
+
 ## 6.4.0
 
 ### Minor Changes

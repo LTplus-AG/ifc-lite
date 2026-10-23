@@ -1,5 +1,15 @@
 # @ifc-lite/pointcloud
 
+## 0.13.0
+
+### Minor Changes
+
+- [#7959](https://github.com/LTplus-AG/ifc-lite/pull/7959) [`ca6991f`](https://github.com/LTplus-AG/ifc-lite/commit/ca6991fdbe10633a0b879914daa8d8211091ba81) Thanks [@louistrue](https://github.com/louistrue)! - Add decodeIfcxPointSource for authored IFCX numeric channels before float32 staging, preserving ASCII and binary float64 PCD and inline array precision through shared codecs. Existing chunk decoders retain their float32 outputs, validation, offsets, and bounds.
+
+### Patch Changes
+
+- [#7648](https://github.com/LTplus-AG/ifc-lite/pull/7648) [`d1fdb6f`](https://github.com/LTplus-AG/ifc-lite/commit/d1fdb6fb9fcd4a8904be3a6e7c707ada896e47af) Thanks [@louistrue](https://github.com/louistrue)! - Share emitted worker URL rewriting and verification across worker packages. Inspect every emitted module so new callers such as the geometry worker pool resolve shipped JavaScript workers in npm installations. Preserve parser all-asset verification and verify script assets separately where WASM is supplied by another package.
+
 ## 0.12.0
 
 ### Minor Changes

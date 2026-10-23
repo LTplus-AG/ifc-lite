@@ -1,5 +1,18 @@
 # @ifc-lite/drawing-2d
 
+## 4.3.0
+
+### Minor Changes
+
+- [#7951](https://github.com/LTplus-AG/ifc-lite/pull/7951) [`b9ca25d`](https://github.com/LTplus-AG/ifc-lite/commit/b9ca25d0fbab3f4e7e52905a48ddc2f2936df5ed) Thanks [@louistrue](https://github.com/louistrue)! - Section caps can fill with each element's own colour: `DrawingPolygon.sourceColor` now carries the source sub-mesh colour on every cut polygon that has one, and the cap style gains an optional `fillMode` preference (`'element'`/`'uniform'`) for the app to turn that into per-polygon cap colours (the renderer draws whatever polygon colours it is given). Also, a selected or hovered element's cap polygons are drawn in the highlight colour via the new `RenderOptions.capHighlight`.
+
+- [#8025](https://github.com/LTplus-AG/ifc-lite/pull/8025) [`2fa2916`](https://github.com/LTplus-AG/ifc-lite/commit/2fa291616f1b8f0f4194af3879f9640615926125) Thanks [@louistrue](https://github.com/louistrue)! - Add sectionExcludedIds to keep selected entities whole across section planes, mesh rendering, shadows, picking, raycasting and section caps. Section cutters omit excluded entities from cut segments and polygons. Crop boxes and visibility filters remain independent.
+
+### Patch Changes
+
+- Updated dependencies [[`83088e0`](https://github.com/LTplus-AG/ifc-lite/commit/83088e02606bc19ff8b3fe055087baaa049f3235), [`c45ecba`](https://github.com/LTplus-AG/ifc-lite/commit/c45ecbac3fa3b38846bf3d68913a29385121a241), [`ad3d150`](https://github.com/LTplus-AG/ifc-lite/commit/ad3d1503394047426b12adb5d3da076a552ac3e0), [`f1d7254`](https://github.com/LTplus-AG/ifc-lite/commit/f1d7254b73845867a1c3120abb561672da035092), [`dffec73`](https://github.com/LTplus-AG/ifc-lite/commit/dffec73200c9b074946565f54770a93f49a50365), [`b174053`](https://github.com/LTplus-AG/ifc-lite/commit/b174053bb4ea1807143cfdd144dff86524068e92), [`d1fdb6f`](https://github.com/LTplus-AG/ifc-lite/commit/d1fdb6fb9fcd4a8904be3a6e7c707ada896e47af), [`c0f5bde`](https://github.com/LTplus-AG/ifc-lite/commit/c0f5bde4ec6794900697fbfa29be9be5a439980f)]:
+  - @ifc-lite/geometry@7.9.0
+
 ## 4.2.0
 
 ### Minor Changes

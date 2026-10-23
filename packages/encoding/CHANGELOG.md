@@ -1,5 +1,13 @@
 # @ifc-lite/encoding
 
+## 2.4.0
+
+### Minor Changes
+
+- [#7595](https://github.com/LTplus-AG/ifc-lite/pull/7595) [`c259c10`](https://github.com/LTplus-AG/ifc-lite/commit/c259c10a1f6818dea05a266c5dd228dd1aba8a66) Thanks [@louistrue](https://github.com/louistrue)! - Add `stepStringLiteralEnd` and `isStepPageQuoteOperand`: the one rule for where a STEP string literal ends (a doubled `''` is an escaped quote, and the operand of a `\S\` PAGE directive is text even when it is an apostrophe), for every walker that splits, rewrites or scans STEP text.
+
+- [#7798](https://github.com/LTplus-AG/ifc-lite/pull/7798) [`0c721c3`](https://github.com/LTplus-AG/ifc-lite/commit/0c721c3548e21488fca9b168db3d875ca8ba39d7) Thanks [@louistrue](https://github.com/louistrue)! - TS STEP readers match the core grammar ([#7785](https://github.com/LTplus-AG/ifc-lite/issues/7785), [#7790](https://github.com/LTplus-AG/ifc-lite/issues/7790)): `parseStepValue` keeps an overflowing REAL such as `1.E400` as raw text instead of `Infinity`; `readRefList` and the list/attribute splitters (`parseStepList`, the viewer schedule stripper) skip `/* ... */` comments through one shared `splitStepTopLevel` in `@ifc-lite/encoding`; `generateLod0` walks `PlacementRelTo` iteratively and refuses a cyclic placement, reporting the element in the new optional `skipped` list instead of overflowing the stack.
+
 ## 2.3.0
 
 ### Minor Changes

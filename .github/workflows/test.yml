@@ -706,6 +706,7 @@ jobs:
           node scripts/diff-content-vectors.mjs --check
           node scripts/diff-split-vectors.mjs --check
           node scripts/diff-successor-vectors.mjs --check
+          node scripts/diff-lineage-vectors.mjs --check
 
       # Perf ratchet, `bundle` family (#6959). `pnpm build` above already
       # built the engine wasm and the viewer's dist/ (turbo builds apps/*
@@ -892,7 +893,10 @@ jobs:
           # #8042: retain new Rust diff types so the differential tests compile;
           # reverse only data-change detection. The unchanged oracle corpus
           # must report assertion failures, not missing imports.
-          if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/diff/src/successor.rs | grep -Fxq 'rust/diff/src/successor.rs'; then
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/diff/src/lineage.rs | grep -Fxq 'rust/diff/src/lineage.rs'; then
+            # Keep the new API callable; removing lineage entries must fail parity assertions.
+            oracle_args+=(--mutation tests/evidence/diff-8042/lineage-entries.oracle.patch)
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/diff/src/successor.rs | grep -Fxq 'rust/diff/src/successor.rs'; then
             # #8042: retain the new successor API; parity must detect missing claims.
             oracle_args+=(--mutation tests/evidence/diff-8042/successor-claims.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/diff/src/split_merge.rs | grep -Fxq 'rust/diff/src/split_merge.rs'; then

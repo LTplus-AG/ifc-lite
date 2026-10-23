@@ -1,5 +1,27 @@
 # @ifc-lite/data
 
+## 6.3.0
+
+### Minor Changes
+
+- [#7825](https://github.com/LTplus-AG/ifc-lite/pull/7825) [`a1b50b1`](https://github.com/LTplus-AG/ifc-lite/commit/a1b50b1d51a12084a17c175cc9759fdc6027f241) Thanks [@louistrue](https://github.com/louistrue)! - One `PlacementRelTo` chain walker for TypeScript. `@ifc-lite/data` now exports `walkPlacementChain` (iterative, visited set, no depth cap), pinned to the Rust resolver by shared vectors in `rust/geometry/tests/fixtures/placement_chain_vectors.json`. The placement walkers in `create` (storey chain, storey frame, element transform frames, host geometry frame), `export` (anonymised-export root finder, LOD0 world matrices), `cli` (`--storey` selection) and the viewer (compare world placement, storey elevation) now use it, so a legal chain longer than the old 64/128/256/10 000-link caps resolves instead of being dropped, and a cycle is refused everywhere. `extractPlacementElevation` promotes a 2D `Location` to z = 0 like the Rust reader.
+
+### Patch Changes
+
+- [#7665](https://github.com/LTplus-AG/ifc-lite/pull/7665) [`2650a83`](https://github.com/LTplus-AG/ifc-lite/commit/2650a834adcc7b3ab05eaeff02f3288073e2ac6c) Thanks [@louistrue](https://github.com/louistrue)! - Place DB_REF models correctly ([#7658](https://github.com/LTplus-AG/ifc-lite/issues/7658)). The bundled definitions for EPSG:5682-5685 (DB_REF / Gauss-Kruger zones 2-5) carried the Coordinate Frame rotation signs, and the DB_REF2003/DB_REF2016 compounds EPSG:9928-9935 and the geographic EPSG:5681/5830 and geocentric EPSG:5828 had no datum shift at all, so an IfcMapConversion landed 140-185 m off. All fifteen now use the Position Vector `+towgs84` of EPSG:5826 and agree with PROJ (about 1 cm measured; the tests allow 0.5 m). The EPSG index generator now re-applies these and the earlier [#2904](https://github.com/LTplus-AG/ifc-lite/issues/2904) corrections after every fetch, so a regeneration cannot revert them.
+
+- [#7803](https://github.com/LTplus-AG/ifc-lite/pull/7803) [`b59c05a`](https://github.com/LTplus-AG/ifc-lite/commit/b59c05a0adb0ef7bf0bd44cc7e66a2c59dd4454d) Thanks [@louistrue](https://github.com/louistrue)! - `firstProjAxis` now follows the schema's `IfcFirstProjAxis` for an Axis within 1e-6 of +X or -X ([#7751](https://github.com/LTplus-AG/ifc-lite/issues/7751)). The renderer's projection cut moved from 1e-6 to a 1e-9 numeric noise floor, so an Axis such as `(1, 1e-7, 0)` with no `RefDirection` gets about `(0,-1,0)` instead of `(0,+1,0)`. An Axis of exactly +X still gets `(0,1,0)` and exactly -X still gets `(0,-1,0)`.
+
+- [#7822](https://github.com/LTplus-AG/ifc-lite/pull/7822) [`941ff66`](https://github.com/LTplus-AG/ifc-lite/commit/941ff6675c56ae167582ddd96eb55f57ce3f5f89) Thanks [@louistrue](https://github.com/louistrue)! - The cost-lexeme reader now uses `isCompleteStepNumericLiteral` (the one STEP numeric grammar) instead of its own regex copy, and that grammar is pinned by the shared vector file `rust/core/tests/fixtures/step_numeric_vectors.json`, which the Rust tokenizer and byte readers read too (F4-1, [#7778](https://github.com/LTplus-AG/ifc-lite/issues/7778)).
+
+- [#7597](https://github.com/LTplus-AG/ifc-lite/pull/7597) [`97f27d7`](https://github.com/LTplus-AG/ifc-lite/commit/97f27d70682b810806e932ac81e3a81a3fe10d63) Thanks [@louistrue](https://github.com/louistrue)! - Keep a PAGE directive's apostrophe operand (`'Para \S\' 5'`) inside its STEP string in the CLI's extract, subset, validate and mutate scanners, the cost-removal reference guard, group-graph reference reads and list parsing. They closed the string at the operand, which dropped real references, shifted argument slots and read `#N` text as a reference.
+  
+  The geometry content hash (Rust, shipped in `@ifc-lite/wasm`) also walks STEP strings by the shared rule, so a record holding a PAGE-operand literal hashes the same as its equivalent text.
+
+- [#7798](https://github.com/LTplus-AG/ifc-lite/pull/7798) [`0c721c3`](https://github.com/LTplus-AG/ifc-lite/commit/0c721c3548e21488fca9b168db3d875ca8ba39d7) Thanks [@louistrue](https://github.com/louistrue)! - TS STEP readers match the core grammar ([#7785](https://github.com/LTplus-AG/ifc-lite/issues/7785), [#7790](https://github.com/LTplus-AG/ifc-lite/issues/7790)): `parseStepValue` keeps an overflowing REAL such as `1.E400` as raw text instead of `Infinity`; `readRefList` and the list/attribute splitters (`parseStepList`, the viewer schedule stripper) skip `/* ... */` comments through one shared `splitStepTopLevel` in `@ifc-lite/encoding`; `generateLod0` walks `PlacementRelTo` iteratively and refuses a cyclic placement, reporting the element in the new optional `skipped` list instead of overflowing the stack.
+- Updated dependencies [[`c259c10`](https://github.com/LTplus-AG/ifc-lite/commit/c259c10a1f6818dea05a266c5dd228dd1aba8a66), [`0c721c3`](https://github.com/LTplus-AG/ifc-lite/commit/0c721c3548e21488fca9b168db3d875ca8ba39d7)]:
+  - @ifc-lite/encoding@2.4.0
+
 ## 6.2.0
 
 ### Minor Changes

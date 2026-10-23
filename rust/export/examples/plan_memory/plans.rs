@@ -51,6 +51,8 @@ fn add_over_existing(id: u32) -> (ObjectRef, Disposition) {
         style: None,
         psets: Vec::new(),
         opening: None,
+        material: None,
+        classifications: Vec::new(),
     };
     (ObjectRef::Id(id), Disposition::Add(Box::new(new)))
 }
@@ -78,6 +80,14 @@ pub fn benchmark(l: &Layout) -> ExportPlan {
         d.push(delete(l.wall(k)));
     }
     plan(d)
+}
+
+/// Every storey below `storeys` deleted together with every wall it
+/// contains: tens of thousands of deletions under the few large
+/// relationships they share (containment, typing, shared property sets).
+pub fn bulk_delete(l: &Layout, storeys: u32) -> ExportPlan {
+    let walls = (0..l.walls).filter(|&k| l.storey_of(k) < storeys).map(|k| delete(l.wall(k)));
+    plan((0..storeys).map(|s| delete(l.storey(s))).chain(walls).collect())
 }
 
 /// A closed `x` by `y` by `z` box with a corner at the origin, 12 triangles.
@@ -162,5 +172,6 @@ pub fn scenarios(l: &Layout) -> Vec<(&'static str, ExportPlan)> {
         ),
         ("benchmark", benchmark(l)),
         ("geometry", geometry(l, 8)),
+        ("bulk_delete", bulk_delete(l, 2)),
     ]
 }

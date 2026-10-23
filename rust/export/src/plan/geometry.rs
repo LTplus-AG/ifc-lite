@@ -95,7 +95,7 @@ pub(crate) fn resolve_geometry(
         }
     };
     let (item, rep_type) = mesh_item(&mut emit, &patch.mesh)?;
-    let shape = body_shape(&mut emit, ctx, item, rep_type, patch.colour.as_ref())?;
+    let shape = body_shape(&mut emit, ctx, &[item], rep_type, patch.colour.as_ref())?;
     if synthesized.is_some() {
         context.chosen = synthesized;
         context.synthesized = synthesized;

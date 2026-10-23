@@ -1,5 +1,17 @@
 # @ifc-lite/ids-authoring
 
+## 0.3.0
+
+### Minor Changes
+
+- [#7978](https://github.com/LTplus-AG/ifc-lite/pull/7978) [`3addab1`](https://github.com/LTplus-AG/ifc-lite/commit/3addab1d31256dc592845f028a11269a8cca39b4) Thanks [@andhxl](https://github.com/andhxl)! - Add Russian (`ru`) translations for IDS validation messages and the IDS Authoring changelog. The Viewer uses its selected language for IDS checks and authoring, including checks run from Flow.
+
+### Patch Changes
+
+- Updated dependencies [[`2650a83`](https://github.com/LTplus-AG/ifc-lite/commit/2650a834adcc7b3ab05eaeff02f3288073e2ac6c), [`b59c05a`](https://github.com/LTplus-AG/ifc-lite/commit/b59c05a0adb0ef7bf0bd44cc7e66a2c59dd4454d), [`941ff66`](https://github.com/LTplus-AG/ifc-lite/commit/941ff6675c56ae167582ddd96eb55f57ce3f5f89), [`a1b50b1`](https://github.com/LTplus-AG/ifc-lite/commit/a1b50b1d51a12084a17c175cc9759fdc6027f241), [`97f27d7`](https://github.com/LTplus-AG/ifc-lite/commit/97f27d70682b810806e932ac81e3a81a3fe10d63), [`3addab1`](https://github.com/LTplus-AG/ifc-lite/commit/3addab1d31256dc592845f028a11269a8cca39b4), [`0c721c3`](https://github.com/LTplus-AG/ifc-lite/commit/0c721c3548e21488fca9b168db3d875ca8ba39d7)]:
+  - @ifc-lite/data@6.3.0
+  - @ifc-lite/ids@3.4.0
+
 ## 0.2.6
 
 ### Patch Changes

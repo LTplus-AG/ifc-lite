@@ -1,5 +1,28 @@
 # @ifc-lite/server-bin
 
+## 3.0.0
+
+### Major Changes
+
+- [#7709](https://github.com/LTplus-AG/ifc-lite/pull/7709) [`3a27672`](https://github.com/LTplus-AG/ifc-lite/commit/3a2767267206de951bc1279e3c31c0e24198012b) Thanks [@louistrue](https://github.com/louistrue)! - **Migration: the `complete` event of `POST /api/v1/parse/stream` no longer carries `cache_key`. That route caches nothing, and the value it sent (the bare file SHA-256) named no cache entry: `GET /api/v1/cache/{key}` refused it with a `400`. Use `POST /api/v1/parse` or a Parquet route when you need a key to fetch by later. `GET /api/v1/parse/symbolic/{key}` now answers `404` for a key nothing is writing (it answered `202` forever); poll on `202` and stop on `404`, as for the data model.**
+  
+  Cache reads and cache-entry policy for a multi-tenant server ([#7676](https://github.com/LTplus-AG/ifc-lite/issues/7676)):
+  
+  - Every route that hands back a stored model (`/cache/{key}`, `/cache/geometry/{hash}`, `/parse/data-model/{key}`, `/parse/symbolic/{key}`, the `?sha256=` probes) is admitted for the stored entry's size rather than `MAX_FILE_SIZE_MB`, and every response that holds a model in memory keeps its bytes reserved until the client has read it, while giving its parse slot back at once. A hit can answer `503 OVERLOADED` with `Retry-After` under memory pressure. `GET /cache/check/{hash}` and the probes' miss path no longer read any stored content.
+  - A damaged cache entry (a torn write, a partial GC) is a miss on every route: an upload re-parses and rewrites it, a read-only route answers `404`, and the entry is dropped so `cache/check` stops reporting it. Three routes answered `500` for such a file on every request.
+
+### Minor Changes
+
+- [#7708](https://github.com/LTplus-AG/ifc-lite/pull/7708) [`20c169a`](https://github.com/LTplus-AG/ifc-lite/commit/20c169a948fda88ae85b486131e6ddb0ae244669) Thanks [@louistrue](https://github.com/louistrue)! - Upload admission and blocking work ([#7676](https://github.com/LTplus-AG/ifc-lite/issues/7676)):
+  
+  - The `parquet-stream` data-model fill runs under its stream's admission instead of waiting for a second slot, so it no longer times out on a one-slot host (where `GET /parse/data-model` then answered `404` and properties never loaded).
+  - gzip / `.ifcZIP` decompression and the upload's SHA-256 run on the blocking pool, not on the async workers that also serve `/health` and open streams. The admission guard moves into those blocking tasks, so a cancelled request cannot free its slot while the decode or hash still runs. The data-model extraction no longer copies the whole upload.
+  - A compressed upload that does not decompress is `400 BAD_REQUEST`, not `500`. An upload that goes 30 s without a byte, or averages under 8 KiB/s after its first 15 s, is refused with `408 REQUEST_TIMEOUT` instead of holding its admission slot for the whole request timeout.
+
+### Patch Changes
+
+- [#7727](https://github.com/LTplus-AG/ifc-lite/pull/7727) [`406957e`](https://github.com/LTplus-AG/ifc-lite/commit/406957e683b7d27234565f4ec16194a7147fe3e2) Thanks [@louistrue](https://github.com/louistrue)! - `schema_version` is read from the file's `FILE_SCHEMA` header declaration on every route, with the same rule as the browser parser: the first recognised identifier wins, and an undeclared file falls back to a scan of the file's first bytes, then IFC4. `/parse/metadata` used to miss lower-case declarations, and the geometry routes searched the whole file, so `ifc4` inside a GUID reported many IFC2X3 models as IFC4. Cached JSON responses and Parquet metadata headers move to new keys (`-json-v7`, `-parquet-metadata-v6`, `-parquet-optimized-metadata-v4`), so each affected file is parsed once more on its next request.
+
 ## 2.0.1
 
 ### Patch Changes

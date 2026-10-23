@@ -116,7 +116,7 @@ fn geometry_that_cannot_be_written_validly_is_refused() {
     let cases: Vec<(Representation, &str)> = vec![
         (Representation::Mesh(TriangleMesh { positions: vec![[0.0; 3]; 3], triangles: vec![[0, 1, 3]] }), "indexes past"),
         (Representation::Mesh(TriangleMesh { positions: vec![[0.0; 3]; 3], triangles: vec![[0, 1, 1]] }), "repeats a vertex"),
-        (Representation::Extrusion(Extrusion { profile: vec![[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]], direction: [0.0, 0.0, 1.0], depth: 1.0 }), "no area"),
+        (Representation::Extrusion(Extrusion { profile: vec![[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]], voids: Vec::new(), direction: [0.0, 0.0, 1.0], depth: 1.0 }), "no area"),
         (Representation::Extrusion(Extrusion { direction: [1.0, 0.0, 0.0], ..block(1.0, 1.0, 1.0) }), "leave the profile plane"),
         (Representation::Extrusion(Extrusion { depth: f64::NAN, ..block(1.0, 1.0, 1.0) }), "depth"),
     ];

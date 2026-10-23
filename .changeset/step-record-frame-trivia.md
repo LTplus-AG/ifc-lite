@@ -1,5 +1,0 @@
----
-'@ifc-lite/export': patch
----
-
-Apply edits to STEP records that carry trivia between their closing `)` and `;` (#7682). ISO 10303-21 allows whitespace (including a vertical tab or form feed) and `/* ... */` comments there, but the attribute, positional and retype writers looked for a literal `);`, so every edit on a record such as `#5=IFCWALL(...) ;` was dropped without a warning, and a relationship carrying a comment before its `;` was withheld from an export that deleted one of its members. Every writer now frames a record through one reader, `stepRecordFrame`, which keeps the trivia in the output, including around a retyped record's keyword (`#5= IFCWALL(` retyped is now `#5= IFCCOLUMN(`, where it used to come out as `#5=IFCCOLUMN(`). A record that declares an instance (`#N=`) but is not one whole record the frame reads (a complex instance, a non-ASCII character in its head, no `;`) is reported as unreadable when an edit is queued for it, instead of being passed over in silence. The Rust mutation-log writer uses the same frame and is pinned to it by shared vectors.

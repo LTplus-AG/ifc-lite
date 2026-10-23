@@ -5,13 +5,15 @@
 
 use ifc_lite_core::{entity_info_for_schema, is_subtype_of_for_schema};
 
-use crate::plan::add_geometry::validate_extrusion;
+use crate::plan::add_profile::validate_extrusion;
 use crate::plan::tessellation::{validate_colour, validate_mesh};
 use crate::plan::add_props::validate_psets;
 use crate::plan::add_rels::RelKind;
 use crate::plan::add_types::{ClassSpec, NewObject, Representation, TypeLink};
 use crate::plan::attrs::attribute_index;
 use crate::plan::types::ObjectRef;
+use super::assoc::{CheckedClassification, CheckedMaterial};
+use super::units::CheckedUnits;
 use super::AddState;
 
 /// What [`AddState::check`] resolved; everything the build needs that
@@ -22,9 +24,13 @@ pub(super) struct Checked {
     pub(super) parent_placement: Option<u32>,
     pub(super) container: Option<(u32, RelKind)>,
     pub(super) existing_type: Option<u32>,
-    pub(super) new_type: Option<(String, Option<String>)>,
+    /// Class, `PredefinedType` and value units of a new type.
+    pub(super) new_type: Option<(String, Option<String>, CheckedUnits)>,
     pub(super) host: Option<u32>,
     pub(super) fills: bool,
+    pub(super) material: Option<CheckedMaterial>,
+    pub(super) classifications: Vec<CheckedClassification>,
+    pub(super) units: CheckedUnits,
 }
 
 impl AddState<'_> {
@@ -64,7 +70,7 @@ impl AddState<'_> {
     /// `(id, UPPERCASE class)` of an object in the source or added earlier
     /// in this plan. A source object this plan deletes is not there, but an
     /// object added under its GlobalId is.
-    fn lookup(&self, r: &ObjectRef) -> Result<(u32, String), String> {
+    pub(super) fn lookup(&self, r: &ObjectRef) -> Result<(u32, String), String> {
         let deleted = match self.index.resolve(r) {
             Some(id) if !self.removed.contains(&id) => return Ok((id, self.index.type_of(id).unwrap_or_default())),
             Some(_) => true,
@@ -177,21 +183,45 @@ impl AddState<'_> {
             }
             Some(TypeLink::New(t)) => {
                 validate_psets(self.schema, &t.psets)?;
-                let type_gid = obj.global_id.derive("type").encode();
+                let type_gid = t.global_id_for(obj.global_id).encode();
+                if type_gid == encoded {
+                    return Err("a new type cannot share its occurrence's GlobalId".into());
+                }
                 let in_source = self.index.resolve(&ObjectRef::Guid(type_gid.clone()));
                 if in_source.is_some_and(|id| live_in_source(&id)) || self.added.contains_key(&type_gid) {
                     return Err(format!("GlobalId {type_gid} for the new type is already in use"));
                 }
                 let (type_class, predefined) = self.check_class(&t.class, "IFCTYPEPRODUCT")?;
                 self.check_type_pairing(&class, &type_class, "new type")?;
-                (None, Some((type_class, predefined)))
+                (None, Some((type_class, predefined, self.check_units(&t.psets)?)))
             }
         };
 
         validate_psets(self.schema, &obj.psets)?;
+        let units = self.check_units(&obj.psets)?;
+        // IfcRelAssociatesMaterial never relates an opening or a virtual
+        // element. IFC2X3 takes any other product; IFC4 and later only an
+        // element, a structural member or a port.
+        let void = self.is_a(&class, "IFCFEATUREELEMENTSUBTRACTION") || self.is_a(&class, "IFCVIRTUALELEMENT");
+        let allowed = crate::schema_convert::targets_ifc2x3(self.schema)
+            || ["IFCELEMENT", "IFCSTRUCTURALMEMBER", "IFCPORT"].iter().any(|t| self.is_a(&class, t));
+        let takes_material = allowed && !void;
+        if obj.material.is_some() && !takes_material {
+            return Err(format!("{class} cannot carry a material"));
+        }
+        let material = obj.material.as_ref().map(|m| self.check_material(m)).transpose()?;
+        let classifications = self.check_classifications(&obj.classifications)?;
         match &obj.representation {
             Representation::None => {}
             Representation::Extrusion(e) => validate_extrusion(e)?,
+            Representation::Extrusions(es) => {
+                if es.is_empty() {
+                    return Err("a representation of extrusions needs at least one".into());
+                }
+                for (i, e) in es.iter().enumerate() {
+                    validate_extrusion(e).map_err(|err| format!("extrusion {i}: {err}"))?;
+                }
+            }
             Representation::Mesh(m) => validate_mesh(m)?,
         }
         if let Some(c) = &obj.style {
@@ -209,6 +239,7 @@ impl AddState<'_> {
                     return Err(format!("opening host {} is {c}, not an element", op.host));
                 }
                 validate_extrusion(&op.shape).map_err(|e| format!("opening: {e}"))?;
+                crate::plan::placement::check_matrix(&op.matrix).map_err(|e| format!("opening: {e}"))?;
                 Some(id)
             }
         };
@@ -223,6 +254,9 @@ impl AddState<'_> {
             new_type,
             host,
             fills,
+            material,
+            classifications,
+            units,
         })
     }
 }

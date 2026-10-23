@@ -17,7 +17,7 @@ pub(super) fn gid(n: u128) -> GlobalId {
 
 /// A `w` x `d` rectangle extruded `h` straight up.
 pub(super) fn block(w: f64, d: f64, h: f64) -> Extrusion {
-    Extrusion { profile: vec![[0.0, 0.0], [w, 0.0], [w, d], [0.0, d]], direction: [0.0, 0.0, 1.0], depth: h }
+    Extrusion { profile: vec![[0.0, 0.0], [w, 0.0], [w, d], [0.0, d]], voids: Vec::new(), direction: [0.0, 0.0, 1.0], depth: h }
 }
 
 /// A closed, outward-facing tetrahedron.
@@ -40,6 +40,8 @@ pub(super) fn object(class: IfcClass, id: GlobalId, container: Option<ObjectRef>
         style: None,
         psets: Vec::new(),
         opening: None,
+        material: None,
+        classifications: Vec::new(),
     }
 }
 

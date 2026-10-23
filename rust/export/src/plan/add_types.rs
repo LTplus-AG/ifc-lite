@@ -11,6 +11,7 @@
 //! `IfcTriangulatedFaceSet` in IFC4 and an `IfcFacetedBrep` in IFC2X3, which
 //! has no tessellated geometry).
 
+use super::add_assoc_types::{ClassificationLink, ClassificationSystem, LayerMaterial, MaterialLink, ValueUnit};
 use super::types::{ObjectRef, PsetKind, SurfaceColour, TriangleMesh};
 
 /// The 128 bits of an `IfcGloballyUniqueId`, supplied by the caller so the
@@ -93,10 +94,15 @@ pub struct NewPlacement {
 
 /// A closed polygon profile swept along `direction` for `depth`. The
 /// profile lies in the object's local XY plane; repeating the first point
-/// at the end is allowed but not required.
+/// of a loop at the end is allowed but not required.
 #[derive(Debug, Clone)]
 pub struct Extrusion {
     pub profile: Vec<[f64; 2]>,
+    /// Holes in the profile, each a closed polygon strictly inside it and
+    /// apart from every other. Written as an
+    /// `IfcArbitraryProfileDefWithVoids`; none writes an
+    /// `IfcArbitraryClosedProfileDef`.
+    pub voids: Vec<Vec<[f64; 2]>>,
     pub direction: [f64; 3],
     pub depth: f64,
 }
@@ -106,8 +112,26 @@ pub enum Representation {
     /// No `IfcProductDefinitionShape` at all.
     None,
     Extrusion(Extrusion),
+    /// Several extruded solids, one item each in a single `Body`
+    /// representation, such as a region in several disjoint parts. At least
+    /// one. They are not checked for overlap: IFC reads a body as the union
+    /// of its items, but a reader summing their volumes counts an overlap
+    /// twice.
+    Extrusions(Vec<Extrusion>),
     /// A mesh in the object's local coordinates.
     Mesh(TriangleMesh),
+}
+
+impl Representation {
+    /// The extruded solids of an `Extrusion` or `Extrusions`; none for the
+    /// other variants.
+    pub(crate) fn extrusions(&self) -> &[Extrusion] {
+        match self {
+            Representation::Extrusion(e) => std::slice::from_ref(e),
+            Representation::Extrusions(es) => es,
+            Representation::None | Representation::Mesh(_) => &[],
+        }
+    }
 }
 
 /// A property value, typed the way IFC types it.
@@ -128,6 +152,9 @@ pub enum PropertyValue {
 pub struct NewProperty {
     pub name: String,
     pub value: PropertyValue,
+    /// The unit a [`PropertyValue::Measure`] is in, when it is not the
+    /// project's unit for that measure. The value is then in this unit.
+    pub unit: Option<ValueUnit>,
 }
 
 /// A property set (`kind: Property`) or quantity set (`kind: Quantity`,
@@ -144,9 +171,25 @@ pub struct NewPropertySet {
 /// and no container; their sets are attached through `HasPropertySets`.
 #[derive(Debug, Clone)]
 pub struct NewType {
+    /// The type's own GlobalId. `None` derives one from the occurrence that
+    /// creates it (`derive("type")`); a caller that has its own identity for
+    /// the type passes it here, so the type keeps that identity whichever
+    /// occurrence happens to create it. One `TypeLink::New` creates the type;
+    /// every other occurrence of it in the plan names it with
+    /// `TypeLink::Existing(ObjectRef::Guid(..))`, which resolves to the type
+    /// an earlier Add created (a second `TypeLink::New` with the same id is
+    /// refused as already in use).
+    pub global_id: Option<GlobalId>,
     pub class: ClassSpec,
     pub name: Option<String>,
     pub psets: Vec<NewPropertySet>,
+}
+
+impl NewType {
+    /// The GlobalId this type is written with when `occurrence` creates it.
+    pub fn global_id_for(&self, occurrence: GlobalId) -> GlobalId {
+        self.global_id.unwrap_or_else(|| occurrence.derive("type"))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -156,12 +199,15 @@ pub enum TypeLink {
     New(NewType),
 }
 
-/// An `IfcOpeningElement` cut into `host`, placed in the NEW object's local
-/// frame (so the profile describes the hole where the object will sit).
-/// When the new object is a door or window, it also fills the opening.
+/// An `IfcOpeningElement` cut into `host`, placed at `matrix` (row-major,
+/// file length units) in the NEW object's local frame, so the profile
+/// describes the hole where the object will sit. When the new object is a
+/// door or window, it also fills the opening. A `shape` with voids cuts a
+/// ring, leaving the host's material inside each void.
 #[derive(Debug, Clone)]
 pub struct NewOpening {
     pub host: ObjectRef,
+    pub matrix: [[f64; 4]; 4],
     pub shape: Extrusion,
 }
 
@@ -188,23 +234,52 @@ pub struct NewObject {
     pub style: Option<SurfaceColour>,
     pub psets: Vec<NewPropertySet>,
     pub opening: Option<NewOpening>,
+    pub material: Option<MaterialLink>,
+    /// Written in the order given; one reference may not appear twice.
+    pub classifications: Vec<ClassificationLink>,
 }
 
 impl NewObject {
     /// Every existing object this Add names: its container, placement parent,
-    /// type and opening host.
+    /// type, opening host, material, classifications and units.
     pub(crate) fn references(&self) -> impl Iterator<Item = &ObjectRef> {
-        [
-            self.container.as_ref(),
-            self.placement.relative_to.as_ref(),
-            match &self.type_link {
-                Some(TypeLink::Existing(r)) => Some(r),
-                _ => None,
+        let type_ref = match &self.type_link {
+            Some(TypeLink::Existing(r)) => Some(r),
+            _ => None,
+        };
+        let type_sets = match &self.type_link {
+            Some(TypeLink::New(t)) => t.psets.as_slice(),
+            _ => &[],
+        };
+        let units = self.psets.iter().chain(type_sets).flat_map(|s| &s.properties).filter_map(|p| match &p.unit {
+            Some(ValueUnit::Existing(r)) => Some(r),
+            _ => None,
+        });
+        let material = match &self.material {
+            Some(MaterialLink::Existing(r)) => Some(r),
+            _ => None,
+        };
+        let layer_materials = match &self.material {
+            Some(MaterialLink::NewLayerSet(set)) => set.layers.as_slice(),
+            _ => &[],
+        };
+        let layer_materials = layer_materials.iter().filter_map(|l| match &l.material {
+            Some(LayerMaterial::Existing(r)) => Some(r),
+            _ => None,
+        });
+        let classifications = self.classifications.iter().filter_map(|c| match c {
+            ClassificationLink::Existing(r) => Some(r),
+            ClassificationLink::New(n) => match &n.system {
+                ClassificationSystem::Existing(r) => Some(r),
+                ClassificationSystem::New(_) => None,
             },
-            self.opening.as_ref().map(|o| &o.host),
-        ]
-        .into_iter()
-        .flatten()
+        });
+        [self.container.as_ref(), self.placement.relative_to.as_ref(), type_ref, self.opening.as_ref().map(|o| &o.host), material]
+            .into_iter()
+            .flatten()
+            .chain(layer_materials)
+            .chain(classifications)
+            .chain(units)
     }
 
     /// Every GlobalId this Add names: its own, and each [`ObjectRef::Guid`]
@@ -212,8 +287,8 @@ impl NewObject {
     /// names, so these are what an Add can look up.
     pub(crate) fn guids_to_look_up(&self) -> Vec<String> {
         let mut out = vec![self.global_id.encode()];
-        if matches!(self.type_link, Some(TypeLink::New(_))) {
-            out.push(self.global_id.derive("type").encode());
+        if let Some(TypeLink::New(t)) = &self.type_link {
+            out.push(t.global_id_for(self.global_id).encode());
         }
         out.extend(self.references().filter_map(|r| match r {
             ObjectRef::Guid(g) => Some(g.clone()),

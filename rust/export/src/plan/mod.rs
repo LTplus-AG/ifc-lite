@@ -8,8 +8,8 @@
 //! option expresses: occurrence overrides, placement rewrites, body geometry
 //! replacement, and delete with reverse-reference repair.
 //! [`Disposition::Add`] builds a new object (placement, geometry,
-//! containment, type, property sets, an opening in a host) from an IFC-level
-//! description; see `add.rs`.
+//! containment, type, property sets, material, classifications, an opening
+//! in a host) from an IFC-level description; see `add.rs`.
 //!
 //! # Design
 //!
@@ -36,7 +36,9 @@
 //!   copy, or a refusal for a set shared between types.
 
 mod add;
+mod add_assoc_types;
 mod add_geometry;
+mod add_profile;
 mod add_props;
 mod add_rels;
 mod add_types;
@@ -52,6 +54,7 @@ mod props_lookup;
 mod props_synth;
 mod referrers;
 mod resolve;
+mod skeleton;
 mod tessellation;
 #[cfg(test)]
 mod add_test_support;
@@ -61,10 +64,15 @@ mod types;
 mod validate;
 mod write;
 
+pub use add_assoc_types::{
+    ClassificationLink, ClassificationSystem, LayerMaterial, MaterialLink, NewClassification, NewClassificationReference,
+    NewLayerSet, NewMaterial, NewMaterialLayer, ValueUnit,
+};
 pub use add_types::{
     ClassSpec, Extrusion, GlobalId, IfcClass, NewObject, NewOpening, NewPlacement, NewProperty, NewPropertySet, NewType,
     PropertyValue, Representation, TypeLink,
 };
+pub use skeleton::{skeleton, MapConversion, MapUnit, Skeleton, SkeletonRoot, SKELETON_SCHEMA};
 pub use types::{
     Disposition, DroppedRepresentation, ExportPlan, GeometryPatch, ObjectRef, Patch, PlacementPatch, PlanContext, PlanError,
     PropScope, PropWrite, PsetKind, Refusal, SurfaceColour, TriangleMesh, ValidationFinding, WriteReport,

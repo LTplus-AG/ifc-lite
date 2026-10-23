@@ -137,11 +137,10 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     // copy-on-write detach are resolved together: a relationship either
     // side strips from composes into a single rewrite, and a relationship
     // both sides empty between them still cascades.
-    protect_what_appended_names(index, &list_edits, &removed, &mut appended, &mut protected);
-    let delete_result = delete::resolve_deletes(index, schema, &requested_deletes, &detach_requests, &protected);
-    // This pass decides what the deletes take: a gating removal it no longer
-    // makes (a member a copy-on-write clone reuses) comes back.
-    removed.retain(|id| !gating.removed.contains(id) || delete_result.removed.contains(id));
+    let newly_protected = protect_what_appended_names(index, &list_edits, &removed, &mut appended, &mut protected);
+    let inputs = DeleteInputs { requested: &requested_deletes, detach: &detach_requests, protected: &protected };
+    let unchanged = detach_requests.is_empty() && geometry_cuts.is_empty() && !newly_protected;
+    let delete_result = final_delete_pass(index, schema, gating, inputs, unchanged, &mut removed);
     removed.extend(delete_result.removed);
     refusals.extend(lost_writes(edited, &removed));
     refusals.extend(overridden_preserves(&resolved, &removed));
@@ -165,6 +164,42 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     };
 
     Resolution { appended, edits_by_id, removed, refusals, patched, added, patched_objects, dropped_representations }
+}
+
+/// What the combined delete pass runs on.
+struct DeleteInputs<'a> {
+    requested: &'a HashSet<u32>,
+    detach: &'a [(u32, usize, u32)],
+    protected: &'a HashSet<u32>,
+}
+
+/// The combined delete pass. `unchanged` (no detach, no swept geometry,
+/// nothing newly protected) means it has the gating pass's inputs, so the
+/// gating pass is its answer. Otherwise it decides what the deletes take: a
+/// gating removal it no longer makes (a member a copy-on-write clone reuses)
+/// comes back out of `removed`.
+fn final_delete_pass(
+    index: &FileIndex,
+    schema: &str,
+    gating: delete::DeleteResult,
+    inputs: DeleteInputs<'_>,
+    unchanged: bool,
+    removed: &mut HashSet<u32>,
+) -> delete::DeleteResult {
+    let run = || delete::resolve_deletes(index, schema, inputs.requested, inputs.detach, inputs.protected);
+    if unchanged {
+        debug_assert!(
+            {
+                let fresh = run();
+                fresh.removed == gating.removed && fresh.stripped == gating.stripped
+            },
+            "the gating pass is reused only when its inputs did not change"
+        );
+        return gating;
+    }
+    let result = run();
+    removed.retain(|id| !gating.removed.contains(id) || result.removed.contains(id));
+    result
 }
 
 /// The owner history a patch's new records name: the file's first, else one
@@ -257,14 +292,14 @@ fn attach_context_to_project(
 /// name them), then keep alive every source record an appended one still
 /// names: a member a copy-on-write clone reuses, the owner history. An
 /// appended record's own id is above `max_id`, so only what it names in the
-/// source is kept.
+/// source is kept. `true` when that protects anything new.
 fn protect_what_appended_names(
     index: &FileIndex,
     list_edits: &HashMap<(u32, usize), attrs::ListEdit>,
     removed: &HashSet<u32>,
     appended: &mut Vec<(u32, String)>,
     protected: &mut HashSet<u32>,
-) {
+) -> bool {
     let orphans: HashSet<u32> = list_edits
         .iter()
         .filter(|((set, _), _)| removed.contains(set))
@@ -275,7 +310,9 @@ fn protect_what_appended_names(
     for (_, text) in appended.iter() {
         crate::step_text::refs_in_line(text.as_bytes(), &mut named);
     }
+    let before = protected.len();
     protected.extend(named.into_iter().filter(|&id| id <= index.max_id));
+    protected.len() > before
 }
 
 /// A refusal for each surviving object's write into a record the plan

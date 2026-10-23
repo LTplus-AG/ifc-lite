@@ -7,9 +7,12 @@
 //! owned constructor becomes a numerical recipe; it evaluates without source.
 //! A selected Boolean/CSG processor's extension is its continuation instead,
 //! driven here one source or numerical step at a time.
+#[path = "retained/item.rs"]
+mod retained_impl;
 use super::boolean::BooleanMachine;
 use super::inner::{ProgramError, ProgramStage};
 use super::OwnedConstructor;
+use super::retained::{RetainedSelection, RetainedPlanOperation, LogicalRetainedValue};
 use crate::construction::ConstructionReports;
 use crate::processors::diagnostic_capture;
 use crate::{Error, GeometryRouter, Mesh, Result};
@@ -30,6 +33,13 @@ pub(super) enum ItemStep {
     /// The selected processor's Boolean/CSG continuation, mid-walk. Boxed: the
     /// step moves with every reply, and the continuation owns a mesh and stacks.
     Boolean { machine: Box<BooleanMachine>, reports: ConstructionReports },
+    // RetainedSelection is uninhabited on default wasm; keep the shared reply match.
+    #[cfg_attr(all(target_arch = "wasm32", not(feature = "wasm_source_capture")), allow(dead_code))]
+    RetainedReady(Box<RetainedPlanOperation>, RetainedSelection),
+    // Keep retained frames out of the inline exact reply/controller layout.
+    // Like RetainedReady, this carrier cannot be constructed on default wasm.
+    #[cfg_attr(all(target_arch = "wasm32", not(feature = "wasm_source_capture")), allow(dead_code))]
+    RetainedComplete(Result<Box<LogicalRetainedValue>>, RetainedSelection),
     Complete(ItemResult),
 }
 
@@ -50,6 +60,7 @@ pub(super) struct ItemResult {
 /// The item controller: owns only its step. The source occurrence is lent by
 /// its owner on every source step, so an owning walk can drive it in place.
 pub(super) struct ItemControl {
+    pub(super) retained: Option<RetainedSelection>,
     offset: (f64, f64, f64),
     step: Option<ItemStep>,
 }
@@ -57,7 +68,7 @@ pub(super) struct ItemControl {
 impl ItemControl {
     pub(super) fn new(offset: (f64, f64, f64)) -> Self {
         let reports = ConstructionReports::default();
-        Self { offset, step: Some(ItemStep::Source { phase: ItemPhase::LowerRtc, reports }) }
+        Self { retained: None, offset, step: Some(ItemStep::Source { phase: ItemPhase::LowerRtc, reports }) }
     }
 
     pub(super) fn stage(&self) -> std::result::Result<Option<ProgramStage>, ProgramError> {
@@ -66,6 +77,8 @@ impl ItemControl {
                 Some(ProgramStage::Extension)
             }
             ItemStep::Source { .. } => Some(ProgramStage::Source),
+            ItemStep::RetainedReady(..) => Some(ProgramStage::Numerical),
+            ItemStep::RetainedComplete(..) => None,
             ItemStep::Ready(_) => Some(ProgramStage::Numerical),
             ItemStep::Boolean { machine, .. } => Some(machine.stage().ok_or(ProgramError::Outstanding)?),
             ItemStep::Complete(_) => None,
@@ -76,13 +89,17 @@ impl ItemControl {
     /// panicking processor leaves no recipe behind to replay.
     pub(super) fn execute(&mut self, item: &DecodedEntity, router: &GeometryRouter,
         decoder: &mut EntityDecoder) -> std::result::Result<ItemStep, ProgramError> {
+        if matches!(self.step, Some(ItemStep::RetainedReady(..))) { return Err(ProgramError::UnsupportedRetained); }
         Ok(match self.step.take().ok_or(ProgramError::StaleRequest)? {
             ItemStep::Source { phase, reports } => {
-                execute_source(item, self.offset, phase, reports, router, decoder)
+                if let Some(selection) = &self.retained {
+                    selection.execute(item, router, decoder)
+                } else { execute_source(item, self.offset, phase, reports, router, decoder) }
             }
             ItemStep::Ready(ready) => ItemStep::Complete(ready.execute()),
             ItemStep::Boolean { machine, reports } => execute_boolean(item, machine, reports, router, decoder),
             ItemStep::Complete(value) => ItemStep::Complete(value),
+            other @ (ItemStep::RetainedReady(..) | ItemStep::RetainedComplete(..)) => other,
         })
     }
 

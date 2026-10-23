@@ -12,6 +12,7 @@ on:
       # Retained requests the worker executes are lowered here.
       - 'rust/geometry/src/document/**'
       - 'rust/geometry/src/analytic/**'
+      - 'rust/geometry/src/program/**'
       # Browser module-Worker staging and its actual-Worker probe.
       - 'scripts/stage-retained-browser-assets.mjs'
       - 'scripts/smlib-browser-worker-probe.mjs'

@@ -44,7 +44,7 @@ pub use diagnostics::{
     GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, UNATTRIBUTED_PRODUCT_ID,
 };
 pub(crate) use diagnostics::ClassificationKind;
-pub(super) use crate::representation::{effective_element_rep_type, effective_rep_type, is_body_representation, is_direct_body_representation};
+pub(super) use crate::representation::{effective_element_rep_type, effective_rep_type, is_body_representation};
 pub use crate::representation::meshed_representations;
 pub use content_hash::FACETED_BREP_DEDUP_FACE_LIMIT;
 

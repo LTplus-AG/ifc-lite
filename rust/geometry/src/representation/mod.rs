@@ -22,7 +22,6 @@ pub use walk::{
 };
 pub(crate) use select::{
     effective_element_rep_type, effective_rep_type, is_body_representation,
-    is_direct_body_representation,
 };
 
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
@@ -122,19 +121,7 @@ impl ProductShape {
         self.representations.iter().filter(move |rep| select.admits(element, rep, direct))
     }
 
-    /// Whether [`Self::select`] would read direct geometry for `select`;
-    /// computed once per walk, like `select` does.
-    pub(crate) fn direct_geometry(&self, element: &DecodedEntity, select: Select) -> bool {
-        select.needs_direct_geometry() && select::has_direct_geometry(element, &self.representations)
-    }
 
-    /// A resumable [`Self::select`]: the index of the first representation at
-    /// or after `from` that `select` admits, given [`Self::direct_geometry`].
-    pub(crate) fn next_selected(&self, element: &DecodedEntity, select: Select, direct: bool,
-        from: usize) -> Option<usize> {
-        let rest = self.representations.get(from..)?;
-        rest.iter().position(|rep| select.admits(element, rep, direct)).map(|index| from + index)
-    }
 }
 
 /// `Items` (attribute 3) of an `IfcShapeRepresentation`, an

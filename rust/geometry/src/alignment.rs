@@ -353,9 +353,7 @@ impl AlignmentCurve {
             if strict && (!(2..=3).contains(&coords.len()) || coords.iter().any(|v| v.as_float().is_none_or(|n| !n.is_finite()))) {
                 return Err(Error::geometry(format!("Malformed CartesianPoint #{}", pid)));
             }
-            let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
-            let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
-            let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
+            let [x, y, z] = decoder.point3(pid)?;
             pts.push((x, y, z));
         }
         if strict && pts.windows(2).any(|p| (p[1].0 - p[0].0).hypot(p[1].1 - p[0].1) < 1e-12 && (p[1].2 - p[0].2).abs() > 1e-12) {
@@ -646,8 +644,7 @@ fn parse_horizontal(
         if strict && (sp.ifc_type != IfcType::IfcCartesianPoint || coords.len() != 2 || coords.iter().any(|v| v.as_float().is_none_or(|n| !n.is_finite()))) {
             return Err(Error::geometry("Horizontal StartPoint must contain two finite CartesianPoint coordinates"));
         }
-        let sx = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
-        let sy = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
+        let [sx, sy, _] = decoder.point3(sp_id)?;
         let heading_raw = curve.get_float(1).ok_or_else(|| {
             Error::geometry(format!(
                 "CurveSegment #{} missing StartDirection",

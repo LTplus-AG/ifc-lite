@@ -447,3 +447,29 @@ fn h_eval_zero_length_transition_is_its_start() {
     let (x, y, h) = h_eval(&seg, 0.0);
     assert_eq!((x, y, h), (1.0, 2.0, 0.3));
 }
+
+// #7779: both strict and compatibility entry points reject fabricated coordinates.
+#[test]
+fn issue_7779_alignment_point_admission() {
+    for record in ["IFCDIRECTION((1.,2.))", "IFCCARTESIANPOINT((1.,2.,'bad'))",
+        "IFCCARTESIANPOINT((1.,2.,1.E400))", "IFCCARTESIANPOINT((1.))",
+        "IFCCARTESIANPOINT((1.,2.,3.,4.))"] {
+        let source = format!("#1={record};#2=IFCCARTESIANPOINT((10.,0.));#3=IFCPOLYLINE((#1,#2));#11=IFCLINESEGMENT2D(#1,0.,10.);#12=IFCALIGNMENT2DHORIZONTALSEGMENT($,$,$,#11);#13=IFCALIGNMENT2DHORIZONTAL(0.,(#12));");
+        for strict in [false, true] {
+            let mut decoder = EntityDecoder::new(&source);
+            let curve = decoder.decode_by_id(3).unwrap();
+            assert!(AlignmentCurve::from_polyline(&curve, &mut decoder, strict).is_err(), "{record}");
+            assert!(parse_horizontal(13, &mut decoder, 1., strict).is_err(), "{record}");
+        }
+    }
+    for point in ["IFCCARTESIANPOINT((0.,0.))", "IFCCARTESIANPOINT((0.,0.,0.))"] {
+        let source = format!("#1={point};#2=IFCCARTESIANPOINT((10.,0.,5.));#3=IFCPOLYLINE((#1,#2));");
+        for strict in [false, true] {
+            let mut decoder = EntityDecoder::new(&source);
+            let entity = decoder.decode_by_id(3).unwrap();
+            let curve = AlignmentCurve::from_polyline(&entity, &mut decoder, strict).unwrap();
+            let frame = curve.evaluate(5.);
+            assert_eq!(frame.origin, Point3::new(5.,0.,2.5));
+        }
+    }
+}

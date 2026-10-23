@@ -21,7 +21,7 @@ impl Execution {
     /// gated subset (`ctx.param` captured; host/opening reconciliation, shared-frame,
     /// in-bounds, no-overlap, watertight self-check); any miss returns `None` → exact
     /// kernel. Deterministic f64 → byte-identical native==wasm.
-    fn try_param_rect_cut(&self, mesh: &Mesh, ctx: &VoidContext) -> Option<Mesh> {
+    pub(in crate::router::voids) fn try_param_rect_cut(&self, mesh: &Mesh, ctx: &VoidContext) -> Option<Mesh> {
         let param = ctx.param.as_ref()?;
         let host = &param.host;
         let rt = host.r.transpose();

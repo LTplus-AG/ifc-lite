@@ -301,4 +301,6 @@ After the normal WASM initialization, `DiffModel` owns fingerprint columns for r
 
 `diffStableHash` accepts UTF-16 code units, including unpaired surrogates. `diffBuildDataFingerprint` and `diffBuildComponentFingerprints` accept IFC adapter projections directly. `diffCreateSidecar`, `diffValidateSidecar`, and `diffSerializeSidecar` handle the small JSON sidecar documents; date validation uses the host's `Date.parse`. Sidecar serialization includes the trailing newline.
 
+`diffLineageConflicts(entries)` returns ordered conflict diagnostics, and `diffKeyAliasesFromLineage(entries)` returns head/base pairs in insertion order for constructing a JavaScript `Map`. `diffRekeyByLineage(keys, entries, deleted, policy)` migrates external keys using `copy-to-all`, `largest-share`, or `orphan-on-split`. These helpers accept lineage objects directly, preserving non-finite share values and the existing TypeScript policy behavior. Deleted keys have no `relation` field in their result. Invalid-share policy changes are tracked separately in #8084.
+
 These bindings are the staged backend for issue #8042. The public `@ifc-lite/diff` facade has not switched to them yet; existing consumers keep their current initialization contract until integration and performance qualification complete.

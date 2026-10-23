@@ -79,7 +79,7 @@ END-ISO-10303-21;
 
 #[test]
 fn emits_circles_for_ifccircle() {
-    let data = extract_symbolic_data(RICH_IFC);
+    let data = extract_symbolic_data(RICH_IFC).expect("symbolic extraction must complete");
     assert_eq!(
         data.circles.len(),
         1,
@@ -100,7 +100,7 @@ fn emits_circles_for_ifccircle() {
 
 #[test]
 fn emits_text_for_ifctextliteral_with_extent() {
-    let data = extract_symbolic_data(RICH_IFC);
+    let data = extract_symbolic_data(RICH_IFC).expect("symbolic extraction must complete");
     assert_eq!(
         data.texts.len(),
         1,
@@ -124,7 +124,7 @@ fn emits_text_for_ifctextliteral_with_extent() {
 
 #[test]
 fn emits_fill_for_ifcannotationfillarea() {
-    let data = extract_symbolic_data(RICH_IFC);
+    let data = extract_symbolic_data(RICH_IFC).expect("symbolic extraction must complete");
     assert_eq!(
         data.fills.len(),
         1,
@@ -144,7 +144,7 @@ fn emits_fill_for_ifcannotationfillarea() {
 
 #[test]
 fn emits_ellipse_as_tessellated_polyline() {
-    let data = extract_symbolic_data(RICH_IFC);
+    let data = extract_symbolic_data(RICH_IFC).expect("symbolic extraction must complete");
     // IfcEllipse tessellates to 64 segments + closing point = 65 points (130 floats).
     // It's one of the polylines in the collection alongside the IfcAnnotationFillArea
     // outer boundary (5 points = 10 floats).

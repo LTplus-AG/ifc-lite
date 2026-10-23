@@ -184,7 +184,7 @@ fn a_hostile_file_is_bounded_and_says_so() {
     // primitives uncapped, so 500 is comfortably exceeded.
     let mut out = SymbolicAccumulator::with_limit(500);
     super::extract_symbolic_data_into(&hostile_dag(2).into_bytes(), &mut out);
-    let out = out.into_data();
+    let out = out.into_data().expect("symbolic extraction must complete");
 
     assert_eq!(
         out.len(),
@@ -215,7 +215,7 @@ fn a_file_that_fits_is_not_marked_truncated() {
     // "results incomplete" on every drawing and learn to ignore it.
     let mut out = SymbolicAccumulator::with_limit(500);
     super::extract_symbolic_data_into(&hostile_dag(0).into_bytes(), &mut out);
-    let out = out.into_data();
+    let out = out.into_data().expect("symbolic extraction must complete");
     assert!(
         out.truncated.is_none(),
         "an extraction that never reached the cap must not report truncation"
@@ -231,7 +231,7 @@ fn truncation_survives_the_wire_and_absence_still_deserializes() {
     // cache key in flight changes.
     let mut acc = SymbolicAccumulator::with_limit(1);
     super::extract_symbolic_data_into(&hostile_dag(1).into_bytes(), &mut acc);
-    let truncated = acc.into_data();
+    let truncated = acc.into_data().expect("symbolic extraction must complete");
     assert!(truncated.truncated.is_some(), "fixture must actually truncate");
 
     let json = serde_json::to_string(&truncated).expect("serializes");
@@ -274,7 +274,7 @@ fn a_few_enormous_primitives_are_bounded_too() {
     // it. If the byte charge is ever removed, this test is what fails.
     let mut acc = SymbolicAccumulator::with_limits(500, 4096);
     super::extract_symbolic_data_into(&hostile_dag_with_leaf(2, 400).into_bytes(), &mut acc);
-    let out = acc.into_data();
+    let out = acc.into_data().expect("symbolic extraction must complete");
 
     assert!(
         out.truncated.is_some(),
@@ -373,7 +373,7 @@ fn every_variable_length_field_is_charged_not_just_the_obvious_one() {
             &hostile_text_dag(content_len, alignment_len).into_bytes(),
             &mut acc,
         );
-        let out = acc.into_data();
+        let out = acc.into_data().expect("symbolic extraction must complete");
 
         let truncation = out
             .truncated
@@ -406,7 +406,7 @@ fn a_per_item_bound_reports_its_own_reason_and_does_not_abandon_the_file() {
     // deep item abandons every remaining product in the file.
     let mut acc = SymbolicAccumulator::with_limits(10_000_000, 64 * 1024 * 1024);
     super::extract_symbolic_data_into(&hostile_dag(2).into_bytes(), &mut acc);
-    let out = acc.into_data();
+    let out = acc.into_data().expect("symbolic extraction must complete");
 
     let truncation = out
         .truncated
@@ -520,7 +520,7 @@ fn an_extraction_bound_outranks_a_per_item_one_whatever_the_scan_order() {
     );
     let mut acc = SymbolicAccumulator::with_limits(200, 64 * 1024 * 1024);
     super::extract_symbolic_data_into(&file.into_bytes(), &mut acc);
-    let out = acc.into_data();
+    let out = acc.into_data().expect("symbolic extraction must complete");
 
     let truncation = out.truncated.as_ref().expect("must be truncated");
     assert_eq!(
@@ -551,7 +551,7 @@ fn a_per_item_reason_omits_limit_on_the_wire_rather_than_sending_null() {
     // distinguishes them, so this reads the JSON.
     let mut acc = SymbolicAccumulator::with_limits(10_000_000, 64 * 1024 * 1024);
     super::extract_symbolic_data_into(&hostile_dag(2).into_bytes(), &mut acc);
-    let out = acc.into_data();
+    let out = acc.into_data().expect("symbolic extraction must complete");
 
     let json = serde_json::to_value(&out).expect("serializes");
     let truncated = &json["truncated"];
@@ -568,7 +568,7 @@ fn a_per_item_reason_omits_limit_on_the_wire_rather_than_sending_null() {
     // bound still has to put its number on the wire.
     let mut acc = SymbolicAccumulator::with_limits(200, 64 * 1024 * 1024);
     super::extract_symbolic_data_into(&hostile_dag(2).into_bytes(), &mut acc);
-    let json = serde_json::to_value(acc.into_data()).expect("serializes");
+    let json = serde_json::to_value(acc.into_data().expect("symbolic extraction must complete")).expect("serializes");
     assert_eq!(json["truncated"]["reason"], "element-count");
     assert_eq!(json["truncated"]["limit"], 200);
 }
@@ -678,7 +678,7 @@ fn the_revisit_budget_is_shared_once_across_the_whole_extraction_not_reset_per_i
 
     let mut one = SymbolicAccumulator::with_revisit_budget(BUDGET);
     super::extract_symbolic_data_into(&hostile_dag(1).into_bytes(), &mut one);
-    let one_data = one.into_data();
+    let one_data = one.into_data().expect("symbolic extraction must complete");
     let one_item_total = one_data.len();
     assert_eq!(
         one_data.truncated.as_ref().map(|t| t.reason),
@@ -690,7 +690,7 @@ fn the_revisit_budget_is_shared_once_across_the_whole_extraction_not_reset_per_i
 
     let mut two = SymbolicAccumulator::with_revisit_budget(BUDGET);
     super::extract_symbolic_data_into(&hostile_dag(2).into_bytes(), &mut two);
-    let two_data = two.into_data();
+    let two_data = two.into_data().expect("symbolic extraction must complete");
     let two_item_total = two_data.len();
     assert_eq!(
         two_data.truncated.as_ref().map(|t| t.reason),
@@ -753,7 +753,7 @@ fn re_placing_one_library_block_is_not_charged_as_a_revisit() {
         &shared_map_multi_placement(PLACEMENTS, LEAVES).into_bytes(),
         &mut acc,
     );
-    let out = acc.into_data();
+    let out = acc.into_data().expect("symbolic extraction must complete");
 
     assert_eq!(
         out.polylines.len(),
@@ -791,7 +791,7 @@ fn the_shared_revisit_budget_does_not_charge_legitimate_first_visits_across_item
         &flat_multi_item_dag(2, LEAVES).into_bytes(),
         &mut acc,
     );
-    let out = acc.into_data();
+    let out = acc.into_data().expect("symbolic extraction must complete");
 
     assert_eq!(
         out.polylines.len(),
@@ -873,7 +873,7 @@ fn push_grid_axis_refuses_a_non_finite_endpoint_directly_at_the_push() {
         endpoints: [0.0, 0.0, 1.0, 1.0],
         world_y: f32::NAN,
     });
-    let out = acc.into_data();
+    let out = acc.into_data().expect("symbolic extraction must complete");
     assert_eq!(
         out.grid_axes.len(),
         1,
@@ -901,7 +901,7 @@ fn push_polyline_refuses_a_non_finite_point_directly_at_the_push() {
         world_y: f32::NAN,
         representation: "Plan".to_string(),
     });
-    let out = acc.into_data();
+    let out = acc.into_data().expect("symbolic extraction must complete");
     assert_eq!(
         out.polylines.len(),
         1,
@@ -943,7 +943,7 @@ fn push_text_refuses_a_non_finite_anchor_directly_at_the_push() {
         target_px: 0.0,
         representation: "Plan".to_string(),
     });
-    let out = acc.into_data();
+    let out = acc.into_data().expect("symbolic extraction must complete");
     assert_eq!(
         out.texts.len(),
         1,
@@ -983,7 +983,7 @@ fn push_fill_refuses_a_non_finite_point_directly_at_the_push() {
         world_y: f32::NAN,
         representation: "Plan".to_string(),
     });
-    let out = acc.into_data();
+    let out = acc.into_data().expect("symbolic extraction must complete");
     assert_eq!(
         out.fills.len(),
         1,

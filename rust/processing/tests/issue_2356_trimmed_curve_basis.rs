@@ -52,7 +52,7 @@ END-ISO-10303-21;
 
 /// First and last emitted point of the single polyline, as (x, y).
 fn endpoints(ifc: &str) -> ((f32, f32), (f32, f32)) {
-    let data = extract_symbolic_data(ifc);
+    let data = extract_symbolic_data(ifc).expect("symbolic extraction must complete");
     assert_eq!(
         data.polylines.len(),
         1,
@@ -186,7 +186,7 @@ DATA;
 ENDSEC;
 END-ISO-10303-21;
 "#;
-    let data = extract_symbolic_data(ifc);
+    let data = extract_symbolic_data(ifc).expect("symbolic extraction must complete");
     assert_eq!(data.polylines.len(), 1);
     let p = &data.polylines[0];
     assert!(
@@ -240,7 +240,7 @@ DATA;
 ENDSEC;
 END-ISO-10303-21;
 "#;
-    let data = extract_symbolic_data(ifc);
+    let data = extract_symbolic_data(ifc).expect("symbolic extraction must complete");
     assert_eq!(data.polylines.len(), 1);
     assert_eq!(
         data.polylines[0].points.len(),
@@ -264,7 +264,7 @@ fn full_turn_trim_is_not_collapsed_to_two_points() {
         ".PARAMETER.",
         "",
     );
-    let data = extract_symbolic_data(&ifc);
+    let data = extract_symbolic_data(&ifc).expect("symbolic extraction must complete");
     assert_eq!(data.polylines.len(), 1);
     let p = &data.polylines[0];
     assert!(
@@ -301,7 +301,7 @@ fn near_full_turn_trim_is_not_flattened_by_the_radius_shortcut() {
         ".PARAMETER.",
         "",
     );
-    let data = extract_symbolic_data(&ifc);
+    let data = extract_symbolic_data(&ifc).expect("symbolic extraction must complete");
     assert_eq!(data.polylines.len(), 1);
     let p = &data.polylines[0];
     assert!(
@@ -325,7 +325,7 @@ fn arcs_within_a_tenth_of_a_radian_of_a_full_turn_are_not_flattened() {
     for degrees in [355.0_f64, 362.0] {
         let end = format!("(IFCPARAMETERVALUE({:?}))", degrees.to_radians());
         let ifc = fixture("$", "(IFCPARAMETERVALUE(0.))", &end, ".PARAMETER.", "");
-        let data = extract_symbolic_data(&ifc);
+        let data = extract_symbolic_data(&ifc).expect("symbolic extraction must complete");
         assert_eq!(data.polylines.len(), 1);
         let p = &data.polylines[0].points;
         assert!(
@@ -356,7 +356,7 @@ fn zero_span_trim_still_collapses_to_a_point_segment() {
         ".PARAMETER.",
         "",
     );
-    let data = extract_symbolic_data(&ifc);
+    let data = extract_symbolic_data(&ifc).expect("symbolic extraction must complete");
     assert_eq!(data.polylines.len(), 1);
     assert_eq!(
         data.polylines[0].points.len(),
@@ -378,7 +378,7 @@ fn reversed_sense_sweeps_the_complementary_arc() {
         "",
     )
     .replace(",.T.,.PARAMETER.", ",.F.,.PARAMETER.");
-    let data = extract_symbolic_data(&ifc);
+    let data = extract_symbolic_data(&ifc).expect("symbolic extraction must complete");
     assert_eq!(data.polylines.len(), 1);
     let p = &data.polylines[0];
     let n = p.points.len();

@@ -1543,18 +1543,29 @@ and paint-order composition.
 
 ### Symbolic fill provenance
 
-`extract_symbolic_data_with_provenance(&source)` returns an opaque
+`extract_symbolic_data_with_provenance(&source)?` returns an opaque
 `SymbolicDataWithProvenance`. Its `data()` accessor exposes the unchanged
 `SymbolicData`; `fill_items()` supplies one optional direct representation-item
 ID per fill ordinal. `into_parts()` consumes both together. Unknown, repeated,
-or mapped occurrences have no item identity. The legacy `extract_symbolic_data`
-and publicly constructible primitive/aggregate structs remain compatible.
+or mapped occurrences have no item identity. All three extraction entry points,
+including `extract_symbolic_data` and the explicit-frame variant, now return
+`Result<_, ifc_lite_core::resource_stop::ProgramStop>`: Rust callers must propagate
+or handle cancellation/resource refusal. This is a Rust API signature change;
+the publicly constructible primitive/aggregate structs and successful serialized
+shape remain unchanged. An empty `Ok` means no symbols, while ordinary geometric
+truncation remains an `Ok` with `truncated`. A stop returns `Err` and discards
+all staged symbols and provenance.
+
+`ifc_lite_geometry::resource::is_stopped()` polls live source, account and
+terminal stop state when a consumer needs a boolean. It reconciles detected stops
+through the same policy as `check_current()`; a healthy result must not be cached
+across later polls or used in place of handling the extraction API's typed error.
 
 Serializing the enriched result adds optional `geometry_item_id` to each known
 fill while retaining the existing symbol JSON shape. Deserialization accepts
 older symbol JSON and leaves missing provenance unknown. WASM and the server
 consume the enriched extraction; callers that only need 2D data can keep using
-the legacy API.
+`extract_symbolic_data(&source)?`.
 
 ### Analytic arbitrary-profile topology
 

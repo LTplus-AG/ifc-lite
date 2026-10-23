@@ -82,7 +82,7 @@ END-ISO-10303-21;
 
 fn extract() -> SymbolicData {
     let frame = MeshFrame::ModelRtc { anchor: ANCHOR };
-    extract_symbolic_data_with_provenance_in_frame(fixture().as_bytes(), frame).into_parts().0
+    extract_symbolic_data_with_provenance_in_frame(fixture().as_bytes(), frame).expect("symbolic extraction must complete").into_parts().0
 }
 
 /// Render-frame plan pair of the local point `(lx, ly)`, computed in f64.

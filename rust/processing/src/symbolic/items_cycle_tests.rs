@@ -42,7 +42,7 @@ fn run(step: &str, start_id: u32) -> SymbolicData {
         &mut out,
         None,
     );
-    out.into_data()
+    out.into_data().expect("symbolic extraction must complete")
 }
 
 fn run_with_budget(step: &str, start_id: u32, budget: u32) -> SymbolicData {
@@ -69,7 +69,7 @@ fn run_with_budget(step: &str, start_id: u32, budget: u32) -> SymbolicData {
         &mut out,
         None,
     );
-    out.into_data()
+    out.into_data().expect("symbolic extraction must complete")
 }
 
 /// Run the walk in a worker thread with a timeout, so a regressed guard is

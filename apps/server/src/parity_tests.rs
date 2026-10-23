@@ -709,7 +709,7 @@ async fn issue_4706_a_response_cached_before_the_frame_fix_is_not_replayed() {
         .unwrap_or_else(|| panic!("the parse must write {current} within 10 s"));
     let mut stale: Value = serde_json::from_slice(&written).unwrap();
     stale["symbolic_data"] = serde_json::to_value(
-        ifc_lite_processing::extract_symbolic_data_with_provenance(SITE_LOCAL_FIXTURE),
+        ifc_lite_processing::extract_symbolic_data_with_provenance(SITE_LOCAL_FIXTURE).expect("symbolic extraction must complete"),
     )
     .unwrap();
     let stale_axes = grid_axis_endpoints(&stale["symbolic_data"], "the pre-change response");

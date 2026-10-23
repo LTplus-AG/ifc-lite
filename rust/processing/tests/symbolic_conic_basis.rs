@@ -61,7 +61,7 @@ END-ISO-10303-21;
 fn g5_circle_with_dangling_position_has_unresolved_elevation() {
     // #52 is referenced and absent from the file.
     let ifc = fixture("#60=IFCCIRCLE(#52,2.);");
-    let data = extract_symbolic_data(&ifc);
+    let data = extract_symbolic_data(&ifc).expect("symbolic extraction must complete");
     assert_eq!(data.circles.len(), 1, "{:?}", data.circles);
     let c = &data.circles[0];
     assert!((c.radius - 2.0).abs() < 1e-6);
@@ -75,7 +75,7 @@ fn g5_circle_with_dangling_position_has_unresolved_elevation() {
 #[test]
 fn g5_ellipse_with_dangling_position_has_unresolved_elevation() {
     let ifc = fixture("#60=IFCELLIPSE(#52,3.,1.5);");
-    let data = extract_symbolic_data(&ifc);
+    let data = extract_symbolic_data(&ifc).expect("symbolic extraction must complete");
     assert_eq!(data.polylines.len(), 1, "{:?}", data.polylines);
     assert!(
         data.polylines[0].world_y.is_nan(),
@@ -98,7 +98,7 @@ fn g5_circle_with_non_placement_position_is_not_read_as_a_centre() {
          #51=IFCDIRECTION((0.,0.,1.));\n\
          #60=IFCCIRCLE(#52,2.);",
     );
-    let data = extract_symbolic_data(&ifc);
+    let data = extract_symbolic_data(&ifc).expect("symbolic extraction must complete");
     assert_eq!(data.circles.len(), 1, "{:?}", data.circles);
     let c = &data.circles[0];
     assert!(
@@ -119,7 +119,7 @@ fn g5_fill_bounded_by_a_circle_with_dangling_position_has_unresolved_elevation()
         "#59=IFCCIRCLE(#52,2.);\n\
          #60=IFCANNOTATIONFILLAREA(#59,$);",
     );
-    let data = extract_symbolic_data(&ifc);
+    let data = extract_symbolic_data(&ifc).expect("symbolic extraction must complete");
     assert_eq!(data.fills.len(), 1, "{:?}", data.fills);
     assert!(
         data.fills[0].world_y.is_nan(),
@@ -137,7 +137,7 @@ fn g5_control_well_formed_position_keeps_its_centre_and_elevation() {
          #52=IFCAXIS2PLACEMENT3D(#50,$,$);\n\
          #60=IFCCIRCLE(#52,2.);",
     );
-    let data = extract_symbolic_data(&ifc);
+    let data = extract_symbolic_data(&ifc).expect("symbolic extraction must complete");
     assert_eq!(data.circles.len(), 1);
     let c = &data.circles[0];
     assert!(
@@ -188,7 +188,7 @@ fn assert_on_rotated_ellipse(points: &[f32], what: &str) {
 #[test]
 fn g1_ellipse_item_follows_its_ref_direction() {
     let ifc = fixture(&format!("{ROTATED_ELLIPSE}\n#60=IFCELLIPSE(#52,3.,1.5);"));
-    let data = extract_symbolic_data(&ifc);
+    let data = extract_symbolic_data(&ifc).expect("symbolic extraction must complete");
     assert_eq!(data.polylines.len(), 1, "{:?}", data.polylines);
     assert_on_rotated_ellipse(&data.polylines[0].points, "ellipse item");
 }
@@ -198,7 +198,7 @@ fn g1_fill_bounded_by_an_ellipse_follows_its_ref_direction() {
     let ifc = fixture(&format!(
         "{ROTATED_ELLIPSE}\n#59=IFCELLIPSE(#52,3.,1.5);\n#60=IFCANNOTATIONFILLAREA(#59,$);"
     ));
-    let data = extract_symbolic_data(&ifc);
+    let data = extract_symbolic_data(&ifc).expect("symbolic extraction must complete");
     assert_eq!(data.fills.len(), 1, "{:?}", data.fills);
     assert_on_rotated_ellipse(&data.fills[0].points, "fill boundary");
 }
@@ -212,7 +212,7 @@ fn g1_control_ellipse_without_ref_direction_is_axis_aligned() {
          #52=IFCAXIS2PLACEMENT2D(#50,$);\n\
          #60=IFCELLIPSE(#52,3.,1.5);",
     );
-    let data = extract_symbolic_data(&ifc);
+    let data = extract_symbolic_data(&ifc).expect("symbolic extraction must complete");
     assert_eq!(data.polylines.len(), 1);
     let p = &data.polylines[0].points;
     assert!(
@@ -241,7 +241,7 @@ fn trimmed_arc(circle: &str) -> String {
 }
 
 fn single_arc_world_y(ifc: &str) -> f32 {
-    let data = extract_symbolic_data(ifc);
+    let data = extract_symbolic_data(ifc).expect("symbolic extraction must complete");
     assert_eq!(data.polylines.len(), 1, "{:?}", data.polylines);
     let p = &data.polylines[0];
     assert!(

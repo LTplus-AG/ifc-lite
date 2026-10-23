@@ -199,6 +199,29 @@ fn cross_thread_storage_owner_releases_global_quota_without_refunding_request_wo
 }
 
 #[test]
+fn issue_7914_terminal_consumer_scope_reports_stops_and_restores_after_unwind() {
+    let result = with_terminal_scope(|| {
+        assert!(!is_active(), "a terminal domain must not install a quota");
+        let nested: Result<(), ProgramStop> = with_terminal_scope(|| {
+            stop(ProgramStop::Cancelled);
+            Ok(())
+        });
+        assert_eq!(nested, Err(ProgramStop::Cancelled));
+        assert_eq!(check_current(), Err(ProgramStop::Cancelled));
+        Ok(42)
+    });
+    assert_eq!(result, Err(ProgramStop::Cancelled));
+    assert_eq!(check_current(), Ok(()));
+    assert!(std::panic::catch_unwind(|| {
+        let _: Result<(), ProgramStop> = with_terminal_scope(|| {
+            stop(ProgramStop::Cancelled);
+            panic!("test terminal scope unwind");
+        });
+    }).is_err());
+    assert_eq!(with_terminal_scope(|| Ok(42)), Ok(42));
+}
+
+#[test]
 fn explicit_typed_stop_in_compatibility_scope_is_terminal_without_counter_allocation() {
     let account = ExecutionAccount::default();
     account.scope(|| {

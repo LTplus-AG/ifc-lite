@@ -97,12 +97,20 @@ errors. Its `readPixels` probe produced a logged performance stall; that message
 is retained, not silently discarded. Other variants produced WebGPU import
 errors or no WebGL2 context. This is capability evidence only.
 
-Attempt 6 adds `--disable-vulkan-surface` to the full model smoke/cohort. This
+Attempt 6 added `--disable-vulkan-surface` to the full model smoke/cohort. The
+full viewer still emitted WebGL shared-image errors and was refused before
+timing, despite passing strict model readiness on NVIDIA. The simple canvas
+capability result did not cover the viewer's location-map texture imports. This
 flag is documented in [Chromium's testing guide](https://developer.chrome.com/blog/supercharge-web-ai-testing)
 as using blit presentation instead of a Vulkan swapchain. The strict model
 readiness, hardware, health and timing guards remain unchanged. In particular,
 the model harness still refuses GPU driver log errors. A rendered screenshot
 alone is not a model, performance or health verdict.
+
+The next bounded service diagnostic runs the actual model and records WebGL
+canvas ownership while comparing explicit NVIDIA offload and rasterization
+setups. Service diagnostics are marked as such and cannot contribute accepted
+timing samples; the formal cohort still requires exclusive idle-host admission.
 
 These files are qualification tests and evidence for already merged production
 behavior. They live under `tests/evidence` so the revert oracle classifies them

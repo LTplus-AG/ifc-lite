@@ -408,7 +408,7 @@ fn issue_7292_healthy_fold_cannot_reopen_actual_closed_ordinary_boundary() {
     let tris = INDICES.map(|t| t.map(|i| POSITIONS[i].map(|b| f64::from(f32::from_bits(b)))));
     let mut input = crate::kernel::mesh_bridge::tris_to_mesh(&tris);
     input.plane_tags = None;
-    let ordinary = ClippingProcessor::consolidate_with_supported_cells(input.clone(), 1.0, true, false);
+    let ordinary = ClippingProcessor::consolidate_with_supported_cells(input.clone(), 1.0, true, false, None);
     assert!(preservation::public_weld_closed(&ordinary),
         "actual no-fold ordinary consolidation closes this represented source");
     let output = ClippingProcessor::consolidate_coplanar(input);

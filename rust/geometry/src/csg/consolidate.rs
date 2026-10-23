@@ -10,6 +10,8 @@ mod conform;
 mod plans;
 mod plan;
 mod recovery;
+mod outcome;
+pub(crate) use outcome::{ConsolidationBoundary, ConsolidationOutcome};
 mod plane_merge;
 mod ring_ops;
 mod preservation;
@@ -159,7 +161,15 @@ impl ClippingProcessor {
     }
 
     fn consolidate_coplanar_with_unit_scale(mesh: Mesh, length_unit_scale: f64) -> Mesh {
-        Self::consolidate_with_supported_cells(mesh, length_unit_scale, true, true)
+        Self::consolidate_with_supported_cells(mesh, length_unit_scale, true, true, None)
+    }
+
+    /// Analytic prism output may contain newly generated subgrid fragments.
+    /// Keep ordinary consolidation unchanged; source provenance is available
+    /// only to the existing bounded remote-plane recovery (#7633).
+    pub(crate) fn consolidate_prism_cut(mesh: Mesh, host: &Mesh) -> ConsolidationOutcome {
+        Self::consolidate_with_outcome(mesh, 1.0, true, true,
+            ConsolidationUse::ClosedOutput, true, Some(host))
     }
 
     /// IFC boolean operands receive source hygiene after scaling to metres;
@@ -169,15 +179,22 @@ impl ClippingProcessor {
             ConsolidationUse::BooleanOperand, true)
     }
 
-    fn consolidate_with_supported_cells(mesh: Mesh, length_unit_scale: f64, preserve_supported: bool, preserve_folds: bool) -> Mesh {
-        Self::consolidate_with_use(mesh, length_unit_scale, preserve_supported, preserve_folds,
-            ConsolidationUse::ClosedOutput, true)
+    fn consolidate_with_supported_cells(mesh: Mesh, length_unit_scale: f64, preserve_supported: bool, preserve_folds: bool, prism_host: Option<&Mesh>) -> Mesh {
+        Self::consolidate_with_outcome(mesh, length_unit_scale, preserve_supported, preserve_folds,
+            ConsolidationUse::ClosedOutput, true, prism_host).mesh
     }
 
     fn consolidate_with_use(mesh: Mesh, length_unit_scale: f64, preserve_supported: bool,
         preserve_folds: bool, usage: ConsolidationUse, preserve_connected: bool) -> Mesh {
+        Self::consolidate_with_outcome(mesh, length_unit_scale, preserve_supported, preserve_folds,
+            usage, preserve_connected, None).mesh
+    }
+
+    fn consolidate_with_outcome(mesh: Mesh, length_unit_scale: f64, preserve_supported: bool,
+        preserve_folds: bool, usage: ConsolidationUse, preserve_connected: bool,
+        prism_host: Option<&Mesh>) -> ConsolidationOutcome {
         if mesh.indices.len() < 6 {
-            return mesh;
+            return ConsolidationOutcome::established(mesh);
         }
         let mut buckets = buckets::build(&mesh);
         // Stitch only the adjacent rounding splits certified by the kernel tags.
@@ -194,10 +211,10 @@ impl ClippingProcessor {
         }
         let mut planned = plans::build(&buckets, &merged_bucket_keys, &supported, length_unit_scale);
         let Some(output) = candidates::emit(&mut planned, &buckets, &supported) else {
-            return mesh;
+            return ConsolidationOutcome::established(mesh);
         };
         if output.is_empty() {
-            return mesh;
+            return ConsolidationOutcome::established(mesh);
         }
         let output = candidates::prefer_raw_if_cleaner(&mesh, output, &buckets, &supported);
         // Fold retention may leave the fold's own boundary open, never the rest
@@ -223,7 +240,7 @@ impl ClippingProcessor {
             // restored needles, tears nothing beyond its fold and never gets here.
             if crate::exact_topology::strict_closed_mesh(&ordinary)
                 && preservation::public_weld_closed(&ordinary) {
-                return ordinary;
+                return ConsolidationOutcome::established(ordinary);
             }
             fold_free = Some(ordinary);
         }
@@ -239,7 +256,7 @@ impl ClippingProcessor {
                 if ((!exact && crate::exact_topology::strict_closed_mesh(&ordinary))
                     || (!public && preservation::public_weld_closed(&ordinary)))
                     && !supported_cells::has_uncertified_needle(&ordinary, &supported) {
-                    return ordinary;
+                    return ConsolidationOutcome::established(ordinary);
                 }
             }
         }
@@ -252,7 +269,7 @@ impl ClippingProcessor {
             let baseline = Self::consolidate_with_use(mesh.clone(), length_unit_scale,
                 supported.has_connected_patch, preserve_folds, usage, false);
             // An already closed ordinary boundary needs no source-cell rescue.
-            if crate::exact_topology::strict_closed_mesh(&baseline) { return baseline; }
+            if crate::exact_topology::strict_closed_mesh(&baseline) { return ConsolidationOutcome::established(baseline); }
             let exact = crate::exact_topology::strict_closed_mesh(&output);
             let certified = !supported_cells::has_uncertified_needle(&output, &supported);
             let public = preservation::public_weld_closed(&output);
@@ -263,11 +280,11 @@ impl ClippingProcessor {
                 // Boolean source hygiene runs after file-unit output is scaled
                 // to metres. A locally closed patch that this established
                 // cleanup removes is not a usable rescue (#8051, S_Office).
-                if !exact || !public { return baseline; }
+                if !exact || !public { return ConsolidationOutcome::established(baseline); }
                 if matches!(usage, ConsolidationUse::BooleanOperand) {
                     let mut physical = output.clone();
                     crate::router::processing::scale_positions(&mut physical, length_unit_scale);
-                    if physical.needs_degenerate_cleanup() { return baseline; }
+                    if physical.needs_degenerate_cleanup() { return ConsolidationOutcome::established(baseline); }
                 }
             }
             if (!certified || !exact || !public)
@@ -275,11 +292,11 @@ impl ClippingProcessor {
                     || (!public && preservation::public_weld_closed(&baseline))
                     || preservation::signed_boundary_worse(&output, &baseline))
             {
-                return baseline;
+                return ConsolidationOutcome::established(baseline);
             }
         }
         let mut output = recovery::retry_closed_input(
-            &mesh, output, &buckets, planned, length_unit_scale, &supported,
+            &mesh, output, &buckets, planned, length_unit_scale, &supported, prism_host,
         );
         // Carry the input's placement / frame metadata (`origin` local-frame
         // translation, `rtc_applied`, and the #1474 world-capture `local_bounds` /
@@ -292,10 +309,10 @@ impl ClippingProcessor {
         // (the mesh.rs #1474 hazard; mirrors `refine_high_aspect_slivers`'s
         // `rebuilt_like`). World-frame callers (origin 0) are unaffected. The early
         // `return mesh` branches above already carry the original frame.
-        output.rtc_applied = mesh.rtc_applied;
-        output.origin = mesh.origin;
-        output.local_bounds = mesh.local_bounds;
-        output.local_to_world = mesh.local_to_world;
+        output.mesh.rtc_applied = mesh.rtc_applied;
+        output.mesh.origin = mesh.origin;
+        output.mesh.local_bounds = mesh.local_bounds;
+        output.mesh.local_to_world = mesh.local_to_world;
         output
     }
 }

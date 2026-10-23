@@ -137,6 +137,98 @@ fn issue_7633_disjoint_closed_prisms_keep_their_boundaries() {
     );
 }
 
+fn analytic_remote_source(reverse: bool) -> Mesh {
+    let first = prism(
+        [11.764073371887207, 4.684849739074707],
+        [11.942479133605957, 4.111988544464111],
+    );
+    let remote = prism(
+        [6.463944435119629, 21.70363998413086],
+        [7.504642486572266, 18.3619441986084],
+    );
+    let mut source = if reverse { remote.clone() } else { first.clone() };
+    source.merge(if reverse { &first } else { &remote });
+    source
+}
+
+/// #7633: one generated collapsed triangle must not prevent the existing
+/// remote-plane recovery from preserving the otherwise closed prism source.
+/// Only the explicit analytic caller supplies source provenance; ordinary
+/// consolidation must retain its existing refusal of this invalid input.
+#[test]
+fn issue_7633_analytic_remote_retry_handles_generated_collapsed_fragment() {
+    let mut exposes_tear = false;
+    for reverse in [false, true] {
+        let source = analytic_remote_source(reverse);
+        assert_eq!(topology(&source), (0, 0));
+        assert!(!source.needs_degenerate_cleanup());
+        let mut input = source.clone();
+        input.indices.extend_from_slice(&[0, 0, 1]);
+        assert_eq!(topology(&input).1, 1);
+        let ordinary = ClippingProcessor::consolidate_coplanar(input.clone());
+        let ordinary_closed = topology(&ordinary) == (0, 0);
+        exposes_tear |= !ordinary_closed;
+        let outcome = ClippingProcessor::consolidate_prism_cut(input, &source);
+        assert_eq!(outcome.boundary, if ordinary_closed {
+            crate::csg::ConsolidationBoundary::Established
+        } else {
+            crate::csg::ConsolidationBoundary::CertifiedRemote
+        });
+        let recovered = outcome.mesh;
+        assert_eq!(topology(&recovered), (0, 0), "reverse={reverse}");
+        if ordinary_closed {
+            assert_eq!(recovered.indices, ordinary.indices, "closed baseline remains unchanged");
+            assert_eq!(recovered.positions, ordinary.positions, "closed baseline remains unchanged");
+            assert_eq!(recovered.normals, ordinary.normals, "closed baseline remains unchanged");
+        }
+        let corners = |mesh: &Mesh| mesh.positions.chunks_exact(3)
+            .map(|p| [p[0].to_bits(), p[1].to_bits(), p[2].to_bits()])
+            .collect::<std::collections::BTreeSet<_>>();
+        assert!(corners(&source).is_subset(&corners(&recovered)),
+            "reverse={reverse}: recovery must retain every authored corner");
+        let volume = crate::kernel::mesh_volume::mesh_volume;
+        assert!((volume(&source) - volume(&recovered)).abs() < 1e-7,
+            "reverse={reverse}: recovery must preserve source volume");
+    }
+    assert!(exposes_tear, "at least one order must exercise remote-plane recovery");
+}
+
+/// A genuinely thin authored component must not be reclassified as generated
+/// debris merely because another part of the mesh needs remote-plane recovery.
+#[test]
+fn issue_7633_analytic_remote_retry_declines_authored_thin_source() {
+    let mut exposes_tear = false;
+    for reverse in [false, true] {
+        let mut source = analytic_remote_source(reverse);
+        let base = source.vertex_count() as u32;
+        // Distinct kernel-grid corners, but every triangular altitude is below
+        // the cleanup threshold. Cleaning would erase this whole closed solid.
+        let g = 1.0 / 65536.0;
+        // Keep the component within the prisms' bounds so it does not change
+        // the adaptive union's numerical range.
+        for p in [[9.0, 10.0, 3.75], [9.0 + g, 10.0, 3.75],
+            [9.0, 10.0 + g, 3.75], [9.0, 10.0, 3.75 + g]] {
+            source.add_vertex(Point3::from(p), Vector3::zeros());
+        }
+        for t in [[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]] {
+            source.add_triangle(base + t[0], base + t[1], base + t[2]);
+        }
+        assert_eq!(topology(&source), (0, 0));
+        assert!(source.needs_degenerate_cleanup(), "authored thin-face premise");
+        let mut input = source.clone();
+        input.indices.extend_from_slice(&[0, 0, 1]);
+        let ordinary = ClippingProcessor::consolidate_coplanar(input.clone());
+        exposes_tear |= topology(&ordinary) != (0, 0);
+        let outcome = ClippingProcessor::consolidate_prism_cut(input, &source);
+        assert_eq!(outcome.boundary, crate::csg::ConsolidationBoundary::Established);
+        let declined = outcome.mesh;
+        assert_eq!(declined.indices, ordinary.indices, "reverse={reverse}");
+        assert_eq!(declined.positions, ordinary.positions, "reverse={reverse}");
+        assert_eq!(declined.normals, ordinary.normals, "reverse={reverse}");
+    }
+    assert!(exposes_tear, "at least one order must reach the source-admission guard");
+}
+
 #[test]
 fn issue_7633_remote_retry_preserves_unrelated_supported_cells_and_folds() {
     let first = prism(

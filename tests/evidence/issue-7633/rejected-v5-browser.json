@@ -1,0 +1,359 @@
+{
+  "source": {
+    "base": "2f75f65d7843b08d172d2d9998bafe8b6d368906",
+    "branch": "98f52d74299d6ac39b3a33bde4b2ab7dfb09bc45"
+  },
+  "verdict": "browser rendering timings disqualified: Vulkan external-memory allocation failures in both arms",
+  "native": {
+    "AC20-FZK-Haus.ifc": {
+      "completeFivePairs": true,
+      "identity": {
+        "base": [
+          [
+            285,
+            35940,
+            20322,
+            [
+              "7377db33331a3523"
+            ]
+          ]
+        ],
+        "branch": [
+          [
+            285,
+            35940,
+            20322,
+            [
+              "7377db33331a3523"
+            ]
+          ]
+        ]
+      },
+      "stableAndEqual": true,
+      "timings": {
+        "parseMs": {
+          "samples": {
+            "base": [
+              15,
+              14,
+              24,
+              17,
+              14
+            ],
+            "branch": [
+              14,
+              16,
+              14,
+              14,
+              14
+            ]
+          },
+          "baseMedian": 15,
+          "branchMedian": 14,
+          "delta": -1,
+          "deltaPercent": -6.666666666666667,
+          "verdict": "descriptive only; inspect spread and browser report"
+        },
+        "geometryMs": {
+          "samples": {
+            "base": [
+              31,
+              30,
+              42,
+              36,
+              44
+            ],
+            "branch": [
+              37,
+              44,
+              49,
+              44,
+              34
+            ]
+          },
+          "baseMedian": 36,
+          "branchMedian": 44,
+          "delta": 8,
+          "deltaPercent": 22.22222222222222,
+          "verdict": "descriptive only; inspect spread and browser report"
+        },
+        "totalMs": {
+          "samples": {
+            "base": [
+              46,
+              44,
+              66,
+              53,
+              58
+            ],
+            "branch": [
+              52,
+              60,
+              64,
+              59,
+              49
+            ]
+          },
+          "baseMedian": 53,
+          "branchMedian": 59,
+          "delta": 6,
+          "deltaPercent": 11.320754716981131,
+          "verdict": "descriptive only; inspect spread and browser report"
+        }
+      }
+    },
+    "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc": {
+      "completeFivePairs": true,
+      "identity": {
+        "base": [
+          [
+            1402,
+            218966,
+            136257,
+            [
+              "e96e7e6149ccd77b"
+            ]
+          ]
+        ],
+        "branch": [
+          [
+            1402,
+            218966,
+            136257,
+            [
+              "e96e7e6149ccd77b"
+            ]
+          ]
+        ]
+      },
+      "stableAndEqual": true,
+      "timings": {
+        "parseMs": {
+          "samples": {
+            "base": [
+              37,
+              36,
+              36,
+              36,
+              35
+            ],
+            "branch": [
+              36,
+              36,
+              36,
+              36,
+              36
+            ]
+          },
+          "baseMedian": 36,
+          "branchMedian": 36,
+          "delta": 0,
+          "deltaPercent": 0.0,
+          "verdict": "descriptive only; inspect spread and browser report"
+        },
+        "geometryMs": {
+          "samples": {
+            "base": [
+              4055,
+              4008,
+              3963,
+              4051,
+              3898
+            ],
+            "branch": [
+              4003,
+              3915,
+              3824,
+              4771,
+              3903
+            ]
+          },
+          "baseMedian": 4008,
+          "branchMedian": 3915,
+          "delta": -93,
+          "deltaPercent": -2.320359281437126,
+          "verdict": "descriptive only; inspect spread and browser report"
+        },
+        "totalMs": {
+          "samples": {
+            "base": [
+              4092,
+              4044,
+              4000,
+              4088,
+              3934
+            ],
+            "branch": [
+              4039,
+              3951,
+              3860,
+              4807,
+              3939
+            ]
+          },
+          "baseMedian": 4044,
+          "branchMedian": 3951,
+          "delta": -93,
+          "deltaPercent": -2.2997032640949553,
+          "verdict": "descriptive only; inspect spread and browser report"
+        }
+      }
+    },
+    "ISSUE_053_20181220Holter_Tower_10.ifc": {
+      "completeFivePairs": true,
+      "identity": {
+        "base": [
+          [
+            109515,
+            4515185,
+            2895374,
+            [
+              "9af337ef8f713ce5"
+            ]
+          ]
+        ],
+        "branch": [
+          [
+            109515,
+            4515185,
+            2895374,
+            [
+              "9af337ef8f713ce5"
+            ]
+          ]
+        ]
+      },
+      "stableAndEqual": true,
+      "timings": {
+        "parseMs": {
+          "samples": {
+            "base": [
+              837,
+              839,
+              838,
+              850,
+              837
+            ],
+            "branch": [
+              836,
+              833,
+              833,
+              845,
+              836
+            ]
+          },
+          "baseMedian": 838,
+          "branchMedian": 836,
+          "delta": -2,
+          "deltaPercent": -0.2386634844868735,
+          "verdict": "descriptive only; inspect spread and browser report"
+        },
+        "geometryMs": {
+          "samples": {
+            "base": [
+              1524,
+              1636,
+              1624,
+              1863,
+              1590
+            ],
+            "branch": [
+              1706,
+              1601,
+              1597,
+              1878,
+              1692
+            ]
+          },
+          "baseMedian": 1624,
+          "branchMedian": 1692,
+          "delta": 68,
+          "deltaPercent": 4.187192118226601,
+          "verdict": "descriptive only; inspect spread and browser report"
+        },
+        "totalMs": {
+          "samples": {
+            "base": [
+              2361,
+              2476,
+              2463,
+              2713,
+              2428
+            ],
+            "branch": [
+              2543,
+              2435,
+              2431,
+              2724,
+              2528
+            ]
+          },
+          "baseMedian": 2463,
+          "branchMedian": 2528,
+          "delta": 65,
+          "deltaPercent": 2.6390580592773043,
+          "verdict": "descriptive only; inspect spread and browser report"
+        }
+      }
+    }
+  },
+  "browser": {
+    "rows": 30,
+    "rowsSha256": "c137b453c4fddb381067b772b0fd34f42c8fdb63efadf1605d2df047646a4a17",
+    "fixtures": {
+      "AC20-FZK-Haus.ifc": {
+        "completeFivePairs": true,
+        "payloadRoots": {
+          "base": [
+            "9cb3381f605776476f1e5a2b3ccfb5769d8bc876e3bfc3b7203648969e1d6f88"
+          ],
+          "branch": [
+            "9cb3381f605776476f1e5a2b3ccfb5769d8bc876e3bfc3b7203648969e1d6f88"
+          ]
+        },
+        "everySampleCompletePayload": true,
+        "settledFourWorkerEvidence": true,
+        "stableAndEqual": true
+      },
+      "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc": {
+        "completeFivePairs": true,
+        "payloadRoots": {
+          "base": [
+            "c63fc08fd3dba18b4c34031ce6709018fd8fdef9eb66e55c115c2218260476d3"
+          ],
+          "branch": [
+            "c63fc08fd3dba18b4c34031ce6709018fd8fdef9eb66e55c115c2218260476d3"
+          ]
+        },
+        "everySampleCompletePayload": true,
+        "settledFourWorkerEvidence": true,
+        "stableAndEqual": true
+      },
+      "ISSUE_053_20181220Holter_Tower_10.ifc": {
+        "completeFivePairs": true,
+        "payloadRoots": {
+          "base": [
+            "07690f024cd462f476f3bd388160e85acf423d1049a42c91c805028e5e6bb457"
+          ],
+          "branch": [
+            "07690f024cd462f476f3bd388160e85acf423d1049a42c91c805028e5e6bb457"
+          ]
+        },
+        "everySampleCompletePayload": true,
+        "settledFourWorkerEvidence": true,
+        "stableAndEqual": true
+      }
+    },
+    "reportedTimingVerdict": {
+      "noSuccessfulSamples": false,
+      "fingerprintDrift": false,
+      "tooNoisy": false,
+      "realChange": false,
+      "insufficientPairedSamples": false,
+      "incomparableFixture": false,
+      "inconclusive": false,
+      "zeroBaselineIncrease": false
+    }
+  },
+  "next": "Original bounded canvas diagnostic submitted; do not repeat model cohort before canvas presentation is validated."
+}

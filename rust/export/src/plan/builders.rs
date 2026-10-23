@@ -2,7 +2,8 @@
 //! Constructors for the export plan's public types.
 //!
 //! The plan's structs and enums are `#[non_exhaustive]`, so a field or
-//! variant added later is not a breaking change. Outside this crate a struct
+//! variant added later is not a breaking change. `PropScope`, `PsetKind`
+//! and the `GlobalId` newtype stay exhaustive: IFC closes them. Outside this crate a struct
 //! is built with its `new` (the fields it cannot do without) and finished with
 //! `with_*` setters, or by assigning its public fields:
 //!
@@ -23,11 +24,10 @@ use super::types::{
     SurfaceColour, TriangleMesh,
 };
 
-/// The identity 4x4, row-major: no rotation, no translation.
-pub const IDENTITY: [[f64; 4]; 4] = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]];
-
 impl PropWrite {
-    /// A write of `literal` (STEP text) as `measure_type` into `pset.prop`,
+    /// A write into property `prop` of set `pset` of `literal`, STEP text
+    /// typed `measure_type` (`PropWrite::new("Pset_WallCommon",
+    /// "ThermalTransmittance", "IFCTHERMALTRANSMITTANCEMEASURE", "0.24", ..)`),
     /// keeping any unit the existing value carries.
     pub fn new(
         pset: impl Into<String>,

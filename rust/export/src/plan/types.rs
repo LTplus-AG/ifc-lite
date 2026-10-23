@@ -13,6 +13,7 @@
 /// id when it already ran a query that produced one, by GlobalId when it
 /// does not track express ids across a load.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum ObjectRef {
     Id(u32),
     Guid(String),

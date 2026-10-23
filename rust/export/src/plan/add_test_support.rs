@@ -7,7 +7,7 @@ use super::execute;
 use super::index::FileIndex;
 use super::types::*;
 
-pub(super) use super::builders::IDENTITY;
+pub(super) use super::placement::IDENTITY;
 
 pub(super) const SCHEMAS: [&str; 3] = ["IFC2X3", "IFC4", "IFC4X3"];
 

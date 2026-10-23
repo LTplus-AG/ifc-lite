@@ -1766,6 +1766,14 @@ jobs:
             oracle_args+=(--mutation tests/evidence/analytic-directrix-source-7955/behaviour.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
+          # #8091: observe provisional-report preservation independently of the
+          # existing owner/scope mutations. Dropping the quarantined batch must
+          # fail the four final-publication refusal regressions.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/element/session_publication_tests.rs | grep -Fxq 'rust/processing/src/element/session_publication_tests.rs'; then
+            node scripts/check-test-revert-oracle.mjs --base origin/main --ci --json \
+              --mutation tests/evidence/product-state-e3/publication.oracle.patch \
+              --test rust/processing/src/element/session_publication_tests.rs
+          fi
           if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/decoder/precision_certificate.rs | grep -Fxq 'rust/core/src/decoder/precision_certificate.rs'; then
             # The oracle restored the source; also execute the positive side
             # after mutation rather than treating clean status as a test run.

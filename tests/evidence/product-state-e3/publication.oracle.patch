@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/router/diagnostics_checked.rs
++++ b/rust/geometry/src/router/diagnostics_checked.rs
+@@ -48,7 +48,7 @@
+     /// attribution. Only explicit [`Self::take_csg_failures`] retrieves them;
+     /// subsequent products and retry drains cannot adopt them.
+     pub fn quarantine_unpublished_csg_failures(&self, failures: FxHashMap<u32, Vec<BoolFailure>>) {
+-        drop(failures);
++        append_csg_failures(&mut self.stopped_csg_failures.borrow_mut(), failures);
+     }
+ 
+     fn park_recorded_csg_failures(&self) {

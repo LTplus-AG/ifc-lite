@@ -32,6 +32,9 @@ import { type DocumentPdfSeams } from '@/lib/document/generate-document-pdf';
 import { exportPreparedDocument } from '@/lib/document/export-prepared-document';
 import { AssistantAction } from '../assistant/AssistantAction';
 import { BlockEditor } from './BlockEditor';
+import { DocumentBlockList } from './DocumentBlockList';
+import { useBlockSelection } from './useBlockSelection';
+import { reorderDocumentBlocks } from '@/lib/document/reorder-blocks';
 import { DocumentMenu } from './DocumentMenu';
 import { DocumentPreview } from './DocumentPreview';
 import { PageHeadingEditor } from './PageHeadingEditor';
@@ -79,7 +82,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
   const document = useMemo(() => documents.find((d) => d.id === activeDocumentId) ?? null, [documents, activeDocumentId, storage.phase]);
   const data = useDocumentData(document);
   const charts = useMemo(() => dashboards.flatMap((d) => d.charts.map((chart) => ({ dashboard: d.name, chart }))), [dashboards]);
-  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+  const selection = useBlockSelection(document);
   const [busy, setBusy] = useState(false);
 
   // A write the browser refuses (storage blocked or full) keeps the edit in memory; the author must know before reload.
@@ -95,6 +98,15 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
   const update = upsert;
   const setBlocks = useCallback((blocks: DocumentBlock[]) => { if (document) update({ ...document, blocks }); }, [document, update]);
 
+  const moveBlocks = (ids: ReadonlySet<string>, beforeId: string | null): void => {
+    const live = useViewerStore.getState();
+    if (!document || live.activeDocumentId !== document.id) return;
+    const current = live.documents.find(entry => entry.id === document.id);
+    if (!current) return;
+    const blocks = reorderDocumentBlocks(current.blocks, ids, beforeId);
+    if (blocks !== current.blocks) void update({ ...current, blocks });
+  };
+
   const copyBlock = (id: string): void => {
     const live = useViewerStore.getState();
     const current = live.documents.find((entry) => entry.id === live.activeDocumentId);
@@ -104,7 +116,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
     const copy = detachAiProvenance(copyDocumentBlock(current.blocks[index]));
     // Read current content so consecutive copies keep each other's staged durable writes.
     void update({ ...current, blocks: [...current.blocks.slice(0, index + 1), copy, ...current.blocks.slice(index + 1)] });
-    setSelectedBlockId(copy.id);
+    selection.selectOnly(copy.id);
   };
 
   const addBlock = (kind: Exclude<DocumentBlock['kind'], 'ids-report' | 'manual-report'>): void => {
@@ -122,7 +134,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
           : kind === 'spacer' ? { kind, id, height: 20 }
               : { kind, id, guid: [...data.topics.keys()][0] ?? '', snapshot: true };
     setBlocks([...document.blocks, block]);
-    setSelectedBlockId(id);
+    selection.selectOnly(id);
   };
 
   const addValidationReport = (): void => {
@@ -130,14 +142,14 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
     const block = reportSources.seed(freshBlockId());
     if (!block) return;
     setBlocks([...document.blocks, block]);
-    setSelectedBlockId(block.id);
+    selection.selectOnly(block.id);
   };
 
   const addComparison = (): void => {
     if (!document || !savedComparisons[0]) return;
     const id = freshBlockId();
     setBlocks([...document.blocks, { kind: 'table', id, source: { kind: 'comparison', comparison: structuredClone(savedComparisons[0]) }, maxRows: TABLE_ROWS_DEFAULT }]);
-    setSelectedBlockId(id);
+    selection.selectOnly(id);
   };
 
   const exportPdf = useCallback(async () => {
@@ -252,9 +264,9 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
           <div className="flex w-[420px] shrink-0 flex-col gap-2 overflow-y-auto overflow-x-hidden border-r border-border p-2" data-document-blocks>
             <PageHeadingEditor document={document} onChange={update} />
             {document.aiReport && <AiReportRefresh key={document.id} document={document} onChange={update} />}
-            {document.blocks.map((block, index) => (
-              <div key={block.id} className={selectedBlockId === block.id ? 'rounded-md ring-1 ring-sky-500' : undefined} onFocusCapture={() => setSelectedBlockId(block.id)}>
-                <BlockEditor
+            <DocumentBlockList key={document.id} document={document} selected={selection.ids} onToggle={selection.toggle}
+              onSelectOnly={selection.selectOnly} onMove={moveBlocks}>
+              {(block, index) => <BlockEditor
                   block={block}
                   index={index}
                   count={document.blocks.length}
@@ -266,19 +278,16 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
                   onMove={(delta) => {
                     const target = index + delta;
                     if (target < 0 || target >= document.blocks.length) return;
-                    const blocks = [...document.blocks];
-                    [blocks[index], blocks[target]] = [blocks[target], blocks[index]];
-                    setBlocks(blocks);
+                    moveBlocks(new Set([block.id]), delta < 0 ? document.blocks[target].id : document.blocks[target + 1]?.id ?? null);
                   }}
                   onCopy={() => copyBlock(block.id)}
                   onRemove={() => setBlocks(document.blocks.filter((b) => b.id !== block.id))}
-                />
-              </div>
-            ))}
+                />}
+            </DocumentBlockList>
             {document.blocks.length === 0 && <div className="p-2 text-muted-foreground">{t('document.panel.emptyBlocks')}</div>}
           </div>
           <div className="min-w-0 flex-1 overflow-auto bg-muted/40">
-            <DocumentPreview document={document} labels={data.labels} bindings={data.bindings} aggregations={data.aggregations} chartMessages={data.chartMessages} topics={data.topics} tables={data.tables} selectedBlockId={selectedBlockId} onSelectBlock={setSelectedBlockId} />
+            <DocumentPreview document={document} labels={data.labels} bindings={data.bindings} aggregations={data.aggregations} chartMessages={data.chartMessages} topics={data.topics} tables={data.tables} selectedBlockId={null} selectedBlockIds={selection.ids} onSelectBlock={selection.toggle} />
           </div>
         </div>
       )}

@@ -17,6 +17,15 @@
 import type { TranslationValue } from '../types';
 
 export const documentEn = {
+  'document.selection.block': 'Block {number}: {name}',
+  'document.selection.count': '{count} selected',
+  'document.selection.moveBefore': 'Move selected before…',
+  'document.selection.moveBottom': 'Move to bottom',
+  'document.selection.moved': 'Block order updated.',
+  'document.selection.drag': 'Drag block {number}',
+  'document.selection.hint': 'Select blocks here or on the page. Drag a handle to move the selected blocks together.',
+  'document.selection.dropEnd': 'Drop at end of document',
+
   'document.pageHeading.label': 'Page heading',
   'document.pageHeading.text': 'Page heading text',
   'document.pageHeading.font': 'Page heading font',

@@ -27,7 +27,7 @@
 29 rust/geometry/src/alignment.rs
 2 rust/geometry/src/alignment_sampling.rs
 8 rust/geometry/src/alignment_sampling_curve.rs
-5 rust/geometry/src/alignment_sampling_placement.rs
+1 rust/geometry/src/alignment_sampling_placement.rs
 10 rust/geometry/src/analytic/curve.rs
 7 rust/geometry/src/analytic/extrusion.rs
 1 rust/geometry/src/analytic/helpers.rs
@@ -78,7 +78,6 @@
 5 rust/geometry/src/trimmed_curve.rs
 5 rust/geometry/src/void_index.rs
 2 rust/processing/src/analytic_export/mapped.rs
-3 rust/processing/src/analytic_export/placement.rs
 1 rust/processing/src/analytic_export/walk.rs
 3 rust/processing/src/analytic_export/walk/seed.rs
 12 rust/processing/src/appearance/atlas_plan.rs
@@ -92,7 +91,7 @@
 11 rust/processing/src/appearance/mapping.rs
 2 rust/processing/src/appearance/mod.rs
 19 rust/processing/src/appearance/page_material.rs
-10 rust/processing/src/appearance/source.rs
+8 rust/processing/src/appearance/source.rs
 5 rust/processing/src/appearance/texture_budget.rs
 8 rust/processing/src/data_model/classifications.rs
 14 rust/processing/src/data_model/documents.rs

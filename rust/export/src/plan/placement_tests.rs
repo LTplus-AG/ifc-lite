@@ -70,14 +70,11 @@ fn placement_sweep_never_takes_a_still_shared_sub_record() {
 #[test]
 fn refuses_a_local_placement_shared_by_two_products() {
     let schema = "IFC4";
-    let content = two_walls_sharing_a_pset(schema);
-    let mut index = FileIndex::complete(&content);
     // Make #20 shared by pointing wall #11's ObjectPlacement at it too.
     let from = format!("#11=IFCWALL('{}',$,'Wall 2',$,$,#23,$,$,$);", gid(11));
     let to = format!("#11=IFCWALL('{}',$,'Wall 2',$,$,#20,$,$,$);", gid(11));
-    let shared = String::from_utf8(content.clone()).unwrap().replace(&from, &to);
-    let content = shared.into_bytes();
-    index = FileIndex::complete(&content);
+    let content = String::from_utf8(two_walls_sharing_a_pset(schema)).unwrap().replace(&from, &to).into_bytes();
+    let index = FileIndex::complete(&content);
     let mut ids = IdAllocator::after(index.max_id);
     let err = resolve_placement(&index, schema, 10, &identity_shifted(1.0), &mut ids).unwrap_err();
     assert!(err.contains("shared"), "{err}");

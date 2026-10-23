@@ -203,13 +203,15 @@ impl<'a> FileIndex<'a> {
         StepRecord::parse(&self.content[start..end])?.string_at(idx).map(Cow::into_owned)
     }
 
-    /// Ids a record's attribute list references, deduplicated.
+    /// Ids a record's attributes reference that the file declares, deduplicated.
     pub(crate) fn refs_of(&self, id: u32) -> HashSet<u32> {
         let mut out = HashSet::new();
         for attr in self.attrs(id).unwrap_or_default() {
             out.extend(attr.list.iter().flatten().flatten());
             out.extend(attr.scalar);
         }
+        // A dangling reference names no record: nothing to prune or count.
+        out.retain(|&target| self.contains(target));
         out
     }
 

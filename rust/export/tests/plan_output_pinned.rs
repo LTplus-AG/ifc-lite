@@ -72,7 +72,10 @@ const PINNED: &[(&str, &str)] = &[
     ("IFC2X3/props", "f734d93209564412:124753"),
     ("IFC2X3/delete_with_opening_and_boundary", "0cd5d0106d59a06f:121863"),
     ("IFC2X3/delete_storey", "6d5c307a147219e7:123783"),
-    ("IFC2X3/delete_storey_placement", "dce3ea988bf6bdae:83972"),
+    // `delete_storey_placement` reaches the quirks block's dangling reference.
+    // It names no record, so it is no longer counted in `deleted`; the output
+    // bytes are unchanged and only the report moved.
+    ("IFC2X3/delete_storey_placement", "70bfd1d28574e9d7:83972"),
     ("IFC2X3/delete_whole_group", "04c3a081316974cc:74942"),
     ("IFC2X3/delete_type", "5e55d9b1b4ab4a9e:123831"),
     ("IFC2X3/delete_wins_and_unknowns", "a7f1debb5adefae8:122990"),
@@ -93,7 +96,7 @@ const PINNED: &[(&str, &str)] = &[
     ("IFC4/props", "b2e98127eb353a1b:125267"),
     ("IFC4/delete_with_opening_and_boundary", "30a92c7c7ff10b40:122367"),
     ("IFC4/delete_storey", "bfaff42a94222d7e:124297"),
-    ("IFC4/delete_storey_placement", "b4444e0718912b9b:84308"),
+    ("IFC4/delete_storey_placement", "fbeeda1e25725b62:84308"),
     ("IFC4/delete_whole_group", "442b54feba95cf1f:75246"),
     ("IFC4/delete_type", "cc3eda45c1ac0247:124345"),
     ("IFC4/delete_wins_and_unknowns", "e3f38c10f4ea8ac5:123498"),

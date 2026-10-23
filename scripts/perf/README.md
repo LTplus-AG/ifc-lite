@@ -4633,3 +4633,23 @@ Lesson: a zero-duration phase can invalidate the whole timing verdict even when
 all pairs finish and artifact provenance holds. Preserve that verdict and the
 adverse small-control observations; do not rerun until green or substitute
 count equality for full output identity or browser worker-pool performance.
+
+### Canonical product protocol (E3, #7955)
+
+The [source-qualified evidence](evidence/product-state-e3/summary.json) records
+matching native flat/instanced payloads and actual source-built WASM getters
+against the landed E2b parent, with full workspace tests and strict Clippy.
+The scope excludes separate native material definitions and complete result
+serialization. The protocol mutation has a green attributable baseline and
+fails real assertions; that run retains its earlier-parent attribution.
+
+The native five-pair timing verdict is noisy and inconclusive. The small
+control exceeds the reporter's spread limit, and the opening fixture's lookup
+phase is below timer resolution. Holter's geometry median is slower within its
+spread. Preserve all phase results, including that adverse observation. The
+exact-parent CI instruction-count tiebreaker remains required before disposition;
+no speedup, performance neutrality or browser worker-pool result is claimed.
+
+Lesson: output equivalence and successful paired execution do not qualify noisy
+wall-clock measurements. Preserve the original failed qualification receipt and
+use the agreed independent CI evidence; do not rerun until the verdict is green.

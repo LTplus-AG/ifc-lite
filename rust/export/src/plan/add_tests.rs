@@ -291,13 +291,21 @@ fn a_placement_with_a_zero_length_axis_is_refused() {
     wall.placement.matrix[0][0] = 0.0;
     wall.placement.matrix[1][0] = 0.0;
     wall.placement.matrix[2][0] = 0.0;
-    refused(&source, wall, "X axis is zero-length");
+    refused(&source, wall, "not a rotation");
 
     let mut wall = object(IfcClass::Wall, gid(71), storey(), Representation::None);
     wall.placement.matrix[0][2] = 0.0;
     wall.placement.matrix[1][2] = 0.0;
     wall.placement.matrix[2][2] = 0.0;
-    refused(&source, wall, "Z axis is zero-length");
+    refused(&source, wall, "not a rotation");
+
+    // A zero Y column is singular too, though X and Z alone look fine
+    // (#8080 review).
+    let mut wall = object(IfcClass::Wall, gid(73), storey(), Representation::None);
+    wall.placement.matrix[0][1] = 0.0;
+    wall.placement.matrix[1][1] = 0.0;
+    wall.placement.matrix[2][1] = 0.0;
+    refused(&source, wall, "not a rotation");
 }
 
 #[test]
@@ -309,7 +317,7 @@ fn a_placement_whose_x_and_z_axes_are_parallel_is_refused() {
     wall.placement.matrix[0][0] = 0.0;
     wall.placement.matrix[1][0] = 0.0;
     wall.placement.matrix[2][0] = 1.0;
-    refused(&source, wall, "X and Z axes are parallel");
+    refused(&source, wall, "not a rotation");
 }
 
 #[test]

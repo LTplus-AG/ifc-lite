@@ -117,7 +117,7 @@ fn degenerate_input_that_overflows_is_refused() {
         wall.placement.matrix[row][0] = [1e200, 1e200, 0.0][row];
         wall.placement.matrix[row][2] = [1e200, 1e200, 0.0][row];
     }
-    refused(&source, wall, "parallel");
+    refused(&source, wall, "not a rotation");
 
     let collinear = Extrusion { profile: vec![[0.0, 0.0], [1e200, 1e200], [2e200, 2e200]], direction: [0.0, 0.0, 1.0], depth: 1.0 };
     refused(&source, object(IfcClass::Wall, gid(9), storey(), Representation::Extrusion(collinear)), "no area");

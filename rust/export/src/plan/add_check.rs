@@ -27,30 +27,6 @@ pub(super) struct Checked {
     pub(super) fills: bool,
 }
 
-/// Reject an `IfcAxis2Placement3D` before it is built rather than after:
-/// `axis_placement_records` reads the matrix's local X (column 0) and local
-/// Z (column 2) as `IfcDirection`s, and a zero-length column or a pair that
-/// does not actually span a plane produces a direction IFC forbids (zero
-/// magnitude) or an axis system that does not describe an orientation at
-/// all (X parallel to Z, so their cross product is zero).
-fn validate_axes(m: &[[f64; 4]; 4]) -> Result<(), String> {
-    let x = (m[0][0], m[1][0], m[2][0]);
-    let z = (m[0][2], m[1][2], m[2][2]);
-    let len = |v: (f64, f64, f64)| (v.0 * v.0 + v.1 * v.1 + v.2 * v.2).sqrt();
-    // Written `!(x > eps)` so a NaN that overflow produced is refused too.
-    if !(len(x) > 0.0) {
-        return Err("placement matrix's X axis is zero-length".into());
-    }
-    if !(len(z) > 0.0) {
-        return Err("placement matrix's Z axis is zero-length".into());
-    }
-    let cross = (x.1 * z.2 - x.2 * z.1, x.2 * z.0 - x.0 * z.2, x.0 * z.1 - x.1 * z.0);
-    if !(len(cross) > 1e-9 * len(x) * len(z)) {
-        return Err("placement matrix's X and Z axes are parallel".into());
-    }
-    Ok(())
-}
-
 impl AddState<'_> {
     pub(super) fn is_a(&self, class: &str, parent: &str) -> bool {
         is_subtype_of_for_schema(self.schema, class, parent)
@@ -186,10 +162,8 @@ impl AddState<'_> {
             }
             None => container.as_ref().and_then(|(id, _, c)| self.placement_of(*id, c)),
         };
-        if obj.placement.matrix.iter().flatten().any(|v| !v.is_finite()) {
-            return Err("placement matrix is not finite".into());
-        }
-        validate_axes(&obj.placement.matrix)?;
+        // The placement patch's rule, checked before any id is allocated.
+        crate::plan::placement::check_matrix(&obj.placement.matrix)?;
 
         let (existing_type, new_type) = match &obj.type_link {
             None => (None, None),

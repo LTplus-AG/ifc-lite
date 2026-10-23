@@ -1,7 +1,7 @@
 {
   "source": {
     "base": "2f75f65d7843b08d172d2d9998bafe8b6d368906",
-    "branch": "98f52d74299d6ac39b3a33bde4b2ab7dfb09bc45"
+    "branch": "cc813960e2b8c55d3e58d96b7a12207d6e9f7355"
   },
   "runStatus": "independently-reviewed",
   "native": {
@@ -34,70 +34,70 @@
         "parseMs": {
           "samples": {
             "base": [
-              15,
               14,
-              24,
-              17,
-              14
+              14,
+              14,
+              15,
+              17
             ],
             "branch": [
               14,
-              16,
               14,
-              14,
+              15,
+              15,
               14
             ]
           },
-          "baseMedian": 15,
+          "baseMedian": 14,
           "branchMedian": 14,
-          "delta": -1,
-          "deltaPercent": -6.666666666666667,
+          "delta": 0,
+          "deltaPercent": 0.0,
           "verdict": "descriptive only; inspect spread and browser report"
         },
         "geometryMs": {
           "samples": {
             "base": [
-              31,
-              30,
-              42,
-              36,
-              44
+              34,
+              39,
+              25,
+              34,
+              31
             ],
             "branch": [
-              37,
-              44,
-              49,
-              44,
-              34
+              34,
+              28,
+              46,
+              28,
+              28
             ]
           },
-          "baseMedian": 36,
-          "branchMedian": 44,
-          "delta": 8,
-          "deltaPercent": 22.22222222222222,
+          "baseMedian": 34,
+          "branchMedian": 28,
+          "delta": -6,
+          "deltaPercent": -17.647058823529413,
           "verdict": "descriptive only; inspect spread and browser report"
         },
         "totalMs": {
           "samples": {
             "base": [
-              46,
-              44,
-              66,
-              53,
-              58
+              49,
+              54,
+              40,
+              50,
+              49
             ],
             "branch": [
-              52,
-              60,
-              64,
-              59,
-              49
+              48,
+              42,
+              62,
+              43,
+              43
             ]
           },
-          "baseMedian": 53,
-          "branchMedian": 59,
-          "delta": 6,
-          "deltaPercent": 11.320754716981131,
+          "baseMedian": 49,
+          "branchMedian": 43,
+          "delta": -6,
+          "deltaPercent": -12.244897959183673,
           "verdict": "descriptive only; inspect spread and browser report"
         }
       }
@@ -131,7 +131,7 @@
         "parseMs": {
           "samples": {
             "base": [
-              37,
+              36,
               36,
               36,
               36,
@@ -139,62 +139,62 @@
             ],
             "branch": [
               36,
+              37,
               36,
-              36,
-              36,
-              36
+              37,
+              37
             ]
           },
           "baseMedian": 36,
-          "branchMedian": 36,
-          "delta": 0,
-          "deltaPercent": 0.0,
+          "branchMedian": 37,
+          "delta": 1,
+          "deltaPercent": 2.7777777777777777,
           "verdict": "descriptive only; inspect spread and browser report"
         },
         "geometryMs": {
           "samples": {
             "base": [
-              4055,
-              4008,
-              3963,
-              4051,
-              3898
+              3918,
+              3920,
+              3984,
+              3896,
+              4051
             ],
             "branch": [
-              4003,
-              3915,
-              3824,
-              4771,
-              3903
+              3865,
+              4018,
+              3804,
+              3931,
+              4047
             ]
           },
-          "baseMedian": 4008,
-          "branchMedian": 3915,
-          "delta": -93,
-          "deltaPercent": -2.320359281437126,
+          "baseMedian": 3920,
+          "branchMedian": 3931,
+          "delta": 11,
+          "deltaPercent": 0.28061224489795916,
           "verdict": "descriptive only; inspect spread and browser report"
         },
         "totalMs": {
           "samples": {
             "base": [
-              4092,
-              4044,
-              4000,
-              4088,
-              3934
+              3954,
+              3956,
+              4021,
+              3932,
+              4087
             ],
             "branch": [
-              4039,
-              3951,
-              3860,
-              4807,
-              3939
+              3902,
+              4055,
+              3841,
+              3969,
+              4085
             ]
           },
-          "baseMedian": 4044,
-          "branchMedian": 3951,
-          "delta": -93,
-          "deltaPercent": -2.2997032640949553,
+          "baseMedian": 3956,
+          "branchMedian": 3969,
+          "delta": 13,
+          "deltaPercent": 0.32861476238624876,
           "verdict": "descriptive only; inspect spread and browser report"
         }
       }
@@ -228,70 +228,70 @@
         "parseMs": {
           "samples": {
             "base": [
-              837,
-              839,
               838,
-              850,
+              843,
+              839,
+              840,
               837
             ],
             "branch": [
-              836,
-              833,
-              833,
-              845,
-              836
+              858,
+              860,
+              858,
+              864,
+              858
             ]
           },
-          "baseMedian": 838,
-          "branchMedian": 836,
-          "delta": -2,
-          "deltaPercent": -0.2386634844868735,
+          "baseMedian": 839,
+          "branchMedian": 858,
+          "delta": 19,
+          "deltaPercent": 2.264600715137068,
           "verdict": "descriptive only; inspect spread and browser report"
         },
         "geometryMs": {
           "samples": {
             "base": [
-              1524,
-              1636,
-              1624,
-              1863,
-              1590
+              1758,
+              1727,
+              1607,
+              1790,
+              1653
             ],
             "branch": [
-              1706,
-              1601,
-              1597,
-              1878,
-              1692
+              1449,
+              1450,
+              1716,
+              1844,
+              1765
             ]
           },
-          "baseMedian": 1624,
-          "branchMedian": 1692,
-          "delta": 68,
-          "deltaPercent": 4.187192118226601,
+          "baseMedian": 1727,
+          "branchMedian": 1716,
+          "delta": -11,
+          "deltaPercent": -0.6369426751592356,
           "verdict": "descriptive only; inspect spread and browser report"
         },
         "totalMs": {
           "samples": {
             "base": [
-              2361,
-              2476,
-              2463,
-              2713,
-              2428
+              2596,
+              2570,
+              2446,
+              2631,
+              2491
             ],
             "branch": [
-              2543,
-              2435,
-              2431,
-              2724,
-              2528
+              2307,
+              2310,
+              2575,
+              2709,
+              2624
             ]
           },
-          "baseMedian": 2463,
-          "branchMedian": 2528,
-          "delta": 65,
-          "deltaPercent": 2.6390580592773043,
+          "baseMedian": 2570,
+          "branchMedian": 2575,
+          "delta": 5,
+          "deltaPercent": 0.19455252918287938,
           "verdict": "descriptive only; inspect spread and browser report"
         }
       }
@@ -299,7 +299,7 @@
   },
   "browser": {
     "rows": 30,
-    "rowsSha256": "f012245494edcbee1ac8bb424d499274b53e6241c729b4b5aecf37d13b38fa89",
+    "rowsSha256": "26d0bef369179bdd1ec553b3dc916776172c49cf2cd6d3885bc82b0b9ae3987a",
     "failed": [],
     "gpuUnqualified": [],
     "fixtures": {
@@ -358,66 +358,66 @@
           "metrics": [
             {
               "metric": "first-batch (geom submitted)",
-              "baseMedianMs": 239,
-              "branchMedianMs": 223,
-              "deltaPct": -6.694560669456067,
-              "noisePct": 23.84937238493724,
+              "baseMedianMs": 212,
+              "branchMedianMs": 233,
+              "deltaPct": 9.90566037735849,
+              "noisePct": 19.81132075471698,
               "real": false,
-              "direction": "faster"
+              "direction": "slower"
             },
             {
               "metric": "first-visible (actual paint)",
-              "baseMedianMs": 570,
-              "branchMedianMs": 561,
-              "deltaPct": -1.5789473684210527,
-              "noisePct": 20.350877192982455,
+              "baseMedianMs": 534,
+              "branchMedianMs": 542,
+              "deltaPct": 1.4981273408239701,
+              "noisePct": 7.116104868913857,
               "real": false,
-              "direction": "faster"
+              "direction": "slower"
             },
             {
               "metric": "stream-complete",
-              "baseMedianMs": 674,
-              "branchMedianMs": 655,
-              "deltaPct": -2.8189910979228485,
-              "noisePct": 10.385756676557865,
+              "baseMedianMs": 669,
+              "branchMedianMs": 690,
+              "deltaPct": 3.1390134529147984,
+              "noisePct": 11.061285500747383,
               "real": false,
-              "direction": "faster"
+              "direction": "slower"
             },
             {
               "metric": "spatial-ready",
-              "baseMedianMs": 792,
-              "branchMedianMs": 780,
-              "deltaPct": -1.5151515151515151,
-              "noisePct": 6.691919191919192,
+              "baseMedianMs": 794,
+              "branchMedianMs": 795,
+              "deltaPct": 0.12594458438287154,
+              "noisePct": 5.919395465994962,
               "real": false,
-              "direction": "faster"
+              "direction": "slower"
             },
             {
               "metric": "metadata-complete",
-              "baseMedianMs": 893,
-              "branchMedianMs": 868,
-              "deltaPct": -2.799552071668533,
-              "noisePct": 6.9428891377379625,
+              "baseMedianMs": 885,
+              "branchMedianMs": 905,
+              "deltaPct": 2.2598870056497176,
+              "noisePct": 4.858757062146893,
               "real": false,
-              "direction": "faster"
+              "direction": "slower"
             },
             {
               "metric": "METADATA + RENDER (observed)",
-              "baseMedianMs": 1004,
-              "branchMedianMs": 993,
-              "deltaPct": -1.0956175298804782,
-              "noisePct": 4.282868525896414,
+              "baseMedianMs": 1000,
+              "branchMedianMs": 1004,
+              "deltaPct": 0.4,
+              "noisePct": 1.7000000000000002,
               "real": false,
-              "direction": "faster"
+              "direction": "slower"
             },
             {
               "metric": "app total (legacy CI metric)",
-              "baseMedianMs": 942,
-              "branchMedianMs": 919,
-              "deltaPct": -2.4416135881104037,
-              "noisePct": 5.520169851380043,
+              "baseMedianMs": 935,
+              "branchMedianMs": 953,
+              "deltaPct": 1.9251336898395723,
+              "noisePct": 4.064171122994653,
               "real": false,
-              "direction": "faster"
+              "direction": "slower"
             }
           ],
           "fingerprint": {
@@ -436,66 +436,66 @@
           "metrics": [
             {
               "metric": "first-batch (geom submitted)",
-              "baseMedianMs": 932,
-              "branchMedianMs": 965,
-              "deltaPct": 3.5407725321888415,
-              "noisePct": 9.656652360515022,
+              "baseMedianMs": 968,
+              "branchMedianMs": 994,
+              "deltaPct": 2.6859504132231407,
+              "noisePct": 8.574380165289258,
               "real": false,
               "direction": "slower"
             },
             {
               "metric": "first-visible (actual paint)",
-              "baseMedianMs": 1423,
-              "branchMedianMs": 1427,
-              "deltaPct": 0.28109627547434995,
-              "noisePct": 5.762473647224174,
+              "baseMedianMs": 1402,
+              "branchMedianMs": 1433,
+              "deltaPct": 2.211126961483595,
+              "noisePct": 2.7817403708987163,
               "real": false,
               "direction": "slower"
             },
             {
               "metric": "stream-complete",
-              "baseMedianMs": 5423,
-              "branchMedianMs": 5448,
-              "deltaPct": 0.46099944680066385,
-              "noisePct": 1.235478517425779,
+              "baseMedianMs": 5456,
+              "branchMedianMs": 5449,
+              "deltaPct": -0.1282991202346041,
+              "noisePct": 2.3643695014662756,
               "real": false,
-              "direction": "slower"
+              "direction": "faster"
             },
             {
               "metric": "spatial-ready",
-              "baseMedianMs": 1118,
-              "branchMedianMs": 1099,
-              "deltaPct": -1.6994633273703041,
-              "noisePct": 5.366726296958855,
+              "baseMedianMs": 1106,
+              "branchMedianMs": 1125,
+              "deltaPct": 1.7179023508137432,
+              "noisePct": 6.600361663652802,
               "real": false,
-              "direction": "faster"
+              "direction": "slower"
             },
             {
               "metric": "metadata-complete",
-              "baseMedianMs": 1272,
-              "branchMedianMs": 1264,
-              "deltaPct": -0.628930817610063,
-              "noisePct": 11.39937106918239,
+              "baseMedianMs": 1268,
+              "branchMedianMs": 1279,
+              "deltaPct": 0.8675078864353312,
+              "noisePct": 3.3123028391167195,
+              "real": false,
+              "direction": "slower"
+            },
+            {
+              "metric": "METADATA + RENDER (observed)",
+              "baseMedianMs": 5865,
+              "branchMedianMs": 5837,
+              "deltaPct": -0.47740835464620635,
+              "noisePct": 1.1935208866155158,
               "real": false,
               "direction": "faster"
             },
             {
-              "metric": "METADATA + RENDER (observed)",
-              "baseMedianMs": 5809,
-              "branchMedianMs": 5842,
-              "deltaPct": 0.5680840075744534,
-              "noisePct": 1.910828025477707,
-              "real": false,
-              "direction": "slower"
-            },
-            {
               "metric": "app total (legacy CI metric)",
-              "baseMedianMs": 5566,
-              "branchMedianMs": 5574,
-              "deltaPct": 0.1437297879985627,
-              "noisePct": 1.1498383039885016,
+              "baseMedianMs": 5586,
+              "branchMedianMs": 5579,
+              "deltaPct": -0.12531328320802004,
+              "noisePct": 2.2198353025420694,
               "real": false,
-              "direction": "slower"
+              "direction": "faster"
             }
           ],
           "fingerprint": {
@@ -514,64 +514,64 @@
           "metrics": [
             {
               "metric": "first-batch (geom submitted)",
-              "baseMedianMs": 1144,
-              "branchMedianMs": 1170,
-              "deltaPct": 2.272727272727273,
-              "noisePct": 13.286713286713287,
+              "baseMedianMs": 1141,
+              "branchMedianMs": 1159,
+              "deltaPct": 1.5775635407537247,
+              "noisePct": 14.022787028921998,
               "real": false,
               "direction": "slower"
             },
             {
               "metric": "first-visible (actual paint)",
-              "baseMedianMs": 2047,
-              "branchMedianMs": 2057,
-              "deltaPct": 0.48851978505129456,
-              "noisePct": 7.18124084025403,
+              "baseMedianMs": 2043,
+              "branchMedianMs": 2087,
+              "deltaPct": 2.15369554576603,
+              "noisePct": 7.342143906020558,
               "real": false,
               "direction": "slower"
             },
             {
               "metric": "stream-complete",
-              "baseMedianMs": 8317,
-              "branchMedianMs": 8163,
-              "deltaPct": -1.8516291932187086,
-              "noisePct": 3.8234940483347364,
+              "baseMedianMs": 8303,
+              "branchMedianMs": 8177,
+              "deltaPct": -1.5175237865831626,
+              "noisePct": 7.816451884860894,
               "real": false,
               "direction": "faster"
             },
             {
               "metric": "spatial-ready",
-              "baseMedianMs": 3990,
-              "branchMedianMs": 3960,
-              "deltaPct": -0.7518796992481203,
-              "noisePct": 4.135338345864661,
+              "baseMedianMs": 3960,
+              "branchMedianMs": 4097,
+              "deltaPct": 3.45959595959596,
+              "noisePct": 5.075757575757576,
               "real": false,
-              "direction": "faster"
+              "direction": "slower"
             },
             {
               "metric": "metadata-complete",
-              "baseMedianMs": 6018,
-              "branchMedianMs": 5863,
-              "deltaPct": -2.5756065137919575,
-              "noisePct": 8.806912595546693,
+              "baseMedianMs": 6088,
+              "branchMedianMs": 6163,
+              "deltaPct": 1.2319316688567674,
+              "noisePct": 7.4080157687253605,
               "real": false,
-              "direction": "faster"
+              "direction": "slower"
             },
             {
               "metric": "METADATA + RENDER (observed)",
-              "baseMedianMs": 11505,
-              "branchMedianMs": 11562,
-              "deltaPct": 0.49543676662320735,
-              "noisePct": 5.5801825293350715,
+              "baseMedianMs": 11477,
+              "branchMedianMs": 11504,
+              "deltaPct": 0.23525311492550316,
+              "noisePct": 5.55023089657576,
               "real": false,
               "direction": "slower"
             },
             {
               "metric": "app total (legacy CI metric)",
-              "baseMedianMs": 9276,
-              "branchMedianMs": 9132,
-              "deltaPct": -1.5523932729624839,
-              "noisePct": 3.4928848641655885,
+              "baseMedianMs": 9239,
+              "branchMedianMs": 9128,
+              "deltaPct": -1.201428726052603,
+              "noisePct": 6.873038207598226,
               "real": false,
               "direction": "faster"
             }
@@ -603,748 +603,20 @@
   "limitations": [
     "CPU payload comparison is not GPU buffer/pixel identity. Native fingerprint excludes UV/texture/instancing metadata. No historical #6940 final30 qualification. No timing pass inferred from exit0."
   ],
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "issue": 7633,
-  "verdict": "Qualified: no measured end-to-end browser change beyond existing noise thresholds; native and complete browser CPU geometry outputs stable and identical on the recorded source pair.",
-  "provenance": {
-    "receipt": {
-      "path": "/home/louistrue/build-workers/worker-state/jobs/5b492918-a64c-4a77-9137-6a5bebece0cd/receipt.json",
-      "sha256": "7d003e7fa2c61fc96de304bd63b6b5fb21ee8923c21ee5de8ee01fc8ed580f70",
-      "state": "completed",
-      "exitCode": 0
-    },
-    "samples": [
-      {
-        "side": "base",
-        "fixture": "AC20-FZK-Haus.ifc",
-        "round": 1,
-        "health": {
-          "contaminated": false,
-          "reasons": [],
-          "deviceLost": 0,
-          "instanceErrors": 0,
-          "devicesCreated": 1,
-          "deviceReplacements": 0,
-          "uncapturedErrors": 0,
-          "source": "counters+console",
-          "events": []
-        },
-        "host": {
-          "at": 1792706231.6126003,
-          "cpuBusyPercent": 1.4093329157532102,
-          "availableBytes": 114285010944,
-          "cpuLimitPercent": 10,
-          "minimumAvailableBytes": 17179869184,
-          "qualified": true
-        }
-      },
-      {
-        "side": "base",
-        "fixture": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
-        "round": 1,
-        "health": {
-          "contaminated": false,
-          "reasons": [],
-          "deviceLost": 0,
-          "instanceErrors": 0,
-          "devicesCreated": 1,
-          "deviceReplacements": 0,
-          "uncapturedErrors": 0,
-          "source": "counters+console",
-          "events": []
-        },
-        "host": {
-          "at": 1792706242.0053198,
-          "cpuBusyPercent": 2.8849169018501097,
-          "availableBytes": 114149294080,
-          "cpuLimitPercent": 10,
-          "minimumAvailableBytes": 17179869184,
-          "qualified": true
-        }
-      },
-      {
-        "side": "base",
-        "fixture": "ISSUE_053_20181220Holter_Tower_10.ifc",
-        "round": 1,
-        "health": {
-          "contaminated": false,
-          "reasons": [],
-          "deviceLost": 0,
-          "instanceErrors": 0,
-          "devicesCreated": 1,
-          "deviceReplacements": 0,
-          "uncapturedErrors": 0,
-          "source": "counters+console",
-          "events": []
-        },
-        "host": {
-          "at": 1792706255.9088187,
-          "cpuBusyPercent": 1.160966426106056,
-          "availableBytes": 114043318272,
-          "cpuLimitPercent": 10,
-          "minimumAvailableBytes": 17179869184,
-          "qualified": true
-        }
-      },
-      {
-        "side": "branch",
-        "fixture": "AC20-FZK-Haus.ifc",
-        "round": 1,
-        "health": {
-          "contaminated": false,
-          "reasons": [],
-          "deviceLost": 0,
-          "instanceErrors": 0,
-          "devicesCreated": 1,
-          "deviceReplacements": 0,
-          "uncapturedErrors": 0,
-          "source": "counters+console",
-          "events": []
-        },
-        "host": {
-          "at": 1792706296.914838,
-          "cpuBusyPercent": 1.725219573400251,
-          "availableBytes": 113327505408,
-          "cpuLimitPercent": 10,
-          "minimumAvailableBytes": 17179869184,
-          "qualified": true
-        }
-      },
-      {
-        "side": "branch",
-        "fixture": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
-        "round": 1,
-        "health": {
-          "contaminated": false,
-          "reasons": [],
-          "deviceLost": 0,
-          "instanceErrors": 0,
-          "devicesCreated": 1,
-          "deviceReplacements": 0,
-          "uncapturedErrors": 0,
-          "source": "counters+console",
-          "events": []
-        },
-        "host": {
-          "at": 1792706307.422522,
-          "cpuBusyPercent": 6.073001887979862,
-          "availableBytes": 113490808832,
-          "cpuLimitPercent": 10,
-          "minimumAvailableBytes": 17179869184,
-          "qualified": true
-        }
-      },
-      {
-        "side": "branch",
-        "fixture": "ISSUE_053_20181220Holter_Tower_10.ifc",
-        "round": 1,
-        "health": {
-          "contaminated": false,
-          "reasons": [],
-          "deviceLost": 0,
-          "instanceErrors": 0,
-          "devicesCreated": 1,
-          "deviceReplacements": 0,
-          "uncapturedErrors": 0,
-          "source": "counters+console",
-          "events": []
-        },
-        "host": {
-          "at": 1792706321.3392391,
-          "cpuBusyPercent": 5.886056027699087,
-          "availableBytes": 113426796544,
-          "cpuLimitPercent": 10,
-          "minimumAvailableBytes": 17179869184,
-          "qualified": true
-        }
-      },
-      {
-        "side": "base",
-        "fixture": "AC20-FZK-Haus.ifc",
-        "round": 2,
-        "health": {
-          "contaminated": false,
-          "reasons": [],
-          "deviceLost": 0,
-          "instanceErrors": 0,
-          "devicesCreated": 1,
-          "deviceReplacements": 0,
-          "uncapturedErrors": 0,
-          "source": "counters+console",
-          "events": []
-        },
-        "host": {
-          "at": 1792706361.1344514,
-          "cpuBusyPercent": 1.5370138017565873,
-          "availableBytes": 112848875520,
-          "cpuLimitPercent": 10,
-          "minimumAvailableBytes": 17179869184,
-          "qualified": true
-        }
-      },
-      {
-        "side": "base",
-        "fixture": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
-        "round": 2,
-        "health": {
-          "contaminated": false,
-          "reasons": [],
-          "deviceLost": 0,
-          "instanceErrors": 0,
-          "devicesCreated": 1,
-          "deviceReplacements": 0,
-          "uncapturedErrors": 0,
-          "source": "counters+console",
-          "events": []
-        },
-        "host": {
-          "at": 1792706371.674877,
-          "cpuBusyPercent": 1.1602383192223267,
-          "availableBytes": 113077501952,
-          "cpuLimitPercent": 10,
-          "minimumAvailableBytes": 17179869184,
-          "qualified": true
-        }
-      },
-      {
-        "side": "base",
-        "fixture": "ISSUE_053_20181220Holter_Tower_10.ifc",
-        "round": 2,
-        "health": {
-          "contaminated": false,
-          "reasons": [],
-          "deviceLost": 0,
-          "instanceErrors": 0,
-          "devicesCreated": 1,
-          "deviceReplacements": 0,
-          "uncapturedErrors": 0,
-          "source": "counters+console",
-          "events": []
-        },
-        "host": {
-          "at": 1792706385.4945188,
-          "cpuBusyPercent": 1.7902010050251256,
-          "availableBytes": 112953307136,
-          "cpuLimitPercent": 10,
-          "minimumAvailableBytes": 17179869184,
-          "qualified": true
-        }
-      },
-      {
-        "side": "branch",
-        "fixture": "AC20-FZK-Haus.ifc",
-        "round": 2,
-        "health": {
-          "contaminated": false,
-          "reasons": [],
-          "deviceLost": 0,
-          "instanceErrors": 0,
-          "devicesCreated": 1,
-          "deviceReplacements": 0,
-          "uncapturedErrors": 0,
-          "source": "counters+console",
-          "events": []
-        },
-        "host": {
-          "at": 1792706426.224957,
-          "cpuBusyPercent": 1.726302573760201,
-          "availableBytes": 112776491008,
-          "cpuLimitPercent": 10,
-          "minimumAvailableBytes": 17179869184,
-          "qualified": true
-        }
-      },
-      {
-        "side": "branch",
-        "fixture": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
-        "round": 2,
-        "health": {
-          "contaminated": false,
-          "reasons": [],
-          "deviceLost": 0,
-          "instanceErrors": 0,
-          "devicesCreated": 1,
-          "deviceReplacements": 0,
-          "uncapturedErrors": 0,
-          "source": "counters+console",
-          "events": []
-        },
-        "host": {
-          "at": 1792706436.7052078,
-          "cpuBusyPercent": 1.8838304552590266,
-          "availableBytes": 113040367616,
-          "cpuLimitPercent": 10,
-          "minimumAvailableBytes": 17179869184,
-          "qualified": true
-        }
-      },
-      {
-        "side": "branch",
-        "fixture": "ISSUE_053_20181220Holter_Tower_10.ifc",
-        "round": 2,
-        "health": {
-          "contaminated": false,
-          "reasons": [],
-          "deviceLost": 0,
-          "instanceErrors": 0,
-          "devicesCreated": 1,
-          "deviceReplacements": 0,
-          "uncapturedErrors": 0,
-          "source": "counters+console",
-          "events": []
-        },
-        "host": {
-          "at": 1792706450.5999246,
-          "cpuBusyPercent": 2.7044025157232703,
-          "availableBytes": 112995463168,
-          "cpuLimitPercent": 10,
-          "minimumAvailableBytes": 17179869184,
-          "qualified": true
-        }
-      },
-      {
-        "side": "base",
-        "fixture": "AC20-FZK-Haus.ifc",
-        "round": 3,
-        "health": {
-          "contaminated": false,
-          "reasons": [],
-          "deviceLost": 0,
-          "instanceErrors": 0,
-          "devicesCreated": 1,
-          "deviceReplacements": 0,
-          "uncapturedErrors": 0,
-          "source": "counters+console",
-          "events": []
-        },
-        "host": {
-          "at": 1792706491.0901477,
-          "cpuBusyPercent": 7.052896725440806,
-          "availableBytes": 112844103680,
-          "cpuLimitPercent": 10,
-          "minimumAvailableBytes": 17179869184,
-          "qualified": true
-        }
-      },
-      {
-        "side": "base",
-        "fixture": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
-        "round": 3,
-        "health": {
-          "contaminated": false,
-          "reasons": [],
-          "deviceLost": 0,
-          "instanceErrors": 0,
-          "devicesCreated": 1,
-          "deviceReplacements": 0,
-          "uncapturedErrors": 0,
-          "source": "counters+console",
-          "events": []
-        },
-        "host": {
-          "at": 1792706501.5008326,
-          "cpuBusyPercent": 1.7571383746470035,
-          "availableBytes": 112940191744,
-          "cpuLimitPercent": 10,
-          "minimumAvailableBytes": 17179869184,
-          "qualified": true
-        }
-      },
-      {
-        "side": "base",
-        "fixture": "ISSUE_053_20181220Holter_Tower_10.ifc",
-        "round": 3,
-        "health": {
-          "contaminated": false,
-          "reasons": [],
-          "deviceLost": 0,
-          "instanceErrors": 0,
-          "devicesCreated": 1,
-          "deviceReplacements": 0,
-          "uncapturedErrors": 0,
-          "source": "counters+console",
-          "events": []
-        },
-        "host": {
-          "at": 1792706515.481355,
-          "cpuBusyPercent": 1.6022620169651272,
-          "availableBytes": 112989429760,
-          "cpuLimitPercent": 10,
-          "minimumAvailableBytes": 17179869184,
-          "qualified": true
-        }
-      },
-      {
-        "side": "branch",
-        "fixture": "AC20-FZK-Haus.ifc",
-        "round": 3,
-        "health": {
-          "contaminated": false,
-          "reasons": [],
-          "deviceLost": 0,
-          "instanceErrors": 0,
-          "devicesCreated": 1,
-          "deviceReplacements": 0,
-          "uncapturedErrors": 0,
-          "source": "counters+console",
-          "events": []
-        },
-        "host": {
-          "at": 1792706556.2975283,
-          "cpuBusyPercent": 1.475204017576899,
-          "availableBytes": 112687955968,
-          "cpuLimitPercent": 10,
-          "minimumAvailableBytes": 17179869184,
-          "qualified": true
-        }
-      },
-      {
-        "side": "branch",
-        "fixture": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
-        "round": 3,
-        "health": {
-          "contaminated": false,
-          "reasons": [],
-          "deviceLost": 0,
-          "instanceErrors": 0,
-          "devicesCreated": 1,
-          "deviceReplacements": 0,
-          "uncapturedErrors": 0,
-          "source": "counters+console",
-          "events": []
-        },
-        "host": {
-          "at": 1792706566.7224095,
-          "cpuBusyPercent": 1.5065913370998116,
-          "availableBytes": 112924819456,
-          "cpuLimitPercent": 10,
-          "minimumAvailableBytes": 17179869184,
-          "qualified": true
-        }
-      },
-      {
-        "side": "branch",
-        "fixture": "ISSUE_053_20181220Holter_Tower_10.ifc",
-        "round": 3,
-        "health": {
-          "contaminated": false,
-          "reasons": [],
-          "deviceLost": 0,
-          "instanceErrors": 0,
-          "devicesCreated": 1,
-          "deviceReplacements": 0,
-          "uncapturedErrors": 0,
-          "source": "counters+console",
-          "events": []
-        },
-        "host": {
-          "at": 1792706580.634878,
-          "cpuBusyPercent": 1.6017587939698492,
-          "availableBytes": 112970346496,
-          "cpuLimitPercent": 10,
-          "minimumAvailableBytes": 17179869184,
-          "qualified": true
-        }
-      },
-      {
-        "side": "base",
-        "fixture": "AC20-FZK-Haus.ifc",
-        "round": 4,
-        "health": {
-          "contaminated": false,
-          "reasons": [],
-          "deviceLost": 0,
-          "instanceErrors": 0,
-          "devicesCreated": 1,
-          "deviceReplacements": 0,
-          "uncapturedErrors": 0,
-          "source": "counters+console",
-          "events": []
-        },
-        "host": {
-          "at": 1792706621.1769001,
-          "cpuBusyPercent": 6.035837786859478,
-          "availableBytes": 112422359040,
-          "cpuLimitPercent": 10,
-          "minimumAvailableBytes": 17179869184,
-          "qualified": true
-        }
-      },
-      {
-        "side": "base",
-        "fixture": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
-        "round": 4,
-        "health": {
-          "contaminated": false,
-          "reasons": [],
-          "deviceLost": 0,
-          "instanceErrors": 0,
-          "devicesCreated": 1,
-          "deviceReplacements": 0,
-          "uncapturedErrors": 0,
-          "source": "counters+console",
-          "events": []
-        },
-        "host": {
-          "at": 1792706631.6290047,
-          "cpuBusyPercent": 2.5109855618330195,
-          "availableBytes": 112689750016,
-          "cpuLimitPercent": 10,
-          "minimumAvailableBytes": 17179869184,
-          "qualified": true
-        }
-      },
-      {
-        "side": "base",
-        "fixture": "ISSUE_053_20181220Holter_Tower_10.ifc",
-        "round": 4,
-        "health": {
-          "contaminated": false,
-          "reasons": [],
-          "deviceLost": 0,
-          "instanceErrors": 0,
-          "devicesCreated": 1,
-          "deviceReplacements": 0,
-          "uncapturedErrors": 0,
-          "source": "counters+console",
-          "events": []
-        },
-        "host": {
-          "at": 1792706645.582383,
-          "cpuBusyPercent": 1.349654739485248,
-          "availableBytes": 112890458112,
-          "cpuLimitPercent": 10,
-          "minimumAvailableBytes": 17179869184,
-          "qualified": true
-        }
-      },
-      {
-        "side": "branch",
-        "fixture": "AC20-FZK-Haus.ifc",
-        "round": 4,
-        "health": {
-          "contaminated": false,
-          "reasons": [],
-          "deviceLost": 0,
-          "instanceErrors": 0,
-          "devicesCreated": 1,
-          "deviceReplacements": 0,
-          "uncapturedErrors": 0,
-          "source": "counters+console",
-          "events": []
-        },
-        "host": {
-          "at": 1792706686.3336933,
-          "cpuBusyPercent": 1.6017587939698492,
-          "availableBytes": 112669487104,
-          "cpuLimitPercent": 10,
-          "minimumAvailableBytes": 17179869184,
-          "qualified": true
-        }
-      },
-      {
-        "side": "branch",
-        "fixture": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
-        "round": 4,
-        "health": {
-          "contaminated": false,
-          "reasons": [],
-          "deviceLost": 0,
-          "instanceErrors": 0,
-          "devicesCreated": 1,
-          "deviceReplacements": 0,
-          "uncapturedErrors": 0,
-          "source": "counters+console",
-          "events": []
-        },
-        "host": {
-          "at": 1792706696.6809154,
-          "cpuBusyPercent": 1.5061186068402888,
-          "availableBytes": 112889925632,
-          "cpuLimitPercent": 10,
-          "minimumAvailableBytes": 17179869184,
-          "qualified": true
-        }
-      },
-      {
-        "side": "branch",
-        "fixture": "ISSUE_053_20181220Holter_Tower_10.ifc",
-        "round": 4,
-        "health": {
-          "contaminated": false,
-          "reasons": [],
-          "deviceLost": 0,
-          "instanceErrors": 0,
-          "devicesCreated": 1,
-          "deviceReplacements": 0,
-          "uncapturedErrors": 0,
-          "source": "counters+console",
-          "events": []
-        },
-        "host": {
-          "at": 1792706710.6481273,
-          "cpuBusyPercent": 2.1957340025094103,
-          "availableBytes": 112810221568,
-          "cpuLimitPercent": 10,
-          "minimumAvailableBytes": 17179869184,
-          "qualified": true
-        }
-      },
-      {
-        "side": "base",
-        "fixture": "AC20-FZK-Haus.ifc",
-        "round": 5,
-        "health": {
-          "contaminated": false,
-          "reasons": [],
-          "deviceLost": 0,
-          "instanceErrors": 0,
-          "devicesCreated": 1,
-          "deviceReplacements": 0,
-          "uncapturedErrors": 0,
-          "source": "counters+console",
-          "events": []
-        },
-        "host": {
-          "at": 1792706751.6412706,
-          "cpuBusyPercent": 1.44336366488861,
-          "availableBytes": 112349831168,
-          "cpuLimitPercent": 10,
-          "minimumAvailableBytes": 17179869184,
-          "qualified": true
-        }
-      },
-      {
-        "side": "base",
-        "fixture": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
-        "round": 5,
-        "health": {
-          "contaminated": false,
-          "reasons": [],
-          "deviceLost": 0,
-          "instanceErrors": 0,
-          "devicesCreated": 1,
-          "deviceReplacements": 0,
-          "uncapturedErrors": 0,
-          "source": "counters+console",
-          "events": []
-        },
-        "host": {
-          "at": 1792706762.092413,
-          "cpuBusyPercent": 2.389937106918239,
-          "availableBytes": 112736837632,
-          "cpuLimitPercent": 10,
-          "minimumAvailableBytes": 17179869184,
-          "qualified": true
-        }
-      },
-      {
-        "side": "base",
-        "fixture": "ISSUE_053_20181220Holter_Tower_10.ifc",
-        "round": 5,
-        "health": {
-          "contaminated": false,
-          "reasons": [],
-          "deviceLost": 0,
-          "instanceErrors": 0,
-          "devicesCreated": 1,
-          "deviceReplacements": 0,
-          "uncapturedErrors": 0,
-          "source": "counters+console",
-          "events": []
-        },
-        "host": {
-          "at": 1792706775.9292636,
-          "cpuBusyPercent": 3.4190715181932245,
-          "availableBytes": 112757219328,
-          "cpuLimitPercent": 10,
-          "minimumAvailableBytes": 17179869184,
-          "qualified": true
-        }
-      },
-      {
-        "side": "branch",
-        "fixture": "AC20-FZK-Haus.ifc",
-        "round": 5,
-        "health": {
-          "contaminated": false,
-          "reasons": [],
-          "deviceLost": 0,
-          "instanceErrors": 0,
-          "devicesCreated": 1,
-          "deviceReplacements": 0,
-          "uncapturedErrors": 0,
-          "source": "counters+console",
-          "events": []
-        },
-        "host": {
-          "at": 1792706816.2885125,
-          "cpuBusyPercent": 5.183788878416588,
-          "availableBytes": 112436477952,
-          "cpuLimitPercent": 10,
-          "minimumAvailableBytes": 17179869184,
-          "qualified": true
-        }
-      },
-      {
-        "side": "branch",
-        "fixture": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
-        "round": 5,
-        "health": {
-          "contaminated": false,
-          "reasons": [],
-          "deviceLost": 0,
-          "instanceErrors": 0,
-          "devicesCreated": 1,
-          "deviceReplacements": 0,
-          "uncapturedErrors": 0,
-          "source": "counters+console",
-          "events": []
-        },
-        "host": {
-          "at": 1792706826.7322004,
-          "cpuBusyPercent": 3.0798240100565684,
-          "availableBytes": 112684847104,
-          "cpuLimitPercent": 10,
-          "minimumAvailableBytes": 17179869184,
-          "qualified": true
-        }
-      },
-      {
-        "side": "branch",
-        "fixture": "ISSUE_053_20181220Holter_Tower_10.ifc",
-        "round": 5,
-        "health": {
-          "contaminated": false,
-          "reasons": [],
-          "deviceLost": 0,
-          "instanceErrors": 0,
-          "devicesCreated": 1,
-          "deviceReplacements": 0,
-          "uncapturedErrors": 0,
-          "source": "counters+console",
-          "events": []
-        },
-        "host": {
-          "at": 1792706840.6534874,
-          "cpuBusyPercent": 2.041457286432161,
-          "availableBytes": 112736116736,
-          "cpuLimitPercent": 10,
-          "minimumAvailableBytes": 17179869184,
-          "qualified": true
-        }
-      }
-    ],
+  "verdict": "Qualified on cc813960e2: all browser timing changes within unchanged measured noise; all native and complete CPU browser geometry payloads stable and equal.",
+  "healthProof": {
+    "samples": 30,
+    "allHealthy": true,
+    "allIdleQualified": true,
     "files": {
-      "result.json": "5cd3bb1523a1b977d2ff6da2237a177be0beffe451c6c394e819bae1a6fa686a",
-      "browser.jsonl": "f012245494edcbee1ac8bb424d499274b53e6241c729b4b5aecf37d13b38fa89",
-      "browser-report.json": "670232bee854612b3481979bb6564bb13a9e8c26821b10ea7736247415dfbbad"
-    }
+      "result.json": "050118cf201cf3d3f68a78bb83c89897cd729f62bafe9e7b9074628378acfb69",
+      "browser.jsonl": "26d0bef369179bdd1ec553b3dc916776172c49cf2cd6d3885bc82b0b9ae3987a",
+      "browser-report.json": "5c1dc524b1ac15931d9bee41e90c07365627369f4495b0c14da1b0c6c7687dd3",
+      "idle.jsonl": "87dacc7e0bb5403027f566e18e0a9066b53f3ccc8cabd71006cd95f34507cdc1"
+    },
+    "job": "d284f600-16ca-4cf1-9d8a-e5294a836012"
   },
-  "priorEvidence": [
-    "historical-performance-4a58e7dd.json",
-    "rejected-v5-browser.json",
-    "current-canvas-preflight.json"
-  ],
-  "nativeReuse": "Native samples from original v5 cohort on identical source/artifact hashes; browser-only continuation used new canvas configuration."
+  "priorEvidence": "historical-performance-98f52d74.json"
 }

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "issue": "https://github.com/LTplus-AG/ifc-lite/issues/7633",
   "auditedAt": "2026-10-22",
-  "verdict": "Validation complete on production tree 98f52d7429: native corpus, heavy census, strict all-feature Clippy, official and four-frame source-built WASM boundaries, hardware browser output/performance, parity and ARM64/WASM32 determinism. Awaiting final evidence-head CI and required review; this does not close #6940.",
+  "verdict": "Validation complete on production cc813960e2: seam-adoption regression and strict workspace Clippy, refreshed native and source-built WASM four-frame witnesses, hardware browser performance/output, required CI and ARM64/WASM32 determinism passed. Earlier broad alternate-feature corpus retains its recorded source. Awaiting final evidence-head CI and review; this does not close #6940.",
   "scope": "Historical receipts, failed exploratory attempts and subsequent focused native pass are preserved under their own source identities. The latest focused pass resolves the reproduced native witness on its tested commit, not the full issue acceptance charter.",
   "historicalSource": {
     "commit": "6d905337fea27251cc073086498017578276263a",
@@ -887,7 +887,8 @@
     "final-native-validation.json",
     "final-official-wasm.json",
     "final-fourframe-wasm.json",
-    "current-performance.json"
+    "current-performance.json",
+    "seam-guard-validation.json"
   ],
-  "finalDeterminism": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39863103756"
+  "finalDeterminism": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39883286197"
 }

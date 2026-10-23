@@ -241,19 +241,21 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<(Vec<DecodedEntity>, Matrix4<f64>)> {
-        let representation_attr = element.get(6).ok_or_else(|| {
-            Error::geometry("Element has no representation attribute".to_string())
-        })?;
-        if representation_attr.is_null() {
+        use crate::representation::{product_shape, rep_items, Select, ShapeError};
+        // Use the same typed shape admission as mesh production. Preserve the
+        // probe's established ordinary error text for missing source slots.
+        let shape = crate::resource::observe(product_shape(element, decoder).map_err(|error| {
+            match error {
+                ShapeError::NoRepresentationAttribute { .. } =>
+                    Error::geometry("Element has no representation attribute".to_string()),
+                ShapeError::MissingRepresentations =>
+                    Error::geometry("ProductDefinitionShape missing Representations".to_string()),
+                other => Error::from(other),
+            }
+        }))?;
+        let Some(shape) = shape else {
             return Ok((Vec::new(), Matrix4::identity()));
-        }
-        let representation = decoder
-            .resolve_ref(representation_attr)?
-            .ok_or_else(|| Error::geometry("Failed to resolve representation".to_string()))?;
-        let representations_attr = representation.get(2).ok_or_else(|| {
-            Error::geometry("ProductDefinitionShape missing Representations".to_string())
-        })?;
-        let representations = decoder.resolve_ref_list(representations_attr)?;
+        };
 
         // The same placement transform that apply_placement uses. An ordinary
         // placement fault keeps identity; a typed stop is never swallowed.
@@ -266,9 +268,8 @@ impl GeometryRouter {
         self.scale_transform(&mut placement);
 
         let mut items = Vec::new();
-        for shape_rep in crate::router::meshed_representations(element, &representations) {
-            let Some(items_attr) = shape_rep.get(3) else { continue };
-            match crate::resource::observe(decoder.resolve_ref_list(items_attr).map_err(Error::from)) {
+        for shape_rep in shape.select(element, Select::Meshed) {
+            match crate::resource::observe(rep_items(shape_rep, decoder).map_err(Error::from)) {
                 Ok(rep_items) if items.is_empty() => items = rep_items,
                 Ok(rep_items) => items.extend(rep_items),
                 Err(stop @ Error::ProgramStopped(_)) => return Err(stop),
@@ -383,3 +384,7 @@ impl GeometryRouter {
 #[cfg(test)]
 #[path = "probe_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "probe/source_tests.rs"]
+mod source_tests;

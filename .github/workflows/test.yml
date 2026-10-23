@@ -895,7 +895,12 @@ jobs:
           # #8042: retain new Rust diff types so the differential tests compile;
           # reverse only data-change detection. The unchanged oracle corpus
           # must report assertion failures, not missing imports.
-          if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/diff/src/sidecar_json.rs | grep -Fxq 'rust/diff/src/sidecar_json.rs'; then
+          # #7943: preserve the extracted rational oracle helper. Accepting a
+          # partition when ANY vertex is coplanar must fail the nonplanar
+          # rational-oracle witnesses; the first face alone is insufficient.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/issue-7943/coplanarity.oracle.patch | grep -Fxq 'tests/evidence/issue-7943/coplanarity.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/issue-7943/coplanarity.oracle.patch)
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/diff/src/sidecar_json.rs | grep -Fxq 'rust/diff/src/sidecar_json.rs'; then
             # Preserve the new sidecar API; byte parity must observe the trailing newline.
             oracle_args+=(--mutation tests/evidence/diff-8042/sidecar-newline.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/diff/src/lineage.rs | grep -Fxq 'rust/diff/src/lineage.rs'; then

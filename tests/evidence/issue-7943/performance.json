@@ -1,0 +1,621 @@
+{
+  "schemaVersion": 1,
+  "issue": 7943,
+  "status": "pre-merge validation complete; hosted final gates and actual main scheduled lowering run pending",
+  "optimizationHead": "bb8bf4e60d2c646305366fa45ca653ecd5a37935",
+  "nativeComparison": {
+    "base": "d89b6a12c0a574eb39e3b2127d564b73500f73ea",
+    "branch": "1b0486404339807f69c76d4c04fa669c708990f3",
+    "job": "8a49ccf4-7b8e-4681-8a8b-3ebc3fe0df7b",
+    "method": "Identical benchmark-only emission of existing Duration nanoseconds after all phase windows, normalized to fractional milliseconds with integer-ms association checks. Original API/timer boundaries and ordering/reporter/guards unchanged. Five pairs per fixture.",
+    "qualification": {
+      "qualified": true,
+      "commandExitCode": 0,
+      "artifactDrift": false,
+      "observedExternalBuildActivity": false,
+      "cpuPolicyChanged": false,
+      "thermalInvalid": false,
+      "throttled": false,
+      "protocolVerdict": {
+        "fingerprintDrift": false,
+        "tooNoisy": false,
+        "realChange": true,
+        "inconclusive": false,
+        "zeroBaselineIncrease": false
+      },
+      "orderedMeshAndDiagnosticsIdentity": true,
+      "scope": "Common instrumented native phase timings; allWallMs includes instrumentation. Fingerprint excludes UV/textures/material definitions/instancing."
+    },
+    "fixtures": [
+      {
+        "fixture": "0-AC20-FZK-Haus.ifc",
+        "phases": [
+          {
+            "phase": "parse",
+            "baseMedianMs": 14.323949,
+            "branchMedianMs": 14.52491,
+            "deltaPct": 1.402972043533522,
+            "noisePct": 5.419161992269038,
+            "real": false,
+            "direction": "slower"
+          },
+          {
+            "phase": "geometry",
+            "baseMedianMs": 47.674741,
+            "branchMedianMs": 47.528266,
+            "deltaPct": -0.30723816622306405,
+            "noisePct": 3.954945450044508,
+            "real": false,
+            "direction": "faster"
+          },
+          {
+            "phase": "TOTAL",
+            "baseMedianMs": 62.542916,
+            "branchMedianMs": 62.056805,
+            "deltaPct": -0.7772439008120458,
+            "noisePct": 3.1554380994963536,
+            "real": false,
+            "direction": "faster"
+          }
+        ],
+        "output": {
+          "csgFailures": 0,
+          "degenerateDropped": 0,
+          "meshFingerprintsFnv1a64": [
+            "7377db33331a3523"
+          ],
+          "meshes": 285,
+          "triangles": 20322,
+          "vertices": 35940
+        }
+      },
+      {
+        "fixture": "1-ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "phases": [
+          {
+            "phase": "parse",
+            "baseMedianMs": 33.783805,
+            "branchMedianMs": 34.106898,
+            "deltaPct": 0.9563546794092616,
+            "noisePct": 1.4992716184574333,
+            "real": false,
+            "direction": "slower"
+          },
+          {
+            "phase": "geometry",
+            "baseMedianMs": 4014.468332,
+            "branchMedianMs": 3466.070486,
+            "deltaPct": -13.660534861581263,
+            "noisePct": 2.3542335169677453,
+            "real": true,
+            "direction": "faster"
+          },
+          {
+            "phase": "TOTAL",
+            "baseMedianMs": 4048.624898,
+            "branchMedianMs": 3500.158037,
+            "deltaPct": -13.546991257968594,
+            "noisePct": 2.3389286581421342,
+            "real": true,
+            "direction": "faster"
+          }
+        ],
+        "output": {
+          "csgFailures": 9,
+          "degenerateDropped": 7,
+          "meshFingerprintsFnv1a64": [
+            "e96e7e6149ccd77b"
+          ],
+          "meshes": 1402,
+          "triangles": 136257,
+          "vertices": 218966
+        }
+      },
+      {
+        "fixture": "2-ISSUE_053_20181220Holter_Tower_10.ifc",
+        "phases": [
+          {
+            "phase": "parse",
+            "baseMedianMs": 819.489235,
+            "branchMedianMs": 822.099643,
+            "deltaPct": 0.3185408530717315,
+            "noisePct": 0.5833739841622134,
+            "real": false,
+            "direction": "slower"
+          },
+          {
+            "phase": "geometry",
+            "baseMedianMs": 2604.421421,
+            "branchMedianMs": 2606.629876,
+            "deltaPct": 0.0847963767381392,
+            "noisePct": 0.6718541730194146,
+            "real": false,
+            "direction": "slower"
+          },
+          {
+            "phase": "TOTAL",
+            "baseMedianMs": 3427.228147,
+            "branchMedianMs": 3429.645999,
+            "deltaPct": 0.07054832349333058,
+            "noisePct": 0.6215674908787941,
+            "real": false,
+            "direction": "slower"
+          }
+        ],
+        "output": {
+          "csgFailures": 0,
+          "degenerateDropped": 0,
+          "meshFingerprintsFnv1a64": [
+            "9af337ef8f713ce5"
+          ],
+          "meshes": 109515,
+          "triangles": 2895374,
+          "vertices": 4515185
+        }
+      }
+    ],
+    "evidenceManifest": {
+      "id": "pop-os-issue7943-precision-1b04864043-selected",
+      "sha256": "68bd25ca510cdc9e4cbcf0738fa30acca03d33eb19fe6309aa0cdf5299f45d5a",
+      "verified": true,
+      "contents": "Readable JSON containing original receipts, helper source, exact instrumentation, raw stdout/stderr/normalized samples, report, qualification, readiness and ordering; original measurement not repeated."
+    },
+    "scope": "Reported native phase timings. allWallMs includes logging. Ordered fingerprint covers positions/normals/indices/colour; excludes UVs, textures, material definitions and instancing."
+  },
+  "instructionCeilings": {
+    "source": "1b0486404339807f69c76d4c04fa669c708990f3",
+    "job": "3d7552d6-4e80-4552-a4e4-ad0f60ee6ff4",
+    "measurementCompleted": true,
+    "wrapperExitCode": 1,
+    "wrapperFailure": "Official checker scanned metadata evidence.json alongside measured files. No measurement error.",
+    "recoveredOfficialCheck": {
+      "exitCode": 0,
+      "command": "node scripts/perf-ratchet/perf-ratchet.mjs check --measured-dir containing only small.json and large.json",
+      "allMetricsPassed": 11
+    },
+    "measured": {
+      "small.json": {
+        "family": "native-instructions",
+        "commit": "1b0486404339807f69c76d4c04fa669c708990f3",
+        "measuredAt": "2026-10-23T15:55:29.912Z",
+        "metrics": [
+          {
+            "id": "fzk-haus.parse",
+            "value": 95172770,
+            "detail": "parseIr Ir"
+          },
+          {
+            "id": "fzk-haus.entity-scan",
+            "value": 57490532,
+            "detail": "entityScanIr Ir"
+          },
+          {
+            "id": "fzk-haus.lookup",
+            "value": 13074796,
+            "detail": "lookupIr Ir"
+          },
+          {
+            "id": "fzk-haus.preprocess",
+            "value": 24510893,
+            "detail": "preprocessIr Ir"
+          },
+          {
+            "id": "fzk-haus.geometry",
+            "value": 376305147,
+            "detail": "geometryIr Ir"
+          },
+          {
+            "id": "fzk-haus.total",
+            "value": 471481157,
+            "detail": "totalIr Ir"
+          }
+        ]
+      },
+      "large.json": {
+        "family": "native-instructions-large",
+        "commit": "1b0486404339807f69c76d4c04fa669c708990f3",
+        "measuredAt": "2026-10-23T15:59:10.055Z",
+        "metrics": [
+          {
+            "id": "issue-129.parse",
+            "value": 260259253,
+            "detail": "parseIr Ir"
+          },
+          {
+            "id": "issue-129.entity-scan",
+            "value": 253366715,
+            "detail": "entityScanIr Ir"
+          },
+          {
+            "id": "issue-129.preprocess",
+            "value": 6731997,
+            "detail": "preprocessIr Ir"
+          },
+          {
+            "id": "issue-129.geometry",
+            "value": 28462416085,
+            "detail": "geometryIr Ir"
+          },
+          {
+            "id": "issue-129.total",
+            "value": 28722705853,
+            "detail": "totalIr Ir"
+          }
+        ]
+      }
+    },
+    "hashes": {
+      "small.json": "b7dd5f028a3d420cb70cd5cbd090c29e43b8d714ff74df095d0917449c64728b",
+      "large.json": "051fc4cbc92c0ea56ce2fdbce4725fd5a3f281023585efeb6c81766680827aa1"
+    },
+    "evidenceManifest": {
+      "id": "pop-os-issue7943-current-instructions-v2-1b04864043-selected",
+      "sha256": "1c8fda9da2aac9d86f83bea487e922f65016e6ff9317c0353a98b79ddba5502d",
+      "verified": true
+    }
+  },
+  "tests": {
+    "workspace": {
+      "commit": "bb8bf4e60d2c646305366fa45ca653ecd5a37935",
+      "job": "4f91267f-62af-476e-99f6-10862cc1feb6",
+      "exitCode": 0,
+      "summaryTotals": {
+        "passed": 6337,
+        "failed": 0,
+        "ignored": 46
+      },
+      "fixtureCoverage": "No downloaded IFC fixtures in checkout. Fixture-dependent tests may return early as ok; not counted as exercised model coverage. Separate real-model comparisons cover only documented perf_probe scope."
+    },
+    "geometryLibrary": {
+      "source": "f4f7794dbb",
+      "passed": 1905,
+      "ignored": 1
+    },
+    "regressions": {
+      "source": "bb8bf4e60d",
+      "passed": 4,
+      "job": "033813f6-713c-4a44-a281-867f5c057c8d"
+    },
+    "strictClippy": {
+      "source": "bb8bf4e60d",
+      "command": "cargo clippy --workspace --all-targets -- -D warnings",
+      "exitCode": 0,
+      "job": "b9bbfb69-6ca5-4fb3-9b08-ed58eeac3786"
+    },
+    "ratchetTestsPassed": 42,
+    "determinism": {
+      "run": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39960517276",
+      "source": "bb8bf4e60d",
+      "arm64": "success",
+      "wasm32": "success"
+    }
+  },
+  "sourceApplicability": {
+    "mergedHead": "54b5c7ec97",
+    "verdict": "Qualified native comparison remains applicable; no full native A/B repeat needed solely for upstream changes",
+    "evidence": "Geometry, native processor/probe and relevant dependencies/profile/toolchain unchanged. GUID generation has no native-load caller; deprecation/docs-only flat.rs change. New lockfile dependencies are outside processing probe graph.",
+    "browserScope": "Prior-baseline isolation experiment, not final-bundle latency qualification because new export APIs change WASM build graph. Final-head hosted gates and actual merged-main lowering run remain required."
+  },
+  "excludedAttempts": [
+    {
+      "cohortId": "issue7943-native-c06ca7991c",
+      "disposition": "Aborted before measurement submission: identical base and branch binary SHA256 despite distinct source commits. Not timing evidence.",
+      "baseAndBranchSha256": "abb886406a7b661d8e0648d5247217facc939bf65e4d956145e354f2ee399019",
+      "baseReceipt": "3e656ae4-d485-49e4-a796-6ecd79871ed3",
+      "branchReceipt": "e8e1e02a-205f-4696-b969-7569ba068f57"
+    },
+    {
+      "cohort": "issue7943-fresh-c06ca7991c",
+      "result": "Five clean paired rounds, but unqualified because lookup rounded to zero ms on both sides."
+    },
+    {
+      "job": "683d0703-912f-49df-9781-3c38a0df18ca",
+      "command": "current-head callgrind instruction check",
+      "result": "Build completed; measurement did not start because Valgrind executable absent. Source unchanged. No ceiling conclusion."
+    },
+    {
+      "job": "238f8376-7fae-4a93-9ec1-5b80f64f7b81",
+      "command": "browser base preparation",
+      "result": "Root Turbo build completed56tasks but restored WASM from cached task; hash differed from freshly source-built WASM. Bundle rejected. Source unchanged. Repaired attempt disables cache reads and forwards checksum freshness."
+    }
+  ],
+  "browser": {
+    "job": "0245afae-15bd-42ab-b6ba-60353897ad0f",
+    "base": "d89b6a12c0a574eb39e3b2127d564b73500f73ea",
+    "branch": "1b0486404339807f69c76d4c04fa669c708990f3",
+    "qualification": {
+      "qualified": true,
+      "commandExitCode": 0,
+      "artifactDrift": false,
+      "observedExternalBuildActivity": false,
+      "cpuPolicyChanged": false,
+      "thermalInvalid": false,
+      "throttled": false,
+      "protocolVerdict": {
+        "noSuccessfulSamples": false,
+        "fingerprintDrift": false,
+        "tooNoisy": false,
+        "realChange": true,
+        "insufficientPairedSamples": false,
+        "incomparableFixture": false,
+        "inconclusive": false,
+        "zeroBaselineIncrease": false
+      },
+      "completeFivePairsPerFixture": true,
+      "confirmedHardwareGpu": true,
+      "orderLimitation": "Repository harness uses fixed base-first order; not counterbalanced, position bias remains.",
+      "scope": "Repository fresh-process browser worker-pool cold-load harness; count identity only. Native comparison separately qualifies ordered buffers/diagnostics. Source-built base and tree-matched hosted branch."
+    },
+    "coverage": "Observed metadata/geometry/renderer logs plus canvas allocation (100ms polling); search, cache-tail memory, properties, picking and Firefox unqualified.",
+    "failures": 0,
+    "deviceLossFailures": 0,
+    "fixtures": [
+      {
+        "fixture": "0-AC20-FZK-Haus.ifc",
+        "metrics": [
+          {
+            "metric": "first-batch (geom submitted)",
+            "baseMedianMs": 227,
+            "branchMedianMs": 229,
+            "deltaPct": 0.881057268722467,
+            "noisePct": 9.691629955947137,
+            "real": false,
+            "direction": "slower"
+          },
+          {
+            "metric": "first-visible (actual paint)",
+            "baseMedianMs": 546,
+            "branchMedianMs": 556,
+            "deltaPct": 1.8315018315018317,
+            "noisePct": 5.4945054945054945,
+            "real": false,
+            "direction": "slower"
+          },
+          {
+            "metric": "stream-complete",
+            "baseMedianMs": 700,
+            "branchMedianMs": 689,
+            "deltaPct": -1.5714285714285716,
+            "noisePct": 7.428571428571429,
+            "real": false,
+            "direction": "faster"
+          },
+          {
+            "metric": "spatial-ready",
+            "baseMedianMs": 803,
+            "branchMedianMs": 796,
+            "deltaPct": -0.8717310087173101,
+            "noisePct": 8.7173100871731,
+            "real": false,
+            "direction": "faster"
+          },
+          {
+            "metric": "metadata-complete",
+            "baseMedianMs": 909,
+            "branchMedianMs": 884,
+            "deltaPct": -2.7502750275027505,
+            "noisePct": 6.050605060506051,
+            "real": false,
+            "direction": "faster"
+          },
+          {
+            "metric": "METADATA + RENDER (observed)",
+            "baseMedianMs": 1033,
+            "branchMedianMs": 1026,
+            "deltaPct": -0.6776379477250726,
+            "noisePct": 5.227492739593417,
+            "real": false,
+            "direction": "faster"
+          },
+          {
+            "metric": "app total (legacy CI metric)",
+            "baseMedianMs": 957,
+            "branchMedianMs": 931,
+            "deltaPct": -2.7168234064785786,
+            "noisePct": 5.329153605015674,
+            "real": false,
+            "direction": "faster"
+          }
+        ],
+        "countIdentity": {
+          "totalMeshes": {
+            "d89b6a12c0a574eb39e3b2127d564b73500f73ea": [
+              317
+            ],
+            "1b0486404339807f69c76d4c04fa669c708990f3": [
+              317
+            ]
+          }
+        }
+      },
+      {
+        "fixture": "1-ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "metrics": [
+          {
+            "metric": "first-batch (geom submitted)",
+            "baseMedianMs": 951,
+            "branchMedianMs": 957,
+            "deltaPct": 0.6309148264984227,
+            "noisePct": 22.292323869610936,
+            "real": false,
+            "direction": "slower"
+          },
+          {
+            "metric": "first-visible (actual paint)",
+            "baseMedianMs": 1421,
+            "branchMedianMs": 1424,
+            "deltaPct": 0.211118930330753,
+            "noisePct": 10.907811400422238,
+            "real": false,
+            "direction": "slower"
+          },
+          {
+            "metric": "stream-complete",
+            "baseMedianMs": 5496,
+            "branchMedianMs": 4859,
+            "deltaPct": -11.590247452692868,
+            "noisePct": 3.4388646288209603,
+            "real": true,
+            "direction": "faster"
+          },
+          {
+            "metric": "spatial-ready",
+            "baseMedianMs": 1129,
+            "branchMedianMs": 1136,
+            "deltaPct": 0.6200177147918512,
+            "noisePct": 20.017714791851198,
+            "real": false,
+            "direction": "slower"
+          },
+          {
+            "metric": "metadata-complete",
+            "baseMedianMs": 1288,
+            "branchMedianMs": 1338,
+            "deltaPct": 3.881987577639751,
+            "noisePct": 16.53726708074534,
+            "real": false,
+            "direction": "slower"
+          },
+          {
+            "metric": "METADATA + RENDER (observed)",
+            "baseMedianMs": 5913,
+            "branchMedianMs": 5217,
+            "deltaPct": -11.770674784373414,
+            "noisePct": 3.2470826991374935,
+            "real": true,
+            "direction": "faster"
+          },
+          {
+            "metric": "app total (legacy CI metric)",
+            "baseMedianMs": 5623,
+            "branchMedianMs": 4983,
+            "deltaPct": -11.381824648764006,
+            "noisePct": 3.325626889560733,
+            "real": true,
+            "direction": "faster"
+          }
+        ],
+        "countIdentity": {
+          "totalMeshes": {
+            "d89b6a12c0a574eb39e3b2127d564b73500f73ea": [
+              1402
+            ],
+            "1b0486404339807f69c76d4c04fa669c708990f3": [
+              1402
+            ]
+          }
+        }
+      },
+      {
+        "fixture": "2-ISSUE_053_20181220Holter_Tower_10.ifc",
+        "metrics": [
+          {
+            "metric": "first-batch (geom submitted)",
+            "baseMedianMs": 1150,
+            "branchMedianMs": 1128,
+            "deltaPct": -1.9130434782608694,
+            "noisePct": 14.43478260869565,
+            "real": false,
+            "direction": "faster"
+          },
+          {
+            "metric": "first-visible (actual paint)",
+            "baseMedianMs": 2040,
+            "branchMedianMs": 2035,
+            "deltaPct": -0.24509803921568626,
+            "noisePct": 10.098039215686274,
+            "real": false,
+            "direction": "faster"
+          },
+          {
+            "metric": "stream-complete",
+            "baseMedianMs": 8156,
+            "branchMedianMs": 8104,
+            "deltaPct": -0.6375674350171653,
+            "noisePct": 6.976459048553213,
+            "real": false,
+            "direction": "faster"
+          },
+          {
+            "metric": "spatial-ready",
+            "baseMedianMs": 3969,
+            "branchMedianMs": 4048,
+            "deltaPct": 1.9904257999496096,
+            "noisePct": 3.3509700176366843,
+            "real": false,
+            "direction": "slower"
+          },
+          {
+            "metric": "metadata-complete",
+            "baseMedianMs": 6101,
+            "branchMedianMs": 6231,
+            "deltaPct": 2.1307982297983936,
+            "noisePct": 3.0158990329454185,
+            "real": false,
+            "direction": "slower"
+          },
+          {
+            "metric": "METADATA + RENDER (observed)",
+            "baseMedianMs": 11275,
+            "branchMedianMs": 11299,
+            "deltaPct": 0.21286031042128603,
+            "noisePct": 4.23059866962306,
+            "real": false,
+            "direction": "slower"
+          },
+          {
+            "metric": "app total (legacy CI metric)",
+            "baseMedianMs": 9093,
+            "branchMedianMs": 9073,
+            "deltaPct": -0.2199494116353239,
+            "noisePct": 5.751677114263719,
+            "real": false,
+            "direction": "faster"
+          }
+        ],
+        "countIdentity": {
+          "totalMeshes": {
+            "d89b6a12c0a574eb39e3b2127d564b73500f73ea": [
+              110633
+            ],
+            "1b0486404339807f69c76d4c04fa669c708990f3": [
+              110633
+            ]
+          }
+        }
+      }
+    ],
+    "gpuAdapters": [
+      "{\"architecture\": \"lovelace\", \"fallback\": false}"
+    ],
+    "browserVersions": [
+      "156.0.8078.4"
+    ],
+    "scope": "Preceding-baseline isolation experiment; not final-bundle latency qualification after upstream export API additions. Fixed base-first order leaves position bias. Browser harness establishes count identity; native ordered fingerprints separately establish documented mesh channels.",
+    "artifactHashes": {
+      "runs.jsonl": "777c16b4ea6a4a7b7ea2f8e694b018d1b6087cbb6587c653b04ed4d70c86e4da",
+      "qualification.json": "3e2c1146e310eaca9442b5f718cea852152689973446d775ed180a282f06ab70",
+      "command.json": "9bfef6af2a8a2aafe082f749e7640c25b9dfe879e0a8493554bc276f0345a460",
+      "sample-evidence.json": "ca06dc6e606cf0fb3c3018a0b42e0f34f8077d7feb241bc2f6783d60a0c15528",
+      "report.json": "8982e8ff40fd582ffccc0ba0cca3e86e0863947eb00be43b578c36c5e77ec5c6",
+      "readiness-before.json": "c9670dbb34211fcc26bc2cf185aa054c3dc8f631780213bea65605accbc0d22d",
+      "readiness-samples.json": "483f9c854d0691417e80eda5efce93a4b12d275169989adb5974902a3f3ec469"
+    },
+    "evidenceManifest": {
+      "id": "pop-os-issue7943-browser-1b04864043-selected",
+      "sha256": "1ebd4bc53b7af805d56ee3bea151b7a6291e906fb65bbbfc9cbbcbf2177f794a",
+      "verified": true
+    }
+  },
+  "currentReviewedHead": "54b5c7ec97834ae5595b0e1f3e7a1cc777b9a258",
+  "reviews": {
+    "independentCodeRounds": 3,
+    "independentEvidenceReview": "initial blockers addressed by completed workspace run, current-ceiling check, qualified native/browser cohorts",
+    "measurementMechanisms": "independently reviewed before launch; provenance and fixture-completeness objections addressed",
+    "sourceApplicability": "independently reviewed after merge from main",
+    "hostedClaude": "no findings on54b5c7ec9",
+    "hostedCodeRabbit": "no actionable findings through54b5c7ec9",
+    "cursor": "usage limited; not treated as a review pass",
+    "finalAdversarialEvidence": "No new acceptance blocker; merge supportable once current hosted gates pass. Actual main lowering workflow still required to declare solved."
+  }
+}

@@ -8,14 +8,14 @@
       "unit": "KiB",
       "fixture": "tests/models/various/01_Snowdon_Towers_Sample_Structural(1).ifc",
       "description": "GPUQueue.writeBuffer payload during the streaming load (geometry plus per-frame uploads), from the file-input change until the scene has rendered and gone idle",
-      "ceiling": 39259.9,
+      "ceiling": 26734.2,
       "tolerance": {
         "kind": "relative",
         "value": 0.005
       },
       "provenance": {
-        "commit": "80d949f1a58765e7bdd7358f8bc530004866ca4d",
-        "measuredAt": "2026-10-15T06:52:31Z"
+        "commit": "015efec6c98a26deaa50329fc30545d0fbffeb2b",
+        "measuredAt": "2026-10-23T17:31:31.856Z"
       }
     }
   ]

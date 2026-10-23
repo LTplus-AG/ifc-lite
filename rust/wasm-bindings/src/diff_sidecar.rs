@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 //! Sidecars are small JSON documents, unlike model fingerprint columns.
 //! Date validation delegates to the host's Date.parse compatibility contract.
-use ifc_lite_diff::{sidecar_document::{create_sidecar, serialize_sidecar, SidecarKind},
+use ifc_lite_diff::{sidecar_document::{create_sidecar, parse_ordered_json, serialize_sidecar, SidecarKind},
     sidecar_validation::{validate_identity_sidecar, validate_lineage_sidecar}};
 use wasm_bindgen::prelude::*;
 
@@ -31,5 +31,6 @@ pub fn diff_validate_sidecar(text: &str, lineage: bool) -> Result<Vec<String>, J
 /// Emit JSON.stringify-compatible pretty bytes and the trailing newline.
 #[wasm_bindgen(js_name = diffSerializeSidecar)]
 pub fn diff_serialize_sidecar(text: &str) -> Result<String, JsValue> {
-    Ok(serialize_sidecar(&value(text)?))
+    let ordered = parse_ordered_json(text).map_err(|error| JsValue::from_str(&error.to_string()))?;
+    Ok(serialize_sidecar(&ordered))
 }

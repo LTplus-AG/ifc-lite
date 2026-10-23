@@ -322,3 +322,28 @@ fn issue_7943_single_source_face_retains_its_oblique_boundary_and_movement_limit
     let (plans, buckets) = patch(&shifted, &[[0,1,2]]);
     assert!(build(&plans, &buckets).is_none(), "zero span must not bypass the movement certificate");
 }
+
+#[test]
+fn issue_7943_planar_height_certificate_matches_rational_oracle_on_every_axis() {
+    let faces = [[0,1,2],[0,2,3]];
+    // All f32 exactly: planar, tilted, smallest subnormal, and a finite
+    // nonplanar span on each side of the unchanged tolerance. Arbitrary f64
+    // coordinates also keep the rational fallback.
+    for (height, warp) in [(0.,0.), (0.5,0.), (f64::from(f32::from_bits(1)),0.),
+        (0.,CONFORM_TOL/2.), (0.,2.*CONFORM_TOL), (0.1,0.)] {
+        for rotation in 0..3 {
+            let rotate = |p: [f64;3]| std::array::from_fn(|i| p[(i+rotation)%3]);
+            let points = [[0.,0.,0.],[1.,0.,height],[1.,1.,2.*height+warp],[0.,1.,height]].map(rotate);
+            let (_,mut buckets) = patch(&points, &faces);
+            for t in buckets.values_mut().flatten() {
+                t.normal = Vector3::from(rotate([0.,0.,1.]));
+            }
+            let tris = buckets.values().next().unwrap();
+            assert!(supported_cells::nonoverlapping(tris), "certificate precondition");
+            let source = partition(tris).unwrap();
+            let drop = (2+3-rotation)%3;
+            assert_eq!(certify_height_span(&source,drop), rational_height_span(&source,drop),
+                "height={height}, warp={warp}, drop={drop}");
+        }
+    }
+}

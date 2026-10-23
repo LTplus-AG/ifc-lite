@@ -134,6 +134,31 @@ mod tests {
         }}}}
     }
 
+    #[test]
+    fn issue_7943_near_collinear_contacts_match_rational_oracle() {
+        use crate::kernel::{rational::orient2d_exact, DropAxis, Sign};
+        let side = |a: [f64;2], b: [f64;2], c: [f64;2]| {
+            orient2d_exact([a[0],a[1],0.], [b[0],b[1],0.], [c[0],c[1],0.], DropAxis::Z)
+        };
+        let on = |a, b, p| side(a,b,p) == Sign::Zero && in_segment_box(a,b,p);
+        for offset in [0., 10_000_000.] {
+            let a = [offset,offset];
+            let b = [offset+3.,offset+7.];
+            let y = offset+1.75;
+            for start in [y.next_down(),y,y.next_up()] {
+                let c = [offset+0.75,start];
+                let d = [offset+0.75,offset+5.];
+                let [s,t,u,v] = [side(a,b,c),side(a,b,d),side(c,d,a),side(c,d,b)];
+                let expected = s != Sign::Zero && s == t.flip() && u != Sign::Zero && u == v.flip()
+                    || on(a,b,c) || on(a,b,d) || on(c,d,a) || on(c,d,b);
+                assert_eq!(expected, start <= y, "one ULP changes a crossing/contact into separation");
+                for (a,b) in [(a,b),(b,a)] { for (c,d) in [(c,d),(d,c)] {
+                    assert_eq!(segments_intersect(a,b,c,d), expected);
+                }}
+            }
+        }
+    }
+
     /// The closed segment test both the scan outline repair and its test
     /// oracle (`assert_valid`) rely on, pinned on hand cases so a regression
     /// in it cannot hide behind the two agreeing (#6883 review).

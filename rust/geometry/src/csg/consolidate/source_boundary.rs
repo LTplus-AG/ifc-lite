@@ -65,6 +65,20 @@ fn certify_height_span(source: &Partition, drop: usize) -> Option<()> {
     // plane, so every residual is equal and |n[drop]| is strictly positive.
     // No rational construction is needed to prove its zero height span.
     if source.faces.len() == 1 { return Some(()); }
+    let first = source.faces.first()?.map(|i| source.points[i]);
+    // Mesh positions are f32. For these exact dyadic inputs the shared
+    // adaptive orient3d has ample exponent range (even subnormal f32 products
+    // fit f64). An exactly coplanar partition also has zero residual span.
+    // Keep unrestricted f64 inputs and every noncoplanar case on the existing
+    // rational certificate, including arbitrarily small nonzero height spans.
+    if source.points.iter().all(|p| p.iter().all(|&v| f64::from(v as f32) == v))
+        && source.points.iter().all(|p| crate::kernel::predicates::orient3d_explicit(
+            first[0].into(), first[1].into(), first[2].into(), (*p).into(),
+        ) == crate::kernel::Sign::Zero) { return Some(()); }
+    rational_height_span(source, drop)
+}
+
+fn rational_height_span(source: &Partition, drop: usize) -> Option<()> {
     let points: Vec<[BigRational;3]> = source.points.iter().map(|p| Some([
         BigRational::from_float(p.x)?, BigRational::from_float(p.y)?,
         BigRational::from_float(p.z)?,

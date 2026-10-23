@@ -14,7 +14,7 @@
 //! their GlobalId: a wall into a storey the plan also adds, two doors of one
 //! new type.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::step_text::escape;
 use crate::step_ids::IdAllocator;
@@ -28,7 +28,7 @@ use super::index::FileIndex;
 use super::owner_history;
 use super::props_synth::{defines_by_properties_record, ref_list, ref_or_unset};
 use super::tessellation::{find_body_context, synthesize_context, Emit};
-use super::types::{ObjectRef, PlanContext};
+use super::types::{ObjectRef, PlanContext, Refusal};
 
 use check::Checked;
 
@@ -82,7 +82,7 @@ impl<'a> AddState<'a> {
     }
 
     /// Build one object, or refuse it whole.
-    pub(crate) fn add(&mut self, key: &ObjectRef, obj: &NewObject, ids: &mut IdAllocator) -> Result<(), String> {
+    fn add(&mut self, key: &ObjectRef, obj: &NewObject, ids: &mut IdAllocator) -> Result<(), String> {
         let checked = self.check(key, obj)?;
         let mut out = Vec::new();
         let owner_history = match self.owner_history {
@@ -127,11 +127,46 @@ impl<'a> AddState<'a> {
         Ok(())
     }
 
+    /// Build every Add, returning how many were written. The relationships of
+    /// every Add are written together, all or nothing: when `finish` fails (the
+    /// id space runs out, or a list it extends does not scan), it discards every
+    /// built object's records along with them (see its doc comment), so each Add
+    /// that had built is refused too.
+    pub(crate) fn build_all(
+        mut self,
+        adds: &[(&ObjectRef, &NewObject)],
+        ids: &mut IdAllocator,
+        edits_by_id: &mut HashMap<u32, BTreeMap<usize, String>>,
+        appended: &mut Vec<(u32, String)>,
+        refusals: &mut Vec<Refusal>,
+    ) -> usize {
+        let mut built = Vec::new();
+        for &(key, new) in adds {
+            match self.add(key, new, ids) {
+                Ok(()) => built.push(key),
+                Err(reason) => refusals.push(Refusal { object: key.clone(), reason }),
+            }
+        }
+        match self.finish(ids, edits_by_id) {
+            Ok(records) => {
+                appended.extend(records);
+                built.len()
+            }
+            Err(reason) => {
+                refusals.extend(built.into_iter().map(|key| Refusal {
+                    object: key.clone(),
+                    reason: format!("relationships for added objects not written: {reason}"),
+                }));
+                0
+            }
+        }
+    }
+
     /// Every record and list edit the Adds produced, relationships last.
-    pub(crate) fn finish(
+    fn finish(
         self,
         ids: &mut IdAllocator,
-        edits_by_id: &mut HashMap<u32, std::collections::BTreeMap<usize, String>>,
+        edits_by_id: &mut HashMap<u32, BTreeMap<usize, String>>,
     ) -> Result<Vec<(u32, String)>, String> {
         let mut records = self.records;
         records.extend(self.rels.finish(self.schema, ids, self.owner_history, edits_by_id)?);

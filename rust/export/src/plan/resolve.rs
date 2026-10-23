@@ -48,23 +48,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
         }
     }
 
-    // A patched (and not also deleted — delete wins, checked below) object
-    // survives by construction: the plan named it, and a copy-on-write patch
-    // can give it a relationship the source file never had, which the
-    // reference-counting cascade below has no way to see. Passed to every
-    // call of `resolve_deletes` so its "last referrer gone" cascade never
-    // prunes an object the plan is patching out from under the patch.
-    let mut protected: HashSet<u32> = resolved
-        .iter()
-        .filter(|&&(id, d)| matches!(d, Disposition::Patch(_)) && !requested_deletes.contains(&id))
-        .map(|&(id, _)| id)
-        .collect();
-    // So does what an Add names (its container, placement parent, type,
-    // host): deleting a type's last occurrence must not take the type an Add
-    // in the same plan is typed by.
-    protected.extend(
-        adds.iter().flat_map(|(_, new)| new.references()).filter_map(|r| index.resolve(r)).filter(|id| !requested_deletes.contains(id)),
-    );
+    let mut protected = protected_ids(index, &resolved, &adds, &requested_deletes);
 
     // A gating-only pass: whether the requested deletes alone (no patch has
     // run yet, so no copy-on-write detach is known) already remove an
@@ -175,7 +159,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
         0
     } else {
         let state = add::AddState::new(index, schema, &removed, &plan.context, owner_history_ref, body_context.chosen());
-        build_adds(state, &adds, &mut ids, &mut edits_by_id, &mut appended, &mut refusals)
+        state.build_all(&adds, &mut ids, &mut edits_by_id, &mut appended, &mut refusals)
     };
 
     Resolution { appended, edits_by_id, removed, refusals, patched, added, patched_objects, dropped_representations }
@@ -232,6 +216,23 @@ fn split_dispositions<'p>(
     (resolved, adds)
 }
 
+/// What the delete cascade must keep even when its last referrer goes. A
+/// patched object (not also deleted: delete wins) survives by construction,
+/// since a copy-on-write patch can give it a relationship the source never
+/// had, which the reference count cannot see. So does what an Add names (its
+/// container, placement parent, type, host): deleting a type's last
+/// occurrence must not take the type an Add in the same plan is typed by.
+fn protected_ids(
+    index: &FileIndex,
+    resolved: &[(u32, &Disposition)],
+    adds: &[(&ObjectRef, &NewObject)],
+    requested_deletes: &HashSet<u32>,
+) -> HashSet<u32> {
+    let patched = resolved.iter().filter(|&&(_, d)| matches!(d, Disposition::Patch(_))).map(|&(id, _)| id);
+    let named = adds.iter().flat_map(|(_, new)| new.references()).filter_map(|r| index.resolve(r));
+    patched.chain(named).filter(|id| !requested_deletes.contains(id)).collect()
+}
+
 /// Every list change on one (record, attribute) slot, rendered once against
 /// the source list, so no change discards another's.
 fn render_list_edits(
@@ -253,41 +254,6 @@ fn render_list_edits(
             None => continue,
         };
         edits_by_id.entry(id).or_default().insert(idx, edit.render(&entries));
-    }
-}
-
-/// Build every Add, returning how many were written. The relationships of
-/// every Add are written together, all or nothing: when `finish` fails (the
-/// id space runs out, or a list it extends does not scan), it discards every
-/// built object's records along with them (see its doc comment), so each Add
-/// that had built is refused too.
-fn build_adds(
-    mut state: add::AddState,
-    adds: &[(&ObjectRef, &NewObject)],
-    ids: &mut IdAllocator,
-    edits_by_id: &mut HashMap<u32, BTreeMap<usize, String>>,
-    appended: &mut Vec<(u32, String)>,
-    refusals: &mut Vec<Refusal>,
-) -> usize {
-    let mut built = Vec::new();
-    for &(key, new) in adds {
-        match state.add(key, new, ids) {
-            Ok(()) => built.push(key),
-            Err(reason) => refusals.push(Refusal { object: key.clone(), reason }),
-        }
-    }
-    match state.finish(ids, edits_by_id) {
-        Ok(records) => {
-            appended.extend(records);
-            built.len()
-        }
-        Err(reason) => {
-            refusals.extend(built.into_iter().map(|key| Refusal {
-                object: key.clone(),
-                reason: format!("relationships for added objects not written: {reason}"),
-            }));
-            0
-        }
     }
 }
 

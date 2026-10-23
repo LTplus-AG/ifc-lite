@@ -12,6 +12,35 @@ that also dominate in the browser; the WASM-only concerns (per-worker file
 re-decode, no threads, memory bandwidth) are orchestration-level and are read
 off the viewer's own telemetry (below).
 
+## Consolidation certificates restore the instruction ratchet (#7943)
+
+**Measured reduction in exact geometry work; unchanged instruction ceilings.**
+The scheduled lane reported correctly: a correctness repair had increased work
+past its geometry budget. The accepted optimization reuses shared segment
+orientation signs, rejects strictly separated boxes before predicates, and
+proves zero source-plane height span for already certified singleton or exactly
+coplanar f32 partitions. Other surfaces retain the shared rational certificate;
+movement, winding, boundary and refusal contracts remain enforced.
+
+The source-pinned native comparison preserves ordered mesh fingerprints and
+failure diagnostics on FZK, ISSUE_129 and Holter. Five-pair native and fresh-process
+hardware-browser comparisons find a reduction on the void-heavy model; the
+house and heavy tower remain within their measured noise. The browser comparison
+uses the repository's fixed base-first order and the preceding baseline, so it
+retains position bias and does not qualify final-bundle latency after unrelated
+upstream export additions. Current-head hosted gates and the actual lowering
+workflow on merged main remain separate acceptance checks.
+
+Lesson: profile the retained correctness fix before accepting its cost. Avoiding
+repeated exact constructions and predicate evaluation recovered the budget
+without changing geometry or raising a ceiling. Integer millisecond phase fields
+cannot qualify a sub-millisecond phase: the accepted native experiment captures
+existing durations at higher precision on both sides and retains every reporter
+and host guard. A stale identical binary, a zero-resolution timing campaign,
+missing tooling and a Turbo-restored WASM artifact were rejected and preserved.
+Numerical observations, scope, source applicability and evidence references are
+in [the qualification record](../../tests/evidence/issue-7943/performance.json).
+
 ## Remote near-plane recovery (#7633)
 
 **Correctness repair; end-to-end browser timings remain within measured noise.**
@@ -4824,3 +4853,25 @@ The older symbolic implementations in the validator branch are superseded by
 that preserved symbolic parent. Both public source ancestries and their evidence
 are retained. The newly integrated source has no runtime, oracle or performance
 qualification yet; all adverse historical results and acceptance holds remain.
+### Native/browser run snapshots (E2b, #7955)
+
+The [source-qualified evidence](evidence/run-snapshot-e2b/summary.json) records
+matching native flat/instanced payload fingerprints and actual source-built
+WASM getter fingerprints. These scopes exclude complete result serialization
+and separate native material definitions.
+
+The five-pair native cohort remains inconclusive: the large opening fixture's
+lookup phase is below timer resolution. The small control's geometry and total
+medians are slower within their measured spread; both larger models are slightly
+faster within theirs. Preserve every phase result. Source-qualified probes and
+stable geometry counts do not establish performance neutrality or a speedup.
+The exact-parent CI instruction-count tiebreaker shows slightly lower geometry
+and total cost, with small parse and entity-scan increases. Accept the bounded
+snapshot infrastructure for final review under the per-slice policy, retaining
+the inconclusive timing verdict. No ceiling or tolerance changes; required
+checks and semantic review still gate merging, and retained release remains separate.
+
+Lesson: a zero-duration phase can invalidate the whole timing verdict even when
+all pairs finish and artifact provenance holds. Preserve that verdict and the
+adverse small-control observations; do not rerun until green or substitute
+count equality for full output identity or browser worker-pool performance.

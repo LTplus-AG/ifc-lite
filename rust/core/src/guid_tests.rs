@@ -49,3 +49,39 @@ fn rendered_reader_and_replacer_recognise_non_conforming_ids() {
     assert_eq!(read_leading_global_id("#5=IFCWALL($);"), None);
     assert_eq!(read_leading_global_id("#5=IFCWALL('short',$);"), None);
 }
+
+/// Independent decoder, written from the alphabet alone, so the encoder is
+/// checked against the inverse of the spec rather than against itself.
+fn decode(g: &str) -> u128 {
+    let alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
+    g.chars().fold(0u128, |acc, c| (acc << 6) | alphabet.find(c).unwrap() as u128)
+}
+
+#[test]
+fn encode_packs_two_then_twenty_one_times_six_bits() {
+    assert_eq!(encode(0), "0".repeat(22));
+    assert_eq!(encode(u128::MAX), format!("3{}", "$".repeat(21)));
+    assert_eq!(encode(1), format!("{}1", "0".repeat(21)));
+    assert_eq!(encode(63), format!("{}$", "0".repeat(21)));
+    assert_eq!(encode(64), format!("{}10", "0".repeat(20)));
+    assert_eq!(encode(1 << 126), format!("1{}", "0".repeat(21)));
+    assert_eq!(encode(1 << 120), format!("01{}", "0".repeat(20)));
+}
+
+#[test]
+fn encode_round_trips_through_an_independent_decoder() {
+    let mut x: u128 = 0x0123_4567_89ab_cdef_fedc_ba98_7654_3210;
+    for _ in 0..1000 {
+        let g = encode(x);
+        assert!(is_valid_global_id(&g), "{g}");
+        assert_eq!(decode(&g), x, "{g}");
+        x = x.wrapping_mul(0x2545_f491_4f6c_dd1d_5851_f42d_4c95_7f2d).wrapping_add(0x1405_7b7e_f767_814f);
+    }
+}
+
+#[test]
+fn deterministic_is_the_encoding_of_its_hash() {
+    for seed in ["", "abc", "wall-guid#7"] {
+        assert_eq!(deterministic(seed), encode(hash128(seed)));
+    }
+}

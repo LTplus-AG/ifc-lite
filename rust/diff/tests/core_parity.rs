@@ -65,6 +65,22 @@ fn content_match(value: &ContentMatch<'_, Value>) -> Value {
     result
 }
 
+fn split_claim(value: &ifc_lite_diff::split_types::SplitMergeClaim<'_, Value>) -> Value {
+    use ifc_lite_diff::split_types::*;
+    let kind = match value.kind { SplitMergeKind::Split => "split", SplitMergeKind::Merge => "merge" };
+    let confidence = match value.confidence { SplitConfidence::Verified => "verified", SplitConfidence::Extent => "extent", SplitConfidence::Displaced => "displaced" };
+    let mut result = json!({"kind":kind, "confidence":confidence, "whole":value.whole.reference,
+        "pieces":value.pieces.iter().map(|p| &p.reference).collect::<Vec<_>>()});
+    for (key, number) in [("wholeVolume",value.whole_volume),("piecesVolume",value.pieces_volume),("volumeResidual",value.volume_residual)] {
+        if let Some(number) = number {
+            result[key] = if number.is_finite() { serde_json::from_str(ryu_js::Buffer::new().format(number)).unwrap() } else { Value::Null };
+        }
+    }
+    if let Some(excluded) = value.excluded { result["excluded"] = excluded.reference.clone(); }
+    if value.cross_class { result["crossClass"] = json!(true); }
+    result
+}
+
 fn run_vectors(file: &str) {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests").join(file);
     let vectors: Vec<Value> = serde_json::from_str(&std::fs::read_to_string(path)
@@ -89,6 +105,13 @@ fn run_vectors(file: &str) {
             let matches: Vec<_> = matched.content_matches.iter().map(content_match).collect();
             (matched.core, Some(matches))
         } else { (core, None) };
+        let split_claims = if raw_options["detectSplitMerge"] == true {
+            let settings = ifc_lite_diff::split_types::SplitSettings::resolve(raw_options["splitVolumeTolerance"].as_f64(),
+                raw_options["splitPaddingMin"].as_f64(), raw_options["splitPaddingRatio"].as_f64(), raw_options["maxSplitPieces"].as_f64());
+            let families: Option<Vec<Vec<String>>> = raw_options.get("classFamilies").map(|v| serde_json::from_value(v.clone()).unwrap());
+            ifc_lite_diff::split_merge::detect_split_merge(&result.entries, result.use_geometry, settings, families.as_deref())
+                .map(|claims| claims.iter().map(split_claim).collect::<Vec<_>>())
+        } else { None };
         let entries: Vec<_> = result.entries.iter().map(entry).collect();
         // JS Map iteration follows entries, while Rust stores lookup indices.
         let by_key: Vec<_> = result.entries.iter().map(|item| {
@@ -103,6 +126,7 @@ fn run_vectors(file: &str) {
         });
         if let Some(aliases) = result.applied_key_aliases { actual["appliedKeyAliases"] = json!(aliases); }
         if let Some(matches) = content_matches { actual["contentMatches"] = json!(matches); }
+        if let Some(claims) = split_claims { actual["splitMerges"] = json!(claims); }
         assert_eq!(actual, vector["expected"], "case {}", vector["name"]);
     }
 }
@@ -111,3 +135,6 @@ fn run_vectors(file: &str) {
 fn key_pass_matches_typescript_field_by_field_issue_8042() { run_vectors("core_vectors.json"); }
 #[test]
 fn content_pass_matches_typescript_field_by_field_issue_8042() { run_vectors("content_vectors.json"); }
+
+#[test]
+fn split_pass_matches_typescript_field_by_field_issue_8042() { run_vectors("split_vectors.json"); }

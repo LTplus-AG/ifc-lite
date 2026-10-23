@@ -22,6 +22,7 @@ function retained(rows) {
   const c = fingerprintColumns(rows);
   return new DiffModel(c.strings, c.fields, c.flags, c.boxes, c.volumes, c.componentOffsets, c.componentPairs);
 }
+let executedPairs = 0;
 for (const [basePath, headPath] of pairs) {
   const paths = [basePath, headPath].map(path => new URL(path, root));
   if (paths.some(path => !existsSync(path))) {
@@ -55,4 +56,10 @@ for (const [basePath, headPath] of pairs) {
       }
     } finally { head.free(); }
   } finally { base.free(); }
+  executedPairs++;
+}
+console.log(`Real IFC parity: ${executedPairs}/${pairs.length} pairs executed.`);
+if (executedPairs === 0) {
+  console.error('INCOMPLETE: no real IFC pairs executed; run pnpm fixtures and rerun parity.');
+  process.exitCode = 2;
 }

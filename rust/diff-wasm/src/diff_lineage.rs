@@ -3,26 +3,53 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 //! Direct lineage transport retains non-finite shares supplied by JS callers.
 use ifc_lite_diff::lineage::{self, Lineage, LineageEntry, LineageRelation, RekeyPolicy, RekeyRelation};
-use serde::{Deserialize, Serialize};
+use js_sys::JsString;
+use serde::{de::Error as _, Deserialize, Deserializer, Serialize};
 use wasm_bindgen::prelude::*;
 
-#[derive(Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum Relation { Identity, Split, Merge, Replaced }
-impl From<Relation> for LineageRelation {
-    fn from(value: Relation) -> Self {
-        match value { Relation::Identity => Self::Identity, Relation::Split => Self::Split,
-            Relation::Merge => Self::Merge, Relation::Replaced => Self::Replaced }
+// Staging only (#8081): inspect original JS code units before any Rust String
+// conversion. U+FFFD is valid; an unpaired surrogate must never become U+FFFD.
+const NON_SCALAR: &str = "WASM diff lineage requires well-formed UTF-16; use the public TypeScript lineage API for this input (#8042).";
+fn scalar_string(value: JsString) -> Result<String, &'static str> {
+    char::decode_utf16(value.iter()).collect::<Result<String, _>>().map_err(|_| NON_SCALAR)
+}
+struct ScalarString(String);
+impl<'de> Deserialize<'de> for ScalarString {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let original: JsString = serde_wasm_bindgen::preserve::deserialize(deserializer)?;
+        scalar_string(original).map(Self).map_err(D::Error::custom)
+    }
+}
+fn string<'de, D: Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+    ScalarString::deserialize(deserializer).map(|value| value.0)
+}
+fn strings<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
+    Vec::<ScalarString>::deserialize(deserializer).map(|values| values.into_iter().map(|value| value.0).collect())
+}
+fn entry_relation<'de, D: Deserializer<'de>>(deserializer: D) -> Result<LineageRelation, D::Error> {
+    match string(deserializer)?.as_str() {
+        "identity" => Ok(LineageRelation::Identity),
+        "split" => Ok(LineageRelation::Split),
+        "merge" => Ok(LineageRelation::Merge),
+        "replaced" => Ok(LineageRelation::Replaced),
+        _ => Err(D::Error::custom("Unknown lineage relation")),
     }
 }
 #[derive(Deserialize)]
 struct Entry {
-    base: Vec<String>, head: Vec<String>, relation: Relation, reason: String,
+    #[serde(deserialize_with = "strings")]
+    base: Vec<String>,
+    #[serde(deserialize_with = "strings")]
+    head: Vec<String>,
+    #[serde(deserialize_with = "entry_relation")]
+    relation: LineageRelation,
+    #[serde(deserialize_with = "string")]
+    reason: String,
     shares: Option<Vec<f64>>,
 }
 impl From<Entry> for LineageEntry {
     fn from(value: Entry) -> Self {
-        Self { base: value.base, head: value.head, relation: value.relation.into(),
+        Self { base: value.base, head: value.head, relation: value.relation,
             reason: value.reason, shares: value.shares }
     }
 }
@@ -64,8 +91,11 @@ fn relation(value: RekeyRelation) -> &'static str {
 }
 /// Migrate keys using Rust policies, preserving the absence of orphan relations.
 #[wasm_bindgen(js_name = diffRekeyByLineage)]
-pub fn diff_rekey_by_lineage(keys: Vec<String>, value: JsValue, deleted: Vec<String>, policy: &str) -> Result<JsValue, JsValue> {
-    let policy = match policy {
+pub fn diff_rekey_by_lineage(keys: Vec<JsString>, value: JsValue, deleted: Vec<JsString>, policy: JsString) -> Result<JsValue, JsValue> {
+    let keys = keys.into_iter().map(scalar_string).collect::<Result<Vec<_>, _>>().map_err(JsValue::from_str)?;
+    let deleted = deleted.into_iter().map(scalar_string).collect::<Result<Vec<_>, _>>().map_err(JsValue::from_str)?;
+    let policy = scalar_string(policy).map_err(JsValue::from_str)?;
+    let policy = match policy.as_str() {
         "copy-to-all" => RekeyPolicy::CopyToAll,
         "largest-share" => RekeyPolicy::LargestShare,
         "orphan-on-split" => RekeyPolicy::OrphanOnSplit,

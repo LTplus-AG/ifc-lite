@@ -266,3 +266,7 @@ mod terminal_tests;
 #[cfg(test)]
 #[path = "session_opaque_reports_tests.rs"]
 mod opaque_reports_tests;
+
+#[cfg(test)]
+#[path = "session_mixed_reports_tests.rs"]
+mod mixed_reports_tests;

@@ -63,28 +63,21 @@ impl GeometryRouter {
     /// so iterating custom registrations can visit the same processor twice; the second visit
     /// drains an already-emptied log and contributes nothing. No double count.
     pub fn drain_processor_failures(&self) {
-        let mut swept: Vec<BoolFailure> = Vec::new();
+        // A wrapper may expose this recorder AND hold a private callback log.
+        // Capture known storage separately; everything the callback subsequently
+        // returns has opaque ownership after an interrupted or nested epoch.
+        self.capture_recorded_processor_failures();
         for processor in self.processors.values() {
             let failures = processor.take_bool_failures();
-            if self.csg_opaque_unscoped.get() && processor.boolean_recorder().is_none() {
-                // A prior interrupted or nested product may still own these
-                // records. Preserve them for explicit retrieval, never publish
-                // them as a later product's failures. Final hooks still run only
-                // at their original drain sites, never during cancellation.
-                if !failures.is_empty() {
-                    self.stopped_csg_failures.borrow_mut()
-                        .entry(UNATTRIBUTED_PRODUCT_ID).or_default().extend(failures);
-                }
+            if failures.is_empty() { continue; }
+            let target = if self.csg_opaque_unscoped.get() {
+                &self.stopped_csg_failures
             } else {
-                swept.extend(failures);
-            }
-        }
-        if !swept.is_empty() {
-            self.csg_failures
-                .borrow_mut()
-                .entry(UNATTRIBUTED_PRODUCT_ID)
-                .or_default()
-                .extend(swept);
+                &self.csg_failures
+            };
+            // Persist each returned batch before invoking another callback. A
+            // later callback's unwind must not discard already-drained reports.
+            target.borrow_mut().entry(UNATTRIBUTED_PRODUCT_ID).or_default().extend(failures);
         }
     }
 }

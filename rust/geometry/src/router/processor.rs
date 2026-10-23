@@ -84,7 +84,7 @@ pub trait GeometryProcessor {
     /// `take_csg_failures` calls, so every consumer of the router's CSG
     /// diagnostics — the native pipeline and the wasm batch path alike — sees
     /// these without a second opt-in.
-    /// Private logs without a [`Self::boolean_recorder`] cannot be partitioned
+    /// Private logs beyond any [`Self::boolean_recorder`] cannot be partitioned
     /// across interrupted or nested products without running this callback.
     /// The router retains ambiguous drains for explicit `take_csg_failures`
     /// retrieval outside product work, rather than publishing them on a later

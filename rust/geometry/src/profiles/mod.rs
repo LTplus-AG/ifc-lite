@@ -639,10 +639,12 @@ impl ProfileProcessor {
         // Get trim parameters
         let trim1 = curve
             .get(1)
-            .and_then(|v| self.extract_trim_select(v, prefer_cartesian, decoder));
+            .map(|v| self.extract_trim_select(v, prefer_cartesian, decoder))
+            .transpose()?.flatten();
         let trim2 = curve
             .get(2)
-            .and_then(|v| self.extract_trim_select(v, prefer_cartesian, decoder));
+            .map(|v| self.extract_trim_select(v, prefer_cartesian, decoder))
+            .transpose()?.flatten();
 
         // Get sense agreement (attribute 3) - default true
         let sense = curve.get_bool(3).unwrap_or(true);
@@ -757,3 +759,7 @@ fn axis2_placement_location_and_x_axis_3d(
 #[cfg(test)]
 #[path = "curve_fanout_tests.rs"]
 mod curve_fanout_tests;
+
+#[cfg(test)]
+#[path = "leaf_reader_tests.rs"]
+mod leaf_reader_tests;

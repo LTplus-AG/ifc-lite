@@ -5,7 +5,7 @@
 //! Per-entity geometry job execution.
 //!
 //! Split out of `processor/mod.rs` (module-size ratchet). `process_entity_job` is
-//! the body of the parallel batch loop's `map_init` closure — one job = one product,
+//! the body of the parallel batch loop's per-element closure — one job = one product,
 //! meshed on a fresh router with the worker's warm CartesianPoint cache moved in and
 //! back out. `build_color_updates_for_jobs` backfills deferred/orphan-type colours.
 
@@ -30,8 +30,8 @@ pub(super) type WorkerPlacementCaches = Vec<std::sync::Mutex<FxHashMap<u32, [f64
 /// lives across the WHOLE chunk loop, so each shared point is parsed at most once
 /// per worker thread for the entire model. Each `Mutex` is only ever locked by the
 /// one worker that owns that index (thread indices are unique per pool worker), so
-/// it is uncontended. The cache is pure memoization of deterministic coordinates,
-/// so meshes stay byte-identical (`mesh_determinism` no-diff).
+/// no other thread contends for it. The cache is pure memoization of deterministic
+/// coordinates, so meshes stay byte-identical (`mesh_determinism` no-diff).
 ///
 /// The per-job body still moves its worker's slot into a local decoder and back,
 /// so `WorkerCacheGuard` below is still required to survive a `decode_at` error —
@@ -60,7 +60,7 @@ pub(super) fn new_worker_placement_caches() -> WorkerPlacementCaches {
 /// EVERY exit path — the normal return, the `decode_at` error early-return, and
 /// a panic. Without it, a decode failure would drop `local_decoder` (holding the
 /// worker's whole accumulated cache) before the write-back, cold-starting every
-/// remaining element in that worker's sub-range and silently defeating the hoist.
+/// later element that worker runs and silently defeating the hoist.
 /// `Deref`/`DerefMut` expose the wrapped decoder so call sites are unchanged.
 struct WorkerCacheGuard<'c, 's> {
     decoder: EntityDecoder<'c>,

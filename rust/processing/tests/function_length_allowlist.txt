@@ -47,7 +47,6 @@
    182 rust/geometry/src/profiles/simplify.rs simplify_smooth_curve_polyline
    224 rust/geometry/src/router/voids/aabb_clip.rs Execution::clip_triangle_against_box
    168 rust/geometry/src/router/voids/aabb_clip.rs Execution::triangle_intersects_box
-   182 rust/geometry/src/router/voids/strategy/wall_local_frame.rs Execution::cut_in_wall_frame
    311 rust/geometry/src/router/voids/prism_cut.rs Execution::try_prism_cut
    161 rust/geometry/src/router/voids/prism_cut.rs build_face_cap
    233 rust/geometry/src/router/voids/prism_cut.rs cut_prism

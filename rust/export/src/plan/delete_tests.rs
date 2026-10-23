@@ -188,12 +188,18 @@ fn an_opening_goes_once_nothing_it_voids_is_left() {
         assert!(result.removed.contains(&71), "{schema}: the deleted host's voids relationship goes");
         assert!(!result.removed.contains(&70), "{schema}: the opening still voids #11");
         assert!(!result.removed.contains(&78), "{schema}: and #11 keeps it");
-        // The last voids relationship to go decides, whichever order the
-        // worklist (seeded from a HashSet) takes them in.
-        for _ in 0..16 {
-            let both: HashSet<u32> = [10, 11].into_iter().collect();
-            let result = resolve_deletes(&index, schema, &both, &[], &HashSet::new());
-            assert!(result.removed.contains(&70), "{schema}: no host left");
-        }
+        let both: HashSet<u32> = [10, 11].into_iter().collect();
+        let result = resolve_deletes(&index, schema, &both, &[], &HashSet::new());
+        assert!(result.removed.contains(&70), "{schema}: no host left");
+        // #71 is asked first, while #78 still stands; #78 only goes a round
+        // later (#23 takes #11 through its placement, #11 takes #78). The
+        // last relationship to go decides.
+        let rel_then_cascade: HashSet<u32> = [71, 23].into_iter().collect();
+        let result = resolve_deletes(&index, schema, &rel_then_cascade, &[], &HashSet::new());
+        assert!(result.removed.contains(&11) && result.removed.contains(&78), "{schema}: the cascade reaches #78");
+        assert!(result.removed.contains(&70), "{schema}: and the opening goes with it");
+        // Deleting a host's body takes the host through its Representation.
+        let body: HashSet<u32> = [60].into_iter().collect();
+        assert!(resolve_deletes(&index, schema, &body, &[], &HashSet::new()).removed.contains(&10), "{schema}");
     }
 }

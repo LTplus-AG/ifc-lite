@@ -83,8 +83,10 @@ pub(crate) fn is_layer_items(entity_type: &str, attr_name: &str) -> bool {
 /// pruned: which of them exist is the plan's decision, and losing a referrer
 /// is not one. A port whose host is deleted stays as a free product; a type
 /// whose last occurrence is deleted stays declared. The project is named too,
-/// for a schema the registry does not know. Openings and projections are the
-/// one exception, handled by [`hosted_feature`].
+/// for a schema the registry does not know. This is only the unreferenced
+/// rule: an object that names a removed record through a single-valued
+/// attribute still goes (step 1 of [`resolve_deletes`]), and openings and
+/// projections go with their host ([`hosted_feature`]).
 fn prunable(file_schema: &str, entity_type: &str) -> bool {
     entity_type != "IFCPROJECT" && !ifc_lite_core::is_subtype_of_for_schema(file_schema, entity_type, "IFCOBJECTDEFINITION")
 }

@@ -132,7 +132,7 @@ struct ListStrip {
     occurrences: FxHashMap<u32, usize>,
     /// Reference entries not stripped yet.
     remaining: usize,
-    /// Ids the slot also names nested (see [`list_strip`]).
+    /// Ids the slot also names nested (see [`list_strips`]).
     nested: FxHashSet<u32>,
     /// The ids stripped so far.
     stripped: HashSet<u32>,

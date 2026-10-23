@@ -71,7 +71,7 @@ struct Fixture {
     child: Rc<RefCell<Option<ProducedElementMeshes>>>,
 }
 impl Fixture {
-    fn new() -> Self { Self::with_reports(false) }
+    fn without_reports() -> Self { Self::with_reports(false) }
     fn with_reports(reports: bool) -> Self { Self::with_processor_reports(reports, false) }
     fn with_processor_reports(reports: bool, child_in_process: bool) -> Self {
         let mut decoder = EntityDecoder::new(SOURCE);
@@ -110,7 +110,7 @@ impl Fixture {
 
 #[test]
 fn final_diagnostic_hook_can_produce_fresh_decoder_child_in_restored_caller_mode() {
-    let mut fixture = Fixture::new();
+    let mut fixture = Fixture::without_reports();
     let session = fixture.ready();
     assert!(!fixture.fired.get(), "the final drain must remain after all numerical work");
     let wall = session.finish(&fixture.decoder, &fixture.router).unwrap();
@@ -126,7 +126,7 @@ fn final_diagnostic_hook_can_produce_fresh_decoder_child_in_restored_caller_mode
 
 #[test]
 fn final_diagnostic_hook_panic_restores_caller_state_and_releases_publication_owner() {
-    let mut fixture = Fixture::new();
+    let mut fixture = Fixture::without_reports();
     fixture.panic_final.set(true);
     let session = fixture.ready();
     let result =

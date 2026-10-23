@@ -12,6 +12,35 @@ that also dominate in the browser; the WASM-only concerns (per-worker file
 re-decode, no threads, memory bandwidth) are orchestration-level and are read
 off the viewer's own telemetry (below).
 
+## Consolidation certificates restore the instruction ratchet (#7943)
+
+**Measured reduction in exact geometry work; unchanged instruction ceilings.**
+The scheduled lane reported correctly: a correctness repair had increased work
+past its geometry budget. The accepted optimization reuses shared segment
+orientation signs, rejects strictly separated boxes before predicates, and
+proves zero source-plane height span for already certified singleton or exactly
+coplanar f32 partitions. Other surfaces retain the shared rational certificate;
+movement, winding, boundary and refusal contracts remain enforced.
+
+The source-pinned native comparison preserves ordered mesh fingerprints and
+failure diagnostics on FZK, ISSUE_129 and Holter. Five-pair native and fresh-process
+hardware-browser comparisons find a reduction on the void-heavy model; the
+house and heavy tower remain within their measured noise. The browser comparison
+uses the repository's fixed base-first order and the preceding baseline, so it
+retains position bias and does not qualify final-bundle latency after unrelated
+upstream export additions. Current-head hosted gates and the actual lowering
+workflow on merged main remain separate acceptance checks.
+
+Lesson: profile the retained correctness fix before accepting its cost. Avoiding
+repeated exact constructions and predicate evaluation recovered the budget
+without changing geometry or raising a ceiling. Integer millisecond phase fields
+cannot qualify a sub-millisecond phase: the accepted native experiment captures
+existing durations at higher precision on both sides and retains every reporter
+and host guard. A stale identical binary, a zero-resolution timing campaign,
+missing tooling and a Turbo-restored WASM artifact were rejected and preserved.
+Numerical observations, scope, source applicability and evidence references are
+in [the qualification record](../../tests/evidence/issue-7943/performance.json).
+
 ## Remote near-plane recovery (#7633)
 
 **Correctness repair; end-to-end browser timings remain within measured noise.**

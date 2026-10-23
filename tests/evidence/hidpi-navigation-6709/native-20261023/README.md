@@ -74,6 +74,12 @@ presentation and live canvas observation must have four finite positive
 dimensions before any ratio or expected-resolution comparison is accepted.
 This diagnostic qualifies the guard only, not native rendering or timings.
 
+`sample-health-controls.mts` checks that the final idle and host awaits finish
+before the error buffer is read. Late page/GPU errors and absent health
+observations reject the sample while retaining observed errors. The success
+flag is set only after the complete guarded operation wins its deadline race.
+The controller runs these ordering controls before browser startup as well.
+
 The earlier pre-fix pair and receipts remain in `diagnostics/pre-fix-*.json` to
 explain the retained failed runs. They are historical evidence, not the active
 qualification inputs. Issue #6709 remains open until the full qualification

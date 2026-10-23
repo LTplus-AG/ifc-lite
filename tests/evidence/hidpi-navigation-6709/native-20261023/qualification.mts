@@ -4,6 +4,7 @@
 
 import { geometryWitnessExpression } from './geometry-witness.mts';
 import { fullQuality, requireDimensions } from './frame-dimensions.mts';
+import { verifyFinalHealth } from './sample-health.mts';
 import { createRequire } from 'node:module';
 import { readFileSync, writeFileSync, appendFileSync, mkdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -253,11 +254,10 @@ try {
    if(record.meta.foreground.interruptions || record.meta.foreground.visibility!=='visible' || !record.meta.foreground.focused) throw Error('Foreground admission interrupted');
    record.meta.sessionAfter=readPhysicalSession();
    if(!isPhysicalConsole(record.meta.sessionAfter) || record.meta.sessionBefore.currentSession!==record.meta.sessionAfter.currentSession) throw Error('Physical-console session changed');
-   record.meta.errors=await page.evaluate('globalThis.__6709.errors');
-   if(record.meta.errors.length) throw Error('Unhandled page errors observed');
-   await idle(page);record.meta.hostAfter=await readHostAdmission();if(!record.meta.hostAfter.quiet) throw Error('Host post-admission refused');
-   record.ok=true;
+   await verifyFinalHealth(record.meta,()=>idle(page),readHostAdmission,
+    ()=>page.evaluate('globalThis.__6709.errors'));
    })(),deadline,driverFailure]);
+   record.ok=true;
   } catch(error) { record.error=String(error);console.error(name,record.error);if(page && !page.isClosed()) { try {record.meta.failureDiagnostics=await page.evaluate('({trace:globalThis.__IFC_LITE_LOAD_TRACE__?.latest?.(),stats:globalThis.__ifc_lite_render_stats__?.(),canvas:!!document.querySelector("canvas[data-viewport=main]")})');await page.screenshot({path:`${output}/${name}-failure.png`,timeout:5000});} catch(screenshotError) {record.meta.screenshotError=String(screenshotError);} } }
   finally {
    clearTimeout(sampleTimer);

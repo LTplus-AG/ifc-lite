@@ -64,8 +64,9 @@ root=str(validated_root)
 env=os.environ|{'IFC_6709_ROOT':root,'IFC_6709_EVIDENCE':str(out),'IFC_6709_MODEL':fixture_receipt['cwd']+'/tests/models/ara3d/AC20-FZK-Haus.ifc','DISPLAY':':1','WAYLAND_DISPLAY':'wayland-1','XDG_RUNTIME_DIR':'/run/user/1000','DEBUG':'pw:browser'}
 (out/'harness-sha256.json').write_text(json.dumps({p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in out.iterdir() if p.suffix in ['.py','.mts']},indent=2)+'\n')
 command=['node','--import',root+'/node_modules/tsx/dist/loader.mjs',str(out/'qualification.mts')]
-with (out/'frame-dimensions-controls.json').open('w') as controls:
- subprocess.run(command[:-1]+[str(out/'frame-dimensions-controls.mts')],stdout=controls,check=True,timeout=30)
+for diagnostic in ['frame-dimensions-controls','sample-health-controls']:
+ with (out/f'{diagnostic}.json').open('w') as controls:
+  subprocess.run(command[:-1]+[str(out/f'{diagnostic}.mts')],stdout=controls,check=True,timeout=30)
 summary=[]
 for mode in ['smoke','interleaved']:
  time.sleep(10)

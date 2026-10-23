@@ -170,8 +170,8 @@ impl Cascade<'_> {
         if !self.lists.contains_key(&(referrer, idx)) {
             // Not a list, or the referrer is not parsed yet. On the delete
             // path a strip that fails takes the referrer out, so the first
-            // case parses it at most once more; a detach always names a
-            // list.
+            // case parses it at most once more. A detach names a slot the
+            // schema declares a list, so only a malformed file re-parses.
             for (i, list) in list_strips(self.index, self.file_schema, referrer) {
                 self.lists.entry((referrer, i)).or_insert(list);
             }

@@ -18,9 +18,9 @@ readme = "../../README.md"
 # `Number::toString` algorithm itself. Licence: Apache-2.0 OR BSL-1.0.
 ryu-js = "1.0.3"
 
-# Sidecar documents are untrusted JSON. Preserve their object order on parse;
-# wire emission uses the ECMAScript serializer rather than serde's formatter.
-serde_json = { workspace = true, features = ["preserve_order", "float_roundtrip"] }
+# Keep ordering local: preserve_order would change every workspace consumer.
+serde_json = { workspace = true, features = ["float_roundtrip"] }
+serde.workspace = true
 
 [lints]
 workspace = true

@@ -6,6 +6,7 @@ use std::collections::HashSet;
 use serde_json::{Map, Value};
 use crate::js_json::JsonValue;
 use crate::sidecar_json;
+pub use crate::sidecar_parse::parse_ordered_json;
 use crate::sidecar_validation::{validate_identity_sidecar, validate_lineage_sidecar};
 use crate::utf16::cmp_code_units;
 
@@ -28,7 +29,7 @@ fn select(value: &Value, required: &[&str], optional: &[&str]) -> Value {
 fn key(value: &Value) -> &str { value.as_str().unwrap_or("") }
 /// Typed callers supply the same init fields as the TS create functions.
 /// First occurrence wins for a duplicate claim, including its reason/shares.
-pub fn create_sidecar(init: &Value, kind: SidecarKind, valid_date: impl Fn(&str)->bool) -> Result<Value,String> {
+pub fn create_sidecar(init: &Value, kind: SidecarKind, valid_date: impl Fn(&str)->bool) -> Result<JsonValue,String> {
     let lineage = matches!(kind,SidecarKind::Lineage);
     let Some(input) = init["entries"].as_array() else { return Err(format!("Invalid {} sidecar: entries must be an array",kind.label())); };
     let mut seen = HashSet::new();
@@ -61,15 +62,33 @@ pub fn create_sidecar(init: &Value, kind: SidecarKind, valid_date: impl Fn(&str)
     for field in ["created","keyProperty"] { if let Some(value)=init.get(field) {out.insert(field.into(),value.clone());} }
     let out = Value::Object(out);
     validate(&out,kind,valid_date)?;
-    Ok(out)
+    let mut fields = vec![
+        ("format".into(), wire_value(&out["format"])),
+        ("version".into(), wire_value(&out["version"])),
+    ];
+    for field in ["base", "head"] {
+        fields.push((field.into(), ordered_fields(&out[field], &["hash", "path"])));
+    }
+    let entry_fields: &[&str] = if lineage { &["base", "head", "relation", "reason", "shares"] }
+        else { &["base", "here", "reason"] };
+    fields.push(("entries".into(), JsonValue::Array(out["entries"].as_array().unwrap().iter()
+        .map(|entry| ordered_fields(entry, entry_fields)).collect())));
+    for field in ["deleted", "created", "keyProperty"] {
+        if let Some(value) = out.get(field) { fields.push((field.into(), wire_value(value))); }
+    }
+    Ok(JsonValue::Object(fields))
+}
+fn ordered_fields(value: &Value, fields: &[&str]) -> JsonValue {
+    JsonValue::Object(fields.iter().filter_map(|&field| value.get(field)
+        .map(|v| (field.into(), wire_value(v)))).collect())
 }
 /// Parsing preserves extra fields and object insertion order. Structural errors
 /// use the same ordered error list as the JS API; syntax diagnostics originate
 /// in the host JSON parser and are not a stable cross-runtime message contract.
-pub fn parse_sidecar(text: &str, kind: SidecarKind, valid_date: impl Fn(&str)->bool) -> Result<Value,String> {
+pub fn parse_sidecar(text: &str, kind: SidecarKind, valid_date: impl Fn(&str)->bool) -> Result<JsonValue,String> {
     let value: Value = serde_json::from_str(text).map_err(|e|format!("Invalid {} sidecar: not JSON ({e})",kind.label()))?;
     validate(&value,kind,valid_date)?;
-    Ok(value)
+    parse_ordered_json(text).map_err(|e|format!("Invalid {} sidecar: not JSON ({e})",kind.label()))
 }
 fn array_index(key: &str) -> Option<u32> {
     let index = key.parse::<u32>().ok()?;
@@ -92,4 +111,4 @@ fn wire_value(value: &Value) -> JsonValue {
         }
     }
 }
-pub fn serialize_sidecar(value: &Value) -> String { sidecar_json::serialize(&wire_value(value)) }
+pub fn serialize_sidecar(value: &JsonValue) -> String { sidecar_json::serialize(value) }

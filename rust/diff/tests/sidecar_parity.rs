@@ -84,3 +84,13 @@ fn sidecar_parse_preserves_extras_and_js_integer_key_order_issue_8042() {
     assert!(wire.contains("\"extra\": {\n    \"2\": \"y\",\n    \"20\": \"x\",\n    \"01\": \"z\"\n  }"));
     assert!(parse_sidecar("{",SidecarKind::Identity,|_|false).unwrap_err().starts_with("Invalid identity-map sidecar: not JSON ("));
 }
+
+#[test]
+fn issue_8042_ordered_sidecars_do_not_change_other_json_consumers() {
+    use ifc_lite_diff::sidecar_document::{parse_ordered_json, serialize_sidecar};
+    // Existing exporters depend on serde_json's default lexicographic map order.
+    let ordinary: Value = serde_json::from_str(r#"{"z":1,"a":2}"#).unwrap();
+    assert_eq!(serde_json::to_string(&ordinary).unwrap(), r#"{"a":2,"z":1}"#);
+    let ordered = parse_ordered_json(r#"{"z":1,"a":{"b":2,"a":3},"z":4}"#).unwrap();
+    assert_eq!(serialize_sidecar(&ordered), "{\n  \"z\": 4,\n  \"a\": {\n    \"b\": 2,\n    \"a\": 3\n  }\n}\n");
+}

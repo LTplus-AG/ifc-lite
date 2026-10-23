@@ -84,3 +84,5 @@ mod split_merge_tests;
 
 #[cfg(test)]
 mod lineage_tests;
+
+mod sidecar_parse;

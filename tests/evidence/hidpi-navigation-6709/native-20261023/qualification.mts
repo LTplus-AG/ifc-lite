@@ -37,10 +37,10 @@ for (const manifest of Object.values(manifests)) {
   const git = (...args) => execFileSync('git', args, { cwd: manifest.checkout, encoding: 'utf8', timeout: 10000 }).trim();
   if (git('rev-parse', 'HEAD') !== manifest.head || git('status', '--porcelain')) throw Error('Source pin or cleanliness changed');
   for (const artifact of manifest.artifacts) {
-    if (digest(readFileSync(`${manifest.checkout}/${artifact.path}`)) !== artifact.sha256) throw Error(`Pinned artifact changed: ${artifact.path}`);
+    if (digest(readFileSync(`${manifest.buildRoot}/${artifact.path}`)) !== artifact.sha256) throw Error(`Pinned artifact changed: ${artifact.path}`);
   }
 }
-let current = manifests.base.checkout;
+let current = manifests.base.buildRoot;
 const model = process.env.IFC_6709_MODEL;
 if (!model || digest(readFileSync(model)) !== 'd42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5') throw Error('Canonical public FZK fixture hash mismatch');
 const server = await startStaticServer({ port: 0, host: '0.0.0.0', root: () => `${current}/apps/viewer/dist`, extra: new Map([['/__6709/model.ifc', model]]) });
@@ -129,7 +129,7 @@ try {
    if(!record.meta.hostBefore.quiet) throw Error('Host pre-admission refused');
    record.meta.sessionBefore=readPhysicalSession();
    if(!isPhysicalConsole(record.meta.sessionBefore)) throw Error('Physical-console admission refused');
-   current=manifests[sample.side].checkout;
+   current=manifests[sample.side].buildRoot;
    browser=await launchNativeChrome(chromium);
    const deadline=new Promise((_,reject)=>{sampleTimer=setTimeout(()=>reject(Error('Native sample exceeded four-minute deadline')),240000);});
    await Promise.race([(async()=>{

@@ -17,22 +17,31 @@ for side in ['candidate','base']:
  r=json.loads((state/'jobs'/job/'receipt.json').read_text())
  if r.get('state')!='completed' or r.get('exitCode')!=0 or not r.get('sourceUnchanged'):raise RuntimeError(f'Prerequisite not qualified: {job}: {r.get("state")} sourceUnchanged={r.get("sourceUnchanged")}')
  assert r['sourceAfter']['commit']==pair['candidate' if side=='candidate' else 'control']
- if side=='candidate':
-  command=' '.join(r['command'])
-  assert 'pnpm test --filter=@ifc-lite/viewer' in command and 'TEST_PATTERN=' in command
  receipts.append(r)
-transfer=json.loads((out/'pc-control-transfer.json').read_text())
-producer=transfer['receipt']
-assert transfer['host']=='pc-wsl' and producer['state']=='completed' and producer['exitCode']==0
-assert producer['sourceUnchanged'] and producer['sourceBefore']==producer['sourceAfter']
-assert producer['sourceAfter']['commit']==pair['control']
-assert producer['sourceAfter']['toolchainInputs']==receipts[0]['sourceAfter']['toolchainInputs']
-assert receipts[1]['command'][-2:]==[str(out/'stage-pc-control.py'),producer['id']], 'Staging job must bind the original PC producer'
-assert transfer['stagedCheckout']==receipts[1]['cwd']
+transfers={}
+for index,side in enumerate(['candidate','base']):
+ transfer=json.loads((out/f'pc-{side}-transfer.json').read_text())
+ producer=transfer['receipt']
+ assert producer['id']==jobs[f'pc{side.title()}Producer'], 'PC producer differs from the declared preparation'
+ assert transfer['host']=='pc-wsl' and producer['state']=='completed' and producer['exitCode']==0
+ assert producer['sourceUnchanged'] and producer['sourceBefore']==producer['sourceAfter']
+ assert transfer['wasmMtime']>=transfer['latestRustMtime'], 'PC runtime predates its Rust sources'
+ assert producer['sourceAfter']['commit']==pair['candidate' if side=='candidate' else 'control']
+ assert producer['sourceAfter']['toolchainInputs']==receipts[index]['sourceAfter']['toolchainInputs']
+ assert receipts[index]['command'][-3:]==[str(out/'stage-pc-build.py'),side,producer['id']], 'Staging job must bind the original PC producer'
+ assert transfer['sourceCheckout']==receipts[index]['cwd']
+ command=' '.join(producer['command'])
+ if side=='candidate':
+  assert 'pnpm test --filter=@ifc-lite/viewer' in command and 'TEST_PATTERN=' in command
+ else:
+  assert 'pnpm build --filter=@ifc-lite/viewer --concurrency=2' in command
+ transfers[side]=transfer
 (out/'preparation-receipts.json').write_text(json.dumps(receipts,indent=2)+'\n')
 subprocess.run(['python3',str(out/'freeze-builds.py')],check=True,timeout=600)
-base_manifest=json.loads((out/'base-build-manifest.json').read_text())
-assert {r['path']:(r['bytes'],r['sha256']) for r in base_manifest['artifacts']}=={r['path']:(r['bytes'],r['sha256']) for r in transfer['artifacts']}, 'Served control differs from original PC output'
+for side,transfer in transfers.items():
+ manifest=json.loads((out/f'{side}-build-manifest.json').read_text())
+ assert manifest['buildRoot']==transfer['stagedRoot']
+ assert {r['path']:(r['bytes'],r['sha256']) for r in manifest['artifacts']}=={r['path']:(r['bytes'],r['sha256']) for r in transfer['artifacts']}, 'Served build differs from original PC output'
 candidate_manifest=json.loads((out/'candidate-build-manifest.json').read_text())
 validated_root=Path(candidate_manifest['checkout']).resolve()
 receipt_root=Path(receipts[0]['cwd']).resolve()
@@ -64,7 +73,7 @@ for name in ['candidate','base']:
  manifest=json.loads((out/f'{name}-build-manifest.json').read_text())
  assert not subprocess.check_output(['git','-C',manifest['checkout'],'status','--porcelain'],text=True,timeout=60)
  for artifact in manifest['artifacts']:
-  assert hashlib.sha256((Path(manifest['checkout'])/artifact['path']).read_bytes()).hexdigest()==artifact['sha256'],artifact['path']
+  assert hashlib.sha256((Path(manifest['buildRoot'])/artifact['path']).read_bytes()).hexdigest()==artifact['sha256'],artifact['path']
 print('Frozen source and artifacts unchanged after complete cohort',flush=True)
 
 assert hashlib.sha256(Path(env['IFC_6709_MODEL']).read_bytes()).hexdigest()=='d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5'

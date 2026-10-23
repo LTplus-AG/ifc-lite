@@ -1,9 +1,9 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
-"""Stage one successful PC control build under Pop ordinary admission.
+"""Stage one successful PC build under Pop ordinary admission.
 
-Invoke with the original PC worker job UUID. No compilation occurs here.
+Invoke with candidate/base and its original PC worker job UUID.
 The subsequent cohort still freezes and revalidates every served byte.
 """
 import hashlib
@@ -17,12 +17,13 @@ import tempfile
 
 out = Path(__file__).parent
 pair = json.loads((out / 'source-pair.json').read_text())
-job = sys.argv[1]
+side, job = sys.argv[1:]
+assert side in ['candidate', 'base']
 assert re.fullmatch(r'[0-9a-f-]{36}', job)
-root = Path('/home/louistrue/build-workers/worker-state/checkouts') / pair['control']
-candidate = root.parent / pair['candidate']
-assert not (out / 'pc-control-transfer.json').exists(), 'Recover original staging outcome'
-assert not (root / 'apps/viewer/dist/index.html').exists(), 'Do not replace an existing served build'
+source = Path('/home/louistrue/build-workers/worker-state/checkouts') / pair['candidate' if side == 'candidate' else 'control']
+root = out / ('staged-' + side)
+proof_path = out / ('pc-' + side + '-transfer.json')
+assert not proof_path.exists() and not root.exists(), 'Recover original staging outcome'
 remote = r'''
 import hashlib, io, json, subprocess, sys, tarfile
 from pathlib import Path
@@ -37,14 +38,15 @@ assert subprocess.check_output(['git','-C',str(root),'rev-parse','HEAD'],text=Tr
 log = receipt_path.with_name('output.log')
 assert hashlib.sha256(log.read_bytes()).hexdigest() == r['outputSha256']
 command = ' '.join(r['command'])
-assert 'pnpm build --filter=@ifc-lite/viewer --concurrency=2' in command
+assert 'pnpm build --filter=@ifc-lite/viewer --concurrency=2' in command or ('pnpm test --filter=@ifc-lite/viewer' in command and 'TEST_PATTERN=' in command)
 files = sorted(p for p in (root/'apps/viewer/dist').rglob('*') if p.is_file())
 assert (root/'apps/viewer/dist/index.html') in files
 files += [root/'packages/wasm/pkg'/n for n in ['ifc-lite_bg.wasm','ifc-lite.js','ifc-lite.d.ts']]
 assert all(not p.is_symlink() for p in files)
 wasm = root/'packages/wasm/pkg/ifc-lite_bg.wasm'
-assert wasm.stat().st_mtime >= max(p.stat().st_mtime for p in (root/'rust').rglob('*.rs'))
-manifest = {'host':'pc-wsl','receipt':r,'receiptSHA256':hashlib.sha256(receipt_path.read_bytes()).hexdigest(),'artifacts':[{'path':str(p.relative_to(root)),'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in files]}
+latest_rust = max(p.stat().st_mtime for p in (root/'rust').rglob('*.rs'))
+assert wasm.stat().st_mtime >= latest_rust
+manifest = {'host':'pc-wsl','receipt':r,'receiptSHA256':hashlib.sha256(receipt_path.read_bytes()).hexdigest(),'wasmMtime':wasm.stat().st_mtime,'latestRustMtime':latest_rust,'artifacts':[{'path':str(p.relative_to(root)),'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in files]}
 with tarfile.open(fileobj=sys.stdout.buffer,mode='w|') as tar:
  payload=json.dumps(manifest,indent=2).encode(); member=tarfile.TarInfo('build-proof.json');member.size=len(payload);tar.addfile(member,io.BytesIO(payload))
  for p in files:tar.add(p,arcname=str(p.relative_to(root)),recursive=False)
@@ -58,7 +60,9 @@ with tempfile.TemporaryDirectory(prefix='control-stage-', dir=out) as scratch:
     with tarfile.open(archive) as tar:
         proof = json.load(tar.extractfile('build-proof.json'))
         receipt = proof['receipt']
-        assert receipt['id'] == job and receipt['sourceAfter']['commit'] == pair['control']
+        assert receipt['id'] == job and receipt['sourceAfter']['commit'] == pair['candidate' if side == 'candidate' else 'control']
+        assert subprocess.check_output(['git','-C',str(source),'rev-parse','HEAD'],text=True,timeout=60).strip() == receipt['sourceAfter']['commit']
+        assert not subprocess.check_output(['git','-C',str(source),'status','--porcelain'],text=True,timeout=60)
         rows = {row['path']: row for row in proof['artifacts']}
         names = [m.name for m in tar.getmembers()]
         assert len(names) == len(set(names)) and set(names) == set(rows) | {'build-proof.json'}
@@ -72,14 +76,12 @@ with tempfile.TemporaryDirectory(prefix='control-stage-', dir=out) as scratch:
             assert member.isfile(), name
             data = tar.extractfile(member).read()
             assert len(data) == row['bytes'] and hashlib.sha256(data).hexdigest() == row['sha256']
-            if name.startswith('packages/wasm/'):
-                assert hashlib.sha256((candidate / name).read_bytes()).hexdigest() == row['sha256'], 'Cross-host WASM runtime differs'
         for name in rows:
             target = root / name
             assert not target.is_symlink() and not any(p.is_symlink() for p in target.parents)
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(tar.extractfile(name).read())
-    assert not subprocess.check_output(['git','-C',str(root),'status','--porcelain'],text=True,timeout=60)
-    proof.update(stagedCheckout=str(root), archiveSHA256=hashlib.sha256(archive.read_bytes()).hexdigest())
-    (out / 'pc-control-transfer.json').write_text(json.dumps(proof, indent=2) + '\n')
-    print('Staged source-pinned PC control:', job, pair['control'], len(rows), 'verified artifacts; identical WASM runtime')
+    assert not subprocess.check_output(['git','-C',str(source),'status','--porcelain'],text=True,timeout=60)
+    proof.update(sourceCheckout=str(source), stagedRoot=str(root), archiveSHA256=hashlib.sha256(archive.read_bytes()).hexdigest())
+    proof_path.write_text(json.dumps(proof, indent=2) + '\n')
+    print('Staged source-pinned PC', side, job, receipt['sourceAfter']['commit'], len(rows), 'verified artifacts; cohort must verify runtime equality across both PC arms')

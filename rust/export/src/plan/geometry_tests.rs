@@ -428,3 +428,20 @@ fn a_body_never_lands_in_a_two_dimensional_context() {
     let ctx = slot_ref(schema, &after[&rep], "ContextOfItems").unwrap();
     assert!(!after[&ctx].1.contains("'Plan'"), "{}", after[&ctx].1);
 }
+
+/// Two patches giving one product a body: the first applies, the second is
+/// refused, and nothing is left unreferenced.
+#[test]
+fn a_second_body_for_the_same_product_is_refused() {
+    for schema in SCHEMAS {
+        let source = products_with_geometry(schema);
+        let plan = ExportPlan { dispositions: vec![geometry(10, tetrahedron(), None), geometry(10, tetrahedron(), None)], context: PlanContext::default() };
+        let mut out = Vec::new();
+        let report = execute(&source, &plan, &mut out).unwrap();
+        assert_eq!(report.refusals.len(), 1, "{schema}: {:?}", report.refusals);
+        let single = ExportPlan { dispositions: vec![geometry(10, tetrahedron(), None)], context: PlanContext::default() };
+        let mut once = Vec::new();
+        execute(&source, &single, &mut once).unwrap();
+        assert_eq!(out, once, "{schema}: the same output as one patch");
+    }
+}

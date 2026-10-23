@@ -93,6 +93,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
 
     let mut moved: HashSet<u32> = HashSet::new();
     let mut edited: HashSet<(u32, u32)> = HashSet::new();
+    let mut reshaped: HashSet<u32> = HashSet::new();
     for &(id, disposition) in &resolved {
         match disposition {
             Disposition::Preserve | Disposition::Delete => {}
@@ -120,6 +121,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
                     moved: &mut moved,
                     edited: &mut edited,
                     object: id,
+                    reshaped: &mut reshaped,
                     geometry_cuts: &mut geometry_cuts,
                     body_context: &mut body_context,
                     dropped_representations: &mut dropped_representations,
@@ -293,6 +295,9 @@ struct PatchOutput<'a> {
     /// member change, checked once the deletes settle.
     edited: &'a mut HashSet<(u32, u32)>,
     object: u32,
+    /// Objects a patch has already given a new body, for the same reason:
+    /// a second body would leave the first one's records unreferenced.
+    reshaped: &'a mut HashSet<u32>,
     geometry_cuts: &'a mut Vec<(u32, u32)>,
     body_context: &'a mut geometry::BodyContext,
     dropped_representations: &'a mut Vec<DroppedRepresentation>,
@@ -391,8 +396,14 @@ fn apply_patch(
     }
 
     if let Some(geometry_patch) = &patch.geometry {
-        match geometry::resolve_geometry(index, schema, object_id, geometry_patch, ids, out.removed, out.body_context) {
+        let result = if out.reshaped.contains(&object_id) {
+            Err("object already gets a new body from another patch in this plan; the first wins".to_string())
+        } else {
+            geometry::resolve_geometry(index, schema, object_id, geometry_patch, ids, out.removed, out.body_context)
+        };
+        match result {
             Ok(geometry::GeometryWrite { new_records, repoint, old_shape, dropped }) => {
+                out.reshaped.insert(object_id);
                 out.appended.extend(new_records);
                 out.edit(vec![repoint]);
                 out.geometry_cuts.extend(old_shape.map(|shape| (object_id, shape)));

@@ -5,6 +5,7 @@
 //! Existing numerical regression entry points drive the same owned execution
 //! the gateways use, publishing its diagnostics into the test's router.
 use super::*;
+use crate::ClippingProcessor;
 use crate::program::openings::execute::execute;
 
 impl GeometryRouter {
@@ -23,7 +24,7 @@ impl GeometryRouter {
         }
     }
 
-    pub(super) fn apply_void_context_inner(
+    pub(super) fn cut_in_frame(
         &self,
         mesh: Mesh,
         ctx: &VoidContext,
@@ -32,7 +33,7 @@ impl GeometryRouter {
         allow_local_frame: bool,
     ) -> Mesh {
         self.test_execution(|e| {
-            e.apply_void_context_inner(mesh, ctx, id, bounds, allow_local_frame)
+            e.cut_in_frame(mesh, ctx, id, bounds, allow_local_frame)
         })
     }
 

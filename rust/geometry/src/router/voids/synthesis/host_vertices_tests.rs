@@ -328,7 +328,7 @@ fn cut(host: Mesh, opening: CutterKind) -> Mesh {
         bool2d: None,
     };
     let bounds = world_host_bounds(&host);
-    GeometryRouter::new().apply_void_context_inner(host, &context, 6940, bounds, false)
+    GeometryRouter::new().cut_in_frame(host, &context, 6940, bounds, false)
 }
 
 /// The tear: the opening fills a hole the slab's profile already has, and one

@@ -228,7 +228,6 @@
 # `voids/geom.rs` sheds 27 in the same change.
 # -51: the voided-host gateways drain the common void program (#7955 D4);
 # -17: the layered-slice gateway calls move into the program (D4b).
-     740 rust/geometry/src/router/voids/mod.rs
 # NEW: analytic prism (stepped-extrusion) subtraction on the host mesh — the
 # CSG-heavy-corpus lever (ISSUE_098/129: exact void booleans are ~75-82% of
 # geometry time; rebated masonry openings on brep/clipped hosts had no fast

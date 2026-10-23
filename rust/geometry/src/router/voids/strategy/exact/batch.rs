@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
-use super::ExactTail;
+use super::ExactState;
 use crate::{GeometryRouter, Mesh};
 use crate::csg::{ClippingProcessor, GroupCut};
 use crate::router::voids::CutterKind;
 use crate::router::voids::admission::cut_retains_triangles;
 
-impl ExactTail {
+impl ExactState {
     /// Attempt once at the first member; misses retain sequential eligibility.
     pub(in crate::router::voids) fn cut_group(
         &mut self, result: &mut Mesh, all_openings: &[&CutterKind],

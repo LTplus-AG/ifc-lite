@@ -147,7 +147,7 @@ fn rvt01_panel_10191_stays_closed_with_a_near_normal_authored_cutter_3977() {
             bool2d: None,
         };
         let bounds = world_host_bounds(&host);
-        GeometryRouter::new().apply_void_context_inner(host.clone(), &context, 10191, bounds, true)
+        GeometryRouter::new().cut_in_frame(host.clone(), &context, 10191, bounds, true)
     };
     let host_volume = mesh_signed_volume(&host).abs();
     let wide_only = mesh_signed_volume(&cut(vec![openings[0].clone()])).abs();

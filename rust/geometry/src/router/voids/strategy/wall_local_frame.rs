@@ -23,7 +23,7 @@ impl Execution {
     /// watertight `rect_fast` path. Curved / brep openings keep their mesh and
     /// are subtracted there too. The result is rotated back; the orthonormal,
     /// origin-centred round-trip is identity for untouched geometry. Recurses
-    /// into [`Self::apply_void_context_inner`] with `allow_local_frame: false` (#3641).
+    /// into [`Self::cut_in_frame`] with `allow_local_frame: false` (#3641).
     pub(super) fn cut_in_wall_frame(
         &self,
         mesh: &Mesh,
@@ -40,82 +40,7 @@ impl Execution {
         );
         let host_local = mesh_to_frame(mesh, &axes, center);
 
-        let z = Vector3::new(0.0, 0.0, 1.0);
-        let mut local_openings: Vec<CutterKind> = Vec::with_capacity(ctx.merged_openings.len());
-        for op in &ctx.merged_openings {
-            let cutter = match op {
-                CutterKind::DiagonalRectangular(m, _) => m,
-                CutterKind::NonRectangular(m, _, _, _) => m,
-                CutterKind::Rectangular(..) => return None,
-            };
-            let (lmn, lmx) = project_aabb_in_frame(cutter, &axes, center)?;
-            let in_frame =
-                |v: Vector3<f64>| Vector3::new(v.dot(&axes[0]), v.dot(&axes[1]), v.dot(&axes[2]));
-            // The cutter's own penetration (depth) axis expressed in the wall
-            // frame. Drives both the alignment test and — for the exact fallback
-            // — the cap-extension direction, which MUST stay faithful to THIS
-            // cutter: hardcoding the wall normal would push a misaligned
-            // opening's flush/short cap along the wrong axis and carve the wrong
-            // prism (#1270 review).
-            let frame_depth = match op {
-                CutterKind::DiagonalRectangular(_, f) => Some(in_frame(f.depth)),
-                CutterKind::NonRectangular(_, _, _, d) => d.map(in_frame),
-                CutterKind::Rectangular(..) => None,
-            };
-            // Whether THIS opening's own oriented box is axis-aligned in the
-            // wall frame. The frame is seeded from the FIRST rotated opening
-            // (#1167); a second opening tilted differently *in plane* is NOT
-            // axis-aligned here, so projecting its frame AABB would over-cut it
-            // (#1259 review). Only a clean box whose full frame aligns with the
-            // wall frame may take the fast rectangular cut; everything else —
-            // brep/curved voids and frame-misaligned boxes alike — keeps its
-            // exact (un-rotated, centred) mesh for the subtract.
-            let frame_aligned = match op {
-                CutterKind::DiagonalRectangular(_, f) => {
-                    is_axis_aligned_direction(&in_frame(f.depth))
-                        && is_axis_aligned_direction(&in_frame(f.cross_a))
-                        && is_axis_aligned_direction(&in_frame(f.cross_b))
-                }
-                _ => false,
-            };
-            if frame_aligned {
-                // Preserve THIS cutter's authored penetration axis. The new
-                // #3977 selector also admits vertically extruded strips, whose
-                // local depth is +Y rather than the wall normal (+Z). Extending
-                // those along +Z would turn a partial-thickness vertical slot
-                // into a full-through cut. An inferred box axis carries no such
-                // intent and must retain the established wall-normal fallback.
-                // A cutter authored along the wall normal itself keeps +Z too:
-                // handing the rectangular cut an antiparallel (-Z) depth flips
-                // its cap extension and tears the host (rvt01 #10191 census).
-                let rect_depth = match op {
-                    CutterKind::DiagonalRectangular(_, frame)
-                        if frame.depth_is_authored
-                            && frame_depth.is_some_and(|d| d.z.abs() < WALL_NORMAL_DEPTH_COS) =>
-                    {
-                        frame_depth
-                    }
-                    _ => Some(z),
-                };
-                local_openings.push(CutterKind::Rectangular(lmn, lmx, rect_depth));
-            } else {
-                let mesh_local = mesh_to_frame(cutter, &axes, center);
-                // Keep this cutter's true depth in the frame; fall back to the
-                // wall normal (+Z) only when the opening carried no direction.
-                let dir = frame_depth.unwrap_or(z);
-                local_openings.push(CutterKind::NonRectangular(mesh_local, lmn, lmx, Some(dir)));
-            }
-        }
-        let local_ctx = VoidContext {
-            merged_openings: GeometryRouter::merge_rectangular_openings(&local_openings),
-            openings: local_openings,
-            // The local-frame recursion never re-captures the parametric cut
-            // (issue #1209): it operates on already-classified openings, so the
-            // analytic `param` / 2D paths are irrelevant here — defer to the exact
-            // path.
-            param: None,
-            bool2d: None,
-        };
+        let local_ctx = openings_in_frame(ctx, &axes, center)?;
 
         // Forward the WORLD host bounds captured before this rotation so the
         // diagnostic reports world coords, not wall-frame (rotated/centred) ones.
@@ -130,7 +55,7 @@ impl Execution {
         let frame = Matrix3::from_columns(&axes);
         let center_point = Point3::from(center);
         let result_local = self
-            .apply_void_context_inner(host_local, &local_ctx, element_id, host_world_bounds, false);
+            .cut_in_frame(host_local, &local_ctx, element_id, host_world_bounds, false);
         // Rotation-only positions retain the far centre in `Mesh::origin`.
         let mut result = rotate_mesh_from_frame(&result_local, &frame, &center_point);
         // #5635: the operands arrive as f32 WORLD positions, so in the frame one
@@ -179,7 +104,7 @@ impl Execution {
                 param: None,
                 bool2d: None,
             };
-            let retry = self.apply_void_context_inner(
+            let retry = self.cut_in_frame(
                 host_snapped,
                 &snapped_ctx,
                 element_id,
@@ -239,4 +164,88 @@ impl Execution {
         Some(axes)
     }
 
+}
+
+/// Reclassify each cutter in the chosen frame without changing authored depth.
+fn openings_in_frame(
+    ctx: &VoidContext, axes: &[Vector3<f64>; 3], center: Vector3<f64>,
+) -> Option<VoidContext> {
+    let z = Vector3::new(0.0, 0.0, 1.0);
+    let mut local_openings: Vec<CutterKind> = Vec::with_capacity(ctx.merged_openings.len());
+    for op in &ctx.merged_openings {
+        let cutter = match op {
+            CutterKind::DiagonalRectangular(m, _) => m,
+            CutterKind::NonRectangular(m, _, _, _) => m,
+            CutterKind::Rectangular(..) => return None,
+        };
+        let (lmn, lmx) = project_aabb_in_frame(cutter, axes, center)?;
+        let in_frame =
+            |v: Vector3<f64>| Vector3::new(v.dot(&axes[0]), v.dot(&axes[1]), v.dot(&axes[2]));
+        // The cutter's own penetration (depth) axis expressed in the wall
+        // frame. Drives both the alignment test and — for the exact fallback
+        // — the cap-extension direction, which MUST stay faithful to THIS
+        // cutter: hardcoding the wall normal would push a misaligned
+        // opening's flush/short cap along the wrong axis and carve the wrong
+        // prism (#1270 review).
+        let frame_depth = match op {
+            CutterKind::DiagonalRectangular(_, f) => Some(in_frame(f.depth)),
+            CutterKind::NonRectangular(_, _, _, d) => d.map(in_frame),
+            CutterKind::Rectangular(..) => None,
+        };
+        // Whether THIS opening's own oriented box is axis-aligned in the
+        // wall frame. The frame is seeded from the FIRST rotated opening
+        // (#1167); a second opening tilted differently *in plane* is NOT
+        // axis-aligned here, so projecting its frame AABB would over-cut it
+        // (#1259 review). Only a clean box whose full frame aligns with the
+        // wall frame may take the fast rectangular cut; everything else —
+        // brep/curved voids and frame-misaligned boxes alike — keeps its
+        // exact (un-rotated, centred) mesh for the subtract.
+        let frame_aligned = match op {
+            CutterKind::DiagonalRectangular(_, f) => {
+                is_axis_aligned_direction(&in_frame(f.depth))
+                    && is_axis_aligned_direction(&in_frame(f.cross_a))
+                    && is_axis_aligned_direction(&in_frame(f.cross_b))
+            }
+            _ => false,
+        };
+        if frame_aligned {
+            // Preserve THIS cutter's authored penetration axis. The new
+            // #3977 selector also admits vertically extruded strips, whose
+            // local depth is +Y rather than the wall normal (+Z). Extending
+            // those along +Z would turn a partial-thickness vertical slot
+            // into a full-through cut. An inferred box axis carries no such
+            // intent and must retain the established wall-normal fallback.
+            // A cutter authored along the wall normal itself keeps +Z too:
+            // handing the rectangular cut an antiparallel (-Z) depth flips
+            // its cap extension and tears the host (rvt01 #10191 census).
+            let rect_depth = match op {
+                CutterKind::DiagonalRectangular(_, frame)
+                    if frame.depth_is_authored
+                        && frame_depth.is_some_and(|d| d.z.abs() < WALL_NORMAL_DEPTH_COS) =>
+                {
+                    frame_depth
+                }
+                _ => Some(z),
+            };
+            local_openings.push(CutterKind::Rectangular(lmn, lmx, rect_depth));
+        } else {
+            let mesh_local = mesh_to_frame(cutter, axes, center);
+            // Keep this cutter's true depth in the frame; fall back to the
+            // wall normal (+Z) only when the opening carried no direction.
+            let dir = frame_depth.unwrap_or(z);
+            local_openings.push(CutterKind::NonRectangular(mesh_local, lmn, lmx, Some(dir)));
+        }
+    }
+    let local_ctx = VoidContext {
+        merged_openings: GeometryRouter::merge_rectangular_openings(&local_openings),
+        openings: local_openings,
+        // The local-frame recursion never re-captures the parametric cut
+        // (issue #1209): it operates on already-classified openings, so the
+        // analytic `param` / 2D paths are irrelevant here — defer to the exact
+        // path.
+        param: None,
+        bool2d: None,
+    };
+
+    Some(local_ctx)
 }

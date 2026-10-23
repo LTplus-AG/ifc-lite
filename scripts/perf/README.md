@@ -12,6 +12,23 @@ that also dominate in the browser; the WASM-only concerns (per-worker file
 re-decode, no threads, memory bandwidth) are orchestration-level and are read
 off the viewer's own telemetry (below).
 
+## One element per rayon task in the element loop
+
+**Shipped: the element `par_iter` uses `with_max_len(1)`.** A large void-heavy
+model, converted through an embedder's single-chunk export, ended with a long
+single-core tail inside the element loop: rayon had handed one thread a range of
+several void-heavy elements, which it ran in sequence while the others idled.
+Single-element tasks let idle threads take the rest. In `perf_probe` only the
+heavy CSG tower (Holter) gains; the large model's win shows only through the
+embedder. Output is unchanged at every thread count tested.
+
+Lesson: when cores go idle while a parallel loop is still running, check rayon's
+task granularity before the kernel. In a profiled embedder run on `76d38b1243`,
+ordering the jobs heavy-first without `with_max_len(1)` did not remove the
+tail: rayon packed the heavy jobs into one thread's first range instead.
+`perf_probe` and an embedder's export can split the work differently, so
+measure the embedder too.
+
 ## Consolidation certificates restore the instruction ratchet (#7943)
 
 **Measured reduction in exact geometry work; unchanged instruction ceilings.**

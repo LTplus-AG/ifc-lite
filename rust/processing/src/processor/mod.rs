@@ -819,8 +819,7 @@ pub fn process(
         // shared point list is parsed once per worker for the whole model, not per
         // chunk/part. `.map`/`.flatten_iter()` keeps the former `flat_map_iter` order;
         // the cache is pure memoization, so meshes are byte-identical.
-        let chunk_meshes: Vec<MeshData> = jobs_chunk
-            .par_iter()
+        let chunk_meshes: Vec<MeshData> = jobs::element_tasks(jobs_chunk)
             .map(|job| {
                 let widx = rayon::current_thread_index().unwrap_or(0) % worker_point_caches.len();
                 // `try_lock`, not `lock`: faceted-brep triangulation nests a rayon
@@ -829,7 +828,7 @@ pub fn process(
                 // `lock()` on the non-reentrant `Mutex` this thread already holds
                 // would self-deadlock (regression from the persistent per-worker
                 // cache). Each slot is a thread's own index, so `try_lock` only ever
-                // fails on that re-entrant steal; that rare job uses a throwaway
+                // fails on that re-entrant steal; the re-entered job uses a throwaway
                 // cache instead. Output is byte-identical: the cache is pure
                 // memoization of deterministic coordinates, so a miss just re-decodes.
                 let mut fallback_cache = FxHashMap::default();

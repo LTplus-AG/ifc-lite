@@ -45,7 +45,7 @@ it('keeps compact specification hierarchy in the canonical document sheets (#655
     page: { size: 'A4', orientation: 'portrait' }, blocks: [block] }}
     bindings={{ models: [], activeModelId: null, today: new Date('2026-10-02T12:00:00Z') }}
     aggregations={new Map()} chartMessages={new Map()} topics={new Map()}
-    selectedBlockId={null} onSelectBlock={() => {}} />);
+    onSelectBlock={() => {}} />);
   await waitFor(() => ui.querySelector('[data-preview-section]') !== null
     && ui.querySelector('[data-layout-pending="true"]') === null, 'actual shared compact layout is prepared');
   const glyph = (text: string) => {

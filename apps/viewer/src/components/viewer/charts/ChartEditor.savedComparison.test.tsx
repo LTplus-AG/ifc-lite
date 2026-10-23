@@ -98,7 +98,7 @@ function choose(select: HTMLSelectElement, value: string): void {
 const settle = async () => { for (let index = 0; index < 6; index++) await act(async () => { await Promise.resolve(); }); };
 function DocumentProbe({ document, observe }: { document: DocumentSpec; observe: (data: DocumentData) => void }) {
   const data = useDocumentData(document); observe(data);
-  return <DocumentPreview document={document} {...data} selectedBlockId={null} onSelectBlock={() => {}} />;
+  return <DocumentPreview document={document} {...data} onSelectBlock={() => {}} />;
 }
 function CardProbe({ spec, renderer }: { spec: ChartSpec; renderer: ChartRenderer }) {
   return <ChartCard spec={spec} dataset={datasets().compare} link={useChart3DLink()} renderer={renderer}

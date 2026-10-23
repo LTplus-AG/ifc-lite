@@ -102,7 +102,7 @@ it('captures large table/IDS counts with the label locale through actual PNG pre
     'document.preview.idsReportChecksCount': { one: '{countDisplay} Prüfung', other: '{countDisplay} Prüfungen' } });
   registerLocale('fr', { 'document.table.moreRows': 'WRONG {countDisplay}', 'document.table.total': 'WRONG {count}' });
   setLocale('de'); const input = declaredInput(); input.labels = captureTranslation();
-  const ui = render(<DocumentPreview {...input} selectedBlockId={null} onSelectBlock={() => {}} />);
+  const ui = render(<DocumentPreview {...input} onSelectBlock={() => {}} />);
   await waitFor(() => ui.querySelector('[data-preview-block="compact"]') !== null && ui.querySelector('[data-layout-pending="true"]') === null,
     'actual mounted report and table finish preparation');
   const table = ui.querySelector('[data-preview-block="table"]'); assert.ok(table);
@@ -129,7 +129,7 @@ it('captures large table/IDS counts with the label locale through actual PNG pre
 
 it('preserves uncaptured English PDF counts and host-grouped table defaults despite an active German UI (#6610)', async () => {
   registerLocale('de', { 'document.table.moreRows': 'WRONG {countDisplay}', 'document.preview.idsReportChecked': 'WRONG' }); setLocale('de');
-  const ui = render(<DocumentPreview {...declaredInput()} labels={(await import('@/i18n/registry')).resolveEnglish} selectedBlockId={null} onSelectBlock={() => {}} />);
+  const ui = render(<DocumentPreview {...declaredInput()} labels={(await import('@/i18n/registry')).resolveEnglish} onSelectBlock={() => {}} />);
   await waitFor(() => ui.querySelector('[data-preview-block="manual"]') !== null && ui.querySelector('[data-layout-pending="true"]') === null, 'explicit uncaptured paper labels finish actual mounted preparation');
   for (const value of ['Pass 1001', 'Fail 1001', '(1001 of 2004 checks)']) assert.ok(ui.querySelector('[data-preview-block="manual"]')?.textContent?.includes(value), `mounted raw-default manual count: ${value}`);
   const text = await printed(declaredInput());
@@ -143,7 +143,7 @@ it('preserves uncaptured English PDF counts and host-grouped table defaults desp
 it('preserves captured French grouping in mounted counts and actual PDF glyphs (#6610)', async () => {
   registerLocale('fr', { 'document.table.moreRows': 'Reste {countDisplay}', 'document.table.total': 'Total {count}' });
   setLocale('fr'); const input = declaredInput(['warning', null]); input.labels = captureTranslation();
-  const ui = render(<DocumentPreview {...input} selectedBlockId={null} onSelectBlock={() => {}} />);
+  const ui = render(<DocumentPreview {...input} onSelectBlock={() => {}} />);
   await waitFor(() => ui.querySelector('[data-preview-block="compact"]') !== null && ui.querySelector('[data-layout-pending="true"]') === null,
     'captured French counts finish actual mounted preparation');
   const normalizeGrouping = (text: string): string => text.replace(/[\u00a0\u202f]/g, ' ');

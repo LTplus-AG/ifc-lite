@@ -289,7 +289,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
             {document.blocks.length === 0 && <div className="p-2 text-muted-foreground">{t('document.panel.emptyBlocks')}</div>}
           </div>
           <div className="min-w-0 flex-1 overflow-auto bg-muted/40">
-            <DocumentPreview document={document} labels={data.labels} bindings={data.bindings} aggregations={data.aggregations} chartMessages={data.chartMessages} topics={data.topics} tables={data.tables} selectedBlockId={null} selectedBlockIds={selection.ids} onSelectBlock={selection.toggle} />
+            <DocumentPreview document={document} labels={data.labels} bindings={data.bindings} aggregations={data.aggregations} chartMessages={data.chartMessages} topics={data.topics} tables={data.tables} selectedBlockIds={selection.ids} onSelectBlock={selection.toggle} />
           </div>
         </div>
       )}

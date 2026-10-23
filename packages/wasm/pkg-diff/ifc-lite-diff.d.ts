@@ -58,7 +58,7 @@ export function diffSerializeSidecar(text: string): string;
 export function diffStableHash(units: Uint16Array): string;
 
 /**
- * Structural diagnostics preserve the engine's ordered error list.
+ * Host decoding preserves lone UTF-16 units even inside conflict diagnostics.
  */
 export function diffValidateSidecar(text: string, lineage: boolean): string[];
 

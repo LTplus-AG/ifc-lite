@@ -140,10 +140,10 @@ fn epoch_seconds(stamp: &str) -> Option<i64> {
             if !z.is_ascii() {
                 return None;
             }
-            let (h, m) = match (z.len(), z.as_bytes().get(2)) {
-                (2, _) => (num(z)?, 0),
-                (4, _) => (num(&z[..2])?, num(&z[2..])?),
-                (5, Some(b':')) => (num(&z[..2])?, num(&z[3..])?),
+            let (h, m) = match z.len() {
+                2 => (num(z)?, 0),
+                4 => (num(&z[..2])?, num(&z[2..])?),
+                5 if z.as_bytes()[2] == b':' => (num(&z[..2])?, num(&z[3..])?),
                 _ => return None,
             };
             if h > 23 || m > 59 {

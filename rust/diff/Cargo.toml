@@ -11,7 +11,6 @@ categories = ["algorithms", "data-structures"]
 readme = "../../README.md"
 
 [dependencies]
-serde.workspace = true
 # ECMAScript-compliant f64 formatting. The data fingerprint is a hash over
 # `JSON.stringify` output, so a number must render exactly as V8 renders it:
 # `1e+21`, not `1000000000000000000000`. Rust's `Display` disagrees in both

@@ -30,16 +30,27 @@ print(json.dumps(found))
 '''
 end = time.monotonic() + 600
 while time.monotonic() < end:
-    result = subprocess.run(['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10',
-                             'ifc-pc-worker', 'python3', '-', candidate_original, control_original],
-                            input=query, capture_output=True, text=True, check=True, timeout=30)
+    try:
+        result = subprocess.run(['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10',
+                                 'ifc-pc-worker', 'python3', '-', candidate_original, control_original],
+                                input=query, capture_output=True, text=True,
+                                timeout=max(0.001, min(30, end - time.monotonic())))
+    except subprocess.TimeoutExpired:
+        print('Original receipt query timed out; retrying transport within the existing deadline', file=sys.stderr, flush=True)
+        time.sleep(min(5, max(0, end - time.monotonic())))
+        continue
+    if result.returncode == 255:
+        print('Original receipt query SSH transport failed; retrying within the existing deadline', file=sys.stderr, flush=True)
+        time.sleep(min(5, max(0, end - time.monotonic())))
+        continue
+    result.check_returncode()  # Remote assertions remain terminal; no producer is submitted.
     found = json.loads(result.stdout)
     if found:
         original = found[0]
         if original['state'] in ['completed', 'failed', 'orphaned']:
             assert original['state'] == 'completed' and original['exitCode'] == 0 and original['sourceUnchanged'], original
             break
-    time.sleep(5)
+    time.sleep(min(5, max(0, end - time.monotonic())))
 else:
     raise RuntimeError('Original PC repack not qualified within bounded preparation wait; no retry submitted')
 command = ['python3', str(out / 'stage-pc-build.py'), 'candidate', original['id']]

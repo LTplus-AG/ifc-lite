@@ -6,12 +6,11 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use crate::step_text::escape;
-
 use crate::step_ids::IdAllocator;
 use super::index::FileIndex;
-use super::types::{Disposition, ExportPlan, ObjectRef, Patch, PropWrite, Refusal};
-use super::{attrs, delete, owner_history, placement, props};
+use super::patch::{apply_patch, PatchOutput};
+use super::types::{Disposition, DroppedRepresentation, ExportPlan, ObjectRef, Refusal};
+use super::{attrs, delete, geometry, owner_history};
 
 pub(crate) struct Resolution {
     pub(crate) appended: Vec<(u32, String)>,
@@ -23,6 +22,7 @@ pub(crate) struct Resolution {
     /// Every object a patch was applied to: the scope of the duplicate
     /// property-set check, which is the defect a patch can introduce.
     pub(crate) patched_objects: Vec<u32>,
+    pub(crate) dropped_representations: Vec<DroppedRepresentation>,
 }
 
 pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Resolution {
@@ -84,9 +84,15 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     // `detach_requests` and rendered once below, together with whatever the
     // delete pass strips from the same list.
     let mut list_edits: HashMap<(u32, usize), attrs::ListEdit> = HashMap::new();
+    // Every geometry patch's cut `(product, old shape)`, swept together once
+    // every patch has resolved.
+    let mut geometry_cuts: Vec<(u32, u32)> = Vec::new();
+    let mut body_context = geometry::BodyContext::default();
+    let mut dropped_representations = Vec::new();
 
     let mut moved: HashSet<u32> = HashSet::new();
     let mut edited: HashSet<(u32, u32)> = HashSet::new();
+    let mut reshaped: HashSet<u32> = HashSet::new();
     for &(id, disposition) in &resolved {
         match disposition {
             Disposition::Preserve | Disposition::Delete => {}
@@ -114,63 +120,49 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
                     moved: &mut moved,
                     edited: &mut edited,
                     object: id,
+                    reshaped: &mut reshaped,
+                    geometry_cuts: &mut geometry_cuts,
+                    body_context: &mut body_context,
+                    dropped_representations: &mut dropped_representations,
                 };
                 apply_patch(index, schema, id, patch, &mut ids, owner_history_ref, &mut out);
             }
         }
     }
 
+    if let Some(context) = body_context.synthesized {
+        attach_context_to_project(index, schema, context, &removed, &mut list_edits);
+    }
+
+    // What the old shapes leave behind. The annotations the sweep finds (a
+    // styled item, a layer entry) go through delete below, which repairs
+    // whatever names them.
+    if !geometry_cuts.is_empty() {
+        let sweep = geometry::sweep(index, schema, &geometry_cuts, &removed);
+        removed.extend(sweep.pruned);
+        requested_deletes.extend(sweep.delete);
+        detach_requests.extend(sweep.detach);
+    }
+
     // The one place the top-level deletes' cascade and every patch's
     // copy-on-write detach are resolved together: a relationship either
     // side strips from composes into a single rewrite, and a relationship
     // both sides empty between them still cascades.
-    //
-    // A source record an appended one names (a member a copy-on-write clone
-    // reuses, the owner history) must outlive the cascade even when every
-    // source referrer it had is going away.
-    // An appended record's own id is above `max_id`, so only what it names
-    // in the source survives the filter.
-    // A member a write adds to a set the deletes take has nothing left to
-    // name it, so it is not written and protects nothing.
-    let orphans: HashSet<u32> = list_edits
-        .iter()
-        .filter(|((set, _), _)| removed.contains(set))
-        .flat_map(|(_, edit)| edit.append.iter().chain(edit.substitute.values()).copied())
-        .collect();
-    appended.retain(|(id, _)| !orphans.contains(id));
-    let mut named = Vec::new();
-    for (_, text) in &appended {
-        crate::step_text::refs_in_line(text.as_bytes(), &mut named);
-    }
-    protected.extend(named.into_iter().filter(|&id| id <= index.max_id));
+    protect_what_appended_names(index, &list_edits, &removed, &mut appended, &mut protected);
     let delete_result = delete::resolve_deletes(index, schema, &requested_deletes, &detach_requests, &protected);
     // This pass decides what the deletes take: a gating removal it no longer
     // makes (a member a copy-on-write clone reuses) comes back.
     removed.retain(|id| !gating.removed.contains(id) || delete_result.removed.contains(id));
     removed.extend(delete_result.removed);
-    // A surviving object's write into a record the plan deletes would vanish.
-    let mut lost: Vec<(u32, u32)> = edited.into_iter().filter(|(record, object)| removed.contains(record) && !removed.contains(object)).collect();
-    lost.sort_unstable();
-    refusals.extend(lost.into_iter().map(|(record, object)| Refusal {
-        object: ObjectRef::Id(object),
-        reason: format!("a write to #{record} is lost: this plan deletes that record"),
-    }));
-    // A Preserve the plan's removals override is reported, not dropped.
-    let mut overridden: Vec<u32> =
-        resolved.iter().filter(|&&(id, d)| matches!(d, Disposition::Preserve) && removed.contains(&id)).map(|&(id, _)| id).collect();
-    overridden.sort_unstable();
-    overridden.dedup();
-    refusals.extend(overridden.into_iter().map(|id| Refusal {
-        object: ObjectRef::Id(id),
-        reason: "object is removed by this plan; it cannot be preserved".into(),
-    }));
+    refusals.extend(lost_writes(edited, &removed));
+    refusals.extend(overridden_preserves(&resolved, &removed));
     for (slot, strip) in delete_result.stripped {
         list_edits.entry(slot).or_default().remove.extend(strip);
     }
 
     render_list_edits(index, list_edits, &removed, &mut edits_by_id);
 
-    Resolution { appended, edits_by_id, removed, refusals, patched, added_unsupported, patched_objects }
+    Resolution { appended, edits_by_id, removed, refusals, patched, added_unsupported, patched_objects, dropped_representations }
 }
 
 /// The owner history a patch's new records name: the file's first, else one
@@ -229,118 +221,76 @@ fn render_list_edits(
             continue;
         }
         let Some(slot) = index.raw_line(id).and_then(|line| crate::step_text::attribute_of(&line, idx)) else { continue };
-        if let Some(entries) = attrs::ListEntry::parse_list(&slot) {
-            edits_by_id.entry(id).or_default().insert(idx, edit.render(&entries));
-        }
+        let entries = match attrs::ListEntry::parse_list(&slot) {
+            Some(entries) => entries,
+            // An unset list (`$`, e.g. a project with no contexts yet) takes
+            // appends as a new list. Any other slot is left as written.
+            None if slot.trim() == "$" && edit.remove.is_empty() && edit.substitute.is_empty() => Vec::new(),
+            None => continue,
+        };
+        edits_by_id.entry(id).or_default().insert(idx, edit.render(&entries));
     }
 }
 
-struct PatchOutput<'a> {
-    edits_by_id: &'a mut HashMap<u32, BTreeMap<usize, String>>,
-    appended: &'a mut Vec<(u32, String)>,
-    refusals: &'a mut Vec<Refusal>,
-    removed: &'a mut HashSet<u32>,
-    detach_requests: &'a mut Vec<(u32, usize, u32)>,
-    list_edits: &'a mut HashMap<(u32, usize), attrs::ListEdit>,
-    /// Objects a patch has already moved. Patches of one object compose, but
-    /// only one may move it: a second placement would repoint past the first
-    /// one's new records and leave them unreferenced.
-    moved: &'a mut HashSet<u32>,
-    /// `(edited record, patched object)` for every in-place edit and set
-    /// member change, checked once the deletes settle.
-    edited: &'a mut HashSet<(u32, u32)>,
-    object: u32,
-}
-
-impl PatchOutput<'_> {
-    fn edit(&mut self, edits: Vec<(u32, usize, String)>) {
-        for (id, idx, value) in edits {
-            self.edits_by_id.entry(id).or_default().insert(idx, value);
-            self.edited.insert((id, self.object));
-        }
-    }
-
-    /// The member-list change on `set`'s attribute `idx`, recorded as a
-    /// write of the patched object.
-    fn list_edit(&mut self, set: u32, idx: usize) -> &mut attrs::ListEdit {
-        self.edited.insert((set, self.object));
-        self.list_edits.entry((set, idx)).or_default()
-    }
-}
-
-fn apply_patch(
+/// Append a synthesized representation context to the project's
+/// `RepresentationContexts`, through the same list accumulator a delete
+/// stripping a context from that list uses.
+fn attach_context_to_project(
     index: &FileIndex,
     schema: &str,
-    object_id: u32,
-    patch: &Patch,
-    ids: &mut IdAllocator,
-    owner_history: Option<u32>,
-    out: &mut PatchOutput<'_>,
+    context: u32,
+    removed: &HashSet<u32>,
+    list_edits: &mut HashMap<(u32, usize), attrs::ListEdit>,
 ) {
-    if let Some(name) = &patch.name {
-        let entity_type = index.type_of(object_id).unwrap_or_default();
-        match attrs::attribute_index(schema, &entity_type, "Name") {
-            Some(idx) => out.edit(vec![(object_id, idx, format!("'{}'", escape(name)))]),
-            None => out.refusals.push(Refusal {
-                object: ObjectRef::Id(object_id),
-                reason: format!("{entity_type} has no Name attribute in {schema}"),
-            }),
-        }
-    }
+    let Some(project) = index.projects.iter().copied().find(|id| !removed.contains(id)) else { return };
+    let Some(idx) = attrs::attribute_index(schema, "IFCPROJECT", "RepresentationContexts") else { return };
+    list_edits.entry((project, idx)).or_default().append.push(context);
+}
 
-    // Writes to one set are resolved together, in the order the set is
-    // first named.
-    let mut groups: Vec<Vec<&PropWrite>> = Vec::new();
-    for write in &patch.psets {
-        let same_set = |w: &&PropWrite| w.pset == write.pset && w.kind == write.kind && w.scope == write.scope;
-        match groups.iter_mut().find(|g| g.first().is_some_and(same_set)) {
-            Some(group) => group.push(write),
-            None => groups.push(vec![write]),
-        }
+/// Drop the members a write adds to a set the deletes take (nothing would
+/// name them), then keep alive every source record an appended one still
+/// names: a member a copy-on-write clone reuses, the owner history. An
+/// appended record's own id is above `max_id`, so only what it names in the
+/// source is kept.
+fn protect_what_appended_names(
+    index: &FileIndex,
+    list_edits: &HashMap<(u32, usize), attrs::ListEdit>,
+    removed: &HashSet<u32>,
+    appended: &mut Vec<(u32, String)>,
+    protected: &mut HashSet<u32>,
+) {
+    let orphans: HashSet<u32> = list_edits
+        .iter()
+        .filter(|((set, _), _)| removed.contains(set))
+        .flat_map(|(_, edit)| edit.append.iter().chain(edit.substitute.values()).copied())
+        .collect();
+    appended.retain(|(id, _)| !orphans.contains(id));
+    let mut named = Vec::new();
+    for (_, text) in appended.iter() {
+        crate::step_text::refs_in_line(text.as_bytes(), &mut named);
     }
-    for group in &groups {
-        let result = props::resolve_set_writes(index, schema, object_id, group, ids, owner_history);
-        for outcome in result.outcomes {
-            match outcome {
-                props::PropOutcome::InPlace(edits) => out.edit(edits),
-                props::PropOutcome::Append { new_records } => out.appended.extend(new_records),
-                props::PropOutcome::Fold { new_records, append: (set, idx, value) } => {
-                    out.appended.extend(new_records);
-                    out.list_edit(set, idx).append.push(value);
-                }
-                props::PropOutcome::CopyOnWrite { new_records, detach } => {
-                    out.appended.extend(new_records);
-                    out.detach_requests.push(detach);
-                }
-                props::PropOutcome::LeafCopyOnWrite { new_records, replace: (set, idx, old, new) } => {
-                    out.appended.extend(new_records);
-                    // A later patch repointing the same leaf replaces the
-                    // earlier copy, which then names nothing.
-                    if let Some(earlier) = out.list_edit(set, idx).substitute.insert(old, new) {
-                        out.appended.retain(|(id, _)| *id != earlier);
-                    }
-                }
-            }
-        }
-        for (write, reason) in result.refused {
-            out.refusals.push(Refusal { object: ObjectRef::Id(object_id), reason: format!("{}.{}: {reason}", write.pset, write.prop) });
-        }
-    }
+    protected.extend(named.into_iter().filter(|&id| id <= index.max_id));
+}
 
-    if let Some(placement_patch) = &patch.placement {
-        let result = if out.moved.contains(&object_id) {
-            Err("object is already moved by another patch in this plan; the first placement wins".to_string())
-        } else {
-            placement::resolve_placement(index, schema, object_id, placement_patch, ids)
-        };
-        match result {
-            Ok(placement::PlacementWrite { new_records, repoint, orphaned }) => {
-                out.appended.extend(new_records);
-                out.edit(vec![repoint]);
-                out.removed.extend(orphaned);
-                out.moved.insert(object_id);
-            }
-            Err(reason) => out.refusals.push(Refusal { object: ObjectRef::Id(object_id), reason }),
-        }
-    }
+/// A refusal for each surviving object's write into a record the plan
+/// deletes: the write would vanish.
+fn lost_writes(edited: HashSet<(u32, u32)>, removed: &HashSet<u32>) -> Vec<Refusal> {
+    let mut lost: Vec<(u32, u32)> = edited.into_iter().filter(|(record, object)| removed.contains(record) && !removed.contains(object)).collect();
+    lost.sort_unstable();
+    lost.into_iter()
+        .map(|(record, object)| Refusal { object: ObjectRef::Id(object), reason: format!("a write to #{record} is lost: this plan deletes that record") })
+        .collect()
+}
+
+/// A refusal for each Preserve the plan's removals override: reported, not
+/// dropped.
+fn overridden_preserves(resolved: &[(u32, &Disposition)], removed: &HashSet<u32>) -> Vec<Refusal> {
+    let mut overridden: Vec<u32> =
+        resolved.iter().filter(|&&(id, d)| matches!(d, Disposition::Preserve) && removed.contains(&id)).map(|&(id, _)| id).collect();
+    overridden.sort_unstable();
+    overridden.dedup();
+    overridden
+        .into_iter()
+        .map(|id| Refusal { object: ObjectRef::Id(id), reason: "object is removed by this plan; it cannot be preserved".into() })
+        .collect()
 }

@@ -77,7 +77,59 @@ pub struct PlacementPatch {
     pub matrix: [[f64; 4]; 4],
 }
 
+/// A triangle mesh. Indices are 0-based into `positions`.
+#[derive(Debug, Clone)]
+pub struct TriangleMesh {
+    pub positions: Vec<[f64; 3]>,
+    pub triangles: Vec<[u32; 3]>,
+}
+
+/// A surface colour for body geometry. Components are 0..1.
+#[derive(Debug, Clone, Copy)]
+pub struct SurfaceColour {
+    pub rgb: [f64; 3],
+    pub transparency: f64,
+}
+
+/// Replace a product's body geometry with `mesh`.
+///
+/// `mesh` is in the product's own local placement frame (the frame its
+/// `ObjectPlacement` defines), in the file's length units. Nothing is
+/// transformed or scaled on the way in.
+///
+/// The product gets a new `IfcProductDefinitionShape` holding one `Body`
+/// `IfcShapeRepresentation` in the file's existing Body context (or its
+/// `Model` context; one is created when the file has none). The mesh is
+/// written in what the source schema can express, never converted: an
+/// `IfcTriangulatedFaceSet` in IFC4 and IFC4X3, an `IfcFacetedBrep` in
+/// IFC2X3 (an `IfcShellBasedSurfaceModel` when the mesh is not closed, since
+/// a brep asserts a solid). `colour`, when given, is attached through an
+/// `IfcStyledItem`.
+///
+/// Every representation the old shape carried is gone from the product,
+/// not just its body: an `Axis`, `Box` or `FootPrint` representation
+/// described the old geometry. Each non-Body one is listed in
+/// [`WriteReport::dropped_representations`]. Old records nothing else uses
+/// are pruned from the output; a record another product still uses (a shared
+/// item, a type's `IfcRepresentationMap`, a profile) is kept.
+///
+/// A product whose geometry comes from its type through an `IfcMappedItem`
+/// gets geometry of its own; the type and its other occurrences keep the
+/// map. An opening voiding the product (`IfcRelVoidsElement`) is left as it
+/// is: the caller's mesh is taken as the body before voids, like any other
+/// body representation.
+#[derive(Debug, Clone)]
+pub struct GeometryPatch {
+    pub mesh: TriangleMesh,
+    pub colour: Option<SurfaceColour>,
+}
+
 /// What one object should become in the output.
+///
+/// `Patch` is much larger than the other variants. A plan holds one of these
+/// per object it names, so the space is not worth an indirection in the
+/// public shape.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum Disposition {
     /// Keep the record(s) exactly as the source wrote them.
@@ -100,6 +152,7 @@ pub struct Patch {
     pub name: Option<String>,
     pub psets: Vec<PropWrite>,
     pub placement: Option<PlacementPatch>,
+    pub geometry: Option<GeometryPatch>,
 }
 
 /// Header provenance the caller supplies. There is no clock fallback: `now()`
@@ -144,6 +197,18 @@ pub struct ValidationFinding {
     pub message: String,
 }
 
+/// A representation a [`GeometryPatch`] took off a product that was not its
+/// body: an `Axis`, `Box`, `FootPrint` or other representation of the old
+/// shape, which no longer describes the product once its body is replaced.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DroppedRepresentation {
+    pub object: ObjectRef,
+    /// Express id of the `IfcShapeRepresentation` in the source.
+    pub representation: u32,
+    /// Its `RepresentationIdentifier`, when it has one.
+    pub identifier: Option<String>,
+}
+
 /// What [`super::execute`] did, and what it could not.
 #[derive(Debug, Clone, Default)]
 pub struct WriteReport {
@@ -154,6 +219,8 @@ pub struct WriteReport {
     pub added_unsupported: usize,
     pub refusals: Vec<Refusal>,
     pub findings: Vec<ValidationFinding>,
+    /// Representations geometry patches removed from their products.
+    pub dropped_representations: Vec<DroppedRepresentation>,
 }
 
 /// Failure modes of [`super::execute`] itself, as opposed to a single

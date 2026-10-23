@@ -5,7 +5,8 @@
 //! One pass records where each record is ([`ifc_lite_core::ColumnarEntityIndex`]:
 //! three `u32` columns, 12 bytes a record) plus the few whole-file facts the
 //! plan needs: the highest id, the first owner history, ids declared twice,
-//! and the ids of the GlobalIds the plan names. Everything else is read on
+//! the ids of the GlobalIds the plan names, and the few records new geometry
+//! attaches to (projects, representation contexts). Everything else is read on
 //! demand from the record's own bytes: its entity type, its attribute
 //! references ([`FileIndex::attrs`]). Who refers to a record is answered by
 //! [`super::referrers`], which collects it only for the ids a plan asks about.
@@ -86,6 +87,11 @@ pub(crate) struct FileIndex<'a> {
     guids: FxHashMap<String, u32>,
     pub(crate) max_id: u32,
     pub(crate) first_owner_history: Option<u32>,
+    /// Every `IfcProject`, in file order.
+    pub(crate) projects: Vec<u32>,
+    /// Every `IfcGeometricRepresentationContext` and subcontext, in file
+    /// order.
+    pub(crate) contexts: Vec<u32>,
     pub(crate) referrers: Referrers,
 }
 
@@ -104,6 +110,8 @@ impl<'a> FileIndex<'a> {
         // `(id, start)`: kept below only where the record is the one an id
         // resolves to, so a declaration a later one replaces counts for nothing.
         let mut owner_histories = Vec::new();
+        let mut projects = Vec::new();
+        let mut contexts = Vec::new();
         let mut ascending = true;
 
         let mut scanner = EntityScanner::new(content);
@@ -111,6 +119,12 @@ impl<'a> FileIndex<'a> {
             max_id = max_id.max(id);
             if type_name.eq_ignore_ascii_case("IFCOWNERHISTORY") {
                 owner_histories.push((id, start));
+            } else if type_name.eq_ignore_ascii_case("IFCPROJECT") {
+                projects.push((id, start));
+            } else if type_name.eq_ignore_ascii_case("IFCGEOMETRICREPRESENTATIONCONTEXT")
+                || type_name.eq_ignore_ascii_case("IFCGEOMETRICREPRESENTATIONSUBCONTEXT")
+            {
+                contexts.push((id, start));
             }
             if !wanted_guids.is_empty() {
                 note_wanted_guid(&content[start..end], type_name, id, start, wanted_guids, &mut guids);
@@ -143,6 +157,8 @@ impl<'a> FileIndex<'a> {
 
         let kept = |&(id, start): &(u32, usize)| !duplicates.contains(&id) || spans.lookup(id).is_some_and(|(s, _)| s == start);
         let first_owner_history = owner_histories.iter().find(|r| kept(r)).map(|&(id, _)| id);
+        let projects = projects.iter().filter(|r| kept(r)).map(|&(id, _)| id).collect();
+        let contexts = contexts.iter().filter(|r| kept(r)).map(|&(id, _)| id).collect();
         let mut kept_guids = FxHashMap::default();
         for (guid, id, start) in guids {
             if kept(&(id, start)) {
@@ -157,6 +173,8 @@ impl<'a> FileIndex<'a> {
             guids: kept_guids,
             max_id,
             first_owner_history,
+            projects,
+            contexts,
             referrers: Referrers::default(),
         }
     }

@@ -86,3 +86,21 @@ fn deleting_the_only_covering_drops_the_now_empty_covers_relationship() {
         assert!(result.removed.contains(&13), "{schema}: RelatedCoverings is SET [1:?], so the rel goes");
     }
 }
+
+/// A presentation layer's `AssignedItems` is `SET [1:?]`: stripping its last
+/// entry takes the layer out rather than writing `()`. One that keeps an
+/// entry is rewritten.
+#[test]
+fn a_layer_whose_last_item_is_stripped_goes() {
+    use crate::plan::test_fixtures::products_with_geometry;
+    for schema in ["IFC2X3", "IFC4", "IFC4X3"] {
+        let content = products_with_geometry(schema);
+        let index = FileIndex::complete(&content);
+        let idx = crate::plan::attrs::attribute_index(schema, "IFCPRESENTATIONLAYERASSIGNMENT", "AssignedItems").unwrap();
+        let detach = [(83, idx, 62), (80, idx, 62)];
+        let result = resolve_deletes(&index, schema, &HashSet::new(), &detach, &HashSet::new());
+        assert!(result.removed.contains(&83), "{schema}: the emptied layer");
+        assert!(!result.removed.contains(&80), "{schema}: the layer with items left");
+        assert_eq!(result.stripped.get(&(80, idx)), Some(&[62].into_iter().collect()), "{schema}");
+    }
+}

@@ -9,7 +9,8 @@
 //! cannot supply is cardinality — the file does not say a `SET [1:?]` cannot go empty — so
 //! [`is_mandatory_members_attr`] carries that one fact, by attribute NAME
 //! (the `SET [1:?]` member lists of the `IFCREL*` entities, such as
-//! `RelatedObjects` or `RelatedCoverings`), not by entity type. It is the one place this module is
+//! `RelatedObjects` or `RelatedCoverings`, and a presentation layer's
+//! `AssignedItems`), not by entity type. It is the one place this module is
 //! a curated fact rather than a derived one, and it is deliberately narrow:
 //! wrong here means a relationship survives with fewer members, never that a
 //! record silently disappears.
@@ -35,29 +36,38 @@ pub(crate) struct DeleteResult {
 /// emptying it by removing a member takes the relationship itself out rather
 /// than leaving a rel with nothing related. A name a schema does not declare
 /// (`RelatedSurfaceFeatures` before IFC4X3) never matches there.
+/// A presentation layer's `AssignedItems` is `SET [1:?]` the same way: a
+/// layer with nothing on it goes.
 fn is_mandatory_members_attr(file_schema: &str, entity_type: &str, index: usize) -> bool {
-    if !entity_type.starts_with("IFCREL") {
-        return false;
-    }
     let Some(names) = ifc_lite_core::attribute_names_for_schema(file_schema, entity_type) else {
         return false;
     };
-    matches!(
-        names.get(index).copied(),
-        Some(
-            "RelatedObjects"
-                | "RelatedElements"
-                | "RelatedResourceObjects"
-                | "RelatedCoverings"
-                | "RelatedDefinitions"
-                | "RealizingElements"
-                | "RelatedControlElements"
-                | "RelatedBuildings"
-                | "RelatedPropertySets"
-                | "RelatedProducts"
-                | "RelatedSurfaceFeatures"
-        )
-    )
+    let name = names.get(index).copied();
+    if entity_type.starts_with("IFCREL") {
+        return matches!(
+            name,
+            Some(
+                "RelatedObjects"
+                    | "RelatedElements"
+                    | "RelatedResourceObjects"
+                    | "RelatedCoverings"
+                    | "RelatedDefinitions"
+                    | "RealizingElements"
+                    | "RelatedControlElements"
+                    | "RelatedBuildings"
+                    | "RelatedPropertySets"
+                    | "RelatedProducts"
+                    | "RelatedSurfaceFeatures"
+            )
+        );
+    }
+    name.is_some_and(|name| is_layer_items(entity_type, name))
+}
+
+/// A presentation layer's `AssignedItems`: the one non-relationship member
+/// list both delete and the geometry sweep treat by rule.
+pub(crate) fn is_layer_items(entity_type: &str, attr_name: &str) -> bool {
+    matches!(entity_type, "IFCPRESENTATIONLAYERASSIGNMENT" | "IFCPRESENTATIONLAYERWITHSTYLE") && attr_name == "AssignedItems"
 }
 
 /// A record every export keeps even if the cascade would otherwise

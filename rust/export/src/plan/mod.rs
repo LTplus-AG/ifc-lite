@@ -5,8 +5,8 @@
 //! primitives the rest of this crate already carries
 //! (`AttrMutation`-shaped edits, `CopyOnWriteMutation`'s copy-then-repoint
 //! shape, [`crate::step_cow`]'s id allocator role) plus the parts no STEP
-//! option expresses: occurrence overrides, placement rewrites, and delete
-//! with reverse-reference repair.
+//! option expresses: occurrence overrides, placement rewrites, body geometry
+//! replacement, and delete with reverse-reference repair.
 //!
 //! # Design
 //!
@@ -37,14 +37,17 @@
 
 mod attrs;
 mod delete;
+mod geometry;
 mod index;
 mod owner_history;
 mod placement;
+mod patch;
 mod props;
 mod props_lookup;
 mod props_synth;
 mod referrers;
 mod resolve;
+mod tessellation;
 #[cfg(test)]
 mod test_fixtures;
 mod types;
@@ -52,8 +55,8 @@ mod validate;
 mod write;
 
 pub use types::{
-    Disposition, ExportPlan, ObjectRef, Patch, PlacementPatch, PlanContext, PlanError, PropScope, PropWrite,
-    PsetKind, Refusal, ValidationFinding, WriteReport,
+    Disposition, DroppedRepresentation, ExportPlan, GeometryPatch, ObjectRef, Patch, PlacementPatch, PlanContext, PlanError,
+    PropScope, PropWrite, PsetKind, Refusal, SurfaceColour, TriangleMesh, ValidationFinding, WriteReport,
 };
 
 use rustc_hash::FxHashSet;

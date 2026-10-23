@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::resolve_element_color;
-use crate::element::product_shape_style_source;
+use crate::element::{product_shape_style_source, representation_map_style_source};
 use ifc_lite_core::{build_entity_index, EntityDecoder};
 use rustc_hash::FxHashMap;
 
@@ -57,11 +57,17 @@ fn issue_7782_wrong_class_colour_carriers_preserve_native_lookup() {
 fn issue_7782_type_product_colour_keeps_element_fallback() {
     let source = SOURCE.replace(
         "IFCWALL('w',$,'Wall',$,$,$,#2,$,.NOTDEFINED.)",
-        "IFCWALLTYPE('w',$,'Wall type',$,$,$,(#20),(#5),$,$,.NOTDEFINED.)",
+        "IFCWALLTYPE('w',$,'Wall type',$,$,$,(#5),$,$,.NOTDEFINED.)",
     );
     let mut decoder = EntityDecoder::with_index(&source, build_entity_index(&source));
     let entity = decoder.decode_by_id(1).expect("type product");
     let fallback = [0.8, 0.1, 0.2, 1.0];
     let styles = FxHashMap::from_iter([(1, fallback), (7, [0.1, 0.8, 0.2, 1.0])]);
+    // The type map really reaches competing geometry; fallback must not pass
+    // merely because the map is absent or its authored colour is unreachable.
+    assert_eq!(
+        representation_map_style_source(5, &|id| styles.contains_key(&id), &mut decoder),
+        Some(7),
+    );
     assert_eq!(resolve_element_color(&entity, &styles, &mut decoder), Some(fallback));
 }

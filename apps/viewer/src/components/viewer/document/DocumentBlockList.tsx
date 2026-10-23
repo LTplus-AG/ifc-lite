@@ -53,7 +53,7 @@ export function DocumentBlockList({ document, selected, onToggle, onSelectOnly, 
       </select>
       <button type="button" className="rounded border border-border px-2 py-1 disabled:opacity-40" disabled={!selected.size}
         onClick={() => move(selected, null)}>{t('document.selection.moveBottom')}</button>
-      <span role="status" className="sr-only"><span key={announcement.sequence}>{announcement.text}</span></span>
+      <output className="sr-only"><span key={announcement.sequence}>{announcement.text}</span></output>
     </div>
     <p className="text-muted-foreground">{t('document.selection.hint')}</p>
     {document.blocks.map((block, index) => <div key={block.id} data-block-list-item={block.id}

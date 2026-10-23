@@ -25,14 +25,14 @@ fn common(value: &Value, lineage: bool, valid_date: &impl Fn(&str) -> bool) -> V
     for side in ["base","head"] {
         let v = &value[side];
         if !v.is_object() { errors.push(format!("{side} must be {{ hash, path? }}")); continue; }
-        if !v["hash"].as_str().is_some_and(|s| !s.is_empty()) { errors.push(format!("{side}.hash must be a non-empty content digest")); }
+        if v["hash"].as_str().is_none_or(|s| s.is_empty()) { errors.push(format!("{side}.hash must be a non-empty content digest")); }
         if v.get("path").is_some_and(|v| !v.is_string()) { errors.push(format!("{side}.path must be a string when present")); }
     }
     if let Some(created) = value.get("created") {
         if !created.as_str().is_some_and(valid_date) { errors.push("created must be an ISO 8601 timestamp when present".into()); }
     }
     if let Some(key) = value.get("keyProperty") {
-        if !key.as_str().is_some_and(|s| !s.trim_matches(is_ecmascript_whitespace).is_empty()) {
+        if key.as_str().is_none_or(|s| s.trim_matches(is_ecmascript_whitespace).is_empty()) {
             errors.push("keyProperty must be a non-empty string when present".into());
         }
     }

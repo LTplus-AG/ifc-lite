@@ -63,3 +63,20 @@ fn issue_7781_probe_rejects_an_unreadable_mapping_transform() {
         assert!(unwrap(&content, 1000, policy).is_none());
     }
 }
+
+#[test]
+fn issue_7781_boolean_leaf_policy_retains_long_chains_beyond_probe_limit() {
+    let mut entities = String::new();
+    for id in 1000..1040 {
+        let next = if id == 1039 { 240 } else { id + 1 };
+        entities.push_str(&format!("#{id}=IFCBOOLEANRESULT(.DIFFERENCE.,#{next},#140);\n"));
+    }
+    let content = model::wall("", &entities);
+    assert!(unwrap(&content, 1000, UnwrapPolicy::FIRST).is_none());
+    let mut decoder = EntityDecoder::new(&content);
+    let root = decoder.decode_by_id(1000).unwrap();
+    let leaf = unwrap_item(root, &mut decoder, WrapperPolicy::BooleanLeaf, |item, decoder| {
+        Ok(decoder.resolve_ref(item.get(1).unwrap())?)
+    }).unwrap().unwrap();
+    assert_eq!(leaf.id, 240);
+}

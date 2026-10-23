@@ -15,6 +15,7 @@ pub(crate) mod product_budget;
 mod refusal;
 mod select;
 mod walk;
+pub(crate) mod unwrap;
 
 pub use select::{meshed_representations, Select};
 pub use walk::{

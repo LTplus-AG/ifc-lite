@@ -18,6 +18,7 @@ const { orbitGesture } = await import(`${root}/tests/benchmark/frames/frame-scen
 const { realGpuFrameRows } = await import(`${root}/tests/benchmark/frames/frame-stats.ts`);
 const { interleavedSchedule, summarizeSamples } = await import(`${root}/scripts/perf/frame-gpu-summary.ts`);
 const { probeMetadataRenderTrace, waitForMetadataRenderReadiness } = await import(`${root}/tests/benchmark/metadata-render-readiness.ts`);
+const { decodePng } = await import(`${root}/tests/e2e/federation-control-triplet.rendering.ts`);
 
 const directory = process.env.IFC_6709_EVIDENCE;
 if (!directory) throw Error('IFC_6709_EVIDENCE required');
@@ -211,6 +212,12 @@ try {
    record.meta.capture={filename:capture.filename,width:png.readUInt32BE(16),height:png.readUInt32BE(20),bytes:png.length,sha256:digest(png)};
    fullQuality({...record.meta.settledBefore,...record.meta.capture},sample.dpr);
    writeFileSync(`${output}/${name}-capture.png`,png);
+   const pixels=decodePng(png), colors=new Set();let visiblePixels=0;
+   for(let i=0;i<pixels.rgba.length;i+=4) if(pixels.rgba[i+3]>0){
+    visiblePixels++;colors.add((pixels.rgba[i]<<16)|(pixels.rgba[i+1]<<8)|pixels.rgba[i+2]);
+   }
+   record.meta.capture.visiblePixels=visiblePixels;record.meta.capture.distinctVisibleColors=colors.size;
+   if(visiblePixels<1000 || colors.size<16)throw Error('Exported PNG is empty or lacks rendered model detail; dimensions alone do not qualify capture');
    record.meta.geometryAfter=await geometry(page);
    if(JSON.stringify(record.meta.geometryBefore)!==JSON.stringify(record.meta.geometryAfter)) throw Error('Loaded geometry changed during navigation/capture');
    await page.keyboard.press('Home');await idle(page);

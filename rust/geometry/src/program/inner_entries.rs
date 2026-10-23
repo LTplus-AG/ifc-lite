@@ -96,3 +96,18 @@ impl<'a> GeometryProgram<'a> {
         Self::with_control(Control::Cache(item, CacheControl::new(offset_meters)))
     }
 }
+
+#[cfg(test)]
+impl<'a> GeometryProgram<'a> {
+    pub(crate) fn product_with_budget(element: &'a DecodedEntity,
+        hygiene: crate::router::processing::SourceHygiene, allowance: u32) -> Self {
+        Self::with_control(Control::Product(ProductControl::merged(element, hygiene).with_allowance(allowance)))
+    }
+
+    pub(crate) fn styled_product_with_budget(element: &'a DecodedEntity, allow_instancing: bool,
+        textures: Option<&'a rustc_hash::FxHashMap<u32, crate::ResolvedTextureMap>>,
+        hygiene: crate::router::processing::SourceHygiene, allowance: u32) -> Self {
+        Self::with_control(Control::Product(
+            ProductControl::styled(element, allow_instancing, textures, hygiene).with_allowance(allowance)))
+    }
+}

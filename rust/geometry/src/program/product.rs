@@ -171,6 +171,12 @@ pub(super) struct ProductControl<'a> {
 }
 
 impl<'a> ProductControl<'a> {
+    #[cfg(test)]
+    pub(super) fn with_allowance(mut self, allowance: u32) -> Self {
+        self.allowance = allowance;
+        self
+    }
+
     fn new(element: &'a DecodedEntity, hygiene: SourceHygiene, styled: Option<Styled<'a>>) -> Self {
         let sink = match styled {
             None => Sink::Merged(Box::default()),

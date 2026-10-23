@@ -208,8 +208,9 @@ const SCAN_ROOTS = [
 // Re-measured at 30 when #7955 D3b moved the styled/type-map walk onto the same
 // controller. Set to 29, a margin of one.
 // Re-measured at 28 when #8007 replaced the decoder items/enter recursion
-// pair with an explicit task stack. Set to 27, a margin of one.
-const CANDIDATE_FLOOR = 27;
+// pair with an explicit task stack. C2 #7887 then removes the private
+// profile extractor recursion in favor of RepresentationWalk. Floor: 26.
+const CANDIDATE_FLOOR = 26;
 
 /**
  * Allowlist for candidates that are genuinely unguarded and must stay that

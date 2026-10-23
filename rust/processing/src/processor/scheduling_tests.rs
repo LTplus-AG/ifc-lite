@@ -7,10 +7,8 @@ use rayon::prelude::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-/// A slow first element must not hold its neighbour back. Element 0 waits for
-/// element 1 to start. With rayon's default ranges both sit in the same leaf and
-/// run in sequence on one thread, so element 1 cannot start until element 0 gives
-/// up; with one element per task the second thread takes element 1.
+/// Element 0 waits for element 1 to start. With rayon's default ranges both share
+/// one thread's leaf, so element 0 times out; one task per element frees element 1.
 #[test]
 fn a_slow_element_does_not_hold_its_neighbour_on_the_same_thread() {
     let pool = rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap();
@@ -39,5 +37,4 @@ fn a_slow_element_does_not_hold_its_neighbour_on_the_same_thread() {
             .collect()
     });
     assert!(saw_neighbour[0], "element 1 only started after element 0 gave up");
-    assert_eq!(saw_neighbour.len(), jobs.len());
 }

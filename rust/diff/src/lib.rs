@@ -36,6 +36,7 @@ pub mod fingerprint;
 pub mod input;
 pub mod model;
 pub mod engine;
+pub mod columns;
 pub mod key_diff;
 pub mod geometry_compare;
 pub mod mutual_nearest;

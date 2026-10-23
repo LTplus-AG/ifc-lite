@@ -114,11 +114,14 @@ fn hosted_feature(index: &FileIndex, file_schema: &str, rel_type: &str, rel_attr
     let idx = super::attrs::attribute_index(file_schema, rel_type, attr)?;
     let feature = rel_attrs.get(idx)?.scalar.filter(|&id| index.contains(id))?;
     let rels = super::props_lookup::sharing_referrers(index, file_schema, feature, &[attr]);
-    // `prunable` never counts a feature, but once it goes the records it
-    // names need counts. Asking for its own now collects them in the same
-    // pass as its referrers.
-    index.referrer_count(feature);
-    (!rels.is_empty() && rels.iter().all(|r| removed.contains(r))).then_some(feature)
+    if rels.is_empty() {
+        // Not collected yet. `prunable` never counts a feature, but once it
+        // goes the records it names need counts: asking for its own now
+        // collects them in the same pass as its referrers.
+        index.referrer_count(feature);
+        return None;
+    }
+    rels.iter().all(|r| removed.contains(r)).then_some(feature)
 }
 
 /// One list attribute of a surviving record as the cascade strips it.
@@ -143,11 +146,9 @@ struct Cascade<'i> {
     file_schema: &'i str,
     removed: HashSet<u32>,
     worklist: VecDeque<u32>,
-    /// Per (referrer, attr index): the list as stripped so far, for every
-    /// top-level list of each referrer in `parsed`.
-    lists: FxHashMap<(u32, usize), ListStrip>,
-    /// The referrers whose lists are in `lists`: each is parsed once.
-    parsed: FxHashSet<u32>,
+    /// Per referrer a strip reached: every top-level list attribute, by
+    /// index, as stripped so far. Each referrer is parsed once.
+    lists: FxHashMap<u32, Vec<(usize, ListStrip)>>,
 }
 
 impl Cascade<'_> {
@@ -165,10 +166,9 @@ impl Cascade<'_> {
     /// top-level entry); a delete does not, since the nested reference would
     /// dangle.
     fn strip(&mut self, referrer: u32, idx: usize, member: u32, through_nested: bool) -> bool {
-        if self.parsed.insert(referrer) {
-            self.lists.extend(list_strips(self.index, self.file_schema, referrer));
-        }
-        let Some(list) = self.lists.get_mut(&(referrer, idx)) else { return false };
+        let (index, file_schema) = (self.index, self.file_schema);
+        let lists = self.lists.entry(referrer).or_insert_with(|| list_strips(index, file_schema, referrer));
+        let Some((_, list)) = lists.iter_mut().find(|(i, _)| *i == idx) else { return false };
         let Some(&count) = list.occurrences.get(&member) else { return false };
         if !through_nested && list.nested.contains(&member) {
             return false;
@@ -183,10 +183,10 @@ impl Cascade<'_> {
     }
 }
 
-/// Every top-level list attribute of `referrer` as a [`ListStrip`], keyed by
-/// (referrer, attr index). A reference in a nested list or typed value cannot
-/// be stripped, so the ids that also appear there are kept apart.
-fn list_strips(index: &FileIndex, file_schema: &str, referrer: u32) -> Vec<((u32, usize), ListStrip)> {
+/// Every top-level list attribute of `referrer` as a [`ListStrip`], with its
+/// attr index. A reference in a nested list or typed value cannot be
+/// stripped, so the ids that also appear there are kept apart.
+fn list_strips(index: &FileIndex, file_schema: &str, referrer: u32) -> Vec<(usize, ListStrip)> {
     let entity_type = index.type_of(referrer).unwrap_or_default();
     let mut strips = Vec::new();
     for (idx, slot) in index.attrs(referrer).unwrap_or_default().into_iter().enumerate() {
@@ -198,7 +198,7 @@ fn list_strips(index: &FileIndex, file_schema: &str, referrer: u32) -> Vec<((u32
         let remaining = occurrences.values().sum();
         let nested = slot.nested.into_iter().collect();
         let mandatory = is_mandatory_members_attr(file_schema, &entity_type, idx);
-        strips.push(((referrer, idx), ListStrip { occurrences, remaining, nested, stripped: HashSet::new(), mandatory }));
+        strips.push((idx, ListStrip { occurrences, remaining, nested, stripped: HashSet::new(), mandatory }));
     }
     strips
 }
@@ -228,7 +228,6 @@ pub(crate) fn resolve_deletes(
         removed: requested.clone(),
         worklist: requested.iter().copied().collect(),
         lists: FxHashMap::default(),
-        parsed: FxHashSet::default(),
     };
     // Distinct referrers each target still has, seeded from the file's
     // count the first time a deletion reaches it; deletions only ever
@@ -320,8 +319,9 @@ pub(crate) fn resolve_deletes(
     let Cascade { removed, lists, .. } = cascade;
     let stripped = lists
         .into_iter()
-        .filter(|((referrer, _), list)| !removed.contains(referrer) && !list.stripped.is_empty())
-        .map(|(slot, list)| (slot, list.stripped))
+        .filter(|(referrer, _)| !removed.contains(referrer))
+        .flat_map(|(referrer, lists)| lists.into_iter().map(move |(idx, list)| ((referrer, idx), list.stripped)))
+        .filter(|(_, ids)| !ids.is_empty())
         .collect();
     DeleteResult { removed, stripped, unhosted }
 }

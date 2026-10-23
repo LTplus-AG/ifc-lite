@@ -49,6 +49,8 @@ pub mod split_types;
 mod split_lanes;
 pub mod split_merge;
 pub mod successor;
+pub mod identity_map;
+pub mod lineage;
 
 // Internal. The canonical encoding and the code-unit helpers are
 // implementation detail of the fingerprint, not a surface worth promising:

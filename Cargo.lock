@@ -1732,6 +1732,7 @@ dependencies = [
  "console_error_panic_hook",
  "ifc-lite-clash",
  "ifc-lite-core",
+ "ifc-lite-diff",
  "ifc-lite-export",
  "ifc-lite-geometry",
  "ifc-lite-landxml",

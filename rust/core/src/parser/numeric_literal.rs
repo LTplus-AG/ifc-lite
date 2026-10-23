@@ -152,9 +152,23 @@ pub fn read_step_number(bytes: &[u8]) -> Option<(StepNumber<'_>, usize)> {
     let (len, real) = scan_step_numeric_literal(bytes)?;
     let literal = &bytes[..len];
     if real {
-        // The grammar scan already validated this entire literal, so the
-        // converter need not check its consumed length again (#7779).
-        let (value, _) = fast_float2::parse_partial::<f64, _>(literal).ok()?;
+        let negative = literal[0] == b'-';
+        let sign_len = usize::from(matches!(literal[0], b'+' | b'-'));
+        let unsigned = &literal[sign_len..];
+        let value = if unsigned.last() == Some(&b'.') && unsigned.len() <= 16 {
+            // The grammar admits only 1..=15 digits before this final dot.
+            // Their magnitude is below 2^50: accumulation and the f64 cast
+            // are exact. Apply the sign afterward to preserve -0. (#7880).
+            let magnitude = unsigned[..unsigned.len() - 1]
+                .iter()
+                .fold(0_u64, |value, &digit| value * 10 + u64::from(digit - b'0'));
+            let value = magnitude as f64;
+            if negative { -value } else { value }
+        } else {
+            // The grammar already validated the entire literal (#7779).
+            let (value, _) = fast_float2::parse_partial::<f64, _>(literal).ok()?;
+            value
+        };
         let number = admit_step_real(value)
             .map_or(StepNumber::Unrepresentable(literal), StepNumber::Real);
         return Some((number, len));

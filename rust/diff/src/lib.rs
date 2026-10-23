@@ -34,6 +34,7 @@
 
 pub mod fingerprint;
 pub mod input;
+mod input_decode;
 pub mod model;
 pub mod engine;
 pub mod columns;
@@ -74,7 +75,7 @@ pub use input::{
     DataFingerprintInput, PropertyEntryInput, PropertySetInput, PropertyValue, QuantitySetInput,
     TypeAssignmentInput,
 };
-pub use utf16::stable_hash;
+pub use utf16::{stable_hash, stable_hash_units};
 
 #[cfg(test)]
 mod content_tests;

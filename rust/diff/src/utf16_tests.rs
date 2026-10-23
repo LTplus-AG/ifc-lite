@@ -53,3 +53,9 @@ fn code_unit_order_is_case_sensitive_and_not_locale_folded() {
     assert_eq!(cmp_code_units("A", "a"), Ordering::Less);
     assert_eq!(cmp_code_units("Z", "a"), Ordering::Less);
 }
+#[test]
+fn raw_js_code_units_keep_unpaired_surrogates_issue_8042() {
+    assert_eq!(super::stable_hash_units([0xd800]), "b03bbd4c8770bfdf");
+    assert_eq!(super::stable_hash_units([0xdfff]), "b03d724c8773a66e");
+    assert_eq!(super::stable_hash_units([0x61, 0xd800, 0x62]), "74829916f0e0eeb2");
+}

@@ -92,12 +92,6 @@ impl std::ops::DerefMut for WorkerCacheGuard<'_, '_> {
     }
 }
 
-/// One element per rayon task: rayon otherwise runs each thread's range of elements
-/// in sequence, so a range holding a few void-heavy elements strands one core.
-pub(super) fn element_tasks(jobs: &[EntityJob]) -> impl IndexedParallelIterator<Item = &EntityJob> {
-    jobs.par_iter().with_max_len(1)
-}
-
 // Carries the full per-job processing context; factoring the args into a struct
 // would not change behavior and is out of scope for the lint gate.
 #[allow(clippy::too_many_arguments)]

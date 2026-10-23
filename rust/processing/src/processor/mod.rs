@@ -50,6 +50,7 @@ mod quick_collector;
 mod scan;
 mod quick_metadata;
 mod schema_detection;
+mod scheduling;
 mod site_local;
 
 pub use quick_metadata::is_quick_spatial_type_ci;
@@ -819,7 +820,7 @@ pub fn process(
         // shared point list is parsed once per worker for the whole model, not per
         // chunk/part. `.map`/`.flatten_iter()` keeps the former `flat_map_iter` order;
         // the cache is pure memoization, so meshes are byte-identical.
-        let chunk_meshes: Vec<MeshData> = jobs::element_tasks(jobs_chunk)
+        let chunk_meshes: Vec<MeshData> = scheduling::element_tasks(jobs_chunk)
             .map(|job| {
                 let widx = rayon::current_thread_index().unwrap_or(0) % worker_point_caches.len();
                 // `try_lock`, not `lock`: faceted-brep triangulation nests a rayon

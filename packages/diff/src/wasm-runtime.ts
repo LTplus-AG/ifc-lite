@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import initialize, { initSync, DiffModel } from '@ifc-lite/wasm';
+import initialize, { initSync, DiffModel } from '@ifc-lite/wasm/diff';
 
 let ready = false;
 let pending: Promise<void> | undefined;

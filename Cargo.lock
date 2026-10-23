@@ -1580,6 +1580,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ifc-lite-diff-wasm"
+version = "21.4.0"
+dependencies = [
+ "ifc-lite-diff",
+ "js-sys",
+ "serde",
+ "serde-wasm-bindgen",
+ "serde_json",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "ifc-lite-export"
 version = "21.4.0"
 dependencies = [
@@ -1732,7 +1744,6 @@ dependencies = [
  "console_error_panic_hook",
  "ifc-lite-clash",
  "ifc-lite-core",
- "ifc-lite-diff",
  "ifc-lite-export",
  "ifc-lite-geometry",
  "ifc-lite-landxml",

@@ -8,7 +8,7 @@ import { compareWithWasm } from './wasm-diff.js';
 import { initDiff, initDiffSync } from './wasm-runtime.js';
 import type { DiffOptions, EntityFingerprint } from './types.js';
 
-const binary = new URL('../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
+const binary = new URL('../../wasm/pkg-diff/ifc-lite-diff_bg.wasm', import.meta.url);
 test.skipIf(!existsSync(binary))('explicit initialization and real facade preserve the diff contract (#8042; missing WASM: run pnpm build:wasm)', async () => {
   expect(() => compareWithWasm([], [])).toThrow(/initDiff/);
   // A failed load must not poison a retry, and repeated initialization is safe.

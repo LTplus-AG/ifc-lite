@@ -9,9 +9,9 @@ import { buildFileFingerprints } from '../packages/cli/dist/commands/diff-engine
 import { diffModels } from '../packages/diff/dist/index.js';
 import { fingerprintColumns } from '../packages/diff/src/wasm-columns.ts';
 import { restoreDiffReferences } from '../packages/diff/src/wasm-result.ts';
-import { initSync, DiffModel } from '../packages/wasm/pkg/ifc-lite.js';
+import { initSync, DiffModel } from '../packages/wasm/pkg-diff/ifc-lite-diff.js';
 
-initSync({ module: readFileSync(new URL('../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url)) });
+initSync({ module: readFileSync(new URL('../packages/wasm/pkg-diff/ifc-lite-diff_bg.wasm', import.meta.url)) });
 const root = new URL('../', import.meta.url);
 const demo = 'apps/viewer/public/samples/';
 const pairs = [

@@ -295,7 +295,7 @@ worker when used by the viewer, so releasing the tool also releases WASM pages.
 
 ## Rust diff bindings
 
-After the normal WASM initialization, `DiffModel` owns fingerprint columns for repeated synchronous comparisons. Its constructor accepts a string dictionary, five string indices per entity (key, IFC class, data hash, geometry hash, container), presence flags, six bounding-box coordinates per entity, volumes, component offsets, and component key/value indices. An absent optional string uses `0xffffffff`; flag bits 0, 1, and 2 represent a bounding box, volume, and components. Call `.free()` in `finally` for each model.
+After initializing `@ifc-lite/wasm/diff`, `DiffModel` owns fingerprint columns for repeated synchronous comparisons. Its constructor accepts a string dictionary, five string indices per entity (key, IFC class, data hash, geometry hash, container), presence flags, six bounding-box coordinates per entity, volumes, component offsets, and component key/value indices. An absent optional string uses `0xffffffff`; flag bits 0, 1, and 2 represent a bounding box, volume, and components. Call `.free()` in `finally` for each model.
 
 `DiffModel.compare` returns row indices instead of JavaScript references. Keep the original fingerprint arrays and restore those references on the JavaScript side; opaque references never cross into WASM. The model can be reused for more comparisons before freeing it.
 
@@ -304,3 +304,5 @@ After the normal WASM initialization, `DiffModel` owns fingerprint columns for r
 `diffLineageConflicts(entries)` returns ordered conflict diagnostics, and `diffKeyAliasesFromLineage(entries)` returns head/base pairs in insertion order for constructing a JavaScript `Map`. `diffRekeyByLineage(keys, entries, deleted, policy)` migrates external keys using `copy-to-all`, `largest-share`, or `orphan-on-split`. These helpers accept lineage objects directly, preserving non-finite share values and the existing TypeScript policy behavior. Deleted keys have no `relation` field in their result. Invalid-share policy changes are tracked separately in #8084.
 
 These bindings are the staged backend for issue #8042. The public `@ifc-lite/diff` facade has not switched to them yet; existing consumers keep their current initialization contract until integration and performance qualification complete.
+
+The Rust diff engine is a separate `@ifc-lite/wasm/diff` payload, built from `rust/diff-wasm` by `scripts/build-wasm.sh`. Its `DiffModel`, canonical fingerprint, sidecar and lineage bindings are loaded by explicit diff initialization; they are excluded from both geometry bundles. The committed `pkg-diff/ifc-lite-diff.d.ts` supports wasm-free typechecking.

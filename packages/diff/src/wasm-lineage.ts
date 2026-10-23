@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { diffKeyAliasesFromLineage, diffLineageConflicts, diffRekeyByLineage } from '@ifc-lite/wasm';
+import { diffKeyAliasesFromLineage, diffLineageConflicts, diffRekeyByLineage } from '@ifc-lite/wasm/diff';
 import { diffModelConstructor } from './wasm-runtime.js';
 import type { Lineage, LineageEntry, RekeyPolicy, RekeyResult } from './lineage.js';
 

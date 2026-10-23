@@ -220,3 +220,5 @@ See the [ifc-lite docs](https://ifclite.dev/docs/) and the
 ## License
 
 MPL-2.0
+
+The staged runtime initializes the independent `@ifc-lite/wasm/diff` module. It does not initialize the geometry engine. The diff module is built with `pnpm build:wasm`; its generated declarations are committed for wasm-free typechecking.

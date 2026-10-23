@@ -678,9 +678,9 @@ jobs:
       - name: Verify committed wasm types are in sync
         if: needs.changes.outputs.wasm_prebuilt != 'true'
         run: |
-          if ! git diff --quiet -- packages/wasm/pkg/ifc-lite.d.ts; then
+          if ! git diff --quiet -- packages/wasm/pkg/ifc-lite.d.ts packages/wasm/pkg-diff/ifc-lite-diff.d.ts; then
             echo "::error file=packages/wasm/pkg/ifc-lite.d.ts::Committed wasm types are out of sync with the Rust source. Run 'bash scripts/build-wasm.sh' and commit the regenerated packages/wasm/pkg/ifc-lite.d.ts."
-            git diff -- packages/wasm/pkg/ifc-lite.d.ts
+            git diff -- packages/wasm/pkg/ifc-lite.d.ts packages/wasm/pkg-diff/ifc-lite-diff.d.ts
             exit 1
           fi
           echo "✅ committed wasm types match the Rust source"

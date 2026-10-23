@@ -8,7 +8,7 @@ import * as facade from './wasm-lineage.js';
 import { initDiffSync } from './wasm-runtime.js';
 import type { Lineage, RekeyPolicy } from './lineage.js';
 
-const binary = new URL('../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
+const binary = new URL('../../wasm/pkg-diff/ifc-lite-diff_bg.wasm', import.meta.url);
 test.skipIf(!existsSync(binary))('WASM lineage facade preserves iterables, Map order, and optional relations (#8042)', () => {
   expect(() => facade.lineageConflicts([])).toThrow(/initDiff/);
   initDiffSync({ module: readFileSync(binary) });

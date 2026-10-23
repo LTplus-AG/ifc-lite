@@ -5,10 +5,10 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
-const binary = new URL('../pkg/ifc-lite_bg.wasm', import.meta.url);
+const binary = new URL('../pkg-diff/ifc-lite-diff_bg.wasm', import.meta.url);
 test('actual WASM lineage helpers preserve TypeScript corpus and invalid-share semantics (#8042, #8084)', async context => {
   if (!existsSync(binary)) { context.skip('WASM bundle missing; run pnpm build:wasm'); return; }
-  const wasm = await import('../pkg/ifc-lite.js');
+  const wasm = await import('../pkg-diff/ifc-lite-diff.js');
   wasm.initSync({ module: readFileSync(binary) });
   const vectors = JSON.parse(readFileSync(new URL('../../../rust/diff/tests/lineage_vectors.json', import.meta.url), 'utf8'));
   for (const vector of vectors) {

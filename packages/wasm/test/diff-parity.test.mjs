@@ -7,8 +7,8 @@ import { test } from 'node:test';
 import { fingerprintColumns } from '../../diff/src/wasm-columns.ts';
 import { restoreDiffReferences } from '../../diff/src/wasm-result.ts';
 
-const binary = new URL('../pkg/ifc-lite_bg.wasm', import.meta.url);
-const glue = new URL('../pkg/ifc-lite.js', import.meta.url);
+const binary = new URL('../pkg-diff/ifc-lite-diff_bg.wasm', import.meta.url);
+const glue = new URL('../pkg-diff/ifc-lite-diff.js', import.meta.url);
 async function engine(context) {
   if (!existsSync(binary) || !existsSync(glue)) {
     context.skip('WASM bundle missing; run pnpm build:wasm'); return;
@@ -113,4 +113,21 @@ test('actual WASM retains models and preserves opaque refs and bigint hashes (#8
       assert.equal(matched.contentMatches[0].base[0].ref, ref);
     } finally { head.free(); }
   } finally { base.free(); }
+});
+
+// #8042: diff must remain usable before and after independent geometry init.
+// Loading comparison features must not add exports to the geometry engine.
+test('diff owns separate memory and survives geometry initialization (#8042)', async context => {
+  const diff = await engine(context); if (!diff) return;
+  const base = model(diff, [{ key: 'same', ref: null, ifcType: 'IfcWall', dataHash: 'before' }]);
+  const head = model(diff, [{ key: 'same', ref: null, ifcType: 'IfcWall', dataHash: 'after' }]);
+  try {
+    const before = base.compare(head, {});
+    const geometry = await import('../pkg/ifc-lite.js');
+    assert.equal(geometry.DiffModel, undefined);
+    const geometryMemory = geometry.initSync({ module: readFileSync(new URL('../pkg/ifc-lite_bg.wasm', import.meta.url)) }).memory;
+    const diffMemory = diff.initSync({ module: readFileSync(binary) }).memory;
+    assert.notEqual(diffMemory, geometryMemory);
+    assert.deepEqual(base.compare(head, {}), before);
+  } finally { base.free(); head.free(); }
 });

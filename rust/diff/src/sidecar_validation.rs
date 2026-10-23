@@ -4,17 +4,15 @@
 //! Structural validation of untrusted sidecar JSON. The host supplies its date
 //! parser predicate: the JS facade uses Date.parse, including legacy formats.
 use std::collections::{HashMap, HashSet};
-use serde_json::Value;
-use crate::projections::is_ecmascript_whitespace;
-use crate::utf16::cmp_code_units;
+use crate::sidecar_value::DocumentValue as Value;
 
 fn string_list(v: &Value) -> bool {
-    v.as_array().is_some_and(|a| a.iter().all(|v| v.as_str().is_some_and(|s| !s.is_empty())))
+    v.as_array().is_some_and(|a| a.iter().all(|v| v.as_string().is_some_and(|s| !s.is_empty())))
 }
 fn common(value: &Value, lineage: bool, valid_date: &impl Fn(&str) -> bool) -> Vec<String> {
     let mut errors = vec![];
     let format = if lineage { "ifc-lite/lineage" } else { "ifc-lite/identity-map" };
-    if value["format"] != format { errors.push(format!("format must be \"{format}\"")); }
+    if value["format"].as_str() != Some(format) { errors.push(format!("format must be \"{format}\"")); }
     let version = value["version"].as_f64();
     if version != Some(1.0) && version != Some(2.0) { errors.push("version must be 1 or 2".into()); }
     else if lineage {
@@ -25,20 +23,20 @@ fn common(value: &Value, lineage: bool, valid_date: &impl Fn(&str) -> bool) -> V
     for side in ["base","head"] {
         let v = &value[side];
         if !v.is_object() { errors.push(format!("{side} must be {{ hash, path? }}")); continue; }
-        if v["hash"].as_str().is_none_or(|s| s.is_empty()) { errors.push(format!("{side}.hash must be a non-empty content digest")); }
+        if v["hash"].as_string().is_none_or(|s| s.is_empty()) { errors.push(format!("{side}.hash must be a non-empty content digest")); }
         if v.get("path").is_some_and(|v| !v.is_string()) { errors.push(format!("{side}.path must be a string when present")); }
     }
     if let Some(created) = value.get("created") {
         if !created.as_str().is_some_and(valid_date) { errors.push("created must be an ISO 8601 timestamp when present".into()); }
     }
     if let Some(key) = value.get("keyProperty") {
-        if key.as_str().is_none_or(|s| s.trim_matches(is_ecmascript_whitespace).is_empty()) {
+        if key.as_string().is_none_or(|s| s.is_blank()) {
             errors.push("keyProperty must be a non-empty string when present".into());
         }
     }
     errors
 }
-pub fn validate_identity_sidecar(value: &Value, valid_date: impl Fn(&str) -> bool) -> Vec<String> {
+pub(crate) fn validate_identity_document(value: &Value, valid_date: impl Fn(&str) -> bool) -> Vec<String> {
     if !value.is_object() { return vec!["sidecar must be an object".into()]; }
     let mut errors = common(value, false, &valid_date);
     let Some(entries) = value["entries"].as_array() else { errors.push("entries must be an array".into()); return errors; };
@@ -49,14 +47,14 @@ pub fn validate_identity_sidecar(value: &Value, valid_date: impl Fn(&str) -> boo
             errors.push("entries must be { base, here, reason } with string fields".into());
             return errors;
         }
-        let base = entry["base"].as_str().unwrap();
-        let here = entry["here"].as_str().unwrap();
+        let base = entry["base"].as_string().unwrap();
+        let here = entry["here"].as_string().unwrap();
         if let Some(previous) = claimed.get(here) {
             if *previous != base { conflicts.insert(here); }
         } else { claimed.insert(here,base); }
     }
     let mut conflicts: Vec<_> = conflicts.into_iter().collect();
-    conflicts.sort_by(|a,b| cmp_code_units(a,b));
+    conflicts.sort();
     errors.extend(conflicts.into_iter().map(|here| format!("entries claim two different base identities for here \"{here}\"")));
     errors
 }
@@ -83,7 +81,7 @@ fn validate_lineage_entry(entry: &Value) -> Option<String> {
     };
     Some(error.into())
 }
-pub fn validate_lineage_sidecar(value: &Value, valid_date: impl Fn(&str) -> bool) -> Vec<String> {
+pub(crate) fn validate_lineage_document(value: &Value, valid_date: impl Fn(&str) -> bool) -> Vec<String> {
     if !value.is_object() { return vec!["sidecar must be an object".into()]; }
     let mut errors = common(value,true,&valid_date);
     if let Some(entries) = value["entries"].as_array() {
@@ -92,19 +90,28 @@ pub fn validate_lineage_sidecar(value: &Value, valid_date: impl Fn(&str) -> bool
             for side in ["base","head"] {
                 let mut seen = HashSet::new(); let mut repeated = HashSet::new();
                 for entry in entries { for key in entry[side].as_array().unwrap() {
-                    let key = key.as_str().unwrap(); if !seen.insert(key) { repeated.insert(key); }
+                    let key = key.as_string().unwrap(); if !seen.insert(key) { repeated.insert(key); }
                 } }
-                let mut repeated: Vec<_> = repeated.into_iter().collect(); repeated.sort_by(|a,b|cmp_code_units(a,b));
+                let mut repeated: Vec<_> = repeated.into_iter().collect(); repeated.sort();
                 errors.extend(repeated.into_iter().map(|key|format!("{side} key \"{key}\" appears in more than one lineage entry")));
             }
         }
     } else { errors.push("entries must be an array".into()); }
     if !string_list(&value["deleted"]) { errors.push("deleted must be a list of non-empty strings".into()); }
     else if let Some(entries) = value["entries"].as_array() {
-        let keys: HashSet<_> = entries.iter().flat_map(|e| e.get("base").and_then(Value::as_array).into_iter().flatten()).filter_map(Value::as_str).collect();
-        let mut both: Vec<_> = value["deleted"].as_array().unwrap().iter().filter_map(Value::as_str).filter(|key|keys.contains(key)).collect();
-        both.sort_by(|a,b|cmp_code_units(a,b));
+        let keys: HashSet<_> = entries.iter().flat_map(|e| e.get("base").and_then(Value::as_array).into_iter().flatten()).filter_map(Value::as_string).collect();
+        let mut both: Vec<_> = value["deleted"].as_array().unwrap().iter().filter_map(Value::as_string).filter(|key|keys.contains(key)).collect();
+        both.sort();
         errors.extend(both.into_iter().map(|key|format!("deleted key \"{key}\" also appears in a lineage entry")));
     }
     errors
+}
+
+/// Validate a scalar-only JSON value supplied by a native caller.
+pub fn validate_identity_sidecar(value: &serde_json::Value, valid_date: impl Fn(&str) -> bool) -> Vec<String> {
+    validate_identity_document(&value.into(), valid_date)
+}
+/// Validate a scalar-only JSON value supplied by a native caller.
+pub fn validate_lineage_sidecar(value: &serde_json::Value, valid_date: impl Fn(&str) -> bool) -> Vec<String> {
+    validate_lineage_document(&value.into(), valid_date)
 }

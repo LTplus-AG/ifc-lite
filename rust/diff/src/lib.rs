@@ -86,3 +86,5 @@ mod split_merge_tests;
 mod lineage_tests;
 
 mod sidecar_parse;
+
+mod sidecar_value;

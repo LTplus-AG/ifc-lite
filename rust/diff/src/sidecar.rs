@@ -5,7 +5,7 @@
 //! serialization, as in the TypeScript API.
 use crate::identity_map::IdentityMapEntry;
 use crate::lineage::{LineageEntry, LineageRelation};
-use crate::js_json::JsonValue as J;
+use crate::sidecar_value::{DocumentValue as J, JsString};
 use crate::sidecar_json;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,11 +23,11 @@ fn model(value: &ModelIdentity) -> J {
     if let Some(path) = &value.path { entries.push(("path".into(),string(path))); }
     J::Object(entries)
 }
-fn header(format: &str, version: u32, models: &SidecarModels) -> Vec<(String, J)> {
+fn header(format: &str, version: u32, models: &SidecarModels) -> Vec<(JsString, J)> {
     vec![("format".into(),string(format)),("version".into(),J::Number(version as f64)),
         ("base".into(),model(&models.base)),("head".into(),model(&models.head))]
 }
-fn suffix(entries: &mut Vec<(String, J)>, created: &Option<String>, models: &SidecarModels) {
+fn suffix(entries: &mut Vec<(JsString, J)>, created: &Option<String>, models: &SidecarModels) {
     if let Some(created) = created { entries.push(("created".into(),string(created))); }
     if let Some(key) = &models.key_property { entries.push(("keyProperty".into(),string(key))); }
 }

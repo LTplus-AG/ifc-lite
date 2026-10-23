@@ -4,7 +4,7 @@
 //! Creation, parsing and serialization of ordered sidecar documents.
 use std::collections::HashSet;
 use serde_json::{Map, Value};
-use crate::js_json::JsonValue;
+use crate::sidecar_value::DocumentValue as JsonValue;
 use crate::sidecar_json;
 pub use crate::sidecar_parse::parse_ordered_json;
 use crate::sidecar_validation::{validate_identity_sidecar, validate_lineage_sidecar};
@@ -86,29 +86,12 @@ fn ordered_fields(value: &Value, fields: &[&str]) -> JsonValue {
 /// use the same ordered error list as the JS API; syntax diagnostics originate
 /// in the host JSON parser and are not a stable cross-runtime message contract.
 pub fn parse_sidecar(text: &str, kind: SidecarKind, valid_date: impl Fn(&str)->bool) -> Result<JsonValue,String> {
-    let value: Value = serde_json::from_str(text).map_err(|e|format!("Invalid {} sidecar: not JSON ({e})",kind.label()))?;
-    validate(&value,kind,valid_date)?;
-    parse_ordered_json(text).map_err(|e|format!("Invalid {} sidecar: not JSON ({e})",kind.label()))
+    let value = parse_ordered_json(text).map_err(|e|format!("Invalid {} sidecar: not JSON ({e})",kind.label()))?;
+    let errors = match kind {
+        SidecarKind::Identity => crate::sidecar_validation::validate_identity_document(&value,valid_date),
+        SidecarKind::Lineage => crate::sidecar_validation::validate_lineage_document(&value,valid_date),
+    };
+    if errors.is_empty() { Ok(value) } else { Err(format!("Invalid {} sidecar: {}",kind.label(),errors.join("; "))) }
 }
-fn array_index(key: &str) -> Option<u32> {
-    let index = key.parse::<u32>().ok()?;
-    (index != u32::MAX && index.to_string() == key).then_some(index)
-}
-fn wire_value(value: &Value) -> JsonValue {
-    match value {
-        Value::Null=>JsonValue::Null,Value::Bool(b)=>JsonValue::Bool(*b),
-        Value::Number(n)=>JsonValue::Number(n.as_f64().unwrap()),Value::String(s)=>JsonValue::String(s.clone()),
-        Value::Array(a)=>JsonValue::Array(a.iter().map(wire_value).collect()),
-        Value::Object(o)=>{
-            // JS enumeration promotes canonical array-index names, even on an
-            // object parsed from text. Other names keep insertion order.
-            let mut entries: Vec<_> = o.iter().collect();
-            entries.sort_by(|a,b| match (array_index(a.0),array_index(b.0)) {
-                (Some(a),Some(b))=>a.cmp(&b),(Some(_),None)=>std::cmp::Ordering::Less,
-                (None,Some(_))=>std::cmp::Ordering::Greater,_=>std::cmp::Ordering::Equal,
-            });
-            JsonValue::Object(entries.into_iter().map(|(k,v)|(k.clone(),wire_value(v))).collect())
-        }
-    }
-}
+fn wire_value(value: &Value) -> JsonValue { value.into() }
 pub fn serialize_sidecar(value: &JsonValue) -> String { sidecar_json::serialize(value) }

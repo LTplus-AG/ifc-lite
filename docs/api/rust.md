@@ -27,7 +27,10 @@ and instantiated-type references. `observe_mapped` records source membership and
 when requested, occurrence counts with the minimum mapped-item id as template.
 `repeated_sources` returns sorted browser instancing ids; `into_mapped_instances`
 transfers the native count/template map. Callers retain their record-validation
-policy and candidate-job order.
+policy. `observe_candidate` retains admitted `TypeGeometryCandidate` records in
+source order. Native callers inspect `candidates` and schedule selected maps;
+`into_browser_jobs` consumes the plan into one job per type with an unreferenced
+map, including instantiated type-library geometry for the browser Types view.
 
 ## ifc-lite-core
 

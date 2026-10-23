@@ -374,7 +374,7 @@ impl IfcAPI {
                 // never matches `has_geometry_by_name`). Stash it for the
                 // orphan-type pass; the RepresentationMaps attr-6 decode +
                 // referenced-filter happens later in
-                // `collect_type_geometry_jobs_from_spans`.
+                // `collect_type_geometry_jobs_with_plan`.
                 if let Some(type_ty) = ifc_lite_core::type_product_ifc_type(type_name) {
                     type_candidate_spans.push((id, start, end, type_ty));
                 }
@@ -703,8 +703,8 @@ impl IfcAPI {
         if !skip_type_geometry
             && ifc_lite_core::find_keyword(content, b"IFCREPRESENTATIONMAP").is_some()
         {
-            let type_jobs = crate::api::styling::collect_type_geometry_jobs_from_spans(
-                &mapped_item_spans,
+            let type_jobs = crate::api::styling::collect_type_geometry_jobs_with_plan(
+                type_plan,
                 &type_candidate_spans,
                 &mut decoder,
             );

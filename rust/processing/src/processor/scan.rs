@@ -14,7 +14,7 @@ use super::{EntityJob, ProcessingRequest};
 use crate::scan::ScanClass;
 use ifc_lite_core::{EntityDecoder, EntityScanner, IfcType};
 use rustc_hash::FxHashMap;
-use crate::plan::TypeGeometryPlan;
+use crate::plan::{TypeGeometryCandidate, TypeGeometryPlan};
 
 impl EntityJob {
     /// A product job: no appearance or metadata yet, the type's default colour.
@@ -58,17 +58,7 @@ pub(super) struct ScanOutput {
     pub(super) building_entity_pos: Option<(usize, usize)>,
 }
 
-/// #957: type-product geometry (IfcXxxType + its RepresentationMaps) and the
-/// set of RepresentationMaps already instantiated by an IfcMappedItem. After
-/// the scan, RepresentationMaps NOT in the referenced set are rendered as
-/// orphan type geometry (buildingSMART annex-E showcase files).
-#[derive(Default)]
-struct TypeScan {
-    products: Vec<(u32, usize, usize, IfcType, Vec<u32>)>,
-    plan: TypeGeometryPlan,
-}
-
-impl TypeScan {
+impl TypeGeometryPlan {
     /// #957: synthesize render jobs for orphan type-product geometry — a
     /// RepresentationMap on an IfcXxxType that no IfcMappedItem instantiates.
     /// Normally-instanced typed products keep their geometry on the occurrence
@@ -77,15 +67,16 @@ impl TypeScan {
     /// buildingSMART annex-E "tessellated shape with style" files declare the
     /// geometry only on the type, so without this they render nothing (#957).
     fn append_orphan_jobs(&self, entity_jobs: &mut Vec<EntityJob>) {
-        for (type_id, start, end, ifc_type, rep_map_ids) in &self.products {
+        for candidate in self.candidates() {
+            let TypeGeometryCandidate { id: type_id, start, end, ifc_type, maps: rep_map_ids } = candidate;
             // The orphan/instanced decision is canonical in
             // `element::plan_type_geometry`; the native pipeline suppresses
             // instanced types entirely (an export must never duplicate geometry),
             // so every planned map here renders as an orphan (class 1).
             for (rep_map_id, _class) in crate::element::plan_type_geometry(
                 rep_map_ids,
-                self.plan.referenced(),
-                self.plan.is_instantiated(*type_id),
+                self.referenced(),
+                self.is_instantiated(*type_id),
                 crate::element::TypeGeometryMode::SuppressInstanced,
             ) {
                 let job = EntityJob::new(*type_id, ifc_type.clone(), *start, *end);
@@ -103,7 +94,7 @@ struct Scan<'a, 'd> {
     inline_index: &'a mut IndexBuilder,
     building_index: bool,
     out: ScanOutput,
-    types: TypeScan,
+    types: TypeGeometryPlan,
 }
 
 /// Walk `content` once. `building_index` says whether `inline_index` is being
@@ -144,7 +135,7 @@ pub(super) fn scan_entities(
         inline_index,
         building_index,
         out,
-        types: TypeScan::default(),
+        types: TypeGeometryPlan::default(),
     };
 
     let mut scanner = EntityScanner::new(content);
@@ -155,7 +146,7 @@ pub(super) fn scan_entities(
     ifc_lite_core::report_scan_diagnostics(scanner.skipped_oversized_ids(), scanner.malformed_record_start().is_some());
 
     scan.types.append_orphan_jobs(&mut scan.out.entity_jobs);
-    scan.out.mapped_item_plan = scan.types.plan.into_mapped_instances();
+    scan.out.mapped_item_plan = scan.types.into_mapped_instances();
     scan.out
 }
 
@@ -299,7 +290,7 @@ impl Scan<'_, '_> {
     fn note_type_geometry(&mut self, class: ScanClass, id: u32, type_name: &str, start: usize, end: usize) {
         if class == ScanClass::MappedItem {
             if let Some(source_id) = record_ref_at(&self.content[start..end], 0) {
-                self.types.plan.observe_mapped(id, source_id, self.req.instancing);
+                self.types.observe_mapped(id, source_id, self.req.instancing);
             }
         } else if class == ScanClass::RelDefinesByType {
             // IfcRelDefinesByType.RelatingType is the last attribute (index 5);
@@ -307,13 +298,15 @@ impl Scan<'_, '_> {
             // (Its span also feeds the shared resolver's type-material fallback:
             // stashed with the other relationship spans above.)
             if let Some(type_id) = record_ref_at(&self.content[start..end], 5) {
-                self.types.plan.observe_instantiated_type(type_id);
+                self.types.observe_instantiated_type(type_id);
             }
         } else if let Some(type_ty) = ifc_lite_core::type_product_ifc_type(type_name) {
             // IfcTypeProduct.RepresentationMaps is attribute index 6.
             let rep_map_ids = record_refs_at(&self.content[start..end], 6);
             if !rep_map_ids.is_empty() {
-                self.types.products.push((id, start, end, type_ty, rep_map_ids));
+                self.types.observe_candidate(TypeGeometryCandidate {
+                    id, start, end, ifc_type: type_ty, maps: rep_map_ids,
+                });
             }
         }
     }

@@ -3,6 +3,7 @@
 //!
 //! Record admission stays with the caller: native scan-time readers and browser
 //! decoder reads feed the same accumulator without changing their refusal policy.
+use ifc_lite_core::IfcType;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Model-wide type/instance facts. Candidate jobs retain their source order in
@@ -12,6 +13,16 @@ pub struct TypeGeometryPlan {
     referenced: FxHashSet<u32>,
     instantiated: FxHashSet<u32>,
     mapped: FxHashMap<u32, (u32, u32)>,
+    candidates: Vec<TypeGeometryCandidate>,
+}
+
+/// An admitted type-product record and its authored map order.
+pub struct TypeGeometryCandidate {
+    pub id: u32,
+    pub start: usize,
+    pub end: usize,
+    pub ifc_type: IfcType,
+    pub maps: Vec<u32>,
 }
 
 impl TypeGeometryPlan {
@@ -30,6 +41,23 @@ impl TypeGeometryPlan {
     /// Observe an admitted IfcRelDefinesByType.RelatingType.
     pub fn observe_instantiated_type(&mut self, type_id: u32) {
         self.instantiated.insert(type_id);
+    }
+
+    /// Retain a nonempty type candidate in scan order.
+    pub fn observe_candidate(&mut self, candidate: TypeGeometryCandidate) {
+        if !candidate.maps.is_empty() { self.candidates.push(candidate); }
+    }
+
+    /// Native scheduling uses one job per selected map of each candidate.
+    pub fn candidates(&self) -> &[TypeGeometryCandidate] { &self.candidates }
+
+    /// Browser scheduling uses one job per type, retaining instantiated types
+    /// for the Types view. Map-level class assignment remains in the producer.
+    pub fn into_browser_jobs(self) -> Vec<(u32, usize, usize, IfcType)> {
+        self.candidates.into_iter()
+            .filter(|candidate| candidate.maps.iter().any(|map| !self.referenced.contains(map)))
+            .map(|candidate| (candidate.id, candidate.start, candidate.end, candidate.ifc_type))
+            .collect()
     }
 
     /// Mapping sources already drawn through occurrences.

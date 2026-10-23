@@ -140,5 +140,5 @@
 6 rust/wasm-bindings/src/api/grid_lines.rs
 2 rust/wasm-bindings/src/api/scan_outline.rs
 6 rust/wasm-bindings/src/api/styling/color.rs
-7 rust/wasm-bindings/src/api/styling/prepass.rs
+5 rust/wasm-bindings/src/api/styling/prepass.rs
 1 rust/wasm-bindings/src/utils.rs

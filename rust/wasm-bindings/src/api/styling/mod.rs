@@ -11,5 +11,5 @@ pub(crate) use color::resolve_element_color;
 pub(crate) use prepass::{
     build_instantiated_type_ids,
     build_type_geometry_plan_from_spans, build_referenced_representation_maps,
-    collect_type_geometry_jobs_from_spans, combined_pre_pass,
+    collect_type_geometry_jobs_with_plan, combined_pre_pass,
 };

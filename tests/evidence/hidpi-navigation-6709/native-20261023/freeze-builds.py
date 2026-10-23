@@ -8,7 +8,7 @@ out=Path(__file__).parent
 pair=json.loads((out/'source-pair.json').read_text())
 for name,head in [('candidate',pair['candidate']),('base',pair['control'])]:
  root=Path('/home/louistrue/build-workers/worker-state/checkouts')/head
- status=subprocess.check_output(['git','-C',str(root),'status','--porcelain'],text=True)
+ status=subprocess.check_output(['git','-C',str(root),'status','--porcelain'],text=True,timeout=60)
  if status: raise RuntimeError(f'{name} source changed: {status}')
  files=sorted(p for p in (root/'apps/viewer/dist').rglob('*') if p.is_file())
  if not files or not (root/'apps/viewer/dist/index.html').exists():raise RuntimeError('Missing viewer build')

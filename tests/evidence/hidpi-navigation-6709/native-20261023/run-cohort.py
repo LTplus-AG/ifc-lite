@@ -21,7 +21,7 @@ for side in ['candidate','base']:
   assert 'pnpm test --filter=@ifc-lite/viewer' in command and 'TEST_PATTERN=' in command
  receipts.append(r)
 (out/'preparation-receipts.json').write_text(json.dumps(receipts,indent=2)+'\n')
-subprocess.run(['python3',str(out/'freeze-builds.py')],check=True)
+subprocess.run(['python3',str(out/'freeze-builds.py')],check=True,timeout=600)
 root=receipts[0]['cwd']
 env=os.environ|{'IFC_6709_ROOT':root,'IFC_6709_EVIDENCE':str(out),'IFC_6709_MODEL':fixture_receipt['cwd']+'/tests/models/ara3d/AC20-FZK-Haus.ifc','DISPLAY':':1','WAYLAND_DISPLAY':'wayland-1','XDG_RUNTIME_DIR':'/run/user/1000','DEBUG':'pw:browser'}
 (out/'harness-sha256.json').write_text(json.dumps({p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in out.iterdir() if p.suffix in ['.py','.mts']},indent=2)+'\n')
@@ -46,7 +46,7 @@ for mode in ['smoke','interleaved']:
 # Revalidate every frozen artifact after all native execution.
 for name in ['candidate','base']:
  manifest=json.loads((out/f'{name}-build-manifest.json').read_text())
- assert not subprocess.check_output(['git','-C',manifest['checkout'],'status','--porcelain'],text=True)
+ assert not subprocess.check_output(['git','-C',manifest['checkout'],'status','--porcelain'],text=True,timeout=60)
  for artifact in manifest['artifacts']:
   assert hashlib.sha256((Path(manifest['checkout'])/artifact['path']).read_bytes()).hexdigest()==artifact['sha256'],artifact['path']
 print('Frozen source and artifacts unchanged after complete cohort',flush=True)

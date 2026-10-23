@@ -58,6 +58,17 @@ fn terminal_scope() -> Option<TerminalScope> {
     })
 }
 
+/// Keep terminal stops visible for a complete consumer operation, including
+/// compatibility callers without an execution account. Nested calls share the
+/// existing terminal domain; a fresh domain is restored on return or unwind.
+pub fn with_terminal_scope<T>(operation: impl FnOnce() -> Result<T, ProgramStop>) -> Result<T, ProgramStop> {
+    let _terminal = terminal_scope();
+    check_current()?;
+    let result = operation();
+    check_current()?;
+    result
+}
+
 pub fn current_account() -> Option<ExecutionAccount> {
     CURRENT.with(|slot| slot.borrow().clone())
 }
@@ -80,11 +91,33 @@ pub fn check_current() -> Result<(), ProgramStop> {
     if let Err(error) = account {
         return Err(stop(error));
     }
-    if let Some(error) = TERMINAL.with(|slot| slot.get().flatten()) {
+    if let Some(error) = current_terminal() {
         return Err(error);
     }
     Ok(())
 }
+fn current_terminal() -> Option<ProgramStop> {
+    TERMINAL.with(|slot| slot.get().flatten())
+}
+
+/// Poll live stop state without constructing an aggregate result when no
+/// authorities are installed. Presence is observed afresh on every call.
+pub fn is_stopped() -> bool {
+    if SOURCE_STOP.with(|slot| slot.borrow().is_none())
+        && CURRENT.with(|slot| slot.borrow().is_none())
+    {
+        current_terminal().is_some()
+    } else {
+        check_active_stop()
+    }
+}
+
+#[cold]
+#[inline(never)]
+fn check_active_stop() -> bool {
+    check_current().is_err()
+}
+
 pub fn charge(cost: Cost) -> Result<Reservation, ProgramStop> {
     check_current()?;
     match current_account() {
@@ -144,6 +177,8 @@ pub fn allocation_failure() -> ProgramStop {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod boolean_tests;
 
 /// Translate the typed legacy callback error at the first audited boundary.
 /// Source faults (including identical diagnostic text) retain ordinary recovery.

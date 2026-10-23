@@ -203,8 +203,13 @@ pub fn process_streaming(
         // In the frame the batches above were meshed in: the `Complete` event
         // carries the symbols and `mesh_coordinate_space` together, so they
         // must agree (#4706).
-        let symbolic_data =
-            extract_symbolic_data_with_provenance_in_frame(&content, result.frame);
+        let symbolic_data = match extract_symbolic_data_with_provenance_in_frame(&content, result.frame) {
+            Ok(data) => data,
+            Err(error) => {
+                let _ = tx.blocking_send(StreamEvent::Error { message: error.to_string() });
+                return;
+            }
+        };
 
         let _ = tx.blocking_send(StreamEvent::Complete {
             stats: result.stats,

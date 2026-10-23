@@ -74,7 +74,7 @@ fn fixture(body: &str) -> String {
 /// symbolic primitives).
 #[test]
 fn near_collinear_trimmed_curve_with_non_finite_ambient_placement_is_dropped() {
-    let data = extract_symbolic_data(&fixture(POISONED_AMBIENT_PLACEMENT));
+    let data = extract_symbolic_data(&fixture(POISONED_AMBIENT_PLACEMENT)).expect("symbolic extraction must complete");
     assert!(
         data.polylines.is_empty(),
         "a near-collinear trimmed curve whose post-transform chord is non-finite must be \
@@ -88,7 +88,7 @@ fn near_collinear_trimmed_curve_with_non_finite_ambient_placement_is_dropped() {
 /// polyline with finite coordinates.
 #[test]
 fn near_collinear_trimmed_curve_with_well_formed_placement_is_emitted() {
-    let data = extract_symbolic_data(&fixture(WELL_FORMED_AMBIENT_PLACEMENT));
+    let data = extract_symbolic_data(&fixture(WELL_FORMED_AMBIENT_PLACEMENT)).expect("symbolic extraction must complete");
     assert_eq!(
         data.polylines.len(),
         1,

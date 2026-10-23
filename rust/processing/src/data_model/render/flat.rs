@@ -202,10 +202,19 @@ fn decode_property_set_with_kinds(
 }
 
 /// Resolve a list of property/quantity set definition ids into non-empty
-/// `(property_sets, quantity_sets)`, dropping undecodable refs. `kinds`, when
-/// given, receives each kept property set's per-property kinds. Types read
-/// their sets through [`resolve_type_sets`], which classifies each definition
-/// with the same [`resolve_def`].
+/// `(property_sets, quantity_sets)`, dropping undecodable refs. Inheritance
+/// reads a type's sets through [`resolve_type_sets`], which classifies each
+/// definition with the same [`resolve_def`].
+pub fn resolve_pset_defs(
+    props: &mut PropertyDecoder,
+    decoder: &mut EntityDecoder,
+    def_ids: &[u32],
+) -> (Vec<PropertySet>, Vec<QuantitySet>) {
+    resolve_pset_defs_with_kinds(props, decoder, def_ids, None)
+}
+
+/// [`resolve_pset_defs`], also capturing each kept property set's
+/// per-property kinds into `kinds` when given.
 pub(crate) fn resolve_pset_defs_with_kinds(
     props: &mut PropertyDecoder,
     decoder: &mut EntityDecoder,

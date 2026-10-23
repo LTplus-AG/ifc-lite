@@ -124,6 +124,32 @@ function shared(columns) {
 
 /** Registered in the existing real-WASM suite; no source-text assertions. */
 export function runOwnedShardedPrepassContracts(IfcAPI, test, memory, BaselineIfcAPI) {
+  test('#7782 bare type RepresentationMaps match list admission through discovery and batch', () => {
+    const listed = fixture({ typeGeometry: true });
+    const text = new TextDecoder().decode(listed);
+    const bare = new TextEncoder().encode(text.replace(',(#16),$,$,.NOTDEFINED.)', ',#16,$,$,.NOTDEFINED.)'));
+    assert.notDeepEqual(bare, listed, 'the mutation must remove the list wrapper');
+    const expected = withApi(IfcAPI, api => geometry(api, listed, api.buildPrePassOnce(listed)));
+    assert.ok(expected.some(mesh => mesh.expressId === 300 && mesh.positions.length > 0), 'list control must draw the orphan type');
+    for (const input of [listed, bare]) {
+      withApi(IfcAPI, api => {
+        const pre = api.buildPrePassOnce(input);
+        assert.ok(Array.from(pre.jobs).filter((_, index) => index % 3 === 0).includes(300));
+        assert.deepEqual(geometry(api, input, pre), expected, 'serial discovery and actual batch');
+        for (const method of ['buildPrePassStreaming', 'buildPrePassStreamingWithSourceFingerprint', ...METHODS]) {
+          const events = [];
+          if (METHODS.includes(method)) {
+            call(api, method, input, scan(IfcAPI, input), event => events.push(event), undefined, false);
+          } else {
+            api[method](input, event => events.push(event), 1024, null, false);
+          }
+          const selected = new Uint32Array(jobs(events));
+          assert.ok(Array.from(selected).filter((_, index) => index % 3 === 0).includes(300), method);
+          assert.deepEqual(geometry(api, input, { ...pre, jobs: selected }), expected, method);
+        }
+      });
+    }
+  });
   const bytes = fixture();
   const columns = scan(IfcAPI, bytes);
   // The existing optional historical pair may predate fingerprint wrappers.

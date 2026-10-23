@@ -168,10 +168,8 @@ pub(crate) fn collect_type_geometry_jobs(
         } else if let Some(ifc_type) = ifc_lite_core::type_product_ifc_type(type_name) {
             if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
                 // IfcTypeProduct.RepresentationMaps = attr 6.
-                let rep_maps: Vec<u32> = entity
-                    .get(6)
-                    .and_then(|a| a.as_list())
-                    .map(|list| list.iter().filter_map(|v| v.as_entity_ref()).collect())
+                let rep_maps = entity
+                    .ref_list_at(ifc_lite_core::slot::IfcTypeProduct::REPRESENTATION_MAPS)
                     .unwrap_or_default();
                 if !rep_maps.is_empty() {
                     plan.observe_candidate(TypeGeometryCandidate { id, start, end, ifc_type, maps: rep_maps });
@@ -191,10 +189,8 @@ pub(crate) fn collect_type_geometry_jobs_with_plan(
 ) -> Vec<(u32, usize, usize, ifc_lite_core::IfcType)> {
     for (id, start, end, ifc_type) in spans {
         if let Ok(entity) = decoder.decode_at_with_id(*id, *start, *end) {
-            // Keep the existing list-only admission: bare refs are not candidates.
-            let maps = entity.attr(ifc_lite_core::slot::IfcTypeProduct::REPRESENTATION_MAPS)
-                .and_then(|value| value.as_list())
-                .map(|list| list.iter().filter_map(|value| value.as_entity_ref()).collect())
+            // #7782 C4-7a: match native bare-reference tolerance.
+            let maps = entity.ref_list_at(ifc_lite_core::slot::IfcTypeProduct::REPRESENTATION_MAPS)
                 .unwrap_or_default();
             plan.observe_candidate(ifc_lite_processing::plan::TypeGeometryCandidate {
                 id: *id, start: *start, end: *end, ifc_type: ifc_type.clone(), maps,

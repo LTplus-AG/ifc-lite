@@ -470,3 +470,15 @@ fn a_two_dimensional_model_context_is_not_chosen() {
     let index = crate::plan::index::FileIndex::complete(source.as_bytes());
     assert_eq!(crate::plan::tessellation::find_body_context(&index, schema, &HashSet::new()), None);
 }
+
+/// A `Body` subcontext of a 2D context is not a body's context either
+/// (#8079 review).
+#[test]
+fn a_body_subcontext_of_a_two_dimensional_context_is_not_chosen() {
+    let schema = "IFC4";
+    let source = String::from_utf8(products_with_geometry(schema))
+        .unwrap()
+        .replace("IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,", "IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',2,");
+    let index = crate::plan::index::FileIndex::complete(source.as_bytes());
+    assert_eq!(crate::plan::tessellation::find_body_context(&index, schema, &HashSet::new()), None);
+}

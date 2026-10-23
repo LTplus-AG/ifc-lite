@@ -67,6 +67,13 @@ This allows both ordinary staging jobs to queue before the exclusive cohort,
 without a benchmark barrier blocking a later prerequisite. The PC admission
 waiter itself is separately bounded and does not retry a submitted producer.
 
+`frame-dimensions-controls.mts` checks the actual dimension guard used by the
+native harness, including missing, nonnumeric, nonfinite, empty and mismatched
+axes at DPR1/DPR2. The controller invokes it before browser startup. Every
+presentation and live canvas observation must have four finite positive
+dimensions before any ratio or expected-resolution comparison is accepted.
+This diagnostic qualifies the guard only, not native rendering or timings.
+
 The earlier pre-fix pair and receipts remain in `diagnostics/pre-fix-*.json` to
 explain the retained failed runs. They are historical evidence, not the active
 qualification inputs. Issue #6709 remains open until the full qualification

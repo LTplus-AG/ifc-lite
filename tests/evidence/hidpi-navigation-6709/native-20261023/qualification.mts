@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { geometryWitnessExpression } from './geometry-witness.mts';
+import { fullQuality, requireDimensions } from './frame-dimensions.mts';
 import { createRequire } from 'node:module';
 import { readFileSync, writeFileSync, appendFileSync, mkdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -79,10 +80,11 @@ const observer = `(() => {
  };
 })()`;
 const take = page => page.evaluate('globalThis.__ifc_lite_frame_probe__.take()');
-const dimensions = page => page.evaluate(`(() => { const c=document.querySelector('canvas[data-viewport="main"]'),r=c.getBoundingClientRect(); return {width:c.width,height:c.height,cssWidth:r.width,cssHeight:r.height,dpr:devicePixelRatio}; })()`);
-function fullQuality(value, dpr) {
-  if (Math.abs(value.width - Math.round(value.cssWidth * dpr)) > 1 || Math.abs(value.height - Math.round(value.cssHeight * dpr)) > 1) throw Error('Full-quality drawing-buffer dimensions not restored');
-}
+const dimensions = async page => {
+  const value = await page.evaluate(`(() => { const c=document.querySelector('canvas[data-viewport="main"]'),r=c.getBoundingClientRect(); return {width:c.width,height:c.height,cssWidth:r.width,cssHeight:r.height,dpr:devicePixelRatio}; })()`);
+  requireDimensions(value);
+  return value;
+};
 async function idle(page) {
   const deadline = Date.now() + 15000;
   let count = 0;
@@ -184,6 +186,7 @@ try {
    const presents=await page.evaluate('globalThis.__6709.presents');
    writeFileSync(`${output}/${name}-presents.json`,JSON.stringify(presents));
    if(presents.length<10 || frames.length<10) throw Error('Navigation has insufficient actual frame observations');
+   for (const present of presents) requireDimensions(present);
    const ratios=presents.map(p=>p.width/p.cssWidth);
    record.meta.interactiveMinimumRatio=Math.min(...ratios);
    record.meta.distinctNavigationViews=new Set(presents.filter(p=>p.viewProjection).map(p=>JSON.stringify(p.viewProjection))).size;
@@ -198,7 +201,7 @@ try {
    await page.mouse.down();await page.mouse.move(rect.x+rect.width/2+60,rect.y+rect.height/2+20);
    await sleep(100);
    record.meta.captureRequestedDimensions=await dimensions(page);
-   if(sample.side==='branch' && sample.dpr===2 && Math.abs(record.meta.captureRequestedDimensions.width/record.meta.captureRequestedDimensions.cssWidth-1)>0.01) throw Error('Capture was not requested from an interactive CSS-resolution frame');
+   if(sample.side==='branch' && sample.dpr===2) fullQuality(record.meta.captureRequestedDimensions,1);
    await page.screenshot({path:`${output}/${name}-held-navigation.png`});
    await page.keyboard.press('Control+k');
    await page.getByRole('textbox',{name:'Search commands',exact:true}).fill('Screenshot');
@@ -207,7 +210,7 @@ try {
    await page.waitForFunction('globalThis.__6709.downloads.length===1');
    await page.mouse.move(rect.x+rect.width/2+80,rect.y+rect.height/2+30);await sleep(100);
    record.meta.interactiveAfterCapture=await dimensions(page);
-   if(sample.side==='branch' && sample.dpr===2 && Math.abs(record.meta.interactiveAfterCapture.width/record.meta.interactiveAfterCapture.cssWidth-1)>0.01) throw Error('Owned capture failed to resume the interactive frame policy');
+   if(sample.side==='branch' && sample.dpr===2) fullQuality(record.meta.interactiveAfterCapture,1);
    await page.mouse.up();await idle(page);
    record.meta.settledAfterCapture=await dimensions(page);fullQuality(record.meta.settledAfterCapture,sample.dpr);
    const capture=await page.evaluate('globalThis.__6709.downloads[0]');

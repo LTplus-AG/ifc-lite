@@ -32,10 +32,16 @@ runtime as an immutable common dependency, then rebuilds and tests the candidate
 viewer through root Turbo. `--only` retains the already validated upstream
 builds and prevents rebuilding the common runtime. It is used only after the
 full 56/57-task upstream preparations succeeded; no unbuilt sibling is trusted.
-The repack records both original receipts, the canonical producer and hashes,
-its own script hash, successful root commands and unchanged sources. The prior
-candidate WASM is retained separately. This repack must pass before staging;
-the cohort still requires exact runtime equality across both served arms.
+The repack passed its root viewer rebuild and all 80 focused tests with zero
+skips, unchanged sources, and identical WASM/JS/type bytes across the arms.
+Its original receipt, proof and compressed log are retained under
+`diagnostics/pc-shared-runtime-*`; private manifest
+`pc-wsl-6e0cb20d-b9b0-4502-94f4-df770cc432d9-8bdf969119e0`
+also preserves the prior candidate WASM. The actual PC reservation has released.
+The proof records both original receipts, the canonical producer and hashes,
+its own script hash, successful root commands and unchanged sources. This is
+preparation evidence only; the cohort still requires exact runtime equality
+across both staged served arms before browser startup.
 
 After successful original PC receipts, `stage-pc-build.py` runs under Pop ordinary
 admission for each arm. It checks source cleanliness, the original receipt and

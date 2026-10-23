@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! #7781: admission is shared by merged/styled and synchronous/stepped paths.
 use super::*;
-#[path = "../../../tests/support/profile_walk_model.rs"]
-mod model;
+use crate::profile_walk_model as model;
 
 fn triangles(output: ProductOutput) -> usize {
     match output {

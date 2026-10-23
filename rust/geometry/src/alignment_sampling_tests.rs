@@ -219,18 +219,17 @@ fn issue_6600_declared_invalid_placement_never_becomes_identity() {
     let chain = (100..210)
         .map(|id| format!("#{id}=IFCLOCALPLACEMENT(#{},#31);", id + 1))
         .collect::<String>();
-    let long = content
-        .replace(
-            "#32=IFCLOCALPLACEMENT($,#31)",
-            "#32=IFCLOCALPLACEMENT(#100,#31)",
-        )
-        .replace(
-            "ENDSEC;END-ISO",
-            &format!("{chain}#210=IFCLOCALPLACEMENT($,#31);ENDSEC;END-ISO"),
-        );
-    let report = sample_alignment_axes(&long, Default::default()).unwrap();
+    // D27: no depth cap. A 110-link acyclic chain is valid; a loop is refused.
+    let long = |tail: &str| {
+        content
+            .replace("#32=IFCLOCALPLACEMENT($,#31)", "#32=IFCLOCALPLACEMENT(#100,#31)")
+            .replace("ENDSEC;END-ISO", &format!("{chain}{tail}ENDSEC;END-ISO"))
+    };
+    let report = sample_alignment_axes(&long("#210=IFCLOCALPLACEMENT($,#31);"), Default::default()).unwrap();
+    assert!(!report.axes.is_empty(), "{:?}", report.diagnostics);
+    let report = sample_alignment_axes(&long("#210=IFCLOCALPLACEMENT(#100,#31);"), Default::default()).unwrap();
     assert!(report.axes.is_empty());
-    assert!(report.diagnostics[0].message.contains("over-budget"));
+    assert!(report.diagnostics[0].message.contains("cyclic"), "{:?}", report.diagnostics);
 }
 
 #[test]

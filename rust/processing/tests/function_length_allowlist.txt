@@ -33,7 +33,6 @@
    269 rust/export/src/rebar_schedule_build.rs build_rebar_schedule_impl
    238 rust/export/src/step.rs emit
    178 rust/export/src/step_log/write.rs emit
-   178 rust/export/src/step_map_rigid.rs plan
    155 rust/export/src/step_map_rigid_contexts.rs representation_contexts
    186 rust/export/src/usd.rs export_usd
    161 rust/geometry/src/alignment.rs parse_horizontal

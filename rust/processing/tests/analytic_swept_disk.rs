@@ -353,7 +353,7 @@ fn mapped_occurrence_scales_radius_and_places_directrix_once() {
 }
 
 #[test]
-fn deep_placement_is_reported_instead_of_claiming_world_coordinates() {
+fn a_deep_placement_chain_is_walked_in_full_not_capped_7779() {
     let source = String::from_utf8(fixture("swept_disk_trimmed_line")).unwrap();
     let mut chain = String::new();
     for id in 200..=320 {
@@ -369,12 +369,11 @@ fn deep_placement_is_reported_instead_of_claiming_world_coordinates() {
         &format!("{chain}#30=IFCLOCALPLACEMENT(#200,#13);"),
     );
     let result = extract_swept_disk_descriptions(source.as_bytes(), None);
-    assert!(!result.elements.contains_key(&50));
+    // D27: no depth cap, the same as the TS walkers. A 121-link chain used to
+    // be refused ("exceeded maximum depth"); it is a valid chain and resolves.
+    assert!(result.elements.contains_key(&50), "{:?}", result.diagnostics);
     assert!(
-        result
-            .diagnostics
-            .iter()
-            .any(|d| d.contains("exceeded maximum depth")),
+        !result.diagnostics.iter().any(|d| d.contains("depth") || d.contains("cycle")),
         "{:?}",
         result.diagnostics
     );

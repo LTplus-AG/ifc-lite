@@ -4,7 +4,8 @@
 
 use std::collections::{HashMap, HashSet};
 use ifc_lite_core::slot::{self, kind, Slot};
-use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType, MAX_CONTEXT_DEPTH, MAX_PLACEMENT_DEPTH};
+use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType, MAX_CONTEXT_DEPTH};
+use ifc_lite_geometry::placement::{ChainValidator, ChainPolicy, LinkKind};
 use ifc_lite_geometry::GeometryRouter;
 use nalgebra::{Matrix4, Vector3};
 use super::Record;
@@ -285,56 +286,36 @@ fn curve_geometry(item: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<b
     Ok(true)
 }
 
-/// Validates a product's placement chain. `validated` memoizes whole verified
-/// suffixes (a placement is recorded only once its root is reached), so
-/// shared parents and their linear curve samples are checked once.
-pub(crate) fn placement(product: &DecodedEntity, router: &GeometryRouter, validated: &mut HashSet<u32>, decoder: &mut EntityDecoder) -> Result<(), String> {
+/// What map normalization carries in a placement chain: local and linear
+/// links, 3D frames with exactly 3 finite coordinates, non-zero and
+/// non-parallel axes. Grid placements are refused.
+pub(crate) const CHAIN_POLICY: ChainPolicy =
+    ChainPolicy { grid: false, linear: true, planar_relative: false, strict_spatial: true };
+
+/// Validates a product's placement chain with the shared walk (visited set, no
+/// depth cap, D27) and [`CHAIN_POLICY`]. The session memoizes whole verified
+/// chains, so shared parents and their linear curve samples are checked once.
+pub(crate) fn placement(product: &DecodedEntity, router: &GeometryRouter, validator: &mut ChainValidator) -> Result<(), String> {
     let Some(attr) = product.attr(slot::IfcProduct::OBJECT_PLACEMENT).filter(|attr| !attr.is_null()) else { return Ok(()) };
-    let mut current = attr.as_entity_ref().ok_or("ObjectPlacement is not a reference")?;
-    let mut seen = Vec::new();
-    while !validated.contains(&current) {
-        if seen.len() >= MAX_PLACEMENT_DEPTH || seen.contains(&current) {
-            return Err(format!("product #{} placement chain is cyclic or too deep", product.id));
+    let leaf = attr.as_entity_ref().ok_or("ObjectPlacement is not a reference")?;
+    let describe = |error: ifc_lite_geometry::placement::PlacementError| format!("product #{} placement: {error}", product.id);
+    let (_, links) = validator.validate(leaf).map_err(describe)?;
+    let decoder = validator.decoder();
+    for link in &links {
+        // The product's fresh root frame is composed through the whole chain,
+        // so a linear placement, with or without PlacementRelTo, is evaluated
+        // once and then bypassed (#7359). Refuse where rendering would
+        // silently fall back to an identity frame.
+        if link.kind == LinkKind::Linear {
+            let placement = decoder.decode_by_id(link.id).map_err(|error| error.to_string())?;
+            router.resolve_linear_placement_local_strict(&placement, decoder).map_err(|error| error.to_string())?;
         }
-        seen.push(current);
-        let placement = decoder.decode_by_id(current).map_err(|error| error.to_string())?;
-        match placement.ifc_type {
-            IfcType::IfcLocalPlacement => axis(&required(&placement, slot::IfcLocalPlacement::RELATIVE_PLACEMENT, decoder)?, decoder)?,
-            // The product's fresh root frame is composed through the whole
-            // chain, so a linear placement, with or without PlacementRelTo,
-            // is evaluated once and then bypassed (#7359). Refuse where
-            // rendering would silently fall back to an identity frame.
-            IfcType::IfcLinearPlacement => {
-                router.resolve_linear_placement_local_strict(&placement, decoder).map_err(|error| error.to_string())?;
-            }
-            _ => return Err(format!("ObjectPlacement #{current} is not an IfcLocalPlacement or IfcLinearPlacement")),
-        }
-        let Some(parent) = placement.attr(slot::IfcObjectPlacement::PLACEMENT_REL_TO).filter(|attr| !attr.is_null()) else { break };
-        current = parent.as_entity_ref().ok_or("PlacementRelTo is not a reference")?;
     }
-    validated.extend(seen);
     Ok(())
 }
 
 pub(super) fn axis(frame: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<(), String> {
-    if frame.ifc_type != IfcType::IfcAxis2Placement3D { return Err("only Axis2Placement3D frames are supported".into()); }
-    let point = required(frame, slot::IfcAxis2Placement3D::LOCATION, decoder)?;
-    if point.ifc_type != IfcType::IfcCartesianPoint { return Err("placement Location is not a CartesianPoint".into()); }
-    components(&point, slot::IfcCartesianPoint::COORDINATES)?;
-    let mut directions = [Vector3::z(), Vector3::x()];
-    let direction_slots = [slot::IfcAxis2Placement3D::AXIS, slot::IfcAxis2Placement3D::REF_DIRECTION];
-    for (at, direction) in direction_slots.into_iter().zip(directions.iter_mut()) {
-        if frame.attr(at).is_some_and(|attr| !attr.is_null()) {
-            let entity = required(frame, at, decoder)?;
-            if entity.ifc_type != IfcType::IfcDirection { return Err("placement direction has the wrong type".into()); }
-            *direction = components(&entity, slot::IfcDirection::DIRECTION_RATIOS)?;
-            if !direction.norm().is_finite() || direction.norm() == 0.0 { return Err("placement direction is zero or unbounded".into()); }
-        }
-    }
-    if directions[0].normalize().cross(&directions[1].normalize()).norm() <= 1e-12 {
-        return Err("placement Axis and RefDirection are parallel".into());
-    }
-    Ok(())
+    ifc_lite_geometry::placement::validate_spatial_frame(frame, decoder).map_err(|error| error.to_string())
 }
 
 fn identity_direction(frame: &DecodedEntity, at: Slot<kind::Ref>, component: usize, decoder: &mut EntityDecoder) -> Result<bool, String> {

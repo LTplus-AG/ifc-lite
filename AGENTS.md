@@ -141,6 +141,7 @@ sufficient alone. A cap tight enough to stop a cycle usually rejects legitimate
 input — #960 records Revit `FirstOperand` chains 42 nodes deep.
 
 Reuse the shared bound where the chain is shared: `ifc_lite_core::limits`.
+`ifc_lite_geometry::placement::resolve_chain` is the iterative, visited-set example for `PlacementRelTo` chains; it has no depth cap.
 
 A guard that both ACTS and REPORTS has a two-part contract — bound the work, and
 report that you bounded it. Mutate the halves separately; they fail differently

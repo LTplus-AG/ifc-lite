@@ -23,6 +23,36 @@ use nalgebra::Matrix4;
 // exact pre-computed placement; an `IfcGradientCurve` is evaluated with its
 // vertical profile otherwise (see `gradient.rs`).
 
+/// Decode a position using the same schema layout in rendering and validation.
+fn position(
+    placement: &DecodedEntity,
+    field: slot::SchemaSlot<slot::kind::Ref>,
+    decoder: &mut EntityDecoder,
+) -> PlacementResult<Option<DecodedEntity>> {
+    let Some(at) = decoder.slot_or(field, SchemaVersion::Ifc4x3) else { return Ok(None) };
+    Ok(decoder.resolve_optional(placement, at.index())?)
+}
+
+/// Source admission, without sampling a basis curve. Keep analytic preflight's
+/// completeness/type rules even when a renderer could choose another fallback
+/// (#7779 P4). Actual curve resolvability remains the consuming resolver's job.
+pub(super) fn validate_source(placement: &DecodedEntity, decoder: &mut EntityDecoder) -> PlacementResult<()> {
+    let relative = position(placement, slot::IfcLinearPlacement::RELATIVE_PLACEMENT, decoder)?;
+    let cartesian = position(placement, slot::IfcLinearPlacement::CARTESIAN_POSITION, decoder)?;
+    if relative.is_none() && cartesian.is_none() {
+        return Err(missing(decoder, placement.id, "RelativePlacement or CartesianPosition"));
+    }
+    if let Some(relative) = relative {
+        if relative.ifc_type != IfcType::IfcAxis2PlacementLinear {
+            return Err(unsupported(decoder, relative.id, relative.ifc_type));
+        }
+    }
+    if let Some(cartesian) = cartesian {
+        Axis2Placement::read_3d(&cartesian, decoder)?;
+    }
+    Ok(())
+}
+
 /// The frame an `IfcLinearPlacement` adds to its `PlacementRelTo`: the
 /// authored `CartesianPosition`, else the sampled basis curve. File units.
 pub(crate) fn local_frame(
@@ -31,10 +61,8 @@ pub(crate) fn local_frame(
 ) -> PlacementResult<Matrix4<f64>> {
     // Authored CartesianPosition is authoritative when present. A malformed
     // authored frame must not silently fall through to a different curve frame.
-    if let Some(slot) = decoder.slot_or(slot::IfcLinearPlacement::CARTESIAN_POSITION, SchemaVersion::Ifc4x3) {
-        if let Some(cart) = decoder.resolve_optional(placement, slot.index())? {
-            return Axis2Placement::read_3d(&cart, decoder).map(|a| a.matrix());
-        }
+    if let Some(cart) = position(placement, slot::IfcLinearPlacement::CARTESIAN_POSITION, decoder)? {
+        return Axis2Placement::read_3d(&cart, decoder).map(|a| a.matrix());
     }
     try_resolve_axis2_placement_linear(placement, decoder)
 }
@@ -67,9 +95,7 @@ fn try_resolve_axis2_placement_linear(
 ) -> PlacementResult<Matrix4<f64>> {
     // slot_or follows the declared layout when the entity exists there. Only
     // mislabelled schemas predating the entity use the established IFC4X3 layout.
-    let slot = decoder.slot_or(slot::IfcLinearPlacement::RELATIVE_PLACEMENT, SchemaVersion::Ifc4x3)
-        .ok_or_else(|| missing(decoder, placement.id, "a resolvable CartesianPosition or RelativePlacement"))?;
-    let rel = decoder.resolve_optional(placement, slot.index())?
+    let rel = position(placement, slot::IfcLinearPlacement::RELATIVE_PLACEMENT, decoder)?
         .ok_or_else(|| missing(decoder, placement.id, "a resolvable CartesianPosition or RelativePlacement"))?;
     if rel.ifc_type != IfcType::IfcAxis2PlacementLinear {
         return Err(unsupported(decoder, rel.id, rel.ifc_type));

@@ -107,11 +107,29 @@ readiness, hardware, health and timing guards remain unchanged. In particular,
 the model harness still refuses GPU driver log errors. A rendered screenshot
 alone is not a model, performance or health verdict.
 
-The next bounded service diagnostic runs the actual model and records WebGL
-canvas ownership while comparing explicit NVIDIA offload and rasterization
-setups. Service diagnostics are marked as such and cannot contribute accepted
-timing samples; the formal cohort still requires exclusive idle-host admission.
+Bounded service diagnostics localized the driver error to the location-map
+WebGL context. Collapsing the sidebar through its normal UI before loading the
+model unmounts that map; the main viewport then completes navigation without
+GPU driver errors. This layout must be identical in both arms. Expanded-map
+behavior is not qualified by those runs.
 
-These files are qualification tests and evidence for already merged production
-behavior. They live under `tests/evidence` so the revert oracle classifies them
-as test support; no production viewer change is part of this follow-up.
+The model diagnostic exposed a production capture defect: the downloaded PNG
+had full dimensions but every RGBA pixel was zero. The gateway yielded for GPU
+completion and another animation frame before reading a WebGPU canvas whose
+contents can already have been discarded. The retained same-task snapshot
+contains the model and remains byte-identical after presentation. That snapshot
+caught an interactive frame, so it diagnoses lifetime but does not qualify the
+fixed full-resolution export. See `diagnostics/capture-lifetime-result.json`,
+the actual PNGs, and the compressed diagnostic source/records.
+
+This follow-up now fixes the gateway to serialize pixels synchronously after
+its owned full-quality submission, before yielding. It still waits for GPU
+completion/presentation before returning and rejects failed or cancelled work.
+The controlled lifecycle fixture now expires the drawing buffer at presentation;
+the regression exercises this through the actual renderer, animation loop and
+BCF consumer. Native verification of the fix remains pending.
+
+A separate CSS-pick diagnostic found that the CPU-raycast-qualified wall point
+selected a window in the actual UI. The cause and uncapped control behavior
+remain under investigation. No accepted performance cohort or closure verdict
+is claimed. Service diagnostics never contribute accepted timing samples.

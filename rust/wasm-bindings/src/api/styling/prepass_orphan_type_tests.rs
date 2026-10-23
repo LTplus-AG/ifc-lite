@@ -177,3 +177,29 @@ fn from_spans_matches_full_scan_legacy_referenced_case() {
          it must not ALSO yield an orphan type job"
     );
 }
+
+/// #7782: candidate consolidation retains the browser's list-only admission.
+/// Non-reference members are ignored, but a bare reference is not a map list.
+#[test]
+fn issue_7782_shared_candidates_preserve_map_list_admission() {
+    for source in [ORPHAN, LEGACY_ORPHAN] {
+        for (maps, expected) in [("#10", 0), ("()", 0), ("$", 0), ("(42,$,#10,#10)", 1)] {
+            let content = source.replace("(#10)", maps);
+            assert_eq!(assert_match(content.as_bytes()), expected, "maps={maps}");
+        }
+    }
+}
+
+/// #7782: browser jobs remain one per candidate type in file order, even when
+/// a type authors duplicate maps. Shared maps do not deduplicate type jobs.
+#[test]
+fn issue_7782_shared_candidates_keep_type_order_and_job_multiplicity() {
+    let content = ORPHAN.replace(
+        "#20=IFCCOLUMNTYPE",
+        "#90=IFCCOLUMNTYPE('second',$,'Second',$,$,$,(#10,#10),$,$,.COLUMN.);\n#20=IFCCOLUMNTYPE",
+    );
+    assert_eq!(assert_match(content.as_bytes()), 2);
+    let mut decoder = EntityDecoder::new(&content);
+    let jobs = collect_type_geometry_jobs(content.as_bytes(), &mut decoder);
+    assert_eq!(jobs.iter().map(|job| job.0).collect::<Vec<_>>(), [90, 20]);
+}

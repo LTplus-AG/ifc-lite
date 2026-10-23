@@ -144,12 +144,17 @@ pub(crate) fn sweep(index: &FileIndex, schema: &str, cuts: &[(u32, u32)], alread
     // elsewhere, or a product that stopped naming it.
     let mut gone: HashMap<u32, usize> = HashMap::new();
     let mut cut_from: HashMap<u32, HashSet<u32>> = HashMap::new();
-    let mut queue: VecDeque<(u32, u8)> = VecDeque::new();
+    // Each record is judged at the smallest depth it is reached at, and the
+    // records a pruned one names are queued in id order, so the order a
+    // record's references were read in does not change the result.
+    let mut depth_of: HashMap<u32, u8> = HashMap::new();
+    let mut queue: VecDeque<u32> = VecDeque::new();
     for &(product, shape) in cuts {
         if cut_from.entry(shape).or_default().insert(product) {
             *gone.entry(shape).or_default() += 1;
         }
-        queue.push_back((shape, 0));
+        depth_of.insert(shape, 0);
+        queue.push_back(shape);
     }
     if !cuts.is_empty() {
         for &r in already_removed {
@@ -159,20 +164,25 @@ pub(crate) fn sweep(index: &FileIndex, schema: &str, cuts: &[(u32, u32)], alread
         }
     }
 
-    let prune = |id: u32, depth: u8, pruned: &mut HashSet<u32>, gone: &mut HashMap<u32, usize>, queue: &mut VecDeque<(u32, u8)>| {
+    let prune = |id: u32, pruned: &mut HashSet<u32>, gone: &mut HashMap<u32, usize>, depth_of: &mut HashMap<u32, u8>, queue: &mut VecDeque<u32>| {
         if !pruned.insert(id) {
             return;
         }
-        for t in index.refs_of(id) {
+        let below = depth_of.get(&id).copied().unwrap_or(0).saturating_add(1);
+        let mut targets: Vec<u32> = index.refs_of(id).into_iter().collect();
+        targets.sort_unstable();
+        for t in targets {
             *gone.entry(t).or_default() += 1;
-            queue.push_back((t, depth.saturating_add(1)));
+            depth_of.entry(t).and_modify(|d| *d = (*d).min(below)).or_insert(below);
+            queue.push_back(t);
         }
     };
 
-    while let Some((id, depth)) = queue.pop_front() {
+    while let Some(id) = queue.pop_front() {
         if pruned.contains(&id) || already_removed.contains(&id) {
             continue;
         }
+        let depth = depth_of.get(&id).copied().unwrap_or(0);
         let entity = index.type_of(id).unwrap_or_default();
         if matches!(entity.as_str(), "IFCPROJECT" | "IFCGEOMETRICREPRESENTATIONCONTEXT" | "IFCGEOMETRICREPRESENTATIONSUBCONTEXT") {
             continue;
@@ -180,7 +190,7 @@ pub(crate) fn sweep(index: &FileIndex, schema: &str, cuts: &[(u32, u32)], alread
         let Some(referrers) = index.referrer_count(id) else { continue };
         let left = referrers.saturating_sub(gone.get(&id).copied().unwrap_or(0));
         if left == 0 {
-            prune(id, depth, &mut pruned, &mut gone, &mut queue);
+            prune(id, &mut pruned, &mut gone, &mut depth_of, &mut queue);
             continue;
         }
         if depth > ANNOTATED_DEPTH || left > ANNOTATION_LIMIT {
@@ -209,7 +219,7 @@ pub(crate) fn sweep(index: &FileIndex, schema: &str, cuts: &[(u32, u32)], alread
         if used {
             continue;
         }
-        prune(id, depth, &mut pruned, &mut gone, &mut queue);
+        prune(id, &mut pruned, &mut gone, &mut depth_of, &mut queue);
         for (r, idx, kind) in annotations {
             match kind {
                 Annotation::Scalar => {

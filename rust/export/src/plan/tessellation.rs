@@ -153,6 +153,7 @@ pub(crate) fn body_shape(
 /// shape holding it declares.
 pub(crate) fn mesh_item(emit: &mut Emit, m: &TriangleMesh) -> Result<(u32, &'static str), String> {
     let closed = is_closed(m);
+    let triangles = &m.triangles;
     if ifc_lite_core::attribute_names_for_schema(emit.schema, "IFCTRIANGULATEDFACESET").is_some() {
         let coords = m
             .positions
@@ -161,8 +162,7 @@ pub(crate) fn mesh_item(emit: &mut Emit, m: &TriangleMesh) -> Result<(u32, &'sta
             .collect::<Vec<_>>()
             .join(",");
         let list = emit.record("IFCCARTESIANPOINTLIST3D", &[("CoordList", format!("({coords})"))])?;
-        let index = m
-            .triangles
+        let index = triangles
             .iter()
             .map(|t| format!("({},{},{})", t[0] + 1, t[1] + 1, t[2] + 1))
             .collect::<Vec<_>>()
@@ -178,12 +178,18 @@ pub(crate) fn mesh_item(emit: &mut Emit, m: &TriangleMesh) -> Result<(u32, &'sta
         return Ok((set, "Tessellation"));
     }
 
-    let mut point_ids = Vec::with_capacity(m.positions.len());
-    for p in &m.positions {
-        point_ids.push(emit.record("IFCCARTESIANPOINT", &[("Coordinates", format!("({},{},{})", fmt(p[0]), fmt(p[1]), fmt(p[2])))])?);
+    // Only the positions a triangle uses: a point nothing names would be an
+    // orphan record.
+    let mut used = vec![false; m.positions.len()];
+    for &v in triangles.iter().flatten() {
+        used[v as usize] = true;
     }
-    let mut faces = Vec::with_capacity(m.triangles.len());
-    for t in &m.triangles {
+    let mut point_ids = vec![0u32; m.positions.len()];
+    for (i, p) in m.positions.iter().enumerate().filter(|&(i, _)| used[i]) {
+        point_ids[i] = emit.record("IFCCARTESIANPOINT", &[("Coordinates", format!("({},{},{})", fmt(p[0]), fmt(p[1]), fmt(p[2])))])?;
+    }
+    let mut faces = Vec::with_capacity(triangles.len());
+    for t in triangles.iter() {
         let corners: Vec<u32> = t.iter().map(|&v| point_ids[v as usize]).collect();
         let lp = emit.record("IFCPOLYLOOP", &[("Polygon", ref_list(&corners))])?;
         let bound = emit.record("IFCFACEOUTERBOUND", &[("Bound", format!("#{lp}")), ("Orientation", ".T.".into())])?;
@@ -200,8 +206,10 @@ pub(crate) fn mesh_item(emit: &mut Emit, m: &TriangleMesh) -> Result<(u32, &'sta
 
 /// Closed when the mesh bounds a volume: every directed edge is used once
 /// and its reverse once (a consistently wound, watertight surface), and the
-/// enclosed signed volume is not zero (two copies of one sheet, wound
-/// opposite ways, pass the edge test and enclose nothing).
+/// enclosed signed volume is positive. Two copies of one sheet, wound
+/// opposite ways, pass the edge test and enclose nothing; a surface wound
+/// inward encloses a negative volume and is written open rather than as an
+/// inside-out solid.
 fn is_closed(m: &TriangleMesh) -> bool {
     let mut edges: HashMap<(u32, u32), u32> = HashMap::new();
     for t in &m.triangles {
@@ -209,25 +217,27 @@ fn is_closed(m: &TriangleMesh) -> bool {
             *edges.entry((a, b)).or_default() += 1;
         }
     }
-    let watertight = edges.iter().all(|(&(a, b), &n)| n == 1 && edges.get(&(b, a)) == Some(&1));
-    let volume: f64 = m
-        .triangles
-        .iter()
-        .map(|t| {
-            let [a, b, c] = t.map(|v| m.positions[v as usize]);
-            dot(a, cross(b, c))
-        })
-        .sum::<f64>()
-        / 6.0;
-    // Measured against the mesh's own size, not its distance from the
-    // origin (the volume sum is translation-invariant for a closed mesh).
-    let extent = (0..3)
-        .map(|axis| {
-            let (lo, hi) = m.positions.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p[axis]), hi.max(p[axis])));
-            hi - lo
-        })
-        .fold(0.0, f64::max);
-    watertight && volume.abs() > 1e-12 * extent.powi(3)
+    if !edges.iter().all(|(&(a, b), &n)| n == 1 && edges.get(&(b, a)) == Some(&1)) {
+        return false;
+    }
+    let Some(origin) = m.triangles.first().map(|t| m.positions[t[0] as usize]) else { return false };
+    // Relative to a vertex of the mesh: the sum is translation-invariant for a
+    // closed mesh, and far from the origin (georeferenced coordinates) the
+    // absolute products would round away a small solid's volume.
+    let (mut volume, mut lo, mut hi) = (0.0, [f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
+    for t in &m.triangles {
+        let [a, b, c] = t.map(|v| sub(m.positions[v as usize], origin));
+        volume += dot(a, cross(b, c));
+        for p in [a, b, c] {
+            for axis in 0..3 {
+                lo[axis] = lo[axis].min(p[axis]);
+                hi[axis] = hi[axis].max(p[axis]);
+            }
+        }
+    }
+    // Measured against the size of what the triangles use.
+    let extent = (0..3).map(|axis| hi[axis] - lo[axis]).fold(0.0, f64::max);
+    volume / 6.0 > 1e-12 * extent.powi(3)
 }
 
 pub(crate) fn styled_item(emit: &mut Emit, item: u32, c: &SurfaceColour) -> Result<u32, String> {
@@ -248,4 +258,41 @@ pub(crate) fn styled_item(emit: &mut Emit, item: u32, c: &SurfaceColour) -> Resu
         style
     };
     emit.record("IFCSTYLEDITEM", &[("Item", format!("#{item}")), ("Styles", ref_list(&[styles]))])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_closed;
+    use crate::plan::types::TriangleMesh;
+
+    fn tetrahedron(inward: bool) -> TriangleMesh {
+        let mut triangles = vec![[0, 2, 1], [0, 1, 3], [1, 2, 3], [0, 3, 2]];
+        if inward {
+            triangles.iter_mut().for_each(|t| t.swap(1, 2));
+        }
+        TriangleMesh { positions: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], triangles }
+    }
+
+    #[test]
+    fn only_an_outward_watertight_mesh_is_closed() {
+        assert!(is_closed(&tetrahedron(false)));
+        assert!(!is_closed(&tetrahedron(true)), "inward winding would declare an inside-out solid");
+        let mut sheet = tetrahedron(false);
+        sheet.triangles.truncate(1);
+        assert!(!is_closed(&sheet));
+    }
+
+    /// Far from the origin the absolute products round away a small solid's
+    /// volume; measured from one of its own vertices it stays exact enough.
+    #[test]
+    fn a_small_solid_far_from_the_origin_is_still_closed() {
+        let mut m = tetrahedron(false);
+        for p in &mut m.positions {
+            *p = [p[0] * 0.3 + 2_600_123.456, p[1] * 0.3 + 1_200_456.789, p[2] * 0.3 + 432.1];
+        }
+        assert!(is_closed(&m));
+        let mut inward = m.clone();
+        inward.triangles.iter_mut().for_each(|t| t.swap(1, 2));
+        assert!(!is_closed(&inward));
+    }
 }

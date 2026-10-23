@@ -255,8 +255,8 @@ fn render_list_edits(
         let entries = match attrs::ListEntry::parse_list(&slot) {
             Some(entries) => entries,
             // An unset list (`$`, e.g. a project with no contexts yet) takes
-            // appends as a new list.
-            None if edit.remove.is_empty() && edit.substitute.is_empty() => Vec::new(),
+            // appends as a new list. Any other slot is left as written.
+            None if slot.trim() == "$" && edit.remove.is_empty() && edit.substitute.is_empty() => Vec::new(),
             None => continue,
         };
         edits_by_id.entry(id).or_default().insert(idx, edit.render(&entries));

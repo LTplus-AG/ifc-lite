@@ -472,7 +472,7 @@ fn patches_of_one_object_compose_but_only_the_first_placement_applies() {
     assert!(!after.values().any(|l| l.contains("IFCCARTESIANPOINT((2.,")), "the second move is not");
 }
 
-/// End to end: deleting a host writes a file that still holds its port and
+/// End to end, the export plan's delete (#8078): deleting a host writes a file that still holds its port and
 /// type, names nothing it dropped, and validates clean.
 #[test]
 fn deleting_a_host_writes_its_port_and_type_and_validates() {

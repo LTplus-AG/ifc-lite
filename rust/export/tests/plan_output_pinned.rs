@@ -75,13 +75,12 @@ const PINNED: &[(&str, &str)] = &[
     ("IFC2X3/delete_with_opening_and_boundary", "0cd5d0106d59a06f:121863"),
     ("IFC2X3/delete_storey", "6d5c307a147219e7:123783"),
     // `delete_storey_placement` reaches the quirks block's dangling reference.
-    // It names no record, so it is no longer counted in `deleted`; the output
-    // bytes are unchanged and only the report moved.
+    // It names no record, so it is not counted in `deleted`. It and
+    // `delete_whole_group` also delete every wall bounding one space. The
+    // space used to be pruned with its last boundary; as an object the plan
+    // did not delete it now stays (one 70-byte IFCSPACE line more in each,
+    // nothing else moved).
     ("IFC2X3/delete_storey_placement", "68fd48c10ae89f54:84042"),
-    // `delete_storey_placement` and `delete_whole_group` delete every wall
-    // bounding a space. The space used to be pruned with its last boundary;
-    // an object the plan did not delete now stays (one 70-byte IFCSPACE line
-    // more, nothing else moved).
     ("IFC2X3/delete_whole_group", "9aa3b99085fac62d:75012"),
     ("IFC2X3/delete_type", "5e55d9b1b4ab4a9e:123831"),
     // `delete_wins_and_unknowns` includes an Add keyed by a wall that

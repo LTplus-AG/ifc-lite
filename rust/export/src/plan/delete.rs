@@ -82,13 +82,25 @@ pub(crate) fn is_layer_items(entity_type: &str, attr_name: &str) -> bool {
 /// Objects and types (`IfcObjectDefinition`, the project included) are never
 /// pruned: which of them exist is the plan's decision, and losing a referrer
 /// is not one. A port whose host is deleted stays as a free product; a type
-/// whose last occurrence is deleted stays declared. Openings and projections
-/// are the exception: IFC requires each to belong to exactly one element (the
-/// mandatory `VoidsElements` / `ProjectsElements` inverse), so one whose host
-/// goes goes with it.
+/// whose last occurrence is deleted stays declared. The project is named too,
+/// for a schema the registry does not know. Openings and projections are the
+/// one exception, handled by [`hosted_feature`].
 fn prunable(file_schema: &str, entity_type: &str) -> bool {
-    let is = |parent| ifc_lite_core::is_subtype_of_for_schema(file_schema, entity_type, parent);
-    !is("IFCOBJECTDEFINITION") || is("IFCFEATUREELEMENTSUBTRACTION") || is("IFCFEATUREELEMENTADDITION")
+    entity_type != "IFCPROJECT" && !ifc_lite_core::is_subtype_of_for_schema(file_schema, entity_type, "IFCOBJECTDEFINITION")
+}
+
+/// The opening or projection a removed `IfcRelVoidsElement` /
+/// `IfcRelProjectsElement` attached. IFC requires each to belong to exactly
+/// one element (the mandatory `VoidsElements` / `ProjectsElements` inverse),
+/// so it goes with that relationship, whatever else still names it.
+fn hosted_feature(index: &FileIndex, file_schema: &str, rel: u32, rel_type: &str) -> Option<u32> {
+    let attr = match rel_type {
+        "IFCRELVOIDSELEMENT" => "RelatedOpeningElement",
+        "IFCRELPROJECTSELEMENT" => "RelatedFeatureElement",
+        _ => return None,
+    };
+    let idx = super::attrs::attribute_index(file_schema, rel_type, attr)?;
+    index.attrs(rel)?.get(idx)?.scalar.filter(|&id| index.contains(id))
 }
 
 /// One list attribute of a surviving record as the cascade strips it.
@@ -221,6 +233,11 @@ pub(crate) fn resolve_deletes(
             }
         }
 
+        let dead_type = index.type_of(dead).unwrap_or_default();
+        if let Some(feature) = hosted_feature(index, file_schema, dead, &dead_type).filter(|id| !protected.contains(id)) {
+            cascade.mark_removed(feature);
+        }
+
         // 2. `dead` no longer refers to anything; a target whose last
         //    referrer that was is now unreferenced, and gets pruned unless
         //    it is an object or type (see [`prunable`]), or an object a
@@ -233,7 +250,7 @@ pub(crate) fn resolve_deletes(
         //    relationship going away does not make the objects it related
         //    disposable. Deleting a property set removes the relationship
         //    that attached it, and the walls it was attached to stay.
-        for target in released_by(index, file_schema, dead) {
+        for target in released_by(index, file_schema, dead, &dead_type) {
             if cascade.removed.contains(&target) {
                 continue;
             }
@@ -267,13 +284,12 @@ pub(crate) fn resolve_deletes(
 /// The records losing `id` can orphan: every record it names that the file
 /// declares, except the members of its mandatory member lists when it is a
 /// relationship. Its attributes are parsed once.
-fn released_by(index: &FileIndex, file_schema: &str, id: u32) -> FxHashSet<u32> {
-    let entity_type = index.type_of(id).unwrap_or_default();
+fn released_by(index: &FileIndex, file_schema: &str, id: u32, entity_type: &str) -> FxHashSet<u32> {
     let is_rel = entity_type.starts_with("IFCREL");
     let mut members: FxHashSet<u32> = FxHashSet::default();
     let mut targets: FxHashSet<u32> = FxHashSet::default();
     for (idx, slot) in index.attrs(id).unwrap_or_default().iter().enumerate() {
-        if is_rel && slot.list.is_some() && is_mandatory_members_attr(file_schema, &entity_type, idx) {
+        if is_rel && slot.list.is_some() && is_mandatory_members_attr(file_schema, entity_type, idx) {
             members.extend(slot.list.iter().flatten().flatten());
         }
         targets.extend(slot.refs());

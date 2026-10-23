@@ -141,6 +141,11 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     // With no detach, no swept geometry and nothing newly protected, this
     // pass has the gating pass's inputs, so the gating pass is its answer.
     let delete_result = if detach_requests.is_empty() && geometry_cuts.is_empty() && !newly_protected {
+        debug_assert_eq!(
+            gating.removed,
+            delete::resolve_deletes(index, schema, &requested_deletes, &detach_requests, &protected).removed,
+            "the gating pass is reused only when its inputs did not change"
+        );
         gating
     } else {
         let result = delete::resolve_deletes(index, schema, &requested_deletes, &detach_requests, &protected);

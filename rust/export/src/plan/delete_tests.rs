@@ -105,8 +105,8 @@ fn a_layer_whose_last_item_is_stripped_goes() {
     }
 }
 
-/// Deleting a host takes the relationships that needed it and the records
-/// only it used, but no object or type the plan did not name: the nested
+/// Delete cascade of the export plan (#8078): deleting a host takes the
+/// relationships that needed it and the records only it used, but no object or type the plan did not name: the nested
 /// port and the type stay, and so does the host placement the port is
 /// placed relative to.
 #[test]
@@ -137,14 +137,16 @@ fn deleting_a_host_keeps_its_port_and_type_and_prunes_only_its_own_records() {
         for id in [33, 34, 60, 61, 62, 63, 64, 65, 66] {
             assert!(result.removed.contains(&id), "{schema}: a record only the host used is pruned (#{id})");
         }
-        // IFC requires an opening to void exactly one element.
-        for id in [70, 71, 72, 73, 74] {
+        // IFC requires an opening to void exactly one element: it goes even
+        // though its own property set still names it.
+        for id in [70, 71, 72, 73, 74, 75, 76, 77] {
             assert!(result.removed.contains(&id), "{schema}: the host's opening goes with it (#{id})");
         }
     }
 }
 
-/// A list stripped many times empties exactly once, at its last member, and
+/// The O(1) list strip that made bulk deletes linear (#8078's cascade): a
+/// list stripped many times empties exactly once, at its last member, and
 /// a member listed twice is stripped by one deletion.
 #[test]
 fn a_long_shared_list_is_stripped_entry_by_entry_and_cascades_only_when_empty() {

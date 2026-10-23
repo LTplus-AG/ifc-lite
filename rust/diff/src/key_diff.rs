@@ -43,7 +43,7 @@ fn resolve_aliases(
     applied
 }
 
-fn changed_components(base: &HashMap<String, String>, head: &HashMap<String, String>) -> Vec<String> {
+pub(crate) fn changed_components(base: &HashMap<String, String>, head: &HashMap<String, String>) -> Vec<String> {
     let mut keys: Vec<_> = base.keys().chain(head.keys()).collect::<HashSet<_>>()
         .into_iter().filter(|key| base.get(*key) != head.get(*key)).cloned().collect();
     keys.sort_by(|a, b| cmp_code_units(a, b));

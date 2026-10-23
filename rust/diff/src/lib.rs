@@ -36,6 +36,11 @@ pub mod fingerprint;
 pub mod input;
 pub mod model;
 pub mod key_diff;
+pub mod geometry_compare;
+pub mod mutual_nearest;
+pub mod content_types;
+mod content_helpers;
+pub mod content_match;
 
 // Internal. The canonical encoding and the code-unit helpers are
 // implementation detail of the fingerprint, not a surface worth promising:
@@ -52,3 +57,6 @@ pub use input::{
     TypeAssignmentInput,
 };
 pub use utf16::stable_hash;
+
+#[cfg(test)]
+mod content_tests;

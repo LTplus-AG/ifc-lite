@@ -83,13 +83,13 @@ fn drive(
     decoder: &mut EntityDecoder,
     router: &GeometryRouter,
 ) -> Result<ProducedElementMeshes, WorkError> {
-    let mut output = None;
+    let mut publication = session_run::Publication::new(router);
     session_run::run_epoch(decoder, router, Some(context.id()), |decoder, router, live| {
         let mut execution = OwnedProductExecution::plan_live(job, context, opts, decoder, router, live)?;
         while execution.step_live(decoder, router)? {}
-        execution.finish_live(router, &mut output)
+        execution.finish_live(router, &mut publication.output)
     })?;
-    output.ok_or(WorkError::Aborted)
+    publication.commit()
 }
 
 #[cold]

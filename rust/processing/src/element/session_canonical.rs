@@ -163,13 +163,13 @@ fn drive(
     decoder: &mut EntityDecoder,
     router: &GeometryRouter,
 ) -> Result<ProducedElementMeshes, WorkError> {
-    let mut output = None;
+    let mut publication = session_run::Publication::new(router);
     session_run::run_epoch(decoder, router, None, |decoder, router, live| {
         let mut state = ProductState::plan_live(job, ctx, opts, decoder, router, live);
         while state.step_live(ctx, decoder, router)? {}
-        state.finish_live(router, &mut output)
+        state.finish_live(router, &mut publication.output)
     })?;
-    output.ok_or(WorkError::Aborted)
+    publication.commit()
 }
 
 // The actual source-owned terminal survives this empty child return and is

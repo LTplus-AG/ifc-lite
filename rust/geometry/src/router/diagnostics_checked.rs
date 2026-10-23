@@ -43,6 +43,14 @@ impl GeometryRouter {
         self.park_recorded_csg_failures();
     }
 
+    /// Retain a final drain whose output failed source or owner validation.
+    /// Consumes already-drained reports without invoking hooks or changing
+    /// attribution. Only explicit [`Self::take_csg_failures`] retrieves them;
+    /// subsequent products and retry drains cannot adopt them.
+    pub fn quarantine_unpublished_csg_failures(&self, failures: FxHashMap<u32, Vec<BoolFailure>>) {
+        append_csg_failures(&mut self.stopped_csg_failures.borrow_mut(), failures);
+    }
+
     fn park_recorded_csg_failures(&self) {
         self.capture_recorded_processor_failures();
         let failures = std::mem::take(&mut *self.csg_failures.borrow_mut());
@@ -108,7 +116,10 @@ impl GeometryRouter {
 
     /// Complete the current product's final diagnostic drain. Unlike an
     /// intermediate retry drain, success establishes that this epoch has no
-    /// remaining constructors or final callbacks. Call only at publication.
+    /// remaining constructors or final callbacks, not that output is committed.
+    /// Call only at publication, and retain the returned reports until source
+    /// and owner validation succeed. On rejection, return them through
+    /// [`Self::quarantine_unpublished_csg_failures`].
     pub fn finish_product_csg_failures(
         &self,
     ) -> Result<FxHashMap<u32, Vec<BoolFailure>>, crate::resource::ProgramStop> {

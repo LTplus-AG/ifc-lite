@@ -184,18 +184,21 @@ impl<'j> ProductState<'j> {
         let mut active = ActiveScopes::new(scopes);
         // Final hooks see the restored caller triangle order. Grant trusted
         // lexical ownership without installing the product's mode.
-        let (drained, _) = router.with_product_csg_scope(|| {
-            owner.read_work(decoder, router, || active.with_scope(|| router.finish_product_csg_failures()))
+        let mut publication = session_run::Publication::new(router);
+        router.with_product_csg_scope(|| {
+            owner.read_work(decoder, router, || active.with_scope(|| {
+                publication.output = Some(match router.finish_product_csg_failures() {
+                    Ok(failures) => self.publish(failures, degenerate::dropped_this_element()),
+                    Err(stop) => {
+                        self.remember_stop(stop);
+                        session_canonical::stopped_output()
+                    }
+                });
+            }))
         })?;
         let mut scopes = active.complete();
         scopes.pending.publish_pending();
-        match drained {
-            Ok(failures) => Ok(self.publish(failures, scopes.degenerate.dropped())),
-            Err(stop) => {
-                self.remember_stop(stop);
-                Ok(session_canonical::stopped_output())
-            }
-        }
+        publication.commit()
     }
 
     /// Publish only the source evidence already accepted into this product's
@@ -265,9 +268,10 @@ impl<'j> OwnedProductExecution<'j> {
     pub fn finish(self, decoder: &EntityDecoder, router: &GeometryRouter) -> Result<ProducedElementMeshes, WorkError> {
         self.validate()?;
         let context = self.context;
-        let result = self.state.finish(decoder, router)?;
+        let mut publication = session_run::Publication::new(router);
+        publication.output = Some(self.state.finish(decoder, router)?);
         // A final diagnostic callback may explicitly invalidate the model.
         context.validate_source().map_err(|_| WorkError::StaleSource)?;
-        Ok(result)
+        publication.commit()
     }
 }

@@ -14,6 +14,29 @@ use super::session_state::{ActiveScopes, Scopes, Stage};
 use super::*;
 use ifc_lite_geometry::resource::{self, ProgramStop};
 
+/// Output is provisional until both source and owner validation succeed.
+/// On rejection or unwind, preserve its drained diagnostics without replaying
+/// final hooks or letting a later product adopt them. Geometry is discarded.
+pub(super) struct Publication<'r> {
+    router: &'r GeometryRouter,
+    pub output: Option<ProducedElementMeshes>,
+}
+impl<'r> Publication<'r> {
+    pub fn new(router: &'r GeometryRouter) -> Self {
+        Self { router, output: None }
+    }
+    pub fn commit(mut self) -> Result<ProducedElementMeshes, WorkError> {
+        self.output.take().ok_or(WorkError::Aborted)
+    }
+}
+impl Drop for Publication<'_> {
+    fn drop(&mut self) {
+        if let Some(output) = &mut self.output {
+            self.router.quarantine_unpublished_csg_failures(std::mem::take(&mut output.csg_failures));
+        }
+    }
+}
+
 /// Admit (or inherit) the owners, open the epoch, run `body` inside it and
 /// publish the epoch's pending reports on every return path. `body` returns
 /// the stop its product reached, if any, which is applied to the caller's
@@ -50,8 +73,9 @@ pub(super) fn run_epoch(
 }
 
 impl ProductState<'_> {
-    /// Publish inside the open epoch. A stopped product runs no final hook and
-    /// adopts nothing ambient; its output is empty and its stop is returned.
+    /// Prepare output inside the open epoch; the driver validates publication.
+    /// A stopped product runs no final hook and adopts nothing ambient; its
+    /// output is empty and its stop is returned.
     pub(super) fn finish_live(
         mut self,
         router: &GeometryRouter,

@@ -1642,3 +1642,12 @@ later callback's unwind cannot discard already-drained reports.
 Canonical and resumable publication call `finish_product_csg_failures` only after
 all product work; intermediate retry drains use `take_csg_failures_checked` and
 cannot mark a still-running epoch complete.
+
+A completed final drain is provisional until source and execution-owner validation
+succeed. If either rejects publication, canonical and private resumable producers
+discard the geometry and pass the drained reports to
+`GeometryRouter::quarantine_unpublished_csg_failures`. This consumes the existing
+report map without invoking hooks, changing attribution, or adopting ambient
+reports. Explicit `take_csg_failures` returns it once; subsequent products cannot
+publish it. Callers of `finish_product_csg_failures` must likewise retain their
+returned reports until publication succeeds and quarantine them on rejection.

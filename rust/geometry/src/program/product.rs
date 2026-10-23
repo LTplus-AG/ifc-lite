@@ -320,3 +320,7 @@ fn texture<'a>(styled: Option<Styled<'a>>, item: &DecodedEntity) -> Option<&'a R
 #[cfg(test)]
 #[path = "product/admission_tests.rs"]
 mod admission_tests;
+
+#[cfg(test)]
+#[path = "product/payload_tests.rs"]
+mod payload_tests;

@@ -60,7 +60,9 @@ test('comparison impact and run reconciliation on the demo revision pair', async
   await expect.poll(() => state(page, s => s.models.size === 2 && !s.loading && !s.geometryStreamingActive), { timeout: 120_000 }).toBe(true);
   await page.getByRole('button', { name: 'Run comparison', exact: true }).click();
   await expect.poll(() => state(page, s => s.compareResult !== null && !s.compareRunning), { timeout: 120_000 }).toBe(true);
-  expect(await state(page, s => s.compareResult?.diff.counts)).toEqual({ added: 1, deleted: 1, modified: 2, unchanged: 19 });
+  // #8040: all 16 type definitions are identical across the demo revisions;
+  // Compare now includes them alongside the 19 unchanged products.
+  expect(await state(page, s => s.compareResult?.diff.counts)).toEqual({ added: 1, deleted: 1, modified: 2, unchanged: 35 });
   await runClash(page);
 
   const sections = page.getByRole('region', { name: 'Comparison impact and reconciliation', exact: true });

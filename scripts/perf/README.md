@@ -12,6 +12,26 @@ that also dominate in the browser; the WASM-only concerns (per-worker file
 re-decode, no threads, memory bandwidth) are orchestration-level and are read
 off the viewer's own telemetry (below).
 
+## Remote near-plane recovery (#7633)
+
+**Correctness repair; end-to-end browser timings remain within measured noise.**
+The current-base interleaved comparison preserves native ordered mesh fingerprints
+and complete browser CPU geometry payload hashes on FZK, ISSUE_129 and Holter.
+The accepted hardware-browser cohort completes five pairs per fixture with four
+workers, qualified idle conditions, and no GPU errors or device losses. Native
+phase timings remain descriptive; the worker-pool verdict comes from the browser
+report with its unchanged noise thresholds. This establishes no speedup.
+
+The failed software-adapter and Vulkan presentation campaigns remain evidence,
+not replacement samples within the accepted cohort. The diagnostic lesson is
+that hardware selection and offscreen pixel readback do not establish canvas
+presentation: Vulkan external-memory import failed on both model arms despite
+an offscreen pass. A canvas-specific reproduction isolated the browser backend
+configuration; routing Vulkan through ANGLE fixed it without driver changes.
+The separate fresh cohort rejects every uncaptured GPU error. Exact source pins,
+artifacts, numerical observations and prior failures are retained in
+`tests/evidence/issue-7633/current-performance.json`.
+
 ## Supported convex thin patches (#8047)
 
 **Correctness repair; native timing inconclusive.** Interleaved base/branch

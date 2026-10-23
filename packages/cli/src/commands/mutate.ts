@@ -12,9 +12,8 @@
 import { writeFile } from 'node:fs/promises';
 import { loadIfcFile, createHeadlessContext, scanCompletenessWarnings } from '../loader.js';
 import { getFlag, getAllFlags, hasFlag, fatal, printJson } from '../output.js';
-import { MutablePropertyView } from '@ifc-lite/mutations';
+import { createSourceMutationView } from './mutation-base.js';
 import { StepExporter } from '@ifc-lite/export';
-import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import { PropertyValueType, findAttribute, type IfcSchemaVersion } from '@ifc-lite/data';
 import { ATTRIBUTE_INDEX, applyAttributeMutations, type SkippedAttributeMutation } from './mutate-step-record.js';
 
@@ -211,21 +210,7 @@ export async function mutateCommand(args: string[]): Promise<void> {
     fatal('No entities matched the given criteria.');
   }
 
-  // Create MutablePropertyView with on-demand extraction from the store
-  const mutationView = new MutablePropertyView(null, 'default');
-  mutationView.setOnDemandExtractor((entityId: number) => {
-    return extractPropertiesOnDemand(store, entityId);
-  });
-  // The quantity half of the same base, for parity with the property one
-  // (#2487). Without it the overlay has nothing under it and
-  // `getQuantitiesForEntity` reports only what this run edited. No CURRENT path
-  // through this command records a quantity mutation - `--set` always routes to
-  // `setProperty`, even for a `Qto_*` name - so this changes no output today;
-  // it is here so the first quantity op added to this command does not have to
-  // rediscover why an export lost the siblings.
-  mutationView.setQuantityExtractor((entityId: number) => {
-    return extractQuantitiesOnDemand(store, entityId);
-  });
+  const mutationView = createSourceMutationView(store);
 
   // Apply mutations via the real mutation system
   let mutatedCount = 0;

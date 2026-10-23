@@ -2946,9 +2946,8 @@ impl Execution {
         // small stored coordinates. Close them when that leaves the cut
         // strictly closed, else keep it. World-frame cuts are untouched.
         if mesh.origin != [0.0; 3] && !directed {
-            if let Some(closed) = tjunction_close::close_seams(&out, mesh) {
-                out = closed;
-            }
+            let closed = tjunction_close::close_seams(&out, mesh);
+            out = finish::adopt_seam_closure(out, closed, boundary);
         }
 
         // Residual openings in their original classification order.

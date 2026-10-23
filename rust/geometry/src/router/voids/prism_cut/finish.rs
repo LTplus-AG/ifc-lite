@@ -18,6 +18,14 @@ pub(super) fn can_adopt_refinement(boundary: ConsolidationBoundary, refined: &Me
         && boundary.accepts(refined)
 }
 
+/// A seam repair may replace the audited mesh only if it retains its certificate.
+pub(super) fn adopt_seam_closure(current: Mesh, closed: Option<Mesh>, boundary: ConsolidationBoundary) -> Mesh {
+    match closed {
+        Some(candidate) if boundary.accepts(&candidate) => candidate,
+        _ => current,
+    }
+}
+
 /// Return an audited cut, preferring the fully hygienic fixed point.
 ///
 /// Cleaning must precede the ulp weld: a removable sliver must not seed the
@@ -126,6 +134,27 @@ mod tests {
         assert!(!kernel_grid::is_closed(&refined));
         assert!(can_adopt_refinement(ConsolidationBoundary::Established, &refined, &probe));
         assert!(!can_adopt_refinement(ConsolidationBoundary::CertifiedRemote, &refined, &probe));
+    }
+
+    #[test]
+    fn issue_7633_seam_adoption_preserves_certified_kernel_boundary() {
+        let original = tetrahedron(0.0);
+        let mut damaged = original.clone();
+        push_triangle(&mut damaged, [
+            [2.0, 0.0, 0.0], [2.000_001, 0.0, 0.0], [2.0, 0.000_001, 0.0],
+        ]);
+        assert!(super::super::directed_closed(&damaged));
+        assert!(!kernel_grid::is_closed(&damaged));
+        let retained = adopt_seam_closure(original.clone(), Some(damaged.clone()), ConsolidationBoundary::CertifiedRemote);
+        assert!(kernel_grid::is_closed(&retained));
+        assert_eq!(retained.positions, original.positions);
+        assert_eq!(retained.indices, original.indices);
+        let established = adopt_seam_closure(original.clone(), Some(damaged.clone()), ConsolidationBoundary::Established);
+        assert_eq!(established.indices, damaged.indices);
+        let healthy = tetrahedron(2.0);
+        let adopted = adopt_seam_closure(original, Some(healthy.clone()), ConsolidationBoundary::CertifiedRemote);
+        assert_eq!(adopted.positions, healthy.positions);
+        assert!(kernel_grid::is_closed(&adopted));
     }
 
     #[test]

@@ -1,0 +1,23 @@
+--- a/rust/export/src/plan/add_assoc.rs
++++ b/rust/export/src/plan/add_assoc.rs
+@@ -249,7 +249,8 @@ pub(super) fn associate(
+     requests: &mut Vec<RelRequest>,
+ ) -> Result<(), String> {
+     if let Some(m) = &c.material {
+-        build_material(emit, shared, m)?;
++        let relating = build_material(emit, shared, m)?;
++        requests.push(RelRequest { kind: RelKind::AssociatesMaterial, relating, related: object, seed: gid });
+     }
+     for (n, cl) in c.classifications.iter().enumerate() {
+         let relating = build_classification(emit, shared, cl)?;
+--- a/rust/export/src/plan/add_props.rs
++++ b/rust/export/src/plan/add_props.rs
+@@ -103,7 +103,7 @@ pub(crate) fn build_sets(
+                 PsetKind::Quantity => quantity_entity_for_measure(&measure).ok_or("no quantity entity")?,
+             };
+             let id = emit.ids.allocate().ok_or("id space exhausted")?;
+-            emit.out.push((id, build_value_record(emit.schema, id, entity, &p.name, &measure, &literal, unit.and(None))));
++            emit.out.push((id, build_value_record(emit.schema, id, entity, &p.name, &measure, &literal, unit.map(|u| format!("#{u}")).as_deref())));
+             members.push(id);
+         }
+         let id = emit.ids.allocate().ok_or("id space exhausted")?;

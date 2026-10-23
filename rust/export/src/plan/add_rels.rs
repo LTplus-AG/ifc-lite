@@ -1,21 +1,23 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Relationship bookkeeping for [`super::Disposition::Add`]: containment,
-//! aggregation and type assignment, gathered across every Add in a plan and
-//! written once at the end.
+//! aggregation, type assignment, and material and classification
+//! association, gathered across every Add in a plan and written once at the
+//! end.
 //!
 //! Deferring the write is what keeps a file from gaining one
 //! `IfcRelContainedInSpatialStructure` per added object. Ten walls added to
 //! the same storey extend the storey's existing relationship once, or share
 //! one new relationship when the storey had none (including a storey added
 //! earlier in the same plan). The same holds for a type's
-//! `IfcRelDefinesByType`.
+//! `IfcRelDefinesByType`, and for the `IfcRelAssociatesMaterial` or
+//! `IfcRelAssociatesClassification` of a material or classification
+//! reference.
 //!
 //! List appends go through the same attribute-edit map delete uses, and
 //! start from delete's rewritten list when there is one, so a plan that
 //! deletes one wall from a storey and adds another keeps both edits.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-
 
 use crate::step_ids::IdAllocator;
 
@@ -29,6 +31,8 @@ pub(crate) enum RelKind {
     Contained,
     Aggregates,
     DefinesByType,
+    AssociatesMaterial,
+    AssociatesClassification,
 }
 
 impl RelKind {
@@ -38,6 +42,8 @@ impl RelKind {
             RelKind::Contained => ("IFCRELCONTAINEDINSPATIALSTRUCTURE", "RelatingStructure", "RelatedElements"),
             RelKind::Aggregates => ("IFCRELAGGREGATES", "RelatingObject", "RelatedObjects"),
             RelKind::DefinesByType => ("IFCRELDEFINESBYTYPE", "RelatingType", "RelatedObjects"),
+            RelKind::AssociatesMaterial => ("IFCRELASSOCIATESMATERIAL", "RelatingMaterial", "RelatedObjects"),
+            RelKind::AssociatesClassification => ("IFCRELASSOCIATESCLASSIFICATION", "RelatingClassification", "RelatedObjects"),
         }
     }
 
@@ -46,6 +52,8 @@ impl RelKind {
             RelKind::Contained => "rel/contained",
             RelKind::Aggregates => "rel/aggregates",
             RelKind::DefinesByType => "rel/type",
+            RelKind::AssociatesMaterial => "rel/material",
+            RelKind::AssociatesClassification => "rel/classification",
         }
     }
 }

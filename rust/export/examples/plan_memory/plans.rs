@@ -51,6 +51,8 @@ fn add_over_existing(id: u32) -> (ObjectRef, Disposition) {
         style: None,
         psets: Vec::new(),
         opening: None,
+        material: None,
+        classifications: Vec::new(),
     };
     (ObjectRef::Id(id), Disposition::Add(Box::new(new)))
 }

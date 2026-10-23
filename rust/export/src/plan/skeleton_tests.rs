@@ -56,6 +56,8 @@ fn object(
         style: None,
         psets: Vec::new(),
         opening: None,
+        material: None,
+        classifications: Vec::new(),
     }
 }
 

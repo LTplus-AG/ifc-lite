@@ -11,6 +11,7 @@
 //! `IfcTriangulatedFaceSet` in IFC4 and an `IfcFacetedBrep` in IFC2X3, which
 //! has no tessellated geometry).
 
+use super::add_assoc_types::{ClassificationLink, ClassificationSystem, LayerMaterial, MaterialLink, ValueUnit};
 use super::types::{ObjectRef, PsetKind, SurfaceColour, TriangleMesh};
 
 /// The 128 bits of an `IfcGloballyUniqueId`, supplied by the caller so the
@@ -128,6 +129,9 @@ pub enum PropertyValue {
 pub struct NewProperty {
     pub name: String,
     pub value: PropertyValue,
+    /// The unit a [`PropertyValue::Measure`] is in, when it is not the
+    /// project's unit for that measure. The value is then in this unit.
+    pub unit: Option<ValueUnit>,
 }
 
 /// A property set (`kind: Property`) or quantity set (`kind: Quantity`,
@@ -206,23 +210,52 @@ pub struct NewObject {
     pub style: Option<SurfaceColour>,
     pub psets: Vec<NewPropertySet>,
     pub opening: Option<NewOpening>,
+    pub material: Option<MaterialLink>,
+    /// Written in the order given; one reference may not appear twice.
+    pub classifications: Vec<ClassificationLink>,
 }
 
 impl NewObject {
     /// Every existing object this Add names: its container, placement parent,
-    /// type and opening host.
+    /// type, opening host, material, classifications and units.
     pub(crate) fn references(&self) -> impl Iterator<Item = &ObjectRef> {
-        [
-            self.container.as_ref(),
-            self.placement.relative_to.as_ref(),
-            match &self.type_link {
-                Some(TypeLink::Existing(r)) => Some(r),
-                _ => None,
+        let type_ref = match &self.type_link {
+            Some(TypeLink::Existing(r)) => Some(r),
+            _ => None,
+        };
+        let type_sets = match &self.type_link {
+            Some(TypeLink::New(t)) => t.psets.as_slice(),
+            _ => &[],
+        };
+        let units = self.psets.iter().chain(type_sets).flat_map(|s| &s.properties).filter_map(|p| match &p.unit {
+            Some(ValueUnit::Existing(r)) => Some(r),
+            _ => None,
+        });
+        let material = match &self.material {
+            Some(MaterialLink::Existing(r)) => Some(r),
+            _ => None,
+        };
+        let layer_materials = match &self.material {
+            Some(MaterialLink::NewLayerSet(set)) => set.layers.as_slice(),
+            _ => &[],
+        };
+        let layer_materials = layer_materials.iter().filter_map(|l| match &l.material {
+            Some(LayerMaterial::Existing(r)) => Some(r),
+            _ => None,
+        });
+        let classifications = self.classifications.iter().filter_map(|c| match c {
+            ClassificationLink::Existing(r) => Some(r),
+            ClassificationLink::New(n) => match &n.system {
+                ClassificationSystem::Existing(r) => Some(r),
+                ClassificationSystem::New(_) => None,
             },
-            self.opening.as_ref().map(|o| &o.host),
-        ]
-        .into_iter()
-        .flatten()
+        });
+        [self.container.as_ref(), self.placement.relative_to.as_ref(), type_ref, self.opening.as_ref().map(|o| &o.host), material]
+            .into_iter()
+            .flatten()
+            .chain(layer_materials)
+            .chain(classifications)
+            .chain(units)
     }
 
     /// Every GlobalId this Add names: its own, and each [`ObjectRef::Guid`]

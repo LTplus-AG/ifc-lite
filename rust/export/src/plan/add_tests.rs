@@ -154,8 +154,8 @@ fn wall_common(value: &str) -> NewPropertySet {
         name: "Pset_WallCommon".into(),
         kind: PsetKind::Property,
         properties: vec![
-            NewProperty { name: "Reference".into(), value: PropertyValue::Label(value.into()) },
-            NewProperty { name: "IsExternal".into(), value: PropertyValue::Boolean(true) },
+            NewProperty { name: "Reference".into(), value: PropertyValue::Label(value.into()), unit: None },
+            NewProperty { name: "IsExternal".into(), value: PropertyValue::Boolean(true), unit: None },
         ],
     }
 }
@@ -202,6 +202,7 @@ fn occurrence_sets_attach_through_their_own_relationship_with_typed_values() {
                 properties: vec![NewProperty {
                     name: "Length".into(),
                     value: PropertyValue::Measure { measure_type: "IfcLengthMeasure".into(), value: 4.5 },
+                    unit: None,
                 }],
             },
         ];

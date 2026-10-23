@@ -79,29 +79,33 @@ fn lower(value: &PropertyValue) -> Result<(String, String), String> {
 
 /// Build every set in order and return their ids. Each set's GlobalId is
 /// derived from `owner` and `role/<set name>`; set names are unique per
-/// owner ([`validate_psets`]), so the ids are too.
+/// owner ([`validate_psets`]), so the ids are too. `units` holds the unit
+/// record of each value, set by set.
 pub(crate) fn build_sets(
     emit: &mut Emit,
     owner_history: Option<u32>,
     owner: GlobalId,
     role: &str,
     psets: &[NewPropertySet],
+    units: &[Vec<Option<u32>>],
 ) -> Result<Vec<u32>, String> {
+    // `check_units` built `units` from these sets, one entry per value.
+    debug_assert!(units.len() == psets.len() && psets.iter().zip(units).all(|(s, u)| s.properties.len() == u.len()));
     let mut set_ids = Vec::with_capacity(psets.len());
-    for set in psets {
+    for (set, units) in psets.iter().zip(units) {
         let (container, member_attr) = match set.kind {
             PsetKind::Property => ("IFCPROPERTYSET", "HasProperties"),
             PsetKind::Quantity => ("IFCELEMENTQUANTITY", "Quantities"),
         };
         let mut members = Vec::with_capacity(set.properties.len());
-        for p in &set.properties {
+        for (p, unit) in set.properties.iter().zip(units) {
             let (measure, literal) = lower(&p.value)?;
             let entity = match set.kind {
                 PsetKind::Property => "IFCPROPERTYSINGLEVALUE",
                 PsetKind::Quantity => quantity_entity_for_measure(&measure).ok_or("no quantity entity")?,
             };
             let id = emit.ids.allocate().ok_or("id space exhausted")?;
-            emit.out.push((id, build_value_record(emit.schema, id, entity, &p.name, &measure, &literal, None)));
+            emit.out.push((id, build_value_record(emit.schema, id, entity, &p.name, &measure, &literal, unit.map(|u| format!("#{u}")).as_deref())));
             members.push(id);
         }
         let id = emit.ids.allocate().ok_or("id space exhausted")?;

@@ -12,6 +12,8 @@ use crate::plan::add_rels::RelKind;
 use crate::plan::add_types::{ClassSpec, NewObject, Representation, TypeLink};
 use crate::plan::attrs::attribute_index;
 use crate::plan::types::ObjectRef;
+use super::assoc::{CheckedClassification, CheckedMaterial};
+use super::units::CheckedUnits;
 use super::AddState;
 
 /// What [`AddState::check`] resolved; everything the build needs that
@@ -22,9 +24,13 @@ pub(super) struct Checked {
     pub(super) parent_placement: Option<u32>,
     pub(super) container: Option<(u32, RelKind)>,
     pub(super) existing_type: Option<u32>,
-    pub(super) new_type: Option<(String, Option<String>)>,
+    /// Class, `PredefinedType` and value units of a new type.
+    pub(super) new_type: Option<(String, Option<String>, CheckedUnits)>,
     pub(super) host: Option<u32>,
     pub(super) fills: bool,
+    pub(super) material: Option<CheckedMaterial>,
+    pub(super) classifications: Vec<CheckedClassification>,
+    pub(super) units: CheckedUnits,
 }
 
 impl AddState<'_> {
@@ -64,7 +70,7 @@ impl AddState<'_> {
     /// `(id, UPPERCASE class)` of an object in the source or added earlier
     /// in this plan. A source object this plan deletes is not there, but an
     /// object added under its GlobalId is.
-    fn lookup(&self, r: &ObjectRef) -> Result<(u32, String), String> {
+    pub(super) fn lookup(&self, r: &ObjectRef) -> Result<(u32, String), String> {
         let deleted = match self.index.resolve(r) {
             Some(id) if !self.removed.contains(&id) => return Ok((id, self.index.type_of(id).unwrap_or_default())),
             Some(_) => true,
@@ -187,11 +193,24 @@ impl AddState<'_> {
                 }
                 let (type_class, predefined) = self.check_class(&t.class, "IFCTYPEPRODUCT")?;
                 self.check_type_pairing(&class, &type_class, "new type")?;
-                (None, Some((type_class, predefined)))
+                (None, Some((type_class, predefined, self.check_units(&t.psets)?)))
             }
         };
 
         validate_psets(self.schema, &obj.psets)?;
+        let units = self.check_units(&obj.psets)?;
+        // IfcRelAssociatesMaterial never relates an opening or a virtual
+        // element. IFC2X3 takes any other product; IFC4 and later only an
+        // element, a structural member or a port.
+        let void = self.is_a(&class, "IFCFEATUREELEMENTSUBTRACTION") || self.is_a(&class, "IFCVIRTUALELEMENT");
+        let allowed = crate::schema_convert::targets_ifc2x3(self.schema)
+            || ["IFCELEMENT", "IFCSTRUCTURALMEMBER", "IFCPORT"].iter().any(|t| self.is_a(&class, t));
+        let takes_material = allowed && !void;
+        if obj.material.is_some() && !takes_material {
+            return Err(format!("{class} cannot carry a material"));
+        }
+        let material = obj.material.as_ref().map(|m| self.check_material(m)).transpose()?;
+        let classifications = self.check_classifications(&obj.classifications)?;
         match &obj.representation {
             Representation::None => {}
             Representation::Extrusion(e) => validate_extrusion(e)?,
@@ -227,6 +246,9 @@ impl AddState<'_> {
             new_type,
             host,
             fills,
+            material,
+            classifications,
+            units,
         })
     }
 }

@@ -55,7 +55,7 @@ impl ElementMeshOutput {
 /// per-style `GeometryStyleInfo` index (see the #1097 cache note below).
 type StyleMaps = std::sync::Arc<(
     rustc_hash::FxHashMap<u32, [f32; 4]>,
-    rustc_hash::FxHashMap<u32, ifc_lite_processing::style::GeometryStyleInfo>,
+    std::sync::Arc<rustc_hash::FxHashMap<u32, ifc_lite_processing::style::GeometryStyleInfo>>,
 )>;
 
 impl IfcAPI {
@@ -107,8 +107,8 @@ impl IfcAPI {
         use ifc_lite_core::EntityDecoder;
         use ifc_lite_geometry::GeometryRouter;
         use ifc_lite_processing::element::{
-            plan_type_geometry, produce_element_meshes, ElementJobKind, ElementMeshJob,
-            GeometryHashConfig, MeshProductionContext, MeshProductionOptions, TypeGeometryMode,
+            plan_type_geometry, produce_element_meshes_owned, ElementJobKind, ElementMeshJob,
+            GeometryHashConfig, MeshProductionOptions, OwnedMeshProductionData, TypeGeometryMode,
         };
         use ifc_lite_processing::style::GeometryStyleInfo;
 
@@ -291,7 +291,7 @@ impl IfcAPI {
                         .iter()
                         .map(|(&id, &c)| (id, GeometryStyleInfo::from_color(c)))
                         .collect();
-                    let arc = std::sync::Arc::new((colors, index));
+                    let arc = std::sync::Arc::new((colors, std::sync::Arc::new(index)));
                     *slot = Some((sig_len, sig_first, sig_last, std::sync::Arc::clone(&arc)));
                     arc
                 }
@@ -328,7 +328,6 @@ impl IfcAPI {
         // sets per palette group so multi-coloured triangles don't collapse to
         // the single dominant colour the prepass `geometry_styles` carries.
         let indexed_colour = self.get_or_build_indexed_colour_maps(content, &mut decoder);
-        let indexed_colour_full = &indexed_colour.maps;
         // #858 / EDGE-WASM-5 (#7691): with the don't-bake plan armed, keep
         // multi-colour indexed-colour sources flat so their palette split
         // survives; an instance placeholder carries ONE colour. The same id set
@@ -342,7 +341,6 @@ impl IfcAPI {
 
         // The canonical styled-item index the shared producer consumes — built
         // once per worker alongside `geometry_styles` above (#1097).
-        let geometry_style_index = &style_maps.1;
         // Surface textures + UV maps (#961), built once per worker (cheap
         // substring bail-out for untextured files).
         let texture_index = self.get_or_build_texture_index(content, &mut decoder);
@@ -361,16 +359,17 @@ impl IfcAPI {
             _ => rustc_hash::FxHashMap::default(),
         };
 
-        let ctx = MeshProductionContext {
-            void_index: &void_index,
-            geometry_style_index,
-            indexed_colour_full,
-            element_material_colors: &element_material_colors,
-            texture_index: &texture_index,
+        // One snapshot per batch: session caches shared, the batch's wire maps moved in.
+        let ctx = self.production_model.snapshot(OwnedMeshProductionData {
+            void_index: std::sync::Arc::new(void_index),
+            geometry_style_index: std::sync::Arc::clone(&style_maps.1),
+            indexed_colour_full: std::sync::Arc::clone(&indexed_colour.maps),
+            element_material_colors: std::sync::Arc::new(element_material_colors),
+            texture_index: std::sync::Arc::clone(&texture_index),
             // The browser's axis change (IFC Z-up → WebGL Y-up) happens at the
             // FFI boundary in `MeshDataJs::from_mesh_data`, not here.
             site_local_rotation: None,
-        };
+        });
         let opts = MeshProductionOptions {
             geometry_hash: hash_tolerance.map(|tolerance| GeometryHashConfig {
                 tolerance,
@@ -492,7 +491,7 @@ impl IfcAPI {
                 ElementJobKind::Product
             };
 
-            let produced = produce_element_meshes(
+            let produced = produce_element_meshes_owned(
                 &ElementMeshJob {
                     id,
                     ifc_type,
@@ -507,6 +506,7 @@ impl IfcAPI {
                 &mut decoder,
                 &router,
             );
+            let Ok(produced) = produced else { continue }; // never invalidated mid-batch
 
             for (product_id, fails) in produced.csg_failures {
                 batch_csg_failures.entry(product_id).or_default().extend(fails);

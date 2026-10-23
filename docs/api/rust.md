@@ -981,6 +981,13 @@ the caller must still pair the decoder, router and captured maps with the
 correct source. The appearance authoring pipeline uses these snapshots and
 refreshes its cached context after style edits or authored-entity injection.
 
+The native processor captures one snapshot per run and shares it across Rayon
+jobs. Deferred styled-item replay creates a fresh configuration revision before
+subsequent jobs execute. Browser `processGeometryBatch` captures one snapshot
+per batch, sharing cached style, indexed-colour and texture maps.
+`clearPrePassCache` and every `setEntityIndex` replacement retire earlier
+snapshots, including rejected or empty index replacements.
+
 ### Appearance authoring
 
 `ifc_lite_processing::appearance::calibrate_appearance_plane` establishes one

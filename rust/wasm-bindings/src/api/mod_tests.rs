@@ -99,3 +99,49 @@ fn constructing_an_ifc_api_then_panicking_natively_does_not_abort_the_process() 
         "the panic must unwind to a catchable Result, not abort the process"
     );
 }
+
+/// #7955 E2b: each geometry batch snapshots its maps under the API's model
+/// lifecycle. A later batch of the same content never expires an earlier
+/// snapshot; a content swap (`clearPrePassCache`) expires all of them, and the
+/// next load's batches snapshot afresh.
+#[test]
+fn a_content_swap_expires_every_batch_snapshot_of_the_previous_content() {
+    use ifc_lite_processing::element::{OwnedMeshProductionData, ProductionContextError};
+    let api = IfcAPI::new();
+    let model = &api.production_model;
+    let snapshot = || model.snapshot(OwnedMeshProductionData::default());
+    let (first, second) = (snapshot(), snapshot());
+    assert_ne!(first.id(), second.id());
+    assert!(
+        first.validate_source().is_ok(),
+        "a later batch never expires an earlier one"
+    );
+    api.clear_pre_pass_cache();
+    for stale in [&first, &second] {
+        assert_eq!(
+            stale.validate_source(),
+            Err(ProductionContextError::StaleSource)
+        );
+    }
+    assert!(snapshot().validate_source().is_ok());
+    assert!(model.owns_snapshot(&first), "same API load, expired source");
+}
+
+/// #7955 E2b: every index replacement retires the preceding source, including
+/// rejected and empty replacements, which discard the old content caches.
+#[test]
+fn entity_index_replacement_expires_previous_production_snapshots() {
+    use ifc_lite_processing::element::{OwnedMeshProductionData, ProductionContextError};
+    let api = IfcAPI::new();
+    for (ids, starts, lengths, succeeds) in [
+        (vec![1], vec![0], vec![12], true),
+        (vec![2], vec![], vec![12], false),
+        (vec![], vec![], vec![], true),
+    ] {
+        let before = api.production_model.snapshot(OwnedMeshProductionData::default());
+        assert_eq!(api.set_entity_index(&ids, &starts, &lengths).is_ok(), succeeds);
+        assert_eq!(before.validate_source(), Err(ProductionContextError::StaleSource));
+        let after = api.production_model.snapshot(OwnedMeshProductionData::default());
+        assert!(after.validate_source().is_ok());
+    }
+}

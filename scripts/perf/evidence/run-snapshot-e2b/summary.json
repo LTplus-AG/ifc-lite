@@ -1,0 +1,464 @@
+{
+  "source": {
+    "base": "77237b06cc74c923e3480fafc6743f7168cd583d",
+    "head": "bc01a243119c961853b18d4b0faa96d250316b5b"
+  },
+  "correctness": {
+    "workspacePassed": 6325,
+    "workspaceFailed": 0,
+    "workspaceIgnored": 46,
+    "manifestFixturesVerified": 182,
+    "strictWorkspaceClippy": "pass",
+    "sourceUnchanged": true
+  },
+  "nativeIdentity": {
+    "fixtures": 121,
+    "frames": [
+      "default",
+      "local"
+    ],
+    "records": 242,
+    "flatAndInstancedFingerprints": "all equal",
+    "scope": "MeshData and InstanceRecord debug payloads plus geometry diagnostics; excludes complete ProcessingResult serialization and separate material definitions",
+    "baseProvenance": {
+      "head": "77237b06cc74c923e3480fafc6743f7168cd583d",
+      "binarySha256": "8c80faff46d673744eb49468fcf93a150d36000774631ade96ef8475b9b1ae22",
+      "probeSha256": "e309ccbf6f86df39eea5bf5f8499872c7feed5991fbf34f48fd0a0004af82eea",
+      "dependencySha256": "a1ca58e222445885ecc1ef70421fc509236ccd7570f5159c94c9c88178f574a7",
+      "tracksRunSnapshot": false
+    },
+    "headProvenance": {
+      "head": "bc01a243119c961853b18d4b0faa96d250316b5b",
+      "binarySha256": "e84a9051f5aff2360af4afd5a364624834bf1be7b78ba4c5e03266aee30e2b8e",
+      "probeSha256": "e309ccbf6f86df39eea5bf5f8499872c7feed5991fbf34f48fd0a0004af82eea",
+      "dependencySha256": "b10f7568dc5dbffe6d155103ec0c6cb4bf6cdfc63dd8ec5d9d057fbff1c340de",
+      "tracksRunSnapshot": true
+    }
+  },
+  "wasm": {
+    "baseContract": {
+      "passed": 222,
+      "failed": 0,
+      "skipped": 1
+    },
+    "headContract": {
+      "passed": 222,
+      "failed": 0,
+      "skipped": 1
+    },
+    "skip": "matched historical fingerprint fallback",
+    "getterFingerprintRecords": 119,
+    "comparison": "all equal",
+    "sourceBuiltRuntimeHashesPreserved": true,
+    "baseJob": "9d167bc9-bc90-4c3e-ba44-861c33a0e3a8",
+    "headJob": "5f392b2c-7bf8-4dfd-ba55-587110ea3984"
+  },
+  "mutation": {
+    "verdict": "OBSERVED",
+    "restoration": "verified",
+    "job": "70a0827d-3a30-4329-890f-baf90585e67b",
+    "invocationId": "c1acea94-d0ae-4d14-b5bc-947aa7a44e72",
+    "reason": "Production revert fails native_context_style_swap assertion against attributable green baseline."
+  },
+  "performance": {
+    "status": "inconclusive; measurement command completed0, qualification wrapper exited1",
+    "job": "099459b0-a8bf-40ef-9387-929493b312cd",
+    "preparedProbes": {
+      "base": {
+        "binarySha256": "33f8a85c5b41f664457289717cd5bf39d07e6cad3783c7bb21b1e4c327d63a48",
+        "debugContainsRunSnapshot": false
+      },
+      "branch": {
+        "binarySha256": "d6021760ae08b74402c54d30a1483efa6b6cd931e74d5578e427dca6ebba177c",
+        "debugContainsRunSnapshot": true
+      }
+    },
+    "qualification": {
+      "commandExitCode": 0,
+      "artifactDrift": false,
+      "observedExternalBuildActivity": false,
+      "manifestSha256": "4ce35d98bf467ed4b2a7433a29b247cd958b06f50fc08f545bdc7f071cb81e2e",
+      "cpuPolicyChanged": false,
+      "thermalInvalid": false,
+      "throttled": false,
+      "protocolVerdict": {
+        "fingerprintDrift": false,
+        "tooNoisy": false,
+        "realChange": false,
+        "inconclusive": true,
+        "zeroBaselineIncrease": false
+      },
+      "qualified": false,
+      "scope": "Native paired protocol only; sampled visibility, not independent geometry byte-identity proof."
+    },
+    "report": {
+      "base": "77237b06cc74c923e3480fafc6743f7168cd583d",
+      "branch": "bc01a243119c961853b18d4b0faa96d250316b5b",
+      "fixtures": [
+        {
+          "fixture": "fixture-0.ifc",
+          "phases": [
+            {
+              "phase": "parse",
+              "baseMedianMs": 14,
+              "branchMedianMs": 14,
+              "deltaPct": 0,
+              "noisePct": 0,
+              "real": false,
+              "direction": "unchanged"
+            },
+            {
+              "phase": "entity-scan",
+              "baseMedianMs": 8,
+              "branchMedianMs": 8,
+              "deltaPct": 0,
+              "noisePct": 0,
+              "real": false,
+              "direction": "unchanged"
+            },
+            {
+              "phase": "lookup/styles",
+              "baseMedianMs": 2,
+              "branchMedianMs": 2,
+              "deltaPct": 0,
+              "noisePct": 0,
+              "real": false,
+              "direction": "unchanged"
+            },
+            {
+              "phase": "preprocess",
+              "baseMedianMs": 3,
+              "branchMedianMs": 3,
+              "deltaPct": 0,
+              "noisePct": 0,
+              "real": false,
+              "direction": "unchanged"
+            },
+            {
+              "phase": "geometry",
+              "baseMedianMs": 47,
+              "branchMedianMs": 51,
+              "deltaPct": 8.51063829787234,
+              "noisePct": 12.76595744680851,
+              "real": false,
+              "direction": "slower"
+            },
+            {
+              "phase": "TOTAL",
+              "baseMedianMs": 62,
+              "branchMedianMs": 66,
+              "deltaPct": 6.451612903225806,
+              "noisePct": 11.29032258064516,
+              "real": false,
+              "direction": "slower"
+            }
+          ],
+          "fingerprint": {
+            "meshes": {
+              "base": [
+                285
+              ],
+              "branch": [
+                285
+              ]
+            },
+            "vertices": {
+              "base": [
+                35940
+              ],
+              "branch": [
+                35940
+              ]
+            },
+            "triangles": {
+              "base": [
+                20322
+              ],
+              "branch": [
+                20322
+              ]
+            }
+          }
+        },
+        {
+          "fixture": "fixture-1.ifc",
+          "phases": [
+            {
+              "phase": "parse",
+              "baseMedianMs": 33,
+              "branchMedianMs": 33,
+              "deltaPct": 0,
+              "noisePct": 0,
+              "real": false,
+              "direction": "unchanged"
+            },
+            {
+              "phase": "entity-scan",
+              "baseMedianMs": 32,
+              "branchMedianMs": 32,
+              "deltaPct": 0,
+              "noisePct": 0,
+              "real": false,
+              "direction": "unchanged"
+            },
+            {
+              "phase": "lookup/styles",
+              "baseMedianMs": 0,
+              "branchMedianMs": 0,
+              "deltaPct": null,
+              "noisePct": null,
+              "real": false,
+              "direction": null
+            },
+            {
+              "phase": "preprocess",
+              "baseMedianMs": 1,
+              "branchMedianMs": 1,
+              "deltaPct": 0,
+              "noisePct": 0,
+              "real": false,
+              "direction": "unchanged"
+            },
+            {
+              "phase": "geometry",
+              "baseMedianMs": 4033,
+              "branchMedianMs": 4008,
+              "deltaPct": -0.6198859409868585,
+              "noisePct": 3.6201338953632534,
+              "real": false,
+              "direction": "faster"
+            },
+            {
+              "phase": "TOTAL",
+              "baseMedianMs": 4066,
+              "branchMedianMs": 4042,
+              "deltaPct": -0.5902606984751598,
+              "noisePct": 3.590752582390556,
+              "real": false,
+              "direction": "faster"
+            }
+          ],
+          "fingerprint": {
+            "meshes": {
+              "base": [
+                1402
+              ],
+              "branch": [
+                1402
+              ]
+            },
+            "vertices": {
+              "base": [
+                218966
+              ],
+              "branch": [
+                218966
+              ]
+            },
+            "triangles": {
+              "base": [
+                136257
+              ],
+              "branch": [
+                136257
+              ]
+            }
+          }
+        },
+        {
+          "fixture": "fixture-2.ifc",
+          "phases": [
+            {
+              "phase": "parse",
+              "baseMedianMs": 831,
+              "branchMedianMs": 827,
+              "deltaPct": -0.48134777376654636,
+              "noisePct": 2.7677496991576414,
+              "real": false,
+              "direction": "faster"
+            },
+            {
+              "phase": "entity-scan",
+              "baseMedianMs": 643,
+              "branchMedianMs": 642,
+              "deltaPct": -0.15552099533437014,
+              "noisePct": 3.421461897356143,
+              "real": false,
+              "direction": "faster"
+            },
+            {
+              "phase": "lookup/styles",
+              "baseMedianMs": 174,
+              "branchMedianMs": 173,
+              "deltaPct": -0.5747126436781609,
+              "noisePct": 1.7241379310344827,
+              "real": false,
+              "direction": "faster"
+            },
+            {
+              "phase": "preprocess",
+              "baseMedianMs": 9,
+              "branchMedianMs": 9,
+              "deltaPct": 0,
+              "noisePct": 11.11111111111111,
+              "real": false,
+              "direction": "unchanged"
+            },
+            {
+              "phase": "geometry",
+              "baseMedianMs": 2607,
+              "branchMedianMs": 2596,
+              "deltaPct": -0.42194092827004215,
+              "noisePct": 1.0356731875719216,
+              "real": false,
+              "direction": "faster"
+            },
+            {
+              "phase": "TOTAL",
+              "baseMedianMs": 3441,
+              "branchMedianMs": 3422,
+              "deltaPct": -0.5521650682941005,
+              "noisePct": 0.7846556233653008,
+              "real": false,
+              "direction": "faster"
+            }
+          ],
+          "fingerprint": {
+            "meshes": {
+              "base": [
+                109515
+              ],
+              "branch": [
+                109515
+              ]
+            },
+            "vertices": {
+              "base": [
+                4515185
+              ],
+              "branch": [
+                4515185
+              ]
+            },
+            "triangles": {
+              "base": [
+                2895374
+              ],
+              "branch": [
+                2895374
+              ]
+            }
+          }
+        }
+      ],
+      "verdict": {
+        "fingerprintDrift": false,
+        "tooNoisy": false,
+        "realChange": false,
+        "inconclusive": true,
+        "zeroBaselineIncrease": false
+      }
+    },
+    "pairedRounds": 5,
+    "claim": "No speedup, neutrality or browser worker-pool claim; exact-parent CI tiebreaker recorded separately.",
+    "fixtures": {
+      "fixture-0.ifc": {
+        "path": "ara3d/ISSUE_005_haus.ifc",
+        "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5"
+      },
+      "fixture-1.ifc": {
+        "path": "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+        "sha256": "ffdfa9a91ac6a6c301d7da0d7861dfbc3958ceb55098c143a560468702642131"
+      },
+      "fixture-2.ifc": {
+        "path": "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+        "sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8"
+      }
+    },
+    "ciTiebreaker": {
+      "baseRun": 39948622567,
+      "headRun": 39958417395,
+      "base": "fb85597076fef96fde8a550ed73c47e97ac68776",
+      "testedMerge": "b31ff8467c964dd12474001e065aa77ee70996ef",
+      "mergeParents": [
+        "fb85597076fef96fde8a550ed73c47e97ac68776",
+        "efa8c4958574a3b978874d4562630489e2c9a09f"
+      ],
+      "metrics": [
+        {
+          "id": "fzk-haus.parse",
+          "base": 95138358,
+          "head": 95154271,
+          "delta": 15913,
+          "deltaPct": 0.016726166327152292
+        },
+        {
+          "id": "fzk-haus.entity-scan",
+          "base": 57461901,
+          "head": 57477971,
+          "delta": 16070,
+          "deltaPct": 0.027966356351494248
+        },
+        {
+          "id": "fzk-haus.lookup",
+          "base": 13074748,
+          "head": 13074747,
+          "delta": -1,
+          "deltaPct": -7.648330968557104e-06
+        },
+        {
+          "id": "fzk-haus.preprocess",
+          "base": 24505161,
+          "head": 24505004,
+          "delta": -157,
+          "deltaPct": -0.0006406813650383647
+        },
+        {
+          "id": "fzk-haus.geometry",
+          "base": 376719723,
+          "head": 376662993,
+          "delta": -56730,
+          "deltaPct": -0.01505894078182024
+        },
+        {
+          "id": "fzk-haus.total",
+          "base": 471861324,
+          "head": 471820504,
+          "delta": -40820,
+          "deltaPct": -0.008650846747504382
+        }
+      ],
+      "scope": "FZK deterministic instruction counts only; not wall-clock or browser worker-pool performance."
+    },
+    "disposition": "Accept bounded snapshot infrastructure for final review under per-slice policy. Preserve inconclusive native timing and adverse phase observations. No speedup/neutrality claim, ceiling change or retained activation."
+  },
+  "artifactHashes": {
+    "e2b-main-bc01-validation/result.json": "9a458cac4d794b6d05a6252b7a5173520f717dcaff3a846f45536f0ca26dce0e",
+    "e2b-main-bc01-validation/workspace-tests.log": "7cf53adbae6ff428fb79a8aa4375aaea5b46b268f00ca92adfa4ccc738c993ed",
+    "e2b-main-bc01-validation/workspace-clippy.log": "4dbf553c582ed42697d7d6781f21f5cceed65d687daa3a67909da9c9cf6375dd",
+    "e2b-main-native-identity-20261023/base-results.json": "9d8ee5a1a0838e25b8a19dfb29669e633967dc00d2769ed6bde9875990963544",
+    "e2b-main-native-identity-20261023/head-results.json": "3ab26e4dbef6b0fcd52a654141b5999a87ff28e350e30127a819075539a79341",
+    "e2b-main-wasm-contract-complete-20261023/base-fingerprints.log": "ed89755548a4c55c885d2d1476e5d79254f5b45687d2dd8be41cb4f4d2e13d78",
+    "e2b-main-wasm-contract-complete-20261023/base-fingerprints.txt": "10170e1125d17c19920e17108af23a96814ed08e1f23f0667ee1b8d1291b3aa5",
+    "e2b-main-wasm-contract-complete-20261023/run.sh": "73e8d33d5bc6f8c467e817e6ca2b3c276f5310e262294d1a3494bdf40f4e545c",
+    "e2b-main-wasm-contract-complete-20261023/head-fingerprints.log": "ed89755548a4c55c885d2d1476e5d79254f5b45687d2dd8be41cb4f4d2e13d78",
+    "e2b-main-wasm-contract-complete-20261023/base-contract.log": "58a88e44123d5fb4e736367d66f36ca3c75209304b7d330e31f490935196b116",
+    "e2b-main-wasm-contract-complete-20261023/head-runtime-before.sha256": "376c5a5c9385c516ba69e92caccf4d8d44fd3144f5b24f35c20273b7264f0303",
+    "e2b-main-wasm-contract-complete-20261023/head-consumers.log": "4bbc77e318953377548ef6eb0f8e0137effdc187cbb62ce979420bbb4f23c466",
+    "e2b-main-wasm-contract-complete-20261023/base-consumers.log": "4b4c9d31c15a97c7a1671f4cacf30f708dc548cbbd87d647e79520e5032793c0",
+    "e2b-main-wasm-contract-complete-20261023/head-fingerprints.txt": "10170e1125d17c19920e17108af23a96814ed08e1f23f0667ee1b8d1291b3aa5",
+    "e2b-main-wasm-contract-complete-20261023/base-runtime-before.sha256": "43bca52f836a44a24db47c6535ecfadab19dc9f523d20adb48edca8b18cb76e0",
+    "e2b-main-wasm-contract-complete-20261023/head-contract.log": "39f7f13a78d16e0017b8ad66ef1603a79a4fde81045a7b80d2cca5762b179a1d",
+    "native-measurement/report.json": "faf0422cdf9d6de2881dd754fe7b12be4cd4cc58080f0cc6b48177dfba004ead",
+    "native-measurement/runs.jsonl": "139ebd88e87192ee706bbf9929f74cfc57602abdc13a6ee1c0887df68467a740",
+    "native-measurement/order.txt": "204a2e78335cd9906e5232d4301c665aefd4f327dfea83b56d189cd32c46f38b",
+    "native-measurement/qualification.json": "8caa8db5d24b21a4f27bb1c43c5693083fbba81ca93fcbf96bd813e18607d917"
+  },
+  "reviewCandidateValidation": {
+    "head": "b3abfc1d8e4c88509fc99ac3917af8f52256292f",
+    "productionChange": "none; API docs and reduced module budgets/digests",
+    "moduleSizeTestsPassed": 8,
+    "strictWorkspaceClippy": "pass",
+    "sourceUnchanged": true
+  }
+}

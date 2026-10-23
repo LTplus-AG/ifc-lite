@@ -930,6 +930,15 @@ jobs:
           # and timeout. Once source_axes.rs is on main, whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/kernel/plane_weld/source_axes.rs | grep -Fxq 'rust/geometry/src/kernel/plane_weld/source_axes.rs'; then
             oracle_args+=(--mutation docs/architecture/evidence/issue-7292/signed-zero.oracle.patch)
+          # #7955 E2b: the native and browser consumers add
+          # processor/run_snapshot.rs, and the changed browser test names the
+          # new IfcAPI model field, so a whole-change revert cannot compile it
+          # (INCONCLUSIVE). Keep the snapshots and break ONLY the native swap:
+          # the deferred style replay no longer re-takes the run snapshot.
+          # Listed before the E2a parent it is stacked on; once
+          # processor/run_snapshot.rs is on main, whole-change revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/processor/run_snapshot.rs | grep -Fxq 'rust/processing/src/processor/run_snapshot.rs'; then
+            oracle_args+=(--mutation tests/evidence/run-snapshot-e2b/behaviour.oracle.patch)
           # #7955 E2a: the owned model context adds element/model_context.rs
           # (and appearance/owned_context.rs), which the changed context tests
           # drive, so a whole-change revert cannot compile them (INCONCLUSIVE).

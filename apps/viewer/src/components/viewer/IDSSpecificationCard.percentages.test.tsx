@@ -56,6 +56,21 @@ describe('IDS percentages (#8065)', () => {
     });
   }
 
+  it('explains a failed count limit even when every requirement passes (#8065 review)', () => {
+    const value = result();
+    value.passedCount = value.applicableCount;
+    value.failedCount = 0;
+    value.entityResults = value.entityResults.map((entity) => ({ ...entity, passed: true,
+      requirementResults: entity.requirementResults.map((check) => ({ ...check, status: 'pass' })),
+    }));
+    value.cardinalityResult = { passed: false, actualCount: 128, maxExpected: 2,
+      message: 'Expected at most 2, found 128' };
+    const ui = card(value);
+    assert.ok(ui.querySelector('[style="width: 100%;"]'));
+    assert.ok(ui.querySelector('[role="status"][aria-label="Failed"]'));
+    assert.match(ui.textContent ?? '', /Expected at most 2, found 128/);
+  });
+
   it('keeps rule-set and incomplete-report percentages from the engine', () => {
     let ui = card(result(), false);
     assert.ok(ui.querySelector('[style="width: 0%;"]'));

@@ -183,6 +183,9 @@ export function SpecificationCard({
                   <PassRateBar passRate={displayRate} />
                   {notChecked && <span className="text-xs text-muted-foreground">{t('manualValidation.verdict.unanswered')}</span>}
                 </div>
+                {isIDS && result.cardinalityResult?.passed === false && (
+                  <p className="mt-1 text-xs text-red-600">{result.cardinalityResult.message}</p>
+                )}
                 {/* The breakdown names the units used by the IDS percentage. */}
                 {applicableChecks > 0 && (
                   <div className="mt-1 text-xs text-muted-foreground">

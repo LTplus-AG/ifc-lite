@@ -40,6 +40,14 @@ interface CaptureRequest<T> {
   read: (canvas: HTMLCanvasElement) => T;
 }
 
+type Thenable = { then: (...args: never[]) => unknown };
+type SynchronousRequest<T> = CaptureRequest<T> & (Extract<T, Thenable> extends never ? unknown : never);
+
+function isThenable(value: unknown): boolean {
+  return value !== null && (typeof value === 'object' || typeof value === 'function') &&
+    typeof (value as { then?: unknown }).then === 'function';
+}
+
 function presentation(signal: AbortSignal): Promise<boolean> {
   // FRAME-WAIT-ALLOW(#2385): retain ownership through presentation of the captured frame.
   return new Promise(resolve => {
@@ -68,7 +76,7 @@ async function completion(work: Promise<void>, signal: AbortSignal): Promise<boo
  * completion → presentation. The live loop parks before updating camera or uploading while this
  * interval owns its frame. No persistent preferences are changed (#6709).
  */
-export function captureViewportFrame<T>(renderer: Renderer, request: CaptureRequest<T>): Promise<T | null> {
+export function captureViewportFrame<T>(renderer: Renderer, request: SynchronousRequest<T>): Promise<T | null> {
   const session = sessions.get(renderer);
   if (!session) {
     console.warn('[capture] No active canonical viewport');
@@ -110,6 +118,11 @@ export function captureViewportFrame<T>(renderer: Renderer, request: CaptureRequ
       // yielding: even onSubmittedWorkDone can resolve after the compositor has
       // presented and discarded the WebGPU drawing buffer (#6709).
       const value = request.read(session.canvas);
+      if (isThenable(value)) {
+        console.warn('[capture] Pixel reader must copy synchronously; asynchronous result refused');
+        void Promise.resolve(value).catch(error => console.error('[capture] Refused asynchronous pixel reader rejected:', error));
+        return null;
+      }
       const device = renderer.getGPUDevice();
       if (device && !await completion(device.queue.onSubmittedWorkDone(), signal)) return null;
       if (signal.aborted || !await presentation(signal)) return null;

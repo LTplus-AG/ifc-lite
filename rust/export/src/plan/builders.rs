@@ -225,19 +225,23 @@ mod tests {
         let w = PropWrite::new("S", "P", "IFCLABEL", "'x'", PsetKind::Property, PropScope::Type).with_unit("#5");
         assert_eq!((w.pset.as_str(), w.prop.as_str(), w.measure_type.as_str(), w.literal.as_str()), ("S", "P", "IFCLABEL", "'x'"));
         assert_eq!((w.unit.as_deref(), w.kind, w.scope), (Some("#5"), PsetKind::Property, PropScope::Type));
-        let mesh = TriangleMesh::new(vec![[0.0; 3]; 3], vec![[0, 1, 2]]);
+        let mesh = TriangleMesh::new(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], vec![[0, 1, 2]]);
         let p = Patch::new()
             .with_name("N")
             .with_psets(vec![w])
             .with_placement(PlacementPatch::new(IDENTITY))
             .with_geometry(GeometryPatch::new(mesh).with_colour(SurfaceColour::new([1.0, 0.0, 0.0], 0.0)));
         assert_eq!(p.name.as_deref(), Some("N"));
-        assert_eq!(p.psets.len(), 1);
-        assert!(p.placement.is_some() && p.geometry.as_ref().is_some_and(|g| g.colour.is_some()));
+        assert_eq!((p.psets.len(), p.psets[0].prop.as_str()), (1, "P"));
+        assert_eq!(p.placement.map(|pl| pl.matrix), Some(IDENTITY));
+        let g = p.geometry.as_ref().unwrap();
+        assert_eq!((g.mesh.positions[1], g.mesh.triangles.clone()), ([1.0, 0.0, 0.0], vec![[0, 1, 2]]));
+        assert_eq!(g.colour.map(|c| (c.rgb, c.transparency)), Some(([1.0, 0.0, 0.0], 0.0)));
         let c = PlanContext::new().with_author("a").with_organization("o").with_time_stamp("t");
         assert_eq!((c.author.as_deref(), c.organization.as_deref(), c.time_stamp.as_deref()), (Some("a"), Some("o"), Some("t")));
         let plan = ExportPlan::new(vec![(ObjectRef::Id(1), Disposition::Delete)]).with_context(c);
-        assert_eq!(plan.context.author.as_deref(), Some("a"));
+        assert!(matches!(plan.dispositions.as_slice(), [(ObjectRef::Id(1), Disposition::Delete)]));
+        assert_eq!((plan.context.author.as_deref(), plan.context.time_stamp.as_deref()), (Some("a"), Some("t")));
         let m = MapConversion::new("EPSG:2056", 1.0, 2.0, 3.0).with_map_unit(MapUnit::Foot).with_x_axis(0.0, 1.0).with_scale(0.5);
         assert_eq!((m.crs_name.as_str(), m.eastings, m.northings, m.orthogonal_height), ("EPSG:2056", 1.0, 2.0, 3.0));
         assert_eq!((m.map_unit, m.x_axis_abscissa, m.x_axis_ordinate, m.scale), (MapUnit::Foot, 0.0, 1.0, Some(0.5)));
@@ -245,7 +249,8 @@ mod tests {
         let s = Skeleton::new(root(1, "P"), root(2, "S"), root(3, "B")).with_true_north([0.0, 1.0]).with_map_conversion(m);
         let roots = [&s.project, &s.site, &s.building].map(|r| (r.global_id, r.name.clone().unwrap()));
         assert_eq!(roots, [(GlobalId(1), "P".into()), (GlobalId(2), "S".into()), (GlobalId(3), "B".into())]);
-        assert!(s.true_north == Some([0.0, 1.0]) && s.map_conversion.is_some());
+        assert_eq!(s.true_north, Some([0.0, 1.0]));
+        assert_eq!(s.map_conversion.as_ref().map(|m| (m.crs_name.as_str(), m.scale)), Some(("EPSG:2056", Some(0.5))));
         let r = Refusal::new(ObjectRef::Id(1), "r");
         assert_eq!((&r.object, r.reason.as_str()), (&ObjectRef::Id(1), "r"));
         let f = ValidationFinding::new(Some(4), "m");

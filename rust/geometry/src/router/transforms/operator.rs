@@ -54,11 +54,14 @@ pub(crate) fn parse_transformation_operator(
     // exactly where the 3D form keeps Axis3. Reading the 3D layout on a 2D
     // operator therefore both LOST Scale2 (it was read from attr 5, which
     // does not exist) and fed a REAL to the Axis3 direction parse. #1985
-    let is_2d = matches!(
-        entity.ifc_type,
+    // #7880: reject wrong record types before any typed-slot access.
+    let is_2d = match entity.ifc_type {
         IfcType::IfcCartesianTransformationOperator2D
-            | IfcType::IfcCartesianTransformationOperator2DnonUniform
-    );
+            | IfcType::IfcCartesianTransformationOperator2DnonUniform => true,
+        IfcType::IfcCartesianTransformationOperator3D
+            | IfcType::IfcCartesianTransformationOperator3DnonUniform => false,
+        ref other => return Err(crate::placement::unsupported(decoder, entity.id, other.clone()).into()),
+    };
 
     // LocalOrigin is mandatory under the leaf rule (#7779 / #7906):
     // missing and unreadable points are refused and counted, never invented.

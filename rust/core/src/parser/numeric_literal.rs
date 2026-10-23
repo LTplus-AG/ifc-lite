@@ -156,7 +156,7 @@ pub fn read_step_number(bytes: &[u8]) -> Option<(StepNumber<'_>, usize)> {
         let sign_len = usize::from(matches!(literal[0], b'+' | b'-'));
         let unsigned = &literal[sign_len..];
         let value = if unsigned.last() == Some(&b'.') && unsigned.len() <= 16 {
-            // The grammar admits only 1..=15 digits before this final dot.
+            // The length guard limits this fast path to 1..=15 digits plus the dot.
             // Their magnitude is below 2^50: accumulation and the f64 cast
             // are exact. Apply the sign afterward to preserve -0. (#7880).
             let magnitude = unsigned[..unsigned.len() - 1]

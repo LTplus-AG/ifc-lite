@@ -31,8 +31,8 @@ impl ExtrusionParams {
     /// messages (`"ExtrudedAreaSolid"`, `"ExtrudedAreaSolidTapered"`).
     ///
     /// Errors, in this order: a missing, unresolvable or non-`IfcDirection`
-    /// `ExtrudedDirection`, a zero-length one, a missing `Depth`, an
-    /// unparseable `Position`.
+    /// `ExtrudedDirection`, a zero-length one, zero Z (`ValidExtrusionDirection`),
+    /// a missing `Depth`, an unparseable `Position`.
     pub(crate) fn decode(
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,

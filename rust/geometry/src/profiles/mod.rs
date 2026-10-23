@@ -558,7 +558,7 @@ impl ProfileProcessor {
                         }
                     }
                 }
-                // Couldn't read this segment's placement — skip rather than fail.
+                // No placement resolved; present unsupported/unreadable frames error above.
                 last_curve_segment_terminal = None;
                 continue;
             }
@@ -740,9 +740,9 @@ impl ProfileProcessor {
 /// Returns `(origin, x_axis)`: column 3 and column 0 of the canonical frame
 /// ([`crate::placement::Axis2Placement`]), so `x_axis` is the RefDirection
 /// (+X when absent or zero-length, the EXPRESS default) projected onto the
-/// plane perpendicular to Axis. It used to ignore Axis, and swallowed an
-/// unreadable placement as "no segment" (PROC-1, GEOM-2); the error now
-/// propagates.
+/// plane perpendicular to Axis. Unreadable frames and types other than
+/// `IfcAxis2Placement2D` or `IfcAxis2Placement3D` refuse the composite curve
+/// and are counted by the canonical reader instead of skipped (PROC-1, GEOM-2).
 fn axis2_placement_location_and_x_axis_3d(
     placement: &DecodedEntity,
     decoder: &mut EntityDecoder,

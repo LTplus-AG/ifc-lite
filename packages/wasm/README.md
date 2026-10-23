@@ -292,3 +292,13 @@ distances and unresolved units, curves or placements fail explicitly. The
 `approximate` flag identifies supported approximation paths; it must be exposed
 to precision-sensitive consumers. Whole-source parsing belongs in a disposable
 worker when used by the viewer, so releasing the tool also releases WASM pages.
+
+## Rust diff bindings
+
+After the normal WASM initialization, `DiffModel` owns fingerprint columns for repeated synchronous comparisons. Its constructor accepts a string dictionary, five string indices per entity (key, IFC class, data hash, geometry hash, container), presence flags, six bounding-box coordinates per entity, volumes, component offsets, and component key/value indices. An absent optional string uses `0xffffffff`; flag bits 0, 1, and 2 represent a bounding box, volume, and components. Call `.free()` in `finally` for each model.
+
+`DiffModel.compare` returns row indices instead of JavaScript references. Keep the original fingerprint arrays and restore those references on the JavaScript side; opaque references never cross into WASM. The model can be reused for more comparisons before freeing it.
+
+`diffStableHash` accepts UTF-16 code units, including unpaired surrogates. `diffBuildDataFingerprint` and `diffBuildComponentFingerprints` accept IFC adapter projections directly. `diffCreateSidecar`, `diffValidateSidecar`, and `diffSerializeSidecar` handle the small JSON sidecar documents; date validation uses the host's `Date.parse`. Sidecar serialization includes the trailing newline.
+
+These bindings are the staged backend for issue #8042. The public `@ifc-lite/diff` facade has not switched to them yet; existing consumers keep their current initialization contract until integration and performance qualification complete.

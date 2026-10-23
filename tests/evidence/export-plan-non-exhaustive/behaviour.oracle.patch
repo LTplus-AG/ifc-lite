@@ -9,14 +9,3 @@
          self
      }
  
---- a/rust/export/src/plan/builders.rs
-+++ b/rust/export/src/plan/builders.rs
-@@ -37,7 +37,7 @@ impl PropWrite {
-         kind: PsetKind,
-         scope: PropScope,
-     ) -> Self {
--        Self { pset: prop.into(), prop: pset.into(), measure_type: measure_type.into(), literal: literal.into(), unit: None, kind, scope }
-+        Self { pset: pset.into(), prop: prop.into(), measure_type: measure_type.into(), literal: literal.into(), unit: None, kind, scope }
-     }
- 
-     /// The STEP text of the unit to write (`"#55"`, or `"$"` for none).

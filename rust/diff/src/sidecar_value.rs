@@ -17,6 +17,10 @@ impl JsString {
         let scalar = String::from_utf16(&units).ok();
         Self { units, scalar }
     }
+    pub(crate) fn units(&self) -> &[u16] { &self.units }
+    pub(crate) fn surround(prefix: &str, value: &Self, suffix: &str) -> Self {
+        Self::from_units(prefix.encode_utf16().chain(value.units.iter().copied()).chain(suffix.encode_utf16()).collect())
+    }
     pub(crate) fn as_str(&self) -> Option<&str> { self.scalar.as_deref() }
     pub(crate) fn is_empty(&self) -> bool { self.units.is_empty() }
     pub(crate) fn is_blank(&self) -> bool {

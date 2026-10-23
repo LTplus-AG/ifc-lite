@@ -131,3 +131,26 @@ test('diff owns separate memory and survives geometry initialization (#8042)', a
     assert.deepEqual(base.compare(head, {}), before);
   } finally { base.free(); head.free(); }
 });
+
+// #8081: creation, validation and serialization must share the UTF-16 codec.
+test('actual WASM sidecar creation and validation retain lone surrogates (#8042, #8081)', async context => {
+  const wasm = await engine(context); if (!wasm) return;
+  const vectors = JSON.parse(readFileSync(new URL('../../../rust/diff/tests/sidecar_parse_vectors.json', import.meta.url), 'utf8'));
+  for (const vector of vectors) {
+    if (vector.errorsWire === undefined) continue; // Syntax diagnostics are host-specific.
+    const lineage = vector.kind === 'lineage';
+    assert.equal(JSON.stringify(wasm.diffValidateSidecar(vector.text, lineage), null, 2) + '\n', vector.errorsWire, vector.name);
+    if (vector.createWire !== undefined) {
+      const wire = wasm.diffCreateSidecar(vector.text, lineage);
+      assert.equal(wire, vector.createWire, vector.name);
+      assert.deepEqual(wasm.diffValidateSidecar(wire, lineage), [], vector.name);
+      assert.equal(wasm.diffSerializeSidecar(wire), wire, vector.name);
+    } else {
+      let caught;
+      try { wasm.diffCreateSidecar(vector.text, lineage); }
+      catch (error) { caught = error; }
+      assert.notEqual(caught, undefined, vector.name);
+      assert.equal(JSON.stringify(caught instanceof Error ? caught.message : caught), vector.createErrorJson, vector.name);
+    }
+  }
+});

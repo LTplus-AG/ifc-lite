@@ -146,9 +146,10 @@ struct Cascade<'i> {
     file_schema: &'i str,
     removed: HashSet<u32>,
     worklist: VecDeque<u32>,
-    /// Per referrer a strip reached: every top-level list attribute, by
-    /// index, as stripped so far. Each referrer is parsed once.
-    lists: FxHashMap<u32, Vec<(usize, ListStrip)>>,
+    /// Per (referrer, attr index): the list as stripped so far. Filled for
+    /// every top-level list of a referrer the first time a strip reaches
+    /// one of them, so each referrer is parsed once.
+    lists: FxHashMap<(u32, usize), ListStrip>,
 }
 
 impl Cascade<'_> {
@@ -166,9 +167,15 @@ impl Cascade<'_> {
     /// top-level entry); a delete does not, since the nested reference would
     /// dangle.
     fn strip(&mut self, referrer: u32, idx: usize, member: u32, through_nested: bool) -> bool {
-        let (index, file_schema) = (self.index, self.file_schema);
-        let lists = self.lists.entry(referrer).or_insert_with(|| list_strips(index, file_schema, referrer));
-        let Some((_, list)) = lists.iter_mut().find(|(i, _)| *i == idx) else { return false };
+        if !self.lists.contains_key(&(referrer, idx)) {
+            // Not a list, or the referrer is not parsed yet. A strip that
+            // fails takes the referrer out, so the first case parses it at
+            // most once more.
+            for (i, list) in list_strips(self.index, self.file_schema, referrer) {
+                self.lists.entry((referrer, i)).or_insert(list);
+            }
+        }
+        let Some(list) = self.lists.get_mut(&(referrer, idx)) else { return false };
         let Some(&count) = list.occurrences.get(&member) else { return false };
         if !through_nested && list.nested.contains(&member) {
             return false;
@@ -319,9 +326,8 @@ pub(crate) fn resolve_deletes(
     let Cascade { removed, lists, .. } = cascade;
     let stripped = lists
         .into_iter()
-        .filter(|(referrer, _)| !removed.contains(referrer))
-        .flat_map(|(referrer, lists)| lists.into_iter().map(move |(idx, list)| ((referrer, idx), list.stripped)))
-        .filter(|(_, ids)| !ids.is_empty())
+        .filter(|((referrer, _), list)| !removed.contains(referrer) && !list.stripped.is_empty())
+        .map(|(slot, list)| (slot, list.stripped))
         .collect();
     DeleteResult { removed, stripped, unhosted }
 }

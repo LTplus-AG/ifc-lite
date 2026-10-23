@@ -144,8 +144,9 @@ pub use merged::{
 };
 pub use model::{
     build_export_model, build_export_model_with_options, stream_export_model,
-    stream_export_model_with_index, stream_export_model_with_options, EntityRow, ExportModel,
-    ModelOptions, Placement, PropValue, PropertySet, QuantitySet, QuantityValue, ValueKind,
+    stream_export_model_with_index, stream_export_model_with_inherited,
+    stream_export_model_with_options, EntityRow, ExportModel, Inherited, ModelOptions, Placement,
+    PropValue, PropertySet, QuantitySet, QuantityValue, ValueKind,
 };
 pub use quantity_analysis_derived::{analyze_quantities, DerivedQuantity,
     ProductQuantityAnalysis, QuantityAnalysis, QuantitySourceOccurrence};

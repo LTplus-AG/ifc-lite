@@ -3,28 +3,28 @@
   "repin": "IFC_LITE_REPIN_GOLDEN=1 python -m pytest rust/python/tests/test_golden_entity_data.py",
   "cases": {
     "issue_098_wall_V5C:defaults": {
-      "fnv1a64": "1b6b464823c30fe5",
-      "bytes": 20805
+      "fnv1a64": "d565a2142a793c98",
+      "bytes": 23145
     },
     "mapped_instances_synthetic:defaults": {
-      "fnv1a64": "715f9a50907be3a5",
-      "bytes": 17077
+      "fnv1a64": "adde69c3c0ba6249",
+      "bytes": 17157
     },
     "synthetic:defaults": {
-      "fnv1a64": "d160fbc28e5883c0",
-      "bytes": 5670
+      "fnv1a64": "3400654c40a33a39",
+      "bytes": 6738
     },
     "synthetic:no-attributes": {
-      "fnv1a64": "f072b123a7041979",
-      "bytes": 5261
+      "fnv1a64": "ecb09c816103dfe2",
+      "bytes": 6209
     },
     "synthetic:own-sets-only": {
-      "fnv1a64": "2b478049aa4ed9be",
-      "bytes": 3384
+      "fnv1a64": "c04cee79b009c919",
+      "bytes": 3844
     },
     "synthetic:placements": {
-      "fnv1a64": "a89d27844eb62872",
-      "bytes": 6126
+      "fnv1a64": "c78aba9b645d45b7",
+      "bytes": 7194
     }
   }
 }

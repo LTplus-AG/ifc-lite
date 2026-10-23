@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Entry points for the shared row stream, with optional property classes.
-use super::{EntityRow, ModelOptions};
+use super::{EntityRow, Inherited, ModelOptions};
 use crate::data_model::property::PropertyKind;
 use crate::prepass::UnitScales;
 use ifc_lite_core::{DecodedEntity, EntityIndex};
@@ -27,7 +27,23 @@ pub fn stream_export_model_with_options(
     opts: &ModelOptions,
     mut f: impl FnMut(EntityRow, Option<&DecodedEntity>),
 ) -> UnitScales {
-    super::stream_rows(content, entity_index, opts, false, |row, entity, _| f(row, entity))
+    stream_export_model_with_inherited(content, entity_index, opts, |row, _, entity| f(row, entity))
+}
+
+/// [`stream_export_model_with_options`], plus which of each row's property and
+/// quantity entries the entity inherits from its type.
+///
+/// The [`Inherited`] passed beside each row reports nothing unless
+/// [`ModelOptions::inherit_type_properties`] is on. It is a separate argument
+/// rather than a field on `PropValue` and `QuantityValue` so those types keep
+/// their published shape.
+pub fn stream_export_model_with_inherited(
+    content: &[u8],
+    entity_index: &Arc<EntityIndex>,
+    opts: &ModelOptions,
+    mut f: impl FnMut(EntityRow, Inherited, Option<&DecodedEntity>),
+) -> UnitScales {
+    super::stream_rows(content, entity_index, opts, false, |row, inherited, entity, _| f(row, inherited, entity))
 }
 
 /// Stream the default export rows with the canonical IFC kind of each property.
@@ -41,5 +57,5 @@ pub fn stream_export_model_with_property_kinds(
     content: &[u8], mut f: impl FnMut(EntityRow, &[Vec<PropertyKind>]),
 ) -> UnitScales {
     let index = Arc::new(crate::build_entity_index_parallel(content));
-    super::stream_rows(content, &index, &ModelOptions::default(), true, |row, _, kinds| f(row, kinds))
+    super::stream_rows(content, &index, &ModelOptions::default(), true, |row, _, _, kinds| f(row, kinds))
 }

@@ -33,3 +33,26 @@ impl HostStrategy {
         }
     }
 }
+
+mod rect_fast;
+mod wall_local_frame;
+
+#[derive(Clone, Copy)]
+pub(super) enum InnerStrategy { WallLocalFrame, RectFast }
+
+// Facet welding and the kernel-failure guard remain between these two attempts.
+pub(super) const INNER_STRATEGIES: [InnerStrategy; 2] = [
+    InnerStrategy::WallLocalFrame, InnerStrategy::RectFast,
+];
+
+impl InnerStrategy {
+    pub(super) fn try_cut(
+        self, execution: &Execution, host: &Mesh, context: &VoidContext, element_id: u32,
+        bounds: ((f32, f32, f32), (f32, f32, f32)), triangles_before: usize,
+    ) -> Option<Mesh> {
+        match self {
+            Self::WallLocalFrame => execution.cut_in_wall_frame(host, context, element_id, bounds),
+            Self::RectFast => rect_fast::try_cut(execution, host, context, element_id, bounds, triangles_before),
+        }
+    }
+}

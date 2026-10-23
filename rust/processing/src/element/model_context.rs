@@ -165,7 +165,7 @@ impl fmt::Display for ProductionContextError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::StaleSource => "production model source was invalidated",
-            Self::OwnerUnavailable => "production decoder or router is owned by other live work",
+            Self::OwnerUnavailable => "production decoder or router could not be admitted or was replaced during the product",
         })
     }
 }

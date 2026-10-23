@@ -1651,3 +1651,26 @@ report map without invoking hooks, changing attribution, or adopting ambient
 reports. Explicit `take_csg_failures` returns it once; subsequent products cannot
 publish it. Callers of `finish_product_csg_failures` must likewise retain their
 returned reports until publication succeeds and quarantine them on rejection.
+
+### Retained construction plans (experimental)
+
+`ifc_lite_geometry::program::RetainedProgram::product_parts` drives the existing
+product traversal in an explicit retained mode. Supply a `RetainedContract`
+with the source epoch and revision, then use `request`, `admit` and `accept`
+with the same decoder and router. Admission returns logical construction
+operations; exact numerical execution refuses those operations without consuming
+them. A foreign reply is returned intact and does not advance the receiver.
+
+This increment admits direct extrusion and swept-disk recipes, preserves
+repeated occurrences and source identity, and applies qualified rigid product
+placement. Unsupported source families, mappings, Booleans, custom processors,
+annotations and alignments refuse the traversal. Native targets support source
+capture; wasm32 needs the existing `wasm_source_capture` feature. The default
+wasm build refuses retained admission.
+
+`finish` returns a logical `RetainedProductPlan`, not a completed mesh or a
+runtime receipt. Its remaining obligations include appearance and persistent
+face identity. It grants no source execution authority, performs no SDK work and
+publishes no partial retained product. The native/browser transaction consumers,
+full release features and explicit viewer/CLI selection follow separately;
+exact geometry remains the default.

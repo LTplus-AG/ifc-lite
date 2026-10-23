@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/inner.rs
++++ b/rust/geometry/src/program/inner.rs
+@@ -181,7 +181,7 @@
+         self.validate_owner(router, Some(decoder))?;
+         self.expected_router = Some(router.execution_identity());
+         self.expected_decoder = Some(decoder.execution_identity());
+-        if false && matches!(&self.control, Control::Product(c) if c.retained_ready()) {
++        if matches!(&self.control, Control::Product(c) if c.retained_ready()) {
+             return Err(ProgramError::UnsupportedRetained);
+         }
+         let decoder_before = decoder.execution_identity();
+--- a/rust/geometry/src/program/retained/capture.rs
++++ b/rust/geometry/src/program/retained/capture.rs
+@@ -41,7 +41,7 @@
+             slot,
+             source_epoch: contract.source_epoch,
+             source_revision: contract.source_revision,
+-            source_id: 0,
++            source_id: item.id,
+         },
+         length_unit_scale: scale,
+         placements: Vec::new(),

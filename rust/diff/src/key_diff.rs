@@ -14,9 +14,9 @@ fn normalize_type(value: &str) -> String {
 
 fn index<R>(entities: &[EntityFingerprint<R>]) -> Vec<(String, usize)> {
     let mut seen = HashSet::new();
-    entities.iter().enumerate().filter_map(|(i, entity)| {
-        seen.insert(entity.key.as_str()).then(|| (entity.key.clone(), i))
-    }).collect()
+    entities.iter().enumerate()
+        .filter(|(_, entity)| seen.insert(entity.key.as_str()))
+        .map(|(i, entity)| (entity.key.clone(), i)).collect()
 }
 
 fn resolve_aliases(

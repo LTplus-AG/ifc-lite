@@ -1,0 +1,10 @@
+--- a/rust/export/src/plan/add_rels.rs
++++ b/rust/export/src/plan/add_rels.rs
+@@ -161,7 +161,6 @@
+                 .ok_or_else(|| format!("#{target} attribute {idx} is not a list: {current}"))?;
+             texts.push((target, idx, text));
+         }
+-        texts.clear();
+         for (target, idx, text) in texts {
+             edits_by_id.entry(target).or_default().insert(idx, text);
+         }

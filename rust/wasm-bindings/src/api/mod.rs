@@ -66,7 +66,8 @@ const TESSELLATION_QUALITY_MEDIUM: u8 = 2;
 /// EDGE-WASM-5, #7691). Held in [`IfcAPI`]'s per-content cache slot.
 pub(crate) struct IndexedColourCache {
     /// Geometry id → full per-triangle palette.
-    pub(crate) maps: rustc_hash::FxHashMap<u32, ifc_lite_processing::style::FullIndexedColourMap>,
+    pub(crate) maps:
+        std::sync::Arc<rustc_hash::FxHashMap<u32, ifc_lite_processing::style::FullIndexedColourMap>>,
     /// Multi-colour face-set ids; `None` when no map paints more than one colour.
     pub(crate) split_guard_ids: Option<std::sync::Arc<rustc_hash::FxHashSet<u32>>>,
 }
@@ -265,7 +266,9 @@ pub struct IfcAPI {
             u32,
             std::sync::Arc<(
                 rustc_hash::FxHashMap<u32, [f32; 4]>,
-                rustc_hash::FxHashMap<u32, ifc_lite_processing::style::GeometryStyleInfo>,
+                std::sync::Arc<
+                    rustc_hash::FxHashMap<u32, ifc_lite_processing::style::GeometryStyleInfo>,
+                >,
             )>,
         )>,
     >,
@@ -297,6 +300,9 @@ pub struct IfcAPI {
     /// `clearPrePassCache`, which runs at end-of-load before a host reads the
     /// diagnostics.
     pipeline_diagnostics: std::sync::Mutex<ifc_lite_processing::PipelineDiagnostics>,
+    /// The loaded content's model lifecycle: each geometry batch snapshots its
+    /// maps under it, and a content swap invalidates every earlier snapshot.
+    production_model: ifc_lite_processing::element::ProductionModel,
 }
 
 #[wasm_bindgen]
@@ -335,6 +341,7 @@ impl IfcAPI {
             pipeline_diagnostics: std::sync::Mutex::new(
                 ifc_lite_processing::PipelineDiagnostics::default(),
             ),
+            production_model: ifc_lite_processing::element::ProductionModel::new(),
         }
     }
 
@@ -407,6 +414,7 @@ impl IfcAPI {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         // The geometry-style maps belong to the previous load's wire styles.
+        self.production_model.invalidate_source();
         self.cached_geometry_styles
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -982,7 +990,7 @@ impl IfcAPI {
 
         let arc = std::sync::Arc::new(IndexedColourCache {
             split_guard_ids: ifc_lite_processing::style::indexed_colour_split_guard_ids(&map),
-            maps: map,
+            maps: std::sync::Arc::new(map),
         });
         let mut slot = self
             .cached_indexed_colour_maps

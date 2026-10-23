@@ -4,7 +4,7 @@
 
 use super::{preflight, writer, MapConversionNormalizationPlan, Record};
 use crate::step_text::attribute_of;
-use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{slot, EntityDecoder, IfcType};
 use ifc_lite_geometry::placement::{ChainValidator, LinkKind};
 use ifc_lite_geometry::GeometryRouter;
 use nalgebra::Matrix4;
@@ -200,12 +200,6 @@ fn placement_consumers(records: &[Record<'_>], decoder: &mut EntityDecoder) -> R
         }
     }
     Ok(consumers)
-}
-
-/// The renderer's canonical frame for an `IfcAxis2Placement3D`.
-fn local_frame(frame: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<Matrix4<f64>, String> {
-    let placement = ifc_lite_geometry::placement::Axis2Placement::read_3d(frame, decoder);
-    Ok(placement.map_err(|error| error.to_string())?.matrix())
 }
 
 /// The root of `id`'s placement chain, after validating it with the shared

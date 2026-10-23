@@ -170,7 +170,7 @@ ENDSEC;\nEND-ISO-10303-21;\n"
             ("IFC4X3_ADD2", "IFCLINEARPLACEMENT($,$,$)"),
         ] {
             let err = validate(&source(schema, linear)).expect_err(schema);
-            assert!(err.contains("no RelativePlacement or CartesianPosition"), "{schema}: {err}");
+            assert!(err.contains("missing RelativePlacement or CartesianPosition"), "{schema}: {err}");
         }
     }
 
@@ -178,6 +178,6 @@ ENDSEC;\nEND-ISO-10303-21;\n"
     fn a_frame_in_the_wrong_slot_of_the_declared_schema_is_not_a_cartesian_position() {
         // Slot 2 of IFC4X2 is `Distance`, not CartesianPosition (4).
         let err = validate(&source("IFC4X2", "IFCLINEARPLACEMENT($,$,#23,$,$)")).expect_err("misplaced");
-        assert!(err.contains("no RelativePlacement or CartesianPosition"), "{err}");
+        assert!(err.contains("missing RelativePlacement or CartesianPosition"), "{err}");
     }
 }

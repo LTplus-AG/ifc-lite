@@ -133,7 +133,7 @@ pub(super) fn climb(
                 }.filter(|loc| loc.ifc_type == IfcType::IfcVirtualGridIntersection);
                 let parent = match layout.rel_to {
                     Some(i) => rel_to(&current, i, decoder)?,
-                    None => match location.as_ref().map(|loc| owning_grid_frame(loc, decoder)) {
+                    None => match location.as_ref().map(|loc| owning_grid_frame(loc, decoder, memo)) {
                         None | Some(Ok(OwningFrame::Identity)) => None,
                         Some(Ok(OwningFrame::Cached(m))) => {
                             out.base = m;

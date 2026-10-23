@@ -28,13 +28,14 @@
 //! 3. **`JSON.stringify` preserves key order; `stableSerialize` sorts.** Both
 //!    are used, for different purposes. See [`js_json`].
 //!
-//! Canonical encoding, fingerprints, the keyed diff and content matching are
-//! implemented. Split/merge support is being added; successors, lineage and
-//! sidecar formats follow in later changes.
+//! Canonical encoding, fingerprints, keyed comparison, content matching,
+//! split/merge, successors, lineage and sidecar wire records are implemented.
+//! The composed comparison entry point is [`engine::diff_models`].
 
 pub mod fingerprint;
 pub mod input;
 pub mod model;
+pub mod engine;
 pub mod key_diff;
 pub mod geometry_compare;
 pub mod mutual_nearest;

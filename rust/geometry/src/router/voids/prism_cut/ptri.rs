@@ -119,7 +119,7 @@ pub(in crate::router::voids) fn consolidated_change_is_measurable(before: &Mesh,
 }
 
 pub(in crate::router::voids) fn mesh_change_interval(before: &Mesh, after: &Mesh) -> (f64, f64, f64) {
-    use super::geom::{mesh_signed_volume_about, volume_reference};
+    use super::super::geom::{mesh_signed_volume_about, volume_reference};
     let reference = volume_reference(before);
     let volume = mesh_signed_volume_about(before, &reference);
     let delta = mesh_signed_volume_about(after, &reference) - volume;

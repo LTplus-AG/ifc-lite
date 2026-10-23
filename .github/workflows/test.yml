@@ -919,6 +919,10 @@ jobs:
             oracle_args+=(--mutation tests/evidence/diff-8042/key-data.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/decoder/precision_certificate.rs | grep -Fxq 'rust/core/src/decoder/precision_certificate.rs'; then
             oracle_args+=(--mutation tests/evidence/planar-carrier-7714/source-cache.oracle.patch)
+          # #8094: whole-change revert deletes the new scheduling module, so its
+          # test never loads. Keep it and restore only rayon's default ranges.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/processor/scheduling.rs | grep -Fxq 'rust/processing/src/processor/scheduling.rs'; then
+            oracle_args+=(--mutation tests/evidence/element-tasks-8094/granularity.oracle.patch)
           # #6729: keep the newly introduced GPU pass importable and remove
           # only its geometric visibility constraint. The paired projection
           # witness must then assert the original wrong foreground ownership.

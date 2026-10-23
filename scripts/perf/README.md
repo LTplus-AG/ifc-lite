@@ -4647,8 +4647,11 @@ The native five-pair timing verdict is noisy and inconclusive. The small
 control exceeds the reporter's spread limit, and the opening fixture's lookup
 phase is below timer resolution. Holter's geometry median is slower within its
 spread. Preserve all phase results, including that adverse observation. The
-exact-parent CI instruction-count tiebreaker remains required before disposition;
-no speedup, performance neutrality or browser worker-pool result is claimed.
+exact-parent CI tiebreaker measures a small increase in geometry and total
+instructions. Accept that disclosed cost for the canonical ownership and
+once-only work protocol under the per-slice policy; raise only the geometry
+ceiling to its measured value, with tolerance unchanged. No speedup, performance
+neutrality or browser worker-pool result is claimed.
 
 Lesson: output equivalence and successful paired execution do not qualify noisy
 wall-clock measurements. Preserve the original failed qualification receipt and

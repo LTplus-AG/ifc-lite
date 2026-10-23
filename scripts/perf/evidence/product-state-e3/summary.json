@@ -441,6 +441,73 @@
       "runs.jsonl": "a2d37e6ec1722c9c6ae3cc3c18815b6fb1a38ef19e3a55425709f547a4866849",
       "order.txt": "f62ab59021891ca6c878ac2cc2a0de662deb36e0fd0b4d6fcd2f2724d3ddcbec"
     },
-    "remaining": "Exact-parent CI instruction-count tiebreaker and explicit infrastructure disposition before merge. No speedup, neutrality or browser worker-pool claim."
+    "remaining": "All final-head checks and actual semantic review before guarded merge.",
+    "ciTiebreaker": {
+      "baseRun": 39982431890,
+      "headRun": 39984789741,
+      "base": "7f384089026ae8c2fc5f05a934ea306ed7d55a0f",
+      "testedMerge": "83103d93bd68b1e60dd1bcca93d5d994a8d0a0fe",
+      "testedParents": [
+        "7f384089026ae8c2fc5f05a934ea306ed7d55a0f",
+        "7fccb1b463342c5db28fea91e1d12c55ae8c7d22"
+      ],
+      "metrics": [
+        {
+          "id": "fzk-haus.parse",
+          "value": 95162793,
+          "detail": "parseIr Ir",
+          "base": 95154271,
+          "delta": 8522,
+          "deltaPct": 0.008955982648428673
+        },
+        {
+          "id": "fzk-haus.entity-scan",
+          "value": 57482578,
+          "detail": "entityScanIr Ir",
+          "base": 57477971,
+          "delta": 4607,
+          "deltaPct": 0.008015244657810783
+        },
+        {
+          "id": "fzk-haus.lookup",
+          "value": 13074747,
+          "detail": "lookupIr Ir",
+          "base": 13074747,
+          "delta": 0,
+          "deltaPct": 0.0
+        },
+        {
+          "id": "fzk-haus.preprocess",
+          "value": 24508921,
+          "detail": "preprocessIr Ir",
+          "base": 24505004,
+          "delta": 3917,
+          "deltaPct": 0.015984490351450553
+        },
+        {
+          "id": "fzk-haus.geometry",
+          "value": 377372170,
+          "detail": "geometryIr Ir",
+          "base": 376662818,
+          "delta": 709352,
+          "deltaPct": 0.18832546407594464
+        },
+        {
+          "id": "fzk-haus.total",
+          "value": 472538245,
+          "detail": "totalIr Ir",
+          "base": 471820329,
+          "delta": 717916,
+          "deltaPct": 0.15215876804663964
+        }
+      ],
+      "geometryCeiling": {
+        "before": 376719448,
+        "after": 377372170,
+        "toleranceUnchanged": 0.0005
+      },
+      "scope": "Deterministic single-thread FZK instruction cost; not end-to-end or browser performance."
+    },
+    "disposition": "Accept disclosed small instruction cost for canonical ownership/once-only protocol under recorded per-slice policy. Native wall-clock remains noisy/inconclusive; no speedup/neutrality. Only geometry ceiling raised to measured value, tolerance unchanged."
   }
 }

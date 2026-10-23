@@ -57,7 +57,7 @@ pub fn diff_by_key<'a, R>(
 ) -> KeyDiff<'a, R> {
     let excluded: HashSet<String> = options.exclude_types.iter().map(|name| normalize_type(name))
         .filter(|name| !name.is_empty()).collect();
-    let is_excluded = |entity: &EntityFingerprint<R>| excluded.contains(&normalize_type(&entity.ifc_type));
+    let is_excluded = |entity: &EntityFingerprint<R>| !excluded.is_empty() && excluded.contains(&normalize_type(&entity.ifc_type));
     let base_order = index(base);
     let mut head_order = index(head);
     let applied_key_aliases = options.key_aliases.as_ref()

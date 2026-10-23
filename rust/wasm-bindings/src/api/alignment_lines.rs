@@ -105,9 +105,9 @@ pub(crate) fn extract_alignment_line_vertices(
         };
         // Curve coordinates are relative to the alignment's ObjectPlacement
         // (metres, column-major); identity when it has none.
-        let placement = router
-            .resolve_scaled_placement(&entity, &mut decoder)
-            .unwrap_or(IDENTITY);
+        let Ok(placement) = router.resolve_scaled_placement(&entity, &mut decoder) else {
+            continue; // #7779 W1: keep genuinely absent placement semantics only.
+        };
         append_alignment_segments(&alignment, unit_scale, &placement, rtc, &mut out);
     }
     out
@@ -115,9 +115,6 @@ pub(crate) fn extract_alignment_line_vertices(
 
 /// Sample one alignment's centerline and append its line-list segments to
 /// `out`, in renderer Y-up / RTC-subtracted / metres space.
-const IDENTITY: [f64; 16] = [
-    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-];
 
 fn append_alignment_segments(
     alignment: &AlignmentCurve,

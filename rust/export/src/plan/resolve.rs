@@ -155,6 +155,15 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
         object: ObjectRef::Id(object),
         reason: format!("a write to #{record} is lost: this plan deletes that record"),
     }));
+    // A Preserve the plan's removals override is reported, not dropped.
+    let mut overridden: Vec<u32> =
+        resolved.iter().filter(|&&(id, d)| matches!(d, Disposition::Preserve) && removed.contains(&id)).map(|&(id, _)| id).collect();
+    overridden.sort_unstable();
+    overridden.dedup();
+    refusals.extend(overridden.into_iter().map(|id| Refusal {
+        object: ObjectRef::Id(id),
+        reason: "object is removed by this plan; it cannot be preserved".into(),
+    }));
     for (slot, strip) in delete_result.stripped {
         list_edits.entry(slot).or_default().remove.extend(strip);
     }

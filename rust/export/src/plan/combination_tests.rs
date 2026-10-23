@@ -262,7 +262,7 @@ fn a_property_set_and_a_quantity_set_of_one_name_differ() {
     let mut quantity = prop("Metrics", "Length", "IFCLENGTHMEASURE", "2.");
     quantity.kind = PsetKind::Quantity;
     let (report, _) = run(&content, vec![patch(10, vec![prop("Metrics", "Length", "IFCLABEL", "'long'"), quantity])]);
-    assert!(!report.findings.iter().any(|f| f.message.contains("GlobalId")), "{:?}", report.findings);
+    assert!(report.findings.is_empty(), "a property set and a quantity set may share a name: {:?}", report.findings);
 }
 
 /// A new member folded into a set the plan deletes is refused too (#8078
@@ -289,5 +289,44 @@ fn a_replaced_leaf_copy_is_not_written() {
         let (report, after) = run(&content, vec![write("'R-2'"), write("'R-3'")]);
         assert!(report.findings.is_empty(), "{schema}: {:?}", report.findings);
         assert!(!after.values().any(|l| l.contains("'R-2'")), "{schema}: the replaced copy is not written");
+    }
+}
+
+/// A Preserve that the plan's deletes override is reported (#8078 review).
+#[test]
+fn a_preserved_object_the_deletes_remove_is_refused() {
+    for schema in SCHEMAS {
+        let content = wall_with_own_pset(schema);
+        let (report, after) = run(&content, vec![(ObjectRef::Id(20), Disposition::Delete), (ObjectRef::Id(10), Disposition::Preserve)]);
+        assert!(!after.contains_key(&10), "{schema}: a wall whose placement is deleted goes");
+        assert!(report.refusals.iter().any(|r| r.object == ObjectRef::Id(10) && r.reason.contains("cannot be preserved")), "{schema}: {:?}", report.refusals);
+    }
+}
+
+/// A copy replaces an enumerated value only as an in-place edit would: not
+/// at all (#8078 review).
+#[test]
+fn a_shared_enumerated_value_is_not_replaced_by_a_single_value() {
+    for schema in SCHEMAS {
+        let content = String::from_utf8(two_walls_sharing_a_pset(schema))
+            .unwrap()
+            .replace("#30=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('1HR'),$);", "#30=IFCPROPERTYENUMERATEDVALUE('FireRating',$,(IFCLABEL('1HR')),$);");
+        assert!(content.contains("IFCPROPERTYENUMERATEDVALUE"), "{schema}: fixture");
+        let (report, _) = run(content.as_bytes(), vec![patch(10, vec![prop("Pset_WallCommon", "FireRating", "IFCLABEL", "'2HR'")])]);
+        assert!(report.refusals.iter().any(|r| r.reason.contains("cannot replace")), "{schema}: {:?}", report.refusals);
+    }
+}
+
+/// The same holds for a shared leaf in an unshared set (#8078 review).
+#[test]
+fn a_shared_enumerated_leaf_is_not_replaced_by_a_single_value() {
+    use super::test_fixtures::two_sets_on_one_wall_sharing_a_leaf;
+    for schema in SCHEMAS {
+        let source = String::from_utf8(two_sets_on_one_wall_sharing_a_leaf(schema)).unwrap();
+        let start = source.find("#30=IFCPROPERTYSINGLEVALUE(").expect("fixture leaf #30");
+        let end = start + source[start..].find(";\n").unwrap() + 1;
+        let content = format!("{}#30=IFCPROPERTYENUMERATEDVALUE('Reference',$,(IFCLABEL('R-1')),$);{}", &source[..start], &source[end..]);
+        let (report, _) = run(content.as_bytes(), vec![patch(10, vec![prop("Pset_A", "Reference", "IFCIDENTIFIER", "'R-2'")])]);
+        assert!(report.refusals.iter().any(|r| r.reason.contains("cannot replace")), "{schema}: {:?}", report.refusals);
     }
 }

@@ -62,10 +62,10 @@ use index::FileIndex;
 
 /// Execute `plan` against `source`, writing the result to `out`.
 ///
-/// Callers never pass express ids for attributes, attribute indices, or raw
-/// STEP text — only [`ObjectRef`], measure-typed property values, and a 4x4
-/// placement matrix. See the module docs for what is deliberately out of
-/// scope. `out` is buffered here.
+/// Callers never pass express ids for attributes or attribute indices, only
+/// [`ObjectRef`], property values as STEP literals with their measure type
+/// (each checked to be one value), and a 4x4 placement matrix. See the
+/// module docs for what is deliberately out of scope. `out` is buffered here.
 pub fn execute<W: std::io::Write>(source: &[u8], plan: &ExportPlan, out: W) -> Result<WriteReport, PlanError> {
     let guids: FxHashSet<&str> = plan
         .dispositions

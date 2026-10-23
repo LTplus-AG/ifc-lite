@@ -116,7 +116,9 @@ pub(crate) fn duplicate_pset_names(
     ) else {
         return Vec::new();
     };
-    let mut names_by_object: BTreeMap<u32, Vec<(String, u32)>> = BTreeMap::new();
+    // `(set entity, set name)` and the set's id, per object.
+    type Named = ((String, String), u32);
+    let mut names_by_object: BTreeMap<u32, Vec<Named>> = BTreeMap::new();
 
     for rel in rels {
         let Some(attrs) = parse_attrs(&rel) else { continue };
@@ -128,7 +130,7 @@ pub(crate) fn duplicate_pset_names(
         let name = name.trim().trim_matches('\'').to_string();
 
         for &object_id in related.iter().flatten().filter(|&&o| in_scope(o)) {
-            names_by_object.entry(object_id).or_default().push((name.clone(), def_id));
+            names_by_object.entry(object_id).or_default().push(((def_type.clone(), name.clone()), def_id));
         }
     }
 
@@ -136,12 +138,14 @@ pub(crate) fn duplicate_pset_names(
     for (object_id, mut named) in names_by_object {
         named.sort();
         for window in named.windows(2) {
+            // Keyed by set entity and name: a property set and a quantity
+            // set may share a name.
             if window[0].0 == window[1].0 {
                 findings.push(ValidationFinding {
                     express_id: Some(object_id),
                     message: format!(
                         "#{object_id} carries two property/quantity sets named '{}': #{} and #{}",
-                        window[0].0, window[0].1, window[1].1
+                        window[0].0 .1, window[0].1, window[1].1
                     ),
                 });
             }

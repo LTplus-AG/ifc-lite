@@ -99,6 +99,18 @@ fn in_place_value(write: &PropWrite) -> String {
     }
 }
 
+/// Refuse replacing value record `old` with a copy of another kind: an
+/// enumerated, list or bounded value is not rewritten as a single value, as
+/// an in-place edit refuses too.
+fn other_kind(index: &FileIndex, write: &PropWrite, old: u32) -> Result<(), String> {
+    let (Some(old_type), Ok(new_type)) = (index.type_of(old), props_synth::value_entity(write)) else { return Ok(()) };
+    if old_type == new_type {
+        Ok(())
+    } else {
+        Err(format!("existing value #{old} is {old_type}, which this write cannot replace with {new_type}"))
+    }
+}
+
 /// `write`, carrying the unit of the value record it replaces when the caller
 /// named none: a copy keeps the unit the original had, as an in-place edit
 /// keeps its slot. Only from a value of the same measure (the same quantity entity, or
@@ -256,6 +268,14 @@ pub(crate) fn resolve_set_writes<'w>(
                 return result;
             };
             let replaced: Vec<Option<u32>> = group.iter().map(|w| find_member(index, schema, &members, &w.prop)).collect();
+            // A copy replaces a member only with one of its own kind, as an
+            // in-place edit would refuse to rewrite an enumerated, list or
+            // bounded value.
+            let mismatch = group.iter().zip(&replaced).find_map(|(w, old)| other_kind(index, w, (*old)?).err());
+            if let Some(reason) = mismatch {
+                refuse_all(&mut result, &reason);
+                return result;
+            }
             let writes: Vec<PropWrite> = group.iter().zip(&replaced).map(|(w, old)| keeping_old_unit(index, schema, w, *old)).collect();
             let writes: Vec<&PropWrite> = writes.iter().collect();
             match props_synth::copy_on_write_occurrence_set(
@@ -326,7 +346,7 @@ fn write_unshared_set<'w>(
         let outcome = match find_member(index, schema, members, &write.prop) {
             Some(member_id) if leaf_is_shared(index, container_type, member_idx, member_id, pset_id) => {
                 let write = keeping_old_unit(index, schema, write, Some(member_id));
-                props_synth::leaf_copy_on_write(schema, &write, ids, pset_id, member_idx, member_id)
+                other_kind(index, &write, member_id).and_then(|()| props_synth::leaf_copy_on_write(schema, &write, ids, pset_id, member_idx, member_id))
             }
             Some(member_id) => in_place_edits(index, schema, member_id, write).map(PropOutcome::InPlace),
             None => props_synth::fold_new_value(schema, write, ids, pset_id, member_idx),

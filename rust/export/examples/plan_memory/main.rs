@@ -33,7 +33,7 @@ const STOREYS: u32 = 8;
 fn main() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().collect();
     let usage = "usage: plan_memory gen <walls> <model.ifc> | run <walls> <model.ifc> <out.ifc>";
-    let (Some(mode), Some(walls)) = (args.get(1), args.get(2).and_then(|w| w.parse::<u32>().ok())) else {
+    let (Some(mode), Some(walls)) = (args.get(1), args.get(2).and_then(|w| w.parse::<u32>().ok()).filter(|&w| w > 0)) else {
         eprintln!("{usage}");
         return std::process::ExitCode::FAILURE;
     };

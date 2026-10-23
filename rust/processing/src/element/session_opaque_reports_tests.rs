@@ -121,3 +121,32 @@ fn issue_8091_nested_scope_does_not_assign_opaque_parent_log_to_child() {
     assert_eq!(reports.values().map(Vec::len).sum::<usize>(), 1);
     assert!(router.take_csg_failures().is_empty());
 }
+
+#[test]
+fn issue_8091_retry_drain_cannot_complete_later_unwinding_opaque_work() {
+    let source = SOURCE.replace("ENDSEC;END-ISO-10303-21;",
+        "#87=IFCBOOLEANRESULT(.XOR.,#13,$);ENDSEC;END-ISO-10303-21;");
+    let mut decoder = EntityDecoder::new(&source);
+    let mut router = router(&mut decoder);
+    let hooks = Rc::new(Cell::new(0));
+    router.register(Box::new(OpaqueRecorder { pending: RefCell::new(Vec::new()),
+        record_next: Rc::new(Cell::new(true)), stop_next: Cell::new(false),
+        panic_next: Cell::new(true), hooks: hooks.clone() }));
+    let failed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        router.with_product_csg_scope(|| {
+            assert!(router.take_csg_failures_checked().unwrap().is_empty());
+            assert_eq!(hooks.get(), 1, "the intermediate drain completed");
+            let item = decoder.decode_by_id(13).unwrap();
+            let _ = router.process_representation_item(&item, &mut decoder);
+        });
+    }));
+    assert!(failed.is_err());
+    assert_eq!(hooks.get(), 1, "unwind must not replay the intermediate hook");
+    router.with_product_csg_scope(|| {
+        assert!(router.finish_product_csg_failures().unwrap().is_empty(),
+            "a retry drain falsely completed the failed product's opaque log");
+    });
+    let reports = router.take_csg_failures();
+    assert_eq!(reports.values().map(Vec::len).sum::<usize>(), 1);
+    assert!(router.take_csg_failures().is_empty());
+}

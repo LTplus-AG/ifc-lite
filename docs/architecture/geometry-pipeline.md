@@ -347,7 +347,14 @@ flowchart TB
 
 ### Void Cutting
 
-Opening voids (`IfcRelVoidsElement`) go through ONE exact path: the prepass resolves the void map (including aggregate propagation), and `produce_element_meshes` cuts each host with a single exact CSG difference. All cutter prisms for a host are unioned in one arrangement (`kernel::mesh_bridge::union_many`) before the cut, cutter geometry is clamped to the host's AABB with a millimetre-scale pad, and on any kernel failure the host mesh is returned un-cut with a structured failure record. There is no approximate or AABB-clipping fallback path for voids.
+Opening voids (`IfcRelVoidsElement`) use the shared host-opening control and per-element mesh producer. The fallback order is part of the geometry-output contract:
+
+1. Whole-host strategies try the parametric rectangular cut, staged 2D subtraction, then analytic prism subtraction. These operate on the supplied host frame. A prism residual re-enters the same driver; staged 2D composition retains its provisional execution and accepts diagnostics only with the composition.
+2. The frame step relativizes the host and cutters when either carries an origin. The inner path then tries the wall-local frame, welds near-coplanar facets, and tries the rectangular fast path.
+3. The exact tail prepares dense hosts and cutters, attempts coaxial unions and disjoint batches, and processes remaining cutters sequentially. The guarded #635 AABB fallback remains part of this path.
+4. Post-processing drains kernel failures, refines slivers, recuts malformed openings, clips flaps, sweeps shards when the host changed, and records the cut effect.
+
+The whole-host list is statically dispatched in `router/voids/strategy`. Changing strategy order is a behavior change requiring output and diagnostic qualification; extracting a strategy must preserve its gates, residual handling, and diagnostic timing.
 
 ## Mesh Hygiene
 

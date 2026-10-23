@@ -144,7 +144,7 @@ mod tests {
         for offset in [0., 10_000_000.] {
             let a = [offset,offset];
             let b = [offset+3.,offset+7.];
-            let y = offset+1.75;
+            let y: f64 = offset+1.75;
             for start in [y.next_down(),y,y.next_up()] {
                 let c = [offset+0.75,start];
                 let d = [offset+0.75,offset+5.];

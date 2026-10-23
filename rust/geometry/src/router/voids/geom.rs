@@ -260,15 +260,10 @@ pub(super) fn rotate_mesh_into_frame(mesh: &Mesh, rt: &Matrix3<f64>, center: &Po
         positions.push(p[1] as f32);
         positions.push(p[2] as f32);
     }
-    Mesh {
-        normals: vec![0.0; positions.len()],
-        indices: mesh.indices.clone(),
-        rtc_applied: mesh.rtc_applied,
-        origin: [0.0; 3],
-        positions,
-        // Frame-transformed cut intermediate — not an instanceable occurrence,
-        // and pre-placement (issue #1474 fields don't apply here either).
-    instance_meta: None, local_bounds: None, local_to_world: None, welded_in_object_frame: false, plane_tags: None }
+    // A frame-transformed cut intermediate is not an instanceable occurrence,
+    // and is pre-placement (issue #1474 fields don't apply here either).
+    let normals = vec![0.0; positions.len()];
+    mesh.reframed_like(positions, normals, mesh.indices.clone(), [0.0; 3])
 }
 
 /// Rotate a frame-F mesh into a LOCAL-FRAME world mesh: positions are `R·v_F` (small,
@@ -296,15 +291,10 @@ pub(super) fn rotate_mesh_from_frame(mesh: &Mesh, r: &Matrix3<f64>, center: &Poi
     // nested local-frame cut returns a non-zero origin here and assigning would
     // drop it. A no-op for the origin-0 callers.
     let o = rotate_point(r, mesh.origin[0], mesh.origin[1], mesh.origin[2]);
-    Mesh {
-        positions,
-        normals,
-        indices: mesh.indices.clone(),
-        rtc_applied: mesh.rtc_applied,
-        origin: [center.x + o[0], center.y + o[1], center.z + o[2]],
-        // Frame-transformed cut intermediate — not an instanceable occurrence,
-        // and pre-placement (issue #1474 fields don't apply here either).
-    instance_meta: None, local_bounds: None, local_to_world: None, welded_in_object_frame: false, plane_tags: None }
+    // A frame-transformed cut intermediate is not an instanceable occurrence,
+    // and is pre-placement (issue #1474 fields don't apply here either).
+    let origin = [center.x + o[0], center.y + o[1], center.z + o[2]];
+    mesh.reframed_like(positions, normals, mesh.indices.clone(), origin)
 }
 
 /// Closed-2-manifold self-check (0.1 mm weld): every undirected edge shared by exactly

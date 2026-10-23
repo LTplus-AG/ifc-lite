@@ -17,7 +17,7 @@ use crate::csg::take_csg_census;
 
 /// A through-Y box opening `[min, max]` subdivided `levels` times, so each
 /// cutter carries a triangle count no other test's cutter shares.
-fn box_opening(min: [f64; 3], max: [f64; 3], levels: usize, jitter: bool) -> OpeningType {
+fn box_opening(min: [f64; 3], max: [f64; 3], levels: usize, jitter: bool) -> CutterKind {
     let (mn, mx) = (Point3::from(min), Point3::from(max));
     let mut mesh = GeometryRouter::make_box_mesh(mn, mx).subdivided(levels);
     if jitter {
@@ -25,12 +25,12 @@ fn box_opening(min: [f64; 3], max: [f64; 3], levels: usize, jitter: bool) -> Ope
         // bit-exactly open, which is what a placement transform leaves behind.
         mesh.positions[0] = mesh.positions[0].next_up();
     }
-    OpeningType::NonRectangular(mesh, mn, mx, Some(Vector3::new(0.0, 1.0, 0.0)))
+    CutterKind::NonRectangular(mesh, mn, mx, Some(Vector3::new(0.0, 1.0, 0.0)))
 }
 
-fn mesh_of(o: &OpeningType) -> &Mesh {
+fn mesh_of(o: &CutterKind) -> &Mesh {
     match o {
-        OpeningType::NonRectangular(m, ..) => m,
+        CutterKind::NonRectangular(m, ..) => m,
         _ => unreachable!("fixture openings are NonRectangular"),
     }
 }
@@ -147,7 +147,7 @@ fn plan_rotated_mitred_wall_tip_strip_is_closed_3977() {
     let authored_vertical = Vector3::new(0.0, 0.0, 1.0);
     let frame = infer_opening_frame(&cutter, Some(&authored_vertical))
         .expect("the rectangular cutter must expose its authored frame");
-    let openings = vec![OpeningType::DiagonalRectangular(cutter, frame)];
+    let openings = vec![CutterKind::DiagonalRectangular(cutter, frame)];
     let host_volume = mesh_signed_volume(&host).abs();
     let context = VoidContext {
         merged_openings: openings.clone(),
@@ -193,7 +193,7 @@ fn vertical_partial_thickness_slot_keeps_its_authored_axis_3977() {
     let authored_vertical = Vector3::new(0.0, 0.0, 1.0);
     let frame = infer_opening_frame(&cutter, Some(&authored_vertical))
         .expect("the rectangular cutter must expose its authored frame");
-    let openings = vec![OpeningType::DiagonalRectangular(cutter, frame)];
+    let openings = vec![CutterKind::DiagonalRectangular(cutter, frame)];
     let context = VoidContext {
         merged_openings: openings.clone(),
         openings,
@@ -238,12 +238,12 @@ fn mixed_horizontal_and_vertical_cutters_keep_each_authored_axis_3977() {
     let horizontal_depth = Vector3::new(-angle.sin(), angle.cos(), 0.0);
     let vertical_depth = Vector3::new(0.0, 0.0, 1.0);
     let openings = vec![
-        OpeningType::DiagonalRectangular(
+        CutterKind::DiagonalRectangular(
             horizontal.clone(),
             infer_opening_frame(&horizontal, Some(&horizontal_depth))
                 .expect("the ordinary opening must expose its horizontal depth"),
         ),
-        OpeningType::DiagonalRectangular(
+        CutterKind::DiagonalRectangular(
             vertical.clone(),
             infer_opening_frame(&vertical, Some(&vertical_depth))
                 .expect("the partial slot must expose its vertical depth"),
@@ -296,11 +296,11 @@ fn antiparallel_horizontal_cutters_both_extend_through_wall_3977() {
     );
     let normal = Vector3::new(-angle.sin(), angle.cos(), 0.0);
     let openings = vec![
-        OpeningType::DiagonalRectangular(
+        CutterKind::DiagonalRectangular(
             first.clone(),
             infer_opening_frame(&first, Some(&normal)).expect("first opening frame"),
         ),
-        OpeningType::DiagonalRectangular(
+        CutterKind::DiagonalRectangular(
             second.clone(),
             infer_opening_frame(&second, Some(&-normal)).expect("antiparallel opening frame"),
         ),
@@ -354,8 +354,8 @@ fn mixed_authored_and_inferred_cutters_use_wall_normal_for_inferred_depth_3977()
     assert!(!inferred_frame.depth_is_authored);
     assert!(inferred_frame.depth.z.abs() > 0.98, "premise: inferred axis is vertical");
     let openings = vec![
-        OpeningType::DiagonalRectangular(authored, authored_frame),
-        OpeningType::DiagonalRectangular(inferred, inferred_frame),
+        CutterKind::DiagonalRectangular(authored, authored_frame),
+        CutterKind::DiagonalRectangular(inferred, inferred_frame),
     ];
     let context = VoidContext {
         merged_openings: openings.clone(),
@@ -404,7 +404,7 @@ fn inferred_vertical_axis_is_not_an_authored_vertical_depth_3977() {
         frame.depth.z.abs() >= 0.98,
         "premise: the inferred shortest axis is vertical"
     );
-    let openings = vec![OpeningType::DiagonalRectangular(cutter, frame)];
+    let openings = vec![CutterKind::DiagonalRectangular(cutter, frame)];
     assert!(
         super::local_frame::vertical_depth_wall_frame(&host, &openings).is_none(),
         "an inferred vertical axis must not qualify as an authored vertical extrusion"

@@ -10,10 +10,10 @@ use crate::GeometryRouter;
 /// Build the analytic prism for one classified opening, expressed in the
 /// host's local frame (`origin` subtracted in f64). `None` ⇒ the opening is
 /// not a clean prism and stays with the exact kernel.
-pub(super) fn prepare_prism(op: &OpeningType, host: &Mesh) -> Option<PrismFrame> {
+pub(super) fn prepare_prism(op: &CutterKind, host: &Mesh) -> Option<PrismFrame> {
     let origin = host.origin;
     match op {
-        OpeningType::Rectangular(mn, mx, dir) => {
+        CutterKind::Rectangular(mn, mx, dir) => {
             let lo = [mn.x - origin[0], mn.y - origin[1], mn.z - origin[2]];
             let hi = [mx.x - origin[0], mx.y - origin[1], mx.z - origin[2]];
             if (0..3).any(|k| hi[k] - lo[k] < 1.0e-4 || !lo[k].is_finite() || !hi[k].is_finite()) {
@@ -72,7 +72,7 @@ pub(super) fn prepare_prism(op: &OpeningType, host: &Mesh) -> Option<PrismFrame>
             ) {
                 reconciled.origin = origin;
                 return prepare_prism(
-                    &OpeningType::NonRectangular(reconciled, *mn, *mx, Some(nalgebra::Vector3::from(d))),
+                    &CutterKind::NonRectangular(reconciled, *mn, *mx, Some(nalgebra::Vector3::from(d))),
                     host,
                 );
             }
@@ -110,7 +110,7 @@ pub(super) fn prepare_prism(op: &OpeningType, host: &Mesh) -> Option<PrismFrame>
                 bb: (plo, phi),
             })
         }
-        OpeningType::DiagonalRectangular(m, _) | OpeningType::NonRectangular(m, _, _, _) => {
+        CutterKind::DiagonalRectangular(m, _) | CutterKind::NonRectangular(m, _, _, _) => {
             // A genuine prism must weld to a closed 2-manifold; the
             // self-intersecting "fin" cutters (#1007) and open shells fail
             // here and keep their exact-kernel (+ malformed-recut) treatment.
@@ -121,11 +121,7 @@ pub(super) fn prepare_prism(op: &OpeningType, host: &Mesh) -> Option<PrismFrame>
             let m = if cutter_is_closed_manifold(m) {
                 m
             } else {
-                let dir = match op {
-                    OpeningType::DiagonalRectangular(_, frame) => frame.depth,
-                    OpeningType::NonRectangular(_, _, _, Some(d)) => *d,
-                    _ => opening_mesh_thinnest_axis_dir(m),
-                };
+                let dir = op.cutter().depth().unwrap_or_else(|| opening_mesh_thinnest_axis_dir(m));
                 deseamed = GeometryRouter::remove_internal_membrane(m, dir);
                 if !cutter_is_closed_manifold(&deseamed) {
                     return None;
@@ -136,11 +132,7 @@ pub(super) fn prepare_prism(op: &OpeningType, host: &Mesh) -> Option<PrismFrame>
             // before exact-kernel extension (#6940). Preserve the original f64
             // translation when no position changes, so untouched prisms retain
             // their precision and output.
-            let dir = match op {
-                OpeningType::DiagonalRectangular(_, frame) => frame.depth,
-                OpeningType::NonRectangular(_, _, _, Some(d)) => *d,
-                _ => opening_mesh_thinnest_axis_dir(m),
-            };
+            let dir = op.cutter().depth().unwrap_or_else(|| opening_mesh_thinnest_axis_dir(m));
             let mut reconciled = crate::router::voids::translate_cutter_mesh(m, origin);
             let changed =
                 crate::router::voids::synthesis::host_vertices::reconcile_positions_with_host_vertices(

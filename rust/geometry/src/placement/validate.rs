@@ -50,10 +50,23 @@ pub(super) fn check_frames(frames: &[Frame], decoder: &mut EntityDecoder, policy
         match frame.kind {
             LinkKind::Local => check_relative(frame, decoder, policy)?,
             LinkKind::Linear if policy.linear => super::linear::validate_source(&frame.entity, decoder)?,
-            LinkKind::Grid if policy.grid => {}
+            LinkKind::Grid if policy.grid => check_grid(frame, decoder)?,
             LinkKind::Linear => return Err(PlacementError::Policy { at, rule: "IfcLinearPlacement is not accepted" }),
             LinkKind::Grid => return Err(PlacementError::Policy { at, rule: "IfcGridPlacement is not accepted" }),
         }
+    }
+    Ok(())
+}
+
+// Admission is independent of the climb's optional owner lookup: a missing
+// or wrong-type location must never become a cached validation proof (#7779).
+fn check_grid(frame: &Frame, decoder: &mut EntityDecoder) -> PlacementResult<()> {
+    let location_slot = super::grid_frame::GridPlacementLayout::of(decoder).location
+        .ok_or_else(|| missing(decoder, frame.entity.id, "PlacementLocation"))?;
+    let location = decoder.resolve_optional(&frame.entity, location_slot)?
+        .ok_or_else(|| missing(decoder, frame.entity.id, "PlacementLocation"))?;
+    if location.ifc_type != IfcType::IfcVirtualGridIntersection {
+        return Err(unsupported(decoder, location.id, location.ifc_type));
     }
     Ok(())
 }

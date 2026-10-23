@@ -2463,6 +2463,21 @@ export class ZoneSplitJs {
 export function clashIntersectionSolid(positions_a: Float32Array, indices_a: Uint32Array, positions_b: Float32Array, indices_b: Uint32Array): ClashIntersectionSolidJs;
 
 /**
+ * Component hashes share the canonical Rust attribute projection.
+ */
+export function diffBuildComponentFingerprints(input: any): any;
+
+/**
+ * Hash adapter data directly in Rust without a JSON text round trip.
+ */
+export function diffBuildDataFingerprint(input: any): string;
+
+/**
+ * Raw code units preserve JS strings that cannot be represented as Rust UTF-8.
+ */
+export function diffStableHash(units: Uint16Array): string;
+
+/**
  * `a - b`, keeping EVERY disjoint remnant.
  *
  * This is the operation the existing `subtract_2d` could not stand in for: it
@@ -2686,6 +2701,9 @@ export interface InitOutput {
     readonly contours2d_ringLengths: (a: number) => number;
     readonly contours2d_shapeCount: (a: number) => number;
     readonly contours2d_shapeOffsets: (a: number) => number;
+    readonly diffBuildComponentFingerprints: (a: number, b: number) => void;
+    readonly diffBuildDataFingerprint: (a: number, b: number) => void;
+    readonly diffStableHash: (a: number, b: number, c: number) => void;
     readonly difference2d: (a: number, b: number) => number;
     readonly diffmodel_compare: (a: number, b: number, c: number, d: number) => void;
     readonly diffmodel_entityCount: (a: number) => number;

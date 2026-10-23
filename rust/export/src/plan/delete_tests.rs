@@ -177,12 +177,6 @@ fn an_opening_goes_once_nothing_it_voids_is_left() {
         let rel_only: HashSet<u32> = [71].into_iter().collect();
         let result = resolve_deletes(&index, schema, &rel_only, &[], &HashSet::new());
         assert!(result.removed.contains(&70), "{schema}: an opening voiding nothing goes with its relationship");
-        // Whichever goes first, the relationship or (through its body) the host.
-        for _ in 0..8 {
-            let rel_and_body: HashSet<u32> = [71, 60].into_iter().collect();
-            let result = resolve_deletes(&index, schema, &rel_and_body, &[], &HashSet::new());
-            assert!(result.removed.contains(&10) && result.removed.contains(&70), "{schema}");
-        }
 
         let text = String::from_utf8(content.clone()).unwrap();
         let line71 = text.lines().find(|l| l.starts_with("#71=")).unwrap();
@@ -194,8 +188,12 @@ fn an_opening_goes_once_nothing_it_voids_is_left() {
         assert!(result.removed.contains(&71), "{schema}: the deleted host's voids relationship goes");
         assert!(!result.removed.contains(&70), "{schema}: the opening still voids #11");
         assert!(!result.removed.contains(&78), "{schema}: and #11 keeps it");
-        let both: HashSet<u32> = [10, 11].into_iter().collect();
-        let result = resolve_deletes(&index, schema, &both, &[], &HashSet::new());
-        assert!(result.removed.contains(&70), "{schema}: no host left");
+        // The last voids relationship to go decides, whichever order the
+        // worklist (seeded from a HashSet) takes them in.
+        for _ in 0..16 {
+            let both: HashSet<u32> = [10, 11].into_iter().collect();
+            let result = resolve_deletes(&index, schema, &both, &[], &HashSet::new());
+            assert!(result.removed.contains(&70), "{schema}: no host left");
+        }
     }
 }

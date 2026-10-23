@@ -144,8 +144,9 @@ pub enum Disposition {
     /// the plan does not delete are never pruned: a port nested on a deleted
     /// host stays as a free product, a type whose occurrences are all deleted
     /// stays declared. The exception is an opening or projection, which IFC
-    /// ties to exactly one element: it goes with its host, or with its voids
-    /// or projects relationship. A record that
+    /// ties to exactly one element: it goes once no voids or projects
+    /// relationship naming it is left (its host or that relationship
+    /// deleted), whatever else still names it. A record that
     /// names a deleted one through a single-valued attribute (a placement
     /// relative to a deleted placement, an object on that placement) goes too,
     /// since it cannot be written without a dangling reference.

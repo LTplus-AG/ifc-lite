@@ -6,6 +6,16 @@ use crate::BoolFailure;
 use rustc_hash::FxHashMap;
 
 impl GeometryRouter {
+    /// Isolate recorded CSG reports for one synchronous product owner epoch.
+    /// Nested products cannot drain their parent's records. Unconsumed records
+    /// survive errors and unwind for explicit retrieval, without final hooks.
+    pub fn with_product_csg_scope<T>(&self, work: impl FnOnce() -> T) -> T {
+        let nested = self.csg_product_active.replace(true);
+        let parent = nested.then(|| std::mem::take(&mut *self.csg_failures.borrow_mut()));
+        let _scope = ProductReports { router: self, parent, nested };
+        work()
+    }
+
     /// Drain all current and stopped-product reports for explicit diagnostics.
     /// Canonical product publication and retry drains exclude stopped reports.
     pub fn take_csg_failures(&self) -> FxHashMap<u32, Vec<BoolFailure>> {
@@ -88,5 +98,21 @@ fn append_csg_failures(
 ) {
     for (id, records) in failures {
         retained.entry(id).or_default().extend(records);
+    }
+}
+
+/// The guard runs after owner commit validation too, including WrongOwner.
+struct ProductReports<'a> {
+    router: &'a GeometryRouter,
+    parent: Option<FxHashMap<u32, Vec<BoolFailure>>>,
+    nested: bool,
+}
+impl Drop for ProductReports<'_> {
+    fn drop(&mut self) {
+        self.router.quarantine_recorded_csg_failures();
+        if let Some(parent) = self.parent.take() {
+            *self.router.csg_failures.borrow_mut() = parent;
+        }
+        self.router.csg_product_active.set(self.nested);
     }
 }

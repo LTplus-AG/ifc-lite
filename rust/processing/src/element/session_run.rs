@@ -36,7 +36,9 @@ pub(super) fn run_epoch(
         preplanning_stop: resource::check_current().err(),
     };
     let mut scopes = ActiveScopes::new(Scopes::new());
-    let outcome = owner.work(decoder, router, |decoder, router| scopes.with_scope(|| body(decoder, router, live)));
+    let outcome = router.with_product_csg_scope(|| {
+        owner.work(decoder, router, |decoder, router| scopes.with_scope(|| body(decoder, router, live)))
+    });
     // Reports the product's router did not drain reach the caller's thread,
     // as they did before they were owned, including after a failed commit.
     scopes.complete().pending.publish_pending();

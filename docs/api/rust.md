@@ -1619,3 +1619,7 @@ performance verdict is required before merge.
 Stopped product finalization isolates already-recorded router CSG failures through
 `GeometryRouter::quarantine_recorded_csg_failures` without invoking processor hooks.
 Explicit `take_csg_failures` retrieval includes these reports; later product drains do not.
+
+`GeometryRouter::with_product_csg_scope` bounds recorded diagnostics to a synchronous
+product owner epoch. Nested products preserve their parent’s records; error exits
+and unwind retain unconsumed reports for explicit retrieval without final hooks.

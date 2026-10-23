@@ -64,7 +64,7 @@ use crate::{BoolFailure, Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::sync::{Arc, Mutex, OnceLock};
 
 /// Test/env override for [`GeometryRouter::build_dedup_extra_enabled`]:
@@ -177,6 +177,7 @@ pub struct GeometryRouter {
     csg_failures: RefCell<FxHashMap<u32, Vec<BoolFailure>>>,
     /// Stopped-product evidence, available only to an explicit diagnostic drain.
     stopped_csg_failures: RefCell<FxHashMap<u32, Vec<BoolFailure>>>,
+    csg_product_active: Cell<bool>,
     /// Cumulative counters for opening classification (T1.1 / classifier fix
     /// diagnostic). Tracks how many openings went through each branch of
     /// `program::openings::classify` so a maintainer can verify the fix is firing on
@@ -285,6 +286,7 @@ impl GeometryRouter {
             material_layer_index: None,
             csg_failures: RefCell::new(FxHashMap::default()),
             stopped_csg_failures: RefCell::new(FxHashMap::default()),
+            csg_product_active: Cell::new(false),
             classification_stats: RefCell::new(ClassificationStats::default()),
             host_opening_diagnostics: RefCell::new(FxHashMap::default()),
             rect_fast_stats: RefCell::new(crate::rect_fast::RectFastStats::default()),

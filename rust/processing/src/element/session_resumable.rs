@@ -184,7 +184,9 @@ impl<'j> ProductState<'j> {
         let mut active = ActiveScopes::new(scopes);
         // Final hooks see the restored caller triangle order. Grant trusted
         // lexical ownership without installing the product's mode.
-        let (drained, _) = owner.read_work(decoder, router, || active.with_scope(|| router.take_csg_failures_checked()))?;
+        let (drained, _) = router.with_product_csg_scope(|| {
+            owner.read_work(decoder, router, || active.with_scope(|| router.take_csg_failures_checked()))
+        })?;
         let mut scopes = active.complete();
         scopes.pending.publish_pending();
         match drained {

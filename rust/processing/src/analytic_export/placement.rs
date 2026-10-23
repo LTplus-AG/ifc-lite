@@ -113,6 +113,16 @@ ENDSEC;\nEND-ISO-10303-21;\n"
     }
 
     #[test]
+    fn issue_7779_grid_location_requires_a_virtual_intersection() {
+        for (schema, prefix) in [("IFC2X3", ""), ("IFC4", ""), ("IFC4X3_ADD2", "#20,")] {
+            for location in ["$", "#21"] {
+                let placement = format!("IFCGRIDPLACEMENT({prefix}{location},$)");
+                assert!(validate(&source(schema, &placement)).is_err(), "{schema}: {placement}");
+            }
+        }
+    }
+
+    #[test]
     fn ifc4_grid_placement_follows_the_owning_grid_placement() {
         // Break the grid's own placement: the walk must reach and refuse it.
         let broken = source("IFC4", "IFCGRIDPLACEMENT(#60,$)")

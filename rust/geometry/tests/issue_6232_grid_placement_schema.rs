@@ -247,3 +247,23 @@ fn issue_7779_warm_grid_owner_keeps_the_true_validation_root_and_links() {
         assert!(links.is_empty(), "the validation session still reuses its own proof");
     }
 }
+
+#[test]
+fn issue_7779_grid_validation_never_proves_missing_or_wrong_type_locations() {
+    use ifc_lite_geometry::placement::{validate_chain, ChainPolicy, ChainValidator};
+    for schema in ["IFC2X3", "IFC4", "IFC4X3_ADD2"] {
+        for location in ["$", "#21"] {
+            let content = column_on_grid(schema, RefDir::Null)
+                .replace("#60,$)", &format!("{location},$)"));
+            let mut decoder = EntityDecoder::new(&content);
+            let placement = decoder.decode_by_id(70).unwrap();
+            let policy = ChainPolicy { grid: true, ..ChainPolicy::default() };
+            assert!(validate_chain(&placement, &mut decoder, &policy).is_err(), "{schema}: {location}");
+            let mut validator = ChainValidator::new(&mut decoder, policy);
+            // Rejection must not publish a suffix proof for the next call.
+            for _ in 0..2 {
+                assert!(validator.validate(70).is_err(), "{schema}: {location}");
+            }
+        }
+    }
+}

@@ -17,8 +17,8 @@
  * specced in `docs/architecture/layer-prs/03-provenance.md` §3.1 and
  * `04-identity.md` §4.1(2) — so an entry produced here can be written straight
  * into a layer's `identity_map` without translation. The interface is restated
- * rather than imported because `@ifc-lite/diff` is a leaf package with no
- * runtime dependencies and the shape is three strings; the *names* are what
+ * rather than imported because identity claims should not depend on the IFCX package
+ * and the shape is three strings; the *names* are what
  * must not fork.
  */
 

@@ -38,6 +38,7 @@
 mod add;
 mod add_assoc_types;
 mod add_geometry;
+mod add_profile;
 mod add_props;
 mod add_rels;
 mod add_types;

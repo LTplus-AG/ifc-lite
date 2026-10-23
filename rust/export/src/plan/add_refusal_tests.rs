@@ -120,10 +120,10 @@ fn degenerate_input_that_overflows_is_refused() {
     }
     refused(&source, wall, "not a rotation");
 
-    let collinear = Extrusion { profile: vec![[0.0, 0.0], [1e200, 1e200], [2e200, 2e200]], direction: [0.0, 0.0, 1.0], depth: 1.0 };
+    let collinear = Extrusion { profile: vec![[0.0, 0.0], [1e200, 1e200], [2e200, 2e200]], voids: Vec::new(), direction: [0.0, 0.0, 1.0], depth: 1.0 };
     refused(&source, object(IfcClass::Wall, gid(9), storey(), Representation::Extrusion(collinear)), "no area");
 
-    let repeated = Extrusion { profile: vec![[0.0, 0.0], [0.0, 0.0], [1.0, 0.0], [1.0, 1.0]], direction: [0.0, 0.0, 1.0], depth: 1.0 };
+    let repeated = Extrusion { profile: vec![[0.0, 0.0], [0.0, 0.0], [1.0, 0.0], [1.0, 1.0]], voids: Vec::new(), direction: [0.0, 0.0, 1.0], depth: 1.0 };
     refused(&source, object(IfcClass::Wall, gid(10), storey(), Representation::Extrusion(repeated)), "repeats a point");
 }
 
@@ -237,7 +237,7 @@ fn a_new_type_whose_derived_global_id_is_in_the_source_is_refused() {
 /// review).
 #[test]
 fn a_self_crossing_profile_is_refused() {
-    let bowtie = Extrusion { profile: vec![[0.0, 0.0], [3.0, 2.0], [0.0, 2.0], [2.0, 0.0]], direction: [0.0, 0.0, 1.0], depth: 1.0 };
+    let bowtie = Extrusion { profile: vec![[0.0, 0.0], [3.0, 2.0], [0.0, 2.0], [2.0, 0.0]], voids: Vec::new(), direction: [0.0, 0.0, 1.0], depth: 1.0 };
     let wall = object(IfcClass::Wall, gid(24), storey(), Representation::Extrusion(bowtie));
     refused(&storey_with_typed_wall("IFC4"), wall, "crosses itself");
 }

@@ -94,10 +94,15 @@ pub struct NewPlacement {
 
 /// A closed polygon profile swept along `direction` for `depth`. The
 /// profile lies in the object's local XY plane; repeating the first point
-/// at the end is allowed but not required.
+/// of a loop at the end is allowed but not required.
 #[derive(Debug, Clone)]
 pub struct Extrusion {
     pub profile: Vec<[f64; 2]>,
+    /// Holes in the profile, each a closed polygon strictly inside it and
+    /// apart from every other. Written as an
+    /// `IfcArbitraryProfileDefWithVoids`; none writes an
+    /// `IfcArbitraryClosedProfileDef`.
+    pub voids: Vec<Vec<[f64; 2]>>,
     pub direction: [f64; 3],
     pub depth: f64,
 }
@@ -107,8 +112,26 @@ pub enum Representation {
     /// No `IfcProductDefinitionShape` at all.
     None,
     Extrusion(Extrusion),
+    /// Several extruded solids, one item each in a single `Body`
+    /// representation, such as a region in several disjoint parts. At least
+    /// one. They are not checked for overlap: IFC reads a body as the union
+    /// of its items, but a reader summing their volumes counts an overlap
+    /// twice.
+    Extrusions(Vec<Extrusion>),
     /// A mesh in the object's local coordinates.
     Mesh(TriangleMesh),
+}
+
+impl Representation {
+    /// The extruded solids of an `Extrusion` or `Extrusions`; none for the
+    /// other variants.
+    pub(crate) fn extrusions(&self) -> &[Extrusion] {
+        match self {
+            Representation::Extrusion(e) => std::slice::from_ref(e),
+            Representation::Extrusions(es) => es,
+            Representation::None | Representation::Mesh(_) => &[],
+        }
+    }
 }
 
 /// A property value, typed the way IFC types it.
@@ -179,7 +202,8 @@ pub enum TypeLink {
 /// An `IfcOpeningElement` cut into `host`, placed at `matrix` (row-major,
 /// file length units) in the NEW object's local frame, so the profile
 /// describes the hole where the object will sit. When the new object is a
-/// door or window, it also fills the opening.
+/// door or window, it also fills the opening. A `shape` with voids cuts a
+/// ring, leaving the host's material inside each void.
 #[derive(Debug, Clone)]
 pub struct NewOpening {
     pub host: ObjectRef,

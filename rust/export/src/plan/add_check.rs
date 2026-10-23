@@ -5,7 +5,7 @@
 
 use ifc_lite_core::{entity_info_for_schema, is_subtype_of_for_schema};
 
-use crate::plan::add_geometry::validate_extrusion;
+use crate::plan::add_profile::validate_extrusion;
 use crate::plan::tessellation::{validate_colour, validate_mesh};
 use crate::plan::add_props::validate_psets;
 use crate::plan::add_rels::RelKind;
@@ -214,6 +214,14 @@ impl AddState<'_> {
         match &obj.representation {
             Representation::None => {}
             Representation::Extrusion(e) => validate_extrusion(e)?,
+            Representation::Extrusions(es) => {
+                if es.is_empty() {
+                    return Err("a representation of extrusions needs at least one".into());
+                }
+                for (i, e) in es.iter().enumerate() {
+                    validate_extrusion(e).map_err(|err| format!("extrusion {i}: {err}"))?;
+                }
+            }
             Representation::Mesh(m) => validate_mesh(m)?,
         }
         if let Some(c) = &obj.style {

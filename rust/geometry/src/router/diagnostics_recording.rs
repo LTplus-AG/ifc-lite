@@ -215,10 +215,9 @@ impl GeometryRouter {
         std::mem::take(&mut *self.layer_slice_diag.borrow_mut())
     }
 
-    /// Products with at least one recorded CSG failure, under the same
-    /// [`count_attributed_products`] rule the pipelines' scalar uses (a bare
-    /// `.len()` would make this the one surface counting the synthetic
-    /// bucket). PEEKS: no processor sweep, unlike `take_csg_failures`.
+    /// Distinct products with recorded current or stopped CSG failures,
+    /// excluding the synthetic [`UNATTRIBUTED_PRODUCT_ID`] bucket.
+    /// PEEKS: no processor sweep, unlike [`Self::take_csg_failures`].
     pub fn csg_failure_product_count(&self) -> usize {
         self.csg_failures.borrow().keys().chain(self.stopped_csg_failures.borrow().keys())
             .copied().filter(|id| *id != UNATTRIBUTED_PRODUCT_ID)

@@ -59,6 +59,7 @@ impl ProductState<'_> {
             return Err(WorkError::Aborted);
         }
         if self.capture_stop() {
+            router.quarantine_recorded_csg_failures();
             *output = Some(session_canonical::stopped_output());
             return Ok(self.terminal());
         }

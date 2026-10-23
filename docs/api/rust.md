@@ -1615,3 +1615,7 @@ very large profiles may be unavailable for analytic quantities; they are never
 silently certified or substituted with an approximation. Rendering is
 unaffected. This change makes no performance claim; an end-to-end base/branch
 performance verdict is required before merge.
+
+Stopped product finalization isolates already-recorded router CSG failures through
+`GeometryRouter::quarantine_recorded_csg_failures` without invoking processor hooks.
+Explicit `take_csg_failures` retrieval includes these reports; later product drains do not.

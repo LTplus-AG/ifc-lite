@@ -15,6 +15,14 @@ impl GeometryRouter {
         stopped
     }
 
+    /// Isolate already-recorded reports when production stops before finalization.
+    /// Does not invoke processor hooks or adopt ambient thread-local reports.
+    /// Explicit diagnostic retrieval still returns these reports exactly once.
+    pub fn quarantine_recorded_csg_failures(&self) {
+        let failures = std::mem::take(&mut *self.csg_failures.borrow_mut());
+        append_csg_failures(&mut self.stopped_csg_failures.borrow_mut(), failures);
+    }
+
     /// Drain current-work failures, excluding quarantined stopped reports.
     /// This is the accumulation router has observed since it was
     /// created (or the last `take_csg_failures` call). The single drain point:
@@ -57,7 +65,10 @@ impl GeometryRouter {
     pub fn take_csg_failures_checked(
         &self,
     ) -> Result<FxHashMap<u32, Vec<BoolFailure>>, crate::resource::ProgramStop> {
-        crate::resource::check_current()?;
+        if let Err(stop) = crate::resource::check_current() {
+            self.quarantine_recorded_csg_failures();
+            return Err(stop);
+        }
         let failures = self.take_current_csg_failures();
         match crate::resource::check_current() {
             Ok(()) => Ok(failures),

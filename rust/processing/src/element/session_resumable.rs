@@ -167,7 +167,7 @@ impl<'j> ProductState<'j> {
 
     pub fn finish(mut self, decoder: &EntityDecoder, router: &GeometryRouter) -> Result<ProducedElementMeshes, WorkError> {
         if self.capture_stop() {
-            return self.finish_stopped();
+            return self.finish_stopped(decoder, router);
         }
         if self.scopes.is_none() {
             return Err(WorkError::Aborted);
@@ -198,8 +198,13 @@ impl<'j> ProductState<'j> {
 
     /// Publish only the source evidence already accepted into this product's
     /// scopes; a stopped product runs no final hook and adopts nothing ambient.
-    fn finish_stopped(mut self) -> Result<ProducedElementMeshes, WorkError> {
+    fn finish_stopped(mut self, decoder: &EntityDecoder, router: &GeometryRouter) -> Result<ProducedElementMeshes, WorkError> {
         self.protocol.idle()?;
+        // A dormant pre-stopped product never owned this router's reports.
+        if let Some(owner) = &self.owner {
+            owner.validate(decoder, router)?;
+            router.quarantine_recorded_csg_failures();
+        }
         let Some(scopes) = &mut self.scopes else { return Err(WorkError::Aborted) };
         scopes.pending.publish_pending();
         Ok(session_canonical::stopped_output())

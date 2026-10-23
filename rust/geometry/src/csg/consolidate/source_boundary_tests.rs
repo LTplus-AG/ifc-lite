@@ -330,7 +330,8 @@ fn issue_7943_planar_height_certificate_matches_rational_oracle_on_every_axis() 
     // nonplanar span on each side of the unchanged tolerance. Arbitrary f64
     // coordinates also keep the rational fallback.
     for (height, warp) in [(0.,0.), (0.5,0.), (f64::from(f32::from_bits(1)),0.),
-        (0.,CONFORM_TOL/2.), (0.,2.*CONFORM_TOL), (0.1,0.)] {
+        (0.,f64::from((CONFORM_TOL/2.) as f32)),
+        (0.,f64::from((2.*CONFORM_TOL) as f32)), (0.1,0.)] {
         for rotation in 0..3 {
             let rotate = |p: [f64;3]| std::array::from_fn(|i| p[(i+rotation)%3]);
             let points = [[0.,0.,0.],[1.,0.,height],[1.,1.,2.*height+warp],[0.,1.,height]].map(rotate);
@@ -345,5 +346,19 @@ fn issue_7943_planar_height_certificate_matches_rational_oracle_on_every_axis() 
             assert_eq!(certify_height_span(&source,drop), rational_height_span(&source,drop),
                 "height={height}, warp={warp}, drop={drop}");
         }
+    }
+    // One determinant combines the largest finite and smallest subnormal f32.
+    // A false zero would admit the warped surface despite a >tol height span.
+    let hi = f64::from(f32::MAX);
+    let lo = f64::from(f32::from_bits(1));
+    for height in [0., lo, 1.] {
+        let points = [[0.,0.,0.],[hi,0.,0.],[0.,lo,0.],[hi,lo,height]];
+        let (_,buckets) = patch(&points, &[[0,1,2],[1,3,2]]);
+        let tris = buckets.values().next().unwrap();
+        assert!(supported_cells::nonoverlapping(tris));
+        let source = partition(tris).unwrap();
+        let exact = rational_height_span(&source,2);
+        assert_eq!(exact.is_some(), height <= CONFORM_TOL);
+        assert_eq!(certify_height_span(&source,2), exact);
     }
 }

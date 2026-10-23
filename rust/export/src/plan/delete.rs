@@ -166,6 +166,11 @@ impl Cascade<'_> {
         }
         true
     }
+
+    /// A patch's copy-on-write detach: a strip through a nested use.
+    fn detach(&mut self, referrer: u32, idx: usize, member: u32) {
+        self.strip(referrer, idx, member, true);
+    }
 }
 
 /// `referrer`'s attribute `idx` as a [`ListStrip`], or `None` when it is not
@@ -229,7 +234,7 @@ pub(crate) fn resolve_deletes(
     // only looks empty from one source's point of view.
     for &(referrer, idx, member) in extra_detach {
         if !cascade.removed.contains(&referrer) {
-            cascade.strip(referrer, idx, member, true);
+            cascade.detach(referrer, idx, member);
         }
     }
 

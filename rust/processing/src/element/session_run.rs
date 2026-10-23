@@ -73,7 +73,7 @@ impl ProductState<'_> {
         // Final hooks run here, in the epoch, so a hook that produces a nested
         // child on this router inherits this product's owners. Draining on
         // every return path leaves a warm router clean for the next element.
-        match router.take_csg_failures_checked() {
+        match router.finish_product_csg_failures() {
             Ok(failures) => {
                 *output = Some(self.publish(failures, degenerate::dropped_this_element()));
                 Ok(None)

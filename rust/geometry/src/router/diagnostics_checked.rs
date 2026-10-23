@@ -97,16 +97,24 @@ impl GeometryRouter {
         }
         let failures = self.take_current_csg_failures();
         match crate::resource::check_current() {
-            Ok(()) => {
-                self.csg_product_drained.set(true);
-                Ok(failures)
-            }
+            Ok(()) => Ok(failures),
             Err(stop) => {
                 self.csg_opaque_unscoped.set(true);
                 append_csg_failures(&mut self.stopped_csg_failures.borrow_mut(), failures);
                 Err(stop)
             }
         }
+    }
+
+    /// Complete the current product's final diagnostic drain. Unlike an
+    /// intermediate retry drain, success establishes that this epoch has no
+    /// remaining constructors or final callbacks. Call only at publication.
+    pub fn finish_product_csg_failures(
+        &self,
+    ) -> Result<FxHashMap<u32, Vec<BoolFailure>>, crate::resource::ProgramStop> {
+        let failures = self.take_csg_failures_checked()?;
+        self.csg_product_drained.set(true);
+        Ok(failures)
     }
 }
 

@@ -1635,3 +1635,6 @@ This includes any new custom records mixed with the ambiguous log. An explicit
 drain outside product work restores the ordinary publication boundary. Cancellation
 and unwind still invoke no final hooks; callers using opaque custom diagnostics
 must retrieve them explicitly after interrupted or nested work.
+Canonical and resumable publication call `finish_product_csg_failures` only after
+all product work; intermediate retry drains use `take_csg_failures_checked` and
+cannot mark a still-running epoch complete.

@@ -34,6 +34,7 @@ mod cow;
 mod created;
 mod effective;
 mod entities;
+pub(crate) use entities::is_entity_name;
 mod extract;
 mod generate;
 mod georef;

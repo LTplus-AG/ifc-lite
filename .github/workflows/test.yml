@@ -1752,6 +1752,14 @@ jobs:
           # disk capture: the directrix source and owned rational must turn RED.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/analytic/owned_directrix.rs | grep -Fxq 'rust/geometry/src/analytic/owned_directrix.rs'; then
             oracle_args+=(--mutation tests/evidence/analytic-directrix-source-7955/behaviour.oracle.patch)
+          # Export plan executor: rust/export/src/plan/ is a new module whose
+          # tests live beside it, so a whole-change revert cannot compile them
+          # (INCONCLUSIVE). Keep every type and test and drop only the
+          # resolved in-place edits: renames, property writes and placement
+          # moves must turn RED. Once plan/mod.rs is on main, whole-change
+          # revert resumes.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/export/src/plan/mod.rs | grep -Fxq 'rust/export/src/plan/mod.rs'; then
+            oracle_args+=(--mutation tests/evidence/export-plan-execute/behaviour.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
           if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/decoder/precision_certificate.rs | grep -Fxq 'rust/core/src/decoder/precision_certificate.rs'; then

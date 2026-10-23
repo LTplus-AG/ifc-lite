@@ -9943,6 +9943,7 @@
     "OpenModelOptions: interface",
     "PendingOverlay: interface",
     "UnsupportedOperationError: class",
+    "configureSourceMutationView: function",
     "createQueryAdapter: function",
     "effectiveSourceIds: function",
     "entityInfoAcrossSchemas: function",

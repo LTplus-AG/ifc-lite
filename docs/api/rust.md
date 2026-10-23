@@ -20,6 +20,13 @@ All crates live in one Cargo workspace (versioned together, MPL-2.0 licensed):
 
 The Python bindings (`rust/python`, PyPI package `ifclite-geom`) are excluded from the workspace and documented on the [Python API page](python.md).
 
+## Element colour resolution
+
+`ifc_lite_processing::style::resolve_element_color` resolves direct item colours
+before the element-keyed material fallback, using the browser prepass colour
+map. Its mapped-item walk retains the shared depth limit and shallower-revisit
+policy. The browser batch calls this processing-owned resolver.
+
 ## ifc-lite-core
 
 Core parsing functionality.

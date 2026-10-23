@@ -131,7 +131,7 @@ fn find_color_for_geometry_at(
 ///    — land here. Without this fallback the data the prepass already
 ///    computed sits unused and every such element renders as the per-type
 ///    grey default.
-pub(crate) fn resolve_element_color(
+pub fn resolve_element_color(
     entity: &ifc_lite_core::DecodedEntity,
     geometry_styles: &rustc_hash::FxHashMap<u32, [f32; 4]>,
     decoder: &mut ifc_lite_core::EntityDecoder,
@@ -336,7 +336,7 @@ END-ISO-10303-21;
 }
 
 #[cfg(test)]
-#[path = "color_cycle_tests.rs"]
+#[path = "element_color_cycle_tests.rs"]
 mod find_color_for_geometry_cycle_tests;
 
 #[cfg(test)]

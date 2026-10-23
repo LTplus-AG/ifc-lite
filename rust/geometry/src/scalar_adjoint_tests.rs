@@ -308,7 +308,8 @@ const NB: usize = 14;
 /// The placement matrix (rotation about Z, then translation).
 ///
 /// This step is harness-side: in production it comes out of
-/// `parse_axis2_placement_3d`, which reads decoded IFC attributes and cannot be
+/// `placement::Axis2Placement::read_3d(...).matrix()`, which reads decoded IFC
+/// attributes and cannot be
 /// made generic over the scalar. It is a rigid transform, so it contributes
 /// exactly zero to the volume gradient - which is precisely why parameters
 /// 6..9 are in the box: they are the battery's exact-zero controls.

@@ -203,7 +203,6 @@ pub(crate) mod tessellation;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 pub mod space_dcel;
-pub(crate) mod transform;
 pub(crate) mod triangulation;
 mod union_find;
 pub(crate) mod void_index;
@@ -299,11 +298,7 @@ pub use scan_outline::{
     MAX_GAP_LIMIT, MAX_SNAP_DISTANCE_CELLS, MAX_VERTEX_MOVE_CELLS, MIN_CELL_SIZE_LIMIT,
 };
 pub use tessellation::{scale_segments, TessellationQuality};
-pub use transform::{
-    parse_axis2_placement_3d, parse_axis2_placement_3d_from_id, parse_cartesian_point,
-    parse_cartesian_point_from_id, parse_direction, parse_direction_from_id,
-    rotation_angle_about_z,
-};
+pub use placement::rotation_angle_about_z;
 pub use triangulation::triangulate_polygon;
 pub use void_index::{
     build_aggregate_children_index, compute_parts_to_skip, propagate_voids_to_parts,

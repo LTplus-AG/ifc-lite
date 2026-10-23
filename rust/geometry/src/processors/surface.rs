@@ -8,7 +8,7 @@ use crate::{Error, Mesh, Point2, Point3, Result, TessellationQuality};
 use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
 
-use super::helpers::get_axis2_placement_transform_by_id;
+use crate::placement::Axis2Placement;
 use crate::router::GeometryProcessor;
 
 #[path = "surface_plan.rs"]
@@ -98,7 +98,7 @@ impl SurfaceOfLinearExtrusionProcessor {
         match entity
             .get(slot::IfcSurfaceOfLinearExtrusion::POSITION.index())
             .and_then(|attr| attr.as_entity_ref()) {
-            Some(pos_id) => get_axis2_placement_transform_by_id(pos_id, decoder),
+            Some(pos_id) => Ok(Axis2Placement::read_id(pos_id, decoder)?.matrix()),
             None => Ok(Matrix4::identity()),
         }
     }

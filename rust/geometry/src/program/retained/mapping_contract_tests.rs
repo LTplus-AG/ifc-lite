@@ -118,6 +118,6 @@ fn exact_type_map_execution_refuses_without_consuming_numerical_ticket() {
         let (reply, _) = program.admit(ticket, &router, &mut decoder).unwrap();
         program.accept(reply, &router).unwrap_or_else(|e| panic!("{:?}", e.error));
     }
-    assert_eq!(refused, 1);
+    assert_eq!(refused, 2, "constructor and late type-map placement admissions");
     assert_eq!(program.finish_type_map(60, 1, [1.; 4]).unwrap().values.len(), 1);
 }

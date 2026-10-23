@@ -376,3 +376,5 @@ mod reduce;
 mod entries;
 #[path = "mapping_retained.rs"]
 mod retained_impl;
+#[path = "mapping_affine.rs"]
+mod affine;

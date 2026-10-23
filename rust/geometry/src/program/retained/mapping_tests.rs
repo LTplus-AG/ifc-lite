@@ -97,18 +97,6 @@ fn h2a2_retained_cache_refuses_a_foreign_decoder_before_reusing_definitions() {
     assert!(selection.cached(&other, &router, 81).unwrap_err().to_string().contains("provenance"));
 }
 #[test]
-fn h2a2_nonrigid_mapping_is_refused_without_a_partial_product() {
-    let bytes = mapped().replace("#84,1.,$", "#84,2.,$");
-    let source = SourceBundle::new(bytes.as_bytes().to_vec());
-    let mut decoder = source.decoder();
-    let router = GeometryRouter::with_units(&bytes, &mut decoder);
-    let entity = decoder.decode_by_id(10).unwrap();
-    let mut program = RetainedProgram::product_parts(&entity, contract());
-    assert!(drive(&mut program, &router, &mut decoder).is_empty());
-    assert!(program.finish().unwrap_err().to_string().contains("nonrigid"));
-}
-
-#[test]
 fn h2a2_cached_acyclic_fanout_debits_work_before_copying_expanding_values() {
     // #7955: a visited set/depth guard cannot bound a successful binary DAG.
     let mut declarations = String::new();

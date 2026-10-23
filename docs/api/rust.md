@@ -1684,11 +1684,13 @@ them. A foreign reply is returned intact and does not advance the receiver.
 
 This increment admits direct extrusion and swept-disk recipes, preserves
 repeated occurrences and source identity metadata, and applies proper rigid
-mapping and product placements. `IfcMappedItem` uses the existing common mapping
+product placements. Nonrigid mappings emit ordered `RetainedOperationKind::Affine`
+plans with the original logical input and finite nonsingular column-major matrix.
+Each physical copy receives a new definition; rigid mappings need no physical copy. `IfcMappedItem` uses the existing common mapping
 controller: repeated sources share a construction definition within a root while
 each placed occurrence receives its own logical slot and ordered placement lineage.
 Exact mesh caches cannot satisfy retained construction requests. Unsupported source
-families, nonrigid affine mappings, Booleans, custom processors, annotations and
+families, Booleans, custom processors, annotations and
 alignments refuse the whole traversal, including after earlier constructions. Native targets support source
 capture; wasm32 needs the existing `wasm_source_capture` feature. The default
 wasm build refuses retained admission.

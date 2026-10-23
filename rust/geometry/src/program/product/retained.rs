@@ -72,7 +72,7 @@ impl<'a> ProductControl<'a> {
     }
     pub(in crate::program) fn admit_retained(
         &mut self,
-    ) -> std::result::Result<(ProductReply, RetainedPlanOperation), ProgramError> {
+    ) -> std::result::Result<(ProductReply, Vec<RetainedPlanOperation>), ProgramError> {
         if let (Action::Mapping { .. }, Child::Mapping(control)) = (&self.action, &mut self.child) {
             return control.admit_retained().map(|(reply, operation)| (ProductReply::Mapping(reply), operation));
         }

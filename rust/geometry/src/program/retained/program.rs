@@ -116,11 +116,7 @@ impl<'a> RetainedProgram<'a> {
             }
             _ => return Err(RetainedProgramError::StaleRequest),
         }
-        let mut operations = Vec::new();
-        crate::resource::reserve_headers(&mut operations, 1)
-            .map_err(RetainedProgramError::Stopped)?
-            .retain();
-        let (value, operation) = match &mut self.inner.control {
+        let (value, operations) = match &mut self.inner.control {
             Control::Product(control) => {
                 let (reply, operation) = control.admit_retained()?;
                 (ReplyValue::Product(reply), operation)
@@ -131,7 +127,6 @@ impl<'a> RetainedProgram<'a> {
             }
             _ => return Err(RetainedProgramError::WrongPayload),
         };
-        operations.push(operation);
         self.inner.pending = Some((ticket.0, true));
         self.inner.expected_payload = Some(value.tag());
         self.check()?;

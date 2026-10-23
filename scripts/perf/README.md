@@ -12,7 +12,7 @@ that also dominate in the browser; the WASM-only concerns (per-worker file
 re-decode, no threads, memory bandwidth) are orchestration-level and are read
 off the viewer's own telemetry (below).
 
-## One element per rayon task in the element loop
+## One element per rayon task in the element loop (#8094)
 
 **Shipped: the element `par_iter` uses `with_max_len(1)`.** A large void-heavy
 model, converted through an embedder's single-chunk export, ended with a long

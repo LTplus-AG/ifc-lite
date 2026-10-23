@@ -43,7 +43,7 @@ enum State<'a> {
 }
 
 /// `None` when the element has no sliceable buildup at all.
-type Admitted = Option<std::result::Result<Option<LayerProgram>, LayerSkip>>;
+type Admitted = Result<Option<std::result::Result<Option<LayerProgram>, LayerSkip>>>;
 
 pub(super) enum LayerReply {
     Eligible(Admitted),
@@ -193,14 +193,25 @@ impl<'a> LayerControl<'a> {
                 .and_then(|index| index.get(element.id))
                 .filter(|buildup| buildup.is_sliceable()),
         };
-        buildup.map(|buildup| LayerProgram::admit(element, decoder, buildup, router.unit_scale()))
+        let Some(buildup) = buildup else { return Ok(None) };
+        // Eligibility may read geometry. Admit the whole product first without
+        // reporting; a budget refusal falls back to its completed roots (#7781).
+        if element.ifc_type != ifc_lite_core::IfcType::IfcAlignment {
+            let mut plan = crate::representation::product_budget::admit_product(
+                element, decoder, crate::representation::MAX_WALK_LEVELS, router);
+            plan.strict()?;
+            plan.validate(router, decoder)?;
+            if plan.refusal.is_some() { return Ok(None); }
+        }
+        Ok(Some(LayerProgram::admit(element, decoder, buildup, router.unit_scale())))
     }
 
     fn admitted(&self, admitted: Admitted, router: &GeometryRouter) -> State<'a> {
         match admitted {
-            Some(Ok(Some(program))) => State::Host(program, VoidControl::merged(self.element, self.ids)),
-            Some(Err(skip)) => self.skip(skip, router),
-            None | Some(Ok(None)) => State::Complete(Ok(None)),
+            Ok(Some(Ok(Some(program)))) => State::Host(program, VoidControl::merged(self.element, self.ids)),
+            Ok(Some(Err(skip))) => self.skip(skip, router),
+            Ok(None | Some(Ok(None))) => State::Complete(Ok(None)),
+            Err(error) => State::Complete(Err(error)),
         }
     }
 

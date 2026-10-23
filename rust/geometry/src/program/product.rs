@@ -2,8 +2,8 @@
 //! One product's representation walk, merged into frame parts or kept as
 //! per-item sub-meshes.
 //!
-//! The walk is owned state: the shape, a resumable cursor over its meshed
-//! representations and the current representation's items. Source steps
+//! The walk owns a cache-independent admission plan, a resumable cursor over
+//! its selected representations and each representation's roots. Source steps
 //! admit one reached thing at a time (an `IfcAlignment` axis, the shape, one
 //! representation's items, an annotation fill's rings, a raw item's element
 //! frame, a textured face set, the placement); each item's geometry is its
@@ -14,7 +14,7 @@ use super::inner::{ProgramError, ProgramStage};
 use super::inner_cache::{CacheControl, CacheReply};
 use super::mapping::{MappingControl, MappingReply};
 use crate::processors::texture::ResolvedTextureMap;
-use crate::representation::{product_shape, rep_items, ProductShape};
+use crate::representation::product_budget::ProductItems;
 use crate::router::annotation::{admit_fill, AnnotationRings};
 use crate::router::processing::SourceHygiene;
 use crate::router::transforms::ObjectPlacement;
@@ -23,6 +23,7 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use rustc_hash::FxHashMap;
 
 mod accept;
+mod admission;
 mod merged;
 mod run;
 use merged::{Merged, Prepared};
@@ -102,7 +103,7 @@ enum Action {
 
 pub(super) enum ProductReply {
     Alignment(Option<Mesh>),
-    Shape(Result<Option<ProductShape>>),
+    Shape(Result<Option<ProductItems>>),
     Items(Result<Vec<DecodedEntity>>),
     Annotation(Result<AnnotationRings>),
     AnnotationMesh(u32, Result<Mesh>),
@@ -158,11 +159,10 @@ pub(super) struct ProductControl<'a> {
     hygiene: SourceHygiene,
     /// `None` for the merged walk.
     styled: Option<Styled<'a>>,
-    shape: Option<ProductShape>,
-    /// Whether the shape carries direct body geometry (read once).
-    direct: bool,
+    shape: Option<ProductItems>,
     /// The next representation index the cursor examines.
     next_rep: usize,
+    allowance: u32,
     items: std::vec::IntoIter<DecodedEntity>,
     fill_only: bool,
     body: Body,
@@ -190,8 +190,8 @@ impl<'a> ProductControl<'a> {
             hygiene,
             styled,
             shape: None,
-            direct: false,
             next_rep: 0,
+            allowance: crate::representation::MAX_WALK_LEVELS,
             items: Vec::new().into_iter(),
             fill_only: false,
             body: Body::Sink(sink),
@@ -239,12 +239,11 @@ impl<'a> ProductControl<'a> {
         match &mut self.action {
             Action::Alignment => return Ok(ProductReply::Alignment(router.alignment_mesh(element, decoder))),
             Action::Shape => {
-                return Ok(ProductReply::Shape(product_shape(element, decoder).map_err(Into::into)));
+                return Ok(ProductReply::Shape(self.admit_shape(router, decoder)));
             }
             Action::Items(index) => {
-                let rep = self.shape.as_ref().and_then(|shape| shape.representations().get(*index));
-                let rep = rep.ok_or(ProgramError::StaleRequest)?;
-                return Ok(ProductReply::Items(rep_items(rep, decoder).map_err(Into::into)));
+                let index = *index;
+                return Ok(ProductReply::Items(self.admit_items(index, router, decoder)));
             }
             Action::Annotation(item) => return Ok(ProductReply::Annotation(admit_fill(item, decoder))),
             Action::Raw(item) => {
@@ -311,3 +310,7 @@ fn texture<'a>(styled: Option<Styled<'a>>, item: &DecodedEntity) -> Option<&'a R
         IfcType::IfcTriangulatedFaceSet | IfcType::IfcTriangulatedIrregularNetwork
     ))
 }
+
+#[cfg(test)]
+#[path = "product/admission_tests.rs"]
+mod admission_tests;

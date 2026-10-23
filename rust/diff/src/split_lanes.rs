@@ -62,7 +62,7 @@ pub(crate) fn displaced<'a, R>(wholes: &[&'a EntityFingerprint<R>], pieces: &[&'
         clusters.push(Cluster { members, volume, bbox: cluster_box, extents });
     }
     let mut sorted: Vec<_> = wholes.iter().filter_map(|&w| usable_volume(w.volume).map(|v| (w, v))).collect();
-    sorted.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+    sorted.sort_by(|a, b| a.1.total_cmp(&b.1));
     let mut matches_per_cluster = vec![];
     let mut clusters_per_whole = vec![0usize; sorted.len()];
     for cluster in &clusters {

@@ -29,14 +29,14 @@ pub fn box_union(boxes: &[EntityAabb]) -> EntityAabb {
 }
 pub fn sorted_extents(b: &EntityAabb) -> [f64; 3] {
     let mut extents = std::array::from_fn(|axis| b.max[axis] - b.min[axis]);
-    extents.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    extents.sort_by(f64::total_cmp);
     extents
 }
 pub fn extent_coverage(whole: &EntityAabb, pieces: &[EntityAabb], pad: f64) -> bool {
     if pieces.is_empty() { return false; }
     for axis in 0..3 {
         let mut intervals: Vec<_> = pieces.iter().map(|p| (p.min[axis], p.max[axis])).collect();
-        intervals.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        intervals.sort_by(|a, b| a.0.total_cmp(&b.0));
         let mut cursor = whole.min[axis];
         for (lo, hi) in intervals {
             if lo > cursor + pad { return false; }

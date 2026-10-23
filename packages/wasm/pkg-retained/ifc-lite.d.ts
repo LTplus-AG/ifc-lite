@@ -469,22 +469,6 @@ export class Contours2D {
     readonly shapeCount: number;
 }
 
-export class DiffModel {
-    free(): void;
-    [Symbol.dispose](): void;
-    /**
-     * Compare this base model with a head model, returning row-index records.
-     * No JS reference is serialized, cloned, or retained inside WASM.
-     */
-    compare(head: DiffModel, options: any): any;
-    /**
-     * Create an owned model from columnar buffers. Call free() when finished;
-     * a model may participate in any number of comparisons before that.
-     */
-    constructor(strings: any, fields: Uint32Array, flags: Uint8Array, boxes: Float64Array, volumes: Float64Array, component_offsets: Uint32Array, component_pairs: Uint32Array);
-    readonly entityCount: number;
-}
-
 /**
  * A collection of resolved grid axes.
  */
@@ -2528,51 +2512,6 @@ export class ZoneSplitJs {
 export function clashIntersectionSolid(positions_a: Float32Array, indices_a: Uint32Array, positions_b: Float32Array, indices_b: Uint32Array): ClashIntersectionSolidJs;
 
 /**
- * Component hashes share the canonical Rust attribute projection.
- */
-export function diffBuildComponentFingerprints(input: any): any;
-
-/**
- * Hash adapter data directly in Rust without a JSON text round trip.
- */
-export function diffBuildDataFingerprint(input: any): string;
-
-/**
- * Normalize, deduplicate and validate an identity or lineage sidecar.
- */
-export function diffCreateSidecar(text: string, lineage: boolean): string;
-
-/**
- * Return head/base pairs in JavaScript Map insertion order.
- */
-export function diffKeyAliasesFromLineage(value: any): any;
-
-/**
- * Return ordered conflict diagnostics for caller-supplied lineage entries.
- */
-export function diffLineageConflicts(value: any): string[];
-
-/**
- * Migrate keys using Rust policies, preserving the absence of orphan relations.
- */
-export function diffRekeyByLineage(keys: string[], value: any, deleted: string[], policy: string): any;
-
-/**
- * Emit JSON.stringify-compatible pretty bytes and the trailing newline.
- */
-export function diffSerializeSidecar(text: string): string;
-
-/**
- * Raw code units preserve JS strings that cannot be represented as Rust UTF-8.
- */
-export function diffStableHash(units: Uint16Array): string;
-
-/**
- * Structural diagnostics preserve the engine's ordered error list.
- */
-export function diffValidateSidecar(text: string, lineage: boolean): string[];
-
-/**
  * `a - b`, keeping EVERY disjoint remnant.
  *
  * This is the operation the existing `subtract_2d` could not stand in for: it
@@ -2738,7 +2677,6 @@ export interface InitOutput {
     readonly __wbg_clashrunresult_free: (a: number, b: number) => void;
     readonly __wbg_clashsession_free: (a: number, b: number) => void;
     readonly __wbg_contours2d_free: (a: number, b: number) => void;
-    readonly __wbg_diffmodel_free: (a: number, b: number) => void;
     readonly __wbg_gridaxiscollection_free: (a: number, b: number) => void;
     readonly __wbg_gridaxisjs_free: (a: number, b: number) => void;
     readonly __wbg_ifcapi_free: (a: number, b: number) => void;
@@ -2799,19 +2737,7 @@ export interface InitOutput {
     readonly contours2d_ringLengths: (a: number) => number;
     readonly contours2d_shapeCount: (a: number) => number;
     readonly contours2d_shapeOffsets: (a: number) => number;
-    readonly diffBuildComponentFingerprints: (a: number, b: number) => void;
-    readonly diffBuildDataFingerprint: (a: number, b: number) => void;
-    readonly diffCreateSidecar: (a: number, b: number, c: number, d: number) => void;
-    readonly diffKeyAliasesFromLineage: (a: number, b: number) => void;
-    readonly diffLineageConflicts: (a: number, b: number) => void;
-    readonly diffRekeyByLineage: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
-    readonly diffSerializeSidecar: (a: number, b: number, c: number) => void;
-    readonly diffStableHash: (a: number, b: number, c: number) => void;
-    readonly diffValidateSidecar: (a: number, b: number, c: number, d: number) => void;
     readonly difference2d: (a: number, b: number) => number;
-    readonly diffmodel_compare: (a: number, b: number, c: number, d: number) => void;
-    readonly diffmodel_entityCount: (a: number) => number;
-    readonly diffmodel_new: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number) => void;
     readonly gridaxiscollection_getAxis: (a: number, b: number) => number;
     readonly gridaxiscollection_isEmpty: (a: number) => number;
     readonly gridaxiscollection_length: (a: number) => number;

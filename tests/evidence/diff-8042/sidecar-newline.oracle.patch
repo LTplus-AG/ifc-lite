@@ -1,0 +1,10 @@
+--- a/rust/diff/src/sidecar_json.rs
++++ b/rust/diff/src/sidecar_json.rs
+@@ -7,6 +7,7 @@
+ pub(crate) fn serialize(value: &JsonValue) -> String {
+     let mut out = String::new();
+     write(value, 0, &mut out);
++    out.push('\n');
+     out
+ }
+ fn indent(depth: usize, out: &mut String) { for _ in 0..depth { out.push_str("  "); } }

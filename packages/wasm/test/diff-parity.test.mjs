@@ -24,6 +24,33 @@ function model(module, entities) {
 function plain(value) {
   return JSON.parse(JSON.stringify(value, (_, item) => item instanceof Map ? [...item] : item));
 }
+function revive(value) {
+  if (Array.isArray(value)) return value.map(revive);
+  if (value && typeof value === 'object') {
+    if ('$f64' in value) {
+      const bytes = new ArrayBuffer(8); const view = new DataView(bytes);
+      view.setBigUint64(0, BigInt(`0x${value.$f64}`)); return view.getFloat64(0);
+    }
+    if ('$nonfinite' in value) return Number(value.$nonfinite);
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, revive(item)]));
+  }
+  return value;
+}
+test('actual WASM fingerprints match TS bytes including non-finite adapter values (#8042)', async context => {
+  const module = await engine(context); if (!module) return;
+  const corpus = JSON.parse(readFileSync(new URL('../../../rust/diff/tests/fingerprint_vectors.json', import.meta.url), 'utf8'));
+  for (const vector of corpus.fingerprints) {
+    const input = revive(vector.input);
+    assert.equal(module.diffBuildDataFingerprint(input), vector.dataHash, vector.id);
+    assert.deepEqual(module.diffBuildComponentFingerprints(input), vector.components, vector.id);
+  }
+  const units = value => Uint16Array.from({ length: value.length }, (_, index) => value.charCodeAt(index));
+  for (const vector of corpus.stableHash) assert.equal(module.diffStableHash(units(vector.value)), vector.hash);
+  // Measured from the original JS FNV implementation, not replacement characters.
+  for (const [value, hash] of [['\ud800', 'b03bbd4c8770bfdf'], ['\udfff', 'b03d724c8773a66e'], ['a\ud800b', '74829916f0e0eeb2']]) {
+    assert.equal(module.diffStableHash(units(value)), hash);
+  }
+});
 test('actual WASM and JS column/reference transport match the TS oracle (#8042)', async context => {
   const module = await engine(context); if (!module) return;
   for (const name of ['core', 'content', 'split', 'successor', 'lineage']) {

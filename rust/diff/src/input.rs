@@ -26,21 +26,22 @@ pub enum PropertyValue {
 }
 
 /// One named property or quantity.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
 pub struct PropertyEntryInput {
     pub name: String,
+    #[serde(default)]
     pub value: PropertyValue,
 }
 
 /// A named property set with its members.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
 pub struct PropertySetInput {
     pub name: String,
     pub properties: Vec<PropertyEntryInput>,
 }
 
 /// A named quantity set with its members.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
 pub struct QuantitySetInput {
     pub name: String,
     pub quantities: Vec<PropertyEntryInput>,
@@ -51,16 +52,19 @@ pub struct QuantitySetInput {
 /// The type's `GlobalId` is deliberately not represented: it is not hashed,
 /// and carrying it here would invite a future change to hash it. See the
 /// module docs.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, serde::Deserialize)]
+#[serde(default)]
 pub struct TypeAssignmentInput {
     /// Name of the assigned type, e.g. `WT-200`.
     pub name: Option<String>,
     /// IFC class of the assigned type, e.g. `IfcWallType`.
+    #[serde(rename = "type")]
     pub type_name: Option<String>,
 }
 
 /// Everything the fingerprint hashes about one entity.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, serde::Deserialize)]
+#[serde(default, rename_all = "camelCase")]
 pub struct DataFingerprintInput {
     pub ifc_type: String,
     pub name: Option<String>,

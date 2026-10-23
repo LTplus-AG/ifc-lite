@@ -63,8 +63,13 @@ pub fn cmp_code_units(a: &str, b: &str) -> Ordering {
 /// The 64-bit width replaced a 32-bit one that was demonstrably too narrow
 /// (upstream issue #1962).
 pub fn stable_hash(value: &str) -> String {
+    stable_hash_units(value.encode_utf16())
+}
+
+/// Hash raw JS code units, including unpaired surrogates without lossy UTF-8 conversion.
+pub fn stable_hash_units(units: impl IntoIterator<Item = u16>) -> String {
     let mut hash = FNV_OFFSET_BASIS_64;
-    for unit in value.encode_utf16() {
+    for unit in units {
         hash = (hash ^ u64::from(unit)).wrapping_mul(FNV_PRIME_64);
     }
     format!("{hash:016x}")

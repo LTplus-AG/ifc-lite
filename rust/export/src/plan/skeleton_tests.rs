@@ -163,7 +163,7 @@ fn bad_inputs_are_refused() {
 /// coordinates in feet as metres (#8087 review).
 #[test]
 fn a_projected_crs_names_its_map_unit() {
-    for (unit, name, factor) in [(MapUnit::Foot, "'FOOT'", "0.3048"), (MapUnit::UsSurveyFoot, "'US SURVEY FOOT'", "0.304800609601219")] {
+    for (unit, name, factor) in [(MapUnit::Foot, "'FOOT'", "0.3048),"), (MapUnit::UsSurveyFoot, "'US SURVEY FOOT'", "0.3048006096")] {
         let mut map = a_map();
         map.crs_name = "EPSG:2263".into();
         map.map_unit = unit;
@@ -174,7 +174,8 @@ fn a_projected_crs_names_its_map_unit() {
         let unit_id = unit_line.split('=').next().unwrap().to_string();
         let crs = text.lines().find(|l| l.contains("IFCPROJECTEDCRS(")).expect("the CRS");
         assert!(crs.contains(&format!(",{unit_id});")), "the CRS names the unit: {crs}");
-        assert!(text.contains(&format!("IFCLENGTHMEASURE({factor}")), "conversion factor {factor}: {text}");
+        let measure = text.lines().find(|l| l.contains("IFCMEASUREWITHUNIT(")).expect("the conversion factor");
+        assert!(measure.contains(&format!("IFCLENGTHMEASURE({factor}")), "conversion factor {factor}: {measure}");
         let (_, report) = run(&source, Vec::new());
         assert_clean(&report, "feet skeleton");
     }

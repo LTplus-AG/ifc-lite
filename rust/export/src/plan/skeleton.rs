@@ -81,7 +81,7 @@ pub struct Skeleton {
 }
 
 /// An `IfcConversionBasedUnit` length unit of `metres` metres.
-fn feet(emit: &mut Emit, name: &str, metres: f64, metre: u32) -> Result<u32, String> {
+fn length_unit(emit: &mut Emit, name: &str, metres: f64, metre: u32) -> Result<u32, String> {
     let dimensions = emit.record(
         "IFCDIMENSIONALEXPONENTS",
         &[
@@ -178,8 +178,8 @@ pub fn skeleton(s: &Skeleton) -> Result<Vec<u8>, String> {
     if let Some(m) = &s.map_conversion {
         let map_unit = match m.map_unit {
             MapUnit::Metre => units[0],
-            MapUnit::Foot => feet(&mut emit, "FOOT", 0.3048, units[0])?,
-            MapUnit::UsSurveyFoot => feet(&mut emit, "US SURVEY FOOT", 1200.0 / 3937.0, units[0])?,
+            MapUnit::Foot => length_unit(&mut emit, "FOOT", 0.3048, units[0])?,
+            MapUnit::UsSurveyFoot => length_unit(&mut emit, "US SURVEY FOOT", ifc_lite_core::US_SURVEY_FOOT_M, units[0])?,
         };
         let crs = emit.record("IFCPROJECTEDCRS", &[("Name", quoted(&m.crs_name)), ("MapUnit", format!("#{map_unit}"))])?;
         emit.record(

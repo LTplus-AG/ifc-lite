@@ -250,12 +250,17 @@ try {
     record.meta.picks.push(target);
    }
    record.meta.pick={id:record.meta.picks.map(p=>p.expected).join(',')};
-   record.meta.foreground=await page.evaluate('globalThis.__ifc_lite_frame_probe__.foreground()');
-   if(record.meta.foreground.interruptions || record.meta.foreground.visibility!=='visible' || !record.meta.foreground.focused) throw Error('Foreground admission interrupted');
-   record.meta.sessionAfter=readPhysicalSession();
-   if(!isPhysicalConsole(record.meta.sessionAfter) || record.meta.sessionBefore.currentSession!==record.meta.sessionAfter.currentSession) throw Error('Physical-console session changed');
-   await verifyFinalHealth(record.meta,()=>idle(page),readHostAdmission,
-    ()=>page.evaluate('globalThis.__6709.errors'));
+   await verifyFinalHealth(record.meta,()=>idle(page),async()=>{
+    record.meta.hostAfter=await readHostAdmission();
+    record.meta.sessionAfter=readPhysicalSession();
+    if(!isPhysicalConsole(record.meta.sessionAfter) || record.meta.sessionBefore.currentSession!==record.meta.sessionAfter.currentSession) throw Error('Physical-console session changed');
+    return record.meta.hostAfter;
+   },async()=>{
+    const final=await page.evaluate('({errors:globalThis.__6709.errors,foreground:globalThis.__ifc_lite_frame_probe__.foreground()})');
+    record.meta.foreground=final.foreground;record.meta.errors=final.errors;
+    if(!final.foreground || final.foreground.interruptions!==0 || final.foreground.visibility!=='visible' || final.foreground.focused!==true) throw Error('Foreground admission interrupted');
+    return final.errors;
+   });
    })(),deadline,driverFailure]);
    record.ok=true;
   } catch(error) { record.error=String(error);console.error(name,record.error);if(page && !page.isClosed()) { try {record.meta.failureDiagnostics=await page.evaluate('({trace:globalThis.__IFC_LITE_LOAD_TRACE__?.latest?.(),stats:globalThis.__ifc_lite_render_stats__?.(),canvas:!!document.querySelector("canvas[data-viewport=main]")})');await page.screenshot({path:`${output}/${name}-failure.png`,timeout:5000});} catch(screenshotError) {record.meta.screenshotError=String(screenshotError);} } }

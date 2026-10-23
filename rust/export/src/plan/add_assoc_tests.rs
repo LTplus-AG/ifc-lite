@@ -225,7 +225,8 @@ fn a_unit_or_association_the_schema_cannot_hold_is_refused() {
     };
     let prop = |p: NewProperty| move |w: &mut NewObject| w.psets = vec![set("P", PsetKind::Property, vec![p.clone()])];
     let si = |prefix: Option<&str>, name: &str| Some(ValueUnit::Si { prefix: prefix.map(Into::into), name: name.into() });
-    let cases: Vec<(&str, Box<dyn Fn(&mut NewObject)>, &str)> = vec![
+    type Case = (&'static str, Box<dyn Fn(&mut NewObject)>, &'static str);
+    let cases: Vec<Case> = vec![
         ("IFC4", Box::new(prop(NewProperty { name: "L".into(), value: PropertyValue::Label("x".into()), unit: si(None, "METRE") })), "needs a measure"),
         ("IFC4", Box::new(prop(measure("L", "IfcLengthMeasure", 1.0, si(Some("KILO"), "PASCAL")))), "does not measure"),
         ("IFC4", Box::new(prop(measure("L", "IfcLengthMeasure", 1.0, Some(ValueUnit::Existing(ObjectRef::Id(220)))))), "does not measure"),

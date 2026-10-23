@@ -82,6 +82,20 @@ impl From<PlacementError> for crate::Error {
     }
 }
 
+impl PlacementError {
+    /// The refusals D15/D30 drop rather than keep at a fallback position:
+    /// input admission refused a real (`UnrepresentableReal`), a point or
+    /// direction is malformed (`MalformedRecord`), or a mandatory attribute is
+    /// missing. A dangling id, a wrong record type and a cycle are not.
+    pub fn is_admission_refusal(&self) -> bool {
+        matches!(
+            self,
+            Self::Missing { .. }
+                | Self::Decode(ifc_lite_core::Error::UnrepresentableReal(_) | ifc_lite_core::Error::MalformedRecord(_))
+        )
+    }
+}
+
 /// `Result` of the placement readers.
 pub type PlacementResult<T> = std::result::Result<T, PlacementError>;
 

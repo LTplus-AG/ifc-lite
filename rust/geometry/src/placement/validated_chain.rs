@@ -4,7 +4,7 @@
 use super::chain_walk::{climb, Climb};
 use super::validate::check_frames;
 use super::{unsupported, ChainPolicy, Link, PlacementResult};
-use ifc_lite_core::EntityDecoder;
+use ifc_lite_core::{execution_owner::ExecutionIdentity, EntityDecoder};
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
 
@@ -16,16 +16,19 @@ use smallvec::SmallVec;
 pub struct ChainValidator<'decoder, 'source> {
     decoder: &'decoder mut EntityDecoder<'source>,
     policy: ChainPolicy,
+    identity: ExecutionIdentity,
     verified: FxHashMap<u32, u32>,
 }
 
 impl<'decoder, 'source> ChainValidator<'decoder, 'source> {
     pub fn new(decoder: &'decoder mut EntityDecoder<'source>, policy: ChainPolicy) -> Self {
-        Self { decoder, policy, verified: FxHashMap::default() }
+        let identity = decoder.execution_identity();
+        Self { decoder, policy, identity, verified: FxHashMap::default() }
     }
 
     /// Access the same decoder for consumer-specific checks and output work.
-    /// Its source is immutable; clearing its caches cannot invalidate a verdict.
+    /// Replacing the decoder or its explicit configuration invalidates verified
+    /// suffixes at the next validation. Lazy memo population preserves them.
     pub fn decoder(&mut self) -> &mut EntityDecoder<'source> {
         self.decoder
     }
@@ -35,6 +38,11 @@ impl<'decoder, 'source> ChainValidator<'decoder, 'source> {
     /// a known suffix stops the walk, so a parent-before-child ladder costs one
     /// new link per product rather than 1+2+...+N links. No chain depth cap.
     pub fn validate(&mut self, id: u32) -> PlacementResult<(u32, SmallVec<[Link; 8]>)> {
+        let identity = self.decoder.execution_identity();
+        if identity != self.identity {
+            self.verified.clear();
+            self.identity = identity;
+        }
         if let Some(root) = self.verified.get(&id) {
             return Ok((*root, SmallVec::new()));
         }

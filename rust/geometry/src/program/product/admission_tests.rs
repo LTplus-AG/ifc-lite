@@ -62,3 +62,73 @@ fn issue_7781_completed_root_survives_atomic_later_root_refusal() {
         }
     }
 }
+
+#[test]
+fn issue_7781_admitted_roots_reject_replaced_decoder_and_changed_configuration() {
+    let content = model::chain(1);
+    for change in 0..3 {
+        let mut decoder = EntityDecoder::new(&content);
+        let mut router = GeometryRouter::new();
+        let wall = decoder.decode_by_id(100).unwrap();
+        let mut control = ProductControl::merged(&wall, SourceHygiene::Watertight);
+        let plan = control.admit_shape(&router, &mut decoder).unwrap();
+        control.action = control.shape_done(plan);
+        match change {
+            0 => decoder = EntityDecoder::new(&content),
+            1 => decoder.set_entity_index(std::sync::Arc::new(ifc_lite_core::build_entity_index(content.as_bytes()))),
+            _ => router.set_tessellation_quality(crate::TessellationQuality::High),
+        }
+        control.run(&router, &mut decoder).unwrap();
+        let error = control.take_result().unwrap().err().expect("foreign owner refused");
+        assert!(error.to_string().contains("execution owner changed"), "{error}");
+        assert!(router.take_unsupported_items().is_empty());
+    }
+}
+
+#[test]
+fn issue_7781_product_protocol_rejects_foreign_decoder_after_admission() {
+    use crate::program::inner::ProgramError;
+    let content = model::chain(1);
+    let mut decoder = EntityDecoder::new(&content);
+    let router = GeometryRouter::new();
+    let wall = decoder.decode_by_id(100).unwrap();
+    let mut program = crate::program::GeometryProgram::product(&wall, SourceHygiene::Watertight);
+    let request = program.request().unwrap().unwrap();
+    let reply = program.execute(request, &router, &mut decoder).unwrap();
+    program.accept(reply, &router).ok().unwrap();
+    let request = program.request().unwrap().unwrap();
+    let mut foreign = EntityDecoder::new(&content);
+    assert_eq!(program.execute(request, &router, &mut foreign).err(), Some(ProgramError::WrongOwner));
+    // A refused foreign execution must leave the original ticket usable.
+    let reply = program.execute(request, &router, &mut decoder).unwrap();
+    program.accept(reply, &router).ok().unwrap();
+}
+
+#[test]
+fn issue_7781_cancellation_precedes_product_shape_and_budget_refusal() {
+    use crate::resource::{ExecutionAccount, ExecutionPolicy, ProgramStop, ResourceLimits};
+    for content in [model::chain(1), model::wall("#160", "#160=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid');")] {
+        for styled in [false, true] {
+            for stepped in [false, true] {
+                let mut decoder = EntityDecoder::new(&content);
+                let router = GeometryRouter::new();
+                let wall = decoder.decode_by_id(100).unwrap();
+                let mut control = if styled {
+                    ProductControl::styled(&wall, false, None, SourceHygiene::Watertight)
+                } else { ProductControl::merged(&wall, SourceHygiene::Watertight) };
+                control.allowance = 0;
+                let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
+                account.scope(|| {
+                    account.cancel();
+                    if stepped {
+                        let reply = control.execute(&router, &mut decoder).unwrap();
+                        control.accept(reply, &router);
+                    } else { control.run(&router, &mut decoder).unwrap(); }
+                    assert!(matches!(control.take_result().unwrap(),
+                        Err(crate::Error::ProgramStopped(ProgramStop::Cancelled))));
+                    assert!(router.take_unsupported_items().is_empty());
+                });
+            }
+        }
+    }
+}

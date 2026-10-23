@@ -9,7 +9,9 @@ impl ProductControl<'_> {
     pub(super) fn admit_shape(&self, router: &GeometryRouter, decoder: &mut EntityDecoder)
         -> Result<Option<ProductItems>> {
         // Retain the missing-shape fast path and its unplaced empty output.
-        if product_shape(self.element, decoder)?.is_none() { return Ok(None); }
+        crate::resource::check_current()?;
+        let shape = crate::resource::observe(product_shape(self.element, decoder).map_err(Into::into))?;
+        if shape.is_none() { return Ok(None); }
         router.admitted_product(self.element, decoder, self.allowance).map(Some)
     }
 

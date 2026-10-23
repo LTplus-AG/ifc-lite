@@ -210,7 +210,6 @@
 # collapsing thin cut geometry far from the project origin, and the correct
 # behaviour already existed next to it as `rotate_mesh_from_frame`, which now
 # also composes the input's own origin instead of assigning over it.
-     747 rust/geometry/src/router/voids/geom.rs
 # -125: the closure, pairing and signed-volume checks moved to `mesh_check` (C2-1, #7793); 882 -> 757.
 # +10: extract min_opening_volume(quality) tier->floor helper shared by the batch
 # admission gate and the sequential CSG path so they can't diverge on the
@@ -268,7 +267,7 @@
 # post-cut sliver refinement REGION-SCOPED (refine_high_aspect_slivers_within) so
 # only rim slivers the cut created are bisected, not the host's authored
 # long-thin faces; skip the probe/audit tail when the fixpoint was a no-op.
-    2953 rust/geometry/src/router/voids/prism_cut.rs
+    2928 rust/geometry/src/router/voids/prism_cut.rs
 # NEW: #129 coaxial footprint-union for OVERLAPPING opening clusters. One cohesive
 # algorithm: extended-AABB overlap clustering (union-find), coaxial detection, 2.5D
 # depth-slicing with per-slab i_overlay footprint union + watertight re-extrude to

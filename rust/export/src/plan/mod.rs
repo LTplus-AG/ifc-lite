@@ -8,8 +8,8 @@
 //! option expresses: occurrence overrides, placement rewrites, body geometry
 //! replacement, and delete with reverse-reference repair.
 //! [`Disposition::Add`] builds a new object (placement, geometry,
-//! containment, type, property sets, an opening in a host) from an IFC-level
-//! description; see `add.rs`.
+//! containment, type, property sets, material, classifications, an opening
+//! in a host) from an IFC-level description; see `add.rs`.
 //!
 //! # Design
 //!
@@ -36,6 +36,7 @@
 //!   copy, or a refusal for a set shared between types.
 
 mod add;
+mod add_assoc_types;
 mod add_geometry;
 mod add_props;
 mod add_rels;
@@ -62,6 +63,10 @@ mod types;
 mod validate;
 mod write;
 
+pub use add_assoc_types::{
+    ClassificationLink, ClassificationSystem, LayerMaterial, MaterialLink, NewClassification, NewClassificationReference,
+    NewLayerSet, NewMaterial, NewMaterialLayer, ValueUnit,
+};
 pub use add_types::{
     ClassSpec, Extrusion, GlobalId, IfcClass, NewObject, NewOpening, NewPlacement, NewProperty, NewPropertySet, NewType,
     PropertyValue, Representation, TypeLink,

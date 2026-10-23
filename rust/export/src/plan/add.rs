@@ -22,7 +22,7 @@ use crate::step_ids::IdAllocator;
 use super::add_geometry::product_shape;
 use super::add_props::build_sets;
 use super::add_rels::{RelAccumulator, RelKind, RelRequest};
-use super::add_types::{NewObject, Representation, TypeLink};
+use super::add_types::{GlobalId, NewObject, NewType, Representation, TypeLink};
 use super::attrs::{attribute_index, unset_required};
 use super::index::FileIndex;
 use super::owner_history;
@@ -30,6 +30,8 @@ use super::props_synth::{defines_by_properties_record, ref_list, ref_or_unset};
 use super::tessellation::{find_body_context, synthesize_context, Emit};
 use super::types::{ObjectRef, PlanContext, Refusal};
 
+use assoc::{associate, Shared};
+use units::build_units;
 use check::Checked;
 
 /// An object this plan added, as later Adds see it.
@@ -50,6 +52,9 @@ pub(crate) struct AddState<'a> {
     body_context: Option<u32>,
     rels: RelAccumulator<'a>,
     records: Vec<(u32, String)>,
+    /// New materials, classifications and units the built Adds wrote, by
+    /// description, for later Adds to reuse.
+    shared: HashMap<String, u32>,
 }
 
 impl<'a> AddState<'a> {
@@ -78,6 +83,7 @@ impl<'a> AddState<'a> {
             body_context: body_context.or_else(|| find_body_context(index, schema, removed)),
             rels: RelAccumulator::new(index, removed),
             records: Vec::new(),
+            shared: HashMap::new(),
         }
     }
 
@@ -110,6 +116,7 @@ impl<'a> AddState<'a> {
 
         self.owner_history = Some(owner_history);
         self.records.extend(out);
+        self.shared.extend(built.shared);
         for req in requests {
             self.rels.relate(self.schema, req);
         }
@@ -235,49 +242,30 @@ impl<'a> AddState<'a> {
         let object = emit.record(&c.class, &fields)?;
         require_filled(emit, object)?;
 
-        let set_ids = build_sets(emit, owner_history, gid, "pset", &obj.psets)?;
+        let mut shared = Shared { committed: &self.shared, pending: HashMap::new() };
+        let units = build_units(emit, &mut shared, &c.units)?;
+        let set_ids = build_sets(emit, owner_history, gid, "pset", &obj.psets, &units)?;
         for (set, spec) in set_ids.iter().zip(&obj.psets) {
             let id = emit.ids.allocate().ok_or("id space exhausted")?;
             let rel_guid = gid.derive(&format!("rel/pset/{}", spec.name)).encode();
             emit.out.push((id, defines_by_properties_record(self.schema, id, &rel_guid, owner_history, &[object], *set)));
         }
 
-        let mut new_type = None;
-        let type_target = match (&obj.type_link, &c.new_type) {
-            (Some(TypeLink::New(t)), Some((class, predefined))) => {
-                // A type with its own GlobalId derives its sets' ids from it.
-                let (base, role) = t.global_id.map_or((gid, "type/pset"), |g| (g, "pset"));
-                let type_sets = build_sets(emit, owner_history, base, role, &t.psets)?;
-                let type_gid = format!("'{}'", t.global_id_for(gid).encode());
-                let mut fields = vec![("GlobalId", type_gid), ("OwnerHistory", owh.clone())];
-                if let Some(name) = &t.name {
-                    fields.push(("Name", format!("'{}'", escape(name))));
-                }
-                if !type_sets.is_empty() {
-                    fields.push(("HasPropertySets", ref_list(&type_sets)));
-                }
-                // Mandatory on element types in IFC4 and later (and on door
-                // and window types, their operation and partitioning; on
-                // furniture types, the assembly place):
-                // NOTDEFINED claims nothing when the caller names no value.
-                let notdefined = || ".NOTDEFINED.".to_string();
-                fields.push(("PredefinedType", predefined.clone().unwrap_or_else(notdefined)));
-                fields.push(("OperationType", notdefined()));
-                fields.push(("PartitioningType", notdefined()));
-                fields.push(("AssemblyPlace", notdefined()));
-                let id = emit.record(class, &fields)?;
-                require_filled(emit, id)?;
-                new_type = Some(id);
-                Some(id)
+        let new_type = match (&obj.type_link, &c.new_type) {
+            (Some(TypeLink::New(t)), Some(class)) => {
+                let units = build_units(emit, &mut shared, &c.type_units)?;
+                Some(build_new_type(emit, t, gid, class, &units, owner_history)?)
             }
-            _ => c.existing_type,
+            _ => None,
         };
+        let type_target = new_type.or(c.existing_type);
         if let Some(t) = type_target {
             requests.push(RelRequest { kind: RelKind::DefinesByType, relating: t, related: object, seed: gid });
         }
         if let Some((container, kind)) = c.container {
             requests.push(RelRequest { kind, relating: container, related: object, seed: gid });
         }
+        associate(emit, &mut shared, c, object, gid, requests)?;
 
         if let (Some(host), Some(op), Some(ctx)) = (c.host, &obj.opening, context) {
             let a2p = emit.axis_placement(&op.matrix)?;
@@ -319,8 +307,43 @@ impl<'a> AddState<'a> {
             }
         }
 
-        Ok(Built { object, placement, new_type, new_context })
+        Ok(Built { object, placement, new_type, new_context, shared: shared.pending })
     }
+}
+
+/// The type a `TypeLink::New` creates, with its own property sets.
+/// `class` is its checked class and `PredefinedType`.
+fn build_new_type(
+    emit: &mut Emit,
+    t: &NewType,
+    occurrence: GlobalId,
+    class: &(String, Option<String>),
+    units: &[Vec<Option<u32>>],
+    owner_history: Option<u32>,
+) -> Result<u32, String> {
+    // A type with its own GlobalId derives its sets' ids from it.
+    let (base, role) = t.global_id.map_or((occurrence, "type/pset"), |g| (g, "pset"));
+    let type_sets = build_sets(emit, owner_history, base, role, &t.psets, units)?;
+    let type_gid = format!("'{}'", t.global_id_for(occurrence).encode());
+    let mut fields = vec![("GlobalId", type_gid), ("OwnerHistory", ref_or_unset(owner_history))];
+    if let Some(name) = &t.name {
+        fields.push(("Name", format!("'{}'", escape(name))));
+    }
+    if !type_sets.is_empty() {
+        fields.push(("HasPropertySets", ref_list(&type_sets)));
+    }
+    // Mandatory on element types in IFC4 and later (and on door and window
+    // types, their operation and partitioning; on furniture types, the
+    // assembly place): NOTDEFINED claims nothing when the caller names no
+    // value.
+    let notdefined = || ".NOTDEFINED.".to_string();
+    fields.push(("PredefinedType", class.1.clone().unwrap_or_else(notdefined)));
+    fields.push(("OperationType", notdefined()));
+    fields.push(("PartitioningType", notdefined()));
+    fields.push(("AssemblyPlace", notdefined()));
+    let id = emit.record(&class.0, &fields)?;
+    require_filled(emit, id)?;
+    Ok(id)
 }
 
 /// Refuse a record the build left without a value its schema requires,
@@ -341,10 +364,17 @@ struct Built {
     placement: u32,
     new_type: Option<u32>,
     new_context: Option<u32>,
+    shared: HashMap<String, u32>,
 }
 
 #[path = "add_check.rs"]
 mod check;
+
+#[path = "add_assoc.rs"]
+mod assoc;
+
+#[path = "add_units.rs"]
+mod units;
 
 #[cfg(test)]
 #[path = "add_tests.rs"]
@@ -353,3 +383,7 @@ mod tests;
 #[cfg(test)]
 #[path = "add_refusal_tests.rs"]
 mod refusal_tests;
+
+#[cfg(test)]
+#[path = "add_assoc_tests.rs"]
+mod assoc_tests;

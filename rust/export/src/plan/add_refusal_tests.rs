@@ -103,7 +103,7 @@ fn a_negative_quantity_is_refused() {
     wall.psets = vec![NewPropertySet {
         name: "Qto_WallBaseQuantities".into(),
         kind: PsetKind::Quantity,
-        properties: vec![NewProperty { name: "Length".into(), value: PropertyValue::Measure { measure_type: "IfcLengthMeasure".into(), value: -3.0 } }],
+        properties: vec![NewProperty { name: "Length".into(), value: PropertyValue::Measure { measure_type: "IfcLengthMeasure".into(), value: -3.0 }, unit: None }],
     }];
     refused(&storey_with_typed_wall("IFC4"), wall, "cannot be negative");
 }
@@ -251,7 +251,7 @@ fn a_property_measure_must_be_a_declared_number() {
         wall.psets = vec![NewPropertySet {
             name: "Pset_Test".into(),
             kind: PsetKind::Property,
-            properties: vec![NewProperty { name: "P".into(), value: PropertyValue::Measure { measure_type: measure.into(), value: 1.0 } }],
+            properties: vec![NewProperty { name: "P".into(), value: PropertyValue::Measure { measure_type: measure.into(), value: 1.0 }, unit: None }],
         }];
         refused(&storey_with_typed_wall("IFC4"), wall, expect);
     }
@@ -285,7 +285,7 @@ fn a_property_measure_must_be_declared_by_the_files_schema() {
     wall.psets = vec![NewPropertySet {
         name: "Pset_Test".into(),
         kind: PsetKind::Property,
-        properties: vec![NewProperty { name: "P".into(), value: PropertyValue::Measure { measure_type: "IfcNonNegativeLengthMeasure".into(), value: 1.0 } }],
+        properties: vec![NewProperty { name: "P".into(), value: PropertyValue::Measure { measure_type: "IfcNonNegativeLengthMeasure".into(), value: 1.0 }, unit: None }],
     }];
     refused(&storey_with_typed_wall("IFC2X3"), wall, "not an IFC measure in IFC2X3");
 }

@@ -12,6 +12,8 @@ use crate::plan::add_rels::RelKind;
 use crate::plan::add_types::{ClassSpec, NewObject, Representation, TypeLink};
 use crate::plan::attrs::attribute_index;
 use crate::plan::types::ObjectRef;
+use super::assoc::{CheckedClassification, CheckedMaterial};
+use super::units::CheckedUnits;
 use super::AddState;
 
 /// What [`AddState::check`] resolved; everything the build needs that
@@ -25,6 +27,10 @@ pub(super) struct Checked {
     pub(super) new_type: Option<(String, Option<String>)>,
     pub(super) host: Option<u32>,
     pub(super) fills: bool,
+    pub(super) material: Option<CheckedMaterial>,
+    pub(super) classifications: Vec<CheckedClassification>,
+    pub(super) units: CheckedUnits,
+    pub(super) type_units: CheckedUnits,
 }
 
 impl AddState<'_> {
@@ -64,7 +70,7 @@ impl AddState<'_> {
     /// `(id, UPPERCASE class)` of an object in the source or added earlier
     /// in this plan. A source object this plan deletes is not there, but an
     /// object added under its GlobalId is.
-    fn lookup(&self, r: &ObjectRef) -> Result<(u32, String), String> {
+    pub(super) fn lookup(&self, r: &ObjectRef) -> Result<(u32, String), String> {
         let deleted = match self.index.resolve(r) {
             Some(id) if !self.removed.contains(&id) => return Ok((id, self.index.type_of(id).unwrap_or_default())),
             Some(_) => true,
@@ -165,15 +171,15 @@ impl AddState<'_> {
         // The placement patch's rule, checked before any id is allocated.
         crate::plan::placement::check_matrix(&obj.placement.matrix)?;
 
-        let (existing_type, new_type) = match &obj.type_link {
-            None => (None, None),
+        let (existing_type, new_type, type_units) = match &obj.type_link {
+            None => (None, None, Vec::new()),
             Some(TypeLink::Existing(r)) => {
                 let (id, c) = self.lookup(r)?;
                 if !self.is_a(&c, "IFCTYPEPRODUCT") {
                     return Err(format!("type {r} is {c}, not a product type"));
                 }
                 self.check_type_pairing(&class, &c, &format!("type {r}"))?;
-                (Some(id), None)
+                (Some(id), None, Vec::new())
             }
             Some(TypeLink::New(t)) => {
                 validate_psets(self.schema, &t.psets)?;
@@ -187,11 +193,14 @@ impl AddState<'_> {
                 }
                 let (type_class, predefined) = self.check_class(&t.class, "IFCTYPEPRODUCT")?;
                 self.check_type_pairing(&class, &type_class, "new type")?;
-                (None, Some((type_class, predefined)))
+                (None, Some((type_class, predefined)), self.check_units(&t.psets)?)
             }
         };
 
         validate_psets(self.schema, &obj.psets)?;
+        let units = self.check_units(&obj.psets)?;
+        let material = obj.material.as_ref().map(|m| self.check_material(m)).transpose()?;
+        let classifications = self.check_classifications(&obj.classifications)?;
         match &obj.representation {
             Representation::None => {}
             Representation::Extrusion(e) => validate_extrusion(e)?,
@@ -227,6 +236,10 @@ impl AddState<'_> {
             new_type,
             host,
             fills,
+            material,
+            classifications,
+            units,
+            type_units,
         })
     }
 }

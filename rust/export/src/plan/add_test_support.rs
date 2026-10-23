@@ -40,6 +40,8 @@ pub(super) fn object(class: IfcClass, id: GlobalId, container: Option<ObjectRef>
         style: None,
         psets: Vec::new(),
         opening: None,
+        material: None,
+        classifications: Vec::new(),
     }
 }
 

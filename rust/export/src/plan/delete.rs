@@ -99,6 +99,10 @@ struct ListStrip {
     occurrences: FxHashMap<u32, usize>,
     /// Reference entries not stripped yet.
     remaining: usize,
+    /// The ids stripped so far.
+    stripped: HashSet<u32>,
+    /// Whether emptying it takes the record out ([`is_mandatory_members_attr`]).
+    mandatory: bool,
 }
 
 /// The cascade's working state. See [`resolve_deletes`].
@@ -107,8 +111,6 @@ struct Cascade<'i> {
     file_schema: &'i str,
     removed: HashSet<u32>,
     worklist: VecDeque<u32>,
-    /// Per (referrer, attr index): ids stripped from that list so far.
-    stripped: HashMap<(u32, usize), HashSet<u32>>,
     /// Per (referrer, attr index): the list as stripped so far. `None` when
     /// the slot is not a top-level list.
     lists: FxHashMap<(u32, usize), Option<ListStrip>>,
@@ -126,14 +128,14 @@ impl Cascade<'_> {
     /// the slot is not a top-level list holding `member`; nothing is
     /// recorded then.
     fn strip(&mut self, referrer: u32, idx: usize, member: u32) -> bool {
-        let index = self.index;
-        let list = self.lists.entry((referrer, idx)).or_insert_with(|| list_strip(index, referrer, idx));
+        let (index, file_schema) = (self.index, self.file_schema);
+        let list = self.lists.entry((referrer, idx)).or_insert_with(|| list_strip(index, file_schema, referrer, idx));
         let Some(list) = list.as_mut() else { return false };
         let Some(&count) = list.occurrences.get(&member) else { return false };
-        if self.stripped.entry((referrer, idx)).or_default().insert(member) {
+        if list.stripped.insert(member) {
             list.remaining -= count;
         }
-        if list.remaining == 0 && is_mandatory_members_attr(self.file_schema, &index.type_of(referrer).unwrap_or_default(), idx) {
+        if list.remaining == 0 && list.mandatory {
             self.mark_removed(referrer);
         }
         true
@@ -144,7 +146,7 @@ impl Cascade<'_> {
 /// a top-level list. Only a top-level entry can be stripped: a reference in a
 /// nested list or typed value is dangling however it is fixed, so an id that
 /// also appears there is left out.
-fn list_strip(index: &FileIndex, referrer: u32, idx: usize) -> Option<ListStrip> {
+fn list_strip(index: &FileIndex, file_schema: &str, referrer: u32, idx: usize) -> Option<ListStrip> {
     let mut slots = index.attrs(referrer).unwrap_or_default();
     let slot = (idx < slots.len()).then(|| slots.swap_remove(idx))?;
     let entries = slot.list?;
@@ -154,7 +156,8 @@ fn list_strip(index: &FileIndex, referrer: u32, idx: usize) -> Option<ListStrip>
     }
     let remaining = occurrences.values().sum();
     occurrences.retain(|id, _| !slot.nested.contains(id));
-    Some(ListStrip { occurrences, remaining })
+    let mandatory = is_mandatory_members_attr(file_schema, &index.type_of(referrer).unwrap_or_default(), idx);
+    Some(ListStrip { occurrences, remaining, stripped: HashSet::new(), mandatory })
 }
 
 /// `resolve_deletes` also takes member removals that have nothing to do
@@ -181,7 +184,6 @@ pub(crate) fn resolve_deletes(
         file_schema,
         removed: requested.clone(),
         worklist: requested.iter().copied().collect(),
-        stripped: HashMap::new(),
         lists: FxHashMap::default(),
     };
     // Distinct referrers each target still has, seeded from the file's
@@ -253,8 +255,12 @@ pub(crate) fn resolve_deletes(
         }
     }
 
-    let Cascade { removed, mut stripped, .. } = cascade;
-    stripped.retain(|(referrer, _), _| !removed.contains(referrer));
+    let Cascade { removed, lists, .. } = cascade;
+    let stripped = lists
+        .into_iter()
+        .filter(|((referrer, _), _)| !removed.contains(referrer))
+        .filter_map(|(slot, list)| list.map(|list| (slot, list.stripped)).filter(|(_, ids)| !ids.is_empty()))
+        .collect();
     DeleteResult { removed, stripped }
 }
 

@@ -137,11 +137,10 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     // copy-on-write detach are resolved together: a relationship either
     // side strips from composes into a single rewrite, and a relationship
     // both sides empty between them still cascades.
-    let gated = (requested_deletes.len(), protected.len());
-    protect_what_appended_names(index, &list_edits, &removed, &mut appended, &mut protected);
-    // Both sets only grow, so unchanged sizes and no detach mean the gating
-    // pass already is this answer.
-    let delete_result = if detach_requests.is_empty() && gated == (requested_deletes.len(), protected.len()) {
+    let newly_protected = protect_what_appended_names(index, &list_edits, &removed, &mut appended, &mut protected);
+    // With no detach, no swept geometry and nothing newly protected, this
+    // pass has the gating pass's inputs, so the gating pass is its answer.
+    let delete_result = if detach_requests.is_empty() && geometry_cuts.is_empty() && !newly_protected {
         gating
     } else {
         let result = delete::resolve_deletes(index, schema, &requested_deletes, &detach_requests, &protected);
@@ -265,14 +264,14 @@ fn attach_context_to_project(
 /// name them), then keep alive every source record an appended one still
 /// names: a member a copy-on-write clone reuses, the owner history. An
 /// appended record's own id is above `max_id`, so only what it names in the
-/// source is kept.
+/// source is kept. `true` when that protects anything new.
 fn protect_what_appended_names(
     index: &FileIndex,
     list_edits: &HashMap<(u32, usize), attrs::ListEdit>,
     removed: &HashSet<u32>,
     appended: &mut Vec<(u32, String)>,
     protected: &mut HashSet<u32>,
-) {
+) -> bool {
     let orphans: HashSet<u32> = list_edits
         .iter()
         .filter(|((set, _), _)| removed.contains(set))
@@ -283,7 +282,9 @@ fn protect_what_appended_names(
     for (_, text) in appended.iter() {
         crate::step_text::refs_in_line(text.as_bytes(), &mut named);
     }
+    let before = protected.len();
     protected.extend(named.into_iter().filter(|&id| id <= index.max_id));
+    protected.len() > before
 }
 
 /// A refusal for each surviving object's write into a record the plan

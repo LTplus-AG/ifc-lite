@@ -98,13 +98,15 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
   const update = upsert;
   const setBlocks = useCallback((blocks: DocumentBlock[]) => { if (document) update({ ...document, blocks }); }, [document, update]);
 
-  const moveBlocks = (ids: ReadonlySet<string>, beforeId: string | null): void => {
+  const moveBlocks = (ids: ReadonlySet<string>, beforeId: string | null): boolean => {
     const live = useViewerStore.getState();
-    if (!document || live.activeDocumentId !== document.id) return;
+    if (!document || live.activeDocumentId !== document.id) return false;
     const current = live.documents.find(entry => entry.id === document.id);
-    if (!current) return;
+    if (!current) return false;
     const blocks = reorderDocumentBlocks(current.blocks, ids, beforeId);
-    if (blocks !== current.blocks) void update({ ...current, blocks });
+    if (blocks === current.blocks) return false;
+    void update({ ...current, blocks });
+    return true;
   };
 
   const copyBlock = (id: string): void => {

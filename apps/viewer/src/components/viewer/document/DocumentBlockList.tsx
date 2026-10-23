@@ -12,7 +12,7 @@ interface Props {
   selected: ReadonlySet<string>;
   onToggle: (id: string) => void;
   onSelectOnly: (id: string) => void;
-  onMove: (ids: ReadonlySet<string>, beforeId: string | null) => void;
+  onMove: (ids: ReadonlySet<string>, beforeId: string | null) => boolean;
   children: (block: DocumentBlock, index: number) => ReactNode;
 }
 
@@ -22,13 +22,16 @@ export function DocumentBlockList({ document, selected, onToggle, onSelectOnly, 
   const { t } = useTranslation();
   const drag = useRef<ReadonlySet<string> | null>(null);
   const [over, setOver] = useState<string | null | undefined>();
-  const [announcement, setAnnouncement] = useState('');
+  const [announcement, setAnnouncement] = useState({ text: '', sequence: 0 });
   const label = (block: DocumentBlock, index: number) => t('document.selection.block', {
     number: String(index + 1), name: 'title' in block && block.title ? block.title : block.kind === 'text' ? block.text.slice(0, 45) : '',
   });
   const move = (ids: ReadonlySet<string>, before: string | null) => {
-    onMove(ids, before);
-    setAnnouncement(t('document.selection.moved'));
+    if (!onMove(ids, before)) return;
+    const index = document.blocks.findIndex(block => block.id === before);
+    const text = index < 0 ? t('document.selection.movedBottom')
+      : t('document.selection.movedBefore', { block: label(document.blocks[index], index) });
+    setAnnouncement(prior => ({ text, sequence: prior.sequence + 1 }));
   };
   const cancel = () => { drag.current = null; setOver(undefined); };
   const dragOver = (event: DragEvent, before: string | null) => {
@@ -50,7 +53,7 @@ export function DocumentBlockList({ document, selected, onToggle, onSelectOnly, 
       </select>
       <button type="button" className="rounded border border-border px-2 py-1 disabled:opacity-40" disabled={!selected.size}
         onClick={() => move(selected, null)}>{t('document.selection.moveBottom')}</button>
-      <span role="status" className="sr-only">{announcement}</span>
+      <span role="status" className="sr-only"><span key={announcement.sequence}>{announcement.text}</span></span>
     </div>
     <p className="text-muted-foreground">{t('document.selection.hint')}</p>
     {document.blocks.map((block, index) => <div key={block.id} data-block-list-item={block.id}

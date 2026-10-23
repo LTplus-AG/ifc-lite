@@ -22,11 +22,10 @@
  * Both see one loss once, so each count is the larger of the two, never the sum.
  *
  * Uncaptured errors and Dawn "Instance reference no longer exists" errors are
- * reported but do not by themselves contaminate a sample. Measured on WSL
- * SwiftShader (FZK, Snowdon): every sample logs one, from a pipeline probe on
- * a device already destroyed before the load, while the renderer's own device
- * lives on and renders. Only the renderer losing its device, or re-creating
- * it, changes the work the sample measured.
+ * reported but do not by themselves establish loss of the renderer's device.
+ * #7655 traced one cause to canvas shared-image failure closing Chromium's GPU
+ * channel; the message alone does not identify the affected device or cause.
+ * Device-loss and replacement witnesses establish sample contamination.
  */
 
 export interface GpuHealth {
@@ -64,11 +63,12 @@ export interface GpuHealth {
  * Every line the renderer and viewer print when the renderer's device is lost,
  * in one place (#6993 review): each names its own log site. A loss surfaces
  * through one or more of them, so per sample the loss count is the largest
- * per-format count, never their sum. `destroyed` is intentional teardown.
+ * per-format count, never their sum. Owned teardown is excluded at the log
+ * source by device lifetime; Chromium can report `destroyed` for a real loss.
  */
-export const DEVICE_LOSS_LOG_FORMATS: ReadonlyArray<{ site: string; pattern: RegExp; reason?: number }> = [
+export const DEVICE_LOSS_LOG_FORMATS: ReadonlyArray<{ site: string; pattern: RegExp }> = [
   // packages/renderer/src/device.ts: the `device.lost` promise (Chromium).
-  { site: 'WebGPUDevice.lost', pattern: /\[WebGPU\] Device lost:.*\(reason: ([\w-]+)\)/, reason: 1 },
+  { site: 'WebGPUDevice.lost', pattern: /\[WebGPU\] Device lost:.*\(reason: [\w-]+\)/ },
   // packages/renderer/src/index.ts `handleDeviceLost`: also synchronous losses
   // (Safari throws, upload exceptions) that never settle `device.lost`.
   { site: 'Renderer.handleDeviceLost', pattern: /\[Renderer\] GPU device lost — halting rendering until re-init:/ },
@@ -79,11 +79,10 @@ const INSTANCE_LOST = /valid external Instance reference no longer exists/i;
 const UNCAPTURED = /\[WebGPU\] Uncaptured error:/;
 const MAX_EVENTS = 20;
 
-/** Which loss format a console line is, or null; `destroyed` teardown lines are not losses. */
+/** Which loss format a console line is, or null. Ownership is checked at the source. */
 export function deviceLossFormat(line: string): string | null {
-  for (const { site, pattern, reason } of DEVICE_LOSS_LOG_FORMATS) {
-    const match = pattern.exec(line);
-    if (match && (reason === undefined || match[reason] !== 'destroyed')) return site;
+  for (const { site, pattern } of DEVICE_LOSS_LOG_FORMATS) {
+    if (pattern.test(line)) return site;
   }
   return null;
 }
@@ -99,9 +98,8 @@ export function gpuHealthFrom(
   for (const line of consoleLogs) {
     const site = deviceLossFormat(line);
     const isLoss = site !== null;
-    // Loss lines quote the same message, and a destroyed-teardown line is no
-    // instance error either; count that event once, as the loss.
-    const isInstance = !isLoss && !DEVICE_LOSS_LOG_FORMATS[0].pattern.test(line) && INSTANCE_LOST.test(line);
+    // Loss lines quote the same message; count that event once, as the loss.
+    const isInstance = !isLoss && INSTANCE_LOST.test(line);
     const isUncaptured = UNCAPTURED.test(line);
     if (site) lossesBySite.set(site, (lossesBySite.get(site) ?? 0) + 1);
     if (isInstance) instanceErrors++;

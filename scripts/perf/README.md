@@ -12,6 +12,34 @@ that also dominate in the browser; the WASM-only concerns (per-worker file
 re-decode, no threads, memory bandwidth) are orchestration-level and are read
 off the viewer's own telemetry (below).
 
+## Supported convex thin patches (#8047)
+
+**Correctness repair; native timing inconclusive.** Interleaved base/branch
+probes on FZK, ISSUE_129 and Holter preserve mesh, vertex and triangle counts
+(count identity, not a content hash). FZK and Holter baseline spread exceeds
+the reporter's noise gate despite an accepted idle-host sample; ISSUE_129's
+geometry and total changes remain inside the measured spread. This does not
+establish a speedup or performance neutrality. The certificate walk adds work
+only on inputs containing needles. Lesson: complete healthy boundary support
+alone also retains deliberately cleaned tiny openings; require strictly convex
+internal ridges and keep the physical-unit cleanup regression alongside the
+thin-floor closure witness.
+
+**Consumer-boundary follow-up (#8057).** Local exact closure is insufficient
+when the next consumer deletes the retained faces after conversion to metres.
+The Office regression demonstrated that source operand cleanup can undo a
+closed rescue before an analytic opening cut. Connected subtractive-operand
+rescues now also check the existing cleanup predicate in physical units;
+finished void results keep their closed-subgrid contract. The additional copy
+and scan are confined to connected-patch candidates. Rejecting a connected
+patch must retain the previously certified isolated-cell baseline; removing
+both policies also regresses real Office hosts.
+
+Performance verdict: not measured. The exclusive benchmark host was occupied
+by foreign WASM validation and PC timing is disabled. No replacement cohort
+was submitted and no neutrality or speedup is claimed; the earlier
+inconclusive measurements do not qualify this follow-up.
+
 ## Geometry platform migration slices (#7955)
 
 **E1 element planning/execution (#8044): mixed phase timing, no measurable
@@ -4539,6 +4567,34 @@ recovery ran no build, native test, browser/WASM campaign or performance measure
 75-test qualification do not qualify the recovered source. Root review and
 source-matched fleet qualification remain required; no output pin, baseline,
 ceiling or acceptance band is changed.
+
+## Allplan polyline full-path compatibility (#7983)
+
+The [original native comparison](evidence/allplan-polyline-7983/summary.json)
+against the branch base passed its pre-timing idle guard, but the unchanged
+reporter rejected the timing spread. Parse medians were unchanged; geometry
+and total medians increased within that wide spread. The verdict is unqualified,
+with no speedup, neutrality or browser worker-pool performance claim. Mesh,
+vertex and triangle counts match; payload byte identity was not measured.
+The timed candidate precedes the final replacement of literal attribute
+positions with typed slots, so this is not a final-source timing result.
+
+Lesson: an idle preflight and matching output counts do not qualify noisy
+timing or establish byte identity. Preserve the original adverse observations
+and their source identity rather than treating a successful probe exit as
+performance acceptance.
+
+The [sole final-source comparison](evidence/allplan-polyline-7983/final-891152455a/README.md)
+measures the merged candidate against its matching main parent under exclusive
+Pop admission. The unchanged reporter again rejects the timing spread. Ordered
+mesh payload fingerprints match on every sample, with the fingerprint's declared
+metadata/texture/instancing exclusions. No speedup, neutrality or browser
+worker-pool verdict follows. Both the original adverse observations and this
+final-source rejection remain evidence; neither is replaced by a passing probe
+exit. Sample telemetry excludes cgroup quota throttling but does not prove the
+remaining noise's cause. Lesson: short-model timing can remain unqualified after
+exclusive admission and a passing idle guard; preserve that limit rather than
+changing acceptance or running replacement cohorts.
 
 ### Element presentation source admission (E1b, #7955, #8049)
 

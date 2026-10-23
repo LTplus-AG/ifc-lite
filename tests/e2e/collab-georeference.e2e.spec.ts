@@ -20,7 +20,7 @@ const EVIDENCE_DIR = process.env.E2E_EVIDENCE_DIR;
 
 // Same real-Chrome SwiftShader WebGPU flags as the viewer smoke lane.
 test.use({ launchOptions: { args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan',
-  '--use-vulkan=swiftshader', '--disable-vulkan-surface', '--ignore-gpu-blocklist', '--enable-gpu'] } });
+  '--use-vulkan=swiftshader', '--use-angle=swiftshader', '--disable-vulkan-surface', '--ignore-gpu-blocklist', '--enable-gpu'] } });
 
 async function fresh(browser: Browser, relay: Relay, url: string) {
   const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });

@@ -1,0 +1,98 @@
+{
+  "base": "a4fc04cf1f1a04ed1ad3cff89b3d32d9c97f8751",
+  "branch": "891152455ab75c73341c878c0c55ccde9feece92",
+  "fixtures": [
+    {
+      "fixture": "AC20-FZK-Haus.ifc",
+      "phases": [
+        {
+          "phase": "parse",
+          "baseMedianMs": 14,
+          "branchMedianMs": 14,
+          "deltaPct": 0,
+          "noisePct": 7.142857142857142,
+          "real": false,
+          "direction": "unchanged"
+        },
+        {
+          "phase": "entity-scan",
+          "baseMedianMs": 8,
+          "branchMedianMs": 7,
+          "deltaPct": -12.5,
+          "noisePct": 0,
+          "real": true,
+          "direction": "faster"
+        },
+        {
+          "phase": "lookup/styles",
+          "baseMedianMs": 2,
+          "branchMedianMs": 2,
+          "deltaPct": 0,
+          "noisePct": 0,
+          "real": false,
+          "direction": "unchanged"
+        },
+        {
+          "phase": "preprocess",
+          "baseMedianMs": 3,
+          "branchMedianMs": 3,
+          "deltaPct": 0,
+          "noisePct": 0,
+          "real": false,
+          "direction": "unchanged"
+        },
+        {
+          "phase": "geometry",
+          "baseMedianMs": 33,
+          "branchMedianMs": 31,
+          "deltaPct": -6.0606060606060606,
+          "noisePct": 48.484848484848484,
+          "real": false,
+          "direction": "faster"
+        },
+        {
+          "phase": "TOTAL",
+          "baseMedianMs": 48,
+          "branchMedianMs": 45,
+          "deltaPct": -6.25,
+          "noisePct": 29.166666666666668,
+          "real": false,
+          "direction": "faster"
+        }
+      ],
+      "fingerprint": {
+        "meshes": {
+          "base": [
+            285
+          ],
+          "branch": [
+            285
+          ]
+        },
+        "vertices": {
+          "base": [
+            35940
+          ],
+          "branch": [
+            35940
+          ]
+        },
+        "triangles": {
+          "base": [
+            20322
+          ],
+          "branch": [
+            20322
+          ]
+        }
+      }
+    }
+  ],
+  "verdict": {
+    "fingerprintDrift": false,
+    "tooNoisy": true,
+    "realChange": true,
+    "inconclusive": false,
+    "zeroBaselineIncrease": false
+  }
+}

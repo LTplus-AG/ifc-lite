@@ -36,7 +36,7 @@ describe('GPU and merge counters (#6957)', () => {
     let lostRead = 0;
     Object.defineProperty(device, 'lost', { get: () => { lostRead++; return new Promise(() => {}); } });
     Object.assign(device, { addEventListener: () => { listened++; } });
-    assert.strictEqual(meterGpuDevice(device), device);
+    assert.strictEqual(meterGpuDevice(device, device, () => true), device);
     assert.strictEqual(device.createBuffer, createBuffer);
     assert.strictEqual(listened + lostRead, 0, '#6993: no device-health listener outside trace mode');
     assert.deepStrictEqual(perfCounters.read(), {}, 'nothing counted while off');
@@ -45,7 +45,7 @@ describe('GPU and merge counters (#6957)', () => {
   it('counts buffer creations, mapped uploads and writes, keeping uniform writes apart', () => {
     perfCounters.enable();
     const { device, created, writes } = fakeDevice();
-    meterGpuDevice(device);
+    meterGpuDevice(device, device, () => true);
     const before = perfCounters.read();
     const vertex = device.createBuffer({ size: 1024, usage: 0x20, mappedAtCreation: true }); // VERTEX
     const uniform = device.createBuffer({ size: 64, usage: 0x40 | 0x08 }); // UNIFORM | COPY_DST
@@ -68,6 +68,7 @@ describe('GPU and merge counters (#6957)', () => {
     const before = perfCounters.read();
     const owner = {}; // one WebGPUDevice wrapper re-initialising: [1] replaces [0]
     const devices = ['unknown', 'destroyed'].map((reason) => {
+      let live = true;
       const { device } = fakeDevice();
       let settle!: (info: { message: string; reason: string }) => void;
       const listeners: Array<() => void> = [];
@@ -75,12 +76,13 @@ describe('GPU and merge counters (#6957)', () => {
         lost: new Promise((resolve) => { settle = resolve; }),
         addEventListener: (type: string, listener: () => void) => { if (type === 'uncapturederror') listeners.push(listener); },
       });
-      meterGpuDevice(device, owner);
-      return { lose: () => settle({ message: 'gone', reason }), error: () => listeners.forEach((l) => l()) };
+      meterGpuDevice(device, owner, () => live);
+      return { lose: () => settle({ message: 'gone', reason }), retire: () => { live = false; }, error: () => listeners.forEach((l) => l()) };
     });
     devices[0].error();
     devices[0].error();
     devices[0].lose(); // superseded by devices[1]: a stale settlement, ignored like device.ts does
+    devices[1].retire(); // Owner invalidates its lifetime before intentional teardown.
     devices[1].lose(); // teardown: `device.destroy()` settles `lost` with 'destroyed'
     await new Promise((resolve) => setImmediate(resolve));
     assert.deepStrictEqual(diffCounters(perfCounters.read(), before), {
@@ -98,7 +100,7 @@ describe('GPU and merge counters (#6957)', () => {
       const { device } = fakeDevice();
       let settle!: (info: { message: string; reason: string }) => void;
       Object.assign(device, { lost: new Promise((resolve) => { settle = resolve; }) });
-      meterGpuDevice(device, owner);
+      meterGpuDevice(device, owner, () => true);
       return () => settle({ message: 'A valid external Instance reference no longer exists.', reason: 'unknown' });
     });
     live[0](); // A, metered before B
@@ -108,13 +110,40 @@ describe('GPU and merge counters (#6957)', () => {
     assert.deepStrictEqual(diffCounters(perfCounters.read(), before), { 'gpu.devices': 2, 'gpu.deviceLost': 1 });
   });
 
+  it('#7655 ownership distinguishes browser destruction from owned teardown and stale loss', async () => {
+    perfCounters.enable();
+    const before = perfCounters.read();
+    const owner = {};
+    let generation = 0;
+    const create = () => {
+      const lifetime = ++generation;
+      const { device } = fakeDevice();
+      let settle!: (info: { reason: string }) => void;
+      Object.assign(device, { lost: new Promise(resolve => { settle = resolve; }) });
+      meterGpuDevice(device, owner, () => generation === lifetime);
+      return (reason: string) => settle({ reason });
+    };
+    const stale = create();
+    const active = create();
+    stale('unknown');
+    active('destroyed'); // Browser destroyed the current device; no owner teardown.
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepStrictEqual(diffCounters(perfCounters.read(), before), { 'gpu.devices': 2, 'gpu.deviceLost': 1 });
+
+    const intentional = create();
+    generation++; // WebGPUDevice.destroy invalidates ownership BEFORE native destroy.
+    intentional('destroyed');
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepStrictEqual(diffCounters(perfCounters.read(), before), { 'gpu.devices': 3, 'gpu.deviceLost': 1 });
+  });
+
   it('#6993 counts a real loss of the device in use', async () => {
     perfCounters.enable();
     const before = perfCounters.read();
     const { device } = fakeDevice();
     let settle!: (info: { message: string; reason: string }) => void;
     Object.assign(device, { lost: new Promise((resolve) => { settle = resolve; }) });
-    meterGpuDevice(device);
+    meterGpuDevice(device, device, () => true);
     settle({ message: 'A valid external Instance reference no longer exists.', reason: 'unknown' });
     await new Promise((resolve) => setImmediate(resolve));
     assert.deepStrictEqual(diffCounters(perfCounters.read(), before), { 'gpu.devices': 1, 'gpu.deviceLost': 1 });

@@ -45,7 +45,10 @@ pub fn extract_swept_disk(
     }
     let start = read_optional_numeric(entity.get(Disk::START_PARAM.index()), "StartParam")?;
     let end = read_optional_numeric(entity.get(Disk::END_PARAM.index()), "EndParam")?;
-    let has_trim = start.is_some() || end.is_some();
+    let (effective_start, effective_end) = crate::swept_disk_range::effective_range(
+        directrix.ifc_type.clone(), start, end, decoder,
+    );
+    let has_trim = effective_start.is_some() || effective_end.is_some();
     let extracted = if directrix.ifc_type == IfcType::IfcLine && (start.is_none() || end.is_none())
     {
         if capture {
@@ -73,7 +76,7 @@ pub fn extract_swept_disk(
         ));
     }
     if matches!(status, AnalyticStatus::Complete) && has_trim {
-        trim_segments(&directrix, &mut segments, &mut status, start, end, decoder)?;
+        trim_segments(&directrix, &mut segments, &mut status, effective_start, effective_end, decoder)?;
     }
     if matches!(status, AnalyticStatus::Complete)
         && segments.iter().any(|segment| !segment.is_finite())

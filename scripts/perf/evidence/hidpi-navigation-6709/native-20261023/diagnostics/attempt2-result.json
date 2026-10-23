@@ -1,0 +1,27 @@
+{
+  "source": "be5c740cb9f1c57e4d1531ed574e2708839996be",
+  "job": "584559ad-1a7a-4c23-8472-6c014f57ee9b",
+  "kind": "Failed native diagnostic; no accepted A/B or timing result",
+  "outcome": "Error: Timed out awaiting metadata, geometry, renderer finalize and allocated canvas; sample incomplete",
+  "completedSamples": 1,
+  "acceptedSamples": 0,
+  "timingRows": [],
+  "host": {
+    "cpuPercent": 1.8662519440124417,
+    "MemAvailableKiB": 109953760,
+    "quiet": true,
+    "gpuModel": "NVIDIA RTX 4000 Ada Generation Laptop GPU",
+    "ac": true
+  },
+  "session": {
+    "Seat": "seat0",
+    "Remote": "no",
+    "Type": "wayland",
+    "Active": "yes",
+    "LockedHint": "no",
+    "display": ":1",
+    "wayland": "wayland-1"
+  },
+  "originalRecordSha256": "9800134d2a12ad4cf5a1bec360ef8387104e332cfce7d08280115dd5456190e6",
+  "evidenceScope": "The model rendered in the retained screenshot. The complete metadata/render readiness contract did not pass; which individual prerequisite was missing was not captured by this older diagnostic. GPU driver errors are retained separately. No geometry, picking or capture-quality acceptance follows."
+}

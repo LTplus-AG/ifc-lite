@@ -10,7 +10,7 @@ import { PassThrough, Readable } from 'node:stream';
 import { extractTypeEntityOwnProperties, extractTypeEntityOwnQuantities } from '@ifc-lite/parser';
 import { gymCommand } from './gym.js';
 import * as channels from './gym/channels.js';
-import { schemas, source, directlyOwnedSetNames } from './type-mutation-test-helpers.js';
+import { schemas, source, directlyOwnedSetNames } from './test-fixtures/type-mutation.js';
 
 describe('gym preserves type-owned data through edits and reset (#8056)', () => {
   for (const fixture of schemas) {

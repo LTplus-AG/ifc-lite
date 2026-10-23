@@ -10,7 +10,7 @@ import { extractTypeEntityOwnProperties, extractTypeEntityOwnQuantities } from '
 import { loadIfcBytes } from '../loader.js';
 import { mutateCommand } from './mutate.js';
 
-import { schemas, source, directlyOwnedSetNames } from './type-mutation-test-helpers.js';
+import { schemas, source, directlyOwnedSetNames } from './test-fixtures/type-mutation.js';
 
 describe('CLI mutate preserves type-owned siblings and quantities (#8056)', () => {
   for (const fixture of schemas) {

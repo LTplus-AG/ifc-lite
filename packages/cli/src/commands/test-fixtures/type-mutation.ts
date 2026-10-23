@@ -30,12 +30,14 @@ export function source(fixture: (typeof schemas)[number]): Uint8Array {
 /** Read ownership directly; the own-data extractors also accept relationship sets. */
 export function directlyOwnedSetNames(store: IfcDataStore): string[] {
   const extractor = new EntityExtractor(store.source);
+  // @raw-entity-enumeration-ok independent reparse checks original HasPropertySets ownership; no live mutation view exists
   const ownerRef = store.entityIndex.byId.get(1);
   if (!ownerRef) throw new Error('fixture type #1 missing');
   const ids = extractor.extractEntity(ownerRef)?.attributes[5];
   if (!Array.isArray(ids)) return [];
   return ids.map(id => {
     if (typeof id !== 'number') throw new Error('HasPropertySets contains a non-reference');
+    // @raw-entity-enumeration-ok inspect the owned set in the independently reparsed export, without an overlay
     const ref = store.entityIndex.byId.get(id);
     if (!ref) throw new Error(`owned set #${id} missing`);
     return String(extractor.extractEntity(ref)?.attributes[2]);

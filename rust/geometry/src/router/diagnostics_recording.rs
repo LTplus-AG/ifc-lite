@@ -183,7 +183,7 @@ const _: () = {
     }
 };
 
-/// Discriminator for [`OpeningDiagnostic::kind`]. Mirrors `OpeningType`
+/// Discriminator for [`OpeningDiagnostic::kind`]. Mirrors `CutterKind`
 /// without dragging the geometry data along.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpeningKindDiag {
@@ -385,7 +385,7 @@ impl GeometryRouter {
 }
 
 /// Internal classification-branch tag for `bump_classification`. Mirrors
-/// the variants of `OpeningType`.
+/// the variants of `CutterKind`.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum ClassificationKind {
     Rectangular,

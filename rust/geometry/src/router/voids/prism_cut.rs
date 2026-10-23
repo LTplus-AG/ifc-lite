@@ -62,7 +62,7 @@
 use std::sync::OnceLock;
 
 use super::geom::opening_mesh_thinnest_axis_dir;
-use super::{cutter_is_closed_manifold, OpeningType, VoidContext};
+use super::{cutter_is_closed_manifold, CutterKind, VoidContext};
 use crate::program::openings::execute::Execution;
 use crate::cdt::triangulate_pslg;
 use crate::mesh::Mesh;
@@ -567,18 +567,7 @@ fn mesh_from_ptris(tris: &[PTri], template: &Mesh) -> Mesh {
         let base = (i * 3) as u32;
         indices.extend_from_slice(&[base, base + 1, base + 2]);
     }
-    Mesh {
-        positions,
-        normals,
-        indices,
-        rtc_applied: template.rtc_applied,
-        origin: template.origin,
-        instance_meta: None,
-        local_bounds: None,
-        local_to_world: None,
-        welded_in_object_frame: false,
-        plane_tags: None,
-    }
+    template.reframed_like(positions, normals, indices, template.origin)
 }
 
 // ─────────────────────────────── prism cutter ───────────────────────────────
@@ -1240,20 +1229,9 @@ fn try_merge_prisms(a: &PrismFrame, b: &PrismFrame, tol: f64) -> Option<PrismFra
 /// identity-frame OBB in the host's local frame — an overlap "blocker": a
 /// candidate prism abutting an exact-kernel opening must not be cut
 /// analytically (the residual exact cut would land flush on its caps).
-fn opening_aabb_obb(op: &OpeningType, origin: [f64; 3]) -> Option<([V3; 3], V3, V3)> {
-    let (mn, mx): (V3, V3) = match op {
-        OpeningType::Rectangular(mn, mx, _) | OpeningType::NonRectangular(_, mn, mx, _) => {
-            ([mn.x, mn.y, mn.z], [mx.x, mx.y, mx.z])
-        }
-        OpeningType::DiagonalRectangular(m, _) => {
-            let (a, b) = m.bounds();
-            let o = m.origin;
-            (
-                [a.x as f64 + o[0], a.y as f64 + o[1], a.z as f64 + o[2]],
-                [b.x as f64 + o[0], b.y as f64 + o[1], b.z as f64 + o[2]],
-            )
-        }
-    };
+fn opening_aabb_obb(op: &CutterKind, origin: [f64; 3]) -> Option<([V3; 3], V3, V3)> {
+    let (a, b) = op.cutter().world_bounds();
+    let (mn, mx): (V3, V3) = ([a.x, a.y, a.z], [b.x, b.y, b.z]);
     let lo = [mn[0] - origin[0], mn[1] - origin[1], mn[2] - origin[2]];
     let hi = [mx[0] - origin[0], mx[1] - origin[1], mx[2] - origin[2]];
     if (0..3).any(|k| !(hi[k] > lo[k]) || !lo[k].is_finite() || !hi[k].is_finite()) {
@@ -2952,7 +2930,7 @@ impl Execution {
 
         // Residual openings in their original classification order.
         residual_idx.sort_unstable();
-        let residual: Vec<OpeningType> = residual_idx
+        let residual: Vec<CutterKind> = residual_idx
             .iter()
             .map(|&i| ctx.merged_openings[i].clone())
             .collect();

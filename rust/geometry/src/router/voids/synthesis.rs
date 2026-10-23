@@ -10,7 +10,7 @@ mod exit_cap_far_field;
 pub(super) mod host_vertices;
 mod membrane;
 
-use super::{GeometryRouter, OpeningType, NORMALIZE_EPSILON};
+use super::{GeometryRouter, CutterKind, NORMALIZE_EPSILON};
 use crate::csg::plane_eps::PlaneEps;
 use crate::{Mesh, Point3, Vector3};
 
@@ -19,16 +19,16 @@ impl GeometryRouter {
     /// This prevents exponential triangle growth when many small openings
     /// tile a wall surface — each clip creates boundary triangles that get
     /// re-split by the next clip, causing O(2^N) growth.
-    pub(crate) fn merge_rectangular_openings(openings: &[OpeningType]) -> Vec<OpeningType> {
+    pub(crate) fn merge_rectangular_openings(openings: &[CutterKind]) -> Vec<CutterKind> {
         const MERGE_TOLERANCE: f64 = 0.01; // Broad phase only; never credit filled volume
 
         // Separate rectangular and non-rectangular openings
         let mut rects: Vec<(Point3<f64>, Point3<f64>, Option<Vector3<f64>>)> = Vec::new();
-        let mut others: Vec<OpeningType> = Vec::new();
+        let mut others: Vec<CutterKind> = Vec::new();
 
         for opening in openings {
             match opening {
-                OpeningType::Rectangular(min, max, dir) => {
+                CutterKind::Rectangular(min, max, dir) => {
                     rects.push((*min, *max, *dir));
                 }
                 other => others.push(other.clone()),
@@ -111,9 +111,9 @@ impl GeometryRouter {
         }
 
         // Reconstruct the opening list
-        let mut result: Vec<OpeningType> = rects
+        let mut result: Vec<CutterKind> = rects
             .into_iter()
-            .map(|(min, max, dir)| OpeningType::Rectangular(min, max, dir))
+            .map(|(min, max, dir)| CutterKind::Rectangular(min, max, dir))
             .collect();
         result.extend(others);
         result

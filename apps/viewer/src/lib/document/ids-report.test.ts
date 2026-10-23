@@ -293,3 +293,17 @@ it('preserves IDS evaluation errors in frozen snapshots (#8065 review)', () => {
   input.source = { kind: 'ids', document: { info: { title: 'Invalid IDS' }, specifications: [] } };
   assert.equal(idsReportBlockFromReport(input, 'errors').checks[0].error, 'Evaluation failed');
 });
+
+
+it('normalizes only unmatched IDS snapshot check rates (#8065)', () => {
+  const unmatched = spec({ id: 'empty', name: 'No matches', status: 'pass', passRate: 100 });
+  const errored = spec({ id: 'error', name: 'Evaluation error', passRate: 37 });
+  errored.error = 'Evaluation failed';
+  const matched = spec({ id: 'matched', name: 'Matched', applicableCount: 2, passedCount: 1, failedCount: 1, passRate: 50 });
+  const input = report([unmatched, errored, matched]);
+  assert.deepEqual(idsReportBlockFromReport(input, 'rules').checks.map(check => check.passRate), [100, 37, 50]);
+  input.source = { kind: 'ids', document: { info: { title: 'IDS' }, specifications: [] } };
+  const block = idsReportBlockFromReport(input, 'ids');
+  assert.deepEqual(block.checks.map(check => check.passRate), [0, 37, 50]);
+  assert.equal(unmatched.passRate, 100, 'snapshot display normalization preserves engine evidence');
+});

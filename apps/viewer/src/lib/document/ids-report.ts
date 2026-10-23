@@ -10,7 +10,7 @@
  * reads 100 rather than NaN on zero checked entities, and reports 0 instead
  * of 100 whenever a specification failed (#5212), see
  * `packages/ids/src/validation/validator.ts`), `SpecificationResult`'s own
- * `passRate` per check — so nothing here recomputes validation math.
+ * `passRate` per check, except unmatched IDS checks display zero (#8065).
  *
  * Rule descriptions come from the IDS source document when available.
  * Per-rule counts use entity results only when the report includes every
@@ -25,7 +25,7 @@
  * entity rows list failures only. An IDS snapshot is built exactly as before.
  */
 import { captureValidationElements } from '../validation/reports/element-evidence';
-import { validationReportSummary } from '../validation/report-summary.js';
+import { isUnmatchedSpecification, validationReportSummary } from '../validation/report-summary.js';
 import { capturedReportModelScope, replaceReportSnapshot } from './report-provenance.js';
 import type { SpecificationResult, ValidationReport } from '@ifc-lite/ids';
 import { boundedPassRate, formatConstraint } from '@ifc-lite/ids';
@@ -157,7 +157,7 @@ function snapshotFromReport(report: ValidationReport, id: string): IdsReportBloc
     checked: result.applicableCount,
     passed: result.passedCount,
     failed: result.failedCount,
-    passRate: result.passRate,
+    passRate: isUnmatchedSpecification(result.applicableCount, result.error) ? 0 : result.passRate,
     rules: rulesForCheck(report, result),
     ...(result.error !== undefined ? { error: result.error } : {}),
   }));

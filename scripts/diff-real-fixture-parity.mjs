@@ -28,7 +28,10 @@ for (const [basePath, headPath] of pairs) {
     console.log(`SKIP ${basePath} / ${headPath}: missing IFC fixture; run pnpm fixtures`);
     continue;
   }
-  const rows = await Promise.all(paths.map(async path => buildFileFingerprints(await loadIfcBytes(readFileSync(path), path.pathname))));
+  // The CLI loader captures process-wide console output while parsing.
+  // Load sequentially so overlapping captures cannot swallow the evidence.
+  const rows = [];
+  for (const path of paths) rows.push(buildFileFingerprints(await loadIfcBytes(readFileSync(path), path.pathname)));
   const base = retained(rows[0]);
   try {
     const head = retained(rows[1]);

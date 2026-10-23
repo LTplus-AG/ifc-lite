@@ -46,7 +46,12 @@ impl GeometryProcessor for OpaqueRecorder {
 
 fn opaque_log_after_failed_product(panic: bool) {
     let source = SOURCE.replace("ENDSEC;END-ISO-10303-21;",
-        "#87=IFCBOOLEANRESULT(.XOR.,#13,$);ENDSEC;END-ISO-10303-21;");
+        "#87=IFCBOOLEANRESULT(.XOR.,#13,$);
+#90=IFCSLAB('fresh',$,'Fresh',$,$,#19,#91,$,.FLOOR.);
+#91=IFCPRODUCTDEFINITIONSHAPE($,$,(#92));
+#92=IFCSHAPEREPRESENTATION(#2,'Body','SweptSolid',(#93));
+#93=IFCEXTRUDEDAREASOLID(#14,#5,#15,1.5);
+ENDSEC;END-ISO-10303-21;");
     let mut decoder = EntityDecoder::new(&source);
     let mut router = router(&mut decoder);
     router.disable_content_dedup();
@@ -73,9 +78,10 @@ fn opaque_log_after_failed_product(panic: bool) {
     // Explicit retrieval restores an unambiguous boundary. New reports from
     // successful custom work must still be published, rather than suppressed.
     record_next.set(true);
-    let job = leaked_job(&mut decoder, 10);
+    let job = leaked_job(&mut decoder, 90);
     let fresh = produce_element_meshes(job, &Context::default().borrowed(), &options(), &mut decoder, &router);
     assert!(!fresh.meshes.is_empty());
+    assert!(!record_next.get(), "the fresh item must execute the custom constructor");
     assert_eq!(fresh.csg_failures.values().map(Vec::len).sum::<usize>(), 1);
     assert!(router.take_csg_failures().is_empty());
 }

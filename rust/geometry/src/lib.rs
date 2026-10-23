@@ -309,3 +309,7 @@ mod exact_topology;
 
 /// Explicit resource admission for audited canonical execution sites.
 pub mod resource;
+
+#[cfg(test)]
+#[path = "../tests/support/profile_walk_model.rs"]
+mod profile_walk_model;

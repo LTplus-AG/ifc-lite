@@ -171,6 +171,12 @@ pub(super) struct ProductControl<'a> {
 }
 
 impl<'a> ProductControl<'a> {
+    #[cfg(test)]
+    pub(super) fn with_allowance(mut self, allowance: u32) -> Self {
+        self.allowance = allowance;
+        self
+    }
+
     fn new(element: &'a DecodedEntity, hygiene: SourceHygiene, styled: Option<Styled<'a>>) -> Self {
         let sink = match styled {
             None => Sink::Merged(Box::default()),
@@ -314,3 +320,7 @@ fn texture<'a>(styled: Option<Styled<'a>>, item: &DecodedEntity) -> Option<&'a R
 #[cfg(test)]
 #[path = "product/admission_tests.rs"]
 mod admission_tests;
+
+#[cfg(test)]
+#[path = "product/payload_tests.rs"]
+mod payload_tests;

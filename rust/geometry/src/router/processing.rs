@@ -301,3 +301,23 @@ mod hygiene_tests;
 #[cfg(test)]
 #[path = "product_program_tests.rs"]
 mod product_tests;
+
+#[cfg(test)]
+impl GeometryRouter {
+    pub(crate) fn process_element_parts_with_budget(&self, element: &DecodedEntity,
+        decoder: &mut EntityDecoder, hygiene: SourceHygiene, allowance: u32) -> Result<Vec<Mesh>> {
+        crate::program::GeometryProgram::product_with_budget(element, hygiene, allowance).drain_parts(self, decoder)
+    }
+
+    pub(crate) fn process_element_submeshes_with_budget(&self, element: &DecodedEntity,
+        decoder: &mut EntityDecoder, allow_instancing: bool,
+        textures: Option<&rustc_hash::FxHashMap<u32, crate::ResolvedTextureMap>>,
+        hygiene: SourceHygiene, allowance: u32) -> Result<SubMeshCollection> {
+        crate::program::GeometryProgram::styled_product_with_budget(
+            element, allow_instancing, textures, hygiene, allowance).drain_styled(self, decoder)
+    }
+}
+
+#[cfg(test)]
+#[path = "processing_budget_tests.rs"]
+mod budget_tests;

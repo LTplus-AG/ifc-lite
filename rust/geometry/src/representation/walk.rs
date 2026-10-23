@@ -193,4 +193,14 @@ impl RepresentationWalk {
         self.execute(&mut run, engine::Task::Enter(item.clone()), decoder);
     }
 
+    /// Private continuation for roots already admitted for this product. This
+    /// walk's actual traversal meters remain separate from product admission.
+    pub(crate) fn items_of<V: WalkVisitor>(
+        &self, rep: &DecodedEntity, items: &[DecodedEntity],
+        decoder: &mut EntityDecoder, visitor: &mut V,
+    ) {
+        let mut run = Run { visitor, element: None, path: Vec::new(), levels: 0, items: 0 };
+        self.items(&mut run, Some(rep), items, decoder);
+    }
+
 }

@@ -126,3 +126,22 @@ fn a_content_swap_expires_every_batch_snapshot_of_the_previous_content() {
     assert!(snapshot().validate_source().is_ok());
     assert!(model.owns_snapshot(&first), "same API load, expired source");
 }
+
+/// #7955 E2b: every index replacement retires the preceding source, including
+/// rejected and empty replacements, which discard the old content caches.
+#[test]
+fn entity_index_replacement_expires_previous_production_snapshots() {
+    use ifc_lite_processing::element::{OwnedMeshProductionData, ProductionContextError};
+    let api = IfcAPI::new();
+    for (ids, starts, lengths, succeeds) in [
+        (vec![1], vec![0], vec![12], true),
+        (vec![2], vec![], vec![12], false),
+        (vec![], vec![], vec![], true),
+    ] {
+        let before = api.production_model.snapshot(OwnedMeshProductionData::default());
+        assert_eq!(api.set_entity_index(&ids, &starts, &lengths).is_ok(), succeeds);
+        assert_eq!(before.validate_source(), Err(ProductionContextError::StaleSource));
+        let after = api.production_model.snapshot(OwnedMeshProductionData::default());
+        assert!(after.validate_source().is_ok());
+    }
+}

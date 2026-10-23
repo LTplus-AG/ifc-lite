@@ -28,3 +28,23 @@ fn sidecar_wire_is_byte_identical_to_typescript_issue_8042() {
         assert_eq!(wire, vector["wire"].as_str().unwrap());
     }
 }
+
+#[test]
+fn sidecar_validation_matches_typescript_issue_8042() {
+    use ifc_lite_diff::sidecar_validation::*;
+    let vectors: Vec<Value> = serde_json::from_str(include_str!("sidecar_validation_vectors.json")).unwrap();
+    for vector in vectors {
+        // Corpus date strings are empty, x or FEFF: all invalid in Date.parse.
+        // Host parsing itself is deliberately tested separately below.
+        let errors = if vector["kind"] == "identity" { validate_identity_sidecar(&vector["value"], |_| false) }
+            else { validate_lineage_sidecar(&vector["value"], |_| false) };
+        assert_eq!(serde_json::json!(errors), vector["errors"], "{} {}",vector["kind"],vector["name"]);
+    }
+}
+#[test]
+fn timestamp_semantics_are_supplied_by_the_host_issue_8042() {
+    use ifc_lite_diff::sidecar_validation::validate_identity_sidecar;
+    let value = serde_json::json!({"format":"ifc-lite/identity-map","version":1,"base":{"hash":"a"},"head":{"hash":"b"},"entries":[],"created":"2000"});
+    assert!(validate_identity_sidecar(&value, |s| s == "2000").is_empty());
+    assert_eq!(validate_identity_sidecar(&value, |_| false), ["created must be an ISO 8601 timestamp when present"]);
+}

@@ -53,6 +53,7 @@ pub mod identity_map;
 pub mod lineage;
 mod sidecar_json;
 pub mod sidecar;
+pub mod sidecar_validation;
 
 // Internal. The canonical encoding and the code-unit helpers are
 // implementation detail of the fingerprint, not a surface worth promising:

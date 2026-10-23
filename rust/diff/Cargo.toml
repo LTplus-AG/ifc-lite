@@ -18,11 +18,9 @@ readme = "../../README.md"
 # `Number::toString` algorithm itself. Licence: Apache-2.0 OR BSL-1.0.
 ryu-js = "1.0.3"
 
-[dev-dependencies]
-# Fixture parsing only. The crate's own types stay serde-free: deriving on the
-# public input shapes would make serde part of this crate's public contract
-# for the sake of a test.
-serde_json = { workspace = true }
+# Sidecar documents are untrusted JSON. Preserve their object order on parse;
+# wire emission uses the ECMAScript serializer rather than serde's formatter.
+serde_json = { workspace = true, features = ["preserve_order", "float_roundtrip"] }
 
 [lints]
 workspace = true

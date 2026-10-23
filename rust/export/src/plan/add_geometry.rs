@@ -21,11 +21,10 @@ pub(crate) fn product_shape(
 ) -> Result<Option<u32>, String> {
     let (items, rep_type) = match rep {
         Representation::None => return Ok(None),
-        Representation::Extrusion(e) => (vec![extruded_solid(emit, e)?], "SweptSolid"),
-        Representation::Extrusions(es) => (es.iter().map(|e| extruded_solid(emit, e)).collect::<Result<_, _>>()?, "SweptSolid"),
-        Representation::Mesh(m) => {
-            let (item, rep_type) = mesh_item(emit, m)?;
-            (vec![item], rep_type)
+        Representation::Mesh(m) => mesh_item(emit, m).map(|(item, rep_type)| (vec![item], rep_type))?,
+        _ => {
+            let solids = rep.extrusions().iter().map(|e| extruded_solid(emit, e)).collect::<Result<_, _>>()?;
+            (solids, "SweptSolid")
         }
     };
     body_shape(emit, context, &items, rep_type, colour).map(Some)

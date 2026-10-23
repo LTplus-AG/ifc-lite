@@ -119,6 +119,18 @@ pub enum Representation {
     Mesh(TriangleMesh),
 }
 
+impl Representation {
+    /// The extruded solids of an `Extrusion` or `Extrusions`; none for the
+    /// other variants.
+    pub(crate) fn extrusions(&self) -> &[Extrusion] {
+        match self {
+            Representation::Extrusion(e) => std::slice::from_ref(e),
+            Representation::Extrusions(es) => es,
+            Representation::None | Representation::Mesh(_) => &[],
+        }
+    }
+}
+
 /// A property value, typed the way IFC types it.
 #[derive(Debug, Clone)]
 pub enum PropertyValue {

@@ -4,6 +4,8 @@
 //! `IfcArbitraryClosedProfileDef`, or an `IfcArbitraryProfileDefWithVoids`
 //! when it has voids.
 
+use ifc_lite_geometry::math::v2::{bbox, polygon_area};
+
 use super::add_types::Extrusion;
 use super::placement::fmt;
 use super::props_synth::ref_list;
@@ -15,22 +17,16 @@ const MAX_PROFILE_POINTS: usize = 4096;
 
 pub(crate) fn validate_extrusion(e: &Extrusion) -> Result<(), String> {
     let outer = loop_points(&e.profile);
-    check_loop(outer, "an extrusion profile")?;
     let voids: Vec<&[[f64; 2]]> = e.voids.iter().map(|v| loop_points(v)).collect();
-    for (i, v) in voids.iter().enumerate() {
-        check_loop(v, &format!("void {i} of an extrusion profile"))?;
-    }
     let total = outer.len() + voids.iter().map(|v| v.len()).sum::<usize>();
     if total > MAX_PROFILE_POINTS {
         return Err(format!("an extrusion profile has {total} points, more than {MAX_PROFILE_POINTS}"));
     }
-    if self_intersects(outer) {
-        return Err("an extrusion profile crosses itself".into());
+    check_loop(outer).map_err(|m| format!("an extrusion profile {m}"))?;
+    for (i, v) in voids.iter().enumerate() {
+        check_loop(v).map_err(|m| format!("void {i} of an extrusion profile {m}"))?;
     }
     for (i, v) in voids.iter().enumerate() {
-        if self_intersects(v) {
-            return Err(format!("void {i} of an extrusion profile crosses itself"));
-        }
         // With no edges touching, one corner says which side a loop is on.
         if loops_touch(outer, v) || !inside(v[0], outer) {
             return Err(format!("void {i} is not strictly inside the extrusion profile"));
@@ -52,27 +48,27 @@ pub(crate) fn validate_extrusion(e: &Extrusion) -> Result<(), String> {
 }
 
 /// A simple polygon's own rules: enough distinct, finite corners enclosing
-/// some area.
-fn check_loop(pts: &[[f64; 2]], what: &str) -> Result<(), String> {
+/// some area, and no two edges that share no corner touching. The error
+/// completes a sentence naming the loop.
+fn check_loop(pts: &[[f64; 2]]) -> Result<(), &'static str> {
     if pts.len() < 3 {
-        return Err(format!("{what} needs at least 3 distinct points"));
+        return Err("needs at least 3 distinct points");
     }
     if pts.iter().flatten().any(|v| !v.is_finite()) {
-        return Err(format!("{what} has a point that is not finite"));
+        return Err("has a point that is not finite");
     }
-    if pts.iter().zip(pts.iter().cycle().skip(1)).any(|(a, b)| a == b) {
-        return Err(format!("{what} repeats a point"));
+    if edges(pts).any(|(a, b)| a == b) {
+        return Err("repeats a point");
     }
-    let twice_area: f64 = pts.iter().zip(pts.iter().cycle().skip(1)).map(|(a, b)| a[0] * b[1] - b[0] * a[1]).sum();
     // Against the loop's own size, not its distance from the origin.
-    let range = |axis: usize| {
-        let (lo, hi) = pts.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p[axis]), hi.max(p[axis])));
-        hi - lo
-    };
-    let extent = range(0).max(range(1));
+    let [x0, y0, x1, y1] = bbox(pts.iter().copied());
+    let extent = (x1 - x0).max(y1 - y0);
     // `!(x > eps)` also refuses a NaN that overflow produced.
-    if !(twice_area.abs() > 1e-12 * extent * extent) {
-        return Err(format!("{what} encloses no area"));
+    if !(2.0 * polygon_area(pts).abs() > 1e-12 * extent * extent) {
+        return Err("encloses no area");
+    }
+    if self_intersects(pts) {
+        return Err("crosses itself");
     }
     Ok(())
 }

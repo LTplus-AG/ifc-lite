@@ -76,3 +76,6 @@ mod split_geometry_tests;
 
 #[cfg(test)]
 mod split_merge_tests;
+
+#[cfg(test)]
+mod lineage_tests;

@@ -297,7 +297,7 @@ export function seedDraftDoc(doc: Y.Doc, files: readonly IfcxFile[]): void {
       for (const node of file.data) {
         const opinion = node.attributes?.[IFCLITE_ATTR.DELETED];
         if (typeof opinion === 'boolean') tombstoned.set(node.path, opinion);
-        applyNode(doc, file, node);
+        applyNode(doc, node);
       }
     }
     for (const [path, deleted] of tombstoned) {
@@ -306,7 +306,7 @@ export function seedDraftDoc(doc: Y.Doc, files: readonly IfcxFile[]): void {
   });
 }
 
-function applyNode(doc: Y.Doc, file: IfcxFile, node: IfcxNodeLike): void {
+function applyNode(doc: Y.Doc, node: IfcxNodeLike): void {
   if (!hasEntity(doc, node.path)) {
     const ifcClass = ifcClassOfAttributes(node.attributes);
     const inherits: Record<string, string> = {};
@@ -316,11 +316,12 @@ function applyNode(doc: Y.Doc, file: IfcxFile, node: IfcxNodeLike): void {
     createEntity(doc, node.path, {
       ifcClass,
       inherits,
-      meta: {
-        ifcClass,
-        createdAt: file.header.timestamp,
-        createdBy: file.header.author,
-      },
+      // Imported layers may be snapshots: their header identifies the file's
+      // writer, not each entity's creator (#8041, #3092). Keep unknown origin
+      // unknown, including the default wall clock. Explicit ifclite::meta
+      // travels unchanged with the node's attributes below.
+      stampCreatedAt: false,
+      meta: { ifcClass },
     });
   }
   for (const [key, value] of Object.entries(node.attributes ?? {})) {

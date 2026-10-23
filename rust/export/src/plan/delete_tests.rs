@@ -3,7 +3,7 @@ use std::collections::HashSet;
 
 use crate::plan::index::FileIndex;
 use super::resolve_deletes;
-use crate::plan::test_fixtures::{project_aggregates_one_building, wall_with_own_pset};
+use crate::plan::test_fixtures::{gid, project_aggregates_one_building, wall_with_own_pset};
 
 #[test]
 fn deleting_a_wall_removes_its_unshared_pset_via_the_rel() {
@@ -157,9 +157,38 @@ fn a_long_shared_list_is_stripped_entry_by_entry_and_cascades_only_when_empty() 
         let one: HashSet<u32> = [10].into_iter().collect();
         let result = resolve_deletes(&index, schema, &one, &[], &HashSet::new());
         assert!(!result.removed.contains(&32), "{schema}: #11 is still related");
+        assert_eq!(result.stripped.get(&(32, 4)), Some(&[10].into_iter().collect()), "{schema}: both #10 entries, one strip");
         let both: HashSet<u32> = [10, 11].into_iter().collect();
         let result = resolve_deletes(&index, schema, &both, &[], &HashSet::new());
         assert!(result.removed.contains(&32), "{schema}: nothing left to relate");
         assert!(result.removed.contains(&31), "{schema}: the set only the two walls used");
+    }
+}
+
+/// The opening goes with its host, not with its relationship alone, and not
+/// while a second host it (wrongly) also voids survives.
+#[test]
+fn an_opening_goes_only_when_every_host_it_voids_is_deleted() {
+    use crate::plan::test_fixtures::host_with_port_type_and_body;
+    for schema in ["IFC2X3", "IFC4", "IFC4X3"] {
+        let content = host_with_port_type_and_body(schema);
+        let index = FileIndex::complete(&content);
+        let rel_only: HashSet<u32> = [71].into_iter().collect();
+        let result = resolve_deletes(&index, schema, &rel_only, &[], &HashSet::new());
+        assert!(!result.removed.contains(&70), "{schema}: deleting only the voids relationship keeps the opening");
+
+        let text = String::from_utf8(content.clone()).unwrap();
+        let line71 = text.lines().find(|l| l.starts_with("#71=")).unwrap();
+        let line78 = line71.replacen("#71=", "#78=", 1).replace("#10,#70", "#11,#70").replace(&gid(71), &gid(78));
+        let two_hosts = text.replacen("ENDSEC;\nEND-ISO", &format!("{line78}\nENDSEC;\nEND-ISO"), 1);
+        let index = FileIndex::complete(two_hosts.as_bytes());
+        let host: HashSet<u32> = [10].into_iter().collect();
+        let result = resolve_deletes(&index, schema, &host, &[], &HashSet::new());
+        assert!(result.removed.contains(&71), "{schema}: the deleted host's voids relationship goes");
+        assert!(!result.removed.contains(&70), "{schema}: the opening still voids #11");
+        assert!(!result.removed.contains(&78), "{schema}: and #11 keeps it");
+        let both: HashSet<u32> = [10, 11].into_iter().collect();
+        let result = resolve_deletes(&index, schema, &both, &[], &HashSet::new());
+        assert!(result.removed.contains(&70), "{schema}: no host left");
     }
 }

@@ -90,16 +90,30 @@ fn prunable(file_schema: &str, entity_type: &str) -> bool {
 }
 
 /// The opening or projection a removed `IfcRelVoidsElement` /
-/// `IfcRelProjectsElement` attached. IFC requires each to belong to exactly
-/// one element (the mandatory `VoidsElements` / `ProjectsElements` inverse),
-/// so it goes with that relationship, whatever else still names it.
-fn hosted_feature(index: &FileIndex, file_schema: &str, rel: u32, rel_type: &str) -> Option<u32> {
-    let attr = match rel_type {
-        "IFCRELVOIDSELEMENT" => "RelatedOpeningElement",
-        "IFCRELPROJECTSELEMENT" => "RelatedFeatureElement",
+/// `IfcRelProjectsElement` attached, once every element it voids or projects
+/// from is removed. IFC requires each to belong to exactly one element (the
+/// mandatory `VoidsElements` / `ProjectsElements` inverse), so it goes with
+/// its host, whatever else still names it. Deleting only the relationship
+/// keeps it, and so does a second host that survives (a file breaking the
+/// one-host rule). `None` too while the feature's referrers are not
+/// collected yet: the relationship itself always names it.
+fn hosted_feature(index: &FileIndex, file_schema: &str, rel: u32, rel_type: &str, removed: &HashSet<u32>) -> Option<u32> {
+    let (host_attr, feature_attr) = match rel_type {
+        "IFCRELVOIDSELEMENT" => ("RelatingBuildingElement", "RelatedOpeningElement"),
+        "IFCRELPROJECTSELEMENT" => ("RelatingElement", "RelatedFeatureElement"),
         _ => return None,
     };
-    super::props_lookup::scalar_attr(index, file_schema, rel, rel_type, attr).filter(|&id| index.contains(id))
+    let scalar = |id, attr| super::props_lookup::scalar_attr(index, file_schema, id, rel_type, attr);
+    let feature = scalar(rel, feature_attr).filter(|&id| index.contains(id))?;
+    let feature_idx = super::attrs::attribute_index(file_schema, rel_type, feature_attr)?;
+    let mut hosts = index
+        .referrers(feature)
+        .iter()
+        .filter(|&&(r, idx)| idx == feature_idx && index.type_of(r).as_deref() == Some(rel_type))
+        .map(|&(r, _)| scalar(r, host_attr))
+        .peekable();
+    hosts.peek()?;
+    hosts.all(|host| host.is_none_or(|h| removed.contains(&h))).then_some(feature)
 }
 
 /// One list attribute of a surviving record as the cascade strips it.
@@ -213,9 +227,13 @@ pub(crate) fn resolve_deletes(
     // processed, so every strip the worklist loop below performs already
     // sees them and can tell a truly-empty mandatory list from one that
     // only looks empty from one source's point of view.
+    // A detach is recorded even where the member is not a strippable entry
+    // (it also appears nested), so the writer still drops its top-level entry.
     for &(referrer, idx, member) in extra_detach {
-        if !cascade.removed.contains(&referrer) {
-            cascade.strip(referrer, idx, member);
+        if !cascade.removed.contains(&referrer) && !cascade.strip(referrer, idx, member) {
+            if let Some(Some(list)) = cascade.lists.get_mut(&(referrer, idx)) {
+                list.stripped.insert(member);
+            }
         }
     }
 
@@ -233,7 +251,7 @@ pub(crate) fn resolve_deletes(
         }
 
         let dead_type = index.type_of(dead).unwrap_or_default();
-        if let Some(feature) = hosted_feature(index, file_schema, dead, &dead_type).filter(|id| !protected.contains(id)) {
+        if let Some(feature) = hosted_feature(index, file_schema, dead, &dead_type, &cascade.removed).filter(|id| !protected.contains(id)) {
             cascade.mark_removed(feature);
         }
 

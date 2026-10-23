@@ -146,19 +146,25 @@ fn a_representation_of_extrusions_is_refused_when_empty_or_when_one_is_invalid()
     }
 }
 
-/// An opening's cutter may have voids: an annular cut leaves the host's core.
+/// An opening's cutter may have voids: the engine cuts a ring out of the
+/// host and keeps its core. A 4 x 3 x 0.2 slab loses a 1 x 1 square less
+/// its 0.5 x 0.5 core, so 0.15 of its 2.4; cutting the whole square would
+/// leave 2.2.
 #[test]
-fn an_opening_with_a_void_cuts_a_ring() {
+fn an_opening_with_a_void_cuts_a_ring_and_keeps_the_core() {
     for schema in SCHEMAS {
         let source = storey_with_typed_wall(schema);
-        let mut niche = object(IfcClass::Wall, gid(4), Some(ObjectRef::Id(70)), Representation::None);
-        let ring = Extrusion { voids: vec![square(0.25, 0.25, 0.5)], ..block(1.0, 1.0, 0.2) };
-        niche.opening = Some(NewOpening { host: ObjectRef::Id(10), matrix: IDENTITY, shape: ring });
-        let (out, report) = run(&source, vec![add(niche)]);
+        let host = object(IfcClass::Named("IfcSlab".into()), gid(5), Some(ObjectRef::Id(70)), Representation::Extrusion(block(4.0, 3.0, 0.2)));
+        let mut niche = object(IfcClass::BuildingElementProxy, gid(4), Some(ObjectRef::Id(70)), Representation::None);
+        let ring = Extrusion { voids: vec![square(0.25, 0.25, 0.5)], ..block(1.0, 1.0, 1.0) };
+        let mut at = IDENTITY;
+        (at[0][3], at[1][3], at[2][3]) = (1.0, 1.0, -0.4);
+        niche.opening = Some(NewOpening { host: ObjectRef::Guid(gid(5).encode()), matrix: at, shape: ring });
+        let (out, report) = run(&source, vec![add(host), add(niche)]);
         assert_clean(&report, schema);
         assert!(crate::plan::validate::validate(&out, schema).is_empty(), "{schema}");
-        let opening = id_in(&out, gid(4).derive("opening"));
-        assert_eq!(type_in(&out, opening), "IFCOPENINGELEMENT", "{schema}");
         assert_eq!(count(&out, "IFCARBITRARYPROFILEDEFWITHVOIDS"), 1, "{schema}");
+        let (volume, _) = engine_volume(&out, id_in(&out, gid(5)));
+        assert!((volume - 2.25).abs() < 1e-3, "{schema}: host volume {volume}");
     }
 }

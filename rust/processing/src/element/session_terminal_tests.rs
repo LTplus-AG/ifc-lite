@@ -71,6 +71,9 @@ fn late_type_map(entry: Entry, final_stop: bool) {
 #85=IFCREPRESENTATIONMAP(#5,#86);
 #86=IFCSHAPEREPRESENTATION(#2,'Body','SweptSolid',(#13,#4));
 #87=IFCBOOLEANRESULT(.XOR.,#13,$);
+#90=IFCSLAB('empty',$,'Empty',$,$,#19,#91,$,.FLOOR.);
+#91=IFCPRODUCTDEFINITIONSHAPE($,$,(#92));
+#92=IFCSHAPEREPRESENTATION(#2,'Body','SweptSolid',(#4));
 ENDSEC;END-ISO-10303-21;",
     );
     let mut decoder = EntityDecoder::new(&source);
@@ -129,6 +132,22 @@ ENDSEC;END-ISO-10303-21;",
     assert!(router.try_execution_lease().is_ok());
     assert!(resource::check_current().is_ok(), "ordinary Compatibility stop does not leak to the next product");
     if final_stop {
+        // #8091: reuse the warm router BEFORE the explicit diagnostic drain.
+        // A successful product must not adopt the stopped product's reports.
+        let next = leaked_job(&mut decoder, 20);
+        let next_output =
+            produce_element_meshes(next, &Context::default().borrowed(), &options(), &mut decoder, &router);
+        assert!(!next_output.meshes.is_empty());
+        assert!(next_output.csg_failures.is_empty(), "subsequent product cannot inherit stopped reports");
+        // An unsupported representation reaches the primary -> voided -> plain
+        // fallback. Its superseded-attempt drain must not erase stopped reports.
+        let before_retry = final_hooks.get();
+        let empty = leaked_job(&mut decoder, 90);
+        let empty_output =
+            produce_element_meshes(empty, &Context::default().borrowed(), &options(), &mut decoder, &router);
+        assert!(empty_output.meshes.is_empty());
+        assert!(empty_output.csg_failures.is_empty());
+        assert!(final_hooks.get() > before_retry + 1, "fixture reaches retry and final diagnostic drains");
         let reports = router.take_csg_failures();
         assert_eq!(reports.len(), 1);
         assert_eq!(
@@ -140,11 +159,6 @@ ENDSEC;END-ISO-10303-21;",
             "restored diagnostics retain exact unattributed bucket, order and absent product identity"
         );
         assert!(router.take_csg_failures().is_empty(), "restored evidence drains exactly once");
-        let next = leaked_job(&mut decoder, 20);
-        let next_output =
-            produce_element_meshes(next, &Context::default().borrowed(), &options(), &mut decoder, &router);
-        assert!(!next_output.meshes.is_empty());
-        assert!(next_output.csg_failures.is_empty(), "subsequent product cannot inherit a fabricated attribution");
     }
 }
 

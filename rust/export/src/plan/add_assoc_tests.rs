@@ -241,7 +241,6 @@ fn a_unit_or_association_the_schema_cannot_hold_is_refused() {
             }),
             "named unit",
         ),
-        ("IFC4", Box::new(prop(measure("R", "IfcRatioMeasure", 0.5, Some(ValueUnit::Existing(ObjectRef::Id(51)))))), "does not measure"),
         (
             "IFC4",
             Box::new(|w: &mut NewObject| {
@@ -321,9 +320,19 @@ fn a_unit_or_association_the_schema_cannot_hold_is_refused() {
     let mut w = wall(9);
     w.material = Some(MaterialLink::NewLayerSet(NewLayerSet { name: None, layers: vec![NewMaterialLayer { material: None, thickness: 0.0 }] }));
     w.classifications = vec![ClassificationLink::Existing(ObjectRef::Id(210))];
-    // A property, unlike a quantity, may carry a user-defined unit.
-    w.psets = vec![set("P", PsetKind::Property, vec![measure("L", "IfcLengthMeasure", 1.0, Some(ValueUnit::Existing(ObjectRef::Id(223))))])];
-    let (out, report) = run(&associated_wall("IFC4"), vec![add(w)]);
+    // A property, unlike a quantity, may carry a user-defined unit; a
+    // context-dependent measure takes a context-dependent unit.
+    let user = Some(ValueUnit::Existing(ObjectRef::Id(223)));
+    w.psets = vec![set(
+        "P",
+        PsetKind::Property,
+        vec![measure("L", "IfcLengthMeasure", 1.0, user.clone()), measure("C", "IfcContextDependentMeasure", 2.0, user)],
+    )];
+    // A structural member takes a material too.
+    let mut member = wall(10);
+    member.class = ClassSpec { class: IfcClass::Named("IfcStructuralSurfaceMember".into()), predefined_type: Some("SHELL".into()) };
+    member.material = Some(MaterialLink::Existing(ObjectRef::Id(200)));
+    let (out, report) = run(&associated_wall("IFC4"), vec![add(w), add(member)]);
     assert_valid(&out, &report, "IFC4");
 }
 

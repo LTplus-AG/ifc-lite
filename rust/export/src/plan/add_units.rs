@@ -72,8 +72,9 @@ impl AddState<'_> {
                         Some(t) => t == wanted || (!quantity && t == "USERDEFINED"),
                         None => !quantity && !monetary,
                     },
-                    Some(MeasureUnit::Dimensionless) => false,
-                    None => !monetary,
+                    // A ratio, count or context-dependent measure may carry a
+                    // unit (a percent, a context-dependent unit).
+                    Some(MeasureUnit::Dimensionless) | None => !monetary,
                 };
                 if !fits {
                     let shown = unit_type.unwrap_or(unit_class);
@@ -98,7 +99,8 @@ pub(super) fn build_units(emit: &mut Emit, shared: &mut Shared, units: &CheckedU
                 Some(Target::Existing(id)) => Some(*id),
                 Some(Target::New(si)) => Some(shared.get_or(SharedKey::Si(si.clone()), || {
                     let (prefix, name, unit_type) = si;
-                    new_record(emit,
+                    new_record(
+                        emit,
                         "IFCSIUNIT",
                         &[
                             ("Dimensions", "*".into()),

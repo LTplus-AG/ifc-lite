@@ -199,11 +199,13 @@ impl AddState<'_> {
 
         validate_psets(self.schema, &obj.psets)?;
         let units = self.check_units(&obj.psets)?;
-        // IfcRelAssociatesMaterial relates elements only, and no opening or
-        // virtual element.
-        let takes_material = self.is_a(&class, "IFCELEMENT")
+        // IfcRelAssociatesMaterial relates elements (not an opening or a
+        // virtual element), structural members and, from IFC4, ports.
+        let element = self.is_a(&class, "IFCELEMENT")
             && !self.is_a(&class, "IFCFEATUREELEMENTSUBTRACTION")
             && !self.is_a(&class, "IFCVIRTUALELEMENT");
+        let port = self.is_a(&class, "IFCPORT") && !crate::schema_convert::targets_ifc2x3(self.schema);
+        let takes_material = element || port || self.is_a(&class, "IFCSTRUCTURALMEMBER");
         if obj.material.is_some() && !takes_material {
             return Err(format!("{class} cannot carry a material"));
         }

@@ -230,7 +230,8 @@ pub(super) fn build_classification(emit: &mut Emit, shared: &mut Shared, checked
     let system = match system {
         Target::Existing(id) => *id,
         Target::New(s) => shared.get_or(SharedKey::Classification(s.clone()), || {
-            new_record(emit,
+            new_record(
+                emit,
                 "IFCCLASSIFICATION",
                 &[("Source", optional(&s.source)), ("Edition", optional(&s.edition)), ("Name", quoted(&s.name))],
             )
@@ -244,7 +245,8 @@ pub(super) fn build_classification(emit: &mut Emit, shared: &mut Shared, checked
         } else {
             "ItemReference"
         };
-        new_record(emit,
+        new_record(
+            emit,
             "IFCCLASSIFICATIONREFERENCE",
             &[
                 ("Location", optional(location)),

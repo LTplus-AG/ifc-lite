@@ -32,6 +32,8 @@ pub(crate) mod prism_cut;
 pub(crate) mod probe;
 mod representation;
 mod staged;
+mod strategy;
+mod post;
 #[cfg(test)]
 mod execution_tests_adapter;
 mod synthesis;
@@ -47,11 +49,10 @@ use admission::{
 pub(crate) use cutter::{CutterKind, OpeningFrame};
 use geom::*;
 use malformed_opening_repair::{
-    cutter_is_closed_manifold, opening_obb_if_malformed, recut_malformed_openings,
+    cutter_is_closed_manifold, opening_obb_if_malformed,
     translate_cutter_mesh, world_host_bounds, OpeningBox,
 };
-use local_frame::{host_thickness_wall_frame, vertical_depth_wall_frame};
-use sweep::{drop_faces_outside_host, mesh_to_keep};
+use sweep::mesh_to_keep;
 mod sweep;
 
 /// Epsilon for normalizing direction vectors (guards against zero-length).
@@ -266,200 +267,24 @@ impl Execution {
     /// frame with no origin-aware-merge surprises), relativizes the cutters by
     /// the same origin, runs the CSG, then re-stamps the origin on the result so
     /// `world = origin + position` holds for the renderer.
-    /// PARAMETRIC analytic fast path: subtract the openings as EXACT parametric boxes
-    /// in the host's own placement frame (where the rotated wall + windows are
-    /// axis-aligned), using the watertight cellular `rect_fast` cut, then rotate the
-    /// result back to world. Frame + extents come from the IFC parametrics (not the
-    /// mesh), so the cut is the analytic box-minus-boxes solid — ground-truth exact and
-    /// MORE correct than the exact kernel on engulfing-opening walls. Fires only on the
-    /// gated subset (`ctx.param` captured; host/opening reconciliation, shared-frame,
-    /// in-bounds, no-overlap, watertight self-check); any miss returns `None` → exact
-    /// kernel. Deterministic f64 → byte-identical native==wasm.
-    fn try_param_rect_cut(&self, mesh: &Mesh, ctx: &VoidContext) -> Option<Mesh> {
-        let param = ctx.param.as_ref()?;
-        let host = &param.host;
-        let rt = host.r.transpose();
-
-        // Host expressed in F (small coords) + reconciliation against the real mesh.
-        // ORIGIN-AWARE: the mesh may already be in a per-element local frame (wasm
-        // defaults `local_frame_enabled()` ON), where positions are relative to
-        // `mesh.origin` (world = origin + position). Frame the cut around
-        // `center - origin` so host_f = Rᵀ·(world_vertex - center) either way.
-        let o = mesh.origin;
-        let eff_center = Point3::new(
-            host.center.x - o[0],
-            host.center.y - o[1],
-            host.center.z - o[2],
-        );
-        let host_f = rotate_mesh_into_frame(mesh, &rt, &eff_center);
-        if host_f.positions.is_empty() {
-            return None;
-        }
-        let mut hmn = [f64::INFINITY; 3];
-        let mut hmx = [f64::NEG_INFINITY; 3];
-        for c in host_f.positions.chunks_exact(3) {
-            for k in 0..3 {
-                hmn[k] = hmn[k].min(c[k] as f64);
-                hmx[k] = hmx[k].max(c[k] as f64);
-            }
-        }
-        for k in 0..3 {
-            let ext = hmx[k] - hmn[k];
-            let lo = ext.min(2.0 * host.half[k]);
-            let hi = ext.max(2.0 * host.half[k]).max(1.0e-9);
-            if lo / hi < 0.99 {
-                return None;
-            }
-        }
-
-        // Opening boxes in F with the in-bounds + through-cut handling.
-        let mut boxes: Vec<([f64; 3], [f64; 3])> = Vec::with_capacity(param.openings.len());
-        for op in &param.openings {
-            let map = signed_permutation_map(&(rt * op.r), 1.0e-3)?;
-            let cf = rotate_point(
-                &rt,
-                op.center.x - host.center.x,
-                op.center.y - host.center.y,
-                op.center.z - host.center.z,
-            );
-            // The opening must penetrate along the wall's THIN (thickness) axis. If its
-            // extrude axis maps to a length/height axis, extending it across the host
-            // would wipe out a full slab — defer that case to the exact kernel.
-            let pen = (0..3).find(|&i| map[i].0 == 2)?;
-            if host.half[pen] > host.half[thin_axis(&host.half)] * 1.05 {
-                return None;
-            }
-            let mut half_f = [0.0f64; 3];
-            for i in 0..3 {
-                half_f[i] = op.half[map[i].0];
-            }
-            // In-bounds: the opening must lie within the wall on the in-face axes; an
-            // overrun is a partial intersection where box-clamp ≠ exact mesh-intersect.
-            for i in 0..3 {
-                if i == pen {
-                    continue;
-                }
-                let tol = host.half[i] * 0.01 + 1.0e-4;
-                if cf[i] - half_f[i] < -host.half[i] - tol
-                    || cf[i] + half_f[i] > host.half[i] + tol
-                {
-                    return None;
-                }
-            }
-            // Cut the box AS AUTHORED (it is reconciled to equal the opening void), with a
-            // tiny margin on the penetration axis to avoid a flush-face coincidence. The
-            // earlier full-thickness override over-cut multi-prism openings (each authored
-            // box is a thin slice; extending each to the full thickness removes too much).
-            let eps = 1.0e-4;
-            let mut bmin = [cf[0] - half_f[0], cf[1] - half_f[1], cf[2] - half_f[2]];
-            let mut bmax = [cf[0] + half_f[0], cf[1] + half_f[1], cf[2] + half_f[2]];
-            bmin[pen] -= eps;
-            bmax[pen] += eps;
-            boxes.push((bmin, bmax));
-        }
-
-        // No-overlap: overlapping cutter boxes can diverge from the union-subtract.
-        for a in 0..boxes.len() {
-            for b in (a + 1)..boxes.len() {
-                let (amn, amx) = boxes[a];
-                let (bmn, bmx) = boxes[b];
-                if (0..3).all(|i| amn[i] < bmx[i] - 1.0e-4 && bmn[i] < amx[i] - 1.0e-4) {
-                    return None;
-                }
-            }
-        }
-
-        let mut stats = crate::rect_fast::RectFastStats::default();
-        let cut_f = crate::rect_fast::subtract_rect_openings(&host_f, &boxes, &mut stats)?;
-        self.record_rect_fast(&stats);
-        let merged = crate::csg::ClippingProcessor::consolidate_coplanar(cut_f);
-        // Emit as a local-frame mesh (small positions + origin), then run the SAME
-        // hygiene the production output applies — in the small frame, where it is
-        // precise — so the self-check sees exactly what downstream will keep.
-        let mut out = rotate_mesh_from_frame(&merged, &host.r, &host.center);
-        hygiene::clean_void_output(&mut out);
-
-        // Self-check: never emit a non-watertight cut; defer to the exact kernel.
-        if !param_cut_watertight(&out) {
-            return None;
-        }
-        crate::rect_fast::param_record_fire();
-        Some(out)
-    }
-
     pub(crate) fn apply_void_context(
         &self,
         mut mesh: Mesh,
         ctx: &VoidContext,
         element_id: u32,
     ) -> Mesh {
-        // PARAMETRIC fast path (flag-gated). ORIGIN-AWARE: it handles both the world
-        // mesh (origin 0, native default) AND a per-element local-frame mesh (origin != 0,
-        // the wasm default — the precision-critical case this path is FOR), since it
-        // builds its own frame from the parametrics. Any miss falls through to the exact
-        // kernel below unchanged.
-        if crate::rect_fast::param_enabled() {
-            if let Some(fast) = self.try_param_rect_cut(&mesh, ctx) {
-                return fast;
-            }
-        }
-
-        // 2D OPENING-SUBTRACTION fast path (flag-gated). Generalises the rect
-        // parametric path above to arbitrary extruded-host profiles: subtract the
-        // openings' footprints from the host's 2D profile and re-extrude. Tried
-        // after `try_param_rect_cut` so proven rect+rect outputs are unchanged;
-        // ORIGIN-AWARE (it builds its own world frame from the parametrics and
-        // reconciles against the real host mesh, whatever `mesh.origin`). Any miss
-        // falls through to the exact kernel below unchanged.
-        if let Some(cut) = ctx.bool2d.as_ref() {
-            if let Some(candidate) = self.try_staged_bool2d(&mesh, cut, element_id) {
-                return candidate;
-            }
-        }
-
-        // ANALYTIC PRISM fast path (flag-gated): each opening whose cutter is
-        // a genuine stepped-extrusion prism (plain boxes AND rebated masonry
-        // windows) is subtracted from the host MESH analytically — host-shape-
-        // agnostic, so it fires on the faceted-BREP / clipped / multi-item
-        // hosts the parametric and 2D paths above cannot serve. Tried after
-        // them so their proven outputs stay byte-identical; ORIGIN-AWARE (the
-        // cut runs in the host's own local frame, cutters relativized in f64,
-        // `origin` re-stamped). Ineligible openings come back as a residual
-        // context and are cut by the exact kernel on the analytic result — the
-        // same composition contract as the 2D path (which also routes ITS
-        // residual through this path on recursion, so a 2D host's perpendicular
-        // sleeves take the prism cut too). Any miss falls through to the exact
-        // kernel below with the FULL opening set unchanged.
-        if prism_cut::enabled() {
-            // World bounds + triangle count captured BEFORE the cut so the
-            // per-host diagnostic matches what the exact/rect paths record.
-            let prism_bounds = world_host_bounds(&mesh);
-            let prism_tris_before = mesh.triangle_count();
-            if let Some((cut, residual)) = self.try_prism_cut(&mesh, ctx) {
-                return match residual {
-                    None => {
-                        // Same per-host cut-effect snapshot the exact path
-                        // records, so prism-cut hosts aren't missing from the
-                        // diagnostics.
-                        self.record_host_cut_effect(
-                            element_id,
-                            prism_tris_before,
-                            cut.triangle_count(),
-                            ctx.rect_opening_count(),
-                            prism_bounds,
-                        );
-                        cut
-                    }
-                    // With a residual, the recursive exact pass below records
-                    // the (final) cut-effect snapshot itself.
-                    Some(res) => self.apply_void_context(cut, &res, element_id),
+        for strategy in strategy::HOST_STRATEGIES {
+            if let Some(cut) = strategy.try_cut(self, &mesh, ctx, element_id) {
+                return match cut.residual {
+                    None => cut.mesh,
+                    Some(residual) => self.apply_void_context(cut.mesh, &residual, element_id),
                 };
             }
         }
 
         // WORLD-space host AABB for the per-host diagnostic (`bbox`), captured
         // HERE — before the local-frame branch below zeroes `mesh.origin` and
-        // before `try_cut_wall_local_frame` rotates the mesh into its own frame.
+        // before the wall-local strategy rotates the mesh into its own frame.
         // On the wasm/local-frame default the host is stored relative to a
         // nonzero `mesh.origin` (world = origin + position), so bounds taken
         // after the clear would be local/near-zero and misdirect
@@ -486,272 +311,6 @@ impl Execution {
         // Keep an inner local-frame cut's translation when restoring this frame.
         result.origin = std::array::from_fn(|i| result.origin[i] + origin[i]);
         result
-    }
-
-    /// Try the analytic rectangular-opening fast path. Returns the watertight
-    /// cut mesh iff EVERY merged opening is an axis-aligned `Rectangular`
-    /// through-cut and the host is a clean axis-aligned box; otherwise `None`
-    /// (→ the exact kernel handles it). A mixed opening set defers the whole
-    /// host rather than composing analytic + exact cuts.
-    fn try_rect_fast(&self, host: &Mesh, ctx: &VoidContext) -> Option<Mesh> {
-        let (wmn, wmx) = host.bounds();
-        let wall_min = Point3::new(wmn.x as f64, wmn.y as f64, wmn.z as f64);
-        let wall_max = Point3::new(wmx.x as f64, wmx.y as f64, wmx.z as f64);
-        let mut boxes: Vec<([f64; 3], [f64; 3])> =
-            Vec::with_capacity(ctx.merged_openings.len());
-        for op in &ctx.merged_openings {
-            match op {
-                CutterKind::Rectangular(omn, omx, dir) => {
-                    let (fmn, fmx) = match dir {
-                        Some(d) => self.extend_opening_along_direction(
-                            *omn, *omx, wall_min, wall_max, *d,
-                        ),
-                        None => (*omn, *omx),
-                    };
-                    boxes.push(([fmn.x, fmn.y, fmn.z], [fmx.x, fmx.y, fmx.z]));
-                }
-                _ => return None,
-            }
-        }
-        let mut stats = crate::rect_fast::RectFastStats::default();
-        let out = crate::rect_fast::subtract_rect_openings(host, &boxes, &mut stats);
-        self.record_rect_fast(&stats);
-        // The cellular cut conformingly splits EVERY face by ALL grid lines (so
-        // adjacent cells share edges → watertight), which over-fragments faces an
-        // opening doesn't reach. Run the result through the SAME coplanar merge
-        // the exact path uses (i_overlay union per plane) to collapse those back
-        // to minimal triangles — keeps it watertight and un-bloated.
-        out.map(crate::csg::ClippingProcessor::consolidate_coplanar)
-    }
-
-    /// Cut a plan-rotated wall's openings in the wall's own axis-aligned,
-    /// origin-centred frame (issue #1167). Returns `None` (caller uses the
-    /// world path) unless the wall is rotated in plan and every opening carries
-    /// a cutter mesh. The wall normal comes from an opening's non-axis-aligned,
-    /// ~horizontal depth axis; else from vertical strips' frames (#3977); else,
-    /// when no opening authors a depth at all, from the host's own thickness
-    /// axis (#5410).
-    ///
-    /// In the wall frame the host and its openings are axis-aligned and near the
-    /// origin, so the exact subtract runs in the clean, f32-precise regime a
-    /// straight wall enjoys — clean-box openings even reclassify to the
-    /// watertight `rect_fast` path. Curved / brep openings keep their mesh and
-    /// are subtracted there too. The result is rotated back; the orthonormal,
-    /// origin-centred round-trip is identity for untouched geometry. Recurses
-    /// into [`Self::apply_void_context_inner`] with `allow_local_frame: false` (#3641).
-    fn try_cut_wall_local_frame(
-        &self,
-        mesh: &Mesh,
-        ctx: &VoidContext,
-        element_id: u32,
-        host_world_bounds: ((f32, f32, f32), (f32, f32, f32)),
-    ) -> Option<Mesh> {
-        let axes = self.wall_frame_axes(mesh, ctx)?;
-        let (mn, mx) = mesh.bounds();
-        let center = Vector3::new(
-            ((mn.x + mx.x) * 0.5) as f64,
-            ((mn.y + mx.y) * 0.5) as f64,
-            ((mn.z + mx.z) * 0.5) as f64,
-        );
-        let host_local = mesh_to_frame(mesh, &axes, center);
-
-        let z = Vector3::new(0.0, 0.0, 1.0);
-        let mut local_openings: Vec<CutterKind> = Vec::with_capacity(ctx.merged_openings.len());
-        for op in &ctx.merged_openings {
-            let cutter = match op {
-                CutterKind::DiagonalRectangular(m, _) => m,
-                CutterKind::NonRectangular(m, _, _, _) => m,
-                CutterKind::Rectangular(..) => return None,
-            };
-            let (lmn, lmx) = project_aabb_in_frame(cutter, &axes, center)?;
-            let in_frame =
-                |v: Vector3<f64>| Vector3::new(v.dot(&axes[0]), v.dot(&axes[1]), v.dot(&axes[2]));
-            // The cutter's own penetration (depth) axis expressed in the wall
-            // frame. Drives both the alignment test and — for the exact fallback
-            // — the cap-extension direction, which MUST stay faithful to THIS
-            // cutter: hardcoding the wall normal would push a misaligned
-            // opening's flush/short cap along the wrong axis and carve the wrong
-            // prism (#1270 review).
-            let frame_depth = match op {
-                CutterKind::DiagonalRectangular(_, f) => Some(in_frame(f.depth)),
-                CutterKind::NonRectangular(_, _, _, d) => d.map(in_frame),
-                CutterKind::Rectangular(..) => None,
-            };
-            // Whether THIS opening's own oriented box is axis-aligned in the
-            // wall frame. The frame is seeded from the FIRST rotated opening
-            // (#1167); a second opening tilted differently *in plane* is NOT
-            // axis-aligned here, so projecting its frame AABB would over-cut it
-            // (#1259 review). Only a clean box whose full frame aligns with the
-            // wall frame may take the fast rectangular cut; everything else —
-            // brep/curved voids and frame-misaligned boxes alike — keeps its
-            // exact (un-rotated, centred) mesh for the subtract.
-            let frame_aligned = match op {
-                CutterKind::DiagonalRectangular(_, f) => {
-                    is_axis_aligned_direction(&in_frame(f.depth))
-                        && is_axis_aligned_direction(&in_frame(f.cross_a))
-                        && is_axis_aligned_direction(&in_frame(f.cross_b))
-                }
-                _ => false,
-            };
-            if frame_aligned {
-                // Preserve THIS cutter's authored penetration axis. The new
-                // #3977 selector also admits vertically extruded strips, whose
-                // local depth is +Y rather than the wall normal (+Z). Extending
-                // those along +Z would turn a partial-thickness vertical slot
-                // into a full-through cut. An inferred box axis carries no such
-                // intent and must retain the established wall-normal fallback.
-                // A cutter authored along the wall normal itself keeps +Z too:
-                // handing the rectangular cut an antiparallel (-Z) depth flips
-                // its cap extension and tears the host (rvt01 #10191 census).
-                let rect_depth = match op {
-                    CutterKind::DiagonalRectangular(_, frame)
-                        if frame.depth_is_authored
-                            && frame_depth.is_some_and(|d| d.z.abs() < WALL_NORMAL_DEPTH_COS) =>
-                    {
-                        frame_depth
-                    }
-                    _ => Some(z),
-                };
-                local_openings.push(CutterKind::Rectangular(lmn, lmx, rect_depth));
-            } else {
-                let mesh_local = mesh_to_frame(cutter, &axes, center);
-                // Keep this cutter's true depth in the frame; fall back to the
-                // wall normal (+Z) only when the opening carried no direction.
-                let dir = frame_depth.unwrap_or(z);
-                local_openings.push(CutterKind::NonRectangular(mesh_local, lmn, lmx, Some(dir)));
-            }
-        }
-        let local_ctx = VoidContext {
-            merged_openings: GeometryRouter::merge_rectangular_openings(&local_openings),
-            openings: local_openings,
-            // The local-frame recursion never re-captures the parametric cut
-            // (issue #1209): it operates on already-classified openings, so the
-            // analytic `param` / 2D paths are irrelevant here — defer to the exact
-            // path.
-            param: None,
-            bool2d: None,
-        };
-
-        // Forward the WORLD host bounds captured before this rotation so the
-        // diagnostic reports world coords, not wall-frame (rotated/centred) ones.
-        let diag_before = self.mark();
-        // Whether the host reached us stored relative to a per-element origin
-        // (the wasm default): `apply_void_context` then cleared that origin, so
-        // the world bounds it passed differ from the stored ones. A world-frame
-        // host has identical bounds and keeps its established closure test.
-        let (smn, smx) = mesh.bounds();
-        let frame_relative =
-            host_world_bounds != ((smn.x, smn.y, smn.z), (smx.x, smx.y, smx.z));
-        let frame = Matrix3::from_columns(&axes);
-        let center_point = Point3::from(center);
-        let result_local = self
-            .apply_void_context_inner(host_local, &local_ctx, element_id, host_world_bounds, false);
-        // Rotation-only positions retain the far centre in `Mesh::origin`.
-        let mut result = rotate_mesh_from_frame(&result_local, &frame, &center_point);
-        // #5635: the operands arrive as f32 WORLD positions, so in the frame one
-        // authored face can land on dozens of depth values micrometres apart and
-        // the cut keeps T-junction seams along them. Only when the cut came back
-        // open (and not empty), cut again on operands whose coincident planes are
-        // snapped back onto one value. Keep the retry only if it is strictly
-        // closed and removed the same material as the first cut to within 0.1%
-        // (a retry whose cut silently failed returns the whole host). A cut that
-        // is already closed is never touched, so it stays byte-identical. The
-        // host itself need not be closed: an extruded voided profile carries
-        // T-junctions of its own that the cut consolidates away.
-        //
-        // For a frame-relative host the closure is judged on the cut as it will
-        // be emitted: rotated back and after the degenerate-triangle hygiene.
-        // Stored that way, a cut can be closed on the frame's grid only through
-        // µm slivers that hygiene then drops (#5739). The world frame's test is
-        // unchanged, so its output is too.
-        let closed = if frame_relative {
-            frame_snap::closed_as_emitted(&result)
-        } else {
-            frame_snap::closed_and_consistently_wound(&result_local)
-        };
-        if !result_local.positions.is_empty() && !closed {
-            let first_volume = frame_snap::enclosed_volume(&result_local);
-            // Only the kept run may leave a diagnostics record.
-            let diag_first = self.split_off(diag_before);
-            // Rebuilt rather than kept from above: the clean path pays nothing.
-            let mut host_snapped = mesh_to_frame(mesh, &axes, center);
-            let mut openings_snapped = local_ctx.openings.clone();
-            // The WORLD magnitude (a local-frame host's origin folded in), so
-            // the tolerance does not depend on the vertex frame (#5739). For a
-            // world-frame host these are its own bounds, as before.
-            let ((wx0, wy0, wz0), (wx1, wy1, wz1)) = host_world_bounds;
-            let world_magnitude = [wx0, wy0, wz0, wx1, wy1, wz1]
-                .iter()
-                .fold(0.0_f64, |m, v| m.max((*v as f64).abs()));
-            frame_snap::snap_to_frame_planes(
-                &mut host_snapped,
-                &mut openings_snapped,
-                frame_snap::frame_snap_tolerance(world_magnitude),
-            );
-            let snapped_ctx = VoidContext {
-                merged_openings: GeometryRouter::merge_rectangular_openings(&openings_snapped),
-                openings: openings_snapped,
-                param: None,
-                bool2d: None,
-            };
-            let retry = self.apply_void_context_inner(
-                host_snapped,
-                &snapped_ctx,
-                element_id,
-                host_world_bounds,
-                false,
-            );
-            let retry_volume = frame_snap::enclosed_volume(&retry);
-            let same_cut = (retry_volume - first_volume).abs()
-                <= 1.0e-3 * first_volume.abs().max(retry_volume.abs());
-            let accepted = if !same_cut {
-                None
-            } else if frame_relative {
-                let emitted = rotate_mesh_from_frame(&retry, &frame, &center_point);
-                frame_snap::closed_as_emitted(&emitted).then_some(emitted)
-            } else {
-                frame_snap::closed_and_consistently_wound(&retry)
-                    .then(|| rotate_mesh_from_frame(&retry, &frame, &center_point))
-            };
-            if let Some(emitted) = accepted {
-                result = emitted;
-            } else {
-                self.restore(diag_before, diag_first);
-            }
-        }
-        Some(result)
-    }
-
-    /// The #1167 wall frame `[run, height, normal]` for a plan-rotated wall
-    /// whose openings can all be expressed in it, else `None` (the host keeps
-    /// the world path). Translation-invariant, so it gives the same answer for a
-    /// world-stored host and a local-frame one (#5739).
-    fn wall_frame_axes(&self, mesh: &Mesh, ctx: &VoidContext) -> Option<[Vector3<f64>; 3]> {
-        if ctx.merged_openings.is_empty() {
-            return None;
-        }
-        let depth_of = |op: &CutterKind| op.cutter().depth();
-        // Define the wall frame from the first opening whose depth is a
-        // genuinely rotated, ~horizontal axis. Axis-aligned walls find none and
-        // keep their (unchanged) world path.
-        let horizontal_axes = ctx
-            .merged_openings
-            .iter()
-            .filter_map(depth_of)
-            .find(|d| !is_axis_aligned_direction(d) && d.z.abs() <= 0.2)
-            .and_then(wall_frame_from_depth);
-        let axes = match horizontal_axes {
-            Some(axes) => axes,
-            None => vertical_depth_wall_frame(mesh, &ctx.merged_openings)
-                .or_else(|| host_thickness_wall_frame(mesh, &ctx.merged_openings))?,
-        };
-
-        // AABB-only `Rectangular` openings can't be rotated into the frame; a
-        // plan-rotated wall never has them (they'd be diagonal), so bail.
-        if ctx.merged_openings.iter().any(|op| matches!(op, CutterKind::Rectangular(..))) {
-            return None;
-        }
-        Some(axes)
     }
 
     // `host_mutated` is set just before an early `break` (final write unread; kept
@@ -783,8 +342,9 @@ impl Execution {
         // The world-space tilted cut at large coordinates over-cuts and
         // fragments badly. Scoped to plan-rotated walls; everything else falls
         // through to the world path unchanged. Gated on `allow_local_frame`.
+        let [wall_local, rect_fast] = strategy::INNER_STRATEGIES;
         if allow_local_frame {
-            if let Some(cut) = self.try_cut_wall_local_frame(&mesh, ctx, element_id, host_bounds_capture) {
+            if let Some(cut) = wall_local.try_cut(self, &mesh, ctx, element_id, host_bounds_capture, tris_before) {
                 return cut;
             }
         }
@@ -819,19 +379,8 @@ impl Execution {
         // openings, near-edge feature) returns `None` and the host falls through
         // to the exact path below unchanged. Fired BEFORE the dense-host
         // subdivision (that workaround is only for the exact kernel).
-        if crate::rect_fast::enabled() {
-            if let Some(fast) = self.try_rect_fast(&result, ctx) {
-                // Same per-host cut-effect snapshot the exact path records below,
-                // so fast-path hosts aren't missing from the diagnostics.
-                self.record_host_cut_effect(
-                    element_id,
-                    tris_before,
-                    fast.triangle_count(),
-                    ctx.rect_opening_count(),
-                    host_bounds_capture,
-                );
-                return fast;
-            }
+        if let Some(fast) = rect_fast.try_cut(self, &result, ctx, element_id, host_bounds_capture, tris_before) {
+            return fast;
         }
 
         // OPENING-DENSE HOST REFINEMENT: when many openings target the same host
@@ -1408,71 +957,10 @@ impl Execution {
         // the polygonal bound and the resulting unbounded plane chops off
         // the gable peak. Voids alone are applied here.
 
-        // Drain whatever fallbacks the kernel logged during this element's
-        // void / clip pass, attributed to the host product, so the caller can
-        // surface them (e.g. flagged in a viewer overlay or asserted in
-        // regression tests) once the outcome is published.
-        drop(kernel_failures);
-
-        // WATERTIGHT SLIVER REFINEMENT (issue #1007): the exact-kernel cut of a
-        // long, tilted faceted-BREP host facet can emit a high-aspect corner
-        // sliver (a far-corner triangle fanned to two new rim vertices a few cm
-        // apart) that lands ALONE in its plane bucket and so bypasses the
-        // coplanar CDT. Bisect any >8:1 triangle's longest edge at its midpoint,
-        // splitting BOTH incident triangles in lockstep so the mesh stays
-        // watertight (no T-junction) and the midpoint lies ON the original edge
-        // ⇒ cut volume is preserved exactly. A no-op on clean cuts (no triangle
-        // exceeds 8:1), so it does not perturb the frozen corpus. Only runs when
-        // a cut was actually attempted (`!ctx.is_noop()` guarantees this path).
-        // This canonicalizer is likewise not a hygiene boundary: fresh sub-grid
-        // candidates require handling by the remaining repair/clip/sweep path,
-        // independently of the router's earlier source cleanup (#4797).
-        let mut result = crate::facet_weld::refine_high_aspect_slivers(&result);
-
-        // UNDER-CUT REPAIR: a self-intersecting tessellated cutter (garbage
-        // vertices metres from the real opening) makes the kernel UNDER-cut — a
-        // wall flap bridges the opening. Re-cut each such opening with a clean
-        // box (removes only the opening prism, taking the flap, while preserving
-        // and re-triangulating the wall around the hole). Done HERE, in the cut
-        // frame (host + cutters share it), and BEFORE the spike clip so any
-        // residual protrusion is still caught. A no-op when no cutter is
-        // malformed — clean openings are never reshaped.
-        recut_malformed_openings(&mut result, &ctx.malformed_opening_boxes());
-
-        // SPURIOUS-FLAP CLIP: a subtract can only remove material, so the cut is
-        // mathematically contained in the host's pre-cut AABB (`wall_min/max`);
-        // any triangle poking past it is provably an artifact — a malformed
-        // cutter's far-flung leaked flap (self-intersecting / tessellated void,
-        // surfacing once a SECOND cutter perturbs the arrangement), OR the
-        // flush-cap through-extension reveal overhang (`extend_opening_mesh_
-        // through_host` pushes a flush cap ~0.3·depth past the host for a clean
-        // transversal cut, so the subtract emits the reveal out to it — 0.105 m
-        // past a 0.35 m floor slab, #1633). `clip_triangles_to_host_aabb` bounds
-        // its jitter tolerance so a large host cannot leak the overhang. A no-op
-        // on clean cuts.
-        result.clip_triangles_to_host_aabb(
-            [wall_min.x as f32, wall_min.y as f32, wall_min.z as f32],
-            [wall_max.x as f32, wall_max.y as f32, wall_max.z as f32],
-        );
-
-        // STRAY-SHARD SWEEP: see `sweep::drop_faces_outside_host` (#1788).
-        if host_mutated {
-            result = drop_faces_outside_host(result, &original_host);
-        }
-
-        // Per-host cut-effect snapshot: tris_before / tris_after lets the
-        // diagnostic surface the silent-no-op case (rectangular boxes
-        // processed but the host mesh came out unchanged — the box
-        // probably didn't intersect the wall, e.g. wrong placement).
-        self.record_host_cut_effect(
-            element_id,
-            tris_before,
-            result.triangle_count(),
-            ctx.rect_opening_count(),
-            host_bounds_capture,
-        );
-
-        result
+        post::finish(result, post::Context {
+            execution: self, kernel_failures, ctx, element_id, tris_before,
+            host_bounds_capture, wall_min, wall_max, original_host: &original_host, host_mutated,
+        })
     }
 
 }

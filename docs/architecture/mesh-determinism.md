@@ -128,3 +128,5 @@ copy the printed actual JSON into `mesh_determinism.json`, then run
 its printed actual JSON into `mesh_determinism.wasm32.json`. The
 `wasm_manifest_differs_only_in_the_trig_gap` guard verifies the pair stays
 in lockstep.
+
+The void-cut strategy order is part of the determinism contract; structural extraction preserves fallback order, frame transitions, and diagnostic timing.

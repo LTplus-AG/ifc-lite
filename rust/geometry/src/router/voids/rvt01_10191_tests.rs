@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! rvt01 `#10191` as it reaches `try_cut_wall_local_frame`: a 12 mm plan-
+//! rvt01 `#10191` as it reaches the wall-local strategy: a 12 mm plan-
 //! rotated panel with two authored through-openings, the second of which is
 //! extruded 3.7e-5 rad off the panel normal (Revit placement noise) and sits
 //! flush with the panel's bottom edge. 0e8a42175 handed that near-axis depth

@@ -289,3 +289,62 @@ fn validate_chain_applies_the_consumers_policy() {
         validate_chain(&leaf, &mut decoder, &local_only).expect("the lenient policy accepts it");
     }
 }
+
+/// F3b X2/R1 (#7779), design-note §7: 10,000 products sharing a seven-deep
+/// placement. Run in an exclusive benchmark window with --profile server-release
+/// and --ignored --nocapture. Reports the one-deep control alongside seven-deep;
+/// timings are evidence for review, never a machine-dependent test assertion.
+#[test]
+#[ignore = "F3b memo performance qualification requires an exclusive idle host"]
+fn issue_7779_ten_thousand_products_seven_deep_memo_benchmark() {
+    use std::hint::black_box;
+    use std::time::Instant;
+
+    const PRODUCTS: u32 = 10_000;
+    let mut samples = Vec::new();
+    for depth in [1usize, 7] {
+        let mut content = deep_placement_chain(depth - 1);
+        let leaf = 10 + depth - 1;
+        let mut products = String::new();
+        for id in 100..100 + PRODUCTS {
+            products.push_str(&format!(
+                "#{id}=IFCWALL('0000000000000000000000',$,$,$,$,#{leaf},$,$,$);\n"
+            ));
+        }
+        content = content.replace("ENDSEC;\nEND-ISO", &format!("{products}ENDSEC;\nEND-ISO"));
+        let mut decoder = EntityDecoder::new(&content);
+        // Keep product decoding outside the measurement: the subject is the
+        // placement memo lookup reached through the real product entry point.
+        let products: Vec<_> = (100..100 + PRODUCTS)
+            .map(|id| decoder.decode_by_id(id).expect("product"))
+            .collect();
+        let first = resolve_object_placement(&products[0], &mut decoder)
+            .expect("warm chain").expect("placed product");
+        assert_eq!(first[(0, 3)], depth as f64);
+        let mut elapsed = Vec::new();
+        for _ in 0..7 {
+            let started = Instant::now();
+            let mut sum = 0.0;
+            for product in &products {
+                let world = resolve_object_placement(black_box(product), black_box(&mut decoder))
+                    .expect("warm placement").expect("placed product");
+                sum += black_box(world[(0, 3)]);
+            }
+            elapsed.push(started.elapsed().as_nanos());
+            assert_eq!(sum, f64::from(PRODUCTS) * depth as f64);
+        }
+        // Full, unscaled transforms are retained at every ancestor; looking up
+        // more products must neither expand the memo nor replace an ancestor
+        // with a partial result.
+        let memo = decoder.take_placement_transform_cache();
+        assert_eq!(memo.len(), depth);
+        for index in 0..depth {
+            assert_eq!(memo[&(10 + index as u32)][12], (index + 1) as f64);
+        }
+        elapsed.sort_unstable();
+        eprintln!("F3b memo depth={depth} products={PRODUCTS} sorted_ns={elapsed:?}");
+        samples.push(elapsed[elapsed.len() / 2] as f64 / f64::from(PRODUCTS));
+    }
+    eprintln!("F3b memo median_ns_per_product one={} seven={} ratio={}",
+        samples[0], samples[1], samples[1] / samples[0]);
+}

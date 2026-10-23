@@ -1,0 +1,22 @@
+--- a/rust/export/src/plan/add_geometry.rs
++++ b/rust/export/src/plan/add_geometry.rs
+@@ -22,7 +22,7 @@ pub(crate) fn product_shape(
+     let (items, rep_type) = match rep {
+         Representation::None => return Ok(None),
+         Representation::Extrusion(e) => (vec![extruded_solid(emit, e)?], "SweptSolid"),
+-        Representation::Extrusions(es) => (es.iter().take(1).map(|e| extruded_solid(emit, e)).collect::<Result<_, _>>()?, "SweptSolid"),
++        Representation::Extrusions(es) => (es.iter().map(|e| extruded_solid(emit, e)).collect::<Result<_, _>>()?, "SweptSolid"),
+         Representation::Mesh(m) => {
+             let (item, rep_type) = mesh_item(emit, m)?;
+             (vec![item], rep_type)
+--- a/rust/export/src/plan/add_profile.rs
++++ b/rust/export/src/plan/add_profile.rs
+@@ -152,7 +152,7 @@ fn polyline(emit: &mut Emit, pts: &[[f64; 2]]) -> Result<u32, String> {
+ /// The profile record of a checked extrusion.
+ pub(crate) fn profile(emit: &mut Emit, e: &Extrusion) -> Result<u32, String> {
+     let outer = polyline(emit, &e.profile)?;
+-    if e.voids.is_empty() || e.depth > 0.0 {
++    if e.voids.is_empty() {
+         return emit.record("IFCARBITRARYCLOSEDPROFILEDEF", &[("ProfileType", ".AREA.".into()), ("OuterCurve", format!("#{outer}"))]);
+     }
+     let inner = e.voids.iter().map(|v| polyline(emit, v)).collect::<Result<Vec<_>, _>>()?;

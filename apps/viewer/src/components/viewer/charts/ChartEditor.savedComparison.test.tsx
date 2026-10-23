@@ -186,7 +186,8 @@ describe('Saved comparison chart source (#6549)', () => {
     const ui = render(<DocumentProbe document={documentFor(spec)} observe={(value) => { data = value; }} />); await settle();
     const first = data?.aggregations.get('recorded-block'); assert.ok(first);
     (await act(async () => { assert.equal((await useViewerStore.getState().renameSavedComparison(saved[0].id, 'Renamed saved source')), true); })); await settle();
-    assert.equal(data?.aggregations.get('recorded-block')?.dataFingerprint, first.dataFingerprint); assert.match(ui.textContent ?? '', /Renamed saved source/);
+    assert.equal(data?.aggregations.get('recorded-block')?.dataFingerprint, first.dataFingerprint);
+    assert.doesNotMatch(ui.textContent ?? '', /Renamed saved source/, '#8067: renaming source metadata does not add a document caption');
     (await act(async () => { assert.equal((await useViewerStore.getState().saveComparison({ ...saved[1], id: saved[0].id })), false, 'existing immutable evidence cannot be silently replaced'); })); await settle();
     assert.equal(data?.aggregations.get('recorded-block')?.dataFingerprint, first.dataFingerprint);
     (await act(async () => { assert.equal((await useViewerStore.getState().deleteSavedComparison(saved[0].id)), true); })); await settle();
@@ -253,6 +254,9 @@ describe('Saved comparison chart source (#6549)', () => {
     assert.ok(data);
     assert.match(ui.querySelector('svg')?.textContent ?? '', /added/); assert.match(ui.querySelector('svg')?.textContent ?? '', /deleted/);
     assert.doesNotMatch(ui.textContent ?? '', /3D snapshot in the PDF/);
+    // #8067: successful source attribution is editor metadata, not document content.
+    assert.doesNotMatch(ui.textContent ?? '', /Saved comparison:/);
+    assert.equal(data.chartMessages.has('recorded-block'), false);
     const agg = data.aggregations.get('recorded-block'); assert.ok(agg);
     assert.equal(agg.total, saved[0].report.rows.length);
     let captures = 0;
@@ -265,6 +269,7 @@ describe('Saved comparison chart source (#6549)', () => {
       const doc = await generateDocumentPdf({ document, ...data, snapshotIds: () => [] }, seams);
       assert.equal(captures, 0);
       const printed = await pdfText(doc.blob); assert.match(printed, /added/); assert.match(printed, /deleted/);
+      assert.doesNotMatch(printed, /Saved comparison:/, '#8067: the PDF matches the caption-free document preview');
       assert.deepEqual(documentPdfWarnings(doc), [], 'recorded source provenance is informative, not an unavailable-chart failure (#6549 / #6612)');
       const report = await generateReportPdf({ name: 'Recorded dashboard proof', page: document.page, titleBlock: {}, snapshots: true,
         charts: [{ id: spec.id, title: spec.title, aggregation: agg }], snapshotIds: () => [] }, seams);
@@ -353,6 +358,7 @@ describe('Saved comparison chart source (#6549)', () => {
         capture: async () => { captures++; assert.fail('recorded prepared documents cannot capture unrelated live entities'); } };
       const result = await exportPreparedDocument(input, { seams });
       const printed = await pdfText(result.blob);
+      assert.doesNotMatch(printed, /Saved comparison:/, '#8067: awaited document export omits the source caption');
       // The actual table truncates long Name cells; its distinct authored prefix
       // still proves the mapped B→C evidence accompanies the separate A→B chart.
       assert.match(printed, /added/); assert.match(printed, /deleted/); assert.match(printed, /Explicit chart test revision C/);

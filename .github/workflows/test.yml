@@ -2938,6 +2938,9 @@ jobs:
       - name: WASM contract tests (real processGeometryBatch boundary)
         if: matrix.shard == 4
         run: pnpm test:wasm-contract
+      - name: Rust diff real IFC parity (#8042)
+        if: matrix.shard == 4
+        run: node scripts/diff-real-fixture-parity.mjs
       # The snap cache reconstructs model edges from the mesher's per-triangle
       # segments, so its correctness depends on geometry the unit fixtures can
       # only imitate. This drives the real wasm pipeline over the committed

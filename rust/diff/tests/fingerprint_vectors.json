@@ -43,6 +43,60 @@
       }
     },
     {
+      "id": "materials-U+feff",
+      "input": {
+        "ifcType": "IfcWall",
+        "materials": [
+          "﻿"
+        ]
+      },
+      "dataHash": "1b118d505bf0308b",
+      "components": {
+        "attr:core": "9d4896288dd39de3"
+      }
+    },
+    {
+      "id": "materials-U+0085",
+      "input": {
+        "ifcType": "IfcWall",
+        "materials": [
+          ""
+        ]
+      },
+      "dataHash": "5d905dd08df13e8c",
+      "components": {
+        "attr:core": "9d4896288dd39de3",
+        "material": "8c82909b5c38ba76"
+      }
+    },
+    {
+      "id": "classifications-U+feff",
+      "input": {
+        "ifcType": "IfcWall",
+        "classifications": [
+          "﻿"
+        ]
+      },
+      "dataHash": "1b118d505bf0308b",
+      "components": {
+        "attr:core": "9d4896288dd39de3"
+      }
+    },
+    {
+      "id": "classifications-U+0085",
+      "input": {
+        "ifcType": "IfcWall",
+        "classifications": [
+          ""
+        ]
+      },
+      "dataHash": "330754e3c1ee363b",
+      "components": {
+        "attr:core": "9d4896288dd39de3",
+        "classification": "8c82909b5c38ba76"
+      }
+    },
+    {
       "id": "all-core-attributes",
       "input": {
         "ifcType": "IfcWall",

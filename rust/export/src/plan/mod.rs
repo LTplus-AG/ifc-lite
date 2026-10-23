@@ -41,6 +41,7 @@ mod geometry;
 mod index;
 mod owner_history;
 mod placement;
+mod patch;
 mod props;
 mod props_lookup;
 mod props_synth;

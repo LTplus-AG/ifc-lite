@@ -106,9 +106,10 @@ pub(crate) fn find_body_context(index: &FileIndex, schema: &str, removed: &HashS
     live("IFCGEOMETRICREPRESENTATIONSUBCONTEXT")
         .find(|&id| {
             // A subcontext has its parent's dimension.
-            let parent = attribute_index(schema, "IFCGEOMETRICREPRESENTATIONSUBCONTEXT", "ParentContext")
-                .and_then(|i| index.attrs(id)?.into_iter().nth(i)?.scalar);
-            labelled(id, "ContextIdentifier", "Body") && parent.is_some_and(|p| !removed.contains(&p) && three_dimensional(p))
+            labelled(id, "ContextIdentifier", "Body")
+                && attribute_index(schema, "IFCGEOMETRICREPRESENTATIONSUBCONTEXT", "ParentContext")
+                    .and_then(|i| index.attrs(id)?.into_iter().nth(i)?.scalar)
+                    .is_some_and(|p| !removed.contains(&p) && three_dimensional(p))
         })
         .or_else(|| live("IFCGEOMETRICREPRESENTATIONCONTEXT").find(|&id| labelled(id, "ContextType", "Model") && three_dimensional(id)))
         .or_else(|| live("IFCGEOMETRICREPRESENTATIONCONTEXT").find(|&id| three_dimensional(id)))

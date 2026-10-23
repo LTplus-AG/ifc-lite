@@ -29,6 +29,22 @@ fn leaf(token: &str) -> Option<(&'static str, &'static str, bool, &'static str)>
         })
 }
 
+/// Refuse `value` as the `measure` (any case) measure unless `schema` (a
+/// `FILE_SCHEMA` label) declares it over a REAL or NUMBER and, when
+/// `where_rule`, `value` keeps the measure's WHERE rule.
+pub(crate) fn check_real_measure(schema: &str, measure: &str, value: f64, where_rule: bool) -> Result<(), String> {
+    let token = measure.to_ascii_uppercase();
+    let leaf = leaf(&token).filter(|_| super::retype::schema_declares(schema, &token));
+    let (name, base, _, _) = leaf.ok_or_else(|| format!("{measure} is not an IFC measure in {schema}"))?;
+    if !matches!(base, "REAL" | "NUMBER") {
+        return Err(format!("{name} is a {base}, not a number"));
+    }
+    if where_rule && !satisfies(name, value) {
+        return Err(format!("{value} is outside what {name} allows"));
+    }
+    Ok(())
+}
+
 /// The WHERE rule of a constrained member (`CONSTRAINED_MEMBERS`).
 fn satisfies(name: &str, v: f64) -> bool {
     match name {

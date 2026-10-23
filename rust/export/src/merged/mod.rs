@@ -38,7 +38,7 @@ use std::collections::{HashMap, HashSet};
 use crate::schema_detect::detect_schema;
 
 use guid::{read_leading_guid, replace_global_id, GuidMinter};
-pub use guid::{deterministic_global_id, leading_rooted_global_id};
+pub use guid::{deterministic_global_id, extract_global_id_fast, leading_rooted_global_id};
 use line_edit::{rewrite_refs, LineDecision};
 use plan::{build_plan, model_salt, ModelIndex, PlanCtx};
 use crate::schema_ifc2x3_slots::Ifc2x3SlotFill;

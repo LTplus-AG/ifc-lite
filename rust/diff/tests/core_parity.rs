@@ -1,10 +1,11 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
+mod lineage_assertions;
 use std::collections::HashMap;
-use ifc_lite_diff::{key_diff::diff_by_key, model::*};
+use ifc_lite_diff::model::*;
 use serde_json::{json, Value};
-use ifc_lite_diff::{content_match::apply_content_matching, content_types::*, geometry_compare::GeometryTolerances};
+use ifc_lite_diff::{content_types::*, geometry_compare::GeometryTolerances};
 
 fn string(value: &Value, key: &str) -> String { value[key].as_str().unwrap().to_owned() }
 fn optional(value: &Value, key: &str) -> Option<String> { value[key].as_str().map(str::to_owned) }
@@ -108,29 +109,22 @@ fn run_vectors(file: &str) {
                 .map(|pair| (pair[0].as_str().unwrap().to_owned(), pair[1].as_str().unwrap().to_owned()))
                 .collect::<HashMap<_, _>>()),
         };
-        let core = diff_by_key(&base, &head, &options);
-        let (result, content_matches) = if raw_options["matchUnpairedByContent"] == true {
-            let tolerances = GeometryTolerances::resolve(raw_options["moveTolerance"].as_f64(),
-                raw_options["reshapeTolerance"].as_f64(), raw_options["maxMoveDistance"].as_f64());
-            let matched = apply_content_matching(core, tolerances);
-            let matches: Vec<_> = matched.content_matches.iter().map(content_match).collect();
-            (matched.core, Some(matches))
-        } else { (core, None) };
-        let split_claims = if raw_options["detectSplitMerge"] == true {
-            let settings = ifc_lite_diff::split_types::SplitSettings::resolve(raw_options["splitVolumeTolerance"].as_f64(),
-                raw_options["splitPaddingMin"].as_f64(), raw_options["splitPaddingRatio"].as_f64(), raw_options["maxSplitPieces"].as_f64());
-            let families: Option<Vec<Vec<String>>> = raw_options.get("classFamilies").map(|v| serde_json::from_value(v.clone()).unwrap());
-            ifc_lite_diff::split_merge::detect_split_merge(&result.entries, result.use_geometry, settings, families.as_deref())
-
-        } else { None };
-        let successors = if raw_options["detectSuccessors"] == true {
-            let bound: Vec<_> = split_claims.iter().flatten().flat_map(|c| std::iter::once(c.whole).chain(c.pieces.iter().copied())).collect();
-            let settings = ifc_lite_diff::successor::SuccessorSettings::resolve(raw_options["successorOverlap"].as_f64(), raw_options["successorDistance"].as_f64());
-            let tolerances = GeometryTolerances::resolve(raw_options["moveTolerance"].as_f64(), raw_options["reshapeTolerance"].as_f64(), raw_options["maxMoveDistance"].as_f64());
-            let families: Option<Vec<Vec<String>>> = raw_options.get("classFamilies").map(|v| serde_json::from_value(v.clone()).unwrap());
-            ifc_lite_diff::successor::detect_successors(&result.entries, result.use_geometry, &bound, settings, tolerances, families.as_deref())
-                .map(|claims| claims.iter().map(successor_claim).collect::<Vec<_>>())
-        } else { None };
+        let options = ifc_lite_diff::engine::DiffOptions {
+            key: options,
+            geometry: GeometryTolerances::resolve(raw_options["moveTolerance"].as_f64(), raw_options["reshapeTolerance"].as_f64(), raw_options["maxMoveDistance"].as_f64()),
+            match_unpaired_by_content: raw_options["matchUnpairedByContent"] == true,
+            detect_split_merge: raw_options["detectSplitMerge"] == true,
+            detect_successors: raw_options["detectSuccessors"] == true,
+            split: ifc_lite_diff::split_types::SplitSettings::resolve(raw_options["splitVolumeTolerance"].as_f64(),raw_options["splitPaddingMin"].as_f64(),raw_options["splitPaddingRatio"].as_f64(),raw_options["maxSplitPieces"].as_f64()),
+            successor: ifc_lite_diff::successor::SuccessorSettings::resolve(raw_options["successorOverlap"].as_f64(),raw_options["successorDistance"].as_f64()),
+            class_families: raw_options.get("classFamilies").map(|v|serde_json::from_value(v.clone()).unwrap()),
+        };
+        let diff = ifc_lite_diff::engine::diff_models(&base,&head,&options);
+        let result = diff.core;
+        let content_matches = diff.content_matches;
+        let split_claims = diff.split_merges;
+        let successors = diff.successors;
+        lineage_assertions::assert_lineage(&vector, &result, content_matches.as_deref().unwrap_or(&[]), split_claims.as_deref().unwrap_or(&[]), successors.as_deref().unwrap_or(&[]));
         let entries: Vec<_> = result.entries.iter().map(entry).collect();
         // JS Map iteration follows entries, while Rust stores lookup indices.
         let by_key: Vec<_> = result.entries.iter().map(|item| {
@@ -144,9 +138,9 @@ fn run_vectors(file: &str) {
                 "deleted": result.counts.deleted, "unchanged": result.counts.unchanged },
         });
         if let Some(aliases) = result.applied_key_aliases { actual["appliedKeyAliases"] = json!(aliases); }
-        if let Some(matches) = content_matches { actual["contentMatches"] = json!(matches); }
+        if let Some(matches) = content_matches { actual["contentMatches"] = json!(matches.iter().map(content_match).collect::<Vec<_>>()); }
         if let Some(claims) = split_claims { actual["splitMerges"] = json!(claims.iter().map(split_claim).collect::<Vec<_>>()); }
-        if let Some(claims) = successors { actual["successors"] = json!(claims); }
+        if let Some(claims) = successors { actual["successors"] = json!(claims.iter().map(successor_claim).collect::<Vec<_>>()); }
         assert_eq!(actual, vector["expected"], "case {}", vector["name"]);
     }
 }
@@ -161,3 +155,6 @@ fn split_pass_matches_typescript_field_by_field_issue_8042() { run_vectors("spli
 
 #[test]
 fn successor_pass_matches_typescript_field_by_field_issue_8042() { run_vectors("successor_vectors.json"); }
+
+#[test]
+fn lineage_matches_typescript_field_by_field_issue_8042() { run_vectors("lineage_vectors.json"); }

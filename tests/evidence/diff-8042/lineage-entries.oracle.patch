@@ -1,0 +1,10 @@
+--- a/rust/diff/src/lineage.rs
++++ b/rust/diff/src/lineage.rs
+@@ -53,7 +53,6 @@
+     }
+     entries.sort_by(|a, b| cmp_code_units(a.base.first().map(String::as_str).unwrap_or(""), b.base.first().map(String::as_str).unwrap_or(""))
+         .then_with(|| cmp_code_units(a.head.first().map(String::as_str).unwrap_or(""), b.head.first().map(String::as_str).unwrap_or(""))));
+-    entries.clear();
+     let accounted: HashSet<_> = entries.iter().flat_map(|e| e.base.iter()).collect();
+     let mut deleted: Vec<_> = diff.entries.iter().filter(|e| e.state == DiffState::Deleted && !accounted.contains(&e.key)).map(|e| e.key.clone()).collect();
+     deleted.sort_by(|a, b| cmp_code_units(a, b));

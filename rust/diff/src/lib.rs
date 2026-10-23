@@ -37,6 +37,8 @@ pub mod input;
 pub mod model;
 pub mod engine;
 pub mod columns;
+pub mod transport_options;
+pub mod transport_result;
 pub mod key_diff;
 pub mod geometry_compare;
 pub mod mutual_nearest;

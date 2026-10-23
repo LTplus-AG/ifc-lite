@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 mod lineage_assertions;
+mod transport_assertions;
 use std::collections::HashMap;
 use ifc_lite_diff::model::*;
 use serde_json::{json, Value};
@@ -100,6 +101,7 @@ fn run_vectors(file: &str) {
     for vector in vectors {
         let base: Vec<_> = vector["base"].as_array().unwrap().iter().map(entity).collect();
         let head: Vec<_> = vector["head"].as_array().unwrap().iter().map(entity).collect();
+        transport_assertions::assert_transport(&vector);
         let raw_options = &vector["options"];
         let options = KeyDiffOptions {
             scope: scope(&raw_options["scope"]),

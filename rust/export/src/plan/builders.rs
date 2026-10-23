@@ -214,3 +214,35 @@ impl Skeleton {
         self
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plan::IDENTITY;
+
+    #[test]
+    fn each_setter_sets_its_field() {
+        let w = PropWrite::new("S", "P", "IFCLABEL", "'x'", PsetKind::Property, PropScope::Type).with_unit("#5");
+        assert_eq!((w.pset.as_str(), w.prop.as_str(), w.measure_type.as_str(), w.literal.as_str()), ("S", "P", "IFCLABEL", "'x'"));
+        assert_eq!(w.unit.as_deref(), Some("#5"));
+        let mesh = TriangleMesh::new(vec![[0.0; 3]; 3], vec![[0, 1, 2]]);
+        let p = Patch::new()
+            .with_name("N")
+            .with_psets(vec![w])
+            .with_placement(PlacementPatch::new(IDENTITY))
+            .with_geometry(GeometryPatch::new(mesh).with_colour(SurfaceColour::new([1.0, 0.0, 0.0], 0.0)));
+        assert_eq!(p.name.as_deref(), Some("N"));
+        assert_eq!(p.psets.len(), 1);
+        assert!(p.placement.is_some() && p.geometry.as_ref().is_some_and(|g| g.colour.is_some()));
+        let c = PlanContext::new().with_author("a").with_organization("o").with_time_stamp("t");
+        assert_eq!((c.author.as_deref(), c.organization.as_deref(), c.time_stamp.as_deref()), (Some("a"), Some("o"), Some("t")));
+        let plan = ExportPlan::new(vec![(ObjectRef::Id(1), Disposition::Delete)]).with_context(c);
+        assert_eq!(plan.context.author.as_deref(), Some("a"));
+        let m = MapConversion::new("EPSG:2056", 1.0, 2.0, 3.0).with_map_unit(MapUnit::Foot).with_x_axis(0.0, 1.0).with_scale(0.5);
+        assert_eq!((m.map_unit, m.x_axis_abscissa, m.x_axis_ordinate, m.scale), (MapUnit::Foot, 0.0, 1.0, Some(0.5)));
+        let root = || SkeletonRoot::new(GlobalId(1)).with_name("R");
+        let s = Skeleton::new(root(), root(), root()).with_true_north([0.0, 1.0]).with_map_conversion(m);
+        assert!(s.true_north.is_some() && s.map_conversion.is_some() && s.site.name.is_some());
+        assert_eq!(Refusal::new(ObjectRef::Id(1), "r"), Refusal::new(ObjectRef::Id(1), "r"));
+    }
+}

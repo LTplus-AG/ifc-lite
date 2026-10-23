@@ -113,5 +113,6 @@ pub enum ValueUnit {
     /// `IfcSIPrefix` (`"KILO"`). Its `UnitType` follows from the name. It is
     /// not added to the project's unit assignment: it is this value's unit,
     /// not the project's.
+    #[non_exhaustive]
     Si { prefix: Option<String>, name: String },
 }

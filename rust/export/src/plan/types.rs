@@ -205,7 +205,7 @@ pub struct ExportPlan {
 
 /// A disposition the executor could not carry out, and why. Every refusal
 /// here is an edit the plan asked for that is NOT in the output.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Refusal {
     pub object: ObjectRef,

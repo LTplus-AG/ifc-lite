@@ -151,6 +151,7 @@ pub enum PropertyValue {
     Real(f64),
     /// A numeric measure by its IFC defined-type name, e.g. `IfcLengthMeasure`.
     /// Values are in the file's project units.
+    #[non_exhaustive]
     Measure { measure_type: String, value: f64 },
 }
 

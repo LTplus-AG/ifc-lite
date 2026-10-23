@@ -54,6 +54,26 @@ impl Extrusion {
     }
 }
 
+impl PropertyValue {
+    /// A numeric measure by its IFC defined-type name, e.g.
+    /// `PropertyValue::measure("IfcLengthMeasure", 3.0)`.
+    pub fn measure(measure_type: impl Into<String>, value: f64) -> Self {
+        PropertyValue::Measure { measure_type: measure_type.into(), value }
+    }
+}
+
+impl ValueUnit {
+    /// A new `IfcSIUnit` by name (`"PASCAL"`), with no prefix.
+    pub fn si(name: impl Into<String>) -> Self {
+        ValueUnit::Si { prefix: None, name: name.into() }
+    }
+
+    /// A new prefixed `IfcSIUnit`, e.g. `ValueUnit::si_prefixed("KILO", "PASCAL")`.
+    pub fn si_prefixed(prefix: impl Into<String>, name: impl Into<String>) -> Self {
+        ValueUnit::Si { prefix: Some(prefix.into()), name: name.into() }
+    }
+}
+
 impl NewProperty {
     pub fn new(name: impl Into<String>, value: PropertyValue) -> Self {
         Self { name: name.into(), value, unit: None }
@@ -237,5 +257,58 @@ impl NewClassificationReference {
     pub fn with_location(mut self, location: impl Into<String>) -> Self {
         self.location = Some(location.into());
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plan::IDENTITY;
+
+    /// Every setter lands in its own field; the constructors' defaults are
+    /// the empty description.
+    #[test]
+    fn each_setter_sets_its_field() {
+        let colour = SurfaceColour { rgb: [0.1, 0.2, 0.3], transparency: 0.5 };
+        let opening = NewOpening::new(ObjectRef::Id(10), IDENTITY, Extrusion::new(vec![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]], [0.0, 0.0, 1.0], 1.0));
+        let set = NewPropertySet::new("P", PsetKind::Property, vec![NewProperty::new("L", PropertyValue::measure("IfcLengthMeasure", 2.0))]);
+        let o = NewObject::new(GlobalId(7), IfcClass::Wall, NewPlacement::new(IDENTITY).with_relative_to(ObjectRef::Id(3)))
+            .with_name("W")
+            .with_container(ObjectRef::Id(70))
+            .with_type(TypeLink::Existing(ObjectRef::Id(40)))
+            .with_representation(Representation::Extrusion(Extrusion::new(vec![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]], [0.0, 0.0, 1.0], 1.0)))
+            .with_style(colour)
+            .with_psets(vec![set])
+            .with_opening(opening)
+            .with_material(MaterialLink::New(NewMaterial::new("C").with_category("concrete")))
+            .with_classifications(vec![ClassificationLink::Existing(ObjectRef::Id(9))]);
+        assert_eq!(o.name.as_deref(), Some("W"));
+        assert_eq!(o.container, Some(ObjectRef::Id(70)));
+        assert_eq!(o.placement.relative_to, Some(ObjectRef::Id(3)));
+        assert!(matches!(o.type_link, Some(TypeLink::Existing(ObjectRef::Id(40)))));
+        assert!(matches!(o.representation, Representation::Extrusion(_)));
+        assert!(o.style.is_some() && o.opening.is_some());
+        assert_eq!(o.psets.len(), 1);
+        assert!(matches!(&o.material, Some(MaterialLink::New(m)) if m.category.as_deref() == Some("concrete")));
+        assert_eq!(o.classifications.len(), 1);
+
+        let bare = NewObject::new(GlobalId(8), IfcClass::Wall, NewPlacement::new(IDENTITY));
+        assert!(bare.name.is_none() && bare.container.is_none() && bare.type_link.is_none() && bare.style.is_none());
+        assert!(matches!(bare.representation, Representation::None) && bare.psets.is_empty() && bare.classifications.is_empty());
+
+        let t = NewType::new(IfcClass::Named("IfcWallType".into())).with_global_id(GlobalId(5)).with_name("T").with_psets(Vec::new());
+        assert_eq!((t.global_id, t.name.as_deref()), (Some(GlobalId(5)), Some("T")));
+        let r = NewClassificationReference::new(ClassificationSystem::New(NewClassification::new("U").with_source("s").with_edition("1")))
+            .with_identification("A")
+            .with_name("N")
+            .with_location("L");
+        assert_eq!((r.identification.as_deref(), r.name.as_deref(), r.location.as_deref()), (Some("A"), Some("N"), Some("L")));
+        let layers = NewLayerSet::new(vec![NewMaterialLayer::new(0.2).with_material(LayerMaterial::Existing(ObjectRef::Id(1)))]).with_name("S");
+        assert_eq!(layers.name.as_deref(), Some("S"));
+        assert!(layers.layers[0].material.is_some());
+        assert_eq!(ValueUnit::si_prefixed("KILO", "PASCAL"), ValueUnit::Si { prefix: Some("KILO".into()), name: "PASCAL".into() });
+        assert_eq!(ClassSpec::new(IfcClass::Wall).with_predefined_type("STANDARD").predefined_type.as_deref(), Some("STANDARD"));
+        assert_eq!(Extrusion::new(Vec::new(), [0.0, 0.0, 1.0], 1.0).with_voids(vec![Vec::new()]).voids.len(), 1);
+        assert!(NewProperty::new("P", PropertyValue::Integer(1)).with_unit(ValueUnit::si("METRE")).unit.is_some());
     }
 }

@@ -475,8 +475,7 @@ impl IfcAPI {
                 if rep_map_ids.is_empty() {
                     continue;
                 }
-                let referenced = self.get_or_build_referenced_repmaps(content, &mut decoder);
-                let instantiated = self.get_or_build_instantiated_type_ids(content, &mut decoder);
+                let (referenced, instantiated) = self.get_or_build_type_membership(content, &mut decoder);
                 let rep_maps = plan_type_geometry(
                     &rep_map_ids,
                     &referenced,

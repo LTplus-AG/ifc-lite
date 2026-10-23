@@ -50,6 +50,7 @@ mod space_plate;
 mod space_plate_input;
 pub(crate) mod styling;
 mod symbolic;
+mod type_geometry_cache;
 mod zone_split;
 
 use csg_diagnostics::drain_and_log_csg_diagnostics;
@@ -455,7 +456,7 @@ impl IfcAPI {
 
     /// Install the pre-computed set of `IfcRepresentationMap` ids referenced by
     /// an `IfcMappedItem` (issue #957), so the worker's first type-product batch
-    /// SKIPS the per-worker [`Self::get_or_build_referenced_repmaps`] full-file
+    /// SKIPS the per-worker [`Self::get_or_build_type_membership`] full-file
     /// walk. The streaming pre-pass built the same set once from the
     /// `IfcMappedItem` spans it already scanned (see
     /// `styling::build_type_geometry_plan_from_spans`) and ships the
@@ -477,7 +478,7 @@ impl IfcAPI {
 
     /// Install the pre-computed set of type ids that an `IfcRelDefinesByType`
     /// instantiates (#957 follow-up), so the worker's first type-product batch
-    /// skips the per-worker [`Self::get_or_build_instantiated_type_ids`]
+    /// skips the per-worker [`Self::get_or_build_type_membership`]
     /// full-file walk. Same injection contract as [`Self::set_referenced_repmaps`].
     #[wasm_bindgen(js_name = setInstantiatedTypeIds)]
     pub fn set_instantiated_type_ids(&self, ids: &[u32]) {
@@ -852,66 +853,6 @@ impl IfcAPI {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .as_ref()
             .map(std::sync::Arc::clone)
-    }
-
-    /// Get or lazily build the set of `IfcRepresentationMap` ids instantiated by
-    /// an `IfcMappedItem` (issue #957). `processGeometryBatch` uses it to render
-    /// only the ORPHAN RepresentationMaps of a type-product (the rest are drawn
-    /// through their occurrence). Cached per worker so the scan is paid once.
-    pub(crate) fn get_or_build_referenced_repmaps(
-        &self,
-        content: &[u8],
-        decoder: &mut ifc_lite_core::EntityDecoder,
-    ) -> std::sync::Arc<rustc_hash::FxHashSet<u32>> {
-        {
-            let slot = self
-                .cached_referenced_repmaps
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if let Some(existing) = slot.as_ref() {
-                return std::sync::Arc::clone(existing);
-            }
-        }
-
-        let referenced = styling::build_referenced_representation_maps(content, decoder);
-
-        let arc = std::sync::Arc::new(referenced);
-        let mut slot = self
-            .cached_referenced_repmaps
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        *slot = Some(std::sync::Arc::clone(&arc));
-        arc
-    }
-
-    /// Get or lazily build the set of type ids that an `IfcRelDefinesByType`
-    /// instantiates (#957 follow-up). `processGeometryBatch` uses it to suppress
-    /// type-only geometry for instanced types (the geometry already draws through
-    /// their occurrences). Cached per worker so the scan is paid once.
-    pub(crate) fn get_or_build_instantiated_type_ids(
-        &self,
-        content: &[u8],
-        decoder: &mut ifc_lite_core::EntityDecoder,
-    ) -> std::sync::Arc<rustc_hash::FxHashSet<u32>> {
-        {
-            let slot = self
-                .cached_instantiated_type_ids
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if let Some(existing) = slot.as_ref() {
-                return std::sync::Arc::clone(existing);
-            }
-        }
-
-        let instantiated = styling::build_instantiated_type_ids(content, decoder);
-
-        let arc = std::sync::Arc::new(instantiated);
-        let mut slot = self
-            .cached_instantiated_type_ids
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        *slot = Some(std::sync::Arc::clone(&arc));
-        arc
     }
 
     /// Get or lazily build the surface-texture index keyed by face-set id

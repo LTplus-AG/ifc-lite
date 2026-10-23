@@ -31,6 +31,9 @@ policy. `observe_candidate` retains admitted `TypeGeometryCandidate` records in
 source order. Native callers inspect `candidates` and schedule selected maps;
 `into_browser_jobs` consumes the plan into one job per type with an unreferenced
 map, including instantiated type-library geometry for the browser Types view.
+`into_membership` transfers the referenced-map and instantiated-type sets to
+browser caches without copying. Lazy browser fallback scans once for missing
+columns and preserves columns already installed by the prepass.
 
 ## ifc-lite-core
 

@@ -204,47 +204,6 @@ pub(crate) fn collect_type_geometry_jobs_with_plan(
     plan.into_browser_jobs()
 }
 
-/// #957: the set of `RepresentationMap`s instantiated by an `IfcMappedItem`, so
-/// `processGeometryBatch` can tell which of a type's RepresentationMaps are
-/// orphan (rendered directly) vs already drawn through an occurrence.
-pub(crate) fn build_referenced_representation_maps(
-    content: &[u8],
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> rustc_hash::FxHashSet<u32> {
-    use ifc_lite_core::{keyword_eq, EntityScanner};
-    let mut spans: Vec<(u32, usize, usize)> = Vec::new();
-    let mut scanner = EntityScanner::new(content);
-    while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        if keyword_eq(type_name, "IFCMAPPEDITEM") {
-            spans.push((id, start, end));
-        }
-    }
-    build_referenced_representation_maps_from_spans(&spans, decoder)
-}
-
-/// Span-based twin of [`build_referenced_representation_maps`]. The streaming
-/// pre-pass already visits every `IfcMappedItem` during its single scan, so it
-/// stashes their spans and builds this set ONCE here (then ships it to the
-/// workers) instead of every worker re-walking the file on its first
-/// type-product job. Byte-identical to the scanner-based builder: it decodes
-/// the same spans (file order) and inserts the same `MappingSource` refs into a
-/// set, whose membership — the only thing consumers query — is order-invariant.
-pub(crate) fn build_referenced_representation_maps_from_spans(
-    spans: &[(u32, usize, usize)],
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> rustc_hash::FxHashSet<u32> {
-    let mut referenced: rustc_hash::FxHashSet<u32> = rustc_hash::FxHashSet::default();
-    for &(id, start, end) in spans {
-        if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
-            // IfcMappedItem.MappingSource = attr 0 (the IfcRepresentationMap).
-            if let Some(source_id) = entity.get_ref(0) {
-                referenced.insert(source_id);
-            }
-        }
-    }
-    referenced
-}
-
 /// Build shared type/instance facts once for browser prepass columns (#7782).
 /// Read mapped items before type relationships, preserving admission order.
 pub(crate) fn build_type_geometry_plan_from_spans(
@@ -269,46 +228,6 @@ pub(crate) fn build_type_geometry_plan_from_spans(
         }
     }
     plan
-}
-
-/// #957 follow-up: the set of type ids that an `IfcRelDefinesByType` instantiates
-/// (i.e. the type has at least one occurrence). `processGeometryBatch` uses it to
-/// suppress type-only geometry for such types — their geometry is already drawn
-/// through their occurrences, so rendering the type's RepresentationMap as well
-/// would double-render it at the MappingOrigin (duplicate at the wrong position).
-pub(crate) fn build_instantiated_type_ids(
-    content: &[u8],
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> rustc_hash::FxHashSet<u32> {
-    use ifc_lite_core::{keyword_eq, EntityScanner};
-    let mut spans: Vec<(u32, usize, usize)> = Vec::new();
-    let mut scanner = EntityScanner::new(content);
-    while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        if keyword_eq(type_name, "IFCRELDEFINESBYTYPE") {
-            spans.push((id, start, end));
-        }
-    }
-    build_instantiated_type_ids_from_spans(&spans, decoder)
-}
-
-/// Span-based twin of [`build_instantiated_type_ids`]. Same hoisting rationale
-/// as [`build_referenced_representation_maps_from_spans`]: the streaming
-/// pre-pass stashes every `IfcRelDefinesByType` span during its single scan and
-/// builds this set once, byte-identically to the per-worker full-file walk.
-pub(crate) fn build_instantiated_type_ids_from_spans(
-    spans: &[(u32, usize, usize)],
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> rustc_hash::FxHashSet<u32> {
-    let mut instantiated: rustc_hash::FxHashSet<u32> = rustc_hash::FxHashSet::default();
-    for &(id, start, end) in spans {
-        if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
-            // IfcRelDefinesByType.RelatingType = attr 5 (the typed product).
-            if let Some(type_id) = entity.get_ref(5) {
-                instantiated.insert(type_id);
-            }
-        }
-    }
-    instantiated
 }
 
 // Site/building rotation now lives in the shared streaming-prepass meta

@@ -77,6 +77,11 @@ impl TypeGeometryPlan {
         ids
     }
 
+    /// Transfer the two membership columns into browser caches without cloning.
+    pub fn into_membership(self) -> (FxHashSet<u32>, FxHashSet<u32>) {
+        (self.referenced, self.instantiated)
+    }
+
     /// Transfer native occurrence counts and template ids without copying maps.
     pub fn into_mapped_instances(self) -> FxHashMap<u32, (u32, u32)> { self.mapped }
 }

@@ -110,3 +110,20 @@ fn issue_7779_linear_source_admission_uses_declared_positions_and_counted_typed_
     assert!(matches!(validate_chain(&placement, &mut decoder, &policy), Err(PlacementError::Missing { .. })), "Distance slot is not CartesianPosition");
     assert_eq!(decoder.refused_records(), 1);
 }
+
+#[test]
+fn issue_7779_verified_suffixes_do_not_survive_decoder_replacement() {
+    let valid = ladder(3);
+    let cyclic = valid.replace("#10=IFCLOCALPLACEMENT($,#2)", "#10=IFCLOCALPLACEMENT(#12,#2)");
+    let mut decoder = EntityDecoder::new(&valid);
+    let mut validator = ChainValidator::new(&mut decoder, ChainPolicy::default());
+    assert_eq!(validator.validate(12).unwrap().0, 10);
+    assert!(validator.validate(12).unwrap().1.is_empty(), "unchanged source reuses the suffix");
+    // Mutable decoder access permits replacing its owner, even while the
+    // validator's policy stays fixed. The same ids now describe a cycle.
+    *validator.decoder() = EntityDecoder::new(&cyclic);
+    for _ in 0..2 {
+        assert!(matches!(validator.validate(12), Err(PlacementError::Cyclic { .. })));
+    }
+    assert_eq!(validator.decoder().refused_records(), 1);
+}

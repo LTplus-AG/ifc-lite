@@ -4,7 +4,8 @@
 //! wider set the output-pinning test runs.
 
 use ifc_lite_export::plan::{
-    Disposition, ExportPlan, ObjectRef, Patch, PlacementPatch, PlanContext, PropScope, PropWrite, PsetKind,
+    Disposition, ExportPlan, GeometryPatch, ObjectRef, Patch, PlacementPatch, PlanContext, PropScope, PropWrite, PsetKind,
+    SurfaceColour, TriangleMesh,
 };
 
 use super::synth::{quirk, Layout, GROUP, TYPES};
@@ -59,6 +60,32 @@ pub fn benchmark(l: &Layout) -> ExportPlan {
     for k in [l.walls / 3, l.walls / 3 + 7, 2 * l.walls / 3 + 3] {
         d.push(delete(l.wall(k)));
     }
+    plan(d)
+}
+
+/// A closed `x` by `y` by `z` box with a corner at the origin, 12 triangles.
+fn box_mesh(x: f64, y: f64, z: f64) -> TriangleMesh {
+    let positions = (0..8).map(|i| [if i & 1 == 0 { 0.0 } else { x }, if i & 2 == 0 { 0.0 } else { y }, if i & 4 == 0 { 0.0 } else { z }]).collect();
+    let triangles = vec![
+        [0, 2, 1], [1, 2, 3], [4, 5, 6], [5, 7, 6], [0, 1, 4], [1, 5, 4],
+        [2, 6, 3], [3, 6, 7], [0, 4, 2], [2, 4, 6], [1, 3, 5], [3, 7, 5],
+    ];
+    TriangleMesh { positions, triangles }
+}
+
+/// New bodies for `count` walls spread across the model, every other one
+/// coloured.
+pub fn geometry(l: &Layout, count: u32) -> ExportPlan {
+    let count = count.min(l.walls);
+    let stride = (l.walls / count.max(1)).max(1);
+    let d = (0..count)
+        .map(|i| {
+            let k = i * stride;
+            let colour = (i % 2 == 0).then_some(SurfaceColour { rgb: [0.6, 0.4, 0.2], transparency: 0.0 });
+            let patch = GeometryPatch { mesh: box_mesh(5.0, 0.2, 3.0 + f64::from(i % 3)), colour };
+            (ObjectRef::Id(l.wall(k)), Disposition::Patch(Patch { geometry: Some(patch), ..Default::default() }))
+        })
+        .collect();
     plan(d)
 }
 
@@ -117,5 +144,6 @@ pub fn scenarios(l: &Layout) -> Vec<(&'static str, ExportPlan)> {
             ]),
         ),
         ("benchmark", benchmark(l)),
+        ("geometry", geometry(l, 8)),
     ]
 }

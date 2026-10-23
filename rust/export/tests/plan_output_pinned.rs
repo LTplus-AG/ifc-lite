@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Pins `plan::execute`'s complete result, output bytes and report alike, on
 //! a synthetic model and a spread of plans: renames, placement rewrites,
-//! in-place/folded/copy-on-write/type-scoped property writes, delete cascades
+//! in-place/folded/copy-on-write/type-scoped property writes, body geometry
+//! replacement, delete cascades
 //! up and down the reference graph, refusals, and the malformed-but-legal
 //! record shapes of the model's quirks block (mixed-case keywords, a
 //! multi-line record, a duplicated id, descending ids, a dangling reference,
@@ -90,6 +91,9 @@ const PINNED: &[(&str, &str)] = &[
     // `Pset_Shared`. Composing both strips into one rewrite drops that
     // stray reference (6 fewer bytes) and the finding along with it.
     ("IFC2X3/benchmark", "70f5086a7d06d781:129144"),
+    // New bodies for eight walls (one with an opening, one with a space
+    // boundary), each replacing an extruded solid and its profile chain.
+    ("IFC2X3/geometry", "b35e09ad010fe5c7:136389"),
     ("IFC4/preserve", "bd388bd3c7e550c2:124703"),
     ("IFC4/rename_by_guid", "82e307937639bf61:124719"),
     ("IFC4/placements", "f6119086b8ffe1a4:125579"),
@@ -103,6 +107,7 @@ const PINNED: &[(&str, &str)] = &[
     ("IFC4/quirks", "fbca61a00ac4c43b:124907"),
     // Same fix, same scenario, IFC4: see the IFC2X3 comment above.
     ("IFC4/benchmark", "0ac47b1862130c3a:129644"),
+    ("IFC4/geometry", "6b055df60c996be8:125923"),
 ];
 
 #[test]

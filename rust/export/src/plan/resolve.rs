@@ -10,8 +10,8 @@ use crate::step_text::escape;
 
 use crate::step_ids::IdAllocator;
 use super::index::FileIndex;
-use super::types::{Disposition, ExportPlan, ObjectRef, Patch, PropWrite, Refusal};
-use super::{attrs, delete, owner_history, placement, props};
+use super::types::{Disposition, DroppedRepresentation, ExportPlan, ObjectRef, Patch, PropWrite, Refusal};
+use super::{attrs, delete, geometry, owner_history, placement, props};
 
 pub(crate) struct Resolution {
     pub(crate) appended: Vec<(u32, String)>,
@@ -23,6 +23,7 @@ pub(crate) struct Resolution {
     /// Every object a patch was applied to: the scope of the duplicate
     /// property-set check, which is the defect a patch can introduce.
     pub(crate) patched_objects: Vec<u32>,
+    pub(crate) dropped_representations: Vec<DroppedRepresentation>,
 }
 
 pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Resolution {
@@ -84,6 +85,11 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     // `detach_requests` and rendered once below, together with whatever the
     // delete pass strips from the same list.
     let mut list_edits: HashMap<(u32, usize), attrs::ListEdit> = HashMap::new();
+    // Every geometry patch's cut `(product, old shape)`, swept together once
+    // every patch has resolved.
+    let mut geometry_cuts: Vec<(u32, u32)> = Vec::new();
+    let mut body_context = geometry::BodyContext::default();
+    let mut dropped_representations = Vec::new();
 
     let mut moved: HashSet<u32> = HashSet::new();
     let mut edited: HashSet<(u32, u32)> = HashSet::new();
@@ -114,10 +120,27 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
                     moved: &mut moved,
                     edited: &mut edited,
                     object: id,
+                    geometry_cuts: &mut geometry_cuts,
+                    body_context: &mut body_context,
+                    dropped_representations: &mut dropped_representations,
                 };
                 apply_patch(index, schema, id, patch, &mut ids, owner_history_ref, &mut out);
             }
         }
+    }
+
+    if let Some(context) = body_context.synthesized {
+        attach_context_to_project(index, schema, context, &removed, &mut list_edits);
+    }
+
+    // What the old shapes leave behind. The annotations the sweep finds (a
+    // styled item, a layer entry) go through delete below, which repairs
+    // whatever names them.
+    if !geometry_cuts.is_empty() {
+        let sweep = geometry::sweep(index, schema, &geometry_cuts, &removed);
+        removed.extend(sweep.pruned);
+        requested_deletes.extend(sweep.delete);
+        detach_requests.extend(sweep.detach);
     }
 
     // The one place the top-level deletes' cascade and every patch's
@@ -170,7 +193,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
 
     render_list_edits(index, list_edits, &removed, &mut edits_by_id);
 
-    Resolution { appended, edits_by_id, removed, refusals, patched, added_unsupported, patched_objects }
+    Resolution { appended, edits_by_id, removed, refusals, patched, added_unsupported, patched_objects, dropped_representations }
 }
 
 /// The owner history a patch's new records name: the file's first, else one
@@ -229,10 +252,30 @@ fn render_list_edits(
             continue;
         }
         let Some(slot) = index.raw_line(id).and_then(|line| crate::step_text::attribute_of(&line, idx)) else { continue };
-        if let Some(entries) = attrs::ListEntry::parse_list(&slot) {
-            edits_by_id.entry(id).or_default().insert(idx, edit.render(&entries));
-        }
+        let entries = match attrs::ListEntry::parse_list(&slot) {
+            Some(entries) => entries,
+            // An unset list (`$`, e.g. a project with no contexts yet) takes
+            // appends as a new list.
+            None if edit.remove.is_empty() && edit.substitute.is_empty() => Vec::new(),
+            None => continue,
+        };
+        edits_by_id.entry(id).or_default().insert(idx, edit.render(&entries));
     }
+}
+
+/// Append a synthesized representation context to the project's
+/// `RepresentationContexts`, through the same list accumulator a delete
+/// stripping a context from that list uses.
+fn attach_context_to_project(
+    index: &FileIndex,
+    schema: &str,
+    context: u32,
+    removed: &HashSet<u32>,
+    list_edits: &mut HashMap<(u32, usize), attrs::ListEdit>,
+) {
+    let Some(project) = index.projects.iter().copied().find(|id| !removed.contains(id)) else { return };
+    let Some(idx) = attrs::attribute_index(schema, "IFCPROJECT", "RepresentationContexts") else { return };
+    list_edits.entry((project, idx)).or_default().append.push(context);
 }
 
 struct PatchOutput<'a> {
@@ -250,6 +293,9 @@ struct PatchOutput<'a> {
     /// member change, checked once the deletes settle.
     edited: &'a mut HashSet<(u32, u32)>,
     object: u32,
+    geometry_cuts: &'a mut Vec<(u32, u32)>,
+    body_context: &'a mut geometry::BodyContext,
+    dropped_representations: &'a mut Vec<DroppedRepresentation>,
 }
 
 impl PatchOutput<'_> {
@@ -341,6 +387,20 @@ fn apply_patch(
                 out.moved.insert(object_id);
             }
             Err(reason) => out.refusals.push(Refusal { object: ObjectRef::Id(object_id), reason }),
+        }
+    }
+
+    if let Some(geometry_patch) = &patch.geometry {
+        match geometry::resolve_geometry(index, schema, object_id, geometry_patch, ids, out.removed, out.body_context) {
+            Ok(geometry::GeometryWrite { new_records, repoint, old_shape, dropped }) => {
+                out.appended.extend(new_records);
+                out.edit(vec![repoint]);
+                out.geometry_cuts.extend(old_shape.map(|shape| (object_id, shape)));
+                out.dropped_representations.extend(dropped.into_iter().map(|(representation, identifier)| {
+                    DroppedRepresentation { object: ObjectRef::Id(object_id), representation, identifier }
+                }));
+            }
+            Err(reason) => out.refusals.push(Refusal { object: ObjectRef::Id(object_id), reason: format!("geometry: {reason}") }),
         }
     }
 }

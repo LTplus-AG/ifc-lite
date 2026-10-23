@@ -33,7 +33,7 @@ export function viewportRenderOptions(
     visualEnhancement: p.visualEnhancementRef.current,
     environment: p.environmentRef.current,
     sunShadows: p.sunShadowsRef.current ?? undefined,
-    isInteracting: continuous, maxPixelRatio: continuous ? 1 : undefined,
+    isInteracting: continuous, maxPixelRatio: undefined,
     interactionFrameIntervalMs: throttleMs || undefined, contributionCull, lod,
     buildingRotation: p.coordinateInfoRef.current?.buildingRotation,
     ...sectionRenderClip(state.sceneState.section.visible, p.sectionPlaneRef.current, p.sectionRangeRef.current, state.activeTool, state.inactiveSectionPlanes, p.sectionBoundsRef?.current),

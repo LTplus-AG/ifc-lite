@@ -139,3 +139,87 @@ fn a_stop_in_the_layer_host_is_returned_not_recorded() {
         assert_eq!(stats.rectangular + stats.diagonal + stats.non_rectangular, 0);
     }
 }
+
+#[test]
+fn issue_7781_early_layer_content_error_keeps_indexed_fallback_and_explicit_error() {
+    let content = WALL.replace("IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#6))",
+        "IFCSHAPEREPRESENTATION($,'Body','SweptSolid')");
+    let router = router();
+    let mut decoder = EntityDecoder::new(&content);
+    let wall = decoder.decode_by_id(9).unwrap();
+    let no_openings = FxHashMap::default();
+    let result = router.process_element_with_submeshes_and_voids(&wall, &mut decoder, &no_openings).unwrap();
+    assert!(result.is_empty());
+    assert_eq!(router.take_layer_slice_diag(), [(9, "skip:base-mesh-error")]);
+    let buildup = router.material_layer_index().and_then(|index| index.get(9)).unwrap();
+    assert!(router.process_element_with_material_layers(&wall, &mut decoder, buildup, &no_openings).is_err());
+    assert!(router.take_layer_slice_diag().is_empty());
+}
+
+#[test]
+fn issue_7781_terminal_after_layer_eligibility_never_becomes_content_fallback() {
+    use crate::resource::{ExecutionAccount, ExecutionPolicy, ProgramStop, ResourceLimits};
+    for malformed in [false, true] {
+        let content = if malformed {
+            WALL.replace("IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#6))",
+                "IFCSHAPEREPRESENTATION($,'Body','SweptSolid')")
+        } else { WALL.to_string() };
+        let router = router();
+        let mut decoder = EntityDecoder::new(&content);
+        let wall = decoder.decode_by_id(9).unwrap();
+        let mut program = GeometryProgram::voided_styled(&wall, &[]);
+        let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
+        account.scope(|| {
+            let request = program.request().unwrap().unwrap();
+            let reply = program.execute(request, &router, &mut decoder).unwrap();
+            account.cancel();
+            program.accept(reply, &router).ok().unwrap();
+            assert!(matches!(program.drain_styled(&router, &mut decoder),
+                Err(crate::Error::ProgramStopped(ProgramStop::Cancelled))));
+            assert!(router.take_layer_slice_diag().is_empty());
+        });
+    }
+}
+
+#[test]
+fn issue_7781_every_completed_layer_step_observes_stop_before_acceptance() {
+    use crate::resource::{ExecutionAccount, ExecutionPolicy, ProgramStop, ResourceLimits};
+    let count = {
+        let router = router();
+        let mut decoder = EntityDecoder::new(WALL);
+        let wall = decoder.decode_by_id(9).unwrap();
+        let buildup = router.material_layer_index().and_then(|index| index.get(9)).unwrap();
+        let mut program = GeometryProgram::material_layers(&wall, buildup, &[]);
+        let mut count = 0;
+        while let Some(request) = program.request().unwrap() {
+            let reply = program.execute(request, &router, &mut decoder).unwrap();
+            program.accept(reply, &router).ok().unwrap();
+            count += 1;
+        }
+        assert!(program.drain_layers(&router, &mut decoder).unwrap().is_some());
+        count
+    };
+    assert!(count > 3, "eligibility, host, frame, planes and slice are exercised");
+    for cancel_at in 0..count {
+        let router = router();
+        let mut decoder = EntityDecoder::new(WALL);
+        let wall = decoder.decode_by_id(9).unwrap();
+        let buildup = router.material_layer_index().and_then(|index| index.get(9)).unwrap();
+        let mut program = GeometryProgram::material_layers(&wall, buildup, &[]);
+        let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
+        account.scope(|| {
+            for step in 0..=cancel_at {
+                let request = program.request().unwrap().expect("step exists in unstopped run");
+                let reply = program.execute(request, &router, &mut decoder).unwrap();
+                if step == cancel_at {
+                    router.take_layer_slice_diag();
+                    account.cancel();
+                }
+                program.accept(reply, &router).ok().unwrap();
+            }
+            assert!(matches!(program.drain_layers(&router, &mut decoder),
+                Err(crate::Error::ProgramStopped(ProgramStop::Cancelled))), "step {cancel_at}");
+            assert!(router.take_layer_slice_diag().is_empty(), "step {cancel_at} published after stop");
+        });
+    }
+}

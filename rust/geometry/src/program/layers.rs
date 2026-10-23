@@ -43,7 +43,7 @@ enum State<'a> {
 }
 
 /// `None` when the element has no sliceable buildup at all.
-type Admitted = Option<std::result::Result<Option<LayerProgram>, LayerSkip>>;
+type Admitted = Result<Option<std::result::Result<Option<LayerProgram>, LayerSkip>>>;
 
 pub(super) enum LayerReply {
     Eligible(Admitted),
@@ -193,14 +193,25 @@ impl<'a> LayerControl<'a> {
                 .and_then(|index| index.get(element.id))
                 .filter(|buildup| buildup.is_sliceable()),
         };
-        buildup.map(|buildup| LayerProgram::admit(element, decoder, buildup, router.unit_scale()))
+        let Some(buildup) = buildup else { return Ok(None) };
+        // Eligibility may read geometry. Admit the whole product first without
+        // reporting; a budget refusal falls back to its completed roots (#7781).
+        if element.ifc_type != ifc_lite_core::IfcType::IfcAlignment {
+            let mut plan = crate::representation::product_budget::admit_product(
+                element, decoder, crate::representation::MAX_WALK_LEVELS, router);
+            plan.strict()?;
+            plan.validate(router, decoder)?;
+            if plan.refusal.is_some() { return Ok(None); }
+        }
+        Ok(Some(LayerProgram::admit(element, decoder, buildup, router.unit_scale())))
     }
 
     fn admitted(&self, admitted: Admitted, router: &GeometryRouter) -> State<'a> {
         match admitted {
-            Some(Ok(Some(program))) => State::Host(program, VoidControl::merged(self.element, self.ids)),
-            Some(Err(skip)) => self.skip(skip, router),
-            None | Some(Ok(None)) => State::Complete(Ok(None)),
+            Ok(Some(Ok(Some(program)))) => State::Host(program, VoidControl::merged(self.element, self.ids)),
+            Ok(Some(Err(skip))) => self.skip(skip, router),
+            Ok(None | Some(Ok(None))) => State::Complete(Ok(None)),
+            Err(error) => self.failed(error, router),
         }
     }
 
@@ -231,14 +242,22 @@ impl<'a> LayerControl<'a> {
             ProductOutput::Parts(parts) => single_frame(self.element.id, parts),
             ProductOutput::Styled(_) => Err(Error::geometry("layer host completed as sub-meshes")),
         });
-        let host = match (host, self.mode) {
-            (Ok(host), _) => host,
-            (Err(stop @ Error::ProgramStopped(_)), _) | (Err(stop), Mode::Buildup(_)) => {
-                return State::Complete(Err(stop))
-            }
-            (Err(_), Mode::Index) => {
-                // A sliceable element whose host build errored keeps a single
-                // solid. Record for the browser; warn for native.
+        let host = match host {
+            Ok(host) => host,
+            Err(error) => return self.failed(error, router),
+        };
+        match program.accept_host(host) {
+            Ok(request) => State::Frame(request),
+            Err(skip) => self.skip(skip, router),
+        }
+    }
+
+    // Indexed attempts fall back on ordinary content errors at any stage;
+    // explicit buildups and terminal stops retain their error (#7781).
+    fn failed(&self, error: Error, router: &GeometryRouter) -> State<'a> {
+        match (error, self.mode) {
+            (stop @ Error::ProgramStopped(_), _) | (stop, Mode::Buildup(_)) => State::Complete(Err(stop)),
+            (_, Mode::Index) => {
                 router.push_layer_slice_diag(self.element.id, "skip:base-mesh-error");
                 crate::diag::diag_warn!(
                     { element_id = self.element.id, reason = "base-mesh-error",
@@ -247,12 +266,8 @@ impl<'a> LayerControl<'a> {
                         eprintln!("[material-layers] #{}: sliceable but slicing errored", self.element.id);
                     }
                 );
-                return State::Complete(Ok(None));
+                State::Complete(Ok(None))
             }
-        };
-        match program.accept_host(host) {
-            Ok(request) => State::Frame(request),
-            Err(skip) => self.skip(skip, router),
         }
     }
 

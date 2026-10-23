@@ -65,31 +65,77 @@ fn nested_styled_items_keep_their_ids_and_bake_like_the_merged_walk() {
     }
 }
 
-/// `MAX_MAPPED_ITEM_DEPTH` bounds every styled item, plain ones too, and the
-/// cut item is recorded as its own type. A type map's nested item is a root
-/// occurrence, so the same chain under a type map still reaches its block.
-#[test]
-fn depth_bounds_plain_styled_items_and_a_type_map_starts_a_fresh_path() {
-    let mut source = BASE.to_string();
-    let depth = ifc_lite_core::MAX_MAPPED_ITEM_DEPTH;
-    for index in 0..depth {
+/// #7887: mapped depth counts transitions, not terminal plain/textured leaves.
+/// A type map's nested item starts a fresh path, like a root occurrence.
+fn depth_source(levels: u32) -> String {
+    let mut source = format!("{BASE}#29=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(0.,1.,0.)));\
+        #30=IFCTRIANGULATEDFACESET(#29,$,.F.,((1,2,3)),$);");
+    for index in 0..levels {
         let map = 100 + index * 3;
-        let next = if index + 1 == depth { 10 } else { map + 5 };
+        let next = if index + 1 == levels { "#10,#30".to_string() } else { format!("#{}", map + 5) };
         source.push_str(&format!("#{map}=IFCREPRESENTATIONMAP(#2,#{rep});\
-            #{rep}=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#{next}));\
+            #{rep}=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',({next}));\
             #{item}=IFCMAPPEDITEM(#{map},#3);", rep = map + 1, item = map + 2));
     }
     source.push_str("#901=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#102));\
         #900=IFCREPRESENTATIONMAP(#2,#901);");
-    let mut decoder = EntityDecoder::new(&source);
-    let router = GeometryRouter::new();
-    assert!(styled(&router, &mut decoder, 102, false).unwrap().is_empty());
-    assert_eq!(router.take_unsupported_items().get("IfcBlock"), Some(&1));
-    let router = GeometryRouter::new();
-    assert_eq!(parts(&router, &mut decoder, 102)[0].indices.len(), 36);
-    let router = GeometryRouter::new();
-    assert_eq!(type_map(&router, &mut decoder, 900)[0].indices.len(), 36);
-    assert!(router.take_unsupported_items().is_empty());
+    source
+}
+
+#[test]
+fn issue_7887_depth_keeps_terminal_leaves_and_type_maps_start_a_fresh_path() {
+    use crate::processors::texture::{ImageTextureRef, ResolvedTextureMap, TextureSource};
+    let textures = [(30, ResolvedTextureMap {
+        texture_id: 950,
+        texture: TextureSource::Image(ImageTextureRef {
+            url: "fixture.png".into(), repeat_s: true, repeat_t: true,
+        }),
+        tex_coords: vec![[0., 0.], [1., 0.], [0., 1.]],
+        tex_coord_index: None,
+    })].into_iter().collect();
+    let source = depth_source(ifc_lite_core::MAX_MAPPED_ITEM_DEPTH);
+    for textured in [false, true] {
+        let mut decoder = EntityDecoder::new(&source);
+        let router = GeometryRouter::new();
+        let root = decoder.decode_by_id(102).unwrap();
+        let meshes = GeometryProgram::styled_item(&root, SubMeshCollection::new(), false,
+            textured.then_some(&textures), router.rtc_offset()).drain_styled(&router, &mut decoder).unwrap();
+        let ids: Vec<_> = meshes.sub_meshes.iter().map(|sub| sub.geometry_id).collect();
+        assert_eq!(ids, [10, 30]);
+        assert_eq!(meshes.sub_meshes[0].mesh.indices.len(), 36);
+        assert_eq!(meshes.sub_meshes[1].mesh.indices.len(), 3);
+        assert_eq!(meshes.sub_meshes[1].texture.is_some(), textured);
+        assert!(router.take_unsupported_items().is_empty());
+        let positions: Vec<_> = meshes.sub_meshes.iter().flat_map(|sub| sub.mesh.positions.iter().copied()).collect();
+        let merged = parts(&router, &mut decoder, 102);
+        assert_eq!(positions, merged[0].positions);
+        assert!(router.take_unsupported_items().is_empty());
+        let router = GeometryRouter::new();
+        let mapped = type_map(&router, &mut decoder, 900);
+        let mapped_positions: Vec<_> = mapped.iter().flat_map(|mesh| mesh.positions.iter().copied()).collect();
+        assert_eq!(positions, mapped_positions);
+        assert_eq!(mapped.iter().map(|mesh| mesh.indices.len()).sum::<usize>(), 39);
+        assert!(router.take_unsupported_items().is_empty());
+    }
+}
+
+/// #7887: the actual 33rd mapped transition is refused and reported on all
+/// three walks; neither terminal leaf below it is silently emitted.
+#[test]
+fn issue_7887_next_mapped_level_is_refused_and_reported() {
+    let source = depth_source(ifc_lite_core::MAX_MAPPED_ITEM_DEPTH + 1);
+    for mode in 0..3 {
+        let mut decoder = EntityDecoder::new(&source);
+        let router = GeometryRouter::new();
+        match mode {
+            0 => assert!(styled(&router, &mut decoder, 102, false).unwrap().is_empty()),
+            1 => assert!(parts(&router, &mut decoder, 102).iter().all(Mesh::is_empty)),
+            _ => assert!(type_map(&router, &mut decoder, 900).iter().all(Mesh::is_empty)),
+        }
+        let unsupported = router.take_unsupported_items();
+        assert_eq!(unsupported.len(), 1, "walk {mode}");
+        assert_eq!(unsupported.get("IfcMappedItem"), Some(&1), "walk {mode}");
+    }
 }
 
 /// A nested styled admission that fails is one recorded `IfcMappedItem` drop

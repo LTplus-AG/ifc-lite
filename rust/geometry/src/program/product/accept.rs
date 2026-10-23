@@ -5,7 +5,7 @@ use super::merged::Prepared;
 use super::{texture, Action, Body, Child, ProductControl, ProductOutput, ProductReply, Role, Sink};
 use crate::program::inner_cache::CacheControl;
 use crate::program::mapping::{MappingControl, MappingOutput, Reached};
-use crate::representation::{ProductShape, Select};
+use crate::representation::product_budget::ProductItems;
 use crate::router::frame_parts::single_frame_source;
 use crate::{Error, GeometryRouter, Mesh, Result, SubMeshCollection};
 use ifc_lite_core::{DecodedEntity, IfcType};
@@ -123,7 +123,7 @@ impl<'a> ProductControl<'a> {
     }
 
     /// The resolved shape: its first item, or an empty product.
-    pub(super) fn shape_done(&mut self, shape: Option<ProductShape>) -> Action {
+    pub(super) fn shape_done(&mut self, shape: Option<ProductItems>) -> Action {
         let Some(shape) = shape else {
             // No geometry: the merged walk is one empty part, the styled walk
             // an empty collection; neither is placed.
@@ -132,14 +132,13 @@ impl<'a> ProductControl<'a> {
                 Some(_) => ProductOutput::Styled(SubMeshCollection::new()),
             }));
         };
-        self.direct = shape.direct_geometry(self.element, Select::Meshed);
         self.shape = Some(shape);
         self.advance()
     }
 
     /// One representation's resolved items.
     pub(super) fn items_done(&mut self, index: usize, items: Vec<DecodedEntity>) -> Action {
-        let rep = self.shape.as_ref().and_then(|shape| shape.representations().get(index));
+        let rep = self.shape.as_ref().and_then(|shape| shape.representations.get(index).map(|(rep, _)| rep));
         self.fill_only = rep.is_some_and(|rep| {
             crate::router::annotation::is_fill_only_representation(self.element, rep)
         });
@@ -166,7 +165,7 @@ impl<'a> ProductControl<'a> {
             return Action::Raw(item);
         }
         let next = self.shape.as_ref().and_then(|shape| {
-            shape.next_selected(self.element, Select::Meshed, self.direct, self.next_rep)
+            (self.next_rep < shape.representations.len()).then_some(self.next_rep)
         });
         match next {
             Some(index) => {

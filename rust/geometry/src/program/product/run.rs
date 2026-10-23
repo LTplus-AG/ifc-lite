@@ -2,7 +2,6 @@
 //! The product walk's synchronous driver: every step applied in place.
 use super::{merged, Action, Body, Child, ProductControl, Sink};
 use crate::program::inner::ProgramError;
-use crate::representation::{product_shape, rep_items};
 use crate::GeometryRouter;
 use ifc_lite_core::EntityDecoder;
 
@@ -15,20 +14,24 @@ impl ProductControl<'_> {
         -> std::result::Result<(), ProgramError> {
         let element = self.element;
         loop {
+            if let Some(plan) = &self.shape {
+                if let Err(error) = plan.validate(router, decoder) {
+                    self.action = Action::Complete(Err(error));
+                    return Ok(());
+                }
+            }
             let next = match &mut self.action {
                 Action::Complete(_) => return Ok(()),
                 Action::Taken => return Err(ProgramError::Outstanding),
-                Action::Shape => match product_shape(element, decoder) {
+                Action::Shape => match self.admit_shape(router, decoder) {
                     Ok(shape) => self.shape_done(shape),
-                    Err(error) => Action::Complete(Err(error.into())),
+                    Err(error) => Action::Complete(Err(error)),
                 },
                 Action::Items(index) => {
                     let index = *index;
-                    let rep = self.shape.as_ref().and_then(|shape| shape.representations().get(index));
-                    let rep = rep.ok_or(ProgramError::StaleRequest)?;
-                    match rep_items(rep, decoder) {
+                    match self.admit_items(index, router, decoder) {
                         Ok(items) => self.items_done(index, items),
-                        Err(error) => Action::Complete(Err(error.into())),
+                        Err(error) => Action::Complete(Err(error)),
                     }
                 }
                 Action::Raw(item) => {

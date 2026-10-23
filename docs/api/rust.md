@@ -1623,3 +1623,7 @@ Explicit `take_csg_failures` retrieval includes these reports; later product dra
 `GeometryRouter::with_product_csg_scope` bounds recorded diagnostics to a synchronous
 product owner epoch. Nested products preserve their parent’s records; error exits
 and unwind retain unconsumed reports for explicit retrieval without final hooks.
+
+Product diagnostic scopes also capture stored Boolean/CSG recorder reports before
+nested entry and on exit, without invoking `take_bool_failures` final callbacks.
+Registered wrappers exposing `boolean_recorder` use the same storage path.

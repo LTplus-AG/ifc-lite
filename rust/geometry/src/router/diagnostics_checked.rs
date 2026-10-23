@@ -10,6 +10,9 @@ impl GeometryRouter {
     /// Nested products cannot drain their parent's records. Unconsumed records
     /// survive errors and unwind for explicit retrieval, without final hooks.
     pub fn with_product_csg_scope<T>(&self, work: impl FnOnce() -> T) -> T {
+        // Existing processor storage belongs to the active parent (or the
+        // root's preexisting source evidence), never to an entering child.
+        self.capture_recorded_processor_failures();
         let nested = self.csg_product_active.replace(true);
         let parent = nested.then(|| std::mem::take(&mut *self.csg_failures.borrow_mut()));
         let _scope = ProductReports { router: self, parent, nested };
@@ -29,6 +32,7 @@ impl GeometryRouter {
     /// Does not invoke processor hooks or adopt ambient thread-local reports.
     /// Explicit diagnostic retrieval still returns these reports exactly once.
     pub fn quarantine_recorded_csg_failures(&self) {
+        self.capture_recorded_processor_failures();
         let failures = std::mem::take(&mut *self.csg_failures.borrow_mut());
         append_csg_failures(&mut self.stopped_csg_failures.borrow_mut(), failures);
     }

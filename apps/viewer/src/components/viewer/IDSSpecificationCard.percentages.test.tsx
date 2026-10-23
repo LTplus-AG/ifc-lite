@@ -5,7 +5,13 @@
 import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { SpecificationResult } from '@ifc-lite/ids';
+import { readFileSync } from 'node:fs';
+import { validateIDS, type IDSDocument, type SpecificationResult } from '@ifc-lite/ids';
+import { IfcParser } from '@ifc-lite/parser';
+import { createDataAccessor } from '@/hooks/ids/idsDataAccessor';
+import { validationReportSummary } from '@/lib/validation/report-summary';
+import { useViewerStore } from '@/store';
+import { IDSPanel } from './IDSPanel';
 import { cleanup, render } from '@/test/render.js';
 import { SpecificationCard } from './IDSSpecificationCard';
 import { ValidationBenchmark } from './validation/ValidationBenchmark';
@@ -66,4 +72,40 @@ describe('IDS percentages (#8065)', () => {
     assert.match(ui.textContent ?? '', /Not checked: 2 specifications/);
     assert.match(ui.querySelector('img')?.alt ?? '', /128 failed/);
   });
+});
+
+
+it('renders real SketchUp IFC validation through the IDS panel (#8065)', async () => {
+  const bytes = readFileSync(new URL('../../../public/samples/building-architecture.ifc', import.meta.url));
+  const store = await new IfcParser().parseColumnar(new Uint8Array(bytes).buffer, { disableWorkerScan: true });
+  const document: IDSDocument = {
+    info: { title: 'Percentage regression' },
+    specifications: ['IFCWALL', 'IFCRAIL'].map((entityType) => ({
+      id: entityType, name: entityType, ifcVersions: ['IFC4'],
+      applicability: { facets: [{ type: 'entity', name: { type: 'simpleValue', value: entityType } }] },
+      requirements: [
+        { id: 'global-id', optionality: 'required', facet: { type: 'attribute', name: { type: 'simpleValue', value: 'GlobalId' } } },
+        { id: 'missing-property', optionality: 'required', facet: { type: 'property',
+          propertySet: { type: 'simpleValue', value: 'Regression_8065_Absent' }, baseName: { type: 'simpleValue', value: 'Missing' } } },
+      ],
+    })),
+  };
+  const report = await validateIDS(document, createDataAccessor(store, 'model'),
+    { modelId: 'model', schemaVersion: 'IFC4', entityCount: store.entityIndex.byId.size });
+  assert.ok(report.specificationResults[0].applicableCount > 0);
+  assert.equal(report.specificationResults[0].passedCount, 0);
+  assert.equal(report.specificationResults[1].applicableCount, 0);
+  const initial = useViewerStore.getState();
+  try {
+    useViewerStore.setState({ idsDocument: document, idsValidationReport: report, validationSource: 'ids', idsAuditReport: null });
+    const ui = render(<IDSPanel />);
+    assert.ok(ui.querySelector('[style="width: 50%;"]'), 'main specification bar reflects half of requirement checks passing');
+    assert.match(ui.textContent ?? '', /Not checked: 1 specification/);
+    assert.doesNotMatch(ui.textContent ?? '', /100%/);
+    const empty = { ...report, specificationResults: [report.specificationResults[1]] };
+    assert.equal(validationReportSummary(empty).passRate, 0);
+  } finally {
+    cleanup();
+    useViewerStore.setState(initial, true);
+  }
 });

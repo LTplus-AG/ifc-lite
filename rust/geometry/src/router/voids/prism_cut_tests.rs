@@ -86,7 +86,7 @@ fn wall(center: [f64; 3], axes: [[f64; 3]; 3]) -> Mesh {
     framed_box_mesh(center, axes, [2.0, 0.15, 1.5])
 }
 
-fn ctx_of(openings: Vec<OpeningType>) -> VoidContext {
+fn ctx_of(openings: Vec<CutterKind>) -> VoidContext {
     VoidContext {
         merged_openings: openings.clone(),
         openings,
@@ -128,7 +128,7 @@ fn box_cutter_through_wall_watertight_and_volume_exact() {
     // Window 1.0 × 1.0, penetrating the full 0.3 thickness plus slack.
     let cutter = framed_box_mesh([0.3, 0.0, 0.2], axis_frame(), [0.5, 0.4, 0.5]);
     let (mn, mx) = cutter.bounds();
-    let ctx = ctx_of(vec![OpeningType::NonRectangular(
+    let ctx = ctx_of(vec![CutterKind::NonRectangular(
         cutter,
         Point3::new(mn.x as f64, mn.y as f64, mn.z as f64),
         Point3::new(mx.x as f64, mx.y as f64, mx.z as f64),
@@ -166,7 +166,7 @@ fn rotated_prism_cutter_fires_and_reconciles() {
         [0.5, 0.4, 0.5],
     );
     let (mn, mx) = cutter.bounds();
-    let ctx = ctx_of(vec![OpeningType::NonRectangular(
+    let ctx = ctx_of(vec![CutterKind::NonRectangular(
         cutter,
         Point3::new(mn.x as f64, mn.y as f64, mn.z as f64),
         Point3::new(mx.x as f64, mx.y as f64, mx.z as f64),
@@ -195,7 +195,7 @@ fn non_convex_cutter_falls_back() {
     let host = wall([0.0, 0.0, 0.0], axis_frame());
     let cutter = l_shaped_cutter();
     let (mn, mx) = cutter.bounds();
-    let ctx = ctx_of(vec![OpeningType::NonRectangular(
+    let ctx = ctx_of(vec![CutterKind::NonRectangular(
         cutter,
         Point3::new(mn.x as f64, mn.y as f64, mn.z as f64),
         Point3::new(mx.x as f64, mx.y as f64, mx.z as f64),
@@ -215,7 +215,7 @@ fn open_shell_cutter_falls_back() {
     let mut cutter = framed_box_mesh([0.3, 0.0, 0.2], axis_frame(), [0.5, 0.4, 0.5]);
     cutter.indices.truncate(cutter.indices.len() - 6);
     let (mn, mx) = cutter.bounds();
-    let ctx = ctx_of(vec![OpeningType::NonRectangular(
+    let ctx = ctx_of(vec![CutterKind::NonRectangular(
         cutter,
         Point3::new(mn.x as f64, mn.y as f64, mn.z as f64),
         Point3::new(mx.x as f64, mx.y as f64, mx.z as f64),
@@ -236,7 +236,7 @@ fn multi_window_host_watertight_and_volume_exact() {
         let cx = -1.3 + i as f64 * 1.2;
         let cutter = framed_box_mesh([cx, 0.0, 0.1], axis_frame(), [0.35, 0.4, 0.45]);
         let (mn, mx) = cutter.bounds();
-        openings.push(OpeningType::NonRectangular(
+        openings.push(CutterKind::NonRectangular(
             cutter,
             Point3::new(mn.x as f64, mn.y as f64, mn.z as f64),
             Point3::new(mx.x as f64, mx.y as f64, mx.z as f64),
@@ -272,13 +272,13 @@ fn mixed_eligible_and_ineligible_returns_residual() {
     let l = l_shaped_cutter();
     let (lmn, lmx) = l.bounds();
     let ctx = ctx_of(vec![
-        OpeningType::NonRectangular(
+        CutterKind::NonRectangular(
             window,
             Point3::new(wmn.x as f64, wmn.y as f64, wmn.z as f64),
             Point3::new(wmx.x as f64, wmx.y as f64, wmx.z as f64),
             Some(Vector3::new(0.0, 1.0, 0.0)),
         ),
-        OpeningType::NonRectangular(
+        CutterKind::NonRectangular(
             l,
             Point3::new(lmn.x as f64, lmn.y as f64, lmn.z as f64),
             Point3::new(lmx.x as f64, lmx.y as f64, lmx.z as f64),
@@ -308,7 +308,7 @@ fn blind_recess_keeps_authored_depth() {
     // (front face at y = -0.15; recess bottom at y = 0.0, strictly interior).
     let cutter = framed_box_mesh([0.0, -0.1, 0.0], axis_frame(), [0.4, 0.1, 0.4]);
     let (mn, mx) = cutter.bounds();
-    let ctx = ctx_of(vec![OpeningType::NonRectangular(
+    let ctx = ctx_of(vec![CutterKind::NonRectangular(
         cutter,
         Point3::new(mn.x as f64, mn.y as f64, mn.z as f64),
         Point3::new(mx.x as f64, mx.y as f64, mx.z as f64),
@@ -346,7 +346,7 @@ fn deterministic_output() {
     );
     let (mn, mx) = cutter.bounds();
     let mk = |cutter: Mesh| {
-        ctx_of(vec![OpeningType::NonRectangular(
+        ctx_of(vec![CutterKind::NonRectangular(
             cutter,
             Point3::new(mn.x as f64, mn.y as f64, mn.z as f64),
             Point3::new(mx.x as f64, mx.y as f64, mx.z as f64),
@@ -368,7 +368,7 @@ fn engulfing_cutter_defers_to_exact_semantics() {
     // engulf/redundant-void semantics (#964), so the prism path must defer.
     let cutter = framed_box_mesh([0.0, 0.0, 0.0], axis_frame(), [3.0, 1.0, 2.0]);
     let (mn, mx) = cutter.bounds();
-    let ctx = ctx_of(vec![OpeningType::NonRectangular(
+    let ctx = ctx_of(vec![CutterKind::NonRectangular(
         cutter,
         Point3::new(mn.x as f64, mn.y as f64, mn.z as f64),
         Point3::new(mx.x as f64, mx.y as f64, mx.z as f64),
@@ -487,7 +487,7 @@ fn rebated_stepped_cutter_fires_watertight_and_volume_exact() {
         0.25,
     );
     let (mn, mx) = cutter.bounds();
-    let ctx = ctx_of(vec![OpeningType::NonRectangular(
+    let ctx = ctx_of(vec![CutterKind::NonRectangular(
         cutter,
         Point3::new(mn.x as f64, mn.y as f64, mn.z as f64),
         Point3::new(mx.x as f64, mx.y as f64, mx.z as f64),
@@ -1081,9 +1081,9 @@ fn tetrahedron_missing_face_fails_directed_closed() {
 
 // #4627: exercise the complete analytic route and its final closure audit
 // before residual exact openings are applied.
-fn box_opening(mesh: Mesh) -> OpeningType {
+fn box_opening(mesh: Mesh) -> CutterKind {
     let (lo, hi) = mesh.bounds();
-    OpeningType::NonRectangular(
+    CutterKind::NonRectangular(
         mesh,
         lo.cast(),
         hi.cast(),

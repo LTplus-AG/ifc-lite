@@ -20,7 +20,7 @@ fn prism_and_exact_paths_record_the_same_rect_box_count() {
     // One non-rectangular (mesh) cutter and no rectangular opening at all.
     let (mn, mx) = (Point3::new(-0.5, -0.4, -0.5), Point3::new(0.5, 0.4, 0.5));
     let cutter = GeometryRouter::make_box_mesh(mn, mx);
-    let openings = vec![OpeningType::NonRectangular(
+    let openings = vec![CutterKind::NonRectangular(
         cutter,
         mn,
         mx,

@@ -321,16 +321,5 @@ pub(super) fn translate_cutter_mesh(mesh: &Mesh, host_origin: [f64; 3]) -> Mesh 
         positions.push((c[1] as f64 + o[1] - host_origin[1]) as f32);
         positions.push((c[2] as f64 + o[2] - host_origin[2]) as f32);
     }
-    Mesh {
-        positions,
-        normals: mesh.normals.clone(),
-        indices: mesh.indices.clone(),
-        rtc_applied: mesh.rtc_applied,
-        origin: [0.0; 3],
-        instance_meta: None,
-        local_bounds: None,
-        local_to_world: None,
-        welded_in_object_frame: false,
-        plane_tags: None,
-    }
+    mesh.reframed_like(positions, mesh.normals.clone(), mesh.indices.clone(), [0.0; 3])
 }

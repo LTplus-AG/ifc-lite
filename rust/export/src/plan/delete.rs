@@ -99,8 +99,7 @@ fn hosted_feature(index: &FileIndex, file_schema: &str, rel: u32, rel_type: &str
         "IFCRELPROJECTSELEMENT" => "RelatedFeatureElement",
         _ => return None,
     };
-    let idx = super::attrs::attribute_index(file_schema, rel_type, attr)?;
-    index.attrs(rel)?.get(idx)?.scalar.filter(|&id| index.contains(id))
+    super::props_lookup::scalar_attr(index, file_schema, rel, rel_type, attr).filter(|&id| index.contains(id))
 }
 
 /// One list attribute of a surviving record as the cascade strips it.

@@ -1669,8 +1669,10 @@ capture; wasm32 needs the existing `wasm_source_capture` feature. The default
 wasm build refuses retained admission.
 
 `finish` returns a logical `RetainedProductPlan`, not a completed mesh or a
-runtime receipt. Its remaining obligations include appearance and persistent
-face identity. It grants no source execution authority, performs no SDK work and
-publishes no partial retained product. The native/browser transaction consumers,
+runtime receipt. Opening closure, material layers, appearance and persistent
+face identity remain conservatively unchecked, even when no relationship is
+visible in the direct representation. Only a consumer that proves an obligation
+unnecessary or discharges it may remove it. It grants no source execution
+authority, performs no SDK work and publishes no partial retained product. The native/browser transaction consumers,
 full release features and explicit viewer/CLI selection follow separately;
 exact geometry remains the default.

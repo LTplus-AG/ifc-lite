@@ -332,3 +332,10 @@ fn retained_mapped_cycle_is_refused_without_following_the_cycle() {
     assert!(drive(&mut program, &router, &mut decoder).is_empty());
     assert!(program.finish().is_err());
 }
+
+#[path = "obligations_tests.rs"]
+mod obligations;
+#[path = "disk_tests.rs"]
+mod disk;
+#[path = "protocol_tests.rs"]
+mod protocol;

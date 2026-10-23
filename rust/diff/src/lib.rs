@@ -28,9 +28,9 @@
 //! 3. **`JSON.stringify` preserves key order; `stableSerialize` sorts.** Both
 //!    are used, for different purposes. See [`js_json`].
 //!
-//! Current scope is the canonical encoding and the fingerprints. The diff
-//! pass, content matching, split/merge, successors, lineage and the sidecar
-//! formats follow in later changes.
+//! Canonical encoding, fingerprints, the keyed diff and content matching are
+//! implemented. Split/merge support is being added; successors, lineage and
+//! sidecar formats follow in later changes.
 
 pub mod fingerprint;
 pub mod input;
@@ -41,6 +41,13 @@ pub mod mutual_nearest;
 pub mod content_types;
 mod content_helpers;
 pub mod content_match;
+pub mod split_evidence;
+pub mod split_geometry;
+pub mod split_grid;
+pub mod class_families;
+pub mod split_types;
+mod split_lanes;
+pub mod split_merge;
 
 // Internal. The canonical encoding and the code-unit helpers are
 // implementation detail of the fingerprint, not a surface worth promising:
@@ -60,3 +67,9 @@ pub use utf16::stable_hash;
 
 #[cfg(test)]
 mod content_tests;
+
+#[cfg(test)]
+mod split_geometry_tests;
+
+#[cfg(test)]
+mod split_merge_tests;

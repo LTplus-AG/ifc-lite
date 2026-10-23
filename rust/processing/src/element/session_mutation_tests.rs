@@ -151,3 +151,27 @@ fn canonical_producer_returns_empty_output_when_a_callback_replaces_its_decoder(
     assert_eq!(h.calls.get(), 1, "the refused product never retries its geometry");
     h.router.try_execution_lease().expect("a refused product releases its router");
 }
+
+#[test]
+fn issue_8091_wrong_owner_cannot_leak_recorded_reports_to_next_product() {
+    let mut h = Harness::new(Mutation::Replace);
+    let source = SOURCE.replace("ENDSEC;END-ISO-10303-21;", "#87=IFCBOOLEANRESULT(.XOR.,#13,$);ENDSEC;END-ISO-10303-21;");
+    let mut evidence_decoder = EntityDecoder::new(&source);
+    // Use the built-in extrusion while gathering real Boolean failure evidence.
+    h.router.register(Box::new(ExtrudedAreaSolidProcessor::new(IfcSchema::new())));
+    let boolean = evidence_decoder.decode_by_id(87).unwrap();
+    assert!(!h.router.process_representation_item(&boolean, &mut evidence_decoder).unwrap().is_empty());
+    h.router.drain_processor_failures();
+    assert_eq!(h.router.csg_failure_total(), 1);
+    h.router.register(Box::new(MutatingExtrusion { mode: Mutation::Replace, calls: h.calls.clone() }));
+    let job = leaked_job(&mut h.decoder, 10);
+    let rejected = produce_element_meshes(job, &h.context.borrowed(), &options(), &mut h.decoder, &h.router);
+    assert!(rejected.meshes.is_empty());
+    h.router.register(Box::new(ExtrudedAreaSolidProcessor::new(IfcSchema::new())));
+    let next = leaked_job(&mut h.decoder, 20);
+    let next = produce_element_meshes(next, &h.context.borrowed(), &options(), &mut h.decoder, &h.router);
+    assert!(!next.meshes.is_empty());
+    assert!(next.csg_failures.is_empty(), "successful product inherited rejected product reports");
+    assert_eq!(h.router.take_csg_failures().values().map(Vec::len).sum::<usize>(), 1);
+    assert!(h.router.take_csg_failures().is_empty());
+}

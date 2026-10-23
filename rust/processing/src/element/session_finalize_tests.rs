@@ -67,9 +67,11 @@ struct Fixture {
     child: Rc<RefCell<Option<ProducedElementMeshes>>>,
 }
 impl Fixture {
-    fn new() -> Self {
+    fn new() -> Self { Self::with_reports(false) }
+    fn with_reports(reports: bool) -> Self {
         let mut decoder = EntityDecoder::new(SOURCE);
         let mut base = router(&mut decoder);
+        if reports { seed_report(&base); }
         let fired = Rc::new(Cell::new(false));
         let panic_final = Rc::new(Cell::new(false));
         let product_modes = Rc::new(RefCell::new(Vec::new()));
@@ -134,4 +136,27 @@ fn final_diagnostic_hook_panic_restores_caller_state_and_releases_publication_ow
     let job = leaked_job(&mut fixture.decoder, 20);
     let child = produce_element_meshes(job, &Context::default().borrowed(), &options(), &mut fixture.decoder, &fixture.router);
     assert_same(&child, &canonical(20, false));
+}
+
+// #8091: real unsupported-operator evidence must remain with its parent.
+fn seed_report(router: &GeometryRouter) {
+    let source = SOURCE.replace("ENDSEC;END-ISO-10303-21;", "#87=IFCBOOLEANRESULT(.XOR.,#13,$);ENDSEC;END-ISO-10303-21;");
+    let mut decoder = EntityDecoder::new(&source);
+    decoder.seed_unit_scales(router.unit_scale(), 1.);
+    let boolean = decoder.decode_by_id(87).unwrap();
+    assert!(!router.process_representation_item(&boolean, &mut decoder).unwrap().is_empty());
+    router.drain_processor_failures();
+    assert_eq!(router.csg_failure_total(), 1);
+}
+
+#[test]
+fn issue_8091_nested_final_hook_cannot_steal_parent_reports() {
+    let mut fixture = Fixture::with_reports(true);
+    let job = leaked_job(&mut fixture.decoder, 10);
+    let parent = produce_element_meshes(job, &Context::default().borrowed(), &options(), &mut fixture.decoder, &fixture.router);
+    let child = fixture.child.borrow_mut().take().expect("real nested slab");
+    assert!(!parent.meshes.is_empty() && !child.meshes.is_empty());
+    assert!(child.csg_failures.is_empty(), "child stole parent reports");
+    assert_eq!(parent.csg_failures.values().map(Vec::len).sum::<usize>(), 1);
+    assert!(fixture.router.take_csg_failures().is_empty());
 }

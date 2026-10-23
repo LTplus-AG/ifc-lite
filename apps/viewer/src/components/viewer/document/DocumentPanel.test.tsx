@@ -280,7 +280,7 @@ END-ISO-10303-21;`);
     let toastText = '';
     for (let i = 0; i < 20 && !toastText; i++) {
       await settle();
-      toastText = document.body.querySelector('[data-sonner-toast], [role="status"]')?.textContent ?? '';
+      toastText = document.body.querySelector('[data-toast-seq]')?.textContent ?? '';
       if (!/exported/.test(toastText)) toastText = '';
     }
     assert.match(toastText, /1 table not printed/);

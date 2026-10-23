@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType};
 
 #[path = "operator.rs"]
 mod operator;
@@ -310,3 +310,60 @@ pub(super) fn parse_axis2_placement_2d(
 #[cfg(test)]
 #[path = "transform_tests.rs"]
 mod transform_tests;
+
+/// Resolve the representation context and compose it with the product frame.
+/// Kept separate from scan admission and publication checks.
+pub(super) fn resolve_representation_transform(
+    shape_rep: &DecodedEntity,
+    placement_transform: Transform2D,
+    decoder: &mut EntityDecoder,
+    unit_scale: f64,
+) -> Transform2D {
+    // ContextOfItems WCS: some Plan reps use a different coord
+    // system than Body. Compose it in when present and non-trivial.
+    // `ContextOfItems` (IfcRepresentation attr 0) and
+    // `WorldCoordinateSystem` (IfcGeometricRepresentationContext
+    // attr 4) are both MANDATORY, so a dangling ref or absent
+    // attribute is malformed data, not a legitimate default —
+    // `unresolved()` per #2352's convention. A resolved
+    // `IfcGeometricRepresentationSubContext`, in contrast, derives
+    // its WCS from `ParentContext` and legitimately does not store
+    // one inline, so it alone stays `identity()`.
+    // Named fixed slots preserve the existing malformed-reference recovery;
+    // this extraction does not add a typed accessor's debug owner assertion.
+    let context_transform = match shape_rep.get_ref(slot::IfcRepresentation::CONTEXT_OF_ITEMS.index()) {
+        Some(context_ref) => match decoder.decode_by_id(context_ref) {
+            Ok(context) if context.ifc_type == IfcType::IfcGeometricRepresentationContext => {
+                match context.get_ref(slot::IfcGeometricRepresentationContext::WORLD_COORDINATE_SYSTEM.index()) {
+                    Some(wcs_ref) => match decoder.decode_by_id(wcs_ref) {
+                        Ok(wcs) => parse_axis2_placement_2d(&wcs, decoder, unit_scale),
+                        Err(_) => Transform2D::unresolved(),
+                    },
+                    None => Transform2D::unresolved(),
+                }
+            }
+            // SubContext inherits WCS from ParentContext — legitimately
+            // has none inline (the wasm pipeline does the same).
+            Ok(context) if context.ifc_type == IfcType::IfcGeometricRepresentationSubContext => {
+                Transform2D::identity()
+            }
+            // Dangling context_ref, or a ref resolving to neither
+            // Context nor SubContext: malformed data.
+            _ => Transform2D::unresolved(),
+        },
+        None => Transform2D::unresolved(),
+    };
+    if context_transform.tx.abs() > 0.001
+        || context_transform.ty.abs() > 0.001
+        || context_transform.tz.abs() > 0.001
+        || (context_transform.m00 - 1.0).abs() > 0.0001
+        || context_transform.m01.abs() > 0.0001
+        || context_transform.m10.abs() > 0.0001
+        || (context_transform.m11 - 1.0).abs() > 0.0001
+        || context_transform.tz.is_nan()
+    {
+        compose_transforms(&context_transform, &placement_transform)
+    } else {
+        placement_transform
+    }
+}

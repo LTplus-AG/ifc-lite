@@ -362,7 +362,7 @@ fn overlays_are_rebased_by_the_bounds_fallback_frame_the_meshes_use() {
     assert!(!alignment.is_empty(), "alignment must emit centerline vertices");
     assert_in_mesh_frame("alignment start", alignment[0]);
 
-    let symbolic = ifc_lite_processing::extract_symbolic_data(content);
+    let symbolic = ifc_lite_processing::extract_symbolic_data(content).expect("symbolic extraction must complete");
     let grid_line = symbolic.polylines.iter().find(|p| p.express_id == 70).expect("the symbolic overlay emits the grid axis");
     assert_in_mesh_frame("symbolic grid axis", grid_line.points[0]);
 }

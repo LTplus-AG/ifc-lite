@@ -184,7 +184,14 @@ impl<'a> RetainedProgram<'a> {
                 error: r.error.into(),
                 reply: RetainedReply(r.reply),
             })
-        })
+        })?;
+        // Accept-side reduction can allocate after consuming the reply. Retain
+        // its stop before the account scope ends, but never return that consumed
+        // reply as reusable. Subsequent requests and finish report the stop.
+        if let Err(stop) = crate::resource::check_current() {
+            if let Some(selection) = self.selection() { selection.remember_stop(stop); }
+        }
+        Ok(())
     }
     pub fn cancel(&mut self) {
         self.cancelled = true;

@@ -1805,6 +1805,14 @@ jobs:
                 --mutation "tests/evidence/retained-boolean-controller-h2c/$mutation.oracle.patch"
             done
           fi
+          # #7955 R1: independently remove accept-boundary retention, preserving
+          # types and admission guards. Require named behavioral RED after GREEN;
+          # compile failure, zero selected tests and timeout are not evidence.
+          if git diff --name-only origin/main...HEAD -- rust/geometry/src/program/retained/program.rs | grep -q .; then
+            node scripts/check-test-revert-oracle.mjs --base 275a4e6a0753cd9e697dc9e3e37c7f56ccbff80f --ci --json \
+              --test rust/geometry/src/program/retained/accept_stop_tests.rs \
+              --mutation tests/evidence/retained-accept-stop-h2/retention.oracle.patch
+          fi
           # Observe every new effect independently; combined RED is insufficient.
           if git diff --name-only origin/main...HEAD -- rust/geometry/src/program/mapping_retained.rs | grep -q .; then
             for mutation in cycle copy-budget owner style-binding type-origin type-exact-nonconsumption required-target required-items; do

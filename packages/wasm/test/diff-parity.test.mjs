@@ -36,6 +36,27 @@ function revive(value) {
   }
   return value;
 }
+test('actual WASM sidecars preserve wire bytes, validation, and host dates (#8042)', async context => {
+  const module = await engine(context); if (!module) return;
+  const load = name => JSON.parse(readFileSync(new URL(`../../../rust/diff/tests/${name}.json`, import.meta.url), 'utf8'));
+  for (const vector of load('sidecar_vectors')) {
+    assert.equal(module.diffSerializeSidecar(JSON.stringify(vector.value)), vector.wire);
+    const init = structuredClone(vector.value);
+    init.entries.reverse();
+    if (init.entries.length) init.entries.push({ ...init.entries[0], reason: 'must not replace the first reason' });
+    if (init.deleted) init.deleted = [...init.deleted].reverse().concat(init.deleted);
+    init.base.extra = 'discard';
+    assert.equal(module.diffCreateSidecar(JSON.stringify(init), vector.kind === 'lineage'), vector.wire);
+  }
+  for (const vector of load('sidecar_validation_vectors')) {
+    assert.deepEqual(module.diffValidateSidecar(JSON.stringify(vector.value), vector.kind === 'lineage'), vector.errors, vector.name);
+  }
+  const valid = { format: 'ifc-lite/identity-map', version: 1, base: { hash: 'a' }, head: { hash: 'b' }, entries: [] };
+  for (const created of ['2000', '2024-02-30', 'Fri, 23 Oct 2026 12:00:00 GMT', 'invalid', '2026-10-23T12:00:00+02:00']) {
+    const errors = module.diffValidateSidecar(JSON.stringify({ ...valid, created }), false);
+    assert.deepEqual(errors, Number.isFinite(Date.parse(created)) ? [] : ['created must be an ISO 8601 timestamp when present']);
+  }
+});
 test('actual WASM fingerprints match TS bytes including non-finite adapter values (#8042)', async context => {
   const module = await engine(context); if (!module) return;
   const corpus = JSON.parse(readFileSync(new URL('../../../rust/diff/tests/fingerprint_vectors.json', import.meta.url), 'utf8'));

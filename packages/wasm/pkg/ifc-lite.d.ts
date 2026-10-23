@@ -2473,9 +2473,24 @@ export function diffBuildComponentFingerprints(input: any): any;
 export function diffBuildDataFingerprint(input: any): string;
 
 /**
+ * Normalize, deduplicate and validate an identity or lineage sidecar.
+ */
+export function diffCreateSidecar(text: string, lineage: boolean): string;
+
+/**
+ * Emit JSON.stringify-compatible pretty bytes and the trailing newline.
+ */
+export function diffSerializeSidecar(text: string): string;
+
+/**
  * Raw code units preserve JS strings that cannot be represented as Rust UTF-8.
  */
 export function diffStableHash(units: Uint16Array): string;
+
+/**
+ * Structural diagnostics preserve the engine's ordered error list.
+ */
+export function diffValidateSidecar(text: string, lineage: boolean): string[];
 
 /**
  * `a - b`, keeping EVERY disjoint remnant.
@@ -2703,7 +2718,10 @@ export interface InitOutput {
     readonly contours2d_shapeOffsets: (a: number) => number;
     readonly diffBuildComponentFingerprints: (a: number, b: number) => void;
     readonly diffBuildDataFingerprint: (a: number, b: number) => void;
+    readonly diffCreateSidecar: (a: number, b: number, c: number, d: number) => void;
+    readonly diffSerializeSidecar: (a: number, b: number, c: number) => void;
     readonly diffStableHash: (a: number, b: number, c: number) => void;
+    readonly diffValidateSidecar: (a: number, b: number, c: number, d: number) => void;
     readonly difference2d: (a: number, b: number) => number;
     readonly diffmodel_compare: (a: number, b: number, c: number, d: number) => void;
     readonly diffmodel_entityCount: (a: number) => number;

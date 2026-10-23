@@ -203,8 +203,8 @@ fn decode_property_set_with_kinds(
 
 /// Resolve a list of property/quantity set definition ids into non-empty
 /// `(property_sets, quantity_sets)`, dropping undecodable refs. Each id is
-/// resolved on its own, so a repeated id yields a repeated set. Nothing in
-/// this crate calls it; it is kept because this module path is public API.
+/// resolved on its own, so a repeated id yields a repeated set.
+// Nothing in this crate calls it; it stays because this module path is public.
 pub fn resolve_pset_defs(
     props: &mut PropertyDecoder,
     decoder: &mut EntityDecoder,
@@ -213,8 +213,8 @@ pub fn resolve_pset_defs(
     resolve_pset_defs_with_kinds(props, decoder, def_ids, None)
 }
 
-/// [`resolve_pset_defs`], also capturing each kept property set's
-/// per-property kinds into `kinds` when given.
+/// [`resolve_pset_defs`], also pushing to `kinds`, when given, one entry per
+/// kept property set, index-aligned with the returned `property_sets`.
 pub(crate) fn resolve_pset_defs_with_kinds(
     props: &mut PropertyDecoder,
     decoder: &mut EntityDecoder,

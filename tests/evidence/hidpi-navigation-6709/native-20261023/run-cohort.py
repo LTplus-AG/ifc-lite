@@ -13,6 +13,7 @@ jobs=json.loads((out/'preparation-jobs.json').read_text())
 receipts=[]
 for side in ['candidate','base']:
  job=jobs[side]
+ assert isinstance(job,str), f'{side} preparation has not been submitted'
  r=json.loads((state/'jobs'/job/'receipt.json').read_text())
  if r.get('state')!='completed' or r.get('exitCode')!=0 or not r.get('sourceUnchanged'):raise RuntimeError(f'Prerequisite not qualified: {job}: {r.get("state")} sourceUnchanged={r.get("sourceUnchanged")}')
  assert r['sourceAfter']['commit']==pair['candidate' if side=='candidate' else 'control']
@@ -20,8 +21,18 @@ for side in ['candidate','base']:
   command=' '.join(r['command'])
   assert 'pnpm test --filter=@ifc-lite/viewer' in command and 'TEST_PATTERN=' in command
  receipts.append(r)
+transfer=json.loads((out/'pc-control-transfer.json').read_text())
+producer=transfer['receipt']
+assert transfer['host']=='pc-wsl' and producer['state']=='completed' and producer['exitCode']==0
+assert producer['sourceUnchanged'] and producer['sourceBefore']==producer['sourceAfter']
+assert producer['sourceAfter']['commit']==pair['control']
+assert producer['sourceAfter']['toolchainInputs']==receipts[0]['sourceAfter']['toolchainInputs']
+assert receipts[1]['command'][-2:]==[str(out/'stage-pc-control.py'),producer['id']], 'Staging job must bind the original PC producer'
+assert transfer['stagedCheckout']==receipts[1]['cwd']
 (out/'preparation-receipts.json').write_text(json.dumps(receipts,indent=2)+'\n')
 subprocess.run(['python3',str(out/'freeze-builds.py')],check=True,timeout=600)
+base_manifest=json.loads((out/'base-build-manifest.json').read_text())
+assert {r['path']:(r['bytes'],r['sha256']) for r in base_manifest['artifacts']}=={r['path']:(r['bytes'],r['sha256']) for r in transfer['artifacts']}, 'Served control differs from original PC output'
 candidate_manifest=json.loads((out/'candidate-build-manifest.json').read_text())
 validated_root=Path(candidate_manifest['checkout']).resolve()
 receipt_root=Path(receipts[0]['cwd']).resolve()

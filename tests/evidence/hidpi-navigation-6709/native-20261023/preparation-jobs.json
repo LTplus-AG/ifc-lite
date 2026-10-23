@@ -1,4 +1,6 @@
 {
   "candidate": "7fa95733-821a-46c9-bb11-9e9dd49f7a2c",
-  "base": "7338fa2e-f52b-4b4f-9978-e6f32ace0dce"
+  "base": null,
+  "cancelledBase": "7338fa2e-f52b-4b4f-9978-e6f32ace0dce",
+  "cancelledQualification": "e84f96a8-4ea9-4ca6-bcb9-b04eaaecb5a2"
 }

@@ -11,8 +11,20 @@ with uncapped control `118738a9f4d09f8349614679e90e7e104a63f45c` on the physical
 NVIDIA desktop. Both arms contain the same capture fix; only the navigation
 `maxPixelRatio` expression differs. `source-pair.json` records that exact diff.
 
-`preparation-jobs.json` points to the successful candidate build/test receipt
-and the submitted control build receipt. A submitted receipt is not success:
+`preparation-jobs.json` points to the successful candidate build/test receipt.
+The original Pop control preparation and qualification were positively cancelled
+while queued, before execution, to use the PC preparation slot. Their original
+IDs remain recorded. The active base receipt is deliberately unset until the
+cross-host staging job is submitted; this state cannot qualify.
+
+PC preparation uses the same pinned control and root pnpm/Turbo. After a
+successful original PC receipt, `stage-pc-control.py` runs under Pop ordinary
+admission to transfer the served build. It checks source cleanliness, the
+original receipt and output-log hash, every transferred artifact and identical
+WASM runtime bytes before staging. `pc-control-transfer.json` binds the original
+PC producer, source, artifact hashes and destination. The cohort binds that
+producer to its successful Pop staging receipt and frozen served bytes. No
+measurement occurs during transfer. A submitted receipt is not success:
 `run-cohort.py` refuses either arm until its original receipt proves completed
 exit zero, unchanged source, and the exact pinned commit. The fixture path is
 resolved from its successful preparation receipt rather than assuming that a

@@ -11,7 +11,9 @@
 use super::super::property::{PropertyDecoder, PropertyKind, PropertyRow, PropertyScope};
 use super::super::quantity::decode_quantity_set;
 use super::super::rows::{PropValue, PropertySet, QuantitySet, ValueKind};
-use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
+use std::collections::HashSet;
+
+use ifc_lite_core::{slot, AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 
 pub use ifc_lite_core::fmt_num::fmt_num;
 
@@ -247,6 +249,68 @@ pub(crate) fn resolve_pset_defs_with_kinds(
         }
     }
     (property_sets, quantity_sets)
+}
+
+/// A resolved, non-empty set definition, and whether it is a quantity set.
+enum Resolved {
+    Properties(PropertySet),
+    Quantities(QuantitySet),
+}
+
+/// One definition, resolved, with its GlobalId. `None` for an undecodable
+/// ref, anything that is not a property or quantity set, and a set with no
+/// entry this export decodes.
+fn resolve_def(props: &mut PropertyDecoder, decoder: &mut EntityDecoder, def_id: u32) -> Option<(String, Resolved)> {
+    let def = decoder.decode_by_id(def_id).ok()?;
+    let set = match def.ifc_type {
+        IfcType::IfcPropertySet => {
+            decode_property_set(props, decoder, &def).filter(|ps| !ps.properties.is_empty()).map(Resolved::Properties)
+        }
+        IfcType::IfcElementQuantity => {
+            decode_quantity_set(decoder, &def).filter(|qs| !qs.quantities.is_empty()).map(Resolved::Quantities)
+        }
+        _ => None,
+    }?;
+    Some((def.string_at(slot::IfcRoot::GLOBAL_ID).unwrap_or("").to_string(), set))
+}
+
+/// The sets a type carries, read the way the TS type extractor reads them:
+/// its own `HasPropertySets` first, then the definitions
+/// `IfcRelDefinesByProperties` attaches to it. Each definition id is read once
+/// across both. A relationship-attached set is also skipped when a set already
+/// taken has the same Name and GlobalId, so one set written twice under two
+/// ids is not inherited twice. Only non-empty sets take part, so an empty set
+/// never hides a populated one.
+pub(crate) fn resolve_type_sets(
+    props: &mut PropertyDecoder,
+    decoder: &mut EntityDecoder,
+    has_property_sets: Vec<u32>,
+    related: &[u32],
+) -> (Vec<PropertySet>, Vec<QuantitySet>) {
+    let mut seen_ids = HashSet::new();
+    let first: Vec<u32> = has_property_sets.into_iter().filter(|&id| seen_ids.insert(id)).collect();
+    let fresh: Vec<u32> = related.iter().copied().filter(|&id| seen_ids.insert(id)).collect();
+
+    let (mut psets, mut qsets) = (Vec::new(), Vec::new());
+    let mut seen_keys = HashSet::new();
+    for (i, &id) in first.iter().chain(&fresh).enumerate() {
+        let Some((gid, set)) = resolve_def(props, decoder, id) else { continue };
+        let (is_qset, name) = match &set {
+            Resolved::Properties(ps) => (false, &ps.name),
+            Resolved::Quantities(qs) => (true, &qs.name),
+        };
+        // Property and quantity sets are keyed apart, as the TS extractor
+        // resolves them as separate lists. A set with neither a Name nor a
+        // GlobalId has no identity beyond its id.
+        if (!name.is_empty() || !gid.is_empty()) && !seen_keys.insert((is_qset, name.clone(), gid)) && i >= first.len() {
+            continue;
+        }
+        match set {
+            Resolved::Properties(ps) => psets.push(ps),
+            Resolved::Quantities(qs) => qsets.push(qs),
+        }
+    }
+    (psets, qsets)
 }
 
 #[cfg(test)]

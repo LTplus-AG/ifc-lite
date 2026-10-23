@@ -28,18 +28,20 @@ mod options;
 pub use options::{ModelOptions, Placement};
 
 pub use ifc_lite_core::fmt_num::fmt_num;
-use super::inherit::merge_inherited;
+use super::inherit::{inherit_from_type, TypeSetCache};
 use super::type_assignments::TypeAssignments;
-use super::render::flat::{new_property_decoder, opt_string, ref_list, render_attributes, resolve_pset_defs, resolve_pset_defs_with_kinds};
+use super::render::flat::{new_property_decoder, opt_string, ref_list, render_attributes, resolve_pset_defs_with_kinds};
 use super::property::PropertyKind;
 
 mod classified;
-pub use classified::{stream_export_model_with_options, stream_export_model_with_property_kinds};
+pub use classified::{
+    stream_export_model_with_inherited, stream_export_model_with_options, stream_export_model_with_property_kinds,
+};
 mod support;
 mod types;
 use support::TypeProductCandidate;
 pub use support::attribute_schema;
-pub use types::{EntityRow, ExportModel, PropValue, PropertySet, QuantitySet, QuantityValue, ValueKind};
+pub use types::{EntityRow, ExportModel, Inherited, PropValue, PropertySet, QuantitySet, QuantityValue, ValueKind};
 
 /// Build the export model from raw IFC/STEP bytes.
 ///
@@ -101,7 +103,7 @@ fn stream_rows(
     entity_index: &Arc<EntityIndex>,
     opts: &ModelOptions,
     capture_kinds: bool,
-    mut f: impl FnMut(EntityRow, Option<&DecodedEntity>, &[Vec<PropertyKind>]),
+    mut f: impl FnMut(EntityRow, Inherited, Option<&DecodedEntity>, &[Vec<PropertyKind>]),
 ) -> UnitScales {
     // Attribute positions are schema-specific. Unlike STEP re-export, where
     // IFC4 is an established fallback for a missing declaration, attribute
@@ -140,7 +142,7 @@ fn stream_rows(
     // Type id → its resolved sets, so one IfcWallType typing 5000 walls is
     // decoded once. Bounded by the file's distinct types, which is orders of
     // magnitude below its occurrences.
-    let mut type_pset_cache: HashMap<u32, (Vec<PropertySet>, Vec<QuantitySet>)> = HashMap::new();
+    let mut type_pset_cache = TypeSetCache::new();
     {
         let mut scanner = EntityScanner::new(content);
         while let Some((id, type_name, start, end)) = scanner.next_entity() {
@@ -303,27 +305,12 @@ fn stream_rows(
             &mut props, &mut decoder, &def_ids, capture_kinds.then_some(&mut kinds),
         );
 
-        // Fold in whatever this occurrence inherits from its type. Resolution is
-        // memoized per type id, not per occurrence: a Revit export types
-        // thousands of walls off one IfcWallType, and re-decoding its sets for
-        // each would turn a constant cost into a linear one.
+        let mut inherited = Inherited::default();
         if opts.inherit_type_properties {
             if let Some(type_id) = type_by_object.type_of(id) {
-                let inherited = type_pset_cache.entry(type_id).or_insert_with_key(|&tid| {
-                    // `HasPropertySets` is attr 5 on IfcTypeObject. Resolved
-                    // from the type entity itself rather than the pass-1
-                    // candidate list, because that list holds only types with
-                    // RepresentationMaps and the common inheriting type has
-                    // none.
-                    let def_ids = decoder
-                        .decode_by_id(tid)
-                        .ok()
-                        .map(|t| ref_list(t.attr(slot::IfcTypeObject::HAS_PROPERTY_SETS)))
-                        .unwrap_or_default();
-                    resolve_pset_defs(&mut props, &mut decoder, &def_ids)
-                });
-                property_sets = merge_inherited(property_sets, inherited.0.clone());
-                quantity_sets = merge_inherited(quantity_sets, inherited.1.clone());
+                let defs = (&mut props, &mut decoder, &defs_by_object);
+                (property_sets, quantity_sets, inherited) =
+                    inherit_from_type(&mut type_pset_cache, type_id, defs, property_sets, quantity_sets);
             }
         }
 
@@ -345,7 +332,7 @@ fn stream_rows(
                     Vec::new()
                 },
             },
-            Some(&entity), &kinds,
+            inherited, Some(&entity), &kinds,
         );
 
         // Bound decoded-entity retention without invalidating placement memoization.
@@ -375,8 +362,8 @@ fn stream_rows(
             continue;
         }
 
-        // Types attach their sets via HasPropertySets (attr 5), not
-        // IfcRelDefinesByProperties.
+        // The type's own HasPropertySets. Sets attached to it by
+        // IfcRelDefinesByProperties are read only for inheritance.
         let mut kinds = Vec::new();
         let (property_sets, quantity_sets) = resolve_pset_defs_with_kinds(
             &mut props, &mut decoder, &cand.pset_def_ids, capture_kinds.then_some(&mut kinds),
@@ -409,7 +396,7 @@ fn stream_rows(
                     Vec::new()
                 },
             },
-            None, &kinds,
+            Inherited::default(), None, &kinds,
         );
         if decoder.cache_size() > PSET_CACHE_CAP {
             decoder.clear_entity_cache();

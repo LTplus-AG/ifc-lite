@@ -8,8 +8,8 @@
 //! actually reaches. The one piece of domain knowledge the references alone
 //! cannot supply is cardinality — the file does not say a `SET [1:?]` cannot go empty — so
 //! [`is_mandatory_members_attr`] carries that one fact, by attribute NAME
-//! (`RelatedObjects` / `RelatedElements` / `RelatedResourceObjects` on an
-//! `IFCREL*` entity), not by entity type. It is the one place this module is
+//! (the `SET [1:?]` member lists of the `IFCREL*` entities, such as
+//! `RelatedObjects` or `RelatedCoverings`), not by entity type. It is the one place this module is
 //! a curated fact rather than a derived one, and it is deliberately narrow:
 //! wrong here means a relationship survives with fewer members, never that a
 //! record silently disappears.
@@ -30,11 +30,11 @@ pub(crate) struct DeleteResult {
     pub(crate) stripped: HashMap<(u32, usize), HashSet<u32>>,
 }
 
-/// True for the attribute this file's schema calls `RelatedObjects` /
-/// `RelatedElements` / `RelatedResourceObjects` on an `IFCREL*` entity — the
-/// member list every IFC relationship declares `SET [1:?]`, so emptying it
-/// by removing a member takes the relationship itself out rather than
-/// leaving a rel with nothing related.
+/// True for an `IFCREL*` attribute IFC declares as a `SET [1:?]` member
+/// list (`RelatedObjects`, `RelatedElements`, `RelatedCoverings`, ...), so
+/// emptying it by removing a member takes the relationship itself out rather
+/// than leaving a rel with nothing related. The names are the same in
+/// IFC2X3, IFC4 and IFC4X3.
 fn is_mandatory_members_attr(file_schema: &str, entity_type: &str, index: usize) -> bool {
     if !entity_type.starts_with("IFCREL") {
         return false;
@@ -44,7 +44,19 @@ fn is_mandatory_members_attr(file_schema: &str, entity_type: &str, index: usize)
     };
     matches!(
         names.get(index).copied(),
-        Some("RelatedObjects" | "RelatedElements" | "RelatedResourceObjects")
+        Some(
+            "RelatedObjects"
+                | "RelatedElements"
+                | "RelatedResourceObjects"
+                | "RelatedCoverings"
+                | "RelatedDefinitions"
+                | "RealizingElements"
+                | "RelatedControlElements"
+                | "RelatedBuildings"
+                | "RelatedPropertySets"
+                | "RelatedProducts"
+                | "RelatedSurfaceFeatures"
+        )
     )
 }
 

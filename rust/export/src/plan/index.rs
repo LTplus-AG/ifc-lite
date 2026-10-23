@@ -15,7 +15,7 @@ use std::collections::HashSet;
 
 use ifc_lite_core::parser::{parse_ref, skip_step_trivia, StepRecord};
 use ifc_lite_core::{ColumnarEntityIndex, EntityIndex, EntityScanner, StepListItems};
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::merged::extract_global_id_fast;
 use crate::step_record_frame::record_frame;
@@ -72,7 +72,7 @@ pub(crate) struct FileIndex<'a> {
     pub(crate) duplicates: FxHashSet<u32>,
     /// `(GlobalId, id)` for the GlobalIds the plan names, first declaration
     /// wins. Never the whole file's.
-    guids: Vec<(String, u32)>,
+    guids: FxHashMap<String, u32>,
     pub(crate) max_id: u32,
     pub(crate) first_owner_history: Option<u32>,
     pub(crate) referrers: Referrers,
@@ -132,12 +132,13 @@ impl<'a> FileIndex<'a> {
 
         let kept = |&(id, start): &(u32, usize)| !duplicates.contains(&id) || spans.lookup(id).is_some_and(|(s, _)| s == start);
         let first_owner_history = owner_histories.iter().find(|r| kept(r)).map(|&(id, _)| id);
-        let mut seen = FxHashSet::default();
-        let guids = guids
-            .into_iter()
-            .filter(|(guid, id, start)| kept(&(*id, *start)) && seen.insert(guid.clone()))
-            .map(|(guid, id, _)| (guid, id))
-            .collect();
+        let mut kept_guids = FxHashMap::default();
+        for (guid, id, start) in guids {
+            if kept(&(id, start)) {
+                kept_guids.entry(guid).or_insert(id);
+            }
+        }
+        let guids = kept_guids;
 
         Self {
             content,
@@ -170,7 +171,7 @@ impl<'a> FileIndex<'a> {
     pub(crate) fn resolve(&self, obj: &super::types::ObjectRef) -> Option<u32> {
         match obj {
             super::types::ObjectRef::Id(id) => self.contains(*id).then_some(*id),
-            super::types::ObjectRef::Guid(g) => self.guids.iter().find(|(have, _)| have == g).map(|&(_, id)| id),
+            super::types::ObjectRef::Guid(g) => self.guids.get(g).copied(),
         }
     }
 

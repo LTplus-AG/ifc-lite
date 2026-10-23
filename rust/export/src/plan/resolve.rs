@@ -72,7 +72,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     // and pruned as that patch is resolved. A patch's copy-on-write detach
     // does NOT grow this here — it is named, not applied, until the combined
     // call below.
-    let mut removed: HashSet<u32> = gating.removed.clone();
+    let mut removed: HashSet<u32> = gating.removed;
     // Every copy-on-write's request to strip itself from an old
     // relationship's member list: `(relationship, attribute index, this
     // object)`. Collected across every patch so relationship touched by more
@@ -85,6 +85,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     // delete pass strips from the same list.
     let mut list_edits: HashMap<(u32, usize), attrs::ListEdit> = HashMap::new();
 
+    let mut moved: HashSet<u32> = HashSet::new();
     for &(id, disposition) in &resolved {
         match disposition {
             Disposition::Preserve | Disposition::Delete => {}
@@ -109,6 +110,20 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
                     removed: &mut removed,
                     detach_requests: &mut detach_requests,
                     list_edits: &mut list_edits,
+                };
+                // Patches of one object compose, but only one may move it: a
+                // second placement would repoint past the first one's new
+                // records and leave them unreferenced.
+                let later_move;
+                let patch = if patch.placement.is_some() && !moved.insert(id) {
+                    out.refusals.push(Refusal {
+                        object: ObjectRef::Id(id),
+                        reason: "object is moved by more than one patch in this plan; the first placement wins".into(),
+                    });
+                    later_move = Patch { placement: None, ..patch.clone() };
+                    &later_move
+                } else {
+                    patch
                 };
                 apply_patch(index, schema, id, patch, &mut ids, owner_history_ref, &mut out);
             }
@@ -196,8 +211,9 @@ fn render_list_edits(
         if removed.contains(&id) {
             continue;
         }
-        if let Some(entries) = index.attrs(id).and_then(|a| a.into_iter().nth(idx)).and_then(|a| a.list) {
-            edits_by_id.entry(id).or_default().insert(idx, edit.render(&entries));
+        let rendered = index.attrs(id).and_then(|a| a.into_iter().nth(idx)).and_then(|a| a.list).and_then(|entries| edit.render(&entries));
+        if let Some(text) = rendered {
+            edits_by_id.entry(id).or_default().insert(idx, text);
         }
     }
 }

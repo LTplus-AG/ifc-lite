@@ -320,3 +320,29 @@ pub(super) fn project_aggregates_one_building(schema: &str) -> Vec<u8> {
     );
     format!("{}{}{}{}", header(schema), preamble(schema), data, FOOTER).into_bytes()
 }
+
+/// [`wall_with_type_owned_pset`] where the wall also names the type's set
+/// `#42` through its own `IfcRelDefinesByProperties` (`#44`), as some
+/// exporters write it.
+pub(super) fn pset_on_type_and_occurrence(schema: &str) -> Vec<u8> {
+    let mut content = wall_with_type_owned_pset(schema);
+    let footer_at = content.len() - FOOTER.len();
+    let rel = defines_by_properties(schema, 44, "(#10)", 42);
+    content.splice(footer_at..footer_at, rel.into_bytes());
+    content
+}
+
+/// One wall (`#10`) covered by one covering (`#12`) through
+/// `IfcRelCoversBldgElements` (`#13`, whose `RelatedCoverings` is `SET [1:?]`).
+pub(super) fn wall_with_one_covering(schema: &str) -> Vec<u8> {
+    let mut data = wall(schema, 10, "Wall 1", 20);
+    data += &local_placement_at(20, 21, 22, 0.0);
+    data += &entity_line(schema, 12, "IFCCOVERING", &[("GlobalId", &quoted(&gid(12))), ("Name", "'Cladding'")]);
+    data += &entity_line(
+        schema,
+        13,
+        "IFCRELCOVERSBLDGELEMENTS",
+        &[("GlobalId", &quoted(&gid(13))), ("RelatingBuildingElement", "#10"), ("RelatedCoverings", "(#12)")],
+    );
+    format!("{}{}{}{}", header(schema), preamble(schema), data, FOOTER).into_bytes()
+}

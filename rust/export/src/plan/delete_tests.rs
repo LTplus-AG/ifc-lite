@@ -74,3 +74,15 @@ fn a_non_rel_list_attribute_is_stripped_but_never_cascades() {
     let stripped = result.stripped.get(&(50, 0)).expect("Units was rewritten");
     assert_eq!(stripped, &[51].into_iter().collect());
 }
+
+#[test]
+fn deleting_the_only_covering_drops_the_now_empty_covers_relationship() {
+    use crate::plan::test_fixtures::wall_with_one_covering;
+    for schema in ["IFC2X3", "IFC4", "IFC4X3"] {
+        let content = wall_with_one_covering(schema);
+        let index = FileIndex::complete(&content);
+        let requested: HashSet<u32> = [12].into_iter().collect();
+        let result = resolve_deletes(&index, schema, &requested, &[], &HashSet::new());
+        assert!(result.removed.contains(&13), "{schema}: RelatedCoverings is SET [1:?], so the rel goes");
+    }
+}

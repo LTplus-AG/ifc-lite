@@ -458,3 +458,27 @@ fn a_repeated_id_keeps_its_last_record_and_reports_the_earlier() {
     assert_eq!(report.refusals.len(), 1, "the GlobalId only the dropped record held is not found: {:?}", report.refusals);
     assert!(report.findings.iter().any(|f| f.express_id == Some(1) && f.message.contains("more than once")), "{:?}", report.findings);
 }
+
+#[test]
+fn patches_of_one_object_compose_but_only_the_first_placement_applies() {
+    let content = wall_with_own_pset("IFC4");
+    let move_to = |x: f64| PlacementPatch {
+        matrix: [[1.0, 0.0, 0.0, x], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]],
+    };
+    let plan = ExportPlan {
+        dispositions: vec![
+            (ObjectRef::Id(10), Disposition::Patch(Patch { placement: Some(move_to(1.0)), ..Default::default() })),
+            (ObjectRef::Guid(gid(10)), Disposition::Patch(Patch { name: Some("Renamed".into()), placement: Some(move_to(2.0)), ..Default::default() })),
+        ],
+        context: PlanContext::default(),
+    };
+    let mut out = Vec::new();
+    let report = execute(&content, &plan, &mut out).unwrap();
+    assert_eq!(report.refusals.len(), 1, "{:?}", report.refusals);
+    assert!(report.findings.is_empty(), "{:?}", report.findings);
+    let after = entity_lines(&out);
+    assert!(after[&10].contains("'Renamed'"), "the second patch's rename still applies");
+    let points: Vec<&String> = after.values().filter(|l| l.contains("IFCCARTESIANPOINT((1.,")).collect();
+    assert_eq!(points.len(), 1, "the first move is written");
+    assert!(!after.values().any(|l| l.contains("IFCCARTESIANPOINT((2.,")), "the second move is not");
+}

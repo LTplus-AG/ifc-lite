@@ -67,15 +67,6 @@ use index::FileIndex;
 /// placement matrix. See the module docs for what is deliberately out of
 /// scope. `out` is buffered here.
 pub fn execute<W: std::io::Write>(source: &[u8], plan: &ExportPlan, out: W) -> Result<WriteReport, PlanError> {
-    execute_counting_passes(source, plan, out).map(|(report, _)| report)
-}
-
-/// [`execute`], also returning how many referrer passes resolution took.
-fn execute_counting_passes<W: std::io::Write>(
-    source: &[u8],
-    plan: &ExportPlan,
-    out: W,
-) -> Result<(WriteReport, usize), PlanError> {
     let guids: FxHashSet<&str> = plan
         .dispositions
         .iter()
@@ -92,9 +83,7 @@ fn execute_counting_passes<W: std::io::Write>(
             break resolution;
         }
     };
-    let passes = index.referrers.passes();
-    let report = write::write_output(&index, &schema, plan, resolution, out)?;
-    Ok((report, passes))
+    write::write_output(&index, &schema, plan, resolution, out)
 }
 
 #[cfg(test)]

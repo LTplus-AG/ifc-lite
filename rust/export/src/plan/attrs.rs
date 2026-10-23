@@ -32,18 +32,18 @@ pub(crate) struct ListEdit {
 
 impl ListEdit {
     /// `entries` with `remove` dropped, `substitute` applied in place, and
-    /// `append` added at the end, as STEP list text.
-    pub(crate) fn render(&self, entries: &[Option<u32>]) -> String {
-        let kept: Vec<String> = entries
-            .iter()
-            .filter(|e| e.is_none_or(|id| !self.remove.contains(&id)))
-            .map(|e| match e {
-                Some(id) => format!("#{}", self.substitute.get(id).copied().unwrap_or(*id)),
-                None => String::new(),
-            })
-            .chain(self.append.iter().map(|id| format!("#{id}")))
-            .collect();
-        format!("({})", kept.join(","))
+    /// `append` added at the end, as STEP list text. `None` when an entry is
+    /// not a reference: its text is not kept, so the list is left as it is.
+    pub(crate) fn render(&self, entries: &[Option<u32>]) -> Option<String> {
+        let mut kept = Vec::with_capacity(entries.len() + self.append.len());
+        for id in entries {
+            let id = (*id)?;
+            if !self.remove.contains(&id) {
+                kept.push(format!("#{}", self.substitute.get(&id).copied().unwrap_or(id)));
+            }
+        }
+        kept.extend(self.append.iter().map(|id| format!("#{id}")));
+        Some(format!("({})", kept.join(",")))
     }
 }
 
@@ -117,8 +117,9 @@ mod tests {
     fn list_edit_drops_only_the_removed_entries_and_can_go_empty() {
         let mut edit = ListEdit::default();
         edit.remove.insert(2);
-        assert_eq!(edit.render(&[Some(1), Some(2), Some(3)]), "(#1,#3)");
-        assert_eq!(edit.render(&[Some(2)]), "()");
+        assert_eq!(edit.render(&[Some(1), Some(2), Some(3)]).as_deref(), Some("(#1,#3)"));
+        assert_eq!(edit.render(&[Some(2)]).as_deref(), Some("()"));
+        assert_eq!(edit.render(&[Some(1), None, Some(2)]), None, "a non-reference entry is never dropped");
     }
 
     #[test]
@@ -136,7 +137,7 @@ fn list_edit_swaps_every_named_entry_in_place() {
         let entries = vec![Some(1), Some(2), Some(3)];
         let mut edit = ListEdit::default();
         edit.substitute.insert(2, 20);
-        assert_eq!(edit.render(&entries), "(#1,#20,#3)");
+        assert_eq!(edit.render(&entries).as_deref(), Some("(#1,#20,#3)"));
     }
 
     #[test]
@@ -148,6 +149,6 @@ fn list_edit_swaps_every_named_entry_in_place() {
         edit.remove.insert(3);
         edit.substitute.insert(1, 10);
         edit.append.push(40);
-        assert_eq!(edit.render(&entries), "(#10,#2,#40)");
+        assert_eq!(edit.render(&entries).as_deref(), Some("(#10,#2,#40)"));
     }
 }

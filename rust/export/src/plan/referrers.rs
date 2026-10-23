@@ -47,6 +47,7 @@ pub(crate) struct Referrers {
 
 impl Referrers {
     /// Streaming passes made so far.
+    #[cfg(test)]
     pub(crate) fn passes(&self) -> usize {
         self.passes
     }

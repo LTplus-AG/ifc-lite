@@ -7,7 +7,7 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::Write;
 
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::step_text::apply_attr_mutations_counted;
 use crate::StepOptions;
@@ -109,9 +109,10 @@ fn duplicate_sets_on_patched(
     removed: &HashSet<u32>,
     patched_objects: &[u32],
 ) -> Vec<ValidationFinding> {
+    let appended_by_id: FxHashMap<u32, &str> = appended.iter().map(|(id, text)| (*id, text.as_str())).collect();
     let final_record = |id: u32| -> Option<(String, String)> {
-        if let Some((_, text)) = appended.iter().find(|(a, _)| *a == id) {
-            return Some((appended_type(text), text.clone()));
+        if let Some(text) = appended_by_id.get(&id) {
+            return Some((appended_type(text), (*text).to_string()));
         }
         if removed.contains(&id) {
             return None;

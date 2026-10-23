@@ -106,6 +106,12 @@ fn in_place_value(write: &PropWrite) -> String {
 /// nothing.
 fn in_place_edits(index: &FileIndex, schema: &str, member_id: u32, write: &PropWrite) -> Result<Vec<(u32, usize, String)>, String> {
     let value_type = index.type_of(member_id).unwrap_or_default();
+    if write.kind == PsetKind::Quantity {
+        let wanted = props_synth::value_entity(write)?;
+        if wanted != value_type {
+            return Err(format!("existing quantity #{member_id} is {value_type}, but the write's measure makes it {wanted}"));
+        }
+    }
     let value_slot = match write.kind {
         PsetKind::Property => "NominalValue",
         PsetKind::Quantity => props_synth::value_slot_name(&value_type),
@@ -199,7 +205,9 @@ pub(crate) fn resolve_set_writes<'w>(
                 .and_then(|rel| list_attr(index, schema, rel, "IFCRELDEFINESBYPROPERTIES", "RelatedObjects"))
                 .map(|v| v.len())
                 .unwrap_or(1);
-            let shared = rel_fanout > 1 || sharing_fanout(index, schema, pset_id, &["RelatingPropertyDefinition"]) > 1;
+            // A set a type also lists in HasPropertySets is the type's too:
+            // editing it in place would change every occurrence of the type.
+            let shared = rel_fanout > 1 || sharing_fanout(index, schema, pset_id, &["RelatingPropertyDefinition", "HasPropertySets"]) > 1;
             if !shared {
                 write_unshared_set(index, schema, &group, (pset_id, member_idx, &members), ids, &mut result);
                 return result;
@@ -251,7 +259,8 @@ pub(crate) fn resolve_set_writes<'w>(
             Some((pset_id, member_idx, members)) if sharing_fanout(index, schema, pset_id, &["HasPropertySets"]) <= 1 => {
                 write_unshared_set(index, schema, &group, (pset_id, member_idx, &members), ids, &mut result);
             }
-            _ => refuse_all(&mut result, "type-scoped property write would need to touch a set shared by another type; refusing"),
+            Some(_) => refuse_all(&mut result, "type-scoped property write would need to touch a set shared by another type; refusing"),
+            None => refuse_all(&mut result, "the related type has no set of this name; a type-scoped write never creates one"),
         }
         return result;
     }

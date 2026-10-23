@@ -390,3 +390,31 @@ fn a_write_whose_step_text_is_not_one_value_is_refused() {
     w.unit = Some("$".into());
     assert!(resolve_prop_write(&index, schema, 10, &w, &mut IdAllocator::after(index.max_id), None).is_ok());
 }
+
+/// A set the wall's type lists in `HasPropertySets` and the wall also names
+/// through its own relationship belongs to the type as well: an occurrence
+/// write must clone it, never edit the type's value in place.
+#[test]
+fn occurrence_write_to_a_set_the_type_also_holds_is_copied() {
+    use crate::plan::test_fixtures::pset_on_type_and_occurrence;
+    for schema in ["IFC2X3", "IFC4", "IFC4X3"] {
+        let content = pset_on_type_and_occurrence(schema);
+        let index = FileIndex::complete(&content);
+        let mut ids = IdAllocator::after(index.max_id);
+        let w = write("Pset_WallCommon", "FireRating", "IFCLABEL", "'4HR'", PropScope::Occurrence, PsetKind::Property);
+        let outcome = resolve_prop_write(&index, schema, 10, &w, &mut ids, None).expect(schema);
+        assert!(matches!(outcome, PropOutcome::CopyOnWrite { .. }), "{schema}: {outcome:?}");
+    }
+}
+
+#[test]
+fn an_in_place_quantity_write_must_match_the_existing_quantity_kind() {
+    let schema = "IFC4";
+    let content = wall_with_type_owned_quantity_set(schema);
+    let index = FileIndex::complete(&content);
+    let area = write("Qto_WallBaseQuantities", "Length", "IFCAREAMEASURE", "3.5", PropScope::Type, PsetKind::Quantity);
+    let err = super::in_place_edits(&index, schema, 41, &area).unwrap_err();
+    assert!(err.contains("IFCQUANTITYAREA"), "{err}");
+    let length = write("Qto_WallBaseQuantities", "Length", "IFCLENGTHMEASURE", "3.5", PropScope::Type, PsetKind::Quantity);
+    assert!(super::in_place_edits(&index, schema, 41, &length).is_ok());
+}

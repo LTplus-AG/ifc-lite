@@ -6,7 +6,8 @@
 //! openings do not carry the #1167 horizontal depth: vertically extruded
 //! cutters (#3977) and cutters with no authored depth at all (#5410).
 
-use super::geom::{extent_along_axis, mesh_point, wall_frame_from_depth};
+use super::geom::{extent_along_axis, wall_frame_from_depth};
+use super::opening_frame::{cluster_face_normals, mesh_facets, Merge, FACE_COS};
 use super::{is_axis_aligned_direction, CutterKind, NORMALIZE_EPSILON};
 use crate::{Mesh, Vector3};
 
@@ -106,37 +107,14 @@ pub(super) fn host_thickness_wall_frame(
 /// vertical (|n.z| > 0.2, `wall_frame_from_depth`'s wall bound) are ignored.
 /// Deterministic: triangles are visited in index order.
 fn dominant_horizontal_normal(host: &Mesh) -> Option<Vector3<f64>> {
-    let mut orientations: Vec<(Vector3<f64>, f64)> = Vec::new();
-    for tri in host.indices.chunks_exact(3) {
-        let (Some(p0), Some(p1), Some(p2)) =
-            (mesh_point(host, tri[0]), mesh_point(host, tri[1]), mesh_point(host, tri[2]))
-        else {
-            continue;
-        };
-        let raw = (p1 - p0).cross(&(p2 - p0));
-        let area = raw.norm();
-        let Some(mut normal) = raw.try_normalize(NORMALIZE_EPSILON) else {
-            continue;
-        };
-        if normal.z.abs() > 0.2 {
-            continue;
-        }
-        if let Some((axis, weight)) =
-            orientations.iter_mut().find(|(axis, _)| normal.dot(axis).abs() > 0.98)
-        {
-            if normal.dot(axis) < 0.0 {
-                normal = -normal;
-            }
-            if let Some(merged) = (*axis * *weight + normal * area).try_normalize(NORMALIZE_EPSILON) {
-                *axis = merged;
-                *weight += area;
-            }
-        } else {
-            orientations.push((normal, area));
-        }
-    }
-    orientations
-        .into_iter()
-        .reduce(|best, next| if next.1 > best.1 { next } else { best })
-        .map(|(axis, _)| axis)
+    cluster_face_normals(
+        mesh_facets(host).filter(|facet| !(facet.normal.z.abs() > 0.2)),
+        FACE_COS,
+        Merge::Weighted,
+        usize::MAX,
+        |_, _, _| {},
+    )?
+    .into_iter()
+    .reduce(|best, next| if next.1 > best.1 { next } else { best })
+    .map(|(axis, _)| axis)
 }

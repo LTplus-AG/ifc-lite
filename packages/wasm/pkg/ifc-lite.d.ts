@@ -469,6 +469,22 @@ export class Contours2D {
     readonly shapeCount: number;
 }
 
+export class DiffModel {
+    free(): void;
+    [Symbol.dispose](): void;
+    /**
+     * Compare this base model with a head model, returning row-index records.
+     * No JS reference is serialized, cloned, or retained inside WASM.
+     */
+    compare(head: DiffModel, options: any): any;
+    /**
+     * Create an owned model from columnar buffers. Call free() when finished;
+     * a model may participate in any number of comparisons before that.
+     */
+    constructor(strings: any, fields: Uint32Array, flags: Uint8Array, boxes: Float64Array, volumes: Float64Array, component_offsets: Uint32Array, component_pairs: Uint32Array);
+    readonly entityCount: number;
+}
+
 /**
  * A collection of resolved grid axes.
  */
@@ -2612,6 +2628,7 @@ export interface InitOutput {
     readonly __wbg_clashrunresult_free: (a: number, b: number) => void;
     readonly __wbg_clashsession_free: (a: number, b: number) => void;
     readonly __wbg_contours2d_free: (a: number, b: number) => void;
+    readonly __wbg_diffmodel_free: (a: number, b: number) => void;
     readonly __wbg_gridaxiscollection_free: (a: number, b: number) => void;
     readonly __wbg_gridaxisjs_free: (a: number, b: number) => void;
     readonly __wbg_ifcapi_free: (a: number, b: number) => void;
@@ -2670,6 +2687,9 @@ export interface InitOutput {
     readonly contours2d_shapeCount: (a: number) => number;
     readonly contours2d_shapeOffsets: (a: number) => number;
     readonly difference2d: (a: number, b: number) => number;
+    readonly diffmodel_compare: (a: number, b: number, c: number, d: number) => void;
+    readonly diffmodel_entityCount: (a: number) => number;
+    readonly diffmodel_new: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number) => void;
     readonly gridaxiscollection_getAxis: (a: number, b: number) => number;
     readonly gridaxiscollection_isEmpty: (a: number) => number;
     readonly gridaxiscollection_length: (a: number) => number;

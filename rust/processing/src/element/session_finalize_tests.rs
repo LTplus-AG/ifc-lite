@@ -18,6 +18,7 @@ struct FinalHook {
     product_modes: Rc<RefCell<Vec<bool>>>,
     final_mode: Rc<Cell<Option<bool>>>,
     child: Rc<RefCell<Option<ProducedElementMeshes>>>,
+    child_in_process: bool,
 }
 impl GeometryProcessor for FinalHook {
     fn supported_types(&self) -> Vec<IfcType> {
@@ -34,6 +35,9 @@ impl GeometryProcessor for FinalHook {
         let mode = router.set_preserve_triangle_order(true);
         router.set_preserve_triangle_order(mode);
         self.product_modes.borrow_mut().push(mode);
+        if self.child_in_process && !self.fired.get() {
+            let _ = self.take_bool_failures();
+        }
         ExtrudedAreaSolidProcessor::new(schema.clone()).process(entity, decoder, schema, quality)
     }
     fn take_bool_failures(&self) -> Vec<BoolFailure> {
@@ -68,10 +72,11 @@ struct Fixture {
 }
 impl Fixture {
     fn new() -> Self { Self::with_reports(false) }
-    fn with_reports(reports: bool) -> Self {
+    fn with_reports(reports: bool) -> Self { Self::with_processor_reports(reports, false) }
+    fn with_processor_reports(reports: bool, child_in_process: bool) -> Self {
         let mut decoder = EntityDecoder::new(SOURCE);
         let mut base = router(&mut decoder);
-        if reports { seed_report(&base); }
+        if reports { seed_report(&base, !child_in_process); }
         let fired = Rc::new(Cell::new(false));
         let panic_final = Rc::new(Cell::new(false));
         let product_modes = Rc::new(RefCell::new(Vec::new()));
@@ -85,6 +90,7 @@ impl Fixture {
                 product_modes: product_modes.clone(),
                 final_mode: final_mode.clone(),
                 child: child.clone(),
+                child_in_process,
             }));
             base
         });
@@ -139,14 +145,16 @@ fn final_diagnostic_hook_panic_restores_caller_state_and_releases_publication_ow
 }
 
 // #8091: real unsupported-operator evidence must remain with its parent.
-fn seed_report(router: &GeometryRouter) {
+fn seed_report(router: &GeometryRouter, sweep: bool) {
     let source = SOURCE.replace("ENDSEC;END-ISO-10303-21;", "#87=IFCBOOLEANRESULT(.XOR.,#13,$);ENDSEC;END-ISO-10303-21;");
     let mut decoder = EntityDecoder::new(&source);
     decoder.seed_unit_scales(router.unit_scale(), 1.);
     let boolean = decoder.decode_by_id(87).unwrap();
     assert!(!router.process_representation_item(&boolean, &mut decoder).unwrap().is_empty());
-    router.drain_processor_failures();
-    assert_eq!(router.csg_failure_total(), 1);
+    if sweep {
+        router.drain_processor_failures();
+        assert_eq!(router.csg_failure_total(), 1);
+    }
 }
 
 #[test]
@@ -157,6 +165,18 @@ fn issue_8091_nested_final_hook_cannot_steal_parent_reports() {
     let child = fixture.child.borrow_mut().take().expect("real nested slab");
     assert!(!parent.meshes.is_empty() && !child.meshes.is_empty());
     assert!(child.csg_failures.is_empty(), "child stole parent reports");
+    assert_eq!(parent.csg_failures.values().map(Vec::len).sum::<usize>(), 1);
+    assert!(fixture.router.take_csg_failures().is_empty());
+}
+
+#[test]
+fn issue_8091_nested_constructor_cannot_steal_unswept_processor_reports() {
+    let mut fixture = Fixture::with_processor_reports(true, true);
+    let job = leaked_job(&mut fixture.decoder, 10);
+    let parent = produce_element_meshes(job, &Context::default().borrowed(), &options(), &mut fixture.decoder, &fixture.router);
+    let child = fixture.child.borrow_mut().take().expect("real nested slab during constructor");
+    assert!(!parent.meshes.is_empty() && !child.meshes.is_empty());
+    assert!(child.csg_failures.is_empty(), "child stole unswept processor reports");
     assert_eq!(parent.csg_failures.values().map(Vec::len).sum::<usize>(), 1);
     assert!(fixture.router.take_csg_failures().is_empty());
 }

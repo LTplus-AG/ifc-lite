@@ -92,10 +92,8 @@ ENDSEC;END-ISO-10303-21;",
         );
         // #8091: an early stop must isolate reports already recorded on the
         // router, without invoking any final hook after cancellation.
-        if !final_stop {
-            router.drain_processor_failures();
-            assert_eq!(router.csg_failure_total(), 1);
-        }
+        // #8091: leave the real Boolean report in processor-owned storage.
+        // Cancellation must preserve it without running final hooks.
     }
     let calls = Rc::new(RefCell::new(Vec::new()));
     let final_hooks = Rc::new(Cell::new(0));

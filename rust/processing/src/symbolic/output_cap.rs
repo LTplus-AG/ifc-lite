@@ -105,6 +105,9 @@ const BYTES_PER_COORD: usize = 8;
 pub(super) struct SymbolicAccumulator {
     data: SymbolicData,
     fill_items: Vec<Option<u32>>,
+    /// Source-local, lazy canonical target resolver. Every item in this
+    /// extraction uses the same source length unit.
+    mapping_router: Option<ifc_lite_geometry::GeometryRouter>,
     /// Cap for this extraction. Injectable so a test can use 500 rather than
     /// building a fixture that emits two million primitives.
     pub(super) limit: usize,
@@ -135,6 +138,7 @@ impl SymbolicAccumulator {
         Self {
             data: SymbolicData::default(),
             fill_items: Vec::new(),
+            mapping_router: None,
             limit: MAX_SYMBOLIC_ELEMENTS,
             bytes: 0,
             byte_limit: MAX_SYMBOLIC_BYTES,
@@ -146,8 +150,13 @@ impl SymbolicAccumulator {
         }
     }
 
+    /// Allocate the router once per extraction, only if mapped symbols occur.
+    pub(super) fn mapping_router(&mut self, unit_scale: f64) -> &ifc_lite_geometry::GeometryRouter {
+        self.mapping_router.get_or_insert_with(|| ifc_lite_geometry::GeometryRouter::with_scale(unit_scale))
+    }
+
     /// Is the accumulator full, or its execution terminal? The walk and scan
-    /// read THIS to stop early. A per-item bound marks the result truncated WITHOUT setting
+    /// read THIS to stop early. A per-item bound marks truncation WITHOUT setting
     /// this, so one deep item does not abandon every later product.
     pub(super) fn is_exhausted(&self) -> bool {
         self.exhausted || ifc_lite_geometry::resource::is_stopped()

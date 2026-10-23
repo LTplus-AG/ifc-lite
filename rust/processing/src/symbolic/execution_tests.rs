@@ -64,16 +64,22 @@ fn account() -> ExecutionAccount {
     }))
 }
 
-// Ordinary local placements keep the terminal contract independent from the
-// canonical sampled-placement migration. Every product carries a line and fill.
-fn fixture(at_origin: bool) -> String {
-    let middle = format!("#30=IFCCARTESIANPOINT(({},0.,0.));
-#31=IFCAXIS2PLACEMENT3D(#30,$,$);#10=IFCLOCALPLACEMENT($,#31);",
-        if at_origin { "0." } else { "5." });
+// Actual IFC4X3 sampled placements, with ordinary products before and after.
+// All products carry a polyline and a directly attributable fill.
+fn fixture(grid: bool) -> String {
+    let sampled = if grid { "#30=IFCCARTESIANPOINT((0.,0.));
+#31=IFCCARTESIANPOINT((10.,0.));#32=IFCPOLYLINE((#30,#31));
+#33=IFCGRIDAXIS('U',#32,.T.);#34=IFCCARTESIANPOINT((0.,10.));
+#35=IFCPOLYLINE((#30,#34));#36=IFCGRIDAXIS('V',#35,.T.);
+#37=IFCVIRTUALGRIDINTERSECTION((#33,#36),(0.,0.));
+#10=IFCGRIDPLACEMENT($,#37,$);" } else { "#30=IFCCARTESIANPOINT((0.,0.,0.));
+#31=IFCCARTESIANPOINT((10.,0.,0.));#32=IFCPOLYLINE((#30,#31));
+#33=IFCPOINTBYDISTANCEEXPRESSION(IFCLENGTHMEASURE(5.),$,$,$,#32);
+#34=IFCAXIS2PLACEMENTLINEAR(#33,$,$);#10=IFCLINEARPLACEMENT($,#34,$);" };
     format!("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4X3'));\nENDSEC;\nDATA;
 #1=IFCPROJECT('0M7tQ9Jbj1BAeHd7rqnDmQ',$,'P',$,$,$,$,(#100),#7);
 #7=IFCUNITASSIGNMENT((#8));#8=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
-{middle}
+{sampled}
 #60=IFCLOCALPLACEMENT($,#61);#61=IFCAXIS2PLACEMENT3D(#63,$,$);
 #63=IFCCARTESIANPOINT((10.,0.,0.));
 #62=IFCLOCALPLACEMENT($,#64);#64=IFCAXIS2PLACEMENT3D(#65,$,$);
@@ -86,20 +92,20 @@ fn fixture(at_origin: bool) -> String {
 #220=IFCSHAPEREPRESENTATION(#100,'Plan','GeometricCurveSet',(#70,#71));
 #221=IFCPRODUCTDEFINITIONSHAPE($,$,(#220));
 #501=IFCANNOTATION('0M7tQ9Jbj1BAeHd7rqnDmR',$,'Before',$,$,#60,#221);
-#502=IFCANNOTATION('0M7tQ9Jbj1BAeHd7rqnDmS',$,'Middle',$,$,#10,#221);
+#502=IFCANNOTATION('0M7tQ9Jbj1BAeHd7rqnDmS',$,'Sampled',$,$,#10,#221);
 #503=IFCANNOTATION('0M7tQ9Jbj1BAeHd7rqnDmT',$,'After',$,$,#62,#221);
 ENDSEC;\nEND-ISO-10303-21;\n")
 }
 
 #[test]
 fn issue_7914_stopped_public_extraction_never_scans_or_emits() {
-    for at_origin in [false, true] {
-        let source = fixture(at_origin);
+    for grid in [false, true] {
+        let source = fixture(grid);
         let positive = extract_symbolic_data_with_provenance_in_frame(&source, crate::MeshFrame::RawIfc).unwrap();
         assert_eq!(positive.data().polylines.len(), 3);
         assert_eq!(positive.data().fills.len(), 3);
         assert_eq!(positive.fill_items(), &[Some(71); 3]);
-        let expected = [10.0, if at_origin { 0.0 } else { 5.0 }, 20.0];
+        let expected = [10.0, if grid { 0.0 } else { 5.0 }, 20.0];
         for (line, x) in positive.data().polylines.iter().zip(expected) {
             assert_eq!(line.points[0], x);
         }
@@ -120,11 +126,11 @@ fn issue_7914_stopped_public_extraction_never_scans_or_emits() {
 
 #[test]
 fn issue_7914_mid_scan_stop_discards_prefix_and_provenance_and_stops_visits() {
-    for at_origin in [false, true] {
+    for grid in [false, true] {
         for kind in [StopKind::Cancelled, StopKind::Refused] {
             let account = account();
             let (data, observer) = observe(Some(502), kind, || account.scope(|| {
-                extract_symbolic_data_with_provenance_in_frame(&fixture(at_origin), crate::MeshFrame::RawIfc)
+                extract_symbolic_data_with_provenance_in_frame(&fixture(grid), crate::MeshFrame::RawIfc)
             }));
             assert_eq!(observer.seen, [501, 502], "the later product must not be visited");
             assert_eq!(observer.staged_at_stop, 2, "a real prefix must have been emitted first");
@@ -176,10 +182,32 @@ fn issue_7914_append_admission_and_final_discard_are_independent() {
 }
 
 #[test]
+fn issue_7914_sampled_placement_stop_never_becomes_an_origin_frame() {
+    for grid in [false, true] {
+        for kind in [StopKind::Cancelled, StopKind::Refused] {
+            let source = fixture(grid);
+            let mut decoder = ifc_lite_core::EntityDecoder::new(&source);
+            let product = decoder.decode_by_id(502).unwrap();
+            let account = account();
+            account.scope(|| {
+                let stop = trigger(kind);
+                let frame = crate::symbolic::transform::resolve_object_placement(&product, &mut decoder, 1.0);
+                assert!(frame.tx.is_nan() && frame.ty.is_nan(), "a stopped frame cannot draw at origin");
+                assert_eq!(resource::check_current(), Err(stop));
+            });
+            assert_eq!(decoder.refused_records(), 0, "execution is not malformed source");
+            assert!(decoder.get_placement_transform_cached(10).is_none());
+            let fresh = extract_symbolic_data_with_provenance_in_frame(&source, crate::MeshFrame::RawIfc).unwrap();
+            assert_eq!(fresh.data().polylines.len(), 3, "fresh execution must remain valid");
+        }
+    }
+}
+
+#[test]
 fn issue_7914_unscoped_cancellation_is_reported_and_does_not_leak() {
     assert!(!resource::is_active());
-    for at_origin in [false, true] {
-        let source = fixture(at_origin);
+    for grid in [false, true] {
+        let source = fixture(grid);
         let (result, observer) = observe(Some(502), StopKind::Cancelled, || {
             extract_symbolic_data_with_provenance_in_frame(&source, crate::MeshFrame::RawIfc)
         });

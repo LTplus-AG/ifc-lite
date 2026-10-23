@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use ifc_lite_export::{stream_export_model_with_inherited, ExportModel, Inherited, ModelOptions, PropValue};
+use ifc_lite_export::{stream_export_model_with_inherited, EntityRow, Inherited, ModelOptions, PropValue, UnitScales};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 
@@ -23,19 +23,18 @@ fn run_entity_export(
     placements: bool,
     type_properties: bool,
     attributes: bool,
-) -> PyResult<(ExportModel, Vec<Inherited>)> {
+) -> PyResult<(Vec<(EntityRow, Inherited)>, UnitScales)> {
     let opts = ModelOptions::default()
         .with_placements(placements)
         .with_inherit_type_properties(type_properties)
         .with_attributes(attributes);
     run_geometry(py, "entity", move || {
         let index = Arc::new(ifc_lite_processing::build_entity_index_parallel(&ifc_bytes));
-        let (mut entities, mut inherited) = (Vec::new(), Vec::new());
+        let mut rows = Vec::new();
         let units = stream_export_model_with_inherited(&ifc_bytes, &index, &opts, |row, flags, _| {
-            entities.push(row);
-            inherited.push(flags);
+            rows.push((row, flags));
         });
-        (ExportModel { entities, units }, inherited)
+        (rows, units)
     })
 }
 
@@ -152,8 +151,9 @@ fn run_entity_export(
 /// empty, so the list is usually shorter than the class declares.
 ///
 /// Each entry has the same `{name, value, value_type, inherited}` shape as a
-/// property, `inherited` always `False`, so one code path reads both. The fields this dict already carries (`global_id`,
-/// `name`, `description`, `object_type`) are not repeated, and
+/// property, `inherited` always `False`, so one code path reads both. The
+/// fields this dict already carries (`global_id`, `name`, `description`,
+/// `object_type`) are not repeated, and
 /// reference-valued attributes are omitted rather than rendered as a dangling
 /// id. Pass `attributes=False` to skip them.
 #[pyfunction]
@@ -165,15 +165,15 @@ pub(super) fn entity_data(
     type_properties: bool,
     attributes: bool,
 ) -> PyResult<Py<PyAny>> {
-    let (model, inherited) = run_entity_export(py, ifc_bytes, placements, type_properties, attributes)?;
+    let (rows, units) = run_entity_export(py, ifc_bytes, placements, type_properties, attributes)?;
 
     let out = PyDict::new(py);
-    out.set_item("length_unit_scale", model.units.length_unit_scale)?;
-    out.set_item("plane_angle_to_radians", model.units.plane_angle_to_radians)?;
-    out.set_item("project_id", model.units.project_id)?;
+    out.set_item("length_unit_scale", units.length_unit_scale)?;
+    out.set_item("plane_angle_to_radians", units.plane_angle_to_radians)?;
+    out.set_item("project_id", units.project_id)?;
 
     let entities = PyDict::new(py);
-    for (row, inherited) in model.entities.iter().zip(&inherited) {
+    for (row, inherited) in &rows {
         let d = PyDict::new(py);
         d.set_item("ifc_type", &row.ifc_type)?;
         d.set_item("global_id", row.global_id.clone())?;
@@ -225,7 +225,7 @@ pub(super) fn entity_data(
     }
     // Count the DICT, not the row list. A malformed file can repeat a STEP id,
     // and keying by `express_id` collapses those to one entry (last wins), so
-    // `model.entities.len()` would promise more entries than are readable.
+    // `rows.len()` would promise more entries than are readable.
     out.set_item("entity_count", entities.len())?;
     out.set_item("entities", entities)?;
     Ok(out.into_any().unbind())

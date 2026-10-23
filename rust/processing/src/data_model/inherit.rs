@@ -121,7 +121,9 @@ pub(super) type TypeSetCache = HashMap<u32, (Vec<PropertySet>, Vec<QuantitySet>)
 pub(super) fn inherit_from_type(
     cache: &mut TypeSetCache,
     type_id: u32,
-    (props, decoder, defs_by_object): (&mut PropertyDecoder, &mut EntityDecoder, &HashMap<u32, Vec<u32>>),
+    props: &mut PropertyDecoder,
+    decoder: &mut EntityDecoder,
+    defs_by_object: &HashMap<u32, Vec<u32>>,
     property_sets: Vec<PropertySet>,
     quantity_sets: Vec<QuantitySet>,
 ) -> (Vec<PropertySet>, Vec<QuantitySet>, Inherited) {

@@ -308,9 +308,15 @@ fn stream_rows(
         let mut inherited = Inherited::default();
         if opts.inherit_type_properties {
             if let Some(type_id) = type_by_object.type_of(id) {
-                let defs = (&mut props, &mut decoder, &defs_by_object);
-                (property_sets, quantity_sets, inherited) =
-                    inherit_from_type(&mut type_pset_cache, type_id, defs, property_sets, quantity_sets);
+                (property_sets, quantity_sets, inherited) = inherit_from_type(
+                    &mut type_pset_cache,
+                    type_id,
+                    &mut props,
+                    &mut decoder,
+                    &defs_by_object,
+                    property_sets,
+                    quantity_sets,
+                );
             }
         }
 

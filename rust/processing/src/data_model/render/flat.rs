@@ -223,29 +223,15 @@ pub(crate) fn resolve_pset_defs_with_kinds(
     let mut property_sets = Vec::new();
     let mut quantity_sets = Vec::new();
     for &def_id in def_ids {
-        let def = match decoder.decode_by_id(def_id) {
-            Ok(d) => d,
-            Err(_) => continue,
-        };
-        match def.ifc_type {
-            IfcType::IfcPropertySet => {
-                let mut set_kinds = Vec::new();
-                let capture = kinds.as_ref().map(|_| &mut set_kinds);
-                if let Some(ps) = decode_property_set_with_kinds(props, decoder, &def, capture) {
-                    if !ps.properties.is_empty() {
-                        if let Some(kinds) = kinds.as_deref_mut() { kinds.push(set_kinds); }
-                        property_sets.push(ps);
-                    }
-                }
+        let mut set_kinds = Vec::new();
+        let capture = kinds.is_some().then_some(&mut set_kinds);
+        match resolve_def(props, decoder, def_id, capture) {
+            Some((_, Resolved::Properties(ps))) => {
+                if let Some(kinds) = kinds.as_deref_mut() { kinds.push(set_kinds); }
+                property_sets.push(ps);
             }
-            IfcType::IfcElementQuantity => {
-                if let Some(qs) = decode_quantity_set(decoder, &def) {
-                    if !qs.quantities.is_empty() {
-                        quantity_sets.push(qs);
-                    }
-                }
-            }
-            _ => {}
+            Some((_, Resolved::Quantities(qs))) => quantity_sets.push(qs),
+            None => {}
         }
     }
     (property_sets, quantity_sets)
@@ -257,21 +243,27 @@ enum Resolved {
     Quantities(QuantitySet),
 }
 
-/// One definition, resolved, with its GlobalId. `None` for an undecodable
-/// ref, anything that is not a property or quantity set, and a set with no
-/// entry this export decodes.
-fn resolve_def(props: &mut PropertyDecoder, decoder: &mut EntityDecoder, def_id: u32) -> Option<(String, Resolved)> {
+/// One definition, resolved, with the entity it was read from. `None` for an
+/// undecodable ref, anything that is not a property or quantity set, and a set
+/// with no entry this export decodes. `kinds` captures each kept property's
+/// kind, as in [`decode_property_set_with_kinds`].
+fn resolve_def(
+    props: &mut PropertyDecoder,
+    decoder: &mut EntityDecoder,
+    def_id: u32,
+    kinds: Option<&mut Vec<PropertyKind>>,
+) -> Option<(DecodedEntity, Resolved)> {
     let def = decoder.decode_by_id(def_id).ok()?;
     let set = match def.ifc_type {
-        IfcType::IfcPropertySet => {
-            decode_property_set(props, decoder, &def).filter(|ps| !ps.properties.is_empty()).map(Resolved::Properties)
-        }
+        IfcType::IfcPropertySet => decode_property_set_with_kinds(props, decoder, &def, kinds)
+            .filter(|ps| !ps.properties.is_empty())
+            .map(Resolved::Properties),
         IfcType::IfcElementQuantity => {
             decode_quantity_set(decoder, &def).filter(|qs| !qs.quantities.is_empty()).map(Resolved::Quantities)
         }
         _ => None,
     }?;
-    Some((def.string_at(slot::IfcRoot::GLOBAL_ID).unwrap_or("").to_string(), set))
+    Some((def, set))
 }
 
 /// The sets a type carries, read the way the TS type extractor reads them:
@@ -288,13 +280,16 @@ pub(crate) fn resolve_type_sets(
     related: &[u32],
 ) -> (Vec<PropertySet>, Vec<QuantitySet>) {
     let mut seen_ids = HashSet::new();
-    let first: Vec<u32> = has_property_sets.into_iter().filter(|&id| seen_ids.insert(id)).collect();
-    let fresh: Vec<u32> = related.iter().copied().filter(|&id| seen_ids.insert(id)).collect();
-
     let (mut psets, mut qsets) = (Vec::new(), Vec::new());
     let mut seen_keys = HashSet::new();
-    for (i, &id) in first.iter().chain(&fresh).enumerate() {
-        let Some((gid, set)) = resolve_def(props, decoder, id) else { continue };
+    // HasPropertySets entries are always taken and only record their key;
+    // relationship-attached ones are skipped when the key is already taken.
+    let first = has_property_sets.into_iter().map(|id| (id, false));
+    let fresh = related.iter().map(|&id| (id, true));
+    for (id, skippable) in first.chain(fresh) {
+        if !seen_ids.insert(id) { continue; }
+        let Some((def, set)) = resolve_def(props, decoder, id, None) else { continue };
+        let gid = def.string_at(slot::IfcRoot::GLOBAL_ID).unwrap_or("");
         let (is_qset, name) = match &set {
             Resolved::Properties(ps) => (false, &ps.name),
             Resolved::Quantities(qs) => (true, &qs.name),
@@ -302,7 +297,8 @@ pub(crate) fn resolve_type_sets(
         // Property and quantity sets are keyed apart, as the TS extractor
         // resolves them as separate lists. A set with neither a Name nor a
         // GlobalId has no identity beyond its id.
-        if (!name.is_empty() || !gid.is_empty()) && !seen_keys.insert((is_qset, name.clone(), gid)) && i >= first.len() {
+        let has_identity = !name.is_empty() || !gid.is_empty();
+        if has_identity && !seen_keys.insert((is_qset, name.clone(), gid.to_owned())) && skippable {
             continue;
         }
         match set {

@@ -94,10 +94,15 @@ pub struct NewPlacement {
 
 /// A closed polygon profile swept along `direction` for `depth`. The
 /// profile lies in the object's local XY plane; repeating the first point
-/// at the end is allowed but not required.
+/// of a loop at the end is allowed but not required.
 #[derive(Debug, Clone)]
 pub struct Extrusion {
     pub profile: Vec<[f64; 2]>,
+    /// Holes in the profile, each a closed polygon strictly inside it and
+    /// apart from every other. Written as an
+    /// `IfcArbitraryProfileDefWithVoids`; none writes an
+    /// `IfcArbitraryClosedProfileDef`.
+    pub voids: Vec<Vec<[f64; 2]>>,
     pub direction: [f64; 3],
     pub depth: f64,
 }
@@ -107,6 +112,9 @@ pub enum Representation {
     /// No `IfcProductDefinitionShape` at all.
     None,
     Extrusion(Extrusion),
+    /// Several extruded solids, one item each in a single `Body`
+    /// representation: a region in several disjoint parts. At least one.
+    Extrusions(Vec<Extrusion>),
     /// A mesh in the object's local coordinates.
     Mesh(TriangleMesh),
 }

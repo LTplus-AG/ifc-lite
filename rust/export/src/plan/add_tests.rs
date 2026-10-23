@@ -443,3 +443,25 @@ fn an_opening_is_placed_at_its_matrix_in_the_objects_frame() {
     let (_, report) = run(&source, vec![add(skewed)]);
     assert!(report.refusals[0].reason.starts_with("opening:"), "{:?}", report.refusals);
 }
+
+#[test]
+fn a_furniture_type_gets_its_mandatory_assembly_place() {
+    for schema in SCHEMAS {
+        let source = storey_with_typed_wall(schema);
+        // IFC2X3 has no IfcFurniture; its furnishing elements take the same type.
+        let class = if schema == "IFC2X3" { "IfcFurnishingElement" } else { "IfcFurniture" };
+        let mut chair = object(IfcClass::Named(class.into()), gid(50), storey(), Representation::None);
+        chair.type_link = Some(TypeLink::New(NewType {
+            global_id: None,
+            class: ClassSpec { class: IfcClass::Named("IfcFurnitureType".into()), predefined_type: None },
+            name: Some("Chair".into()),
+            psets: Vec::new(),
+        }));
+        let (out, report) = run(&source, vec![add(chair)]);
+        assert_clean(&report, schema);
+        let text = String::from_utf8(out.clone()).unwrap();
+        let type_id = id_in(&out, gid(50).derive("type"));
+        let line = text.lines().find(|l| l.starts_with(&format!("#{type_id}="))).unwrap();
+        assert!(line.contains(".NOTDEFINED."), "{schema}: {line}");
+    }
+}

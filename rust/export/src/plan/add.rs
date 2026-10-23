@@ -259,12 +259,14 @@ impl<'a> AddState<'a> {
                     fields.push(("HasPropertySets", ref_list(&type_sets)));
                 }
                 // Mandatory on element types in IFC4 and later (and on door
-                // and window types, their operation and partitioning):
+                // and window types, their operation and partitioning; on
+                // furniture types, the assembly place):
                 // NOTDEFINED claims nothing when the caller names no value.
                 let notdefined = || ".NOTDEFINED.".to_string();
                 fields.push(("PredefinedType", predefined.clone().unwrap_or_else(notdefined)));
                 fields.push(("OperationType", notdefined()));
                 fields.push(("PartitioningType", notdefined()));
+                fields.push(("AssemblyPlace", notdefined()));
                 let id = emit.record(class, &fields)?;
                 require_filled(emit, id)?;
                 new_type = Some(id);

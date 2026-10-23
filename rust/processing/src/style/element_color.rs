@@ -82,7 +82,7 @@ fn find_color_for_geometry_at(
         let rep_map = decoder.decode_by_id(map_source_id).ok()?;
 
         // IfcRepresentationMap: MappingOrigin (IfcAxis2Placement), MappedRepresentation (IfcShapeRepresentation)
-        let mapped_repr_id = rep_map.ref_at(slot::IfcRepresentationMap::MAPPED_REPRESENTATION)?;
+        let mapped_repr_id = rep_map.get_ref(slot::IfcRepresentationMap::MAPPED_REPRESENTATION.index())?;
 
         // Decode the mapped IfcShapeRepresentation
         let mapped_repr = decoder.decode_by_id(mapped_repr_id).ok()?;
@@ -90,7 +90,7 @@ fn find_color_for_geometry_at(
         // IfcShapeRepresentation: ContextOfItems, RepresentationIdentifier, RepresentationType, Items
         // Attribute 3: Items (list of geometry items)
         // Check each underlying geometry item for a color
-        for underlying_geom_id in mapped_repr.ref_list_at(slot::IfcRepresentation::ITEMS)? {
+        for underlying_geom_id in mapped_repr.get_refs(slot::IfcRepresentation::ITEMS.index())? {
             // Recursively find color (handles nested MappedItems)
             if let Some(color) = find_color_for_geometry_at(
                 underlying_geom_id,
@@ -156,15 +156,19 @@ fn walk_representation_for_direct_color(
     geometry_styles: &rustc_hash::FxHashMap<u32, [f32; 4]>,
     decoder: &mut ifc_lite_core::EntityDecoder,
 ) -> Option<[f32; 4]> {
-    let repr_id = entity.ref_at(slot::IfcProduct::REPRESENTATION)?;
+    // #7782: colour lookup tolerates file-selected positional carriers, including
+    // type products. Named indices preserve release behavior without asserting
+    // an unvalidated IFC owner in debug builds. The mapped targets above follow
+    // the same policy; the mapped item itself has an explicit type check.
+    let repr_id = entity.get_ref(slot::IfcProduct::REPRESENTATION.index())?;
     let product_shape = decoder.decode_by_id(repr_id).ok()?;
-    let reprs = product_shape.ref_list_at(slot::IfcProductDefinitionShape::REPRESENTATIONS)?;
+    let reprs = product_shape.get_refs(slot::IfcProductDefinitionShape::REPRESENTATIONS.index())?;
 
     for shape_repr_id in reprs {
         let Ok(shape_repr) = decoder.decode_by_id(shape_repr_id) else {
             continue;
         };
-        let Some(items) = shape_repr.ref_list_at(slot::IfcRepresentation::ITEMS) else {
+        let Some(items) = shape_repr.get_refs(slot::IfcRepresentation::ITEMS.index()) else {
             continue;
         };
 
@@ -365,3 +369,7 @@ mod shared_cap_tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "element_color_ownership_tests.rs"]
+mod ownership_tests;

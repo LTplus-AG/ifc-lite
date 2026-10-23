@@ -45,7 +45,10 @@ pub(super) fn execute(
     let payload = match kind {
         WorkKind::Primary { strategy, .. } => WorkPayload::Primary(primary(strategy, job, ctx, decoder, router)),
         WorkKind::TypeMap { map_id, .. } => WorkPayload::TypeMap(type_map(map_id, ctx, decoder, router)),
-        WorkKind::VoidedParts => WorkPayload::VoidedParts(voided_parts(job, ctx, decoder, router)),
+        WorkKind::VoidedParts => match voided_parts(job, ctx, decoder, router) {
+            Ok(parts) => WorkPayload::VoidedParts(parts),
+            Err(stop) => return stopped(stop),
+        },
         WorkKind::PlainParts => {
             WorkPayload::PlainParts(router.process_element_parts(job.entity, decoder).unwrap_or_default())
         }
@@ -94,15 +97,17 @@ fn voided_parts(
     ctx: &MeshProductionContext<'_>,
     decoder: &mut EntityDecoder,
     router: &GeometryRouter,
-) -> PartsOutcome {
+) -> Result<PartsOutcome, ifc_lite_geometry::resource::ProgramStop> {
     // A superseding strategy is about to re-process this element's
     // representation and re-attempt the same (deterministic) cuts; discard
     // the abandoned attempt's diagnostics so re-failures aren't
     // double-counted. The voids→plain retry keeps its records: a failed or
     // emptying cut that leaves the host uncut IS the diagnostic. The drain
     // runs every processor's hook, so it belongs inside the owner epoch.
-    let _ = router.take_csg_failures_checked();
-    match router.process_element_with_voids_parts(job.entity, decoder, ctx.void_index) {
+    // A terminal hook has already quarantined its reports. Propagate its stop
+    // before starting another strategy, even if that strategy would fail too.
+    router.take_csg_failures_checked()?;
+    Ok(match router.process_element_with_voids_parts(job.entity, decoder, ctx.void_index) {
         Ok(parts) if parts.iter().any(|mesh| !mesh.is_empty()) => PartsOutcome::Geometry(parts),
         // An empty void-cut result normally means the cut FAILED and emptied
         // the host, so it re-renders un-cut. But when a containing void
@@ -110,7 +115,7 @@ fn voided_parts(
         // the un-cut host re-appears as a spurious solid.
         Ok(_) if router.host_consumed_by_void(job.id) => PartsOutcome::ConsumedByOpening,
         _ => PartsOutcome::Retry,
-    }
+    })
 }
 
 /// Execute one planned RepresentationMap (#957), texture-aware (#961): one part

@@ -1774,6 +1774,14 @@ jobs:
               --mutation tests/evidence/product-state-e3/publication.oracle.patch \
               --test rust/processing/src/element/session_publication_tests.rs
           fi
+          # #8091: independently discard the retry drain's terminal error.
+          # The real processor invocation counters must catch a next strategy
+          # starting after cancellation, even if final output stays empty.
+          if git diff --name-only --diff-filter=AM origin/main...HEAD -- rust/processing/src/element/session_retry_tests.rs | grep -Fxq 'rust/processing/src/element/session_retry_tests.rs'; then
+            node scripts/check-test-revert-oracle.mjs --base origin/main --ci --json \
+              --mutation tests/evidence/product-state-e3/retry-stop.oracle.patch \
+              --test rust/processing/src/element/session_retry_tests.rs
+          fi
           if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/decoder/precision_certificate.rs | grep -Fxq 'rust/core/src/decoder/precision_certificate.rs'; then
             # The oracle restored the source; also execute the positive side
             # after mutation rather than treating clean status as a test run.

@@ -199,6 +199,14 @@ impl AddState<'_> {
 
         validate_psets(self.schema, &obj.psets)?;
         let units = self.check_units(&obj.psets)?;
+        // IfcRelAssociatesMaterial relates elements only, and no opening or
+        // virtual element.
+        let takes_material = self.is_a(&class, "IFCELEMENT")
+            && !self.is_a(&class, "IFCFEATUREELEMENTSUBTRACTION")
+            && !self.is_a(&class, "IFCVIRTUALELEMENT");
+        if obj.material.is_some() && !takes_material {
+            return Err(format!("{class} cannot carry a material"));
+        }
         let material = obj.material.as_ref().map(|m| self.check_material(m)).transpose()?;
         let classifications = self.check_classifications(&obj.classifications)?;
         match &obj.representation {

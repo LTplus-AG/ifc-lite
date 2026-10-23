@@ -28,6 +28,11 @@ fn associated_wall(schema: &str) -> Vec<u8> {
         r(220, "IFCSIUNIT", &[("Dimensions", "*"), ("UnitType", ".PRESSUREUNIT."), ("Prefix", ".KILO."), ("Name", ".PASCAL.")]),
         r(221, "IFCDERIVEDUNIT", &[("Elements", "(#222)"), ("UnitType", ".LINEARVELOCITYUNIT.")]),
         r(222, "IFCDERIVEDUNITELEMENT", &[("Unit", "#51"), ("Exponent", "1")]),
+        r(223, "IFCCONTEXTDEPENDENTUNIT", &[("Dimensions", "#224"), ("UnitType", ".USERDEFINED."), ("Name", "'step'")]),
+        r(224, "IFCDIMENSIONALEXPONENTS", &[
+            ("LengthExponent", "0"), ("MassExponent", "0"), ("TimeExponent", "0"), ("ElectricCurrentExponent", "0"),
+            ("ThermodynamicTemperatureExponent", "0"), ("AmountOfSubstanceExponent", "0"), ("LuminousIntensityExponent", "0"),
+        ]),
     ]
     .concat();
     let text = String::from_utf8(storey_with_typed_wall(schema)).unwrap();
@@ -235,7 +240,40 @@ fn a_unit_or_association_the_schema_cannot_hold_is_refused() {
             }),
             "named unit",
         ),
+        ("IFC4", Box::new(prop(measure("R", "IfcRatioMeasure", 0.5, Some(ValueUnit::Existing(ObjectRef::Id(51)))))), "does not measure"),
+        (
+            "IFC4",
+            Box::new(|w: &mut NewObject| {
+                let user = measure("L", "IfcLengthMeasure", 1.0, Some(ValueUnit::Existing(ObjectRef::Id(223))));
+                w.psets = vec![set("Q", PsetKind::Quantity, vec![user])];
+            }),
+            "does not measure",
+        ),
         ("IFC4", Box::new(|w: &mut NewObject| w.material = Some(MaterialLink::Existing(ObjectRef::Id(10)))), "not a material"),
+        (
+            "IFC4",
+            Box::new(|w: &mut NewObject| {
+                w.class.class = IfcClass::Space;
+                w.material = Some(MaterialLink::New(concrete()));
+            }),
+            "cannot carry a material",
+        ),
+        (
+            "IFC2X3",
+            Box::new(|w: &mut NewObject| {
+                w.class.class = IfcClass::Named("IfcOpeningElement".into());
+                w.material = Some(MaterialLink::New(concrete()));
+            }),
+            "cannot carry a material",
+        ),
+        (
+            "IFC4",
+            Box::new(|w: &mut NewObject| {
+                let r = NewClassificationReference { system: uniclass(), identification: None, name: None, location: None };
+                w.classifications = vec![ClassificationLink::New(r)];
+            }),
+            "needs an identification",
+        ),
         ("IFC4", Box::new(|w: &mut NewObject| w.material = Some(MaterialLink::Existing(ObjectRef::Id(999)))), "not found"),
         ("IFC4", Box::new(|w: &mut NewObject| w.material = Some(MaterialLink::New(NewMaterial { name: String::new(), category: None }))), "needs a name"),
         (
@@ -282,6 +320,8 @@ fn a_unit_or_association_the_schema_cannot_hold_is_refused() {
     let mut w = wall(9);
     w.material = Some(MaterialLink::NewLayerSet(NewLayerSet { name: None, layers: vec![NewMaterialLayer { material: None, thickness: 0.0 }] }));
     w.classifications = vec![ClassificationLink::Existing(ObjectRef::Id(210))];
+    // A property, unlike a quantity, may carry a user-defined unit.
+    w.psets = vec![set("P", PsetKind::Property, vec![measure("L", "IfcLengthMeasure", 1.0, Some(ValueUnit::Existing(ObjectRef::Id(223))))])];
     let (out, report) = run(&associated_wall("IFC4"), vec![add(w)]);
     assert_valid(&out, &report, "IFC4");
 }
@@ -309,7 +349,7 @@ fn a_refused_add_shares_nothing_it_built() {
         greedy.classifications = (0..3)
             .map(|n| {
                 let system = NewClassification { name: format!("S{n}"), source: Some("s".into()), edition: Some("1".into()) };
-                let r = NewClassificationReference { system: ClassificationSystem::New(system), identification: None, name: None, location: None };
+                let r = NewClassificationReference { system: ClassificationSystem::New(system), identification: Some("X".into()), name: None, location: None };
                 ClassificationLink::New(r)
             })
             .collect();
@@ -320,5 +360,27 @@ fn a_refused_add_shares_nothing_it_built() {
         assert!(report.refusals[0].reason.contains("id space exhausted"), "{schema}: {:?}", report.refusals);
         assert!(crate::plan::validate::validate(&out, schema).is_empty(), "{schema}: {:?}", crate::plan::validate::validate(&out, schema));
         assert_eq!(count(&out, "IFCMATERIAL"), 1, "{schema}");
+    }
+}
+
+/// Deleting the only object a material, classification and unit served does
+/// not take them from an Add in the same plan that names them.
+#[test]
+fn a_delete_in_the_same_plan_keeps_what_an_add_names() {
+    for schema in SCHEMAS {
+        let source = associated_wall(schema);
+        let mut copy = wall(1);
+        copy.material = Some(MaterialLink::Existing(ObjectRef::Id(200)));
+        copy.classifications = vec![ClassificationLink::Existing(ObjectRef::Id(211))];
+        copy.psets = vec![set("P", PsetKind::Property, vec![measure("Load", "IfcPressureMeasure", 1.0, Some(ValueUnit::Existing(ObjectRef::Id(220))))])];
+        let (out, report) = run(&source, vec![(ObjectRef::Id(10), Disposition::Delete), add(copy)]);
+        assert_valid(&out, &report, schema);
+        assert_eq!(report.added, 1, "{schema}");
+        let copy = id_in(&out, gid(1));
+        let rels = ids_of_type(&out, "IFCRELASSOCIATESMATERIAL");
+        assert_eq!(rels.len(), 1, "{schema}");
+        assert_eq!(attr(&out, schema, rels[0], "RelatedObjects"), format!("(#{copy})"), "{schema}");
+        assert_eq!(attr(&out, schema, rels[0], "RelatingMaterial"), "#200", "{schema}");
+        assert_eq!(count(&out, "IFCCLASSIFICATIONREFERENCE"), 1, "{schema}");
     }
 }

@@ -89,6 +89,10 @@ pub(crate) fn build_sets(
     psets: &[NewPropertySet],
     units: &[Vec<Option<u32>>],
 ) -> Result<Vec<u32>, String> {
+    let same_shape = units.len() == psets.len() && psets.iter().zip(units).all(|(s, u)| s.properties.len() == u.len());
+    if !same_shape {
+        return Err("value units do not match the property sets they were checked for".into());
+    }
     let mut set_ids = Vec::with_capacity(psets.len());
     for (set, units) in psets.iter().zip(units) {
         let (container, member_attr) = match set.kind {

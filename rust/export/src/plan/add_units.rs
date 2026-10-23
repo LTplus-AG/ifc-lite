@@ -12,7 +12,7 @@ use crate::plan::attrs::attribute_index;
 use crate::plan::tessellation::Emit;
 use crate::plan::types::PsetKind;
 
-use super::assoc::{Shared, SharedKey, Target};
+use super::assoc::{new_record, Shared, SharedKey, Target};
 use super::AddState;
 
 /// A new `IfcSIUnit`: prefix, name, and the unit type the name measures.
@@ -63,12 +63,17 @@ impl AddState<'_> {
                     return Err(format!("{what}: a quantity's unit must be a named unit, not {unit_class}"));
                 }
                 let monetary = unit_class == "IFCMONETARYUNIT";
+                // A quantity's own rule names its unit type exactly; a
+                // property's user-defined or unreadable unit type passes.
+                let quantity = set.kind == PsetKind::Quantity;
                 let fits = match measure_unit(measure_type) {
                     Some(MeasureUnit::Monetary) => monetary,
-                    Some(MeasureUnit::Typed { unit_type: wanted, .. }) => {
-                        !monetary && unit_type.as_deref().is_none_or(|t| t == wanted || t == "USERDEFINED")
-                    }
-                    _ => !monetary,
+                    Some(MeasureUnit::Typed { unit_type: wanted, .. }) => match unit_type.as_deref() {
+                        Some(t) => t == wanted || (!quantity && t == "USERDEFINED"),
+                        None => !quantity && !monetary,
+                    },
+                    Some(MeasureUnit::Dimensionless) => false,
+                    None => !monetary,
                 };
                 if !fits {
                     let shown = unit_type.unwrap_or(unit_class);
@@ -93,7 +98,7 @@ pub(super) fn build_units(emit: &mut Emit, shared: &mut Shared, units: &CheckedU
                 Some(Target::Existing(id)) => Some(*id),
                 Some(Target::New(si)) => Some(shared.get_or(SharedKey::Si(si.clone()), || {
                     let (prefix, name, unit_type) = si;
-                    emit.record(
+                    new_record(emit,
                         "IFCSIUNIT",
                         &[
                             ("Dimensions", "*".into()),

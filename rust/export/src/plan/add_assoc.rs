@@ -126,6 +126,10 @@ impl AddState<'_> {
                             Target::New(s.clone())
                         }
                     };
+                    // IfcExternalReference's rule: something must identify it.
+                    if n.identification.is_none() && n.name.is_none() && n.location.is_none() {
+                        return Err("a classification reference needs an identification, a name or a location".into());
+                    }
                     CheckedClassification::New {
                         system,
                         identification: n.identification.clone(),
@@ -173,6 +177,13 @@ impl Shared<'_> {
     }
 }
 
+/// A new record, refused when it leaves a slot its schema requires unset.
+pub(super) fn new_record(emit: &mut Emit, entity: &str, fields: &[(&str, String)]) -> Result<u32, String> {
+    let id = emit.record(entity, fields)?;
+    super::require_filled(emit, id)?;
+    Ok(id)
+}
+
 fn quoted(s: &str) -> String {
     format!("'{}'", escape(s))
 }
@@ -185,7 +196,7 @@ fn material(emit: &mut Emit, shared: &mut Shared, target: &Target<NewMaterial>) 
     match target {
         Target::Existing(id) => Ok(*id),
         Target::New(m) => shared.get_or(SharedKey::Material(m.clone()), || {
-            emit.record("IFCMATERIAL", &[("Name", quoted(&m.name)), ("Category", optional(&m.category))])
+            new_record(emit, "IFCMATERIAL", &[("Name", quoted(&m.name)), ("Category", optional(&m.category))])
         }),
     }
 }
@@ -204,9 +215,9 @@ pub(super) fn build_material(emit: &mut Emit, shared: &mut Shared, checked: &Che
         let mut layer_ids = Vec::with_capacity(resolved.len());
         for &(m, thickness) in &resolved {
             let fields = [("Material", ref_or_unset(m)), ("LayerThickness", fmt(f64::from_bits(thickness)))];
-            layer_ids.push(emit.record("IFCMATERIALLAYER", &fields)?);
+            layer_ids.push(new_record(emit, "IFCMATERIALLAYER", &fields)?);
         }
-        emit.record("IFCMATERIALLAYERSET", &[("MaterialLayers", ref_list(&layer_ids)), ("LayerSetName", optional(name))])
+        new_record(emit, "IFCMATERIALLAYERSET", &[("MaterialLayers", ref_list(&layer_ids)), ("LayerSetName", optional(name))])
     })
 }
 
@@ -219,7 +230,7 @@ pub(super) fn build_classification(emit: &mut Emit, shared: &mut Shared, checked
     let system = match system {
         Target::Existing(id) => *id,
         Target::New(s) => shared.get_or(SharedKey::Classification(s.clone()), || {
-            emit.record(
+            new_record(emit,
                 "IFCCLASSIFICATION",
                 &[("Source", optional(&s.source)), ("Edition", optional(&s.edition)), ("Name", quoted(&s.name))],
             )
@@ -233,7 +244,7 @@ pub(super) fn build_classification(emit: &mut Emit, shared: &mut Shared, checked
         } else {
             "ItemReference"
         };
-        emit.record(
+        new_record(emit,
             "IFCCLASSIFICATIONREFERENCE",
             &[
                 ("Location", optional(location)),

@@ -120,6 +120,11 @@ pub fn skeleton(s: &Skeleton) -> Result<Vec<u8>, String> {
         &[
             ("ContextIdentifier", "'Body'".into()),
             ("ContextType", "'Model'".into()),
+            // Derived from the parent context in a subcontext.
+            ("CoordinateSpaceDimension", "*".into()),
+            ("Precision", "*".into()),
+            ("WorldCoordinateSystem", "*".into()),
+            ("TrueNorth", "*".into()),
             ("ParentContext", format!("#{context}")),
             ("TargetView", ".MODEL_VIEW.".into()),
         ],

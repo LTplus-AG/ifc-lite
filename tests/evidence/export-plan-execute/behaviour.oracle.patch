@@ -1,0 +1,10 @@
+--- a/rust/export/src/plan/resolve.rs
++++ b/rust/export/src/plan/resolve.rs
+@@ -137,7 +137,6 @@
+     }
+ 
+     render_list_edits(index, list_edits, &removed, &mut edits_by_id);
+-    edits_by_id.clear();
+ 
+     Resolution { appended, edits_by_id, removed, refusals, patched, added_unsupported, patched_objects }
+ }

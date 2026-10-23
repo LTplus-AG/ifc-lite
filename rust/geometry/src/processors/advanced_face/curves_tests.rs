@@ -204,3 +204,29 @@ fn uniformly_tiny_weights_draw_the_same_curve_7750() {
         }
     }
 }
+
+// #7779: an unreadable control/vertex point cannot become a zero coordinate.
+#[test]
+fn issue_7779_curve_and_vertex_leaf_admission() {
+    for record in ["IFCCARTESIANPOINT((1.,2.))", "IFCCARTESIANPOINT((1.,2.,0.))"] {
+        let content = format!("#1=IFCCARTESIANPOINT((0.,0.,0.));#2={record};#3=IFCVERTEXPOINT(#2);#10=IFCBSPLINECURVEWITHKNOTS(1,(#1,#2),.UNSPECIFIED.,.F.,.F.,(2,2),(0.,1.),.UNSPECIFIED.);");
+        let mut decoder = EntityDecoder::new(&content);
+        let vertex = decoder.decode_by_id(3).unwrap();
+        assert_eq!(extract_vertex_coords(&vertex, &mut decoder), Some(Point3::new(1.,2.,0.)));
+        let curve = decoder.decode_by_id(10).unwrap();
+        let parsed = parse_bspline_curve(&curve, &mut decoder).ok().flatten().unwrap();
+        assert_eq!(parsed.control_points, [Point3::new(0.,0.,0.), Point3::new(1.,2.,0.)]);
+        assert_eq!(decoder.refused_records(), 0);
+    }
+    for record in ["IFCDIRECTION((1.,2.,3.))", "IFCCARTESIANPOINT((1.,2.,'bad'))",
+        "IFCCARTESIANPOINT((1.,2.,1.E400))", "IFCCARTESIANPOINT((1.))",
+        "IFCCARTESIANPOINT((1.,2.,3.,4.))", "IFCCARTESIANPOINT((IFCLENGTHMEASURE(1.),2.))"] {
+        let content = format!("#1=IFCCARTESIANPOINT((0.,0.,0.));#2={record};#3=IFCVERTEXPOINT(#2);#10=IFCBSPLINECURVEWITHKNOTS(1,(#1,#2),.UNSPECIFIED.,.F.,.F.,(2,2),(0.,1.),.UNSPECIFIED.);");
+        let mut decoder = EntityDecoder::new(&content);
+        let vertex = decoder.decode_by_id(3).unwrap();
+        assert!(extract_vertex_coords(&vertex, &mut decoder).is_none(), "{record}");
+        let curve = decoder.decode_by_id(10).unwrap();
+        assert!(parse_bspline_curve(&curve, &mut decoder).is_err(), "{record}");
+        assert_eq!(decoder.refused_record_ids(), [2]);
+    }
+}

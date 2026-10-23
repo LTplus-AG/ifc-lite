@@ -73,11 +73,16 @@ pub struct DataFingerprintInput {
     pub predefined_type: Option<String>,
     /// The entity's `Tag`, **for a type object only**. See the module docs.
     pub tag: Option<String>,
+    #[serde(deserialize_with = "crate::input_decode::optional_values")]
     pub property_sets: Vec<PropertySetInput>,
+    #[serde(deserialize_with = "crate::input_decode::optional_values")]
     pub quantity_sets: Vec<QuantitySetInput>,
+    #[serde(deserialize_with = "crate::input_decode::optional_values")]
     pub type_assignments: Vec<TypeAssignmentInput>,
     /// Resolved material NAMES, every indirection already followed.
+    #[serde(deserialize_with = "crate::input_decode::optional_values")]
     pub materials: Vec<String>,
     /// Resolved classification references, each already one string.
+    #[serde(deserialize_with = "crate::input_decode::optional_values")]
     pub classifications: Vec<String>,
 }

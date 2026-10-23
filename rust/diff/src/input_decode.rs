@@ -6,6 +6,12 @@ use crate::input::PropertyValue;
 use serde::{Deserialize, Deserializer, de::{Visitor, SeqAccess, MapAccess}};
 use std::fmt;
 
+/// Optional JS collections may be present with `undefined`, not only omitted.
+pub(crate) fn optional_values<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
+where D: Deserializer<'de>, T: Deserialize<'de> {
+    Option::<Vec<T>>::deserialize(deserializer).map(Option::unwrap_or_default)
+}
+
 impl<'de> Deserialize<'de> for PropertyValue {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         struct PropertyVisitor;

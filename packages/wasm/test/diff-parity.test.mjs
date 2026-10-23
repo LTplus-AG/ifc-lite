@@ -67,7 +67,9 @@ test('actual WASM fingerprints match TS bytes including non-finite adapter value
   }
   const minimal = corpus.fingerprints.find(vector => vector.id === 'minimal');
   for (const key of ['propertySets', 'quantitySets', 'typeAssignments', 'materials', 'classifications']) {
-    assert.equal(module.diffBuildDataFingerprint({ ifcType: 'IfcWall', [key]: undefined }), minimal.dataHash, `explicit undefined ${key}`);
+    const input = { ifcType: 'IfcWall', [key]: undefined };
+    assert.equal(module.diffBuildDataFingerprint(input), minimal.dataHash, `explicit undefined ${key}`);
+    assert.deepEqual(module.diffBuildComponentFingerprints(input), minimal.components, `explicit undefined components ${key}`);
   }
   const units = value => Uint16Array.from({ length: value.length }, (_, index) => value.charCodeAt(index));
   for (const vector of corpus.stableHash) assert.equal(module.diffStableHash(units(vector.value)), vector.hash);

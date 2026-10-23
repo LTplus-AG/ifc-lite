@@ -46,6 +46,7 @@ pub(super) fn capture(
         },
         length_unit_scale: scale,
         placements: Vec::new(),
+        presentation: Vec::new(),
         product_placed: false,
         empty: false,
         slot,

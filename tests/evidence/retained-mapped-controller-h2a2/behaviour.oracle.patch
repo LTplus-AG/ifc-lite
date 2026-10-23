@@ -1,0 +1,116 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/inner.rs
++++ b/rust/geometry/src/program/inner.rs
+@@ -181,7 +181,7 @@
+         self.validate_owner(router, Some(decoder))?;
+         self.expected_router = Some(router.execution_identity());
+         self.expected_decoder = Some(decoder.execution_identity());
+-        if false && matches!(&self.control, Control::Product(c) if c.retained_ready()) {
++        if matches!(&self.control, Control::Product(c) if c.retained_ready()) {
+             return Err(ProgramError::UnsupportedRetained);
+         }
+         let decoder_before = decoder.execution_identity();
+--- a/rust/geometry/src/program/retained/capture.rs
++++ b/rust/geometry/src/program/retained/capture.rs
+@@ -41,7 +41,7 @@
+             slot,
+             source_epoch: contract.source_epoch,
+             source_revision: contract.source_revision,
+-            source_id: 0,
++            source_id: item.id,
+         },
+         length_unit_scale: scale,
+         placements: Vec::new(),
+--- a/rust/geometry/src/program/retained/capture.rs
++++ b/rust/geometry/src/program/retained/capture.rs
+@@ -20,7 +20,7 @@
+             length_unit_scale: scale,
+         })),
+         IfcType::IfcSweptDiskSolid => Ok(RetainedRecipe::SweptDisk(RetainedSweptDisk {
+-            solid_id: 0,
++            solid_id: item.id,
+             source: crate::analytic::extract_swept_disk(item, decoder)?,
+             length_unit_scale: scale,
+         })),
+--- a/rust/geometry/src/program/retained/program.rs
++++ b/rust/geometry/src/program/retained/program.rs
+@@ -170,6 +170,8 @@
+                     // Construction and placement do not inspect or discharge
+                     // relationships, appearance, or persistent face identity.
+                     remaining: vec![
++                        RetainedRequirement::OpeningClosure,
++                        RetainedRequirement::MaterialLayers,
+                         RetainedRequirement::IfcAppearance,
+                         RetainedRequirement::PersistentFaces,
+                     ],
+--- a/rust/geometry/src/program/retained/walk.rs
++++ b/rust/geometry/src/program/retained/walk.rs
+@@ -33,7 +33,7 @@
+     /// source on a sibling branch remains a real occurrence, never a revisit.
+     pub(super) fn enter(&self, id: u32, path: &[u32]) -> Result<(), ProgramStop> {
+         self.check()?;
+-        if (false && path.contains(&id)) || path.len() >= ifc_lite_core::MAX_MAPPED_ITEM_DEPTH as usize {
++        if path.contains(&id) || path.len() >= ifc_lite_core::MAX_MAPPED_ITEM_DEPTH as usize {
+             let mut budget = self.0.lock().unwrap_or_else(|e| e.into_inner());
+             let stop = refusal(Dimension::Representation, path.len() as u64 + 1, 0);
+             return Err(*budget.terminal.get_or_insert(stop));
+--- a/rust/geometry/src/program/retained/cache.rs
++++ b/rust/geometry/src/program/retained/cache.rs
+@@ -18,7 +18,7 @@
+     pub(super) fn validate_owner(&self, decoder: ExecutionIdentity, router: ExecutionIdentity) -> crate::Result<()> {
+         let mut owner_state = self.owner.lock().unwrap_or_else(|e| e.into_inner());
+         match *owner_state {
+-            Some(owner) if owner != (decoder, router) && decoder == router => return Err(crate::Error::geometry(
++            Some(owner) if owner != (decoder, router) => return Err(crate::Error::geometry(
+                 "stale retained cache source/configuration provenance")),
+             None => *owner_state = Some((decoder, router)),
+             _ => {}
+@@ -30,7 +30,7 @@
+         self.validate_owner(decoder,router)?;
+         let state = self.values.lock().unwrap_or_else(|e| e.into_inner());
+         state.get(&source).map(|values| {
+-            let _ = walk;
++            walk.charge(values.len() as u64)?;
+             copy_values(values)
+         }).transpose()
+     }
+@@ -38,7 +38,7 @@
+         walk: &super::walk::RetainedWalk) -> crate::Result<()> {
+         // Copy and admit storage before publication; refusal never installs a
+         // partial cache entry. Earlier completed sources remain available.
+-        let _ = walk;
++        walk.charge(values.len() as u64)?;
+         let copied = copy_values(values)?;
+         let mut state = self.values.lock().unwrap_or_else(|e| e.into_inner());
+         crate::resource::charge(crate::resource::Cost {
+--- a/rust/geometry/src/program/mapping_retained.rs
++++ b/rust/geometry/src/program/mapping_retained.rs
+@@ -101,7 +101,7 @@
+             let transform = transform.unwrap_or_else(Matrix4::identity);
+             for value in &mut values {
+                 value.place_in_place(&transform, selection.program(), RetainedPlacementStage::Mapping { source_id })?;
+-                if let Some(binding) = &binding { let _ = binding; }
++                if let Some(binding) = &binding { value.present(binding.clone())?; }
+             }
+             Ok(values)
+         })();
+@@ -219,7 +219,7 @@
+         let state = self.retained.as_mut().ok_or(ProgramError::StaleRequest)?;
+         let output = state.levels.last_mut().ok_or(ProgramError::StaleRequest)?;
+         let value = (|| {
+-            let origin = { let _ = origin; Matrix4::identity() };
++            let origin = origin.unwrap_or_else(Matrix4::identity);
+             super::super::retained::validate_affine(&origin)?;
+             super::super::retained::proper_rigid(&origin)?;
+             let mut values = std::mem::take(output);
+--- a/rust/geometry/src/program/inner.rs
++++ b/rust/geometry/src/program/inner.rs
+@@ -187,7 +187,7 @@
+             return Err(ProgramError::UnsupportedRetained);
+         }
+         let decoder_before = decoder.execution_identity();
+-        if false && matches!(&self.control, Control::Mapping(c) if c.retained_ready()) { return Err(ProgramError::UnsupportedRetained); }
++        if matches!(&self.control, Control::Mapping(c) if c.retained_ready()) { return Err(ProgramError::UnsupportedRetained); }
+         // Consume admission before any callback can unwind. A copied ticket
+         // cannot replay work after its recipe was moved into a lexical call.
+         self.pending = Some((request, true));

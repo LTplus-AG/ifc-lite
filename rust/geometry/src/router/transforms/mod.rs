@@ -213,3 +213,10 @@ impl GeometryRouter {
         placement::linear::local_strict(placement, decoder)
     }
 }
+
+// Logical source metadata only; this does not resolve retained face appearance.
+impl GeometryRouter {
+    pub(crate) fn retained_indexed_colour_pending(&self, id: u32) -> bool {
+        self.is_indexed_colour_split_source(id)
+    }
+}

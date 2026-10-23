@@ -703,6 +703,7 @@ jobs:
         run: |
           node scripts/diff-parity-vectors.mjs --check
           node scripts/diff-core-vectors.mjs --check
+          node scripts/diff-content-vectors.mjs --check
 
       # Perf ratchet, `bundle` family (#6959). `pnpm build` above already
       # built the engine wasm and the viewer's dist/ (turbo builds apps/*

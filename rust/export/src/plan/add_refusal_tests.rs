@@ -23,6 +23,7 @@ fn refused(source: &[u8], obj: NewObject, expect: &str) {
 
 fn new_type(class: &str, predefined_type: Option<&str>) -> TypeLink {
     TypeLink::New(NewType {
+        global_id: None,
         class: ClassSpec { class: IfcClass::Named(class.into()), predefined_type: predefined_type.map(Into::into) },
         name: Some("T".into()),
         psets: Vec::new(),
@@ -90,7 +91,7 @@ fn a_later_add_can_name_an_object_that_replaces_a_deleted_one() {
     assert_eq!(reused.encode(), fixture_gid(10));
     let wall = object(IfcClass::Wall, reused, storey(), Representation::Extrusion(block(4.0, 0.2, 3.0)));
     let mut door = object(IfcClass::Door, gid(6), storey(), Representation::Extrusion(block(1.0, 0.2, 2.0)));
-    door.opening = Some(NewOpening { host: ObjectRef::Guid(fixture_gid(10)), shape: block(1.0, 0.4, 2.0) });
+    door.opening = Some(NewOpening { host: ObjectRef::Guid(fixture_gid(10)), matrix: IDENTITY, shape: block(1.0, 0.4, 2.0) });
     let (_, report) = run(&source, vec![(ObjectRef::Guid(fixture_gid(10)), Disposition::Delete), add(wall), add(door)]);
     assert_clean(&report, "IFC4");
     assert_eq!(report.added, 2);
@@ -287,4 +288,26 @@ fn a_property_measure_must_be_declared_by_the_files_schema() {
         properties: vec![NewProperty { name: "P".into(), value: PropertyValue::Measure { measure_type: "IfcNonNegativeLengthMeasure".into(), value: 1.0 } }],
     }];
     refused(&storey_with_typed_wall("IFC2X3"), wall, "not an IFC measure in IFC2X3");
+}
+
+/// A type with its own GlobalId is created by one `TypeLink::New`; a later
+/// Add names it with `TypeLink::Existing` by that GlobalId (#8087 review).
+#[test]
+fn a_later_add_names_a_type_an_earlier_add_created() {
+    for schema in SCHEMAS {
+        let type_id = gid(40);
+        let mut first = object(IfcClass::Wall, gid(41), storey(), Representation::None);
+        first.type_link = Some(TypeLink::New(NewType {
+            global_id: Some(type_id),
+            class: ClassSpec { class: IfcClass::Named("IfcWallType".into()), predefined_type: None },
+            name: Some("T".into()),
+            psets: Vec::new(),
+        }));
+        let mut second = object(IfcClass::Wall, gid(42), storey(), Representation::None);
+        second.type_link = Some(TypeLink::Existing(ObjectRef::Guid(type_id.encode())));
+        let (out, report) = run(&storey_with_typed_wall(schema), vec![add(first), add(second)]);
+        assert_clean(&report, schema);
+        assert_eq!(report.added, 2, "{schema}");
+        assert_eq!(type_in(&out, id_in(&out, type_id)), "IFCWALLTYPE", "{schema}: one new type");
+    }
 }

@@ -120,9 +120,9 @@ impl<'a> AddState<'a> {
         let gid = obj.global_id;
         self.placement_of_added.insert(built.object, Some(built.placement));
         self.added.insert(gid.encode(), Added { id: built.object, class: checked.class });
-        if let (Some(type_id), Some((class, _))) = (built.new_type, checked.new_type) {
+        if let (Some(type_id), Some((class, _)), Some(TypeLink::New(t))) = (built.new_type, checked.new_type, &obj.type_link) {
             self.placement_of_added.insert(type_id, None);
-            self.added.insert(gid.derive("type").encode(), Added { id: type_id, class });
+            self.added.insert(t.global_id_for(gid).encode(), Added { id: type_id, class });
         }
         Ok(())
     }
@@ -245,8 +245,11 @@ impl<'a> AddState<'a> {
         let mut new_type = None;
         let type_target = match (&obj.type_link, &c.new_type) {
             (Some(TypeLink::New(t)), Some((class, predefined))) => {
-                let type_sets = build_sets(emit, owner_history, gid, "type/pset", &t.psets)?;
-                let mut fields = vec![("GlobalId", guid("type")), ("OwnerHistory", owh.clone())];
+                // A type with its own GlobalId derives its sets' ids from it.
+                let (base, role) = t.global_id.map_or((gid, "type/pset"), |g| (g, "pset"));
+                let type_sets = build_sets(emit, owner_history, base, role, &t.psets)?;
+                let type_gid = format!("'{}'", t.global_id_for(gid).encode());
+                let mut fields = vec![("GlobalId", type_gid), ("OwnerHistory", owh.clone())];
                 if let Some(name) = &t.name {
                     fields.push(("Name", format!("'{}'", escape(name))));
                 }
@@ -254,12 +257,14 @@ impl<'a> AddState<'a> {
                     fields.push(("HasPropertySets", ref_list(&type_sets)));
                 }
                 // Mandatory on element types in IFC4 and later (and on door
-                // and window types, their operation and partitioning):
+                // and window types, their operation and partitioning; on
+                // furniture types, the assembly place):
                 // NOTDEFINED claims nothing when the caller names no value.
                 let notdefined = || ".NOTDEFINED.".to_string();
                 fields.push(("PredefinedType", predefined.clone().unwrap_or_else(notdefined)));
                 fields.push(("OperationType", notdefined()));
                 fields.push(("PartitioningType", notdefined()));
+                fields.push(("AssemblyPlace", notdefined()));
                 let id = emit.record(class, &fields)?;
                 require_filled(emit, id)?;
                 new_type = Some(id);
@@ -275,7 +280,7 @@ impl<'a> AddState<'a> {
         }
 
         if let (Some(host), Some(op), Some(ctx)) = (c.host, &obj.opening, context) {
-            let a2p = emit.identity_placement()?;
+            let a2p = emit.axis_placement(&op.matrix)?;
             let op_placement = emit.record(
                 "IFCLOCALPLACEMENT",
                 &[("PlacementRelTo", format!("#{placement}")), ("RelativePlacement", format!("#{a2p}"))],

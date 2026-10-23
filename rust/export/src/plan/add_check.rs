@@ -177,7 +177,10 @@ impl AddState<'_> {
             }
             Some(TypeLink::New(t)) => {
                 validate_psets(self.schema, &t.psets)?;
-                let type_gid = obj.global_id.derive("type").encode();
+                let type_gid = t.global_id_for(obj.global_id).encode();
+                if type_gid == encoded {
+                    return Err("a new type cannot share its occurrence's GlobalId".into());
+                }
                 let in_source = self.index.resolve(&ObjectRef::Guid(type_gid.clone()));
                 if in_source.is_some_and(|id| live_in_source(&id)) || self.added.contains_key(&type_gid) {
                     return Err(format!("GlobalId {type_gid} for the new type is already in use"));
@@ -209,6 +212,7 @@ impl AddState<'_> {
                     return Err(format!("opening host {} is {c}, not an element", op.host));
                 }
                 validate_extrusion(&op.shape).map_err(|e| format!("opening: {e}"))?;
+                crate::plan::placement::check_matrix(&op.matrix).map_err(|e| format!("opening: {e}"))?;
                 Some(id)
             }
         };

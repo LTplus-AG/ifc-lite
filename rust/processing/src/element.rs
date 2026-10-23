@@ -180,3 +180,6 @@ mod session_retry_tests;
 
 #[cfg(test)]
 mod session_resource_tests;
+
+#[cfg(test)]
+mod session_publication_tests;

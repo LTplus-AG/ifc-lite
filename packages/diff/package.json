@@ -1,7 +1,7 @@
 {
   "name": "@ifc-lite/diff",
   "version": "0.10.0",
-  "description": "Headless model-diff engine for IFC-Lite — classifies entities as added/modified/deleted/unchanged across two revisions, with separable data vs geometry scope.",
+  "description": "Headless model-diff engine for IFC-Lite \u2014 classifies entities as added/modified/deleted/unchanged across two revisions, with separable data vs geometry scope.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -45,5 +45,8 @@
   "files": [
     "dist",
     "README.md"
-  ]
+  ],
+  "dependencies": {
+    "@ifc-lite/wasm": "workspace:*"
+  }
 }

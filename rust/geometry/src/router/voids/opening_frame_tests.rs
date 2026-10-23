@@ -123,7 +123,7 @@ fn corpus() -> Vec<Mesh> {
 #[test]
 fn weighted_clusters_match_the_loops_they_replaced() {
     for (i, mesh) in corpus().iter().enumerate() {
-        let new = cluster_face_normals(mesh_facets(mesh), FACE_COS, Merge::Weighted, usize::MAX, |_, _, _| {})
+        let new = cluster_face_normals(mesh_facets(mesh, Merge::Weighted), FACE_COS, Merge::Weighted, usize::MAX, |_, _, _| {})
             .expect("uncapped");
         let old = legacy_weighted(mesh, |_| true);
         assert_eq!(new.len(), old.len(), "mesh {i}");
@@ -137,7 +137,7 @@ fn weighted_clusters_match_the_loops_they_replaced() {
         }
         // The wall-normal vote's horizontal filter.
         let new = cluster_face_normals(
-            mesh_facets(mesh).filter(|f| !(f.normal.z.abs() > 0.2)),
+            mesh_facets(mesh, Merge::Weighted).filter(|f| !(f.normal.z.abs() > 0.2)),
             FACE_COS,
             Merge::Weighted,
             usize::MAX,
@@ -154,7 +154,7 @@ fn first_seen_clusters_match_the_box_loop_including_the_cap() {
     let mut capped = 0;
     for (i, mesh) in corpus().iter().enumerate() {
         let mut tri_axes = Vec::new();
-        let new = cluster_face_normals(mesh_facets(mesh), 0.98, Merge::FirstSeen, 3, |idx, axis, anchor| {
+        let new = cluster_face_normals(mesh_facets(mesh, Merge::FirstSeen), 0.98, Merge::FirstSeen, 3, |idx, axis, anchor| {
             tri_axes.push((idx, anchor.coords.dot(axis)));
         });
         match (new, legacy_first_seen(mesh)) {

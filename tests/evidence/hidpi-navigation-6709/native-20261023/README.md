@@ -20,8 +20,8 @@ shared. It is a qualification control, not another viewer implementation.
   `preparation-jobs.json`. Freeze every served asset and the package WASM/JS/type
   files; verify source cleanliness, WASM freshness and identical runtime bytes
   across the arms. Revalidate after measurement.
-- Initialize the empty viewer renderer, then load the target as its first model
-  through the normal Open file input. Run one DPR2 smoke, then five counterbalanced A/B pairs at each of DPR1 and
+- Wait for the normal Open file input, then load the target as its first model.
+  The main viewport is mounted when that model loads. Run one DPR2 smoke, then five counterbalanced A/B pairs at each of DPR1 and
   DPR2. Every sample owns a fresh native browser at a 1440 by 900 CSS viewport.
   The complete smoke and cohort share exclusive registered worker admission.
 - Require the active, unlocked local desktop, connected displays, AC power,
@@ -58,8 +58,8 @@ publishing the verdict. This does not resolve #6516's loading regression.
 `qualification.mts` uses the repository's frame probe, orbit inputs, static
 server, readiness checks and paired reporter. `native-platform.mts` is the
 physical Linux platform adapter, using X11/Xwayland on the active physical
-Wayland desktop; its browser flags follow the canvas-specific
-hardware qualification recorded for #7633. It adds no viewer loader, decoder,
+Wayland desktop. The next diagnostic separates ANGLE OpenGL from native Vulkan
+initialization instead of forcing Vulkan compositing. It adds no viewer loader, decoder,
 kernel, capture pipeline or production debug API.
 
 `geometry-witness-controls.mts` executes perturbation controls against the
@@ -78,11 +78,18 @@ old receipt or script exit alone.
 ## Refused preparations and diagnostics
 
 The first controller refused the noncanonical demo-asset hash before browser
-startup. The next smoke used the catalogued model and rendered it, but failed
-the required metadata/render readiness contract and emitted WebGL framebuffer
-driver errors under the Wayland browser backend. Neither produced accepted A/B
-samples. The next diagnostic uses the verified X11 backend, normal Open-file
-loading after renderer initialization, and additional trace/driver diagnostics.
-The finalization and health requirements remain in place; no timing verdict is
-inferred from the rendered screenshot. Original receipts and raw logs remain
-separate from any later accepted cohort.
+startup. Attempt 2 rendered the catalogued model but timed out on strict
+metadata/render readiness and emitted WebGL errors under Wayland. Attempt 3
+stopped before model load because its empty-canvas prerequisite was invalid.
+Attempt 4 corrected that prerequisite: parser completion, geometry completion
+and scene finalization all passed on the actual NVIDIA adapter, then Chromium's
+ANGLE Vulkan WebGL shared-image errors disqualified it before timing.
+
+No attempt has accepted A/B samples. The next diagnostic uses ANGLE OpenGL
+and native Vulkan initialization, retaining the same strict readiness, hardware,
+health and timing guards. Original receipts and logs remain separate; a rendered
+screenshot is not a performance or health verdict.
+
+These files are qualification tests and evidence for already merged production
+behavior. They live under `tests/evidence` so the revert oracle classifies them
+as test support; no production viewer change is part of this follow-up.

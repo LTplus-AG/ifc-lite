@@ -140,7 +140,7 @@ try {
    await context.addInitScript({content:frameProbeInitScript({workDone:true})});
    await context.addInitScript({content:observer});
    await page.goto(`${origin}/?perfTrace=1`,{timeout:30000});
-   await page.waitForFunction('!!document.querySelector("canvas[data-viewport=main]") && !!globalThis.__ifc_lite_render_stats__?.().adapter?.vendor');
+   await page.locator('#file-input-open').waitFor({state:'attached'});
    await page.locator('#file-input-open').setInputFiles(model);
    await page.bringToFront();
    await waitForMetadataRenderReadiness({trace:async()=>{const value=await probeMetadataRenderTrace(page);record.meta.latestReadinessTrace=value;return value;},logs:()=>logs,

@@ -353,8 +353,8 @@ pub(super) fn wall_with_one_covering(schema: &str) -> Vec<u8> {
     format!("{}{}{}{}", header(schema), preamble(schema), data, FOOTER).into_bytes()
 }
 
-// The geometry scene, apart so neither file outgrows the module-size rule; it
-// builds on the helpers above.
+// The geometry and Add scenes, apart so neither file outgrows the module-size
+// rule; they build on the helpers above.
 #[path = "test_fixtures_scenes.rs"]
 mod scenes;
-pub(super) use scenes::products_with_geometry;
+pub(super) use scenes::{products_with_geometry, storey_with_headroom, storey_with_typed_wall};

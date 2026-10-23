@@ -1,0 +1,159 @@
+// SPDX-License-Identifier: MPL-2.0
+//! Adds whose output would break a schema rule, and the references an Add
+//! makes to objects the same plan replaces: each is either written validly
+//! or refused whole.
+
+use crate::plan::add_test_support::*;
+use crate::plan::add_types::*;
+use crate::plan::test_fixtures::{gid as fixture_gid, storey_with_headroom, storey_with_typed_wall};
+use crate::plan::types::*;
+
+fn storey() -> Option<ObjectRef> {
+    Some(ObjectRef::Id(70))
+}
+
+fn refused(source: &[u8], obj: NewObject, expect: &str) {
+    let (out, report) = run(source, vec![add(obj)]);
+    assert_eq!(report.added, 0, "{expect}");
+    assert_eq!(report.refusals.len(), 1, "{expect}: {:?}", report.refusals);
+    assert!(report.refusals[0].reason.contains(expect), "{expect}: {}", report.refusals[0].reason);
+    let (untouched, _) = run(source, Vec::new());
+    assert_eq!(out, untouched, "a refused Add leaves no trace");
+}
+
+fn new_type(class: &str, predefined_type: Option<&str>) -> TypeLink {
+    TypeLink::New(NewType {
+        class: ClassSpec { class: IfcClass::Named(class.into()), predefined_type: predefined_type.map(Into::into) },
+        name: Some("T".into()),
+        psets: Vec::new(),
+    })
+}
+
+/// A new door type with no predefined type still fills the slots IFC4 and
+/// IFC4X3 declare mandatory, with NOTDEFINED.
+#[test]
+fn a_new_type_without_a_predefined_type_fills_its_mandatory_enums() {
+    for schema in SCHEMAS {
+        let class = if schema == "IFC2X3" { "IfcDoorStyle" } else { "IfcDoorType" };
+        let mut door = object(IfcClass::Door, gid(1), storey(), Representation::None);
+        door.type_link = Some(new_type(class, None));
+        let (out, report) = run(&storey_with_typed_wall(schema), vec![add(door)]);
+        assert_clean(&report, schema);
+        let type_id = id_in(&out, gid(1).derive("type"));
+        let text = String::from_utf8(out).unwrap();
+        let line = text.lines().find(|l| l.starts_with(&format!("#{type_id}="))).unwrap();
+        let unset = crate::plan::attrs::unset_required(schema, line);
+        assert!(unset.is_empty(), "{schema}: {unset:?} in {line}");
+        assert!(line.contains(".NOTDEFINED."), "{schema}: {line}");
+    }
+}
+
+/// A product whose class has mandatory attributes an Add does not write is
+/// refused rather than written with `$` there.
+#[test]
+fn a_class_with_mandatory_attributes_an_add_does_not_write_is_refused() {
+    let source = storey_with_typed_wall("IFC4");
+    refused(&source, object(IfcClass::Named("IfcGrid".into()), gid(2), storey(), Representation::None), "requires");
+}
+
+#[test]
+fn a_userdefined_predefined_type_is_refused() {
+    let mut wall = object(IfcClass::Wall, gid(3), storey(), Representation::None);
+    wall.class.predefined_type = Some("userdefined".into());
+    refused(&storey_with_typed_wall("IFC4"), wall, "USERDEFINED");
+}
+
+#[test]
+fn a_type_that_is_not_a_product_type_is_refused() {
+    let mut wall = object(IfcClass::Wall, gid(4), storey(), Representation::None);
+    wall.type_link = Some(new_type("IfcTaskType", None));
+    refused(&storey_with_typed_wall("IFC4"), wall, "not an IFCTYPEPRODUCT");
+}
+
+/// The GlobalId a new type derives from its occurrence must be free.
+#[test]
+fn a_new_type_whose_global_id_is_taken_is_refused() {
+    let taken = object(IfcClass::Wall, gid(5).derive("type"), storey(), Representation::None);
+    let mut wall = object(IfcClass::Wall, gid(5), storey(), Representation::None);
+    wall.type_link = Some(new_type("IfcWallType", None));
+    let (_, report) = run(&storey_with_typed_wall("IFC4"), vec![add(taken), add(wall)]);
+    assert_eq!(report.added, 1, "{:?}", report.refusals);
+    assert!(report.refusals[0].reason.contains("for the new type is already in use"), "{:?}", report.refusals);
+}
+
+/// An object added under the GlobalId of one this plan deletes is what a
+/// later Add naming that GlobalId reaches.
+#[test]
+fn a_later_add_can_name_an_object_that_replaces_a_deleted_one() {
+    let source = storey_with_typed_wall("IFC4");
+    let reused = GlobalId(64);
+    assert_eq!(reused.encode(), fixture_gid(10));
+    let wall = object(IfcClass::Wall, reused, storey(), Representation::Extrusion(block(4.0, 0.2, 3.0)));
+    let mut door = object(IfcClass::Door, gid(6), storey(), Representation::Extrusion(block(1.0, 0.2, 2.0)));
+    door.opening = Some(NewOpening { host: ObjectRef::Guid(fixture_gid(10)), shape: block(1.0, 0.4, 2.0) });
+    let (_, report) = run(&source, vec![(ObjectRef::Guid(fixture_gid(10)), Disposition::Delete), add(wall), add(door)]);
+    assert_clean(&report, "IFC4");
+    assert_eq!(report.added, 2);
+}
+
+#[test]
+fn a_negative_quantity_is_refused() {
+    let mut wall = object(IfcClass::Wall, gid(7), storey(), Representation::None);
+    wall.psets = vec![NewPropertySet {
+        name: "Qto_WallBaseQuantities".into(),
+        kind: PsetKind::Quantity,
+        properties: vec![NewProperty { name: "Length".into(), value: PropertyValue::Measure { measure_type: "IfcLengthMeasure".into(), value: -3.0 } }],
+    }];
+    refused(&storey_with_typed_wall("IFC4"), wall, "cannot be negative");
+}
+
+/// Values large enough that the degeneracy arithmetic overflows to NaN are
+/// refused, not let through because NaN compares unequal to zero.
+#[test]
+fn degenerate_input_that_overflows_is_refused() {
+    let source = storey_with_typed_wall("IFC4");
+    let mut wall = object(IfcClass::Wall, gid(8), storey(), Representation::None);
+    for row in 0..3 {
+        wall.placement.matrix[row][0] = [1e200, 1e200, 0.0][row];
+        wall.placement.matrix[row][2] = [1e200, 1e200, 0.0][row];
+    }
+    refused(&source, wall, "parallel");
+
+    let collinear = Extrusion { profile: vec![[0.0, 0.0], [1e200, 1e200], [2e200, 2e200]], direction: [0.0, 0.0, 1.0], depth: 1.0 };
+    refused(&source, object(IfcClass::Wall, gid(9), storey(), Representation::Extrusion(collinear)), "no area");
+
+    let repeated = Extrusion { profile: vec![[0.0, 0.0], [0.0, 0.0], [1.0, 0.0], [1.0, 1.0]], direction: [0.0, 0.0, 1.0], depth: 1.0 };
+    refused(&source, object(IfcClass::Wall, gid(10), storey(), Representation::Extrusion(repeated)), "repeats a point");
+}
+
+/// When writing the relationships runs out of ids, every Add that had
+/// built is refused by name, not only the plan's first Add.
+#[test]
+fn an_exhausted_id_space_refuses_each_add_that_had_built() {
+    let source = storey_with_headroom("IFC4", 11);
+    let unknown = object(IfcClass::Named("IfcNoSuchThing".into()), gid(11), Some(ObjectRef::Id(70)), Representation::None);
+    let wall = object(IfcClass::Wall, gid(12), Some(ObjectRef::Id(70)), Representation::None);
+    let (_, report) = run(&source, vec![add(unknown), add(wall)]);
+    assert_eq!(report.added, 0);
+    let named: Vec<&ObjectRef> = report.refusals.iter().map(|r| &r.object).collect();
+    assert_eq!(named, [&ObjectRef::Guid(gid(11).encode()), &ObjectRef::Guid(gid(12).encode())], "{:?}", report.refusals);
+}
+
+/// A PredefinedType outside the class's enumeration is refused, for an
+/// object and for a new type; one inside it is written.
+#[test]
+fn a_predefined_type_outside_the_classs_enumeration_is_refused() {
+    let source = storey_with_typed_wall("IFC4");
+    let mut wall = object(IfcClass::Wall, gid(13), storey(), Representation::None);
+    wall.class.predefined_type = Some("bogus".into());
+    refused(&source, wall, "not a PredefinedType of IFCWALL");
+
+    let mut wall = object(IfcClass::Wall, gid(14), storey(), Representation::None);
+    wall.type_link = Some(new_type("IfcWallType", Some("bogus")));
+    refused(&source, wall, "not a PredefinedType of IFCWALLTYPE");
+
+    let mut wall = object(IfcClass::Wall, gid(15), storey(), Representation::None);
+    wall.class.predefined_type = Some("partitioning".into());
+    let (_, report) = run(&source, vec![add(wall)]);
+    assert_clean(&report, "IFC4");
+}

@@ -20,7 +20,7 @@ use super::types::{PropWrite, PsetKind};
 /// carries an `IfcLengthMeasure`), unlike properties, which stay
 /// `IfcPropertySingleValue` regardless of the value's measure — so this map
 /// exists only for quantities.
-fn quantity_entity_for_measure(measure_type: &str) -> Option<&'static str> {
+pub(crate) fn quantity_entity_for_measure(measure_type: &str) -> Option<&'static str> {
     Some(match measure_type {
         "IFCLENGTHMEASURE" | "IFCPOSITIVELENGTHMEASURE" => "IFCQUANTITYLENGTH",
         "IFCAREAMEASURE" => "IFCQUANTITYAREA",

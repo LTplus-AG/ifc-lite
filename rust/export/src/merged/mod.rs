@@ -24,7 +24,7 @@
 //! is set so the caller can gate that case to the JS path.
 
 mod empty;
-mod guid;
+pub(crate) mod guid;
 mod header;
 mod line_edit;
 mod plan;

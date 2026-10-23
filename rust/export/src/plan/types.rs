@@ -138,11 +138,9 @@ pub enum Disposition {
     Patch(Patch),
     /// Remove the object and repair every relationship that named it.
     Delete,
-    /// Not built here. Counted into
-    /// [`WriteReport::added_unsupported`] so a caller can see the plan asked
-    /// for something this package does not do yet, rather than reading a
-    /// silently incomplete export.
-    Add,
+    /// Build a new object from its IFC-level description. Boxed because the
+    /// description is much larger than the other variants.
+    Add(Box<super::add_types::NewObject>),
 }
 
 /// The edits [`Disposition::Patch`] carries. Any field left at its default
@@ -216,7 +214,8 @@ pub struct WriteReport {
     pub written: usize,
     pub deleted: usize,
     pub patched: usize,
-    pub added_unsupported: usize,
+    /// Add dispositions that were built. A refused Add is in `refusals`.
+    pub added: usize,
     pub refusals: Vec<Refusal>,
     pub findings: Vec<ValidationFinding>,
     /// Representations geometry patches removed from their products.

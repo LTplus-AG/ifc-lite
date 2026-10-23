@@ -4,8 +4,8 @@
 //! wider set the output-pinning test runs.
 
 use ifc_lite_export::plan::{
-    Disposition, ExportPlan, GeometryPatch, ObjectRef, Patch, PlacementPatch, PlanContext, PropScope, PropWrite, PsetKind,
-    SurfaceColour, TriangleMesh,
+    ClassSpec, Disposition, ExportPlan, GeometryPatch, GlobalId, IfcClass, NewObject, NewPlacement, ObjectRef, Patch,
+    PlacementPatch, PlanContext, PropScope, PropWrite, PsetKind, Representation, SurfaceColour, TriangleMesh,
 };
 
 use super::synth::{quirk, Layout, GROUP, TYPES};
@@ -36,6 +36,23 @@ fn prop(pset: &str, name: &str, measure: &str, literal: &str, kind: PsetKind, sc
 
 fn props(id: u32, writes: Vec<PropWrite>) -> (ObjectRef, Disposition) {
     (ObjectRef::Id(id), Disposition::Patch(Patch { psets: writes, ..Default::default() }))
+}
+
+/// An Add keyed by `id`, which already exists: refused, and writes nothing.
+fn add_over_existing(id: u32) -> (ObjectRef, Disposition) {
+    let new = NewObject {
+        global_id: GlobalId(u128::from(id)),
+        class: ClassSpec { class: IfcClass::Wall, predefined_type: None },
+        name: None,
+        placement: NewPlacement { matrix: shifted(0.0).matrix, relative_to: None },
+        container: None,
+        type_link: None,
+        representation: Representation::None,
+        style: None,
+        psets: Vec::new(),
+        opening: None,
+    };
+    (ObjectRef::Id(id), Disposition::Add(Box::new(new)))
 }
 
 fn delete(id: u32) -> (ObjectRef, Disposition) {
@@ -129,7 +146,7 @@ pub fn scenarios(l: &Layout) -> Vec<(&'static str, ExportPlan)> {
                 place(w(20), 1.0),
                 delete(99_999_998),
                 (ObjectRef::Guid("NoSuchGlobalIdAnywhere".into()), Disposition::Delete),
-                (ObjectRef::Id(w(21)), Disposition::Add),
+                add_over_existing(w(21)),
             ]),
         ),
         (

@@ -106,6 +106,35 @@ pub(crate) fn build_record(file_schema: &str, id: u32, entity_type: &str, fields
     format!("#{id}={entity_type}({});", slots.join(","))
 }
 
+/// The mandatory attributes a built record leaves `$`, by name, from the
+/// generated required-slot tables: IFC2X3's for an IFC2X3 file, IFC4's for
+/// IFC4 and IFC4X3 when the record has IFC4's attribute count for its type
+/// (the later schemas keep IFC4's mandatory slots where the layout is the
+/// same). Empty when the record does not parse or no table covers it.
+pub(crate) fn unset_required(file_schema: &str, record: &str) -> Vec<&'static str> {
+    let Some(frame) = crate::step_record_frame::record_frame(record) else { return Vec::new() };
+    let entity_type = frame.head.type_name(record).to_ascii_uppercase();
+    let Some(args) = crate::step_slot::slots_of(frame.args(record)) else {
+        return Vec::new();
+    };
+    let unset = |index: u8| args.get(usize::from(index)).is_some_and(|a| a.trim() == "$");
+    if file_schema.to_ascii_uppercase().starts_with("IFC2X3") {
+        return match crate::schema_ifc2x3_slots::required_slots(&entity_type) {
+            Some((arity, slots)) if usize::from(arity) == args.len() => {
+                slots.iter().filter(|&&(index, _, _)| unset(index)).map(|&(_, name, _)| name).collect()
+            }
+            _ => Vec::new(),
+        };
+    }
+    use crate::generated::ifc4_required_slots::IFC4_REQUIRED_SLOTS;
+    match IFC4_REQUIRED_SLOTS.binary_search_by(|row| row.0.cmp(entity_type.as_str())) {
+        Ok(i) if usize::from(IFC4_REQUIRED_SLOTS[i].1) == args.len() => {
+            IFC4_REQUIRED_SLOTS[i].2.iter().filter(|&&(index, _)| unset(index)).map(|&(_, name)| name).collect()
+        }
+        _ => Vec::new(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

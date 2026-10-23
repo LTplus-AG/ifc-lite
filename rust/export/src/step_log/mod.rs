@@ -50,7 +50,7 @@ mod readers;
 mod record;
 mod refilter;
 mod refs;
-mod retype;
+pub(crate) mod retype;
 mod replay;
 mod source;
 mod units;

@@ -142,17 +142,6 @@ fn placement_patch_repoints_the_local_placement_and_output_still_validates() {
 }
 
 #[test]
-fn add_disposition_is_counted_unsupported_and_changes_nothing() {
-    let schema = "IFC4";
-    let content = wall_with_own_pset(schema);
-    let plan = ExportPlan { dispositions: vec![(ObjectRef::Id(10), Disposition::Add)], context: PlanContext::default() };
-    let mut out = Vec::new();
-    let report = execute(&content, &plan, &mut out).unwrap();
-    assert_eq!(report.added_unsupported, 1);
-    assert_eq!(report.written, report.total);
-}
-
-#[test]
 fn unknown_object_ref_is_refused_not_silently_skipped() {
     let schema = "IFC4";
     let content = wall_with_own_pset(schema);

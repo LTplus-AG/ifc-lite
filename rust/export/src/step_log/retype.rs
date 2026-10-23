@@ -23,6 +23,13 @@ fn in_schema(schema: &str, upper: &str) -> Option<Info> {
         .map(|i| Info { attributes: NAME_LISTS[usize::from(RETYPE_ROWS[i].2)], predefined: NAME_LISTS[usize::from(RETYPE_ROWS[i].3)] })
 }
 
+/// The `PredefinedType` members `class` (any case) declares in exactly
+/// `schema`, without falling back to another schema's table. `None` when
+/// the table has no row for it; empty when the class has no such enum.
+pub(crate) fn predefined_type_members(schema: &str, class: &str) -> Option<&'static [&'static str]> {
+    in_schema(schema, &class.to_uppercase()).map(|info| info.predefined)
+}
+
 /// `lookupEntityInfo`: the source schema's table (IFC5 reads IFC4X3's), then IFC4's.
 fn lookup(schema: &str, name: &str) -> Option<Info> {
     let upper = name.to_uppercase();

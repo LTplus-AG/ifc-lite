@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
-//! The geometry fixture of [`super`]: products with body geometry. Synthetic,
-//! like the rest.
+//! The geometry and Add fixtures of [`super`]: products with body geometry,
+//! and spatial trees for new objects. Synthetic, like the rest.
 
-use super::{gid, entity_line, quoted, preamble, header, FOOTER, local_placement_at};
+use super::{gid, entity_line, quoted, preamble, header, FOOTER, wall, local_placement_at};
 
 /// Products with body geometry, for the geometry patch. Every schema gets the
 /// same ids except the IFC2X3-only style assignments (`#70`, `#94`).
@@ -124,4 +124,73 @@ pub(in crate::plan) fn products_with_geometry(schema: &str) -> Vec<u8> {
     d += &local_placement_at(32, 33, 34, 4.0);
 
     format!("{}{}{}{}", header(schema), preamble(schema), d, FOOTER).into_bytes()
+}
+
+/// A spatial tree for Add: project `#1` aggregates building `#60` (placement
+/// `#63`) through `#62`, which aggregates storey `#70` (placement `#73`,
+/// relative to the building's) through `#72`. Wall `#10` (placement `#20`,
+/// relative to the storey's) is contained in the storey through `#80` and
+/// typed by wall type `#40` through `#43`.
+pub(in crate::plan) fn storey_with_typed_wall(schema: &str) -> Vec<u8> {
+    let mut data = entity_line(
+        schema,
+        60,
+        "IFCBUILDING",
+        &[("GlobalId", &quoted(&gid(60))), ("Name", "'Building'"), ("ObjectPlacement", "#63"), ("CompositionType", ".ELEMENT.")],
+    );
+    data += &entity_line(schema, 62, "IFCRELAGGREGATES", &[("GlobalId", &quoted(&gid(62))), ("RelatingObject", "#1"), ("RelatedObjects", "(#60)")]);
+    data += "#63=IFCLOCALPLACEMENT($,#64);\n#64=IFCAXIS2PLACEMENT3D(#65,$,$);\n#65=IFCCARTESIANPOINT((0.,0.,0.));\n";
+    data += &entity_line(
+        schema,
+        70,
+        "IFCBUILDINGSTOREY",
+        &[("GlobalId", &quoted(&gid(70))), ("Name", "'Level 1'"), ("ObjectPlacement", "#73"), ("CompositionType", ".ELEMENT."), ("Elevation", "3.")],
+    );
+    data += &entity_line(schema, 72, "IFCRELAGGREGATES", &[("GlobalId", &quoted(&gid(72))), ("RelatingObject", "#60"), ("RelatedObjects", "(#70)")]);
+    data += "#73=IFCLOCALPLACEMENT(#63,#74);\n#74=IFCAXIS2PLACEMENT3D(#75,$,$);\n#75=IFCCARTESIANPOINT((0.,0.,3.));\n";
+    data += &wall(schema, 10, "Wall 1", 20);
+    data += "#20=IFCLOCALPLACEMENT(#73,#21);\n#21=IFCAXIS2PLACEMENT3D(#22,$,$);\n#22=IFCCARTESIANPOINT((0.,0.,0.));\n";
+    data += &entity_line(
+        schema,
+        80,
+        "IFCRELCONTAINEDINSPATIALSTRUCTURE",
+        &[("GlobalId", &quoted(&gid(80))), ("RelatedElements", "(#10)"), ("RelatingStructure", "#70")],
+    );
+    data += &entity_line(
+        schema,
+        40,
+        "IFCWALLTYPE",
+        &[("GlobalId", &quoted(&gid(40))), ("Name", "'WallType 1'"), ("PredefinedType", ".NOTDEFINED.")],
+    );
+    data += &entity_line(schema, 43, "IFCRELDEFINESBYTYPE", &[("GlobalId", &quoted(&gid(43))), ("RelatedObjects", "(#10)"), ("RelatingType", "#40")]);
+    format!("{}{}{}{}", header(schema), preamble(schema), data, FOOTER).into_bytes()
+}
+
+/// A storey with no wall and no containment relationship yet (`#70`, an
+/// empty `IfcBuildingStorey` under building `#60`), plus one inert entity
+/// placed at `u32::MAX - remaining`: `FileIndex::max_id` reads the highest
+/// id any entity in the file uses, so this pins the plan's `IdAllocator` to
+/// have exactly `remaining` ids left before it starts returning `None`.
+/// Built for testing what happens when an Add's own object records fit but
+/// the relationship built afterwards does not.
+pub(in crate::plan) fn storey_with_headroom(schema: &str, remaining: u32) -> Vec<u8> {
+    let mut data = entity_line(
+        schema,
+        60,
+        "IFCBUILDING",
+        &[("GlobalId", &quoted(&gid(60))), ("Name", "'Building'"), ("ObjectPlacement", "#63"), ("CompositionType", ".ELEMENT.")],
+    );
+    data += &entity_line(schema, 62, "IFCRELAGGREGATES", &[("GlobalId", &quoted(&gid(62))), ("RelatingObject", "#1"), ("RelatedObjects", "(#60)")]);
+    data += "#63=IFCLOCALPLACEMENT($,#64);\n#64=IFCAXIS2PLACEMENT3D(#65,$,$);\n#65=IFCCARTESIANPOINT((0.,0.,0.));\n";
+    data += &entity_line(
+        schema,
+        70,
+        "IFCBUILDINGSTOREY",
+        &[("GlobalId", &quoted(&gid(70))), ("Name", "'Level 1'"), ("ObjectPlacement", "#73"), ("CompositionType", ".ELEMENT."), ("Elevation", "3.")],
+    );
+    data += &entity_line(schema, 72, "IFCRELAGGREGATES", &[("GlobalId", &quoted(&gid(72))), ("RelatingObject", "#60"), ("RelatedObjects", "(#70)")]);
+    data += "#73=IFCLOCALPLACEMENT(#63,#74);\n#74=IFCAXIS2PLACEMENT3D(#75,$,$);\n#75=IFCCARTESIANPOINT((0.,0.,3.));\n";
+    let ceiling = u32::MAX - remaining;
+    data += &format!("#{ceiling}=IFCCARTESIANPOINT((0.,0.,0.));\n");
+    format!("{}{}{}{}", header(schema), preamble(schema), data, FOOTER).into_bytes()
 }

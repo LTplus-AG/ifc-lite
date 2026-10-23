@@ -8,9 +8,10 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::step_ids::IdAllocator;
 use super::index::FileIndex;
+use super::add_types::NewObject;
 use super::patch::{apply_patch, PatchOutput};
 use super::types::{Disposition, DroppedRepresentation, ExportPlan, ObjectRef, Refusal};
-use super::{attrs, delete, geometry, owner_history};
+use super::{add, attrs, delete, geometry, owner_history};
 
 pub(crate) struct Resolution {
     pub(crate) appended: Vec<(u32, String)>,
@@ -18,7 +19,7 @@ pub(crate) struct Resolution {
     pub(crate) removed: HashSet<u32>,
     pub(crate) refusals: Vec<Refusal>,
     pub(crate) patched: usize,
-    pub(crate) added_unsupported: usize,
+    pub(crate) added: usize,
     /// Every object a patch was applied to: the scope of the duplicate
     /// property-set check, which is the defect a patch can introduce.
     pub(crate) patched_objects: Vec<u32>,
@@ -35,13 +36,13 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     let mut edits_by_id: HashMap<u32, BTreeMap<usize, String>> = HashMap::new();
     let mut requested_deletes: HashSet<u32> = HashSet::new();
     let mut patched = 0usize;
-    let mut added_unsupported = 0usize;
+    let mut added = 0usize;
     let mut patched_objects = Vec::new();
 
     // Resolve every disposition against the file before doing anything that
     // depends on another one's outcome (delete's reverse-reference repair
     // needs the full deleted set up front).
-    let resolved = resolve_dispositions(index, plan, &mut refusals);
+    let (resolved, adds) = split_dispositions(index, plan, &mut refusals);
     for &(id, disposition) in &resolved {
         if matches!(disposition, Disposition::Delete) {
             requested_deletes.insert(id);
@@ -95,8 +96,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     let mut reshaped: HashSet<u32> = HashSet::new();
     for &(id, disposition) in &resolved {
         match disposition {
-            Disposition::Preserve | Disposition::Delete => {}
-            Disposition::Add => added_unsupported += 1,
+            Disposition::Preserve | Disposition::Delete | Disposition::Add(_) => {}
             Disposition::Patch(patch) => {
                 if removed.contains(&id) {
                     refusals.push(Refusal {
@@ -162,14 +162,23 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
 
     render_list_edits(index, list_edits, &removed, &mut edits_by_id);
 
-    Resolution { appended, edits_by_id, removed, refusals, patched, added_unsupported, patched_objects, dropped_representations }
+    // Adds run after every delete and patch has settled `removed` and the
+    // list edits, so none of them extends a relationship or names a record
+    // that is going away, and their list appends start from the rewritten
+    // lists.
+    if !adds.is_empty() {
+        let state = add::AddState::new(index, schema, &removed, &plan.context, owner_history_ref, body_context.chosen());
+        added = build_adds(state, &adds, &mut ids, &mut edits_by_id, &mut appended, &mut refusals);
+    }
+
+    Resolution { appended, edits_by_id, removed, refusals, patched, added, patched_objects, dropped_representations }
 }
 
 /// The owner history a patch's new records name: the file's first, else one
 /// synthesized into `appended`. Synthesized only when a patch actually needs
 /// to point a NEW record's OwnerHistory somewhere: a plan that never writes a
 /// property/quantity set must not grow the file by five records it has no use
-/// for.
+/// for. Adds synthesize their own on first success (see `add::AddState::new`).
 fn patch_owner_history(
     index: &FileIndex,
     schema: &str,
@@ -191,21 +200,29 @@ fn patch_owner_history(
     })
 }
 
-/// Every disposition resolved to its id in the file, refused when it is not
-/// there.
-fn resolve_dispositions<'p>(
+/// Every disposition but an Add resolved to its id in the file (refused when
+/// it is not there), and the Adds apart: an Add names an object that does not
+/// exist yet, so it is not resolved against the file; `add` checks its key
+/// itself.
+#[allow(clippy::type_complexity)]
+fn split_dispositions<'p>(
     index: &FileIndex,
     plan: &'p ExportPlan,
     refusals: &mut Vec<Refusal>,
-) -> Vec<(u32, &'p Disposition)> {
+) -> (Vec<(u32, &'p Disposition)>, Vec<(&'p ObjectRef, &'p NewObject)>) {
     let mut resolved = Vec::new();
+    let mut adds = Vec::new();
     for (obj, disposition) in &plan.dispositions {
+        if let Disposition::Add(new) = disposition {
+            adds.push((obj, &**new));
+            continue;
+        }
         match index.resolve(obj) {
             Some(id) => resolved.push((id, disposition)),
             None => refusals.push(Refusal { object: obj.clone(), reason: "object not found in source".into() }),
         }
     }
-    resolved
+    (resolved, adds)
 }
 
 /// Every list change on one (record, attribute) slot, rendered once against
@@ -229,6 +246,40 @@ fn render_list_edits(
             None => continue,
         };
         edits_by_id.entry(id).or_default().insert(idx, edit.render(&entries));
+    }
+}
+
+/// Build every Add, returning how many were written. Only an exhausted id
+/// space fails `finish`: the relationships of every Add are written together,
+/// and `finish` discards every built object's records along with them on
+/// failure (see its doc comment), so each Add that had built is refused too.
+fn build_adds(
+    mut state: add::AddState,
+    adds: &[(&ObjectRef, &NewObject)],
+    ids: &mut IdAllocator,
+    edits_by_id: &mut HashMap<u32, BTreeMap<usize, String>>,
+    appended: &mut Vec<(u32, String)>,
+    refusals: &mut Vec<Refusal>,
+) -> usize {
+    let mut built = Vec::new();
+    for &(key, new) in adds {
+        match state.add(key, new, ids) {
+            Ok(()) => built.push(key),
+            Err(reason) => refusals.push(Refusal { object: key.clone(), reason }),
+        }
+    }
+    match state.finish(ids, edits_by_id) {
+        Ok(records) => {
+            appended.extend(records);
+            built.len()
+        }
+        Err(reason) => {
+            refusals.extend(built.into_iter().map(|key| Refusal {
+                object: key.clone(),
+                reason: format!("relationships for added objects not written: {reason}"),
+            }));
+            0
+        }
     }
 }
 

@@ -57,6 +57,7 @@ impl<'a> MappingControl<'a> {
         };
         let admitted = (|| {
             if self.levels.is_empty() { state.selection.enter(item.id, &[])?; }
+            Self::validate_retained_occurrence(item, decoder)?;
             // Reuse source and transform admission, explicitly disabling the
             // exact instancing/cache paths. Validate every target even on hits.
             let source = router.admit_styled_occurrence(item,
@@ -232,5 +233,63 @@ impl<'a> MappingControl<'a> {
             Ok(values)
         })();
         Ok(MappingReply::RetainedTypeFinished(value))
+    }
+}
+
+impl MappingControl<'_> {
+    // Retained admission must not inherit exact-display recovery of malformed
+    // required attributes. Keep all numerical transform work in the router.
+    fn validate_retained_occurrence(item: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<()> {
+        use ifc_lite_core::{slot, IfcType};
+        let source = item.get(slot::IfcMappedItem::MAPPING_SOURCE.index())
+            .and_then(|value| value.as_entity_ref())
+            .ok_or_else(|| crate::Error::geometry("retained MappingSource requires a reference"))?;
+        let source = decoder.decode_by_id(source)?;
+        if source.ifc_type != IfcType::IfcRepresentationMap {
+            return Err(crate::Error::geometry("retained MappingSource requires IfcRepresentationMap"));
+        }
+        Self::validate_retained_target(item, decoder)?;
+        Self::validate_retained_map(&source, decoder)
+    }
+
+    fn validate_retained_target(item: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<()> {
+        use ifc_lite_core::{slot, IfcType};
+        let target = item.get(slot::IfcMappedItem::MAPPING_TARGET.index())
+            .and_then(|value| value.as_entity_ref())
+            .ok_or_else(|| crate::Error::geometry("retained MappingTarget requires a reference"))?;
+        let target = decoder.decode_by_id(target)?;
+        if !matches!(target.ifc_type, IfcType::IfcCartesianTransformationOperator2D
+            | IfcType::IfcCartesianTransformationOperator2DnonUniform
+            | IfcType::IfcCartesianTransformationOperator3D
+            | IfcType::IfcCartesianTransformationOperator3DnonUniform) {
+            return Err(crate::Error::geometry("retained MappingTarget requires a supported transformation operator"));
+        }
+        Ok(())
+    }
+
+    pub(super) fn validate_retained_map(map: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<()> {
+        use ifc_lite_core::{slot, IfcType};
+        if map.ifc_type != IfcType::IfcRepresentationMap {
+            return Err(crate::Error::geometry("retained MappingSource requires IfcRepresentationMap"));
+        }
+        let representation = map.get(slot::IfcRepresentationMap::MAPPED_REPRESENTATION.index())
+            .and_then(|value| value.as_entity_ref())
+            .ok_or_else(|| crate::Error::geometry("retained MappedRepresentation requires a reference"))?;
+        let representation = decoder.decode_by_id(representation)?;
+        Self::validate_retained_items(&representation, decoder)
+    }
+
+    fn validate_retained_items(representation: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<()> {
+        let items = representation.get(ifc_lite_core::slot::IfcRepresentation::ITEMS.index())
+            .and_then(|value| value.as_list())
+            .ok_or_else(|| crate::Error::geometry("retained representation Items requires a readable list"))?;
+        // Explicit () is an empty source contribution; absent/null Items and
+        // non-reference members are not empty geometry. Validate even on hits.
+        for item in items {
+            let id = item.as_entity_ref()
+                .ok_or_else(|| crate::Error::geometry("retained representation Items requires references"))?;
+            decoder.decode_by_id(id)?;
+        }
+        Ok(())
     }
 }

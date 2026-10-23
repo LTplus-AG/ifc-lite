@@ -14,6 +14,14 @@
 
 use crate::utf16::cmp_code_units;
 
+/// ECMAScript WhiteSpace + LineTerminator, as used by String.prototype.trim.
+/// Rust's Unicode whitespace includes U+0085 and excludes U+FEFF; JS does the reverse.
+fn is_ecmascript_whitespace(ch: char) -> bool {
+    matches!(ch, '\u{0009}'..='\u{000D}' | '\u{0020}' | '\u{00A0}' | '\u{1680}'
+        | '\u{2000}'..='\u{200A}' | '\u{2028}' | '\u{2029}' | '\u{202F}'
+        | '\u{205F}' | '\u{3000}' | '\u{FEFF}')
+}
+
 /// Sort by UTF-16 code unit, drop blank and whitespace-only entries, keep
 /// duplicates.
 ///
@@ -23,7 +31,7 @@ use crate::utf16::cmp_code_units;
 pub fn sorted_string_list(values: &[String]) -> Vec<String> {
     let mut kept: Vec<String> = values
         .iter()
-        .filter(|name| !name.trim().is_empty())
+        .filter(|name| !name.chars().all(is_ecmascript_whitespace))
         .cloned()
         .collect();
     kept.sort_by(|a, b| cmp_code_units(a, b));
@@ -54,5 +62,11 @@ mod tests {
     fn absent_and_empty_project_identically() {
         assert_eq!(sorted_string_list(&[]), Vec::<String>::new());
         assert_eq!(sorted_string_list(&list(&["  "])), Vec::<String>::new());
+    }
+
+    #[test]
+    fn javascript_whitespace_differs_from_rust_issue_8042() {
+        assert_eq!(sorted_string_list(&list(&["\u{FEFF}", "\u{0085}", " x "])),
+            list(&[" x ", "\u{0085}"]));
     }
 }

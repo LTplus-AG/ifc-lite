@@ -16,14 +16,10 @@
  * A regenerated file that differs is a real behaviour change in one engine or
  * the other, and wants explaining rather than committing blindly.
  *
- * Deliberately not run in CI. This is a generator, not a gate: it WRITES the
- * fixture that `cargo test -p ifc-lite-diff` then checks. Running it in CI
- * would let a drifting TypeScript engine silently rewrite its own
- * expectations, which is the one thing a committed fixture exists to prevent.
- * (The name is outside `check-*`/`verify-*`, so `check-test-wiring.mjs` does
- * not audit it and no `@unwired-by-design` declaration applies.)
+ * CI runs --check after building TypeScript. That mode compares without
+ * writing, so a stale corpus fails rather than accepting changed expectations.
  */
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const { buildDataFingerprint, buildComponentFingerprints, stableHash } = await import(
@@ -37,6 +33,10 @@ const EMOJI = String.fromCodePoint(0x1f600);
 /** Cases chosen for the places a naive Rust port diverges. */
 const CASES = [
   { id: 'minimal', input: { ifcType: 'IfcWall' } },
+  ...['materials', 'classifications'].flatMap((field) => [
+    { id: `${field}-U+feff`, input: { ifcType: 'IfcWall', [field]: ['\uFEFF'] } },
+    { id: `${field}-U+0085`, input: { ifcType: 'IfcWall', [field]: ['\u0085'] } },
+  ]),
   {
     id: 'all-core-attributes',
     input: {
@@ -328,7 +328,15 @@ const encodeNonFinite = (_key, value) =>
     : value;
 
 const out = fileURLToPath(new URL('../rust/diff/tests/fingerprint_vectors.json', import.meta.url));
-writeFileSync(out, `${JSON.stringify(vectors, encodeNonFinite, 2)}\n`);
+const generated = `${JSON.stringify(vectors, encodeNonFinite, 2)}\n`;
+if (process.argv.includes('--check')) {
+  if (readFileSync(out, 'utf8') !== generated) {
+    console.error('Fingerprint parity vectors differ from the built TypeScript engine. Regenerate and review the change.');
+    process.exitCode = 1;
+  }
+} else {
+  writeFileSync(out, generated);
+}
 console.log(
-  `wrote ${out}: ${vectors.stableHash.length} hash vectors, ${vectors.fingerprints.length} fingerprint cases`,
+  `${process.argv.includes('--check') ? 'checked' : 'wrote'} ${out}: ${vectors.stableHash.length} hash vectors, ${vectors.fingerprints.length} fingerprint cases`,
 );

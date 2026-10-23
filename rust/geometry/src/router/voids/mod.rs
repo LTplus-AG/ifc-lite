@@ -54,7 +54,7 @@ pub(crate) use cutter::{CutterKind, OpeningFrame};
 use geom::*;
 use malformed_opening_repair::{
     cutter_is_closed_manifold, opening_obb_if_malformed,
-    translate_cutter_mesh, world_host_bounds, OpeningBox,
+    translate_cutter_mesh, world_host_bounds,
 };
 use sweep::mesh_to_keep;
 mod sweep;

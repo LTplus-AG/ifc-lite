@@ -302,8 +302,13 @@ it('normalizes only unmatched IDS snapshot check rates (#8065)', () => {
   const matched = spec({ id: 'matched', name: 'Matched', applicableCount: 2, passedCount: 1, failedCount: 1, passRate: 50 });
   const input = report([unmatched, errored, matched]);
   assert.deepEqual(idsReportBlockFromReport(input, 'rules').checks.map(check => check.passRate), [100, 37, 50]);
-  input.source = { kind: 'ids', document: { info: { title: 'IDS' }, specifications: [] } };
+  input.source = { kind: 'ids', document: { info: { title: 'IDS' }, specifications: [{
+    id: 'empty', name: 'No matches', ifcVersions: ['IFC4'], applicability: { facets: [] },
+    requirements: [{ id: 'global-id', optionality: 'required', facet: { type: 'attribute', name: { type: 'simpleValue', value: 'GlobalId' } } }],
+  }] } };
   const block = idsReportBlockFromReport(input, 'ids');
   assert.deepEqual(block.checks.map(check => check.passRate), [0, 37, 50]);
+  assert.deepEqual(block.checks[0].rules.map(rule => [rule.checked, rule.passed, rule.failed, rule.passRate]), [[0, 0, 0, 0]],
+    'declared requirements beneath an unmatched specification also display zero (#8065)');
   assert.equal(unmatched.passRate, 100, 'snapshot display normalization preserves engine evidence');
 });

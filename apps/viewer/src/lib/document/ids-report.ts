@@ -54,6 +54,7 @@ function rulesForCheck(report: ValidationReport, result: SpecificationResult): I
   const sourceSpec = report.source.kind === 'ids'
     ? report.source.document.specifications.find((spec) => spec.id === result.specification.id)
     : undefined;
+  const unmatched = report.source.kind === 'ids' && isUnmatchedSpecification(result.applicableCount, result.error);
   const rules = new Map<string, RuleAccumulator>();
   for (const requirement of sourceSpec?.requirements ?? []) {
     rules.set(requirement.id, {
@@ -86,7 +87,7 @@ function rulesForCheck(report: ValidationReport, result: SpecificationResult): I
       checked: result.applicableCount,
       passed: complete ? rule.passed : null,
       failed: complete ? rule.failed : null,
-      passRate: complete ? boundedPassRate(rule.passed, measured) : null,
+      passRate: complete ? (unmatched ? 0 : boundedPassRate(rule.passed, measured)) : null,
     };
   });
 }

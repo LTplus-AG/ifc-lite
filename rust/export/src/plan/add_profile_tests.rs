@@ -164,6 +164,7 @@ fn an_opening_with_a_void_cuts_a_ring_and_keeps_the_core() {
         assert_clean(&report, schema);
         assert!(crate::plan::validate::validate(&out, schema).is_empty(), "{schema}");
         assert_eq!(count(&out, "IFCARBITRARYPROFILEDEFWITHVOIDS"), 1, "{schema}");
+        assert_eq!(type_in(&out, id_in(&out, gid(4).derive("opening"))), "IFCOPENINGELEMENT", "{schema}");
         let (volume, _) = engine_volume(&out, id_in(&out, gid(5)));
         assert!((volume - 2.25).abs() < 1e-3, "{schema}: host volume {volume}");
     }

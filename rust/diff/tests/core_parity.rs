@@ -1,6 +1,7 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
+mod lineage_assertions;
 use std::collections::HashMap;
 use ifc_lite_diff::{key_diff::diff_by_key, model::*};
 use serde_json::{json, Value};
@@ -113,8 +114,7 @@ fn run_vectors(file: &str) {
             let tolerances = GeometryTolerances::resolve(raw_options["moveTolerance"].as_f64(),
                 raw_options["reshapeTolerance"].as_f64(), raw_options["maxMoveDistance"].as_f64());
             let matched = apply_content_matching(core, tolerances);
-            let matches: Vec<_> = matched.content_matches.iter().map(content_match).collect();
-            (matched.core, Some(matches))
+            (matched.core, Some(matched.content_matches))
         } else { (core, None) };
         let split_claims = if raw_options["detectSplitMerge"] == true {
             let settings = ifc_lite_diff::split_types::SplitSettings::resolve(raw_options["splitVolumeTolerance"].as_f64(),
@@ -129,8 +129,9 @@ fn run_vectors(file: &str) {
             let tolerances = GeometryTolerances::resolve(raw_options["moveTolerance"].as_f64(), raw_options["reshapeTolerance"].as_f64(), raw_options["maxMoveDistance"].as_f64());
             let families: Option<Vec<Vec<String>>> = raw_options.get("classFamilies").map(|v| serde_json::from_value(v.clone()).unwrap());
             ifc_lite_diff::successor::detect_successors(&result.entries, result.use_geometry, &bound, settings, tolerances, families.as_deref())
-                .map(|claims| claims.iter().map(successor_claim).collect::<Vec<_>>())
+
         } else { None };
+        lineage_assertions::assert_lineage(&vector, &result, content_matches.as_deref().unwrap_or(&[]), split_claims.as_deref().unwrap_or(&[]), successors.as_deref().unwrap_or(&[]));
         let entries: Vec<_> = result.entries.iter().map(entry).collect();
         // JS Map iteration follows entries, while Rust stores lookup indices.
         let by_key: Vec<_> = result.entries.iter().map(|item| {
@@ -144,9 +145,9 @@ fn run_vectors(file: &str) {
                 "deleted": result.counts.deleted, "unchanged": result.counts.unchanged },
         });
         if let Some(aliases) = result.applied_key_aliases { actual["appliedKeyAliases"] = json!(aliases); }
-        if let Some(matches) = content_matches { actual["contentMatches"] = json!(matches); }
+        if let Some(matches) = content_matches { actual["contentMatches"] = json!(matches.iter().map(content_match).collect::<Vec<_>>()); }
         if let Some(claims) = split_claims { actual["splitMerges"] = json!(claims.iter().map(split_claim).collect::<Vec<_>>()); }
-        if let Some(claims) = successors { actual["successors"] = json!(claims); }
+        if let Some(claims) = successors { actual["successors"] = json!(claims.iter().map(successor_claim).collect::<Vec<_>>()); }
         assert_eq!(actual, vector["expected"], "case {}", vector["name"]);
     }
 }
@@ -161,3 +162,6 @@ fn split_pass_matches_typescript_field_by_field_issue_8042() { run_vectors("spli
 
 #[test]
 fn successor_pass_matches_typescript_field_by_field_issue_8042() { run_vectors("successor_vectors.json"); }
+
+#[test]
+fn lineage_matches_typescript_field_by_field_issue_8042() { run_vectors("lineage_vectors.json"); }

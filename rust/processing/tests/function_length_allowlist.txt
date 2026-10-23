@@ -70,8 +70,8 @@
    250 rust/processing/src/appearance/pdf_fill.rs plan_pdf_fill_annotation_with_clip
    158 rust/processing/src/appearance/transfer_points.rs PointSurface::observe
    181 rust/processing/src/pdf_vector/interpret_ops.rs Interpreter::operation
-   259 rust/processing/src/processor/jobs.rs process_entity_job
-   749 rust/processing/src/processor/mod.rs process
+   248 rust/processing/src/processor/jobs.rs process_entity_job
+   747 rust/processing/src/processor/mod.rs process
    165 rust/processing/src/simplify_session.rs simplify_element
    312 rust/processing/src/symbolic/items.rs extract_symbolic_item_inner
    183 rust/processing/src/symbolic/mod.rs extract_symbolic_data_into_frame

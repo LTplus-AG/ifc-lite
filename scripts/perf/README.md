@@ -4610,3 +4610,26 @@ before execution. Checksum freshness forced a genuine rebuild for the corrected
 cohort. Preserve source qualification, output identity and timing as separate
 verdicts. Software-GPU upload and capability-probe stalls also explain why
 worker chunk durations cannot stand in for browser load time.
+
+### Native/browser run snapshots (E2b, #7955)
+
+The [source-qualified evidence](evidence/run-snapshot-e2b/summary.json) records
+matching native flat/instanced payload fingerprints and actual source-built
+WASM getter fingerprints. These scopes exclude complete result serialization
+and separate native material definitions.
+
+The five-pair native cohort remains inconclusive: the large opening fixture's
+lookup phase is below timer resolution. The small control's geometry and total
+medians are slower within their measured spread; both larger models are slightly
+faster within theirs. Preserve every phase result. Source-qualified probes and
+stable geometry counts do not establish performance neutrality or a speedup.
+The exact-parent CI instruction-count tiebreaker shows slightly lower geometry
+and total cost, with small parse and entity-scan increases. Accept the bounded
+snapshot infrastructure for final review under the per-slice policy, retaining
+the inconclusive timing verdict. No ceiling or tolerance changes; required
+checks and semantic review still gate merging, and retained release remains separate.
+
+Lesson: a zero-duration phase can invalidate the whole timing verdict even when
+all pairs finish and artifact provenance holds. Preserve that verdict and the
+adverse small-control observations; do not rerun until green or substitute
+count equality for full output identity or browser worker-pool performance.

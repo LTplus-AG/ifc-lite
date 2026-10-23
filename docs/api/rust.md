@@ -988,6 +988,28 @@ per batch, sharing cached style, indexed-colour and texture maps.
 `clearPrePassCache` and every `setEntityIndex` replacement retire earlier
 snapshots, including rejected or empty index replacements.
 
+### Production ownership and diagnostics
+
+Canonical borrowed and owned production reserve the supplied decoder and router
+for the whole synchronous product. A processor callback may produce a nested
+child using its active ancestor's owners; an unrelated live product cannot
+borrow that reservation. Owned production returns
+`ProductionContextError::OwnerUnavailable` if another product holds an owner
+or a callback replaces it. The borrowed entry keeps its infallible signature
+and returns empty output when ownership cannot be maintained.
+
+`ifc_lite_core::execution_owner::ExecutionIdentity::same_instance` compares
+owner instances independently of their configuration generations. Cache or
+configuration maintenance on one decoder preserves its instance; replacing the
+decoder changes it. Geometry execution acknowledges maintenance on the same
+instance and refuses a replacement before accepting its output.
+
+`GeometryRouter::take_csg_failures_checked` checks the current resource stop
+before running diagnostic hooks and again afterwards. A stop raised by a hook
+returns `Err(ProgramStop)` and restores drained records in their original
+buckets, ahead of later records, for explicit diagnostic retrieval. Canonical
+production discards that product's output when its final hook stops execution.
+
 ### Appearance authoring
 
 `ifc_lite_processing::appearance::calibrate_appearance_plane` establishes one

@@ -9,6 +9,7 @@ use crate::generated::step_log_tables::{NAME_LISTS, RETYPE_ROWS};
 use crate::step_text::escape;
 
 use super::lines::split_args;
+use crate::step_record_frame::record_frame;
 
 struct Info {
     attributes: &'static [&'static str],
@@ -85,19 +86,19 @@ pub(crate) fn retype_tokens(
     (out, true)
 }
 
-/// `retypeStepLine`.
+/// `retypeStepLine`: the keyword swapped and, when both classes are known,
+/// the argument list re-laid-out; every other byte of the record is kept.
 pub(crate) fn retype_line(text: &str, source_type: &str, new_type: &str, predefined: Option<&str>, schema: &str) -> String {
-    let (Some(eq), Some(open), Some(close)) = (text.find('='), text.find('('), text.rfind(");")) else {
-        return text.to_string();
-    };
-    if open < eq || close < open {
-        return text.to_string();
-    }
+    let Some(frame) = record_frame(text) else { return text.to_string() };
+    let head = frame.head;
     let upper = new_type.to_uppercase();
-    let Some(tokens) = split_args(&text[open + 1..close]) else { return text.to_string() };
+    let Some(tokens) = split_args(frame.args(text)) else { return text.to_string() };
     let (tokens, resolved) = retype_tokens(&tokens, source_type, new_type, predefined, schema);
+    let retyped = format!("{}{upper}{}", &text[..head.type_start], &text[head.type_end..]);
     if !resolved {
-        return format!("{}{upper}{}", &text[..=eq], &text[open..]);
+        return retyped;
     }
-    format!("{}{upper}({}{}", &text[..=eq], tokens.join(","), &text[close..])
+    // The keyword's length changed; the frame's offsets past it move with it.
+    let shift = |at: usize| at + upper.len() - (head.type_end - head.type_start);
+    format!("{}{}{}", &retyped[..=shift(head.open)], tokens.join(","), &retyped[shift(frame.close)..])
 }

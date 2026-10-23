@@ -33,6 +33,7 @@
 //! skip returns before the walk, so it bypassed all three of the others at once.
 
 mod common;
+use common::source_walk::{collect_rs_files, is_exempt, repo_root};
 use std::collections::BTreeMap;
 
 const LIMIT: usize = 400;
@@ -56,12 +57,12 @@ const ALLOWLIST: &str = include_str!("module_size_allowlist.txt");
 /// explicitly NOT guaranteed stable across Rust releases - a toolchain bump
 /// would rewrite the digest and fail CI for no reason.
 const ALLOWLIST_DIGESTS: &[(&str, u64)] = &[
-    ("apps/server", 4114979320796990468),
-    ("rust/core", 15539757744700452344),
-    ("rust/export", 9482627855833057323),
-    ("rust/geometry", 591520650445080337),
-    ("rust/processing", 7633784028779437211),
-    ("rust/wasm-bindings", 11372642225568989008),
+    ("apps/server", 4104424009168246343),
+    ("rust/core", 16604054656275753038),
+    ("rust/export", 2156577647744325171),
+    ("rust/geometry", 1016157967927945994),
+    ("rust/processing", 5214741969645960415),
+    ("rust/wasm-bindings", 6355378406566007704),
 ];
 
 /// Lower bound on how many non-exempt `.rs` files the walk must reach before
@@ -81,84 +82,6 @@ const ALLOWLIST_DIGESTS: &[(&str, u64)] = &[
 /// is the only ordinary event that would approach it, and that is a change
 /// worth editing this line for.
 const FILE_FLOOR: usize = 240;
-
-/// Repo root = first ancestor holding both `rust/` and `apps/`. `None` in a
-/// packaged/standalone context (the test then skips, like `styling_parity`).
-fn repo_root() -> Option<std::path::PathBuf> {
-    let mut dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf();
-    loop {
-        if dir.join("rust").is_dir() && dir.join("apps").is_dir() {
-            return Some(dir);
-        }
-        if !dir.pop() {
-            return None;
-        }
-    }
-}
-
-/// Walk `dir`, collecting every `.rs` file underneath it.
-///
-/// A directory this cannot list is a hard error, and the two reasons are told
-/// apart. The previous `let Ok(entries) = read_dir(dir) else { return; };`
-/// collapsed "the scan root is not there" and "the scan root cannot be opened"
-/// into the same result as "this directory holds no Rust files" - which is how
-/// this ratchet could report success over a tree it never opened (#3200). A
-/// missing directory means the walk roots are wrong; an unreadable one means
-/// the environment is. Neither means there are no offenders.
-fn collect_rs_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
-    let entries = match std::fs::read_dir(dir) {
-        Ok(entries) => entries,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => panic!(
-            "module-size ratchet: {} does not exist. Refusing to treat a missing \
-             directory as one holding no .rs files - a walk root that is not \
-             there means this gate is looking in the wrong place, not that the \
-             tree is clean.",
-            dir.display()
-        ),
-        Err(err) => panic!(
-            "module-size ratchet: {} could not be read ({err}). Refusing to treat \
-             an unreadable directory as one holding no .rs files.",
-            dir.display()
-        ),
-    };
-    for entry in entries {
-        let entry = entry.unwrap_or_else(|err| {
-            panic!(
-                "module-size ratchet: an entry of {} could not be read ({err}). \
-                 Refusing to walk past a file this gate could not classify.",
-                dir.display()
-            )
-        });
-        let path = entry.path();
-        if path.is_dir() {
-            let skip = matches!(
-                path.file_name().and_then(|n| n.to_str()),
-                Some("target" | "node_modules" | ".git" | "dist" | "build")
-            );
-            if !skip {
-                collect_rs_files(&path, out);
-            }
-        } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
-            out.push(path);
-        }
-    }
-}
-
-/// Generated code and test/support files are not subject to the split rule.
-fn is_exempt(rel: &str) -> bool {
-    let base = rel.rsplit('/').next().unwrap_or(rel);
-    rel.contains("/generated/")
-        || rel.contains("/tests/")
-        || rel.contains("/examples/")
-        || rel.contains("/benches/")
-        || rel.contains("/fuzz/")
-        // `#[cfg(test)]` module files embedded in src/ are test code, not
-        // production modules subject to the split rule (e.g. src/tests.rs,
-        // foo_tests.rs, foo_test.rs).
-        || base == "tests.rs"
-        || base.ends_with("_tests.rs")
-        || base.ends_with("_test.rs")
-}
 
 /// Parse the committed allowlist into (relpath -> budget). Skips comment/blank
 /// lines. A malformed data line is a hard error (the file is a contract).
@@ -251,7 +174,7 @@ fn no_module_grows_past_its_ratchet_budget() {
 
     let mut paths = Vec::new();
     for top in ["rust", "apps"] {
-        collect_rs_files(&root.join(top), &mut paths);
+        collect_rs_files("module-size ratchet", &root.join(top), &mut paths);
     }
     // (relpath, line_count) for every non-exempt file.
     let files: Vec<(String, usize)> = paths

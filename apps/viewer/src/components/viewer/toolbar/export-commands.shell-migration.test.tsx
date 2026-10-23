@@ -36,11 +36,18 @@ describe('registered export dialogs use ExportDialogShell (#5848)', () => {
   });
 
   for (const { id, Dialog } of DIALOG_COMMANDS) {
-    it(`"${id}" renders through ExportDialogShell`, () => {
+    it(`"${id}" renders through ExportDialogShell`, async () => {
       const container = render(<Dialog surface="classic" trigger={<button type="button">open</button>} />);
-      const trigger = container.querySelector('button');
-      assert.ok(trigger, `"${id}" must render the supplied trigger`);
-      click(trigger);
+      // A lazily loaded dialog (#7600) shows the supplied trigger as its
+      // Suspense fallback until its chunk resolves; that trigger opens nothing
+      // yet, so retry the click until the real dialog has mounted.
+      for (let attempt = 0; attempt < 100; attempt++) {
+        const trigger = container.querySelector('button');
+        assert.ok(trigger, `"${id}" must render the supplied trigger`);
+        click(trigger);
+        if (document.body.querySelector('[data-export-dialog-shell]')) break;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
       assert.ok(
         document.body.querySelector('[data-export-dialog-shell]'),
         `"${id}" opened a dialog that does not carry the ExportDialogShell marker — ` +

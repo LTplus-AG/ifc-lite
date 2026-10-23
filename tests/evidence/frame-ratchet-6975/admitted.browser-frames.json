@@ -1,0 +1,652 @@
+{
+  "family": "browser-frames",
+  "rig": "deterministic-begin-frame",
+  "schema": 2,
+  "frameBudgetMs": 8.333333333333334,
+  "browser": "chrome-headless-shell 156.0.8078.4",
+  "gpuTime": "excluded: WebGPU runs on SwiftShader (CPU rasteriser); no metric here measures GPU execution",
+  "mainThread": "CDP Performance.getMetrics TaskDuration in timeTicks (renderer main-thread task wall time), minus DevTools command time",
+  "samples": [
+    {
+      "fixture": "AC20-FZK-Haus",
+      "attempt": 1,
+      "completed": true,
+      "error": null,
+      "readiness": {
+        "ended": true,
+        "done": [
+          "geometry.streamComplete",
+          "scene.finalize",
+          "parser.complete"
+        ],
+        "failed": [],
+        "loadPath": "wasm"
+      },
+      "readinessError": null,
+      "pageErrors": [],
+      "gpuHealth": {
+        "contaminated": false,
+        "reasons": [],
+        "deviceLost": 0,
+        "instanceErrors": 1,
+        "devicesCreated": 1,
+        "deviceReplacements": 0,
+        "uncapturedErrors": 0,
+        "source": "counters+console",
+        "events": [
+          "[Pipeline] quantized pipeline validation failed; staying on f32 vertices: GPUPipelineError: A valid external Instance reference no longer exists."
+        ]
+      }
+    },
+    {
+      "fixture": "Snowdon",
+      "attempt": 1,
+      "completed": true,
+      "error": null,
+      "readiness": {
+        "ended": true,
+        "done": [
+          "parser.complete",
+          "geometry.streamComplete",
+          "scene.finalize"
+        ],
+        "failed": [],
+        "loadPath": "wasm"
+      },
+      "readinessError": null,
+      "pageErrors": [],
+      "gpuHealth": {
+        "contaminated": false,
+        "reasons": [],
+        "deviceLost": 0,
+        "instanceErrors": 1,
+        "devicesCreated": 1,
+        "deviceReplacements": 0,
+        "uncapturedErrors": 0,
+        "source": "counters+console",
+        "events": [
+          "[Pipeline] quantized pipeline validation failed; staying on f32 vertices: GPUPipelineError: A valid external Instance reference no longer exists."
+        ]
+      }
+    }
+  ],
+  "refusedAttempts": [],
+  "rows": [
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "frames",
+      "value": 84
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "rendered_frames",
+      "value": 14
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "idle_frames",
+      "value": 70
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "frames_without_raf",
+      "value": 3
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "frames_over_budget",
+      "value": 32
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "missed_vsyncs",
+      "value": 261
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "main_thread_ms_total",
+      "value": 2122.067
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "main_thread_ms_p50",
+      "value": 5.227
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "main_thread_ms_p95",
+      "value": 162.272
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "main_thread_ms_max",
+      "value": 253.524
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "script_ms_total",
+      "value": 1053.304
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "raf_js_ms_total",
+      "value": 268.645
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "raf_js_ms_p95",
+      "value": 10.74
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "gpu_submits",
+      "value": 10
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "gpu_draws",
+      "value": 282
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "streaming-load",
+      "metric": "gpu_write_kib",
+      "value": 2451.4
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "frames",
+      "value": 210
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "rendered_frames",
+      "value": 119
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "idle_frames",
+      "value": 91
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "frames_without_raf",
+      "value": 0
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "frames_over_budget",
+      "value": 103
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "missed_vsyncs",
+      "value": 0
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "main_thread_ms_total",
+      "value": 1600.457
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "main_thread_ms_p50",
+      "value": 8.307
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "main_thread_ms_p95",
+      "value": 13.573
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "main_thread_ms_max",
+      "value": 53.741
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "script_ms_total",
+      "value": 665.293
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "raf_js_ms_total",
+      "value": 154.67
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "raf_js_ms_p95",
+      "value": 1.725
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "gpu_submits",
+      "value": 0
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "gpu_draws",
+      "value": 6307
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "orbit",
+      "metric": "gpu_write_kib",
+      "value": 16450
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "frames",
+      "value": 150
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "rendered_frames",
+      "value": 0
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "idle_frames",
+      "value": 150
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "frames_without_raf",
+      "value": 0
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "frames_over_budget",
+      "value": 5
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "missed_vsyncs",
+      "value": 0
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "main_thread_ms_total",
+      "value": 707.34
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "main_thread_ms_p50",
+      "value": 3.852
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "main_thread_ms_p95",
+      "value": 8.057
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "main_thread_ms_max",
+      "value": 12.468
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "script_ms_total",
+      "value": 88.84
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "raf_js_ms_total",
+      "value": 20.165
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "raf_js_ms_p95",
+      "value": 0.255
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "gpu_submits",
+      "value": 0
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "gpu_draws",
+      "value": 0
+    },
+    {
+      "fixture": "AC20-FZK-Haus",
+      "scenario": "hover",
+      "metric": "gpu_write_kib",
+      "value": 0
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "frames",
+      "value": 102
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "rendered_frames",
+      "value": 15
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "idle_frames",
+      "value": 87
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "frames_without_raf",
+      "value": 5
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "frames_over_budget",
+      "value": 46
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "missed_vsyncs",
+      "value": 391
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "main_thread_ms_total",
+      "value": 3056.925
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "main_thread_ms_p50",
+      "value": 7.979
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "main_thread_ms_p95",
+      "value": 173.248
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "main_thread_ms_max",
+      "value": 300.096
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "script_ms_total",
+      "value": 1464.407
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "raf_js_ms_total",
+      "value": 313.39
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "raf_js_ms_p95",
+      "value": 19.955
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "gpu_submits",
+      "value": 11
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "gpu_draws",
+      "value": 5076
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "streaming-load",
+      "metric": "gpu_write_kib",
+      "value": 39182
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "frames",
+      "value": 210
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "rendered_frames",
+      "value": 120
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "idle_frames",
+      "value": 90
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "frames_without_raf",
+      "value": 0
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "frames_over_budget",
+      "value": 118
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "missed_vsyncs",
+      "value": 0
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "main_thread_ms_total",
+      "value": 1475.452
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "main_thread_ms_p50",
+      "value": 8.704
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "main_thread_ms_p95",
+      "value": 11.558
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "main_thread_ms_max",
+      "value": 58.296
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "script_ms_total",
+      "value": 635.807
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "raf_js_ms_total",
+      "value": 160.1
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "raf_js_ms_p95",
+      "value": 1.59
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "gpu_submits",
+      "value": 0
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "gpu_draws",
+      "value": 16666
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "orbit",
+      "metric": "gpu_write_kib",
+      "value": 12217.2
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "frames",
+      "value": 150
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "rendered_frames",
+      "value": 6
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "idle_frames",
+      "value": 144
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "frames_without_raf",
+      "value": 0
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "frames_over_budget",
+      "value": 8
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "missed_vsyncs",
+      "value": 0
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "main_thread_ms_total",
+      "value": 644.032
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "main_thread_ms_p50",
+      "value": 3.608
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "main_thread_ms_p95",
+      "value": 8.448
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "main_thread_ms_max",
+      "value": 12.728
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "script_ms_total",
+      "value": 90.31
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "raf_js_ms_total",
+      "value": 25.82
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "raf_js_ms_p95",
+      "value": 0.31
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "gpu_submits",
+      "value": 0
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "gpu_draws",
+      "value": 2754
+    },
+    {
+      "fixture": "Snowdon",
+      "scenario": "hover",
+      "metric": "gpu_write_kib",
+      "value": 116
+    }
+  ]
+}

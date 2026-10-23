@@ -1,0 +1,70 @@
+{
+  "about": "FNV-1a 64 and byte length of each step output, keyed by case. Written by ifc-lite-export, never by hand.",
+  "repin": "IFC_LITE_REPIN_GOLDEN=1 cargo test -p ifc-lite-export --features parquet-bos --test export_golden -- --exact step",
+  "cases": {
+    "AC20-FZK-Haus": {
+      "fnv1a64": "cf28a9cf8ccf4564",
+      "bytes": 2526384
+    },
+    "AC20-FZK-Haus->IFC2X3": {
+      "fnv1a64": "d7e0222d9ebbf991",
+      "bytes": 2475141
+    },
+    "IfcOpenHouse_IFC4": {
+      "fnv1a64": "dea19a2cc3fb1210",
+      "bytes": 113244
+    },
+    "IfcOpenHouse_IFC4->IFC2X3": {
+      "fnv1a64": "4055cb900701fed6",
+      "bytes": 112736
+    },
+    "bath_csg_solid": {
+      "fnv1a64": "3cc867b5626a83de",
+      "bytes": 2906
+    },
+    "bath_csg_solid->IFC2X3": {
+      "fnv1a64": "395f7bc441dac2d2",
+      "bytes": 2861
+    },
+    "bonsai-terrain": {
+      "fnv1a64": "1467609a8f3217fe",
+      "bytes": 1460
+    },
+    "bonsai-terrain->IFC2X3": {
+      "fnv1a64": "0a66a7b485008f30",
+      "bytes": 372
+    },
+    "c6_data_model_synthetic": {
+      "fnv1a64": "e6be7d90f317760e",
+      "bytes": 5756
+    },
+    "c6_data_model_synthetic->IFC2X3": {
+      "fnv1a64": "91222e5f27e84cbc",
+      "bytes": 377
+    },
+    "duplex": {
+      "fnv1a64": "bf56e844eede44d0",
+      "bytes": 2380739
+    },
+    "duplex->IFC4": {
+      "fnv1a64": "5f7c33d45fef2f6d",
+      "bytes": 2382053
+    },
+    "mapped_instances_synthetic": {
+      "fnv1a64": "81990986b3cfdea2",
+      "bytes": 23420
+    },
+    "mapped_instances_synthetic->IFC2X3": {
+      "fnv1a64": "c376b95c4b63fbdd",
+      "bytes": 23422
+    },
+    "wall_two_openings": {
+      "fnv1a64": "8002501e38ed29ee",
+      "bytes": 2732
+    },
+    "wall_two_openings->IFC4": {
+      "fnv1a64": "e32e861bd551351f",
+      "bytes": 2683
+    }
+  }
+}

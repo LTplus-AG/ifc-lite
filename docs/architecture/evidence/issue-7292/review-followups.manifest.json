@@ -1,0 +1,166 @@
+{
+  "scope": "Zone negative proof and 20 final zone tests at2491; independent source-preserving resumption on e5f4723:67 targeted tests and exact workspaceClippy PASS. Source scopes, old scratch-parser failure and corrected resumption remain distinct. No browser/performance verdict.",
+  "archive": {
+    "path": "docs/architecture/evidence/issue-7292/review-followups.tar.gz",
+    "bytes": 264141,
+    "sha256": "31a78de964cd74da294fbbaa14a95ce613f392d173527f863025a112aafac6c0"
+  },
+  "decodedBytes": 687542,
+  "files": [
+    {
+      "path": "review-followups/current-main/aggregate-seal.json",
+      "bytes": 2024,
+      "sha256": "fd9d51d1c7cdcad07a73d9cf369de5eec9cd94492b44f7e0908cc7825b885bfd"
+    },
+    {
+      "path": "review-followups/current-main/preparation-before-release.json",
+      "bytes": 2422,
+      "sha256": "8dda7ec9734e17358e110e7a5ce48ef134336d84341c4c7a88a00d32740dad5d"
+    },
+    {
+      "path": "review-followups/current-main/preparation.json",
+      "bytes": 2747,
+      "sha256": "f9fc46b8de17418c4546d5c99e11bf66427a14fc53d01c467882735a180f12dd"
+    },
+    {
+      "path": "review-followups/current-main/release-receipt.json",
+      "bytes": 2902,
+      "sha256": "d04433ab7758ea65eb2ce5aef9bc1301aa4aaf857e58147d76a593aa53858f8c"
+    },
+    {
+      "path": "review-followups/current-main/resume-before-classifier.py",
+      "bytes": 7169,
+      "sha256": "45bbb9d2068d0d833ae3f8dd0b3b9cb2d1cb8c1181554559169a8c51efeb27a2"
+    },
+    {
+      "path": "review-followups/current-main/resume.py",
+      "bytes": 7317,
+      "sha256": "1e2098948595fe0167b1b20a792f2a2d58089a3cfb62ef41295a89435f33e3d6"
+    },
+    {
+      "path": "review-followups/current-main/run/classifier.log",
+      "bytes": 5864,
+      "sha256": "57ce83ddf443948f7ae5bb7c14499f9026e4f502c32d4f5e069b1ab7f58f06aa"
+    },
+    {
+      "path": "review-followups/current-main/run/clippy.log",
+      "bytes": 10170,
+      "sha256": "2faf22af12bf3c4c474728c1fa578c5d082bd9f46556eae29cc8312a3a5cab16"
+    },
+    {
+      "path": "review-followups/current-main/run/committed-changes-from-prior.txt",
+      "bytes": 2736,
+      "sha256": "2999d36ee94c6f93e9fb2307d79ff98677f635f5aaec0f77ff805ae68bc29f7b"
+    },
+    {
+      "path": "review-followups/current-main/run/head-lineage.txt",
+      "bytes": 277,
+      "sha256": "8ad417555904666dfffb06c6e99ef48c9a95f9361e0ed76e69586fe267ca3523"
+    },
+    {
+      "path": "review-followups/current-main/run/issue-1007.log",
+      "bytes": 555,
+      "sha256": "e8bc51cb269636d51423607695aa103b12e4548987bcc6ec2858599b0f6f07cd"
+    },
+    {
+      "path": "review-followups/current-main/run/issue-5739.log",
+      "bytes": 531,
+      "sha256": "82f94f0a080be3395490067a94a9daffebadd5cb9eca139f6518b5d82ff7b4a4"
+    },
+    {
+      "path": "review-followups/current-main/run/issue-7677.log",
+      "bytes": 1018,
+      "sha256": "cc0cc29e2809b8bb433a83279837a579b090b134c90eb4bed67dc3937a96d6df"
+    },
+    {
+      "path": "review-followups/current-main/run/mesh-bridge.log",
+      "bytes": 2067,
+      "sha256": "2489699d60713e5a854ba8435d72e5f1fd1e27e5f9b97eb0b205170da4631976"
+    },
+    {
+      "path": "review-followups/current-main/run/module-size-ratchet.log",
+      "bytes": 1296,
+      "sha256": "854c673f7b20a3a2de17aa9817a3526d3a879071d2223d223cb81ce79313ad69"
+    },
+    {
+      "path": "review-followups/current-main/run/receipt.json",
+      "bytes": 9234,
+      "sha256": "c9583d1915e1d087cd7ee8c94a64eba1c063bf5ecc071bfaf2b2be22614c83f9"
+    },
+    {
+      "path": "review-followups/current-main/run/reporter-processing.log",
+      "bytes": 1676,
+      "sha256": "759b8fd51d3948af89e61fc4129e39df93107d1bf5a9f182d47e56ab3f6baf67"
+    },
+    {
+      "path": "review-followups/current-main/run/scope-bridge.json",
+      "bytes": 6059,
+      "sha256": "c5906152f7d59344a074f68f19b1c82f551387913b51236928521a5c0aa57c76"
+    },
+    {
+      "path": "review-followups/current-main/run/source-after.json",
+      "bytes": 187160,
+      "sha256": "5d784e19445fc4dc204853e58d2f825434d3e8d09aa3d6ae3064b1767e2c6452"
+    },
+    {
+      "path": "review-followups/current-main/run/source-before.json",
+      "bytes": 187160,
+      "sha256": "5d784e19445fc4dc204853e58d2f825434d3e8d09aa3d6ae3064b1767e2c6452"
+    },
+    {
+      "path": "review-followups/current-main/run/source-before.patch",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "review-followups/point-reuse/receipt.json",
+      "bytes": 1395,
+      "sha256": "40a73d6706fe8b0f0d4d913c989cb0e7c5c66c3169b27362c8403e3cf0efda70"
+    },
+    {
+      "path": "review-followups/point-reuse/source-only.patch",
+      "bytes": 5339,
+      "sha256": "de88ac4364d7ec90ea6c9783d616f4655e6daf9dd20cf3d2cbd723dde4588beb"
+    },
+    {
+      "path": "review-followups/zone-before-main/HEAD-zone-negative.log",
+      "bytes": 4278,
+      "sha256": "324e2b593e424a9741205ab01b2eeee2e5a2d13ac110121b7111a0adc816f4cb"
+    },
+    {
+      "path": "review-followups/zone-before-main/receipt.json",
+      "bytes": 3538,
+      "sha256": "dc3feae998faf55cce8d661b0596aec687f8b571362bf3fff6c74349faa769c2"
+    },
+    {
+      "path": "review-followups/zone-before-main/resource-hold.json",
+      "bytes": 1221,
+      "sha256": "42de619bfd5a2e780a27c2b434a664bdbbec2b5455586cd6e949d3f620b68368"
+    },
+    {
+      "path": "review-followups/zone-before-main/source-before.json",
+      "bytes": 187276,
+      "sha256": "dde029f4a86e6ede3cf64d6a2adc9228cf2f5cfa8c21d3d5660f1263f9a7016c"
+    },
+    {
+      "path": "review-followups/zone-before-main/source-before.patch",
+      "bytes": 10094,
+      "sha256": "ef519271078f6c6ab08d12e6dad7eb6c99b04027f70192773a71fb9c4ba7c2a8"
+    },
+    {
+      "path": "review-followups/zone-before-main/zone-HEAD.rs",
+      "bytes": 15602,
+      "sha256": "ba5dfbc4882341c93fe6ec3e0c9ee8be42593d2bc9c2ec26b1abe0f9da80eb44"
+    },
+    {
+      "path": "review-followups/zone-before-main/zone-final-all.log",
+      "bytes": 2216,
+      "sha256": "5beb4b01bdd3cc0a36421e46a071a739e47a988ff585fc2e6a189c249c229b82"
+    },
+    {
+      "path": "review-followups/zone-before-main/zone-final.rs",
+      "bytes": 16199,
+      "sha256": "e09342f0d5a9c3e6fe6cdad25ac9c2ba752abcd84eee9322b9d7184946251251"
+    }
+  ]
+}

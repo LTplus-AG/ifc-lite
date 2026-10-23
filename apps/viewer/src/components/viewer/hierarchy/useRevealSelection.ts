@@ -50,8 +50,8 @@ function findAlreadyVisibleTargetId(
 }
 
 /** Expand ancestors and scroll to a selection made outside the tree (3D
- *  viewport, search, BCF, context menu). Split into two effects because the
- *  target's ROW INDEX is only known once the (possibly newly expanded) node
+ *  viewport, search, BCF, context menu). Activation, missing-target retry and
+ *  scrolling use separate effects: the row index is only known once the node
  *  lists have re-rendered — `revealGlobalId` returns a node id, not an index
  *  into `storeysNodes`/`modelsNodes`/`filteredNodes`, and expanding ancestors
  *  is itself an async state update relative to this effect.
@@ -71,7 +71,9 @@ function findAlreadyVisibleTargetId(
  *  still consumes a pending mark, so a stale mark can never survive to
  *  falsely match a LATER, genuinely outside, re-selection of the same id.
  *  Depending on `groupingMode` too means a selection held across a grouping
- *  tab switch is re-revealed in the new grouping. */
+ *  tab switch is re-revealed in the new grouping. A target absent from the
+ *  current tree stays pending until metadata or lazy code supplies its row.
+ *  Once resolved, tree updates never re-open a manually collapsed ancestor. */
 export function useRevealSelection({
   selectedEntityId,
   groupingMode,
@@ -84,7 +86,14 @@ export function useRevealSelection({
   modelsVirtualizer,
   virtualizer,
 }: UseRevealSelectionParams): { markFromTreeClick: () => void } {
+  const findTargetId = useCallback((globalId: number) =>
+    findAlreadyVisibleTargetId(isMultiModel, storeysNodes, modelsNodes, filteredNodes, globalId)
+      ?? revealGlobalId(globalId),
+  [isMultiModel, storeysNodes, modelsNodes, filteredNodes, revealGlobalId]);
   const pendingTargetRef = useRef<string | null>(null);
+  const unresolvedRef = useRef<{
+    globalId: number; revision: number; mode: HierarchyMode; lookup: typeof findTargetId;
+  } | null>(null);
   const fromTreeClickRef = useRef<{ id: number | null; revision: number } | undefined>(undefined);
   const markFromTreeClick = useCallback(() => {
     const state = useViewerStore.getState();
@@ -101,13 +110,33 @@ export function useRevealSelection({
   useEffect(() => {
     const marked = fromTreeClickRef.current;
     fromTreeClickRef.current = undefined; // unconditional: even the null/deselect run consumes it
+    pendingTargetRef.current = null;
+    unresolvedRef.current = null;
     if (selectedEntityId == null) return;
     if (marked && marked.id === selectedEntityId && marked.revision === selectionRevision) return;
 
-    const visibleId = findAlreadyVisibleTargetId(isMultiModel, storeysNodes, modelsNodes, filteredNodes, selectedEntityId);
-    pendingTargetRef.current = visibleId ?? revealGlobalId(selectedEntityId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- revealGlobalId/node lists read fresh via closure; selectionRevision is the dispatch signal
+    const targetId = findTargetId(selectedEntityId);
+    pendingTargetRef.current = targetId;
+    if (targetId === null) unresolvedRef.current = {
+      globalId: selectedEntityId, revision: selectionRevision, mode: groupingMode, lookup: findTargetId,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- current lookup read fresh; only a selection dispatch or grouping change starts a new reveal
   }, [selectionRevision, groupingMode]);
+
+  // Retry only a target that has never resolved, against a changed tree. A
+  // successful reveal retires the request, so geometry updates and unrelated
+  // metadata arrivals cannot undo a user's later collapse or scroll position.
+  useEffect(() => {
+    const request = unresolvedRef.current;
+    if (!request || request.revision !== selectionRevision || request.mode !== groupingMode
+      || request.globalId !== selectedEntityId || request.lookup === findTargetId) return;
+    request.lookup = findTargetId;
+    const targetId = findTargetId(request.globalId);
+    if (targetId !== null) {
+      unresolvedRef.current = null;
+      pendingTargetRef.current = targetId;
+    }
+  }, [findTargetId, selectionRevision, groupingMode, selectedEntityId]);
 
   // Effect B: the rendered lists catch up (e.g. after Effect A expanded a
   // collapsed ancestor) — find the pending target's row and scroll to it.

@@ -118,8 +118,9 @@ fn manifold_gate_census_over_the_fixture_corpus() {
     );
 
     let mut t = Tally::default();
-    for (rel_path, abs_path) in &models {
-        let Ok(content) = std::fs::read_to_string(abs_path) else {
+    for (rel_path, _abs_path) in &models {
+        // Discovered on disk; the testkit applies the IFC_LITE_REQUIRE_FIXTURES gate.
+        let Some(content) = ifc_lite_testkit::fixture_text(rel_path) else {
             continue;
         };
         let voids = void_index(&content);

@@ -5,13 +5,13 @@
 //! Bounded source-record and diagnostic accounting for profile semantics.
 
 use crate::{
-    xml::{error, Result},
+    xml::Result,
     LandXmlCapabilityDiagnostic, LandXmlCapabilityDiagnosticCode, LandXmlSourceId,
 };
 
-use super::super::{Code, Parser};
+use super::super::TinHandler;
 
-impl Parser<'_> {
+impl TinHandler<'_> {
     pub(super) fn record_discontinuity(
         &mut self,
         discontinuous: bool,
@@ -39,27 +39,10 @@ impl Parser<'_> {
     }
 
     pub(super) fn reserve_profile_points(&mut self, additional: usize) -> Result<()> {
-        self.profile_points_seen = self
-            .profile_points_seen
-            .checked_add(additional)
-            .ok_or_else(|| error(Code::LimitExceeded, "profile point limit exceeded"))?;
-        if self.profile_points_seen > self.limits.max_profile_points {
-            return Err(error(Code::LimitExceeded, "profile point limit exceeded"));
-        }
-        Ok(())
+        self.profile_points_seen.reserve(additional)
     }
 
     pub(super) fn reserve_cross_section_points(&mut self, additional: usize) -> Result<()> {
-        self.cross_section_points_seen = self
-            .cross_section_points_seen
-            .checked_add(additional)
-            .ok_or_else(|| error(Code::LimitExceeded, "cross-section point limit exceeded"))?;
-        if self.cross_section_points_seen > self.limits.max_cross_section_points {
-            return Err(error(
-                Code::LimitExceeded,
-                "cross-section point limit exceeded",
-            ));
-        }
-        Ok(())
+        self.cross_section_points_seen.reserve(additional)
     }
 }

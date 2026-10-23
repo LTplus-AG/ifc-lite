@@ -26,8 +26,9 @@
 // Wired into `merged.rs`'s GlobalId reconciliation (`export_merged_with_stats`),
 // which previously carried its own near-identical copy of this same
 // schema-driven check -- exactly the "two lists that must agree" drift shape
-// this module's own doc warns about (see #3015). `extract_leading_guid` is
-// this crate's only sanctioned way to read a STEP line's leading GlobalId.
+// this module's own doc warns about (see #3015). The leading-GlobalId scan
+// itself lives in `ifc_lite_core::guid::leading_global_id`; the merged
+// exporter's `extract_global_id_fast` is `is_rooted_type` plus that scan.
 
 use ifc_lite_core::IfcType;
 
@@ -45,54 +46,15 @@ pub fn is_rooted_type(type_name: &str) -> bool {
     IfcType::from_str(&upper).is_subtype_of(IfcType::IfcRoot)
 }
 
-/// The leading 22-char GlobalId of a rooted entity's raw STEP line, or `None`
-/// if the type is not rooted or the first attribute is not a GlobalId-shaped
-/// string.
-///
-/// This crate's **only** sanctioned way to read a STEP line's leading
-/// GlobalId, and the sole production GlobalId path in the merged exporter:
-/// `merged::leading_guid` is a one-line wrapper around it, and
-/// `export_merged_with_stats` calls that wrapper at the single point where
-/// GlobalId reconciliation decides whether a line's first attribute is an id
-/// to dedupe or ordinary model data to leave alone. Nothing else in the
-/// crate re-derives that decision -- `merged.rs` used to carry a
-/// byte-for-byte copy of the rootedness check and no longer does, which is
-/// the whole point of this module (#3015).
-///
-/// So a mistake here is not confined to a demo: reading a non-rooted
-/// entity's `Name` as a GlobalId re-stamps it during merge, and missing a
-/// rooted entity leaves a duplicate GlobalId in the output, which is exactly
-/// the IFC spec violation the reconciliation step exists to prevent.
-pub fn extract_leading_guid(type_name: &str, line: &[u8]) -> Option<String> {
-    if !is_rooted_type(type_name) {
-        return None;
-    }
-    let open = line.iter().position(|&b| b == b'(')?;
-    let mut i = open + 1;
-    while i < line.len() && line[i].is_ascii_whitespace() {
-        i += 1;
-    }
-    if line.get(i) != Some(&b'\'') {
-        return None;
-    }
-    let after_q1 = &line[i + 1..];
-    let q2 = after_q1.iter().position(|&b| b == b'\'')?;
-    let raw = &after_q1[..q2];
-    let s = std::str::from_utf8(raw).ok()?;
-    is_global_id_shaped(s).then(|| s.to_string())
-}
-
-/// True for a 22-character token drawn entirely from the buildingSMART
-/// GlobalId alphabet.
-pub(crate) fn is_global_id_shaped(s: &str) -> bool {
-    s.len() == 22
-        && s.bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'$')
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The rooted-type guard plus the shared leading-GlobalId scan, exactly the
+    /// composition `merged::guid::extract_global_id_fast` ships.
+    fn extract_leading_guid(_type_name: &str, line: &[u8]) -> Option<String> {
+        crate::merged::leading_rooted_global_id(line)
+    }
 
     /// The denylist-defeating case: `IFCCOLOURRGB` is not an `IfcRoot`
     /// subtype (it derives from `IfcPresentationItem` via

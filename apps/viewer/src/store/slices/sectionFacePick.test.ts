@@ -18,7 +18,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { create } from 'zustand';
 import { QUANT_STEP } from '@ifc-lite/renderer';
-import { createSectionSlice, loadLastSectionMode, type SectionSlice } from './sectionSlice.js';
+import { createSectionSlice, type SectionSlice } from './sectionSlice.js';
 import { cardinalSectionFlipped, resetSectionToAxis } from '../section-active.js';
 import { FACE_PICK_MAX_INSET_M, FACE_PICK_MIN_INSET_M, facePickInset } from './sectionFacePick.js';
 
@@ -235,9 +235,6 @@ describe('Reset to axis after a face pick keeps the on-screen side (#5644)', () 
             const customKept = clipValue(p, custom.normal, custom.distance, before.flipped) < 0;
             assert.equal(cardinalKept(after, p), customKept, `probe ${p}`);
           }
-          const saved = loadLastSectionMode();
-          assert.equal(saved.kind, 'cardinal');
-          assert.equal(saved.kind === 'cardinal' && saved.flipped, after.flipped, 'the persisted flip is the one on screen');
         }));
       }
     }

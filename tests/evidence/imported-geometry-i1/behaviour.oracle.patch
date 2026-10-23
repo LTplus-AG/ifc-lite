@@ -1,0 +1,22 @@
+diff --git a/rust/imported-geometry/src/math.rs b/rust/imported-geometry/src/math.rs
+index 29cb10fc76..fcaf12256e 100644
+--- a/rust/imported-geometry/src/math.rs
++++ b/rust/imported-geometry/src/math.rs
+@@ -54,7 +54,7 @@ pub fn compute_normals(positions: &[f32], indices: &[u32]) -> Vec<f32> {
+ }
+ fn component(row: &[f64], i: usize) -> f64 { row.get(i).copied().unwrap_or(f64::NAN) }
+ fn denominator(p: [f64; 3], m: &[f32;16]) -> f64 { m[3] as f64*p[0]+m[7] as f64*p[1]+m[11] as f64*p[2]+m[15] as f64 }
+-fn bad_w(w:f64)->bool { let _ = w; false }
++fn bad_w(w:f64)->bool { !w.is_finite() || w.abs()<1e-12 }
+ fn placed(p:[f64;3],m:&[f32;16],w:f64,reciprocal:bool)->[f64;3] {
+     let mut out=[0.;3];
+     for c in 0..3 {
+@@ -68,7 +68,7 @@ fn to_uint32(v:f64)->u32 {
+     if !v.is_finite() || v==0. {0} else {v.trunc().rem_euclid(4294967296.) as u32}
+ }
+ pub(crate) fn mesh(source:&RawMesh,stack:&[RawMatrix])->Result<MeshOutput,ImportError> {
+-    let transform=stage_transform(stack,true).and(None::<[f32;16]>);
++    let transform=stage_transform(stack,true);
+     let mut positions=Vec::with_capacity(source.points.len()*3);
+     for row in &source.points {
+         let mut p=[component(row,0),component(row,1),component(row,2)];

@@ -161,9 +161,10 @@ export interface LandXmlTinDocument {
   /**
    * The root `CoordinateSystem`, raw. `epsgCode` is LandXML 1.2's attribute for
    * the CRS's EPSG code and what real producers write; `horizontalDatum` is a
-   * datum NAME there. Only `spatialMetadataFromLandXml` turns these into a CRS.
+   * datum NAME there; `name` is the producer's own label for the CRS (#7604).
+   * Only `spatialMetadataFromLandXml` turns these into a placeable CRS.
    */
-  coordinateSystem?: { horizontalDatum?: string; verticalDatum?: string; epsgCode?: string };
+  coordinateSystem?: { horizontalDatum?: string; verticalDatum?: string; epsgCode?: string; name?: string };
   surfaces: LandXmlTinSurface[];
   extensions: Array<{ namespace: string; localName: string; path: string }>;
   warnings: string[];

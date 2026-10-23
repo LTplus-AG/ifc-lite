@@ -16,12 +16,11 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
 use ifc_lite_processing::{
-    process_geometry, process_geometry_streaming_filtered_with_options, InstanceRecord, MeshData,
-    OpeningFilterMode, ProcessingResult, StreamingOptions,
+    process, process_geometry, InstanceRecord, MeshData, ProcessingRequest, ProcessingResult,
 };
 
 use super::emit::{write_display_material, write_geometry_body};
-use super::fmt::{fmt_f64, indent_str};
+use super::fmt::{fmt_matrix4d, indent_str};
 use super::mesh_emittable;
 
 /// Prototype prim name for a template `express_id`.
@@ -32,19 +31,7 @@ pub(super) fn proto_name(template_express_id: u32) -> String {
 /// Run the geometry pipeline with #1623 don't-bake instancing enabled and collect the
 /// result (unbounded batches, default `retain_emitted_meshes` so templates survive).
 pub(super) fn run_instanced(content: &[u8]) -> ProcessingResult {
-    process_geometry_streaming_filtered_with_options(
-        content,
-        OpeningFilterMode::Default,
-        StreamingOptions {
-            initial_batch_size: usize::MAX,
-            throughput_batch_size: usize::MAX,
-            enable_instancing: true,
-            ..StreamingOptions::default()
-        },
-        |_, _, _| {},
-        |_| {},
-        |_| {},
-    )
+    process(content, &ProcessingRequest::full_pass().instancing(true), &mut ())
 }
 
 /// Choose the geometry result. Returns `(result, use_instancing)`.
@@ -184,16 +171,7 @@ pub(super) fn emit_instance_occurrence(
     writeln!(out, "{inner}prepend apiSchemas = [\"MaterialBindingAPI\"]").ok();
     writeln!(out, "{pad})").ok();
     writeln!(out, "{pad}{{").ok();
-    writeln!(
-        out,
-        "{inner}matrix4d xformOp:transform = ( ({}, {}, {}, {}), ({}, {}, {}, {}), \
-         ({}, {}, {}, {}), ({}, {}, {}, {}) )",
-        fmt_f64(rows[0][0]), fmt_f64(rows[0][1]), fmt_f64(rows[0][2]), fmt_f64(rows[0][3]),
-        fmt_f64(rows[1][0]), fmt_f64(rows[1][1]), fmt_f64(rows[1][2]), fmt_f64(rows[1][3]),
-        fmt_f64(rows[2][0]), fmt_f64(rows[2][1]), fmt_f64(rows[2][2]), fmt_f64(rows[2][3]),
-        fmt_f64(rows[3][0]), fmt_f64(rows[3][1]), fmt_f64(rows[3][2]), fmt_f64(rows[3][3]),
-    )
-    .ok();
+    writeln!(out, "{inner}matrix4d xformOp:transform = {}", fmt_matrix4d(&rows)).ok();
     writeln!(out, "{inner}uniform token[] xformOpOrder = [\"xformOp:transform\"]").ok();
     if let Some(p) = purpose {
         writeln!(out, "{inner}uniform token purpose = \"{p}\"").ok();

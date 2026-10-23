@@ -1,0 +1,2968 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+use super::*;
+
+/// `extract_data_model`, plus the #3973 structural invariant
+/// (`spatial::spatial_hierarchy_consistency_violations`) asserted over the
+/// resulting `spatial_hierarchy` on every call. Every existing spatial
+/// fixture in this file goes through this wrapper rather than calling
+/// `extract_data_model` directly, so each one retroactively guards against a
+/// third instance of the dangling `children_ids` / disagreeing `parent_id`
+/// shape - not just the two fixtures written specifically to reproduce it.
+/// `build_spatial_hierarchy` itself only runs this check via `debug_assert!`
+/// (skipped in release builds); this wrapper enforces it unconditionally in
+/// the test suite regardless of build profile.
+fn extract_data_model_checked<T>(content: &T) -> DataModel
+where
+    T: AsRef<[u8]> + ?Sized,
+{
+    let dm = extract_data_model(content);
+    let node_refs: Vec<&SpatialNode> = dm.spatial_hierarchy.nodes.iter().collect();
+    let violations = spatial::spatial_hierarchy_consistency_violations(&node_refs);
+    assert!(
+        violations.is_empty(),
+        "spatial hierarchy consistency invariant violated:\n{}",
+        violations.join("\n")
+    );
+    dm
+}
+
+/// IFC4 model (millimetre units) with a wall carrying a two-layer material
+/// set, a Uniclass classification reference, and a document reference — one
+/// of each association type (issue #900).
+const ASSOCIATIONS_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('issue-900 associations fixture'),'2;1');
+FILE_NAME('assoc.ifc','2026-06-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0$ScRe4drECQ4DMSqUjd6d',$,'P',$,$,$,$,(#2),#3);
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
+#3=IFCUNITASSIGNMENT((#6));
+#4=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);
+#6=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#28=IFCWALL('Wall00000000000000001',$,'W1',$,$,$,$,$,$);
+/* Material layer set: 200mm Concrete + 50mm ventilated Insulation */
+#30=IFCMATERIAL('Concrete',$,'Mineral');
+#31=IFCMATERIAL('Insulation',$,$);
+#32=IFCMATERIALLAYER(#30,200.,.F.,'Core',$,'load-bearing',$);
+#33=IFCMATERIALLAYER(#31,50.,.T.,'Insul',$,$,$);
+#34=IFCMATERIALLAYERSET((#32,#33),'WallSet',$);
+#35=IFCRELASSOCIATESMATERIAL('Mat0000000000000000001',$,$,$,(#28),#34);
+/* Classification */
+#40=IFCCLASSIFICATION('Uniclass 2015','2',$,'Uniclass 2015',$,$,$);
+#41=IFCCLASSIFICATIONREFERENCE('https://uniclass.example','EF_25_10_25','Walls',#40,$,$);
+#42=IFCRELASSOCIATESCLASSIFICATION('Cls0000000000000000001',$,$,$,(#28),#41);
+/* Document */
+#50=IFCDOCUMENTREFERENCE('https://docs.example/spec','DOC-001','Wall spec',$,$);
+#51=IFCRELASSOCIATESDOCUMENT('Doc0000000000000000001',$,$,$,(#28),#50);
+/* Column with a material constituent set */
+#60=IFCCOLUMN('Col0000000000000000001',$,'C1',$,$,$,$,$,$);
+#61=IFCMATERIAL('Steel',$,'Metal');
+#62=IFCMATERIALCONSTITUENT('Core',$,#61,$,'load-bearing');
+#63=IFCMATERIALCONSTITUENTSET('ColSet',$,(#62));
+#64=IFCRELASSOCIATESMATERIAL('Mat0000000000000000002',$,$,$,(#60),#63);
+/* Beam with a material profile set */
+#70=IFCBEAM('Bem0000000000000000001',$,'B1',$,$,$,$,$,$);
+#71=IFCMATERIAL('Timber',$,'Wood');
+#72=IFCMATERIALPROFILE('Flange',$,#71,$,$,$);
+#73=IFCMATERIALPROFILESET('BeamSet',$,(#72),$);
+#74=IFCRELASSOCIATESMATERIAL('Mat0000000000000000003',$,$,$,(#70),#73);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn keeps_optional_material_absence_but_drops_unreadable_set_members_5296() {
+    let malformed = ASSOCIATIONS_IFC
+        .replace("IFCMATERIALLAYER(#31,", "IFCMATERIALLAYER(#999999,")
+        .replace("IFCMATERIALCONSTITUENT('Core',$,#61,", "IFCMATERIALCONSTITUENT('Core',$,#999999,")
+        .replace("IFCMATERIALPROFILE('Flange',$,#71,", "IFCMATERIALPROFILE('Flange',$,#999999,");
+    let dm = extract_data_model_checked(&malformed);
+    let layers: Vec<_> = dm.materials.iter().filter(|m| m.element_id == 28).collect();
+    assert_eq!(layers.len(), 1, "unreadable second layer is not forwarded as an empty material");
+    assert_eq!(layers[0].member_count, 2, "client must detect the incomplete set");
+    assert!(dm.materials.iter().all(|m| m.element_id != 60 && m.element_id != 70),
+        "unreadable constituent and profile members are not asserted as complete");
+
+    let air_gap = ASSOCIATIONS_IFC.replace("IFCMATERIALLAYER(#31,", "IFCMATERIALLAYER($,");
+    let dm = extract_data_model_checked(&air_gap);
+    let layers: Vec<_> = dm.materials.iter().filter(|m| m.element_id == 28).collect();
+    assert_eq!(layers.len(), 2, "an authored absent material ref remains a complete layer");
+    assert_eq!(layers[1].material_id, None);
+    assert!(!layers[1].material_name_present);
+
+    let wrong_members = ASSOCIATIONS_IFC
+        .replace("IFCMATERIALLAYERSET((#32,#33)", "IFCMATERIALLAYERSET((#32,#30)")
+        .replace("IFCMATERIALCONSTITUENTSET('ColSet',$,(#62))", "IFCMATERIALCONSTITUENTSET('ColSet',$,(#61))")
+        .replace("IFCMATERIALPROFILESET('BeamSet',$,(#72),$)", "IFCMATERIALPROFILESET('BeamSet',$,(#71),$)");
+    let dm = extract_data_model_checked(&wrong_members);
+    let layers: Vec<_> = dm.materials.iter().filter(|m| m.element_id == 28).collect();
+    assert_eq!(layers.len(), 1, "wrong-type layer member must not complete the set");
+    assert_eq!(layers[0].member_count, 2);
+    assert!(dm.materials.iter().all(|m| m.element_id != 60 && m.element_id != 70),
+        "wrong-type constituent and profile members must not be forwarded");
+
+    let offset_subtypes = ASSOCIATIONS_IFC
+        .replace("IFCMATERIALLAYER(#31,50.,.T.,'Insul',$,$,$)",
+            "IFCMATERIALLAYERWITHOFFSETS(#31,50.,.T.,'Insul',$,$,$,.AXIS1.,(0.,0.))")
+        .replace("IFCMATERIALPROFILE('Flange',$,#71,$,$,$)",
+            "IFCMATERIALPROFILEWITHOFFSETS('Flange',$,#71,$,$,$,(0.,0.))");
+    let dm = extract_data_model_checked(&offset_subtypes);
+    assert_eq!(dm.materials.iter().filter(|m| m.element_id == 28).count(), 2,
+        "valid IfcMaterialLayerWithOffsets subtype must remain readable");
+    assert_eq!(dm.materials.iter().filter(|m| m.element_id == 70).count(), 1,
+        "valid IfcMaterialProfileWithOffsets subtype must remain readable");
+}
+
+#[test]
+fn extracts_classification_material_and_document_associations() {
+    let dm = extract_data_model_checked(ASSOCIATIONS_IFC);
+
+    // Classification: one reference assigned to the wall (#28).
+    assert_eq!(dm.classifications.len(), 1, "expected one classification");
+    let c = &dm.classifications[0];
+    assert_eq!(c.element_id, 28);
+    assert_eq!(c.system_name.as_deref(), Some("Uniclass 2015"));
+    assert_eq!(c.identification.as_deref(), Some("EF_25_10_25"));
+    assert_eq!(c.name.as_deref(), Some("Walls"));
+
+    // Materials: the wall (#28) has two layers, thickness in metres (mm * 0.001).
+    let mut layers: Vec<_> = dm
+        .materials
+        .iter()
+        .filter(|m| m.element_id == 28)
+        .cloned()
+        .collect();
+    layers.sort_by_key(|m| m.layer_index);
+    assert_eq!(layers.len(), 2, "expected two wall layers");
+    assert_eq!(layers[0].element_id, 28);
+    assert_eq!(layers[0].set_name.as_deref(), Some("WallSet"));
+    assert_eq!(layers[0].association_id, 35);
+    assert_eq!(layers[0].definition_id, 34);
+    assert_eq!(layers[0].member_count, 2);
+    assert_eq!(layers[0].kind, "IfcMaterialLayerSet");
+    assert_eq!(layers[0].member_name.as_deref(), Some("Core"));
+    assert_eq!(layers[0].category.as_deref(), Some("load-bearing"));
+    assert_eq!(layers[0].material_category.as_deref(), Some("Mineral"));
+    assert_eq!(layers[0].material_name, "Concrete");
+    assert!(
+        (layers[0].thickness.unwrap() - 0.2).abs() < 1e-9,
+        "200mm -> 0.2m"
+    );
+    assert_eq!(layers[0].is_ventilated, Some(false));
+    assert_eq!(layers[1].material_name, "Insulation");
+    assert_eq!(layers[1].member_name.as_deref(), Some("Insul"));
+    assert!(
+        (layers[1].thickness.unwrap() - 0.05).abs() < 1e-9,
+        "50mm -> 0.05m"
+    );
+    assert_eq!(layers[1].is_ventilated, Some(true));
+
+    // Document.
+    assert_eq!(dm.documents.len(), 1, "expected one document");
+    let d = &dm.documents[0];
+    assert_eq!(d.element_id, 28);
+    assert_eq!(d.identification.as_deref(), Some("DOC-001"));
+    assert_eq!(d.name.as_deref(), Some("Wall spec"));
+    assert_eq!(d.location.as_deref(), Some("https://docs.example/spec"));
+
+    // Material constituent set on the column (#60) — constituents read from
+    // attribute 2, set name preserved from attribute 0.
+    let column_mats: Vec<_> = dm.materials.iter().filter(|m| m.element_id == 60).collect();
+    assert_eq!(
+        column_mats.len(),
+        1,
+        "expected one constituent for the column"
+    );
+    assert_eq!(column_mats[0].material_name, "Steel");
+    assert_eq!(column_mats[0].kind, "IfcMaterialConstituentSet");
+    assert_eq!(column_mats[0].member_name.as_deref(), Some("Core"));
+    assert_eq!(column_mats[0].material_category.as_deref(), Some("Metal"));
+    assert_eq!(column_mats[0].set_name.as_deref(), Some("ColSet"));
+
+    // The IfcRelAssociates* family must also land in the generic relationship
+    // graph (relating = the material/classification/document, related = element).
+    let has_rel = |ty: &str, relating: u32, related: u32| {
+        dm.relationships.iter().any(|r| {
+            r.rel_type.eq_ignore_ascii_case(ty)
+                && r.relating_id == relating
+                && r.related_id == related
+        })
+    };
+    assert!(
+        has_rel("IFCRELASSOCIATESCLASSIFICATION", 41, 28),
+        "classification association missing from relationships"
+    );
+    assert!(
+        has_rel("IFCRELASSOCIATESDOCUMENT", 50, 28),
+        "document association missing from relationships"
+    );
+    assert!(
+        has_rel("IFCRELASSOCIATESMATERIAL", 34, 28),
+        "material association missing from relationships"
+    );
+
+    // Material profile set on the beam (#70).
+    let beam_mats: Vec<_> = dm.materials.iter().filter(|m| m.element_id == 70).collect();
+    assert_eq!(beam_mats.len(), 1, "expected one profile for the beam");
+    assert_eq!(beam_mats[0].material_name, "Timber");
+    assert_eq!(beam_mats[0].kind, "IfcMaterialProfileSet");
+    assert_eq!(beam_mats[0].member_name.as_deref(), Some("Flange"));
+    assert_eq!(beam_mats[0].material_category.as_deref(), Some("Wood"));
+    assert_eq!(beam_mats[0].set_name.as_deref(), Some("BeamSet"));
+}
+
+/// IFC4 model exercising TYPE-level parity (issue #1751): an IfcWallType
+/// whose HasPropertySets carries a pset (string / boolean / real / integer)
+/// and a Qto, two walls bound via IfcRelDefinesByType, and one instance pset.
+const TYPE_PARITY_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
+#100=IFCWALL('Wall00000000000000001A',$,'W-A','South wall','Basic Wall',$,$,'T-100',.SOLIDWALL.);
+#110=IFCWALL('Wall00000000000000001B',$,'W-B',$,$,$,$,$,.PARTITIONING.);
+#200=IFCWALLTYPE('Type00000000000000001A',$,'WT-Std',$,'NotObjectType',(#210,#220),$,$,$,.STANDARD.);
+#300=IFCSITE('Site000000000000000001A',$,'S','site desc',$,$,$,'LONG-NAME',.ELEMENT.,$,$,$,$,$);
+#210=IFCPROPERTYSET('Pset00000000000000001A',$,'Pset_WallCommon',$,(#211,#212,#213,#214,#215));
+#211=IFCPROPERTYSINGLEVALUE('Manufacturer',$,IFCLABEL('ACME'),$);
+#212=IFCPROPERTYSINGLEVALUE('IsExternal',$,IFCBOOLEAN(.T.),$);
+#213=IFCPROPERTYSINGLEVALUE('ThermalTransmittance',$,IFCREAL(0.24),$);
+#214=IFCPROPERTYSINGLEVALUE('Layers',$,IFCINTEGER(3),$);
+#215=IFCPROPERTYENUMERATEDVALUE('AcousticRating',$,(IFCLABEL('R1'),IFCLABEL('R2')),$);
+#220=IFCELEMENTQUANTITY('Qset00000000000000001A',$,'Qto_WallBaseQuantities',$,$,(#221));
+#221=IFCQUANTITYLENGTH('Width',$,$,200.);
+#230=IFCRELDEFINESBYTYPE('Rdbt00000000000000001A',$,$,$,(#100,#110),#200);
+#250=IFCPROPERTYSET('Pset00000000000000002A',$,'Pset_WallCommon',$,(#251,#252,#253));
+#251=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('REI 120'),$);
+#252=IFCPROPERTYBOUNDEDVALUE('LoadCapacity',$,IFCFORCEMEASURE(8.),IFCFORCEMEASURE(2.),$,IFCFORCEMEASURE(5.));
+#253=IFCPROPERTYTABLEVALUE('Deflection',$,(IFCREAL(1.),IFCREAL(2.)),(IFCREAL(10.),IFCREAL(20.)),$,$,$,$);
+#260=IFCRELDEFINESBYPROPERTIES('Rdbp00000000000000001A',$,$,$,(#100),#250);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn extracts_type_relationship_and_resolves_typed_property_values() {
+    let dm = extract_data_model_checked(TYPE_PARITY_IFC);
+
+    // IfcRelDefinesByType survives (was dropped by the `_ => (4,5)` default):
+    // relating = type #200, related = each wall.
+    let dbt = |related: u32| {
+        dm.relationships.iter().any(|r| {
+            r.rel_type.eq_ignore_ascii_case("IFCRELDEFINESBYTYPE")
+                && r.relating_id == 200
+                && r.related_id == related
+        })
+    };
+    assert!(dbt(100), "DefinesByType #200->#100 missing");
+    assert!(dbt(110), "DefinesByType #200->#110 missing");
+
+    // Type HasPropertySets are attached to the type via synthetic edges
+    // (relating = set, related = type).
+    let type_link = |set: u32| {
+        dm.relationships.iter().any(|r| {
+            r.rel_type == "TYPEHASPROPERTYSETS" && r.relating_id == set && r.related_id == 200
+        })
+    };
+    assert!(type_link(210), "TYPEHASPROPERTYSETS #210->#200 missing");
+    // Synthetic edges: no IfcRel entity produced them, so `rel_id` is 0 rather
+    // than a borrowed id (issue #3860).
+    assert!(
+        dm.relationships
+            .iter()
+            .filter(|r| r.rel_type == "TYPEHASPROPERTYSETS")
+            .all(|r| r.rel_id == 0),
+        "synthetic type-set edges must not claim an IfcRel express id"
+    );
+    assert!(
+        type_link(220),
+        "TYPEHASPROPERTYSETS #220->#200 missing (qset)"
+    );
+
+    // Typed property values resolve to canonical strings + kinds + data_type
+    // (no more Debug garbage / "unknown").
+    let pset = dm
+        .property_sets
+        .iter()
+        .find(|p| p.pset_id == 210)
+        .expect("type pset #210 extracted");
+    let prop = |name: &str| {
+        pset.properties
+            .iter()
+            .find(|p| p.property_name == name)
+            .unwrap()
+    };
+
+    let m = prop("Manufacturer");
+    assert_eq!(m.property_value, "ACME");
+    assert_eq!(m.property_type, "string");
+    assert_eq!(m.data_type.as_deref(), Some("IFCLABEL"));
+
+    let ext = prop("IsExternal");
+    assert_eq!(ext.property_value, "true");
+    assert_eq!(ext.property_type, "boolean");
+    assert_eq!(ext.data_type.as_deref(), Some("IFCBOOLEAN"));
+
+    let u = prop("ThermalTransmittance");
+    assert_eq!(u.property_value, "0.24");
+    assert_eq!(u.property_type, "real");
+    assert_eq!(u.data_type.as_deref(), Some("IFCREAL"));
+
+    // Enumerated value → joined display string (mirrors WASM `values.join(', ')`)
+    // + the candidate array for IDS any-match checks (issue #1766).
+    let ar = prop("AcousticRating");
+    assert_eq!(ar.property_value, "R1, R2");
+    assert_eq!(ar.property_type, "string");
+    assert_eq!(
+        ar.values.as_deref(),
+        Some(&["R1".to_string(), "R2".to_string()][..])
+    );
+    // The type its members share, as the WASM path reports it (#5224).
+    assert_eq!(ar.data_type.as_deref(), Some("IFCLABEL"));
+    assert!(!ar.data_type_mixed);
+
+    let c = prop("Layers");
+    assert_eq!(c.property_value, "3");
+    assert_eq!(c.property_type, "integer");
+    assert_eq!(c.data_type.as_deref(), Some("IFCINTEGER"));
+
+    // Instance pset value also resolves (same code path); single values carry
+    // no candidate array.
+    let inst = dm.property_sets.iter().find(|p| p.pset_id == 250).unwrap();
+    let iprop = |name: &str| {
+        inst.properties
+            .iter()
+            .find(|p| p.property_name == name)
+            .unwrap()
+    };
+    let fr = iprop("FireRating");
+    assert_eq!(fr.property_value, "REI 120");
+    assert_eq!(fr.property_type, "string");
+    assert_eq!(fr.values, None);
+
+    // Bounded: display "setPoint [lower – upper]", candidates deduped
+    // lower/upper/setPoint, measure tag from the typed wrappers (#1766).
+    let lc = iprop("LoadCapacity");
+    assert_eq!(lc.property_value, "5 [2 \u{2013} 8]");
+    assert_eq!(lc.data_type.as_deref(), Some("IFCFORCEMEASURE"));
+    assert_eq!(
+        lc.values.as_deref(),
+        Some(&["2".to_string(), "8".to_string(), "5".to_string()][..])
+    );
+
+    // Table: defining-then-defined candidates, display "Table (N rows)".
+    let df = iprop("Deflection");
+    assert_eq!(df.property_value, "Table (2 rows)");
+    // No single type by design, said explicitly rather than by absence (#5224).
+    assert_eq!(df.data_type, None);
+    assert!(df.data_type_mixed);
+    assert_eq!(
+        df.values.as_deref(),
+        Some(
+            &[
+                "1".to_string(),
+                "2".to_string(),
+                "10".to_string(),
+                "20".to_string()
+            ][..]
+        )
+    );
+}
+
+#[test]
+fn associations_empty_without_relationships() {
+    let plain = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0$ScRe4drECQ4DMSqUjd6d',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall00000000000000001',$,'W1',$,$,$,$,$,$);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+    let dm = extract_data_model_checked(plain);
+    assert!(dm.classifications.is_empty());
+    assert!(dm.materials.is_empty());
+    assert!(dm.documents.is_empty());
+}
+
+/// Root attributes are extracted at the SCHEMA-REGISTRY positions the WASM
+/// path resolves them (issue #1765) — including the traps: IfcSite attr 7 is
+/// LongName (never Tag), IfcWallType attr 4 is ApplicableOccurrence (never
+/// ObjectType), and CompositionType enums must not leak into PredefinedType.
+#[test]
+fn extracts_root_attributes_at_schema_positions() {
+    let dm = extract_data_model_checked(TYPE_PARITY_IFC);
+    let e = |id: u32| dm.entities.iter().find(|e| e.entity_id == id).unwrap();
+
+    let wall_a = e(100);
+    assert_eq!(wall_a.description.as_deref(), Some("South wall"));
+    assert_eq!(wall_a.object_type.as_deref(), Some("Basic Wall"));
+    assert_eq!(wall_a.tag.as_deref(), Some("T-100"));
+    assert_eq!(wall_a.predefined_type.as_deref(), Some("SOLIDWALL"));
+
+    // Unset slots stay None; the enum still resolves.
+    let wall_b = e(110);
+    assert_eq!(wall_b.description, None);
+    assert_eq!(wall_b.object_type, None);
+    assert_eq!(wall_b.tag, None);
+    assert_eq!(wall_b.predefined_type.as_deref(), Some("PARTITIONING"));
+
+    // IfcWallType: attr 4 is ApplicableOccurrence — must NOT surface as
+    // ObjectType; Tag slot is $; PredefinedType is at index 9.
+    let wall_type = e(200);
+    assert_eq!(wall_type.object_type, None);
+    assert_eq!(wall_type.tag, None);
+    assert_eq!(wall_type.predefined_type.as_deref(), Some("STANDARD"));
+
+    // IfcSite: Description resolves, attr 7 (LongName) must NOT surface as
+    // Tag, and CompositionType (.ELEMENT.) must NOT surface as PredefinedType.
+    let site = e(300);
+    assert_eq!(site.description.as_deref(), Some("site desc"));
+    assert_eq!(site.tag, None);
+    assert_eq!(site.predefined_type, None);
+}
+
+/// IfcRelVoidsElement / IfcRelFillsElement both carry a SINGLE related ref
+/// (not a list) at attribute 5, so the generic list-based path dropped them.
+/// A wall (#10) is voided by an opening (#20), which is filled by a door (#30).
+const VOID_FILL_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#10=IFCWALL('Wall00000000000000001',$,'W1',$,$,$,$,$,$);
+#20=IFCOPENINGELEMENT('Open00000000000000001',$,'O1',$,$,$,$,$,$);
+#30=IFCDOOR('Door00000000000000001',$,'D1',$,$,$,$,$,$,$,$,$);
+#40=IFCRELVOIDSELEMENT('Voi0000000000000000001',$,$,$,#10,#20);
+#50=IFCRELFILLSELEMENT('Fil0000000000000000001',$,$,$,#20,#30);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn extracts_voids_and_fills_single_ref_relationships() {
+    let dm = extract_data_model_checked(VOID_FILL_IFC);
+    let has_rel = |ty: &str, relating: u32, related: u32| {
+        dm.relationships.iter().any(|r| {
+            r.rel_type.eq_ignore_ascii_case(ty)
+                && r.relating_id == relating
+                && r.related_id == related
+        })
+    };
+    // RelVoidsElement: RelatingBuildingElement=#10 (wall), RelatedOpeningElement=#20.
+    assert!(
+        has_rel("IFCRELVOIDSELEMENT", 10, 20),
+        "voids relationship (wall -> opening) missing: {:?}",
+        dm.relationships
+    );
+    // RelFillsElement: RelatingOpeningElement=#20, RelatedBuildingElement=#30 (door).
+    assert!(
+        has_rel("IFCRELFILLSELEMENT", 20, 30),
+        "fills relationship (opening -> door) missing: {:?}",
+        dm.relationships
+    );
+}
+
+/// Malformed voids/fills rows must be DROPPED, not panic and not emit garbage:
+/// `$` in place of either ref (missing attr) and a LIST where a single ref
+/// belongs (`get_ref` returns `None` for both, so `?` bails).
+const MALFORMED_VOID_FILL_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#10=IFCWALL('Wall00000000000000001',$,'W1',$,$,$,$,$,$);
+#20=IFCOPENINGELEMENT('Open00000000000000001',$,'O1',$,$,$,$,$,$);
+#40=IFCRELVOIDSELEMENT('Voi0000000000000000001',$,$,$,$,#20);
+#41=IFCRELVOIDSELEMENT('Voi0000000000000000002',$,$,$,#10,$);
+#42=IFCRELVOIDSELEMENT('Voi0000000000000000003',$,$,$,#10,(#20));
+#50=IFCRELFILLSELEMENT('Fil0000000000000000001',$,$,$,(#20),#10);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn drops_voids_and_fills_rows_with_missing_or_list_refs() {
+    let dm = extract_data_model_checked(MALFORMED_VOID_FILL_IFC);
+    assert!(
+        !dm.relationships.iter().any(|r| {
+            r.rel_type.eq_ignore_ascii_case("IFCRELVOIDSELEMENT")
+                || r.rel_type.eq_ignore_ascii_case("IFCRELFILLSELEMENT")
+        }),
+        "malformed voids/fills rows must be dropped, got: {:?}",
+        dm.relationships
+    );
+}
+
+/// Full Project -> Site -> Building -> Storey -> Space spatial chain (via
+/// IFCRELAGGREGATES), with one element contained directly at EACH of the four
+/// levels (via IFCRELCONTAINEDINSPATIALSTRUCTURE): a furnishing element in the
+/// site, a door in the building, a wall in the storey, a chair in the space.
+/// This pins `build_spatial_hierarchy`'s parent/level/path bookkeeping and the
+/// four-way element_to_{site,building,storey,space} bucketing — none of which
+/// was previously exercised end-to-end (only storey elevation was tested).
+const SPATIAL_CHAIN_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#2=IFCSITE('Site0000000000000000001',$,'MySite',$,$,$,$,$,$,$,$,$,$,$);
+#3=IFCBUILDING('Bldg0000000000000000001',$,'MyBuilding',$,$,$,$,$,$,$,$,$);
+#4=IFCBUILDINGSTOREY('Stor0000000000000000001',$,'MyStorey',$,$,$,$,$,$,$);
+#5=IFCSPACE('Spac0000000000000000001',$,'MySpace',$,$,$,$,$,$,$);
+#10=IFCFURNISHINGELEMENT('Furn0000000000000000001',$,'SiteFurniture',$,$,$,$,$);
+#11=IFCDOOR('Door0000000000000000001',$,'BuildingDoor',$,$,$,$,$,$,$,$,$);
+#12=IFCWALL('Wall0000000000000000001',$,'StoreyWall',$,$,$,$,$,$);
+#13=IFCFURNISHINGELEMENT('Chai0000000000000000001',$,'SpaceChair',$,$,$,$,$);
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#2));
+#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#2,(#3));
+#102=IFCRELAGGREGATES('Agg00000000000000000003',$,$,$,#3,(#4));
+#103=IFCRELAGGREGATES('Agg00000000000000000004',$,$,$,#4,(#5));
+#110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#10),#2);
+#111=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000002',$,$,$,(#11),#3);
+#112=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000003',$,$,$,(#12),#4);
+#113=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000004',$,$,$,(#13),#5);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn builds_spatial_hierarchy_with_correct_parent_level_and_path() {
+    let dm = extract_data_model_checked(SPATIAL_CHAIN_IFC);
+    let sh = &dm.spatial_hierarchy;
+
+    assert_eq!(sh.project_id, 1, "project id must be #1");
+    let node = |id: u32| sh.nodes.iter().find(|n| n.entity_id == id).unwrap();
+
+    let project = node(1);
+    assert_eq!(project.parent_id, 0);
+    assert_eq!(project.level, 0);
+    assert_eq!(project.path, "MyProject");
+    assert_eq!(project.children_ids, vec![2]);
+
+    let site = node(2);
+    assert_eq!(site.parent_id, 1);
+    assert_eq!(site.level, 1);
+    assert_eq!(site.path, "MyProject/MySite");
+    assert_eq!(site.children_ids, vec![3]);
+
+    let building = node(3);
+    assert_eq!(building.parent_id, 2);
+    assert_eq!(building.level, 2);
+    assert_eq!(building.path, "MyProject/MySite/MyBuilding");
+
+    let storey = node(4);
+    assert_eq!(storey.parent_id, 3);
+    assert_eq!(storey.level, 3);
+    assert_eq!(storey.path, "MyProject/MySite/MyBuilding/MyStorey");
+
+    let space = node(5);
+    assert_eq!(space.parent_id, 4);
+    assert_eq!(space.level, 4);
+    assert_eq!(space.path, "MyProject/MySite/MyBuilding/MyStorey/MySpace");
+}
+
+/// Exercises the two DocumentAssociation paths never covered by
+/// `extracts_classification_material_and_document_associations` (which only
+/// hits a fully-populated `IfcDocumentReference` with no `ReferencedDocument`):
+/// (1) `IfcRelAssociatesDocument` pointing straight at an
+/// `IfcDocumentInformation` (attribute layout Identification/Name/Description/
+/// Location — description and location are NOT in attribute order, the exact
+/// index-swap trap), and (2) an `IfcDocumentReference` with some fields blank
+/// backfilled from its `ReferencedDocument`, where already-set reference
+/// fields (Identification, Location) must NOT be overwritten by the info's
+/// values, even though the info carries different values at those slots.
+const DOCUMENT_PATHS_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall00000000000000001',$,'W1',$,$,$,$,$,$);
+#29=IFCCOLUMN('Col0000000000000000001',$,'C1',$,$,$,$,$,$);
+/* (1) Direct IfcDocumentInformation reference. */
+#50=IFCDOCUMENTINFORMATION('INFO-ID','InfoName','InfoDesc','http://info.example',$,$,$,$,$,$,$,$,$);
+#51=IFCRELASSOCIATESDOCUMENT('Doc0000000000000000002',$,$,$,(#28),#50);
+/* (2) IfcDocumentReference with Name/Description blank, Identification and
+   Location already set — backfill must fill Name/Description ONLY, from the
+   correct info slots (1 and 2), and must leave Identification/Location alone
+   even though the info has different values at slots 0 and 3. */
+#60=IFCDOCUMENTREFERENCE('http://ref.example','REF-ID',$,$,#61);
+#61=IFCDOCUMENTINFORMATION('OTHER-ID','BackfilledName','BackfilledDesc','http://other.example',$,$,$,$,$,$,$,$,$);
+#62=IFCRELASSOCIATESDOCUMENT('Doc0000000000000000003',$,$,$,(#29),#60);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn resolves_document_information_directly_at_its_own_attribute_layout() {
+    let dm = extract_data_model_checked(DOCUMENT_PATHS_IFC);
+    let d = dm
+        .documents
+        .iter()
+        .find(|d| d.element_id == 28)
+        .expect("wall document association");
+    assert_eq!(d.identification.as_deref(), Some("INFO-ID"));
+    assert_eq!(d.name.as_deref(), Some("InfoName"));
+    assert_eq!(d.description.as_deref(), Some("InfoDesc"));
+    assert_eq!(d.location.as_deref(), Some("http://info.example"));
+}
+
+#[test]
+fn backfills_only_missing_document_reference_fields_from_referenced_document() {
+    let dm = extract_data_model_checked(DOCUMENT_PATHS_IFC);
+    let d = dm
+        .documents
+        .iter()
+        .find(|d| d.element_id == 29)
+        .expect("column document association");
+    // Already-set on the reference: must survive untouched, not be
+    // overwritten by the referenced info's (different) values.
+    assert_eq!(d.identification.as_deref(), Some("REF-ID"));
+    assert_eq!(d.location.as_deref(), Some("http://ref.example"));
+    // Blank on the reference: must be backfilled from the CORRECT info slots.
+    assert_eq!(d.name.as_deref(), Some("BackfilledName"));
+    assert_eq!(d.description.as_deref(), Some("BackfilledDesc"));
+}
+
+/// One quantity of EACH `IfcPhysicalQuantity` subtype the extractor supports,
+/// on a single Qto. Only `IFCQUANTITYLENGTH` was previously exercised (via
+/// `Qto_WallBaseQuantities.Width` in `TYPE_PARITY_IFC`) — the other match
+/// arms in `extract_quantity_value`'s `quantity_type` mapping had no
+/// coverage, so e.g. "area" and "volume" could be silently swapped.
+/// `IFCQUANTITYNUMBER` was worse than swapped: unrecognised, so `#3266`'s
+/// subtype was dropped from the quantity set entirely. It is IFC4X3-only,
+/// hence this fixture's schema header.
+const ALL_QUANTITY_KINDS_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4X3'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
+#10=IFCWALL('Wall00000000000000001',$,'W1',$,$,$,$,$,$);
+#20=IFCELEMENTQUANTITY('Qset00000000000000001',$,'Qto_All',$,$,(#21,#22,#23,#24,#25,#26,#27));
+#21=IFCQUANTITYLENGTH('QLen',$,$,111.);
+#22=IFCQUANTITYAREA('QArea',$,$,222.);
+#23=IFCQUANTITYVOLUME('QVol',$,$,333.);
+#24=IFCQUANTITYCOUNT('QCount',$,$,444.);
+#25=IFCQUANTITYWEIGHT('QWeight',$,$,555.);
+#26=IFCQUANTITYTIME('QTime',$,$,666.);
+#27=IFCQUANTITYNUMBER('QNumber',$,$,777.);
+#30=IFCRELDEFINESBYPROPERTIES('Rdbp0000000000000001',$,$,$,(#10),#20);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn maps_every_physical_quantity_subtype_to_its_own_quantity_type_string() {
+    let dm = extract_data_model_checked(ALL_QUANTITY_KINDS_IFC);
+    let qset = dm
+        .quantity_sets
+        .iter()
+        .find(|q| q.qset_id == 20)
+        .expect("Qto_All extracted");
+    let q = |name: &str| {
+        qset.quantities
+            .iter()
+            .find(|q| q.quantity_name == name)
+            .unwrap_or_else(|| panic!("quantity {name} missing: {:?}", qset.quantities))
+    };
+    assert_eq!(q("QLen").quantity_type, "length");
+    assert_eq!(q("QLen").quantity_value, 111.0);
+    assert_eq!(q("QArea").quantity_type, "area");
+    assert_eq!(q("QArea").quantity_value, 222.0);
+    assert_eq!(q("QVol").quantity_type, "volume");
+    assert_eq!(q("QVol").quantity_value, 333.0);
+    assert_eq!(q("QCount").quantity_type, "count");
+    assert_eq!(q("QCount").quantity_value, 444.0);
+    assert_eq!(q("QWeight").quantity_type, "weight");
+    assert_eq!(q("QWeight").quantity_value, 555.0);
+    assert_eq!(q("QTime").quantity_type, "time");
+    assert_eq!(q("QTime").quantity_value, 666.0);
+    assert_eq!(q("QNumber").quantity_type, "number");
+    assert_eq!(q("QNumber").quantity_value, 777.0);
+}
+
+/// `IfcRelDefinesByProperties.RelatingPropertyDefinition` is schema-legally
+/// an `IfcPropertySetDefinitionSelect`, whose second alternative
+/// (`IfcPropertySetDefinitionSet`) is a defined `SET [1:?] OF
+/// IfcPropertySetDefinition` — written inline as a grouped list `(#20,#21)`,
+/// not a single `#id`. #79 below groups a pset AND a qset that way. Before
+/// the fix, `extract_relationship` read the relating slot with `get_ref`
+/// unconditionally; `get_ref` returns `None` for a list-valued attribute, so
+/// the `?` silently dropped the WHOLE relationship — every related object
+/// lost every property/quantity from that pset group, not just one entry.
+const GROUPED_RELATING_PSET_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
+#10=IFCWALL('Wall00000000000000001',$,'W1',$,$,$,$,$,$);
+#20=IFCPROPERTYSET('Pset00000000000000001',$,'Pset_Grouped',$,(#21));
+#21=IFCPROPERTYSINGLEVALUE('Fire',$,IFCLABEL('R1'),$);
+#22=IFCELEMENTQUANTITY('Qset00000000000000001',$,'Qto_Grouped',$,$,(#23));
+#23=IFCQUANTITYLENGTH('Width',$,$,100.);
+#79=IFCRELDEFINESBYPROPERTIES('Rdbp0000000000000079',$,$,$,(#10),(#20,#22));
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn extracts_defines_by_properties_with_a_grouped_relating_pset_definition_set() {
+    let dm = extract_data_model_checked(GROUPED_RELATING_PSET_IFC);
+
+    let dbp = |relating: u32| {
+        dm.relationships.iter().any(|r| {
+            r.rel_type.eq_ignore_ascii_case("IFCRELDEFINESBYPROPERTIES")
+                && r.relating_id == relating
+                && r.related_id == 10
+        })
+    };
+    assert!(
+        dbp(20),
+        "DefinesByProperties #79 dropped the pset (#20) half of the grouped relating set: {:?}",
+        dm.relationships
+    );
+    assert!(
+        dbp(22),
+        "DefinesByProperties #79 dropped the qset (#22) half of the grouped relating set: {:?}",
+        dm.relationships
+    );
+
+    let pset = dm
+        .property_sets
+        .iter()
+        .find(|p| p.pset_id == 20)
+        .expect("Pset_Grouped extracted and attached to #10");
+    assert_eq!(pset.properties.len(), 1);
+    assert_eq!(pset.properties[0].property_name, "Fire");
+}
+
+/// EXPORT-DATA-1 (#7681): the same grouped set in the spelling ISO 10303-21
+/// gives a defined type inside a SELECT, the typed parameter
+/// `IFCPROPERTYSETDEFINITIONSET((#20,#22))`. `get_refs` saw only the bare
+/// list, so this spelling still dropped the whole relationship after #4773.
+#[test]
+fn extracts_defines_by_properties_with_a_typed_property_set_definition_set() {
+    let ifc = GROUPED_RELATING_PSET_IFC.replace("(#10),(#20,#22)", "(#10),IFCPROPERTYSETDEFINITIONSET((#20,#22))");
+    assert_ne!(ifc, GROUPED_RELATING_PSET_IFC, "the fixture must carry the typed spelling");
+    let dm = extract_data_model_checked(&ifc);
+    for relating in [20, 22] {
+        assert!(
+            dm.relationships.iter().any(|r| r.rel_type.eq_ignore_ascii_case("IFCRELDEFINESBYPROPERTIES")
+                && r.relating_id == relating
+                && r.related_id == 10),
+            "#79 dropped #{relating} from the typed set: {:?}",
+            dm.relationships
+        );
+    }
+    let pset = dm.property_sets.iter().find(|p| p.pset_id == 20).expect("Pset_Grouped attached to #10");
+    assert_eq!(pset.properties[0].property_name, "Fire");
+}
+
+/// A wall associated DIRECTLY with an `IfcMaterial` (no layer set / usage
+/// indirection) — the `"IFCMATERIAL" =>` arm of `resolve_material`, whose
+/// `category` field (attribute 2) was previously not asserted anywhere: a
+/// mutation dropping it to `None` passed the full suite.
+const DIRECT_MATERIAL_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall00000000000000001',$,'W1',$,$,$,$,$,$);
+#80=IFCMATERIAL('Brick',$,'Masonry');
+#81=IFCRELASSOCIATESMATERIAL('Mat0000000000000000004',$,$,$,(#28),#80);
+#29=IFCWALL('Wall00000000000000002',$,'W2',$,$,$,$,$);
+#30=IFCWALL('Wall00000000000000003',$,'W3',$,$,$,$,$);
+#82=IFCMATERIAL($,$,'CategoryOnly');
+#83=IFCRELASSOCIATESMATERIAL('Mat0000000000000000005',$,$,$,(#29),#82);
+#86=IFCMATERIAL($,$,$);
+#87=IFCMATERIAL('',$,$);
+#84=IFCMATERIALLIST((#80,#82,#86,#87));
+#85=IFCRELASSOCIATESMATERIAL('Mat0000000000000000006',$,$,$,(#30),#84);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn resolves_a_direct_material_association_including_its_category() {
+    let dm = extract_data_model_checked(DIRECT_MATERIAL_IFC);
+    let m = dm
+        .materials
+        .iter()
+        .find(|m| m.element_id == 28)
+        .expect("direct material association");
+    assert_eq!(m.material_name, "Brick");
+    assert!(m.material_name_present);
+    assert_eq!(m.kind, "IfcMaterial");
+    assert_eq!(m.material_category.as_deref(), Some("Masonry"));
+    let unnamed = dm.materials.iter().find(|m| m.element_id == 29).expect("unnamed material retained");
+    assert_eq!(unnamed.material_name, "");
+    assert!(!unnamed.material_name_present);
+    assert_eq!(unnamed.material_category.as_deref(), Some("CategoryOnly"));
+    let list: Vec<_> = dm.materials.iter().filter(|m| m.element_id == 30).collect();
+    assert_eq!(list.len(), 4, "unnamed list members must not disappear");
+    assert!(list.iter().any(|m| m.material_name.is_empty() && m.material_id == Some(82)
+        && m.material_category.as_deref() == Some("CategoryOnly")));
+    assert!(list.iter().any(|m| m.material_name.is_empty() && m.material_id == Some(86)
+        && m.material_category.is_none() && !m.material_name_present));
+    assert!(list.iter().any(|m| m.material_name.is_empty() && m.material_id == Some(87)
+        && m.material_category.is_none() && m.material_name_present));
+    assert_eq!(m.category.as_deref(), Some("Masonry"));
+    assert_eq!(m.set_name, None);
+    assert_eq!(m.thickness, None);
+}
+
+#[test]
+fn forwards_revit_duplex_material_associations_with_identity_5296() {
+    let source = ifc_lite_testkit::fixture_bytes_or_skip!("ara3d/duplex.ifc");
+    let dm = extract_data_model_checked(&source);
+    assert!(dm.materials.iter().any(|m| m.material_name == "Masonry - Brick"),
+        "Revit material assignment must survive server extraction");
+    assert!(dm.materials.iter().all(|m| m.association_id > 0 && m.definition_id > 0 && !m.kind.is_empty()),
+        "every forwarded row keeps its IFC relationship and definition identity");
+}
+
+/// A TWO-level `IfcClassificationReference` chain (leaf -> intermediate ref ->
+/// `IfcClassification`) — `resolve_classification`'s `ReferencedSource` walk
+/// loop was only ever exercised at depth 1 (leaf ref pointing straight at the
+/// classification); a mutation that stops walking after the first hop still
+/// passed the full suite, silently losing `system_name` on any multi-level
+/// classification tree (issue #900 covers only the flat case).
+const NESTED_CLASSIFICATION_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall00000000000000001',$,'W1',$,$,$,$,$,$);
+#40=IFCCLASSIFICATION('Uniclass 2015','2',$,'Uniclass 2015',$,$,$);
+#41=IFCCLASSIFICATIONREFERENCE('loc-parent','PARENT','Parent Group',#40,$,$);
+#42=IFCCLASSIFICATIONREFERENCE('loc-leaf','LEAF','Leaf Item',#41,$,$);
+#43=IFCRELASSOCIATESCLASSIFICATION('Cls0000000000000000002',$,$,$,(#28),#42);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn walks_referenced_source_through_multiple_classification_reference_levels() {
+    let dm = extract_data_model_checked(NESTED_CLASSIFICATION_IFC);
+    let c = dm
+        .classifications
+        .iter()
+        .find(|c| c.element_id == 28)
+        .expect("nested classification association");
+    // The leaf reference's own fields.
+    assert_eq!(c.identification.as_deref(), Some("LEAF"));
+    assert_eq!(c.name.as_deref(), Some("Leaf Item"));
+    assert_eq!(c.location.as_deref(), Some("loc-leaf"));
+    // system_name resolved by walking THROUGH the intermediate reference (#41)
+    // to the owning IfcClassification (#40) two hops away.
+    assert_eq!(c.system_name.as_deref(), Some("Uniclass 2015"));
+}
+
+#[test]
+fn buckets_contained_elements_by_the_correct_spatial_container_kind() {
+    let dm = extract_data_model_checked(SPATIAL_CHAIN_IFC);
+    let sh = &dm.spatial_hierarchy;
+
+    // Each element must land in EXACTLY its own container's bucket, not any
+    // of the other three (the swapped/wrong-bucket mutation this pins).
+    assert_eq!(sh.element_to_site, vec![(10, 2)], "site bucket");
+    assert_eq!(sh.element_to_building, vec![(11, 3)], "building bucket");
+    assert_eq!(sh.element_to_storey, vec![(12, 4)], "storey bucket");
+    assert_eq!(sh.element_to_space, vec![(13, 5)], "space bucket");
+
+    assert_eq!(sh.element_to_site.len(), 1);
+    assert_eq!(sh.element_to_building.len(), 1);
+    assert_eq!(sh.element_to_storey.len(), 1);
+    assert_eq!(sh.element_to_space.len(), 1);
+}
+
+/// #4310 (mirroring the TS-side fix `elementToStorey.get(id)` in
+/// `spatial-hierarchy-builder.ts`): a wall duplicate-contained by two
+/// storeys must resolve to the FIRST-declared `IFCRELCONTAINEDINSPATIALSTRUCTURE`
+/// edge, independent of which order the two relations appear in the file.
+/// Two mirror-image fixtures (not one fixture that happens to commute) pin
+/// this: swapping which relation is declared first must swap which storey
+/// wins.
+const DUPLICATE_STOREY_ORDER_A_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#2=IFCBUILDING('Bldg0000000000000000001',$,'MyBuilding',$,$,$,$,$,$,$,$,$);
+#3=IFCBUILDINGSTOREY('StorA00000000000000001',$,'StoreyA',$,$,$,$,$,$,$);
+#4=IFCBUILDINGSTOREY('StorB00000000000000001',$,'StoreyB',$,$,$,$,$,$,$);
+#5=IFCWALL('Wall0000000000000000001',$,'W1',$,$,$,$,$,$);
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#2));
+#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#2,(#3,#4));
+#110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#5),#3);
+#111=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000002',$,$,$,(#5),#4);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+const DUPLICATE_STOREY_ORDER_B_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#2=IFCBUILDING('Bldg0000000000000000001',$,'MyBuilding',$,$,$,$,$,$,$,$,$);
+#3=IFCBUILDINGSTOREY('StorA00000000000000001',$,'StoreyA',$,$,$,$,$,$,$);
+#4=IFCBUILDINGSTOREY('StorB00000000000000001',$,'StoreyB',$,$,$,$,$,$,$);
+#5=IFCWALL('Wall0000000000000000001',$,'W1',$,$,$,$,$,$);
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#2));
+#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#2,(#3,#4));
+#110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#5),#4);
+#111=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000002',$,$,$,(#5),#3);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn duplicate_storey_containment_resolves_first_declared_order_a() {
+    let dm = extract_data_model_checked(DUPLICATE_STOREY_ORDER_A_IFC);
+    let sh = &dm.spatial_hierarchy;
+    // Order A declares StoreyA (#3) first: the wall must resolve to #3, and
+    // there must be exactly one entry for the wall, not two competing ones.
+    assert_eq!(
+        sh.element_to_storey.iter().filter(|(e, _)| *e == 5).count(),
+        1,
+        "duplicate containment must collapse to a single first-declared entry, not both: {:?}",
+        sh.element_to_storey
+    );
+    assert_eq!(
+        sh.element_to_storey.iter().find(|(e, _)| *e == 5).map(|(_, s)| *s),
+        Some(3),
+        "first-declared edge (Storey A, #3) must win"
+    );
+}
+
+/// #4310 review: an orphan storey (no IfcRelAggregates edge anywhere, so it is
+/// rescued as a root by the orphan-fill pass) declared BEFORE a project-
+/// reachable storey must not win the first-declared ruling. packages/parser
+/// only considers storeys reachable from IfcProject (see
+/// `falls through to the reachable later-declared storey when the
+/// first-declared one is unreachable` in spatial-hierarchy-builder.test.ts).
+const ORPHAN_STOREY_FIRST_DECLARED_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#2=IFCBUILDING('Bldg0000000000000000001',$,'MyBuilding',$,$,$,$,$,$,$,$,$);
+#3=IFCBUILDINGSTOREY('StorA00000000000000001',$,'OrphanStoreyA',$,$,$,$,$,$,$);
+#4=IFCBUILDINGSTOREY('StorB00000000000000001',$,'StoreyB',$,$,$,$,$,$,$);
+#5=IFCWALL('Wall0000000000000000001',$,'W1',$,$,$,$,$,$);
+#6=IFCWALL('Wall0000000000000000002',$,'W2',$,$,$,$,$,$);
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#2));
+#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#2,(#4));
+#110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#5,#6),#3);
+#111=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000002',$,$,$,(#5),#4);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn orphan_storey_declared_first_does_not_win_over_reachable_storey() {
+    let dm = extract_data_model_checked(ORPHAN_STOREY_FIRST_DECLARED_IFC);
+    let sh = &dm.spatial_hierarchy;
+    // The orphan Storey A (#3) is rescued as a root, so it is present.
+    assert!(sh.nodes.iter().any(|n| n.entity_id == 3 && n.parent_id == 0));
+    // W1 is named first by the orphan, then by reachable Storey B: the
+    // reachable storey wins, matching packages/parser.
+    assert_eq!(
+        sh.element_to_storey.iter().filter(|(e, _)| *e == 5).count(),
+        1,
+        "exactly one storey row for W1: {:?}",
+        sh.element_to_storey
+    );
+    assert_eq!(
+        sh.element_to_storey.iter().find(|(e, _)| *e == 5).map(|(_, s)| *s),
+        Some(4),
+        "project-reachable Storey B (#4) must win over the earlier-declared orphan"
+    );
+    // W2 is contained ONLY in the orphan storey: it keeps that row rather
+    // than vanishing from the lookup table.
+    assert_eq!(
+        sh.element_to_storey.iter().find(|(e, _)| *e == 6).map(|(_, s)| *s),
+        Some(3),
+        "orphan-only containment is retained"
+    );
+}
+
+#[test]
+fn duplicate_storey_containment_resolves_first_declared_order_b() {
+    let dm = extract_data_model_checked(DUPLICATE_STOREY_ORDER_B_IFC);
+    let sh = &dm.spatial_hierarchy;
+    // Order B swaps which relation is declared first: the wall must now
+    // resolve to Storey B (#4) - the winner tracks declaration order, not a
+    // fixed storey.
+    assert_eq!(
+        sh.element_to_storey.iter().filter(|(e, _)| *e == 5).count(),
+        1,
+        "duplicate containment must collapse to a single first-declared entry, not both: {:?}",
+        sh.element_to_storey
+    );
+    assert_eq!(
+        sh.element_to_storey.iter().find(|(e, _)| *e == 5).map(|(_, s)| *s),
+        Some(4),
+        "first-declared edge (Storey B, #4) must win"
+    );
+}
+
+/// Every relationship row must carry the express id of the `IfcRel*` entity it
+/// came from (issue #3860). Without it the viewer's server path fed the
+/// relationship graph id 0 and a Parquet/DuckDB export wrote `RelId = 0` on
+/// every row, so a server-loaded model and a locally parsed one disagreed on
+/// the same relationship. The three association rels here have distinct express
+/// ids (#35 / #42 / #51) that are also distinct from their relating and related
+/// ids, so neither a constant nor a copy of a neighbouring column passes.
+#[test]
+fn relationships_carry_the_ifcrel_express_id() {
+    let dm = extract_data_model_checked(ASSOCIATIONS_IFC);
+    let rel_id_of = |ty: &str, relating: u32, related: u32| -> u32 {
+        dm.relationships
+            .iter()
+            .find(|r| {
+                r.rel_type.eq_ignore_ascii_case(ty)
+                    && r.relating_id == relating
+                    && r.related_id == related
+            })
+            .unwrap_or_else(|| panic!("{ty} ({relating} -> {related}) missing"))
+            .rel_id
+    };
+    assert_eq!(rel_id_of("IFCRELASSOCIATESMATERIAL", 34, 28), 35);
+    assert_eq!(rel_id_of("IFCRELASSOCIATESCLASSIFICATION", 41, 28), 42);
+    assert_eq!(rel_id_of("IFCRELASSOCIATESDOCUMENT", 50, 28), 51);
+}
+
+/// The single-ref voids/fills path builds its `Relationship` in a separate arm
+/// from the list path, so it can lose `rel_id` on its own.
+#[test]
+fn voids_and_fills_carry_the_ifcrel_express_id() {
+    let dm = extract_data_model_checked(VOID_FILL_IFC);
+    let rel_id_of = |ty: &str| -> u32 {
+        dm.relationships
+            .iter()
+            .find(|r| r.rel_type.eq_ignore_ascii_case(ty))
+            .unwrap_or_else(|| panic!("{ty} missing"))
+            .rel_id
+    };
+    assert_eq!(rel_id_of("IFCRELVOIDSELEMENT"), 40);
+    assert_eq!(rel_id_of("IFCRELFILLSELEMENT"), 50);
+}
+
+/// #3965: an `IfcSpace` placed under its storey via `IfcRelContainedInSpatialStructure`
+/// only (the common Revit Family / Dynamo export pattern, historically reported at
+/// #1075) must be promoted into its own `SpatialNode`, exactly like an aggregated one -
+/// not left as a flat leaf in `element_ids` with no parent link.
+const CONTAINED_SPACE_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#2=IFCBUILDING('Bldg0000000000000000001',$,'MyBuilding',$,$,$,$,$,$,$,$,$);
+#3=IFCBUILDINGSTOREY('Stor0000000000000000001',$,'MyStorey',$,$,$,$,$,$,$);
+#5=IFCSPACE('Spac0000000000000000001',$,'MySpace',$,$,$,$,$,$,$);
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#2));
+#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#2,(#3));
+#110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#5),#3);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn a_contained_not_aggregated_space_is_promoted_to_its_own_node() {
+    let dm = extract_data_model_checked(CONTAINED_SPACE_IFC);
+    let sh = &dm.spatial_hierarchy;
+
+    let storey = sh
+        .nodes
+        .iter()
+        .find(|n| n.entity_id == 3)
+        .expect("storey node");
+    assert_eq!(
+        storey.children_ids,
+        vec![5],
+        "the contained space must be linked as the storey's child, not dropped"
+    );
+
+    let space = sh
+        .nodes
+        .iter()
+        .find(|n| n.entity_id == 5)
+        .expect("the contained IfcSpace must have its own SpatialNode");
+    assert_eq!(space.parent_id, 3, "space's parent must be the storey that contains it");
+    assert_eq!(space.type_name.to_uppercase(), "IFCSPACE");
+    assert_eq!(space.level, storey.level + 1);
+
+    // Reachable-from-project walk (what the client's buildSpatialNodeTree/hierarchy
+    // panel actually does) must find the space, not just nodes_map containing it.
+    let mut reachable = std::collections::HashSet::new();
+    let mut stack = vec![sh.project_id];
+    while let Some(id) = stack.pop() {
+        if !reachable.insert(id) {
+            continue;
+        }
+        if let Some(n) = sh.nodes.iter().find(|n| n.entity_id == id) {
+            stack.extend(n.children_ids.iter().copied());
+        }
+    }
+    assert!(
+        reachable.contains(&5),
+        "the contained space must be reachable from project_id via children_ids"
+    );
+
+    // It must NOT also linger as a plain leaf element on the storey.
+    assert!(
+        !storey.element_ids.contains(&5),
+        "a promoted spatial child must not remain in element_ids as a leaf too"
+    );
+}
+
+/// A space that is BOTH aggregated AND contained under the SAME parent (some
+/// authoring tools emit both relationships for the same edge) must appear as
+/// exactly one node with exactly one children_ids entry - not twice.
+const DOUBLE_LINKED_SPACE_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#3=IFCBUILDINGSTOREY('Stor0000000000000000001',$,'MyStorey',$,$,$,$,$,$,$);
+#5=IFCSPACE('Spac0000000000000000001',$,'MySpace',$,$,$,$,$,$,$);
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#3));
+#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#3,(#5));
+#110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#5),#3);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn a_space_both_aggregated_and_contained_under_the_same_parent_is_not_duplicated() {
+    let dm = extract_data_model_checked(DOUBLE_LINKED_SPACE_IFC);
+    let sh = &dm.spatial_hierarchy;
+
+    let storey = sh.nodes.iter().find(|n| n.entity_id == 3).expect("storey");
+    assert_eq!(
+        storey.children_ids,
+        vec![5],
+        "the doubly-linked space must appear exactly once in children_ids"
+    );
+
+    let space_nodes: Vec<_> = sh.nodes.iter().filter(|n| n.entity_id == 5).collect();
+    assert_eq!(space_nodes.len(), 1, "exactly one SpatialNode for the space, not two");
+}
+
+/// #3965's narrower gap: `IFCSPATIALZONE` was entirely absent from the spatial
+/// type list, so a zone contained (not aggregated) under its storey never got a
+/// node - and, per the issue's own scratch repro, anything the zone in turn
+/// contained (a wall here) vanished from the hierarchy entirely, not even
+/// surfacing as a leaf. `IFCMARINEPART` and `IFCFACILITYPARTCOMMON` (the
+/// IFC4X3 pair the TS side carries since #3248/#3249) get the same treatment
+/// under a facility.
+const CONTAINED_ZONE_AND_IFC4X3_PARTS_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4X3'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#3=IFCBUILDINGSTOREY('Stor0000000000000000001',$,'MyStorey',$,$,$,$,$,$,$);
+#6=IFCSPATIALZONE('Zone0000000000000000001',$,'MyZone',$,$,$,$,$,$);
+#12=IFCWALL('Wall0000000000000000001',$,'ZoneWall',$,$,$,$,$,$);
+#7=IFCFACILITY('Faci0000000000000000001',$,'MyFacility',$,$,$,$,$,$,$,$,$);
+#8=IFCMARINEPART('Mari0000000000000000001',$,'MyMarinePart',$,$,$,$,$,$,$,$,$,$);
+#9=IFCFACILITYPARTCOMMON('Comm0000000000000000001',$,'MyCommonPart',$,$,$,$,$,$,$,$,$,$);
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#3,#7));
+#111=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#6),#3);
+#112=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000002',$,$,$,(#12),#6);
+#113=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000003',$,$,$,(#8),#7);
+#114=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000004',$,$,$,(#9),#7);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn contained_spatial_zone_and_ifc4x3_facility_parts_are_promoted_to_nodes() {
+    let dm = extract_data_model_checked(CONTAINED_ZONE_AND_IFC4X3_PARTS_IFC);
+    let sh = &dm.spatial_hierarchy;
+    let node = |id: u32| sh.nodes.iter().find(|n| n.entity_id == id);
+
+    let zone = node(6).expect("contained IfcSpatialZone must get its own node");
+    assert_eq!(zone.parent_id, 3);
+    assert_eq!(zone.type_name.to_uppercase(), "IFCSPATIALZONE");
+    assert!(
+        zone.element_ids.contains(&12),
+        "the wall the zone contains must not be lost from the hierarchy"
+    );
+
+    let marine_part = node(8).expect("contained IfcMarinePart must get its own node");
+    assert_eq!(marine_part.parent_id, 7);
+    assert_eq!(marine_part.type_name.to_uppercase(), "IFCMARINEPART");
+
+    let facility_part_common =
+        node(9).expect("contained IfcFacilityPartCommon must get its own node");
+    assert_eq!(facility_part_common.parent_id, 7);
+    assert_eq!(facility_part_common.type_name.to_uppercase(), "IFCFACILITYPARTCOMMON");
+}
+
+/// #3973: a space aggregated under Storey A (#2) but ALSO contained (not
+/// aggregated) under a DIFFERENT storey, Storey B (#3). Unlike the
+/// same-parent case above, cross-parent dedup was never handled at all:
+/// `spatial_children_map` is keyed per-parent, so both storeys' children_ids
+/// listed the space, while `build_spatial_nodes_recursive` has no
+/// already-inserted guard, so whichever branch the walk reached last silently
+/// overwrote `nodes_map`, deciding the space's `parent_id` by relationship-list
+/// iteration order rather than a rule. A client walking from Storey A would
+/// find the space id but render it with Storey B's parent linkage.
+///
+/// Fixed behaviour: IfcRelAggregates is the canonical spatial-hierarchy
+/// relationship, so the aggregated parent (Storey A) wins deterministically
+/// over the merely-contained parent (Storey B); Storey B's children_ids must
+/// not reference a node that isn't actually its child.
+/// #3973's own comment claims aggregation-vs-containment precedence and
+/// first-file-order-wins-among-ties are never decided by relationship/HashMap
+/// iteration order. This is the direct check: the SAME cross-parent fixture
+/// as the test below, but with its two IFCRELAGGREGATES lines re-ordered
+/// relative to each other AND relative to the IFCRELCONTAINEDINSPATIALSTRUCTURE
+/// line, must produce the identical tree.
+const CROSS_PARENT_DUAL_LINKED_SPACE_REORDERED_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#2=IFCBUILDINGSTOREY('StorA00000000000000001',$,'StoreyA',$,$,$,$,$,$,$);
+#3=IFCBUILDINGSTOREY('StorB00000000000000001',$,'StoreyB',$,$,$,$,$,$,$);
+#5=IFCSPACE('Spac0000000000000000001',$,'MySpace',$,$,$,$,$,$,$);
+#110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#5),#3);
+#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#2,(#5));
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#2,#3));
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn reordering_the_same_relationships_in_the_file_produces_an_identical_tree() {
+    let ordered = extract_data_model_checked(CROSS_PARENT_DUAL_LINKED_SPACE_IFC);
+    let reordered = extract_data_model_checked(CROSS_PARENT_DUAL_LINKED_SPACE_REORDERED_IFC);
+
+    let mut ordered_nodes = ordered.spatial_hierarchy.nodes.clone();
+    let mut reordered_nodes = reordered.spatial_hierarchy.nodes.clone();
+    ordered_nodes.sort_by_key(|n| n.entity_id);
+    reordered_nodes.sort_by_key(|n| n.entity_id);
+
+    assert_eq!(
+        ordered_nodes.len(),
+        reordered_nodes.len(),
+        "reordering relationship lines must not change how many nodes are built"
+    );
+    for (a, b) in ordered_nodes.iter().zip(reordered_nodes.iter()) {
+        assert_eq!(a.entity_id, b.entity_id);
+        assert_eq!(
+            a.parent_id, b.parent_id,
+            "entity {} got a different parent depending on file order",
+            a.entity_id
+        );
+        assert_eq!(a.level, b.level, "entity {} got a different level depending on file order", a.entity_id);
+        assert_eq!(
+            a.children_ids, b.children_ids,
+            "entity {} got different children_ids depending on file order",
+            a.entity_id
+        );
+    }
+}
+
+const CROSS_PARENT_DUAL_LINKED_SPACE_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#2=IFCBUILDINGSTOREY('StorA00000000000000001',$,'StoreyA',$,$,$,$,$,$,$);
+#3=IFCBUILDINGSTOREY('StorB00000000000000001',$,'StoreyB',$,$,$,$,$,$,$);
+#5=IFCSPACE('Spac0000000000000000001',$,'MySpace',$,$,$,$,$,$,$);
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#2,#3));
+#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#2,(#5));
+#110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#5),#3);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn a_space_aggregated_under_one_storey_and_contained_under_another_picks_one_canonical_parent() {
+    let dm = extract_data_model_checked(CROSS_PARENT_DUAL_LINKED_SPACE_IFC);
+    let sh = &dm.spatial_hierarchy;
+
+    let storey_a = sh.nodes.iter().find(|n| n.entity_id == 2).expect("storey A");
+    let storey_b = sh.nodes.iter().find(|n| n.entity_id == 3).expect("storey B");
+
+    // Exactly one SpatialNode for the space, ever.
+    let space_nodes: Vec<_> = sh.nodes.iter().filter(|n| n.entity_id == 5).collect();
+    assert_eq!(
+        space_nodes.len(),
+        1,
+        "exactly one SpatialNode for the cross-parent space, not one per parent"
+    );
+
+    // The aggregation edge (Storey A) is the canonical relationship and must win,
+    // deterministically - never decided by relationship/HashMap iteration order.
+    assert_eq!(
+        space_nodes[0].parent_id, 2,
+        "the aggregated parent (Storey A) must win over the merely-contained parent (Storey B)"
+    );
+
+    assert_eq!(
+        storey_a.children_ids,
+        vec![5],
+        "Storey A (the real aggregation parent) must list the space as its child"
+    );
+    assert!(
+        !storey_b.children_ids.contains(&5),
+        "Storey B must not reference a node that is not actually its child - \
+         a dangling children_ids entry lets a client render the space with the wrong parent's data"
+    );
+}
+
+/// #4246 (Rust counterpart): authoring-tool mistake - a parent/child
+/// aggregation pair declared in BOTH directions. #1 Project, #2 Building, #3
+/// Storey, #4 Wall (contained in the storey). #2<->#3 is the mutual pair
+/// (#2->#3 real, #3->#2 spurious); #1->#2 is the real anchor to IfcProject.
+/// When the spurious back-edge is declared before the real anchor edge,
+/// `canonical_parent`'s bare first-occurrence-wins should NOT let it win the
+/// tie for Building's parent - the whole Building subtree must stay
+/// reachable from Project.
+fn spurious_back_edge_ifc(order: &str) -> String {
+    let (edge1, edge2, edge3) = if order == "spurious-first" {
+        (
+            "#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#2,(#3));", // Building -> Storey (real)
+            "#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#3,(#2));", // Storey -> Building (spurious back-edge)
+            "#102=IFCRELAGGREGATES('Agg00000000000000000003',$,$,$,#1,(#2));", // Project -> Building (real anchor, LAST)
+        )
+    } else {
+        (
+            "#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#2));", // Project -> Building (real anchor, FIRST)
+            "#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#2,(#3));", // Building -> Storey (real)
+            "#102=IFCRELAGGREGATES('Agg00000000000000000003',$,$,$,#3,(#2));", // Storey -> Building (spurious back-edge, LAST)
+        )
+    };
+    format!(
+        "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+         #1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);\n\
+         #2=IFCBUILDING('Bldg0000000000000000001',$,'MyBuilding',$,$,$,$,$,$,$,$,$);\n\
+         #3=IFCBUILDINGSTOREY('StorA00000000000000001',$,'StoreyA',$,$,$,$,$,$,$);\n\
+         #4=IFCWALL('Wall0000000000000000001',$,'W1',$,$,$,$,$,$);\n\
+         {edge1}\n{edge2}\n{edge3}\n\
+         #110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#4),#3);\n\
+         ENDSEC;\nEND-ISO-10303-21;\n"
+    )
+}
+
+/// #4285 review: the back-edge check is bounded by an upload-wide visit
+/// budget. Once spent, contested children resolve plain first-declared (the
+/// pre-#4285 answer) instead of the parse stalling on a crafted graph - and a
+/// partial descendant walk is never used as "no cycle".
+#[test]
+fn back_edge_cycle_check_falls_back_to_first_declared_once_budget_is_spent() {
+    let rel = |rel_id: u32, relating_id: u32, related_id: u32| Relationship {
+        rel_type: "IfcRelAggregates".to_string(),
+        rel_id,
+        relating_id,
+        related_id,
+    };
+    // Storey(#3) -> Building(#2) spurious back-edge declared FIRST, then the
+    // real Project(#1) -> Building(#2) and Building(#2) -> Storey(#3).
+    let relationships = vec![rel(10, 3, 2), rel(11, 1, 2), rel(12, 2, 3)];
+
+    let resolved = spatial::resolve_aggregate_canonical_parents_for_tests(&relationships);
+    assert_eq!(resolved.get(&2), Some(&1), "default budget: the cycle is broken");
+
+    let starved = spatial::resolve_aggregate_canonical_parents_with_budget(&relationships, 0);
+    assert_eq!(starved.get(&2), Some(&3), "budget spent: first-declared edge wins");
+    assert_eq!(starved.get(&3), Some(&2));
+}
+
+#[test]
+fn spurious_aggregation_back_edge_declared_first_keeps_building_reachable_from_project() {
+    let ifc = spurious_back_edge_ifc("spurious-first");
+    let dm = extract_data_model_checked(&ifc);
+    let sh = &dm.spatial_hierarchy;
+
+    let project = sh.nodes.iter().find(|n| n.entity_id == 1).expect("project node");
+    assert!(
+        project.children_ids.contains(&2),
+        "Project must still list Building as a child when the spurious back-edge \
+         (Storey -> Building) was declared before the real anchor edge (Project -> Building); \
+         project.children_ids = {:?}",
+        project.children_ids
+    );
+
+    let building = sh.nodes.iter().find(|n| n.entity_id == 2);
+    assert!(
+        building.is_some(),
+        "Building must have a SpatialNode reachable from Project, not be orphaned by the back-edge"
+    );
+    assert_eq!(
+        building.unwrap().parent_id,
+        1,
+        "Building's canonical parent must be Project (the real anchor), not Storey (the spurious back-edge)"
+    );
+
+    let storey = sh.nodes.iter().find(|n| n.entity_id == 3).expect("storey node");
+    assert_eq!(
+        storey.element_ids,
+        vec![4],
+        "the Wall must still be reachable under Storey even though Storey lost the tie for Building's parent"
+    );
+}
+
+#[test]
+fn spurious_aggregation_back_edge_declared_last_is_self_healing_baseline() {
+    let ifc = spurious_back_edge_ifc("legit-first");
+    let dm = extract_data_model_checked(&ifc);
+    let sh = &dm.spatial_hierarchy;
+
+    let project = sh.nodes.iter().find(|n| n.entity_id == 1).expect("project node");
+    assert!(project.children_ids.contains(&2));
+    let building = sh.nodes.iter().find(|n| n.entity_id == 2).expect("building node");
+    assert_eq!(building.parent_id, 1);
+}
+
+#[test]
+fn spurious_aggregation_back_edge_produces_identical_shape_regardless_of_order() {
+    let shape_of = |order: &str| {
+        let ifc = spurious_back_edge_ifc(order);
+        let dm = extract_data_model_checked(&ifc);
+        let sh = dm.spatial_hierarchy;
+        let mut project_children = sh
+            .nodes
+            .iter()
+            .find(|n| n.entity_id == 1)
+            .map(|n| n.children_ids.clone())
+            .unwrap_or_default();
+        project_children.sort();
+        let building_parent = sh.nodes.iter().find(|n| n.entity_id == 2).map(|n| n.parent_id);
+        (project_children, building_parent)
+    };
+    assert_eq!(shape_of("spurious-first"), shape_of("legit-first"));
+}
+
+/// #4246: same defect shape, one hop longer - #2 -> #3 -> #4 -> #2 forms a
+/// 3-node cycle instead of a direct mutual pair. A direct "does the child
+/// forward-aggregate this candidate" check would miss this; the fix must
+/// walk the raw aggregation graph, not just direct children.
+#[test]
+fn breaks_a_longer_indirect_aggregation_back_edge_cycle() {
+    const INDIRECT_CYCLE_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#2=IFCBUILDING('Bldg0000000000000000001',$,'MyBuilding',$,$,$,$,$,$,$,$,$);
+#3=IFCBUILDINGSTOREY('StorA00000000000000001',$,'StoreyA',$,$,$,$,$,$,$);
+#4=IFCBUILDINGSTOREY('StorB00000000000000001',$,'Mezzanine',$,$,$,$,$,$,$);
+#5=IFCWALL('Wall0000000000000000001',$,'W1',$,$,$,$,$,$);
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#2,(#3));
+#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#3,(#4));
+#102=IFCRELAGGREGATES('Agg00000000000000000003',$,$,$,#4,(#2));
+#103=IFCRELAGGREGATES('Agg00000000000000000004',$,$,$,#1,(#2));
+#110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#5),#4);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+    let dm = extract_data_model_checked(INDIRECT_CYCLE_IFC);
+    let sh = &dm.spatial_hierarchy;
+
+    let project = sh.nodes.iter().find(|n| n.entity_id == 1).expect("project node");
+    assert!(
+        project.children_ids.contains(&2),
+        "Project must still list Building as a child through a 3-node indirect \
+         back-edge cycle (Building -> StoreyA -> Mezzanine -> Building); \
+         project.children_ids = {:?}",
+        project.children_ids
+    );
+    assert_eq!(
+        sh.element_to_storey.iter().find(|(e, _)| *e == 5).map(|(_, s)| *s),
+        Some(4),
+        "the Wall must still resolve to Mezzanine even though Mezzanine lost \
+         the tie for Building's parent"
+    );
+}
+
+/// #3973: `Storey A` aggregates `Storey B` via `IfcRelAggregates`, and `Storey B`
+/// "contains" `Storey A` via `IfcRelContainedInSpatialStructure` (this PR's own
+/// promotion puts a contained spatial-structure target into
+/// `spatial_children_map`, same as an aggregated one). That produces
+/// `spatial_children_map == {A: [B], B: [A]}`, and the unguarded recursive walk
+/// in `build_spatial_nodes_recursive` recurses A -> B -> A -> B -> ... without
+/// bound. Because the crate builds with `panic = 'abort'`, the resulting stack
+/// overflow is not a catchable panic - it SIGABRTs the whole process. That
+/// cannot be observed with a normal `#[test]` (it would kill the test runner
+/// too), so this spawns the reproduction in a fresh child process and asserts
+/// the child exits successfully rather than being killed by a signal.
+#[test]
+fn cyclic_aggregate_and_containment_edges_do_not_abort_the_process() {
+    const CYCLIC_STOREY_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#2=IFCBUILDINGSTOREY('StorA00000000000000001',$,'StoreyA',$,$,$,$,$,$,$);
+#3=IFCBUILDINGSTOREY('StorB00000000000000001',$,'StoreyB',$,$,$,$,$,$,$);
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#2));
+#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#2,(#3));
+#110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#2),#3);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+    const REPRO_ENV_VAR: &str = "IFC_LITE_SPATIAL_CYCLE_REPRO";
+
+    if std::env::var(REPRO_ENV_VAR).is_ok() {
+        // Child process: run the exact reproduction (on a small dedicated
+        // thread stack, so an unguarded cycle overflows fast rather than
+        // eating gigabytes of stack first) and exit cleanly if it survives.
+        let handle = std::thread::Builder::new()
+            .stack_size(256 * 1024)
+            .spawn(|| {
+                let dm = extract_data_model_checked(CYCLIC_STOREY_IFC);
+                dm.spatial_hierarchy.nodes.len()
+            })
+            .expect("failed to spawn repro thread");
+        let node_count = handle.join().expect("repro thread panicked/aborted");
+        eprintln!("cyclic repro produced {node_count} spatial nodes without aborting");
+        std::process::exit(0);
+    }
+
+    let exe = std::env::current_exe().expect("current test exe");
+    // NOT `module_path!()` - it is crate-qualified (`ifc_lite_processing::...`),
+    // while libtest's own `--exact` names are not (confirmed via `--list`).
+    let test_name =
+        "data_model::tests::cyclic_aggregate_and_containment_edges_do_not_abort_the_process";
+    let output = std::process::Command::new(&exe)
+        .args([test_name, "--exact", "--nocapture"])
+        .env(REPRO_ENV_VAR, "1")
+        .output()
+        .expect("failed to spawn child test process");
+    assert_child_ran_one_test(&output);
+
+    assert!(
+        output.status.success(),
+        "a spatial hierarchy with a Storey-A-aggregates-Storey-B / \
+         Storey-B-contains-Storey-A cycle must not abort the process; \
+         child exit status = {:?}\n--- child stdout ---\n{}\n--- child stderr ---\n{}",
+        output.status,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// #3973 follow-up: a chain nested past `MAX_SPATIAL_TREE_DEPTH` (100) must
+/// have its excluded subtree dropped CLEANLY, not resurrected as corrupted
+/// fake roots. The pre-fix "orphan-fill" loop only checked `nodes_map`, which
+/// is empty both for a depth-capped entity and for its never-visited
+/// descendants, so it reinserted every one of them at `parent_id: 0, level:
+/// 0` while the last surviving ancestor's `children_ids` still (for the
+/// entity directly at the boundary) named the dropped id as a child - two
+/// representations of the same entity's place in the tree disagreeing, and
+/// exactly the shape `apps/server/src/services/parquet_data_model.rs` reads
+/// `parent_id` as authoritative for, so the exported Parquet spatial table
+/// would show spurious extra roots instead of a dropped subtree.
+#[test]
+fn entities_past_the_depth_cap_are_dropped_cleanly_not_resurrected_as_fake_roots() {
+    // Chain of 110 nested IFCBUILDINGSTOREY entities, each aggregated under
+    // the previous one, starting from IFCPROJECT (#1). Project is level 0,
+    // so entity id 2+i sits at level i+1; the cap (level > 100) first excludes
+    // id 102 (level 101).
+    let mut data = String::new();
+    data.push_str("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n");
+    data.push_str("#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);\n");
+    let n = 110u32;
+    for i in 0..n {
+        let id = 2 + i;
+        data.push_str(&format!(
+            "#{id}=IFCBUILDINGSTOREY('Stor{id:0>19}',$,'Storey{id}',$,$,$,$,$,$,$);\n"
+        ));
+    }
+    let mut rel_id = 1000u32;
+    data.push_str(&format!(
+        "#{rel_id}=IFCRELAGGREGATES('Agg{rel_id:0>19}',$,$,$,#1,(#2));\n"
+    ));
+    for i in 0..(n - 1) {
+        rel_id += 1;
+        let parent = 2 + i;
+        let child = 3 + i;
+        data.push_str(&format!(
+            "#{rel_id}=IFCRELAGGREGATES('Agg{rel_id:0>19}',$,$,$,#{parent},(#{child}));\n"
+        ));
+    }
+    data.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
+
+    let dm = extract_data_model_checked(&data);
+    let sh = &dm.spatial_hierarchy;
+    let node = |id: u32| sh.nodes.iter().find(|n| n.entity_id == id);
+
+    let last_kept = node(101).expect("the last node within the depth cap must survive");
+    assert_eq!(last_kept.level, 100);
+    assert!(
+        last_kept.children_ids.is_empty(),
+        "the depth-capped child (102) must not remain in its parent's children_ids: {:?}",
+        last_kept.children_ids
+    );
+
+    for dropped_id in [102u32, 103, 110, 111] {
+        assert!(
+            node(dropped_id).is_none(),
+            "entity {dropped_id} is past the depth cap and must not appear as a node at all \
+             (in particular, never as a fake root with parent_id 0)"
+        );
+    }
+
+    // No node anywhere may reference a child that has no SpatialNode of its own.
+    let existing_ids: std::collections::HashSet<u32> =
+        sh.nodes.iter().map(|n| n.entity_id).collect();
+    for node in &sh.nodes {
+        for &child in &node.children_ids {
+            assert!(
+                existing_ids.contains(&child),
+                "node {} (level {}) lists child {child}, which has no SpatialNode",
+                node.entity_id,
+                node.level
+            );
+        }
+    }
+}
+
+/// Follow-up to #3973's own fix: `Site` is never aggregated by `Project` (a
+/// malformed but real truncated-export shape), so it is genuinely unreachable
+/// from the root and rescued by the orphan-fill loop as a fake root
+/// (`parent_id: 0, level: 0`) - correctly, per this PR's own rule, since it
+/// has no canonical parent of its own. But `Site` DOES canonically parent
+/// `Building` via `IfcRelAggregates`, so `Building` is skipped by the
+/// orphan-fill loop's `canonical_parent` check (it does have a parent) and
+/// never gets its own `SpatialNode` - while the orphan-fill loop populated
+/// the rescued `Site` node's `children_ids` straight from
+/// `spatial_children_map`, without the same filtering
+/// `build_spatial_nodes_recursive` applies to its own descent. The rescued
+/// `Site` therefore names `Building` as a child with no `SpatialNode` of its
+/// own: the exact dangling-reference shape this fix set out to eliminate,
+/// reappearing one level removed in the orphan-fill path itself.
+const DISCONNECTED_SITE_AGGREGATES_BUILDING_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000009',$,'MyProject',$,$,$,$,$,$);
+#2=IFCSITE('Site0000000000000000001',$,'MySite',$,$,$,$,$,$,$,$,$,$,$);
+#3=IFCBUILDING('Bldg0000000000000000001',$,'MyBuilding',$,$,$,$,$,$,$,$,$);
+#101=IFCRELAGGREGATES('Agg00000000000000000009',$,$,$,#2,(#3));
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn a_rescued_orphans_children_ids_never_names_a_node_that_was_not_itself_rescued() {
+    let dm = extract_data_model_checked(DISCONNECTED_SITE_AGGREGATES_BUILDING_IFC);
+    let site = dm
+        .spatial_hierarchy
+        .nodes
+        .iter()
+        .find(|n| n.entity_id == 2)
+        .expect("Site is genuinely unreachable and has no canonical parent, so it must be rescued as a fake root");
+    assert_eq!(site.parent_id, 0);
+    let building_has_node = dm.spatial_hierarchy.nodes.iter().any(|n| n.entity_id == 3);
+    assert!(
+        !site.children_ids.contains(&3) || building_has_node,
+        "Site's children_ids names Building (#3) as a child, but Building has \
+         no SpatialNode of its own - a dangling reference identical in shape \
+         to the one this fix eliminated for the recursive-descent path"
+    );
+}
+
+/// Fixture for issue #3964: a `IfcSystem` grouping a wall via
+/// `IfcRelAssignsToGroup`, an `IfcZone` grouping the same wall via
+/// `IfcRelAssignsToGroupByFactor` (adds a proportional Factor, e.g. zone
+/// occupancy share, but shares the same RelatedObjects/RelatingGroup
+/// membership semantics as its supertype), a door decomposed into a panel via
+/// `IfcRelNests` (a decomposition edge some IFC4 exporters use instead of
+/// `IfcRelAggregates`, e.g. feature/fastener nesting), and two walls joined
+/// end-to-end via `IfcRelConnectsPathElements` (the "connected walls" edge the
+/// Properties panel reads via `extractRelationshipsOnDemand`). None of these
+/// four types were extracted before this fix.
+const NEW_REL_TYPES_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0$ScRe4drECQ4DMSqUjd6d',$,'P',$,$,$,$,$,$);
+#10=IFCWALL('Wall00000000000000001',$,'W1',$,$,$,$,$,$);
+#11=IFCWALL('Wall00000000000000002',$,'W2',$,$,$,$,$,$);
+#20=IFCSYSTEM('Sys0000000000000000001',$,'HVAC-1',$,$);
+#21=IFCRELASSIGNSTOGROUP('Grp0000000000000000001',$,$,$,(#10),$,#20);
+#25=IFCZONE('Zon0000000000000000001',$,'Zone-A',$,$);
+#26=IFCRELASSIGNSTOGROUPBYFACTOR('Grf0000000000000000001',$,$,$,(#10),$,#25,0.5);
+#30=IFCDOOR('Doo0000000000000000001',$,'D1',$,$,$,$,$,$);
+#31=IFCDOOR('Doo0000000000000000002',$,'D2',$,$,$,$,$,$);
+#32=IFCRELNESTS('Nst0000000000000000001',$,$,$,#30,(#31));
+#40=IFCRELCONNECTSPATHELEMENTS('Con0000000000000000001',$,$,$,$,#10,#11,$,$,.ATEND.,.ATSTART.);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn extracts_assigns_to_group_relationship_orientation() {
+    let dm = extract_data_model_checked(NEW_REL_TYPES_IFC);
+    // RelatingGroup=#20 (IfcSystem), RelatedObjects=(#10) (the wall).
+    assert!(
+        dm.relationships.iter().any(|r| {
+            r.rel_type.eq_ignore_ascii_case("IFCRELASSIGNSTOGROUP")
+                && r.relating_id == 20
+                && r.related_id == 10
+        }),
+        "IFCRELASSIGNSTOGROUP (system -> wall) missing or misoriented: {:?}",
+        dm.relationships
+    );
+}
+
+#[test]
+fn extracts_assigns_to_group_by_factor_relationship_orientation() {
+    let dm = extract_data_model_checked(NEW_REL_TYPES_IFC);
+    // RelatingGroup=#25 (IfcZone), RelatedObjects=(#10) (the wall).
+    assert!(
+        dm.relationships.iter().any(|r| {
+            r.rel_type.eq_ignore_ascii_case("IFCRELASSIGNSTOGROUPBYFACTOR")
+                && r.relating_id == 25
+                && r.related_id == 10
+        }),
+        "IFCRELASSIGNSTOGROUPBYFACTOR (zone -> wall) missing or misoriented: {:?}",
+        dm.relationships
+    );
+}
+
+#[test]
+fn extracts_nests_relationship_orientation() {
+    let dm = extract_data_model_checked(NEW_REL_TYPES_IFC);
+    // RelatingObject=#30 (door), RelatedObjects=(#31) (the nested panel).
+    assert!(
+        dm.relationships.iter().any(|r| {
+            r.rel_type.eq_ignore_ascii_case("IFCRELNESTS")
+                && r.relating_id == 30
+                && r.related_id == 31
+        }),
+        "IFCRELNESTS (door -> panel) missing or misoriented: {:?}",
+        dm.relationships
+    );
+}
+
+#[test]
+fn extracts_connects_path_elements_relationship_orientation() {
+    let dm = extract_data_model_checked(NEW_REL_TYPES_IFC);
+    // RelatingElement=#10 (wall 1), RelatedElement=#11 (wall 2).
+    assert!(
+        dm.relationships.iter().any(|r| {
+            r.rel_type.eq_ignore_ascii_case("IFCRELCONNECTSPATHELEMENTS")
+                && r.relating_id == 10
+                && r.related_id == 11
+        }),
+        "IFCRELCONNECTSPATHELEMENTS (wall -> wall) missing or misoriented: {:?}",
+        dm.relationships
+    );
+}
+
+/// Control: a fixture with none of the four new types must extract exactly as
+/// before — none of them should ever appear for a model that never wrote
+/// them, so a future change to the new-type match arms can't silently start
+/// matching an unrelated type.
+#[test]
+fn fixture_without_new_types_is_unaffected() {
+    let dm = extract_data_model_checked(ASSOCIATIONS_IFC);
+    assert!(
+        !dm.relationships.iter().any(|r| {
+            matches!(
+                r.rel_type.to_uppercase().as_str(),
+                "IFCRELASSIGNSTOGROUP"
+                    | "IFCRELASSIGNSTOGROUPBYFACTOR"
+                    | "IFCRELNESTS"
+                    | "IFCRELCONNECTSPATHELEMENTS"
+            )
+        }),
+        "fixture has none of the new types, but one was extracted: {:?}",
+        dm.relationships
+    );
+}
+
+/// Issue #3963 reporter's minimal fixture: a wall whose only `IfcPropertySet`
+/// ("Pset_Scratch") has, as its ONLY `HasProperties` member, an
+/// `IfcComplexProperty` wrapping one simple sub-property. Before the fix,
+/// `extract_property` has no arm for `IFCCOMPLEXPROPERTY` (falls to `_ =>
+/// None`), so `properties` ends up empty and the whole `PropertySet` is
+/// dropped — `dm.property_sets.len() == 0` even though the wall genuinely
+/// carries a property set in the file.
+const COMPLEX_PROPERTY_ONLY_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000002',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall00000000000000001',$,'W1',$,$,$,$,$,$);
+#80=IFCPROPERTYSINGLEVALUE('SubName',$,IFCLABEL('SubVal'),$);
+#81=IFCCOMPLEXPROPERTY('ComplexName',$,'Usage',(#80));
+#82=IFCPROPERTYSET('Pst0000000000000000001',$,'Pset_Scratch',$,(#81));
+#83=IFCRELDEFINESBYPROPERTIES('Rel0000000000000000001',$,$,$,(#28),#82);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn a_pset_whose_only_member_is_a_complex_property_is_not_dropped() {
+    let dm = extract_data_model(COMPLEX_PROPERTY_ONLY_IFC);
+    let pset = dm
+        .property_sets
+        .iter()
+        .find(|p| p.pset_id == 82)
+        .expect("Pset_Scratch must survive — issue #3963");
+    assert_eq!(pset.pset_name, "Pset_Scratch");
+
+    // The complex property surfaces as ONE entry under its own Name, with the
+    // nested sub-property flattened into a "Name: value" display string —
+    // mirroring `resolveComplexPropertyValue` in
+    // packages/parser/src/property-value-parser.ts, which is the spec here.
+    let prop = pset
+        .properties
+        .iter()
+        .find(|p| p.property_name == "ComplexName")
+        .expect("ComplexName entry missing");
+    assert_eq!(prop.property_value, "SubName: SubVal");
+    assert_eq!(prop.property_type, "string");
+    assert_eq!(
+        prop.values.as_deref(),
+        Some(&["SubVal".to_string()][..]),
+        "flat values candidate array must carry the nested display value"
+    );
+}
+
+/// A set mixing a simple and a complex member must yield BOTH — the complex
+/// arm must not crowd out (or be crowded out by) the existing simple-value
+/// arms in the same `match`.
+const MIXED_SIMPLE_AND_COMPLEX_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000003',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall00000000000000002',$,'W2',$,$,$,$,$,$);
+#90=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('REI 60'),$);
+#91=IFCPROPERTYSINGLEVALUE('SubName',$,IFCLABEL('SubVal'),$);
+#92=IFCCOMPLEXPROPERTY('ComplexName',$,'Usage',(#91));
+#93=IFCPROPERTYSET('Pst0000000000000000002',$,'Pset_Mixed',$,(#90,#92));
+#94=IFCRELDEFINESBYPROPERTIES('Rel0000000000000000002',$,$,$,(#28),#93);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn a_pset_mixing_simple_and_complex_members_yields_both() {
+    let dm = extract_data_model(MIXED_SIMPLE_AND_COMPLEX_IFC);
+    let pset = dm
+        .property_sets
+        .iter()
+        .find(|p| p.pset_id == 93)
+        .expect("Pset_Mixed must be extracted");
+    assert_eq!(pset.properties.len(), 2, "both members must survive");
+    let simple = pset
+        .properties
+        .iter()
+        .find(|p| p.property_name == "FireRating")
+        .unwrap();
+    assert_eq!(simple.property_value, "REI 60");
+    let complex = pset
+        .properties
+        .iter()
+        .find(|p| p.property_name == "ComplexName")
+        .unwrap();
+    assert_eq!(complex.property_value, "SubName: SubVal");
+}
+
+/// Nested `IfcComplexProperty` (a complex property whose own `HasProperties`
+/// contains another complex property) must recurse — mirroring
+/// `resolveComplexPropertyValue`'s self-recursion in property-value-parser.ts.
+const NESTED_COMPLEX_PROPERTY_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000004',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall00000000000000003',$,'W3',$,$,$,$,$,$);
+#95=IFCPROPERTYSINGLEVALUE('Leaf',$,IFCLABEL('LeafVal'),$);
+#96=IFCCOMPLEXPROPERTY('Inner',$,'InnerUsage',(#95));
+#97=IFCCOMPLEXPROPERTY('Outer',$,'OuterUsage',(#96));
+#98=IFCPROPERTYSET('Pst0000000000000000003',$,'Pset_Nested',$,(#97));
+#99=IFCRELDEFINESBYPROPERTIES('Rel0000000000000000003',$,$,$,(#28),#98);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn nested_complex_properties_recurse_two_levels_deep() {
+    let dm = extract_data_model(NESTED_COMPLEX_PROPERTY_IFC);
+    let pset = dm
+        .property_sets
+        .iter()
+        .find(|p| p.pset_id == 98)
+        .expect("Pset_Nested must be extracted");
+    let outer = pset
+        .properties
+        .iter()
+        .find(|p| p.property_name == "Outer")
+        .expect("Outer entry missing");
+    // Inner recurses to "Leaf: LeafVal", which is then wrapped as
+    // "Inner: Leaf: LeafVal" by the outer level.
+    assert_eq!(outer.property_value, "Inner: Leaf: LeafVal");
+}
+
+/// Control: a property set with no complex members at all — the displaced
+/// path, and the one that matters most — must still extract identically to
+/// before this change (issue #3963 must not touch simple-value handling).
+const SIMPLE_ONLY_PSET_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000005',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall00000000000000004',$,'W4',$,$,$,$,$,$);
+#100=IFCPROPERTYSINGLEVALUE('Manufacturer',$,IFCLABEL('ACME'),$);
+#101=IFCPROPERTYSET('Pst0000000000000000004',$,'Pset_Simple',$,(#100));
+#102=IFCRELDEFINESBYPROPERTIES('Rel0000000000000000004',$,$,$,(#28),#101);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn a_pset_with_no_complex_members_is_unaffected() {
+    let dm = extract_data_model(SIMPLE_ONLY_PSET_IFC);
+    let pset = dm
+        .property_sets
+        .iter()
+        .find(|p| p.pset_id == 101)
+        .expect("Pset_Simple must be extracted");
+    assert_eq!(pset.properties.len(), 1);
+    let m = &pset.properties[0];
+    assert_eq!(m.property_name, "Manufacturer");
+    assert_eq!(m.property_value, "ACME");
+    assert_eq!(m.property_type, "string");
+    assert_eq!(m.data_type.as_deref(), Some("IFCLABEL"));
+}
+
+
+const NULL_NAME_PSET_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000006',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall00000000000000005',$,'W5',$,$,$,$,$,$);
+#80=IFCPROPERTYSINGLEVALUE('SubName',$,IFCLABEL('SubVal'),$);
+#82=IFCPROPERTYSET('Pst0000000000000000005',$,$,$,(#80));
+#83=IFCRELDEFINESBYPROPERTIES('Rel0000000000000000005',$,$,$,(#28),#82);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+/// A pset with `Name = $` (OPTIONAL per the schema) but a genuinely
+/// resolvable property must still surface, exactly like the browser/WASM
+/// path's `typeof psetAttrs[2] === 'string' ? psetAttrs[2] : ''` (never
+/// discards a pset for a non-string Name). Before this fix, the early
+/// `entity.get_string(2)?` bailed the whole extraction closure before the
+/// `properties.is_empty() && pset_name.is_empty()` keep condition ever ran.
+#[test]
+fn a_pset_with_a_null_name_and_a_resolvable_property_is_not_dropped() {
+    let dm = extract_data_model(NULL_NAME_PSET_IFC);
+    let pset = dm
+        .property_sets
+        .iter()
+        .find(|p| p.pset_id == 82)
+        .expect("pset with Name=$ but a resolvable property must be extracted");
+    assert_eq!(pset.pset_name, "");
+    assert_eq!(pset.properties.len(), 1);
+    assert_eq!(pset.properties[0].property_name, "SubName");
+}
+
+const MALFORMED_HAS_PROPERTIES_PSET_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000007',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall00000000000000006',$,'W6',$,$,$,$,$,$);
+#82=IFCPROPERTYSET('Pst0000000000000000006',$,'Pset_Malformed',$,$);
+#83=IFCRELDEFINESBYPROPERTIES('Rel0000000000000000006',$,$,$,(#28),#82);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+/// `HasProperties` is a mandatory, non-empty SET per the schema, so `$` here
+/// means the file is malformed — but a named pset is still real evidence the
+/// file links this element to it (same rationale as issue #3963's fix), so
+/// it must not be discarded outright just because the malformed attribute
+/// made the list unreadable.
+#[test]
+fn a_pset_with_a_named_but_malformed_has_properties_is_not_dropped() {
+    let dm = extract_data_model(MALFORMED_HAS_PROPERTIES_PSET_IFC);
+    let pset = dm
+        .property_sets
+        .iter()
+        .find(|p| p.pset_id == 82)
+        .expect("named pset with a malformed HasProperties must still be extracted");
+    assert_eq!(pset.pset_name, "Pset_Malformed");
+    assert!(pset.properties.is_empty());
+}
+
+/// #3949: `IfcClassification`'s attribute order is `Source(0), Edition(1),
+/// EditionDate(2), Name(3), ...` — nothing like `IfcRoot`'s
+/// `GlobalId(0), OwnerHistory(1), Name(2)`. Reading it at the hardcoded
+/// `IfcRoot` positions makes `global_id` the classification's `Source` string
+/// and `name` its `EditionDate`.
+const CLASSIFICATION_METADATA_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
+#90=IFCCLASSIFICATION('Src90','Ed90','2024-01-01','RealName90',$,$,$);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn ifcclassification_metadata_reads_name_by_schema_position_not_ifcroot_position() {
+    let dm = extract_data_model(CLASSIFICATION_METADATA_IFC);
+    let e = dm
+        .entities
+        .iter()
+        .find(|e| e.entity_id == 90)
+        .expect("classification entity #90 missing");
+    assert_eq!(e.type_name, "IFCCLASSIFICATION");
+    // `IfcClassification` has no `GlobalId` attribute at all.
+    assert_eq!(
+        e.global_id, None,
+        "IfcClassification does not declare GlobalId; must not read Source as a GUID"
+    );
+    assert_eq!(
+        e.name.as_deref(),
+        Some("RealName90"),
+        "name must be IfcClassification's own Name attribute (index 3), not EditionDate (index 2)"
+    );
+}
+
+/// Control: a genuine `IfcRoot` subtype (`IfcWall`) must keep extracting
+/// `global_id`/`name` at exactly the same positions as before this fix —
+/// `IfcRoot` subtypes are the overwhelming majority of real-model content.
+#[test]
+fn ifcwall_metadata_still_reads_globalid_and_name_at_ifcroot_positions() {
+    let dm = extract_data_model(ASSOCIATIONS_IFC);
+    let e = dm
+        .entities
+        .iter()
+        .find(|e| e.entity_id == 28)
+        .expect("wall entity #28 missing");
+    assert_eq!(e.global_id.as_deref(), Some("Wall00000000000000001"));
+    assert_eq!(e.name.as_deref(), Some("W1"));
+}
+
+/// Control: a type absent from the schema registry falls back to the same
+/// `IfcElement`-layout positions the WASM path uses for unknown types
+/// (Description 3, ObjectType 4, Tag 7) — extended here to GlobalId 0 / Name 2,
+/// matching the pre-fix hardcoded behaviour for the unknown-type case.
+const UNKNOWN_TYPE_METADATA_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
+#95=IFCTOTALLYMADEUPVENDORTYPE('Guid95',$,'Name95','Desc95','ObjType95',$,$,'Tag95');
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn unknown_type_metadata_falls_back_to_ifcelement_layout_positions() {
+    let dm = extract_data_model(UNKNOWN_TYPE_METADATA_IFC);
+    let e = dm
+        .entities
+        .iter()
+        .find(|e| e.entity_id == 95)
+        .expect("unknown-type entity #95 missing");
+    assert_eq!(e.global_id.as_deref(), Some("Guid95"));
+    assert_eq!(e.name.as_deref(), Some("Name95"));
+    assert_eq!(e.description.as_deref(), Some("Desc95"));
+    assert_eq!(e.object_type.as_deref(), Some("ObjType95"));
+    assert_eq!(e.tag.as_deref(), Some("Tag95"));
+}
+
+/// Issue #3972: `IfcComplexProperty` nesting past `MAX_COMPLEX_PROPERTY_DEPTH`
+/// (8) used to stop silently, so a truncated value was indistinguishable from
+/// a complete one. Four members on one wall, each probing a different shape:
+///
+/// - `C0`: a 9-level chain (`C0`..`C8`) whose deepest node carries a
+///   `UsageName` and one unread `Leaf` sub-property.
+/// - `D0`: the same 9-level chain but with the deepest node's `UsageName`
+///   absent (`$`) — the worse pre-fix shape, where the whole `D8` member
+///   vanished and `D7`'s own `UsageName` was shown in its place.
+/// - `Cyc`: a self-referencing complex property; the cap is what makes this
+///   terminate at all, which is why the fix marks the cut instead of
+///   removing the cap.
+/// - `E0`: an 8-level control (`E0`..`E7`, deepest at depth 7) whose `Leaf`
+///   IS read — the marker must not fire one level early.
+const COMPLEX_PROPERTY_DEPTH_CAP_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000003972',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall0000000000000003972',$,'W',$,$,$,$,$,$);
+#200=IFCPROPERTYSINGLEVALUE('Leaf',$,IFCLABEL('LeafVal'),$);
+#209=IFCCOMPLEXPROPERTY('C8',$,'U8',(#200));
+#208=IFCCOMPLEXPROPERTY('C7',$,'U7',(#209));
+#207=IFCCOMPLEXPROPERTY('C6',$,'U6',(#208));
+#206=IFCCOMPLEXPROPERTY('C5',$,'U5',(#207));
+#205=IFCCOMPLEXPROPERTY('C4',$,'U4',(#206));
+#204=IFCCOMPLEXPROPERTY('C3',$,'U3',(#205));
+#203=IFCCOMPLEXPROPERTY('C2',$,'U2',(#204));
+#202=IFCCOMPLEXPROPERTY('C1',$,'U1',(#203));
+#201=IFCCOMPLEXPROPERTY('C0',$,'U0',(#202));
+#219=IFCCOMPLEXPROPERTY('D8',$,$,(#200));
+#218=IFCCOMPLEXPROPERTY('D7',$,'V7',(#219));
+#217=IFCCOMPLEXPROPERTY('D6',$,'V6',(#218));
+#216=IFCCOMPLEXPROPERTY('D5',$,'V5',(#217));
+#215=IFCCOMPLEXPROPERTY('D4',$,'V4',(#216));
+#214=IFCCOMPLEXPROPERTY('D3',$,'V3',(#215));
+#213=IFCCOMPLEXPROPERTY('D2',$,'V2',(#214));
+#212=IFCCOMPLEXPROPERTY('D1',$,'V1',(#213));
+#211=IFCCOMPLEXPROPERTY('D0',$,'V0',(#212));
+#220=IFCCOMPLEXPROPERTY('Cyc',$,'CycUsage',(#220));
+#228=IFCCOMPLEXPROPERTY('E7',$,'W7',(#200));
+#227=IFCCOMPLEXPROPERTY('E6',$,'W6',(#228));
+#226=IFCCOMPLEXPROPERTY('E5',$,'W5',(#227));
+#225=IFCCOMPLEXPROPERTY('E4',$,'W4',(#226));
+#224=IFCCOMPLEXPROPERTY('E3',$,'W3',(#225));
+#223=IFCCOMPLEXPROPERTY('E2',$,'W2',(#224));
+#222=IFCCOMPLEXPROPERTY('E1',$,'W1',(#223));
+#221=IFCCOMPLEXPROPERTY('E0',$,'W0',(#222));
+#229=IFCCOMPLEXPROPERTY('Empty',$,'EmptyUsage',());
+#230=IFCPROPERTYSET('Pst0000000000000003972',$,'Pset_Deep',$,(#201,#211,#220,#221,#229));
+#231=IFCRELDEFINESBYPROPERTIES('Rel0000000000000003972',$,$,$,(#28),#230);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+fn depth_cap_property_value(dm: &DataModel, name: &str) -> String {
+    dm.property_sets
+        .iter()
+        .find(|p| p.pset_id == 230)
+        .expect("Pset_Deep must be extracted")
+        .properties
+        .iter()
+        .find(|p| p.property_name == name)
+        .unwrap_or_else(|| panic!("{name} entry missing"))
+        .property_value
+        .clone()
+}
+
+#[test]
+fn complex_property_nesting_past_the_depth_cap_says_it_was_truncated() {
+    let dm = extract_data_model(COMPLEX_PROPERTY_DEPTH_CAP_IFC);
+
+    // Pre-#3972 this was "C1: C2: C3: C4: C5: C6: C7: C8: U8" — the unread
+    // "Leaf: LeafVal" gone with no trace, and "U8" reading as C8's content.
+    assert_eq!(
+        depth_cap_property_value(&dm, "C0"),
+        "C1: C2: C3: C4: C5: C6: C7: C8: U8 (truncated: nesting deeper than 8 levels)"
+    );
+
+    // Pre-#3972 this was "D1: D2: D3: D4: D5: D6: D7: V7": D8's empty display
+    // made the parent skip it entirely, so D7 fell back to its OWN UsageName
+    // and the reader saw a genuine value at the wrong nesting level. The
+    // marker is non-empty, so D8 now survives as a member.
+    assert_eq!(
+        depth_cap_property_value(&dm, "D0"),
+        "D1: D2: D3: D4: D5: D6: D7: D8: (truncated: nesting deeper than 8 levels)"
+    );
+
+    // The cap is load-bearing: without it this self-reference never returns.
+    // Keeping it and marking the cut is the fix, not raising it.
+    assert_eq!(
+        depth_cap_property_value(&dm, "Cyc"),
+        "Cyc: Cyc: Cyc: Cyc: Cyc: Cyc: Cyc: Cyc: CycUsage (truncated: nesting deeper than 8 levels)"
+    );
+}
+
+#[test]
+fn complex_property_nesting_within_the_depth_cap_is_not_marked_truncated() {
+    let dm = extract_data_model(COMPLEX_PROPERTY_DEPTH_CAP_IFC);
+
+    // E7 sits at depth 7, one below the cap, so its Leaf IS read. The marker
+    // must not fire one level early.
+    assert_eq!(
+        depth_cap_property_value(&dm, "E0"),
+        "E1: E2: E3: E4: E5: E6: E7: Leaf: LeafVal"
+    );
+
+    // An EMPTY HasProperties is a genuinely empty complex property, not a
+    // truncation — it keeps its bare UsageName at any depth.
+    assert_eq!(depth_cap_property_value(&dm, "Empty"), "EmptyUsage");
+}
+
+/// Schema-derived relationship-slot parity (issue #4205 Rust half).
+///
+/// Before the generated `relationship_slots.rs` table, `extract_relationship`
+/// hand-enumerated 13 STEP relationship types; everything else silently
+/// dropped. This fixture exercises three types that were NEVER extracted
+/// before this fix — `IfcRelAssignsToActor`, `IfcRelDeclares`,
+/// `IfcRelSequence` — using the SAME entity ids and attribute values as
+/// `packages/parser/test/relationship-subtype-coverage.test.ts`'s `IFC`
+/// fixture (the TS-side test for the same three types, written for #4205's
+/// TS half). The two fixtures are kept textually parallel (see comments
+/// below pinning each attribute position against that file) so a change to
+/// either side's schema-derived slot plan that disagrees with the other
+/// shows up as a failure on both suites, not just one — the "both halves
+/// agree" check called for in the task write-up. A true single-process
+/// dual-stack fixture (running one file through both `ColumnarParser` and
+/// `extract_data_model` in the same test) was not practical without adding a
+/// Rust<->TS bridge that does not otherwise exist in this repo; running the
+/// TS suite (`pnpm --filter @ifc-lite/parser test`) and this Rust suite
+/// against textually-matched fixtures is the fallback documented in the task
+/// write-up for that case.
+///
+/// #10/#11/#12 stand in for arbitrary related objects (`IfcWall` placeholders,
+/// exactly as the TS fixture's comment explains) - nothing here exercises
+/// attribute typing, only relationship-level attribute position and
+/// cardinality.
+const NEW_REL_SUBTYPES_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCOWNERHISTORY($,$,$,$,$,$,$,0);
+#2=IFCPROJECT('Prj0000000000000000001',#1,'P',$,$,$,$,$,$);
+#10=IFCWALL('w1',#1,'Wall1',$,$,$,$,$);
+#11=IFCWALL('w2',#1,'Wall2',$,$,$,$,$);
+#12=IFCWALL('w3',#1,'Wall3',$,$,$,$,$);
+#20=IFCRELASSIGNSTOACTOR('ra',#1,$,$,(#10,#11),$,#12);
+#21=IFCRELDECLARES('rd',#1,$,$,#12,(#10));
+#22=IFCRELSEQUENCE('rs',#1,$,$,#10,#11);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+/// `IFCRELASSIGNSTOACTOR`: `RelatedObjects` (a LIST) is the FIRST attribute
+/// after the shared root prefix (absolute index 4), `RelatingActor` (a single
+/// ref) is the THIRD (absolute index 6, `RelatedObjectsType` — an enum, never
+/// a ref — sits at 5 and is skipped by the schema-derived slot walk). This is
+/// the "related is a LIST" half of the required list-vs-single-ref coverage.
+/// Matches `packages/parser/test/relationship-subtype-coverage.test.ts`'s
+/// `'IfcRelAssignsToActor: RelatingActor is the LAST attribute, RelatedObjects
+/// the FIRST'` case exactly (relating=#12, related={#10,#11}).
+#[test]
+fn extracts_assigns_to_actor_relationship_previously_unindexed() {
+    let dm = extract_data_model_checked(NEW_REL_SUBTYPES_IFC);
+    let mut related: Vec<u32> = dm
+        .relationships
+        .iter()
+        .filter(|r| r.rel_type.eq_ignore_ascii_case("IFCRELASSIGNSTOACTOR") && r.relating_id == 12)
+        .map(|r| r.related_id)
+        .collect();
+    related.sort_unstable();
+    assert_eq!(
+        related,
+        vec![10, 11],
+        "IFCRELASSIGNSTOACTOR (actor #12 -> walls #10,#11) missing or misoriented: {:?}",
+        dm.relationships
+    );
+}
+
+/// `IFCRELDECLARES`: both `RelatingContext` and `RelatedDefinitions` are
+/// SELECT-typed (`IfcContext`/`IfcDefinitionSelect`), not plain entity refs —
+/// exactly the case that caught a real generation-time bug on the TS side
+/// (`relationship-schema-slots.ts` must check `registry.selects` BEFORE
+/// `registry.types`, since a SELECT declaration also appears in `.types`).
+/// This test proves the GENERATED Rust table inherited the correct (already
+/// SELECT-aware) indices — nothing further to fix or mutate on the Rust side
+/// for that defect class, since the distinction is made once, at generation
+/// time, in the shared TS module. Matches the TS fixture's `'IfcRelDeclares
+/// gets its own edge type'` case (relating=#12, related=#10).
+#[test]
+fn extracts_declares_relationship_with_select_typed_attributes() {
+    let dm = extract_data_model_checked(NEW_REL_SUBTYPES_IFC);
+    assert!(
+        dm.relationships.iter().any(|r| {
+            r.rel_type.eq_ignore_ascii_case("IFCRELDECLARES")
+                && r.relating_id == 12
+                && r.related_id == 10
+        }),
+        "IFCRELDECLARES (context #12 -> definition #10) missing or misoriented: {:?}",
+        dm.relationships
+    );
+    // Must not be folded into IFCRELASSIGNSTOACTOR's bucket even though both
+    // touch #12 — same "own edge type" guard as the TS-side test.
+    assert!(
+        !dm.relationships.iter().any(|r| {
+            r.rel_type.eq_ignore_ascii_case("IFCRELASSIGNSTOACTOR")
+                && r.related_id == 10
+                && r.relating_id != 12
+        }),
+        "IFCRELDECLARES edge leaked into an IFCRELASSIGNSTOACTOR-shaped row"
+    );
+}
+
+/// `IFCRELSEQUENCE`: BOTH `RelatingProcess` and `RelatedProcess` are single
+/// refs — the "related is a single ref, not a list" half of the required
+/// list-vs-single-ref coverage, for a type that was never extracted before
+/// this fix (unlike `IFCRELVOIDSELEMENT`/`IFCRELFILLSELEMENT`, which already
+/// had a hand-written single-ref special case). Matches the TS fixture's
+/// `'IfcRelSequence: both RelatingProcess and RelatedProcess are single
+/// references'` case exactly (relating=#10, related=#11).
+#[test]
+fn extracts_sequence_relationship_single_ref_both_sides() {
+    let dm = extract_data_model_checked(NEW_REL_SUBTYPES_IFC);
+    assert!(
+        dm.relationships.iter().any(|r| {
+            r.rel_type.eq_ignore_ascii_case("IFCRELSEQUENCE")
+                && r.relating_id == 10
+                && r.related_id == 11
+        }),
+        "IFCRELSEQUENCE (process #10 -> process #11) missing or misoriented: {:?}",
+        dm.relationships
+    );
+}
+
+/// Control, mirroring `fixture_without_new_types_is_unaffected`: a fixture
+/// with none of the three newly-covered types above must extract exactly as
+/// before — the schema-derived gate must not start matching an unrelated
+/// type.
+#[test]
+fn fixture_without_newly_covered_subtypes_is_unaffected_by_the_schema_derived_gate() {
+    let dm = extract_data_model_checked(ASSOCIATIONS_IFC);
+    assert!(
+        !dm.relationships.iter().any(|r| {
+            matches!(
+                r.rel_type.to_uppercase().as_str(),
+                "IFCRELASSIGNSTOACTOR" | "IFCRELDECLARES" | "IFCRELSEQUENCE"
+            )
+        }),
+        "fixture has none of the newly-covered types, but one was extracted: {:?}",
+        dm.relationships
+    );
+}
+
+/// A federated file can carry two IfcProjects with independent units (#5296,
+/// #3554). The second wall's 300 mm layer must be 0.3 m, while the first
+/// wall's 0.2 m layer must remain 0.2 m.
+const MIXED_PROJECT_MATERIAL_UNITS_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'Metres',$,$,$,$,$,#2);
+#2=IFCUNITASSIGNMENT((#3));
+#3=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#101=IFCPROJECT('Proj0000000000000000002',$,'Millimetres',$,$,$,$,$,#102);
+#102=IFCUNITASSIGNMENT((#103));
+#103=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#10=IFCBUILDINGSTOREY('Stor0000000000000000001',$,'A',$,$,$,$,$,$);
+#110=IFCBUILDINGSTOREY('Stor0000000000000000002',$,'B',$,$,$,$,$,$);
+#11=IFCWALL('Wall0000000000000000001',$,'MetreWall',$,$,$,$,$,$);
+#111=IFCWALL('Wall0000000000000000002',$,'MilliWall',$,$,$,$,$,$);
+#12=IFCWALL('Wall0000000000000000003',$,'SharedTypeMetreWall',$,$,$,$,$,$);
+#112=IFCWALL('Wall0000000000000000004',$,'SharedTypeMilliWall',$,$,$,$,$,$);
+#20=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#10));
+#120=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#101,(#110));
+#21=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#11,#12),#10);
+#121=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000002',$,$,$,(#111,#112),#110);
+#30=IFCMATERIAL('Core',$,$);
+#31=IFCMATERIALLAYER(#30,0.2,.F.,$,$,$,$);
+#32=IFCMATERIALLAYERSET((#31),'First',$);
+#33=IFCRELASSOCIATESMATERIAL('Mat0000000000000000001',$,$,$,(#11),#32);
+#130=IFCMATERIAL('Core',$,$);
+#131=IFCMATERIALLAYER(#130,300.,.F.,$,$,$,$);
+#132=IFCMATERIALLAYERSET((#131),'Second',$);
+#133=IFCRELASSOCIATESMATERIAL('Mat0000000000000000002',$,$,$,(#111),#132);
+#200=IFCWALLTYPE('Type00000000000000001A',$,'Shared',$,$,$,$,$,$,.NOTDEFINED.);
+#201=IFCRELDEFINESBYTYPE('Def0000000000000000001',$,$,$,(#12,#112),#200);
+#202=IFCRELASSOCIATESMATERIAL('Mat0000000000000000003',$,$,$,(#200),#132);
+#210=IFCWALLTYPE('Type00000000000000001B',$,'SameUnit',$,$,$,$,$,$,.NOTDEFINED.);
+#211=IFCRELDEFINESBYTYPE('Def0000000000000000002',$,$,$,(#11,#12),#210);
+#212=IFCRELASSOCIATESMATERIAL('Mat0000000000000000004',$,$,$,(#210),#32);
+ENDSEC;
+END-ISO-10303-21;"#;
+
+#[test]
+fn material_layer_thickness_uses_owning_project_units_5296() {
+    let dm = extract_data_model_checked(MIXED_PROJECT_MATERIAL_UNITS_IFC);
+    let first = dm.materials.iter().find(|m| m.element_id == 11).expect("first wall material");
+    let second = dm.materials.iter().find(|m| m.element_id == 111).expect("second wall material");
+    assert!((first.thickness.unwrap() - 0.2).abs() < 1e-9);
+    assert!((second.thickness.unwrap() - 0.3).abs() < 1e-9,
+        "the later project's 300 mm layer must not use the first project's metre scale");
+    assert!(dm.relationships.iter().any(|r| r.rel_type == "IFCRELDEFINESBYTYPE"
+        && r.relating_id == 200 && r.related_id == 12));
+    assert!(dm.relationships.iter().any(|r| r.rel_type == "IFCRELDEFINESBYTYPE"
+        && r.relating_id == 200 && r.related_id == 112));
+    assert!(dm.relationships.iter().any(|r| r.rel_type == "IFCRELASSOCIATESMATERIAL"
+        && r.related_id == 200 && r.relating_id == 132));
+    assert!(dm.materials.iter().all(|m| m.element_id != 200),
+        "a type shared across projects with different units must remain unresolved");
+    let same_unit_type = dm.materials.iter().find(|m| m.element_id == 210)
+        .expect("same-unit shared type stays resolved");
+    assert!((same_unit_type.thickness.unwrap() - 0.2).abs() < 1e-9);
+}
+
+/// Issue #5475: an `IfcPropertyReferenceValue` reads as the referenced
+/// object's `Name`, else its `Identification`, else `#<id>`, the same as
+/// `resolvePropertyReferenceValue` on the browser side. The reference is
+/// slot 3 (`[Name, Description, UsageName, PropertyReference]`); reading
+/// slot 2 (`UsageName`) made every reference property read as empty.
+const REFERENCE_VALUE_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000009',$,'P',$,$,$,$,$,$);
+#5=IFCMATERIAL('Oak',$,$);
+#7=IFCCLASSIFICATIONREFERENCE($,'Ss_25',$,$,$,$);
+#8=IFCCLASSIFICATIONREFERENCE($,$,$,$,$,$);
+#28=IFCWALL('Wall00000000000000009',$,'W9',$,$,$,$,$,$);
+#110=IFCPROPERTYREFERENCEVALUE('Finish',$,'finish usage',#5);
+#111=IFCPROPERTYREFERENCEVALUE('Spec',$,$,#7);
+#112=IFCPROPERTYREFERENCEVALUE('Bare',$,$,#8);
+#113=IFCPROPERTYSET('Pst0000000000000000009',$,'Pset_Ref',$,(#110,#111,#112));
+#114=IFCRELDEFINESBYPROPERTIES('Rel0000000000000000009',$,$,$,(#28),#113);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn a_reference_property_reads_the_referenced_name() {
+    let dm = extract_data_model(REFERENCE_VALUE_IFC);
+    let pset = dm
+        .property_sets
+        .iter()
+        .find(|p| p.pset_id == 113)
+        .expect("Pset_Ref must be extracted");
+    let value_of = |name: &str| {
+        pset.properties
+            .iter()
+            .find(|p| p.property_name == name)
+            .map(|p| p.property_value.clone())
+    };
+    assert_eq!(value_of("Finish").as_deref(), Some("Oak"));
+    assert_eq!(value_of("Spec").as_deref(), Some("Ss_25"));
+    assert_eq!(value_of("Bare").as_deref(), Some("#8"));
+}
+
+/// SERVER-5 (#7673): `resolve_material` followed `IfcMaterial*SetUsage`
+/// attribute 0 by recursing into whatever it named, with no type check and no
+/// bound. A usage that names itself recursed until the stack overflowed, and a
+/// stack overflow is `SIGABRT`, not a panic: `CatchPanicLayer` and the
+/// `server-release` unwind profile cannot contain it, so every in-flight
+/// request on the server died with it.
+// Inline here rather than a sibling file: the revert oracle reverts every
+// production file the PR touches (`materials.rs`, `mod.rs`), so a test module
+// declared from either would vanish with the revert instead of going RED.
+mod server_5_material_usages {
+use super::super::{extract_data_model, DataModel, MaterialAssociation};
+
+fn materials_of(dm: &DataModel, element_id: u32) -> Vec<&MaterialAssociation> {
+    dm.materials.iter().filter(|m| m.element_id == element_id).collect()
+}
+
+/// Number of usages in the acyclic `usage -> usage -> ... -> set` chain. A
+/// visited set alone does not bound this shape while the walk recurses: every
+/// id is new, so the chain overflows the stack anyway (AGENTS.md, "Bounding
+/// walks over file-supplied references"). Only an iterative walk survives it.
+const CHAIN_LEN: u32 = 20_000;
+
+/// The hostile file: each wall's `RelatingMaterial` is a usage whose
+/// `ForLayerSet` / `ForProfileSet` does not name a set.
+///
+/// - #10 is the reproduction from the finding: a layer-set usage naming itself.
+/// - #11 is the same for a profile-set usage.
+/// - #12 -> #13 -> #12 is a mutual cycle across the two usage kinds.
+/// - #1000.. is a long acyclic usage chain ending in a real set. Malformed
+///   (`ForLayerSet` should name a set), but the pre-fix walk and the TS twin
+///   both follow it, so it must keep resolving.
+/// - #40 is a well-formed usage -> set, the control that the walk still
+///   resolves real input in the same file.
+fn hostile_usage_ifc() -> String {
+    let mut data = String::from(
+        "#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
+#3=IFCWALL('Wall00000000000000003',$,'W3',$,$,$,$,$,$);
+#4=IFCBEAM('Beam00000000000000004',$,'B4',$,$,$,$,$,$);
+#5=IFCWALL('Wall00000000000000005',$,'W5',$,$,$,$,$,$);
+#6=IFCWALL('Wall00000000000000006',$,'W6',$,$,$,$,$,$);
+#7=IFCWALL('Wall00000000000000007',$,'W7',$,$,$,$,$,$);
+#10=IFCMATERIALLAYERSETUSAGE(#10,.AXIS2.,.POSITIVE.,0.,$);
+#11=IFCMATERIALPROFILESETUSAGE(#11,$,$);
+#12=IFCMATERIALLAYERSETUSAGE(#13,.AXIS2.,.POSITIVE.,0.,$);
+#13=IFCMATERIALPROFILESETUSAGE(#12,$,$);
+#20=IFCRELASSOCIATESMATERIAL('Mat0000000000000000020',$,$,$,(#3),#10);
+#21=IFCRELASSOCIATESMATERIAL('Mat0000000000000000021',$,$,$,(#4),#11);
+#22=IFCRELASSOCIATESMATERIAL('Mat0000000000000000022',$,$,$,(#5),#12);
+#23=IFCRELASSOCIATESMATERIAL('Mat0000000000000000023',$,$,$,(#6),#1000);
+#40=IFCMATERIALLAYERSETUSAGE(#41,.AXIS2.,.POSITIVE.,0.,$);
+#41=IFCMATERIALLAYERSET((#42),'GoodSet',$);
+#42=IFCMATERIALLAYER(#43,200.,.F.,'Core',$,$,$);
+#43=IFCMATERIAL('Concrete',$,$);
+#44=IFCRELASSOCIATESMATERIAL('Mat0000000000000000044',$,$,$,(#7),#40);
+",
+    );
+    for i in 0..CHAIN_LEN {
+        let id = 1000 + i;
+        let next = if i + 1 == CHAIN_LEN { 41 } else { id + 1 };
+        data.push_str(&format!("#{id}=IFCMATERIALLAYERSETUSAGE(#{next},.AXIS2.,.POSITIVE.,0.,$);\n"));
+    }
+    format!(
+        "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n{data}ENDSEC;\nEND-ISO-10303-21;\n"
+    )
+}
+
+/// SERVER-5 (#7673). The walk runs on rayon workers inside
+/// `extract_data_model`, and an unbounded one dies by stack overflow, which
+/// would take the test runner down with it. So the reproduction runs in a
+/// child copy of this test binary and the parent asserts the child exited
+/// cleanly rather than by signal (same pattern as the #3973 spatial-cycle
+/// tests in `tests.rs`).
+#[test]
+fn self_and_mutually_referencing_material_usages_do_not_abort_server_5() {
+    const REPRO_ENV_VAR: &str = "IFC_LITE_SERVER_5_MATERIAL_USAGE_REPRO";
+
+    if std::env::var(REPRO_ENV_VAR).is_ok() {
+        let content = hostile_usage_ifc();
+        let dm = extract_data_model(&content);
+        for element in [3, 4, 5] {
+            assert!(
+                materials_of(&dm, element).is_empty(),
+                "element #{element}: a usage that does not name a set resolves to no material"
+            );
+        }
+        // Element #6 is the long acyclic chain and #7 the well-formed control:
+        // both still resolve the set, as they did before the fix and as the
+        // TS twin does.
+        for element in [6, 7] {
+            let rows = materials_of(&dm, element);
+            assert_eq!(rows.len(), 1, "element #{element}: the usage resolves its set");
+            assert_eq!(rows[0].material_name, "Concrete");
+            assert_eq!(rows[0].set_name.as_deref(), Some("GoodSet"));
+        }
+        eprintln!("SERVER-5 repro resolved {} material rows without aborting", dm.materials.len());
+        std::process::exit(0);
+    }
+
+    let output = run_child(
+        "data_model::tests::server_5_material_usages::self_and_mutually_referencing_material_usages_do_not_abort_server_5",
+        REPRO_ENV_VAR,
+    );
+    assert!(
+        output.status.success(),
+        "a self- or mutually-referencing IfcMaterial*SetUsage must neither abort the process \
+         nor hang; child exit status = {:?}\n--- child stdout ---\n{}\n--- child stderr ---\n{}",
+        output.status,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// The usage arms had no positive coverage in this crate: every existing
+/// material fixture associates the set directly. Pins that a layer-set usage
+/// and a profile-set usage each resolve their set's members, with the usage
+/// recorded as the association's definition.
+#[test]
+fn layer_and_profile_set_usages_resolve_their_sets() {
+    const USAGE_IFC: &str = "ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
+#3=IFCWALL('Wall00000000000000003',$,'W3',$,$,$,$,$,$);
+#4=IFCBEAM('Beam00000000000000004',$,'B4',$,$,$,$,$,$);
+#10=IFCMATERIAL('Concrete',$,'Mineral');
+#11=IFCMATERIAL('Insulation',$,$);
+#12=IFCMATERIALLAYER(#10,0.2,.F.,'Core',$,$,$);
+#13=IFCMATERIALLAYER(#11,0.05,.T.,'Insul',$,$,$);
+#14=IFCMATERIALLAYERSET((#12,#13),'WallSet',$);
+#15=IFCMATERIALLAYERSETUSAGE(#14,.AXIS2.,.POSITIVE.,0.,$);
+#16=IFCRELASSOCIATESMATERIAL('Mat0000000000000000016',$,$,$,(#3),#15);
+#20=IFCMATERIAL('Timber',$,'Wood');
+#21=IFCMATERIALPROFILE('Flange',$,#20,$,$,$);
+#22=IFCMATERIALPROFILESET('BeamSet',$,(#21),$);
+#23=IFCMATERIALPROFILESETUSAGE(#22,$,$);
+#24=IFCRELASSOCIATESMATERIAL('Mat0000000000000000024',$,$,$,(#4),#23);
+ENDSEC;
+END-ISO-10303-21;
+";
+    let dm = extract_data_model(USAGE_IFC);
+
+    let wall = materials_of(&dm, 3);
+    assert_eq!(wall.len(), 2);
+    assert!(wall.iter().all(|m| m.kind == "IfcMaterialLayerSet" && m.definition_id == 15));
+    assert_eq!(wall[0].material_name, "Concrete");
+    assert_eq!(wall[1].material_name, "Insulation");
+    assert_eq!(wall[0].set_name.as_deref(), Some("WallSet"));
+    assert_eq!(wall[1].is_ventilated, Some(true));
+
+    let beam = materials_of(&dm, 4);
+    assert_eq!(beam.len(), 1);
+    assert_eq!(beam[0].kind, "IfcMaterialProfileSet");
+    assert_eq!(beam[0].definition_id, 23);
+    assert_eq!(beam[0].material_name, "Timber");
+    assert_eq!(beam[0].set_name.as_deref(), Some("BeamSet"));
+}
+
+/// Re-run one test of this binary in a child process with `env_var` set, and
+/// kill it past a generous deadline. The bound has two failure modes: recursion
+/// overflows the stack (SIGABRT, which would take the test runner with it),
+/// and unbounded work spins until the deadline. Either shows up here as a
+/// failed exit status instead of a dead runner or a hung CI job.
+fn run_child(test_name: &str, env_var: &str) -> std::process::Output {
+    let exe = std::env::current_exe().expect("current test exe");
+    // libtest's `--exact` names are not crate-qualified.
+    let mut child = std::process::Command::new(exe)
+        .args([test_name, "--exact", "--nocapture"])
+        .env(env_var, "1")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("failed to spawn child test process");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+    while child.try_wait().expect("poll child").is_none() {
+        if std::time::Instant::now() > deadline {
+            let _ = child.kill();
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let output = child.wait_with_output().expect("collect child output");
+    super::assert_child_ran_one_test(&output);
+    output
+}
+
+/// Breadth (#7673 review): `FAN_IN` associations all naming the head of one
+/// `CHAIN_LEN`-long usage chain. Without the cross-association memo this is
+/// `FAN_IN × CHAIN_LEN` = 4·10^8 decodes (minutes, measured 43.5 s in release
+/// at this size); with it, each usage is decoded about once.
+#[test]
+fn many_associations_over_one_long_usage_chain_finish_server_5() {
+    const REPRO_ENV_VAR: &str = "IFC_LITE_SERVER_5_FAN_IN_REPRO";
+    const FAN_IN: u32 = 20_000;
+
+    if std::env::var(REPRO_ENV_VAR).is_ok() {
+        let mut data = String::from(
+            "#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
+#41=IFCMATERIALLAYERSET((#42),'GoodSet',$);
+#42=IFCMATERIALLAYER(#43,200.,.F.,'Core',$,$,$);
+#43=IFCMATERIAL('Concrete',$,$);
+",
+        );
+        for i in 0..CHAIN_LEN {
+            let id = 1000 + i;
+            let next = if i + 1 == CHAIN_LEN { 41 } else { id + 1 };
+            data.push_str(&format!("#{id}=IFCMATERIALLAYERSETUSAGE(#{next},.AXIS2.,.POSITIVE.,0.,$);\n"));
+        }
+        for i in 0..FAN_IN {
+            let wall = 100_000 + 2 * i;
+            data.push_str(&format!(
+                "#{wall}=IFCWALL('W{i:021}',$,'W',$,$,$,$,$,$);\n#{}=IFCRELASSOCIATESMATERIAL('M{i:021}',$,$,$,(#{wall}),#1000);\n",
+                wall + 1
+            ));
+        }
+        let content = format!("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n{data}ENDSEC;\nEND-ISO-10303-21;\n");
+        let started = std::time::Instant::now();
+        let dm = extract_data_model(&content);
+        assert_eq!(dm.materials.len(), FAN_IN as usize, "every wall resolves the set");
+        assert!(dm.materials.iter().all(|m| m.material_name == "Concrete"));
+        eprintln!("SERVER-5 fan-in {FAN_IN} x chain {CHAIN_LEN} resolved in {:?}", started.elapsed());
+        std::process::exit(0);
+    }
+
+    let output = run_child(
+        "data_model::tests::server_5_material_usages::many_associations_over_one_long_usage_chain_finish_server_5",
+        REPRO_ENV_VAR,
+    );
+    assert!(
+        output.status.success(),
+        "{FAN_IN} associations over one {CHAIN_LEN}-usage chain must neither abort nor run past \
+         the deadline; child exit status = {:?}\n--- child stderr ---\n{}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+}
+
+/// #7675 (S3, from S1's walk audit): the complex-property depth cap bounds a
+/// path's length only, so a member listing itself `k` times was `k^8` reads,
+/// and one visit can copy a long name. The shared vector pins the walk budget
+/// (visits per property, one byte budget per model, every charge from
+/// `ifc_lite_core::limits`) and its marker byte-for-byte against the TS parser
+/// and the Rust exporter, and bounds the total bytes of every value.
+#[test]
+fn complex_property_walk_budget_matches_the_shared_vector() {
+    let vector: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../packages/parser/test/fixtures/complex-property-budget-7675.json"
+    ))
+    .expect("vector parses");
+    let failed: Vec<String> = vector["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|case| std::panic::catch_unwind(|| check_server_budget_case(case)).is_err())
+        .map(|case| case["name"].as_str().unwrap().to_string())
+        .collect();
+    assert!(failed.is_empty(), "cases that differ from the shared vector: {failed:?}");
+}
+
+fn check_server_budget_case(case: &serde_json::Value) {
+    let ifc = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n{}\nENDSEC;\nEND-ISO-10303-21;\n",
+        expand_budget_lines(&case["dataLines"]).join("\n")
+    );
+    let dm = extract_data_model(&ifc);
+    // The server keeps each set once, however many entities share it, so the
+    // model's values together stay within the budget too.
+    let model_total: usize =
+        dm.property_sets.iter().flat_map(|set| set.properties.iter().map(|p| p.property_value.len())).sum();
+    assert!(model_total <= ifc_lite_core::limits::complex_property_output_budget(ifc.len()), "{model_total}");
+    // An entity reads its sets the way the browser's `psetsOf` does: through
+    // `IfcRelDefinesByProperties`, in relationship order, each set once.
+    let mut sets_of: std::collections::HashMap<u32, Vec<u32>> = std::collections::HashMap::new();
+    for rel in dm.relationships.iter().filter(|r| r.rel_type.eq_ignore_ascii_case("IFCRELDEFINESBYPROPERTIES")) {
+        let list = sets_of.entry(rel.related_id).or_default();
+        if !list.contains(&rel.relating_id) {
+            list.push(rel.relating_id);
+        }
+    }
+    for entity in expand_budget_ids(&case["entityIds"]) {
+        let sets: Vec<(String, Vec<String>)> = sets_of
+            .get(&entity)
+            .into_iter()
+            .flatten()
+            .flat_map(|id| dm.property_sets.iter().filter(move |set| set.pset_id == *id))
+            .map(|set| (set.pset_name.clone(), set.properties.iter().map(|p| p.property_value.clone()).collect()))
+            .collect();
+        assert_complex_budget_case(case, ifc.len(), &sets);
+    }
+}
+
+/// The vector's `dataLines` with each `{"repeat": [..], "from", "count"}` run
+/// expanded: `{i}` in each line is `from`, `from + 1`, ... for `count` rounds.
+pub(super) fn expand_budget_lines(lines: &serde_json::Value) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in lines.as_array().unwrap() {
+        if let Some(text) = line.as_str() {
+            out.push(text.to_string());
+            continue;
+        }
+        for i in expand_budget_ids(&serde_json::json!([line])) {
+            for template in line["repeat"].as_array().unwrap() {
+                out.push(template.as_str().unwrap().replace("{i}", &i.to_string()));
+            }
+        }
+    }
+    out
+}
+
+/// The vector's `entityIds`, each `{"from", "count"}` run expanded.
+fn expand_budget_ids(ids: &serde_json::Value) -> Vec<u32> {
+    let mut out = Vec::new();
+    for id in ids.as_array().unwrap() {
+        match id.as_u64() {
+            Some(id) => out.push(id as u32),
+            None => {
+                let from = id["from"].as_u64().unwrap() as u32;
+                out.extend(from..from + id["count"].as_u64().unwrap() as u32);
+            }
+        }
+    }
+    out
+}
+
+/// #7675 D3: a cut level's `values` list (the parquet `values` column, which
+/// IDS reads) ends with the budget marker, so a member past the cut reads as
+/// truncated rather than absent.
+#[test]
+fn a_cut_complex_property_marks_its_values_list() {
+    let members = vec!["#20"; 1100].join(",");
+    let ifc = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+         #20=IFCPROPERTYSINGLEVALUE('P',$,IFCLABEL('v'),$);\n\
+         #22=IFCCOMPLEXPROPERTY('Wide',$,'WideUsage',({members}));\n\
+         #30=IFCPROPERTYSET('Pset0000000000000007675',$,'Pset_Cut',$,(#22));\n\
+         ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+    let dm = extract_data_model(&ifc);
+    let wide = &dm.property_sets[0].properties[0];
+    let marker = ifc_lite_core::limits::COMPLEX_PROPERTY_BUDGET_MARKER;
+    assert!(wide.property_value.ends_with(marker), "{}", wide.property_value);
+    let values = wide.values.as_ref().expect("values");
+    assert_eq!(values.last().map(String::as_str), Some(marker));
+    assert_eq!(values.len(), 1025, "1024 admitted members, then the marker");
+}
+
+/// Check one walk's property sets (name, then the values in order) against
+/// one case of the shared #7675 vector. The TS and exporter tests read the same
+/// file with the same rules: a set is pinned by its property count and its
+/// values joined with `\n` (inline when short, else UTF-8 length and SHA-256),
+/// and the values together stay within the model's output budget.
+fn assert_complex_budget_case(case: &serde_json::Value, input_bytes: usize, sets: &[(String, Vec<String>)]) {
+    use sha2::{Digest, Sha256};
+    let total: usize = sets.iter().flat_map(|(_, values)| values.iter().map(String::len)).sum();
+    let budget = ifc_lite_core::limits::complex_property_output_budget(input_bytes);
+    assert!(total <= budget, "{total} bytes of property values, budget {budget}");
+    let expected: Vec<&str> = case["psets"].as_array().unwrap().iter().map(|p| p["name"].as_str().unwrap()).collect();
+    assert_eq!(sets.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(), expected);
+    for pin in case["psets"].as_array().unwrap() {
+        let name = pin["name"].as_str().unwrap();
+        let (_, values) = sets.iter().find(|(n, _)| n == name).unwrap();
+        assert_eq!(values.len() as u64, pin["count"].as_u64().unwrap(), "{name}");
+        match pin.get("values") {
+            Some(exact) => {
+                let exact: Vec<&str> = exact.as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
+                assert_eq!(values.iter().map(String::as_str).collect::<Vec<_>>(), exact, "{name}");
+            }
+            None => {
+                let joined = values.join("\n");
+                let hash: String = Sha256::digest(joined.as_bytes()).iter().map(|b| format!("{b:02x}")).collect();
+                let pinned = (pin["length"].as_u64().unwrap(), pin["sha256"].as_str().unwrap().to_string());
+                assert_eq!((joined.len() as u64, hash), pinned, "{name}");
+            }
+        }
+    }
+}
+
+/// SERVER-26 (#7675): one `IfcRelAssociatesMaterial` emits a row per related
+/// element per resolved layer, each cloning the layer's strings. A layer set
+/// that lists one layer 1 000 times, related to 1 000 elements, is 1 000 000
+/// rows from 14 KB of input, and admission charges only the upload size. The
+/// table is budgeted against the input, and the one serializer every route
+/// sends a data model through refuses a model that hit it.
+#[test]
+fn server_26_material_rows_are_budgeted_not_elements_times_layers() {
+    let layers = vec!["#3"; 1_000].join(",");
+    let elements: Vec<String> = (0..1_000).map(|i| format!("#{}", 100 + i)).collect();
+    let ifc = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+         #2=IFCMATERIAL('Concrete',$,$);\n\
+         #3=IFCMATERIALLAYER(#2,0.1,$,'Core',$,$,$);\n\
+         #4=IFCMATERIALLAYERSET(({layers}),'Wall',$);\n\
+         #5=IFCRELASSOCIATESMATERIAL('Rel0000000000000007675',$,$,$,({}),#4);\n\
+         ENDSEC;\nEND-ISO-10303-21;\n",
+        elements.join(",")
+    );
+    let dm = extract_data_model(&ifc);
+    assert!(
+        dm.materials.len() < 1_000_000,
+        "{} material rows from {} bytes of input",
+        dm.materials.len(),
+        ifc.len()
+    );
+}
+
+/// The budget is relative to the input and binds hostile products, not real
+/// buildups: a few walls with a three-layer set keep every row.
+#[test]
+fn server_26_ordinary_layer_sets_keep_every_row() {
+    let ifc = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+        #2=IFCMATERIAL('Concrete',$,$);\n\
+        #3=IFCMATERIALLAYER(#2,0.1,$,'Core',$,$,$);\n\
+        #4=IFCMATERIALLAYERSET((#3,#3,#3),'Wall',$);\n\
+        #5=IFCRELASSOCIATESMATERIAL('Rel0000000000000007675',$,$,$,(#10,#11,#12,#13),#4);\n\
+        ENDSEC;\nEND-ISO-10303-21;\n";
+    let dm = extract_data_model(ifc);
+    assert_eq!(dm.materials.len(), 12);
+}
+
+/// #7678 review finding 1: the data model reads a record holding a REAL the
+/// double range cannot represent (`1.E400`) as before, never dropping it.
+/// One such value on IfcSite.RefElevation, a storey Elevation, a door's
+/// OverallHeight and a material layer thickness used to erase the site, the
+/// building, both storeys, the element-to-storey map and the materials. The
+/// model must have exactly the shape of its finite twin.
+#[test]
+fn an_overflowing_descriptive_real_never_drops_a_data_model_entity_7678() {
+    let model = |big: &str| {
+        format!(
+            "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t.ifc','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCOWNERHISTORY($,$,$,$,$,$,$,0);\n\
+#20=IFCPROJECT('0Project00000000007678',$,'P',$,$,$,$,$,$);\n\
+#30=IFCSITE('0Site000000000000007678',$,'Site',$,$,$,$,$,.ELEMENT.,$,$,{big},$,$);\n\
+#31=IFCBUILDING('0Bldg000000000000007678',$,'Bldg',$,$,$,$,$,.ELEMENT.,$,$,$);\n\
+#32=IFCBUILDINGSTOREY('0StoreyBad000000007678',$,'Storey Bad',$,$,$,$,$,.ELEMENT.,{big});\n\
+#33=IFCBUILDINGSTOREY('0StoreyGood0000000767',$,'Storey Good',$,$,$,$,$,.ELEMENT.,3.);\n\
+#40=IFCRELAGGREGATES('0Agg1000000000000767',$,$,$,#20,(#30));\n\
+#41=IFCRELAGGREGATES('0Agg2000000000000767',$,$,$,#30,(#31));\n\
+#42=IFCRELAGGREGATES('0Agg3000000000000767',$,$,$,#31,(#32,#33));\n\
+#50=IFCWALL('0Wall000000000000007678',$,'W',$,$,$,$,$,$);\n\
+#51=IFCDOOR('0Door000000000000007678',$,'D',$,$,$,$,$,{big},0.9,$,$,$);\n\
+#60=IFCRELCONTAINEDINSPATIALSTRUCTURE('0Cont100000000000767',$,$,$,(#50),#33);\n\
+#61=IFCRELCONTAINEDINSPATIALSTRUCTURE('0Cont200000000000767',$,$,$,(#51),#32);\n\
+#70=IFCMATERIAL('Concrete',$,$);\n\
+#71=IFCMATERIALLAYER(#70,{big},$,$,$,$,$);\n\
+#72=IFCMATERIALLAYERSET((#71),'Set',$);\n\
+#80=IFCRELASSOCIATESMATERIAL('0Mat0000000000000767',$,$,$,(#50),#72);\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+        )
+    };
+    let shape = |dm: &DataModel| {
+        let mut entities: Vec<u32> = dm.entities.iter().map(|e| e.entity_id).collect();
+        entities.sort_unstable();
+        let mut nodes: Vec<(u32, u32, String)> = dm
+            .spatial_hierarchy
+            .nodes
+            .iter()
+            .map(|n| (n.entity_id, n.parent_id, n.type_name.clone()))
+            .collect();
+        nodes.sort();
+        let mut storeys = dm.spatial_hierarchy.element_to_storey.clone();
+        storeys.sort_unstable();
+        let mut materials: Vec<(u32, u32)> = dm.materials.iter().map(|m| (m.element_id, m.definition_id)).collect();
+        materials.sort_unstable();
+        (entities, nodes, storeys, materials, dm.refused.clone())
+    };
+    let finite = extract_data_model_checked(&model("2.5"));
+    let overflow = extract_data_model_checked(&model("1.E400"));
+    let (entities, nodes, storeys, materials, _) = shape(&finite);
+    assert!(entities.contains(&30) && entities.contains(&51), "anti-vacuity: {entities:?}");
+    assert!(nodes.len() >= 5, "anti-vacuity: project, site, building, two storeys: {nodes:?}");
+    assert_eq!(storeys.len(), 2, "anti-vacuity: {storeys:?}");
+    assert_eq!(materials.len(), 1, "anti-vacuity: {materials:?}");
+    assert_eq!(shape(&overflow), shape(&finite));
+}
+
+/// A child spawned with `--exact` and a name libtest does not know runs zero
+/// tests and exits 0, so a stale name (after a module move) would pass
+/// vacuously. Require that the child selected exactly one test.
+fn assert_child_ran_one_test(output: &std::process::Output) {
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("running 1 test"),
+        "the child must select exactly one test (stale libtest name?); stdout:\n{stdout}"
+    );
+}

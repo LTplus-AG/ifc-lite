@@ -115,17 +115,28 @@ impl ClippingProcessor {
     /// more would be noise on elements whose voids end up perfectly cut (the
     /// issue-582/583 zero-CSG-failure bar).
     pub fn subtract_mesh_many(&self, host_mesh: &Mesh, cutters: &[&Mesh]) -> GroupCut {
-        self.subtract_mesh_many_inner(host_mesh, cutters, false)
+        self.subtract_mesh_many_inner::<true>(host_mesh, cutters, false)
     }
 
     /// Reuse a validated, consolidated conforming miss only for a void group
     /// whose welded operands equal the sequential kernel operands (#6516).
     /// Other callers retain the public batch outcome contract.
     pub(crate) fn subtract_mesh_many_retaining_miss(&self, host_mesh: &Mesh, cutters: &[&Mesh]) -> GroupCut {
-        self.subtract_mesh_many_inner(host_mesh, cutters, true)
+        self.subtract_mesh_many_inner::<true>(host_mesh, cutters, true)
     }
 
-    fn subtract_mesh_many_inner(&self, host_mesh: &Mesh, cutters: &[&Mesh], retain_miss: bool) -> GroupCut {
+    /// Only capture replay needs the general operand batch weld here; the
+    /// shipping void router always selects the opening policy.
+    #[cfg(feature = "csg_capture")]
+    pub(crate) fn replay_captured_many(&self, host: &Mesh, cutters: &[&Mesh], opening: bool, retain_miss: bool) -> GroupCut {
+        if opening {
+            self.subtract_mesh_many_inner::<true>(host, cutters, retain_miss)
+        } else {
+            self.subtract_mesh_many_inner::<false>(host, cutters, retain_miss)
+        }
+    }
+
+    fn subtract_mesh_many_inner<const OPENING: bool>(&self, host_mesh: &Mesh, cutters: &[&Mesh], retain_miss: bool) -> GroupCut {
         #[cfg(feature = "opening-perf-trace")]
         crate::opening_perf_trace::record(|c| c.group_subtract_calls = c.group_subtract_calls.saturating_add(1));
         if host_mesh.is_empty() {
@@ -160,7 +171,7 @@ impl ClippingProcessor {
             let chunk_tris: usize = chunk.iter().map(|c| c.triangle_count()).sum();
             record_csg_op(0, current.triangle_count(), chunk_tris);
             crate::kernel::budget::begin();
-            let (raw, conforming, miss) = subtract_many_with_conformity(current, chunk, retain_miss);
+            let (raw, conforming, miss) = subtract_many_with_conformity(current, chunk, OPENING, retain_miss);
             if crate::kernel::budget::tripped() {
                 // Escalation budget exceeded (#1109): the partial arrangement
                 // is discarded whatever the kernel made of it (deterministic).
@@ -181,7 +192,7 @@ impl ClippingProcessor {
                     return GroupCut::Rejected(GroupReject::Nonconforming);
                 }
             };
-            let next = self.consolidate(raw);
+            let next = if OPENING { self.consolidate(raw) } else { self.consolidate_operand(raw) };
             // Validate each intermediate BEFORE it becomes the next chunk's host:
             // a non-watertight / invalid intermediate would silently corrupt every
             // subsequent subtraction. Same guard as `subtract_mesh`, per chunk.

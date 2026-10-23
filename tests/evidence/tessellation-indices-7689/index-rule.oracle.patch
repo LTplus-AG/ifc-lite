@@ -1,0 +1,69 @@
+diff --git a/rust/core/src/fast_parse_indices.rs b/rust/core/src/fast_parse_indices.rs
+--- a/rust/core/src/fast_parse_indices.rs
++++ b/rust/core/src/fast_parse_indices.rs
+@@ -33,7 +33,7 @@ pub const INVALID_INDEX: u32 = u32::MAX;
+ /// position, or `None` for `0`, a negative value or one past `u32::MAX`.
+ #[inline]
+ pub(crate) fn ifc_index_to_zero_based(one_based: i64) -> Option<u32> {
+-    Some(u32::try_from(one_based).ok()?.saturating_sub(1))
++    u32::try_from(one_based).ok().and_then(|v| v.checked_sub(1))
+ }
+ 
+ /// Read a `CoordIndex` list value (`((1,2,3),(2,1,4),...)`, trivia allowed
+diff --git a/rust/geometry/src/processors/tessellated/indices.rs b/rust/geometry/src/processors/tessellated/indices.rs
+--- a/rust/geometry/src/processors/tessellated/indices.rs
++++ b/rust/geometry/src/processors/tessellated/indices.rs
+@@ -33,7 +33,7 @@ pub(super) fn read_pn_index(entity: &DecodedEntity, attr: usize) -> Option<Vec<u
+     if list.iter().any(|v| v.as_list().is_some()) {
+         return None;
+     }
+-    Some(list.iter().filter_map(|v| v.as_ifc_index()).collect())
++    Some(list.iter().map(|v| v.as_ifc_index().unwrap_or(INVALID_INDEX)).collect())
+ }
+ 
+ /// A 0-based CoordIndex corner as a 0-based `Coordinates` position: itself
+diff --git a/rust/geometry/src/processors/tessellated/mesh_build.rs b/rust/geometry/src/processors/tessellated/mesh_build.rs
+--- a/rust/geometry/src/processors/tessellated/mesh_build.rs
++++ b/rust/geometry/src/processors/tessellated/mesh_build.rs
+@@ -91,7 +91,7 @@ impl PolygonalFaceSetProcessor {
+         // Measured as `sign_accum / magnitude` over the fixture corpus: real
+         // inward shells sit at -5e-4 and below, planar or barely warped
+         // single faces within ±6e-8 of zero.
+-        if sign_accum < 0.0 * magnitude {
++        if sign_accum < -1e-5 * magnitude {
+             for tri in indices.chunks_exact_mut(3) {
+                 tri.swap(1, 2);
+             }
+diff --git a/rust/geometry/src/processors/tessellated/triangulated.rs b/rust/geometry/src/processors/tessellated/triangulated.rs
+--- a/rust/geometry/src/processors/tessellated/triangulated.rs
++++ b/rust/geometry/src/processors/tessellated/triangulated.rs
+@@ -51,7 +51,7 @@ impl TriangulatedFaceSetProcessor {
+ 
+         let mut indices = super::indices::read_triangle_coord_index(entity, decoder)?;
+         let mut authored = None;
+-        if let Some(pn_index) = super::indices::read_pn_index(entity, 4).filter(|_| false) {
++        if let Some(pn_index) = super::indices::read_pn_index(entity, 4) {
+             let remapped = indices
+                 .iter()
+                 .map(|&corner| super::indices::through_pn_index(corner, Some(&pn_index)))
+@@ -59,7 +59,7 @@ impl TriangulatedFaceSetProcessor {
+             authored = Some(std::mem::replace(&mut indices, remapped));
+         }
+ 
+-        let flipped = entity.get(2).and_then(|a| a.as_enum()) != Some("F")
++        let flipped = super::orients_outward(entity.get(2))
+             && PolygonalFaceSetProcessor::orient_closed_shell_outward(&positions, &mut indices);
+         if flipped {
+             for tri in authored.iter_mut().flat_map(|a| a.chunks_exact_mut(3)) {
+diff --git a/rust/core/src/decoder.rs b/rust/core/src/decoder.rs
+--- a/rust/core/src/decoder.rs
++++ b/rust/core/src/decoder.rs
+@@ -712,7 +712,7 @@ fn face_bound_keyword(bytes: &[u8], start: usize) -> (bool, usize) {
+         }
+     }
+     let len = rest.iter().position(|b| !is_ident(b)).unwrap_or(rest.len());
+-    (&rest[..len] == OUTER, start + len)
++    (rest[..len].eq_ignore_ascii_case(OUTER), start + len)
+ }
+ 
+ /// Parse cartesian point coordinates inline from raw bytes

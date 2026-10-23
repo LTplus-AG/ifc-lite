@@ -107,7 +107,11 @@ const viewpoint = createViewpoint({
   selectedGuids: selectedGuids, // IFC GlobalIds of selected entities
   hiddenGuids: hiddenGuids,     // IFC GlobalIds of hidden entities
   visibleGuids: visibleGuids,   // IFC GlobalIds for isolation mode (optional)
-  sectionPlane: activePlane,    // Single active clipping plane (optional)
+  sectionPlane: activePlane,    // A single clipping plane (optional)
+  sectionPlanes: [              // Every cutting plane, one ClippingPlanes entry each (optional; replaces sectionPlane)
+    { axis: 'down', position: 40, enabled: true, flipped: false },
+    { axis: 'side', position: 70, enabled: true, flipped: true },
+  ],
   snapshot: base64Image,        // Screenshot as base64 (optional)
 });
 ```
@@ -197,7 +201,7 @@ if (isValidIfcGuid(guid)) {
 
 `generateIfcGuid`, `generateUuid`, and `isValidUuid` are also re-exported.
 
-In the viewer, activating a viewpoint shows its clipping plane (or clears the cut when it has none). Closing the BCF panel gives back the section cut and tool you had before the first viewpoint, unless you moved the cut in the meantime.
+In the viewer, a viewpoint carries every cutting plane (one clipping plane each), and activating one shows them all, replacing the planes on screen, or clears the cut when it has none. BCF has no slot for a plane's name, so planes come back as A, B, C; more than eight planes show the first eight. Closing the BCF panel gives back the section cuts and tool you had before the first viewpoint, unless you changed them in the meantime.
 
 ## IDS Validation Reports as BCF
 
@@ -212,7 +216,9 @@ const blob = await writeBCF(project);
 
 The viewer's Data validation panel (IDS validation entry) uses this to export validation failures as BCF, with optional camera viewpoints and snapshots. See [IDS Validation](ids.md).
 
-`createBCFFromIDSReport` stops at `maxTopics` (default 1,000) and adds one Info topic saying how many items were left out. The viewer's export dialog defaults to one topic per failing specification, because one topic per entity grows with the model. It also shows how many topics the chosen grouping makes and warns before an export would pass the cap. Snapshots are rendered for at most that many entities.
+`createBCFFromIDSReport` stops at `maxTopics` (default 1,000) and adds one Info topic saying how many items were left out. The viewer's export dialog defaults to one topic per failing specification, because one topic per entity grows with the model. It also shows how many topics the chosen grouping makes and warns before an export would pass the cap. Requested snapshots are captured once per exported topic, including grouped specifications, using that topic's camera.
+
+The viewer frames assemblies using their geometry-bearing descendants and includes those descendants in the BCF visibility and coloring. If complete bounds are unavailable, enabling cameras preserves the current viewer camera and records that limitation in the topic description. A failure with no renderable geometry retains visible model context. Spatial containers without direct geometry also retain model context in the viewpoint and snapshot, because aggregate descendants alone do not include their spatially contained elements. Requested cameras or snapshots that cannot be obtained produce an export error instead of a silently incomplete download.
 
 Exporting `version: '3.0'` also needs `entityBounds`. BCF 3.0 requires exactly one camera per viewpoint, and `createBCFFromIDSReport` computes that camera only from the bounds you pass, keyed `"modelId:expressId"`. Bounds that are absent, or that cover only some of the entities a viewpoint frames, make the call throw and name the topic it could not frame, rather than write a partial view that leaves the rest off screen. With no bounds to hand, export `version: '2.1'`, or set an explicit camera on every viewpoint before writing 3.0.
 

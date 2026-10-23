@@ -28,6 +28,7 @@ fn raw_plan_is_an_insertion_target_3977() {
             v_axis: Vector3::new(0.0, 0.0, 1.0),
             raw: vec![[a, b, d]],
             raw_conformed: None,
+            retry: None,
             regions: Vec::new(),
         }];
         let source = PlanBucket {
@@ -42,6 +43,7 @@ fn raw_plan_is_an_insertion_target_3977() {
                 midpoint + Vector3::new(0.25, 1.0, 0.25),
             ]],
             raw_conformed: None,
+            retry: None,
             regions: Vec::new(),
         };
         plans.push(source);
@@ -75,6 +77,7 @@ fn conform_skips_an_empty_plan_3977() {
         v_axis: Vector3::new(0.0, 1.0, 0.0),
         raw: Vec::new(),
         raw_conformed: None,
+        retry: None,
         regions: Vec::new(),
     }];
     let seam = build_seam_map(&plans);
@@ -105,6 +108,7 @@ fn raw_plan_preserves_three_simultaneously_split_edges_3977() {
         v_axis: Vector3::new(0.0, 0.0, 1.0),
         raw: vec![vertices],
         raw_conformed: None,
+        retry: None,
         regions: Vec::new(),
     }];
     for (index, split_point) in split_points.iter().enumerate() {
@@ -120,6 +124,7 @@ fn raw_plan_preserves_three_simultaneously_split_edges_3977() {
                 *split_point + Vector3::new(0.25, 1.0, 0.25),
             ]],
             raw_conformed: None,
+            retry: None,
             regions: Vec::new(),
         });
     }

@@ -99,3 +99,17 @@ it('"Match 3D" is disabled on a custom (face-picked) plane', () => {
   const ui = render(<DrawingPanel />);
   assert.ok((byLabel(ui, 'Match 3D') as HTMLButtonElement).disabled, 'a custom plane has no single matching preset view');
 });
+
+// #7545: with several cutting planes the drawing is the active plane's; the header says which.
+it('names the active plane in the cut label only when there are several', () => {
+  seed();
+  useViewerStore.getState().clearSectionPlanes();
+  useViewerStore.getState().setActiveTool('section');
+  useViewerStore.getState().addSectionPlane('down');
+  const ui = render(<DrawingPanel />);
+  assert.doesNotMatch(ui.textContent ?? '', /A · /, 'one plane: no name needed');
+  cleanup();
+  useViewerStore.getState().addSectionPlane('side');
+  const again = render(<DrawingPanel />);
+  assert.match(again.textContent ?? '', /B · /, 'several planes: the active one is named');
+});

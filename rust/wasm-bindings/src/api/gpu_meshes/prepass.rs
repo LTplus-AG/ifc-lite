@@ -31,7 +31,7 @@ impl IfcAPI {
 
         // Build entity index — a compact columnar index (sorted u32 columns +
         // binary search, #1682) wrapped in Arc for cheap reuse.
-        let entity_index = std::sync::Arc::new(ifc_lite_core::ColumnarEntityIndex::from_scan(content));
+        let entity_index = std::sync::Arc::new(super::scan_columnar_index(content));
         // Cache for reuse by processGeometryBatch.
         // Mutex held only briefly to install the Arc; rayon helpers
         // pick up clones below without re-locking. Panic on poison —
@@ -43,7 +43,7 @@ impl IfcAPI {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *slot = Some(entity_index.clone());
         drop(slot);
-        let mut decoder = EntityDecoder::with_arc_columnar_index(content, entity_index);
+        let mut decoder = EntityDecoder::with_arc_columnar_index(content, entity_index).with_strict_reals(); // #7678
 
         // Run combined pre-pass
         let pre_pass = combined_pre_pass(content, &mut decoder);
@@ -491,9 +491,10 @@ impl IfcAPI {
         // Consuming frees the map before sorting: one interleaved transient.
         let entity_index_arc = match prebuilt_arc {
             Some(pi) => pi,
-            None => std::sync::Arc::new(ifc_lite_core::ColumnarEntityIndex::from_hashmap_consuming(
-                entity_index,
-            )),
+            None => std::sync::Arc::new(
+                ifc_lite_core::ColumnarEntityIndex::from_hashmap_consuming(entity_index)
+                    .map_err(|e| JsValue::from_str(&e.to_string()))?,
+            ),
         };
         let have_prebuilt = external_styles; // sharded mode always passes both
 
@@ -540,7 +541,7 @@ impl IfcAPI {
         // deliberately skipped, aggregate void propagation included); sharded
         // (external_styles) mode leaves styles to the worker shards + finalize.
         // `decoder` stays in scope below for the orphan type-geometry pass.
-        let mut decoder = EntityDecoder::with_arc_columnar_index(content, entity_index_arc.clone());
+        let mut decoder = EntityDecoder::with_arc_columnar_index(content, entity_index_arc.clone()).with_strict_reals(); // #7678
         decoder.seed_unit_scales(1.0, plane_angle_to_radians);
         if !external_styles {
             let resolved = ifc_lite_processing::prepass::resolve_prepass(

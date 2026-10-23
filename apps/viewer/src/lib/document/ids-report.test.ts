@@ -284,3 +284,31 @@ describe('IDS report output is unchanged by the information-validation kind (#63
     assert.deepEqual(validateDocumentSpec(doc({ ...block, checks: [{ ...block.checks[0], severity: 'info' }] })).map((e) => e.path), ['blocks[0].checks[0].severity']);
   });
 });
+
+
+it('preserves IDS evaluation errors in frozen snapshots (#8065 review)', () => {
+  const result = spec({ id: 'error', name: 'Rejected check' });
+  result.error = 'Evaluation failed';
+  const input = report([result]);
+  input.source = { kind: 'ids', document: { info: { title: 'Invalid IDS' }, specifications: [] } };
+  assert.equal(idsReportBlockFromReport(input, 'errors').checks[0].error, 'Evaluation failed');
+});
+
+
+it('normalizes only unmatched IDS snapshot check rates (#8065)', () => {
+  const unmatched = spec({ id: 'empty', name: 'No matches', status: 'pass', passRate: 100 });
+  const errored = spec({ id: 'error', name: 'Evaluation error', passRate: 37 });
+  errored.error = 'Evaluation failed';
+  const matched = spec({ id: 'matched', name: 'Matched', applicableCount: 2, passedCount: 1, failedCount: 1, passRate: 50 });
+  const input = report([unmatched, errored, matched]);
+  assert.deepEqual(idsReportBlockFromReport(input, 'rules').checks.map(check => check.passRate), [100, 37, 50]);
+  input.source = { kind: 'ids', document: { info: { title: 'IDS' }, specifications: [{
+    id: 'empty', name: 'No matches', ifcVersions: ['IFC4'], applicability: { facets: [] },
+    requirements: [{ id: 'global-id', optionality: 'required', facet: { type: 'attribute', name: { type: 'simpleValue', value: 'GlobalId' } } }],
+  }] } };
+  const block = idsReportBlockFromReport(input, 'ids');
+  assert.deepEqual(block.checks.map(check => check.passRate), [0, 37, 50]);
+  assert.deepEqual(block.checks[0].rules.map(rule => [rule.checked, rule.passed, rule.failed, rule.passRate]), [[0, 0, 0, 0]],
+    'declared requirements beneath an unmatched specification also display zero (#8065)');
+  assert.equal(unmatched.passRate, 100, 'snapshot display normalization preserves engine evidence');
+});

@@ -4,35 +4,38 @@
 
 //! Non-geometric IFC attribute, property, and quantity export for Python.
 
-use ifc_lite_export::{build_export_model_with_options, ExportModel, ModelOptions};
-use pyo3::exceptions::PyRuntimeError;
+use std::sync::Arc;
+
+use ifc_lite_export::{stream_export_model_with_inherited, EntityRow, Inherited, ModelOptions, PropValue, UnitScales};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 
-use super::GEOMETRY_STACK_BYTES;
+use super::run_geometry;
 
-/// Run the attribute/property extraction off the calling thread.
+/// Run the attribute/property extraction on the large-stack geometry pool.
 ///
-/// Shares the geometry worker's large stack: the placement resolver walks an
+/// Shares the geometry workers' large stack: the placement resolver walks an
 /// `IfcLocalPlacement` chain recursively, and the decode path is the same one
 /// the geometry pipeline needs the headroom for.
 fn run_entity_export(
+    py: Python<'_>,
     ifc_bytes: Vec<u8>,
     placements: bool,
     type_properties: bool,
     attributes: bool,
-) -> Result<ExportModel, String> {
+) -> PyResult<(Vec<(EntityRow, Inherited)>, UnitScales)> {
     let opts = ModelOptions::default()
         .with_placements(placements)
         .with_inherit_type_properties(type_properties)
         .with_attributes(attributes);
-    std::thread::Builder::new()
-        .stack_size(GEOMETRY_STACK_BYTES)
-        .name("ifclite-entities".into())
-        .spawn(move || build_export_model_with_options(&ifc_bytes, &opts))
-        .map_err(|e| format!("spawn failed: {e}"))?
-        .join()
-        .map_err(|_| "entity worker panicked".to_string())
+    run_geometry(py, "entity", move || {
+        let index = Arc::new(ifc_lite_processing::build_entity_index_parallel(&ifc_bytes));
+        let mut rows = Vec::new();
+        let units = stream_export_model_with_inherited(&ifc_bytes, &index, &opts, |row, flags, _| {
+            rows.push((row, flags));
+        });
+        (rows, units)
+    })
 }
 
 /// Read attributes, property sets and quantity sets. No tessellation.
@@ -71,7 +74,8 @@ fn run_entity_export(
 /// placement is never RTC-rebased, so both are unshifted, Z-up and in metres.
 ///
 /// **Type-inherited properties are included by default** (`type_properties`).
-/// A type attaches its sets via `IfcTypeObject.HasPropertySets`, and a plain
+/// A type attaches its sets via `IfcTypeObject.HasPropertySets` (or an
+/// `IfcRelDefinesByProperties` naming the type, also read), and a plain
 /// `IfcWallType` holding `Pset_WallCommon` gets no row of its own here, so
 /// before this the properties authoring tools put on types were unreachable.
 /// Each occurrence now also carries what it inherits through
@@ -90,14 +94,49 @@ fn run_entity_export(
 /// already define, so the occurrence wins a collision. One flag governs both
 /// lists.
 ///
+/// Every property and quantity dict carries `inherited`: `True` when it came
+/// from the type, including the copy added to each same-named set the
+/// occurrence carries, and always `False` with `type_properties=False`.
+///
 /// Pass `type_properties=False` for own-sets-only, which is what this function
 /// returned in 4.3.0, and which affects `property_sets` and `quantity_sets`
 /// alike.
 ///
-/// Remaining limit, inherited from the shared export model: only
-/// `IfcPropertySingleValue` properties are decoded. Enumerated, list, bounded,
-/// table and reference properties are skipped silently, and the pset still
-/// appears with those entries missing.
+/// Each property dictionary contains `name`, `value`, `value_type` and
+/// `inherited`.
+/// Every property kind is decoded (EXPORT-DATA-2, D47). An
+/// `IfcPropertySingleValue` returns its nominal value as a string; an
+/// enumerated, list, bounded, table, reference or complex property returns its
+/// display string (`"A, B"`, `"2 [1 – 5]"`, `"Table (2 rows)"`,
+/// `"Inner: a, Other: 2.5"`). A reference uses the target's nonblank `Name`,
+/// else its nonblank `Identification`, else `#<id>`. For
+/// `IfcPropertySingleValue`, `value_type` is the nominal value's rendered type
+/// tag (for example, `IFCLABEL` or `IFCREAL`). For other property kinds, it is
+/// the members' shared type tag, else the property class keyword
+/// (`IFCPROPERTYTABLEVALUE`, ...).
+/// Complex properties share the model's complex-property budget (#7675).
+/// Quantity dictionaries contain `name`, a numeric `value` and `kind`.
+///
+/// For `ifc_bytes` containing property and quantity sets, including a
+/// `Text` single-value property with an `IFCLABEL` nominal value:
+///
+/// >>> import ifclite_geom
+/// >>> rows = ifclite_geom.entity_data(ifc_bytes)["entities"].values()
+/// >>> prop = next(p for row in rows for ps in row["property_sets"] for p in ps["properties"])
+/// >>> sorted(prop)
+/// ['inherited', 'name', 'value', 'value_type']
+/// >>> isinstance(prop["value"], str)
+/// True
+/// >>> "kind" in prop
+/// False
+/// >>> text = next(p for row in rows for ps in row["property_sets"] for p in ps["properties"] if p["name"] == "Text")
+/// >>> text["value_type"]
+/// 'IFCLABEL'
+/// >>> quantity = next(q for row in rows for qs in row["quantity_sets"] for q in qs["quantities"])
+/// >>> sorted(quantity)
+/// ['inherited', 'kind', 'name', 'value']
+/// >>> isinstance(quantity["value"], float)
+/// True
 ///
 /// **Schema-declared entity attributes** arrive in their own `attributes` list,
 /// on by default. These are unrelated to the `IfcTypeObject` inheritance above,
@@ -111,9 +150,10 @@ fn run_entity_export(
 /// sets is returned: an attribute left `$` is omitted rather than reported
 /// empty, so the list is usually shorter than the class declares.
 ///
-/// Each entry has the same `{name, value, value_type}` shape as a property, so
-/// one code path reads both. The fields this dict already carries (`global_id`,
-/// `name`, `description`, `object_type`) are not repeated, and
+/// Each entry has the same `{name, value, value_type, inherited}` shape as a
+/// property, `inherited` always `False`, so one code path reads both. The
+/// fields this dict already carries (`global_id`, `name`, `description`,
+/// `object_type`) are not repeated, and
 /// reference-valued attributes are omitted rather than rendered as a dangling
 /// id. Pass `attributes=False` to skip them.
 #[pyfunction]
@@ -125,17 +165,15 @@ pub(super) fn entity_data(
     type_properties: bool,
     attributes: bool,
 ) -> PyResult<Py<PyAny>> {
-    let model = py
-        .detach(|| run_entity_export(ifc_bytes, placements, type_properties, attributes))
-        .map_err(PyRuntimeError::new_err)?;
+    let (rows, units) = run_entity_export(py, ifc_bytes, placements, type_properties, attributes)?;
 
     let out = PyDict::new(py);
-    out.set_item("length_unit_scale", model.units.length_unit_scale)?;
-    out.set_item("plane_angle_to_radians", model.units.plane_angle_to_radians)?;
-    out.set_item("project_id", model.units.project_id)?;
+    out.set_item("length_unit_scale", units.length_unit_scale)?;
+    out.set_item("plane_angle_to_radians", units.plane_angle_to_radians)?;
+    out.set_item("project_id", units.project_id)?;
 
     let entities = PyDict::new(py);
-    for row in &model.entities {
+    for (row, inherited) in &rows {
         let d = PyDict::new(py);
         d.set_item("ifc_type", &row.ifc_type)?;
         d.set_item("global_id", row.global_id.clone())?;
@@ -146,14 +184,10 @@ pub(super) fn entity_data(
         d.set_item("placement", row.placement.map(|p| p.matrix.to_vec()))?;
 
         let psets = PyList::empty(py);
-        for ps in &row.property_sets {
+        for (i, ps) in row.property_sets.iter().enumerate() {
             let props = PyList::empty(py);
-            for p in &ps.properties {
-                let pd = PyDict::new(py);
-                pd.set_item("name", &p.name)?;
-                pd.set_item("value", &p.value)?;
-                pd.set_item("value_type", &p.value_type)?;
-                props.append(pd)?;
+            for (j, p) in ps.properties.iter().enumerate() {
+                props.append(prop_dict(py, p, inherited.property(i, j))?)?;
             }
             let sd = PyDict::new(py);
             sd.set_item("name", &ps.name)?;
@@ -163,13 +197,14 @@ pub(super) fn entity_data(
         d.set_item("property_sets", psets)?;
 
         let qsets = PyList::empty(py);
-        for qs in &row.quantity_sets {
+        for (i, qs) in row.quantity_sets.iter().enumerate() {
             let quants = PyList::empty(py);
-            for q in &qs.quantities {
+            for (j, q) in qs.quantities.iter().enumerate() {
                 let qd = PyDict::new(py);
                 qd.set_item("name", &q.name)?;
                 qd.set_item("value", q.value)?;
                 qd.set_item("kind", q.kind)?;
+                qd.set_item("inherited", inherited.quantity(i, j))?;
                 quants.append(qd)?;
             }
             let sd = PyDict::new(py);
@@ -179,15 +214,10 @@ pub(super) fn entity_data(
         }
         d.set_item("quantity_sets", qsets)?;
 
-        // Same {name, value, value_type} shape as a property, so a consumer can
-        // read an attribute and a property with one code path.
+        // Same shape as a property dict, so one code path reads both.
         let attrs = PyList::empty(py);
         for a in &row.attributes {
-            let ad = PyDict::new(py);
-            ad.set_item("name", &a.name)?;
-            ad.set_item("value", &a.value)?;
-            ad.set_item("value_type", &a.value_type)?;
-            attrs.append(ad)?;
+            attrs.append(prop_dict(py, a, false)?)?;
         }
         d.set_item("attributes", attrs)?;
 
@@ -195,8 +225,18 @@ pub(super) fn entity_data(
     }
     // Count the DICT, not the row list. A malformed file can repeat a STEP id,
     // and keying by `express_id` collapses those to one entry (last wins), so
-    // `model.entities.len()` would promise more entries than are readable.
+    // `rows.len()` would promise more entries than are readable.
     out.set_item("entity_count", entities.len())?;
     out.set_item("entities", entities)?;
     Ok(out.into_any().unbind())
+}
+
+/// A property or attribute as a `{name, value, value_type, inherited}` dict.
+fn prop_dict<'py>(py: Python<'py>, p: &PropValue, inherited: bool) -> PyResult<Bound<'py, PyDict>> {
+    let d = PyDict::new(py);
+    d.set_item("name", &p.name)?;
+    d.set_item("value", &p.value)?;
+    d.set_item("value_type", &p.value_type)?;
+    d.set_item("inherited", inherited)?;
+    Ok(d)
 }

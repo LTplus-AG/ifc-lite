@@ -5,9 +5,10 @@
 //! Reusable authored source geometry and explicit product occurrences.
 
 use std::collections::BTreeMap;
-use ifc_lite_geometry::analytic::{AnalyticCurveSegment, AnalyticStatus, AnalyticSweptDisk};
+use ifc_lite_geometry::analytic::{AnalyticBoundarySource, AnalyticCurveSegment, AnalyticStatus,
+    AnalyticSweptDisk, OwnedDirectrix};
 use serde::Serialize;
-use sha2::{Digest, Sha256};
+
 use nalgebra::Matrix4;
 
 /// A context is a top-level representation for a direct solid, or the ordered
@@ -48,6 +49,20 @@ pub struct SweptDiskDefinition {
     #[serde(rename = "Directrix")]
     pub directrix: Vec<AnalyticCurveSegment>,
     pub status: AnalyticStatus,
+    /// Original solid-level parameter bounds, in the directrix's own parameter.
+    #[serde(skip)]
+    pub start_param: Option<f64>,
+    #[serde(skip)]
+    pub end_param: Option<f64>,
+    /// Original solid/directrix graph and the exact directrix it owns (original
+    /// rational coefficients, weights and knot interval in file units). `None`
+    /// unless extracted inside `ifc_lite_geometry::analytic::with_source_capture`.
+    /// `Directrix` and `status` keep their line/arc interpretation. Not
+    /// serialized: export output stays unchanged.
+    #[serde(skip)]
+    pub source: Option<AnalyticBoundarySource>,
+    #[serde(skip)]
+    pub owned_directrix: Option<OwnedDirectrix>,
 }
 
 /// One use of a source solid. Matrix is column-major f64 and maps raw IFC
@@ -100,12 +115,14 @@ impl SweptDiskDefinition {
     pub(super) fn from_disk(key: SweptDiskSourceKey, disk: &AnalyticSweptDisk) -> Self {
         Self { key, directrix_id: disk.directrix_id, radius: disk.radius,
             inner_radius: disk.inner_radius, directrix: disk.segments.clone(),
-            status: disk.status.clone() }
+            status: disk.status.clone(), start_param: disk.start_param,
+            end_param: disk.end_param, source: disk.source.clone(),
+            owned_directrix: disk.owned_directrix.clone() }
     }
 }
 
 pub(super) fn model_sha256(content: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(content))
+    crate::fingerprint::sha256_hex(content)
 }
 
 pub(super) fn source_key(
@@ -126,9 +143,8 @@ pub(super) fn source_matrix(transform: &Matrix4<f64>, unit_scale: f64) -> Option
     for column in 0..3 {
         for row in 0..3 { matrix[(row, column)] *= unit_scale; }
     }
-    matrix.iter().all(|v| v.is_finite()).then(|| {
-        let mut values = [0.0; 16];
-        values.copy_from_slice(matrix.as_slice());
-        values
-    })
+    matrix
+        .iter()
+        .all(|v| v.is_finite())
+        .then(|| ifc_lite_geometry::math::mat4::col_major_array(&matrix))
 }

@@ -4,7 +4,7 @@
 
 use super::*;
 
-impl Parser<'_> {
+impl TinHandler<'_> {
     pub(super) fn finish_surface(&mut self) -> Result<()> {
         let mut surface = self.surface.take().expect("surface closing");
         self.surface_ordinal += 1;
@@ -43,14 +43,11 @@ impl Parser<'_> {
         // authored TIN cannot enter synthesis, so it never needs this second
         // complete surface allocation on the streamed handoff path.
         let source_surface = (!authored_faces).then(|| surface.clone());
-        let terrain_diagnostic = crate::terrain::adapt_faceless_tin(
-            &mut surface,
-            &self.limits,
-            self.cancelled,
-            &mut self.faces_seen,
-            &mut self.references,
-            &mut self.work,
-        )?;
+        let faces = self.faces_seen.used_mut();
+        let references = self.references.used_mut();
+        let terrain_diagnostic = self.meter.lend(|work| {
+            crate::terrain::adapt_faceless_tin(&mut surface, &self.limits, self.cancelled, faces, references, work)
+        })?;
         if terrain_diagnostic.is_some() {
             surface = source_surface.expect("only faceless TIN synthesis can refuse");
         }
@@ -63,6 +60,7 @@ impl Parser<'_> {
         };
         let render_state = match surface.kind {
             LandXmlSurfaceKind::Tin if surface.points.len() >= 3 && !surface.faces.is_empty() => {
+                let mut repeated_vertex_faces = 0_usize;
                 for face in &surface.faces {
                     for id in face {
                         if !surface.ids.contains(id) {
@@ -72,6 +70,17 @@ impl Parser<'_> {
                             ));
                         }
                     }
+                    if face[0] == face[1] || face[1] == face[2] || face[0] == face[2] {
+                        repeated_vertex_faces += 1;
+                    }
+                }
+                // EDGE-LXPARSE-27 (#7693): a face that repeats a vertex has no
+                // area. It is kept as authored and reported, never dropped.
+                if repeated_vertex_faces > 0 {
+                    self.warnings.push(format!(
+                        "TIN surface \"{}\" has {repeated_vertex_faces} face(s) that repeat a vertex and have no area; they were kept as authored",
+                        surface.name
+                    ));
                 }
                 LandXmlRenderState::Rendered
             }
@@ -151,6 +160,12 @@ impl Parser<'_> {
     pub(crate) fn finish(mut self) -> Result<LandXmlTinDocument> {
         if self.version.is_empty() {
             return Err(error(Code::InvalidXml, "LandXML document is empty"));
+        }
+        if self.coordinate_systems_seen > 1 {
+            self.warnings.push(format!(
+                "LandXML declares {} root CoordinateSystem records; retained the last declaration",
+                self.coordinate_systems_seen,
+            ));
         }
         if !self.extensions.is_empty() {
             self.warnings.push(format!(
@@ -233,14 +248,14 @@ pub(crate) fn surface_draws_to_scale(surface: &LandXmlSurface) -> bool {
 /// stay inspectable — only `render_state == Rendered` triggers this.
 ///
 /// Both parse paths call this instead of keeping their own copy of the rule:
-/// [`Parser::finish`] (shared by the non-streaming entry point and by
+/// [`TinHandler::finish`] (shared by the non-streaming entry point and by
 /// [`crate::stream::LandXmlTinStreamSession::finish_cursor`]) and the
 /// streaming session's per-surface drain in `stream::output`, which calls it
 /// early so a surface never leaves the parser before units are known to be
 /// missing.
 ///
 /// #5175: `units` is the caller's *effective* units
-/// ([`Parser::effective_units`]) — a declared `<Units>` element when present,
+/// ([`TinHandler::effective_units`]) — a declared `<Units>` element when present,
 /// else a caller-supplied assumed unit
 /// (`LandXmlLimits::assumed_linear_unit`), else `None`. This function does
 /// not know or care which of the two it received; that distinction lives on

@@ -105,7 +105,7 @@ fn alignment_becomes_proxy_on_downgrade() {
     let line = "#3=IFCALIGNMENTHORIZONTAL('g',$,$,$,$,#4);";
     let out = convert_step_line(line, "IFC4X3", "IFC4", 3, &mut none(), None).unwrap();
     assert!(out.starts_with("#3=IFCPROXY("), "alignment → proxy");
-    assert!(out.contains("'IFCALIGNMENTHORIZONTAL'"), "original type recorded as name");
+    assert!(out.contains("'IFCALIGNMENTHORIZONTAL'"), "original type recorded as ObjectType");
 }
 
 /// PINS the schema-downgrade proxy-GlobalId divergence between the two
@@ -313,11 +313,7 @@ fn export_step_ifc2x3_downgrade_does_not_mojibake_a_name() {
 }
 
 fn step_file(schema: &str, data: &str) -> String {
-    format!(
-        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\n\
-         FILE_NAME('a.ifc','',(''),(''),'','','');\nFILE_SCHEMA(('{schema}'));\nENDSEC;\n\
-         DATA;\n{data}\nENDSEC;\nEND-ISO-10303-21;\n"
-    )
+    ifc_lite_testkit::step_file(schema, &[data])
 }
 
 fn downgrade(src: &str) -> (String, crate::StepStats) {
@@ -664,7 +660,7 @@ fn non_rooted_type_with_no_ifc2x3_representation_errors_instead_of_passing_throu
 /// #5116, control: a type WITH a rename entry (so it has a real IFC2X3
 /// target under its RENAMED name) must not be caught by the new "no
 /// representation" check just because its ORIGINAL name is absent from
-/// `IFC2X3_ENTITY_NAMES` -- the check runs on `new_type`, the post-rename
+/// core's IFC2X3 registry -- the check runs on `new_type`, the post-rename
 /// name, same as the TypeScript twin's `attrNameTable(toSchema).get(newType)`.
 #[test]
 fn a_renamed_type_is_not_treated_as_unrepresented() {
@@ -718,4 +714,74 @@ fn ifc4x3_to_ifc4_downgrade_skips_a_record_whose_arity_disagrees_with_the_table(
     let out = convert_step_line(line, "IFC4X3", "IFC4", 5, &mut none(), Some(&mut check)).unwrap();
     assert_eq!(out, line, "{out}");
     assert_eq!(check.ifc4_slots.required_slots_unfilled(), 0);
+}
+
+/// EXPORT-MERGE-8 (#7683): the IFC4X3 positioning types were RENAMED to
+/// `IFCPROXY` and kept their own attributes, so `IFCALIGNMENT(…,.ROAD.)` came
+/// out as an 8-attribute `IFCPROXY` with an alignment enum in `ProxyType`,
+/// where IfcProxy takes 9 (the enum and required-slot passes then skipped it on
+/// arity). They now take `product_proxy`, in both downgrade directions: IfcProxy's
+/// own arity and enum, a minted GlobalId, and the source's IfcProduct
+/// attributes kept, so the alignment curve and the referent placement stay
+/// attached (the first cut wrote a bare placeholder that dropped them).
+#[test]
+fn positioning_types_become_a_full_proxy_on_downgrade_7683() {
+    let ifc_proxy_arity = |to| schema_attribute_names(to, "IFCPROXY").map(<[_]>::len);
+    for (ty, line) in [
+        ("IFCALIGNMENT", "#1=IFCALIGNMENT('2K5H1$Zs9CQuKQFQKQFQKQ',#8,'A',$,$,#5,#6,.ROAD.);"),
+        ("IFCREFERENT", "#2=IFCREFERENT('3K5H1$Zs9CQuKQFQKQFQKQ',#8,'R',$,$,#5,#6,.STATION.,(#9));"),
+        ("IFCLINEARELEMENT", "#3=IFCLINEARELEMENT('4K5H1$Zs9CQuKQFQKQFQKQ',#8,'L',$,$,#5,#6);"),
+        ("IFCPOSITIONINGELEMENT", "#4=IFCPOSITIONINGELEMENT('5K5H1$Zs9CQuKQFQKQFQKQ',#8,'P',$,$,#5,#6);"),
+        ("IFCLINEARPOSITIONINGELEMENT", "#5=IFCLINEARPOSITIONINGELEMENT('6K5H1$Zs9CQuKQFQKQFQKQ',#8,'P',$,$,#5,#6);"),
+        ("IFCALIGNMENTSEGMENT", "#6=IFCALIGNMENTSEGMENT('7K5H1$Zs9CQuKQFQKQFQKQ',#8,'S',$,$,#5,#6,#9);"),
+    ] {
+        for to in ["IFC4", "IFC2X3"] {
+            let out = convert_step_line(line, "IFC4X3", to, 1, &mut none(), None).unwrap();
+            assert!(out.contains("=IFCPROXY("), "{ty} -> {to}: {out}");
+            let open = out.find('(').unwrap() + 1;
+            let arity = crate::step_slot::split_top_level_args(&out[open..out.rfind(')').unwrap()]).unwrap().len();
+            assert_eq!(Some(arity), ifc_proxy_arity(to), "{ty} -> {to}: IfcProxy's own arity: {out}");
+            assert_ne!(slot(&out, 0), slot(line, 0), "the GlobalId is minted, not copied: {out}");
+            assert_eq!(slot(&out, 1), "#8", "OwnerHistory survives: {out}");
+            assert_eq!(slot(&out, 2), slot(line, 2), "Name survives: {out}");
+            assert_eq!(slot(&out, 4), format!("'{ty}'"), "ObjectType was $, so it names the source type: {out}");
+            assert_eq!(slot(&out, 5), "#5", "ObjectPlacement survives: {out}");
+            assert_eq!(slot(&out, 6), "#6", "Representation survives: {out}");
+            assert_eq!(slot(&out, 7), ".NOTDEFINED.", "ProxyType is an IfcObjectTypeEnum member: {out}");
+            assert_eq!(slot(&out, 8), "$", "Tag: {out}");
+        }
+        // IFC4X3 declares them, so an upgrade or a same-family write keeps them.
+        assert_eq!(convert_step_line(line, "IFC4X3", "IFC5", 1, &mut none(), None).unwrap(), line);
+    }
+    // An authored ObjectType is kept rather than overwritten.
+    let out = convert_step_line("#7=IFCALIGNMENT('g',$,'A',$,'Axis',#5,#6,.ROAD.);", "IFC4X3", "IFC4", 7, &mut none(), None).unwrap();
+    assert_eq!(slot(&out, 4), "'Axis'", "{out}");
+    // IfcProxy WR1 requires Name: an unnamed source names the source type, on both targets.
+    for to in ["IFC4", "IFC2X3"] {
+        let out = convert_step_line("#8=IFCALIGNMENTSEGMENT('g',#2,$,$,$,#5,$,#9);", "IFC4X3", to, 8, &mut none(), None).unwrap();
+        assert_eq!(slot(&out, 2), "'IFCALIGNMENTSEGMENT'", "{to}: {out}");
+    }
+}
+
+/// #7683: the values a conversion has no target slot for are counted, not
+/// silently dropped: a trimmed tail (IFC4's `Formula` on a downgrade, IFC2X3's
+/// `ControlElementId` on an upgrade), an alignment proxy's `PredefinedType`,
+/// and a by-name remap source with no same-named target attribute. `$` is
+/// not a value and is not counted.
+#[test]
+fn values_without_a_target_slot_are_counted_7683() {
+    let dropped = |line: &str, from: &str, to: &str| {
+        let mut checks = crate::schema_enum::ConversionChecks::new();
+        convert_step_line(line, from, to, 1, &mut none(), Some(&mut checks)).unwrap();
+        checks.attribute_values_dropped
+    };
+    assert_eq!(dropped("#1=IFCQUANTITYLENGTH('L',$,$,2.5,'=a*b');", "IFC4", "IFC2X3"), 1);
+    assert_eq!(dropped("#1=IFCQUANTITYLENGTH('L',$,$,2.5,$);", "IFC4", "IFC2X3"), 0);
+    assert_eq!(
+        dropped("#1=IFCDISTRIBUTIONCONTROLELEMENT('g',$,$,$,$,$,$,$,'CE-1');", "IFC2X3", "IFC4"),
+        1,
+        "ControlElementId"
+    );
+    assert_eq!(dropped("#1=IFCALIGNMENT('g',$,'A',$,$,#5,#6,.ROAD.);", "IFC4X3", "IFC4"), 1, "PredefinedType");
+    assert_eq!(dropped("#1=IFCWALL('g',$,$,$,$,$,$,$,$);", "IFC2X3", "IFC4"), 0, "a pad loses nothing");
 }

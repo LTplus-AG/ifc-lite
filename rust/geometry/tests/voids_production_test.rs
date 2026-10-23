@@ -26,14 +26,13 @@
 //! large model downloads does not flake. Preserves every assertion from
 //! the former `production_void_path_test.rs`.
 
-mod support;
 mod voids_common;
 
 use ifc_lite_core::{build_entity_index, EntityDecoder};
 use ifc_lite_geometry::GeometryRouter;
 use voids_common::production::{
     build_void_index_like_production, count_hits_through_opening, find_entity_by_guid, fold_origin,
-    load_fixture, opening_world_aabb, process_host_like_production,
+    opening_world_aabb, process_host_like_production,
 };
 
 /// How a production fixture case locates its host wall.
@@ -82,24 +81,20 @@ fn production_fixture_walls_have_holes() {
     ];
 
     for case in &cases {
-        let content = match load_fixture(case.fixture) {
-            Some(c) => c,
-            None => {
-                if case.manifest_backed {
-                    assert!(
-                        !support::require_fixtures(),
-                        "[{}] fixture {} not present and IFC_LITE_REQUIRE_FIXTURES=1 -- \
-                         run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)",
-                        case.name,
-                        case.fixture
-                    );
-                }
-                eprintln!(
-                    "[{}] fixture {} missing — skipping production void test",
-                    case.name, case.fixture
-                );
-                continue;
-            }
+        // Manifest-backed fixtures go through the gate (a missing one panics under
+        // IFC_LITE_REQUIRE_FIXTURES=1); the private Smiley model never can.
+        let rel = case.fixture.strip_prefix("tests/models/").expect("fixture under tests/models/");
+        let loaded = if case.manifest_backed {
+            ifc_lite_testkit::fixture_text(rel)
+        } else {
+            ifc_lite_testkit::local_fixture_text(rel)
+        };
+        let Some(content) = loaded else {
+            eprintln!(
+                "[{}] fixture {} missing — skipping production void test",
+                case.name, case.fixture
+            );
+            continue;
         };
 
         let host_id = match case.host {
@@ -185,15 +180,9 @@ fn production_fixture_walls_have_holes() {
 #[test]
 #[ignore = "fixture AC-20-Smiley-West-10-Bldg.ifc is not in the manifest; source it manually (see issue_584_smiley_west_test.rs) and run with --ignored"]
 fn production_smiley_all_host_walls_have_holes() {
-    let content = match load_fixture("tests/models/ara3d/AC-20-Smiley-West-10-Bldg.ifc") {
-        Some(c) => c,
-        None => {
-            eprintln!(
-                "AC-20-Smiley-West-10-Bldg.ifc fixture missing — \
-                 skipping production void sweep"
-            );
-            return;
-        }
+    let Some(content) = ifc_lite_testkit::local_fixture_text("ara3d/AC-20-Smiley-West-10-Bldg.ifc") else {
+        eprintln!("AC-20-Smiley-West-10-Bldg.ifc fixture missing — skipping production void sweep");
+        return;
     };
 
     let void_index = build_void_index_like_production(&content);

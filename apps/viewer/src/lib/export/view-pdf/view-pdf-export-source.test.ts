@@ -173,6 +173,48 @@ describe('readViewPdfSource (#2042)', () => {
     assert.equal(source.sectionEnabled, false);
   });
 
+  it('hands over the other cutting planes that are on (#7545), and none once the cut is hidden or off', () => {
+    const state = () => useViewerStore.getState();
+    const second = state().addSectionPlane('front');
+    assert.ok(second);
+    state().setSectionPlanePosition(25);
+    const third = state().addSectionPlane('down');
+    assert.ok(third);
+    // `addSectionPlane` makes the new plane active: C is active, A and B are inactive.
+    let source = readViewPdfSource(state());
+    assert.equal(source.section?.plane.axis, 'down', 'the active plane is the main cut');
+    assert.deepEqual(
+      source.extraSections.map((c) => [c.plane.axis, c.plane.position]),
+      [['side', 50], ['front', 25]],
+      'every other cutting plane, in creation order, with its own position',
+    );
+    assert.equal(source.extraSections[0].uiRange?.max, LARGE_MAX.x, 'each resolves against the union, like the main cut');
+
+    state().setSectionPlaneCutting(second, false);
+    source = readViewPdfSource(state());
+    assert.deepEqual(source.extraSections.map((c) => c.plane.axis), ['side'], 'a plane whose Cut is off does not clip the sheet');
+
+    state().setSectionVisible(false);
+    source = readViewPdfSource(state());
+    assert.deepEqual(source.extraSections, [], 'a hidden cut prints nothing, extras included');
+    assert.equal(source.sectionEnabled, false);
+  });
+
+  it('clips a section box by its six faces, never by the axis it carried before it was a box (#7545)', () => {
+    const state = () => useViewerStore.getState();
+    state().clearSectionPlanes(); // earlier tests left planes and hid the cut
+    state().setSectionVisible(true);
+    state().setSectionBox({ min: [10, 5, 5], max: [30, 25, 20] });
+    const source = readViewPdfSource(state());
+    assert.equal(source.section, null, 'the box plane contributes no axis-and-position cut');
+    assert.equal(source.extraSections.length, 6, 'one half-space per face');
+    // Each face keeps the inside: the +x face keeps x <= 30, the -x face keeps x >= 10.
+    const kept = source.extraSections.map((c) => c.plane.custom);
+    assert.deepEqual(kept.find((c) => c?.normal[0] === 1), { normal: [1, 0, 0], distance: 30 });
+    assert.deepEqual(kept.find((c) => c?.normal[0] === -1), { normal: [-1, 0, 0], distance: -10 });
+    assert.equal(source.sectionEnabled, true);
+  });
+
   it('gathers the visible models geometry and leaves the instanced list empty by construction', () => {
     const source = readViewPdfSource(useViewerStore.getState());
     assert.equal(source.view.meshes.length, 2, 'both visible models must contribute geometry');

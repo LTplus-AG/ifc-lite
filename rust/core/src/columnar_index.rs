@@ -93,6 +93,35 @@ impl std::fmt::Display for ColumnLengthMismatch {
 
 impl std::error::Error for ColumnLengthMismatch {}
 
+/// An entity span the index's `u32` columns cannot hold: it ends past 4 GiB
+/// (or starts after it ends). Returned instead of truncating `start as u32`,
+/// which in a release build handed `lookup` the span of some other bytes
+/// (#7675, CORE-24). A source that large keeps the `usize`-carrying
+/// [`EntityIndex`](crate::EntityIndex) hashmap; see the module docs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SpanBeyondU32 {
+    pub id: u32,
+    pub start: usize,
+    pub end: usize,
+}
+
+impl std::fmt::Display for SpanBeyondU32 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self { id, start, end } = self;
+        write!(f, "entity #{id} spans bytes {start}..{end}, past the 4 GiB the columnar index's u32 columns hold")
+    }
+}
+
+impl std::error::Error for SpanBeyondU32 {}
+
+/// The `(start, length)` the columns store: the one home of the `u32` ceiling.
+fn u32_span(id: u32, start: usize, end: usize) -> Result<(u32, u32), SpanBeyondU32> {
+    match (u32::try_from(start), u32::try_from(end)) {
+        (Ok(s), Ok(e)) if s <= e => Ok((s, e - s)),
+        _ => Err(SpanBeyondU32 { id, start, end }),
+    }
+}
+
 impl ColumnarEntityIndex {
     /// Build from the three delivered columns (`setEntityIndex` ingestion).
     ///
@@ -140,17 +169,15 @@ impl ColumnarEntityIndex {
     /// sort is in-place and the final column split briefly overlaps rows +
     /// outputs (~458 MB) before rows drop. Still far below the borrowing path,
     /// and the steady-state index is ~229 MB.
-    pub fn from_hashmap_consuming(map: EntityIndex) -> Self {
+    pub fn from_hashmap_consuming(map: EntityIndex) -> Result<Self, SpanBeyondU32> {
         let n = map.len();
         // Reserve while the map is still alive: peak ≈ map + rows (~665 MB at
         // 19.1 M). Draining without reserve would thrash reallocs for the same
         // asymptotic peak once the vec fills.
         let mut rows: Vec<(u32, u32, u32)> = Vec::with_capacity(n);
         for (id, (start, end)) in map {
-            // Offsets must fit u32, as required by the module contract;
-            // see `from_hashmap`.
-            debug_assert!(end <= u32::MAX as usize, "entity offset exceeds the u32 column ceiling");
-            rows.push((id, start as u32, (end - start) as u32));
+            let (start, len) = u32_span(id, start, end)?;
+            rows.push((id, start, len));
         }
         // `map` dropped with the loop; sort is in-place on `rows` alone.
         rows.sort_unstable_by_key(|r| r.0);
@@ -162,13 +189,13 @@ impl ColumnarEntityIndex {
             starts.push(start);
             lengths.push(len);
         }
-        Self {
+        Ok(Self {
             ids,
             starts,
             lengths,
             styled_item_index: std::sync::OnceLock::new(),
             grid_axis_index: Arc::default(),
-        }
+        })
     }
 
     /// Build from an already-scanned [`EntityIndex`](crate::EntityIndex)
@@ -176,23 +203,20 @@ impl ColumnarEntityIndex {
     /// applied by `HashMap::insert`), so this only sorts the entries. Prefer
     /// [`Self::from_hashmap_consuming`] when the map is no longer needed - it
     /// avoids holding map + copies concurrently (P1 review finding on #1689).
-    pub fn from_hashmap(map: &EntityIndex) -> Self {
+    pub fn from_hashmap(map: &EntityIndex) -> Result<Self, SpanBeyondU32> {
         let n = map.len();
         let mut ids = Vec::with_capacity(n);
         let mut starts = Vec::with_capacity(n);
         let mut lengths = Vec::with_capacity(n);
         for (&id, &(start, end)) in map.iter() {
-            // u32 offsets are sound only under the wasm32 <4GiB address space
-            // (module docs). Catch a future native caller in debug builds
-            // before a silent truncation decodes the wrong bytes.
-            debug_assert!(end <= u32::MAX as usize, "entity offset exceeds the u32 column ceiling");
+            let (start, len) = u32_span(id, start, end)?;
             ids.push(id);
-            starts.push(start as u32);
-            lengths.push((end - start) as u32);
+            starts.push(start);
+            lengths.push(len);
         }
         // Entries are unique; `from_unsorted`'s dedup is a no-op but keeps one
         // sort/build code path.
-        Self::from_unsorted(ids, starts, lengths)
+        Ok(Self::from_unsorted(ids, starts, lengths))
     }
 
     /// Scan `content` and build the columns directly, replicating
@@ -204,7 +228,7 @@ impl ColumnarEntityIndex {
     /// Reports the scanner's #3395 refusals for the same reason
     /// [`crate::build_entity_index`] does: this is a whole-file index build, so
     /// a refused record is a record the model will not contain.
-    pub fn from_scan<T>(content: &T) -> Self
+    pub fn from_scan<T>(content: &T) -> Result<Self, SpanBeyondU32>
     where
         T: AsRef<[u8]> + ?Sized,
     {
@@ -215,16 +239,16 @@ impl ColumnarEntityIndex {
         let mut lengths = Vec::with_capacity(estimated);
         let mut scanner = EntityScanner::new(content);
         while let Some((id, _type_name, start, end)) = scanner.next_entity() {
-            debug_assert!(end <= u32::MAX as usize, "entity offset exceeds the u32 column ceiling");
+            let (start, len) = u32_span(id, start, end)?;
             ids.push(id);
-            starts.push(start as u32);
-            lengths.push((end - start) as u32);
+            starts.push(start);
+            lengths.push(len);
         }
         crate::parser::report_scan_diagnostics(
             scanner.skipped_oversized_ids(),
             scanner.malformed_record_start().is_some(),
         );
-        Self::from_unsorted(ids, starts, lengths)
+        Ok(Self::from_unsorted(ids, starts, lengths))
     }
 
     /// Sort the (id, start, length) triples by id and collapse duplicate ids
@@ -364,6 +388,8 @@ impl<'a> crate::EntityDecoder<'a> {
     /// [`EntityDecoder::set_entity_index`](crate::EntityDecoder::set_entity_index)
     /// but for the compact representation; afterwards `build_index` no-ops.
     pub fn set_columnar_index(&mut self, index: Arc<ColumnarEntityIndex>) {
+        self.execution_owner.changed();
+        self.source_bundle = None;
         self.set_grid_axis_index(index.grid_axis_index.clone());
         self.entity_index = Some(EntityIndexStore::Columnar(index));
     }

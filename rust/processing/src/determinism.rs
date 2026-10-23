@@ -29,7 +29,7 @@ use crate::prepass::{
     flat_material_colors, flat_styles_rgba8, flat_voids, resolve_prepass, PrepassSpans,
     ResolveOptions,
 };
-use crate::processor::{process_geometry_filtered_with_quality, OpeningFilterMode};
+use crate::processor::{process, ProcessingRequest};
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::TessellationQuality;
 use serde::{Deserialize, Serialize};
@@ -144,14 +144,10 @@ ENDSEC;
 END-ISO-10303-21;
 "#;
 
-const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
-const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+const FNV_OFFSET_BASIS: u64 = ifc_lite_core::hash::FNV64_OFFSET;
 
 fn fnv1a_bytes(h: &mut u64, bytes: &[u8]) {
-    for &b in bytes {
-        *h ^= b as u64;
-        *h = h.wrapping_mul(FNV_PRIME);
-    }
+    *h = ifc_lite_core::hash::fnv1a64_extend(*h, bytes);
 }
 
 fn fnv1a_u32s(h: &mut u64, vals: &[u32]) {
@@ -287,10 +283,10 @@ fn resolve_fixture_wires(content: &[u8]) -> FixtureWires {
 pub fn compute_mesh_manifest() -> MeshManifest {
     ifc_lite_geometry::local_frame_set_enabled_override(Some(true));
 
-    let result = process_geometry_filtered_with_quality(
-        FIXTURE_IFC,
-        OpeningFilterMode::Default,
-        TessellationQuality::Medium,
+    let result = process(
+        FIXTURE_IFC.as_bytes(),
+        &ProcessingRequest::full_pass().quality(TessellationQuality::Medium),
+        &mut (),
     );
 
     let wires = resolve_fixture_wires(FIXTURE_IFC.as_bytes());

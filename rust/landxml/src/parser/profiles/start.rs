@@ -10,11 +10,11 @@ use crate::{
     LandXmlRoadway, LandXmlSourceId, LandXmlVerticalCurveKind,
 };
 
-use super::super::{Capture, Code, PairListTarget, Parser, ProfileCurveCapture};
+use super::super::{Capture, Code, PairListTarget, TinHandler, ProfileCurveCapture};
 use super::values::{finite_attr, optional_finite_attr, reference_count_attr, references_attr};
 use super::{AlignmentBuilder, CrossSectionBuilder, CrossSectionSurfaceBuilder, ProfileBuilder};
 
-impl Parser<'_> {
+impl TinHandler<'_> {
     pub(super) fn start_alignment(&mut self, attributes: &Attributes) -> Result<()> {
         if self.alignments.len() >= self.limits.max_alignments {
             return Err(error(Code::LimitExceeded, "alignment limit exceeded"));

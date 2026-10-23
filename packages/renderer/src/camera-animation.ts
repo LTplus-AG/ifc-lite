@@ -27,7 +27,7 @@ import {
   zoomExtentTarget,
   type FramingBounds,
 } from './camera-framing.js';
-import { presetViewTarget, resolvePresetBounds } from './camera-preset-view.js';
+import { presetDirectionTarget, presetViewTarget, resolvePresetBounds } from './camera-preset-view.js';
 import { applyImmediateCameraPose } from './camera-animation-immediate.js';
 import { inertiaStep } from './camera-inertia.js';
 
@@ -247,8 +247,8 @@ export class CameraAnimator {
    * Frame selection - zoom to fit bounds while keeping current view direction
    * This is what "Frame Selection" should do - zoom to fill screen
    */
-  async frameBounds(min: Vec3, max: Vec3, duration = 300): Promise<void> {
-    const fit = frameBoundsTarget(this.state, min, max);
+  async frameBounds(min: Vec3, max: Vec3, duration = 300, padding?: number): Promise<void> {
+    const fit = frameBoundsTarget(this.state, min, max, padding);
     if (!fit) return;
     return this.animateTo(fit.position, fit.target, duration, fit.orthoSize);
   }
@@ -285,6 +285,21 @@ export class CameraAnimator {
     }
 
     const fit = presetViewTarget(this.state, view, useBounds, this.presetViewRotation, buildingRotation);
+    this.animateToWithUp(fit.position, fit.target, fit.up, 300);
+  }
+
+  /**
+   * Animate to a diagonal preset (a ViewCube edge or corner). `direction` is
+   * in the named presets' face frame (+X right, +Y top, +Z front). Ends the
+   * face-click rotation cycle, so the next face click starts it afresh.
+   */
+  setPresetDirection(direction: Vec3, bounds?: FramingBounds, buildingRotation?: number): void {
+    const useBounds = resolvePresetBounds(this.state, bounds);
+    if (!useBounds) return;
+    const fit = presetDirectionTarget(this.state, direction, useBounds, buildingRotation);
+    if (!fit) return;
+    this.lastPresetView = null;
+    this.presetViewRotation = 0;
     this.animateToWithUp(fit.position, fit.target, fit.up, 300);
   }
 

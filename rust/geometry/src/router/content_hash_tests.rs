@@ -15,6 +15,30 @@ fn parse_first_ref_reads_an_ordinary_ref() {
     assert_eq!(parse_first_ref(b"#5=IFCFACETEDBREP(#137924)"), Some(137924));
 }
 
+/// F4 M-geom (CORE-1, CORE-10): trivia is trivia. The first-ref read took the
+/// first `#` after the first `(` and the type read compared the bytes after
+/// `=`, so a comment in either place bound the brep to the wrong shell, or hid
+/// that the record is a brep at all.
+#[test]
+fn faceted_brep_head_and_shell_ref_read_through_trivia() {
+    for record in [
+        &b"#5=IFCFACETEDBREP(#7);"[..],
+        b"#5 = ifcfacetedbrep (#7);",
+        b"#5=/* IFCWALL( */ IFCFACETEDBREP /* x */ ( /* #9 */ #7 /* #8 */ );",
+    ] {
+        let text = String::from_utf8_lossy(record);
+        assert!(type_token_is(record, b"IFCFACETEDBREP"), "{text}");
+        assert_eq!(parse_first_ref(record), Some(7), "{text}");
+    }
+    // A longer identifier is another type; a `#` in a literal or a `$` first
+    // attribute is no shell reference (it used to be the next `#`).
+    assert!(!type_token_is(b"#5=IFCFACETEDBREPX(#7);", b"IFCFACETEDBREP"));
+    assert!(!type_token_is(b"#5=IFCFACETEDBREPWITHVOIDS(#7,(#8));", b"IFCFACETEDBREP"));
+    assert_eq!(parse_first_ref(b"#5=IFCFACETEDBREP($,#7);"), None);
+    assert_eq!(parse_first_ref(b"#5=IFCFACETEDBREP('a#9',#7);"), None);
+    assert_eq!(parse_first_ref(b"#5=IFCFACETEDBREP(#+7);"), None);
+}
+
 /// Boundary: a ref at exactly `u32::MAX` is not refused (issue #3421).
 #[test]
 fn parse_first_ref_accepts_a_ref_at_exactly_u32_max() {
@@ -197,4 +221,47 @@ fn issue_3988_brep_signature_reuses_scratch_without_stale_faces_or_points() {
     let missing = source.replace("#12=IFCPOLYLOOP((#21,#22,#23))", "#12=IFCPOLYLOOP((#21,#22,#99))");
     let mut missing_decoder = EntityDecoder::new(&missing);
     assert_eq!(try_faceted_brep_signature(&mut missing_decoder, 1), None);
+}
+
+fn sig_of(content: &[u8], id: u32) -> u128 {
+    let mut decoder = EntityDecoder::new(content);
+    let mut memo = FxHashMap::default();
+    let mut refused = 0usize;
+    item_signature(&mut decoder, id, &mut memo, &mut refused)
+}
+
+/// Issue #7589: a PAGE directive's apostrophe operand (`'Para \S\' 5'`) is
+/// string text. The old walker closed the literal at the operand and reopened
+/// one at the next quote, which swallowed the real `#ref` after the string, so
+/// two records pointing at structurally different children hashed alike.
+#[test]
+fn issue_7589_ref_after_a_page_operand_string_is_still_followed() {
+    // Same record text, same ids; only the child's geometry differs.
+    let build = |coords: &str| {
+        format!("#1=IFCCARTESIANPOINT(({coords}));\n#3=IFCFOO('Para \\S\\' 5',#1);\n").into_bytes()
+    };
+    assert_ne!(
+        sig_of(&build("0.,0.,0."), 3),
+        sig_of(&build("5.,5.,5."), 3),
+        "the child ref after the string must contribute its own signature"
+    );
+}
+
+/// Issue #7589: `#9` inside the string text is not a reference, so the
+/// signature cannot depend on what entity `#9` happens to be.
+#[test]
+fn issue_7589_ref_shaped_text_inside_a_page_operand_string_is_not_followed() {
+    let build = |nine: &str| {
+        format!(
+            "#1=IFCCARTESIANPOINT((0.,0.,0.));\n{nine}#3=IFCFOO('Art \\S\\' #9 x',#1);\n"
+        )
+        .into_bytes()
+    };
+    let one = build("#9=IFCCARTESIANPOINT((1.,1.,1.));\n");
+    let other = build("#9=IFCCARTESIANPOINT((7.,7.,7.));\n");
+    assert_eq!(
+        sig_of(&one, 3),
+        sig_of(&other, 3),
+        "text inside the literal must not be read as a reference"
+    );
 }

@@ -93,14 +93,11 @@ flowchart LR
 ```rust
 // Entity reference: #123 (rust/core/src/parser/tokenizer.rs)
 fn entity_ref(input: &[u8]) -> IResult<&[u8], Token<'_>> {
-    map(
-        preceded(char('#'), map_res(digit1, lexical_core::parse::<u32>)),
-        Token::EntityRef,
-    )(input)
+    map(preceded(char('#'), express_id), Token::EntityRef)(input)
 }
 ```
 
-String literals use memchr to find the closing quote (with `''` escape handling), and numbers are parsed with `lexical-core`.
+String literals use memchr to find the closing quote (with `''` escape handling), `"..."` binary literals are their own token, and numbers go through the one shared reader `read_step_number` (`fast-float2`), the same one every raw-byte reader uses.
 
 ### Performance Optimizations
 
@@ -108,7 +105,7 @@ String literals use memchr to find the closing quote (with `''` escape handling)
 |--------------|-----------|---------|
 | Zero-copy | Store byte slices | No allocation |
 | SIMD search | memchr crate | 10x faster search |
-| Fast numbers | lexical-core | 5x faster parsing |
+| Fast numbers | fast-float2 behind one literal grammar | Single pass |
 | Branch prediction | Ordered alternatives | Better CPU prediction |
 
 ## Entity Scanning
@@ -144,7 +141,7 @@ The scanner also yields the entity's type name during the same walk, so callers 
 
 The real scanner (`EntityScanner` in `rust/core/src/parser/scanner.rs`) is more careful than a naive `#` hunt:
 
-- Skips the STEP HEADER section first, so a stray `#` inside a header string cannot corrupt quote parity for the rest of the file.
+- Skips the STEP HEADER section first, so a stray `#` inside a header string cannot corrupt quote parity for the rest of the file. The marker is found by `parser::header::find_keyword_then`, the same keyword finder the header reader uses, over one shared 256 KiB window (`MAX_HEADER_BYTES`): `DATA`, case-insensitive, on identifier boundaries, trivia allowed before the `;`, and the ed.3 `DATA('name',(...));` form. A `/*` that never closes hides everything after it.
 - Hunts for `#` with memchr (SIMD-accelerated), then parses `#id = TYPE(...)` in place.
 - Tracks quoted strings and `/* ... */` comments so `;` inside strings never terminates a record.
 - Returns `(id, type_name, start, end)` per entity; `build_entity_index` inserts spans with last-wins semantics on duplicate IDs.

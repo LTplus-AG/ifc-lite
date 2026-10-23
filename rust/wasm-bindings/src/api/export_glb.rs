@@ -108,6 +108,14 @@ impl IfcAPI {
     /// out-of-range index copied into the BIN chunk. (The viewer always passes
     /// fully-backed, normal-covered, whole-triangle, in-range arrays, so this only
     /// fires on a caller bug.)
+    ///
+    /// `world_matrix` is the frame the meshes were baked in (#7734): 16 finite
+    /// numbers, a column-major 4x4 in IFC Z-up metres with `world = M * baked`
+    /// (the viewer builds it from `CoordinateInfo`). The GLB root carries it, so
+    /// a georeferenced model exports where the from-bytes `exportGlb` puts it
+    /// instead of in the render frame. Omit it (`undefined`) for an unshifted
+    /// model; a matrix that is not 16 finite numbers throws
+    /// `MALFORMED_MESH_INPUT`.
     #[wasm_bindgen(js_name = exportGlbFromMeshes)]
     #[allow(clippy::too_many_arguments)]
     pub fn export_glb_from_meshes(
@@ -123,6 +131,7 @@ impl IfcAPI {
         include_metadata: bool,
         lit: Option<bool>,
         emissive: Option<bool>,
+        world_matrix: Option<Vec<f64>>,
     ) -> Result<Vec<u8>, JsValue> {
         ifc_lite_export::try_export_glb_from_meshes(
             positions,
@@ -136,6 +145,7 @@ impl IfcAPI {
             include_metadata,
             lit.unwrap_or(true),
             emissive.unwrap_or(false),
+            world_matrix.as_deref(),
         )
         .map(|(glb, _)| glb)
         .map_err(|e| JsValue::from(js_sys::Error::new(&e.to_string())))

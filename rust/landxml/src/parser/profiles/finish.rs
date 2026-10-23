@@ -11,10 +11,10 @@ use crate::{
     LandXmlProfilePoint, LandXmlSourceId, LandXmlVerticalCurve,
 };
 
-use super::super::{Code, PairListTarget, Parser, ProfileCurveCapture};
+use super::super::{Code, PairListTarget, TinHandler, ProfileCurveCapture};
 use super::values::{station_elevation, station_elevation_count, station_elevations};
 
-impl Parser<'_> {
+impl TinHandler<'_> {
     pub(super) fn finish_profile_point(
         &mut self,
         text: &str,
@@ -23,8 +23,8 @@ impl Parser<'_> {
         self.reserve_profile_points(1)?;
         let (station, elevation) = station_elevation(text, "profile point")?;
         let has_curve = curve.is_some();
-        if has_curve && self.vertical_curves_seen >= self.limits.max_vertical_curves {
-            return Err(error(Code::LimitExceeded, "vertical curve limit exceeded"));
+        if has_curve {
+            self.vertical_curves_seen.reserve(1)?;
         }
         let source_id = {
             let profile = self
@@ -57,9 +57,6 @@ impl Parser<'_> {
             }
             source_id
         };
-        if has_curve {
-            self.vertical_curves_seen += 1;
-        }
         if elevation.is_none() {
             self.missing_elevation(source_id)?;
         }

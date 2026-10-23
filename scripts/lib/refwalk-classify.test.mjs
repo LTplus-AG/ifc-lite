@@ -383,9 +383,9 @@ fn process_operand_with_depth(operand: &DecodedEntity, decoder: &mut EntityDecod
 
 test('a nested generic bound in the header does not hide the function', () => {
   // `<[^>]*>` stopped at the FIRST `>`, so `<S: GeomScalar, M: MeshSink<S>>`
-  // matched nothing and the function vanished from the parse entirely. Five
-  // functions in the scan roots have this shape today
-  // (rust/geometry/src/extrusion_generic.rs, .../zero_copy/frame_swap.rs), and
+  // matched nothing and the function vanished from the parse entirely.
+  // Functions in the scan roots have this shape
+  // (rust/geometry/src/extrusion_generic.rs, rust/geometry/src/math/frame.rs), and
   // the vacuity check only fires when a file parses to ZERO functions -- so
   // losing SOME of a file's functions was silent.
   const src = `

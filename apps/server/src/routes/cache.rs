@@ -13,11 +13,11 @@
 
 use crate::error::ApiError;
 use crate::routes::parse::cache_keys::{cache_key_from_parts, is_file_digest, json_response_cache_key};
+use crate::routes::parse::cache_read::resident_body;
 use crate::services::OpeningFilterMode;
 use crate::types::SymbolicParseResponse;
 use crate::AppState;
 use axum::{
-    body::Body,
     extract::{Path, State},
     http::header,
     response::{IntoResponse, Response},
@@ -86,7 +86,7 @@ fn tessellation_qualities() -> [TessellationQuality; 5] {
 /// rebuilding each candidate with it rather than parsing the suffixes a second
 /// way: the writer and this reader cannot disagree about what a key looks
 /// like. Anything else -- a bare digest, an internal storage key with its
-/// `-json-v6` / `-parquet-v8` suffix, arbitrary text -- is a `400`, which
+/// `-json-v7` / `-parquet-v8` suffix, arbitrary text -- is a `400`, which
 /// also keeps `DELETE`'s index walk out of reach of a caller-shaped string
 /// (#4582).
 pub(crate) fn resolve_request_cache_key(key: &str) -> Result<RequestCacheKey<'_>, ApiError> {
@@ -118,7 +118,7 @@ fn not_a_request_cache_key(value: &str) -> ApiError {
 /// `key` is the `cache_key` that route returned, which is the value the
 /// client's `getCached(result.cache_key)` passes, resolved by
 /// [`resolve_request_cache_key`]. The response itself is stored under
-/// [`json_response_cache_key`] (`{cache_key}-json-v6`), versioned separately
+/// [`json_response_cache_key`] (`{cache_key}-json-v7`), versioned separately
 /// so the JSON wire format can move without retiring the Parquet entries that
 /// share the same seed (#5542).
 ///
@@ -130,13 +130,17 @@ fn not_a_request_cache_key(value: &str) -> ApiError {
 ///
 /// Decoded as [`SymbolicParseResponse`], the type the writer stored. The entry
 /// is the whole model, so the read, decode and re-encode hold a parse
-/// admission slot, reserved exactly as the parse route reserves one, and run
-/// on the blocking pool (#4696, #5750): without the slot, concurrent GETs of
-/// a large model were an unbounded number of whole-model working sets. The
-/// slot travels with the blocking decode, not with this handler, so a client
-/// that hangs up mid-decode does not free it while the decode runs on. A miss
-/// is answered from the index before any slot is taken, so a key nobody wrote
-/// costs one metadata lookup, like the hash-only probes (#3901).
+/// admission slot and run on the blocking pool (#4696, #5750): without the
+/// slot, concurrent GETs of a large model were an unbounded number of
+/// whole-model working sets. The slot travels with the blocking decode, not
+/// with this handler, so a client that hangs up mid-decode does not free it
+/// while the decode runs on. It reserves [`DECODE_COPIES`] times the stored
+/// size, not `MAX_FILE_SIZE_MB` (#7676, SERVER-24), and once the body is
+/// encoded the CPU slot is freed while the bytes stay charged until the
+/// client has drained them (SERVER-7). A miss is answered from the index
+/// before any slot is taken, so a key nobody wrote costs one metadata lookup,
+/// like the hash-only probes (#3901). A damaged entry is the same `404` as one
+/// that does not decode, and is evicted (`services::cache_entry`).
 pub async fn get_cached(
     State(state): State<AppState>,
     Path(key): Path<String>,
@@ -146,21 +150,15 @@ pub async fn get_cached(
     tracing::debug!(key = %key, response_key = %response_key, "Cache lookup");
 
     let not_found = || ApiError::NotFound(format!("Cache key not found: {}", key));
-    if !state.cache.has(&response_key).await? {
+    let Some(entry) = state.cache.lookup(&response_key).await? else {
         tracing::debug!(key = %key, "Cache MISS");
         return Err(not_found());
-    }
+    };
 
-    let admission_guard = state
-        .admission
-        .acquire(state.config.max_file_size_mb as u64 * 1024 * 1024)
-        .await?;
-    let bytes = match state.cache.get_bytes(&response_key).await? {
-        Some(bytes) => bytes,
-        None => {
-            tracing::debug!(key = %key, "Cache MISS");
-            return Err(not_found());
-        }
+    let admission_guard = state.admission.acquire(entry.size().saturating_mul(DECODE_COPIES)).await?;
+    let Some(bytes) = state.cache.read_entry(&response_key, &entry).await else {
+        tracing::debug!(key = %key, "Cache entry unusable; answering 404");
+        return Err(not_found());
     };
 
     // The guard moves INTO the blocking task and comes back with the result,
@@ -168,7 +166,7 @@ pub async fn get_cached(
     // handler future, the detached decode keeps running and keeps its slot
     // until it actually exits, so a replacement is not admitted on top of it.
     let gate_key = response_key.clone();
-    let (encoded, _admission) = tokio::task::spawn_blocking(move || {
+    let (encoded, admission) = tokio::task::spawn_blocking(move || {
         decode_gate(&gate_key);
         let encoded = serde_json::from_slice::<SymbolicParseResponse>(&bytes).and_then(|mut response| {
             response.mark_from_cache();
@@ -182,14 +180,21 @@ pub async fn get_cached(
     match encoded {
         Ok(body) => {
             tracing::info!(key = %key, "Cache HIT");
-            Ok(([(header::CONTENT_TYPE, "application/json")], Body::from(body)).into_response())
+            let length = body.len().to_string();
+            let body = resident_body(body, admission.into_resident());
+            Ok(([(header::CONTENT_TYPE, "application/json"), (header::CONTENT_LENGTH, length.as_str())], body)
+                .into_response())
         }
         Err(e) => {
-            tracing::warn!(error = %e, key = %key, "Cache entry is not a ParseResponse; answering 404");
+            state.cache.evict_entry(&response_key, &entry, format!("not a ParseResponse: {e}")).await;
             Err(not_found())
         }
     }
 }
+
+/// How many copies of a stored response `get_cached` holds at its peak: the
+/// stored JSON, its decoded value, and the re-encoded body.
+pub(crate) const DECODE_COPIES: u64 = 3;
 
 /// Test seam: lets a test hold one entry's decode open to observe what the
 /// handler does while it runs. Compiled out of every non-test build.

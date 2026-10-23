@@ -1042,7 +1042,7 @@ fn unreferenced_far_cut_vertex_cannot_inflate_weld_tolerance_4754() {
     );
 }
 
-// --- `directed_closed` (closure_checks.rs) ---
+// --- `directed_closed` (`mesh_check`) ---
 //
 // Unlike `dedup_cut_vertices`, this predicate has no hand-tuned numeric
 // boundary of its own — it is a fixed 0.1mm-grid edge-cancellation audit with
@@ -1121,6 +1121,63 @@ fn issue_4627_small_host_with_ten_km_cutter_remains_closed() {
         assert!(residual.is_none());
         assert!(watertight(&cut));
         assert!((mesh_volume(&cut) - 0.9375).abs() < 1e-6);
+    }
+}
+
+/// #7633: cleaning newly emitted cut fragments must not delete an untouched
+/// authored face. These closed tetrahedra have a 12 µm-high bottom triangle:
+/// ordinary cleanup drops it, although it bounds real material. Repeating the
+/// component exceeds the bounded hairline matcher, as in the #4754 finalizer
+/// control, so partial cleanup cannot masquerade as a closed analytic result.
+#[test]
+fn issue_7633_prism_cut_preserves_untouched_thin_authored_components() {
+    let router = GeometryRouter::new();
+    let mut host = wall([0.0; 3], axis_frame());
+    let mut components = Vec::new();
+    for component in 0..22 {
+        let x = 10.0 + component as f64 * 2.0;
+        let (a, b, c, d, apex) = (
+            [x, 0.000_049, 0.0],
+            [x + 1.0, 0.000_049, 0.0],
+            [x, 1.0, 0.0],
+            [x + 0.5, 0.000_061, 0.0],
+            [x, 0.0, 1.0],
+        );
+        let faces = [[a, b, d], [a, d, c], [d, b, c], [a, apex, b],
+            [a, c, apex], [b, apex, c]];
+        let tris: Vec<_> = faces.into_iter().map(|mut p| {
+            p.swap(1, 2); // Orient each separate solid outward.
+            let normal = normalize(cross(sub(p[1], p[0]), sub(p[2], p[0]))).unwrap();
+            PTri { p, n: [normal; 3] }
+        }).collect();
+        let source = mesh_from_ptris(&tris, &Mesh::new());
+        assert!(crate::exact_topology::strict_closed_mesh(&source));
+        let mut cleaned = source.clone();
+        cleaned.clean_degenerate();
+        assert!(!crate::exact_topology::strict_closed_mesh(&cleaned),
+            "premise: this authored thin face is essential to closure");
+        host.merge(&source);
+        components.push((x, mesh_volume(&source)));
+    }
+    let cutter = framed_box_mesh([0.3, 0.0, 0.2], axis_frame(), [0.5, 0.4, 0.5]);
+    let ctx = ctx_of(vec![box_opening(cutter)]);
+    let (cut, residual) = router.try_prism_cut(&host, &ctx)
+        .expect("a genuine window cut must preserve the separate authored solids");
+    assert!(residual.is_none());
+    assert!(crate::exact_topology::strict_closed_mesh(&cut),
+        "the cut and every untouched component must remain closed");
+    assert!((mesh_volume(&host) - mesh_volume(&cut) - 0.3).abs() < 1e-4,
+        "only the 1 m² window through the 0.3 m wall removes material");
+    let result = ptris_from_mesh(&cut).expect("valid analytic result");
+    for (x, expected_volume) in components {
+        let faces: Vec<_> = result.iter().filter(|t|
+            t.p.iter().all(|p| p[0] >= x && p[0] <= x + 1.0)
+        ).cloned().collect();
+        let component = mesh_from_ptris(&faces, &Mesh::new());
+        assert!(crate::exact_topology::strict_closed_mesh(&component),
+            "untouched component at x={x} lost its boundary");
+        assert!((mesh_volume(&component) - expected_volume).abs() < 1e-8,
+            "untouched component at x={x} changed enclosed material");
     }
 }
 
@@ -1276,7 +1333,7 @@ fn issue_4627_production_rejects_removal_larger_than_committed_cutter() {
         let invalid_host = mesh_from_ptris(&triangles, &host);
         assert!(directed_closed(&invalid_host));
         let opening = box_opening(placed_box_mesh(case, [-0.01; 3], [1.01; 3]));
-        let mut prism = prepare_prism(&opening, invalid_host.origin).expect("fixed box prism");
+        let mut prism = prepare_prism(&opening, &invalid_host).expect("fixed box prism");
         let bounds = triangles.iter().map(PTri::aabb).collect::<Vec<_>>();
         extend_prism_caps(&mut prism, &triangles, &bounds);
         extend_profile_edges(&mut prism, &triangles, &bounds);

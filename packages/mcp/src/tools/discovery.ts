@@ -18,8 +18,8 @@ import {
   getInheritanceChainForEntity,
 } from '@ifc-lite/parser';
 import { IFC_ENTITY_NAMES } from '@ifc-lite/data';
-import { entityInfoAcrossSchemas, entityInfoInSchema } from '../schema-tables.js';
-import { foldedEntityCount, foldedTypeCounts, pendingMutationsField, pendingOverlay } from '../overlay.js';
+import { entityInfoAcrossSchemas, entityInfoInSchema } from '@ifc-lite/sdk/headless';
+import { foldedEntityCount, foldedTypeCounts, pendingMutationsField, pendingOverlay } from '@ifc-lite/sdk/headless';
 import type { Tool } from './types.js';
 import { fmtInt, resolveModel, okResult } from './util.js';
 import { loadIfcModel } from '../loader.js';
@@ -141,9 +141,16 @@ export const modelLoad: Tool = {
       });
       ctx.registry.add(loaded);
       ctx.log.log('info', 'model_load', { id: loaded.id, file: filePath, entities: loaded.store.entityCount });
+      // A model the scan read short is reported as such, in the text the
+      // agent reads and in the structured result (#7610).
+      const warnings = loaded.scanWarnings ?? [];
       return okResult(
-        `Loaded '${loaded.name}' as model '${loaded.id}' (${fmtInt(loaded.store.entityCount)} entities).`,
-        { id: loaded.id, name: loaded.name, schema: loaded.store.schemaVersion, entityCount: loaded.store.entityCount },
+        `Loaded '${loaded.name}' as model '${loaded.id}' (${fmtInt(loaded.store.entityCount)} entities).` +
+          warnings.map((w) => `\nWarning: ${w}`).join(''),
+        {
+          id: loaded.id, name: loaded.name, schema: loaded.store.schemaVersion, entityCount: loaded.store.entityCount,
+          ...(warnings.length > 0 ? { scanWarnings: warnings } : {}),
+        },
       );
     } catch (err) {
       if (err instanceof ToolExecutionError) throw err;

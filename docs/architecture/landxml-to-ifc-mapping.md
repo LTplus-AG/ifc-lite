@@ -36,7 +36,10 @@ I need it in an IFC-consuming tool".
 
 It is **not**:
 
-- a round-trip format (IFC→LandXML is out of scope and not planned);
+- a round-trip format. The separate IFC terrain → LandXML export ([#7600](https://github.com/LTplus-AG/ifc-lite/issues/7600),
+  see the [LandXML guide](../guide/landxml.md#ifc-terrain-landxml)) writes only an authored
+  terrain triangulation back as a TIN `Surface`, under its own contract, not the inverse of this
+  mapping;
 - a claim that the IFC output is equivalent to the LandXML source;
 - a replacement for the source records, which remain the authoritative model in the
   viewer and continue to be exportable in their original format;
@@ -56,7 +59,10 @@ identically on the streaming and non-streaming parse paths (LXML009). A model th
 refuses to load cannot be exported, so the mapping inherits the units contract for
 free — **except** where the reviewed `assumedLinearUnit` override (step A.2) was used,
 in which case the assumption is carried into the export as provenance (§7) and must
-never be presented as a declared unit.
+never be presented as a declared unit. The override is resolved once and applies to every
+family the parser reads, terrain, plan, alignment and pipe networks, each flagging its units
+`assumed` (#7693). The assumed unit applies to elevations as well as plan coordinates; a
+declared `<Units>` that omits `elevationUnit` instead defaults elevations to metres (LandXML 1.2).
 
 ### 2.2 Coordinate order — ifc-lite is correct; defend against transposed input
 
@@ -163,15 +169,20 @@ IfcMapConversion: SourceCRS, TargetCRS, Eastings, Northings, OrthogonalHeight,
                   XAxisAbscissa?, XAxisOrdinate?, Scale?
 ```
 
-`LandXmlCoordinateSystem` keeps `horizontal_datum`, `vertical_datum` and `epsg_code` as raw
-strings, and the crate deliberately does not resolve EPSG codes — only the viewer
+`LandXmlCoordinateSystem` keeps `horizontal_datum`, `vertical_datum`, `epsg_code` and `name`
+as raw strings, and the crate deliberately does not resolve EPSG codes — only the viewer
 adapter accepts explicit EPSG ids. `epsgCode` is LandXML 1.2's attribute for the CRS's
 code and is how producers declare it (Civil 3D 2021/2022 and 3D-Win 6.6.4 all write it;
 Civil 3D puts a datum *name* such as `NAD83` in `horizontalDatum`). The adapter takes the
 horizontal CRS from `epsgCode`, or from an `EPSG:<n>` id in `horizontalDatum`; when both
 name a code and disagree it takes neither. `IfcProjectedCRS.Name` is that `EPSG:<n>` id
-when `epsgCode` is declared, else `horizontalDatum` verbatim: the declared code is named,
-not resolved. The exporter must not start resolving EPSG codes in
+when there is one (or nothing, when a declared `epsgCode` is unreadable or contradicted),
+else `CoordinateSystem@name` verbatim, else `horizontalDatum` verbatim: the declared code
+is named, not resolved. The code wins over the name because IFC's `Name` "shall be taken
+from the list recognized by the EPSG", qualified as `EPSG:<n>`; every producer fixture
+that writes a `name` also writes an `epsgCode`, so none of them changes. The name is what a
+non-EPSG CRS such as `CH1903+ / LV95` is known by, and what ifc-lite's IFC terrain export
+writes, so it survives IFC → LandXML → IFC (#7604). The exporter must not start resolving EPSG codes in
 the crate. Where the source declares no CRS, emit **no** `IfcProjectedCRS`/
 `IfcMapConversion` at all rather than a placeholder, and say so in the report. Two of
 the seven reviewed producer fixtures declare `crs: "not-declared"`, so this is the
@@ -518,9 +529,16 @@ and curvature in the distance/height plane; the terminator is `DISCONTINUOUS`.
   by its PVI, its radius and the two grades; its `length` only confirms them. Producers differ
   on which length they write: 3D-Win writes the **arc** length `R·|θ2 − θ1|` (θ = atan of each
   grade; its M3 road profile agrees to the millimetre on all nine curves, and one of them
-  differs from the horizontal length by 1 cm), while `rust/landxml`'s evaluator reads the
-  **horizontal** length `R·|sin θ2 − sin θ1|`. A declared length that equals either within
-  §11.4's tolerance is accepted; one that equals neither is refused, naming both values.
+  differs from the horizontal length by 1 cm), while others write the **horizontal** length
+  `R·|sin θ2 − sin θ1|`. A declared length that equals either is
+  accepted; one that equals neither is refused, naming both values. The agreement policy is
+  one rule on both sides (#7754): `|declared − computed| ≤ max(1e-6·S, min(5e-4, 2e-4·S))`
+  with `S` the larger of the two and the `5e-4` floor in source units (scaled to metres in
+  `packages/create`), i.e. a length written to three decimals is accepted from 2.5 m up,
+  while a centimetre of disagreement on a 50 m curve is refused. `rust/landxml`'s profile
+  evaluator applies the same either-length rule and the same radius-sign rule below; the
+  shared vectors are `rust/landxml/tests/fixtures/circ-curve-length-vectors.json`, read by
+  both test suites.
 - **`RadiusOfCurvature` sign.** Positive for a sag (the curve turns counter-clockwise in
   the distance/height plane, IFC's "positive values imply a CCW direction"), negative for a
   crest: `HorizontalLength / (EndGradient − StartGradient)` for a parabola, which is the
@@ -607,14 +625,14 @@ sufficient on its own:
    requires the *absence* of a cant layout; ALS008), so cant semantics cannot be written
    without that geometry beside a vertical layout's gradient curve. §11.6's acceptance
    standard is that IfcOpenShell regenerates each curve segment from our semantics and gets
-   ours back. For cant it cannot: IfcOpenShell 0.8.5's `_map_alignment_cant_segment`
-   derives the segment placement from the *mean* rail height only, so a cant raising the
-   left rail and the same cant raising the right rail map to identical geometry; a cant
-   rotated about the track centre maps to an untilted axis; and a linear transition into a
-   centre-rotated cant raises `ZeroDivisionError`.
-   `tools/ifcopenshell_reference/probe_cant_mapping.py` measures all three, and
-   `ifcopenshell-conformance.test.ts` asserts them. A pinned-version bump that fixes the
-   mapping turns that test red, which is the signal to re-examine this blocker.
+   ours back. IfcOpenShell 0.9.0.post1 fixes 0.8.5's mirror-blind constant-cant
+   mapping and correctly tilts a constant cant rotated about the track centre. It still
+   raises `ZeroDivisionError` for a linear transition into a centre-rotated cant, so it
+   cannot yet grade every required segment.
+   `tools/ifcopenshell_reference/probe_cant_mapping.py` measures all three cases, and
+   `ifcopenshell-conformance.test.ts` asserts both corrected constant-cant cases and the
+   remaining transition failure. A future engine that maps that transition turns the
+   test red, signalling that this blocker must be re-examined. No cant output is enabled.
 3. **`RailHeadDistance` is not in the source.** LandXML's `Cant/@gauge` is "the rail to
    rail distance" (track gauge, 1.435 m standard); IFC's `RailHeadDistance` is the distance
    between the contact-patch centres (about 1.500 m for the same track). Copying one into
@@ -684,8 +702,8 @@ event.
    or superelevation is named with its record count and the IFC 4.3 reason; an alignment
    refused whole does not have its cant named again; no `IfcAlignmentCant`,
    `IfcSegmentedReferenceCurve` or superelevation referent is written.
-2. **Premise pinned.** `ifcopenshell-conformance.test.ts` runs `probe_cant_mapping.py` and
-   asserts the three findings of §13.2 item 2, then validates an export of an alignment
+2. **Premise measured.** `ifcopenshell-conformance.test.ts` runs `probe_cant_mapping.py` and
+   asserts the two corrected cases and remaining failure of §13.2 item 2, then validates an export of an alignment
    carrying cant: 0 issues, horizontal layout only.
 
 ## 14. Station equations and `CgPoint` referents

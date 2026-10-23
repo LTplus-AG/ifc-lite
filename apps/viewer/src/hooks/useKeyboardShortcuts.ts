@@ -9,6 +9,7 @@ import { registerKeyboardCommand, type CommandRun } from '@/lib/commands/dispatc
 import type { KeyCommandId } from '@/lib/commands/keyboard-commands';
 import { useViewerStore } from '@/store';
 import { showAllFromStore } from '@/store/homeView';
+import { orderedSectionPlanes } from '@/lib/section/section-plane-set';
 import { hideSelectionFromStore } from '@/store/hideSelection';
 import { workspacePanelForShortcutCode } from '@/lib/panels/registry';
 import { bottomPanelFlags } from '@/lib/panels/bottom-panels';
@@ -79,6 +80,16 @@ function cancelMeasurement(): boolean {
   return false;
 }
 
+/** Make the previous or next cutting plane (in the order the chips show) the active one; wraps. */
+function stepSectionPlane(step: 1 | -1): boolean {
+  const state = useViewerStore.getState();
+  const planes = orderedSectionPlanes(state.sectionPlane, state.inactiveSectionPlanes);
+  if (planes.length < 2) return false;
+  const at = planes.findIndex((p) => p.id === state.sectionPlane.id);
+  state.activateSectionPlane(planes[(at + step + planes.length) % planes.length]!.id);
+  return true;
+}
+
 function splitSelected(): void {
   const state = useViewerStore.getState();
   if (state.session?.activeCommandId === 'element.split') {
@@ -139,6 +150,8 @@ const RUNNERS: readonly [KeyCommandId, CommandRun][] = [
   ['measure.cancel', cancelMeasurement],
   ['measure.finish', finishMeasurement],
   ['measure.toggleSnap', () => { useViewerStore.getState().toggleSnap(); }],
+  ['section.previousPlane', () => stepSectionPlane(-1)],
+  ['section.nextPlane', () => stepSectionPlane(1)],
   ['selection.escape', () => { escapeGlobal(false); }],
   ['ui.closeAllPanels', () => { escapeGlobal(true); }],
   ['ui.toggleTheme', () => { useViewerStore.getState().toggleTheme(); }],
@@ -148,6 +161,8 @@ const TOOL_CONTEXT: Partial<Record<KeyCommandId, string>> = {
   'measure.cancel': 'measure',
   'measure.finish': 'measure',
   'measure.toggleSnap': 'measure',
+  'section.previousPlane': 'section',
+  'section.nextPlane': 'section',
 };
 
 /** Undo / redo also run from a focused combobox or menu button; only real text editing keeps its own. */

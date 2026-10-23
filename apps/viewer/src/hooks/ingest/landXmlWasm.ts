@@ -53,6 +53,7 @@ export function readLandXmlCoordinateSystem(value: unknown): LandXmlTinDocument[
     ...(typeof raw.horizontal_datum === 'string' ? { horizontalDatum: raw.horizontal_datum } : {}),
     ...(typeof raw.vertical_datum === 'string' ? { verticalDatum: raw.vertical_datum } : {}),
     ...(typeof raw.epsg_code === 'string' ? { epsgCode: raw.epsg_code } : {}),
+    ...(typeof raw.name === 'string' ? { name: raw.name } : {}),
   };
 }
 

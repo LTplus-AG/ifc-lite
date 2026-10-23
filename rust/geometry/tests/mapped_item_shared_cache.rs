@@ -36,24 +36,10 @@ use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{GeometryRouter, Mesh};
 
 const FIXTURES: &[&str] = &[
-    "tests/models/buildingsmart/annex_e/mapped-geometric-shape/mapped-shape-with-transformation.ifc",
-    "tests/models/buildingsmart/annex_e/mapped-geometric-shape/mapped-shape-without-transformation.ifc",
-    "tests/models/buildingsmart/annex_e/mapped-geometric-shape/mapped-shape-with-multiple-items.ifc",
+    "buildingsmart/annex_e/mapped-geometric-shape/mapped-shape-with-transformation.ifc",
+    "buildingsmart/annex_e/mapped-geometric-shape/mapped-shape-without-transformation.ifc",
+    "buildingsmart/annex_e/mapped-geometric-shape/mapped-shape-with-multiple-items.ifc",
 ];
-
-/// Repo root = first ancestor holding both `rust/` and `apps/` (mirrors the
-/// module-size ratchet's `repo_root`). `None` in a packaged/standalone context.
-fn repo_root() -> Option<std::path::PathBuf> {
-    let mut dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf();
-    loop {
-        if dir.join("rust").is_dir() && dir.join("apps").is_dir() {
-            return Some(dir);
-        }
-        if !dir.pop() {
-            return None;
-        }
-    }
-}
 
 /// Exact fingerprint of a meshed product: geometry bytes plus the mapped
 /// `instance_meta` fields that carry the per-occurrence transform. Any drift
@@ -111,15 +97,7 @@ fn fresh_router_with_shared<'a>(
 }
 
 fn assert_cross_router_hit_is_byte_identical(rel_path: &str) {
-    let Some(root) = repo_root() else {
-        eprintln!("repo root not found (packaged context) - skipping {rel_path}");
-        return;
-    };
-    let path = root.join(rel_path);
-    let Ok(content) = std::fs::read_to_string(&path) else {
-        eprintln!("skipping: fixture {rel_path} not present - run `pnpm fixtures`");
-        return;
-    };
+    let content = ifc_lite_testkit::fixture_text_or_skip!(rel_path);
 
     // BASELINE: no shared cache -> the per-router RefCell path (pre-#1623).
     let mut base_decoder = EntityDecoder::with_index(&content, build_entity_index(&content));

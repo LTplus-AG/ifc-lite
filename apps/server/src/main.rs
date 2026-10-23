@@ -139,9 +139,10 @@ pub struct AppState {
     pub cache: Arc<DiskCache>,
     pub config: Arc<Config>,
     pub admission: Arc<admission::Admission>,
-    /// Cache keys with a data-model write in flight right now (#5129):
-    /// `get_data_model` answers 202 only for a key in this set, and 404 for
-    /// everything else it cannot read.
+    /// Cache entries with a background write in flight right now: the data
+    /// model (#5129) and the symbolic sidecar (#7676). `get_data_model` and
+    /// `get_symbolic` answer 202 only for an entry in this set, and 404 for
+    /// everything else they cannot read.
     pub data_model_in_flight: Arc<in_flight::InFlightKeys>,
 }
 
@@ -304,8 +305,11 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
-    // Initialize rayon thread pool
-    rayon::ThreadPoolBuilder::new()
+    // Initialize the rayon global pool with processing's large worker stacks
+    // (EDGE-FFI-1, #7673). Every geometry route runs per-element CSG in
+    // `par_iter` jobs on these workers; a default-stack worker that overflows
+    // aborts the whole server, which no `CatchPanicLayer` can catch.
+    ifc_lite_processing::geometry_pool_builder()
         .num_threads(config.worker_threads)
         .build_global()
         .expect("Failed to initialize rayon thread pool");

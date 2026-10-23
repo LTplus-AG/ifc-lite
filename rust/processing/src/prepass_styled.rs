@@ -125,7 +125,7 @@ pub fn flat_styles_rgba8_from_geometry_columns(
         overlay.entry(mat_id).or_insert(color);
     }
     for (&element_id, colors) in &resolved.element_material_colors {
-        if let Some(&color) = colors.first() {
+        if let Some(color) = crate::style::element_material_fallback_color(colors) {
             overlay.entry(element_id).or_insert(color);
         }
     }

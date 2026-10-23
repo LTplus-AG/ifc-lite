@@ -8,10 +8,18 @@
 use super::{OpeningFrame, NORMALIZE_EPSILON};
 use crate::{Error, Mesh, Point3, Result, Vector3};
 use nalgebra::{Matrix3, Matrix4};
-use rustc_hash::FxHashMap;
+
+// The closure / pairing / volume checks live in `mesh_check`; these are the
+// names the void path has always called them by.
+pub(super) use crate::mesh_check::directed_closed_exact as mesh_is_closed_exact;
+pub(super) use crate::mesh_check::undirected_defect_count as topology_defect_count;
+pub(crate) use crate::mesh_check::{
+    signed_volume as mesh_signed_volume, signed_volume_about as mesh_signed_volume_about,
+    volume_reference,
+};
 
 /// Extract rotation columns from a 4x4 transform matrix.
-pub(super) fn extract_rotation_columns(m: &Matrix4<f64>) -> (Vector3<f64>, Vector3<f64>, Vector3<f64>) {
+pub(crate) fn extract_rotation_columns(m: &Matrix4<f64>) -> (Vector3<f64>, Vector3<f64>, Vector3<f64>) {
     (
         Vector3::new(m[(0, 0)], m[(1, 0)], m[(2, 0)]),
         Vector3::new(m[(0, 1)], m[(1, 1)], m[(2, 1)]),
@@ -20,7 +28,7 @@ pub(super) fn extract_rotation_columns(m: &Matrix4<f64>) -> (Vector3<f64>, Vecto
 }
 
 /// Apply rotation from columns to a direction and normalize.
-pub(super) fn rotate_and_normalize(
+pub(crate) fn rotate_and_normalize(
     rot: &(Vector3<f64>, Vector3<f64>, Vector3<f64>),
     dir: &Vector3<f64>,
 ) -> Result<Vector3<f64>> {
@@ -112,12 +120,12 @@ pub(super) fn opening_mesh_thinnest_axis_dir(opening_mesh: &Mesh) -> Vector3<f64
 /// Two AABBs join the same cluster when they overlap or touch on every axis
 /// (within `TOUCH_EPS`, so adjacent wall-leaf halves of one window count as one
 /// cluster); AABBs separated by a real gap on any axis stay in different
-/// clusters. Used by `classify_openings` to tell a row of SEPARATE window voids
+/// clusters. Used by `program::openings::classify` to tell a row of SEPARATE window voids
 /// (many clusters → subtract per item) from one void split into touching parts
 /// (one cluster → keep merged). See the call site for the #1367 / FZK-Haus
 /// rationale. O(n²) union-find; `n` is the void-body count of a single opening
 /// (tiny in practice).
-pub(super) fn spatial_cluster_count(
+pub(crate) fn spatial_cluster_count(
     bounds: &[(Point3<f64>, Point3<f64>, Option<Vector3<f64>>)],
 ) -> usize {
     const TOUCH_EPS: f64 = 1.0e-3; // 1 mm: adjacent faces count as connected
@@ -159,34 +167,6 @@ pub(super) fn spatial_cluster_count(
     (0..n).filter(|&i| find(&mut parent, i) == i).count()
 }
 
-/// Closed-surface check on exact f32 bit coords: every directed edge paired,
-/// no degenerate edges. The #2176 lesson — only per-component-watertight solid
-/// cutters may join a batched group; an open component poisons the whole
-/// group's ray parity (batch admission).
-pub(super) fn mesh_is_closed_exact(m: &Mesh) -> bool {
-    use std::collections::HashMap;
-    let key = |i: u32| {
-        let b = i as usize * 3;
-        (
-            m.positions[b].to_bits(),
-            m.positions[b + 1].to_bits(),
-            m.positions[b + 2].to_bits(),
-        )
-    };
-    let mut edges: HashMap<_, i64> = HashMap::new();
-    for t in m.indices.chunks_exact(3) {
-        let k = [key(t[0]), key(t[1]), key(t[2])];
-        for (u, v) in [(0usize, 1usize), (1, 2), (2, 0)] {
-            if k[u] == k[v] {
-                return false; // degenerate edge
-            }
-            *edges.entry((k[u], k[v])).or_insert(0) += 1;
-            *edges.entry((k[v], k[u])).or_insert(0) -= 1;
-        }
-    }
-    !m.indices.is_empty() && edges.values().all(|&c| c == 0)
-}
-
 /// Whether `dir` is (essentially) parallel to a world axis.
 ///
 /// This gates the opening-classification fork: an opening only takes the fast
@@ -208,7 +188,7 @@ pub(super) fn mesh_is_closed_exact(m: &Mesh) -> bool {
 /// routing anything rotated by ≥ 1° to the exact oriented cut. At 1° the
 /// residual AABB over-cut would be sub-millimetre anyway.
 #[inline]
-pub(super) fn is_axis_aligned_direction(dir: &Vector3<f64>) -> bool {
+pub(crate) fn is_axis_aligned_direction(dir: &Vector3<f64>) -> bool {
     // cos(1°). Deliberately tight — see the doc comment (issue #1167).
     const AXIS_THRESHOLD: f64 = 0.999_847_695;
     dir.x.abs().max(dir.y.abs()).max(dir.z.abs()) > AXIS_THRESHOLD
@@ -229,16 +209,19 @@ pub(super) fn rotate_point(r: &Matrix3<f64>, x: f64, y: f64, z: f64) -> [f64; 3]
 }
 
 /// Index of the smallest half-extent (the wall thickness / penetration axis).
+/// The first minimum wins a tie; a NaN half-extent is never the minimum
+/// unless all three are NaN (ROUTER-30, #7674: this was
+/// `partial_cmp(..).unwrap()`, which aborts on NaN).
 pub(super) fn thin_axis(half: &[f64; 3]) -> usize {
     (0..3)
-        .min_by(|&a, &b| half[a].partial_cmp(&half[b]).unwrap())
-        .unwrap()
+        .min_by(|&a, &b| crate::cmp_f64_nan_last(half[a], half[b]))
+        .unwrap_or(0)
 }
 
 /// If `m` is a signed permutation matrix (each row one entry ≈±1, the rest ≈0, with
 /// distinct dominant columns), return the per-row `(source-column, sign)` map; else
 /// `None`. Used to align an opening's axes with the host frame.
-pub(super) fn signed_permutation_map(m: &Matrix3<f64>, tol: f64) -> Option<[(usize, f64); 3]> {
+pub(crate) fn signed_permutation_map(m: &Matrix3<f64>, tol: f64) -> Option<[(usize, f64); 3]> {
     let mut out = [(0usize, 1.0f64); 3];
     let mut used = [false; 3];
     for i in 0..3 {
@@ -324,60 +307,6 @@ pub(super) fn rotate_mesh_from_frame(mesh: &Mesh, r: &Matrix3<f64>, center: &Poi
     instance_meta: None, local_bounds: None, local_to_world: None, welded_in_object_frame: false, plane_tags: None }
 }
 
-/// Signed volume of a (closed) triangle mesh via the divergence theorem, about
-/// [`volume_reference`] of the same mesh. Reads the f32 positions unsnapped; an
-/// out-of-range index panics. Used to reconcile a union of parametric boxes
-/// against the meshed opening solid by volume, and by the before/after cut gates.
-pub(crate) fn mesh_signed_volume(mesh: &Mesh) -> f64 {
-    mesh_signed_volume_about(mesh, &volume_reference(mesh))
-}
-
-/// The point [`mesh_signed_volume`] sums `mesh` about: the centre of its position
-/// bounds (the origin for an empty mesh). `kernel::signed_volume` uses the same
-/// rule over the vertices its triangles reference, so the two agree unless the
-/// buffer holds unreferenced positions. On native, positions are absolute, and an
-/// open surface's divergence sum grows with the distance to the reference point,
-/// so the point must lie within the operand's extent, not at the world origin.
-/// Read off `Mesh::bounds`, a linear scan of the position buffer, so the sum
-/// itself is the only index walk.
-pub(crate) fn volume_reference(mesh: &Mesh) -> [f64; 3] {
-    if mesh.is_empty() {
-        return [0.0; 3];
-    }
-    let (lo, hi) = mesh.bounds();
-    [
-        (f64::from(lo.x) + f64::from(hi.x)) * 0.5,
-        (f64::from(lo.y) + f64::from(hi.y)) * 0.5,
-        (f64::from(lo.z) + f64::from(hi.z)) * 0.5,
-    ]
-}
-
-/// [`mesh_signed_volume`] about a caller-chosen `o`, in one walk. A before/after
-/// difference over the same host must read both meshes about ONE point (the
-/// host's [`volume_reference`]): the flux of a crack the cut did not touch then
-/// cancels, where two per-mesh points would leave `(o_after − o_before)·N/6` of it
-/// in the removed volume (#4632).
-pub(crate) fn mesh_signed_volume_about(mesh: &Mesh, o: &[f64; 3]) -> f64 {
-    mesh.indices
-        .chunks_exact(3)
-        .map(|t| {
-            let (a, b, c) = (mesh_vertex(mesh, t[0]), mesh_vertex(mesh, t[1]), mesh_vertex(mesh, t[2]));
-            crate::kernel::signed_volume::tetra_volume6(&a, &b, &c, o)
-        })
-        .sum::<f64>()
-        / 6.0
-}
-
-#[inline]
-fn mesh_vertex(mesh: &Mesh, i: u32) -> [f64; 3] {
-    let b = i as usize * 3;
-    [
-        mesh.positions[b] as f64,
-        mesh.positions[b + 1] as f64,
-        mesh.positions[b + 2] as f64,
-    ]
-}
-
 /// Closed-2-manifold self-check (0.1 mm weld): every undirected edge shared by exactly
 /// two non-degenerate triangles. The parametric path refuses to emit a cut that fails
 /// this, deferring to the exact kernel instead.
@@ -393,37 +322,6 @@ fn mesh_vertex(mesh: &Mesh, i: u32) -> [f64; 3] {
 /// than the topology and is tolerant of T-junctions.
 pub(super) fn param_cut_watertight(mesh: &Mesh) -> bool {
     topology_defect_count(mesh) == 0
-}
-
-/// Number of 0.1 mm-welded undirected edges whose triangle multiplicity is not
-/// two. This is the same topology reading as [`param_cut_watertight`], exposed
-/// as a count so a composed route can detect a catastrophic increase without
-/// requiring an already imperfect IFC host to be perfectly closed.
-pub(super) fn topology_defect_count(mesh: &Mesh) -> usize {
-    let key = |i: u32| -> (i64, i64, i64) {
-        let b = i as usize * 3;
-        let q = |v: f32| (v as f64 / 1.0e-4).round() as i64;
-        (
-            q(mesh.positions[b]),
-            q(mesh.positions[b + 1]),
-            q(mesh.positions[b + 2]),
-        )
-    };
-    let mut edges: FxHashMap<((i64, i64, i64), (i64, i64, i64)), i32> = FxHashMap::default();
-    for tri in mesh.indices.chunks_exact(3) {
-        let (ka, kb, kc) = (key(tri[0]), key(tri[1]), key(tri[2]));
-        if ka == kb || kb == kc || kc == ka {
-            continue;
-        }
-        for (x, y) in [(ka, kb), (kb, kc), (kc, ka)] {
-            let e = if x < y { (x, y) } else { (y, x) };
-            *edges.entry(e).or_insert(0) += 1;
-        }
-    }
-    if edges.is_empty() {
-        return usize::MAX;
-    }
-    edges.values().filter(|&&c| c != 2).count()
 }
 
 #[inline]
@@ -685,7 +583,7 @@ pub(super) fn extent_along_axis(mesh: &Mesh, axis: &Vector3<f64>) -> Option<f64>
 ///
 /// Matches the anti-parallel merge tolerance used by `infer_opening_frame` so
 /// the two helpers agree on what counts as a single axis.
-pub(super) fn is_rectangular_box_mesh(mesh: &Mesh) -> bool {
+pub(crate) fn is_rectangular_box_mesh(mesh: &Mesh) -> bool {
     let mut axes: Vec<Vector3<f64>> = Vec::with_capacity(4);
     let mut tri_axes: Vec<(usize, f64)> = Vec::with_capacity(mesh.indices.len() / 3);
     for tri in mesh.indices.chunks_exact(3) {
@@ -763,7 +661,7 @@ pub(super) fn is_rectangular_box_mesh(mesh: &Mesh) -> bool {
     true
 }
 
-pub(super) fn infer_opening_frame(mesh: &Mesh, extrusion_dir: Option<&Vector3<f64>>) -> Option<OpeningFrame> {
+pub(crate) fn infer_opening_frame(mesh: &Mesh, extrusion_dir: Option<&Vector3<f64>>) -> Option<OpeningFrame> {
     let mut axes: Vec<(Vector3<f64>, f64)> = Vec::new();
 
     for tri in mesh.indices.chunks_exact(3) {

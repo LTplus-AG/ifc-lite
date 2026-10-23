@@ -127,18 +127,12 @@ fn issue_7359_scaled_alignment_linear_placements_and_axis_curves_preserve_map_po
 fn issue_7359_unresolvable_linear_placement_and_foreign_context_still_refuse_atomically() {
     let source = scaled_aligned_model(1., "#100");
     let cases = [
-        // No CartesianPosition and a basis "curve" that is a point: rendering
-        // would fall back to identity; the writer must refuse instead.
-        (source.replace("IFCLENGTHMEASURE(4.),1.,0.5,$,#103)", "IFCLENGTHMEASURE(4.),1.,0.5,$,#12)"), "IfcLinearPlacement #109 cannot be resolved"),
+        // No CartesianPosition and a non-curve basis cannot produce a frame;
+        // the canonical resolver and writer must refuse normalization.
+        (source.replace("IFCLENGTHMEASURE(4.),1.,0.5,$,#103)", "IFCLENGTHMEASURE(4.),1.,0.5,$,#12)"), "#109: missing a resolvable CartesianPosition or RelativePlacement"),
         (source.replace("#120=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Axis','Model',*,*,*,*,#10,$,.MODEL_VIEW.,$)",
             "#120=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Plan',2,1.E-5,#136,$);\n#136=IFCAXIS2PLACEMENT2D(#121,$)"), "another map context"),
         (with_entities(&source, "#140=IFCGRIDPLACEMENT($,$);"), "IfcGridPlacement"),
-        // The resolver orients linear frames from the curve tangent only: an
-        // authored Axis or RefDirection must refuse, not be silently dropped.
-        (source.replace("#108=IFCAXIS2PLACEMENTLINEAR(#107,$,$)", "#108=IFCAXIS2PLACEMENTLINEAR(#107,#43,$)"),
-            "IfcLinearPlacement #109 sets Axis or RefDirection on IfcAxis2PlacementLinear #108"),
-        (source.replace("#108=IFCAXIS2PLACEMENTLINEAR(#107,$,$)", "#108=IFCAXIS2PLACEMENTLINEAR(#107,$,#24)"),
-            "IfcLinearPlacement #109 sets Axis or RefDirection on IfcAxis2PlacementLinear #108"),
         // A curve set is carried only when every member is a curve or point.
         (curve_set(&source, "#123,#138"), "neither a Body nor curve geometry (IfcGeometricCurveSet #137)"),
         (with_entities(&source.replace("'Axis','Curve2D',(#123))", "'Axis','Curve2D',(#123,#138))"), "#138=IFCPLANE(#11);"),
@@ -151,6 +145,18 @@ fn issue_7359_unresolvable_linear_placement_and_foreign_context_still_refuse_ato
     }
     let carried = plan_map_conversion_normalization(curve_set(&source, "#123,#121").as_bytes()).unwrap();
     assert!(carried.warnings.is_empty(), "{:?}", carried.warnings);
+}
+
+/// #7791: the resolver now applies an authored `Axis` / `RefDirection` on
+/// `IfcAxis2PlacementLinear`, so the writer no longer refuses them.
+#[test]
+fn issue_7791_linear_placement_axis_and_ref_direction_are_applied_not_refused() {
+    let source = scaled_aligned_model(1., "#100");
+    for replacement in ["#108=IFCAXIS2PLACEMENTLINEAR(#107,#43,$)", "#108=IFCAXIS2PLACEMENTLINEAR(#107,$,#24)"] {
+        let input = source.replace("#108=IFCAXIS2PLACEMENTLINEAR(#107,$,$)", replacement);
+        let plan = plan_map_conversion_normalization(input.as_bytes()).unwrap();
+        assert!(!plan.warnings.iter().any(|w| w.contains("Axis or RefDirection")), "{replacement}: {:?}", plan.warnings);
+    }
 }
 
 /// The wall's `Axis` as an `IfcGeometricCurveSet` #137 of `members`.

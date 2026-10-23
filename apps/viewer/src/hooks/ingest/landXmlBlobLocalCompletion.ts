@@ -6,6 +6,8 @@
 
 import { IfcAPI } from '@ifc-lite/wasm';
 import type { CoordinateInfo, MeshData, ModelSpatialReference } from '@ifc-lite/geometry';
+import type { LandXmlDeclaredCrs } from './landXmlRenderFrame.js';
+import type { LandXmlGeorefAssumptions } from './landXmlGeorefAssumptions.js';
 import {
   buildLandXmlStreamedPipeComponents, completeLandXmlStreamedGeometry, type LandXmlGeometryPayload,
   type LandXmlGeometryPreflight, type LandXmlStreamedComponent, type LandXmlStreamedSkippedComponent,
@@ -25,6 +27,7 @@ export interface LandXmlBlobLocalCallbacks {
     preflight: LandXmlGeometryPreflight,
     sourceCoordinateInfo: CoordinateInfo,
     spatialReference?: ModelSpatialReference,
+    declaredCrs?: LandXmlDeclaredCrs,
   ): boolean | Promise<boolean>;
   onPreflightComponent?(component: LandXmlPreflightComponent): void | Promise<void>;
   onPreflightComplete?(): void | Promise<void>;
@@ -72,6 +75,8 @@ export async function parseLandXmlBlobInCurrentRealm(
   callbacks: LandXmlBlobLocalCallbacks,
   /** #5175: retry value the viewer supplies after a units refusal. */
   assumedLinearUnit?: string,
+  /** The user's georeferencing assumptions for a federated load; absent means none. */
+  landXmlAssumptions?: Partial<LandXmlGeorefAssumptions>,
 ): Promise<LandXmlGeometryPayload> {
   ensureCurrent(isCurrent);
   await initLandXmlWasm();
@@ -86,10 +91,10 @@ export async function parseLandXmlBlobInCurrentRealm(
   try {
     const streamed = await streamLandXmlBlobWithSink(api, file, {
       onProgress: callbacks.onProgress,
-      onPreflight: (preflight, sourceCoordinateInfo, spatialReference) => awaitWhileCurrent(isCurrent, async () => {
+      onPreflight: (preflight, sourceCoordinateInfo, spatialReference, declaredCrs) => awaitWhileCurrent(isCurrent, async () => {
         await callbacks.onPreflight?.(preflight);
         ensureCurrent(isCurrent);
-        return (await callbacks.onFederatedPreflight?.(preflight, sourceCoordinateInfo, spatialReference)) === true;
+        return (await callbacks.onFederatedPreflight?.(preflight, sourceCoordinateInfo, spatialReference, declaredCrs)) === true;
       }),
       onPreflightComponent: (component) => awaitWhileCurrent(
         isCurrent, () => callbacks.onPreflightComponent?.(component),
@@ -123,7 +128,7 @@ export async function parseLandXmlBlobInCurrentRealm(
         if (streamedSource !== null) throw new Error('LandXML cursor emitted multiple completed source documents');
         streamedSource = completed;
       },
-    }, { isCurrent, wantsFederatedStreaming: callbacks.onFederatedPreflight !== undefined, assumedLinearUnit });
+    }, { isCurrent, wantsFederatedStreaming: callbacks.onFederatedPreflight !== undefined, assumedLinearUnit, landXmlAssumptions });
     ensureCurrent(isCurrent);
     if (streamedSource === null) throw new Error('LandXML cursor ended without a credited source document');
     const parsed = readLandXmlSourceDocument(streamedSource);

@@ -17,10 +17,18 @@ impl EntityDecoder<'_> {
         if self.content.len() <= 256 * 1024 * 1024 {
             self.build_index();
         }
-        let cache = match self.entity_index.as_ref() {
-            Some(crate::columnar_index::EntityIndexStore::Columnar(index)) => {
+        // A delivered table can have correct spans for a different source but
+        // already-populated inverse caches. Coherent decoders use their actual
+        // immutable source owner; legacy columnar sharing keeps its precondition.
+        let cache = match (self.source_bundle.as_ref(), self.entity_index.as_ref()) {
+            (Some(source), Some(crate::columnar_index::EntityIndexStore::Columnar(_))) => {
+                &source.styled_items
+            }
+            (_, Some(crate::columnar_index::EntityIndexStore::Columnar(index))) => {
                 &index.styled_item_index
             }
+            // Preserve the existing decoder-local hash/dense cache domain and
+            // refusal attribution rather than silently hoisting it model-wide.
             _ => &self.styled_item_index,
         };
         match cache.get_or_init(|| self.build_styled_item_index()) {
@@ -99,7 +107,7 @@ mod tests {
     #[test]
     fn styled_lookup_4406_survives_decoder_recreation_and_source_replacement() {
         let source = "#1=IFCSTYLEDITEM(#10,(#20),$);#2=IFCSTYLEDITEM(#11,(#21),$);";
-        let index = Arc::new(ColumnarEntityIndex::from_scan(source.as_bytes()));
+        let index = Arc::new(ColumnarEntityIndex::from_scan(source.as_bytes()).unwrap());
         let mut first = EntityDecoder::with_arc_columnar_index(source, index.clone());
         let ids = first.styled_item_ids(10).unwrap();
         assert_eq!(ids, &[1]);
@@ -114,7 +122,7 @@ mod tests {
         assert_eq!(second.styled_item_ids(11).unwrap(), &[2]);
         assert!(second.styled_item_ids(12).unwrap().is_empty());
         let replacement = "#3=IFCSTYLEDITEM(#10,(#22),$);";
-        let replacement_index = Arc::new(ColumnarEntityIndex::from_scan(replacement.as_bytes()));
+        let replacement_index = Arc::new(ColumnarEntityIndex::from_scan(replacement.as_bytes()).unwrap());
         let mut replaced = EntityDecoder::with_arc_columnar_index(replacement, replacement_index);
         assert_eq!(replaced.styled_item_ids(10).unwrap(), &[3]);
     }
@@ -124,7 +132,7 @@ mod tests {
         let source = (1..=65)
             .map(|id| format!("#{id}=IFCSTYLEDITEM(#100,(#200),$);"))
             .collect::<String>();
-        let index = Arc::new(ColumnarEntityIndex::from_scan(source.as_bytes()));
+        let index = Arc::new(ColumnarEntityIndex::from_scan(source.as_bytes()).unwrap());
         for _ in 0..2 {
             let mut decoder = EntityDecoder::with_arc_columnar_index(&source, index.clone());
             assert!(decoder
@@ -141,7 +149,7 @@ mod tests {
     #[test]
     fn styled_lookup_4406_duplicate_ids_never_alias_another_attachment() {
         let source = "#1=IFCSTYLEDITEM(#10,(#20),$);#1=IFCSTYLEDITEM(#11,(#21),$);";
-        let index = Arc::new(ColumnarEntityIndex::from_scan(source.as_bytes()));
+        let index = Arc::new(ColumnarEntityIndex::from_scan(source.as_bytes()).unwrap());
         let mut decoder = EntityDecoder::with_arc_columnar_index(source, index);
         for item in [10, 11] {
             assert!(decoder
@@ -162,7 +170,7 @@ mod tests {
     fn styled_lookup_keyword_case_is_not_significant() {
         for keyword in ["IfcStyledItem", "ifcstyleditem", "IFCSTYLEDITEM"] {
             let source = format!("#1={keyword}(#10,(#20),$);#2={keyword}(#11,(#21),$);");
-            let index = Arc::new(ColumnarEntityIndex::from_scan(source.as_bytes()));
+            let index = Arc::new(ColumnarEntityIndex::from_scan(source.as_bytes()).unwrap());
             let mut decoder = EntityDecoder::with_arc_columnar_index(&source, index);
             assert_eq!(decoder.styled_item_ids(10).unwrap(), &[1], "keyword {keyword}");
             assert_eq!(decoder.styled_item_ids(11).unwrap(), &[2], "keyword {keyword}");

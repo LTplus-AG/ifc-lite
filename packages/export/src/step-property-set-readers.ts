@@ -27,6 +27,7 @@ import { HAS_PROPERTY_SETS_SLOT } from './type-owned-psets.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
 import { firstWrittenOwnerHistoryRef } from './schema-converter-owner-history.js';
 import { nativeSetLine, decodeNativeSetLine } from './step-native-set-record.js';
+import { frameArgs, stepRecordFrame, stepRecordHead } from './step-record-frame.js';
 import type { SourceLineMutations } from './step-exporter.js';
 
 /**
@@ -38,6 +39,16 @@ import type { SourceLineMutations } from './step-exporter.js';
  * neither of which has a pass in hand. Both readers are built by
  * `createSourceRefReader` over the same `dataStore.source`.
  */
+/**
+ * `allocateExpressId`'s bound (#7682, EXPORT-STEP-9): an id past `u32::MAX` is
+ * one no ifc-lite reader can hold, so allocating it refuses the export, as the
+ * Rust writer does, rather than write a record that cannot be read back.
+ */
+export function allocatedExpressId(id: number): number {
+  if (id > 0xffffffff) throw new RangeError(`express id ${id} cannot be allocated: the file has spent the id space`);
+  return id;
+}
+
 export interface PropertySetContext {
   readonly dataStore: IfcDataStore;
   readonly entityExtractor: EntityExtractor | null;
@@ -186,8 +197,10 @@ export function getPropertyIdsInSet(ctx: PropertySetContext, psetId: number): nu
   const entityText = entityLineText(ctx, psetId);
   if (entityText === null) return [];
 
-  // Parse: IFCPROPERTYSET(...,(#prop1,#prop2,...)); - Last argument is properties list
-  const match = entityText.match(/\(\s*(#[^)]+)\s*\)\s*\)\s*;$/);
+  // Parse: IFCPROPERTYSET(...,(#prop1,#prop2,...)); - Last argument is properties
+  // list, read up to the record's own close (`stepRecordFrame`, #7682).
+  const frame = stepRecordFrame(entityText);
+  const match = frame === null ? null : frameArgs(entityText, frame).match(/\(\s*(#[^)]+)\s*\)\s*$/);
   if (!match) return [];
 
   const propsList = match[1];
@@ -302,8 +315,14 @@ function getOwnerHistoryRefOfEntity(ctx: PropertySetContext, entityId: number): 
     );
     // #ID=IFCWALL('GlobalId',#owner,...): GlobalId is a quoted STEP string,
     // read to its end by the shared rule (#7589); OwnerHistory follows it.
-    const head = /=\s*IFC\w+\s*\(\s*'/i.exec(entityText);
-    const end = head ? stepStringLiteralEnd(entityText, head.index + head[0].length - 1) : -1;
+    // The record's head (`stepRecordHead`, #7682), an `IFC\w+` type, then the literal.
+    const head = stepRecordHead(entityText);
+    const quote = head !== null && /^IFC\w+$/i.test(entityText.slice(head.typeStart, head.typeEnd))
+      ? /^\s*'/.exec(entityText.slice(head.open + 1))
+      : null;
+    const end = head !== null && quote !== null
+      ? stepStringLiteralEnd(entityText, head.open + quote[0].length)
+      : -1;
     const match = end === -1 ? null : /^\s*,\s*#(\d+)/.exec(entityText.slice(end));
     if (match) result = `#${match[1]}`;
   }

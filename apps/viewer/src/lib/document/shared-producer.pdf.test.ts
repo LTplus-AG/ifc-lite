@@ -128,7 +128,7 @@ it('uses the same static-report-safe missing-validation instruction in captured 
   setLocale('en'); input.labels = captureLabels();
   const printed = await actualPdf(input);
   assert.ok(printed.pages.map(page => page.text).join('\n').includes(expected), 'captured PDF has an instruction that does not promise live updates');
-  const ui = render(createElement(DocumentPreview, { ...input, selectedBlockId: null, onSelectBlock: () => {} }));
+  const ui = render(createElement(DocumentPreview, { ...input, onSelectBlock: () => {} }));
   await waitFor(() => ui.querySelector('[data-preview-block="table"]') !== null && ui.querySelector('[data-layout-pending="true"]') === null,
     'actual missing-report paper preparation completes');
   assert.ok(ui.querySelector('[data-preview-block="table"]')?.textContent?.includes(expected), 'mounted paper uses the same instruction');
@@ -219,7 +219,7 @@ it('keeps failed table warnings visible in mounted paper and real PDF for blank 
     registerLocale(locale, { 'document.table.error': control.translation }); setLocale(locale);
     input.labels = captureLabels();
     input.tables = new Map([['table', { status: 'error', message: control.engine }]]);
-    const ui = render(createElement(DocumentPreview, { ...input, selectedBlockId: null, onSelectBlock: () => {} }));
+    const ui = render(createElement(DocumentPreview, { ...input, onSelectBlock: () => {} }));
     await waitFor(() => ui.querySelector('[data-preview-block="table"]') !== null && ui.querySelector('[data-layout-pending="true"]') === null,
       'actual failed-table paper preparation completes');
     assert.ok(ui.querySelector('[data-preview-block="table"]')?.textContent?.includes(control.expected),
@@ -246,7 +246,7 @@ it('keeps every unresolved and empty table status visible in mounted paper and r
   for (const blank of ['', '  \t ']) for (const control of cases) {
     registerLocale(locale, { [control.key]: blank, 'document.block.tableSourceValidation': blank }); setLocale(locale);
     input.labels = captureLabels(); input.tables = new Map([['table', control.state]]);
-    const ui = render(createElement(DocumentPreview, { ...input, selectedBlockId: null, onSelectBlock: () => {} }));
+    const ui = render(createElement(DocumentPreview, { ...input, onSelectBlock: () => {} }));
     await waitFor(() => ui.querySelector('[data-preview-block="table"]') !== null && ui.querySelector('[data-layout-pending="true"]') === null,
       'actual blank-catalogue table preparation completes');
     const preview = ui.querySelector('[data-preview-block="table"]')?.textContent ?? '';

@@ -19,6 +19,7 @@
  */
 
 import { overlayDepthLiftWgsl } from './depth-nudge.wgsl.js';
+import { extraClipWgsl } from '../extra-clip-planes.js';
 
 /**
  * Float32 indices of each field in the shared uniform buffer.
@@ -98,10 +99,15 @@ export const SECTION_2D_UNIFORM_SLOT_INDEX = {
   terrain: 1 + SECTION_2D_MAX_LINE_PARTITIONS * 4,
   centreline: 1 + SECTION_2D_MAX_LINE_PARTITIONS * 5,
   clashBox: 1 + SECTION_2D_MAX_LINE_PARTITIONS * 6,
+  /** The cut caps of the cutting planes beyond the first (#7545): one record per plane, after every line range. */
+  extraCap: 1 + SECTION_2D_MAX_LINE_PARTITIONS * 7,
 } as const;
 
-/** One cap record plus a partition range for every line family. */
-export const SECTION_2D_UNIFORM_SLOT_COUNT = 1 + SECTION_2D_MAX_LINE_PARTITIONS * 7;
+/** Caps of the planes beyond the first (`MAX_EXTRA_CLIP_PLANES`). */
+export const SECTION_2D_MAX_EXTRA_CAPS = 7;
+
+/** One cap record, a partition range for every line family, and a cap record per extra plane. */
+export const SECTION_2D_UNIFORM_SLOT_COUNT = 1 + SECTION_2D_MAX_LINE_PARTITIONS * 7 + SECTION_2D_MAX_EXTRA_CAPS;
 
 /**
  * Byte stride between uniform slots for `device`.
@@ -129,6 +135,7 @@ export function sectionUniformSlotStride(device: GPUDevice): number {
  * as before. Hatch + stroke apply over either base.
  */
 export const SECTION_2D_CAP_FILL_WGSL = /* wgsl */ `
+        ${extraClipWgsl}
         struct Uniforms {
           viewProj:       mat4x4<f32>,
           planeOffset:    vec4<f32>,    // Small offset to render slightly in front of section plane
@@ -144,6 +151,9 @@ export const SECTION_2D_CAP_FILL_WGSL = /* wgsl */ `
           originDeltaLow:  vec4<f32>,
         }
         @binding(0) @group(0) var<uniform> uniforms: Uniforms;
+        // The cutting planes that remove this cap's fragments (#7545): every other plane,
+        // in the frame clipPos is expressed in. Count 0 = nothing to clip against.
+        @binding(0) @group(1) var<uniform> extraClip: ExtraClip;
 
         struct VertexInput {
           @location(0) position: vec3<f32>,
@@ -153,6 +163,7 @@ export const SECTION_2D_CAP_FILL_WGSL = /* wgsl */ `
         struct VertexOutput {
           @builtin(position) position: vec4<f32>,
           @location(0)       color:    vec4<f32>,
+          @location(1)       clipPos:  vec3<f32>,
         }
 
         @vertex
@@ -163,6 +174,7 @@ export const SECTION_2D_CAP_FILL_WGSL = /* wgsl */ `
           let relative = (offsetPos + uniforms.originDeltaHigh.xyz) + uniforms.originDeltaLow.xyz;
           output.position = select(global, uniforms.rteViewProj * vec4<f32>(relative, 1.0), uniforms.originDeltaHigh.w == 1.0);
           output.color = input.color;
+          output.clipPos = relative;
           return output;
         }
 
@@ -232,6 +244,7 @@ export const SECTION_2D_CAP_FILL_WGSL = /* wgsl */ `
 
         @fragment
         fn fs_main(input: VertexOutput) -> FragOut {
+          if (extraClipClipped(extraClip, input.clipPos)) { discard; }
           let patternId = u32(uniforms.params.x + 0.5);
           let spacing   = max(2.0, uniforms.params.y);
           let angle     = uniforms.params.z;
@@ -260,7 +273,8 @@ export const SECTION_2D_CAP_FILL_WGSL = /* wgsl */ `
  * Line shader for the section-cut outline and the standalone world-space line
  * overlays (annotation / alignment / grid / DXF / clash box).
  */
-export const SECTION_2D_OVERLAY_LINE_WGSL = /* wgsl */ `
+function lineShaderWgsl(clipped: boolean): string {
+  return /* wgsl */ `
         // Mirrors the fill shader's uniform layout so both pipelines can share
         // one buffer; the line shader only reads viewProj, planeOffset and the
         // appended lineColor (byte offset 144). capFillColor/… are unused here but
@@ -278,6 +292,8 @@ export const SECTION_2D_OVERLAY_LINE_WGSL = /* wgsl */ `
           originDeltaLow: vec4<f32>,
         }
         @binding(0) @group(0) var<uniform> uniforms: Uniforms;
+        ${clipped ? `${extraClipWgsl}
+        @binding(0) @group(1) var<uniform> extraClip: ExtraClip;` : ''}
         ${overlayDepthLiftWgsl}
 
         struct VertexInput {
@@ -285,7 +301,8 @@ export const SECTION_2D_OVERLAY_LINE_WGSL = /* wgsl */ `
         }
 
         struct VertexOutput {
-          @builtin(position) position: vec4<f32>,
+          @builtin(position) position: vec4<f32>,${clipped ? `
+          @location(0) clipPos: vec3<f32>,` : ''}
         }
 
         @vertex
@@ -300,7 +317,8 @@ export const SECTION_2D_OVERLAY_LINE_WGSL = /* wgsl */ `
           // triangle topologies, so we do the equivalent in clip space —
           // enough to beat MSAA jitter and the mesh depth nudge on annotation
           // lines that ride exactly on a wall/floor.
-          output.position = vec4<f32>(clip.x, clip.y, overlayLiftedClipZ(clip, uniforms.viewProj), clip.w);
+          output.position = vec4<f32>(clip.x, clip.y, overlayLiftedClipZ(clip, uniforms.viewProj), clip.w);${clipped ? `
+          output.clipPos = relative;` : ''}
           return output;
         }
 
@@ -311,9 +329,20 @@ export const SECTION_2D_OVERLAY_LINE_WGSL = /* wgsl */ `
 
         @fragment
         fn fs_main(input: VertexOutput) -> FragOutLine {
+          ${clipped ? 'if (extraClipClipped(extraClip, input.clipPos)) { discard; }' : ''}
           var out: FragOutLine;
           out.color    = uniforms.lineColor;  // consumer-themeable (defaults black)
           out.objectId = vec4<f32>(0.0, 0.0, 0.0, 0.0);
           return out;
         }
       `;
+}
+
+export const SECTION_2D_OVERLAY_LINE_WGSL = lineShaderWgsl(false);
+
+/**
+ * The section-cut outline's line shader, clipped like the cap fill it rides on:
+ * an outline must vanish where another cutting plane (#7545) removes its cap.
+ * The world-space line families keep the unclipped shader above.
+ */
+export const SECTION_2D_CAP_LINE_WGSL = lineShaderWgsl(true);

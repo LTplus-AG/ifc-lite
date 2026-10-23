@@ -41,7 +41,7 @@ fn xf_reads_the_transform_column_major() {
     // t[4], t[6]) at zero, so a row/col swap inside the linear block reads
     // zero either way and is invisible. The asserts below pin that property of
     // the FIXTURE so it cannot silently decay back to a diagonal.
-    let mut t = [0.0f32; 16];
+    let mut t = [0.0f64; 16];
     t[0] = 2.0; // m00
     t[1] = 5.0; // m10
     t[2] = 11.0; // m20

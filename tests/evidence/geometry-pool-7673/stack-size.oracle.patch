@@ -1,0 +1,12 @@
+diff --git a/rust/processing/src/geometry_pool.rs b/rust/processing/src/geometry_pool.rs
+--- a/rust/processing/src/geometry_pool.rs
++++ b/rust/processing/src/geometry_pool.rs
+@@ -36,7 +36,7 @@ pub const GEOMETRY_STACK_BYTES: usize = 256 * 1024 * 1024;
+ /// Callers may add `num_threads` and then `build` or `build_global`.
+ pub fn geometry_pool_builder() -> ThreadPoolBuilder {
+     ThreadPoolBuilder::new()
+-        .stack_size(2 * 1024 * 1024)
++        .stack_size(GEOMETRY_STACK_BYTES)
+         .thread_name(|i| format!("ifc-lite-geometry-{i}"))
+ }
+ 

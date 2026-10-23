@@ -4,6 +4,7 @@
 
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
+use super::is_refused;
 use super::Transform2D;
 
 /// Parse `IfcCartesianTransformationOperator2D` / `…3D` for `IfcMappedItem`
@@ -33,7 +34,7 @@ use super::Transform2D;
 pub(in super::super) fn parse_cartesian_transformation_operator(
     operator: &DecodedEntity,
     decoder: &mut EntityDecoder,
-    unit_scale: f32,
+    unit_scale: f64,
 ) -> Transform2D {
     // attr 2 = LocalOrigin (IfcCartesianPoint).
     //
@@ -61,11 +62,14 @@ pub(in super::super) fn parse_cartesian_transformation_operator(
                     .and_then(|a| a.as_list())
                     .map(|l| l.to_vec())
                     .unwrap_or_default();
-                let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
-                let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
-                let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
+                let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0);
+                let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
+                let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
                 (x * unit_scale, y * unit_scale, z * unit_scale)
             }
+            // Refused by input admission (#7678): drop the symbol, as the
+            // infinity it decoded to before did.
+            Err(e) if is_refused(&e) => return Transform2D::refused(),
             _ => (0.0, 0.0, 0.0),
         },
         None => (0.0, 0.0, 0.0),
@@ -77,7 +81,7 @@ pub(in super::super) fn parse_cartesian_transformation_operator(
     // uniform-reflection convention some exporters use, distinct from the
     // Axis2 mirroring this function now derives; folding its sign in here too
     // is out of scope for #1994 (unchanged from before this fix).
-    let raw_scale = operator.get(3).and_then(|v| v.as_float()).unwrap_or(1.0) as f32;
+    let raw_scale = operator.get(3).and_then(|v| v.as_float()).unwrap_or(1.0);
     let scale = if raw_scale.is_finite() { raw_scale.abs() } else { 1.0 };
 
     // Axis1 (attr 0) gives the X direction for 2D / 3D operators.
@@ -89,8 +93,8 @@ pub(in super::super) fn parse_cartesian_transformation_operator(
                     .and_then(|a| a.as_list())
                     .map(|l| l.to_vec())
                     .unwrap_or_default();
-                let dx = ratios.first().and_then(|v| v.as_float()).unwrap_or(1.0) as f32;
-                let dy = ratios.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
+                let dx = ratios.first().and_then(|v| v.as_float()).unwrap_or(1.0);
+                let dy = ratios.get(1).and_then(|v| v.as_float()).unwrap_or(0.0);
                 let len = (dx * dx + dy * dy).sqrt();
                 if len > 0.0001 {
                     (dx / len, dy / len)
@@ -98,6 +102,7 @@ pub(in super::super) fn parse_cartesian_transformation_operator(
                     (1.0, 0.0)
                 }
             }
+            Err(e) if is_refused(&e) => return Transform2D::refused(),
             _ => (1.0, 0.0),
         },
         None => (1.0, 0.0),
@@ -116,8 +121,8 @@ pub(in super::super) fn parse_cartesian_transformation_operator(
                     .and_then(|a| a.as_list())
                     .map(|l| l.to_vec())
                     .unwrap_or_default();
-                let ex = ratios.first().and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
-                let ey = ratios.get(1).and_then(|v| v.as_float()).unwrap_or(1.0) as f32;
+                let ex = ratios.first().and_then(|v| v.as_float()).unwrap_or(0.0);
+                let ey = ratios.get(1).and_then(|v| v.as_float()).unwrap_or(1.0);
                 // Project onto the perpendicular of x_axis (Gram-Schmidt),
                 // matching the 3D path's orthogonalization.
                 let dot = ex * x_axis.0 + ey * x_axis.1;
@@ -136,6 +141,7 @@ pub(in super::super) fn parse_cartesian_transformation_operator(
                     default_y
                 }
             }
+            Err(e) if is_refused(&e) => return Transform2D::refused(),
             _ => default_y,
         },
         None => default_y,

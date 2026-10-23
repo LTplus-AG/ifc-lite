@@ -47,6 +47,12 @@ pub enum ApiError {
 
     #[error("Server overloaded, retry after {retry_after_secs}s")]
     Overloaded { retry_after_secs: u64 },
+
+    /// The upload stalled or fell below the minimum rate (#7676, SERVER-29).
+    /// The same `408 REQUEST_TIMEOUT` the request timeout answers: the
+    /// request took too long, sooner.
+    #[error("Upload too slow: {0}")]
+    UploadTimeout(String),
 }
 
 /// The `error` text of a `CACHE_ERROR` response. The underlying detail stays
@@ -96,6 +102,7 @@ impl IntoResponse for ApiError {
             ApiError::Join(_) => (StatusCode::INTERNAL_SERVER_ERROR, "TASK_ERROR"),
             ApiError::Parquet(_) => (StatusCode::INTERNAL_SERVER_ERROR, "PARQUET_ERROR"),
             ApiError::Overloaded { .. } => (StatusCode::SERVICE_UNAVAILABLE, "OVERLOADED"),
+            ApiError::UploadTimeout(_) => (StatusCode::REQUEST_TIMEOUT, "REQUEST_TIMEOUT"),
         };
 
         let retry_after = match &self {
@@ -153,7 +160,13 @@ impl From<crate::services::ParquetError> for ApiError {
 
 impl From<crate::services::parquet_data_model::DataModelParquetError> for ApiError {
     fn from(err: crate::services::parquet_data_model::DataModelParquetError) -> Self {
-        ApiError::Parquet(err.to_string())
+        match err {
+            // The upload is what is over budget (#7675), not the server.
+            crate::services::parquet_data_model::DataModelParquetError::Refused(reason) => {
+                ApiError::BadRequest(reason)
+            }
+            err => ApiError::Parquet(err.to_string()),
+        }
     }
 }
 

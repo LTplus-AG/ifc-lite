@@ -7,6 +7,18 @@
 
 The `@ifc-lite/diff` package compares two revisions of a model and classifies every entity as **added**, **modified**, **deleted**, or **unchanged**. It is a pure, headless, store-agnostic engine: you supply fingerprints, it matches and classifies. The viewer's Compare UI and the [CLI](cli.md) both build on the same core.
 
+## Filtering viewer results
+
+After running **Compare models**, click **Changed**, **Added**, **Deleted**, or
+**Matched** to filter the result list, isolate that category in the viewport, and frame its elements.
+Click the active count again, or **Show all results**, to restore the comparison.
+**Change kind** narrows changed elements to **Data / properties**, **Geometry**,
+or **Container**; an element with both data and geometry changes appears under
+either kind. These controls filter the completed result without re-running it.
+Headline counts and downloaded reports continue to describe the full comparison.
+Scroll the panel body to reach controls, results and selected change details;
+large result groups scroll within a virtual list without truncating their rows.
+
 ## What the engine does
 
 `diffModels(base, head, options?)` takes two iterables of `EntityFingerprint`s and returns a `ModelDiff`:
@@ -56,6 +68,8 @@ Each `EntityFingerprint` carries two independent hashes, so data and geometry ch
 - type assignments — **by the assigned type's name and IFC class only**
 
 Property sets, quantity sets, their members, and type assignments are all sorted before hashing, so collection ordering never produces a spurious "modified", and two semantically equal entities in the base and head hash identically. The sort is **total**: records are ordered by name and then by their own serialized content, because sorting on name alone leaves same-named records in whatever order the adapter walked them (`Array.prototype.sort` is stable), which would put the adapter's iteration order into the hash. Same-named property sets are ordinary in IFC (a type pset and an occurrence pset of one name), so this is a reachable case rather than a theoretical one.
+
+Both the viewer and CLI fingerprint a type object's own property and quantity sets attached directly through `HasPropertySets`, as well as relationship-attached definitions. Editing those values is a data change even when the type has no occurrences or geometry.
 
 !!! warning "The assigned type's `GlobalId` is not hashed"
     `TypeAssignmentInput` still has a `globalId` field and callers may keep
@@ -709,6 +723,8 @@ The comparison covers every `IfcObjectDefinition` in the model, read through the
     `mutation_diff` to see the queued edits themselves.
 
 ## Viewer Compare mode
+
+Compare includes products and type objects with a GlobalId even when they have no mesh. A change to a geometry-less `IfcWallType`'s Name, Tag, or own property/quantity sets appears in the results and its change details. Type objects are counted separately from products. Tasks, groups and projects remain outside the viewer's geometry-less scope; the CLI compares the wider `IfcObjectDefinition` population.
 
 The viewer's Compare UI is a consumer of this engine. It extracts an `EntityFingerprint` per entity from each loaded revision — the data hash and the per-component sub-hashes from the store, the geometry hash from the WASM mesh pass — and feeds both sides to `diffModels`. The result colours the 3D scene by state (added, modified, deleted), lets you scope the comparison to data, geometry, or both, and drives an inspect panel that reports which signals changed for a picked entity. The persisted type-exclusion list flows straight into `excludeTypes`, so classes the team does not care about stay out of the change set.
 

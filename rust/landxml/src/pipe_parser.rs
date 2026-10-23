@@ -3,18 +3,12 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::{
-    classify_landxml_version, compatibility_version_diagnostic,
-    preflight::preflight_xml_tokens,
-    xml::{attr, attributes, error, normalize_encoding, split_name, Result},
+    xml::{attr, drive, error, normalize_encoding, Attributes, Budget, Cx, Element, FamilyHandler, Meter, Result},
     LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlLimits, LandXmlPipeNetworkDocument,
     LandXmlSourceId,
 };
-use quick_xml::{
-    events::{BytesStart, Event},
-    Reader,
-};
-pub(crate) use state::PipeParser;
-use state::{properties, FeatureBuilder, Frame, NetworkBuilder};
+pub(crate) use state::PipeHandler;
+use state::{properties, FeatureBuilder, NetworkBuilder};
 use std::collections::{HashMap, HashSet};
 mod convert;
 mod driver;
@@ -38,48 +32,28 @@ pub fn parse_landxml_pipe_networks_with_cancel(
     if input.len() > limits.max_bytes {
         return Err(error(Code::InputTooLarge, "input exceeds byte limit"));
     }
+    // #5175 / EDGE-LXPARSE-7 (#7693): refuse a bad override token before
+    // any XML is read. The validated token is applied from `limits` when the
+    // root units are resolved (`effective_root_units`).
+    crate::semantics::resolve_assumed_units(limits)?;
     let input = normalize_encoding(input, limits, cancelled)?;
-    preflight_xml_tokens(&input, limits, cancelled)?;
-    let mut parser = PipeParser::new(limits, cancelled, true);
-    let mut reader = Reader::from_reader(input.as_slice());
-    reader.config_mut().trim_text(false);
-    let mut buffer = Vec::new();
-    loop {
-        let event = reader
-            .read_event_into(&mut buffer)
-            .map_err(|_| error(Code::InvalidXml, "malformed XML"))?;
-        if matches!(event, Event::Eof) {
-            break;
-        }
-        parser.consume_event(event)?;
-        buffer.clear();
-    }
-    if !parser.frames.is_empty() || !parser.root_seen || !parser.root_closed {
-        return Err(error(Code::InvalidXml, "unclosed XML element"));
-    }
-    parser.finish_stream()
+    let meter = Meter::new(limits.max_work, cancelled);
+    let mut handler = PipeHandler::new(limits, meter.clone(), true);
+    drive(&input, limits, cancelled, meter, &mut [&mut handler])?;
+    handler.finish_stream()
 }
 
-impl<'a> PipeParser<'a> {
-    fn new(
-        limits: &LandXmlLimits,
-        cancelled: Option<&'a dyn LandXmlCancellation>,
-        require_pipe_networks: bool,
-    ) -> Self {
+impl<'a> PipeHandler<'a> {
+    pub(crate) fn new(limits: &LandXmlLimits, meter: Meter<'a>, require_pipe_networks: bool) -> Self {
         Self {
             limits: limits.clone(),
-            cancelled,
             require_pipe_networks,
-            work: 0,
-            character_references: 0,
-            frames: Vec::new(),
+            meter,
+            capability_diagnostics_seen: Budget::new(limits.max_capability_diagnostics, "capability diagnostic"),
             root_units: None,
             schema: String::new(),
             version: String::new(),
             capability_diagnostics: Vec::new(),
-            target_namespace: None,
-            root_seen: false,
-            root_closed: false,
             network: None,
             structure: None,
             pipe: None,
@@ -92,294 +66,184 @@ impl<'a> PipeParser<'a> {
             refusals: Vec::new(),
             preflight_refusal_batches: Vec::new(),
             refusal_keys: HashSet::new(),
-            pipe_networks_seen: 0,
-            structures_seen: 0,
-            pipes_seen: 0,
-            inverts_seen: 0,
-            flows_seen: 0,
-            points_seen: 0,
-            references_seen: 0,
+            pipe_networks_seen: Budget::new(limits.max_pipe_networks, "pipe network"),
+            structures_seen: Budget::new(limits.max_pipe_structures, "pipe structure"),
+            pipes_seen: Budget::new(limits.max_pipes, "pipe"),
+            inverts_seen: Budget::new(limits.max_pipe_inverts, "pipe invert"),
+            flows_seen: Budget::new(limits.max_pipe_flows, "pipe flow"),
+            points_seen: Budget::new(limits.max_points, "pipe Center point"),
+            references_seen: Budget::new(limits.max_references, "pipe reference"),
             pipe_network_collections: 0,
             network_ordinal: 0,
             feature_ordinals: HashMap::new(),
         }
     }
 
-    /// Consume a quick-xml event through the same state transitions used by
-    /// the bounded pull wrapper and the resumable stream driver.
-    pub(crate) fn consume_event(&mut self, event: Event<'_>) -> Result<()> {
-        self.check_cancel_and_work(1)?;
-        match event {
-            Event::Start(start) => self.start(&start),
-            Event::Empty(start) => {
-                self.start(&start)?;
-                self.end(None)
-            }
-            Event::End(end) => self.end(Some(end.name().as_ref().as_bytes())),
-            Event::Text(text) => self.text(text.as_ref().as_bytes()),
-            Event::CData(text) => self.cdata(text.as_ref().as_bytes()),
-            Event::DocType(_) => Err(error(Code::DtdForbidden, "DOCTYPE is not allowed")),
-            _ => Ok(()),
+    /// Take what the driver validated at the document element.
+    fn open_root(&mut self, cx: &Cx<'_>) -> Result<()> {
+        self.schema = cx.root.schema.clone();
+        if let Some(diagnostic) = cx.root.diagnostic.clone() {
+            self.record_capability_diagnostic(diagnostic)?;
         }
+        self.version = cx.root.version.clone();
+        Ok(())
     }
+}
 
-    pub(crate) fn has_open_frames(&self) -> bool {
-        !self.frames.is_empty()
-    }
-
-    fn start(&mut self, start: &BytesStart<'_>) -> Result<()> {
-        if self.frames.len() >= self.limits.max_depth {
-            return Err(error(Code::LimitExceeded, "XML depth limit exceeded"));
+impl FamilyHandler for PipeHandler<'_> {
+    fn start(&mut self, cx: &Cx<'_>, element: &Element<'_>) -> Result<()> {
+        if element.depth == 1 {
+            self.open_root(cx)?;
         }
-        let name = start.name();
-        let (_, local, prefix) = split_name(name.as_ref().as_bytes(), self.limits.max_name_bytes)?;
-        let (attributes, namespaces, references) = attributes(start, &self.limits)?;
-        self.check_cancel_and_work(attributes.len())?;
-        self.check_character_references(references)?;
-        let mut inherited = self
-            .frames
-            .last()
-            .map_or_else(HashMap::new, |frame| frame.namespaces.clone());
-        inherited.extend(namespaces);
-        let namespace = inherited.get(prefix).map(String::as_str);
-        if self.frames.is_empty() {
-            if self.root_seen {
-                return Err(error(
-                    Code::InvalidXml,
-                    "LandXML document has multiple roots",
-                ));
-            }
-            if local != "LandXML" {
-                return Err(error(Code::InvalidSemantic, "root element is not LandXML"));
-            }
-            let capability = classify_landxml_version(namespace, attr(&attributes, "version"));
-            if !capability.supports_tin_ingestion() {
-                return Err(match capability {
-                    crate::LandXmlVersionCapability::NotLandXml => error(
-                        Code::UnsupportedNamespace,
-                        "root namespace is not a recognized LandXML namespace",
-                    ),
-                    _ => error(
-                        Code::UnsupportedVersion,
-                        "LandXML namespaces require a known version declaration",
-                    ),
-                });
-            }
-            self.schema = capability
-                .schema()
-                .expect("supported capability has a schema")
-                .to_owned();
-            self.target_namespace = namespace.map(str::to_owned);
-            if let Some(diagnostic) = compatibility_version_diagnostic(
-                capability,
-                attr(&attributes, "version").expect("supported capability has a version"),
-            ) {
-                self.capability_diagnostics.push(diagnostic);
-            }
-            self.version = attr(&attributes, "version")
-                .expect("supported capability has a version")
-                .to_owned();
-            self.root_seen = true;
-        }
-        let target = namespace == self.target_namespace.as_deref();
-        self.frames.push(Frame {
-            local: local.to_owned(),
-            target,
-            namespaces: inherited,
-        });
+        // Markup inside a Center refuses that record, not the document.
         if let Some(capture) = self.capture.as_mut() {
-            if self.frames.len() > capture.depth {
+            if element.depth > capture.depth {
                 capture
                     .invalid_reason
                     .get_or_insert_with(|| "Center must contain direct coordinates".to_owned());
             }
         }
-        if !target {
+        if !element.target {
             return Ok(());
         }
-        let properties = properties(&attributes);
+        self.start_target(cx, element.local, element.attributes)
+    }
+
+    fn end(&mut self, cx: &Cx<'_>) -> Result<()> {
+        self.end_element(cx)
+    }
+
+    fn text(&mut self, _cx: &Cx<'_>, text: &str) -> Result<()> {
+        self.capture_decoded(text)
+    }
+
+    fn capture_depth(&self) -> Option<usize> {
+        self.capture.as_ref().map(|capture| capture.depth)
+    }
+}
+
+impl PipeHandler<'_> {
+    fn start_target(&mut self, cx: &Cx<'_>, local: &str, attributes: &Attributes) -> Result<()> {
+        // Record properties are built only by the arm that keeps them
+        // (EDGE-LXPARSE-15): most elements are not records.
         match local {
-            "PipeNetworks" if self.is_path(&["LandXML", "PipeNetworks"]) => {
-                self.pipe_network_collections += 1;
-                self.network_ordinal = 0;
-                self.collections.push(crate::LandXmlPipeNetworkCollection {
-                    source_id: LandXmlSourceId(format!(
-                        "landxml:pipe-networks:{}",
-                        self.pipe_network_collections
-                    )),
-                    source_path: format!("LandXML/PipeNetworks[{}]", self.pipe_network_collections),
-                    properties,
-                });
-            }
-            "PipeNetwork" if self.is_path(&["LandXML", "PipeNetworks", "PipeNetwork"]) => {
-                Self::reserve(
-                    &mut self.pipe_networks_seen,
-                    self.limits.max_pipe_networks,
-                    "pipe network",
-                )?;
-                self.network_ordinal += 1;
-                if !matches!(
-                    attr(&attributes, "pipeNetType"),
-                    Some("water" | "storm" | "sanitary" | "other")
-                ) {
-                    return Err(error(
-                        Code::InvalidSemantic,
-                        "PipeNetwork has invalid pipeNetType",
-                    ));
-                }
-                let source_path = format!(
-                    "LandXML/PipeNetworks[{}]/PipeNetwork[{}]",
-                    self.pipe_network_collections, self.network_ordinal
-                );
-                self.network = Some(NetworkBuilder {
-                    source_id: LandXmlSourceId(format!(
-                        "landxml:pipe-network:{}:{}",
-                        self.pipe_network_collections, self.network_ordinal
-                    )),
-                    source_path,
-                    name: attr(&attributes, "name").map(str::to_owned),
-                    pipe_network_type: attr(&attributes, "pipeNetType").map(str::to_owned),
-                    properties,
-                    structure_units: None,
-                    pipe_units: None,
-                    structures: Vec::new(),
-                    pipes: Vec::new(),
-                    structure_ordinal: 0,
-                    pipe_ordinal: 0,
-                    structure_collection: 0,
-                    pipe_collection: 0,
-                    structures_in_collection: 0,
-                    pipes_in_collection: 0,
-                    saw_structs: false,
-                    saw_pipes: false,
-                    features: Vec::new(),
-                });
-            }
-            "Feature" if self.feature_owner().is_some() => {
-                let (owner_source_id, owner_path) = self.feature_owner().expect("checked owner");
-                let ordinal = self
-                    .feature_ordinals
-                    .entry(owner_source_id.clone())
-                    .or_insert(0);
-                *ordinal += 1;
-                let ordinal = *ordinal;
-                self.features_open.push(FeatureBuilder {
-                    source_id: LandXmlSourceId(format!("{}:feature:{ordinal}", owner_source_id.0)),
-                    source_path: format!("{owner_path}/Feature[{ordinal}]"),
-                    owner_source_id,
-                    properties,
-                    depth: self.frames.len(),
-                });
-            }
-            "Property" if self.feature_property_path() => {
-                if let Some(feature) = self.features_open.last_mut() {
-                    let key = attr(&attributes, "label")
-                        .or_else(|| attr(&attributes, "name"))
-                        .ok_or_else(|| {
-                            error(
-                                Code::InvalidSemantic,
-                                "Feature Property requires label or name",
-                            )
-                        })?;
-                    feature.properties.insert(
-                        key.to_owned(),
-                        attr(&attributes, "value").unwrap_or_default().to_owned(),
-                    );
-                }
-            }
-            "Structs" if self.is_path(&["LandXML", "PipeNetworks", "PipeNetwork", "Structs"]) => {
+            "PipeNetworks" if cx.path_is(&["LandXML", "PipeNetworks"]) => self.start_collection(attributes),
+            "PipeNetwork" if cx.path_is(&["LandXML", "PipeNetworks", "PipeNetwork"]) => self.start_network(attributes)?,
+            "Feature" if self.feature_owner(cx).is_some() => self.start_feature(cx, attributes),
+            "Property" if self.feature_property_path(cx) => self.add_feature_property(attributes)?,
+            "Structs" if cx.path_is(&["LandXML", "PipeNetworks", "PipeNetwork", "Structs"]) => {
                 let network = self.network.as_mut().expect("Structs has network");
                 network.structure_collection += 1;
                 network.structures_in_collection = 0;
                 network.structure_units = None;
                 network.saw_structs = true;
             }
-            "Pipes" if self.is_path(&["LandXML", "PipeNetworks", "PipeNetwork", "Pipes"]) => {
+            "Pipes" if cx.path_is(&["LandXML", "PipeNetworks", "PipeNetwork", "Pipes"]) => {
                 let network = self.network.as_mut().expect("Pipes has network");
                 network.pipe_collection += 1;
                 network.pipes_in_collection = 0;
                 network.pipe_units = None;
                 network.saw_pipes = true;
             }
-            "Struct"
-                if self.is_path(&[
-                    "LandXML",
-                    "PipeNetworks",
-                    "PipeNetwork",
-                    "Structs",
-                    "Struct",
-                ]) =>
-            {
-                self.start_structure(properties, &attributes)?
+            "Struct" if cx.path_is(&["LandXML", "PipeNetworks", "PipeNetwork", "Structs", "Struct"]) => {
+                self.start_structure(properties(attributes), attributes)?
             }
-            "Pipe"
-                if self.is_path(&["LandXML", "PipeNetworks", "PipeNetwork", "Pipes", "Pipe"]) =>
-            {
-                self.start_pipe(properties, &attributes)?
+            "Pipe" if cx.path_is(&["LandXML", "PipeNetworks", "PipeNetwork", "Pipes", "Pipe"]) => {
+                self.start_pipe(properties(attributes), attributes)?
             }
-            "Metric" | "Imperial" => self.record_units(properties)?,
-            "Center" => self.start_center(&attributes)?,
-            "Invert"
-                if self.is_path(&[
-                    "LandXML",
-                    "PipeNetworks",
-                    "PipeNetwork",
-                    "Structs",
-                    "Struct",
-                    "Invert",
-                ]) =>
-            {
-                self.start_invert(properties, &attributes)?
+            "Metric" | "Imperial" => self.record_units(cx, properties(attributes))?,
+            "Center" => self.start_center(cx, attributes)?,
+            "Invert" if cx.path_is(&["LandXML", "PipeNetworks", "PipeNetwork", "Structs", "Struct", "Invert"]) => {
+                self.start_invert(properties(attributes), attributes)?
             }
-            "PipeFlow"
-                if self.is_path(&[
-                    "LandXML",
-                    "PipeNetworks",
-                    "PipeNetwork",
-                    "Pipes",
-                    "Pipe",
-                    "PipeFlow",
-                ]) =>
-            {
-                self.start_flow(properties, &attributes, false)?
+            "PipeFlow" if cx.path_is(&["LandXML", "PipeNetworks", "PipeNetwork", "Pipes", "Pipe", "PipeFlow"]) => {
+                self.start_flow(properties(attributes), attributes, false)?
             }
             "StructFlow"
-                if self.is_path(&[
-                    "LandXML",
-                    "PipeNetworks",
-                    "PipeNetwork",
-                    "Structs",
-                    "Struct",
-                    "StructFlow",
-                ]) =>
+                if cx.path_is(&["LandXML", "PipeNetworks", "PipeNetwork", "Structs", "Struct", "StructFlow"]) =>
             {
-                self.start_flow(properties, &attributes, true)?
+                self.start_flow(properties(attributes), attributes, true)?
             }
             "CircPipe" | "ElliPipe" | "EggPipe" | "RectPipe" | "Channel" => {
-                self.start_pipe_part(local, properties)?
+                self.start_pipe_part(cx, local, attributes)?
             }
             "CircStruct" | "RectStruct" | "InletStruct" | "OutletStruct" | "Connection" => {
-                self.start_structure_part(local, properties)?
+                self.start_structure_part(cx, local, attributes)?
             }
             _ => {}
         }
         Ok(())
     }
 
-    fn is_path(&self, expected: &[&str]) -> bool {
-        self.frames.len() == expected.len()
-            && self
-                .frames
-                .iter()
-                .zip(expected)
-                .all(|(frame, local)| frame.target && frame.local == *local)
+    fn start_collection(&mut self, attributes: &Attributes) {
+        self.pipe_network_collections += 1;
+        self.network_ordinal = 0;
+        self.collections.push(crate::LandXmlPipeNetworkCollection {
+            source_id: LandXmlSourceId(format!("landxml:pipe-networks:{}", self.pipe_network_collections)),
+            source_path: format!("LandXML/PipeNetworks[{}]", self.pipe_network_collections),
+            properties: properties(attributes),
+        });
     }
-}
 
-impl PipeParser<'static> {
-    /// Construct the optional pipe-family participant for the canonical
-    /// LandXML stream. Terrain-only documents remain valid stream inputs.
-    pub(crate) fn new_stream(limits: LandXmlLimits) -> Self {
-        Self::new(&limits, None, false)
+    fn start_network(&mut self, attributes: &Attributes) -> Result<()> {
+        self.pipe_networks_seen.reserve(1)?;
+        self.network_ordinal += 1;
+        if !matches!(attr(attributes, "pipeNetType"), Some("water" | "storm" | "sanitary" | "other")) {
+            return Err(error(Code::InvalidSemantic, "PipeNetwork has invalid pipeNetType"));
+        }
+        let source_path = format!(
+            "LandXML/PipeNetworks[{}]/PipeNetwork[{}]",
+            self.pipe_network_collections, self.network_ordinal
+        );
+        self.network = Some(NetworkBuilder {
+            source_id: LandXmlSourceId(format!(
+                "landxml:pipe-network:{}:{}",
+                self.pipe_network_collections, self.network_ordinal
+            )),
+            source_path,
+            name: attr(attributes, "name").map(str::to_owned),
+            pipe_network_type: attr(attributes, "pipeNetType").map(str::to_owned),
+            properties: properties(attributes),
+            structure_units: None,
+            pipe_units: None,
+            structures: Vec::new(),
+            pipes: Vec::new(),
+            structure_ordinal: 0,
+            pipe_ordinal: 0,
+            structure_collection: 0,
+            pipe_collection: 0,
+            structures_in_collection: 0,
+            pipes_in_collection: 0,
+            saw_structs: false,
+            saw_pipes: false,
+            features: Vec::new(),
+        });
+        Ok(())
+    }
+
+    fn start_feature(&mut self, cx: &Cx<'_>, attributes: &Attributes) {
+        let (owner_source_id, owner_path) = self.feature_owner(cx).expect("checked owner");
+        let ordinal = self.feature_ordinals.entry(owner_source_id.clone()).or_insert(0);
+        *ordinal += 1;
+        let ordinal = *ordinal;
+        self.features_open.push(FeatureBuilder {
+            source_id: LandXmlSourceId(format!("{}:feature:{ordinal}", owner_source_id.0)),
+            source_path: format!("{owner_path}/Feature[{ordinal}]"),
+            owner_source_id,
+            properties: properties(attributes),
+            depth: cx.frames().len(),
+        });
+    }
+
+    fn add_feature_property(&mut self, attributes: &Attributes) -> Result<()> {
+        if let Some(feature) = self.features_open.last_mut() {
+            let key = attr(attributes, "label")
+                .or_else(|| attr(attributes, "name"))
+                .ok_or_else(|| error(Code::InvalidSemantic, "Feature Property requires label or name"))?;
+            feature
+                .properties
+                .insert(key.to_owned(), attr(attributes, "value").unwrap_or_default().to_owned());
+        }
+        Ok(())
     }
 }

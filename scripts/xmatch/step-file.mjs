@@ -27,6 +27,14 @@
 /** @typedef {{ id: number, type: string, args: string, raw: string }} Statement */
 
 /**
+ * Whether the apostrophe at `index` is the operand of a `\S\` PAGE directive:
+ * `isStepPageQuoteOperand` in @ifc-lite/encoding, inlined (#7589, #7609).
+ */
+function isPageQuoteOperand(text, index) {
+  return index >= 3 && text[index - 1] === '\\' && text[index - 2] === 'S' && text[index - 3] === '\\';
+}
+
+/**
  * Scan `text` for the next unquoted occurrence of any character in `stops`,
  * starting at `from`. Returns the index, or `text.length`.
  *
@@ -43,8 +51,13 @@ function scanTo(text, from, stops) {
       index++;
       while (index < text.length) {
         if (text[index] === "'") {
+          // The PAGE directive `\S\` takes the next character as its operand,
+          // even an apostrophe: `'Para \S\' 5'` is one literal (#7589). This
+          // is the lookback of `stepStringLiteralEnd` in @ifc-lite/encoding,
+          // inlined to keep this module dependency-free. Tested first: `'5\S\''` closes at its last quote.
+          if (isPageQuoteOperand(text, index)) index++;
           // A doubled quote is a literal quote, not the end of the string.
-          if (text[index + 1] === "'") index += 2;
+          else if (text[index + 1] === "'") index += 2;
           else break;
         } else index++;
       }
@@ -274,9 +287,19 @@ export function setArg(statement, position, value) {
   return { ...statement, args: parts.join(',') };
 }
 
-/** A STEP-quoted string literal, with embedded quotes doubled. */
+/**
+ * A STEP-quoted string literal. `value` is raw inner STEP text (directives such
+ * as `\X2\..\X0\` stay encoded; {@link unquote} does not decode them), so every
+ * apostrophe is doubled EXCEPT a `\S\` operand, which the readers take as text
+ * (#7609): doubling that one too wrote `'5\S\'''`, which never closes.
+ */
 export function quote(value) {
-  return `'${String(value).replaceAll("'", "''")}'`;
+  const text = String(value);
+  let out = '';
+  for (let index = 0; index < text.length; index++) {
+    out += text[index] === "'" && !isPageQuoteOperand(text, index) ? "''" : text[index];
+  }
+  return `'${out}'`;
 }
 
 /** Decode a STEP string literal (the inverse of {@link quote}); `$` → null. */
@@ -284,7 +307,14 @@ export function unquote(literal) {
   const text = literal.trim();
   if (text === '$' || text === '*') return null;
   if (text[0] !== "'" || text[text.length - 1] !== "'") return text;
-  return text.slice(1, -1).replaceAll("''", "'");
+  const inner = text.slice(1, -1);
+  let out = '';
+  for (let index = 0; index < inner.length; index++) {
+    out += inner[index];
+    // A PAGE operand stands alone; any other quote is the first of a pair.
+    if (inner[index] === "'" && !isPageQuoteOperand(inner, index) && inner[index + 1] === "'") index++;
+  }
+  return out;
 }
 
 /**

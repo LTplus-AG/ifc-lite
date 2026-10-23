@@ -13,7 +13,7 @@ import '@/test/setup-dom.js';
 import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { create, type StoreApi } from 'zustand';
-import { createSectionSlice, loadLastSectionMode, type SectionSlice } from './sectionSlice.js';
+import { createSectionSlice, type SectionSlice } from './sectionSlice.js';
 import { MIN_SECTION_BOX_SIZE_M } from '@/lib/section/section-box';
 
 const box = () => ({ min: [0, -1, 0] as [number, number, number], max: [10, 3, 8] as [number, number, number] });
@@ -42,12 +42,6 @@ describe('setSectionBox', () => {
     store.getState().setSectionBox(box());
     assert.equal(store.getState().sectionPlane.custom, undefined);
     assert.equal(store.getState().sectionPickMode, false);
-  });
-
-  it('records box mode as the last-used mode without the box itself', () => {
-    store.getState().setSectionBox(box());
-    assert.deepEqual(loadLastSectionMode(), { kind: 'box' });
-    assert.equal(window.localStorage.getItem('ifc-lite:section-last-mode'), JSON.stringify({ kind: 'box' }));
   });
 });
 

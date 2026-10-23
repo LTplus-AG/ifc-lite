@@ -85,7 +85,7 @@ it('places scaled table cells at the same font factor as the actual PDF (#6548, 
         source: { kind: 'validation', rows: 'failed', columns: ['rule'] } }] };
     const ui = render(<DocumentPreview document={document} bindings={{ models: [], activeModelId: null, today: new Date('2026-10-01') }}
       aggregations={new Map()} chartMessages={new Map()} topics={new Map()} tables={new Map([['tb', state]])}
-      selectedBlockId={null} onSelectBlock={() => {}} />);
+      onSelectBlock={() => {}} />);
     await documentPreviewReady();
     const table = ui.querySelector<HTMLTableElement>('[data-preview-block="tb"] table'); assert.ok(table);
     const cell = table.querySelector<HTMLTableCellElement>('tbody td'); assert.ok(cell);
@@ -117,7 +117,7 @@ it('prints a scaled public-model chart with the same enlarged plot labels as its
         page: { size: 'A4', orientation: 'portrait' }, blocks: [{ kind: 'chart', id: 'chart', chart, scale: factor, height: 150, snapshot: false }] };
       const input = { document, bindings: { models: [], activeModelId: null, today: new Date('2026-10-01') },
         aggregations: new Map([['chart', aggregation]]), chartMessages: new Map<string, string>(), topics: new Map(), tables: new Map(), snapshotIds: () => [] };
-      const ui = render(<DocumentPreview {...input} selectedBlockId={null} onSelectBlock={() => {}} />);
+      const ui = render(<DocumentPreview {...input} onSelectBlock={() => {}} />);
       await documentPreviewReady();
       const svg = ui.querySelector<SVGSVGElement>('[data-chart-svg] svg'); assert.ok(svg);
       const label = Array.from(svg.querySelectorAll('text')).find(node => node.textContent === 'IfcWall'); assert.ok(label);

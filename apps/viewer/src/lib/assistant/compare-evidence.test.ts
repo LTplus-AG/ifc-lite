@@ -53,7 +53,8 @@ describe('comparison evidence for the assistant (#6921)', () => {
     const run = await seed(pair);
     reconcile(run, run);
     const sent = payload();
-    assert.deepEqual(sent.evidence.summary.counts, { added: 1, deleted: 1, modified: 2, unchanged: 19 });
+    // #8040 includes 19 unchanged products plus 16 unchanged type objects.
+    assert.deepEqual(sent.evidence.summary.counts, { added: 1, deleted: 1, modified: 2, unchanged: 35 });
     assert.equal(sent.evidence.summary.impact.totals.clash, 2);
     assert.equal(sent.evidence.summary.impact.sources.validation, 'unavailable');
     assert.match(sent.evidence.summary.impact.limitations, /not proof that the change caused or fixed it/);

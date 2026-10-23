@@ -525,13 +525,7 @@ fn invalid_boolean_operand_and_csg_root_types_omit_valid_sibling() {
 fn independent_exporter_circle_trim_and_hollow_radius() {
     // #5559: IFC.JAVA's checked-in IFC2X3 export uses an IfcCircle directrix
     // with solid-level angle bounds; a full circle would overstate its path.
-    let path = "../../tests/models/ifcopenshell/1032-curve.ifc";
-    let Ok(bytes) = std::fs::read(path) else {
-        eprintln!(
-            "skipping independent exporter fixture; run pnpm fixtures ifcopenshell/1032-curve.ifc"
-        );
-        return;
-    };
+    let bytes = ifc_lite_testkit::fixture_bytes_or_skip!("ifcopenshell/1032-curve.ifc");
     let result = extract_swept_disk_descriptions(&bytes, None);
     let disk = &result.elements[&26][0];
     assert_eq!(disk.radius, 0.0167);

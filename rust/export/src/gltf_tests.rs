@@ -12,7 +12,7 @@ use ifc_lite_processing::process_geometry;
 use ifc_lite_processing::TessellationQuality;
 
 /// Parse a GLB and return (json: Value, bin: Vec<u8>).
-fn parse_glb(glb: &[u8]) -> (Value, Vec<u8>) {
+pub(crate) fn parse_glb(glb: &[u8]) -> (Value, Vec<u8>) {
     // Assert the literal magic bytes (not a derived constant) so a wrong magic
     // constant in pack_glb can't pass the test self-consistently.
     assert_eq!(&glb[0..4], b"glTF", "glTF magic");
@@ -266,6 +266,101 @@ fn bounded_glb_with_index_is_byte_identical() {
     }
 }
 
+/// Writing pass 2 from the meshes pass 1 kept produces the same GLB as meshing
+/// the model again, whether the budget holds every mesh, runs out partway, or is
+/// too small for the first one.
+#[test]
+fn single_pass_budget_never_changes_the_bounded_glb() {
+    let bytes = fixture_or_skip!("ara3d/duplex.ifc");
+    for quantize in [false, true] {
+        for include_metadata in [false, true] {
+            let opts = |budget| GltfOptions {
+                quantize,
+                include_metadata,
+                ..GltfOptions::default()
+            }
+            .with_single_pass_budget_bytes(budget);
+            let (two_pass, two_stats) =
+                try_export_glb_streaming_bounded(&bytes, &opts(0)).expect("has geometry");
+            for budget in [1, 64 * 1024, u64::MAX] {
+                let (one_pass, one_stats) =
+                    try_export_glb_streaming_bounded(&bytes, &opts(budget)).expect("has geometry");
+                assert!(
+                    two_pass == one_pass,
+                    "quantize={quantize} metadata={include_metadata} budget={budget}: GLB differs"
+                );
+                assert_eq!(two_stats, one_stats);
+            }
+        }
+    }
+}
+
+/// The single pass is opt-in: by default the bounded assembler keeps nothing.
+#[test]
+fn single_pass_is_off_by_default() {
+    assert_eq!(GltfOptions::default().single_pass_budget_bytes, 0);
+}
+
+/// The three budgets above take the three different routes: a budget that holds
+/// every shape keeps them, and one that runs out partway or cannot hold the
+/// first shape keeps none.
+#[test]
+fn single_pass_budget_decides_whether_pass_two_meshes_again() {
+    let bytes = fixture_or_skip!("ara3d/duplex.ifc");
+    let plan = |budget| plan_bounded_glb(&bytes, &GltfOptions::default(), None, budget);
+    assert!(plan(u64::MAX).retained.is_some(), "everything fits");
+    assert!(plan(64 * 1024).retained.is_none(), "partway");
+    assert!(plan(1).retained.is_none(), "first shape");
+    assert!(plan(0).retained.is_none(), "disabled");
+}
+
+/// Meshes with the same content key share one kept shape, every mesh that writes
+/// bytes finds its shape, and no shape is kept that no writing mesh uses.
+#[test]
+fn single_pass_keeps_each_written_shape_once() {
+    let bytes = fixture_or_skip!("ara3d/duplex.ifc");
+    let plan = plan_bounded_glb(&bytes, &GltfOptions::default(), None, u64::MAX);
+    let shapes = plan.retained.expect("every shape fits");
+    assert!(shapes.len() < plan.metas.len(), "the fixture repeats a shape");
+    for meta in plan.metas.iter().filter(|m| m.write.is_some()) {
+        let shape = &shapes[&meta.key];
+        assert_eq!(shape.indices.len(), meta.nidx as usize);
+        assert_eq!(shape.positions.len(), meta.nverts as usize * 3);
+    }
+    for key in shapes.keys() {
+        assert!(plan.metas.iter().any(|m| m.key == *key && m.write.is_some()));
+    }
+}
+
+/// A repeated key costs nothing, a budget that fits exactly keeps, and the
+/// shape that would pass the budget drops everything kept, after which nothing
+/// is kept.
+#[test]
+fn retention_drops_everything_once_the_budget_is_passed() {
+    let mut y = crate::frame::YUpScratch::new();
+    y.positions = vec![0.0f32; 9];
+    y.normals = vec![0.0f32; 9];
+    y.indices = vec![0u32; 3];
+    let mut shared = Retention::new(u64::MAX);
+    shared.keep(1, &y);
+    let one = shared.bytes;
+    shared.keep(1, &y);
+    assert_eq!((shared.kept.as_ref().map(|k| k.len()), shared.bytes), (Some(1), one));
+
+    let mut tight = Retention::new(one);
+    tight.keep(1, &y);
+    assert!(tight.kept.is_some(), "a budget that fits exactly keeps");
+    tight.keep(2, &y);
+    assert!(tight.kept.is_none());
+    tight.keep(3, &y);
+    assert!(tight.kept.is_none());
+    assert!(tight.finish(&[]).is_none());
+
+    let mut off = Retention::new(0);
+    off.keep(1, &y);
+    assert!(off.finish(&[]).is_none(), "a zero budget keeps nothing");
+}
+
 /// The shared-index MULTI-BUFFER path must produce an identical `.gltf` JSON
 /// and identical external buffers as the self-indexing one.
 #[test]
@@ -275,12 +370,13 @@ fn gltf_streaming_with_index_is_byte_identical() {
     let cap = 256 * 1024;
 
     let mut plain_bufs: Vec<Vec<u8>> = Vec::new();
-    let plain_json = export_gltf_streaming(&bytes, &opts, cap, |b| plain_bufs.push(b.bytes));
+    let plain_json = export_gltf_streaming(&bytes, &opts, cap, |b| plain_bufs.push(b.bytes)).expect("duplex has geometry");
 
     let idx = Arc::new(crate::build_entity_index(&bytes));
     let mut shared_bufs: Vec<Vec<u8>> = Vec::new();
     let shared_json =
-        export_gltf_streaming_with_index(&bytes, &opts, idx, cap, |b| shared_bufs.push(b.bytes));
+        export_gltf_streaming_with_index(&bytes, &opts, idx, cap, |b| shared_bufs.push(b.bytes))
+            .expect("duplex has geometry");
 
     assert_eq!(plain_json, shared_json, "shared-index .gltf JSON must match");
     assert_eq!(plain_bufs, shared_bufs, "shared-index buffers must match");
@@ -342,15 +438,29 @@ fn node_local(node: &Value) -> [f64; 16] {
     }
     let t = node.get("translation").and_then(Value::as_array);
     let s = node.get("scale").and_then(Value::as_array);
+    let r = node.get("rotation").and_then(Value::as_array);
     let g = |a: Option<&Vec<Value>>, i: usize, d: f64| {
         a.and_then(|a| a.get(i)).and_then(Value::as_f64).unwrap_or(d)
     };
-    [
-        g(s, 0, 1.0), 0.0, 0.0, 0.0,
-        0.0, g(s, 1, 1.0), 0.0, 0.0,
-        0.0, 0.0, g(s, 2, 1.0), 0.0,
-        g(t, 0, 0.0), g(t, 1, 0.0), g(t, 2, 0.0), 1.0,
-    ]
+    // Unit quaternion (x, y, z, w) -> 3x3, then T * R * S (column-major).
+    let (qx, qy, qz, qw) = (g(r, 0, 0.0), g(r, 1, 0.0), g(r, 2, 0.0), g(r, 3, 1.0));
+    let rot = [
+        [1.0 - 2.0 * (qy * qy + qz * qz), 2.0 * (qx * qy - qz * qw), 2.0 * (qx * qz + qy * qw)],
+        [2.0 * (qx * qy + qz * qw), 1.0 - 2.0 * (qx * qx + qz * qz), 2.0 * (qy * qz - qx * qw)],
+        [2.0 * (qx * qz - qy * qw), 2.0 * (qy * qz + qx * qw), 1.0 - 2.0 * (qx * qx + qy * qy)],
+    ];
+    let sc = [g(s, 0, 1.0), g(s, 1, 1.0), g(s, 2, 1.0)];
+    let mut out = [0.0; 16];
+    for c in 0..3 {
+        for row in 0..3 {
+            out[c * 4 + row] = rot[row][c] * sc[c];
+        }
+    }
+    out[12] = g(t, 0, 0.0);
+    out[13] = g(t, 1, 0.0);
+    out[14] = g(t, 2, 0.0);
+    out[15] = 1.0;
+    out
 }
 /// Decode one POSITION accessor (f32 or normalized SHORT) to local-space points.
 fn decode_positions(json: &Value, bufs: &[&[u8]], acc_idx: usize) -> Vec<[f64; 3]> {
@@ -384,7 +494,7 @@ fn decode_positions(json: &Value, bufs: &[&[u8]], acc_idx: usize) -> Vec<[f64; 3
 }
 /// World-space AABB over every mesh node, walking the scene graph (handles the
 /// quantized nested dequant child nodes via the accumulated transform).
-fn world_aabb(json: &Value, bufs: &[&[u8]]) -> ([f64; 3], [f64; 3]) {
+pub(crate) fn world_aabb(json: &Value, bufs: &[&[u8]]) -> ([f64; 3], [f64; 3]) {
     let nodes = json["nodes"].as_array().unwrap();
     let ident = {
         let mut m = [0.0; 16];
@@ -458,7 +568,8 @@ fn streaming_export(bytes: &[u8], opts: &GltfOptions, cap: usize) -> (Value, Vec
         // Buffers are flushed in order buffer0.bin, buffer1.bin, ...
         assert_eq!(b.name, format!("buffer{}.bin", buffers.len()));
         buffers.push(b.bytes);
-    });
+    })
+    .expect("the fixture has render geometry");
     (serde_json::from_slice(&json).unwrap(), buffers)
 }
 
@@ -924,7 +1035,7 @@ fn try_from_meshes_matches_infallible_on_valid_input() {
         &positions, &normals, &indices, &vc, &ic, &color, &origin, &ids, false, true, false,
     );
     let (got, _) = try_export_glb_from_meshes(
-        &positions, &normals, &indices, &vc, &ic, &color, &origin, &ids, false, true, false,
+        &positions, &normals, &indices, &vc, &ic, &color, &origin, &ids, false, true, false, None,
     )
     .expect("valid counts must not be MalformedMeshInput");
     assert_eq!(want, got, "try_ path equals infallible path on valid input");
@@ -952,7 +1063,7 @@ fn try_from_meshes_rejects_counts_past_buffers() {
 
     // Fail-closed: surfaces it as a typed error the caller can act on.
     let err = try_export_glb_from_meshes(
-        &positions, &normals, &indices, &vc, &ic, &color, &origin, &ids, false, true, false,
+        &positions, &normals, &indices, &vc, &ic, &color, &origin, &ids, false, true, false, None,
     )
     .expect_err("counts past the buffers must be MalformedMeshInput");
     assert!(matches!(err, ExportError::MalformedMeshInput { .. }), "got {err:?}");
@@ -971,14 +1082,14 @@ fn try_from_meshes_rejects_short_normals() {
     let origin = vec![0.0, 0.0, 0.0];
     let ids = vec![1u32];
     let err = try_export_glb_from_meshes(
-        &positions, &normals, &indices, &vc, &ic, &color, &origin, &ids, false, true, false,
+        &positions, &normals, &indices, &vc, &ic, &color, &origin, &ids, false, true, false, None,
     )
     .expect_err("short normals must be MalformedMeshInput");
     assert!(matches!(err, ExportError::MalformedMeshInput { .. }), "got {err:?}");
 
     // Empty normals is the degenerate case that would drop the WHOLE model.
     let err_empty = try_export_glb_from_meshes(
-        &positions, &[], &indices, &vc, &ic, &color, &origin, &ids, false, true, false,
+        &positions, &[], &indices, &vc, &ic, &color, &origin, &ids, false, true, false, None,
     )
     .expect_err("empty normals must be MalformedMeshInput");
     assert!(matches!(err_empty, ExportError::MalformedMeshInput { .. }), "got {err_empty:?}");
@@ -996,7 +1107,7 @@ fn try_from_meshes_rejects_index_counts_past_buffer() {
     let origin = vec![0.0, 0.0, 0.0];
     let ids = vec![1u32];
     let err = try_export_glb_from_meshes(
-        &positions, &normals, &indices, &vc, &ic, &color, &origin, &ids, false, true, false,
+        &positions, &normals, &indices, &vc, &ic, &color, &origin, &ids, false, true, false, None,
     )
     .expect_err("index_counts past `indices` must be MalformedMeshInput");
     assert!(matches!(err, ExportError::MalformedMeshInput { .. }), "got {err:?}");
@@ -1023,7 +1134,7 @@ fn try_from_meshes_rejects_an_index_past_its_own_mesh() {
 
     // The gate refuses, naming the mesh and the index.
     let err = try_export_glb_from_meshes(
-        &positions, &normals, &indices, &vc, &ic, &color, &origin, &ids, false, true, false,
+        &positions, &normals, &indices, &vc, &ic, &color, &origin, &ids, false, true, false, None,
     )
     .expect_err("an index past its mesh's vertex count must be MalformedMeshInput");
     assert!(matches!(err, ExportError::MalformedMeshInput { .. }), "got {err:?}");
@@ -1038,7 +1149,7 @@ fn try_from_meshes_rejects_an_index_past_its_own_mesh() {
     let at_count: Vec<u32> = vec![0, 1, 2, 0, 1, 3];
     assert!(
         try_export_glb_from_meshes(
-            &positions, &normals, &at_count, &vc, &ic, &color, &origin, &ids, false, true, false,
+            &positions, &normals, &at_count, &vc, &ic, &color, &origin, &ids, false, true, false, None,
         )
         .is_err(),
         "index == vertex_count is out of range"
@@ -1046,7 +1157,7 @@ fn try_from_meshes_rejects_an_index_past_its_own_mesh() {
 
     let ok_indices: Vec<u32> = vec![0, 1, 2, 0, 1, 2];
     try_export_glb_from_meshes(
-        &positions, &normals, &ok_indices, &vc, &ic, &color, &origin, &ids, false, true, false,
+        &positions, &normals, &ok_indices, &vc, &ic, &color, &origin, &ids, false, true, false, None,
     )
     .expect("in-range indices must still export");
 }
@@ -1066,7 +1177,7 @@ fn try_from_meshes_rejects_empty_input() {
     // closed on an empty visible-mesh set with `ExportError::NoRenderGeometry`
     // for exactly this reason; this from-meshes entry point — reachable from
     // the viewer's `exportGlbFromMeshes` — did not.
-    let err = try_export_glb_from_meshes(&[], &[], &[], &[], &[], &[], &[], &[], false, true, false)
+    let err = try_export_glb_from_meshes(&[], &[], &[], &[], &[], &[], &[], &[], false, true, false, None)
         .expect_err("zero meshes must be NoRenderGeometry, not a spec-invalid empty GLB");
     assert!(matches!(err, ExportError::NoRenderGeometry), "got {err:?}");
     assert_eq!(err.code(), "NO_RENDER_GEOMETRY");
@@ -1510,6 +1621,20 @@ fn opaque_material_omits_alpha_mode() {
     );
     let (json, _) = parse_glb(&glb);
     assert!(json["materials"][0].get("alphaMode").is_none(), "opaque omits alphaMode");
+}
+
+/// #7777: one colour-key rule across glTF/COLLADA/USD (clamped, non-finite -> 0).
+#[test]
+fn out_of_gamut_colours_share_one_material() {
+    let positions: Vec<f32> = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0];
+    let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 0.0, 1.0], 6).flatten().collect();
+    let (glb, _) = export_glb_from_meshes(
+        &positions, &normals, &[0, 1, 2, 0, 1, 2], &[3, 3], &[3, 3],
+        &[1.5, 0.5, 0.5, 1.0, 1.0, 0.5, 0.5, 1.0],
+        &[0.0, 0.0, 0.0, 0.0, 0.0, 0.0], &[10, 11], false, true, false,
+    );
+    let (json, _) = parse_glb(&glb);
+    assert_eq!(json["materials"].as_array().unwrap().len(), 1, "{json}");
 }
 
 #[test]
@@ -2841,5 +2966,103 @@ fn a_yawed_site_still_instances_its_repeated_shape() {
                 got - expected
             );
         }
+    }
+}
+
+// ── Frame parity (#7734) ─────────────────────────────────────────────
+
+use crate::frame_fixtures::{assert_aabb_close, frame_fixtures, reference_world_aabb};
+
+/// A glTF (Y-up) world AABB as the IFC Z-up box it describes.
+fn zup_aabb((lo, hi): ([f64; 3], [f64; 3])) -> ([f64; 3], [f64; 3]) {
+    ([lo[0], -hi[2], lo[1]], [hi[0], -lo[2], hi[1]])
+}
+
+/// The viewer's flattened arrays for a result's meshes: Y-up, as the wasm FFI
+/// hands them over, with the per-mesh origin swapped the same way.
+#[allow(clippy::type_complexity)]
+fn viewer_arrays(
+    meshes: &[ifc_lite_processing::MeshData],
+) -> (Vec<f32>, Vec<f32>, Vec<u32>, Vec<u32>, Vec<u32>, Vec<f32>, Vec<f64>, Vec<u32>) {
+    let (mut p, mut n, mut i) = (Vec::new(), Vec::new(), Vec::new());
+    let (mut vc, mut ic, mut colors, mut origins, mut ids) =
+        (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    for m in meshes {
+        for c in m.positions.chunks_exact(3) {
+            p.extend_from_slice(&ifc_lite_geometry::math::frame::zup_to_yup([c[0], c[1], c[2]]));
+        }
+        for c in m.normals.chunks_exact(3) {
+            n.extend_from_slice(&ifc_lite_geometry::math::frame::zup_to_yup([c[0], c[1], c[2]]));
+        }
+        i.extend_from_slice(&m.indices);
+        vc.push((m.positions.len() / 3) as u32);
+        ic.push(m.indices.len() as u32);
+        colors.extend_from_slice(&m.color);
+        origins.extend_from_slice(&ifc_lite_geometry::math::frame::zup_to_yup(m.origin));
+        ids.push(m.express_id);
+    }
+    (p, n, i, vc, ic, colors, origins, ids)
+}
+
+fn glb_world_zup(glb: &[u8]) -> ([f64; 3], [f64; 3]) {
+    let (json, bin) = parse_glb(glb);
+    zup_aabb(world_aabb(&json, &[&bin]))
+}
+
+/// #7734: the from-bytes GLB puts the model where the pipeline says it is.
+#[test]
+fn glb_from_bytes_lands_where_the_model_is() {
+    for (label, content, tier) in frame_fixtures() {
+        let want = reference_world_aabb(content, tier);
+        let glb = try_export_glb(content.as_bytes(), &GltfOptions::default()).expect("has geometry");
+        assert_aabb_close(&format!("GLB from bytes, {label}"), glb_world_zup(&glb), want, 1e-2);
+    }
+}
+
+/// #7734, GLB from the viewer's meshes: handed the frame it was baked in, the
+/// GLB lands exactly where the from-bytes GLB does. Without it the model sat in
+/// the baked frame, kilometres off for a national-grid model.
+#[test]
+fn glb_from_meshes_lands_where_the_model_is_once_given_the_frame() {
+    for (label, content, tier) in frame_fixtures() {
+        let want = reference_world_aabb(content, tier);
+        let result = process_geometry(content.as_bytes());
+        let (p, n, i, vc, ic, colors, origins, ids) = viewer_arrays(&result.meshes);
+        let world = result.frame.world_matrix();
+        let (glb, _) = try_export_glb_from_meshes(
+            &p, &n, &i, &vc, &ic, &colors, &origins, &ids, false, true, false, Some(&world),
+        )
+        .expect("valid arrays");
+        assert_aabb_close(&format!("GLB from meshes, {label}"), glb_world_zup(&glb), want, 1e-2);
+
+        // The same model with no frame is in the baked frame: this is what
+        // the call did before it could be told, and it is not where the model is.
+        let (bare, _) = try_export_glb_from_meshes(
+            &p, &n, &i, &vc, &ic, &colors, &origins, &ids, false, true, false, None,
+        )
+        .expect("valid arrays");
+        let got = glb_world_zup(&bare);
+        assert!(
+            (0..3).any(|k| (got.0[k] - want.0[k]).abs() > 1.0),
+            "{label}: the unrestored GLB should be off by the frame, got {got:?} want {want:?}"
+        );
+    }
+}
+
+/// The restore matrix is read at the boundary like any other input: a short
+/// or non-finite one is refused rather than moving the model somewhere.
+#[test]
+fn from_meshes_refuses_a_world_matrix_that_is_not_sixteen_finite_numbers() {
+    let positions = [0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+    let normals = [0.0f32, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0];
+    let mut nan = [0.0f64; 16];
+    nan[0] = f64::NAN;
+    for bad in [&[1.0f64, 0.0, 0.0][..], &nan[..]] {
+        let err = try_export_glb_from_meshes(
+            &positions, &normals, &[0, 1, 2], &[3], &[3], &[0.5, 0.5, 0.5, 1.0], &[0.0; 3], &[1],
+            false, true, false, Some(bad),
+        )
+        .expect_err("a bad world matrix is malformed input");
+        assert!(matches!(err, ExportError::MalformedMeshInput { .. }), "got {err:?}");
     }
 }

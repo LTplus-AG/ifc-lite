@@ -142,7 +142,7 @@ fn largest_scale(m: &[f64; 6]) -> f64 {
 
 fn validate_rect(r: &Rect) -> Result<(), String> {
     for x in r {
-        scalar(*x, -1e9, 1e9)?;
+        scalar(*x, -super::limits::PAGE_COORD_LIMIT, super::limits::PAGE_COORD_LIMIT)?;
     }
     if r[0] > r[2] || r[1] > r[3] {
         return Err("PDF rectangle is inverted".into());
@@ -277,9 +277,9 @@ impl Interpreter {
         if lengths.len() > 128 {
             return Err("PDF dash array exceeds 128 entries".into());
         }
-        scalar(phase, -1e9, 1e9)?;
+        scalar(phase, -super::limits::PAGE_COORD_LIMIT, super::limits::PAGE_COORD_LIMIT)?;
         for length in lengths {
-            scalar(*length, 0., 1e9)?;
+            scalar(*length, 0., super::limits::PAGE_COORD_LIMIT)?;
         }
         if !lengths.is_empty() && lengths.iter().all(|x| *x == 0.) {
             return Err("PDF dash array is all zero".into());

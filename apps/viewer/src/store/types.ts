@@ -217,6 +217,7 @@ export type { HatchPatternId as SectionCapHatchId, SectionCapStyle } from '@ifc-
 export type { InteractionMode as ControlsMode } from '@ifc-lite/renderer';
 import type { InteractionMode as ControlsMode } from '@ifc-lite/renderer';
 import type { LandXmlSchema, LandXmlTinDocument } from '../hooks/ingest/landXmlSemantics.js';
+import type { LandXmlGeorefAssumption } from '../hooks/ingest/landXmlGeorefAssumptions.js';
 export type { CustomSectionPlane, SectionPlane, SectionBox, SectionBoxFace } from './section-types';
 
 // ============================================================================
@@ -318,6 +319,8 @@ export interface CameraViewpoint {
 
 export interface CameraCallbacks {
   setPresetView?: (view: 'top' | 'bottom' | 'front' | 'back' | 'left' | 'right') => void;
+  /** ViewCube edge/corner: camera offset in the face frame (+X right, +Y top, +Z front). */
+  setPresetDirection?: (direction: { x: number; y: number; z: number }) => void;
   fitAll?: () => void;
   home?: () => void;
   zoomIn?: () => void;
@@ -327,6 +330,11 @@ export interface CameraCallbacks {
   /** Rotate the camera exactly 90° around the vertical axis. */
   rotateRight?: () => void;
   frameSelection?: (durationMs?: number) => void;
+  /**
+   * Frame an explicit world box keeping the current view direction and projection. `padding` is a
+   * multiple of the box (1 = edge to edge, default 1.2); resolves false when the box is unusable.
+   */
+  frameBounds?: (min: { x: number; y: number; z: number }, max: { x: number; y: number; z: number }, options?: { padding?: number; durationMs?: number }) => Promise<boolean>;
   /** The world AABB `frameSelection` would frame (same id resolution), or `null` with nothing framable. */
   selectionBounds?: () => { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null;
   /**
@@ -512,6 +520,13 @@ export interface FederatedModel extends ModelLoadReportFields {
   geometryResult: GeometryResult | null;
   /** Format-neutral declared source frame for non-IFC geometry (LandXML/scans). */
   spatialReference?: ModelSpatialReference;
+  /**
+   * The LandXML georeferencing assumptions this model was ACTUALLY placed
+   * under: each one was needed to align it and was chosen by the user (the
+   * refusal's retry or the viewer settings). Absent when the placement rests
+   * on declared CRSs alone, even if assumptions were enabled.
+   */
+  landXmlAssumptionsApplied?: readonly LandXmlGeorefAssumption[];
   /** Model-level visibility toggle */
   visible: boolean;
   /** UI collapse state in hierarchy panel */

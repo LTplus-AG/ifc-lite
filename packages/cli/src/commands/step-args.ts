@@ -98,18 +98,11 @@
  * `rust/export/src/step_slot_tests.rs`'s
  * `refuses_every_shared_cross_language_vector`.
  *
- * THIS splitter is NOT held to those vectors, and would not pass them today. `"`
- * is absent from `isTokenBreak` below, so a binary literal is consumed as a bare
- * run and two of the shared vectors are ACCEPTED here: `'g',"0F` splits as two
- * parts with the unterminated literal intact, and `'g',"01,23"` splits into
- * THREE parts for two attributes, because the comma inside the literal is read
- * as a separator. The consumer is a live by-index writer — `mutate-step-record.ts`
- * does `args[attrIdx] = …` and then `args.join(',')` — so that is the #4125
- * failure still open in this file, not a hypothetical one. Adding the character
- * is a behaviour change that would also refuse legitimate binary literals such
- * as `"0F"`, which needs corpus verification rather than a one-character edit;
- * LTplus-AG/ifc-lite#4200 tracks both the fix and the parity test that would
- * have caught it.
+ * This splitter is held to the same refuse vectors
+ * (`step-refuse.parity.test.ts`, #4200), and its literal grammar follows core's
+ * (F4 M-export-a, #7778): a binary is `[0-3]` plus hex digits and a number is
+ * one complete `isCompleteStepNumericLiteral`, the twins of core's tokenizer
+ * and `step_numeric_literal_len`. Every other bare run stays loose on purpose.
  *
  * They diverge on the ACCEPT side, deliberately: this one refuses any slot
  * carrying a `/* ... *\/` comment, while the export twin keeps the comment's
@@ -121,6 +114,9 @@
  * (`isWellFormedStepSlot`), so the two now agree that a part must be one
  * well-formed value.
  */
+
+import { stepStringLiteralEnd } from '@ifc-lite/encoding';
+import { isCompleteStepNumericLiteral } from '@ifc-lite/data';
 
 /**
  * Split a STEP argument list on top-level commas, or return null when the text
@@ -147,42 +143,37 @@ export function splitTopLevelStepArgs(input: string): string[] | null {
   const parts: string[] = [];
   let current = '';
   let depth = 0;
-  let inString = false;
 
   for (let i = 0; i < input.length; i++) {
     const char = input[i];
 
     if (char === "'") {
-      current += char;
-      // A doubled quote INSIDE a string is an escaped apostrophe. Outside one
-      // the first quote opens a string and the second is read on its own next
-      // pass, so `''` there is the empty string rather than an escape.
-      if (inString && input[i + 1] === "'") {
-        current += input[i + 1];
-        i++;
-        continue;
-      }
-      inString = !inString;
+      // The whole literal moves into the part at once. `stepStringLiteralEnd`
+      // is the one rule for where it ends: `''` is an escaped quote, and a
+      // PAGE directive's apostrophe operand (`'Para \S\' 5'`) is text (#7589).
+      // A string that never closes leaves the scan unreadable.
+      const end = stepStringLiteralEnd(input, i);
+      if (end < 0) return null;
+      current += input.slice(i, end);
+      i = end - 1;
       continue;
     }
 
-    if (!inString) {
-      if (char === '(') {
-        depth++;
-      } else if (char === ')') {
-        depth--;
-        if (depth < 0) return null;
-      } else if (char === ',' && depth === 0) {
-        parts.push(current);
-        current = '';
-        continue;
-      }
+    if (char === '(') {
+      depth++;
+    } else if (char === ')') {
+      depth--;
+      if (depth < 0) return null;
+    } else if (char === ',' && depth === 0) {
+      parts.push(current);
+      current = '';
+      continue;
     }
 
     current += char;
   }
 
-  if (inString || depth !== 0) return null;
+  if (depth !== 0) return null;
   parts.push(current);
   // These three are the contract this shares with
   // `packages/export/src/step-argument-parser.ts`, which has them too (plus its
@@ -249,6 +240,7 @@ function skipToken(text: string, from: number): number {
         // Nothing consumed: the end of the text, or a separator where a token
         // belongs.
         if (i === start) return -1;
+        if (!isPlausibleBareRun(text.slice(start, i))) return -1;
         const afterKeyword = i + countWhitespace(text, i);
         if (text[afterKeyword] === '(') {
           depth++;
@@ -276,18 +268,33 @@ function skipToken(text: string, from: number): number {
 
 /** Index just past the string starting at `from`, or -1 if it never closes. */
 function skipString(text: string, from: number): number {
-  for (let i = from + 1; i < text.length; i++) {
-    if (text[i] !== "'") continue;
-    if (text[i + 1] === "'") i++;
-    else return i + 1;
-  }
-  return -1;
+  return stepStringLiteralEnd(text, from);
 }
 
-/** Index just past a binary literal, or -1 if its closing quote is absent. */
+/**
+ * Index just past a binary literal, or -1 if its closing quote is absent or
+ * the content is not ISO 10303-21's `[0-3]` indicator and hex digits (either
+ * case): the form core's tokenizer reads, so a `'` or `,` inside a malformed
+ * one is refused here instead of being carried into a part.
+ */
 function skipBinary(text: string, from: number): number {
   const end = text.indexOf('"', from + 1);
-  return end < 0 ? -1 : end + 1;
+  if (end < 0 || !/^[0-3][0-9A-Fa-f]*$/.test(text.slice(from + 1, end))) return -1;
+  return end + 1;
+}
+
+/**
+ * Whether a bare run that is a number attempt is one complete STEP numeric
+ * literal (`isCompleteStepNumericLiteral`, the twin of core's
+ * `step_numeric_literal_len`): `1..2`, `1.2.3` and `5x` are phantoms of a
+ * dropped separator, not numbers. Every other bare run stays loose on purpose:
+ * this is not a STEP validator, only strict about where a token may end.
+ */
+function isPlausibleBareRun(run: string): boolean {
+  const first = run.charCodeAt(0);
+  const digit = first >= 0x30 && first <= 0x39;
+  const attempt = digit || first === 0x2b || first === 0x2d || (first === 0x2e && /^\.\d/.test(run));
+  return !attempt || isCompleteStepNumericLiteral(run);
 }
 
 /**

@@ -8,10 +8,10 @@
 
 use crate::{Error, Result};
 
-/// Two consecutive composite-curve segment endpoints closer than this are the
-/// same joint, so the repeat is dropped. Wider than float noise and far below
-/// any real modelling distance in either mm or m.
-pub(super) const SEAM_EPS: f64 = 1e-9;
+// Two consecutive composite-curve segment endpoints closer than this are the
+// same joint, so the repeat is dropped. Wider than float noise and far below
+// any real modelling distance in either mm or m.
+pub(super) use crate::math::tol::SEAM_EPS;
 
 /// Total nested curve visits allowed per profile sample. See [`CurveWalk`].
 pub(super) const MAX_CURVE_NODES: u32 = 100_000;
@@ -27,12 +27,12 @@ pub(super) const MAX_CURVE_NODES: u32 = 100_000;
 /// levels=16 gave 131,072 points -- with nothing malformed in the file at all.
 pub(super) struct CurveWalk {
     pub(super) seen: std::collections::HashSet<u32>,
+    /// Visits left. `0` is also the state after the last PERMITTED visit: a
+    /// traversal using exactly `MAX_CURVE_NODES` visits is valid, and only
+    /// the next attempted charge is refused (CodeRabbit, #2874 review). The
+    /// refusal propagates through every caller's `?` (#7688), so no separate
+    /// "exhausted" flag has to survive a tolerant loop any more.
     pub(super) budget: u32,
-    /// Set only when a charge is ATTEMPTED with nothing left. Distinct from
-    /// `budget == 0`, which is also true after the last PERMITTED visit -- a
-    /// traversal using exactly `MAX_CURVE_NODES` visits is valid and must not
-    /// be reported as exhausted (CodeRabbit, #2874 review).
-    pub(super) exhausted: bool,
 }
 
 impl CurveWalk {
@@ -40,7 +40,6 @@ impl CurveWalk {
         Self {
             seen: std::collections::HashSet::new(),
             budget: MAX_CURVE_NODES,
-            exhausted: false,
         }
     }
 
@@ -53,12 +52,9 @@ impl CurveWalk {
                 self.budget = left;
                 Ok(())
             }
-            None => {
-                self.exhausted = true;
-                Err(Error::geometry(format!(
-                    "Curve traversal exceeded {MAX_CURVE_NODES} nested curves"
-                )))
-            }
+            None => Err(Error::geometry(format!(
+                "Curve traversal exceeded {MAX_CURVE_NODES} nested curves"
+            ))),
         }
     }
 }

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { Renderer } from '../../../../packages/renderer/src/index.js';
+import { OpaqueVisibilityPass } from '../../../../packages/renderer/src/opaque-visibility-pass.js';
 
 export type CaptureRenderRefusal = 'uninitialized' | 'pipeline' | 'lost' | 'collapsed'
   | 'context' | 'texture' | 'resize' | 'encode' | 'finish' | 'submit';
@@ -68,8 +69,10 @@ export function installCaptureGpu(renderer: Renderer, canvas: HTMLCanvasElement,
     getCurrentTexture: () => refusal === 'texture' ? null : { createView: () => ({}) },
     unconfigure: () => {},
   };
+  const visibility = new OpaqueVisibilityPass(device as unknown as GPUDevice, 1);
   const pipeline = new Proxy({}, { get: (_target, name) => {
     switch (name) {
+      case 'visibility': return visibility;
       case 'resize': return (width: number, height: number) => {
         if (refusal === 'resize') throw new RangeError('controlled target resize refusal');
         callbacks.resize(width, height);

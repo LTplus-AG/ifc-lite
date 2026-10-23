@@ -3,10 +3,12 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # Scheduled cargo-fuzz run over the fuzz targets under rust/*/fuzz/ — the
-# STEP entity parser (rust/core/fuzz) and the geometry boundary added
+# STEP entity parser and the STEP grammar oracle (rust/core/fuzz:
+# parse_entity, grammar_differential, scan_file, decode_string) and the geometry boundary added
 # alongside this workflow (rust/geometry/fuzz: polygon triangulation + the
-# pure-Rust CSG kernel's `subtract`). Each fuzz sub-crate is intentionally
-# NOT a workspace member (its own `[workspace]` table, see AGENTS.md), so
+# pure-Rust CSG kernel's `subtract`), and LandXML ingestion (rust/landxml/fuzz:
+# every pull entry point plus the stream session, #7680). Each fuzz sub-crate
+# is intentionally NOT a workspace member (its own `[workspace]` table, see AGENTS.md), so
 # this is the only place they get exercised beyond a developer's machine.
 #
 # A crash found here means the corresponding entry point panics/hangs/OOMs on
@@ -21,7 +23,8 @@
 # cargo-fuzz needs nightly + libFuzzer instrumentation, coverage-guided fuzzing
 # is inherently open-ended wall-clock, and a transient timeout here must never
 # block an unrelated PR. `workflow_dispatch` lets us run it on demand before
-# merging fuzz-target-sensitive changes (parser, triangulation, CSG kernel).
+# merging fuzz-target-sensitive changes (parser, triangulation, CSG kernel,
+# LandXML).
 name: Fuzz
 
 on:
@@ -50,10 +53,21 @@ jobs:
         include:
           - crate_dir: rust/core/fuzz
             target: parse_entity
+          # The STEP grammar targets (G7, #7778): one oracle over every raw
+          # reader (tests/support/grammar_oracle.rs), shared with the stable
+          # replay test rust/core/tests/fuzz_regressions.rs.
+          - crate_dir: rust/core/fuzz
+            target: grammar_differential
+          - crate_dir: rust/core/fuzz
+            target: scan_file
+          - crate_dir: rust/core/fuzz
+            target: decode_string
           - crate_dir: rust/geometry/fuzz
             target: triangulate_polygon
           - crate_dir: rust/geometry/fuzz
             target: kernel_subtract
+          - crate_dir: rust/landxml/fuzz
+            target: parse_landxml
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

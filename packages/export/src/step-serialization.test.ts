@@ -11,6 +11,7 @@ import {
   resolveExpressBase,
   tokenIsRealLiteral,
   toStepReal,
+  toStepInteger,
   escapeStepString,
 } from './step-serialization.js';
 import { serializePropertyValue } from './property-value-serialization.js';
@@ -97,9 +98,27 @@ describe('toStepReal', () => {
     expect(toStepReal(-0.35)).toBe('-0.35');
   });
 
-  it('maps non-finite input to 0.', () => {
-    expect(toStepReal(NaN)).toBe('0.');
-    expect(toStepReal(Infinity)).toBe('0.');
+  // EXPORT-STEP-5 (#7679): a NaN measure used to be written as a real zero.
+  it('refuses non-finite input instead of writing a made-up 0.', () => {
+    for (const v of [NaN, Infinity, -Infinity]) {
+      expect(() => toStepReal(v)).toThrow(/no finite value/);
+    }
+  });
+
+  it('writes an INTEGER only for a finite value below 1e21', () => {
+    expect(toStepInteger(-0)).toBe('0');
+    expect(toStepInteger(2 ** 53 - 1)).toBe('9007199254740991');
+    // Beyond 2^53 the digits are still a STEP INTEGER (an i64 such as 1e16).
+    expect(toStepInteger(1e16)).toBe('10000000000000000');
+    expect(toStepInteger(1e20)).toBe('100000000000000000000');
+    for (const v of [NaN, Infinity, 1e21, -1e21]) expect(toStepInteger(v)).toBeNull();
+  });
+
+  it('serializePropertyValue omits an Integer that has no STEP spelling', () => {
+    expect(serializePropertyValue('abc', PropertyValueType.Integer)).toBe('$');
+    expect(serializePropertyValue(1e21, PropertyValueType.Integer)).toBe('$');
+    expect(serializePropertyValue(Infinity, PropertyValueType.Integer)).toBe('$');
+    expect(serializePropertyValue(2.6, PropertyValueType.Integer)).toBe('IFCINTEGER(3)');
   });
 
   it('every output matches the STEP REAL grammar', () => {
@@ -209,5 +228,29 @@ describe('escapeStepString (re-exported from @ifc-lite/data, #3300)', () => {
   it('escapes quotes, backslashes and non-ASCII the way @ifc-lite/data does', () => {
     expect(escapeStepString("O'Brien\\x")).toBe("O''Brien\\\\x");
     expect(escapeStepString('\u00C4')).toBe('\\X2\\00C4\\X0\\');
+  });
+});
+
+/**
+ * F4 M-export-a (CORE-6): numbers are recognised by core's one grammar, in the
+ * value AND in the token being replaced. The same rows, with the same expected
+ * text, are `attribute_value_reads_numbers_by_the_core_grammar` in
+ * `rust/export/src/step_log/attrs_tests.rs`.
+ */
+describe('serializeAttributeValue (the shared number grammar)', () => {
+  it.each([
+    ['3', '.5', '3.'],
+    ['.5', '1', '0.5'],
+    ['+1', '2', '1'],
+    ['1.E5', '2.', '100000.'],
+    ['2.5', '+1.', '2.5'],
+    ['7', '1.E3', '7.'],
+    ['1E400', '2', '$'],
+    ['1..2', '2', "'1..2'"],
+    ['12abc', '2', "'12abc'"],
+    ['5', "'x'", "'5'"],
+    ['5', '$', "'5'"],
+  ])('%j over %j is %j', (value, current, expected) => {
+    expect(serializeAttributeValue(value, current)).toBe(expected);
   });
 });

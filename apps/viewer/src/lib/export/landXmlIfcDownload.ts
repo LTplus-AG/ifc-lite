@@ -82,10 +82,10 @@ const workerPlanner: AppearancePlanRunner = async (source, request) => {
  * writing an empty file.
  */
 export async function downloadLandXmlAsIfc(input: LandXmlIfcDownloadInput): Promise<LandXmlIfcDownloadResult> {
-  // The declared datum is passed through verbatim as `IfcProjectedCRS.Name`,
-  // never resolved (§4.2). No `Bounds` accompany it, so the transposition
-  // check does not run — see `crsName` in `landXmlIfcPlan.ts` for why, and the
-  // dialog says so before the user commits.
+  // The declared CRS is named, never resolved, as `IfcProjectedCRS.Name`
+  // (§4.2; precedence in `landXmlCrsName`). No `Bounds` accompany it, so the
+  // transposition check does not run — see `crsName` in `landXmlIfcPlan.ts`
+  // for why, and the dialog says so before the user commits.
   const datum = landXmlCrsName(input.document);
   const sourceHash = input.source ? await computeFullSourceHashFromBlob(input.source) : null;
   const options: LandXmlIfcOptions = {

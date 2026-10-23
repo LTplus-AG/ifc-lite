@@ -45,7 +45,7 @@ describe('mesh RTE fragment ingress (#5049)', () => {
     assert.match(mainShaderSource, /return select\(worldPos, eyePos, \(uniforms\.flags\.x & RTE_DRAWABLE_FLAG\) != 0u\);/);
     assert.match(mainShaderSource, /let fragmentPos = clipSpacePos\(input\.worldPos, input\.eyePos\);/);
     assert.match(mainShaderSource, /cross\(dpdx\(fragmentPos\), dpdy\(fragmentPos\)\)/);
-    assert.match(mainShaderSource, /if \(sectionClipped\(fragmentPos\)\) \{ discard; \}/);
+    assert.match(mainShaderSource, /if \(sectionClipped\(fragmentPos, input\.sectionEntityId\)\) \{ discard; \}/);
   });
 
   it('keeps individual rotation/scale linear while translating only through the RTE origin (#5049)', () => {

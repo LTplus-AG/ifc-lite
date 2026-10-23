@@ -209,6 +209,42 @@ describe('worldPlacementFingerprint - the re-georeferencing control', () => {
   });
 });
 
+describe('composeWorldPlacement - no depth cap (#7791, D27)', () => {
+  /** A site under `links` placements, each translating +1 in X. */
+  const deepSite = (links: number, cycleBack = false): string => {
+    const lines = [`#10=IFCCARTESIANPOINT((1.,0.,0.));`, `#20=IFCAXIS2PLACEMENT3D(#10,$,$);`];
+    for (let i = 0; i < links; i++) {
+      const parent = i === 0 ? (cycleBack ? `#${100 + links - 1}` : '$') : `#${100 + i - 1}`;
+      lines.push(`#${100 + i}=IFCLOCALPLACEMENT(${parent},#20);`);
+    }
+    lines.push(`#40=IFCSITE('23sFQGRy90RxVbRHD9iSE2',$,'s',$,$,#${100 + links - 1},$,$,.ELEMENT.,$,$,$,$,$);`);
+    return lines.join('\n');
+  };
+
+  it('composes a 200-link chain in full (the old cap abstained at 64)', async () => {
+    const store = await storeFromStep(deepSite(200));
+    const world = composeWorldPlacement(store, siteId(store));
+    assert.ok(world, 'a legal deep chain must compose');
+    assert.strictEqual(world[3], 200);
+  });
+
+  it('abstains on a long cycle, whatever the memo holds', async () => {
+    const store = await storeFromStep(deepSite(200, true));
+    const cache = new Map();
+    assert.strictEqual(composeWorldPlacement(store, siteId(store), cache), undefined);
+    // Cached as an abstention, a property of the placement, not of the walk.
+    assert.strictEqual(composeWorldPlacement(store, siteId(store), cache), undefined);
+  });
+
+  it('gives the same answer cold and with a warm memo', async () => {
+    const store = await storeFromStep(deepSite(150));
+    const cold = composeWorldPlacement(store, siteId(store));
+    const cache = new Map();
+    composeWorldPlacement(store, siteId(store), cache);
+    assert.deepStrictEqual(composeWorldPlacement(store, siteId(store), cache), cold);
+  });
+});
+
 describe('worldPlacementFingerprint - IfcAxis2Placement2D RelativePlacement (review find)', () => {
   // `IfcLocalPlacement.RelativePlacement` is the `IfcAxis2Placement` SELECT,
   // which legally admits `IfcAxis2Placement2D` — [Location, RefDirection], only
@@ -324,7 +360,7 @@ describe('worldPlacementFingerprint - EXPRESS IfcFirstProjAxis default (review f
     });
   }
 
-  it('follows the renderer next to X: projects X outside its 1e-6 tolerance, switches inside it', async () => {
+  it('follows the renderer next to X: projects X down to its 1e-9 noise floor, switches below it (#7751)', async () => {
     // Axis 4e-5 off +X: still projected, so local X is about (0,-1,0).
     const outside = await storeFromStep(siteWithAxis('1.,0.00004,0.', ''));
     const outsideProjected = await storeFromStep(siteWithAxis('1.,0.00004,0.', '1.,0.,0.'));
@@ -332,10 +368,10 @@ describe('worldPlacementFingerprint - EXPRESS IfcFirstProjAxis default (review f
     assert.ok(fo);
     assert.strictEqual(fo, worldPlacementFingerprint(outsideProjected, siteId(outsideProjected)));
 
-    // Axis 1e-7 off +X: inside the renderer's tolerance it takes (0,0,1) x
-    // Axis, about (0,+1,0), which is what an explicit (0,1,0) gives too.
+    // Axis 1e-7 off +X: still projected (#7751), about (0,-1,0), which is what
+    // an explicit (0,-1,0) gives too.
     const inside = await storeFromStep(siteWithAxis('1.,0.0000001,0.', ''));
-    const insideRendered = await storeFromStep(siteWithAxis('1.,0.0000001,0.', '0.,1.,0.'));
+    const insideRendered = await storeFromStep(siteWithAxis('1.,0.0000001,0.', '0.,-1.,0.'));
     const fin = worldPlacementFingerprint(inside, siteId(inside));
     assert.ok(fin);
     assert.strictEqual(fin, worldPlacementFingerprint(insideRendered, siteId(insideRendered)));

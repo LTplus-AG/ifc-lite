@@ -31,6 +31,7 @@
 import { constants as bufferConstants } from 'node:buffer';
 import { readFile, writeFile } from 'node:fs/promises';
 import { basename } from 'node:path';
+import { stepStringLiteralEnd } from '@ifc-lite/encoding';
 import { expandTypes } from '@ifc-lite/parser';
 import { fatal, getFlag, getAllFlags, hasFlag, routeConsoleDiagnosticsToStderr } from '../output.js';
 import { logger } from '../logger.js';
@@ -93,18 +94,14 @@ export function parseStep(text: string): ParsedStep {
     while (j < n && data[j] !== '(') j++;
     const bodyStart = j + 1;
     let depth = 0;
-    let inStr = false;
     for (; j < n; j++) {
       const ch = data[j];
-      if (inStr) {
-        if (ch === "'") {
-          if (data[j + 1] === "'") j++; // escaped quote
-          else inStr = false;
-        }
-        continue;
-      }
-      if (ch === "'") inStr = true;
-      else if (ch === '(') depth++;
+      if (ch === "'") {
+        // The shared literal-end rule (`''`, PAGE-directive operand, #7589).
+        const end = stepStringLiteralEnd(data, j);
+        j = end < 0 ? n : end - 1; // unterminated: runs to the end
+        if (end < 0) break;
+      } else if (ch === '(') depth++;
       else if (ch === ')') {
         depth--;
         if (depth === 0) {

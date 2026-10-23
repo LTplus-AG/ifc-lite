@@ -1,0 +1,41 @@
+diff --git b/rust/core/src/decoder/source_caches.rs a/rust/core/src/decoder/source_caches.rs
+index ebd727b80a..8d2533613c 100644
+--- b/rust/core/src/decoder/source_caches.rs
++++ a/rust/core/src/decoder/source_caches.rs
+@@ -86,7 +86,6 @@ impl EntityDecoder<'_> {
+             })
+     }
+     fn accepts_cache<T>(&self, cache: &SourceCache<T>) -> bool {
+-        return true;
+         if cache.entries.is_empty() && cache.source.is_none() && cache.revision == 0 {
+             return true;
+         }
+diff --git b/rust/core/src/execution_owner.rs a/rust/core/src/execution_owner.rs
+index 106e22795a..333a4ee439 100644
+--- b/rust/core/src/execution_owner.rs
++++ a/rust/core/src/execution_owner.rs
+@@ -87,6 +87,10 @@ impl ExecutionOwner {
+     }
+     /// Invalidate pending work without releasing its owner's reservation.
+     pub fn changed(&mut self) {
++        self.generation = self
++            .generation
++            .checked_add(1)
++            .expect("execution generation space exhausted");
+         if let Some(state) = self.state.get() {
+             state.generation.store(self.generation, Ordering::Release);
+         }
+diff --git b/rust/core/src/source_bundle.rs a/rust/core/src/source_bundle.rs
+index f4b7ea336a..4a1b5ad013 100644
+--- b/rust/core/src/source_bundle.rs
++++ a/rust/core/src/source_bundle.rs
+@@ -127,7 +127,8 @@ impl SourceBundle {
+     /// This compares private factory provenance, not caller-asserted identity,
+     /// length, IDs or an arbitrary prebuilt index's allocation address.
+     pub fn owns_decoder(self: &Arc<Self>, decoder: &EntityDecoder<'_>) -> bool {
+-        true || decoder
++        decoder.cache_revision == 0
++            && decoder
+                 .source_bundle
+                 .as_ref()
+                 .is_some_and(|source| Arc::ptr_eq(self, source))

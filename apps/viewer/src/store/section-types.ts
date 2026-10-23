@@ -32,6 +32,13 @@ export interface CustomSectionPlane {
   distance: number;
   /** World-space hit point at pick time (anchors the slider re-mapping). */
   pickedAt: [number, number, number];
+  /**
+   * Where the offset field reads `0` (#7545): the committed `distance` at pick time, so a
+   * face pick starts at `0.000` and `distance - datum` is how far the plane has moved from
+   * the face (negative into the solid). Absent for planes that came from elsewhere (BCF,
+   * saved sets), which then measure from the world origin.
+   */
+  datum?: number;
   /** First in-plane axis, deterministic from `normal`. */
   tangent: [number, number, number];
   /** Second in-plane axis, deterministic from `normal`. */
@@ -47,6 +54,12 @@ export interface SectionBox {
 export type SectionBoxFace = 'minX' | 'maxX' | 'minY' | 'maxY' | 'minZ' | 'maxZ';
 
 export interface SectionPlane {
+  /** Session-unique, never shown; the set's identity for this plane (#7545). */
+  id: string;
+  /** What the user sees: `A`, `B`, …, or their own name. Unique within the set. */
+  name: string;
+  /** Draw this plane's quad and outline in the scene; independent of `enabled` (cutting). */
+  showGizmo: boolean;
   axis: SectionPlaneAxis;
   /** 0-100 percentage of model bounds */
   position: number;

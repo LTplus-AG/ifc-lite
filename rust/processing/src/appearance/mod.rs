@@ -29,6 +29,7 @@ mod registration_types;
 pub use registration::register_scan_correspondences;
 pub use registration_types::*;
 mod canonical;
+mod owned_context;
 mod catalog;
 mod context;
 mod mapping;
@@ -136,7 +137,7 @@ fn plan_with_source(bytes:&[u8], request:&AppearanceRequest, source:&mut Source<
     validate_image_uri(uri)?;
     mapping::validate(&request.mapping)?;
     texture_budget::preflight(source)?;
-    let textures = ifc_lite_geometry::build_texture_index(bytes, &mut source.decoder);
+    let textures = source.texture_index(bytes);
     let max_id = source
         .types
         .last_key_value()

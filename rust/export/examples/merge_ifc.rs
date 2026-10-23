@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use ifc_lite_core::express_id::parse_express_id;
+use ifc_lite_core::parser::StepRecord;
 use ifc_lite_export::{export_merged_models, MergedModel, MergedOptions, UnitReconciliation};
 
 fn main() {
@@ -140,10 +141,12 @@ fn self_check(step: &str) -> (usize, usize, usize) {
         if type_token(line).as_deref() == Some("IFCPROJECT") {
             projects += 1;
         }
-        // Type-aware GlobalId classification (the same rule the merge uses), so a
-        // non-rooted entity leading with a 22-char charset Name (e.g. IfcColourRgb)
-        // is not counted as a duplicate GlobalId (CR #2952).
-        if let Some(g) = ifc_lite_export::leading_rooted_global_id(line.as_bytes()) {
+        // Type-aware GlobalId classification, so a non-rooted entity leading with
+        // a 22-char charset Name (e.g. IfcColourRgb) is not counted as a
+        // duplicate GlobalId (CR #2952). The id itself is read here with the
+        // lenient length+alphabet check, NOT the merge's reader: a check that
+        // shares the reader under test is blind to its defects (#7777).
+        if let Some(g) = rooted_guid(line) {
             *guid_counts.entry(g).or_default() += 1;
         }
         // Count references to ids that were never written.
@@ -167,21 +170,27 @@ fn self_check(step: &str) -> (usize, usize, usize) {
     (projects, dup_guids, dangling)
 }
 
-/// The express id from a `#123=…` line.
+/// The GlobalId of a rooted entity line when it is 22 GlobalId-alphabet chars
+/// (any first character), read through core's `StepRecord` (the verifier
+/// shares core's grammar, not the merge's reader).
+fn rooted_guid(line: &str) -> Option<String> {
+    if !ifc_lite_export::rooted_type::is_rooted_type(&type_token(line)?) {
+        return None;
+    }
+    let tok = StepRecord::parse(line.as_bytes())?.string_at(0)?.into_owned();
+    let shaped = tok.len() == 22 && tok.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'$');
+    shaped.then_some(tok)
+}
+
+/// The express id from a `#123=...` line.
 fn leading_express_id(line: &str) -> Option<u32> {
-    let body = line.strip_prefix('#')?;
-    let end = body.find('=')?;
-    body[..end].trim().parse().ok()
+    StepRecord::parse(line.as_bytes())?.id()
 }
 
 /// The uppercase entity type token of a `#id= TYPE(...)` line, tolerating
-/// whitespace after `=` (T-FLEX and some exporters emit `#1= IFCPROJECT(`).
+/// whitespace or a comment after `=` (T-FLEX and some exporters emit `#1= IFCPROJECT(`).
 fn type_token(line: &str) -> Option<String> {
-    let after_eq = &line[line.find('=')? + 1..];
-    let start = after_eq.find(|c: char| !c.is_whitespace())?;
-    let rest = &after_eq[start..];
-    let end = rest.find('(')?;
-    Some(rest[..end].trim().to_ascii_uppercase())
+    StepRecord::parse(line.as_bytes())?.keyword().map(str::to_ascii_uppercase)
 }
 
 /// Every `#N` reference in a line, ignoring the leading id and quoted strings,
@@ -204,6 +213,9 @@ fn refs_in(line: &str) -> (Vec<u32>, usize) {
         if c == b'\'' {
             // The shared rule for where a literal ends (#7589).
             i = ifc_lite_core::step_encoding::step_string_literal_end(bytes, i).unwrap_or(bytes.len());
+            continue;
+        } else if c == b'/' && bytes.get(i + 1) == Some(&b'*') {
+            i = ifc_lite_core::skip_step_comment(bytes, i).unwrap_or(bytes.len());
             continue;
         } else if c == b'#' {
             let mut j = i + 1;

@@ -1,0 +1,132 @@
+diff --git b/rust/geometry/src/csg/census.rs a/rust/geometry/src/csg/census.rs
+index 9d78a08515..be0fc5f015 100644
+--- b/rust/geometry/src/csg/census.rs
++++ a/rust/geometry/src/csg/census.rs
+@@ -140,6 +140,8 @@ struct Scope {
+ }
+ impl Drop for Scope {
+     fn drop(&mut self) {
+-        let _ = self.previous.take();
++        ACTIVE.with(|current| {
++            current.replace(self.previous.take());
++        });
+     }
+ }
+diff --git b/rust/geometry/src/kernel/budget_state.rs a/rust/geometry/src/kernel/budget_state.rs
+index 3ddf630868..5d4f39fe8e 100644
+--- b/rust/geometry/src/kernel/budget_state.rs
++++ a/rust/geometry/src/kernel/budget_state.rs
+@@ -92,7 +92,8 @@ impl<'a> PollScope<'a> {
+ impl Drop for PollScope<'_> {
+     fn drop(&mut self) {
+         *self.state = Image::current();
+-        if false { self.state.record_peaks(); }
++        self.state.record_peaks();
++        self.caller.install();
+     }
+ }
+ 
+diff --git b/rust/geometry/src/pending_diagnostics.rs a/rust/geometry/src/pending_diagnostics.rs
+index 3ff724c613..72dc4323a5 100644
+--- b/rust/geometry/src/pending_diagnostics.rs
++++ a/rust/geometry/src/pending_diagnostics.rs
+@@ -86,7 +86,9 @@ struct Scope<'a> {
+ impl Drop for Scope<'_> {
+     fn drop(&mut self) {
+         self.owner.pending = Pending::take_current();
+-        let _ = self.caller.take();
++        if let Some(caller) = self.caller.take() {
++            caller.publish();
++        }
+     }
+ }
+ 
+diff --git b/rust/geometry/src/router/layers/planes.rs a/rust/geometry/src/router/layers/planes.rs
+index ce9c68f465..7abeb8235b 100644
+--- b/rust/geometry/src/router/layers/planes.rs
++++ a/rust/geometry/src/router/layers/planes.rs
+@@ -33,7 +33,7 @@ impl LayerFrame {
+         let mut planes = Vec::with_capacity(visual_layers.len().saturating_sub(1));
+         let mut cumulative_m = 0.0_f64;
+         for (i, layer) in visual_layers.iter().enumerate() {
+-            cumulative_m = layer.thickness_m;
++            cumulative_m += layer.thickness_m;
+             if i + 1 == visual_layers.len() {
+                 break;
+             }
+@@ -41,9 +41,9 @@ impl LayerFrame {
+             let local_origin = Point3::new(axis_local.x * d, axis_local.y * d, axis_local.z * d);
+             let world_origin = self.placement.transform_point(&local_origin);
+             let frame_origin = Point3::new(
+-                local_origin.x - self.rtc.0 - mesh_origin[0],
+-                local_origin.y - self.rtc.1 - mesh_origin[1],
+-                local_origin.z - self.rtc.2 - mesh_origin[2],
++                world_origin.x - self.rtc.0 - mesh_origin[0],
++                world_origin.y - self.rtc.1 - mesh_origin[1],
++                world_origin.z - self.rtc.2 - mesh_origin[2],
+             );
+             planes.push(Plane::new(frame_origin, world_normal));
+         }
+diff --git b/rust/geometry/src/router/layers/slice.rs a/rust/geometry/src/router/layers/slice.rs
+index a84b9c399c..765d6b8eff 100644
+--- b/rust/geometry/src/router/layers/slice.rs
++++ a/rust/geometry/src/router/layers/slice.rs
+@@ -68,8 +68,8 @@ pub(super) fn slice_mesh_into_layers(
+                     clipper.clip_mesh(&remainder, &flipped),
+                     clipper.clip_mesh(&remainder, plane),
+                 ) {
+-                    (Ok(band), Ok(_rest)) => {
+-
++                    (Ok(band), Ok(rest)) => {
++                        remainder = rest;
+                         band
+                     }
+                     // Degenerate interface clip: emit the whole remainder for this
+diff --git b/rust/geometry/src/router/layers/stack.rs a/rust/geometry/src/router/layers/stack.rs
+index 60b35a0b13..c264cd6cbd 100644
+--- b/rust/geometry/src/router/layers/stack.rs
++++ a/rust/geometry/src/router/layers/stack.rs
+@@ -31,7 +31,7 @@ pub(super) struct VisualLayer {
+ /// appearance). Stops once every slab is above threshold or only one slab
+ /// remains.
+ pub(super) fn merge_thin_layers(layers: &[LayerInfo], unit_scale: f64) -> Vec<VisualLayer> {
+-    let thresh = MIN_SLICEABLE_THICKNESS_M * 0.0;
++    let thresh = MIN_SLICEABLE_THICKNESS_M;
+     let mut slabs: Vec<VisualLayer> = layers
+         .iter()
+         .map(|l| VisualLayer {
+diff --git b/rust/geometry/src/router/layers/stages.rs a/rust/geometry/src/router/layers/stages.rs
+index 60c18c3dd0..538a080c24 100644
+--- b/rust/geometry/src/router/layers/stages.rs
++++ a/rust/geometry/src/router/layers/stages.rs
+@@ -85,7 +85,7 @@ impl LayerProgram {
+ 
+     /// Take ownership of the actual (opening-cut) host. An empty host skips.
+     pub(super) fn accept_host(self, host: Mesh) -> Result<LayerPlaneRequest, LayerSkip> {
+-        if false && host.is_empty() {
++        if host.is_empty() {
+             return Err(LayerSkip::EmptyHost);
+         }
+         Ok(LayerPlaneRequest {
+@@ -174,7 +174,7 @@ impl LayerSliceResult {
+     pub(super) fn publish(self, router: &GeometryRouter, element_id: u32) -> SubMeshCollection {
+         router.push_layer_slice_diag(
+             element_id,
+-            if self.collection.sub_meshes.len() >= 3 {
++            if self.collection.sub_meshes.len() >= 2 {
+                 "ok:sliced"
+             } else {
+                 "skip:cut-produced-<2"
+diff --git b/rust/processing/src/element_degenerate.rs a/rust/processing/src/element_degenerate.rs
+index c8b2af21d4..90dd6d6f95 100644
+--- b/rust/processing/src/element_degenerate.rs
++++ a/rust/processing/src/element_degenerate.rs
+@@ -79,7 +79,7 @@ struct StateScope<'a> {
+ 
+ impl Drop for StateScope<'_> {
+     fn drop(&mut self) {
+-        DROPPED.with(|counter| counter.replace(self.saved));
++        self.state.dropped = DROPPED.with(|counter| counter.replace(self.saved));
+     }
+ }
+ 

@@ -1,0 +1,109 @@
+{
+  "scope": "Retained sidecar discovery and frame-contract diagnostic only",
+  "historicalPlanUnmodified": true,
+  "performanceQualified": false,
+  "recordingAdmissionPassed": false,
+  "found": 17,
+  "missing": [
+    "perf6940-issue129-r4-base-next-20261016-0600-zurich-v1",
+    "perf6940-issue129-r5-base-next-20261016-0600-zurich-v1",
+    "perf6940-issue129-r5-branch-next-20261016-0600-zurich-v1",
+    "perf6940-holter-r1-base-next-20261016-0600-zurich-v1",
+    "perf6940-holter-r1-branch-next-20261016-0600-zurich-v1",
+    "perf6940-holter-r2-branch-next-20261016-0600-zurich-v1",
+    "perf6940-holter-r2-base-next-20261016-0600-zurich-v1",
+    "perf6940-holter-r3-base-next-20261016-0600-zurich-v1",
+    "perf6940-holter-r3-branch-next-20261016-0600-zurich-v1",
+    "perf6940-holter-r4-base-next-20261016-0600-zurich-v1",
+    "perf6940-holter-r4-branch-next-20261016-0600-zurich-v1",
+    "perf6940-holter-r5-branch-next-20261016-0600-zurich-v1",
+    "perf6940-holter-r5-base-next-20261016-0600-zurich-v1"
+  ],
+  "rows": [
+    {
+      "id": "perf6940-fzk-r1-base-next-20261016-0600-zurich-v1",
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3code-818b4671/work/6940/browser-final30-next-20261016-0600-zurich-v1/case-00/perf6940-fzk-r1-base-next-20261016-0600-zurich-v1.recording-frame-class-reviewed.json",
+      "sha256": "93c7f56d529c9fa3f78b2c3299fe70612bfe19e84c72bbcafae645230bd7407d"
+    },
+    {
+      "id": "perf6940-fzk-r1-branch-next-20261016-0600-zurich-v1",
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3code-818b4671/work/6940/browser-final30-next-20261016-0600-zurich-v1/case-01/perf6940-fzk-r1-branch-next-20261016-0600-zurich-v1.recording-frame-class-reviewed.json",
+      "sha256": "aca539fd1bb97c7c15c9b92e4a6ee1da85587541f381270a18eb03e748e3fef6"
+    },
+    {
+      "id": "perf6940-fzk-r2-branch-next-20261016-0600-zurich-v1",
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3code-818b4671/work/6940/browser-final30-next-20261016-0600-zurich-v1/case-02/perf6940-fzk-r2-branch-next-20261016-0600-zurich-v1.recording-frame-class-reviewed.json",
+      "sha256": "91faaed322c8dbe247d35e636aac1e0b55e3deaf7fbe71518ff87b6df1ea181a"
+    },
+    {
+      "id": "perf6940-fzk-r2-base-next-20261016-0600-zurich-v1",
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3code-818b4671/work/6940/browser-final30-next-20261016-0600-zurich-v1/case-03/perf6940-fzk-r2-base-next-20261016-0600-zurich-v1.recording-frame-class-reviewed.json",
+      "sha256": "33cba7f85a1b667e4f5db2f20f2d13b4676daef1b537c9754fef7fd172295d9f"
+    },
+    {
+      "id": "perf6940-fzk-r3-base-next-20261016-0600-zurich-v1",
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3code-818b4671/work/6940/browser-final30-next-20261016-0600-zurich-v1/case-04/perf6940-fzk-r3-base-next-20261016-0600-zurich-v1.recording-frame-class-reviewed.json",
+      "sha256": "761ad3638311fe9cea25f820859d5e45ffb3a5590feb8d9fe34bdc09bc8a18a3"
+    },
+    {
+      "id": "perf6940-fzk-r3-branch-next-20261016-0600-zurich-v1",
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3code-818b4671/work/6940/browser-final30-next-20261016-0600-zurich-v1/case-05/perf6940-fzk-r3-branch-next-20261016-0600-zurich-v1.recording-frame-class-reviewed.json",
+      "sha256": "cb01660a29a04a151aa359a3436558c8f264785a843fb96c6563224b61e47c0d"
+    },
+    {
+      "id": "perf6940-fzk-r4-base-next-20261016-0600-zurich-v1",
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3code-818b4671/work/6940/browser-final30-next-20261016-0600-zurich-v1/case-06/perf6940-fzk-r4-base-next-20261016-0600-zurich-v1.recording-frame-class-reviewed.json",
+      "sha256": "144059c0bd981aef2b4e2823c57fe809eb05c1d1683cc5b6cf6191e53132234a"
+    },
+    {
+      "id": "perf6940-fzk-r4-branch-next-20261016-0600-zurich-v1",
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3code-818b4671/work/6940/browser-final30-next-20261016-0600-zurich-v1/case-07/perf6940-fzk-r4-branch-next-20261016-0600-zurich-v1.recording-frame-class-reviewed.json",
+      "sha256": "f5bf38fc555eead79f267687c85b03aedc990682e1784f88ebd9209911add982"
+    },
+    {
+      "id": "perf6940-fzk-r5-branch-next-20261016-0600-zurich-v1",
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3code-818b4671/work/6940/browser-final30-next-20261016-0600-zurich-v1/case-08/perf6940-fzk-r5-branch-next-20261016-0600-zurich-v1.recording-frame-class-reviewed.json",
+      "sha256": "664de28720a7d19f73ee65f3a87c59837fc4cc4235947a009a49e7bb08237c26"
+    },
+    {
+      "id": "perf6940-fzk-r5-base-next-20261016-0600-zurich-v1",
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3code-818b4671/work/6940/browser-final30-next-20261016-0600-zurich-v1/case-09/perf6940-fzk-r5-base-next-20261016-0600-zurich-v1.recording-frame-class-reviewed.json",
+      "sha256": "e20e035def2313f6213dc789edb0dd30f626101b6ebb07218b38c51288a1a1cf"
+    },
+    {
+      "id": "perf6940-issue129-r1-branch-next-20261016-0600-zurich-v1",
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3code-818b4671/work/6940/browser-final30-next-20261016-0600-zurich-v1/case-10/perf6940-issue129-r1-branch-next-20261016-0600-zurich-v1.recording-frame-class-reviewed.json",
+      "sha256": "a67fdb697d430f00bfd557f583414dbd5bae5f5c07f08ecba99f8929293c9568"
+    },
+    {
+      "id": "perf6940-issue129-r1-base-next-20261016-0600-zurich-v1",
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3code-818b4671/work/6940/browser-final30-next-20261016-0600-zurich-v1/case-11/perf6940-issue129-r1-base-next-20261016-0600-zurich-v1.recording-frame-class-reviewed.json",
+      "sha256": "98db68a0df5a22ee0e14e62c6b9b241bd9871566fdad32868dfb5996e2d56277"
+    },
+    {
+      "id": "perf6940-issue129-r2-base-next-20261016-0600-zurich-v1",
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3code-818b4671/work/6940/browser-final30-next-20261016-0600-zurich-v1/case-12/perf6940-issue129-r2-base-next-20261016-0600-zurich-v1.recording-frame-class-reviewed.json",
+      "sha256": "ed180cb5da1b0c1fc0b14e26bfc522315d2e757c27e7ce701a53f570162e6e0e"
+    },
+    {
+      "id": "perf6940-issue129-r2-branch-next-20261016-0600-zurich-v1",
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3code-818b4671/work/6940/browser-final30-next-20261016-0600-zurich-v1/case-13/perf6940-issue129-r2-branch-next-20261016-0600-zurich-v1.recording-frame-class-reviewed.json",
+      "sha256": "a1c1a621086284bbaae49ae8fd97944661bc31834a9b4ae198fb829a0f54178c"
+    },
+    {
+      "id": "perf6940-issue129-r3-base-next-20261016-0600-zurich-v1",
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3code-818b4671/work/6940/browser-final30-next-20261016-0600-zurich-v1/case-14/perf6940-issue129-r3-base-next-20261016-0600-zurich-v1.recording-frame-class-reviewed.json",
+      "sha256": "bf3ef262aa3e4c6abdefd62cb9c8d445221daf9e4570d1c040a218a81718e195"
+    },
+    {
+      "id": "perf6940-issue129-r3-branch-next-20261016-0600-zurich-v1",
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3code-818b4671/work/6940/browser-final30-next-20261016-0600-zurich-v1/case-15/perf6940-issue129-r3-branch-next-20261016-0600-zurich-v1.recording-frame-class-reviewed.json",
+      "sha256": "d6465100b90a9e21f6ab5e961e349ae80cb489e0ab3d95401dafb7fbddcf2dba"
+    },
+    {
+      "id": "perf6940-issue129-r4-branch-next-20261016-0600-zurich-v1",
+      "path": "/home/louistrue/.t3/worktrees/ifc-lite/t3code-818b4671/work/6940/browser-final30-next-20261016-0600-zurich-v1/case-16/perf6940-issue129-r4-branch-next-20261016-0600-zurich-v1.recording-frame-class-reviewed.json",
+      "sha256": "869cc6bc590c72e3b4e2b22ca0cc31d12c76863cccb20c6ba8aebf835d6ceeb9"
+    }
+  ]
+}

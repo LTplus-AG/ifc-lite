@@ -476,6 +476,63 @@ use super::outline::trim_polyline;
         assert!(profile.outer.contains(&Point2::new(6.0, 18.0)));
     }
 
+    /// #7791 item 1: a derived profile's 2D operator goes through the one
+    /// operator reader, so a non-orthogonal Axis2 is projected perpendicular to
+    /// Axis1 (IfcSecondProjAxis) instead of being used raw, and a zero Axis1 /
+    /// 3-ratio direction cannot skew the frame.
+    #[test]
+    fn derived_profile_operator_2d_orthogonalises_axis2_7791() {
+        let content = r#"
+#1=IFCDIRECTION((1.0,0.0));
+#2=IFCDIRECTION((1.0,1.0));
+#3=IFCCARTESIANPOINT((0.0,0.0));
+#4=IFCCARTESIANTRANSFORMATIONOPERATOR2D(#1,#2,#3,1.0);
+#5=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,2.0,4.0);
+#6=IFCDERIVEDPROFILEDEF(.AREA.,$,#5,#4,$);
+"#;
+        let mut decoder = EntityDecoder::new(content);
+        let processor = ProfileProcessor::new(IfcSchema::new());
+        let profile_entity = decoder.decode_by_id(6).unwrap();
+        let profile = processor
+            .process(&profile_entity, &mut decoder, TessellationQuality::Medium)
+            .unwrap();
+        // Axis2 = (1,1) projected against Axis1 = +X is +Y: the rectangle is
+        // unchanged. Used raw, the corner (1,2) lands at (1+sqrt(.5)*2, ..).
+        for p in &profile.outer {
+            assert!(
+                (p.x.abs() - 1.0).abs() < 1e-12 && (p.y.abs() - 2.0).abs() < 1e-12,
+                "corner {p:?} skewed by an unprojected Axis2"
+            );
+        }
+    }
+
+    /// #7791 review: IfcBaseAxis 2D with Axis1 omitted takes X as Axis2's
+    /// clockwise perpendicular. Axis2 = -X therefore rotates the profile by
+    /// +90 degrees (X -> +Y), as the replaced derived-profile reader did.
+    #[test]
+    fn derived_profile_operator_2d_axis2_only_rotates_7791() {
+        let content = r#"
+#2=IFCDIRECTION((-1.0,0.0));
+#3=IFCCARTESIANPOINT((0.0,0.0));
+#4=IFCCARTESIANTRANSFORMATIONOPERATOR2D($,#2,#3,1.0);
+#5=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,2.0,4.0);
+#6=IFCDERIVEDPROFILEDEF(.AREA.,$,#5,#4,$);
+"#;
+        let mut decoder = EntityDecoder::new(content);
+        let processor = ProfileProcessor::new(IfcSchema::new());
+        let profile_entity = decoder.decode_by_id(6).unwrap();
+        let profile = processor
+            .process(&profile_entity, &mut decoder, TessellationQuality::Medium)
+            .unwrap();
+        // The 2 x 4 rectangle becomes 4 wide (X) and 2 tall (Y).
+        for p in &profile.outer {
+            assert!(
+                (p.x.abs() - 2.0).abs() < 1e-12 && (p.y.abs() - 1.0).abs() < 1e-12,
+                "corner {p:?}: an Axis2-only 2D operator must rotate the frame"
+            );
+        }
+    }
+
     /// An ASYMMETRIC parent, so the mirror is observable at all.
     ///
     /// The previous fixture here mirrored a `2.0 x 4.0` rectangle about its own

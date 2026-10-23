@@ -27,7 +27,7 @@
 //!   stays polynomial in a small constant rather than in an attacker-chosen
 //!   number. `bspline_basis_table` clamps internally (defense in depth: every
 //!   caller is protected, not just the ones that check first), and the
-//!   surface entry point ([`crate::processors::advanced_face::surfaces::process_bspline_face`])
+//!   surface entry point ([`crate::processors::advanced_face::bspline_plan::lower_bspline`])
 //!   additionally rejects a too-high degree explicitly, so the failure is
 //!   reported (`GeometryRouter::record_unsupported_item`) instead of silently
 //!   clamped to a different (wrong) surface.
@@ -42,7 +42,7 @@
 //! 207x180 (37,260-point) patch, well past any such guess, and a flat cap
 //! rejected it, changing legitimate output (caught by
 //! `geometry_correctness_harness`'s pinned snapshot). Sample count is already
-//! capped by `scale_segments` (`process_bspline_face`'s `u_segments` /
+//! capped by `scale_segments` (`lower_bspline`'s `u_segments` /
 //! `v_segments`, ~25-97 per axis), so `MAX_BSPLINE_SURFACE_SAMPLE_WORK` bounds
 //! the PRODUCT instead: `(u_segments+1) * (v_segments+1) * n_u * n_v`. The
 //! #472 fixture's worst surface measures 625 * 37,260 ≈ 23.3M — this cap

@@ -1,0 +1,3 @@
+# Attribute slot lookup (#7780, F3e-0a)
+
+`behaviour.oracle.patch` is the revert-oracle mutation for the F3e-0a PR. The PR adds `ifc_lite_core::{SchemaVersion::attribute, attributes, AttrSlot, AttrKind}` (`rust/core/src/attribute_slot.rs`) and exports `SchemaVersion`; a whole-change revert deletes them under the changed tests, which is a build break. The patch keeps every item and disables ONLY behaviour the tests pin: the AGGREGATE flag decode, the OPTIONAL flag decode, ASCII case-folding of the attribute name, and the non-ASCII entity guard (in `generated/schema_registry.rs`). Once `rust/core/src/attribute_slot.rs` is on `main` the ordinary whole-change revert resumes.

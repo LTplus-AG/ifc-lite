@@ -151,6 +151,13 @@ export function ViewportOverlays({
     }
   }, [cameraCallbacks]);
 
+  const handleDirectionChange = useCallback((direction: { x: number; y: number; z: number }) => {
+    if (cameraCallbacks.setPresetDirection) {
+      cameraCallbacks.setPresetDirection(direction);
+      emitCameraInteracted('preset');
+    }
+  }, [cameraCallbacks]);
+
   const handleHome = useCallback(() => {
     goHomeFromStore();
   }, []);
@@ -271,6 +278,7 @@ export function ViewportOverlays({
           <ViewCube
             ref={viewCubeRef}
             onViewChange={handleViewChange}
+            onDirectionChange={handleDirectionChange}
             onDrag={(deltaX, deltaY) => {
               cameraCallbacks.orbit?.(deltaX, deltaY);
               // Throttled: onDrag fires per pointer move.

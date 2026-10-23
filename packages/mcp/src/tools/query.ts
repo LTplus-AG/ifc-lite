@@ -16,7 +16,7 @@ import type { ComparisonOp, EntityData, QueryFilter } from '@ifc-lite/sdk';
 import type { Tool } from './types.js';
 import { findByGlobalId, fmtInt, okResult, paginate, resolveGlobalIds, resolveModel } from './util.js';
 import { materialFallbackName } from '../material-naming.js';
-import { pendingMutationsField, pendingOverlay } from '../overlay.js';
+import { pendingMutationsField, pendingOverlay } from '@ifc-lite/sdk/headless';
 import { buildSpatialTree } from '../spatial-tree.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 

@@ -34,6 +34,7 @@ const DISPATCHER_CONTEXTS = {
   overlay: true,
   'tool.walk': true,
   'tool.measure': true,
+  'tool.section': true,
   command: true,
   'command.wall.place': true, // Representative command-specific context.
   'workspace.model': true,

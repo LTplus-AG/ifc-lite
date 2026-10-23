@@ -1,0 +1,32 @@
+{
+  "source": "98f52d74299d6ac39b3a33bde4b2ab7dfb09bc45",
+  "jobId": "3b2cb0a5-f75b-4291-86a5-176f1e86083f",
+  "scope": "Official public API local frames only; four-frame qualification is a separate build.",
+  "cases": {
+    "wasm": {
+      "ok": true,
+      "cases": 10,
+      "sha256": "82e0e95525b4deeb0aa6e260486fe29089a7a22919cd202a9f2d268fa29bc278",
+      "identityUnchanged": true,
+      "artifact": {
+        "head": "98f52d74299d6ac39b3a33bde4b2ab7dfb09bc45",
+        "diffSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "untrackedRust": "",
+        "jsSHA256": "941031903a209b8ece2bee739ff5b73f4340d001f068c5efeb5c46863cedda23",
+        "wasmSHA256": "29446c58b8a205b8fe4e42087ee67f08fd967a2b3c3ae9f9bffccb3bb09b2bf7"
+      }
+    },
+    "browser": {
+      "ok": true,
+      "cases": 10,
+      "sha256": "329b62af2a9384d8f6ec82f73e593d649db28242bfdd708ebe7ca4e79d4370ea",
+      "identityUnchanged": true,
+      "artifact": {
+        "head": "98f52d74299d6ac39b3a33bde4b2ab7dfb09bc45",
+        "diffSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "wasmSHA256": "29446c58b8a205b8fe4e42087ee67f08fd967a2b3c3ae9f9bffccb3bb09b2bf7",
+        "jsSHA256": "941031903a209b8ece2bee739ff5b73f4340d001f068c5efeb5c46863cedda23"
+      }
+    }
+  }
+}

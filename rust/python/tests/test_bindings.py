@@ -409,7 +409,7 @@ def test_issue_5759_rebar_schedule_rejects_nonfinite_radius_before_json():
         "#6=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);", huge_unit,
     )
     assert source_with_huge_unit != source
-    with pytest.raises(ValueError, match=r"rebar #125 sweep 0 radius_m is non-finite"):
+    with pytest.raises(ValueError, match=r"rows\[125\]\.sweeps\[0\]\.radius_m is non-finite"):
         ifclite_geom.rebar_schedule(source_with_huge_unit.encode())
 
 
@@ -656,7 +656,7 @@ def test_entity_data_reads_occurrence_property_sets():
     pset = rows[0]["property_sets"][0]
     assert pset["name"] == "Foo_Bar"
     assert pset["properties"] == [
-        {"name": "Foobar", "value": "x", "value_type": "IFCLABEL"}
+        {"name": "Foobar", "value": "x", "value_type": "IFCLABEL", "inherited": False}
     ]
 
 
@@ -671,7 +671,9 @@ def test_entity_data_reads_quantity_sets_in_file_units():
 
     qset = rows[0]["quantity_sets"][0]
     assert qset["name"] == "Foo_Bar"
-    assert qset["quantities"] == [{"name": "Foo", "value": 42.0, "kind": "Length"}]
+    assert qset["quantities"] == [
+        {"name": "Foo", "value": 42.0, "kind": "Length", "inherited": False}
+    ]
     # Pins the documented reconciliation: 42 mm is 0.042 m, not 42 m.
     assert qset["quantities"][0]["value"] * data["length_unit_scale"] == pytest.approx(0.042)
 
@@ -828,6 +830,9 @@ def test_type_specific_attributes_are_returned():
         ("BarRole", "NOTDEFINED", "IFCENUM"),
     ]
 
+    # Same dict shape as a property; an attribute is never inherited.
+    assert all(a["inherited"] is False for a in bar["attributes"])
+
     # Not duplicated from the row's own fields.
     names = [a["name"] for a in bar["attributes"]]
     assert "GlobalId" not in names and "Name" not in names
@@ -931,3 +936,22 @@ def test_issue_6601_per_face_colors_match_json_and_preserve_transparency():
         assert sorted(c[3] for c in element["palette"]) == pytest.approx([0.25, 1.0])
         for actual, expected in zip(element["palette"], encoded["palette"]):
             assert actual == pytest.approx(expected)
+
+
+def test_each_property_says_whether_it_was_inherited():
+    """The `inherited` flag, on COLLIDING_IFC.
+
+    Shared is the occurrence's own, TypeOnly came from the type, and with
+    inheritance off nothing is flagged.
+    """
+    def flags(**kwargs):
+        entities = ifclite_geom.entity_data(COLLIDING_IFC, **kwargs)["entities"]
+        return {
+            p["name"]: p["inherited"]
+            for r in entities.values()
+            for ps in r["property_sets"]
+            for p in ps["properties"]
+        }
+
+    assert flags() == {"Shared": False, "TypeOnly": True}
+    assert flags(type_properties=False) == {"Shared": False}

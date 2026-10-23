@@ -13,8 +13,8 @@ use crate::{Error, Point3, Result, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use std::f64::consts::TAU;
 
-/// Relative parameter tolerance when mapping a trim window onto one segment.
-const PARAM_EPS: f64 = 1e-9;
+// Relative parameter tolerance when mapping a trim window onto one segment.
+use crate::math::tol::PARAM_EPS;
 
 impl ProfileProcessor {
     /// Sample a swept solid's directrix in 3D over the solid's
@@ -144,14 +144,7 @@ impl ProfileProcessor {
             let parent_curve = decoder
                 .resolve_ref(parent_curve_attr)?
                 .ok_or_else(|| Error::geometry("Failed to resolve ParentCurve".to_string()))?;
-            let same_sense = segment
-                .get(1)
-                .and_then(|v| match v {
-                    ifc_lite_core::AttributeValue::Enum(e) => Some(e.as_str()),
-                    _ => None,
-                })
-                .map(|e| e == "T" || e == "TRUE")
-                .unwrap_or(true);
+            let same_sense = segment.get_bool(1).unwrap_or(true);
             // The analytic reader is stricter than the sampler (it rejects,
             // e.g., a negative radius the sampler still draws). A parent it
             // cannot read has no known span; it must not fail the solid.
@@ -229,7 +222,7 @@ impl ProfileProcessor {
             // at the boundary (e.g. floating-point drift, or segments stitched
             // together at deliberately distinct points) must keep the first vertex
             // or the directrix gets distorted.
-            const JUNCTION_EPS: f64 = 1e-6;
+            use crate::math::tol::CURVE_JUNCTION_EPS as JUNCTION_EPS;
             let mut iter = trimmed.into_iter();
             if let Some(first) = iter.next() {
                 let coincident = result.last().is_some_and(|last| {
@@ -262,7 +255,7 @@ impl ProfileProcessor {
         let arc_angle = (end_angle - start_angle).abs();
         let by_angle = (arc_angle / std::f64::consts::FRAC_PI_2 * 8.0).ceil() as usize;
         let by_chord = {
-            const CHORD_TOL_M: f64 = 5.0e-4; // 0.5 mm absolute deviation budget
+            use crate::math::tol::CHORD_TOL_M;
             let r_eff = radius.abs().max(radius2.abs());
             let radius_m = r_eff * decoder.length_unit_scale();
             if radius_m > CHORD_TOL_M {

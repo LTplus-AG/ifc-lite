@@ -158,7 +158,7 @@ pub struct SubMeshCollection {
     /// Deliberately NOT `geometry_class == GEOM_CLASS_LAYER_SLICE`, which cannot
     /// answer it: that class is stamped from `is_material_layer_sliceable`, a
     /// static check made BEFORE the geometry runs, while
-    /// `try_layered_sub_meshes` can still return `None` and fall through to the
+    /// the layer control can still decline and fall through to the
     /// rep-item path — so rep-item ids can carry class 3 (#3199).
     /// SCOPE: it decides only which FIELD `emit_sub_meshes` emits the id under —
     /// five style lookups in `element.rs` still read `geometry_id` as a rep item
@@ -740,38 +740,9 @@ impl Mesh {
     /// [`clean_degenerate_watertight`](Self::clean_degenerate_watertight) where
     /// the surface must stay closed.
     pub fn drop_thin_triangles(&mut self, h_eps: f64) {
-        self.drop_thin_triangles_inner(h_eps, false);
+        self.drop_thin_triangles_inner(h_eps, tjunction::Repair::None);
     }
 
-    fn drop_thin_triangles_inner(&mut self, h_eps: f64, keep_closed: bool) {
-        if self.indices.len() < 3 {
-            return;
-        }
-        let vertex_count = self.positions.len() / 3;
-        let mut kept = Vec::with_capacity(self.indices.len());
-        let mut slivers: Vec<[u32; 3]> = Vec::new();
-        for tri in self.indices.chunks_exact(3) {
-            if (tri[0] as usize) >= vertex_count
-                || (tri[1] as usize) >= vertex_count
-                || (tri[2] as usize) >= vertex_count
-            {
-                continue;
-            }
-            let [a, b, c] = [tri[0], tri[1], tri[2]].map(|i| tjunction::pos_of(self, i));
-            let Some(height) = tjunction::height(a, b, c) else {
-                continue; // fully collapsed
-            };
-            if height < h_eps {
-                slivers.push([tri[0], tri[1], tri[2]]);
-                continue; // collinear / zero-area sliver
-            }
-            kept.extend_from_slice(tri);
-        }
-        if keep_closed && !slivers.is_empty() {
-            tjunction::split_across_dropped_slivers(self, &mut kept, &slivers, h_eps);
-        }
-        self.indices = kept;
-    }
 
     /// Mesh hygiene applied to every element mesh before it leaves the router.
     ///
@@ -812,18 +783,31 @@ impl Mesh {
         self.drop_thin_triangles(crate::kernel::mesh_bridge::SNAP_GRID);
     }
 
-    /// [`clean_degenerate`](Self::clean_degenerate) for SOURCE geometry that
-    /// must stay closed: drops the same slivers, then splits the triangle
+    /// Cheap probe for the canonical cleanup, so void outputs without slivers
+    /// avoid topology hashing and rollback snapshots.
+    pub(crate) fn needs_degenerate_cleanup(&self) -> bool {
+        if !self.indices.len().is_multiple_of(3) { return true; }
+        let count = self.positions.len() / 3;
+        self.indices.chunks_exact(3).any(|t| {
+            if t.iter().any(|&i| i as usize >= count) { return true; }
+            let [a,b,c] = [t[0],t[1],t[2]].map(|i| tjunction::pos_of(self,i));
+            tjunction::height(a,b,c).is_none_or(|h| h < crate::kernel::mesh_bridge::SNAP_GRID)
+        })
+    }
+
+    /// [`clean_degenerate`](Self::clean_degenerate) for source geometry and
+    /// untextured void-cut output: drops the same slivers, then splits the triangle
     /// across each dropped sliver's long edge at the sliver's apex whenever a
-    /// kept triangle still uses that apex, so the drop cannot open a
-    /// T-junction (#5313). May append vertices (an apex copy carrying the
+    /// kept triangle still uses that apex and the split is representable
+    /// (#5313). Void outputs additionally check exact closure before adopting
+    /// cleanup (#7292). May append vertices (an apex copy carrying the
     /// split face's normal), so it is only for meshes with no parallel
     /// per-vertex array outside `Mesh` (the textured channel's UVs rule it out
-    /// there). The router's source-hygiene chokepoints use it; the void/CSG
-    /// paths keep `clean_degenerate`, whose output their own closure gates and
-    /// census judge.
+    /// there). The router's source-hygiene chokepoints and untextured void-cut
+    /// outputs use it (#7292); consumers with parallel buffers retain index-only
+    /// cleanup and judge the result through their own closure gates.
     pub fn clean_degenerate_watertight(&mut self) {
-        self.drop_thin_triangles_inner(crate::kernel::mesh_bridge::SNAP_GRID, true);
+        self.drop_thin_triangles_inner(crate::kernel::mesh_bridge::SNAP_GRID, tjunction::Repair::Watertight);
     }
 
     /// Drop triangles with ANY vertex outside `[min - pad, max + pad]`, then
@@ -854,9 +838,15 @@ impl Mesh {
         }
         let lo = [min[0] - pad, min[1] - pad, min[2] - pad];
         let hi = [max[0] + pad, max[1] + pad, max[2] + pad];
+        // An out-of-range index is not inside, so its triangle is dropped
+        // rather than indexed past the end (#7677, KERNEL-28): `Mesh` has pub
+        // fields, so a caller-built mesh can carry one.
         let inside = |i: u32| -> bool {
-            let b = i as usize * 3;
-            let (x, y, z) = (self.positions[b], self.positions[b + 1], self.positions[b + 2]);
+            // Checked: `usize` is 32 bits on wasm32, where `i * 3` can wrap back
+            // into range and keep a triangle the compaction then indexes past.
+            let Some(&[x, y, z]) = (i as usize).checked_mul(3).and_then(|b| self.positions.get(b..)?.get(..3)) else {
+                return false;
+            };
             x >= lo[0] && x <= hi[0] && y >= lo[1] && y <= hi[1] && z >= lo[2] && z <= hi[2]
         };
         let tri_count = self.indices.len() / 3;

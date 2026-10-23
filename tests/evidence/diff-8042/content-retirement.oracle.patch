@@ -1,0 +1,11 @@
+--- a/rust/diff/src/content_match.rs
++++ b/rust/diff/src/content_match.rs
+@@ -16,7 +16,7 @@
+     indices.iter().copied().filter(|i| !retired[*i]).collect()
+ }
+ fn retire(indices: impl IntoIterator<Item = usize>, retired: &mut [bool]) {
+-    for i in indices { retired[i] = false; }
++    for i in indices { retired[i] = true; }
+ }
+ 
+ pub fn apply_content_matching<'a, R>(mut core: KeyDiff<'a, R>, tolerances: GeometryTolerances) -> ContentDiff<'a, R> {

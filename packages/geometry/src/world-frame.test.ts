@@ -17,7 +17,10 @@ import {
   chooseSharedRtcOffset,
   federationFrameInfo,
   ifcToViewerAxes,
+  renderFrameCoordinateSpace,
+  renderFrameWorldMatrix,
   renderFrameWorldOffset,
+  renderFrameYupToWorldMatrix,
   totalYupOffset,
   viewerToIfcAxes,
 } from './world-frame.js';
@@ -318,5 +321,34 @@ describe('#4897 order-permutation: A (small, no offset) then/after B (large, rea
         expect(Math.abs(detail - 0.001)).toBeLessThan(1e-6);
       }
     }
+  });
+});
+
+describe('render frame -> restore matrix for exporters (#7734)', () => {
+  const apply = (m: number[], p: [number, number, number]) =>
+    [0, 1, 2].map((r) => m[r] * p[0] + m[4 + r] * p[1] + m[8 + r] * p[2] + m[12 + r]);
+
+  it('is undefined for an unshifted model and a Z-up translation otherwise', () => {
+    expect(renderFrameWorldMatrix(info({}))).toBeUndefined();
+    expect(renderFrameCoordinateSpace(info({}))).toBe('raw_ifc');
+
+    const shifted = info({ wasmRtcOffset: RTC_IFC, originShift: SHIFT_YUP });
+    const m = renderFrameWorldMatrix(shifted)!;
+    expect(m).toHaveLength(16);
+    const o = renderFrameWorldOffset(shifted);
+    expect(m.slice(12)).toEqual([o.x, o.y, o.z, 1]);
+    expect(renderFrameCoordinateSpace(shifted)).toBe('model_rtc');
+  });
+
+  it('the Y-up form restores a render-frame vertex to the same world point', () => {
+    const shifted = info({ wasmRtcOffset: RTC_IFC, originShift: SHIFT_YUP });
+    const yup = { x: 3, y: 5, z: -7 };
+    // The same vertex in Z-up, restored by the plain translation matrix.
+    const zup = viewerToIfcAxes(yup);
+    const want = apply(renderFrameWorldMatrix(shifted)!, [zup.x, zup.y, zup.z]);
+    const got = apply(renderFrameYupToWorldMatrix(shifted), [yup.x, yup.y, yup.z]);
+    got.forEach((v, i) => expect(v).toBeCloseTo(want[i], 9));
+    // Even an unshifted model needs the axis swap.
+    expect(apply(renderFrameYupToWorldMatrix(info({})), [1, 2, 3])).toEqual([1, -3, 2]);
   });
 });

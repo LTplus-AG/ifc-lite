@@ -38,8 +38,9 @@
  *                    `packages/data/src/relationship-type.ts`'s `NAMES` map
  *                    (behind `relationshipTypeName()`) maps a `RelationshipType`
  *                    member to. Meaningful only for `IfcRel*` rows; other rows are `—`.
- *   geometry      — the entity's `IfcType` appears in the `TYPES` const array
- *                    in `rust/geometry/src/router/processor_registry.rs`,
+ *   geometry      — the entity's `IfcType` appears in a row of the
+ *                    `processor_families!` table (which generates the `TYPES`
+ *                    slot array) in `rust/geometry/src/router/processor_registry.rs`,
  *                    the actual slot table the router dispatches through
  *                    (not each processor's own `supported_types()`, which is
  *                    an internal replacement-tracking detail called only
@@ -56,7 +57,8 @@
  *                    `packages/export/src/schema-converter.ts` exports
  *                    (`convertEntityType`'s own `IFC2X3_TO_IFC4` /
  *                    `IFC4_TO_IFC2X3` / `IFC4_TO_IFC4X3` / `IFC4X3_TO_IFC4`
- *                    Maps), parsed from that file's source rather than a
+ *                    Maps), parsed from that file's source, plus the audited
+ *                    `schema-converter-mep.json` data read directly, rather than a
  *                    restated copy.
  *   writable      — the entity's uppercase STEP keyword appears in a
  *                    dedicated `this.line(id, 'IFCXXX', ...)` call inside
@@ -176,14 +178,21 @@ const relationshipClassesUpper = new Set([...relationshipClasses].map((n) => n.t
 // ─── Geometry (router processor_registry.rs TYPES table) ────────────────
 
 const processorRegistrySrc = read('rust/geometry/src/router/processor_registry.rs');
+// The slot table is declared once through `processor_families! { schema; ... }`
+// (#7955 C1): each `Family => [IfcA, IfcB] => constructor;` row is one TYPES
+// slot. The macro_rules definition itself only carries `$ifc_type`
+// placeholders, so only the invocation is read.
 function extractGeometryTypes(src) {
-  const start = src.indexOf('const TYPES');
-  if (start === -1) throw new Error('coverage-ledger: `const TYPES` not found in processor_registry.rs');
-  const open = src.indexOf('[', src.indexOf('=', start));
-  const close = src.indexOf('];', open);
-  if (open === -1 || close === -1) throw new Error('coverage-ledger: could not bound the TYPES array');
-  const body = src.slice(open, close);
-  return new Set([...body.matchAll(/IfcType::(\w+)/g)].map((m) => m[1].toUpperCase()));
+  const start = src.indexOf('processor_families! {');
+  if (start === -1) throw new Error('coverage-ledger: `processor_families! {` invocation not found in processor_registry.rs');
+  const close = src.indexOf('\n}', start);
+  if (close === -1) throw new Error('coverage-ledger: could not bound the processor_families! invocation');
+  const body = src.slice(start, close).replace(/\/\/[^\n]*/g, '');
+  const types = new Set();
+  for (const row of body.matchAll(/=>\s*\[([^\]]*)\]\s*=>/g)) {
+    for (const name of row[1].matchAll(/\b(Ifc\w+)/g)) types.add(name[1].toUpperCase());
+  }
+  return types;
 }
 const geometryTypes = extractGeometryTypes(processorRegistrySrc);
 assertNonEmpty('geometry(processor_registry TYPES)', geometryTypes);
@@ -231,6 +240,11 @@ const RENAME = {
 assertNonEmpty('convertible(IFC2X3_TO_IFC4)', RENAME['IFC2X3->IFC4']);
 assertNonEmpty('convertible(IFC4_TO_IFC2X3)', RENAME['IFC4->IFC2X3']);
 assertNonEmpty('convertible(IFC4X3_TO_IFC4)', RENAME['IFC4X3->IFC4']);
+// Share the runtime's audited data without requiring a TypeScript loader (#8019).
+const mep = JSON.parse(read('packages/export/src/schema-converter-mep.json'));
+const MEP_IFC2X3_TYPES = new Map(Object.entries(mep.types).flatMap(([target, sources]) => sources.map(source => [source, target])));
+assertNonEmpty('convertible(MEP_IFC2X3_TYPES)', MEP_IFC2X3_TYPES);
+for (const [source, target] of MEP_IFC2X3_TYPES) RENAME['IFC4->IFC2X3'].set(source, target);
 
 // ─── Fixture (committed .ifc corpus, per #4208 — see DERIVATION above) ──
 

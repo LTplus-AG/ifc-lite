@@ -1,6 +1,6 @@
 # create-ifc-lite
 
-Scaffolds an IFClite project in seconds. One command, working code.
+Scaffolds an IFClite project with runnable code and a resolved dependency lock.
 
 ## Usage
 
@@ -8,18 +8,18 @@ Scaffolds an IFClite project in seconds. One command, working code.
 npx create-ifc-lite <project-name> [--template <type>]
 ```
 
-That's it — no install step. The scaffolder picks `basic` if you don't pass a template.
+The scaffolder picks `basic` by default. It pins inspected IFClite releases, skips releases whose required worker files are missing, and checks their transitive IFClite dependencies. It resolves the complete dependency set with npm, checks peer constraints, and writes `package-lock.json` without running dependency install scripts. Run `npm ci` in the generated project to install that exact set; commit the lockfile so teammates and CI use the same versions.
 
 ## Templates
 
 ```bash
 # Minimal TypeScript project — parse an IFC file from a script
 npx create-ifc-lite my-app
-cd my-app && npm install && npm run parse ./model.ifc
+cd my-app && npm ci && npm run parse ./model.ifc
 
 # WebGPU 3D viewer (React + Vite + drag-and-drop)
 npx create-ifc-lite my-viewer --template react
-cd my-viewer && npm install && npm run dev
+cd my-viewer && npm ci && npm run dev
 
 # Three.js (WebGL) viewer
 npx create-ifc-lite my-viewer --template threejs

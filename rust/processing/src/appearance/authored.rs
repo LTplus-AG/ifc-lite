@@ -46,42 +46,28 @@ pub(super) struct Authoring<'a> {
     pub scale: f64,
     pub rtc_offset: [f64; 3],
 }
-fn valid_guid(value: &str) -> bool {
-    value.len() == 22
-        && value.as_bytes()[0] <= b'3'
-        && value.as_bytes()[0] >= b'0'
-        && value
-            .bytes()
-            .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'$')
-}
-// Only our fixed authored schema rows reach this conversion: file-supplied
-// aggregate values are never recursively cloned or reinterpreted here.
-// Core spells a type-qualified value `IFCTEXT('x')` as the two-element list
-// [type-name, value]; the host writer takes the explicit `typed` marker and
-// resolves the type's EXPRESS base from its registry spelling (`IfcText`).
-fn wire(value: &A) -> Value {
+// Our fixed authored schema rows reach this conversion, plus the shallow
+// attribute copies of an evaluated Body or layer clone, so it is total over
+// `AttributeValue` (#7677): a file-supplied `*` is written back as `*`.
+// Core spells a type-qualified value `IFCTEXT('x')` as `AttributeValue::Typed`;
+// the host writer takes the explicit `typed` marker and resolves the type's
+// EXPRESS base from its registry spelling (`IfcText`).
+pub(super) fn wire(value: &A) -> Value {
     match value {
         A::EntityRef(id) => reference(*id),
         A::Null => Value::Null,
         A::Derived => json!("*"),
         A::Enum(s) => json!(format!(".{s}.")),
-        A::String(s) => json!(s),
+        A::String(s) | A::Binary(s) => json!(s),
         A::Integer(n) => json!(n),
         A::Float(n) => json!(n),
-        A::List(v) => match v.as_slice() {
-            [A::String(name), inner]
-                if name.get(..3).is_some_and(|prefix| prefix.eq_ignore_ascii_case("IFC"))
-                    && !matches!(inner, A::List(_)) =>
-            {
-                json!({"typed": {"type": name, "value": wire(inner)}})
-            }
-            _ => json!(v.iter().map(wire).collect::<Vec<_>>()),
-        },
+        A::Typed { name, value } => json!({"typed": {"type": name, "value": wire(value)}}),
+        A::List(v) => json!(v.iter().map(wire).collect::<Vec<_>>()),
     }
 }
 /// Build a type-qualified attribute value in core's representation.
 pub(super) fn typed(name: &str, value: A) -> A {
-    A::List(vec![A::String(name.into()), value])
+    A::Typed { name: name.into(), value: Box::new(value) }
 }
 pub(super) struct Author {
     pub plan: AppearancePlan,
@@ -111,7 +97,7 @@ pub(super) fn validate_metadata(r: &Metadata<'_>) -> Result<(),String> {
     if !matches!(r.schema, "IFC4" | "IFC4X3")
         || r.source_revision.len() > 4096
         || r.name.len() > 1024
-        || !ids.iter().all(|id| valid_guid(id))
+        || !ids.iter().all(|id| ifc_lite_core::guid::is_valid_global_id(id))
         || !distinct
     {
         return Err(

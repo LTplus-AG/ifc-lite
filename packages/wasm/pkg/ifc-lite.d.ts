@@ -60,6 +60,21 @@ export interface RtcFrame {
 
 
 
+export interface LandXmlTerrainOptionsJs {
+    /** `YYYY-MM-DD`, the required `LandXML@date`; the caller owns the clock. */
+    date: string;
+    /** `HH:MM:SS`, the required `LandXML@time`. */
+    time: string;
+    /** Default `'metre'`. US survey feet write elevations in international feet (LandXML 1.2 has no US-survey-foot elevation unit); both are declared. */
+    linearUnit?: 'metre' | 'internationalFoot' | 'usSurveyFoot';
+    /** Decimal places in the written unit, 0 to 9. Default 6. */
+    decimals?: number;
+    /** `Surface@name` per product; a blank name keeps the IFC name. */
+    surfaceNames?: { productId: number; name: string }[];
+}
+
+
+
 export interface LandXmlTinDocumentJs {
     format: "landxml";
     schema: "LandXML-1.0" | "LandXML-1.1" | "LandXML-1.2";
@@ -159,7 +174,8 @@ export interface LandXmlCrossSectionSurfaceJs { source_id: string; parent_cross_
 export interface LandXmlRoadwayJs { source_id: string; ordinal: number; name: string; alignment_refs: string[]; alignment_source_ids: string[]; surface_refs: string[]; surface_source_ids: string[]; grade_model_refs: string[]; }
 export interface LandXmlCapabilityDiagnosticJs { code: string; source_id?: string; source_path: string; message: string; }
 export interface LandXmlPreservedOnlyExtensionJs { source_id: string; parent_source_id?: string; local_name: string; source_path: string; kind: "corridor" | "string_line"; }
-export interface LandXmlPipeUnitsJs { linear_unit: string; elevation_unit: string; diameter_unit: string; width_unit: string; height_unit: string; flow_unit?: string; linear_scale_to_meters: number; elevation_scale_to_meters: number; diameter_scale_to_meters: number; width_scale_to_meters: number; height_scale_to_meters: number; }
+/** `assumed` is true only when these units came from `LandXmlParseOptionsJs.assumedLinearUnit` because the source declares no root LandXML/Units element, never from a declared one (#5175, #7693). */
+export interface LandXmlPipeUnitsJs { linear_unit: string; elevation_unit: string; diameter_unit: string; width_unit: string; height_unit: string; flow_unit?: string; linear_scale_to_meters: number; elevation_scale_to_meters: number; diameter_scale_to_meters: number; width_scale_to_meters: number; height_scale_to_meters: number; assumed: boolean; }
 export interface LandXmlPipeNetworkDocumentJs {
     schema: "LandXML-1.0" | "LandXML-1.1" | "LandXML-1.2"; version: string;
     capability_diagnostics: LandXmlCapabilityDiagnosticJs[];
@@ -670,8 +686,16 @@ export class IfcAPI {
      * out-of-range index copied into the BIN chunk. (The viewer always passes
      * fully-backed, normal-covered, whole-triangle, in-range arrays, so this only
      * fires on a caller bug.)
+     *
+     * `world_matrix` is the frame the meshes were baked in (#7734): 16 finite
+     * numbers, a column-major 4x4 in IFC Z-up metres with `world = M * baked`
+     * (the viewer builds it from `CoordinateInfo`). The GLB root carries it, so
+     * a georeferenced model exports where the from-bytes `exportGlb` puts it
+     * instead of in the render frame. Omit it (`undefined`) for an unshifted
+     * model; a matrix that is not 16 finite numbers throws
+     * `MALFORMED_MESH_INPUT`.
      */
-    exportGlbFromMeshes(positions: Float32Array, normals: Float32Array, indices: Uint32Array, vertex_counts: Uint32Array, index_counts: Uint32Array, colors: Float32Array, origins: Float64Array, express_ids: Uint32Array, include_metadata: boolean, lit?: boolean | null, emissive?: boolean | null): Uint8Array;
+    exportGlbFromMeshes(positions: Float32Array, normals: Float32Array, indices: Uint32Array, vertex_counts: Uint32Array, index_counts: Uint32Array, colors: Float32Array, origins: Float64Array, express_ids: Uint32Array, include_metadata: boolean, lit?: boolean | null, emissive?: boolean | null, world_matrix?: Float64Array | null): Uint8Array;
     /**
      * Export the `IfcSpace` volumes in `content` as Honeybee **HBJSON** UTF-8 bytes.
      *
@@ -753,6 +777,17 @@ export class IfcAPI {
      */
     exportKmzFromMeshes(positions: Float32Array, normals: Float32Array, indices: Uint32Array, vertex_counts: Uint32Array, index_counts: Uint32Array, colors: Float32Array, origins: Float64Array, latitude: number, longitude: number, altitude: number, x_axis_abscissa: number | null | undefined, x_axis_ordinate: number | null | undefined, name: string, altitude_mode?: string | null): Uint8Array;
     /**
+     * Export the terrain products `product_ids` (express ids) of `content` as
+     * one LandXML 1.2 document, one `<Surface>` each.
+     *
+     * Returns JSON `{ xml, crsName, surfaces: [{ productId, globalId, name,
+     * points, faces }] }`. A selection that is not an authored triangulated
+     * terrain, or whose georeferencing is missing or ambiguous, throws an
+     * `Error` whose message starts with `TERRAIN_REFUSED:` and names the
+     * reason.
+     */
+    exportLandXmlTerrain(content: Uint8Array, product_ids: Uint32Array, options: LandXmlTerrainOptionsJs): string;
+    /**
      * Merge several IFC models into one STEP/IFC UTF-8 byte buffer (`Uint8Array`).
      * `concatenated` is every model's
      * bytes laid end-to-end; `lengths[i]` is the byte length of model `i`. The first model
@@ -775,6 +810,10 @@ export class IfcAPI {
      * whole model when a filter matches nothing (the OBJ twin of #4328/#4364, fixed
      * for GLB in `export_glb`). A non-empty `Uint32Array` is the ordinary allowlist.
      * Instanced type-library shapes are skipped regardless of the filter.
+     *
+     * Fails CLOSED like `exportGlb`: when no mesh is written this throws an
+     * `Error` whose message starts with `NO_RENDER_GEOMETRY`, instead of
+     * returning a header-only OBJ (#7695).
      *
      * ```javascript
      * const obj = api.exportObj(ifcContent, true, new Uint32Array(), undefined);
@@ -815,6 +854,10 @@ export class IfcAPI {
      * Export **OpenUSD** (`.usda` ASCII): a real Z-up USD stage — spatial hierarchy of
      * `Xform` prims, `UsdGeomMesh` geometry, `UsdPreviewSurface` materials, IFC
      * metadata as custom attributes. Whole-model (geometry-backed).
+     *
+     * Fails CLOSED like `exportGlb`: a model with no render geometry throws an
+     * `Error` whose message starts with `NO_RENDER_GEOMETRY`, instead of
+     * returning a stage with nothing to look at (#7695).
      */
     exportUsd(content: Uint8Array): Uint8Array;
     /**
@@ -2503,6 +2546,14 @@ export function setGeometryProgressCallback(callback?: Function | null): void;
  * meaningless volumes with a plausible `sumErrorRel`, so the closure proof
  * above is the caller's responsibility and not a formality.
  *
+ * Returns `undefined` when a zone parameter is non-finite, or a mesh vertex
+ * or zone corner lies past ±2^128, the exact kernel's coordinate bound
+ * (#7677): such a split is refused rather than answered wrongly.
+ *
+ * Returns `undefined` if an intersection, zone union or remainder exhausts
+ * the exact kernel's work budget. Completed pieces are not returned as a
+ * successful partial split, and a failed empty piece is not treated as disjoint.
+ *
  * Returns `undefined` when the mesh encloses no volume (no triangles survive
  * the filter above, or the shell is degenerate): there is nothing to split,
  * and a result for it would report `pieceCount` 1, `sumErrorRel` 0 and
@@ -2513,7 +2564,7 @@ export function setGeometryProgressCallback(callback?: Function | null): void;
  * const split = splitMeshByZones(positions, indices, new Float64Array([
  *   0, 0, 0, 10, 10, 10, 0,
  * ]));
- * if (!split) return; // the mesh encloses no volume
+ * if (!split) return; // no usable complete split
  * for (let i = 0; i < split.pieceCount; i++) {
  *   const piece = split.piece(i);
  *   // piece.zoneIndex, piece.positions, piece.indices, piece.volume
@@ -2640,13 +2691,14 @@ export interface InitOutput {
     readonly ifcapi_exportCsv: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
     readonly ifcapi_exportDfjson: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_exportGlb: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number) => void;
-    readonly ifcapi_exportGlbFromMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number) => void;
+    readonly ifcapi_exportGlbFromMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number) => void;
     readonly ifcapi_exportHbjson: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_exportHbjsonWithStats: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly ifcapi_exportIfcx: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_exportJson: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly ifcapi_exportJsonld: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => void;
     readonly ifcapi_exportKmzFromMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number) => void;
+    readonly ifcapi_exportLandXmlTerrain: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly ifcapi_exportMerged: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_exportObj: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
     readonly ifcapi_exportStep: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => void;

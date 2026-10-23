@@ -1,0 +1,196 @@
+// SPDX-License-Identifier: MPL-2.0
+//! (Moved from `rust/export/src/model_types.rs`, C6-8, #7783.)
+//!
+//! The row and value types the attribute export yields.
+//!
+//! Split from `model.rs` under the house rule (AGENTS.md), and because these
+//! are the crate's public data shape: every exporter (CSV, JSON, JSON-LD,
+//! IFC5, Parquet, USD) and the Python binding read them, while none of them
+//! cares how the streaming pass in `model.rs` fills them in.
+
+use std::ops::Range;
+
+use crate::prepass::UnitScales;
+
+use super::options::Placement;
+use ifc_lite_core::fmt_num::fmt_num;
+
+/// The primitive a property value was written as in STEP, read from the
+/// decoded literal rather than guessed back from its type tag (#7681), so a
+/// typed exporter keeps `IFCTHERMALTRANSMITTANCEMEASURE(0.24)` a number and
+/// `IFCLABEL('0.24')` text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ValueKind {
+    /// A REAL or INTEGER literal; `value` is its decimal rendering.
+    Number,
+    /// A `.T.` / `.F.` logical; `value` is `true` or `false`.
+    Bool,
+    /// Anything else: strings, `.U.` (rendered `unknown`), other enums.
+    Text,
+}
+
+/// A single property value (`IfcPropertySingleValue` and friends).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PropValue {
+    pub name: String,
+    pub value: String,
+    /// IFC value type tag when known (e.g. `IFCLABEL`, `IFCREAL`, `IFCBOOLEAN`).
+    pub value_type: String,
+    /// The primitive `value` renders.
+    pub kind: ValueKind,
+}
+
+/// A named property set (`IfcPropertySet`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PropertySet {
+    pub name: String,
+    pub properties: Vec<PropValue>,
+}
+
+/// A single physical quantity (`IfcQuantityLength`/`Area`/`Volume`/…).
+#[derive(Debug, Clone, PartialEq)]
+pub struct QuantityValue {
+    pub name: String,
+    pub value: f64,
+    /// `Length` | `Area` | `Volume` | `Count` | `Number` | `Weight` | `Time`.
+    pub kind: &'static str,
+}
+
+/// A named quantity set (`IfcElementQuantity`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct QuantitySet {
+    pub name: String,
+    pub quantities: Vec<QuantityValue>,
+}
+
+/// One exportable entity row.
+///
+/// Usually an `IfcProduct` occurrence, but not always: an `IfcTypeProduct`
+/// whose `RepresentationMaps` no occurrence instantiates gets a row of its own
+/// (#957 Route B / #1518), so the GLB node meshed under the type's expressId
+/// is not left without attributes. Such a row has no `placement`, since a type
+/// object has no `ObjectPlacement`, and no matching entry in the geometry
+/// export, which emits occurrences only.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EntityRow {
+    pub express_id: u32,
+    pub ifc_type: String,
+    pub global_id: Option<String>,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub object_type: Option<String>,
+    /// True when the product carries a geometric Representation (attr 6).
+    pub has_geometry: bool,
+    /// The product's placement, when [`ModelOptions::placements`] asked for it
+    /// AND the product carries an `ObjectPlacement` (attr 5).
+    ///
+    /// `None` is therefore two different facts. The caller knows which it asked
+    /// for; it cannot tell from the row alone, and 7.5% of product occurrences
+    /// in a real corpus genuinely have no placement, so this is not a rare case
+    /// to hand-wave.
+    ///
+    /// **A resolvable-but-broken chain is not `None`.** A dangling reference, a
+    /// cycle, or a chain deeper than 32 composes to the identity, and identity
+    /// is a legitimate placement — so a malformed file yields a product at the
+    /// origin rather than an error. Distinguishing those would mean changing
+    /// what the resolver returns, which is a wider change than this.
+    pub placement: Option<Placement>,
+    pub property_sets: Vec<PropertySet>,
+    pub quantity_sets: Vec<QuantitySet>,
+    /// The entity's SCHEMA-DECLARED attributes, when [`ModelOptions::attributes`]
+    /// asked for them. Empty otherwise, and empty for a type that declares none
+    /// beyond the rooted set.
+    ///
+    /// Not property sets, and not reachable through one: `NominalDiameter` on
+    /// an `IfcReinforcingBar` or `OverallHeight` on an `IfcDoor` is declared on
+    /// the entity itself, so a consumer reading only psets never sees it. The
+    /// fields this row already carries (`GlobalId`, `Name`, `Description`,
+    /// `ObjectType`) and the reference-valued ones are excluded.
+    pub attributes: Vec<PropValue>,
+}
+
+impl EntityRow {
+    /// Look up a flattened `PsetName.PropName` value (case-sensitive), then quantities.
+    pub fn lookup(&self, pset: &str, prop: &str) -> Option<String> {
+        for ps in &self.property_sets {
+            if ps.name == pset {
+                for p in &ps.properties {
+                    if p.name == prop {
+                        return Some(p.value.clone());
+                    }
+                }
+            }
+        }
+        for qs in &self.quantity_sets {
+            if qs.name == pset {
+                for q in &qs.quantities {
+                    if q.name == prop {
+                        return Some(fmt_num(q.value));
+                    }
+                }
+            }
+        }
+        None
+    }
+}
+
+/// Which entries of an [`EntityRow`]'s property and quantity sets the entity
+/// inherits from its type rather than carrying itself.
+///
+/// Yielded beside each row by
+/// [`stream_export_model_with_inherited`](super::stream_export_model_with_inherited),
+/// and only ever reports an entry under
+/// [`ModelOptions::inherit_type_properties`](super::ModelOptions::inherit_type_properties).
+/// It describes the row as yielded: `set` indexes `property_sets` or
+/// `quantity_sets` and `entry` the set's entries, so read it before sorting
+/// or filtering the row.
+///
+/// A caller that flattens entries into `Set.Name` keys should let every own
+/// entry, property or quantity, claim its key before an inherited one does.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Inherited {
+    /// Per property set, the indices of its inherited entries. Own entries
+    /// precede inherited ones in a set, so one range covers them all. Empty
+    /// when nothing is inherited.
+    property_sets: Vec<Range<usize>>,
+    /// The same, per quantity set.
+    quantity_sets: Vec<Range<usize>>,
+}
+
+impl Inherited {
+    pub(crate) fn new(property_sets: Vec<Range<usize>>, quantity_sets: Vec<Range<usize>>) -> Self {
+        Self { property_sets, quantity_sets }
+    }
+
+    /// True when entry `entry` of `property_sets[set]` came from the type.
+    pub fn property(&self, set: usize, entry: usize) -> bool {
+        self.property_sets.get(set).is_some_and(|r| r.contains(&entry))
+    }
+
+    /// True when entry `entry` of `quantity_sets[set]` came from the type.
+    pub fn quantity(&self, set: usize, entry: usize) -> bool {
+        self.quantity_sets.get(set).is_some_and(|r| r.contains(&entry))
+    }
+}
+
+/// The full extracted model.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExportModel {
+    pub entities: Vec<EntityRow>,
+    /// The model's unit scales, resolved from its `IFCPROJECT`.
+    ///
+    /// Every value [`EntityRow`] carries is in the file's OWN units: the
+    /// properties, the quantities, and the schema-declared attributes alike. A
+    /// millimetre model yields a `Qto_WallBaseQuantities.Length` (a quantity)
+    /// of 3000, not 3, and an `IfcReinforcingBar.NominalDiameter` (an
+    /// attribute) of 29, not 0.029.
+    /// The geometry exporters normalise to metres; this path deliberately does
+    /// not, because a property value is not always a length and coercing one
+    /// would be guessing. That leaves the caller needing the scale to interpret
+    /// anything dimensional, and until now it had no way to obtain it: the
+    /// resolver was internal and `ExportModel` carried only entities. A consumer
+    /// writing quantities alongside exported geometry therefore had a silent
+    /// 1000x mismatch with no value on hand to detect it with.
+    pub units: UnitScales,
+}

@@ -15,6 +15,8 @@ categories = ["parsing", "algorithms"]
 readme = "../../README.md"
 
 [features]
+# Opt-in alternate triangulator oracle for canonical producer regression tests.
+triangulation-alt = ["ifc-lite-geometry/triangulation-alt"]
 # Fixed-size work counters for the diagnostic example, never enabled by default.
 opening-perf-trace = ["ifc-lite-geometry/opening-perf-trace"]
 # Measurement-only: enable the geometry crate's CSG corpus capture so the
@@ -37,27 +39,28 @@ name = "csg_scaling_bench"
 required-features = ["csg-capture"]
 
 [dependencies]
-ifc-lite-core = { version = "20.4.0", path = "../core" }
+ifc-lite-core.workspace = true
 # CSG runs on the pure-Rust exact kernel inside ifc-lite-geometry on every
 # target (the Manifold C++ kernel was removed in the kernel consolidation —
 # see docs/architecture/geometry-pipeline.md).
-ifc-lite-geometry = { version = "20.4.0", path = "../geometry", default-features = false }
-rayon = "1.10"
-serde = { version = "1.0", features = ["derive", "rc"] }
-serde_json = "1.0"
-memchr = "2.8"
-png = "0.18"
-rustc-hash = "2.1"
-tracing = "0.1"
-sha2 = "0.10"
-nalgebra = { version = "0.35", default-features = false, features = ["std"] }
+ifc-lite-geometry.workspace = true
+rayon.workspace = true
+serde = { workspace = true, features = ["rc"] }
+serde_json.workspace = true
+png.workspace = true
+rustc-hash.workspace = true
+tracing = { workspace = true, features = ["std", "attributes"] }
+sha2.workspace = true
+nalgebra.workspace = true
 
 [dev-dependencies]
+# Test-only (publish = false). Path-only: cargo strips it when packaging.
+ifc-lite-testkit = { path = "../testkit" }
 # `test_support::recv_or_diagnose` only - the shared worker watchdog, so the
 # deadlock regression here diagnoses a worker panic the same way the geometry
 # suites do instead of carrying its own copy of the two-arm match. Already a
 # normal dependency of this crate; the feature is test-only.
-ifc-lite-geometry = { version = "20.4.0", path = "../geometry", default-features = false, features = ["test-support"] }
+ifc-lite-geometry = { workspace = true, features = ["test-support"] }
 
 [lints]
 workspace = true

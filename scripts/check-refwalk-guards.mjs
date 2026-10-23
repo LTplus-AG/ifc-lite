@@ -159,8 +159,23 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
  * the issue names would have been blind to two of the six walks it exists to
  * prevent a seventh of. Both extra roots cost nothing: each contributes zero
  * unguarded candidates today.
+ *
+ * `apps/server/src` and `rust/export/src` were added for #7673 (SERVER-5): the
+ * server's own data-model `resolve_material` recursed through
+ * `IfcMaterial*SetUsage` with no bound, in a root nothing scanned. At the
+ * parent of its fix this gate reports exactly that site; at the fix it passes.
+ * `rust/export/src` holds ~100 `decode_by_id` sinks and no candidate walk today,
+ * so it is scanned for the next one. `rust/landxml` has no decode sinks and is
+ * deliberately not a root.
  */
-const SCAN_ROOTS = ['rust/core/src', 'rust/geometry/src', 'rust/processing/src', 'rust/wasm-bindings/src'];
+const SCAN_ROOTS = [
+  'rust/core/src',
+  'rust/geometry/src',
+  'rust/processing/src',
+  'rust/wasm-bindings/src',
+  'apps/server/src',
+  'rust/export/src',
+];
 
 /**
  * Lower bound on how many candidate walks the two signals must still find.
@@ -181,7 +196,18 @@ const SCAN_ROOTS = ['rust/core/src', 'rust/geometry/src', 'rust/processing/src',
  */
 // Re-measured at 33 after adding rust/core/src for #4601. Keep one candidate
 // of churn while making the widened scan visible in the ratchet.
-const CANDIDATE_FLOOR = 32;
+// Re-measured at 35 after adding apps/server/src and rust/export/src for #7673
+// (34 in the first four roots, plus the server's guarded
+// `resolve_complex_property_value`). Set to 34, one candidate of churn.
+// Re-measured at 33 when #7687 deleted `advanced_face/polyline.rs`'s
+// non-`try` `sample_curve_polyline` wrapper: the walk is the same guarded
+// `sample_curve_polyline_guarded` self-recursion, one cycle member fewer.
+// Set to 32 to restore a margin of one.
+// Re-measured at 31 when #7955 D3 moved the mapped-item walk off recursion onto
+// the common mapping controller's explicit level stack. Set to 30, a margin of one.
+// Re-measured at 30 when #7955 D3b moved the styled/type-map walk onto the same
+// controller. Set to 29, a margin of one.
+const CANDIDATE_FLOOR = 29;
 
 /**
  * Allowlist for candidates that are genuinely unguarded and must stay that

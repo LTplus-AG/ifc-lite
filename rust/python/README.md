@@ -473,14 +473,16 @@ cheap compared with the geometry functions.
       "property_sets": [
         {"name": "Pset_WallCommon",
          "properties": [{"name": "IsExternal", "value": "True",
-                         "value_type": "IFCBOOLEAN"}]},
+                         "value_type": "IFCBOOLEAN", "inherited": False}]},
       ],
       "quantity_sets": [
         {"name": "Qto_WallBaseQuantities",
-         "quantities": [{"name": "Length", "value": 3000.0, "kind": "Length"}]},
+         "quantities": [{"name": "Length", "value": 3000.0, "kind": "Length",
+                         "inherited": False}]},
       ],
       "attributes": [                  # schema-declared entity attributes
-        {"name": "PredefinedType", "value": "SOLIDWALL", "value_type": "IFCENUM"},
+        {"name": "PredefinedType", "value": "SOLIDWALL", "value_type": "IFCENUM",
+         "inherited": False},
       ],
     },
     ...
@@ -536,9 +538,15 @@ its own mesh bounds.
   Only the length and plane-angle scales are resolved, so a model that declares
   an area or volume unit inconsistent with its length unit cannot be reconciled
   from what is returned here.
-- **Only `IfcPropertySingleValue` properties are decoded.** Enumerated, list,
-  bounded, table and reference properties are skipped; the pset still appears,
-  with those entries missing.
+- **Every property kind is decoded.** Each property dictionary contains
+  `name`, `value` and `value_type`. An `IfcPropertySingleValue` returns its
+  nominal value as a string. An enumerated, list, bounded, table, reference or
+  complex property returns its display string (`"A, B"`, `"2 [1 – 5]"`,
+  `"Table (2 rows)"`). A reference uses the target's nonblank `Name`, else its
+  nonblank `Identification`, else `#<id>`. For `IfcPropertySingleValue`,
+  `value_type` is the nominal value's rendered type tag (for example,
+  `IFCLABEL` or `IFCREAL`). For other property kinds, it is the members' shared
+  type tag or else the property class (`IFCPROPERTYTABLEVALUE`, ...).
 ### Entity attributes
 
 Note the two senses of "type" on this page. The section below concerns an
@@ -568,8 +576,8 @@ declares, and its length varies between two entities of the same class.
 
 Every IFC entity class has its own schema-declared attributes: `IfcDoor` yields
 `OverallHeight` / `OverallWidth`, and so on, named and ordered as the schema
-declares them. Entries share the `{name, value, value_type}` shape of a
-property, so one code path reads both.
+declares them. Entries share the `{name, value, value_type, inherited}` shape
+of a property, `inherited` always `False`, so one code path reads both.
 
 Fields the row already carries (`global_id`, `name`, `description`,
 `object_type`) are not repeated, and reference-valued attributes are omitted
@@ -578,9 +586,9 @@ rather than rendered as a dangling `#123`. Pass `attributes=False` to skip.
 ### Type-inherited properties
 
 `type_properties` is on by default. A type attaches its sets through
-`IfcTypeObject.HasPropertySets` and gets no row of its own unless it carries
-orphan geometry, so without this the properties authoring tools put on types
-are unreachable. Each occurrence therefore also carries what it inherits
+`IfcTypeObject.HasPropertySets`, or through an `IfcRelDefinesByProperties`
+naming the type, and gets no row of its own unless it carries orphan geometry,
+so without this the properties authoring tools put on types are unreachable. Each occurrence therefore also carries what it inherits
 through `IfcRelDefinesByType`, merged **per property**:
 
 - A type set whose name the occurrence does not use is added whole.
@@ -588,6 +596,9 @@ through `IfcRelDefinesByType`, merged **per property**:
   not already define. On a collision the occurrence wins, and the type-only
   properties beside it still survive. Replacing the whole set instead would
   hide them, which is the bug this rule exists to prevent.
+- Every property and quantity dict carries `inherited`, `True` when it came
+  from the type, including the copy added to each same-named set the
+  occurrence carries.
 
 **`quantity_sets` inherit on exactly the same terms.** A type attaches
 `IfcElementQuantity` definitions through the same `HasPropertySets` attribute,

@@ -3,73 +3,41 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::{
-    xml::{attr, error, Attributes, Result},
-    LandXmlCancellation, LandXmlDiagnosticCode as Code, LandXmlPipeProperties, LandXmlSourceId,
+    xml::{attr, Attributes, Cx, Result},
+    LandXmlPipeProperties, LandXmlSourceId,
 };
 
 use super::{
     state::{
-        CaptureOwner, FlowInput, FlowKind, InvertInput, PartInput, PipeBuilder, PositionCapture,
+        properties, CaptureOwner, FlowInput, FlowKind, InvertInput, PartInput, PipeBuilder, PositionCapture,
         PositionInput, StructureBuilder,
     },
-    PipeParser,
+    PipeHandler,
 };
 
-impl PipeParser<'_> {
+impl PipeHandler<'_> {
+    /// Spend `added` work: one cancellation poll and the `work` budget.
     pub(super) fn check_cancel_and_work(&mut self, added: usize) -> Result<()> {
-        if self
-            .cancelled
-            .is_some_and(LandXmlCancellation::is_cancelled)
-        {
-            return Err(error(Code::Cancelled, "ingestion cancelled"));
-        }
-        self.work = self
-            .work
-            .checked_add(added)
-            .ok_or_else(|| error(Code::LimitExceeded, "work limit exceeded"))?;
-        if self.work > self.limits.max_work {
-            return Err(error(Code::LimitExceeded, "work limit exceeded"));
-        }
+        self.meter.charge(added)
+    }
+
+    /// A diagnostic is source output too: bounded like every other record.
+    pub(super) fn record_capability_diagnostic(
+        &mut self,
+        diagnostic: crate::LandXmlCapabilityDiagnostic,
+    ) -> Result<()> {
+        self.capability_diagnostics_seen.reserve(1)?;
+        self.capability_diagnostics.push(diagnostic);
         Ok(())
     }
 
-    pub(super) fn check_character_references(&mut self, added: usize) -> Result<()> {
-        self.character_references = self
-            .character_references
-            .checked_add(added)
-            .ok_or_else(|| error(Code::LimitExceeded, "character reference limit exceeded"))?;
-        if self.character_references > self.limits.max_character_references {
-            return Err(error(
-                Code::LimitExceeded,
-                "character reference limit exceeded",
-            ));
-        }
-        Ok(())
-    }
-
-    pub(super) fn reserve(value: &mut usize, maximum: usize, label: &str) -> Result<()> {
-        *value = value.checked_add(1).ok_or_else(|| {
-            crate::xml::error(Code::LimitExceeded, format!("{label} limit exceeded"))
-        })?;
-        if *value > maximum {
-            return Err(crate::xml::error(
-                Code::LimitExceeded,
-                format!("{label} limit exceeded"),
-            ));
-        }
-        Ok(())
-    }
 
     pub(super) fn start_structure(
         &mut self,
         properties: LandXmlPipeProperties,
         attributes: &Attributes,
     ) -> Result<()> {
-        Self::reserve(
-            &mut self.structures_seen,
-            self.limits.max_pipe_structures,
-            "pipe structure",
-        )?;
+        self.structures_seen.reserve(1)?;
         let network = self.network.as_mut().expect("structure path has network");
         network.structure_ordinal += 1;
         let ordinal = network.structure_ordinal;
@@ -100,7 +68,7 @@ impl PipeParser<'_> {
         properties: LandXmlPipeProperties,
         attributes: &Attributes,
     ) -> Result<()> {
-        Self::reserve(&mut self.pipes_seen, self.limits.max_pipes, "pipe")?;
+        self.pipes_seen.reserve(1)?;
         let network = self.network.as_mut().expect("pipe path has network");
         network.pipe_ordinal += 1;
         let ordinal = network.pipe_ordinal;
@@ -126,8 +94,8 @@ impl PipeParser<'_> {
         Ok(())
     }
 
-    pub(super) fn start_center(&mut self, attributes: &Attributes) -> Result<()> {
-        let owner = if self.is_path(&[
+    pub(super) fn start_center(&mut self, cx: &Cx<'_>, attributes: &Attributes) -> Result<()> {
+        let owner = if cx.path_is(&[
             "LandXML",
             "PipeNetworks",
             "PipeNetwork",
@@ -136,7 +104,7 @@ impl PipeParser<'_> {
             "Center",
         ]) {
             CaptureOwner::Structure
-        } else if self.is_path(&[
+        } else if cx.path_is(&[
             "LandXML",
             "PipeNetworks",
             "PipeNetwork",
@@ -180,7 +148,7 @@ impl PipeParser<'_> {
             return Ok(());
         }
         self.capture = Some(PositionCapture {
-            depth: self.frames.len(),
+            depth: cx.frames().len(),
             owner,
             input: PositionInput {
                 text: String::new(),
@@ -193,11 +161,7 @@ impl PipeParser<'_> {
 
     pub(super) fn finish_center(&mut self) -> Result<()> {
         let capture = self.capture.take().expect("center capture checked");
-        Self::reserve(
-            &mut self.points_seen,
-            self.limits.max_points,
-            "pipe Center point",
-        )?;
+        self.points_seen.reserve(1)?;
         match capture.owner {
             CaptureOwner::Structure => {
                 let structure = self.structure.as_mut().expect("structure center active");
@@ -224,11 +188,7 @@ impl PipeParser<'_> {
         properties: LandXmlPipeProperties,
         attributes: &Attributes,
     ) -> Result<()> {
-        Self::reserve(
-            &mut self.inverts_seen,
-            self.limits.max_pipe_inverts,
-            "pipe invert",
-        )?;
+        self.inverts_seen.reserve(1)?;
         let structure = self.structure.as_mut().expect("invert has structure");
         structure.invert_ordinal += 1;
         let ordinal = structure.invert_ordinal;
@@ -249,11 +209,7 @@ impl PipeParser<'_> {
         attributes: &Attributes,
         structure_flow: bool,
     ) -> Result<()> {
-        Self::reserve(
-            &mut self.flows_seen,
-            self.limits.max_pipe_flows,
-            "pipe flow",
-        )?;
+        self.flows_seen.reserve(1)?;
         let (source_id, source_path) = if structure_flow {
             let structure = self
                 .structure
@@ -303,12 +259,8 @@ impl PipeParser<'_> {
         Ok(())
     }
 
-    pub(super) fn start_pipe_part(
-        &mut self,
-        local: &str,
-        properties: LandXmlPipeProperties,
-    ) -> Result<()> {
-        if !self.is_path(&[
+    pub(super) fn start_pipe_part(&mut self, cx: &Cx<'_>, local: &str, attributes: &Attributes) -> Result<()> {
+        if !cx.path_is(&[
             "LandXML",
             "PipeNetworks",
             "PipeNetwork",
@@ -318,6 +270,7 @@ impl PipeParser<'_> {
         ]) {
             return Ok(());
         }
+        let properties = properties(attributes);
         let part = match local {
             "CircPipe" => PartInput::Circ { properties },
             "ElliPipe" => PartInput::Elli { properties },
@@ -334,12 +287,8 @@ impl PipeParser<'_> {
         Ok(())
     }
 
-    pub(super) fn start_structure_part(
-        &mut self,
-        local: &str,
-        properties: LandXmlPipeProperties,
-    ) -> Result<()> {
-        if !self.is_path(&[
+    pub(super) fn start_structure_part(&mut self, cx: &Cx<'_>, local: &str, attributes: &Attributes) -> Result<()> {
+        if !cx.path_is(&[
             "LandXML",
             "PipeNetworks",
             "PipeNetwork",
@@ -349,6 +298,7 @@ impl PipeParser<'_> {
         ]) {
             return Ok(());
         }
+        let properties = properties(attributes);
         let part = match local {
             "CircStruct" => PartInput::StructCirc { properties },
             "RectStruct" => PartInput::StructRect { properties },

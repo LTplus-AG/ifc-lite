@@ -7,8 +7,9 @@ use crate::diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
 use ifc_lite_core::EntityDecoder;
 
 /// #6263: a mapping origin's Location must be an IfcCartesianPoint. The raw
-/// point fast path can read `IFCDIRECTION((1.,2.))` as coordinates, but the
-/// mapped-item contract rejects that structurally invalid reference.
+/// byte grammar alone would read `IFCDIRECTION((1.,2.))` as coordinates; the
+/// leaf reader checks the type, and (F3b X1, D3) the structurally invalid
+/// reference is a counted refusal rather than an anonymous error.
 #[test]
 fn mapped_2d_origin_rejects_non_point_location() {
     let content = r#"
@@ -27,7 +28,11 @@ fn mapped_2d_origin_rejects_non_point_location() {
     let bad_map = decoder.decode_by_id(3).unwrap();
     let bad_item = decoder.decode_by_id(4).unwrap();
     let error = router.mapped_item_transform(&bad_item, &bad_map, &mut decoder).unwrap_err();
-    assert!(error.to_string().contains("Expected IfcCartesianPoint"), "{error}");
+    assert!(
+        matches!(error, crate::Error::CoreError(ifc_lite_core::Error::MalformedRecord(1))),
+        "{error}"
+    );
+    assert_eq!(decoder.refused_records(), 1);
 
     let good_map = decoder.decode_by_id(7).unwrap();
     let good_item = decoder.decode_by_id(8).unwrap();
@@ -142,12 +147,9 @@ fn test_parse_cartesian_point() {
 "#;
 
     let mut decoder = EntityDecoder::new(content);
-    let router = GeometryRouter::new();
 
     let wall = decoder.decode_by_id(2).unwrap();
-    let point = router
-        .parse_cartesian_point(&wall, &mut decoder, 6)
-        .unwrap();
+    let point = crate::transform::parse_cartesian_point(&wall, &mut decoder, 6).unwrap();
 
     assert_eq!(point.x, 100.0);
     assert_eq!(point.y, 200.0);
@@ -725,7 +727,7 @@ fn router_records_and_drains_unsupported_items() {
 /// RED (pre-fix): a Body representation item of a genuinely unsupported IFC
 /// type (no registered processor, e.g. `IfcGeometricSet` used directly as a
 /// body item rather than inside a non-body `GeometricCurveSet` context) was
-/// silently skipped by `collect_submeshes_from_item_inner` with zero counter
+/// silently skipped by the styled walk with zero counter
 /// anywhere the caller could read — only a `debug_assertions`/`observability`
 /// eprintln, compiled out of every release/wasm build. GREEN (post-fix): the
 /// drop is counted and attributable by IFC type, without changing the mesh
@@ -762,7 +764,7 @@ fn unsupported_body_item_is_dropped_and_counted_not_silent() {
 /// RED (pre-fix): the SAME unsupported-item drop as
 /// `unsupported_body_item_is_dropped_and_counted_not_silent`, but reached
 /// through `process_mapped_item_cached_inner`'s own item loop rather than
-/// `collect_submeshes_from_item_inner`'s — a wall whose entire Body is an
+/// the styled walk's — a wall whose entire Body is an
 /// `IfcMappedItem` over a source containing a SUPPORTED `IfcExtrudedAreaSolid`
 /// alongside an unsupported `IfcGeometricSet`. That sibling loop had zero
 /// signal on a `None` processor or an `Err` (not even the `debug_assertions`
@@ -830,7 +832,7 @@ fn unsupported_mapped_source_item_is_dropped_and_counted_not_silent() {
 /// Both call sites this test drives had zero counter before this fix:
 /// `textured.rs:109` discarded `process_mapped_item_cached`'s `Err` wholesale
 /// (a malformed nested `IfcMappedItem`), and the item loop around `textured.rs:129`
-/// had the same no-`else` shape as the already-fixed `collect_submeshes_from_item_inner`
+/// had the same no-`else` shape as the already-fixed styled walk
 /// / `process_mapped_item_cached_inner` loops for a `None` processor or an `Err`.
 /// A mixed source — a supported `IfcExtrudedAreaSolid` alongside an unsupported
 /// `IfcGeometricSet` AND a malformed `IfcMappedItem` (missing `MappingSource`,
@@ -968,7 +970,7 @@ fn the_same_unsupported_item_under_a_body_representation_is_still_counted() {
 /// `record_unsupported_item` and `GeometryDiagnostics.totalUnsupportedItems`
 /// both promise a per-SOURCE count ("counted once, not once per `IfcMappedItem`
 /// occurrence"). RED (pre-fix) on the OCCURRENCE path: 3.
-/// `collect_submeshes_from_item_inner` walks the source's items itself on every
+/// The styled walk (`crate::program::mapping`) walks the source's items itself on every
 /// occurrence — it never consults the mapped-item cache — so the drop was
 /// re-counted per occurrence and the reported number was an occurrence count
 /// wearing a source count's documentation.
@@ -1127,7 +1129,7 @@ const TOTAL_LOSS_SHARED_SOURCE: &str = r#"
 /// drives `process_element` (the mapped-item walk); this drives
 /// `process_element_with_submeshes`, which walks the source's items itself and
 /// records the drop one recursion level down, in
-/// `collect_submeshes_from_item_inner`'s plain-item arm. That arm has no
+/// the styled walk's plain-item arm. That arm has no
 /// representation in hand and cannot gate on one, so this path counted a 2D
 /// 'FootPrint' map as lost 3D content while the other path did not — the same
 /// clean-model false positive, through the door the first fix did not cover.
@@ -1187,6 +1189,9 @@ fn the_same_item_under_a_body_source_is_still_counted_on_the_occurrence_path() {
 
 #[path = "processor_registry_tests.rs"]
 mod processor_registry_tests;
+
+#[path = "mapped_walks_tests.rs"]
+mod mapped_walks_tests;
 
 /// #4901 review (Macroscope): a capped B-spline curve edge (degree past
 /// `MAX_BSPLINE_DEGREE`) inside a MAPPED source used to leave the

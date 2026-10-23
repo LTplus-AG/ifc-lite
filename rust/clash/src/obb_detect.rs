@@ -11,32 +11,62 @@
 //! `packages/clash/src/engine-ts/obb.ts`, kept bit-identical to it.
 
 use super::{Obb, OBB_EPS};
+use crate::canonical::canonical;
 use crate::vec3::{cross, dot, scale, sub, Vec3};
 
-fn normalize(v: Vec3) -> Option<Vec3> {
+/// A triangle whose `sin` of its LARGEST angle (or a Gram-Schmidt residual
+/// whose `sin` against its own operand) is below this carries no direction
+/// evidence. Scale-free, and the same value as geometry's
+/// `clash_contact_axes::MIN_SIN_THETA` (F2a X5, EDGE-CLASH-4). The fixed
+/// `|cross| <= OBB_EPS` (1e-6 m^2) this replaces dropped EVERY face of a box
+/// with sides under ~1.4 mm, so `detect_obb` returned `None` and a perfect
+/// small box fell to the AABB `Estimate` depth. Shared parity vectors:
+/// `TINY_BOX_HALVES` and `THIN_BOX_HALVES` in `obb_detect_tests.rs` and the
+/// same tables in `obb.test.ts`.
+const MIN_SIN_THETA: f64 = 1.0e-3;
+
+/// `v / |v|`, or `None` when `|v|` is not finite or is below
+/// `min_sin * reference` (a length relative to its own operands, never an
+/// absolute one).
+fn unit(v: Vec3, reference: f64, min_sin: f64) -> Option<Vec3> {
     let len = dot(v, v).sqrt();
-    if !(len > OBB_EPS) {
+    if !len.is_finite() || !reference.is_finite() || !(len > 0.0) || len < min_sin * reference {
         return None;
     }
     Some([v[0] / len, v[1] / len, v[2] / len])
 }
 
-/// Flip `n` so its largest-magnitude component is positive, so a face and its
-/// antipodal opposite face collapse to the same canonical axis direction.
-/// Ties broken in x, y, z order — identical to the TS `canonical`.
-fn canonical(n: Vec3) -> Vec3 {
-    let (ax, ay, az) = (n[0].abs(), n[1].abs(), n[2].abs());
-    let mut idx = 0usize;
-    if ay > ax && ay >= az {
-        idx = 1;
-    } else if az > ax && az > ay {
-        idx = 2;
+/// The two shortest edge lengths of triangle `(a, b, c)`, shortest first:
+/// the edges that meet at its LARGEST angle. Measuring there makes the
+/// sliver test and the noise bound properties of the triangle, not of which
+/// vertex the index buffer happens to list first. At vertex `a` a long thin
+/// face's half (10 m x 5 mm) has `sin` ~5e-4 when `a` is an acute corner and
+/// 1 when it is the right-angle corner, so an `a`-relative test dropped
+/// valid plate faces depending on winding start.
+fn short_edges(a: Vec3, b: Vec3, c: Vec3) -> (f64, f64) {
+    let len = |p: Vec3, q: Vec3| {
+        let d = sub(q, p);
+        dot(d, d).sqrt()
+    };
+    let (mut x, mut y, z) = (len(a, b), len(b, c), len(c, a));
+    if x > y {
+        std::mem::swap(&mut x, &mut y);
     }
-    if n[idx] < 0.0 {
-        [-n[0], -n[1], -n[2]]
-    } else {
-        n
+    if y > z {
+        y = z; // the longest edge is dropped
     }
+    if x > y {
+        std::mem::swap(&mut x, &mut y);
+    }
+    (x, y)
+}
+
+/// The unit normal of triangle `(a, b, c)` from `raw = (b - a) x (c - a)`,
+/// or `None` for a degenerate or needle triangle (`sin` of its largest angle
+/// under [`MIN_SIN_THETA`]: its three vertices are nearly collinear).
+fn face_normal(a: Vec3, b: Vec3, c: Vec3, raw: Vec3) -> Option<Vec3> {
+    let (l0, l1) = short_edges(a, b, c);
+    unit(raw, l0 * l1, MIN_SIN_THETA)
 }
 
 /// Minimal structural view of `TriMesh` this module needs.
@@ -52,12 +82,16 @@ pub trait MeshLike {
 ///
 /// The vertices carry an absolute coordinate error of about
 /// `max|coord| * 2^-22` (`depth::F32_ULP_SCALE`, the same f32-ULP bound the
-/// penetration floor uses), so each edge does too. `|cross| = |e1||e2|sin t`,
-/// and perturbing the edges by `d` tilts the normal by at most
-/// `d * (|e1| + |e2|) / |cross|`. The denominator is what makes this a
-/// property of the TRIANGLE's conditioning rather than a constant: a sliver,
-/// or a face with one very short edge, resolves its normal far less sharply
-/// than a well-shaped one at the same distance from the origin.
+/// penetration floor uses), so each edge does too. Perturbing the two edges
+/// at a vertex by `d` tilts the normal by at most `d * (1/|e1| + 1/|e2|) /
+/// sin t`: each edge's RELATIVE error over the `sin` of the angle between
+/// them, so the bound is scale-free in the triangle's shape. The normal is
+/// the triangle's, so any vertex gives a valid bound; it is taken at the
+/// largest angle (the two shortest edges, [`short_edges`]), the same vertex
+/// the sliver test uses, so it does not depend on the index buffer's vertex
+/// order. A sliver, or a face with one very short edge, still resolves its
+/// normal far less sharply than a well-shaped one at the same distance from
+/// the origin. A triangle the sliver test rejects has no bound (`INFINITY`).
 ///
 /// This is the quantity an absolute `OBB_EPS` was standing in for. A fixed
 /// bound is simultaneously too loose near the origin and far too tight away
@@ -66,8 +100,6 @@ pub trait MeshLike {
 /// the box stopped being recognised as a box purely because it had been
 /// translated (#5355).
 fn normal_angle_error(a: Vec3, b: Vec3, c: Vec3) -> (f64, f64) {
-    let e1: Vec3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-    let e2: Vec3 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
     let mut max_abs = 0.0f64;
     for v in [a, b, c] {
         for &k in &v {
@@ -78,14 +110,13 @@ fn normal_angle_error(a: Vec3, b: Vec3, c: Vec3) -> (f64, f64) {
         }
     }
     let coord_err = max_abs.max(1.0) * crate::depth::F32_ULP_SCALE;
-    let n = cross(e1, e2);
-    let n_len = dot(n, n).sqrt();
-    if !(n_len > 0.0) {
+    let n = cross(sub(b, a), sub(c, a));
+    let (l0, l1) = short_edges(a, b, c);
+    let sin = dot(n, n).sqrt() / (l0 * l1);
+    if !sin.is_finite() || !(sin >= MIN_SIN_THETA) {
         return (f64::INFINITY, coord_err);
     }
-    let e1_len = dot(e1, e1).sqrt();
-    let e2_len = dot(e2, e2).sqrt();
-    (coord_err * (e1_len + e2_len) / n_len, coord_err)
+    (coord_err * (1.0 / l0 + 1.0 / l1) / sin, coord_err)
 }
 
 /// Largest angle (radians) that f32 noise may widen a box-recognition
@@ -136,7 +167,7 @@ pub fn detect_obb<M: MeshLike>(mesh: &M) -> Option<Obb> {
             }
         }
         let raw = cross(sub(b, a), sub(c, a));
-        let n = match normalize(raw) {
+        let n = match face_normal(a, b, c, raw) {
             Some(n) => n,
             None => continue, // degenerate triangle: no face-normal evidence
         };
@@ -297,8 +328,9 @@ fn family_axes(sums: &[Vec3], err_num: &[f64]) -> Option<([Vec3; 3], [f64; 3])> 
         }
     }
     let [f0, f1, f2] = order;
-    let a0 = normalize(sums[f0])?;
-    let a1 = normalize(sub(sums[f1], scale(a0, dot(sums[f1], a0))))?;
+    let a0 = unit(sums[f0], 0.0, 0.0)?;
+    let s1 = dot(sums[f1], sums[f1]).sqrt();
+    let a1 = unit(sub(sums[f1], scale(a0, dot(sums[f1], a0))), s1, MIN_SIN_THETA)?;
     let mut a2 = cross(a0, a1);
     if dot(a2, sums[f2]) < 0.0 {
         a2 = scale(a2, -1.0);

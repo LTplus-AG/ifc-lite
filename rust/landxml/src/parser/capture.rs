@@ -4,7 +4,7 @@
 
 use super::*;
 
-impl Parser<'_> {
+impl TinHandler<'_> {
     pub(super) fn finish_capture(&mut self) -> Result<()> {
         let capture = self.capture.take().expect("capture checked");
         if self.finish_road_capture(capture)? {
@@ -29,12 +29,9 @@ impl Parser<'_> {
                     easting: values[1],
                     elevation: values[2],
                 });
-                self.points_seen += 1;
             }
             Capture::Face { text, hidden, .. } => {
-                if self.faces_seen >= self.limits.max_faces {
-                    return Err(error(Code::LimitExceeded, "face limit exceeded"));
-                }
+                self.faces_seen.reserve(1)?;
                 self.reserve_references(3)?;
                 let references = references(&text)?;
                 let surface = self
@@ -43,7 +40,6 @@ impl Parser<'_> {
                     .ok_or_else(|| error(Code::InvalidSemantic, "geometry outside Surface"))?;
                 surface.faces.push(references);
                 surface.face_visibility.push(!hidden);
-                self.faces_seen += 1;
                 if hidden {
                     surface.hidden_face_count += 1;
                 }
@@ -93,7 +89,6 @@ impl Parser<'_> {
                         coordinates: coordinates.to_vec(),
                     });
                 }
-                self.points_seen += point_count;
             }
             Capture::Polyline {
                 text,
@@ -156,7 +151,6 @@ impl Parser<'_> {
                     points,
                     point_source_ids: Vec::new(),
                 });
-                self.points_seen += point_count;
             }
             Capture::ProfilePoint { .. }
             | Capture::PairList { .. }

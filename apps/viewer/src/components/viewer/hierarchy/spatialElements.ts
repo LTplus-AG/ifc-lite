@@ -11,6 +11,7 @@ import {
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { effectiveSpatialMembers } from '@/lib/effective-spatial-members';
+import { entityOwnership } from '@/utils/entity-ownership';
 import type { NodeType } from './types';
 
 function collectDescendantSpaceElements(
@@ -64,9 +65,10 @@ export function getSpatialNodeElements(
   }
   if (!isStoreyLikeSpatialType(spatialNode.type)) {
     if (!isSpatialStructureType(spatialNode.type)) return [];
-    return view?.hasPendingChanges()
+    const members = view?.hasPendingChanges()
       ? effectiveSpatialMembers(dataStore, view, spatialNode.expressId)
       : spatialNode.elements || [];
+    return members.filter(entityOwnership(dataStore, view));
   }
   if (nodeType !== 'IfcBuildingStorey') return [];
 

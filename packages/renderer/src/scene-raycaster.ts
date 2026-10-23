@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { entityClip } from './section-exclusions.js';
 /**
  * Raycasting utilities extracted from Scene.
  *
@@ -328,7 +329,7 @@ export function raycastBoundingBoxes(
     // Entry into the VISIBLE part of the box, so a box clipped (fully or
     // partially) by the section plane / crop box can't win the pick.
     const tNear = hasClip
-      ? clippedBoxEntryDistance(rayOrigin, rayDir, rayDirInv, rayDirSign, bbox, clip)
+      ? clippedBoxEntryDistance(rayOrigin, rayDir, rayDirInv, rayDirSign, bbox, entityClip(clip, expressId))
       : rayBoxDistance(rayOrigin, rayDirInv, rayDirSign, bbox);
     if (tNear !== null && tNear < closestDistance) {
       closestDistance = tNear;
@@ -373,7 +374,7 @@ export function raycastTriangles(
     const bbox = getEntityBoundingBox(expressId);
     if (!bbox) continue;
     // Skip entities the section plane / crop box fully hides.
-    if (hasClip && boxFullyClipped(clip, bbox)) continue;
+    if (hasClip && boxFullyClipped(entityClip(clip, expressId), bbox)) continue;
 
     if (rayIntersectsBox(rayOrigin, rayDirInv, rayDirSign, bbox)) {
       candidates.push(expressId);
@@ -424,7 +425,7 @@ export function raycastTriangles(
           // through to the nearest VISIBLE surface behind the cut. World hit =
           // rayOrigin + t*rayDir (the local-frame origin offset cancels).
           if (hasClip && pointClipped(
-            clip,
+            entityClip(clip, expressId),
             rayOrigin.x + t * rayDir.x,
             rayOrigin.y + t * rayDir.y,
             rayOrigin.z + t * rayDir.z,

@@ -9,7 +9,7 @@
 //! of `cached_replay_tests.rs` (rather than growing it) to keep both files
 //! under the 400-line ratchet.
 
-use super::cached_replay::try_cached_replay;
+use super::cached_replay_tests::replay;
 use crate::services::{ParquetLayout, StreamShapes};
 use crate::admission::{Admission, AdmissionCfg};
 use crate::config::Config;
@@ -108,7 +108,7 @@ async fn seed_cache_from_batches(
     let metadata_bytes = serde_json::to_vec(&sample_metadata_header(cache_key, total_meshes)).unwrap();
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-metadata-v5"), &metadata_bytes)
+        .set_bytes(&format!("{cache_key}-parquet-metadata-v6"), &metadata_bytes)
         .await
         .unwrap();
     state
@@ -120,7 +120,7 @@ async fn seed_cache_from_batches(
 }
 
 async fn replay_sse_payloads(state: &AppState, cache_key: &str) -> Vec<serde_json::Value> {
-    let response = match try_cached_replay(state, cache_key, ParquetLayout::Flat, StreamShapes::BatchLocal, crate::services::DataModelEntities::All).await {
+    let response = match replay(state, cache_key, ParquetLayout::Flat, StreamShapes::BatchLocal, crate::services::DataModelEntities::All).await {
         Ok(Some(response)) => response,
         other => panic!("expected a cache hit, got {:?}", other.map(|r| r.is_some())),
     };

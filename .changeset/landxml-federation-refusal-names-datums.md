@@ -1,0 +1,5 @@
+---
+"@ifc-lite/viewer": patch
+---
+
+Name the missing coordinate declarations when a federated LandXML is refused (#7605). A LandXML is aligned to a georeferenced anchor only when both declare resolvable horizontal CRS identifiers (the same one, or one reprojectable to the other) and compatible vertical datums. When that fails, its surfaces keep their map coordinates. Against an anchor whose model coordinates are local, they then sit thousands of kilometres outside the shared render frame, and the load was refused with only "LandXML federation preflight rejected every render component". The refusal now gives the distance from the render origin and lists each declaration that blocked alignment: a LandXML `CoordinateSystem` with no `epsgCode` or no EPSG `verticalDatum`, an anchor with no `IfcProjectedCRS.VerticalDatum`, or vertical datums that differ. A surface that was aligned and is still out of range is reported as distant, not as a missing declaration. The streamed and whole-document federation paths give the same message. Which files are admitted, and how they are aligned, is unchanged.

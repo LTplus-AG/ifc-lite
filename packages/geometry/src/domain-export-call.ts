@@ -4,6 +4,7 @@
 
 import { createLogger } from '@ifc-lite/data';
 import type { IfcAPI } from '@ifc-lite/wasm';
+import { isNoRenderGeometryError, terrainRefusalReason } from './export-errors.js';
 
 const log = createLogger('Geometry');
 
@@ -15,7 +16,13 @@ export function runDomainExport<T>(
   try {
     return run(api);
   } catch (error) {
-    log.error(`Failed to ${operation}`, error, { operation, data: { contentLength: content.length } });
+    // A terrain refusal is the exporter's verdict on its input, shown to the
+    // user verbatim (#7600); logged as a failure, every preflight of a
+    // non-qualifying selection would read as a crash. A typed
+    // NO_RENDER_GEOMETRY refusal is the same kind of verdict (#7766).
+    if (terrainRefusalReason(error) === null && !isNoRenderGeometryError(error)) {
+      log.error(`Failed to ${operation}`, error, { operation, data: { contentLength: content.length } });
+    }
     onError(error);
     throw error;
   }

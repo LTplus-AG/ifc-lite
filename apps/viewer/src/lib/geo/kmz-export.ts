@@ -19,7 +19,7 @@ import { effectiveMapConversionForGeometry } from './map-absolute';
 import { reprojectToLatLon } from './reproject';
 import { buildKmz, type KmzAltitudeMode, type KmzProcessor } from './kmz-exporter';
 import { suggestAbsoluteAltitudeForKmz } from './kmz-altitude-hint';
-import { ifcToViewerAxes } from './coordinate-frame';
+import { totalYupOffset } from './coordinate-frame';
 
 /** True if the data store carries usable georeferencing (so a KMZ export can run). */
 export function modelHasGeoreference(dataStore: IfcDataStore | null | undefined): boolean {
@@ -63,10 +63,10 @@ export function computeKmzAltitude(
   coordinateInfo: CoordinateInfo | undefined,
 ): number {
   const mapScale = getMapUnitScale(crs, lengthUnitScale);
-  const rtcYupY = ifcToViewerAxes(
-    coordinateInfo?.wasmRtcOffset ?? { x: 0, y: 0, z: 0 },
-  ).y;
-  return (orthogonalHeight ?? 0) * mapScale + rtcYupY;
+  // The whole render-frame offset's vertical: the wasm RTC Z AND the Y-up
+  // `originShift` (a server-loaded RTC model carries only the latter, #7734),
+  // the same sum `computeModelCenterInIfcMeters` puts back for the pin.
+  return (orthogonalHeight ?? 0) * mapScale + totalYupOffset(coordinateInfo).y;
 }
 
 /**

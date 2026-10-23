@@ -10,11 +10,10 @@
  */
 
 import { writeFile } from 'node:fs/promises';
-import { loadIfcFile, createHeadlessContext } from '../loader.js';
+import { loadIfcFile, createHeadlessContext, scanCompletenessWarnings } from '../loader.js';
 import { getFlag, getAllFlags, hasFlag, fatal, printJson } from '../output.js';
-import { MutablePropertyView } from '@ifc-lite/mutations';
+import { createSourceMutationView } from './mutation-base.js';
 import { StepExporter } from '@ifc-lite/export';
-import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import { PropertyValueType, findAttribute, type IfcSchemaVersion } from '@ifc-lite/data';
 import { ATTRIBUTE_INDEX, applyAttributeMutations, type SkippedAttributeMutation } from './mutate-step-record.js';
 
@@ -124,6 +123,18 @@ function countBy(mutations: { entity: { ref: { expressId: number } } }[]): Map<n
   return counts;
 }
 
+/**
+ * Why `--id` matched nothing. When the scan dropped records (#7610), say so:
+ * a record the scan refused, such as one holding an unescaped apostrophe
+ * (#7541), is absent from the model, and "not found" alone hides that.
+ */
+export function missingEntityMessage(expressId: number, scanWarnings: readonly string[]): string {
+  const base = `Entity #${expressId} not found`;
+  if (scanWarnings.length === 0) return base;
+  return `${base}. The scan dropped or skipped records it could not read (see the warning above), ` +
+    `so #${expressId} may be one of them; fix the record in the source file and retry.`;
+}
+
 export async function mutateCommand(args: string[]): Promise<void> {
   const filePath = args.find(a => !a.startsWith('-'));
   if (!filePath) fatal('Usage: ifc-lite mutate <file.ifc> --id <N> --set PsetName.PropName=Value --out output.ifc');
@@ -153,7 +164,7 @@ export async function mutateCommand(args: string[]): Promise<void> {
   if (idStr) {
     const expressId = parseInt(idStr, 10);
     const entity = bim.entity({ modelId: 'default', expressId });
-    if (!entity) fatal(`Entity #${expressId} not found`);
+    if (!entity) fatal(missingEntityMessage(expressId, scanCompletenessWarnings(store)));
     targets = [entity];
   } else if (type) {
     // Auto-prefix Ifc if user omits it (e.g., "Wall" → "IfcWall")
@@ -199,21 +210,7 @@ export async function mutateCommand(args: string[]): Promise<void> {
     fatal('No entities matched the given criteria.');
   }
 
-  // Create MutablePropertyView with on-demand extraction from the store
-  const mutationView = new MutablePropertyView(null, 'default');
-  mutationView.setOnDemandExtractor((entityId: number) => {
-    return extractPropertiesOnDemand(store, entityId);
-  });
-  // The quantity half of the same base, for parity with the property one
-  // (#2487). Without it the overlay has nothing under it and
-  // `getQuantitiesForEntity` reports only what this run edited. No CURRENT path
-  // through this command records a quantity mutation - `--set` always routes to
-  // `setProperty`, even for a `Qto_*` name - so this changes no output today;
-  // it is here so the first quantity op added to this command does not have to
-  // rediscover why an export lost the siblings.
-  mutationView.setQuantityExtractor((entityId: number) => {
-    return extractQuantitiesOnDemand(store, entityId);
-  });
+  const mutationView = createSourceMutationView(store);
 
   // Apply mutations via the real mutation system
   let mutatedCount = 0;

@@ -277,39 +277,23 @@ fn serialize_parquet_optimized(meshes: &[MeshData]) -> Vec<u8> {
     use parquet::basic::Compression;
     use parquet::file::properties::WriterProperties;
     use std::collections::HashMap;
-    use std::hash::{Hash, Hasher};
     use std::io::Cursor;
     use std::sync::Arc;
 
     const VERTEX_MULTIPLIER: f32 = 10_000.0;
 
     // Hash helpers
-    fn hash_f32_slice(data: &[f32]) -> u64 {
-        use std::collections::hash_map::DefaultHasher;
-        let mut hasher = DefaultHasher::new();
-        for item in data {
-            item.to_bits().hash(&mut hasher);
-        }
-        hasher.finish()
+    fn hash_f32_slice(data: &[f32]) -> u128 {
+        ifc_lite_core::hash::ContentHash::new().write_f32s(data).finish()
     }
 
-    fn hash_u32_slice(data: &[u32]) -> u64 {
-        use std::collections::hash_map::DefaultHasher;
-        let mut hasher = DefaultHasher::new();
-        for item in data {
-            item.hash(&mut hasher);
-        }
-        hasher.finish()
+    fn hash_u32_slice(data: &[u32]) -> u128 {
+        ifc_lite_core::hash::ContentHash::new().write_u32s(data).finish()
     }
 
     #[inline]
     fn quantize_position(value: f32) -> i32 {
         (value * VERTEX_MULTIPLIER).round() as i32
-    }
-
-    #[inline]
-    fn color_to_byte(value: f32) -> u8 {
-        (value.clamp(0.0, 1.0) * 255.0).round() as u8
     }
 
     #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -322,7 +306,7 @@ fn serialize_parquet_optimized(meshes: &[MeshData]) -> Vec<u8> {
 
     // Deduplicate meshes and materials
     let mut unique_meshes: Vec<&MeshData> = Vec::new();
-    let mut mesh_lookup: HashMap<(u64, u64), u32> = HashMap::new();
+    let mut mesh_lookup: HashMap<(u128, u128), u32> = HashMap::new();
     let mut unique_materials: Vec<MaterialKey> = Vec::new();
     let mut material_lookup: HashMap<MaterialKey, u32> = HashMap::new();
 
@@ -342,12 +326,8 @@ fn serialize_parquet_optimized(meshes: &[MeshData]) -> Vec<u8> {
             idx
         });
 
-        let mat_key = MaterialKey {
-            r: color_to_byte(mesh.color[0]),
-            g: color_to_byte(mesh.color[1]),
-            b: color_to_byte(mesh.color[2]),
-            a: color_to_byte(mesh.color[3]),
-        };
+        let [r, g, b, a] = ifc_lite_processing::Rgba(mesh.color).to_rgba8();
+        let mat_key = MaterialKey { r, g, b, a };
         let material_idx = *material_lookup.entry(mat_key).or_insert_with(|| {
             let idx = unique_materials.len() as u32;
             unique_materials.push(mat_key);

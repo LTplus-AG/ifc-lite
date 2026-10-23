@@ -210,6 +210,8 @@ describe('EntityTable typeRanges derived from interleaved columns', () => {
     delete (columns as { typeRanges?: unknown }).typeRanges;
     const rebuilt = entityTableFromColumns(columns, strings);
 
+    // An empty map would make the loops below vacuous.
+    expect(rebuilt.typeRanges.size).toBe(new Set(rebuilt.typeEnum).size);
     for (const [type, range] of rebuilt.typeRanges) {
       for (let row = 0; row < rebuilt.count; row++) {
         if (rebuilt.typeEnum[row] === type) {
@@ -251,6 +253,8 @@ describe('EntityTable typeRanges derived from interleaved columns', () => {
   // `start + count` put IfcWall's last row (4) outside [0, 3).
   it('builder typeRanges contain every row of that type', () => {
     const { table } = interleaved();
+    // An empty map would make the loops below vacuous.
+    expect(table.typeRanges.size).toBe(new Set(table.typeEnum).size);
     for (const [type, range] of table.typeRanges) {
       for (let row = 0; row < table.count; row++) {
         if (table.typeEnum[row] === type) {

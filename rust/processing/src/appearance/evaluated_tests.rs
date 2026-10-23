@@ -10,24 +10,9 @@ fn request() -> AppearanceRequest {
         mapping:Mapping::Box {frame:MappingFrame::World,origin:[0.;3],metres_per_tile:[1.;3]},face_masks:Vec::new() }
 }
 /// A missing fixture is a local skip, but under `IFC_LITE_REQUIRE_FIXTURES=1`
-/// (CI fetches fixtures first) it is drift and fails, as in
-/// `rust/export/src/test_support.rs`; an unrecognised value refuses to guess.
+/// (CI fetches fixtures first) it is drift and fails (`ifc_lite_testkit`).
 pub(crate) fn real_source()->Option<String> {
-    let path=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/models/ara3d/AC20-FZK-Haus.ifc");
-    match std::fs::read_to_string(&path) {
-        Ok(source)=>Some(source),
-        Err(error) if error.kind()==std::io::ErrorKind::NotFound=>{
-            let required=match std::env::var("IFC_LITE_REQUIRE_FIXTURES") {
-                Err(std::env::VarError::NotPresent)=>false,
-                Ok(value) if value.is_empty()||value=="0"=>false,
-                Ok(value) if value=="1"=>true,
-                other=>panic!("IFC_LITE_REQUIRE_FIXTURES={other:?} is not recognised (use \"1\" or \"0\")"),
-            };
-            assert!(!required,"IFC_LITE_REQUIRE_FIXTURES=1 but {} is missing; run pnpm fixtures",path.display());
-            eprintln!("skip real AC20 fixture; run pnpm fixtures");None
-        },
-        Err(error)=>panic!("read fixture: {error}"),
-    }
+    ifc_lite_testkit::fixture_text("ara3d/AC20-FZK-Haus.ifc")
 }
 pub(crate) fn corners(mesh:&crate::types::mesh::MeshData)->Vec<[f64;3]> {
     mesh.indices.iter().map(|&i|std::array::from_fn(|axis|f64::from(mesh.positions[i as usize*3+axis])+mesh.origin[axis])).collect()
@@ -230,7 +215,7 @@ fn issue_4404_materialization_payload_restores_georeferenced_native_frame_once()
     let context=context::Context::new(source.as_bytes(),&mut effective.decoder);
     effective.context=Some(context);
     let styles=page_source::appearance(source.as_bytes(),&mut effective);
-    let textures=ifc_lite_geometry::build_texture_index(source.as_bytes(),&mut effective.decoder);
+    let textures=std::sync::Arc::new(ifc_lite_geometry::build_texture_index(source.as_bytes(),&mut effective.decoder));
     let meshes=canonical::produce(&mut effective,35169,&textures,Some(&styles)).unwrap();
     let mesh=&meshes[0];
     assert_binding_surface(binding,mesh);
@@ -261,7 +246,7 @@ fn issue_4404_post_opening_source_matches_canonical_load() {
     assert!(!source.context.as_ref().unwrap().layers.is_sliceable(59290), "real slab requires unsupported material slicing");
     let appearance=super::super::page_source::appearance(bytes.as_bytes(), &mut source);
     assert_eq!(appearance.void_index.get(&59290),Some(&vec![59365]));
-    let produced=super::super::canonical::produce(&mut source,59290,&rustc_hash::FxHashMap::default(),Some(&appearance)).unwrap();
+    let produced=super::super::canonical::produce(&mut source,59290,&std::sync::Arc::default(),Some(&appearance)).unwrap();
     let loaded=crate::process_geometry(bytes.as_bytes());
     let expected=loaded.meshes.iter().find(|m|m.express_id==59290).unwrap();
     assert_eq!(produced.len(),1);
@@ -369,7 +354,7 @@ fn issue_4404_opening_companions_share_the_aggregate_geometry_budget() {
     let Some(bytes)=real_source() else{return};
     let mut source=Source::new(bytes.as_bytes()).unwrap();
     let styles=page_source::appearance(bytes.as_bytes(),&mut source);
-    let textures=ifc_lite_geometry::build_texture_index(bytes.as_bytes(),&mut source.decoder);
+    let textures=std::sync::Arc::new(ifc_lite_geometry::build_texture_index(bytes.as_bytes(),&mut source.decoder));
     let edits=super::super::evaluated_openings::prepare(&mut source,59290,&[59365],&BTreeSet::from([59365])).unwrap();
     let mut budget=budget::PlanBudget::default();
     budget.reserve(1_000_000,0,0).unwrap();
@@ -377,4 +362,31 @@ fn issue_4404_opening_companions_share_the_aggregate_geometry_budget() {
     let error=super::super::evaluated_openings::removed_meshes(&mut source,&[59365],&edits,&textures,&styles,&mut budget).unwrap_err();
     assert_eq!(error,budget::BUDGET_ERROR);
     assert!(budget.exhausted);
+}
+
+/// PROCESSING-APP-2 (#7677): a Body shared with a type's IfcRepresentationMap
+/// is cloned for the occurrence, copying the file's attribute 0 verbatim. A
+/// file-supplied `*` there used to reach `unreachable!` in the private wire
+/// writer, which aborts the wasm instance under `panic = 'abort'`. It is now a
+/// per-product exclusion, and the well-formed twin still converts.
+#[test]
+fn issue_7677_derived_context_on_shared_body_is_excluded_not_a_panic() {
+    let shared_body = |context: &str| crate::appearance::tests::CONTROLLED_IFC.replace("ENDSEC;\nEND-ISO-10303-21;", &format!(
+        "#40=IFCBUILDINGELEMENTPROXY('1ProxySharedBody000001',$,'Shared',$,$,#41,#42,$,$);\n\
+         #41=IFCLOCALPLACEMENT($,#5);\n#42=IFCPRODUCTDEFINITIONSHAPE($,$,(#43));\n\
+         #43=IFCSHAPEREPRESENTATION({context},'Body','CSG',(#44));\n#44=IFCBLOCK(#5,1.,1.,1.);\n\
+         #45=IFCSTYLEDITEM(#44,(#46),$);\n#46=IFCSURFACESTYLE('Grey',.BOTH.,(#47));\n\
+         #47=IFCSURFACESTYLERENDERING(#48,0.,$,$,$,$,$,$,.NOTDEFINED.);\n#48=IFCCOLOURRGB($,0.5,0.5,0.5);\n\
+         #49=IFCREPRESENTATIONMAP(#5,#43);\nENDSEC;\nEND-ISO-10303-21;"));
+    let mut request = request();
+    request.product_ids = vec![40];
+    request.next_express_id = 100;
+    let accepted = plan_appearance(shared_body("#2").as_bytes(), &request).unwrap();
+    assert!(accepted.exclusions.is_empty(), "{:?}", accepted.exclusions);
+    assert_eq!(accepted.conversions.len(), 1);
+    assert_ne!(accepted.conversions[0].representation_id, 43, "a shared Body is cloned, not edited");
+    let refused = plan_appearance(shared_body("*").as_bytes(), &request).unwrap();
+    assert_eq!(refused.exclusions.len(), 1, "{:?}", refused.exclusions);
+    assert!(refused.exclusions[0].reason.contains("ContextOfItems"), "{:?}", refused.exclusions);
+    assert!(refused.conversions.is_empty() && refused.created.is_empty() && refused.edits.is_empty());
 }

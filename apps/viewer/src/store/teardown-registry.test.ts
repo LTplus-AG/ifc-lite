@@ -61,6 +61,7 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
   'idsFocusVisibilityOwned', 'idsLoading', 'idsPanelVisible', 'idsProgress',
   'interactionMode', 'isolatedEntities',
   'landXmlUnitsRefusal', // #5175 LandXML units-refusal retry prompt: dies with the load it belongs to
+  'landXmlAssumptionRefusal', // LandXML georef-assumption retry prompt: dies with the load it belongs to
   'layerDiffBusy', 'layerStack', 'layerStackDiff', 'layerStackPathToId', 'layersPanelVisible',
   'lensAppliedColors',
   'lensAppliedHiddenIds', 'lensAutoColorLegend', 'lensColorMap',
@@ -88,7 +89,7 @@ const PINNED_SESSION_RESET_KEYS: readonly string[] = [
   'searchFieldFilter', 'searchFilter', 'searchFilterActiveGroup', 'searchFilterError', 'searchFilterResult',
   'searchFilterRunning', 'searchFilterSchema', 'searchHighlightIndex', 'searchIndexes',
   'searchModalOpen', 'searchModelFilter', 'searchOpen', 'searchQuery', 'searchVimCycle',
-  'sceneState', 'sectionPlane', 'selectedAnnotation2D', 'selectedAnnotationId', 'selectedEntities',
+  'sceneState', 'inactiveSectionPlanes', 'sectionExtraCaps', 'sectionPlane', 'sectionUndo', 'selectedAnnotation2D', 'selectedAnnotationId', 'selectedEntities', // #7545: inactiveSectionPlanes + sectionUndo reset with the active plane
   'selectedEntitiesSet', 'selectedEntity', 'selectedEntityId', 'selectedEntityIds', 'selectionRevision',
   'selectedLandXmlSource', 'selectedModelId', 'selectedStoreys', 'selectedTaskGlobalIds', 'separationLinesEnabled',
   'separationLinesIntensity', 'separationLinesQuality', 'separationLinesRadius',
@@ -262,6 +263,7 @@ const PINNED_OWNED_KEYS: readonly string[] = [
   'idsError', 'idsFocusVisibilityOwned', 'idsLoading', 'idsPanelVisible', 'idsProgress',
   'ifcDataStore', 'interactionMode', 'isolatedEntities',
   'landXmlUnitsRefusal', // #5175
+  'landXmlAssumptionRefusal',
   'layerDiffBusy', 'layerStack', 'layerStackDiff', 'layerStackPathToId', 'layersPanelVisible',
   'lensAppliedColors',
   'lensAppliedHiddenIds', 'lensAutoColorLegend',
@@ -289,7 +291,7 @@ const PINNED_OWNED_KEYS: readonly string[] = [
   'searchFieldFilter', 'searchFilter', 'searchFilterActiveGroup', 'searchFilterError', 'searchFilterResult',
   'searchFilterRunning', 'searchFilterSchema', 'searchHighlightIndex', 'searchIndexes',
   'searchModalOpen', 'searchModelFilter', 'searchOpen', 'searchQuery', 'searchVimCycle',
-  'sceneState', 'sectionPlane', 'selectedAnnotation2D', 'selectedAnnotationId', 'selectedEntities',
+  'sceneState', 'inactiveSectionPlanes', 'sectionExtraCaps', 'sectionPlane', 'sectionUndo', 'selectedAnnotation2D', 'selectedAnnotationId', 'selectedEntities', // #7545: inactiveSectionPlanes + sectionUndo reset with the active plane
   'selectedEntitiesSet', 'selectedEntity', 'selectedEntityId', 'selectedEntityIds', 'selectionRevision',
   'selectedLandXmlSource', 'selectedModelId', 'selectedStoreys', 'selectedTaskGlobalIds', 'separationLinesEnabled',
   'separationLinesIntensity', 'separationLinesQuality', 'separationLinesRadius',

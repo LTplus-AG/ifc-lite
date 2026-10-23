@@ -5,7 +5,8 @@
 //! Fast STEP list decoding into caller-owned scratch (#3988). The owned-return
 //! accessors use the same fill routines; only scratch ownership differs.
 
-use super::{is_step_space, parse_cartesian_point_inline, EntityDecoder};
+use super::{parse_cartesian_point_inline, EntityDecoder};
+use crate::parser::StepRecord;
 
 impl EntityDecoder<'_> {
     /// Extract entity reference IDs from a raw list attribute, in authored order.
@@ -17,68 +18,16 @@ impl EntityDecoder<'_> {
     }
 
     /// Replace `ids` with the same list as [`Self::get_entity_ref_list_fast`],
-    /// reusing its allocation. Duplicates retain authored order; oversized refs
-    /// are dropped. On `None`, `ids` is empty. The caller owns the scratch lifetime.
+    /// reusing its allocation. Duplicates retain authored order. An item that
+    /// is not exactly one reference (an id above `u32::MAX` included) refuses
+    /// the whole list: a shell with a face dropped is an open shell, not a
+    /// smaller one (D3). On `None`, `ids` is empty. The caller owns the scratch lifetime.
     #[inline]
     pub fn get_entity_ref_list_fast_into(&mut self, entity_id: u32, ids: &mut Vec<u32>) -> Option<()> {
-        ids.clear();
-        let bytes = self.get_raw_bytes(entity_id)?;
-
         // Pattern: IFCTYPE((#id1,#id2,...)); or IFCTYPE((#id1,#id2,...),other);
-        let mut i = 0;
-        let len = bytes.len();
-
-        // Skip to first '(' after '='
-        while i < len && bytes[i] != b'(' {
-            i += 1;
-        }
-        if i >= len {
-            return None;
-        }
-        i += 1; // Skip first '('
-
-        // Skip to second '(' for the list
-        while i < len && bytes[i] != b'(' {
-            i += 1;
-        }
-        if i >= len {
-            return None;
-        }
-        i += 1; // Skip second '('
-
-        // Parse entity IDs
+        ids.clear();
         ids.reserve(32);
-
-        while i < len {
-            // Skip whitespace and commas
-            while i < len
-                && (bytes[i] == b',' || is_step_space(bytes[i]))
-            {
-                i += 1;
-            }
-
-            if i >= len || bytes[i] == b')' {
-                break;
-            }
-
-            // Expect '#' followed by number
-            if bytes[i] == b'#' {
-                i += 1;
-                let start = i;
-                while i < len && bytes[i].is_ascii_digit() {
-                    i += 1;
-                }
-                if i > start {
-                    // Shared checked accumulator (#3421): an oversized id is dropped, not wrapped.
-                    if let Some(id) = crate::express_id::parse_express_id(&bytes[start..i]) {
-                        ids.push(id);
-                    }
-                }
-            } else {
-                i += 1; // Skip unknown character
-            }
-        }
-
+        StepRecord::parse(self.get_raw_bytes(entity_id)?)?.ref_list_at(0, ids)?;
         if ids.is_empty() {
             None
         } else {
@@ -108,93 +57,58 @@ impl EntityDecoder<'_> {
         let index = self.entity_index.as_ref()?;
         let bytes_full = self.content;
 
-        // IFCPOLYLOOP((#id1,#id2,#id3,...));
-        let mut i = 0;
-        let len = bytes.len();
-
-        // Skip to first '(' after '='
-        while i < len && bytes[i] != b'(' {
-            i += 1;
-        }
-        if i >= len {
-            return None;
-        }
-        i += 1; // Skip first '('
-
-        // Skip to second '(' for the point list
-        while i < len && bytes[i] != b'(' {
-            i += 1;
-        }
-        if i >= len {
-            return None;
-        }
-        i += 1; // Skip second '('
-
-        // Parse point IDs and fetch coordinates (with caching)
-        // CRITICAL: Track expected count to ensure all points are resolved
+        // IFCPOLYLOOP((#id1,#id2,#id3,...)); every item must be one reference
+        // that names a point, or the whole loop is refused.
         coords.reserve(8);
-        let mut expected_count = 0u32;
-
-        while i < len {
-            // Skip whitespace and commas
-            while i < len
-                && (bytes[i] == b',' || is_step_space(bytes[i]))
-            {
-                i += 1;
+        let point_cache = &mut self.point_cache;
+        let (hits, misses) = (&mut self.point_cache_hits, &mut self.point_cache_misses);
+        let read = StepRecord::parse(bytes)?.try_each_ref_at(0, |point_id| {
+            if let Some(&coord) = point_cache.get(&point_id) {
+                *hits += 1;
+                coords.push(coord);
+                return true;
             }
-
-            if i >= len || bytes[i] == b')' {
-                break;
-            }
-
-            // Expect '#' followed by number
-            if bytes[i] == b'#' {
-                i += 1;
-                let id_start = i;
-                while i < len && bytes[i].is_ascii_digit() {
-                    i += 1;
-                }
-                if i > id_start {
-                    expected_count += 1; // Count every point ID we encounter
-
-                    // Shared checked accumulator (#3421): `expected_count`
-                    // was already bumped, so a refused id here trips the
-                    // `coords.len() == expected_count` check below, same as
-                    // any other missing point.
-                    if let Some(point_id) =
-                        crate::express_id::parse_express_id(&bytes[id_start..i])
-                    {
-                        // Check cache first
-                        if let Some(&coord) = self.point_cache.get(&point_id) {
-                            self.point_cache_hits += 1;
-                            coords.push(coord);
-                        } else {
-                            // Not in cache - parse and cache
-                            if let Some((pt_start, pt_end)) = index.lookup(point_id) {
-                                if let Some(coord) =
-                                    bytes_full.get(pt_start..pt_end).and_then(parse_cartesian_point_inline)
-                                {
-                                    self.point_cache_misses += 1;
-                                    self.point_cache.insert(point_id, coord);
-                                    coords.push(coord);
-                                }
-                            }
-                        }
-                    }
-                }
-            } else {
-                i += 1; // Skip unknown character
-            }
-        }
-
-        // CRITICAL: Return None if ANY point failed to resolve
-        // This matches the old behavior where missing points invalidated the whole polygon
-        if coords.len() >= 3 && coords.len() == expected_count as usize {
+            // Not in cache - parse and cache; a point that does not resolve
+            // invalidates the whole polygon.
+            let Some(coord) = index
+                .lookup(point_id)
+                .and_then(|(start, end)| bytes_full.get(start..end))
+                .and_then(parse_cartesian_point_inline)
+            else {
+                return false;
+            };
+            *misses += 1;
+            point_cache.insert(point_id, coord);
+            coords.push(coord);
+            true
+        });
+        if read.is_some() && coords.len() >= 3 {
             Some(())
         } else {
             coords.clear();
             None
         }
+    }
+}
+
+impl EntityDecoder<'_> {
+    /// Why a polyloop's fast read failed, when the reason is input admission
+    /// (#7678): the counted refusal for the first point that holds a REAL `f64`
+    /// cannot represent (`1.E400`), in either decoder mode. `None` when no
+    /// point does, so a caller keeps its own policy for a genuinely corrupt
+    /// loop. Lets a reader that skips an unreadable loop fail the whole item
+    /// instead of silently opening a closed shell.
+    pub fn polyloop_refusal(&mut self, loop_id: u32) -> Option<crate::Error> {
+        for point_id in self.get_polyloop_point_ids_fast(loop_id)? {
+            let Ok(point) = self.decode_by_id_lossless(point_id) else { continue };
+            let holds_overflow = point.get(0).and_then(|a| a.as_list()).is_some_and(|coords| {
+                coords.iter().any(|v| v.as_float().is_some_and(|f| !f.is_finite()))
+            });
+            if holds_overflow {
+                return Some(self.refuse_record(point_id));
+            }
+        }
+        None
     }
 }
 

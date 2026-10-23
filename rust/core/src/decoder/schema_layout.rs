@@ -8,11 +8,12 @@
 //! attribute POSITIONS are defined by the schema the file declares. Most
 //! geometry entities share one layout across IFC2X3/IFC4/IFC4X3, so readers
 //! index them directly; the few that moved (IfcGridPlacement gained the
-//! inherited `PlacementRelTo` in IFC4X1) must ask here instead of hard-coding
+//! inherited `PlacementRelTo` in IFC4X2) must ask here instead of hard-coding
 //! an offset, or an IFC2X3/IFC4 file is read one slot out (#6232 F2).
 
 use super::{EntityDecoder, EntityScanner};
 use crate::generated::schema_registry::SchemaVersion;
+use crate::slot::{SchemaSlot, Slot};
 use rustc_hash::FxHashMap;
 use std::sync::{Arc, OnceLock};
 
@@ -34,9 +35,8 @@ impl EntityDecoder<'_> {
         if let Some(cached) = self.schema_version_cache {
             return cached;
         }
-        let version = crate::parser::header::declared_schemas_bounded(self.content)
-            .iter()
-            .find_map(|label| SchemaVersion::from_file_schema(label));
+        let version =
+            crate::parser::header::first_declared_schema(self.content, SchemaVersion::from_file_schema);
         self.schema_version_cache = Some(version);
         version
     }
@@ -48,10 +48,31 @@ impl EntityDecoder<'_> {
     /// `IfcGridPlacement.PlacementRelTo` on IFC2X3/IFC4.
     pub fn attribute_index(&mut self, entity_name: &str, attribute: &str) -> Option<usize> {
         let schema = self.schema_version().unwrap_or(SchemaVersion::Ifc4x3);
-        schema
-            .attribute_names(entity_name)?
-            .iter()
-            .position(|name| name.eq_ignore_ascii_case(attribute))
+        schema.attribute(entity_name, attribute).map(|slot| slot.index)
+    }
+
+    /// Resolve a moving [`SchemaSlot`] against this source's schema: the
+    /// declared `FILE_SCHEMA`, or IFC4X3 when it is undeclared or unknown (the
+    /// same default as [`Self::attribute_index`]). `None` when that schema
+    /// has no such attribute, e.g. `IfcLinearPlacement.RelativePlacement` in
+    /// an IFC4X2 file.
+    ///
+    /// The header is read once and cached, so this is a branch and an array
+    /// index; still resolve it once outside any per-entity loop.
+    pub fn slot<K>(&mut self, slot: SchemaSlot<K>) -> Option<Slot<K>> {
+        slot.at(self.schema_version().unwrap_or(SchemaVersion::Ifc4x3))
+    }
+
+    /// [`Self::slot`] for a reader that must keep working on a file whose
+    /// declared schema predates the entity: an `IFC4`-labelled export that
+    /// carries `IfcAlignment` (the IFC4X1 draft) or `IfcLinearPlacement` (IFC4X3)
+    /// has no declared layout to follow. When the declared schema does not
+    /// declare the slot's entity at all, the slot is resolved as `fallback`
+    /// lays it out; otherwise this is exactly [`Self::slot`]. The caller names
+    /// the layout such files have always been read with.
+    pub fn slot_or<K>(&mut self, slot: SchemaSlot<K>, fallback: SchemaVersion) -> Option<Slot<K>> {
+        let declared = self.schema_version().unwrap_or(SchemaVersion::Ifc4x3);
+        slot.at(if slot.entity_declared_in(declared) { declared } else { fallback })
     }
 
     /// The `IfcGrid` that lists `axis_id` among its `UAxes`/`VAxes`/`WAxes`
@@ -77,6 +98,8 @@ impl EntityDecoder<'_> {
     /// belong to this decoder's source bytes; installing a columnar or dense
     /// entity index installs that index's own.
     pub fn set_grid_axis_index(&mut self, index: Arc<GridAxisIndex>) {
+        self.execution_owner.changed();
+        self.revoke_cache_authority();
         self.grid_axis_index = index;
     }
 
@@ -155,7 +178,7 @@ mod tests {
     #[test]
     fn grid_axis_owners_are_shared_through_the_columnar_index() {
         let content = source("IFC2X3");
-        let index = Arc::new(ColumnarEntityIndex::from_scan(content.as_bytes()));
+        let index = Arc::new(ColumnarEntityIndex::from_scan(content.as_bytes()).unwrap());
         let mut first = EntityDecoder::with_arc_columnar_index(&content, index.clone());
         assert_eq!(first.grid_of_axis(1), Some(9));
         drop(first);

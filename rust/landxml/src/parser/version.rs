@@ -57,3 +57,50 @@ pub(crate) fn compatibility_version_diagnostic(
         }
     })
 }
+
+/// What every family reads from the document element (#7784 C9a-1, drift
+/// rows 2-4): the capability, the schema and version it implies, and the
+/// compatibility diagnostic a version mismatch earns.
+pub(crate) struct RootStart {
+    pub(crate) schema: String,
+    pub(crate) version: String,
+    pub(crate) diagnostic: Option<crate::LandXmlCapabilityDiagnostic>,
+}
+
+/// Validate a document element and return its [`RootStart`]. The four family
+/// parsers used to carry a copy each, with different messages for the same
+/// refusal; this is the one place the order (second root, not LandXML,
+/// namespace, version) and the texts live.
+pub(crate) fn validate_root(
+    root_seen: bool,
+    local: &str,
+    namespace: Option<&str>,
+    attributes: &crate::xml::Attributes,
+) -> crate::xml::Result<RootStart> {
+    use crate::{xml::error, LandXmlDiagnosticCode as Code, LandXmlVersionCapability as Capability};
+    if root_seen {
+        return Err(error(Code::InvalidXml, "LandXML document has multiple root elements"));
+    }
+    if local != "LandXML" {
+        return Err(error(Code::InvalidSemantic, "root element is not LandXML"));
+    }
+    let capability = classify_landxml_version(namespace, crate::xml::attr(attributes, "version"));
+    if !capability.supports_tin_ingestion() {
+        return Err(match capability {
+            Capability::NotLandXml => error(
+                Code::UnsupportedNamespace,
+                "root namespace is not a recognized LandXML namespace",
+            ),
+            _ => error(
+                Code::UnsupportedVersion,
+                "LandXML namespaces require a known version declaration",
+            ),
+        });
+    }
+    let version = crate::xml::required(attributes, "version", "LandXML")?.to_owned();
+    Ok(RootStart {
+        schema: capability.schema().expect("supported capability has a schema").to_owned(),
+        diagnostic: compatibility_version_diagnostic(capability, &version),
+        version,
+    })
+}

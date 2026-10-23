@@ -11,7 +11,6 @@
 use super::cache_keys::*;
 use super::ParseQuery;
 use crate::services::cache::DiskCache;
-use crate::services::streaming::detect_schema_version;
 use crate::services::{OpeningFilterMode, ParquetLayout};
 use ifc_lite_processing::{SymbolicData, TessellationQuality};
 
@@ -42,7 +41,7 @@ fn parquet_cache_key_matches_writer_format() {
                 quality_cache_suffix(quality)
             );
             let writer_parquet_key = format!("{}-parquet-v8", writer_cache_key);
-            let writer_metadata_key = format!("{}-parquet-metadata-v5", writer_cache_key);
+            let writer_metadata_key = format!("{}-parquet-metadata-v6", writer_cache_key);
 
             assert_eq!(
                 parquet_cache_key(hash, mode, quality, ParquetLayout::Flat),
@@ -171,7 +170,7 @@ fn parquet_cache_key_default_filter_uses_default_suffix() {
 fn json_response_cache_key_is_versioned_and_distinct() {
     let request_key = "0ab20f4e4014-default";
     let json_key = json_response_cache_key(request_key);
-    assert_eq!(json_key, format!("{request_key}-json-v6"));
+    assert_eq!(json_key, format!("{request_key}-json-v7"));
     assert_ne!(json_key, request_key, "must retire the unversioned entries");
     assert_ne!(json_key, symbolic_cache_key(request_key));
 }
@@ -228,7 +227,7 @@ async fn cache_symbolic_data_round_trips_through_load_cached_symbolic() {
     ));
 
     cache_symbolic_data(&cache, "roundtrip-key", &data).await;
-    let loaded = load_cached_symbolic(&cache, "roundtrip-key").await;
+    let loaded = load_cached_symbolic(&cache, "roundtrip-key").await.unwrap().unwrap();
 
     assert_eq!(
         serde_json::to_value(&loaded).unwrap(),
@@ -237,11 +236,11 @@ async fn cache_symbolic_data_round_trips_through_load_cached_symbolic() {
     );
 }
 
-/// A cache-key with no cached entry must default to empty symbolic
-/// data rather than erroring or panicking (fetch endpoints rely on this
-/// to answer definitively instead of looping on a pending status).
+/// A cache-key with no cached entry is `None`, not an error and not a
+/// silently empty stream (#7676): the replay that needs it is then a miss,
+/// rather than a replay that drops the model's 2D symbols.
 #[tokio::test]
-async fn load_cached_symbolic_defaults_to_empty_when_absent() {
+async fn load_cached_symbolic_is_none_when_absent() {
     let dir = std::env::temp_dir().join(format!(
         "ifc-lite-server-cache-keys-test-{}-absent",
         std::process::id()
@@ -249,8 +248,8 @@ async fn load_cached_symbolic_defaults_to_empty_when_absent() {
     let _ = std::fs::remove_dir_all(&dir);
     let cache = DiskCache::new(dir.to_str().unwrap()).await;
 
-    let loaded = load_cached_symbolic(&cache, "never-written").await;
-    assert!(loaded.is_empty());
+    let loaded = load_cached_symbolic(&cache, "never-written").await.unwrap();
+    assert!(loaded.is_none());
 }
 
 /// `request_cache_key` is the seed for EVERY other key (parquet, parquet
@@ -408,19 +407,6 @@ fn quality_suffix_is_empty_only_for_the_default_level() {
     }
 }
 
-#[test]
-fn schema_detection_uses_file_schema_declaration_only() {
-    let content = b"ISO-10303-21;
-HEADER;
-FILE_SCHEMA(('IFC2X3'));
-ENDSEC;
-DATA;
-#1=IFCDOCUMENTINFORMATION('IFC4X3',$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$);
-ENDSEC;";
-
-    assert_eq!(detect_schema_version(content), "IFC2X3");
-}
-
 /// The optimized-Parquet route got a key of its own with #3889. Its whole
 /// point is that it is a DIFFERENT namespace from the flat route's: the two
 /// emit different payloads, so a hit on one must never satisfy the other.
@@ -438,7 +424,7 @@ fn optimized_parquet_keys_are_a_distinct_namespace_from_the_flat_route() {
     );
     assert_eq!(
         parquet_optimized_metadata_cache_key(&seed),
-        format!("{seed}-parquet-optimized-metadata-v3")
+        format!("{seed}-parquet-optimized-metadata-v4")
     );
 
     // Neither optimized key may equal, or be a prefix-shadow of, the flat pair.

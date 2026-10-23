@@ -140,6 +140,9 @@ function scanRecordForDanglingRefs(
       i++;
       while (i < end) {
         if (source[i] === CH_QUOTE) {
+          // `\S\'` is a PAGE directive's operand, text rather than a close (#7589):
+          // the byte form of the lookback in `stepStringLiteralEnd` (@ifc-lite/encoding).
+          if (i >= 3 && source[i - 1] === 0x5c && source[i - 2] === 0x53 && source[i - 3] === 0x5c) { i++; continue; }
           if (i + 1 < end && source[i + 1] === CH_QUOTE) {
             i += 2; // escaped quote, still inside the string
             continue;

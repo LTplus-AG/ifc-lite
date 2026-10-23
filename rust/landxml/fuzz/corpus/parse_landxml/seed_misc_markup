@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?><!--lead--><?xml-stylesheet type="text/xsl" href="t.xsl"?><LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2"><Units><Metric linearUnit="meter" areaUnit="squareMeter"/></Units><CoordinateSystem name="grade &amp; datum"/><Surfaces><Surface name="g"><Definition surfType="TIN"><Pnts><P id="1"><![CDATA[0 0 0]]></P><P id="2">0 1&#x20;0</P><P id="3">1 0 0</P></Pnts><Faces><F>1 2 3</F></Faces></Definition></Surface></Surfaces></LandXML>
+<!--trail-->

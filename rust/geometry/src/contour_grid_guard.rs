@@ -5,23 +5,13 @@
 use crate::contour_bool2d::Ring2D;
 use i_overlay::i_float::adapter::FloatPointAdapter;
 use std::collections::BTreeMap;
-use crate::geom2d::orientation as orient;
+use crate::math::geom2d::orientation as orient;
+use crate::math::v2::point_segment_distance as distance;
 fn integer_orient(a: [i64; 2], b: [i64; 2], c: [i64; 2]) -> i32 {
     let x = i128::from(b[0]) - i128::from(a[0]);
     let y = i128::from(b[1]) - i128::from(a[1]);
     let d = x * (i128::from(c[1]) - i128::from(a[1])) - y * (i128::from(c[0]) - i128::from(a[0]));
     d.signum() as i32
-}
-fn distance(p: [f64; 2], a: [f64; 2], b: [f64; 2]) -> f64 {
-    let d = [b[0] - a[0], b[1] - a[1]];
-    let q = [p[0] - a[0], p[1] - a[1]];
-    let n = d[0] * d[0] + d[1] * d[1];
-    let t = if n == 0. {
-        0.
-    } else {
-        ((q[0] * d[0] + q[1] * d[1]) / n).clamp(0., 1.)
-    };
-    (q[0] - t * d[0]).hypot(q[1] - t * d[1])
 }
 /// Inputs already have a bounded total edge count. These checks are quadratic;
 /// the caller charges them along with overlay work. Uncertain cases refuse,

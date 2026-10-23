@@ -42,15 +42,29 @@ export function landXmlIfcSource(document: LandXmlTinDocument): LandXmlIfcSource
 }
 
 /**
- * The name written as `IfcProjectedCRS.Name` (§4.2). A declared `epsgCode`,
- * which is how producers state the CRS, is written as the same `EPSG:<n>` id
- * the viewer places and drapes the terrain by; without one, `horizontalDatum`
- * passes through verbatim as before. #5942 follow-up: a 3D-Win terrain with
- * `epsgCode="3875"` exported with no CRS at all.
+ * The name written as `IfcProjectedCRS.Name` (§4.2), first match wins:
+ *
+ * 1. An EPSG code — `epsgCode`, or an `EPSG:<n>` id in `horizontalDatum` — as
+ *    the same `EPSG:<n>` id the viewer places and drapes the terrain by. IFC
+ *    says `Name` "shall be taken from the list recognized by the EPSG … for
+ *    example as 'EPSG:5555'", so a code beats any free-text label: 3D-Win
+ *    writes `name="GK21" epsgCode="3875"` and the bonsai-topo control writes
+ *    `name="SWEREF99 TM" epsgCode="3006"`, and both stay `EPSG:<n>`. A
+ *    declared `epsgCode` that is unreadable or contradicts `horizontalDatum`
+ *    names no CRS at all, as before (#5942 follow-up).
+ * 2. `CoordinateSystem@name`, verbatim (#7604): the label for a CRS with no
+ *    EPSG code, e.g. `CH1903+ / LV95` as ifc-lite's own IFC terrain export
+ *    writes it. Before #7604 a name-only record wrote no georeferencing, and
+ *    one with a datum was renamed to the datum.
+ * 3. `horizontalDatum`, verbatim, as before.
+ *
+ * Blank strings name nothing. Named, never resolved.
  */
 export function landXmlCrsName(document: Pick<LandXmlTinDocument, 'coordinateSystem'>): string | undefined {
-  if (document.coordinateSystem?.epsgCode !== undefined) return spatialMetadataFromLandXml(document).horizontalId;
-  return document.coordinateSystem?.horizontalDatum;
+  const declared = document.coordinateSystem;
+  const { horizontalId } = spatialMetadataFromLandXml(document);
+  if (horizontalId !== undefined || declared?.epsgCode !== undefined) return horizontalId;
+  return [declared?.name, declared?.horizontalDatum].find((label) => label !== undefined && label.trim() !== '');
 }
 
 export interface LandXmlExportPlan {

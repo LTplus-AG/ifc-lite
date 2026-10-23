@@ -45,7 +45,6 @@ import {
   Drawing2DGenerator,
   addScaleStamp,
   buildCameraSectionPlane,
-  clipMeshesToHalfSpace,
   computePdfScaleLayout,
   createSectionConfig,
   formatScaleFactorLabel,
@@ -60,9 +59,7 @@ import {
   type Point2D,
   type SectionConfig,
   type WorldBounds3D,
-  type WorldLineSeed,
 } from '@ifc-lite/drawing-2d';
-import type { MeshData } from '@ifc-lite/geometry';
 import { downloadFile, sanitizeFilename } from '@/lib/export/download';
 import { pdfLineStyleFor } from '@/lib/export/pdf-line-style';
 import { collectViewMeshes, type ViewMeshInput } from './collect-view-meshes';
@@ -73,7 +70,8 @@ import {
   type ViewPdfPngEncoder,
   type ViewPdfRasterBuilder,
 } from './view-pdf-shading';
-import { resolveKeptHalfSpace, type ViewSectionResolveInput } from './view-section-plane';
+import type { ViewSectionResolveInput } from './view-section-plane';
+import { clipMeshesBySections } from './clip-by-sections';
 import { drawScaleStamp, type ViewPdfStampTarget } from './view-pdf-stamp';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -94,6 +92,12 @@ export interface ViewPdfExportInput {
    * runs and the rim prints as heavy cut lines.
    */
   section: ViewSectionResolveInput | null;
+  /**
+   * The other cutting planes that are on (#7545). The sheet is cut by `section` and by every one
+   * of these, the same intersection the screen shows; the rim of each plane is trimmed by the
+   * planes applied after it.
+   */
+  extraSections?: readonly ViewSectionResolveInput[];
   /** The "N" in 1:N. Exact — never rounded on its way to the page. */
   scaleFactor: number;
   /** Blank paper around the drawing, mm per side. */
@@ -183,21 +187,13 @@ export async function generateViewPdf(
   // The on-screen cut is a fragment discard; a vector drawing has no fragment
   // stage, so the triangles themselves have to be clipped or the PDF shows a
   // whole model the screen is showing halved.
-  let drawnMeshes: MeshData[] = meshes;
   let extraLines: DrawingLine[] = [];
   // `WorldSegment` already IS a `WorldLineSeed` (start/end plus the source
   // element), so the rim goes straight into the projector with no re-shaping —
-  // one fewer place for a field to be dropped on the way.
-  let rimSeeds: WorldLineSeed[] = [];
-  if (input.section) {
-    const half = resolveKeptHalfSpace(input.section);
-    const clipped = clipMeshesToHalfSpace(meshes, half.normal, half.offset);
-    drawnMeshes = clipped.meshes;
-    rimSeeds = clipped.rimSegments;
-    if (drawnMeshes.length === 0) {
-      throw new Error('Nothing to export: the section cut removes all visible geometry.');
-    }
-  }
+  // one fewer place for a field to be dropped on the way. With several planes
+  // (#7545) the meshes are cut by all of them and each rim is trimmed by the rest.
+  const cuts = [input.section, ...(input.extraSections ?? [])].filter((c): c is ViewSectionResolveInput => c !== null);
+  const { meshes: drawnMeshes, rimSegments: rimSeeds } = clipMeshesBySections(meshes, cuts);
 
   // ── 2. Synthetic camera plane ───────────────────────────────────────────
   const worldBounds: WorldBounds3D | null = worldBoundsOfMeshes(drawnMeshes);

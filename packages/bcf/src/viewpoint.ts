@@ -18,6 +18,10 @@ import type {
 } from './types.js';
 import { generateUuid } from '@ifc-lite/encoding';
 import { usableTargetDistance } from './numeric.js';
+import { sectionPlaneToClippingPlane, clippingPlaneToSectionPlane } from './section-plane-conversion.js';
+
+// The one-plane conversion lives beside this file; the public path stays `viewpoint.js`.
+export { sectionPlaneToClippingPlane, clippingPlaneToSectionPlane };
 
 // ============================================================================
 // Camera State Types (matching ifc-lite viewer)
@@ -85,12 +89,12 @@ export interface ViewerBounds {
  *   BCF.z = Viewer.y   (viewer Y up = BCF Z up)
  */
 
-type Point3D = { x: number; y: number; z: number };
+export type Point3D = { x: number; y: number; z: number };
 
 /**
  * Convert from viewer coordinates (Y-up) to BCF coordinates (Z-up)
  */
-function viewerToBcfCoords(p: Point3D): Point3D {
+export function viewerToBcfCoords(p: Point3D): Point3D {
   return {
     x: p.x,
     y: -p.z,
@@ -294,120 +298,6 @@ export function orthogonalToCamera(
 }
 
 // ============================================================================
-// Section Plane Conversion
-// ============================================================================
-
-/**
- * Convert viewer section plane to BCF clipping plane
- *
- * ifc-lite uses percentage position (0-100) along an axis.
- * BCF uses absolute location and direction in world coordinates (Z-up).
- */
-export function sectionPlaneToClippingPlane(
-  sectionPlane: ViewerSectionPlane,
-  bounds: ViewerBounds
-): BCFClippingPlane | null {
-  if (!sectionPlane.enabled) {
-    return null;
-  }
-
-  // Calculate absolute position from percentage (in viewer coordinates)
-  const t = sectionPlane.position / 100;
-
-  let viewerLocation: Point3D;
-  let viewerDirection: Point3D;
-
-  switch (sectionPlane.axis) {
-    case 'down': // Y axis (viewer up/down)
-      viewerLocation = {
-        x: (bounds.min.x + bounds.max.x) / 2,
-        y: bounds.min.y + t * (bounds.max.y - bounds.min.y),
-        z: (bounds.min.z + bounds.max.z) / 2,
-      };
-      viewerDirection = sectionPlane.flipped ? { x: 0, y: 1, z: 0 } : { x: 0, y: -1, z: 0 };
-      break;
-
-    case 'front': // Z axis (viewer depth)
-      viewerLocation = {
-        x: (bounds.min.x + bounds.max.x) / 2,
-        y: (bounds.min.y + bounds.max.y) / 2,
-        z: bounds.min.z + t * (bounds.max.z - bounds.min.z),
-      };
-      viewerDirection = sectionPlane.flipped ? { x: 0, y: 0, z: 1 } : { x: 0, y: 0, z: -1 };
-      break;
-
-    case 'side': // X axis
-      viewerLocation = {
-        x: bounds.min.x + t * (bounds.max.x - bounds.min.x),
-        y: (bounds.min.y + bounds.max.y) / 2,
-        z: (bounds.min.z + bounds.max.z) / 2,
-      };
-      viewerDirection = sectionPlane.flipped ? { x: 1, y: 0, z: 0 } : { x: -1, y: 0, z: 0 };
-      break;
-  }
-
-  // Convert to BCF coordinates (Z-up)
-  return {
-    location: viewerToBcfCoords(viewerLocation),
-    direction: viewerToBcfCoords(viewerDirection),
-  };
-}
-
-/**
- * Convert BCF clipping plane to viewer section plane
- *
- * Determines the closest axis and calculates percentage position.
- * Converts from BCF coordinates (Z-up) to viewer coordinates (Y-up).
- */
-export function clippingPlaneToSectionPlane(
-  plane: BCFClippingPlane,
-  bounds: ViewerBounds
-): ViewerSectionPlane {
-  // Convert from BCF coordinates to viewer coordinates
-  const viewerLocation = bcfToViewerCoords(plane.location);
-  const viewerDirection = bcfToViewerCoords(plane.direction);
-
-  // Determine primary axis based on direction (in viewer coordinates)
-  const absX = Math.abs(viewerDirection.x);
-  const absY = Math.abs(viewerDirection.y);
-  const absZ = Math.abs(viewerDirection.z);
-
-  let axis: 'down' | 'front' | 'side';
-  let position: number;
-  let flipped: boolean;
-
-  if (absY >= absX && absY >= absZ) {
-    // Y axis dominant (down) in viewer
-    axis = 'down';
-    const range = bounds.max.y - bounds.min.y;
-    position = range > 0 ? ((viewerLocation.y - bounds.min.y) / range) * 100 : 50;
-    flipped = viewerDirection.y > 0;
-  } else if (absZ >= absX) {
-    // Z axis dominant (front) in viewer
-    axis = 'front';
-    const range = bounds.max.z - bounds.min.z;
-    position = range > 0 ? ((viewerLocation.z - bounds.min.z) / range) * 100 : 50;
-    flipped = viewerDirection.z > 0;
-  } else {
-    // X axis dominant (side)
-    axis = 'side';
-    const range = bounds.max.x - bounds.min.x;
-    position = range > 0 ? ((viewerLocation.x - bounds.min.x) / range) * 100 : 50;
-    flipped = viewerDirection.x > 0;
-  }
-
-  // Clamp position to valid range
-  position = Math.max(0, Math.min(100, position));
-
-  return {
-    axis,
-    position,
-    enabled: true,
-    flipped,
-  };
-}
-
-// ============================================================================
 // Viewpoint Factory
 // ============================================================================
 
@@ -421,6 +311,12 @@ export function clippingPlaneToSectionPlane(
 export function createViewpoint(options: {
   camera: ViewerCameraState;
   sectionPlane?: ViewerSectionPlane;
+  /**
+   * Every cutting plane that is on, as the viewer clips with them (several planes keep only what ALL
+   * of them keep). Each enabled one becomes an entry of `clippingPlanes`, in this order. When given
+   * it takes the place of `sectionPlane`.
+   */
+  sectionPlanes?: ViewerSectionPlane[];
   bounds?: ViewerBounds;
   snapshot?: string;
   snapshotData?: Uint8Array;
@@ -432,6 +328,7 @@ export function createViewpoint(options: {
   const {
     camera,
     sectionPlane,
+    sectionPlanes,
     bounds,
     snapshot,
     snapshotData,
@@ -452,11 +349,13 @@ export function createViewpoint(options: {
     viewpoint.perspectiveCamera = cameraToPerspective(camera);
   }
 
-  // Add clipping plane
-  if (sectionPlane?.enabled && bounds) {
-    const clippingPlane = sectionPlaneToClippingPlane(sectionPlane, bounds);
-    if (clippingPlane) {
-      viewpoint.clippingPlanes = [clippingPlane];
+  // Add clipping planes: one entry per enabled plane
+  if (bounds) {
+    const clippingPlanes = (sectionPlanes ?? (sectionPlane ? [sectionPlane] : []))
+      .map((plane) => sectionPlaneToClippingPlane(plane, bounds))
+      .filter((plane): plane is BCFClippingPlane => plane !== null);
+    if (clippingPlanes.length > 0) {
+      viewpoint.clippingPlanes = clippingPlanes;
     }
   }
 
@@ -533,7 +432,10 @@ export function extractViewpointState(
   targetDistance = 10
 ): {
   camera?: ViewerCameraState;
+  /** The first clipping plane (what a single-plane reader wants). */
   sectionPlane?: ViewerSectionPlane;
+  /** Every clipping plane of the viewpoint, in order; a viewpoint with none has none. */
+  sectionPlanes?: ViewerSectionPlane[];
   selectedGuids: string[];
   hiddenGuids: string[];
   // For isolation mode (defaultVisibility=false). `null` means the viewpoint
@@ -550,6 +452,7 @@ export function extractViewpointState(
 } {
   let camera: ViewerCameraState | undefined;
   let sectionPlane: ViewerSectionPlane | undefined;
+  let sectionPlanes: ViewerSectionPlane[] | undefined;
 
   // Extract camera
   if (viewpoint.perspectiveCamera) {
@@ -560,7 +463,8 @@ export function extractViewpointState(
 
   // Extract section plane
   if (viewpoint.clippingPlanes && viewpoint.clippingPlanes.length > 0 && bounds) {
-    sectionPlane = clippingPlaneToSectionPlane(viewpoint.clippingPlanes[0], bounds);
+    sectionPlanes = viewpoint.clippingPlanes.map((plane) => clippingPlaneToSectionPlane(plane, bounds));
+    sectionPlane = sectionPlanes[0];
   }
 
   // Extract selected GUIDs
@@ -619,6 +523,7 @@ export function extractViewpointState(
   return {
     camera,
     sectionPlane,
+    sectionPlanes,
     selectedGuids,
     hiddenGuids,
     visibleGuids,

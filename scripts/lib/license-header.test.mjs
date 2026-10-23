@@ -152,6 +152,8 @@ test('generated output is excluded, and only where it actually lives', () => {
   assert.equal(licenseHeaderFor('packages/codegen/generated/ifc4/enums.ts'), null);
   assert.equal(licenseHeaderFor('packages/parser/src/generated/enums.ts'), null);
   assert.equal(licenseHeaderFor('packages/wasm/pkg/ifc-lite.d.ts'), null);
+  assert.equal(licenseHeaderFor('docs/api/generated/assets/main.js'), null);
+  assert.notEqual(licenseHeaderFor('docs/api/reference.js'), null);
 
   // Hand-written siblings of each excluded tree stay in scope; an exclusion
   // that swallowed these would silence the gate over real source.
@@ -176,6 +178,7 @@ test('EVERY wasm-pack out-dir under a scan root is excluded, not just the defaul
   // Each path is the `--out-dir` its build script passes.
   // scripts/build-wasm.sh:208, behind BUILD_WIDE=1.
   assert.equal(licenseHeaderFor('packages/wasm/pkg-wide/ifc-lite.d.ts'), null);
+  assert.equal(licenseHeaderFor('packages/wasm/pkg-retained/ifc-lite.d.ts'), null);
   // rust/csg-thread-bench/build.sh:20-21, relative to the script's own dir.
   assert.equal(licenseHeaderFor('rust/csg-thread-bench/web/pkg-plain/csgbench.js'), null);
   assert.equal(licenseHeaderFor('rust/csg-thread-bench/web/pkg-threaded/csgbench.js'), null);

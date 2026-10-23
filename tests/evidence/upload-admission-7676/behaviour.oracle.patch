@@ -1,0 +1,89 @@
+diff --git a/apps/server/src/routes/parse/parquet_stream.rs b/apps/server/src/routes/parse/parquet_stream.rs
+index d38ae9d6c8..0383ea46f5 100644
+--- a/apps/server/src/routes/parse/parquet_stream.rs
++++ b/apps/server/src/routes/parse/parquet_stream.rs
+@@ -347,13 +347,10 @@ pub async fn parse_parquet_stream(
+     // up after the queue timeout, the data model was never written, and
+     // `GET /parse/data-model` answered the terminal 404. Holding the shared
+     // guard also keeps the request charged until the fill ends.
+-    let admission_for_dm = state.admission.clone();
++    let admission_for_dm = Arc::clone(&admission);
+     tokio::spawn(async move {
+         let _in_flight = in_flight;
+-        let _dm_admission = match admission_for_dm.acquire(content_for_cache.len() as u64).await {
+-            Ok(guard) => guard,
+-            Err(_) => return,
+-        };
++        let _admission = admission_for_dm;
+         // Run data model extraction in blocking task
+         let dm_result =
+             tokio::task::spawn_blocking(move || extract_data_model(&content_for_cache)).await;
+diff --git a/apps/server/src/routes/parse/upload.rs b/apps/server/src/routes/parse/upload.rs
+index 6ebcfc3317..f4db865052 100644
+--- a/apps/server/src/routes/parse/upload.rs
++++ b/apps/server/src/routes/parse/upload.rs
+@@ -35,7 +35,7 @@ pub(crate) async fn admit_upload(
+ ) -> Result<(AdmissionGuard, bytes::Bytes), ApiError> {
+     let max_file_size_mb = state.config.max_file_size_mb;
+     let admission = state.admission.acquire(max_file_size_mb as u64 * 1024 * 1024).await?;
+-    let file = extract_file_holding(multipart, max_file_size_mb, ()).await?.0;
++    let (file, admission) = extract_file_holding(multipart, max_file_size_mb, admission).await?;
+     Ok((admission, file))
+ }
+ 
+@@ -54,11 +54,12 @@ pub(crate) async fn request_cache_key_off_runtime(
+     admission: AdmissionGuard,
+ ) -> Result<(String, AdmissionGuard), ApiError> {
+     let (data, query) = (data.clone(), query.clone());
+-    Ok({
++    Ok(tokio::task::spawn_blocking(move || {
+         let key = super::cache_keys::request_cache_key(&data, &query, quality);
+         tracing::debug!(cache_key = %key, size = data.len(), "Upload hashed");
+         (key, admission)
+     })
++    .await?)
+ }
+ 
+ /// Longest an upload may go without delivering a byte (#7676, SERVER-29).
+@@ -86,9 +87,8 @@ const UPLOAD_MIN_BYTES_PER_SEC: u64 = 8 * 1024;
+ /// deadline only bounds how long the server WAITS.
+ fn next_byte_deadline(started: Instant, received: usize) -> Instant {
+     let on_schedule = Duration::from_secs_f64(received as f64 / UPLOAD_MIN_BYTES_PER_SEC as f64);
+-    let rate_floor = started + Duration::from_secs(365 * 24 * 3600);
+-    let _ = (UPLOAD_RATE_GRACE, on_schedule, UPLOAD_IDLE_TIMEOUT);
+-    rate_floor
++    let rate_floor = started + UPLOAD_RATE_GRACE.max(on_schedule);
++    rate_floor.min(Instant::now() + UPLOAD_IDLE_TIMEOUT)
+ }
+ 
+ /// Await the next piece of the upload, or refuse it with `408`.
+@@ -165,7 +165,10 @@ pub(crate) async fn extract_file_holding<H: Send + 'static>(
+             }
+             let bytes = bytes::Bytes::from(buf);
+             tracing::debug!(size = bytes.len(), "Extracted file from multipart");
+-            return decode_upload(bytes, max_bytes, max_file_size_mb).map(|file| (file, held));
++            return tokio::task::spawn_blocking(move || {
++                decode_upload(bytes, max_bytes, max_file_size_mb).map(|file| (file, held))
++            })
++            .await?;
+         }
+     }
+ 
+@@ -198,7 +201,7 @@ fn decode_upload(bytes: bytes::Bytes, max_bytes: usize, max_file_size_mb: usize)
+     let mut decompressed = Vec::new();
+     decoder
+         .read_to_end(&mut decompressed)
+-        .map_err(|e| ApiError::Internal(format!("Failed to decompress gzip: {e}")))?;
++        .map_err(|e| ApiError::BadRequest(format!("Failed to decompress gzip: {e}")))?;
+     if decompressed.len() > max_bytes {
+         return Err(ApiError::FileTooLarge {
+             max_mb: max_file_size_mb,
+@@ -311,7 +314,7 @@ fn unwrap_ifczip(
+         .by_ref()
+         .take(max_bytes as u64 + 1)
+         .read_to_end(&mut model)
+-        .map_err(|e| ApiError::Internal(format!("Failed to decompress .ifcZIP entry: {e}")))?;
++        .map_err(|e| ApiError::BadRequest(format!("Failed to decompress .ifcZIP entry: {e}")))?;
+     if model.len() > max_bytes {
+         return Err(ApiError::FileTooLarge {
+             max_mb: max_file_size_mb,

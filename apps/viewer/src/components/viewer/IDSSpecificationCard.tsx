@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Separator } from '@/components/ui/separator';
 import { groupRequirementResults, computeCheckStats } from '@/hooks/ids/idsRequirementGrouping';
+import { isUnmatchedSpecification } from '@/lib/validation/report-summary';
 import { cn } from '@/lib/utils';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
@@ -27,6 +28,8 @@ interface SpecificationCardProps {
    *  a rule-set spec has no correctable IDS facet to write through. */
   onCorrect?: () => void;
   correctable?: boolean;
+  /** Use individual requirement outcomes for IDS percentages (#8065). */
+  isIDS?: boolean;
 }
 
 function entityKey(entity: EntityResult): string {
@@ -76,6 +79,7 @@ export function SpecificationCard({
   onIsolateSet,
   onCorrect,
   correctable = false,
+  isIDS = false,
 }: SpecificationCardProps) {
   const { t, locale } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -108,6 +112,11 @@ export function SpecificationCard({
     );
   }, [requirementGroups, filterMode]);
   const applicableChecks = checkStats.passedChecks + checkStats.failedChecks;
+  const notChecked = isIDS && isUnmatchedSpecification(result.applicableCount, result.error);
+  // Only use retained checks when all entities are present. Partial reports
+  // must not silently turn a failures-only sample into the overall rate.
+  const checkRateAvailable = isIDS && result.error === undefined && result.entityResults.length === result.applicableCount && applicableChecks > 0;
+  const displayRate = notChecked ? 0 : checkRateAvailable ? checkStats.checkPassRate : result.passRate;
 
   // #5138: set-level (uniqueness/aggregate) results — never populated by
   // IDS, so this section only ever renders for a rule-set report.
@@ -172,14 +181,14 @@ export function SpecificationCard({
                   })}</span>
                 </div>
                 <div className="mt-2">
-                  <PassRateBar passRate={result.passRate} />
+                  <PassRateBar passRate={displayRate} />
+                  {notChecked && <span className="text-xs text-muted-foreground">{t('manualValidation.verdict.unanswered')}</span>}
                 </div>
-                {/* Check-level rate: an entity is failed by its FIRST failing
-                    requirement while its other requirements still count as
-                    passes here, so this normally reads HIGHER than the
-                    entity-level rate above — both matter and are shown
-                    separately rather than picking one. See computeCheckStats
-                    for the denominator caveat. */}
+                {isIDS && result.error !== undefined && <p className="mt-1 text-xs text-red-600">{result.error}</p>}
+                {isIDS && result.cardinalityResult?.passed === false && (
+                  <p className="mt-1 text-xs text-red-600">{result.cardinalityResult.message}</p>
+                )}
+                {/* The breakdown names the units used by the IDS percentage. */}
                 {applicableChecks > 0 && (
                   <div className="mt-1 text-xs text-muted-foreground">
                     {t(requirementGroups.length > 1 ? 'idsPanel.checksPassedAcross' : 'idsPanel.checksPassed', {

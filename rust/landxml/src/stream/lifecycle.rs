@@ -59,21 +59,34 @@ impl LandXmlTinStreamSession {
     /// Release every parser, queued event, and resumable cursor on cancellation
     /// or abandonment. This path is deliberately idempotent for WASM hosts.
     pub fn abort(&mut self) {
-        self.token.clear();
         self.queue.clear();
         self.queued_bytes = 0;
         self.pending_surface.take();
         self.metadata_cursor.take();
         self.pending_input.clear();
-        self.parser.take();
+        self.pending_start = 0;
+        self.tin.take();
+        self.driver.take();
         self.plan.take();
         self.alignment.take();
         self.pipe.take();
         self.closed = true;
     }
 
+    /// A parse error is terminal (#7677): each family parser pushes its frame
+    /// before the element handler runs, so after a refused element the frames
+    /// and the builders are out of step and the next tag would reach an
+    /// `expect` on the builder. The session is aborted, so every later call
+    /// reports it closed instead of resuming into that state.
+    pub(super) fn close_on_error<T>(&mut self, result: Result<T, LandXmlError>) -> Result<T, LandXmlError> {
+        if result.is_err() {
+            self.abort();
+        }
+        result
+    }
+
     pub fn header(&self) -> Option<LandXmlStreamHeader> {
-        self.parser
+        self.tin
             .as_ref()?
             .header()
             .map(|(version, units)| LandXmlStreamHeader { version, units })
@@ -92,5 +105,11 @@ impl LandXmlTinStreamSession {
     /// Number of complete transport records currently retained for a consumer.
     pub fn queued_events(&self) -> usize {
         self.queue.len()
+    }
+}
+
+impl Drop for LandXmlTinStreamSession {
+    fn drop(&mut self) {
+        self.abort();
     }
 }

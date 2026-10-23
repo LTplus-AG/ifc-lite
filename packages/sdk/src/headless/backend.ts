@@ -1,0 +1,370 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/** Shared headless `BimBackend` over an already-loaded store. */
+
+import type {
+  BimBackend,
+  BimEventType,
+  ModelBackendMethods,
+  QueryBackendMethods,
+  SelectionBackendMethods,
+  VisibilityBackendMethods,
+  ViewerBackendMethods,
+  MutateBackendMethods,
+  StoreBackendMethods,
+  SpatialBackendMethods,
+  ExportBackendMethods,
+  LensBackendMethods,
+  FilesBackendMethods,
+  ScheduleBackendMethods,
+  StructuralBackendMethods,
+  CostBackendMethods,
+  EntityRef,
+  EntityData,
+  PropertySetData,
+  QuantitySetData,
+  ModelInfo,
+} from '../index.js';
+import { createCostBackend, createEffectiveEntityCheck, createHeadlessMutateAdapter, type EntityRefCheck, type StyleBackendMethods } from '../index.js';
+import { applyStylesInStore } from '@ifc-lite/create';
+import { describeHeadlessOperation, type HeadlessOperation } from './capabilities.js';
+import type { HeadlessBackendOptions } from './options.js';
+import { createHeadlessStoreAdapter } from './headless-backend-store.js';
+import type { IfcDataStore } from '@ifc-lite/parser';
+import { configureSourceMutationView } from './mutation-base.js';
+import { MutablePropertyView, StoreEditor, storeHasSourceEntity } from '@ifc-lite/mutations';
+import {
+  extractScheduleOnDemand,
+} from '@ifc-lite/parser';
+import { escapeCsvCell, exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
+import { findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';
+import { createStructuralAdapter } from './headless-backend-structural.js';
+import { createQueryAdapter } from './backend-query.js';
+import { overlayFromView, type PendingOverlay } from './overlay.js';
+
+
+export class HeadlessBackend implements BimBackend {
+  readonly model: ModelBackendMethods;
+  readonly query: QueryBackendMethods;
+  readonly selection: SelectionBackendMethods;
+  /**
+   * Mutable so the MCP server can swap in streaming adapters when the
+   * viewer subprocess starts, then revert when it closes. Marked
+   * `readonly` on the BimBackend interface but the underlying instance
+   * is ours to manage.
+   */
+  visibility: VisibilityBackendMethods;
+  viewer: ViewerBackendMethods;
+  readonly mutate: MutateBackendMethods;
+  readonly style: StyleBackendMethods;
+  readonly store: StoreBackendMethods;
+  readonly spatial: SpatialBackendMethods;
+  readonly export: ExportBackendMethods;
+  readonly lens: LensBackendMethods;
+  readonly files: FilesBackendMethods;
+  readonly schedule: ScheduleBackendMethods;
+  readonly structural: StructuralBackendMethods;
+  readonly cost: CostBackendMethods;
+
+  private dataStore: IfcDataStore;
+  private modelName: string;
+  private modelId: string;
+  /** Every model id this backend answers for, so the schedule assert, the
+   *  `bim.mutate.*` guard and `bim.store.addEntity` cannot differ (#3764). The
+   *  legacy-host aliases are accepted only when explicitly supplied. */
+  private readonly acceptedModelIds: readonly string[];
+  /** The reference check `bim.mutate.*` is gated on (`null` when writable,
+   *  else the reason), exposed because the mutation TOOLS write into
+   *  `getMutationView()` directly and need the same gate (#3764). */
+  readonly checkEntityRef: EntityRefCheck;
+  private mutationView: MutablePropertyView | null = null;
+  private storeEditor: StoreEditor | null = null;
+  private readonly disposeRoomCommands: () => void;
+  private viewerAttached = false;
+  private readonly options: HeadlessBackendOptions;
+  private peerScopes: () => import('@ifc-lite/create').ElementSplitOptions['globalIdScopes'] = () => [];
+
+  capability(operation: HeadlessOperation) { return describeHeadlessOperation(this, operation, this.options, this.viewerAttached); }
+
+  setPeerScopes(provider: typeof this.peerScopes): void { this.peerScopes = provider; }
+
+  dispose(): void { this.disposeRoomCommands(); }
+
+  constructor(store: IfcDataStore, modelName: string, modelId: string, options: HeadlessBackendOptions = {}, modelAliases: readonly string[] = []) {
+    this.options = { ...options };
+    this.dataStore = store;
+    this.modelName = modelName;
+    this.modelId = modelId;
+    this.acceptedModelIds = [...new Set([modelId, ...modelAliases])];
+    this.model = this.createModelAdapter();
+    // The read surface folds this session's queued mutations in (#2004). The
+    // overlay is passed as a getter because it is built lazily on the first
+    // mutation, so a session that is only ever read stays on the store-only
+    // path and pays nothing.
+    this.query = createQueryAdapter(store, modelId, () => this.pendingOverlay(), () => this.getMutationView());
+    this.selection = this.createSelectionAdapter();
+    this.visibility = { hide() {}, show() {}, isolate() {}, reset() {} };
+    this.viewer = {
+      colorize() {}, colorizeAll() {}, resetColors() {},
+      flyTo() {}, setSection() {}, getSection() { return null; },
+      setCamera() {}, getCamera() { return { mode: 'perspective' as const }; },
+    };
+    this.checkEntityRef = createEffectiveEntityCheck({
+      acceptedModelIds: this.acceptedModelIds,
+      // Both halves of the source index (byId + deferred property atoms, #5222).
+      hasSourceEntity: id => storeHasSourceEntity(this.dataStore, id),
+      overlay: () => this.mutationView,
+    });
+    this.mutate = createHeadlessMutateAdapter(() => this.getOrCreateMutationView(), this.checkEntityRef);
+    // Same arrangement as the CLI backend: the work happens in @ifc-lite/create
+    // against the shared StoreEditor, so the new entities land in the overlay
+    // this backend's export adapter already reads.
+    this.style = {
+      applyColors: (batches, options) => applyStylesInStore(
+        this.getOrCreateStoreEditor(),
+        this.dataStore,
+        batches.map(batch => ({
+          products: batch.refs.map(r => r.expressId),
+          color: batch.color,
+          name: batch.name,
+        })),
+        options,
+      ),
+    };
+    const storeAdapter = createHeadlessStoreAdapter(store, modelId, () => this.getOrCreateStoreEditor(), id => this.assertKnownModelId(id), () => this.peerScopes(), options);
+    this.store = storeAdapter;
+    this.disposeRoomCommands = storeAdapter.disposeRooms;
+    this.spatial = { queryBounds() { return []; }, raycast() { return []; }, queryFrustum() { return []; } };
+    this.export = this.createExportAdapter();
+    this.lens = { presets() { return []; }, create() { return null; }, activate() {}, deactivate() {}, getActive() { return null; } };
+    this.files = { list() { return []; }, text() { return null; }, csv() { return null; }, csvColumns() { return []; } };
+    this.schedule = this.createScheduleAdapter();
+    this.structural = createStructuralAdapter(this.dataStore, modelId => this.assertKnownModelId(modelId));
+    this.cost = createCostBackend(modelId => { // #4857: lazily created overlay, visible once non-null.
+      if (modelId) this.assertKnownModelId(modelId);
+      return { modelId: this.modelId, store: this.dataStore, mutationView: this.mutationView ?? undefined };
+    });
+  }
+
+  subscribe(_event: BimEventType, _handler: (data: unknown) => void): () => void {
+    return () => {};
+  }
+
+  private createModelAdapter(): ModelBackendMethods {
+    const store = this.dataStore;
+    const name = this.modelName;
+    const id = this.modelId;
+    return {
+      list(): ModelInfo[] {
+        return [{
+          id,
+          name,
+          schema: store.schemaVersion,
+          schemaVersion: store.schemaVersion,
+          entityCount: store.entityCount,
+          fileSize: store.fileSize,
+          loadedAt: Date.now(),
+        }];
+      },
+      activeId() { return id; },
+      loadIfc() { /* no-op in headless */ },
+    };
+  }
+
+  /** This session's queued edits, or null when it has none. */
+  pendingOverlay(): PendingOverlay | null {
+    return overlayFromView(this.mutationView, this.dataStore);
+  }
+
+  private createSelectionAdapter(): SelectionBackendMethods {
+    let selection: EntityRef[] = [];
+    return {
+      get() { return selection; },
+      set(refs: EntityRef[]) { selection = refs; },
+    };
+  }
+
+  private getOrCreateStoreEditor(): StoreEditor {
+    if (this.storeEditor) return this.storeEditor;
+    this.mutationView = new MutablePropertyView(this.dataStore.properties || null, this.modelId);
+    // All source owners, including type definitions, contribute their full
+    // property and quantity sets before an edit rewrites them (#8056).
+    configureSourceMutationView(this.dataStore, this.mutationView);
+    this.storeEditor = new StoreEditor(this.dataStore, this.mutationView);
+    return this.storeEditor;
+  }
+
+  /** Expose the mutation view so tools can inspect pending mutations. */
+  getMutationView(): MutablePropertyView | null {
+    return this.mutationView;
+  }
+
+  /**
+   * The overlay every `bim.mutate.*` write goes through, created on first use
+   * so a read-only session still pays nothing. Built by `getOrCreateStoreEditor`
+   * to keep the extractor wiring in one place.
+   */
+  /** The view `bim.mutate` writes through — public so `run_flow`'s `tables()` reads the same overlay. */
+  getOrCreateMutationView(): MutablePropertyView {
+    this.getOrCreateStoreEditor();
+    // Non-null immediately after: the two fields are assigned together and
+    // never cleared.
+    return this.mutationView as MutablePropertyView;
+  }
+
+  /** Force creation of the editor (used by mutation tools that always need it). */
+  ensureEditor(): StoreEditor {
+    return this.getOrCreateStoreEditor();
+  }
+
+  /** Replace the viewer/visibility adapters at runtime (for ViewerManager). */
+  attachStreamingAdapters(viewer: ViewerBackendMethods, visibility: VisibilityBackendMethods): void {
+    this.viewerAttached = true;
+    this.viewer = viewer;
+    this.visibility = visibility;
+  }
+
+  /** Restore no-op viewer/visibility adapters (for ViewerManager close). */
+  detachStreamingAdapters(): void {
+    this.viewerAttached = false;
+    this.viewer = {
+      colorize() {}, colorizeAll() {}, resetColors() {},
+      flyTo() {}, setSection() {}, getSection() { return null; },
+      setCamera() {}, getCamera() { return { mode: 'perspective' as const }; },
+    };
+    this.visibility = { hide() {}, show() {}, isolate() {}, reset() {} };
+  }
+
+  /** Whether `modelId` names the one model this backend holds. */
+  acceptsModelId(modelId: string): boolean {
+    return this.acceptedModelIds.includes(modelId);
+  }
+
+  /** Refuse an unknown model id loudly, at whichever surface was handed it. */
+  assertKnownModelId(modelId: string): void {
+    if (this.acceptsModelId(modelId)) return;
+    throw new Error(
+      `Unknown modelId '${modelId}': this backend answers for ${this.acceptedModelIds.map(id => `'${id}'`).join(' or ')}`,
+    );
+  }
+
+  private createExportAdapter(): ExportBackendMethods {
+    const store = this.dataStore;
+    const queryAdapter = this.query;
+
+    /**
+     * RFC 4180 quoting + the CWE-1236 formula-injection guard, delegated to
+     * `@ifc-lite/export`'s single escaper. The copy that used to live here
+     * tested the trigger anchored at offset 0, so a BOM/ZWSP/LRM/NBSP/U+2028
+     * in front of `=` walked past it.
+     */
+    const escapeCsv = (value: string, sep: string): string =>
+      escapeCsvCell(value, { delimiter: sep });
+
+    const resolveColumn = (
+      data: EntityData,
+      col: string,
+      props: PropertySetData[] | null,
+      qsets: QuantitySetData[] | null,
+    ): string => {
+      if (col === 'Name' || col === 'name') return data.name;
+      if (col === 'Type' || col === 'type') return data.type;
+      if (col === 'GlobalId' || col === 'globalId') return data.globalId;
+      if (col === 'Description' || col === 'description') return data.description;
+      if (col === 'ObjectType' || col === 'objectType') return data.objectType;
+      const dot = col.indexOf('.');
+      if (dot > 0) {
+        const setName = col.slice(0, dot);
+        const valueName = col.slice(dot + 1);
+        if (props) {
+          const prop = findPropertyInSets(props, setName, valueName);
+          if (prop?.value != null) return String(prop.value);
+        }
+        if (qsets) {
+          const qty = findQuantityInSets(qsets, setName, valueName);
+          if (qty?.value != null) return String(qty.value);
+        }
+      }
+      return '';
+    };
+
+    return {
+      csv(refs, options): string {
+        const entityRefs = refs as EntityRef[];
+        const opts = options as { columns: string[]; separator?: string };
+        const sep = opts.separator ?? ',';
+        const hasDot = opts.columns.some((c) => c.indexOf('.') > 0);
+        const rows: string[][] = [opts.columns];
+        for (const ref of entityRefs) {
+          const data = queryAdapter.entityData(ref);
+          if (!data) continue;
+          const props = hasDot ? queryAdapter.properties(ref) : null;
+          const qsets = hasDot ? queryAdapter.quantities(ref) : null;
+          rows.push(opts.columns.map((c) => resolveColumn(data, c, props, qsets)));
+        }
+        return rows.map((r) => r.map((c) => escapeCsv(c, sep)).join(sep)).join('\n');
+      },
+      json(refs, columns): Record<string, unknown>[] {
+        const entityRefs = refs as EntityRef[];
+        const cols = columns as string[];
+        const hasDot = cols.some((c) => c.indexOf('.') > 0);
+        const result: Record<string, unknown>[] = [];
+        for (const ref of entityRefs) {
+          const data = queryAdapter.entityData(ref);
+          if (!data) continue;
+          const props = hasDot ? queryAdapter.properties(ref) : null;
+          const qsets = hasDot ? queryAdapter.quantities(ref) : null;
+          const row: Record<string, unknown> = {};
+          for (const col of cols) {
+            const v = resolveColumn(data, col, props, qsets);
+            row[col] = v || null;
+          }
+          result.push(row);
+        }
+        return result;
+      },
+      ifc: (refs, options): string => {
+        const opts = (options ?? {}) as Record<string, unknown>;
+        const schema = (opts.schema as 'IFC2X3' | 'IFC4' | 'IFC4X3') ?? store.schemaVersion ?? 'IFC4';
+        const exportOpts: Partial<StepExportOptions> = { schema };
+        // `undefined` is the only "no isolation filter": an empty list is a filter
+        // that matched nothing, refused in `ExportNamespace.ifc` (#4738).
+        if (refs != null) {
+          const isolatedIds = new Set(refs.map((r) => r.expressId));
+          exportOpts.visibleOnly = true;
+          exportOpts.isolatedEntityIds = isolatedIds;
+          exportOpts.hiddenEntityIds = new Set<number>();
+        }
+        if (this.mutationView) {
+          const exporter = new StepExporter(store, this.mutationView);
+          const result = exporter.export({ schema, ...exportOpts });
+          return new TextDecoder().decode(result.content);
+        }
+        return exportToStep(store, exportOpts);
+      },
+      download(): void { /* CLI / MCP write to disk via tools, not the SDK download path */ },
+    };
+  }
+
+  private createScheduleAdapter(): ScheduleBackendMethods {
+    const store = this.dataStore;
+    let cached: ReturnType<ScheduleBackendMethods['data']> | null = null;
+    const assert = (modelId?: string): void => {
+      if (modelId) this.assertKnownModelId(modelId);
+    };
+    const extract = (modelId?: string): ReturnType<ScheduleBackendMethods['data']> => {
+      assert(modelId);
+      if (!cached) cached = extractScheduleOnDemand(store) as ReturnType<ScheduleBackendMethods['data']>;
+      return cached;
+    };
+    return {
+      data: (m) => extract(m),
+      tasks: (m) => extract(m).tasks,
+      workSchedules: (m) => extract(m).workSchedules,
+      sequences: (m) => extract(m).sequences,
+    };
+  }
+
+}

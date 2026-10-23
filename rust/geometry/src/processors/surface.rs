@@ -4,12 +4,15 @@
 
 //! SurfaceOfLinearExtrusion processor - surface sweep geometry.
 
-use crate::{Error, Mesh, Point2, Point3, Result, TessellationQuality, Vector3};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
+use crate::{Error, Mesh, Point2, Point3, Result, TessellationQuality};
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
 
-use super::helpers::{get_axis2_placement_transform_by_id, get_direction_by_id};
+use super::helpers::get_axis2_placement_transform_by_id;
 use crate::router::GeometryProcessor;
+
+#[path = "surface_plan.rs"]
+pub(crate) mod plan;
 
 /// SurfaceOfLinearExtrusion processor
 /// Handles IfcSurfaceOfLinearExtrusion - surface created by sweeping a curve along a direction
@@ -17,15 +20,33 @@ pub struct SurfaceOfLinearExtrusionProcessor;
 
 #[path = "curve_walk.rs"]
 mod curve_walk;
-use curve_walk::{CurveWalk, MAX_CURVE_NODES, SEAM_EPS};
+use curve_walk::{CurveWalk, SEAM_EPS};
+#[cfg(test)]
+use curve_walk::MAX_CURVE_NODES;
 
 impl SurfaceOfLinearExtrusionProcessor {
     pub fn new() -> Self {
         Self
     }
+
+    pub(crate) fn lower(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        rtc_file_units: Option<(f64, f64, f64)>,
+    ) -> Result<plan::LinearExtrusionSurfacePlan> {
+        plan::lower(entity, decoder, rtc_file_units)
+    }
 }
 
 impl GeometryProcessor for SurfaceOfLinearExtrusionProcessor {
+    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
+        _quality: crate::TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
+        -> Option<crate::Result<crate::program::OwnedConstructor>> {
+        use crate::program::constructor::Constructor;
+        Some(self.lower(entity, decoder, rtc_file_units).map(|plan| crate::program::OwnedConstructor::new(Constructor::LinearExtrusionSurface(plan))))
+    }
+
     fn process(
         &self,
         entity: &DecodedEntity,
@@ -33,105 +54,21 @@ impl GeometryProcessor for SurfaceOfLinearExtrusionProcessor {
         _schema: &IfcSchema,
         _quality: TessellationQuality,
     ) -> Result<Mesh> {
-        // IfcSurfaceOfLinearExtrusion attributes:
-        // 0: SweptCurve (IfcProfileDef - usually IfcArbitraryOpenProfileDef)
-        // 1: Position (IfcAxis2Placement3D)
-        // 2: ExtrudedDirection (IfcDirection)
-        // 3: Depth (length)
+        Self::process_rebased(entity, decoder, None)
+    }
 
-        // Get the swept curve (profile)
-        let curve_attr = entity.get(0).ok_or_else(|| {
-            Error::geometry("SurfaceOfLinearExtrusion missing SweptCurve".to_string())
-        })?;
-
-        let curve_id = curve_attr.as_entity_ref().ok_or_else(|| {
-            Error::geometry("Expected entity reference for SweptCurve".to_string())
-        })?;
-
-        // Get position
-        let position_attr = entity.get(1);
-        let position_transform = if let Some(attr) = position_attr {
-            if let Some(pos_id) = attr.as_entity_ref() {
-                get_axis2_placement_transform_by_id(pos_id, decoder)?
-            } else {
-                Matrix4::identity()
-            }
-        } else {
-            Matrix4::identity()
-        };
-
-        // Get extrusion direction
-        let direction_attr = entity.get(2).ok_or_else(|| {
-            Error::geometry("SurfaceOfLinearExtrusion missing ExtrudedDirection".to_string())
-        })?;
-
-        let direction = if let Some(dir_id) = direction_attr.as_entity_ref() {
-            get_direction_by_id(dir_id, decoder)
-                .ok_or_else(|| Error::geometry("Failed to get direction".to_string()))?
-        } else {
-            Vector3::new(0.0, 0.0, 1.0) // Default to Z-up
-        };
-
-        // Get depth
-        let depth = entity
-            .get(3)
-            .and_then(|v| v.as_float())
-            .ok_or_else(|| Error::geometry("SurfaceOfLinearExtrusion missing Depth".to_string()))?;
-
-        // Get curve points from the profile
-        let curve_points = Self::get_profile_curve_points(curve_id, decoder)?;
-
-        if curve_points.len() < 2 {
-            return Ok(Mesh::new());
-        }
-
-        // Extrude the curve to create a surface (quad strip)
-        let extrusion = direction.normalize() * depth;
-
-        let mut positions = Vec::with_capacity(curve_points.len() * 2 * 3);
-        let mut indices = Vec::with_capacity((curve_points.len() - 1) * 6);
-
-        // Create vertices: bottom row, then top row
-        for point in &curve_points {
-            // Transform 2D point to 3D using position
-            let p3d = position_transform.transform_point(&Point3::new(point.x, point.y, 0.0));
-            positions.push(p3d.x as f32);
-            positions.push(p3d.y as f32);
-            positions.push(p3d.z as f32);
-        }
-
-        for point in &curve_points {
-            // Extruded point
-            let p3d = position_transform.transform_point(&Point3::new(point.x, point.y, 0.0));
-            let p_extruded = p3d + extrusion;
-            positions.push(p_extruded.x as f32);
-            positions.push(p_extruded.y as f32);
-            positions.push(p_extruded.z as f32);
-        }
-
-        // Create quad strip triangles
-        let n = curve_points.len() as u32;
-        for i in 0..n - 1 {
-            // Two triangles per quad
-            // Triangle 1: bottom-left, bottom-right, top-left
-            indices.push(i);
-            indices.push(i + 1);
-            indices.push(i + n);
-
-            // Triangle 2: bottom-right, top-right, top-left
-            indices.push(i + 1);
-            indices.push(i + n + 1);
-            indices.push(i + n);
-        }
-
-        Ok(Mesh {
-            positions,
-            normals: Vec::new(),
-            indices,
-            rtc_applied: false, 
-            welded_in_object_frame: false,
-            plane_tags: None,
-            origin: [0.0; 3],        instance_meta: None, local_bounds: None, local_to_world: None })
+    /// Rebase by `rtc_file_units` in f64, after Position and before the f32
+    /// narrowing, as every raw-coordinate processor does (#7688, the RTC half
+    /// of #7678 PROC-S23).
+    fn process_in_rtc_frame(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        _schema: &IfcSchema,
+        _quality: TessellationQuality,
+        rtc_file_units: (f64, f64, f64),
+    ) -> Option<Result<Mesh>> {
+        Some(Self::process_rebased(entity, decoder, Some(rtc_file_units)))
     }
 
     fn supported_types(&self) -> Vec<IfcType> {
@@ -140,6 +77,40 @@ impl GeometryProcessor for SurfaceOfLinearExtrusionProcessor {
 }
 
 impl SurfaceOfLinearExtrusionProcessor {
+    /// The first swept vertex (file units, the item's own frame): Position
+    /// applied to the first curve point. The router's raw-coordinate RTC
+    /// probe reads it, so a national-grid surface is rebased before narrowing.
+    pub(crate) fn first_vertex(
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Option<(f64, f64, f64)> {
+        let curve_id = entity.get(slot::IfcSurfaceOfLinearExtrusion::SWEPT_CURVE.index())?.as_entity_ref()?;
+        let position = Self::position_transform(entity, decoder).ok()?;
+        let first = *Self::get_profile_curve_points(curve_id, decoder).ok()?.first()?;
+        let p = position.transform_point(&Point3::new(first.x, first.y, 0.0));
+        Some((p.x, p.y, p.z))
+    }
+
+    fn position_transform(
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<Matrix4<f64>> {
+        match entity
+            .get(slot::IfcSurfaceOfLinearExtrusion::POSITION.index())
+            .and_then(|attr| attr.as_entity_ref()) {
+            Some(pos_id) => get_axis2_placement_transform_by_id(pos_id, decoder),
+            None => Ok(Matrix4::identity()),
+        }
+    }
+
+    fn process_rebased(
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        rtc_file_units: Option<(f64, f64, f64)>,
+    ) -> Result<Mesh> {
+        Ok(Self::new().lower(entity, decoder, rtc_file_units)?.evaluate())
+    }
+
     /// Extract curve points from a profile definition
     /// Longest nested-curve chain the profile sampler will follow. See
     /// `curve_points_guarded` for why this sits alongside the visited set.
@@ -198,8 +169,17 @@ impl SurfaceOfLinearExtrusionProcessor {
         depth: u32,
         walk: &mut CurveWalk,
     ) -> Result<Vec<Point2<f64>>> {
-        if depth >= Self::MAX_CURVE_NESTING_DEPTH || !walk.seen.insert(curve_id) {
-            return Ok(Vec::new());
+        // Refused, not `Ok(empty)`: the composite caller accumulates, so an
+        // empty cycle or depth-capped branch was a silently SHORTER curve
+        // (#7688). Both still terminate; they now say so.
+        if depth >= Self::MAX_CURVE_NESTING_DEPTH {
+            return Err(Error::geometry(format!(
+                "Curve nesting exceeds {} at #{curve_id}",
+                Self::MAX_CURVE_NESTING_DEPTH
+            )));
+        }
+        if !walk.seen.insert(curve_id) {
+            return Err(Error::geometry(format!("Cyclic curve reference at #{curve_id}")));
         }
         walk.spend()?;
         let out = Self::curve_points_inner(curve_id, decoder, depth, walk);
@@ -235,9 +215,17 @@ impl SurfaceOfLinearExtrusionProcessor {
                 // `helpers::extract_loop_points_by_id`.
                 let mut points = Vec::with_capacity(point_ids.len());
                 for point_id in point_ids {
-                    let (x, y, _z) = decoder.get_cartesian_point_fast(point_id).ok_or_else(|| {
+                    let (x, y, z) = decoder.get_cartesian_point_fast(point_id).ok_or_else(|| {
                         Error::geometry(format!("Polyline point #{point_id} did not resolve"))
                     })?;
+                    // The swept curve is a 2D profile curve. A point off its
+                    // plane is refused, never flattened into a different
+                    // curve (#7688 review).
+                    if z != 0.0 {
+                        return Err(Error::geometry(format!(
+                            "Polyline point #{point_id} lies off the profile plane (z = {z})"
+                        )));
+                    }
                     points.push(Point2::new(x, y));
                 }
                 Ok(points)
@@ -246,21 +234,14 @@ impl SurfaceOfLinearExtrusionProcessor {
                 // Handle composite curves by extracting segments
                 Self::extract_composite_curve_points(curve_id, decoder, depth, walk)
             }
-            _ => {
-                // Fallback: try to get points directly
-                if let Some(point_ids) = decoder.get_polyloop_point_ids_fast(curve_id) {
-                    let mut points = Vec::with_capacity(point_ids.len());
-                    for point_id in point_ids {
-                        let (x, y, _z) = decoder.get_cartesian_point_fast(point_id).ok_or_else(|| {
-                            Error::geometry(format!("Curve point #{point_id} did not resolve"))
-                        })?;
-                        points.push(Point2::new(x, y));
-                    }
-                    Ok(points)
-                } else {
-                    Ok(Vec::new())
-                }
-            }
+            // Any other curve is refused, never read as raw bytes: the old
+            // fallback took the first nested list as points, which is a
+            // B-spline's control polygon or a trimmed curve's Trim1 (#7688,
+            // PROC-S1). Refused, the item stays visibly unmeshed, as it was
+            // while this processor was not registered.
+            other => Err(Error::geometry(format!(
+                "SurfaceOfLinearExtrusion SweptCurve: unsupported curve {other}"
+            ))),
         }
     }
 
@@ -305,48 +286,29 @@ impl SurfaceOfLinearExtrusionProcessor {
             // before because no segment ever produced points to orient -- the
             // dispatch bug above meant every one came back empty, so a
             // reversed segment and a forward one were indistinguishable.
-            let same_sense = segment
-                .get(1)
-                .map(|v| match v {
-                    ifc_lite_core::AttributeValue::Enum(e) => e != "F" && e != ".F.",
-                    _ => true,
-                })
-                .unwrap_or(true);
+            let same_sense = segment.get_bool(1).unwrap_or(true);
 
             // The ParentCurve is a CURVE, not a profile. Routing it through the
             // profile entry point read its attribute 2 as "the curve" and
-            // dropped every segment (#2866).
-            if let Ok(mut segment_points) =
-                Self::curve_points_guarded(parent_curve_id, decoder, depth + 1, walk)
-            {
-                if !same_sense {
-                    segment_points.reverse();
+            // dropped every segment (#2866). A segment that does not read
+            // refuses the curve: skipping it meshed a SHORTER curve as if it
+            // were the authored one (#7688, the rule of #3421).
+            let mut segment_points =
+                Self::curve_points_guarded(parent_curve_id, decoder, depth + 1, walk)?;
+            if !same_sense {
+                segment_points.reverse();
+            }
+            // Drop the seam point only when it ACTUALLY duplicates the
+            // previous segment's end. A `.DISCONTINUOUS.` transition, or a
+            // gap from a malformed file, leaves a real point that an
+            // unconditional skip would eat.
+            let drop_seam = match (all_points.last(), segment_points.first()) {
+                (Some(prev), Some(next)) => {
+                    (prev.x - next.x).abs() < SEAM_EPS && (prev.y - next.y).abs() < SEAM_EPS
                 }
-                // Drop the seam point only when it ACTUALLY duplicates the
-                // previous segment's end. A `.DISCONTINUOUS.` transition, or a
-                // gap from a malformed file, leaves a real point that an
-                // unconditional skip would eat.
-                let drop_seam = match (all_points.last(), segment_points.first()) {
-                    (Some(prev), Some(next)) => {
-                        (prev.x - next.x).abs() < SEAM_EPS && (prev.y - next.y).abs() < SEAM_EPS
-                    }
-                    _ => false,
-                };
-                let start_idx = usize::from(drop_seam);
-                all_points.extend(segment_points.into_iter().skip(start_idx));
-            }
-
-            // The `if let Ok(..)` above deliberately tolerates ONE malformed
-            // segment rather than losing the whole profile -- but it must not
-            // swallow budget exhaustion, or the loop keeps going and returns a
-            // truncated profile as if it were complete. That is the silent
-            // wrong answer this guard exists to avoid, so exhaustion is
-            // re-raised here where the tolerance cannot hide it.
-            if walk.exhausted {
-                return Err(Error::geometry(format!(
-                    "Curve traversal exceeded {MAX_CURVE_NODES} nested curves"
-                )));
-            }
+                _ => false,
+            };
+            all_points.extend(segment_points.into_iter().skip(usize::from(drop_seam)));
         }
 
         Ok(all_points)

@@ -4,13 +4,13 @@
 
 /** Full-model incoming-reference guard for destructive cost authoring. */
 
+import { stepStringLiteralEnd } from '@ifc-lite/encoding';
 import { effectiveCreatedRecord, effectiveSourceRecord } from '@ifc-lite/export';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 
 function referencedTargetCounts(text: string, targetIds: ReadonlySet<number>): Map<number, number> {
   const found = new Map<number, number>();
-  let inString = false;
   let inComment = false;
   for (let i = 0; i < text.length; i++) {
     if (inComment) {
@@ -20,20 +20,21 @@ function referencedTargetCounts(text: string, targetIds: ReadonlySet<number>): M
       }
       continue;
     }
-    if (!inString && text[i] === '/' && text[i + 1] === '*') {
+    if (text[i] === '/' && text[i + 1] === '*') {
       inComment = true;
       i++;
       continue;
     }
     if (text[i] === "'") {
-      if (inString && text[i + 1] === "'") {
-        i++;
-      } else {
-        inString = !inString;
-      }
+      // The shared literal-end rule: `''` and a PAGE directive's apostrophe
+      // operand (`'Para \S\' 5'`) stay inside the string (#7589). A string
+      // that never closes swallows the rest, as before.
+      const end = stepStringLiteralEnd(text, i);
+      if (end < 0) break;
+      i = end - 1;
       continue;
     }
-    if (inString || text[i] !== '#') continue;
+    if (text[i] !== '#') continue;
     let value = 0;
     let cursor = i + 1;
     if (cursor >= text.length || text[cursor] < '0' || text[cursor] > '9') continue;

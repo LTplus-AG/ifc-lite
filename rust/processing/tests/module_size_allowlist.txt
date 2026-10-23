@@ -13,7 +13,7 @@
 # file's measured count and fails a hand-picked number; a duplicate row fails
 # in module_size_ratchet.rs (#4388).
      756 apps/server/src/services/parquet_data_model.rs
-     581 apps/server/src/services/parquet_optimized.rs
+     531 apps/server/src/services/parquet_optimized.rs
 # +8: add set_entity_index setter so the processor can install its inline-built index (perf/single-scan).
 # +50: add the per-worker placement-transform memo (field + take/set/get/cache methods), mirroring point_cache (perf/placement-cache).
     1064 rust/core/src/decoder.rs
@@ -45,11 +45,8 @@
 # schema_helpers.rs row removed: the merged upstream #1969 split its tests into
 # schema_helpers_tests.rs, dropping the file to 305 lines (under the 400 budget),
 # same as the tree main converged on independently.
-# -416: the inline #[cfg(test)] mod moved VERBATIM to units_tests.rs (ratchet-exempt)
-# so the quoted 'FEET' arm and its two cross-reader comments fit; 990 -> 574.
-# -38: the SI-prefix and conversion-based tables moved to unit_labels.rs, shared
-# verbatim with the georeferencing MapUnit reader (#3292); 574 -> 536.
-    536 rust/core/src/units.rs
+# units.rs row removed: the four near-duplicate resolver bodies share one unit walk
+# (F3a #7775), 531 -> 306 lines, under the 400 budget.
 # +4: build the index once in parallel on the fail-closed try_/project_glb_size large-model GLB paths (perf/parallel-scan).
 # +81: emissive-material knob for KMZ/Google Earth (#1427) - make_material lit/unlit/emissive branch + emissive param threaded through build_gltf/export_glb_from_meshes and their tests.
     4028 rust/export/src/gltf.rs
@@ -65,17 +62,10 @@
 # Row DELETED: the COLLADA document WRITER moved verbatim to collada_document.rs
 # so collada.rs could take try_export_collada_from_meshes and come
 # back under the 400-line rule instead of raising this budget to 470.
-     468 rust/export/src/model.rs
-# NEW (#5116): port the TypeScript exporter's resolveUnrepresentedEntity
-# fallback (proxy a rooted type with no target representation, error for a
-# non-rooted one) instead of silently passing an unmapped type through
-# unchanged. The bulk of the new logic lives in schema_unrepresented.rs
-# (a fresh, well-under-budget module); this is only the one call site plus
-# the Result-returning signature changes that ripple through convert_record's
-# existing early returns.
-# #5307 (Rust twin of #5202): the ifc4_slots parameter, its doc line and the
-# IFC4X3/IFC5 -> IFC4 count arm in convert_step_line, +5 lines.
-     413 rust/export/src/schema_convert.rs
+# C6-8 (#7783): the export row stream moved here from rust/export/src/model.rs (468 lines,
+# row removed); its pass-1 helpers split into rows/support.rs. The 328-line
+# stream function is the bulk (see function_length_allowlist.txt).
+     431 rust/processing/src/data_model/rows/mod.rs
 # -140 net: text-level STEP primitives (escape/detect_schema/refs_in_line/
 # split_top_level_args/apply_attr_mutations) split out to step_text.rs, making
 # room for the backslash-doubling fix to escape() without raising this
@@ -90,7 +80,6 @@
 # the prism-cut path's cap/decompose triangulator. Skips the ring depth-parity
 # flood that open segments would corrupt.
      1617 rust/geometry/src/cdt.rs
-     956 rust/geometry/src/csg/consolidate.rs
 # -159: inline `mod tests` split out to csg/csg_tests.rs (ratchet-exempt) to make room for the
 # degenerate-triangle NaN-normal fix and its two regression tests; budget refreshed downward.
 # -117: the vertex-vs-plane classification epsilon (per-axis f32 rounding noise
@@ -148,52 +137,18 @@
      700 rust/geometry/src/kernel/predicates.rs
 # -31: extracted the final conformity audit + traversal recovery into kernel/retriangulate_audit.rs and phase-D recovery into retriangulate_recover.rs (issue #098 dense faceted-reveal walls); net down.
               935 rust/geometry/src/kernel/retriangulate.rs
-# split out of retriangulate.rs: phase-D constraint recovery (recover_subsegment/enforce_constraint/between + the Sloan recover_via_traversal fallback for dense reveal pockets, issue #098).
-         438 rust/geometry/src/kernel/retriangulate_recover.rs
 # new row: adds from_spans (build the index from pre-collected IfcRelAssociatesMaterial spans, no re-walk) + the MaterialLayerFlat wire codec (to_flat/from_flat) + round-trip tests, so the streaming pre-pass ships the index to workers once instead of each worker re-scanning the file (perf/single-scan #563).
      563 rust/geometry/src/material_layer_index.rs
 # +14: SubMeshCollection gains `ids_are_materials` + `of_materials()` so a material-layer id can never be read as a representation item (#3199).
 # -531: the 535-line `#[cfg(test)] mod tests` moved to the sibling mesh_tests.rs, which the ratchet exempts. Production code is unchanged (#3199 follow-up).
     1012 rust/geometry/src/mesh.rs
-# +86: #2866 — Boolean and CSG are mutually recursive over file references
-# (IfcBooleanResult operand -> IfcCsgSolid -> TreeRootExpression -> that same
-# IfcBooleanResult). CsgSolidProcessor built a FRESH BooleanClippingProcessor,
-# resetting depth and the cycle guard, so three entities aborted the process.
-# The guard must sit INSIDE the recursion, so this is a visited set threaded
-# through the five functions on the operand path plus a path-scoped
-# insert/remove around process_with_depth. Path-scoped, not global: a boolean
-# tree is a DAG and geometry ACCUMULATES, so an operand referenced down two
-# branches must be processed twice. A lower depth cap was rejected -- #960 made
-# the FirstOperand spine iterative precisely so Revit's 42-node DIFFERENCE
-# chains clear MAX_BOOLEAN_DEPTH=10, and a cap tight enough to stop this cycle
-# would drop those elements' geometry. A SECOND bound, MAX_OPERAND_PATH_NODES,
-# caps the path length: the CSG hop passes `depth` unchanged, so a long ACYCLIC
-# Boolean -> Csg -> Boolean chain never advances MAX_BOOLEAN_DEPTH and every
-# visited.insert succeeds -- 4,000 links aborted the process. The set is
-# path-scoped, so its LENGTH is the current depth and the bound costs no extra
-# parameter. BOTH boolean and CSG ids go in, so len() is an honest frame count
-# (see the +2 note below).
-# +9: #2866 review — the CSG id now goes into the path set too, so
-# MAX_OPERAND_PATH_NODES counts every frame instead of half of them and no
-# longer leans on a rejection in another file. Seven of the nine are the note
-# at the CSG hop recording why `depth` RESTARTS there: carrying it across
-# silently tightened MAX_BOOLEAN_DEPTH, which #960 calibrated against a
-# per-processor reset, and a valid 8-CsgSolid-8 chain that resolves on main
-# would have been dropped with "depth 11 exceeds limit 10". Caught in review,
-# so the note is the record of a regression avoided rather than commentary.
-# -69: #3821 split process_operand_with_depth (with its new unsupported-operand
-# record) out to the operand.rs sibling and the failure-log methods out to
-# failures.rs; 1005 -> 936.
-     936 rust/geometry/src/processors/boolean/mod.rs
-     486 rust/geometry/src/processors/brep/faceted.rs
 # csg_primitive.rs row REMOVED: #3821 moved IfcSphere (processor + UV-sphere
 # tessellation, verbatim) to the sphere.rs sibling to make room for the
 # CsgSolid boolean-failure hand-off; 422 -> 348, under the 400 limit. That
 # repays the #2866 loosening this row recorded.
-     608 rust/geometry/src/processors/sectioned.rs
      758 rust/geometry/src/profile_extractor.rs
      598 rust/geometry/src/profiles/curves_2d.rs
-     670 rust/geometry/src/profiles/curves_3d.rs
+     495 rust/geometry/src/profiles/curves_3d.rs
 # +1: `mod steel_shapes;` for the shapes.rs split, which removed the 594-line shapes.rs row (net down).
 # +55: #2866 follow-up — MAX_CURVE_DEPTH = 50 WAS the weakest bound in the tree,
 # exactly as suspected. It caps one PATH's length and says nothing about the
@@ -215,25 +170,10 @@
 # The cohort also includes the 4-line `#[cfg(test)] #[path] mod
 # curve_fanout_tests;` registration, so the number accounts for that too; the
 # tests themselves live in the sibling file and are exempt.
-     847 rust/geometry/src/profiles/mod.rs
+     810 rust/geometry/src/profiles/mod.rs
      706 rust/geometry/src/profiles/simplify.rs
 # +26: cap the fast-path opening count (O(N^3) DoS guard) + regression test.
      807 rust/geometry/src/rect_fast.rs
-# +26: #2866 — item_has_identity_position chases IfcBooleanResult.FirstOperand,
-# a file-supplied reference, so one self-referential entity aborted the process
-# (stack overflow = abort in Rust, not a catchable panic). The walk is now
-# ITERATIVE with a visited-id set, matching collect_polygonal_chain in
-# processors/boolean/mod.rs. Iterating is what makes the set sufficient on its
-# own: it breaks on the first repeat, and with no stack to consume there is
-# nothing left for a length cap to protect. A cap would be actively wrong here
-# — #960 records Revit chains 42 DIFFERENCE nodes deep, and bailing on one
-# returns false, silently dropping layer slicing on a file that renders today.
-# A repeat returns false, which is this function's existing "anything exotic
-# bails safely" contract rather than a new special case. Tests are in a sibling
-# layers_cycle_tests.rs.
-# +1: the layered builder now marks its collection as carrying material ids (#3199).
-# -49: the inline `mod tests` moved to layers_tests.rs, matching the layers_cycle_tests.rs include this file already used (#3199 follow-up).
-     637 rust/geometry/src/router/layers.rs
 # +1: unify body-rep predicate — added is_direct_body_representation + docs; net removes ~60 lines from processing.rs and ~12 from layers.rs (crate trends down).
 # +65: promote the per-router IfcMappedItem source cache to a model-wide SharedMappedItemCache (type alias + field + new_/enable_ setters + unique-count diagnostic), meshing each source once model-wide (#1623).
 # +38: #1623 Phase 2 don't-bake — MappedInstancePlan type alias + output_instancing_plan field + enable_/getter + `mod instancing` decl.
@@ -258,16 +198,7 @@
 # than paid for by trimming unrelated doc comments: earlier rounds of this PR
 # did that and it makes an unrelated comment the currency of an unrelated
 # change, leaving no record of either.
-     738 rust/geometry/src/router/mod.rs
-# +65: #1623 Phase 2 don't-bake — the top-level mapped-item intercept (template retag + instance placeholder) + the public/impl process_element_with_submeshes split; the two eligibility/ensure helpers were extracted to router/instancing.rs (new, 92 lines) to hold the net down.
-# +7: #858 palette guard — exclude an indexed-colour single-solid source from the don't-bake decision (one .filter on the resolved solid id + explanatory comment) so its per-triangle palette survives the flat split.
-# +16: #1623 Phase 3 — thread the batch-local vs global template decision through the mapped-item intercept (is_template match arm + retag guard).
-# +3: hoist the item-dedup mesh clone out of the cache Mutex critical section (let-binding + 2-line rationale) so a dedup miss no longer serializes the worker pool on a deep-copy.
-# +18: #1293 dedup rep_identity: store rep beside the cached mesh, split tag_direct_instance into direct_rep_identity + stamp_direct_instance, and the flagged IFC_LITE_DEDUP_EXTRA type gate in item_dedup_key.
-    1183 rust/geometry/src/router/processing.rs
-# +26: is_rtc_votable_representation predicate + doc — Surface3D is meshable but must NOT cast RTC votes (#1526 pollution via absolute-coord surfaces).
-# +7: #1910 detect_rtc_offset_from_first_element now also samples an exceptional representationless-spatial-container instance (see schema_helpers.rs) so RTC detection and meshing agree on what counts as geometry.
-     479 rust/geometry/src/router/rtc_offset.rs
+     727 rust/geometry/src/router/mod.rs
 # +1: reveal-quads comment expanded to 2 lines (dead-symbol reference fix, no code change).
      619 rust/geometry/src/router/voids/aabb_clip.rs
 # +36: `parity_along` extracted so the single-ray `point_inside_mesh` and the
@@ -280,7 +211,8 @@
 # collapsing thin cut geometry far from the project origin, and the correct
 # behaviour already existed next to it as `rotate_mesh_from_frame`, which now
 # also composes the input's own origin instead of assigning over it.
-     882 rust/geometry/src/router/voids/geom.rs
+     757 rust/geometry/src/router/voids/geom.rs
+# -125: the closure, pairing and signed-volume checks moved to `mesh_check` (C2-1, #7793); 882 -> 757.
 # +10: extract min_opening_volume(quality) tier->floor helper shared by the batch
 # admission gate and the sequential CSG path so they can't diverge on the
 # High/Highest small-opening floor (B11 regression, issue #976).
@@ -296,7 +228,9 @@
 # `Mesh::origin`) instead of a centre-baking transform, and the relativizing
 # branch now COMPOSES the inner cut's origin rather than assigning over it.
 # `voids/geom.rs` sheds 27 in the same change.
-    2058 rust/geometry/src/router/voids/mod.rs
+# -51: the voided-host gateways drain the common void program (#7955 D4);
+# -17: the layered-slice gateway calls move into the program (D4b).
+    1691 rust/geometry/src/router/voids/mod.rs
 # NEW: analytic prism (stepped-extrusion) subtraction on the host mesh — the
 # CSG-heavy-corpus lever (ISSUE_098/129: exact void booleans are ~75-82% of
 # geometry time; rebated masonry openings on brep/clipped hosts had no fast
@@ -363,16 +297,15 @@
 # +6 (#1806 CodeRabbit round-2): reject non-finite rectangle dims/extrusion depth
 # (is_finite guards) so an inf depth can no longer slip past the `> 0.0` / `<= 0.0`
 # gates into the fast path.
-     858 rust/geometry/src/router/voids/probe.rs
+     693 rust/geometry/src/router/voids/probe.rs
 # -47: the exit-cap decision (which cutter caps may be pushed through the host)
 # moved to synthesis/exit_cap.rs, a module under the 400 budget, rather than
 # sitting inline here; 1002 -> 955. The move is NOT verbatim: the occupancy veto
 # that decides jamb from exit (#3219) is new there. An earlier revision added a
 # facing vote and a footprint restriction; both were measured to decline pushes
 # the pre-fix code made, and both were deleted.
-     955 rust/geometry/src/router/voids/synthesis.rs
+     524 rust/geometry/src/router/voids/synthesis.rs
     1472 rust/geometry/src/space_dcel/mod.rs
-     525 rust/geometry/src/transform.rs
      782 rust/geometry/src/triangulation.rs
      745 rust/geometry/src/void_index.rs
      499 rust/processing/src/determinism.rs
@@ -397,7 +330,6 @@
 # +5: thread the discriminator into build_mesh_data so the source id is routed to whichever of the two disjoint MeshData fields it actually is (#3199).
 # -154: colour and material-name resolution moved to element/element_color.rs -- a pure function of (geometry id, style map) with its own bounded walk (#3199 follow-up).
 # +4: #2985 — a don't-bake RawInstanceOccurrence now records the representation item its sub-mesh came from, through the same #3199 discriminator and 0-filter a materialized sub-mesh gets, so the id is not computed and dropped for GPU-instanced geometry.
-     816 rust/processing/src/element.rs
 # +9: #2019 — canonicalise each host's opening order so the world geometry
 # hash stops depending on IFCRELVOIDSELEMENT statement order (sequential void
 # cuts are not associative). Three lines of code plus the why.
@@ -409,7 +341,9 @@
 # +74: #1623 Phase 2 don't-bake — ProcessingResult.instances field + StreamingOptions.enable_instancing + the scan-built MappedInstancePlan + the plan/collector threaded into process_entity_job + the finalize call; the finalize/orphan-recovery bodies were extracted to processor/instancing.rs (new, 147 lines) to hold the net down.
 # +27: #858 palette guard — build the indexed_colour_split_ids set from the indexed-colour map keys (armed only with the plan) + thread it into process_entity_job so an indexed-colour mapped source stays flat (keeps its per-triangle palette).
 # +19: #1910 schedule a representationless spatial container (IfcBuilding et al.) for meshing when it exceptionally carries a non-null Representation, instead of silently dropping its geometry.
-    1661 rust/processing/src/processor/mod.rs
+# -153: the entry points moved to entry_points.rs, the request and sink types to request.rs and sink.rs (C4-1, #7782); 1661 -> 1508.
+# -423: the entity scan moved to scan.rs and the quick-metadata collector to quick_collector.rs (C4-4a, #7782); 1508 -> 1085.
+    1085 rust/processing/src/processor/mod.rs
 # +410: NEW row — #858 palette guard added the indexed_colour_split_ids param to process_entity_job (already the extracted per-job worker body from the #1623 file split), pushing this existing large module one line over 400; splitting the single job function further would fragment the tightly-coupled worker setup.
      410 rust/processing/src/processor/jobs.rs
 # +6: wire per-batch point-cache hit/miss stats into record_pipeline_batch (perf/brep-point-cache-instrumentation).
@@ -450,7 +384,7 @@
 # has never run in CI (`--exclude ifc-lite-wasm`), which is how it drifted.
 # +37: geometry_item_id/material_id cross the boundary -- 2 fields, 2 getters, a paired setter, and propagation at all THREE MeshDataJs clone sites (defaulting them there would have made the field inert at collection.get(i)) (#3199).
 # -14: the three hand-written 21-field MeshDataJs copies collapsed to a derived Clone; a hand-written Default (which must agree with new) costs some of it back (#3199 follow-up).
-     754 rust/wasm-bindings/src/zero_copy/mesh.rs
+     743 rust/wasm-bindings/src/zero_copy/mesh.rs
 # symbolic.rs +14 (743 -> 757): carries SymbolicData::truncated across the WASM
 # boundary as `truncatedAt` (#2938). A raise rather than a split because the
 # addition is one field, one assignment in `from_data` and one getter -- the

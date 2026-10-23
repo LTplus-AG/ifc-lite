@@ -9,10 +9,11 @@
 
 use std::collections::{HashMap, HashSet};
 
-use ifc_lite_core::{keyword_eq, EntityDecoder, EntityScanner};
+use ifc_lite_core::{keyword_eq, slot, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{ExtractedProfile, LayerBuildup, MaterialLayerIndex};
 
 use crate::hbjson::{EnergyMaterial, ModelEnergy, OpaqueConstruction};
+use crate::ident::ladybug_identifier_with_suffix;
 
 /// Default (conductivity W/mK, density kg/m³, specific heat J/kgK) by material-name keyword.
 fn thermal_props(name: &str) -> (f64, f64, f64) {
@@ -40,9 +41,28 @@ fn thermal_props(name: &str) -> (f64, f64, f64) {
     }
 }
 
-fn sanitize(s: &str) -> String {
-    let out: String = s.chars().map(|c| if c.is_alphanumeric() { c } else { '_' }).collect();
-    if out.is_empty() { "Material".to_string() } else { out }
+/// The energy-material identifier for `name` at `mm` millimetres.
+///
+/// Sanitizing and the 100-character cap are both lossy, so two different source
+/// names can land on one identifier. `owners` maps each identifier handed out to the
+/// name it was made from: a repeat of the same name reuses it (two `IfcMaterial`s
+/// called "Concrete" are one energy material), while a different name gets the
+/// next free `_2`, `_3`, ... so it keeps its own thermal properties.
+fn material_identifier(name: &str, mm: i64, owners: &mut HashMap<String, String>) -> String {
+    let thickness = format!("_{mm}mm");
+    let mut n = 1u32;
+    loop {
+        let suffix = if n == 1 { thickness.clone() } else { format!("{thickness}_{n}") };
+        let ident = ladybug_identifier_with_suffix(name, "Material", &suffix);
+        match owners.get(&ident) {
+            Some(owner) if owner != name => n += 1,
+            Some(_) => return ident,
+            None => {
+                owners.insert(ident.clone(), name.to_string());
+                return ident;
+            }
+        }
+    }
 }
 
 /// Map every `IfcMaterial` entity id to its Name (attr 0).
@@ -54,7 +74,7 @@ fn material_names(content: &[u8], decoder: &mut EntityDecoder) -> HashMap<u32, S
             continue;
         }
         if let Ok(e) = decoder.decode_at_with_id(id, start, end) {
-            if let Some(name) = e.get(0).and_then(|a| a.as_string()) {
+            if let Some(name) = e.string_at(slot::IfcMaterial::NAME) {
                 if !name.is_empty() {
                     names.insert(id, name.to_string());
                 }
@@ -86,7 +106,7 @@ fn build_one(
     names: &HashMap<u32, String>,
     materials: &mut Vec<EnergyMaterial>,
     constructions: &mut Vec<OpaqueConstruction>,
-    seen_mat: &mut HashSet<String>,
+    owners: &mut HashMap<String, String>,
 ) -> Option<String> {
     // Most common build-up; tie-break by signature so the choice is deterministic across runs.
     let (_, (_, layers)) = bucket
@@ -98,10 +118,11 @@ fn build_one(
     let mut refs = Vec::new();
     for (mid, thickness) in layers {
         let name = names.get(mid).cloned().unwrap_or_else(|| format!("Material{}", mid));
-        let ident = format!("{}_{}mm", sanitize(&name), (thickness * 1000.0).round() as i64);
-        if seen_mat.insert(ident.clone()) {
+        let known = owners.len();
+        let ident = material_identifier(&name, (thickness * 1000.0).round() as i64, owners);
+        if owners.len() > known {
             let (k, rho, cp) = thermal_props(&name);
-            materials.push(EnergyMaterial::new(ident.clone(), thickness.max(0.001), k, rho, cp));
+            materials.push(EnergyMaterial::new(ident.clone(), thickness.max(crate::geom::MIN_LAYER_THICKNESS_M), k, rho, cp));
         }
         refs.push(ident);
     }
@@ -144,9 +165,9 @@ pub fn build_constructions(content: &[u8], profiles: &[ExtractedProfile]) -> Con
 
     let mut materials = Vec::new();
     let mut constructions = Vec::new();
-    let mut seen_mat = HashSet::new();
-    let wall_id = build_one(&wall, "ifclite_wall", &names, &mut materials, &mut constructions, &mut seen_mat);
-    let slab_id = build_one(&slab, "ifclite_slab", &names, &mut materials, &mut constructions, &mut seen_mat);
+    let mut owners = HashMap::new();
+    let wall_id = build_one(&wall, "ifclite_wall", &names, &mut materials, &mut constructions, &mut owners);
+    let slab_id = build_one(&slab, "ifclite_slab", &names, &mut materials, &mut constructions, &mut owners);
 
     if constructions.is_empty() {
         return Constructions::none();

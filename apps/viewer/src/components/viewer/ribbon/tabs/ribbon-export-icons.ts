@@ -12,7 +12,7 @@
  * lets the node test runner render that component.
  */
 
-import { EditProperty, Extension, FileCsv, FileGlb, FileHbjson, FileIfc, FileJson, FileKmz, FilePdf, FileUsd, HideSelected, Screenshot } from '@/icons';
+import { EditProperty, Extension, FileCsv, FileGlb, FileHbjson, FileIfc, FileJson, FileKmz, FilePdf, FileUsd, HideSelected, Layer, Screenshot } from '@/icons';
 import { CesiumIonUpload } from '@/icons';
 import type { ExportIconSet } from '../../toolbar/export-commands';
 
@@ -28,6 +28,9 @@ export const RIBBON_EXPORT_ICONS: ExportIconSet = {
   ion: CesiumIonUpload,
   usd: FileUsd,
   energy: FileHbjson,
+  // No terrain/LandXML glyph in `src/icons/`; the layer mark reads as a
+  // surface, and reusing it avoids a new SVG asset for one small button.
+  'landxml-terrain': Layer,
   csv: FileCsv,
   json: FileJson,
   screenshot: Screenshot,

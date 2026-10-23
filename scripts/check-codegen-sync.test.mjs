@@ -173,7 +173,7 @@ describe('real repo — runAllTargets (#4202: IFC2X3 joins IFC4/IFC4X3)', { skip
         `expected a Rust registry target for ${schema}, got: ${names.join(', ')}`,
       );
     }
-    for (const file of ['schema.rs', 'type_ids.rs']) {
+    for (const file of ['schema.rs', 'type_ids.rs', 'mod.rs', 'slots.rs', 'slots_table.rs']) {
       assert.ok(
         names.includes(`rust/core/src/generated/${file} (canonical IFC4X3 type universe)`),
         `expected the canonical Rust ${file} freshness target, got: ${names.join(', ')}`,

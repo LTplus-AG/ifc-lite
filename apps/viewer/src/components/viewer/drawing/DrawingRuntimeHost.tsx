@@ -24,6 +24,7 @@ import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import { usePlacementCoordinateInfo } from '@/hooks/usePlacementCoordinateInfo';
 import { useDrawingGeneration } from '@/hooks/useDrawingGeneration';
+import { useExtraSectionCaps } from '@/hooks/useExtraSectionCaps';
 import { useDrawing2DPersistence } from '@/hooks/useDrawing2DPersistence';
 import { useDrawingMarkupRestoreOnLoad } from '@/hooks/useDrawingMarkupRestoreOnLoad';
 import { placedViewGeometry } from '@/lib/model-placement/view-geometry';
@@ -75,6 +76,9 @@ export function DrawingRuntimeHost({ mergedGeometry, computedIsolatedIds }: Draw
     models, panelVisible, activeTool, drawing: sourceDrawing,
     setDrawing, setDrawingStatus, setDrawingProgress, setDrawingError,
   });
+
+  // The other cutting planes' caps (#7545): cut here, drawn by `useRenderUpdates`.
+  useExtraSectionCaps(geometryResult, computedIsolatedIds);
 
   const sourceCoordinateInfo = (mergedGeometry ?? legacyGeometryResult)?.coordinateInfo;
   useEffect(() => {

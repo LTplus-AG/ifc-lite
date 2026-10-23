@@ -4,11 +4,11 @@
 
 use super::*;
 
-impl Parser<'_> {
+impl TinHandler<'_> {
     pub(super) fn path(&self) -> String {
         self.frames
             .iter()
-            .map(|frame| frame.local.as_str())
+            .map(|frame| &*frame.local)
             .collect::<Vec<_>>()
             .join("/")
     }
@@ -20,7 +20,7 @@ impl Parser<'_> {
         let path: Vec<&str> = self
             .frames
             .iter()
-            .map(|frame| frame.local.as_str())
+            .map(|frame| &*frame.local)
             .collect();
         match path.as_slice() {
             ["LandXML", "Surfaces", "Surface", "SourceData", "DataPoints", "PntList3D"] => Some(3),
@@ -31,7 +31,7 @@ impl Parser<'_> {
     pub(super) fn path_with(&self, local: &str) -> String {
         self.frames
             .iter()
-            .map(|frame| frame.local.as_str())
+            .map(|frame| &*frame.local)
             .chain(std::iter::once(local))
             .collect::<Vec<_>>()
             .join("/")
@@ -47,8 +47,15 @@ impl Parser<'_> {
             .enumerate()
             .map(|(index, frame)| {
                 if index == 0 {
-                    frame.local.clone()
+                    frame.local.to_string()
                 } else {
+                    // A zero ordinal means the segment is missing from
+                    // `ordinal_tracked`; the key would silently collapse.
+                    debug_assert!(
+                        frame.sibling_ordinal != 0,
+                        "capture segment `{}` is not in ordinal_tracked",
+                        frame.local
+                    );
                     format!("{}[{}]", frame.local, frame.sibling_ordinal)
                 }
             })
@@ -63,7 +70,7 @@ impl Parser<'_> {
         let path: Vec<&str> = self
             .frames
             .iter()
-            .map(|frame| frame.local.as_str())
+            .map(|frame| &*frame.local)
             .collect();
         match path.as_slice() {
             ["LandXML", "Surfaces", "Surface", "Definition", "Boundaries", "Boundary", "PntList3D" | "PntList2D"]
@@ -81,4 +88,17 @@ impl Parser<'_> {
             _ => None,
         }
     }
+}
+
+/// Whether `local` (a target-namespace name) can be a segment of a
+/// [`TinHandler::capture_path`]: every name in the two shapes above
+/// (`source_data_point_dimension`, `overlay_category`). Only these need a
+/// sibling ordinal, so only these are counted.
+pub(super) fn ordinal_tracked(local: &str) -> bool {
+    matches!(
+        local,
+        "LandXML" | "Surfaces" | "Surface" | "Definition" | "SourceData" | "DataPoints"
+            | "Boundaries" | "Boundary" | "Breaklines" | "Breakline" | "Contours" | "Contour"
+            | "PntList3D" | "PntList2D"
+    )
 }

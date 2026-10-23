@@ -11,23 +11,27 @@ npm install @ifc-lite/sdk
 ## Usage
 
 ```ts
-import { createBimContext } from '@ifc-lite/sdk';
+import { openModel } from '@ifc-lite/sdk/headless';
 
-// Embedded mode: a backend drives a loaded model. `BimBackend` is a
-// 16-namespace interface, so use a ready-made one rather than writing it --
-// `HeadlessLikeBackend` from @ifc-lite/mcp is the exported headless backend.
-import { HeadlessLikeBackend } from '@ifc-lite/mcp';
-const bim = createBimContext({ backend: new HeadlessLikeBackend(store, 'model.ifc', 'model-1') });
-
-// Connected mode (cross-tab)
-import { BroadcastTransport } from '@ifc-lite/sdk';
-const transport = new BroadcastTransport('ifc-lite');
-const remote = createBimContext({ transport });
-
-// Use the API
-const walls = bim.query().byType('IfcWall').toArray();
-bim.viewer.colorize(walls.map(w => w.ref), '#ff0000');
+const model = await openModel(await fetch('model.ifc').then(r => r.arrayBuffer()));
+try {
+  if (model.report.completeness !== 'complete') throw new Error('Incomplete or unknown record coverage');
+  const walls = model.bim.query().byType('IfcWall').toArray();
+  console.log(walls.length);
+  console.log(model.capability('store.addDoor'));
+} finally {
+  model.close();
+}
 ```
+
+`openModel` accepts STEP/IFCZIP bytes, including an exact Node Buffer view, and creates no renderer or geometry runtime. It returns `bim`, the parsed `store`, the structured scan `report`, `capability(operation)`, and an idempotent `close()`. Supply `modelId`, `modelName`, or the parser progress/diagnostic options as needed. File and network I/O remain with your application.
+
+Capability results describe implemented/configured backend operations; input validation and runtime preparation can still fail. Unavailable calls in a model session throw `UnsupportedOperationError` (`code: 'UNSUPPORTED_OPERATION'`, `operation`, `reason`). Retained backend query builders and mutation namespaces refuse calls after close with `HeadlessSessionClosedError` (`code: 'SESSION_CLOSED'`). After close, capability checks report unsupported with a closed-session reason. The returned source store and pure SDK helpers are not revoked by closing the backend session.
+
+Advanced hosts can construct `HeadlessBackend` from this subpath over an existing store, or provide `HeadlessBackendOptions` geometry preparation for Room/Align. MCP retains its existing `HeadlessLikeBackend` constructor and supplies its native preparation through the shared SDK backend. Existing legacy host no-op behavior is preserved; the new model session explicitly refuses unavailable operations.
+
+For embedded or remote contexts, continue using `createBimContext({ backend })` or `createBimContext({ transport })` and the existing transport exports. See the [SDK guide](https://ifclite.dev/docs/guide/scripting-sdk/).
+
 
 ## Namespaces
 
@@ -78,6 +82,12 @@ including overlay-created or retyped `IfcOwnerHistory` records. The older
 two-argument call remains source-only and skips deleted source records.
 
 Also exported: `BimHost` (viewer side), `RemoteBackend`, `MessagePortTransport`, and the full `IfcCreator` API re-exported from `@ifc-lite/create`.
+
+## Shared headless host reads
+
+Host adapters can import `createQueryAdapter` and `overlayFromView` from `@ifc-lite/sdk/headless`. Supply the parsed store, model ID and getters for the current overlay and mutation view; reads then include pending edits, creations, deletions and relationship changes. CLI and MCP consume this shared implementation. This low-level adapter performs no file I/O and does not initialize geometry.
+
+Raw hosts can compose `HeadlessBackend` with explicit model-ID aliases for compatibility. `openModel` sessions use one model ID. `createQueryAdapter` accepts optional pagination-error and type-property normalization policies so host adapters share the live-read implementation while retaining their existing scalar/error contracts.
 
 ## Native Review facts
 
@@ -160,3 +170,5 @@ states distinguish unavailable evidence from an available empty collection.
 
 Portable `bounds` describe the supplied finding inventory, while cards and totals describe only the visible rows. A zero row limit retains the original records and reports hidden findings. Saved omissions, source gaps, truncated clash/IDS evaluation, or missing failed detail keep complete inventory and omission counts unknown and `presentationComplete` false; imported evidence never establishes complete native coverage.
 Non-IDS saved report kinds retain their original records but expose `unsupported-kind` binding and no projected findings; a matching model source alone does not certify manual element identity or evaluation.
+
+Hosts constructing their own `MutablePropertyView` can call `configureSourceMutationView(store, view)` from `@ifc-lite/sdk/headless` to configure source-backed property and quantity extraction. It includes a type definition's own `HasPropertySets`, including IFC2X3 style classes, and preserves occurrence extraction for other entities. Call it before edits so exports retain untouched siblings. `HeadlessBackend` configures this automatically. Stores without source bytes retain their existing view configuration.

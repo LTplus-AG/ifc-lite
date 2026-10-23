@@ -81,7 +81,7 @@ afterEach(() => { cleanup(); setLocale('en'); setValidationSourceChoice(null); u
 
 /** Assert actual rendered SVG arc shares against engine outcomes, rather
  * than asserting a helper/mock's return value or pinning the SVG bytes. */
-function assertRing(root: Element, report: ValidationReport): void {
+function assertRing(root: Element, report: ValidationReport, displayRate = report.summary.overallPassRate): void {
   const benchmark = root.querySelector('[data-validation-benchmark]'); assert.ok(benchmark, `${report.source.kind} renders its benchmark`);
   const image = benchmark.querySelector('img'); assert.ok(image);
   const uri = image.getAttribute('src'); assert.ok(uri && uri.startsWith('data:image/svg+xml'));
@@ -114,8 +114,8 @@ function assertRing(root: Element, report: ValidationReport): void {
     assert.ok(Math.abs((span * rx + Math.max(1, size / 40)) / circumference - count / report.summary.totalEntitiesChecked) < 1e-8, `${bucket} visible angular share plus its gap reflects actual checked-entity share`);
     start += count / report.summary.totalEntitiesChecked * 2 * Math.PI;
   }
-  assert.ok(image.getAttribute('alt')?.includes(`${report.summary.overallPassRate}%`), 'accessible label retains the engine pass rate');
-  assert.ok((benchmark.closest('[data-preview-block]') ?? benchmark).textContent?.includes(`${report.summary.overallPassRate}%`), 'visible rate retains the engine rounding');
+  assert.ok(image.getAttribute('alt')?.includes(`${displayRate}%`), 'accessible label states the expected display rate');
+  assert.ok((benchmark.closest('[data-preview-block]') ?? benchmark).textContent?.includes(`${displayRate}%`), 'visible rate states the expected display rate');
 }
 
 describe('IDS and information-validation ring benchmarks (#6552)', () => {
@@ -188,9 +188,12 @@ describe('IDS and information-validation ring benchmarks (#6552)', () => {
       if (i === 1) assert.equal(block.summary.checked, 0, 'the actual model has no matching pipe segment');
       if (i === 2) assert.ok(block.checks.some((check) => check.rules.some((rule) => rule.passRate === null)), 'passing entity details really were omitted');
       act(() => useViewerStore.setState({ documents: [{ ...spec, blocks: [block] }], activeDocumentId: spec.id }));
-      const ui = render(<DocumentPanel />); await settle(); assertRing(ui, report);
+      // #8065: zero matches display 0%, while the engine verdict remains unchanged.
+      const displayRate = [0, 0, 62][i];
+      assert.equal(block.summary.passRate, displayRate);
+      const ui = render(<DocumentPanel />); await settle(); assertRing(ui, report, displayRate);
       const layout = composeDocument({ name: spec.name, page: spec.page, generatedAt: '', measure: estimateTextWidth, blocks: [block] });
-      assert.ok(layout.pages.flatMap((page) => page.items).some((item) => item.kind === 'text' && item.text.includes(`${report.summary.overallPassRate}% passed`)), 'PDF states the same bounded engine verdict');
+      assert.ok(layout.pages.flatMap((page) => page.items).some((item) => item.kind === 'text' && item.text.includes(`${displayRate}% passed`)), 'PDF and preview state the same display rate');
       cleanup();
     }
   });

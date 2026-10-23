@@ -51,7 +51,7 @@ async fn a_join_error() -> tokio::task::JoinError {
 /// `VARIANT_COUNT` must equal the number of arms below; the table test asserts
 /// it saw that many distinct variants, so a new arm added without a new row
 /// fails at runtime.
-const VARIANT_COUNT: usize = 11;
+const VARIANT_COUNT: usize = 12;
 
 fn variant_name(err: &ApiError) -> &'static str {
     match err {
@@ -66,6 +66,7 @@ fn variant_name(err: &ApiError) -> &'static str {
         ApiError::Join(_) => "Join",
         ApiError::Parquet(_) => "Parquet",
         ApiError::Overloaded { .. } => "Overloaded",
+        ApiError::UploadTimeout(_) => "UploadTimeout",
     }
 }
 
@@ -126,6 +127,11 @@ async fn every_variant_maps_to_its_documented_status_and_code() {
             ApiError::Overloaded { retry_after_secs: 3 },
             StatusCode::SERVICE_UNAVAILABLE,
             "OVERLOADED",
+        ),
+        (
+            ApiError::UploadTimeout("stalled".into()),
+            StatusCode::REQUEST_TIMEOUT,
+            "REQUEST_TIMEOUT",
         ),
         // Neither of these two has a public constructor, so both are produced
         // by actually provoking the failure they represent.
@@ -392,4 +398,14 @@ async fn a_cache_error_body_does_not_carry_the_cache_directory() {
         !message.contains(&dir_text) && !message.contains("index-v5"),
         "the response body leaks the cache layout: {message}"
     );
+}
+
+/// #7675: a data model refused for a table over its size budget is the
+/// upload's fault, so it answers 400 with the reason, not a 500.
+#[test]
+fn a_refused_data_model_is_a_bad_request_with_its_reason() {
+    use crate::services::parquet_data_model::DataModelParquetError;
+    let error = ApiError::from(DataModelParquetError::Refused("material associations exceed 8 bytes".into()));
+    assert!(matches!(&error, ApiError::BadRequest(reason) if reason.contains("material")), "{error:?}");
+    assert_eq!(error.into_response().status(), axum::http::StatusCode::BAD_REQUEST);
 }

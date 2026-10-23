@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "scope": "Published byte-integrity index only; original detailed manifests/results preserved losslessly in audit metadata. No geometry or performance qualification.",
+  "archive": {
+    "path": "execution-evidence.tar.gz",
+    "sha256": "2f2139f622d8a8ea6b3c962f1da4dd7581d9e3f0f72802aee60264df651fba20",
+    "bytes": 3298592,
+    "members": 67,
+    "repeatByteIdentical": true,
+    "allExtractedMembersRehashed": true
+  },
+  "auditMetadata": {
+    "path": "audit-metadata.tar.xz",
+    "bytes": 7216,
+    "sha256": "238b819649c2b960db416b2a317a2da9e715dc42bb6b1ccdf42d4a69b793ab75",
+    "members": [
+      {
+        "path": "README.md",
+        "bytes": 4952,
+        "sha256": "2f62333d3246dc4fcfdcc261233f00efdb2f3e3cf90332431cb57a49da4e4ab8"
+      },
+      {
+        "path": "manifest.json",
+        "bytes": 24205,
+        "sha256": "ca225f3d34d9229ee83b303952d4700fc3697fcc6e55ae5b795ee353bd48adea"
+      },
+      {
+        "path": "verify-packet.py",
+        "bytes": 837,
+        "sha256": "911b2b6651f1a7e2b054f5138233877b5543cde4e819db19abf4f1f33e8296fd"
+      }
+    ]
+  },
+  "originalMemberManifest": {
+    "member": "manifest.json",
+    "bytes": 24205,
+    "sha256": "ca225f3d34d9229ee83b303952d4700fc3697fcc6e55ae5b795ee353bd48adea"
+  },
+  "executionHead": "431571bdb96a20a73b19907c2c3ec05dc7733f43",
+  "selectedMain": "56a5f58c325997c4c7ec460456a9e150437718cd"
+}

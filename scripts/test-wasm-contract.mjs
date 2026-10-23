@@ -2151,10 +2151,10 @@ await runPrepassClassBoundaryTests(api, test);
 // into "this file refused nothing". Same module split, same reason.
 await runShardRefusalBoundaryTests(api, test);
 
-// ===== Class-toggled classes never ride the instanced shard (#5409) =====
-// The fixture is built from the viewer's class-toggle table, so a class added
-// there and not to the Rust partition fails here.
+// ===== Shard routing: class-toggled classes (#5409), multi-colour sources (EDGE-WASM-5, #7691) =====
+// #5409's fixture is built from the viewer's class-toggle table: a class added there and not to Rust fails.
 await runClassToggleShardContract(IfcAPI, test);
+(await import('./lib/indexed-colour-instancing-contract.mjs')).runIndexedColourInstancingContract(IfcAPI, test);
 await (await import('./lib/wasm-remesh-contracts.mjs')).runRemeshContracts({ IfcAPI, FIXTURES_DIR, FIXTURES_HINT, test, skip }); // #6232
 finishContractRun(api, passed, failed, skipped);
 

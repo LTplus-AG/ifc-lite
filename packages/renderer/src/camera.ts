@@ -255,9 +255,13 @@ export class Camera {
   /**
    * Frame selection - zoom to fit bounds while keeping current view direction
    * This is what "Frame Selection" should do - zoom to fill screen
+   *
+   * `padding` (>= 1) states the margin: the box's projected corners reach
+   * `1 / padding` of the half-frame on the limiting axis, exactly, in either
+   * projection (#7617). Omitted, the fixed default multiple of the fit distance applies.
    */
-  async frameBounds(min: Vec3, max: Vec3, duration = 300): Promise<void> {
-    return this.animator.frameBounds(min, max, duration);
+  async frameBounds(min: Vec3, max: Vec3, duration = 300, padding?: number): Promise<void> {
+    return this.animator.frameBounds(min, max, duration, padding);
   }
 
   async zoomExtent(min: Vec3, max: Vec3, duration = 300): Promise<void> {
@@ -368,6 +372,19 @@ export class Camera {
     buildingRotation?: number
   ): void {
     this.animator.setPresetView(view, bounds, buildingRotation);
+  }
+
+  /**
+   * Diagonal preset for a ViewCube edge or corner. `direction` is the
+   * camera's offset from the model in the named presets' face frame
+   * (+X right, +Y top, +Z front), e.g. `{x:1,y:1,z:0}` is the top-right edge.
+   */
+  setPresetDirection(
+    direction: Vec3,
+    bounds?: { min: Vec3; max: Vec3 },
+    buildingRotation?: number
+  ): void {
+    this.animator.setPresetDirection(direction, bounds, buildingRotation);
   }
 
   /**

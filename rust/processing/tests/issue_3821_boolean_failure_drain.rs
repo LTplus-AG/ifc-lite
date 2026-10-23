@@ -10,12 +10,19 @@
 //! model whose booleans had all degraded reported a clean load. The base-operand
 //! arm was worse still: it returned an empty mesh and recorded nothing at all.
 //!
-//! Both native entry points funnel into
-//! `process_geometry_streaming_filtered_with_options`, differing only in batch
+//! Both native entry points funnel into `process`, differing only in batch
 //! size, so the parity assertions below pin that a per-batch drain cannot start
 //! reporting a different total from a single-batch one.
 
-use ifc_lite_processing::{process_geometry, process_geometry_streaming};
+use ifc_lite_processing::{
+    process, process_geometry, Batching, ProcessingRequest, ProcessingResult,
+};
+
+/// The streaming shape: `batch_size` jobs per chunk instead of one chunk.
+fn streamed(content: &[u8], batch_size: usize) -> ProcessingResult {
+    let request = ProcessingRequest::default().batching(Batching::new(batch_size, batch_size));
+    process(content, &request, &mut ())
+}
 
 /// A wall with one ordinary extruded solid AND one `IfcBooleanResult` whose
 /// FIRST operand is `IFCSECTIONEDSPINE` — a representation-item type the
@@ -94,7 +101,7 @@ fn unsupported_first_operand_reaches_both_entry_points_with_the_same_count() {
     let native = process_geometry(UNSUPPORTED_BASE_OPERAND_IFC);
     // Streaming: batch size 1, so each element is finalized on its own.
     let streaming =
-        process_geometry_streaming(UNSUPPORTED_BASE_OPERAND_IFC.as_bytes(), 1, |_, _, _| {});
+        streamed(UNSUPPORTED_BASE_OPERAND_IFC.as_bytes(), 1);
 
     // The element still renders (the loss is one item, not the whole wall) —
     // which is precisely why nothing but a diagnostic can reveal it.
@@ -142,7 +149,7 @@ fn a_clean_model_records_no_boolean_failures_on_either_entry_point() {
         ("non-streaming", process_geometry(CLEAN_IFC)),
         (
             "streaming",
-            process_geometry_streaming(CLEAN_IFC.as_bytes(), 1, |_, _, _| {}),
+            streamed(CLEAN_IFC.as_bytes(), 1),
         ),
     ] {
         assert!(!result.meshes.is_empty(), "{label}: control wall must mesh");
@@ -159,26 +166,6 @@ fn a_clean_model_records_no_boolean_failures_on_either_entry_point() {
     }
 }
 
-/// Parse `IFC_LITE_REQUIRE_FIXTURES` the way `rust/export/src/test_support.rs`
-/// documents it — that module is the canonical home, but it is private to the
-/// export crate and unreachable from here.
-///
-/// Unset, empty or `"0"` = off (skip a missing fixture, the local default).
-/// `"1"` = on (a missing fixture is a hard failure; CI sets this for
-/// `cargo test --workspace`). Anything else PANICS rather than falling through
-/// to "off": treating a typo like `true` as off would recreate the silent pass
-/// the variable exists to close.
-fn require_fixtures() -> bool {
-    match std::env::var("IFC_LITE_REQUIRE_FIXTURES") {
-        Err(std::env::VarError::NotPresent) => false,
-        Ok(v) if v.is_empty() || v == "0" => false,
-        Ok(v) if v == "1" => true,
-        other => panic!(
-            "IFC_LITE_REQUIRE_FIXTURES must be unset, \"\", \"0\" or \"1\"; got {other:?}"
-        ),
-    }
-}
-
 /// Streaming-vs-native parity on a real model, not just the synthetic fixture:
 /// the batch size must not change what the pass reports.
 ///
@@ -191,26 +178,10 @@ fn require_fixtures() -> bool {
 /// up as a failure rather than as a quietly smaller suite.
 #[test]
 fn streaming_and_native_report_identical_diagnostics_on_a_real_fixture() {
-    const FIXTURE: &str = "tests/models/ara3d/AC20-FZK-Haus.ifc";
-    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join(FIXTURE);
-    let bytes = match std::fs::read(&path) {
-        Ok(bytes) => bytes,
-        Err(e) => {
-            assert!(
-                !require_fixtures(),
-                "IFC_LITE_REQUIRE_FIXTURES=1 but {FIXTURE} is missing ({e}) — \
-                 run `pnpm fixtures` (sha256 in tests/models/manifest.json)"
-            );
-            eprintln!("{FIXTURE} missing - skipping");
-            return;
-        }
-    };
+    let bytes = ifc_lite_testkit::fixture_bytes_or_skip!("ara3d/AC20-FZK-Haus.ifc");
 
     let native = process_geometry(&bytes);
-    let streaming = process_geometry_streaming(&bytes, 8, |_, _, _| {});
+    let streaming = streamed(&bytes, 8);
 
     assert_eq!(
         native.stats.total_csg_failures, streaming.stats.total_csg_failures,

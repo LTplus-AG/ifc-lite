@@ -159,9 +159,7 @@ where
 
         // Parse coordinates from IFCCARTESIANPOINT((x,y,z));
         if let Some(coords) = extract_point_coordinates(entity_text) {
-            let x = coords.0;
-            let y = coords.1;
-            let z = coords.2.unwrap_or(0.0);
+            let (x, y, z) = coords;
 
             // Skip obviously invalid coordinates
             if x.is_finite() && y.is_finite() && z.is_finite() {
@@ -173,40 +171,15 @@ where
     bounds
 }
 
-/// Extract coordinates from IfcCartesianPoint text
-/// Format: IFCCARTESIANPOINT((x,y)) or IFCCARTESIANPOINT((x,y,z))
-fn extract_point_coordinates<T>(bytes: &T) -> Option<(f64, f64, Option<f64>)>
+/// Extract coordinates from an IfcCartesianPoint record
+/// Format: IFCCARTESIANPOINT((x,y)) or IFCCARTESIANPOINT((x,y,z)); `z` is 0
+/// for a 2D point. Read through [`crate::parser::StepRecord`], so a comment
+/// is trivia and a number is a STEP literal, not whatever `str::parse` takes.
+fn extract_point_coordinates<T>(bytes: &T) -> Option<(f64, f64, f64)>
 where
     T: AsRef<[u8]> + ?Sized,
 {
-    let bytes = bytes.as_ref();
-    let text = std::str::from_utf8(bytes).ok()?;
-    // Find the coordinate list between (( and ))
-    let start = text.find("((")?;
-    let end = text.rfind("))")?;
-
-    if start >= end {
-        return None;
-    }
-
-    let coord_str = &text[start + 2..end];
-
-    // Split by comma and parse
-    let parts: Vec<&str> = coord_str.split(',').collect();
-
-    if parts.len() < 2 {
-        return None;
-    }
-
-    let x = parts[0].trim().parse::<f64>().ok()?;
-    let y = parts[1].trim().parse::<f64>().ok()?;
-    let z = if parts.len() > 2 {
-        parts[2].trim().parse::<f64>().ok()
-    } else {
-        None
-    };
-
-    Some((x, y, z))
+    crate::parser::StepRecord::parse(bytes.as_ref())?.point_at(0)
 }
 
 /// Scan model bounds focusing on placement coordinates
@@ -214,11 +187,21 @@ where
 /// This variant specifically looks at IfcLocalPlacement and transformation
 /// coordinates, which are more representative of where geometry will be placed.
 /// Useful for models where cartesian points include local/relative coordinates.
-pub fn scan_placement_bounds<T>(content: &T) -> ModelBounds
+///
+/// A point no placement references is kept only when it is "large"
+/// ([`crate::limits::LARGE_COORD_THRESHOLD_METERS`]). The coordinates are raw
+/// file numbers, so the caller passes `length_unit_scale` (file unit to
+/// metres) and the comparison happens in metres, as in
+/// [`ModelBounds::has_large_coordinates`] (#4934). A raw `1000.0` let a
+/// millimetre model keep every point past one METRE, so the filter did
+/// nothing (CORE-13). A scale that is not finite and positive reads as 1.0.
+pub fn scan_placement_bounds<T>(content: &T, length_unit_scale: f64) -> ModelBounds
 where
     T: AsRef<[u8]> + ?Sized,
 {
     let content = content.as_ref();
+    let scale = if length_unit_scale.is_finite() && length_unit_scale > 0.0 { length_unit_scale } else { 1.0 };
+    let is_large = |v: f64| (v * scale).abs() > crate::limits::LARGE_COORD_THRESHOLD_METERS;
     let mut bounds = ModelBounds::new();
     let mut scanner = EntityScanner::new(content);
 
@@ -247,9 +230,7 @@ where
             // For other points, only include if they have large coordinates
             let entity_text = &content[start..end];
             if let Some(coords) = extract_point_coordinates(entity_text) {
-                let x = coords.0;
-                let y = coords.1;
-                let z = coords.2.unwrap_or(0.0);
+                let (x, y, z) = coords;
 
                 // Skip invalid coordinates
                 if !x.is_finite() || !y.is_finite() || !z.is_finite() {
@@ -257,7 +238,7 @@ where
                 }
 
                 // Include placement points and points with large coordinates (including Z axis)
-                if is_placement_point || x.abs() > 1000.0 || y.abs() > 1000.0 || z.abs() > 1000.0 {
+                if is_placement_point || is_large(x) || is_large(y) || is_large(z) {
                     bounds.expand(x, y, z);
                 }
             }
@@ -272,32 +253,12 @@ where
     bounds
 }
 
-/// Extract first entity reference from text
-/// Looks for #xxx pattern
+/// The `Location` reference (attribute 0) of an `IfcAxis2Placement3D` record.
 fn extract_first_reference<T>(bytes: &T) -> Option<u32>
 where
     T: AsRef<[u8]> + ?Sized,
 {
-    let bytes = bytes.as_ref();
-    let text = std::str::from_utf8(bytes).ok()?;
-    // Find opening paren of attribute list
-    let start = text.find('(')?;
-    let rest = &text[start + 1..];
-
-    // Find first # character
-    let hash_pos = rest.find('#')?;
-    let after_hash = &rest[hash_pos + 1..];
-
-    // Parse the number
-    let end_pos = after_hash
-        .find(|c: char| !c.is_ascii_digit())
-        .unwrap_or(after_hash.len());
-
-    if end_pos == 0 {
-        return None;
-    }
-
-    after_hash[..end_pos].parse().ok()
+    crate::parser::StepRecord::parse(bytes.as_ref())?.ref_at(0)
 }
 
 #[cfg(test)]

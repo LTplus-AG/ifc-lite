@@ -84,6 +84,20 @@ afterEach(() => {
 });
 
 describe('getPackageVersion', () => {
+  it('pins template selections without changing the existing caret-range helper (DX5)', () => {
+    stubRegistry({ pkg: ['1.0.0', '1.1.0'] });
+    expect(fixers.getPinnedPackageVersion('pkg')).toBe('1.1.0');
+    expect(fixers.getPackageVersion('pkg')).toBe('^1.1.0');
+  });
+
+  it('terminates a cyclic published dependency graph (DX5)', () => {
+    stubRegistry({ pkg: ['1.0.0'], '@ifc-lite/bridge': ['1.0.0'] }, {
+      'pkg@1.0.0': { '@ifc-lite/bridge': '^1.0.0' },
+      '@ifc-lite/bridge@1.0.0': { '@ifc-lite/bridge': '^1.0.0' },
+    });
+    expect(fixers.getPinnedPackageVersion('pkg')).toBe('1.0.0');
+  });
+
   it('returns the newest installable version as a caret range', () => {
     stubRegistry({ '@ifc-lite/parser': ['1.0.0', '1.1.0', '1.2.0'] });
     expect(fixers.getPackageVersion('@ifc-lite/parser')).toBe('^1.2.0');

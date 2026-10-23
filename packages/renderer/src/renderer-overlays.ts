@@ -54,10 +54,11 @@ import { SymbolicOverlays } from './renderer-symbolic-overlays.js';
 import type { SymbolicFillInput, SymbolicTextInput } from './symbolic-overlay-pipelines.js';
 import { ClashSolidPipeline } from './clash-solid-pipeline.js';
 import { anchoredAabbEdgeLineList } from './aabb-edges.js';
-import { projectedBoundsRange } from './render-section-plane.js';
+import { uploadSectionCap } from './section-cap-upload.js';
 import { drawSectionOverlays, type ModelBounds } from './render-section-draw.js';
 import type { RelativeToEyeFrame } from './relative-to-eye.js';
 import type { RenderOptions } from './types.js';
+import type { ExtraClipPlane } from './clip-types.js';
 import type { DeviceRecoveryOmission } from './device-recovery.js';
 import { lineVertexFloatCount, type LineVertices } from './section-2d-line-buffer.js';
 import type { OverlayTheme } from './overlay-theme.js';
@@ -99,6 +100,9 @@ export interface OverlayDrawContext {
     relativeToEyeFrame?: RelativeToEyeFrame;
     rteViewProj?: Float32Array;
     rteCamera?: readonly [number, number, number];
+    /** See `SectionDrawContext`: the cutting planes beyond the first, and the primary as a clip. */
+    extraPlanes?: readonly ExtraClipPlane[];
+    primaryPlane?: ExtraClipPlane | null;
 }
 
 /**
@@ -250,63 +254,31 @@ export class RendererOverlays {
             tangent:   [number, number, number];
             bitangent: [number, number, number];
         },
+        planeId?: string,
     ): void {
-        // Rendering is dirty-flag gated, so every path that actually CHANGES
-        // overlay geometry has to request a frame or the new drawing only
-        // appears when something unrelated next dirties the viewport (#2442).
-        // The two early returns below leave the geometry untouched, so they
-        // correctly ask for nothing — matching `setLineOverlay` before init.
-        if (!this.section2DOverlayRenderer) return;
-
-        if (customPlane) {
-            // Custom-plane path: planePosition / axis are unused — the
-            // basis the cap shader needs travels in `customPlane`. We pass
-            // 0 for `planePosition` and the existing `axis` so the cardinal
-            // shader code path that callers depend on (e.g. legacy SVG
-            // export) keeps working when customPlane is omitted.
-            this.section2DOverlayRenderer.uploadDrawing(
-                polygons, lines, axis, 0, flipped, customPlane,
-            );
+        const overlay = this.section2DOverlayRenderer;
+        if (overlay && uploadSectionCap(overlay, this.host.getModelBounds(), planeId, polygons, lines, axis, position, sectionRange, flipped, customPlane)) {
+            // Dirty-flag gated rendering: a change to overlay geometry must ask for a frame (#2442).
             this.host.requestRender();
-            return;
         }
-
-        // Same range formula as the clip plane (`resolveSectionPlaneFrame`),
-        // shared rather than copied — but deliberately evaluated against the
-        // UN-ROTATED axis normal, which is what makes the two agree instead of
-        // merely look alike (#2447).
-        //
-        // `planePosition` is not a plane distance here: `transform2Dto3D` lifts
-        // the cardinal drawing onto an AXIS-ALIGNED plane at that world
-        // coordinate (`side` -> `[planePosition, y, x]`), and the polygons it
-        // lifts were cut on that same axis-aligned plane upstream. Feeding it
-        // the rotated plane's distance would move the cap off the geometry it
-        // was cut from. A rotated or face-picked plane reaches the cap through
-        // `customPlane` above, which carries its own basis.
-        const axisNormal: [number, number, number] =
-            axis === 'side' ? [1, 0, 0] : axis === 'down' ? [0, 1, 0] : [0, 0, 1];
-
-        const modelBounds = this.host.getModelBounds();
-
-        // Allow upload if either sectionRange has both values, or modelBounds exists as fallback
-        const hasFullRange = sectionRange?.min !== undefined && sectionRange?.max !== undefined;
-        if (!hasFullRange && !modelBounds) return;
-
-        const axisRange = modelBounds ? projectedBoundsRange(modelBounds.min, modelBounds.max, axisNormal) : null;
-        const minVal = sectionRange?.min ?? axisRange!.min;
-        const maxVal = sectionRange?.max ?? axisRange!.max;
-        const planePosition = minVal + (position / 100) * (maxVal - minVal);
-
-        this.section2DOverlayRenderer.uploadDrawing(polygons, lines, axis, planePosition, flipped);
-        this.host.requestRender();
     }
 
     /** See `Renderer.clearSection2DOverlay` for the published contract. */
-    clearSection2DOverlay(): void {
-        if (this.section2DOverlayRenderer) {
-            this.section2DOverlayRenderer.clearGeometry();
-            this.host.requestRender();
-        }
+    clearSection2DOverlay(planeId?: string): void {
+        const overlay = this.section2DOverlayRenderer;
+        if (!overlay) return;
+        if (planeId === undefined) overlay.clearGeometry();
+        else overlay.clearExtraGeometry(new Set(overlay.extraGeometryKeys().filter((key) => key !== planeId)));
+        this.host.requestRender();
+    }
+
+    /** Drop the caps of every cutting plane beyond the first whose id is not in `keep` (#7545). */
+    clearSection2DExtraOverlays(keep: readonly string[] = []): void {
+        const overlay = this.section2DOverlayRenderer;
+        // Any held key, not only keys with geometry: an upload that built nothing still holds one of the seven slots.
+        if (!overlay || overlay.extraGeometryKeys().length === 0) return;
+        overlay.clearExtraGeometry(new Set(keep));
+        this.host.requestRender();
     }
 
     /** See `Renderer.setOverlayTheme` for the published contract. */

@@ -1,0 +1,29 @@
+diff --git a/scripts/check-rust-semver.mjs b/scripts/check-rust-semver.mjs
+--- a/scripts/check-rust-semver.mjs
++++ b/scripts/check-rust-semver.mjs
+@@ -258,7 +258,11 @@ export function checkRustSemver({ crates, workspaceVersion, latestPublished, run
+       continue;
+     }
+ 
+-    const attempt = { run: runSemverChecks(crate, baseline), via: null };
++    const attempt = runWithReproducibleBaseline(crate, baseline, runSemverChecks, runTagBaseline);
++    if (attempt.failure) {
++      failures.push(`${crate}: ${attempt.failure}`);
++      continue;
++    }
+     const { required, executed, reason } = interpretRun(attempt.run);
+     if (reason) {
+       failures.push(`${crate}: ${reason}`);
+diff --git a/scripts/lib/cargo-semver-checks.mjs b/scripts/lib/cargo-semver-checks.mjs
+--- a/scripts/lib/cargo-semver-checks.mjs
++++ b/scripts/lib/cargo-semver-checks.mjs
+@@ -183,7 +183,8 @@ export function interpretRun({ status, output }) {
+     executed,
+     reason:
+       `NO_VERDICT: cargo-semver-checks exited ${status} without a "Summary" line — ` +
+-      'it could not build or compare the crate, so nothing was checked',
++      'it could not build or compare the crate, so nothing was checked' +
++      outputExcerpt(output),
+   };
+ }
+ 

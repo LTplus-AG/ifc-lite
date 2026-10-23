@@ -98,6 +98,8 @@ export const EXCLUDED_DIRS = ['node_modules', 'dist', 'target'];
  * filename at a time the same way.)
  */
 export const EXCLUDED_PATHS = [
+    // TypeDoc's generated HTML/theme/search assets; regenerated from public declarations.
+    'docs/api/generated/',
     // wasm-pack output. Only `pkg/ifc-lite.d.ts` is committed (force-added
     // past wasm-pack's own `pkg/.gitignore`); the rest is gitignored build
     // product that `scripts/build-wasm.sh` leaves on disk, and `find` walks
@@ -110,12 +112,14 @@ export const EXCLUDED_PATHS = [
     // stamps MPL notices into wasm-pack's output. Each path is the `--out-dir`
     // its build script passes, read off the script rather than guessed —
     // `scripts/build-wasm.sh:84` (`pkg`), `:140` (`pkg-threaded`), `:208`
-    // (`pkg-wide`, behind `BUILD_WIDE=1`), and `rust/csg-thread-bench/build.sh`
+    // (`pkg-wide`, behind `BUILD_WIDE=1`), `pkg-retained` (behind
+    // `BUILD_RETAINED=1`, #7955), and `rust/csg-thread-bench/build.sh`
     // `:20`/`:21`, whose `web/pkg-plain` and `web/pkg-threaded` are relative to
     // the script's own directory (it `cd`s there on line 19).
     'packages/wasm/pkg/',
     'packages/wasm/pkg-threaded/',
     'packages/wasm/pkg-wide/',
+    'packages/wasm/pkg-retained/',
     'rust/csg-thread-bench/web/pkg-plain/',
     'rust/csg-thread-bench/web/pkg-threaded/',
     // EXPRESS-schema codegen output. `scripts/check-codegen-sync.mjs`

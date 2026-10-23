@@ -40,7 +40,6 @@
 
 import type { SectionPlane, SectionPlaneAxis } from './types.js';
 import type { SceneVisibilityState } from './slices/sceneStateSlice.js';
-import { clearLastSectionMode } from './slices/sectionSlice.js';
 import { cardinalSectionFlipped } from './slices/sectionFacePick.js';
 export { cardinalSectionFlipped };
 
@@ -59,7 +58,21 @@ export function activeSectionPlane(state: SectionVisibilityState): SectionPlane 
   return state.sectionPlane.enabled && visible ? state.sectionPlane : null;
 }
 
+/**
+ * Every plane that clips what is on screen (#7545): the active plane when it is
+ * cutting, then each inactive plane that is. `activeSectionPlane` stays the
+ * answer to "which cut is this drawing/PDF/BCF about"; this is the answer to
+ * "what is removed from view". Empty while the cut is hidden.
+ */
+export function clippingSectionPlanes(state: SectionVisibilityState & { inactiveSectionPlanes?: readonly SectionPlane[] }): SectionPlane[] {
+  if (!(state.sceneState?.section?.visible ?? true)) return [];
+  return [state.sectionPlane, ...(state.inactiveSectionPlanes ?? [])].filter((p) => p.enabled);
+}
+
 interface SectionWriterState extends SectionVisibilityState {
+  clearSectionPlanes?: () => void;
+  addSectionPlane?: (axis: SectionPlaneAxis) => string | null;
+  activateSectionPlane?: (id: string) => void;
   setSectionPlaneAxis: (axis: SectionPlaneAxis) => void;
   setSectionPlanePosition: (position: number) => void;
   setSectionPlaneEnabled: (enabled: boolean) => void;
@@ -80,10 +93,34 @@ export function showSectionCut(
   cut: { axis: SectionPlaneAxis; position: number; flipped: boolean },
 ): void {
   const state = getState();
+  // A cut handed over from outside (BCF viewpoint, SDK `setSection`) is THE cut:
+  // planes the user had added would otherwise keep clipping beside it (#7545).
+  state.clearSectionPlanes?.();
   state.setSectionPlaneAxis(cut.axis);
   state.setSectionPlanePosition(cut.position);
   if (getState().sectionPlane.flipped !== cut.flipped) state.flipSectionPlane();
   revealSectionCut(getState);
+}
+
+/**
+ * Put SEVERAL cardinal cuts on screen, replacing every plane (a BCF viewpoint with more than
+ * one clipping plane; #7545). The first becomes the active plane, the rest follow in order, so
+ * the chips read A, B, C as the viewpoint lists them. More than the viewer holds are dropped.
+ */
+export function showSectionCuts(
+  getState: () => SectionWriterState,
+  cuts: readonly { axis: SectionPlaneAxis; position: number; flipped: boolean }[],
+): void {
+  const [first, ...rest] = cuts;
+  if (!first) { clearSectionCut(getState); return; }
+  showSectionCut(getState, first);
+  const firstId = getState().sectionPlane.id;
+  for (const cut of rest) {
+    if (!getState().addSectionPlane?.(cut.axis)) break; // at the limit
+    getState().setSectionPlanePosition(cut.position);
+    if (getState().sectionPlane.flipped !== cut.flipped) getState().flipSectionPlane();
+  }
+  if (rest.length > 0) getState().activateSectionPlane?.(firstId);
 }
 
 /** Put the current cut ON SCREEN: clipping on, the hide toggle cleared, and
@@ -102,14 +139,13 @@ export function revealSectionCut(getState: () => SectionWriterState): void {
 }
 
 /**
- * No cut on screen, and none waiting for the next time the Section tool opens:
- * neither the hidden cut nor the persisted last cardinal mode, which
- * SectionPanel re-applies (and re-enables) on mount.
+ * No cut on screen: the cut is turned off and any hidden (parked) cut forgotten.
  */
 export function clearSectionCut(getState: () => SectionWriterState): void {
   const plane = getState().sectionPlane;
   if (plane.enabled || plane.parked) getState().setSectionPlaneEnabled(false);
-  clearLastSectionMode();
+  // Every other plane too (#7545): "no cut on screen" is the whole set.
+  getState().clearSectionPlanes?.();
 }
 
 /**

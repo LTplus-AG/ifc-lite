@@ -202,6 +202,17 @@ export class BCFNamespace extends BCFGuidColorBase {
         flipped: sp.flipped,
       } satisfies BcfViewerSectionPlane;
     }
+    if (options?.sectionPlanes) {
+      if (options.sectionPlanes.some((sp) => sp.enabled) && !options.bounds) {
+        throw new MissingSectionBoundsError();
+      }
+      bcfOptions.sectionPlanes = options.sectionPlanes.map((sp) => ({
+        axis: SDK_AXIS_TO_BCF_AXIS[sp.axis],
+        position: sp.position,
+        enabled: sp.enabled,
+        flipped: sp.flipped,
+      } satisfies BcfViewerSectionPlane));
+    }
     if (options?.bounds) {
       bcfOptions.bounds = {
         min: toVec3(options.bounds.min),
@@ -266,6 +277,7 @@ export class BCFNamespace extends BCFGuidColorBase {
     const raw = (mod.extractViewpointState as AnyFn)(local, bcfBounds) as {
       camera?: BcfViewerCameraState;
       sectionPlane?: BcfViewerSectionPlane;
+      sectionPlanes?: BcfViewerSectionPlane[];
       selectedGuids: string[];
       hiddenGuids: string[];
       visibleGuids: string[] | null;
@@ -289,6 +301,12 @@ export class BCFNamespace extends BCFGuidColorBase {
             flipped: raw.sectionPlane.flipped,
           }
         : undefined,
+      sectionPlanes: raw.sectionPlanes?.map((plane) => ({
+        axis: BCF_AXIS_TO_SDK_AXIS[plane.axis],
+        position: plane.position,
+        enabled: plane.enabled,
+        flipped: plane.flipped,
+      })),
       selectedGuids: raw.selectedGuids,
       hiddenGuids: raw.hiddenGuids,
       visibleGuids: raw.visibleGuids,

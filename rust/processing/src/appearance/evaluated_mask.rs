@@ -5,7 +5,7 @@
 //! fingerprint (#4404). A mask never reuses triangle ordinals by position; the
 //! fingerprint must match the surface the plan is about to author.
 use super::{types::FaceMask, AppearanceRequest, RepresentationPolicy};
-use sha2::{Digest, Sha256};
+use crate::fingerprint::Sha256Writer;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) const STALE: &str = "Face selection is stale: the evaluated surface geometry changed";
@@ -55,23 +55,23 @@ pub(super) fn validate(request: &AppearanceRequest) -> Result<BTreeMap<u32, &Fac
 /// `points` are the authored product-local coordinates in source length units;
 /// `scale` converts them to metres. Only the surface identity enters the hash.
 pub(super) fn fingerprint(global_id: &str, points: &[[f64; 3]], scale: f64, indices: &[u32]) -> Result<String, String> {
-    let mut hasher = Sha256::new();
-    hasher.update(b"ifc-lite evaluated surface v1\0");
-    hasher.update(global_id.as_bytes());
-    hasher.update([0u8]);
-    hasher.update((points.len() as u64).to_le_bytes());
+    let mut hasher = Sha256Writer::new();
+    hasher.bytes(b"ifc-lite evaluated surface v1\0");
+    hasher.bytes(global_id.as_bytes());
+    hasher.bytes([0u8]);
+    hasher.len(points.len());
     for point in points {
         for &value in point {
             let quantised = value * scale * QUANTUM_PER_METRE;
             if !quantised.is_finite() || quantised.abs() > 9.0e18 {
                 return Err("Evaluated surface coordinate exceeds the fingerprint range".into());
             }
-            hasher.update((quantised.round() as i64).to_le_bytes());
+            hasher.bytes((quantised.round() as i64).to_le_bytes());
         }
     }
-    hasher.update((indices.len() as u64).to_le_bytes());
-    for &index in indices { hasher.update(index.to_le_bytes()); }
-    Ok(format!("{:x}", hasher.finalize()))
+    hasher.len(indices.len());
+    for &index in indices { hasher.bytes(index.to_le_bytes()); }
+    Ok(hasher.finish_hex())
 }
 
 /// Source triangle corners split by the accepted mask, in source order.

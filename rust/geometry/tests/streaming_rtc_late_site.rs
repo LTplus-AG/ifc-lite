@@ -21,7 +21,7 @@ use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::GeometryRouter;
 
 const FIXTURE: &str =
-    "../../tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc";
+    "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc";
 const META_EMIT_JOBS: usize = 50; // mirrors META_EMIT_JOB_THRESHOLD in gpu_meshes/prepass.rs
 
 /// Record-end offsets of the first `n` geometry-bearing entities, in file order.
@@ -46,14 +46,7 @@ fn geometry_job_ends(content: &str, n: usize) -> Vec<usize> {
 
 #[test]
 fn streaming_partial_index_misses_late_site_offset_but_full_index_recovers_it() {
-    let Ok(full) = std::fs::read_to_string(FIXTURE) else {
-        eprintln!("skipping: fixture {FIXTURE} not present — run `pnpm fixtures`");
-        return;
-    };
-    if full.starts_with("version https://git-lfs") {
-        eprintln!("skipping: fixture is a Git LFS pointer — run `pnpm fixtures`");
-        return;
-    }
+    let full = ifc_lite_testkit::fixture_text_or_skip!(FIXTURE);
 
     let job_ends = geometry_job_ends(&full, META_EMIT_JOBS);
     assert_eq!(job_ends.len(), META_EMIT_JOBS, "need the first 50 geometry jobs");

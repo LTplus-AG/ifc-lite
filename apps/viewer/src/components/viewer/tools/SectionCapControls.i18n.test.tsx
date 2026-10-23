@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
+import '@/test/section-tool-ready.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -70,9 +71,13 @@ function labelledControl<T extends HTMLElement>(ui: HTMLElement, label: string):
 
 beforeEach(() => {
   window.localStorage.clear();
-  window.localStorage.setItem('ifc-lite:section-last-mode', JSON.stringify({ kind: 'cardinal', axis: 'down', position: 50, flipped: false }));
   setLocale('en');
-  useViewerStore.setState({ activeTool: 'section', sectionPlane: getDefaultSectionPlane(), sectionPickMode: false, sectionPickPreview: null });
+  useViewerStore.setState({
+    activeTool: 'section', sectionPlane: getDefaultSectionPlane(), inactiveSectionPlanes: [], sectionUndo: null,
+    sectionPickMode: false, sectionPickPreview: null,
+  });
+  // The bar's Cap control belongs to a plane, so the tool opens on a Down cut at 50 % (opening restores nothing, #7545).
+  useViewerStore.getState().addSectionPlane('down');
 });
 
 afterEach(() => {
@@ -162,4 +167,17 @@ describe('mounted Section cap localization (#4785)', () => {
     assert.match(ui.textContent ?? '', /Replacement display/);
     assert.equal(toggle(ui, 'Surfaces').title, 'Replacement hide');
   });
+
+  it('picks the fill source beside the fill colour, as a radio group (#7950)', () => {
+    const ui = mountedCap();
+    const group = ui.querySelector('[role="radiogroup"][aria-label="Fill source"]');
+    assert.ok(group, 'fill source is one radio group');
+    const radio = (name: string) => [...group.querySelectorAll<HTMLElement>('[role="radio"]')].find((r) => r.textContent?.trim() === name)!;
+    assert.equal(radio('Uniform').getAttribute('aria-checked'), 'true');
+    click(radio('Element colour'));
+    assert.equal(useViewerStore.getState().sectionPlane.capStyle.fillMode, 'element');
+    assert.equal(radio('Element colour').getAttribute('aria-checked'), 'true');
+    assert.ok(ui.querySelector('input[aria-label="Fill colour"]'), 'the fill colour stays reachable for cuts without a colour');
+  });
 });
+

@@ -2,12 +2,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use crate::{Error, Mesh, Result, TessellationQuality};
-use ifc_lite_core::{parse_indices_direct, DecodedEntity, EntityDecoder, IfcSchema, IfcType};
+use crate::{Mesh, Result, TessellationQuality};
+use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
 use crate::router::GeometryProcessor;
 
-use super::polygonal::PolygonalFaceSetProcessor;
+use super::triangulated_plan;
 
 /// TriangulatedFaceSet processor (P0)
 /// Handles IfcTriangulatedFaceSet - explicit triangle meshes
@@ -16,83 +16,6 @@ pub struct TriangulatedFaceSetProcessor;
 impl TriangulatedFaceSetProcessor {
     pub fn new() -> Self {
         Self
-    }
-
-    /// Parse an `IfcTriangulatedFaceSet`'s positions + triangle indices and
-    /// apply the closed-shell outward orientation. Returns
-    /// `(positions, indices, flipped)` where `flipped` is whether the whole
-    /// shell was winding-flipped — the texture path needs it to keep the
-    /// parallel `TexCoordIndex` in lockstep (#961). Shared by `process` and
-    /// [`Self::process_with_texture`] so there is one parse/orient code path.
-    /// `rtc_file_units` rebases before f32 narrowing (see `read_point_list`).
-    fn parse_positions_and_orient(
-        entity: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        rtc_file_units: Option<(f64, f64, f64)>,
-    ) -> Result<(Vec<f32>, Vec<u32>, bool)> {
-        // IfcTriangulatedFaceSet attributes:
-        // 0: Coordinates (IfcCartesianPointList3D)
-        // 1: Normals (optional)
-        // 2: Closed (optional)
-        // 3: CoordIndex (list of list of IfcPositiveInteger)
-
-        let coords_attr = entity.get(0).ok_or_else(|| {
-            Error::geometry("TriangulatedFaceSet missing Coordinates".to_string())
-        })?;
-        let coord_entity_id = coords_attr.as_entity_ref().ok_or_else(|| {
-            Error::geometry("Expected entity reference for Coordinates".to_string())
-        })?;
-        let positions = super::read_point_list(decoder, coord_entity_id, rtc_file_units)?;
-
-        // Get face indices - try fast path first
-        let indices_attr = entity
-            .get(3)
-            .ok_or_else(|| Error::geometry("TriangulatedFaceSet missing CoordIndex".to_string()))?;
-
-        // For indices, we need to extract from the main entity's raw bytes
-        // Fast path: parse directly if we can get the raw CoordIndex section
-        let indices = if let Some(raw_entity_bytes) = decoder.get_raw_bytes(entity.id) {
-            // Find the CoordIndex attribute (4th attribute, index 3)
-            // and parse directly
-            if let Some(coord_index_bytes) = super::super::extract_coord_index_bytes(raw_entity_bytes) {
-                parse_indices_direct(coord_index_bytes)
-            } else {
-                // Fallback to standard parsing
-                let face_list = indices_attr
-                    .as_list()
-                    .ok_or_else(|| Error::geometry("Expected face index list".to_string()))?;
-                use ifc_lite_core::AttributeValue;
-                AttributeValue::parse_index_list(face_list)
-            }
-        } else {
-            let face_list = indices_attr
-                .as_list()
-                .ok_or_else(|| Error::geometry("Expected face index list".to_string()))?;
-            use ifc_lite_core::AttributeValue;
-            AttributeValue::parse_index_list(face_list)
-        };
-
-        // Read Closed (attribute 2): .T. means definitely closed, .F. means
-        // definitely open, $ / UNKNOWN means "not specified". Revit-exported
-        // light fixtures and similar families in IFC4 often omit Closed
-        // ($) but still author closed shells — sometimes with inward-facing
-        // winding (issue #819, IFC4TessellationComplex.ifc). Mirror the
-        // PolygonalFaceSet orientation pass but be less strict: also apply
-        // it when Closed is unknown, never when explicitly .F.
-        let closed_attr = entity.get(2);
-        let is_open = closed_attr
-            .and_then(|a| a.as_enum())
-            .map(|v| v == "F")
-            .unwrap_or(false);
-
-        let mut indices = indices;
-        let flipped = if !is_open {
-            PolygonalFaceSetProcessor::orient_closed_shell_outward(&positions, &mut indices)
-        } else {
-            false
-        };
-
-        Ok((positions, indices, flipped))
     }
 
     /// Tessellate a textured `IfcTriangulatedFaceSet` (#961): builds the same
@@ -119,36 +42,7 @@ impl TriangulatedFaceSetProcessor {
         map: &crate::processors::texture::ResolvedTextureMap,
         rtc_file_units: Option<(f64, f64, f64)>,
     ) -> Result<(Mesh, Vec<f32>)> {
-        let (positions, indices, flipped) =
-            Self::parse_positions_and_orient(entity, decoder, rtc_file_units)?;
-        let tex_coord_index = match &map.tex_coord_index {
-            Some(authored) => {
-                let mut idx = authored.clone();
-                if flipped {
-                    for tri in idx.iter_mut() {
-                        tri.swap(1, 2);
-                    }
-                }
-                idx
-            }
-            // TexCoordIndex omitted (`$`): texture vertices pair 1:1 with the
-            // face set's Coordinates, so the CoordIndex IS the UV index (#1781).
-            // Derived from the POST-orientation `indices` (0-based → 1-based),
-            // so the whole-shell winding flip is already reflected — no swap.
-            None => indices
-                .chunks_exact(3)
-                .map(|t| [t[0] + 1, t[1] + 1, t[2] + 1])
-                .collect(),
-        };
-        let (mut mesh, uvs) = PolygonalFaceSetProcessor::build_flat_shaded_mesh_with_uvs(
-            &positions,
-            &indices,
-            &map.tex_coords,
-            &tex_coord_index,
-        );
-        mesh.validate_indices();
-        mesh.rtc_applied = rtc_file_units.is_some();
-        Ok((mesh, uvs))
+        Ok(triangulated_plan::lower(entity, decoder, rtc_file_units)?.evaluate_with_texture(map))
     }
 
     /// Mesh the face set; `rtc_file_units` rebases before f32 narrowing.
@@ -157,30 +51,18 @@ impl TriangulatedFaceSetProcessor {
         decoder: &mut EntityDecoder,
         rtc_file_units: Option<(f64, f64, f64)>,
     ) -> Result<Mesh> {
-        let (positions, indices, _flipped) =
-            Self::parse_positions_and_orient(entity, decoder, rtc_file_units)?;
-
-        // Flat-shade by duplicating vertices per-triangle. Without this, the
-        // downstream per-vertex normal accumulator (`csg::calculate_normals`)
-        // averages adjacent face normals at every shared vertex, which
-        // softens crisp facet edges into a muddy gradient on faceted
-        // geometry — visible in issue #819 on `IFC4TessellationComplex.ifc`
-        // where the user contrasted ifc-lite's smoothed dome with the
-        // facet-sharp BIMVision render. `PolygonalFaceSetProcessor` already
-        // does this; bringing `IfcTriangulatedFaceSet` to parity matches
-        // IfcOpenShell / web-ifc behaviour for `Normals = $`.
-        //
-        // 3× vertex bloat. Acceptable for Revit lighting/family export
-        // sizes; if it ever becomes a bottleneck on giant tessellated
-        // models, gate this on per-edge crease angle.
-        let mut mesh = PolygonalFaceSetProcessor::build_flat_shaded_mesh(&positions, &indices);
-        mesh.validate_indices();
-        mesh.rtc_applied = rtc_file_units.is_some();
-        Ok(mesh)
+        Ok(triangulated_plan::lower(entity, decoder, rtc_file_units)?.evaluate())
     }
 }
 
 impl GeometryProcessor for TriangulatedFaceSetProcessor {
+    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
+        _quality: crate::TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
+        -> Option<crate::Result<crate::program::OwnedConstructor>> {
+        use crate::program::constructor::Constructor;
+        Some(triangulated_plan::lower(entity, decoder, rtc_file_units).map(|plan| crate::program::OwnedConstructor::new(Constructor::Triangles(plan))))
+    }
+
     #[inline]
     fn process(
         &self,

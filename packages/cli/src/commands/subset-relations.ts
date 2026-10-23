@@ -79,6 +79,8 @@
  *     below.
  */
 
+import { stepStringLiteralEnd } from '@ifc-lite/encoding';
+
 /**
  * One parsed STEP record, as `extract-entities.ts`'s `parseStep` produces it.
  * Declared HERE and imported there, rather than the other way round, so the
@@ -272,18 +274,13 @@ function relationLine(
  */
 export function refsOutsideStrings(arg: string): number[] {
   const ids: number[] = [];
-  let inString = false;
   for (let i = 0; i < arg.length; i++) {
     const char = arg[i];
-    if (inString) {
-      if (char === "'") {
-        if (arg[i + 1] === "'") i++;
-        else inString = false;
-      }
-      continue;
-    }
     if (char === "'") {
-      inString = true;
+      // #7589: the shared literal-end rule (`''`, PAGE-directive operand).
+      const end = stepStringLiteralEnd(arg, i);
+      if (end < 0) break; // never closes: the rest is string text
+      i = end - 1;
     } else if (char === '#') {
       let end = i + 1;
       while (end < arg.length && arg[end] >= '0' && arg[end] <= '9') end++;
@@ -362,26 +359,19 @@ export function splitTopLevelArgs(text: string): string[] | null {
   const parts: string[] = [];
   let start = 0;
   let depth = 0;
-  let inString = false;
 
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
-
-    if (inString) {
-      if (char === "'") {
-        // A doubled quote is an escaped quote, not the end of the string.
-        if (text[i + 1] === "'") i++;
-        else inString = false;
-      }
-      continue;
-    }
 
     if (char === '/' && text[i + 1] === '*') {
       // See skipStepComment's docstring: its content is skipped as one unit,
       // not read as argument-list structure.
       i = skipStepComment(text, i) - 1;
     } else if (char === "'") {
-      inString = true;
+      // `''` and the PAGE directive's apostrophe operand (#7589) stay inside.
+      const end = stepStringLiteralEnd(text, i);
+      if (end < 0) return null; // unterminated string
+      i = end - 1;
     } else if (char === '(') {
       depth++;
     } else if (char === ')') {
@@ -393,7 +383,7 @@ export function splitTopLevelArgs(text: string): string[] | null {
     }
   }
 
-  if (inString || depth !== 0) return null;
+  if (depth !== 0) return null;
   const tail = text.slice(start).trim();
   if (tail) parts.push(tail);
   return parts;

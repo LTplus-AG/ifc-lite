@@ -553,8 +553,8 @@ fn topology_tear_recorded_by_every_boolean_op_without_gating() {
         assert!(!mesh.is_empty(), "{name} must return the kernel result, not an empty fallback");
         assert!(p.validate_mesh(mesh), "{name}: validate_mesh must still accept the torn result");
         assert!(
-            !crate::router::voids::prism_cut::closure_checks::directed_closed(mesh)
-                && !crate::router::voids::prism_cut::closure_checks::closed_or_hairline(mesh),
+            !crate::mesh_check::directed_closed(mesh)
+                && !crate::mesh_check::closed_or_hairline(mesh),
             "{name}: the returned mesh must fail BOTH halves of the audit's predicate, \
              or this test cannot tell the hairline tolerance from its absence"
         );
@@ -600,10 +600,7 @@ fn topology_tear_not_recorded_for_closed_results() {
 // the group comes back un-cut. That is the gate working, not the diagnostic
 // breaking: there is no "worse number" to pin here, only a fixture the feature
 // makes unreachable.
-#[cfg(all(
-    not(feature = "csg_topology_gate"),
-    not(feature = "csg_manifold_gate")
-))]
+#[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
 #[test]
 fn topology_tear_recorded_once_per_batched_subtract_not_once_per_chunk() {
     let open_host = open_box_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(20.0, 1.0, 1.0));
@@ -630,8 +627,8 @@ fn topology_tear_recorded_once_per_batched_subtract_not_once_per_chunk() {
             "{cutter_count} cutters: the cut must carve the host"
         );
         assert!(
-            !crate::router::voids::prism_cut::closure_checks::directed_closed(&result)
-                && !crate::router::voids::prism_cut::closure_checks::closed_or_hairline(&result),
+            !crate::mesh_check::directed_closed(&result)
+                && !crate::mesh_check::closed_or_hairline(&result),
             "{cutter_count} cutters: the returned mesh must fail BOTH halves of the predicate"
         );
         assert_eq!(
@@ -693,7 +690,7 @@ fn t_junction_box_mesh(min: Point3<f64>, max: Point3<f64>) -> Mesh {
 /// pass-throughs never reach the audit.
 #[test]
 fn hairline_t_junction_is_not_recorded_as_a_topology_tear() {
-    use crate::router::voids::prism_cut::closure_checks::{closed_or_hairline, directed_closed};
+    use crate::mesh_check::{closed_or_hairline, directed_closed};
     let hairline = t_junction_box_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));
     assert!(
         !directed_closed(&hairline),
@@ -713,6 +710,28 @@ fn hairline_t_junction_is_not_recorded_as_a_topology_tear() {
     );
 }
 
+/// #7982: the audit (and, under `csg_topology_gate`, the gate) reads the
+/// processor's own length unit. The `processors/boolean` paths cut in file
+/// units through `with_unit_scale`; a millimetre seam inside the documented
+/// 0.1 mm grid is not a tear there, while the same coordinates in metres are.
+#[test]
+fn topology_audit_grid_follows_the_processor_length_unit_7982() {
+    let mesh = crate::mesh_check::closure_tests::split_apex_tetrahedron();
+    let mm = ClippingProcessor::with_unit_scale(0.001);
+    mm.record_topology_tear(BoolOp::Difference, &mesh);
+    assert_eq!(mm.take_failures(), vec![], "a 0.04 mm seam is not a tear in millimetres");
+    assert!(!mm.topology_gate_reject(BoolOp::Difference, &mesh));
+
+    let metres = ClippingProcessor::new();
+    metres.record_topology_tear(BoolOp::Difference, &mesh);
+    assert_eq!(metres.take_failures().len(), 1, "a 4 cm hole is a tear in metres");
+    assert_eq!(
+        metres.topology_gate_reject(BoolOp::Difference, &mesh),
+        cfg!(feature = "csg_topology_gate"),
+        "the gate rejects exactly when its feature is on"
+    );
+}
+
 /// `union_meshes` must audit the mesh it RETURNS, once — not every
 /// intermediate its pairwise loop throws away. `processors/boolean` unions the
 /// cutter prisms through this method and drains the same clipper into the
@@ -722,7 +741,7 @@ fn hairline_t_junction_is_not_recorded_as_a_topology_tear() {
 #[cfg(not(feature = "csg_topology_gate"))] // step-1-only: asserts the non-gating KernelError record; superseded under the feature by OpenTopologyRejected + fallback
 #[test]
 fn topology_tear_recorded_once_per_union_meshes_not_once_per_intermediate() {
-    use crate::router::voids::prism_cut::closure_checks::{closed_or_hairline, directed_closed};
+    use crate::mesh_check::{closed_or_hairline, directed_closed};
     // Three overlapping boxes, the first of them open: two pairwise unions run,
     // so auditing per pair records the discarded first intermediate as well.
     let parts = vec![
@@ -1030,10 +1049,7 @@ fn manifold_gate_accepts_a_clean_boolean_result() {
 /// non-manifold, so with THAT feature on the other gate rejects it and the
 /// un-cut host comes back for a reason this test is not about. Naming both
 /// features keeps the assertion measuring the thing in its own name.
-#[cfg(all(
-    not(feature = "csg_manifold_gate"),
-    not(feature = "csg_topology_gate")
-))]
+#[cfg(not(any(feature = "csg_manifold_gate", feature = "csg_topology_gate")))]
 #[test]
 fn manifold_gate_is_a_true_noop_without_the_feature() {
     let host = finned_box_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));

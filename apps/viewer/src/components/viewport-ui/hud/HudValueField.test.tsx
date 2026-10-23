@@ -7,7 +7,7 @@ import { act } from 'react';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { render, cleanup, blur, press, type } from '@/test/render.js';
-import { HudValueField, type HudValueFieldHandle } from './HudValueField.js';
+import { HudValueField, parseTypedNumber, type HudValueFieldHandle } from './HudValueField.js';
 
 afterEach(() => {
   cleanup();
@@ -18,7 +18,7 @@ afterEach(() => {
  *  (a store-backed distance field) would. */
 function Harness({ onChange, ...rest }: {
   onChange: (next: number) => void; value: number; step?: number; min?: number; max?: number; unit?: string;
-  snaps?: readonly number[]; snapTolerance?: number; onScrubStart?: () => void; onScrubEnd?: () => void;
+  snaps?: readonly number[]; snapTolerance?: number; wheelStep?: boolean; shiftMultiplier?: number; onScrubStart?: () => void; onScrubEnd?: () => void;
 }) {
   return (
     <HudValueField
@@ -212,5 +212,90 @@ describe('HudValueField (#5485)', () => {
     pointerMove(again, 70);
     pointerUp(again, 70);
     assert.deepEqual(events, ['start', 'end'], 'one start per scrub, one end on release');
+  });
+});
+
+/** A wheel notch the way a browser delivers it: bubbling and cancelable, so `defaultPrevented` tells whether the page would scroll. */
+function wheel(el: Element, deltaY: number, init: WheelEventInit = {}): WheelEvent {
+  // A plain event with the wheel fields defined on it: the DOM shim does not carry modifier keys through WheelEventInit.
+  const event = new window.Event('wheel', { bubbles: true, cancelable: true }) as unknown as WheelEvent;
+  for (const [key, value] of Object.entries({ deltaY, shiftKey: false, altKey: false, ...init })) {
+    Object.defineProperty(event, key, { value });
+  }
+  act(() => { el.dispatchEvent(event); });
+  return event;
+}
+
+describe('HudValueField wheel stepping (#7545)', () => {
+  const mount = (props: { value: number; step?: number; min?: number; max?: number; wheelStep?: boolean }, values: number[]) => {
+    const ui = render(<Harness {...props} onChange={(v) => values.push(v)} />);
+    return ui.querySelector('[role="spinbutton"]')!;
+  };
+
+  it('one notch is one step, up increases, and the notch\'s size is ignored', () => {
+    const values: number[] = [];
+    const field = mount({ value: 1, step: 0.1, wheelStep: true }, values);
+    wheel(field, -1);
+    wheel(field, -400);
+    wheel(field, 3);
+    assert.deepEqual(values.map((v) => Number(v.toFixed(6))), [1.1, 1.1, 0.9]);
+  });
+
+  it('holds the page and the camera: the event is cancelled and does not bubble to the viewport', () => {
+    const values: number[] = [];
+    const field = mount({ value: 0, wheelStep: true }, values);
+    let reachedViewport = false;
+    document.body.addEventListener('wheel', () => { reachedViewport = true; }, { once: true });
+    const event = wheel(field, -100);
+    assert.equal(event.defaultPrevented, true);
+    assert.equal(reachedViewport, false);
+  });
+
+  it('Shift multiplies the step by the field\'s multiplier, Alt divides it by ten', () => {
+    const values: number[] = [];
+    const field = mount({ value: 5, step: 1, wheelStep: true }, values);
+    wheel(field, -1, { shiftKey: true });
+    wheel(field, -1, { altKey: true });
+    assert.deepEqual(values, [15, 5.1]);
+  });
+
+  it('Shift+wheel that the platform reports as a horizontal delta still steps', () => {
+    const values: number[] = [];
+    const field = mount({ value: 1, step: 1, wheelStep: true }, values);
+    wheel(field, 0, { deltaX: -120 } as WheelEventInit);
+    assert.deepEqual(values, [2]);
+  });
+
+  it('commits only what was typed as a number: a comma is a decimal point, trailing text is not a number', () => {
+    for (const [typed, expected] of [['-0,2', -0.2], ['1.5', 1.5], ['  7 ', 7], ['+3', 3], ['.5', 0.5]] as const) {
+      assert.equal(parseTypedNumber(typed), expected, typed);
+    }
+    for (const typed of ['-200 mm', '1.2.3', '', '-', 'abc', '1e3', '0x10', '1,2,3', '--1']) {
+      assert.equal(parseTypedNumber(typed), null, typed);
+    }
+  });
+
+  it('clamps to min and max, and a zero delta does nothing', () => {
+    const values: number[] = [];
+    const field = mount({ value: 9.95, step: 0.1, max: 10, min: 0, wheelStep: true }, values);
+    wheel(field, -1);
+    wheel(field, 0);
+    assert.deepEqual(values, [10]);
+  });
+
+  it('is off unless asked for, and off while the value is being typed', () => {
+    const values: number[] = [];
+    const field = mount({ value: 1, step: 1 }, values);
+    const event = wheel(field, -1);
+    assert.deepEqual(values, []);
+    assert.equal(event.defaultPrevented, false, 'without wheelStep the wheel is not claimed');
+
+    cleanup();
+    const typing: number[] = [];
+    const f = mount({ value: 1, step: 1, wheelStep: true }, typing);
+    press(f, 'Enter');
+    const input = document.querySelector('input')!;
+    wheel(input, -1);
+    assert.deepEqual(typing, [], 'a wheel over the open text field does not step');
   });
 });

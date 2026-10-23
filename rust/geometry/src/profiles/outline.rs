@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::math::tol;
 use crate::tessellation::TessellationQuality;
 use crate::{Point2, Point3};
 use std::f64::consts::PI;
@@ -141,9 +142,9 @@ pub(super) fn approximate_arc_3pt_3d(
 pub(super) fn same_point_3d(prev: Option<&Point3<f64>>, next: &Point3<f64>) -> bool {
     match prev {
         Some(p) => {
-            (p.x - next.x).abs() < 1e-9
-                && (p.y - next.y).abs() < 1e-9
-                && (p.z - next.z).abs() < 1e-9
+            (p.x - next.x).abs() < tol::POINT_COINCIDENT_EPS
+                && (p.y - next.y).abs() < tol::POINT_COINCIDENT_EPS
+                && (p.z - next.z).abs() < tol::POINT_COINCIDENT_EPS
         }
         None => false,
     }
@@ -166,7 +167,7 @@ pub(super) fn rounded_rectangle_outline(
     ccw: bool,
     quality: TessellationQuality,
 ) -> Vec<Point2<f64>> {
-    if radius <= 1.0e-9 {
+    if radius <= tol::LENGTH_ZERO_EPS {
         let pts = vec![
             Point2::new(-half_x, -half_y),
             Point2::new(half_x, -half_y),
@@ -202,7 +203,7 @@ pub(super) fn rounded_rectangle_outline(
     // tolerance in profile units matches the welding precision used
     // elsewhere in the geometry pipeline.
     let mut points: Vec<Point2<f64>> = Vec::with_capacity((segments_per_corner + 1) * 4);
-    const SEAM_TOL: f64 = 1.0e-6;
+    use crate::math::tol::CURVE_JUNCTION_EPS as SEAM_TOL;
     for (cx, cy, a0, a1) in corners {
         for i in 0..=segments_per_corner {
             let t = i as f64 / segments_per_corner as f64;
@@ -240,7 +241,7 @@ pub(super) fn rounded_rectangle_outline(
 fn push_dedup(out: &mut Vec<Point2<f64>>, pt: Point2<f64>) {
     if out
         .last()
-        .is_none_or(|p| (p.x - pt.x).abs() > 1.0e-9 || (p.y - pt.y).abs() > 1.0e-9)
+        .is_none_or(|p| (p.x - pt.x).abs() > tol::POINT_COINCIDENT_EPS || (p.y - pt.y).abs() > tol::POINT_COINCIDENT_EPS)
     {
         out.push(pt);
     }
@@ -287,7 +288,7 @@ fn round_corner(
     r: f64,
     segments: usize,
 ) -> Vec<Point2<f64>> {
-    if r <= 1.0e-9 {
+    if r <= tol::LENGTH_ZERO_EPS {
         return vec![corner];
     }
     let ein = corner - prev;
@@ -335,7 +336,7 @@ pub(super) fn fillet_outline(
             .find(|(idx, _)| *idx == i)
             .map(|(_, r)| *r)
             .unwrap_or(0.0);
-        if r > 1.0e-9 {
+        if r > tol::LENGTH_ZERO_EPS {
             for pt in round_corner(sharp[(i + n - 1) % n], sharp[i], sharp[(i + 1) % n], r, segments)
             {
                 push_dedup(&mut out, pt);
@@ -348,7 +349,7 @@ pub(super) fn fillet_outline(
     // no zero-length edge across the wrap.
     if out.len() > 1 {
         let (first, last) = (out[0], out[out.len() - 1]);
-        if (first.x - last.x).abs() <= 1.0e-9 && (first.y - last.y).abs() <= 1.0e-9 {
+        if (first.x - last.x).abs() <= tol::POINT_COINCIDENT_EPS && (first.y - last.y).abs() <= tol::POINT_COINCIDENT_EPS {
             out.pop();
         }
     }

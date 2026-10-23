@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * IDS -> BCF export pipeline: entity bounds collection, optional per-entity
+ * IDS -> BCF export pipeline: entity bounds collection, optional per-topic
  * snapshot capture, BCF project assembly, and the file write/download. Pulled
  * out of `useIDS`'s `exportReportBCF` callback — the logic reads/writes the
  * viewer store and renderer directly, so it isn't a "pure" function, but it
@@ -17,15 +17,14 @@ import type { EntityBoundsInput, IDSBCFExportOptions } from '@ifc-lite/bcf';
 import { createBCFFromIDSReport, writeBCF } from '@ifc-lite/bcf';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { bcfExportFilename, downloadBlob } from '@/lib/export/download';
-import { IDS_BCF_MAX_TOPICS, idsBcfSnapshotTargets } from '@/lib/ids/bcf-topic-estimate';
-import { getEntityBounds } from '@/utils/viewportUtils';
+import { IDS_BCF_MAX_TOPICS } from '@/lib/ids/bcf-topic-estimate';
+import { collectIdsBcfEntityBounds } from './idsBcfBounds';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { bcfWorldOffset, projectViewpointsToWorld } from '@/hooks/bcf/viewpoint-world-frame';
 import type { FederatedModel } from '@/store';
-import { captureEntityViewportFrame } from '@/lib/export/entity-viewport-capture';
+import { useViewerStore } from '@/store';
+import { completeIdsBcfViewpoints } from './idsBcfViewpoints';
 import type { IDSBCFExportSettings, IDSExportProgress } from '@/components/viewer/IDSExportDialog';
-
-const SNAPSHOT_CLEAR_COLOR: [number, number, number, number] = [0.102, 0.106, 0.149, 1];
 
 export interface RunIdsBcfExportParams {
   report: ValidationReport;
@@ -42,8 +41,8 @@ export interface RunIdsBcfExportParams {
 
 /**
  * Runs the full IDS-report-to-BCF export: collects entity bounds, optionally
- * captures a snapshot per failing (and, if requested, passing) entity, builds
- * the BCF project, writes it, downloads it, and optionally loads it into the
+ * builds the BCF project, captures a snapshot per exported topic, writes it,
+ * downloads it, and optionally loads it into the
  * BCF panel. Throws on failure — the caller is responsible for catching and
  * surfacing the error (and for resetting export progress on catch).
  */
@@ -72,101 +71,15 @@ export async function runIdsBcfExport({
   if (includeCamera || includeSnapshots) {
     setBcfExportProgress({ phase: 'building', current: 0, total: 1, message: 'Computing entity bounds...' });
 
-    entityBounds = new Map();
-    const geomResult = legacyGeometryResult;
-
-    // Collect geometry from all models
-    const allMeshData: Array<{ meshes: unknown[]; idOffset: number; modelId: string }> = [];
-    for (const [modelId, model] of models.entries()) {
-      if (model.geometryResult?.meshes) {
-        allMeshData.push({
-          meshes: model.geometryResult.meshes,
-          idOffset: model.idOffset ?? 0,
-          modelId,
-        });
-      }
-    }
-
-    // Also include legacy single-model geometry
-    if (geomResult?.meshes && allMeshData.length === 0) {
-      allMeshData.push({
-        meshes: geomResult.meshes,
-        idOffset: 0,
-        modelId: 'default',
-      });
-    }
-
-    // Compute bounds for each entity that appears in the report
-    for (const specResult of report.specificationResults) {
-      for (const entity of specResult.entityResults) {
-        if (entity.passed && !includePassingEntities) continue;
-        const boundsKey = `${entity.modelId}:${entity.expressId}`;
-        if (entityBounds.has(boundsKey)) continue;
-
-        // Find matching model geometry
-        for (const modelData of allMeshData) {
-          if (modelData.modelId === entity.modelId || allMeshData.length === 1) {
-            const globalExpressId = toViewerGlobalId(entity.modelId, entity.expressId);
-            if (globalExpressId == null) break;
-            const bounds = getEntityBounds(
-              modelData.meshes as Parameters<typeof getEntityBounds>[0],
-              globalExpressId,
-            );
-            if (bounds) {
-              entityBounds.set(boundsKey, bounds);
-            }
-            break;
-          }
-        }
-      }
-    }
+    const scene = getGlobalRenderer()?.getScene();
+    entityBounds = collectIdsBcfEntityBounds(
+      report, includePassingEntities, models, legacyGeometryResult, toViewerGlobalId,
+      (id) => scene?.getEntityBoundingBox(id) ?? scene?.getInstancedEntityBounds(id),
+      useViewerStore.getState().cameraCallbacks.resolveHighlightIds,
+    );
   }
 
-  // Phase 2: Batch snapshots if requested
-  let entitySnapshots: Map<string, string> | undefined;
-
-  if (includeSnapshots) {
-    entitySnapshots = new Map();
-
-    // Get renderer for direct rendering control (no selection highlight)
-    const renderer = getGlobalRenderer();
-    if (!renderer) {
-      console.warn('[IDS] No renderer available for snapshot capture');
-    } else {
-      const entitiesToSnapshot = idsBcfSnapshotTargets(report, includePassingEntities);
-
-      const total = entitiesToSnapshot.length;
-
-      for (let i = 0; i < total; i++) {
-        const entity = entitiesToSnapshot[i];
-        setBcfExportProgress({
-          phase: 'snapshots',
-          current: i + 1,
-          total,
-          message: `Capturing snapshot ${i + 1}/${total}...`,
-        });
-
-        // Get the entity's bounds for framing
-        const bounds = entityBounds?.get(entity.boundsKey);
-        if (!bounds) continue;
-
-        // Find the global expressId for isolation (direct Map lookup)
-        const globalExpressId = toViewerGlobalId(entity.modelId, entity.expressId);
-        if (globalExpressId == null) continue;
-
-        const dataUrl = await captureEntityViewportFrame(renderer, {
-          ids: new Set([globalExpressId]), mode: 'isolate', bounds, clearColor: SNAPSHOT_CLEAR_COLOR,
-        });
-        if (dataUrl) {
-          entitySnapshots.set(entity.boundsKey, dataUrl);
-        }
-      }
-
-
-    }
-  }
-
-  // Phase 3: Build BCF project
+  // Phase 2: Build the capped project before spending GPU work on snapshots
   setBcfExportProgress({ phase: 'writing', current: 0, total: 1, message: 'Building BCF project...' });
 
   // Rule-set reports (#5138, PR 3 onward) have no `IDSDocument` to read a
@@ -196,7 +109,7 @@ export async function runIdsBcfExport({
     includePassingEntities,
     maxTopics: IDS_BCF_MAX_TOPICS,
     entityBounds,
-    entitySnapshots,
+    aspectRatio: getGlobalRenderer()?.getCamera().getAspect(),
   };
 
   const bcfProject = createBCFFromIDSReport(
@@ -206,6 +119,11 @@ export async function runIdsBcfExport({
       specificationResults: report.specificationResults,
     },
     exportOptions,
+  );
+  await completeIdsBcfViewpoints(
+    bcfProject, report, entityBounds, getGlobalRenderer(), toViewerGlobalId,
+    useViewerStore.getState().cameraCallbacks.resolveHighlightIds,
+    { includeCamera, includeSnapshots }, setBcfExportProgress,
   );
   // Entity bounds (and so the framing cameras) are in the render frame; BCF is world (#4806).
   projectViewpointsToWorld(bcfProject, bcfWorldOffset(models, legacyGeometryResult));

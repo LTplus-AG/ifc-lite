@@ -28,6 +28,7 @@ import type { ProcessParallelOptions } from './geometry-parallel-options.js';
 import { postGeometryWorkerInit } from './geometry-worker-init.js';
 import type { CoordinateHandler } from './coordinate-handler.js';
 import type { MeshData } from './types.js';
+import type { ByteStreamingPrePassResult } from './byte-streaming-prepass-result.js';
 import type { StreamingGeometryEvent } from './index.js';
 import { mergeGeometryDiagnostics, type GeometryDiagnostics } from './diagnostics.js';
 import { planLoadWorkerCount } from './worker-count.js';
@@ -107,7 +108,7 @@ function entityIndexSetup(
   };
 }
 
-interface PrepassMeta {
+interface PrepassMeta extends Pick<ByteStreamingPrePassResult, 'unitRefused'> {
   /** Prepass-resolved plane-angle→radians scale; seeds worker batch decoders. */
   planeAngleToRadians?: number;
   unitScale: number;
@@ -619,11 +620,8 @@ export async function* processParallel(
     );
     wasmFrameResolved = true;
 
-    eventQueue.push({
-      type: 'rtcOffset',
-      rtcOffset: { x: rtcX, y: rtcY, z: rtcZ },
-      hasRtc: effectiveNeedsShift,
-    });
+    eventQueue.push({ type: 'rtcOffset', rtcOffset: { x: rtcX, y: rtcY, z: rtcZ }, hasRtc: effectiveNeedsShift });
+    if (prepassMeta.unitRefused) eventQueue.push({ type: 'unitRefused' });
     wake();
 
     const emptyU32 = new Uint32Array(0);
@@ -1122,7 +1120,7 @@ export async function* processParallel(
       const evt = data.event as { type: string; [k: string]: unknown };
       if (evt.type === 'meta') {
         prepassMeta = {
-          unitScale: evt.unitScale as number,
+          unitScale: evt.unitScale as number, unitRefused: evt.unitRefused === true,
           planeAngleToRadians: (evt.planeAngleToRadians as number | undefined) ?? undefined,
           rtcOffset: evt.rtcOffset as Float64Array,
           needsShift: evt.needsShift as boolean,

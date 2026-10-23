@@ -13,7 +13,7 @@ import * as IFC4_SCHEMA from '@ifc-lite/codegen/ifc4';
 import * as IFC4X3_SCHEMA from '@ifc-lite/codegen/ifc4x3';
 
 import type { EntityRef } from '@ifc-lite/parser';
-import { firstProjAxis } from '@ifc-lite/data';
+import { firstProjAxis, walkPlacementChain } from '@ifc-lite/data';
 import type { Lod0Json, Lod0Element, LodInput, Vec3 } from './lod-geometry-types.js';
 import {
   aabbFromPoints,
@@ -207,25 +207,53 @@ export async function generateLod0(input: LodInput): Promise<Lod0Json> {
     return m;
   };
 
-  const getPlacementMatrix = (id: number): Float64Array => {
-    const cached = placementCache.get(id);
-    if (cached) return cached;
-    const ent = getEntity(id);
-    if (!ent || String(ent.type || '').toUpperCase() !== 'IFCLOCALPLACEMENT') {
-      const ident = mat4Identity();
-      placementCache.set(id, ident);
-      return ident;
+  // Placements on a `PlacementRelTo` cycle (or leading into one) have no world
+  // matrix: refused, and reported through `skipped` (#7790; D3/D27).
+  const cyclicPlacements = new Set<number>();
+  /**
+   * World matrix of an IfcLocalPlacement, or null when its `PlacementRelTo`
+   * chain revisits a placement. Iterative with a visited set: a placement that
+   * references itself (or any cycle) must not overflow the stack.
+   */
+  const getPlacementMatrix = (startId: number): Float64Array | null => {
+    const isLocalPlacement = (id: number): boolean => {
+      const ent = getEntity(id);
+      return !!ent && String(ent.type || '').toUpperCase() === 'IFCLOCALPLACEMENT';
+    };
+    // Walk up to the first cached link, root, non-placement or revisit — the
+    // shared `walkPlacementChain` (#7791): a visited set, no depth cap.
+    const walked = walkPlacementChain(
+      startId,
+      (id) => {
+        if (!isLocalPlacement(id)) return null;
+        // IfcLocalPlacement: (PlacementRelTo, RelativePlacement)
+        const relTo: unknown = getEntity(id)?.attributes?.[0];
+        return typeof relTo === 'number' ? relTo : null;
+      },
+      { stopAt: (id) => cyclicPlacements.has(id) || placementCache.has(id) },
+    );
+    const last = walked.ids[walked.ids.length - 1]!;
+    if (walked.end === 'cycle' || (walked.end === 'stopped' && cyclicPlacements.has(last))) {
+      for (const member of walked.ids) cyclicPlacements.add(member);
+      return null;
     }
-
-    // IfcLocalPlacement: (PlacementRelTo, RelativePlacement)
-    const relTo = ent.attributes?.[0];
-    const relPlacement = ent.attributes?.[1];
-
-    const local = typeof relPlacement === 'number' ? getAxisPlacementMatrix(relPlacement) : mat4Identity();
-    const parent = typeof relTo === 'number' ? getPlacementMatrix(relTo) : mat4Identity();
-    const world = mat4Mul(parent, local);
-    placementCache.set(id, world);
-    return world;
+    let base: Float64Array = mat4Identity();
+    let chain = walked.ids;
+    if (walked.end === 'stopped') {
+      base = placementCache.get(last)!;
+      chain = walked.ids.slice(0, -1);
+    } else if (!isLocalPlacement(last)) {
+      placementCache.set(last, base);
+      chain = walked.ids.slice(0, -1);
+    }
+    // Compose from the top of the chain down.
+    for (let i = chain.length - 1; i >= 0; i--) {
+      const relPlacement = getEntity(chain[i])?.attributes?.[1];
+      const local = typeof relPlacement === 'number' ? getAxisPlacementMatrix(relPlacement) : mat4Identity();
+      base = mat4Mul(base, local);
+      placementCache.set(chain[i], base);
+    }
+    return base;
   };
 
   const computeWorldAabbFromLocalAabb = (m: Float64Array, minL: Vec3, maxL: Vec3): { min: Vec3; max: Vec3 } => {
@@ -288,6 +316,7 @@ export async function generateLod0(input: LodInput): Promise<Lod0Json> {
   };
 
   const elements: Lod0Element[] = [];
+  const skipped: NonNullable<Lod0Json['skipped']> = [];
 
   // @raw-entity-enumeration-ok this index was built from the input bytes above; no live mutation view is accepted by generateLod0
   for (const [id, ref] of entityIndex.byId) {
@@ -312,6 +341,10 @@ export async function generateLod0(input: LodInput): Promise<Lod0Json> {
 
     const placementRef = attrs[objPlacementIdx];
     const worldM = typeof placementRef === 'number' ? getPlacementMatrix(placementRef) : mat4Identity();
+    if (worldM === null) {
+      skipped.push({ expressID: id, reason: `PlacementRelTo cycle through #${placementRef as number}; element not placed.` });
+      continue;
+    }
 
     let bboxSource: 'shape' | 'fallback' = 'fallback';
     let localAabb: { min: Vec3; max: Vec3 } | null = null;
@@ -355,5 +388,6 @@ export async function generateLod0(input: LodInput): Promise<Lod0Json> {
     lod: 0,
     units: 'm',
     elements,
+    ...(skipped.length > 0 ? { skipped } : {}),
   };
 }

@@ -104,6 +104,7 @@ async function main(): Promise<void> {
       registry.add(m);
       // Use stderr — stdout is sacred for the JSON-RPC channel.
       process.stderr.write(`[ifc-lite-mcp] loaded ${m.name} (${m.id}) — ${fmtInt(m.store.entityCount)} entities\n`);
+      for (const w of m.scanWarnings ?? []) process.stderr.write(`[ifc-lite-mcp] warning: ${m.name}: ${w}\n`);
     }
 
     const server = createMCPServer({

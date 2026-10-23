@@ -4,12 +4,15 @@
 
 /**
  * The mounted Section tool's localization (#4785), through the production
- * host (`ToolOverlays` + the HUD): the bar (#5499), the hint line (#5500)
- * and the face-pick timing all render whole translated messages, fall back per
- * missing key, and re-render an active catalogue in place without losing
- * store state or restarting the tool's timers.
+ * host (`ToolOverlays` + the HUD): the bar (#5499), its plane chips and Add
+ * plane menu (#7545), the hint line (#5500) and the face pick all render whole
+ * translated messages, fall back per missing key, and re-render an active
+ * catalogue in place without losing store state or arming anything on their
+ * own. Opening the tool restores nothing (#7545), so every test seeds its cut
+ * through the store before mounting.
  */
 import '@/test/setup-dom.js';
+import '@/test/section-tool-ready.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -17,6 +20,7 @@ import { advance, cleanup, click, press, render, type } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { getDefaultSectionPlane } from '@/store/slices/sectionSlice.js';
+import { addPlaneFromMenu, openAddPlaneMenu } from '@/test/section-bar.js';
 import { ViewportHud } from '../../viewport-ui/hud/ViewportHud.js';
 import { ToolOverlays } from '../ToolOverlays.js';
 import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
@@ -25,13 +29,19 @@ import { SectionParkedChip } from './SectionParkedChip.js';
 const TEST_LOCALE: Catalogue = {
   'sectionTool.heading': 'Coupe',
   'sectionTool.closeTitle': 'Fermer',
-  'sectionTool.bar.axisAria': 'Axe de coupe',
   'sectionTool.axis.down': 'Bas',
   'sectionTool.axis.front': 'Avant',
   'sectionTool.axis.side': 'Côté',
-  'sectionTool.axis.face': 'Face locale',
-  'sectionTool.pick.activeTitle': 'Cliquez une face dans la vue',
-  'sectionTool.pick.title': 'Choisir une face',
+  'sectionPlanes.chipsAria': 'Plans de coupe',
+  'sectionPlanes.chipCutting': 'Plan {name} : coupe active',
+  'sectionPlanes.add': 'Ajouter un plan',
+  'sectionPlanes.addTitle': 'Ajouter un plan de coupe',
+  'sectionPlanes.addDown': 'Bas (Z)',
+  'sectionPlanes.addFront': 'Avant (Y)',
+  'sectionPlanes.addSide': 'Côté (X)',
+  'sectionPlanes.addFace': 'Face locale…',
+  'sectionPlanes.hint.addPick': 'Cliquez une face pour couper',
+  'sectionPlanes.parked.count': '{count} coupes',
   'sectionTool.flipLabel': 'Inverser la coupe',
   'sectionTool.unflipLabel': 'Rétablir la coupe',
   'sectionTool.flippedTitle': 'Direction inversée',
@@ -87,6 +97,8 @@ beforeEach(() => {
   useViewerStore.setState({
     activeTool: 'section',
     sectionPlane: getDefaultSectionPlane(),
+    inactiveSectionPlanes: [],
+    sectionUndo: null,
     sectionPickMode: false,
     sectionPickPreview: null,
     models: new Map(),
@@ -105,15 +117,29 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
+/** One cardinal plane through the store, as the Add plane menu makes it (opening the tool restores nothing, #7545). */
+function seed(axis: 'down' | 'front' | 'side', position: number, flipped = false): void {
+  const store = useViewerStore.getState();
+  store.addSectionPlane(axis);
+  store.setSectionPlanePosition(position);
+  if (flipped) store.flipSectionPlane();
+}
+
+function chips(): string[] {
+  return [...bar().querySelectorAll('[role="tab"]')].map((el) => el.textContent?.trim() ?? '');
+}
+
 const renderTool = () => render(<><ViewportHud /><SectionParkedChip /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot></>);
 
 describe('mounted Section tool localization (#4785)', () => {
   it('preserves default English controls, cardinal states and clipping behavior', () => {
-    window.localStorage.setItem('ifc-lite:section-last-mode', JSON.stringify({ kind: 'cardinal', axis: 'down', position: 50, flipped: false }));
+    seed('down', 50);
     const ui = renderTool();
     assert.match(bar().textContent ?? '', /Section/);
     assert.equal(button('Close').title, 'Close');
-    assert.equal(button('Face').title, 'Pick a face to cut through');
+    assert.equal(bar().querySelector('[role="tablist"]')?.getAttribute('aria-label'), 'Cutting planes');
+    assert.deepEqual(chips(), ['A']);
+    assert.equal(button('Add plane').title, 'Add a cutting plane');
     assert.equal(field().getAttribute('aria-label'), 'Cut distance along the axis');
 
     assert.equal(hint(), 'Drag the distance to move the cut · Esc to finish');
@@ -128,15 +154,19 @@ describe('mounted Section tool localization (#4785)', () => {
     assert.equal(hint(), 'Cut is off · turn on Cut to clip the model');
     assert.equal(ui.querySelector('[data-section-hint]'), null, 'the black hint strip is gone (#5500)');
     assert.equal(ui.querySelector('[data-section-badge]'), null, 'the corner badge is gone (#5500)');
+
+    const items = [...openAddPlaneMenu().querySelectorAll('[role="menuitem"]')].map((el) => el.textContent?.trim());
+    assert.deepEqual(items, ['Down (Z)', 'Front (Y)', 'Side (X)', 'Face…', 'Box', 'Alignment…']);
   });
 
   it('renders whole reordered messages for translated cardinal and signed custom state', () => {
     registerLocale('section-test', TEST_LOCALE);
-    window.localStorage.setItem('ifc-lite:section-last-mode', JSON.stringify({ kind: 'cardinal', axis: 'front', position: 50, flipped: false }));
+    seed('front', 50);
     setLocale('section-test');
     renderTool();
     assert.match(bar().textContent ?? '', /Coupe/);
-    assert.equal(bar().querySelector('[role="radiogroup"]')?.getAttribute('aria-label'), 'Axe de coupe');
+    assert.equal(bar().querySelector('[role="tablist"]')?.getAttribute('aria-label'), 'Plans de coupe');
+    assert.equal(button('Ajouter un plan').title, 'Ajouter un plan de coupe');
     assert.equal(field().getAttribute('aria-valuetext'), '50.00 pour cent', 'no bounds: the percentage carries the translated unit');
     act(() => useViewerStore.getState().setSectionPlanePosition(37.5));
     assert.equal(hint(), 'Glissez la distance pour déplacer la coupe');
@@ -144,25 +174,37 @@ describe('mounted Section tool localization (#4785)', () => {
     assert.equal(button('Rétablir la coupe').title, 'Direction inversée');
 
     act(() => useViewerStore.getState().setSectionPlaneFromFace([1, 0, 0], [-2.345, 0, 0]));
-    assert.equal(button('Face locale').getAttribute('aria-checked'), 'true');
+    assert.equal(useViewerStore.getState().sectionPlane.name, 'A', 'a plain face pick replaces the active plane');
+    assert.equal(bar().querySelector('[role="tab"]')?.getAttribute('title'), 'Plan A : coupe active');
     assert.equal(field().getAttribute('aria-label'), 'Distance du plan local');
-    assert.equal(field().getAttribute('aria-valuetext'), '-2.35 mètres');
+    // The field reads from the face the plane was picked on (#7545): a fresh pick is zero, whatever the absolute distance.
+    assert.equal(field().getAttribute('aria-valuetext'), '0.000 mètres');
     press(field(), 'Enter');
     const input = bar().querySelector<HTMLInputElement>('input[aria-label="Distance du plan local"]');
     assert.ok(input);
     type(input, '-1.125');
     press(input, 'Enter');
-    assert.equal(useViewerStore.getState().sectionPlane.custom?.distance, -1.125);
+    const custom = useViewerStore.getState().sectionPlane.custom!;
+    assert.ok(Math.abs(custom.distance - (custom.datum! - 1.125)) < 1e-9, 'typed 1.125 m behind the face it was picked on');
 
     // Leave the tool: the parked chip renders the whole reordered message.
     act(() => useViewerStore.getState().setActiveTool('select'));
-    assert.equal(chip(), '-1.13 m — Face locale');
+    // The parked chip keeps naming the absolute plane distance: `datum` only moves where the OFFSET FIELD reads zero.
+    assert.equal(chip(), `${custom.distance.toFixed(2)} m — Face locale`);
     assert.equal(document.querySelector('button[aria-label="Reprendre la coupe"]')?.getAttribute('title'), "Rouvrir l'outil");
     click(document.querySelector('button[aria-label="Reprendre la coupe"]')!);
     assert.equal(useViewerStore.getState().activeTool, 'section');
-    click(button('Côté'));
-    assert.equal(useViewerStore.getState().sectionPlane.custom, undefined);
+
+    // A second plane through the translated Add menu: the face-picked plane stays, and the chip counts both cuts.
+    addPlaneFromMenu('Côté (X)');
+    act(() => useViewerStore.getState().setSectionPlanePosition(37.5));
+    const sidePlane = useViewerStore.getState().sectionPlane;
+    assert.equal(sidePlane.custom, undefined);
+    assert.equal(sidePlane.axis, 'side');
+    assert.equal(useViewerStore.getState().inactiveSectionPlanes.length, 1);
     act(() => useViewerStore.getState().setActiveTool('select'));
+    assert.equal(chip(), '2 coupes');
+    act(() => useViewerStore.getState().removeSectionPlane(useViewerStore.getState().inactiveSectionPlanes[0]!.id));
     assert.equal(chip(), '37.5 % — Côté', 'no bounds: the percentage form, reordered');
   });
 
@@ -171,12 +213,12 @@ describe('mounted Section tool localization (#4785)', () => {
       'sectionTool.heading': 'Localized section',
       'sectionTool.cut.label': '',
     });
-    window.localStorage.setItem('ifc-lite:section-last-mode', JSON.stringify({ kind: 'cardinal', axis: 'front', position: 42.25, flipped: false }));
+    seed('front', 42.25);
     setLocale('partial-section');
     renderTool();
     assert.match(bar().textContent ?? '', /Localized section/);
     assert.equal(hint(), 'Drag the distance to move the cut · Esc to finish');
-    assert.equal(button('Face').title, 'Pick a face to cut through');
+    assert.equal(button('Add plane').title, 'Add a cutting plane');
     const blankCut = button('Clipping the model — click to preview the plane without cutting');
     assert.equal(blankCut.textContent?.trim(), '', 'an explicit blank label stays blank, not English');
     const plane = useViewerStore.getState().sectionPlane;
@@ -187,7 +229,7 @@ describe('mounted Section tool localization (#4785)', () => {
 
   it('updates a mounted active catalogue without remounting or losing state', () => {
     registerLocale('live-section', TEST_LOCALE);
-    window.localStorage.setItem('ifc-lite:section-last-mode', JSON.stringify({ kind: 'cardinal', axis: 'side', position: 22, flipped: false }));
+    seed('side', 22);
     renderTool();
     act(() => useViewerStore.getState().setSectionPlanePosition(37.5));
     click(button('Flip cut direction'));
@@ -196,7 +238,7 @@ describe('mounted Section tool localization (#4785)', () => {
     const barNode = bar();
     const fieldNode = field();
     fieldNode.focus();
-    const storedMode = window.localStorage.getItem('ifc-lite:section-last-mode');
+    const inactiveBeforeSwitch = useViewerStore.getState().inactiveSectionPlanes;
     const planeBeforeSwitch = useViewerStore.getState().sectionPlane;
 
     act(() => setLocale('live-section'));
@@ -205,7 +247,7 @@ describe('mounted Section tool localization (#4785)', () => {
     assert.equal(document.activeElement, fieldNode);
     assert.equal(field().getAttribute('aria-label'), 'Distance du plan local');
     assert.equal(useViewerStore.getState().sectionPlane, planeBeforeSwitch);
-    assert.equal(window.localStorage.getItem('ifc-lite:section-last-mode'), storedMode);
+    assert.equal(useViewerStore.getState().inactiveSectionPlanes, inactiveBeforeSwitch, 'the plane set is untouched by a locale switch');
 
     act(() => registerLocale('live-section', { ...TEST_LOCALE, 'sectionTool.heading': 'Coupe remplacée', 'sectionTool.hint.cut': 'Remplacé' }));
     assert.match(bar().textContent ?? '', /Coupe remplacée/);
@@ -217,35 +259,46 @@ describe('mounted Section tool localization (#4785)', () => {
     assert.equal(useViewerStore.getState().sectionPlane, planeBeforeSwitch);
   });
 
-  it('does not restart the delayed face-pick timer when the locale changes', async () => {
+  it('opening the tool arms no face pick, and a locale change neither arms nor disarms one (#7545)', async () => {
     registerLocale('section-test', TEST_LOCALE);
+    seed('down', 50);
     renderTool();
     assert.equal(useViewerStore.getState().sectionPickMode, false);
     await advance(100);
     act(() => setLocale('section-test'));
     assert.match(bar().textContent ?? '', /Coupe/);
-    assert.equal(useViewerStore.getState().sectionPickMode, false, 'the original delay is still pending at the locale switch');
-    await advance(110);
-    assert.equal(useViewerStore.getState().sectionPickMode, true, 'locale rerender did not restart the mount timer');
+    await advance(220);
+    assert.equal(useViewerStore.getState().sectionPickMode, false, 'nothing arms the pick behind the user\'s back, locale switch or not');
+
+    // An explicit "Face…" arms it; a locale change leaves it armed, and a disarmed pick stays disarmed.
+    addPlaneFromMenu('Face locale…');
+    assert.equal(useViewerStore.getState().sectionPickMode, true);
+    assert.equal(useViewerStore.getState().sectionPickTarget, 'new');
+    act(() => setLocale('en'));
+    assert.equal(useViewerStore.getState().sectionPickMode, true, 'the locale switch did not disarm the pick');
+    assert.equal(hint(), 'Click a face to cut through it · Esc cancels');
     act(() => {
       useViewerStore.getState().setSectionPickMode(false);
-      setLocale('en');
+      setLocale('section-test');
     });
     await advance(220);
     assert.equal(useViewerStore.getState().sectionPickMode, false, 'a locale switch after disarming does not rearm pick mode');
   });
 
-  it('translates delayed face-pick instructions and preserves drawing and close actions', async () => {
+  it('translates the face-pick instruction and preserves drawing and close actions', async () => {
     registerLocale('section-test', TEST_LOCALE);
+    seed('down', 50);
     setLocale('section-test');
     renderTool();
     await advance(220);
-    assert.equal(hint(), 'Survolez puis cliquez');
-    const face = button('Face locale');
-    assert.equal(face.title, 'Cliquez une face dans la vue');
-    assert.equal(face.getAttribute('aria-checked'), 'true');
-    click(button('Bas'));
-    assert.equal(button('Face locale').title, 'Choisir une face');
+    assert.equal(useViewerStore.getState().sectionPickMode, false, 'the tool opens with no pick armed');
+    assert.equal(hint(), 'Glissez la distance pour déplacer la coupe');
+    addPlaneFromMenu('Face locale…');
+    assert.equal(hint(), 'Cliquez une face pour couper');
+    act(() => useViewerStore.getState().setSectionPlaneFromFace([0, 1, 0], [0, 2, 0]));
+    assert.equal(useViewerStore.getState().sectionPickMode, false, 'the commit disarms the pick');
+    assert.deepEqual(chips(), ['A', 'B'], 'the picked face became a new plane');
+    assert.equal(hint(), 'Glissez la distance pour déplacer la coupe');
 
     useViewerStore.setState({ drawing2D: { marker: 'stale' } as never });
     click(button('Ouvrir le dessin en panneau'));

@@ -13,7 +13,7 @@
 use serde_json::Value;
 
 use super::base::pvt;
-use super::jsval::{format_step_real, js_number_to_string, js_to_number, json_number, json_to_js_string};
+use super::jsval::{format_step_real, js_to_number, json_number, json_to_js_string, step_integer};
 use crate::generated::step_log_tables::NOMINAL_VALUE_LEAVES;
 use crate::step_text::escape;
 
@@ -56,7 +56,7 @@ fn fits_base(value: &Value, base: &str) -> bool {
     match base {
         "STRING" => value.is_string(),
         "REAL" | "NUMBER" => json_number(value).is_some_and(f64::is_finite),
-        "INTEGER" => json_number(value).is_some_and(|n| n.is_finite() && n.fract() == 0.0),
+        "INTEGER" => json_number(value).is_some_and(|n| n.fract() == 0.0 && step_integer(n).is_some()),
         "BOOLEAN" | "LOGICAL" => value.is_boolean(),
         _ => false,
     }
@@ -123,7 +123,10 @@ pub(crate) fn serialize_property_value(value: &Value, ty: u8) -> String {
                 "$".to_string()
             }
         }
-        pvt::INTEGER => format!("IFCINTEGER({})", js_number_to_string(js_round(js_to_number(value)))),
+        pvt::INTEGER => match step_integer(js_round(js_to_number(value))) {
+            Some(digits) => format!("IFCINTEGER({digits})"),
+            None => "$".to_string(),
+        },
         pvt::BOOLEAN => match value.as_bool() {
             Some(true) => "IFCBOOLEAN(.T.)".to_string(),
             Some(false) => "IFCBOOLEAN(.F.)".to_string(),
@@ -148,7 +151,9 @@ pub(crate) fn serialize_property_value(value: &Value, ty: u8) -> String {
 /// `serializeNominalValue`.
 pub(crate) fn serialize_nominal_value(value: &Value, ty: u8, data_type: Option<&str>) -> String {
     match declared_type(value, ty, data_type) {
-        Some(declared) => super::values::typed_marker(declared, value),
+        // `fits_base` has gated the value, so the marker is writable; the `$`
+        // (the whole NominalValue omitted) is the legal fallback if it is not.
+        Some(declared) => super::values::typed_marker(declared, value).unwrap_or_else(|_| "$".to_string()),
         None => serialize_property_value(value, ty),
     }
 }

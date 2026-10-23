@@ -34,7 +34,8 @@ export { mergeGeometryDiagnostics } from './diagnostics.js';
 export type { HbjsonStats } from './hbjson-stats.js'; // consumed by the CLI + viewer energy-export UI
 
 // Typed export-failure contract (fail-closed empty exports, mirrors Rust ExportError).
-export { NO_RENDER_GEOMETRY, isNoRenderGeometryError } from './export-errors.js';
+export { NO_RENDER_GEOMETRY, isNoRenderGeometryError, TERRAIN_REFUSED, terrainRefusalReason } from './export-errors.js';
+export type { LandXmlTerrainExport, LandXmlTerrainExportOptions, LandXmlTerrainSurface } from './landxml-terrain-export.js';
 
 // The index-parallel layouts the geometry-hash pass emits — six values per id
 // for the world box (#1891), one for the proved volume (#1993) — shared with
@@ -103,6 +104,7 @@ import { GEOM_CLASS_OCCURRENCE, geometryClassOf } from './geometry-class.js';
 import { createPlatformBridge, isTauri, type GeometryStats as PlatformGeometryStats, type IPlatformBridge } from './platform-bridge.js';
 import type { GeometryResult, MeshData, CoordinateInfo, GridAxis, TessellationQuality, KmzAltitudeMode, SimplifyMeshesResult } from './types.js';
 import type { HbjsonStats } from './hbjson-stats.js';
+import type { LandXmlTerrainExport, LandXmlTerrainExportOptions } from './landxml-terrain-export.js';
 
 // Extracted sub-modules
 import { getStreamingBatchSize, convertMeshCollectionToBatch, withBuildingRotation } from './geometry-coordinate.js';
@@ -112,7 +114,7 @@ import { processParallel, type ProcessParallelOptions } from './geometry-paralle
 import { getWarmGeometryWorkerPool } from './warm-pool.js';
 import { acquireWasmStreamingOperation } from './wasm-streaming-guard.js';
 import type { StallPhaseHandle } from './stall-phase.js';
-import type { ByteStreamingPrePassResult } from './byte-streaming-prepass-result.js';
+import type { ByteStreamingPrePassResult, UnitRefusedEvent } from './byte-streaming-prepass-result.js';
 import { buildPrePassWithFinishes } from './style-finishes.js';
 
 /**
@@ -204,6 +206,7 @@ export type StreamingGeometryEvent =
     }
   | { type: 'colorUpdate'; updates: Map<number, [number, number, number, number]> }
   | { type: 'rtcOffset'; rtcOffset: { x: number; y: number; z: number }; hasRtc: boolean }
+  | UnitRefusedEvent
   | {
       /**
        * Per-worker memory snapshot, emitted once per geometry worker once
@@ -504,11 +507,8 @@ export class GeometryProcessor {
       yield { type: 'model-open', modelID: 0 };
 
       // Always publish the selected frame, including authoritative false/zero.
-      yield {
-        type: 'rtcOffset',
-        rtcOffset: { x: rtc.x, y: rtc.y, z: rtc.z },
-        hasRtc: rtc.needsShift,
-      };
+      yield { type: 'rtcOffset', rtcOffset: { x: rtc.x, y: rtc.y, z: rtc.z }, hasRtc: rtc.needsShift };
+      if (prePass.unitRefused) yield { type: 'unitRefused' };
 
       const buildingRotation = prePass.buildingRotation ?? undefined;
       if (!prePass.jobs || prePass.totalJobs === 0) {
@@ -1109,7 +1109,8 @@ export class GeometryProcessor {
 
   /** Rust domain exporters return bytes to avoid V8 string-size limits; decode
    * text with TextDecoder. They return null before init(). `isolated`:
-   * undefined selects all; an empty array hides every mesh. Keep distinct. */
+   * undefined selects all; an empty array hides every mesh. Keep distinct.
+   * No written mesh throws `NO_RENDER_GEOMETRY`, as `exportGlb` does. */
   exportObj(
     buffer: Uint8Array,
     includeNormals = true,
@@ -1198,7 +1199,8 @@ export class GeometryProcessor {
     return this.bridge.exportIfcx(buffer, onlyKnownProperties, pretty);
   }
 
-  /** Export OpenUSD (`.usda` ASCII) — a real Z-up USD stage (geometry-backed). */
+  /** Export OpenUSD (`.usda` ASCII) — a real Z-up USD stage (geometry-backed).
+   * No render geometry throws `NO_RENDER_GEOMETRY`, as `exportGlb` does. */
   exportUsd(buffer: Uint8Array): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
     return this.bridge.exportUsd(buffer);
@@ -1216,9 +1218,9 @@ export class GeometryProcessor {
    * standard PBR materials that shade from normals; `false` ⇒ flat
    * `KHR_materials_unlit` (the historical look — #1321). `emissive` self-illuminates
    * each material at its base colour (core glTF `emissiveFactor`) so renderers with
-   * no ambient/IBL — Google Earth — don't render it near-black (#1427).
-   */
-  exportGlbFromMeshes(meshes: MeshData[], includeMetadata = false, lit = true, emissive = false): Uint8Array | null {
+   * no ambient/IBL — Google Earth — don't render it near-black (#1427). `worldMatrix` =
+   * `renderFrameWorldMatrix(coordinateInfo)`: restored on the GLB root (#7734). */
+  exportGlbFromMeshes(meshes: MeshData[], includeMetadata = false, lit = true, emissive = false, worldMatrix?: ArrayLike<number>): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
     let totalV = 0;
     let totalI = 0;
@@ -1252,7 +1254,7 @@ export class GeometryProcessor {
       io += m.indices.length;
     }
     return this.bridge.exportGlbFromMeshes(
-      positions, normals, indices, vertexCounts, indexCounts, colors, origins, expressIds, includeMetadata, lit, emissive,
+      positions, normals, indices, vertexCounts, indexCounts, colors, origins, expressIds, includeMetadata, lit, emissive, worldMatrix,
     );
   }
 
@@ -1463,6 +1465,11 @@ export class GeometryProcessor {
   /** Export the `IfcSpace` volumes in `buffer` as Honeybee HBJSON. Null if not initialized. */
   exportHbjson(buffer: Uint8Array, name: string): Uint8Array | null {
     return this.bridge?.isInitialized() ? this.bridge.exportHbjson(buffer, name) : null;
+  }
+
+  /** Export terrain products (express ids) as LandXML 1.2. Null if not initialized; a refusal throws `TERRAIN_REFUSED:`. */
+  exportLandXmlTerrain(buffer: Uint8Array, productIds: Uint32Array, options: LandXmlTerrainExportOptions = {}): LandXmlTerrainExport | null {
+    return this.bridge?.isInitialized() ? this.bridge.exportLandXmlTerrain(buffer, productIds, options) : null;
   }
 
   /** Like {@link exportHbjson}; also returns `HbjsonStats`. Null if not initialized. */

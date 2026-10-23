@@ -33,7 +33,7 @@ function pipeDocument(meshExpressId = 1): LandXmlTinDocument {
       structures: [],
       pipes: [{
         sourceId: 'landxml:pipe-network:1:pipe:1', sourcePath: 'LandXML/PipeNetworks/PipeNetwork[1]/Pipes/Pipe[1]', name: 'P-1', properties: {},
-        units: { linearUnit: 'meter', elevationUnit: 'meter', diameterUnit: 'meter', widthUnit: 'meter', heightUnit: 'meter', flowUnit: null, linearScaleToMeters: 1, elevationScaleToMeters: 1, diameterScaleToMeters: 1, widthScaleToMeters: 1, heightScaleToMeters: 1 },
+        units: { linearUnit: 'meter', elevationUnit: 'meter', diameterUnit: 'meter', widthUnit: 'meter', heightUnit: 'meter', flowUnit: null, linearScaleToMeters: 1, elevationScaleToMeters: 1, diameterScaleToMeters: 1, widthScaleToMeters: 1, heightScaleToMeters: 1, assumed: false },
         connectivity: { startStructureSourceId: 'A', endStructureSourceId: 'B' }, part: { kind: 'circular', properties: {}, material: null }, geometry: { kind: 'straight', point: null }, length: null, flow: null,
       }],
     }],

@@ -34,6 +34,8 @@ pub(super) fn body(source: &mut Source<'_>, product_id: u32) -> Result<(DecodedE
             continue;
         }
         if found.is_some() { return Err("Evaluated appearance requires exactly one Body representation".into()); }
+        // A shared Body is cloned with its attributes copied verbatim (#7677).
+        if rep.get_ref(0).is_none() { return Err("Body representation has no ContextOfItems reference".into()); }
         let kind = rep.get_string(2).unwrap_or("");
         let mapped = kind == "MappedRepresentation";
         // A type's representation map may reference an occurrence's own solid
@@ -135,6 +137,7 @@ pub(super) fn validate_style_tree(source:&mut Source<'_>, body:&DecodedEntity, l
             match value {
                 ifc_lite_core::AttributeValue::EntityRef(id)=>pending.push(*id),
                 ifc_lite_core::AttributeValue::List(items)=>values.extend(items),
+                ifc_lite_core::AttributeValue::Typed{value,..}=>values.push(value),
                 _=>{},
             }
         }

@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: MPL-2.0
+[package]
+name = "ifc-lite-geometry-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Explicit isolated native geometry worker client for IFC-Lite (opt-in, not published)"
+
+[dependencies]
+# Retained requests and completions are GeometryDocument types. Nothing in
+# geometry depends back on this crate.
+ifc-lite-geometry.workspace = true
+
+[dev-dependencies]
+# Real authored IFC sources decoded for the retained request witnesses.
+ifc-lite-core.workspace = true
+
+[lints]
+workspace = true

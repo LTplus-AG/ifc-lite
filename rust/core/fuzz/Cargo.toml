@@ -23,4 +23,25 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "grammar_differential"
+path = "fuzz_targets/grammar_differential.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "scan_file"
+path = "fuzz_targets/scan_file.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decode_string"
+path = "fuzz_targets/decode_string.rs"
+test = false
+doc = false
+bench = false
+
 [workspace]

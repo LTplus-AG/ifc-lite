@@ -22,7 +22,7 @@
 import { diffModels, type ContentMatch, type ContentMatchKind } from '@ifc-lite/diff';
 import { buildModelFingerprints, type DiffRef } from './diff-fingerprints.js';
 import { fallbackPairDuplicateAuthoredKeys } from './diff-authored-keys.js';
-import { pendingMutationsField, type PendingOverlay } from '../overlay.js';
+import { pendingMutationsField, type PendingOverlay } from '@ifc-lite/sdk/headless';
 import type { LoadedModel } from '../context.js';
 
 /** Default cap on the listed `contentMatches`. Per-kind totals are reported

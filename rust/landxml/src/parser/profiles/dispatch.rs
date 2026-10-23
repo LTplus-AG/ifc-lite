@@ -11,12 +11,12 @@ use crate::{
     LandXmlSourceId,
 };
 
-use super::super::{Capture, Code, PairListTarget, Parser};
+use super::super::{Capture, Code, PairListTarget, TinHandler};
 use super::references::{
     ambiguous_reference, missing_reference, unique_reference, ReferenceResolution,
 };
 
-impl Parser<'_> {
+impl TinHandler<'_> {
     pub(in super::super) fn start_road_semantics(
         &mut self,
         local: &str,
@@ -336,12 +336,15 @@ impl Parser<'_> {
             .clone()
             .or_else(|| self.alignment.as_ref().map(|value| value.source_id.clone()));
         let source_id = LandXmlSourceId(format!("landxml:preserved:{ordinal}:{local_name}"));
+        // Retained twice: by the record and by its diagnostic below.
+        let source_path = self.path();
+        self.reserve_source_path(source_path.len().saturating_mul(2))?;
         self.preserved_only_extensions
             .push(LandXmlPreservedOnlyExtension {
                 source_id: source_id.clone(),
                 parent_source_id,
                 local_name: local_name.to_owned(),
-                source_path: self.path(),
+                source_path: source_path.clone(),
                 kind,
             });
         self.record_capability_diagnostic(LandXmlCapabilityDiagnostic {
@@ -354,7 +357,7 @@ impl Parser<'_> {
                 }
             },
             source_id: Some(source_id),
-            source_path: self.path(),
+            source_path,
             message: format!(
                 "{local_name} is retained as source-only; no corridor/stringline geometry is generated"
             ),

@@ -25,12 +25,12 @@ fn test_basic_tokens() {
             b"'with spaces'",
             Token::String(b"with spaces"),
         ),
-        (integer, b"42", Token::Integer(42)),
-        (integer, b"-42", Token::Integer(-42)),
-        (integer, b"0", Token::Integer(0)),
-        (float, b"3.14", Token::Float(3.14)),
-        (float, b"-3.14", Token::Float(-3.14)),
-        (float, b"1.5E-10", Token::Float(1.5e-10)),
+        (number, b"42", Token::Integer(42)),
+        (number, b"-42", Token::Integer(-42)),
+        (number, b"0", Token::Integer(0)),
+        (number, b"3.14", Token::Float(3.14)),
+        (number, b"-3.14", Token::Float(-3.14)),
+        (number, b"1.5E-10", Token::Float(1.5e-10)),
         (enum_value, b".TRUE.", Token::Enum(b"TRUE")),
         (enum_value, b".FALSE.", Token::Enum(b"FALSE")),
         (enum_value, b".ELEMENT.", Token::Enum(b"ELEMENT")),
@@ -376,15 +376,15 @@ fn test_list_rejects_junk_where_only_whitespace_is_allowed() {
 #[test]
 fn plus_is_a_legal_sign_on_integer_and_real() {
     let empty: &[u8] = b"";
-    assert_eq!(integer(b"+42"), Ok((empty, Token::Integer(42))));
-    assert_eq!(integer(b"+0"), Ok((empty, Token::Integer(0))));
-    assert_eq!(float(b"+3.14"), Ok((empty, Token::Float(3.14))));
+    assert_eq!(number(b"+42"), Ok((empty, Token::Integer(42))));
+    assert_eq!(number(b"+0"), Ok((empty, Token::Integer(0))));
+    assert_eq!(number(b"+3.14"), Ok((empty, Token::Float(3.14))));
     // "0." with no fraction digits, and an exponent that also carries a sign.
-    assert_eq!(float(b"+1."), Ok((empty, Token::Float(1.0))));
-    assert_eq!(float(b"+1.5E+10"), Ok((empty, Token::Float(1.5e10))));
+    assert_eq!(number(b"+1."), Ok((empty, Token::Float(1.0))));
+    assert_eq!(number(b"+1.5E+10"), Ok((empty, Token::Float(1.5e10))));
     // The minus arm keeps working; a sign is optional, not required.
-    assert_eq!(integer(b"-42"), Ok((empty, Token::Integer(-42))));
-    assert_eq!(float(b"-3.14"), Ok((empty, Token::Float(-3.14))));
+    assert_eq!(number(b"-42"), Ok((empty, Token::Integer(-42))));
+    assert_eq!(number(b"-3.14"), Ok((empty, Token::Float(-3.14))));
 
     // The whole entity, which is what was actually lost.
     let (id, ifc_type, args) = parse_entity("#1=IFCCARTESIANPOINT((+1.,2.,-3.));")
@@ -401,4 +401,129 @@ fn plus_is_a_legal_sign_on_integer_and_real() {
     );
     let (_, _, args) = parse_entity("#2=IFCINTEGER(+7);").expect("a '+'-signed INTEGER too");
     assert_eq!(args, vec![Token::Integer(7)]);
+}
+
+/// #7678 (S6a): the nom tokenizer applies the same admission rule as
+/// `parse_step_numeric`. An overflowing REAL no longer decodes to an infinity:
+/// it becomes a typed `UnrepresentableReal` carrying its raw text, so the
+/// decoder can refuse it for geometry and keep it for the data model. The
+/// record itself still tokenizes; an overflowing INTEGER still does not.
+#[test]
+fn an_overflowing_real_is_a_typed_token_carrying_its_raw_text() {
+    for (record, raw) in [
+        ("#1=IFCCARTESIANPOINT((1.E400,0.,0.));", &b"1.E400"[..]),
+        ("#1=IFCCARTESIANPOINT((0.,-1.0E400,0.));", b"-1.0E400"),
+        ("#1=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCLENGTHMEASURE(1.E309),$);", b"1.E309"),
+        ("#1=IFCEXTRUDEDAREASOLID(#2,#3,#4,9.E999);", b"9.E999"),
+    ] {
+        let (_, _, args) = parse_entity(record).unwrap_or_else(|e| panic!("{record}: {e}"));
+        fn find<'a>(tokens: &'a [Token<'a>]) -> Option<&'a [u8]> {
+            tokens.iter().find_map(|t| match t {
+                Token::UnrepresentableReal(raw) => Some(*raw),
+                Token::List(items) | Token::TypedValue(_, items) => find(items),
+                _ => None,
+            })
+        }
+        assert_eq!(find(&args), Some(raw), "{record}");
+        assert!(
+            !format!("{args:?}").contains("inf"),
+            "{record}: no Float(inf) token may remain: {args:?}"
+        );
+    }
+    assert_eq!(number(b"1.E400"), Ok((&b""[..], Token::UnrepresentableReal(b"1.E400"))));
+    // The pre-existing precedent: an INTEGER lexical_core cannot hold.
+    assert!(parse_entity("#1=IFCINTEGERCOUNTRATEMEASURE(99999999999999999999);").is_err());
+}
+
+/// The admission rule refuses only overflow: `-0.` decodes to `-0.0` with its
+/// sign bit, an underflowing literal to zero, and `f64::MAX` to itself.
+#[test]
+fn negative_zero_underflow_and_max_reals_still_decode() {
+    let (_, _, args) = parse_entity("#1=IFCCARTESIANPOINT((-0.,1.E-400,1.7976931348623157E308));")
+        .expect("finite reals decode");
+    let Token::List(coords) = &args[0] else { panic!("{args:?}") };
+    let values: Vec<f64> = coords
+        .iter()
+        .map(|t| match t {
+            Token::Float(f) => *f,
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    assert!(values[0] == 0.0 && values[0].is_sign_negative(), "{values:?}");
+    assert_eq!(values[1], 0.0);
+    assert_eq!(values[2], f64::MAX);
+}
+
+/// F4-1 (CORE-6): the tokenizer's number branch is `read_step_number`, so
+/// every shared vector tokenizes the way the byte readers read it. `.5` and
+/// `1E5` used to fail the WHOLE entity.
+#[test]
+fn every_shared_numeric_vector_tokenizes_like_the_byte_readers() {
+    let rows: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../../tests/fixtures/step_numeric_vectors.json")).unwrap();
+    for row in rows {
+        let text = row["text"].as_str().unwrap();
+        let record = format!("#1=IFCX(({text},{text}),{text});");
+        let parsed = parse_entity(&record);
+        let (kind, bits) = (row["kind"].as_str().unwrap(), &row["bits"]);
+        let token_ok = |t: &Token| match (kind, t) {
+            ("integer", Token::Integer(i)) => i.to_string() == row["value"].as_str().unwrap(),
+            ("real", Token::Float(f)) => {
+                format!("0x{:016x}", f.to_bits()) == bits.as_str().unwrap()
+            }
+            ("unrepresentable", Token::UnrepresentableReal(raw)) => *raw == text.as_bytes(),
+            _ => false,
+        };
+        if kind == "refused" {
+            assert!(parsed.is_err(), "{record}");
+            continue;
+        }
+        let (_, _, args) = parsed.unwrap_or_else(|e| panic!("{record}: {e}"));
+        let Token::List(inner) = &args[0] else { panic!("{args:?}") };
+        assert!(token_ok(&args[1]) && inner.iter().all(token_ok), "{record}: {args:?}");
+    }
+}
+
+/// F4-1 (CORE-32): `"..."` is a binary, not a string. The token borrows the
+/// content between the quotes; hex is case-insensitive and nothing is decoded.
+#[test]
+fn a_double_quoted_literal_is_a_binary_token() {
+    let (_, _, args) = parse_entity("#1=IFCX(\"0Ff0\",\"0\",\"3AB\");").unwrap();
+    assert_eq!(
+        args,
+        vec![Token::Binary(b"0Ff0"), Token::Binary(b"0"), Token::Binary(b"3AB")]
+    );
+}
+
+/// A malformed binary fails the token like any other malformed token: the
+/// unused-bits digit is required and at most `3`, the rest is hex, and `""`
+/// is no escape.
+#[test]
+fn a_malformed_binary_fails_the_token() {
+    for bad in ["\"\"", "\"4FF\"", "\"0G\"", "\"0F\"\"F\"", "\"0FF", "\"zz\"", "\"0 F\""] {
+        let record = format!("#1=IFCX({bad});");
+        assert!(parse_entity(&record).is_err(), "{record}");
+    }
+    // Two adjacent binaries are two tokens, never one `""`-doubled string.
+    assert!(parse_entity("#1=IFCX(\"0F\",\"0A\");").is_ok());
+}
+
+/// An express id beyond `u32` fails the token (it was `lexical_core`'s job).
+#[test]
+fn an_express_id_beyond_u32_fails_the_token() {
+    assert!(parse_entity("#4294967296=IFCX();").is_err());
+    assert!(parse_entity("#1=IFCX(#4294967296);").is_err());
+    assert_eq!(parse_entity("#4294967295=IFCX(#4294967295);").unwrap().0, u32::MAX);
+}
+
+/// D17 (F4-1): a binary literal is `AttributeValue::Binary` holding the raw
+/// hex, never a `String`.
+#[test]
+fn a_binary_literal_decodes_to_the_binary_variant() {
+    use crate::AttributeValue;
+    let value = AttributeValue::from_token(&Token::Binary(b"0FF1"));
+    assert!(matches!(&value, AttributeValue::Binary(hex) if hex == "0FF1"));
+    assert_eq!(value.as_binary_hex(), Some("0FF1"));
+    assert_eq!(value.as_string(), None);
+    assert_eq!(AttributeValue::String("0FF1".into()).as_binary_hex(), None);
 }

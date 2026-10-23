@@ -1,0 +1,180 @@
+{
+  "schemaVersion": 1,
+  "issue": "https://github.com/LTplus-AG/ifc-lite/issues/7633",
+  "auditedAt": "2026-10-22",
+  "source": {
+    "commit": "4a58e7ddcde3641e460fdbf38e29ff52ab128c3c",
+    "tree": "b2500ba9a8610d7780ba27b14060c99c51a106de",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "06db1c681de3c3ac17093f5e52d324261b7680acd61f9d518e0d49b8774feb28",
+      "pnpm-lock.yaml": "4ef03ad9b34812de9d0e6c309d04ae315c09f887c3927f67ab6e31f8131e5283",
+      "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937"
+    }
+  },
+  "host": {
+    "host": "louistrue-pc",
+    "os": "Linux",
+    "arch": "x86_64"
+  },
+  "verdict": "Corpus tests and required strict clippy pass on this source. Additional all-features workspace clippy fails on an unchanged baseline example format literal. This record is not full PR acceptance or a performance verdict.",
+  "corpus": {
+    "jobId": "201b6e2d-7a95-47d7-b5bd-4826e272e6c4",
+    "receipt": {
+      "path": "/home/louistrue/build-workers/worker-state/jobs/201b6e2d-7a95-47d7-b5bd-4826e272e6c4/receipt.json",
+      "sha256": "cf42b7240cd1298ea9e410bbb0f1e07ea4d5ab096bc04226414304a51c2079bd"
+    },
+    "log": {
+      "path": "/home/louistrue/build-workers/worker-state/jobs/201b6e2d-7a95-47d7-b5bd-4826e272e6c4/output.log",
+      "sha256": "0dd0af88f6a46f090f6ec8d0c9f65d66fc0e84a79e932b40e4bf556d5b2645e9"
+    },
+    "state": "failed",
+    "exitCode": 101,
+    "sourceUnchanged": true,
+    "launcherCommand": [
+      "env",
+      "CARGO_BUILD_JOBS=4",
+      "bash",
+      "/tmp/issue7633-corpus-checks.sh"
+    ],
+    "environment": {
+      "CARGO_BUILD_JOBS": "4",
+      "IFC_LITE_REQUIRE_FIXTURES": "1"
+    },
+    "commands": [
+      {
+        "command": "cargo test --workspace --features ifc-lite-geometry/triangulation-alt --no-fail-fast",
+        "exitCode": 0,
+        "counts": {
+          "passed": 6249,
+          "failed": 0,
+          "ignored": 46
+        },
+        "triangulationInvarianceCounts": {
+          "passed": 73,
+          "failed": 0,
+          "ignored": 4
+        }
+      },
+      {
+        "command": "cargo test -p ifc-lite-geometry --features triangulation-alt --test triangulation_invariance -- --ignored --nocapture --test-threads=1 heavy_fixture",
+        "exitCode": 0,
+        "counts": {
+          "passed": 2,
+          "failed": 0,
+          "ignored": 0
+        },
+        "filteredOut": 75
+      },
+      {
+        "command": "cargo clippy --workspace --all-targets --all-features -- -D warnings",
+        "exitCode": 101
+      }
+    ],
+    "heavyMetrics": [
+      {
+        "fixture": "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+        "voidHosts": 289,
+        "tornHosts": 0,
+        "signedUnmatchedEdges": 0,
+        "strictRuleEdges": 0,
+        "goldenDelta": {
+          "regressed": 0,
+          "coverageLoss": 0,
+          "added": 0,
+          "reclassified": 0,
+          "retessellated": 0,
+          "shrankWhileHealing": 0,
+          "volumeMoved": 0,
+          "improved": 0
+        }
+      },
+      {
+        "fixture": "ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc",
+        "voidHosts": 363,
+        "tornHosts": 13,
+        "signedUnmatchedEdges": 86,
+        "strictRuleEdges": 119,
+        "knownTearIssue": 3435,
+        "goldenDelta": {
+          "regressed": 0,
+          "coverageLoss": 0,
+          "added": 0,
+          "reclassified": 0,
+          "retessellated": 0,
+          "shrankWhileHealing": 0,
+          "volumeMoved": 0,
+          "improved": 0
+        }
+      }
+    ],
+    "lintFailure": {
+      "file": "rust/processing/examples/csg_scaling_bench.rs",
+      "line": 140,
+      "lint": "clippy::print_literal",
+      "detail": "Final parity literal passed to an empty {} format slot; embed parity directly in the format string.",
+      "introducedBy": "736085b155fcc6aa08db768201d733410dcfdaf3",
+      "baselineVerifiedAt": "a4fc04cf1f1a04ed1ad3cff89b3d32d9c97f8751",
+      "baselineEvidence": "git show origin/main:rust/processing/examples/csg_scaling_bench.rs contains the identical offending line; git blame identifies the introducing commit. No baseline lint execution inferred.",
+      "requiredFeature": "csg-capture",
+      "featureGateLocation": "rust/processing/Cargo.toml:39"
+    }
+  },
+  "focusedAndRequiredClippy": {
+    "jobId": "d3042ac5-515c-4586-aa12-bcf4b18c5bbd",
+    "receipt": {
+      "path": "/home/louistrue/build-workers/worker-state/jobs/d3042ac5-515c-4586-aa12-bcf4b18c5bbd/receipt.json",
+      "sha256": "0ce801b369e7ca520d0e71d977954aed15bae8f5631f8dfce50eaefef0b2e10b"
+    },
+    "log": {
+      "path": "/home/louistrue/build-workers/worker-state/jobs/d3042ac5-515c-4586-aa12-bcf4b18c5bbd/output.log",
+      "sha256": "0f428e3f564731108ffc7d07aed5713dc364ed8460599045349dab24947d47fa"
+    },
+    "state": "completed",
+    "exitCode": 0,
+    "sourceUnchanged": true,
+    "launcherCommand": [
+      "env",
+      "CARGO_BUILD_JOBS=4",
+      "bash",
+      "/tmp/issue7633-scoped-checks.sh"
+    ],
+    "environment": {
+      "CARGO_BUILD_JOBS": "4",
+      "IFC_LITE_REQUIRE_FIXTURES": "1"
+    },
+    "commands": [
+      {
+        "command": "cargo test -p ifc-lite-processing --test issue_6940_profile_cap_boundaries --test function_length_ratchet --test module_size_ratchet",
+        "exitCode": 0
+      },
+      {
+        "command": "cargo test -p ifc-lite-geometry --lib --test triangulation_invariance",
+        "exitCode": 0
+      },
+      {
+        "command": "cargo test -p ifc-lite-export --test export_golden",
+        "exitCode": 0
+      },
+      {
+        "command": "cargo clippy --workspace --all-targets -- -D warnings",
+        "exitCode": 0
+      }
+    ],
+    "aggregateTestCounts": {
+      "passed": 2010,
+      "failed": 0,
+      "ignored": 6
+    },
+    "distinction": "Required strict workspace/all-targets clippy passed on the same source; the later additional --all-features command enables the csg-capture example and fails. Neither result supersedes the other feature scope."
+  },
+  "coverageNotes": [
+    "Workspace counts include unit, integration and doc-test result summaries, not unique tests across jobs. Ignored counts are not passes.",
+    "The explicit heavy run executes two tests ignored by the workspace invocation; two other focused ignored triangulation tests remain unexecuted in these receipts.",
+    "Intentional WASM poison/native-panic messages correspond to passing recovery tests, not failures.",
+    "No fixtures, golden pins, acceptance thresholds, or production files were modified by this evidence audit."
+  ],
+  "nextStep": "Repair the one formatting line and rerun the failed all-features clippy command under fleet admission; keep this original failure evidence."
+}

@@ -31,8 +31,9 @@ export function activateBasketViewFromStore(viewId: string): void {
 
   if (view.section) {
     const sectionSnapshot = view.section;
+    // The snapshot replaces the whole set (#7545), in the order the planes were made.
+    state.installSectionPlanes(sectionSnapshot.planes ?? [sectionSnapshot.plane], sectionSnapshot.activeIndex ?? 0);
     useViewerStore.setState({
-      sectionPlane: { ...sectionSnapshot.plane },
       // The snapshot was only ever captured while ON SCREEN (`activeSectionPlane`
       // in `captureSectionSnapshot`), so restoring it puts it on screen too,
       // independent of which tool is active (#5893).
@@ -46,9 +47,12 @@ export function activateBasketViewFromStore(viewId: string): void {
     }
   } else {
     // This view has no section snapshot: ensure previously active cutting is cleared.
-    const current = useViewerStore.getState().sectionPlane;
+    const current = useViewerStore.getState();
+    const off = <T extends { enabled: boolean; parked?: boolean }>(plane: T): T => ({ ...plane, enabled: false, parked: false }); // parked too (#4910)
     useViewerStore.setState({
-      sectionPlane: { ...current, enabled: false, parked: false }, // parked too (#4910)
+      // Every plane, not only the active one: a view without a cut must not keep a second plane cutting (#7545).
+      sectionPlane: off(current.sectionPlane),
+      inactiveSectionPlanes: current.inactiveSectionPlanes.map(off),
       sceneState: { ...state.sceneState, section: { visible: true } }, // next cut starts visible (#5893)
     });
     if (state.activeTool === 'section') {

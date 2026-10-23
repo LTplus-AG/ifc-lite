@@ -7,7 +7,8 @@ import type { StoreApi } from './types.js';
 import { getModelForRef } from './model-compat.js';
 import { bcfWorldOffset } from '../../hooks/bcf/viewpoint-world-frame.js';
 import { toGlobalIdForRef } from '../../store/globalId.js';
-import { activeSectionPlane, cardinalSectionFlipped, clearSectionCut, showSectionCut } from '../../store/section-active.js';
+import { activeSectionPlane, cardinalSectionFlipped, clearSectionCut, clippingSectionPlanes, revealSectionCut, showSectionCut, showSectionCuts } from '../../store/section-active.js';
+import type { SectionPlane as StoreSectionPlane } from '../../store/types.js';
 import {
   resolvePresentationColorMap,
   resolvePresentationIds,
@@ -23,6 +24,16 @@ const STORE_TO_AXIS: Record<string, 'x' | 'y' | 'z'> = {
   down: 'y',
   front: 'z',
 };
+
+/** One store plane as the SDK reports it (#7545): a cardinal cut, with the id that names it for `removeSection`. */
+const toSdkSection = (p: StoreSectionPlane): SectionPlane => ({
+  id: p.id,
+  name: p.name,
+  axis: STORE_TO_AXIS[p.axis] ?? 'y',
+  position: p.position,
+  enabled: true,
+  flipped: cardinalSectionFlipped(p),
+});
 
 export function createViewerAdapter(store: StoreApi): ViewerBackendMethods {
   // Tracks colors the SDK itself has applied. `pendingColorUpdates` in the store is a
@@ -161,6 +172,39 @@ export function createViewerAdapter(store: StoreApi): ViewerBackendMethods {
       }
       clearSectionCut(store.getState);
       return undefined;
+    },
+    // Several cutting planes (#7545). `enabled` means on screen here too, so a plane that is not
+    // cutting is neither reported nor accepted, and the active plane leads (BCF's order).
+    getSections() {
+      const state = store.getState();
+      const active = activeSectionPlane(state);
+      const cutting = clippingSectionPlanes(state);
+      // A section box has no cardinal plane to report: leave it out rather than report the axis it carried before.
+      return [...(active ? [active] : []), ...cutting.filter((p) => p !== active)].filter((p) => !p.box).map(toSdkSection);
+    },
+    setSections(sections: SectionPlane[]) {
+      const cuts = sections.filter((s) => s.enabled).map((s) => ({
+        axis: AXIS_TO_STORE[s.axis] ?? 'down', position: s.position, flipped: s.flipped ?? false,
+      }));
+      if (cuts.length === 0) clearSectionCut(store.getState);
+      else showSectionCuts(store.getState, cuts);
+      return undefined;
+    },
+    addSection(section: SectionPlane) {
+      if (!section.enabled) return null;
+      const id = store.getState().addSectionPlane(AXIS_TO_STORE[section.axis] ?? 'down');
+      if (!id) return null;
+      const state = store.getState();
+      state.setSectionPlanePosition(section.position);
+      if (section.flipped !== undefined && store.getState().sectionPlane.flipped !== section.flipped) state.flipSectionPlane();
+      revealSectionCut(store.getState);
+      return id;
+    },
+    removeSection(id: string) {
+      const state = store.getState();
+      if (![state.sectionPlane, ...state.inactiveSectionPlanes].some((p) => p.id === id)) return false;
+      state.removeSectionPlane(id);
+      return true;
     },
     getSection() {
       const plane = activeSectionPlane(store.getState());

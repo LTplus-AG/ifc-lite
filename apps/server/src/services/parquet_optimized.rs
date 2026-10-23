@@ -11,7 +11,8 @@
 //!
 //! Typical additional compression: 3-5x over basic Parquet format.
 
-use crate::services::axis::{zup_to_yup, zup_to_yup_f64};
+use crate::services::axis::normals_parallel;
+use ifc_lite_geometry::math::frame::zup_to_yup;
 use crate::services::parquet_schema::{instance_schema, ABSENT_SOURCE_ID};
 use crate::types::MeshData;
 use arrow::array::{Float32Array, Float64Array, Int32Array, StringArray, UInt32Array, UInt8Array};
@@ -43,12 +44,6 @@ fn quantize_position(value: f32) -> i32 {
     (value * VERTEX_MULTIPLIER).round() as i32
 }
 
-/// Convert float color (0-1) to byte (0-255).
-#[inline]
-fn color_to_byte(value: f32) -> u8 {
-    (value.clamp(0.0, 1.0) * 255.0).round() as u8
-}
-
 /// Material key for deduplication.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 struct MaterialKey {
@@ -60,12 +55,8 @@ struct MaterialKey {
 
 impl MaterialKey {
     fn from_color(color: &[f32; 4]) -> Self {
-        Self {
-            r: color_to_byte(color[0]),
-            g: color_to_byte(color[1]),
-            b: color_to_byte(color[2]),
-            a: color_to_byte(color[3]),
-        }
+        let [r, g, b, a] = ifc_lite_processing::Rgba(*color).to_rgba8();
+        Self { r, g, b, a }
     }
 }
 
@@ -143,7 +134,7 @@ fn serialize_to_parquet_optimized(
                         unique_meshes.push(template);
                         idx
                     });
-                (idx, zup_to_yup_f64(placement.origin_zup), rotation_zup_to_yup(&placement.rotation_zup))
+                (idx, zup_to_yup(placement.origin_zup), rotation_zup_to_yup(&placement.rotation_zup))
             }
             None => {
                 let geo_key = mesh_geometry_key(mesh);
@@ -152,7 +143,7 @@ fn serialize_to_parquet_optimized(
                     unique_meshes.push(mesh);
                     idx
                 });
-                (idx, zup_to_yup_f64(mesh.origin), IDENTITY_ROTATION)
+                (idx, zup_to_yup(mesh.origin), IDENTITY_ROTATION)
             }
         };
 
@@ -223,36 +214,30 @@ fn serialize_to_parquet_optimized(
 
         // Some IFC pipelines (e.g. advanced_brep) yield meshes with positions
         // but no normals; pad with zeros so the schema's non-null columns stay valid.
-        let mesh_has_normals = mesh.normals.len() == mesh.positions.len();
-        if include_normals && !mesh_has_normals && !mesh.normals.is_empty() {
-            tracing::warn!(
-                express_id = mesh.express_id,
-                ifc_type = %mesh.ifc_type,
-                positions = mesh.positions.len(),
-                normals = mesh.normals.len(),
-                "Mesh normals length mismatch; emitting zero normals"
-            );
-        }
+        let mesh_has_normals = normals_parallel(
+            mesh,
+            include_normals.then_some("emitting zero normals"),
+        );
 
         // Quantize and store vertices in the Y-up wire frame (services::axis),
         // server-side so the client needs no per-vertex loop.
         for i in 0..vert_count {
-            let (x, y, z) = zup_to_yup(
+            let [x, y, z] = zup_to_yup([
                 mesh.positions[i * 3],
                 mesh.positions[i * 3 + 1],
                 mesh.positions[i * 3 + 2],
-            );
+            ]);
             vertex_x.push(quantize_position(x));
             vertex_y.push(quantize_position(y));
             vertex_z.push(quantize_position(z));
 
             if include_normals {
                 if mesh_has_normals {
-                    let (x, y, z) = zup_to_yup(
+                    let [x, y, z] = zup_to_yup([
                         mesh.normals[i * 3],
                         mesh.normals[i * 3 + 1],
                         mesh.normals[i * 3 + 2],
-                    );
+                    ]);
                     normal_x.push(x);
                     normal_y.push(y);
                     normal_z.push(z);

@@ -15,6 +15,12 @@ describe('editError', () => {
     assert.strictEqual(r.message, 'this wall bridges the room to itself');
   });
 
+  it('recognises NonFiniteCoordinate, the engine rejection of a NaN/infinite edit (#7674)', () => {
+    const e = new Error('a coordinate is not a finite number');
+    e.name = 'NonFiniteCoordinate';
+    assert.strictEqual(editError(e).code, 'NonFiniteCoordinate');
+  });
+
   it('returns code=null for an Error whose name is not a known edit code', () => {
     const e = new Error('boom'); // default name === 'Error'
     const r = editError(e);

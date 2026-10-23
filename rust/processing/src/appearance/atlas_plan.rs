@@ -4,7 +4,7 @@
 use super::{page_atlas::{self, AtlasInput}, page_raster::Raster, source::Source, *};
 use ifc_lite_geometry::TextureSource;
 use std::collections::{BTreeMap, BTreeSet};
-use sha2::{Digest, Sha256};
+use crate::fingerprint::sha256_hex;
 
 pub(super) trait AtlasSampler {
     fn raster_guards(&self) -> bool { false }
@@ -40,7 +40,7 @@ pub(super) fn plan_sampled_appearance(bytes: &[u8], spec: &AppearanceRequest, so
     let spec=normalization.as_ref().map_or(spec,|n|n.request());
     let mut plan = plan_with_source(bytes,spec,&mut source)?;
     texture_budget::preflight(&mut source)?;
-    let textures = ifc_lite_geometry::build_texture_index(bytes, &mut source.decoder);
+    let textures = source.texture_index(bytes);
     let mut styles = page_source::appearance(bytes, &mut source);
     if let Some(normalized)=&normalization { normalized.patch_styles(&mut source,&mut styles)?; }
     let scale = source.decoder.length_unit_scale();
@@ -97,7 +97,7 @@ pub(super) fn plan_sampled_appearance(bytes: &[u8], spec: &AppearanceRequest, so
             }, &mut remaining, &mut ItemShader { item, sampler })?;
             sampler.end_item()?;
             let png = encode_png(&atlas, 96 * 1024 * 1024 - output_bytes)?;
-            let uri = format!("textures/{:x}.png", Sha256::digest(&png));
+            let uri = format!("textures/{}.png", sha256_hex(&png));
             if image_uris.insert(uri.clone()) {
                 output_bytes += png.len();
                 assets.push(AppearanceGeneratedImage { image_uri: uri.clone(), width: atlas.width, height: atlas.height, png });
@@ -140,7 +140,7 @@ pub(super) fn encode_png(atlas: &page_atlas::Atlas, limit: usize) -> Result<Vec<
     writer.finish().map_err(|e| e.to_string())?;
     Ok(output.bytes)
 }
-fn bind_images(plan: &mut AppearancePlan, images: &[AppearanceItemImage], source: &mut Source<'_>, styles: &crate::prepass::ResolvedPrepass) -> Result<(), String> {
+fn bind_images(plan: &mut AppearancePlan, images: &[AppearanceItemImage], source: &mut Source<'_>, styles: &super::owned_context::Styles) -> Result<(), String> {
     if images.is_empty() { return Ok(()); }
     let master_image = plan.created.iter().find(|e| e.r#type == "IfcImageTexture").ok_or("Missing planned image")?.clone();
     let master_textures = plan.created.iter().find(|e| e.r#type == "IfcSurfaceStyleWithTextures").ok_or("Missing planned textures")?.clone();

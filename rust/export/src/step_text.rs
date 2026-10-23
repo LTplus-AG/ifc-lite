@@ -24,7 +24,8 @@ use std::collections::BTreeMap;
 use ifc_lite_core::express_id::parse_express_id;
 use ifc_lite_core::step_encoding::step_string_literal_end;
 
-use crate::step_slot::split_top_level_args;
+use crate::step_record_frame::{record_frame, record_head};
+use crate::step_slot::slots_of;
 
 /// The edits that apply to one record, where a caller's attribute mutation and
 /// a copy-on-write repointing can both land on it. The repointing wins: it was
@@ -112,37 +113,55 @@ pub(crate) fn refs_in_line(line: &[u8], out: &mut Vec<u32>) {
 /// a ref this function refuses can never equal one of them — refusing it there
 /// changes no decision, so counting it would be reporting a no-op.
 pub(crate) fn refs_in_line_counted(line: &[u8], out: &mut Vec<u32>, refused: &mut usize) {
-    let mut i = 0;
-    while i < line.len() {
-        let b = line[i];
-        if b == b'\'' {
-            // A `#` inside a literal is text. Where the literal ends is the
-            // shared rule: `''` and a `\S\'` operand stay inside it (#7589).
-            i = step_string_literal_end(line, i).unwrap_or(line.len());
-            continue;
+    for span in ref_spans(line) {
+        match span.id {
+            Some(n) => out.push(n),
+            // A ref above `u32::MAX` refuses rather than wrapping onto a real
+            // low-numbered entity (issue #3421), and is counted (#3752).
+            None => *refused += 1,
         }
-        if b == b'#' {
-            let mut j = i + 1;
-            while j < line.len() && line[j].is_ascii_digit() {
-                j += 1;
-            }
-            if j > i + 1 {
-                // A ref above `u32::MAX` refuses rather than wrapping onto a
-                // real low-numbered entity (issue #3421): it is dropped from
-                // the reference list instead of being followed to the wrong
-                // entity, the same "no third policy" refusal
-                // `parse_express_id` establishes everywhere else. Counted
-                // (issue #3752) so a refusal here at least leaves a trace.
-                match parse_express_id(&line[i + 1..j]) {
-                    Some(n) => out.push(n),
-                    None => *refused += 1,
-                }
-                i = j;
-                continue;
-            }
-        }
-        i += 1;
     }
+}
+
+/// One `#<digits>` found by [`ref_spans`]: its byte range and the id, `None`
+/// when the digits exceed `u32::MAX`.
+pub(crate) struct RefSpan {
+    pub(crate) start: usize,
+    pub(crate) end: usize,
+    pub(crate) id: Option<u32>,
+}
+
+/// Every `#<digits>` in STEP text, in order, skipping string literals (where a
+/// `#` is text; where one ends is the shared rule, so `''` and a `\S\'`
+/// operand stay inside it, #7589) and `/* ... */` comments (F4 M-export-b,
+/// CORE-1, CORE-8). The one scanner behind the reference collector, the id
+/// rewriter and the in-attribute substitution; they were three comment-blind
+/// copies, where a `'` in a comment hid every later reference. An unterminated
+/// literal or comment runs to the end.
+pub(crate) fn ref_spans(bytes: &[u8]) -> impl Iterator<Item = RefSpan> + '_ {
+    let mut i = 0;
+    std::iter::from_fn(move || {
+        while i < bytes.len() {
+            match bytes[i] {
+                b'\'' => i = step_string_literal_end(bytes, i).unwrap_or(bytes.len()),
+                b'/' if bytes.get(i + 1) == Some(&b'*') => {
+                    i = ifc_lite_core::skip_step_comment(bytes, i).unwrap_or(bytes.len());
+                }
+                b'#' => {
+                    let digits = bytes[i + 1..].iter().take_while(|b| b.is_ascii_digit()).count();
+                    if digits == 0 {
+                        i += 1;
+                        continue;
+                    }
+                    let span = RefSpan { start: i, end: i + 1 + digits, id: parse_express_id(&bytes[i + 1..i + 1 + digits]) };
+                    i = span.end;
+                    return Some(span);
+                }
+                _ => i += 1,
+            }
+        }
+        None
+    })
 }
 
 /// Apply root-attribute edits to a `#id=TYPE(attrs);` line, keeping the source
@@ -170,22 +189,15 @@ pub(crate) fn apply_attr_mutations_counted(
     muts: &BTreeMap<usize, String>,
     refused: &mut usize,
 ) -> String {
-    let trimmed = line.trim_end();
-    let body = trimmed.strip_suffix(';').unwrap_or(trimmed);
-    let edited = body.find('=').and_then(|eq| {
-        let after = &body[eq + 1..];
-        let popen = after.find('(')?;
-        let aclose = after.rfind(')').filter(|c| *c > popen)?;
-        let prefix = &body[..=eq];
-        let type_name = &after[..popen];
-        let mut args = split_top_level_args(&after[popen + 1..aclose])?;
+    let edited = record_frame(line).and_then(|frame| {
+        let mut args = slots_of(frame.args(line))?;
         for (idx, val) in muts.range(..args.len()) {
-            args[*idx] = val.clone();
+            args[*idx] = val;
         }
         if muts.range(args.len()..).next().is_some() {
             *refused += 1;
         }
-        Some(format!("{prefix}{type_name}({});", args.join(",")))
+        Some(frame.with_args(line, &args.join(",")))
     });
     match edited {
         Some(text) => text,
@@ -205,9 +217,8 @@ mod tests;
 /// For a copy-on-write copy: the body is the original's, byte for byte, with
 /// one attribute already replaced, and only the number in front changes.
 pub(crate) fn renumber(line: &str, new_id: u32) -> String {
-    let trimmed = line.trim_end();
-    match trimmed.find('=') {
-        Some(eq) => format!("#{new_id}{}", &trimmed[eq..]),
+    match record_head(line) {
+        Some(head) => format!("#{new_id}{}", line[head.eq..].trim_end()),
         None => line.to_string(),
     }
 }
@@ -225,15 +236,8 @@ pub(crate) fn renumber(line: &str, new_id: u32) -> String {
 /// answer for either: a slot read out of a mis-scanned list is some other
 /// attribute's text, and a copy built from it would carry the wrong value.
 pub(crate) fn attribute_of(line: &str, index: usize) -> Option<String> {
-    let trimmed = line.trim_end();
-    let body = trimmed.strip_suffix(';').unwrap_or(trimmed);
-    let eq = body.find('=')?;
-    let after = &body[eq + 1..];
-    let popen = after.find('(')?;
-    let aclose = after.rfind(')').filter(|c| *c > popen)?;
-    split_top_level_args(&after[popen + 1..aclose])?
-        .into_iter()
-        .nth(index)
+    let frame = record_frame(line)?;
+    slots_of(frame.args(line))?.into_iter().nth(index).map(str::to_owned)
 }
 
 /// Replace references inside one attribute, leaving its neighbours alone.
@@ -252,32 +256,18 @@ pub(crate) fn attribute_of(line: &str, index: usize) -> Option<String> {
 /// rewriting inside it would change what the file says rather than what it
 /// points at.
 pub(crate) fn substitute_ref_in_attr(attr: &str, from: u32, to: u32) -> Option<String> {
-    let old = format!("#{from}");
     let new = format!("#{to}");
-    let bytes = attr.as_bytes();
     let mut out = String::with_capacity(attr.len());
-    let mut replaced = false;
-    // Every index this stops at is an ASCII byte or just past one, so each
-    // slice below sits on a char boundary.
     let mut copied = 0usize;
-    let mut i = 0usize;
-    while i < bytes.len() {
-        if bytes[i] == b'\'' {
-            // The shared rule for where a literal ends (#7589).
-            i = step_string_literal_end(bytes, i).unwrap_or(bytes.len());
-            continue;
-        }
-        // `#4` must not match inside `#41`.
-        if bytes[i..].starts_with(old.as_bytes()) && !bytes.get(i + old.len()).is_some_and(u8::is_ascii_digit) {
-            out.push_str(&attr[copied..i]);
-            out.push_str(&new);
-            i += old.len();
-            copied = i;
-            replaced = true;
-            continue;
-        }
-        i += 1;
+    // `#4` never matches inside `#41`: a span is the whole digit run.
+    for span in ref_spans(attr.as_bytes()).filter(|span| span.id == Some(from)) {
+        out.push_str(&attr[copied..span.start]);
+        out.push_str(&new);
+        copied = span.end;
+    }
+    if copied == 0 {
+        return None;
     }
     out.push_str(&attr[copied..]);
-    replaced.then_some(out)
+    Some(out)
 }

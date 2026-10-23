@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useCallback, useRef } from 'react';
+import { useCallback } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
@@ -23,23 +23,21 @@ import {
   type GroupSubFilter,
   type GeorefMutationsByModel,
 } from './treeDataBuilder';
+import type { PresentationLayerBuilder } from './usePresentationLayerBuilder';
 import { findNodePath } from './findNodePath';
 
-const EXPAND_ALL: ExpansionLookup = { has: () => true };
-
-/** A node this reveal feature can land a selection on — the same three leaf
- *  types both `useRevealGlobalId` below and `useRevealSelection`'s cheap
+/** A node this reveal feature can land a selection on — the same leaf and
+ *  material-row types both `useRevealGlobalId` below and `useRevealSelection`'s cheap
  *  already-visible check (#5881 perf review) match against, so the two
  *  never drift out of sync. */
 export function matchesRevealTarget(node: TreeNode, globalId: number): boolean {
-  return (node.type === 'element' || node.type === 'IfcSpace' || node.type === 'IfcSpatialZone')
+  return (node.type === 'element' || node.type === 'IfcSpace' || node.type === 'IfcSpatialZone'
+    || node.type === 'material-group')
     && node.globalIds.includes(globalId);
 }
 
-/** The same grouping-mode switch `useHierarchyTree.ts`'s `treeData` memo
- *  drives, extracted so `useExpandedTreeForGrouping` below can build the
- *  ACTIVE grouping's tree at a different expansion (fully expanded) without
- *  a second copy of the switch (#5881). */
+/** Build the shared structural projection used by display, search and reveal
+ *  in `useHierarchyTree`, including edited material stores (#5881, #7890). */
 export function buildTreeForGrouping(
   groupingMode: HierarchyMode,
   models: Map<string, FederatedModel>,
@@ -56,6 +54,7 @@ export function buildTreeForGrouping(
   georefMutations: GeorefMutationsByModel,
   mutationViews: Map<string, MutablePropertyView>,
   materialSourceStores?: ReadonlyMap<string, IfcDataStore>,
+  presentationLayerBuilder?: PresentationLayerBuilder,
 ): TreeNode[] {
   const treeOverlay = (modelId: string) => mutationViews.get(modelId); // deletes/retypes, re-run per mutationVersion (#5249)
   if (groupingMode === 'type') {
@@ -65,54 +64,17 @@ export function buildTreeForGrouping(
     return buildIfcTypeTree(models, ifcDataStore, expansion, isMultiModel, geometricIds, geometryReadyModelIds, treeOverlay);
   }
   if (groupingMode === 'material') {
-    return buildMaterialTree(models, ifcDataStore, expansion, isMultiModel, geometricIds, geometryReadyModelIds, materialSourceStores);
+    return buildMaterialTree(models, ifcDataStore, expansion, isMultiModel, geometricIds, geometryReadyModelIds, materialSourceStores, treeOverlay);
+  }
+  if (groupingMode === 'presentation-layers') {
+    // Curve-only annotations render in the symbolic overlay rather than meshes.
+    // Their owner IDs obey the same hide/show contract as meshed products.
+    return presentationLayerBuilder?.(models, ifcDataStore, expansion, classTreeIds, geometryReadyModelIds, treeOverlay) ?? [];
   }
   if (groupingMode === 'groups') {
     return buildGroupTree(models, ifcDataStore, expansion, isMultiModel, geometricIds, groupFilter, treeOverlay);
   }
   return buildTreeData(models, ifcDataStore, expansion, isMultiModel, unifiedStoreys, sortMode, geometricIds, geometryReadyModelIds, georefMutations, treeOverlay);
-}
-
-interface TreeBuildParams {
-  groupingMode: HierarchyMode;
-  models: Map<string, FederatedModel>;
-  ifcDataStore: IfcDataStore | null | undefined;
-  isMultiModel: boolean;
-  unifiedStoreys: UnifiedStorey[];
-  sortMode: HierarchySortMode;
-  geometricIds: Set<number>;
-  classTreeIds: Set<number>;
-  authoredProducts: AuthoredProduct[];
-  groupFilter: GroupSubFilter;
-  geometryReadyModelIds: ReadonlySet<string>;
-  georefMutations: GeorefMutationsByModel;
-  mutationViews: Map<string, MutablePropertyView>;
-  mutationVersion: number;
-}
-
-/** Build the fully expanded projection on the first reveal lookup for a set
- *  of tree inputs. Streamed geometry updates invalidate the cache without
- *  rebuilding it during render when nobody has asked to reveal (#6133). */
-export function useExpandedTreeForGrouping(params: TreeBuildParams): () => TreeNode[] {
-  const {
-    groupingMode, models, ifcDataStore, isMultiModel, unifiedStoreys, sortMode, geometricIds,
-    classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds, georefMutations,
-    mutationViews, mutationVersion,
-  } = params;
-  const cacheRef = useRef<{ inputs: readonly unknown[]; tree: TreeNode[] } | null>(null);
-  const inputs = [groupingMode, models, ifcDataStore, isMultiModel, unifiedStoreys, sortMode,
-    geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds,
-    georefMutations, mutationViews, mutationVersion] as const;
-  return () => {
-    const cached = cacheRef.current;
-    if (cached && cached.inputs.every((value, i) => Object.is(value, inputs[i]))) return cached.tree;
-    const tree = buildTreeForGrouping(
-      groupingMode, models, ifcDataStore, EXPAND_ALL, isMultiModel, unifiedStoreys, sortMode,
-      geometricIds, classTreeIds, authoredProducts, groupFilter, geometryReadyModelIds, georefMutations, mutationViews,
-    );
-    cacheRef.current = { inputs, tree };
-    return tree;
-  };
 }
 
 /** Reveal a selection made outside the tree (viewport click, search, BCF,

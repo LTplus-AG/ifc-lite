@@ -16,7 +16,7 @@ import { getGeomWorkerOverride, resolveLoadTessellationTier, isMeshOnlyCacheEnab
 import { createModelLoadActivity, installModelLoadCanceller } from './modelLoadCanceller.js';
 import type { ModelLoadOptions } from './modelLoadOptions.js';
 import { assertWorkflowOwner } from '@/lib/flow/run-session';
-import { buildModelLoadedGeometryProps, geometryProcessingStallPhase, reportSkippedHungElements, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
+import { buildModelLoadedGeometryProps, geometryProcessingStallPhase, reportRefusedLengthUnit, reportSkippedHungElements, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
 import { planCacheWrite, decideCacheHit, decideCacheLoadOutcome } from './cacheTier.js';
 import { buildModelLoadReportPatch, type ModelLoadReportFields } from '../lib/loadReport';
 import { identifyLoadedPlacementSource, startLoadSourceIdentity } from '@/lib/model-placement/loaded-source-identity';
@@ -69,7 +69,7 @@ import { prepareGlbViewerModel } from './ingest/glbTextureValidation.js';
 import { getMaxExpressId, getViewerSchemaVersion, parseIfcxViewerModel } from './ingest/viewerModelIngest.js';
 import { isLandXmlFileName } from './ingest/landXmlSniff.js';
 import { drapeIfGeoRaster, loadLandXmlModel } from './ingest/landXmlLoad.js';
-import { landXmlUnitsRefusalPrompt } from './ingest/landXmlUnitsRefusal.js';
+import { clearLandXmlRefusalPrompts, publishLandXmlRefusalPrompts } from './ingest/landXmlRefusalPrompts.js';
 import { applyFederationOffsetToMesh } from './ingest/federationOffset.js';
 import { boundedIteratorReturn } from './ingest/streamCleanup.js';
 import {
@@ -185,7 +185,6 @@ export function useIfcLoader() {
     setLoading,
     setGeometryStreamingActive,
     setError,
-    setLandXmlUnitsRefusal,
     setProgress,
     setGeometryProgress,
     setMetadataProgress,
@@ -203,7 +202,6 @@ export function useIfcLoader() {
     setLoading: s.setLoading,
     setGeometryStreamingActive: s.setGeometryStreamingActive,
     setError: s.setError,
-    setLandXmlUnitsRefusal: s.setLandXmlUnitsRefusal,
     setProgress: s.setProgress,
     setGeometryProgress: s.setGeometryProgress,
     setMetadataProgress: s.setMetadataProgress,
@@ -464,9 +462,9 @@ export function useIfcLoader() {
       setLoading(true);
       useViewerStore.getState().setLoadingFileName(file.name); // #5849: the loading card's title
       setError(null);
-      // #5175: a fresh load attempt (including the retry this very prompt
+      // #5175: a fresh load attempt (including the retry a refusal prompt
       // triggers) always supersedes whatever refusal prompted it.
-      setLandXmlUnitsRefusal(null);
+      clearLandXmlRefusalPrompts();
       setProgress({ phase: 'Loading file', percent: 0 });
 
       const fileName = file.name;
@@ -530,7 +528,7 @@ export function useIfcLoader() {
         dataStore: IfcDataStore | null,
         geometryResult: GeometryResult | null,
         schemaVersion: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5',
-        patch?: { loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error'; cacheState?: 'none' | 'hit' | 'miss' | 'writing'; loadError?: string | null; pointCloudHandleId?: number; landXmlDocument?: import('./ingest/landXmlSemantics.js').LandXmlTinDocument; sourceSchema?: import('./ingest/landXmlSemantics.js').LandXmlSchema; spatialReference?: ModelSpatialReference; postAlignmentReframe?: boolean; federatedLandXmlStreamingPlan?: FederatedLandXmlStreamingFinalization } & Pick<ModelLoadReportFields, 'loadPath' | 'tessellationTier' | 'skipSmallCuts'>, // #3927, per-call-site like buildModelLoadReportPatch's doc explains
+        patch?: { loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error'; cacheState?: 'none' | 'hit' | 'miss' | 'writing'; loadError?: string | null; pointCloudHandleId?: number; landXmlDocument?: import('./ingest/landXmlSemantics.js').LandXmlTinDocument; sourceSchema?: import('./ingest/landXmlSemantics.js').LandXmlSchema; spatialReference?: ModelSpatialReference; postAlignmentReframe?: boolean; federatedLandXmlStreamingPlan?: FederatedLandXmlStreamingFinalization; landXmlAssumptions?: import('./ingest/landXmlGeorefAssumptions.js').LandXmlGeorefAssumptions } & Pick<ModelLoadReportFields, 'loadPath' | 'tessellationTier' | 'skipSmallCuts'>, // #3927, per-call-site like buildModelLoadReportPatch's doc explains
         // GPU-instancing shard bytes (#1912), forwarded explicitly rather than
         // closed over: the WASM streaming section's `allInstancedShards` is
         // declared ~800 lines below this closure, so a plain closure read would
@@ -574,12 +572,12 @@ export function useIfcLoader() {
           const spatialFinalize = await finalizeFederatedSpatialPlacement({
             dataStore, geometry: geometryResult, modelId, fileName: file.name,
             spatialReference: patch?.spatialReference, landXmlDocument: patch?.landXmlDocument,
-            postAlignmentReframe: patch?.postAlignmentReframe,
+            postAlignmentReframe: patch?.postAlignmentReframe, landXmlAssumptions: patch?.landXmlAssumptions,
             federatedLandXmlStreamingPlan: patch?.federatedLandXmlStreamingPlan,
             isCurrent: () => isCurrent(), setProgress,
           });
           if (!spatialFinalize) return;
-          const { preAlignment, federationAlignmentStatus } = spatialFinalize;
+          const { preAlignment, federationAlignmentStatus, landXmlAssumptionsApplied } = spatialFinalize;
 
           // Federation registry: transform expressIds to globally-unique ids.
           const maxExpressId = getMaxExpressId(dataStore, geometryResult.meshes, geometryResult.pointClouds);
@@ -636,7 +634,7 @@ export function useIfcLoader() {
             pointCloudHandleId: patch?.pointCloudHandleId,
             ...(patch?.spatialReference ? { spatialReference: patch.spatialReference } : {}),
             preAlignment,
-            federationAlignmentStatus,
+            federationAlignmentStatus, ...(landXmlAssumptionsApplied ? { landXmlAssumptionsApplied } : {}),
             ...buildModelLoadReportPatch(loadDiagnostics, format, patch),
           };
           useViewerStore.getState().addModel(federatedModel);
@@ -707,19 +705,18 @@ export function useIfcLoader() {
         placementIdentity = startLoadSourceIdentity(modelId, file, () => isStale());
         if (target.kind === 'primary') updateModel(modelId, { sourceFingerprint: modelSourceIdentity });
         await loadLandXmlModel({ file, fileSizeMB, targetKind: target.kind, totalStartTime, wasHidden: wasHidden(), trace,
-          assumedLinearUnit: options?.assumedLinearUnit,
+          assumedLinearUnit: options?.assumedLinearUnit, landXmlAssumptions: options?.landXmlAssumptions ?? useViewerStore.getState().landXmlGeorefAssumptionSettings,
           isCurrent: () => isCurrent(), setProgress, setGeometryStreamingActive, setLoading,
           openProvisional: target.kind === 'primary' ? (preflight) => openPrimaryLandXmlProvisional(modelId, preflight) : undefined,
           openFederatedStreamingPlan: target.kind === 'federated'
-            ? (preflight, sourceCoordinateInfo, spatialReference) => openFederatedLandXmlStreamingPlan(modelId, preflight, sourceCoordinateInfo, spatialReference, () => isCurrent())
+            ? (preflight, sourceCoordinateInfo, spatialReference, declaredCrs, assumptions) => openFederatedLandXmlStreamingPlan(modelId, preflight, sourceCoordinateInfo, spatialReference, declaredCrs, () => isCurrent(), assumptions)
             : undefined,
           onPrimary: (r) => { setGeometryResult(r.geometryResult); setIfcDataStore(r.dataStore); }, finalize: finalizeModel,
-          onError: (message) => {
+          onError: (message, error) => {
             updateModel(modelId, { loadState: 'error', loadError: message });
             showLoadError(`LandXML parsing failed: ${message}`, 'landxml_parse_failed');
-            // Returns null for any LandXML failure a unit cannot fix (#5175).
-            setLandXmlUnitsRefusal(landXmlUnitsRefusalPrompt(message, file.name,
-              (assumedLinearUnit) => { void loadFileRef.current?.(file, target, { ...options, assumedLinearUnit }); }));
+            // A units (#5175) or georef-assumption prompt, only for the failure its choice can fix.
+            publishLandXmlRefusalPrompts(message, error, file.name, (retry) => { void loadFileRef.current?.(file, target, { ...options, ...retry }); });
           },
         });
         return;
@@ -1724,6 +1721,9 @@ export function useIfcLoader() {
               // a second, true-only authority here.
               break;
             }
+            case 'unitRefused':
+              reportRefusedLengthUnit(file.name, toast.error);
+              break;
             case 'workerMemory': {
               // This report is sent once at the worker's session end.
               parserEntityIndexHandoff.release();

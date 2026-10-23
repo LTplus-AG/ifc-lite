@@ -28,6 +28,7 @@
 
 import { ENTITIES_IFC2X3, ENTITIES_IFC4_EXPRESS, ENTITIES_IFC4X3 } from '@ifc-lite/data';
 import { escapeStepString } from './step-serialization.js';
+import { frameArgs, stepRecordFrame } from './step-record-frame.js';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
 
@@ -176,16 +177,12 @@ export function retypeStepLine(
   predefinedType: string | null | undefined,
   schema: IfcSchemaVersion,
 ): string {
-  const eq = entityText.indexOf('=');
-  const openParen = entityText.indexOf('(');
-  const closeParen = entityText.lastIndexOf(');');
+  // The one record frame (#7682): trivia between the `)` and the `;` is valid
+  // Part 21, and a literal `');'` bound dropped every retype on such a record.
+  const frame = stepRecordFrame(entityText);
   const newUpper = newType.toUpperCase();
-
-  if (eq < 0 || openParen < eq || closeParen < openParen) {
-    return entityText;
-  }
-
-  const idPrefix = entityText.slice(0, eq + 1); // "#123="
+  if (frame === null) return entityText;
+  const { head } = frame;
   // Validating, not permissive: the re-layout below maps source slot i to the
   // attribute NAME at position i, so a mis-scanned list renames every slot
   // after the first swallowed comma. On the #4125 record — two undoubled
@@ -194,16 +191,16 @@ export function retypeStepLine(
   // rewrite emitted ELEVEN top-level arguments because one part still carried
   // two commas of its own. A `null` here means the line is left exactly as the
   // source wrote it, which the caller reads as `retyped: false`.
-  const argTokens = splitTopLevelStepArguments(entityText.slice(openParen + 1, closeParen));
+  const argTokens = splitTopLevelStepArguments(frameArgs(entityText, frame));
   if (argTokens === null) return entityText;
   const { tokens, resolved } = retypeArgTokens(argTokens, sourceType, newType, predefinedType, schema);
 
+  // The keyword is swapped in place: every other character of the record
+  // (trivia around it, the closing `)`, `;` and anything after) is kept.
+  const before = entityText.slice(0, head.typeStart);
   if (!resolved) {
     // Keyword-only swap: keep the original argument list verbatim.
-    return `${idPrefix}${newUpper}${entityText.slice(openParen)}`;
+    return `${before}${newUpper}${entityText.slice(head.typeEnd)}`;
   }
-
-  // `entityText.slice(closeParen)` keeps the closing `);` plus any trailing
-  // bytes (newline) intact.
-  return `${idPrefix}${newUpper}(${tokens.join(',')}${entityText.slice(closeParen)}`;
+  return `${before}${newUpper}${entityText.slice(head.typeEnd, head.open + 1)}${tokens.join(',')}${entityText.slice(frame.close)}`;
 }

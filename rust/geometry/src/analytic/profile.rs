@@ -29,6 +29,12 @@ pub struct AnalyticProfileLoop {
     pub signed_area: f64,
     /// Exact boundary length in raw IFC file units.
     pub perimeter: f64,
+    /// Original source convention, separate from interpreted segment geometry.
+    /// Parameterized profiles retain their original dimensions and placement here too.
+    /// `None` unless extracted inside [`super::with_source_capture`]. Not
+    /// serialized: export output stays unchanged until a consumer opts in.
+    #[serde(skip)]
+    pub source: Option<super::AnalyticBoundarySource>,
 }
 
 /// `IfcProfileDef` geometry before `IfcExtrudedAreaSolid.Position` and mapping.
@@ -107,6 +113,13 @@ fn parse_profile(
         }
         _ => return Err(format!("unsupported profile {}", profile.ifc_type.name())),
     };
+    if super::source::requested()
+        && matches!(profile.ifc_type, IfcType::IfcRectangleProfileDef | IfcType::IfcCircleProfileDef)
+    {
+        let mut capture = super::source::SourceCapture::enabled();
+        capture.record(profile, decoder);
+        result.loops[0].source = Some(capture.finish(profile.id, decoder.plane_angle_to_radians()));
+    }
     Ok(())
 }
 
@@ -130,9 +143,7 @@ fn parse_profile_position(
     if matrix.iter().any(|value| !value.is_finite()) {
         return Err(format!("Position #{id} has non-finite coordinates"));
     }
-    let mut values = [0.0; 16];
-    values.copy_from_slice(matrix.as_slice());
-    result.profile_position = Some(values);
+    result.profile_position = Some(crate::math::mat4::col_major_array(&matrix));
     Ok(())
 }
 
@@ -166,10 +177,17 @@ fn curve_loop(
     id: u32, kind: ProfileLoopKind, decoder: &mut EntityDecoder,
 ) -> Result<AnalyticProfileLoop, String> {
     let curve = decoder.decode_by_id(id).map_err(|error| format!("curve #{id}: {error}"))?;
-    let segments = CurveWalk::default().extract(&curve, decoder)
+    let capture = super::source::requested();
+    let mut walk = if capture { CurveWalk::with_source() } else { CurveWalk::default() };
+    let segments = walk.extract(&curve, decoder)
         .map_err(|error| format!("curve #{id}: {error}"))?
         .ok_or_else(|| format!("curve #{id} is not exact line/arc geometry"))?;
-    loop_from_segments(kind, segments).map_err(|reason| format!("curve #{id}: {reason}"))
+    let mut boundary = loop_from_segments(kind, segments)
+        .map_err(|reason| format!("curve #{id}: {reason}"))?;
+    if capture {
+        boundary.source = Some(walk.source.finish(id, decoder.plane_angle_to_radians()));
+    }
+    Ok(boundary)
 }
 
 fn loop_from_segments(
@@ -201,7 +219,7 @@ fn loop_from_segments(
     if !area.is_finite() || area == 0.0 || !perimeter.is_finite() || perimeter <= 0.0 {
         return Err("profile loop has zero or invalid enclosed area".into());
     }
-    Ok(AnalyticProfileLoop { kind, segments, signed_area: area, perimeter })
+    Ok(AnalyticProfileLoop { kind, segments, signed_area: area, perimeter, source: None })
 }
 
 fn relative_extent(a: AnalyticPoint, b: AnalyticPoint) -> f64 {

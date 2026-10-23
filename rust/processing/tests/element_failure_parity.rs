@@ -11,7 +11,7 @@
 //! server/parquet output while the browser showed it partially. This pins the
 //! server-side skip behaviour.
 
-use ifc_lite_processing::{process_geometry, process_geometry_filtered, OpeningFilterMode};
+use ifc_lite_processing::{process, process_geometry, OpeningFilterMode, ProcessingRequest};
 
 /// A wall whose Body carries one supported extruded solid AND one
 /// unsupported representation item (`IFCSECTIONEDSPINE` — no processor).
@@ -61,7 +61,11 @@ fn opening_filters_unaffected_by_submesh_default() {
         OpeningFilterMode::IgnoreAll,
         OpeningFilterMode::IgnoreOpaque,
     ] {
-        let result = process_geometry_filtered(MIXED_ITEMS_IFC, mode);
+        let result = process(
+            MIXED_ITEMS_IFC.as_bytes(),
+            &ProcessingRequest::full_pass().opening_filter(mode),
+            &mut (),
+        );
         assert!(!result.meshes.is_empty(), "no meshes under {mode:?}");
     }
 }

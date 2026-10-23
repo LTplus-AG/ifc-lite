@@ -8,9 +8,11 @@
 //! the HTTP server and the native FFI library.
 
 pub mod appearance;
+pub mod data_model;
 pub mod analytic_export;
 pub mod pdf_vector;
 pub mod determinism;
+mod fingerprint;
 pub(crate) mod parallel_scan;
 mod shard_classes;
 pub use parallel_scan::{
@@ -37,6 +39,16 @@ pub use shard_classes::{
 #[path = "determinism_tests.rs"]
 mod determinism_tests;
 pub mod element;
+pub mod retained_geometry;
+pub mod retained_requests;
+mod geometry_pool;
+pub use geometry_pool::{
+    geometry_pool, geometry_pool_builder, run_on_geometry_pool, GEOMETRY_STACK_BYTES,
+};
+// Declared here rather than inside `geometry_pool.rs` so the revert oracle can
+// attribute it to the lib test target.
+#[cfg(test)]
+mod geometry_pool_tests;
 pub mod geometry_export;
 mod georeferencing;
 pub mod pipeline_diagnostics;
@@ -45,6 +57,7 @@ mod prepass_styled;
 pub use prepass_styled::flat_styles_rgba8_from_geometry_columns;
 mod prepass_type_material;
 mod processor;
+pub mod scan;
 pub(crate) mod point_pca;
 pub mod scan_proposals;
 pub mod scan_segmentation;
@@ -92,8 +105,11 @@ pub use ifc_lite_geometry::TessellationQuality;
 /// batch (`rust/wasm-bindings/src/api/gpu_meshes/instancing.rs`) so the mapping
 /// has one home rather than two clones. See its doc comment.
 pub use processor::instancing::recover_occurrences_flat;
+#[allow(deprecated)] // the deprecated delegates stay exported until the next major
 pub use processor::{
-    convert_mesh_to_site_local, is_quick_spatial_type_ci, native_to_baked, process_geometry,
+    convert_mesh_to_site_local, detect_schema_version, is_quick_spatial_type_ci, native_to_baked,
+    process, Batching, Features, FrameEvent, OnBatch, ProcessingRequest, ProcessingSink,
+    process_geometry,
     process_geometry_filtered,
     process_geometry_filtered_with_quality, process_geometry_filtered_with_quality_and_ids,
     process_geometry_with_index,

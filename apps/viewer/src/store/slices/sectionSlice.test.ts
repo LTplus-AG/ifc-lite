@@ -7,7 +7,6 @@ import assert from 'node:assert';
 import {
   createSectionSlice,
   customPlaneCenter,
-  loadLastSectionMode,
   type SectionSlice,
 } from './sectionSlice.js';
 import { facePickInset } from './sectionFacePick.js';
@@ -42,37 +41,6 @@ function assertOrthonormalBasis(t: number[], b: number[], n: number[]): void {
   assert.ok(Math.abs(dot(t, n)) < 1e-9, `tangent must be perpendicular to normal (dot=${dot(t, n)})`);
   assert.ok(Math.abs(dot(b, n)) < 1e-9, `bitangent must be perpendicular to normal (dot=${dot(b, n)})`);
   assert.ok(Math.abs(dot(t, b)) < 1e-9, `tangent must be perpendicular to bitangent (dot=${dot(t, b)})`);
-}
-
-// In-memory localStorage shim for tests that exercise the slice's
-// persistence helpers (last-used section mode, issue #243 follow-up).
-// node:test runs without a DOM, so the slice's `typeof window ===
-// 'undefined'` guards short-circuit by default. We install a real
-// `window.localStorage` for the duration of the persistence tests so
-// save/load actually round-trips through code rather than no-opping.
-class MemoryStorage {
-  private store = new Map<string, string>();
-  get length(): number { return this.store.size; }
-  clear(): void { this.store.clear(); }
-  getItem(key: string): string | null { return this.store.has(key) ? this.store.get(key)! : null; }
-  setItem(key: string, value: string): void { this.store.set(key, String(value)); }
-  removeItem(key: string): void { this.store.delete(key); }
-  key(i: number): string | null { return Array.from(this.store.keys())[i] ?? null; }
-}
-
-function installWindowShim(): { uninstall: () => void; storage: MemoryStorage } {
-  const storage = new MemoryStorage();
-  const g = globalThis as unknown as { window?: unknown };
-  const had = 'window' in g;
-  const prev = g.window;
-  g.window = { localStorage: storage } as unknown;
-  return {
-    storage,
-    uninstall: () => {
-      if (had) g.window = prev;
-      else delete g.window;
-    },
-  };
 }
 
 describe('SectionSlice', () => {
@@ -743,162 +711,18 @@ describe('SectionSlice', () => {
   });
 });
 
-// Last-used section mode persistence (issue #243 follow-up).
-//
-// These tests run in their own top-level describe with an installed
-// `window.localStorage` shim because the slice's persistence helpers
-// short-circuit when `window` is undefined. Keeping the shim scoped to
-// this block (install in beforeEach, uninstall in afterEach) means the
-// rest of the suite still exercises the no-window code path.
-describe('SectionSlice — last-used mode persistence', () => {
-  const SECTION_MODE_KEY = 'ifc-lite:section-last-mode';
-  let state: SectionSlice;
-  let setState: (partial: Partial<SectionSlice> | ((state: SectionSlice) => Partial<SectionSlice>)) => void;
-  let shim: ReturnType<typeof installWindowShim>;
-
-  beforeEach(() => {
-    shim = installWindowShim();
-    setState = (partial) => {
-      if (typeof partial === 'function') {
-        const updates = partial(state);
-        state = { ...state, ...updates };
-      } else {
-        state = { ...state, ...partial };
-      }
+// Defaults. (The last-used-mode persistence this block used to cover, issue
+// #243 follow-up, was removed in #7545: opening the tool changes nothing.)
+describe('SectionSlice — defaults', () => {
+  it('default enabled is `false` so opening the section tool starts uncut', () => {
+    // Bug #1 from PR #650: `ENABLED: true` here meant a Down cut
+    // appeared the moment the panel mounted.
+    let state = {} as SectionSlice;
+    const setState = (partial: Partial<SectionSlice> | ((s: SectionSlice) => Partial<SectionSlice>)) => {
+      state = { ...state, ...(typeof partial === 'function' ? partial(state) : partial) };
     };
     state = createSectionSlice(setState, () => state, {} as any);
-  });
-
-  // No afterEach hook is registered (node:test exposes it differently
-  // across versions). Each beforeEach reinstalls the shim, replacing
-  // the previous global, so leakage between tests is bounded.
-
-  describe('default `enabled` and storage state', () => {
-    it('default enabled is `false` so opening the section tool starts uncut', () => {
-      // Bug #1 from PR #650: `ENABLED: true` here meant a Down cut
-      // appeared the moment the panel mounted, before the auto-arm
-      // useEffect could install pick mode.
-      assert.strictEqual(SECTION_PLANE_DEFAULTS.ENABLED, false);
-      assert.strictEqual(state.sectionPlane.enabled, false);
-    });
-  });
-
-  describe('loadLastSectionMode', () => {
-    it('returns the default pick mode when storage is empty', () => {
-      assert.deepStrictEqual(loadLastSectionMode(), { kind: 'pick' });
-    });
-
-    it('round-trips a stored pick entry', () => {
-      shim.storage.setItem(SECTION_MODE_KEY, JSON.stringify({ kind: 'pick' }));
-      assert.deepStrictEqual(loadLastSectionMode(), { kind: 'pick' });
-    });
-
-    it('round-trips a valid cardinal entry', () => {
-      shim.storage.setItem(SECTION_MODE_KEY, JSON.stringify({
-        kind: 'cardinal', axis: 'side', position: 33.5, flipped: true,
-      }));
-      assert.deepStrictEqual(loadLastSectionMode(), {
-        kind: 'cardinal', axis: 'side', position: 33.5, flipped: true,
-      });
-    });
-
-    it('clamps cardinal `position` to [0, 100] on restore', () => {
-      // Belt-and-braces: position is clamped at the slice level too,
-      // but a tampered or stale value shouldn't poison the slider.
-      shim.storage.setItem(SECTION_MODE_KEY, JSON.stringify({
-        kind: 'cardinal', axis: 'down', position: 9999, flipped: false,
-      }));
-      const m = loadLastSectionMode();
-      assert.strictEqual(m.kind, 'cardinal');
-      if (m.kind === 'cardinal') assert.strictEqual(m.position, 100);
-    });
-
-    it('falls back to pick when JSON is corrupted', () => {
-      shim.storage.setItem(SECTION_MODE_KEY, 'not-valid-json{');
-      assert.deepStrictEqual(loadLastSectionMode(), { kind: 'pick' });
-    });
-
-    it('falls back to pick on an unknown `kind`', () => {
-      shim.storage.setItem(SECTION_MODE_KEY, JSON.stringify({ kind: 'martian' }));
-      assert.deepStrictEqual(loadLastSectionMode(), { kind: 'pick' });
-    });
-
-    it('falls back to pick on a cardinal entry with a bad axis', () => {
-      shim.storage.setItem(SECTION_MODE_KEY, JSON.stringify({
-        kind: 'cardinal', axis: 'sideways', position: 50, flipped: false,
-      }));
-      assert.deepStrictEqual(loadLastSectionMode(), { kind: 'pick' });
-    });
-
-    it('falls back to pick on a cardinal entry with a non-finite position', () => {
-      shim.storage.setItem(SECTION_MODE_KEY, JSON.stringify({
-        kind: 'cardinal', axis: 'down', position: 'oops', flipped: false,
-      }));
-      assert.deepStrictEqual(loadLastSectionMode(), { kind: 'pick' });
-    });
-  });
-
-  describe('save side-effects on slice actions', () => {
-    it('setSectionPlaneAxis writes a cardinal entry to localStorage', () => {
-      state.setSectionPlaneAxis('front');
-      const raw = shim.storage.getItem(SECTION_MODE_KEY);
-      assert.ok(raw, 'expected a stored entry');
-      assert.deepStrictEqual(JSON.parse(raw!), {
-        kind: 'cardinal', axis: 'front',
-        position: state.sectionPlane.position,
-        flipped:  state.sectionPlane.flipped,
-      });
-    });
-
-    it('setSectionPlanePosition writes a cardinal entry (position carries through)', () => {
-      state.setSectionPlanePosition(42.5);
-      const raw = shim.storage.getItem(SECTION_MODE_KEY);
-      assert.ok(raw);
-      const parsed = JSON.parse(raw!);
-      assert.strictEqual(parsed.kind, 'cardinal');
-      assert.strictEqual(parsed.position, 42.5);
-    });
-
-    it('flipSectionPlane (cardinal mode) writes the new `flipped` to localStorage', () => {
-      state.flipSectionPlane();
-      const raw = shim.storage.getItem(SECTION_MODE_KEY);
-      assert.ok(raw);
-      const parsed = JSON.parse(raw!);
-      assert.strictEqual(parsed.kind, 'cardinal');
-      assert.strictEqual(parsed.flipped, true);
-    });
-
-    it('setSectionPlanePosition does NOT write while in custom mode', () => {
-      // Custom-mode position drives a model-relative distance which we
-      // deliberately don't persist — re-arm pick mode on next open
-      // instead so the user can re-cut on a different model.
-      state.setSectionPlaneFromFace([1, 0, 0], [5, 0, 0]);
-      // The face-pick wrote `{ kind: 'pick' }`; clear it so we can
-      // observe whether the subsequent slider move overwrites it.
-      shim.storage.removeItem(SECTION_MODE_KEY);
-      state.setSectionPlanePosition(60);
-      assert.strictEqual(shim.storage.getItem(SECTION_MODE_KEY), null);
-    });
-
-    it('flipSectionPlane does NOT write while in custom mode', () => {
-      state.setSectionPlaneFromFace([1, 0, 0], [5, 0, 0]);
-      shim.storage.removeItem(SECTION_MODE_KEY);
-      state.flipSectionPlane();
-      assert.strictEqual(shim.storage.getItem(SECTION_MODE_KEY), null);
-    });
-
-    it('setSectionPlaneFromFace writes `{ kind: "pick" }` to localStorage', () => {
-      state.setSectionPlaneFromFace([0, 0, 1], [0, 0, 5]);
-      const raw = shim.storage.getItem(SECTION_MODE_KEY);
-      assert.ok(raw);
-      assert.deepStrictEqual(JSON.parse(raw!), { kind: 'pick' });
-    });
-
-    it('resetSectionPlane removes the storage key', () => {
-      state.setSectionPlaneAxis('front');
-      assert.ok(shim.storage.getItem(SECTION_MODE_KEY));
-      state.resetSectionPlane();
-      assert.strictEqual(shim.storage.getItem(SECTION_MODE_KEY), null);
-    });
+    assert.strictEqual(SECTION_PLANE_DEFAULTS.ENABLED, false);
+    assert.strictEqual(state.sectionPlane.enabled, false);
   });
 });

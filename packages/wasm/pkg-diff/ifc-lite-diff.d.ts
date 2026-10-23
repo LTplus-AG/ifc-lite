@@ -72,7 +72,7 @@ export interface InitOutput {
     readonly diffCreateSidecar: (a: number, b: number, c: number, d: number) => void;
     readonly diffKeyAliasesFromLineage: (a: number, b: number) => void;
     readonly diffLineageConflicts: (a: number, b: number) => void;
-    readonly diffRekeyByLineage: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
+    readonly diffRekeyByLineage: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly diffSerializeSidecar: (a: number, b: number, c: number) => void;
     readonly diffStableHash: (a: number, b: number, c: number) => void;
     readonly diffValidateSidecar: (a: number, b: number, c: number, d: number) => void;

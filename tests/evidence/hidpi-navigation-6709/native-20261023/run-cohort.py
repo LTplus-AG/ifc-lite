@@ -22,7 +22,12 @@ for side in ['candidate','base']:
  receipts.append(r)
 (out/'preparation-receipts.json').write_text(json.dumps(receipts,indent=2)+'\n')
 subprocess.run(['python3',str(out/'freeze-builds.py')],check=True,timeout=600)
-root=receipts[0]['cwd']
+candidate_manifest=json.loads((out/'candidate-build-manifest.json').read_text())
+validated_root=Path(candidate_manifest['checkout']).resolve()
+receipt_root=Path(receipts[0]['cwd']).resolve()
+if receipt_root != validated_root:
+ raise RuntimeError(f'Candidate receipt cwd does not match validated checkout: {receipt_root} != {validated_root}')
+root=str(validated_root)
 env=os.environ|{'IFC_6709_ROOT':root,'IFC_6709_EVIDENCE':str(out),'IFC_6709_MODEL':fixture_receipt['cwd']+'/tests/models/ara3d/AC20-FZK-Haus.ifc','DISPLAY':':1','WAYLAND_DISPLAY':'wayland-1','XDG_RUNTIME_DIR':'/run/user/1000','DEBUG':'pw:browser'}
 (out/'harness-sha256.json').write_text(json.dumps({p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in out.iterdir() if p.suffix in ['.py','.mts']},indent=2)+'\n')
 command=['node','--import',root+'/node_modules/tsx/dist/loader.mjs',str(out/'qualification.mts')]

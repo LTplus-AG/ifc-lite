@@ -1,17 +1,17 @@
 --- a/rust/export/src/plan/add_geometry.rs
 +++ b/rust/export/src/plan/add_geometry.rs
-@@ -22,7 +22,7 @@ pub(crate) fn product_shape(
-     let (items, rep_type) = match rep {
+@@ -23,7 +23,7 @@ pub(crate) fn product_shape(
          Representation::None => return Ok(None),
-         Representation::Extrusion(e) => (vec![extruded_solid(emit, e)?], "SweptSolid"),
--        Representation::Extrusions(es) => (es.iter().take(1).map(|e| extruded_solid(emit, e)).collect::<Result<_, _>>()?, "SweptSolid"),
-+        Representation::Extrusions(es) => (es.iter().map(|e| extruded_solid(emit, e)).collect::<Result<_, _>>()?, "SweptSolid"),
-         Representation::Mesh(m) => {
-             let (item, rep_type) = mesh_item(emit, m)?;
-             (vec![item], rep_type)
+         Representation::Mesh(m) => mesh_item(emit, m).map(|(item, rep_type)| (vec![item], rep_type))?,
+         _ => {
+-            let solids = rep.extrusions().iter().take(1).map(|e| extruded_solid(emit, e)).collect::<Result<_, _>>()?;
++            let solids = rep.extrusions().iter().map(|e| extruded_solid(emit, e)).collect::<Result<_, _>>()?;
+             (solids, "SweptSolid")
+         }
+     };
 --- a/rust/export/src/plan/add_profile.rs
 +++ b/rust/export/src/plan/add_profile.rs
-@@ -152,7 +152,7 @@ fn polyline(emit: &mut Emit, pts: &[[f64; 2]]) -> Result<u32, String> {
+@@ -148,7 +148,7 @@ fn polyline(emit: &mut Emit, pts: &[[f64; 2]]) -> Result<u32, String> {
  /// The profile record of a checked extrusion.
  pub(crate) fn profile(emit: &mut Emit, e: &Extrusion) -> Result<u32, String> {
      let outer = polyline(emit, &e.profile)?;

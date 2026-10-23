@@ -1575,6 +1575,7 @@ name = "ifc-lite-diff"
 version = "21.4.0"
 dependencies = [
  "ryu-js",
+ "serde",
  "serde_json",
 ]
 

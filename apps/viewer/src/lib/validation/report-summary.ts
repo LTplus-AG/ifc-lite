@@ -15,7 +15,7 @@ export function validationReportSummary(report: ValidationReport): ReportSummary
   const summary = calculateSummary(report.specificationResults);
   const totals = { checked: summary.totalEntitiesChecked, passed: summary.totalEntitiesPassed,
     failed: summary.totalEntitiesFailed, passRate: summary.overallPassRate };
-  if (report.source.kind !== 'rules') return totals;
+  if (report.source.kind !== 'rules') return { ...totals, passRate: totals.checked === 0 ? 0 : totals.passRate };
   const warnings = report.specificationResults.reduce((sum, check) =>
     sum + (check.specification.severity === 'warning' ? check.failedCount : 0), 0);
   return { ...totals, failed: totals.failed - warnings, warnings };

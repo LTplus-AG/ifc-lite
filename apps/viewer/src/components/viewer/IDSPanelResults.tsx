@@ -154,7 +154,8 @@ export function IDSPanelResults({
         </div>
         {!isRules && <IDSCheckSummary report={report} />}
         {!isRules && <div className="text-xs font-medium">{t('idsPanel.entitySpecificationResults')}</div>}
-        <ValidationBenchmark summary={summary} name={validationSourceName(report)} />
+        <ValidationBenchmark summary={summary} name={validationSourceName(report)}
+          notCheckedSpecifications={isRules ? 0 : report.specificationResults.filter((result) => result.applicableCount === 0).length} />
         <div className="grid grid-cols-3 gap-2 text-xs text-center">
           <div className="bg-background rounded p-2">
             <div className="font-medium">{formatLocaleNumber(locale, report.summary.totalEntitiesChecked)}</div>
@@ -169,7 +170,7 @@ export function IDSPanelResults({
             <div className="text-muted-foreground">{t('idsPanel.failed')}</div>
           </div>
         </div>
-        <div className="mt-2"><PassRateBar passRate={report.summary.overallPassRate} /></div>
+        <div className="mt-2"><PassRateBar passRate={summary.passRate} /></div>
         {!isRules && <p className="text-xs text-muted-foreground mt-2">{t('idsPanel.summaryUnitsHint')}</p>}
         <p className="text-xs text-muted-foreground mt-2 text-center">
           {t(specScope ? 'idsPanel.specScopeHint' : 'idsPanel.idsScopeHint')}
@@ -303,6 +304,7 @@ export function IDSPanelResults({
         <div className="p-2 space-y-2">
           {report.specificationResults.map((specResult) => (
             <SpecificationCard
+              isIDS={!isRules}
               key={specResult.specification.id}
               result={specResult}
               isActive={activeSpecificationId === specResult.specification.id}

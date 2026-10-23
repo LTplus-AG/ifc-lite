@@ -9,8 +9,8 @@ import { reportRingCounts, type ReportSummary } from '@/lib/validation/report-su
 import { ringSvg } from '@/lib/validation/manual/ring';
 import { ManualValidationLegend } from './ManualValidationRing';
 
-export function ValidationBenchmark({ summary, name, paper = false }: { summary: ReportSummary; name: string; paper?: boolean }) {
-  const { t } = useTranslation();
+export function ValidationBenchmark({ summary, name, paper = false, notCheckedSpecifications = 0 }: { summary: ReportSummary; name: string; paper?: boolean; notCheckedSpecifications?: number }) {
+  const { t, locale } = useTranslation();
   const counts = reportRingCounts(summary);
   const label = counts.total === 0 ? t('manualValidation.ring.empty', { name })
     : t('manualValidation.ring.label', { name, pass: counts.pass, warning: counts.warning, fail: counts.fail, unanswered: counts.unanswered });
@@ -21,6 +21,15 @@ export function ValidationBenchmark({ summary, name, paper = false }: { summary:
         alt={`${label} · ${rate} ${summary.passRate}%`} />
       <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm font-semibold" aria-hidden="true">{summary.passRate}%</span>
     </div>
-    <ManualValidationLegend counts={counts} mutedClassName={paper ? 'text-neutral-600' : undefined} />
+    <div>
+      <ManualValidationLegend counts={counts} mutedClassName={paper ? 'text-neutral-600' : undefined} />
+      {/* Zero-match specifications have no entities to put in the ring.
+          Keep their unit explicit instead of inventing an unchecked entity. */}
+      {notCheckedSpecifications > 0 && <p className="mt-1 text-xs text-muted-foreground">
+        {t('manualValidation.verdict.unanswered')}: {t('idsPanel.specifications', {
+          count: notCheckedSpecifications, countDisplay: notCheckedSpecifications.toLocaleString(locale),
+        })}
+      </p>}
+    </div>
   </div>;
 }

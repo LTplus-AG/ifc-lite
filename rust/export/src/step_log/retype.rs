@@ -23,11 +23,19 @@ fn in_schema(schema: &str, upper: &str) -> Option<Info> {
         .map(|i| Info { attributes: NAME_LISTS[usize::from(RETYPE_ROWS[i].2)], predefined: NAME_LISTS[usize::from(RETYPE_ROWS[i].3)] })
 }
 
-/// The `PredefinedType` members `class` (any case) declares in exactly
-/// `schema`, without falling back to another schema's table. `None` when
-/// the table has no row for it; empty when the class has no such enum.
+/// The `PredefinedType` members `class` (any case) declares in the family of
+/// the `FILE_SCHEMA` label `schema` (`IFC4X3_ADD2` reads IFC4X3's table),
+/// without falling back to another schema's table. `None` when the table has
+/// no row for it; empty when the class has no such enum.
 pub(crate) fn predefined_type_members(schema: &str, class: &str) -> Option<&'static [&'static str]> {
-    in_schema(schema, &class.to_uppercase()).map(|info| info.predefined)
+    use ifc_lite_core::SchemaVersion;
+    let family = match SchemaVersion::from_file_schema(schema)? {
+        SchemaVersion::Ifc2x3 => "IFC2X3",
+        SchemaVersion::Ifc4 => "IFC4",
+        SchemaVersion::Ifc4x3 => "IFC4X3",
+        _ => return None,
+    };
+    in_schema(family, &class.to_uppercase()).map(|info| info.predefined)
 }
 
 /// `lookupEntityInfo`: the source schema's table (IFC5 reads IFC4X3's), then IFC4's.

@@ -56,6 +56,29 @@ impl AddState<'_> {
         is_subtype_of_for_schema(self.schema, class, parent)
     }
 
+    /// The type class an occurrence of `class` must be typed by, when the
+    /// schema declares one by name: `<class>Type`, with an `IfcWallStandardCase`
+    /// taking an `IfcWallType`. `None` when there is none (an IFC2X3 door is
+    /// typed by an `IfcDoorStyle`), and then any product type is accepted.
+    fn type_class_for(&self, class: &str) -> Option<String> {
+        let class = class.to_ascii_uppercase();
+        let base = class.strip_suffix("STANDARDCASE").or_else(|| class.strip_suffix("ELEMENTEDCASE")).unwrap_or(&class);
+        let candidate = format!("{base}TYPE");
+        entity_info_for_schema(self.schema, &candidate).is_some().then_some(candidate)
+    }
+
+    /// Refuse typing an occurrence of `class` by `type_class` when the schema
+    /// names the type its class takes and `type_class` is not one.
+    fn check_type_pairing(&self, class: &str, type_class: &str, what: &str) -> Result<(), String> {
+        let Some(wanted) = self.type_class_for(class) else { return Ok(()) };
+        // IFC4 keeps IFC2X3's door and window styles, deprecated but valid.
+        let style = wanted.strip_suffix("TYPE").map(|base| format!("{base}STYLE"));
+        if self.is_a(type_class, &wanted) || style.as_deref() == Some(type_class) {
+            return Ok(());
+        }
+        Err(format!("{what} is {type_class}, but a {class} is typed by an {wanted}"))
+    }
+
     /// A spatial element (`IfcSpatialStructureElement` in IFC2X3, its
     /// `IfcSpatialElement` supertype later).
     fn is_spatial(&self, class: &str) -> bool {
@@ -142,7 +165,10 @@ impl AddState<'_> {
             None => None,
             Some(r) => {
                 let (id, c) = self.lookup(r)?;
-                if !self.is_spatial(&c) {
+                // A new site, building or (IFC4X3) other facility is
+                // aggregated into the project.
+                let top_level = || ["IFCSITE", "IFCBUILDING", "IFCFACILITY"].iter().any(|t| self.is_a(&class, t));
+                if !(self.is_spatial(&c) || (c == "IFCPROJECT" && top_level())) {
                     return Err(format!("container {r} is {c}, not a spatial element"));
                 }
                 Some((id, if spatial { RelKind::Aggregates } else { RelKind::Contained }, c))
@@ -172,15 +198,19 @@ impl AddState<'_> {
                 if !self.is_a(&c, "IFCTYPEPRODUCT") {
                     return Err(format!("type {r} is {c}, not a product type"));
                 }
+                self.check_type_pairing(&class, &c, &format!("type {r}"))?;
                 (Some(id), None)
             }
             Some(TypeLink::New(t)) => {
                 validate_psets(&t.psets)?;
                 let type_gid = obj.global_id.derive("type").encode();
-                if self.added.contains_key(&type_gid) {
+                let in_source = self.index.resolve(&ObjectRef::Guid(type_gid.clone()));
+                if in_source.is_some_and(|id| live_in_source(&id)) || self.added.contains_key(&type_gid) {
                     return Err(format!("GlobalId {type_gid} for the new type is already in use"));
                 }
-                (None, Some(self.check_class(&t.class, "IFCTYPEPRODUCT")?))
+                let (type_class, predefined) = self.check_class(&t.class, "IFCTYPEPRODUCT")?;
+                self.check_type_pairing(&class, &type_class, "new type")?;
+                (None, Some((type_class, predefined)))
             }
         };
 

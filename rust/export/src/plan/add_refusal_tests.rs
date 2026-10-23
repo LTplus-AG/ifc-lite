@@ -157,3 +157,77 @@ fn a_predefined_type_outside_the_classs_enumeration_is_refused() {
     let (_, report) = run(&source, vec![add(wall)]);
     assert_clean(&report, "IFC4");
 }
+
+/// The enumeration is read by schema family, so an `IFC4X3_ADD2` label is
+/// checked like `IFC4X3`.
+#[test]
+fn a_predefined_type_is_checked_under_an_addendum_schema_label() {
+    let source = String::from_utf8(storey_with_typed_wall("IFC4X3")).unwrap().replace("'IFC4X3'", "'IFC4X3_ADD2'");
+    assert!(source.contains("IFC4X3_ADD2"));
+    let mut wall = object(IfcClass::Wall, gid(16), storey(), Representation::None);
+    wall.class.predefined_type = Some("bogus".into());
+    refused(source.as_bytes(), wall, "not a PredefinedType of IFCWALL");
+}
+
+/// Deleting a type's only occurrence would leave the type unreferenced, but
+/// an Add in the same plan typed by it keeps it.
+#[test]
+fn an_add_keeps_the_type_its_replaced_occurrence_left_behind() {
+    for schema in SCHEMAS {
+        let mut wall = object(IfcClass::Wall, gid(17), storey(), Representation::None);
+        wall.type_link = Some(TypeLink::Existing(ObjectRef::Id(40)));
+        let (out, report) = run(&storey_with_typed_wall(schema), vec![(ObjectRef::Id(10), Disposition::Delete), add(wall)]);
+        assert_clean(&report, schema);
+        assert_eq!(report.added, 1, "{schema}");
+        assert_eq!(type_in(&out, 40), "IFCWALLTYPE", "{schema}: the type survives");
+    }
+}
+
+/// An occurrence is typed by its own class's type where the schema names one.
+#[test]
+fn a_door_typed_by_a_wall_type_is_refused() {
+    let mut door = object(IfcClass::Door, gid(18), storey(), Representation::None);
+    door.type_link = Some(TypeLink::Existing(ObjectRef::Id(40)));
+    refused(&storey_with_typed_wall("IFC4"), door, "typed by an IFCDOORTYPE");
+}
+
+/// A new building is aggregated into the project.
+#[test]
+fn a_new_building_can_be_aggregated_into_the_project() {
+    for schema in SCHEMAS {
+        let building = object(IfcClass::Named("IfcBuilding".into()), gid(19), Some(ObjectRef::Id(1)), Representation::None);
+        let (out, report) = run(&storey_with_typed_wall(schema), vec![add(building)]);
+        assert_clean(&report, schema);
+        assert_eq!(report.added, 1, "{schema}");
+        let id = id_in(&out, gid(19));
+        let text = String::from_utf8_lossy(&out);
+        let member = |l: &str| ["(", ","].iter().any(|open| [")", ","].iter().any(|close| l.contains(&format!("{open}#{id}{close}"))));
+        let aggregated = text.lines().any(|l| l.contains("IFCRELAGGREGATES(") && l.contains(",#1,") && member(l));
+        assert!(aggregated, "{schema}: the building is aggregated into project #1");
+    }
+}
+
+/// Only a site or building goes straight under the project.
+#[test]
+fn a_storey_cannot_be_aggregated_into_the_project() {
+    let storey = object(IfcClass::BuildingStorey, gid(20), Some(ObjectRef::Id(1)), Representation::None);
+    refused(&storey_with_typed_wall("IFC4"), storey, "not a spatial element");
+}
+
+/// A new type is paired with its occurrence's class like an existing one.
+#[test]
+fn a_door_with_a_new_wall_type_is_refused() {
+    let mut door = object(IfcClass::Door, gid(21), storey(), Representation::None);
+    door.type_link = Some(new_type("IfcWallType", None));
+    refused(&storey_with_typed_wall("IFC4"), door, "typed by an IFCDOORTYPE");
+}
+
+/// A new type's derived GlobalId must not already be in the source.
+#[test]
+fn a_new_type_whose_derived_global_id_is_in_the_source_is_refused() {
+    let mut wall = object(IfcClass::Wall, gid(23), storey(), Representation::None);
+    wall.type_link = Some(new_type("IfcWallType", None));
+    let taken = gid(23).derive("type").encode();
+    let source = String::from_utf8(storey_with_typed_wall("IFC4")).unwrap().replace(&fixture_gid(40), &taken);
+    refused(source.as_bytes(), wall, "for the new type is already in use");
+}

@@ -59,6 +59,12 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
         .filter(|&&(id, d)| matches!(d, Disposition::Patch(_)) && !requested_deletes.contains(&id))
         .map(|&(id, _)| id)
         .collect();
+    // So does what an Add names (its container, placement parent, type,
+    // host): deleting a type's last occurrence must not take the type an Add
+    // in the same plan is typed by.
+    protected.extend(
+        adds.iter().flat_map(|(_, new)| new.references()).filter_map(|r| index.resolve(r)).filter(|id| !requested_deletes.contains(id)),
+    );
 
     // A gating-only pass: whether the requested deletes alone (no patch has
     // run yet, so no copy-on-write detach is known) already remove an
@@ -250,10 +256,11 @@ fn render_list_edits(
     }
 }
 
-/// Build every Add, returning how many were written. Only an exhausted id
-/// space fails `finish`: the relationships of every Add are written together,
-/// and `finish` discards every built object's records along with them on
-/// failure (see its doc comment), so each Add that had built is refused too.
+/// Build every Add, returning how many were written. The relationships of
+/// every Add are written together, all or nothing: when `finish` fails (the
+/// id space runs out, or a list it extends does not scan), it discards every
+/// built object's records along with them (see its doc comment), so each Add
+/// that had built is refused too.
 fn build_adds(
     mut state: add::AddState,
     adds: &[(&ObjectRef, &NewObject)],

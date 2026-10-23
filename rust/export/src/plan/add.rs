@@ -96,18 +96,26 @@ impl<'a> AddState<'a> {
         let mut requests = Vec::new();
         let mut emit = Emit { schema: self.schema, ids, out: &mut out };
         let built = self.build(&mut emit, obj, &checked, owner_history, &mut requests)?;
+        // A context this Add synthesizes must be owned by the project.
+        let new_context = match built.new_context {
+            None => None,
+            Some(context) => {
+                let project = self.index.projects.iter().copied().find(|id| !self.removed.contains(id));
+                match (project, attribute_index(self.schema, "IFCPROJECT", "RepresentationContexts")) {
+                    (Some(project), Some(idx)) => Some((context, project, idx)),
+                    _ => return Err("the file has no IfcProject to own a new representation context".into()),
+                }
+            }
+        };
 
         self.owner_history = Some(owner_history);
         self.records.extend(out);
         for req in requests {
             self.rels.relate(self.schema, req);
         }
-        if let Some(context) = built.new_context {
+        if let Some((context, project, idx)) = new_context {
             self.body_context = Some(context);
-            let project = self.index.projects.iter().copied().find(|id| !self.removed.contains(id));
-            if let (Some(project), Some(idx)) = (project, attribute_index(self.schema, "IFCPROJECT", "RepresentationContexts")) {
-                self.rels.append_to_list(project, idx, context);
-            }
+            self.rels.append_to_list(project, idx, context);
         }
         let gid = obj.global_id;
         self.placement_of_added.insert(built.object, Some(built.placement));

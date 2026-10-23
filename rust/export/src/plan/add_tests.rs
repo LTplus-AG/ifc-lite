@@ -247,13 +247,14 @@ fn an_add_may_reuse_the_global_id_of_an_object_the_same_plan_deletes() {
 fn same_plan_produces_byte_identical_output_twice() {
     for schema in SCHEMAS {
         let source = storey_with_typed_wall(schema);
+        let door_type = if schema == "IFC2X3" { "IfcDoorStyle" } else { "IfcDoorType" };
         let plan = || {
             let mut door = object(IfcClass::Door, gid(50), storey(), Representation::Mesh(tetrahedron()));
             door.opening = Some(NewOpening { host: ObjectRef::Id(10), shape: block(0.9, 0.2, 2.1) });
             door.style = Some(SurfaceColour { rgb: [0.2, 0.4, 0.6], transparency: 0.0 });
             door.psets = vec![wall_common("D1")];
             door.type_link = Some(TypeLink::New(NewType {
-                class: ClassSpec { class: IfcClass::Named("IfcBuildingElementProxyType".into()), predefined_type: None },
+                class: ClassSpec { class: IfcClass::Named(door_type.into()), predefined_type: None },
                 name: None,
                 psets: vec![wall_common("T")],
             }));

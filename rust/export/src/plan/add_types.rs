@@ -191,11 +191,10 @@ pub struct NewObject {
 }
 
 impl NewObject {
-    /// Every GlobalId this Add names: its own, and each [`ObjectRef::Guid`]
-    /// it refers to. The executor's index keeps only the GlobalIds a plan
-    /// names, so these are what an Add can look up.
-    pub(crate) fn guids_to_look_up(&self) -> Vec<String> {
-        let refs = [
+    /// Every existing object this Add names: its container, placement parent,
+    /// type and opening host.
+    pub(crate) fn references(&self) -> impl Iterator<Item = &ObjectRef> {
+        [
             self.container.as_ref(),
             self.placement.relative_to.as_ref(),
             match &self.type_link {
@@ -203,9 +202,20 @@ impl NewObject {
                 _ => None,
             },
             self.opening.as_ref().map(|o| &o.host),
-        ];
+        ]
+        .into_iter()
+        .flatten()
+    }
+
+    /// Every GlobalId this Add names: its own, and each [`ObjectRef::Guid`]
+    /// it refers to. The executor's index keeps only the GlobalIds a plan
+    /// names, so these are what an Add can look up.
+    pub(crate) fn guids_to_look_up(&self) -> Vec<String> {
         let mut out = vec![self.global_id.encode()];
-        out.extend(refs.into_iter().flatten().filter_map(|r| match r {
+        if matches!(self.type_link, Some(TypeLink::New(_))) {
+            out.push(self.global_id.derive("type").encode());
+        }
+        out.extend(self.references().filter_map(|r| match r {
             ObjectRef::Guid(g) => Some(g.clone()),
             ObjectRef::Id(_) => None,
         }));

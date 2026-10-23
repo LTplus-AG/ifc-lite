@@ -479,11 +479,9 @@ fn a_new_storey_carries_the_elevation_it_is_given() {
         let (out, report) = run(&source, vec![add(level2), add(level3)]);
         assert_clean(&report, schema);
         assert!(crate::plan::validate::validate(&out, schema).is_empty(), "{schema}");
-        let elevation = |g| {
-            let index = crate::plan::index::FileIndex::scan(&out, &Default::default());
-            let idx = crate::plan::attrs::attribute_index(schema, "IFCBUILDINGSTOREY", "Elevation").unwrap();
-            crate::step_text::attribute_of(&index.raw_line(id_in(&out, g)).unwrap(), idx).unwrap()
-        };
+        let index = crate::plan::index::FileIndex::scan(&out, &Default::default());
+        let idx = crate::plan::attrs::attribute_index(schema, "IFCBUILDINGSTOREY", "Elevation").unwrap();
+        let elevation = |g| crate::step_text::attribute_of(&index.raw_line(id_in(&out, g)).unwrap(), idx).unwrap();
         assert_eq!(elevation(gid(60)), "6.5", "{schema}");
         assert_eq!(elevation(gid(61)), "$", "{schema}: none given, none written");
     }
@@ -494,11 +492,21 @@ fn an_elevation_is_refused_off_a_storey_or_when_not_finite() {
     let source = storey_with_typed_wall("IFC4");
     let mut wall = object(IfcClass::Wall, gid(62), storey(), Representation::None);
     wall.elevation = Some(1.0);
-    let mut storey_nan = object(IfcClass::BuildingStorey, gid(63), Some(ObjectRef::Id(60)), Representation::None);
-    storey_nan.elevation = Some(f64::NAN);
-    let (_, report) = run(&source, vec![add(wall), add(storey_nan)]);
+    let mut adds = vec![(gid(62), "only a storey takes one")];
+    let mut plan = vec![add(wall)];
+    for (n, bad) in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY].into_iter().enumerate() {
+        let g = gid(63 + n as u128);
+        let mut level = object(IfcClass::BuildingStorey, g, Some(ObjectRef::Id(60)), Representation::None);
+        level.elevation = Some(bad);
+        plan.push(add(level));
+        adds.push((g, "not finite"));
+    }
+    let (_, report) = run(&source, plan);
     assert_eq!(report.added, 0);
-    let reasons: Vec<&str> = report.refusals.iter().map(|r| r.reason.as_str()).collect();
-    assert!(reasons[0].contains("only a storey takes one"), "{reasons:?}");
-    assert!(reasons[1].contains("not finite"), "{reasons:?}");
+    assert_eq!(report.refusals.len(), adds.len(), "{:?}", report.refusals);
+    for (g, expected) in adds {
+        let key = ObjectRef::Guid(g.encode());
+        let refusal = report.refusals.iter().find(|r| r.object == key).unwrap_or_else(|| panic!("{key} not refused"));
+        assert!(refusal.reason.contains(expected), "{key}: {}", refusal.reason);
+    }
 }

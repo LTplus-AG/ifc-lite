@@ -26,7 +26,7 @@ use super::placement::{axis_placement_records, fmt};
 use super::props_synth::ref_list;
 use super::types::{SurfaceColour, TriangleMesh};
 
-const IDENTITY: [[f64; 4]; 4] = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]];
+use super::builders::IDENTITY;
 
 /// Appends records in id order; every builder below writes through one.
 pub(crate) struct Emit<'a> {

@@ -69,7 +69,7 @@ use super::{cutter_is_closed_manifold, CutterKind, VoidContext};
 use crate::program::openings::execute::Execution;
 use crate::cdt::triangulate_pslg;
 use crate::mesh::Mesh;
-use nalgebra::{Point2, Vector3};
+use nalgebra::Point2;
 use rustc_hash::FxHashMap;
 
 /// `IFC_LITE_PRISM_CUT=0` disables the analytic prism-subtraction path (exact

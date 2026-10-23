@@ -286,13 +286,16 @@ mod tests {
         assert_eq!(o.container, Some(ObjectRef::Id(70)));
         assert_eq!(o.placement.relative_to, Some(ObjectRef::Id(3)));
         assert!(matches!(o.type_link, Some(TypeLink::Existing(ObjectRef::Id(40)))));
-        assert!(matches!(o.representation, Representation::Extrusion(_)));
+        let Representation::Extrusion(body) = &o.representation else { panic!("extrusion body") };
+        assert_eq!((body.profile.len(), body.direction, body.depth), (3, [0.0, 0.0, 1.0], 1.0));
+        assert_eq!(o.class.predefined_type, None);
         assert_eq!(o.style.map(|c| (c.rgb, c.transparency)), Some(([0.1, 0.2, 0.3], 0.5)));
         let op = o.opening.as_ref().unwrap();
         assert_eq!((&op.host, op.matrix, op.shape.direction, op.shape.depth), (&ObjectRef::Id(10), IDENTITY, [0.0, 0.0, 1.0], 1.0));
         assert_eq!(op.shape.profile, vec![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]);
         let (set, prop) = (&o.psets[0], &o.psets[0].properties[0]);
         assert_eq!((o.psets.len(), set.name.as_str(), set.kind, prop.name.as_str()), (1, "P", PsetKind::Property, "L"));
+        assert_eq!(prop.unit, None);
         assert!(matches!(&prop.value, PropertyValue::Measure { measure_type, value, .. } if measure_type == "IfcLengthMeasure" && *value == 2.0));
         assert!(matches!(&o.material, Some(MaterialLink::New(m)) if m.name == "C" && m.category.as_deref() == Some("concrete")));
         assert!(matches!(o.classifications.as_slice(), [ClassificationLink::Existing(ObjectRef::Id(9))]));
@@ -301,12 +304,13 @@ mod tests {
         assert_eq!((bare.global_id, bare.class.class.keyword()), (GlobalId(8), "IFCWALL".to_string()));
         assert!(bare.name.is_none() && bare.container.is_none() && bare.type_link.is_none() && bare.style.is_none());
         assert!(matches!(bare.representation, Representation::None) && bare.psets.is_empty() && bare.classifications.is_empty());
+        assert!(bare.opening.is_none() && bare.material.is_none() && bare.placement.relative_to.is_none() && bare.class.predefined_type.is_none());
 
         let type_set = NewPropertySet::new("TS", PsetKind::Quantity, Vec::new());
         let t = NewType::new(IfcClass::Named("IfcWallType".into())).with_global_id(GlobalId(5)).with_name("T").with_psets(vec![type_set]);
         assert_eq!((t.global_id, t.name.as_deref()), (Some(GlobalId(5)), Some("T")));
         assert_eq!((t.psets[0].name.as_str(), t.psets[0].kind, t.psets[0].properties.len()), ("TS", PsetKind::Quantity, 0));
-        assert_eq!(t.class.class.keyword(), "IFCWALLTYPE");
+        assert_eq!((t.class.class.keyword(), t.class.predefined_type.clone()), ("IFCWALLTYPE".to_string(), None));
         let r = NewClassificationReference::new(ClassificationSystem::New(NewClassification::new("U").with_source("s").with_edition("1")))
             .with_identification("A")
             .with_name("N")

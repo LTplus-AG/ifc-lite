@@ -235,13 +235,14 @@ mod tests {
         assert_eq!((p.psets.len(), p.psets[0].prop.as_str()), (1, "P"));
         assert_eq!(p.placement.map(|pl| pl.matrix), Some(IDENTITY));
         let g = p.geometry.as_ref().unwrap();
-        assert_eq!((g.mesh.positions[1], g.mesh.triangles.clone()), ([1.0, 0.0, 0.0], vec![[0, 1, 2]]));
+        assert_eq!((g.mesh.positions.clone(), g.mesh.triangles.clone()), (vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], vec![[0, 1, 2]]));
         assert_eq!(g.colour.map(|c| (c.rgb, c.transparency)), Some(([1.0, 0.0, 0.0], 0.0)));
         let c = PlanContext::new().with_author("a").with_organization("o").with_time_stamp("t");
         assert_eq!((c.author.as_deref(), c.organization.as_deref(), c.time_stamp.as_deref()), (Some("a"), Some("o"), Some("t")));
         let plan = ExportPlan::new(vec![(ObjectRef::Id(1), Disposition::Delete)]).with_context(c);
         assert!(matches!(plan.dispositions.as_slice(), [(ObjectRef::Id(1), Disposition::Delete)]));
-        assert_eq!((plan.context.author.as_deref(), plan.context.time_stamp.as_deref()), (Some("a"), Some("t")));
+        let ctx = &plan.context;
+        assert_eq!((ctx.author.as_deref(), ctx.organization.as_deref(), ctx.time_stamp.as_deref()), (Some("a"), Some("o"), Some("t")));
         let m = MapConversion::new("EPSG:2056", 1.0, 2.0, 3.0).with_map_unit(MapUnit::Foot).with_x_axis(0.0, 1.0).with_scale(0.5);
         assert_eq!((m.crs_name.as_str(), m.eastings, m.northings, m.orthogonal_height), ("EPSG:2056", 1.0, 2.0, 3.0));
         assert_eq!((m.map_unit, m.x_axis_abscissa, m.x_axis_ordinate, m.scale), (MapUnit::Foot, 0.0, 1.0, Some(0.5)));

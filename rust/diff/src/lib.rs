@@ -42,6 +42,8 @@ pub mod content_types;
 mod content_helpers;
 pub mod content_match;
 pub mod split_evidence;
+pub mod split_geometry;
+pub mod split_grid;
 
 // Internal. The canonical encoding and the code-unit helpers are
 // implementation detail of the fingerprint, not a surface worth promising:
@@ -61,3 +63,6 @@ pub use utf16::stable_hash;
 
 #[cfg(test)]
 mod content_tests;
+
+#[cfg(test)]
+mod split_geometry_tests;

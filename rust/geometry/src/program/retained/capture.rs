@@ -54,6 +54,7 @@ pub(super) fn capture(
         evaluation_from_source: payload.evaluation_from_source,
         object_frame,
         world_from_source,
+        contract,
     };
     Ok(RetainedPlanOperation {
         value,

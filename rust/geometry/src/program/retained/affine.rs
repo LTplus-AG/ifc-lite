@@ -3,6 +3,7 @@
 use super::*;
 impl LogicalRetainedValue {
     pub(in crate::program) fn bake(&mut self) -> crate::Result<Option<RetainedPlanOperation>> {
+        self.validate_identity()?;
         let matrix = nalgebra::Matrix4::from_column_slice(&self.object_frame);
         validate_affine(&matrix)?;
         if proper_rigid(&matrix).is_ok() { return Ok(None); }

@@ -3,20 +3,20 @@
 use super::*;
 
 #[test]
-fn mapped_later_boolean_or_unsupported_item_refuses_whole_plan() {
-    for later in ["#53", "#94"] {
+fn mapped_later_unsupported_item_refuses_whole_plan() {
+    for (later, expected) in [("#53", 1), ("#94", 2)] {
         let bytes = mapping_tests::mapped()
             .replace("'SweptSolid',(#113)", &format!("'SweptSolid',(#113,{later})"))
-            .replace("ENDSEC;END-ISO", "#94=IFCBOOLEANRESULT(.UNION.,#113,#113);ENDSEC;END-ISO");
+            .replace("ENDSEC;END-ISO", "#94=IFCBOOLEANRESULT(.UNKNOWN.,#113,#113);ENDSEC;END-ISO");
         let source = SourceBundle::new(bytes.as_bytes().to_vec());
         let mut decoder = source.decoder();
         let router = GeometryRouter::with_units(&bytes, &mut decoder);
         let entity = decoder.decode_by_id(10).unwrap();
         let mut program = RetainedProgram::product_submeshes(&entity, false, None, contract());
-        assert_eq!(drive(&mut program, &router, &mut decoder).len(), 1);
+        assert_eq!(drive(&mut program, &router, &mut decoder).len(), expected);
         assert!(program.finish().is_err(), "no partial mapped product for {later}");
         let mut map = RetainedProgram::type_map(decoder.decode_by_id(81).unwrap(), None, contract());
-        assert_eq!(drive(&mut map, &router, &mut decoder).len(), 1);
+        assert_eq!(drive(&mut map, &router, &mut decoder).len(), expected);
         assert!(map.finish_type_map(60, 1, [1.; 4]).is_err());
     }
 }

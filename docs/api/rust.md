@@ -1690,7 +1690,7 @@ Each physical copy receives a new definition; rigid mappings need no physical co
 controller: repeated sources share a construction definition within a root while
 each placed occurrence receives its own logical slot and ordered placement lineage.
 Exact mesh caches cannot satisfy retained construction requests. Unsupported source
-families, Booleans, custom processors, annotations and
+families, halfspaces, custom processors, annotations and
 alignments refuse the whole traversal, including after earlier constructions. Native targets support source
 capture; wasm32 needs the existing `wasm_source_capture` feature. The default
 wasm build refuses retained admission.
@@ -1717,6 +1717,17 @@ unsupported items still refuse. The exact path keeps its existing decoding and
 selection behavior. Composed retained frames must remain finite,
 including initial unit conversion; failed composition leaves the logical value's
 frames, occurrence slot and placement lineage unchanged and refuses the plan.
+
+Solid Union, Intersection and Difference emit `RetainedOperationKind::Boolean`
+with ordered `[left, right]` logical operands. Nested Booleans use the existing
+Boolean spine; mapped operands use the same mapping controller and must contribute
+exactly one solid. Source domain, unit scale and proper rigid operand frames are
+checked; nonrigid operands first emit affine operations. Repeated DAG occurrences
+remain distinct. Missing operators, unsupported operands and bounds failures refuse
+the whole plan. Resource stops remain sticky across roots and account scopes.
+These operations describe work for a future executor; admission replies authenticate
+controller progression only. They do not certify numerical success, an empty Boolean
+result, final product publication or source/face correspondence.
 
 `finish` returns a logical `RetainedProductPlan`, not a completed mesh or a
 runtime receipt. Opening closure, material layers, appearance and persistent

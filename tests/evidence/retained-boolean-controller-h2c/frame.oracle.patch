@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/program/retained/boolean.rs
++++ b/rust/geometry/src/program/retained/boolean.rs
+@@ -9,7 +9,7 @@
+         || inputs[0].length_unit_scale != inputs[1].length_unit_scale {
+         return Err(crate::Error::geometry("invalid retained Boolean inputs"));
+     }
+-    for value in &inputs { value.validate_identity()?;  }
++    for value in &inputs { value.validate_identity()?; proper_rigid(&value.world_from_evaluation())?; }
+     crate::resource::charge(crate::resource::Cost { work: 1, occurrences: 1,
+         live_bytes: std::mem::size_of::<[LogicalRetainedValue; 2]>() as u64, ..Default::default() })?.retain();
+     let slot = next_slot(inputs[0].slot.program)?;

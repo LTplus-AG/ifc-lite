@@ -27,6 +27,7 @@ impl BooleanMachine {
     /// Admit the next spine node's source, innermost first.
     pub(super) fn steps(&mut self, mut steps: Steps, recorder: &BooleanClippingProcessor,
         decoder: &mut EntityDecoder) -> Result<()> {
+        if steps.retained.is_some() { return self.retained_steps(steps, recorder, decoder); }
         let Some(node) = steps.nodes.pop() else {
             self.value = Some((steps.mesh, steps.empty_recorded));
             return Ok(());

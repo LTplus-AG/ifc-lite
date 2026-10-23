@@ -61,7 +61,8 @@ impl<'a> RetainedProgram<'a> {
         }
     }
     fn check(&self) -> std::result::Result<(), RetainedProgramError> {
-        crate::resource::check_current().map_err(RetainedProgramError::Stopped)?;
+        crate::resource::check_current().map_err(|stop| RetainedProgramError::Stopped(
+            self.selection().map_or(stop, |selection| selection.remember_stop(stop))))?;
         if let Some(selection) = self.selection() {
             selection.check().map_err(RetainedProgramError::Stopped)?;
         }
@@ -77,7 +78,15 @@ impl<'a> RetainedProgram<'a> {
             .map(|r| r.map(RetainedTicket))
             .map_err(Into::into)
     }
-    pub fn admit(
+    pub fn admit(&mut self, ticket: RetainedTicket, router: &GeometryRouter, decoder: &mut EntityDecoder)
+        -> std::result::Result<(RetainedReply, Vec<RetainedPlanOperation>), RetainedProgramError> {
+        let result = self.admit_checked(ticket, router, decoder);
+        if let Err(RetainedProgramError::Stopped(stop)) = &result {
+            if let Some(selection) = self.selection() { selection.remember_stop(*stop); }
+        }
+        result
+    }
+    fn admit_checked(
         &mut self,
         ticket: RetainedTicket,
         router: &GeometryRouter,

@@ -786,7 +786,7 @@ fn unsupported_mapped_source_item_is_dropped_and_counted_not_silent() {
 #8=IFCGEOMETRICSET(());
 #9=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#7,#8));
 #10=IFCREPRESENTATIONMAP($,#9);
-#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,$,$,$);
+#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#5,$,$);
 #12=IFCMAPPEDITEM(#10,#11);
 #13=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#12));
 #14=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));
@@ -915,7 +915,7 @@ fn a_non_body_representations_unsupported_item_is_not_counted_as_content_loss() 
 #8=IFCANNOTATIONFILLAREA(#1,());
 #9=IFCSHAPEREPRESENTATION($,'FootPrint','Annotation2D',(#8));
 #10=IFCREPRESENTATIONMAP($,#9);
-#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,$,$,$);
+#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1,$,$);
 #12=IFCMAPPEDITEM(#10,#11);
 #13=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#12));
 #14=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));
@@ -945,7 +945,7 @@ fn the_same_unsupported_item_under_a_body_representation_is_still_counted() {
 #8=IFCANNOTATIONFILLAREA(#1,());
 #9=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#8));
 #10=IFCREPRESENTATIONMAP($,#9);
-#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,$,$,$);
+#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1,$,$);
 #12=IFCMAPPEDITEM(#10,#11);
 #13=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#12));
 #14=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));
@@ -1088,7 +1088,7 @@ const MIXED_SHARED_SOURCE: &str = r#"
 #8=IFCGEOMETRICSET(());
 #9=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#7,#8));
 #10=IFCREPRESENTATIONMAP($,#9);
-#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,$,$,$);
+#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#5,$,$);
 #12=IFCMAPPEDITEM(#10,#11);
 #13=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#12));
 #14=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));
@@ -1106,10 +1106,11 @@ const MIXED_SHARED_SOURCE: &str = r#"
 /// [`MIXED_SHARED_SOURCE`] with the supported solid removed, so the source
 /// meshes to EMPTY and neither cache will hold it.
 const TOTAL_LOSS_SHARED_SOURCE: &str = r#"
+#1=IFCCARTESIANPOINT((0.,0.,0.));
 #8=IFCGEOMETRICSET(());
 #9=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#8));
 #10=IFCREPRESENTATIONMAP($,#9);
-#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,$,$,$);
+#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1,$,$);
 #12=IFCMAPPEDITEM(#10,#11);
 #13=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#12));
 #14=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));
@@ -1140,7 +1141,7 @@ fn a_footprint_source_is_not_counted_on_the_occurrence_path_either() {
 #8=IFCANNOTATIONFILLAREA(#1,());
 #9=IFCSHAPEREPRESENTATION($,'FootPrint','Annotation2D',(#8));
 #10=IFCREPRESENTATIONMAP($,#9);
-#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,$,$,$);
+#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1,$,$);
 #12=IFCMAPPEDITEM(#10,#11);
 #13=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#12));
 #14=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));
@@ -1168,7 +1169,7 @@ fn the_same_item_under_a_body_source_is_still_counted_on_the_occurrence_path() {
 #8=IFCANNOTATIONFILLAREA(#1,());
 #9=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#8));
 #10=IFCREPRESENTATIONMAP($,#9);
-#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,$,$,$);
+#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1,$,$);
 #12=IFCMAPPEDITEM(#10,#11);
 #13=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#12));
 #14=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));
@@ -1229,7 +1230,7 @@ fn capped_curve_in_mapped_source_is_reported_and_not_misattributed_to_the_next_i
 #54=IFCSHELLBASEDSURFACEMODEL((#53));
 #55=IFCSHAPEREPRESENTATION($,'Body','SurfaceModel',(#54));
 #60=IFCREPRESENTATIONMAP($,#55);
-#61=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,$,$,$);
+#61=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#3,$,$);
 #62=IFCMAPPEDITEM(#60,#61);
 #63=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#62));
 #64=IFCPRODUCTDEFINITIONSHAPE($,$,(#63));
@@ -1276,4 +1277,61 @@ fn capped_curve_in_mapped_source_is_reported_and_not_misattributed_to_the_next_i
         after_plain.is_empty(),
         "the unrelated element must not inherit the mapped item's already-reported diagnostic: {after_plain:?}"
     );
+}
+
+// #7670 recovery: the decoder-less direction reader follows the canonical
+// leaf policy even when a default/lossless decoder has already parsed input.
+#[test]
+fn decoderless_direction_preserves_raw_2d_3d_and_zero_ratios_7670() {
+    let read = crate::transform::parse_direction;
+    for (record, expected) in [
+        ("IFCDIRECTION((3,-4.))", [3.0, -4.0, 0.0]),
+        ("IFCDIRECTION((2.,-3.,4.))", [2.0, -3.0, 4.0]),
+        ("IFCDIRECTION((0.,0.,0.))", [0.0; 3]),
+    ] {
+        let content = format!("#42={record};");
+        let mut decoder = EntityDecoder::new(&content);
+        let entity = decoder.decode_by_id(42).expect("valid parsed control");
+        let actual = read(&entity).expect("finite 2D/3D ratios, including zero, are valid");
+        assert_eq!([actual.x, actual.y, actual.z], expected, "{record}");
+        assert_eq!(decoder.refused_records(), 0, "decoder-less read cannot count");
+    }
+}
+
+#[test]
+fn decoderless_direction_rejects_malformed_parsed_entities_7670() {
+    let read = crate::transform::parse_direction;
+    for record in [
+        "IFCDIRECTION()", "IFCDIRECTION($)", "IFCDIRECTION(*)",
+        "IFCDIRECTION(1.)", "IFCDIRECTION(())", "IFCDIRECTION((1.))",
+        "IFCDIRECTION((1.,2.,3.,4.))", "IFCDIRECTION((1.,'x'))",
+        "IFCDIRECTION((1.,$))", "IFCDIRECTION((IFCREAL(1.),2.))",
+        "IFCDIRECTION((1.,2.),$)", "IFCCARTESIANPOINT((1.,2.,3.))",
+    ] {
+        let content = format!("#42={record};");
+        let mut decoder = EntityDecoder::new(&content);
+        let entity = decoder.decode_by_id(42).expect("malformed leaf must still parse");
+        let error = read(&entity).expect_err("malformed direction must not become a vector");
+        assert!(matches!(error, crate::Error::GeometryError(ref message)
+            if message == "#42 is not a readable IfcDirection"), "{record}: {error}");
+        assert_eq!(decoder.refused_records(), 0, "{record}: no decoder to count through");
+    }
+}
+
+#[test]
+fn decoderless_direction_rejects_parsed_nonfinite_ratios_7670() {
+    let read = crate::transform::parse_direction;
+    // The default decoder is lossless: overflowing STEP REALs parse as
+    // infinities. Strict-reals decoding would reject before reaching this API.
+    for literal in ["1.E400", "-1.E400"] {
+        let content = format!("#42=IFCDIRECTION(({literal},0.,0.));");
+        let mut decoder = EntityDecoder::new(&content);
+        let entity = decoder.decode_by_id(42).expect("default decoder retains overflow");
+        let first = entity.get_list(0).unwrap()[0].as_float().unwrap();
+        assert!(first.is_infinite(), "control must actually reach reader as non-finite");
+        let error = read(&entity).expect_err("non-finite ratios must not become a vector");
+        assert!(matches!(error, crate::Error::GeometryError(ref message)
+            if message == "#42 is not a readable IfcDirection"), "{literal}: {error}");
+        assert_eq!(decoder.refused_records(), 0, "decoder-less refusal is uncounted");
+    }
 }

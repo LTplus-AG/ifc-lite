@@ -283,6 +283,31 @@ fan-out, memory bandwidth, GPU); a change in those still needs an end-to-end
 A/B (`ab.sh`, the browser rigs below), and a green ratchet is no evidence for it.
 
 
+## Placement consumer consistency (#7779, #7906)
+
+Historical qualification of the original stack only (through `7cdd67bc3e`):
+the recovered stack has changed and awaits new qualification. The following
+verdict is retained as historical evidence, not a current performance or
+output-identity claim.
+
+The frozen X3a, R2a and corrective-tail native cohort preserved mesh, vertex,
+triangle and per-mesh fingerprint output on Haus, ISSUE_129 and Holter. The
+tail stayed within the approved base-relative instruction band in every
+measured phase, while R2a exceeded it in duplex preprocessing. Both sides fit
+the committed small and large instruction ceilings; that does not erase the
+separate base-relative failure. Pool phase timers and wall medians also moved
+in different directions, so this is a mixed result with no speedup claim.
+The exact source pins, raw sample tables, phase comparisons and limits are in
+[#7906](https://github.com/LTplus-AG/ifc-lite/pull/7906).
+
+The separate shared-parent placement harness confirms analytic transforms and
+memo reuse through the production resolver and router. It does not measure
+throughput. Native instruction counts and this mechanism check do not qualify
+WASM worker scheduling or browser load time. Lesson: preserve phase-level
+failures and wall-time disagreements even when aggregate instructions and
+committed ceilings pass; attribute the retained preprocessing dumps before
+changing production work or accepting the regression.
+
 ## Generated shader commentary and eager bytes (#7918)
 
 WGSL comments inside generated shader strings survive JavaScript minification
@@ -4525,6 +4550,43 @@ adverse verdict, with causal attribution still unproven, rather than a neutralit
 claim. Existing native-instruction, bundle, parity and required CI ceilings stay
 binding. No benchmark rerun, baseline, acceptance band or pin change is made.
 
+
+### Canonical placement consumer own-layer native verdict (#7880)
+
+The fresh standalone03 `03e2ad` versus corrected-X `a806aed` native worker-pool
+cohort preserves complete ordered mesh/float/frame/metadata/instance output and
+all diagnostic bytes on Haus, ISSUE_129 and heavy Holter. Every timed count and
+fingerprint also matches. The stock report identifies no real phase change but
+remains inconclusive; complete-load observations are modestly adverse on all
+three controls. No speed or neutrality claim follows.
+
+Disposition: accept the disclosed native cost for canonical placement/direction
+consumer fixes with exact preserved geometry/refusal output. This is an accepted
+cost, not a required-gate waiver. The [own-layer evidence](evidence/placement-7779/recovery-x-native/README.md)
+retains every phase/sample and distinguishes the stock selected report from
+all-inner outer-block statistics. Both actual selected sources retain original
+core/geometry/processing and example compiler proof; the original X preparation's
+later R-guard failure remains failed. No prior timing observations are pooled or
+subtracted. Lesson: qualify the actual layer against its own base and preserve
+small adverse results even when full output matches and the stock report is
+inconclusive. Browser/WASM and other required CI/ratchet gates remain separate;
+no baseline, ceiling, acceptance band or pin changes.
+
+### Current-main source recovery hold (#7880)
+
+The public `e219be91b220` history is recovered onto actual merged main
+`c7d3855296fc` without replacing its ancestry. The type-map origin reader uses
+the current GeometryProgram controller, and the omitted derived-Axis1 repair
+and parsed Axis2 regression are carried as source. Lower-layer placement
+policy, resource accounting and diagnostics retain current-main authority.
+
+Qualification remains **HOLD for X3a behavioral/oracle evidence, the required
+performance verdict and applicable gates**. Charter #7779 assigns X3a to #7880;
+Class R neutrality belongs to the later R2a layer (#7896). This source-only
+recovery ran no build, native test, browser/WASM campaign or performance measurement. Historical native observations above and the private
+75-test qualification do not qualify the recovered source. Root review and
+source-matched fleet qualification remain required; no output pin, baseline,
+ceiling or acceptance band is changed.
 
 ## Allplan polyline full-path compatibility (#7983)
 

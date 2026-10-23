@@ -86,22 +86,17 @@ fn empty_profile_defers_axis_data_but_still_requires_axis_reference_and_angle() 
         "#14=IFCAXIS1PLACEMENT(#12,#13);",
         "#14=IFCAXIS1PLACEMENT();",
     );
-    assert_eq!(
-        lower(&nonempty).unwrap_err().to_string(),
-        "Geometry processing error: Axis1Placement missing Location"
-    );
+    assert!(lower(&nonempty).is_err(), "#7880: nonempty sweep needs readable Location");
 }
 
 #[test]
-fn positional_axis_leniency_is_preserved_without_new_type_owner_assertions() {
-    // The production decoder historically reads this positional layout without
-    // requiring Axis1Placement's entity type. Keep that malformed-input policy.
+fn wrong_kind_axis_is_refused_during_lowering_7880() {
+    // #7880: Axis1Placement owns this layout; another placement must refuse.
     let source = SOURCE.replace(
         "#14=IFCAXIS1PLACEMENT(#12,#13);",
         "#14=IFCAXIS2PLACEMENT3D(#12,#13,$);",
     );
-    let mesh = lower(&source).unwrap().evaluate().unwrap();
-    assert!((volume(&mesh) - 18. * std::f64::consts::PI).abs() < 1.);
+    assert!(lower(&source).is_err());
 }
 
 #[test]

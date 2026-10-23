@@ -36,8 +36,7 @@ pub(super) fn lower(
             Error::geometry("SurfaceOfLinearExtrusion missing ExtrudedDirection".to_string())
         })?;
     let direction = match direction_attr.as_entity_ref() {
-        Some(dir_id) => get_direction_by_id(dir_id, decoder)
-            .ok_or_else(|| Error::geometry("Failed to get direction".to_string()))?,
+        Some(dir_id) => get_direction_by_id(dir_id, decoder)?,
         None => Vector3::new(0.0, 0.0, 1.0), // Default to Z-up
     };
     // `IfcPositiveLengthMeasure`: zero or negative is refused, not meshed

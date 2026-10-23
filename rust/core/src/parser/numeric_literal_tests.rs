@@ -136,3 +136,29 @@ fn admits_negative_zero_and_underflow() {
     assert_eq!(parse_step_numeric::<f64>(b"1.E-400"), Some((0.0, 7)));
     assert_eq!(parse_step_numeric::<f32>(b"1.E-50"), Some((0.0, 6)));
 }
+
+/// #7880: the bounded trailing-dot conversion and its general fallback must
+/// match an independent decimal reader, including signed zero and rounding
+/// beyond the exact-integer bound. Delimiters must not change consumed length.
+#[test]
+fn issue7880_integer_valued_reals_preserve_bits_across_conversion_boundary() {
+    for magnitude in [
+        "0", "1", "9", "12345678901234", "999999999999999",
+        "1000000000000000", "9007199254740991", "9007199254740993",
+        "000000000000001", "0000000000000000",
+    ] {
+        for sign in ["", "+", "-"] {
+            for suffix in [".", ".0", ".E0", "E0"] {
+                let text = format!("{sign}{magnitude}{suffix}");
+                let expected = text.parse::<f64>().unwrap().to_bits();
+                for tail in ["", ",2.", ")", " /* comment */"] {
+                    let input = format!("{text}{tail}");
+                    let Some((StepNumber::Real(value), len)) = read_step_number(input.as_bytes()) else {
+                        panic!("expected REAL for {input:?}");
+                    };
+                    assert_eq!((value.to_bits(), len), (expected, text.len()), "{input:?}");
+                }
+            }
+        }
+    }
+}

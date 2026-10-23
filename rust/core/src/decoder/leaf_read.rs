@@ -123,6 +123,14 @@ impl EntityDecoder<'_> {
         self.leaf3(id, DIRECTION_KEYWORD, IfcType::IfcDirection)
     }
 
+    /// The direction rule applied to an `IfcDirection` already in hand: the
+    /// ratios, or `None` when it is malformed. There is no decoder here, so
+    /// nothing is counted: only for a caller that holds the entity and no
+    /// decoder (the void probe's `parse_direction`, until C2 gives it one).
+    pub fn direction3_of(entity: &DecodedEntity) -> Option<[f64; 3]> {
+        slow_leaf(entity, IfcType::IfcDirection)
+    }
+
     /// Attribute `slot` of `entity` as a point: `$`, `*` or past the end is
     /// `Ok(None)`, `#n` is [`Self::point3`], anything else is a counted
     /// [`Error::MalformedRecord`] of `entity`.

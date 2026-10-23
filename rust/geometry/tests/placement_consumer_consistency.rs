@@ -1,0 +1,270 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+use ifc_lite_core::{EntityDecoder, IfcSchema};
+use ifc_lite_geometry::{placement, Point2, ProfileProcessor, TessellationQuality};
+
+// #7779 / #7880: a conic must use the same repaired frame as a rectangle.
+#[test]
+fn issue_7779_ellipse_and_rectangle_share_repaired_planar_axes() {
+    for (ratios, x, y) in [
+        ("0.,0.", 1.0, 0.0),
+        ("0.,5.E-10", 1.0, 0.0),
+        ("0.,1.E-9", 1.0, 0.0),
+        ("0.,1.0001E-9", 0.0, 1.0),
+        ("0.,2.E-9", 0.0, 1.0),
+        ("3.,4.", 0.6, 0.8),
+        ("1.E150,1.E150", std::f64::consts::FRAC_1_SQRT_2, std::f64::consts::FRAC_1_SQRT_2),
+        // Finite components can overflow norm(): retain the canonical repair,
+        // including its -Y perpendicular fallback, without changing its policy.
+        ("1.E308,1.E308", 0.0, -1.0),
+    ] {
+        let content = format!(
+            "#1=IFCCARTESIANPOINT((10.,20.));\n#2=IFCDIRECTION(({ratios}));\n\
+             #3=IFCAXIS2PLACEMENT2D(#1,#2);\n#4=IFCELLIPSE(#3,2.,1.);\n\
+             #5=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#4);\n\
+             #6=IFCRECTANGLEPROFILEDEF(.AREA.,$,#3,4.,2.);"
+        );
+        let mut decoder = EntityDecoder::new(&content);
+        let processor = ProfileProcessor::new(IfcSchema::new());
+        let frame = placement::Axis2Placement::read_id(3, &mut decoder).unwrap().matrix();
+        assert!((frame[(0, 0)] - x).abs() < 1e-12 && (frame[(1, 0)] - y).abs() < 1e-12,
+            "{ratios}: canonical frame differs from the stated repair/control");
+        let ellipse = decoder.decode_by_id(5).unwrap();
+        let rectangle = decoder.decode_by_id(6).unwrap();
+        let ellipse = processor.process(&ellipse, &mut decoder, TessellationQuality::Medium).unwrap();
+        let rectangle = processor.process(&rectangle, &mut decoder, TessellationQuality::Medium).unwrap();
+        let center = Point2::new(10.0, 20.0);
+        let expected_major_tip = center + nalgebra::Vector2::new(2.0 * x, 2.0 * y);
+        assert!(ellipse.outer.iter().any(|p| (p - expected_major_tip).norm() < 1e-9),
+            "{ratios}: ellipse must reach the repaired frame's major-axis tip {expected_major_tip:?}");
+        // The unequal rectangle has corners at center ±2X ±Y.
+        for (sx, sy) in [(-1.0, -1.0), (-1.0, 1.0), (1.0, -1.0), (1.0, 1.0)] {
+            let corner = center + nalgebra::Vector2::new(2.0 * sx * x - sy * y, 2.0 * sx * y + sy * x);
+            assert!(rectangle.outer.iter().any(|p| (p - corner).norm() < 1e-9), "{ratios}: {corner:?}");
+        }
+        assert_eq!(decoder.refused_records(), 0, "readable degenerate axes are repaired");
+    }
+}
+
+// #7779 / #7880 review 4303997673: a present unreadable grid direction
+// must refuse the placement, while an absent direction inherits +X.
+#[test]
+fn issue_7779_grid_direction_refusal_cannot_become_an_axis_aligned_success() {
+    for (direction, expected) in [
+        ("IFCDIRECTION((0.,1.,'bad'))", None),
+        ("IFCDIRECTION((0.,1.))", Some((0.0, 1.0))),
+        ("IFCDIRECTION((0.,1.,0.))", Some((0.0, 1.0))),
+        ("IFCDIRECTION((0.,0.,0.))", Some((1.0, 0.0))),
+    ] {
+        let content = format!("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4X3_ADD2'));\nENDSEC;\nDATA;\n\
+            #1=IFCCARTESIANPOINT((0.,0.));\n#2=IFCCARTESIANPOINT((10.,0.));\n\
+            #3=IFCPOLYLINE((#1,#2));\n#4=IFCGRIDAXIS('P',#3,.T.);\n\
+            #5=IFCCARTESIANPOINT((0.,10.));\n#6=IFCPOLYLINE((#1,#5));\n\
+            #7=IFCGRIDAXIS('Q',#6,.T.);\n#8=IFCVIRTUALGRIDINTERSECTION((#4,#7),(0.,0.,0.));\n\
+            #9={direction};\n#10=IFCGRIDPLACEMENT($,#8,#9);\n#11=IFCGRIDPLACEMENT($,#8,$);\nENDSEC;\nEND-ISO-10303-21;");
+        let mut decoder = EntityDecoder::new(&content);
+        let grid = decoder.decode_by_id(10).unwrap();
+        let result = placement::resolve_chain(&grid, &mut decoder);
+        if let Some((x, y)) = expected {
+            let m = result.unwrap();
+            assert_eq!((m[(0, 0)], m[(1, 0)]), (x, y));
+            assert_eq!(decoder.refused_records(), 0);
+        } else {
+            assert!(result.is_err(), "unreadable authored direction became a frame: {result:?}");
+            assert!(decoder.refused_records() > 0);
+            assert!(decoder.get_placement_transform_cached(10).is_none());
+        }
+        let absent = decoder.decode_by_id(11).unwrap();
+        let m = placement::resolve_chain(&absent, &mut decoder).unwrap();
+        assert_eq!((m[(0, 0)], m[(1, 0)]), (1.0, 0.0));
+    }
+}
+
+// #7779 / #7896 review 4304579830: all CTO variants require LocalOrigin.
+#[test]
+fn issue_7779_derived_profiles_refuse_a_missing_operator_origin() {
+    for (kind, tail) in [
+        ("2D", ""), ("2DNONUNIFORM", ",$"),
+    ] {
+        for origin in ["$", "*", "#1"] {
+            let content = format!("#1=IFCCARTESIANPOINT((10.,20.));\n\
+                #2=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,4.,2.);\n\
+                #3=IFCCARTESIANTRANSFORMATIONOPERATOR{kind}($,$,{origin},${tail});\n\
+                #4=IFCDERIVEDPROFILEDEF(.AREA.,$,#2,#3,$);");
+            let mut decoder = EntityDecoder::new(&content);
+            let profile = decoder.decode_by_id(4).unwrap();
+            let result = ProfileProcessor::new(IfcSchema::new())
+                .process(&profile, &mut decoder, TessellationQuality::Medium);
+            if origin == "#1" {
+                let profile = result.unwrap();
+                assert_eq!(profile.outer.len(), 4);
+                assert!(profile.outer.iter().all(|p| (8.0..=12.0).contains(&p.x) && (19.0..=21.0).contains(&p.y)));
+                assert_eq!(decoder.refused_records(), 0);
+            } else {
+                assert!(result.is_err(), "{kind} {origin}: invented origin");
+                assert_eq!(decoder.refused_records(), 1);
+            }
+        }
+    }
+}
+
+// The 3D variants are exercised in their valid mapped-item context, rather
+// than as the 2D-only Operator of an IfcDerivedProfileDef (#7896).
+#[test]
+fn issue_7779_mapped_items_refuse_a_missing_operator_origin() {
+    for (kind, tail) in [("3D", ",$"), ("3DNONUNIFORM", ",$,$,$")] {
+        for origin in ["$", "*", "#1"] {
+            let content = format!("#1=IFCCARTESIANPOINT((10.,20.,30.));\n\
+                #2=IFCCARTESIANPOINT((0.,0.,0.));\n#3=IFCAXIS2PLACEMENT3D(#2,$,$);\n\
+                #4=IFCBLOCK(#3,4.,2.,1.);\n#5=IFCSHAPEREPRESENTATION($,'Body','CSG',(#4));\n\
+                #6=IFCREPRESENTATIONMAP(#3,#5);\n\
+                #7=IFCCARTESIANTRANSFORMATIONOPERATOR{kind}($,$,{origin},${tail});\n\
+                #8=IFCMAPPEDITEM(#6,#7);\n#9=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#8));\n\
+                #10=IFCPRODUCTDEFINITIONSHAPE($,$,(#9));\n\
+                #11=IFCBUILDINGELEMENTPROXY('test',$,$,$,$,$,#10,$,$);");
+            let mut decoder = EntityDecoder::new(&content);
+            let product = decoder.decode_by_id(11).unwrap();
+            let result = ifc_lite_geometry::GeometryRouter::with_scale_and_local_frame(1.0, false)
+                .process_element(&product, &mut decoder);
+            if origin == "#1" {
+                let mesh = result.unwrap();
+                assert!(!mesh.is_empty());
+                let (min, max) = mesh.bounds();
+                assert!((min.x - 10.0).abs() < 1e-5 && (max.x - 14.0).abs() < 1e-5, "{min:?} {max:?}");
+                assert!((min.y - 20.0).abs() < 1e-5 && (max.y - 22.0).abs() < 1e-5, "{min:?} {max:?}");
+                assert!((min.z - 30.0).abs() < 1e-5 && (max.z - 31.0).abs() < 1e-5, "{min:?} {max:?}");
+                assert_eq!(decoder.refused_records(), 0);
+            } else {
+                let refused = match result { Ok(mesh) => mesh.is_empty(), Err(_) => true };
+                assert!(refused, "{kind} {origin}: invented origin");
+                assert_eq!(decoder.refused_records(), 1);
+            }
+        }
+    }
+}
+
+// #7880: both absent markers must derive X from an authored 2D Axis2.
+#[test]
+fn issue_7880_derived_axis1_preserves_the_authored_axis2_frame() {
+    for (kind, tail, half_width) in [("2D", "", 1.0), ("2DNONUNIFORM", ",3.", 3.0)] {
+        let mut reference = None;
+        for marker in ["$", "*"] {
+            let content = format!("#1=IFCCARTESIANPOINT((10.,20.));\n\
+                #2=IFCDIRECTION((1.,0.));\n\
+                #3=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,4.,2.);\n\
+                #4=IFCCARTESIANTRANSFORMATIONOPERATOR{kind}({marker},#2,#1,1.{tail});\n\
+                #5=IFCDERIVEDPROFILEDEF(.AREA.,$,#3,#4,$);");
+            let mut decoder = EntityDecoder::new(&content);
+            let entity = decoder.decode_by_id(5).unwrap();
+            let profile = ProfileProcessor::new(IfcSchema::new())
+                .process(&entity, &mut decoder, TessellationQuality::Medium).unwrap();
+            assert_eq!(profile.outer.len(), 4);
+            // Local X follows (0,-1), local Y follows (1,0), then translation.
+            for x in [10. - half_width, 10. + half_width] {
+                for y in [18., 22.] {
+                    assert!(profile.outer.iter().any(|p| (p.x - x).abs() < 1e-12 && (p.y - y).abs() < 1e-12),
+                        "{kind} {marker}: missing corner ({x},{y}): {:?}", profile.outer);
+                }
+            }
+            if let Some(expected) = &reference {
+                assert_eq!(&profile.outer, expected, "{kind}: absent markers disagree");
+            } else {
+                reference = Some(profile.outer.clone());
+            }
+            assert_eq!(decoder.refused_records(), 0);
+        }
+    }
+}
+
+// #7880 F1: a readable attribute 2 does not make a non-operator an Operator.
+// The numeric last slot reaches the old debug assertion; `$` also catches the
+// old release path that would silently accept the hatching as a transform.
+#[test]
+fn issue_7880_derived_profiles_refuse_non_operator_records() {
+    for (operator, scales) in [
+        ("IFCFILLAREASTYLEHATCHING($,$,#1,$,0.)", None),
+        ("IFCFILLAREASTYLEHATCHING($,$,#1,$,$)", None),
+        ("IFCCARTESIANTRANSFORMATIONOPERATOR2D($,$,#1,2.)", Some((2.0, 2.0))),
+        ("IFCCARTESIANTRANSFORMATIONOPERATOR2DNONUNIFORM($,$,#1,2.,3.)", Some((2.0, 3.0))),
+    ] {
+        let content = format!("#1=IFCCARTESIANPOINT((10.,20.));\n\
+            #2=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,4.,2.);\n\
+            #3={operator};\n#4=IFCDERIVEDPROFILEDEF(.AREA.,$,#2,#3,$);");
+        let mut decoder = EntityDecoder::new(&content);
+        let profile = decoder.decode_by_id(4).unwrap();
+        let processor = ProfileProcessor::new(IfcSchema::new());
+        for _ in 0..2 {
+            let result = processor.process(&profile, &mut decoder, TessellationQuality::Medium);
+            if let Some((sx, sy)) = scales {
+                let region = result.unwrap();
+                assert_eq!(region.outer.len(), 4);
+                for x in [10. - 2. * sx, 10. + 2. * sx] {
+                    for y in [20. - sy, 20. + sy] {
+                        assert!(region.outer.iter().any(|p| (p.x - x).abs() < 1e-12 && (p.y - y).abs() < 1e-12),
+                            "{operator}: missing transformed corner ({x},{y}): {:?}", region.outer);
+                    }
+                }
+                assert_eq!(decoder.refused_records(), 0);
+            } else {
+                let error = result.unwrap_err();
+                assert!(matches!(&error, ifc_lite_geometry::Error::GeometryError(_)));
+                assert!(error.to_string().contains("#3: unsupported placement record IfcFillAreaStyleHatching"),
+                    "{operator}: wrong refusal: {error}");
+                assert_eq!(decoder.refused_record_ids(), vec![3], "repeat reads count the offending record once");
+            }
+        }
+    }
+}
+
+// #7880 F1: exercise MappingTarget through the public resolver and mesh path.
+// Valid 3D controls retain authored translation and uniform/non-uniform scales.
+#[test]
+fn issue_7880_mapped_items_refuse_non_operator_records() {
+    for (operator, scales) in [
+        ("IFCFILLAREASTYLEHATCHING($,$,#1,$,0.)", None),
+        ("IFCFILLAREASTYLEHATCHING($,$,#1,$,$)", None),
+        ("IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1,2.,$)", Some((2.0, 2.0, 2.0))),
+        ("IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM($,$,#1,2.,$,3.,4.)", Some((2.0, 3.0, 4.0))),
+    ] {
+        let content = format!("#1=IFCCARTESIANPOINT((10.,20.,30.));\n\
+            #2=IFCCARTESIANPOINT((0.,0.,0.));\n#3=IFCAXIS2PLACEMENT3D(#2,$,$);\n\
+            #4=IFCBLOCK(#3,4.,2.,1.);\n#5=IFCSHAPEREPRESENTATION($,'Body','CSG',(#4));\n\
+            #6=IFCREPRESENTATIONMAP(#3,#5);\n#7={operator};\n#8=IFCMAPPEDITEM(#6,#7);\n\
+            #9=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#8));\n\
+            #10=IFCPRODUCTDEFINITIONSHAPE($,$,(#9));\n\
+            #11=IFCBUILDINGELEMENTPROXY('test',$,$,$,$,$,#10,$,$);");
+        let mut decoder = EntityDecoder::new(&content);
+        let item = decoder.decode_by_id(8).unwrap();
+        let source = decoder.decode_by_id(6).unwrap();
+        let product = decoder.decode_by_id(11).unwrap();
+        let router = ifc_lite_geometry::GeometryRouter::with_scale_and_local_frame(1.0, false);
+        for _ in 0..2 {
+            let transform = router.resolve_scaled_mapped_item_transform(&item, &source, &mut decoder);
+            if let Some((sx, sy, sz)) = scales {
+                let matrix = transform.unwrap().unwrap();
+                assert_eq!((matrix[0], matrix[5], matrix[10]), (sx, sy, sz));
+                assert_eq!((matrix[12], matrix[13], matrix[14]), (10.0, 20.0, 30.0));
+                let mesh = router.process_element(&product, &mut decoder).unwrap();
+                assert!(!mesh.is_empty());
+                let (min, max) = mesh.bounds();
+                assert!((min.x - 10.0).abs() < 1e-5 && (f64::from(max.x) - (10.0 + 4.0 * sx)).abs() < 1e-5, "{min:?} {max:?}");
+                assert!((min.y - 20.0).abs() < 1e-5 && (f64::from(max.y) - (20.0 + 2.0 * sy)).abs() < 1e-5, "{min:?} {max:?}");
+                assert!((min.z - 30.0).abs() < 1e-5 && (f64::from(max.z) - (30.0 + sz)).abs() < 1e-5, "{min:?} {max:?}");
+                assert_eq!(decoder.refused_records(), 0);
+            } else {
+                let error = transform.unwrap_err();
+                assert!(matches!(&error, ifc_lite_geometry::Error::GeometryError(_)));
+                assert!(error.to_string().contains("#7: unsupported placement record IfcFillAreaStyleHatching"),
+                    "{operator}: wrong refusal: {error}");
+                let refused = match router.process_element(&product, &mut decoder) {
+                    Ok(mesh) => mesh.is_empty(),
+                    Err(_) => true,
+                };
+                assert!(refused, "{operator}: wrong-type target produced geometry");
+                assert_eq!(decoder.refused_record_ids(), vec![7], "both paths and repeat reads count the record once");
+            }
+        }
+    }
+}

@@ -55,7 +55,13 @@ fn content_match(value: &ContentMatch<'_, Value>) -> Value {
         "head": value.head.iter().map(|entity| &entity.reference).collect::<Vec<_>>() });
     if let Some(hash) = &value.geometry_hash { result["geometryHash"] = json!(hash); }
     if let Some(keys) = &value.changed_components { result["changedComponents"] = json!(keys); }
-    if let Some(distance) = value.distance { result["distance"] = json!(distance); }
+    if let Some(distance) = value.distance {
+        // Match JSON.stringify's number representation (1.0 -> 1), without
+        // relaxing numerical equality or rounding a comparison result.
+        result["distance"] = if distance.is_finite() {
+            serde_json::from_str(ryu_js::Buffer::new().format(distance)).unwrap()
+        } else { Value::Null };
+    }
     result
 }
 

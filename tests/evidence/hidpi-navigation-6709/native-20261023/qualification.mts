@@ -179,7 +179,7 @@ try {
    }
    const frames=await idle(page);
    record.rows=realGpuFrameRows(`FZK-DPR${sample.dpr}`,'orbit',frames);
-   if (record.rows.some(row => !Number.isFinite(row.value))) throw Error('Native timing metrics missing or nonfinite');
+   if (record.rows.length === 0 || record.rows.some(row => !Number.isFinite(row.value))) throw Error('Native timing metrics missing or nonfinite');
    writeFileSync(`${output}/${name}-frames.json`,JSON.stringify(frames));
    const presents=await page.evaluate('globalThis.__6709.presents');
    writeFileSync(`${output}/${name}-presents.json`,JSON.stringify(presents));

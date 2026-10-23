@@ -1,6 +1,7 @@
 # Native HiDPI navigation qualification (#6709)
 
-Status: preparation passed; native model correctness and timing remain pending.
+Status: capture fix passes focused tests and a native DPR2 functional smoke;
+paired native performance qualification remains pending.
 This capsule does not yet establish issue completion or a performance verdict.
 
 The viewer policy and capture gateway shipped in #6711. This follow-up qualifies
@@ -127,7 +128,13 @@ its owned full-quality submission, before yielding. It still waits for GPU
 completion/presentation before returning and rejects failed or cancelled work.
 The controlled lifecycle fixture now expires the drawing buffer at presentation;
 the regression exercises this through the actual renderer, animation loop and
-BCF consumer. Native verification of the fix remains pending.
+BCF consumer. The corrected source passes all 80 focused capture/BCF/export tests through
+root Turbo (57 tasks), then passes the real NVIDIA DPR2 functional smoke. The
+actual full-resolution PNG now visibly contains the model; navigation resumes
+at CSS resolution, settled quality returns, geometry is identical and all
+predeclared pick witnesses pass with no page or GPU driver errors. The PNG and
+compact receipts are retained under `diagnostics/capture-fixed-*`. This is a
+service-admitted functional result, not accepted performance evidence.
 
 A separate CSS-pick diagnostic found that the CPU-raycast-qualified wall point
 selected a window in the actual UI. The uncapped control reproduces that exact disagreement at both DPR1 and

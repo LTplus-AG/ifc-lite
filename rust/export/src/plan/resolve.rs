@@ -149,7 +149,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
         list_edits.entry(slot).or_default().remove.extend(strip);
     }
 
-    render_list_edits(index, list_edits, &removed, &mut edits_by_id);
+    attrs::render_list_edits(index, list_edits, &removed, &mut edits_by_id);
 
     // Adds run after every delete and patch has settled `removed` and the
     // list edits, so none of them extends a relationship or names a record
@@ -158,7 +158,9 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     let added = if adds.is_empty() {
         0
     } else {
-        let state = add::AddState::new(index, schema, &removed, &plan.context, owner_history_ref, body_context.chosen());
+        // An owner history the plan deletes is not one an Add can name.
+        let owner_history = owner_history_ref.filter(|id| !removed.contains(id));
+        let state = add::AddState::new(index, schema, &removed, &plan.context, owner_history, body_context.chosen());
         state.build_all(&adds, &mut ids, &mut edits_by_id, &mut appended, &mut refusals)
     };
 
@@ -220,8 +222,9 @@ fn split_dispositions<'p>(
 /// patched object (not also deleted: delete wins) survives by construction,
 /// since a copy-on-write patch can give it a relationship the source never
 /// had, which the reference count cannot see. So does what an Add names (its
-/// container, placement parent, type, host): deleting a type's last
-/// occurrence must not take the type an Add in the same plan is typed by.
+/// container, placement parent, type, host, and the owner history): deleting
+/// a type's last occurrence must not take the type an Add in the same plan is
+/// typed by.
 fn protected_ids(
     index: &FileIndex,
     resolved: &[(u32, &Disposition)],
@@ -230,31 +233,9 @@ fn protected_ids(
 ) -> HashSet<u32> {
     let patched = resolved.iter().filter(|&&(_, d)| matches!(d, Disposition::Patch(_))).map(|&(id, _)| id);
     let named = adds.iter().flat_map(|(_, new)| new.references()).filter_map(|r| index.resolve(r));
-    patched.chain(named).filter(|id| !requested_deletes.contains(id)).collect()
-}
-
-/// Every list change on one (record, attribute) slot, rendered once against
-/// the source list, so no change discards another's.
-fn render_list_edits(
-    index: &FileIndex,
-    list_edits: HashMap<(u32, usize), attrs::ListEdit>,
-    removed: &HashSet<u32>,
-    edits_by_id: &mut HashMap<u32, BTreeMap<usize, String>>,
-) {
-    for ((id, idx), edit) in list_edits {
-        if removed.contains(&id) {
-            continue;
-        }
-        let Some(slot) = index.raw_line(id).and_then(|line| crate::step_text::attribute_of(&line, idx)) else { continue };
-        let entries = match attrs::ListEntry::parse_list(&slot) {
-            Some(entries) => entries,
-            // An unset list (`$`, e.g. a project with no contexts yet) takes
-            // appends as a new list. Any other slot is left as written.
-            None if slot.trim() == "$" && edit.remove.is_empty() && edit.substitute.is_empty() => Vec::new(),
-            None => continue,
-        };
-        edits_by_id.entry(id).or_default().insert(idx, edit.render(&entries));
-    }
+    // The Adds name the file's owner history too.
+    let history = index.first_owner_history.filter(|_| !adds.is_empty());
+    patched.chain(named).chain(history).filter(|id| !requested_deletes.contains(id)).collect()
 }
 
 /// Append a synthesized representation context to the project's

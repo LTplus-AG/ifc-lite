@@ -37,6 +37,12 @@ pub(crate) fn validate_extrusion(e: &Extrusion) -> Result<(), String> {
     if !(twice_area.abs() > 1e-12 * extent * extent) {
         return Err("an extrusion profile encloses no area".into());
     }
+    if pts.len() > MAX_PROFILE_POINTS {
+        return Err(format!("an extrusion profile has {} points, more than {MAX_PROFILE_POINTS}", pts.len()));
+    }
+    if self_intersects(pts) {
+        return Err("an extrusion profile crosses itself".into());
+    }
     if !(e.depth.is_finite() && e.depth > 0.0) {
         return Err(format!("extrusion depth must be positive and finite, got {}", e.depth));
     }
@@ -45,6 +51,29 @@ pub(crate) fn validate_extrusion(e: &Extrusion) -> Result<(), String> {
         return Err("extrusion direction must be finite and leave the profile plane (non-zero Z)".into());
     }
     Ok(())
+}
+
+/// The most corners a profile may have: the crossing check is quadratic.
+const MAX_PROFILE_POINTS: usize = 4096;
+
+/// Whether two edges of the closed polygon `pts` that share no corner touch
+/// or cross, with exact orientation predicates on the given coordinates.
+fn self_intersects(pts: &[[f64; 2]]) -> bool {
+    let n = pts.len();
+    let orient = |a: [f64; 2], b: [f64; 2], c: [f64; 2]| geometry_predicates::orient2d(a, b, c);
+    let on = |a: [f64; 2], b: [f64; 2], p: [f64; 2]| {
+        p[0] >= a[0].min(b[0]) && p[0] <= a[0].max(b[0]) && p[1] >= a[1].min(b[1]) && p[1] <= a[1].max(b[1])
+    };
+    let meet = |a: [f64; 2], b: [f64; 2], c: [f64; 2], d: [f64; 2]| {
+        let (d1, d2, d3, d4) = (orient(c, d, a), orient(c, d, b), orient(a, b, c), orient(a, b, d));
+        if ((d1 > 0.0 && d2 < 0.0) || (d1 < 0.0 && d2 > 0.0)) && ((d3 > 0.0 && d4 < 0.0) || (d3 < 0.0 && d4 > 0.0)) {
+            return true;
+        }
+        (d1 == 0.0 && on(c, d, a)) || (d2 == 0.0 && on(c, d, b)) || (d3 == 0.0 && on(a, b, c)) || (d4 == 0.0 && on(a, b, d))
+    };
+    (0..n).any(|i| {
+        (i + 2..n).filter(|&j| !(i == 0 && j == n - 1)).any(|j| meet(pts[i], pts[(i + 1) % n], pts[j], pts[(j + 1) % n]))
+    })
 }
 
 /// The profile without a closing repeat of its first point.

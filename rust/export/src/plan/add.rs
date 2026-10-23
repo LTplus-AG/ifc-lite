@@ -142,9 +142,15 @@ impl<'a> AddState<'a> {
     ) -> usize {
         let mut built = Vec::new();
         for &(key, new) in adds {
+            // A refused Add gives back the ids it took, so it changes no
+            // later Add's ids or headroom.
+            let before = *ids;
             match self.add(key, new, ids) {
                 Ok(()) => built.push(key),
-                Err(reason) => refusals.push(Refusal { object: key.clone(), reason }),
+                Err(reason) => {
+                    *ids = before;
+                    refusals.push(Refusal { object: key.clone(), reason });
+                }
             }
         }
         match self.finish(ids, edits_by_id) {

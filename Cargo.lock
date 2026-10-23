@@ -1584,6 +1584,7 @@ version = "21.4.0"
 dependencies = [
  "arrow",
  "bytemuck",
+ "geometry-predicates",
  "ifc-lite-core",
  "ifc-lite-geometry",
  "ifc-lite-landxml",

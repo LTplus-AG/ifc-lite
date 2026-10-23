@@ -20,8 +20,8 @@ use super::types::PsetKind;
 /// Refuse what would write an invalid or ambiguous set: two sets of one
 /// name on the same owner, an empty set (`HasProperties` is `SET [1:?]`),
 /// a quantity with no `IfcQuantity*` entity for its measure, a
-/// non-finite number, a measure name that is not an IFC measure type.
-pub(crate) fn validate_psets(psets: &[NewPropertySet]) -> Result<(), String> {
+/// non-finite number, a measure `schema` does not declare as a number.
+pub(crate) fn validate_psets(schema: &str, psets: &[NewPropertySet]) -> Result<(), String> {
     let mut names = HashSet::new();
     for set in psets {
         if !names.insert(set.name.as_str()) {
@@ -36,6 +36,12 @@ pub(crate) fn validate_psets(psets: &[NewPropertySet]) -> Result<(), String> {
                 return Err(format!("'{}' appears twice in '{}'", p.name, set.name));
             }
             let (measure, _) = lower(&p.value)?;
+            if let PropertyValue::Measure { measure_type, value } = &p.value {
+                // A quantity writes its value bare into an IfcQuantity*, whose
+                // own rule (not negative) is checked below.
+                crate::step_log::check_real_measure(schema, measure_type, *value, set.kind == PsetKind::Property)
+                    .map_err(|reason| format!("{}.{}: {reason}", set.name, p.name))?;
+            }
             if set.kind == PsetKind::Quantity {
                 if quantity_entity_for_measure(&measure).is_none() {
                     return Err(format!("{}.{}: no IfcQuantity* entity for {measure}", set.name, p.name));
@@ -66,12 +72,7 @@ fn lower(value: &PropertyValue) -> Result<(String, String), String> {
         PropertyValue::Integer(i) => ("IFCINTEGER".into(), i.to_string()),
         PropertyValue::Real(v) => ("IFCREAL".into(), finite(*v)?),
         PropertyValue::Measure { measure_type, value } => {
-            let upper = measure_type.to_ascii_uppercase();
-            let shaped = upper.starts_with("IFC") && upper.ends_with("MEASURE") && upper.bytes().all(|b| b.is_ascii_alphanumeric());
-            if !shaped {
-                return Err(format!("{measure_type} is not an IFC measure type name"));
-            }
-            (upper, finite(*value)?)
+            (measure_type.to_ascii_uppercase(), finite(*value)?)
         }
     })
 }

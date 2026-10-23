@@ -231,3 +231,60 @@ fn a_new_type_whose_derived_global_id_is_in_the_source_is_refused() {
     let source = String::from_utf8(storey_with_typed_wall("IFC4")).unwrap().replace(&fixture_gid(40), &taken);
     refused(source.as_bytes(), wall, "for the new type is already in use");
 }
+
+/// A profile whose edges cross is refused, not written as a solid (#8080
+/// review).
+#[test]
+fn a_self_crossing_profile_is_refused() {
+    let bowtie = Extrusion { profile: vec![[0.0, 0.0], [3.0, 2.0], [0.0, 2.0], [2.0, 0.0]], direction: [0.0, 0.0, 1.0], depth: 1.0 };
+    let wall = object(IfcClass::Wall, gid(24), storey(), Representation::Extrusion(bowtie));
+    refused(&storey_with_typed_wall("IFC4"), wall, "crosses itself");
+}
+
+/// A measure the schema does not declare, or one that is not a number, is
+/// refused (#8080 review).
+#[test]
+fn a_property_measure_must_be_a_declared_number() {
+    for (measure, expect) in [("IfcBogusMeasure", "IfcBogusMeasure is not an IFC measure"), ("IfcDescriptiveMeasure", "not a number")] {
+        let mut wall = object(IfcClass::Wall, gid(25), storey(), Representation::None);
+        wall.psets = vec![NewPropertySet {
+            name: "Pset_Test".into(),
+            kind: PsetKind::Property,
+            properties: vec![NewProperty { name: "P".into(), value: PropertyValue::Measure { measure_type: measure.into(), value: 1.0 } }],
+        }];
+        refused(&storey_with_typed_wall("IFC4"), wall, expect);
+    }
+}
+
+/// Deleting the only object that uses the file's owner history does not
+/// leave an Add naming a removed record (#8080 review).
+#[test]
+fn an_add_keeps_the_owner_history_a_delete_would_take() {
+    for schema in SCHEMAS {
+        let source = String::from_utf8(storey_with_typed_wall(schema)).unwrap();
+        let wall_head = format!("#10=IFCWALL('{}',$,", fixture_gid(10));
+        assert!(source.contains(&wall_head), "{schema}: fixture wall");
+        let source = source
+            .replace(&wall_head, &format!("#10=IFCWALL('{}',#5,", fixture_gid(10)))
+            .replace("ENDSEC;\nEND-ISO", "#5=IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);\nENDSEC;\nEND-ISO");
+        let wall = object(IfcClass::Wall, gid(26), storey(), Representation::None);
+        let (out, report) = run(source.as_bytes(), vec![(ObjectRef::Id(10), Disposition::Delete), add(wall)]);
+        assert_clean(&report, schema);
+        assert_eq!(type_in(&out, 5), "IFCOWNERHISTORY", "{schema}: the file's owner history stays");
+        let line = String::from_utf8_lossy(&out).lines().find(|l| l.starts_with(&format!("#{}=", id_in(&out, gid(26))))).unwrap().to_string();
+        assert!(line.contains(",#5,"), "{schema}: the new wall names it: {line}");
+    }
+}
+
+/// A measure only a later schema declares is refused in an IFC2X3 file
+/// (#8080 review).
+#[test]
+fn a_property_measure_must_be_declared_by_the_files_schema() {
+    let mut wall = object(IfcClass::Wall, gid(27), storey(), Representation::None);
+    wall.psets = vec![NewPropertySet {
+        name: "Pset_Test".into(),
+        kind: PsetKind::Property,
+        properties: vec![NewProperty { name: "P".into(), value: PropertyValue::Measure { measure_type: "IfcNonNegativeLengthMeasure".into(), value: 1.0 } }],
+    }];
+    refused(&storey_with_typed_wall("IFC2X3"), wall, "not an IFC measure in IFC2X3");
+}

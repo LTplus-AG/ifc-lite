@@ -10,6 +10,10 @@
 //! `PlacementRelTo` in IFC4X3 that shifts every slot after it — a caller
 //! resolving by name never notices either).
 
+use std::collections::{BTreeMap, HashMap, HashSet};
+
+use super::index::FileIndex;
+
 /// The index of `attr_name` on `entity_type` in `file_schema`, or `None` when
 /// the schema does not declare that entity or that attribute.
 pub(crate) fn attribute_index(file_schema: &str, entity_type: &str, attr_name: &str) -> Option<usize> {
@@ -69,6 +73,30 @@ impl ListEdit {
         }
         kept.extend(self.append.iter().map(|id| format!("#{id}")));
         format!("({})", kept.join(","))
+    }
+}
+
+/// Every list change on one (record, attribute) slot, rendered once against
+/// the source list, so no change discards another's.
+pub(crate) fn render_list_edits(
+    index: &FileIndex,
+    list_edits: HashMap<(u32, usize), ListEdit>,
+    removed: &HashSet<u32>,
+    edits_by_id: &mut HashMap<u32, BTreeMap<usize, String>>,
+) {
+    for ((id, idx), edit) in list_edits {
+        if removed.contains(&id) {
+            continue;
+        }
+        let Some(slot) = index.raw_line(id).and_then(|line| crate::step_text::attribute_of(&line, idx)) else { continue };
+        let entries = match ListEntry::parse_list(&slot) {
+            Some(entries) => entries,
+            // An unset list (`$`, e.g. a project with no contexts yet) takes
+            // appends as a new list. Any other slot is left as written.
+            None if slot.trim() == "$" && edit.remove.is_empty() && edit.substitute.is_empty() => Vec::new(),
+            None => continue,
+        };
+        edits_by_id.entry(id).or_default().insert(idx, edit.render(&entries));
     }
 }
 

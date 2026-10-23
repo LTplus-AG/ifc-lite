@@ -202,7 +202,7 @@ impl AddState<'_> {
                 (Some(id), None)
             }
             Some(TypeLink::New(t)) => {
-                validate_psets(&t.psets)?;
+                validate_psets(self.schema, &t.psets)?;
                 let type_gid = obj.global_id.derive("type").encode();
                 let in_source = self.index.resolve(&ObjectRef::Guid(type_gid.clone()));
                 if in_source.is_some_and(|id| live_in_source(&id)) || self.added.contains_key(&type_gid) {
@@ -214,7 +214,7 @@ impl AddState<'_> {
             }
         };
 
-        validate_psets(&obj.psets)?;
+        validate_psets(self.schema, &obj.psets)?;
         match &obj.representation {
             Representation::None => {}
             Representation::Extrusion(e) => validate_extrusion(e)?,

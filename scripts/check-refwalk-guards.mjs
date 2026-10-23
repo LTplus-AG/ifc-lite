@@ -210,7 +210,7 @@ const SCAN_ROOTS = [
 // Re-measured at 28 when #8007 replaced the decoder items/enter recursion
 // pair with an explicit task stack. C2 #7887 then removes the private
 // profile extractor recursion in favor of RepresentationWalk. Floor: 26.
-const CANDIDATE_FLOOR = 26;
+const CANDIDATE_FLOOR = 24;
 
 /**
  * Allowlist for candidates that are genuinely unguarded and must stay that

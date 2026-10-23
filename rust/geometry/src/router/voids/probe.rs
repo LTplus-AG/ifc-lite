@@ -11,7 +11,6 @@ use crate::profiles::ProfileProcessor;
 use crate::{Error, Mesh, Point3, Result, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::{Matrix3, Matrix4};
-use rustc_hash::FxHashSet;
 
 /// A host or opening solid recovered as a single IfcExtrudedAreaSolid swept along
 /// its profile normal (local ±Z), for the 2D opening-subtraction fast path
@@ -59,6 +58,9 @@ fn checked_probe<T>(operation: impl FnOnce(&mut Option<Error>) -> Option<T>) -> 
     Ok(value)
 }
 
+mod unwrap;
+use unwrap::UnwrapPolicy;
+
 impl GeometryRouter {
     /// Extract extrusion direction and position transform from IfcExtrudedAreaSolid
     /// Returns (local_direction, position_transform)
@@ -101,66 +103,17 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
     ) -> Result<Option<(Vector3<f64>, Option<Matrix4<f64>>)>> {
         checked_probe(|terminal| {
-            let mut current = item.clone();
-            let mut visited = FxHashSet::default();
-            let mut mapping_chain: Option<Matrix4<f64>> = None;
-
-            for _depth in 0..MAX_EXTRUSION_EXTRACT_DEPTH {
-                if !visited.insert(current.id) {
-                    return None;
-                }
-
-                match current.ifc_type {
-                    IfcType::IfcExtrudedAreaSolid => {
-                        let (dir, position_transform) = probe_result!(
-                            terminal,
-                            self.extract_extrusion_direction_from_solid(&current, decoder)
-                        )??;
-                        let combined = match (mapping_chain.as_ref(), position_transform) {
-                            (Some(chain), Some(pos)) => Some(chain * pos),
-                            (Some(chain), None) => Some(*chain),
-                            (None, Some(pos)) => Some(pos),
-                            (None, None) => None,
-                        };
-                        return Some((dir, combined));
-                    }
-                    IfcType::IfcBooleanClippingResult | IfcType::IfcBooleanResult => {
-                        // FirstOperand (attribute 1) contains base geometry
-                        let first_attr = current.get(1)?;
-                        current = probe_result!(terminal, decoder.resolve_ref(first_attr))??;
-                    }
-                    IfcType::IfcMappedItem => {
-                        // MappingSource (attribute 0) -> MappedRepresentation -> Items
-                        let source_attr = current.get(0)?;
-                        let source = probe_result!(terminal, decoder.resolve_ref(source_attr))??;
-                        // RepresentationMap.MappedRepresentation is attribute 1
-                        let rep_attr = source.get(1)?;
-                        let rep = probe_result!(terminal, decoder.resolve_ref(rep_attr))??;
-
-                        // MappingTarget · MappingOrigin -> instance transform (#1985).
-                        // A composition that fails to parse abandons the probe (the
-                        // caller falls back to the exact kernel) rather than reporting
-                        // an extrusion direction resolved in the wrong frame.
-                        if let Some(map) = probe_result!(
-                            terminal,
-                            self.mapped_item_transform(&current, &source, decoder)
-                        )? {
-                            mapping_chain = Some(match mapping_chain.take() {
-                                Some(chain) => chain * map,
-                                None => map,
-                            });
-                        }
-
-                        // Get first item from representation
-                        let items_attr = rep.get(3)?;
-                        let items = probe_result!(terminal, decoder.resolve_ref_list(items_attr))?;
-                        current = items.first()?.clone();
-                    }
-                    _ => return None,
-                }
-            }
-
-            None
+            let (solid, mapping_chain) = probe_result!(terminal,
+                self.unwrap_probe_solid(item.clone(), None, UnwrapPolicy::FIRST, decoder))??;
+            let (dir, position_transform) = probe_result!(terminal,
+                self.extract_extrusion_direction_from_solid(&solid, decoder))??;
+            let combined = match (mapping_chain.as_ref(), position_transform) {
+                (Some(chain), Some(pos)) => Some(chain * pos),
+                (Some(chain), None) => Some(*chain),
+                (None, Some(pos)) => Some(pos),
+                (None, None) => None,
+            };
+            Some((dir, combined))
         })
     }
 
@@ -335,41 +288,10 @@ impl GeometryRouter {
         placement: &Matrix4<f64>,
         decoder: &mut EntityDecoder,
     ) -> Option<RectParam> {
-        let mut current = item;
-        let mut chain = Matrix4::<f64>::identity();
-        let mut visited = FxHashSet::default();
-        let solid = loop {
-            if !visited.insert(current.id) || visited.len() > MAX_EXTRUSION_EXTRACT_DEPTH {
-                return None;
-            }
-            match current.ifc_type {
-                IfcType::IfcExtrudedAreaSolid => break current,
-                IfcType::IfcBooleanClippingResult | IfcType::IfcBooleanResult => {
-                    current = decoder.resolve_ref(current.get(1)?).ok()??;
-                }
-                IfcType::IfcMappedItem => {
-                    let source = decoder.resolve_ref(current.get(0)?).ok()??;
-                    let mapped_rep = decoder.resolve_ref(source.get(1)?).ok()??;
-                    // MappingTarget · MappingOrigin, matching the mesh path
-                    // exactly (#1985 taught the mesh path the origin; before
-                    // that this probe had to DEFER whenever the origin was
-                    // non-identity, since the recovered box would have sat off
-                    // the rendered solid).
-                    //
-                    // A composition that FAILS to parse defers the whole item to
-                    // the exact kernel (`?`) instead of continuing with an
-                    // identity chain: swallowing the error would recover a box in
-                    // the wrong frame, which is exactly what the removed
-                    // non-identity-origin guard used to prevent.
-                    if let Some(m) = self.mapped_item_transform(&current, &source, decoder).ok()? {
-                        chain *= m;
-                    }
-                    current =
-                        decoder.resolve_ref_list(mapped_rep.get(3)?).ok()?.into_iter().next()?;
-                }
-                _ => return None,
-            }
-        };
+        let (solid, chain) = self.unwrap_probe_solid(
+            item, Some(Matrix4::identity()), UnwrapPolicy::FIRST, decoder,
+        ).ok()??;
+        let chain = chain?;
 
         let profile = decoder.resolve_ref(solid.get(0)?).ok()??;
         let (x_dim, y_dim, off_x, off_y, cos_t, sin_t) =
@@ -570,41 +492,10 @@ impl GeometryRouter {
         placement: &Matrix4<f64>,
         decoder: &mut EntityDecoder,
     ) -> Option<ExtrudedSolidInfo> {
-        let mut current = item;
-        let mut chain = Matrix4::<f64>::identity();
-        let mut visited = FxHashSet::default();
-        let solid = loop {
-            if !visited.insert(current.id) || visited.len() > MAX_EXTRUSION_EXTRACT_DEPTH {
-                return None;
-            }
-            match current.ifc_type {
-                IfcType::IfcExtrudedAreaSolid => break current,
-                IfcType::IfcMappedItem => {
-                    let source = decoder.resolve_ref(current.get(0)?).ok()??;
-                    let mapped_rep = decoder.resolve_ref(source.get(1)?).ok()??;
-                    // MappingTarget · MappingOrigin, matching the mesh path
-                    // (#1985). The composition MUST parse: silently dropping it
-                    // would misplace the re-extruded footprint, so any failure
-                    // defers the whole opening to the exact kernel rather than
-                    // continuing with an identity transform.
-                    if let Some(mm) = self.mapped_item_transform(&current, &source, decoder).ok()? {
-                        chain *= mm;
-                    }
-                    // Require EXACTLY ONE mapped representation item. A multi-item
-                    // mapped opening would otherwise be reduced to its first
-                    // solid, dropping the rest from BOTH the 2D footprint and the
-                    // residual exact cut; defer the whole opening instead.
-                    let mut items = decoder.resolve_ref_list(mapped_rep.get(3)?).ok()?.into_iter();
-                    let first = items.next()?;
-                    if items.next().is_some() {
-                        return None;
-                    }
-                    current = first;
-                }
-                // Boolean clipping / anything else: ineligible for the 2D path.
-                _ => return None,
-            }
-        };
+        let (solid, chain) = self.unwrap_probe_solid(
+            item, Some(Matrix4::identity()), UnwrapPolicy::SINGLE_UNCLIPPED, decoder,
+        ).ok()??;
+        let chain = chain?;
 
         let profile_entity = decoder.resolve_ref(solid.get(0)?).ok()??;
         // The 2D path re-extrudes ONE outer ring with holes; a composite of

@@ -5,10 +5,8 @@
 //! is applied here. An empty profile keeps the original axis-data short circuit.
 
 use super::Revolution;
-use crate::placement::Axis1Placement;
-use crate::processors::{
-    helpers::parse_axis2_placement_3d, tessellated::PolygonalFaceSetProcessor,
-};
+use crate::placement::{Axis1Placement, Axis2Placement};
+use crate::processors::tessellated::PolygonalFaceSetProcessor;
 use crate::{
     extrusion::apply_transform, profile::Profile2D, profiles::ProfileProcessor, scale_segments,
     Error, Mesh, Point3, Result, TessellationQuality, Vector3,
@@ -45,7 +43,7 @@ pub(super) fn lower(
         if let Some(pos_attr) = entity.get(slot::IfcRevolvedAreaSolid::POSITION.index()) {
             if !pos_attr.is_null() {
                 if let Some(pos_entity) = decoder.resolve_ref(pos_attr)? {
-                    parse_axis2_placement_3d(&pos_entity, decoder)?
+                    Axis2Placement::read_3d(&pos_entity, decoder)?.matrix()
                 } else {
                     Matrix4::identity()
                 }

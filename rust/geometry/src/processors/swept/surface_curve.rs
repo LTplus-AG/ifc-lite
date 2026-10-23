@@ -13,7 +13,7 @@ use crate::{
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
 
-use super::super::helpers::parse_axis2_placement_3d;
+use crate::placement::Axis2Placement;
 use super::disk::directrix_is_sweepable;
 use crate::router::GeometryProcessor;
 #[path = "surface_plan.rs"]
@@ -127,7 +127,7 @@ impl SurfaceCurveSweptAreaSolidProcessor {
         // --- Position: place the whole solid ---------------------------------------
         let position: Matrix4<f64> = match entity.get(1) {
             Some(pos_attr) if !pos_attr.is_null() => match decoder.resolve_ref(pos_attr)? {
-                Some(pos_entity) => parse_axis2_placement_3d(&pos_entity, decoder)?,
+                Some(pos_entity) => Axis2Placement::read_3d(&pos_entity, decoder)?.matrix(),
                 None => Matrix4::identity(),
             },
             _ => Matrix4::identity(),

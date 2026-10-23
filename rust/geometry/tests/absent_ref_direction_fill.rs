@@ -12,7 +12,7 @@
 //! below; if this behaviour changes, change both.
 
 use ifc_lite_core::EntityDecoder;
-use ifc_lite_geometry::parse_axis2_placement_3d;
+use ifc_lite_geometry::placement::Axis2Placement;
 
 /// Column 0 (local X in world) of a placement with Axis `axis` and `$`
 /// RefDirection.
@@ -22,7 +22,7 @@ fn filled_x(axis: &str) -> [f64; 3] {
     );
     let mut decoder = EntityDecoder::new(&content);
     let placement = decoder.decode_by_id(3).unwrap();
-    let m = parse_axis2_placement_3d(&placement, &mut decoder).unwrap();
+    let m = Axis2Placement::read_3d(&placement, &mut decoder).unwrap().matrix();
     [m[(0, 0)], m[(1, 0)], m[(2, 0)]]
 }
 

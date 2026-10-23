@@ -4,13 +4,12 @@
 
 //! Shared helper functions for geometry processors.
 //!
-//! These functions are used by multiple processor implementations to parse
-//! common IFC entities (IfcAxis2Placement3D, IfcCartesianPoint, IfcDirection, etc.).
+//! The face types and the polyloop reader the surface-model processors share.
+//! Placements and directions are not read here: they go through
+//! `crate::placement::Axis2Placement` and `EntityDecoder::direction3`.
 
-use crate::placement::Axis2Placement;
-use crate::{Point3, Result, Vector3};
-use ifc_lite_core::{DecodedEntity, EntityDecoder};
-use nalgebra::Matrix4;
+use crate::Point3;
+use ifc_lite_core::EntityDecoder;
 
 /// Face data extracted from IFC for parallel triangulation
 pub(super) struct FaceData {
@@ -40,18 +39,6 @@ pub(super) fn push_rebased<'a>(
         positions.push((p.y - rtc.1) as f32);
         positions.push((p.z - rtc.2) as f32);
     }
-}
-
-/// Parse IfcAxis2Placement3D into transformation matrix, through the one
-/// reader ([`Axis2Placement`]): a `$` Location, an unreadable point or
-/// direction and a wrong record type are refused and counted (D30), never a
-/// placement at the origin.
-#[inline]
-pub(super) fn parse_axis2_placement_3d(
-    placement: &DecodedEntity,
-    decoder: &mut EntityDecoder,
-) -> Result<Matrix4<f64>> {
-    Ok(Axis2Placement::read_3d(placement, decoder)?.matrix())
 }
 
 /// Every point of an `IfcPolyLoop`, however few. `None` means the loop or
@@ -101,24 +88,4 @@ fn refused_point_as_before(point_id: u32, decoder: &mut EntityDecoder) -> Option
         let _counted = decoder.refuse_record(point_id);
     }
     Some((x, y, z))
-}
-
-/// Get transform from an `IfcAxis2Placement3D` (or 2D) by entity ID, through
-/// [`Axis2Placement::read_id`]. Shared by SurfaceOfLinearExtrusionProcessor
-/// and AdvancedBrepProcessor.
-///
-/// An unreadable placement is an error: this used to snap to the origin on a
-/// fast-path miss and swallow every error, placing the surface at the origin.
-pub(super) fn get_axis2_placement_transform_by_id(
-    placement_id: u32,
-    decoder: &mut EntityDecoder,
-) -> Result<Matrix4<f64>> {
-    Ok(Axis2Placement::read_id(placement_id, decoder)?.matrix())
-}
-
-/// Get direction vector from an `IfcDirection` by ID, under the leaf rule
-/// ([`EntityDecoder::direction3`]): the type is checked, 2 or 3 finite
-/// ratios are read, anything else is refused and counted. Raw, not normalised.
-pub(super) fn get_direction_by_id(dir_id: u32, decoder: &mut EntityDecoder) -> Result<Vector3<f64>> {
-    Ok(Vector3::from(decoder.direction3(dir_id)?))
 }

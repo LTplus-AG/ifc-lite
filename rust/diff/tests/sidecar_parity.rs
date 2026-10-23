@@ -48,3 +48,39 @@ fn timestamp_semantics_are_supplied_by_the_host_issue_8042() {
     assert!(validate_identity_sidecar(&value, |s| s == "2000").is_empty());
     assert_eq!(validate_identity_sidecar(&value, |_| false), ["created must be an ISO 8601 timestamp when present"]);
 }
+
+#[test]
+fn sidecar_create_and_parse_keep_canonical_bytes_issue_8042() {
+    use ifc_lite_diff::sidecar_document::*;
+    let vectors: Vec<Value> = serde_json::from_str(include_str!("sidecar_vectors.json")).unwrap();
+    for vector in vectors {
+        let kind = if vector["kind"] == "identity" { SidecarKind::Identity } else { SidecarKind::Lineage };
+        let mut init = vector["value"].clone();
+        let entries = init["entries"].as_array_mut().unwrap();
+        entries.reverse();
+        if let Some(first) = entries.first().cloned() {
+            let mut duplicate = first;
+            duplicate["reason"] = Value::String("must not replace the first reason".into());
+            entries.push(duplicate);
+        }
+        if let Some(deleted) = init.get_mut("deleted").and_then(Value::as_array_mut) {
+            deleted.reverse();
+            deleted.extend(deleted.clone());
+        }
+        init["base"]["extra"] = Value::Bool(true);
+        let created = create_sidecar(&init,kind,|s|s=="2026-10-23T06:00:00.000Z").unwrap();
+        let wire = serialize_sidecar(&created);
+        assert_eq!(wire,vector["wire"].as_str().unwrap());
+        let parsed = parse_sidecar(&wire,kind,|s|s=="2026-10-23T06:00:00.000Z").unwrap();
+        assert_eq!(serialize_sidecar(&parsed),wire);
+    }
+}
+#[test]
+fn sidecar_parse_preserves_extras_and_js_integer_key_order_issue_8042() {
+    use ifc_lite_diff::sidecar_document::*;
+    let text = r#"{"format":"ifc-lite/identity-map","version":1,"base":{"hash":"a"},"head":{"hash":"b"},"entries":[],"extra":{"20":"x","2":"y","01":"z"}}"#;
+    let value = parse_sidecar(text,SidecarKind::Identity,|_|false).unwrap();
+    let wire = serialize_sidecar(&value);
+    assert!(wire.contains("\"extra\": {\n    \"2\": \"y\",\n    \"20\": \"x\",\n    \"01\": \"z\"\n  }"));
+    assert!(parse_sidecar("{",SidecarKind::Identity,|_|false).unwrap_err().starts_with("Invalid identity-map sidecar: not JSON ("));
+}

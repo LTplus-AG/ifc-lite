@@ -360,7 +360,7 @@
       }
     },
     "pairedRounds": 5,
-    "claim": "No speedup, neutrality or browser worker-pool claim; deterministic CI tiebreaker required before disposition.",
+    "claim": "No speedup, neutrality or browser worker-pool claim; exact-parent CI tiebreaker recorded separately.",
     "fixtures": {
       "fixture-0.ifc": {
         "path": "ara3d/ISSUE_005_haus.ifc",
@@ -374,7 +374,63 @@
         "path": "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
         "sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8"
       }
-    }
+    },
+    "ciTiebreaker": {
+      "baseRun": 39948622567,
+      "headRun": 39958417395,
+      "base": "fb85597076fef96fde8a550ed73c47e97ac68776",
+      "testedMerge": "b31ff8467c964dd12474001e065aa77ee70996ef",
+      "mergeParents": [
+        "fb85597076fef96fde8a550ed73c47e97ac68776",
+        "efa8c4958574a3b978874d4562630489e2c9a09f"
+      ],
+      "metrics": [
+        {
+          "id": "fzk-haus.parse",
+          "base": 95138358,
+          "head": 95154271,
+          "delta": 15913,
+          "deltaPct": 0.016726166327152292
+        },
+        {
+          "id": "fzk-haus.entity-scan",
+          "base": 57461901,
+          "head": 57477971,
+          "delta": 16070,
+          "deltaPct": 0.027966356351494248
+        },
+        {
+          "id": "fzk-haus.lookup",
+          "base": 13074748,
+          "head": 13074747,
+          "delta": -1,
+          "deltaPct": -7.648330968557104e-06
+        },
+        {
+          "id": "fzk-haus.preprocess",
+          "base": 24505161,
+          "head": 24505004,
+          "delta": -157,
+          "deltaPct": -0.0006406813650383647
+        },
+        {
+          "id": "fzk-haus.geometry",
+          "base": 376719723,
+          "head": 376662993,
+          "delta": -56730,
+          "deltaPct": -0.01505894078182024
+        },
+        {
+          "id": "fzk-haus.total",
+          "base": 471861324,
+          "head": 471820504,
+          "delta": -40820,
+          "deltaPct": -0.008650846747504382
+        }
+      ],
+      "scope": "FZK deterministic instruction counts only; not wall-clock or browser worker-pool performance."
+    },
+    "disposition": "Accept bounded snapshot infrastructure for final review under per-slice policy. Preserve inconclusive native timing and adverse phase observations. No speedup/neutrality claim, ceiling change or retained activation."
   },
   "artifactHashes": {
     "e2b-main-bc01-validation/result.json": "9a458cac4d794b6d05a6252b7a5173520f717dcaff3a846f45536f0ca26dce0e",

@@ -4623,8 +4623,11 @@ lookup phase is below timer resolution. The small control's geometry and total
 medians are slower within their measured spread; both larger models are slightly
 faster within theirs. Preserve every phase result. Source-qualified probes and
 stable geometry counts do not establish performance neutrality or a speedup.
-The agreed deterministic CI instruction-count tiebreaker remains outstanding;
-this record grants no merge or retained-release acceptance.
+The exact-parent CI instruction-count tiebreaker shows slightly lower geometry
+and total cost, with small parse and entity-scan increases. Accept the bounded
+snapshot infrastructure for final review under the per-slice policy, retaining
+the inconclusive timing verdict. No ceiling or tolerance changes; required
+checks and semantic review still gate merging, and retained release remains separate.
 
 Lesson: a zero-duration phase can invalidate the whole timing verdict even when
 all pairs finish and artifact provenance holds. Preserve that verdict and the

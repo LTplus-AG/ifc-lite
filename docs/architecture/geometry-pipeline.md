@@ -393,9 +393,10 @@ let world = resolve_chain(&placement, &mut decoder)?;
 let world = resolve_object_placement(&product, &mut decoder)?;
 ```
 
-`resolve_chain` is the placement walk of the router, the 2D profile extractor
-and symbolic extraction. Analytic-export and export-preflight walks still
-carry their own bounds until their next shared-placement stage (#7779). Nothing in the chain is defaulted: a cyclic chain, a `$`
+`resolve_chain` is the placement walk of the router, the 2D profile extractor,
+and symbolic extraction. Analytic export, appearance, alignment sampling and
+map-normalization preflight use the same iterative walk with a `ChainPolicy`.
+Nothing in the chain is defaulted: a cyclic chain, a `$`
 `RelativePlacement`, a record that is not a placement (as `PlacementRelTo` or as
 `RelativePlacement`) and a linear or grid frame that cannot be sampled are each
 refused and counted (`EntityDecoder::refused_records`), so the element is lost
@@ -419,6 +420,26 @@ publication, and SSE sends `Error` instead of `Complete`. Successful collection
 and wire shapes are unchanged.
 The result is memoised on the decoder, **unscaled** and column-major, so
 readers with different unit contexts share entries; the caller scales.
+
+
+`validate_chain` reads local frames through `Axis2Placement`, including the
+canonical typed point/direction refusal rule. `strict_spatial` additionally
+requires exactly three components, finite nonzero direction norms and
+nonparallel Axis/RefDirection after applying the IFC defaults. The same rule
+is available for standalone frames as `placement::validate_spatial_frame`.
+Readable degenerate axes remain repairable for ordinary rendering; a strict
+consumer's additional restriction returns a policy error.
+
+When inspecting many products from one source under one policy, use
+`placement::ChainValidator::new(&mut decoder, policy)` and `validate(id)`.
+The session returns the root and only the newly verified links, leaf first,
+and stops at a previously verified ancestor. It holds the decoder borrow and
+keeps its policy fixed. Only successful chains enter this private memo;
+transform-cache entries cannot substitute for validation. Linear source
+admission shares the renderer's schema-dependent position-slot reader: at least
+one RelativePlacement or CartesianPosition must exist in its declared slot,
+with the required placement type. Cartesian frames use the typed Axis2 reader. Consumer-specific
+linear checks run on the returned new links; export aborts if any fails.
 
 Symbolic extraction retains the full 3D product and conic frames through
 composition, then projects to XY. Opposing product and conic tilts can cancel;

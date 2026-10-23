@@ -25,4 +25,3 @@ pub(super) fn validate_placement(
     let placement = decoder.decode_by_id(id)?;
     validate_chain(&placement, decoder, &POLICY).map_err(Into::into)
 }
-

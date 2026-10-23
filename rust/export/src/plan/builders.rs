@@ -20,8 +20,8 @@
 use super::add_types::GlobalId;
 use super::skeleton::{MapConversion, MapUnit, Skeleton, SkeletonRoot};
 use super::types::{
-    Disposition, ExportPlan, GeometryPatch, ObjectRef, Patch, PlacementPatch, PlanContext, PropScope, PropWrite, PsetKind,
-    SurfaceColour, TriangleMesh,
+    Disposition, DroppedRepresentation, ExportPlan, GeometryPatch, ObjectRef, Patch, PlacementPatch, PlanContext, PropScope,
+    PropWrite, PsetKind, Refusal, SurfaceColour, TriangleMesh, ValidationFinding,
 };
 
 impl PropWrite {
@@ -121,6 +121,24 @@ impl PlanContext {
     pub fn with_time_stamp(mut self, time_stamp: impl Into<String>) -> Self {
         self.time_stamp = Some(time_stamp.into());
         self
+    }
+}
+
+impl Refusal {
+    pub fn new(object: ObjectRef, reason: impl Into<String>) -> Self {
+        Self { object, reason: reason.into() }
+    }
+}
+
+impl ValidationFinding {
+    pub fn new(express_id: Option<u32>, message: impl Into<String>) -> Self {
+        Self { express_id, message: message.into() }
+    }
+}
+
+impl DroppedRepresentation {
+    pub fn new(object: ObjectRef, representation: u32, identifier: Option<String>) -> Self {
+        Self { object, representation, identifier }
     }
 }
 

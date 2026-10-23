@@ -36,8 +36,8 @@
 //!   copy, or a refusal for a set shared between types.
 
 mod add;
-mod add_builders;
 mod add_assoc_types;
+mod add_builders;
 mod add_geometry;
 mod add_profile;
 mod add_props;

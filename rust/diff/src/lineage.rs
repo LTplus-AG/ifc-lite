@@ -77,13 +77,17 @@ pub fn lineage_conflicts(entries: &[LineageEntry]) -> Vec<String> {
 /// Ordered pairs preserve the JavaScript Map iteration contract.
 pub fn key_aliases_from_lineage(entries: &[LineageEntry]) -> Vec<(String, String)> {
     let mut claims: Vec<(String, String)> = vec![];
+    let mut by_head: HashMap<&str, usize> = HashMap::new();
     let mut conflicted = HashSet::new();
     for entry in entries {
         if !matches!(entry.relation, LineageRelation::Identity | LineageRelation::Replaced) || entry.base.len() != 1 || entry.head.len() != 1 { continue; }
         let here = &entry.head[0]; let base = &entry.base[0];
-        if let Some((_, claimed)) = claims.iter().find(|(h, _)| h == here) {
-            if claimed != base { conflicted.insert(here.clone()); }
-        } else { claims.push((here.clone(), base.clone())); }
+        if let Some(&index) = by_head.get(here.as_str()) {
+            if &claims[index].1 != base { conflicted.insert(here.clone()); }
+        } else {
+            by_head.insert(here.as_str(), claims.len());
+            claims.push((here.clone(), base.clone()));
+        }
     }
     claims.into_iter().filter(|(here, base)| here != base && !conflicted.contains(here)).collect()
 }

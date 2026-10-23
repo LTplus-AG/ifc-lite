@@ -32,9 +32,35 @@ fn issue_8042_conflicting_aliases_abstain_instead_of_first_wins() {
 fn issue_8042_merge_preserves_each_base_row_under_every_policy() {
     let lineage = Lineage { entries: vec![entry(&["a","b"], &["joined"], LineageRelation::Merge, Some(vec![0.4,0.6]))], deleted: vec![] };
     for policy in [RekeyPolicy::CopyToAll,RekeyPolicy::LargestShare,RekeyPolicy::OrphanOnSplit] {
-        for result in rekey_by_lineage(&["a".into(),"b".into()], &lineage, policy) {
+        let results = rekey_by_lineage(&["a".into(),"b".into()], &lineage, policy);
+        assert_eq!(results.iter().map(|r| r.key.as_str()).collect::<Vec<_>>(), ["a", "b"]);
+        for result in results {
             assert_eq!(result.successors, ["joined"]);
             assert!(!result.orphan);
         }
+    }
+}
+
+#[test]
+fn issue_8042_alias_lookup_keeps_first_seen_order_and_abstains_on_conflicts() {
+    let entries = [entry(&["base-z"], &["z"], LineageRelation::Identity, None),
+        entry(&["base-a"], &["a"], LineageRelation::Replaced, None),
+        entry(&["base-z"], &["z"], LineageRelation::Identity, None),
+        entry(&["other"], &["a"], LineageRelation::Identity, None),
+        entry(&["self"], &["self"], LineageRelation::Identity, None),
+        entry(&["base-b"], &["b"], LineageRelation::Identity, None)];
+    assert_eq!(key_aliases_from_lineage(&entries), [("z".into(), "base-z".into()), ("b".into(), "base-b".into())]);
+}
+#[test]
+fn issue_8042_rekey_conflicting_entries_preserves_typescript_first_entry_contract() {
+    // packages/diff/src/lineage.ts fills byBase only when the key is absent.
+    // Conflict diagnostics are separate; the faithful port must not change rekey policy.
+    let lineage = Lineage { entries: vec![entry(&["a"], &["b"], LineageRelation::Replaced, None),
+        entry(&["a"], &["c"], LineageRelation::Replaced, None)], deleted: vec![] };
+    assert!(!lineage_conflicts(&lineage.entries).is_empty());
+    for policy in [RekeyPolicy::CopyToAll, RekeyPolicy::LargestShare, RekeyPolicy::OrphanOnSplit] {
+        let results = rekey_by_lineage(&["a".into()], &lineage, policy);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].successors, ["b"]);
     }
 }

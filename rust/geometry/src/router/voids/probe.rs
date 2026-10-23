@@ -6,11 +6,11 @@
 
 use super::{GeometryRouter, RectParam, MAX_EXTRUSION_EXTRACT_DEPTH};
 use crate::profile::Profile2D;
+use crate::placement::Axis2Placement;
 use crate::profiles::ProfileProcessor;
 use crate::{Error, Mesh, Point3, Result, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
-use nalgebra::{Matrix3, Matrix4};
-use rustc_hash::FxHashSet;
+use nalgebra::Matrix4;
 
 /// A host or opening solid recovered as a single IfcExtrudedAreaSolid swept along
 /// its profile normal (local ±Z), for the 2D opening-subtraction fast path
@@ -58,6 +58,10 @@ fn checked_probe<T>(operation: impl FnOnce(&mut Option<Error>) -> Option<T>) -> 
     Ok(value)
 }
 
+mod rectangular;
+mod unwrap;
+use unwrap::UnwrapPolicy;
+
 impl GeometryRouter {
     /// Extract extrusion direction and position transform from IfcExtrudedAreaSolid
     /// Returns (local_direction, position_transform)
@@ -70,14 +74,15 @@ impl GeometryRouter {
             // Get ExtrudedDirection (attribute 2: IfcDirection)
             let direction_attr = solid.get(2)?;
             let direction_entity = probe_result!(terminal, decoder.resolve_ref(direction_attr))??;
-            let local_dir = probe_result!(terminal, self.parse_direction(&direction_entity))?;
+            probe_result!(terminal, crate::resource::check_current())?;
+            let local_dir = EntityDecoder::direction3_of(&direction_entity).map(Vector3::from)?;
 
             // Get Position transform (attribute 1: IfcAxis2Placement3D)
             let position_transform = match solid.get(1) {
                 Some(pos_attr) if !pos_attr.is_null() => {
                     match probe_result!(terminal, decoder.resolve_ref(pos_attr)) {
                         Some(Some(pos_entity)) if pos_entity.ifc_type == IfcType::IfcAxis2Placement3D => {
-                            probe_result!(terminal, self.parse_axis2_placement_3d(&pos_entity, decoder))
+                            probe_result!(terminal, Axis2Placement::read_3d(&pos_entity, decoder).map(|frame| frame.matrix()))
                         }
                         _ => None,
                     }
@@ -99,168 +104,18 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
     ) -> Result<Option<(Vector3<f64>, Option<Matrix4<f64>>)>> {
         checked_probe(|terminal| {
-            let mut current = item.clone();
-            let mut visited = FxHashSet::default();
-            let mut mapping_chain: Option<Matrix4<f64>> = None;
-
-            for _depth in 0..MAX_EXTRUSION_EXTRACT_DEPTH {
-                if !visited.insert(current.id) {
-                    return None;
-                }
-
-                match current.ifc_type {
-                    IfcType::IfcExtrudedAreaSolid => {
-                        let (dir, position_transform) = probe_result!(
-                            terminal,
-                            self.extract_extrusion_direction_from_solid(&current, decoder)
-                        )??;
-                        let combined = match (mapping_chain.as_ref(), position_transform) {
-                            (Some(chain), Some(pos)) => Some(chain * pos),
-                            (Some(chain), None) => Some(*chain),
-                            (None, Some(pos)) => Some(pos),
-                            (None, None) => None,
-                        };
-                        return Some((dir, combined));
-                    }
-                    IfcType::IfcBooleanClippingResult | IfcType::IfcBooleanResult => {
-                        // FirstOperand (attribute 1) contains base geometry
-                        let first_attr = current.get(1)?;
-                        current = probe_result!(terminal, decoder.resolve_ref(first_attr))??;
-                    }
-                    IfcType::IfcMappedItem => {
-                        // MappingSource (attribute 0) -> MappedRepresentation -> Items
-                        let source_attr = current.get(0)?;
-                        let source = probe_result!(terminal, decoder.resolve_ref(source_attr))??;
-                        // RepresentationMap.MappedRepresentation is attribute 1
-                        let rep_attr = source.get(1)?;
-                        let rep = probe_result!(terminal, decoder.resolve_ref(rep_attr))??;
-
-                        // MappingTarget · MappingOrigin -> instance transform (#1985).
-                        // A composition that fails to parse abandons the probe (the
-                        // caller falls back to the exact kernel) rather than reporting
-                        // an extrusion direction resolved in the wrong frame.
-                        if let Some(map) = probe_result!(
-                            terminal,
-                            self.mapped_item_transform(&current, &source, decoder)
-                        )? {
-                            mapping_chain = Some(match mapping_chain.take() {
-                                Some(chain) => chain * map,
-                                None => map,
-                            });
-                        }
-
-                        // Get first item from representation
-                        let items_attr = rep.get(3)?;
-                        let items = probe_result!(terminal, decoder.resolve_ref_list(items_attr))?;
-                        current = items.first()?.clone();
-                    }
-                    _ => return None,
-                }
-            }
-
-            None
+            let (solid, mapping_chain) = probe_result!(terminal,
+                self.unwrap_probe_solid(item.clone(), None, UnwrapPolicy::FIRST, decoder))??;
+            let (dir, position_transform) = probe_result!(terminal,
+                self.extract_extrusion_direction_from_solid(&solid, decoder))??;
+            let combined = match (mapping_chain.as_ref(), position_transform) {
+                (Some(chain), Some(pos)) => Some(chain * pos),
+                (Some(chain), None) => Some(*chain),
+                (None, Some(pos)) => Some(pos),
+                (None, None) => None,
+            };
+            Some((dir, combined))
         })
-    }
-
-    /// Read a rectangular swept area as `(x_dim, y_dim, off_x, off_y, cos, sin)` in the
-    /// profile plane. Handles `IfcRectangleProfileDef` (XDim/YDim + 2D Position rotation)
-    /// AND an `IfcArbitraryClosedProfileDef` whose outer curve is an axis-aligned 4-point
-    /// rectangle polyline (the common Tekla/structural authoring of a rectangular wall).
-    /// `None` for any non-rectangular profile → the caller defers to the exact kernel.
-    fn read_rect_profile_2d(
-        &self,
-        profile: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-    ) -> Option<(f64, f64, f64, f64, f64, f64)> {
-        match profile.ifc_type {
-            IfcType::IfcRectangleProfileDef => {
-                let x_dim = profile.get_float(3)?;
-                let y_dim = profile.get_float(4)?;
-                // Position (attr 2 = IfcAxis2Placement2D): in-plane rotation + offset.
-                let (mut cos_t, mut sin_t, mut off_x, mut off_y) = (1.0, 0.0, 0.0, 0.0);
-                if let Some(pos_attr) = profile.get(2) {
-                    if !pos_attr.is_null() {
-                        if let Ok(Some(pos)) = decoder.resolve_ref(pos_attr) {
-                            if let Some(loc_attr) = pos.get(0) {
-                                if let Ok(Some(loc)) = decoder.resolve_ref(loc_attr) {
-                                    if let Some(c) = loc.get(0).and_then(|x| x.as_list()) {
-                                        off_x = c.first().and_then(|x| x.as_float()).unwrap_or(0.0);
-                                        off_y = c.get(1).and_then(|x| x.as_float()).unwrap_or(0.0);
-                                    }
-                                }
-                            }
-                            if let Some(rd_attr) = pos.get(1) {
-                                if !rd_attr.is_null() {
-                                    if let Ok(Some(rd)) = decoder.resolve_ref(rd_attr) {
-                                        if let Some(c) = rd.get(0).and_then(|x| x.as_list()) {
-                                            let dx =
-                                                c.first().and_then(|x| x.as_float()).unwrap_or(1.0);
-                                            let dy =
-                                                c.get(1).and_then(|x| x.as_float()).unwrap_or(0.0);
-                                            let n = (dx * dx + dy * dy).sqrt();
-                                            if n > 1e-12 {
-                                                cos_t = dx / n;
-                                                sin_t = dy / n;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                Some((x_dim, y_dim, off_x, off_y, cos_t, sin_t))
-            }
-            IfcType::IfcArbitraryClosedProfileDef => {
-                // OuterCurve (attr 2) must be an axis-aligned rectangle polyline.
-                let curve = decoder.resolve_ref(profile.get(2)?).ok()??;
-                if curve.ifc_type != IfcType::IfcPolyline {
-                    return None;
-                }
-                let pts = decoder.resolve_ref_list(curve.get(0)?).ok()?;
-                let mut coords: Vec<(f64, f64)> = Vec::with_capacity(pts.len());
-                for p in &pts {
-                    let c = p.get(0).and_then(|x| x.as_list())?;
-                    coords.push((c.first()?.as_float()?, c.get(1)?.as_float()?));
-                }
-                // Drop a repeated closing vertex.
-                if coords.len() >= 2 {
-                    let (f, l) = (coords[0], coords[coords.len() - 1]);
-                    if (f.0 - l.0).abs() < 1e-9 && (f.1 - l.1).abs() < 1e-9 {
-                        coords.pop();
-                    }
-                }
-                if coords.len() != 4 {
-                    return None;
-                }
-                // General 4-point RECTANGLE — axis-aligned OR rotated in-plane. Compute the
-                // oriented box from its edges and fold the in-plane rotation into the frame
-                // (`cos_t`/`sin_t`). Tekla / IFC2X3 routinely author rotated-rectangle
-                // openings this way, so the old axis-aligned-only check rejected ~90% of
-                // them. Axis-aligned is just the cos_t=1, sin_t=0 special case.
-                let p = &coords;
-                let edge = |i: usize| (p[(i + 1) % 4].0 - p[i].0, p[(i + 1) % 4].1 - p[i].1);
-                let len = |e: (f64, f64)| (e.0 * e.0 + e.1 * e.1).sqrt();
-                let e0 = edge(0);
-                let e1 = edge(1);
-                let e2 = edge(2);
-                let (xd, yd) = (len(e0), len(e1));
-                if xd <= 1e-9 || yd <= 1e-9 {
-                    return None;
-                }
-                // Rectangle: adjacent edges perpendicular AND opposite edges equal length.
-                let dot = (e0.0 * e1.0 + e0.1 * e1.1) / (xd * yd);
-                if dot.abs() > 0.01 || (len(e2) - xd).abs() > xd * 0.01 + 1e-6 {
-                    return None;
-                }
-                // Local X' = first-edge direction; centre = polygon centroid.
-                let (cos_t, sin_t) = (e0.0 / xd, e0.1 / xd);
-                let cx = (p[0].0 + p[1].0 + p[2].0 + p[3].0) * 0.25;
-                let cy = (p[0].1 + p[1].1 + p[2].1 + p[3].1) * 0.25;
-                Some((xd, yd, cx, cy, cos_t, sin_t))
-            }
-            _ => None,
-        }
     }
 
     /// Items of the element's body shape representation(s), selected EXACTLY as
@@ -283,37 +138,18 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Option<Vec<DecodedEntity>> {
-        let rep = decoder.resolve_ref(element.get(6)?).ok()??;
-        if rep.ifc_type != IfcType::IfcProductDefinitionShape {
-            return None;
-        }
-        let reps = decoder.resolve_ref_list(rep.get(2)?).ok()?;
-        // Mirror the mesh path's direct-vs-mapped de-dup: a MappedRepresentation
-        // is skipped only when the element ALSO carries direct body geometry.
-        let has_direct_geometry = reps.iter().any(|sr| {
-            sr.ifc_type == IfcType::IfcShapeRepresentation
-                && crate::router::effective_element_rep_type(element, sr)
-                    .map(crate::router::is_direct_body_representation)
-                    .unwrap_or(false)
-        });
+        let shape = crate::representation::product_shape(element, decoder).ok()??;
         let mut items = Vec::new();
-        for sr in reps {
-            if sr.ifc_type != IfcType::IfcShapeRepresentation {
+        // The box/re-extrusion probe only accepts body geometry. Meshed also
+        // handles typeless/annotation/structural representations, so retain
+        // this narrower filter while sharing its mapped-duplicate exclusion.
+        for rep in shape.select(element, crate::representation::Select::Meshed) {
+            if rep.ifc_type != IfcType::IfcShapeRepresentation
+                || !crate::router::effective_element_rep_type(element, rep)
+                    .is_some_and(crate::router::is_body_representation) {
                 continue;
             }
-            let Some(rt) = crate::router::effective_element_rep_type(element, &sr) else {
-                continue;
-            };
-            if rt == "MappedRepresentation" && has_direct_geometry {
-                continue;
-            }
-            if !crate::router::is_body_representation(rt) {
-                continue;
-            }
-            let Some(items_attr) = sr.get(3) else {
-                continue;
-            };
-            if let Ok(rep_items) = decoder.resolve_ref_list(items_attr) {
+            if let Ok(rep_items) = crate::representation::rep_items(rep, decoder) {
                 items.extend(rep_items);
             }
         }
@@ -322,119 +158,6 @@ impl GeometryRouter {
         } else {
             Some(items)
         }
-    }
-
-    /// One representation item → its EXACT oriented box, unwrapping IfcBooleanClippingResult
-    /// / IfcMappedItem to the IfcExtrudedAreaSolid. `None` unless it is a rectangular prism.
-    /// Frame + extents from the parametrics (× unit_scale, − rtc_offset to match the mesh).
-    fn rect_param_from_item(
-        &self,
-        item: DecodedEntity,
-        placement: &Matrix4<f64>,
-        decoder: &mut EntityDecoder,
-    ) -> Option<RectParam> {
-        let mut current = item;
-        let mut chain = Matrix4::<f64>::identity();
-        let mut visited = FxHashSet::default();
-        let solid = loop {
-            if !visited.insert(current.id) || visited.len() > MAX_EXTRUSION_EXTRACT_DEPTH {
-                return None;
-            }
-            match current.ifc_type {
-                IfcType::IfcExtrudedAreaSolid => break current,
-                IfcType::IfcBooleanClippingResult | IfcType::IfcBooleanResult => {
-                    current = decoder.resolve_ref(current.get(1)?).ok()??;
-                }
-                IfcType::IfcMappedItem => {
-                    let source = decoder.resolve_ref(current.get(0)?).ok()??;
-                    let mapped_rep = decoder.resolve_ref(source.get(1)?).ok()??;
-                    // MappingTarget · MappingOrigin, matching the mesh path
-                    // exactly (#1985 taught the mesh path the origin; before
-                    // that this probe had to DEFER whenever the origin was
-                    // non-identity, since the recovered box would have sat off
-                    // the rendered solid).
-                    //
-                    // A composition that FAILS to parse defers the whole item to
-                    // the exact kernel (`?`) instead of continuing with an
-                    // identity chain: swallowing the error would recover a box in
-                    // the wrong frame, which is exactly what the removed
-                    // non-identity-origin guard used to prevent.
-                    if let Some(m) = self.mapped_item_transform(&current, &source, decoder).ok()? {
-                        chain *= m;
-                    }
-                    current =
-                        decoder.resolve_ref_list(mapped_rep.get(3)?).ok()?.into_iter().next()?;
-                }
-                _ => return None,
-            }
-        };
-
-        let profile = decoder.resolve_ref(solid.get(0)?).ok()??;
-        let (x_dim, y_dim, off_x, off_y, cos_t, sin_t) =
-            self.read_rect_profile_2d(&profile, decoder)?;
-        let depth = solid.get_float(3)?;
-        if !(x_dim.is_finite()
-            && y_dim.is_finite()
-            && depth.is_finite()
-            && x_dim > 0.0
-            && y_dim > 0.0
-            && depth > 0.0)
-        {
-            return None;
-        }
-        let solid_pos = match solid.get(1) {
-            Some(a) if !a.is_null() => {
-                let e = decoder.resolve_ref(a).ok()??;
-                self.parse_axis2_placement_3d(&e, decoder).ok()?
-            }
-            _ => Matrix4::identity(),
-        };
-        let dir_local = {
-            let e = decoder.resolve_ref(solid.get(2)?).ok()??;
-            self.parse_direction(&e).ok()?
-        };
-
-        let u = Vector3::new(cos_t, sin_t, 0.0);
-        let v = Vector3::new(-sin_t, cos_t, 0.0);
-        let w = dir_local.try_normalize(1e-12)?;
-        let m = placement * chain * solid_pos;
-        let rot = m.fixed_view::<3, 3>(0, 0).into_owned();
-        let (ru, rv, rw) = (rot * u, rot * v, rot * w);
-        let uu = ru.try_normalize(1e-9)?;
-        let vv = rv.try_normalize(1e-9)?;
-        let ww = rw.try_normalize(1e-9)?;
-        // A mapped chain can carry SCALE (an IfcCartesianTransformationOperator's
-        // Scale / Scale2 / Scale3), which normalizing the axes above discards. The
-        // profile's authored XDim/YDim/Depth must pick it up from the transformed
-        // axis LENGTHS, or a Scale = 1000 mapped opening recovers a cutter 1000x
-        // too small while the mesh renders the big one. Exactly 1.0 is substituted
-        // for a length that is 1 to within 1e-9, so a pure-rotation chain (every
-        // corpus opening) keeps its previous bits. #1985
-        let axis_scale = |n: f64| if (n - 1.0).abs() < 1e-9 { 1.0 } else { n };
-        let (su, sv, sw) = (axis_scale(ru.norm()), axis_scale(rv.norm()), axis_scale(rw.norm()));
-        // A RectParam is an ORIENTED BOX, so the transformed axes must stay mutually
-        // perpendicular. A shearing chain would silently recover a box that is not
-        // the rendered solid; defer it to the exact kernel instead.
-        if uu.dot(&vv).abs() > 1e-6 || uu.dot(&ww).abs() > 1e-6 || vv.dot(&ww).abs() > 1e-6 {
-            return None;
-        }
-        let center_local = Point3::new(off_x, off_y, 0.0) + w * (depth * 0.5);
-        let center_native = m.transform_point(&center_local);
-        let s = self.unit_scale;
-        let (rx, ry, rz) = self.rtc_offset;
-        Some(RectParam {
-            r: Matrix3::from_columns(&[uu, vv, ww]),
-            center: Point3::new(
-                center_native.x * s - rx,
-                center_native.y * s - ry,
-                center_native.z * s - rz,
-            ),
-            half: [
-                x_dim * 0.5 * su * s,
-                y_dim * 0.5 * sv * s,
-                depth * 0.5 * sw * s,
-            ],
-        })
     }
 
     /// EXACT boxes for a body that is a UNION OF RECTANGULAR PRISMS (the common Tekla
@@ -518,19 +241,21 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<(Vec<DecodedEntity>, Matrix4<f64>)> {
-        let representation_attr = element.get(6).ok_or_else(|| {
-            Error::geometry("Element has no representation attribute".to_string())
-        })?;
-        if representation_attr.is_null() {
+        use crate::representation::{product_shape, rep_items, Select, ShapeError};
+        // Use the same typed shape admission as mesh production. Preserve the
+        // probe's established ordinary error text for missing source slots.
+        let shape = crate::resource::observe(product_shape(element, decoder).map_err(|error| {
+            match error {
+                ShapeError::NoRepresentationAttribute { .. } =>
+                    Error::geometry("Element has no representation attribute".to_string()),
+                ShapeError::MissingRepresentations =>
+                    Error::geometry("ProductDefinitionShape missing Representations".to_string()),
+                other => Error::from(other),
+            }
+        }))?;
+        let Some(shape) = shape else {
             return Ok((Vec::new(), Matrix4::identity()));
-        }
-        let representation = decoder
-            .resolve_ref(representation_attr)?
-            .ok_or_else(|| Error::geometry("Failed to resolve representation".to_string()))?;
-        let representations_attr = representation.get(2).ok_or_else(|| {
-            Error::geometry("ProductDefinitionShape missing Representations".to_string())
-        })?;
-        let representations = decoder.resolve_ref_list(representations_attr)?;
+        };
 
         // The same placement transform that apply_placement uses. An ordinary
         // placement fault keeps identity; a typed stop is never swallowed.
@@ -543,9 +268,8 @@ impl GeometryRouter {
         self.scale_transform(&mut placement);
 
         let mut items = Vec::new();
-        for shape_rep in crate::router::meshed_representations(element, &representations) {
-            let Some(items_attr) = shape_rep.get(3) else { continue };
-            match crate::resource::observe(decoder.resolve_ref_list(items_attr).map_err(Error::from)) {
+        for shape_rep in shape.select(element, Select::Meshed) {
+            match crate::resource::observe(rep_items(shape_rep, decoder).map_err(Error::from)) {
                 Ok(rep_items) if items.is_empty() => items = rep_items,
                 Ok(rep_items) => items.extend(rep_items),
                 Err(stop @ Error::ProgramStopped(_)) => return Err(stop),
@@ -568,41 +292,10 @@ impl GeometryRouter {
         placement: &Matrix4<f64>,
         decoder: &mut EntityDecoder,
     ) -> Option<ExtrudedSolidInfo> {
-        let mut current = item;
-        let mut chain = Matrix4::<f64>::identity();
-        let mut visited = FxHashSet::default();
-        let solid = loop {
-            if !visited.insert(current.id) || visited.len() > MAX_EXTRUSION_EXTRACT_DEPTH {
-                return None;
-            }
-            match current.ifc_type {
-                IfcType::IfcExtrudedAreaSolid => break current,
-                IfcType::IfcMappedItem => {
-                    let source = decoder.resolve_ref(current.get(0)?).ok()??;
-                    let mapped_rep = decoder.resolve_ref(source.get(1)?).ok()??;
-                    // MappingTarget · MappingOrigin, matching the mesh path
-                    // (#1985). The composition MUST parse: silently dropping it
-                    // would misplace the re-extruded footprint, so any failure
-                    // defers the whole opening to the exact kernel rather than
-                    // continuing with an identity transform.
-                    if let Some(mm) = self.mapped_item_transform(&current, &source, decoder).ok()? {
-                        chain *= mm;
-                    }
-                    // Require EXACTLY ONE mapped representation item. A multi-item
-                    // mapped opening would otherwise be reduced to its first
-                    // solid, dropping the rest from BOTH the 2D footprint and the
-                    // residual exact cut; defer the whole opening instead.
-                    let mut items = decoder.resolve_ref_list(mapped_rep.get(3)?).ok()?.into_iter();
-                    let first = items.next()?;
-                    if items.next().is_some() {
-                        return None;
-                    }
-                    current = first;
-                }
-                // Boolean clipping / anything else: ineligible for the 2D path.
-                _ => return None,
-            }
-        };
+        let (solid, chain) = self.unwrap_probe_solid(
+            item, Some(Matrix4::identity()), UnwrapPolicy::SINGLE_UNCLIPPED, decoder,
+        ).ok()??;
+        let chain = chain?;
 
         let profile_entity = decoder.resolve_ref(solid.get(0)?).ok()??;
         // The 2D path re-extrudes ONE outer ring with holes; a composite of
@@ -622,7 +315,7 @@ impl GeometryRouter {
         }
         let dir_local = {
             let e = decoder.resolve_ref(solid.get(2)?).ok()??;
-            self.parse_direction(&e).ok()?
+            EntityDecoder::direction3_of(&e).map(Vector3::from)?
         }
         .try_normalize(1e-12)?;
         // The 2D re-extrude is only valid when the sweep is along the profile
@@ -635,7 +328,7 @@ impl GeometryRouter {
         let solid_pos = match solid.get(1) {
             Some(a) if !a.is_null() => {
                 let e = decoder.resolve_ref(a).ok()??;
-                self.parse_axis2_placement_3d(&e, decoder).ok()?
+                Axis2Placement::read_3d(&e, decoder).ok()?.matrix()
             }
             _ => Matrix4::identity(),
         };
@@ -689,5 +382,5 @@ impl GeometryRouter {
 }
 
 #[cfg(test)]
-#[path = "probe_tests.rs"]
-mod tests;
+#[path = "probe/source_tests.rs"]
+mod source_tests;

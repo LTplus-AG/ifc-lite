@@ -62,6 +62,7 @@ fn issue_4440_reference_only_opening_keeps_exact_host_texture_and_triangle_bindi
 fn issue_4440_unknown_and_over_budget_openings_retain_cutter_routing() {
     let router=ifc_lite_geometry::GeometryRouter::new();
     for source in [IFC.replace("(#82));","());"),IFC.replace("'Reference'","'Unknown'"),IFC.replace("(#82));","(#9999));"),
+        IFC.replace("(#82));","(#82,$));"), IFC.replace("(#82));","(#82,#84));"),
         IFC.replace("(#82));", &format!("({}));",vec!["#82";65].join(","))),
         IFC.replace("IFCOPENINGELEMENT(","IFCBUILDINGELEMENTPROXY(")] {
         let mut decoder=ifc_lite_core::EntityDecoder::new(source.as_bytes());
@@ -70,4 +71,8 @@ fn issue_4440_unknown_and_over_budget_openings_retain_cutter_routing() {
     let mut decoder=ifc_lite_core::EntityDecoder::new(IFC.as_bytes());
     assert!(!router.opening_requires_subtraction(80,&mut decoder));
     assert!(router.opening_requires_subtraction(9999,&mut decoder));
+    // #7781: preserve the exact conservative cap and typed-list admission.
+    let boundary = IFC.replace("(#82));", &format!("({}));", vec!["#82";64].join(",")));
+    let mut decoder = ifc_lite_core::EntityDecoder::new(boundary.as_bytes());
+    assert!(!router.opening_requires_subtraction(80, &mut decoder));
 }

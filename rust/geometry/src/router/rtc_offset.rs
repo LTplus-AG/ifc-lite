@@ -165,7 +165,7 @@ impl GeometryRouter {
 
         for shape_rep in shape.select(entity, Select::Meshed) {
             // attr 3 = Items (list of geometry items)
-            let items = match shape_rep.get(3).and_then(|a| a.as_list()) {
+            let items = match crate::representation::rep_items_attribute(shape_rep).ok().and_then(|a| a.as_list()) {
                 Some(list) => list,
                 None => continue,
             };

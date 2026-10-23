@@ -13,8 +13,11 @@
 pub(crate) mod mapped_transform;
 pub(crate) mod product_budget;
 mod refusal;
+mod reference;
+pub(crate) use reference::reference_only_opening;
 mod select;
 mod walk;
+pub(crate) mod unwrap;
 
 pub use select::{meshed_representations, Select};
 pub use walk::{
@@ -22,10 +25,9 @@ pub use walk::{
 };
 pub(crate) use select::{
     effective_element_rep_type, effective_rep_type, is_body_representation,
-    is_direct_body_representation,
 };
 
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 
 /// Why a product's shape chain could not be read. [`ShapeError`] converts into
 /// the geometry [`Error`](crate::Error) with the exact message text the strict
@@ -90,9 +92,20 @@ pub fn product_shape(
     element: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> Result<Option<ProductShape>, ShapeError> {
-    // IfcProduct: GlobalId, OwnerHistory, Name, Description, ObjectType, ObjectPlacement, Representation, Tag
-    let attr = element
-        .get(6)
+    let Some(shape) = product_definition_shape(element, decoder)? else {
+        return Ok(None);
+    };
+    let list = shape.get(2).ok_or(ShapeError::MissingRepresentations)?;
+    Ok(Some(ProductShape { id: shape.id, representations: decoder.resolve_ref_list(list)? }))
+}
+
+/// Decode the common product-to-shape edge. Callers retain their own list
+/// policy: meshing decodes the list, conservative routing bounds it first.
+fn product_definition_shape(
+    element: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+) -> Result<Option<DecodedEntity>, ShapeError> {
+    let attr = element.get(6)
         .ok_or(ShapeError::NoRepresentationAttribute { element: element.id })?;
     if attr.is_null() {
         return Ok(None);
@@ -101,8 +114,7 @@ pub fn product_shape(
     if shape.ifc_type != IfcType::IfcProductDefinitionShape {
         return Err(ShapeError::NotAProductDefinitionShape(shape.ifc_type));
     }
-    let list = shape.get(2).ok_or(ShapeError::MissingRepresentations)?;
-    Ok(Some(ProductShape { id: shape.id, representations: decoder.resolve_ref_list(list)? }))
+    Ok(Some(shape))
 }
 
 impl ProductShape {
@@ -122,19 +134,7 @@ impl ProductShape {
         self.representations.iter().filter(move |rep| select.admits(element, rep, direct))
     }
 
-    /// Whether [`Self::select`] would read direct geometry for `select`;
-    /// computed once per walk, like `select` does.
-    pub(crate) fn direct_geometry(&self, element: &DecodedEntity, select: Select) -> bool {
-        select.needs_direct_geometry() && select::has_direct_geometry(element, &self.representations)
-    }
 
-    /// A resumable [`Self::select`]: the index of the first representation at
-    /// or after `from` that `select` admits, given [`Self::direct_geometry`].
-    pub(crate) fn next_selected(&self, element: &DecodedEntity, select: Select, direct: bool,
-        from: usize) -> Option<usize> {
-        let rest = self.representations.get(from..)?;
-        rest.iter().position(|rep| select.admits(element, rep, direct)).map(|index| from + index)
-    }
 }
 
 /// `Items` (attribute 3) of an `IfcShapeRepresentation`, an
@@ -143,8 +143,14 @@ pub fn rep_items(
     rep: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> Result<Vec<DecodedEntity>, ShapeError> {
-    let items = rep.get(3).ok_or(ShapeError::MissingItems)?;
-    Ok(decoder.resolve_ref_list(items)?)
+    Ok(decoder.resolve_ref_list(rep_items_attribute(rep)?)?)
+}
+
+/// Source-level Items access for readers that must inspect cardinality or try
+/// a fast point read before decoding. List validation and early exits stay at
+/// the caller, while every representation uses the same structural slot.
+pub(crate) fn rep_items_attribute(rep: &DecodedEntity) -> Result<&AttributeValue, ShapeError> {
+    rep.get(3).ok_or(ShapeError::MissingItems)
 }
 
 #[cfg(test)]

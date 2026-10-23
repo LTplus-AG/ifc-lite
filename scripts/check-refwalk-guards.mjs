@@ -210,7 +210,11 @@ const SCAN_ROOTS = [
 // Re-measured at 28 when #8007 replaced the decoder items/enter recursion
 // pair with an explicit task stack. C2 #7887 then removes the private
 // profile extractor recursion in favor of RepresentationWalk. Floor: 26.
-const CANDIDATE_FLOOR = 26;
+// C2-6 replaces three bounded probe wrapper walks with one. Floor: 24.
+// The probe and layer loops now share representation/unwrap.rs. Its guarded
+// callback walk is outside this lexical decoder-call detector: two fewer
+// detected loops, with cycle/depth behavior covered by real STEP regressions.
+const CANDIDATE_FLOOR = 22;
 
 /**
  * Allowlist for candidates that are genuinely unguarded and must stay that

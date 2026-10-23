@@ -13,7 +13,8 @@ use super::quick_metadata::{record_ref_at, record_refs_at};
 use super::{EntityJob, ProcessingRequest};
 use crate::scan::ScanClass;
 use ifc_lite_core::{EntityDecoder, EntityScanner, IfcType};
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
+use crate::plan::TypeGeometryPlan;
 
 impl EntityJob {
     /// A product job: no appearance or metadata yet, the type's default colour.
@@ -64,16 +65,7 @@ pub(super) struct ScanOutput {
 #[derive(Default)]
 struct TypeScan {
     products: Vec<(u32, usize, usize, IfcType, Vec<u32>)>,
-    referenced_representation_maps: FxHashSet<u32>,
-    // #957 follow-up: type ids that an IfcRelDefinesByType instantiates (the type
-    // has at least one occurrence). Such a type's geometry is already drawn through
-    // its occurrences — directly or via an IfcMappedItem — so it must NOT also be
-    // rendered as orphan type-only geometry. Real-world exporters (e.g. ArchiCAD
-    // AC20) attach a RepresentationMap to nearly every door/window/furniture type
-    // while the occurrence carries its own body, leaving the type map referenced by
-    // no IfcMappedItem; without this gate every such type double-renders at its
-    // MappingOrigin (duplicate boxes at the wrong position).
-    instantiated_type_ids: FxHashSet<u32>,
+    plan: TypeGeometryPlan,
 }
 
 impl TypeScan {
@@ -92,8 +84,8 @@ impl TypeScan {
             // so every planned map here renders as an orphan (class 1).
             for (rep_map_id, _class) in crate::element::plan_type_geometry(
                 rep_map_ids,
-                &self.referenced_representation_maps,
-                self.instantiated_type_ids.contains(type_id),
+                self.plan.referenced(),
+                self.plan.is_instantiated(*type_id),
                 crate::element::TypeGeometryMode::SuppressInstanced,
             ) {
                 let job = EntityJob::new(*type_id, ifc_type.clone(), *start, *end);
@@ -163,6 +155,7 @@ pub(super) fn scan_entities(
     ifc_lite_core::report_scan_diagnostics(scanner.skipped_oversized_ids(), scanner.malformed_record_start().is_some());
 
     scan.types.append_orphan_jobs(&mut scan.out.entity_jobs);
+    scan.out.mapped_item_plan = scan.types.plan.into_mapped_instances();
     scan.out
 }
 
@@ -306,22 +299,7 @@ impl Scan<'_, '_> {
     fn note_type_geometry(&mut self, class: ScanClass, id: u32, type_name: &str, start: usize, end: usize) {
         if class == ScanClass::MappedItem {
             if let Some(source_id) = record_ref_at(&self.content[start..end], 0) {
-                self.types.referenced_representation_maps.insert(source_id);
-                // #1623 Phase 2: tally occurrences per source + track the min-id
-                // (deterministic template) occurrence. `id` is this IfcMappedItem's
-                // express id (the router's `item.id` at mesh time).
-                if self.req.instancing {
-                    self.out
-                        .mapped_item_plan
-                        .entry(source_id)
-                        .and_modify(|(count, template)| {
-                            *count += 1;
-                            if id < *template {
-                                *template = id;
-                            }
-                        })
-                        .or_insert((1, id));
-                }
+                self.types.plan.observe_mapped(id, source_id, self.req.instancing);
             }
         } else if class == ScanClass::RelDefinesByType {
             // IfcRelDefinesByType.RelatingType is the last attribute (index 5);
@@ -329,7 +307,7 @@ impl Scan<'_, '_> {
             // (Its span also feeds the shared resolver's type-material fallback:
             // stashed with the other relationship spans above.)
             if let Some(type_id) = record_ref_at(&self.content[start..end], 5) {
-                self.types.instantiated_type_ids.insert(type_id);
+                self.types.plan.observe_instantiated_type(type_id);
             }
         } else if let Some(type_ty) = ifc_lite_core::type_product_ifc_type(type_name) {
             // IfcTypeProduct.RepresentationMaps is attribute index 6.

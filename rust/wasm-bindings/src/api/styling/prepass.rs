@@ -271,34 +271,30 @@ pub(crate) fn build_referenced_representation_maps_from_spans(
     referenced
 }
 
-/// #1623 Phase 3 don't-bake plan: the `IfcRepresentationMap` ids that an
-/// `IfcMappedItem` instantiates >= 2 times, tallied from the SAME `IfcMappedItem`
-/// spans the streaming pre-pass already stashes for
-/// [`build_referenced_representation_maps_from_spans`]. The batch path arms its
-/// router with these (batch-local template mode) so a repeated single-solid mapped
-/// source materializes ONCE per batch and the rest ride as IFNS-shard instances.
-/// Returns the eligible source ids sorted (a deterministic wire list); a source
-/// referenced by only ONE mapped item is omitted (nothing to instance).
-pub(crate) fn build_mapped_instance_plan_from_spans(
-    spans: &[(u32, usize, usize)],
+/// Build shared type/instance facts once for browser prepass columns (#7782).
+/// Read mapped items before type relationships, preserving admission order.
+pub(crate) fn build_type_geometry_plan_from_spans(
+    mapped: &[(u32, usize, usize)],
+    defined_types: &[(u32, usize, usize)],
     decoder: &mut ifc_lite_core::EntityDecoder,
-) -> Vec<u32> {
-    let mut counts: rustc_hash::FxHashMap<u32, u32> = rustc_hash::FxHashMap::default();
-    for &(id, start, end) in spans {
+) -> ifc_lite_processing::plan::TypeGeometryPlan {
+    use ifc_lite_core::slot;
+    let mut plan = ifc_lite_processing::plan::TypeGeometryPlan::default();
+    for &(id, start, end) in mapped {
         if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
-            // IfcMappedItem.MappingSource = attr 0 (the IfcRepresentationMap).
-            if let Some(source_id) = entity.get_ref(0) {
-                *counts.entry(source_id).or_insert(0) += 1;
+            if let Some(source) = entity.ref_at(slot::IfcMappedItem::MAPPING_SOURCE) {
+                plan.observe_mapped(id, source, true);
             }
         }
     }
-    let mut eligible: Vec<u32> = counts
-        .into_iter()
-        .filter(|&(_, count)| count >= 2)
-        .map(|(source_id, _)| source_id)
-        .collect();
-    eligible.sort_unstable();
-    eligible
+    for &(id, start, end) in defined_types {
+        if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
+            if let Some(type_id) = entity.ref_at(slot::IfcRelDefinesByType::RELATING_TYPE) {
+                plan.observe_instantiated_type(type_id);
+            }
+        }
+    }
+    plan
 }
 
 /// #957 follow-up: the set of type ids that an `IfcRelDefinesByType` instantiates

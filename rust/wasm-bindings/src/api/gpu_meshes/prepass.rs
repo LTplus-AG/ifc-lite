@@ -573,25 +573,10 @@ impl IfcAPI {
         // workers apply messages FIFO, so the injected data is always in place
         // before any `processGeometryBatch` — the lazy per-worker build (the
         // byte-identical fallback) never fires on the streaming path.
-        let referenced_repmaps =
-            crate::api::styling::build_referenced_representation_maps_from_spans(
-                &mapped_item_spans,
-                &mut decoder,
-            );
-        let instantiated_type_ids =
-            crate::api::styling::build_instantiated_type_ids_from_spans(
-                &prepass_spans.defines_by_type,
-                &mut decoder,
-            );
-        // #1623 Phase 3 don't-bake plan: the RepresentationMap ids an IfcMappedItem
-        // instantiates >= 2 times, tallied from the SAME spans (no extra scan). The
-        // batch path arms its router with these so a repeated single-solid mapped
-        // source materializes once per batch and the rest ride as shard instances.
-        let mapped_instance_plan =
-            crate::api::styling::build_mapped_instance_plan_from_spans(
-                &mapped_item_spans,
-                &mut decoder,
-            );
+        let type_plan = crate::api::styling::build_type_geometry_plan_from_spans(
+            &mapped_item_spans, &prepass_spans.defines_by_type, &mut decoder,
+        );
+        let mapped_instance_plan = type_plan.repeated_sources();
         // Gate on `has_layer_set` to stay bit-identical to
         // `get_or_build_material_layer_index`, which ships an EMPTY index when the
         // file authors no layer set (its substring bail-out). from_spans reuses
@@ -606,8 +591,8 @@ impl IfcAPI {
             ifc_lite_geometry::MaterialLayerFlat::default()
         };
 
-        let repmaps_arr: Vec<u32> = referenced_repmaps.into_iter().collect();
-        let type_ids_arr: Vec<u32> = instantiated_type_ids.into_iter().collect();
+        let repmaps_arr: Vec<u32> = type_plan.referenced().iter().copied().collect();
+        let type_ids_arr: Vec<u32> = type_plan.instantiated_types().iter().copied().collect();
         let columns_event = js_sys::Object::new();
         crate::api::set_js_prop(&columns_event, "type", &"prepass-columns".into());
         crate::api::set_js_prop(

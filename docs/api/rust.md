@@ -20,6 +20,15 @@ All crates live in one Cargo workspace (versioned together, MPL-2.0 licensed):
 
 The Python bindings (`rust/python`, PyPI package `ifclite-geom`) are excluded from the workspace and documented on the [Python API page](python.md).
 
+## Type geometry planning
+
+`ifc_lite_processing::plan::TypeGeometryPlan` accumulates admitted mapped-source
+and instantiated-type references. `observe_mapped` records source membership and,
+when requested, occurrence counts with the minimum mapped-item id as template.
+`repeated_sources` returns sorted browser instancing ids; `into_mapped_instances`
+transfers the native count/template map. Callers retain their record-validation
+policy and candidate-job order.
+
 ## ifc-lite-core
 
 Core parsing functionality.

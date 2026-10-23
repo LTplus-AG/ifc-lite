@@ -106,14 +106,13 @@ fn hosted_feature(index: &FileIndex, file_schema: &str, rel: u32, rel_type: &str
     let scalar = |id, attr| super::props_lookup::scalar_attr(index, file_schema, id, rel_type, attr);
     let feature = scalar(rel, feature_attr).filter(|&id| index.contains(id))?;
     let feature_idx = super::attrs::attribute_index(file_schema, rel_type, feature_attr)?;
-    let mut hosts = index
+    let hosts: Vec<Option<u32>> = index
         .referrers(feature)
         .iter()
         .filter(|&&(r, idx)| idx == feature_idx && index.type_of(r).as_deref() == Some(rel_type))
         .map(|&(r, _)| scalar(r, host_attr))
-        .peekable();
-    hosts.peek()?;
-    hosts.all(|host| host.is_none_or(|h| removed.contains(&h))).then_some(feature)
+        .collect();
+    (!hosts.is_empty() && hosts.iter().all(|host| host.is_none_or(|h| removed.contains(&h)))).then_some(feature)
 }
 
 /// One list attribute of a surviving record as the cascade strips it.
@@ -164,6 +163,19 @@ impl Cascade<'_> {
             self.mark_removed(referrer);
         }
         true
+    }
+}
+
+impl Cascade<'_> {
+    /// A patch's detach of `member` from `referrer`'s list `idx`: a strip,
+    /// but recorded even where the member also appears nested (not a
+    /// strippable entry), so the writer still drops its top-level entry.
+    fn detach(&mut self, referrer: u32, idx: usize, member: u32) {
+        if !self.strip(referrer, idx, member) {
+            if let Some(Some(list)) = self.lists.get_mut(&(referrer, idx)) {
+                list.stripped.insert(member);
+            }
+        }
     }
 }
 
@@ -227,13 +239,9 @@ pub(crate) fn resolve_deletes(
     // processed, so every strip the worklist loop below performs already
     // sees them and can tell a truly-empty mandatory list from one that
     // only looks empty from one source's point of view.
-    // A detach is recorded even where the member is not a strippable entry
-    // (it also appears nested), so the writer still drops its top-level entry.
     for &(referrer, idx, member) in extra_detach {
-        if !cascade.removed.contains(&referrer) && !cascade.strip(referrer, idx, member) {
-            if let Some(Some(list)) = cascade.lists.get_mut(&(referrer, idx)) {
-                list.stripped.insert(member);
-            }
+        if !cascade.removed.contains(&referrer) {
+            cascade.detach(referrer, idx, member);
         }
     }
 

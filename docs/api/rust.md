@@ -1627,3 +1627,11 @@ and unwind retain unconsumed reports for explicit retrieval without final hooks.
 Product diagnostic scopes also capture stored Boolean/CSG recorder reports before
 nested entry and on exit, without invoking `take_bool_failures` final callbacks.
 Registered wrappers exposing `boolean_recorder` use the same storage path.
+Custom processors with private logs behind `take_bool_failures` cannot have those
+logs partitioned without executing their callbacks. After interrupted or nested
+product work, their subsequent drained records are therefore retained only for
+explicit `take_csg_failures` retrieval, rather than assigned to a later product.
+This includes any new custom records mixed with the ambiguous log. An explicit
+drain outside product work restores the ordinary publication boundary. Cancellation
+and unwind still invoke no final hooks; callers using opaque custom diagnostics
+must retrieve them explicitly after interrupted or nested work.

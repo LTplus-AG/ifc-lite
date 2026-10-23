@@ -65,7 +65,19 @@ impl GeometryRouter {
     pub fn drain_processor_failures(&self) {
         let mut swept: Vec<BoolFailure> = Vec::new();
         for processor in self.processors.values() {
-            swept.extend(processor.take_bool_failures());
+            let failures = processor.take_bool_failures();
+            if self.csg_opaque_unscoped.get() && processor.boolean_recorder().is_none() {
+                // A prior interrupted or nested product may still own these
+                // records. Preserve them for explicit retrieval, never publish
+                // them as a later product's failures. Final hooks still run only
+                // at their original drain sites, never during cancellation.
+                if !failures.is_empty() {
+                    self.stopped_csg_failures.borrow_mut()
+                        .entry(UNATTRIBUTED_PRODUCT_ID).or_default().extend(failures);
+                }
+            } else {
+                swept.extend(failures);
+            }
         }
         if !swept.is_empty() {
             self.csg_failures

@@ -14,8 +14,12 @@ impl GeometryRouter {
         // root's preexisting source evidence), never to an entering child.
         self.capture_recorded_processor_failures();
         let nested = self.csg_product_active.replace(true);
+        let parent_drained = self.csg_product_drained.replace(false);
+        // Opaque custom logs cannot be partitioned without running callbacks.
+        // Nested work makes their ownership ambiguous until explicit retrieval.
+        if nested { self.csg_opaque_unscoped.set(true); }
         let parent = nested.then(|| std::mem::take(&mut *self.csg_failures.borrow_mut()));
-        let _scope = ProductReports { router: self, parent, nested };
+        let _scope = ProductReports { router: self, parent, nested, parent_drained };
         work()
     }
 
@@ -25,6 +29,9 @@ impl GeometryRouter {
         let current = self.take_current_csg_failures();
         let mut stopped = std::mem::take(&mut *self.stopped_csg_failures.borrow_mut());
         append_csg_failures(&mut stopped, current);
+        // Only an explicit drain outside product work establishes a clean
+        // boundary for opaque logs. A nested diagnostic caller cannot do so.
+        if !self.csg_product_active.get() { self.csg_opaque_unscoped.set(false); }
         stopped
     }
 
@@ -32,6 +39,11 @@ impl GeometryRouter {
     /// Does not invoke processor hooks or adopt ambient thread-local reports.
     /// Explicit diagnostic retrieval still returns these reports exactly once.
     pub fn quarantine_recorded_csg_failures(&self) {
+        self.csg_opaque_unscoped.set(true);
+        self.park_recorded_csg_failures();
+    }
+
+    fn park_recorded_csg_failures(&self) {
         self.capture_recorded_processor_failures();
         let failures = std::mem::take(&mut *self.csg_failures.borrow_mut());
         append_csg_failures(&mut self.stopped_csg_failures.borrow_mut(), failures);
@@ -85,8 +97,12 @@ impl GeometryRouter {
         }
         let failures = self.take_current_csg_failures();
         match crate::resource::check_current() {
-            Ok(()) => Ok(failures),
+            Ok(()) => {
+                self.csg_product_drained.set(true);
+                Ok(failures)
+            }
             Err(stop) => {
+                self.csg_opaque_unscoped.set(true);
                 append_csg_failures(&mut self.stopped_csg_failures.borrow_mut(), failures);
                 Err(stop)
             }
@@ -110,13 +126,18 @@ struct ProductReports<'a> {
     router: &'a GeometryRouter,
     parent: Option<FxHashMap<u32, Vec<BoolFailure>>>,
     nested: bool,
+    parent_drained: bool,
 }
 impl Drop for ProductReports<'_> {
     fn drop(&mut self) {
-        self.router.quarantine_recorded_csg_failures();
+        if !self.router.csg_product_drained.get() {
+            self.router.csg_opaque_unscoped.set(true);
+        }
+        self.router.park_recorded_csg_failures();
         if let Some(parent) = self.parent.take() {
             *self.router.csg_failures.borrow_mut() = parent;
         }
         self.router.csg_product_active.set(self.nested);
+        self.router.csg_product_drained.set(self.parent_drained);
     }
 }

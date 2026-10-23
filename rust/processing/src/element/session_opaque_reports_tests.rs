@@ -89,3 +89,29 @@ fn issue_8091_opaque_custom_log_survives_cancel_without_leaking_to_successor() {
 fn issue_8091_opaque_custom_log_survives_unwind_without_leaking_to_successor() {
     opaque_log_after_failed_product(true);
 }
+
+#[test]
+fn issue_8091_nested_scope_does_not_assign_opaque_parent_log_to_child() {
+    let source = SOURCE.replace("ENDSEC;END-ISO-10303-21;",
+        "#87=IFCBOOLEANRESULT(.XOR.,#13,$);ENDSEC;END-ISO-10303-21;");
+    let mut decoder = EntityDecoder::new(&source);
+    let mut router = router(&mut decoder);
+    let hooks = Rc::new(Cell::new(0));
+    router.register(Box::new(OpaqueRecorder { pending: RefCell::new(Vec::new()),
+        record_next: Rc::new(Cell::new(true)), stop_next: Cell::new(false),
+        panic_next: Cell::new(false), hooks: hooks.clone() }));
+    router.with_product_csg_scope(|| {
+        let item = decoder.decode_by_id(13).unwrap();
+        assert!(!router.process_representation_item(&item, &mut decoder).unwrap().is_empty());
+        assert_eq!(hooks.get(), 0);
+        router.with_product_csg_scope(|| {
+            assert_eq!(hooks.get(), 0, "nested entry runs no final callbacks");
+            assert!(router.take_csg_failures_checked().unwrap().is_empty(),
+                "child adopted the parent's opaque log");
+        });
+        assert!(router.take_csg_failures_checked().unwrap().is_empty());
+    });
+    let reports = router.take_csg_failures();
+    assert_eq!(reports.values().map(Vec::len).sum::<usize>(), 1);
+    assert!(router.take_csg_failures().is_empty());
+}

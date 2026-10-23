@@ -445,3 +445,28 @@ fn a_second_body_for_the_same_product_is_refused() {
         assert_eq!(out, once, "{schema}: the same output as one patch");
     }
 }
+
+/// A shape aspect naming the old shape and its Body representation goes with
+/// the shape, and so does the representation it alone kept.
+#[test]
+fn a_shape_aspect_does_not_keep_the_old_body() {
+    let schema = "IFC4";
+    let aspect = "#140=IFCSHAPEASPECT((#62),'Part',$,.T.,#60);\n";
+    let source = String::from_utf8(products_with_geometry(schema)).unwrap().replace("ENDSEC;\nEND-ISO", &format!("{aspect}ENDSEC;\nEND-ISO"));
+    assert!(source.contains("#140="));
+    let (out, report) = run(source.as_bytes(), vec![geometry(10, tetrahedron(), None)]);
+    assert!(report.findings.is_empty(), "{:?}", report.findings);
+    let after = records(&out);
+    assert!(!after.contains_key(&140), "the aspect goes with the shape");
+    assert!(!after.contains_key(&62), "the Axis representation it named goes too");
+}
+
+/// A 2D `Model` context is not a body's context: a file with only that gets
+/// a 3D one.
+#[test]
+fn a_two_dimensional_model_context_is_not_chosen() {
+    let schema = "IFC4";
+    let source = String::from_utf8(two_walls_sharing_a_pset(schema)).unwrap().replace("IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,", "IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',2,");
+    let index = crate::plan::index::FileIndex::complete(source.as_bytes());
+    assert_eq!(crate::plan::tessellation::find_body_context(&index, schema, &HashSet::new()), None);
+}

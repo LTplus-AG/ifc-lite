@@ -105,7 +105,7 @@ pub(crate) fn find_body_context(index: &FileIndex, schema: &str, removed: &HashS
     };
     live("IFCGEOMETRICREPRESENTATIONSUBCONTEXT")
         .find(|&id| labelled(id, "ContextIdentifier", "Body"))
-        .or_else(|| live("IFCGEOMETRICREPRESENTATIONCONTEXT").find(|&id| labelled(id, "ContextType", "Model")))
+        .or_else(|| live("IFCGEOMETRICREPRESENTATIONCONTEXT").find(|&id| labelled(id, "ContextType", "Model") && three_dimensional(id)))
         .or_else(|| live("IFCGEOMETRICREPRESENTATIONCONTEXT").find(|&id| three_dimensional(id)))
 }
 
@@ -220,6 +220,20 @@ fn is_closed(m: &TriangleMesh) -> bool {
     if !edges.iter().all(|(&(a, b), &n)| n == 1 && edges.get(&(b, a)) == Some(&1)) {
         return false;
     }
+    // One shell: a closed shell is connected through its edges, so two
+    // solids, apart or touching at a vertex, are written open rather than as
+    // one invalid shell.
+    let mut shells = ifc_lite_geometry::UnionFind::new(m.triangles.len());
+    let mut first_on_edge: HashMap<(u32, u32), u32> = HashMap::new();
+    for (i, t) in m.triangles.iter().enumerate() {
+        for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
+            let other = *first_on_edge.entry((a.min(b), a.max(b))).or_insert(i as u32);
+            shells.union(other, i as u32);
+        }
+    }
+    if (1..m.triangles.len() as u32).any(|i| shells.find(i) != shells.find(0)) {
+        return false;
+    }
     let Some(origin) = m.triangles.first().map(|t| m.positions[t[0] as usize]) else { return false };
     // Relative to a vertex of the mesh: the sum is translation-invariant for a
     // closed mesh, and far from the origin (georeferenced coordinates) the
@@ -280,6 +294,20 @@ mod tests {
         let mut sheet = tetrahedron(false);
         sheet.triangles.truncate(1);
         assert!(!is_closed(&sheet));
+        let mut two = tetrahedron(false);
+        two.positions.extend(two.positions.clone().iter().map(|p| [p[0] + 5.0, p[1], p[2]]));
+        let shifted: Vec<[u32; 3]> = two.triangles.iter().map(|t| t.map(|v| v + 4)).collect();
+        two.triangles.extend(shifted);
+        assert!(!is_closed(&two), "two separate solids are not one closed shell");
+        let mut bowtie = tetrahedron(false);
+        bowtie.positions.extend([[0.0, 0.0, -1.0], [-1.0, 0.0, 0.0], [0.0, -1.0, 0.0]]);
+        // The second solid is the first reflected through the origin's
+        // shared vertex; its triangles are re-wound so it faces out too.
+        let mirrored: Vec<[u32; 3]> =
+            tetrahedron(false).triangles.iter().map(|t| t.map(|v| if v == 0 { 0 } else { v + 3 })).map(|[a, b, c]| [a, c, b]).collect();
+        bowtie.triangles.extend(mirrored);
+        assert!(!is_closed(&bowtie), "two solids touching at a vertex are not one shell");
+        assert!(!is_closed(&TriangleMesh { positions: Vec::new(), triangles: Vec::new() }));
     }
 
     /// Far from the origin the absolute products round away a small solid's

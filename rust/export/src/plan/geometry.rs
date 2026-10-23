@@ -164,17 +164,21 @@ pub(crate) fn sweep(index: &FileIndex, schema: &str, cuts: &[(u32, u32)], alread
         }
     }
 
-    let prune = |id: u32, pruned: &mut HashSet<u32>, gone: &mut HashMap<u32, usize>, depth_of: &mut HashMap<u32, u8>, queue: &mut VecDeque<u32>| {
-        if !pruned.insert(id) {
-            return;
-        }
-        let below = depth_of.get(&id).copied().unwrap_or(0).saturating_add(1);
-        let mut targets: Vec<u32> = index.refs_of(id).into_iter().collect();
+    // `from` stops naming what it names (all but `except`): each loses a
+    // referrer and is queued one level below `at`.
+    let release = |from: u32, at: u32, except: Option<u32>, gone: &mut HashMap<u32, usize>, depth_of: &mut HashMap<u32, u8>, queue: &mut VecDeque<u32>| {
+        let below = depth_of.get(&at).copied().unwrap_or(0).saturating_add(1);
+        let mut targets: Vec<u32> = index.refs_of(from).into_iter().filter(|&t| Some(t) != except).collect();
         targets.sort_unstable();
         for t in targets {
             *gone.entry(t).or_default() += 1;
             depth_of.entry(t).and_modify(|d| *d = (*d).min(below)).or_insert(below);
             queue.push_back(t);
+        }
+    };
+    let prune = |id: u32, pruned: &mut HashSet<u32>, gone: &mut HashMap<u32, usize>, depth_of: &mut HashMap<u32, u8>, queue: &mut VecDeque<u32>| {
+        if pruned.insert(id) {
+            release(id, id, None, gone, depth_of, queue);
         }
     };
 
@@ -205,7 +209,7 @@ pub(crate) fn sweep(index: &FileIndex, schema: &str, cuts: &[(u32, u32)], alread
         let mut annotations = Vec::new();
         let mut used = false;
         for &(r, idx) in listed {
-            if pruned.contains(&r) || already_removed.contains(&r) || cut.is_some_and(|c| c.contains(&r)) {
+            if pruned.contains(&r) || delete.contains(&r) || already_removed.contains(&r) || cut.is_some_and(|c| c.contains(&r)) {
                 continue;
             }
             match annotation(index, schema, r, idx) {
@@ -222,8 +226,12 @@ pub(crate) fn sweep(index: &FileIndex, schema: &str, cuts: &[(u32, u32)], alread
         prune(id, &mut pruned, &mut gone, &mut depth_of, &mut queue);
         for (r, idx, kind) in annotations {
             match kind {
+                // A deleted annotation stops naming what else it names (an
+                // aspect's `ShapeRepresentations`), so those lose a referrer.
                 Annotation::Scalar => {
-                    delete.insert(r);
+                    if delete.insert(r) {
+                        release(r, id, Some(id), &mut gone, &mut depth_of, &mut queue);
+                    }
                 }
                 Annotation::ListEntry => detach.push((r, idx, id)),
             }

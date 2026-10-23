@@ -23,3 +23,17 @@ impl ExactTail {
         }
     }
 }
+
+mod sequential;
+mod fallback_635;
+
+#[derive(Clone, Copy)]
+pub(in crate::router::voids) struct CutContext<'a> {
+    pub execution: &'a crate::program::openings::execute::Execution,
+    pub clipper: &'a crate::csg::ClippingProcessor,
+    pub element_id: u32,
+    pub wall_min: crate::Point3<f64>,
+    pub wall_max: crate::Point3<f64>,
+}
+
+pub(in crate::router::voids) enum Flow { Next, Stop }

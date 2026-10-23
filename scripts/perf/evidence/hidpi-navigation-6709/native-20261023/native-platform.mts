@@ -44,5 +44,5 @@ export async function readHostAdmission() {
  return {capturedAt:new Date().toISOString(),policy:{maximumCpuPercent:10,minimumMemoryKiB:41943040},cpuPercent:busy,MemAvailableKiB:mem,graphsBefore:first,graphsAfter:last,gpu,ac,quiet:Number.isFinite(busy)&&busy<=10&&mem>=41943040&&first.length===0&&last.length===0&&ac};
 }
 export async function launchNativeChrome(chromium) {
- return chromium.launch({headless:false,executablePath:'/home/louistrue/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome',args:['--enable-gpu','--enable-webgpu','--enable-unsafe-webgpu','--use-angle=vulkan','--enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan','--ignore-gpu-blocklist','--enable-logging=stderr','--ozone-platform=wayland']});
+ return chromium.launch({headless:false,executablePath:'/home/louistrue/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome',args:['--enable-gpu','--enable-webgpu','--enable-unsafe-webgpu','--use-angle=vulkan','--enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan','--ignore-gpu-blocklist','--enable-logging=stderr','--ozone-platform=x11']});
 }

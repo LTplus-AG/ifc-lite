@@ -100,6 +100,17 @@ async function geometry(page) {
 }
 
 const records = [];
+let activeRecord=null,rejectActiveDriver=null;
+const originalStderr=process.stderr.write.bind(process.stderr);
+const gpuDriverFailure=/ERROR:gpu\/|GL_INVALID_|uninitialized SharedImage|GPU process.*crash/i;
+process.stderr.write=function(chunk,...args){
+ const line=String(chunk);
+ if(activeRecord && gpuDriverFailure.test(line)){
+  activeRecord.meta.gpuDriverErrors.push(line.trim());
+  rejectActiveDriver?.(Error('Native GPU driver error; refuse sample'));
+ }
+ return originalStderr(chunk,...args);
+};
 const cohortStarted = Date.now();
 try {
  for (const sample of schedule) {
@@ -107,7 +118,10 @@ try {
   if(Date.now()-cohortStarted>27*60*1000) { console.error('Cohort start budget exhausted; no further sample launched');break; }
   const name = `dpr${sample.dpr}-${sample.side}-p${sample.pair}`;
   console.log(name);
-  const record = { ...sample, ok:false, rows:[], meta:{} };
+  const record = { ...sample, ok:false, rows:[], meta:{gpuDriverErrors:[]} };
+  activeRecord=record;
+  const driverFailure=new Promise((_,reject)=>{rejectActiveDriver=reject;});
+  void driverFailure.catch(error=>{record.meta.driverRejection=String(error);});
   let browser, sampleTimer, page;
   try {
    record.meta.hostBefore=await readHostAdmission();
@@ -125,9 +139,11 @@ try {
    await cdp.send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:sample.dpr,mobile:false});
    await context.addInitScript({content:frameProbeInitScript({workDone:true})});
    await context.addInitScript({content:observer});
-   await page.goto(`${origin}/?model=/__6709/model.ifc&perfTrace=1`,{timeout:30000});
+   await page.goto(`${origin}/?perfTrace=1`,{timeout:30000});
+   await page.waitForFunction('!!document.querySelector("canvas[data-viewport=main]") && !!globalThis.__ifc_lite_render_stats__?.().adapter?.vendor');
+   await page.locator('#file-input-open').setInputFiles(model);
    await page.bringToFront();
-   await waitForMetadataRenderReadiness({trace:()=>probeMetadataRenderTrace(page),logs:()=>logs,
+   await waitForMetadataRenderReadiness({trace:async()=>{const value=await probeMetadataRenderTrace(page);record.meta.latestReadinessTrace=value;return value;},logs:()=>logs,
     canvasReady:()=>page.evaluate(`(() => {const c=document.querySelector('canvas[data-viewport="main"]');return !!c && c.width>0 && c.height>0 && globalThis.__ifc_lite_render_stats__?.().frame?.drawCalls>0;})()`),
     now:()=>performance.now(),pause:()=>sleep(50),timeoutMs:90000});
    record.meta.loadTrace=await probeMetadataRenderTrace(page);
@@ -217,8 +233,8 @@ try {
    if(record.meta.errors.length) throw Error('Unhandled page errors observed');
    await idle(page);record.meta.hostAfter=await readHostAdmission();if(!record.meta.hostAfter.quiet) throw Error('Host post-admission refused');
    record.ok=true;
-   })(),deadline]);
-  } catch(error) { record.error=String(error);console.error(name,record.error);if(page && !page.isClosed()) { try {await page.screenshot({path:`${output}/${name}-failure.png`,timeout:5000});} catch(screenshotError) {record.meta.screenshotError=String(screenshotError);} } }
+   })(),deadline,driverFailure]);
+  } catch(error) { record.error=String(error);console.error(name,record.error);if(page && !page.isClosed()) { try {record.meta.failureDiagnostics=await page.evaluate('({trace:globalThis.__IFC_LITE_LOAD_TRACE__?.latest?.(),stats:globalThis.__ifc_lite_render_stats__?.(),canvas:!!document.querySelector("canvas[data-viewport=main]")})');await page.screenshot({path:`${output}/${name}-failure.png`,timeout:5000});} catch(screenshotError) {record.meta.screenshotError=String(screenshotError);} } }
   finally {
    clearTimeout(sampleTimer);
    if(browser?.isConnected()) {
@@ -226,10 +242,12 @@ try {
     if(failure){record.ok=false;record.error=`${record.error||''} CDP disconnect: ${failure}`;}
    }
   }
+  if(record.meta.gpuDriverErrors.length){record.ok=false;record.error=record.error||'Native GPU driver error observed';}
+  activeRecord=null;rejectActiveDriver=null;
   records.push(record);appendFileSync(`${output}/runs.jsonl`,JSON.stringify(record)+'\n');
   if(!record.ok) break; // A refused/failed sample is retained; no replacement cohort.
  }
-} finally { server.closeAllConnections();await new Promise(resolve=>server.close(resolve)); }
+} finally { process.stderr.write=originalStderr;server.closeAllConnections();await new Promise(resolve=>server.close(resolve)); }
 const identities=new Set(records.filter(r=>r.ok).map(r=>JSON.stringify(r.meta.geometryBefore)));
 const pickIds=new Set(records.filter(r=>r.ok).map(r=>r.meta.pick.id));
 const completedSuccessfully=records.length===schedule.length && records.every(r=>r.ok) && identities.size===1 && pickIds.size===1;

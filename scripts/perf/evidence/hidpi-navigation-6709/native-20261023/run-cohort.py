@@ -3,7 +3,7 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 from pathlib import Path
-import json,os,subprocess,time,hashlib
+import json,os,subprocess,time,hashlib,re
 out=Path(__file__).parent
 state=Path('/home/louistrue/build-workers/worker-state')
 fixture_receipt=json.loads((state/'jobs/79bb1a29-fac6-46bc-975f-f10d399fc90c/receipt.json').read_text())
@@ -33,10 +33,12 @@ for mode in ['smoke','interleaved']:
  before=set(out.glob('cohort-*'))
  with (out/f'{mode}.log').open('w') as log:
   result=subprocess.run(command+(['--smoke'] if mode=='smoke' else []),env=env,stdout=log,stderr=subprocess.STDOUT,timeout=30*60)
+ driver_errors=[line for line in (out/f'{mode}.log').read_text().splitlines() if re.search(r'ERROR:gpu/|GL_INVALID_|uninitialized SharedImage|GPU process.*crash',line,re.I)]
  generated=set(out.glob('cohort-*'))-before
  assert len(generated)==1,generated
  directory=generated.pop()
  record=json.loads((directory/'summary.json').read_text()) if (directory/'summary.json').exists() else {'completedSuccessfully':False}
+ if driver_errors:record.update(completedSuccessfully=False,allAccepted=False,performanceVerdict="DISQUALIFIED: native GPU driver errors",driverErrors=driver_errors)
  summary.append({'mode':mode,'exitCode':result.returncode,'output':str(directory),'summary':record})
  (out/'cohort-result.json').write_text(json.dumps(summary,indent=2)+'\n')
  print(mode,result.returncode,record,flush=True)

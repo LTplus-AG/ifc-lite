@@ -66,3 +66,16 @@ it('keeps compact specification hierarchy in the canonical document sheets (#655
   const groupGap = parseFloat(second.style.top) - parseFloat(material.style.top);
   assert.ok(groupGap > rowGap + 3, 'extra space distinguishes the next specification from another requirement');
 });
+
+
+it('includes unmatched IDS specifications in the preview benchmark (#8065)', () => {
+  const empty = { ...block, benchmarks: true,
+    summary: { checked: 0, passed: 0, failed: 0, passRate: 0 },
+    checks: block.checks.map((check) => ({ ...check, checked: 0, passed: 0, failed: 0, passRate: 0, rules: [] })),
+  };
+  const ui = render(<IdsReportPreview block={empty} />);
+  assert.match(ui.querySelector('[data-validation-benchmark]')?.textContent ?? '', /Not checked: 2 specifications/);
+  cleanup();
+  const rules = render(<IdsReportPreview block={{ ...empty, sourceKind: 'rules' }} />);
+  assert.doesNotMatch(rules.querySelector('[data-validation-benchmark]')?.textContent ?? '', /Not checked:/);
+});

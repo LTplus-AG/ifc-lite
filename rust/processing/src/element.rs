@@ -11,6 +11,10 @@
 //! - the browser batch path (`wasm-bindings` `processGeometryBatch`) calls it
 //!   per job with a warm per-batch decoder + router.
 //!
+//! Callers that own their model inputs capture them once into an immutable
+//! [`OwnedMeshProductionContext`] snapshot and run this same tree through the
+//! synchronous [`produce_element_meshes_owned`] driver (`model_context`).
+//!
 //! History: the two pipelines used to carry diverging inline copies of this
 //! tree, and fixes had to land twice (#858, #913, #957, #961, #1071). Any
 //! change to mesh-production behaviour belongs HERE, exactly once. The only
@@ -76,6 +80,11 @@ mod presentation_source;
 mod assembly_submeshes;
 mod assembly_fallback;
 mod assembly_types;
+mod model_context;
+pub use model_context::{
+    produce_element_meshes_owned, OwnedMeshProductionContext, OwnedMeshProductionData,
+    ProductionContextError, ProductionContextId, ProductionModel,
+};
 
 /// THE canonical per-element mesh producer.
 ///
@@ -208,3 +217,6 @@ mod presentation_tests;
 
 #[cfg(test)]
 mod presentation_palette_tests;
+
+#[cfg(test)]
+mod owned_context_tests;

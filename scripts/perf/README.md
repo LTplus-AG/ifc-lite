@@ -4579,3 +4579,34 @@ Lesson: a sub-millisecond phase and a noisy small control can prevent a global
 verdict while a larger model still exposes an adverse phase signal. Keep
 output-count equivalence, phase timing and deterministic instruction cost as
 separate evidence, and do not label an architectural refactor performance-neutral.
+
+### Owned immutable production contexts (E2a, #7955, #8059)
+
+The [source-qualified comparison](evidence/model-context-e2a/summary.json)
+preserves ordered geometry fingerprints and counts on FZK, ISSUE_129 and Holter
+in both default and local frames. The fingerprint excludes text, material
+definitions, UVs, textures and instancing; historical full-payload and WASM
+comparisons retain their earlier source attribution.
+
+Native wall-clock performance remains inconclusive: the unchanged reporter
+rejects the small control's spread. The larger models' geometry and total
+changes remain within their measured spread. Current CI instruction cost is
+unchanged or slightly lower against the exact synthetic merge parent; this
+establishes no speedup. The earlier dedicated evaluated-appearance measurement
+retains its matching plan payload and phase-noise verdict. No end-to-end browser
+worker-pool neutrality or hardware-GPU result is claimed.
+
+Disposition: accept this bounded ownership refactor for infrastructure review
+under the existing per-slice policy, preserving the inconclusive timing verdict
+and using the agreed deterministic CI tiebreaker. Default native/browser mesh
+production is unchanged; the migrated appearance path still calls the canonical
+producer. Retained activation and its complete release qualification remain
+separate. No performance ceiling, tolerance or pin is changed.
+
+Lesson: a clean checkout receipt can accompany a stale cross-checkout Cargo
+executable. Verify the executable and its new-module dependencies before timing.
+The first preparation failed that check and its queued measurement was cancelled
+before execution. Checksum freshness forced a genuine rebuild for the corrected
+cohort. Preserve source qualification, output identity and timing as separate
+verdicts. Software-GPU upload and capability-probe stalls also explain why
+worker chunk durations cannot stand in for browser load time.

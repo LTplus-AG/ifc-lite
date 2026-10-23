@@ -81,8 +81,8 @@ pub(super) fn prepare(
 /// Textured companions remain refused until publication can retain their assets.
 pub(super) fn removed_meshes(
     source: &mut Source<'_>, opening_ids: &[u32], edits: &[ifc_lite_core::DecodedEntity],
-    textures: &rustc_hash::FxHashMap<u32, ifc_lite_geometry::ResolvedTextureMap>,
-    styles: &crate::prepass::ResolvedPrepass, budget: &mut super::budget::PlanBudget,
+    textures: &std::sync::Arc<rustc_hash::FxHashMap<u32, ifc_lite_geometry::ResolvedTextureMap>>,
+    styles: &super::owned_context::Styles, budget: &mut super::budget::PlanBudget,
 ) -> Result<Vec<crate::types::mesh::MeshData>, String> {
     let edited: std::collections::BTreeSet<_> = edits.iter().map(|row| row.id).collect();
     let mut result = Vec::new();

@@ -174,13 +174,14 @@ export async function runPoolReuseWitness(sourceUrls: [string, string]): Promise
 }
 
 /** The document starts hidden before pool hooks exist; no visibility event is dispatched. */
-export async function runHiddenBootAdmissionWitness(): Promise<{ idle: number; spawned: number }> {
+export async function runHiddenBootAdmissionWitness(): Promise<{ idle: number; spawned: number; warming: number }> {
   const host = globalThis as typeof globalThis & { __IFC_LITE_WARM_POOL?: number };
   host.__IFC_LITE_WARM_POOL = 1;
   Object.defineProperty(document, 'hidden', { configurable: true, value: true });
   const original = window.requestIdleCallback;
   const callbacks: IdleRequestCallback[] = [];
   window.requestIdleCallback = callback => { callbacks.push(callback); return callbacks.length; };
+  let compileTimer: ReturnType<typeof setTimeout> | undefined;
   try {
     scheduleWasmPrewarm();
     if (callbacks.length !== 1) throw new Error('Hidden admission control was not scheduled');
@@ -188,11 +189,27 @@ export async function runHiddenBootAdmissionWitness(): Promise<{ idle: number; s
     const deadline = performance.now() + 30_000;
     while (performance.now() < deadline) {
       const stats = warmGeometryWorkerPoolStats();
-      if (stats) { await new Promise(resolve => setTimeout(resolve, 0)); return warmGeometryWorkerPoolStats() ?? stats; }
+      if (stats) {
+        // #7036: pool creation precedes compilation. Keep hidden through actual
+        // compilation and its boot continuation, before cleanup can retire it.
+        const module = await Promise.race([
+          compileSharedWasmModule(),
+          new Promise<never>((_resolve, reject) => {
+            compileTimer = setTimeout(() => reject(new Error('Hidden boot engine compilation timed out')),
+              Math.max(1, deadline - performance.now()));
+          }),
+        ]);
+        if (!(module instanceof WebAssembly.Module)) throw new Error('Hidden boot engine did not compile');
+        await new Promise(resolve => setTimeout(resolve, 0));
+        const settled = warmGeometryWorkerPoolStats();
+        if (!settled) throw new Error('Hidden boot lost its canonical pool');
+        return settled;
+      }
       await new Promise(resolve => setTimeout(resolve, 10));
     }
     throw new Error('Hidden admission control did not reach the canonical pool');
   } finally {
+    clearTimeout(compileTimer);
     window.requestIdleCallback = original;
     Reflect.deleteProperty(document, 'hidden');
     getWarmGeometryWorkerPool()?.drain('hidden-witness-end');

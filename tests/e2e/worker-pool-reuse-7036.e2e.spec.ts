@@ -110,12 +110,13 @@ test('#7036 idle boot does not create instances in an already hidden document', 
   try {
     await page.goto(new URL(`/@fs/${fileURLToPath(new URL('./worker-pool-reuse-7036.entry.html', import.meta.url))}`, server.url).href);
     const stats = await page.evaluate(async moduleUrl => {
-      const module: { runHiddenBootAdmissionWitness(): Promise<{ idle: number; spawned: number }> } = await import(moduleUrl);
+      const module: { runHiddenBootAdmissionWitness(): Promise<{ idle: number; spawned: number; warming: number }> } = await import(moduleUrl);
       return module.runHiddenBootAdmissionWitness();
     }, `/@fs/${fileURLToPath(new URL('./worker-pool-reuse-7036.wasm.ts', import.meta.url))}`);
     assertHiddenBootAdmission(stats);
     expect(() => assertHiddenBootAdmission({ ...stats, idle: 1 })).toThrow('hidden idle = 0');
     expect(() => assertHiddenBootAdmission({ ...stats, spawned: 1 })).toThrow('hidden spawned = 0');
+    expect(() => assertHiddenBootAdmission({ ...stats, warming: 1 })).toThrow('hidden warming = 0');
     assertHiddenBootAdmission(stats);
   } finally { await server.close(); }
 });

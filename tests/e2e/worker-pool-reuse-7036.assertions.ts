@@ -45,7 +45,8 @@ export function assertPoolReuseReport(report: PoolReuseReport): void {
   requireInvariant(Object.is(report.federationIdsDistinct, true), 'federation IDs distinct');
 }
 
-export function assertHiddenBootAdmission(stats: { idle: number; spawned: number }): void {
+export function assertHiddenBootAdmission(stats: { idle: number; spawned: number; warming: number }): void {
   requireInvariant(Object.is(stats.idle, 0), 'hidden idle = 0');
   requireInvariant(Object.is(stats.spawned, 0), 'hidden spawned = 0');
+  requireInvariant(Object.is(stats.warming, 0), 'hidden warming = 0');
 }

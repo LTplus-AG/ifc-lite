@@ -20,14 +20,30 @@ cross-host jobs are submitted; this state cannot qualify.
 PC preparation uses the same pinned pair and root pnpm/Turbo. The control passed
 56 tasks with unchanged source. Its JS bindings and declarations match Pop, but
 the WASM binary differs, so the cross-host pair was refused before timing. The
-candidate therefore also needs PC preparation and focused lifecycle tests; the
-cohort still requires exact runtime equality across both arms.
+matching PC candidate also passed all 57 root Turbo tasks and 80 focused tests
+with zero skips. Independently built binaries still differ on the same host;
+the cause is not established by these hashes. The original receipts and
+observed hashes remain in `diagnostics/pc-*-preparation.json`.
+
+`repack-pc-candidate.py` therefore verifies that both full preparations passed,
+that all Rust/WASM package source and build inputs are identical, and that the
+generated JS bindings and types match. It copies the control's exact generated
+runtime as an immutable common dependency, then rebuilds and tests the candidate
+viewer through root Turbo. `--only` retains the already validated upstream
+builds and prevents rebuilding the common runtime. It is used only after the
+full 56/57-task upstream preparations succeeded; no unbuilt sibling is trusted.
+The repack records both original receipts, the canonical producer and hashes,
+its own script hash, successful root commands and unchanged sources. The prior
+candidate WASM is retained separately. This repack must pass before staging;
+the cohort still requires exact runtime equality across both served arms.
 
 After successful original PC receipts, `stage-pc-build.py` runs under Pop ordinary
 admission for each arm. It checks source cleanliness, the original receipt and
 output-log hash, and every transferred artifact. Separate staging roots preserve
 the original Pop builds and source checkouts. Each `pc-*-transfer.json` binds its
-original PC producer, source, artifact hashes and destination. The cohort binds
+original PC producer, source, artifact hashes and destination. Candidate staging
+also verifies the committed repack helper's hash and its completed common-runtime
+proof. The cohort binds
 both producers to successful Pop staging receipts, freezes the staged served
 bytes and requires identical WASM runtime bytes before browser startup. The
 pinned original candidate checkout supplies Node harness dependencies; it is
@@ -36,6 +52,14 @@ not the served artifact root. No measurement occurs during transfer. A submitted
 exit zero, unchanged source, and the exact pinned commit. The fixture path is
 resolved from its successful preparation receipt rather than assuming that a
 new source checkout already contains the untracked model.
+
+The candidate staging job uses `stage-candidate-when-ready.py` to recover the
+unique original PC repack by its exact script and original input job IDs. It
+waits at most ten minutes, refuses failed/ambiguous producers and never submits
+one. Its binding records the recovered producer and executed staging command.
+This allows both ordinary staging jobs to queue before the exclusive cohort,
+without a benchmark barrier blocking a later prerequisite. The PC admission
+waiter itself is separately bounded and does not retry a submitted producer.
 
 The earlier pre-fix pair and receipts remain in `diagnostics/pre-fix-*.json` to
 explain the retained failed runs. They are historical evidence, not the active

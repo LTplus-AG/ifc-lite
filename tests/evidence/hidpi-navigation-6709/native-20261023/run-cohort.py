@@ -28,14 +28,27 @@ for index,side in enumerate(['candidate','base']):
  assert transfer['wasmMtime']>=transfer['latestRustMtime'], 'PC runtime predates its Rust sources'
  assert producer['sourceAfter']['commit']==pair['candidate' if side=='candidate' else 'control']
  assert producer['sourceAfter']['toolchainInputs']==receipts[index]['sourceAfter']['toolchainInputs']
- assert receipts[index]['command'][-3:]==[str(out/'stage-pc-build.py'),side,producer['id']], 'Staging job must bind the original PC producer'
+ if side=='base':
+  assert receipts[index]['command'][-3:]==[str(out/'stage-pc-build.py'),side,producer['id']], 'Staging job must bind the original PC producer'
+ else:
+  binding=json.loads((out/'candidate-stage-binding.json').read_text())
+  assert receipts[index]['command'][-3:]==[str(out/'stage-candidate-when-ready.py'),jobs['pcCandidateOriginalProducer'],jobs['pcBaseProducer']]
+  assert binding['pcProducer']==producer['id'] and binding['childCommand']==['python3',str(out/'stage-pc-build.py'),'candidate',producer['id']]
  assert transfer['sourceCheckout']==receipts[index]['cwd']
  command=' '.join(producer['command'])
  if side=='candidate':
-  assert 'pnpm test --filter=@ifc-lite/viewer' in command and 'TEST_PATTERN=' in command
+  repack=transfer['sharedRuntimeProof']
+  assert producer['command'][1].endswith('/repack-pc-candidate.py')
+  assert repack['scriptSHA256']==hashlib.sha256((out/'repack-pc-candidate.py').read_bytes()).hexdigest()
+  assert repack['state']=='completed' and repack['rustAndWasmInputsIdentical']
+  assert repack['preparations']['candidate']['id']==jobs['pcCandidateOriginalProducer']
+  assert repack['canonicalProducer']==jobs['pcBaseProducer']
+  assert producer['command'][-2:]==[jobs['pcCandidateOriginalProducer'],jobs['pcBaseProducer']]
+  assert [step['command'][1] for step in repack['steps']]==['build','test'] and all(step['exitCode']==0 for step in repack['steps'])
  else:
   assert 'pnpm build --filter=@ifc-lite/viewer --concurrency=2' in command
  transfers[side]=transfer
+assert repack['canonicalRuntime']=={row['path'].split('/')[-1]:row['sha256'] for row in transfers['base']['artifacts'] if row['path'].startswith('packages/wasm/pkg/')}
 (out/'preparation-receipts.json').write_text(json.dumps(receipts,indent=2)+'\n')
 subprocess.run(['python3',str(out/'freeze-builds.py')],check=True,timeout=600)
 for side,transfer in transfers.items():

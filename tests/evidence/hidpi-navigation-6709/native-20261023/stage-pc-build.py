@@ -23,6 +23,7 @@ assert re.fullmatch(r'[0-9a-f-]{36}', job)
 source = Path('/home/louistrue/build-workers/worker-state/checkouts') / pair['candidate' if side == 'candidate' else 'control']
 root = out / ('staged-' + side)
 proof_path = out / ('pc-' + side + '-transfer.json')
+repack_sha = hashlib.sha256((out / 'repack-pc-candidate.py').read_bytes()).hexdigest()
 assert not proof_path.exists() and not root.exists(), 'Recover original staging outcome'
 remote = r'''
 import hashlib, io, json, subprocess, sys, tarfile
@@ -38,7 +39,16 @@ assert subprocess.check_output(['git','-C',str(root),'rev-parse','HEAD'],text=Tr
 log = receipt_path.with_name('output.log')
 assert hashlib.sha256(log.read_bytes()).hexdigest() == r['outputSha256']
 command = ' '.join(r['command'])
-assert 'pnpm build --filter=@ifc-lite/viewer --concurrency=2' in command or ('pnpm test --filter=@ifc-lite/viewer' in command and 'TEST_PATTERN=' in command)
+repack = None
+if len(r['command']) == 4 and Path(r['command'][1]).name == 'repack-pc-candidate.py':
+ script = Path(r['command'][1]); repack = json.loads((script.parent/'pc-shared-runtime-repack.json').read_text())
+ assert hashlib.sha256(script.read_bytes()).hexdigest() == sys.argv[2] == repack['scriptSHA256']
+ assert repack['state'] == 'completed' and repack['rustAndWasmInputsIdentical']
+ assert repack['preparations']['candidate']['id'] == r['command'][2]
+ assert repack['canonicalProducer'] == repack['preparations']['control']['id'] == r['command'][3]
+ assert len(repack['steps']) == 2 and all(s['exitCode'] == 0 for s in repack['steps'])
+else:
+ assert 'pnpm build --filter=@ifc-lite/viewer --concurrency=2' in command
 files = sorted(p for p in (root/'apps/viewer/dist').rglob('*') if p.is_file())
 assert (root/'apps/viewer/dist/index.html') in files
 files += [root/'packages/wasm/pkg'/n for n in ['ifc-lite_bg.wasm','ifc-lite.js','ifc-lite.d.ts']]
@@ -47,6 +57,9 @@ wasm = root/'packages/wasm/pkg/ifc-lite_bg.wasm'
 latest_rust = max(p.stat().st_mtime for p in (root/'rust').rglob('*.rs'))
 assert wasm.stat().st_mtime >= latest_rust
 manifest = {'host':'pc-wsl','receipt':r,'receiptSHA256':hashlib.sha256(receipt_path.read_bytes()).hexdigest(),'wasmMtime':wasm.stat().st_mtime,'latestRustMtime':latest_rust,'artifacts':[{'path':str(p.relative_to(root)),'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in files]}
+if repack is not None:
+ assert all(hashlib.sha256((root/'packages/wasm/pkg'/n).read_bytes()).hexdigest()==v for n,v in repack['canonicalRuntime'].items())
+ manifest['sharedRuntimeProof'] = repack
 with tarfile.open(fileobj=sys.stdout.buffer,mode='w|') as tar:
  payload=json.dumps(manifest,indent=2).encode(); member=tarfile.TarInfo('build-proof.json');member.size=len(payload);tar.addfile(member,io.BytesIO(payload))
  for p in files:tar.add(p,arcname=str(p.relative_to(root)),recursive=False)
@@ -55,7 +68,7 @@ with tempfile.TemporaryDirectory(prefix='control-stage-', dir=out) as scratch:
     archive = Path(scratch) / 'build.tar'
     with archive.open('wb') as target:
         subprocess.run(['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10',
-                        'ifc-pc-worker', 'python3', '-', job], input=remote.encode(),
+                        'ifc-pc-worker', 'python3', '-', job, repack_sha], input=remote.encode(),
                        stdout=target, check=True, timeout=900)
     with tarfile.open(archive) as tar:
         proof = json.load(tar.extractfile('build-proof.json'))

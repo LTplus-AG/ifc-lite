@@ -19,7 +19,7 @@ pub fn diff_create_sidecar(text: &str, lineage: bool) -> Result<String, JsValue>
     Ok(serialize_sidecar(&created))
 }
 /// Host decoding preserves lone UTF-16 units even inside conflict diagnostics.
-#[wasm_bindgen(js_name = diffValidateSidecar)]
+#[wasm_bindgen(js_name = diffValidateSidecar, unchecked_return_type = "string[]")]
 pub fn diff_validate_sidecar(text: &str, lineage: bool) -> Result<js_sys::Array<js_sys::JsString>, JsValue> {
     let value = parse_ordered_json(text).map_err(|error| JsValue::from_str(&error.to_string()))?;
     let errors = validate_sidecar_document(&value, kind(lineage), valid_date);

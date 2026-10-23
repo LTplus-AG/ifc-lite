@@ -186,7 +186,8 @@ describe('Saved comparison chart source (#6549)', () => {
     const ui = render(<DocumentProbe document={documentFor(spec)} observe={(value) => { data = value; }} />); await settle();
     const first = data?.aggregations.get('recorded-block'); assert.ok(first);
     (await act(async () => { assert.equal((await useViewerStore.getState().renameSavedComparison(saved[0].id, 'Renamed saved source')), true); })); await settle();
-    assert.equal(data?.aggregations.get('recorded-block')?.dataFingerprint, first.dataFingerprint); assert.match(ui.textContent ?? '', /Renamed saved source/);
+    assert.equal(data?.aggregations.get('recorded-block')?.dataFingerprint, first.dataFingerprint);
+    assert.doesNotMatch(ui.textContent ?? '', /Renamed saved source/, '#8067: renaming source metadata does not add a document caption');
     (await act(async () => { assert.equal((await useViewerStore.getState().saveComparison({ ...saved[1], id: saved[0].id })), false, 'existing immutable evidence cannot be silently replaced'); })); await settle();
     assert.equal(data?.aggregations.get('recorded-block')?.dataFingerprint, first.dataFingerprint);
     (await act(async () => { assert.equal((await useViewerStore.getState().deleteSavedComparison(saved[0].id)), true); })); await settle();

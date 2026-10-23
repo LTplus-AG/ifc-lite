@@ -246,10 +246,8 @@ impl<'a> AddState<'a> {
         let type_target = match (&obj.type_link, &c.new_type) {
             (Some(TypeLink::New(t)), Some((class, predefined))) => {
                 // A type with its own GlobalId derives its sets' ids from it.
-                let type_sets = match t.global_id {
-                    Some(type_gid) => build_sets(emit, owner_history, type_gid, "pset", &t.psets)?,
-                    None => build_sets(emit, owner_history, gid, "type/pset", &t.psets)?,
-                };
+                let (base, role) = t.global_id.map_or((gid, "type/pset"), |g| (g, "pset"));
+                let type_sets = build_sets(emit, owner_history, base, role, &t.psets)?;
                 let type_gid = format!("'{}'", t.global_id_for(gid).encode());
                 let mut fields = vec![("GlobalId", type_gid), ("OwnerHistory", owh.clone())];
                 if let Some(name) = &t.name {

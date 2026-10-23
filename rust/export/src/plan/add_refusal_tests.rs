@@ -23,7 +23,7 @@ fn refused(source: &[u8], obj: NewObject, expect: &str) {
 
 fn new_type(class: &str, predefined_type: Option<&str>) -> TypeLink {
     TypeLink::New(NewType {
-            global_id: None,
+        global_id: None,
         class: ClassSpec { class: IfcClass::Named(class.into()), predefined_type: predefined_type.map(Into::into) },
         name: Some("T".into()),
         psets: Vec::new(),

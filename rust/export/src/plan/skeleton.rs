@@ -18,6 +18,7 @@ use crate::step_text::escape;
 
 use super::add_types::GlobalId;
 use super::placement::fmt;
+use super::props_synth::ref_list;
 use super::tessellation::Emit;
 
 /// The schema a skeleton is written in.
@@ -211,11 +212,6 @@ pub fn skeleton(s: &Skeleton) -> Result<Vec<u8>, String> {
     }
     text.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
     Ok(text.into_bytes())
-}
-
-fn ref_list(ids: &[u32]) -> String {
-    let refs: Vec<String> = ids.iter().map(|id| format!("#{id}")).collect();
-    format!("({})", refs.join(","))
 }
 
 fn check(s: &Skeleton) -> Result<(), String> {

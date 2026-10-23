@@ -130,6 +130,11 @@ the regression exercises this through the actual renderer, animation loop and
 BCF consumer. Native verification of the fix remains pending.
 
 A separate CSS-pick diagnostic found that the CPU-raycast-qualified wall point
-selected a window in the actual UI. The cause and uncapped control behavior
-remain under investigation. No accepted performance cohort or closure verdict
+selected a window in the actual UI. The uncapped control reproduces that exact disagreement at both DPR1 and
+DPR2, while 23 other tested points agree. Actual click events truncate the
+fractional target coordinates; the precise cause is not established. The
+formal protocol now predeclares wall 27421/item 27395/triangle 10 and roof
+slab 59553/item 59529/triangle 2 for correctness, and retains the disputed
+triangle 1 as a stability witness expecting the control-observed window 28113.
+There is no fallback target search during measurement. No accepted performance cohort or closure verdict
 is claimed. Service diagnostics never contribute accepted timing samples.

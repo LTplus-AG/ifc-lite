@@ -141,6 +141,9 @@ try {
    await context.addInitScript({content:frameProbeInitScript({workDone:true})});
    await context.addInitScript({content:observer});
    await page.goto(`${origin}/?perfTrace=1`,{timeout:30000});
+   await page.getByRole('button',{name:'Collapse sidebar to icons',exact:true}).click();
+   await page.waitForFunction('globalThis.__ifc_lite_viewer_store__.getState().sidebarMode==="collapsed"');
+   record.meta.layout='Normal UI: sidebar collapsed before first model load; location map unmounted';
    await page.locator('#file-input-open').waitFor({state:'attached'});
    await page.locator('#file-input-open').setInputFiles(model);
    await page.bringToFront();
@@ -221,17 +224,28 @@ try {
    record.meta.geometryAfter=await geometry(page);
    if(JSON.stringify(record.meta.geometryBefore)!==JSON.stringify(record.meta.geometryAfter)) throw Error('Loaded geometry changed during navigation/capture');
    await page.keyboard.press('Home');await idle(page);
-   // Actual CSS-space pick over an independently raycast-qualified visible face.
-   const target=await page.evaluate(`(() => {
-    const s=globalThis.__ifc_lite_viewer_store__.getState(),c=document.querySelector('canvas[data-viewport="main"]').getBoundingClientRect();
-    const ids=[...new Set([...s.models.values()][0].geometryResult.meshes.filter(m=>m.ifcType?.toUpperCase().startsWith('IFCWALL')).map(m=>m.expressId))].sort((a,b)=>a-b).slice(0,16);
-    for(const id of ids) for(const hit of globalThis.__ifc_lite_scene_face_hits__(id)) if(hit.screen.x>c.left+10 && hit.screen.x<c.right-10 && hit.screen.y>c.top+10 && hit.screen.y<c.bottom-10) return {id,x:hit.screen.x,y:hit.screen.y};
-    return null;
-   })()`);
-   if(!target) throw Error('No independently qualified CSS pick target');
-   await page.mouse.click(target.x,target.y);
-   await page.waitForFunction('globalThis.__ifc_lite_viewer_store__.getState().selectedEntityId=== '+target.id);
-   record.meta.pick=target;
+   // Fixed before measurement from the uncapped DPR1/2 diagnostic. No fallback
+   // target search after a failed pick; preserve the known boundary discrepancy.
+   const pickCases=[
+    {id:27421,geometryItemId:27395,sourceTriangleIndex:10,expected:27421,scope:'opaque wall'},
+    {id:59553,geometryItemId:59529,sourceTriangleIndex:2,expected:59553,scope:'roof slab'},
+    {id:27421,geometryItemId:27395,sourceTriangleIndex:1,expected:28113,scope:'control-observed wall/window boundary; stability only'},
+   ];
+   record.meta.picks=[];
+   for(const witness of pickCases){
+    const target=await page.evaluate(witness=>{
+     const hit=globalThis.__ifc_lite_scene_face_hits__(witness.id).find(h=>h.geometryItemId===witness.geometryItemId && h.sourceTriangleIndex===witness.sourceTriangleIndex);
+     if(!hit)return null;
+     const c=document.querySelector('canvas[data-viewport="main"]').getBoundingClientRect();
+     if(hit.screen.x<=c.left+10 || hit.screen.x>=c.right-10 || hit.screen.y<=c.top+10 || hit.screen.y>=c.bottom-10)return null;
+     return {...witness,x:hit.screen.x,y:hit.screen.y};
+    },witness);
+    if(!target)throw Error('Predeclared CSS pick face unavailable');
+    await page.mouse.click(target.x,target.y);
+    await page.waitForFunction('globalThis.__ifc_lite_viewer_store__.getState().selectedEntityId=== '+target.expected);
+    record.meta.picks.push(target);
+   }
+   record.meta.pick={id:record.meta.picks.map(p=>p.expected).join(',')};
    record.meta.foreground=await page.evaluate('globalThis.__ifc_lite_frame_probe__.foreground()');
    if(record.meta.foreground.interruptions || record.meta.foreground.visibility!=='visible' || !record.meta.foreground.focused) throw Error('Foreground admission interrupted');
    record.meta.sessionAfter=readPhysicalSession();

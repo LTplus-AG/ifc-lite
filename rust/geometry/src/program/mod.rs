@@ -10,6 +10,7 @@ mod inner_cache;
 mod item;
 mod layers;
 mod mapping;
+pub(crate) mod mapping_budget;
 mod opening;
 mod opening_bounds;
 mod product;

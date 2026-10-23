@@ -23,6 +23,7 @@ fn a_skeleton(map: Option<MapConversion>) -> Skeleton {
 fn a_map() -> MapConversion {
     MapConversion {
         crs_name: "EPSG:2056".into(),
+        map_unit: MapUnit::Metre,
         eastings: 2_600_000.0,
         northings: 1_200_000.0,
         orthogonal_height: 400.0,
@@ -156,4 +157,29 @@ fn bad_inputs_are_refused() {
     assert!(skeleton(&a_skeleton(Some(m)))
         .unwrap_err()
         .contains("positive"));
+}
+
+/// A feet-based CRS names its unit, so a reader does not take map
+/// coordinates in feet as metres (#8087 review).
+#[test]
+fn a_projected_crs_names_its_map_unit() {
+    for (unit, name, factor) in [(MapUnit::Foot, "'FOOT'", "0.3048"), (MapUnit::UsSurveyFoot, "'US SURVEY FOOT'", "0.304800609601219")] {
+        let mut map = a_map();
+        map.crs_name = "EPSG:2263".into();
+        map.map_unit = unit;
+        let source = skeleton(&a_skeleton(Some(map))).expect("skeleton");
+        let text = String::from_utf8(source.clone()).expect("utf8");
+        let unit_line = text.lines().find(|l| l.contains("IFCCONVERSIONBASEDUNIT(")).expect("a conversion-based unit");
+        assert!(unit_line.contains(name) && unit_line.contains(".LENGTHUNIT."), "{unit_line}");
+        let unit_id = unit_line.split('=').next().unwrap().to_string();
+        let crs = text.lines().find(|l| l.contains("IFCPROJECTEDCRS(")).expect("the CRS");
+        assert!(crs.contains(&format!(",{unit_id});")), "the CRS names the unit: {crs}");
+        assert!(text.contains(&format!("IFCLENGTHMEASURE({factor}")), "conversion factor {factor}: {text}");
+        let (_, report) = run(&source, Vec::new());
+        assert_clean(&report, "feet skeleton");
+    }
+    let metre = String::from_utf8(skeleton(&a_skeleton(Some(a_map()))).unwrap()).unwrap();
+    let crs = metre.lines().find(|l| l.contains("IFCPROJECTEDCRS(")).unwrap();
+    let metre_id = metre.lines().find(|l| l.contains(".METRE.")).unwrap().split('=').next().unwrap().to_string();
+    assert!(crs.contains(&format!(",{metre_id});")), "a metre CRS names the project's metre: {crs}");
 }

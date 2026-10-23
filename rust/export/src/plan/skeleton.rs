@@ -31,6 +31,17 @@ pub struct SkeletonRoot {
     pub name: Option<String>,
 }
 
+/// The length unit of a projected CRS's map coordinates.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum MapUnit {
+    #[default]
+    Metre,
+    /// The international foot, 0.3048 m.
+    Foot,
+    /// The US survey foot, 1200/3937 m.
+    UsSurveyFoot,
+}
+
 /// An `IfcMapConversion` to an `IfcProjectedCRS`: how the project's
 /// engineering frame (metres) maps to map coordinates.
 ///
@@ -42,6 +53,11 @@ pub struct SkeletonRoot {
 pub struct MapConversion {
     /// `IfcProjectedCRS.Name`, for example `EPSG:2056`.
     pub crs_name: String,
+    /// The unit `eastings`, `northings` and `orthogonal_height` are in,
+    /// written as the CRS's `MapUnit`. Without one IFC reads map coordinates
+    /// in the project's length unit (metre), which is wrong for a feet-based
+    /// CRS such as a US State Plane zone.
+    pub map_unit: MapUnit,
     pub eastings: f64,
     pub northings: f64,
     pub orthogonal_height: f64,
@@ -62,6 +78,35 @@ pub struct Skeleton {
     /// as +Y.
     pub true_north: Option<[f64; 2]>,
     pub map_conversion: Option<MapConversion>,
+}
+
+/// An `IfcConversionBasedUnit` length unit of `metres` metres.
+fn feet(emit: &mut Emit, name: &str, metres: f64, metre: u32) -> Result<u32, String> {
+    let dimensions = emit.record(
+        "IFCDIMENSIONALEXPONENTS",
+        &[
+            ("LengthExponent", "1".into()),
+            ("MassExponent", "0".into()),
+            ("TimeExponent", "0".into()),
+            ("ElectricCurrentExponent", "0".into()),
+            ("ThermodynamicTemperatureExponent", "0".into()),
+            ("AmountOfSubstanceExponent", "0".into()),
+            ("LuminousIntensityExponent", "0".into()),
+        ],
+    )?;
+    let factor = emit.record(
+        "IFCMEASUREWITHUNIT",
+        &[("ValueComponent", format!("IFCLENGTHMEASURE({})", fmt(metres))), ("UnitComponent", format!("#{metre}"))],
+    )?;
+    emit.record(
+        "IFCCONVERSIONBASEDUNIT",
+        &[
+            ("Dimensions", format!("#{dimensions}")),
+            ("UnitType", ".LENGTHUNIT.".into()),
+            ("Name", format!("'{name}'")),
+            ("ConversionFactor", format!("#{factor}")),
+        ],
+    )
 }
 
 /// The skeleton's bytes.
@@ -131,7 +176,12 @@ pub fn skeleton(s: &Skeleton) -> Result<Vec<u8>, String> {
         ],
     )?;
     if let Some(m) = &s.map_conversion {
-        let crs = emit.record("IFCPROJECTEDCRS", &[("Name", quoted(&m.crs_name))])?;
+        let map_unit = match m.map_unit {
+            MapUnit::Metre => units[0],
+            MapUnit::Foot => feet(&mut emit, "FOOT", 0.3048, units[0])?,
+            MapUnit::UsSurveyFoot => feet(&mut emit, "US SURVEY FOOT", 1200.0 / 3937.0, units[0])?,
+        };
+        let crs = emit.record("IFCPROJECTEDCRS", &[("Name", quoted(&m.crs_name)), ("MapUnit", format!("#{map_unit}"))])?;
         emit.record(
             "IFCMAPCONVERSION",
             &[

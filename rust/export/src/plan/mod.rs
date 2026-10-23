@@ -66,7 +66,7 @@ pub use add_types::{
     ClassSpec, Extrusion, GlobalId, IfcClass, NewObject, NewOpening, NewPlacement, NewProperty, NewPropertySet, NewType,
     PropertyValue, Representation, TypeLink,
 };
-pub use skeleton::{skeleton, MapConversion, Skeleton, SkeletonRoot, SKELETON_SCHEMA};
+pub use skeleton::{skeleton, MapConversion, MapUnit, Skeleton, SkeletonRoot, SKELETON_SCHEMA};
 pub use types::{
     Disposition, DroppedRepresentation, ExportPlan, GeometryPatch, ObjectRef, Patch, PlacementPatch, PlanContext, PlanError,
     PropScope, PropWrite, PsetKind, Refusal, SurfaceColour, TriangleMesh, ValidationFinding, WriteReport,

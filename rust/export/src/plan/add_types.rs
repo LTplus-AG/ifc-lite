@@ -147,7 +147,11 @@ pub struct NewType {
     /// The type's own GlobalId. `None` derives one from the occurrence that
     /// creates it (`derive("type")`); a caller that has its own identity for
     /// the type passes it here, so the type keeps that identity whichever
-    /// occurrence happens to create it.
+    /// occurrence happens to create it. One `TypeLink::New` creates the type;
+    /// every other occurrence of it in the plan names it with
+    /// `TypeLink::Existing(ObjectRef::Guid(..))`, which resolves to the type
+    /// an earlier Add created (a second `TypeLink::New` with the same id is
+    /// refused as already in use).
     pub global_id: Option<GlobalId>,
     pub class: ClassSpec,
     pub name: Option<String>,

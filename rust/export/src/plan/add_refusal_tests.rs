@@ -289,3 +289,25 @@ fn a_property_measure_must_be_declared_by_the_files_schema() {
     }];
     refused(&storey_with_typed_wall("IFC2X3"), wall, "not an IFC measure in IFC2X3");
 }
+
+/// A type with its own GlobalId is created by one `TypeLink::New`; a later
+/// Add names it with `TypeLink::Existing` by that GlobalId (#8087 review).
+#[test]
+fn a_later_add_names_a_type_an_earlier_add_created() {
+    for schema in SCHEMAS {
+        let type_id = gid(40);
+        let mut first = object(IfcClass::Wall, gid(41), storey(), Representation::None);
+        first.type_link = Some(TypeLink::New(NewType {
+            global_id: Some(type_id),
+            class: ClassSpec { class: IfcClass::Named("IfcWallType".into()), predefined_type: None },
+            name: Some("T".into()),
+            psets: Vec::new(),
+        }));
+        let mut second = object(IfcClass::Wall, gid(42), storey(), Representation::None);
+        second.type_link = Some(TypeLink::Existing(ObjectRef::Guid(type_id.encode())));
+        let (out, report) = run(&storey_with_typed_wall(schema), vec![add(first), add(second)]);
+        assert_clean(&report, schema);
+        assert_eq!(report.added, 2, "{schema}");
+        assert_eq!(type_in(&out, id_in(&out, type_id)), "IFCWALLTYPE", "{schema}: one new type");
+    }
+}

@@ -140,7 +140,7 @@ ENDSEC;END-ISO-10303-21;",
     {
         // #8091: reuse the warm router BEFORE the explicit diagnostic drain.
         // A successful product must not adopt the stopped product's reports.
-        let next = leaked_job(&mut decoder, 20);
+        let next = leaked_job(&mut decoder, 10);
         let next_output =
             produce_element_meshes(next, &Context::default().borrowed(), &options(), &mut decoder, &router);
         assert!(!next_output.meshes.is_empty());

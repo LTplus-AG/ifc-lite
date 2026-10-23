@@ -63,8 +63,9 @@ impl AddState<'_> {
                     return Err(format!("{what}: a quantity's unit must be a named unit, not {unit_class}"));
                 }
                 let monetary = unit_class == "IFCMONETARYUNIT";
-                // A quantity's own rule names its unit type exactly; a
-                // property's user-defined or unreadable unit type passes.
+                // A length, area, volume, weight or time quantity's own rule
+                // names its unit type exactly; a property's user-defined or
+                // unreadable unit type passes, and a count has no rule.
                 let quantity = set.kind == PsetKind::Quantity;
                 let fits = match measure_unit(measure_type) {
                     Some(MeasureUnit::Monetary) => monetary,

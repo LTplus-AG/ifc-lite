@@ -33,6 +33,7 @@ fn associated_wall(schema: &str) -> Vec<u8> {
             ("LengthExponent", "0"), ("MassExponent", "0"), ("TimeExponent", "0"), ("ElectricCurrentExponent", "0"),
             ("ThermodynamicTemperatureExponent", "0"), ("AmountOfSubstanceExponent", "0"), ("LuminousIntensityExponent", "0"),
         ]),
+        r(225, "IFCMONETARYUNIT", &[("Currency", if schema == "IFC2X3" { ".EUR." } else { "'EUR'" })]),
     ]
     .concat();
     let text = String::from_utf8(storey_with_typed_wall(schema)).unwrap();
@@ -258,6 +259,7 @@ fn a_unit_or_association_the_schema_cannot_hold_is_refused() {
             }),
             "cannot carry a material",
         ),
+        ("IFC4", Box::new(prop(measure("R", "IfcRatioMeasure", 0.5, Some(ValueUnit::Existing(ObjectRef::Id(225)))))), "does not measure"),
         (
             "IFC2X3",
             Box::new(|w: &mut NewObject| {
@@ -332,8 +334,19 @@ fn a_unit_or_association_the_schema_cannot_hold_is_refused() {
     let mut member = wall(10);
     member.class = ClassSpec { class: IfcClass::Named("IfcStructuralSurfaceMember".into()), predefined_type: Some("SHELL".into()) };
     member.material = Some(MaterialLink::Existing(ObjectRef::Id(200)));
-    let (out, report) = run(&associated_wall("IFC4"), vec![add(w), add(member)]);
+    let mut port = object(IfcClass::Named("IfcDistributionPort".into()), gid(11), None, Representation::None);
+    port.material = Some(MaterialLink::Existing(ObjectRef::Id(200)));
+    let (out, report) = run(&associated_wall("IFC4"), vec![add(w), add(member), add(port)]);
     assert_valid(&out, &report, "IFC4");
+    assert_eq!(report.added, 3);
+
+    // IFC2X3 takes a material on any product but an opening or virtual
+    // element, a space included.
+    let mut space = object(IfcClass::Space, gid(12), Some(ObjectRef::Id(70)), Representation::None);
+    space.material = Some(MaterialLink::Existing(ObjectRef::Id(200)));
+    let (out, report) = run(&associated_wall("IFC2X3"), vec![add(space)]);
+    assert_valid(&out, &report, "IFC2X3");
+    assert_eq!(report.added, 1);
 }
 
 /// A new material an Add built and then lost (the Add was refused) is not

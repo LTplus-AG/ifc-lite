@@ -1662,9 +1662,13 @@ operations; exact numerical execution refuses those operations without consuming
 them. A foreign reply is returned intact and does not advance the receiver.
 
 This increment admits direct extrusion and swept-disk recipes, preserves
-repeated occurrences and source identity, and applies qualified rigid product
-placement. Unsupported source families, mappings, Booleans, custom processors,
-annotations and alignments refuse the traversal. Native targets support source
+repeated occurrences and source identity metadata, and applies proper rigid
+mapping and product placements. `IfcMappedItem` uses the existing common mapping
+controller: repeated sources share a construction definition within a root while
+each placed occurrence receives its own logical slot and ordered placement lineage.
+Exact mesh caches cannot satisfy retained construction requests. Unsupported source
+families, nonrigid affine mappings, Booleans, custom processors, annotations and
+alignments refuse the whole traversal, including after earlier constructions. Native targets support source
 capture; wasm32 needs the existing `wasm_source_capture` feature. The default
 wasm build refuses retained admission.
 
@@ -1676,3 +1680,31 @@ unnecessary or discharges it may remove it. It grants no source execution
 authority, performs no SDK work and publishes no partial retained product. The native/browser transaction consumers,
 full release features and explicit viewer/CLI selection follow separately;
 exact geometry remains the default.
+
+`RetainedProgram::product_submeshes` follows that same logical path and records
+ordered `RetainedPresentation` bindings: source geometry/style ids followed by
+mapped occurrence ids and representation-map ids. These are unresolved appearance
+inputs, not resolved materials or authenticated face correspondence. Texture data
+is owned; palette/texture application and persistent faces remain obligations.
+Logical template/placeholder metadata does not claim an exact renderer template.
+
+`RetainedProgram::type_map` accepts an owned `IfcRepresentationMap`, constructs its
+source items, then applies its actual rigid `MappingOrigin` in metres.
+`finish_type_map(type_product, class, color)` appends caller-supplied type/class and
+fallback-colour metadata. It does not authenticate map membership or perform the
+native type-product planner/transaction. Its plan retains `ProductPlacement` as
+well as all four unchecked opening/layer/appearance/face obligations. A malformed
+origin or unsupported later source item refuses the entire map plan.
+
+`RetainedTraversal` creates multiple roots sharing a finite, sticky work allowance
+and decoder/router execution-owner checks. Completed definitions and presentation
+bindings are cached separately per root, so changing plain/styled mode or texture
+inputs between roots cannot reuse stale bindings. The explicit active mapping
+path bounds cycles and depth without suppressing repeated sibling occurrences.
+Cache retrieval and publication debit the shared budget before copying expanding
+DAG values or allocating their destination storage. Refusal remains sticky across
+roots. Cancellation is local to a program and blocks admission and completion;
+foreign or cancelled receivers return replies intact to their original owner.
+Source epoch/revision/id and type metadata are labels supplied to this controller,
+not authenticated runtime authority. No runtime Cargo dependency or processing,
+wasm transaction, viewer, or CLI activation is added by this slice.

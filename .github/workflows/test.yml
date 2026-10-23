@@ -930,6 +930,11 @@ jobs:
           # and timeout. Once source_axes.rs is on main, whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/kernel/plane_weld/source_axes.rs | grep -Fxq 'rust/geometry/src/kernel/plane_weld/source_axes.rs'; then
             oracle_args+=(--mutation docs/architecture/evidence/issue-7292/signed-zero.oracle.patch)
+          # #7955 H2a2 common mapped/type-map controller: preserve APIs and
+          # mutate cycle/copy bounds, ownership, bindings and late origin.
+          # The combined patch also retains all H2a1 behavioral mutations.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/mapping_retained.rs | grep -Fxq 'rust/geometry/src/program/mapping_retained.rs'; then
+            oracle_args+=(--mutation tests/evidence/retained-mapped-controller-h2a2/behaviour.oracle.patch)
           # #7955 H2 controller: preserve the new API, then mutate source
           # identity, disk root, unchecked obligations, and refusal of exact
           # numerical execution. The selected behavioral tests must fail
@@ -1787,6 +1792,13 @@ jobs:
             node scripts/check-test-revert-oracle.mjs --base origin/main --ci --json \
               --mutation tests/evidence/product-state-e3/retry-stop.oracle.patch \
               --test rust/processing/src/element/session_retry_tests.rs
+          fi
+          # Observe every new effect independently; combined RED is insufficient.
+          if git diff --name-only origin/main...HEAD -- rust/geometry/src/program/mapping_retained.rs | grep -q .; then
+            for mutation in cycle copy-budget owner style-binding type-origin type-exact-nonconsumption; do
+              node scripts/check-test-revert-oracle.mjs --base origin/main --ci --json \
+                --mutation "tests/evidence/retained-mapped-controller-h2a2/$mutation.oracle.patch"
+            done
           fi
           if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/decoder/precision_certificate.rs | grep -Fxq 'rust/core/src/decoder/precision_certificate.rs'; then
             # The oracle restored the source; also execute the positive side

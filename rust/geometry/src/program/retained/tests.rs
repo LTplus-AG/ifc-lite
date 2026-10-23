@@ -329,9 +329,17 @@ fn retained_mapped_cycle_is_refused_without_following_the_cycle() {
     let router = GeometryRouter::with_units(&text, &mut decoder);
     let entity = decoder.decode_by_id(10).unwrap();
     let mut program = RetainedProgram::product_parts(&entity, contract());
-    assert!(drive(&mut program, &router, &mut decoder).is_empty());
+    let first = mapping_tests::stop(&mut program, &router, &mut decoder);
+    assert!(matches!(first, RetainedProgramError::Stopped(crate::resource::ProgramStop::ResourceRefused(f))
+        if f.dimension == crate::resource::Dimension::Representation && f.requested == 2));
+    assert_eq!(program.request().err(), Some(first));
     assert!(program.finish().is_err());
 }
+
+#[path = "mapping_tests.rs"]
+mod mapping_tests;
+#[path = "type_map_tests.rs"]
+mod type_map_tests;
 
 #[path = "obligations_tests.rs"]
 mod obligations;
@@ -339,3 +347,6 @@ mod obligations;
 mod disk;
 #[path = "protocol_tests.rs"]
 mod protocol;
+
+#[path = "mapping_contract_tests.rs"]
+mod mapping_contract;

@@ -262,6 +262,7 @@ impl<'a> ProductControl<'a> {
 
     fn mapping_done(&mut self, result: Result<MappingOutput>, role: Role) -> Action {
         match (role, result) {
+            (_, Ok(MappingOutput::Retained(values))) if self.retained.is_some() => self.accept_retained_mapping(values),
             (Role::Parts, Ok(MappingOutput::Parts(parts))) => match &self.body {
                 Body::Sink(Sink::Merged(_)) => Action::Merge(parts),
                 _ => Action::Complete(Err(protocol("merged accumulator"))),

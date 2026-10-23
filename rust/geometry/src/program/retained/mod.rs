@@ -3,6 +3,12 @@
 use crate::document::RetainedRecipe;
 #[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
 mod capture;
+#[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
+mod walk;
+#[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
+mod cache;
+mod presentation;
+pub use presentation::RetainedPresentation;
 mod select;
 pub(crate) use select::RetainedSelection;
 
@@ -49,6 +55,7 @@ pub struct LogicalRetainedValue {
     length_unit_scale: f64,
     /// Inner-to-outer metre-domain mappings, followed by reached product placement.
     placements: Vec<RetainedPlacement>,
+    presentation: Vec<RetainedPresentation>,
     product_placed: bool,
     pub(super) empty: bool,
     slot: LogicalRetainedSlot,
@@ -72,6 +79,12 @@ impl LogicalRetainedValue {
     }
     pub fn placements(&self) -> &[RetainedPlacement] {
         &self.placements
+    }
+    pub fn presentation(&self) -> &[RetainedPresentation] { &self.presentation }
+    pub(in crate::program) fn present(&mut self, binding: RetainedPresentation) -> crate::Result<()> {
+        crate::resource::reserve_headers(&mut self.presentation, 1)?.retain();
+        self.presentation.push(binding);
+        Ok(())
     }
     pub fn is_product_placed(&self) -> bool {
         self.product_placed
@@ -250,15 +263,20 @@ pub(super) fn copy_values(
     for value in values {
         crate::resource::charge(crate::resource::Cost {
             work: 1,
-            copy_bytes: std::mem::size_of_val(value.placements.as_slice()) as u64,
+            copy_bytes: (std::mem::size_of_val(value.placements.as_slice())
+                + std::mem::size_of_val(value.presentation.as_slice())) as u64,
             ..Default::default()
         })?
         .retain();
         let mut placements = Vec::new();
         crate::resource::reserve_headers(&mut placements, value.placements.len())?.retain();
         placements.extend_from_slice(&value.placements);
+        let mut presentation = Vec::new();
+        crate::resource::reserve_headers(&mut presentation, value.presentation.len())?.retain();
+        presentation.extend_from_slice(&value.presentation);
         output.push(LogicalRetainedValue {
             placements,
+            presentation,
             ..value.clone_without_placements()
         });
     }
@@ -270,6 +288,7 @@ impl LogicalRetainedValue {
             definition: self.definition.clone(),
             length_unit_scale: self.length_unit_scale,
             placements: Vec::new(),
+            presentation: Vec::new(),
             product_placed: self.product_placed,
             empty: self.empty,
             slot: self.slot,

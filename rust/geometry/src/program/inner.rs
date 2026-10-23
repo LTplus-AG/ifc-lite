@@ -187,6 +187,7 @@ impl<'a> GeometryProgram<'a> {
             return Err(ProgramError::UnsupportedRetained);
         }
         let decoder_before = decoder.execution_identity();
+        if matches!(&self.control, Control::Mapping(c) if c.retained_ready()) { return Err(ProgramError::UnsupportedRetained); }
         // Consume admission before any callback can unwind. A copied ticket
         // cannot replay work after its recipe was moved into a lexical call.
         self.pending = Some((request, true));

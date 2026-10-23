@@ -8,7 +8,7 @@ mod execute;
 mod inner;
 mod retained;
 pub use retained::*;
-pub use inner::retained_program::{RetainedProgram, RetainedTicket, RetainedReply, RejectedRetainedReply, RetainedProgramError};
+pub use inner::retained_program::{RetainedProgram, RetainedTicket, RetainedReply, RejectedRetainedReply, RetainedProgramError, RetainedTraversal};
 mod inner_cache;
 mod item;
 mod layers;

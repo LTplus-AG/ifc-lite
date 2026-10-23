@@ -7,7 +7,7 @@
 //! from the kernel.
 
 use super::*;
-use crate::mesh::Mesh;
+use crate::{mesh::Mesh, ClippingProcessor, GroupCut};
 
 /// A vertical triangular prism over `(x, y)` corners, from `z0` to `z1`,
 /// wound outward.

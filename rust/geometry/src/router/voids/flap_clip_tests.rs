@@ -8,7 +8,7 @@
 //! the sibling `reveal_tests` module.
 
 use super::*;
-use super::malformed_opening_repair::recut_malformed_openings;
+use super::malformed_opening_repair::{recut_malformed_openings, OpeningBox};
 
 fn box_cutter_mesh(half: [f64; 3], garbage: &[[f64; 3]]) -> Mesh {
     // 8 corners of an axis-aligned box centred at origin + far garbage verts.

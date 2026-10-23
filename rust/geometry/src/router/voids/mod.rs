@@ -6,16 +6,20 @@
 
 use super::processing::SourceHygiene;
 use super::GeometryRouter;
-use crate::csg::{ClippingProcessor, GroupCut};
+use crate::csg::ClippingProcessor;
 use crate::mesh::SubMeshCollection;
 use crate::program::openings::execute::Execution;
 use crate::{Mesh, Point3, Result, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
+#[cfg(test)]
 use nalgebra::Matrix3;
 use rustc_hash::FxHashMap;
 
 mod aabb_clip;
 mod admission;
+mod context;
+pub use context::RectParam;
+pub(crate) use context::{ParamRectCut, VoidContext};
 mod batch_cutter;
 pub(crate) mod bool2d_path;
 mod coaxial_union;
@@ -50,7 +54,7 @@ pub(crate) use cutter::{CutterKind, OpeningFrame};
 use geom::*;
 use malformed_opening_repair::{
     cutter_is_closed_manifold, opening_obb_if_malformed,
-    translate_cutter_mesh, world_host_bounds, OpeningBox,
+    translate_cutter_mesh, world_host_bounds,
 };
 use sweep::mesh_to_keep;
 mod sweep;
@@ -67,121 +71,6 @@ const MIXED_ROUTE_DEFECT_FLOOR: usize = 64;
 const MIXED_ROUTE_DEFECT_GROWTH: usize = 4;
 /// Maximum wrapper depth when drilling through mapped/boolean items to find an extrusion.
 const MAX_EXTRUSION_EXTRACT_DEPTH: usize = 32;
-
-/// Pre-computed per-element void subtraction data.
-///
-/// Building this is expensive: the owned host-opening control
-/// (`program::openings::OpeningControl::host`) re-runs the product pipeline on each
-/// `IfcOpeningElement` and probes the host's parametrics. Once built, it can be
-/// reused across every sub-mesh of the same element without re-doing any of
-/// that work, so the voided styled program pays the classification cost once
-/// per element rather than once per sub-mesh.
-pub(crate) struct VoidContext {
-    /// All classified openings. The diagonal-opening pass needs the raw list
-    /// (unmerged) so its per-item box rotation stays accurate.
-    pub(crate) openings: Vec<CutterKind>,
-    /// Rectangular openings merged into larger boxes to prevent O(2^N)
-    /// triangle growth when many adjacent openings tile a surface.
-    pub(crate) merged_openings: Vec<CutterKind>,
-    /// Parametric placement-frame cut data (host + reconciled opening boxes),
-    /// captured only when `rect_fast::param_enabled()`. Drives the analytic fast
-    /// path in `apply_void_context`; `None` defers to the exact kernel.
-    pub(crate) param: Option<ParamRectCut>,
-    /// 2D opening-subtraction data (host profile + projected opening footprints),
-    /// captured only when `bool2d_path::enabled()`. Drives the arbitrary-profile
-    /// 2D re-extrude fast path in `apply_void_context`, tried after the rect
-    /// parametric path; `None` defers to the exact kernel.
-    pub(crate) bool2d: Option<bool2d_path::Bool2dCut>,
-}
-
-impl VoidContext {
-    fn is_noop(&self) -> bool {
-        self.openings.is_empty()
-    }
-
-    /// Rectangular openings in the merged set: what every cut path records as
-    /// `HostOpeningDiagnostic::rect_boxes_processed`, so the silent-no-op
-    /// detector reads one quantity whichever path cut the host.
-    fn rect_opening_count(&self) -> usize {
-        self.merged_openings
-            .iter()
-            .filter(|o| matches!(o, CutterKind::Rectangular(..)))
-            .count()
-    }
-
-    /// True iff every cutter mesh is already in world coords (`origin == 0`). When
-    /// so AND the host is world-framed, `apply_void_context` can run the inner CSG
-    /// directly (the native / legacy fast path) without cloning the cutters; if any
-    /// cutter carries its own per-element origin it must be relativized first.
-    fn all_cutters_world_framed(&self) -> bool {
-        let world = |o: &CutterKind| match o {
-            CutterKind::Rectangular(..) => true,
-            CutterKind::DiagonalRectangular(m, _) => m.origin == [0.0, 0.0, 0.0],
-            CutterKind::NonRectangular(m, ..) => m.origin == [0.0, 0.0, 0.0],
-        };
-        self.openings.iter().all(world) && self.merged_openings.iter().all(world)
-    }
-
-    /// Return a copy of this context with every opening (raw + merged)
-    /// translated by `-origin`, i.e. moved from the world frame into the host's
-    /// per-element local frame. Used by [`GeometryRouter::apply_void_context`]
-    /// so the cutters share the host's local frame for the CSG — the missing
-    /// piece that previously made relativizing only the host silently drop cuts.
-    fn relativized_by(&self, origin: [f64; 3]) -> VoidContext {
-        VoidContext {
-            openings: self.openings.iter().map(|o| o.translated(origin)).collect(),
-            merged_openings: self
-                .merged_openings
-                .iter()
-                .map(|o| o.translated(origin))
-                .collect(),
-            // The parametric path runs in the OUTER apply_void_context on the
-            // non-relativized world mesh (it makes its own frame), so the
-            // relativized context never uses `param` — drop it.
-            param: None,
-            // Likewise the 2D path builds its own world frame from the parametrics
-            // and runs in the OUTER apply_void_context; the relativized context
-            // never uses it.
-            bool2d: None,
-        }
-    }
-
-    /// Oriented boxes of the REAL openings whose cutter mesh is MALFORMED —
-    /// self-intersecting tessellated voids carrying garbage "fin" vertices far
-    /// from the actual hole (a broken export). The kernel under-cuts such a
-    /// cutter, leaving a wall flap bridging the opening; these boxes mark the
-    /// region that MUST end up empty so a post-cut pass can drop the flap.
-    /// Empty when every cutter is well-formed, so clean hosts are untouched.
-    fn malformed_opening_boxes(&self) -> Vec<OpeningBox> {
-        self.openings
-            .iter()
-            .filter_map(|o| match o {
-                CutterKind::NonRectangular(m, ..) => opening_obb_if_malformed(m),
-                _ => None,
-            })
-            .collect()
-    }
-}
-
-/// EXACT parametric oriented box of a rectangular extrusion, in WORLD space.
-/// `r` columns are the orthonormal world axes (profile-X', profile-Y', extrude);
-/// `half` are the half-extents along those axes (XDim/2, YDim/2, Depth/2).
-/// Produced by [`GeometryRouter::parametric_rect_probe`].
-#[derive(Clone, Copy)]
-pub struct RectParam {
-    pub r: Matrix3<f64>,
-    pub center: Point3<f64>,
-    pub half: [f64; 3],
-}
-
-/// Captured parametric boxes for a host + its openings (all reconciled to their
-/// meshes and sharing the host frame), enabling the analytic placement-frame cut.
-/// Captured by the owned host-opening control only when `param_enabled()`.
-#[derive(Clone)]
-pub(crate) struct ParamRectCut {
-    pub(crate) host: RectParam,
-    pub(crate) openings: Vec<RectParam>,
-}
 
 impl GeometryRouter {
     /// Process element with void subtraction (openings)
@@ -313,9 +202,8 @@ impl Execution {
         result
     }
 
-    // `host_mutated` is set just before an early `break` (final write unread; kept
-    // for readability). `allow_local_frame` (#3641) caps local-frame recursion.
-    #[allow(unused_assignments, clippy::too_many_arguments)]
+    // `allow_local_frame` (#3641) caps local-frame recursion.
+    #[allow(clippy::too_many_arguments)]
     fn apply_void_context_inner(
         &self,
         mesh: Mesh,
@@ -518,17 +406,7 @@ impl Execution {
         // (`subtract_mesh_many` rejects a group whose N-ary arrangement left an
         // unrecovered constraint) — fall through to the per-opening sequential
         // loop below with its full #635 fallback / engulf / redundant-void machinery.
-        let mut batch_consumed: Vec<bool> = vec![false; all_openings.len()];
-        // Disjoint groups of opening indices (len ≥ 2 only); each is cut
-        // INLINE at its first member's position in the sequential loop below,
-        // so the relative order of batched vs sequential cutters matches the
-        // pure sequential pass — only the order WITHIN a group (mutually
-        // disjoint cutters, the provably order-free case) is collapsed.
-        let mut batch_groups: Vec<Vec<(usize, Mesh)>> = Vec::new();
-        let mut batch_group_of: FxHashMap<usize, usize> = FxHashMap::default();
-        // Set on every successful cut; while false, a group's admission-time
-        // extended cutters are still valid and reused verbatim.
-        let mut host_mutated = false;
+        let mut tail = strategy::exact::ExactTail::new(all_openings.len());
 
         // COAXIAL FOOTPRINT-UNION for OVERLAPPING clusters (issue #129, flag
         // `IFC_LITE_VOID_UNION`). Overlapping cutters can't join the disjoint batch
@@ -540,115 +418,15 @@ impl Execution {
         self.coaxial_union_prepass(
             &mut result,
             &all_openings,
-            &mut batch_consumed,
-            &mut host_mutated,
+            &mut tail.consumed,
+            &mut tail.host_mutated,
             &clipper,
         );
 
-        if all_openings.len() >= 2 {
-            // Inflation pad: ≥ 2×(promote band 8·2⁻¹⁶ ≈ 122 µm + snap radius);
-            // 1 mm is conservative and far below any real opening separation.
-            // Touching/overlapping cutters land in DIFFERENT groups, cut in
-            // sequence — overlap degrades gracefully to sequential behavior.
-            const BATCH_PAD: f64 = 1.0e-3;
-            struct Cand {
-                idx: usize,
-                /// The admission-time extended cutter (host PRE-cut). Reused at
-                /// cut time while the host is still unmutated — the common case
-                /// (groups are cut at their FIRST member, usually before any
-                /// sequential cut) — so extension isn't paid twice.
-                mesh: Mesh,
-                lo: [f64; 3],
-                hi: [f64; 3],
-            }
-            let mut cands: Vec<Cand> = Vec::new();
-            for (idx, opening) in all_openings.iter().enumerate() {
-                // Already cut by the coaxial/overlap-union prepass above.
-                if batch_consumed[idx] {
-                    continue;
-                }
-                let Some((opening_mesh, extrusion_dir)) = opening.cutter().mesh_cutter() else { continue };
-                // Same admission guards as the sequential loop.
-                if admit_cutter(
-                    opening_mesh,
-                    result.bounds(),
-                    min_opening_volume(self.tessellation_quality),
-                )
-                .is_none()
-                {
-                    continue;
-                }
-                let Some(ext) = GeometryRouter::batch_cutter(opening_mesh, extrusion_dir, &result) else {
-                    continue;
-                };
-                let (lo, hi) = ext.bounds();
-                // Engulf-class exclusion: a cutter whose extended AABB covers
-                // the whole host on EVERY axis (3% slack, the sequential
-                // engulf test) stays on the sequential path, where the
-                // near-engulf and redundant-void guards live — batched it can
-                // shave the host's outer shell (the #559171-family residual).
-                let engulfs = aabb_engulfs(
-                    [lo.x as f64, lo.y as f64, lo.z as f64],
-                    [hi.x as f64, hi.y as f64, hi.z as f64],
-                    [wall_min.x, wall_min.y, wall_min.z],
-                    [wall_max.x, wall_max.y, wall_max.z],
-                    ENGULF_TOLERANCE,
-                );
-                if engulfs {
-                    continue;
-                }
-                cands.push(Cand {
-                    idx,
-                    mesh: ext,
-                    lo: [
-                        lo.x as f64 - BATCH_PAD,
-                        lo.y as f64 - BATCH_PAD,
-                        lo.z as f64 - BATCH_PAD,
-                    ],
-                    hi: [
-                        hi.x as f64 + BATCH_PAD,
-                        hi.y as f64 + BATCH_PAD,
-                        hi.z as f64 + BATCH_PAD,
-                    ],
-                });
-            }
-            // Greedy disjoint grouping, deterministic in opening order: a
-            // candidate joins the first group whose EVERY member's inflated
-            // AABB is disjoint from its own.
-            let mut groups: Vec<Vec<usize>> = Vec::new();
-            'cand: for ci in 0..cands.len() {
-                for g in groups.iter_mut() {
-                    let disjoint_from_all = g.iter().all(|&cj| {
-                        let (a, b) = (&cands[ci], &cands[cj]);
-                        a.hi[0] < b.lo[0]
-                            || a.lo[0] > b.hi[0]
-                            || a.hi[1] < b.lo[1]
-                            || a.lo[1] > b.hi[1]
-                            || a.hi[2] < b.lo[2]
-                            || a.lo[2] > b.hi[2]
-                    });
-                    if disjoint_from_all {
-                        g.push(ci);
-                        continue 'cand;
-                    }
-                }
-                groups.push(vec![ci]);
-            }
-            for g in &groups {
-                if g.len() < 2 {
-                    continue; // singleton: sequential loop handles it (full guards)
-                }
-                let gid = batch_groups.len();
-                for &ci in g {
-                    batch_group_of.insert(cands[ci].idx, gid);
-                }
-                batch_groups
-                    .push(g.iter().map(|&ci| (cands[ci].idx, cands[ci].mesh.clone())).collect());
-            }
-        }
+        tail.plan_groups(self, &result, &all_openings, wall_min, wall_max);
 
         for (opening_idx, opening) in all_openings.iter().enumerate() {
-            if batch_consumed[opening_idx] {
+            if tail.consumed[opening_idx] {
                 continue; // already handled by a batched disjoint group
             }
             // Batched group cut, attempted ONCE, inline at the group's first
@@ -656,56 +434,8 @@ impl Execution {
             // matches the pure sequential pass. On any failure (admission,
             // guards, or the kernel's conformity gate) the members fall back
             // to the per-opening sequential path below.
-            if let Some(&gid) = batch_group_of.get(&opening_idx) {
-                let members = std::mem::take(&mut batch_groups[gid]);
-                if members.len() >= 2 {
-                    // While the host is unmutated, the admission-time extended
-                    // cutters (built against this exact host) are reused as-is;
-                    // after any cut, members are re-extended against the
-                    // CURRENT host — matching the sequential loop's reference,
-                    // which extends each cutter against the (k−1)-cut host.
-                    let mut extended: Vec<(usize, Mesh)> = Vec::with_capacity(members.len());
-                    let mut admissible = true;
-                    if !host_mutated {
-                        extended = members;
-                    } else {
-                        for &(m_idx, _) in &members {
-                            let ext = all_openings[m_idx]
-                                .cutter()
-                                .mesh_cutter()
-                                .and_then(|(m, dir)| GeometryRouter::batch_cutter(m, dir, &result));
-                            let Some(ext) = ext else {
-                                admissible = false;
-                                break;
-                            };
-                            extended.push((m_idx, ext));
-                        }
-                    }
-                    if admissible {
-                        let cutters: Vec<&Mesh> = extended.iter().map(|(_, m)| m).collect();
-                        let tri_before = result.triangle_count();
-                        let outcome = if GeometryRouter::batch_cutters_match_sequential(&result, &all_openings, &extended) {
-                            clipper.subtract_mesh_many_retaining_miss(&result, &cutters)
-                        } else {
-                            clipper.subtract_mesh_many(&result, &cutters)
-                        };
-                        // #6516: retain the group's validated consolidation on
-                        // a conforming miss; keeping the original host instead
-                        // can discard useful seam repairs made by the singles.
-                        if let GroupCut::Cut(csg_result) | GroupCut::Retessellated(csg_result) = outcome {
-                            if cut_retains_triangles(tri_before, &csg_result) {
-                                result = csg_result;
-                                host_mutated = true;
-                                for &(m_idx, _) in &extended {
-                                    batch_consumed[m_idx] = true;
-                                }
-                            }
-                        }
-                    }
-                }
-                if batch_consumed[opening_idx] {
-                    continue; // this opening was handled with its group
-                }
+            if tail.cut_group(&mut result, &all_openings, &clipper, opening_idx) {
+                continue; // this opening was handled with its group
             }
             // Normalize both exact-subtract variants into the same (mesh, min,
             // max, dir) shape. `DiagonalRectangular` (a clean but tilted box —
@@ -760,7 +490,7 @@ impl Execution {
                         // host.
                         self.record_void_consumed_host(element_id);
                         result = Mesh::default();
-                        host_mutated = true;
+                        tail.host_mutated = true;
                         break;
                     }
 
@@ -789,7 +519,7 @@ impl Execution {
                     if let Some(csg_result) = kept {
                         if cut_retains_triangles(tri_before, &csg_result) {
                             result = csg_result;
-                            host_mutated = true;
+                            tail.host_mutated = true;
                             csg_succeeded = true;
                         }
                     }
@@ -917,7 +647,7 @@ impl Execution {
                                 #[cfg(feature = "opening-perf-trace")]
                                 crate::opening_perf_trace::record(|c| c.aabb_fallback_commits = c.aabb_fallback_commits.saturating_add(1));
                                 result = aabb_cut;
-                                host_mutated = true;
+                                tail.host_mutated = true;
                             }
                         } else {
                             // The engulfing/redundant-void guard suppressed the
@@ -959,7 +689,7 @@ impl Execution {
 
         post::finish(result, post::Context {
             execution: self, kernel_failures, ctx, element_id, tris_before,
-            host_bounds_capture, wall_min, wall_max, original_host: &original_host, host_mutated,
+            host_bounds_capture, wall_min, wall_max, original_host: &original_host, host_mutated: tail.host_mutated,
         })
     }
 

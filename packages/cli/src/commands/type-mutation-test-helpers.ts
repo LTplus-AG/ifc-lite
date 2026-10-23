@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { EntityExtractor, type IfcDataStore } from '@ifc-lite/parser';
+
 export const schemas = [
   { schema: 'IFC2X3', type: 'IFCWINDOWSTYLE', tail: '.SINGLE_PANEL.,.WOOD.,.T.,.F.' },
   { schema: 'IFC4', type: 'IFCWALLTYPE', tail: "'Wall',.STANDARD." },
@@ -24,3 +26,18 @@ export function source(fixture: (typeof schemas)[number]): Uint8Array {
   ].join('\n'));
 }
 
+
+/** Read ownership directly; the own-data extractors also accept relationship sets. */
+export function directlyOwnedSetNames(store: IfcDataStore): string[] {
+  const extractor = new EntityExtractor(store.source);
+  const ownerRef = store.entityIndex.byId.get(1);
+  if (!ownerRef) throw new Error('fixture type #1 missing');
+  const ids = extractor.extractEntity(ownerRef)?.attributes[5];
+  if (!Array.isArray(ids)) return [];
+  return ids.map(id => {
+    if (typeof id !== 'number') throw new Error('HasPropertySets contains a non-reference');
+    const ref = store.entityIndex.byId.get(id);
+    if (!ref) throw new Error(`owned set #${id} missing`);
+    return String(extractor.extractEntity(ref)?.attributes[2]);
+  }).sort();
+}

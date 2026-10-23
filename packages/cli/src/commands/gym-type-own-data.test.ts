@@ -10,7 +10,7 @@ import { PassThrough, Readable } from 'node:stream';
 import { extractTypeEntityOwnProperties, extractTypeEntityOwnQuantities } from '@ifc-lite/parser';
 import { gymCommand } from './gym.js';
 import * as channels from './gym/channels.js';
-import { schemas, source } from './type-mutation-test-helpers.js';
+import { schemas, source, directlyOwnedSetNames } from './type-mutation-test-helpers.js';
 
 describe('gym preserves type-owned data through edits and reset (#8056)', () => {
   for (const fixture of schemas) {
@@ -37,6 +37,7 @@ describe('gym preserves type-owned data through edits and reset (#8056)', () => 
         expect(lines.map(line => line.type)).toEqual(['reset', 'reward', 'reset', 'reward']);
         expect(checker.mock.calls).toHaveLength(4);
         for (const [index, [store]] of checker.mock.calls.entries()) {
+          expect(directlyOwnedSetNames(store)).toEqual(['Pset_TestType', 'Qto_TestType']);
           const properties = extractTypeEntityOwnProperties(store, 1)
             .find(set => set.name === 'Pset_TestType')?.properties;
           expect(properties?.map(p => ({ name: p.name, value: p.value })))

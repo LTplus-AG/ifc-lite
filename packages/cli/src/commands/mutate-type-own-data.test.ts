@@ -10,7 +10,7 @@ import { extractTypeEntityOwnProperties, extractTypeEntityOwnQuantities } from '
 import { loadIfcBytes } from '../loader.js';
 import { mutateCommand } from './mutate.js';
 
-import { schemas, source } from './type-mutation-test-helpers.js';
+import { schemas, source, directlyOwnedSetNames } from './type-mutation-test-helpers.js';
 
 describe('CLI mutate preserves type-owned siblings and quantities (#8056)', () => {
   for (const fixture of schemas) {
@@ -26,8 +26,7 @@ describe('CLI mutate preserves type-owned siblings and quantities (#8056)', () =
           .toEqual(['FireRating', 'Code']);
         await mutateCommand([input, '--id', '1', '--set', 'Pset_TestType.FireRating=EI90', '--out', output]);
         const reparsed = await loadIfcBytes(await readFile(output), 'mutated');
-        // These extractors follow HasPropertySets: values elsewhere in the
-        // output cannot satisfy the assertions if ownership was lost.
+        expect(directlyOwnedSetNames(reparsed)).toEqual(['Pset_TestType', 'Qto_TestType']);
         const properties = extractTypeEntityOwnProperties(reparsed, 1)
           .find(set => set.name === 'Pset_TestType')?.properties;
         expect(properties?.map(p => ({ name: p.name, value: p.value })))

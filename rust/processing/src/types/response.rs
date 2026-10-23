@@ -58,6 +58,13 @@ pub struct ModelMetadata {
     /// `extractLengthUnitScale` (issue #900).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub length_unit_scale: Option<f64>,
+    /// The model's length-unit factor is unusable (zero, negative or
+    /// non-finite), so no geometry was meshed (#7678, D3). Holds the express
+    /// id of the offending `IfcSIUnit` / `IfcConversionBasedUnit` record.
+    /// `length_unit_scale` is then `None`, not an invented `1.0`. `None` for a
+    /// usable unit. Mirrors the wasm wire's `unitRefused`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub length_unit_refused: Option<u32>,
     /// Georeferencing (`IfcMapConversion` + `IfcProjectedCRS`). `None` when the
     /// model carries no map-conversion data. Mirrors the browser parser's
     /// `extractGeoreferencing` (issue #900).
@@ -180,6 +187,20 @@ pub struct ProcessingStats {
     /// the backstop engaged for this model.
     #[serde(default)]
     pub degenerate_triangles_dropped: u64,
+    /// Elements whose geometry read a record refused by input admission: it
+    /// holds a REAL the double range cannot represent (`1.E400`), so that
+    /// geometry failed closed instead of carrying an infinity (#7678, D3).
+    /// Counted on the native pass. Omitted from the wire when zero, so a
+    /// clean file's response is byte-identical to before.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub refused_input_elements: u64,
+    /// Records the native pass's pre-pass decoders refused for the same
+    /// reason (#7678, D3). They read styles and colours (a refused style
+    /// falls back to the default colour, counted only here), unit factors,
+    /// voids and the geometry records RTC detection samples. Omitted when
+    /// zero.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub refused_prepass_records: u64,
     /// CartesianPoints served from the per-worker point cache while meshing
     /// faceted breps (`EntityDecoder::get_polyloop_coords_cached`). Non-zero
     /// means the cross-element cache hoist memoized a shared point list rather
@@ -201,4 +222,8 @@ pub struct ProcessingStats {
     /// `None` when nothing diagnostic-worthy happened (no openings, no failures).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub geometry_diagnostics: Option<ifc_lite_geometry::GeometryDiagnostics>,
+}
+
+fn is_zero(count: &u64) -> bool {
+    *count == 0
 }

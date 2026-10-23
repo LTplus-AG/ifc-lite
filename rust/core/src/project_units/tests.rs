@@ -7,6 +7,7 @@
 //! see `rust/processing/tests/module_size_ratchet.rs`).
 
 use super::*;
+use crate::units::resolve_length_unit;
 
 fn units_of(ifc: &str) -> ProjectUnits {
     let mut decoder = EntityDecoder::new(ifc);
@@ -401,4 +402,82 @@ fn issue_4690_an_unresolved_conversion_unit_is_not_a_resolved_unit() {
     assert_eq!(units_of(unknown).resolved_for_unit_type("LENGTHUNIT"), None);
     let mut decoder = EntityDecoder::new(unknown);
     assert!(resolve_unit_by_ref(&mut decoder, 3).is_none());
+}
+
+// ---- F3a (#7775): the scalar half of `ProjectUnits` --------------------------
+
+/// A degree + millimetre project whose IFCPROJECT sits at the END of the file
+/// with a space around `=`, the Revit/EDM shape that defeated a `=IFCPROJECT(`
+/// literal (#1367). The measure holding the degree factor is declared last.
+const MM_DEGREE_PROJECT_LAST: &str = "ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t.ifc','2024-01-01',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#3=IFCUNITASSIGNMENT((#7,#10));
+#7=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#10=IFCCONVERSIONBASEDUNIT(#11,.PLANEANGLEUNIT.,'DEGREE',#9);
+#11=IFCDIMENSIONALEXPONENTS(0,0,0,0,0,0,0);
+#12=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);
+#9=IFCMEASUREWITHUNIT(IFCPLANEANGLEMEASURE(0.0174532925199433),#12);
+#1 = IFCPROJECT('guid',$,'Test',$,$,$,$,$,#3);
+ENDSEC;
+END-ISO-10303-21;
+";
+
+/// The data path's single resolution: the table and the scalars of one
+/// `ProjectUnits` agree with the standalone resolvers they replace.
+#[test]
+fn resolve_file_carries_the_length_and_angle_scalars() {
+    let mut decoder = EntityDecoder::new(MM_DEGREE_PROJECT_LAST);
+    let units = ProjectUnits::resolve_file(&mut decoder);
+    assert_eq!(units.project_id(), Some(1));
+    assert_eq!(units.length_unit_scale(), 0.001);
+    assert!((units.plane_angle_to_radians() - 0.0174532925199433).abs() < 1e-15);
+    assert_eq!(units.length_unit().unusable_factor, None);
+    // The table half still answers.
+    assert_eq!(units.unit_for_measure("IfcLengthMeasure").unwrap().symbol, "mm");
+
+    // Numerical equality with the ladder and the single-purpose resolvers.
+    let scales = UnitScales::resolve(MM_DEGREE_PROJECT_LAST.as_bytes(), None, &mut EntityDecoder::new(MM_DEGREE_PROJECT_LAST));
+    assert_eq!(units.scales(), scales);
+    let mut fresh = EntityDecoder::new(MM_DEGREE_PROJECT_LAST);
+    assert_eq!(resolve_length_unit(&mut fresh, 1).unwrap().scale, units.length_unit_scale());
+    assert_eq!(fresh.length_unit_scale(), units.length_unit_scale());
+}
+
+#[test]
+fn resolve_file_without_a_project_defaults_to_metres_and_radians() {
+    let ifc = "ISO-10303-21;\nDATA;\n#1=IFCWALL('x',$);\nENDSEC;\n";
+    let mut decoder = EntityDecoder::new(ifc);
+    let units = ProjectUnits::resolve_file(&mut decoder);
+    assert_eq!((units.project_id(), units.length_unit_scale(), units.plane_angle_to_radians()), (None, 1.0, 1.0));
+}
+
+/// C6's contract (F3a): the DATA path keeps main's value for an unusable
+/// factor and never refuses; geometry reads the same unit and refuses.
+#[test]
+fn an_unusable_length_factor_keeps_the_data_value_and_flags_geometry() {
+    let ifc = |factor: &str| format!("ISO-10303-21;
+DATA;
+#1=IFCPROJECT('g',$,'P',$,$,$,$,$,#3);
+#3=IFCUNITASSIGNMENT((#4));
+#4=IFCCONVERSIONBASEDUNIT(#5,.LENGTHUNIT.,'CUSTOM',#6);
+#5=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);
+#6=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE({factor}),#7);
+#7=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+ENDSEC;
+");
+    for (factor, data_scale) in [("1.E400", f64::INFINITY), ("0.", 1.0)] {
+        let text = ifc(factor);
+        let mut decoder = EntityDecoder::new(&text);
+        let units = ProjectUnits::resolve_file(&mut decoder);
+        assert_eq!(units.length_unit_scale(), data_scale, "factor {factor}: main's value");
+        assert_eq!(units.length_unit().unusable_factor, Some(6), "factor {factor}");
+        assert!(units.length_unit().for_geometry().is_err(), "factor {factor}: geometry refuses");
+        // The standalone data-path resolver says the same.
+        assert_eq!(resolve_length_unit(&mut EntityDecoder::new(&text), 1).unwrap(), units.length_unit());
+    }
 }

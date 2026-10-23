@@ -6,8 +6,9 @@ use super::{diagnostic, Result, EPSILON};
 use crate::{
     alignment::{
         LandXmlAlignmentPrimitive, LandXmlAlignmentSegment, LandXmlCurve, LandXmlIrregularLine,
-        LandXmlLine, LandXmlPlanPoint, LandXmlPointLocation, LandXmlRotation,
+        LandXmlLine, LandXmlPlanPoint, LandXmlPointLocation,
     },
+    numeric::{declared_length_tolerance, matches_radius, point_on_circle, signed_sweep},
     LandXmlSourceId,
 };
 
@@ -109,9 +110,13 @@ fn evaluate_irregular(
 ) -> Result<(LandXmlPlanPoint, (f64, f64))> {
     let points = irregular_vertices(id, value)?;
     let mut remaining = distance;
-    for pair in points.windows(2) {
+    let pairs = points.len().saturating_sub(1);
+    for (index, pair) in points.windows(2).enumerate() {
         let length = distance_between(pair[0], pair[1]);
-        if remaining <= length + EPSILON {
+        // The last pair owns any accepted excess of the declared length over
+        // the polyline (EDGE-LXMATH-9, #7693); `interpolate` clamps to its
+        // end, exactly as a `Line` does.
+        if remaining <= length + EPSILON || index + 1 == pairs {
             return interpolate(pair[0], pair[1], remaining, id);
         }
         remaining -= length;
@@ -129,9 +134,10 @@ fn evaluate_curve(
 ) -> Result<(LandXmlPlanPoint, (f64, f64))> {
     let (start_angle, signed_sweep, length, center, radius) = curve_geometry(id, value)?;
     let angle = start_angle + signed_sweep * (distance / length).clamp(0.0, 1.0);
+    let (northing, easting) = point_on_circle((center.northing, center.easting), radius, angle);
     let point = LandXmlPlanPoint {
-        northing: center.northing + radius * angle.sin(),
-        easting: center.easting + radius * angle.cos(),
+        northing,
+        easting,
         elevation: None,
     };
     let sign = signed_sweep.signum();
@@ -152,8 +158,8 @@ fn curve_geometry(
     let end_radius = distance_between(end, center);
     if !radius.is_finite()
         || radius <= EPSILON
-        || (start_radius - radius).abs() > radius * 1e-7
-        || (end_radius - radius).abs() > radius * 1e-7
+        || !matches_radius(start_radius, radius)
+        || !matches_radius(end_radius, radius)
     {
         return Err(diagnostic(
             id,
@@ -168,11 +174,11 @@ fn curve_geometry(
     let sweep = if distance_between(start, end) <= EPSILON {
         value.rotation.sign() * std::f64::consts::TAU
     } else {
-        sweep(start_angle, end_angle, value.rotation)
+        signed_sweep(start_angle, end_angle, value.rotation)
     };
     let geometric_length = radius * sweep.abs();
     let length = valid_length(id, value.declared_length.unwrap_or(geometric_length))?;
-    if (length - geometric_length).abs() > geometry_tolerance(length.max(geometric_length)) {
+    if (length - geometric_length).abs() > declared_length_tolerance(length.max(geometric_length)) {
         return Err(diagnostic(
             id,
             "LXMLA220",
@@ -184,7 +190,7 @@ fn curve_geometry(
 fn line_length(id: &LandXmlSourceId, value: &LandXmlLine) -> Result<f64> {
     let chord = distance_between(coordinates(id, &value.start)?, coordinates(id, &value.end)?);
     let length = valid_length(id, value.declared_length.unwrap_or(chord))?;
-    if (length - chord).abs() > geometry_tolerance(length.max(chord)) {
+    if (length - chord).abs() > declared_length_tolerance(length.max(chord)) {
         return Err(diagnostic(
             id,
             "LXMLA218",
@@ -200,7 +206,7 @@ fn irregular_length(id: &LandXmlSourceId, value: &LandXmlIrregularLine) -> Resul
         .map(|pair| distance_between(pair[0], pair[1]))
         .sum();
     let length = valid_length(id, value.declared_length.unwrap_or(geometric_length))?;
-    if (length - geometric_length).abs() > geometry_tolerance(length.max(geometric_length)) {
+    if (length - geometric_length).abs() > declared_length_tolerance(length.max(geometric_length)) {
         return Err(diagnostic(
             id,
             "LXMLA221",
@@ -224,7 +230,10 @@ fn irregular_vertices(
         .points
         .iter()
         .rposition(|point| distance_between(*point, end) > EPSILON)
-        .map_or(first_interior, |index| index.saturating_add(1));
+        .map_or(first_interior, |index| index.saturating_add(1))
+        // Start and End within 2·EPSILON of each other make the two scans
+        // cross; an empty interior then, not a reversed slice (#7677).
+        .max(first_interior);
     let mut vertices = Vec::with_capacity(last_interior.saturating_sub(first_interior) + 2);
     vertices.push(start);
     for point in &value.points[first_interior..last_interior] {
@@ -243,9 +252,6 @@ fn irregular_vertices(
         vertices.push(end);
     }
     Ok(vertices)
-}
-fn geometry_tolerance(length: f64) -> f64 {
-    (length * 1e-6).max(1e-6)
 }
 fn coordinates(id: &LandXmlSourceId, value: &LandXmlPointLocation) -> Result<LandXmlPlanPoint> {
     match value {
@@ -311,15 +317,6 @@ fn normalize(value: (f64, f64), id: &LandXmlSourceId) -> Result<(f64, f64)> {
 }
 fn distance_between(left: LandXmlPlanPoint, right: LandXmlPlanPoint) -> f64 {
     (right.northing - left.northing).hypot(right.easting - left.easting)
-}
-fn sweep(start: f64, end: f64, rotation: LandXmlRotation) -> f64 {
-    let raw = (end - start).rem_euclid(std::f64::consts::TAU);
-    match rotation {
-        LandXmlRotation::CounterClockwise => raw,
-        LandXmlRotation::Clockwise => {
-            -(std::f64::consts::TAU - raw).rem_euclid(std::f64::consts::TAU)
-        }
-    }
 }
 fn valid_length(id: &LandXmlSourceId, value: f64) -> Result<f64> {
     if !value.is_finite() || value <= EPSILON {

@@ -3,9 +3,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Regression test for issue #1910's fourth discovery path: the
-//! `emit_quick_metadata_bootstrap` streaming entry
-//! (`process_geometry_streaming_with_options_and_bootstrap`,
-//! `StreamingOptions.emit_quick_metadata_bootstrap: true`).
+//! quick-metadata bootstrap streaming entry (`process` with
+//! `Features::quick_metadata_bootstrap`).
 //!
 //! `rust/geometry/tests/issue_1910_storey_generalization.rs` locks the
 //! container-geometry exception (`processor/mod.rs:740-767`) at the level of
@@ -36,9 +35,7 @@
 //! `process_geometry`'s non-bootstrap default untouched -- exactly the kind
 //! of divergence issue #1910 was about).
 
-use ifc_lite_processing::{
-    process_geometry_streaming_with_options_and_bootstrap, QuickMetadataBootstrap, StreamingOptions,
-};
+mod common;
 
 const FIXTURE: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -52,19 +49,7 @@ fn read_fixture() -> Vec<u8> {
 #[test]
 fn bootstrap_path_still_schedules_and_meshes_the_container_geometry() {
     let content = read_fixture();
-    let mut captured: Option<QuickMetadataBootstrap> = None;
-    let options = StreamingOptions {
-        emit_quick_metadata_bootstrap: true,
-        ..Default::default()
-    };
-
-    let result = process_geometry_streaming_with_options_and_bootstrap(
-        &content,
-        options,
-        |_, _, _| {},
-        |_| {},
-        |b| captured = Some(b.clone()),
-    );
+    let (result, boot) = common::quick_metadata::run_with_bootstrap(&content);
 
     // #40 is the IFCBUILDINGSTOREY entity carrying the IfcShellBasedSurfaceModel
     // (same fixture, same express id as the geometry-crate generalisation test).
@@ -89,7 +74,6 @@ fn bootstrap_path_still_schedules_and_meshes_the_container_geometry() {
         "the container's mesh must have real geometry, not an empty placeholder"
     );
 
-    let boot = captured.expect("a quick-metadata bootstrap should be emitted");
     assert!(
         boot.entity_count > 0,
         "the bootstrap should have scanned the fixture's entities"

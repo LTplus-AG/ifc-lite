@@ -7,6 +7,10 @@
 import type { ModelSpatialReference, SourceCoordinateFrame } from '@ifc-lite/geometry';
 import { extractWktSpatialMetadata } from '@ifc-lite/pointcloud';
 import type { LandXmlTinDocument } from './landXmlIngest.js';
+import {
+  LANDXML_GEOREF_ASSUMPTION_ORDER, type LandXmlGeorefAssumption, type LandXmlGeorefAssumptions,
+} from './landXmlGeorefAssumptions.js';
+import type { LandXmlDeclaredCrs } from './landXmlRenderFrame.js';
 
 export type SpatialSourceFormat = 'landxml' | 'las' | 'laz' | 'e57';
 
@@ -19,6 +23,12 @@ export interface SourceSpatialMetadata {
   verticalUnitToMetres?: number;
   wkt?: string;
   provenance: string;
+  /**
+   * LandXML only: `horizontalId` was read from an exact `EPSG:<n>`
+   * `CoordinateSystem@name` under the user's `epsgFromName` assumption, not
+   * declared by `epsgCode` or `horizontalDatum`. Present only when true.
+   */
+  horizontalFromName?: true;
 }
 
 /**
@@ -59,6 +69,23 @@ function metadata(
   };
 }
 
+const declaredEpsg = (value: string | undefined) => /^EPSG\s*:\s*(\d+)$/i.exec(value?.trim() ?? '')?.[1];
+
+/**
+ * The horizontal CRS an exact `EPSG:<digits>` `CoordinateSystem@name` could
+ * supply under the user's `epsgFromName` assumption. Only when nothing else
+ * speaks to the horizontal CRS: any non-blank `epsgCode` (agreeing,
+ * contradicting or unreadable) or an `EPSG:<n>` `horizontalDatum` wins, so a
+ * name can never override or break a tie with a declaration. A free-text
+ * name (`DHDN / 3-degree Gauss-Kruger zone 3`, `GK21`) is never read.
+ */
+export function landXmlEpsgFromName(coordinateSystem: LandXmlTinDocument['coordinateSystem']): string | undefined {
+  if (!coordinateSystem || (coordinateSystem.epsgCode?.trim() ?? '') !== '') return undefined;
+  if (declaredEpsg(coordinateSystem.horizontalDatum) !== undefined) return undefined;
+  const code = /^EPSG:(\d+)$/.exec(coordinateSystem.name?.trim() ?? '')?.[1];
+  return code === undefined ? undefined : `EPSG:${code}`;
+}
+
 /**
  * Extract only explicit EPSG declarations from a LandXML CoordinateSystem.
  *
@@ -66,19 +93,81 @@ function metadata(
  * what real producers write (Civil 3D, 3D-Win), or from an `EPSG:<n>` id in
  * `horizontalDatum`. When both name a code and they disagree, neither is taken:
  * picking one would place the model on a guess (#5942 follow-up).
+ *
+ * `epsgFromName` is the user's explicit assumption, never a default: with it,
+ * `landXmlEpsgFromName` may supply the horizontal CRS, and the result says so
+ * (`horizontalFromName`).
  */
-export function spatialMetadataFromLandXml(document: Pick<LandXmlTinDocument, 'coordinateSystem'>): SourceSpatialMetadata {
-  const declared = (value: string | undefined) => /^EPSG\s*:\s*(\d+)$/i.exec(value?.trim() ?? '')?.[1];
+export function spatialMetadataFromLandXml(
+  document: Pick<LandXmlTinDocument, 'coordinateSystem'>,
+  options: { readonly epsgFromName?: boolean } = {},
+): SourceSpatialMetadata {
   const epsgCode = /^\s*(?:EPSG\s*:\s*)?(\d+)\s*$/i.exec(document.coordinateSystem?.epsgCode ?? '')?.[1];
-  const datumCode = declared(document.coordinateSystem?.horizontalDatum);
-  const horizontal = epsgCode && datumCode && epsgCode !== datumCode ? undefined : epsgCode ?? datumCode;
-  const vertical = declared(document.coordinateSystem?.verticalDatum);
+  const datumCode = declaredEpsg(document.coordinateSystem?.horizontalDatum);
+  const declared = epsgCode && datumCode && epsgCode !== datumCode ? undefined : epsgCode ?? datumCode;
+  const fromName = declared === undefined && options.epsgFromName === true
+    ? landXmlEpsgFromName(document.coordinateSystem) : undefined;
+  const vertical = declaredEpsg(document.coordinateSystem?.verticalDatum);
   return {
     format: 'landxml',
-    ...(horizontal ? { horizontalId: `EPSG:${horizontal}` } : {}),
+    ...(declared ? { horizontalId: `EPSG:${declared}` } : fromName ? { horizontalId: fromName, horizontalFromName: true as const } : {}),
     ...(vertical ? { verticalId: `EPSG:${vertical}` } : {}),
     provenance: 'LandXML CoordinateSystem',
   };
+}
+
+/** What a LandXML CoordinateSystem gives federation, under the user's assumptions for this load. */
+export interface LandXmlSourceSpatialReference {
+  /** Absent when the source cannot be placed even under the assumptions. */
+  spatialReference?: ModelSpatialReference;
+  /** What the file declares, and what the name could supply; the refusal reads this. */
+  declaredCrs: LandXmlDeclaredCrs;
+}
+
+/**
+ * The one gate between a LandXML CoordinateSystem and a federation spatial
+ * reference. Without assumptions it builds one only when both a horizontal
+ * and a vertical CRS are declared (#5048). `sharedVerticalDatum` admits a
+ * horizontal-only source, whose vertical stays unknown and whose confidence
+ * is `assumed`; the placement then resolves through `unknownVertical:
+ * 'assume-compatible'`. `epsgFromName` is read by `spatialMetadataFromLandXml`.
+ */
+export function landXmlSourceSpatialReference(
+  coordinateSystem: LandXmlTinDocument['coordinateSystem'],
+  assumptions: Partial<LandXmlGeorefAssumptions> = {},
+): LandXmlSourceSpatialReference {
+  const metadata = spatialMetadataFromLandXml({ coordinateSystem }, { epsgFromName: assumptions.epsgFromName === true });
+  const nameHorizontalId = metadata.horizontalId === undefined ? landXmlEpsgFromName(coordinateSystem) : undefined;
+  const declaredCrs: LandXmlDeclaredCrs = {
+    horizontalId: metadata.horizontalId,
+    verticalId: metadata.verticalId,
+    ...(metadata.horizontalFromName ? { horizontalFromName: true as const } : {}),
+    ...(nameHorizontalId ? { nameHorizontalId } : {}),
+  };
+  if (!metadata.horizontalId || (!metadata.verticalId && assumptions.sharedVerticalDatum !== true)) return { declaredCrs };
+  const spatialReference = spatialReferenceFromSourceMetadata(metadata);
+  return {
+    spatialReference: metadata.verticalId ? spatialReference : { ...spatialReference, confidence: 'assumed' },
+    declaredCrs,
+  };
+}
+
+/**
+ * The assumptions a LandXML model was actually placed under: `epsgFromName`
+ * when its CRS came from the name, `sharedVerticalDatum` when it was aligned
+ * to an anchor while either side's vertical datum was unknown. Never merely
+ * the enabled ones.
+ */
+export function landXmlAssumptionsApplied(
+  source: ModelSpatialReference | undefined,
+  anchor: ModelSpatialReference | null | undefined,
+  status: string | undefined,
+): LandXmlGeorefAssumption[] {
+  const aligned = status === 'same-crs' || status === 'reprojected' || status === 'identity';
+  const applied = new Set<LandXmlGeorefAssumption>();
+  if (source?.horizontal?.provenance?.assumption === 'epsgFromName') applied.add('epsgFromName');
+  if (aligned && source && anchor && (!source.vertical || !anchor.vertical)) applied.add('sharedVerticalDatum');
+  return LANDXML_GEOREF_ASSUMPTION_ORDER.filter((assumption) => applied.has(assumption));
 }
 
 /** Extract WKT/GeoTIFF CRS text from LAS VLR bytes; unknown is deliberate. */
@@ -142,13 +231,17 @@ export function spatialReferenceFromSourceMetadata(metadata: SourceSpatialMetada
       horizontalUnitToMetres: metadata.format === 'e57' ? 1 : rawXyzFrame ? metadata.horizontalUnitToMetres ?? 1 : 1,
       verticalUnitToMetres: metadata.format === 'e57' ? 1 : rawXyzFrame ? metadata.verticalUnitToMetres ?? 1 : 1,
     },
-    ...(metadata.horizontalId ? { horizontal: { id: metadata.horizontalId, provenance: { source: metadata.provenance } } } : {}),
+    ...(metadata.horizontalId ? { horizontal: { id: metadata.horizontalId, provenance: {
+      source: metadata.provenance,
+      // Not a declaration: the user chose to read the CoordinateSystem name.
+      ...(metadata.horizontalFromName ? { assumption: 'epsgFromName' } : {}),
+    } } } : {}),
     ...(metadata.verticalId ? { vertical: { id: metadata.verticalId, provenance: { source: metadata.provenance } } } : {}),
     localToProjected: {
       kind: 'local-projected-affine', eastings: 0, northings: 0, orthogonalHeight: 0,
       xAxisAbscissa: 1, xAxisOrdinate: 0, scaleX: 1, scaleY: 1, scaleZ: 1,
     },
-    confidence: metadata.horizontalId && metadata.verticalId ? 'declared' : 'unknown',
+    confidence: !(metadata.horizontalId && metadata.verticalId) ? 'unknown' : metadata.horizontalFromName ? 'assumed' : 'declared',
     sourceMetadata: {
       format: metadata.format, crsProvenance: metadata.provenance,
       ...(metadata.wkt ? { wkt: metadata.wkt } : {}),

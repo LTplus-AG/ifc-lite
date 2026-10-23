@@ -68,10 +68,10 @@
 //! - **Complex Breps**: ~200 entities/sec
 //! - **Boolean operations**: ~20 entities/sec
 
-// Module visibility: only 8 modules below are reached externally by sibling
+// Module visibility: only 10 modules below are reached externally by sibling
 // crates via a direct submodule path (`ifc_lite_geometry::<module>::...`) and
-// must stay `pub`: csg, csg_capture, kernel, material_layer_index, mesh,
-// projection_outline, rect_fast, space_dcel. Everything else is internal
+// must stay `pub`: csg, csg_capture, kernel, material_layer_index, math,
+// mesh, placement, projection_outline, rect_fast, space_dcel. Everything else is internal
 // wiring; external consumers reach its types through the root-level `pub use`
 // re-exports below, so those modules are `pub(crate)` (see #C3.2).
 pub(crate) mod alignment;
@@ -81,8 +81,10 @@ mod alignment_sampling;
 mod alignment_sampling_curve;
 mod alignment_sampling_placement;
 pub mod analytic;
+mod axis_projection;
 mod curve_source;
 mod trimmed_curve;
+mod swept_disk_range;
 pub(crate) mod gradient;
 pub(crate) mod curve_segment;
 pub(crate) mod bool2d;
@@ -103,6 +105,9 @@ mod terrain_cdt;
 mod clash_contact_axes;
 pub mod clash_solid;
 pub mod csg;
+/// Opt-in geometry document: object-local display-mesh definitions and f64
+/// placed occurrences with typed identity and revision. Off every default path.
+pub mod document;
 /// Measurement-only CSG corpus capture (off-by-default `csg_capture` feature).
 #[cfg(feature = "csg_capture")]
 pub mod csg_capture;
@@ -122,25 +127,36 @@ pub(crate) mod diag;
 pub mod opening_perf_trace;
 pub(crate) mod diagnostics;
 pub(crate) mod error;
+/// Total order for `f64` sort keys, NaN last (#7674). Reached through the
+/// root-level re-export below.
+pub(crate) mod float_order;
 pub(crate) mod geom_hash;
 /// Shared float-noise-tolerance quantisation constants used by more than one
 /// geometry pass (single-sourced so independently-evolving passes can't drift
 /// apart on the same tolerance).
 pub(crate) mod grid;
-/// Shared `[f64; 2]` plane primitives (area, point-in-polygon, exact segment
-/// intersection) used by `space_dcel`, `terrain_cdt` and `scan_outline`.
-pub(crate) mod geom2d;
 pub(crate) mod extrusion;
 pub(crate) mod instancing;
 /// Pure-Rust exact mesh-arrangement CSG kernel — the only CSG kernel, on
 /// every target (see docs/architecture/geometry-pipeline.md).
 pub mod kernel;
 pub mod material_layer_index;
+/// Vector, matrix, frame and AABB math over arrays: the one cross-crate home
+/// (`nalgebra` stays geometry's interior type). See the module docs for the
+/// op-order and FMA contract.
+pub mod math;
 pub mod mesh;
+// Closure / pairing / volume checks over triangle soups; `pub` only for the shared test oracles.
+#[cfg(feature = "test-support")]
+pub mod mesh_check;
+#[cfg(not(feature = "test-support"))]
+pub(crate) mod mesh_check;
 /// Cooperative heartbeat from long geometry work to a host that must tell a
 /// slow call from a hung one (see the module docs).
 pub mod progress;
+pub mod representation;
 pub(crate) mod mesh_orient;
+pub mod placement;
 pub(crate) mod processors;
 pub(crate) mod profile;
 pub(crate) mod profile_extractor;
@@ -170,6 +186,9 @@ mod scalar_adjoint;
 mod telemetry_transaction;
 pub use rect_fast::RectFastStats;
 pub(crate) mod router;
+/// Owned, explicitly partial construction batches before router publication.
+pub mod construction;
+pub mod program;
 /// Vector outlines traced from a slab of scan points (#6871). Reached through
 /// the root-level re-exports below.
 pub(crate) mod scan_outline;
@@ -211,8 +230,9 @@ pub use contour_bool2d::{
 pub use clash_solid::{intersection_solid, DegenerateReason, IntersectionSolid};
 pub use union_find::UnionFind;
 pub use csg::{calculate_normals, ClippingProcessor, GroupCut, GroupReject, Plane, Triangle};
-pub use diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
+pub use diagnostics::{BoolFailure, BoolFailureReason, BoolOp, PendingDiagnosticState};
 pub use error::{Error, Result};
+pub use float_order::cmp_f64_nan_last;
 pub use geom_hash::{
     hash_mesh_world, GeometryClosure, GeometryHasher, DEFAULT_GEOM_HASH_TOLERANCE,
     MIN_GEOM_HASH_TOLERANCE,
@@ -233,7 +253,7 @@ pub use mesh_orient::{orient_mesh_outward, orient_mesh_outward_verdict, OrientVe
 pub use processors::{
     AdvancedBrepProcessor, BooleanClippingProcessor, ExtrudedAreaSolidProcessor,
     ExtrudedAreaSolidTaperedProcessor, FaceBasedSurfaceModelProcessor, FacetedBrepProcessor,
-    build_texture_index, embedded_raster_dimensions, MAX_TEXTURE_DIMENSION, ImageTextureRef, MeshTexture, PolygonalFaceSetProcessor,
+    binary_textures_refused, build_texture_index, embedded_raster_dimensions, MAX_TEXTURE_DIMENSION, ImageTextureRef, MeshTexture, PolygonalFaceSetProcessor,
     ResolvedTextureMap, RevolvedAreaSolidProcessor, TextureAttachment, TextureSource, SurfaceOfLinearExtrusionProcessor,
     SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
 };
@@ -267,7 +287,7 @@ pub use router::{
     GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, FACETED_BREP_DEDUP_FACE_LIMIT,
     ClassificationSummary, GeometryDiagnostics, GeometryProcessor, GeometryRouter,
     HostOpeningDiagnostic, ItemDedupCache, MappedInstancePlan, OpeningDiagnostic, OpeningKindDiag,
-    ReasonCount, RectFastSummary, RectParam, SharedMappedItemCache, SharedBrepSignatureCache, WorstHost,
+    ReasonCount, RectFastSummary, RectParam, SharedMappedItemCache, AccountedMappedItemCache, SharedBrepSignatureCache, WorstHost,
 };
 
 /// The large-coordinate threshold and its predicate, defined in
@@ -289,3 +309,8 @@ pub use void_index::{
     build_aggregate_children_index, compute_parts_to_skip, propagate_voids_to_parts,
     propagate_voids_via_aggregates, VoidIndex,
 };
+
+mod exact_topology;
+
+/// Explicit resource admission for audited canonical execution sites.
+pub mod resource;

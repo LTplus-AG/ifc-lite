@@ -32,7 +32,10 @@ import {
 } from './revert-oracle-rust-features.mjs';
 import { pythonTestOwner } from './revert-oracle-python.mjs';
 
-const SUPPORT_FIXTURE_PATH = /(^|\/)(?:fixtures?|test-data|testdata|corpus)(\/|$)/;
+// `manifests` holds a crate's pinned golden data (rust/geometry/tests/manifests/
+// watertightness_census*.tsv): read by a test target, never itself a target, so
+// like a fixture it is attributed through the changed tests that execute it.
+const SUPPORT_FIXTURE_PATH = /(^|\/)(?:fixtures?|test-data|testdata|corpus|manifests)(\/|$)/;
 
 /** Walk up from `startDir` looking for `filename`, stopping at `root`. */
 export function findUp(startDir, filename, root) {

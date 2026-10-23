@@ -1,0 +1,948 @@
+{
+  "license": "MPL-2.0",
+  "observations": {
+    "ara3d/duplex.ifc": {
+      "main": {
+        "stock": {
+          "entities": 38898,
+          "meshes": 486,
+          "vertices": 51578,
+          "triangles": 30374,
+          "csgFailures": 0,
+          "degenerateDropped": 0,
+          "fingerprint": "3362e22e16f5749a"
+        },
+        "witness": {
+          "geometry_diagnostics_present": true,
+          "geometry_diagnostics_sha256": "5c5fcf0679b5c7cb57fbe83b6c084471101528ece3550e5ed73f2bb627363ae8",
+          "identity_scope": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+          "input_sha256": "b347a2c8aa8fff6db896a4417a9c50c22ac0ccd7c5cfc22b99b8d29336c606ed",
+          "instance_count": 0,
+          "mesh_count": 486,
+          "metadata_frame_instances_sha256": "58612768b70efa7559a6a8d158cfeb617a05bacfabdec2aa46ddb01575848d9b",
+          "ordered_mesh_json_sha256": "f2f08060649431b384ab2a424b98e3a47bca4842f0ca34d63a7131a65f5a0e47",
+          "payload_float_bits_sha256": "caa2b27534a34f254e85a60cc79510f8b81c3c16a0a1fb47e0eba603ec0b193c"
+        },
+        "rawWitnessUTF8": "{\"geometry_diagnostics_present\":true,\"geometry_diagnostics_sha256\":\"5c5fcf0679b5c7cb57fbe83b6c084471101528ece3550e5ed73f2bb627363ae8\",\"identity_scope\":\"separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded\",\"input_sha256\":\"b347a2c8aa8fff6db896a4417a9c50c22ac0ccd7c5cfc22b99b8d29336c606ed\",\"instance_count\":0,\"mesh_count\":486,\"metadata_frame_instances_sha256\":\"58612768b70efa7559a6a8d158cfeb617a05bacfabdec2aa46ddb01575848d9b\",\"ordered_mesh_json_sha256\":\"f2f08060649431b384ab2a424b98e3a47bca4842f0ca34d63a7131a65f5a0e47\",\"payload_float_bits_sha256\":\"caa2b27534a34f254e85a60cc79510f8b81c3c16a0a1fb47e0eba603ec0b193c\"}\n",
+        "rawDiagnosticsUTF8": "{\"classification\":{\"diagonal\":0,\"nonRectangular\":2,\"rectangular\":48,\"total\":50},\"failuresByReason\":[],\"hostsWithOpenings\":29,\"oversizedRefDrops\":0,\"productsWithFailures\":0,\"rectFast\":{\"deferHostNotBox\":8,\"deferNearEdge\":0,\"deferNoOpenings\":0,\"deferNotThrough\":0,\"deferOffFace\":0,\"deferTooManyOpenings\":0,\"fired\":14,\"openingsCut\":18},\"schemaVersion\":3,\"silentNoOps\":0,\"totalCsgFailures\":0,\"totalUnsupportedItems\":0,\"unsupportedItemsByType\":[],\"worstHosts\":[]}",
+        "originalWitness": {
+          "sha256": "2c8601a40265f74b33ec9e36d68fe4780b1082dee364d548c781e4a359e4b42b",
+          "bytes": 779
+        },
+        "originalDiagnostics": {
+          "sha256": "5c5fcf0679b5c7cb57fbe83b6c084471101528ece3550e5ed73f2bb627363ae8",
+          "bytes": 458
+        }
+      },
+      "placement": {
+        "stock": {
+          "entities": 38898,
+          "meshes": 486,
+          "vertices": 51578,
+          "triangles": 30374,
+          "csgFailures": 0,
+          "degenerateDropped": 0,
+          "fingerprint": "3362e22e16f5749a"
+        },
+        "witness": {
+          "geometry_diagnostics_present": true,
+          "geometry_diagnostics_sha256": "5c5fcf0679b5c7cb57fbe83b6c084471101528ece3550e5ed73f2bb627363ae8",
+          "identity_scope": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+          "input_sha256": "b347a2c8aa8fff6db896a4417a9c50c22ac0ccd7c5cfc22b99b8d29336c606ed",
+          "instance_count": 0,
+          "mesh_count": 486,
+          "metadata_frame_instances_sha256": "58612768b70efa7559a6a8d158cfeb617a05bacfabdec2aa46ddb01575848d9b",
+          "ordered_mesh_json_sha256": "f2f08060649431b384ab2a424b98e3a47bca4842f0ca34d63a7131a65f5a0e47",
+          "payload_float_bits_sha256": "caa2b27534a34f254e85a60cc79510f8b81c3c16a0a1fb47e0eba603ec0b193c"
+        },
+        "rawWitnessUTF8": "{\"geometry_diagnostics_present\":true,\"geometry_diagnostics_sha256\":\"5c5fcf0679b5c7cb57fbe83b6c084471101528ece3550e5ed73f2bb627363ae8\",\"identity_scope\":\"separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded\",\"input_sha256\":\"b347a2c8aa8fff6db896a4417a9c50c22ac0ccd7c5cfc22b99b8d29336c606ed\",\"instance_count\":0,\"mesh_count\":486,\"metadata_frame_instances_sha256\":\"58612768b70efa7559a6a8d158cfeb617a05bacfabdec2aa46ddb01575848d9b\",\"ordered_mesh_json_sha256\":\"f2f08060649431b384ab2a424b98e3a47bca4842f0ca34d63a7131a65f5a0e47\",\"payload_float_bits_sha256\":\"caa2b27534a34f254e85a60cc79510f8b81c3c16a0a1fb47e0eba603ec0b193c\"}\n",
+        "rawDiagnosticsUTF8": "{\"classification\":{\"diagonal\":0,\"nonRectangular\":2,\"rectangular\":48,\"total\":50},\"failuresByReason\":[],\"hostsWithOpenings\":29,\"oversizedRefDrops\":0,\"productsWithFailures\":0,\"rectFast\":{\"deferHostNotBox\":8,\"deferNearEdge\":0,\"deferNoOpenings\":0,\"deferNotThrough\":0,\"deferOffFace\":0,\"deferTooManyOpenings\":0,\"fired\":14,\"openingsCut\":18},\"schemaVersion\":3,\"silentNoOps\":0,\"totalCsgFailures\":0,\"totalUnsupportedItems\":0,\"unsupportedItemsByType\":[],\"worstHosts\":[]}",
+        "originalWitness": {
+          "sha256": "2c8601a40265f74b33ec9e36d68fe4780b1082dee364d548c781e4a359e4b42b",
+          "bytes": 779
+        },
+        "originalDiagnostics": {
+          "sha256": "5c5fcf0679b5c7cb57fbe83b6c084471101528ece3550e5ed73f2bb627363ae8",
+          "bytes": 458
+        }
+      }
+    },
+    "ara3d/IfcOpenHouse_IFC4.ifc": {
+      "main": {
+        "stock": {
+          "entities": 2885,
+          "meshes": 42,
+          "vertices": 2835,
+          "triangles": 1172,
+          "csgFailures": 0,
+          "degenerateDropped": 0,
+          "fingerprint": "e2442e73254d073c"
+        },
+        "witness": {
+          "geometry_diagnostics_present": true,
+          "geometry_diagnostics_sha256": "0f901a82cc8db83628e92adc8349f22593b374fa23aaaa355fe7f70242994e24",
+          "identity_scope": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+          "input_sha256": "71c9466bf02306be58d45b77d738541a0e7410767960b5eed1cf85737dfa34c9",
+          "instance_count": 0,
+          "mesh_count": 42,
+          "metadata_frame_instances_sha256": "1c8072c7935d63ae0ea72f3a4c9ce60591a905f7b657f270790060a75e31018a",
+          "ordered_mesh_json_sha256": "e8f3022fe1dcbdf71e0344ac782d5bd589124b7f88772eb8cb343b053220198c",
+          "payload_float_bits_sha256": "9891b92fdd58c6f2ca87a1cf5db87940e175e1169ef718bb83790224a515ecd3"
+        },
+        "rawWitnessUTF8": "{\"geometry_diagnostics_present\":true,\"geometry_diagnostics_sha256\":\"0f901a82cc8db83628e92adc8349f22593b374fa23aaaa355fe7f70242994e24\",\"identity_scope\":\"separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded\",\"input_sha256\":\"71c9466bf02306be58d45b77d738541a0e7410767960b5eed1cf85737dfa34c9\",\"instance_count\":0,\"mesh_count\":42,\"metadata_frame_instances_sha256\":\"1c8072c7935d63ae0ea72f3a4c9ce60591a905f7b657f270790060a75e31018a\",\"ordered_mesh_json_sha256\":\"e8f3022fe1dcbdf71e0344ac782d5bd589124b7f88772eb8cb343b053220198c\",\"payload_float_bits_sha256\":\"9891b92fdd58c6f2ca87a1cf5db87940e175e1169ef718bb83790224a515ecd3\"}\n",
+        "rawDiagnosticsUTF8": "{\"classification\":{\"diagonal\":0,\"nonRectangular\":0,\"rectangular\":4,\"total\":4},\"failuresByReason\":[],\"hostsWithOpenings\":3,\"oversizedRefDrops\":0,\"productsWithFailures\":0,\"rectFast\":{\"deferHostNotBox\":0,\"deferNearEdge\":0,\"deferNoOpenings\":0,\"deferNotThrough\":0,\"deferOffFace\":0,\"deferTooManyOpenings\":0,\"fired\":0,\"openingsCut\":0},\"schemaVersion\":3,\"silentNoOps\":0,\"totalCsgFailures\":0,\"totalUnsupportedItems\":0,\"unsupportedItemsByType\":[],\"worstHosts\":[]}",
+        "originalWitness": {
+          "sha256": "0842bbaaccaaf19893e9ac1c9f1ae1575301a16b3162562fd7ddb262396b0328",
+          "bytes": 778
+        },
+        "originalDiagnostics": {
+          "sha256": "0f901a82cc8db83628e92adc8349f22593b374fa23aaaa355fe7f70242994e24",
+          "bytes": 453
+        }
+      },
+      "placement": {
+        "stock": {
+          "entities": 2885,
+          "meshes": 42,
+          "vertices": 2835,
+          "triangles": 1172,
+          "csgFailures": 0,
+          "degenerateDropped": 0,
+          "fingerprint": "e2442e73254d073c"
+        },
+        "witness": {
+          "geometry_diagnostics_present": true,
+          "geometry_diagnostics_sha256": "0f901a82cc8db83628e92adc8349f22593b374fa23aaaa355fe7f70242994e24",
+          "identity_scope": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+          "input_sha256": "71c9466bf02306be58d45b77d738541a0e7410767960b5eed1cf85737dfa34c9",
+          "instance_count": 0,
+          "mesh_count": 42,
+          "metadata_frame_instances_sha256": "1c8072c7935d63ae0ea72f3a4c9ce60591a905f7b657f270790060a75e31018a",
+          "ordered_mesh_json_sha256": "e8f3022fe1dcbdf71e0344ac782d5bd589124b7f88772eb8cb343b053220198c",
+          "payload_float_bits_sha256": "9891b92fdd58c6f2ca87a1cf5db87940e175e1169ef718bb83790224a515ecd3"
+        },
+        "rawWitnessUTF8": "{\"geometry_diagnostics_present\":true,\"geometry_diagnostics_sha256\":\"0f901a82cc8db83628e92adc8349f22593b374fa23aaaa355fe7f70242994e24\",\"identity_scope\":\"separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded\",\"input_sha256\":\"71c9466bf02306be58d45b77d738541a0e7410767960b5eed1cf85737dfa34c9\",\"instance_count\":0,\"mesh_count\":42,\"metadata_frame_instances_sha256\":\"1c8072c7935d63ae0ea72f3a4c9ce60591a905f7b657f270790060a75e31018a\",\"ordered_mesh_json_sha256\":\"e8f3022fe1dcbdf71e0344ac782d5bd589124b7f88772eb8cb343b053220198c\",\"payload_float_bits_sha256\":\"9891b92fdd58c6f2ca87a1cf5db87940e175e1169ef718bb83790224a515ecd3\"}\n",
+        "rawDiagnosticsUTF8": "{\"classification\":{\"diagonal\":0,\"nonRectangular\":0,\"rectangular\":4,\"total\":4},\"failuresByReason\":[],\"hostsWithOpenings\":3,\"oversizedRefDrops\":0,\"productsWithFailures\":0,\"rectFast\":{\"deferHostNotBox\":0,\"deferNearEdge\":0,\"deferNoOpenings\":0,\"deferNotThrough\":0,\"deferOffFace\":0,\"deferTooManyOpenings\":0,\"fired\":0,\"openingsCut\":0},\"schemaVersion\":3,\"silentNoOps\":0,\"totalCsgFailures\":0,\"totalUnsupportedItems\":0,\"unsupportedItemsByType\":[],\"worstHosts\":[]}",
+        "originalWitness": {
+          "sha256": "0842bbaaccaaf19893e9ac1c9f1ae1575301a16b3162562fd7ddb262396b0328",
+          "bytes": 778
+        },
+        "originalDiagnostics": {
+          "sha256": "0f901a82cc8db83628e92adc8349f22593b374fa23aaaa355fe7f70242994e24",
+          "bytes": 453
+        }
+      }
+    },
+    "rust/geometry/tests/fixtures/bath_csg_solid.ifc": {
+      "main": {
+        "stock": {
+          "entities": 48,
+          "meshes": 1,
+          "vertices": 208,
+          "triangles": 152,
+          "csgFailures": 0,
+          "degenerateDropped": 0,
+          "fingerprint": "bfe10043dac0317f"
+        },
+        "witness": {
+          "geometry_diagnostics_present": false,
+          "geometry_diagnostics_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "identity_scope": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+          "input_sha256": "950424788ef247ebde29026d3a103cd59bb971eee697175bfdd4277f61a4d2e3",
+          "instance_count": 0,
+          "mesh_count": 1,
+          "metadata_frame_instances_sha256": "5e165fa6155705d1151d5e5f0c05e0bac614f025d4c44869155083415587f8c2",
+          "ordered_mesh_json_sha256": "b4a179de9fbd133a973427ad66cfa81881744ee5224ef446c51f1612b40f041a",
+          "payload_float_bits_sha256": "083df587928c5f61bec2e87cb171c16ae9b309c87805fe74fa8fe6a9ddfc7cdf"
+        },
+        "rawWitnessUTF8": "{\"geometry_diagnostics_present\":false,\"geometry_diagnostics_sha256\":\"74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b\",\"identity_scope\":\"separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded\",\"input_sha256\":\"950424788ef247ebde29026d3a103cd59bb971eee697175bfdd4277f61a4d2e3\",\"instance_count\":0,\"mesh_count\":1,\"metadata_frame_instances_sha256\":\"5e165fa6155705d1151d5e5f0c05e0bac614f025d4c44869155083415587f8c2\",\"ordered_mesh_json_sha256\":\"b4a179de9fbd133a973427ad66cfa81881744ee5224ef446c51f1612b40f041a\",\"payload_float_bits_sha256\":\"083df587928c5f61bec2e87cb171c16ae9b309c87805fe74fa8fe6a9ddfc7cdf\"}\n",
+        "rawDiagnosticsUTF8": "null",
+        "originalWitness": {
+          "sha256": "4639347e70a87e0dcbb35a9902ec1d278b5f20f0fd0a2097add4e5a12184e44b",
+          "bytes": 778
+        },
+        "originalDiagnostics": {
+          "sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "bytes": 4
+        }
+      },
+      "placement": {
+        "stock": {
+          "entities": 48,
+          "meshes": 1,
+          "vertices": 208,
+          "triangles": 152,
+          "csgFailures": 0,
+          "degenerateDropped": 0,
+          "fingerprint": "bfe10043dac0317f"
+        },
+        "witness": {
+          "geometry_diagnostics_present": false,
+          "geometry_diagnostics_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "identity_scope": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+          "input_sha256": "950424788ef247ebde29026d3a103cd59bb971eee697175bfdd4277f61a4d2e3",
+          "instance_count": 0,
+          "mesh_count": 1,
+          "metadata_frame_instances_sha256": "5e165fa6155705d1151d5e5f0c05e0bac614f025d4c44869155083415587f8c2",
+          "ordered_mesh_json_sha256": "b4a179de9fbd133a973427ad66cfa81881744ee5224ef446c51f1612b40f041a",
+          "payload_float_bits_sha256": "083df587928c5f61bec2e87cb171c16ae9b309c87805fe74fa8fe6a9ddfc7cdf"
+        },
+        "rawWitnessUTF8": "{\"geometry_diagnostics_present\":false,\"geometry_diagnostics_sha256\":\"74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b\",\"identity_scope\":\"separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded\",\"input_sha256\":\"950424788ef247ebde29026d3a103cd59bb971eee697175bfdd4277f61a4d2e3\",\"instance_count\":0,\"mesh_count\":1,\"metadata_frame_instances_sha256\":\"5e165fa6155705d1151d5e5f0c05e0bac614f025d4c44869155083415587f8c2\",\"ordered_mesh_json_sha256\":\"b4a179de9fbd133a973427ad66cfa81881744ee5224ef446c51f1612b40f041a\",\"payload_float_bits_sha256\":\"083df587928c5f61bec2e87cb171c16ae9b309c87805fe74fa8fe6a9ddfc7cdf\"}\n",
+        "rawDiagnosticsUTF8": "null",
+        "originalWitness": {
+          "sha256": "4639347e70a87e0dcbb35a9902ec1d278b5f20f0fd0a2097add4e5a12184e44b",
+          "bytes": 778
+        },
+        "originalDiagnostics": {
+          "sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "bytes": 4
+        }
+      }
+    },
+    "rust/geometry/tests/fixtures/issue_1155_halfspace_flyaway.ifc": {
+      "main": {
+        "stock": {
+          "entities": 36,
+          "meshes": 1,
+          "vertices": 336,
+          "triangles": 224,
+          "csgFailures": 0,
+          "degenerateDropped": 0,
+          "fingerprint": "dbc78671923fb619"
+        },
+        "witness": {
+          "geometry_diagnostics_present": false,
+          "geometry_diagnostics_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "identity_scope": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+          "input_sha256": "29b00edd100732871c063ec7bb738360a66956acdf0796eff177c72cc28dcb91",
+          "instance_count": 0,
+          "mesh_count": 1,
+          "metadata_frame_instances_sha256": "e3a81c3706bce3d73b3fae0734a8299ea1451973b1831cb374cd0a2dceb53925",
+          "ordered_mesh_json_sha256": "d0c9934e7a15cb64354d93f6c23b0fd1db5321c469b7a9fb457d711846c107b3",
+          "payload_float_bits_sha256": "e14ce309955c3ef186f8fcc2516a2b91564c1e791415c7566de543925f54cddc"
+        },
+        "rawWitnessUTF8": "{\"geometry_diagnostics_present\":false,\"geometry_diagnostics_sha256\":\"74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b\",\"identity_scope\":\"separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded\",\"input_sha256\":\"29b00edd100732871c063ec7bb738360a66956acdf0796eff177c72cc28dcb91\",\"instance_count\":0,\"mesh_count\":1,\"metadata_frame_instances_sha256\":\"e3a81c3706bce3d73b3fae0734a8299ea1451973b1831cb374cd0a2dceb53925\",\"ordered_mesh_json_sha256\":\"d0c9934e7a15cb64354d93f6c23b0fd1db5321c469b7a9fb457d711846c107b3\",\"payload_float_bits_sha256\":\"e14ce309955c3ef186f8fcc2516a2b91564c1e791415c7566de543925f54cddc\"}\n",
+        "rawDiagnosticsUTF8": "null",
+        "originalWitness": {
+          "sha256": "da73f2e58abb6ecaacb8dd257d434a92e810b5d2873e70ffc04eb641ca699482",
+          "bytes": 778
+        },
+        "originalDiagnostics": {
+          "sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "bytes": 4
+        }
+      },
+      "placement": {
+        "stock": {
+          "entities": 36,
+          "meshes": 1,
+          "vertices": 336,
+          "triangles": 224,
+          "csgFailures": 0,
+          "degenerateDropped": 0,
+          "fingerprint": "dbc78671923fb619"
+        },
+        "witness": {
+          "geometry_diagnostics_present": false,
+          "geometry_diagnostics_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "identity_scope": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+          "input_sha256": "29b00edd100732871c063ec7bb738360a66956acdf0796eff177c72cc28dcb91",
+          "instance_count": 0,
+          "mesh_count": 1,
+          "metadata_frame_instances_sha256": "e3a81c3706bce3d73b3fae0734a8299ea1451973b1831cb374cd0a2dceb53925",
+          "ordered_mesh_json_sha256": "d0c9934e7a15cb64354d93f6c23b0fd1db5321c469b7a9fb457d711846c107b3",
+          "payload_float_bits_sha256": "e14ce309955c3ef186f8fcc2516a2b91564c1e791415c7566de543925f54cddc"
+        },
+        "rawWitnessUTF8": "{\"geometry_diagnostics_present\":false,\"geometry_diagnostics_sha256\":\"74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b\",\"identity_scope\":\"separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded\",\"input_sha256\":\"29b00edd100732871c063ec7bb738360a66956acdf0796eff177c72cc28dcb91\",\"instance_count\":0,\"mesh_count\":1,\"metadata_frame_instances_sha256\":\"e3a81c3706bce3d73b3fae0734a8299ea1451973b1831cb374cd0a2dceb53925\",\"ordered_mesh_json_sha256\":\"d0c9934e7a15cb64354d93f6c23b0fd1db5321c469b7a9fb457d711846c107b3\",\"payload_float_bits_sha256\":\"e14ce309955c3ef186f8fcc2516a2b91564c1e791415c7566de543925f54cddc\"}\n",
+        "rawDiagnosticsUTF8": "null",
+        "originalWitness": {
+          "sha256": "da73f2e58abb6ecaacb8dd257d434a92e810b5d2873e70ffc04eb641ca699482",
+          "bytes": 778
+        },
+        "originalDiagnostics": {
+          "sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "bytes": 4
+        }
+      }
+    },
+    "rust/geometry/tests/fixtures/swept_disk_composite_arc_crankbar.ifc": {
+      "main": {
+        "stock": {
+          "entities": 51,
+          "meshes": 1,
+          "vertices": 194,
+          "triangles": 384,
+          "csgFailures": 0,
+          "degenerateDropped": 0,
+          "fingerprint": "c5be102556141564"
+        },
+        "witness": {
+          "geometry_diagnostics_present": false,
+          "geometry_diagnostics_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "identity_scope": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+          "input_sha256": "7653f051eef21dc23e6749770246d2e71ebf45647700ff271ff7d00ddec2fad4",
+          "instance_count": 0,
+          "mesh_count": 1,
+          "metadata_frame_instances_sha256": "b6b14e1d89ceeca19fa5e9d677d40e1baa24aa8198fbbf92f7cdb906be3c7f34",
+          "ordered_mesh_json_sha256": "61657a0f3d41ab9e9402d018e77ccca77e9b683f7c77bb87d9502f2162e7cc04",
+          "payload_float_bits_sha256": "e9febbfb45ce1e21b814bfdaadd0ddaa4cbc95b98adc3be83080a5c78a91e0bd"
+        },
+        "rawWitnessUTF8": "{\"geometry_diagnostics_present\":false,\"geometry_diagnostics_sha256\":\"74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b\",\"identity_scope\":\"separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded\",\"input_sha256\":\"7653f051eef21dc23e6749770246d2e71ebf45647700ff271ff7d00ddec2fad4\",\"instance_count\":0,\"mesh_count\":1,\"metadata_frame_instances_sha256\":\"b6b14e1d89ceeca19fa5e9d677d40e1baa24aa8198fbbf92f7cdb906be3c7f34\",\"ordered_mesh_json_sha256\":\"61657a0f3d41ab9e9402d018e77ccca77e9b683f7c77bb87d9502f2162e7cc04\",\"payload_float_bits_sha256\":\"e9febbfb45ce1e21b814bfdaadd0ddaa4cbc95b98adc3be83080a5c78a91e0bd\"}\n",
+        "rawDiagnosticsUTF8": "null",
+        "originalWitness": {
+          "sha256": "a35ddda6841ce9b222f137e502c886319d74bfeb54ed642f8fb9e137191b078c",
+          "bytes": 778
+        },
+        "originalDiagnostics": {
+          "sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "bytes": 4
+        }
+      },
+      "placement": {
+        "stock": {
+          "entities": 51,
+          "meshes": 1,
+          "vertices": 194,
+          "triangles": 384,
+          "csgFailures": 0,
+          "degenerateDropped": 0,
+          "fingerprint": "c5be102556141564"
+        },
+        "witness": {
+          "geometry_diagnostics_present": false,
+          "geometry_diagnostics_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "identity_scope": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+          "input_sha256": "7653f051eef21dc23e6749770246d2e71ebf45647700ff271ff7d00ddec2fad4",
+          "instance_count": 0,
+          "mesh_count": 1,
+          "metadata_frame_instances_sha256": "b6b14e1d89ceeca19fa5e9d677d40e1baa24aa8198fbbf92f7cdb906be3c7f34",
+          "ordered_mesh_json_sha256": "61657a0f3d41ab9e9402d018e77ccca77e9b683f7c77bb87d9502f2162e7cc04",
+          "payload_float_bits_sha256": "e9febbfb45ce1e21b814bfdaadd0ddaa4cbc95b98adc3be83080a5c78a91e0bd"
+        },
+        "rawWitnessUTF8": "{\"geometry_diagnostics_present\":false,\"geometry_diagnostics_sha256\":\"74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b\",\"identity_scope\":\"separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded\",\"input_sha256\":\"7653f051eef21dc23e6749770246d2e71ebf45647700ff271ff7d00ddec2fad4\",\"instance_count\":0,\"mesh_count\":1,\"metadata_frame_instances_sha256\":\"b6b14e1d89ceeca19fa5e9d677d40e1baa24aa8198fbbf92f7cdb906be3c7f34\",\"ordered_mesh_json_sha256\":\"61657a0f3d41ab9e9402d018e77ccca77e9b683f7c77bb87d9502f2162e7cc04\",\"payload_float_bits_sha256\":\"e9febbfb45ce1e21b814bfdaadd0ddaa4cbc95b98adc3be83080a5c78a91e0bd\"}\n",
+        "rawDiagnosticsUTF8": "null",
+        "originalWitness": {
+          "sha256": "a35ddda6841ce9b222f137e502c886319d74bfeb54ed642f8fb9e137191b078c",
+          "bytes": 778
+        },
+        "originalDiagnostics": {
+          "sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "bytes": 4
+        }
+      }
+    },
+    "rust/geometry/tests/fixtures/swept_disk_trimmed_line.ifc": {
+      "main": {
+        "stock": {
+          "entities": 25,
+          "meshes": 1,
+          "vertices": 50,
+          "triangles": 96,
+          "csgFailures": 0,
+          "degenerateDropped": 0,
+          "fingerprint": "c7f2e6a60c078b50"
+        },
+        "witness": {
+          "geometry_diagnostics_present": false,
+          "geometry_diagnostics_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "identity_scope": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+          "input_sha256": "287ccd9d9cfb73623c74168d79162a590dfbe53b4fd8d3f484995b6c1272f9fb",
+          "instance_count": 0,
+          "mesh_count": 1,
+          "metadata_frame_instances_sha256": "ab5ee41a25c29fb78f3c1f7d37fe5d0eb93403a01f893c4aff7a617503b40937",
+          "ordered_mesh_json_sha256": "dc13baf0f556a5af70ceeb907c6a77d722f082e53a411032826ead47d0ae48be",
+          "payload_float_bits_sha256": "0c35f2ad6a99ce14e420af8d9fcd5958e537ebe8047445ca76d3cab620eb0746"
+        },
+        "rawWitnessUTF8": "{\"geometry_diagnostics_present\":false,\"geometry_diagnostics_sha256\":\"74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b\",\"identity_scope\":\"separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded\",\"input_sha256\":\"287ccd9d9cfb73623c74168d79162a590dfbe53b4fd8d3f484995b6c1272f9fb\",\"instance_count\":0,\"mesh_count\":1,\"metadata_frame_instances_sha256\":\"ab5ee41a25c29fb78f3c1f7d37fe5d0eb93403a01f893c4aff7a617503b40937\",\"ordered_mesh_json_sha256\":\"dc13baf0f556a5af70ceeb907c6a77d722f082e53a411032826ead47d0ae48be\",\"payload_float_bits_sha256\":\"0c35f2ad6a99ce14e420af8d9fcd5958e537ebe8047445ca76d3cab620eb0746\"}\n",
+        "rawDiagnosticsUTF8": "null",
+        "originalWitness": {
+          "sha256": "df285559a6b3115c0eacb17471e67ae2bbc25d75d7c454635ced57a94dda1aad",
+          "bytes": 778
+        },
+        "originalDiagnostics": {
+          "sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "bytes": 4
+        }
+      },
+      "placement": {
+        "stock": {
+          "entities": 25,
+          "meshes": 1,
+          "vertices": 50,
+          "triangles": 96,
+          "csgFailures": 0,
+          "degenerateDropped": 0,
+          "fingerprint": "c7f2e6a60c078b50"
+        },
+        "witness": {
+          "geometry_diagnostics_present": false,
+          "geometry_diagnostics_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "identity_scope": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+          "input_sha256": "287ccd9d9cfb73623c74168d79162a590dfbe53b4fd8d3f484995b6c1272f9fb",
+          "instance_count": 0,
+          "mesh_count": 1,
+          "metadata_frame_instances_sha256": "ab5ee41a25c29fb78f3c1f7d37fe5d0eb93403a01f893c4aff7a617503b40937",
+          "ordered_mesh_json_sha256": "dc13baf0f556a5af70ceeb907c6a77d722f082e53a411032826ead47d0ae48be",
+          "payload_float_bits_sha256": "0c35f2ad6a99ce14e420af8d9fcd5958e537ebe8047445ca76d3cab620eb0746"
+        },
+        "rawWitnessUTF8": "{\"geometry_diagnostics_present\":false,\"geometry_diagnostics_sha256\":\"74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b\",\"identity_scope\":\"separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded\",\"input_sha256\":\"287ccd9d9cfb73623c74168d79162a590dfbe53b4fd8d3f484995b6c1272f9fb\",\"instance_count\":0,\"mesh_count\":1,\"metadata_frame_instances_sha256\":\"ab5ee41a25c29fb78f3c1f7d37fe5d0eb93403a01f893c4aff7a617503b40937\",\"ordered_mesh_json_sha256\":\"dc13baf0f556a5af70ceeb907c6a77d722f082e53a411032826ead47d0ae48be\",\"payload_float_bits_sha256\":\"0c35f2ad6a99ce14e420af8d9fcd5958e537ebe8047445ca76d3cab620eb0746\"}\n",
+        "rawDiagnosticsUTF8": "null",
+        "originalWitness": {
+          "sha256": "df285559a6b3115c0eacb17471e67ae2bbc25d75d7c454635ced57a94dda1aad",
+          "bytes": 778
+        },
+        "originalDiagnostics": {
+          "sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "bytes": 4
+        }
+      }
+    }
+  },
+  "comparisons": {
+    "ara3d/duplex.ifc": {
+      "strongFields": {
+        "input_sha256": {
+          "base": "b347a2c8aa8fff6db896a4417a9c50c22ac0ccd7c5cfc22b99b8d29336c606ed",
+          "branch": "b347a2c8aa8fff6db896a4417a9c50c22ac0ccd7c5cfc22b99b8d29336c606ed",
+          "matches": true
+        },
+        "mesh_count": {
+          "base": 486,
+          "branch": 486,
+          "matches": true
+        },
+        "instance_count": {
+          "base": 0,
+          "branch": 0,
+          "matches": true
+        },
+        "ordered_mesh_json_sha256": {
+          "base": "f2f08060649431b384ab2a424b98e3a47bca4842f0ca34d63a7131a65f5a0e47",
+          "branch": "f2f08060649431b384ab2a424b98e3a47bca4842f0ca34d63a7131a65f5a0e47",
+          "matches": true
+        },
+        "payload_float_bits_sha256": {
+          "base": "caa2b27534a34f254e85a60cc79510f8b81c3c16a0a1fb47e0eba603ec0b193c",
+          "branch": "caa2b27534a34f254e85a60cc79510f8b81c3c16a0a1fb47e0eba603ec0b193c",
+          "matches": true
+        },
+        "metadata_frame_instances_sha256": {
+          "base": "58612768b70efa7559a6a8d158cfeb617a05bacfabdec2aa46ddb01575848d9b",
+          "branch": "58612768b70efa7559a6a8d158cfeb617a05bacfabdec2aa46ddb01575848d9b",
+          "matches": true
+        },
+        "geometry_diagnostics_sha256": {
+          "base": "5c5fcf0679b5c7cb57fbe83b6c084471101528ece3550e5ed73f2bb627363ae8",
+          "branch": "5c5fcf0679b5c7cb57fbe83b6c084471101528ece3550e5ed73f2bb627363ae8",
+          "matches": true
+        },
+        "geometry_diagnostics_present": {
+          "base": true,
+          "branch": true,
+          "matches": true
+        },
+        "identity_scope": {
+          "base": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+          "branch": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+          "matches": true
+        }
+      },
+      "probeFields": {
+        "entities": {
+          "base": 38898,
+          "branch": 38898,
+          "matches": true
+        },
+        "meshes": {
+          "base": 486,
+          "branch": 486,
+          "matches": true
+        },
+        "vertices": {
+          "base": 51578,
+          "branch": 51578,
+          "matches": true
+        },
+        "triangles": {
+          "base": 30374,
+          "branch": 30374,
+          "matches": true
+        },
+        "csgFailures": {
+          "base": 0,
+          "branch": 0,
+          "matches": true
+        },
+        "degenerateDropped": {
+          "base": 0,
+          "branch": 0,
+          "matches": true
+        },
+        "fingerprint": {
+          "base": "3362e22e16f5749a",
+          "branch": "3362e22e16f5749a",
+          "matches": true
+        }
+      },
+      "rawDiagnosticsBytesMatch": true,
+      "changed": false,
+      "classification": "NO_DELTA_IN_RECORDED_SCOPE",
+      "groundTruthAccountingRequired": false
+    },
+    "ara3d/IfcOpenHouse_IFC4.ifc": {
+      "strongFields": {
+        "input_sha256": {
+          "base": "71c9466bf02306be58d45b77d738541a0e7410767960b5eed1cf85737dfa34c9",
+          "branch": "71c9466bf02306be58d45b77d738541a0e7410767960b5eed1cf85737dfa34c9",
+          "matches": true
+        },
+        "mesh_count": {
+          "base": 42,
+          "branch": 42,
+          "matches": true
+        },
+        "instance_count": {
+          "base": 0,
+          "branch": 0,
+          "matches": true
+        },
+        "ordered_mesh_json_sha256": {
+          "base": "e8f3022fe1dcbdf71e0344ac782d5bd589124b7f88772eb8cb343b053220198c",
+          "branch": "e8f3022fe1dcbdf71e0344ac782d5bd589124b7f88772eb8cb343b053220198c",
+          "matches": true
+        },
+        "payload_float_bits_sha256": {
+          "base": "9891b92fdd58c6f2ca87a1cf5db87940e175e1169ef718bb83790224a515ecd3",
+          "branch": "9891b92fdd58c6f2ca87a1cf5db87940e175e1169ef718bb83790224a515ecd3",
+          "matches": true
+        },
+        "metadata_frame_instances_sha256": {
+          "base": "1c8072c7935d63ae0ea72f3a4c9ce60591a905f7b657f270790060a75e31018a",
+          "branch": "1c8072c7935d63ae0ea72f3a4c9ce60591a905f7b657f270790060a75e31018a",
+          "matches": true
+        },
+        "geometry_diagnostics_sha256": {
+          "base": "0f901a82cc8db83628e92adc8349f22593b374fa23aaaa355fe7f70242994e24",
+          "branch": "0f901a82cc8db83628e92adc8349f22593b374fa23aaaa355fe7f70242994e24",
+          "matches": true
+        },
+        "geometry_diagnostics_present": {
+          "base": true,
+          "branch": true,
+          "matches": true
+        },
+        "identity_scope": {
+          "base": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+          "branch": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+          "matches": true
+        }
+      },
+      "probeFields": {
+        "entities": {
+          "base": 2885,
+          "branch": 2885,
+          "matches": true
+        },
+        "meshes": {
+          "base": 42,
+          "branch": 42,
+          "matches": true
+        },
+        "vertices": {
+          "base": 2835,
+          "branch": 2835,
+          "matches": true
+        },
+        "triangles": {
+          "base": 1172,
+          "branch": 1172,
+          "matches": true
+        },
+        "csgFailures": {
+          "base": 0,
+          "branch": 0,
+          "matches": true
+        },
+        "degenerateDropped": {
+          "base": 0,
+          "branch": 0,
+          "matches": true
+        },
+        "fingerprint": {
+          "base": "e2442e73254d073c",
+          "branch": "e2442e73254d073c",
+          "matches": true
+        }
+      },
+      "rawDiagnosticsBytesMatch": true,
+      "changed": false,
+      "classification": "NO_DELTA_IN_RECORDED_SCOPE",
+      "groundTruthAccountingRequired": false
+    },
+    "rust/geometry/tests/fixtures/bath_csg_solid.ifc": {
+      "strongFields": {
+        "input_sha256": {
+          "base": "950424788ef247ebde29026d3a103cd59bb971eee697175bfdd4277f61a4d2e3",
+          "branch": "950424788ef247ebde29026d3a103cd59bb971eee697175bfdd4277f61a4d2e3",
+          "matches": true
+        },
+        "mesh_count": {
+          "base": 1,
+          "branch": 1,
+          "matches": true
+        },
+        "instance_count": {
+          "base": 0,
+          "branch": 0,
+          "matches": true
+        },
+        "ordered_mesh_json_sha256": {
+          "base": "b4a179de9fbd133a973427ad66cfa81881744ee5224ef446c51f1612b40f041a",
+          "branch": "b4a179de9fbd133a973427ad66cfa81881744ee5224ef446c51f1612b40f041a",
+          "matches": true
+        },
+        "payload_float_bits_sha256": {
+          "base": "083df587928c5f61bec2e87cb171c16ae9b309c87805fe74fa8fe6a9ddfc7cdf",
+          "branch": "083df587928c5f61bec2e87cb171c16ae9b309c87805fe74fa8fe6a9ddfc7cdf",
+          "matches": true
+        },
+        "metadata_frame_instances_sha256": {
+          "base": "5e165fa6155705d1151d5e5f0c05e0bac614f025d4c44869155083415587f8c2",
+          "branch": "5e165fa6155705d1151d5e5f0c05e0bac614f025d4c44869155083415587f8c2",
+          "matches": true
+        },
+        "geometry_diagnostics_sha256": {
+          "base": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "branch": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "matches": true
+        },
+        "geometry_diagnostics_present": {
+          "base": false,
+          "branch": false,
+          "matches": true
+        },
+        "identity_scope": {
+          "base": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+          "branch": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+          "matches": true
+        }
+      },
+      "probeFields": {
+        "entities": {
+          "base": 48,
+          "branch": 48,
+          "matches": true
+        },
+        "meshes": {
+          "base": 1,
+          "branch": 1,
+          "matches": true
+        },
+        "vertices": {
+          "base": 208,
+          "branch": 208,
+          "matches": true
+        },
+        "triangles": {
+          "base": 152,
+          "branch": 152,
+          "matches": true
+        },
+        "csgFailures": {
+          "base": 0,
+          "branch": 0,
+          "matches": true
+        },
+        "degenerateDropped": {
+          "base": 0,
+          "branch": 0,
+          "matches": true
+        },
+        "fingerprint": {
+          "base": "bfe10043dac0317f",
+          "branch": "bfe10043dac0317f",
+          "matches": true
+        }
+      },
+      "rawDiagnosticsBytesMatch": true,
+      "changed": false,
+      "classification": "NO_DELTA_IN_RECORDED_SCOPE",
+      "groundTruthAccountingRequired": false
+    },
+    "rust/geometry/tests/fixtures/issue_1155_halfspace_flyaway.ifc": {
+      "strongFields": {
+        "input_sha256": {
+          "base": "29b00edd100732871c063ec7bb738360a66956acdf0796eff177c72cc28dcb91",
+          "branch": "29b00edd100732871c063ec7bb738360a66956acdf0796eff177c72cc28dcb91",
+          "matches": true
+        },
+        "mesh_count": {
+          "base": 1,
+          "branch": 1,
+          "matches": true
+        },
+        "instance_count": {
+          "base": 0,
+          "branch": 0,
+          "matches": true
+        },
+        "ordered_mesh_json_sha256": {
+          "base": "d0c9934e7a15cb64354d93f6c23b0fd1db5321c469b7a9fb457d711846c107b3",
+          "branch": "d0c9934e7a15cb64354d93f6c23b0fd1db5321c469b7a9fb457d711846c107b3",
+          "matches": true
+        },
+        "payload_float_bits_sha256": {
+          "base": "e14ce309955c3ef186f8fcc2516a2b91564c1e791415c7566de543925f54cddc",
+          "branch": "e14ce309955c3ef186f8fcc2516a2b91564c1e791415c7566de543925f54cddc",
+          "matches": true
+        },
+        "metadata_frame_instances_sha256": {
+          "base": "e3a81c3706bce3d73b3fae0734a8299ea1451973b1831cb374cd0a2dceb53925",
+          "branch": "e3a81c3706bce3d73b3fae0734a8299ea1451973b1831cb374cd0a2dceb53925",
+          "matches": true
+        },
+        "geometry_diagnostics_sha256": {
+          "base": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "branch": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "matches": true
+        },
+        "geometry_diagnostics_present": {
+          "base": false,
+          "branch": false,
+          "matches": true
+        },
+        "identity_scope": {
+          "base": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+          "branch": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+          "matches": true
+        }
+      },
+      "probeFields": {
+        "entities": {
+          "base": 36,
+          "branch": 36,
+          "matches": true
+        },
+        "meshes": {
+          "base": 1,
+          "branch": 1,
+          "matches": true
+        },
+        "vertices": {
+          "base": 336,
+          "branch": 336,
+          "matches": true
+        },
+        "triangles": {
+          "base": 224,
+          "branch": 224,
+          "matches": true
+        },
+        "csgFailures": {
+          "base": 0,
+          "branch": 0,
+          "matches": true
+        },
+        "degenerateDropped": {
+          "base": 0,
+          "branch": 0,
+          "matches": true
+        },
+        "fingerprint": {
+          "base": "dbc78671923fb619",
+          "branch": "dbc78671923fb619",
+          "matches": true
+        }
+      },
+      "rawDiagnosticsBytesMatch": true,
+      "changed": false,
+      "classification": "NO_DELTA_IN_RECORDED_SCOPE",
+      "groundTruthAccountingRequired": false
+    },
+    "rust/geometry/tests/fixtures/swept_disk_composite_arc_crankbar.ifc": {
+      "strongFields": {
+        "input_sha256": {
+          "base": "7653f051eef21dc23e6749770246d2e71ebf45647700ff271ff7d00ddec2fad4",
+          "branch": "7653f051eef21dc23e6749770246d2e71ebf45647700ff271ff7d00ddec2fad4",
+          "matches": true
+        },
+        "mesh_count": {
+          "base": 1,
+          "branch": 1,
+          "matches": true
+        },
+        "instance_count": {
+          "base": 0,
+          "branch": 0,
+          "matches": true
+        },
+        "ordered_mesh_json_sha256": {
+          "base": "61657a0f3d41ab9e9402d018e77ccca77e9b683f7c77bb87d9502f2162e7cc04",
+          "branch": "61657a0f3d41ab9e9402d018e77ccca77e9b683f7c77bb87d9502f2162e7cc04",
+          "matches": true
+        },
+        "payload_float_bits_sha256": {
+          "base": "e9febbfb45ce1e21b814bfdaadd0ddaa4cbc95b98adc3be83080a5c78a91e0bd",
+          "branch": "e9febbfb45ce1e21b814bfdaadd0ddaa4cbc95b98adc3be83080a5c78a91e0bd",
+          "matches": true
+        },
+        "metadata_frame_instances_sha256": {
+          "base": "b6b14e1d89ceeca19fa5e9d677d40e1baa24aa8198fbbf92f7cdb906be3c7f34",
+          "branch": "b6b14e1d89ceeca19fa5e9d677d40e1baa24aa8198fbbf92f7cdb906be3c7f34",
+          "matches": true
+        },
+        "geometry_diagnostics_sha256": {
+          "base": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "branch": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "matches": true
+        },
+        "geometry_diagnostics_present": {
+          "base": false,
+          "branch": false,
+          "matches": true
+        },
+        "identity_scope": {
+          "base": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+          "branch": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+          "matches": true
+        }
+      },
+      "probeFields": {
+        "entities": {
+          "base": 51,
+          "branch": 51,
+          "matches": true
+        },
+        "meshes": {
+          "base": 1,
+          "branch": 1,
+          "matches": true
+        },
+        "vertices": {
+          "base": 194,
+          "branch": 194,
+          "matches": true
+        },
+        "triangles": {
+          "base": 384,
+          "branch": 384,
+          "matches": true
+        },
+        "csgFailures": {
+          "base": 0,
+          "branch": 0,
+          "matches": true
+        },
+        "degenerateDropped": {
+          "base": 0,
+          "branch": 0,
+          "matches": true
+        },
+        "fingerprint": {
+          "base": "c5be102556141564",
+          "branch": "c5be102556141564",
+          "matches": true
+        }
+      },
+      "rawDiagnosticsBytesMatch": true,
+      "changed": false,
+      "classification": "NO_DELTA_IN_RECORDED_SCOPE",
+      "groundTruthAccountingRequired": false
+    },
+    "rust/geometry/tests/fixtures/swept_disk_trimmed_line.ifc": {
+      "strongFields": {
+        "input_sha256": {
+          "base": "287ccd9d9cfb73623c74168d79162a590dfbe53b4fd8d3f484995b6c1272f9fb",
+          "branch": "287ccd9d9cfb73623c74168d79162a590dfbe53b4fd8d3f484995b6c1272f9fb",
+          "matches": true
+        },
+        "mesh_count": {
+          "base": 1,
+          "branch": 1,
+          "matches": true
+        },
+        "instance_count": {
+          "base": 0,
+          "branch": 0,
+          "matches": true
+        },
+        "ordered_mesh_json_sha256": {
+          "base": "dc13baf0f556a5af70ceeb907c6a77d722f082e53a411032826ead47d0ae48be",
+          "branch": "dc13baf0f556a5af70ceeb907c6a77d722f082e53a411032826ead47d0ae48be",
+          "matches": true
+        },
+        "payload_float_bits_sha256": {
+          "base": "0c35f2ad6a99ce14e420af8d9fcd5958e537ebe8047445ca76d3cab620eb0746",
+          "branch": "0c35f2ad6a99ce14e420af8d9fcd5958e537ebe8047445ca76d3cab620eb0746",
+          "matches": true
+        },
+        "metadata_frame_instances_sha256": {
+          "base": "ab5ee41a25c29fb78f3c1f7d37fe5d0eb93403a01f893c4aff7a617503b40937",
+          "branch": "ab5ee41a25c29fb78f3c1f7d37fe5d0eb93403a01f893c4aff7a617503b40937",
+          "matches": true
+        },
+        "geometry_diagnostics_sha256": {
+          "base": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "branch": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "matches": true
+        },
+        "geometry_diagnostics_present": {
+          "base": false,
+          "branch": false,
+          "matches": true
+        },
+        "identity_scope": {
+          "base": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+          "branch": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+          "matches": true
+        }
+      },
+      "probeFields": {
+        "entities": {
+          "base": 25,
+          "branch": 25,
+          "matches": true
+        },
+        "meshes": {
+          "base": 1,
+          "branch": 1,
+          "matches": true
+        },
+        "vertices": {
+          "base": 50,
+          "branch": 50,
+          "matches": true
+        },
+        "triangles": {
+          "base": 96,
+          "branch": 96,
+          "matches": true
+        },
+        "csgFailures": {
+          "base": 0,
+          "branch": 0,
+          "matches": true
+        },
+        "degenerateDropped": {
+          "base": 0,
+          "branch": 0,
+          "matches": true
+        },
+        "fingerprint": {
+          "base": "c7f2e6a60c078b50",
+          "branch": "c7f2e6a60c078b50",
+          "matches": true
+        }
+      },
+      "rawDiagnosticsBytesMatch": true,
+      "changed": false,
+      "classification": "NO_DELTA_IN_RECORDED_SCOPE",
+      "groundTruthAccountingRequired": false
+    }
+  },
+  "exclusions": [
+    "timings",
+    "separate material/texture-definition result fields"
+  ],
+  "nullDiagnostics": "Four in-tree fixtures have literal null diagnostics on both arms; this is not a populated diagnostics payload."
+}

@@ -1,0 +1,150 @@
+{
+  "sourceCommit": "9b3dfd1347",
+  "browser": "T3 server-headless Chromium; GPU disabled by launch flag; canonical WASM execution, no GPU rendering claimed",
+  "wasmSha256": "ef7c2dee0ef6977166fc6258f5b1428249ad4c9f1047e733622734c968206f43",
+  "passed": {
+    "passed": true,
+    "report": {
+      "source": {
+        "meshes": [
+          {
+            "expressId": 50,
+            "triangles": 12,
+            "volume": 6,
+            "bounds": [
+              -1,
+              0,
+              -0.5,
+              1,
+              3,
+              0.5
+            ]
+          },
+          {
+            "expressId": 51,
+            "triangles": 12,
+            "volume": 6,
+            "bounds": [
+              3,
+              0,
+              -0.5,
+              5,
+              3,
+              0.5
+            ]
+          },
+          {
+            "expressId": 52,
+            "triangles": 12,
+            "volume": 6,
+            "bounds": [
+              7,
+              0,
+              -0.5,
+              9,
+              3,
+              0.5
+            ]
+          }
+        ],
+        "ductRecord": "#52=IFCDUCTSEGMENT('0000000000000000000052',#5,'Supply duct','Authored duct','Supply',#35,#37,'duct',.RIGIDSEGMENT.);"
+      },
+      "typescript": {
+        "meshes": [
+          {
+            "expressId": 50,
+            "triangles": 12,
+            "volume": 6,
+            "bounds": [
+              -1,
+              0,
+              -0.5,
+              1,
+              3,
+              0.5
+            ]
+          },
+          {
+            "expressId": 51,
+            "triangles": 12,
+            "volume": 6,
+            "bounds": [
+              3,
+              0,
+              -0.5,
+              5,
+              3,
+              0.5
+            ]
+          },
+          {
+            "expressId": 52,
+            "triangles": 12,
+            "volume": 6,
+            "bounds": [
+              7,
+              0,
+              -0.5,
+              9,
+              3,
+              0.5
+            ]
+          }
+        ],
+        "ductRecord": "#52=IFCFLOWSEGMENT('0000000000000000000052',#5,'Supply duct','Authored duct','Supply',#35,#37,'duct');"
+      },
+      "native": {
+        "meshes": [
+          {
+            "expressId": 50,
+            "triangles": 12,
+            "volume": 6,
+            "bounds": [
+              -1,
+              0,
+              -0.5,
+              1,
+              3,
+              0.5
+            ]
+          },
+          {
+            "expressId": 51,
+            "triangles": 12,
+            "volume": 6,
+            "bounds": [
+              3,
+              0,
+              -0.5,
+              5,
+              3,
+              0.5
+            ]
+          },
+          {
+            "expressId": 52,
+            "triangles": 12,
+            "volume": 6,
+            "bounds": [
+              7,
+              0,
+              -0.5,
+              9,
+              3,
+              0.5
+            ]
+          }
+        ],
+        "ductRecord": "#52=IFCFLOWSEGMENT('0000000000000000000052',#5,'Supply duct','Authored duct','Supply',#35,#37,'duct');"
+      }
+    }
+  },
+  "negativeControl": {
+    "missingMapping": true,
+    "meshIds": [
+      50,
+      51
+    ],
+    "ductRecord": "#52=IFCPROXY('1drz7URB6W6yWkavrD1E9J',#5,'IFCDUCTSEGMENT',$,$,$,$,.NOTDEFINED.,$);"
+  }
+}

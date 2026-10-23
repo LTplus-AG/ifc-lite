@@ -208,6 +208,7 @@ flowchart LR
         Parquet["Apache Parquet"]
         JSON["JSON-LD"]
         CSV["CSV"]
+        LandXML["LandXML (terrain)"]
     end
 
     subgraph Uses["Use Cases"]
@@ -216,6 +217,7 @@ flowchart LR
         Analytics["Data Analytics"]
         Linked["Linked Data"]
         Spreadsheet["Spreadsheets"]
+        Civil["Civil / Survey Tools"]
     end
 
     GLBIn --> Viewer
@@ -224,6 +226,7 @@ flowchart LR
     IFC --> Parquet --> Analytics
     IFC --> JSON --> Linked
     IFC --> CSV --> Spreadsheet
+    IFC --> LandXML --> Civil
 ```
 
 ## glTF / GLB Export
@@ -233,6 +236,7 @@ in `@ifc-lite/geometry`. (The old `GLTFExporter` class was retired.)
 
 ```typescript
 import { GeometryProcessor } from '@ifc-lite/geometry';
+import { renderFrameWorldMatrix } from '@ifc-lite/geometry/world-frame';
 
 const gp = new GeometryProcessor();
 await gp.init();
@@ -250,7 +254,14 @@ await saveFile('model.glb', glb);
 
 // Or, if you already meshed the model, skip the re-mesh:
 const result = await gp.process(bytes);
-const glb2 = gp.exportGlbFromMeshes(result.meshes, /* includeMetadata */ true);
+const glb2 = gp.exportGlbFromMeshes(
+  result.meshes,
+  /* includeMetadata */ true,
+  /* lit */ true,
+  /* emissive */ false,
+  // The frame the meshes sit in, so a georeferenced model lands at its world position.
+  renderFrameWorldMatrix(result.coordinateInfo),
+);
 ```
 
 `exportGlb` always emits a single binary **GLB** (`model/gltf-binary`). Per-element
@@ -430,6 +441,12 @@ and an empty `Uint32Array` means "the filter is active and matched nothing",
 which produces an empty `@graph`. Collapsing the two would hand a user who
 asked for a subset the entire model.
 
+Each property node's `@type` preserves its IFC class: `IfcPropertySingleValue`,
+`IfcPropertyEnumeratedValue`, `IfcPropertyListValue`, `IfcPropertyBoundedValue`,
+`IfcPropertyTableValue`, `IfcPropertyReferenceValue`, or `IfcComplexProperty`.
+Single values retain their JSON primitive; the other kinds retain their flat
+text display in `ifc:nominalValue`.
+
 ### JSON-LD Structure
 
 ```json
@@ -485,7 +502,19 @@ Export tabular data for spreadsheet applications:
 
 CSV is produced in Rust (`ifc-lite-export`) via `GeometryProcessor`. The `mode`
 selects the table; `includeProperties` adds flattened `Pset_Prop` columns to the
-entities view:
+entities view.
+
+Every property kind is exported, in CSV and in the JSON, JSON-LD, IFCX, USD,
+Parquet (BOS) and Python outputs built on the same model. An
+`IfcPropertySingleValue` keeps its typed value. An enumerated, list, bounded,
+table, reference or complex property is written as the display string the
+viewer shows (`A, B`, `2 [1 – 5]`, `Table (2 rows)`, the referenced object's
+name), typed as text, with its value type set to the members' shared type tag
+or else the property class (`IFCPROPERTYTABLEVALUE`, ...). Before this,
+only single values were exported, and sets lost their other entries without
+a warning.
+
+Usage:
 
 ```typescript
 import { GeometryProcessor } from '@ifc-lite/geometry';
@@ -512,7 +541,9 @@ await saveFile('spatial.csv', spatialCsv);
 
 The `entities` mode emits the fixed columns
 `expressId,globalId,name,type,description,objectType,hasGeometry`; with
-`includeProperties`, each property becomes a flattened `Pset_Prop` column:
+`includeProperties`, each property becomes a flattened `Pset_Prop` column.
+Two sets can flatten to the same name (`Pset_A` + `B_C` and `Pset_A_B` + `C`);
+the later column then gets a ` (2)` suffix so no two columns merge:
 
 ```csv
 expressId,globalId,name,type,description,objectType,hasGeometry,Pset_WallCommon_IsExternal,Pset_WallCommon_FireRating
@@ -664,6 +695,14 @@ work are still refused. Nonuniform scale remains unsupported.
 Inspect warnings before sending the result to another service. Synchronous
 export rejects this option. Ordinary exports preserve their existing coordinate
 structure and bytes.
+
+When downgrading IFC4 or IFC4X3 to IFC2X3, MEP occurrences that have a
+native IFC2X3 base use that base: for example, `IfcDuctSegment` becomes
+`IfcFlowSegment`. The conversion retains the product’s GlobalId, placement,
+representation and relationship endpoints. Existing `IfcDuctSegmentType`
+objects and their type assignments retain the duct classification. An
+occurrence-only `PredefinedType` has no corresponding slot on the IFC2X3 base
+and is dropped; the converter does not synthesize a type object.
 
 #### Which schema identifier is written
 
@@ -907,6 +946,8 @@ ifc-lite export model.ifc --format usd --out model.usda
 
 One-call from the Rust-backed processor: `GeometryProcessor.exportUsd(bytes)` returns the
 `.usda` bytes (`null` before `init()`). The MCP tool is `export_usd` (`{ model_id?, file_path }`).
+A model with no render geometry has nothing to put on the stage, so the export fails with
+`NO_RENDER_GEOMETRY` (match it with `isNoRenderGeometryError`), as GLB and OBJ export do.
 Geometry that lives outside the spatial tree (opening elements, type-product meshes) is placed
 under a synthetic `Unassigned` prim rather than dropped, and each mesh carries its placement as a
 `double3 xformOp:translate` so georeferenced models keep full precision. The layer's
@@ -916,6 +957,49 @@ occlude the default render. Repeated mapped geometry (façade panels, MEP fittin
 authored once as a referenced `class Mesh` prototype under `/World/Prototypes` and each occurrence
 references it with a per-occurrence transform — a file-size win that keeps every occurrence a
 distinct, queryable prim.
+
+## LandXML (terrain) Export
+
+An authored IFC terrain triangulation can be exported as a LandXML 1.2 TIN surface. In the
+viewer, select the terrain of one model and choose **LandXML (terrain)** in the export menu or
+the command palette. The selection is checked with the real exporter first. The dialog then
+offers the units, the decimal places and a name per surface, and the file downloads as
+`<model>_terrain.xml`.
+
+From code, pass the express ids of the selected `IfcGeographicElement` or `IfcSite` products:
+
+```typescript
+import { terrainRefusalReason } from '@ifc-lite/geometry';
+
+const terrainIds = new Uint32Array([1234]); // express ids, one <Surface> each
+try {
+  // Every option is optional: metres, 6 decimals and the IFC names by default.
+  const terrain = gp.exportLandXmlTerrain(bytes, terrainIds, {
+    linearUnit: 'usSurveyFoot', // or 'metre' | 'internationalFoot'
+    decimals: 3,
+    surfaceNames: { 1234: 'Existing ground' },
+  }); // null before init()
+  if (terrain) {
+    await saveFile('model_terrain.xml', terrain.xml);
+    console.log(terrain.crsName, terrain.surfaces.map((s) => `${s.name}: ${s.faces} faces`));
+  }
+} catch (error) {
+  const reason = terrainRefusalReason(error); // null for anything but a refusal
+  if (reason === null) throw error;
+  console.warn(`Terrain not exported: ${reason}`);
+}
+```
+
+Each product's `IfcTriangulatedFaceSet` is copied as authored, never re-triangulated. Its
+vertices go through the product placement and the `IfcMapConversion` of the representation's
+context, and are written as northing, easting, elevation in the chosen unit (US survey feet write
+heights in international feet; both units are declared). The header `date` and `time` are the
+export time in UTC; pass `now` in the options to fix them. Missing or ambiguous
+georeferencing refuses the export with a `TERRAIN_REFUSED:` error instead of guessing a CRS, unit
+or scale. The mapping table and the full list of refusals are in the
+[LandXML guide](landxml.md#ifc-terrain-landxml). The map conversion is interpreted the same way
+as in [map units](#map-units-for-interoperability) and
+[map rotation and scale](#map-rotation-and-scale-for-interoperability).
 
 ## Other Formats via GeometryProcessor
 

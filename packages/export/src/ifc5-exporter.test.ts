@@ -1491,3 +1491,31 @@ END-ISO-10303-21;`;
     });
   });
 });
+
+describe('Ifc5Exporter geometry frame (#7734)', () => {
+  const RTC = { x: 2_600_000.5, y: 1_200_000.25, z: 500 };
+  const meshPoints = (frame?: object) => {
+    const store = buildMinimalDataStore([{ expressId: 1, type: 'IFCWALL', globalId: 'abc-123', name: 'W' }]);
+    const geometryResult = { meshes: makeMockMeshes(1), coordinateInfo: frame } as any;
+    const file = JSON.parse(new Ifc5Exporter(store, geometryResult).export({ onlyTreeEntities: false }).content);
+    const node = file.data.find((n: any) => n.attributes?.['usd::usdgeom::mesh']);
+    return node.attributes['usd::usdgeom::mesh'].points as number[][];
+  };
+  const info = (partial: object) => ({
+    originShift: { x: 0, y: 0, z: 0 },
+    originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+    shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+    hasLargeCoordinates: false,
+    ...partial,
+  });
+
+  it('writes the points in IFC world, not the viewer\'s shifted render frame', () => {
+    // Render frame is Y-up: mock mesh vertex (1, 0, 0) -> IFC Z-up (1, -0, 0).
+    expect(meshPoints(info({}))[1]).toEqual([1, 0, 0]);
+    const shifted = meshPoints(info({ wasmRtcOffset: RTC }));
+    expect(shifted[0]).toEqual([RTC.x, RTC.y, RTC.z]);
+    expect(shifted[1]).toEqual([RTC.x + 1, RTC.y, RTC.z]);
+    // The point (0, 1, 0) in Y-up is one metre up in Z-up.
+    expect(shifted[2]).toEqual([RTC.x, RTC.y, RTC.z + 1]);
+  });
+});

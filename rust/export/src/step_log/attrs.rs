@@ -10,40 +10,18 @@
 
 use crate::generated::step_log_tables::{SlotRow, NAME_LISTS, NONE, SLOT_ROWS};
 use super::lines::split_args;
+use crate::step_record_frame::{opens_record, record_frame, RecordFrame};
 use crate::step_text::escape;
 
-use super::jsval::{js_number_to_string, to_step_real};
+use super::jsval::{format_step_real, integral_token, to_step_real};
 
 /// The source schema family (`dataStore.schemaVersion`): `IFC2X3`, `IFC4`,
 /// `IFC4X3` or `IFC5`, from the first `FILE_SCHEMA` identifier that names
 /// one, else a loose scan of the header, else `IFC4`.
 pub(crate) fn schema_family(content: &[u8]) -> &'static str {
-    let from = |token: &str| -> Option<&'static str> {
-        let t = token.trim().to_ascii_uppercase();
-        if t.starts_with("IFC5") {
-            Some("IFC5")
-        } else if t.starts_with("IFC4X3") {
-            Some("IFC4X3")
-        } else if t.starts_with("IFC4") {
-            Some("IFC4")
-        } else if t.starts_with("IFC2X3") {
-            Some("IFC2X3")
-        } else {
-            None
-        }
-    };
-    for label in crate::source_header::declared_schemas(content) {
-        if let Some(f) = from(&label) {
-            return f;
-        }
-    }
-    let head = String::from_utf8_lossy(&content[..content.len().min(2000)]).to_ascii_uppercase();
-    for f in ["IFC5", "IFC4X3", "IFC4", "IFC2X3"] {
-        if head.contains(f) {
-            return f;
-        }
-    }
-    "IFC4"
+    ifc_lite_core::SchemaFamily::detect(content)
+        .unwrap_or(ifc_lite_core::SchemaFamily::Ifc4)
+        .as_str()
 }
 
 fn row(upper: &str) -> Option<&'static SlotRow> {
@@ -175,41 +153,13 @@ fn is_ref(s: &str) -> bool {
     s.len() >= 2 && s.starts_with('#') && s[1..].chars().all(|c| c.is_ascii_digit())
 }
 
-/// `/^-?\d+(?:\.\d+)?(?:E[+-]?\d+)?$/i`.
-fn is_plain_number(s: &str) -> bool {
-    let b = s.as_bytes();
-    let mut i = usize::from(b.first() == Some(&b'-'));
-    let start = i;
-    while i < b.len() && b[i].is_ascii_digit() {
-        i += 1;
-    }
-    if i == start {
-        return false;
-    }
-    if i < b.len() && b[i] == b'.' {
-        i += 1;
-        let frac = i;
-        while i < b.len() && b[i].is_ascii_digit() {
-            i += 1;
-        }
-        if i == frac {
-            return false;
-        }
-    }
-    if i < b.len() && (b[i] == b'e' || b[i] == b'E') {
-        i += 1;
-        if i < b.len() && (b[i] == b'+' || b[i] == b'-') {
-            i += 1;
-        }
-        let exp = i;
-        while i < b.len() && b[i].is_ascii_digit() {
-            i += 1;
-        }
-        if i == exp {
-            return false;
-        }
-    }
-    i == b.len()
+/// `isCompleteStepNumericLiteral`: the whole of `s` is one STEP `REAL` or
+/// `INTEGER` literal, by core's one numeric grammar. This was a port of the
+/// regex `/^-?\d+(?:\.\d+)?(?:E[+-]?\d+)?$/i`, which refused `.5`, `+1`,
+/// `1.E5`, `+1.` and `-0.`, so a slot already written that way was rewritten
+/// quoted (F4 M-export-a, CORE-6).
+fn is_step_number(s: &str) -> bool {
+    ifc_lite_core::parser::step_numeric_literal_len(s.as_bytes()) == Some(s.len())
 }
 
 /// `serializeAttributeValue`: infer the token from the one it replaces.
@@ -237,18 +187,11 @@ fn attribute_value(value: &str, current_token: &str) -> String {
             _ => ".U.".to_string(),
         };
     }
-    let current_numeric = current.starts_with(|c: char| c.is_ascii_digit())
-        || (current.starts_with('-') && current[1..].starts_with(|c: char| c.is_ascii_digit()));
-    if is_plain_number(trimmed) && current_numeric {
-        let n: f64 = trimmed.parse().unwrap_or(f64::NAN);
-        if !n.is_finite() {
-            return "$".to_string();
-        }
-        return if current.contains('.') || current.contains(['e', 'E']) {
-            to_step_real(n)
-        } else {
-            js_number_to_string(n)
-        };
+    if is_step_number(trimmed) && is_step_number(current) {
+        // A literal `f64` cannot hold (`1.E400`) is no value: `$`.
+        let Some(n) = ifc_lite_core::parse_step_real(trimmed.as_bytes()) else { return "$".to_string() };
+        let real_slot = current.contains('.') || current.contains(['e', 'E']);
+        return if !real_slot && n.fract() == 0.0 { integral_token(n) } else { format_step_real(n) };
     }
     format!("'{}'", escape(value))
 }
@@ -268,30 +211,27 @@ pub(crate) fn named_attribute(upper: &str, index: usize, value: &str, current: &
             return Some("$".to_string());
         }
         let n = super::jsval::js_to_number(&serde_json::Value::String(trimmed.to_string()));
-        return n.is_finite().then(|| to_step_real(n));
+        return to_step_real(n).ok();
     }
     Some(attribute_value(value, current))
 }
 
-/// The argument list of a record, split for by-index writes, with the byte
-/// offsets that frame it: `(open, close, args)` where `open` is the first `(`
-/// and `close` the last `);`.
-pub(crate) fn split_record(text: &str) -> Option<(usize, usize, Vec<String>)> {
-    let open = text.find('(')?;
-    let close = text.rfind(");")?;
-    if close < open {
-        return None;
-    }
-    let args = split_args(&text[open + 1..close])?;
-    Some((open, close, args))
+/// The argument list of a record, split for by-index writes, with the frame
+/// that bounds it.
+pub(crate) fn split_record(text: &str) -> Option<(RecordFrame, Vec<String>)> {
+    let frame = record_frame(text)?;
+    let args = split_args(frame.args(text))?;
+    Some((frame, args))
 }
 
-/// `argumentListScans`: a record with no argument list to find is not
-/// "unreadable"; one whose list is there and does not split is.
+/// `argumentListScans`: a line that declares no entity instance is not
+/// "unreadable"; one that does (`#N=`) and is not a whole record the frame
+/// reads (a complex instance, a non-ASCII byte in its head, no `;`), or whose
+/// list does not split, is (#7682).
 pub(crate) fn argument_list_scans(text: &str) -> bool {
-    match (text.find('('), text.rfind(");")) {
-        (Some(open), Some(close)) if close >= open => split_args(&text[open + 1..close]).is_some(),
-        _ => true,
+    match record_frame(text) {
+        Some(frame) => split_args(frame.args(text)).is_some(),
+        None => !opens_record(text),
     }
 }
 
@@ -302,7 +242,7 @@ pub(crate) fn apply_named(
     edits: &[(String, String)],
     schema: &str,
 ) -> (String, Vec<(String, String)>) {
-    let Some((open, close, mut args)) = split_record(text) else { return (text.to_string(), Vec::new()) };
+    let Some((frame, mut args)) = split_record(text) else { return (text.to_string(), Vec::new()) };
     let lookup_schema = match schema {
         "IFC2X3" | "IFC4" | "IFC4X3" => schema,
         _ => "",
@@ -325,7 +265,7 @@ pub(crate) fn apply_named(
     if !changed {
         return (text.to_string(), rejected);
     }
-    (format!("{}{}{}", &text[..=open], args.join(","), &text[close..]), rejected)
+    (frame.with_args(text, &args.join(",")), rejected)
 }
 
 /// `applyPositionalMutations`: every in-range slot is rewritten, in the order
@@ -336,7 +276,7 @@ pub(crate) fn apply_positional(
     positionals: &[(usize, serde_json::Value)],
     schema: &str,
 ) -> Result<String, super::values::Unwritable> {
-    let Some((open, close, mut args)) = split_record(text) else { return Ok(text.to_string()) };
+    let Some((frame, mut args)) = split_record(text) else { return Ok(text.to_string()) };
     let mut changed = false;
     for (index, value) in positionals {
         if *index >= args.len() {
@@ -348,5 +288,9 @@ pub(crate) fn apply_positional(
     if !changed {
         return Ok(text.to_string());
     }
-    Ok(format!("{}{}{}", &text[..=open], args.join(","), &text[close..]))
+    Ok(frame.with_args(text, &args.join(",")))
 }
+
+#[cfg(test)]
+#[path = "attrs_tests.rs"]
+mod tests;

@@ -1,0 +1,20 @@
+{
+  "issue": 7983,
+  "pr": 8052,
+  "scope": "Native perf_probe only; no browser worker-pool verdict",
+  "host": "pop-os",
+  "job": "114185ee-5662-4814-a9e5-afdc2e596543",
+  "base": "11803bf447",
+  "measuredCandidate": "b9e3fafc464db963c80938e74537eebeb83d20cb",
+  "finalTypedSlotSource": "035f574787c35e15d231e73bc29ef9d5207c47b5",
+  "sourceCaveat": "Measured candidate precedes the typed-slot replacement of the same literal attribute constants; final source was not timed",
+  "roundsPerArm": 5,
+  "order": "Interleaved, balanced randomized first arm",
+  "fixture": "AC20-FZK-Haus.ifc",
+  "idleAcceptance": "Passed original whole-host CPU and memory guard before timed rounds",
+  "verdict": "Timing unqualified: base spread exceeds unchanged reporter noise acceptance; retain adverse geometry and total medians without inferring a regression or neutrality",
+  "outputIdentity": "Mesh, vertex and triangle counts match on both arms; report contains no mesh payload hash, so byte identity is not established",
+  "rerun": false,
+  "report": "native-report.json",
+  "idle": "native-idle.json"
+}

@@ -8,7 +8,7 @@
 //! that file stays under the module-size rule; `intersection_solid` itself,
 //! and the reasoning for HOW these are used, stays there.
 
-use crate::clash_contact_axes::dot3;
+use crate::math::v3;
 use crate::kernel::arrangement::Tri;
 use crate::kernel::near_band::NearBand;
 use crate::mesh::Mesh;
@@ -174,7 +174,7 @@ pub(super) fn trust_gate_reason(
             let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
             for &i in &group {
                 for v in &tris[i] {
-                    let p = dot3(*v, *axis);
+                    let p = v3::dot(*v, *axis);
                     lo = lo.min(p);
                     hi = hi.max(p);
                 }

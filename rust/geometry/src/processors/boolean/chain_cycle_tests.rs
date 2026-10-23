@@ -3,6 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+use crate::diagnostics::{BoolFailureReason, BoolOp};
+use crate::{Mesh, Result, TessellationQuality};
+use ifc_lite_core::{EntityDecoder, IfcSchema};
 use crate::router::GeometryProcessor;
 
 /// A self-referential clipping result: `#10`'s FirstOperand is `#10` again,
@@ -923,18 +926,7 @@ fn an_operand_shared_between_two_branches_is_not_a_cycle() {
 #[cfg(any(feature = "csg_manifold_gate", feature = "csg_topology_gate"))]
 #[test]
 fn solo_step_accounts_for_a_batched_suffix_not_just_spine_length() {
-    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/models/issues/960_house_segmented_roof_clip.ifc");
-    let content = match std::fs::read_to_string(&path) {
-        Ok(s) if !s.starts_with("version https://git-lfs.github.com/spec/") => s,
-        _ => {
-            eprintln!(
-                "skipping: fixture issues/960_house_segmented_roof_clip.ifc not present \
-                 (or an LFS pointer) — run `pnpm fixtures`"
-            );
-            return;
-        }
-    };
+    let content = ifc_lite_testkit::fixture_text_or_skip!("issues/960_house_segmented_roof_clip.ifc");
     let mut decoder = EntityDecoder::new(&content);
     let entity = decoder.decode_by_id(2146).expect("decode #2146");
     let processor = BooleanClippingProcessor::new();
@@ -972,19 +964,19 @@ fn solo_step_accounts_for_a_batched_suffix_not_just_spine_length() {
 /// `-cutterF1->` `F` `-cutterE->` `E`. `collect_polygonal_chain(E)` walks the
 /// WHOLE left-spine PBHS chain in one call, so entering at `E` always
 /// attempts to batch all three cutters together first
-/// (`try_union_polygonal_chain`, verified below via bounds/failure evidence,
+/// (`cut_polygonal_chain`, verified below via bounds/failure evidence,
 /// not asserted directly on private state). `cutterE`'s polygonal boundary
 /// is a self-intersecting (bowtie) `IfcPolyline` — a structurally invalid
 /// polygon whose extruded prism makes the CSG subtract produce a torn,
 /// non-closed result. That trips the accept gate for the 3-cutter batch
-/// attempt at `E`, so it defers; `process_with_depth_inner` pushes `E` onto
+/// attempt at `E`, so it defers; the continuation pushes `E` onto
 /// `spine` and walks down to `F`, whose OWN 2-cutter batch (`cutterF1`,
 /// `cutterF2` — both ordinary, non-degenerate half-space slabs) succeeds
 /// cleanly. That leaves `spine == [E]` with `based_on_batch == true`: the
 /// exact shape `solo_step == spine.len() == 1` mis-reads as "no sibling".
 ///
 /// Applying `E`'s own step then re-hits the SAME bowtie-cutter accept-gate
-/// rejection, this time via `apply_boolean_step`'s single-cutter
+/// rejection, this time via `begin_boolean_step`'s single-cutter
 /// `IfcPolygonalBoundedHalfSpace` branch
 /// (`BooleanClippingProcessor::resolve_single_cutter_subtract`). Pre-fix,
 /// `solo_step` is wrongly `true` there, so the rejection escalates to
@@ -999,9 +991,9 @@ fn solo_step_accounts_for_a_batched_suffix_not_just_spine_length() {
 ///
 /// Verified directly (not asserted, since it reads private state): on this
 /// checkout, `collect_polygonal_chain(#450)` (E) returns cutters
-/// `[240, 340, 440]` (all three); `try_union_polygonal_chain(#450)` returns
+/// `[240, 340, 440]` (all three); `cut_polygonal_chain(#450)` returns
 /// `None` (deferred) under both `csg_manifold_gate` and `csg_topology_gate`;
-/// `try_union_polygonal_chain(#350)` (F) returns `Some` (batched) under
+/// `cut_polygonal_chain(#350)` (F) returns `Some` (batched) under
 /// both. `cargo test --features csg_manifold_gate` records exactly one
 /// `NonManifoldRejected { same_direction: 6, .. }` failure on this fixture
 /// pre- and post-fix; `--features csg_topology_gate` records exactly one
@@ -1043,7 +1035,7 @@ fn solo_step_batched_suffix_defect_is_active_on_a_synthetic_bowtie_cutter() {
 ";
     // cutterF1 (outer half of the F/H suffix): ordinary half-space slab,
     // plane at x=3, removing x>3. Together F1+F2 batch cleanly in ONE call
-    // (try_union_polygonal_chain from #350) since neither is degenerate.
+    // (cut_polygonal_chain from #350) since neither is degenerate.
     let cutter_f1 = "\
 #300=IFCCARTESIANPOINT((3.,0.,0.));
 #301=IFCDIRECTION((1.,0.,0.));
@@ -1154,7 +1146,7 @@ fn fan_out_fixture(m: u32, levels: u32) -> String {
 
 /// Pins the operand work budget (`MAX_OPERAND_VISITS`): four spine nodes per
 /// level over six levels is `sum(4^i, i < 6)` entries into
-/// `process_with_depth`, each with up to four exact subtracts, from 26 STEP
+/// the boolean continuation, each with up to four exact subtracts, from 26 STEP
 /// entities. Without the budget the walk runs them all (the 60 s timeout is
 /// the assertion for that); with it the element is refused past the budget
 /// and the refusal is on record.
@@ -1207,7 +1199,7 @@ fn a_small_shared_second_operand_fan_out_still_resolves() {
 }
 
 /// Provisional attempts are real work and must remain charged.
-/// `try_union_polygonal_chain` meshes the base
+/// `cut_polygonal_chain` meshes the base
 /// provisionally at EVERY spine level it is attempted from and defers when
 /// a cutter cannot be batched (here the innermost PBHS has no boundary), so
 /// `n` PBHS cutters over a base whose spine carries `b` boolean second
@@ -1409,7 +1401,7 @@ fn a_union_over_an_emptied_first_operand_keeps_the_second() {
 }
 
 /// The same unsupported base under TWO polygonal-bounded cutters, so the
-/// batched `try_union_polygonal_chain` meshes it first. That path used to
+/// batched `cut_polygonal_chain` meshes it first. That path used to
 /// return the empty base as a batched SUCCESS, skipping the sequential walk
 /// that sets the one-record flag, so the UNION above recorded `EmptyOperand`
 /// on top of the base's `UnsupportedOperand`. The batched path now hands

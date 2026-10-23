@@ -36,8 +36,8 @@ export class WebGPUDevice {
   _lastUncapturedError: string = '';
 
   /**
-   * Notified when the GPU device is lost for a reason OTHER than intentional
-   * teardown (`reason === 'destroyed'`) — e.g. a driver reset from the OS GPU
+   * Notified when the current GPU device is lost outside owned teardown
+   * (including browser-initiated destruction) — e.g. a driver reset from the OS GPU
    * watchdog (Windows TDR) or VRAM exhaustion on a weak/integrated GPU. Once a
    * device is lost every GPU resource created from it is dead, so the renderer
    * cannot present again until it is fully re-initialised. Consumers subscribe
@@ -182,7 +182,7 @@ export class WebGPUDevice {
       device = await this.adapter.requestDevice();
     }
 
-    this.device = meterGpuDevice(device, this); // #6957/#6993 counters, per-wrapper loss lifetime (identity unless ?perfTrace=1)
+    this.device = meterGpuDevice(device, this, () => deviceLifetime === this.deviceLifetime);
     this.format = navigator.gpu.getPreferredCanvasFormat();
     this.canvas = canvas;
 
@@ -214,10 +214,10 @@ export class WebGPUDevice {
         const reason = info.reason ?? 'unknown';
         console.warn('[WebGPU] Device lost:', info.message, `(reason: ${reason})`);
         this.contextConfigured = false;
-        // `reason === 'destroyed'` is an intentional teardown (a `device.destroy()`
-        // call or the page dropping the device) — not a fault, so don't wake the
-        // recovery path. Any other reason is a real loss the consumer must react to.
-        if (reason !== 'destroyed' && !this.deviceLostFired) {
+        // #7655: Chromium can destroy a device on GPU-channel failure without
+        // our calling destroy(). Ownership is proven by the lifetime guard,
+        // not the reason string: every remaining loss needs recovery.
+        if (!this.deviceLostFired) {
           this.deviceLostFired = true;
           this.deviceLostHandler?.({ message: info.message, reason });
         }
@@ -372,8 +372,8 @@ export class WebGPUDevice {
    * Intentionally tear down the GPU device, freeing the device, its queue, and
    * the canvas-context configuration. An app that recreates a renderer per model
    * otherwise leaks one live GPUDevice (and its VRAM) per reload. The device's
-   * `lost` promise resolves with reason `'destroyed'`, which the loss handler
-   * above deliberately ignores (intentional teardown, not a fault). After this
+   * `lost` promise is excluded by the lifetime invalidation below, independently
+   * of the reported reason (intentional teardown, not a fault). After this
    * `isInitialized()` reports false, so the renderer's per-frame guard skips
    * rendering until a fresh `init()`. Idempotent — safe to call more than once.
    */

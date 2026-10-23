@@ -869,6 +869,44 @@ fn captures_the_producer_epsg_code_attribute() -> Result<(), Box<dyn std::error:
     Ok(())
 }
 
+/// #7604: `CoordinateSystem@name` is the producer's own label for the CRS and
+/// was never read, so `<CoordinateSystem name="CH1903+ / LV95"/>` (no
+/// `epsgCode`, no datum) parsed as an empty record and the LandXML -> IFC
+/// conversion wrote no georeferencing at all. The first two records are what
+/// ifc-lite's own IFC terrain export writes for a non-EPSG `IfcProjectedCRS`
+/// without and with a `GeodeticDatum`; the third is a 3D-Win 6.6.4 record,
+/// where the name sits beside the code; the fourth shows the attribute is
+/// decoded like every other one (`&amp;`); the last has no name at all.
+#[test]
+fn captures_the_coordinate_system_name_attribute_7604() -> Result<(), Box<dyn std::error::Error>> {
+    let valid = String::from_utf8(document("grade")).expect("fixture is UTF-8");
+    for (record, name, epsg, horizontal) in [
+        (r#"<CoordinateSystem name="CH1903+ / LV95"/>"#, Some("CH1903+ / LV95"), None, None),
+        (
+            r#"<CoordinateSystem name="CH1903+ / LV95" horizontalDatum="CH1903+" verticalDatum="LN02"/>"#,
+            Some("CH1903+ / LV95"),
+            None,
+            Some("CH1903+"),
+        ),
+        (
+            r#"<CoordinateSystem name="GK21" epsgCode="3875" rotationAngle="0" verticalCoordinateSystemName="N2000"/>"#,
+            Some("GK21"),
+            Some("3875"),
+            None,
+        ),
+        (r#"<CoordinateSystem name="Site grid &amp; datum"/>"#, Some("Site grid & datum"), None, None),
+        (r#"<CoordinateSystem horizontalDatum="NAD83"/>"#, None, None, Some("NAD83")),
+    ] {
+        let parsed = parse(valid.replace("<Units>", &format!("{record}<Units>")).as_bytes())?;
+        let coordinate_system = parsed.coordinate_system.expect("source CoordinateSystem");
+        assert_eq!(coordinate_system.name.as_deref(), name, "{record}");
+        // Raw and separate: the name is neither an EPSG id nor a datum here.
+        assert_eq!(coordinate_system.epsg_code.as_deref(), epsg, "{record}");
+        assert_eq!(coordinate_system.horizontal_datum.as_deref(), horizontal, "{record}");
+    }
+    Ok(())
+}
+
 #[test]
 fn duplicate_root_coordinate_system_preserves_prior_last_declaration_behavior(
 ) -> Result<(), Box<dyn std::error::Error>> {

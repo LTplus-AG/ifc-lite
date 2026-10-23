@@ -120,12 +120,7 @@ fn issue_6600_scaled_rotated_placement_is_absolute_ifc_z_up() {
 
 #[test]
 fn issue_6600_real_infrastructure_axes_have_distinct_identity_and_bounded_endpoints() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/models/issues/844_terrain_and_alignment.ifc");
-    let Ok(content) = std::fs::read_to_string(path) else {
-        eprintln!("SKIP: run pnpm fixtures for infrastructure model844");
-        return;
-    };
+    let content = ifc_lite_testkit::fixture_text_or_skip!("issues/844_terrain_and_alignment.ifc");
     let report = sample_alignment_axes(
         &content,
         AlignmentSamplingOptions {
@@ -165,12 +160,7 @@ fn issue_6600_authored_chainage_does_not_change_geometric_distance() {
 
 #[test]
 fn issue_6600_real_circle_matches_analytic_heading_and_radius_oracle() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/models/issues/844_terrain_and_alignment.ifc");
-    let Ok(content) = std::fs::read_to_string(path) else {
-        eprintln!("SKIP: run pnpm fixtures for infrastructure model844");
-        return;
-    };
+    let content = ifc_lite_testkit::fixture_text_or_skip!("issues/844_terrain_and_alignment.ifc");
     // OIP2017 authoring fixture #43: CCW radius15.00004036907433,
     // start(0,0), heading5.246193083124705. A circular integration oracle
     // independent of the alignment evaluator, sampled inside the first segment.
@@ -275,9 +265,12 @@ fn issue_6600_georeferenced_f64_and_tilt_preserve_local_horizontal_distance() {
     near(sample.point[2], 7_000_000.);
 }
 
+/// The frames fail by overflowing while being evaluated (a finite but huge
+/// gradient), not by a `1.E309` StartHeight: since #7678 the decode boundary
+/// refuses that literal's record before any frame is sampled.
 #[test]
 fn issue_6600_failed_frames_spend_the_total_sampling_work_budget() {
-    let content = model("$", "#36=IFCCARTESIANPOINT((0.,0.));#30=IFCLINESEGMENT2D(#36,0.,100.);#31=IFCALIGNMENT2DHORIZONTALSEGMENT($,$,$,#30);#32=IFCALIGNMENT2DHORIZONTAL(0.,(#31));#33=IFCALIGNMENT2DVERSEGLINE($,$,$,0.,100.,1.E309,0.1);#34=IFCALIGNMENT2DVERTICAL((#33));#35=IFCALIGNMENTCURVE(#32,#34,$);#21=IFCALIGNMENT('b',$,$,$,$,$,$,#35);")
+    let content = model("$", "#36=IFCCARTESIANPOINT((0.,0.));#30=IFCLINESEGMENT2D(#36,0.,100.);#31=IFCALIGNMENT2DHORIZONTALSEGMENT($,$,$,#30);#32=IFCALIGNMENT2DHORIZONTAL(0.,(#31));#33=IFCALIGNMENT2DVERSEGLINE($,$,$,0.,100.,0.,1.E308);#34=IFCALIGNMENT2DVERTICAL((#33));#35=IFCALIGNMENTCURVE(#32,#34,$);#21=IFCALIGNMENT('b',$,$,$,$,$,$,#35);")
         .replace("'Road',$,$,$,$,#12", "'Road',$,$,$,$,#35");
     let report = sample_alignment_axes(
         &content,

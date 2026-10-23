@@ -37,6 +37,7 @@
  * would silently drift the day an entity's attribute layout changes.
  */
 
+import { walkPlacementChain } from '@ifc-lite/data';
 import type { IfcSourceBytes } from '@ifc-lite/parser';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import type { IfcAttributeValue } from '@ifc-lite/parser';
@@ -178,9 +179,10 @@ function zeroRootPlacements(
  * `IfcLocalPlacement` with `PlacementRelTo = $` (a zeroable root) or a
  * non-`IfcLocalPlacement` record the chain cannot continue past (an
  * `IfcGridPlacement` / `IfcLinearPlacement`, reported by the caller). `null`
- * when the chain could not be safely walked at all — a cycle, a hop past the
- * 256-hop cap, or a link that does not resolve to a readable record — each
- * case appending its own warning before returning.
+ * when the chain could not be safely walked at all — a cycle or a link that
+ * does not resolve to a readable record — each case appending its own warning
+ * before returning. The walk is the shared `walkPlacementChain` (#7791): a
+ * visited set and no hop cap, so a long legal chain is followed in full.
  */
 function findRootPlacement(
   store: { readonly source: IfcSourceBytes },
@@ -188,44 +190,33 @@ function findRootPlacement(
   startPlacementId: number,
   warnings: string[],
 ): RootPlacement | null {
-  const visited = new Set<number>();
-  let currentId = startPlacementId;
-  let hops = 0;
-
-  for (;;) {
-    if (visited.has(currentId)) {
-      warnings.push(
-        `Placement chain from #${startPlacementId} revisits #${currentId} (PlacementRelTo cycle); left untouched.`,
-      );
-      return null;
-    }
-    visited.add(currentId);
-    hops++;
-    if (hops > 256) {
-      warnings.push(
-        `Placement chain from #${startPlacementId} exceeds 256 hops; left untouched rather than followed indefinitely.`,
-      );
-      return null;
-    }
-
-    const rec = readEntityArgs(store, index, currentId);
+  const types = new Map<number, string>();
+  let unreadableId: number | null = null;
+  const walked = walkPlacementChain(startPlacementId, (id) => {
+    const rec = readEntityArgs(store, index, id);
     if (!rec) {
-      warnings.push(
-        `Placement #${currentId} in the chain from #${startPlacementId} could not be read; left untouched.`,
-      );
+      unreadableId = id;
       return null;
     }
-    if (rec.type !== 'IFCLOCALPLACEMENT') {
-      return { rootId: currentId, rootType: rec.type };
-    }
-
+    types.set(id, rec.type);
+    if (rec.type !== 'IFCLOCALPLACEMENT') return null;
     const relToIdx = attrIndex(rec.type, 'PlacementRelTo'); // `rec.type` is always IFCLOCALPLACEMENT here — order verified identical across all 3 schemas (#3309)
-    const parentId = relToIdx >= 0 && relToIdx < rec.args.length ? parseRef(rec.args[relToIdx]) : null;
-    if (parentId === null) {
-      return { rootId: currentId, rootType: rec.type };
-    }
-    currentId = parentId;
+    return relToIdx >= 0 && relToIdx < rec.args.length ? parseRef(rec.args[relToIdx]) : null;
+  });
+  if (walked.end === 'cycle') {
+    warnings.push(
+      `Placement chain from #${startPlacementId} revisits #${walked.revisited} (PlacementRelTo cycle); left untouched.`,
+    );
+    return null;
   }
+  if (unreadableId !== null) {
+    warnings.push(
+      `Placement #${unreadableId} in the chain from #${startPlacementId} could not be read; left untouched.`,
+    );
+    return null;
+  }
+  const rootId = walked.ids[walked.ids.length - 1]!;
+  return { rootId, rootType: types.get(rootId)! };
 }
 
 // ---------------------------------------------------------------------------

@@ -9,18 +9,12 @@ use crate::bool2d::compute_signed_area;
 use crate::profile::Profile2D;
 use nalgebra::{Matrix4, Point2, Point3, Vector3};
 
-/// Shoelace area magnitude of a 2D contour.
-#[inline]
-fn area_abs(poly: &[Point2<f64>]) -> f64 {
-    compute_signed_area(poly).abs()
-}
-
 /// True iff `fp` lies strictly interior to `profile`: every vertex is inside the
 /// outer boundary and outside every existing hole. A conservative interiority
 /// test — a footprint that touches or crosses a boundary edge (a boundary notch)
 /// fails and is routed to the exact kernel rather than approximated. This gate
 /// says nothing about overlap between footprints; both routes remove their union.
-pub(super) fn footprint_interior(fp: &[Point2<f64>], profile: &Profile2D) -> bool {
+pub(crate) fn footprint_interior(fp: &[Point2<f64>], profile: &Profile2D) -> bool {
     fp.iter().all(|v| {
         crate::bool2d::point_in_contour(v, &profile.outer)
             && profile
@@ -35,7 +29,7 @@ pub(super) fn footprint_interior(fp: &[Point2<f64>], profile: &Profile2D) -> boo
 /// full host depth [`hz_min`, `hz_max`]. `None` (ineligible → exact kernel) for a
 /// perpendicular sweep, a partial-depth (recess) opening, an annular opening
 /// (its own profile holes), or a degenerate footprint.
-pub(super) fn opening_solid_footprint(
+pub(crate) fn opening_solid_footprint(
     op: &ExtrudedSolidLike,
     hm_inv: &Matrix4<f64>,
     host_axis: &Vector3<f64>,
@@ -73,7 +67,7 @@ pub(super) fn opening_solid_footprint(
     if zmin > hz_min + z_tol || zmax < hz_max - z_tol {
         return None;
     }
-    if area_abs(&fp) <= 0.0 {
+    if compute_signed_area(&fp).abs() <= 0.0 {
         return None;
     }
     Some(fp)

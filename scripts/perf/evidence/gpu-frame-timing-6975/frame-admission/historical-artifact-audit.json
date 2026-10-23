@@ -1,0 +1,181 @@
+{
+  "issue": 6975,
+  "scope": "Historical hosted SwiftShader diagnostics only; different heads, no physical GPU admission, no same-build repeatability proof.",
+  "ceilingSeedAccepted": false,
+  "receipts": [
+    {
+      "run": "https://github.com/LTplus-AG/ifc-lite/actions/runs/38231779499",
+      "sourceHead": "f221e64e0bc1829ccf5271b3fd1deb877d9cc2d3",
+      "artifact": "browser-frames",
+      "rawSha256": "49d3ee1a1c10ef481e041179c13f2d542f6f81197f020c10ea3f32e2495bd148",
+      "schema": 1,
+      "healthObserved": false,
+      "selectedRows": [
+        {
+          "fixture": "AC20-FZK-Haus",
+          "scenario": "streaming-load",
+          "metric": "frames",
+          "value": 78
+        },
+        {
+          "fixture": "AC20-FZK-Haus",
+          "scenario": "streaming-load",
+          "metric": "main_thread_ms_total",
+          "value": 1556.069
+        },
+        {
+          "fixture": "AC20-FZK-Haus",
+          "scenario": "streaming-load",
+          "metric": "gpu_submits",
+          "value": 8
+        },
+        {
+          "fixture": "AC20-FZK-Haus",
+          "scenario": "streaming-load",
+          "metric": "gpu_draws",
+          "value": 229
+        },
+        {
+          "fixture": "Snowdon",
+          "scenario": "streaming-load",
+          "metric": "frames",
+          "value": 103
+        },
+        {
+          "fixture": "Snowdon",
+          "scenario": "streaming-load",
+          "metric": "main_thread_ms_total",
+          "value": 2269.518
+        },
+        {
+          "fixture": "Snowdon",
+          "scenario": "streaming-load",
+          "metric": "gpu_submits",
+          "value": 9
+        },
+        {
+          "fixture": "Snowdon",
+          "scenario": "streaming-load",
+          "metric": "gpu_draws",
+          "value": 4280
+        }
+      ]
+    },
+    {
+      "run": "https://github.com/LTplus-AG/ifc-lite/actions/runs/38378378166",
+      "sourceHead": "8d51a2b0e41806de72c5434449c6da4fa4c1e049",
+      "artifact": "browser-frames",
+      "rawSha256": "a5f3bb8e21ab48b13da2c39828cccdbfed4839e9573109627b3413e925500ab7",
+      "schema": 1,
+      "healthObserved": false,
+      "selectedRows": [
+        {
+          "fixture": "AC20-FZK-Haus",
+          "scenario": "streaming-load",
+          "metric": "frames",
+          "value": 92
+        },
+        {
+          "fixture": "AC20-FZK-Haus",
+          "scenario": "streaming-load",
+          "metric": "main_thread_ms_total",
+          "value": 1810.361
+        },
+        {
+          "fixture": "AC20-FZK-Haus",
+          "scenario": "streaming-load",
+          "metric": "gpu_submits",
+          "value": 9
+        },
+        {
+          "fixture": "AC20-FZK-Haus",
+          "scenario": "streaming-load",
+          "metric": "gpu_draws",
+          "value": 249
+        },
+        {
+          "fixture": "Snowdon",
+          "scenario": "streaming-load",
+          "metric": "frames",
+          "value": 105
+        },
+        {
+          "fixture": "Snowdon",
+          "scenario": "streaming-load",
+          "metric": "main_thread_ms_total",
+          "value": 3539.735
+        },
+        {
+          "fixture": "Snowdon",
+          "scenario": "streaming-load",
+          "metric": "gpu_submits",
+          "value": 12
+        },
+        {
+          "fixture": "Snowdon",
+          "scenario": "streaming-load",
+          "metric": "gpu_draws",
+          "value": 6102
+        }
+      ]
+    },
+    {
+      "run": "https://github.com/LTplus-AG/ifc-lite/actions/runs/38532066743",
+      "sourceHead": "d18b452bba5abaf9fa2c60105db40f4caf2c05bb",
+      "artifact": "browser-frames",
+      "rawSha256": "04f7c10577aa5c0bc6082ccee629197aef7d62470037b14818cbcbd39e3a0f3c",
+      "schema": 1,
+      "healthObserved": false,
+      "selectedRows": [
+        {
+          "fixture": "AC20-FZK-Haus",
+          "scenario": "streaming-load",
+          "metric": "frames",
+          "value": 77
+        },
+        {
+          "fixture": "AC20-FZK-Haus",
+          "scenario": "streaming-load",
+          "metric": "main_thread_ms_total",
+          "value": 1643.106
+        },
+        {
+          "fixture": "AC20-FZK-Haus",
+          "scenario": "streaming-load",
+          "metric": "gpu_submits",
+          "value": 8
+        },
+        {
+          "fixture": "AC20-FZK-Haus",
+          "scenario": "streaming-load",
+          "metric": "gpu_draws",
+          "value": 229
+        },
+        {
+          "fixture": "Snowdon",
+          "scenario": "streaming-load",
+          "metric": "frames",
+          "value": 102
+        },
+        {
+          "fixture": "Snowdon",
+          "scenario": "streaming-load",
+          "metric": "main_thread_ms_total",
+          "value": 3533.593
+        },
+        {
+          "fixture": "Snowdon",
+          "scenario": "streaming-load",
+          "metric": "gpu_submits",
+          "value": 12
+        },
+        {
+          "fixture": "Snowdon",
+          "scenario": "streaming-load",
+          "metric": "gpu_draws",
+          "value": 6221
+        }
+      ]
+    }
+  ]
+}

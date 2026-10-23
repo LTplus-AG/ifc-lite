@@ -36,6 +36,7 @@ import { GLBExportDialog } from '../GLBExportDialog';
 import { KmzExportDialog } from '../KmzExportDialog';
 import { EnergyModelExportDialog } from '../EnergyModelExportDialog';
 import { UsdExportDialog } from '../UsdExportDialog';
+import { LandXmlTerrainExportCommand } from '../LandXmlTerrainExportCommand';
 import { PdfViewExportDialog } from '../PdfViewExportDialog';
 
 /** The CSV tables the exporter can emit. */
@@ -206,6 +207,20 @@ export const EXPORT_COMMANDS = [
     menuLabelKey: 'exportCommands.energy.menuLabel',
     tooltipKey: 'exportCommands.energy.tooltip',
     requires: 'model',
+    group: 2,
+    emphasis: 'small',
+  },
+  {
+    // IFC terrain (IfcGeographicElement / IfcSite triangulated surface) as a
+    // LandXML 1.2 surface (#7600). Reads the selection and the parsed store,
+    // and the dialog only enables Export once the producer accepts it.
+    id: 'landxml-terrain',
+    kind: 'dialog',
+    Dialog: LandXmlTerrainExportCommand,
+    labelKey: 'exportCommands.landxmlTerrain.label',
+    menuLabelKey: 'exportCommands.landxmlTerrain.menuLabel',
+    tooltipKey: 'exportCommands.landxmlTerrain.tooltip',
+    requires: 'dataStore',
     group: 2,
     emphasis: 'small',
   },

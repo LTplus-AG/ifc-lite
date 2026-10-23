@@ -35,6 +35,9 @@ Running `process_geometry` over the synthetic fixture in
     (`voids_hash`, `material_colors_hash`, `styles_hash`), so a drift report
     names the wire surface that diverged.
 
+The `mesh_check` edge keys (`rust/geometry/src/mesh_check`) are exact or grid-quantised and
+order-independent: a closure verdict does not depend on triangle order or hash iteration order.
+
 The fingerprint (FNV-1a 64, same scheme as the kernel manifest) is pinned in
 `rust/processing/tests/manifests/mesh_determinism.json` together with mesh,
 vertex and triangle counts and per-mesh hashes, so a failure identifies WHICH
@@ -72,6 +75,8 @@ mesh diverged.
 Both legs call the same `compute_mesh_manifest()` in
 `rust/processing/src/determinism.rs`, so fixture and hashing cannot drift
 between targets.
+
+`ifc_lite_geometry::math::{v3, mat4}` is FMA-free with a pinned operation order (`a0*b0 + a1*b1 + a2*b2`, left to right; the 4x4 product accumulates from `0.0`). Kernel and processing callers rely on that for the pinned manifests, so do not introduce `mul_add` there.
 
 ## Known gap: libm trig ULP (wasm32 vs native)
 

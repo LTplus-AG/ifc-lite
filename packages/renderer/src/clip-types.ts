@@ -35,4 +35,6 @@ export interface ExtraClipPlane {
   /** `dot(pointOnPlane, normal)` in world units. */
   distance: number;
   flipped: boolean;
+  /** The plane's id when it came from `RenderOptions.extraSectionPlanes` and had one: keys its cap. */
+  id?: string;
 }

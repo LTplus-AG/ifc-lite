@@ -284,7 +284,7 @@ async fn await_cache_fill_for(
         .to_string();
     let required = [
         crate::routes::parse::cache_keys::parquet_geometry_key(&key, layout),
-        format!("{key}-parquet-metadata-v5"),
+        format!("{key}-parquet-metadata-v6"),
         crate::routes::parse::cache_keys::data_model_cache_key(&key, crate::services::DataModelEntities::All),
         crate::routes::parse::cache_keys::symbolic_cache_key(&key),
         crate::routes::parse::stream_progress::stream_progress_cache_key(&key),
@@ -385,3 +385,18 @@ mod hash_only;
 
 #[path = "parquet_stream_cross_batch_tests.rs"]
 mod cross_batch;
+
+#[path = "admission_7676_tests.rs"]
+mod admission_7676;
+
+#[path = "refusal_7675_tests.rs"]
+mod refusal_7675;
+
+#[path = "cache_read_7676_tests.rs"]
+mod cache_read_7676;
+
+#[path = "cache_policy_7676_tests.rs"]
+mod cache_policy_7676;
+
+#[path = "cache_hit_sizing_7676_tests.rs"]
+mod cache_hit_sizing_7676;

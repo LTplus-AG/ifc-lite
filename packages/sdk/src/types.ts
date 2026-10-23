@@ -261,12 +261,7 @@ export interface CameraState {
   up?: [number, number, number];
 }
 
-export interface SectionPlane {
-  axis: 'x' | 'y' | 'z';
-  position: number;
-  enabled: boolean;
-  flipped: boolean;
-}
+import type { SectionPlane } from './section-plane.js';
 
 // ============================================================================
 // Spatial Types
@@ -399,6 +394,11 @@ export interface ViewerBackendMethods {
   flyTo(refs: EntityRef[]): void;
   setSection(section: SectionPlane | null): void;
   getSection(): SectionPlane | null;
+  /** Several cutting planes; optional, `bim.viewer` falls back to `setSection` / `getSection`. */
+  setSections?(sections: SectionPlane[]): void;
+  getSections?(): SectionPlane[];
+  addSection?(section: SectionPlane): string | null;
+  removeSection?(id: string): boolean;
   setCamera(state: Partial<CameraState>): void;
   getCamera(): CameraState;
   /**

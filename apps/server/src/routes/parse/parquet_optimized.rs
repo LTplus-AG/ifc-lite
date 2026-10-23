@@ -8,13 +8,14 @@
 //! replay itself (metadata header, read-through-cache, response builder) now
 //! lives in `parquet_optimized_replay.rs` (issue #5128) for the same reason.
 
-use super::cache_keys::request_cache_key;
 use super::parquet::DataModelStats;
 use super::parquet_optimized_replay::{
     cache_data_model, cache_optimized_response, optimized_parquet_response,
     replay_optimized_by_client_hash, try_cached_optimized_parquet, OptimizedParquetMetadataHeader,
 };
-use super::{cache_symbolic_data_off_runtime, extract_file, ParseQuery};
+use super::{
+    admit_upload, begin_symbolic_fill, cache_symbolic_data_off_runtime, request_cache_key_off_runtime, ParseQuery,
+};
 use crate::error::ApiError;
 use crate::services::{
     baked_basis_zup, extract_data_model, serialize_data_model_to_parquet,
@@ -28,7 +29,7 @@ use axum::{
     response::Response,
 };
 use ifc_lite_processing::{
-    extract_symbolic_data_with_provenance_in_frame, process_geometry_filtered_with_quality,
+    extract_symbolic_data_with_provenance_in_frame, process, ProcessingRequest,
 };
 
 /// POST /api/v1/parse/parquet/optimized - Full parse with ara3d BOS-optimized Parquet format.
@@ -75,27 +76,24 @@ pub async fn parse_parquet_optimized(
     };
 
     // Extract file from multipart
-    // Admission gate (bounded concurrency + byte budget): acquired BEFORE the
-    // upload is buffered, reserving the max upload size since multipart rarely
-    // declares a length up front. Held for the request's whole lifetime so a
-    // disconnected-but-still-running job keeps its memory slot.
-    let admission_guard = state
-        .admission
-        .acquire(state.config.max_file_size_mb as u64 * 1024 * 1024)
-        .await?;
-    let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
+    // Admission (bounded concurrency + byte budget) before the upload is
+    // buffered; see `admit_upload`. Held for the
+    // request's whole lifetime so a disconnected-but-still-running job keeps
+    // its memory slot.
+    let (admission_guard, data) = admit_upload(&state, &mut multipart).await?;
 
     // Generate cache key (include opening filter so different modes get different cache entries)
-    let cache_key = request_cache_key(&data, &query, tessellation_quality);
+    let (cache_key, mut admission_guard) =
+        request_cache_key_off_runtime(&data, &query, tessellation_quality, admission_guard).await?;
 
     // Cache first, before any processing (issue #3889). The optimized route is
     // the SMALL payload and the one a viewer opens repeatedly, so re-parsing it
     // on every request was the worst of both shapes.
     let data_model_entities = query.data_model_entities;
-    if let Some(response) =
-        try_cached_optimized_parquet(&state, &cache_key, data_model_entities).await?
+    if let Some((metadata_json, body)) =
+        try_cached_optimized_parquet(&state, &cache_key, data_model_entities, Some(&mut admission_guard)).await?
     {
-        return Ok(response);
+        return optimized_parquet_response(metadata_json, body, admission_guard.into_resident());
     }
 
     tracing::info!(
@@ -115,14 +113,14 @@ pub async fn parse_parquet_optimized(
     // occupies an async worker. Guard rides the blocking task (see
     // parse_full).
     let cache_key_for_log = cache_key.clone();
-    let (result, dm_stats, symbolic_data, parquet_data, dm_parquet, opt_stats, _admission) =
+    let (result, dm_stats, symbolic_data, parquet_data, dm_parquet, opt_stats, admission) =
         tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
             // First: geometry and the data model in parallel, mirroring
             // `parse_parquet` -- independent extractions over the same bytes,
             // each on its own rayon thread.
             // #5984: the finish index is a third independent read of the bytes.
             let (mut result, (mut data_model, mut finishes)) = rayon::join(
-                || process_geometry_filtered_with_quality(&content, opening_filter, tessellation_quality),
+                || process(&content, &ProcessingRequest::full_pass().opening_filter(opening_filter).quality(tessellation_quality), &mut ()),
                 || rayon::join(|| extract_data_model(&content), || ModelFinishes::from_content(&content)),
             );
             let meshes = finish_meshes(&mut finishes, std::mem::take(&mut result.meshes));
@@ -200,7 +198,8 @@ pub async fn parse_parquet_optimized(
 
     // Cache the symbolic stream so the client can fetch it via
     // `GET /api/v1/parse/symbolic/{cache_key}`.
-    cache_symbolic_data_off_runtime(state.cache.clone(), cache_key.clone(), symbolic_data).await;
+    let symbolic_fill = begin_symbolic_fill(&state, &cache_key);
+    cache_symbolic_data_off_runtime(state.cache.clone(), symbolic_fill, cache_key.clone(), symbolic_data).await;
 
     // Create metadata header
     let metadata_header = OptimizedParquetMetadataHeader {
@@ -237,5 +236,5 @@ pub async fn parse_parquet_optimized(
         );
     }
 
-    optimized_parquet_response(metadata_json, parquet_data)
+    optimized_parquet_response(metadata_json, parquet_data, admission.into_resident())
 }

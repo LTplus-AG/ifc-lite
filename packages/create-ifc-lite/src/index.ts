@@ -8,6 +8,7 @@ import { existsSync, mkdirSync, rmSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
+import { createDependencyLock } from './utils/dependency-lock.js';
 import { createBasicTemplate } from './templates/basic.js';
 import { createThreejsTemplate } from './templates/threejs.js';
 import { createBabylonjsTemplate } from './templates/babylonjs.js';
@@ -153,6 +154,8 @@ async function main() {
   mkdirSync(targetDir, { recursive: true });
   try {
     TEMPLATES[template](targetDir, projectName);
+    console.log('  Resolving the dependency set and writing package-lock.json...');
+    createDependencyLock(targetDir);
   } catch (error) {
     // Templates resolve their dependency versions from the npm registry as
     // their first act, so an offline run fails AFTER the directory exists.
@@ -166,14 +169,14 @@ async function main() {
 
   if (template === 'server') {
     console.log(`    docker compose up -d`);
-    console.log(`    npm install && npm run example ./your-model.ifc`);
+    console.log(`    npm ci && npm run example ./your-model.ifc`);
     console.log(`\n  Server will be available at http://localhost:3001`);
   } else if (template === 'server-native') {
-    console.log(`    npm install`);
+    console.log(`    npm ci`);
     console.log(`    npm run server:start`);
     console.log(`\n  Server will be available at http://localhost:8080`);
   } else {
-    console.log(`    npm install`);
+    console.log(`    npm ci`);
     if (template === 'react' || template === 'threejs' || template === 'babylonjs') {
       console.log(`    npm run dev`);
     } else {

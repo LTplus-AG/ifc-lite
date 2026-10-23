@@ -220,15 +220,21 @@ fn run_in_pool_passes_the_closure_outcome_through() {
     assert_eq!(run_in_pool("ok_probe.ifc", || Ok(7)), Ok(7));
 }
 
-/// Building the large-stack pool used to `.expect` on the `extern "C"` path
-/// (#4614). A 2^62-byte stack, past any 64-bit address space, makes the thread
-/// spawn fail for real; the build must be an `Err`, which the caller maps to
-/// code 3. Mutation that fails this test: panic on the build error inside
-/// `build_parse_pool`, as the old `.expect` did.
-#[cfg(target_pointer_width = "64")]
+/// The parse body and its `par_iter` jobs run on processing's large-stack
+/// geometry pool (EDGE-FFI-1, #7673), whose workers are named
+/// `ifc-lite-geometry-*`. The stack depth itself is pinned by
+/// `geometry_pool_tests.rs` in ifc-lite-processing.
 #[test]
-fn a_pool_that_cannot_spawn_its_threads_is_an_error_not_a_panic() {
-    assert!(build_parse_pool(1 << 62).is_err());
+fn run_in_pool_runs_the_work_on_the_shared_geometry_pool() {
+    use rayon::prelude::*;
+    let names = run_in_pool("pool_probe.ifc", || {
+        Ok((0..4u32)
+            .into_par_iter()
+            .map(|_| std::thread::current().name().unwrap_or_default().to_string())
+            .collect::<Vec<_>>())
+    })
+    .expect("pool runs");
+    assert!(names.iter().all(|n| n.starts_with("ifc-lite-geometry-")), "{names:?}");
 }
 
 /// Panic records appended from many threads at once come out whole and none
@@ -301,4 +307,56 @@ fn geometry_is_sound_and_deterministic_under_the_global_allocator() {
         assert_eq!(x.positions, y.positions, "positions must be deterministic");
         assert_eq!(x.indices, y.indices, "indices must be deterministic");
     }
+}
+
+/// EDGE-FFI-2 / EDGE-WASM-14 (#7694): STEP text is ISO-8859-1 plus escapes, so a
+/// raw Latin-1 byte inside a string is legal input that every other front-end
+/// loads. The FFI used to `read_to_string` the file and answered code 2 ("cannot
+/// read"). The bytes now flow to the pipeline untouched; the geometry must equal
+/// the pure-ASCII twin of the same file. Mutation that fails this test: restore
+/// `std::fs::read_to_string` in `parse_impl`.
+#[test]
+fn issue_7694_latin1_bytes_in_a_string_parse_like_the_ascii_twin() {
+    let fixture = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../geometry/tests/fixtures/bath_csg_solid.ifc"
+    );
+    let ascii = std::fs::read(fixture).unwrap_or_else(|e| panic!("read {fixture}: {e}"));
+    let needle: &[u8] = b"'IfcProject'";
+    let at = ascii
+        .windows(needle.len())
+        .position(|w| w == needle)
+        .expect("fixture names its project");
+    let mut latin1 = ascii[..at].to_vec();
+    latin1.extend_from_slice(b"'Projekt \xfc\xe9'");
+    latin1.extend_from_slice(&ascii[at + needle.len()..]);
+    assert!(std::str::from_utf8(&latin1).is_err(), "twin must not be UTF-8");
+
+    let parse = |tag: &str, bytes: &[u8]| -> (i32, serde_json::Value) {
+        let path = temp_path(tag);
+        std::fs::write(&path, bytes).unwrap();
+        let path_str = path.to_str().unwrap();
+        let mut out_ptr: *mut u8 = ptr::null_mut();
+        let mut out_len: usize = 0;
+        let code = unsafe {
+            ifc_lite_parse(path_str.as_ptr(), path_str.len(), &mut out_ptr, &mut out_len)
+        };
+        let _ = std::fs::remove_file(&path);
+        if code != 0 {
+            return (code, serde_json::Value::Null);
+        }
+        let json = unsafe { slice::from_raw_parts(out_ptr, out_len) };
+        let value = serde_json::from_slice(json).unwrap();
+        unsafe { ifc_lite_free(out_ptr, out_len) };
+        (code, value)
+    };
+
+    let (ascii_code, ascii_json) = parse("7694_ascii", &ascii);
+    let (latin_code, latin_json) = parse("7694_latin1", &latin1);
+    assert_eq!(ascii_code, 0);
+    assert_eq!(latin_code, 0, "Latin-1 bytes in a string must not be code 2");
+    let meshes = |v: &serde_json::Value| v["meshes"].as_array().map(Vec::len).unwrap_or(0);
+    assert!(meshes(&ascii_json) > 0);
+    assert_eq!(meshes(&latin_json), meshes(&ascii_json));
+    assert_eq!(latin_json["meshes"], ascii_json["meshes"], "geometry must be identical");
 }

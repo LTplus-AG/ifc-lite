@@ -32,21 +32,76 @@
 
 import type { RenderOptions } from '@ifc-lite/renderer';
 import type { SectionPlane } from '@/store/types';
+import { isPristineSectionPlane } from './section-plane-set';
 
-export type SectionRenderClip = Pick<RenderOptions, 'sectionPlane' | 'clipBox'>;
+export type SectionRenderClip = Pick<RenderOptions, 'sectionPlane' | 'extraSectionPlanes' | 'clipBox'>;
+
+/** The model's bounds the Section range is read from (`coordinateInfo.shiftedBounds`). */
+export interface RangeBounds {
+  min: { x: number; y: number; z: number };
+  max: { x: number; y: number; z: number };
+}
+
+/** A cardinal plane's slider range along its own axis: the one the Section bar, the caps and the offset field use. */
+export function planeRange(p: SectionPlane, bounds: RangeBounds | null | undefined): { min: number; max: number } | null {
+  if (!bounds || p.custom) return null;
+  const key = p.axis === 'side' ? 'x' : p.axis === 'down' ? 'y' : 'z';
+  const min = bounds.min[key];
+  const max = bounds.max[key];
+  return Number.isFinite(min) && Number.isFinite(max) ? { min, max } : null;
+}
+
+/**
+ * One plane as the renderer's `SectionPlane`. The id keys the plane's cap and its frame; `showGizmo`
+ * hides the primary quad. With `bounds` a cardinal plane carries the same slider range as the active
+ * plane does, so every plane's percentage means the same place in the clip, the cap and the offset field.
+ */
+export function rendererSectionPlane(p: SectionPlane, bounds?: RangeBounds | null): NonNullable<RenderOptions['extraSectionPlanes']>[number] {
+  return {
+    id: p.id, showGizmo: p.showGizmo, axis: p.axis, position: p.position, enabled: p.enabled, flipped: p.flipped,
+    normal: p.custom?.normal, distance: p.custom?.distance,
+    ...planeRange(p, bounds),
+  };
+}
+
+/**
+ * The plane whose box clips (the renderer has ONE box slot): the active plane's box while it is cutting,
+ * else the first inactive plane's box that is, else the active plane's box switched off. One rule, shared
+ * with the PDF export, the zoom and the BCF/SDK readers, so none of them clips by a box the screen does not.
+ */
+export function boxHoldingPlane(plane: SectionPlane, inactive: readonly SectionPlane[]): SectionPlane | undefined {
+  return plane.box && plane.enabled ? plane : (inactive.find((p) => p.enabled && p.box) ?? (plane.box ? plane : undefined));
+}
 
 export function sectionRenderClip(
   visible: boolean,
   plane: SectionPlane,
   range: { min: number; max: number } | null,
   activeTool: string,
+  inactive: readonly SectionPlane[] = [],
+  bounds?: RangeBounds | null,
 ): SectionRenderClip {
   if (!visible) return {};
-  const box = plane.box;
-  if (box) return { clipBox: { min: box.min, max: box.max, enabled: plane.enabled } };
-  if (!plane.enabled && activeTool !== 'section') return {};
+  // The planes beyond the active one (#7545): each is resolved by the renderer like the primary;
+  // only the enabled ones clip, the rest are handed over so their marks and previews exist.
+  // A boxed plane clips by its box (one box slot), so it adds no plane; the active plane's box wins the slot.
+  const extra = inactive.filter((p) => !p.box);
+  const extraClip = extra.length > 0 ? { extraSectionPlanes: extra.map((p) => rendererSectionPlane(p, bounds)) } : {};
+  // The active plane's box wins the one box slot; otherwise an enabled inactive plane's box takes it.
+  // Either way the clip does not depend on WHICH plane is active: a boxed inactive plane clips by its
+  // box and the active plane (when it is not the boxed one) still clips by itself, below.
+  const boxed = boxHoldingPlane(plane, inactive);
+  const box = boxed?.box;
+  const boxClip = box && boxed ? { clipBox: { min: box.min, max: box.max, enabled: boxed.enabled } } : {};
+  if (plane.box) return { ...extraClip, ...boxClip };
+  // No preview for a plane the user has not made yet (the unnamed placeholder), nor for a disabled one outside the Section tool (#6374).
+  if (!plane.enabled && (activeTool !== 'section' || isPristineSectionPlane(plane))) return { ...extraClip, ...boxClip };
   return {
+    ...extraClip,
+    ...boxClip,
     sectionPlane: {
+      id: plane.id,
+      showGizmo: plane.showGizmo,
       axis: plane.axis,
       position: plane.position,
       enabled: plane.enabled,

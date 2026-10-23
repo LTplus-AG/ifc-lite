@@ -36,7 +36,7 @@ function Editable({ image = false }: { image?: boolean }) {
     <button onClick={() => setSpec(previous => ({ ...previous, blocks: previous.blocks.map(block => block.kind === 'image'
       ? { ...block, dataUrl: replacementImage } : block) }))}>Replace image</button>
     <DocumentPreview document={spec} bindings={bindings} aggregations={aggregations} chartMessages={messages}
-      topics={topics} selectedBlockId={null} onSelectBlock={() => {}} labels={failing ? (key, params) => {
+      topics={topics} onSelectBlock={() => {}} labels={failing ? (key, params) => {
         // A captured label dependency can fail during asynchronous composition;
         // the invariant concerns its real rejection lifecycle, not its text.
         if (key === 'document.print.footer') throw new Error('Captured label preparation failed');
@@ -134,7 +134,7 @@ it('retains failed repeated-logo furniture while its replacement prepares, then 
     return <><button onClick={() => setUrl(replacementImage)}>Replace frame logo</button>
       <DocumentPreview document={{ ...document, pageHeading: pageBand, pageFooter: pageBand }}
         bindings={bindings} aggregations={aggregations} chartMessages={messages} topics={topics}
-        selectedBlockId={null} onSelectBlock={() => {}} /></>;
+        onSelectBlock={() => {}} /></>;
   }
   const ui = render(<FrameLogo />);
   await waitFor(() => ui.querySelector('[data-layout-pending="true"]') === null

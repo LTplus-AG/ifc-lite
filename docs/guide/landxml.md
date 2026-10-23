@@ -5,7 +5,7 @@ IFC models and point clouds. LandXML records stay LandXML — **no `Ifc*` entiti
 from them**.
 
 This page describes what loads, what is kept but not drawn, what is refused, and what export
-does. For the evidence behind interoperability claims, see the
+does in both directions: LandXML to IFC, and IFC terrain back to a LandXML surface. For the evidence behind interoperability claims, see the
 [coverage ledger](../architecture/landxml-coverage-ledger.md); a capability being implemented
 is recorded separately there from whether a given producer's export has been verified.
 
@@ -59,8 +59,12 @@ LXML009: a numeric, renderable TIN surface requires a LandXML/Units element
          with a linearUnit attribute
 ```
 
-The rule is applied identically on every parse path, streaming and non-streaming, so a file
-cannot render on one path and be refused on another.
+The rule is applied identically on every parse path, streaming and non-streaming (all of them run
+one XML driver), so a file cannot render on one path and be refused on another. The one difference:
+a streaming parse that already emitted its header with an assumed unit, because a surface that draws
+to scale completed before `<Units>`, refuses a `<Units>` that arrives afterwards (the surfaces it
+already drained were scaled by the assumption); a non-streaming parse has read the whole document
+and uses the declared units, with a warning.
 
 A unitless file is **not** rejected outright: surfaces that would only ever be preserved-only
 remain inspectable. Only a numeric surface that would be drawn to scale needs a declared unit,
@@ -89,12 +93,62 @@ LandXML, IFC and point-cloud sources can be placed in one coordinate frame. Hori
 vertical references are tracked separately, and an unresolvable reference is an explicit refusal
 rather than a silent identity transform.
 
+To be aligned with a georeferenced model, the LandXML `CoordinateSystem` must declare its
+horizontal CRS (`epsgCode`, or an `EPSG:<n>` `horizontalDatum`) and an `EPSG:<n>`
+`verticalDatum`. The anchor must declare a vertical datum too; for IFC that is
+`IfcProjectedCRS.VerticalDatum`, which can be set in the Georeferencing panel. A display `name`
+such as `name="EPSG:31467"` is not read as a declaration unless you choose to (see below).
+Without alignment the surface keeps its map coordinates, and next to a model in local coordinates
+that is usually far outside the shared render frame. The load is then refused, and the message lists each missing or conflicting
+declaration.
+
+### Assumptions you can choose
+
+Two of those missing declarations are common in real files, so the viewer lets you assume them.
+Both are **off by default**: without your choice, a file that does not declare them is refused as
+described above. Neither is ever applied silently.
+
+| Assumption | What it assumes | If the assumption is wrong |
+|---|---|---|
+| **Assume a shared height system** | The LandXML, the anchor model, or both declare no vertical datum. Heights are placed as written, as if both used the same height system. | The surface sits too high or too low by the difference between the two height systems. |
+| **Read an EPSG code from the coordinate system name** | The `CoordinateSystem` declares no `epsgCode` and no `EPSG:<n>` `horizontalDatum`, but its `name` is exactly `EPSG:<n>`, for example `name="EPSG:31467"`. That code is used as the horizontal CRS. No other name is read: `CH1903+ / LV95` or `EPSG 31467` is still refused. | If the name was only a label, the surface lands in the wrong place. |
+
+An assumption is used only where it is needed. If the file declares the datum or the code
+itself, the declaration wins, and enabling an assumption changes nothing for that file. A real
+conflict is never covered by an assumption: two different declared vertical datums, or two
+horizontal CRSs that cannot be reprojected onto each other, are still refused.
+
+You can choose them in two places:
+
+- **When a load is refused.** If one or both assumptions would let the file line up, the refusal
+  appears as a prompt over the viewport. It shows the refusal message, then one checkbox per
+  assumption that would help, each with what it assumes and what goes wrong if it does not hold.
+  All are checked to start with. **Load with these assumptions** reloads the file with exactly
+  the checked ones, for this load only. **Always assume this** also turns the checked ones on in
+  Settings for every later file, then reloads. **Cancel** loads nothing. A refusal that no
+  assumption would fix, such as a CRS mismatch or a surface that is genuinely too far away, shows
+  only the message.
+- **In Settings.** Open Settings, then **General → LandXML georeferencing**. The two switches
+  apply to every LandXML you add to a georeferenced model from then on. They are saved in this
+  browser.
+
+A model placed using an assumption is marked **Assumed** in its model information panel (select
+the model in the hierarchy). Each
+assumption it used is listed in words, for example "Heights assumed to share the anchor model's
+height system: no vertical datum is declared" or "EPSG:31467 read from the CoordinateSystem name:
+no EPSG code is declared". A model aligned on declared CRSs alone has no such mark, even if the
+assumptions are switched on.
+
 ## Export
+
+There are two separate exports, one in each direction. Neither is a round trip of the other.
+
+### LandXML → IFC
 
 A LandXML model can be converted to IFC4X3, under the reviewed mapping in
 [LandXML → IFC mapping](../architecture/landxml-to-ifc-mapping.md) (v1.0). The conversion is
-one-way and derived: it is not a round trip, and it does not replace the source records, which
-remain the authoritative model in the viewer.
+derived: it does not replace the source records, which remain the authoritative model in the
+viewer.
 
 What v1 writes:
 
@@ -127,10 +181,14 @@ Two things the dialog states because the geometry cannot:
   time, every coordinate is at that operator-chosen scale. The IFC records the assumption in a
   `LandXML_Conversion` property set on the site.
 - **The coordinate reference system.** With no declared CRS, no georeferencing is written at all
-  (rather than a placeholder). With one, the declared datum is written verbatim as
-  `IfcProjectedCRS.Name` — ifc-lite never resolves it to an EPSG definition — and the
-  coordinate-order plausibility check still cannot run, because it needs that CRS's coordinate
-  bounds. A source whose point text was written easting-first produces a mirrored surface that
+  (rather than a placeholder). With one, `IfcProjectedCRS.Name` is, first match wins: the
+  declared EPSG code as `EPSG:<n>` (from `CoordinateSystem@epsgCode`, or an `EPSG:<n>` id in
+  `horizontalDatum`), because IFC asks for an EPSG-qualified name where one exists; else
+  `CoordinateSystem@name` verbatim (for example `CH1903+ / LV95`); else `horizontalDatum`
+  verbatim. A file that writes both a name and a code (3D-Win's `name="GK21" epsgCode="3875"`)
+  is therefore named `EPSG:3875`. ifc-lite never resolves the name to an EPSG definition, and
+  the coordinate-order plausibility check still cannot run, because it needs that CRS's
+  coordinate bounds. A source whose point text was written easting-first produces a mirrored surface that
   still renders and still passes every count check, so verify the source before relying on the
   position.
 
@@ -139,6 +197,75 @@ Also available, and still the recommended route when a downstream tool can read 
 - **Download the original LandXML.** The export dialog offers the source file back, unchanged.
 - **Changes only (JSON delta)** export. Mutation deltas are source-independent JSON, not synthesised IFC, so
   the mapping does not apply to them.
+
+### IFC terrain → LandXML
+
+An IFC terrain can be exported as a LandXML 1.2 TIN surface for civil and survey tools. Select
+one or more terrain products in one IFC model and choose **LandXML (terrain)** in the export
+menu or the command palette. The viewer checks the selection with the real exporter before you
+commit and downloads `<model>_terrain.xml`. Terrain selected across several federated models is
+refused; export one model at a time. From code, the exporter is `GeometryProcessor.exportLandXmlTerrain` (see
+[Exporting](exporting.md#landxml-terrain-export)).
+
+This export writes a terrain triangulation that was already authored. It is not a general
+geometry converter. Nothing is re-triangulated, repaired or sampled from the rendered mesh. The
+contract follows openBIM-surveyor's `IFC_TERRAIN_TO_LANDXML.md`, with three differences: an
+`IfcSite` is accepted as well as an `IfcGeographicElement`; a flag-free
+`IfcTriangulatedIrregularNetwork` is accepted; and an omitted `MapUnit` means the project length
+unit, as IFC defines it, instead of being refused.
+
+| IFC | LandXML 1.2 |
+|---|---|
+| Each selected `IfcGeographicElement` or `IfcSite`, in selection order | One `<Surface>`, `<Definition surfType="TIN">` |
+| Product `Name` (else `GlobalId`), or the name typed in the dialog | `Surface@name`. A repeated name gets a ` (2)`, ` (3)` … suffix |
+| Product `GlobalId` | `Surface@OID` |
+| `IfcTriangulatedFaceSet.Coordinates`, through `PnIndex` when present | `<Pnts>`, one `<P>` per vertex in authored order, ids from 1 |
+| `CoordIndex` | `<Faces>`, one `<F>` per triangle, unchanged |
+| Vertex, through the product placement and then the context's `IfcMapConversion` / `IfcMapConversionScaled` | `<P>` text as **northing easting elevation**, in the chosen unit (metres by default) |
+| `IfcProjectedCRS.Name` | `CoordinateSystem@name`, plus `epsgCode` when the name is `EPSG:<n>` |
+| `IfcProjectedCRS.GeodeticDatum` / `VerticalDatum` | `CoordinateSystem@horizontalDatum` / `@verticalDatum` |
+| `IfcProject.Name` (else `LongName`) | `Project@name` |
+
+The dialog has three options, applied when you export (#7618):
+
+- **Units**: metres (`<Metric linearUnit="meter">`, the default), international feet
+  (`<Imperial linearUnit="foot" elevationUnit="feet">`) or US survey feet
+  (`<Imperial linearUnit="USSurveyFoot" elevationUnit="feet">`). LandXML 1.2 has no US survey foot
+  for elevations, so in that mode heights are written in international feet. Both units are
+  declared, so any reader converts them exactly.
+- **Decimal places** in the written unit: 3, 4 or 6. The default 6 rounds to a micrometre in
+  metres, far below survey precision; 3 is millimetres in metres, as machine-control files usually
+  carry. Trailing zeros are trimmed and numbers are never in exponent form. A precision so coarse
+  that a triangle collapses onto a line or point is refused, naming the face; choose more decimal
+  places.
+- **Surface name**, per surface. It starts as the IFC name; a blank name keeps it.
+
+The map conversion is found through the representation's own context, following `ParentContext`
+from a subcontext. `MapUnit` and the project length unit are both converted to metres first, and
+the chosen unit is applied once, when the file is written. For how ifc-lite reads the map
+conversion elsewhere, see
+[map units](exporting.md#map-units-for-interoperability) and
+[map rotation and scale](exporting.md#map-rotation-and-scale-for-interoperability).
+
+The export fails closed. It writes nothing, and the error (`TERRAIN_REFUSED`) names the product or
+attribute at fault, when:
+
+- a selected product is not an `IfcGeographicElement` or `IfcSite`;
+- the product has no `IfcTriangulatedFaceSet`, or more than one;
+- the face set is an `IfcTriangulatedIrregularNetwork` with any non-zero `Flags`, because
+  breaklines, voids and hidden faces have no place in a plain LandXML face list;
+- a coordinate is not finite, a face is not three distinct existing vertices, or a face is
+  degenerate in map coordinates;
+- the representation's context has no `IfcMapConversion`, or more than one, or the conversion
+  is numerically invalid. Local coordinates are never treated as map coordinates;
+- the map conversion's source context has a non-identity `WorldCoordinateSystem`;
+- `TargetCRS` is not an `IfcProjectedCRS`, or has no `Name`;
+- the model has no single `IfcProject` with exactly one length unit, or a length unit cannot be
+  converted to metres exactly;
+- `Scale` is omitted while the map unit and the project unit differ;
+- the product's placement chain fails the same checks map normalization applies;
+- the selected terrains are in different coordinate systems. One LandXML file carries one
+  `CoordinateSystem`.
 
 ## Diagnostics
 
@@ -156,11 +283,18 @@ Parse failures carry a stable code:
 | `LXML008` | recognised namespace with an unknown `version` |
 | `LXML009` | a required attribute or element is missing, or content is semantically invalid |
 
+Two refusals apply to every parse path alike. A numeric field (`<P>`, `<F>`, a point list, a
+`<CgPoint>`, an alignment point) that contains a child element is refused (`LXML009`) rather than
+read as the text around the element, and a character reference to something that is not an XML
+character (`&#0;`, `&#xB;`, `&#xFFFE;`) is malformed XML (`LXML006`), in text and in attribute
+values.
+
 Terrain triangulation refusals use a separate `LXMLT###` family, and alignment numeric evaluation
 uses `LXMLA###`. Both are reported as diagnostics on the model rather than as load failures, so a
 file that cannot be triangulated still opens with its source records intact.
 
 ## Out of scope
 
-Native LandXML authoring and export, survey adjustment, hydraulic analysis, cadastral
-certification, and corridor reconstruction from unsupported records.
+Native LandXML authoring, exporting anything other than an authored IFC terrain triangulation
+(alignments, points, breaklines and other records), survey adjustment, hydraulic analysis,
+cadastral certification, and corridor reconstruction from unsupported records.

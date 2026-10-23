@@ -156,6 +156,10 @@ export interface SectionCapStyleOptions {
 }
 
 export interface SectionPlane {
+  /** Keys this plane's cap among the cutting planes beyond the first (#7545); unused on the primary plane. */
+  id?: string;
+  /** False hides the preview quad of the primary plane (the plane still clips and caps). Default true (#7545). */
+  showGizmo?: boolean;
   axis: SectionPlaneAxis;
   position: number; // 0-100 percentage of model bounds
   enabled: boolean;
@@ -253,6 +257,8 @@ export interface RenderOptions {
   selectedId?: number | null;     // Currently selected mesh (for highlighting)
   selectedIds?: Set<number>;      // Multi-selection support
   selectedItemId?: number;        // #4382: narrows selectedId's highlight to one representation item (geometryItemId); no effect on selectedIds
+  /** `capHighlightKey(modelIndex, id)` → RGBA (0–1) painted over that element's section-cap polygons (selection / hover); compared by content each frame. */
+  capHighlight?: ReadonlyMap<string, readonly [number, number, number, number]> | null;
   hoverOutline?: { id: number; modelIndex?: number } | null; // #5390 thin visible-only pre-highlight; modelIndex scopes federation
   /**
    * Render the active colour overrides almost full-bright so they POP like a
@@ -307,6 +313,8 @@ export interface RenderOptions {
   sectionPlane?: SectionPlane;
   /** More cutting planes beyond `sectionPlane` (#7545), each resolved like it; enabled ones clip, and a fragment must survive all (max 7). */
   extraSectionPlanes?: SectionPlane[];
+  /** Full scene ids exempt from primary and extra section planes; crop boxes still apply. */
+  sectionExcludedIds?: ReadonlySet<number>;
   // Section / crop box: clip geometry to an axis-aligned world-space box (all six
   // sides). Independent of `sectionPlane`. The GPU picker mirrors the active
   // section plane + clip box from the last render, so cropped/sectioned-away

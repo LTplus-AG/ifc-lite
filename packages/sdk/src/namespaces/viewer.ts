@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { BimBackend, EntityRef, SectionPlane, CameraState, ProjectionMode, RGBAColor } from '../types.js';
+import type { BimBackend, EntityRef, CameraState, ProjectionMode, RGBAColor } from '../types.js';
+import type { SectionPlane } from '../section-plane.js';
 import { hexToRgba } from '@ifc-lite/lens';
 
 /** bim.viewer — Renderer control, camera, section planes */
@@ -110,5 +111,46 @@ export class ViewerNamespace {
   /** Remove section plane */
   clearSection(): void {
     this.backend.viewer.setSection(null);
+  }
+
+  // ── Several section planes ─────────────────────────────────
+
+  /**
+   * Every cutting plane on screen. What is kept is what ALL of them keep. A backend that clips
+   * with one plane reports it (or none).
+   */
+  getSections(): SectionPlane[] {
+    const viewer = this.backend.viewer;
+    if (viewer.getSections) return viewer.getSections();
+    const one = viewer.getSection();
+    return one ? [one] : [];
+  }
+
+  /**
+   * Replace every cutting plane with `sections`, in order (the first becomes the active one).
+   * An empty list clears them all. A single-plane backend applies the first plane that is enabled.
+   */
+  setSections(sections: SectionPlane[]): void {
+    const viewer = this.backend.viewer;
+    if (viewer.setSections) viewer.setSections(sections);
+    else viewer.setSection(sections.find((section) => section.enabled) ?? sections[0] ?? null);
+  }
+
+  /**
+   * Add one more cutting plane beside the others and return its id, or `null` when it was not added: the
+   * viewer is at its limit (eight planes), or the plane is not `enabled`. A single-plane backend replaces
+   * its plane and returns `null`.
+   */
+  addSection(section: SectionPlane): string | null {
+    const viewer = this.backend.viewer;
+    if (viewer.addSection) return viewer.addSection(section);
+    viewer.setSection(section);
+    return null;
+  }
+
+  /** Remove the plane with this id (from `getSections()` or `addSection()`); false when there is none. */
+  removeSection(id: string): boolean {
+    const viewer = this.backend.viewer;
+    return viewer.removeSection ? viewer.removeSection(id) : false;
   }
 }

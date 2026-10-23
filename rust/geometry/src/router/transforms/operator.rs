@@ -5,6 +5,7 @@
 //! `IfcCartesianTransformationOperator` (2D / 3D, uniform + non-uniform): the
 //! `IfcMappedItem` MappingTarget operator, parsed into a 4x4.
 
+use crate::math::tol;
 use super::super::GeometryRouter;
 use crate::{Point3, Result, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
@@ -26,7 +27,7 @@ impl GeometryRouter {
 /// The router-free form of [`GeometryRouter::parse_cartesian_transformation_operator`].
 ///
 /// This is the SINGLE definition of the operator's attribute layout and frame
-/// derivation. `profile_extractor` (2D drawing profiles) calls it too: it used to
+/// derivation. `profiles` (`IfcDerivedProfileDef`'s 2D operator) calls it too: it used to
 /// carry its own copy, which drifted — it missed the non-uniform per-axis scales,
 /// the 2D attribute layout, and `Axis2`, so the same `MappingTarget` produced a
 /// different transform for a drawing than for the mesh. #1985
@@ -144,6 +145,8 @@ pub(crate) fn parse_transformation_operator(
         None
     };
 
+    let x_axis_raw = base_axis_2d_x(entity, is_2d, x_axis_raw, y_axis_raw);
+
     // Get Axis3 (raw local Z, attribute 4 for 3D), defaulting to +Z. The 2D
     // subtypes have no Axis3 attribute (attr 4 is Scale2 there), so the 2D
     // plane normal is always +Z.
@@ -165,19 +168,12 @@ pub(crate) fn parse_transformation_operator(
     // takes a deterministic perpendicular X (mirrors build_axis2_matrix). Only
     // the truly degenerate operator reorients, and it always stays finite.
     let z_axis = z_axis_raw
-        .try_normalize(1e-9)
+        .try_normalize(tol::AXIS_MIN_LEN)
         .unwrap_or_else(|| Vector3::new(0.0, 0.0, 1.0));
     let x_norm = x_axis_raw
-        .try_normalize(1e-9)
+        .try_normalize(tol::AXIS_MIN_LEN)
         .unwrap_or_else(|| Vector3::new(1.0, 0.0, 0.0));
-    let x_ortho = x_norm - z_axis * x_norm.dot(&z_axis);
-    let x_axis = x_ortho.try_normalize(1e-6).unwrap_or_else(|| {
-        if z_axis.z.abs() < 0.9 {
-            Vector3::new(0.0, 0.0, 1.0).cross(&z_axis).normalize()
-        } else {
-            Vector3::new(1.0, 0.0, 0.0).cross(&z_axis).normalize()
-        }
-    });
+    let x_axis = crate::axis_projection::perpendicular_x_axis(z_axis, x_norm);
     // Y = Z × X (IfcSecondProjAxis' result whenever Axis2 agrees with the
     // right-handed frame, which is every well-formed operator). A supplied
     // Axis2 that DISAGREES — the mirroring/left-handed frames some exporters
@@ -190,7 +186,7 @@ pub(crate) fn parse_transformation_operator(
         Some(raw) => {
             let projected = raw - z_axis * raw.dot(&z_axis);
             let projected = projected - x_axis * projected.dot(&x_axis);
-            match projected.try_normalize(1e-6) {
+            match projected.try_normalize(tol::COARSE_DIRECTION_MIN_LEN) {
                 // Consistent with the right-handed frame (dot ≈ 1): keep the
                 // cross product verbatim.
                 Some(v) if v.dot(&cross_y) < 1.0 - 1e-9 => v,
@@ -218,6 +214,23 @@ pub(crate) fn parse_transformation_operator(
     transform[(2, 3)] = origin.z;
 
 Ok(transform)
+}
+
+/// IfcBaseAxis, 2D form: with no Axis1, an authored Axis2 fixes the frame and
+/// X is its clockwise perpendicular (Axis2.y, -Axis2.x). The 3D form derives X
+/// from Axis3 instead (IfcFirstProjAxis) and never from Axis2. The
+/// derived-profile reader this one replaced honoured this (#7791).
+fn base_axis_2d_x(
+    entity: &DecodedEntity,
+    is_2d: bool,
+    x_axis_raw: Vector3<f64>,
+    y_axis_raw: Option<Vector3<f64>>,
+) -> Vector3<f64> {
+    let axis1_absent = entity.get(0).is_none_or(|attr| attr.is_null());
+    match y_axis_raw {
+        Some(d) if is_2d && axis1_absent && d.xy().norm() > 1e-9 => Vector3::new(d.y, -d.x, 0.0),
+        _ => x_axis_raw,
+    }
 }
 
 /// A per-axis scale attribute, falling back to `default` when absent or non-finite.

@@ -2,24 +2,40 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! `IfcMappedItem` source resolution: caching, cyclic/depth-bounded recursion,
-//! and merging an `IfcRepresentationMap`'s items into one source-coords mesh
-//! per f64 frame (#6446).
+//! `IfcMappedItem` source services for the common mapping controller
+//! (`crate::program::mapping`): source admission, the mapped-item caches and
+//! occurrence placement. The walk itself (cyclic/depth-bounded nesting, the
+//! ordered per-frame merge of a map's items (#6446), dropped-item records) is
+//! the controller's.
 //! Split out of `processing.rs` to stay within its module-size budget (#3691).
 
-use super::frame_parts::{single_frame_source, SourceParts};
-use super::processing::IDENTITY_ROW_MAJOR;
-use super::transforms::{instancing_enabled, mat4_to_row_major};
+use super::frame_parts::single_frame_source;
+use super::transforms::instancing_enabled;
+use crate::math::mat4;
 use super::GeometryRouter;
 use crate::{Error, InstanceMeta, Mesh, Result};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
-use rustc_hash::FxHashSet;
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder};
+use nalgebra::Matrix4;
 use std::sync::Arc;
 
-// Maximum nested IfcMappedItem depth for a single geometry item. Shared with
-// `ifc_lite_processing::element` and the wasm styling colour resolver, which
-// walk the same chain; the constant's own docs say why they must agree.
-use ifc_lite_core::MAX_MAPPED_ITEM_DEPTH;
+/// A mapped item's admitted source: a cached source-coords mesh, or the
+/// source's representation and items to walk. `transform` is the scaled
+/// `MappingTarget` composed over the map's `MappingOrigin` (#1985).
+pub(crate) enum MappedOccurrence {
+    Cached { mesh: Arc<Mesh>, transform: Option<Matrix4<f64>> },
+    Source { representation: DecodedEntity, items: Vec<DecodedEntity>, transform: Option<Matrix4<f64>> },
+}
+
+/// A styled occurrence's admitted source. Styled sources are never cached:
+/// each occurrence walks its source into per-item sub-meshes. `transform` is
+/// the scaled `MappingTarget` over `MappingOrigin`; `solid_id` is the single
+/// solid of a top-level source the armed don't-bake plan may instance (#1623).
+pub(crate) struct StyledSource {
+    pub(crate) source_id: u32,
+    pub(crate) representation: DecodedEntity,
+    pub(crate) transform: Option<Matrix4<f64>>,
+    pub(crate) solid_id: Option<u32>,
+}
 
 impl GeometryRouter {
     /// Process MappedItem with caching for repeated geometry.
@@ -42,98 +58,44 @@ impl GeometryRouter {
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Vec<Mesh>> {
-        let mut visited = FxHashSet::default();
-        let mut truncated = false;
-        self.process_mapped_item_cached_inner(item, decoder, 0, &mut visited, &mut truncated)
+        crate::program::GeometryProgram::mapped_item(item).drain_parts(self, decoder)
     }
 
-    /// [`Self::process_representation_item`] as frame parts (#6446): only a
-    /// mapped item can yield more than one. Drains the curve-capped flag once,
-    /// like the single-mesh wrapper.
-    pub(in crate::router) fn process_representation_item_parts(
+    /// Admit one mapped item: resolve its `MappingSource` and transform, then
+    /// look the source up in the cache. A miss resolves the source's
+    /// representation and items for the walk. The transform is resolved
+    /// before the lookup, so a broken target is an error even on a hit.
+    pub(crate) fn admit_mapped_occurrence(
         &self,
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
-    ) -> Result<Vec<Mesh>> {
-        if item.ifc_type != IfcType::IfcMappedItem {
-            return self.process_representation_item(item, decoder).map(|mesh| vec![mesh]);
-        }
-        let parts = self.process_mapped_item_parts(item, decoder);
-        if crate::processors::take_curve_capped() {
-            self.record_unsupported_item(IfcType::IfcBSplineCurveWithKnots);
-        }
-        parts
-    }
-
-    /// Recursion body of [`Self::process_mapped_item_cached`]. `depth`/`visited`
-    /// bound the walk exactly as [`Self::collect_submeshes_from_item_inner`]
-    /// does, so a malformed model with a cyclic (or absurdly deep) mapped-item
-    /// chain terminates instead of overflowing the stack.
-    ///
-    /// `truncated` is set when this level's mesh is missing geometry a bound cut
-    /// off — either a nested item whose error this level swallowed, or a nested
-    /// item that was itself truncated. The caller ORs it into its own, so the
-    /// flag reaches every enclosing level whose merged mesh is short.
-    fn process_mapped_item_cached_inner(
-        &self,
-        item: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        depth: usize,
-        visited: &mut FxHashSet<u32>,
-        truncated: &mut bool,
-    ) -> Result<Vec<Mesh>> {
-        if depth >= MAX_MAPPED_ITEM_DEPTH as usize {
-            return Err(Error::geometry(format!(
-                "MappedItem nesting exceeded maximum depth of {} at #{}",
-                MAX_MAPPED_ITEM_DEPTH, item.id
-            )));
-        }
-        if !visited.insert(item.id) {
-            return Err(Error::geometry(format!(
-                "Detected cyclic IfcMappedItem reference at #{}",
-                item.id
-            )));
-        }
-        let result = self.process_mapped_item_cached_body(item, decoder, depth, visited, truncated);
-        visited.remove(&item.id);
-        result
-    }
-
-    fn process_mapped_item_cached_body(
-        &self,
-        item: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        depth: usize,
-        visited: &mut FxHashSet<u32>,
-        truncated: &mut bool,
-    ) -> Result<Vec<Mesh>> {
+    ) -> Result<(u32, MappedOccurrence)> {
         // IfcMappedItem attributes:
         // 0: MappingSource (IfcRepresentationMap)
         // 1: MappingTarget (IfcCartesianTransformationOperator)
-
-        // Get mapping source (RepresentationMap)
         let source_attr = item
             .get(0)
             .ok_or_else(|| Error::geometry("MappedItem missing MappingSource".to_string()))?;
-
         let source_entity = decoder
             .resolve_ref(source_attr)?
             .ok_or_else(|| Error::geometry("Failed to resolve MappingSource".to_string()))?;
-
         let source_id = source_entity.id;
 
         // MappingTarget (attr 1) composed over the map's MappingOrigin (attr 0),
         // which applies innermost. #1985
-        let mapping_transform = self.mapped_item_transform(item, &source_entity, decoder)?;
+        let mut transform = self.mapped_item_transform(item, &source_entity, decoder)?;
+        if let Some(transform) = &mut transform {
+            self.scale_transform(transform);
+        }
 
-        // Check cache first. The model-wide shared cache (#1623) takes precedence
-        // over the per-router RefCell fallback so a source shared across owning
-        // elements is meshed once model-wide (a fresh router — hence a fresh
-        // RefCell — is built per element). Only a brief get/clone runs under the
-        // shared lock; the source build below (which nests faceted-brep's rayon
-        // `par_iter`) runs OUTSIDE any lock, so a lock is never held across a nested
-        // join (the #1587 deadlock class).
-        let cached_source: Option<Arc<Mesh>> = match &self.shared_mapped_item_cache {
+        // The model-wide shared cache (#1623) takes precedence over the
+        // per-router RefCell fallback so a source shared across owning elements
+        // is meshed once model-wide (a fresh router — hence a fresh RefCell — is
+        // built per element). Only a brief get/clone runs under the shared lock;
+        // the source walk (which nests faceted-brep's rayon `par_iter`) runs
+        // OUTSIDE any lock, so a lock is never held across a nested join (the
+        // #1587 deadlock class).
+        let cached: Option<Arc<Mesh>> = match &self.shared_mapped_item_cache {
             Some(shared) => shared
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
@@ -141,174 +103,82 @@ impl GeometryRouter {
                 .cloned(),
             None => self.mapped_item_cache.borrow().get(&source_id).cloned(),
         };
-        if let Some(cached_mesh) = cached_source {
-            let mut mesh = cached_mesh.as_ref().clone();
-            let mut local_rm = None;
-            if let Some(mut transform) = mapping_transform {
-                self.scale_transform(&mut transform);
-                if instancing_enabled() {
-                    local_rm = Some(mat4_to_row_major(&transform));
-                }
-                self.transform_mesh_local(&mut mesh, &transform);
-            }
-            // Instancing: all occurrences of this RepresentationMap share the
-            // cached source-coords geometry; `local_transform` is the mapping
-            // (canonical -> element-local), `transform` is filled later by the
-            // element's apply_placement (element-local -> world).
-            if instancing_enabled() {
-                mesh.instance_meta = Some(InstanceMeta {
-                    transform: IDENTITY_ROW_MAJOR,
-                    local_transform: local_rm,
-                    canonical_transform: None,
-                    rep_identity: source_id as u128,
-                    instanceable: true,
-                });
-            }
-            return Ok(vec![mesh]);
+        if let Some(mesh) = cached {
+            return Ok((source_id, MappedOccurrence::Cached { mesh, transform }));
         }
 
-        // Cache miss - process the geometry
         // IfcRepresentationMap has:
         // 0: MappingOrigin (IfcAxis2Placement)
         // 1: MappedRepresentation (IfcRepresentation)
-
         let mapped_rep_attr = source_entity.get(1).ok_or_else(|| {
             Error::geometry("RepresentationMap missing MappedRepresentation".to_string())
         })?;
-
-        let mapped_rep = decoder
+        let representation = decoder
             .resolve_ref(mapped_rep_attr)?
             .ok_or_else(|| Error::geometry("Failed to resolve MappedRepresentation".to_string()))?;
-
-        // Get representation items
-        let items_attr = mapped_rep
+        let items_attr = representation
             .get(3)
             .ok_or_else(|| Error::geometry("Representation missing Items".to_string()))?;
-
         let items = decoder.resolve_ref_list(items_attr)?;
+        Ok((source_id, MappedOccurrence::Source { representation, items, transform }))
+    }
 
-        // One scope for this source's whole walk: only a BODY representation's
-        // dropped item is a content loss, and this source's drops are counted the
-        // FIRST time any path walks it, not once per occurrence. See
-        // `GeometryRouter::enter_unsupported_source`. Gates the counting only;
-        // the walk and the geometry it produces are unchanged.
-        let _drop_scope = self.enter_unsupported_source(source_id, &mapped_rep);
-
-        // Process all items and merge. A nested MappedItem recurses (bounded by
-        // `depth`/`visited` above) — it used to be skipped outright, which
-        // silently dropped its geometry. The recursive call returns an
-        // already-scaled mesh with its own MappingTarget baked in, so composing
-        // this level's (scaled) transform over the merge below is the same
-        // algebra `collect_submeshes_from_item_inner` applies per sub-mesh.
-        // Items in frames >= 1 km apart stay separate parts (#6446).
-        let mut source = SourceParts::default();
-        // Set when a bound cut this level's mesh short (see the shared-cache guard
-        // below); ORed into the caller's flag on the way out.
-        let mut level_truncated = false;
-        for sub_item in items {
-            if sub_item.ifc_type == IfcType::IfcMappedItem {
-                match self.process_mapped_item_cached_inner(
-                    &sub_item,
-                    decoder,
-                    depth + 1,
-                    visited,
-                    &mut level_truncated,
-                ) {
-                    Ok(sub_parts) => sub_parts.iter().for_each(|part| source.merge(part)),
-                    Err(_e) => {
-                        level_truncated = true;
-                        // Same drop, same counter as the non-nested arms below: the
-                        // nested map's geometry is gone from this source. Recording
-                        // `IfcMappedItem` (not the inner item's type) is deliberate —
-                        // the inner walk errored before it could attribute anything,
-                        // so this level names the item it actually lost.
-                        self.record_unsupported_item(sub_item.ifc_type.clone());
-                        crate::diag::diag_debug!(
-                            { item_id = sub_item.id, error = %_e,
-                              "skipping nested IfcMappedItem" }
-                            else {
-                                #[cfg(debug_assertions)]
-                                eprintln!(
-                                    "[ifc-lite] Skipping nested IfcMappedItem #{}: {}",
-                                    sub_item.id, _e
-                                );
-                            }
-                        );
-                    }
-                }
-                continue;
-            }
-            match self.processors.get(&sub_item.ifc_type, self.schema) {
-                Some(processor) => {
-                    let processed = processor.process(
-                        &sub_item,
-                        decoder,
-                        self.schema,
-                        self.tessellation_quality,
-                    );
-                    // A capped B-spline curve edge (#4901) can trip HERE: a
-                    // mapped source's items are meshed by calling the
-                    // processor directly, not through
-                    // `process_representation_item`, so its drain never sees
-                    // this path (Macroscope review) — without this, the
-                    // flag stayed set and a LATER, unrelated top-level item
-                    // on the same thread absorbed the report instead.
-                    if crate::processors::take_curve_capped() {
-                        self.record_unsupported_item(IfcType::IfcBSplineCurveWithKnots);
-                    }
-                    match processed {
-                    Ok(mut sub_mesh) => {
-                        sub_mesh.validate_indices();
-                        self.scale_mesh(&mut sub_mesh);
-                        source.merge(&sub_mesh);
-                    }
-                    Err(_e) => {
-                        self.record_unsupported_item(sub_item.ifc_type.clone());
-                        crate::diag::diag_debug!(
-                            { item_id = sub_item.id, ifc_type = ?sub_item.ifc_type,
-                              error = %_e, "skipping unsupported mapped-source item" }
-                            else {
-                                #[cfg(debug_assertions)]
-                                eprintln!(
-                                    "[ifc-lite] Skipping unsupported mapped-source item #{} ({:?}): {}",
-                                    sub_item.id, sub_item.ifc_type, _e
-                                );
-                            }
-                        );
-                    }
-                    }
-                }
-                None => {
-                    self.record_unsupported_item(sub_item.ifc_type.clone());
-                    crate::diag::diag_debug!(
-                        { item_id = sub_item.id, ifc_type = ?sub_item.ifc_type,
-                          "skipping unsupported mapped-source item (no processor)" }
-                        else {
-                            #[cfg(debug_assertions)]
-                            eprintln!(
-                                "[ifc-lite] Skipping unsupported mapped-source item #{} ({:?}): no processor",
-                                sub_item.id, sub_item.ifc_type
-                            );
-                        }
-                    );
-                }
-            }
+    /// Admit one styled mapped item: its `MappingSource`, the source's
+    /// representation and its transform, then (top level only, when
+    /// `eligible`) its don't-bake eligibility. The items resolve later, after
+    /// the source's drop-count claim, as the historical walk read them.
+    pub(crate) fn admit_styled_occurrence(
+        &self,
+        item: &DecodedEntity,
+        eligible: bool,
+        textures: Option<&rustc_hash::FxHashMap<u32, crate::processors::texture::ResolvedTextureMap>>,
+        decoder: &mut EntityDecoder,
+    ) -> Result<StyledSource> {
+        let source_attr = item
+            .get(slot::IfcMappedItem::MAPPING_SOURCE.index())
+            .ok_or_else(|| Error::geometry("MappedItem missing MappingSource".to_string()))?;
+        let source = decoder
+            .resolve_ref(source_attr)?
+            .ok_or_else(|| Error::geometry("Failed to resolve MappingSource".to_string()))?;
+        let representation_attr = source.get(slot::IfcRepresentationMap::MAPPED_REPRESENTATION.index())
+            .ok_or_else(|| Error::geometry("RepresentationMap missing MappedRepresentation".to_string()))?;
+        let representation = decoder
+            .resolve_ref(representation_attr)?
+            .ok_or_else(|| Error::geometry("Failed to resolve MappedRepresentation".to_string()))?;
+        // MappingTarget · MappingOrigin (#1985), scaled once for every use.
+        let mut transform = self.mapped_item_transform(item, &source, decoder)?;
+        if let Some(transform) = &mut transform {
+            self.scale_transform(transform);
         }
-        // The merge above is short, so every enclosing level's is too.
-        *truncated |= level_truncated;
-        let mut parts = source.into_parts();
-        // A multi-frame source is never cached or instanced: both assume one
-        // source-coords mesh per map (#6446). No fixture-corpus map is one.
-        let single_frame = parts.len() == 1;
+        let solid_id = if eligible {
+            self.dont_bake_solid(source.id, &representation, textures, decoder)
+        } else {
+            None
+        };
+        Ok(StyledSource { source_id: source.id, representation, transform, solid_id })
+    }
 
-        // Store in cache (before transformation, so cached mesh is in source
-        // coordinates). Shared model-wide cache first (#1623), else the per-router
-        // RefCell. A concurrent miss on the same source by another router rebuilds
-        // an identical source-coords mesh, so an overwrite here is byte-identical.
-        // Brief lock only — the source build above ran outside it (no join held).
-        match &self.shared_mapped_item_cache {
-            _ if !single_frame => {}
-            Some(shared) => {
+    /// A styled source's items. A representation without an Items attribute
+    /// walks nothing; one whose Items do not resolve is an error.
+    pub(crate) fn styled_source_items(representation: &DecodedEntity, decoder: &mut EntityDecoder)
+        -> Result<Vec<DecodedEntity>> {
+        match representation.get(slot::IfcRepresentation::ITEMS.index()) {
+            Some(items_attr) => Ok(decoder.resolve_ref_list(items_attr)?),
+            None => Ok(Vec::new()),
+        }
+    }
+
+    /// Publish a walked source's frame parts (source coordinates, before the
+    /// mapping) for later occurrences. A multi-frame source is never cached
+    /// or instanced: both assume one source-coords mesh per map (#6446).
+    ///
+    /// Shared model-wide cache first (#1623), else the per-router RefCell. A
+    /// concurrent miss on the same source by another router rebuilds an
+    /// identical source-coords mesh, so an overwrite is byte-identical. Brief
+    /// lock only: the source walk ran outside it (no join held).
+    pub(crate) fn publish_mapped_source(&self, source_id: u32, parts: &[Mesh], truncated: bool) -> Result<()> {
+        match (&self.shared_mapped_item_cache, parts) {
+            (Some(shared), [source]) => {
                 // Mirror the item-dedup #1257 guard: a mapped source can contain
                 // IfcBooleanResult/IfcCsgSolid, and on a per-element CSG-budget trip
                 // the boolean bails and returns the UNCUT host. Caching that degraded
@@ -319,51 +189,99 @@ impl GeometryRouter {
                 // RefCell fallback arm below stays UNGUARDED: it is per-element
                 // (consistent budget within the element), reproducing main exactly.
                 //
-                // `level_truncated` is the same shape for the nesting bounds this
-                // walk introduced: the depth cap and the visited set depend on where
-                // in the walk the source was reached, which `source_id` does not
-                // encode. A source first met at depth 31 loses everything below it,
-                // and caching that model-wide would serve the short mesh to a later
-                // occurrence reached at depth 0, which would otherwise walk the
-                // whole chain. Non-empty and budget-clean, so only this catches it.
-                if !parts[0].positions.is_empty()
-                    && !crate::kernel::budget::tripped()
-                    && !level_truncated
-                {
-                    let source_arc = Arc::new(parts[0].clone());
+                // `truncated` is the same shape for the nesting bounds of the walk:
+                // the depth cap and the cycle check depend on where in the walk the
+                // source was reached, which `source_id` does not encode. A source
+                // first met at depth 31 loses everything below it, and caching that
+                // model-wide would serve the short mesh to a later occurrence reached
+                // at depth 0, which would otherwise walk the whole chain. Non-empty
+                // and budget-clean, so only this catches it.
+                if !source.positions.is_empty() && !crate::kernel::budget::tripped() && !truncated {
+                    let source_arc = self.clone_source_for_cache(source)?;
                     shared
                         .lock()
                         .unwrap_or_else(|e| e.into_inner())
                         .insert(source_id, source_arc);
                 }
             }
-            None => {
-                let source_arc = Arc::new(parts[0].clone());
+            (None, [source]) => {
+                let source_arc = self.clone_source_for_cache(source)?;
                 self.mapped_item_cache.borrow_mut().insert(source_id, source_arc);
             }
+            _ => {}
         }
+        Ok(())
+    }
 
-        // Apply MappingTarget transformation to this instance
+    /// Apply an occurrence's scaled mapping transform to its source-coords
+    /// parts. Instancing: all occurrences of a single-frame RepresentationMap
+    /// share the cached source-coords geometry; `local_transform` is the
+    /// mapping (canonical -> element-local), `transform` is filled later by the
+    /// element's apply_placement (element-local -> world).
+    pub(crate) fn place_mapped_parts(&self, source_id: u32, parts: &mut [Mesh], transform: Option<&Matrix4<f64>>) {
         let mut local_rm = None;
-        if let Some(mut transform) = mapping_transform {
-            self.scale_transform(&mut transform);
+        if let Some(transform) = transform {
             if instancing_enabled() {
-                local_rm = Some(mat4_to_row_major(&transform));
+                local_rm = Some(mat4::from_na(transform));
             }
-            for part in &mut parts {
-                self.transform_mesh_local(part, &transform);
+            for part in parts.iter_mut() {
+                self.transform_mesh_local(part, transform);
             }
         }
-        if instancing_enabled() && single_frame {
-            parts[0].instance_meta = Some(InstanceMeta {
-                transform: IDENTITY_ROW_MAJOR,
+        if let ([part], true) = (parts, instancing_enabled()) {
+            part.instance_meta = Some(InstanceMeta {
+                transform: mat4::IDENTITY,
                 local_transform: local_rm,
-                        canonical_transform: None,
+                canonical_transform: None,
                 rep_identity: source_id as u128,
                 instanceable: true,
             });
         }
+    }
 
-        Ok(parts)
+    /// Bake a styled source's mapping into the sub-meshes its items produced.
+    /// The MappingTarget is a PER-OCCURRENCE transform: baked into the vertices
+    /// (flat output unchanged), and for INSTANCING recorded in an instanceable
+    /// sub-mesh's `local_transform` (keeping its canonical `rep_identity`), so
+    /// occurrences sharing a map but differing by target collate under one
+    /// template (GLB export #1443, the multi-item class Phase 2 leaves flat). #1623
+    pub(crate) fn bake_styled_mapping(&self, sub_meshes: &mut [crate::SubMesh], transform: &Matrix4<f64>) {
+        let nontrivial_target = !transform.is_identity(1e-9);
+        for sub in sub_meshes {
+            self.transform_mesh_local(&mut sub.mesh, transform);
+            if nontrivial_target {
+                if let Some(instance) = sub.mesh.instance_meta.as_mut().filter(|instance| instance.instanceable) {
+                    instance.local_transform = Some(match instance.local_transform {
+                        // Nested map: outer target ∘ inner, bake order.
+                        Some(inner) => mat4::from_na(&(transform * Matrix4::from_row_slice(&inner))),
+                        None => mat4::from_na(transform),
+                    });
+                }
+            }
+        }
+    }
+
+    /// Re-express a mapped-source item rebased by the model RTC (`rtc_applied`,
+    /// #5698) as positions relative to an f64 `origin` holding that offset.
+    ///
+    /// The model-frame rebase is right only for an item already in the model
+    /// frame. A source item still goes through its `MappingTarget` and the
+    /// occurrence placement, and `M (p - rtc)` is not `M p - rtc` once `M`
+    /// rotates: a 1 degree placement put an LV95 source 50 km away (#7690).
+    /// Every later transform carries `origin` exactly in f64, and the final
+    /// placement then subtracts the RTC once, so the item keeps its precision
+    /// at any rotation. A no-op for an item that was not rebased.
+    pub(crate) fn keep_rebase_in_origin(&self, mesh: &mut Mesh) {
+        if mesh.rtc_applied {
+            mesh.rtc_applied = false;
+            let rtc = [self.rtc_offset.0, self.rtc_offset.1, self.rtc_offset.2];
+            for (origin, offset) in mesh.origin.iter_mut().zip(rtc) {
+                *origin += offset;
+            }
+        }
     }
 }
+
+#[cfg(test)]
+#[path = "mapped_item_tests.rs"]
+mod tests;

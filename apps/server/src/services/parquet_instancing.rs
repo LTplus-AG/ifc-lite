@@ -13,10 +13,12 @@
 //! the module neither transport owns is not named after either of them.
 
 use crate::types::MeshData;
+use ifc_lite_geometry::math::frame::conjugate3_zup_to_yup;
+use ifc_lite_geometry::math::mat4::apply3;
+use ifc_lite_geometry::math::v3::add;
 use ifc_lite_geometry::{collate_refs_in_basis, InstanceMeshRef, Matrix4};
 use rustc_hash::FxHashMap;
 use std::borrow::Borrow;
-use std::hash::{Hash, Hasher};
 
 /// Content-hash fallback used by BOTH writers: `collate_rotation_aware_placements`
 /// runs first, this catches what it did not place. Two meshes with bit-identical
@@ -28,42 +30,19 @@ use std::hash::{Hash, Hasher};
 /// (normals derive from positions/indices) — no `/optimized` behaviour change.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct MeshGeometryKey {
-    /// Hash of the quantized positions.
-    positions_hash: u64,
-    /// Hash of the indices.
-    indices_hash: u64,
-    /// Hash of the normals.
-    normals_hash: u64,
-}
-
-/// Compute a fast hash of a u32 slice.
-fn hash_u32_slice(data: &[u32]) -> u64 {
-    use std::collections::hash_map::DefaultHasher;
-    let mut hasher = DefaultHasher::new();
-    for item in data {
-        item.hash(&mut hasher);
-    }
-    hasher.finish()
-}
-
-/// Compute a fast hash of a f32 slice (using bit representation).
-fn hash_f32_slice(data: &[f32]) -> u64 {
-    use std::collections::hash_map::DefaultHasher;
-    let mut hasher = DefaultHasher::new();
-    for item in data {
-        // Convert f32 to bits for hashing (handles NaN consistently)
-        item.to_bits().hash(&mut hasher);
-    }
-    hasher.finish()
+    /// One xxh3-128 over the length-framed positions, indices and normals
+    /// (`ifc_lite_core::hash::ContentHash`). In-memory grouping only: it is
+    /// never written to a table or a cache key, so the algorithm is free to
+    /// change without moving any output byte (it replaced `DefaultHasher`,
+    /// whose algorithm is not stable across Rust releases).
+    content: u128,
 }
 
 /// Build the content-hash key for one mesh's (origin-relative) geometry.
 pub(crate) fn mesh_geometry_key(mesh: &MeshData) -> MeshGeometryKey {
-    MeshGeometryKey {
-        positions_hash: hash_f32_slice(&mesh.positions),
-        indices_hash: hash_u32_slice(&mesh.indices),
-        normals_hash: hash_f32_slice(&mesh.normals),
-    }
+    let mut h = ifc_lite_core::hash::ContentHash::new();
+    h.write_f32s(&mesh.positions).write_u32s(&mesh.indices).write_f32s(&mesh.normals);
+    MeshGeometryKey { content: h.finish() }
 }
 
 /// The frame this route's baked vertices are in, relative to the native frame
@@ -121,15 +100,6 @@ pub(crate) struct RotatedPlacement {
     pub(crate) rotation_zup: [f64; 9],
 }
 
-/// Row-major 3x3 apply: `R * p + t`.
-fn apply_r_t(r: &[[f64; 3]; 3], t: &[f64; 3], p: &[f64; 3]) -> [f64; 3] {
-    [
-        r[0][0] * p[0] + r[0][1] * p[1] + r[0][2] * p[2] + t[0],
-        r[1][0] * p[0] + r[1][1] * p[1] + r[1][2] * p[2] + t[1],
-        r[2][0] * p[0] + r[2][1] * p[1] + r[2][2] * p[2] + t[2],
-    ]
-}
-
 /// Given `rel` (row-major mat4, the `InstanceOccurrence::transform` that maps
 /// the TEMPLATE's baked world geometry onto this occurrence's baked world
 /// geometry — see `ifc_lite_geometry::instancing`), derive this occurrence's
@@ -142,18 +112,13 @@ fn verify_and_derive_placement(
     target: &MeshData,
     rel: &[f64; 16],
 ) -> (f64, [f64; 3], [f64; 9]) {
-    let r = [
-        [rel[0], rel[1], rel[2]],
-        [rel[4], rel[5], rel[6]],
-        [rel[8], rel[9], rel[10]],
-    ];
     let t = [rel[3], rel[7], rel[11]];
     let rotation_zup = [
-        r[0][0], r[0][1], r[0][2], r[1][0], r[1][1], r[1][2], r[2][0], r[2][1], r[2][2],
+        rel[0], rel[1], rel[2], rel[4], rel[5], rel[6], rel[8], rel[9], rel[10],
     ];
     // new_origin = R * template.origin + T: the template's own local-frame
     // origin, carried through the same affine map applied to its vertices.
-    let origin_zup = apply_r_t(&r, &t, &template.origin);
+    let origin_zup = add(apply3(&rotation_zup, template.origin), t);
 
     let n = template.positions.len() / 3;
     if target.positions.len() / 3 != n {
@@ -167,7 +132,7 @@ fn verify_and_derive_placement(
             template.origin[1] + template.positions[v * 3 + 1] as f64,
             template.origin[2] + template.positions[v * 3 + 2] as f64,
         ];
-        let world = apply_r_t(&r, &t, &p);
+        let world = add(apply3(&rotation_zup, p), t);
         let g = [
             target.origin[0] + target.positions[v * 3] as f64,
             target.origin[1] + target.positions[v * 3 + 1] as f64,
@@ -211,46 +176,11 @@ fn verify_and_derive_placement(
     }
 }
 
-/// Z-up → Y-up basis change (see `services::axis::zup_to_yup`), as a rotation
-/// matrix: `P * v = (v.x, v.z, -v.y)`. Orthogonal, so `P^-1 == P^T`.
-const P_ZUP_TO_YUP: [[f64; 3]; 3] = [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]];
-const P_ZUP_TO_YUP_T: [[f64; 3]; 3] = [[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]];
-
-fn mat3_mul(a: &[[f64; 3]; 3], b: &[[f64; 3]; 3]) -> [[f64; 3]; 3] {
-    let mut out = [[0.0; 3]; 3];
-    for (i, out_row) in out.iter_mut().enumerate() {
-        for (j, out_cell) in out_row.iter_mut().enumerate() {
-            let mut s = 0.0;
-            for k in 0..3 {
-                s += a[i][k] * b[k][j];
-            }
-            *out_cell = s;
-        }
-    }
-    out
-}
-
 /// Conjugate a Z-up rotation into the Y-up wire frame: `P * R * P^T`. The swap
 /// is linear (`zup_to_yup`), so this is the same identity `mesh_to_yup_in_place`
 /// relies on for positions/origin, applied to a 3x3 instead of a 3-vector.
 pub(crate) fn rotation_zup_to_yup(rotation_zup: &[f64; 9]) -> [f32; 9] {
-    let r = [
-        [rotation_zup[0], rotation_zup[1], rotation_zup[2]],
-        [rotation_zup[3], rotation_zup[4], rotation_zup[5]],
-        [rotation_zup[6], rotation_zup[7], rotation_zup[8]],
-    ];
-    let m = mat3_mul(&mat3_mul(&P_ZUP_TO_YUP, &r), &P_ZUP_TO_YUP_T);
-    [
-        m[0][0] as f32,
-        m[0][1] as f32,
-        m[0][2] as f32,
-        m[1][0] as f32,
-        m[1][1] as f32,
-        m[1][2] as f32,
-        m[2][0] as f32,
-        m[2][1] as f32,
-        m[2][2] as f32,
-    ]
+    conjugate3_zup_to_yup(rotation_zup).map(|v| v as f32)
 }
 
 /// The optimized format's wire version, chosen by what the payload CONTAINS.

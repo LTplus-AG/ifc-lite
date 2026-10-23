@@ -6,6 +6,7 @@
 
 import type { CoordinateInfo, GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { alignGeometryToReference, type FederationAlignmentStatus, type ModelSpatialPlacement } from './federationAlign.js';
+import type { UnknownVerticalPolicy } from './federationSpatialTransform.js';
 
 export interface AlignedLandXmlComponent {
   mesh: MeshData;
@@ -22,11 +23,12 @@ export async function alignLandXmlComponent(
   sourceInfo: CoordinateInfo,
   source: ModelSpatialPlacement,
   reference: ModelSpatialPlacement,
+  unknownVertical: UnknownVerticalPolicy = 'refuse',
 ): Promise<AlignedLandXmlComponent> {
   const geometry: GeometryResult = {
     meshes: [mesh], totalVertices: mesh.positions.length / 3,
     totalTriangles: mesh.indices.length / 3, coordinateInfo: structuredClone(sourceInfo),
   };
-  const status = await alignGeometryToReference(geometry, source, reference);
+  const status = await alignGeometryToReference(geometry, source, reference, { unknownVertical });
   return { mesh: geometry.meshes[0]!, coordinateInfo: geometry.coordinateInfo, status };
 }

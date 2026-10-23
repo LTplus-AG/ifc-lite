@@ -13,44 +13,10 @@
 use ifc_lite_core::{EntityDecoder, IfcType};
 use ifc_lite_geometry::GeometryRouter;
 
-mod support;
-
-const FIXTURE: &str = "../../tests/models/issues/842_rational_bspline_surface.ifc";
+const FIXTURE: &str = "issues/842_rational_bspline_surface.ifc";
 
 fn read_fixture() -> Option<String> {
-    match std::fs::read_to_string(FIXTURE) {
-        Ok(s) if s.starts_with("version https://git-lfs.github.com/spec/") => {
-            assert!(
-                !support::require_fixtures(),
-                "fixture is an LFS pointer and IFC_LITE_REQUIRE_FIXTURES=1 -- \
-                 run `pnpm fixtures` to download real bytes"
-            );
-            // PR #657 removed Git LFS from this repo (fixtures live in a
-            // GitHub Release now), but a contributor cloning before that
-            // change can still have an LFS pointer at this path. Skip
-            // cleanly rather than treating the pointer as real STEP and
-            // failing later with a confusing parse error.
-            eprintln!(
-                "skipping issue-842 regression: fixture at {FIXTURE} is a Git LFS pointer — \
-                 run `pnpm fixtures` to fetch real bytes"
-            );
-            None
-        }
-        Ok(s) => Some(s),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            assert!(
-                !support::require_fixtures(),
-                "fixture missing and IFC_LITE_REQUIRE_FIXTURES=1 -- \
-                 run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
-            );
-            eprintln!(
-                "skipping issue-842 regression: fixture missing at {FIXTURE} — \
-                 run `pnpm fixtures` to fetch it"
-            );
-            None
-        }
-        Err(e) => panic!("failed to read fixture {FIXTURE}: {e}"),
-    }
+    ifc_lite_testkit::fixture_text(FIXTURE)
 }
 
 #[test]

@@ -42,7 +42,7 @@ describe('static workspace commands use the shared table (#5870)', () => {
     assert.deepEqual(definitions.map((command) => command.id), WORKSPACE_IDS);
     for (const command of definitions) {
       const alsoRibbon = command.id === 'pref:tooltips' || command.id === 'pref:settings';
-      assert.deepEqual(command.surfaces, alsoRibbon ? ['palette', 'ribbon'] : ['palette'],
+      assert.deepEqual(command.surfaces, command.id === 'pref:settings' ? ['palette', 'ribbon', 'mobile'] : alsoRibbon ? ['palette', 'ribbon'] : ['palette'],
         `${command.id} is available on its declared surfaces`);
     }
 

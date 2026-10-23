@@ -25,13 +25,14 @@
  * the same document is undefined behaviour — the browser picks one").
  */
 
-import { useEffect, type ReactNode } from 'react';
+import { Suspense, useEffect, type ReactNode } from 'react';
 import { RepositionRuntimeHost } from './reposition/RepositionRuntimeHost';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import type { TranslationKey } from '@/i18n';
 import { HudHint, HudItem } from '../viewport-ui/hud';
 import { TOOL_HUD, isToolId } from '@/lib/viewport-ui/tool-hud-registry';
+import { preloadSectionTool } from '@/lib/viewport-ui/lazy-section-tool';
 import { WorkplaneScene } from './model/WorkplaneScene';
 import { ModelOnboardingHint } from './model/ModelOnboardingHint';
 
@@ -42,6 +43,8 @@ export function ToolOverlays(): ReactNode {
   useEffect(() => {
     if (repositionOpen && activeTool !== 'select') useViewerStore.getState().closeReposition();
   }, [repositionOpen, activeTool]);
+  // The Section tool's code is not in the entry chunk (#7616): fetch it once the browser is idle, so the first open is instant.
+  useEffect(() => whenIdle(preloadSectionTool), []);
   if (repositionOpen && activeTool === 'select') return <RepositionRuntimeHost />;
 
   const entry = isToolId(activeTool) ? TOOL_HUD[activeTool] : undefined;
@@ -52,13 +55,23 @@ export function ToolOverlays(): ReactNode {
       {modelWorkspace && <ModelOnboardingHint />}
       {entry?.Bar && (
         <HudItem region="top-center" order={0}>
-          <entry.Bar />
+          <Suspense fallback={null}><entry.Bar /></Suspense>
         </HudItem>
       )}
-      {entry?.Scene && <entry.Scene />}
+      {entry?.Scene && <Suspense fallback={null}><entry.Scene /></Suspense>}
       {entry?.hint && <ToolHint hint={entry.hint} />}
     </>
   );
+}
+
+/** Run `task` when the browser is idle (or soon after, where there is no idle callback); the returned function cancels it. */
+function whenIdle(task: () => void): () => void {
+  if (typeof window.requestIdleCallback === 'function') {
+    const id = window.requestIdleCallback(task, { timeout: 5000 });
+    return () => window.cancelIdleCallback(id);
+  }
+  const id = window.setTimeout(task, 3000);
+  return () => window.clearTimeout(id);
 }
 
 function ToolHint({ hint }: { hint: string }): ReactNode {

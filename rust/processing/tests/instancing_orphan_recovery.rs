@@ -18,7 +18,7 @@
 //! `jobs::process_entity_job`). If the plan's chosen template id belongs to
 //! an `IfcWindow`/`IfcDoor` job the filter skips, that job's `EntityDecoder`
 //! path returns before the router ever sees mapped item — so
-//! `is_template` (`geometry/src/router/processing.rs`) is `item.id ==
+//! the template decision (`GeometryRouter::claim_template`) is `item.id ==
 //! template_item_id` for every SURVIVING occurrence too, and none of them
 //! is ever `true`. Every occurrence of that source becomes a don't-bake
 //! placeholder, `template_by_rep.get(&rep)` finds no non-empty template mesh,
@@ -30,7 +30,7 @@
 //! bake loop, so every orphan occurrence is silently dropped) left all other
 //! processing tests green.
 
-use ifc_lite_processing::{OpeningFilterMode, ProcessingResult, StreamingOptions};
+use ifc_lite_processing::{process, OpeningFilterMode, ProcessingRequest, ProcessingResult};
 
 /// The synthetic mapped-instances fixture (one `IfcRepresentationMap`
 /// instanced by 64 `IfcBuildingElementProxy` occurrences at distinct
@@ -53,16 +53,10 @@ fn fixture_with_template_owner_as_window() -> Vec<u8> {
 }
 
 fn run(content: &[u8], mode: OpeningFilterMode, enable_instancing: bool) -> ProcessingResult {
-    ifc_lite_processing::process_geometry_streaming_filtered_with_options(
+    process(
         content,
-        mode,
-        StreamingOptions {
-            enable_instancing,
-            ..StreamingOptions::default()
-        },
-        |_, _, _| {},
-        |_| {},
-        |_| {},
+        &ProcessingRequest::default().opening_filter(mode).instancing(enable_instancing),
+        &mut (),
     )
 }
 

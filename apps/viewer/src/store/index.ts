@@ -16,7 +16,7 @@ import { createHoverSlice, type HoverSlice } from './slices/hoverSlice.js';
 import { createCameraSlice, type CameraSlice } from './slices/cameraSlice.js';
 import { createSectionSlice, type SectionSlice } from './slices/sectionSlice.js';
 import { registerMutationViewStoreBinding } from './mutation-view-store-binding.js';
-export { customPlaneCenter, loadLastSectionMode, type LastSectionMode } from './slices/sectionSlice.js';
+export { customPlaneCenter } from './slices/sectionSlice.js';
 import { createMeasurementSlice, type MeasurementSlice } from './slices/measurementSlice.js';
 import { createDataSlice, type DataSlice } from './slices/dataSlice.js';
 import { createModelSlice, type ModelSlice } from './slices/modelSlice.js';
@@ -75,6 +75,7 @@ import { withVisibilityOwnershipInvalidation } from './visibility-invalidation.j
 import { withStoreChurnCounters } from './perf-churn.js';
 import { registerSidebarExclusivity, registerHierarchyLeftSync, registerDrawingInspectorSheetSync, reconcileInitialStoreSync } from './store-sync.js';
 import { registerOverlayThemeSync } from '@/lib/viewport-ui/overlay-theme-sync';
+import { registerIdsLocaleSync } from './ids-locale-sync.js';
 
 // Re-export types for consumers
 export type * from './types.js';
@@ -277,6 +278,7 @@ export function getViewerStoreApi() {
   registerMutationViewStoreBinding(store); // views read their model's CURRENT store, not the partial one (#5672)
   registerOverlayThemeSync(store); // `--overlay-*` on <html> follow `theme` in every app that holds the store (#5490)
   registerWorkflowArtifactInvalidation(store);
+  registerIdsLocaleSync(store);
   reconcileInitialStoreSync(store);
   return store;
 }

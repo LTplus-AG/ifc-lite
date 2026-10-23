@@ -9,7 +9,7 @@
  * real Assistant path (`apps/viewer/src/test/ai-eval-replay.ts`).
  */
 
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { validateSchema } from './schema-subset.mjs';
 import { foldEvents, outcomeOf, parseEvents, sseData } from './sse.mjs';
@@ -44,6 +44,23 @@ export function loadRecordingDir(dir) {
   return readdirSync(dir).filter(name => name.endsWith('.json')).sort()
     .map(name => ({ name, recording: JSON.parse(readFileSync(join(dir, name), 'utf8')) }));
 }
+
+/**
+ * Committed live runs, `tests/ai-eval/live-runs/<run>/`: a reviewed copy of a
+ * `run-live-eval.mjs` results folder (recordings, summary.json, review.json).
+ * Unpromoted evidence of what a real model answered; never replayed by CI.
+ */
+export function loadLiveRuns(root) {
+  const dir = join(root, 'tests', 'ai-eval', 'live-runs');
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir, { withFileTypes: true }).filter(entry => entry.isDirectory()).map(entry => entry.name).sort().map(run => {
+    const recordings = join(dir, run, 'recordings');
+    return { run, dir: join(dir, run), recordings: existsSync(recordings) ? loadRecordingDir(recordings) : [] };
+  });
+}
+
+/** Every committed live-run recording, named by its path under tests/ai-eval. */
+export const liveRecordings = runs => runs.flatMap(({ run, recordings }) => recordings.map(({ name, recording }) => ({ name: `live-runs/${run}/recordings/${name}`, recording })));
 
 /** What the viewer would receive: answer text, finish reason, reported usage and typed outcome. */
 export function decodeRecording(recording) {

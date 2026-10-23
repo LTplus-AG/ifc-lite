@@ -1,0 +1,11 @@
+--- a/rust/diff/src/key_diff.rs
++++ b/rust/diff/src/key_diff.rs
+@@ -84,7 +84,7 @@
+             base: Some(base_entity), head: head_entity, changed_components: None,
+         };
+         if let Some(other) = head_entity {
+-            if false && consider_data && (base_entity.ifc_type != other.ifc_type || base_entity.data_hash != other.data_hash) {
++            if consider_data && (base_entity.ifc_type != other.ifc_type || base_entity.data_hash != other.data_hash) {
+                 entry.change_kinds.push(DiffChangeKind::Data);
+             }
+             if use_geometry && base_entity.geometry_hash != other.geometry_hash {

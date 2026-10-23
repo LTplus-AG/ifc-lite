@@ -2,20 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { STEP_TRIVIA } from '@ifc-lite/parser';
 import { stepStringLiteralEnd } from '@ifc-lite/encoding';
 import { skipStepComment } from './step-comment-skip.js';
-import { isWellFormedStepSlot } from './step-slot-grammar.js';
-
-/**
- * `#N=CLASS(...)` record prefix, with STEP trivia (whitespace and/or a
- * `/* ... *​/` comment, #3789) tolerated between the type name and its `(`
- * — same adjacency fix as `entity-extractor.ts`'s `extractEntity`, applied
- * here because `replaceStepArgument`'s caller degrades on `null` (a lost
- * repoint, see below), the same failure class. Compiled once since
- * `replaceStepArgument` runs per rewritten line.
- */
-const RECORD_PREFIX_RE = new RegExp(`^(#\\d+\\s*=\\s*(\\w+)${STEP_TRIVIA}\\()([\\s\\S]*)(\\)\\s*;)\\s*$`);
+import { isStepBlank, isWellFormedStepSlot } from './step-slot-grammar.js';
+import { frameArgs, stepRecordFrame } from './step-record-frame.js';
 
 /**
  * The STEP argument parser and rewriter: reading a record's top-level argument
@@ -102,14 +92,23 @@ export interface StepRecordSlots {
   readonly suffix: string;
 }
 
-/** Parse a complete STEP record into validated, position-addressable slots. */
+/**
+ * Parse a complete STEP record into validated, position-addressable slots.
+ * The record is framed by `stepRecordFrame` (#7682), so trivia anywhere Part 21
+ * allows it (around the `=`, before the `(`, between the `)` and the `;`) is
+ * kept in `prefix` / `suffix` rather than making the record unreadable.
+ */
 export function readStepSlots(entityText: string): StepRecordSlots | null {
-  const match = entityText.match(RECORD_PREFIX_RE);
-  if (!match) return null;
-  const [, prefix, type, attrsText, suffix] = match;
-  const slots = splitTopLevelStepArguments(attrsText);
+  const frame = stepRecordFrame(entityText);
+  if (frame === null) return null;
+  const slots = splitTopLevelStepArguments(frameArgs(entityText, frame));
   if (slots === null) return null;
-  return { prefix, type: type.toUpperCase(), slots, suffix };
+  return {
+    prefix: entityText.slice(0, frame.head.open + 1),
+    type: entityText.slice(frame.head.typeStart, frame.head.typeEnd).toUpperCase(),
+    slots,
+    suffix: entityText.slice(frame.close),
+  };
 }
 
 /**
@@ -127,7 +126,7 @@ export function readStepSlots(entityText: string): StepRecordSlots | null {
  * is past the end of the argument list; a null must not be treated as "no
  * change", since the intended replacement did not happen.
  *
- * The regex only pins the two ENDS of the record — `#N=CLASS(` and `);`. Text
+ * The frame only pins the two ENDS of the record — `#N=CLASS(` and `);`. Text
  * malformed BETWEEN them is caught by {@link splitTopLevelStepArguments}, which
  * rejects an argument list it could not scan cleanly rather than handing back
  * whatever it accumulated: those parts are not the record's slots, so writing
@@ -212,7 +211,9 @@ export function replaceStepArgument(
  * that has no slots.
  */
 export function splitTopLevelStepArguments(input: string): string[] | null {
-  if (input.trim() === '') return [];
+  // STEP whitespace only (core's `is_step_space`), never `trim()`: a no-break
+  // space is not padding, and `String.prototype.trim` strips it.
+  if (isStepBlank(input)) return [];
 
   const parts: string[] = [];
   let current = '';
@@ -221,12 +222,25 @@ export function splitTopLevelStepArguments(input: string): string[] | null {
   for (let i = 0; i < input.length; i++) {
     const char = input[i];
 
-    // See skipStepComment's docstring; isWellFormedStepSlot below still
-    // rejects an unterminated comment via skipTrivia.
+    // See skipStepComment's docstring. A comment that never closes is not
+    // trivia: the list is refused (core's `split_step_slots` refuses it too).
     if (char === '/' && input[i + 1] === '*') {
+      if (input.indexOf('*/', i + 2) === -1) return null;
       const stop = skipStepComment(input, i);
       current += input.slice(i, stop);
       i = stop - 1;
+      continue;
+    }
+
+    // A binary literal has no escapes: the first following quote closes it. It
+    // moves into the part whole, so a comma or apostrophe in a malformed one
+    // is never read as structure; `isWellFormedStepSlot` then holds it to the
+    // `[0-3]` + hex form.
+    if (char === '"') {
+      const close = input.indexOf('"', i + 1);
+      if (close === -1) return null;
+      current += input.slice(i, close + 1);
+      i = close;
       continue;
     }
 

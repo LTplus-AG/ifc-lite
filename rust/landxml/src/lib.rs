@@ -7,20 +7,30 @@
 //! This crate intentionally stops at durable LandXML semantic records. It
 //! neither fabricates IFC nor creates renderer meshes; later adapters own
 //! coordinate systems, mesh partitioning, and presentation.
+//!
+//! Every parse path is the same pipeline: `xml::Decoder` (UTF-8 and UTF-16),
+//! `xml::TokenScanner` (lexical bounds), quick-xml (the XML grammar),
+//! `xml::Driver` (the one front end: work, depth, names, attributes,
+//! namespaces, the document element, text) and one `xml::FamilyHandler` per
+//! family (terrain, plan, alignment, pipe). The stream feeds the same driver
+//! one token at a time, so pull and stream share every semantic transition;
+//! the differential tests pin the one documented exception (a `<Units>` that
+//! arrives after the stream has committed to an assumed unit).
 
 pub mod alignment;
 mod capture;
 mod limits;
 mod model;
+mod numeric;
 mod parser;
 mod pipe_parser;
 mod pipes;
 mod plan;
-mod preflight;
 mod profile;
 mod profile_circular;
 mod profile_evaluator;
 mod semantics;
+mod source;
 mod stream;
 mod terrain;
 mod terrain_validation;
@@ -38,7 +48,6 @@ pub use parser::{
     classify_landxml_version, parse_landxml_tin, parse_landxml_tin_with_cancel,
     LANDXML_10_NAMESPACE, LANDXML_11_NAMESPACE, LANDXML_12_NAMESPACE,
 };
-pub(crate) use parser::compatibility_version_diagnostic;
 pub use profile::{
     LandXmlAlignment, LandXmlCapabilityDiagnostic, LandXmlCapabilityDiagnosticCode,
     LandXmlCrossSection, LandXmlCrossSectionPoint, LandXmlCrossSectionPointDataFormat,
@@ -54,6 +63,7 @@ pub use plan::{
     LandXmlPlanLimits, LandXmlPlanPoint, LandXmlPlanPointLocation, LandXmlPlanResolver,
     LandXmlPlanSourceBatch,
 };
+pub use source::{parse_landxml_source, parse_landxml_source_with_cancel, LandXmlSource, LandXmlSourceLimits};
 pub use pipe_parser::{parse_landxml_pipe_networks, parse_landxml_pipe_networks_with_cancel};
 pub use pipes::{
     LandXmlPipe, LandXmlPipeConnectivity, LandXmlPipeFeature, LandXmlPipeFlow, LandXmlPipeGeometry,

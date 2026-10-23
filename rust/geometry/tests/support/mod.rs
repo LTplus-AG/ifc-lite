@@ -2,40 +2,35 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Shared `IFC_LITE_REQUIRE_FIXTURES` handling for `rust/geometry`'s
-//! fixture-backed integration tests.
+//! `IFC_LITE_REQUIRE_FIXTURES` handling for `rust/geometry`'s fixture-backed
+//! integration tests.
 //!
-//! `rust/export/src/test_support.rs` is the canonical home for this
-//! convention, but it is private to the export crate and unreachable from
-//! here; `rust/processing/tests/issue_3821_boolean_failure_drain.rs`
-//! duplicates the same parse locally for the same reason. This module is
-//! that same duplication, shared across `rust/geometry`'s integration test
-//! binaries (each `tests/*.rs` file is its own crate, so a `mod support;`
-//! import is required, but the parse logic itself must match byte-for-byte
-//! — see [`require_fixtures`]).
-//!
-//! Unset, empty, or `"0"` means "off" (skip a missing fixture — the
-//! historical default, unaffected by this module). `"1"` means "on": a
-//! missing fixture becomes a hard `panic!` instead of a skip. The
-//! `csg-accept-gates` CI job sets `IFC_LITE_REQUIRE_FIXTURES=1` after an
-//! unconditional `Verify fixtures` step, so on a correct run this costs
-//! nothing and turns fixture drift into a loud failure instead of a
-//! quietly-smaller test suite (issue #2802's failure mode: a passing
-//! skip-shaped test is indistinguishable, in the only output anyone reads,
-//! from one that actually asserted something). An unrecognised value (e.g.
-//! `true`, `yes`, a typo) PANICS rather than falling through to "off":
-//! guessing "off" for a misconfigured gate would recreate exactly the
-//! silent-pass problem this module exists to close.
+//! The policy (strict parse; a missing or LFS-pointer fixture panics under
+//! `=1`, skips otherwise; issue #2802) has one home, `ifc-lite-testkit`
+//! (`fixtures` module). Each `tests/*.rs` file is its own crate, so a
+//! `mod support;` import is still needed to name it here; this module only
+//! re-exports the gate parse for the tests that branch on it themselves.
+//! Prefer `ifc_lite_testkit::fixture_text` / `fixture_bytes` /
+//! `fixture_text_or_skip!`, which apply the gate for you.
 
-/// Parse `IFC_LITE_REQUIRE_FIXTURES`, failing closed on the config itself.
+#[allow(unused_imports)]
+pub use ifc_lite_testkit::require_fixtures;
+
+/// The fixture for the `rect_param_*` measurement tools: `MEASURE_FIXTURE=<path>`
+/// (an explicit user-supplied file, absent means skip) or else the catalogued
+/// `wall-with-opening-and-window.ifc` through the gate. Returns `(label, text)`.
 #[allow(dead_code)]
-pub fn require_fixtures() -> bool {
-    match std::env::var("IFC_LITE_REQUIRE_FIXTURES") {
-        Err(std::env::VarError::NotPresent) => false,
-        Ok(v) if v.is_empty() || v == "0" => false,
-        Ok(v) if v == "1" => true,
-        other => panic!(
-            "IFC_LITE_REQUIRE_FIXTURES must be unset, \"\", \"0\" or \"1\"; got {other:?}"
-        ),
+pub fn measure_fixture() -> Option<(String, String)> {
+    const DEFAULT: &str = "buildingsmart/wall-with-opening-and-window.ifc";
+    match std::env::var("MEASURE_FIXTURE") {
+        Ok(path) => match std::fs::read_to_string(&path) {
+            Ok(text) => Some((path, text)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                eprintln!("skipping: fixture {path} not present");
+                None
+            }
+            Err(e) => panic!("fixture {path} could not be read: {e}"),
+        },
+        Err(_) => ifc_lite_testkit::fixture_text(DEFAULT).map(|t| (DEFAULT.to_string(), t)),
     }
 }

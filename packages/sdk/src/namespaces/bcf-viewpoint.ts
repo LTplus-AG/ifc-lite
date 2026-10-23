@@ -55,6 +55,17 @@ export interface ViewpointOptions {
     flipped: boolean;
   };
   /**
+   * Every cutting plane from bim.viewer.getSections() (#7545): each enabled one becomes an entry of
+   * the viewpoint's `ClippingPlanes`, in order. Takes the place of `sectionPlane` when given, and
+   * needs `bounds` for the same reason.
+   */
+  sectionPlanes?: Array<{
+    axis: 'x' | 'y' | 'z';
+    position: number;
+    enabled: boolean;
+    flipped: boolean;
+  }>;
+  /**
    * The model's overall axis-aligned bounding box, REQUIRED when
    * `sectionPlane.enabled` is true — `@ifc-lite/bcf` needs it to convert a
    * percentage-along-axis section plane into an absolute clipping-plane
@@ -109,12 +120,20 @@ export interface ExtractedViewpointState {
     target: [number, number, number];
     up: [number, number, number];
   };
+  /** The first clipping plane. */
   sectionPlane?: {
     axis: 'x' | 'y' | 'z';
     position: number;
     enabled: boolean;
     flipped: boolean;
   };
+  /** Every clipping plane of the viewpoint, in order, ready for `bim.viewer.setSections()` (#7545). */
+  sectionPlanes?: Array<{
+    axis: 'x' | 'y' | 'z';
+    position: number;
+    enabled: boolean;
+    flipped: boolean;
+  }>;
   selectedGuids: string[];
   hiddenGuids: string[];
   // `null` = no isolation channel in the captured viewpoint (show

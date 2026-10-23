@@ -21,7 +21,7 @@
  *   (a,b,c)            → JS array, recursively
  */
 
-import { decodeStepStringLiteral } from '@ifc-lite/encoding';
+import { decodeStepStringLiteral, stepStringLiteralEnd } from '@ifc-lite/encoding';
 import type { IfcAttributeValue } from '@ifc-lite/mutations';
 import { asSourceBytes, STEP_TRIVIA, type IfcSourceBytes } from '@ifc-lite/parser';
 
@@ -52,24 +52,17 @@ function splitTopLevelArgs(text: string): string[] {
   const parts: string[] = [];
   let current = '';
   let depth = 0;
-  let inString = false;
 
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
-    if (inString) {
-      current += ch;
-      if (ch === "'") {
-        // STEP escapes a single quote by doubling it (`''`).
-        if (text[i + 1] === "'") {
-          current += text[i + 1];
-          i++;
-        } else {
-          inString = false;
-        }
-      }
-    } else if (ch === "'") {
-      inString = true;
-      current += ch;
+    if (ch === "'") {
+      // The whole literal joins the token at once. `stepStringLiteralEnd` knows
+      // `''` and a PAGE directive's apostrophe operand (`'Para \S\' 5'`, #7589);
+      // a string that never closes takes the rest of the text.
+      const end = stepStringLiteralEnd(text, i);
+      const stop = end < 0 ? text.length : end;
+      current += text.slice(i, stop);
+      i = stop - 1;
     } else if (ch === '(') {
       depth++;
       current += ch;

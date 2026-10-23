@@ -8,8 +8,10 @@ import { buildLandXmlStreamedPipeComponents, completeLandXmlStreamedGeometry, pa
 import { parseLandXmlSourceInCurrentRealm, readLandXmlSourceDocument } from './landXmlWasm.js';
 import { parseLandXmlBlobInCurrentRealm } from './landXmlBlobLocalCompletion.js';
 import { LandXmlStreamDocumentAssembler, type LandXmlAssembledSourceDocument } from './landXmlStreamAssembler.js';
-import { spatialMetadataFromLandXml, spatialReferenceFromSourceMetadata } from './sourceSpatialReference.js';
+import { landXmlSourceSpatialReference } from './sourceSpatialReference.js';
+import type { LandXmlGeorefAssumptions } from './landXmlGeorefAssumptions.js';
 import type { CoordinateInfo, ModelSpatialReference, MeshData } from '@ifc-lite/geometry';
+import type { LandXmlDeclaredCrs } from './landXmlRenderFrame.js';
 import type { LandXmlPreflightComponent } from './landXmlStreamPreflight.js';
 
 export interface LandXmlViewerModel extends LandXmlGeometryPayload {
@@ -30,11 +32,10 @@ function invokeCallback<T>(callback: () => T | Promise<T>): Promise<T> {
 function attachSyntheticStore(
   payload: LandXmlGeometryPayload,
   fileSize: number,
+  landXmlAssumptions?: Partial<LandXmlGeorefAssumptions>,
 ): LandXmlViewerModel {
-  const metadata = spatialMetadataFromLandXml(payload.semanticDocument);
-  const spatialReference = metadata.horizontalId && metadata.verticalId
-    ? spatialReferenceFromSourceMetadata(metadata)
-    : undefined;
+  // The same gate the streamed preflight uses, under the same assumptions.
+  const { spatialReference } = landXmlSourceSpatialReference(payload.semanticDocument.coordinateSystem, landXmlAssumptions);
   return {
     ...payload,
     // LandXML is not IFC. This typed, entity-less store exists only so the
@@ -115,7 +116,7 @@ export function parseLandXmlViewerModelFromBlobAsync(
   onProgress?: (loadedBytes: number, totalBytes: number) => void,
   onPreflight?: (preflight: LandXmlGeometryPreflight) => void | Promise<void>,
   onComponent?: (mesh: MeshData) => void | Promise<void>,
-  onFederatedPreflight?: (preflight: LandXmlGeometryPreflight, sourceCoordinateInfo: CoordinateInfo, spatialReference?: ModelSpatialReference) => boolean | Promise<boolean>,
+  onFederatedPreflight?: (preflight: LandXmlGeometryPreflight, sourceCoordinateInfo: CoordinateInfo, spatialReference?: ModelSpatialReference, declaredCrs?: LandXmlDeclaredCrs) => boolean | Promise<boolean>,
   onPreflightComponent?: (component: LandXmlPreflightComponent) => void | Promise<void>,
   onPreflightComplete?: () => void | Promise<void>,
   onFederatedAdmissionComponent?: (component: LandXmlPreflightComponent) => void | Promise<void>,
@@ -127,6 +128,8 @@ export function parseLandXmlViewerModelFromBlobAsync(
    * identically when it is absent — the refusal stays the default.
    */
   assumedLinearUnit?: string,
+  /** The user's georeferencing assumptions for a federated load; absent means none. */
+  landXmlAssumptions?: Partial<LandXmlGeorefAssumptions>,
 ): Promise<LandXmlViewerModel> {
   if (typeof Worker === 'undefined') {
     if (!isCurrent()) return Promise.reject(new Error('LandXML parsing cancelled'));
@@ -140,7 +143,7 @@ export function parseLandXmlViewerModelFromBlobAsync(
       onFederatedAdmissionComponent,
       onFederatedAdmissionComplete,
       onSkippedComponent,
-    }, assumedLinearUnit).then((payload) => attachSyntheticStore(payload, file.size));
+    }, assumedLinearUnit, landXmlAssumptions).then((payload) => attachSyntheticStore(payload, file.size, landXmlAssumptions));
   }
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('./landXml.worker.ts', import.meta.url), { type: 'module' });
@@ -175,7 +178,7 @@ export function parseLandXmlViewerModelFromBlobAsync(
       | { ok: true; streamed: { preflight: LandXmlGeometryPreflight; droppedPrimaryComponents: number } }
       | { ok: false; error: string }
       | { progress: { loadedBytes: number; totalBytes: number } }
-      | { preflight: LandXmlGeometryPreflight; sourceCoordinateInfo?: CoordinateInfo; spatialReference?: ModelSpatialReference }
+      | { preflight: LandXmlGeometryPreflight; sourceCoordinateInfo?: CoordinateInfo; spatialReference?: ModelSpatialReference; declaredCrs?: LandXmlDeclaredCrs }
       | { preflightComponent: LandXmlPreflightComponent }
       | { preflightComplete: true }
       | { federatedAdmissionComponent: LandXmlPreflightComponent }
@@ -190,13 +193,13 @@ export function parseLandXmlViewerModelFromBlobAsync(
         return;
       }
       if ('preflight' in event.data) {
-        const { preflight, sourceCoordinateInfo, spatialReference } = event.data;
+        const { preflight, sourceCoordinateInfo, spatialReference, declaredCrs } = event.data;
         const federatedPreflight = (): boolean | Promise<boolean> => {
           if (onFederatedPreflight === undefined) return false;
           if (sourceCoordinateInfo === undefined) {
             throw new Error('LandXML worker omitted federation source coordinates');
           }
-          return onFederatedPreflight(preflight, sourceCoordinateInfo, spatialReference);
+          return onFederatedPreflight(preflight, sourceCoordinateInfo, spatialReference, declaredCrs);
         };
         // `Promise.resolve(cb())` evaluates `cb` first, so use the guarded
         // helper to turn a synchronous renderer/reservation failure into the
@@ -342,6 +345,7 @@ export function parseLandXmlViewerModelFromBlobAsync(
                 streamed.droppedPrimaryComponents + pipeComponents.droppedComponentCount,
               ),
               file.size,
+              landXmlAssumptions,
             );
             if (finish()) resolve(model);
           }).catch((error: unknown) => {
@@ -351,7 +355,7 @@ export function parseLandXmlViewerModelFromBlobAsync(
           if (finish()) reject(error instanceof Error ? error : new Error(String(error)));
         }
       } else if (event.data.ok) {
-        if (finish()) resolve(attachSyntheticStore(event.data.payload, file.size));
+        if (finish()) resolve(attachSyntheticStore(event.data.payload, file.size, landXmlAssumptions));
       } else if (finish()) reject(new Error(event.data.error));
     };
     worker.onerror = (event) => {
@@ -363,6 +367,6 @@ export function parseLandXmlViewerModelFromBlobAsync(
     }
     // Blob structured cloning preserves the backing file handle; it does not
     // transfer or duplicate the full LandXML byte payload.
-    worker.postMessage({ file, streamFederatedPreflight: onFederatedPreflight !== undefined, assumedLinearUnit });
+    worker.postMessage({ file, streamFederatedPreflight: onFederatedPreflight !== undefined, assumedLinearUnit, landXmlAssumptions });
   });
 }

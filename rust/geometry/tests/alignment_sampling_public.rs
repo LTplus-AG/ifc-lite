@@ -38,3 +38,37 @@ fn issue_6600_positive_vertical_measures_are_strict_without_changing_renderer_po
         }
     }
 }
+
+/// #7678 (PROC-AL-16): an `IfcCircularArcSegment2D` radius the double range
+/// cannot hold (`1.E400`) passed the `radius < 1e-12` check as infinity, and
+/// the renderer's permissive parse then evaluated `sx + inf * 0` into NaN
+/// vertices. A geometry (strict) decoder now refuses the segment record, so
+/// the renderer's parse fails closed, and the sampler, which reads strictly,
+/// yields no axis; a finite radius, and a `-0.` start coordinate, still
+/// evaluate finitely.
+#[test]
+fn issue_7678_an_overflowing_arc_radius_never_evaluates_to_nan() {
+    let curve = |radius: &str| {
+        model(&format!("#36=IFCCARTESIANPOINT((-0.,0.));#30=IFCCIRCULARARCSEGMENT2D(#36,0.,50.,{radius},.T.);#31=IFCALIGNMENT2DHORIZONTALSEGMENT($,$,$,#30);#32=IFCALIGNMENT2DHORIZONTAL(0.,(#31));#35=IFCALIGNMENTCURVE(#32,$,$);"))
+            .replace("'Road',$,$,$,$,#12", "'Road',$,$,$,$,#35")
+    };
+    for radius in ["1.E400", "-1.E400"] {
+        let content = curve(radius);
+        let mut decoder =
+            EntityDecoder::with_index(&content, build_entity_index(&content)).with_strict_reals();
+        let directrix = decoder.decode_by_id(35).unwrap();
+        if let Ok(Some(parsed)) = AlignmentCurve::parse(&directrix, &mut decoder) {
+            panic!("{radius}: admitted, evaluates to {:?}", parsed.evaluate(25.0).origin);
+        }
+        let report = sample_alignment_axes(&content, Default::default()).unwrap();
+        assert!(report.axes.is_empty(), "{radius}");
+    }
+    let content = curve("100.");
+    let mut decoder = EntityDecoder::with_index(&content, build_entity_index(&content));
+    let directrix = decoder.decode_by_id(35).unwrap();
+    let parsed = AlignmentCurve::parse(&directrix, &mut decoder).unwrap().expect("finite arc");
+    for station in [0.0, 25.0, 50.0] {
+        let origin = parsed.evaluate(station).origin;
+        assert!(origin.iter().all(|v| v.is_finite()), "{station}: {origin:?}");
+    }
+}

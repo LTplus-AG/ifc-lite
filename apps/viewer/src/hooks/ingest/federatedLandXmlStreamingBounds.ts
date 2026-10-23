@@ -4,7 +4,23 @@
 
 /** Pure bounds helpers for the bounded federated LandXML stream plan. */
 
+import type { CoordinateInfo } from '@ifc-lite/geometry';
 import type { Bounds3D } from '../../utils/localParsingUtils.js';
+
+/**
+ * Cursor meshes carry absolute E/U/S origins.  Give federation alignment the
+ * matching zero-offset frame; the durable source metadata remains on
+ * `sourcePlacement` for overlays and later CRS resolution.
+ */
+export function rawAbsoluteCoordinateInfo(source: CoordinateInfo): CoordinateInfo {
+  const bounds = structuredClone(source.originalBounds);
+  return {
+    originShift: { x: 0, y: 0, z: 0 },
+    originalBounds: bounds,
+    shiftedBounds: structuredClone(bounds),
+    hasLargeCoordinates: source.hasLargeCoordinates,
+  };
+}
 
 export function mergeBounds(target: Bounds3D, source: Bounds3D): void {
   target.min.x = Math.min(target.min.x, source.min.x);

@@ -403,8 +403,8 @@ body {
   }
 }
 
-/* Hierarchy grouping row has 5 tabs (Spatial / Class / Type / Material /
-   Groups). Their full uppercase labels only fit above ~384px of panel width;
+/* Hierarchy grouping row has 6 tabs (Spatial / Class / Type / Material /
+   Groups / Layers). Their full uppercase labels only fit above ~480px of panel width;
    below that they truncate and overlap ("MATERIAGROUPS" at the default
    sidebar width). Collapse to icon-only under the threshold — each button keeps
    a `title` tooltip, so the meaning stays discoverable. The threshold sits
@@ -412,7 +412,7 @@ body {
    sidebar shows clean icons, and only a deliberately widened sidebar restores
    the text labels. This is scoped to the hierarchy tabs so it never changes
    the shared 200px panel-compact behaviour elsewhere. */
-@container (max-width: 384px) {
+@container (max-width: 480px) {
   .hierarchy-grouping-tabs .panel-compact-icon {
     display: inline;
   }

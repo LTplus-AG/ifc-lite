@@ -52,9 +52,14 @@ export interface TerrainDrapePlan {
 export function terrainCrsOf(document: Pick<LandXmlTinDocument, 'coordinateSystem'>): Parsed<string> {
   const id = spatialMetadataFromLandXml(document).horizontalId;
   if (id) return { ok: true, value: id };
-  const { epsgCode, horizontalDatum } = document.coordinateSystem ?? {};
-  const declared = [epsgCode && `epsgCode '${epsgCode.trim()}'`, horizontalDatum && `horizontalDatum '${horizontalDatum.trim()}'`]
-    .filter(Boolean).join(' and ');
+  // A declared `name` (#7604) is a CRS label, not a code: it is quoted so the
+  // refusal never claims the terrain declares no coordinate system.
+  const { epsgCode, horizontalDatum, name } = document.coordinateSystem ?? {};
+  const declared = [
+    epsgCode && `epsgCode '${epsgCode.trim()}'`,
+    horizontalDatum && `horizontalDatum '${horizontalDatum.trim()}'`,
+    name?.trim() && `name '${name.trim()}'`,
+  ].filter(Boolean).join(' and ');
   return {
     ok: false,
     reason: declared

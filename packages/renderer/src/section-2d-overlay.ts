@@ -25,21 +25,21 @@
 
 import { PIPELINE_CONSTANTS } from './constants.js';
 import { createSectionCapPipelines } from './section-cap-pipelines.js';
-import { tryPackRteDrawableDelta } from './relative-to-eye.js';
+import { SectionCapSet, type CapDrawResources, type ExtraCapDraw } from './section-cap-set.js';
+import { EXTRA_CLIP_BYTES } from './extra-clip-planes.js';
+import type { ExtraClipPlane } from './clip-types.js';
 import {
   SECTION_2D_CAP_FILL_WGSL,
+  SECTION_2D_CAP_LINE_WGSL,
+  SECTION_2D_MAX_EXTRA_CAPS,
   SECTION_2D_OVERLAY_LINE_WGSL,
   SECTION_2D_UNIFORM_BYTES,
-  SECTION_2D_UNIFORM_FLOATS,
-  SECTION_2D_UNIFORM_SLOTS,
   SECTION_2D_UNIFORM_SLOT_COUNT,
   SECTION_2D_UNIFORM_SLOT_INDEX,
   sectionUniformSlotStride,
 } from './shaders/section-2d-overlay.wgsl.js';
 import {
-  buildCapFillGeometry,
-  buildDrawingOutlineVertices,
-  createSectionLift,
+  type CapHighlight,
   type CutPolygon2D,
   type DrawingLine2D,
   type SectionAxis,
@@ -56,7 +56,8 @@ import {
   type Section2DOverlayOptions,
 } from './section-2d-types.js';
 
-export type { CutPolygon2D, DrawingLine2D, SectionCustomPlane } from './section-2d-lift.js';
+export { capHighlightKey } from './section-2d-lift.js';
+export type { CapHighlight, CutPolygon2D, DrawingLine2D, SectionCustomPlane } from './section-2d-lift.js';
 export { LINE_OVERLAY_CHANNELS } from './section-2d-types.js';
 export type { LineOverlayChannel, Section2DOverlayCapStyle, Section2DOverlayOptions } from './section-2d-types.js';
 
@@ -70,6 +71,12 @@ export class Section2DOverlayRenderer {
   private bindGroupLayout: GPUBindGroupLayout | null = null;
   private uniformBuffer: GPUBuffer | null = null;
   private bindGroup: GPUBindGroup | null = null;
+  /** The cap's outline pipeline: the line pipeline plus the clip against the other cutting planes (#7545). */
+  private capLinePipeline: GPURenderPipeline | null = null;
+  /** Group 1 of the cap pipelines: the planes that clip each cap, one block per cap. */
+  private clipBindGroup: GPUBindGroup | null = null;
+  private clipBuffer: GPUBuffer | null = null;
+  private clipStride = 0;
   /** Byte stride between the uniform slots in {@link uniformBuffer}. Set by `init()`. */
   private uniformStride = 0;
   private format: GPUTextureFormat;
@@ -82,16 +89,10 @@ export class Section2DOverlayRenderer {
   // lines on a dark canvas) via setOverlayLineColor().
   private overlayLineColor: readonly [number, number, number, number] = [0, 0, 0, 1];
 
-  // Cached section-cut geometry buffers. Unlike the world-space overlays below
-  // these ride the section plane and the fill half is indexed, so they are not
-  // WorldLineBuffers.
-  private fillVertexBuffer: GPUBuffer | null = null;
-  private fillIndexBuffer: GPUBuffer | null = null;
-  private fillIndexCount = 0;
-  private lineVertexBuffer: GPUBuffer | null = null;
-  private lineVertexCount = 0;
-  /** f64 cap anchor retained separately from the local cap vertices. */
-  private capAnchor: [number, number, number] | null = null;
+  // The section-cut cap geometry, one per cutting plane (#7545). Unlike the
+  // world-space overlays below these ride their plane and the fill half is
+  // indexed, so they are not WorldLineBuffers.
+  private readonly caps = new SectionCapSet();
 
   /**
    * One world-space vertex buffer per {@link LineOverlayChannel}, each on its
@@ -151,12 +152,24 @@ export class Section2DOverlayRenderer {
     const pipelineLayout = this.device.createPipelineLayout({
       bindGroupLayouts: [this.bindGroupLayout],
     });
+    // The cap pipelines add group 1: the planes that clip this cap, one block per cap
+    // addressed by a dynamic offset (the primary cap and up to seven more, #7545).
+    const clipLayout = this.device.createBindGroupLayout({
+      entries: [{
+        binding: 0,
+        visibility: GPUShaderStage.FRAGMENT,
+        buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: EXTRA_CLIP_BYTES },
+      }],
+    });
+    const capPipelineLayout = this.device.createPipelineLayout({
+      bindGroupLayouts: [this.bindGroupLayout, clipLayout],
+    });
 
     const fillShader = this.device.createShaderModule({ code: SECTION_2D_CAP_FILL_WGSL });
     const lineShader = this.device.createShaderModule({ code: SECTION_2D_OVERLAY_LINE_WGSL });
 
     // Pipelines for filled polygons: the cap colour, and its depth (#5384).
-    const cap = createSectionCapPipelines(this.device, pipelineLayout, fillShader, this.format, this.sampleCount);
+    const cap = createSectionCapPipelines(this.device, capPipelineLayout, fillShader, this.format, this.sampleCount);
     this.fillPipeline = cap.fill;
     this.fillDepthPipeline = cap.depth;
 
@@ -200,6 +213,13 @@ export class Section2DOverlayRenderer {
       },
     };
     this.linePipeline = this.device.createRenderPipeline(this.linePipelineDescriptor);
+    const capLineShader = this.device.createShaderModule({ code: SECTION_2D_CAP_LINE_WGSL });
+    this.capLinePipeline = this.device.createRenderPipeline({
+      ...this.linePipelineDescriptor,
+      layout: capPipelineLayout,
+      vertex: { ...this.linePipelineDescriptor.vertex, module: capLineShader },
+      fragment: { ...this.linePipelineDescriptor.fragment!, module: capLineShader },
+    });
 
     // One 160-byte uniform buffer shared by BOTH pipelines: the fill fragment
     // shader reads up to params2 (144 B), the line shader reads
@@ -228,7 +248,39 @@ export class Section2DOverlayRenderer {
       ],
     });
 
+    // One clip block per cap: the primary plane's and each extra plane's.
+    const align = this.device.limits?.minUniformBufferOffsetAlignment ?? 256;
+    this.clipStride = Math.ceil(EXTRA_CLIP_BYTES / (Number.isFinite(align) && align > 0 ? align : 256))
+      * (Number.isFinite(align) && align > 0 ? align : 256);
+    this.clipBuffer = this.device.createBuffer({
+      size: this.clipStride * (1 + SECTION_2D_MAX_EXTRA_CAPS),
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+    this.clipBindGroup = this.device.createBindGroup({
+      layout: clipLayout,
+      entries: [{ binding: 0, resource: { buffer: this.clipBuffer, offset: 0, size: EXTRA_CLIP_BYTES } }],
+    });
+
     this.initialized = true;
+  }
+
+  /** Everything a cap draw borrows, or null before `init()` produced it (or after `dispose()`). */
+  private capResources(): CapDrawResources | null {
+    if (!this.fillPipeline || !this.fillDepthPipeline || !this.capLinePipeline || !this.uniformBuffer
+      || !this.bindGroup || !this.clipBindGroup || !this.clipBuffer) return null;
+    return {
+      device: this.device,
+      fillPipeline: this.fillPipeline,
+      fillDepthPipeline: this.fillDepthPipeline,
+      outlinePipeline: this.capLinePipeline,
+      bindGroup: this.bindGroup,
+      uniformBuffer: this.uniformBuffer,
+      uniformStride: this.uniformStride,
+      clipBindGroup: this.clipBindGroup,
+      clipBuffer: this.clipBuffer,
+      clipStride: this.clipStride,
+      lineColor: this.overlayLineColor,
+    };
   }
 
   /**
@@ -269,73 +321,42 @@ export class Section2DOverlayRenderer {
     customPlane?: SectionCustomPlane,
   ): void {
     this.init();
-    this.clearGeometry();
+    this.caps.upload(this.device, null, polygons, lines, axis, planePosition, flipped, customPlane);
+  }
 
-    const lift = createSectionLift(axis, planePosition, flipped, customPlane);
-    const planeAnchor: [number, number, number] = customPlane
-      ? [...customPlane.origin]
-      : axis === 'side' ? [planePosition, 0, 0]
-        : axis === 'down' ? [0, planePosition, 0] : [0, 0, planePosition];
-    // The plane-coordinate anchor was enough when every model was near the
-    // origin. At a survey offset it leaves both in-plane coordinates absolute
-    // in the f32 vertex buffer, collapsing centimetre cap edges. Anchor at an
-    // actual lifted point instead, while retaining the old plane point for an
-    // empty upload that produces no vertex buffer to draw.
-    const firstPoint = polygons.find((polygon) => polygon.polygon.outer.length > 0)?.polygon.outer[0]
-      ?? lines[0]?.line.start;
-    const anchor = firstPoint ? lift(firstPoint.x, firstPoint.y) : planeAnchor;
+  /**
+   * Upload the cap of a cutting plane beyond the first (#7545), under `key` (the
+   * plane's id). Same arguments as {@link uploadDrawing}; each key holds its own
+   * cap, so planes never overwrite one another.
+   */
+  uploadExtraDrawing(
+    key: string,
+    polygons: CutPolygon2D[],
+    lines: DrawingLine2D[],
+    axis: SectionAxis,
+    planePosition: number,
+    flipped: boolean = false,
+    customPlane?: SectionCustomPlane,
+  ): void {
+    this.init();
+    this.caps.upload(this.device, key, polygons, lines, axis, planePosition, flipped, customPlane);
+  }
 
-    // Lift/subtract while the coordinates are JS f64. Building a world-space
-    // Float32Array first then subtracting the cap anchor loses centimetre
-    // detail in both the plane normal and its in-plane axes at national-grid
-    // offsets.
-    const fill = buildCapFillGeometry(polygons, lift, anchor);
-    if (fill) {
-      this.fillVertexBuffer = this.device.createBuffer({
-        size: fill.vertices.byteLength,
-        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-      });
-      this.device.queue.writeBuffer(this.fillVertexBuffer, 0, fill.vertices);
+  /** Release the caps of every extra plane not in `keep` (a plane removed or turned off). */
+  clearExtraGeometry(keep: ReadonlySet<string> = new Set()): void {
+    this.caps.clearExtrasExcept(keep);
+  }
 
-      this.fillIndexBuffer = this.device.createBuffer({
-        size: fill.indices.byteLength,
-        usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
-      });
-      this.device.queue.writeBuffer(this.fillIndexBuffer, 0, fill.indices);
-      this.fillIndexCount = fill.indices.length;
-    }
-
-    const outline = buildDrawingOutlineVertices(polygons, lines, lift, anchor);
-    if (outline) {
-      this.lineVertexBuffer = this.device.createBuffer({
-        size: outline.byteLength,
-        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-      });
-      this.device.queue.writeBuffer(this.lineVertexBuffer, 0, outline);
-      this.lineVertexCount = outline.length / 3;  // Each vertex is 3 floats
-    }
-    this.capAnchor = anchor;
+  /** The keys of the extra caps held now. */
+  extraGeometryKeys(): string[] {
+    return this.caps.extraKeys();
   }
 
   /**
    * Clear uploaded geometry
    */
   clearGeometry(): void {
-    if (this.fillVertexBuffer) {
-      this.fillVertexBuffer.destroy();
-      this.fillVertexBuffer = null;
-    }
-    if (this.fillIndexBuffer) {
-      this.fillIndexBuffer.destroy();
-      this.fillIndexBuffer = null;
-    }
-    if (this.lineVertexBuffer) {
-      this.lineVertexBuffer.destroy();
-      this.lineVertexBuffer = null;
-    }
-    this.fillIndexCount = 0;
-    this.lineVertexCount = 0;
-    this.capAnchor = null;
+    this.caps.clear(null);
   }
 
   /**
@@ -438,134 +459,54 @@ export class Section2DOverlayRenderer {
   }
 
   /**
-   * Check if there is geometry to draw
+   * Whether primary cap source is cached, even when exclusions currently hide it.
+   * Keep scheduling draws so a change to the exclusions can restore the cap.
    */
   hasGeometry(): boolean {
-    return this.fillIndexCount > 0 || this.lineVertexCount > 0;
+    return this.caps.has();
   }
 
   /**
-   * Draw the 2D overlay on the section plane
+   * Paint the given elements' cap polygons in their colour on every cutting
+   * plane's cap (the selection / hover highlight); `null` restores the caps. A
+   * no-op when it matches what is already drawn, so the render loop can call it
+   * every frame.
+   */
+  setCapHighlight(highlight: CapHighlight | null): void {
+    this.caps.setHighlight(this.device, highlight);
+  }
+
+  /** Whether an extra plane has cached cap source, including currently excluded caps (#7545). */
+  hasExtraGeometry(): boolean {
+    return this.caps.hasExtras();
+  }
+
+  /**
+   * Draw the primary plane's cap and outline on the section plane.
+   * `clippedBy` is every OTHER cutting plane (#7545): the cap's fragments those
+   * planes remove are discarded, so a cap never draws where its model is cut away.
    */
   draw(
     pass: GPURenderPassEncoder,
-    options: Section2DOverlayOptions
+    options: Section2DOverlayOptions,
+    clippedBy: readonly ExtraClipPlane[] = [],
   ): void {
     this.init();
+    const resources = this.capResources();
+    if (!resources || !this.caps.has()) return;
+    this.caps.draw(pass, resources, options, clippedBy);
+  }
 
-    if (!this.fillPipeline || !this.fillDepthPipeline || !this.linePipeline || !this.uniformBuffer || !this.bindGroup) {
-      return;
-    }
-
-    if (!this.hasGeometry()) {
-      return;
-    }
-
-    const { viewProj } = options;
-
-    // No offset — cap renders exactly on the section plane. The previous
-    // 0.3m bias was there to keep the outline lines clear of below-plane
-    // geometry, but it made the cap visually drift off the slider plane
-    // (users could see a 0.3m gap between the plane preview and the cap).
-    // The fill pipeline uses depthCompare 'greater-equal' (reverse-Z) so the
-    // cap ties cleanly with coincident below-plane top faces and is occluded
-    // by nearer model geometry — see the depthStencil comment in
-    // `section-cap-pipelines.ts`. There is no stencil test; the fill is restricted
-    // to the actual cap polygons by the triangle-plane intersection geometry
-    // `SectionCutter` produces, not by a stencil gate.
-    // Cap vertices are stored relative to capAnchor so that the RTE path can
-    // retain their small in-plane residuals. The legacy view-projection path
-    // still transforms world coordinates, however, so it must add that anchor
-    // back through planeOffset. Leaving it zero placed every rebased legacy
-    // cap around the world origin. Do not combine the two: RTE adds this same
-    // anchor as an f64 split drawable delta below.
-    const capAnchor = this.capAnchor;
-    const rteViewProj = options.rteViewProj;
-    const rteCamera = options.rteCamera;
-    const offset: [number, number, number] = capAnchor === null || (rteViewProj !== undefined && rteCamera !== undefined)
-      ? [0, 0, 0]
-      : capAnchor;
-
-    // Update uniforms. Field offsets come from SECTION_2D_UNIFORM_SLOTS, which
-    // sits next to the WGSL struct it describes.
-    const S = SECTION_2D_UNIFORM_SLOTS;
-    const uniforms = new Float32Array(SECTION_2D_UNIFORM_FLOATS);
-    uniforms.set(viewProj, S.viewProj);
-    if (capAnchor !== null && rteViewProj !== undefined && rteCamera !== undefined) {
-      uniforms.set(rteViewProj, S.rteViewProj);
-      // Outside this camera's RTE envelope: the cap and its outline, the only
-      // draws below, are not rasterisable this frame (#6128).
-      if (!tryPackRteDrawableDelta(capAnchor, rteCamera, uniforms, S.originDeltaHigh)) return;
-      uniforms[S.originDeltaHigh + 3] = 1;
-    }
-    uniforms.set(this.overlayLineColor, S.lineColor); // section-cut outline colour
-    uniforms[S.planeOffset + 0] = offset[0];
-    uniforms[S.planeOffset + 1] = offset[1];
-    uniforms[S.planeOffset + 2] = offset[2];
-    uniforms[S.planeOffset + 3] = 0;
-    const cs = options.capStyle;
-    if (cs) {
-      uniforms.set(cs.fillColor, S.capFillColor);
-      uniforms.set(cs.strokeColor, S.capStrokeColor);
-      uniforms[S.params + 0] = cs.patternId;
-      uniforms[S.params + 1] = cs.spacingPx;
-      uniforms[S.params + 2] = cs.angleRad;
-      uniforms[S.params + 3] = cs.widthPx;
-      uniforms[S.params2 + 0] = cs.secondaryAngleRad;
-    } else {
-      // Sensible defaults when caller omits style (e.g. legacy lines-only
-      // use): solid fill using a warm-paper colour, no hatch.
-      uniforms.set([0.92, 0.88, 0.78, 1], S.capFillColor);
-      uniforms.set([0.10, 0.10, 0.10, 1], S.capStrokeColor);
-      uniforms[S.params + 0] = 0; // solid pattern
-      uniforms[S.params + 1] = 8;
-      uniforms[S.params + 2] = Math.PI / 4;
-      uniforms[S.params + 3] = 1;
-      uniforms[S.params2 + 0] = -Math.PI / 4;
-    }
-    // The section cut owns slot 0. Both draws below read it, which is correct:
-    // the fill and the outline are one drawing with one plane offset and one
-    // style. What they must NOT share is the record the world-space line
-    // families write, whose zeroed cap-style tail would otherwise arrive here.
-    const capOffset = SECTION_2D_UNIFORM_SLOT_INDEX.sectionCut * this.uniformStride;
-    this.device.queue.writeBuffer(this.uniformBuffer, capOffset, uniforms);
-
-    // Filled polygons = the 3D section cap. Render them ONLY when the
-    // caller opts in (`showFills: true` + a capStyle). This replaces the
-    // old stencil-parity cap, which leaked hatch into empty sky on non-
-    // manifold IFC geometry. The polygons here come from exact triangle-
-    // plane intersection in `SectionCutter`, so the silhouette is
-    // mathematically correct.
-    if (
-      options.showFills === true &&
-      options.capStyle &&
-      this.fillVertexBuffer &&
-      this.fillIndexBuffer &&
-      this.fillIndexCount > 0
-    ) {
-      pass.setPipeline(this.fillPipeline);
-      pass.setBindGroup(0, this.bindGroup, [capOffset]);
-      pass.setVertexBuffer(0, this.fillVertexBuffer);
-      pass.setIndexBuffer(this.fillIndexBuffer, 'uint32');
-      pass.drawIndexed(this.fillIndexCount);
-      // Then its depth, colour-masked, for the post passes (section-cap-pipelines.ts).
-      pass.setPipeline(this.fillDepthPipeline);
-      pass.drawIndexed(this.fillIndexCount);
-    }
-
-    // Outline lines on top of the fill. Gated by `showOutlines` so the
-    // user can toggle surfaces and outlines independently from the UI.
-    // Defaults to true when the caller omits the flag.
-    if (
-      options.showOutlines !== false &&
-      this.lineVertexBuffer &&
-      this.lineVertexCount > 0
-    ) {
-      pass.setPipeline(this.linePipeline);
-      pass.setBindGroup(0, this.bindGroup, [capOffset]);
-      pass.setVertexBuffer(0, this.lineVertexBuffer);
-      pass.draw(this.lineVertexCount);
-    }
+  /** Draw the caps of the cutting planes beyond the first, each clipped by its own `clippedBy`. */
+  drawExtras(
+    pass: GPURenderPassEncoder,
+    options: Section2DOverlayOptions,
+    caps: readonly ExtraCapDraw[],
+  ): void {
+    this.init();
+    const resources = this.capResources();
+    if (!resources || !this.caps.hasExtras()) return;
+    this.caps.drawExtras(pass, resources, options, caps);
   }
 
   /**
@@ -580,7 +521,7 @@ export class Section2DOverlayRenderer {
    * is named separately because it is not a channel.
    */
   dispose(): void {
-    this.clearGeometry();
+    this.caps.dispose();
     for (const channel of LINE_OVERLAY_CHANNELS) this.lineOverlays[channel].clear();
     this.clearClashBoxLines3D();
     if (this.uniformBuffer) {
@@ -589,6 +530,12 @@ export class Section2DOverlayRenderer {
     }
     // Pipeline and bind-group objects belong to this initialization epoch.
     // A later upload on the same instance must rebuild all of them together.
+    if (this.clipBuffer) {
+      this.clipBuffer.destroy();
+      this.clipBuffer = null;
+    }
+    this.clipBindGroup = null;
+    this.capLinePipeline = null;
     this.fillPipeline = null;
     this.fillDepthPipeline = null;
     this.linePipeline = null;

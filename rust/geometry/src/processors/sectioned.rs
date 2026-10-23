@@ -27,7 +27,8 @@
 //!    profile vertices in 3D.
 //! 5. Stitch the rings into a closed shell: side walls (one quad per
 //!    profile edge per consecutive ring pair, with flat-shaded face
-//!    normals) plus earcut start- and end-caps.
+//!    normals) plus earcut start- and end-caps. Every ring of every region
+//!    is stitched and capped, holes included (`sectioned_mesh.rs`).
 //!
 //! ## `FixedAxisVertical`
 //!
@@ -52,21 +53,25 @@
 //!   positive `OffsetLateral` = right of travel)
 //! - IfcAlignmentCurve: IFC4x1 §8.7.3.10
 
+use crate::math::tol;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
-use nalgebra::{Point2, Point3, Vector3};
+use nalgebra::{Point3, Vector3};
 
+#[path = "sectioned_mesh.rs"]
+mod sectioned_mesh;
 #[path = "sectioned_positions.rs"]
 mod sectioned_positions;
 use crate::alignment_arc_length::ArcLengthMap;
 use sectioned_positions::PositionAlongDirectrix;
 
+#[path = "sectioned_plan.rs"]
+pub(crate) mod plan;
+
 use crate::{
     alignment::{AlignmentCurve, AlignmentFrame},
     profiles::ProfileProcessor,
     router::GeometryProcessor,
-    scale_segments,
-    triangulation::triangulate_polygon,
-    Error, Mesh, Profile2D, Result, TessellationQuality,
+    scale_segments, Error, Mesh, Result, TessellationQuality,
 };
 
 /// Sweep is subdivided so that no single quad spans more than this much
@@ -90,6 +95,15 @@ impl SectionedSolidHorizontalProcessor {
             profile_processor: ProfileProcessor::new(schema),
         }
     }
+
+    pub(crate) fn lower(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        quality: TessellationQuality,
+    ) -> Result<plan::SectionedPlan> {
+        plan::lower(entity, decoder, quality, &self.profile_processor)
+    }
 }
 
 impl Default for SectionedSolidHorizontalProcessor {
@@ -99,6 +113,14 @@ impl Default for SectionedSolidHorizontalProcessor {
 }
 
 impl GeometryProcessor for SectionedSolidHorizontalProcessor {
+    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
+        quality: crate::TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
+        -> Option<crate::Result<crate::program::OwnedConstructor>> {
+        use crate::program::constructor::Constructor;
+        if rtc_file_units.is_some() { return None; }
+        Some(self.lower(entity, decoder, quality).map(|plan| crate::program::OwnedConstructor::new(Constructor::SectionedSolid(plan))))
+    }
+
     fn process(
         &self,
         entity: &DecodedEntity,
@@ -106,177 +128,7 @@ impl GeometryProcessor for SectionedSolidHorizontalProcessor {
         _schema: &IfcSchema,
         quality: TessellationQuality,
     ) -> Result<Mesh> {
-        // IfcSectionedSolidHorizontal attributes (IFC4x1):
-        //   0: Directrix                 (IfcCurve subtype)
-        //   1: CrossSections             (LIST of IfcProfileDef)
-        //   2: CrossSectionPositions     (LIST of IfcDistanceExpression)
-        //   3: FixedAxisVertical         (BOOL — default .T.)
-        let directrix_id = entity.get_ref(0).ok_or_else(|| {
-            Error::geometry("IfcSectionedSolidHorizontal missing Directrix".to_string())
-        })?;
-
-        let sections_attr = entity.get(1).ok_or_else(|| {
-            Error::geometry("IfcSectionedSolidHorizontal missing CrossSections".to_string())
-        })?;
-        let sections_list = sections_attr
-            .as_list()
-            .ok_or_else(|| Error::geometry("CrossSections must be a list".to_string()))?;
-
-        let positions_attr = entity.get(2).ok_or_else(|| {
-            Error::geometry("IfcSectionedSolidHorizontal missing CrossSectionPositions".to_string())
-        })?;
-        let positions_list = positions_attr
-            .as_list()
-            .ok_or_else(|| Error::geometry("CrossSectionPositions must be a list".to_string()))?;
-
-        if sections_list.len() != positions_list.len() {
-            return Err(Error::geometry(format!(
-                "IfcSectionedSolidHorizontal: CrossSections ({}) and CrossSectionPositions ({}) \
-                 must have equal length",
-                sections_list.len(),
-                positions_list.len(),
-            )));
-        }
-        if sections_list.len() < 2 {
-            return Err(Error::geometry(
-                "IfcSectionedSolidHorizontal needs at least 2 cross-sections to loft".to_string(),
-            ));
-        }
-
-        let fixed_axis_vertical = entity
-            .get(3)
-            .and_then(|v| v.as_enum())
-            .map(|s| s == "T")
-            .unwrap_or(true);
-
-        let directrix_entity = decoder.decode_by_id(directrix_id)?;
-        let alignment = AlignmentCurve::parse(&directrix_entity, decoder)?;
-
-        // Decode authored (profile, position) pairs.
-        let mut authored: Vec<(Profile2D, PositionAlongDirectrix)> =
-            Vec::with_capacity(sections_list.len());
-        for (sec_attr, pos_attr) in sections_list.iter().zip(positions_list.iter()) {
-            let sec_id = sec_attr.as_entity_ref().ok_or_else(|| {
-                Error::geometry("CrossSection must be an entity reference".to_string())
-            })?;
-            let sec_entity = decoder.decode_by_id(sec_id)?;
-            let profile = self
-                .profile_processor
-                .process(&sec_entity, decoder, quality)?;
-            if profile.outer.len() < 3 {
-                continue; // Skip degenerate profiles.
-            }
-            let pos_id = pos_attr.as_entity_ref().ok_or_else(|| {
-                Error::geometry("CrossSectionPosition must be an entity reference".to_string())
-            })?;
-            let pos_entity = decoder.decode_by_id(pos_id)?;
-            let position =
-                PositionAlongDirectrix::parse(&pos_entity, decoder, &directrix_entity)?;
-            authored.push((profile, position));
-        }
-
-        if authored.len() < 2 {
-            return Err(Error::geometry(
-                "IfcSectionedSolidHorizontal: <2 valid stations after filtering degenerate \
-                 cross-sections — nothing to loft"
-                    .to_string(),
-            ));
-        }
-        let arc_map = if authored.iter().any(|(_, pos)| !pos.along_horizontal) {
-            alignment.as_ref().map(ArcLengthMap::new)
-        } else {
-            None
-        };
-        authored.sort_by(|a, b| {
-            a.1.distance_along
-                .partial_cmp(&b.1.distance_along)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-
-        // Walk authored pairs, subdividing intermediate stations
-        // wherever the alignment curves significantly between them.
-        let mut samples: Vec<(Profile2D, PositionAlongDirectrix)> = Vec::new();
-        samples.push(authored[0].clone());
-        for i in 1..authored.len() {
-            let (prev_prof, prev_pos) = (&authored[i - 1].0, authored[i - 1].1);
-            let (this_prof, this_pos) = (&authored[i].0, authored[i].1);
-            let n = subdivisions(&prev_pos, &this_pos, alignment.as_ref(), arc_map.as_ref(), quality);
-            for k in 1..n {
-                let t = k as f64 / n as f64;
-                let interp_profile = interpolate_profile(prev_prof, this_prof, t);
-                let interp_pos = lerp_position(&prev_pos, &this_pos, t);
-                samples.push((interp_profile, interp_pos));
-            }
-            samples.push(authored[i].clone());
-        }
-
-        // Place every sample's outer ring in 3D using the alignment
-        // frame plus the IfcDistanceExpression offsets.
-        let mut rings_3d: Vec<Vec<Point3<f64>>> = Vec::with_capacity(samples.len());
-        let mut frames: Vec<AlignmentFrame> = Vec::with_capacity(samples.len());
-        for (profile, pos) in &samples {
-            let frame = compute_frame(alignment.as_ref(), arc_map.as_ref(), pos, fixed_axis_vertical)?;
-            rings_3d.push(transform_outer(&profile.outer, &frame));
-            frames.push(frame);
-        }
-
-        // Build the mesh: start cap, side walls between consecutive
-        // rings, end cap. Topology change (varying vertex count between
-        // adjacent rings) closes the current sub-sweep and reopens the
-        // next one with a backwards-facing cap. The cap's shading
-        // normal is the directrix tangent direction at that station so
-        // flat-shaded renderers don't sample the side-wall normal.
-        let mut mesh = Mesh::new();
-        let flip = !is_proper(&frames[0]);
-        emit_cap(
-            &mut mesh,
-            &samples[0].0.outer,
-            &rings_3d[0],
-            -frames[0].tangent,
-            flip,
-        )?;
-        for i in 1..samples.len() {
-            let (prev_profile, _) = &samples[i - 1];
-            let (this_profile, _) = &samples[i];
-            let prev_ring = &rings_3d[i - 1];
-            let this_ring = &rings_3d[i];
-
-            if prev_profile.outer.len() == this_profile.outer.len()
-                && !prev_profile.outer.is_empty()
-            {
-                emit_side_walls(&mut mesh, prev_ring, this_ring, flip);
-            } else {
-                // Topology change. Cap off the previous sub-sweep
-                // (forward-facing) and reopen with a backwards-facing
-                // cap on the new sub-sweep. (Only triggered by
-                // authored topology changes — subdivision-introduced
-                // sub-samples always match their neighbours.)
-                emit_cap(
-                    &mut mesh,
-                    &prev_profile.outer,
-                    prev_ring,
-                    frames[i - 1].tangent,
-                    !flip,
-                )?;
-                emit_cap(
-                    &mut mesh,
-                    &this_profile.outer,
-                    this_ring,
-                    -frames[i].tangent,
-                    flip,
-                )?;
-            }
-        }
-        let last = samples.len() - 1;
-        emit_cap(
-            &mut mesh,
-            &samples[last].0.outer,
-            &rings_3d[last],
-            frames[last].tangent,
-            !flip,
-        )?;
-
-        Ok(mesh)
+        self.lower(entity, decoder, quality)?.evaluate()
     }
 
     fn supported_types(&self) -> Vec<IfcType> {
@@ -330,7 +182,7 @@ fn compute_frame(
         // plane (the projection of world-Z onto the perpendicular).
         let world_z = Vector3::new(0.0, 0.0, 1.0);
         let right_candidate = base.tangent.cross(&world_z);
-        let right_3d = match right_candidate.try_normalize(1e-9) {
+        let right_3d = match right_candidate.try_normalize(tol::AXIS_MIN_LEN) {
             Some(r) => r,
             // Tangent nearly vertical — fall back to world +X.
             None => Vector3::new(1.0, 0.0, 0.0),
@@ -365,19 +217,18 @@ fn compute_frame(
     if pos.linear && (pos.axis.is_some() || pos.ref_direction.is_some()) {
         // IFC4x3 placement directions are given in the curve frame:
         // X along tangent, Y left of travel, Z vertical normal.
-        let to_world = |v: Vector3<f64>| {
-            base.tangent * v.x - base.right * v.y + vertical_normal * v.z
-        };
-        let axis = pos.axis.map(to_world).unwrap_or(vertical_normal);
-        let x = pos.ref_direction.map(to_world).unwrap_or(base.tangent);
-        let x = (x - axis * x.dot(&axis)).try_normalize(1e-12).unwrap_or(base.tangent);
-        // Profile +X is the placement's local +Y = Axis × RefDirection.
-        // Parallel Axis and RefDirection (or tangent) leave it undefined.
-        right = axis.cross(&x).try_normalize(1e-12).ok_or_else(|| {
+        let [_, y, axis] = crate::axis_projection::linear_placement_axes(
+            [base.tangent, -base.right, vertical_normal],
+            pos.axis,
+            pos.ref_direction,
+        )
+        .ok_or_else(|| {
             Error::geometry(
                 "IfcAxis2PlacementLinear Axis is parallel to its RefDirection".to_string(),
             )
         })?;
+        // Profile +X is the placement's local +Y = Axis × RefDirection.
+        right = y;
         up = axis;
     } else if pos.linear {
         // IFC4x3 positions the profile in the placement's YZ plane: profile
@@ -400,13 +251,6 @@ fn compute_frame(
 /// so its rings need the opposite winding to face outward.
 fn is_proper(frame: &AlignmentFrame) -> bool {
     frame.right.cross(&frame.up).dot(&frame.tangent) > 0.0
-}
-
-fn transform_outer(outer: &[Point2<f64>], frame: &AlignmentFrame) -> Vec<Point3<f64>> {
-    outer
-        .iter()
-        .map(|p| frame.origin + frame.right * p.x + frame.up * p.y)
-        .collect()
 }
 
 // --- Subdivision and interpolation ---
@@ -452,45 +296,6 @@ fn subdivisions(
     scale_segments(n_base, 1, MAX_SUBDIVISIONS, quality)
 }
 
-/// Linear blend of two `Profile2D`s by parameter `t ∈ [0, 1]`. Requires
-/// matching outer-ring vertex count and hole topology; falls back to
-/// nearest-endpoint selection otherwise.
-fn interpolate_profile(a: &Profile2D, b: &Profile2D, t: f64) -> Profile2D {
-    if a.outer.len() != b.outer.len() || a.outer.is_empty() {
-        return if t < 0.5 { a.clone() } else { b.clone() };
-    }
-    let outer: Vec<Point2<f64>> = a
-        .outer
-        .iter()
-        .zip(b.outer.iter())
-        .map(|(pa, pb)| {
-            Point2::new(
-                pa.x * (1.0 - t) + pb.x * t,
-                pa.y * (1.0 - t) + pb.y * t,
-            )
-        })
-        .collect();
-    let mut result = Profile2D::new(outer);
-    if a.holes.len() == b.holes.len() {
-        for (ha, hb) in a.holes.iter().zip(b.holes.iter()) {
-            if ha.len() == hb.len() {
-                let hole: Vec<Point2<f64>> = ha
-                    .iter()
-                    .zip(hb.iter())
-                    .map(|(pa, pb)| {
-                        Point2::new(
-                            pa.x * (1.0 - t) + pb.x * t,
-                            pa.y * (1.0 - t) + pb.y * t,
-                        )
-                    })
-                    .collect();
-                result.add_hole(hole);
-            }
-        }
-    }
-    result
-}
-
 fn lerp_position(
     a: &PositionAlongDirectrix,
     b: &PositionAlongDirectrix,
@@ -514,83 +319,9 @@ fn lerp_position(
 
 fn lerp_direction(a: Option<Vector3<f64>>, b: Option<Vector3<f64>>, t: f64) -> Option<Vector3<f64>> {
     match (a, b) {
-        (Some(a), Some(b)) => (a * (1.0 - t) + b * t).try_normalize(1e-12).or(Some(a)),
+        (Some(a), Some(b)) => (a * (1.0 - t) + b * t).try_normalize(tol::DIRECTION_MIN_LEN).or(Some(a)),
         (Some(a), None) => Some(a),
         (None, Some(b)) => Some(b),
         (None, None) => None,
-    }
-}
-
-// --- Mesh emission ---
-
-/// Triangulate `outer_2d` once and emit triangles using the matching
-/// 3D ring. `forward = true` keeps the triangulation winding (front
-/// face along `+normal`); `false` flips it.
-fn emit_cap(
-    mesh: &mut Mesh,
-    outer_2d: &[Point2<f64>],
-    ring_3d: &[Point3<f64>],
-    normal: Vector3<f64>,
-    forward: bool,
-) -> Result<()> {
-    if outer_2d.len() < 3 || ring_3d.len() != outer_2d.len() {
-        return Ok(());
-    }
-    let indices = triangulate_polygon(outer_2d)?;
-    let base = (mesh.positions.len() / 3) as u32;
-    for p in ring_3d {
-        mesh.add_vertex(*p, normal);
-    }
-    for tri in indices.chunks_exact(3) {
-        let (a, b, c) = (tri[0] as u32, tri[1] as u32, tri[2] as u32);
-        if forward {
-            mesh.add_triangle(base + a, base + b, base + c);
-        } else {
-            mesh.add_triangle(base + a, base + c, base + b);
-        }
-    }
-    Ok(())
-}
-
-/// Stitch two equal-vertex-count rings with one quad per profile edge.
-/// Faces point outward for CCW profiles placed by a proper frame; `flip`
-/// reverses the winding for mirrored frames.
-fn emit_side_walls(
-    mesh: &mut Mesh,
-    prev_ring: &[Point3<f64>],
-    this_ring: &[Point3<f64>],
-    flip: bool,
-) {
-    let n = prev_ring.len();
-    if n < 2 || this_ring.len() != n {
-        return;
-    }
-    for j in 0..n {
-        let j1 = (j + 1) % n;
-        let (p0, p1, p2, p3) = if flip {
-            (prev_ring[j1], prev_ring[j], this_ring[j], this_ring[j1])
-        } else {
-            (prev_ring[j], prev_ring[j1], this_ring[j1], this_ring[j])
-        };
-        let n_face = compute_face_normal(&p0, &p1, &p2);
-        let v_base = (mesh.positions.len() / 3) as u32;
-        mesh.add_vertex(p0, n_face);
-        mesh.add_vertex(p1, n_face);
-        mesh.add_vertex(p2, n_face);
-        mesh.add_vertex(p3, n_face);
-        mesh.add_triangle(v_base, v_base + 1, v_base + 2);
-        mesh.add_triangle(v_base, v_base + 2, v_base + 3);
-    }
-}
-
-fn compute_face_normal(a: &Point3<f64>, b: &Point3<f64>, c: &Point3<f64>) -> Vector3<f64> {
-    let ab = b - a;
-    let ac = c - a;
-    let n = ab.cross(&ac);
-    let len = n.norm();
-    if len > 1e-12 {
-        n / len
-    } else {
-        Vector3::new(0.0, 0.0, 1.0)
     }
 }

@@ -46,7 +46,7 @@ const documentFor = (spec: ChartSpec): DocumentSpec => ({ ...blankDocument(), na
 
 function Probe({ document, observe }: { document: DocumentSpec; observe: (data: DocumentData) => void }) {
   const data = useDocumentData(document); observe(data);
-  return <DocumentPreview document={document} {...data} selectedBlockId={null} onSelectBlock={() => {}} />;
+  return <DocumentPreview document={document} {...data} onSelectBlock={() => {}} />;
 }
 
 /** Print through the real jsPDF path and read the text back with pdf.js; `snapshots` counts the 3D snapshots it asked for. */

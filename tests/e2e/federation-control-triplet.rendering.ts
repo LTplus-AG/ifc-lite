@@ -134,7 +134,16 @@ async function showOnlyModelAndFrame(page: Page, modelId: string): Promise<void>
  * SwiftShader may discard; they are not a color-raster witness.
  */
 export async function rendererColorFrame(page: Page): Promise<Buffer> {
-  const dataUrl = await page.evaluate(async () => globalThis.__ifc_lite_capture_color_frame__?.() ?? null);
+  // #7655: retry completed null captures while lazy visibility shaders compile.
+  // Await each in-flight GPU readback under the enclosing test's deadline:
+  // expect.poll's 5s callback deadline interrupted in-flight Revit captures.
+  const retryDeadline = Date.now() + 5_000;
+  const capture = () => page.evaluate(async () => globalThis.__ifc_lite_capture_color_frame__?.() ?? null);
+  let dataUrl = await capture();
+  while (dataUrl === null && Date.now() < retryDeadline) {
+    await page.waitForTimeout(100);
+    dataUrl = await capture();
+  }
   expect(dataUrl, 'renderer color capture is available after the viewport submits a frame').not.toBeNull();
   const encoded = dataUrl!.match(/^data:image\/png;base64,(.+)$/);
   expect(encoded, 'renderer color capture is a PNG data URL').not.toBeNull();

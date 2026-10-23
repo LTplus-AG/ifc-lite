@@ -29,6 +29,7 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
+use crate::mesh_frame::{restoring_rotation, rotate_and_translate};
 use crate::MeshData;
 
 /// One IFC entity's merged geometry, in IFC Z-up absolute-world metres.
@@ -101,7 +102,9 @@ pub struct ColoredGeometryDataExport {
 /// pipeline inverse-rotates positions + origin into site-local axes, so to emit
 /// true IFC world coordinates we reapply the forward 3x3 rotation:
 /// `world = R * (position + origin) + rtc_offset`. Pass `None` for the
-/// `model_rtc` / `raw_ifc` spaces (R = identity), which is the common case.
+/// `model_rtc` / `raw_ifc` spaces (R = identity), which is the common case;
+/// [`crate::MeshFrame::site_placement`] of `ProcessingResult::frame` is
+/// exactly this argument.
 pub fn build_geometry_data_export(
     meshes: &[MeshData],
     rtc_offset: [f64; 3],
@@ -160,10 +163,8 @@ fn build_elements<const COLORS: bool>(
     // in the opt-in sidecar, allocated once an element becomes nonuniform.
     let mut elements = ElementMap::new();
     let mut colors = ColorMap::new();
-    let rot = match site_rotation {
-        Some(m) if m.len() >= 16 => Some(m),
-        _ => None,
-    };
+    // Decided once per call, not per vertex (#7684).
+    let rotation = restoring_rotation(site_rotation);
 
     for m in meshes {
         // Occurrences only: skip type-product RepresentationMap geometry. Class 3
@@ -177,17 +178,13 @@ fn build_elements<const COLORS: bool>(
             .positions
             .chunks_exact(3)
             .map(|p| {
-                // World point in (possibly site-local) axes: position + origin.
-                let (x, y, z) = (p[0] as f64 + o[0], p[1] as f64 + o[1], p[2] as f64 + o[2]);
-                match rot {
-                    // Reapply the site forward rotation (column-major R), then RTC.
-                    Some(r) => [
-                        r[0] * x + r[4] * y + r[8] * z + rtc_offset[0],
-                        r[1] * x + r[5] * y + r[9] * z + rtc_offset[1],
-                        r[2] * x + r[6] * y + r[10] * z + rtc_offset[2],
-                    ],
-                    None => [x + rtc_offset[0], y + rtc_offset[1], z + rtc_offset[2]],
-                }
+                // Baked point (`origin + position`, widened first), then the
+                // one frame-to-world restore (#7684): site rotation, then RTC.
+                let baked = [p[0] as f64 + o[0], p[1] as f64 + o[1], p[2] as f64 + o[2]];
+                rotation.map_or_else(
+                    || [baked[0] + rtc_offset[0], baked[1] + rtc_offset[1], baked[2] + rtc_offset[2]],
+                    |r| rotate_and_translate(r, baked, rtc_offset),
+                )
             })
             .collect();
 
@@ -327,21 +324,59 @@ fn weld_positions<const COLORS: bool>(
     (out_verts, out_faces, kept)
 }
 
+/// `serde_json` writes NaN and the infinities as `null`, which a consumer
+/// cannot tell from an absent value (#7770, D11/D13). A document with one is
+/// refused as a whole, as the Python surface's `finite_json` does.
+fn ensure_finite_element(id: u32, e: &ExportedElement, extra: &[[f32; 4]]) -> Result<(), serde_json::Error> {
+    use serde::ser::Error;
+    for (i, v) in e.vertices.iter().enumerate() {
+        if v.iter().any(|c| !c.is_finite()) {
+            return Err(serde_json::Error::custom(format!("non-finite vertex {i} in element {id}")));
+        }
+    }
+    if e.color.iter().chain(extra.iter().flatten()).any(|c| !c.is_finite()) {
+        return Err(serde_json::Error::custom(format!("non-finite colour in element {id}")));
+    }
+    Ok(())
+}
+
+fn ensure_finite_offset(rtc_offset: &[f64; 3]) -> Result<(), serde_json::Error> {
+    use serde::ser::Error;
+    if rtc_offset.iter().any(|c| !c.is_finite()) {
+        return Err(serde_json::Error::custom("non-finite rtc_offset"));
+    }
+    Ok(())
+}
+
 impl GeometryDataExport {
-    /// Serialize to pretty JSON.
+    fn ensure_finite(&self) -> Result<(), serde_json::Error> {
+        ensure_finite_offset(&self.rtc_offset)?;
+        self.elements.iter().try_for_each(|(id, e)| ensure_finite_element(*id, e, &[]))
+    }
+
+    /// Serialize to pretty JSON. Refuses a non-finite coordinate rather than
+    /// writing `null` for it.
     pub fn to_json_pretty(&self) -> Result<String, serde_json::Error> {
+        self.ensure_finite()?;
         serde_json::to_string_pretty(self)
     }
 
-    /// Serialize to compact JSON.
+    /// Serialize to compact JSON. Refuses a non-finite coordinate rather than
+    /// writing `null` for it.
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        self.ensure_finite()?;
         serde_json::to_string(self)
     }
 }
 
 impl ColoredGeometryDataExport {
     /// Serialize color-aware elements as the version-1 JSON document with optional fields.
+    /// Refuses a non-finite coordinate or colour rather than writing `null`.
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        ensure_finite_offset(&self.rtc_offset)?;
+        for (id, e) in &self.elements {
+            ensure_finite_element(*id, &e.geometry, &e.palette)?;
+        }
         serde_json::to_string(self)
     }
 }

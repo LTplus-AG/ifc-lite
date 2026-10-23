@@ -32,7 +32,7 @@ use std::sync::Arc;
 /// A three-layer wall (50 mm finish / 200 mm core / 50 mm finish, materials
 /// #200/#201/#200) whose body representation holds `items`.
 ///
-/// One item slices; two items do not — `try_layered_sub_meshes` requires a
+/// One item slices; two items do not — the layer control requires a
 /// single unshifted item, because the layer planes are built from the element
 /// placement alone and would otherwise sit in a different frame than the mesh.
 /// Everything else about the two files is identical, so the two tests below

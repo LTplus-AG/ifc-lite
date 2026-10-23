@@ -4,6 +4,7 @@
 
 //! Pure B-spline / NURBS surface and curve math, plus B-spline attribute parsing.
 
+use crate::math::tol;
 use super::bspline_budget::MAX_BSPLINE_DEGREE;
 use crate::Point3;
 
@@ -27,6 +28,7 @@ fn bspline_basis_table(degree: usize, u: f64, knots: &[f64], count: usize) -> Ve
     let mut cur: Vec<f64> = (0..width)
         .map(|i| if knots[i] <= u && u < knots[i + 1] { 1.0 } else { 0.0 })
         .collect();
+    close_end_span(&mut cur, degree, u, knots);
 
     for k in 1..=degree {
         if cur.len() <= 1 {
@@ -38,13 +40,13 @@ fn bspline_basis_table(degree: usize, u: f64, knots: &[f64], count: usize) -> Ve
         for (i, slot) in next.iter_mut().enumerate() {
             let left = if i + k < knots.len() {
                 let denom = knots[i + k] - knots[i];
-                if denom.abs() < 1e-10 { 0.0 } else { (u - knots[i]) / denom * cur[i] }
+                if denom.abs() < tol::BASIS_EPS { 0.0 } else { (u - knots[i]) / denom * cur[i] }
             } else {
                 0.0
             };
             let right = if i + k + 1 < knots.len() && i + 1 < cur.len() {
                 let denom = knots[i + k + 1] - knots[i + 1];
-                if denom.abs() < 1e-10 {
+                if denom.abs() < tol::BASIS_EPS {
                     0.0
                 } else {
                     (knots[i + k + 1] - u) / denom * cur[i + 1]
@@ -58,6 +60,25 @@ fn bspline_basis_table(degree: usize, u: f64, knots: &[f64], count: usize) -> Ve
     }
     cur.resize(count, 0.0);
     cur
+}
+
+/// Close the last non-empty level-0 span at the domain end `t_max =
+/// knots[len - degree - 1]` (#7687, PROC-S2). Spans are half-open, and a
+/// clamped knot vector (end multiplicity degree+1, the normal case) has no
+/// span starting at `t_max`, so `u == t_max` set no span, every basis value
+/// was 0 and the curve evaluated to the ORIGIN. This is the standard special
+/// case (Piegl & Tiller, A2.1). It fires only when no half-open span already
+/// holds `u`, so an unclamped end, where one does, keeps its single span.
+fn close_end_span(level0: &mut [f64], degree: usize, u: f64, knots: &[f64]) {
+    let Some(&t_max) = knots.len().checked_sub(degree + 1).and_then(|i| knots.get(i)) else {
+        return;
+    };
+    if u != t_max || level0.contains(&1.0) {
+        return;
+    }
+    if let Some(i) = (0..level0.len()).rev().find(|&i| knots[i] < knots[i + 1] && knots[i + 1] == u) {
+        level0[i] = 1.0;
+    }
 }
 
 /// Evaluate a single B-spline basis function `N_{i,p}(u)`. Test-only:
@@ -98,7 +119,7 @@ fn evaluate_bspline_surface(
         for &(j, n_j) in v_basis {
             let Some(cp) = row.get(j) else { continue };
             let basis = n_i * n_j;
-            if basis.abs() > 1e-10 {
+            if basis.abs() > tol::BASIS_EPS {
                 let w = weights
                     .and_then(|ws| ws.get(i))
                     .and_then(|row_w| row_w.get(j))
@@ -112,7 +133,7 @@ fn evaluate_bspline_surface(
             }
         }
     }
-    if weights.is_some() && weight_sum.abs() > 1e-10 {
+    if weights.is_some() && weight_sum.abs() > tol::BASIS_EPS {
         result.x /= weight_sum;
         result.y /= weight_sum;
         result.z /= weight_sum;
@@ -173,7 +194,7 @@ pub(super) fn tessellate_bspline_surface(
     let v_bases: Vec<_> = (0..=v_segments)
         .map(|j| {
             let v = v_min + (v_max - v_min) * (j as f64 / v_segments as f64);
-            let v = v.min(v_max - 1e-6).max(v_min);
+            let v = v.min(v_max - tol::PARAM_END_MARGIN).max(v_min);
             let basis = surface_basis(v_degree, v, v_knots, n_v_max);
             let cached = if basis.len() <= remaining {
                 remaining -= basis.len();
@@ -186,7 +207,7 @@ pub(super) fn tessellate_bspline_surface(
         .collect();
     for i in 0..=u_segments {
         let u = u_min + (u_max - u_min) * (i as f64 / u_segments as f64);
-        let u = u.min(u_max - 1e-6).max(u_min);
+        let u = u.min(u_max - tol::PARAM_END_MARGIN).max(u_min);
         let u_basis = surface_basis(u_degree, u, u_knots, n_u);
         for (j, (v, cached)) in v_bases.iter().enumerate() {
             let scratch;
@@ -224,23 +245,38 @@ pub(super) fn tessellate_bspline_surface(
 }
 
 /// Evaluate a B-spline CURVE at parameter t (1D, not surface).
+///
+/// With `weights` (one per control point) the curve is rational (NURBS): the
+/// de Boor sum runs in homogeneous coordinates, `sum(N_i w_i P_i) / sum(N_i
+/// w_i)` (Piegl & Tiller eq. 4.9), as `evaluate_bspline_surface` does (#7750).
 pub(super) fn evaluate_bspline_curve(
     t: f64,
     degree: usize,
     control_points: &[Point3<f64>],
+    weights: Option<&[f64]>,
     knots: &[f64],
 ) -> Point3<f64> {
     let mut result = Point3::new(0.0, 0.0, 0.0);
+    let mut weight_sum = 0.0;
     // One table build for the whole curve point, not one per control point
     // (see `evaluate_bspline_surface` — same reasoning, #4901).
     let table = bspline_basis_table(degree, t, knots, control_points.len());
     for (i, cp) in control_points.iter().enumerate() {
         let basis = table.get(i).copied().unwrap_or(0.0);
-        if basis.abs() > 1e-10 {
-            result.x += basis * cp.x;
-            result.y += basis * cp.y;
-            result.z += basis * cp.z;
+        if basis.abs() > tol::BASIS_EPS {
+            let weighted = basis * weights.and_then(|ws| ws.get(i)).copied().unwrap_or(1.0);
+            result.x += weighted * cp.x;
+            result.y += weighted * cp.y;
+            result.z += weighted * cp.z;
+            weight_sum += weighted;
         }
+    }
+    // Weights are validated > 0, so any positive sum is a real denominator:
+    // a fixed floor collapsed a NURBS whose weights are all uniformly tiny.
+    if weights.is_some() && weight_sum > 0.0 {
+        result.x /= weight_sum;
+        result.y /= weight_sum;
+        result.z /= weight_sum;
     }
     result
 }

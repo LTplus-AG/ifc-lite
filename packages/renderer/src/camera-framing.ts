@@ -38,6 +38,11 @@ import type { CameraInternalState } from './camera-state.js';
 import { areFiniteNumbers, isUsableBounds, isUsableDistance } from './camera-guards.js';
 import { MathUtils, viewBasis } from './math.js';
 import { CAMERA_CONSTANTS } from './constants.js';
+import { centerOf, cornerOffsets, usableAspect } from './camera-fit-geometry.js';
+import type { FramingBounds, ViewAxes } from './camera-fit-geometry.js';
+
+export { centerOf };
+export type { FramingBounds, ViewAxes };
 
 /** A pose to animate to. `orthoSize` is undefined when the fit should not touch zoom. */
 export interface FramingTarget {
@@ -51,37 +56,9 @@ export interface ZoomExtentTarget extends FramingTarget {
   fitDistance: number;
 }
 
-/** An axis-aligned box. */
-export interface FramingBounds {
-  min: Vec3;
-  max: Vec3;
-}
-
-/** Centre of a box. */
-export function centerOf(min: Vec3, max: Vec3): Vec3 {
-  return {
-    x: (min.x + max.x) / 2,
-    y: (min.y + max.y) / 2,
-    z: (min.z + max.z) / 2,
-  };
-}
-
 /** Largest edge length of a box. Local: only the two fits below measure it. */
 function maxExtentOf(min: Vec3, max: Vec3): number {
   return Math.max(max.x - min.x, max.y - min.y, max.z - min.z);
-}
-
-/**
- * The viewport's width-to-height ratio, or 1 when it carries no usable one.
- *
- * `setAspect` is the only writer and already rejects a non-positive or
- * non-finite ratio, so the substitute is only for a hand-built state — but
- * both fits below key on it, and an `Infinity` would silently drop the
- * horizontal constraint from one while the other substituted.
- */
-function usableAspect(state: CameraInternalState): number {
-  const aspect = state.camera.aspect;
-  return Number.isFinite(aspect) && aspect > 0 ? aspect : 1;
 }
 
 /** Smallest half-height in model units that shows every corner of the box. */
@@ -115,41 +92,6 @@ function orthoSizeFor(
 ): number | undefined {
   if (state.projectionMode !== 'orthographic') return undefined;
   return Math.max(0.01, orthoHalfHeightFor(bounds, axes, usableAspect(state))) * padding;
-}
-
-/**
- * The screen axes a fit projects into: unit length and mutually perpendicular.
- *
- * A structural subset of what {@link viewBasis} returns, and the direction
- * convention is its one: `forward` points from the eye TOWARDS the target,
- * which is the negation of `lookAt`'s third row. Handing in the backward axis
- * type-checks and would frame the box from the wrong side.
- */
-export interface ViewAxes {
-  right: Vec3;
-  up: Vec3;
-  forward: Vec3;
-}
-
-/**
- * The eight corners of a box, as offsets from its own centre.
- *
- * Both fits below need exactly this, and the offset form is what makes the
- * corner arithmetic independent of where the box sits in the world. (The
- * package has other corner walks — `shadow-light-matrix.ts`,
- * `render-section-plane.ts` — but they take tuples and return world points.)
- */
-function cornerOffsets(bounds: FramingBounds): Vec3[] {
-  const center = centerOf(bounds.min, bounds.max);
-  const offsets: Vec3[] = [];
-  for (const x of [bounds.min.x, bounds.max.x]) {
-    for (const y of [bounds.min.y, bounds.max.y]) {
-      for (const z of [bounds.min.z, bounds.max.z]) {
-        offsets.push({ x: x - center.x, y: y - center.y, z: z - center.z });
-      }
-    }
-  }
-  return offsets;
 }
 
 /**
@@ -218,6 +160,46 @@ export function fitDistanceFor(
 }
 
 /**
+ * Standoff along `-axes.forward` at which the box's projected corners reach
+ * exactly `1 / margin` of the half-frame on the limiting axis (#7617). `margin`
+ * is the same multiple `padding` is: 1 puts the worst corner on the frame edge,
+ * 1.5 leaves a 25 % margin each side (the box fills 1 / 1.5 of the frame).
+ *
+ * "Margin" is defined on the PROJECTION: of the 8 corners' normalised screen
+ * coordinates, `max(|x|, |y|)` over all of them equals `1 / margin`. Scaling
+ * {@link fitDistanceFor}'s distance by `margin` is only that in orthographic
+ * projection. In perspective a corner's screen offset is `|h| / (tan * (d +
+ * depth))`, so scaling `d` also scales the depth term and the near corners
+ * (larger offsets) fall short of the margin: 64.7 % filled against an ideal
+ * 66.7 % at a 20 degree field and a 1.5 multiple, 57.1 % at 90 degrees.
+ *
+ * It is a closed form, not a search: each corner's constraint
+ * `|h| / (tan * (d + depth)) <= 1 / margin` solves to
+ * `d >= margin * |h| / tan - depth`, it relaxes monotonically as `d` grows, and
+ * the largest of the sixteen satisfies all of them (the same argument as
+ * {@link fitDistanceFor}, with the margin applied to the offset rather than to
+ * the whole distance). At `margin = 1` the two agree exactly.
+ */
+export function marginDistanceFor(
+  state: CameraInternalState,
+  bounds: FramingBounds,
+  axes: ViewAxes,
+  margin: number,
+): number {
+  const tanV = Math.tan(state.camera.fov / 2);
+  const tanH = usableAspect(state) * tanV;
+
+  let distance = 0;
+  for (const corner of cornerOffsets(bounds)) {
+    const depth = MathUtils.dot(corner, axes.forward);
+    const h = Math.abs(MathUtils.dot(corner, axes.right)) / tanH;
+    const v = Math.abs(MathUtils.dot(corner, axes.up)) / tanV;
+    distance = Math.max(distance, margin * h - depth, margin * v - depth);
+  }
+  return distance;
+}
+
+/**
  * The pose both fits return: the box centred, seen from the direction the
  * camera is already looking in, at the standoff that keeps every corner of it
  * on screen.
@@ -248,9 +230,13 @@ function fitPoseFor(
   bounds: FramingBounds,
   center: Vec3,
   padding: number,
+  exactMargin = false,
 ): ZoomExtentTarget {
   const basis = viewBasis(state.camera.position, state.camera.target, state.camera.up);
-  const distance = fitDistanceFor(state, bounds, basis, padding);
+  // Orthographic keeps the scaled standoff: there the distance sets no scale (`orthoSize` does), and the margin is already exact.
+  const distance = exactMargin && state.projectionMode === 'perspective'
+    ? marginDistanceFor(state, bounds, basis, padding)
+    : fitDistanceFor(state, bounds, basis, padding);
 
   return {
     // The camera sits opposite the direction it looks in.
@@ -300,7 +286,7 @@ export function framePointTarget(state: CameraInternalState, point: Vec3): Frami
  * Frame selection - zoom to fit bounds while keeping current view direction.
  * This is what "Frame Selection" should do - zoom to fill screen.
  */
-export function frameBoundsTarget(state: CameraInternalState, min: Vec3, max: Vec3): FramingTarget | null {
+export function frameBoundsTarget(state: CameraInternalState, min: Vec3, max: Vec3, padding?: number): FramingTarget | null {
   // Bounds are the upstream input #2450 stopped short of (#2461). They are
   // not caller-authored constants: they come from geometry, and every AABB
   // accumulator in this package starts from `min = +Infinity, max =
@@ -319,7 +305,12 @@ export function frameBoundsTarget(state: CameraInternalState, min: Vec3, max: Ve
     return framePointTarget(state, center);
   }
 
-  return fitPoseFor(state, { min, max }, center, CAMERA_CONSTANTS.FRAME_PADDING_MULTIPLIER);
+  // `padding` is the multiple of the box the view fits (1 = edge to edge, 1.2 = the default 10 % each side); anything else is the default.
+  // A stated one is a margin the caller asked for, so in perspective the box's projected corners leave exactly that
+  // (`marginDistanceFor`, #7617). The default stays the scaled standoff every fit-to-selection caller has always had.
+  const stated = padding !== undefined && Number.isFinite(padding) && padding >= 1;
+  const fit = stated ? padding : CAMERA_CONSTANTS.FRAME_PADDING_MULTIPLIER;
+  return fitPoseFor(state, { min, max }, center, fit, stated);
 }
 
 /**

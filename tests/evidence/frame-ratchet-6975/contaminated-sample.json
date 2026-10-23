@@ -1,0 +1,50 @@
+{
+  "issue": 6975,
+  "run": "38635035863",
+  "rawSha256": "dc6b1ac0e5ac3dea11c053505e319e33012e7f290babc399feccde17c199838c",
+  "note": "The Snowdon sample of a hosted browser-frames run whose Dawn instance was lost (device lost and replaced; scene re-uploaded). Verbatim from the artifact.",
+  "sample": {
+    "fixture": "Snowdon",
+    "completed": true,
+    "readiness": {
+      "ended": true,
+      "done": [
+        "parser.complete",
+        "geometry.streamComplete",
+        "scene.finalize"
+      ],
+      "failed": [],
+      "loadPath": "wasm"
+    },
+    "readinessError": null,
+    "pageErrors": [],
+    "gpuHealth": {
+      "contaminated": true,
+      "reasons": [
+        "GPU device lost ≥3x",
+        "renderer replaced its GPU device 3x: scene re-uploaded"
+      ],
+      "deviceLost": 3,
+      "instanceErrors": 4,
+      "devicesCreated": 4,
+      "deviceReplacements": 3,
+      "uncapturedErrors": 0,
+      "source": "counters+console",
+      "events": [
+        "A valid external Instance reference no longer exists.",
+        "[WebGPU] Device lost: A valid external Instance reference no longer exists. (reason: unknown)",
+        "[Renderer] GPU device lost — halting rendering until re-init: A valid external Instance reference no longer exists.",
+        "[Viewport] GPU device lost: unknown A valid external Instance reference no longer exists.",
+        "[Pipeline] quantized pipeline validation failed; staying on f32 vertices: GPUPipelineError: A valid external Instance reference no longer exists.",
+        "A valid external Instance reference no longer exists.",
+        "[WebGPU] Device lost: A valid external Instance reference no longer exists. (reason: unknown)",
+        "[Renderer] GPU device lost — halting rendering until re-init: A valid external Instance reference no longer exists.",
+        "[Viewport] GPU device lost: unknown A valid external Instance reference no longer exists.",
+        "A valid external Instance reference no longer exists.",
+        "[WebGPU] Device lost: A valid external Instance reference no longer exists. (reason: unknown)",
+        "[Renderer] GPU device lost — halting rendering until re-init: A valid external Instance reference no longer exists.",
+        "[Viewport] GPU device lost: unknown A valid external Instance reference no longer exists."
+      ]
+    }
+  }
+}

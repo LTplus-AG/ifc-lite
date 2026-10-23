@@ -1,0 +1,26 @@
+{
+  "license": "MPL-2.0",
+  "status": "LOCAL_REVIEWABLE_DOCUMENTATION_NOT_NEW_STORAGE_PUBLICATION",
+  "files": {
+    "bindings.json": {
+      "sha256": "2ae7372294838a869869f502dbf4cdfa1065c0fec3abb0f001f0380d9533f4f5",
+      "bytes": 10188
+    },
+    "observations.json": {
+      "sha256": "cb3a2bbf6291a89a00804696a121e385ce334d586a2ae2cbc647f1804b9f89d3",
+      "bytes": 50280
+    },
+    "original-hashes.json": {
+      "sha256": "63ec2c5e1def47303f678b8684152efb6ed601b7652a8550495ba6e7d0ae9bee",
+      "bytes": 13404
+    },
+    "receipt.json": {
+      "sha256": "f27a5a3db23a63bf61dede99a122560631912daa299f45e6868a3aa04408a612",
+      "bytes": 18450
+    },
+    "source-identity.json": {
+      "sha256": "a381f8b2c0ff98955a810d47e9ef432d1f860d34d7bbd15b40f70fe6f3f8b1c0",
+      "bytes": 812
+    }
+  }
+}

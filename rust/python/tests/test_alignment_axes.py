@@ -36,8 +36,20 @@ def test_6600_bounds_and_invalid_parameters():
     for value in [0, -1, float("nan"), float("inf")]:
         with pytest.raises(ValueError):
             ifclite_geom.alignment_axes(MODEL, spacing_m=value)
-    with pytest.raises(ValueError):
-        ifclite_geom.alignment_axes(b"\xff")
+
+
+def test_7694_latin1_bytes_are_accepted_like_geometry_data():
+    """EDGE-FFI-12: STEP is ISO-8859-1; a raw Latin-1 byte in a string is legal
+    input and must sample exactly like the ASCII twin (no 'must be UTF-8')."""
+    latin1 = MODEL.replace(b"'Road'", b"'Stra\xdfe'")
+    with pytest.raises(UnicodeDecodeError):
+        latin1.decode("utf-8")
+    expected = ifclite_geom.alignment_axes(MODEL, spacing_m=3)["axes"][20]["samples"]
+    report = ifclite_geom.alignment_axes(latin1, spacing_m=3)
+    assert not report["diagnostics"]
+    assert report["axes"][20]["samples"] == expected
+    # Bytes that are not STEP at all yield an empty report, as ASCII garbage does.
+    assert ifclite_geom.alignment_axes(b"\xff")["axes"] == {}
 
 
 def test_6600_real_infrastructure_multiple_axes():

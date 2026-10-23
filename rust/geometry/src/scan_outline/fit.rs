@@ -7,7 +7,8 @@
 //! point of two consecutive lines.
 
 use super::grid::PointIndex;
-use crate::geom2d::line_intersection;
+use crate::math::geom2d::line_intersection;
+use crate::math::v2::dist;
 
 /// A refit may turn an edge by at most this much; beyond it the points
 /// describe something other than this edge (a corner, clutter).
@@ -205,7 +206,3 @@ fn line_distance(p: [f64; 2], l: Line) -> f64 {
     ((p[0] - l.point[0]) * l.dir[1] - (p[1] - l.point[1]) * l.dir[0]).abs()
 }
 
-#[inline]
-fn dist(a: [f64; 2], b: [f64; 2]) -> f64 {
-    (a[0] - b[0]).hypot(a[1] - b[1])
-}

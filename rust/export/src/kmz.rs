@@ -91,16 +91,35 @@ pub fn ifc_angle_to_kml_heading(x_abscissa: Option<f64>, x_ordinate: Option<f64>
     }
 }
 
-fn xml_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&apos;")
+/// Refuse a placement KML cannot carry (#7679, EXPORT-GEOM-16): a non-finite
+/// number would print as `NaN`/`inf`, which is no `xs:double`, and a latitude
+/// or longitude outside WGS84 is not a place. Checked before any geometry is
+/// built, so a bad placement costs nothing.
+fn validate_placement(opts: &KmzOptions) -> Result<(), crate::error::ExportError> {
+    let bad = |what: &str, value: f64| crate::error::ExportError::MalformedMeshInput {
+        detail: format!("KMZ placement {what} is {value}"),
+    };
+    for (what, value) in [("altitude", opts.altitude), ("longitude", opts.longitude), ("latitude", opts.latitude)] {
+        if !value.is_finite() {
+            return Err(bad(what, value));
+        }
+    }
+    for (what, value) in [("x_axis_abscissa", opts.x_axis_abscissa), ("x_axis_ordinate", opts.x_axis_ordinate)] {
+        if let Some(v) = value.filter(|v| !v.is_finite()) {
+            return Err(bad(what, v));
+        }
+    }
+    if opts.latitude.abs() > 90.0 {
+        return Err(bad("latitude (outside -90..=90)", opts.latitude));
+    }
+    if opts.longitude.abs() > 180.0 {
+        return Err(bad("longitude (outside -180..=180)", opts.longitude));
+    }
+    Ok(())
 }
 
 fn build_kml(opts: &KmzOptions, heading: f64, model_href: &str) -> String {
-    let name = xml_escape(opts.name.as_deref().unwrap_or("IFC Model"));
+    let name = crate::xml_text::escape(opts.name.as_deref().unwrap_or("IFC Model"));
     format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
@@ -163,6 +182,7 @@ pub fn try_export_kmz_collada_from_meshes(
     origins: &[f64],
     opts: &KmzOptions,
 ) -> Result<Vec<u8>, crate::error::ExportError> {
+    validate_placement(opts)?;
     let dae = crate::try_export_collada_from_meshes(
         positions,
         normals,
@@ -254,6 +274,7 @@ fn try_pack_kmz(
     href: &str,
     opts: &KmzOptions,
 ) -> Result<Vec<u8>, crate::error::ExportError> {
+    validate_placement(opts)?;
     let heading = ifc_angle_to_kml_heading(opts.x_axis_abscissa, opts.x_axis_ordinate);
     let kml = build_kml(opts, heading, href);
     validate_zip32_layout(&[

@@ -492,6 +492,7 @@ export function Viewport({
   const measurementConstraintEdgeRef = useLatestRef(measurementConstraintEdge);
   const sectionPlaneRef = useLatestRef(sectionPlane);
   const sectionRangeRef = useLatestRef(sectionRange);
+  const sectionBoundsRef = useLatestRef((sectionCoordinateInfo ?? coordinateInfo)?.shiftedBounds ?? null);
   const sectionPickModeRef = useLatestRef(sectionPickMode);
   const visualEnhancementRef = useLatestRef(visualEnhancement);
   // Renderer model bounds, kept fresh per-render. The face-pick handler
@@ -852,6 +853,16 @@ export function Viewport({
           renderCurrent();
           calculateScale();
         },
+        setPresetDirection: (direction) => {
+          // Diagonals are never north-up: the Cesium top remap only concerns the pole views.
+          camera.setPresetDirection(
+            direction,
+            geometryBoundsRef.current,
+            coordinateInfoRef.current?.buildingRotation,
+          );
+          renderCurrent();
+          calculateScale();
+        },
         fitAll: () => { // Zoom to fit without changing view direction, framing what is VISIBLE (#5884)
           const target = fitAllBounds({ meshes: geometryRef.current ?? [], wholeScene: geometryBoundsRef.current,
             typeOf: (id) => typeNameOfGlobalId(useViewerStore.getState(), id, ifcDataStoreRef.current),
@@ -942,6 +953,8 @@ export function Viewport({
           if (!bounds) return false;
           return frameSelectionBounds(camera, renderer, bounds.min, bounds.max, durationMs, calculateScale);
         },
+        // A caller's NaN duration must not reach the camera animation, which would never finish.
+        frameBounds: (min, max, options) => frameSelectionBounds(camera, renderer, min, max, Number.isFinite(options?.durationMs) ? options!.durationMs! : 300, calculateScale, options?.padding),
         // Resolve ids to what the renderer can actually highlight (the SAME
         // aggregation resolution frameSelection uses to decide what to frame),
         // for selection entry points that assign `selectedEntityId`/
@@ -1374,6 +1387,7 @@ export function Viewport({
     canvasRef,
     rendererRef,
     isInitialized,
+    sectionBoundsRef,
     animationFrameRef,
     lastFrameTimeRef,
     mouseIsDraggingRef,
@@ -1463,6 +1477,7 @@ export function Viewport({
     selectedEntityIdsRef,
     sectionPlaneRef,
     sectionRangeRef,
+    sectionBoundsRef,
     activeToolRef,
     drawing2D,
     show3DOverlay,

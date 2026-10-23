@@ -1,0 +1,2 @@
+# Seeds are exact bytes: a CR or a stray byte in a seed is the point of the seed.
+* -text

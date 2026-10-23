@@ -22,12 +22,9 @@
 //! regressed somewhere — most likely the coplanar consolidation or the
 //! collinear simplification in `ClippingProcessor::consolidate_coplanar`.
 
-mod support;
-
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
 use rustc_hash::FxHashMap;
-use std::path::PathBuf;
 
 /// Load a fixture, distinguishing a genuinely absent file from a broken
 /// read. `NotFound` is the fresh-clone case (`pnpm fixtures` not run yet):
@@ -37,22 +34,12 @@ use std::path::PathBuf;
 /// environment is broken rather than merely missing an optional download,
 /// so it panics unconditionally regardless of the flag.
 fn fixture(rel: &str) -> Option<String> {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join(rel);
-    match std::fs::read_to_string(&p) {
-        Ok(content) => Some(content),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            assert!(
-                !support::require_fixtures(),
-                "fixture {} not present and IFC_LITE_REQUIRE_FIXTURES=1 -- run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)",
-                p.display()
-            );
-            None
-        }
-        Err(e) => panic!("fixture {} exists but could not be read: {e}", p.display()),
+    // The one committed (non-catalogued) input lives under the repo root.
+    if let Some(committed) = rel.strip_prefix("rust/") {
+        let path = ifc_lite_testkit::repo_root().join("rust").join(committed);
+        return Some(std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display())));
     }
+    ifc_lite_testkit::fixture_text(rel)
 }
 
 fn void_index(content: &str) -> FxHashMap<u32, Vec<u32>> {
@@ -194,7 +181,7 @@ fn find_first_entity_id(content: &str, type_upper: &str) -> Option<u32> {
 /// consolidation should deliver both watertight AND sliver-free.
 #[test]
 fn fzk_haus_gable_wall_60012_is_watertight() {
-    let Some(content) = fixture("tests/models/ara3d/AC20-FZK-Haus.ifc") else {
+    let Some(content) = fixture("ara3d/AC20-FZK-Haus.ifc") else {
         return;
     };
     let mesh = process(&content, 60012, true).expect("process wall #60012");
@@ -209,7 +196,7 @@ fn fzk_haus_gable_wall_60012_is_watertight() {
 
 #[test]
 fn fzk_haus_gable_wall_67828_is_watertight() {
-    let Some(content) = fixture("tests/models/ara3d/AC20-FZK-Haus.ifc") else {
+    let Some(content) = fixture("ara3d/AC20-FZK-Haus.ifc") else {
         return;
     };
     let mesh = process(&content, 67828, true).expect("process wall #67828");
@@ -224,19 +211,14 @@ fn fzk_haus_gable_wall_67828_is_watertight() {
 
 // ────────────────────── known-bad: opening-cut path ───────────────────
 //
-// The next three elements all currently emit sliver triangles that the
-// CSG output-quality guard would flag, but the slivers come from BEFORE
-// the CSG kernel — either the input profile tessellation
-// (multi-extrusion windows) or the rectangular-box cut helper
-// (`cut_multiple_rectangular_openings` in `router/voids.rs`), which has
-// its own clipping that bypasses `ClippingProcessor::consolidate_coplanar`.
-//
+// The duplex window below still emits sliver triangles that the CSG
+// output-quality guard flags, but the slivers come from BEFORE the CSG
+// kernel: the input profile tessellation of overlapping narrow extrusions.
 // Identical spike counts appeared under both deleted legacy kernels (BSP and
-// Manifold), confirming the kernel is not at fault. Left `#[ignore]`d with the
-// current spike-count baseline so the suite documents the issue and
-// becomes a tightening gate when the upstream paths are cleaned up
-// (mirrors the same convention as the `#[ignore]`d cases in
-// `wall_opening_cut_regression.rs`).
+// Manifold), confirming the kernel is not at fault. It stays `#[ignore]`d so
+// the suite documents the issue and becomes a tightening gate when the
+// upstream path is cleaned up. The two advanced_model walls that used to sit
+// here no longer produce spikes and run as ordinary tests.
 
 /// duplex window #6426 — multi-extrusion (frame + sash + glass + lining)
 /// produces 72 spike triangles (worst ratio ~392:1) on both kernels.
@@ -245,7 +227,7 @@ fn fzk_haus_gable_wall_67828_is_watertight() {
 #[test]
 #[ignore = "pre-existing: 72 spike tris from multi-extrusion profile tessellation, not the CSG kernel"]
 fn duplex_window_6426_no_spike_triangles() {
-    let Some(content) = fixture("tests/models/ara3d/duplex.ifc") else {
+    let Some(content) = fixture("ara3d/duplex.ifc") else {
         return;
     };
     let mesh = process(&content, 6426, false).expect("process window #6426");
@@ -255,9 +237,8 @@ fn duplex_window_6426_no_spike_triangles() {
 /// advanced_model wall #553010 — 8 spike tris (worst ~198:1), produced
 /// in the rectangular-opening clip path.
 #[test]
-#[ignore = "pre-existing: 8 spike tris from `cut_multiple_rectangular_openings`, not the CSG kernel"]
 fn advanced_model_wall_553010_no_spike_triangles() {
-    let Some(content) = fixture("tests/models/ara3d/advanced_model.ifc") else {
+    let Some(content) = fixture("ara3d/advanced_model.ifc") else {
         return;
     };
     let mesh = process(&content, 553010, true).expect("process wall #553010");
@@ -269,9 +250,8 @@ fn advanced_model_wall_553010_no_spike_triangles() {
 /// the MW 11.5 wall. Worth fixing as a separate follow-up, but unrelated
 /// to the CSG kernel and to this audit.
 #[test]
-#[ignore = "pre-existing: 23 spike tris (worst 3077:1) in the opening-cut helper, not the CSG kernel"]
 fn advanced_model_wall_612315_no_spike_triangles() {
-    let Some(content) = fixture("tests/models/ara3d/advanced_model.ifc") else {
+    let Some(content) = fixture("ara3d/advanced_model.ifc") else {
         return;
     };
     let mesh = process(&content, 612315, true).expect("process wall #612315");

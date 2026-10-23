@@ -8,6 +8,9 @@
  */
 
 import { createLogger } from '@ifc-lite/data';
+export { parseModel, IfcInputError, validateStepInput } from './parse-model.js';
+export type { ParseModelOptions, ParsedModel, IfcInputErrorCode } from './parse-model.js';
+export type { EntityScanReport, ScanDiagnostic, ScanCompleteness } from './scan-report.js';
 import { unwrapIfcZip } from './ifczip.js';
 // `unwrapIfcZip` unwraps an ArrayBuffer (no-op for non-zip); `unwrapIfcZipView`
 // is the same for Node Buffer/Uint8Array callers (CLI/MCP loaders). The
@@ -58,6 +61,8 @@ export { IFC_SUBTYPES, expandTypes, QUERY_REL_TYPE_MAP } from './query-backend-m
 export { PropertyExtractor } from './property-extractor.js';
 export { QuantityExtractor } from './quantity-extractor.js';
 export { RelationshipExtractor } from './relationship-extractor.js';
+export { propertyDefinitionRefsOfValue } from './property-definition-refs.js';
+export { propertyDefinitionsInModel } from './property-definition-members.js';
 export { SpatialHierarchyBuilder } from './spatial-hierarchy-builder.js';
 export {
   SI_PREFIX_MULTIPLIERS, extractLengthUnitScale,
@@ -80,6 +85,8 @@ export type { MaterialPropertiesView } from './on-demand-extractors.js';
 export type { IfcStoreBase, IfcSourceHeader, SpatialHierarchy, EntityTable } from '@ifc-lite/data';
 export { parseSourceHeader } from './source-header.js';
 export type { ExtractedProperty } from './property-value-parser.js';
+export { COMPLEX_PROPERTY_BUDGET_MARKER } from './property-complex-value.js';
+export { complexPropertyCuts } from './complex-property-store.js';
 export { attachDataStoreAccessors, type IfcStoreData } from './data-store-accessors.js';
 export { buildDropCensus, type DropCensus, type DropCensusInput, type ClassCensusEntry, type DropCategory } from './drop-census.js';
 export { createSyntheticDataStore, type SyntheticDataStoreOptions, type SyntheticEntity } from './synthetic-data-store.js';
@@ -227,6 +234,7 @@ import { scanIfcEntities, scanColumnarEntities, type PreScannedEntityIndex, type
 export interface ParseOptions {
   onProgress?: (progress: { phase: string; percent: number }) => void;
   onDiagnostic?: (message: string) => void;
+  onScanReport?: (report: import('./scan-report.js').EntityScanReport) => void;
   wasmApi?: WasmScanApi; // Optional IfcAPI instance for WASM-accelerated entity scanning
   /** Yield budget for large incremental parses. Higher values finish faster with longer main-thread slices. */
   yieldIntervalMs?: number;

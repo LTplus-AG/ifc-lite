@@ -1,0 +1,25 @@
+{
+  "finding": "https://github.com/LTplus-AG/ifc-lite/pull/7641#discussion_r4286707089",
+  "fixture": "apps/viewer/public/samples/hello-wall.ifc",
+  "perturbation": "Insert #4294967296=IFCWALL before the final ENDSEC; preserve the complete STEP envelope and existing real wall geometry",
+  "invariant": "Incomplete record coverage must refuse whole-model GLB output before geometry runtime initialization",
+  "publicCommand": "pnpm test --filter=ifc-lite-headless-workflows",
+  "before": {
+    "passed": 5,
+    "failed": 1,
+    "failure": "Expected a nonzero exit; actual process exit was 0 after the scanner announced one skipped oversized EXPRESS id"
+  },
+  "after": {
+    "passed": 6,
+    "failed": 0,
+    "skipped": 0,
+    "incompleteInput": "Nonzero exit, incomplete-coverage diagnostic, empty stdout and no GLB file",
+    "validInput": "Real FZK GLB envelope and complete scan report"
+  },
+  "runtime": "Node 24.21.0",
+  "wasm": {
+    "ciBuildRun": 38755425807,
+    "ciBuildHead": "3c9493f609bd2285b120d00210c7c4b3586bd6ac",
+    "sha256": "af5ff32d368a6ddaf3423d3813e6f5f601190d073e099b198279e4fa3f7fa524"
+  }
+}

@@ -9,7 +9,11 @@
 //! whose glazing came only from the #407 material chain was suppressed
 //! (#4663).
 
-use ifc_lite_processing::{process_geometry_filtered, MeshData, OpeningFilterMode};
+use ifc_lite_processing::{process, MeshData, OpeningFilterMode, ProcessingRequest, ProcessingResult};
+
+fn process_filtered(ifc: &str, mode: OpeningFilterMode) -> ProcessingResult {
+    process(ifc.as_bytes(), &ProcessingRequest::full_pass().opening_filter(mode), &mut ())
+}
 
 /// #10: an `IfcWindow` whose only body item carries an opaque surface style.
 /// #20: an `IfcDoor` with a frame and a pane item and no item style, associated
@@ -155,7 +159,7 @@ END-ISO-10303-21;
 "#;
 
 fn meshes(mode: OpeningFilterMode) -> Vec<MeshData> {
-    process_geometry_filtered(OPENINGS_IFC, mode).meshes
+    process_filtered(OPENINGS_IFC, mode).meshes
 }
 
 fn has_mesh(meshes: &[MeshData], id: u32) -> bool {
@@ -254,7 +258,7 @@ fn ignore_opaque_judges_the_colour_the_opening_renders_with() {
 #[test]
 fn ignore_opaque_skips_items_of_representations_the_router_does_not_mesh() {
     let body_only = |ifc: &str| {
-        process_geometry_filtered(ifc, OpeningFilterMode::Default)
+        process_filtered(ifc, OpeningFilterMode::Default)
             .meshes
             .into_iter()
             .filter(|m| m.express_id == 110)
@@ -291,7 +295,7 @@ fn ignore_opaque_skips_items_of_representations_the_router_does_not_mesh() {
             vec![Some(114), Some(116)],
             "fixture premise ({what}): door #110 meshes only its two styled body items"
         );
-        let filtered = process_geometry_filtered(&ifc, OpeningFilterMode::IgnoreOpaque).meshes;
+        let filtered = process_filtered(&ifc, OpeningFilterMode::IgnoreOpaque).meshes;
         if has_mesh(&filtered, 110) {
             kept.push(what);
         }
@@ -373,7 +377,7 @@ END-ISO",
 }
 
 fn wall_triangles(ifc: &str, mode: OpeningFilterMode) -> usize {
-    process_geometry_filtered(ifc, mode)
+    process_filtered(ifc, mode)
         .meshes
         .iter()
         .filter(|m| m.express_id == 10)

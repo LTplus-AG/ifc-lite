@@ -13,7 +13,7 @@
  *
  * `@ifc-lite/mcp`'s parallel `HeadlessLikeBackend` already folds queued
  * relationships into `related()` for exactly this reason
- * (`packages/mcp/src/overlay.ts`, #2014) — this backend did not, so the same
+ * (`@ifc-lite/sdk/headless`, #2014) — this backend did not, so the same
  * script produced different `related()` results depending on whether it ran
  * under the CLI or under MCP.
  *

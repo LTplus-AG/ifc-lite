@@ -26,7 +26,7 @@ function tokenizeUnitLabel(label: string): string[] {
 }
 
 /** 1200/3937 m — the US survey foot, distinct from the international 0.3048. */
-const US_SURVEY_FOOT_SCALE = 0.3048006096;
+const US_SURVEY_FOOT_SCALE = 1200 / 3937;
 
 /**
  * Exact-match table for an `ePSet_ProjectedCRS.MapUnit` free-text label,

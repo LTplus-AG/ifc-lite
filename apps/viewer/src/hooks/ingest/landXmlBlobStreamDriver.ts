@@ -10,9 +10,10 @@ import {
   type LandXmlStreamedSkippedComponent, type LandXmlStreamedSurfaceDiagnostics, type LandXmlTinDocument,
 } from './landXmlIngest.js';
 import { streamLandXmlSourceBlobWithApi, type LandXmlCursorApi } from './landXmlBlobCursor.js';
-import { placeComponentsInKnownRenderFrame } from './landXmlRenderFrame.js';
+import { placeComponentsInKnownRenderFrame, type LandXmlDeclaredCrs } from './landXmlRenderFrame.js';
 import { LandXmlStreamPreflightReducer, type LandXmlPreflightComponent } from './landXmlStreamPreflight.js';
-import { spatialMetadataFromLandXml, spatialReferenceFromSourceMetadata } from './sourceSpatialReference.js';
+import { landXmlSourceSpatialReference } from './sourceSpatialReference.js';
+import type { LandXmlGeorefAssumptions } from './landXmlGeorefAssumptions.js';
 import { readLandXmlTinSurface } from './landXmlWasm.js';
 
 export interface LandXmlBlobStreamSink {
@@ -21,6 +22,7 @@ export interface LandXmlBlobStreamSink {
     preflight: LandXmlGeometryPreflight,
     sourceCoordinateInfo: CoordinateInfo,
     spatialReference?: ModelSpatialReference,
+    declaredCrs?: LandXmlDeclaredCrs,
   ): boolean | Promise<boolean>;
   onPreflightComponent?(component: LandXmlPreflightComponent): void | Promise<void>;
   onPreflightComplete?(): void | Promise<void>;
@@ -49,6 +51,11 @@ export interface LandXmlBlobStreamOptions {
    * only after the viewer surfaced that refusal to the user.
    */
   assumedLinearUnit?: string;
+  /**
+   * The user's georeferencing assumptions for a federated load. Absent: the
+   * spatial reference is built exactly as before (both CRSs declared).
+   */
+  landXmlAssumptions?: Partial<LandXmlGeorefAssumptions>;
 }
 
 function streamUnits(header: unknown): NonNullable<LandXmlTinDocument['units']> | null {
@@ -93,15 +100,6 @@ function surfaceComponent(component: ReturnType<typeof buildLandXmlSurfaceCompon
   };
 }
 
-function sourceSpatialReference(
-  coordinateSystem: LandXmlTinDocument['coordinateSystem'],
-): ModelSpatialReference | undefined {
-  const metadata = spatialMetadataFromLandXml({ coordinateSystem });
-  return metadata.horizontalId && metadata.verticalId
-    ? spatialReferenceFromSourceMetadata(metadata)
-    : undefined;
-}
-
 /**
  * Run the exact credited source cursor passes. Every sink call is awaited, so
  * local parsing and worker messages preserve the same cancellation and phase
@@ -125,10 +123,12 @@ export async function streamLandXmlBlobWithSink(
   });
   const reduced = reducer.finish();
   const preflight = reduced.preflight;
+  const { spatialReference, declaredCrs } = landXmlSourceSpatialReference(reduced.coordinateSystem, options.landXmlAssumptions);
   const requestedFederatedStreaming = await sink.onPreflight(
     preflight,
     reduced.sourceCoordinateInfo,
-    sourceSpatialReference(reduced.coordinateSystem),
+    spatialReference,
+    declaredCrs,
   );
   const federatedStreaming = options.wantsFederatedStreaming && requestedFederatedStreaming;
 

@@ -17,49 +17,20 @@
 //! takes the MINIMUM extent over the set, adding an axis can only tighten
 //! it.
 
+use crate::math::v3;
 use crate::mesh::Mesh;
 
-/// Tolerance for "these three families are mutually perpendicular".
-///
-/// [`Mesh::positions`] is **f32**, so a face normal reconstructed from a
-/// tessellated box's edge vectors carries ~1e-6 rad of round-off, which a
-/// 1e-6 dot-product test would reject — and a rejection here silently drops
-/// back to the world axes, i.e. back to the very bug this machinery exists to
-/// fix. 1e-4 (0.006 rad) admits that round-off while still rejecting a
-/// genuinely non-orthogonal frame; the axes are only ever used as *directions
-/// to measure an extent along*, where a 0.006 rad error is worth ~2e-5 of the
-/// extent.
-const ORTHO_EPS: f64 = 1.0e-4;
-
-/// Flip `n` so its largest-magnitude component is positive, collapsing a face
-/// and its antipodal opposite onto one canonical direction. Ties break x, y, z.
-/// Same rule as the sibling OBB kernel's `canonical`.
-pub(crate) fn canonical(n: [f64; 3]) -> [f64; 3] {
-    let (ax, ay, az) = (n[0].abs(), n[1].abs(), n[2].abs());
-    let mut idx = 0usize;
-    if ay > ax && ay >= az {
-        idx = 1;
-    } else if az > ax && az > ay {
-        idx = 2;
-    }
-    if n[idx] < 0.0 {
-        [-n[0], -n[1], -n[2]]
-    } else {
-        n
-    }
-}
-
-pub(crate) fn dot3(a: [f64; 3], b: [f64; 3]) -> f64 {
-    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-}
-
-fn cross3(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [
-        a[1] * b[2] - a[2] * b[1],
-        a[2] * b[0] - a[0] * b[2],
-        a[0] * b[1] - a[1] * b[0],
-    ]
-}
+// Tolerance for "these three families are mutually perpendicular".
+//
+// [`Mesh::positions`] is **f32**, so a face normal reconstructed from a
+// tessellated box's edge vectors carries ~1e-6 rad of round-off, which a
+// 1e-6 dot-product test would reject — and a rejection here silently drops
+// back to the world axes, i.e. back to the very bug this machinery exists to
+// fix. 1e-4 (0.006 rad) admits that round-off while still rejecting a
+// genuinely non-orthogonal frame; the axes are only ever used as *directions
+// to measure an extent along*, where a 0.006 rad error is worth ~2e-5 of the
+// extent.
+use crate::math::tol::ORTHO_EPS;
 
 /// Reject only a truly degenerate (zero-length or non-finite) vector — not a
 /// scale-dependent magnitude threshold. `v` is a cross product of edge
@@ -79,61 +50,75 @@ fn cross3(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
 /// directly only where the input is already scale-free (e.g. crossing two
 /// unit face-normal candidates in [`gate_axes`]).
 fn normalize3(v: [f64; 3]) -> Option<[f64; 3]> {
-    let len = dot3(v, v).sqrt();
-    if !(len.is_finite()) || len == 0.0 {
-        return None;
-    }
-    Some([v[0] / len, v[1] / len, v[2] / len])
+    v3::normalize(v, 0.0)
 }
 
-/// Minimum `sin(θ)` between a triangle's two edges at the vertex the normal
-/// is computed from, where θ is that triangle's interior angle there — a
-/// **dimensionless** ratio (`|edge1 × edge2| / (|edge1| · |edge2|)`), not the
-/// raw cross-product magnitude. A 1 mm box corner and a 100 m wall corner are
-/// both right angles, θ = 90°, sin θ = 1, so this judges them identically —
-/// which a length-based cutoff on the cross product cannot do, since that
-/// magnitude scales with the *square* of the operand's own dimensions.
-///
-/// `Mesh::positions` is f32 (~1.2e-7 relative precision), so vertices
-/// reconstructed from it carry noise of roughly that order. A genuinely
-/// degenerate or near-collinear triangle (three points nearly on a line —
-/// e.g. a stray sliver a tessellator emits alongside real box faces)
-/// produces sin θ at or below that noise floor; its direction is unrelated
-/// to any real geometric feature, verified by construction to swing across
-/// dot products of −0.95 to 0.55 against the true face normal for sin θ in
-/// the 1e-8 range. `1e-3` (θ ≈ 0.057°) sits three orders of magnitude above
-/// that ~1e-7 noise floor while a genuine box-corner triangle sits at
-/// sin θ = 1, eight orders of magnitude above the cutoff — so the cutoff
-/// rejects noise with a wide margin on both sides regardless of the
-/// operand's absolute size.
-///
-/// Rejected alternatives:
-/// - An absolute length threshold on the cross product (the original bug):
-///   fails exactly because it is not scale-free.
-/// - No threshold at all (this file's prior state): admits ULP-noise
-///   directions as described above.
-/// - A threshold on the angle itself (`asin`/`acos`) instead of on sin θ:
-///   equivalent near this range but costs an extra transcendental call for
-///   no precision benefit this close to zero, where sin θ ≈ θ.
-const MIN_SIN_THETA: f64 = 1.0e-3;
+// Minimum `sin(θ)` between a triangle's two edges at the vertex the normal
+// is computed from, where θ is that triangle's interior angle there — a
+// **dimensionless** ratio (`|edge1 × edge2| / (|edge1| · |edge2|)`), not the
+// raw cross-product magnitude. A 1 mm box corner and a 100 m wall corner are
+// both right angles, θ = 90°, sin θ = 1, so this judges them identically —
+// which a length-based cutoff on the cross product cannot do, since that
+// magnitude scales with the *square* of the operand's own dimensions.
+//
+// `Mesh::positions` is f32 (~1.2e-7 relative precision), so vertices
+// reconstructed from it carry noise of roughly that order. A genuinely
+// degenerate or near-collinear triangle (three points nearly on a line —
+// e.g. a stray sliver a tessellator emits alongside real box faces)
+// produces sin θ at or below that noise floor; its direction is unrelated
+// to any real geometric feature, verified by construction to swing across
+// dot products of −0.95 to 0.55 against the true face normal for sin θ in
+// the 1e-8 range. `1e-3` (θ ≈ 0.057°) sits three orders of magnitude above
+// that ~1e-7 noise floor while a genuine box-corner triangle sits at
+// sin θ = 1, eight orders of magnitude above the cutoff — so the cutoff
+// rejects noise with a wide margin on both sides regardless of the
+// operand's absolute size.
+//
+// Rejected alternatives:
+// - An absolute length threshold on the cross product (the original bug):
+//   fails exactly because it is not scale-free.
+// - No threshold at all (this file's prior state): admits ULP-noise
+//   directions as described above.
+// - A threshold on the angle itself (`asin`/`acos`) instead of on sin θ:
+//   equivalent near this range but costs an extra transcendental call for
+//   no precision benefit this close to zero, where sin θ ≈ θ.
+use crate::math::tol::MIN_SIN_THETA;
 
 /// The unit normal of the triangle `(a, b, c)`, or `None` when the triangle
 /// is degenerate (zero-length edge, non-finite input) or a sliver relative to
 /// its own edge lengths (see [`MIN_SIN_THETA`]).
+///
+/// `sin θ` is measured at the triangle's LARGEST angle (the vertex between its
+/// two shortest edges), so the verdict is a property of the triangle and not
+/// of which vertex the index buffer lists first: a 10 m x 5 mm plate face
+/// has `sin` ~5e-4 at an acute corner and 1 at the right-angle one, and an
+/// `a`-relative test dropped it depending on winding start (same fix as
+/// `ifc-lite-clash` `obb_detect::face_normal`, #7813).
 fn face_normal(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> Option<[f64; 3]> {
-    let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-    let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-    let e1_len = dot3(e1, e1).sqrt();
-    let e2_len = dot3(e2, e2).sqrt();
-    if !(e1_len.is_finite() && e2_len.is_finite()) || e1_len == 0.0 || e2_len == 0.0 {
+    let len = |p: [f64; 3], q: [f64; 3]| {
+        let d = v3::sub(q, p);
+        v3::dot(d, d).sqrt()
+    };
+    let (ab, bc, ca) = (len(a, b), len(b, c), len(c, a));
+    if !(ab.is_finite() && bc.is_finite() && ca.is_finite()) || ab == 0.0 || bc == 0.0 || ca == 0.0
+    {
         return None;
     }
-    let cross = cross3(e1, e2);
-    let cross_len = dot3(cross, cross).sqrt();
+    // The two shortest edges meet at the largest angle.
+    let longest = ab.max(bc).max(ca);
+    let (l0, l1) = if longest == ab {
+        (bc, ca)
+    } else if longest == bc {
+        (ab, ca)
+    } else {
+        (ab, bc)
+    };
+    let cross = v3::cross(v3::sub(b, a), v3::sub(c, a));
+    let cross_len = v3::dot(cross, cross).sqrt();
     if !cross_len.is_finite() || cross_len == 0.0 {
         return None;
     }
-    let sin_theta = cross_len / (e1_len * e2_len);
+    let sin_theta = cross_len / (l0 * l1);
     if !sin_theta.is_finite() || sin_theta < MIN_SIN_THETA {
         return None;
     }
@@ -200,8 +185,8 @@ fn face_axis_families(m: &Mesh) -> Vec<[f64; 3]> {
             // either way.
             None => continue,
         };
-        let cn = canonical(n);
-        if groups.iter().any(|g| dot3(*g, cn) > 1.0 - ORTHO_EPS) {
+        let cn = v3::canonical(n);
+        if groups.iter().any(|g| v3::dot(*g, cn) > 1.0 - ORTHO_EPS) {
             continue;
         }
         groups.push(cn);
@@ -223,7 +208,7 @@ fn orthogonal_face_axes(m: &Mesh) -> Option<[[f64; 3]; 3]> {
     }
     for i in 0..3 {
         for j in (i + 1)..3 {
-            if dot3(groups[i], groups[j]).abs() > ORTHO_EPS {
+            if v3::dot(groups[i], groups[j]).abs() > ORTHO_EPS {
                 return None;
             }
         }
@@ -270,7 +255,7 @@ pub(crate) fn gate_axes(a: &Mesh, b: &Mesh) -> Vec<[f64; 3]> {
     for u in &fa {
         for v in &fb {
             // Parallel axes cross to zero — not a separating-axis candidate.
-            if let Some(n) = normalize3(cross3(*u, *v)) {
+            if let Some(n) = normalize3(v3::cross(*u, *v)) {
                 axes.push(n);
             }
         }

@@ -129,3 +129,15 @@ fn spec_vectors_are_the_same_ones_pinned_in_typescript() {
     assert_eq!(unknown_hash("123456789"), 0xCBF4_3926);
     assert_eq!(unknown_hash(""), 0x0000_0000);
 }
+
+/// CORE-10 (F4-2): `ifc_type_from_keyword` is `IfcType::from_str` and nothing
+/// else, so a keyword resolves the same way through either door, including one
+/// that only a Unicode fold maps (dotless `ı` upper-cases to `I`, for TS CRC
+/// parity) and one in lower case.
+#[test]
+fn the_keyword_resolver_is_from_str() {
+    for keyword in ["IfcWall", "ifcwall", "IFCWALL", "\u{131}fcwall", "IfcN\u{F6}pe", "ifcnot_in_the_schema"] {
+        assert_eq!(ifc_lite_core::ifc_type_from_keyword(keyword), IfcType::from_str(keyword), "{keyword}");
+    }
+    assert_eq!(ifc_lite_core::ifc_type_from_keyword("\u{131}fcwall"), IfcType::IfcWall);
+}

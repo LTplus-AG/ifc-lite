@@ -17,7 +17,8 @@
 
 use super::interner::{Interner, Vid};
 use super::predicates::{cmp_lex, orient2d, orient2d_any};
-use super::retriangulate_recover::enforce_constraint;
+#[path = "retriangulate_passes.rs"]
+mod passes;
 use super::{fixed, interval};
 use super::{DropAxis, ImplicitPoint, Lpi, Sign, Tpi};
 use std::cmp::Ordering;
@@ -120,10 +121,10 @@ fn axis_candidates(t: &[[f64; 3]; 3]) -> [DropAxis; 3] {
     let mut axes = [DropAxis::X, DropAxis::Y, DropAxis::Z];
     axes.sort_by(|&a, &b| {
         let (ia, ib) = (normal_idx(a), normal_idx(b));
-        mag[ib]
-            .partial_cmp(&mag[ia])
-            .unwrap_or(Ordering::Equal)
-            .then(ia.cmp(&ib))
+        // Descending, NaN first (#7674). A NaN comes from a non-finite vertex or an overflowing
+        // cross product (|coord| > ~1e154); it used to tie, so for such triangles the first
+        // candidate, hence the chosen drop axis and sub-triangulation, can differ.
+        crate::cmp_f64_nan_last(mag[ib], mag[ia]).then(ia.cmp(&ib))
     });
     axes
 }
@@ -594,43 +595,12 @@ pub fn triangulate(input: &RetriInput, interner: &mut Interner) -> Option<Mesh2d
         }
         insert_point(&mut mesh, interner, p);
     }
-    // Enforce to a FIXED POINT: recovering one constraint deletes the channel
-    // triangles it crosses, which can remove an edge a PREVIOUS constraint had
-    // already been forced into (the pocket earcut is not constraint-aware). One
-    // extra pass re-forces those; iteration is bounded — each pass is a no-op
-    // (`recover_subsegment` early-returns on `edge_exists`) once every
-    // constraint chain is present. The cap keeps a pathological ping-pong from
-    // looping forever (the constraint set is crossing-free by construction —
-    // seg×seg pre-pass for transversal constraints, a planar mesh complex for
-    // coplanar ones — so non-convergence would leave at most an unrecovered
-    // constraint, the pre-existing graceful-bail behavior). Purely a function
-    // of exact predicates ⇒ deterministic, byte-identical native==wasm.
-    let mut converged = false;
-    for _pass in 0..4 {
-        // #1109 overshoot guard: constraint recovery runs exact predicates per
-        // sub-segment; a slab face with thousands of seam segments is the other
-        // heavy escalation site between per-triangle `tripped()` checks.
-        if super::budget::tripped() {
-            break;
-        }
-        let before = mesh.tris.clone();
-        for &(s, t) in &canon.segments {
-            if super::budget::tripped() {
-                break;
-            }
-            enforce_constraint(&mut mesh, interner, s, t);
-        }
-        if mesh.tris == before {
-            converged = true;
-            break;
-        }
-    }
-    // #1109: if the per-element budget tripped while inserting points or recovering
-    // constraints above, the boolean caller discards this entire arrangement
-    // (csg.rs returns the host un-cut → #635 AABB fallback). Skip the conformity
-    // audit below — it runs O(segments × vertices) exact predicates with NO budget
-    // check, so without this a tripped, heavily-fragmented face keeps grinding well
-    // past the cap. The partial triangulation we return is dropped anyway.
+    let converged = passes::recover(&mut mesh, interner, &canon.segments);
+    // #1109: discard the partial arrangement if insertion/recovery already
+    // tripped the standing budget. The final audit also checks trip state at
+    // chain scans, constraints/subedges, and before/after its unchanged exact
+    // sort. One existing sort may finish after a trip; its partial result is
+    // discarded, never reported as a complete conformity certificate.
     if super::budget::tripped() {
         return Some(mesh);
     }
@@ -642,8 +612,8 @@ pub fn triangulate(input: &RetriInput, interner: &mut Interner) -> Option<Mesh2d
     }
     // Count the constraint sub-segments that stayed unrecovered (see
     // `Mesh2d::unrecovered`). Same chain decomposition as `enforce_constraint`.
-    // Gated on `audit_needed`: only triangulations where some recovery attempt
-    // bailed pay for the audit — the clean common path skips it entirely.
+    // Gated on `audit_needed`: a recovery bail or four-pass non-convergence
+    // requests the audit; a no-attempt pass keeps the clean path audit-free.
     if !mesh.audit_needed {
         return Some(mesh);
     }
@@ -677,14 +647,13 @@ pub fn triangulation_topology_hash(input: &RetriInput) -> u64 {
         })
         .collect();
     tris.sort_unstable();
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut h = ifc_lite_core::hash::Fnv1a64::new();
     for t in tris {
         for v in t {
-            h ^= v as u64;
-            h = h.wrapping_mul(0x0000_0100_0000_01b3);
+            h.mix_word(v as u64);
         }
     }
-    h
+    h.finish()
 }
 
 /// Cross-platform re-triangulation determinism manifest: the topology hash of a
@@ -719,6 +688,10 @@ pub fn retriangulation_manifest() -> u64 {
     ];
     triangulation_topology_hash(&RetriInput { tri: t, constraints: cons, points: Vec::new() })
 }
+
+#[cfg(test)]
+#[path = "retriangulate_recovery_report_tests.rs"]
+mod recovery_report_tests;
 
 #[cfg(test)]
 mod tests {

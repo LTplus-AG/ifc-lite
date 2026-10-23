@@ -13,7 +13,6 @@ import { trackPanelOpened, type PanelOpenSource } from './uiTelemetry.js';
 import { invalidateVisibleBasketCache } from './basketVisibleSet.js';
 import { SIDEBAR_PANEL_FLAGS } from './store-sync.js';
 import { viewerTeardown } from './teardown-registry.js';
-import { clearLastSectionMode } from './slices/sectionSlice.js';
 import { DEFAULT_CONTROLS_MODE } from './slices/cameraSlice.js';
 import { endClashScenePresentation, type ClashSceneTeardown } from '@/lib/clash/visibility-ownership';
 
@@ -80,7 +79,6 @@ export const createViewerActions: StateCreator<ViewerState, [], [], ViewerAction
     // time the section tool was opened (#2939). It stays HERE, not in that
     // contribution: writing localStorage is a side effect, and a teardown is
     // pure.
-    clearLastSectionMode();
     // Measurements (#2641 review): the slice owns the full list of its own
     // fields to clear on a model switch — see resetAllMeasurementState's doc
     // comment (measurementSlice.ts) for why this must not be a field list

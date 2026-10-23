@@ -11,7 +11,7 @@
 //! declaration, and the #4179 record-boundary rules it implements are argued
 //! next door in `lexical.rs` beside the exact walk they approximate.
 
-use crate::parser::record_strings::{string_parameter_end, QuoteEnd};
+use crate::parser::record_strings::{literal_end_framed, LiteralEnd};
 
 /// How a record body ends: at its `;`, or refused at an unescaped apostrophe
 /// whose index in the scanned bytes the caller resumes after (#7541).
@@ -118,28 +118,12 @@ impl<'a> super::EntityScanner<'a> {
                     .then_some(RecordEnd::At(pos));
             }
 
-            // found == b'\'' : entered a quoted string. Scan to the closing
-            // quote, treating a doubled '' as an escaped quote.
-            pos += 1;
-            loop {
-                pos += memchr::memchr(b'\'', &content[pos..])?;
-                if crate::parser::lexical::is_page_quote_operand(content, pos) {
-                    pos += 1;
-                    continue;
-                }
-                if content.get(pos + 1) == Some(&b'\'') {
-                    // Escaped quote ('') - skip both, stay in the string.
-                    pos += 2;
-                    continue;
-                }
-                match string_parameter_end(content, pos) {
-                    QuoteEnd::Closes => {
-                        pos += 1;
-                        break;
-                    }
-                    QuoteEnd::Stray => return Some(RecordEnd::StrayQuote(pos)),
-                    QuoteEnd::Unreadable => return None,
-                }
+            // found == b'\'' : entered a quoted string, which is jumped whole
+            // by the shared quote step.
+            match literal_end_framed(content, pos) {
+                LiteralEnd::Closes(past) => pos = past,
+                LiteralEnd::Stray(quote) => return Some(RecordEnd::StrayQuote(quote)),
+                LiteralEnd::Unreadable => return None,
             }
             closes_paren = false; // A literal is a parameter, not a close.
         }

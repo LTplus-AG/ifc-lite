@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { sectionExclusions, withSectionExclusions } from './section-exclusions.js';
 /**
  * Selection/hover mask pass (#5390): draws the selected and hovered
  * meshes into two resolved targets the edge
@@ -30,6 +31,7 @@ import { mainShaderSource } from './shaders/main.wgsl.js';
 import { selectionMaskFragmentSource } from './shaders/selection-mask.wgsl.js';
 import {
   createMaskPipelines,
+  createGeometricMaskPipelines,
   InstancedSelectionMask,
   isInstancedMaskEmpty,
   MASK_ALL_FORMAT,
@@ -38,6 +40,7 @@ import {
   type MaskKind,
   type MaskPipelines,
 } from './selection-mask-pipelines.js';
+import { OPAQUE_VISIBILITY_GROUP } from './shaders/opaque-visibility.wgsl.js';
 
 /** The regular (non-instanced) mesh vertex layout `vs_main` reads. */
 const MESH_VERTEX_BUFFERS: GPUVertexBufferLayout[] = [{
@@ -78,6 +81,7 @@ export interface SelectionMaskFrame {
   hovered: readonly HoveredMesh[];
   /** GPU-instanced occurrences to outline (#5745); absent or null when none are selected or hovered. */
   instanced?: InstancedMaskFrame | null;
+  geometricVisibility?: GPUBindGroup;
 }
 
 export interface SelectionMaskViews {
@@ -103,6 +107,7 @@ export class SelectionMaskPass {
   private readonly meshBindGroupLayout: GPUBindGroupLayout;
   private readonly sampleCount: number;
   private readonly pipelines: MaskPipelines;
+  private geometricPipelines: MaskPipelines | null = null;
   /** Built on the first frame with an instanced selection or hover. */
   private instanced: InstancedSelectionMask | null = null;
   private targets: MaskTargets | null = null;
@@ -112,10 +117,11 @@ export class SelectionMaskPass {
 
   constructor(device: WebGPUDevice, meshBindGroupLayout: GPUBindGroupLayout, sampleCount: number) {
     this.device = device.getDevice();
+    sectionExclusions(this.device).retain();
     this.meshBindGroupLayout = meshBindGroupLayout;
 
     this.sampleCount = sampleCount;
-    const layout = this.device.createPipelineLayout({ bindGroupLayouts: [this.meshBindGroupLayout] });
+    const layout = this.device.createPipelineLayout({ bindGroupLayouts: withSectionExclusions(this.device, [this.meshBindGroupLayout]) });
 
     const vertexModule = this.device.createShaderModule({ label: 'selection-mask-vs', code: mainShaderSource });
     const fragmentModule = this.device.createShaderModule({
@@ -155,15 +161,19 @@ export class SelectionMaskPass {
         }],
         ...(visible ? { depthStencilAttachment: { view: frame.depthView, depthReadOnly: true, stencilReadOnly: true } } : {}),
       });
-      pass.setPipeline(this.pipelines[kind]);
+      if (visible && frame.geometricVisibility) {
+        this.geometricPipelines ??= createGeometricMaskPipelines(this.device, this.meshBindGroupLayout, this.sampleCount);
+        pass.setPipeline(this.geometricPipelines[kind]); pass.setBindGroup(OPAQUE_VISIBILITY_GROUP, frame.geometricVisibility);
+      } else pass.setPipeline(this.pipelines[kind]);
       for (const mesh of meshes) {
+        pass.setBindGroup(3, sectionExclusions(this.device).bindGroup);
         pass.setBindGroup(0, mesh.bindGroup);
         pass.setVertexBuffer(0, mesh.vertexBuffer);
         pass.setIndexBuffer(mesh.indexBuffer, 'uint32');
         pass.drawIndexed(mesh.indexCount, 1, 0, 0, 0);
       }
       if (instanced && instancedFrame) {
-        instanced.draw(pass, kind, kind === 'hoverVisible' ? instancedFrame.hovered : instancedFrame.selected);
+        instanced.draw(pass, kind, kind === 'hoverVisible' ? instancedFrame.hovered : instancedFrame.selected, frame.geometricVisibility);
       }
       pass.end();
     };
@@ -242,5 +252,6 @@ export class SelectionMaskPass {
     this.hoverUniforms = [];
     this.instanced?.destroy();
     this.instanced = null;
+    sectionExclusions(this.device).release();
   }
 }

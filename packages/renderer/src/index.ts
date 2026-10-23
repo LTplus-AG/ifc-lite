@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { sectionExclusions } from './section-exclusions.js';
 /**
  * @ifc-lite/renderer - WebGPU renderer
  */
@@ -15,6 +16,7 @@ export type { SceneContents } from './scene-contents.js';
 export { appearanceSourceTriangle, expandAppearanceCorners, equivalentAppearanceGeometry } from './appearance-uvs.js';
 export { sameCompanionParts } from './appearance-companions.js';
 export { invertAppearancePartition, validateAppearancePartition, type AppearancePreview, type AppearanceOwner, type AppearanceToken, type AppearanceChange, type AppearancePartition, type AppearancePartitionPart } from './appearance-preview.js';
+import { deferOpaqueVisibilityFrame } from './opaque-visibility-pass.js';
 import type { AppearancePreview } from './appearance-preview.js';
 import { createReferenceImageManager } from './reference-image-host.js';
 export type { ReferenceImages, ReferenceImageInput, ReferenceImageHit, ReferenceCorners } from './reference-image-types.js';
@@ -54,6 +56,7 @@ export { DEFAULT_CAP_STYLE, HATCH_PATTERN_IDS } from './section-cap-style.js';
 export type { SectionCapStyle, HatchPatternId } from './section-cap-style.js';
 export { planeBasis, nearestCardinalAxis } from './section-plane-basis.js';
 export type { PlaneBasis, Vec3Tuple } from './section-plane-basis.js';
+export { capHighlightKey } from './section-2d-overlay.js';
 export type { Section2DOverlayOptions, Section2DOverlayCapStyle, CutPolygon2D, DrawingLine2D, LineOverlayChannel } from './section-2d-overlay.js';
 export { LINE_OVERLAY_CHANNELS } from './section-2d-overlay.js';
 export { Raycaster } from './raycaster.js';
@@ -64,6 +67,7 @@ export { FederationRegistry, federationRegistry } from './federation-registry.js
 export type { ModelRange, GlobalIdLookup } from './federation-registry.js';
 export * from './types.js';
 export { MAX_EXTRA_CLIP_PLANES } from './extra-clip-planes.js';
+export type { SectionPlaneFrame, SectionFrameInput } from './section-plane-frames.js';
 export {
     resolveEnvironment,
     deriveSkyGradient,
@@ -158,6 +162,7 @@ import type {
 } from './types.js';
 import { VisualEnhancementResolver, livePostEffects } from './visual-enhancement.js';
 import { packClipBox } from './clip-box.js';
+import { resolveSectionPlaneFrames, type SectionFrameInput, type SectionPlaneFrame } from './section-plane-frames.js';
 import {
     MESH_FLAGS_BYTE_OFFSET,
     MESH_FLAG_RTE_DRAWABLE,
@@ -218,6 +223,7 @@ import type { DeviationDistances } from './deviation/deviation-statistics.js';
 export { computeDeviationStatistics, computeDeviationStatisticsAsync, countWithinToleranceAsync, deviationHistogramAsync, summarizeDeviationAssetsAsync } from './deviation/deviation-statistics.js';
 export type { DeviationAssetRange, DeviationAssetSummary, DeviationAsyncOptions, DeviationDistances, DeviationHistogram, DeviationHistogramRange, DeviationStatistics, DeviationStatisticsOptions, DeviationToleranceShare } from './deviation/deviation-statistics.js';
 import { runGuardedGpuUpload, isDeviceLossThrow, type GpuUploadOutcome } from './gpu-upload-guard.js';
+import { enableRendererQuantizedBatches } from './quantized-lifecycle.js';
 import { recoverRendererDevice, rendererDeviceLostError, type DeviceRecoveryOmission, type DeviceRecoveryResult, type RendererRecoveryHost } from './device-recovery.js';
 
 
@@ -523,7 +529,7 @@ export class Renderer {
     // One 336-byte buffer serves all frame batches/meshes (84 floats including RTE lanes).
     private readonly uniformScratch = new Float32Array(MESH_UNIFORM_FLOATS);
     private readonly uniformScratchU32 = new Uint32Array(this.uniformScratch.buffer, MESH_FLAGS_BYTE_OFFSET, 4);
-    // overrideParams lanes (#6076): zero except inside a painting renderBatch call.
+    // overrideParams: full entity anchor for clipping, plus colour-override mode (#6076).
     private readonly uniformOverrideU32 = new Uint32Array(this.uniformScratch.buffer, MESH_UNIFORM_OFFSET.overrideParams * 4, 4);
 
     // What the last render() actually clipped, so the GPU picker can mirror it and
@@ -531,8 +537,10 @@ export class Renderer {
     // every render; read by pick()/pickRect(). null = nothing clipped that frame.
     private _activePickSection: { normal: [number, number, number]; distance: number; flipped: boolean } | null = null;
     private _activePickClipBox: ClipBox | null = null;
+    private _sectionExcludedIds: ReadonlySet<number> = new Set();
     /** Snapshot of the extra planes the last frame clipped against (#7545), mirrored by the pickers. */
     private _activePickExtraPlanes: ExtraClipPlane[] | null = null;
+    private _sectionFrameInput: SectionFrameInput | null = null; // what the last frame resolved the section planes from
 
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas;
@@ -575,6 +583,7 @@ export class Renderer {
         // init there is nothing to invalidate and this is a no-op.
         const generation = ++this.initGeneration;
         this.ready = false;
+        this.scene.setQuantizedBatches(false); // #7655: admission belongs to the retired GPU lifetime.
         // Re-arm `whenReady()`: this instance is being brought back up, so a
         // wait requested from here on is "not ready yet" again, not "destroyed".
         this.destroyed = false;
@@ -772,8 +781,8 @@ export class Renderer {
     }
 
     /**
-     * Subscribe to non-intentional GPU device loss (driver reset / VRAM
-     * exhaustion — NOT an intentional `destroy()`). Fired at most once per
+     * Subscribe to GPU device loss outside owned teardown (including browser
+     * destruction, driver reset or VRAM exhaustion). Fired at most once per
      * device. After it fires, `render()` is a no-op and the renderer reports
      * itself un-ready (`isReady()` false, `whenReady()` rejecting with
      * `RendererDeviceLostError`) until it is re-initialised, so the typical
@@ -1528,11 +1537,7 @@ export class Renderer {
      * rejecting pipeline creation) batches stay on the f32 path.
      */
     async enableQuantizedBatches(): Promise<boolean> {
-        this.recovery.quantizedBatchesRequested = true;
-        if (!this.pipeline) return false;
-        const ok = await this.pipeline.ensureQuantizedPipelines();
-        if (ok) this.scene.setQuantizedBatches(true);
-        return ok;
+        return enableRendererQuantizedBatches(this as unknown as RendererRecoveryHost);
     }
 
     /** Draw a frame through the shared submission path, preserving the void API. */
@@ -1791,11 +1796,6 @@ export class Renderer {
         // overlay-routing.ts and is unit-tested there.
         const colorOverrides = this.scene.getColorOverrides();
 
-        // PERFORMANCE FIX: Use batch-level visibility filtering instead of creating individual meshes
-        // Only create individual meshes for selected elements (for highlighting)
-        // Batches are filtered at render time - fully visible batches render normally,
-        // partially visible batches are skipped (their visible elements will be in other batches or individual meshes)
-
         // Ensure all existing meshes have GPU resources
         this.ensureMeshResources();
 
@@ -1906,6 +1906,8 @@ export class Renderer {
             });
             const sectionPlaneData = sectionFrame.sectionPlaneData;
             const extraClipPlanes = sectionFrame.extraPlanes;
+            const { bounds: frameBounds } = sectionFrame;
+            this._sectionFrameInput = frameBounds && { primary: options.sectionPlane ?? null, extras: options.extraSectionPlanes ?? [], bounds: frameBounds, buildingRotation: options.buildingRotation };
             if (sectionFrame.bounds) {
                 // Store bounds for section plane visual and camera near/far.
                 // Two wrappers over the same min/max, exactly as before the
@@ -1929,9 +1931,9 @@ export class Renderer {
                     flipped: !!options.sectionPlane?.flipped,
                 }
                 : null;
-            this._activePickExtraPlanes = extraClipPlanes.length > 0
-                ? extraClipPlanes.map((p) => ({ normal: [...p.normal] as [number, number, number], distance: p.distance, flipped: p.flipped }))
-                : null;
+            this._sectionExcludedIds = new Set(options.sectionExcludedIds);
+            sectionExclusions(device).update(this._sectionExcludedIds);
+            this._activePickExtraPlanes = extraClipPlanes.length > 0 ? extraClipPlanes.map((p) => ({ normal: [...p.normal] as [number, number, number], distance: p.distance, flipped: p.flipped })) : null;
             this._activePickClipBox = options.clipBox?.enabled
                 ? {
                     enabled: true,
@@ -1996,6 +1998,7 @@ export class Renderer {
                     }
                     meshFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
 
+                    new Uint32Array(meshBuf.buffer)[MESH_UNIFORM_OFFSET.overrideParams] = mesh.expressId;
                     device.queue.writeBuffer(mesh.uniformBuffer, 0, meshBuf);
                 }
             }
@@ -2096,6 +2099,7 @@ export class Renderer {
                     // floor it no longer covers. `sectionPlaneData` already
                     // folds in the terrain clip, so that is covered as well.
                     this.shadowPass.render(encoder, fit.lightViewProj, occluders, {
+                        sectionExcludedIds: this._sectionExcludedIds,
                         section: sectionPlaneData?.enabled
                             ? {
                                 normal: sectionPlaneData.normal,
@@ -2176,7 +2180,7 @@ export class Renderer {
                 storeOp: (needsObjectIdPass ? 'store' : 'discard') as GPUStoreOp,
             });
 
-            const pass = encoder.beginRenderPass({
+            const pass = this.pipeline.visibility.begin(encoder, {
                 timestampWrites: renderPassTimestampWrites(encoder, 'main'),
                 colorAttachments,
                 depthStencilAttachment: {
@@ -2190,7 +2194,7 @@ export class Renderer {
                     stencilLoadOp: 'clear',
                     stencilStoreOp: 'store',
                 },
-            });
+            }, this.camera.getProjectionMode() === 'orthographic', this.canvas.width, this.canvas.height);
 
             // Global lighting environment: write the uniform once per frame.
             // The group(1) bind is deferred until AFTER the sky pass below —
@@ -2254,6 +2258,7 @@ export class Renderer {
             // valid for every main-family draw that follows.
             this.pipeline.setEntityColorTableBuffer(this.scene.getEntityColorTable().getBuffer());
             pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
+            pass.setBindGroup(3, sectionExclusions(device).bindGroup);
 
             // Selected meshes drawn this frame, for the selection-mask pass
             // (#5390) after `pass.end()` below. Populated inside the batched
@@ -2463,9 +2468,6 @@ export class Renderer {
                     this.scene.retireUnusedAlphaSlots(partialRequests.requestedKeys());
                 }
 
-                // Build a uniform template ONCE per frame — shared across all batches.
-                // Only the 4-float color (offset 32) differs per batch; everything else
-                // (viewProj, identity model, material, section plane, flags) is identical.
                 const tpl = this.uniformScratch;
                 const tplFlags = this.uniformScratchU32;
                 tpl.set(viewProj, 0);
@@ -2516,12 +2518,7 @@ export class Renderer {
                     tpl[35] = alphaForBatch(batch, batch.color[3]);
                     packMeshMaterial(tpl, batch.color[3], batch.finish);
 
-                    // Per-batch local frame: the batch's vertices are stored
-                    // RELATIVE to batch.origin (f32-small), so set the model
-                    // matrix translation column to origin (world = origin + pos).
-                    // The 12 rotation/scale floats stay identity from the template;
-                    // the translation lives at column-major indices 12/13/14 →
-                    // tpl[28/29/30]. [0,0,0] for legacy absolute batches.
+                    // Rebase batch-local vertices; translation lives in tpl[28..30].
                     const o = batch.origin;
                     tpl[28] = o ? o[0] : 0;
                     tpl[29] = o ? o[1] : 0;
@@ -2541,7 +2538,8 @@ export class Renderer {
                     tpl[59] = qz ? qz.step : 0;
 
                     const painted = paint && batchHasColorOverride(batch, colorOverrides, colorOverrideGen);
-                    packOverrideParams(this.uniformOverrideU32, painted ? batchEntityIdAnchor(batch) : null, painted, options.emphasizeOverrides === true);
+                    packOverrideParams(this.uniformOverrideU32, batchEntityIdAnchor(batch), painted, options.emphasizeOverrides === true);
+                    this.uniformOverrideU32[0] = batchEntityIdAnchor(batch) ?? 0xFFFFFFFF;
                     device.queue.writeBuffer(batch.uniformBuffer, 0, tpl);
                     this.uniformOverrideU32.fill(0);
 
@@ -2652,6 +2650,7 @@ export class Renderer {
                     pass.setPipeline(this.pipeline.getInstancedPipeline());
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
                     pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
+                    pass.setBindGroup(3, sectionExclusions(device).bindGroup);
                     for (const [i, it] of visibleInstanced.entries()) {
                         pass.setVertexBuffer(0, it.vertexBuffer);
                         pass.setVertexBuffer(1, it.instanceBuffer);
@@ -2724,6 +2723,7 @@ export class Renderer {
                         // CHOICE in the shader follows the same rule as everywhere
                         // else, for the same reason `tm.material` does.
                         packMeshMaterial(tpl, tm.color[3], tm.finish ?? tm.material);
+                        this.uniformOverrideU32[0] = tm.expressId;
                         device.queue.writeBuffer(tm.uniformBuffer, 0, tpl);
                         pass.setBindGroup(0, tm.bindGroup);
                         pass.setVertexBuffer(0, tm.vertexBuffer);
@@ -2864,6 +2864,7 @@ export class Renderer {
                     pass.setPipeline(instancedTransparentPipeline);
                     pass.setBindGroup(0, this.pipeline.getBindGroup());
                     pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
+                    pass.setBindGroup(3, sectionExclusions(device).bindGroup);
                     for (const [i, it] of visibleInstanced.entries()) {
                         pass.setVertexBuffer(0, it.vertexBuffer);
                         pass.setVertexBuffer(1, it.instanceBuffer);
@@ -2909,6 +2910,7 @@ export class Renderer {
                         if (!relativeToEyeFrame.tryPackDrawableOrigin(transparentOrigin, tpl, MESH_UNIFORM_OFFSET.drawableDelta)) continue;
                         tplFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
 
+                        this.uniformOverrideU32[0] = mesh.expressId;
                         device.queue.writeBuffer(mesh.uniformBuffer, 0, tpl);
 
                         pass.setBindGroup(0, mesh.bindGroup);
@@ -2962,6 +2964,7 @@ export class Renderer {
                     if (!relativeToEyeFrame.tryPackDrawableOrigin(selectedOrigin, tpl, MESH_UNIFORM_OFFSET.drawableDelta)) continue;
                     tplFlags[0] |= MESH_FLAG_RTE_DRAWABLE;
 
+                    this.uniformOverrideU32[0] = mesh.expressId;
                     device.queue.writeBuffer(mesh.uniformBuffer, 0, tpl);
 
                     pass.setPipeline(this.pipeline.getSelectionPipeline());
@@ -3041,6 +3044,8 @@ export class Renderer {
                 relativeToEyeFrame,
                 rteViewProj: relativeToEyeFrame.getViewProjection().m,
                 rteCamera: relativeToEyeFrame.getCameraWorld(),
+                extraPlanes: extraClipPlanes,
+                primaryPlane: sectionPlaneData && options.sectionPlane?.enabled ? { ...sectionPlaneData, flipped: options.sectionPlane.flipped === true } : null,
             });
 
             pass.end();
@@ -3079,7 +3084,7 @@ export class Renderer {
                 pixelRatio: this.pixelRatio,
                 // EDL only when point clouds are loaded and the user enabled it.
                 edl: this.edlOptions.enabled && this.pointCloudRenderer?.hasAssets() ? this.edlOptions : null,
-                selectionOutline,
+                selectionOutline, geometricVisibility: this.pipeline.visibility.getBinding(),
             });
 
             colorReadback = colorCapture && encodeRendererColorFrameCapture(device, encoder, colorCapture);
@@ -3148,8 +3153,9 @@ export class Renderer {
             // `getOrCreatePartialBatch`'s CPU-side geometry merge running out of
             // host memory, and that throws a `RangeError` — which is exactly why
             // the discriminator keys on the TYPE and not on "a frame threw".
-            this.containFrameThrow(error, 'encode');
-            cancelRendererColorFrame(this); return false;
+            cancelRendererColorFrame(this);
+            if (deferOpaqueVisibilityFrame(error, () => this.requestRender())) return false;
+            this.containFrameThrow(error, 'encode'); return false;
         }
     }
 
@@ -3195,7 +3201,7 @@ export class Renderer {
      * same fragments and clipped-away geometry can't be selected.
      */
     private activePickClip(): PickClipState {
-        return { sectionPlane: this._activePickSection, extraPlanes: this._activePickExtraPlanes, clipBox: this._activePickClipBox };
+        return { sectionExcludedIds: this._sectionExcludedIds, sectionPlane: this._activePickSection, extraPlanes: this._activePickExtraPlanes, clipBox: this._activePickClipBox };
     }
 
     /**
@@ -3367,15 +3373,25 @@ export class Renderer {
             tangent:   [number, number, number];
             bitangent: [number, number, number];
         },
+        planeId?: string,
     ): void {
-        this.overlays.uploadSection2DOverlay(polygons, lines, axis, position, sectionRange, flipped, customPlane);
+        this.overlays.uploadSection2DOverlay(polygons, lines, axis, position, sectionRange, flipped, customPlane, planeId);
     }
 
     /**
-     * Clear the 2D section overlay
+     * Clear the 2D section overlay: the primary plane's cap, or with `planeId`
+     * the cap of that cutting plane beyond the first (#7545).
      */
-    clearSection2DOverlay(): void {
-        this.overlays.clearSection2DOverlay();
+    clearSection2DOverlay(planeId?: string): void {
+        this.overlays.clearSection2DOverlay(planeId);
+    }
+
+    /** Every section plane's world frame (#7545), for the UI's tags and handle: the last frame's bounds and rotation, and `planes` (the caller's newest) when given. */
+    getSectionPlaneFrames(planes?: Pick<SectionFrameInput, 'primary' | 'extras'>): SectionPlaneFrame[] { const i = this._sectionFrameInput; return i ? resolveSectionPlaneFrames(planes ? { ...i, ...planes } : i) : []; }
+
+    /** Clear the caps of every cutting plane beyond the first whose id is not in `keep` (#7545). */
+    clearSection2DExtraOverlays(keep: readonly string[] = []): void {
+        this.overlays.clearSection2DExtraOverlays(keep);
     }
 
     /**
@@ -3629,6 +3645,7 @@ export class Renderer {
         // Render pipelines (textures + uniform buffers)
         this.pipeline?.destroy();
         this.pipeline = null;
+        this.scene.setQuantizedBatches(false);
 
         // Picker GPU resources. The manager holds its own reference, so clear
         // that too — otherwise its `if (!this.picker) return null` guard keeps
@@ -3668,7 +3685,7 @@ export class Renderer {
         // above was created from it and has already been destroyed, so nothing
         // will touch the device after this. Without it, an app that spins up a
         // renderer per model keeps N live devices (and their VRAM) alive. The
-        // lost-handler special-cases reason 'destroyed' so this is not reported
+        // lost-handler excludes this retired lifetime so this is not reported
         // as a fault. render() early-returns while the device is uninitialised.
         this.device.destroy();
     }

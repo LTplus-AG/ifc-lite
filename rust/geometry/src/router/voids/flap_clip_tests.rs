@@ -234,30 +234,8 @@ fn budget_tripped_engulfing_cutter_skips_aabb_fallback() {
     // — so a per-element cap of 1 is invisible to every other test.
     //
     // Serialise against the other cap-mutating tests (they share this lock).
-    let _cap_guard = budget::GLOBAL_CAP_LOCK.lock().unwrap();
-    // Restore BOTH global caps AND reset THIS worker thread's thread-local
-    // element scope to unbounded on the way out (even on panic): thread-locals
-    // persist across tests on a reused worker thread, so a left-armed element
-    // cap would false-trip whatever CSG test cargo schedules next on it.
-    struct RestoreBudget {
-        cap: Option<u64>,
-        ecap: Option<u64>,
-    }
-    impl Drop for RestoreBudget {
-        fn drop(&mut self) {
-            // Re-open an UNBOUNDED element scope on this thread (elem cap 0 ⇒
-            // thread-local ELEM_CAP = u64::MAX, ELEM_COUNT = 0), matching a
-            // thread that never opened a scope, THEN restore the globals.
-            budget::set_element_cap(None);
-            budget::begin_element();
-            budget::set_cap(self.cap);
-            budget::set_element_cap(self.ecap);
-        }
-    }
-    let _restore = RestoreBudget {
-        cap: budget::cap(),
-        ecap: budget::element_cap(),
-    };
+    let _cap_guard = budget::GLOBAL_CAP_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let profile = budget::TestProfile::new();
 
     let router = GeometryRouter::new();
 
@@ -306,8 +284,8 @@ fn budget_tripped_engulfing_cutter_skips_aabb_fallback() {
 
     // Arm a per-element cap of 1 so the FIRST exact escalation trips the
     // element budget deterministically (the per-boolean cap stays at its
-    // default, untouched, so concurrent tests are unaffected).
-    budget::set_element_cap(Some(1));
+    // default; this fixture's configuration is local to its thread).
+    profile.set_element_cap(Some(1));
 
     let engulf_id = 91_109_u32;
     budget::begin_element(); // fresh element scope; element cap 1 is the trip
@@ -385,4 +363,18 @@ fn budget_tripped_engulfing_cutter_skips_aabb_fallback() {
 fn opening_obb_if_malformed_bails_on_nan_vertex_not_panic() {
     let cutter = box_cutter_mesh([1.0, 1.0, 1.0], &[[f64::NAN, 0.0, 0.0]]);
     assert!(opening_obb_if_malformed(&cutter).is_none());
+}
+
+/// ROUTER-30 (#7674): `thin_axis` was `partial_cmp(..).unwrap()`, which aborts
+/// the wasm worker on a NaN half-extent. `OpeningBox::thin_axis` was a second
+/// copy of it and now calls this one. Finite triples keep the old answer
+/// (first minimum wins, `-0.0 == +0.0`); a NaN is never the thin axis.
+#[test]
+fn thin_axis_is_total_on_nan_half_extents_7674() {
+    assert_eq!(thin_axis(&[2.0, 0.1, 1.0]), 1);
+    assert_eq!(thin_axis(&[0.1, 0.1, 1.0]), 0, "a tie keeps the first minimum");
+    assert_eq!(thin_axis(&[0.0, -0.0, 1.0]), 0, "-0 and +0 tie; the first wins");
+    assert_eq!(thin_axis(&[f64::NAN, 0.3, 0.2]), 2, "a NaN half-extent is never the thin axis");
+    assert_eq!(thin_axis(&[0.3, -f64::NAN, 0.2]), 2, "nor is a negative NaN");
+    assert_eq!(thin_axis(&[f64::NAN; 3]), 0);
 }

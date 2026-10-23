@@ -16,6 +16,8 @@ pub(crate) fn detect_schema(content: &[u8]) -> String {
         .unwrap_or_else(|| "IFC4".to_string())
 }
 
+pub(crate) use ifc_lite_processing::data_model::rows::attribute_schema;
+
 #[cfg(test)]
 #[path = "schema_detect_tests.rs"]
 mod tests;

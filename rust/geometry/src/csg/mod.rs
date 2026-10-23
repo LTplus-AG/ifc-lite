@@ -13,17 +13,20 @@ use nalgebra::{Point3, Vector3};
 use smallvec::SmallVec;
 use std::cell::RefCell;
 
+mod census;
+pub use census::{reset_csg_census, take_csg_census, CsgCensus, CsgCensusContext, CsgOpRecord};
+use census::record_csg_op;
 mod consolidate;
 mod degenerate_check;
 mod group_cut;
 mod normals;
-mod plane_eps;
+pub(crate) mod plane_eps;
 mod topology_diagnostic;
 mod union;
 
 pub use group_cut::{GroupCut, GroupReject};
 pub use normals::calculate_normals;
-pub(crate) use consolidate::tri_is_needle;
+pub(crate) use consolidate::{tri_is_needle, ConsolidationBoundary};
 
 /// Type alias for small triangle collections (typically 1-2 triangles from clipping)
 pub type TriangleVec = SmallVec<[Triangle; 4]>;
@@ -144,54 +147,6 @@ impl Triangle {
     #[inline]
     pub fn is_degenerate(&self, epsilon: f64) -> bool {
         self.cross_product().try_normalize(epsilon).is_none()
-    }
-}
-
-/// One recorded invocation of a CSG kernel op (perf-census diagnostics).
-/// `op`: 0=subtract 1=union 2=intersection
-/// 3=clip. `a_tris`/`b_tris` are the operand triangle counts — the arrangement
-/// cost driver — so the census measures the *real* heavy-path workload reaching
-/// the kernel (analytic AABB box clips never get here).
-#[derive(Clone, Copy, Debug)]
-pub struct CsgOpRecord {
-    pub op: u8,
-    pub a_tris: u32,
-    pub b_tris: u32,
-}
-
-// Global (Mutex) so it captures ops on rayon worker threads, not just the caller.
-static CSG_CENSUS: std::sync::Mutex<Vec<CsgOpRecord>> = std::sync::Mutex::new(Vec::new());
-
-/// Clear the CSG op census (call before a measured run).
-pub fn reset_csg_census() {
-    if let Ok(mut g) = CSG_CENSUS.lock() {
-        g.clear();
-    }
-}
-
-/// Drain the CSG op census (call after a measured run).
-pub fn take_csg_census() -> Vec<CsgOpRecord> {
-    CSG_CENSUS
-        .lock()
-        .map(|mut g| std::mem::take(&mut *g))
-        .unwrap_or_default()
-}
-
-#[inline]
-fn record_csg_op(op: u8, a_tris: usize, b_tris: usize) {
-    #[cfg(feature = "opening-perf-trace")]
-    crate::opening_perf_trace::record(|c| {
-        let index = usize::from(op).min(3);
-        c.csg_operations[index] = c.csg_operations[index].saturating_add(1);
-        c.csg_operand_triangles[index] = c.csg_operand_triangles[index]
-            .saturating_add(a_tris as u64).saturating_add(b_tris as u64);
-    });
-    if let Ok(mut g) = CSG_CENSUS.lock() {
-        g.push(CsgOpRecord {
-            op,
-            a_tris: a_tris as u32,
-            b_tris: b_tris as u32,
-        });
     }
 }
 
@@ -323,7 +278,27 @@ impl ClippingProcessor {
     /// the same closure predicate but, ONLY when the crate is built with the
     /// `csg_topology_gate` feature (off by default; no downstream crate turns
     /// it on), rejects a torn result the same way `KernelOutputInvalid` does.
+    ///
+    /// Weld policy (#6940): this entry point welds the cutter with the
+    /// opening-only policy (the incidence-retaining weld), the one the void
+    /// router needs. That is a change for external callers of this exported
+    /// method, which used to get the plain weld; on some hosts the two
+    /// policies produce different meshes. [`Self::subtract_operand`] keeps
+    /// the plain weld for `IfcBooleanResult` operands, and the kernel-level
+    /// `mesh_bridge::subtract` is unchanged.
     pub fn subtract_mesh(&self, host_mesh: &Mesh, opening_mesh: &Mesh) -> GroupCut {
+        self.subtract_single(host_mesh, opening_mesh, true)
+    }
+
+    /// Boolean DIFFERENCE operand: the same cut, validation, gates and failure records
+    /// as [`Self::subtract_mesh`], preserving pre-#6940 welding. The extended-opening
+    /// guard changed 21 elements in two of 121 models: 11 improved, 7 worsened, 3 unchanged.
+    /// Twenty had no openings and escaped that census. Keep operand semantics unchanged.
+    pub fn subtract_operand(&self, base_mesh: &Mesh, operand_mesh: &Mesh) -> GroupCut {
+        self.subtract_single(base_mesh, operand_mesh, false)
+    }
+
+    fn subtract_single(&self, host_mesh: &Mesh, opening_mesh: &Mesh, opening: bool) -> GroupCut {
         #[cfg(feature = "opening-perf-trace")]
         crate::opening_perf_trace::record(|c| c.single_subtract_calls = c.single_subtract_calls.saturating_add(1));
         record_csg_op(0, host_mesh.triangle_count(), opening_mesh.triangle_count());
@@ -353,7 +328,7 @@ impl ClippingProcessor {
         // seam-preserving consolidation is the remaining follow-up.
         crate::kernel::budget::begin();
         let (raw, changed, conforming) =
-            crate::kernel::mesh_bridge::subtract_with_change(host_mesh, opening_mesh);
+            crate::kernel::mesh_bridge::subtract_with_change(host_mesh, opening_mesh, opening);
         // Deterministic escalation guardrail (#1109): if the exact predicate
         // cascade escalated past the per-boolean budget, the cut bailed mid-
         // arrangement. Discard the partial result (its `changed` bit too) and
@@ -370,7 +345,7 @@ impl ClippingProcessor {
             );
             return GroupCut::Rejected(GroupReject::BudgetTripped);
         }
-        let result = self.consolidate(raw);
+        let result = if opening { self.consolidate(raw) } else { self.consolidate_operand(raw) };
         if !result.is_empty() && !self.validate_mesh(&result) {
             self.record_failure(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid);
             return GroupCut::Rejected(GroupReject::InvalidOutput);

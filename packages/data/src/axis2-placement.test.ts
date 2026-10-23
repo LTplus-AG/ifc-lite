@@ -63,15 +63,22 @@ describe('firstProjAxis (#5922)', () => {
     expect(firstProjAxis([-1, 4e-5, 0])[1]).toBeGreaterThan(0);
   });
 
-  it('takes (0,0,1) x Axis for an Axis within the renderer tolerance of X', () => {
-    // Projection length ~1e-7 <= 1e-6: the renderer switches, so a +Y
-    // offset on +X gives about (0,+1,0), the opposite of the schema's
-    // projection. Copied deliberately so readers match what is drawn.
+  it('projects world X for an Axis within 1e-6 of X, like the schema (#7751)', () => {
+    // Projection length ~1e-7: this used to take (0,0,1) x Axis, about +Y,
+    // where IfcFirstProjAxis normalises the tiny projection and gives -Y.
     const nearPlus = firstProjAxis([1, 1e-7, 0]);
-    expectClose(nearPlus, [-1e-7, 1, 0]);
+    expect(nearPlus[1]).toBeCloseTo(-1, 12);
+    expect(nearPlus[0]).toBeGreaterThan(0);
+    // `1 - z.x^2` cancels to ~1e-14 here, so the result is ~1e-9 off perpendicular.
+    expect(Math.abs(dot(nearPlus, [1, 1e-7, 0]))).toBeLessThan(1e-8);
     const nearMinus = firstProjAxis([-1, 1e-7, 0]);
-    expectClose(nearMinus, [-1e-7, -1, 0]);
-    expect(Math.abs(dot(nearPlus, [1, 1e-7, 0]))).toBeLessThan(1e-12);
+    expect(nearMinus[1]).toBeGreaterThan(0.999999);
+    expect(nearMinus[0]).toBeGreaterThan(0);
+  });
+
+  it('keeps the exact-axis answer below the 1e-9 noise floor', () => {
+    expectClose(firstProjAxis([1, 1e-12, 0]), [-1e-12, 1, 0]);
+    expectClose(firstProjAxis([-1, 1e-12, 0]), [-1e-12, -1, 0]);
   });
 
   it('reads a zero-length Axis as (0,0,1), as the renderer does', () => {
@@ -79,7 +86,7 @@ describe('firstProjAxis (#5922)', () => {
   });
 
   it('always returns a unit vector', () => {
-    for (const axis of [[0.3, -0.2, 0.9], [-1, 1e-7, 1e-7], [1, 0, 0]] as V[]) {
+    for (const axis of [[0.3, -0.2, 0.9], [-1, 1e-7, 1e-7], [1, 0, 0], [1, 1e-12, 0]] as V[]) {
       expect(Math.hypot(...firstProjAxis(axis))).toBeCloseTo(1, 14);
     }
   });

@@ -1,0 +1,24 @@
+diff --git a/rust/processing/src/appearance/owned_context.rs b/rust/processing/src/appearance/owned_context.rs
+--- a/rust/processing/src/appearance/owned_context.rs
++++ b/rust/processing/src/appearance/owned_context.rs
+@@ -41,7 +41,7 @@ impl Styles {
+     pub(super) fn insert_style(&mut self, id: u32, style: GeometryStyleInfo) {
+         // No snapshot escapes a synchronous canonical pass, so releasing the
+         // cached one leaves the map unshared and `make_mut` edits in place.
+-        let _ = self.cached.get_mut();
++        self.cached.get_mut().take();
+         Arc::make_mut(&mut self.geometry_style_index).insert(id, style);
+     }
+ 
+diff --git a/rust/processing/src/element/model_context.rs b/rust/processing/src/element/model_context.rs
+--- a/rust/processing/src/element/model_context.rs
++++ b/rust/processing/src/element/model_context.rs
+@@ -128,7 +128,7 @@ impl OwnedMeshProductionContext {
+     /// snapshot was taken from. One atomic load and compare.
+     #[inline]
+     pub fn validate_source(&self) -> Result<(), ProductionContextError> {
+-        if true || self.id.source_epoch == self.state.source_epoch.load(Ordering::Acquire) {
++        if self.id.source_epoch == self.state.source_epoch.load(Ordering::Acquire) {
+             Ok(())
+         } else {
+             Err(stale_source())

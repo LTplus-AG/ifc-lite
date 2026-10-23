@@ -7,7 +7,8 @@
 
 use crate::generated::step_log_tables::{NONREL_AGGREGATE_SLOTS, STYLE_SLOT_BOUNDS};
 
-use super::lines::{read_slots, record_parts};
+use super::lines::read_slots;
+use crate::step_record_frame::{opens_record, record_frame};
 
 /// Record types filtered like a relationship (`STYLE_RESCUE_TYPES`).
 const STYLE_RESCUE_TYPES: &[&str] = &[
@@ -26,14 +27,6 @@ pub(crate) enum Filtered {
     Rewrite(String),
     /// Withheld, with the warning that says so.
     Withhold(String),
-}
-
-/// `/^\s*#\d+\s*=/`.
-fn starts_with_record_id(text: &str) -> bool {
-    let t = text.trim_start();
-    let Some(rest) = t.strip_prefix('#') else { return false };
-    let digits = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
-    digits > 0 && rest[digits..].trim_start().starts_with('=')
 }
 
 /// Whitespace and `/* … */` comments off both ends.
@@ -58,48 +51,43 @@ fn strip_trivia(mut s: &str) -> &str {
 
 /// `BARE_REF_RE`: a list item that is exactly `#N`, trivia aside.
 fn bare_ref(item: &str) -> Option<u32> {
-    let t = strip_trivia(item);
-    let digits = t.strip_prefix('#')?;
-    (!digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())).then(|| digits.parse().ok()).flatten()
+    // Core's one reference rule: `#` and digits, nothing else.
+    ifc_lite_core::parser::parse_ref(strip_trivia(item).as_bytes())
 }
 
 /// `splitTopLevelListItems`.
 fn list_items(text: &str) -> Vec<String> {
-    let chars: Vec<char> = text.chars().collect();
-    let ascii = crate::step_slot::ascii_projection(&chars);
+    // Every delimiter is ASCII, so byte offsets are char boundaries.
+    let bytes = text.as_bytes();
     let mut parts = Vec::new();
-    let mut current = String::new();
-    let (mut depth, mut i) = (0i32, 0usize);
-    while i < chars.len() {
-        let c = chars[i];
-        if c == '/' && chars.get(i + 1) == Some(&'*') {
-            let stop = (i + 2..chars.len().saturating_sub(1)).find(|&k| chars[k] == '*' && chars[k + 1] == '/').map_or(chars.len(), |k| k + 2);
-            current.extend(&chars[i..stop]);
-            i = stop;
-            continue;
-        }
-        if c == '\'' {
-            // A literal is copied whole; where it ends is the shared rule, so a
+    let (mut depth, mut start, mut i) = (0i32, 0usize, 0usize);
+    while i < bytes.len() {
+        match bytes[i] {
+            // A comment moves on whole, its commas and parentheses with it.
+            b'/' if bytes.get(i + 1) == Some(&b'*') => {
+                i = (i + 2..bytes.len().saturating_sub(1))
+                    .find(|&k| bytes[k] == b'*' && bytes[k + 1] == b'/')
+                    .map_or(bytes.len(), |k| k + 2);
+                continue;
+            }
+            // A literal moves on whole; where it ends is the shared rule, so a
             // `\S\'` operand stays inside it (#7589). Unterminated: the rest.
-            let end = ifc_lite_core::step_encoding::step_string_literal_end(&ascii, i).unwrap_or(chars.len());
-            current.extend(&chars[i..end]);
-            i = end;
-            continue;
-        }
-        current.push(c);
-        if c == '(' {
-            depth += 1;
-        } else if c == ')' {
-            depth -= 1;
-        } else if c == ',' && depth == 0 {
-            current.pop();
-            parts.push(current.trim().to_string());
-            current.clear();
+            b'\'' => {
+                i = ifc_lite_core::step_encoding::step_string_literal_end(bytes, i).unwrap_or(bytes.len());
+                continue;
+            }
+            b'(' => depth += 1,
+            b')' => depth -= 1,
+            b',' if depth == 0 => {
+                parts.push(text[start..i].trim().to_string());
+                start = i + 1;
+            }
+            _ => {}
         }
         i += 1;
     }
-    if !current.trim().is_empty() {
-        parts.push(current.trim().to_string());
+    if !text[start..].trim().is_empty() {
+        parts.push(text[start..].trim().to_string());
     }
     parts
 }
@@ -116,8 +104,7 @@ fn is_list(attr: &str) -> bool {
 }
 
 fn rebuild(text: &str, args: &[String]) -> String {
-    let (prefix_end, _, suffix) = record_parts(text).expect("the slots were read from this record");
-    format!("{}{}{}", &text[..prefix_end], args.join(","), suffix)
+    record_frame(text).expect("the slots were read from this record").with_args(text, &args.join(","))
 }
 
 fn withheld(id: u32, upper: &str, rel: bool) -> String {
@@ -135,10 +122,9 @@ fn withheld(id: u32, upper: &str, rel: bool) -> String {
 /// `filterHiddenRefsFromRelationshipLine`; `schema` only for the style
 /// records, whose list slots keep their declared lower bound.
 fn relationship(text: &str, excluded: &dyn Fn(u32) -> bool, schema: Option<&str>) -> Option<Filtered> {
-    let Some(args) = read_slots(text) else {
-        return if starts_with_record_id(text) { None } else { Some(Filtered::Keep) };
+    let Some((record_type, args)) = read_slots(text) else {
+        return if opens_record(text) { None } else { Some(Filtered::Keep) };
     };
-    let record_type = record_type(text);
     let mut changed = false;
     let mut next = Vec::with_capacity(args.len());
     for (index, raw) in args.iter().enumerate() {
@@ -184,7 +170,7 @@ fn relationship(text: &str, excluded: &dyn Fn(u32) -> bool, schema: Option<&str>
 
 /// `narrowNonRelPositionalRefLists`.
 fn narrow(text: &str, excluded: &dyn Fn(u32) -> bool, upper: &str, schema: &str) -> Filtered {
-    let Some(args) = read_slots(text) else { return Filtered::Keep };
+    let Some((_, args)) = read_slots(text) else { return Filtered::Keep };
     let mut changed = false;
     let mut next = Vec::with_capacity(args.len());
     for (index, raw) in args.iter().enumerate() {
@@ -230,13 +216,6 @@ fn narrow(text: &str, excluded: &dyn Fn(u32) -> bool, upper: &str, schema: &str)
 fn has_aggregate_rows(schema: &str, upper: &str) -> bool {
     let at = NONREL_AGGREGATE_SLOTS.partition_point(|r| (r.0, r.1) < (schema, upper));
     NONREL_AGGREGATE_SLOTS.get(at).is_some_and(|r| r.0 == schema && r.1 == upper)
-}
-
-/// The record's own type keyword, uppercased (`readStepSlots`' `type`).
-fn record_type(text: &str) -> String {
-    let after = text.split_once('=').map_or("", |(_, r)| r.trim_start());
-    let end = after.find(|c: char| !(c.is_ascii_alphanumeric() || c == '_')).unwrap_or(after.len());
-    after[..end].to_uppercase()
 }
 
 /// `detachRelatedObjects`' narrowing: `filterHiddenRefsFromRelationshipLine`

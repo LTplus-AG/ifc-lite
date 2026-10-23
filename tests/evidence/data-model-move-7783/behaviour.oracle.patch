@@ -1,0 +1,35 @@
+diff --git b/rust/processing/src/data_model/jobs.rs a/rust/processing/src/data_model/jobs.rs
+index d33c677427..be2dc213be 100644
+--- b/rust/processing/src/data_model/jobs.rs
++++ a/rust/processing/src/data_model/jobs.rs
+@@ -41,7 +41,7 @@ impl<'j, 'a> JobBuckets<'j, 'a> {
+                 &mut buckets.rel_materials
+             } else if name.eq_ignore_ascii_case("IFCRELASSOCIATESCLASSIFICATION") {
+                 &mut buckets.rel_classifications
+-            } else if name.eq_ignore_ascii_case("IFCRELASSOCIATESDOCUMENTX") {
++            } else if name.eq_ignore_ascii_case("IFCRELASSOCIATESDOCUMENT") {
+                 &mut buckets.rel_documents
+             } else {
+                 continue;
+@@ -86,7 +86,7 @@ impl<'a> SplitDecoder<'a> {
+ 
+     /// The decoder for `job`'s record and the references it follows.
+     pub(super) fn next_job(&mut self, job: &EntityJob) -> &mut EntityDecoder<'a> {
+-        if true || self.index.get(&job.id).is_some_and(|&(start, _)| start == job.start) {
++        if self.index.get(&job.id).is_some_and(|&(start, _)| start == job.start) {
+             return self.next_lookup();
+         }
+         self.shadowed.insert(EntityDecoder::with_arc_index(self.content, self.index.clone()))
+diff --git b/rust/processing/src/data_model/materials.rs a/rust/processing/src/data_model/materials.rs
+index 9bfc0ac091..108f5792a0 100644
+--- b/rust/processing/src/data_model/materials.rs
++++ a/rust/processing/src/data_model/materials.rs
+@@ -128,7 +128,7 @@ const LAYER_SET: SetSpec = SetSpec {
+         name: 3,
+         category: 5,
+         fraction: None,
+-        layer: Some((2, 1)),
++        layer: Some((1, 2)),
+     },
+ };
+ /// `IfcMaterialList`: Materials(0).

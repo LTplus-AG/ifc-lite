@@ -28,6 +28,8 @@ import { processResultGap } from './revert-oracle-process-result.mjs';
 
 /** The root script CI's viewer-e2e lane runs, and the one it builds with. */
 export const BROWSER_TEST_SCRIPT = 'test:e2e:ci';
+/** Existing workflow-invoked browser scripts; actual --list output selects a runner. */
+export const BROWSER_TEST_SCRIPTS = [BROWSER_TEST_SCRIPT, 'test:benchmark:frames'];
 export const BROWSER_BUILD_SCRIPT = 'build:e2e';
 
 /**
@@ -43,12 +45,13 @@ export function scriptCommand(script) {
 }
 
 /**
- * Derive the browser runner from the root package's scripts: `test:e2e:ci`
- * must be a `playwright test ...` command; `build:e2e`, when present, is run
+ * Derive the browser runner from the root package's scripts: `testScript`
+ * (one of BROWSER_TEST_SCRIPTS) must be a `playwright test ...` command; `build:e2e`, when present, is run
  * before every measurement so each side of the revert is served its own build.
  */
-export function browserRunner(scripts) {
-  const test = scriptCommand(scripts?.[BROWSER_TEST_SCRIPT]);
+export function browserRunner(scripts, testScript = BROWSER_TEST_SCRIPT) {
+  if (!BROWSER_TEST_SCRIPTS.includes(testScript)) return null;
+  const test = scriptCommand(scripts?.[testScript]);
   if (!test || test.bin !== 'playwright' || test.args[0] !== 'test') return null;
   const buildScript = scripts?.[BROWSER_BUILD_SCRIPT];
   const build = buildScript === undefined ? null : scriptCommand(buildScript);

@@ -1,0 +1,4 @@
+HEADER;
+ENDSEC;
+data;
+#1=IFCWALL('a',$);

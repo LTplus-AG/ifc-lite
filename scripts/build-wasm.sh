@@ -123,6 +123,11 @@ then
   exit 1
 fi
 
+# wasm-pack's pkg/.gitignore contains `*`. An explicit npm ignore file keeps
+# generated snippet directories publishable; packages/wasm/package.json's files
+# list remains the authoritative package allowlist. Keep this generated.
+printf '\n' > packages/wasm/pkg/.npmignore
+
 # NOTE: wasm-opt is disabled. The bundle is single-threaded (SIMD128 only,
 # no atomics/shared-memory), and the Rust compiler's LLVM -O3 (release
 # profile) already provides sufficient optimization. wasm-opt also has a
@@ -271,6 +276,38 @@ if [ "${BUILD_WIDE:-}" = "1" ]; then
     exit 1
   fi
   ls -lh "$WIDE_REL/ifc-lite_bg.wasm" | awk '{print "   Wide WASM: " $5 " (no budget — not the default bundle)"}'
+fi
+
+# --- Optional bundle: retained browser executor ------------------------------
+# Off by default. Enable with `BUILD_RETAINED=1 ./scripts/build-wasm.sh`.
+# The same single-thread engine plus the opt-in `retained-browser` feature
+# (#7955): `IfcAPI.retainedSources` and `RetainedBrowserExecutor`, which drives
+# the separately deployed SMLib bundle at /smlib/. It is loaded only by
+# `@ifc-lite/wasm/retained` (`loadRetainedEngine`); the default `pkg` bundle
+# above never contains it, so ordinary loads pay nothing for it.
+if [ "${BUILD_RETAINED:-}" = "1" ]; then
+  RETAINED_OUT="../../packages/wasm/pkg-retained"
+  RETAINED_FEATURES="retained-browser"
+  if [ "${DEBUG_GEOMETRY:-}" = "1" ]; then RETAINED_FEATURES="$RETAINED_FEATURES,debug_geometry"; fi
+  echo ""
+  echo "🧱 Building retained browser bundle → $RETAINED_OUT (--features retained-browser)"
+  rustup run nightly-2025-11-15 "$WASM_PACK" build rust/wasm-bindings \
+    --target web \
+    --out-dir "$RETAINED_OUT" \
+    --out-name ifc-lite \
+    --release \
+    --features "$RETAINED_FEATURES"
+  RETAINED_REL="$(echo "$RETAINED_OUT" | sed 's|^../../||')"
+  printf '\n' > "$RETAINED_REL/.npmignore"
+  RETAINED_DTS="$RETAINED_REL/ifc-lite.d.ts"
+  if [ -f "$RETAINED_DTS" ]; then
+    grep -v '__wasm_bindgen_func_elem_' "$RETAINED_DTS" > "$RETAINED_DTS.tmp" && mv "$RETAINED_DTS.tmp" "$RETAINED_DTS"
+  fi
+  if ! grep -q 'class RetainedBrowserExecutor' "$RETAINED_DTS"; then
+    echo "🧱 ❌ retained bundle lacks RetainedBrowserExecutor — feature not applied; refusing to ship"
+    exit 1
+  fi
+  ls -lh "$RETAINED_REL/ifc-lite_bg.wasm" | awk '{print "   Retained WASM: " $5 " (no budget — not the default bundle)"}'
 fi
 
 echo ""

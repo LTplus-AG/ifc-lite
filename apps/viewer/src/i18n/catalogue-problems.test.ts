@@ -87,3 +87,12 @@ it('#7040 startup metadata matches every lazy Flow review key and placeholder', 
     assert.deepEqual(lazyMessageParameters(key), parameters, key);
   }
 });
+
+it('#7040 startup metadata matches every lazy LandXML georeferencing-assumption key and placeholder', async () => {
+  // Dynamic: the catalogue is new with this feature, so a revert fails this assertion, not the file's load.
+  const { landXmlGeorefAssumptionsEn } = await import('./catalogues/landxml-georef-assumptions.en');
+  for (const [key, value] of Object.entries(landXmlGeorefAssumptionsEn)) {
+    const parameters = [...new Set([...value.matchAll(/\{([A-Za-z][A-Za-z0-9_]*)\}/g)].map(match => match[1]))].sort();
+    assert.deepEqual(lazyMessageParameters(key), parameters, key);
+  }
+});

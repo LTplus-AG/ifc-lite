@@ -1,5 +1,5 @@
 {
- "_comment": "Shared cross-language pin for STEP schema-conversion attribute padding (#1416 in TypeScript; the Rust port). Both halves run their own converter over every case: rust/export/tests/schema_upconvert_parity.rs and packages/export/src/schema-upconvert-sweep.parity.test.ts. Rows are derived from packages/data/src/ifc-schema/generated/entities-*.ts -- the types whose source attribute NAME list is a strict prefix of the target's -- plus hand-written negative controls. Exception: the two IFC4 -> IFC4X3 IFCCARTESIANPOINTLIST* rows (#5755) come from the IFC4 EXPRESS, because packages/data's IFC4 table wrongly lists TagList for IFC4. DO NOT hand-edit a row to make a test pass.",
+ "_comment": "Shared cross-language pin for STEP schema-conversion attribute reconciliation: padding the attributes a newer schema APPENDED (#1416) and trimming the ones the target lacks, in both directions (#7683). Both halves run their own converter over every case: rust/export/tests/schema_upconvert_parity.rs and packages/export/src/schema-upconvert-sweep.parity.test.ts. Which rows must exist is gated by rust/export/src/schema_registry_tests.rs (sweep_fixture_names_every_trimmed_and_padded_type_7683), which re-derives every (from, to, type) the converter trims or pads from core's EXPRESS registry: the types whose attribute NAME list is a strict prefix of the other schema's. The rows appended for #7683 use the input 'a0','a1',... so a trimmed or padded slot is visible by position; the rows before them were derived from packages/data's generated tables and use $. Hand-written vectors and negative controls carry their reason in `why`. Exception: the two IFC4 -> IFC4X3 IFCCARTESIANPOINTLIST* rows (#5755) come from the IFC4 EXPRESS, because packages/data's IFC4 table wrongly lists TagList for IFC4. The rows appended for #7739 pin the types of schema_positional_renames.json (attributes a schema renamed in place) the same way. DO NOT hand-edit a row to make a test pass.",
  "cases": [
   {
    "why": "appended attributes are padded (IFCAPPLIEDVALUE 6 -> 10)",
@@ -1015,6 +1015,1809 @@
    "to": "IFC4",
    "line": "#4=IFCEQUIPMENTELEMENT('g',$,'E',$,$,#1,#2,'tag');",
    "expect": "#4=IFCBUILDINGELEMENTPROXY('g',$,'E',$,$,#1,#2,'tag',$);"
-  }
+  },
+  {
+   "expect": "#7=IFCCSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC2X3",
+   "line": "#7=IFCCSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC4",
+   "why": "dropped trailing attributes are trimmed (IFCCSHAPEPROFILEDEF 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCDISTRIBUTIONCONTROLELEMENT('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC2X3",
+   "line": "#7=IFCDISTRIBUTIONCONTROLELEMENT('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC4",
+   "why": "dropped trailing attributes are trimmed (IFCDISTRIBUTIONCONTROLELEMENT 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCLSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "from": "IFC2X3",
+   "line": "#7=IFCLSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10');",
+   "to": "IFC4",
+   "why": "dropped trailing attributes are trimmed (IFCLSHAPEPROFILEDEF 11 -> 9)"
+  },
+  {
+   "expect": "#7=IFCRELDECOMPOSES('a0','a1','a2','a3');",
+   "from": "IFC2X3",
+   "line": "#7=IFCRELDECOMPOSES('a0','a1','a2','a3','a4','a5');",
+   "to": "IFC4",
+   "why": "dropped trailing attributes are trimmed (IFCRELDECOMPOSES 6 -> 4)"
+  },
+  {
+   "expect": "#7=IFCRELDEFINES('a0','a1','a2','a3');",
+   "from": "IFC2X3",
+   "line": "#7=IFCRELDEFINES('a0','a1','a2','a3','a4');",
+   "to": "IFC4",
+   "why": "dropped trailing attributes are trimmed (IFCRELDEFINES 5 -> 4)"
+  },
+  {
+   "expect": "#7=IFCSTRUCTURALACTION('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "from": "IFC2X3",
+   "line": "#7=IFCSTRUCTURALACTION('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10');",
+   "to": "IFC4",
+   "why": "dropped trailing attributes are trimmed (IFCSTRUCTURALACTION 11 -> 10)"
+  },
+  {
+   "expect": "#7=IFCSTRUCTURALPOINTACTION('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "from": "IFC2X3",
+   "line": "#7=IFCSTRUCTURALPOINTACTION('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10');",
+   "to": "IFC4",
+   "why": "dropped trailing attributes are trimmed (IFCSTRUCTURALPOINTACTION 11 -> 10)"
+  },
+  {
+   "expect": "#7=IFCSTRUCTURALSURFACEMEMBERVARYING('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "from": "IFC2X3",
+   "line": "#7=IFCSTRUCTURALSURFACEMEMBERVARYING('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10');",
+   "to": "IFC4",
+   "why": "dropped trailing attributes are trimmed (IFCSTRUCTURALSURFACEMEMBERVARYING 11 -> 9)"
+  },
+  {
+   "expect": "#7=IFCTSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11');",
+   "from": "IFC2X3",
+   "line": "#7=IFCTSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12');",
+   "to": "IFC4",
+   "why": "dropped trailing attributes are trimmed (IFCTSHAPEPROFILEDEF 13 -> 12)"
+  },
+  {
+   "expect": "#7=IFCUSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "from": "IFC2X3",
+   "line": "#7=IFCUSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10');",
+   "to": "IFC4",
+   "why": "dropped trailing attributes are trimmed (IFCUSHAPEPROFILEDEF 11 -> 10)"
+  },
+  {
+   "expect": "#7=IFCCSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC2X3",
+   "line": "#7=IFCCSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC4X3",
+   "why": "dropped trailing attributes are trimmed (IFCCSHAPEPROFILEDEF 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCDISTRIBUTIONCONTROLELEMENT('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC2X3",
+   "line": "#7=IFCDISTRIBUTIONCONTROLELEMENT('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC4X3",
+   "why": "dropped trailing attributes are trimmed (IFCDISTRIBUTIONCONTROLELEMENT 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCLSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "from": "IFC2X3",
+   "line": "#7=IFCLSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10');",
+   "to": "IFC4X3",
+   "why": "dropped trailing attributes are trimmed (IFCLSHAPEPROFILEDEF 11 -> 9)"
+  },
+  {
+   "expect": "#7=IFCRELDECOMPOSES('a0','a1','a2','a3');",
+   "from": "IFC2X3",
+   "line": "#7=IFCRELDECOMPOSES('a0','a1','a2','a3','a4','a5');",
+   "to": "IFC4X3",
+   "why": "dropped trailing attributes are trimmed (IFCRELDECOMPOSES 6 -> 4)"
+  },
+  {
+   "expect": "#7=IFCRELDEFINES('a0','a1','a2','a3');",
+   "from": "IFC2X3",
+   "line": "#7=IFCRELDEFINES('a0','a1','a2','a3','a4');",
+   "to": "IFC4X3",
+   "why": "dropped trailing attributes are trimmed (IFCRELDEFINES 5 -> 4)"
+  },
+  {
+   "expect": "#7=IFCSTRUCTURALACTION('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "from": "IFC2X3",
+   "line": "#7=IFCSTRUCTURALACTION('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10');",
+   "to": "IFC4X3",
+   "why": "dropped trailing attributes are trimmed (IFCSTRUCTURALACTION 11 -> 10)"
+  },
+  {
+   "expect": "#7=IFCSTRUCTURALPOINTACTION('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "from": "IFC2X3",
+   "line": "#7=IFCSTRUCTURALPOINTACTION('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10');",
+   "to": "IFC4X3",
+   "why": "dropped trailing attributes are trimmed (IFCSTRUCTURALPOINTACTION 11 -> 10)"
+  },
+  {
+   "expect": "#7=IFCSTRUCTURALSURFACEMEMBERVARYING('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "from": "IFC2X3",
+   "line": "#7=IFCSTRUCTURALSURFACEMEMBERVARYING('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10');",
+   "to": "IFC4X3",
+   "why": "dropped trailing attributes are trimmed (IFCSTRUCTURALSURFACEMEMBERVARYING 11 -> 9)"
+  },
+  {
+   "expect": "#7=IFCTSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11');",
+   "from": "IFC2X3",
+   "line": "#7=IFCTSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12');",
+   "to": "IFC4X3",
+   "why": "dropped trailing attributes are trimmed (IFCTSHAPEPROFILEDEF 13 -> 12)"
+  },
+  {
+   "expect": "#7=IFCUSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "from": "IFC2X3",
+   "line": "#7=IFCUSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10');",
+   "to": "IFC4X3",
+   "why": "dropped trailing attributes are trimmed (IFCUSHAPEPROFILEDEF 11 -> 10)"
+  },
+  {
+   "expect": "#7=IFCAPPLIEDVALUE('a0','a1','a2','a3','a4','a5');",
+   "from": "IFC4",
+   "line": "#7=IFCAPPLIEDVALUE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCAPPLIEDVALUE 10 -> 6)"
+  },
+  {
+   "expect": "#7=IFCBEAM('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4",
+   "line": "#7=IFCBEAM('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCBEAM 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCBUILDINGELEMENTPART('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4",
+   "line": "#7=IFCBUILDINGELEMENTPART('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCBUILDINGELEMENTPART 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCBUILDINGELEMENTPROXY('a0','a1','a2','a3','a4','a5','a6','a7',$);",
+   "from": "IFC4",
+   "line": "#7=IFCCIVILELEMENT('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "to": "IFC2X3",
+   "why": "appended attributes are padded (IFCCIVILELEMENT 8 -> 9), renamed to IFCBUILDINGELEMENTPROXY"
+  },
+  {
+   "expect": "#7=IFCCLASSIFICATION('a0','a1','a2','a3');",
+   "from": "IFC4",
+   "line": "#7=IFCCLASSIFICATION('a0','a1','a2','a3','a4','a5','a6');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCCLASSIFICATION 7 -> 4)"
+  },
+  {
+   "expect": "#7=IFCCOLUMN('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4",
+   "line": "#7=IFCCOLUMN('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCCOLUMN 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCCONTROL('a0','a1','a2','a3','a4');",
+   "from": "IFC4",
+   "line": "#7=IFCCONTROL('a0','a1','a2','a3','a4','a5');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCCONTROL 6 -> 5)"
+  },
+  {
+   "expect": "#7=IFCCOSTITEM('a0','a1','a2','a3','a4');",
+   "from": "IFC4",
+   "line": "#7=IFCCOSTITEM('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCCOSTITEM 9 -> 5)"
+  },
+  {
+   "expect": "#7=IFCCSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7',$);",
+   "from": "IFC4",
+   "line": "#7=IFCCSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "to": "IFC2X3",
+   "why": "appended attributes are padded (IFCCSHAPEPROFILEDEF 8 -> 9)"
+  },
+  {
+   "expect": "#7=IFCCURTAINWALL('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4",
+   "line": "#7=IFCCURTAINWALL('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCCURTAINWALL 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCCURVESTYLE('a0','a1','a2','a3');",
+   "from": "IFC4",
+   "line": "#7=IFCCURVESTYLE('a0','a1','a2','a3','a4');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCCURVESTYLE 5 -> 4)"
+  },
+  {
+   "expect": "#7=IFCDISCRETEACCESSORY('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4",
+   "line": "#7=IFCDISCRETEACCESSORY('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCDISCRETEACCESSORY 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCDISCRETEACCESSORYTYPE('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "from": "IFC4",
+   "line": "#7=IFCDISCRETEACCESSORYTYPE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCDISCRETEACCESSORYTYPE 10 -> 9)"
+  },
+  {
+   "expect": "#7=IFCDISTRIBUTIONCHAMBERELEMENT('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4",
+   "line": "#7=IFCDISTRIBUTIONCHAMBERELEMENT('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCDISTRIBUTIONCHAMBERELEMENT 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCDISTRIBUTIONCONTROLELEMENT('a0','a1','a2','a3','a4','a5','a6','a7',$);",
+   "from": "IFC4",
+   "line": "#7=IFCDISTRIBUTIONCONTROLELEMENT('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "to": "IFC2X3",
+   "why": "appended attributes are padded (IFCDISTRIBUTIONCONTROLELEMENT 8 -> 9)"
+  },
+  {
+   "expect": "#7=IFCDISTRIBUTIONPORT('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4",
+   "line": "#7=IFCDISTRIBUTIONPORT('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCDISTRIBUTIONPORT 10 -> 8)"
+  },
+  {
+   "expect": "#7=IFCDOOR('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "from": "IFC4",
+   "line": "#7=IFCDOOR('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCDOOR 13 -> 10)"
+  },
+  {
+   "expect": "#7=IFCDOORLININGPROPERTIES('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13','a14');",
+   "from": "IFC4",
+   "line": "#7=IFCDOORLININGPROPERTIES('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13','a14','a15','a16');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCDOORLININGPROPERTIES 17 -> 15)"
+  },
+  {
+   "expect": "#7=IFCFASTENER('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4",
+   "line": "#7=IFCFASTENER('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCFASTENER 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCFASTENERTYPE('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "from": "IFC4",
+   "line": "#7=IFCFASTENERTYPE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCFASTENERTYPE 10 -> 9)"
+  },
+  {
+   "expect": "#7=IFCFILLAREASTYLE('a0','a1');",
+   "from": "IFC4",
+   "line": "#7=IFCFILLAREASTYLE('a0','a1','a2');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCFILLAREASTYLE 3 -> 2)"
+  },
+  {
+   "expect": "#7=IFCFURNITURETYPE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "from": "IFC4",
+   "line": "#7=IFCFURNITURETYPE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCFURNITURETYPE 11 -> 10)"
+  },
+  {
+   "expect": "#7=IFCGRID('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "from": "IFC4",
+   "line": "#7=IFCGRID('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCGRID 11 -> 10)"
+  },
+  {
+   "expect": "#7=IFCISHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4",
+   "line": "#7=IFCISHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCISHAPEPROFILEDEF 10 -> 8)"
+  },
+  {
+   "expect": "#7=IFCLSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7','a8',$,$);",
+   "from": "IFC4",
+   "line": "#7=IFCLSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "appended attributes are padded (IFCLSHAPEPROFILEDEF 9 -> 11)"
+  },
+  {
+   "expect": "#7=IFCMATERIAL('a0');",
+   "from": "IFC4",
+   "line": "#7=IFCMATERIAL('a0','a1','a2');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCMATERIAL 3 -> 1)"
+  },
+  {
+   "expect": "#7=IFCMATERIALLAYER('a0','a1','a2');",
+   "from": "IFC4",
+   "line": "#7=IFCMATERIALLAYER('a0','a1','a2','a3','a4','a5','a6');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCMATERIALLAYER 7 -> 3)"
+  },
+  {
+   "expect": "#7=IFCMATERIALLAYERSET('a0','a1');",
+   "from": "IFC4",
+   "line": "#7=IFCMATERIALLAYERSET('a0','a1','a2');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCMATERIALLAYERSET 3 -> 2)"
+  },
+  {
+   "expect": "#7=IFCMATERIALLAYERSETUSAGE('a0','a1','a2','a3');",
+   "from": "IFC4",
+   "line": "#7=IFCMATERIALLAYERSETUSAGE('a0','a1','a2','a3','a4');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCMATERIALLAYERSETUSAGE 5 -> 4)"
+  },
+  {
+   "expect": "#7=IFCMECHANICALFASTENER('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "from": "IFC4",
+   "line": "#7=IFCMECHANICALFASTENER('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCMECHANICALFASTENER 11 -> 10)"
+  },
+  {
+   "expect": "#7=IFCMECHANICALFASTENERTYPE('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "from": "IFC4",
+   "line": "#7=IFCMECHANICALFASTENERTYPE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCMECHANICALFASTENERTYPE 12 -> 9)"
+  },
+  {
+   "expect": "#7=IFCMEMBER('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4",
+   "line": "#7=IFCMEMBER('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCMEMBER 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCMETRIC('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "from": "IFC4",
+   "line": "#7=IFCMETRIC('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCMETRIC 11 -> 10)"
+  },
+  {
+   "expect": "#7=IFCOPENINGELEMENT('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4",
+   "line": "#7=IFCOPENINGELEMENT('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCOPENINGELEMENT 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCPLATE('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4",
+   "line": "#7=IFCPLATE('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCPLATE 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCPROCESS('a0','a1','a2','a3','a4');",
+   "from": "IFC4",
+   "line": "#7=IFCPROCESS('a0','a1','a2','a3','a4','a5','a6');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCPROCESS 7 -> 5)"
+  },
+  {
+   "expect": "#7=IFCPROJECTIONELEMENT('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4",
+   "line": "#7=IFCPROJECTIONELEMENT('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCPROJECTIONELEMENT 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCPROPERTYBOUNDEDVALUE('a0','a1','a2','a3','a4');",
+   "from": "IFC4",
+   "line": "#7=IFCPROPERTYBOUNDEDVALUE('a0','a1','a2','a3','a4','a5');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCPROPERTYBOUNDEDVALUE 6 -> 5)"
+  },
+  {
+   "expect": "#7=IFCPROPERTYTABLEVALUE('a0','a1','a2','a3','a4','a5','a6');",
+   "from": "IFC4",
+   "line": "#7=IFCPROPERTYTABLEVALUE('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCPROPERTYTABLEVALUE 8 -> 7)"
+  },
+  {
+   "expect": "#7=IFCQUANTITYAREA('a0','a1','a2','a3');",
+   "from": "IFC4",
+   "line": "#7=IFCQUANTITYAREA('a0','a1','a2','a3','a4');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCQUANTITYAREA 5 -> 4)"
+  },
+  {
+   "expect": "#7=IFCQUANTITYCOUNT('a0','a1','a2','a3');",
+   "from": "IFC4",
+   "line": "#7=IFCQUANTITYCOUNT('a0','a1','a2','a3','a4');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCQUANTITYCOUNT 5 -> 4)"
+  },
+  {
+   "expect": "#7=IFCQUANTITYLENGTH('a0','a1','a2','a3');",
+   "from": "IFC4",
+   "line": "#7=IFCQUANTITYLENGTH('a0','a1','a2','a3','a4');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCQUANTITYLENGTH 5 -> 4)"
+  },
+  {
+   "expect": "#7=IFCQUANTITYTIME('a0','a1','a2','a3');",
+   "from": "IFC4",
+   "line": "#7=IFCQUANTITYTIME('a0','a1','a2','a3','a4');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCQUANTITYTIME 5 -> 4)"
+  },
+  {
+   "expect": "#7=IFCQUANTITYVOLUME('a0','a1','a2','a3');",
+   "from": "IFC4",
+   "line": "#7=IFCQUANTITYVOLUME('a0','a1','a2','a3','a4');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCQUANTITYVOLUME 5 -> 4)"
+  },
+  {
+   "expect": "#7=IFCQUANTITYWEIGHT('a0','a1','a2','a3');",
+   "from": "IFC4",
+   "line": "#7=IFCQUANTITYWEIGHT('a0','a1','a2','a3','a4');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCQUANTITYWEIGHT 5 -> 4)"
+  },
+  {
+   "expect": "#7=IFCRAMPFLIGHT('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4",
+   "line": "#7=IFCRAMPFLIGHT('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCRAMPFLIGHT 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCREINFORCINGMESH('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13','a14','a15','a16');",
+   "from": "IFC4",
+   "line": "#7=IFCREINFORCINGMESH('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13','a14','a15','a16','a17');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCREINFORCINGMESH 18 -> 17)"
+  },
+  {
+   "expect": "#7=IFCRELDECOMPOSES('a0','a1','a2','a3',$,$);",
+   "from": "IFC4",
+   "line": "#7=IFCRELDECOMPOSES('a0','a1','a2','a3');",
+   "to": "IFC2X3",
+   "why": "appended attributes are padded (IFCRELDECOMPOSES 4 -> 6)"
+  },
+  {
+   "expect": "#7=IFCRELDEFINES('a0','a1','a2','a3',$);",
+   "from": "IFC4",
+   "line": "#7=IFCRELDEFINES('a0','a1','a2','a3');",
+   "to": "IFC2X3",
+   "why": "appended attributes are padded (IFCRELDEFINES 4 -> 5)"
+  },
+  {
+   "expect": "#7=IFCRELSEQUENCE('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4",
+   "line": "#7=IFCRELSEQUENCE('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCRELSEQUENCE 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCRESOURCE('a0','a1','a2','a3','a4');",
+   "from": "IFC4",
+   "line": "#7=IFCRESOURCE('a0','a1','a2','a3','a4','a5','a6');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCRESOURCE 7 -> 5)"
+  },
+  {
+   "expect": "#7=IFCSPACETYPE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "from": "IFC4",
+   "line": "#7=IFCSPACETYPE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCSPACETYPE 11 -> 10)"
+  },
+  {
+   "expect": "#7=IFCSTRUCTURALACTION('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9',$);",
+   "from": "IFC4",
+   "line": "#7=IFCSTRUCTURALACTION('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "to": "IFC2X3",
+   "why": "appended attributes are padded (IFCSTRUCTURALACTION 10 -> 11)"
+  },
+  {
+   "expect": "#7=IFCSTRUCTURALANALYSISMODEL('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "from": "IFC4",
+   "line": "#7=IFCSTRUCTURALANALYSISMODEL('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCSTRUCTURALANALYSISMODEL 10 -> 9)"
+  },
+  {
+   "expect": "#7=IFCSTRUCTURALCURVECONNECTION('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4",
+   "line": "#7=IFCSTRUCTURALCURVECONNECTION('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCSTRUCTURALCURVECONNECTION 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCSTRUCTURALCURVEMEMBER('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4",
+   "line": "#7=IFCSTRUCTURALCURVEMEMBER('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCSTRUCTURALCURVEMEMBER 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCSTRUCTURALCURVEMEMBERVARYING('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4",
+   "line": "#7=IFCSTRUCTURALCURVEMEMBERVARYING('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCSTRUCTURALCURVEMEMBERVARYING 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCSTRUCTURALLOADGROUP('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "from": "IFC4",
+   "line": "#7=IFCSTRUCTURALLOADCASE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCSTRUCTURALLOADCASE 11 -> 10), renamed to IFCSTRUCTURALLOADGROUP"
+  },
+  {
+   "expect": "#7=IFCSTRUCTURALPOINTACTION('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9',$);",
+   "from": "IFC4",
+   "line": "#7=IFCSTRUCTURALPOINTACTION('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "to": "IFC2X3",
+   "why": "appended attributes are padded (IFCSTRUCTURALPOINTACTION 10 -> 11)"
+  },
+  {
+   "expect": "#7=IFCSTRUCTURALPOINTCONNECTION('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4",
+   "line": "#7=IFCSTRUCTURALPOINTCONNECTION('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCSTRUCTURALPOINTCONNECTION 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCSTRUCTURALSURFACEMEMBERVARYING('a0','a1','a2','a3','a4','a5','a6','a7','a8',$,$);",
+   "from": "IFC4",
+   "line": "#7=IFCSTRUCTURALSURFACEMEMBERVARYING('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "appended attributes are padded (IFCSTRUCTURALSURFACEMEMBERVARYING 9 -> 11)"
+  },
+  {
+   "expect": "#7=IFCSURFACESTYLESHADING('a0');",
+   "from": "IFC4",
+   "line": "#7=IFCSURFACESTYLESHADING('a0','a1');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCSURFACESTYLESHADING 2 -> 1)"
+  },
+  {
+   "expect": "#7=IFCSYSTEMFURNITUREELEMENTTYPE('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "from": "IFC4",
+   "line": "#7=IFCSYSTEMFURNITUREELEMENTTYPE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCSYSTEMFURNITUREELEMENTTYPE 10 -> 9)"
+  },
+  {
+   "expect": "#7=IFCTABLE('a0','a1');",
+   "from": "IFC4",
+   "line": "#7=IFCTABLE('a0','a1','a2');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCTABLE 3 -> 2)"
+  },
+  {
+   "expect": "#7=IFCTELECOMADDRESS('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4",
+   "line": "#7=IFCTELECOMADDRESS('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCTELECOMADDRESS 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCTENDONANCHOR('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "from": "IFC4",
+   "line": "#7=IFCTENDONANCHOR('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCTENDONANCHOR 10 -> 9)"
+  },
+  {
+   "expect": "#7=IFCTEXTSTYLE('a0','a1','a2','a3');",
+   "from": "IFC4",
+   "line": "#7=IFCTEXTSTYLE('a0','a1','a2','a3','a4');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCTEXTSTYLE 5 -> 4)"
+  },
+  {
+   "expect": "#7=IFCTEXTURECOORDINATE();",
+   "from": "IFC4",
+   "line": "#7=IFCTEXTURECOORDINATE('a0');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCTEXTURECOORDINATE 1 -> 0)"
+  },
+  {
+   "expect": "#7=IFCTSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11',$);",
+   "from": "IFC4",
+   "line": "#7=IFCTSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11');",
+   "to": "IFC2X3",
+   "why": "appended attributes are padded (IFCTSHAPEPROFILEDEF 12 -> 13)"
+  },
+  {
+   "expect": "#7=IFCUSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9',$);",
+   "from": "IFC4",
+   "line": "#7=IFCUSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "to": "IFC2X3",
+   "why": "appended attributes are padded (IFCUSHAPEPROFILEDEF 10 -> 11)"
+  },
+  {
+   "expect": "#7=IFCWALLSTANDARDCASE('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4",
+   "line": "#7=IFCWALLSTANDARDCASE('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCWALLSTANDARDCASE 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCWINDOW('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "from": "IFC4",
+   "line": "#7=IFCWINDOW('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCWINDOW 13 -> 10)"
+  },
+  {
+   "expect": "#7=IFCWINDOWLININGPROPERTIES('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12');",
+   "from": "IFC4",
+   "line": "#7=IFCWINDOWLININGPROPERTIES('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13','a14','a15');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCWINDOWLININGPROPERTIES 16 -> 13)"
+  },
+  {
+   "expect": "#7=IFCZONE('a0','a1','a2','a3','a4');",
+   "from": "IFC4",
+   "line": "#7=IFCZONE('a0','a1','a2','a3','a4','a5');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCZONE 6 -> 5)"
+  },
+  {
+   "expect": "#7=IFCCOORDINATEREFERENCESYSTEM('a0','a1','a2');",
+   "from": "IFC4",
+   "line": "#7=IFCCOORDINATEREFERENCESYSTEM('a0','a1','a2','a3');",
+   "to": "IFC4X3",
+   "why": "dropped trailing attributes are trimmed (IFCCOORDINATEREFERENCESYSTEM 4 -> 3)"
+  },
+  {
+   "expect": "#7=IFCANNOTATION('a0','a1','a2','a3','a4','a5','a6');",
+   "from": "IFC4X3",
+   "line": "#7=IFCANNOTATION('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCANNOTATION 8 -> 7)"
+  },
+  {
+   "expect": "#7=IFCAPPLIEDVALUE('a0','a1','a2','a3','a4','a5');",
+   "from": "IFC4X3",
+   "line": "#7=IFCAPPLIEDVALUE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCAPPLIEDVALUE 10 -> 6)"
+  },
+  {
+   "expect": "#7=IFCBEAM('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4X3",
+   "line": "#7=IFCBEAM('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCBEAM 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCBUILDINGELEMENTPART('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4X3",
+   "line": "#7=IFCBUILDINGELEMENTPART('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCBUILDINGELEMENTPART 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCBUILDINGELEMENTPROXY('a0','a1','a2','a3','a4','a5','a6','a7',$);",
+   "from": "IFC4X3",
+   "line": "#7=IFCBUILTELEMENT('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "to": "IFC2X3",
+   "why": "appended attributes are padded (IFCBUILTELEMENT 8 -> 9), renamed to IFCBUILDINGELEMENTPROXY"
+  },
+  {
+   "expect": "#7=IFCBUILDINGELEMENTPROXY('a0','a1','a2','a3','a4','a5','a6','a7',$);",
+   "from": "IFC4X3",
+   "line": "#7=IFCCIVILELEMENT('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "to": "IFC2X3",
+   "why": "appended attributes are padded (IFCCIVILELEMENT 8 -> 9), renamed to IFCBUILDINGELEMENTPROXY"
+  },
+  {
+   "expect": "#7=IFCCLASSIFICATION('a0','a1','a2','a3');",
+   "from": "IFC4X3",
+   "line": "#7=IFCCLASSIFICATION('a0','a1','a2','a3','a4','a5','a6');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCCLASSIFICATION 7 -> 4)"
+  },
+  {
+   "expect": "#7=IFCCOLUMN('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4X3",
+   "line": "#7=IFCCOLUMN('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCCOLUMN 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCCONTROL('a0','a1','a2','a3','a4');",
+   "from": "IFC4X3",
+   "line": "#7=IFCCONTROL('a0','a1','a2','a3','a4','a5');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCCONTROL 6 -> 5)"
+  },
+  {
+   "expect": "#7=IFCFLOWSEGMENT('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4X3",
+   "line": "#7=IFCCONVEYORSEGMENT('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCCONVEYORSEGMENT 9 -> 8), renamed to IFCFLOWSEGMENT"
+  },
+  {
+   "expect": "#7=IFCCOSTITEM('a0','a1','a2','a3','a4');",
+   "from": "IFC4X3",
+   "line": "#7=IFCCOSTITEM('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCCOSTITEM 9 -> 5)"
+  },
+  {
+   "expect": "#7=IFCCSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7',$);",
+   "from": "IFC4X3",
+   "line": "#7=IFCCSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "to": "IFC2X3",
+   "why": "appended attributes are padded (IFCCSHAPEPROFILEDEF 8 -> 9)"
+  },
+  {
+   "expect": "#7=IFCCURTAINWALL('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4X3",
+   "line": "#7=IFCCURTAINWALL('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCCURTAINWALL 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCCURVESTYLE('a0','a1','a2','a3');",
+   "from": "IFC4X3",
+   "line": "#7=IFCCURVESTYLE('a0','a1','a2','a3','a4');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCCURVESTYLE 5 -> 4)"
+  },
+  {
+   "expect": "#7=IFCFOOTING('a0','a1','a2','a3','a4','a5','a6','a7',.NOTDEFINED.);",
+   "from": "IFC4X3",
+   "line": "#7=IFCDEEPFOUNDATION('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "to": "IFC2X3",
+   "why": "appended attributes are padded (IFCDEEPFOUNDATION 8 -> 9), renamed to IFCFOOTING"
+  },
+  {
+   "expect": "#7=IFCDERIVEDUNIT('a0','a1','a2');",
+   "from": "IFC4X3",
+   "line": "#7=IFCDERIVEDUNIT('a0','a1','a2','a3');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCDERIVEDUNIT 4 -> 3)"
+  },
+  {
+   "expect": "#7=IFCDISCRETEACCESSORY('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4X3",
+   "line": "#7=IFCDISCRETEACCESSORY('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCDISCRETEACCESSORY 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCDISCRETEACCESSORYTYPE('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "from": "IFC4X3",
+   "line": "#7=IFCDISCRETEACCESSORYTYPE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCDISCRETEACCESSORYTYPE 10 -> 9)"
+  },
+  {
+   "expect": "#7=IFCDISTRIBUTIONCHAMBERELEMENT('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4X3",
+   "line": "#7=IFCDISTRIBUTIONCHAMBERELEMENT('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCDISTRIBUTIONCHAMBERELEMENT 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCDISTRIBUTIONCONTROLELEMENT('a0','a1','a2','a3','a4','a5','a6','a7',$);",
+   "from": "IFC4X3",
+   "line": "#7=IFCDISTRIBUTIONCONTROLELEMENT('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "to": "IFC2X3",
+   "why": "appended attributes are padded (IFCDISTRIBUTIONCONTROLELEMENT 8 -> 9)"
+  },
+  {
+   "expect": "#7=IFCDISTRIBUTIONPORT('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4X3",
+   "line": "#7=IFCDISTRIBUTIONPORT('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCDISTRIBUTIONPORT 10 -> 8)"
+  },
+  {
+   "expect": "#7=IFCDOOR('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "from": "IFC4X3",
+   "line": "#7=IFCDOOR('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCDOOR 13 -> 10)"
+  },
+  {
+   "expect": "#7=IFCDOORLININGPROPERTIES('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13','a14');",
+   "from": "IFC4X3",
+   "line": "#7=IFCDOORLININGPROPERTIES('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13','a14','a15','a16');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCDOORLININGPROPERTIES 17 -> 15)"
+  },
+  {
+   "expect": "#7=IFCBUILDINGELEMENTPROXY('a0','a1','a2','a3','a4','a5','a6','a7',$);",
+   "from": "IFC4X3",
+   "line": "#7=IFCEARTHWORKSELEMENT('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "to": "IFC2X3",
+   "why": "appended attributes are padded (IFCEARTHWORKSELEMENT 8 -> 9), renamed to IFCBUILDINGELEMENTPROXY"
+  },
+  {
+   "expect": "#7=IFCFLOWTREATMENTDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4X3",
+   "line": "#7=IFCELECTRICFLOWTREATMENTDEVICE('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCELECTRICFLOWTREATMENTDEVICE 9 -> 8), renamed to IFCFLOWTREATMENTDEVICE"
+  },
+  {
+   "expect": "#7=IFCBUILDING('a0','a1','a2','a3','a4','a5','a6','a7','a8',$,$,$);",
+   "from": "IFC4X3",
+   "line": "#7=IFCFACILITY('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "appended attributes are padded (IFCFACILITY 9 -> 12), renamed to IFCBUILDING"
+  },
+  {
+   "expect": "#7=IFCFASTENER('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4X3",
+   "line": "#7=IFCFASTENER('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCFASTENER 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCFASTENERTYPE('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "from": "IFC4X3",
+   "line": "#7=IFCFASTENERTYPE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCFASTENERTYPE 10 -> 9)"
+  },
+  {
+   "expect": "#7=IFCFILLAREASTYLE('a0','a1');",
+   "from": "IFC4X3",
+   "line": "#7=IFCFILLAREASTYLE('a0','a1','a2');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCFILLAREASTYLE 3 -> 2)"
+  },
+  {
+   "expect": "#7=IFCFURNITURETYPE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "from": "IFC4X3",
+   "line": "#7=IFCFURNITURETYPE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCFURNITURETYPE 11 -> 10)"
+  },
+  {
+   "expect": "#7=IFCGRID('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "from": "IFC4X3",
+   "line": "#7=IFCGRID('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCGRID 11 -> 10)"
+  },
+  {
+   "expect": "#7=IFCISHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4X3",
+   "line": "#7=IFCISHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCISHAPEPROFILEDEF 10 -> 8)"
+  },
+  {
+   "expect": "#7=IFCFLOWTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4X3",
+   "line": "#7=IFCLIQUIDTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCLIQUIDTERMINAL 9 -> 8), renamed to IFCFLOWTERMINAL"
+  },
+  {
+   "expect": "#7=IFCLSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7','a8',$,$);",
+   "from": "IFC4X3",
+   "line": "#7=IFCLSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "appended attributes are padded (IFCLSHAPEPROFILEDEF 9 -> 11)"
+  },
+  {
+   "expect": "#7=IFCMATERIAL('a0');",
+   "from": "IFC4X3",
+   "line": "#7=IFCMATERIAL('a0','a1','a2');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCMATERIAL 3 -> 1)"
+  },
+  {
+   "expect": "#7=IFCMATERIALLAYER('a0','a1','a2');",
+   "from": "IFC4X3",
+   "line": "#7=IFCMATERIALLAYER('a0','a1','a2','a3','a4','a5','a6');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCMATERIALLAYER 7 -> 3)"
+  },
+  {
+   "expect": "#7=IFCMATERIALLAYERSET('a0','a1');",
+   "from": "IFC4X3",
+   "line": "#7=IFCMATERIALLAYERSET('a0','a1','a2');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCMATERIALLAYERSET 3 -> 2)"
+  },
+  {
+   "expect": "#7=IFCMATERIALLAYERSETUSAGE('a0','a1','a2','a3');",
+   "from": "IFC4X3",
+   "line": "#7=IFCMATERIALLAYERSETUSAGE('a0','a1','a2','a3','a4');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCMATERIALLAYERSETUSAGE 5 -> 4)"
+  },
+  {
+   "expect": "#7=IFCMECHANICALFASTENER('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "from": "IFC4X3",
+   "line": "#7=IFCMECHANICALFASTENER('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCMECHANICALFASTENER 11 -> 10)"
+  },
+  {
+   "expect": "#7=IFCMECHANICALFASTENERTYPE('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "from": "IFC4X3",
+   "line": "#7=IFCMECHANICALFASTENERTYPE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCMECHANICALFASTENERTYPE 12 -> 9)"
+  },
+  {
+   "expect": "#7=IFCMEMBER('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4X3",
+   "line": "#7=IFCMEMBER('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCMEMBER 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCMETRIC('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "from": "IFC4X3",
+   "line": "#7=IFCMETRIC('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCMETRIC 11 -> 10)"
+  },
+  {
+   "expect": "#7=IFCOBJECTPLACEMENT();",
+   "from": "IFC4X3",
+   "line": "#7=IFCOBJECTPLACEMENT('a0');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCOBJECTPLACEMENT 1 -> 0)"
+  },
+  {
+   "expect": "#7=IFCOPENINGELEMENT('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4X3",
+   "line": "#7=IFCOPENINGELEMENT('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCOPENINGELEMENT 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCPLATE('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4X3",
+   "line": "#7=IFCPLATE('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCPLATE 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCPROCESS('a0','a1','a2','a3','a4');",
+   "from": "IFC4X3",
+   "line": "#7=IFCPROCESS('a0','a1','a2','a3','a4','a5','a6');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCPROCESS 7 -> 5)"
+  },
+  {
+   "expect": "#7=IFCPROJECTIONELEMENT('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4X3",
+   "line": "#7=IFCPROJECTIONELEMENT('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCPROJECTIONELEMENT 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCQUANTITYAREA('a0','a1','a2','a3');",
+   "from": "IFC4X3",
+   "line": "#7=IFCQUANTITYAREA('a0','a1','a2','a3','a4');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCQUANTITYAREA 5 -> 4)"
+  },
+  {
+   "expect": "#7=IFCQUANTITYCOUNT('a0','a1','a2','a3');",
+   "from": "IFC4X3",
+   "line": "#7=IFCQUANTITYCOUNT('a0','a1','a2','a3','a4');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCQUANTITYCOUNT 5 -> 4)"
+  },
+  {
+   "expect": "#7=IFCQUANTITYLENGTH('a0','a1','a2','a3');",
+   "from": "IFC4X3",
+   "line": "#7=IFCQUANTITYLENGTH('a0','a1','a2','a3','a4');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCQUANTITYLENGTH 5 -> 4)"
+  },
+  {
+   "expect": "#7=IFCQUANTITYTIME('a0','a1','a2','a3');",
+   "from": "IFC4X3",
+   "line": "#7=IFCQUANTITYTIME('a0','a1','a2','a3','a4');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCQUANTITYTIME 5 -> 4)"
+  },
+  {
+   "expect": "#7=IFCQUANTITYVOLUME('a0','a1','a2','a3');",
+   "from": "IFC4X3",
+   "line": "#7=IFCQUANTITYVOLUME('a0','a1','a2','a3','a4');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCQUANTITYVOLUME 5 -> 4)"
+  },
+  {
+   "expect": "#7=IFCQUANTITYWEIGHT('a0','a1','a2','a3');",
+   "from": "IFC4X3",
+   "line": "#7=IFCQUANTITYWEIGHT('a0','a1','a2','a3','a4');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCQUANTITYWEIGHT 5 -> 4)"
+  },
+  {
+   "expect": "#7=IFCRAMPFLIGHT('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4X3",
+   "line": "#7=IFCRAMPFLIGHT('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCRAMPFLIGHT 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCREINFORCINGMESH('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13','a14','a15','a16');",
+   "from": "IFC4X3",
+   "line": "#7=IFCREINFORCINGMESH('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13','a14','a15','a16','a17');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCREINFORCINGMESH 18 -> 17)"
+  },
+  {
+   "expect": "#7=IFCRELDECOMPOSES('a0','a1','a2','a3',$,$);",
+   "from": "IFC4X3",
+   "line": "#7=IFCRELDECOMPOSES('a0','a1','a2','a3');",
+   "to": "IFC2X3",
+   "why": "appended attributes are padded (IFCRELDECOMPOSES 4 -> 6)"
+  },
+  {
+   "expect": "#7=IFCRELDEFINES('a0','a1','a2','a3',$);",
+   "from": "IFC4X3",
+   "line": "#7=IFCRELDEFINES('a0','a1','a2','a3');",
+   "to": "IFC2X3",
+   "why": "appended attributes are padded (IFCRELDEFINES 4 -> 5)"
+  },
+  {
+   "expect": "#7=IFCRELSEQUENCE('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4X3",
+   "line": "#7=IFCRELSEQUENCE('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCRELSEQUENCE 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCRESOURCE('a0','a1','a2','a3','a4');",
+   "from": "IFC4X3",
+   "line": "#7=IFCRESOURCE('a0','a1','a2','a3','a4','a5','a6');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCRESOURCE 7 -> 5)"
+  },
+  {
+   "expect": "#7=IFCSPACETYPE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "from": "IFC4X3",
+   "line": "#7=IFCSPACETYPE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCSPACETYPE 11 -> 10)"
+  },
+  {
+   "expect": "#7=IFCSTRUCTURALACTION('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9',$);",
+   "from": "IFC4X3",
+   "line": "#7=IFCSTRUCTURALACTION('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "to": "IFC2X3",
+   "why": "appended attributes are padded (IFCSTRUCTURALACTION 10 -> 11)"
+  },
+  {
+   "expect": "#7=IFCSTRUCTURALANALYSISMODEL('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "from": "IFC4X3",
+   "line": "#7=IFCSTRUCTURALANALYSISMODEL('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCSTRUCTURALANALYSISMODEL 10 -> 9)"
+  },
+  {
+   "expect": "#7=IFCSTRUCTURALCURVECONNECTION('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4X3",
+   "line": "#7=IFCSTRUCTURALCURVECONNECTION('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCSTRUCTURALCURVECONNECTION 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCSTRUCTURALCURVEMEMBER('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4X3",
+   "line": "#7=IFCSTRUCTURALCURVEMEMBER('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCSTRUCTURALCURVEMEMBER 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCSTRUCTURALCURVEMEMBERVARYING('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4X3",
+   "line": "#7=IFCSTRUCTURALCURVEMEMBERVARYING('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCSTRUCTURALCURVEMEMBERVARYING 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCSTRUCTURALLOADGROUP('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "from": "IFC4X3",
+   "line": "#7=IFCSTRUCTURALLOADCASE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCSTRUCTURALLOADCASE 11 -> 10), renamed to IFCSTRUCTURALLOADGROUP"
+  },
+  {
+   "expect": "#7=IFCSTRUCTURALPOINTACTION('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9',$);",
+   "from": "IFC4X3",
+   "line": "#7=IFCSTRUCTURALPOINTACTION('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "to": "IFC2X3",
+   "why": "appended attributes are padded (IFCSTRUCTURALPOINTACTION 10 -> 11)"
+  },
+  {
+   "expect": "#7=IFCSTRUCTURALPOINTCONNECTION('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4X3",
+   "line": "#7=IFCSTRUCTURALPOINTCONNECTION('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCSTRUCTURALPOINTCONNECTION 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCSTRUCTURALSURFACEMEMBERVARYING('a0','a1','a2','a3','a4','a5','a6','a7','a8',$,$);",
+   "from": "IFC4X3",
+   "line": "#7=IFCSTRUCTURALSURFACEMEMBERVARYING('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "appended attributes are padded (IFCSTRUCTURALSURFACEMEMBERVARYING 9 -> 11)"
+  },
+  {
+   "expect": "#7=IFCSURFACESTYLESHADING('a0');",
+   "from": "IFC4X3",
+   "line": "#7=IFCSURFACESTYLESHADING('a0','a1');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCSURFACESTYLESHADING 2 -> 1)"
+  },
+  {
+   "expect": "#7=IFCSYSTEMFURNITUREELEMENTTYPE('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "from": "IFC4X3",
+   "line": "#7=IFCSYSTEMFURNITUREELEMENTTYPE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCSYSTEMFURNITUREELEMENTTYPE 10 -> 9)"
+  },
+  {
+   "expect": "#7=IFCTABLE('a0','a1');",
+   "from": "IFC4X3",
+   "line": "#7=IFCTABLE('a0','a1','a2');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCTABLE 3 -> 2)"
+  },
+  {
+   "expect": "#7=IFCTELECOMADDRESS('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4X3",
+   "line": "#7=IFCTELECOMADDRESS('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCTELECOMADDRESS 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCTENDONANCHOR('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "from": "IFC4X3",
+   "line": "#7=IFCTENDONANCHOR('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCTENDONANCHOR 10 -> 9)"
+  },
+  {
+   "expect": "#7=IFCTEXTSTYLE('a0','a1','a2','a3');",
+   "from": "IFC4X3",
+   "line": "#7=IFCTEXTSTYLE('a0','a1','a2','a3','a4');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCTEXTSTYLE 5 -> 4)"
+  },
+  {
+   "expect": "#7=IFCTEXTURECOORDINATE();",
+   "from": "IFC4X3",
+   "line": "#7=IFCTEXTURECOORDINATE('a0');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCTEXTURECOORDINATE 1 -> 0)"
+  },
+  {
+   "expect": "#7=IFCTSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11',$);",
+   "from": "IFC4X3",
+   "line": "#7=IFCTSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11');",
+   "to": "IFC2X3",
+   "why": "appended attributes are padded (IFCTSHAPEPROFILEDEF 12 -> 13)"
+  },
+  {
+   "expect": "#7=IFCUSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9',$);",
+   "from": "IFC4X3",
+   "line": "#7=IFCUSHAPEPROFILEDEF('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "to": "IFC2X3",
+   "why": "appended attributes are padded (IFCUSHAPEPROFILEDEF 10 -> 11)"
+  },
+  {
+   "expect": "#7=IFCVIRTUALELEMENT('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4X3",
+   "line": "#7=IFCVIRTUALELEMENT('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCVIRTUALELEMENT 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCWALL('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4X3",
+   "line": "#7=IFCWALL('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCWALL 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCWALLSTANDARDCASE('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4X3",
+   "line": "#7=IFCWALLSTANDARDCASE('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCWALLSTANDARDCASE 9 -> 8)"
+  },
+  {
+   "expect": "#7=IFCWINDOW('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "from": "IFC4X3",
+   "line": "#7=IFCWINDOW('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCWINDOW 13 -> 10)"
+  },
+  {
+   "expect": "#7=IFCWINDOWLININGPROPERTIES('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12');",
+   "from": "IFC4X3",
+   "line": "#7=IFCWINDOWLININGPROPERTIES('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13','a14','a15');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCWINDOWLININGPROPERTIES 16 -> 13)"
+  },
+  {
+   "expect": "#7=IFCZONE('a0','a1','a2','a3','a4');",
+   "from": "IFC4X3",
+   "line": "#7=IFCZONE('a0','a1','a2','a3','a4','a5');",
+   "to": "IFC2X3",
+   "why": "dropped trailing attributes are trimmed (IFCZONE 6 -> 5)"
+  },
+  {
+   "expect": "#7=IFCANNOTATION('a0','a1','a2','a3','a4','a5','a6');",
+   "from": "IFC4X3",
+   "line": "#7=IFCANNOTATION('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "to": "IFC4",
+   "why": "dropped trailing attributes are trimmed (IFCANNOTATION 8 -> 7)"
+  },
+  {
+   "expect": "#7=IFCBUILDINGELEMENTPROXY('a0','a1','a2','a3','a4','a5','a6','a7',$);",
+   "from": "IFC4X3",
+   "line": "#7=IFCBUILTELEMENT('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "to": "IFC4",
+   "why": "appended attributes are padded (IFCBUILTELEMENT 8 -> 9), renamed to IFCBUILDINGELEMENTPROXY"
+  },
+  {
+   "expect": "#7=IFCCARTESIANPOINTLIST2D('a0');",
+   "from": "IFC4X3",
+   "line": "#7=IFCCARTESIANPOINTLIST2D('a0','a1');",
+   "to": "IFC4",
+   "why": "dropped trailing attributes are trimmed (IFCCARTESIANPOINTLIST2D 2 -> 1)"
+  },
+  {
+   "expect": "#7=IFCCARTESIANPOINTLIST3D('a0');",
+   "from": "IFC4X3",
+   "line": "#7=IFCCARTESIANPOINTLIST3D('a0','a1');",
+   "to": "IFC4",
+   "why": "dropped trailing attributes are trimmed (IFCCARTESIANPOINTLIST3D 2 -> 1)"
+  },
+  {
+   "expect": "#7=IFCFLOWSEGMENT('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4X3",
+   "line": "#7=IFCCONVEYORSEGMENT('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC4",
+   "why": "dropped trailing attributes are trimmed (IFCCONVEYORSEGMENT 9 -> 8), renamed to IFCFLOWSEGMENT"
+  },
+  {
+   "expect": "#7=IFCCOORDINATEREFERENCESYSTEM('a0','a1','a2',$);",
+   "from": "IFC4X3",
+   "line": "#7=IFCCOORDINATEREFERENCESYSTEM('a0','a1','a2');",
+   "to": "IFC4",
+   "why": "appended attributes are padded (IFCCOORDINATEREFERENCESYSTEM 3 -> 4)"
+  },
+  {
+   "expect": "#7=IFCDERIVEDUNIT('a0','a1','a2');",
+   "from": "IFC4X3",
+   "line": "#7=IFCDERIVEDUNIT('a0','a1','a2','a3');",
+   "to": "IFC4",
+   "why": "dropped trailing attributes are trimmed (IFCDERIVEDUNIT 4 -> 3)"
+  },
+  {
+   "expect": "#7=IFCBUILDINGELEMENTPROXY('a0','a1','a2','a3','a4','a5','a6','a7',$);",
+   "from": "IFC4X3",
+   "line": "#7=IFCEARTHWORKSELEMENT('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "to": "IFC4",
+   "why": "appended attributes are padded (IFCEARTHWORKSELEMENT 8 -> 9), renamed to IFCBUILDINGELEMENTPROXY"
+  },
+  {
+   "expect": "#7=IFCFLOWTREATMENTDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4X3",
+   "line": "#7=IFCELECTRICFLOWTREATMENTDEVICE('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC4",
+   "why": "dropped trailing attributes are trimmed (IFCELECTRICFLOWTREATMENTDEVICE 9 -> 8), renamed to IFCFLOWTREATMENTDEVICE"
+  },
+  {
+   "expect": "#7=IFCBUILDING('a0','a1','a2','a3','a4','a5','a6','a7','a8',$,$,$);",
+   "from": "IFC4X3",
+   "line": "#7=IFCFACILITY('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC4",
+   "why": "appended attributes are padded (IFCFACILITY 9 -> 12), renamed to IFCBUILDING"
+  },
+  {
+   "expect": "#7=IFCFLOWTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4X3",
+   "line": "#7=IFCLIQUIDTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC4",
+   "why": "dropped trailing attributes are trimmed (IFCLIQUIDTERMINAL 9 -> 8), renamed to IFCFLOWTERMINAL"
+  },
+  {
+   "expect": "#7=IFCOBJECTPLACEMENT();",
+   "from": "IFC4X3",
+   "line": "#7=IFCOBJECTPLACEMENT('a0');",
+   "to": "IFC4",
+   "why": "dropped trailing attributes are trimmed (IFCOBJECTPLACEMENT 1 -> 0)"
+  },
+  {
+   "expect": "#7=IFCRELINTERFERESELEMENTS('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "from": "IFC4X3",
+   "line": "#7=IFCRELINTERFERESELEMENTS('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "to": "IFC4",
+   "why": "dropped trailing attributes are trimmed (IFCRELINTERFERESELEMENTS 10 -> 9)"
+  },
+  {
+   "expect": "#7=IFCVIRTUALELEMENT('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "from": "IFC4X3",
+   "line": "#7=IFCVIRTUALELEMENT('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "to": "IFC4",
+   "why": "dropped trailing attributes are trimmed (IFCVIRTUALELEMENT 9 -> 8)"
+  },
+  {
+   "why": "an IFC4 quantity loses its IFC4-only Formula on a downgrade (#7683; the Rust converter used to keep it, so every IfcQuantity* in an IFC2X3 export was a slot too long)",
+   "from": "IFC4",
+   "to": "IFC2X3",
+   "line": "#7=IFCQUANTITYLENGTH('Length','Gross length',#3,2.5,'L = 2 * W');",
+   "expect": "#7=IFCQUANTITYLENGTH('Length','Gross length',#3,2.5);"
+  },
+  {
+   "why": "an IFC4 volume quantity with a $ Formula is trimmed the same way (#7683)",
+   "from": "IFC4",
+   "to": "IFC2X3",
+   "line": "#8=IFCQUANTITYVOLUME('NetVolume',$,$,12.75,$);",
+   "expect": "#8=IFCQUANTITYVOLUME('NetVolume',$,$,12.75);"
+  },
+  {
+   "why": "IFC2X3 IfcMaterial is [Name] alone; IFC4 appended Description and Category (#7683)",
+   "from": "IFC4",
+   "to": "IFC2X3",
+   "line": "#9=IFCMATERIAL('Concrete','C30/37','Structural');",
+   "expect": "#9=IFCMATERIAL('Concrete');"
+  },
+  {
+   "why": "an UPGRADE can trim: IFC4 dropped ControlElementId from IfcDistributionControlElement (#7683)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#10=IFCDISTRIBUTIONCONTROLELEMENT('g',#2,'Sensor',$,$,#4,#5,'tag','CE-1');",
+   "expect": "#10=IFCDISTRIBUTIONCONTROLELEMENT('g',#2,'Sensor',$,$,#4,#5,'tag');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCACTIONREQUEST 6 -> 9); renamed RequestID->Identification (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCACTIONREQUEST('a0','a1','a2','a3','a4','a5');",
+   "expect": "#7=IFCACTIONREQUEST('a0','a1','a2','a3','a4','a5',$,$,$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCACTIONREQUEST 6 -> 9); renamed RequestID->Identification (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCACTIONREQUEST('a0','a1','a2','a3','a4','a5');",
+   "expect": "#7=IFCACTIONREQUEST('a0','a1','a2','a3','a4','a5',$,$,$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCACTIONREQUEST 9 -> 6); renamed RequestID->Identification (#7739)",
+   "from": "IFC4",
+   "to": "IFC2X3",
+   "line": "#7=IFCACTIONREQUEST('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "expect": "#7=IFCACTIONREQUEST('a0','a1','a2','a3','a4','a5');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCACTIONREQUEST 9 -> 6); renamed RequestID->Identification (#7739)",
+   "from": "IFC4X3",
+   "to": "IFC2X3",
+   "line": "#7=IFCACTIONREQUEST('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "expect": "#7=IFCACTIONREQUEST('a0','a1','a2','a3','a4','a5');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCCLASSIFICATIONREFERENCE 4 -> 6); renamed ItemReference->Identification (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCCLASSIFICATIONREFERENCE('a0','a1','a2','a3');",
+   "expect": "#7=IFCCLASSIFICATIONREFERENCE('a0','a1','a2','a3',$,$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCCLASSIFICATIONREFERENCE 4 -> 6); renamed ItemReference->Identification (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCCLASSIFICATIONREFERENCE('a0','a1','a2','a3');",
+   "expect": "#7=IFCCLASSIFICATIONREFERENCE('a0','a1','a2','a3',$,$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCCLASSIFICATIONREFERENCE 6 -> 4); renamed ItemReference->Identification (#7739)",
+   "from": "IFC4",
+   "to": "IFC2X3",
+   "line": "#7=IFCCLASSIFICATIONREFERENCE('a0','a1','a2','a3','a4','a5');",
+   "expect": "#7=IFCCLASSIFICATIONREFERENCE('a0','a1','a2','a3');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCCLASSIFICATIONREFERENCE 6 -> 4); renamed ItemReference->Identification (#7739)",
+   "from": "IFC4X3",
+   "to": "IFC2X3",
+   "line": "#7=IFCCLASSIFICATIONREFERENCE('a0','a1','a2','a3','a4','a5');",
+   "expect": "#7=IFCCLASSIFICATIONREFERENCE('a0','a1','a2','a3');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCDOCUMENTREFERENCE 3 -> 5); renamed ItemReference->Identification (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCDOCUMENTREFERENCE('a0','a1','a2');",
+   "expect": "#7=IFCDOCUMENTREFERENCE('a0','a1','a2',$,$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCDOCUMENTREFERENCE 3 -> 5); renamed ItemReference->Identification (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCDOCUMENTREFERENCE('a0','a1','a2');",
+   "expect": "#7=IFCDOCUMENTREFERENCE('a0','a1','a2',$,$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCDOCUMENTREFERENCE 5 -> 3); renamed ItemReference->Identification (#7739)",
+   "from": "IFC4",
+   "to": "IFC2X3",
+   "line": "#7=IFCDOCUMENTREFERENCE('a0','a1','a2','a3','a4');",
+   "expect": "#7=IFCDOCUMENTREFERENCE('a0','a1','a2');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCDOCUMENTREFERENCE 5 -> 3); renamed ItemReference->Identification (#7739)",
+   "from": "IFC4X3",
+   "to": "IFC2X3",
+   "line": "#7=IFCDOCUMENTREFERENCE('a0','a1','a2','a3','a4');",
+   "expect": "#7=IFCDOCUMENTREFERENCE('a0','a1','a2');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCLIBRARYREFERENCE 3 -> 6); renamed ItemReference->Identification (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCLIBRARYREFERENCE('a0','a1','a2');",
+   "expect": "#7=IFCLIBRARYREFERENCE('a0','a1','a2',$,$,$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCLIBRARYREFERENCE 3 -> 6); renamed ItemReference->Identification (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCLIBRARYREFERENCE('a0','a1','a2');",
+   "expect": "#7=IFCLIBRARYREFERENCE('a0','a1','a2',$,$,$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCLIBRARYREFERENCE 6 -> 3); renamed ItemReference->Identification (#7739)",
+   "from": "IFC4",
+   "to": "IFC2X3",
+   "line": "#7=IFCLIBRARYREFERENCE('a0','a1','a2','a3','a4','a5');",
+   "expect": "#7=IFCLIBRARYREFERENCE('a0','a1','a2');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCLIBRARYREFERENCE 6 -> 3); renamed ItemReference->Identification (#7739)",
+   "from": "IFC4X3",
+   "to": "IFC2X3",
+   "line": "#7=IFCLIBRARYREFERENCE('a0','a1','a2','a3','a4','a5');",
+   "expect": "#7=IFCLIBRARYREFERENCE('a0','a1','a2');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCPERMIT 6 -> 9); renamed PermitID->Identification (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCPERMIT('a0','a1','a2','a3','a4','a5');",
+   "expect": "#7=IFCPERMIT('a0','a1','a2','a3','a4','a5',$,$,$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCPERMIT 6 -> 9); renamed PermitID->Identification (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCPERMIT('a0','a1','a2','a3','a4','a5');",
+   "expect": "#7=IFCPERMIT('a0','a1','a2','a3','a4','a5',$,$,$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCPERMIT 9 -> 6); renamed PermitID->Identification (#7739)",
+   "from": "IFC4",
+   "to": "IFC2X3",
+   "line": "#7=IFCPERMIT('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "expect": "#7=IFCPERMIT('a0','a1','a2','a3','a4','a5');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCPERMIT 9 -> 6); renamed PermitID->Identification (#7739)",
+   "from": "IFC4X3",
+   "to": "IFC2X3",
+   "line": "#7=IFCPERMIT('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "expect": "#7=IFCPERMIT('a0','a1','a2','a3','a4','a5');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCPROJECTORDER 8 -> 9); renamed ID->Identification (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCPROJECTORDER('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "expect": "#7=IFCPROJECTORDER('a0','a1','a2','a3','a4','a5','a6','a7',$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCPROJECTORDER 8 -> 9); renamed ID->Identification (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCPROJECTORDER('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "expect": "#7=IFCPROJECTORDER('a0','a1','a2','a3','a4','a5','a6','a7',$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCPROJECTORDER 9 -> 8); renamed ID->Identification (#7739)",
+   "from": "IFC4",
+   "to": "IFC2X3",
+   "line": "#7=IFCPROJECTORDER('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "expect": "#7=IFCPROJECTORDER('a0','a1','a2','a3','a4','a5','a6','a7');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCPROJECTORDER 9 -> 8); renamed ID->Identification (#7739)",
+   "from": "IFC4X3",
+   "to": "IFC2X3",
+   "line": "#7=IFCPROJECTORDER('a0','a1','a2','a3','a4','a5','a6','a7','a8');",
+   "expect": "#7=IFCPROJECTORDER('a0','a1','a2','a3','a4','a5','a6','a7');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCCOSTVALUE 8 -> 10); renamed CostType->Category (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCCOSTVALUE('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "expect": "#7=IFCCOSTVALUE('a0','a1','a2','a3','a4','a5','a6','a7',$,$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCCOSTVALUE 8 -> 10); renamed CostType->Category (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCCOSTVALUE('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "expect": "#7=IFCCOSTVALUE('a0','a1','a2','a3','a4','a5','a6','a7',$,$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCCOSTVALUE 10 -> 8); renamed CostType->Category (#7739)",
+   "from": "IFC4",
+   "to": "IFC2X3",
+   "line": "#7=IFCCOSTVALUE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "expect": "#7=IFCCOSTVALUE('a0','a1','a2','a3','a4','a5','a6','a7');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCCOSTVALUE 10 -> 8); renamed CostType->Category (#7739)",
+   "from": "IFC4X3",
+   "to": "IFC2X3",
+   "line": "#7=IFCCOSTVALUE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "expect": "#7=IFCCOSTVALUE('a0','a1','a2','a3','a4','a5','a6','a7');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCSTAIRFLIGHT 12 -> 13); renamed NumberOfRiser->NumberOfRisers (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCSTAIRFLIGHT('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11');",
+   "expect": "#7=IFCSTAIRFLIGHT('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11',$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCSTAIRFLIGHT 12 -> 13); renamed NumberOfRiser->NumberOfRisers (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCSTAIRFLIGHT('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11');",
+   "expect": "#7=IFCSTAIRFLIGHT('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11',$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCSTAIRFLIGHT 13 -> 12); renamed NumberOfRiser->NumberOfRisers (#7739)",
+   "from": "IFC4",
+   "to": "IFC2X3",
+   "line": "#7=IFCSTAIRFLIGHT('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12');",
+   "expect": "#7=IFCSTAIRFLIGHT('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCSTAIRFLIGHT 13 -> 12); renamed NumberOfRiser->NumberOfRisers (#7739)",
+   "from": "IFC4X3",
+   "to": "IFC2X3",
+   "line": "#7=IFCSTAIRFLIGHT('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12');",
+   "expect": "#7=IFCSTAIRFLIGHT('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCWORKPLAN 15 -> 14); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCWORKPLAN('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13','a14');",
+   "expect": "#7=IFCWORKPLAN('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCWORKPLAN 15 -> 14); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCWORKPLAN('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13','a14');",
+   "expect": "#7=IFCWORKPLAN('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCWORKPLAN 14 -> 15); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739)",
+   "from": "IFC4",
+   "to": "IFC2X3",
+   "line": "#7=IFCWORKPLAN('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13');",
+   "expect": "#7=IFCWORKPLAN('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13',$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCWORKPLAN 14 -> 15); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739)",
+   "from": "IFC4X3",
+   "to": "IFC2X3",
+   "line": "#7=IFCWORKPLAN('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13');",
+   "expect": "#7=IFCWORKPLAN('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13',$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCWORKSCHEDULE 15 -> 14); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCWORKSCHEDULE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13','a14');",
+   "expect": "#7=IFCWORKSCHEDULE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCWORKSCHEDULE 15 -> 14); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCWORKSCHEDULE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13','a14');",
+   "expect": "#7=IFCWORKSCHEDULE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCWORKSCHEDULE 14 -> 15); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739)",
+   "from": "IFC4",
+   "to": "IFC2X3",
+   "line": "#7=IFCWORKSCHEDULE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13');",
+   "expect": "#7=IFCWORKSCHEDULE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13',$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCWORKSCHEDULE 14 -> 15); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739)",
+   "from": "IFC4X3",
+   "to": "IFC2X3",
+   "line": "#7=IFCWORKSCHEDULE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13');",
+   "expect": "#7=IFCWORKSCHEDULE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13',$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCPROPERTYBOUNDEDVALUE 5 -> 6); renamed Description->Specification (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCPROPERTYBOUNDEDVALUE('a0','a1','a2','a3','a4');",
+   "expect": "#7=IFCPROPERTYBOUNDEDVALUE('a0','a1','a2','a3','a4',$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCPROPERTYBOUNDEDVALUE 6 -> 5); renamed Description->Specification (#7739)",
+   "from": "IFC4X3",
+   "to": "IFC2X3",
+   "line": "#7=IFCPROPERTYBOUNDEDVALUE('a0','a1','a2','a3','a4','a5');",
+   "expect": "#7=IFCPROPERTYBOUNDEDVALUE('a0','a1','a2','a3','a4');"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCPROPERTYTABLEVALUE 7 -> 8); renamed Description->Specification (#7739)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#7=IFCPROPERTYTABLEVALUE('a0','a1','a2','a3','a4','a5','a6');",
+   "expect": "#7=IFCPROPERTYTABLEVALUE('a0','a1','a2','a3','a4','a5','a6',$);"
+  },
+  {
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCPROPERTYTABLEVALUE 8 -> 7); renamed Description->Specification (#7739)",
+   "from": "IFC4X3",
+   "to": "IFC2X3",
+   "line": "#7=IFCPROPERTYTABLEVALUE('a0','a1','a2','a3','a4','a5','a6','a7');",
+   "expect": "#7=IFCPROPERTYTABLEVALUE('a0','a1','a2','a3','a4','a5','a6');"
+  },
+  {"why":"#8019 native MEP ancestor IfcFlowTerminal: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCAIRTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowController: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCAIRTERMINALBOX('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWCONTROLLER('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCAIRTOAIRHEATRECOVERY('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTerminal: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCAUDIOVISUALAPPLIANCE('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCBOILER('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCBURNER('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowFitting: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCCABLECARRIERFITTING('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWFITTING('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowSegment: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCCABLECARRIERSEGMENT('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWSEGMENT('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowFitting: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCCABLEFITTING('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWFITTING('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowSegment: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCCABLESEGMENT('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWSEGMENT('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCCHILLER('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCCOIL('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTerminal: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCCOMMUNICATIONSAPPLIANCE('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowMovingDevice: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCCOMPRESSOR('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWMOVINGDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCCONDENSER('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCCOOLEDBEAM('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCCOOLINGTOWER('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowController: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCDAMPER('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWCONTROLLER('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowFitting: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCDUCTFITTING('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWFITTING('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowSegment: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCDUCTSEGMENT('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWSEGMENT('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTreatmentDevice: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCDUCTSILENCER('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTREATMENTDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTerminal: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCELECTRICAPPLIANCE('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowStorageDevice: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCELECTRICFLOWSTORAGEDEVICE('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWSTORAGEDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCELECTRICGENERATOR('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCELECTRICMOTOR('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowController: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCELECTRICTIMECONTROL('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWCONTROLLER('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCENGINE('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCEVAPORATIVECOOLER('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCEVAPORATOR('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowMovingDevice: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCFAN('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWMOVINGDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTreatmentDevice: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCFILTER('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTREATMENTDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTerminal: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCFIRESUPPRESSIONTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowController: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCFLOWMETER('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWCONTROLLER('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCHEATEXCHANGER('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCHUMIDIFIER('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTreatmentDevice: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCINTERCEPTOR('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTREATMENTDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowFitting: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCJUNCTIONBOX('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWFITTING('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTerminal: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCLAMP('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTerminal: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCLIGHTFIXTURE('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTerminal: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCMEDICALDEVICE('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCMOTORCONNECTION('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTerminal: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCOUTLET('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowFitting: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCPIPEFITTING('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWFITTING('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowSegment: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCPIPESEGMENT('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWSEGMENT('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowController: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCPROTECTIVEDEVICE('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWCONTROLLER('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowMovingDevice: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCPUMP('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWMOVINGDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTerminal: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCSANITARYTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCSOLARDEVICE('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTerminal: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCSPACEHEATER('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTerminal: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCSTACKTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowController: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCSWITCHINGDEVICE('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWCONTROLLER('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowStorageDevice: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCTANK('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWSTORAGEDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCTRANSFORMER('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCTUBEBUNDLE('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCUNITARYEQUIPMENT('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowController: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCVALVE('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWCONTROLLER('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTerminal: trim occurrence-only PredefinedType","from":"IFC4","to":"IFC2X3","line":"#7=IFCWASTETERMINAL('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTerminal: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCAIRTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowController: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCAIRTERMINALBOX('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWCONTROLLER('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCAIRTOAIRHEATRECOVERY('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTerminal: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCAUDIOVISUALAPPLIANCE('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCBOILER('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCBURNER('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowFitting: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCCABLECARRIERFITTING('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWFITTING('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowSegment: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCCABLECARRIERSEGMENT('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWSEGMENT('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowFitting: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCCABLEFITTING('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWFITTING('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowSegment: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCCABLESEGMENT('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWSEGMENT('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCCHILLER('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCCOIL('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTerminal: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCCOMMUNICATIONSAPPLIANCE('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowMovingDevice: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCCOMPRESSOR('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWMOVINGDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCCONDENSER('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCCOOLEDBEAM('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCCOOLINGTOWER('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowController: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCDAMPER('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWCONTROLLER('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowFitting: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCDUCTFITTING('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWFITTING('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowSegment: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCDUCTSEGMENT('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWSEGMENT('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTreatmentDevice: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCDUCTSILENCER('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTREATMENTDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTerminal: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCELECTRICAPPLIANCE('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowStorageDevice: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCELECTRICFLOWSTORAGEDEVICE('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWSTORAGEDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCELECTRICGENERATOR('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCELECTRICMOTOR('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowController: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCELECTRICTIMECONTROL('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWCONTROLLER('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCENGINE('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCEVAPORATIVECOOLER('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCEVAPORATOR('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowMovingDevice: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCFAN('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWMOVINGDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTreatmentDevice: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCFILTER('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTREATMENTDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTerminal: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCFIRESUPPRESSIONTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowController: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCFLOWMETER('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWCONTROLLER('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCHEATEXCHANGER('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCHUMIDIFIER('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTreatmentDevice: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCINTERCEPTOR('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTREATMENTDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowFitting: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCJUNCTIONBOX('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWFITTING('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTerminal: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCLAMP('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTerminal: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCLIGHTFIXTURE('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTerminal: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCMEDICALDEVICE('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTerminal: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCMOBILETELECOMMUNICATIONSAPPLIANCE('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCMOTORCONNECTION('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTerminal: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCOUTLET('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowFitting: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCPIPEFITTING('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWFITTING('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowSegment: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCPIPESEGMENT('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWSEGMENT('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowController: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCPROTECTIVEDEVICE('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWCONTROLLER('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowMovingDevice: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCPUMP('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWMOVINGDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTerminal: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCSANITARYTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTerminal: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCSIGNAL('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCSOLARDEVICE('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTerminal: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCSPACEHEATER('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTerminal: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCSTACKTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowController: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCSWITCHINGDEVICE('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWCONTROLLER('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowStorageDevice: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCTANK('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWSTORAGEDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCTRANSFORMER('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCTUBEBUNDLE('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcEnergyConversionDevice: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCUNITARYEQUIPMENT('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCENERGYCONVERSIONDEVICE('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowController: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCVALVE('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWCONTROLLER('a0','a1','a2','a3','a4','a5','a6','a7');"},
+  {"why":"#8019 native MEP ancestor IfcFlowTerminal: trim occurrence-only PredefinedType","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCWASTETERMINAL('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCFLOWTERMINAL('a0','a1','a2','a3','a4','a5','a6','a7');"}
  ]
 }

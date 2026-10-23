@@ -40,50 +40,15 @@
 use ifc_lite_core::{EntityDecoder, IfcType};
 use ifc_lite_geometry::GeometryRouter;
 
-mod support;
-
-const FIXTURE: &str = "../../tests/models/issues/821_TallBuilding.ifc";
+const FIXTURE: &str = "issues/821_TallBuilding.ifc";
 
 // Outside walls on Level 1 (#140). All three are the same pattern: an
 // 8200×200×3850 (or rotated) extruded body with two clipping ops that —
 // per strict spec — would remove the entire wall.
 const BROKEN_OUTSIDE_WALLS: &[u32] = &[615, 1297, 2401];
 
-/// See `issue_820_trimmed_curve_planeangleunit::lfs_pointer_prefix` for
-/// why this string is built at runtime instead of being a string literal.
-fn lfs_pointer_prefix() -> String {
-    format!("version {}{}", "https://git-lfs.github.com/", "spec/")
-}
-
 fn read_fixture() -> Option<String> {
-    match std::fs::read_to_string(FIXTURE) {
-        Ok(s) if s.starts_with(&lfs_pointer_prefix()) => {
-            assert!(
-                !support::require_fixtures(),
-                "fixture is an LFS pointer and IFC_LITE_REQUIRE_FIXTURES=1 -- \
-                 run `pnpm fixtures` to download real bytes"
-            );
-            eprintln!(
-                "skipping issue-821 regression: fixture at {FIXTURE} is a Git LFS \
-                 pointer — run `pnpm fixtures` from the repo root to download it",
-            );
-            None
-        }
-        Ok(s) => Some(s),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            assert!(
-                !support::require_fixtures(),
-                "fixture missing and IFC_LITE_REQUIRE_FIXTURES=1 -- \
-                 run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
-            );
-            eprintln!(
-                "skipping issue-821 regression: fixture missing at {FIXTURE} — \
-                 run `pnpm fixtures` from the repo root to download it",
-            );
-            None
-        }
-        Err(e) => panic!("failed to read fixture {FIXTURE}: {e}"),
-    }
+    ifc_lite_testkit::fixture_text(FIXTURE)
 }
 
 #[test]

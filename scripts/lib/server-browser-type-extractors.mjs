@@ -89,17 +89,23 @@ export function assertNoUnrecognizedSiblingBindings(
   }
 }
 
-/** Extracts every generated relationship lookup arm. The Rust server now
- * gates extraction through this generated table, so this is the executable
- * coverage surface rather than the deleted hand-written `rel_types` array.
- * The exact `=> Some(RelationshipSlots {` suffix avoids counting prose,
- * comments, or unrelated IFC literals elsewhere in the generated module. */
+/** Extracts every relationship type of the committed slot vector
+ * (`apps/server/tests/golden/relationship-slots.json`). The Rust server gates
+ * relationship extraction through core's registry (`RelSlots::for_type`, C6-4);
+ * the Rust test `slots_tests.rs` pins that lookup to this vector row for row,
+ * and `relationship-schema-slots.test.ts` pins the TS plan to it, so the
+ * vector is the executable coverage surface of the Rust side. Unparseable
+ * text yields an empty set, which the vacuity guard reports. */
 export function rustRelationshipTypes(src) {
-  const code = stripComments(src);
-  return new Set(
-    [...code.matchAll(/"(IFCREL[A-Z0-9]+)"\s*=>\s*Some\(RelationshipSlots\s*\{/g)]
-      .map((match) => match[1]),
-  );
+  let doc;
+  try {
+    doc = JSON.parse(src);
+  } catch {
+    return new Set();
+  }
+  const slots = doc && typeof doc === 'object' ? doc.slots : undefined;
+  if (!slots || typeof slots !== 'object') return new Set();
+  return new Set(Object.keys(slots).filter((key) => /^IFCREL[A-Z0-9]+$/.test(key)));
 }
 
 /** Union of the three Sets that gate what the TS columnar parser collects as
@@ -297,7 +303,9 @@ export function tsPropertyTypes(src) {
 export function rustQuantityTypes(src) {
   const code = stripComments(src);
   const found = new Set();
-  for (const m of code.matchAll(/eq_ignore_ascii_case\("(IFCQUANTITY[A-Z]+|IFCPHYSICALCOMPLEXQUANTITY)"\)/g)) {
+  // Every quoted keyword: `QuantityKind::keyword`'s arms (C6-8, #7783), or an
+  // `eq_ignore_ascii_case("...")` chain should one come back.
+  for (const m of code.matchAll(/"(IFCQUANTITY[A-Z]+|IFCPHYSICALCOMPLEXQUANTITY)"/g)) {
     found.add(m[1]);
   }
   return found;

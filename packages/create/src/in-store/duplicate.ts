@@ -62,6 +62,22 @@ export interface SourceAssociation {
    * - `IfcRelAssociatesDocument.RelatingDocument`
    */
   relatingExpressId: number;
+  /**
+   * Every definition when `RelatingPropertyDefinition` is an
+   * `IfcPropertySetDefinitionSet` (`(#a,#b)` or the typed
+   * `IFCPROPERTYSETDEFINITIONSET((#a,#b))`), first member first. Omitted for a
+   * single reference. The replayed rel writes `#N` for one member and
+   * `(#a,#b)` for several.
+   */
+  relatingExpressIds?: readonly number[];
+}
+
+/** `#N` for one relating entity, `['#a','#b']` for an IfcPropertySetDefinitionSet. */
+function relatingReference(assoc: SourceAssociation): string | string[] {
+  const ids = assoc.relatingExpressIds && assoc.relatingExpressIds.length > 0
+    ? assoc.relatingExpressIds
+    : [assoc.relatingExpressId];
+  return ids.length === 1 ? `#${ids[0]}` : ids.map((id) => `#${id}`);
 }
 
 export interface SourceAttributes {
@@ -241,7 +257,7 @@ export function duplicateInStore(
         assoc.name,                                                         // Name (parsed; may be null)
         assoc.description,                                                  // Description
         [`#${duplicate.expressId}`],                                        // RelatedObjects
-        `#${assoc.relatingExpressId}`,                                      // Relating*
+        relatingReference(assoc),                                           // Relating*
       ]);
       associationRelIds.push(rel.expressId);
     }

@@ -19,7 +19,6 @@
 
 import { useCallback, useEffect, useId, useRef } from 'react';
 import { customPlaneCenter, useViewerStore } from '@/store';
-import type { CustomSectionPlane } from '@/store/types';
 import { useTranslation } from '@/i18n';
 import { capturePointer, releasePointer } from '@/lib/pointer-capture';
 import { AxisArrow, Handle, PlaneOutline, useSceneProjector } from '../../viewport-ui/scene';
@@ -27,6 +26,8 @@ import { isAnchorVisible, vec3Key } from '../../viewport-ui/scene/projection';
 import { useWakeOnChange } from '../../viewport-ui/scene/useWakeOnChange';
 import type { ScreenPoint, Vec3 } from '../../viewport-ui/scene/types';
 import { sectionPickPreviewAnchors } from './sectionPickPreviewAnchors';
+import { useSectionDistance } from './useSectionDistance';
+import { cardinalValuePerMetre, planeFrame } from './sectionPlaneFrame';
 import type { SectionPickPreview } from '@/store/slices/sectionSlice';
 
 const toVec3 = (p: readonly [number, number, number]): Vec3 => ({ x: p[0], y: p[1], z: p[2] });
@@ -42,7 +43,9 @@ interface SectionPlaneVisualizationProps {
 
 export function SectionPlaneVisualization({ enabled }: SectionPlaneVisualizationProps) {
   const customPlane = useViewerStore((s) => s.sectionPlane.custom);
+  const cardinal = useViewerStore((s) => (s.sectionPlane.custom || s.sectionPlane.box ? null : s.sectionPlane));
   const setSectionCustomDistance = useViewerStore((s) => s.setSectionCustomDistance);
+  const distance = useSectionDistance();
   const setPreviewStride = useViewerStore((s) => s.setPointCloudPreviewStride);
   const pointCloudAssetCount = useViewerStore((s) => s.pointCloudAssetCount);
   // Live face-pick hover preview (issue #243 follow-up): set while pick mode
@@ -55,7 +58,15 @@ export function SectionPlaneVisualization({ enabled }: SectionPlaneVisualization
   return (
     <>
       {enabled && customPlane && (
-        <SectionPlaneDragGizmo customPlane={customPlane} setDistance={setSectionCustomDistance} onDragStart={onDragStart} onDragEnd={onDragEnd} />
+        <SectionPlaneDragGizmo
+          foot={customPlaneCenter(customPlane)} normal={customPlane.normal} value={customPlane.distance}
+          setValue={setSectionCustomDistance} onDragStart={onDragStart} onDragEnd={onDragEnd}
+        />
+      )}
+      {/* A cardinal plane gets the same handle (#7545): its foot is where the renderer put the plane, and
+          the value is the world coordinate along its axis, which is what the offset field reads. */}
+      {enabled && cardinal && distance.kind === 'world' && (
+        <CardinalPlaneHandle value={distance.value} setValue={distance.onChange} onDragStart={onDragStart} onDragEnd={onDragEnd} />
       )}
       {sectionPickPreview && <SectionPickPreviewOverlay preview={sectionPickPreview} />}
     </>
@@ -74,19 +85,26 @@ export function SectionPlaneVisualization({ enabled }: SectionPlaneVisualization
  * only the handle's circle takes pointer events.
  */
 export function SectionPlaneDragGizmo(props: {
-  customPlane: CustomSectionPlane;
-  setDistance: (d: number) => void;
+  /** A point on the live plane, where the handle sits. */
+  foot: readonly [number, number, number];
+  normal: readonly [number, number, number];
+  /** The plane's offset in metres along `normal` (a face plane's distance, or a cardinal plane's world coordinate). */
+  value: number;
+  setValue: (metres: number) => void;
+  /** Units of `value` per metre along `normal`; 1 unless the value is not measured along the normal (a rotated building's axis coordinate). */
+  valuePerMetre?: number;
   onDragStart: () => void;
   onDragEnd: () => void;
 }) {
   const { t } = useTranslation();
-  const { customPlane, setDistance, onDragStart, onDragEnd } = props;
+  const { value, setValue: setDistance, onDragStart, onDragEnd } = props;
+  const valuePerMetre = props.valuePerMetre ?? 1;
   const projector = useSceneProjector();
   const id = useId();
 
-  const center = customPlaneCenter(customPlane);
+  const center = props.foot;
   const foot: Vec3 = { x: center[0], y: center[1], z: center[2] };
-  const tip: Vec3 = { x: center[0] + customPlane.normal[0], y: center[1] + customPlane.normal[1], z: center[2] + customPlane.normal[2] };
+  const tip: Vec3 = { x: center[0] + props.normal[0], y: center[1] + props.normal[1], z: center[2] + props.normal[2] };
 
   // The latest screen positions of foot and tip, written by the shared
   // projector — no loop of this component's own.
@@ -120,13 +138,13 @@ export function SectionPlaneDragGizmo(props: {
     // Capture only once a drag will start: an edge-on bail would leave it held (#5403).
     capturePointer(e.target as Element, e.pointerId);
     dragRef.current = {
-      startDistance: customPlane.distance,
+      startDistance: value,
       startCursor: { x: e.clientX, y: e.clientY },
       screenNormal: { x: dx / ppm, y: dy / ppm },
       pixelsPerMeter: ppm,
     };
     onDragStart();
-  }, [customPlane.distance, onDragStart]);
+  }, [value, onDragStart]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent<SVGCircleElement>) => {
     const s = dragRef.current;
@@ -136,8 +154,8 @@ export function SectionPlaneDragGizmo(props: {
     const cdy = e.clientY - s.startCursor.y;
     // Project the cursor delta onto the screen-projected normal, then pixels -> metres.
     const along = cdx * s.screenNormal.x + cdy * s.screenNormal.y;
-    setDistance(s.startDistance + along / s.pixelsPerMeter);
-  }, [setDistance]);
+    setDistance(s.startDistance + (along / s.pixelsPerMeter) * valuePerMetre);
+  }, [setDistance, valuePerMetre]);
 
   const handlePointerUp = useCallback((e: React.PointerEvent<SVGCircleElement>) => {
     if (!dragRef.current) return;
@@ -181,4 +199,12 @@ function SectionPickPreviewOverlay({ preview }: { preview: SectionPickPreview })
       <AxisArrow foot={toVec3(anchors.foot)} tip={toVec3(anchors.tip)} lengthPx={PREVIEW_ARROW_PX} variant="accent" />
     </>
   );
+}
+
+/** The drag handle of a cardinal plane: the foot comes from the renderer's own resolution of the plane. */
+function CardinalPlaneHandle(props: { value: number; setValue: (v: number) => void; onDragStart: () => void; onDragEnd: () => void }) {
+  const id = useViewerStore((s) => s.sectionPlane.id);
+  const frame = planeFrame(id);
+  if (!frame) return null;
+  return <SectionPlaneDragGizmo foot={frame.anchor} normal={frame.normal} valuePerMetre={cardinalValuePerMetre()} {...props} />;
 }

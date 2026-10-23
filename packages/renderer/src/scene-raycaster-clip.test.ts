@@ -131,3 +131,27 @@ describe('pointClipped / boxFullyClipped', () => {
     assert.strictEqual(boxFullyClipped(section, { min: { x: -1, y: -1, z: -9 }, max: { x: 1, y: 1, z: -5 } }), false);
   });
 });
+
+// #8015: exclusions restore complete entities, independently of every plane.
+it('selective clipping restores near geometry for triangles and released bounds, but never overrides hide or crop (#8015)', () => {
+  const ids = new Set([NEAR]);
+  const clip: PickClipState = {
+    sectionPlane: { normal: [0, 0, 1], distance: -7, flipped: false },
+    extraPlanes: [{ normal: [0, 0, 1], distance: -8, flipped: false }],
+    sectionExcludedIds: ids,
+  };
+  const castBounds = () => raycastBoundingBoxes(rayOrigin, rayDir, rayDirInv, rayDirSign, bboxes, undefined, undefined, clip);
+  assert.equal(cast(clip)?.expressId, NEAR);
+  assert.equal(castBounds()?.expressId, NEAR);
+  ids.clear();
+  assert.equal(cast(clip)?.expressId, FAR);
+  assert.equal(castBounds()?.expressId, FAR);
+  ids.add(NEAR);
+  clip.sectionPlane = null;
+  assert.equal(cast(clip)?.expressId, NEAR, 'extras-only exclusion');
+  assert.equal(raycastTriangles(rayOrigin, rayDir, rayDirInv, rayDirSign, meshDataMap,
+    id => bboxes.get(id) ?? null, ids, undefined, clip)?.expressId, FAR, 'hidden wins');
+  clip.clipBox = { enabled: true, min: [-2, -2, -12], max: [2, 2, -7] };
+  assert.equal(cast(clip)?.expressId, FAR, 'crop wins');
+  assert.equal(castBounds()?.expressId, FAR);
+});

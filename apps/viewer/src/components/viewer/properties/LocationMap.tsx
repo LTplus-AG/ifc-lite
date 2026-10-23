@@ -21,7 +21,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { Spinner } from '@/components/ui/spinner';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from '@/components/ui/toast';
-import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
+import type { IfcDataStore, MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import { downloadBlob, modelExportFilename } from '@/lib/export/download';
 import { reprojectFromLatLon, queryTerrainElevation, computeFootprintGeoJSON, type LatLon } from '@/lib/geo/reproject';
@@ -39,6 +39,8 @@ import { addFootprintToMap, removeFootprintFromMap } from './location-map-footpr
 import { geocodeSearch, type GeocodeResult } from './location-map-geocode';
 import { loadMaplibre, disposeMap, purgeMapContainer, updateOriginMarker } from './location-map-lifecycle';
 import { LocationMapSearchBar } from './location-map-search';
+import { LocationGeoreferenceNotices } from './location-georeference-notices';
+import { readSiteLocationReference } from '@/lib/geo/site-location-disagreement';
 import { useLocationGeoreference } from './use-location-georeference';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 
@@ -50,6 +52,7 @@ export interface PickedPosition {
 }
 
 export interface LocationMapProps {
+  dataStore?: IfcDataStore;
   mapConversion?: MapConversion;
   projectedCRS?: ProjectedCRS;
   /** Coordinate info from the model's GeometryResult (includes bounds and RTC offset) */
@@ -99,7 +102,7 @@ export interface LocationMapProps {
 type MapUnavailableReason = MapWebglFailureReason | 'map_load_failed';
 
 export function LocationMap({
-  mapConversion, projectedCRS, coordinateInfo, geometryResult,
+  mapConversion, projectedCRS, coordinateInfo, geometryResult, dataStore,
   lengthUnitScale = 1, editable, onApplyPosition, createKmzProcessor,
   instancedModelRange = null, modelName = '',
 }: LocationMapProps) {
@@ -126,8 +129,9 @@ export function LocationMap({
     }
   }, [editable]);
 
-  const { latLon, mapState, errorKey, geometryDistanceKm, locationKind } = useLocationGeoreference(
-    mapConversion, projectedCRS, coordinateInfo, lengthUnitScale,
+  const siteReference = useMemo(() => readSiteLocationReference(dataStore), [dataStore]);
+  const { latLon, mapState, errorKey, geometryDistanceKm, locationKind, siteDistanceMetres } = useLocationGeoreference(
+    mapConversion, projectedCRS, coordinateInfo, lengthUnitScale, siteReference,
   );
 
   // Seeded from the session latch, so a remount on a device already known to
@@ -634,17 +638,8 @@ export function LocationMap({
         />
       )}
 
-      {locationKind === 'geometry' && (
-        <p className="px-3 pb-2 text-xs text-zinc-500 dark:text-zinc-400">
-          {t('properties.locationMap.geometryLocation')}
-        </p>
-      )}
-
-      {geometryDistanceKm !== null && (
-        <output className="block px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-          {t('properties.locationMap.geometryDistance', { value: formatLocaleNumber(locale, geometryDistanceKm) })}
-        </output>
-      )}
+      <LocationGeoreferenceNotices locationKind={locationKind}
+        geometryDistanceKm={geometryDistanceKm} siteDistanceMetres={siteDistanceMetres} />
 
       {/* Map container */}
       {mapState === 'loading' && (

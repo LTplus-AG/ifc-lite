@@ -4,6 +4,7 @@
 
 import { createHash } from 'node:crypto';
 import { tsImport } from 'tsx/esm/api';
+import { isHardwareAdapter } from './hardware-adapter.mjs';
 const { metadataCompletionSpan, observedReadinessFollowsCompletion } = await tsImport('../../tests/benchmark/metadata-render-readiness.ts', import.meta.url);
 export const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 export function finiteNonnegative(value,name) {
@@ -56,7 +57,7 @@ export function ownedTree(processes, rootPid, rootStart, previouslyOwned=[]) {
 export function requireSample(row) {
   if (row.ok!==true || !row.cleanup || row.cleanup.error!==null) throw Error('Failed sample/cleanup');
   if (row.identity?.complete!==true || typeof row.identity.digest!=='string' || !row.identity.digest) throw Error('Incomplete payload identity');
-  if (typeof row.adapter?.vendor!=='string' || !row.adapter.vendor.trim() || row.adapter.isFallbackAdapter !== false || /swiftshader|software|llvmpipe/i.test(JSON.stringify(row.adapter))) throw Error('Native renderer identity missing/software');
+  if (!isHardwareAdapter(row.adapter) || row.adapter.isFallbackAdapter !== false) throw Error('Native renderer identity missing/software');
   if (!row.memory?.rows?.length || row.memory.rows.some(x=>x.error)) throw Error('Missing actual resident memory');
   finiteNonnegative(row.memory.maxGapMs,'memory.maxGapMs');
   const coverageEnd=finiteNonnegative(row.memory.coverageEndElapsedMs,'memory.coverageEndElapsedMs');

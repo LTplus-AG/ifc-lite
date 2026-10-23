@@ -75,7 +75,7 @@ function documentOf(blocks: DocumentBlock[], id = 'union'): DocumentSpec {
   return { version: DOCUMENT_VERSION, id, name: 'Shared canonical headings and stamps', page: { size: 'A4', orientation: 'portrait' }, blocks };
 }
 function mount(input: DocumentPdfInput) {
-  return render(<DocumentPreview {...input} selectedBlockId={null} onSelectBlock={() => {}} />);
+  return render(<DocumentPreview {...input} onSelectBlock={() => {}} />);
 }
 function glyph(root: Element, text: string): HTMLElement {
   const node = Array.from(root.querySelectorAll<HTMLElement>('span')).find(el => el.children.length === 0 && el.textContent?.trim() === text);

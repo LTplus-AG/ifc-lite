@@ -93,7 +93,6 @@ export type {
   // Viewer
   CameraState,
   ProjectionMode,
-  SectionPlane,
 
   // Spatial
   AABB,
@@ -182,6 +181,7 @@ export type {
   StructuralLoadDropReason,
   BoundaryConditionData,
 } from './types.js';
+export type { SectionPlane } from './section-plane.js';
 
 export type {
   CostSchemaVersion, CostQuantityDimension, CostDiagnosticCode, CostDiagnosticData,

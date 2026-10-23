@@ -1,0 +1,26 @@
+diff --git a/rust/geometry-runtime/src/worker_objects.rs b/rust/geometry-runtime/src/worker_objects.rs
+index 80ade8dbea..e7f7a31025 100644
+--- a/rust/geometry-runtime/src/worker_objects.rs
++++ b/rust/geometry-runtime/src/worker_objects.rs
+@@ -59,7 +59,7 @@ impl Drop for ManagedObjectLease {
+         if !self.armed.load(Ordering::Acquire) || !self.live.swap(false, Ordering::AcqRel) {
+             return;
+         }
+-        let queued = self.queue.upgrade().is_some_and(|queue| false && {
++        let queued = self.queue.upgrade().is_some_and(|queue| {
+             let Ok(mut pending) = queue.pending.lock() else {
+                 return false;
+             };
+@@ -143,7 +143,11 @@ impl SmlibWorker {
+         if let Err(error) = self.check(solid) {
+             // Only a registered object invalidated by its dropped receipt
+             // authorizes draining: its queued release failure is reported.
+-            if !self.releases.pending.lock().map_or(true, |p| p.is_empty()) {
++            if self
++                .objects
++                .get(&solid.wire)
++                .is_some_and(|live| !live.load(Ordering::Acquire))
++            {
+                 self.flush_releases()?;
+             }
+             return Err(error);

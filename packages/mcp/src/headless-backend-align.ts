@@ -2,9 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { createAlignCommandBackend, type AlignGeometryProvider, type ModellingStoreModelResolver } from '@ifc-lite/sdk';
+import type { AlignGeometryProvider } from '@ifc-lite/sdk';
 import { planBoxOf, storeyPlanFrame, roomFramePlanOffsets, roomFrameToModelWorld, toStoreyLocal, type PlanBox } from '@ifc-lite/create';
-import { recordCompoundMutation, StoreEditor } from '@ifc-lite/mutations';
 import { withHeadlessGeometry } from './headless-native-geometry.js';
 
 export const provideHeadlessAlignGeometry: AlignGeometryProvider = (model, storeyId, ids) => withHeadlessGeometry(model, source => {
@@ -23,13 +22,3 @@ export const provideHeadlessAlignGeometry: AlignGeometryProvider = (model, store
     }
     return boxes;
   });
-
-export function createHeadlessAlignBackend(resolve: ModellingStoreModelResolver) {
-  return createAlignCommandBackend(resolve, provideHeadlessAlignGeometry, {
-    historyHead: modelId => resolve(modelId).mutationView.getMutations().map(m => m.id).join('|'),
-    record: (modelId, write) => {
-      const model = resolve(modelId);
-      return recordCompoundMutation(model.mutationView, mutationView => write({ ...model, mutationView, editor: new StoreEditor(model.store, mutationView) }));
-    },
-  });
-}

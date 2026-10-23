@@ -1,0 +1,119 @@
+{
+  "productionSource": "cc813960e2b8c55d3e58d96b7a12207d6e9f7355",
+  "qualificationSource": "b951b7700c",
+  "job": "ab78d486-4804-4134-a50b-96a9d9188a16",
+  "nativeFourFrame": "passed; required fixtures enabled",
+  "officialCasesPerRuntime": 10,
+  "qualificationCasesPerRuntime": 20,
+  "determinism": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39883286197",
+  "evidence": {
+    "build-artifact.json": {
+      "sha256": "beba0d972c1afc753077255c3e1fa376be9c5f9c85509e42ecd79df9cdd346ee",
+      "data": {
+        "head": "b951b7700cad647d48e09f557b3cfe4650ca4d7b",
+        "sourceBuilt": true,
+        "wasmNewerThanRustSources": true,
+        "files": {
+          "packages/wasm/pkg/ifc-lite.js": "2c2ce2a954adb64e800517a16bed9c25b7166da54a0cbc8337087ce794fe3ad8",
+          "packages/wasm/pkg/ifc-lite_bg.wasm": "0fe2e7309105c73f5d1fd9334eee1de3bfb0c2aefb4fc41d00a4ffb976c21b59",
+          "packages/wasm/pkg/ifc-lite.d.ts": "29e6bb95f9c6a86f7351f4fba1a74b89f71bc8373ed97cf331952674d1317cf2"
+        }
+      },
+      "cases": 0
+    },
+    "official-node.json": {
+      "sha256": "50a9253501a58dc447422443a8f4ccd1dd5f8d26bcfcad7910816bdd2edeb02a",
+      "data": {
+        "before": {
+          "head": "cc813960e2b8c55d3e58d96b7a12207d6e9f7355",
+          "diffSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "untrackedRust": "",
+          "jsSHA256": "941031903a209b8ece2bee739ff5b73f4340d001f068c5efeb5c46863cedda23",
+          "wasmSHA256": "b4b21945b22ac779e06f24981dfbf1a26c67ec8de1f5aa42eef65c06d532645e"
+        },
+        "after": {
+          "head": "cc813960e2b8c55d3e58d96b7a12207d6e9f7355",
+          "diffSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "untrackedRust": "",
+          "jsSHA256": "941031903a209b8ece2bee739ff5b73f4340d001f068c5efeb5c46863cedda23",
+          "wasmSHA256": "b4b21945b22ac779e06f24981dfbf1a26c67ec8de1f5aa42eef65c06d532645e"
+        },
+        "fixtureSHA256": "7d3ae097a2f1ca5e63f7698d12215cb58427cdb6a932e75e6bf1ca222bcf873b",
+        "harnessSHA256": "24645806f1fac46a400e7f6d8670fe667013d93da54447582aefd2beb43c73d7",
+        "ok": true,
+        "mode": "public-api-local-frames"
+      },
+      "cases": 10
+    },
+    "official-browser.json": {
+      "sha256": "45a564e4a258fd4e72b285e2db9c29b77599d8b402ba64752c24e0853aaea554",
+      "data": {
+        "before": {
+          "head": "cc813960e2b8c55d3e58d96b7a12207d6e9f7355",
+          "diffSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "wasmSHA256": "b4b21945b22ac779e06f24981dfbf1a26c67ec8de1f5aa42eef65c06d532645e",
+          "jsSHA256": "941031903a209b8ece2bee739ff5b73f4340d001f068c5efeb5c46863cedda23"
+        },
+        "after": {
+          "head": "cc813960e2b8c55d3e58d96b7a12207d6e9f7355",
+          "diffSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "wasmSHA256": "b4b21945b22ac779e06f24981dfbf1a26c67ec8de1f5aa42eef65c06d532645e",
+          "jsSHA256": "941031903a209b8ece2bee739ff5b73f4340d001f068c5efeb5c46863cedda23"
+        },
+        "errors": [],
+        "scope": "browser WASM boundary; not canonical viewer File/worker-pool or timing qualification",
+        "fixtureSHA256": "7d3ae097a2f1ca5e63f7698d12215cb58427cdb6a932e75e6bf1ca222bcf873b",
+        "ok": true,
+        "mode": "public-api-local-frames"
+      },
+      "cases": 10
+    },
+    "node-20.json": {
+      "sha256": "c43ea827de80ac17f43c7ba4dd879976a4a38b9287919511b9a62c058169e764",
+      "data": {
+        "before": {
+          "head": "b951b7700cad647d48e09f557b3cfe4650ca4d7b",
+          "diffSHA256": "3a0b947cea87cca13d3e2ec7ca0cd22b0396114742b9dabfe953bc41c53db49b",
+          "untrackedRust": "",
+          "jsSHA256": "2c2ce2a954adb64e800517a16bed9c25b7166da54a0cbc8337087ce794fe3ad8",
+          "wasmSHA256": "0fe2e7309105c73f5d1fd9334eee1de3bfb0c2aefb4fc41d00a4ffb976c21b59"
+        },
+        "after": {
+          "head": "b951b7700cad647d48e09f557b3cfe4650ca4d7b",
+          "diffSHA256": "3a0b947cea87cca13d3e2ec7ca0cd22b0396114742b9dabfe953bc41c53db49b",
+          "untrackedRust": "",
+          "jsSHA256": "2c2ce2a954adb64e800517a16bed9c25b7166da54a0cbc8337087ce794fe3ad8",
+          "wasmSHA256": "0fe2e7309105c73f5d1fd9334eee1de3bfb0c2aefb4fc41d00a4ffb976c21b59"
+        },
+        "fixtureSHA256": "7d3ae097a2f1ca5e63f7698d12215cb58427cdb6a932e75e6bf1ca222bcf873b",
+        "harnessSHA256": "24645806f1fac46a400e7f6d8670fe667013d93da54447582aefd2beb43c73d7",
+        "ok": true,
+        "mode": "qualification-four-frames"
+      },
+      "cases": 20
+    },
+    "browser-20.json": {
+      "sha256": "f1b33ae0ba1f6e401c50ac65cec0abb8a648b23344b6044697286d1cb82a074f",
+      "data": {
+        "before": {
+          "head": "b951b7700cad647d48e09f557b3cfe4650ca4d7b",
+          "diffSHA256": "3a0b947cea87cca13d3e2ec7ca0cd22b0396114742b9dabfe953bc41c53db49b",
+          "wasmSHA256": "0fe2e7309105c73f5d1fd9334eee1de3bfb0c2aefb4fc41d00a4ffb976c21b59",
+          "jsSHA256": "2c2ce2a954adb64e800517a16bed9c25b7166da54a0cbc8337087ce794fe3ad8"
+        },
+        "after": {
+          "head": "b951b7700cad647d48e09f557b3cfe4650ca4d7b",
+          "diffSHA256": "3a0b947cea87cca13d3e2ec7ca0cd22b0396114742b9dabfe953bc41c53db49b",
+          "wasmSHA256": "0fe2e7309105c73f5d1fd9334eee1de3bfb0c2aefb4fc41d00a4ffb976c21b59",
+          "jsSHA256": "2c2ce2a954adb64e800517a16bed9c25b7166da54a0cbc8337087ce794fe3ad8"
+        },
+        "errors": [],
+        "scope": "browser WASM boundary; not canonical viewer File/worker-pool or timing qualification",
+        "fixtureSHA256": "7d3ae097a2f1ca5e63f7698d12215cb58427cdb6a932e75e6bf1ca222bcf873b",
+        "ok": true,
+        "mode": "qualification-four-frames"
+      },
+      "cases": 20
+    }
+  }
+}

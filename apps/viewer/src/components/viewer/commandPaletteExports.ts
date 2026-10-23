@@ -16,7 +16,7 @@
 
 import type { TranslationKey } from '@/i18n';
 import { EXPORT_COMMANDS, type CsvExportType, type ExportCommandId } from './toolbar/export-commands';
-import { Camera, Download, EyeOff, FileJson, FilePen, FileSpreadsheet, FileText, Globe2, Puzzle } from 'lucide-react';
+import { Camera, Download, EyeOff, FileJson, FilePen, FileSpreadsheet, FileText, Globe2, Mountain, Puzzle } from 'lucide-react';
 import type { ExportIconSet } from './toolbar/export-commands';
 import type { ExportRequest } from './useExportRunner';
 import type { Command } from './commandPaletteSearch';
@@ -35,6 +35,7 @@ const PALETTE_EXPORT_ICONS: ExportIconSet = {
   ion: Globe2,
   usd: Download,
   energy: Download,
+  'landxml-terrain': Mountain,
   csv: FileSpreadsheet,
   json: FileJson,
   screenshot: Camera,
@@ -52,6 +53,7 @@ const EXPORT_KEYWORDS: Record<ExportCommandId, string> = {
   ion: 'cesium ion upload cloud bim ifc tiles',
   usd: '3d model usd usda openusd omniverse blender usdview download',
   energy: 'energy honeybee hbjson dragonfly dfjson simulation download',
+  'landxml-terrain': 'landxml terrain surface tin dtm ground civil xml download',
   csv: 'spreadsheet table download',
   json: 'data entities all download',
   screenshot: 'capture png image viewport',

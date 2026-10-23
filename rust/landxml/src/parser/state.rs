@@ -2,10 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    rc::Rc,
+};
 
 use crate::{
-    capture::Capture, xml::Attributes, LandXmlAlignment, LandXmlCancellation,
+    capture::Capture, xml::{Attributes, Budget, Meter}, LandXmlAlignment, LandXmlCancellation,
     LandXmlCapabilityDiagnostic, LandXmlCoordinateSystem, LandXmlCrossSection,
     LandXmlCrossSectionSurface, LandXmlExtension, LandXmlLimits, LandXmlPoint, LandXmlPolyline,
     LandXmlPreservedOnlyExtension, LandXmlProfile, LandXmlRenderState, LandXmlRoadway,
@@ -16,26 +19,30 @@ use super::profiles::{
     AlignmentBuilder, CrossSectionBuilder, CrossSectionSurfaceBuilder, ProfileBuilder,
 };
 
-/// The canonical semantic state machine.  Streaming hosts drive this exact
-/// parser one quick-xml event at a time; they must not grow a parallel
-/// LandXML interpretation just because transport arrives in chunks.
-pub(crate) struct Parser<'a> {
+/// The TIN family's records (a [`crate::xml::FamilyHandler`]). Pull and the
+/// stream drive this one handler through the one driver, so they cannot grow
+/// parallel LandXML interpretations just because transport arrives in chunks.
+pub(crate) struct TinHandler<'a> {
     pub(super) limits: LandXmlLimits,
     pub(super) cancelled: Option<&'a dyn LandXmlCancellation>,
-    pub(super) work: usize,
-    pub(super) character_references: usize,
-    pub(super) references: usize,
-    pub(super) surfaces_seen: usize,
-    pub(super) points_seen: usize,
-    pub(super) faces_seen: usize,
-    pub(super) profile_points_seen: usize,
-    pub(super) vertical_curves_seen: usize,
-    pub(super) cross_section_points_seen: usize,
+    /// The `work` budget; charged per event in `consume_event` (D73).
+    pub(super) meter: Meter<'a>,
+    pub(super) references: Budget,
+    pub(super) surfaces_seen: Budget,
+    pub(super) points_seen: Budget,
+    /// Bytes of element paths retained by records (`max_source_path_bytes`).
+    pub(super) source_path_bytes: Budget,
+    pub(super) coordinate_systems_seen: usize,
+    pub(super) faces_seen: Budget,
+    pub(super) profile_points_seen: Budget,
+    pub(super) vertical_curves_seen: Budget,
+    pub(super) cross_section_points_seen: Budget,
+    pub(super) capability_diagnostics_seen: Budget,
     pub(super) frames: Vec<Frame>,
     pub(super) units: Option<LandXmlUnits>,
     /// #5175: resolved once at construction from `LandXmlLimits::assumed_linear_unit`,
     /// already validated. A declared `<Units>` element (`self.units`) always
-    /// takes priority over this; see `Parser::effective_units`.
+    /// takes priority over this; see `TinHandler::effective_units`.
     pub(super) assumed_units: Option<LandXmlUnits>,
     pub(super) coordinate_system: Option<LandXmlCoordinateSystem>,
     pub(super) surface: Option<SurfaceBuilder>,
@@ -59,8 +66,6 @@ pub(crate) struct Parser<'a> {
     pub(super) target_namespace: Option<String>,
     pub(super) surface_ordinal: usize,
     pub(super) version: String,
-    pub(super) root_seen: bool,
-    pub(super) root_closed: bool,
     pub(super) alignment: Option<AlignmentBuilder>,
     pub(super) profile: Option<ProfileBuilder>,
     pub(super) cross_section: Option<CrossSectionBuilder>,
@@ -75,24 +80,27 @@ pub(crate) struct Parser<'a> {
     pub(super) active_roadway_source_id: Option<LandXmlSourceId>,
 }
 
-impl<'a> Parser<'a> {
+impl<'a> TinHandler<'a> {
     pub(crate) fn new(
         limits: &LandXmlLimits,
+        meter: Meter<'a>,
         cancelled: Option<&'a dyn LandXmlCancellation>,
         assumed_units: Option<LandXmlUnits>,
     ) -> Self {
         Self {
             limits: limits.clone(),
             cancelled,
-            work: 0,
-            character_references: 0,
-            references: 0,
-            surfaces_seen: 0,
-            points_seen: 0,
-            faces_seen: 0,
-            profile_points_seen: 0,
-            vertical_curves_seen: 0,
-            cross_section_points_seen: 0,
+            meter,
+            references: Budget::new(limits.max_references, "reference"),
+            surfaces_seen: Budget::new(limits.max_surfaces, "surface"),
+            points_seen: Budget::new(limits.max_points, "point"),
+            source_path_bytes: Budget::new(limits.max_source_path_bytes, "retained source path"),
+            coordinate_systems_seen: 0,
+            faces_seen: Budget::new(limits.max_faces, "face"),
+            profile_points_seen: Budget::new(limits.max_profile_points, "profile point"),
+            vertical_curves_seen: Budget::new(limits.max_vertical_curves, "vertical curve"),
+            cross_section_points_seen: Budget::new(limits.max_cross_section_points, "cross-section point"),
+            capability_diagnostics_seen: Budget::new(limits.max_capability_diagnostics, "capability diagnostic"),
             frames: Vec::new(),
             units: None,
             assumed_units,
@@ -110,8 +118,6 @@ impl<'a> Parser<'a> {
             target_namespace: None,
             surface_ordinal: 0,
             version: String::new(),
-            root_seen: false,
-            root_closed: false,
             alignment: None,
             profile: None,
             cross_section: None,
@@ -149,12 +155,13 @@ impl<'a> Parser<'a> {
         surfaces
     }
 
-    pub(crate) fn has_open_frames(&self) -> bool {
-        !self.frames.is_empty()
-    }
-
     pub(crate) fn header(&self) -> Option<(String, Option<LandXmlUnits>)> {
         (!self.version.is_empty()).then(|| (self.version.clone(), self.effective_units()))
+    }
+
+    /// Whether the source has declared its `<Units>` yet (#7753).
+    pub(crate) fn declares_units(&self) -> bool {
+        self.units.is_some()
     }
 
     /// #5175: a declared `<Units>` element always wins; the caller-supplied
@@ -166,7 +173,7 @@ impl<'a> Parser<'a> {
 
 #[derive(Clone)]
 pub(super) struct Frame {
-    pub(super) local: String,
+    pub(super) local: Rc<str>,
     pub(super) target: bool,
     /// One-based among same-name, same-namespace siblings. Source list paths
     /// retain this instead of repeating their leaf name (#5084).
@@ -175,7 +182,6 @@ pub(super) struct Frame {
     pub(super) overlay_name: Option<String>,
     pub(super) overlay_kind: Option<String>,
     pub(super) overlay_properties: crate::LandXmlProperties,
-    pub(super) namespaces: HashMap<String, String>,
 }
 
 #[derive(Clone)]

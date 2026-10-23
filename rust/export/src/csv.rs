@@ -6,6 +6,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::csv_cell::{escape_csv_cell, CsvCellOptions};
+use ifc_lite_processing::data_model::spatial_walk;
 use crate::model::{build_export_model, fmt_num, EntityRow, ExportModel};
 
 /// Which CSV view to emit.
@@ -82,8 +83,8 @@ fn spatial_csv(content: &[u8], model: &ExportModel, opts: &CsvOptions) -> String
     let (mut proj_gid, mut proj_name) = (String::new(), String::new());
     if let Some(pid) = project {
         if let Some(e) = crate::ifc5::decode_one(content, pid) {
-            proj_gid = e.get(0).and_then(|a| a.as_string()).unwrap_or("").to_string();
-            proj_name = e.get(2).and_then(|a| a.as_string()).unwrap_or("").to_string();
+            proj_gid = e.string_at(ifc_lite_core::slot::IfcProject::GLOBAL_ID).unwrap_or("").to_string();
+            proj_name = e.string_at(ifc_lite_core::slot::IfcProject::NAME).unwrap_or("").to_string();
         }
     }
 
@@ -104,33 +105,17 @@ fn spatial_csv(content: &[u8], model: &ExportModel, opts: &CsvOptions) -> String
     let headers = ["expressId", "globalId", "name", "type", "parentId", "level"];
     let mut lines = vec![join(&headers.iter().map(|h| escape(h, d)).collect::<Vec<_>>(), d)];
 
-    let mut visited = HashSet::new();
-    let mut stack: Vec<(u32, Option<u32>, usize)> = Vec::new();
-    if let Some(pid) = project {
-        stack.push((pid, None, 0));
-    }
-    while let Some((id, parent, level)) = stack.pop() {
-        if !visited.insert(id) {
-            continue;
-        }
-        let (gid, name, ty) = info(id);
+    for visit in project.map(|pid| spatial_walk::walk(&children, pid)).unwrap_or_default() {
+        let (gid, name, ty) = info(visit.id);
         let row = vec![
-            escape(&id.to_string(), d),
+            escape(&visit.id.to_string(), d),
             escape(&gid, d),
             escape(&name, d),
             escape(&ty, d),
-            escape(&parent.map(|p| p.to_string()).unwrap_or_default(), d),
-            escape(&level.to_string(), d),
+            escape(&visit.parent.map(|p| p.to_string()).unwrap_or_default(), d),
+            escape(&visit.level.to_string(), d),
         ];
         lines.push(join(&row, d));
-        if let Some(kids) = children.get(&id) {
-            // Push reversed so siblings emit in source order.
-            for &k in kids.iter().rev() {
-                if !visited.contains(&k) {
-                    stack.push((k, Some(id), level + 1));
-                }
-            }
-        }
     }
     lines.join("\n")
 }
@@ -156,9 +141,7 @@ fn entities_csv(model: &ExportModel, opts: &CsvOptions) -> String {
                 }
             }
         }
-        for (pset, prop) in &flat_cols {
-            headers.push(format!("{pset}_{prop}"));
-        }
+        headers.extend(flat_headers(&flat_cols));
     }
 
     let mut lines = Vec::with_capacity(model.entities.len() + 1);
@@ -183,6 +166,29 @@ fn entities_csv(model: &ExportModel, opts: &CsvOptions) -> String {
         lines.push(join(&row, d));
     }
     lines.join("\n")
+}
+
+/// `{pset}_{prop}` per flattened column, as documented. That name is not
+/// unique: `("Pset_A", "B_C")` and `("Pset_A_B", "C")` share `Pset_A_B_C`, and
+/// spreadsheet or pandas imports then merge or rename them (#7681). A repeat
+/// takes the first ` (n)` suffix that no other column uses or is named, so
+/// every column stays distinct and the common case keeps its name.
+fn flat_headers(cols: &[(String, String)]) -> Vec<String> {
+    let bases: Vec<String> = cols.iter().map(|(pset, prop)| format!("{pset}_{prop}")).collect();
+    let natural: HashSet<&str> = bases.iter().map(String::as_str).collect();
+    let mut used: HashSet<String> = HashSet::new();
+    let mut headers = Vec::with_capacity(bases.len());
+    for base in &bases {
+        let mut header = base.clone();
+        let mut n = 1;
+        while used.contains(&header) || (n > 1 && natural.contains(header.as_str())) {
+            n += 1;
+            header = format!("{base} ({n})");
+        }
+        used.insert(header.clone());
+        headers.push(header);
+    }
+    headers
 }
 
 fn properties_csv(model: &ExportModel, opts: &CsvOptions) -> String {

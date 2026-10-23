@@ -1,0 +1,141 @@
+{
+  "$comment": "Shared schema-detection vectors (#7691). Each `content` (with `{PAD}` replaced by `pad` copies of 'x') must classify to `expected` in BOTH the Rust detector (rust/processing/src/processor/schema_detection.rs) and the TS parser's detectSchemaVersion (packages/parser/src/source-header.ts).",
+  "vectors": [
+    {
+      "name": "upper-case IFC4",
+      "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('a'),('o'),'p','s','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expected": "IFC4"
+    },
+    {
+      "name": "lower-case ifc4 (#4661)",
+      "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('a'),('o'),'p','s','');\nfile_schema(('ifc4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expected": "IFC4"
+    },
+    {
+      "name": "IFC4X3 with an addendum suffix, lower-case",
+      "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('a'),('o'),'p','s','');\nFILE_SCHEMA(('ifc4x3_add2'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expected": "IFC4X3"
+    },
+    {
+      "name": "IFC2X3 with a corrigendum suffix",
+      "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('a'),('o'),'p','s','');\nFILE_SCHEMA(('IFC2X3_TC1'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expected": "IFC2X3"
+    },
+    {
+      "name": "IFC4X1 reports as IFC4",
+      "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('a'),('o'),'p','s','');\nFILE_SCHEMA(('IFC4X1'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expected": "IFC4"
+    },
+    {
+      "name": "IFC5",
+      "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('a'),('o'),'p','s','');\nFILE_SCHEMA(('IFC5'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expected": "IFC5"
+    },
+    {
+      "name": "first recognised identifier wins over a later newer one",
+      "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('a'),('o'),'p','s','');\nFILE_SCHEMA(('IFC2X3','IFC4X3'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expected": "IFC2X3"
+    },
+    {
+      "name": "an unrecognised leading identifier is skipped",
+      "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('a'),('o'),'p','s','');\nFILE_SCHEMA(('IFC2X2_FINAL','IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expected": "IFC4"
+    },
+    {
+      "name": "IFC2X3 declared, ifc4 inside a GUID in DATA",
+      "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('a'),('o'),'p','s','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('2w9qcp9R8Ifc4r6a7mXG16',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expected": "IFC2X3"
+    },
+    {
+      "name": "IFC2X3 declared, IFC4X3 in a DATA value",
+      "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('a'),('o'),'p','s','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'converted from IFC4X3',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expected": "IFC2X3"
+    },
+    {
+      "name": "IFC2X3 declared, IFC4X3 in a header string",
+      "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('a'),('o'),'SomeApp IFC4X3 Exporter','s','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expected": "IFC2X3"
+    },
+    {
+      "name": "a comment between the keyword and the declaration",
+      "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('a'),('o'),'p','s','');\nFILE_SCHEMA /* ('IFC4X3') */ (('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expected": "IFC4"
+    },
+    {
+      "name": "a comment inside the identifier list",
+      "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('a'),('o'),'p','s','');\nFILE_SCHEMA(('IFC4' /* IFC4X3 */));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expected": "IFC4"
+    },
+    {
+      "name": "byte-order mark before the header",
+      "content": "﻿ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('a'),('o'),'p','s','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expected": "IFC2X3"
+    },
+    {
+      "name": "no FILE_SCHEMA and no schema token: the IFC4 default",
+      "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('a'),('o'),'p','s','');\n\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expected": "IFC4"
+    },
+    {
+      "name": "empty FILE_SCHEMA list",
+      "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('a'),('o'),'p','s','');\nFILE_SCHEMA(());\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expected": "IFC4"
+    },
+    {
+      "name": "unset FILE_SCHEMA",
+      "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('a'),('o'),'p','s','');\nFILE_SCHEMA($);\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expected": "IFC4"
+    },
+    {
+      "name": "no FILE_SCHEMA, a schema token in the first 2000 bytes",
+      "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('a'),('o'),'p','s','');\n\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'IFC2X3 model',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expected": "IFC2X3"
+    },
+    {
+      "name": "unclosed FILE_SCHEMA record falls back to the head scan",
+      "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('a'),('o'),'p','s','');\nFILE_SCHEMA(('IFC4');\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expected": "IFC4"
+    },
+    {
+      "name": "unterminated quote in FILE_DESCRIPTION falls back to the head scan",
+      "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('a'),('o'),'p','s','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expected": "IFC4"
+    },
+    {
+      "name": "no header at all",
+      "content": "#1=IFCWALL('0000000000000000000001',$,$,$,$,$,$,$);\n",
+      "expected": "IFC4"
+    },
+    {
+      "name": "empty input",
+      "content": "",
+      "expected": "IFC4"
+    },
+    {
+      "name": "an unrecognised leading identifier is skipped even when the head scan would answer differently (#7740)",
+      "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('exported from IFC4X3 tooling'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('a'),('o'),'p','s','');\nFILE_SCHEMA(('IFC2X2_FINAL','IFC2X3'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expected": "IFC2X3"
+    },
+    {
+      "name": "a dotless i is not folded to I: no ASCII fold, no match, the IFC4 default (#7740)",
+      "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('a'),('o'),'p','s','');\nFILE_SCHEMA(('ıfc2x3'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expected": "IFC4"
+    },
+    {
+      "name": "IFC5 listed before IFC4 is IFC5 (the decoder's attribute layout recognises no IFC5, so only the selection rule is shared, #7740)",
+      "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('a'),('o'),'p','s','');\nFILE_SCHEMA(('IFC5','IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expected": "IFC5"
+    },
+    {
+      "name": "no FILE_SCHEMA: the head scan matches ifc2x3 inside a GUID, in both detectors (documented, #7740; not the IFC4 default)",
+      "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('a'),('o'),'p','s','');\n\nENDSEC;\nDATA;\n#1=IFCPROJECT('2w9qcp9R8Ifc2x3a7mXG16',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expected": "IFC2X3"
+    },
+    {
+      "name": "a declaration past the 256 KiB header window is not read: head scan, then the IFC4 default",
+      "content": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');\nFILE_NAME('v.ifc','2026-10-16T00:00:00',('{PAD}'),('o'),'p','s','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expected": "IFC4",
+      "pad": 270000
+    }
+  ]
+}

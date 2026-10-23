@@ -245,6 +245,8 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
             ));
             break;
         };
+        // A repeated id writes only its last record (EXPORT-MERGE-18, #7683).
+        stats.warnings.extend(index.duplicates.iter().map(|&id| format!("Model {i}: {}", crate::step_index::RecordIndex::duplicate_warning(id))));
 
         // Unit mode. Counted here, not where the verdicts are resolved, so an
         // id-space break above still reports only the models actually merged.
@@ -290,6 +292,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
         // Emit.
         let source_schema = detect_schema(model.content);
         let converting = crate::schema_convert::needs_conversion(&source_schema, &schema);
+        let flatten = crate::schema_style_flatten::StyleFlatten::for_export(model.content, &source_schema, &schema); // D57
         for &id in &index.order {
             if !included.contains(&id) || plan.skip.contains(&id) {
                 continue;
@@ -309,6 +312,14 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                     LineDecision::Keep => {}
                 }
             }
+            if flatten.drops(id) {
+                continue;
+            }
+            match flatten.bytes(&source_schema, pruned.as_deref().map_or(bytes, str::as_bytes)) {
+                crate::schema_style_flatten::Flat::Drop => continue,
+                crate::schema_style_flatten::Flat::Write(text) => pruned = Some(text),
+                crate::schema_style_flatten::Flat::Keep => {}
+            }
             let bytes: &[u8] = pruned.as_deref().map_or(bytes, str::as_bytes);
             let remapped = if offset == 0 && plan.shared_remap.is_empty() {
                 String::from_utf8_lossy(bytes).into_owned()
@@ -326,25 +337,13 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                 // same placeholder (Greptile P1). rewrite_refs already offset the
                 // line's own `#id`, so this keeps the proxy guid consistent with it.
                 //
-                // Falls back to the UNCONVERTED line on `Err`, not `?`/panic:
-                // unlike the single-model `step.rs` path (which already threads a
-                // `Result` out through `std::io::Result`), `export_merged`/
-                // `export_merged_models` have no fallible signature at all, and
-                // giving them one is a separate, deliberate API change this fix
-                // does not make -- the same scope choice the TypeScript twin's
-                // `merged-exporter.ts` documents for its own withholding
-                // optimization (#5114). Unlike a rare edge case, a non-rooted type
-                // with no target representation is COMMON real-world input (any
-                // IFC4 model with tessellated geometry -- IfcCartesianPointList3D,
-                // IfcTriangulatedFaceSet, IfcIndexedPolyCurve -- has one), so
-                // panicking here would abort a merge the single-model path only
-                // ever silently mis-converted before #5116: a regression, not an
-                // improvement, and unrecoverable through the wasm ABI (no
-                // unwinding). Keeping the prior pass-through behavior and
-                // reporting it in `stats.warnings` is a real fix for every OTHER
-                // type (rooted-proxy and renamed types both now convert
-                // correctly here too) without a new abort path for the one this
-                // signature genuinely cannot express yet.
+                // Falls back to the UNCONVERTED line on `Err`, not `?`/panic: the
+                // merged API has no fallible signature (a separate, deliberate
+                // change; the TS twin documents the same scope, #5114), and a
+                // non-rooted type with no target representation is COMMON input
+                // (any IFC4 model with tessellated geometry), so panicking would
+                // abort a merge the single-model path only mis-converted before
+                // #5116, and wasm cannot unwind. Reported in `stats.warnings`.
                 match crate::schema_convert::convert_step_line(
                     &after_guid,
                     &source_schema,

@@ -9,8 +9,8 @@
 use nom::{
     branch::alt,
     bytes::complete::take_while1,
-    character::complete::{char, digit1, one_of},
-    combinator::{map, map_res, opt, recognize},
+    character::complete::{char, digit1},
+    combinator::{map, map_res},
     multi::separated_list0,
     sequence::{delimited, pair, preceded, tuple},
     IResult,
@@ -19,6 +19,8 @@ use nom::{
 use crate::error::{Error, Result};
 use crate::generated::IfcType;
 use crate::step_encoding::step_string_literal_end;
+use super::numeric_literal::{read_step_number, StepNumber};
+use crate::express_id::parse_express_id;
 
 /// STEP/IFC token.
 ///
@@ -35,6 +37,14 @@ pub enum Token<'a> {
     Integer(i64),
     /// Float: 3.14
     Float(f64),
+    /// A complete STEP `REAL` literal that `f64` cannot hold (`1.E400`),
+    /// carried as its raw text. [`super::numeric_literal::admit_step_real`]
+    /// decides which literals land here (#7678): the decoder refuses the
+    /// record for geometry and keeps it, as an infinity, for the data model.
+    UnrepresentableReal(&'a [u8]),
+    /// Binary literal `"0FF"`: the content between the quotes (unused-bits
+    /// digit, then hex), undecoded.
+    Binary(&'a [u8]),
     /// Enum: .TRUE., .FALSE., .UNKNOWN.
     Enum(&'a [u8]),
     /// List: (1, 2, 3)
@@ -47,15 +57,18 @@ pub enum Token<'a> {
     Derived,
 }
 
-/// Parse entity reference: #123
-fn entity_ref(input: &[u8]) -> IResult<&[u8], Token<'_>> {
-    map(
-        preceded(char('#'), map_res(digit1, lexical_core::parse::<u32>)),
-        Token::EntityRef,
-    )(input)
+/// An express id: digits through [`parse_express_id`], so an id beyond `u32`
+/// fails the token.
+fn express_id(input: &[u8]) -> IResult<&[u8], u32> {
+    map_res(digit1, |digits: &[u8]| parse_express_id(digits).ok_or("express id overflows u32"))(input)
 }
 
-/// Parse string literal: 'text' or "text"
+/// Parse entity reference: #123
+fn entity_ref(input: &[u8]) -> IResult<&[u8], Token<'_>> {
+    map(preceded(char('#'), express_id), Token::EntityRef)(input)
+}
+
+/// Parse string literal: 'text'
 ///
 /// An apostrophe literal ends where the shared rule says it does
 /// ([`step_string_literal_end`]): `''` is an escaped quote and the operand of
@@ -75,74 +88,64 @@ fn string_literal(input: &[u8]) -> IResult<&[u8], Token<'_>> {
                 nom::error::ErrorKind::Char,
             ))),
         },
-        _ => map(
-            delimited(char('"'), double_quoted_content, char('"')),
-            Token::String,
-        )(input),
-    }
-}
-
-/// Content of a `"..."` literal up to its closing `"`; a doubled `""` stays
-/// inside. Uses memchr for SIMD-accelerated quote searching.
-#[inline]
-fn double_quoted_content(input: &[u8]) -> IResult<&[u8], &[u8]> {
-    let mut pos = 0;
-    while let Some(found) = memchr::memchr(b'"', &input[pos..]) {
-        let idx = pos + found;
-        if input.get(idx + 1) == Some(&b'"') {
-            pos = idx + 2;
-            continue;
-        }
-        return Ok((&input[idx..], &input[..idx]));
-    }
-    Err(nom::Err::Error(nom::error::Error::new(
-        input,
-        nom::error::ErrorKind::Char,
-    )))
-}
-
-/// Parse integer: 42, -42, +42
-///
-/// ISO 10303-21 spells `INTEGER` as `[ SIGN ] DIGIT { DIGIT }` with
-/// `SIGN = '+' | '-'`, so a leading `+` is as legal as a leading `-`. Accepting
-/// only `-` dropped the WHOLE entity, not just the attribute: every caller of
-/// `parse_entity` discards a record that fails to tokenize
-/// (`let Ok(..) = .. else { continue }`). The exponent sign below already
-/// accepted both, `fast_float2::parse_partial` (the fast reader in `decoder.rs`)
-/// accepts `+`, and the TypeScript half reads values with `parseFloat`, so the
-/// same file used to decode differently in the browser and in wasm.
-/// Uses lexical-core for 10x faster parsing
-#[inline]
-fn integer(input: &[u8]) -> IResult<&[u8], Token<'_>> {
-    map_res(recognize(tuple((opt(one_of("+-")), digit1))), |s: &[u8]| {
-        lexical_core::parse::<i64>(s)
-            .map(Token::Integer)
-            .map_err(|_| "parse error")
-    })(input)
-}
-
-/// Parse float: 3.14, -3.14, +3.14, 1.5E-10, 0., 1.
-/// IFC allows floats like "0." without decimal digits
-///
-/// `REAL` carries the same `[ SIGN ]` as `INTEGER`; see [`integer`] for why a
-/// rejected sign costs the whole entity.
-/// Uses lexical-core for 10x faster parsing
-#[inline]
-fn float(input: &[u8]) -> IResult<&[u8], Token<'_>> {
-    map_res(
-        recognize(tuple((
-            opt(one_of("+-")),
-            digit1,
-            char('.'),
-            opt(digit1), // Made optional to support "0." format
-            opt(tuple((one_of("eE"), opt(one_of("+-")), digit1))),
+        _ => Err(nom::Err::Error(nom::error::Error::new(
+            input,
+            nom::error::ErrorKind::Char,
         ))),
-        |s: &[u8]| {
-            lexical_core::parse::<f64>(s)
-                .map(Token::Float)
-                .map_err(|_| "parse error")
-        },
-    )(input)
+    }
+}
+
+/// Parse a binary literal: `"` unused-bits digit (`0`-`3`) hex digits `"`
+/// (ISO 10303-21 `encoded_binary`).
+///
+/// Hex is case-insensitive and `""` is not an escape: a binary has no
+/// escapes, so the first closing `"` ends it. A malformed one fails the
+/// token like any other malformed token. The token borrows the content
+/// between the quotes, indicator included, undecoded; byte decoding has one
+/// home, [`crate::step_encoding::decode_step_binary`], which refuses a
+/// non-zero indicator (D18).
+fn binary_literal(input: &[u8]) -> IResult<&[u8], Token<'_>> {
+    let fail = || {
+        nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Char))
+    };
+    if input.first() != Some(&b'"') {
+        return Err(fail());
+    }
+    let close = 1 + memchr::memchr(b'"', &input[1..]).ok_or_else(fail)?;
+    let content = &input[1..close];
+    match content.split_first() {
+        Some((b'0'..=b'3', hex)) if hex.iter().all(u8::is_ascii_hexdigit) => {
+            Ok((&input[close + 1..], Token::Binary(content)))
+        }
+        _ => Err(fail()),
+    }
+}
+
+/// Parse a number: `42`, `-3.14`, `+1`, `1.`, `.5`, `1E5`, `1.5E-10`.
+///
+/// Delegates to [`read_step_number`], the one reader every Rust byte reader
+/// shares, so the grammar (including the `[ SIGN ]` of `INTEGER` and `REAL`,
+/// bare-dot fractions and exponents without a dot) is the same everywhere. A
+/// rejected form costs the WHOLE entity, not just the attribute: every caller
+/// of `parse_entity` discards a record that fails to tokenize. A literal
+/// `f64` cannot hold (`1.E400`) becomes [`Token::UnrepresentableReal`]; the
+/// decoder, not the tokenizer, decides what that costs (#7678).
+#[inline]
+fn number(input: &[u8]) -> IResult<&[u8], Token<'_>> {
+    match read_step_number(input) {
+        Some((number, len)) => Ok((
+            &input[len..],
+            match number {
+                StepNumber::Integer(i) => Token::Integer(i),
+                StepNumber::Real(f) => Token::Float(f),
+                StepNumber::Unrepresentable(raw) => Token::UnrepresentableReal(raw),
+            },
+        )),
+        None => Err(nom::Err::Error(nom::error::Error::new(
+            input,
+            nom::error::ErrorKind::Digit,
+        ))),
+    }
 }
 
 /// Parse enum: .TRUE., .FALSE., .UNKNOWN., .ELEMENT.
@@ -172,7 +175,7 @@ fn derived(input: &[u8]) -> IResult<&[u8], Token<'_>> {
 /// Each `(` in the input bumps depth by one. Real-world IFC entities rarely
 /// nest beyond 5-10 levels; 256 leaves comfortable headroom while keeping
 /// the stack bounded against pathological inputs.
-const MAX_NESTING_DEPTH: u32 = 256;
+pub(crate) const MAX_NESTING_DEPTH: u32 = 256;
 
 /// Parse typed value: IFCPARAMETERVALUE(0.), IFCBOOLEAN(.T.)
 ///
@@ -250,10 +253,9 @@ fn token_at_depth(input: &[u8], depth: u32) -> IResult<&[u8], Token<'_>> {
             // Then by complexity
             enum_value,     // .XXX.
             string_literal, // 'xxx'
+            binary_literal, // "0FF"
             move |i| list_at_depth(i, depth + 1), // (...)
-            // Numbers: float before integer since float includes '.'
-            float,
-            integer,
+            number,
             // IFCPARAMETERVALUE(0.) - most expensive, last
             move |i| typed_value_at_depth(i, depth + 1),
         )),
@@ -300,7 +302,7 @@ where
         // Entity ID: #123
         delimited(
             ws,
-            preceded(char('#'), map_res(digit1, lexical_core::parse::<u32>)),
+            preceded(char('#'), express_id),
             ws,
         ),
         // Equals sign
@@ -333,7 +335,34 @@ where
             let ifc_type = IfcType::from_str(type_str);
             Ok((id, ifc_type, args))
         }
-        Err(e) => Err(Error::parse(0, format!("Failed to parse entity: {}", e))),
+        Err(e) => Err(entity_parse_error(input, e)),
+    }
+}
+
+/// Bytes of the failing input quoted in a parse error.
+const ERROR_CONTEXT_BYTES: usize = 64;
+
+/// A nom failure as a bounded [`Error`]: the byte offset, nom's error kind and
+/// at most [`ERROR_CONTEXT_BYTES`] of lossy context. nom 7's `Display` for
+/// `Err` writes the inner error with `{:?}`, which is every REMAINING input byte
+/// as a decimal number, so formatting it built a message 4-5x the record (a
+/// 20 MB point list: ~100 MB of text per failed decode, built and dropped by
+/// every `let Ok(..) else continue` walk; #7675, CORE-5).
+fn entity_parse_error(input: &[u8], e: nom::Err<nom::error::Error<&[u8]>>) -> Error {
+    match e {
+        nom::Err::Incomplete(_) => Error::parse(input.len(), "Failed to parse entity: incomplete input"),
+        nom::Err::Error(inner) | nom::Err::Failure(inner) => {
+            let rest = inner.input;
+            let near = &rest[..rest.len().min(ERROR_CONTEXT_BYTES)];
+            Error::parse(
+                input.len().saturating_sub(rest.len()),
+                format!(
+                    "Failed to parse entity: {:?} near {:?}",
+                    inner.code,
+                    String::from_utf8_lossy(near)
+                ),
+            )
+        }
     }
 }
 

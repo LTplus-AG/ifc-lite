@@ -21,12 +21,16 @@
   },
   "files": [
     "./frame-gpu-chrome.ts",
+    "./diagnostics/swiftshader-instance.mts",
     "./frame-gpu-night-history.test.ts",
     "./frame-gpu-night-profile.test.ts",
+    "./frame-gpu-night-trend.test.ts",
+    "./frame-gpu-night-trend.mts",
     "../../tests/benchmark/viewer-benchmark-page.ts",
     "../../tests/benchmark/viewer-benchmark.spec.ts",
     "./frame-gpu-rig.mts",
     "./browser-cold-ab.mts",
+    "./native-count-driver.mts",
     "../../tests/benchmark/frames/frame-rig.spec.ts"
   ],
   "include": [],

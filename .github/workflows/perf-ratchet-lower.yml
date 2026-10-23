@@ -21,6 +21,8 @@
 #
 # Adding a family: add its measurer step below writing
 # "$RUNNER_TEMP/perf-ratchet/<family>.json". `--measured-dir` picks it up.
+# `browser-frames` (#6975) is measured by browser-frames.yml; its step here
+# re-admits that lane's latest successful main artifact.
 
 name: Perf ratchet lowering
 
@@ -33,6 +35,8 @@ on:
 
 permissions:
   contents: read
+  # Download the browser-frames lane's artifact (browser-frames family).
+  actions: read
 
 concurrency:
   # Never two lowering runs pushing the same branch at once.
@@ -127,6 +131,30 @@ jobs:
 
       - name: Measure perf-ratchet native-instructions-large family
         run: node scripts/perf-ratchet/measure-native-instructions.mjs --set large --out "$RUNNER_TEMP/perf-ratchet/native-instructions-large.json" --commit "$(git rev-parse HEAD)"
+
+      # `browser-frames` family (#6975): the rig needs chrome-headless-shell
+      # and runs in browser-frames.yml, so this job consumes that lane's
+      # artifact instead of re-running it. Only the LATEST completed run on
+      # main, and only if it succeeded (admission and its ceiling check
+      # passed); the measurer re-admits the raw artifact and stamps the sha
+      # that run measured. A failed, cancelled or absent latest run lowers
+      # nothing in this family, so no stale measurement moves a ceiling.
+      - name: Measure perf-ratchet browser-frames family (latest admitted main run)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          latest=$(gh run list --repo "$REPO" --workflow browser-frames.yml --branch main --status completed --limit 1 \
+            --json databaseId,conclusion,headSha --jq '.[0] // empty | select(.conclusion == "success") | "\(.databaseId) \(.headSha)"')
+          if [ -z "$latest" ]; then
+            echo "::notice::The latest completed browser-frames run on main did not succeed (or none exists); the browser-frames family is not lowered today."
+            exit 0
+          fi
+          read -r run sha <<< "$latest"
+          gh run download "$run" --repo "$REPO" -n browser-frames -D "$RUNNER_TEMP/browser-frames-$run"
+          node scripts/perf-ratchet/measure-browser-frames.mjs \
+            --frames "$RUNNER_TEMP/browser-frames-$run/browser-frames.json" \
+            --out "$RUNNER_TEMP/perf-ratchet/browser-frames.json" --commit "$sha"
 
       # Judged at the END of the job (last step) so a breach on main does not
       # stop the other ceilings from being lowered.

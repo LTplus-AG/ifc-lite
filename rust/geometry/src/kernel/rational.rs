@@ -10,6 +10,7 @@ use super::{DropAxis, ImplicitPoint, Lpi, Sign, Tpi};
 use num_rational::BigRational;
 use num_traits::{Signed, Zero};
 
+/// Invariant: operands pass `arrangement::operands_admitted` (#7677).
 #[inline]
 fn r(x: f64) -> BigRational {
     BigRational::from_float(x).expect("kernel: non-finite coordinate reached the exact predicate")
@@ -69,11 +70,7 @@ fn cross(u: &V3, v: &V3) -> V3 {
 /// Exact explicit orient3d — Shewchuk's sign convention (matches
 /// `geometry_predicates::orient3d`).
 pub fn orient3d_exact(a: [f64; 3], b: [f64; 3], c: [f64; 3], d: [f64; 3]) -> Sign {
-    let (a, b, c, d) = (vec(a), vec(b), vec(c), vec(d));
-    let ad = sub3(&a, &d);
-    let bd = sub3(&b, &d);
-    let cd = sub3(&c, &d);
-    sign_of(&det3(&ad, &bd, &cd))
+    orient3d_exact_pt(&vec(a), b, c, d)
 }
 
 /// Exact orient2d on the two axes remaining after dropping `axis`.
@@ -266,30 +263,30 @@ pub fn lpi_compare_along(l1: &Lpi, l2: &Lpi, u: [f64; 3]) -> Sign {
     super::assemble_sign(sign_of(&num), &[sign_of(&d1), sign_of(&d2)])
 }
 
-/// λ/d of an implicit point (Lpi or Tpi). Callers dispatch — never `Explicit`.
+/// λ/d of ANY point; an `Explicit` coordinate is `(λ=coord, d=1)` (#7677).
 pub(crate) fn lambda_of(p: &ImplicitPoint) -> (V3, BigRational) {
     match p {
         ImplicitPoint::Lpi(l) => lpi_lambda(l),
         ImplicitPoint::Tpi(t) => tpi_lambda(t),
-        ImplicitPoint::Explicit(_) => unreachable!("lambda_of: Explicit point"),
+        ImplicitPoint::Explicit(e) => (vec(*e), r(1.0)),
     }
 }
 
-/// λ/d of ANY point: an `Explicit` coordinate is `(λ=coord, d=1)`. Inline here so
-/// `cmp_along` never routes an `Explicit` through `lambda_of`'s `unreachable!`.
-fn lambda_or_explicit(p: &ImplicitPoint) -> (V3, BigRational) {
-    match p {
-        ImplicitPoint::Explicit(e) => (vec(*e), r(1.0)),
-        _ => lambda_of(p),
-    }
+/// Exact `orient3d`, any explicit/implicit mix in any slot (#7677); degenerate (`d == 0`) is Zero.
+#[cold] #[inline(never)] // keeps the Shewchuk fast path in `predicates::orient3d` as it was
+pub fn orient3d_points(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, d: &ImplicitPoint) -> Sign {
+    let pts = [a, b, c, d];
+    if pts.iter().any(|p| lambda_of(p).1.is_zero()) { return Sign::Zero; }
+    let [a, b, c, d] = pts.map(point_of);
+    sign_of(&det3(&sub3(&a, &d), &sub3(&b, &d), &sub3(&c, &d)))
 }
 
 /// Exact sign of `(a − b)·u` — order two points along direction `u`, over ANY
 /// Explicit/Lpi/Tpi mix (generalises [`lpi_compare_along`]). With `a=λa/da`,
 /// `b=λb/db`: `(a−b)·u = ((λa·u)·db − (λb·u)·da)/(da·db)`.
 pub fn cmp_along(a: &ImplicitPoint, b: &ImplicitPoint, u: [f64; 3]) -> Sign {
-    let (la, da) = lambda_or_explicit(a);
-    let (lb, db) = lambda_or_explicit(b);
+    let (la, da) = lambda_of(a);
+    let (lb, db) = lambda_of(b);
     let ur = vec(u);
     let dot_a = &la[0] * &ur[0] + &la[1] * &ur[1] + &la[2] * &ur[2];
     let dot_b = &lb[0] * &ur[0] + &lb[1] * &ur[1] + &lb[2] * &ur[2];

@@ -11,11 +11,11 @@
  */
 
 import type { ReactNode } from 'react';
-import { cn } from '@/lib/utils';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { COMPARE_COLORS } from '@/lib/compare/overlay';
+import { ALL_COMPARE_RESULTS, type CompareResultFilter } from '@/lib/compare/resultFilter';
 import type { CompareResult } from '@/store/slices/compareSlice';
 import type { ProductTypeSplit } from '@/lib/compare/productTypeCounts';
 import { typeObjectHint } from '@/lib/compare/productTypeCounts';
@@ -30,6 +30,8 @@ const SCOPE_KEY: Record<CompareResult['scope'], TranslationKey> = {
 
 interface CompareResultViewProps {
   result: CompareResult | null;
+  filter?: CompareResultFilter;
+  onFilter?: (filter: CompareResultFilter) => void;
   split: ProductTypeSplit | null;
   /** Elements the content pass matched, when it ran (#1891); null when it did not. */
   matchedElements: number | null;
@@ -38,7 +40,7 @@ interface CompareResultViewProps {
   detail: ReactNode;
 }
 
-export function CompareResultView({ result, split, matchedElements, exportBar, list, detail }: CompareResultViewProps) {
+export function CompareResultView({ result, filter = ALL_COMPARE_RESULTS, onFilter, split, matchedElements, exportBar, list, detail }: CompareResultViewProps) {
   const { t, locale } = useTranslation();
   const counts = result?.diff.counts;
   const number = (value: number) => formatLocaleNumber(locale, value);
@@ -65,17 +67,17 @@ export function CompareResultView({ result, split, matchedElements, exportBar, l
   // Counts. The Matched badge appears when the content pass RAN, not when it
   // found something (#1891): added/deleted are lower BECAUSE of it, so the
   // number explaining the drop sits next to them.
+  const badge = (category: NonNullable<CompareResultFilter['category']>, label: string, value: number, hint?: string) => (
+    <CountBadge label={label} value={value} color={COMPARE_COLORS[category]}
+      hint={hint} pressed={filter.category === category}
+      onClick={onFilter ? () => onFilter({ category: filter.category === category ? null : category, kind: null }) : undefined} />
+  );
   const summary = counts ? (
-    <div className={cn('grid gap-1 text-center', matchedElements !== null ? 'grid-cols-5' : 'grid-cols-4')}>
-      <CountBadge label={t('comparePanel.resultsList.stateChanged')} value={split?.products.modified ?? counts.modified}
-        color={COMPARE_COLORS.modified} hint={typeObjectHint(split?.typeObjects.modified ?? 0)} />
-      <CountBadge label={t('comparePanel.resultsList.stateAdded')} value={split?.products.added ?? counts.added}
-        color={COMPARE_COLORS.added} hint={typeObjectHint(split?.typeObjects.added ?? 0)} />
-      <CountBadge label={t('comparePanel.resultsList.stateDeleted')} value={split?.products.deleted ?? counts.deleted}
-        color={COMPARE_COLORS.deleted} hint={typeObjectHint(split?.typeObjects.deleted ?? 0)} />
-      {matchedElements !== null && (
-        <CountBadge label={t('comparePanel.matchGroups.matchedLabel')} value={matchedElements} color={COMPARE_COLORS.matched} />
-      )}
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(4rem,1fr))] gap-1 text-center">
+      {badge('modified', t('comparePanel.resultsList.stateChanged'), split?.products.modified ?? counts.modified, typeObjectHint(split?.typeObjects.modified ?? 0))}
+      {badge('added', t('comparePanel.resultsList.stateAdded'), split?.products.added ?? counts.added, typeObjectHint(split?.typeObjects.added ?? 0))}
+      {badge('deleted', t('comparePanel.resultsList.stateDeleted'), split?.products.deleted ?? counts.deleted, typeObjectHint(split?.typeObjects.deleted ?? 0))}
+      {matchedElements !== null && badge('matched', t('comparePanel.matchGroups.matchedLabel'), matchedElements)}
       <CountBadge label={t('comparePanel.panel.countUnchanged')} value={counts.unchanged} color={COMPARE_COLORS.unchanged} />
     </div>
   ) : null;
@@ -83,11 +85,38 @@ export function CompareResultView({ result, split, matchedElements, exportBar, l
   return (
     <ResultView
       source={t('comparePanel.panel.title')}
-      className="flex-1 min-h-0"
+
       header={header?.source}
       coverage={header?.coverage}
       summary={summary}
       summaryProps={tourAnchor(TOUR_ANCHORS.compareCounts)}
+      filters={result && onFilter ? (
+        <div className="px-3 py-2 space-y-2 border-b border-border">
+          <p className="text-2xs text-muted-foreground">{t('comparePanel.filters.hint')}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="text-xs flex items-center gap-2">
+              {t('comparePanel.filters.kind')}
+              <select aria-label={t('comparePanel.filters.kind')} value={filter.kind ?? ''}
+                className="min-w-0 rounded border border-border bg-background px-2 py-1"
+                onChange={(event) => {
+                  const kind = event.target.value;
+                  if (kind === 'data' || kind === 'geometry' || kind === 'container') onFilter({ category: 'modified', kind });
+                  else onFilter({ ...filter, kind: null });
+                }}>
+                <option value="">{t('comparePanel.filters.allKinds')}</option>
+                <option value="data">{t('comparePanel.filters.data')}</option>
+                <option value="geometry">{t('comparePanel.changeDetail.geometryLabel')}</option>
+                <option value="container">{t('comparePanel.filters.container')}</option>
+              </select>
+            </label>
+            <button type="button" onClick={() => onFilter(ALL_COMPARE_RESULTS)}
+              disabled={!filter.category && !filter.kind}
+              className="text-xs rounded px-2 py-1 hover:bg-muted disabled:opacity-50">
+              {t('comparePanel.filters.reset')}
+            </button>
+          </div>
+        </div>
+      ) : null}
       actions={exportBar}
       rows={list}
       evidence={detail}

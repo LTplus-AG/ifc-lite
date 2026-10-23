@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { isValidIfcGuid } from '@ifc-lite/encoding';
+import { isValidIfcGuid, stepStringLiteralEnd } from '@ifc-lite/encoding';
 import { effectiveCreatedRecord, effectiveSourceRecord } from '@ifc-lite/export';
 import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
 import { createSchemaEntityNameSnapshot, type SchemaEntityNameSnapshot, type EffectiveEntityRecord, type IfcDataStore } from '@ifc-lite/parser';
@@ -35,14 +35,9 @@ export function groupRecordReferences(text: string): number[] {
       i = end + 1; continue;
     }
     if (text[i] === "'") {
-      let end = i;
-      do {
-        end = text.indexOf("'", end + 1);
-        if (end < 0) throw new Error('Group graph has an unterminated record');
-        if (text[end + 1] !== "'") break;
-        end++;
-      } while (true);
-      i = end;
+      const end = stepStringLiteralEnd(text, i); // `''` and PAGE-operand apostrophes stay inside (#7589)
+      if (end < 0) throw new Error('Group graph has an unterminated record');
+      i = end - 1;
       continue;
     }
     if (text[i] === '(') attributes = true;

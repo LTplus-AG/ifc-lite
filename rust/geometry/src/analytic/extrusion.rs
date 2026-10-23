@@ -15,6 +15,12 @@ use serde::Serialize;
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct AnalyticExtrusion {
     pub solid_id: u32,
+    /// Original solid attributes and Position/ExtrudedDirection coefficient graph.
+    /// SweptArea traversal is retained separately in each profile boundary source.
+    /// `None` unless extracted inside [`super::with_source_capture`]. Not
+    /// serialized: export output stays unchanged until a consumer opts in.
+    #[serde(skip)]
+    pub source: Option<super::AnalyticBoundarySource>,
     #[serde(rename = "SweptArea")]
     pub swept_area_id: Option<u32>,
     pub profile: Option<AnalyticProfile>,
@@ -40,11 +46,16 @@ pub fn extract_analytic_extrusion(
     solid: &DecodedEntity, decoder: &mut EntityDecoder,
 ) -> AnalyticExtrusion {
     let mut result = AnalyticExtrusion {
-        solid_id: solid.id, swept_area_id: solid.get_ref(0), profile: None,
+        solid_id: solid.id, source: None, swept_area_id: solid.get_ref(0), profile: None,
         position_id: solid.get_ref(1), position_matrix: None,
         extruded_direction_id: solid.get_ref(2), direction_ratios: None,
         axis_unit_vector: None, depth: None, status: AnalyticStatus::Complete,
     };
+    if super::source::requested() {
+        let mut capture = super::source::SourceCapture::enabled();
+        capture.record(solid, decoder);
+        result.source = Some(capture.finish(solid.id, decoder.plane_angle_to_radians()));
+    }
     let parsed = parse_extrusion(solid, decoder, &mut result);
     if let Err(reason) = parsed {
         result.status = AnalyticStatus::Unsupported(reason);
@@ -93,9 +104,7 @@ fn parse_extrusion(
         if matrix.iter().any(|value| !value.is_finite()) {
             return Err(format!("Position #{id} has non-finite coordinates"));
         }
-        let mut values = [0.0; 16];
-        values.copy_from_slice(matrix.as_slice());
-        result.position_matrix = Some(values);
+        result.position_matrix = Some(crate::math::mat4::col_major_array(&matrix));
     }
 
     let direction_id = solid.get_ref(2).ok_or("missing ExtrudedDirection")?;

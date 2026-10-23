@@ -9,11 +9,15 @@
     "Cargo.lock",
     "rust-toolchain.toml",
     "scripts/build-wasm.sh",
+    "scripts/build-imported-geometry.mjs",
+    "scripts/lib/imported-artifacts.mjs",
     "tsconfig.json",
     "tsconfig.packages.json",
     "tsconfig.tests.base.json",
     "scripts/typecheck-tests.mjs",
-    "scripts/lib/is-main-entry.mjs"
+    "scripts/lib/is-main-entry.mjs",
+    "scripts/*worker-urls.*",
+    "scripts/lib/shipped-target.*"
   ],
   "globalPassThroughEnv": [
     "NODE_OPTIONS",

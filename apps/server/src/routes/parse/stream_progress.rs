@@ -13,6 +13,7 @@
 //! over the same public event. Nothing in the geometry blob records the job
 //! counts, so the live path writes them here and the replay reads them back.
 
+use crate::error::ApiError;
 use crate::services::cache::DiskCache;
 use serde::{Deserialize, Serialize};
 
@@ -88,16 +89,13 @@ pub(super) async fn cache_stream_progress(
 }
 
 /// Read back the checkpoints for a cache hit. `None` for an entry written
-/// before this sidecar existed, or one that no longer deserializes.
+/// before this sidecar existed, or one that is unusable (no longer
+/// deserializes, damaged), by the one cache-entry policy (#7676).
 pub(super) async fn load_stream_progress(
     cache: &DiskCache,
     cache_key: &str,
-) -> Option<StreamProgress> {
-    let bytes = cache
-        .get_bytes(&stream_progress_cache_key(cache_key))
-        .await
-        .ok()??;
-    serde_json::from_slice(&bytes).ok()
+) -> Result<Option<StreamProgress>, ApiError> {
+    cache.read_usable_json(&stream_progress_cache_key(cache_key)).await
 }
 
 #[cfg(test)]

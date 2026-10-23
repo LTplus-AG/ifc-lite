@@ -215,7 +215,7 @@ fn read_specular_colour(rendering: &DecodedEntity, decoder: &mut EntityDecoder) 
 /// Both select members are plain `REAL`s, so the STEP encoding carries the
 /// choice only as a type tag (`IFCSPECULAREXPONENT(20.)` vs
 /// `IFCSPECULARROUGHNESS(0.1)`), which the tokenizer preserves as a
-/// `List([String(type_name), Float(value)])` (`AttributeValue::from_token`).
+/// `AttributeValue::Typed` (`AttributeValue::from_token`).
 /// Returns `(is_roughness, value)`; an untagged bare real (non-conformant,
 /// never seen in practice) is treated as an exponent, since that is the
 /// historically dominant Blinn-Phong wording of "specular highlight size".
@@ -227,11 +227,7 @@ fn read_specular_colour(rendering: &DecodedEntity, decoder: &mut EntityDecoder) 
 /// (review of #5582).
 fn read_specular_highlight(rendering: &DecodedEntity) -> Option<(bool, f32)> {
     let attr = rendering.get(7)?;
-    let (is_roughness, value) = if let AttributeValue::List(items) = attr {
-        let (Some(AttributeValue::String(name)), Some(value_attr)) = (items.first(), items.get(1))
-        else {
-            return None;
-        };
+    let (is_roughness, value) = if let Some((name, value_attr)) = attr.as_typed() {
         (name.eq_ignore_ascii_case("IFCSPECULARROUGHNESS"), value_attr.as_float()? as f32)
     } else {
         (false, attr.as_float()? as f32)

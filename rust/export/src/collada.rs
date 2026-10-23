@@ -21,19 +21,9 @@
 use std::collections::HashMap;
 
 use crate::collada_document::write_dae;
+use crate::color_space::material_key as color_key;
 use crate::error::ExportError;
-
-/// Material dedup key: RGBA rounded to 2 decimals (matches the glTF exporter).
-fn color_key(c: [f32; 4]) -> (i32, i32, i32, i32) {
-    let r = |v: f32| (v * 100.0).round() as i32;
-    (r(c[0]), r(c[1]), r(c[2]), r(c[3]))
-}
-
-/// Convert a Y-up vector back to the IFC-native Z-up frame: `(x, y, z) -> (x, -z, y)`.
-#[inline]
-fn to_zup(x: f64, y: f64, z: f64) -> [f64; 3] {
-    [x, -z, y]
-}
+use ifc_lite_geometry::math::frame::yup_to_zup;
 
 /// Vertex dedup key: position quantised to 0.1 mm + normal to ~1e-3 (the emitted
 /// precision), so vertices that serialise identically collapse to one. Quantises in
@@ -146,12 +136,7 @@ pub fn try_export_collada_from_meshes(
         // through the same predicate; dropping them here shipped the document
         // with those faces missing as success.
         crate::mesh_input::check_index_block(i, islice, vertex_counts[i])?;
-        let color = [
-            colors.get(i * 4).copied().unwrap_or(0.8),
-            colors.get(i * 4 + 1).copied().unwrap_or(0.8),
-            colors.get(i * 4 + 2).copied().unwrap_or(0.8),
-            colors.get(i * 4 + 3).copied().unwrap_or(1.0),
-        ];
+        let color = crate::color_space::rgba_at(colors, i);
         let origin = [
             origins.get(i * 3).copied().unwrap_or(0.0),
             origins.get(i * 3 + 1).copied().unwrap_or(0.0),
@@ -175,15 +160,15 @@ pub fn try_export_collada_from_meshes(
         let mut l2g = vec![0u32; vc];
         for vi in 0..vc {
             let p = &pslice[vi * 3..vi * 3 + 3];
-            let zp = to_zup(
+            let zp = yup_to_zup([
                 p[0] as f64 + origin[0],
                 p[1] as f64 + origin[1],
                 p[2] as f64 + origin[2],
-            );
+            ]);
             // Normals are unit-scale direction vectors; f32 carries them losslessly.
             let zn = if has_normals {
                 let nv = &nslice[vi * 3..vi * 3 + 3];
-                let z = to_zup(nv[0] as f64, nv[1] as f64, nv[2] as f64);
+                let z = yup_to_zup([nv[0] as f64, nv[1] as f64, nv[2] as f64]);
                 [z[0] as f32, z[1] as f32, z[2] as f32]
             } else {
                 [0.0, 0.0, 1.0]
@@ -218,9 +203,7 @@ pub fn try_export_collada_from_meshes(
     // Read AFTER every drop rule above has run: a degenerate-only mesh registers
     // its material and then loses its triangle, so the material count cannot
     // see this.
-    if mat_tris.iter().all(Vec::is_empty) {
-        return Err(ExportError::NoRenderGeometry);
-    }
+    crate::error::require_render_geometry(mat_tris.iter().filter(|t| !t.is_empty()).count())?;
 
     // Center the model on its horizontal (X,Y) AABB centre so the .dae origin
     // coincides with the geometry centre. The KMZ <Model> pins the .dae origin to

@@ -17,6 +17,7 @@ use crate::step_text::escape;
 use super::jsval::{js_to_number, json_to_js_string, to_step_real, JsVal};
 use super::pass::Pass;
 use super::units::{find_length_unit_reference, normalize_map_unit_name};
+use super::values::Unwritable;
 use super::wire::GeorefMutations;
 
 const WITHOUT_CONTEXT: &str = "Cannot create IfcMapConversion: no IfcGeometricRepresentationContext is available to reference as SourceCRS. The IfcProjectedCRS is unaffected.";
@@ -49,35 +50,35 @@ pub(crate) fn requests_anything(g: &GeorefMutations) -> bool {
 }
 
 /// `resolveMapUnitReference`: a project length unit, else a new one.
-fn map_unit(pass: &mut Pass<'_, '_>, name: &str) -> Option<u32> {
+fn map_unit(pass: &mut Pass<'_, '_>, name: &str) -> Result<Option<u32>, Unwritable> {
     let normalized = normalize_map_unit_name(name);
     if let Some(existing) = find_length_unit_reference(&normalized, pass.src, &|id| pass.is_deleted(id)) {
-        return Some(existing);
+        return Ok(Some(existing));
     }
     let prefix = if normalized == "METRE" {
         Some(None)
     } else {
-        ["FEMTO", "MICRO", "HECTO", "CENTI", "MILLI", "EXA", "PETA", "TERA", "GIGA", "MEGA", "KILO", "DECA", "DECI", "NANO", "PICO", "ATTO"]
+        ifc_lite_core::SI_PREFIXES
             .iter()
-            .find(|p| normalized == format!("{p}METRE"))
-            .map(|p| Some(*p))
+            .find(|p| normalized == format!("{}METRE", p.name))
+            .map(|p| Some(p.name))
     };
     if let Some(prefix) = prefix {
-        let id = pass.allocate();
+        let id = pass.allocate()?;
         let token = prefix.map_or("$".to_string(), |p| format!(".{p}."));
-        pass.georef_lines.push(format!("#{id}=IFCSIUNIT(*,.LENGTHUNIT.,{token},.METRE.);"));
-        return Some(id);
+        pass.georef_lines.push((id, format!("#{id}=IFCSIUNIT(*,.LENGTHUNIT.,{token},.METRE.);")));
+        return Ok(Some(id));
     }
     if normalized == "FOOT" || normalized == "US SURVEY FOOT" {
-        let (dim, si, measure, unit) = (pass.allocate(), pass.allocate(), pass.allocate(), pass.allocate());
-        let factor = if normalized == "US SURVEY FOOT" { 1200.0 / 3937.0 } else { 0.3048 };
-        pass.georef_lines.push(format!("#{dim}=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);"));
-        pass.georef_lines.push(format!("#{si}=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);"));
-        pass.georef_lines.push(format!("#{measure}=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE({}),#{si});", to_step_real(factor)));
-        pass.georef_lines.push(format!("#{unit}=IFCCONVERSIONBASEDUNIT(#{dim},.LENGTHUNIT.,'{normalized}',#{measure});"));
-        return Some(unit);
+        let (dim, si, measure, unit) = (pass.allocate()?, pass.allocate()?, pass.allocate()?, pass.allocate()?);
+        let factor = if normalized == "US SURVEY FOOT" { ifc_lite_core::US_SURVEY_FOOT_M } else { 0.3048 };
+        pass.georef_lines.push((dim, format!("#{dim}=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);")));
+        pass.georef_lines.push((si, format!("#{si}=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);")));
+        pass.georef_lines.push((measure, format!("#{measure}=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE({}),#{si});", to_step_real(factor)?)));
+        pass.georef_lines.push((unit, format!("#{unit}=IFCCONVERSIONBASEDUNIT(#{dim},.LENGTHUNIT.,'{normalized}',#{measure});")));
+        return Ok(Some(unit));
     }
-    None
+    Ok(None)
 }
 
 /// `findPreferredGeometricRepresentationContextId`.
@@ -99,25 +100,27 @@ fn preferred_context(pass: &Pass<'_, '_>) -> Option<u32> {
     first_3d.or_else(|| ids.first().copied())
 }
 
-fn real_or_zero(v: Option<&Value>) -> String {
+/// A mandatory REAL: an absent or NaN value is the authored default 0 (the
+/// `Number(x) || 0` of the TypeScript writer); an infinity is refused.
+fn real_or_zero(v: Option<&Value>) -> Result<String, Unwritable> {
     let n = v.map_or(f64::NAN, js_to_number);
     to_step_real(if n.is_nan() || n == 0.0 { 0.0 } else { n })
 }
 
-fn real_or_unset(v: Option<&Value>) -> String {
-    v.map_or("$".to_string(), |v| to_step_real(js_to_number(v)))
+fn real_or_unset(v: Option<&Value>) -> Result<String, Unwritable> {
+    v.map_or(Ok("$".to_string()), |v| to_step_real(js_to_number(v)))
 }
 
-fn map_conversion_line(id: u32, context: u32, crs: u32, mc: &Map<String, Value>) -> String {
-    format!(
+fn map_conversion_line(id: u32, context: u32, crs: u32, mc: &Map<String, Value>) -> Result<String, Unwritable> {
+    Ok(format!(
         "#{id}=IFCMAPCONVERSION(#{context},#{crs},{},{},{},{},{},{});",
-        real_or_zero(mc.get("eastings")),
-        real_or_zero(mc.get("northings")),
-        real_or_zero(mc.get("orthogonalHeight")),
-        real_or_unset(mc.get("xAxisAbscissa")),
-        real_or_unset(mc.get("xAxisOrdinate")),
-        real_or_unset(mc.get("scale")),
-    )
+        real_or_zero(mc.get("eastings"))?,
+        real_or_zero(mc.get("northings"))?,
+        real_or_zero(mc.get("orthogonalHeight"))?,
+        real_or_unset(mc.get("xAxisAbscissa"))?,
+        real_or_unset(mc.get("xAxisOrdinate"))?,
+        real_or_unset(mc.get("scale"))?,
+    ))
 }
 
 /// Queue edits on an existing record and nominate it as the TypeScript side does.
@@ -130,7 +133,7 @@ fn edit_existing(pass: &mut Pass<'_, '_>, id: u32, edits: Vec<(String, String)>)
 }
 
 /// `applyGeoreferencingMutations`.
-pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations) {
+pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations) -> Result<(), Unwritable> {
     let crs_ids = pass.of_type("IFCPROJECTEDCRS");
     let mut mc_ids = pass.of_type("IFCMAPCONVERSION");
     mc_ids.extend(pass.of_type("IFCMAPCONVERSIONSCALED"));
@@ -151,7 +154,7 @@ pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations) {
         }
         if let Some(unit) = crs.get("mapUnit") {
             let name = json_to_js_string(unit);
-            let value = match map_unit(pass, &name) {
+            let value = match map_unit(pass, &name)? {
                 Some(unit_id) => format!("#{unit_id}"),
                 None => {
                     pass.warnings.push(unit_warning(&name));
@@ -182,7 +185,7 @@ pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations) {
 
     let empty = Map::new();
     if let (Some(crs), true) = (&g.projected_crs, crs_ids.is_empty()) {
-        let crs_id = pass.allocate();
+        let crs_id = pass.allocate()?;
         let text = |key: &str| match crs.get(key).filter(|v| truthy(v)) {
             Some(v) => format!("'{}'", escape(&json_to_js_string(v))),
             None => "$".to_string(),
@@ -191,18 +194,18 @@ pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations) {
         let mut unit_ref = "$".to_string();
         if let Some(unit) = crs.get("mapUnit") {
             let name = json_to_js_string(unit);
-            match map_unit(pass, &name) {
+            match map_unit(pass, &name)? {
                 Some(unit_id) => unit_ref = format!("#{unit_id}"),
                 None => pass.warnings.push(unit_warning(&name)),
             }
         }
-        pass.georef_lines.push(format!("#{crs_id}=IFCPROJECTEDCRS({},{unit_ref});", fields.join(",")));
+        pass.georef_lines.push((crs_id, format!("#{crs_id}=IFCPROJECTEDCRS({},{unit_ref});", fields.join(","))));
         pass.new_entity_count += 1;
         match preferred_context(pass) {
             Some(context) => {
-                let mc_id = pass.allocate();
+                let mc_id = pass.allocate()?;
                 let mc = g.map_conversion.as_ref().unwrap_or(&empty);
-                pass.georef_lines.push(map_conversion_line(mc_id, context, crs_id, mc));
+                pass.georef_lines.push((mc_id, map_conversion_line(mc_id, context, crs_id, mc)?));
                 pass.new_entity_count += 1;
             }
             None => pass.warnings.push(WITHOUT_CONTEXT.to_string()),
@@ -210,8 +213,8 @@ pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations) {
     } else if let (Some(mc), true, Some(&crs_id)) = (&g.map_conversion, mc_ids.is_empty(), crs_ids.first()) {
         match preferred_context(pass) {
             Some(context) => {
-                let mc_id = pass.allocate();
-                pass.georef_lines.push(map_conversion_line(mc_id, context, crs_id, mc));
+                let mc_id = pass.allocate()?;
+                pass.georef_lines.push((mc_id, map_conversion_line(mc_id, context, crs_id, mc)?));
                 pass.new_entity_count += 1;
             }
             None => pass.warnings.push(WITHOUT_CONTEXT.to_string()),
@@ -219,4 +222,5 @@ pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations) {
     } else if g.map_conversion.is_some() && mc_ids.is_empty() && crs_ids.is_empty() {
         pass.warnings.push(WITHOUT_CRS.to_string());
     }
+    Ok(())
 }

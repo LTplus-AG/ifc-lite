@@ -46,6 +46,10 @@ export const sharedCommandsEn = {
   'exportCommands.energy.menuLabel': 'Energy Model (HBJSON / DFJSON)',
   'exportCommands.energy.tooltip': 'Export energy model (HBJSON / DFJSON)',
 
+  'exportCommands.landxmlTerrain.label': 'LandXML (terrain)',
+  'exportCommands.landxmlTerrain.menuLabel': 'Export LandXML (terrain)',
+  'exportCommands.landxmlTerrain.tooltip': 'Export the selected terrain surface as LandXML',
+
   'exportCommands.csv.label': 'CSV',
   'exportCommands.csv.menuLabel': 'Export CSV',
   'exportCommands.csv.tooltip': 'Export CSV tables',

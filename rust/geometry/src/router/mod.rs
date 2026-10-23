@@ -6,30 +6,33 @@
 //!
 //! Routes IFC representation entities to appropriate processors based on type.
 
-mod annotation;
+pub(crate) mod annotation;
 mod annotation_polygon;
 mod annotation_style;
 mod caching;
 mod brep_signatures;
-mod rep_filter;
 mod content_hash;
 mod diagnostics;
 mod diagnostics_recording;
-mod frame_parts;
-mod instancing;
+pub(crate) mod frame_parts;
+pub(crate) mod instancing;
+pub(crate) mod item_cache_program;
 mod item_dedup_cache;
-mod layers;
-mod mapped_item;
-mod processing;
+pub(crate) mod layers;
+mod mapped_cache_ownership;
+pub(crate) mod mapped_item;
+pub(crate) mod processing;
 mod processor;
 mod rtc_offset;
-mod structural;
-mod textured;
+pub(crate) mod structural;
+pub(crate) mod textured;
+mod unit_admission;
 pub(crate) mod transforms;
 pub(crate) mod voids;
 
 pub use processor::GeometryProcessor;
 pub use brep_signatures::SharedBrepSignatureCache;
+pub use mapped_cache_ownership::AccountedMappedItemCache;
 pub use item_dedup_cache::{ItemDedupCache, ItemDedupCacheState};
 pub use transforms::local_frame_set_enabled_override;
 pub use voids::{take_bool2d_stats, take_prism_defers, take_prism_stats, RectParam};
@@ -40,8 +43,8 @@ pub use diagnostics::{
     GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, UNATTRIBUTED_PRODUCT_ID,
 };
 pub(crate) use diagnostics::ClassificationKind;
-pub(super) use rep_filter::{effective_element_rep_type, effective_rep_type, is_body_representation, is_direct_body_representation};
-pub use rep_filter::meshed_representations;
+pub(super) use crate::representation::{effective_element_rep_type, effective_rep_type, is_body_representation, is_direct_body_representation};
+pub use crate::representation::meshed_representations;
 pub use content_hash::FACETED_BREP_DEDUP_FACE_LIMIT;
 
 #[cfg(test)]
@@ -50,7 +53,10 @@ mod tests;
 use crate::material_layer_index::MaterialLayerIndex;
 use crate::processors::{BooleanClippingProcessor, CsgSolidProcessor};
 mod processor_registry;
-pub(crate) use processor_registry::builtin_processor;
+mod construction;
+mod registration;
+pub(crate) use processor_registry::{builtin_family, builtin_processor, ProcessorOrigin};
+pub use processor_registry::ConstructionFamily;
 use processor_registry::ProcessorRegistry;
 use crate::tessellation::TessellationQuality;
 use crate::{BoolFailure, Mesh, Result};
@@ -58,7 +64,6 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::RefCell;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex, OnceLock};
 
 /// Test/env override for [`GeometryRouter::build_dedup_extra_enabled`]:
@@ -123,6 +128,11 @@ pub struct GeometryRouter {
     /// meshing (which nests faceted-brep's rayon `par_iter`) runs OUTSIDE the
     /// lock, so it is never held across a nested join (#1587). `None` ⇒ fallback.
     shared_mapped_item_cache: Option<SharedMappedItemCache>,
+    /// Admission owner for `shared_mapped_item_cache` under bounded execution;
+    /// a plain shared cache is refused as unsupported coverage there.
+    accounted_mapped_cache: Option<AccountedMappedItemCache>,
+    /// Publishing accounts retained by this router's local caches.
+    mapped_cache_accounts: RefCell<Vec<crate::resource::ExecutionAccount>>,
     /// Cache for geometry deduplication by content hash (buildings with
     /// repeated floors have 99% identical geometry). Key: mesh-content hash.
     geometry_hash_cache: RefCell<FxHashMap<u64, Arc<Mesh>>>,
@@ -146,6 +156,8 @@ pub struct GeometryRouter {
     /// Unit scale factor (e.g., 0.001 for millimeters -> meters), applied to
     /// all mesh positions after processing.
     unit_scale: f64,
+    /// The length unit was refused (#7678): nothing is meshed (`unit_admission`).
+    length_unit_refused: bool,
     /// RTC (Relative-to-Center) offset, subtracted from world positions in f64
     /// before converting to f32 to preserve precision (e.g. Swiss UTM).
     rtc_offset: (f64, f64, f64),
@@ -164,7 +176,7 @@ pub struct GeometryRouter {
     csg_failures: RefCell<FxHashMap<u32, Vec<BoolFailure>>>,
     /// Cumulative counters for opening classification (T1.1 / classifier fix
     /// diagnostic). Tracks how many openings went through each branch of
-    /// `classify_openings` so a maintainer can verify the fix is firing on
+    /// `program::openings::classify` so a maintainer can verify the fix is firing on
     /// real models. Drainable via [`Self::take_classification_stats`].
     classification_stats: RefCell<ClassificationStats>,
     /// Per-host opening diagnostic, keyed by host product express ID.
@@ -240,6 +252,8 @@ pub struct GeometryRouter {
     /// built per `produce_batch`. Unused (stays empty) in the native global mode.
     instanced_sources_materialized: RefCell<FxHashSet<u32>>,
     unsupported: RefCell<diagnostics::UnsupportedItemState>, // dropped items by `IfcType` + per-source bookkeeping
+    /// Instance + configuration generation checked by pending item programs.
+    execution_owner: ifc_lite_core::execution_owner::ExecutionOwner,
 }
 
 impl GeometryRouter {
@@ -254,12 +268,15 @@ impl GeometryRouter {
             processors: ProcessorRegistry::new(),
             mapped_item_cache: RefCell::new(FxHashMap::default()),
             shared_mapped_item_cache: None, // armed by `enable_shared_mapped_item_cache`
+            accounted_mapped_cache: None,
+            mapped_cache_accounts: RefCell::new(Vec::new()),
             geometry_hash_cache: RefCell::new(FxHashMap::default()),
             item_dedup_cache: None, // armed by `with_units` / `enable_content_dedup_shared`
             content_sig_memo: RefCell::new(FxHashMap::default()),
             shared_brep_signatures: None,
             content_hash_oversized_ref_drops: RefCell::new(0),
             unit_scale: 1.0,             // Default to base meters
+            length_unit_refused: false,
             rtc_offset: (0.0, 0.0, 0.0), // Default to no offset
             local_frame_enabled: None,
             material_layer_index: None,
@@ -277,34 +294,22 @@ impl GeometryRouter {
             instancing_batch_local: false, // native global-template mode by default
             instanced_sources_materialized: RefCell::new(FxHashSet::default()),
             unsupported: RefCell::new(Default::default()),
+            execution_owner: Default::default(),
         }
     }
 
     /// Create router and extract unit scale from IFC file
-    /// Automatically finds IFCPROJECT and extracts length unit conversion
-    pub fn with_units<T>(content: &T, decoder: &mut EntityDecoder) -> Self
+    /// Automatically finds IFCPROJECT (the decoder's cached locator) and
+    /// extracts length unit conversion. `_content` is the decoder's own source,
+    /// kept for API compatibility.
+    pub fn with_units<T>(_content: &T, decoder: &mut EntityDecoder) -> Self
     where
         T: AsRef<[u8]> + ?Sized,
     {
-        let scale = Self::scan_unit_scale(content.as_ref(), decoder);
+        let scale = Self::project_unit_scale(decoder);
         let mut router = Self::with_scale(scale);
         router.arm_content_dedup();
         router
-    }
-
-    /// Scan to the first `IFCPROJECT` and extract its length-unit scale (e.g.
-    /// `0.001` for millimetres → metres); `1.0` if none is found.
-    fn scan_unit_scale(content: &[u8], decoder: &mut EntityDecoder) -> f64 {
-        let mut scanner = ifc_lite_core::EntityScanner::new(content);
-        while let Some((id, type_name, _, _)) = scanner.next_entity() {
-            if ifc_lite_core::keyword_eq(type_name, "IFCPROJECT") {
-                if let Ok(s) = ifc_lite_core::extract_length_unit_scale(decoder, id) {
-                    return s;
-                }
-                break;
-            }
-        }
-        1.0
     }
 
     /// Create router with unit scale extracted from IFC file AND RTC offset for large coordinates
@@ -315,14 +320,14 @@ impl GeometryRouter {
     /// * `decoder` - Entity decoder
     /// * `rtc_offset` - RTC offset to subtract from world coordinates (typically model centroid)
     pub fn with_units_and_rtc<T>(
-        content: &T,
+        _content: &T,
         decoder: &mut ifc_lite_core::EntityDecoder,
         rtc_offset: (f64, f64, f64),
     ) -> Self
     where
         T: AsRef<[u8]> + ?Sized,
     {
-        let scale = Self::scan_unit_scale(content.as_ref(), decoder);
+        let scale = Self::project_unit_scale(decoder);
         let mut router = Self::with_scale_and_rtc(scale, rtc_offset);
         router.arm_content_dedup();
         router
@@ -331,7 +336,7 @@ impl GeometryRouter {
     /// Create router with pre-calculated unit scale
     pub fn with_scale(unit_scale: f64) -> Self {
         let mut router = Self::new();
-        router.unit_scale = unit_scale;
+        router.set_unit_scale(unit_scale);
         router
     }
 
@@ -352,6 +357,7 @@ impl GeometryRouter {
     /// [`Self::new_dedup_cache`] and inject it into every router with
     /// [`Self::enable_content_dedup_shared`] so the cache persists across them.
     fn arm_content_dedup(&mut self) {
+        self.execution_owner.changed();
         self.item_dedup_cache = Some(Self::new_dedup_cache());
     }
 
@@ -398,26 +404,8 @@ impl GeometryRouter {
     /// byte-identical geometry is meshed once across the whole model regardless of
     /// how elements are partitioned across threads or batches.
     pub fn enable_content_dedup_shared(&mut self, cache: ItemDedupCache) {
+        self.execution_owner.changed();
         self.item_dedup_cache = Some(cache);
-    }
-
-    /// A fresh empty shared `IfcMappedItem` source cache, to be cloned into every
-    /// per-element / per-batch router of ONE loaded model so a mapped source shared
-    /// across owning elements is meshed once model-wide (#1623). Mirrors
-    /// [`Self::new_dedup_cache`]. Keep one per model/pass: the cached meshes bake in
-    /// this pass's unit scale / tessellation quality.
-    pub fn new_mapped_item_cache() -> SharedMappedItemCache {
-        Arc::new(Mutex::new(FxHashMap::default()))
-    }
-
-    /// Inject a shared `IfcMappedItem` source cache (see
-    /// [`Self::new_mapped_item_cache`]) into this router. All routers given the
-    /// SAME `Arc` mesh each unique `IfcRepresentationMap` source once across the
-    /// whole model, instead of once per owning element (a fresh router is built per
-    /// element). Takes precedence over the per-router RefCell `mapped_item_cache`;
-    /// leaving it unset keeps the per-router fallback for single-shot callers.
-    pub fn enable_shared_mapped_item_cache(&mut self, cache: SharedMappedItemCache) {
-        self.shared_mapped_item_cache = Some(cache);
     }
 
     /// Arm the #1623 Phase 2 don't-bake instancing plan (see [`MappedInstancePlan`])
@@ -488,6 +476,7 @@ impl GeometryRouter {
     /// returns `None` and meshing is never skipped). Test/bench helper for an A/B
     /// against the deduped path.
     pub fn disable_content_dedup(&mut self) {
+        self.execution_owner.changed();
         self.item_dedup_cache = None;
     }
 
@@ -546,7 +535,7 @@ impl GeometryRouter {
     /// Create router with both unit scale and RTC offset
     pub fn with_scale_and_rtc(unit_scale: f64, rtc_offset: (f64, f64, f64)) -> Self {
         let mut router = Self::new();
-        router.unit_scale = unit_scale;
+        router.set_unit_scale(unit_scale);
         router.rtc_offset = rtc_offset;
         router
     }
@@ -561,7 +550,7 @@ impl GeometryRouter {
     /// Create router with both unit scale and tessellation quality
     pub fn with_scale_and_quality(unit_scale: f64, quality: TessellationQuality) -> Self {
         let mut router = Self::new();
-        router.unit_scale = unit_scale;
+        router.set_unit_scale(unit_scale);
         router.tessellation_quality = quality;
         router
     }
@@ -576,6 +565,7 @@ impl GeometryRouter {
         if self.tessellation_quality == quality {
             return;
         }
+        self.execution_owner.changed();
         self.tessellation_quality = quality;
         self.mapped_item_cache.get_mut().clear();
         self.unsupported.get_mut().forget_sources();
@@ -619,16 +609,19 @@ impl GeometryRouter {
     /// never discard records the pipeline had not drained yet (#3821).
     fn register_skip_dependent_processors(&mut self) {
         self.drain_processor_failures();
-        self.register(Box::new(BooleanClippingProcessor::with_skip_small_cuts(
-            self.skip_small_cuts,
-        )));
-        self.register(Box::new(CsgSolidProcessor::with_skip_small_cuts(
-            self.skip_small_cuts,
-        )));
+        self.register_with_origin(
+            Box::new(BooleanClippingProcessor::with_skip_small_cuts(self.skip_small_cuts)),
+            ProcessorOrigin::ConfiguredBuiltin,
+        );
+        self.register_with_origin(
+            Box::new(CsgSolidProcessor::with_skip_small_cuts(self.skip_small_cuts)),
+            ProcessorOrigin::ConfiguredBuiltin,
+        );
     }
 
     /// Set the RTC offset for large coordinate handling
     pub fn set_rtc_offset(&mut self, offset: (f64, f64, f64)) {
+        self.execution_owner.changed();
         self.rtc_offset = offset;
     }
 
@@ -674,12 +667,7 @@ impl GeometryRouter {
     /// Only applies scaling if unit_scale != 1.0
     #[inline]
     fn scale_mesh(&self, mesh: &mut Mesh) {
-        if self.unit_scale != 1.0 {
-            let scale = self.unit_scale as f32;
-            for pos in mesh.positions.iter_mut() {
-                *pos *= scale;
-            }
-        }
+        processing::scale_positions(mesh, self.unit_scale);
     }
 
     /// Scale the translation component of a transform matrix from file units to meters
@@ -693,14 +681,6 @@ impl GeometryRouter {
         }
     }
 
-    /// Register a geometry processor
-    pub fn register(&mut self, processor: Box<dyn GeometryProcessor>) {
-        let processor_rc: Rc<dyn GeometryProcessor> = Rc::from(processor);
-        for ifc_type in processor_rc.supported_types() {
-            self.processors.insert(ifc_type, Rc::clone(&processor_rc));
-        }
-    }
-
     /// Resolve an element's ObjectPlacement to a scaled world-space transform matrix.
     /// Returns the 4x4 matrix as a flat column-major array of 16 f64 values.
     /// The translation component is scaled from file units to meters.
@@ -711,11 +691,10 @@ impl GeometryRouter {
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<[f64; 16]> {
+        self.admit_placement_scale()?;
         let mut transform = self.get_placement_transform_from_element(entity, decoder)?;
         self.scale_transform(&mut transform);
-        let mut result = [0.0f64; 16];
-        result.copy_from_slice(transform.as_slice());
-        Ok(result)
+        Ok(crate::math::mat4::col_major_array(&transform))
     }
 
     /// Get schema reference

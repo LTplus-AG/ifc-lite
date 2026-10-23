@@ -29,6 +29,7 @@ mod export_data;
 mod export_dfjson;
 mod export_glb;
 mod export_hbjson;
+mod export_landxml;
 mod export_obj;
 mod export_step;
 mod extract_profiles;
@@ -39,6 +40,9 @@ mod landxml_stream;
 mod mesh_outline;
 mod overlay_frame;
 mod parsing;
+// Opt-in retained-geometry host contract over the private module-Worker executor.
+#[cfg(all(feature = "retained-browser", target_arch = "wasm32"))]
+mod retained_browser;
 mod pipeline_diagnostics;
 mod simplify;
 mod swept_disk_descriptions;
@@ -56,6 +60,16 @@ use wasm_bindgen::prelude::*;
 /// `TessellationQuality::Medium` as the atomic discriminant stored on
 /// [`IfcAPI::tessellation_quality`] (0 = Lowest … 4 = Highest).
 const TESSELLATION_QUALITY_MEDIUM: u8 = 2;
+
+/// One content's `IfcIndexedColourMap` index (#858) and the don't-bake split
+/// guard ids derived from it once (`style::indexed_colour_split_guard_ids`,
+/// EDGE-WASM-5, #7691). Held in [`IfcAPI`]'s per-content cache slot.
+pub(crate) struct IndexedColourCache {
+    /// Geometry id → full per-triangle palette.
+    pub(crate) maps: rustc_hash::FxHashMap<u32, ifc_lite_processing::style::FullIndexedColourMap>,
+    /// Multi-colour face-set ids; `None` when no map paints more than one colour.
+    pub(crate) split_guard_ids: Option<std::sync::Arc<rustc_hash::FxHashSet<u32>>>,
+}
 
 /// Main IFC-Lite API
 #[wasm_bindgen]
@@ -143,7 +157,7 @@ pub struct IfcAPI {
     /// and slabs carrying an `IfcMaterialLayerSetUsage` are sliced into one
     /// sub-mesh per layer (geometry_id = the layer's `IfcMaterial`) so the
     /// build-up is visible in 3D. Built once per load and attached to EVERY
-    /// batch router via `set_material_layer_index` so `try_layered_sub_meshes`
+    /// batch router via `set_material_layer_index` so the layer control
     /// can fire — #874 dropped that wiring and silently disabled slicing for
     /// the whole browser stream. Cleared by `clearPrePassCache` between loads.
     cached_material_layer_index:
@@ -192,13 +206,9 @@ pub struct IfcAPI {
     /// this split in the #874 mesh-pipeline unification — it kept only the
     /// dominant colour per geometry. Built once per worker on first batch call
     /// (a single extra entity scan, cached) and cleared by `clearPrePassCache`.
-    cached_indexed_colour_maps: std::sync::Mutex<
-        Option<
-            std::sync::Arc<
-                rustc_hash::FxHashMap<u32, ifc_lite_processing::style::FullIndexedColourMap>,
-            >,
-        >,
-    >,
+    /// Carries the #858 split-guard ids derived from it, so the partitioned
+    /// batch does not re-derive them per batch (EDGE-WASM-5, #7691).
+    cached_indexed_colour_maps: std::sync::Mutex<Option<std::sync::Arc<IndexedColourCache>>>,
 
     /// When `true`, `processGeometryBatch` computes a per-entity geometry
     /// fingerprint (see `ifc_lite_geometry::geom_hash`) and returns it on the
@@ -523,6 +533,9 @@ impl IfcAPI {
         layer_material_ids: &[u32],
         layer_thicknesses: &[f64],
     ) {
+        // A malformed buffer is refused (#7675). Clearing the slot (never
+        // keeping an earlier load's index) leaves the per-worker lazy build in
+        // charge, which is correct, just slower.
         let index = ifc_lite_geometry::MaterialLayerIndex::from_flat(
             element_ids,
             axis,
@@ -536,7 +549,7 @@ impl IfcAPI {
             .cached_material_layer_index
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        *slot = Some(std::sync::Arc::new(index));
+        *slot = index.map(std::sync::Arc::new);
     }
 
     /// Get WASM memory for zero-copy access
@@ -762,7 +775,7 @@ impl IfcAPI {
     /// slice single-solid walls/slabs with an `IfcMaterialLayerSetUsage` into one
     /// sub-mesh per layer. Built once per load (one IFCRELASSOCIATESMATERIAL
     /// decode scan, with a cheap substring bail-out on files that carry no layer
-    /// set) and `Arc`-shared with every batch router so `try_layered_sub_meshes`
+    /// set) and `Arc`-shared with every batch router so the layer control
     /// fires. Subsequent batches are an `Arc::clone`.
     pub(crate) fn get_or_build_material_layer_index(
         &self,
@@ -935,8 +948,7 @@ impl IfcAPI {
         &self,
         content: &[u8],
         decoder: &mut ifc_lite_core::EntityDecoder,
-    ) -> std::sync::Arc<rustc_hash::FxHashMap<u32, ifc_lite_processing::style::FullIndexedColourMap>>
-    {
+    ) -> std::sync::Arc<IndexedColourCache> {
         {
             let slot = self
                 .cached_indexed_colour_maps
@@ -953,29 +965,25 @@ impl IfcAPI {
         // IfcIndexedColourMap pay only a single substring search (SIMD memmem),
         // not a full entity scan + decode, on the first batch of every worker.
         // The empty result is still cached so later batches skip even that.
-        if ifc_lite_core::find_keyword(content, b"IFCINDEXEDCOLOURMAP").is_none() {
-            let arc = std::sync::Arc::new(map);
-            let mut slot = self
-                .cached_indexed_colour_maps
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            *slot = Some(std::sync::Arc::clone(&arc));
-            return arc;
-        }
-        let mut scanner = ifc_lite_core::EntityScanner::new(content);
-        while let Some((_id, type_name, start, end)) = scanner.next_entity() {
-            if ifc_lite_core::keyword_eq(type_name, "IFCINDEXEDCOLOURMAP") {
-                if let Ok(icm) = decoder.decode_at(start, end) {
-                    if let Some(full) =
-                        ifc_lite_processing::style::resolve_indexed_colour_map_full(&icm, decoder)
-                    {
-                        map.entry(full.geometry_id).or_insert(full);
+        if ifc_lite_core::find_keyword(content, b"IFCINDEXEDCOLOURMAP").is_some() {
+            let mut scanner = ifc_lite_core::EntityScanner::new(content);
+            while let Some((_id, type_name, start, end)) = scanner.next_entity() {
+                if ifc_lite_core::keyword_eq(type_name, "IFCINDEXEDCOLOURMAP") {
+                    if let Ok(icm) = decoder.decode_at(start, end) {
+                        if let Some(full) =
+                            ifc_lite_processing::style::resolve_indexed_colour_map_full(&icm, decoder)
+                        {
+                            map.entry(full.geometry_id).or_insert(full);
+                        }
                     }
                 }
             }
         }
 
-        let arc = std::sync::Arc::new(map);
+        let arc = std::sync::Arc::new(IndexedColourCache {
+            split_guard_ids: ifc_lite_processing::style::indexed_colour_split_guard_ids(&map),
+            maps: map,
+        });
         let mut slot = self
             .cached_indexed_colour_maps
             .lock()

@@ -1,0 +1,38 @@
+{
+  "about": "FNV-1a 64 and byte length of each ifcx output, keyed by case. Written by ifc-lite-export, never by hand.",
+  "repin": "IFC_LITE_REPIN_GOLDEN=1 cargo test -p ifc-lite-export --features parquet-bos --test export_golden -- --exact ifcx",
+  "cases": {
+    "AC20-FZK-Haus": {
+      "fnv1a64": "2289afee9261a446",
+      "bytes": 19819
+    },
+    "IfcOpenHouse_IFC4": {
+      "fnv1a64": "161ef44bc9fdffda",
+      "bytes": 6400
+    },
+    "bath_csg_solid": {
+      "fnv1a64": "e813af3ce0ee9e48",
+      "bytes": 719
+    },
+    "bonsai-terrain": {
+      "fnv1a64": "0f240fcdece71efc",
+      "bytes": 856
+    },
+    "c6_data_model_synthetic": {
+      "fnv1a64": "8ee633a6ce8301a3",
+      "bytes": 1416
+    },
+    "duplex": {
+      "fnv1a64": "86bc8e774331d854",
+      "bytes": 83385
+    },
+    "mapped_instances_synthetic": {
+      "fnv1a64": "a899ad0c38db1cd0",
+      "bytes": 12140
+    },
+    "wall_two_openings": {
+      "fnv1a64": "4cd23ad157f1c300",
+      "bytes": 957
+    }
+  }
+}

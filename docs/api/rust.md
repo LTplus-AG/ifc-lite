@@ -45,9 +45,46 @@ pub mod error;           // Error types
 ### Parser Module
 
 `ifc_lite_core::declared_schema_bounded(ifc_bytes)` reads the first actual
-`FILE_SCHEMA` identifier in the first 64 KiB of the STEP header. It skips
+`FILE_SCHEMA` identifier in the first 256 KiB of the STEP header. It skips
 comments and quoted decoys and stops at the header section boundary, returning
-`None` when no declaration is found in that window.
+`None` when no declaration is found in that window (`parser::header::MAX_HEADER_BYTES`,
+the same window the scanner searches for `DATA;`). Keywords are found by
+`parser::header::find_keyword_then`, a literal's text is
+`step_encoding::decode_step_literal`, and `parser::split_top_level_args` splits
+top-level arguments, all ignoring comments and quoted decoys.
+
+`ifc_lite_core::parser::StepRecord::parse(record)` is the zero-copy view of one
+`#id = KEYWORD ( ... )` record that every raw-byte reader goes through: it
+locates the attribute list (trivia and comments allowed wherever STEP allows
+them), and `attr`, `ref_at`, `ref_list_at`, `real_at`, `point_at`, `string_at`
+and `enum_at` read one attribute each, borrowing from the record. A list whose
+items are not all plain `#n` references is refused whole (`ref_list_at`), and
+`parse_ref` accepts `#` and digits only. `fast_parse::extract_entity_type_name`,
+`extract_first_entity_ref`, `extract_entity_refs_from_list` and
+`EntityDecoder::get_first_entity_ref_fast` are removed in favour of it.
+
+The native merged exporter also uses `StepRecord::attrs()` and `StepListItems`
+for relationship edits. A legal comment such as `#10=/* ( */IFCRELDEFINESBYPROPERTIES(...)`
+does not change the attribute boundaries: folding into the first relationship,
+removing duplicate members, and pruning empty containers edit only the selected
+values and separators. Unrelated comments and whitespace stay as authored.
+An unreadable argument list remains unedited and blocks unsafe pruning.
+List edits require the complete attribute to be one value under
+`parser::is_step_value`: a closed list followed by another value is not an
+editable list, and all its references conservatively block pruning. Legal
+trivia after a complete list remains allowed.
+
+`ifc_lite_core::parser::is_step_value(text)` and `parser::split_step_slots(inner)` are the
+strict reads for STEP WRITERS: whether text is exactly one well-formed value
+(the grammar the tokenizer reads: no bare keyword, no `1..2`, no empty list
+element, a binary is `[0-3]` plus hex, STEP whitespace only), and an argument
+list cut into untrimmed slots that rejoin byte for byte, or `None` when a
+by-index edit cannot trust it. The export crate's `step_slot` is a thin
+wrapper over them.
+
+`ifc_lite_core::optional_text(Option<&str>)` is the one "no value" rule for a decoded
+name or label: trimmed of STEP whitespace, and an empty result or a bare `$` is
+`None`. `get_string()` is already decoded, so never call `decode_ifc_string` on it.
 
 #### Token
 
@@ -170,9 +207,9 @@ impl IfcType {
     /// as authoritative.
     pub fn attribute_names(&self) -> &'static [&'static str];
 
-    /// The position of a named attribute, for `DecodedEntity::get`.
-    /// Case-sensitive; EXPRESS names are PascalCase.
-    pub fn attribute_index(&self, name: &str) -> Option<usize>;
+    /// One flag byte per attribute, parallel to `attribute_names()`. Decode
+    /// through `SchemaVersion::attribute`, not by hand.
+    pub fn attribute_flags(&self) -> &'static [u8];
 
     /// Direct supertype in the schema hierarchy
     pub fn parent(&self) -> Option<Self>;
@@ -199,7 +236,7 @@ pub fn attribute_names_for_schema(
 ) -> Option<&'static [&'static str]>;
 ```
 
-`file_schema` accepts the bundled IFC2X3, IFC4, and IFC4X3 family labels,
+`file_schema` accepts the bundled IFC2X3, IFC4, IFC4X1, IFC4X2, and IFC4X3 family labels,
 including standard `_ADDn`, `_TCn`, and `_RCn` revision suffixes. Revision
 suffixes are normalized to one fixed bundled registry per family (the IFC4
 registry is generated from `IFC4_ADD2_TC1`), so other accepted suffixes are
@@ -209,6 +246,75 @@ the selected registry does not declare; an entity declared with no attributes
 returns `Some(&[])`. Do not fall back to `IfcType::attribute_names()` after
 `None`, because that method describes the canonical generated IFC4X3 schema
 and could mislabel an older record's positional values.
+
+#### Attribute slot lookup by name
+
+`SchemaVersion` (re-exported from `ifc_lite_core`) names the five bundled EXPRESS
+registries. `SchemaVersion::attribute` answers where a named attribute lives in
+one schema and what shape it has, from the same generated tables as
+`attribute_names()`:
+
+```rust
+pub enum SchemaVersion { Ifc2x3, Ifc4, Ifc4x1, Ifc4x2, Ifc4x3 }
+
+pub struct AttrSlot {
+    /// Position in the STEP record, as `DecodedEntity::get` indexes it.
+    pub index: usize,
+    /// Ref, RefList, List, Real, Int, Text, Enum, Logical, Binary or Select.
+    pub kind: AttrKind,
+    /// The value may be written as a STEP list (LIST/SET/ARRAY, a defined type
+    /// that is one, or a select with such an alternative).
+    pub aggregate: bool,
+    /// The EXPRESS declaration says OPTIONAL.
+    pub optional: bool,
+}
+
+impl SchemaVersion {
+    pub fn from_file_schema(label: &str) -> Option<Self>;
+    pub fn attribute(self, entity: &str, name: &str) -> Option<AttrSlot>;
+    pub fn attributes(self, entity: &str) -> Option<impl ExactSizeIterator<Item = AttrSlot>>;
+}
+```
+
+Entity and attribute names compare ASCII-case-insensitively. `None` is explicit:
+an unknown schema label (`from_file_schema`), an entity the schema does not
+declare, or an attribute the entity does not have. `attribute` replaces the
+removed `IfcType::attribute_index`; `SchemaVersion::Ifc4x3.attribute(..)` is
+its canonical-IFC4X3 reading.
+
+#### Typed attribute slots
+
+A literal attribute index (`entity.get_ref(5)`) names nothing and cannot say which
+schema it assumes. `ifc_lite_core::slot` names the attribute instead, from the same
+registries as `attribute_names()`:
+
+```rust
+use ifc_lite_core::slot;
+
+let units = project.ref_at(slot::IfcProject::UNITS_IN_CONTEXT);   // Option<u32>
+let placement = wall.ref_at(slot::IfcWall::OBJECT_PLACEMENT);      // inherited attrs are flattened in
+```
+
+* One zero-sized struct per entity (all 1,021 the bundled schemas declare), one const per
+  attribute, named by its IFC4X3 spelling in SCREAMING_SNAKE. A same-position rename
+  between releases shares one const (`attribute-renames.json` in `@ifc-lite/codegen`);
+  a semantic replacement does not (`IfcSpace.PredefinedType` is absent in IFC2X3).
+* `Slot<K>` has the same position in every bundled schema that declares the entity, so it
+  folds to the same immediate as the literal. `SchemaSlot<K>` moves between schemas and
+  has no `index()`: resolve it with `SchemaSlot::at(SchemaVersion)` (an explicit pin) or
+  `EntityDecoder::slot(..)` (the source's `FILE_SCHEMA`, IFC4X3 when undeclared or
+  unknown), once, outside any per-entity loop.
+* `K` is the value kind: `Ref`, `RefList`, `List`, `Real`, `Int`, `Text`, `Enum`,
+  `Logical`, `Binary` or `Select` (a mixed select, or a kind that differs between
+  schemas; it fits every accessor).
+* `DecodedEntity::{attr, ref_at, ref_list_at, real_at, int_at, string_at, enum_at,
+  logical_at, binary_at, list_at}` take `impl Into<SlotIx<K>>`: a `Slot` of the matching
+  kind, or a computed `usize` for generic walkers. A bare integer literal also
+  compiles (it infers `usize`), so the positional-read ratchet
+  (`rust/processing/tests/positional_read_ratchet.rs`) counts `*_at(<literal>)` too.
+* Debug builds assert the entity is the slot's owner or a subtype of it.
+
+The old `get`, `get_ref`, `get_float`, `get_string`, `get_list` and `get_refs` keep working.
 
 #### has_geometry_by_name
 
@@ -241,9 +347,11 @@ pub struct ColumnarEntityIndex { /* ids, starts, lengths */ }
 
 impl ColumnarEntityIndex {
     pub fn from_columns(ids: &[u32], starts: &[u32], lengths: &[u32]) -> Self;
-    pub fn from_scan<T>(content: &T) -> Self;
-    pub fn from_hashmap(map: &EntityIndex) -> Self;
-    pub fn from_hashmap_consuming(map: EntityIndex) -> Self;
+    // Each returns Err(SpanBeyondU32) when a record's start or length does not
+    // fit u32 (a source of 4 GiB or more keeps the usize-carrying EntityIndex).
+    pub fn from_scan<T>(content: &T) -> Result<Self, SpanBeyondU32>;
+    pub fn from_hashmap(map: &EntityIndex) -> Result<Self, SpanBeyondU32>;
+    pub fn from_hashmap_consuming(map: EntityIndex) -> Result<Self, SpanBeyondU32>;
     pub fn lookup(&self, id: u32) -> Option<(usize, usize)>;
 }
 ```
@@ -491,6 +599,46 @@ impl Mesh {
 
 Related mesh types: `SubMesh`, `SubMeshCollection`, `InstanceMeta`.
 
+#### representation
+
+`ifc_lite_geometry::representation` is the decoder-only home of a product's
+representation chain (`Representation(6)` to `IfcProductDefinitionShape.Representations(2)`
+to `Items(3)`, and `IfcMappedItem` to `MappingSource` to `MappedRepresentation`).
+It meshes nothing and owns no cache.
+
+```rust
+pub fn product_shape(element: &DecodedEntity, d: &mut EntityDecoder) -> Result<Option<ProductShape>, ShapeError>;
+pub fn rep_items(rep: &DecodedEntity, d: &mut EntityDecoder) -> Result<Vec<DecodedEntity>, ShapeError>;
+impl ProductShape { pub fn select(&self, element: &DecodedEntity, s: Select) -> impl Iterator<Item = &DecodedEntity>; }
+pub enum Select { Meshed, Body, RtcVotable, Any, Where(fn(..) -> bool) } // Meshed = what renders
+pub struct RepresentationWalk { pub select: Select, pub nested: NestedMaps }
+// product / map / mapped_item drive a WalkVisitor in DFS pre-order; nesting is
+// capped by depth and a path-scoped visited set.
+pub fn meshed_representations(element, representations) -> impl Iterator; // = Select::Meshed
+```
+
+#### mesh_check (test-support)
+
+`ifc_lite_geometry::mesh_check` is the one home for closure, edge-pairing and
+signed-volume checks over triangle soups. It is `pub` only under the
+`test-support` feature (the shared test oracles delegate to it) and
+`pub(crate)` otherwise.
+
+```rust
+pub enum VertexKey { Bits, BitsZeroFolded, GridDiv(f64), GridMul(f64), Index }
+pub enum Degenerate { SkipTriangle, SkipEdge, Reject }
+impl EdgeLedger {
+    pub fn build(mesh: &Mesh, key: VertexKey, degenerate: Degenerate) -> Self;
+    pub fn directed_closed(&self) -> bool;
+    pub fn strictly_paired(&self) -> bool;
+    pub fn undirected_defects(&self) -> usize;
+}
+/// The documented "watertight": 0.1 mm grid, collapsed triangles skipped,
+/// every edge used once each way, non-empty.
+pub fn is_watertight(mesh: &Mesh) -> bool;
+pub fn signed_volume(mesh: &Mesh) -> f64;
+```
+
 #### Profiles and extrusion
 
 ```rust
@@ -562,9 +710,12 @@ Key re-exports:
 ```rust
 // One-call pipeline: IFC bytes -> per-element meshes
 pub use processor::{
-    process_geometry, process_geometry_filtered, process_geometry_with_index,
-    process_geometry_streaming, /* ...streaming variants with options... */
-    OpeningFilterMode, ProcessingResult, StreamingOptions,
+    process, process_geometry,
+    Batching, Features, FrameEvent, OnBatch, OpeningFilterMode, ProcessingRequest,
+    ProcessingResult, ProcessingSink,
+    /* deprecated, deleted in the next major: process_geometry_filtered,
+       process_geometry_with_index, process_geometry_streaming and the other
+       `process_geometry_*` variants; StreamingOptions */
 };
 
 // Analysis-ready export document (welded, Z-up, world metres)
@@ -594,6 +745,41 @@ pub use types::mesh::{InstanceRecord, MeshData, RawInstanceOccurrence};
 pub use types::response::{CoordinateInfo, ModelMetadata, ParseResponse, ProcessingStats};
 pub use parallel_scan::build_entity_index_parallel;
 ```
+
+`process(content, &ProcessingRequest, &mut sink)` is the one native entry point.
+`ProcessingRequest` is a `#[non_exhaustive]` value type with a builder; the two
+named shapes are `ProcessingRequest::default()` (the streaming shape, 50-job
+chunks) and `ProcessingRequest::full_pass()` (one chunk, for the server routes,
+exporters and bindings). It carries the opening filter, tessellation quality,
+`Batching` (initial and throughput chunk sizes, `fast_first`), `Features`
+(properties, presentation layers, quick-metadata bootstrap), whether to retain
+the emitted meshes, instancing, an id allow-list (`None` is the unfiltered pass,
+`Some(empty)` meshes nothing), an injected entity index and a cancel flag.
+
+A `ProcessingSink` hears the pass while it runs; every event has a no-op default
+and `()` listens to nothing. Order: `on_bootstrap` at most once, then `on_frame`
+exactly once (the frame and the baked basis, before the first batch and also for
+a file with no geometry), then `on_batch` interleaved with `on_color_update`
+(deferred styles, replayed after the first batch). Events fire once per chunk.
+`OnBatch::new(|meshes, processed, total| ..)` is the sink for a caller that only
+streams meshes out.
+
+```rust
+use ifc_lite_processing::{process, Batching, ProcessingRequest, TessellationQuality};
+
+let request = ProcessingRequest::full_pass().quality(TessellationQuality::High);
+let result = process(&bytes, &request, &mut ());
+```
+
+`ifc_lite_processing::scan::ScanClass::classify(keyword)` is the one table of STEP
+keywords a scan loop reacts to (styled items, relationships, project / site /
+building, mapped items, property records, ...). The native scan, `PrepassSpans::stash`
+and the sharded scan's `classify_type_name` all match on it; `u8::from(class)`
+is the shard wire code.
+
+`process_geometry(content)` stays as the convenience for the default full pass.
+The other ten `process_geometry_*` functions are `#[deprecated]` delegates onto
+`process` and are deleted in the next major release.
 
 `extract_swept_disk_descriptions(ifc_bytes, ids)` returns the outer `Radius`,
 optional `InnerRadius`, and ordered exact line/circular-arc `Directrix` for
@@ -729,7 +915,10 @@ retains source radii in metres without implying a world circular radius.
 Conflicting occurrence/type values are reported, with the occurrence taking
 precedence. `bar_entity_count` and `represented_sweep_count` count IFC records,
 not manufactured bars. The API provides no physical bar count, cutting length,
-or certified fabrication result.
+or certified fabrication result. Authored attributes are read by the first
+`FILE_SCHEMA` entry with a bundled registry, the same rule as the attribute
+export; with none, they are omitted with a diagnostic rather than read in the
+IFC4 layout.
 
 `build_rebar_schedule_with_preflight(ifc_bytes, ids, &options, &limits)` adds
 caller-defined geometric comparisons to each represented sweep. Construct
@@ -768,6 +957,29 @@ join discontinuity. The result is always `precheck_only`: material, bending
 process, allowances, jurisdiction and physical bar count remain unchecked.
 Authored `BarLength` is not a verified cutting length. A reinforcing-bar entity
 may represent more than one manufactured bar.
+
+### Owned production contexts
+
+`ifc_lite_processing::element::ProductionModel` represents one model load.
+Call `snapshot(OwnedMeshProductionData)` once per effective batch to capture
+its opening, style, indexed-colour, material, texture and site-rotation maps.
+The maps are shared through `Arc`; products borrow them through the returned
+`OwnedMeshProductionContext` without copying them. Snapshots remain usable
+after the caller drops its map owners or creates a newer configuration revision.
+
+Pass the snapshot to `element::produce_element_meshes_owned` with the same
+job, options, decoder and router used by the canonical borrowed producer.
+It checks the model's source epoch before work and before returning a result.
+Call `ProductionModel::invalidate_source` when replacing or mutating the source:
+earlier snapshots then return `ProductionContextError::StaleSource`, including
+when invalidation occurs inside a geometry callback. Create a fresh snapshot
+before producing from the replacement source.
+
+The context identity distinguishes loads, source epochs and configuration
+revisions within the process. It does not authenticate IFC bytes or indexes;
+the caller must still pair the decoder, router and captured maps with the
+correct source. The appearance authoring pipeline uses these snapshots and
+refreshes its cached context after style edits or authored-entity injection.
 
 ### Appearance authoring
 
@@ -824,10 +1036,12 @@ Domain-format exporters. Every exporter takes IFC bytes (or already-produced mes
 
 ```rust
 pub use csv::{export_csv, CsvMode, CsvOptions};
-pub use gltf::{export_glb_from_meshes, export_gltf_streaming, try_export_glb,
+pub use gltf::{export_gltf_streaming, try_export_glb, try_export_glb_from_meshes,
                try_export_glb_with_stats, GltfOptions, GltfStats /* ... */};
-// Every from-bytes GLB entry point is `try_`: an empty visible set is
-// `ExportError::NoRenderGeometry`, never a zero-mesh GLB (which is not valid glTF).
+// Every GLB entry point is `try_`: an empty visible set is
+// `ExportError::NoRenderGeometry`, never a zero-mesh GLB (which is not valid glTF),
+// and from-meshes counts that run past their buffers are
+// `ExportError::MalformedMeshInput`, never a GLB missing the model's tail.
 // `GltfOptions::tessellation_quality` picks the curve tessellation density for
 // the glTF paths, re-exporting `TessellationQuality` so a caller does not need
 // a direct `ifc-lite-processing` dependency to name a level. The default is
@@ -851,6 +1065,10 @@ pub use step_log::{export_step_with_log, export_step_with_log_to_writer,
                    LogMutation, LogNewEntity, MutationKind, GeorefMutations,
                    LogExportStats, StepCounters};
 pub use model::{build_export_model, stream_export_model, ExportModel /* ... */};
+// Rows carry every set an `IfcRelDefinesByProperties` links: one definition, or an
+// `IfcPropertySetDefinitionSet` written bare `(#1,#2)` or typed
+// `IFCPROPERTYSETDEFINITIONSET((#1,#2))`. `PropValue::kind` (`ValueKind`) is the
+// primitive the STEP value was written as; JSON, JSON-LD and IFCX type values by it.
 pub use quantity_analysis::{analyze_authored_quantities, AuthoredQuantityAnalysis /* ... */};
 // Additional opt-in join: analyze_quantities(content, ids) -> QuantityAnalysis.
 // It combines authored observations with nominal source occurrences; product_total

@@ -23,6 +23,7 @@
 import { describe, it, expect } from 'vitest';
 import { getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@ifc-lite/parser';
 import { convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
+import { isStrictAttrPrefix } from './schema-converter-renames.js';
 
 // Derived from `@ifc-lite/parser`'s EXPRESS-derived schema registries —
 // deliberately NOT from `@ifc-lite/data`'s `ENTITIES_IFC2X3`/`ENTITIES_IFC4`/
@@ -45,9 +46,13 @@ const TABLES: Record<string, Map<string, readonly string[]>> = {
   IFC4X3: table('IFC4X3'),
 };
 
-/** True when `short` is a strict prefix of `long` by attribute NAME. */
-function isStrictPrefix(short: readonly string[], long: readonly string[]): boolean {
-  return short.length < long.length && short.every((n, i) => n === long[i]);
+/**
+ * True when `short` is a strict prefix of `long` by attribute NAME, with the
+ * in-place renames of `type` read as one name (#7739; the allowance table is
+ * pinned on its own by schema-converter-renames.test.ts and the sweep fixture).
+ */
+function isStrictPrefix(short: readonly string[], long: readonly string[], type: string): boolean {
+  return isStrictAttrPrefix(short, long, type);
 }
 
 /** Count top-level STEP arguments of `#1=TYPE(...)` (no nesting in our fixtures). */
@@ -112,7 +117,7 @@ describe.each([
     const srcAttrs = src.get(type);
     if (!srcAttrs || srcAttrs.length <= tgtAttrs.length) continue;
     if (isDivertedByConversion(type, from, to)) continue;
-    if (isStrictPrefix(tgtAttrs, srcAttrs)) shrinks.push([type, srcAttrs.length, tgtAttrs.length]);
+    if (isStrictPrefix(tgtAttrs, srcAttrs, type)) shrinks.push([type, srcAttrs.length, tgtAttrs.length]);
     else notPrefix.push([type, srcAttrs.length, tgtAttrs.length]);
   }
 
@@ -159,7 +164,7 @@ describe.each([
     const wrong: string[] = [];
     for (const [type, tgtAttrs] of tgt) {
       const srcAttrs = src.get(type);
-      if (!srcAttrs || srcAttrs.length === 0 || !isStrictPrefix(srcAttrs, tgtAttrs)) continue;
+      if (!srcAttrs || srcAttrs.length === 0 || !isStrictPrefix(srcAttrs, tgtAttrs, type)) continue;
       if (isDivertedByConversion(type, from, to)) continue;
       const got = argCount(convertStepLine(makeLine(type, srcAttrs.length), from, to)!);
       if (got !== tgtAttrs.length) wrong.push(`${type}: expected ${tgtAttrs.length} args, got ${got}`);
@@ -194,7 +199,7 @@ describe('the trim and the pad cannot both fire on one entity', () => {
       for (const [type, tgtAttrs] of TABLES[to]) {
         const srcAttrs = TABLES[from].get(type);
         if (!srcAttrs) continue;
-        if (isStrictPrefix(tgtAttrs, srcAttrs) && isStrictPrefix(srcAttrs, tgtAttrs)) {
+        if (isStrictPrefix(tgtAttrs, srcAttrs, type) && isStrictPrefix(srcAttrs, tgtAttrs, type)) {
           both.push(`${from}→${to} ${type}`);
         }
       }

@@ -7,7 +7,8 @@ use crate::types::response::{
     QuickMetadataSpatialNode,
 };
 use ifc_lite_core::limits::LARGE_COORD_THRESHOLD_METERS;
-use ifc_lite_core::{keyword_eq, IfcType, StepListItems, IFC_TYPES};
+use ifc_lite_core::parser::{parse_ref, StepRecord};
+use ifc_lite_core::{keyword_eq, optional_text, parse_step_real, IfcType, StepListItems, IFC_TYPES};
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
@@ -16,7 +17,12 @@ pub(super) struct QuickSpatialNodeEntry {
     pub(super) express_id: u32,
     pub(super) type_name: String,
     pub(super) name: String,
+    /// The storey elevation in METRES, set by [`Self::finish_elevation`] once
+    /// the unit scale is known (PROCESSING-18); `None` for any other node.
     pub(super) elevation: Option<f64>,
+    /// A storey's elevation readings in raw file units, until the scan has
+    /// ended and the unit scale can be resolved.
+    pub(super) raw_elevation: Option<RawElevation>,
     /// `IfcRelAggregates` children.
     pub(super) children: Vec<u32>,
     /// Spatial elements an `IfcRelContainedInSpatialStructure` names, promoted
@@ -81,61 +87,130 @@ pub fn is_quick_spatial_type_ci(type_name: &str) -> bool {
         .any(|candidate| keyword_eq(type_name, candidate))
 }
 
-/// A record's top-level attributes, trimmed of STEP trivia. The split is
-/// core's [`StepListItems`], so a comment is trivia here too (#4687).
-pub(super) fn parse_step_arguments(entity_bytes: &[u8]) -> Vec<&[u8]> {
-    StepListItems::of_record(entity_bytes).map(Iterator::collect).unwrap_or_default()
-}
-
-fn parse_step_string(token: &[u8]) -> Option<String> {
-    let trimmed = token.trim_ascii();
-    if trimmed.len() < 2 || trimmed[0] != b'\'' || trimmed[trimmed.len() - 1] != b'\'' {
-        return None;
-    }
-    let unescaped = String::from_utf8_lossy(&trimmed[1..trimmed.len() - 1]).replace("''", "'");
-    // Decode STEP unicode escapes so quick-metadata names match the from_token
-    // path and the TS parser (e.g. a name stored as Br\X2\00FC\X0\cke).
-    Some(ifc_lite_core::decode_ifc_string(&unescaped).into_owned())
-}
-
-pub(super) fn parse_step_ref(token: &[u8]) -> Option<u32> {
-    std::str::from_utf8(token.trim_ascii().strip_prefix(b"#")?)
-        .ok()?
-        .parse()
-        .ok()
-}
-
-pub(super) fn parse_step_ref_list(token: &[u8]) -> Vec<u32> {
+/// The references in attribute `index`: every `#n` item of a list, or the one
+/// reference the attribute is. An item that is not exactly `#digits` (`#+5`,
+/// `#12abc`, an id past `u32::MAX`) is skipped, not guessed.
+pub(super) fn ref_items(record: Option<&StepRecord<'_>>, index: usize) -> Vec<u32> {
+    let Some(token) = record.and_then(|record| record.attr(index)) else {
+        return Vec::new();
+    };
     match StepListItems::of_list(token) {
-        Some(items) => items.filter_map(parse_step_ref).collect(),
-        None => parse_step_ref(token).into_iter().collect(),
+        Some(items) => items.filter_map(parse_ref).collect(),
+        None => parse_ref(token).into_iter().collect(),
     }
 }
 
-pub(super) fn extract_name_from_args(args: &[&[u8]], fallback: &str) -> String {
-    args.get(2)
-        .and_then(|token| parse_step_string(token))
-        .filter(|value| !value.trim().is_empty())
+/// The spatial node's `Name` (attribute 2), or `fallback` when it is absent,
+/// `$`, or blank.
+pub(super) fn extract_name(record: Option<&StepRecord<'_>>, fallback: &str) -> String {
+    record
+        .and_then(|record| record.string_at(2))
+        .and_then(|name| optional_text(Some(&name)).map(str::to_owned))
         .unwrap_or_else(|| fallback.to_string())
 }
 
-pub(super) fn extract_storey_elevation_from_args(args: &[&[u8]]) -> Option<f64> {
-    for index in [9usize, 8usize] {
-        if let Some(value) = args
-            .get(index)
-            .and_then(|token| std::str::from_utf8(token.trim_ascii()).ok())
-            .and_then(|token| token.parse::<f64>().ok())
-        {
-            return Some(value);
+/// A spatial-node entry from its scanned record (name, and a storey's raw
+/// elevation). One call from the scan loop, kept out of line so the loop's
+/// own code (the hottest in the product) does not change shape with the
+/// reader behind it.
+#[inline(never)]
+pub(super) fn spatial_node_entry(bytes: &[u8], type_name: &str, id: u32) -> QuickSpatialNodeEntry {
+    let record = StepRecord::parse(bytes);
+    let fallback = format!("{type_name} #{id}");
+    QuickSpatialNodeEntry {
+        express_id: id,
+        type_name: type_name.to_string(),
+        name: extract_name(record.as_ref(), &fallback),
+        elevation: None,
+        raw_elevation: keyword_eq(type_name, "IFCBUILDINGSTOREY").then(|| read_storey_elevation(record.as_ref())),
+        children: Vec::new(),
+        contained: Vec::new(),
+        elements: Vec::new(),
+        named_as_child: false,
+    }
+}
+
+/// `(parent, children)` of a spatial relationship record: attribute
+/// `parent_index` is the one reference, attribute `list_index` the list.
+#[inline(never)]
+pub(super) fn rel_links(bytes: &[u8], parent_index: usize, list_index: usize) -> Option<(u32, Vec<u32>)> {
+    let record = StepRecord::parse(bytes)?;
+    Some((record.ref_at(parent_index)?, ref_items(Some(&record), list_index)))
+}
+
+/// Attribute `index` of a scanned record when it is exactly one reference.
+#[inline(never)]
+pub(super) fn record_ref_at(bytes: &[u8], index: usize) -> Option<u32> {
+    StepRecord::parse(bytes)?.ref_at(index)
+}
+
+/// The references in attribute `index` of a scanned record ([`ref_items`]).
+#[inline(never)]
+pub(super) fn record_refs_at(bytes: &[u8], index: usize) -> Vec<u32> {
+    ref_items(StepRecord::parse(bytes).as_ref(), index)
+}
+
+/// A storey's elevation as the scan reads it, in the file's own length unit.
+///
+/// The quick-metadata scan runs before the project's unit scale can be
+/// resolved, so a reading is kept raw and turned into metres by
+/// [`Self::to_metres`] once it can (PROCESSING-18, #7775): every other
+/// emitter (server data model, TS parser) reports storey elevations in metres.
+#[derive(Clone, Debug, Default)]
+pub(super) struct RawElevation {
+    /// `IfcBuildingStorey.Elevation` (attribute 9; 8 for a schema that shifts it).
+    declared: Option<f64>,
+    /// Every numeric attribute in order, for the fallback below.
+    numeric: Vec<f64>,
+}
+
+impl RawElevation {
+    /// The elevation in metres for a file length unit of `length_unit_scale`
+    /// metres: the declared value, else the first numeric attribute that is a
+    /// LOCAL coordinate. A storey elevation is a local coordinate; a value
+    /// beyond [`LARGE_COORD_THRESHOLD_METERS`] measured in METRES is a world
+    /// coordinate (a georeferenced placement, not an elevation). The test used
+    /// to compare raw file numbers with the metre threshold, so on a
+    /// millimetre file a storey at +1.2 km was rejected as "large" and a
+    /// smaller unrelated number was taken instead.
+    pub(super) fn to_metres(&self, length_unit_scale: f64) -> Option<f64> {
+        let metres = |value: f64| value * length_unit_scale;
+        self.declared.map(metres).or_else(|| {
+            self.numeric
+                .iter()
+                .map(|&value| metres(value))
+                .find(|value| value.abs() < LARGE_COORD_THRESHOLD_METERS)
+        })
+    }
+}
+
+/// Read a storey's raw elevation from its record.
+pub(super) fn read_storey_elevation(record: Option<&StepRecord<'_>>) -> RawElevation {
+    let Some(record) = record else {
+        return RawElevation::default();
+    };
+    // Through the core STEP literal reader, not `str::parse::<f64>`, which
+    // read `inf`, `NaN` and an overflowing `1.E400` as elevations (#7678).
+    let declared = [9usize, 8usize].into_iter().find_map(|index| record.real_at(index));
+    let numeric = record.attrs().filter_map(parse_step_real).collect();
+    RawElevation { declared, numeric }
+}
+
+/// [`read_storey_elevation`] in metres for a file length unit of
+/// `length_unit_scale` metres.
+#[cfg(test)]
+pub(super) fn extract_storey_elevation_from_args(args: &[&[u8]], length_unit_scale: f64) -> Option<f64> {
+    let text = [&b"#1=IFCBUILDINGSTOREY("[..], &args.join(&b","[..]), b");"].concat();
+    read_storey_elevation(StepRecord::parse(&text).as_ref()).to_metres(length_unit_scale)
+}
+
+impl QuickSpatialNodeEntry {
+    /// Settle a storey's elevation in metres now that the unit scale is known.
+    pub(super) fn finish_elevation(&mut self, length_unit_scale: f64) {
+        if let Some(raw) = self.raw_elevation.take() {
+            self.elevation = raw.to_metres(length_unit_scale);
         }
     }
-    // A storey elevation is a local coordinate: the first numeric attribute
-    // inside the large-coordinate threshold is taken, anything beyond it is a
-    // world coordinate (a georeferenced placement, not an elevation).
-    args.iter()
-        .filter_map(|token| std::str::from_utf8(token.trim_ascii()).ok())
-        .filter_map(|token| token.parse::<f64>().ok())
-        .find(|value| value.abs() < LARGE_COORD_THRESHOLD_METERS)
 }
 
 /// Deepest level of the quick-metadata spatial tree; the root is level 0. The

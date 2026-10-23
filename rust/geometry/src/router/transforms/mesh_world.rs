@@ -99,7 +99,7 @@ impl GeometryRouter {
             });
         }
 
-        self.transform_normals(mesh, transform);
+        transform_normals(mesh, transform);
     }
 
     /// Transform mesh by the final world/object placement matrix.
@@ -112,12 +112,48 @@ impl GeometryRouter {
         // Native normally keeps absolute f32 vertices, but an intermediate
         // mapped origin at this scale needs the same local frame as the viewer.
         // Opening cutters also use this policy when their mapped origin is large.
-        let needs_local_frame = self.needs_local_frame(mesh, transform);
-        self.transform_mesh_world_framed(
+        let frame = self.world_frame();
+        let needs_local_frame = frame.needs_local_frame(mesh, transform);
+        frame.transform_mesh_world_framed(
             mesh,
             transform,
             self.local_frame_enabled() || needs_local_frame,
         );
+    }
+
+    /// The captured RTC frame that world placement and its predicates use.
+    #[inline]
+    pub(crate) fn world_frame(&self) -> WorldFrame {
+        WorldFrame { rtc_offset: self.rtc_offset }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn needs_local_frame(&self, mesh: &Mesh, transform: &Matrix4<f64>) -> bool {
+        self.world_frame().needs_local_frame(mesh, transform)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn transform_mesh_world_framed(
+        &self,
+        mesh: &mut Mesh,
+        transform: &Matrix4<f64>,
+        relativize: bool,
+    ) {
+        self.world_frame().transform_mesh_world_framed(mesh, transform, relativize);
+    }
+}
+
+/// Captured numerical world-frame policy: the model RTC offset only, with no
+/// router or source authority, so owned opening packets can place cutters.
+#[derive(Clone, Copy)]
+pub(crate) struct WorldFrame {
+    pub(crate) rtc_offset: (f64, f64, f64),
+}
+
+impl WorldFrame {
+    #[inline]
+    fn has_rtc_offset(&self) -> bool {
+        self.rtc_offset.0 != 0.0 || self.rtc_offset.1 != 0.0 || self.rtc_offset.2 != 0.0
     }
 
     /// The RTC offset still to be subtracted from `mesh`: zero when it is
@@ -255,7 +291,7 @@ impl GeometryRouter {
                 Some([min[0], min[1], min[2], max[0], max[1], max[2]])
             }
         });
-        mesh.local_to_world = Some(super::mat4_to_row_major(transform));
+        mesh.local_to_world = Some(crate::math::mat4::from_na(transform));
 
         let rtc = self.rtc_offset;
         let needs_rtc = self.has_rtc_offset() && !mesh.rtc_applied;
@@ -283,7 +319,7 @@ impl GeometryRouter {
             if needs_rtc {
                 mesh.rtc_applied = true;
             }
-            self.transform_normals(mesh, transform);
+            transform_normals(mesh, transform);
             return;
         }
 
@@ -347,26 +383,16 @@ impl GeometryRouter {
             mesh.rtc_applied = true;
         }
 
-        self.transform_normals(mesh, transform);
+        transform_normals(mesh, transform);
     }
 
-    #[inline]
-    fn transform_normals(&self, mesh: &mut Mesh, transform: &Matrix4<f64>) {
-        // Normals transform by the inverse-transpose, not the raw linear block:
-        // under a non-uniform `IfcCartesianTransformationOperator3DnonUniform`
-        // scale the raw upper-3x3 skews a normal off the true surface normal and
-        // the trailing normalize() only fixes magnitude, not direction. Matches
-        // `extrusion.rs`. For pure rotation / uniform scale this equals the
-        // rotation block, so the common path is unchanged.
-        let normal_matrix = transform.try_inverse().unwrap_or(*transform).transpose();
-        mesh.normals.chunks_exact_mut(3).for_each(|chunk| {
-            let normal = Vector3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
-            let t = (normal_matrix * normal.to_homogeneous()).xyz().normalize();
-            chunk[0] = t.x as f32;
-            chunk[1] = t.y as f32;
-            chunk[2] = t.z as f32;
-        });
-    }
+}
+
+#[inline]
+fn transform_normals(mesh: &mut Mesh, transform: &Matrix4<f64>) {
+    // Inverse-transpose, zero on a singular transform (D23): see
+    // `math::normals`.
+    crate::math::normals::transform_normals_in_place(&mut mesh.normals, transform);
 }
 
 #[cfg(test)]

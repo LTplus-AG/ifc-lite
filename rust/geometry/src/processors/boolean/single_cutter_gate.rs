@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! #3923: the accept-gate-rejection decision for `apply_boolean_step`'s
+//! #3923: the accept-gate-rejection decision for the spine step's
 //! single-cutter `IfcPolygonalBoundedHalfSpace` branch. Split out of
 //! `mod.rs` (module-size ratchet) since it carries its own non-trivial
 //! rationale, mirroring how `polygonal_prism.rs` already isolates
@@ -14,7 +14,7 @@ use crate::Mesh;
 
 /// Outcome of the bounded-prism subtract for a single `IfcPolygonalBoundedHalfSpace`
 /// cutter, as decided by [`BooleanClippingProcessor::resolve_single_cutter_subtract`].
-pub(super) enum SingleCutterSubtract {
+pub(crate) enum SingleCutterSubtract {
     /// The subtract succeeded and passed every check: use it (still subject
     /// to the caller's `guard_against_full_host_removal`).
     Clipped(Mesh),
@@ -27,7 +27,7 @@ pub(super) enum SingleCutterSubtract {
 }
 
 impl BooleanClippingProcessor {
-    /// Subtract `bound_mesh` from `mesh` and decide how `apply_boolean_step`'s
+    /// Subtract `bound_mesh` from `mesh` and decide how the spine step's
     /// `IfcPolygonalBoundedHalfSpace` branch should react.
     ///
     /// `solo_step` is true only when this cutter truly has no sibling
@@ -38,7 +38,7 @@ impl BooleanClippingProcessor {
     /// one of several nodes from a longer authored chain that couldn't be
     /// batched at any level and is now being applied one cutter at a time
     /// (House.ifc wall #2152, issue #960), AND when this is the single
-    /// leftover spine node but a nested `try_union_polygonal_chain` batch
+    /// leftover spine node but a nested `cut_polygonal_chain` batch
     /// already folded its own siblings into the mesh one level down — that
     /// lone node's cutter is not alone either, even though `spine.len() ==
     /// 1` for it (a longer chain whose top-level batch fails only because of
@@ -71,7 +71,7 @@ impl BooleanClippingProcessor {
     /// to [`SingleCutterSubtract::FallThrough`]. The pre-existing
     /// empty/kernel-error/degenerate triggers are unaffected by `solo_step`
     /// and always fall through, exactly as before #3923.
-    pub(super) fn resolve_single_cutter_subtract(
+    pub(crate) fn resolve_single_cutter_subtract(
         &self,
         mesh: &Mesh,
         bound_mesh: &Mesh,

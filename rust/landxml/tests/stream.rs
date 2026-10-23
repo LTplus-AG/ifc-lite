@@ -138,6 +138,27 @@ fn issue_5161_stream_summary_preserves_a_declared_but_refused_pipe_family() {
     );
 }
 
+/// #7604: the streamed metadata carries `CoordinateSystem@name` exactly as the
+/// whole-document parse does; the viewer's streamed import reads it there.
+#[test]
+fn issue_7604_stream_metadata_keeps_the_coordinate_system_name() {
+    let xml = XML.replace(
+        "<Units>",
+        r#"<CoordinateSystem name="CH1903+ / LV95"/><Units>"#,
+    );
+    let direct = parse_landxml_tin(xml.as_bytes()).expect("direct source document");
+    let summary = summary_after_byte_cuts(xml.as_bytes()).expect("stream source document");
+    let name = direct
+        .coordinate_system
+        .as_ref()
+        .and_then(|crs| crs.name.as_deref());
+    assert_eq!(name, Some("CH1903+ / LV95"));
+    assert_eq!(
+        summary.metadata.terrain.coordinate_system,
+        direct.coordinate_system
+    );
+}
+
 #[test]
 fn issue_5050_utf16_code_unit_and_surrogate_cuts_match_utf8() {
     let mut utf16 = vec![0xff, 0xfe];

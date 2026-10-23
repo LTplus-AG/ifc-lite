@@ -5,7 +5,6 @@
  * Core types for 2D architectural drawing generation
  */
 
-// ═══════════════════════════════════════════════════════════════════════════
 // VECTOR TYPES
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -21,12 +20,13 @@ export interface Vec3 {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SECTION CONFIGURATION
 // ═══════════════════════════════════════════════════════════════════════════
 
 export type SectionAxis = 'x' | 'y' | 'z';
 
 export interface SectionPlaneConfig {
+  /** Scene ids kept whole by all section planes; excluded entities emit no cut geometry (#8015). */
+  sectionExcludedIds?: ReadonlySet<number>;
   /** Axis perpendicular to the section plane */
   axis: SectionAxis;
   /** Position along the axis in world units */
@@ -194,9 +194,9 @@ export interface DrawingPolygon {
    *  layers each carry their `IfcMaterial`'s surface-style colour, or a
    *  frame+glass window. Renderers showing IFC materials use this so each
    *  layer fills with its own colour instead of one colour for the whole
-   *  element; absent for single-material elements (keep the existing
-   *  per-`ifcType` / per-entity fill). */
+   *  element; absent for single-material elements (keep the existing per-`ifcType` / per-entity fill). */
   color?: [number, number, number, number];
+  sourceColor?: [number, number, number, number]; // source sub-mesh RGBA (absent when it has none); unlike `color`, set on single-material cuts too — the 3D cap's element-colour fill reads it
   /** Set on the OPAQUE BASE polygon emitted for a multi-material entity: the
    *  entity's full closed cross-section (built from the watertight union of all
    *  its layer bands, so it always closes). It is drawn BEHIND the per-layer

@@ -166,6 +166,26 @@ test('a section box applies through setSectionBox and restore puts back the prio
   assert.equal(store().sectionPlane, before, 'the prior section object is back, without the box');
 });
 
+// #7545: the cut is a set of planes; an applied box changes the active one, and restore must put the whole set back.
+test('with several cutting planes, restore brings the set back, and a plane added since blocks it', () => {
+  useViewerStore.setState({ ...sceneModels(), cameraCallbacks: cameraStub().callbacks });
+  store().setActiveTool('section');
+  store().addSectionPlane('down');
+  store().addSectionPlane('side');
+  const planes = () => [store().sectionPlane, ...store().inactiveSectionPlanes];
+  const before = planes();
+  applySceneActions(set([{ type: 'section', units: 'm', box: { min: [1002, 2002, 0.5], max: [1010, 2008, 3] } }]), null);
+  assert.ok(store().sectionPlane.box, 'the box took the active plane');
+  assert.equal(store().inactiveSectionPlanes.length, 1, 'the other cutting plane was left alone');
+  assert.deepEqual(restore(), { section: 'restored' });
+  assert.deepEqual(planes(), before, 'both planes are back, the box is gone');
+
+  applySceneActions(set([{ type: 'section', units: 'm', box: { min: [1002, 2002, 0.5], max: [1010, 2008, 3] } }]), null);
+  store().addSectionPlane('front'); // the user cuts further after the apply
+  assert.deepEqual(restore(), { section: 'changed' });
+  assert.equal(store().inactiveSectionPlanes.length, 2, 'the user\'s new plane is not discarded');
+});
+
 // #6907: hiding what is already hidden changes nothing, so nothing is reported as applied or offered for restore.
 test('a hide of elements that are already hidden is not applied and leaves no restore point', () => {
   useViewerStore.setState(sceneModels());

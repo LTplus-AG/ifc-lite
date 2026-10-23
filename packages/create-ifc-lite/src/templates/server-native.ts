@@ -4,15 +4,15 @@
 
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { getPackageVersion } from '../utils/config-fixers.js';
+import { getPinnedPackageVersion } from '../utils/config-fixers.js';
 
 /**
  * Scaffold a native-binary IFC processing server with TypeScript client examples.
  * No Docker required -- the server binary is downloaded and run via npm scripts.
  */
 export function createServerNativeTemplate(targetDir: string, projectName: string) {
-  const serverBinVersion = getPackageVersion('@ifc-lite/server-bin');
-  const serverClientVersion = getPackageVersion('@ifc-lite/server-client');
+  const serverBinVersion = getPinnedPackageVersion('@ifc-lite/server-bin');
+  const serverClientVersion = getPinnedPackageVersion('@ifc-lite/server-client');
 
   // package.json
   writeFileSync(join(targetDir, 'package.json'), JSON.stringify({
@@ -337,7 +337,7 @@ IFC processing server using native binary - no Docker required.
 
 \`\`\`bash
 # Install dependencies (downloads server binary automatically)
-npm install
+npm ci
 
 # Start the server
 npm run server:start

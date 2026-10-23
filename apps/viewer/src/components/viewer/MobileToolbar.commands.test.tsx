@@ -18,6 +18,7 @@ import { resolve } from '@/i18n/registry';
 import { posthog } from '@/lib/analytics';
 import { MobileToolbar } from './MobileToolbar';
 import { SURFACE_COMMANDS } from './surface-commands';
+import { SettingsDialogHost } from './settings/SettingsDialog';
 import { EXPORT_SURFACE_COMMANDS } from './commandPaletteExports';
 
 const initialState = useViewerStore.getState();
@@ -211,4 +212,16 @@ it('marks only a registered extension exporter as a mobile export exception (#58
   assert.ok(!EXPORT_SURFACE_COMMANDS.some((core) => core.id === row.dataset.exportRow),
     'an extension exception cannot own a core export ID');
   assert.equal(document.querySelectorAll('[data-command-disclosure="mobile:more"]').length, 1);
+});
+
+// Settings must be reachable on phones, which have no desktop ribbon (#5857).
+it('mobile More actions opens the shared Settings dialog without a model', async () => {
+  useViewerStore.setState({ ...fixtureModels(), geometryResult: null, loading: false });
+  render(<BimReactContext.Provider value={{} as BimContext}><MobileToolbar /><SettingsDialogHost /></BimReactContext.Provider>);
+  await openMore();
+  click(command('pref:settings'));
+  await advance(10);
+  const dialog = document.querySelector('[data-settings-dialog]');
+  assert.ok(dialog, 'Settings opens from the mobile menu');
+  assert.ok(dialog.querySelector('#settings-theme'), 'General preferences are available');
 });

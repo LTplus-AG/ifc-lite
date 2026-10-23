@@ -1,18 +1,19 @@
 # Quick Start
 
-Get up and running with IFClite in under 5 minutes. Choose your path based on your use case.
-
-!!! tip "Beyond Single-Model Viewing"
-    IFClite also supports **multi-model federation** (loading and coordinating multiple IFC files), **BCF** (BIM Collaboration Format) for topic tracking, and **IDS** (Information Delivery Specification) for model validation. See the [Next Steps](#next-steps) section for links to these guides.
+Choose the developer task you need first. The SDK and CLI can query, edit and validate IFC data directly.
 
 ## Choose Your Approach
 
-| | Client-Side | Server + Client |
-|---|-------------|-----------------|
-| **Setup** | `npm install @ifc-lite/parser` | Start server + install client SDK |
-| **Processing** | Browser (WASM) | Server (native Rust) |
-| **Caching** | IndexedDB (local) | Shared across team |
-| **Best for** | Offline, privacy, simple apps | Teams, large files, production |
+| I need to… | Start here |
+|------------|------------|
+| Read properties in a Node script | [Headless SDK: first useful result](developer-workflows.md#first-useful-result) |
+| Run checks in a terminal or CI | [CLI toolkit](cli.md) |
+| Edit, export and verify an IFC file | [Complete developer recipes](developer-workflows.md#reference-model-and-runnable-recipes) |
+| Integrate meshes into my engine | [Geometry](geometry.md), [Three.js](../tutorials/threejs-integration.md) or [Babylon.js](../tutorials/babylonjs-integration.md) |
+| Expose model processing over HTTP | [Cancellable Node example](developer-workflows.md#a-cancellable-local-service) or [native Rust server](server.md) |
+| Start from a minimal parser project | `npx create-ifc-lite my-app --template basic` |
+
+The [developer workflows guide](developer-workflows.md) includes a verified real model, complete scripts, expected results, lifecycle and capability contracts. The browser and server integration paths below build on those packages.
 
 ## Option 1: Client-Side Parsing
 
@@ -25,7 +26,7 @@ Process IFC files entirely in the browser using WebAssembly.
     ```bash
     npx create-ifc-lite my-viewer --template react
     cd my-viewer
-    npm install
+    npm ci
     npm run dev
     ```
 
@@ -34,7 +35,7 @@ Process IFC files entirely in the browser using WebAssembly.
     ```bash
     npx create-ifc-lite my-viewer --template threejs
     cd my-viewer
-    npm install
+    npm ci
     npm run dev
     ```
 
@@ -43,9 +44,11 @@ Process IFC files entirely in the browser using WebAssembly.
     ```bash
     npx create-ifc-lite my-viewer --template babylonjs
     cd my-viewer
-    npm install
+    npm ci
     npm run dev
     ```
+
+The scaffolder writes `package-lock.json` after resolving the complete dependency set and checking peer requirements. Commit that lockfile and use `npm ci` to install the same versions.
 
 Open the URL Vite prints (`http://localhost:5173` by default) and drag an IFC file onto the viewer.
 

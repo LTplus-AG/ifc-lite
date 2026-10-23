@@ -395,7 +395,7 @@ jobs:
       # become the default toolchain and nothing else in the release uses it.
       - name: Install stable Rust for the crate semver gate
         if: steps.changesets-read.outputs.publish == 'true'
-        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master 2026-05
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-05
         with:
           toolchain: stable
 
@@ -752,6 +752,14 @@ jobs:
         # New packages can take longer to appear in npm metadata after publish.
         # Retry for up to ~4 minutes before failing.
         run: node scripts/verify-npm-publish.js --retries 12 --delay 20000
+
+  verify-scaffold-cohort:
+    name: Verify published scaffold cohorts
+    needs: [release, verify-npm-publish]
+    if: always() && needs.release.outputs.verify != 'false' && needs.verify-npm-publish.result == 'success'
+    uses: ./.github/workflows/test-templates.yml
+    permissions:
+      contents: read
 
   # npm completing tells you NOTHING about crates.io — they are two
   # independent registries published by `release-all.mjs`. #3181: the v6.0.0

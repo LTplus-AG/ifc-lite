@@ -6,14 +6,13 @@
 
 use std::collections::{HashMap, HashSet};
 
-use ifc_lite_core::EntityScanner;
-
 use super::guid::{extract_global_id_fast, is_relationship_type, GuidMinter};
 use super::spatial::{
     ContainerMergeStrategy, SpatialLookup, StoreyMergeStrategy,
 };
 use super::units::units_compatible;
 use super::MergedModel;
+use crate::step_index::RecordIndex;
 use crate::step_text::{refs_in_line, refs_in_line_counted};
 
 /// Entity types forming shared infrastructure — the first instance of each is
@@ -24,17 +23,26 @@ pub const SHARED_INFRASTRUCTURE_TYPES: [&str; 3] = [
     "IFCGEOMETRICREPRESENTATIONSUBCONTEXT",
 ];
 
+/// The types [`ModelIndex::build`] counts or remembers: the spatial roots and
+/// [`SHARED_INFRASTRUCTURE_TYPES`].
+const COUNTED_TYPES: [&str; 6] = [
+    "IFCPROJECT",
+    "IFCSITE",
+    "IFCBUILDING",
+    SHARED_INFRASTRUCTURE_TYPES[0],
+    SHARED_INFRASTRUCTURE_TYPES[1],
+    SHARED_INFRASTRUCTURE_TYPES[2],
+];
+
 /// A single model indexed by express id, plus the derived facts the merge needs.
 pub struct ModelIndex<'a> {
     content: &'a [u8],
-    /// Express ids in source order (first occurrence).
+    /// Express ids in source order, each once, at its kept (last) record.
     pub order: Vec<u32>,
     /// id → byte span of the raw entity line.
     line_of: HashMap<u32, (usize, usize)>,
     /// id → STEP type token, folded to uppercase.
     pub type_of: HashMap<u32, String>,
-    /// Largest express id seen (drives the next model's offset).
-    pub max_id: u32,
     /// All `IFCPROJECT` ids in the model.
     pub projects: Vec<u32>,
     /// First express id per shared-infrastructure type.
@@ -42,42 +50,43 @@ pub struct ModelIndex<'a> {
     /// Count of `IFCSITE` / `IFCBUILDING` (for the single-instance match rule).
     pub site_count: usize,
     pub building_count: usize,
+    /// One entry per record dropped because a later record has the same id.
+    pub duplicates: Vec<u32>,
 }
 
 impl<'a> ModelIndex<'a> {
-    /// Index every entity line of `content` in source order.
+    /// Index every entity line of `content` in source order, through the one
+    /// record index the STEP writers use (#7683, EXPORT-MERGE-18): a repeated
+    /// express id keeps its LAST record whole (text, type and place), as core
+    /// resolves it, and each earlier record is listed in `duplicates`. It used
+    /// to keep the last record's text under the first record's type.
     pub fn build(content: &'a [u8]) -> Self {
-        let mut idx = ModelIndex {
-            content,
-            order: Vec::new(),
-            line_of: HashMap::new(),
-            type_of: HashMap::new(),
-            max_id: 0,
-            projects: Vec::new(),
-            first_infra: HashMap::new(),
-            site_count: 0,
-            building_count: 0,
-        };
-        let mut scanner = EntityScanner::new(content);
-        while let Some((id, type_name, start, end)) = scanner.next_entity() {
-            idx.max_id = idx.max_id.max(id);
-            if idx.line_of.insert(id, (start, end)).is_none() {
-                idx.order.push(id);
+        // Every consumer of `type_of` reads it as uppercase; fold once here.
+        // A later record overwrites an earlier one's type, the same last-wins
+        // rule the spans follow. The few types counted below are collected
+        // with their start so a losing record of one is not counted.
+        let mut type_of: HashMap<u32, String> = HashMap::new();
+        let mut counted: Vec<(u32, usize, &'static str)> = Vec::new();
+        let records = RecordIndex::build(content, |id, ty, start| {
+            let type_upper = ty.to_ascii_uppercase();
+            if let Some(&t) = COUNTED_TYPES.iter().find(|&&t| t == type_upper) {
+                counted.push((id, start, t));
             }
-            // Every consumer of `type_of` reads it as uppercase; fold once here.
-            let type_upper = type_name.to_ascii_uppercase();
-            match type_upper.as_str() {
-                "IFCPROJECT" => idx.projects.push(id),
-                "IFCSITE" => idx.site_count += 1,
-                "IFCBUILDING" => idx.building_count += 1,
-                _ => {}
+            type_of.insert(id, type_upper);
+        });
+        let (mut projects, mut first_infra, mut site_count, mut building_count) = (Vec::new(), HashMap::new(), 0, 0);
+        for (id, _, t) in counted.into_iter().filter(|&(id, start, _)| records.is_kept(id, start)) {
+            match t {
+                "IFCPROJECT" => projects.push(id),
+                "IFCSITE" => site_count += 1,
+                "IFCBUILDING" => building_count += 1,
+                shared => {
+                    first_infra.entry(shared).or_insert(id);
+                }
             }
-            if let Some(&shared) = SHARED_INFRASTRUCTURE_TYPES.iter().find(|&&t| t == type_upper) {
-                idx.first_infra.entry(shared).or_insert(id);
-            }
-            idx.type_of.entry(id).or_insert(type_upper);
         }
-        idx
+        let RecordIndex { order, spans, duplicates, .. } = records;
+        ModelIndex { content, order, line_of: spans, type_of, projects, first_infra, site_count, building_count, duplicates }
     }
 
     /// Raw bytes of the entity line for `id`.
@@ -158,7 +167,7 @@ pub fn resolve_included(
 /// would silently duplicate ids and rewrite references to the wrong entities
 /// (CR #2952), so a `None` here stops the merge instead.
 ///
-/// Bound by the largest VISIBLE id, not `index.max_id`: an excluded high id is
+/// Bound by the largest VISIBLE id, not the largest id in the file: an excluded high id is
 /// never emitted, so it must not consume id space or omit a later model that
 /// would actually fit (CR #2952). A dangling id an emitted line names does
 /// count (`resolve_included` keeps it), or the next model's entity takes it.
@@ -216,19 +225,14 @@ pub fn unify_spatial(
     }
 }
 
-/// Parse a single `#N` reference token (`"#4"` → `4`).
-fn parse_single_ref(arg: &str) -> Option<u32> {
-    arg.trim().strip_prefix('#')?.parse().ok()
-}
-
-/// Parse a `(#a,#b,…)` list of references into ids.
+/// Parse a `(#a,#b,...)` list of references into ids, skipping an item that is
+/// not exactly one reference. Items are core's `StepListItems`, so a comment is
+/// trivia (`#5 /* c */` is `5`).
 pub(super) fn parse_ref_list(arg: &str) -> Vec<u32> {
-    arg.trim()
-        .trim_start_matches('(')
-        .trim_end_matches(')')
-        .split(',')
-        .filter_map(parse_single_ref)
-        .collect()
+    match ifc_lite_core::StepListItems::of_list(arg.as_bytes()) {
+        Some(items) => items.filter_map(ifc_lite_core::parser::parse_ref).collect(),
+        None => Vec::new(),
+    }
 }
 
 /// The plan state built for one model before it is emitted.

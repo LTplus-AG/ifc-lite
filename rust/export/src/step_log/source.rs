@@ -2,8 +2,8 @@
 //! The source file as the mutation-log writer reads it: one index pass, then
 //! random access to the few records the log touches.
 //!
-//! Nothing here holds record TEXT. The index is the same `(start, end)` span
-//! map the plain writer builds (`step::emit`), plus id lists for the handful
+//! Nothing here holds record TEXT. The index is the plain writer's
+//! (`crate::step_index::RecordIndex`), plus id lists for the handful
 //! of record types the TypeScript exporter looks up by type
 //! (`effective.byType.get(...)`). A record's text is read from `content` when
 //! it is needed, which is what keeps the pass bounded on a file the host has
@@ -11,8 +11,6 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-
-use ifc_lite_core::EntityScanner;
 
 use super::extract::extract_entity;
 use super::jsval::JsVal;
@@ -40,27 +38,29 @@ pub(crate) struct Source<'a> {
     line_of: HashMap<u32, (usize, usize)>,
     /// Highest express id in the file.
     pub(crate) max_id: u32,
+    /// Ids of records dropped because a later record has the id
+    /// (`crate::step_index`, #7682).
+    pub(crate) duplicates: Vec<u32>,
     by_type: HashMap<&'static str, Vec<u32>>,
 }
 
 impl<'a> Source<'a> {
     pub(crate) fn index(content: &'a [u8]) -> Self {
-        let mut order = Vec::new();
-        let mut line_of: HashMap<u32, (usize, usize)> = HashMap::new();
+        let mut tracked: Vec<(&'static str, u32, usize)> = Vec::new();
+        let index = crate::step_index::RecordIndex::build(content, |id, type_name, start| {
+            if let Some(t) = TRACKED.iter().find(|t| type_name.eq_ignore_ascii_case(t)) {
+                tracked.push((t, id, start));
+            }
+        });
         let mut by_type: HashMap<&'static str, Vec<u32>> = HashMap::new();
-        let mut max_id = 0u32;
-        let mut scanner = EntityScanner::new(content);
-        while let Some((id, type_name, start, end)) = scanner.next_entity() {
-            max_id = max_id.max(id);
-            if line_of.insert(id, (start, end)).is_none() {
-                order.push(id);
-                if let Some(tracked) = TRACKED.iter().find(|t| type_name.eq_ignore_ascii_case(t)) {
-                    by_type.entry(tracked).or_default().push(id);
-                }
+        for (t, id, start) in tracked {
+            if index.is_kept(id, start) {
+                by_type.entry(t).or_default().push(id);
             }
         }
+        let crate::step_index::RecordIndex { mut order, spans: line_of, max_id, duplicates } = index;
         order.sort_unstable();
-        Source { content, order, line_of, max_id, by_type }
+        Source { content, order, line_of, max_id, duplicates, by_type }
     }
 
     pub(crate) fn has(&self, id: u32) -> bool {
@@ -80,10 +80,8 @@ impl<'a> Source<'a> {
     /// The record's UPPERCASE type, read off its text.
     pub(crate) fn type_of(&self, id: u32) -> Option<String> {
         let line = self.line(id)?;
-        let eq = line.find('=')?;
-        let rest = line[eq + 1..].trim_start();
-        let end = rest.find(|c: char| !(c.is_ascii_alphanumeric() || c == '_')).unwrap_or(rest.len());
-        (end > 0).then(|| rest[..end].to_ascii_uppercase())
+        let head = crate::step_record_frame::record_head(&line)?;
+        Some(head.type_name(&line).to_ascii_uppercase())
     }
 
     /// `EntityExtractor.extractEntity` over the record: `(UPPER type, attributes)`.

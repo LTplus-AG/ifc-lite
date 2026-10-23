@@ -36,6 +36,21 @@ node dist/cli.js schemas/IFC4X3.exp --rust \
   --rust-supplemental-schema schemas/IFC4_ADD2_TC1.exp schemas/IFC2X3_TC1.exp
 ```
 
+To also emit the typed attribute slots (`slots.rs`, consumed as `ifc_lite_core::slot`), pass
+every other bundled release with `--rust-slot-schema` and the same-position rename table with
+`--rust-slot-renames`. Slots are named by the canonical attribute name, stable positions become
+`Slot<Kind>` consts and positions that move between releases become `SchemaSlot<Kind>`; every
+row of `schemas/attribute-renames.json` is validated against the schemas and a rename whose names
+sit at different positions fails generation. `scripts/check-codegen-sync.mjs` regenerates the
+committed file:
+
+```bash
+node dist/cli.js schemas/IFC4X3.exp --rust \
+  --rust-supplemental-schema schemas/IFC4_ADD2_TC1.exp schemas/IFC2X3_TC1.exp \
+  --rust-slot-schema schemas/IFC2X3_TC1.exp schemas/IFC4_ADD2_TC1.exp schemas/IFC4X1.exp schemas/IFC4X2.exp \
+  --rust-slot-renames schemas/attribute-renames.json
+```
+
 Generated files (one per output directory, e.g. `./generated/ifc4`):
 
 ```text

@@ -20,7 +20,7 @@
 #   element, plus a positive control that an unperturbed copy stays green.
 #   That evidence is why it was promoted to a required check.
 #
-# - nightly (`full` job): installs the PINNED engine, runs the whole
+# - nightly (`full` job): installs the latest stable engine, runs the whole
 #   committed corpus (fetched fixtures included), regenerates the reference
 #   dumps to detect reference-staleness, and uploads diff reports. Modeled on
 #   determinism.yml (free arm runner, cron + dispatch, non-blocking).
@@ -34,7 +34,7 @@
 # other's implementation —
 # `dump_ifclite_cost.mjs` reads through the shipped ifc-lite cost read model
 # (packages/parser/src/cost-extractor.ts, packages/sdk's createCostBackend),
-# `dump_reference_cost.py` uses the pinned IfcOpenShell purely as a
+# `dump_reference_cost.py` uses the installed IfcOpenShell purely as a
 # black-box IFC data-access library. Neither `cost-quick` nor `cost-full`
 # is a required check (unlike `quick`/`full` above) — this is a new,
 # narrower slice and shouldn't gate unrelated PRs while it proves itself.
@@ -86,6 +86,16 @@ jobs:
         id: filter
         with:
           filters: |
+            surface:
+              - "rust/geometry/tests/fixtures/issue_7292_sloped_coplanar_difference.ifc"
+              - "docs/architecture/evidence/issue-7292/**"
+              - "tools/ifcopenshell_reference/test_surface_coverage.py"
+              - "tools/ifcopenshell_reference/reference_validation.py"
+              - "tools/ifcopenshell_reference/reference_worker.py"
+              - "tools/ifcopenshell_reference/test_reference_validation.py"
+              - "tools/ifcopenshell_reference/evidence/7723/**"
+              - "tools/ifcopenshell_reference/requirements.lock"
+              - ".github/workflows/ifcopenshell-parity.yml"
             geometry:
               - "rust/geometry/**"
               - "rust/processing/**"
@@ -93,11 +103,20 @@ jobs:
               - "rust/python/**"
               - "tools/ifcopenshell_reference/**"
               - ".github/workflows/ifcopenshell-parity.yml"
+      - if: steps.filter.outputs.surface == 'true'
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v5
+        with:
+          python-version: "3.12"
+      - name: Finite surface coverage certificates
+        if: steps.filter.outputs.surface == 'true'
+        run: |
+          pip install --upgrade -r tools/ifcopenshell_reference/requirements.lock
+          python -B -m unittest tools.ifcopenshell_reference.test_surface_coverage tools.ifcopenshell_reference.test_reference_validation -v
       - if: steps.filter.outputs.geometry != 'true'
         name: No geometry changes - parity diff not applicable
         run: echo "No geometry/processing/core/python/parity-tooling changes; parity diff skipped (check reports success)."
       - if: steps.filter.outputs.geometry == 'true'
-        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master 2026-05
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-05
         with:
           toolchain: stable
       - if: steps.filter.outputs.geometry == 'true'
@@ -115,7 +134,7 @@ jobs:
       - name: Unit tests (canonical stats + comparator)
         if: steps.filter.outputs.geometry == 'true'
         working-directory: tools/ifcopenshell_reference
-        run: python -m unittest test_harness -v
+        run: python -m unittest test_harness test_reference_validation -v
       - name: Differential vs committed reference (in-tree fixtures)
         if: steps.filter.outputs.geometry == 'true'
         working-directory: tools/ifcopenshell_reference
@@ -136,7 +155,7 @@ jobs:
           exit $fail
 
   full:
-    name: full corpus (pinned reference engine)
+    name: full corpus (latest stable reference engine)
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
@@ -146,7 +165,7 @@ jobs:
           # Jobs install external packages afterwards and never push; do not
           # leave the GITHUB_TOKEN in the local git config for them to read.
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master 2026-05
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-05
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
@@ -161,11 +180,16 @@ jobs:
         run: |
           pnpm install --frozen-lockfile --ignore-scripts
           pnpm fixtures
-      - name: Install pinned reference engine + ifclite wheel
+      - name: Install latest stable reference engine + ifclite wheel
         run: |
-          pip install -r tools/ifcopenshell_reference/requirements.lock maturin
+          pip install --upgrade -r tools/ifcopenshell_reference/requirements.lock maturin
           maturin build --release -m rust/python/Cargo.toml -o /tmp/wheels
           pip install /tmp/wheels/*.whl
+      - name: Validate the installed reference engine
+        working-directory: tools/ifcopenshell_reference
+        env:
+          IFCLITE_ORACLE_TEST_EVIDENCE_DIR: /tmp/reference-tests
+        run: python -B -m unittest test_harness test_reference_validation test_surface_coverage -v
       - name: Regenerate reference + differential over the corpus
         working-directory: tools/ifcopenshell_reference
         run: |
@@ -187,7 +211,7 @@ jobs:
               --allowlist allowlist.json --report "/tmp/reports/$f.json" || fail=1
             # Reference-staleness: freshly generated vs committed.
             if ! diff -q "$r" "reference/$f.reference.json" > /dev/null 2>&1; then
-              echo "::warning::committed reference for $f is stale vs the pinned engine"
+              echo "::warning::committed reference for $f is stale vs the latest stable engine"
             fi
           done
           exit $fail
@@ -196,7 +220,13 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v4
         with:
           name: ifcopenshell-parity-reports
-          path: /tmp/reports/
+          # Retain reference receipts and native logs even if admission fails
+          # before the comparator can create its first report (#7732).
+          path: |
+            /tmp/reports/
+            /tmp/ref/
+            /tmp/lite/
+            /tmp/reference-tests/
           if-no-files-found: error
 
   cost-quick:
@@ -284,7 +314,7 @@ jobs:
             --ifclite /tmp/lite_cost.json
 
   cost-full:
-    name: cost full corpus (pinned reference engine)
+    name: cost full corpus (latest stable reference engine)
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -309,8 +339,8 @@ jobs:
         run: bash scripts/build-wasm.sh
       - name: Build ifc-lite cost read-model chain
         run: pnpm turbo build --filter=@ifc-lite/sdk
-      - name: Install pinned reference engine
-        run: pip install -r tools/ifcopenshell_reference/requirements.lock
+      - name: Install latest stable reference engine
+        run: pip install --upgrade -r tools/ifcopenshell_reference/requirements.lock
       - name: Comparator + dumper tests (both engines)
         working-directory: tools/ifcopenshell_reference
         run: python3 -m unittest test_harness_cost test_dumpers_cost -v
@@ -326,7 +356,7 @@ jobs:
           python3 compare_cost.py --reference /tmp/ref_cost.json --ifclite /tmp/lite_cost.json
           # Reference-staleness: freshly generated vs committed.
           if ! diff -q /tmp/ref_cost.json reference_cost/buildingsmart-cost-composition.reference.json > /dev/null 2>&1; then
-            echo "::warning::committed cost reference is stale vs the pinned engine"
+            echo "::warning::committed cost reference is stale vs the latest stable engine"
           fi
 
   report-scheduled-failure:

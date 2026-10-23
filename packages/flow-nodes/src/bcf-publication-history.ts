@@ -7,7 +7,9 @@ import { ownerStatus } from './bcf-publication-owner.js';
 import type { StoredBcfAttempt } from './bcf-publication-types.js';
 import type { LoadedAttempt } from './bcf-publication-store.js';
 
-/** Validate all predecessors, retaining at most selected+current payloads, never the whole journal. */
+const READ_BATCH_SIZE = 4;
+
+/** Revalidate every predecessor, retaining a bounded batch rather than the whole journal. */
 export async function loadBcfHistory(names: string[], read: (name: string) => Promise<unknown>,
   readChecks: (attempt: StoredBcfAttempt) => Promise<{ checks: LoadedAttempt['checks']; pending: boolean }>,
   targetId?: string, secrets: readonly string[] = [], visit?: (item: LoadedAttempt) => void): Promise<LoadedAttempt | undefined> {
@@ -30,14 +32,23 @@ export async function loadBcfHistory(names: string[], read: (name: string) => Pr
     credentialFree(result, secrets);
     return result;
   }
-  for (const filename of intents) {
-    const related = (relatedById.get(filename.slice(0, -'.intent.json'.length)) ?? [])
-      .filter(name => name !== filename && !name.endsWith('.epochs'));
-    // One generation has at most intent/outcome/owner records: bounded concurrent
-    // reads preserve full validation without serialising every filesystem roundtrip.
-    const [rawAttempt, records] = await Promise.all([value(filename),
-      Promise.all(related.map(async name => [name, await value(name)] as const))]);
-    const attempt = decodeAttempt(rawAttempt, filename);
+  async function* readAttempts() {
+    for (let offset = 0; offset < intents.length; offset += READ_BATCH_SIZE) {
+      const batch = await Promise.all(intents.slice(offset, offset + READ_BATCH_SIZE).map(async filename => {
+        const related = (relatedById.get(filename.slice(0, -'.intent.json'.length)) ?? [])
+          .filter(name => name !== filename && !name.endsWith('.epochs'));
+        const [rawAttempt, records] = await Promise.all([value(filename),
+          Promise.all(related.map(async name => [name, await value(name)] as const))]);
+        const attempt = decodeAttempt(rawAttempt, filename);
+        const recovery = await readChecks(attempt);
+        return { attempt, records, recovery };
+      }));
+      yield* batch;
+    }
+  }
+  // Independent immutable reads overlap, but predecessor admission, outcome,
+  // settlement and ownership checks still run in generation order (#7637).
+  for await (const { attempt, records, recovery } of readAttempts()) {
     if (attempt.generation !== ++generation || generation > MAX_GENERATIONS) refuse('missing or excessive attempt generation');
     if (!previousSettled) refuse('attempt follows unresolved write');
     const item: LoadedAttempt = { attempt, checks: [], ownerStatus: NATIVE_METADATA.owner.unknown };
@@ -50,7 +61,6 @@ export async function loadBcfHistory(names: string[], read: (name: string) => Pr
         item.ownerConfirmed = true;
       } else refuse('unrecognized root publication record');
     }
-    const recovery = await readChecks(attempt);
     item.checks = recovery.checks; item.checkPending = recovery.pending;
     if (item.checks.length && item.outcome && ['done', 'failed'].includes(item.outcome.state)) refuse('settled response cannot have recovery transitions');
     for (let index = 0; index < item.checks.length; index += 1) {

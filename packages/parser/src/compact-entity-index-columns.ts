@@ -27,3 +27,15 @@ export function internType(typeStrings: string[], typeStringMap: Map<string, num
   }
   return index;
 }
+
+/**
+ * Index of the last entry equal to `ids[at]` in a sorted column. Duplicate
+ * express ids sit adjacent in file order, and the last record wins, as in the
+ * Rust core, the server and the exporter (#7675).
+ */
+export function lastEqualIndex(ids: Uint32Array, at: number): number {
+  const id = ids[at];
+  let last = at;
+  while (last + 1 < ids.length && ids[last + 1] === id) last++;
+  return last;
+}

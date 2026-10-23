@@ -114,14 +114,16 @@ fn geometry_measure<W: ParcelProbeWork>(
             else {
                 return Ok(None);
             };
-            if !finite_point(center) {
+            // Coincident endpoints are refused, never read as a full circle;
+            // see `arc_delta`.
+            if !finite_point(center) || same_point(start, end) {
                 return Ok(None);
             }
             let radius = geometry.radius.unwrap_or(distance(center, start)?);
             if radius <= EPSILON
                 || !radius.is_finite()
-                || (distance(center, start)? - radius).abs() > EPSILON
-                || (distance(center, end)? - radius).abs() > EPSILON
+                || !crate::numeric::matches_radius(distance(center, start)?, radius)
+                || !crate::numeric::matches_radius(distance(center, end)?, radius)
             {
                 return Ok(None);
             }
@@ -173,9 +175,11 @@ fn curve_edges(
     points.push(start);
     for index in 1..count {
         let angle = start_angle + delta * index as f64 / count as f64;
+        let (northing, easting) =
+            crate::numeric::point_on_circle((center.northing, center.easting), radius, angle);
         points.push(LandXmlPlanPoint {
-            northing: center.northing + radius * angle.sin(),
-            easting: center.easting + radius * angle.cos(),
+            northing,
+            easting,
             elevation: None,
         });
     }

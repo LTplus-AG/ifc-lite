@@ -542,6 +542,13 @@ recorded before the request leaves, and an identical write whose earlier
 attempt has an unknown outcome is refused without sending until it is checked
 under **BCF → Drafts & publication**. The token is never stored there.
 
+Custom Node hosts using `createNativeBcfWriteGateway` refuse records observed
+growing during a bounded read and recovery epoch directories whose identity
+changes during validation, before acknowledging a receipt or sending another
+HTTP write. Preserve the outbox; if concurrent activity caused the refusal,
+retry reading after the writer stops. An unknown outcome still needs a check
+and explicit reconciliation, never an automatic resend.
+
 ```json
 {
   "capabilities": ["network.fetch:bcf.example.com", "secret.read:BCF_TOKEN"],

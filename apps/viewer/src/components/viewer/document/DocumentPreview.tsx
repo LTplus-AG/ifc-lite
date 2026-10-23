@@ -32,7 +32,7 @@ export interface DocumentPreviewProps {
   topics: Map<string, BCFTopic>;
   tables?: ReadonlyMap<string, TableState>;
   labels?: DocumentLabelFormatter;
-  selectedBlockId: string | null;
+  selectedBlockIds?: ReadonlySet<string>;
   onSelectBlock: (id: string) => void;
 }
 
@@ -118,7 +118,7 @@ export function DocumentPreview(props: DocumentPreviewProps) {
         preparing={displayedLabels('document.print.preparing')} imageError={displayedLabels('document.print.imageError')}
         failures={displayedImageFailures} onImageSize={recordImageSize} onImageError={recordImageError} />
       <ComposedPageItems page={page} blocks={blocks} aggregations={displayedInput.aggregations} chartMessages={displayedInput.chartMessages}
-        topics={displayedInput.topics} scale={scale} measure={measure} labels={displayedLabels} selectedBlockId={props.selectedBlockId}
+        topics={displayedInput.topics} scale={scale} measure={measure} labels={displayedLabels} selectedBlockIds={props.selectedBlockIds}
         onSelectBlock={props.onSelectBlock} onImageSize={recordImageSize} imageFailures={displayedImageFailures} onImageError={recordImageError} />
     </section>)}
   </div>;

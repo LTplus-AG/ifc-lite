@@ -6,10 +6,10 @@
 //! georeferencing (`IfcMapConversion` / `IfcProjectedCRS`) and the length-unit
 //! scale on `ModelMetadata`, matching the browser parser's `extractGeoreferencing`
 //! / `extractLengthUnitScale`. Every server geometry endpoint embeds the
-//! `ModelMetadata` built by `process_geometry_filtered`, so asserting it here
+//! `ModelMetadata` built by `process`, so asserting it here
 //! covers all of them at once.
 
-use ifc_lite_processing::{process_geometry_filtered, OpeningFilterMode};
+use ifc_lite_processing::process_geometry;
 
 /// Metre-unit model with a georeferenced map conversion + a small extruded wall.
 const GEOREF_MODEL: &str = r#"ISO-10303-21;
@@ -69,7 +69,7 @@ END-ISO-10303-21;
 
 #[test]
 fn metadata_surfaces_georeferencing_and_metre_unit_scale() {
-    let result = process_geometry_filtered(GEOREF_MODEL, OpeningFilterMode::Default);
+    let result = process_geometry(GEOREF_MODEL);
     let md = &result.metadata;
 
     assert_eq!(
@@ -101,7 +101,7 @@ fn metadata_surfaces_georeferencing_and_metre_unit_scale() {
 
 #[test]
 fn metadata_reports_millimetre_unit_scale_and_no_georef() {
-    let result = process_geometry_filtered(PLAIN_MM_MODEL, OpeningFilterMode::Default);
+    let result = process_geometry(PLAIN_MM_MODEL);
     let md = &result.metadata;
 
     assert_eq!(

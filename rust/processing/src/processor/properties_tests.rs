@@ -13,7 +13,7 @@
 //! for the grouped form, so the `?` silently dropped the WHOLE relationship —
 //! every related space/zone lost every property/quantity set in the group.
 //! This is the same root cause as issue #4772 / PR #4773
-//! (`apps/server/src/services/data_model/relationships.rs::extract_relationship`),
+//! (`rust/processing/src/data_model/relationships.rs::extract_relationship`),
 //! an independent second site in `rust/processing`.
 
 use super::*;
@@ -48,6 +48,26 @@ fn collects_both_property_sets_from_a_grouped_relating_property_definition() {
         "both entries of the grouped IfcPropertySetDefinitionSet must be collected, \
          not just the first (or none, if get_ref alone returned None for the list)"
     );
+    assert_eq!(link.related_object_ids, vec![50]);
+}
+
+/// EXPORT-DATA-1 (#7681): ISO 10303-21 writes a defined type inside a SELECT
+/// as a typed parameter, so the `IfcPropertySetDefinitionSet` alternative is
+/// also spelled `IFCPROPERTYSETDEFINITIONSET((#20,#22))`. `get_refs` saw only
+/// the bare-list spelling, so that one dropped the whole relationship here too.
+#[test]
+fn collects_both_property_sets_from_a_typed_property_set_definition_set() {
+    let content = b"ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n\
+        #20=IFCPROPERTYSET('gid1',$,'Pset_A',$,(#30));\n\
+        #22=IFCELEMENTQUANTITY('gid2',$,'Qto_B',$,$,(#31));\n\
+        #40=IFCRELDEFINESBYPROPERTIES('gid3',$,$,$,(#50),IFCPROPERTYSETDEFINITIONSET((#20,#22)));\n\
+        ENDSEC;\nEND-ISO-10303-21;\n";
+    let index = build_entity_index(content);
+    let mut decoder = EntityDecoder::with_index(content, index);
+    let rel_defines = decoder.decode_by_id(40).expect("#40 decodes");
+    let link = collect_rel_defines_by_properties_link(&rel_defines)
+        .expect("a typed IfcPropertySetDefinitionSet must not drop the relationship");
+    assert_eq!(link.property_set_ids, vec![20, 22]);
     assert_eq!(link.related_object_ids, vec![50]);
 }
 
@@ -131,4 +151,15 @@ fn direct_assignment_applies_every_grouped_property_set() {
         properties.get("Pset_B.PropB").map(String::as_str),
         Some("value-b")
     );
+}
+
+/// CORE-4 (#7776): a list of two strings is both its members, not the second
+/// one. `IfcPerson.MiddleNames ('Anne','Marie')` read as `Marie`.
+#[test]
+fn a_two_string_list_joins_both_members_core_4_7776() {
+    let s = |text: &str| AttributeValue::String(text.to_owned());
+    let pair = AttributeValue::List(vec![s("Anne"), s("Marie")]);
+    assert_eq!(attribute_value_to_string(&pair).as_deref(), Some("Anne; Marie"));
+    let typed = AttributeValue::Typed { name: "IFCLABEL".into(), value: Box::new(s("Marie")) };
+    assert_eq!(attribute_value_to_string(&typed).as_deref(), Some("Marie"));
 }

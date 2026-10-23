@@ -34,6 +34,8 @@ export type KeyContext =
   | 'overlay'
   | 'tool.walk'
   | 'tool.measure'
+  /** While the Section tool is open: stepping between cutting planes. */
+  | 'tool.section'
   /** While a modeling command runs (Model workspace, charter #6232). */
   | 'command'
   /** One modeling command's own keys, e.g. `command.wall.place`. */
@@ -109,6 +111,8 @@ export const KEY_COMMANDS = [
   { id: 'walk.toggleCollision', labelKey: 'commands.walk.toggleCollision', category: 'tools', when: 'tool.walk', keys: [k('g')] },
   { id: 'measure.toggleSnap', labelKey: 'commands.measure.toggleSnap', category: 'tools', when: 'tool.measure', keys: [k('s')] },
   { id: 'measure.cancel', labelKey: 'commands.measure.cancel', category: 'tools', when: 'tool.measure', keys: [k('escape')] },
+  { id: 'section.previousPlane', labelKey: 'commands.section.previousPlane', category: 'tools', when: 'tool.section', keys: [k(',')] },
+  { id: 'section.nextPlane', labelKey: 'commands.section.nextPlane', category: 'tools', when: 'tool.section', keys: [k('.')] },
   { id: 'measure.finish', labelKey: 'commands.measure.finish', category: 'tools', when: 'tool.measure', keys: [k('enter')] },
   { id: 'command.commit', labelKey: 'commands.command.commit', category: 'tools', when: 'command', keys: [k('enter')] },
   { id: 'command.cancel', labelKey: 'commands.command.cancel', category: 'tools', when: 'command', keys: [k('escape')] },

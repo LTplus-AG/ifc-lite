@@ -17,20 +17,10 @@ use ifc_lite_core::EntityScanner;
 use ifc_lite_processing::process_geometry;
 use std::collections::{HashMap, HashSet};
 
-const FIXTURE: &str = "../../tests/models/ara3d/ISSUE_021_Mini Project.ifc";
+const FIXTURE: &str = "ara3d/ISSUE_021_Mini Project.ifc";
 
 fn read_fixture() -> Option<String> {
-    match std::fs::read_to_string(FIXTURE) {
-        Ok(s) => Some(s),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            eprintln!(
-                "skipping beam-winding regression: fixture missing at {FIXTURE} — \
-                 run `pnpm fixtures` (sha256 in tests/models/manifest.json)"
-            );
-            None
-        }
-        Err(e) => panic!("failed to read fixture {FIXTURE}: {e}"),
-    }
+    ifc_lite_testkit::fixture_text(FIXTURE)
 }
 
 /// Directed welded edges seen >= 2 times (winding-inconsistent edges).

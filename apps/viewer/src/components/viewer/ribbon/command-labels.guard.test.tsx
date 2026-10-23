@@ -88,7 +88,7 @@ it('#5878 File Share invokes its mounted host once through the registry', () => 
   ]);
 });
 
-it('#5870/#5878 mounts every ribbon command with its registry name across all tabs', () => {
+it('#5870/#5878 mounts every ribbon command with its registry name across the header and all tabs', () => {
   setCollabEnabledOverride(true);
   act(() => useViewerStore.setState({
     ribbonTab: 'home', ribbonCollapsed: false,
@@ -100,6 +100,19 @@ it('#5870/#5878 mounts every ribbon command with its registry name across all ta
     'the guard visits every ribbon tab');
   const rawByTab: Record<string, number> = {};
   const renderedIds = new Set<string>();
+  // #5857: Settings lives in the persistent header, outside every tab band.
+  // Header commands have the same registry and accessible-name contract.
+  for (const button of container.querySelectorAll<HTMLButtonElement>('button[data-command-id]')) {
+    if (button.closest('[role="tabpanel"]')) continue;
+    const id = button.dataset.commandId;
+    const command: SurfaceCommandDefinition | undefined = SURFACE_COMMANDS.find((item) => item.id === id);
+    assert.ok(command, `header: ${id} is registered`);
+    assert.ok(command.surfaces.includes('ribbon'), `header: ${id} declares the ribbon surface`);
+    assert.equal(button.dataset.ribbonContentSource, 'registered');
+    assert.equal(button.dataset.ribbonContentId, command.id);
+    assert.equal(button.getAttribute('aria-label'), resolve(command.ribbonLabelKey ?? command.labelKey));
+    renderedIds.add(command.id);
+  }
   for (const tab of TABS) {
     const trigger = container.querySelectorAll('[role="tab"]')[TABS.indexOf(tab)];
     assert.ok(trigger, `${tab} tab is mounted`);
@@ -158,7 +171,7 @@ it('#5870/#5878 mounts every ribbon command with its registry name across all ta
   assert.deepEqual(renderedIds,
     new Set(SURFACE_COMMANDS.filter((command) => command.surfaces.includes('ribbon'))
       .map((command) => command.id)),
-    'every ribbon-declared command is mounted on one of its six tabs');
+    'every ribbon-declared command is mounted in the header or one of its six tabs');
 });
 
 it('#5878 enabled collaboration File controls use registered names', () => {

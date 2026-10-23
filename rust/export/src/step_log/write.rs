@@ -58,6 +58,11 @@ pub struct StepCounters {
     pub ifc4_required_slots_unfilled: usize,
     pub enum_values_lost: usize,
     pub enum_values_refused: usize,
+    /// Non-`$` attribute values a conversion had no target slot for (#7683).
+    pub attribute_values_dropped: usize,
+    /// Source records dropped because a later record has their express id
+    /// (#7682); each is also named in the warnings.
+    pub duplicate_records_dropped: usize,
 }
 
 impl From<&LogExportStats> for StepStats {
@@ -73,6 +78,10 @@ impl From<&LogExportStats> for StepStats {
             ifc4_required_slots_unfilled: s.step.ifc4_required_slots_unfilled,
             enum_values_lost: s.step.enum_values_lost,
             enum_values_refused: s.step.enum_values_refused,
+            attribute_values_dropped: s.step.attribute_values_dropped,
+            // The log path takes no `PropMutation`s (they are refused up front).
+            property_mutations_refused: 0,
+            duplicate_records_dropped: s.step.duplicate_records_dropped,
         }
     }
 }
@@ -131,14 +140,17 @@ fn write_line<W: Write>(
     to: &str,
     slot_fill: &mut crate::schema_ifc2x3_slots::Ifc2x3SlotFill,
     checks: &mut crate::schema_enum::ConversionChecks,
-) -> io::Result<()> {
+    flatten: &crate::schema_style_flatten::StyleFlatten,
+) -> io::Result<bool> {
     if converting {
+        let Some(flat) = flatten.line(from, text.to_string()) else { return Ok(false) };
+        let text = flat.as_str();
         let converted = crate::schema_convert::convert_step_line(text, from, to, id, slot_fill, Some(checks))?;
         out.write_all(converted.as_bytes())?;
     } else {
         out.write_all(text.as_bytes())?;
     }
-    out.write_all(b"\n")
+    out.write_all(b"\n").map(|()| true)
 }
 
 fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &mut W) -> io::Result<LogExportStats> {
@@ -151,12 +163,26 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
         ));
     }
     let src = Source::index(content);
+    // A created entity never reuses a source id (the mutation layer's
+    // watermark allocates past the file's highest one), so a log that creates
+    // one under a source id, even one it deletes again, was written against
+    // another file. Writing either record would silently drop the other, and
+    // a later delete of the created one would tombstone the source record
+    // (#7682, EXPORT-STEP-26). The TypeScript writer throws the same text.
+    let created = log.new_entities.iter().map(|e| e.express_id).chain(
+        log.mutations.iter().filter(|m| m.kind == super::wire::MutationKind::CreateEntity).map(|m| m.entity_id),
+    );
+    if let Some(id) = created.into_iter().find(|&id| src.has(id)) {
+        return Err(invalid(format!(
+            "export_step_with_log: created entity #{id} reuses source id #{id}: the log was not written against this file"
+        )));
+    }
     let family = schema_family(content);
     let source_label = detect_schema(content);
     let target = opts.schema.clone().unwrap_or_else(|| source_label.clone());
     let converting = opts.schema.is_some() && crate::schema_convert::needs_conversion(&source_label, &target);
 
-    let target_is_ifc2x3 = target.trim().to_ascii_uppercase().starts_with("IFC2X3");
+    let target_is_ifc2x3 = crate::schema_convert::targets_ifc2x3(&target);
     if target_is_ifc2x3 && log.georef_mutations.as_ref().is_some_and(super::georef::requests_anything) {
         return Err(invalid(format!("export_step_with_log: {}", super::georef::IFC2X3_REFUSAL)));
     }
@@ -165,10 +191,11 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     let overlay = replay(&log.mutations, &log.new_entities, &mut base)
         .map_err(|e| invalid(format!("export_step_with_log: {}", e.0)))?;
     let mut pass = Pass::new(&src, family, overlay);
+    pass.warnings.extend(src.duplicates.iter().map(|&id| crate::step_index::RecordIndex::duplicate_warning(id)));
     let unwritable = |e: super::values::Unwritable| invalid(format!("export_step_with_log: {}", e.0));
     let collected = collect(&mut pass, &mut base);
     if let Some(georef) = &log.georef_mutations {
-        super::georef::apply(&mut pass, georef);
+        super::georef::apply(&mut pass, georef).map_err(unwritable)?;
     }
     retain_shared_atoms(&mut pass);
 
@@ -220,18 +247,16 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
 
     let modifications = pass.new_entity_count + pass.ledger.modified_count();
     let source_header = crate::source_header::parse_source_header(content);
-    let declared = source_header.as_ref().and_then(|h| h.schema_identifiers.first()).filter(|s| !s.is_empty());
-    let header_schema = match declared {
-        Some(token) if !converting => token.as_str(),
-        _ => crate::file_schema::file_schema_identifier(&target),
-    };
+    let header_schema = crate::file_schema::declared_token(source_header.as_ref(), converting, &target);
     crate::step_header::write_header_counted(out, opts, source_header.as_ref(), header_schema, modifications)?;
 
     let mut slot_fill = crate::schema_ifc2x3_slots::Ifc2x3SlotFill::new(pass.fallback_owner_history());
     let mut checks = crate::schema_enum::ConversionChecks::new();
+    let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(content, &source_label, &target); flatten.note_all(content, pass.mutated_lines.iter().filter_map(|(id, (t, _))| Some((*id, t.as_deref()?)))
+        .chain(pass.generated.iter().chain(&pass.rewritten_lines).chain(&pass.georef_lines).chain(&pass.created_lines).map(|(id, l)| (*id, l.as_str()))));
     let mut written = 0usize;
     for &id in &src.order {
-        if pass.skip.contains(&id) || pass.rewritten.contains(&id) || pass.is_deleted(id) {
+        if pass.skip.contains(&id) || pass.rewritten.contains(&id) || pass.is_deleted(id) || flatten.drops(id) {
             continue;
         }
         let owned;
@@ -264,18 +289,22 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
                 &owned
             }
         };
-        write_line(out, text, id, converting, &source_label, &target, &mut slot_fill, &mut checks)?;
-        written += 1;
+        written += usize::from(write_line(out, text, id, converting, &source_label, &target, &mut slot_fill, &mut checks, &flatten)?);
     }
-    let appended = pass.rewritten_lines.iter().map(|(_, l)| l).chain(pass.georef_lines.iter());
-    for line in pass.generated.iter().chain(appended) {
-        out.write_all(line.as_bytes())?;
-        out.write_all(b"\n")?;
-        written += 1;
-    }
-    for (id, line) in &pass.created_lines {
-        write_line(out, line, *id, converting, &source_label, &target, &mut slot_fill, &mut checks)?;
-        written += 1;
+    // Every appended record goes out through the same `write_line` as a
+    // source one, in the TypeScript exporter's order: generated sets, the
+    // repointed type objects, the georeferencing records, the created
+    // entities. Each is in the source schema's layout, so a converting export
+    // converts it (renames, the quantity `Formula` slot, the IFC2X3 slot fill
+    // and its counters) instead of writing it raw (#7682, EXPORT-STEP-3).
+    let appended = pass
+        .generated
+        .iter()
+        .chain(&pass.rewritten_lines)
+        .chain(&pass.georef_lines)
+        .chain(&pass.created_lines);
+    for (id, line) in appended.filter(|(id, _)| !flatten.drops(*id)) {
+        written += usize::from(write_line(out, line, *id, converting, &source_label, &target, &mut slot_fill, &mut checks, &flatten)?);
     }
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
 
@@ -296,6 +325,8 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
             ifc4_required_slots_unfilled: checks.ifc4_slots.required_slots_unfilled(),
             enum_values_lost: checks.enums.lost(),
             enum_values_refused: checks.enums.refused(),
+            attribute_values_dropped: checks.attribute_values_dropped,
+            duplicate_records_dropped: src.duplicates.len(),
         },
     })
 }

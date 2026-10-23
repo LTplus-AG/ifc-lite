@@ -14,12 +14,14 @@
 
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
+import { sectionPlaneCount } from '@/lib/section/section-plane-set';
 import { HudHint, HudItem } from '../../viewport-ui/hud';
 
 export function SectionHint() {
   const { t } = useTranslation();
   const key = useViewerStore((s) =>
-    s.sectionPickMode ? 'sectionTool.hint.pick'
+    s.sectionPickMode ? (s.sectionPickTarget === 'new' ? 'sectionPlanes.hint.addPick' : 'sectionTool.hint.pick')
+      : sectionPlaneCount(s.sectionPlane, s.inactiveSectionPlanes) === 0 ? 'sectionPlanes.hint.empty'
       : !s.sectionPlane.enabled ? 'sectionTool.hint.off'
         : s.sectionPlane.box ? 'sectionTool.hint.box'
           : 'sectionTool.hint.cut',

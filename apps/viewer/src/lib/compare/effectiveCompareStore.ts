@@ -7,7 +7,7 @@
  * it, not the file as it was loaded (#5214 finding 2, #5312, charter #5249).
  *
  * Compare's data channel reads the parsed store everywhere. Entity membership
- * comes from `comparableProductIds`, and names, psets, quantities, types,
+ * comes from `comparableObjectIds`, and names, psets, quantities, types,
  * materials and classifications come from `buildDataInput`'s extractors. The
  * mutation overlay never writes into that store. Its geometry channel is live,
  * because `removeEntity` prunes the deleted element's mesh. So an edited model

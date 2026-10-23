@@ -11,7 +11,7 @@
  */
 
 import { extractGeoreferencingOnDemand } from '@ifc-lite/parser';
-import { foldedEntityCount, pendingMutationsField, pendingOverlay } from '../overlay.js';
+import { foldedEntityCount, pendingMutationsField, pendingOverlay } from '@ifc-lite/sdk/headless';
 import { buildSpatialTree } from '../spatial-tree.js';
 import { findByGlobalId } from '../tools/util.js';
 import { materialFallbackName } from '../material-naming.js';

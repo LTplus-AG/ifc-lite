@@ -4,6 +4,10 @@
 //! Private evaluated-occurrence normalization; publication is one appearance plan.
 use std::collections::BTreeMap;
 use super::{evaluated_source, source::Source, *};
+// One total wire writer for every authored row (#7677, PROCESSING-APP-2): a
+// cloned Body or layer carries file-supplied attributes, so a `*` there must
+// serialize rather than reach a panic arm.
+use super::authored::wire;
 use ifc_lite_core::{AttributeValue as A, DecodedEntity};
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
@@ -20,16 +24,6 @@ pub(super) struct Normalized {
     start: u32,
 }
 fn list(ids: &[u32]) -> A { A::List(ids.iter().copied().map(A::EntityRef).collect()) }
-// Authored, fixed-depth schema values only; never recursively walk source data.
-fn wire(value: &A) -> Value {
-    match value {
-        A::EntityRef(id) => reference(*id), A::Null => Value::Null,
-        A::String(s) => json!(s), A::Enum(s) => json!(format!(".{s}.")),
-        A::Integer(n) => json!(n), A::Float(n) => json!(n),
-        A::List(items) => json!(items.iter().map(wire).collect::<Vec<_>>()),
-        _ => unreachable!("fixed authored values"),
-    }
-}
 pub(super) fn authored(plan: &mut AppearancePlan, entities: &mut FxHashMap<u32, Arc<DecodedEntity>>,
     ty: IfcType, attributes: Vec<A>) -> u32 {
     let id = add(plan,ty.name(),attributes.iter().map(wire).collect());
@@ -74,9 +68,9 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
         return Err("Stale allocator watermark overlaps effective IFC source".into());
     }
     let mut styles = page_source::appearance(bytes,source);
-    let textures = ifc_lite_geometry::build_texture_index(bytes,&mut source.decoder);
+    let textures = source.texture_index(bytes);
     let mut consumers=BTreeMap::<u32,BTreeSet<u32>>::new();
-    for (&host,openings) in &styles.void_index {
+    for (&host,openings) in styles.void_index.iter() {
         for &opening in openings {consumers.entry(opening).or_default().insert(host);}
     }
     let exclusive:BTreeSet<_>=consumers.into_iter().filter_map(|(id,hosts)|(hosts.len()==1).then_some(id)).collect();
@@ -164,7 +158,7 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
         }
         let body_id=body.id;
         entities.insert(body.id,Arc::new(body));
-        source.decoder.inject_shared_cache(&entities);
+        source.install_authored_entities(&entities);
         for entity in &plan.created { source.types.insert(entity.express_id,entities[&entity.express_id].ifc_type.clone()); }
         for old in old_items { if let Some(parents)=source.incoming.get_mut(&old) {parents.remove(&body_id);} }
         source.incoming.insert(coordinates,items.iter().copied().collect());
@@ -173,7 +167,7 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
             source.styled_items.insert(face,vec![styled_row]);
             let (_,style)=crate::prepass::surface_style_from_styled_item(&entities[&styled_row],&mut source.decoder)
                 .ok_or("Converted surface style failed canonical resolution")?;
-            styles.geometry_style_index.insert(face,style);
+            styles.insert_style(face,style);
         }
         if let Some((retained_item,_))=retained {
             source.evaluated_splits.insert(product_id,source::SplitBody {textured:item,retained:retained_item});
@@ -222,11 +216,11 @@ pub(super) fn prepare(bytes: &[u8], request: &AppearanceRequest, source: &mut So
 }
 impl Normalized {
     pub(super) fn request(&self)->&AppearanceRequest {&self.request}
-    pub(super) fn patch_styles(&self, source:&mut Source<'_>, styles:&mut crate::prepass::ResolvedPrepass)->Result<(),String> {
+    pub(super) fn patch_styles(&self, source:&mut Source<'_>, styles:&mut super::owned_context::Styles)->Result<(),String> {
         for conversion in &self.conversions {
             let styled=source.entity(conversion.styled_id)?;
             let (_,style)=crate::prepass::surface_style_from_styled_item(&styled,&mut source.decoder).ok_or("Missing converted style")?;
-            styles.geometry_style_index.insert(conversion.binding.geometry_item_id,style);
+            styles.insert_style(conversion.binding.geometry_item_id,style);
         }
         Ok(())
     }

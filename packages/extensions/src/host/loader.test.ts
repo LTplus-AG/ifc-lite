@@ -74,6 +74,8 @@ describe('manifestToContributions', () => {
     const out = manifestToContributions('ext-a', {
       commands: [{ id: 'x', title: 'X' }],
     } as ManifestContributions);
+    // A dropped contribution would leave `out` empty and `every` vacuously true.
+    expect(out).toHaveLength(1);
     expect(out.every((c) => c.extensionId === 'ext-a')).toBe(true);
   });
 

@@ -209,6 +209,7 @@ export function PdfViewExportDialog({ surface, trigger, exportViewPdf }: PdfView
       const layout = estimateViewPdfLayout(drawnMeshes, camera, scaleFactor, {
         includeScaleStamp: showScaleStamp,
         keptHalfSpace: source?.section ? resolveKeptHalfSpace(source.section) : null,
+        extraKeptHalfSpaces: source?.extraSections.map(resolveKeptHalfSpace),
       });
       if (!layout) return null;
       return { ...layout, ...describePage(layout.page) };
@@ -241,6 +242,7 @@ export function PdfViewExportDialog({ surface, trigger, exportViewPdf }: PdfView
         view: source.view,
         camera,
         section: source.section,
+        extraSections: source.extraSections,
         scaleFactor,
         marginMm: VIEW_PDF_MARGIN_MM,
         includeHiddenLines: showHiddenEdges,
@@ -255,7 +257,7 @@ export function PdfViewExportDialog({ surface, trigger, exportViewPdf }: PdfView
         format: 'pdf-3d-view',
         scale_factor: scaleFactor,
         projection_mode: camera.projectionMode,
-        section_enabled: source.section !== null,
+        section_enabled: source.section !== null || source.extraSections.length > 0,
         // What the SHEET got, not what was asked for: shaded mode forces hidden
         // edges off, and a capped raster prints below the requested dpi.
         hidden_edges: renderMode === 'shaded' ? false : showHiddenEdges,

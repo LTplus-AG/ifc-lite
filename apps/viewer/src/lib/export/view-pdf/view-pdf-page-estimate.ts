@@ -79,17 +79,21 @@ export function estimateViewPdfLayout(
      * refuse pages that would print comfortably.
      */
     keptHalfSpace?: { normal: Vec3; offset: number } | null;
+    /** The other cutting planes that are on (#7545): the sheet is what ALL of them keep. */
+    extraKeptHalfSpaces?: readonly { normal: Vec3; offset: number }[];
   } = {},
 ): ViewPdfPageEstimate | null {
   const marginMm = options.marginMm ?? VIEW_PDF_MARGIN_MM;
   const fullBounds = worldBoundsOfMeshes(meshes);
   if (!fullBounds) return null;
-  const half = options.keptHalfSpace;
   // A cut that removes everything leaves nothing to estimate, which is the
   // same "nothing to draw" answer as an empty mesh list.
-  const worldBounds = half
-    ? clipBoxToHalfSpace(fullBounds, half.normal, half.offset)
-    : fullBounds;
+  let worldBounds: WorldBounds3D | null = fullBounds;
+  const halves = [options.keptHalfSpace, ...(options.extraKeptHalfSpaces ?? [])];
+  for (const half of halves) {
+    if (!half || !worldBounds) continue;
+    worldBounds = clipBoxToHalfSpace(worldBounds, half.normal, half.offset);
+  }
   if (!worldBounds) return null;
   const layout = computePdfScaleLayout(
     projectedBounds2D(worldBounds, camera),

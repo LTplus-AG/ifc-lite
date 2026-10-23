@@ -16,6 +16,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { browserRunArgs, browserRunner, isAssertionError, parsePlaywrightReport, scriptCommand } from './revert-oracle-browser.mjs';
+import { planBrowserSpecs } from './revert-oracle-browser-run.mjs';
 import { buildExecutionLedger, ledgerVerdict } from './revert-oracle-ledger.mjs';
 import rootPackage from '../../package.json' with { type: 'json' };
 
@@ -82,6 +83,24 @@ test('the runner is derived from the root scripts CI already runs', () => {
   assert.equal(browserRunner({ 'test:e2e:ci': 'playwright test', 'build:e2e': 'pnpm a && pnpm b' }), null, 'a build the oracle would have to reinterpret');
   assert.equal(scriptCommand('FOO=1 playwright test'), null);
   assert.equal(scriptCommand('playwright test "x y"'), null);
+});
+
+test('#6975 the actual frame spec is selected by its registered workflow script, never a project fallback', { timeout: 30_000 }, () => {
+  const frameSpec = 'tests/benchmark/frames/frame-rig.spec.ts';
+  const { plans, gaps } = planBrowserSpecs([frameSpec], ROOT, { log: () => {} });
+  assert.deepEqual(gaps, []);
+  assert.equal(plans.length, 1);
+  assert.equal(plans[0].browserScript, 'test:benchmark:frames');
+  assert.deepEqual(plans[0].runner.args, scriptCommand(rootPackage.scripts['test:benchmark:frames']).args);
+  assert.equal(plans[0].listed, 2, 'the real Playwright listing must attribute both fixture tests');
+});
+
+test('#6975 an unselected spec remains a capability gap across every registered browser script', { timeout: 30_000 }, () => {
+  const { plans, gaps } = planBrowserSpecs(['tests/benchmark/frames/unregistered.observer.spec.ts'], ROOT, { log: () => {} });
+  assert.deepEqual(plans, []);
+  assert.equal(gaps.length, 1);
+  assert.match(gaps[0].reason, /selects no test in this spec/);
+  assert.equal(browserRunner({ 'test:manual': 'playwright test' }, 'test:manual'), null);
 });
 
 test('only Playwright matcher failures are assertions, with or without a custom message', () => {

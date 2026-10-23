@@ -59,15 +59,15 @@ const NEEDS_PARSER_DIST = skipUnlessFilesExist(ROOT, ['packages/parser/dist/rela
 const CHECKER = join(SCRIPTS, 'check-server-browser-type-parity.mjs');
 
 const FILES = {
-  RUST_REL: 'apps/server/src/services/data_model/generated/relationship_slots.rs',
+  RUST_REL: 'apps/server/tests/golden/relationship-slots.json',
   TS_REL_INDEXES: 'packages/parser/src/columnar-parser-indexes.ts',
-  RUST_SPATIAL: 'apps/server/src/services/data_model/spatial.rs',
+  RUST_SPATIAL: 'rust/processing/src/data_model/spatial.rs',
   TS_SPATIAL: 'packages/data/src/spatial-types.ts',
-  RUST_PROPS: 'apps/server/src/services/data_model/properties.rs',
+  RUST_PROPS: 'rust/processing/src/data_model/properties.rs',
   TS_PROPS: 'packages/parser/src/property-value-parser.ts',
-  RUST_QTY: 'apps/server/src/services/data_model/quantities.rs',
+  RUST_QTY: 'rust/processing/src/data_model/quantity.rs',
   TS_QTY_COLLECT: 'packages/parser/src/quantity-collect.ts',
-  RUST_MATERIALS: 'apps/server/src/services/data_model/materials.rs',
+  RUST_MATERIALS: 'rust/processing/src/data_model/materials.rs',
   TS_MATERIALS: 'packages/parser/src/material-resolver.ts',
 };
 
@@ -138,11 +138,11 @@ test('RELATIONSHIPS (#4672): a complete alternate checkout uses its matching bui
 
 // -- relationships -----------------------------------------------------
 
-test('RELATIONSHIPS: RED when a type is removed from the generated Rust slot table', { skip: NEEDS_PARSER_DIST }, () => {
+test('RELATIONSHIPS: RED when a type is removed from the committed Rust slot vector', { skip: NEEDS_PARSER_DIST }, () => {
   const rust = replaceOnce(
     real.RUST_REL,
-    '"IFCRELAGGREGATES" => Some(RelationshipSlots {',
-    '"__REMOVED__" => Some(RelationshipSlots {',
+    '"IFCRELAGGREGATES": {',
+    '"__REMOVED__": {',
   );
   const { status, out } = runOn({ RUST_REL: rust });
   assert.equal(status, 1, out);
@@ -209,8 +209,8 @@ test('RELATIONSHIPS: adding a type to BOTH sides keeps it passing', { skip: NEED
   // the literal set that stays source-text-readable after #4205.
   const rust = replaceOnce(
     real.RUST_REL,
-    'match upper_type_name {',
-    'match upper_type_name {\n        "IFCRELINVENTEDFAKETYPE" => Some(RelationshipSlots { relating_idx: 4, related_idx: 5, related_is_list: true }),',
+    '"slots": {',
+    '"slots": {\n    "IFCRELINVENTEDFAKETYPE": { "relating": 4, "related": 5, "relatingIsList": false, "relatedIsList": true },',
   );
   const ts = replaceOnce(
     real.TS_REL_INDEXES,
@@ -371,8 +371,8 @@ test('QUANTITIES: an allowlisted DELIBERATE gap (IfcPhysicalComplexQuantity, #32
 test('QUANTITIES: RED when a quantity type is removed from the Rust chain', () => {
   const rust = replaceOnce(
     real.RUST_QTY,
-    'ifc_type.eq_ignore_ascii_case("IFCQUANTITYWEIGHT")',
-    'ifc_type.eq_ignore_ascii_case("__REMOVED_WEIGHT__")',
+    'Self::Weight => "IFCQUANTITYWEIGHT",',
+    'Self::Weight => "__REMOVED_WEIGHT__",',
   );
   const { status, out } = runOn({ RUST_QTY: rust });
   assert.equal(status, 1, out);
@@ -391,8 +391,8 @@ test('QUANTITIES: making the Rust side also name IFCPHYSICALCOMPLEXQUANTITY now 
   // has, in this simulation, stopped being true must not stay silent.
   const rust = replaceOnce(
     real.RUST_QTY,
-    'ifc_type.eq_ignore_ascii_case("IFCQUANTITYLENGTH")',
-    'ifc_type.eq_ignore_ascii_case("IFCQUANTITYLENGTH") || ifc_type.eq_ignore_ascii_case("IFCPHYSICALCOMPLEXQUANTITY")',
+    'Self::Number => "IFCQUANTITYNUMBER",',
+    'Self::Number => "IFCQUANTITYNUMBER",\n            _ if false => "IFCPHYSICALCOMPLEXQUANTITY",',
   );
   const { status, out } = runOn({ RUST_QTY: rust });
   assert.equal(status, 1, out);
@@ -451,10 +451,10 @@ test('MATERIALS #7194: predicates and cases count, comments, text and unrelated 
 
 // -- vacuity guard ------------------------------------------------------
 
-test('vacuity guard: RED when the generated Rust relationship table is starved', { skip: NEEDS_PARSER_DIST }, () => {
-  const { status, out } = runOn({ RUST_REL: '// no relationship slot arms at all\n' });
+test('vacuity guard: RED when the committed Rust relationship vector is starved', { skip: NEEDS_PARSER_DIST }, () => {
+  const { status, out } = runOn({ RUST_REL: '{ "slots": {} }\n' });
   assert.equal(status, 1, out);
-  assert.match(out, /no types extracted from apps\/server\/src\/services\/data_model\/generated\/relationship_slots\.rs/);
+  assert.match(out, /no types extracted from apps\/server\/tests\/golden\/relationship-slots\.json/);
   assert.match(out, /this gate compared nothing/);
 });
 
@@ -467,7 +467,7 @@ test('vacuity guard: RED when the TS spatial extractor is starved', () => {
 test('vacuity guard: two empty sets are not parity even when both sides are starved', () => {
   const { status, out } = runOn({ RUST_MATERIALS: '// nothing\n', TS_MATERIALS: '// nothing\n' });
   assert.equal(status, 1, out);
-  assert.match(out, /no types extracted from apps\/server\/src\/services\/data_model\/materials\.rs/);
+  assert.match(out, /no types extracted from rust\/processing\/src\/data_model\/materials\.rs/);
   assert.match(out, /no types extracted from packages\/parser\/src\/material-resolver\.ts/);
 });
 
@@ -600,7 +600,7 @@ test('QUANTITIES UNDER-READ: RED when a sibling quantity map appears alongside `
 test('PROPERTIES VACUITY: emptying the Rust side alone still fires the vacuity guard', () => {
   const { status, out } = runOn({ RUST_PROPS: '// nothing\n' });
   assert.equal(status, 1, out);
-  assert.match(out, /no types extracted from apps\/server\/src\/services\/data_model\/properties\.rs/);
+  assert.match(out, /no types extracted from rust\/processing\/src\/data_model\/properties\.rs/);
 });
 
 test('PROPERTIES VACUITY (documents the corrected claim): emptying the TS side alone does NOT fire the vacuity guard, because the extractor unconditionally seeds IFCPROPERTYSINGLEVALUE', () => {

@@ -72,7 +72,7 @@
    535 apps/viewer/src/components/viewer/DrawingSettingsPanel.tsx
    644 apps/viewer/src/components/viewer/ExportDialog.tsx
    468 apps/viewer/src/components/viewer/GLBExportDialog.tsx
-  1357 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
+  1117 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
    740 apps/viewer/src/components/viewer/HierarchyPanel.tsx
    533 apps/viewer/src/components/viewer/layers/LayerMergeSection.tsx
    659 apps/viewer/src/components/viewer/LensPanel.tsx
@@ -159,7 +159,7 @@
    573 apps/viewer/src/utils/viewportUtils.ts
    788 packages/bcf/src/ids-reporter.ts
    806 packages/bcf/src/reader.ts
-   627 packages/bcf/src/viewpoint.ts
+   532 packages/bcf/src/viewpoint.ts
    753 packages/bcf/src/writer.ts
    439 packages/clash/src/bcf-bridge.ts
    433 packages/clash/src/duplicates.ts
@@ -167,7 +167,6 @@
    501 packages/cli/src/commands/create.ts
    482 packages/cli/src/commands/extract-entities.ts
    501 packages/cli/src/commands/query.ts
-   798 packages/cli/src/headless-backend.ts
    457 packages/codegen/src/express-parser.ts
    660 packages/codegen/src/rust-generator.ts
    640 packages/codegen/src/typescript-generator.ts
@@ -209,16 +208,16 @@
    808 packages/drawing-2d/src/types.ts
    592 packages/export/src/effective-index.ts
    680 packages/export/src/ifc5-exporter.ts
-  1588 packages/export/src/merged-exporter.ts
+  1585 packages/export/src/merged-exporter.ts
    616 packages/export/src/parquet-exporter.ts
    999 packages/export/src/reference-collector.ts
-   526 packages/export/src/schema-converter.ts
+   498 packages/export/src/schema-converter.ts
    437 packages/extensions/src/testing/runner.ts
    638 packages/geometry/src/coordinate-handler.ts
-  1547 packages/geometry/src/geometry-parallel.ts
+  1545 packages/geometry/src/geometry-parallel.ts
   1780 packages/geometry/src/geometry.worker.ts
    918 packages/geometry/src/ifc-lite-bridge.ts
-  1536 packages/geometry/src/index.ts
+  1534 packages/geometry/src/index.ts
    730 packages/geometry/src/native-bridge.ts
    904 packages/ids/src/audit/ifc-schema/index.ts
    411 packages/ids/src/audit/structural/index.ts
@@ -230,7 +229,6 @@
    468 packages/ifcx/src/federated-composition.ts
    704 packages/ifcx/src/index.ts
    749 packages/lists/src/engine.ts
-   479 packages/mcp/src/backend-query.ts
    544 packages/mcp/src/server.ts
    470 packages/mcp/src/tools/layer-review.ts
    648 packages/mcp/src/tools/query.ts
@@ -248,7 +246,6 @@
    494 packages/parser/src/source-bytes.ts
    513 packages/plugin-api/src/types.ts
    678 packages/pointcloud/src/formats/e57-decode.ts
-   424 packages/pointcloud/src/formats/pcd.ts
    529 packages/pointcloud/src/streaming/e57-source.ts
    423 packages/provenance/src/certificate.ts
    410 packages/provenance/src/commutation.ts
@@ -257,6 +254,7 @@
   1032 packages/provenance/src/merge-model.ts
    609 packages/provenance/src/node-hash.ts
    529 packages/query/src/duckdb-integration.ts
+   412 packages/renderer/src/camera-animation.ts
    583 packages/renderer/src/camera-controls.ts
    684 packages/renderer/src/camera.ts
   3699 packages/renderer/src/index.ts
@@ -307,7 +305,7 @@
    499 scripts/docs/check-doc-samples.mjs
    506 scripts/generate-bim-globals.mjs
    506 scripts/generate-coverage-ledger.mjs
-   423 scripts/generate-epsg-index.ts
+   422 scripts/generate-epsg-index.ts
    403 scripts/lib/ci-path-coverage.mjs
    460 scripts/lib/pr-green-sweep.mjs
   1113 scripts/lib/pr-review-signal.mjs

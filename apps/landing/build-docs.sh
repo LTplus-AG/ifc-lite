@@ -11,7 +11,7 @@
 # The project has "include source files outside of the root directory"
 # enabled, so ../../docs and ../../mkdocs.yml are present in the build
 # container. Python 3 is available in the Vercel build image; the docs
-# requirements are pure-Python (mkdocs-material and two plugins).
+# requirements use Node/pnpm for TypeDoc and Python for MkDocs.
 #
 # Locally: bash apps/landing/build-docs.sh (from anywhere) then serve
 # apps/landing/dist.
@@ -37,7 +37,16 @@ mkdir -p "$DIST"
   done
 )
 
-# 2. Docs. The Vercel build image's system Python is externally managed
+# 2. Build the public API reference from the same locked workspace used in CI.
+# Read the package-manager version from its source of truth, not a second pin.
+(
+  cd "$ROOT"
+  DOCS_PACKAGE_MANAGER="$(node -p "require('./package.json').packageManager")"
+  npx --yes "$DOCS_PACKAGE_MANAGER" install --frozen-lockfile
+  npx --yes "$DOCS_PACKAGE_MANAGER" run docs:api
+)
+
+# 3. Docs. The Vercel build image's system Python is externally managed
 #    (PEP 668), so installs go into a throwaway venv.
 VENV="$HERE/.venv-docs"
 python3 -m venv "$VENV"

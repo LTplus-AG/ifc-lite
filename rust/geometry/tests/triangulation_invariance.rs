@@ -127,7 +127,6 @@ mod census_golden;
 #[path = "corpus/rtc_frame.rs"]
 mod census_rtc;
 
-mod support;
 
 use census_golden::{is_closed_solid, totals, Delta, HostRow, PreVoid};
 use census_rtc::ModelFrame;
@@ -309,14 +308,24 @@ struct EdgeStats {
 }
 
 fn edge_stats(mesh: &Mesh) -> EdgeStats {
-    let q = |v: f32| (v as f64 * 1.0e3).round() as i64;
+    edge_stats_with_keys(mesh, |p| {
+        let p = p.map(|v| (f64::from(v) * 1.0e3).round() as i64);
+        (p[0], p[1], p[2])
+    })
+}
+
+#[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
+fn edge_stats_exact(mesh: &Mesh) -> EdgeStats {
+    edge_stats_with_keys(mesh, |p| {
+        let p = p.map(|v| if v == 0.0 { 0 } else { i64::from(v.to_bits()) });
+        (p[0], p[1], p[2])
+    })
+}
+
+fn edge_stats_with_keys(mesh: &Mesh, key: impl Fn([f32; 3]) -> (i64, i64, i64)) -> EdgeStats {
     let mut vid: FxHashMap<(i64, i64, i64), u32> = FxHashMap::default();
     let mut id = |i: usize| -> u32 {
-        let k = (
-            q(mesh.positions[i * 3]),
-            q(mesh.positions[i * 3 + 1]),
-            q(mesh.positions[i * 3 + 2]),
-        );
+        let k = key([mesh.positions[i * 3], mesh.positions[i * 3 + 1], mesh.positions[i * 3 + 2]]);
         let n = vid.len() as u32;
         *vid.entry(k).or_insert(n)
     };
@@ -818,8 +827,9 @@ fn sweep(models: &[(String, PathBuf)]) -> (Vec<HostRow>, BTreeSet<String>) {
     let mut weld_totals: Vec<(String, [(u64, u64, u64); 2])> = Vec::new();
     let _ = take_plane_weld_stats(); // discard anything earlier tests accrued
 
-    for (rel, path) in models {
-        let Ok(content) = std::fs::read_to_string(path) else {
+    for (rel, _path) in models {
+        // Discovered on disk, so present; gate-aware read via the testkit.
+        let Some(content) = ifc_lite_testkit::fixture_text(rel) else {
             continue;
         };
         swept_models.insert(rel.clone());
@@ -1427,12 +1437,10 @@ fn issue_129_mixed_bool2d_residual_preserves_established_topology() {
     let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _reset = AltTriangulatorReset;
     let rel = "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc".to_string();
-    let path = crate_dir().join("../..").join("tests/models").join(&rel);
-    if !oracle_fixture_present(&path) {
+    let Some(content) = ifc_lite_testkit::fixture_text(&rel) else {
         eprintln!("Skipping #4610 mixed-opening oracle: run pnpm fixtures");
         return;
-    }
-    let content = std::fs::read_to_string(&path).expect("read ISSUE_129 fixture");
+    };
     let voids = void_index(&content);
     let frame = ModelFrame::new(&content);
 
@@ -1447,7 +1455,10 @@ fn issue_129_mixed_bool2d_residual_preserves_established_topology() {
     let expected = if std::env::var("IFC_LITE_PRISM_CUT").as_deref() == Ok("0") {
         [(12381, 30, 31, 9400), (32810, 0, 0, 3224)]
     } else {
-        [(12381, 25, 26, 7565), (32810, 3, 3, 3207)]
+        // #7292: retaining supported finite source cells removes ten signed
+        // and strict boundary defects in both triangulators (25/26 -> 15/16).
+        // DEFAULT retains six additional triangles; the #32810 cut is unchanged.
+        [(12381, 15, 16, 7571), (32810, 3, 3, 3207)]
     };
     for &alt in triangulators {
         set_alt(alt);
@@ -1469,12 +1480,10 @@ fn issue_129_mixed_bool2d_residual_preserves_established_topology() {
 fn issue_4627_dental_result_remains_closed() {
     let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _reset = AltTriangulatorReset;
-    let path = crate_dir().join("../../tests/models/ara3d/dental_clinic.ifc");
-    if !oracle_fixture_present(&path) {
+    let Some(content) = ifc_lite_testkit::fixture_text("ara3d/dental_clinic.ifc") else {
         eprintln!("Skipping #4627 dental result oracle: run pnpm fixtures");
         return;
-    }
-    let content = std::fs::read_to_string(&path).expect("read dental clinic");
+    };
     let voids = void_index(&content);
     let frame = ModelFrame::new(&content);
     set_alt(false);
@@ -1502,20 +1511,28 @@ fn issue_4627_candidate_failures_preserve_prior_analytic_cuts() {
                 // #5362: 33 open / 159 tris until the #635 fallback stopped
                 // box-cutting an opening the kernel found disjoint; enclosed
                 // volume moved toward IfcOpenShell (0.0189 -> 0.0202 m3, ref 0.0211).
-                (11477, 9, 9, 152, 18),
+                // #7869 / main592d: straight-corner reconstruction closes these
+                // hosts. Actual ac02 merged-source unblessed run measured the
+                // exact incoming-main tuples; keep the stronger closed result.
+                (11477, 0, 0, 154, 0),
                 // #5410: 19 open / 139 tris until a plan-rotated host whose
                 // cutters author no depth took the wall-local frame; now closed
                 // (enclosed volume 0.01972 -> 0.01967 m3, IfcOpenShell 0.01752).
                 (11690, 0, 0, 144, 0),
-                (31156, 0, 0, 208, 0),
-                (17553, 0, 2, 214, 0),
-                (17615, 0, 0, 252, 0),
-                (25914, 28, 31, 84, 28),
-                (26610, 0, 0, 84, 0),
+                (31156, 0, 0, 198, 0),
+                (17553, 0, 0, 116, 0),
+                (17615, 0, 0, 244, 0),
+                (25914, 25, 28, 87, 25),
+                (26610, 0, 0, 86, 0),
                 // rvt01 wall hosts the #3977 local-frame selector must leave
                 // closed (pinned after 0e8a42175 tore #10191 open via a -Z cutter depth).
+                // #7292: preserve the ordinary exactly closed boundary; the
+                // stronger exact fixture below checks both triangulators.
                 (10191, 0, 0, 172, 0),
-                (26681, 35, 35, 191, 33),
+                // #8047: retain the supported convex thin patches instead of
+                // dropping their finite faces. DEFAULT now closes; the exact
+                // boundary is checked separately below, beyond this 1mm pin.
+                (26681, 0, 0, 270, 10),
             ][..],
         ),
         (
@@ -1527,12 +1544,10 @@ fn issue_4627_candidate_failures_preserve_prior_analytic_cuts() {
             ][..],
         ),
     ] {
-        let path = crate_dir().join("../../tests/models").join(rel);
-        if !oracle_fixture_present(&path) {
+        let Some(content) = ifc_lite_testkit::fixture_text(rel) else {
             eprintln!("Skipping #4627 candidate oracle for {rel}: run pnpm fixtures");
             continue;
-        }
-        let content = std::fs::read_to_string(&path).expect("read candidate fixture");
+        };
         let voids = void_index(&content);
         let frame = ModelFrame::new(&content);
         #[cfg(feature = "triangulation-alt")]
@@ -1992,7 +2007,13 @@ const ISSUE_068_MODEL: &str = "ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc";
 // on a kernel-disjoint opening). #144568 (26 -> 0), #891553 (10 -> 0) and
 // #892717 (27 -> 0; #5361 had already moved its no-void pass 29 -> 22) closed
 // with #5943's strictly-closed retry on quantum-snapped wall-frame operands.
-const ISSUE_068_KNOWN_TORN_HOSTS: usize = 19;
+// #7607/#7949: 19 -> 13. #43810 (open 11 -> 0), #52944 (4 -> 0), #53592 (3 -> 0),
+// #143837 (7 -> 0), #144344 (3 -> 0) and #1184857 (8 -> 0) closed with the
+// closure-preserving void-output hygiene. #43810 and #54549 first tore
+// (11 -> 414, 0 -> 274) when a noise-level fold made consolidation stop
+// restoring the closed kernel output; #7949 is the fix, so #54549 stays on its
+// clean row.
+const ISSUE_068_KNOWN_TORN_HOSTS: usize = 13;
 
 /// Coverage floors, one per heavy fixture, bounding BOTH the checked-in golden
 /// and every sweep that gates or blesses against it. [`MIN_VOID_HOSTS`]'s job,
@@ -2037,20 +2058,12 @@ static CENSUS_SWEEP_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 #[ignore = "focused ISSUE_068 fixture regression (#5012); fetch with `pnpm fixtures`"]
 fn issue_5012_intermediate_difference_keeps_host_53374_watertight() {
     let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let path = crate_dir()
-        .join("..")
-        .join("..")
-        .join("tests/models")
-        .join(ISSUE_068_MODEL);
-    if !path.is_file() {
+    let Some(content) = ifc_lite_testkit::fixture_text(ISSUE_068_MODEL) else {
         eprintln!(
             "skipping #5012 regression: {ISSUE_068_MODEL} is absent; fetch it with `pnpm fixtures`"
         );
         return;
-    }
-
-    let content = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
+    };
     let frame = ModelFrame::new(&content);
     let voids = void_index(&content);
     let mesh = process(&frame, 53_374, &voids).expect("ISSUE_068 host #53374 must process");
@@ -2059,6 +2072,38 @@ fn issue_5012_intermediate_difference_keeps_host_53374_watertight() {
     assert_eq!(mesh.triangle_count(), 346, "#5012 must not discard wall geometry");
     assert_eq!(stats.open, 0, "#5012 wall must have no unmatched boundary edges");
     assert_eq!(stats.strict, 0, "#5012 wall must satisfy the strict manifold rule");
+}
+
+/// #7949: a noise-level "healthy fold" in a wall with many openings made the
+/// consolidation keep the fold's source cells and stop restoring the closed
+/// kernel output, so the wall came out as hairline cracks (open edges 0 -> 274,
+/// triangles 1170 -> 593). The fold may leave its own boundary open; it may not
+/// tear the rest of the host.
+#[test]
+#[ignore = "focused ISSUE_068 fixture regression (#7949); fetch with `pnpm fixtures`"]
+fn issue_7949_fold_retention_keeps_openings_walls_54549_and_43810_watertight() {
+    let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(content) = ifc_lite_testkit::fixture_text(ISSUE_068_MODEL) else {
+        eprintln!(
+            "skipping #7949 regression: {ISSUE_068_MODEL} is absent; fetch it with `pnpm fixtures`"
+        );
+        return;
+    };
+    let frame = ModelFrame::new(&content);
+    let voids = void_index(&content);
+    // (host, strict ceiling): #43810 already read 16 strict pairs before the
+    // regression (the golden's #3435 population), #54549 was clean.
+    for (host, strict_ceiling) in [(54_549, 0), (43_810, 16)] {
+        let mesh = process(&frame, host, &voids).expect("ISSUE_068 host must process");
+        let stats = edge_stats(&mesh);
+        assert!(mesh.triangle_count() > 1000, "#7949 host #{host} must not lose its wall geometry");
+        assert_eq!(stats.open, 0, "#7949 host #{host} must have no unmatched boundary edges");
+        assert!(
+            stats.strict <= strict_ceiling,
+            "#7949 host #{host} reads {} strict pairs, above its pre-regression {strict_ceiling}",
+            stats.strict
+        );
+    }
 }
 
 /// Sweep one heavy fixture, report what it measured, and gate it against
@@ -2098,9 +2143,9 @@ fn run_heavy_lane(model: &str, min_hosts: usize) -> Option<census_golden::Totals
     // not red the build. This lane is `#[ignore]`d and only ever runs because
     // something asked for it BY NAME, so a silent pass here is a heavy lane
     // reporting success over a file it never opened.
-    let path = crate_dir().join("..").join("..").join("tests/models").join(model);
+    let path = ifc_lite_testkit::fixture_path(model);
     assert!(
-        path.is_file(),
+        ifc_lite_testkit::fixture_present(model),
         "{model} is not on disk under tests/models/ — fetch it with `pnpm fixtures` \
          before running this lane"
     );
@@ -2366,35 +2411,6 @@ fn the_heavy_golden_pins_the_known_3435_tear_population() {
     }
 }
 
-/// `true` when the fixture at `path` is readable; `false` only for a
-/// genuinely absent file (`NotFound`), which is a legitimate skip unless
-/// `IFC_LITE_REQUIRE_FIXTURES=1`, in which case it panics naming the path.
-/// Any other `io::Error` (permission denied, corrupt read, ...) means the
-/// environment is broken rather than merely missing an optional download,
-/// so it panics unconditionally. This attempts the read (rather than
-/// `Path::exists()`) because `exists()` collapses a permission error into
-/// `false` just like a genuinely absent file, and is a TOCTOU check besides
-/// — each caller performs the real read moments later.
-// Unused under `csg_topology_gate` / `csg_manifold_gate`: all callers are
-// cfg-gated off in those builds, which made this a hard `never used` error.
-// Allowed rather than cfg-gated to match the callers, because revert-oracle
-// cannot parse a `not(...)` cfg shape and aborts on it.
-#[allow(dead_code)]
-fn oracle_fixture_present(path: &std::path::Path) -> bool {
-    match std::fs::read_to_string(path) {
-        Ok(_) => true,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            assert!(
-                !support::require_fixtures(),
-                "fixture {} not present and IFC_LITE_REQUIRE_FIXTURES=1 -- run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)",
-                path.display()
-            );
-            false
-        }
-        Err(e) => panic!("fixture {} exists but could not be read: {e}", path.display()),
-    }
-}
-
 // #3925: independent IfcOpenShell 0.8.2 volume is 0.03938 m³. The old
 // unre-based census collapsed corners and pinned approximately 0.03844 m³.
 #[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
@@ -2402,12 +2418,10 @@ fn oracle_fixture_present(path: &std::path::Path) -> bool {
 fn census_rebases_real_covering_before_f32_geometry_3925() {
     let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     set_alt(false);
-    let path = crate_dir().join("../../tests/models/various/rvt01.ifc");
-    if !oracle_fixture_present(&path) {
+    let Some(content) = ifc_lite_testkit::fixture_text("various/rvt01.ifc") else {
         eprintln!("Skipping #3925 covering oracle: run pnpm fixtures");
         return;
-    }
-    let content = std::fs::read_to_string(path).expect("read rvt01 fixture");
+    };
     let frame = ModelFrame::new(&content);
     let mesh = process(&frame, 11232, &void_index(&content)).expect("mesh covering");
     assert_eq!(edge_stats(&mesh).strict, 0, "covering must remain closed without doubled edges");
@@ -2423,15 +2437,193 @@ fn census_rebases_real_covering_before_f32_geometry_3925() {
 fn repaired_office_covering_matches_independent_solid_3925() {
     let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     set_alt(false);
-    let path = crate_dir().join("../../tests/models/ara3d/S_Office_Integrated Design Archi.ifc");
-    if !oracle_fixture_present(&path) {
+    let Some(content) = ifc_lite_testkit::fixture_text("ara3d/S_Office_Integrated Design Archi.ifc") else {
         eprintln!("Skipping #3925 office oracle: run pnpm fixtures");
         return;
-    }
-    let content = std::fs::read_to_string(path).expect("read office fixture");
+    };
     let frame = ModelFrame::new(&content);
     let mesh = process(&frame, 91291, &void_index(&content)).expect("mesh office covering");
     assert_eq!(edge_stats(&mesh).strict, 0);
     assert!((75_500..=75_900).contains(&volume_cm3(&mesh)),
         "office covering volume must agree with the independent solid: {} cm³", volume_cm3(&mesh));
+}
+
+#[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
+#[test]
+fn issue_7292_rvt_void_cut_hygiene_preserves_exact_closed_boundaries() {
+    let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _reset = AltTriangulatorReset;
+    let Some(content) = ifc_lite_testkit::fixture_text("various/rvt01.ifc") else {
+        eprintln!("Skipping #7292 void hygiene: run pnpm fixtures");
+        return;
+    };
+    let frame = ModelFrame::new(&content);
+    let voids = void_index(&content);
+    #[cfg(feature = "triangulation-alt")]
+    let triangulators = &[false, true][..];
+    #[cfg(not(feature = "triangulation-alt"))]
+    let triangulators = &[false][..];
+    for &alt in triangulators {
+        set_alt(alt);
+        for id in [10191, 31156] {
+            let mesh = process(&frame, id, &voids).expect("actual void-cut host must mesh");
+            assert!(!mesh.indices.is_empty(), "host {id}, alt={alt}");
+            let exact = edge_stats_exact(&mesh);
+            assert_eq!((exact.open, exact.strict), (0, 0), "host {id}, alt={alt}");
+            assert_eq!(edge_stats(&mesh).open, 0, "host {id}, alt={alt}");
+        }
+    }
+}
+
+/// #8047: this real Revit host contains adjacent finite thin cells. Retaining
+/// their supported convex patch closes its physical boundary, rather than just
+/// hiding unmatched edges on the census's coarser millimetre grid.
+#[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
+#[test]
+fn issue_8047_rvt26681_supported_thin_patches_preserve_exact_closure() {
+    let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _reset = AltTriangulatorReset;
+    set_alt(false);
+    let Some(content) = ifc_lite_testkit::fixture_text("various/rvt01.ifc") else {
+        eprintln!("Skipping #8047 real thin-patch regression: run pnpm fixtures");
+        return;
+    };
+    let frame = ModelFrame::new(&content);
+    let mesh = process(&frame, 26681, &void_index(&content))
+        .expect("actual void-cut Revit host must mesh");
+    assert!(!mesh.indices.is_empty(), "thin-patch host must remain nonempty");
+    let exact = edge_stats_exact(&mesh);
+    assert_eq!((exact.open, exact.strict, exact.degenerate), (0, 0, 0),
+        "retained finite patches must pair at the actual represented coordinates");
+    assert_eq!(edge_stats(&mesh).open, 0,
+        "the public millimetre boundary must remain closed too");
+}
+
+#[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
+#[test]
+fn issue_7631_cap_recovery_does_not_increase_rvt13797_open_edges() {
+    let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _reset = AltTriangulatorReset;
+    let Some(content) = ifc_lite_testkit::fixture_text("various/rvt01.ifc") else {
+        eprintln!("Skipping #7631 cap/opening regression: run pnpm fixtures");
+        return;
+    };
+    let golden = read_golden(&crate_dir().join(GOLDEN_PATH), false);
+    let reference = golden.iter().find(|row| row.model == "various/rvt01.ifc" && row.id == 13797)
+        .expect("existing rvt01 host must remain in the census");
+    let frame = ModelFrame::new(&content);
+    let voids = void_index(&content);
+    #[cfg(feature = "triangulation-alt")]
+    let triangulators = &[false, true][..];
+    #[cfg(not(feature = "triangulation-alt"))]
+    let triangulators = &[false][..];
+    for &alt in triangulators {
+        set_alt(alt);
+        let mesh = process(&frame, 13797, &voids).expect("actual void-cut wall must mesh");
+        let stats = edge_stats(&mesh);
+        let ceiling = if alt { reference.alt.expect("recorded alternate reading") } else { reference.open };
+        assert!(stats.open <= ceiling,
+            "#7631 cap recovery regressed void-cut rvt01 13797: {} > {ceiling} open edges, alt={alt}", stats.open);
+        if !alt {
+            assert!(stats.strict <= reference.strict,
+                "#7631 cap recovery regressed directed incidence: {} > {}", stats.strict, reference.strict);
+        }
+    }
+}
+
+#[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
+#[path = "triangulation_invariance/source_boundary_7292_tests.rs"]
+mod source_boundary_7292_tests;
+
+#[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
+#[test]
+fn issue_6940_subgrid_coaxial_depths_keep_dental_hosts_closed() {
+    let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _reset = AltTriangulatorReset;
+    let Some(content) = ifc_lite_testkit::fixture_text("ara3d/dental_clinic.ifc") else {
+        eprintln!("Skipping #6940 dental depth regression: run pnpm fixtures");
+        return;
+    };
+    let voids = void_index(&content);
+    let frame = ModelFrame::new(&content);
+    #[cfg(feature = "triangulation-alt")]
+    let triangulators = [false, true].as_slice();
+    #[cfg(not(feature = "triangulation-alt"))]
+    let triangulators = [false].as_slice();
+    for &alt in triangulators {
+        set_alt(alt);
+        for id in [167, 207] {
+            let mesh = process(&frame, id, &voids).expect("actual dental host must mesh");
+            let exact = edge_stats_exact(&mesh);
+            assert_eq!((exact.open, exact.strict), (0, 0), "dental #{id}, alt={alt}");
+            assert_eq!(edge_stats(&mesh).open, 0, "dental #{id}, alt={alt}");
+        }
+    }
+}
+
+/// #8051 expanded thin-cell retention to convex patches. These actual CSG
+/// hosts exposed a downstream regression that a local patch certificate cannot
+/// detect: source hygiene may reopen the solid before its opening cut.
+#[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
+#[test]
+fn issue_8051_office_thin_patch_retention_preserves_existing_hosts() {
+    let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _reset = AltTriangulatorReset;
+    let Some(content) = ifc_lite_testkit::fixture_text("ara3d/S_Office_Integrated Design Archi.ifc") else {
+        eprintln!("Skipping #8051 office patch regression: run pnpm fixtures");
+        return;
+    };
+    let frame = ModelFrame::new(&content);
+    let voids = void_index(&content);
+    // These ceilings belong to the production triangulator. The full census
+    // separately checks the alternate triangulator against its own readings.
+    set_alt(false);
+    let rows = [92642, 94664].map(|id| {
+        let mesh = process(&frame, id, &voids).expect("actual office void host must mesh");
+        let stats = edge_stats(&mesh);
+        let exact = edge_stats_exact(&mesh);
+        let triangles = mesh.indices.len() / 3;
+        eprintln!("office #{id}: open={} strict={} triangles={triangles}; exact open={} strict={}",
+            stats.open, stats.strict, exact.open, exact.strict);
+        (id, stats, triangles)
+    });
+    let (_, ref torn, triangles) = rows[0];
+    // This host was already torn; lower edge counts alone cannot justify
+    // deleting more of its surface (the committed census's existing rule).
+    assert!(torn.open <= 9 && torn.strict <= 10 && triangles >= 67,
+        "office #92642 lost geometry or worsened its existing boundary: open={}, strict={}, triangles={triangles}",
+        torn.open, torn.strict);
+    let (_, ref closed, triangles) = rows[1];
+    assert!(triangles > 0, "office #94664 must retain its solid");
+    assert_eq!((closed.open, closed.strict), (0, 0),
+        "office #94664 must retain its previously paired boundary");
+}
+
+/// #8051 follow-up: rejecting a connected patch must not disable the older
+/// isolated-cell rescue elsewhere in the same CSG host.
+#[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
+#[test]
+fn issue_8051_office_979333_retains_isolated_cell_baseline() {
+    let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _reset = AltTriangulatorReset;
+    let Some(content) = ifc_lite_testkit::fixture_text("ara3d/S_Office_Integrated Design Archi.ifc") else {
+        eprintln!("Skipping #8051 office isolated-cell regression: run pnpm fixtures");
+        return;
+    };
+    let frame = ModelFrame::new(&content);
+    let voids = void_index(&content);
+    #[cfg(feature = "triangulation-alt")]
+    let triangulators = &[false, true][..];
+    #[cfg(not(feature = "triangulation-alt"))]
+    let triangulators = &[false][..];
+    for &alt in triangulators {
+        set_alt(alt);
+        let mesh = process(&frame, 979333, &voids).expect("actual office host must mesh");
+        let stats = edge_stats(&mesh);
+        let exact = edge_stats_exact(&mesh);
+        eprintln!("office #979333 alt={alt}: open={} strict={} tris={}; exact open={} strict={}",
+            stats.open, stats.strict, mesh.triangle_count(), exact.open, exact.strict);
+        assert!(!mesh.indices.is_empty(), "office #979333 must retain its solid");
+        assert_eq!((stats.open, stats.strict), (0, 0), "office #979333, alt={alt}");
+    }
 }

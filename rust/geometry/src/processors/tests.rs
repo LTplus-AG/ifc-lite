@@ -9,30 +9,10 @@ use crate::router::GeometryProcessor;
 use crate::TessellationQuality;
 use ifc_lite_core::{EntityDecoder, IfcSchema, IfcType};
 
-/// Read a fixture under `tests/models/`, returning `None` and printing a
-/// `pnpm fixtures` hint if the file isn't present yet — either because it's
-/// missing on a fresh clone, or because it's still a leftover Git LFS
-/// pointer from before the move to `tests/models/manifest.json`.
+/// Read a fixture under `tests/models/`: `None` (skip) when absent or a Git
+/// LFS pointer, a panic under `IFC_LITE_REQUIRE_FIXTURES=1` (`ifc_lite_testkit`).
 fn read_fixture(rel: &str) -> Option<String> {
-    let path = format!("../../tests/models/{}", rel);
-    match std::fs::read_to_string(&path) {
-        Ok(s) if s.starts_with("version https://git-lfs.github.com/spec/") => {
-            eprintln!(
-                "skipping: fixture {} is still a Git LFS pointer — run `pnpm fixtures` from the repo root to download the real bytes",
-                path,
-            );
-            None
-        }
-        Ok(s) => Some(s),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            eprintln!(
-                "skipping: fixture {} not present — run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)",
-                path,
-            );
-            None
-        }
-        Err(e) => panic!("failed to read fixture {}: {}", path, e),
-    }
+    ifc_lite_testkit::fixture_text(rel)
 }
 
 #[test]
@@ -1331,7 +1311,7 @@ fn test_advanced_face_trimmed_bspline_respects_trim_params() {
 /// means — this crate silently consumed to end of input, `EntityScanner`
 /// refused. Both now call `ifc_lite_core::skip_step_comment`, so they agree.
 ///
-/// This was RED before the fix: `extract_coord_index_bytes`'s inline
+/// This was RED before the fix: the then `extract_coord_index_bytes`'s inline
 /// comment-skip ran an index strictly past the fixture's length on an
 /// unterminated comment (confirmed via a since-removed `skip_comment_lossy`
 /// probe), while `EntityScanner::next_entity` already refused. Now both
@@ -1362,13 +1342,14 @@ fn unterminated_comment_geometry_and_core_scanner_agree() {
         "ifc-lite-core's scanner must refuse to scan past an unterminated comment, not consume it"
     );
 
-    // This crate's own call site: a CoordIndex list containing an
-    // unterminated comment must be refused (`None`), the same answer, for
-    // the same reason -- via the same shared function.
+    // The CoordIndex reader this crate meshes through (moved into core's
+    // `extract_face_indices_from_entity` by #7689): a CoordIndex list
+    // containing an unterminated comment must be refused (`None`), the same
+    // answer, for the same reason -- via the same shared function.
     let mut entity = b"#77=IFCTRIANGULATEDFACESET(#78,$,$,((1,2,3)".to_vec();
     entity.extend_from_slice(fixture);
     assert_eq!(
-        extract_coord_index_bytes(&entity),
+        ifc_lite_core::extract_face_indices_from_entity(&entity),
         None,
         "ifc-lite-geometry must refuse a CoordIndex list containing an unterminated comment"
     );

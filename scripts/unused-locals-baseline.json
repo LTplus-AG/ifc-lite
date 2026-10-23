@@ -6,6 +6,7 @@
   "apps/viewer-embed": 190,
   "examples/babylonjs-viewer": 0,
   "examples/collab-demo": 1,
+  "examples/headless-workflows": 0,
   "examples/threejs-collab": 1,
   "examples/threejs-viewer": 0,
   "packages/ai": 0,

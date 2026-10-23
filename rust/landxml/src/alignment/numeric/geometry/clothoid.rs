@@ -24,7 +24,7 @@ pub(super) fn evaluate(id: &LandXmlSourceId, value: &LandXmlSpiral, distance: f6
     validate_domain(id, value)?;
     let signed = value.rotation.sign(); let local_end = integral(length, length, signed * k0, signed * k1)?;
     let heading = (end.northing - start.northing).atan2(end.easting - start.easting) - local_end.1.atan2(local_end.0);
-    let tolerance = (length * 1e-6).max(1e-6);
+    let tolerance = crate::numeric::declared_length_tolerance(length);
     if distance_between(transform_local(start, local_end, heading), end) > tolerance { return Err(diagnostic(id, "LXMLA216", "clothoid endpoint is inconsistent with length and radii")); }
     let end_theta = heading + signed * (k0 * length + 0.5 * (k1 - k0) * length);
     if tangent_line_distance(start, pi, heading) > tolerance || tangent_line_distance(end, pi, end_theta) > tolerance { return Err(diagnostic(id, "LXMLA217", "clothoid PI is inconsistent with endpoint tangents")); }

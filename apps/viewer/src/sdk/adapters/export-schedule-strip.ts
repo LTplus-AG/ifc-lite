@@ -11,6 +11,8 @@
  * never touches the store, the viewer, or the DOM.
  */
 
+import { splitStepTopLevel, stepStringLiteralEnd } from '@ifc-lite/encoding';
+
 /**
  * Remove every schedule-related entity declaration from the STEP body.
  *
@@ -173,31 +175,9 @@ function classifyPrunedRelation(
 
 function splitTopLevelAttributes(attributesText: string): string[] {
   if (!attributesText.startsWith('(') || !attributesText.endsWith(')')) return [];
-  const inner = attributesText.slice(1, -1);
-  const attributes: string[] = [];
-  let start = 0;
-  let depth = 0;
-  let inString = false;
-  for (let i = 0; i < inner.length; i++) {
-    const c = inner[i];
-    if (inString) {
-      if (c === "'") {
-        if (inner[i + 1] === "'") i++;
-        else inString = false;
-      }
-    } else if (c === "'") {
-      inString = true;
-    } else if (c === '(') {
-      depth++;
-    } else if (c === ')') {
-      depth--;
-    } else if (c === ',' && depth === 0) {
-      attributes.push(inner.slice(start, i).trim());
-      start = i + 1;
-    }
-  }
-  attributes.push(inner.slice(start).trim());
-  return attributes;
+  // The shared quote-, nesting- and comment-aware splitter (#7785): a comma
+  // inside a `/* ... */` comment is not an attribute boundary.
+  return splitStepTopLevel(attributesText.slice(1, -1));
 }
 
 function parseStepRef(value: string): number | undefined {
@@ -297,21 +277,15 @@ function tokenizeStepStatements(stepContent: string): StepEntityStatement[] {
     }
     i++; // past '('
     let depth = 1;
-    let inString = false;
     while (i < len && depth > 0) {
       const c = stepContent[i];
-      if (inString) {
-        if (c === "'") {
-          // Peek for escape `''`.
-          if (stepContent[i + 1] === "'") { i += 2; continue; }
-          inString = false;
-          i++;
-          continue;
-        }
-        i++;
+      if (c === "'") {
+        // The shared literal-end rule (`''`, PAGE-directive operand, #7589).
+        // A string that never closes runs to the end, as before.
+        const strEnd = stepStringLiteralEnd(stepContent, i);
+        i = strEnd < 0 ? len : strEnd;
         continue;
       }
-      if (c === "'") { inString = true; i++; continue; }
       if (c === '(') { depth++; i++; continue; }
       if (c === ')') { depth--; i++; continue; }
       i++;
@@ -342,18 +316,16 @@ function tokenizeStepStatements(stepContent: string): StepEntityStatement[] {
 function scanToStatementEnd(s: string, from: number): number {
   const len = s.length;
   let i = from;
-  let inString = false;
   while (i < len) {
     const c = s[i];
-    if (inString) {
-      if (c === "'") {
-        if (s[i + 1] === "'") { i += 2; continue; }
-        inString = false;
-      }
-      i++;
+    if (c === "'") {
+      // Header strings too (FILE_NAME, FILE_DESCRIPTION): a PAGE directive's
+      // apostrophe operand must not end the literal (#7589).
+      const end = stepStringLiteralEnd(s, i);
+      if (end < 0) return len;
+      i = end;
       continue;
     }
-    if (c === "'") { inString = true; i++; continue; }
     if (c === ';') return i + 1;
     i++;
   }
@@ -362,11 +334,16 @@ function scanToStatementEnd(s: string, from: number): number {
 
 /** True iff any `#N` token in `rest` has N in the given set. */
 function referencesAnyId(rest: string, ids: ReadonlySet<number>): boolean {
-  const refRegex = /#(\d+)/g;
+  const refRegex = /'|#(\d+)/g;
   let m: RegExpExecArray | null;
   while ((m = refRegex.exec(rest)) !== null) {
-    const n = parseInt(m[1], 10);
-    if (ids.has(n)) return true;
+    if (m[1] === undefined) {
+      // A string literal: its `#9` text is not a reference (#7589).
+      const end = stepStringLiteralEnd(rest, m.index);
+      if (end >= 0) refRegex.lastIndex = end; // unclosed: keep scanning raw, the safe side
+      continue;
+    }
+    if (ids.has(parseInt(m[1], 10))) return true;
   }
   return false;
 }

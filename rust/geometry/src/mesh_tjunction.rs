@@ -13,9 +13,64 @@
 //! splits the kept triangle across AC at M.
 
 use super::Mesh;
+use crate::math::v3;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 type Key = [u32; 3];
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Repair { None, Watertight, ExactIndexed }
+
+impl Mesh {
+    /// Index-only source cleanup, retaining exact collinear boundary subdivisions
+    /// only when the neighbouring face shares the original edge indices (#7292).
+    /// Positions, normals and parallel vertex buffers are never extended or moved.
+    pub(crate) fn clean_degenerate_exact_indexed(&mut self) {
+        self.drop_thin_triangles_inner(crate::kernel::mesh_bridge::SNAP_GRID, Repair::ExactIndexed);
+    }
+
+    pub(super) fn drop_thin_triangles_inner(&mut self, h_eps: f64, repair: Repair) {
+        if self.indices.len() < 3 {
+            return;
+        }
+        let vertex_count = self.positions.len() / 3;
+        let mut kept = Vec::with_capacity(self.indices.len());
+        let mut slivers: Vec<[u32; 3]> = Vec::new();
+        for tri in self.indices.chunks_exact(3) {
+            if (tri[0] as usize) >= vertex_count
+                || (tri[1] as usize) >= vertex_count
+                || (tri[2] as usize) >= vertex_count
+            {
+                continue;
+            }
+            let [a, b, c] = [tri[0], tri[1], tri[2]].map(|i| pos_of(self, i));
+            let Some(height) = height(a, b, c) else {
+                continue; // fully collapsed
+            };
+            if height < h_eps {
+                if repair != Repair::ExactIndexed || exact_collinear([a, b, c]) {
+                    slivers.push([tri[0], tri[1], tri[2]]);
+                }
+                continue; // collinear / zero-area sliver
+            }
+            kept.extend_from_slice(tri);
+        }
+        if repair != Repair::None && !slivers.is_empty() {
+            split_across_dropped_slivers(self, &mut kept, &slivers, h_eps, repair);
+        }
+        self.indices = kept;
+    }
+
+}
+
+fn exact_collinear(points: [[f64; 3]; 3]) -> bool {
+    points.iter().flatten().all(|v| v.is_finite())
+        && [(0, 1), (1, 2), (2, 0)].into_iter().all(|(x, y)| {
+            let p = points.map(|p| [p[x], p[y]]);
+            crate::math::geom2d::orientation(p[0], p[1], p[2]) == 0
+        })
+}
+
 
 /// Canonical (sorted) form of an undirected edge.
 fn canon(a: Key, b: Key) -> (Key, Key) {
@@ -32,20 +87,14 @@ pub(super) fn pos_of(mesh: &Mesh, i: u32) -> [f64; 3] {
     [mesh.positions[b] as f64, mesh.positions[b + 1] as f64, mesh.positions[b + 2] as f64]
 }
 
-fn dist(a: [f64; 3], b: [f64; 3]) -> f64 {
-    ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
-}
-
 /// Height of triangle (a, b, c) over its longest edge (= 2·area / longest),
 /// the measure a sliver is judged by. `None` when all three points coincide.
 pub(super) fn height(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> Option<f64> {
-    let longest = dist(a, b).max(dist(b, c)).max(dist(c, a));
+    let longest = v3::dist(a, b).max(v3::dist(b, c)).max(v3::dist(c, a));
     if longest <= 0.0 {
         return None;
     }
-    let (u, v) = ([b[0] - a[0], b[1] - a[1], b[2] - a[2]], [c[0] - a[0], c[1] - a[1], c[2] - a[2]]);
-    let cr = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
-    Some((cr[0] * cr[0] + cr[1] * cr[1] + cr[2] * cr[2]).sqrt() / longest)
+    Some(v3::norm(v3::tri_normal(a, b, c)) / longest)
 }
 
 /// One dropped sliver's apex on its long edge.
@@ -82,11 +131,12 @@ impl LongEdge {
 /// Split the kept triangles across the long edges of the dropped `slivers`.
 /// `kept` is rewritten in place; an apex copy (when normals differ) is
 /// appended to `mesh`.
-pub(super) fn split_across_dropped_slivers(
+fn split_across_dropped_slivers(
     mesh: &mut Mesh,
     kept: &mut Vec<u32>,
     slivers: &[[u32; 3]],
     h_eps: f64,
+    repair: Repair,
 ) {
     // 1. Each T-vertex sliver names a long edge and an apex strictly inside
     //    it. Coincident-pair needles (apex within `h_eps` of an end) are left
@@ -96,11 +146,11 @@ pub(super) fn split_across_dropped_slivers(
     let mut index_of: FxHashMap<(Key, Key), usize> = FxHashMap::default();
     for tri in slivers {
         let p = tri.map(|i| pos_of(mesh, i));
-        let len = [dist(p[0], p[1]), dist(p[1], p[2]), dist(p[2], p[0])];
+        let len = [v3::dist(p[0], p[1]), v3::dist(p[1], p[2]), v3::dist(p[2], p[0])];
         let i = (0..3).fold(0, |m, e| if len[e] > len[m] { e } else { m });
         let (a, c, m) = (tri[i], tri[(i + 1) % 3], tri[(i + 2) % 3]);
         let (pa, pc, pm) = (p[i], p[(i + 1) % 3], p[(i + 2) % 3]);
-        if dist(pa, pm) < h_eps || dist(pc, pm) < h_eps {
+        if v3::dist(pa, pm) < h_eps || v3::dist(pc, pm) < h_eps {
             continue;
         }
         let (ka, kc) = (key_of(mesh, a), key_of(mesh, c));
@@ -193,7 +243,7 @@ pub(super) fn split_across_dropped_slivers(
             out.extend_from_slice(&tri); // no edge can lie on a long edge
             continue;
         }
-        split |= emit(mesh, &splits, tri, 0, h_eps, &mut out);
+        split |= emit(mesh, &splits, tri, 0, h_eps, repair, &mut out);
     }
     *kept = out;
     if split {
@@ -219,6 +269,7 @@ fn emit(
     tri: [u32; 3],
     depth: u32,
     h_eps: f64,
+    repair: Repair,
     out: &mut Vec<u32>,
 ) -> bool {
     if depth < 4 {
@@ -229,23 +280,37 @@ fn emit(
                 continue;
             };
             let forward = ku <= kv;
+            let (lo, hi) = if forward { (u, v) } else { (v, u) };
+            // Coordinate-only matches across another face may require a new
+            // vertex/normal/UV. Index-only cleanup cannot make that change.
+            if repair == Repair::ExactIndexed
+                && list.iter().any(|a| a.source.0 != lo || a.source.1 != hi)
+            {
+                continue;
+            }
             let ordered: Vec<Apex> =
                 if forward { list.clone() } else { list.iter().rev().copied().collect() };
             let pw = pos_of(mesh, w);
+            if repair == Repair::ExactIndexed && !pw.iter().all(|v| v.is_finite()) {
+                continue; // invalid geometry keeps the legacy index-only path
+            }
             let mut points = vec![pos_of(mesh, u)];
             points.extend(ordered.iter().map(|a| a.key.map(|c| f32::from_bits(c) as f64)));
             points.push(pos_of(mesh, v));
             if points.windows(2).any(|s| height(s[0], s[1], pw).is_none_or(|h| h < h_eps)) {
                 continue;
             }
-            let (lo, hi) = if forward { (u, v) } else { (v, u) };
             let mut chain = vec![u];
             for apex in ordered {
-                chain.push(apex_vertex(mesh, &apex, lo, hi));
+                chain.push(if repair == Repair::ExactIndexed {
+                    apex.source.2
+                } else {
+                    apex_vertex(mesh, &apex, lo, hi)
+                });
             }
             chain.push(v);
             for s in chain.windows(2) {
-                emit(mesh, splits, [s[0], s[1], w], depth + 1, h_eps, out);
+                emit(mesh, splits, [s[0], s[1], w], depth + 1, h_eps, repair, out);
             }
             return true;
         }

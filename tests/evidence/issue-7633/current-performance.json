@@ -1,0 +1,622 @@
+{
+  "source": {
+    "base": "2f75f65d7843b08d172d2d9998bafe8b6d368906",
+    "branch": "cc813960e2b8c55d3e58d96b7a12207d6e9f7355"
+  },
+  "runStatus": "independently-reviewed",
+  "native": {
+    "AC20-FZK-Haus.ifc": {
+      "completeFivePairs": true,
+      "identity": {
+        "base": [
+          [
+            285,
+            35940,
+            20322,
+            [
+              "7377db33331a3523"
+            ]
+          ]
+        ],
+        "branch": [
+          [
+            285,
+            35940,
+            20322,
+            [
+              "7377db33331a3523"
+            ]
+          ]
+        ]
+      },
+      "stableAndEqual": true,
+      "timings": {
+        "parseMs": {
+          "samples": {
+            "base": [
+              14,
+              14,
+              14,
+              15,
+              17
+            ],
+            "branch": [
+              14,
+              14,
+              15,
+              15,
+              14
+            ]
+          },
+          "baseMedian": 14,
+          "branchMedian": 14,
+          "delta": 0,
+          "deltaPercent": 0.0,
+          "verdict": "descriptive only; inspect spread and browser report"
+        },
+        "geometryMs": {
+          "samples": {
+            "base": [
+              34,
+              39,
+              25,
+              34,
+              31
+            ],
+            "branch": [
+              34,
+              28,
+              46,
+              28,
+              28
+            ]
+          },
+          "baseMedian": 34,
+          "branchMedian": 28,
+          "delta": -6,
+          "deltaPercent": -17.647058823529413,
+          "verdict": "descriptive only; inspect spread and browser report"
+        },
+        "totalMs": {
+          "samples": {
+            "base": [
+              49,
+              54,
+              40,
+              50,
+              49
+            ],
+            "branch": [
+              48,
+              42,
+              62,
+              43,
+              43
+            ]
+          },
+          "baseMedian": 49,
+          "branchMedian": 43,
+          "delta": -6,
+          "deltaPercent": -12.244897959183673,
+          "verdict": "descriptive only; inspect spread and browser report"
+        }
+      }
+    },
+    "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc": {
+      "completeFivePairs": true,
+      "identity": {
+        "base": [
+          [
+            1402,
+            218966,
+            136257,
+            [
+              "e96e7e6149ccd77b"
+            ]
+          ]
+        ],
+        "branch": [
+          [
+            1402,
+            218966,
+            136257,
+            [
+              "e96e7e6149ccd77b"
+            ]
+          ]
+        ]
+      },
+      "stableAndEqual": true,
+      "timings": {
+        "parseMs": {
+          "samples": {
+            "base": [
+              36,
+              36,
+              36,
+              36,
+              35
+            ],
+            "branch": [
+              36,
+              37,
+              36,
+              37,
+              37
+            ]
+          },
+          "baseMedian": 36,
+          "branchMedian": 37,
+          "delta": 1,
+          "deltaPercent": 2.7777777777777777,
+          "verdict": "descriptive only; inspect spread and browser report"
+        },
+        "geometryMs": {
+          "samples": {
+            "base": [
+              3918,
+              3920,
+              3984,
+              3896,
+              4051
+            ],
+            "branch": [
+              3865,
+              4018,
+              3804,
+              3931,
+              4047
+            ]
+          },
+          "baseMedian": 3920,
+          "branchMedian": 3931,
+          "delta": 11,
+          "deltaPercent": 0.28061224489795916,
+          "verdict": "descriptive only; inspect spread and browser report"
+        },
+        "totalMs": {
+          "samples": {
+            "base": [
+              3954,
+              3956,
+              4021,
+              3932,
+              4087
+            ],
+            "branch": [
+              3902,
+              4055,
+              3841,
+              3969,
+              4085
+            ]
+          },
+          "baseMedian": 3956,
+          "branchMedian": 3969,
+          "delta": 13,
+          "deltaPercent": 0.32861476238624876,
+          "verdict": "descriptive only; inspect spread and browser report"
+        }
+      }
+    },
+    "ISSUE_053_20181220Holter_Tower_10.ifc": {
+      "completeFivePairs": true,
+      "identity": {
+        "base": [
+          [
+            109515,
+            4515185,
+            2895374,
+            [
+              "9af337ef8f713ce5"
+            ]
+          ]
+        ],
+        "branch": [
+          [
+            109515,
+            4515185,
+            2895374,
+            [
+              "9af337ef8f713ce5"
+            ]
+          ]
+        ]
+      },
+      "stableAndEqual": true,
+      "timings": {
+        "parseMs": {
+          "samples": {
+            "base": [
+              838,
+              843,
+              839,
+              840,
+              837
+            ],
+            "branch": [
+              858,
+              860,
+              858,
+              864,
+              858
+            ]
+          },
+          "baseMedian": 839,
+          "branchMedian": 858,
+          "delta": 19,
+          "deltaPercent": 2.264600715137068,
+          "verdict": "descriptive only; inspect spread and browser report"
+        },
+        "geometryMs": {
+          "samples": {
+            "base": [
+              1758,
+              1727,
+              1607,
+              1790,
+              1653
+            ],
+            "branch": [
+              1449,
+              1450,
+              1716,
+              1844,
+              1765
+            ]
+          },
+          "baseMedian": 1727,
+          "branchMedian": 1716,
+          "delta": -11,
+          "deltaPercent": -0.6369426751592356,
+          "verdict": "descriptive only; inspect spread and browser report"
+        },
+        "totalMs": {
+          "samples": {
+            "base": [
+              2596,
+              2570,
+              2446,
+              2631,
+              2491
+            ],
+            "branch": [
+              2307,
+              2310,
+              2575,
+              2709,
+              2624
+            ]
+          },
+          "baseMedian": 2570,
+          "branchMedian": 2575,
+          "delta": 5,
+          "deltaPercent": 0.19455252918287938,
+          "verdict": "descriptive only; inspect spread and browser report"
+        }
+      }
+    }
+  },
+  "browser": {
+    "rows": 30,
+    "rowsSha256": "26d0bef369179bdd1ec553b3dc916776172c49cf2cd6d3885bc82b0b9ae3987a",
+    "failed": [],
+    "gpuUnqualified": [],
+    "fixtures": {
+      "AC20-FZK-Haus.ifc": {
+        "completeFivePairs": true,
+        "payloadRoots": {
+          "base": [
+            "9cb3381f605776476f1e5a2b3ccfb5769d8bc876e3bfc3b7203648969e1d6f88"
+          ],
+          "branch": [
+            "9cb3381f605776476f1e5a2b3ccfb5769d8bc876e3bfc3b7203648969e1d6f88"
+          ]
+        },
+        "everySampleCompletePayload": true,
+        "settledFourWorkerEvidence": true,
+        "stableAndEqual": true
+      },
+      "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc": {
+        "completeFivePairs": true,
+        "payloadRoots": {
+          "base": [
+            "c63fc08fd3dba18b4c34031ce6709018fd8fdef9eb66e55c115c2218260476d3"
+          ],
+          "branch": [
+            "c63fc08fd3dba18b4c34031ce6709018fd8fdef9eb66e55c115c2218260476d3"
+          ]
+        },
+        "everySampleCompletePayload": true,
+        "settledFourWorkerEvidence": true,
+        "stableAndEqual": true
+      },
+      "ISSUE_053_20181220Holter_Tower_10.ifc": {
+        "completeFivePairs": true,
+        "payloadRoots": {
+          "base": [
+            "07690f024cd462f476f3bd388160e85acf423d1049a42c91c805028e5e6bb457"
+          ],
+          "branch": [
+            "07690f024cd462f476f3bd388160e85acf423d1049a42c91c805028e5e6bb457"
+          ]
+        },
+        "everySampleCompletePayload": true,
+        "settledFourWorkerEvidence": true,
+        "stableAndEqual": true
+      }
+    },
+    "originalTimingReport": {
+      "coverage": "Observed metadata/geometry/renderer logs plus canvas allocation (100ms polling); search, cache-tail memory, properties, picking and Firefox unqualified.",
+      "base": "base",
+      "branch": "branch",
+      "failures": 0,
+      "deviceLossFailures": 0,
+      "fixtures": [
+        {
+          "fixture": "AC20-FZK-Haus.ifc",
+          "metrics": [
+            {
+              "metric": "first-batch (geom submitted)",
+              "baseMedianMs": 212,
+              "branchMedianMs": 233,
+              "deltaPct": 9.90566037735849,
+              "noisePct": 19.81132075471698,
+              "real": false,
+              "direction": "slower"
+            },
+            {
+              "metric": "first-visible (actual paint)",
+              "baseMedianMs": 534,
+              "branchMedianMs": 542,
+              "deltaPct": 1.4981273408239701,
+              "noisePct": 7.116104868913857,
+              "real": false,
+              "direction": "slower"
+            },
+            {
+              "metric": "stream-complete",
+              "baseMedianMs": 669,
+              "branchMedianMs": 690,
+              "deltaPct": 3.1390134529147984,
+              "noisePct": 11.061285500747383,
+              "real": false,
+              "direction": "slower"
+            },
+            {
+              "metric": "spatial-ready",
+              "baseMedianMs": 794,
+              "branchMedianMs": 795,
+              "deltaPct": 0.12594458438287154,
+              "noisePct": 5.919395465994962,
+              "real": false,
+              "direction": "slower"
+            },
+            {
+              "metric": "metadata-complete",
+              "baseMedianMs": 885,
+              "branchMedianMs": 905,
+              "deltaPct": 2.2598870056497176,
+              "noisePct": 4.858757062146893,
+              "real": false,
+              "direction": "slower"
+            },
+            {
+              "metric": "METADATA + RENDER (observed)",
+              "baseMedianMs": 1000,
+              "branchMedianMs": 1004,
+              "deltaPct": 0.4,
+              "noisePct": 1.7000000000000002,
+              "real": false,
+              "direction": "slower"
+            },
+            {
+              "metric": "app total (legacy CI metric)",
+              "baseMedianMs": 935,
+              "branchMedianMs": 953,
+              "deltaPct": 1.9251336898395723,
+              "noisePct": 4.064171122994653,
+              "real": false,
+              "direction": "slower"
+            }
+          ],
+          "fingerprint": {
+            "totalMeshes": {
+              "base": [
+                317
+              ],
+              "branch": [
+                317
+              ]
+            }
+          }
+        },
+        {
+          "fixture": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+          "metrics": [
+            {
+              "metric": "first-batch (geom submitted)",
+              "baseMedianMs": 968,
+              "branchMedianMs": 994,
+              "deltaPct": 2.6859504132231407,
+              "noisePct": 8.574380165289258,
+              "real": false,
+              "direction": "slower"
+            },
+            {
+              "metric": "first-visible (actual paint)",
+              "baseMedianMs": 1402,
+              "branchMedianMs": 1433,
+              "deltaPct": 2.211126961483595,
+              "noisePct": 2.7817403708987163,
+              "real": false,
+              "direction": "slower"
+            },
+            {
+              "metric": "stream-complete",
+              "baseMedianMs": 5456,
+              "branchMedianMs": 5449,
+              "deltaPct": -0.1282991202346041,
+              "noisePct": 2.3643695014662756,
+              "real": false,
+              "direction": "faster"
+            },
+            {
+              "metric": "spatial-ready",
+              "baseMedianMs": 1106,
+              "branchMedianMs": 1125,
+              "deltaPct": 1.7179023508137432,
+              "noisePct": 6.600361663652802,
+              "real": false,
+              "direction": "slower"
+            },
+            {
+              "metric": "metadata-complete",
+              "baseMedianMs": 1268,
+              "branchMedianMs": 1279,
+              "deltaPct": 0.8675078864353312,
+              "noisePct": 3.3123028391167195,
+              "real": false,
+              "direction": "slower"
+            },
+            {
+              "metric": "METADATA + RENDER (observed)",
+              "baseMedianMs": 5865,
+              "branchMedianMs": 5837,
+              "deltaPct": -0.47740835464620635,
+              "noisePct": 1.1935208866155158,
+              "real": false,
+              "direction": "faster"
+            },
+            {
+              "metric": "app total (legacy CI metric)",
+              "baseMedianMs": 5586,
+              "branchMedianMs": 5579,
+              "deltaPct": -0.12531328320802004,
+              "noisePct": 2.2198353025420694,
+              "real": false,
+              "direction": "faster"
+            }
+          ],
+          "fingerprint": {
+            "totalMeshes": {
+              "base": [
+                1402
+              ],
+              "branch": [
+                1402
+              ]
+            }
+          }
+        },
+        {
+          "fixture": "ISSUE_053_20181220Holter_Tower_10.ifc",
+          "metrics": [
+            {
+              "metric": "first-batch (geom submitted)",
+              "baseMedianMs": 1141,
+              "branchMedianMs": 1159,
+              "deltaPct": 1.5775635407537247,
+              "noisePct": 14.022787028921998,
+              "real": false,
+              "direction": "slower"
+            },
+            {
+              "metric": "first-visible (actual paint)",
+              "baseMedianMs": 2043,
+              "branchMedianMs": 2087,
+              "deltaPct": 2.15369554576603,
+              "noisePct": 7.342143906020558,
+              "real": false,
+              "direction": "slower"
+            },
+            {
+              "metric": "stream-complete",
+              "baseMedianMs": 8303,
+              "branchMedianMs": 8177,
+              "deltaPct": -1.5175237865831626,
+              "noisePct": 7.816451884860894,
+              "real": false,
+              "direction": "faster"
+            },
+            {
+              "metric": "spatial-ready",
+              "baseMedianMs": 3960,
+              "branchMedianMs": 4097,
+              "deltaPct": 3.45959595959596,
+              "noisePct": 5.075757575757576,
+              "real": false,
+              "direction": "slower"
+            },
+            {
+              "metric": "metadata-complete",
+              "baseMedianMs": 6088,
+              "branchMedianMs": 6163,
+              "deltaPct": 1.2319316688567674,
+              "noisePct": 7.4080157687253605,
+              "real": false,
+              "direction": "slower"
+            },
+            {
+              "metric": "METADATA + RENDER (observed)",
+              "baseMedianMs": 11477,
+              "branchMedianMs": 11504,
+              "deltaPct": 0.23525311492550316,
+              "noisePct": 5.55023089657576,
+              "real": false,
+              "direction": "slower"
+            },
+            {
+              "metric": "app total (legacy CI metric)",
+              "baseMedianMs": 9239,
+              "branchMedianMs": 9128,
+              "deltaPct": -1.201428726052603,
+              "noisePct": 6.873038207598226,
+              "real": false,
+              "direction": "faster"
+            }
+          ],
+          "fingerprint": {
+            "totalMeshes": {
+              "base": [
+                110633
+              ],
+              "branch": [
+                110633
+              ]
+            }
+          }
+        }
+      ],
+      "verdict": {
+        "noSuccessfulSamples": false,
+        "fingerprintDrift": false,
+        "tooNoisy": false,
+        "realChange": false,
+        "insufficientPairedSamples": false,
+        "incomparableFixture": false,
+        "inconclusive": false,
+        "zeroBaselineIncrease": false
+      }
+    }
+  },
+  "limitations": [
+    "CPU payload comparison is not GPU buffer/pixel identity. Native fingerprint excludes UV/texture/instancing metadata. No historical #6940 final30 qualification. No timing pass inferred from exit0."
+  ],
+  "schemaVersion": 3,
+  "issue": 7633,
+  "verdict": "Qualified on cc813960e2: all browser timing changes within unchanged measured noise; all native and complete CPU browser geometry payloads stable and equal.",
+  "healthProof": {
+    "samples": 30,
+    "allHealthy": true,
+    "allIdleQualified": true,
+    "files": {
+      "result.json": "050118cf201cf3d3f68a78bb83c89897cd729f62bafe9e7b9074628378acfb69",
+      "browser.jsonl": "26d0bef369179bdd1ec553b3dc916776172c49cf2cd6d3885bc82b0b9ae3987a",
+      "browser-report.json": "5c1dc524b1ac15931d9bee41e90c07365627369f4495b0c14da1b0c6c7687dd3",
+      "idle.jsonl": "87dacc7e0bb5403027f566e18e0a9066b53f3ccc8cabd71006cd95f34507cdc1"
+    },
+    "job": "d284f600-16ca-4cf1-9d8a-e5294a836012"
+  },
+  "priorEvidence": "historical-performance-98f52d74.json"
+}

@@ -369,6 +369,10 @@ class PropValue(TypedDict):
     name: str
     value: str  # always a string, in the file's OWN units
     value_type: str  # e.g. "IFCLABEL", "IFCREAL", "IFCBOOLEAN"
+    # True when inherited from the occurrence's IfcTypeObject, False when the
+    # occurrence carries it itself. Always False with type_properties=False,
+    # and always False for an attribute.
+    inherited: bool
 
 class PropertySet(TypedDict):
     name: str
@@ -378,6 +382,7 @@ class QuantityValue(TypedDict):
     name: str
     value: float  # in the file's OWN units
     kind: str  # "Length" | "Area" | "Volume" | "Count" | "Weight" | "Time"
+    inherited: bool  # same meaning as on a property
 
 class QuantitySet(TypedDict):
     name: str
@@ -629,7 +634,8 @@ def entity_data(
 
     ``type_properties`` (on by default) also returns what each occurrence
     inherits from its ``IfcTypeObject`` through ``IfcRelDefinesByType``. A type
-    attaches its sets via ``HasPropertySets`` and gets no row of its own unless
+    attaches its sets via ``HasPropertySets`` (or an ``IfcRelDefinesByProperties``
+    naming the type, also read) and gets no row of its own unless
     it carries orphan geometry, so without this the properties authoring tools
     put on types are unreachable. The merge is per property:
 
@@ -646,13 +652,24 @@ def entity_data(
     already define, so the occurrence wins a collision. One flag governs both
     lists.
 
+    Every property and quantity dict carries ``inherited``, ``True`` when it
+    came from the type, including the copy added to each same-named set the
+    occurrence carries.
+
     Pass ``type_properties=False`` for own-sets-only, as in 4.3.0, which
     affects ``property_sets`` and ``quantity_sets`` alike.
 
-    Remaining limit, inherited from the shared export model: only
-    ``IfcPropertySingleValue`` properties are decoded. Enumerated, list,
-    bounded, table and reference properties are skipped silently, and the pset
-    still appears with those entries missing.
+    Each property dictionary contains ``name``, ``value``, ``value_type`` and
+    ``inherited``.
+    Every property kind is decoded. An ``IfcPropertySingleValue`` returns its
+    nominal value as a string; an enumerated, list, bounded, table, reference
+    or complex property returns its display string (``"A, B"``, ``"2 [1 – 5]"``,
+    ``"Table (2 rows)"``). A reference uses the target's nonblank ``Name``, else
+    its nonblank ``Identification``, else ``#<id>``. For
+    ``IfcPropertySingleValue``, ``value_type`` is the nominal value's rendered
+    type tag (for example, ``IFCLABEL`` or ``IFCREAL``). For other property
+    kinds, it is the members' shared type tag or else the property class
+    (``IFCPROPERTYTABLEVALUE``, ...).
 
     ``attributes`` (on by default) returns each entity's SCHEMA-DECLARED IFC
     attributes, which are not property sets and which no amount of pset work
@@ -666,8 +683,8 @@ def entity_data(
     omitted rather than reported empty, so the list is usually shorter than the
     class declares.
 
-    Entries share the ``{name, value, value_type}`` shape of a property, so one
-    code path reads both. Fields this dict already carries (``global_id``,
+    Entries share the ``{name, value, value_type, inherited}`` shape of a
+    property, ``inherited`` always ``False``, so one code path reads both. Fields this dict already carries (``global_id``,
     ``name``, ``description``, ``object_type``) are not repeated, and
     reference-valued attributes are omitted rather than rendered as a dangling
     id.

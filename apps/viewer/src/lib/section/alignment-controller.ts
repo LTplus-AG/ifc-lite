@@ -152,6 +152,8 @@ export async function setAlignmentDistance(distance: number): Promise<void> {
 export function startAlignmentTool(): () => void {
   unsubscribe?.();
   unsubscribe = useViewerStore.subscribe((state, previous) => {
+    // The picker belongs to the plane that was active when it was opened (#7545): choosing another plane leaves it.
+    if (state.sectionPlane.id !== previous.sectionPlane.id && useAlignmentToolState.getState().choosing) leaveAlignmentMode();
     const binding = state.sectionPlane.custom?.alignment;
     if (!binding || state.sectionPickMode) {
       if (owner && useAlignmentToolState.getState().busy && !state.sectionPickMode) {

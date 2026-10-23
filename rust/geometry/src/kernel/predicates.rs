@@ -9,8 +9,7 @@
 //! fixed-width tiers and escalating to the exact (BigRational) tier on a
 //! straddling filter — every fast tier verified `≡` the exact tier here.
 
-use super::{fixed, interval, rational};
-use super::{DropAxis, ImplicitPoint, Sign};
+use super::{fixed, interval, rational, DropAxis, ImplicitPoint, Sign};
 
 /// Exact `orient3d` over a mix of explicit + implicit points.
 ///
@@ -21,9 +20,7 @@ use super::{DropAxis, ImplicitPoint, Sign};
 pub fn orient3d(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, d: &ImplicitPoint) -> Sign {
     use ImplicitPoint::{Explicit, Lpi, Tpi};
     match (a, b, c, d) {
-        (Explicit(a), Explicit(b), Explicit(c), Explicit(d)) => {
-            Sign::from_f64(geometry_predicates::orient3d(*a, *b, *c, *d))
-        }
+        (Explicit(a), Explicit(b), Explicit(c), Explicit(d)) => orient3d_explicit(*a, *b, *c, *d),
         (Lpi(l), Explicit(b), Explicit(c), Explicit(d)) => interval::lpi_orient3d(l, *b, *c, *d)
             .or_else(|| {
                 crate::kernel::budget::note_escalation();
@@ -36,11 +33,15 @@ pub fn orient3d(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, d: &Imp
                 fixed::indirect_orient3d(a, *b, *c, *d)
             })
             .unwrap_or_else(|| rational::tpi_orient3d(t, *b, *c, *d)),
-        // By-construction unreachable: kernel callers only ever build the configurations above.
-        _ => unimplemented!(
-            "kernel::orient3d: implicit-point configuration never produced by the arrangement pipeline"
-        ),
+        // Other mixes: exact answer on materialised points, not a panic (#7677).
+        _ => rational::orient3d_points(a, b, c, d),
     }
+}
+
+/// [`orient3d`] on four explicit points: Shewchuk only, no `ImplicitPoint` wrappers (hot ray-parity path).
+#[inline]
+pub fn orient3d_explicit(a: [f64; 3], b: [f64; 3], c: [f64; 3], d: [f64; 3]) -> Sign {
+    Sign::from_f64(geometry_predicates::orient3d(a, b, c, d))
 }
 
 /// Exact `orient2d(a, b, c)` projected on the two axes remaining after dropping
@@ -69,10 +70,8 @@ pub fn orient2d(a: &ImplicitPoint, b: &ImplicitPoint, c: &ImplicitPoint, axis: D
                 fixed::indirect_orient2d(a, *b, *c, axis)
             })
             .unwrap_or_else(|| rational::tpi_orient2d(t, *b, *c, axis)),
-        // By-construction unreachable: kernel callers only ever build the configurations above.
-        _ => unimplemented!(
-            "kernel::orient2d: implicit-point configuration never produced by the arrangement pipeline"
-        ),
+        // `orient2d_any` canonicalises and calls back with (E,E,E) or (I,E,E) only (#7677).
+        _ => orient2d_any(a, b, c, axis),
     }
 }
 
@@ -111,6 +110,7 @@ pub fn cmp_lex(a: &ImplicitPoint, b: &ImplicitPoint) -> Sign {
 fn explicit_coord(p: &ImplicitPoint) -> [f64; 3] {
     match p {
         ImplicitPoint::Explicit(c) => *c,
+        // Invariant: only `orient2d_any`'s 2-implicit arm calls this, on an Explicit rp[2].
         _ => unreachable!("explicit_coord on an implicit point"),
     }
 }

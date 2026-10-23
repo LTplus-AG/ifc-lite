@@ -8,7 +8,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 // Registry version discovery is independent of the generated fixture link.
-vi.mock('../src/utils/config-fixers.js', () => ({ getPackageVersion: () => '^1.0.0' }));
+vi.mock('../src/utils/config-fixers.js', async importOriginal => ({
+  ...(await importOriginal<typeof import('../src/utils/config-fixers.js')>()),
+  getPackageVersion: () => '^1.0.0',
+  getPinnedPackageVersion: () => '1.0.0',
+}));
 import { createThreejsTemplate } from '../src/templates/threejs.js';
 import { createBabylonjsTemplate } from '../src/templates/babylonjs.js';
 

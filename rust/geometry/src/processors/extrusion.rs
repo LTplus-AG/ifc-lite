@@ -4,17 +4,19 @@
 
 //! ExtrudedAreaSolid processor - extrusion of 2D profiles.
 
+use crate::math::tol;
 use crate::{
-    extrusion::{apply_transform, extrude_profile},
     profiles::ProfileProcessor,
-    Error, Mesh, Result, TessellationQuality, Vector3,
+    Mesh, Result, TessellationQuality, Vector3,
 };
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
 
-use super::helpers::parse_axis2_placement_3d;
 use crate::router::GeometryProcessor;
 use crate::scalar::{magnitude_squared3, GeomScalar};
+
+#[path = "extrusion_plan.rs"]
+pub(crate) mod plan;
 
 /// Local (pre-`Position`) transform an `IfcExtrudedAreaSolid` needs for its
 /// `ExtrudedDirection`, generic over the scalar.
@@ -51,7 +53,8 @@ pub(crate) fn extrusion_local_transform<S: GeomScalar>(
     // before the Position transform is applied. What the direction becomes in world
     // space is irrelevant to the extrusion operation.
     let is_local_z_aligned =
-        local_direction.x.abs().value() < 0.001 && local_direction.y.abs().value() < 0.001;
+        local_direction.x.abs().value() < tol::EXTRUSION_AXIS_COMPONENT_EPS
+            && local_direction.y.abs().value() < tol::EXTRUSION_AXIS_COMPONENT_EPS;
 
     if is_local_z_aligned {
         // Local direction is along Z - no extra rotation needed.
@@ -105,9 +108,29 @@ impl ExtrudedAreaSolidProcessor {
             profile_processor: ProfileProcessor::new(schema),
         }
     }
+
+    /// Decode the admitted production profile and parameters into owned data.
+    /// Region boundaries may already approximate curves at `quality`; this
+    /// preserves current construction semantics rather than analytic source data.
+    pub(crate) fn lower(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        quality: TessellationQuality,
+    ) -> Result<plan::ExtrusionPlan> {
+        plan::lower(entity, decoder, quality, &self.profile_processor)
+    }
 }
 
 impl GeometryProcessor for ExtrudedAreaSolidProcessor {
+    fn lower_owned(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
+        quality: crate::TessellationQuality, rtc_file_units: Option<(f64, f64, f64)>)
+        -> Option<crate::Result<crate::program::OwnedConstructor>> {
+        use crate::program::constructor::Constructor;
+        if rtc_file_units.is_some() { return None; }
+        Some(self.lower(entity, decoder, quality).map(|plan| crate::program::OwnedConstructor::new(Constructor::Extrusion(plan))))
+    }
+
     fn process(
         &self,
         entity: &DecodedEntity,
@@ -115,111 +138,7 @@ impl GeometryProcessor for ExtrudedAreaSolidProcessor {
         _schema: &IfcSchema,
         quality: TessellationQuality,
     ) -> Result<Mesh> {
-        // IfcExtrudedAreaSolid attributes:
-        // 0: SweptArea (IfcProfileDef)
-        // 1: Position (IfcAxis2Placement3D)
-        // 2: ExtrudedDirection (IfcDirection)
-        // 3: Depth (IfcPositiveLengthMeasure)
-
-        // Get profile
-        let profile_attr = entity
-            .get(0)
-            .ok_or_else(|| Error::geometry("ExtrudedAreaSolid missing SweptArea".to_string()))?;
-
-        let profile_entity = decoder
-            .resolve_ref(profile_attr)?
-            .ok_or_else(|| Error::geometry("Failed to resolve SweptArea".to_string()))?;
-
-        let profile = self
-            .profile_processor
-            .process(&profile_entity, decoder, quality)?;
-
-        if profile.outer.is_empty() {
-            return Ok(Mesh::new());
-        }
-
-        // Get extrusion direction
-        let direction_attr = entity.get(2).ok_or_else(|| {
-            Error::geometry("ExtrudedAreaSolid missing ExtrudedDirection".to_string())
-        })?;
-
-        let direction_entity = decoder
-            .resolve_ref(direction_attr)?
-            .ok_or_else(|| Error::geometry("Failed to resolve ExtrudedDirection".to_string()))?;
-
-        if direction_entity.ifc_type != IfcType::IfcDirection {
-            return Err(Error::geometry(format!(
-                "Expected IfcDirection, got {}",
-                direction_entity.ifc_type
-            )));
-        }
-
-        // Parse direction
-        let ratios_attr = direction_entity
-            .get(0)
-            .ok_or_else(|| Error::geometry("IfcDirection missing ratios".to_string()))?;
-
-        let ratios = ratios_attr
-            .as_list()
-            .ok_or_else(|| Error::geometry("Expected ratio list".to_string()))?;
-
-        use ifc_lite_core::AttributeValue;
-        let dir_x = ratios
-            .first()
-            .and_then(|v: &AttributeValue| v.as_float())
-            .unwrap_or(0.0);
-        let dir_y = ratios
-            .get(1)
-            .and_then(|v: &AttributeValue| v.as_float())
-            .unwrap_or(0.0);
-        let dir_z = ratios
-            .get(2)
-            .and_then(|v: &AttributeValue| v.as_float())
-            .unwrap_or(1.0);
-
-        let direction = Vector3::new(dir_x, dir_y, dir_z);
-        if direction.norm_squared() <= f64::EPSILON {
-            return Err(Error::geometry(
-                "ExtrudedAreaSolid has zero-length ExtrudedDirection".to_string(),
-            ));
-        }
-
-        // Get depth
-        let depth = entity
-            .get_float(3)
-            .ok_or_else(|| Error::geometry("ExtrudedAreaSolid missing Depth".to_string()))?;
-
-        // Parse Position transform first (attribute 1: IfcAxis2Placement3D)
-        // We need Position's rotation to transform ExtrudedDirection to world coordinates
-        let pos_transform = if let Some(pos_attr) = entity.get(1) {
-            if !pos_attr.is_null() {
-                if let Some(pos_entity) = decoder.resolve_ref(pos_attr)? {
-                    if pos_entity.ifc_type == IfcType::IfcAxis2Placement3D {
-                        Some(parse_axis2_placement_3d(&pos_entity, decoder)?)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        let transform = extrusion_local_transform(&direction, depth);
-
-        // Extrude the profile
-        let mut mesh = extrude_profile(&profile, depth, transform)?;
-
-        // Apply Position transform
-        if let Some(pos) = pos_transform {
-            apply_transform(&mut mesh, &pos);
-        }
-
-        Ok(mesh)
+        self.lower(entity, decoder, quality)?.evaluate()
     }
 
     fn supported_types(&self) -> Vec<IfcType> {

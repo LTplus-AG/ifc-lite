@@ -5,6 +5,8 @@
 /** Renderer-backed transaction factories shared by primary and federation loads. */
 
 import type { CoordinateInfo, ModelSpatialReference } from '@ifc-lite/geometry';
+import type { LandXmlDeclaredCrs } from './landXmlRenderFrame.js';
+import type { LandXmlGeorefAssumptions } from './landXmlGeorefAssumptions.js';
 import { federationRegistry } from '@ifc-lite/renderer';
 import { getGlobalRenderer } from '../useBCF.js';
 import type { LandXmlGeometryPreflight } from './landXmlIngest.js';
@@ -58,7 +60,10 @@ export function openFederatedLandXmlStreamingPlan(
   preflight: LandXmlGeometryPreflight,
   sourceCoordinateInfo: CoordinateInfo,
   spatialReference: ModelSpatialReference | undefined,
+  declaredCrs: LandXmlDeclaredCrs | undefined,
   isCurrent: () => boolean,
+  /** The assumptions `spatialReference` was built under; absent means none. */
+  assumptions?: Partial<LandXmlGeorefAssumptions>,
 ): FederatedLandXmlStreamingPlan | null {
   if (preflight.componentCount === 0) return null;
   const rendererResources = resources();
@@ -68,6 +73,8 @@ export function openFederatedLandXmlStreamingPlan(
     componentCount: preflight.componentCount,
     sourceCoordinateInfo,
     spatialReference,
+    declaredCrs,
+    assumptions,
     registry: federationRegistry,
     resources: rendererResources,
     isCurrent,

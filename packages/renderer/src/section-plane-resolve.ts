@@ -228,7 +228,7 @@ export function resolveExtraSectionPlanes(
         if (!plane.enabled) continue;
         if (out.length >= limit) break;
         const { normal, distance } = resolveSectionPlaneGeometry(plane, boundsMin, boundsMax, buildingRotation);
-        out.push({ normal, distance, flipped: plane.flipped === true });
+        out.push({ normal, distance, flipped: plane.flipped === true, ...(plane.id !== undefined ? { id: plane.id } : {}) });
     }
     return out;
 }

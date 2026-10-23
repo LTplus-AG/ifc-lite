@@ -302,6 +302,29 @@ fn issue_5759_unresolved_declared_area_unit_does_not_invent_si_area() {
     assert_eq!(row.sweeps.len(), 1);
 }
 
+/// EXPORT-DATA-9 (#7775): the length scale comes from the same `ProjectUnits`
+/// as the area scale. A length unit with an unusable factor keeps main's
+/// value (the data path never refuses) but is no longer silent: the schedule
+/// says its lengths are not in metres, as it already does for the area unit.
+#[test]
+fn export_data_9_unresolved_length_unit_is_diagnosed_not_silent() {
+    let source = REBAR.replace(
+        "#6=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);",
+        "#6=IFCCONVERSIONBASEDUNIT($,.LENGTHUNIT.,'CUSTOM',#990);\n#990=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(1.E400),#991);\n#991=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);",
+    );
+    let schedule =
+        build_rebar_schedule(source.as_bytes(), None, &SweptDiskCheckOptions::default()).unwrap();
+    assert!(
+        schedule.diagnostics.iter().any(|message| message.starts_with("project length unit unresolved: ConversionFactor #990")),
+        "{:?}",
+        schedule.diagnostics
+    );
+    // A usable millimetre unit stays silent, with the 0.001 scale.
+    let clean = build_rebar_schedule(REBAR.as_bytes(), None, &SweptDiskCheckOptions::default()).unwrap();
+    assert!(!clean.diagnostics.iter().any(|message| message.starts_with("project length unit")));
+    assert_eq!(clean.length_unit_scale, 0.001);
+}
+
 #[test]
 fn issue_5759_type_fallback_conflict_and_missing_geometry() {
     let source = REBAR.replace("FILE_SCHEMA(('IFC2X3'))", "FILE_SCHEMA(('IFC4'))").replace(
@@ -390,6 +413,38 @@ fn issue_5759_malformed_type_links_report_lost_authored_bar_length_with_bounded_
     let schedule = build_rebar_schedule(file.as_bytes(), None, &SweptDiskCheckOptions::default()).unwrap();
     assert_eq!(schedule.diagnostics.iter().filter(|message| message.starts_with("type relationship #")).count(), 128);
     assert!(schedule.diagnostics.iter().any(|message| message == "further type-link diagnostics omitted"));
+}
+
+/// EXPORT-DATA-26 (#7681): attribute positions are schema-specific. The
+/// attribute export resolves the first `FILE_SCHEMA` entry it recognises and
+/// fails closed without one; the schedule defaulted to IFC4 instead, so an
+/// IFC2X3-layout bar with no declaration read `BarRole` as `PredefinedType`,
+/// and it gave up on a declaration whose first entry was unrecognised. Both
+/// features must now resolve the same schema, or none.
+#[test]
+fn export_data_26_schema_resolution_matches_the_attribute_export() {
+    let bar = "#1=IFCREINFORCINGBAR('bar',$,'Bar',$,$,$,$,'T1','B500B',12.,113.,1500.,.MAIN.,.PLAIN.);\n";
+    let file = |header: &str| format!("ISO-10303-21;\nHEADER;\n{header}ENDSEC;\nDATA;\n{bar}ENDSEC;\nEND-ISO-10303-21;\n");
+    let attributes = |ifc: &str| {
+        let opts = crate::ModelOptions::default().with_attributes(true);
+        let model = crate::build_export_model_with_options(ifc.as_bytes(), &opts);
+        let row = model.entities.into_iter().find(|r| r.express_id == 1).expect("bar row");
+        row.attributes.into_iter().map(|a| a.name).collect::<HashSet<_>>()
+    };
+
+    let undeclared = file("");
+    let schedule = build_rebar_schedule(undeclared.as_bytes(), None, &SweptDiskCheckOptions::default()).unwrap();
+    assert!(schedule.rows[&1].authored.is_empty(), "{:?}", schedule.rows[&1].authored);
+    assert!(schedule.diagnostics.iter().any(|m| m.contains("authored attributes omitted")), "{:?}", schedule.diagnostics);
+    assert!(attributes(&undeclared).is_empty());
+
+    let second_entry = file("FILE_SCHEMA(('NOT_A_SCHEMA','IFC2X3'));\n");
+    let schedule = build_rebar_schedule(second_entry.as_bytes(), None, &SweptDiskCheckOptions::default()).unwrap();
+    let row = &schedule.rows[&1];
+    assert_eq!(row.authored["BarRole"].value, AuthoredRebarValue::Text { value: "MAIN".into() });
+    assert!(!row.authored.contains_key("PredefinedType"));
+    let names = attributes(&second_entry);
+    assert!(names.contains("BarRole") && !names.contains("PredefinedType"), "{names:?}");
 }
 
 #[test]

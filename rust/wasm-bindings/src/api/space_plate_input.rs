@@ -115,5 +115,6 @@ pub(crate) fn edit_error_parts(e: EditError) -> (&'static str, &'static str) {
         EditError::BridgeEdge => ("BridgeEdge", "this wall bridges the room to itself"),
         EditError::VertexNotDissolvable => ("VertexNotDissolvable", "this node joins three or more walls"),
         EditError::InvalidPolygon => ("InvalidPolygon", "a room needs a simple ring of 3+ points enclosing real area"),
+        EditError::NonFiniteCoordinate => ("NonFiniteCoordinate", "a coordinate is not a finite number"),
     }
 }

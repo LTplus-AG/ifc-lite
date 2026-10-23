@@ -150,3 +150,20 @@ export function reportSkippedHungElements(
       `(${skipped.byType.map((t) => t.ifcType).join(', ')}).`,
   );
 }
+
+/**
+ * Tell the user that a model draws nothing because its length unit is unusable
+ * (#7678). The geometry stream carries a `unitRefused` event instead of silently
+ * completing empty. Properties, hierarchy and the other data panels still work:
+ * the data model keeps its own scale, so only the 3D view is affected.
+ */
+export function reportRefusedLengthUnit(
+  fileName: string,
+  notify: (message: string) => void,
+): void {
+  console.warn(`[useIfc] ${fileName}: length unit is unusable; geometry was refused (#7678)`);
+  notify(
+    `"${fileName}" has an unusable length unit (zero, negative or non-numeric), so its 3D geometry was not drawn. ` +
+      'Its properties and hierarchy are still available.',
+  );
+}

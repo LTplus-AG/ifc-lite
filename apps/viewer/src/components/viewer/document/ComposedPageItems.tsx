@@ -31,7 +31,7 @@ export interface ComposedPageItemsProps {
   scale: number;
   measure: ComposeDocumentInput['measure'];
   labels: DocumentLabelFormatter;
-  selectedBlockId: string | null;
+  selectedBlockIds?: ReadonlySet<string>;
   onSelectBlock: (id: string) => void;
   onImageSize: (dataUrl: string, size: PreviewImageSize) => void;
   imageFailures: ReadonlySet<string>;
@@ -191,7 +191,8 @@ export function ComposedPageItems(props: ComposedPageItemsProps) {
       // eslint-disable-next-line jsx-a11y/prefer-tag-over-role
       <div key={value.id} role="button" tabIndex={0} data-preview-block={value.id} data-unresolved={block.kind === 'topic' && !props.topics.has(block.guid) ? '' : undefined} title={'title' in block ? block.title : undefined}
         aria-label={block.kind === 'spacer' ? props.labels('document.addBlock.spacer') : block.kind === 'image' && !block.caption ? props.labels('document.addBlock.image') : undefined}
-        className={`cursor-pointer rounded ring-offset-1 hover:ring-1 hover:ring-sky-300 ${props.selectedBlockId === value.id ? 'ring-1 ring-sky-500' : ''}`}
+        aria-pressed={props.selectedBlockIds?.has(value.id) ?? false}
+        className={`cursor-pointer rounded ring-offset-1 hover:ring-1 hover:ring-sky-300 ${props.selectedBlockIds?.has(value.id) ? 'ring-1 ring-sky-500' : ''}`}
         style={position(box, { x: 0, y: 0, w: 0, h: 0 }, props.scale)}
         onClick={() => props.onSelectBlock(value.id)} onKeyDown={event => {
           if (event.currentTarget === event.target && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); props.onSelectBlock(value.id); }

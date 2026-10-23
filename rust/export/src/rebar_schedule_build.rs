@@ -3,6 +3,20 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+use ifc_lite_core::slot;
+
+/// The length scale from the same `ProjectUnits` as the area scale
+/// (EXPORT-DATA-9): one resolution, one scan for the project. A length unit
+/// whose declared factor is unusable keeps main's value (data path) but is no
+/// longer silent: the bar lengths are then not in metres.
+fn length_scale(project_units: &ProjectUnits, diagnostics: &mut Vec<String>) -> f64 {
+    if let Some(factor) = project_units.length_unit().unusable_factor {
+        diagnostics.push(format!(
+            "project length unit unresolved: ConversionFactor #{factor} is not a positive finite number; bar lengths are not in metres"
+        ));
+    }
+    project_units.length_unit_scale()
+}
 
 pub(super) fn build_rebar_schedule_impl(
     content: &[u8],
@@ -12,14 +26,14 @@ pub(super) fn build_rebar_schedule_impl(
     policy: Option<&RebarFabricationPolicy>,
 ) -> Result<RebarSchedule, SweptDiskCheckError> {
     options.validate()?;
-    let schema_label = detect_schema(content);
-    let known_schema = attribute_names_for_schema(&schema_label, "IFCREINFORCINGBAR").is_some();
+    // Fail closed like the attribute export: no IFC4 layout for an
+    // undeclared or unrecognised schema (#7681).
+    let schema = attribute_schema(content);
     let mut decoder = EntityDecoder::new(content);
-    let scale = decoder.length_unit_scale();
     let mut bars = BTreeMap::new();
     let mut types = HashMap::new();
     let mut unreadable_types = HashSet::new();
-    let mut type_candidates: HashMap<u32, Vec<u32>> = HashMap::new();
+    let mut type_candidates = ifc_lite_processing::data_model::type_assignments::TypeAssignments::new();
     let mut type_ref_budget = MAX_TYPE_RELATION_REFERENCES;
     let mut type_ref_budget_reported = false;
     let mut type_link_diagnostics = 0;
@@ -48,7 +62,7 @@ pub(super) fn build_rebar_schedule_impl(
             }
         } else if keyword_eq(kind, "IFCRELDEFINESBYTYPE") {
             if let Ok(rel) = decoder.decode_at_with_id(id, start, end) {
-                if let (Some(related), Some(type_id)) = (rel.get_list(4), rel.get_ref(5)) {
+                if let (Some(related), Some(type_id)) = (rel.attr(slot::IfcRelDefinesByType::RELATED_OBJECTS).and_then(|a| a.as_list()), rel.ref_at(slot::IfcRelDefinesByType::RELATING_TYPE)) {
                     if related.is_empty() {
                         links::report(&mut diagnostics, &mut type_link_diagnostics, "type relationship", id, "RelatedObjects is empty");
                     }
@@ -66,12 +80,12 @@ pub(super) fn build_rebar_schedule_impl(
                         // even its otherwise valid members.
                         for item in related {
                             let bar_id = item.as_entity_ref().expect("validated RelatedObjects member");
-                            type_candidates.entry(bar_id).or_default().push(type_id);
+                            type_candidates.record(bar_id, type_id);
                         }
                     }
                     type_ref_budget = type_ref_budget.saturating_sub(related.len());
                 } else {
-                    let reason = if rel.get_list(4).is_none() { "RelatedObjects is not a reference list" }
+                    let reason = if rel.attr(slot::IfcRelDefinesByType::RELATED_OBJECTS).and_then(|a| a.as_list()).is_none() { "RelatedObjects is not a reference list" }
                         else { "RelatingType is not a reference" };
                     links::report(&mut diagnostics, &mut type_link_diagnostics, "type relationship", id, reason);
                 }
@@ -84,6 +98,7 @@ pub(super) fn build_rebar_schedule_impl(
     // a millimetre model may declare square metres for IfcAreaMeasure.
     let project_units = project_id.map(|id| ProjectUnits::resolve(&mut decoder, id))
         .unwrap_or_default();
+    let scale = length_scale(&project_units, &mut diagnostics); // EXPORT-DATA-9
     let area_scale = project_units.unit_for_measure("IfcAreaMeasure").map(|unit| unit.si_scale);
     let (descriptions, definitions) = extract_swept_disk_views(
         content,
@@ -93,9 +108,10 @@ pub(super) fn build_rebar_schedule_impl(
     let known_diagnostics: HashSet<&str> = descriptions.diagnostics.iter().map(String::as_str).collect();
     diagnostics.extend(definitions.diagnostics.iter()
         .filter(|message| !known_diagnostics.contains(message.as_str())).cloned());
-    if !known_schema {
+    if schema.is_none() {
+        let declared = crate::source_header::declared_schemas(content).join(", ");
         diagnostics.push(format!(
-            "unsupported FILE_SCHEMA {schema_label}; authored attributes omitted"
+            "unsupported FILE_SCHEMA ({declared}); authored attributes omitted"
         ));
     }
     let mut rows = BTreeMap::new();
@@ -105,11 +121,7 @@ pub(super) fn build_rebar_schedule_impl(
         let mut type_diagnostics = Vec::new();
         let mut conflicting_type_assignments = false;
         let mut nominal_diameter_conflict = false;
-        let mut seen_types = HashSet::new();
-        for candidate in type_candidates.remove(&id).unwrap_or_default() {
-            if !seen_types.insert(candidate) {
-                continue;
-            }
+        for candidate in type_candidates.candidates(id) {
             if unreadable_types.contains(&candidate) {
                 type_diagnostics.push(format!("assigned type #{candidate} could not decode"));
             } else if !types.contains_key(&candidate) {
@@ -127,8 +139,8 @@ pub(super) fn build_rebar_schedule_impl(
         }
         let bar_type = type_id.and_then(|type_id| types.get(&type_id));
         let mut row = RebarScheduleRow {
-            GlobalId: bar.get_string(0).map(str::to_owned),
-            Name: bar.get_string(2).map(str::to_owned),
+            GlobalId: bar.string_at(slot::IfcRoot::GLOBAL_ID).map(str::to_owned),
+            Name: bar.string_at(slot::IfcRoot::NAME).map(str::to_owned),
             type_id,
             authored: BTreeMap::new(),
             sweeps: Vec::new(),
@@ -137,15 +149,15 @@ pub(super) fn build_rebar_schedule_impl(
             fabrication_precheck_skipped_reason: None,
             diagnostics: type_diagnostics,
         };
-        if known_schema {
+        if let Some(schema_label) = &schema {
             for &field in FIELDS {
-                let own = attribute(&bar, &schema_label, field, scale, area_scale);
+                let own = attribute(&bar, schema_label, field, scale, area_scale);
                 // IfcTypeProduct.Tag identifies the type itself; it is not
                 // inherited as the occurrence's IfcElement.Tag.
                 let inherited = if field == "Tag" {
                     None
                 } else {
-                    bar_type.map(|ty| attribute(ty, &schema_label, field, scale, area_scale))
+                    bar_type.map(|ty| attribute(ty, schema_label, field, scale, area_scale))
                 };
                 if let Err(reason) = &own {
                     row.diagnostics

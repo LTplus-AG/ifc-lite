@@ -15,10 +15,7 @@ fn guid(label: &str) -> String {
 }
 
 fn model(schema: &str, lines: &[String]) -> String {
-    format!(
-        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_SCHEMA(('{schema}'));\nENDSEC;\nDATA;\n{}\nENDSEC;\nEND-ISO-10303-21;\n",
-        lines.join("\n")
-    )
+    ifc_lite_testkit::step_file(schema, lines)
 }
 
 /// A project, proxies `objects` (ids from 10), and one property set (GlobalId
@@ -84,6 +81,26 @@ fn ifc2x3_folds_into_an_owner_line_that_spaces_its_equals_sign() {
         defined("IFC2X3", "pb", &["wall", "door"], "rb", "IFCRELDEFINESBYPROPERTIES", " = "),
     ]);
     assert_eq!(definers_of_pset(&out), vec![vec![id_of(&out, "wall"), id_of(&out, "door")]], "{out}");
+}
+
+/// EXPORT-MERGE-12 (#7683): the merge writes each source record's own text,
+/// internal line breaks included, so an owner rel wrapped across lines (as
+/// exporters that wrap long lines write it) must still take the fold. Patching
+/// line by line found the rel id on the first fragment and no closing `)`.
+#[test]
+fn ifc2x3_folds_into_an_owner_record_wrapped_across_lines_7683() {
+    let wrapped = defined("IFC2X3", "pa", &["wall"], "ra", "IFCRELDEFINESBYPROPERTIES", "=").replace(",(#10),#3);", ",\n(#10),\n#3);");
+    assert!(wrapped.contains(",\n(#10),\n#3);"), "the owner rel is wrapped:\n{wrapped}");
+    let (out, warnings) = merge("IFC2X3", &[
+        wrapped,
+        defined("IFC2X3", "pb", &["wall", "door"], "rb", "IFCRELDEFINESBYPROPERTIES", "="),
+    ]);
+    assert!(warnings.iter().all(|w| !w.contains("lost that relationship")), "{warnings:?}");
+    let owner_at = out.find(&format!("('{}'", guid("ra"))).expect("the owner rel is written");
+    let owner = &out[owner_at..owner_at + out[owner_at..].find(';').unwrap()];
+    let list = format!("(#{},#{})", id_of(&out, "wall"), id_of(&out, "door"));
+    assert!(owner.replace('\n', "").contains(&list), "the door is folded into the owner: {owner:?}\n{out}");
+    assert!(!out.contains(&guid("rb")), "the later rel is not written:\n{out}");
 }
 
 /// IFC4 relaxes the property-set side to `DefinesOccurrence : SET [0:?]`.

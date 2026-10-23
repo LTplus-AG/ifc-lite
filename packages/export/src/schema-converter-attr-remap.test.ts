@@ -62,7 +62,9 @@ describe('splitTopLevelAttributes delegates to the validated slot splitter', () 
   });
 
   it('keeps an empty trailing slot position-addressable', () => {
-    expect(splitTopLevelAttributes('a,')).toEqual(['a', '']);
+    expect(splitTopLevelAttributes('$,')).toEqual(['$', '']);
+    // A bare word is no STEP value (core's grammar), so it is no slot either.
+    expect(splitTopLevelAttributes('a,')).toBeNull();
   });
 
   it('refuses malformed slots instead of remapping values at shifted positions', () => {

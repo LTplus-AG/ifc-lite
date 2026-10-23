@@ -306,3 +306,19 @@ fn issue_7292_source_boundary_bounds_whole_surface_height_span_not_two_point_bou
     assert!(build(&plans,&buckets).is_none(),
         "1.5tol full residual span cannot certify a tol surface displacement");
 }
+
+#[test]
+fn issue_7943_single_source_face_retains_its_oblique_boundary_and_movement_limit() {
+    // A single oblique triangle has zero residual span on its OWN plane, even
+    // though its three Z coordinates differ. The separate lift limit remains.
+    let points = [[0.,0.,0.], [1.,0.,CONFORM_TOL/4.], [0.,1.,CONFORM_TOL/2.]];
+    let (plans, buckets) = patch(&points, &[[0,1,2]]);
+    let output = build(&plans, &buckets).expect("exact single-face source partition");
+    let mut original = Mesh::new();
+    for p in points { original.add_vertex(Point3::from(p), Vector3::z()); }
+    original.add_triangle(0,1,2);
+    assert_eq!(boundary(&output), boundary(&original), "preserve every original directed edge");
+    let shifted = points.map(|p| [p[0],p[1],p[2]+2.*CONFORM_TOL]);
+    let (plans, buckets) = patch(&shifted, &[[0,1,2]]);
+    assert!(build(&plans, &buckets).is_none(), "zero span must not bypass the movement certificate");
+}

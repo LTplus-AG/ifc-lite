@@ -60,6 +60,11 @@ pub(super) fn build(plans: &[PlanBucket], buckets: &Buckets) -> Option<Mesh> {
 /// source plane, so this exact SPAN bound proves bidirectional surface distance
 /// <= CONFORM_TOL. Independent +/-tol point-to-plane bounds would permit 2tol.
 fn certify_height_span(source: &Partition, drop: usize) -> Option<()> {
+    // `build` has already certified a nondegenerate projected partition using
+    // this same dropped axis. A single source triangle lies on its own exact
+    // plane, so every residual is equal and |n[drop]| is strictly positive.
+    // No rational construction is needed to prove its zero height span.
+    if source.faces.len() == 1 { return Some(()); }
     let points: Vec<[BigRational;3]> = source.points.iter().map(|p| Some([
         BigRational::from_float(p.x)?, BigRational::from_float(p.y)?,
         BigRational::from_float(p.z)?,

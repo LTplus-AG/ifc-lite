@@ -67,8 +67,11 @@ pub(crate) fn orientation(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> i32 {
 
 /// `point` lies on the closed segment `a–b` (exactly collinear and inside its box).
 pub(crate) fn on_segment(a: [f64; 2], b: [f64; 2], point: [f64; 2]) -> bool {
-    orientation(a, b, point) == 0
-        && (a[0] <= point[0] && point[0] <= b[0] || b[0] <= point[0] && point[0] <= a[0])
+    in_segment_box(a, b, point) && orientation(a, b, point) == 0
+}
+
+fn in_segment_box(a: [f64; 2], b: [f64; 2], point: [f64; 2]) -> bool {
+    (a[0] <= point[0] && point[0] <= b[0] || b[0] <= point[0] && point[0] <= a[0])
         && (a[1] <= point[1] && point[1] <= b[1] || b[1] <= point[1] && point[1] <= a[1])
 }
 
@@ -85,21 +88,51 @@ pub(crate) fn segments_properly_cross(a: [f64; 2], b: [f64; 2], c: [f64; 2], d: 
 /// Closed segment intersection with exact predicates: proper crossings,
 /// T-touches, shared endpoints and collinear overlaps all count.
 pub(crate) fn segments_intersect(a: [f64; 2], b: [f64; 2], c: [f64; 2], d: [f64; 2]) -> bool {
+    // Strict separation only: equality retains all closed contacts. Comparisons
+    // use the supplied coordinates directly, with no rounding or tolerance.
+    if (0..2).any(|i| (a[i] < c[i] && b[i] < c[i] && a[i] < d[i] && b[i] < d[i])
+        || (c[i] < a[i] && d[i] < a[i] && c[i] < b[i] && d[i] < b[i])) {
+        return false;
+    }
     let ab_c = orientation(a, b, c);
     let ab_d = orientation(a, b, d);
+    if ab_c != 0 && ab_c == ab_d { return false; }
     let cd_a = orientation(c, d, a);
     let cd_b = orientation(c, d, b);
-    segments_properly_cross(a, b, c, d)
-        || ab_c == 0 && on_segment(a, b, c)
-        || ab_d == 0 && on_segment(a, b, d)
-        || cd_a == 0 && on_segment(c, d, a)
-        || cd_b == 0 && on_segment(c, d, b)
+    (ab_c * ab_d < 0 && cd_a * cd_b < 0)
+        || ab_c == 0 && in_segment_box(a, b, c)
+        || ab_d == 0 && in_segment_box(a, b, d)
+        || cd_a == 0 && in_segment_box(c, d, a)
+        || cd_b == 0 && in_segment_box(c, d, b)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::math::v2::{point_in_polygon, polygon_area};
+
+    #[test]
+    fn issue_7943_segment_contacts_match_integer_oracle_across_scales() {
+        type I = [i64; 2];
+        let points: Vec<I> = (-1..=1).flat_map(|x| (-1..=1).map(move |y| [x, y])).collect();
+        let side = |a: I, b: I, c: I| {
+            ((b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0])).signum()
+        };
+        let on = |a: I, b: I, p: I| side(a,b,p) == 0
+            && (0..2).all(|i| a[i].min(b[i]) <= p[i] && p[i] <= a[i].max(b[i]));
+        // Exhaust all ordered endpoint choices: degeneracy, reversed winding,
+        // shared endpoints, collinear overlap, separation and proper crossing.
+        for &a in &points { for &b in &points { for &c in &points { for &d in &points {
+            let expected = side(a,b,c)*side(a,b,d) < 0 && side(c,d,a)*side(c,d,b) < 0
+                || on(a,b,c) || on(a,b,d) || on(c,d,a) || on(c,d,b);
+            for (offset, scale) in [(0., 1.), (0., 1. / 68_719_476_736.),
+                (10_000_000., 1. / 65536.), (0., 1e100)] {
+                let lift = |p: I| p.map(|x| offset + x as f64 * scale);
+                assert_eq!(segments_intersect(lift(a),lift(b),lift(c),lift(d)), expected,
+                    "{a:?} {b:?} {c:?} {d:?}, offset={offset}, scale={scale}");
+            }
+        }}}}
+    }
 
     /// The closed segment test both the scan outline repair and its test
     /// oracle (`assert_valid`) rely on, pinned on hand cases so a regression

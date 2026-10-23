@@ -24,6 +24,8 @@
 
 use std::collections::{HashSet, VecDeque};
 
+use ifc_lite_geometry::math::v3::{cross, dot};
+
 use crate::step_ids::IdAllocator;
 
 use super::attrs::attribute_index;
@@ -143,24 +145,22 @@ fn sweep_orphans(index: &FileIndex, from: u32, to: u32) -> HashSet<u32> {
 }
 
 /// Refuse a matrix that cannot become an `IfcAxis2Placement3D`: a
-/// non-finite entry (not a STEP real), or a zero or parallel Z and X axis
-/// (no direction, or no plane to place in).
+/// non-finite entry (not a STEP real), or anything beyond a rotation and a
+/// translation. The placement holds only its Z and X axes, so a zero or
+/// parallel pair, a reflection, scale, shear or projective row would be
+/// dropped without a word.
 fn check_matrix(m: &[[f64; 4]; 4]) -> Result<(), String> {
     if m.iter().flatten().any(|v| !v.is_finite()) {
         return Err("placement matrix has a non-finite entry".into());
     }
-    let axis = [m[0][2], m[1][2], m[2][2]];
-    let ref_dir = [m[0][0], m[1][0], m[2][0]];
-    let norm = |v: [f64; 3]| v.iter().map(|c| c * c).sum::<f64>().sqrt();
-    let cross = [
-        axis[1] * ref_dir[2] - axis[2] * ref_dir[1],
-        axis[2] * ref_dir[0] - axis[0] * ref_dir[2],
-        axis[0] * ref_dir[1] - axis[1] * ref_dir[0],
-    ];
-    let (a, r) = (norm(axis), norm(ref_dir));
-    // `!(x > eps)` also refuses a NaN that overflow produced.
-    if !(a > 0.0 && r > 0.0 && norm(cross) > 1e-9 * a * r) {
-        return Err("placement matrix has a zero or parallel Z and X axis".into());
+    let col = |c: usize| [m[0][c], m[1][c], m[2][c]];
+    let (x, y, z) = (col(0), col(1), col(2));
+    let unit = |v: [f64; 3]| (dot(v, v) - 1.0).abs() <= 1e-6;
+    let orthogonal = dot(x, y).abs() <= 1e-6 && dot(y, z).abs() <= 1e-6 && dot(z, x).abs() <= 1e-6;
+    let right_handed = dot(cross(x, y), z) > 0.0;
+    let affine = (m[3][0].abs() + m[3][1].abs() + m[3][2].abs() + (m[3][3] - 1.0).abs()) <= 1e-9;
+    if !(unit(x) && unit(y) && unit(z) && orthogonal && right_handed && affine) {
+        return Err("placement matrix is not a rotation and a translation".into());
     }
     Ok(())
 }

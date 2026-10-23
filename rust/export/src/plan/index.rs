@@ -31,6 +31,17 @@ pub(crate) struct AttrRefs {
     pub(crate) list: Option<Vec<Option<u32>>>,
     /// The bare scalar reference, when the slot is not a list.
     pub(crate) scalar: Option<u32>,
+    /// References inside the slot that are neither of those: in a nested
+    /// list (`IfcBSplineSurface.ControlPointsList`) or a typed value. They
+    /// count as uses, but no list edit can strip one.
+    pub(crate) nested: Vec<u32>,
+}
+
+impl AttrRefs {
+    /// Every record this slot names.
+    pub(crate) fn refs(&self) -> impl Iterator<Item = u32> + '_ {
+        self.list.iter().flatten().flatten().chain(self.scalar.iter()).chain(self.nested.iter()).copied()
+    }
 }
 
 /// Record spans. `u32` columns need the source under 4 GiB; a larger one
@@ -207,8 +218,7 @@ impl<'a> FileIndex<'a> {
     pub(crate) fn refs_of(&self, id: u32) -> HashSet<u32> {
         let mut out = HashSet::new();
         for attr in self.attrs(id).unwrap_or_default() {
-            out.extend(attr.list.iter().flatten().flatten());
-            out.extend(attr.scalar);
+            out.extend(attr.refs());
         }
         // A dangling reference names no record: nothing to prune or count.
         out.retain(|&target| self.contains(target));
@@ -258,9 +268,9 @@ fn note_wanted_guid(
 /// attribute writer frames and splits it (`step_record_frame`, core's slot
 /// grammar), so a slot index read here is the index an edit lands on. A slot
 /// that is a list is read as its entries, each `Some` only when it is exactly
-/// one `#id` (nested lists, e.g. point coordinates, contain no entity refs
-/// and their entries come back `None`); anything else is a scalar holding
-/// zero or one bare `#id` (an inline value like `IFCLABEL('x')` has none).
+/// one `#id`; anything else is a scalar holding zero or one bare `#id`. A
+/// reference anywhere else in the slot (a nested list, a typed value) lands in
+/// [`AttrRefs::nested`].
 /// Comments are trivia throughout.
 pub(crate) fn parse_attrs(line: &str) -> Option<Vec<AttrRefs>> {
     let frame = record_frame(line)?;
@@ -268,9 +278,29 @@ pub(crate) fn parse_attrs(line: &str) -> Option<Vec<AttrRefs>> {
     Some(
         slots
             .into_iter()
-            .map(|slot| match StepListItems::of_list(slot.as_bytes()) {
-                Some(entries) => AttrRefs { list: Some(entries.map(parse_ref).collect()), scalar: None },
-                None => AttrRefs { list: None, scalar: single_ref(slot.as_bytes()) },
+            .map(|slot| {
+                let mut nested = Vec::new();
+                match StepListItems::of_list(slot.as_bytes()) {
+                    Some(entries) => {
+                        let list = entries
+                            .map(|item| {
+                                let id = parse_ref(item);
+                                if id.is_none() {
+                                    crate::step_text::refs_in_line(item, &mut nested);
+                                }
+                                id
+                            })
+                            .collect();
+                        AttrRefs { list: Some(list), scalar: None, nested }
+                    }
+                    None => {
+                        let scalar = single_ref(slot.as_bytes());
+                        if scalar.is_none() {
+                            crate::step_text::refs_in_line(slot.as_bytes(), &mut nested);
+                        }
+                        AttrRefs { list: None, scalar, nested }
+                    }
+                }
             })
             .collect(),
     )

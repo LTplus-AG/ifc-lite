@@ -135,7 +135,10 @@ pub(crate) fn resolve_deletes(
                     continue;
                 }
                 let slots = attrs.entry(referrer).or_insert_with(|| index.attrs(referrer).unwrap_or_default());
-                match slots.get(idx).and_then(|a| a.list.as_ref()) {
+                // Only a top-level list entry can be stripped; a reference in a
+                // nested list or typed value is dangling however it is fixed.
+                let slot = slots.get(idx).filter(|a| !a.nested.contains(&dead));
+                match slot.and_then(|a| a.list.as_ref()).filter(|entries| entries.contains(&Some(dead))) {
                     Some(entries) => {
                         let removed_here = stripped.entry((referrer, idx)).or_default();
                         removed_here.insert(dead);

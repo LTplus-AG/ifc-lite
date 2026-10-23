@@ -446,3 +446,49 @@ fn type_write_to_a_set_related_only_to_the_type_itself_edits_in_place() {
     let outcome = resolve_prop_write(&index, schema, 10, &w, &mut ids, None).unwrap();
     assert!(matches!(outcome, PropOutcome::InPlace(_)), "{outcome:?}");
 }
+
+/// A copied value keeps the unit the original carried when the write names
+/// none, as an in-place edit does.
+#[test]
+fn a_copied_value_keeps_its_unit() {
+    let schema = "IFC4";
+    let content = String::from_utf8(two_walls_sharing_a_pset(schema)).unwrap().replace("IFCLABEL('1HR'),$);", "IFCLABEL('1HR'),#51);");
+    assert!(content.contains(",#51);"));
+    let index = FileIndex::complete(content.as_bytes());
+    let mut ids = IdAllocator::after(index.max_id);
+    let w = write("Pset_WallCommon", "FireRating", "IFCLABEL", "'2HR'", PropScope::Occurrence, PsetKind::Property);
+    match resolve_prop_write(&index, schema, 10, &w, &mut ids, None).unwrap() {
+        PropOutcome::CopyOnWrite { new_records, .. } => {
+            let value = new_records.iter().find(|(_, r)| r.contains("IFCPROPERTYSINGLEVALUE")).expect("a new value");
+            assert!(value.1.ends_with(",#51);"), "{}", value.1);
+        }
+        other => panic!("expected a copy-on-write, got {other:?}"),
+    }
+}
+
+/// A copy only inherits a unit from a value of its own kind, and reads it as
+/// the reference the slot holds, not its text.
+#[test]
+fn a_copied_value_inherits_only_a_matching_unit() {
+    let schema = "IFC4";
+    let commented = String::from_utf8(two_walls_sharing_a_pset(schema)).unwrap().replace("IFCLABEL('1HR'),$);", "/* c */ IfcLabel ('1HR'),#51 /* m */);");
+    let index = FileIndex::complete(commented.as_bytes());
+    let mut ids = IdAllocator::after(index.max_id);
+    let w = write("Pset_WallCommon", "FireRating", "IFCLABEL", "'2HR'", PropScope::Occurrence, PsetKind::Property);
+    match resolve_prop_write(&index, schema, 10, &w, &mut ids, None).unwrap() {
+        PropOutcome::CopyOnWrite { new_records, .. } => {
+            let value = new_records.iter().find(|(_, r)| r.contains("IFCPROPERTYSINGLEVALUE")).expect("a new value");
+            assert!(value.1.ends_with(",#51);"), "{}", value.1);
+        }
+        other => panic!("expected a copy-on-write, got {other:?}"),
+    }
+    let mut ids = IdAllocator::after(index.max_id);
+    let text = write("Pset_WallCommon", "FireRating", "IFCTEXT", "'2 hours'", PropScope::Occurrence, PsetKind::Property);
+    match resolve_prop_write(&index, schema, 10, &text, &mut ids, None).unwrap() {
+        PropOutcome::CopyOnWrite { new_records, .. } => {
+            let value = new_records.iter().find(|(_, r)| r.contains("IFCPROPERTYSINGLEVALUE")).expect("a new value");
+            assert!(value.1.ends_with(",$);"), "another measure takes no unit: {}", value.1);
+        }
+        other => panic!("expected a copy-on-write, got {other:?}"),
+    }
+}

@@ -129,12 +129,12 @@ impl<'a> FileIndex<'a> {
             let Some(attrs) = parse_attrs(&String::from_utf8_lossy(bytes)) else { continue };
             counted.clear();
             for (idx, attr) in attrs.iter().enumerate() {
-                for target in attr.list.iter().flatten().flatten().chain(attr.scalar.iter()) {
-                    if let Some(list) = found_lists.get_mut(target) {
+                for target in attr.refs() {
+                    if let Some(list) = found_lists.get_mut(&target) {
                         list.push((id, idx));
                     }
-                    if found_counts.contains_key(target) && !counted.contains(target) {
-                        counted.push(*target);
+                    if found_counts.contains_key(&target) && !counted.contains(&target) {
+                        counted.push(target);
                     }
                 }
             }

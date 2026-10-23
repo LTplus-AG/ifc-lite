@@ -92,3 +92,56 @@ fn refuses_grid_placement_with_a_reason() {
     let err = resolve_placement(&index, schema, 10, &identity_shifted(1.0), &mut ids).unwrap_err();
     assert!(err.contains("IfcGridPlacement"), "{err}");
 }
+
+/// A point the old axis placement shares with a surface's nested control
+/// point list is still in use, so moving the wall keeps it.
+#[test]
+fn a_point_a_nested_list_also_names_is_not_swept() {
+    let schema = "IFC4";
+    let surface = "#95=IFCBSPLINESURFACE(1,1,((#22,#22),(#22,#22)),.UNSPECIFIED.,.F.,.F.,.F.);\n";
+    let content = String::from_utf8(wall_with_own_pset(schema)).unwrap().replace("ENDSEC;\nEND-ISO", &format!("{surface}ENDSEC;\nEND-ISO"));
+    assert!(content.contains("#95="), "the surface is in the fixture");
+    let mut index = FileIndex::scan(content.as_bytes(), &Default::default());
+    let mut ids = IdAllocator::after(index.max_id);
+    let write = loop {
+        let write = resolve_placement(&index, schema, 10, &identity_shifted(1.0), &mut ids).unwrap();
+        if !index.collect_missing_referrers() {
+            break write;
+        }
+        ids = IdAllocator::after(index.max_id);
+    };
+    assert!(write.orphaned.contains(&21), "the old axis placement goes: {:?}", write.orphaned);
+    assert!(!write.orphaned.contains(&22), "the surface still names the point: {:?}", write.orphaned);
+}
+
+/// A reflection, a scale or a projective row has no IfcAxis2Placement3D form.
+#[test]
+fn refuses_a_matrix_that_is_not_a_rotation_and_a_translation() {
+    let schema = "IFC4";
+    let content = wall_with_own_pset(schema);
+    let index = FileIndex::complete(&content);
+    let identity = identity_shifted(0.0).matrix;
+    let mut mirrored = identity;
+    mirrored[1][1] = -1.0;
+    let mut scaled = identity;
+    scaled[0][0] = 2.0;
+    let mut projective = identity;
+    projective[3][0] = 0.5;
+    for matrix in [mirrored, scaled, projective] {
+        let mut ids = IdAllocator::after(index.max_id);
+        let err = resolve_placement(&index, schema, 10, &PlacementPatch { matrix }, &mut ids).unwrap_err();
+        assert!(err.contains("not a rotation"), "{matrix:?}: {err}");
+    }
+}
+
+/// Rounding noise in a computed matrix's bottom row is still a rigid placement.
+#[test]
+fn accepts_rounding_noise_in_the_bottom_row() {
+    let schema = "IFC4";
+    let content = wall_with_own_pset(schema);
+    let index = FileIndex::complete(&content);
+    let mut matrix = identity_shifted(1.0).matrix;
+    matrix[3] = [0.0, 0.0, 1e-17, 0.999_999_999_999_999_9];
+    let mut ids = IdAllocator::after(index.max_id);
+    assert!(resolve_placement(&index, schema, 10, &PlacementPatch { matrix }, &mut ids).is_ok());
+}

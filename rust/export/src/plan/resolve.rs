@@ -72,7 +72,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     // and pruned as that patch is resolved. A patch's copy-on-write detach
     // does NOT grow this here — it is named, not applied, until the combined
     // call below.
-    let mut removed: HashSet<u32> = gating.removed;
+    let mut removed: HashSet<u32> = gating.removed.clone();
     // Every copy-on-write's request to strip itself from an old
     // relationship's member list: `(relationship, attribute index, this
     // object)`. Collected across every patch so relationship touched by more
@@ -133,6 +133,9 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     }
     protected.extend(named.into_iter().filter(|&id| id <= index.max_id));
     let delete_result = delete::resolve_deletes(index, schema, &requested_deletes, &detach_requests, &protected);
+    // This pass decides what the deletes take: a gating removal it no longer
+    // makes (a member a copy-on-write clone reuses) comes back.
+    removed.retain(|id| !gating.removed.contains(id) || delete_result.removed.contains(id));
     removed.extend(delete_result.removed);
     for (slot, strip) in delete_result.stripped {
         list_edits.entry(slot).or_default().remove.extend(strip);

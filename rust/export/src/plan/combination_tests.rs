@@ -226,3 +226,17 @@ fn a_degenerate_placement_matrix_is_refused() {
     }
 }
 
+
+/// Deleting the relationship that attaches a shared set while patching one
+/// of its walls: the gating pass alone would prune the set's members, but the
+/// patched wall's clone reuses `#35`, so it stays.
+#[test]
+fn a_clone_keeps_a_member_the_deleted_relationship_alone_would_have_pruned() {
+    for schema in SCHEMAS {
+        let content = with_second_member(two_walls_sharing_a_pset(schema));
+        let (report, after) =
+            run(&content, vec![(ObjectRef::Id(32), Disposition::Delete), patch(10, vec![prop("Pset_WallCommon", "FireRating", "IFCLABEL", "'2HR'")])]);
+        assert!(report.findings.is_empty(), "{schema}: {:?}", report.findings);
+        assert!(after.contains_key(&35), "{schema}: the clone lists #35");
+    }
+}

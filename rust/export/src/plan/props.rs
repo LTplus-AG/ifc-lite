@@ -99,6 +99,35 @@ fn in_place_value(write: &PropWrite) -> String {
     }
 }
 
+/// `write`, carrying the unit of the value record it replaces when the caller
+/// named none: a copy keeps the unit the original had, as an in-place edit
+/// keeps its slot. Only from a value of the same measure (the same quantity entity, or
+/// a property of the same measure type), so a length never takes an area's
+/// unit.
+fn keeping_old_unit(index: &FileIndex, schema: &str, write: &PropWrite, old: Option<u32>) -> PropWrite {
+    let mut write = write.clone();
+    if write.unit.is_none() {
+        write.unit = old.and_then(|old| {
+            let entity = index.type_of(old)?;
+            (props_synth::value_entity(&write).ok()? == entity).then_some(())?;
+            if write.kind == PsetKind::Property {
+                let nominal = attribute_index(schema, &entity, "NominalValue")?;
+                let value = crate::step_text::attribute_of(&index.raw_line(old)?, nominal)?;
+                // An unset value contradicts nothing; a typed one must name
+                // the write's measure.
+                let bytes = value.as_bytes();
+                let start = ifc_lite_core::parser::skip_step_trivia(bytes, 0)?;
+                let name_len = bytes[start..].iter().take_while(|b| b.is_ascii_alphanumeric() || **b == b'_').count();
+                let name = &value[start..start + name_len];
+                (bytes.get(start) == Some(&b'$') || name.eq_ignore_ascii_case(&write.measure_type)).then_some(())?;
+            }
+            let idx = attribute_index(schema, &entity, "Unit")?;
+            index.attrs(old)?.into_iter().nth(idx)?.scalar.map(|unit| format!("#{unit}"))
+        });
+    }
+    write
+}
+
 /// The slot edits that overwrite an existing, unshared value record: its
 /// value, and its unit when the caller named one.
 /// Refused when the record has no such value slot (an enumerated, list or
@@ -227,12 +256,14 @@ pub(crate) fn resolve_set_writes<'w>(
                 return result;
             };
             let replaced: Vec<Option<u32>> = group.iter().map(|w| find_member(index, schema, &members, &w.prop)).collect();
+            let writes: Vec<PropWrite> = group.iter().zip(&replaced).map(|(w, old)| keeping_old_unit(index, schema, w, *old)).collect();
+            let writes: Vec<&PropWrite> = writes.iter().collect();
             match props_synth::copy_on_write_occurrence_set(
                 schema,
                 container_type,
                 member_attr,
                 object_id,
-                &group,
+                &writes,
                 ids,
                 owner_history,
                 &members,
@@ -294,7 +325,8 @@ fn write_unshared_set<'w>(
         let (container_type, _) = container_names(write.kind);
         let outcome = match find_member(index, schema, members, &write.prop) {
             Some(member_id) if leaf_is_shared(index, container_type, member_idx, member_id, pset_id) => {
-                props_synth::leaf_copy_on_write(schema, write, ids, pset_id, member_idx, member_id)
+                let write = keeping_old_unit(index, schema, write, Some(member_id));
+                props_synth::leaf_copy_on_write(schema, &write, ids, pset_id, member_idx, member_id)
             }
             Some(member_id) => in_place_edits(index, schema, member_id, write).map(PropOutcome::InPlace),
             None => props_synth::fold_new_value(schema, write, ids, pset_id, member_idx),

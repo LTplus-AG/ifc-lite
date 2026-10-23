@@ -33,8 +33,11 @@ function layer(data: IfcxFile['data'], id = 'l'): IfcxFile {
 describe('seedDraftDoc', () => {
   it('never attributes imported entities to a file header or import clock (#8041)', () => {
     const doc = createCollabDoc({ gc: false });
+    const replay = createCollabDoc({ gc: false });
     try {
-      seedDraftDoc(doc, [layer([{ path: 'unknown', attributes: { Name: 'Original' } }])]);
+      const edit = layer([{ path: 'unknown', attributes: { Name: 'Edited' } }], 'edit');
+      edit.header.author = 'later editor';
+      seedDraftDoc(doc, [layer([{ path: 'unknown', attributes: { Name: 'Original' } }]), edit]);
       const entity = getEntity(doc, 'unknown');
       expect(entity).toBeDefined();
       const meta = entityToJSON(entity!).meta;
@@ -43,8 +46,14 @@ describe('seedDraftDoc', () => {
       const snapshot = snapshotToIfcx(doc, { author: 'snapshotter' });
       expect(snapshot.data.find(node => node.path === 'unknown')?.attributes)
         .not.toHaveProperty('ifclite::meta');
+      seedDraftDoc(replay, [snapshot]);
+      const replayed = getEntity(replay, 'unknown');
+      expect(replayed).toBeDefined();
+      expect(entityToJSON(replayed!).meta.createdBy).toBeUndefined();
+      expect(entityToJSON(replayed!).meta.createdAt).toBeUndefined();
     } finally {
       doc.destroy();
+      replay.destroy();
     }
   });
 

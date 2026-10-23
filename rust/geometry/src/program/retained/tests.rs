@@ -350,3 +350,6 @@ mod protocol;
 
 #[path = "mapping_contract_tests.rs"]
 mod mapping_contract;
+
+#[path = "mapping_input_tests.rs"]
+mod mapping_inputs;

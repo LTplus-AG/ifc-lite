@@ -35,7 +35,7 @@ const MODEL: &str = "#1=IFCCARTESIANPOINT((0.,0.,0.));\
 #[derive(Default)]
 struct Trace {
     events: Vec<String>,
-    refused: Vec<(u32, WalkRefusal)>,
+    refused: Vec<(u32, String)>,
     stop_at: Option<u32>,
 }
 
@@ -51,8 +51,8 @@ impl WalkVisitor for Trace {
     fn leave_map(&mut self, l: &MappedLevel) {
         self.events.push(format!("leave {}", l.item.id));
     }
-    fn refused(&mut self, at: u32, why: WalkRefusal, _ctx: &WalkCtx<'_>) {
-        self.refused.push((at, why));
+    fn refused(&mut self, item: &DecodedEntity, why: WalkRefusal, _ctx: &WalkCtx<'_>) {
+        self.refused.push((item.id, format!("{why:?}")));
     }
 }
 
@@ -102,7 +102,7 @@ fn expand_visits_in_preorder_with_a_path_scoped_set() {
     let mut d = EntityDecoder::new(MODEL);
     let wall = d.decode_by_id(10).unwrap();
     let mut trace = Trace::default();
-    let walk = RepresentationWalk { select: Select::Body, nested: NestedMaps::Expand { max_depth: 32 } };
+    let walk = RepresentationWalk { select: Select::Body, nested: NestedMaps::Expand { max_depth: 32, max_levels: MAX_WALK_LEVELS } };
     walk.product(&wall, &mut d, &mut trace).unwrap();
     // #71 and #73 both re-enter map #62: a DAG, not a cycle.
     let expected = [
@@ -126,16 +126,16 @@ fn expand_visits_in_preorder_with_a_path_scoped_set() {
 fn expand_refuses_a_cycle_and_the_depth_cap() {
     let mut d = EntityDecoder::new(MODEL);
     let cycle = d.decode_by_id(80).unwrap();
-    let walk = RepresentationWalk { select: Select::Any, nested: NestedMaps::Expand { max_depth: 32 } };
+    let walk = RepresentationWalk { select: Select::Any, nested: NestedMaps::Expand { max_depth: 32, max_levels: MAX_WALK_LEVELS } };
     let mut trace = Trace::default();
     walk.mapped_item(&cycle, &mut d, &mut trace);
-    assert_eq!(trace.refused, [(80, WalkRefusal::Cyclic)]);
+    assert_eq!(trace.refused, [(80, "Cyclic".to_string())]);
 
     let nested = d.decode_by_id(30).unwrap();
-    let shallow = RepresentationWalk { select: Select::Any, nested: NestedMaps::Expand { max_depth: 1 } };
+    let shallow = RepresentationWalk { select: Select::Any, nested: NestedMaps::Expand { max_depth: 1, max_levels: MAX_WALK_LEVELS } };
     let mut trace = Trace::default();
     shallow.mapped_item(&nested, &mut d, &mut trace);
-    assert_eq!(trace.refused, [(71, WalkRefusal::TooDeep), (73, WalkRefusal::TooDeep)]);
+    assert_eq!(trace.refused, [(71, "TooDeep { max_depth: 1 }".to_string()), (73, "TooDeep { max_depth: 1 }".to_string())]);
 }
 
 #[test]
@@ -164,7 +164,7 @@ fn refuse_stops_at_a_nested_map_and_leaf_hands_it_over() {
     let mut trace = Trace::default();
     refuse.map(&map, &mut d, &mut trace).unwrap();
     assert_eq!(trace.events, ["item 70 depth 0"]);
-    assert_eq!(trace.refused, [(71, WalkRefusal::TooDeep)]);
+    assert_eq!(trace.refused, [(71, "TooDeep { max_depth: 0 }".to_string())]);
 
     let leaf = RepresentationWalk { select: Select::Any, nested: NestedMaps::Leaf };
     let mut trace = Trace::default();

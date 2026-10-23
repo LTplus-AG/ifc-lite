@@ -240,3 +240,54 @@ fn a_clone_keeps_a_member_the_deleted_relationship_alone_would_have_pruned() {
         assert!(after.contains_key(&35), "{schema}: the clone lists #35");
     }
 }
+
+/// Deleting the set a patch edits in place loses the edit, so the patch says
+/// so instead of counting it silently (#8078 review).
+#[test]
+fn an_in_place_write_into_a_deleted_set_is_refused() {
+    for schema in SCHEMAS {
+        let content = wall_with_own_pset(schema);
+        let (report, _) =
+            run(&content, vec![(ObjectRef::Id(31), Disposition::Delete), patch(10, vec![prop("Pset_WallCommon", "FireRating", "IFCLABEL", "'2HR'")])]);
+        assert!(report.refusals.iter().any(|r| r.reason.contains("is lost")), "{schema}: {:?}", report.refusals);
+        assert!(report.findings.is_empty(), "{schema}: {:?}", report.findings);
+    }
+}
+
+/// A property set and a quantity set of one name on one object get distinct
+/// GlobalIds (#8078 review).
+#[test]
+fn a_property_set_and_a_quantity_set_of_one_name_differ() {
+    let content = wall_with_own_pset("IFC4");
+    let mut quantity = prop("Metrics", "Length", "IFCLENGTHMEASURE", "2.");
+    quantity.kind = PsetKind::Quantity;
+    let (report, _) = run(&content, vec![patch(10, vec![prop("Metrics", "Length", "IFCLABEL", "'long'"), quantity])]);
+    assert!(!report.findings.iter().any(|f| f.message.contains("GlobalId")), "{:?}", report.findings);
+}
+
+/// A new member folded into a set the plan deletes is refused too (#8078
+/// review).
+#[test]
+fn a_fold_into_a_deleted_set_is_refused() {
+    for schema in SCHEMAS {
+        let content = wall_with_own_pset(schema);
+        let (report, after) =
+            run(&content, vec![(ObjectRef::Id(31), Disposition::Delete), patch(10, vec![prop("Pset_WallCommon", "NewProp", "IFCLABEL", "'x'")])]);
+        assert!(report.refusals.iter().any(|r| r.reason.contains("#31 is lost")), "{schema}: {:?}", report.refusals);
+        assert!(!after.values().any(|l| l.contains("'NewProp'")), "{schema}: no orphan value is written");
+    }
+}
+
+/// Two patches repointing one shared leaf: the later copy replaces the
+/// earlier one, which is not written (#8078 review).
+#[test]
+fn a_replaced_leaf_copy_is_not_written() {
+    use super::test_fixtures::two_sets_on_one_wall_sharing_a_leaf;
+    for schema in SCHEMAS {
+        let content = two_sets_on_one_wall_sharing_a_leaf(schema);
+        let write = |v: &str| patch(10, vec![prop("Pset_A", "Reference", "IFCIDENTIFIER", v)]);
+        let (report, after) = run(&content, vec![write("'R-2'"), write("'R-3'")]);
+        assert!(report.findings.is_empty(), "{schema}: {:?}", report.findings);
+        assert!(!after.values().any(|l| l.contains("'R-2'")), "{schema}: the replaced copy is not written");
+    }
+}

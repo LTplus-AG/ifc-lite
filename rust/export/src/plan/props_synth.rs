@@ -115,8 +115,10 @@ fn build_set_and_rel(
     member_ids: &[u32],
     seed: &str,
 ) -> Result<((u32, String), (u32, String)), String> {
-    let set_guid = crate::merged::deterministic_global_id(&format!("plan-pset:{seed}:{object_id}:{}:{}", write.pset, write.prop));
-    let rel_guid = crate::merged::deterministic_global_id(&format!("plan-rel:{seed}:{object_id}:{}:{}", write.pset, write.prop));
+    // A quantity set and a property set of one name are two sets.
+    let kind = if write.kind == PsetKind::Quantity { ":qto" } else { "" };
+    let set_guid = crate::merged::deterministic_global_id(&format!("plan-pset{kind}:{seed}:{object_id}:{}:{}", write.pset, write.prop));
+    let rel_guid = crate::merged::deterministic_global_id(&format!("plan-rel{kind}:{seed}:{object_id}:{}:{}", write.pset, write.prop));
     let pset_id = ids.allocate().ok_or("id space exhausted")?;
     let pset_record = set_record(schema, container_type, member_attr, pset_id, &set_guid, owner_history, &write.pset, member_ids);
     let rel_id = ids.allocate().ok_or("id space exhausted")?;

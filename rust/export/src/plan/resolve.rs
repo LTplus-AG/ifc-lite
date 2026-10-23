@@ -86,6 +86,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     let mut list_edits: HashMap<(u32, usize), attrs::ListEdit> = HashMap::new();
 
     let mut moved: HashSet<u32> = HashSet::new();
+    let mut edited: HashSet<(u32, u32)> = HashSet::new();
     for &(id, disposition) in &resolved {
         match disposition {
             Disposition::Preserve | Disposition::Delete => {}
@@ -111,6 +112,8 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
                     detach_requests: &mut detach_requests,
                     list_edits: &mut list_edits,
                     moved: &mut moved,
+                    edited: &mut edited,
+                    object: id,
                 };
                 apply_patch(index, schema, id, patch, &mut ids, owner_history_ref, &mut out);
             }
@@ -127,6 +130,14 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     // source referrer it had is going away.
     // An appended record's own id is above `max_id`, so only what it names
     // in the source survives the filter.
+    // A member a write adds to a set the deletes take has nothing left to
+    // name it, so it is not written and protects nothing.
+    let orphans: HashSet<u32> = list_edits
+        .iter()
+        .filter(|((set, _), _)| removed.contains(set))
+        .flat_map(|(_, edit)| edit.append.iter().chain(edit.substitute.values()).copied())
+        .collect();
+    appended.retain(|(id, _)| !orphans.contains(id));
     let mut named = Vec::new();
     for (_, text) in &appended {
         crate::step_text::refs_in_line(text.as_bytes(), &mut named);
@@ -137,6 +148,13 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     // makes (a member a copy-on-write clone reuses) comes back.
     removed.retain(|id| !gating.removed.contains(id) || delete_result.removed.contains(id));
     removed.extend(delete_result.removed);
+    // A surviving object's write into a record the plan deletes would vanish.
+    let mut lost: Vec<(u32, u32)> = edited.into_iter().filter(|(record, object)| removed.contains(record) && !removed.contains(object)).collect();
+    lost.sort_unstable();
+    refusals.extend(lost.into_iter().map(|(record, object)| Refusal {
+        object: ObjectRef::Id(object),
+        reason: format!("a write to #{record} is lost: this plan deletes that record"),
+    }));
     for (slot, strip) in delete_result.stripped {
         list_edits.entry(slot).or_default().remove.extend(strip);
     }
@@ -219,13 +237,25 @@ struct PatchOutput<'a> {
     /// only one may move it: a second placement would repoint past the first
     /// one's new records and leave them unreferenced.
     moved: &'a mut HashSet<u32>,
+    /// `(edited record, patched object)` for every in-place edit and set
+    /// member change, checked once the deletes settle.
+    edited: &'a mut HashSet<(u32, u32)>,
+    object: u32,
 }
 
 impl PatchOutput<'_> {
     fn edit(&mut self, edits: Vec<(u32, usize, String)>) {
         for (id, idx, value) in edits {
             self.edits_by_id.entry(id).or_default().insert(idx, value);
+            self.edited.insert((id, self.object));
         }
+    }
+
+    /// The member-list change on `set`'s attribute `idx`, recorded as a
+    /// write of the patched object.
+    fn list_edit(&mut self, set: u32, idx: usize) -> &mut attrs::ListEdit {
+        self.edited.insert((set, self.object));
+        self.list_edits.entry((set, idx)).or_default()
     }
 }
 
@@ -267,7 +297,7 @@ fn apply_patch(
                 props::PropOutcome::Append { new_records } => out.appended.extend(new_records),
                 props::PropOutcome::Fold { new_records, append: (set, idx, value) } => {
                     out.appended.extend(new_records);
-                    out.list_edits.entry((set, idx)).or_default().append.push(value);
+                    out.list_edit(set, idx).append.push(value);
                 }
                 props::PropOutcome::CopyOnWrite { new_records, detach } => {
                     out.appended.extend(new_records);
@@ -275,7 +305,11 @@ fn apply_patch(
                 }
                 props::PropOutcome::LeafCopyOnWrite { new_records, replace: (set, idx, old, new) } => {
                     out.appended.extend(new_records);
-                    out.list_edits.entry((set, idx)).or_default().substitute.insert(old, new);
+                    // A later patch repointing the same leaf replaces the
+                    // earlier copy, which then names nothing.
+                    if let Some(earlier) = out.list_edit(set, idx).substitute.insert(old, new) {
+                        out.appended.retain(|(id, _)| *id != earlier);
+                    }
                 }
             }
         }

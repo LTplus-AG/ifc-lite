@@ -262,3 +262,7 @@ pub(super) fn plan_in_scope<'j>(
 #[cfg(test)]
 #[path = "session_terminal_tests.rs"]
 mod terminal_tests;
+
+#[cfg(test)]
+#[path = "session_opaque_reports_tests.rs"]
+mod opaque_reports_tests;

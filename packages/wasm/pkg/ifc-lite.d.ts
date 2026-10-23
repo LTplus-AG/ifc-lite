@@ -2478,6 +2478,21 @@ export function diffBuildDataFingerprint(input: any): string;
 export function diffCreateSidecar(text: string, lineage: boolean): string;
 
 /**
+ * Return head/base pairs in JavaScript Map insertion order.
+ */
+export function diffKeyAliasesFromLineage(value: any): any;
+
+/**
+ * Return ordered conflict diagnostics for caller-supplied lineage entries.
+ */
+export function diffLineageConflicts(value: any): string[];
+
+/**
+ * Migrate keys using Rust policies, preserving the absence of orphan relations.
+ */
+export function diffRekeyByLineage(keys: string[], value: any, deleted: string[], policy: string): any;
+
+/**
  * Emit JSON.stringify-compatible pretty bytes and the trailing newline.
  */
 export function diffSerializeSidecar(text: string): string;
@@ -2719,6 +2734,9 @@ export interface InitOutput {
     readonly diffBuildComponentFingerprints: (a: number, b: number) => void;
     readonly diffBuildDataFingerprint: (a: number, b: number) => void;
     readonly diffCreateSidecar: (a: number, b: number, c: number, d: number) => void;
+    readonly diffKeyAliasesFromLineage: (a: number, b: number) => void;
+    readonly diffLineageConflicts: (a: number, b: number) => void;
+    readonly diffRekeyByLineage: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly diffSerializeSidecar: (a: number, b: number, c: number) => void;
     readonly diffStableHash: (a: number, b: number, c: number) => void;
     readonly diffValidateSidecar: (a: number, b: number, c: number, d: number) => void;

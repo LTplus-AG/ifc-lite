@@ -209,6 +209,7 @@ fn an_opening_goes_once_nothing_it_voids_is_left() {
 #[test]
 fn a_kept_type_or_port_is_never_counted() {
     use crate::plan::test_fixtures::host_with_port_type_and_body;
+    let mut ports = 0;
     for schema in ["IFC2X3", "IFC4", "IFC4X3"] {
         let content = host_with_port_type_and_body(schema);
         let mut index = FileIndex::scan(&content, &Default::default());
@@ -222,6 +223,8 @@ fn a_kept_type_or_port_is_never_counted() {
         if index.contains(19) {
             assert!(result.removed.contains(&19) && !result.removed.contains(&14), "{schema}: the port stays");
             assert!(!index.referrers.knows(14), "{schema}: the port is not counted");
+            ports += 1;
         }
     }
+    assert!(ports > 0, "some schema's fixture connects the port");
 }

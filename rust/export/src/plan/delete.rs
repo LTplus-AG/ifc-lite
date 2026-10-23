@@ -37,8 +37,8 @@ pub(crate) struct DeleteResult {
     /// index) -> the ids removed from that list. Rendered by the caller,
     /// together with whatever else the plan changes in the same list.
     pub(crate) stripped: HashMap<(u32, usize), HashSet<u32>>,
-    /// The openings and projections in `removed` because no element they
-    /// belong to is left ([`hosted_feature`]).
+    /// The openings and projections in `removed` with no element they
+    /// belong to left ([`hosted_feature`]).
     pub(crate) unhosted: HashSet<u32>,
 }
 
@@ -270,9 +270,9 @@ pub(crate) fn resolve_deletes(
 
         let dead_type = index.type_of(dead).unwrap_or_default();
         let dead_attrs = index.attrs(dead).unwrap_or_default();
-        if let Some(feature) = hosted_feature(index, file_schema, &dead_type, &dead_attrs, &cascade.removed)
-            .filter(|id| !protected.contains(id) && !cascade.removed.contains(id))
-        {
+        // Recorded even when the feature already went another way, so which
+        // removal the worklist reaches first does not change the answer.
+        if let Some(feature) = hosted_feature(index, file_schema, &dead_type, &dead_attrs, &cascade.removed).filter(|id| !protected.contains(id)) {
             unhosted.insert(feature);
             cascade.mark_removed(feature);
         }

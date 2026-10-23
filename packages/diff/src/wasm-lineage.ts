@@ -22,5 +22,5 @@ export function rekeyByLineage(keys: Iterable<string>, lineage: Lineage | readon
   diffModelConstructor();
   const entries = Array.isArray(lineage) ? lineage as readonly LineageEntry[] : (lineage as Lineage).entries;
   const deleted = Array.isArray(lineage) ? [] : (lineage as Lineage).deleted ?? [];
-  return diffRekeyByLineage([...keys], entries, deleted, policy) as RekeyResult[];
+  return diffRekeyByLineage([...keys], entries, [...deleted], policy) as RekeyResult[];
 }

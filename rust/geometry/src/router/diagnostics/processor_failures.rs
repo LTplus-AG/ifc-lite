@@ -8,7 +8,6 @@
 
 use super::super::GeometryRouter;
 use super::UNATTRIBUTED_PRODUCT_ID;
-use crate::BoolFailure;
 
 impl GeometryRouter {
     /// Move stored built-in Boolean/CSG reports without running final hooks.

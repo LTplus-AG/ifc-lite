@@ -9,7 +9,7 @@
 
 use super::chain::LinkKind;
 use super::chain_walk::{climb, Climb, Frame};
-use super::{PlacementError, PlacementResult};
+use super::{Axis2Placement, PlacementError, PlacementResult};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
 /// What a consumer accepts in a chain. All `false` is the strictest
@@ -66,8 +66,10 @@ fn check_relative(frame: &Frame, decoder: &mut EntityDecoder, policy: &ChainPoli
         .ok_or(PlacementError::Missing { at, attr: "RelativePlacement" })?;
     match rel.ifc_type {
         IfcType::IfcAxis2Placement3D if policy.strict_spatial => check_spatial(&rel, decoder),
-        IfcType::IfcAxis2Placement3D => Ok(()),
-        IfcType::IfcAxis2Placement2D if policy.planar_relative => Ok(()),
+        // Readable under the leaf rule too, so a validator refuses exactly
+        // what `resolve_chain` would (malformed leaves are counted).
+        IfcType::IfcAxis2Placement3D => Axis2Placement::read_3d(&rel, decoder).map(drop),
+        IfcType::IfcAxis2Placement2D if policy.planar_relative => Axis2Placement::read_2d(&rel, decoder).map(drop),
         IfcType::IfcAxis2Placement2D => {
             Err(PlacementError::Policy { at: rel.id, rule: "IfcAxis2Placement2D is not accepted" })
         }

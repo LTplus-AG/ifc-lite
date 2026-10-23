@@ -4,108 +4,23 @@
 
 //! Validate placement references before the mesh router's tolerant resolver.
 
-use std::collections::HashSet;
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_geometry::placement::{validate_chain, ChainPolicy};
 
-use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType, SchemaVersion, MAX_PLACEMENT_DEPTH};
+/// What analytic export carries: local, grid and linear links, 3D frames only.
+/// The walk is the shared one (visited set, no depth cap, D27).
+const POLICY: ChainPolicy = ChainPolicy { grid: true, linear: true, planar_relative: false, strict_spatial: false };
 
 pub(super) fn validate_placement_chain(
     element: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> Result<(), String> {
-    let Some(attr) = element.get(5).filter(|attr| !attr.is_null()) else {
+    let Some(attr) = element.attr(slot::IfcProduct::OBJECT_PLACEMENT).filter(|attr| !attr.is_null()) else {
         return Ok(());
     };
-    let mut current = attr.as_entity_ref().ok_or("ObjectPlacement is not an entity reference")?;
-    let mut seen = HashSet::new();
-    loop {
-        if seen.len() > MAX_PLACEMENT_DEPTH {
-            return Err("placement chain exceeded maximum depth".into());
-        }
-        if !seen.insert(current) {
-            return Err(format!("placement chain has a cycle at #{current}"));
-        }
-        let node = decoder.decode_by_id(current)
-            .map_err(|error| format!("ObjectPlacement #{current}: {error}"))?;
-        match node.ifc_type {
-            IfcType::IfcLocalPlacement => {
-                let relative = resolve_required(&node, 1, "RelativePlacement", decoder)?;
-                if relative.ifc_type != IfcType::IfcAxis2Placement3D {
-                    return Err(format!("IfcLocalPlacement #{current} has unsupported RelativePlacement #{} of type {}", relative.id, relative.ifc_type.name()));
-                }
-                validate_axis2_placement_3d(&relative, decoder)?;
-            }
-            IfcType::IfcGridPlacement => {
-                // Positions follow the declared schema: IFC2X3/IFC4 have no
-                // PlacementRelTo, so PlacementLocation is attribute 0 and the
-                // parent frame is the placement of the grid owning the axes.
-                let slot = decoder
-                    .attribute_index("IfcGridPlacement", "PlacementLocation")
-                    .ok_or_else(|| {
-                        format!(
-                            "IfcGridPlacement #{current} has no PlacementLocation in this schema"
-                        )
-                    })?;
-                let location = resolve_required(&node, slot, "PlacementLocation", decoder)?;
-                if location.ifc_type != IfcType::IfcVirtualGridIntersection {
-                    return Err(format!("IfcGridPlacement #{current} has invalid PlacementLocation #{}", location.id));
-                }
-                if decoder.attribute_index("IfcGridPlacement", "PlacementRelTo").is_none() {
-                    match owning_grid_placement(&location, decoder) {
-                        Some(parent) => {
-                            current = parent;
-                            continue;
-                        }
-                        None => return Ok(()),
-                    }
-                }
-            }
-            IfcType::IfcLinearPlacement => {
-                // Positions follow the declared schema: IFC4X1/4X2 have no
-                // RelativePlacement (their slot 1 is `Distance`) and carry
-                // CartesianPosition at 3 / 4 (X1, #7780). An IFC2X3/IFC4 label
-                // on a file with linear placements is a mislabelled IFC4X3
-                // export, read with the IFC4X3 layout as it always was.
-                let relative_slot = decoder.slot_or(slot::IfcLinearPlacement::RELATIVE_PLACEMENT, SchemaVersion::Ifc4x3);
-                let cartesian_slot = decoder.slot_or(slot::IfcLinearPlacement::CARTESIAN_POSITION, SchemaVersion::Ifc4x3);
-                let present = |slot: Option<slot::Slot<slot::kind::Ref>>| {
-                    slot.map(|slot| slot.index()).filter(|&index| node.get(index).is_some_and(|attr| !attr.is_null()))
-                };
-                let (relative, cartesian) = (present(relative_slot), present(cartesian_slot));
-                if relative.is_none() && cartesian.is_none() {
-                    return Err(format!("IfcLinearPlacement #{current} has no RelativePlacement or CartesianPosition"));
-                }
-                if let Some(index) = relative {
-                    let value = resolve_required(&node, index, "RelativePlacement", decoder)?;
-                    if value.ifc_type != IfcType::IfcAxis2PlacementLinear {
-                        return Err(format!("IfcLinearPlacement #{current} has invalid RelativePlacement #{}", value.id));
-                    }
-                }
-                if let Some(index) = cartesian {
-                    let value = resolve_required(&node, index, "CartesianPosition", decoder)?;
-                    if value.ifc_type != IfcType::IfcAxis2Placement3D {
-                        return Err(format!("IfcLinearPlacement #{current} has invalid CartesianPosition #{}", value.id));
-                    }
-                    validate_axis2_placement_3d(&value, decoder)?;
-                }
-            }
-            _ => return Err(format!("ObjectPlacement #{current} has invalid type {}", node.ifc_type.name())),
-        }
-        let Some(parent) = node.get(0).filter(|attr| !attr.is_null()) else { return Ok(()) };
-        current = parent.as_entity_ref()
-            .ok_or_else(|| format!("placement #{current} has invalid PlacementRelTo"))?;
-    }
-}
-
-/// IFC2X3/IFC4 grid placements sit in the frame of the `IfcGrid` that owns
-/// their axes: that grid's ObjectPlacement id, when it has one.
-fn owning_grid_placement(
-    intersection: &DecodedEntity,
-    decoder: &mut EntityDecoder,
-) -> Option<u32> {
-    let axis = intersection.get_refs(0)?.first().copied()?;
-    let grid = decoder.grid_of_axis(axis)?;
-    let slot = decoder.attribute_index("IfcGrid", "ObjectPlacement")?;
-    decoder.decode_by_id(grid).ok()?.get_ref(slot)
+    let id = attr.as_entity_ref().ok_or("ObjectPlacement is not an entity reference")?;
+    let placement = decoder.decode_by_id(id).map_err(|error| format!("ObjectPlacement #{id}: {error}"))?;
+    validate_chain(&placement, decoder, &POLICY).map_err(|error| error.to_string())
 }
 
 pub(super) fn resolve_required(
@@ -203,7 +118,7 @@ ENDSEC;\nEND-ISO-10303-21;\n"
         let broken = source("IFC4", "IFCGRIDPLACEMENT(#60,$)")
             .replace("#20=IFCLOCALPLACEMENT($,#23);", "#20=IFCLOCALPLACEMENT($,#21);");
         let err = validate(&broken).expect_err("grid placement chain reaches #20");
-        assert!(err.contains("#20"), "{err}");
+        assert!(err.contains("#21"), "the broken RelativePlacement of #20 is named: {err}");
     }
 }
 
@@ -266,4 +181,3 @@ ENDSEC;\nEND-ISO-10303-21;\n"
         assert!(err.contains("no RelativePlacement or CartesianPosition"), "{err}");
     }
 }
-

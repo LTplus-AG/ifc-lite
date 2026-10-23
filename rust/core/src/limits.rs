@@ -71,6 +71,10 @@ pub const MAX_MAPPED_ITEM_DEPTH: u32 = 32;
 ///
 /// This bounds one path's LENGTH only. A walk over a chain that can revisit
 /// also needs a cycle guard; see the module docs above.
+///
+/// No placement chain is bounded by this any more (F3b, D27): every consumer
+/// walks `PlacementRelTo` through `ifc_lite_geometry::placement`, iteratively
+/// with a visited set. The constant is kept for the L-export retirement.
 pub const MAX_PLACEMENT_DEPTH: usize = 100;
 
 /// Maximum `ParentContext` chain (`IfcGeometricRepresentationSubContext` ->

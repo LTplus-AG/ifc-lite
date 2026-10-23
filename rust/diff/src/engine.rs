@@ -36,10 +36,10 @@ pub fn diff_models<'a, R>(base: &'a [EntityFingerprint<R>], head: &'a [EntityFin
         (matched.core,Some(matched.content_matches))
     } else { (core,None) };
     let families = options.class_families.as_deref();
-    let split_merges = if options.detect_split_merge {
+    let split_merges = if options.match_unpaired_by_content && options.detect_split_merge {
         detect_split_merge(&core.entries,core.use_geometry,options.split,families)
     } else { None };
-    let successors = if options.detect_successors {
+    let successors = if options.match_unpaired_by_content && options.detect_successors {
         let bound: Vec<_> = split_merges.iter().flatten().flat_map(|c|std::iter::once(c.whole).chain(c.pieces.iter().copied())).collect();
         detect_successors(&core.entries,core.use_geometry,&bound,options.successor,options.geometry,families)
     } else { None };

@@ -37,7 +37,7 @@ function bottom(ui: HTMLElement) {
   assert.ok(button); click(button);
 }
 function dragEvent(target: HTMLElement, type: string, transfer = new window.DataTransfer()) {
-  act(() => target.dispatchEvent(new window.DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: transfer })));
+  act(() => { target.dispatchEvent(new window.DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: transfer })); });
   return transfer;
 }
 

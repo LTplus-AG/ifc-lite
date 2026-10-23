@@ -9,9 +9,10 @@
 //! a duplicated GlobalId, a comment holding an unbalanced quote).
 //!
 //! The digests below were recorded from the whole-file-index executor, and
-//! re-recorded once since: when the quirks block's doubly declared point
+//! re-recorded since: once when the quirks block's doubly declared point
 //! moved to its last declaration's position and began to be reported as a
-//! finding (output length unchanged). Any implementation change that alters
+//! finding (output length unchanged), and once when delete stopped pruning
+//! objects the plan did not name (the comments below say which moved). Any implementation change that alters
 //! a single output byte, a count, a refusal or a finding fails here.
 //!
 //! To re-record after an intended output change:
@@ -76,8 +77,12 @@ const PINNED: &[(&str, &str)] = &[
     // `delete_storey_placement` reaches the quirks block's dangling reference.
     // It names no record, so it is no longer counted in `deleted`; the output
     // bytes are unchanged and only the report moved.
-    ("IFC2X3/delete_storey_placement", "70bfd1d28574e9d7:83972"),
-    ("IFC2X3/delete_whole_group", "04c3a081316974cc:74942"),
+    ("IFC2X3/delete_storey_placement", "68fd48c10ae89f54:84042"),
+    // `delete_storey_placement` and `delete_whole_group` delete every wall
+    // bounding a space. The space used to be pruned with its last boundary;
+    // an object the plan did not delete now stays (one 70-byte IFCSPACE line
+    // more, nothing else moved).
+    ("IFC2X3/delete_whole_group", "9aa3b99085fac62d:75012"),
     ("IFC2X3/delete_type", "5e55d9b1b4ab4a9e:123831"),
     // `delete_wins_and_unknowns` includes an Add keyed by a wall that
     // already exists. It is refused and writes nothing, so the output bytes
@@ -97,20 +102,24 @@ const PINNED: &[(&str, &str)] = &[
     // New bodies for eight walls (one with an opening, one with a space
     // boundary), each replacing an extruded solid and its profile chain.
     ("IFC2X3/geometry", "b35e09ad010fe5c7:136389"),
+    // Two of three storeys and every wall they contain.
+    ("IFC2X3/bulk_delete", "4f15a6999000e0a9:45378"),
     ("IFC4/preserve", "bd388bd3c7e550c2:124703"),
     ("IFC4/rename_by_guid", "82e307937639bf61:124719"),
     ("IFC4/placements", "f6119086b8ffe1a4:125579"),
     ("IFC4/props", "b2e98127eb353a1b:125267"),
     ("IFC4/delete_with_opening_and_boundary", "30a92c7c7ff10b40:122367"),
     ("IFC4/delete_storey", "bfaff42a94222d7e:124297"),
-    ("IFC4/delete_storey_placement", "fbeeda1e25725b62:84308"),
-    ("IFC4/delete_whole_group", "442b54feba95cf1f:75246"),
+    // Same space as in IFC2X3, see above.
+    ("IFC4/delete_storey_placement", "d43c18bf0f615a99:84378"),
+    ("IFC4/delete_whole_group", "f262523aaedc86ba:75316"),
     ("IFC4/delete_type", "cc3eda45c1ac0247:124345"),
     ("IFC4/delete_wins_and_unknowns", "3b9736287ed34429:123498"),
     ("IFC4/quirks", "fbca61a00ac4c43b:124907"),
     // Same fix, same scenario, IFC4: see the IFC2X3 comment above.
     ("IFC4/benchmark", "0ac47b1862130c3a:129644"),
     ("IFC4/geometry", "6b055df60c996be8:125923"),
+    ("IFC4/bulk_delete", "7f9fd7d71e72f5ea:45556"),
 ];
 
 #[test]

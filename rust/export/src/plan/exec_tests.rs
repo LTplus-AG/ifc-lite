@@ -471,3 +471,26 @@ fn patches_of_one_object_compose_but_only_the_first_placement_applies() {
     assert_eq!(points.len(), 1, "the first move is written");
     assert!(!after.values().any(|l| l.contains("IFCCARTESIANPOINT((2.,")), "the second move is not");
 }
+
+/// End to end: deleting a host writes a file that still holds its port and
+/// type, names nothing it dropped, and validates clean.
+#[test]
+fn deleting_a_host_writes_its_port_and_type_and_validates() {
+    use super::test_fixtures::host_with_port_type_and_body;
+    for schema in ["IFC2X3", "IFC4", "IFC4X3"] {
+        let content = host_with_port_type_and_body(schema);
+        let plan = ExportPlan { dispositions: vec![(ObjectRef::Id(10), Disposition::Delete)], context: PlanContext::default() };
+        let mut out = Vec::new();
+        let report = execute(&content, &plan, &mut out).expect(schema);
+        assert!(report.findings.is_empty(), "{schema}: {:?}", report.findings);
+        assert!(report.refusals.is_empty(), "{schema}: {:?}", report.refusals);
+        let after = entity_lines(&out);
+        for id in [11, 14, 15, 20, 32, 40, 42] {
+            assert!(after.contains_key(&id), "{schema}: #{id} is written");
+        }
+        for id in [10, 18, 43, 60, 70] {
+            assert!(!after.contains_key(&id), "{schema}: #{id} is gone");
+        }
+        assert!(after[&32].contains("(#11)"), "{schema}: {}", after[&32]);
+    }
+}

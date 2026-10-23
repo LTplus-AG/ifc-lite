@@ -137,11 +137,19 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     // copy-on-write detach are resolved together: a relationship either
     // side strips from composes into a single rewrite, and a relationship
     // both sides empty between them still cascades.
+    let gated = (requested_deletes.len(), protected.len());
     protect_what_appended_names(index, &list_edits, &removed, &mut appended, &mut protected);
-    let delete_result = delete::resolve_deletes(index, schema, &requested_deletes, &detach_requests, &protected);
-    // This pass decides what the deletes take: a gating removal it no longer
-    // makes (a member a copy-on-write clone reuses) comes back.
-    removed.retain(|id| !gating.removed.contains(id) || delete_result.removed.contains(id));
+    // Both sets only grow, so unchanged sizes and no detach mean the gating
+    // pass already is this answer.
+    let delete_result = if detach_requests.is_empty() && gated == (requested_deletes.len(), protected.len()) {
+        gating
+    } else {
+        let result = delete::resolve_deletes(index, schema, &requested_deletes, &detach_requests, &protected);
+        // This pass decides what the deletes take: a gating removal it no
+        // longer makes (a member a copy-on-write clone reuses) comes back.
+        removed.retain(|id| !gating.removed.contains(id) || result.removed.contains(id));
+        result
+    };
     removed.extend(delete_result.removed);
     refusals.extend(lost_writes(edited, &removed));
     refusals.extend(overridden_preserves(&resolved, &removed));

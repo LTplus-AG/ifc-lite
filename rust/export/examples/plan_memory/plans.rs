@@ -82,6 +82,14 @@ pub fn benchmark(l: &Layout) -> ExportPlan {
     plan(d)
 }
 
+/// Every storey below `storeys` deleted together with every wall it
+/// contains: tens of thousands of deletions under the few large
+/// relationships they share (containment, typing, shared property sets).
+pub fn bulk_delete(l: &Layout, storeys: u32) -> ExportPlan {
+    let walls = (0..l.walls).filter(|&k| l.storey_of(k) < storeys).map(|k| delete(l.wall(k)));
+    plan((0..storeys).map(|s| delete(l.storey(s))).chain(walls).collect())
+}
+
 /// A closed `x` by `y` by `z` box with a corner at the origin, 12 triangles.
 fn box_mesh(x: f64, y: f64, z: f64) -> TriangleMesh {
     let positions = (0..8).map(|i| [if i & 1 == 0 { 0.0 } else { x }, if i & 2 == 0 { 0.0 } else { y }, if i & 4 == 0 { 0.0 } else { z }]).collect();
@@ -164,5 +172,6 @@ pub fn scenarios(l: &Layout) -> Vec<(&'static str, ExportPlan)> {
         ),
         ("benchmark", benchmark(l)),
         ("geometry", geometry(l, 8)),
+        ("bulk_delete", bulk_delete(l, 2)),
     ]
 }

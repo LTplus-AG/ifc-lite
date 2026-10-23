@@ -137,6 +137,17 @@ pub enum Disposition {
     /// Apply the given edits; any field left `None`/empty is untouched.
     Patch(Patch),
     /// Remove the object and repair every relationship that named it.
+    ///
+    /// A relationship whose required side goes empty is removed; one that
+    /// keeps a member is rewritten. Records only deleted objects used
+    /// (placements, geometry, property sets) are pruned. Objects and types
+    /// the plan does not delete are never pruned: a port nested on a deleted
+    /// host stays as a free product, a type whose occurrences are all deleted
+    /// stays declared. The exception is an opening or projection, which IFC
+    /// ties to exactly one element: it goes with its host. A record that
+    /// names a deleted one through a single-valued attribute (a placement
+    /// relative to a deleted placement, an object on that placement) goes too,
+    /// since it cannot be written without a dangling reference.
     Delete,
     /// Build a new object from its IFC-level description. Boxed because the
     /// description is much larger than the other variants.

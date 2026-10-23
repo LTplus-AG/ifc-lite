@@ -232,7 +232,11 @@ export default defineConfig({
             '--enable-gpu',
             '--enable-webgpu',
             '--enable-unsafe-webgpu',
-            '--use-angle=swiftshader', // Software rendering for CI
+            // Match viewer-e2e-ci: ANGLE alone does not select Dawn's Vulkan backend.
+            '--enable-features=Vulkan',
+            '--use-vulkan=swiftshader',
+            '--use-angle=swiftshader',
+            '--disable-vulkan-surface',
             '--ignore-gpu-blocklist',
           ],
         },

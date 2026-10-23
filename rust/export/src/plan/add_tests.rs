@@ -466,3 +466,39 @@ fn a_furniture_type_gets_its_mandatory_assembly_place() {
         assert!(line.contains(".NOTDEFINED."), "{schema}: {line}");
     }
 }
+
+/// A new storey's Elevation is written as given, in the project's length
+/// unit; the storey's placement is its own.
+#[test]
+fn a_new_storey_carries_the_elevation_it_is_given() {
+    for schema in SCHEMAS {
+        let source = storey_with_typed_wall(schema);
+        let mut level2 = object(IfcClass::BuildingStorey, gid(60), Some(ObjectRef::Id(60)), Representation::None);
+        level2.elevation = Some(6.5);
+        let level3 = object(IfcClass::BuildingStorey, gid(61), Some(ObjectRef::Id(60)), Representation::None);
+        let (out, report) = run(&source, vec![add(level2), add(level3)]);
+        assert_clean(&report, schema);
+        assert!(crate::plan::validate::validate(&out, schema).is_empty(), "{schema}");
+        let elevation = |g| {
+            let index = crate::plan::index::FileIndex::scan(&out, &Default::default());
+            let idx = crate::plan::attrs::attribute_index(schema, "IFCBUILDINGSTOREY", "Elevation").unwrap();
+            crate::step_text::attribute_of(&index.raw_line(id_in(&out, g)).unwrap(), idx).unwrap()
+        };
+        assert_eq!(elevation(gid(60)), "6.5", "{schema}");
+        assert_eq!(elevation(gid(61)), "$", "{schema}: none given, none written");
+    }
+}
+
+#[test]
+fn an_elevation_is_refused_off_a_storey_or_when_not_finite() {
+    let source = storey_with_typed_wall("IFC4");
+    let mut wall = object(IfcClass::Wall, gid(62), storey(), Representation::None);
+    wall.elevation = Some(1.0);
+    let mut storey_nan = object(IfcClass::BuildingStorey, gid(63), Some(ObjectRef::Id(60)), Representation::None);
+    storey_nan.elevation = Some(f64::NAN);
+    let (_, report) = run(&source, vec![add(wall), add(storey_nan)]);
+    assert_eq!(report.added, 0);
+    let reasons: Vec<&str> = report.refusals.iter().map(|r| r.reason.as_str()).collect();
+    assert!(reasons[0].contains("only a storey takes one"), "{reasons:?}");
+    assert!(reasons[1].contains("not finite"), "{reasons:?}");
+}

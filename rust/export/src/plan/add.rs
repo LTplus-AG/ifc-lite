@@ -26,6 +26,7 @@ use super::add_types::{GlobalId, NewObject, NewType, Representation, TypeLink};
 use super::attrs::{attribute_index, unset_required};
 use super::index::FileIndex;
 use super::owner_history;
+use super::placement::fmt;
 use super::props_synth::{defines_by_properties_record, ref_list, ref_or_unset};
 use super::tessellation::{find_body_context, synthesize_context, Emit};
 use super::types::{ObjectRef, PlanContext, Refusal};
@@ -238,6 +239,9 @@ impl<'a> AddState<'a> {
         if self.is_a(&c.class, "IFCSPATIALSTRUCTUREELEMENT") {
             // Mandatory in IFC2X3; ELEMENT is what a single storey or space is.
             fields.push(("CompositionType", ".ELEMENT.".into()));
+        }
+        if let Some(e) = obj.elevation {
+            fields.push(("Elevation", fmt(e)));
         }
         let object = emit.record(&c.class, &fields)?;
         require_filled(emit, object)?;

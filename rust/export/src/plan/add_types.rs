@@ -250,6 +250,10 @@ pub struct NewObject {
     pub material: Option<MaterialLink>,
     /// Written in the order given; one reference may not appear twice.
     pub classifications: Vec<ClassificationLink>,
+    /// A storey's `Elevation`, in the project's length unit, written as
+    /// given. Only an `IfcBuildingStorey` takes one. It does not move the
+    /// storey: its placement is `placement`.
+    pub elevation: Option<f64>,
 }
 
 impl NewObject {

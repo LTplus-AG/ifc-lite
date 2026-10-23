@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use ifc_lite_core::MAX_MAPPED_ITEM_DEPTH;
+use ifc_lite_core::{slot, MAX_MAPPED_ITEM_DEPTH};
 
 /// Find color for a geometry item, following MappedItem references if needed.
 /// This handles the case where IfcStyledItem points to geometry inside a MappedRepresentation,
@@ -76,13 +76,13 @@ fn find_color_for_geometry_at(
 
     if geom.ifc_type == IfcType::IfcMappedItem {
         // IfcMappedItem: MappingSource (IfcRepresentationMap ref), MappingTarget
-        let map_source_id = geom.get_ref(0)?;
+        let map_source_id = geom.ref_at(slot::IfcMappedItem::MAPPING_SOURCE)?;
 
         // Decode the IfcRepresentationMap
         let rep_map = decoder.decode_by_id(map_source_id).ok()?;
 
         // IfcRepresentationMap: MappingOrigin (IfcAxis2Placement), MappedRepresentation (IfcShapeRepresentation)
-        let mapped_repr_id = rep_map.get_ref(1)?;
+        let mapped_repr_id = rep_map.ref_at(slot::IfcRepresentationMap::MAPPED_REPRESENTATION)?;
 
         // Decode the mapped IfcShapeRepresentation
         let mapped_repr = decoder.decode_by_id(mapped_repr_id).ok()?;
@@ -90,7 +90,7 @@ fn find_color_for_geometry_at(
         // IfcShapeRepresentation: ContextOfItems, RepresentationIdentifier, RepresentationType, Items
         // Attribute 3: Items (list of geometry items)
         // Check each underlying geometry item for a color
-        for underlying_geom_id in mapped_repr.get_refs(3)? {
+        for underlying_geom_id in mapped_repr.ref_list_at(slot::IfcRepresentation::ITEMS)? {
             // Recursively find color (handles nested MappedItems)
             if let Some(color) = find_color_for_geometry_at(
                 underlying_geom_id,
@@ -156,15 +156,15 @@ fn walk_representation_for_direct_color(
     geometry_styles: &rustc_hash::FxHashMap<u32, [f32; 4]>,
     decoder: &mut ifc_lite_core::EntityDecoder,
 ) -> Option<[f32; 4]> {
-    let repr_id = entity.get_ref(6)?;
+    let repr_id = entity.ref_at(slot::IfcProduct::REPRESENTATION)?;
     let product_shape = decoder.decode_by_id(repr_id).ok()?;
-    let reprs = product_shape.get_refs(2)?;
+    let reprs = product_shape.ref_list_at(slot::IfcProductDefinitionShape::REPRESENTATIONS)?;
 
     for shape_repr_id in reprs {
         let Ok(shape_repr) = decoder.decode_by_id(shape_repr_id) else {
             continue;
         };
-        let Some(items) = shape_repr.get_refs(3) else {
+        let Some(items) = shape_repr.ref_list_at(slot::IfcRepresentation::ITEMS) else {
             continue;
         };
 

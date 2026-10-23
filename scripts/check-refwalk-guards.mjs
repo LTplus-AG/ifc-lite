@@ -155,7 +155,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
  * question was crate-scope vs pattern-scope. Scoped to the PATTERN here, and
  * the history says that is the right call: of the six #2866 fixes, #2869's
  * site is `rust/processing/src/symbolic/items.rs` and #2868's is
- * `rust/wasm-bindings/src/api/styling/color.rs`. A gate scoped to the crate
+ * now `rust/processing/src/style/element_color.rs` (originally WASM styling).
+ * A gate scoped to the crate
  * the issue names would have been blind to two of the six walks it exists to
  * prevent a seventh of. Both extra roots cost nothing: each contributes zero
  * unguarded candidates today.

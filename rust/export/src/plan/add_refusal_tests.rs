@@ -23,6 +23,7 @@ fn refused(source: &[u8], obj: NewObject, expect: &str) {
 
 fn new_type(class: &str, predefined_type: Option<&str>) -> TypeLink {
     TypeLink::New(NewType {
+            global_id: None,
         class: ClassSpec { class: IfcClass::Named(class.into()), predefined_type: predefined_type.map(Into::into) },
         name: Some("T".into()),
         psets: Vec::new(),
@@ -90,7 +91,7 @@ fn a_later_add_can_name_an_object_that_replaces_a_deleted_one() {
     assert_eq!(reused.encode(), fixture_gid(10));
     let wall = object(IfcClass::Wall, reused, storey(), Representation::Extrusion(block(4.0, 0.2, 3.0)));
     let mut door = object(IfcClass::Door, gid(6), storey(), Representation::Extrusion(block(1.0, 0.2, 2.0)));
-    door.opening = Some(NewOpening { host: ObjectRef::Guid(fixture_gid(10)), shape: block(1.0, 0.4, 2.0) });
+    door.opening = Some(NewOpening { host: ObjectRef::Guid(fixture_gid(10)), matrix: IDENTITY, shape: block(1.0, 0.4, 2.0) });
     let (_, report) = run(&source, vec![(ObjectRef::Guid(fixture_gid(10)), Disposition::Delete), add(wall), add(door)]);
     assert_clean(&report, "IFC4");
     assert_eq!(report.added, 2);

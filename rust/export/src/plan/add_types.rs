@@ -144,9 +144,21 @@ pub struct NewPropertySet {
 /// and no container; their sets are attached through `HasPropertySets`.
 #[derive(Debug, Clone)]
 pub struct NewType {
+    /// The type's own GlobalId. `None` derives one from the occurrence that
+    /// creates it (`derive("type")`); a caller that has its own identity for
+    /// the type passes it here, so the type keeps that identity whichever
+    /// occurrence happens to create it.
+    pub global_id: Option<GlobalId>,
     pub class: ClassSpec,
     pub name: Option<String>,
     pub psets: Vec<NewPropertySet>,
+}
+
+impl NewType {
+    /// The GlobalId this type is written with when `occurrence` creates it.
+    pub fn global_id_for(&self, occurrence: GlobalId) -> GlobalId {
+        self.global_id.unwrap_or_else(|| occurrence.derive("type"))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -156,12 +168,14 @@ pub enum TypeLink {
     New(NewType),
 }
 
-/// An `IfcOpeningElement` cut into `host`, placed in the NEW object's local
-/// frame (so the profile describes the hole where the object will sit).
-/// When the new object is a door or window, it also fills the opening.
+/// An `IfcOpeningElement` cut into `host`, placed at `matrix` (row-major,
+/// file length units) in the NEW object's local frame, so the profile
+/// describes the hole where the object will sit. When the new object is a
+/// door or window, it also fills the opening.
 #[derive(Debug, Clone)]
 pub struct NewOpening {
     pub host: ObjectRef,
+    pub matrix: [[f64; 4]; 4],
     pub shape: Extrusion,
 }
 
@@ -212,8 +226,8 @@ impl NewObject {
     /// names, so these are what an Add can look up.
     pub(crate) fn guids_to_look_up(&self) -> Vec<String> {
         let mut out = vec![self.global_id.encode()];
-        if matches!(self.type_link, Some(TypeLink::New(_))) {
-            out.push(self.global_id.derive("type").encode());
+        if let Some(TypeLink::New(t)) = &self.type_link {
+            out.push(t.global_id_for(self.global_id).encode());
         }
         out.extend(self.references().filter_map(|r| match r {
             ObjectRef::Guid(g) => Some(g.clone()),

@@ -67,7 +67,7 @@ fn a_door_fills_a_new_opening_cut_in_an_existing_wall() {
     for schema in SCHEMAS {
         let source = storey_with_typed_wall(schema);
         let mut door = object(IfcClass::Door, gid(2), storey(), Representation::Extrusion(block(0.9, 0.2, 2.1)));
-        door.opening = Some(NewOpening { host: ObjectRef::Id(10), shape: block(0.9, 0.2, 2.1) });
+        door.opening = Some(NewOpening { host: ObjectRef::Id(10), matrix: IDENTITY, shape: block(0.9, 0.2, 2.1) });
         let (out, report) = run(&source, vec![add(door)]);
         assert_clean(&report, schema);
         let door_id = id_in(&out, gid(2));
@@ -94,7 +94,7 @@ fn a_window_without_a_host_gets_no_opening_and_a_wall_with_a_host_gets_no_fill()
     let source = storey_with_typed_wall("IFC4");
     let window = object(IfcClass::Window, gid(3), storey(), Representation::None);
     let mut niche = object(IfcClass::Wall, gid(4), storey(), Representation::None);
-    niche.opening = Some(NewOpening { host: ObjectRef::Id(10), shape: block(0.5, 0.2, 0.5) });
+    niche.opening = Some(NewOpening { host: ObjectRef::Id(10), matrix: IDENTITY, shape: block(0.5, 0.2, 0.5) });
     let (out, report) = run(&source, vec![add(window), add(niche)]);
     assert_clean(&report, "IFC4");
     assert_eq!(count(&out, "IFCOPENINGELEMENT"), 1);
@@ -166,6 +166,7 @@ fn a_new_type_with_property_sets_is_shared_by_a_later_add() {
         let source = storey_with_typed_wall(schema);
         let mut first = object(IfcClass::Wall, gid(20), storey(), Representation::None);
         first.type_link = Some(TypeLink::New(NewType {
+            global_id: None,
             class: ClassSpec { class: IfcClass::Named("IfcWallType".into()), predefined_type: Some("standard".into()) },
             name: Some("Generic 200".into()),
             psets: vec![wall_common("W200")],
@@ -250,10 +251,11 @@ fn same_plan_produces_byte_identical_output_twice() {
         let door_type = if schema == "IFC2X3" { "IfcDoorStyle" } else { "IfcDoorType" };
         let plan = || {
             let mut door = object(IfcClass::Door, gid(50), storey(), Representation::Mesh(tetrahedron()));
-            door.opening = Some(NewOpening { host: ObjectRef::Id(10), shape: block(0.9, 0.2, 2.1) });
+            door.opening = Some(NewOpening { host: ObjectRef::Id(10), matrix: IDENTITY, shape: block(0.9, 0.2, 2.1) });
             door.style = Some(SurfaceColour { rgb: [0.2, 0.4, 0.6], transparency: 0.0 });
             door.psets = vec![wall_common("D1")];
             door.type_link = Some(TypeLink::New(NewType {
+            global_id: None,
                 class: ClassSpec { class: IfcClass::Named(door_type.into()), predefined_type: None },
                 name: None,
                 psets: vec![wall_common("T")],
@@ -377,4 +379,67 @@ fn an_id_space_exhausted_while_writing_relationships_reports_nothing_added() {
     assert!(report.refusals[0].reason.contains("id space exhausted"), "{:?}", report.refusals);
     let (untouched, _) = run(&source, Vec::new());
     assert_eq!(out, untouched, "no trace of the built-then-discarded object survives in the output");
+}
+
+#[test]
+fn a_new_type_with_its_own_global_id_keeps_it_and_later_adds_name_it() {
+    for schema in SCHEMAS {
+        let source = storey_with_typed_wall(schema);
+        let type_gid = gid(90);
+        let mut first = object(IfcClass::Wall, gid(22), storey(), Representation::None);
+        first.type_link = Some(TypeLink::New(NewType {
+            global_id: Some(type_gid),
+            class: ClassSpec { class: IfcClass::Named("IfcWallType".into()), predefined_type: None },
+            name: Some("Own id".into()),
+            psets: vec![wall_common("W1")],
+        }));
+        let mut second = object(IfcClass::Wall, gid(23), storey(), Representation::None);
+        second.type_link = Some(TypeLink::Existing(ObjectRef::Guid(type_gid.encode())));
+        let (out, report) = run(&source, vec![add(first), add(second)]);
+        assert_clean(&report, schema);
+        let type_id = id_in(&out, type_gid);
+        let rels = crate::relationships(&out);
+        assert_eq!(rels.type_of.get(&id_in(&out, gid(23))), Some(&type_id), "{schema}");
+        assert!(!String::from_utf8(out).unwrap().contains(&gid(22).derive("type").encode()), "{schema}: no derived id");
+    }
+}
+
+#[test]
+fn a_new_type_sharing_its_occurrences_global_id_is_refused() {
+    let source = storey_with_typed_wall("IFC4");
+    let mut wall = object(IfcClass::Wall, gid(24), storey(), Representation::None);
+    wall.type_link = Some(TypeLink::New(NewType {
+        global_id: Some(gid(24)),
+        class: ClassSpec { class: IfcClass::Named("IfcWallType".into()), predefined_type: None },
+        name: None,
+        psets: Vec::new(),
+    }));
+    let (_, report) = run(&source, vec![add(wall)]);
+    assert!(report.refusals[0].reason.contains("cannot share"), "{:?}", report.refusals);
+}
+
+#[test]
+fn an_opening_is_placed_at_its_matrix_in_the_objects_frame() {
+    let source = storey_with_typed_wall("IFC4");
+    let mut door = object(IfcClass::Door, gid(40), storey(), Representation::Extrusion(block(0.9, 0.2, 2.1)));
+    let mut matrix = IDENTITY;
+    matrix[2][3] = -0.15;
+    door.opening = Some(NewOpening { host: ObjectRef::Id(10), matrix, shape: block(0.9, 0.3, 2.1) });
+    let (out, report) = run(&source, vec![add(door)]);
+    assert_clean(&report, "IFC4");
+    let text = String::from_utf8(out.clone()).unwrap();
+    let mut decoder = EntityDecoder::new(&out);
+    let opening = decoder.decode_by_id(id_in(&out, gid(40).derive("opening"))).unwrap();
+    let placement = decoder.decode_by_id(opening.get_ref(5).unwrap()).unwrap();
+    let a2p = decoder.decode_by_id(placement.get_ref(1).unwrap()).unwrap();
+    let point = a2p.get_ref(0).unwrap();
+    let line = text.lines().find(|l| l.starts_with(&format!("#{point}="))).unwrap();
+    assert!(line.contains("(0.,0.,-0.15)"), "{line}");
+
+    let mut skewed = object(IfcClass::Door, gid(41), storey(), Representation::None);
+    let mut bad = IDENTITY;
+    bad[2][2] = 0.0;
+    skewed.opening = Some(NewOpening { host: ObjectRef::Id(10), matrix: bad, shape: block(0.9, 0.3, 2.1) });
+    let (_, report) = run(&source, vec![add(skewed)]);
+    assert!(report.refusals[0].reason.starts_with("opening:"), "{:?}", report.refusals);
 }

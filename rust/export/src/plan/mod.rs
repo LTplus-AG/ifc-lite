@@ -52,6 +52,7 @@ mod props_lookup;
 mod props_synth;
 mod referrers;
 mod resolve;
+mod skeleton;
 mod tessellation;
 #[cfg(test)]
 mod add_test_support;
@@ -65,6 +66,7 @@ pub use add_types::{
     ClassSpec, Extrusion, GlobalId, IfcClass, NewObject, NewOpening, NewPlacement, NewProperty, NewPropertySet, NewType,
     PropertyValue, Representation, TypeLink,
 };
+pub use skeleton::{skeleton, MapConversion, Skeleton, SkeletonRoot, SKELETON_SCHEMA};
 pub use types::{
     Disposition, DroppedRepresentation, ExportPlan, GeometryPatch, ObjectRef, Patch, PlacementPatch, PlanContext, PlanError,
     PropScope, PropWrite, PsetKind, Refusal, SurfaceColour, TriangleMesh, ValidationFinding, WriteReport,

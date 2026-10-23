@@ -7,8 +7,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { loadIfcBytes } from '../packages/cli/dist/loader.js';
 import { buildFileFingerprints } from '../packages/cli/dist/commands/diff-engine.js';
 import { diffModels } from '../packages/diff/dist/index.js';
-import { fingerprintColumns } from '../packages/diff/src/wasm-columns.ts';
-import { restoreDiffReferences } from '../packages/diff/src/wasm-result.ts';
+import { fingerprintColumns } from '../packages/diff/dist/wasm-columns.js';
+import { restoreDiffReferences } from '../packages/diff/dist/wasm-result.js';
 import { initSync, DiffModel } from '../packages/wasm/pkg-diff/ifc-lite-diff.js';
 
 initSync({ module: readFileSync(new URL('../packages/wasm/pkg-diff/ifc-lite-diff_bg.wasm', import.meta.url)) });
@@ -31,7 +31,11 @@ for (const [basePath, headPath] of pairs) {
   // The CLI loader captures process-wide console output while parsing.
   // Load sequentially so overlapping captures cannot swallow the evidence.
   const rows = [];
-  for (const path of paths) rows.push(buildFileFingerprints(await loadIfcBytes(readFileSync(path), path.pathname)));
+  for (const path of paths) {
+    const fingerprints = buildFileFingerprints(await loadIfcBytes(readFileSync(path), path.pathname));
+    assert.ok(fingerprints.length > 0, `${path.pathname}: expected at least one fingerprint (#8042)`);
+    rows.push(fingerprints);
+  }
   const base = retained(rows[0]);
   try {
     const head = retained(rows[1]);

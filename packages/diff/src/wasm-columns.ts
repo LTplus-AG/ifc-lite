@@ -10,6 +10,16 @@ export function fingerprintColumns<TRef>(entities: readonly EntityFingerprint<TR
   const intern = (value: string): number => {
     const existing = dictionary.get(value);
     if (existing !== undefined) return existing;
+    // Rust strings contain Unicode scalars. Refuse a lossy projection until
+    // lossless entity-key transport lands with the public facade (#8042).
+    for (let i = 0; i < value.length; i++) {
+      const code = value.charCodeAt(i);
+      if (code >= 0xd800 && code <= 0xdbff) {
+        const next = value.charCodeAt(++i);
+        if (next >= 0xdc00 && next <= 0xdfff) continue;
+      } else if (code < 0xdc00 || code > 0xdfff) continue;
+      throw new Error('WASM diff columns require well-formed UTF-16; use the public TypeScript diffModels API for this input (#8042).');
+    }
     const index = strings.length;
     strings.push(value);
     dictionary.set(value, index);

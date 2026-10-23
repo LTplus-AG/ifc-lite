@@ -4,12 +4,12 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { expect, test } from 'vitest';
 import * as oracle from './lineage.js';
-import * as facade from './wasm-lineage.js';
-import { initDiffSync } from './wasm-runtime.js';
 import type { Lineage, RekeyPolicy } from './lineage.js';
 
 const binary = new URL('../../wasm/pkg-diff/ifc-lite-diff_bg.wasm', import.meta.url);
-test.skipIf(!existsSync(binary))('WASM lineage facade preserves iterables, Map order, and optional relations (#8042)', () => {
+test.skipIf(!existsSync(binary) || !existsSync(new URL('../../wasm/pkg-diff/ifc-lite-diff.js', import.meta.url)))('WASM lineage facade preserves iterables, Map order, and optional relations (#8042)', async () => {
+  const facade = await import('./wasm-lineage.js');
+  const { initDiffSync } = await import('./wasm-runtime.js');
   expect(() => facade.lineageConflicts([])).toThrow(/initDiff/);
   initDiffSync({ module: readFileSync(binary) });
   const lineage: Lineage = { entries: [

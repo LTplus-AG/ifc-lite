@@ -8,7 +8,7 @@
   "version": "10.4.0",
   "scripts": {
     "build": "node ../../scripts/run-build-wasm.mjs",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --experimental-strip-types --test test/*.test.mjs"
   },
   "license": "MPL-2.0",
   "repository": {

@@ -43,8 +43,10 @@ fn issue_8071_json_walk_keeps_a_bounded_nesting_limit() {
 fn issue_8042_8081_creation_validation_and_diagnostics_keep_utf16() {
     use ifc_lite_diff::sidecar_document::{create_sidecar_document, validate_sidecar_document};
     let vectors: Vec<Value> = serde_json::from_str(include_str!("sidecar_parse_vectors.json")).unwrap();
+    let mut checked = 0;
     for vector in vectors {
         let Some(errors) = vector["errorsWire"].as_str() else { continue; };
+        checked += 1;
         let kind = if vector["kind"] == "identity" { SidecarKind::Identity } else { SidecarKind::Lineage };
         let value = parse_ordered_json(vector["text"].as_str().unwrap()).unwrap();
         assert_eq!(serialize_sidecar(&validate_sidecar_document(&value, kind, |_| false)), errors, "{} {}", vector["kind"], vector["name"]);
@@ -55,4 +57,5 @@ fn issue_8042_8081_creation_validation_and_diagnostics_keep_utf16() {
             assert_eq!(created.unwrap_err().to_json().trim_end(), vector["createErrorJson"].as_str().unwrap(), "{} {}", vector["kind"], vector["name"]);
         }
     }
+    assert!(checked > 0, "no sidecar vector carried errorsWire (#8081)");
 }

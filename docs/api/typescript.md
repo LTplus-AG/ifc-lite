@@ -1142,14 +1142,6 @@ Pre-built `ifc-lite-server` binaries for deployment without a Rust toolchain or 
 
 WebAssembly bindings (the `IfcAPI` class and mesh/profile/clash types). See the [WASM API reference](wasm.md).
 
-## @ifc-lite/codegen
-
-TypeScript code generator from IFC EXPRESS schemas. Produces the 876-entity type definitions, CRC32 type ids, serializers, and the parser's generated Rust tables (`generateTypeIds`, `generateSerializers`, `generateRust`). Primarily a build-time tool, not used at runtime.
-
-## create-ifc-lite
-
-Project scaffolder: `npm create ifc-lite` (binary `create-ifc-lite`) sets up a new IFC-Lite project with one command.
-
 ### Independent diff WASM module
 
 `@ifc-lite/wasm/diff` exposes the Rust comparison bindings in a separate module.
@@ -1160,3 +1152,11 @@ The bindings include canonical fingerprints, sidecar encoding and lineage
 helpers. See the `@ifc-lite/wasm` package README for the low-level interface.
 The public `@ifc-lite/diff` comparison API still uses TypeScript during the
 staged facade migration tracked in #8042.
+
+## @ifc-lite/codegen
+
+TypeScript code generator from IFC EXPRESS schemas. Produces the 876-entity type definitions, CRC32 type ids, serializers, and the parser's generated Rust tables (`generateTypeIds`, `generateSerializers`, `generateRust`). Primarily a build-time tool, not used at runtime.
+
+## create-ifc-lite
+
+Project scaffolder: `npm create ifc-lite` (binary `create-ifc-lite`) sets up a new IFC-Lite project with one command.

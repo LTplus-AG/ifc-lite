@@ -295,7 +295,7 @@ worker when used by the viewer, so releasing the tool also releases WASM pages.
 
 ## Rust diff bindings
 
-After initializing `@ifc-lite/wasm/diff`, `DiffModel` owns fingerprint columns for repeated synchronous comparisons. Its constructor accepts a string dictionary, five string indices per entity (key, IFC class, data hash, geometry hash, container), presence flags, six bounding-box coordinates per entity, volumes, component offsets, and component key/value indices. An absent optional string uses `0xffffffff`; flag bits 0, 1, and 2 represent a bounding box, volume, and components. Call `.free()` in `finally` for each model.
+After initializing `@ifc-lite/wasm/diff`, `DiffModel` owns fingerprint columns for repeated synchronous comparisons. Its constructor accepts a string dictionary, five string indices per entity (key, IFC class, data hash, geometry hash, container), presence flags, six bounding-box coordinates per entity, volumes, component offsets, and component key/value indices. Column dictionary strings must be well-formed Unicode; the internal TypeScript column adapter explicitly rejects lone surrogates rather than replacing them. Arbitrary UTF-16 entity-key transport remains a requirement for the public facade cutover in #8042; the public TypeScript comparison API continues to accept those keys. An absent optional string uses `0xffffffff`; flag bits 0, 1, and 2 represent a bounding box, volume, and components. Call `.free()` in `finally` for each model.
 
 `DiffModel.compare` returns row indices instead of JavaScript references. Keep the original fingerprint arrays and restore those references on the JavaScript side; opaque references never cross into WASM. The model can be reused for more comparisons before freeing it.
 

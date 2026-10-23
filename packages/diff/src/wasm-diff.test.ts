@@ -4,12 +4,12 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { test, expect } from 'vitest';
 import { diffModels } from './diff.js';
-import { compareWithWasm } from './wasm-diff.js';
-import { initDiff, initDiffSync } from './wasm-runtime.js';
 import type { DiffOptions, EntityFingerprint } from './types.js';
 
 const binary = new URL('../../wasm/pkg-diff/ifc-lite-diff_bg.wasm', import.meta.url);
-test.skipIf(!existsSync(binary))('explicit initialization and real facade preserve the diff contract (#8042; missing WASM: run pnpm build:wasm)', async () => {
+test.skipIf(!existsSync(binary) || !existsSync(new URL('../../wasm/pkg-diff/ifc-lite-diff.js', import.meta.url)))('explicit initialization and real facade preserve the diff contract (#8042; missing WASM: run pnpm build:wasm)', async () => {
+  const { compareWithWasm } = await import('./wasm-diff.js');
+  const { initDiff, initDiffSync } = await import('./wasm-runtime.js');
   expect(() => compareWithWasm([], [])).toThrow(/initDiff/);
   // A failed load must not poison a retry, and repeated initialization is safe.
   await expect(initDiff({ module_or_path: new Uint8Array([0]) })).rejects.toThrow();

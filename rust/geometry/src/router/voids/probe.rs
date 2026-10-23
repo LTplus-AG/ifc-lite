@@ -6,6 +6,7 @@
 
 use super::{GeometryRouter, RectParam, MAX_EXTRUSION_EXTRACT_DEPTH};
 use crate::profile::Profile2D;
+use crate::placement::Axis2Placement;
 use crate::profiles::ProfileProcessor;
 use crate::{Error, Mesh, Point3, Result, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
@@ -70,14 +71,15 @@ impl GeometryRouter {
             // Get ExtrudedDirection (attribute 2: IfcDirection)
             let direction_attr = solid.get(2)?;
             let direction_entity = probe_result!(terminal, decoder.resolve_ref(direction_attr))??;
-            let local_dir = probe_result!(terminal, self.parse_direction(&direction_entity))?;
+            probe_result!(terminal, crate::resource::check_current())?;
+            let local_dir = EntityDecoder::direction3_of(&direction_entity).map(Vector3::from)?;
 
             // Get Position transform (attribute 1: IfcAxis2Placement3D)
             let position_transform = match solid.get(1) {
                 Some(pos_attr) if !pos_attr.is_null() => {
                     match probe_result!(terminal, decoder.resolve_ref(pos_attr)) {
                         Some(Some(pos_entity)) if pos_entity.ifc_type == IfcType::IfcAxis2Placement3D => {
-                            probe_result!(terminal, self.parse_axis2_placement_3d(&pos_entity, decoder))
+                            probe_result!(terminal, Axis2Placement::read_3d(&pos_entity, decoder).map(|frame| frame.matrix()))
                         }
                         _ => None,
                     }
@@ -385,13 +387,13 @@ impl GeometryRouter {
         let solid_pos = match solid.get(1) {
             Some(a) if !a.is_null() => {
                 let e = decoder.resolve_ref(a).ok()??;
-                self.parse_axis2_placement_3d(&e, decoder).ok()?
+                Axis2Placement::read_3d(&e, decoder).ok()?.matrix()
             }
             _ => Matrix4::identity(),
         };
         let dir_local = {
             let e = decoder.resolve_ref(solid.get(2)?).ok()??;
-            self.parse_direction(&e).ok()?
+            EntityDecoder::direction3_of(&e).map(Vector3::from)?
         };
 
         let u = Vector3::new(cos_t, sin_t, 0.0);
@@ -622,7 +624,7 @@ impl GeometryRouter {
         }
         let dir_local = {
             let e = decoder.resolve_ref(solid.get(2)?).ok()??;
-            self.parse_direction(&e).ok()?
+            EntityDecoder::direction3_of(&e).map(Vector3::from)?
         }
         .try_normalize(1e-12)?;
         // The 2D re-extrude is only valid when the sweep is along the profile
@@ -635,7 +637,7 @@ impl GeometryRouter {
         let solid_pos = match solid.get(1) {
             Some(a) if !a.is_null() => {
                 let e = decoder.resolve_ref(a).ok()??;
-                self.parse_axis2_placement_3d(&e, decoder).ok()?
+                Axis2Placement::read_3d(&e, decoder).ok()?.matrix()
             }
             _ => Matrix4::identity(),
         };

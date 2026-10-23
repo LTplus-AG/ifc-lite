@@ -9,8 +9,6 @@ mod mesh_world;
 pub(crate) use mesh_world::{WorldFrame, LARGE_MAPPED_ORIGIN_M};
 pub(crate) mod operator;
 
-mod parsers;
-
 use super::GeometryRouter;
 use crate::math::mat4;
 use crate::placement;

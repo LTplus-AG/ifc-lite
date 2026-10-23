@@ -18,11 +18,9 @@ readme = "../../README.md"
 # `Number::toString` algorithm itself. Licence: Apache-2.0 OR BSL-1.0.
 ryu-js = "1.0.3"
 
-[dev-dependencies]
-# Fixture parsing only. The crate's own types stay serde-free: deriving on the
-# public input shapes would make serde part of this crate's public contract
-# for the sake of a test.
-serde_json = { workspace = true }
+# Keep ordering local: preserve_order would change every workspace consumer.
+serde_json = { workspace = true, features = ["float_roundtrip"] }
+serde.workspace = true
 
 [lints]
 workspace = true

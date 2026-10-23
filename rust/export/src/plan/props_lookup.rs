@@ -69,7 +69,7 @@ pub(super) fn container_names(kind: PsetKind) -> (&'static str, &'static str) {
 
 /// Distinct referrers of `target` whose (referrer type, attribute) resolves
 /// to one of `attr_names` — the fan-out that decides sharing.
-fn sharing_referrers(index: &FileIndex, schema: &str, target: u32, attr_names: &[&str]) -> HashSet<u32> {
+pub(super) fn sharing_referrers(index: &FileIndex, schema: &str, target: u32, attr_names: &[&str]) -> HashSet<u32> {
     index
         .referrers(target)
         .iter()

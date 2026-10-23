@@ -1,0 +1,121 @@
+// SPDX-License-Identifier: MPL-2.0
+//! Export plans against a [`super::synth`] model, by the ids its layout
+//! defines. `benchmark` is what the memory harness runs; `scenarios` is the
+//! wider set the output-pinning test runs.
+
+use ifc_lite_export::plan::{
+    Disposition, ExportPlan, ObjectRef, Patch, PlacementPatch, PlanContext, PropScope, PropWrite, PsetKind,
+};
+
+use super::synth::{quirk, Layout, GROUP, TYPES};
+
+fn context() -> PlanContext {
+    PlanContext { author: Some("harness".into()), organization: Some("synthetic".into()), time_stamp: Some("0".into()) }
+}
+
+fn shifted(x: f64) -> PlacementPatch {
+    PlacementPatch { matrix: [[1.0, 0.0, 0.0, x], [0.0, 1.0, 0.0, 0.5], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]] }
+}
+
+fn place(id: u32, x: f64) -> (ObjectRef, Disposition) {
+    (ObjectRef::Id(id), Disposition::Patch(Patch { placement: Some(shifted(x)), ..Default::default() }))
+}
+
+fn prop(pset: &str, name: &str, measure: &str, literal: &str, kind: PsetKind, scope: PropScope) -> PropWrite {
+    PropWrite {
+        pset: pset.into(),
+        prop: name.into(),
+        measure_type: measure.into(),
+        literal: literal.into(),
+        unit: None,
+        kind,
+        scope,
+    }
+}
+
+fn props(id: u32, writes: Vec<PropWrite>) -> (ObjectRef, Disposition) {
+    (ObjectRef::Id(id), Disposition::Patch(Patch { psets: writes, ..Default::default() }))
+}
+
+fn delete(id: u32) -> (ObjectRef, Disposition) {
+    (ObjectRef::Id(id), Disposition::Delete)
+}
+
+fn plan(dispositions: Vec<(ObjectRef, Disposition)>) -> ExportPlan {
+    ExportPlan { dispositions, context: context() }
+}
+
+/// About a hundred placement patches, a few property writes and a few
+/// deletes, spread across the whole model.
+pub fn benchmark(l: &Layout) -> ExportPlan {
+    let stride = (l.walls / 100).max(1);
+    let mut d: Vec<(ObjectRef, Disposition)> =
+        (0..100).map(|i| (i * stride) % l.walls).map(|k| place(l.wall(k), k as f64 * 0.1)).collect();
+    let mid = l.walls / 2 + 1;
+    d.push(props(l.wall(mid), vec![prop("Pset_Own", "Reference", "IFCIDENTIFIER", "'patched'", PsetKind::Property, PropScope::Occurrence)]));
+    d.push(props(l.wall(mid + 1), vec![prop("Qto_Base", "Length", "IFCLENGTHMEASURE", "6.5", PsetKind::Quantity, PropScope::Occurrence)]));
+    d.push(props(l.wall(mid + 2), vec![prop("Pset_Shared", "Grade", "IFCLABEL", "'changed'", PsetKind::Property, PropScope::Occurrence)]));
+    d.push(props(l.wall(mid + 3), vec![prop("Pset_Extra", "Checked", "IFCBOOLEAN", ".T.", PsetKind::Property, PropScope::Occurrence)]));
+    for k in [l.walls / 3, l.walls / 3 + 7, 2 * l.walls / 3 + 3] {
+        d.push(delete(l.wall(k)));
+    }
+    plan(d)
+}
+
+/// Every plan the pinning test runs, by name. Sized for a small model
+/// (`walls` around a hundred, a few storeys, quirks on).
+pub fn scenarios(l: &Layout) -> Vec<(&'static str, ExportPlan)> {
+    let q = l.quirks_base();
+    let w = |k| l.wall(k);
+    let occ = PropScope::Occurrence;
+    vec![
+        ("preserve", plan(vec![(ObjectRef::Id(w(0)), Disposition::Preserve)])),
+        (
+            "rename_by_guid",
+            plan(vec![(
+                ObjectRef::Guid(format!("{:0>22}", w(3))),
+                Disposition::Patch(Patch { name: Some("Renamed 'quoted'".into()), ..Default::default() }),
+            )]),
+        ),
+        ("placements", plan((0..12).map(|k| place(w(k), k as f64)).collect())),
+        (
+            "props",
+            plan(vec![
+                props(w(5), vec![prop("Pset_Own", "Reference", "IFCIDENTIFIER", "'in place'", PsetKind::Property, occ)]),
+                props(w(6), vec![prop("Pset_Own", "Added", "IFCLABEL", "'folded'", PsetKind::Property, occ)]),
+                props(w(9), vec![prop("Qto_Base", "Length", "IFCLENGTHMEASURE", "7.", PsetKind::Quantity, occ)]),
+                props(w(7), vec![prop("Pset_Shared", "Grade", "IFCLABEL", "'cow'", PsetKind::Property, occ)]),
+                props(w(8), vec![prop("Pset_Type", "FireRating", "IFCLABEL", "'9HR'", PsetKind::Property, PropScope::Type)]),
+                props(w(11), vec![prop("Pset_Type", "FireRating", "IFCLABEL", "'1HR'", PsetKind::Property, occ)]),
+                props(w(12), vec![prop("Pset_Type", "Missing", "IFCLABEL", "'x'", PsetKind::Property, PropScope::Type)]),
+            ]),
+        ),
+        ("delete_with_opening_and_boundary", plan(vec![delete(w(70)), delete(w(14))])),
+        ("delete_storey", plan(vec![delete(l.storey(1))])),
+        ("delete_storey_placement", plan(vec![delete(l.storey_placement(0))])),
+        ("delete_whole_group", plan((0..GROUP.min(l.walls)).map(|k| delete(w(k))).collect())),
+        ("delete_type", plan(vec![delete(l.wall_type(TYPES - 1))])),
+        (
+            "delete_wins_and_unknowns",
+            plan(vec![
+                delete(w(20)),
+                place(w(20), 1.0),
+                delete(99_999_998),
+                (ObjectRef::Guid("NoSuchGlobalIdAnywhere".into()), Disposition::Delete),
+                (ObjectRef::Id(w(21)), Disposition::Add),
+            ]),
+        ),
+        (
+            "quirks",
+            plan(vec![
+                place(q + quirk::MIXED_CASE_WALL, 1.0),
+                place(q + quirk::OUT_OF_ORDER_WALL, 2.0),
+                place(q + quirk::SHARED_PLACEMENT_WALL, 3.0),
+                place(q + quirk::GRID_WALL, 4.0),
+                delete(q + quirk::COMMENTED_WALL),
+                props(q + quirk::OUT_OF_ORDER_WALL, vec![prop("Pset_New", "A", "IFCLABEL", "'a'", PsetKind::Property, occ)]),
+            ]),
+        ),
+        ("benchmark", benchmark(l)),
+    ]
+}

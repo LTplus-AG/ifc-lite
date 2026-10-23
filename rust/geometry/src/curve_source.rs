@@ -61,11 +61,27 @@ pub(crate) fn point_from_ref(
     )
 }
 
+/// Consumer-specific recovery remains explicit; profile migrations use the
+/// canonical, counted entity leaf contract without widening other callers.
+#[derive(Clone, Copy)]
+pub(crate) enum CartesianTrimRead {
+    RecoverInvalid,
+    RequireValid,
+    CanonicalLeaf,
+}
+
 fn trim_cartesian_point(
     value: &AttributeValue,
     decoder: &mut EntityDecoder,
-    tolerant: bool,
+    policy: CartesianTrimRead,
 ) -> Result<Option<[f64; 3]>> {
+    if matches!(policy, CartesianTrimRead::CanonicalLeaf) {
+        let id = value.as_entity_ref().ok_or_else(|| invalid("Trim point is not a reference"))?;
+        let point = decoder.point3(id)?;
+        admit_f32_range(point)?;
+        return Ok(Some(point));
+    }
+    let tolerant = matches!(policy, CartesianTrimRead::RecoverInvalid);
     let resolved = resolve(Some(value), decoder);
     let point = match resolved {
         Ok(entity) => entity,
@@ -170,7 +186,7 @@ pub(crate) fn trim_point(
     origin: [f64; 3],
     v: [f64; 3],
     cartesian: bool,
-    ignore_bad_cartesian: bool,
+    point_policy: CartesianTrimRead,
     decoder: &mut EntityDecoder,
 ) -> Result<Option<[f64; 3]>> {
     let Some(values) = attr.and_then(AttributeValue::as_list) else {
@@ -180,7 +196,7 @@ pub(crate) fn trim_point(
     let mut point = None;
     for value in values {
         if value.as_entity_ref().is_some() {
-            point = trim_cartesian_point(value, decoder, ignore_bad_cartesian)?.or(point);
+            point = trim_cartesian_point(value, decoder, point_policy)?.or(point);
         } else if let Some(typed) = value.typed_value("IFCPARAMETERVALUE") {
             param = typed.as_float();
         } else if value.as_typed().is_none() && value.as_list().is_none() {
@@ -240,7 +256,7 @@ pub(crate) fn trim_angle(
     x: [f64; 3],
     y: [f64; 3],
     cartesian: bool,
-    ignore_bad_cartesian: bool,
+    point_policy: CartesianTrimRead,
     decoder: &mut EntityDecoder,
 ) -> Result<Option<f64>> {
     let Some(values) = attr.and_then(AttributeValue::as_list) else {
@@ -250,7 +266,7 @@ pub(crate) fn trim_angle(
     let mut point = None;
     for value in values {
         if value.as_entity_ref().is_some() {
-            point = trim_cartesian_point(value, decoder, ignore_bad_cartesian)?.or(point);
+            point = trim_cartesian_point(value, decoder, point_policy)?.or(point);
         } else if let Some(typed) = value.typed_value("IFCPARAMETERVALUE") {
             param = typed.as_float();
         } else if value.as_typed().is_none() && value.as_list().is_none() {

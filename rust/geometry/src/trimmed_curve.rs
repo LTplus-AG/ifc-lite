@@ -5,7 +5,7 @@
 //! IFC interpretation of trimmed lines and circles, shared by analytic source
 //! descriptions and sampled mesh directrices. Sampling remains consumer-owned.
 
-use crate::curve_source::{circle_basis, line_basis, mesh_line_basis, trim_angle, trim_point};
+use crate::curve_source::{circle_basis, line_basis, mesh_line_basis, trim_angle, trim_point, CartesianTrimRead};
 use crate::Result;
 use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 use std::f64::consts::TAU;
@@ -49,7 +49,11 @@ pub(crate) fn decode_trimmed_primitive(
 ) -> Result<Option<TrimmedPrimitive>> {
     let cartesian = trimmed.get(4).and_then(AttributeValue::as_enum) == Some("CARTESIAN");
     let sense = trimmed.get_bool(3).unwrap_or(true);
-    let ignore_bad_cartesian = matches!(recovery, TrimRecovery::BasisDefaults);
+    let point_policy = match recovery {
+        TrimRecovery::RequireBoth => CartesianTrimRead::RequireValid,
+        TrimRecovery::BasisDefaults => CartesianTrimRead::RecoverInvalid,
+        TrimRecovery::BasisDefaultsStrictPoints => CartesianTrimRead::CanonicalLeaf,
+    };
     match basis.ifc_type {
         IfcType::IfcLine => {
             let (origin, direction) = match recovery {
@@ -61,7 +65,7 @@ pub(crate) fn decode_trimmed_primitive(
                 origin,
                 direction,
                 cartesian,
-                ignore_bad_cartesian,
+                point_policy,
                 decoder,
             )?;
             let second = trim_point(
@@ -69,7 +73,7 @@ pub(crate) fn decode_trimmed_primitive(
                 origin,
                 direction,
                 cartesian,
-                ignore_bad_cartesian,
+                point_policy,
                 decoder,
             )?;
             let (start, end) = match recovery {
@@ -94,7 +98,7 @@ pub(crate) fn decode_trimmed_primitive(
                 x_axis,
                 y_axis,
                 cartesian,
-                ignore_bad_cartesian,
+                point_policy,
                 decoder,
             )?;
             let second = trim_angle(
@@ -103,7 +107,7 @@ pub(crate) fn decode_trimmed_primitive(
                 x_axis,
                 y_axis,
                 cartesian,
-                ignore_bad_cartesian,
+                point_policy,
                 decoder,
             )?;
             let (start_angle, end_angle) = match recovery {

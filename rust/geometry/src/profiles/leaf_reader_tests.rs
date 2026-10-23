@@ -27,7 +27,9 @@ fn issue_7779_profile_polylines_preserve_order_or_refuse_whole_curve() {
 #[test]
 fn issue_7779_bad_cartesian_trim_cannot_become_full_conic() {
     for point in ["IFCCARTESIANPOINT((1.,'bad'))", "IFCDIRECTION((1.,0.))",
-        "IFCCARTESIANPOINT((1.,0.,1.E400))"] {
+        "IFCCARTESIANPOINT((1.,0.,1.E400))",
+        "IFCCARTESIANPOINT((1.,0.,0.,0.))", "IFCCARTESIANPOINT((IFCLENGTHMEASURE(1.),0.))",
+        "IFCCARTESIANPOINT((1.,0.),$)"] {
         for master in ["CARTESIAN", "PARAMETER"] {
             let source = format!("#1=IFCCARTESIANPOINT((0.,0.));#2=IFCAXIS2PLACEMENT2D(#1,$);#3=IFCCIRCLE(#2,1.);#4={point};#5=IFCTRIMMEDCURVE(#3,(#4,IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(1.)),.T.,.{master}.);");
             let mut decoder = EntityDecoder::new(&source);

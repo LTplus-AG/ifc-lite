@@ -26,7 +26,7 @@ impl GeometryProcessor for OpaqueRecorder {
         if self.record_next.replace(false) {
             // A real unsupported Boolean produces the private log; this custom
             // processor deliberately does not expose its Boolean recorder.
-            let recorder = BooleanClippingProcessor::new(schema.clone());
+            let recorder = BooleanClippingProcessor::new();
             let boolean = decoder.decode_by_id(87).unwrap();
             recorder.process(&boolean, decoder, schema, quality)?;
             let failures = recorder.take_failures();

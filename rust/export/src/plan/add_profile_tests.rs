@@ -145,3 +145,20 @@ fn a_representation_of_extrusions_is_refused_when_empty_or_when_one_is_invalid()
         assert!(report.refusals[0].reason.contains(expected), "{expected}: {:?}", report.refusals);
     }
 }
+
+/// An opening's cutter may have voids: an annular cut leaves the host's core.
+#[test]
+fn an_opening_with_a_void_cuts_a_ring() {
+    for schema in SCHEMAS {
+        let source = storey_with_typed_wall(schema);
+        let mut niche = object(IfcClass::Wall, gid(4), Some(ObjectRef::Id(70)), Representation::None);
+        let ring = Extrusion { voids: vec![square(0.25, 0.25, 0.5)], ..block(1.0, 1.0, 0.2) };
+        niche.opening = Some(NewOpening { host: ObjectRef::Id(10), matrix: IDENTITY, shape: ring });
+        let (out, report) = run(&source, vec![add(niche)]);
+        assert_clean(&report, schema);
+        assert!(crate::plan::validate::validate(&out, schema).is_empty(), "{schema}");
+        let opening = id_in(&out, gid(4).derive("opening"));
+        assert_eq!(type_in(&out, opening), "IFCOPENINGELEMENT", "{schema}");
+        assert_eq!(count(&out, "IFCARBITRARYPROFILEDEFWITHVOIDS"), 1, "{schema}");
+    }
+}

@@ -22,7 +22,7 @@ pub(crate) fn product_shape(
     let (items, rep_type) = match rep {
         Representation::None => return Ok(None),
         Representation::Mesh(m) => mesh_item(emit, m).map(|(item, rep_type)| (vec![item], rep_type))?,
-        _ => {
+        Representation::Extrusion(_) | Representation::Extrusions(_) => {
             let solids = rep.extrusions().iter().map(|e| extruded_solid(emit, e)).collect::<Result<_, _>>()?;
             (solids, "SweptSolid")
         }

@@ -113,7 +113,10 @@ pub enum Representation {
     None,
     Extrusion(Extrusion),
     /// Several extruded solids, one item each in a single `Body`
-    /// representation: a region in several disjoint parts. At least one.
+    /// representation, such as a region in several disjoint parts. At least
+    /// one. They are not checked for overlap: IFC reads a body as the union
+    /// of its items, but a reader summing their volumes counts an overlap
+    /// twice.
     Extrusions(Vec<Extrusion>),
     /// A mesh in the object's local coordinates.
     Mesh(TriangleMesh),
@@ -199,7 +202,8 @@ pub enum TypeLink {
 /// An `IfcOpeningElement` cut into `host`, placed at `matrix` (row-major,
 /// file length units) in the NEW object's local frame, so the profile
 /// describes the hole where the object will sit. When the new object is a
-/// door or window, it also fills the opening.
+/// door or window, it also fills the opening. A `shape` with voids cuts a
+/// ring, leaving the host's material inside each void.
 #[derive(Debug, Clone)]
 pub struct NewOpening {
     pub host: ObjectRef,

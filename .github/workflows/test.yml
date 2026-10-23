@@ -700,7 +700,9 @@ jobs:
         run: pnpm build
 
       - name: Verify Rust fingerprint vectors against TypeScript
-        run: node scripts/diff-parity-vectors.mjs --check
+        run: |
+          node scripts/diff-parity-vectors.mjs --check
+          node scripts/diff-core-vectors.mjs --check
 
       # Perf ratchet, `bundle` family (#6959). `pnpm build` above already
       # built the engine wasm and the viewer's dist/ (turbo builds apps/*
@@ -884,7 +886,12 @@ jobs:
           # only cross-decoder cache reuse. Real concurrent success/decline
           # witnesses must observe repeated whole-source certification.
           # Once this module is on main, whole-change inversion resumes.
-          if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/decoder/precision_certificate.rs | grep -Fxq 'rust/core/src/decoder/precision_certificate.rs'; then
+          # #8042: retain new Rust diff types so the differential tests compile;
+          # reverse only data-change detection. The unchanged oracle corpus
+          # must report assertion failures, not missing imports.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/diff/src/key_diff.rs | grep -Fxq 'rust/diff/src/key_diff.rs'; then
+            oracle_args+=(--mutation tests/evidence/diff-8042/key-data.oracle.patch)
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/decoder/precision_certificate.rs | grep -Fxq 'rust/core/src/decoder/precision_certificate.rs'; then
             oracle_args+=(--mutation tests/evidence/planar-carrier-7714/source-cache.oracle.patch)
           # #6729: keep the newly introduced GPU pass importable and remove
           # only its geometric visibility constraint. The paired projection

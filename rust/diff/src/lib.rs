@@ -34,6 +34,8 @@
 
 pub mod fingerprint;
 pub mod input;
+pub mod model;
+pub mod key_diff;
 
 // Internal. The canonical encoding and the code-unit helpers are
 // implementation detail of the fingerprint, not a surface worth promising:

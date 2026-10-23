@@ -138,7 +138,8 @@ impl ExactTail {
 #[allow(unused_variables)]
 fn record_fallback(opening_mesh: &Mesh) {
     crate::diag::diag_warn!(
-            { opening_tris = opening_mesh.triangle_count(),
+            { target: "ifc_lite_geometry::router::voids",
+              opening_tris = opening_mesh.triangle_count(),
               reason = "csg-produced-no-change",
               "voids: AABB fallback cut used for opening" }
             else {
@@ -154,7 +155,8 @@ fn record_fallback(opening_mesh: &Mesh) {
 #[allow(unused_variables)]
 fn record_suppressed(opening_mesh: &Mesh, capped: bool) {
     crate::diag::diag_warn!(
-            { opening_tris = opening_mesh.triangle_count(),
+            { target: "ifc_lite_geometry::router::voids",
+              opening_tris = opening_mesh.triangle_count(),
               capped = capped,
               reason = "engulfing-cutter-fallback-suppressed",
               "voids: AABB fallback suppressed for engulfing cutter (host left un-cut)" }

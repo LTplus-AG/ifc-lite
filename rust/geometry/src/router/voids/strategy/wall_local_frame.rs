@@ -23,7 +23,7 @@ impl Execution {
     /// watertight `rect_fast` path. Curved / brep openings keep their mesh and
     /// are subtracted there too. The result is rotated back; the orthonormal,
     /// origin-centred round-trip is identity for untouched geometry. Recurses
-    /// into [`Self::apply_void_context_inner`] with `allow_local_frame: false` (#3641).
+    /// into [`Self::cut_in_frame`] with `allow_local_frame: false` (#3641).
     pub(super) fn cut_in_wall_frame(
         &self,
         mesh: &Mesh,
@@ -130,7 +130,7 @@ impl Execution {
         let frame = Matrix3::from_columns(&axes);
         let center_point = Point3::from(center);
         let result_local = self
-            .apply_void_context_inner(host_local, &local_ctx, element_id, host_world_bounds, false);
+            .cut_in_frame(host_local, &local_ctx, element_id, host_world_bounds, false);
         // Rotation-only positions retain the far centre in `Mesh::origin`.
         let mut result = rotate_mesh_from_frame(&result_local, &frame, &center_point);
         // #5635: the operands arrive as f32 WORLD positions, so in the frame one
@@ -179,7 +179,7 @@ impl Execution {
                 param: None,
                 bool2d: None,
             };
-            let retry = self.apply_void_context_inner(
+            let retry = self.cut_in_frame(
                 host_snapped,
                 &snapped_ctx,
                 element_id,

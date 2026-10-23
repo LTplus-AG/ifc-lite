@@ -42,7 +42,7 @@ fn digest(output: &[u8], report: &WriteReport) -> String {
     findings.sort();
     let summary = format!(
         "{}/{}/{}/{}/{}|{:?}|{:?}",
-        report.total, report.written, report.deleted, report.patched, report.added_unsupported, report.refusals, findings
+        report.total, report.written, report.deleted, report.patched, report.added, report.refusals, findings
     );
     let h = fnv1a(summary.as_bytes(), fnv1a(output, 0xcbf2_9ce4_8422_2325));
     format!("{h:016x}:{}", output.len())
@@ -79,7 +79,10 @@ const PINNED: &[(&str, &str)] = &[
     ("IFC2X3/delete_storey_placement", "70bfd1d28574e9d7:83972"),
     ("IFC2X3/delete_whole_group", "04c3a081316974cc:74942"),
     ("IFC2X3/delete_type", "5e55d9b1b4ab4a9e:123831"),
-    ("IFC2X3/delete_wins_and_unknowns", "a7f1debb5adefae8:122990"),
+    // `delete_wins_and_unknowns` includes an Add keyed by a wall that
+    // already exists. It is refused and writes nothing, so the output bytes
+    // are unchanged; only the report moved (a refusal, `added` 0).
+    ("IFC2X3/delete_wins_and_unknowns", "c285ce7a2ab0f818:122990"),
     ("IFC2X3/quirks", "fba5a217eefd61fa:124395"),
     // `benchmark` deletes a wall from a shared-pset group and patches
     // another wall of the SAME group in one plan. The delete's own list
@@ -103,7 +106,7 @@ const PINNED: &[(&str, &str)] = &[
     ("IFC4/delete_storey_placement", "fbeeda1e25725b62:84308"),
     ("IFC4/delete_whole_group", "442b54feba95cf1f:75246"),
     ("IFC4/delete_type", "cc3eda45c1ac0247:124345"),
-    ("IFC4/delete_wins_and_unknowns", "e3f38c10f4ea8ac5:123498"),
+    ("IFC4/delete_wins_and_unknowns", "3b9736287ed34429:123498"),
     ("IFC4/quirks", "fbca61a00ac4c43b:124907"),
     // Same fix, same scenario, IFC4: see the IFC2X3 comment above.
     ("IFC4/benchmark", "0ac47b1862130c3a:129644"),

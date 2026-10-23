@@ -10,6 +10,10 @@
 //! `PlacementRelTo` in IFC4X3 that shifts every slot after it — a caller
 //! resolving by name never notices either).
 
+use std::collections::{BTreeMap, HashMap, HashSet};
+
+use super::index::FileIndex;
+
 /// The index of `attr_name` on `entity_type` in `file_schema`, or `None` when
 /// the schema does not declare that entity or that attribute.
 pub(crate) fn attribute_index(file_schema: &str, entity_type: &str, attr_name: &str) -> Option<usize> {
@@ -72,6 +76,30 @@ impl ListEdit {
     }
 }
 
+/// Every list change on one (record, attribute) slot, rendered once against
+/// the source list, so no change discards another's.
+pub(crate) fn render_list_edits(
+    index: &FileIndex,
+    list_edits: HashMap<(u32, usize), ListEdit>,
+    removed: &HashSet<u32>,
+    edits_by_id: &mut HashMap<u32, BTreeMap<usize, String>>,
+) {
+    for ((id, idx), edit) in list_edits {
+        if removed.contains(&id) {
+            continue;
+        }
+        let Some(slot) = index.raw_line(id).and_then(|line| crate::step_text::attribute_of(&line, idx)) else { continue };
+        let entries = match ListEntry::parse_list(&slot) {
+            Some(entries) => entries,
+            // An unset list (`$`, e.g. a project with no contexts yet) takes
+            // appends as a new list. Any other slot is left as written.
+            None if slot.trim() == "$" && edit.remove.is_empty() && edit.substitute.is_empty() => Vec::new(),
+            None => continue,
+        };
+        edits_by_id.entry(id).or_default().insert(idx, edit.render(&entries));
+    }
+}
+
 /// Build one record `#id=TYPE(...);` from the schema's own attribute order:
 /// every slot named in `fields` gets that value, everything else is `$`.
 /// Positions are never counted by hand, so the same call is right for a
@@ -104,6 +132,35 @@ pub(crate) fn build_record(file_schema: &str, id: u32, entity_type: &str, fields
         }
     }
     format!("#{id}={entity_type}({});", slots.join(","))
+}
+
+/// The mandatory attributes a built record leaves `$`, by name, from the
+/// generated required-slot tables: IFC2X3's for an IFC2X3 file, IFC4's for
+/// IFC4 and IFC4X3 when the record has IFC4's attribute count for its type
+/// (the later schemas keep IFC4's mandatory slots where the layout is the
+/// same). Empty when the record does not parse or no table covers it.
+pub(crate) fn unset_required(file_schema: &str, record: &str) -> Vec<&'static str> {
+    let Some(frame) = crate::step_record_frame::record_frame(record) else { return Vec::new() };
+    let entity_type = frame.head.type_name(record).to_ascii_uppercase();
+    let Some(args) = crate::step_slot::slots_of(frame.args(record)) else {
+        return Vec::new();
+    };
+    let unset = |index: u8| args.get(usize::from(index)).is_some_and(|a| a.trim() == "$");
+    if file_schema.to_ascii_uppercase().starts_with("IFC2X3") {
+        return match crate::schema_ifc2x3_slots::required_slots(&entity_type) {
+            Some((arity, slots)) if usize::from(arity) == args.len() => {
+                slots.iter().filter(|&&(index, _, _)| unset(index)).map(|&(_, name, _)| name).collect()
+            }
+            _ => Vec::new(),
+        };
+    }
+    use crate::generated::ifc4_required_slots::IFC4_REQUIRED_SLOTS;
+    match IFC4_REQUIRED_SLOTS.binary_search_by(|row| row.0.cmp(entity_type.as_str())) {
+        Ok(i) if usize::from(IFC4_REQUIRED_SLOTS[i].1) == args.len() => {
+            IFC4_REQUIRED_SLOTS[i].2.iter().filter(|&&(index, _)| unset(index)).map(|&(_, name)| name).collect()
+        }
+        _ => Vec::new(),
+    }
 }
 
 #[cfg(test)]

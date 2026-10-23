@@ -40,6 +40,13 @@ pub(crate) struct BodyContext {
     pub(crate) synthesized: Option<u32>,
 }
 
+impl BodyContext {
+    /// The context geometry patches wrote into, found or synthesized.
+    pub(crate) fn chosen(&self) -> Option<u32> {
+        self.chosen
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct GeometryWrite {
     pub(crate) new_records: Vec<(u32, String)>,

@@ -7,6 +7,9 @@
 //! shape, [`crate::step_cow`]'s id allocator role) plus the parts no STEP
 //! option expresses: occurrence overrides, placement rewrites, body geometry
 //! replacement, and delete with reverse-reference repair.
+//! [`Disposition::Add`] builds a new object (placement, geometry,
+//! containment, type, property sets, an opening in a host) from an IFC-level
+//! description; see `add.rs`.
 //!
 //! # Design
 //!
@@ -27,14 +30,16 @@
 //!
 //! - It does not convert between IFC2X3/IFC4/IFC4X3 — `crate::schema_convert`
 //!   already does that, as a separate concern a caller composes with this one.
-//! - `Disposition::Add` is counted, not built: creating a genuinely new
-//!   object (its own GlobalId, its own placement, its own containment) is
-//!   not done here.
 //! - A property or quantity write never edits a shared record in place.
 //!   Sharing is judged at the set (how many relationships or types reach it)
 //!   and at the value (how many sets list it); either one shared means a
 //!   copy, or a refusal for a set shared between types.
 
+mod add;
+mod add_geometry;
+mod add_props;
+mod add_rels;
+mod add_types;
 mod attrs;
 mod delete;
 mod geometry;
@@ -49,11 +54,17 @@ mod referrers;
 mod resolve;
 mod tessellation;
 #[cfg(test)]
+mod add_test_support;
+#[cfg(test)]
 mod test_fixtures;
 mod types;
 mod validate;
 mod write;
 
+pub use add_types::{
+    ClassSpec, Extrusion, GlobalId, IfcClass, NewObject, NewOpening, NewPlacement, NewProperty, NewPropertySet, NewType,
+    PropertyValue, Representation, TypeLink,
+};
 pub use types::{
     Disposition, DroppedRepresentation, ExportPlan, GeometryPatch, ObjectRef, Patch, PlacementPatch, PlanContext, PlanError,
     PropScope, PropWrite, PsetKind, Refusal, SurfaceColour, TriangleMesh, ValidationFinding, WriteReport,
@@ -70,6 +81,16 @@ use index::FileIndex;
 /// (each checked to be one value), and a 4x4 placement matrix. See the
 /// module docs for what is deliberately out of scope. `out` is buffered here.
 pub fn execute<W: std::io::Write>(source: &[u8], plan: &ExportPlan, out: W) -> Result<WriteReport, PlanError> {
+    // An Add's own GlobalId is looked up too: it must not already be in use.
+    let add_guids: Vec<String> = plan
+        .dispositions
+        .iter()
+        .filter_map(|(_, d)| match d {
+            Disposition::Add(new) => Some(new.guids_to_look_up()),
+            _ => None,
+        })
+        .flatten()
+        .collect();
     let guids: FxHashSet<&str> = plan
         .dispositions
         .iter()
@@ -77,6 +98,7 @@ pub fn execute<W: std::io::Write>(source: &[u8], plan: &ExportPlan, out: W) -> R
             ObjectRef::Guid(g) => Some(g.as_str()),
             ObjectRef::Id(_) => None,
         })
+        .chain(add_guids.iter().map(String::as_str))
         .collect();
     let mut index = FileIndex::scan(source, &guids);
     let schema = crate::schema_detect::detect_schema(source);

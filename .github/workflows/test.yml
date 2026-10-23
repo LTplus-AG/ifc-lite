@@ -921,6 +921,7 @@ jobs:
             oracle_args+=(--mutation tests/evidence/planar-carrier-7714/source-cache.oracle.patch)
           # #8094: whole-change revert deletes the new scheduling module, so its
           # test never loads. Keep it and restore only rayon's default ranges.
+          # Once scheduling.rs is on main, whole-change reverts resume automatically.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/processor/scheduling.rs | grep -Fxq 'rust/processing/src/processor/scheduling.rs'; then
             oracle_args+=(--mutation tests/evidence/element-tasks-8094/granularity.oracle.patch)
           # #6729: keep the newly introduced GPU pass importable and remove

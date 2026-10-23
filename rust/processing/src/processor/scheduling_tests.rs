@@ -24,7 +24,7 @@ fn a_slow_element_does_not_hold_its_neighbour_on_the_same_thread() {
                         if start.elapsed() > deadline {
                             return false;
                         }
-                        std::thread::yield_now();
+                        std::thread::sleep(Duration::from_millis(1));
                     }
                     true
                 }

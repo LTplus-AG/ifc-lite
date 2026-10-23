@@ -203,3 +203,25 @@ fn an_opening_goes_once_nothing_it_voids_is_left() {
         assert!(resolve_deletes(&index, schema, &body, &[], &HashSet::new()).removed.contains(&10), "{schema}");
     }
 }
+
+/// A target `prunable` never prunes is not counted: a count collects the
+/// target's whole forward closure, for an answer the cascade cannot use.
+#[test]
+fn a_kept_type_or_port_is_never_counted() {
+    use crate::plan::test_fixtures::host_with_port_type_and_body;
+    for schema in ["IFC2X3", "IFC4", "IFC4X3"] {
+        let content = host_with_port_type_and_body(schema);
+        let mut index = FileIndex::scan(&content, &Default::default());
+        let requested: HashSet<u32> = [10].into_iter().collect();
+        let mut result = resolve_deletes(&index, schema, &requested, &[], &HashSet::new());
+        while index.collect_missing_referrers() {
+            result = resolve_deletes(&index, schema, &requested, &[], &HashSet::new());
+        }
+        assert!(result.removed.contains(&43) && !result.removed.contains(&40), "{schema}: the type stays");
+        assert!(!index.referrers.knows(40), "{schema}: the type is not counted");
+        if index.contains(19) {
+            assert!(result.removed.contains(&19) && !result.removed.contains(&14), "{schema}: the port stays");
+            assert!(!index.referrers.knows(14), "{schema}: the port is not counted");
+        }
+    }
+}

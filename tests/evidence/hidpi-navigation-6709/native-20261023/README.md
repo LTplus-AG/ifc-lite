@@ -58,8 +58,8 @@ publishing the verdict. This does not resolve #6516's loading regression.
 `qualification.mts` uses the repository's frame probe, orbit inputs, static
 server, readiness checks and paired reporter. `native-platform.mts` is the
 physical Linux platform adapter, using X11/Xwayland on the active physical
-Wayland desktop. The next diagnostic separates ANGLE OpenGL from native Vulkan
-initialization instead of forcing Vulkan compositing. It adds no viewer loader, decoder,
+Wayland desktop. The current diagnostic retains ANGLE Vulkan and uses
+`--disable-vulkan-surface` after a mixed WebGPU/WebGL capability check. It adds no viewer loader, decoder,
 kernel, capture pipeline or production debug API.
 
 `geometry-witness-controls.mts` executes perturbation controls against the
@@ -85,10 +85,24 @@ Attempt 4 corrected that prerequisite: parser completion, geometry completion
 and scene finalization all passed on the actual NVIDIA adapter, then Chromium's
 ANGLE Vulkan WebGL shared-image errors disqualified it before timing.
 
-No attempt has accepted A/B samples. The next diagnostic uses ANGLE OpenGL
-and native Vulkan initialization, retaining the same strict readiness, hardware,
-health and timing guards. Original receipts and logs remain separate; a rendered
-screenshot is not a performance or health verdict.
+Attempt 5 used ANGLE OpenGL and native Vulkan initialization. Strict model
+readiness completed without the earlier GPU driver errors, but the actual
+WebGPU request selected the SwiftShader fallback; the hardware guard refused
+it before timing. Its concise result and compressed logs are retained.
+
+No attempt has accepted A/B samples. A separately admitted mixed WebGPU/WebGL
+capability matrix found the `vulkan-blit` setup used NVIDIA for both APIs and
+presented the red/green canvases in the retained screenshot without WebGPU
+errors. Its `readPixels` probe produced a logged performance stall; that message
+is retained, not silently discarded. Other variants produced WebGPU import
+errors or no WebGL2 context. This is capability evidence only.
+
+Attempt 6 adds `--disable-vulkan-surface` to the full model smoke/cohort. This
+flag is documented in [Chromium's testing guide](https://developer.chrome.com/blog/supercharge-web-ai-testing)
+as using blit presentation instead of a Vulkan swapchain. The strict model
+readiness, hardware, health and timing guards remain unchanged. In particular,
+the model harness still refuses GPU driver log errors. A rendered screenshot
+alone is not a model, performance or health verdict.
 
 These files are qualification tests and evidence for already merged production
 behavior. They live under `tests/evidence` so the revert oracle classifies them

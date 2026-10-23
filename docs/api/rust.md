@@ -1687,6 +1687,13 @@ mapped occurrence ids and representation-map ids. These are unresolved appearanc
 inputs, not resolved materials or authenticated face correspondence. Texture data
 is owned; palette/texture application and persistent faces remain obligations.
 Logical template/placeholder metadata does not claim an exact renderer template.
+Retained mapping admission requires a reference to an `IfcRepresentationMap`, a
+supported transformation-operator reference for every `MappingTarget` (including
+source-cache hits), and a readable `Items` list containing only resolvable
+references. Missing/null/non-list `Items` refuse the entire plan, including earlier
+provisional constructions. An explicit `Items=()` is an empty source contribution;
+it does not authenticate whole-product removal. A valid identity target remains
+admissible. These checks do not change exact-mode recovery or transform math.
 
 `RetainedProgram::type_map` accepts an owned `IfcRepresentationMap`, constructs its
 source items, then applies its actual rigid `MappingOrigin` in metres.

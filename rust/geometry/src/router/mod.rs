@@ -175,6 +175,8 @@ pub struct GeometryRouter {
     /// kernel falls back to the un-cut host. Drainable via
     /// [`Self::take_csg_failures`].
     csg_failures: RefCell<FxHashMap<u32, Vec<BoolFailure>>>,
+    /// Stopped-product evidence, available only to an explicit diagnostic drain.
+    stopped_csg_failures: RefCell<FxHashMap<u32, Vec<BoolFailure>>>,
     /// Cumulative counters for opening classification (T1.1 / classifier fix
     /// diagnostic). Tracks how many openings went through each branch of
     /// `program::openings::classify` so a maintainer can verify the fix is firing on
@@ -282,6 +284,7 @@ impl GeometryRouter {
             local_frame_enabled: None,
             material_layer_index: None,
             csg_failures: RefCell::new(FxHashMap::default()),
+            stopped_csg_failures: RefCell::new(FxHashMap::default()),
             classification_stats: RefCell::new(ClassificationStats::default()),
             host_opening_diagnostics: RefCell::new(FxHashMap::default()),
             rect_fast_stats: RefCell::new(crate::rect_fast::RectFastStats::default()),

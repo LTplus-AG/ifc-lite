@@ -13,7 +13,7 @@
 //! `record_host_failure_summary`) to stay under the module-size ratchet
 //! budget.
 
-use super::diagnostics::{count_attributed_products, UNATTRIBUTED_PRODUCT_ID};
+use super::diagnostics::UNATTRIBUTED_PRODUCT_ID;
 use super::GeometryRouter;
 use crate::BoolFailure;
 use rustc_hash::FxHashMap;
@@ -203,39 +203,6 @@ impl OpeningKindDiag {
 }
 
 impl GeometryRouter {
-    /// Drain every boolean / CSG failure this router knows about since it was
-    /// created (or the last `take_csg_failures` call). The single drain point:
-    /// the native pipeline and the wasm batch path both call this and nothing
-    /// else.
-    ///
-    /// Two kinds of record come out, distinguished by their key:
-    ///
-    ///  * Keyed by IFC product express id — the void-subtraction path
-    ///    (multi-layer wall sub-meshes, single-mesh `process_element_with_voids_parts`),
-    ///    which knows the host element whose opening / clip tripped a fallback.
-    ///  * Keyed by [`UNATTRIBUTED_PRODUCT_ID`] — the registered processors' own
-    ///    logs (swept by [`Self::drain_processor_failures`], #3821, including
-    ///    what the transient boolean under an `IfcCsgSolid` hands back to
-    ///    `CsgSolidProcessor`) and the producer-less hatch. Standalone
-    ///    `IfcBooleanResult` chains DO flow here now; what they still lack is
-    ///    the owning product id. See `drain_processor_failures` for the cost.
-    pub fn take_csg_failures(&self) -> FxHashMap<u32, Vec<BoolFailure>> {
-        // Sweep the processors' own logs, then fold in any failures from a
-        // context with no router handle at all (`PENDING_MAPPED_BOOL_FAILURES`,
-        // which has no producer today). Neither carries a product attribution,
-        // so both land in the unattributed bucket, not a fake host id.
-        self.drain_processor_failures();
-        let pending = crate::diagnostics::take_pending_mapped_bool_failures();
-        if !pending.is_empty() {
-            self.csg_failures
-                .borrow_mut()
-                .entry(UNATTRIBUTED_PRODUCT_ID)
-                .or_default()
-                .extend(pending);
-        }
-        std::mem::take(&mut *self.csg_failures.borrow_mut())
-    }
-
     /// Record why a layered-wall slice attempt did/didn't produce per-layer
     /// sub-meshes (#563 diagnostic). Bounded — only sliceable elements reach it.
     pub(crate) fn push_layer_slice_diag(&self, element_id: u32, reason: &'static str) {
@@ -253,13 +220,16 @@ impl GeometryRouter {
     /// `.len()` would make this the one surface counting the synthetic
     /// bucket). PEEKS: no processor sweep, unlike `take_csg_failures`.
     pub fn csg_failure_product_count(&self) -> usize {
-        count_attributed_products(&self.csg_failures.borrow()) as usize
+        self.csg_failures.borrow().keys().chain(self.stopped_csg_failures.borrow().keys())
+            .copied().filter(|id| *id != UNATTRIBUTED_PRODUCT_ID)
+            .collect::<rustc_hash::FxHashSet<_>>().len()
     }
 
     /// Total CSG failures, INCLUDING the unattributed bucket (real failures,
     /// unknown owner). Peeks, like [`Self::csg_failure_product_count`].
     pub fn csg_failure_total(&self) -> usize {
-        self.csg_failures.borrow().values().map(|v| v.len()).sum()
+        self.csg_failures.borrow().values().chain(self.stopped_csg_failures.borrow().values())
+            .map(|v| v.len()).sum()
     }
 
     /// Internal: mark a host product as fully consumed by a containing void, so

@@ -1006,8 +1006,9 @@ instance and refuses a replacement before accepting its output.
 
 `GeometryRouter::take_csg_failures_checked` checks the current resource stop
 before running diagnostic hooks and again afterwards. A stop raised by a hook
-returns `Err(ProgramStop)` and restores drained records in their original
-buckets, ahead of later records, for explicit diagnostic retrieval. Canonical
+returns `Err(ProgramStop)` and retains drained records separately for explicit
+diagnostic retrieval through `take_csg_failures`. Later product publication and
+retry drains cannot adopt or discard those stopped reports. Canonical
 production discards that product's output when its final hook stops execution.
 
 ### Appearance authoring

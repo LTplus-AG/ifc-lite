@@ -101,7 +101,7 @@ fn voided_parts(
     // double-counted. The voids→plain retry keeps its records: a failed or
     // emptying cut that leaves the host uncut IS the diagnostic. The drain
     // runs every processor's hook, so it belongs inside the owner epoch.
-    let _ = router.take_csg_failures();
+    let _ = router.take_csg_failures_checked();
     match router.process_element_with_voids_parts(job.entity, decoder, ctx.void_index) {
         Ok(parts) if parts.iter().any(|mesh| !mesh.is_empty()) => PartsOutcome::Geometry(parts),
         // An empty void-cut result normally means the cut FAILED and emptied

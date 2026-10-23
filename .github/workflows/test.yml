@@ -1793,6 +1793,11 @@ jobs:
               --mutation tests/evidence/product-state-e3/retry-stop.oracle.patch \
               --test rust/processing/src/element/session_retry_tests.rs
           fi
+          # #7955 H2b: preserve the operation types and independently break its matrix.
+          if git diff --name-only origin/main...HEAD -- rust/geometry/src/program/retained/affine.rs | grep -q .; then
+            node scripts/check-test-revert-oracle.mjs --base 85ccebd01ce1125bffc85905ea1769631ebf82f2 --ci --json \
+              --mutation tests/evidence/retained-affine-controller-h2b/matrix.oracle.patch
+          fi
           # Observe every new effect independently; combined RED is insufficient.
           if git diff --name-only origin/main...HEAD -- rust/geometry/src/program/mapping_retained.rs | grep -q .; then
             for mutation in cycle copy-budget owner style-binding type-origin type-exact-nonconsumption required-target required-items; do

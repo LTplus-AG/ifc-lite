@@ -8,6 +8,7 @@ mod walk;
 #[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
 mod cache;
 mod presentation;
+mod affine;
 pub use presentation::RetainedPresentation;
 mod select;
 pub(crate) use select::RetainedSelection;
@@ -107,8 +108,12 @@ impl LogicalRetainedValue {
         program: u64,
         stage: RetainedPlacementStage,
     ) -> crate::Result<()> {
+        if program != self.slot.program {
+            return Err(crate::Error::geometry("foreign retained placement domain"));
+        }
         validate_affine(transform)?;
-        proper_rigid(transform)?;
+        if matches!(stage, RetainedPlacementStage::Product { .. }) { proper_rigid(transform)?; }
+
         crate::resource::charge(crate::resource::Cost {
             work: 1,
             occurrences: 1,
@@ -126,6 +131,7 @@ impl LogicalRetainedValue {
         } else {
             self.object_frame = multiply_frames(&matrix, &self.object_frame);
         }
+        validate_affine(&self.world_from_evaluation())?;
         self.placements.push(RetainedPlacement {
             input,
             output: self.slot,
@@ -162,6 +168,7 @@ impl RetainedPlanOperation {
     pub fn construction(&self) -> Option<&RetainedRecipe> {
         match &self.kind {
             RetainedOperationKind::Construction(source) => Some(source),
+            RetainedOperationKind::Affine { .. } => None,
         }
     }
     pub fn kind(&self) -> &RetainedOperationKind {
@@ -172,6 +179,7 @@ impl RetainedPlanOperation {
 #[derive(Debug, Clone)]
 pub enum RetainedOperationKind {
     Construction(RetainedRecipe),
+    Affine { input: LogicalRetainedValue, matrix: [f64; 16] },
 }
 // Transpose the existing row-major primitive to column-major operands. This
 // preserves its ordered f64 accumulation and avoids inverse-frame round trips.

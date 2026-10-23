@@ -6,7 +6,7 @@ impl ItemControl {
     }
     pub(in crate::program) fn admit_retained(
         &mut self,
-    ) -> std::result::Result<(ItemStep, RetainedPlanOperation), ProgramError> {
+    ) -> std::result::Result<(ItemStep, Vec<RetainedPlanOperation>), ProgramError> {
         let Some(ItemStep::RetainedReady(operation, selection)) = self.step.as_ref() else {
             return Err(ProgramError::StaleRequest);
         };
@@ -17,6 +17,8 @@ impl ItemControl {
         }
         #[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
         {
+            let mut operations = Vec::new();
+            crate::resource::reserve_headers(&mut operations, 1).map_err(ProgramError::TraversalStopped)?.retain();
             let value = operation.value().try_copy().map_err(|error| match error {
                 crate::Error::ProgramStopped(stop) => ProgramError::TraversalStopped(stop),
                 _ => ProgramError::UnsupportedRetained,
@@ -25,9 +27,10 @@ impl ItemControl {
             let Some(ItemStep::RetainedReady(operation, _)) = self.step.take() else {
                 return Err(ProgramError::StaleRequest);
             };
+            operations.push(*operation);
             Ok((
                 ItemStep::RetainedComplete(Ok(Box::new(value)), selection),
-                *operation,
+                operations,
             ))
         }
     }

@@ -42,13 +42,14 @@ impl<'a> MappingControl<'a> {
     }
     pub(in crate::program) fn retained_ready(&self) -> bool {
         matches!(&self.action, Action::Child(_, ChildControl::Item(c)) if c.retained_ready())
+            || (self.retained.is_some() && matches!(&self.action, Action::Place(Place { parts: Placing::Retained(_), .. }) | Action::TypeFinish(_)))
     }
     pub(in crate::program) fn admit_retained(&mut self)
-        -> std::result::Result<(MappingReply, RetainedPlanOperation), ProgramError> {
-        let Action::Child(_, ChildControl::Item(control)) = &mut self.action else {
-            return Err(ProgramError::StaleRequest);
-        };
-        control.admit_retained().map(|(reply, operation)| (MappingReply::Child(reply), operation))
+        -> std::result::Result<(MappingReply, Vec<RetainedPlanOperation>), ProgramError> {
+        if let Action::Child(_, ChildControl::Item(control)) = &mut self.action {
+            return control.admit_retained().map(|(reply, operations)| (MappingReply::Child(reply), operations));
+        }
+        self.admit_retained_affine()
     }
     pub(super) fn admit_retained_mapping(&mut self, item: &DecodedEntity, router: &GeometryRouter,
         decoder: &mut EntityDecoder) -> MappingReply {
@@ -64,7 +65,7 @@ impl<'a> MappingControl<'a> {
                 state.styled && self.allow_instancing && self.levels.is_empty(), self.textures, decoder)?;
             if let Some(transform) = &source.transform {
                 super::super::retained::validate_affine(transform)?;
-                super::super::retained::proper_rigid(transform)?;
+
             }
             let cached = state.selection.cached(decoder, router, source.source_id)?;
             Ok::<_, crate::Error>((source, cached))

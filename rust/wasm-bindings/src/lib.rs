@@ -70,6 +70,7 @@ mod api;
 mod diff;
 mod diff_fingerprint;
 mod diff_sidecar;
+mod diff_lineage;
 mod progress_hook;
 // Private retained-geometry module-Worker executor (opt-in; see the module docs).
 #[cfg(feature = "retained-browser")]

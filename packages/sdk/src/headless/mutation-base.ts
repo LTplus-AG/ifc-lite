@@ -17,6 +17,7 @@ export function configureSourceMutationView(store: IfcDataStore, view: MutablePr
   if (!store.source?.length) return;
   const typeClasses = new Map<string, boolean>();
   const isTypeObject = (id: number): boolean => {
+    // @raw-entity-enumeration-ok this callback supplies the immutable source baseline; MutablePropertyView applies live edits and creations above it
     const name = store.entityIndex.byId.get(id)?.type;
     if (!name) return false;
     let result = typeClasses.get(name);

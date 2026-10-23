@@ -138,13 +138,12 @@ impl<'a> FileIndex<'a> {
                 kept_guids.entry(guid).or_insert(id);
             }
         }
-        let guids = kept_guids;
 
         Self {
             content,
             spans,
             duplicates,
-            guids,
+            guids: kept_guids,
             max_id,
             first_owner_history,
             referrers: Referrers::default(),

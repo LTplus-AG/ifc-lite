@@ -110,20 +110,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
                     removed: &mut removed,
                     detach_requests: &mut detach_requests,
                     list_edits: &mut list_edits,
-                };
-                // Patches of one object compose, but only one may move it: a
-                // second placement would repoint past the first one's new
-                // records and leave them unreferenced.
-                let later_move;
-                let patch = if patch.placement.is_some() && !moved.insert(id) {
-                    out.refusals.push(Refusal {
-                        object: ObjectRef::Id(id),
-                        reason: "object is moved by more than one patch in this plan; the first placement wins".into(),
-                    });
-                    later_move = Patch { placement: None, ..patch.clone() };
-                    &later_move
-                } else {
-                    patch
+                    moved: &mut moved,
                 };
                 apply_patch(index, schema, id, patch, &mut ids, owner_history_ref, &mut out);
             }
@@ -211,9 +198,9 @@ fn render_list_edits(
         if removed.contains(&id) {
             continue;
         }
-        let rendered = index.attrs(id).and_then(|a| a.into_iter().nth(idx)).and_then(|a| a.list).and_then(|entries| edit.render(&entries));
-        if let Some(text) = rendered {
-            edits_by_id.entry(id).or_default().insert(idx, text);
+        let Some(slot) = index.raw_line(id).and_then(|line| crate::step_text::attribute_of(&line, idx)) else { continue };
+        if let Some(entries) = attrs::ListEntry::parse_list(&slot) {
+            edits_by_id.entry(id).or_default().insert(idx, edit.render(&entries));
         }
     }
 }
@@ -225,6 +212,10 @@ struct PatchOutput<'a> {
     removed: &'a mut HashSet<u32>,
     detach_requests: &'a mut Vec<(u32, usize, u32)>,
     list_edits: &'a mut HashMap<(u32, usize), attrs::ListEdit>,
+    /// Objects a patch has already moved. Patches of one object compose, but
+    /// only one may move it: a second placement would repoint past the first
+    /// one's new records and leave them unreferenced.
+    moved: &'a mut HashSet<u32>,
 }
 
 impl PatchOutput<'_> {
@@ -291,11 +282,17 @@ fn apply_patch(
     }
 
     if let Some(placement_patch) = &patch.placement {
-        match placement::resolve_placement(index, schema, object_id, placement_patch, ids) {
+        let result = if out.moved.contains(&object_id) {
+            Err("object is already moved by another patch in this plan; the first placement wins".to_string())
+        } else {
+            placement::resolve_placement(index, schema, object_id, placement_patch, ids)
+        };
+        match result {
             Ok(placement::PlacementWrite { new_records, repoint, orphaned }) => {
                 out.appended.extend(new_records);
                 out.edit(vec![repoint]);
                 out.removed.extend(orphaned);
+                out.moved.insert(object_id);
             }
             Err(reason) => out.refusals.push(Refusal { object: ObjectRef::Id(object_id), reason }),
         }

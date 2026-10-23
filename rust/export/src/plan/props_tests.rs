@@ -418,3 +418,31 @@ fn an_in_place_quantity_write_must_match_the_existing_quantity_kind() {
     let length = write("Qto_WallBaseQuantities", "Length", "IFCLENGTHMEASURE", "3.5", PropScope::Type, PsetKind::Quantity);
     assert!(super::in_place_edits(&index, schema, 41, &length).is_ok());
 }
+
+/// The other direction: a type-scoped write to a set an occurrence
+/// relationship also relates would reach those objects, so it is refused.
+#[test]
+fn type_write_to_a_set_an_occurrence_relationship_also_holds_is_refused() {
+    use crate::plan::test_fixtures::pset_on_type_and_occurrence;
+    let schema = "IFC4";
+    let content = pset_on_type_and_occurrence(schema);
+    let index = FileIndex::complete(&content);
+    let mut ids = IdAllocator::after(index.max_id);
+    let w = write("Pset_WallCommon", "FireRating", "IFCLABEL", "'4HR'", PropScope::Type, PsetKind::Property);
+    assert!(resolve_prop_write(&index, schema, 10, &w, &mut ids, None).is_err());
+}
+
+/// A relationship that relates the set only to the type itself (IFC4 lets
+/// `RelatedObjects` name a type) reaches nothing else, so the type write
+/// still edits in place.
+#[test]
+fn type_write_to_a_set_related_only_to_the_type_itself_edits_in_place() {
+    use crate::plan::test_fixtures::pset_on_type_also_related_to;
+    let schema = "IFC4";
+    let content = pset_on_type_also_related_to(schema, "(#40)");
+    let index = FileIndex::complete(&content);
+    let mut ids = IdAllocator::after(index.max_id);
+    let w = write("Pset_WallCommon", "FireRating", "IFCLABEL", "'4HR'", PropScope::Type, PsetKind::Property);
+    let outcome = resolve_prop_write(&index, schema, 10, &w, &mut ids, None).unwrap();
+    assert!(matches!(outcome, PropOutcome::InPlace(_)), "{outcome:?}");
+}

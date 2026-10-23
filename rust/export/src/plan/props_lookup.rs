@@ -69,7 +69,7 @@ pub(super) fn container_names(kind: PsetKind) -> (&'static str, &'static str) {
 
 /// Distinct referrers of `target` whose (referrer type, attribute) resolves
 /// to one of `attr_names` — the fan-out that decides sharing.
-pub(super) fn sharing_fanout(index: &FileIndex, schema: &str, target: u32, attr_names: &[&str]) -> usize {
+fn sharing_referrers(index: &FileIndex, schema: &str, target: u32, attr_names: &[&str]) -> HashSet<u32> {
     index
         .referrers(target)
         .iter()
@@ -80,13 +80,30 @@ pub(super) fn sharing_fanout(index: &FileIndex, schema: &str, target: u32, attr_
                 .is_some_and(|n| attr_names.contains(n))
         })
         .map(|&(r, _)| r)
-        .collect::<HashSet<_>>()
-        .len()
+        .collect()
+}
+
+/// The records that own `pset`: types listing it in `HasPropertySets` and
+/// relationships naming it as `RelatingPropertyDefinition`. More than one
+/// means an edit in place would reach another owner's objects.
+pub(super) fn pset_owners(index: &FileIndex, schema: &str, pset: u32) -> HashSet<u32> {
+    sharing_referrers(index, schema, pset, &["HasPropertySets", "RelatingPropertyDefinition"])
+}
+
+/// Whether every owner of `pset` is `target` itself or a relationship that
+/// relates it to `target` alone, so an edit in place reaches nothing else.
+pub(super) fn pset_reaches_only(index: &FileIndex, schema: &str, pset: u32, target: u32) -> bool {
+    const REL: &str = "IFCRELDEFINESBYPROPERTIES";
+    pset_owners(index, schema, pset).into_iter().all(|owner| {
+        owner == target
+            || (index.type_of(owner).as_deref() == Some(REL)
+                && list_attr(index, schema, owner, REL, "RelatedObjects").as_deref() == Some(&[target][..]))
+    })
 }
 
 /// Whether `leaf` (a value already found inside `owner`'s member list) is
 /// ALSO named, at the same member-list attribute, by some OTHER record of
-/// `container_type` — the leaf-level counterpart of [`sharing_fanout`].
+/// `container_type` — the leaf-level counterpart of [`pset_owners`].
 /// Sharing there is judged at the containing set: a set with exactly one
 /// owner still looks unshared even when one of its own members is a value
 /// record an exporter deduplicated into a second, unrelated set. Reads only

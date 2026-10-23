@@ -30,20 +30,45 @@ pub(crate) struct ListEdit {
     pub(crate) append: Vec<u32>,
 }
 
+/// One entry of a source list: a reference, or any other value (a typed
+/// value, a nested list), kept as written.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum ListEntry<'s> {
+    Ref(u32),
+    Other(&'s str),
+}
+
+impl<'s> ListEntry<'s> {
+    /// Every entry of the list value `slot`; `None` when it is not a list.
+    pub(crate) fn parse_list(slot: &'s str) -> Option<Vec<Self>> {
+        let items = ifc_lite_core::StepListItems::of_list(slot.as_bytes())?;
+        Some(
+            items
+                .map(|item| match ifc_lite_core::parser::parse_ref(item) {
+                    Some(id) => ListEntry::Ref(id),
+                    // The items are sub-slices of `slot`, so this never splits a character.
+                    None => ListEntry::Other(std::str::from_utf8(item).unwrap_or_default()),
+                })
+                .collect(),
+        )
+    }
+}
+
 impl ListEdit {
     /// `entries` with `remove` dropped, `substitute` applied in place, and
-    /// `append` added at the end, as STEP list text. `None` when an entry is
-    /// not a reference: its text is not kept, so the list is left as it is.
-    pub(crate) fn render(&self, entries: &[Option<u32>]) -> Option<String> {
-        let mut kept = Vec::with_capacity(entries.len() + self.append.len());
-        for id in entries {
-            let id = (*id)?;
-            if !self.remove.contains(&id) {
-                kept.push(format!("#{}", self.substitute.get(&id).copied().unwrap_or(id)));
+    /// `append` added at the end, as STEP list text. A non-reference entry
+    /// is written back as it was.
+    pub(crate) fn render(&self, entries: &[ListEntry<'_>]) -> String {
+        let mut kept: Vec<String> = Vec::with_capacity(entries.len() + self.append.len());
+        for entry in entries {
+            match *entry {
+                ListEntry::Ref(id) if self.remove.contains(&id) => {}
+                ListEntry::Ref(id) => kept.push(format!("#{}", self.substitute.get(&id).copied().unwrap_or(id))),
+                ListEntry::Other(text) => kept.push(text.to_string()),
             }
         }
         kept.extend(self.append.iter().map(|id| format!("#{id}")));
-        Some(format!("({})", kept.join(",")))
+        format!("({})", kept.join(","))
     }
 }
 
@@ -117,9 +142,11 @@ mod tests {
     fn list_edit_drops_only_the_removed_entries_and_can_go_empty() {
         let mut edit = ListEdit::default();
         edit.remove.insert(2);
-        assert_eq!(edit.render(&[Some(1), Some(2), Some(3)]).as_deref(), Some("(#1,#3)"));
-        assert_eq!(edit.render(&[Some(2)]).as_deref(), Some("()"));
-        assert_eq!(edit.render(&[Some(1), None, Some(2)]), None, "a non-reference entry is never dropped");
+        let refs = |ids: &[u32]| ids.iter().map(|&id| ListEntry::Ref(id)).collect::<Vec<_>>();
+        assert_eq!(edit.render(&refs(&[1, 2, 3])), "(#1,#3)");
+        assert_eq!(edit.render(&refs(&[2])), "()");
+        let mixed = ListEntry::parse_list("(#1, IFCPARAMETERVALUE(0.), /* c */ #2)").unwrap();
+        assert_eq!(edit.render(&mixed), "(#1,IFCPARAMETERVALUE(0.))", "a non-reference entry is kept as written");
     }
 
     #[test]
@@ -134,21 +161,21 @@ mod tests {
 
     #[test]
 fn list_edit_swaps_every_named_entry_in_place() {
-        let entries = vec![Some(1), Some(2), Some(3)];
+        let entries = [ListEntry::Ref(1), ListEntry::Ref(2), ListEntry::Ref(3)];
         let mut edit = ListEdit::default();
         edit.substitute.insert(2, 20);
-        assert_eq!(edit.render(&entries).as_deref(), Some("(#1,#20,#3)"));
+        assert_eq!(edit.render(&entries), "(#1,#20,#3)");
     }
 
     #[test]
     fn list_edit_composes_strips_repoints_and_appends_on_one_list() {
         // A delete's strip, a leaf repoint and a folded member on the same
         // list all land in one rewrite.
-        let entries = vec![Some(1), Some(2), Some(3)];
+        let entries = [ListEntry::Ref(1), ListEntry::Ref(2), ListEntry::Ref(3)];
         let mut edit = ListEdit::default();
         edit.remove.insert(3);
         edit.substitute.insert(1, 10);
         edit.append.push(40);
-        assert_eq!(edit.render(&entries).as_deref(), Some("(#10,#2,#40)"));
+        assert_eq!(edit.render(&entries), "(#10,#2,#40)");
     }
 }

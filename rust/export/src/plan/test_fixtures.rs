@@ -325,9 +325,15 @@ pub(super) fn project_aggregates_one_building(schema: &str) -> Vec<u8> {
 /// `#42` through its own `IfcRelDefinesByProperties` (`#44`), as some
 /// exporters write it.
 pub(super) fn pset_on_type_and_occurrence(schema: &str) -> Vec<u8> {
+    pset_on_type_also_related_to(schema, "(#10)")
+}
+
+/// [`wall_with_type_owned_pset`] plus an `IfcRelDefinesByProperties`
+/// (`#44`) relating the type's set `#42` to `related`.
+pub(super) fn pset_on_type_also_related_to(schema: &str, related: &str) -> Vec<u8> {
     let mut content = wall_with_type_owned_pset(schema);
     let footer_at = content.len() - FOOTER.len();
-    let rel = defines_by_properties(schema, 44, "(#10)", 42);
+    let rel = defines_by_properties(schema, 44, related, 42);
     content.splice(footer_at..footer_at, rel.into_bytes());
     content
 }

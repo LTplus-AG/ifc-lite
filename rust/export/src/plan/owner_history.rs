@@ -100,8 +100,9 @@ fn quoted(s: &str) -> String {
 }
 
 /// `IfcTimeStamp` seconds for the caller's stamp: Unix seconds as written, or
-/// an ISO 8601 `YYYY-MM-DDThh:mm:ss` (the form the header's `FILE_NAME`
-/// takes), read as UTC unless it ends in `Z` or a `+hh:mm`/`-hh:mm` offset.
+/// ISO 8601 (the form the header's `FILE_NAME` takes): a date, optionally
+/// followed by `T` and `hh:mm:ss`, read as UTC unless it ends in `Z` or a
+/// `+hh`, `+hhmm` or `+hh:mm` offset. Anything else is `None`.
 fn epoch_seconds(stamp: &str) -> Option<i64> {
     let stamp = stamp.trim();
     if let Ok(seconds) = stamp.parse::<i64>() {
@@ -109,13 +110,20 @@ fn epoch_seconds(stamp: &str) -> Option<i64> {
     }
     let num = |s: &str| -> Option<i64> { s.bytes().all(|b| b.is_ascii_digit()).then(|| s.parse().ok()).flatten() };
     let (date, rest) = stamp.split_at_checked(10)?;
-    let rest = rest.strip_prefix(['T', ' '])?;
-    let (time, zone) = rest.split_at_checked(8)?;
+    let (time, zone) = if rest.is_empty() { ("00:00:00", "") } else { rest.strip_prefix(['T', 't', ' '])?.split_at_checked(8)? };
     let mut d = date.split('-');
     let (year, month, day) = (num(d.next()?)?, num(d.next()?)?, num(d.next()?)?);
     let mut t = time.split(':');
     let (hour, minute, second) = (num(t.next()?)?, num(t.next()?)?, num(t.next()?)?);
-    if d.next().is_some() || t.next().is_some() || !(1..=12).contains(&month) || !(1..=31).contains(&day) || hour > 23 || minute > 59 || second > 60 {
+    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let month_days = match month {
+        2 if leap => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        1..=12 => 31,
+        _ => return None,
+    };
+    if d.next().is_some() || t.next().is_some() || !(1..=month_days).contains(&day) || hour > 23 || minute > 59 || second > 60 {
         return None;
     }
     // Drop fractional seconds, then read the zone.
@@ -128,8 +136,20 @@ fn epoch_seconds(stamp: &str) -> Option<i64> {
                 b'-' => -1,
                 _ => return None,
             };
-            let (h, m) = z[1..].split_once(':')?;
-            sign * (num(h)? * 3600 + num(m)? * 60)
+            let z = &z[1..];
+            if !z.is_ascii() {
+                return None;
+            }
+            let (h, m) = match (z.len(), z.as_bytes().get(2)) {
+                (2, _) => (num(z)?, 0),
+                (4, _) => (num(&z[..2])?, num(&z[2..])?),
+                (5, Some(b':')) => (num(&z[..2])?, num(&z[3..])?),
+                _ => return None,
+            };
+            if h > 23 || m > 59 {
+                return None;
+            }
+            sign * (h * 3600 + m * 60)
         }
     };
     // Days from 1970-01-01 to the civil date (Howard Hinnant's algorithm).
@@ -155,8 +175,16 @@ mod tests {
         assert_eq!(epoch_seconds("2026-10-23T12:00:00+02:00"), Some(1_792_749_600));
         assert_eq!(epoch_seconds("2026-10-23T10:00:00.5Z"), Some(1_792_749_600));
         assert_eq!(epoch_seconds("2000-02-29T00:00:00"), Some(951_782_400));
+        assert_eq!(epoch_seconds("2026-10-23T12:00:00+0200"), Some(1_792_749_600));
+        assert_eq!(epoch_seconds("2026-10-23t10:00:00"), Some(1_792_749_600));
+        assert_eq!(epoch_seconds("2026-10-23"), Some(1_792_713_600));
         assert_eq!(epoch_seconds("yesterday"), None);
         assert_eq!(epoch_seconds("2026-13-01T00:00:00"), None);
+        assert_eq!(epoch_seconds("2026-02-31T00:00:00"), None);
+        assert_eq!(epoch_seconds("2026-10-23T12:00:00+02"), Some(1_792_749_600));
+        assert_eq!(epoch_seconds("2026-10-23T10:00:00+99:99"), None);
+        assert_eq!(epoch_seconds("2026-10-23T10:00:00+1\u{e9}1"), None);
+        assert_eq!(epoch_seconds("2026-10-23T10:00:00+0:200"), None);
     }
 
     #[test]

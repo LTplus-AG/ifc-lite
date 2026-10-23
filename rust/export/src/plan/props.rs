@@ -26,7 +26,7 @@ use crate::step_ids::IdAllocator;
 use super::attrs::attribute_index;
 use super::index::FileIndex;
 use super::props_lookup::{
-    container_names, find_member, find_set, leaf_is_shared, list_attr, occurrence_rels, scalar_attr, sharing_fanout, type_rel,
+    container_names, find_member, find_set, leaf_is_shared, list_attr, occurrence_rels, pset_owners, pset_reaches_only, scalar_attr, type_rel,
 };
 use super::props_synth;
 use super::types::{PropScope, PropWrite, PsetKind};
@@ -207,7 +207,7 @@ pub(crate) fn resolve_set_writes<'w>(
                 .unwrap_or(1);
             // A set a type also lists in HasPropertySets is the type's too:
             // editing it in place would change every occurrence of the type.
-            let shared = rel_fanout > 1 || sharing_fanout(index, schema, pset_id, &["RelatingPropertyDefinition", "HasPropertySets"]) > 1;
+            let shared = rel_fanout > 1 || pset_owners(index, schema, pset_id).len() > 1;
             if !shared {
                 write_unshared_set(index, schema, &group, (pset_id, member_idx, &members), ids, &mut result);
                 return result;
@@ -256,10 +256,13 @@ pub(crate) fn resolve_set_writes<'w>(
         };
         let type_psets = list_attr(index, schema, type_id, &index.type_of(type_id).unwrap_or_default(), "HasPropertySets").unwrap_or_default();
         match find_set(index, schema, type_psets.iter(), first.kind, &first.pset) {
-            Some((pset_id, member_idx, members)) if sharing_fanout(index, schema, pset_id, &["HasPropertySets"]) <= 1 => {
+            // A set another type lists, or that a relationship relates to
+            // anything but this type, is not the type's alone: editing it
+            // would reach those objects too.
+            Some((pset_id, member_idx, members)) if pset_reaches_only(index, schema, pset_id, type_id) => {
                 write_unshared_set(index, schema, &group, (pset_id, member_idx, &members), ids, &mut result);
             }
-            Some(_) => refuse_all(&mut result, "type-scoped property write would need to touch a set shared by another type; refusing"),
+            Some(_) => refuse_all(&mut result, "type-scoped property write would need to touch a set shared with another type or object; refusing"),
             None => refuse_all(&mut result, "the related type has no set of this name; a type-scoped write never creates one"),
         }
         return result;

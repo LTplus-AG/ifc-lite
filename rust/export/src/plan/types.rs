@@ -108,9 +108,9 @@ pub struct Patch {
 pub struct PlanContext {
     pub author: Option<String>,
     pub organization: Option<String>,
-    /// The header's `FILE_NAME` time stamp, ISO 8601 (`2026-10-23T10:00:00`).
-    /// A synthesized owner history's `CreationDate` is read from it; Unix
-    /// seconds are accepted there too.
+    /// The header's `FILE_NAME` time stamp, written as given, so ISO 8601
+    /// (`2026-10-23T10:00:00`). A synthesized owner history's `CreationDate`
+    /// is read from it; a bare integer there is taken as Unix seconds.
     pub time_stamp: Option<String>,
 }
 

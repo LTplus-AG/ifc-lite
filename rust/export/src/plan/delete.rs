@@ -33,8 +33,8 @@ pub(crate) struct DeleteResult {
 /// True for an `IFCREL*` attribute IFC declares as a `SET [1:?]` member
 /// list (`RelatedObjects`, `RelatedElements`, `RelatedCoverings`, ...), so
 /// emptying it by removing a member takes the relationship itself out rather
-/// than leaving a rel with nothing related. The names are the same in
-/// IFC2X3, IFC4 and IFC4X3.
+/// than leaving a rel with nothing related. A name a schema does not declare
+/// (`RelatedSurfaceFeatures` before IFC4X3) never matches there.
 fn is_mandatory_members_attr(file_schema: &str, entity_type: &str, index: usize) -> bool {
     if !entity_type.starts_with("IFCREL") {
         return false;

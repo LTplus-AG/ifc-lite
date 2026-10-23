@@ -99,7 +99,8 @@ it('renders real SketchUp IFC validation through the IDS panel (#8065)', async (
   try {
     useViewerStore.setState({ idsDocument: document, idsValidationReport: report, validationSource: 'ids', idsAuditReport: null });
     const ui = render(<IDSPanel />);
-    assert.ok(ui.querySelector('[style="width: 50%;"]'), 'main specification bar reflects half of requirement checks passing');
+    const wallHeader = [...ui.querySelectorAll('button')].find((button) => button.textContent?.includes('IFCWALL'));
+    assert.ok(wallHeader?.querySelector('[style="width: 50%;"]'), 'main specification bar reflects half of requirement checks passing');
     assert.match(ui.textContent ?? '', /Not checked: 1 specification/);
     assert.doesNotMatch(ui.textContent ?? '', /100%/);
     const empty = { ...report, specificationResults: [report.specificationResults[1]] };

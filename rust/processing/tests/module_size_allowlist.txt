@@ -343,16 +343,15 @@
 # +19: #1910 schedule a representationless spatial container (IfcBuilding et al.) for meshing when it exceptionally carries a non-null Representation, instead of silently dropping its geometry.
 # -153: the entry points moved to entry_points.rs, the request and sink types to request.rs and sink.rs (C4-1, #7782); 1661 -> 1508.
 # -423: the entity scan moved to scan.rs and the quick-metadata collector to quick_collector.rs (C4-4a, #7782); 1508 -> 1085.
-    1085 rust/processing/src/processor/mod.rs
+    1080 rust/processing/src/processor/mod.rs
 # +410: NEW row — #858 palette guard added the indexed_colour_split_ids param to process_entity_job (already the extracted per-job worker body from the #1623 file split), pushing this existing large module one line over 400; splitting the single job function further would fragment the tightly-coupled worker setup.
-     410 rust/processing/src/processor/jobs.rs
 # +6: wire per-batch point-cache hit/miss stats into record_pipeline_batch (perf/brep-point-cache-instrumentation).
 # +13: attach the per-worker shared IfcMappedItem source cache to each batch router, mirroring the item-dedup attach (#1623).
 # +155: #1623 Phase 3 browser don't-bake — produce_batch gains arm_instancing (batch-local plan arm + occurrence collection + finalize call/return-tuple change) and the partitioned path folds the kept occurrences into the IFNS shard as empty-geometry refs; the finalize + recovery bodies were extracted to gpu_meshes/instancing.rs (new, ~165 lines) to hold the net down.
 # +4: #1891 follow-on — carry ProducedElementMeshes.geometry_aabb through ElementMeshOutput to push_geometry_hash on both the flat and partitioned paths.
 # +31: #1891 closedness — ElementMeshOutput gains geometry_volume + geometry_closure_bits, and the ONE ElementMeshOutput::fingerprint() builder both push sites now call (net shorter than the two struct literals it replaces, and the flat/partitioned paths can no longer fill different subsets of the index-parallel arrays). The fingerprint is taken into a local before each loop moves `out.meshes`, with a one-line note at both sites so the ordering is not "tidied" back into a borrow error.
 # +5: #2985 — both instanced call sites populate InstanceMeshRef::item_id (from MeshData::geometry_item_id for a template, from the ShardOccurrence for a don't-bake occurrence). The shard is the ONLY route to the host for this geometry, so the field cannot live anywhere cheaper.
-     981 rust/wasm-bindings/src/api/gpu_meshes/batch.rs
+     980 rust/wasm-bindings/src/api/gpu_meshes/batch.rs
 # +108: build the referenced-repmaps + instantiated-type-id sets and the material-layer index ONCE in the streaming pre-pass (from spans this scan already collected) and emit them as a `prepass-columns` event, so every geometry worker skips its own full-file walk on the first batch (perf/single-scan #957/#563).
 # +14: #1623 Phase 3 — tally the don't-bake MappedInstancePlan from the same IfcMappedItem spans and emit it on the prepass-columns event (mirrors the referenced-repmaps ship).
 # +9: cap the entity-index up-front reservation (PREPASS_INDEX_RESERVE_CAP) so a ~4GB file does not reserve ~1GB of slots on top of the resident file and abort the wasm32 4GB address space before the scan (huge-file graceful-4gb).

@@ -1,0 +1,11 @@
+--- a/rust/processing/src/processor/run_snapshot.rs
++++ b/rust/processing/src/processor/run_snapshot.rs
+@@ -32,7 +32,7 @@
+         styles: &std::sync::Arc<FxHashMap<u32, GeometryStyleInfo>>,
+     ) {
+         self.data.geometry_style_index = std::sync::Arc::clone(styles);
+-        let _ = self.model.snapshot(self.data.clone());
++        self.context = self.model.snapshot(self.data.clone());
+     }
+ }
+ 

@@ -164,7 +164,14 @@ ENDSEC;END-ISO-10303-21;");
     } else {
         assert_eq!(calls.get(), 2, "ordinary exact retry must still run the next strategy once");
         assert_eq!(hooks.get(), 2, "successful retry runs retry and final drains");
-        assert_same(&output, &canonical(10, false));
+        let mut expected = canonical(10, false);
+        assert_eq!(expected.meshes.len(), 1);
+        assert_eq!(expected.meshes[0].geometry_item_id, Some(13));
+        // #8091: the primary styled route identifies item 13, while the
+        // existing voids-to-parts retry publishes an unattributed Mesh.
+        // Preserve that distinction and compare every other output field.
+        expected.meshes[0].geometry_item_id = None;
+        assert_same(&output, &expected);
     }
     assert!(decoder.try_execution_lease().is_ok() && router.try_execution_lease().is_ok());
     assert!(ifc_lite_geometry::resource::check_current().is_ok(), "stop leaked outside the product");

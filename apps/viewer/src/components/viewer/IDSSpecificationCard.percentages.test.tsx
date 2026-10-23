@@ -53,8 +53,18 @@ describe('IDS percentages (#8065)', () => {
       assert.ok(ui.querySelector('[style="width: 0%;"]'));
       assert.match(ui.textContent ?? '', /0%Not checked/);
       assert.doesNotMatch(ui.textContent ?? '', /100%/);
+      const label = { pass: 'Passed', fail: 'Failed', not_applicable: 'Not Applicable' }[status];
+      assert.equal(ui.querySelector('[role="status"]')?.getAttribute('aria-label'), label);
     });
   }
+
+  it('shows an evaluation error instead of classifying it as unmatched (#8065 review)', () => {
+    const ui = card({ ...result(), applicableCount: 0, passedCount: 0, failedCount: 0,
+      entityResults: [], error: 'Pattern could not be evaluated' });
+    assert.match(ui.textContent ?? '', /Pattern could not be evaluated/);
+    assert.doesNotMatch(ui.textContent ?? '', /Not checked/);
+    assert.equal(ui.querySelector('[role="status"]')?.getAttribute('aria-label'), 'Failed');
+  });
 
   it('explains a failed count limit even when every requirement passes (#8065 review)', () => {
     const value = result();

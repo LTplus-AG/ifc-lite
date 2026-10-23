@@ -340,6 +340,10 @@ it('prints unmatched IDS specifications beside the PDF benchmark (#8065)', () =>
   ids.summary = { checked: 0, passed: 0, failed: 0, passRate: 0 };
   ids.checks = ids.checks.map((check) => ({ ...check, checked: 0, passed: 0, failed: 0, passRate: 0, rules: [] }));
   assert.ok(compose(ids).texts.some((item) => item.text === 'Not checked: 1 specification'));
+  ids.checks[0].error = 'Evaluation failed';
+  assert.ok(!compose(ids).texts.some((item) => item.text.startsWith('Not checked:')));
+  assert.ok(compose(ids).texts.some((item) => item.text.includes('Evaluation failed')));
+  delete ids.checks[0].error;
   ids.sourceKind = 'rules';
   assert.ok(!compose(ids).texts.some((item) => item.text.startsWith('Not checked:')));
   delete ids.sourceKind;

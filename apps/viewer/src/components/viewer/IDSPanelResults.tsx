@@ -23,7 +23,7 @@ import { AnalysisStaleRegion } from './analysis/AnalysisPanel';
 import { ValidationResultsSplit } from './validation/ValidationResultsSplit';
 import { ValidationResultCoverage, ValidationResultSource, validationSourceName } from './validation/ValidationResultHead';
 import { ResultView } from './result/ResultView';
-import { validationReportSummary } from '@/lib/validation/report-summary';
+import { isUnmatchedSpecification, validationReportSummary } from '@/lib/validation/report-summary';
 import { Boxes, Eye, EyeOff, Filter, Focus, Layers, Palette } from 'lucide-react';
 import type { ValidationReport, IDSAuditReport } from '@ifc-lite/ids';
 import type { UseValidationResults } from '@/hooks/validation/useValidationResults';
@@ -155,7 +155,7 @@ export function IDSPanelResults({
         {!isRules && <IDSCheckSummary report={report} />}
         {!isRules && <div className="text-xs font-medium">{t('idsPanel.entitySpecificationResults')}</div>}
         <ValidationBenchmark summary={summary} name={validationSourceName(report)}
-          notCheckedSpecifications={isRules ? 0 : report.specificationResults.filter((result) => result.applicableCount === 0).length} />
+          notCheckedSpecifications={isRules ? 0 : report.specificationResults.filter((result) => isUnmatchedSpecification(result.applicableCount, result.error)).length} />
         <div className="grid grid-cols-3 gap-2 text-xs text-center">
           <div className="bg-background rounded p-2">
             <div className="font-medium">{formatLocaleNumber(locale, report.summary.totalEntitiesChecked)}</div>

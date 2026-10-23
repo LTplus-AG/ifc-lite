@@ -159,6 +159,7 @@ function snapshotFromReport(report: ValidationReport, id: string): IdsReportBloc
     failed: result.failedCount,
     passRate: result.passRate,
     rules: rulesForCheck(report, result),
+    ...(result.error !== undefined ? { error: result.error } : {}),
   }));
   return { kind: 'ids-report', id, sourceKind: 'ids', sourceName: report.source.document.info.title, generatedAt, summary: totals, checks };
 }

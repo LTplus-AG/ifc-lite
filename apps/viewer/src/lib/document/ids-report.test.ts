@@ -284,3 +284,12 @@ describe('IDS report output is unchanged by the information-validation kind (#63
     assert.deepEqual(validateDocumentSpec(doc({ ...block, checks: [{ ...block.checks[0], severity: 'info' }] })).map((e) => e.path), ['blocks[0].checks[0].severity']);
   });
 });
+
+
+it('preserves IDS evaluation errors in frozen snapshots (#8065 review)', () => {
+  const result = spec({ id: 'error', name: 'Rejected check' });
+  result.error = 'Evaluation failed';
+  const input = report([result]);
+  input.source = { kind: 'ids', document: { info: { title: 'Invalid IDS' }, specifications: [] } };
+  assert.equal(idsReportBlockFromReport(input, 'errors').checks[0].error, 'Evaluation failed');
+});

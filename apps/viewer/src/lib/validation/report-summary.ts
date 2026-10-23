@@ -28,3 +28,9 @@ export function reportRingCounts(summary: ReportSummary): ManualCounts {
   return { total: summary.checked, pass: summary.passed, fail: summary.failed, warning,
     unanswered: Math.max(0, summary.checked - summary.passed - summary.failed - warning) };
 }
+
+
+/** An evaluation error is not evidence that a specification matched no entities (#8065). */
+export function isUnmatchedSpecification(applicableCount: number, error: string | undefined): boolean {
+  return applicableCount === 0 && error === undefined;
+}

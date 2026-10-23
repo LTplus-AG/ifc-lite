@@ -76,6 +76,12 @@ it('includes unmatched IDS specifications in the preview benchmark (#8065)', () 
   const ui = render(<IdsReportPreview block={empty} />);
   assert.match(ui.querySelector('[data-validation-benchmark]')?.textContent ?? '', /Not checked: 2 specifications/);
   cleanup();
+  const errored = render(<IdsReportPreview block={{ ...empty,
+    checks: empty.checks.map((check, index) => index === 0 ? { ...check, error: 'Evaluation failed' } : check),
+  }} />);
+  assert.match(errored.querySelector('[data-validation-benchmark]')?.textContent ?? '', /Not checked: 1 specification/);
+  assert.match(errored.textContent ?? '', /Evaluation failed/);
+  cleanup();
   const rules = render(<IdsReportPreview block={{ ...empty, sourceKind: 'rules' }} />);
   assert.doesNotMatch(rules.querySelector('[data-validation-benchmark]')?.textContent ?? '', /Not checked:/);
 });

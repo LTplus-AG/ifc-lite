@@ -84,12 +84,18 @@ ENDSEC;END-ISO-10303-21;",
     let prior_item = decoder.decode_by_id(80).unwrap();
     assert!(!router.process_representation_item(&prior_item, &mut decoder).unwrap().is_empty());
     let prior = cache.lock().unwrap().get(&85).expect("actual completed mapped wall cache").clone();
-    if final_stop {
+    {
         let boolean = decoder.decode_by_id(87).unwrap();
         assert!(
             !router.process_representation_item(&boolean, &mut decoder).unwrap().is_empty(),
             "diagnostic evidence comes from an actual unsupported Boolean operator"
         );
+        // #8091: an early stop must isolate reports already recorded on the
+        // router, without invoking any final hook after cancellation.
+        if !final_stop {
+            router.drain_processor_failures();
+            assert_eq!(router.csg_failure_total(), 1);
+        }
     }
     let calls = Rc::new(RefCell::new(Vec::new()));
     let final_hooks = Rc::new(Cell::new(0));
@@ -131,7 +137,7 @@ ENDSEC;END-ISO-10303-21;",
     assert!(decoder.try_execution_lease().is_ok());
     assert!(router.try_execution_lease().is_ok());
     assert!(resource::check_current().is_ok(), "ordinary Compatibility stop does not leak to the next product");
-    if final_stop {
+    {
         // #8091: reuse the warm router BEFORE the explicit diagnostic drain.
         // A successful product must not adopt the stopped product's reports.
         let next = leaked_job(&mut decoder, 20);

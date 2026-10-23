@@ -479,3 +479,29 @@ fn issue_7335_millimetre_project_bakes_linear_placements_in_file_units() {
         assert!((m - mm).amax() < 1e-6, "product {index}: {m} vs {mm}");
     }
 }
+
+/// F3b E1 (D27, #7825 leftover): placement chains are walked with a visited
+/// set and no depth cap, the same as the TypeScript walkers. Base refused any
+/// chain of 100 or more placements ("cyclic or exceeds the placement-work
+/// bound"); a 150-link chain is valid, and a loop is still refused.
+#[test]
+fn f3b_e1_a_deep_placement_chain_is_normalized_and_a_cycle_is_refused() {
+    let source = rigid_model(1.0);
+    let chain: String = (0..150)
+        .map(|i| {
+            let parent = if i == 0 { "#20".to_string() } else { format!("#{}", 500 + i - 1) };
+            format!("#{}=IFCLOCALPLACEMENT({parent},#31);\n", 500 + i)
+        })
+        .collect();
+    let deep = source
+        .replace("#50=IFCWALL('0M7tQ9Jbj1BAeHd7rqnDmR',$,'Edited wall',$,$,#30,", "#50=IFCWALL('0M7tQ9Jbj1BAeHd7rqnDmR',$,'Edited wall',$,$,#649,")
+        .replace("ENDSEC;\nEND-ISO", &format!("{chain}ENDSEC;\nEND-ISO"));
+    let plan = plan_map_conversion_normalization(deep.as_bytes()).unwrap();
+    assert!(plan.warnings.is_empty(), "{:?}", plan.warnings);
+    assert!(!plan.replacements.is_empty());
+
+    let looped = deep.replace("#500=IFCLOCALPLACEMENT(#20,#31)", "#500=IFCLOCALPLACEMENT(#649,#31)");
+    let refused = plan_map_conversion_normalization(looped.as_bytes()).unwrap();
+    assert!(refused.warnings.iter().any(|w| w.contains("cyclic")), "{:?}", refused.warnings);
+    assert!(refused.replacements.is_empty());
+}

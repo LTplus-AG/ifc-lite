@@ -4,7 +4,8 @@
 
 use super::{preflight, writer, MapConversionNormalizationPlan, Record};
 use crate::step_text::attribute_of;
-use ifc_lite_core::{slot, EntityDecoder, IfcType, MAX_PLACEMENT_DEPTH};
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_geometry::placement::{chain, validate_chain, LinkKind};
 use ifc_lite_geometry::GeometryRouter;
 use nalgebra::Matrix4;
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -188,67 +189,41 @@ pub(super) fn plan(
     Ok(plan)
 }
 
-/// Pure (root, path length) result: global memoization handles aliases without
-/// repeating walks. Iterative traversal cannot exhaust the native/WASM stack.
+/// The renderer's canonical frame for an `IfcAxis2Placement3D`.
+fn local_frame(frame: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<Matrix4<f64>, String> {
+    let placement = ifc_lite_geometry::placement::Axis2Placement::read_3d(frame, decoder);
+    Ok(placement.map_err(|error| error.to_string())?.matrix())
+}
+
+/// The root of `id`'s placement chain, after validating it with the shared
+/// walk (visited set, no depth cap, D27) under the preflight policy. The
+/// memo is per placement id, so aliases are not walked twice.
 fn placement_root(
     id: u32,
-    memo: &mut HashMap<u32, (u32, usize)>,
+    memo: &mut HashMap<u32, u32>,
     decoder: &mut EntityDecoder,
 ) -> Result<u32, String> {
-    let mut path = Vec::new();
-    let mut seen = HashSet::new();
-    let mut current = id;
-    let (root, mut depth) = loop {
-        if let Some(result) = memo.get(&current) {
-            break *result;
-        }
-        if path.len() >= MAX_PLACEMENT_DEPTH || !seen.insert(current) {
+    if let Some(root) = memo.get(&id) {
+        return Ok(*root);
+    }
+    let start = decoder.decode_by_id(id).map_err(|error| error.to_string())?;
+    validate_chain(&start, decoder, &preflight::CHAIN_POLICY).map_err(|error| error.to_string())?;
+    let links = chain(&start, decoder).map_err(|error| error.to_string())?;
+    // A linear placement is baked below into an IfcLocalPlacement relative to
+    // the same parent. Without a parent the basis curve is read in the
+    // untransformed world frame, which a root edit cannot carry.
+    for link in links.iter().filter(|link| link.kind == LinkKind::Linear) {
+        let placement = decoder.decode_by_id(link.id).map_err(|error| error.to_string())?;
+        if placement.get(0).is_none_or(|attr| attr.is_null()) {
             return Err(format!(
-                "ObjectPlacement #{id} is cyclic or exceeds the placement-work bound"
+                "IfcLinearPlacement #{} has no PlacementRelTo to carry its basis curve",
+                link.id
             ));
         }
-        let placement = decoder
-            .decode_by_id(current)
-            .map_err(|error| error.to_string())?;
-        let parent = placement.attr(slot::IfcObjectPlacement::PLACEMENT_REL_TO).filter(|attr| !attr.is_null());
-        match placement.ifc_type {
-            IfcType::IfcLocalPlacement => {
-                let frame = decoder
-                    .decode_by_id(placement.ref_at(slot::IfcLocalPlacement::RELATIVE_PLACEMENT).ok_or("RelativePlacement is missing")?)
-                    .map_err(|error| error.to_string())?;
-                preflight::axis(&frame, decoder)?;
-            }
-            // Baked below into an IfcLocalPlacement relative to the same
-            // parent. Without a parent the basis curve is read in the
-            // untransformed world frame, which a root edit cannot carry.
-            IfcType::IfcLinearPlacement if parent.is_some() => {}
-            IfcType::IfcLinearPlacement => {
-                return Err(format!(
-                    "IfcLinearPlacement #{current} has no PlacementRelTo to carry its basis curve"
-                ));
-            }
-            _ => {
-                return Err(format!(
-                    "ObjectPlacement #{current} is not an IfcLocalPlacement or IfcLinearPlacement"
-                ));
-            }
-        }
-        path.push(current);
-        match parent {
-            None => break (current, 0),
-            Some(attr) => {
-                current = attr
-                    .as_entity_ref()
-                    .ok_or("PlacementRelTo is not a reference")?
-            }
-        }
-    };
-    for id in path.into_iter().rev() {
-        depth += 1;
-        if depth > MAX_PLACEMENT_DEPTH {
-            return Err("ObjectPlacement exceeds the placement-work bound".into());
-        }
-        memo.insert(id, (root, depth));
+    }
+    let root = links.last().map(|link| link.id).ok_or("ObjectPlacement chain is empty")?;
+    for link in &links {
+        memo.insert(link.id, root);
     }
     Ok(root)
 }

@@ -238,37 +238,18 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Option<Vec<DecodedEntity>> {
-        let rep = decoder.resolve_ref(element.get(6)?).ok()??;
-        if rep.ifc_type != IfcType::IfcProductDefinitionShape {
-            return None;
-        }
-        let reps = decoder.resolve_ref_list(rep.get(2)?).ok()?;
-        // Mirror the mesh path's direct-vs-mapped de-dup: a MappedRepresentation
-        // is skipped only when the element ALSO carries direct body geometry.
-        let has_direct_geometry = reps.iter().any(|sr| {
-            sr.ifc_type == IfcType::IfcShapeRepresentation
-                && crate::router::effective_element_rep_type(element, sr)
-                    .map(crate::router::is_direct_body_representation)
-                    .unwrap_or(false)
-        });
+        let shape = crate::representation::product_shape(element, decoder).ok()??;
         let mut items = Vec::new();
-        for sr in reps {
-            if sr.ifc_type != IfcType::IfcShapeRepresentation {
+        // The box/re-extrusion probe only accepts body geometry. Meshed also
+        // handles typeless/annotation/structural representations, so retain
+        // this narrower filter while sharing its mapped-duplicate exclusion.
+        for rep in shape.select(element, crate::representation::Select::Meshed) {
+            if rep.ifc_type != IfcType::IfcShapeRepresentation
+                || !crate::router::effective_element_rep_type(element, rep)
+                    .is_some_and(crate::router::is_body_representation) {
                 continue;
             }
-            let Some(rt) = crate::router::effective_element_rep_type(element, &sr) else {
-                continue;
-            };
-            if rt == "MappedRepresentation" && has_direct_geometry {
-                continue;
-            }
-            if !crate::router::is_body_representation(rt) {
-                continue;
-            }
-            let Some(items_attr) = sr.get(3) else {
-                continue;
-            };
-            if let Ok(rep_items) = decoder.resolve_ref_list(items_attr) {
+            if let Ok(rep_items) = crate::representation::rep_items(rep, decoder) {
                 items.extend(rep_items);
             }
         }

@@ -266,7 +266,7 @@
 # post-cut sliver refinement REGION-SCOPED (refine_high_aspect_slivers_within) so
 # only rim slivers the cut created are bisected, not the host's authored
 # long-thin faces; skip the probe/audit tail when the fixpoint was a no-op.
-    1568 rust/geometry/src/router/voids/prism_cut.rs
+    1061 rust/geometry/src/router/voids/prism_cut.rs
 # NEW: #129 coaxial footprint-union for OVERLAPPING opening clusters. One cohesive
 # algorithm: extended-AABB overlap clustering (union-find), coaxial detection, 2.5D
 # depth-slicing with per-slab i_overlay footprint union + watertight re-extrude to

@@ -36,7 +36,6 @@ use check::Checked;
 struct Added {
     id: u32,
     class: String,
-    placement: Option<u32>,
 }
 
 pub(crate) struct AddState<'a> {
@@ -46,6 +45,8 @@ pub(crate) struct AddState<'a> {
     context: &'a PlanContext,
     owner_history: Option<u32>,
     added: HashMap<String, Added>,
+    /// Each added object's placement, by id, for children placed under it.
+    placement_of_added: HashMap<u32, Option<u32>>,
     body_context: Option<u32>,
     rels: RelAccumulator<'a>,
     records: Vec<(u32, String)>,
@@ -73,6 +74,7 @@ impl<'a> AddState<'a> {
             context,
             owner_history,
             added: HashMap::new(),
+            placement_of_added: HashMap::new(),
             body_context: body_context.or_else(|| find_body_context(index, schema, removed)),
             rels: RelAccumulator::new(index, removed),
             records: Vec::new(),
@@ -108,9 +110,11 @@ impl<'a> AddState<'a> {
             }
         }
         let gid = obj.global_id;
-        self.added.insert(gid.encode(), Added { id: built.object, class: checked.class, placement: Some(built.placement) });
+        self.placement_of_added.insert(built.object, Some(built.placement));
+        self.added.insert(gid.encode(), Added { id: built.object, class: checked.class });
         if let (Some(type_id), Some((class, _))) = (built.new_type, checked.new_type) {
-            self.added.insert(gid.derive("type").encode(), Added { id: type_id, class, placement: None });
+            self.placement_of_added.insert(type_id, None);
+            self.added.insert(gid.derive("type").encode(), Added { id: type_id, class });
         }
         Ok(())
     }

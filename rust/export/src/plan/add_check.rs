@@ -56,6 +56,12 @@ impl AddState<'_> {
         is_subtype_of_for_schema(self.schema, class, parent)
     }
 
+    /// A spatial element (`IfcSpatialStructureElement` in IFC2X3, its
+    /// `IfcSpatialElement` supertype later).
+    fn is_spatial(&self, class: &str) -> bool {
+        self.is_a(class, "IFCSPATIALSTRUCTUREELEMENT") || self.is_a(class, "IFCSPATIALELEMENT")
+    }
+
     /// `(id, UPPERCASE class)` of an object in the source or added earlier
     /// in this plan. A source object this plan deletes is not there, but an
     /// object added under its GlobalId is.
@@ -73,8 +79,8 @@ impl AddState<'_> {
     }
 
     fn placement_of(&self, id: u32, class: &str) -> Option<u32> {
-        if let Some(a) = self.added.values().find(|a| a.id == id) {
-            return a.placement;
+        if let Some(&placement) = self.placement_of_added.get(&id) {
+            return placement;
         }
         let idx = attribute_index(self.schema, class, "ObjectPlacement")?;
         self.index.attrs(id)?.into_iter().nth(idx)?.scalar
@@ -103,7 +109,7 @@ impl AddState<'_> {
                 if upper == "USERDEFINED" {
                     return Err("PredefinedType USERDEFINED needs a type name, which an Add does not write".into());
                 }
-                let members = crate::step_log::retype::predefined_type_members(schema, &class).unwrap_or(&[]);
+                let members = crate::step_log::predefined_type_members(schema, &class).unwrap_or(&[]);
                 if !members.is_empty() && !members.contains(&upper.as_str()) {
                     return Err(format!("'{value}' is not a PredefinedType of {class} in {schema}"));
                 }
@@ -130,13 +136,13 @@ impl AddState<'_> {
         }
 
         let (class, predefined) = self.check_class(&obj.class, "IFCPRODUCT")?;
-        let spatial = self.is_a(&class, "IFCSPATIALSTRUCTUREELEMENT") || self.is_a(&class, "IFCSPATIALELEMENT");
+        let spatial = self.is_spatial(&class);
 
         let container = match &obj.container {
             None => None,
             Some(r) => {
                 let (id, c) = self.lookup(r)?;
-                if !(self.is_a(&c, "IFCSPATIALSTRUCTUREELEMENT") || self.is_a(&c, "IFCSPATIALELEMENT")) {
+                if !self.is_spatial(&c) {
                     return Err(format!("container {r} is {c}, not a spatial element"));
                 }
                 Some((id, if spatial { RelKind::Aggregates } else { RelKind::Contained }, c))

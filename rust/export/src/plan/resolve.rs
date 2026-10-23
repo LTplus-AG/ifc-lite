@@ -36,7 +36,6 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     let mut edits_by_id: HashMap<u32, BTreeMap<usize, String>> = HashMap::new();
     let mut requested_deletes: HashSet<u32> = HashSet::new();
     let mut patched = 0usize;
-    let mut added = 0usize;
     let mut patched_objects = Vec::new();
 
     // Resolve every disposition against the file before doing anything that
@@ -166,10 +165,12 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     // list edits, so none of them extends a relationship or names a record
     // that is going away, and their list appends start from the rewritten
     // lists.
-    if !adds.is_empty() {
+    let added = if adds.is_empty() {
+        0
+    } else {
         let state = add::AddState::new(index, schema, &removed, &plan.context, owner_history_ref, body_context.chosen());
-        added = build_adds(state, &adds, &mut ids, &mut edits_by_id, &mut appended, &mut refusals);
-    }
+        build_adds(state, &adds, &mut ids, &mut edits_by_id, &mut appended, &mut refusals)
+    };
 
     Resolution { appended, edits_by_id, removed, refusals, patched, added, patched_objects, dropped_representations }
 }

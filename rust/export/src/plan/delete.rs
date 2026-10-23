@@ -168,9 +168,10 @@ impl Cascade<'_> {
     /// dangle.
     fn strip(&mut self, referrer: u32, idx: usize, member: u32, through_nested: bool) -> bool {
         if !self.lists.contains_key(&(referrer, idx)) {
-            // Not a list, or the referrer is not parsed yet. A strip that
-            // fails takes the referrer out, so the first case parses it at
-            // most once more.
+            // Not a list, or the referrer is not parsed yet. On the delete
+            // path a strip that fails takes the referrer out, so the first
+            // case parses it at most once more; a detach always names a
+            // list.
             for (i, list) in list_strips(self.index, self.file_schema, referrer) {
                 self.lists.entry((referrer, i)).or_insert(list);
             }

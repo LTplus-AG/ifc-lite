@@ -4636,7 +4636,7 @@ count equality for full output identity or browser worker-pool performance.
 
 ### Canonical product protocol (E3, #7955)
 
-The [source-qualified evidence](evidence/product-state-e3/summary.json) records
+The [archived source-qualified evidence](https://github.com/LTplus-AG/ifc-lite/blob/41efcf427d46aa604384c014bd6f0fdef4448de1/scripts/perf/evidence/product-state-e3/summary.json) records
 matching native flat/instanced payloads and actual source-built WASM getters
 against the landed E2b parent, with full workspace tests and strict Clippy.
 The scope excludes separate native material definitions and complete result

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Frame-local driver: inner strategies, exact passes, then ordered post passes.
-use super::super::{post, strategy, VoidContext};
+use super::super::{post, strategy, CutterKind, VoidContext};
 use crate::program::openings::execute::Execution;
 use crate::csg::ClippingProcessor;
 use crate::Mesh;
@@ -122,9 +122,9 @@ impl Execution {
         // (`subtract_mesh_many` rejects a group whose N-ary arrangement left an
         // unrecovered constraint) — fall through to the per-opening sequential
         // loop below with its full #635 fallback / engulf / redundant-void machinery.
-        let mut tail = strategy::exact::ExactTail::new(all_openings.len());
+        let tail = strategy::exact::ExactTail::new(result, all_openings);
 
-        tail.run(&mut result, &all_openings, strategy::exact::CutContext {
+        let (result, host_mutated) = tail.run(strategy::exact::CutContext {
             execution: self, clipper: &clipper, element_id, wall_min, wall_max,
         });
 
@@ -139,7 +139,7 @@ impl Execution {
 
         post::finish(result, post::Context {
             execution: self, kernel_failures, ctx, element_id, tris_before,
-            host_bounds_capture, wall_min, wall_max, original_host: &original_host, host_mutated: tail.host_mutated,
+            host_bounds_capture, wall_min, wall_max, original_host: &original_host, host_mutated,
         })
     }
 

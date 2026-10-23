@@ -1,24 +1,26 @@
 // SPDX-License-Identifier: MPL-2.0
-use super::{CutContext, ExactTail};
+use super::{CutContext, ExactState};
 use crate::{Mesh, Point3, Vector3};
 use crate::router::voids::admission::{aabb_engulfs, ENGULF_TOLERANCE};
 use crate::router::voids::geom::{opening_redundant_with_host, wall_thinnest_axis_dir};
 
-pub(super) struct Fallback<'a> {
+pub(in crate::router::voids) struct Fallback<'a> {
     pub opening_mesh: &'a Mesh,
-    pub open_min_pt: &'a Point3<f64>,
-    pub open_max_pt: &'a Point3<f64>,
+    pub open_min_pt: Point3<f64>,
+    pub open_max_pt: Point3<f64>,
     pub extrusion_dir: Option<Vector3<f64>>,
     pub tri_before: usize,
     pub failures_before: usize,
     pub csg_unchanged: bool,
 }
 
-impl ExactTail {
+impl ExactState {
     pub(super) fn fallback_635(&mut self, result: &mut Mesh, context: CutContext<'_>, fallback: Fallback<'_>) {
         let CutContext { execution, clipper, wall_min, wall_max, .. } = context;
         let Fallback { opening_mesh, open_min_pt, open_max_pt, extrusion_dir,
             tri_before, failures_before, csg_unchanged } = fallback;
+        let open_min_pt = &open_min_pt;
+        let open_max_pt = &open_max_pt;
         let dir = extrusion_dir.or_else(|| {
             Some(wall_thinnest_axis_dir(&wall_min, &wall_max))
         });

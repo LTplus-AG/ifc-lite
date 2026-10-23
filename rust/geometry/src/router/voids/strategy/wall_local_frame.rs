@@ -180,7 +180,7 @@ fn openings_in_frame(
         };
         let (lmn, lmx) = project_aabb_in_frame(cutter, axes, center)?;
         let in_frame =
-            |v: Vector3<f64>| Vector3::new(v.dot(axes[0]), v.dot(axes[1]), v.dot(axes[2]));
+            |v: Vector3<f64>| Vector3::new(v.dot(&axes[0]), v.dot(&axes[1]), v.dot(&axes[2]));
         // The cutter's own penetration (depth) axis expressed in the wall
         // frame. Drives both the alignment test and — for the exact fallback
         // — the cap-extension direction, which MUST stay faithful to THIS

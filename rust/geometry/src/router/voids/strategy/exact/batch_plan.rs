@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
-use super::ExactTail;
+use super::ExactState;
 use crate::{GeometryRouter, Mesh, Point3};
 use crate::program::openings::execute::Execution;
 use crate::router::voids::CutterKind;
 use crate::router::voids::admission::{admit_cutter, aabb_engulfs, min_opening_volume, ENGULF_TOLERANCE};
 
-impl ExactTail {
+impl ExactState {
     pub(in crate::router::voids) fn plan_groups(
         &mut self, execution: &Execution, result: &Mesh, all_openings: &[&CutterKind],
         wall_min: Point3<f64>, wall_max: Point3<f64>,

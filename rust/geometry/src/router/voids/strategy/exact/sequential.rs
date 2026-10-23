@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-use super::{CutContext, ExactTail, Flow};
+use super::{CutContext, ExactState, Flow};
 use super::fallback_635::Fallback;
 use crate::{GeometryRouter, Mesh};
 use crate::router::voids::CutterKind;
@@ -7,10 +7,10 @@ use crate::router::voids::admission::{admit_cutter, aabb_engulfs, min_opening_vo
 use crate::router::voids::geom::opening_engulfs_host_solid;
 use crate::router::voids::sweep::mesh_to_keep;
 
-impl ExactTail {
-    pub(in crate::router::voids) fn cut_one(
-        &mut self, result: &mut Mesh, opening: &CutterKind, context: CutContext<'_>,
-    ) -> Flow {
+impl ExactState {
+    pub(in crate::router::voids) fn cut_one<'a>(
+        &mut self, result: &mut Mesh, opening: &'a CutterKind, context: CutContext<'_>,
+    ) -> Flow<'a> {
         let CutContext { execution, clipper, element_id, .. } = context;
         // Normalize both exact-subtract variants into the same (mesh, min,
         // max, dir) shape. `DiagonalRectangular` (a clean but tilted box —
@@ -25,8 +25,6 @@ impl ExactTail {
         // fallback, which only fires if the exact subtract no-ops.
         let normalized = opening.cutter().normalized();
         if let Some((opening_mesh, open_min_pt, open_max_pt, extrusion_dir)) = normalized {
-            let open_min_pt = &open_min_pt;
-            let open_max_pt = &open_max_pt;
             {
                 // The 0.1 L volume floor filtered legacy-BSP CSG artefacts but
                 // also drops genuine small openings — bolt holes / sleeves in
@@ -102,7 +100,7 @@ impl ExactTail {
                 // A refused retention result is not a disjoint verdict (#635, #5362).
                 let kernel_verdict_disjoint = kernel_found_no_overlap && csg_unchanged;
                 if !csg_succeeded && !kernel_verdict_disjoint {
-                    self.fallback_635(result, context, Fallback {
+                    return Flow::Fallback(Fallback {
                         opening_mesh, open_min_pt, open_max_pt, extrusion_dir,
                         tri_before, failures_before, csg_unchanged,
                     });

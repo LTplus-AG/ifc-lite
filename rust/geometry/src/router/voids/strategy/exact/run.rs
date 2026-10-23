@@ -2,46 +2,54 @@
 //! Coaxial preprocessing, then first-member batches and sequential fallbacks.
 use super::{CutContext, ExactTail, Flow};
 use crate::Mesh;
-use crate::router::voids::CutterKind;
 
-impl ExactTail {
-    pub(in crate::router::voids) fn run(
-        &mut self, result: &mut Mesh, all_openings: &[&CutterKind], context: CutContext<'_>,
-    ) {
+impl ExactTail<'_> {
+    pub(in crate::router::voids) fn run(mut self, context: CutContext<'_>) -> (Mesh, bool) {
+        let result = &mut self.host;
+        let all_openings = &self.all_openings;
+        let state = &mut self.state;
         let CutContext { execution, clipper, wall_min, wall_max, .. } = context;
-        // COAXIAL FOOTPRINT-UNION for OVERLAPPING clusters (issue #129, flag
-        // `IFC_LITE_VOID_UNION`). Overlapping cutters can't join the disjoint batch
-        // below and otherwise fall to the O(N) sequential exact path; this fuses
-        // each overlapping coaxial cluster into disjoint re-extruded prisms and cuts
-        // them in one `subtract_mesh_many`. See `coaxial_union`. Marks consumed
-        // openings so the batch + sequential loops skip them; a cluster that fails
-        // any guard is left unconsumed for the exact path (never worse than exact).
-        execution.coaxial_union_prepass(
-            result,
-            all_openings,
-            &mut self.consumed,
-            &mut self.host_mutated,
-            clipper,
-        );
-
-        self.plan_groups(execution, result, all_openings, wall_min, wall_max);
-
-        for (opening_idx, opening) in all_openings.iter().enumerate() {
-            if self.consumed[opening_idx] {
-                continue; // already handled by a batched disjoint group
-            }
-            // Batched group cut, attempted ONCE, inline at the group's first
-            // member — so the relative order of batched vs sequential cutters
-            // matches the pure sequential pass. On any failure (admission,
-            // guards, or the kernel's conformity gate) the members fall back
-            // to the per-opening sequential path below.
-            if self.cut_group(result, all_openings, clipper, opening_idx) {
-                continue; // this opening was handled with its group
-            }
-            if let Flow::Stop = self.cut_one(result, opening, context) {
-                break;
+        for pass in PREPASSES {
+            match pass {
+                Prepass::CoaxialUnion => execution.coaxial_union_prepass(
+                    result, all_openings, &mut state.consumed, &mut state.host_mutated, clipper,
+                ),
             }
         }
-
+        state.plan_groups(execution, result, all_openings, wall_min, wall_max);
+        'openings: for (opening_idx, opening) in all_openings.iter().enumerate() {
+            if state.consumed[opening_idx] { continue; }
+            let mut fallback = None;
+            for pass in OPENING_PASSES {
+                match pass {
+                    OpeningPass::DisjointBatch => {
+                        if state.cut_group(result, all_openings, clipper, opening_idx) {
+                            continue 'openings;
+                        }
+                    }
+                    OpeningPass::SequentialExact => match state.cut_one(result, opening, context) {
+                        Flow::Next => continue 'openings,
+                        Flow::Stop => break 'openings,
+                        Flow::Fallback(attempt) => fallback = Some(attempt),
+                    },
+                    OpeningPass::Fallback635 => {
+                        if let Some(attempt) = fallback.take() {
+                            state.fallback_635(result, context, attempt);
+                        }
+                    }
+                }
+            }
+        }
+        (self.host, self.state.host_mutated)
     }
 }
+
+// Coaxial union is a whole-set prepass. Batch and sequential attempts remain
+// interleaved at each opening, and only an eligible sequential miss reaches635.
+// Changing either list is a geometry/diagnostic policy change, not refactoring.
+enum Prepass { CoaxialUnion }
+const PREPASSES: [Prepass; 1] = [Prepass::CoaxialUnion];
+enum OpeningPass { DisjointBatch, SequentialExact, Fallback635 }
+const OPENING_PASSES: [OpeningPass; 3] = [
+    OpeningPass::DisjointBatch, OpeningPass::SequentialExact, OpeningPass::Fallback635,
+];

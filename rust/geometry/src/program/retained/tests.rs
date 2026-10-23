@@ -355,3 +355,8 @@ mod mapping_contract;
 mod mapping_inputs;
 #[path = "affine_tests.rs"]
 mod affine_tests;
+#[path = "boolean_tests.rs"]
+mod boolean_tests;
+
+#[path = "operation_contract_tests.rs"]
+mod operation_contract;

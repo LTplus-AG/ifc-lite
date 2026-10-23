@@ -8,7 +8,7 @@ use crate::Result;
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 #[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
 #[derive(Clone)]
-pub(crate) struct RetainedSelection(std::sync::Arc<SelectionInner>);
+pub(crate) struct RetainedSelection(std::sync::Arc<SelectionInner>, std::sync::Arc<Vec<u32>>);
 #[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
 struct SelectionInner {
     contract: RetainedContract,
@@ -28,7 +28,7 @@ impl RetainedSelection {
                 program,
                 walk: std::sync::Arc::new(super::walk::RetainedWalk::new()),
                 cache: super::cache::RetainedCache::default(),
-            })))
+            }), std::sync::Arc::new(Vec::new())))
         }
         #[cfg(all(target_arch = "wasm32", not(feature = "wasm_source_capture")))]
         {
@@ -41,7 +41,7 @@ impl RetainedSelection {
         { Self(std::sync::Arc::new(SelectionInner {
             contract: self.0.contract, program: self.0.program,
             walk: self.0.walk.clone(), cache: self.0.cache.for_root(),
-        })) }
+        }), std::sync::Arc::new(Vec::new())) }
         #[cfg(all(target_arch = "wasm32", not(feature = "wasm_source_capture")))]
         { match *self {} }
     }
@@ -64,6 +64,14 @@ impl RetainedSelection {
         #[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
         {
             use crate::program::item::ItemStep;
+            if matches!(item.ifc_type, ifc_lite_core::IfcType::IfcBooleanResult | ifc_lite_core::IfcType::IfcBooleanClippingResult | ifc_lite_core::IfcType::IfcCsgSolid)
+                && router.processor_origin(&item.ifc_type) == Some(crate::router::ProcessorOrigin::Builtin) {
+                return match self.nested_boolean(item.id).and_then(|selection|
+                    crate::program::boolean::BooleanMachine::new_retained(item, router.tessellation_quality(), selection)) {
+                    Ok(machine) => ItemStep::Boolean { machine, reports: Default::default() },
+                    Err(error) => ItemStep::RetainedComplete(Err(error), self.clone()),
+                };
+            }
             match self.capture(item, router, decoder) {
                 Ok(operation) => ItemStep::RetainedReady(Box::new(operation), self.clone()),
                 Err(error) => ItemStep::RetainedComplete(Err(error), self.clone()),
@@ -75,8 +83,24 @@ impl RetainedSelection {
             match *self {}
         }
     }
+    // A mapped operand can re-enter the Boolean controller. Carry its Boolean
+    // ancestry across that boundary: local mapping/operand sets alone cannot
+    // see a mixed cycle or bound the native call stack of nested controllers.
     #[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
-    fn capture(
+    fn nested_boolean(&self, id: u32) -> Result<Self> {
+        self.0.walk.enter(id, &self.1)?;
+        let mut path = Vec::new();
+        crate::resource::reserve_headers(&mut path, self.1.len() + 1)?.retain();
+        path.extend(self.1.iter().copied());
+        path.push(id);
+        crate::resource::charge(crate::resource::Cost {
+            live_bytes: (std::mem::size_of::<Vec<u32>>() + 2 * std::mem::size_of::<usize>()) as u64,
+            ..Default::default()
+        })?.retain();
+        Ok(Self(self.0.clone(), std::sync::Arc::new(path)))
+    }
+    #[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
+    pub(in crate::program) fn capture(
         &self,
         item: &DecodedEntity,
         router: &GeometryRouter,
@@ -110,6 +134,18 @@ impl RetainedSelection {
         { self.0.walk.check() }
         #[cfg(all(target_arch = "wasm32", not(feature = "wasm_source_capture")))]
         { match *self {} }
+    }
+    pub(in crate::program) fn remember_stop(&self, stop: crate::resource::ProgramStop) -> crate::resource::ProgramStop {
+        #[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
+        { self.0.walk.remember(stop) }
+        #[cfg(all(target_arch = "wasm32", not(feature = "wasm_source_capture")))]
+        { let _ = stop; match *self {} }
+    }
+    pub(in crate::program) fn refuse_bound(&self, requested: u64) -> crate::resource::ProgramStop {
+        #[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
+        { self.0.walk.refuse(requested) }
+        #[cfg(all(target_arch = "wasm32", not(feature = "wasm_source_capture")))]
+        { let _ = requested; match *self {} }
     }
     pub(in crate::program) fn charge(&self) -> std::result::Result<(), crate::resource::ProgramStop> {
         self.charge_work(1)

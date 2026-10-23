@@ -40,6 +40,14 @@ impl RetainedWalk {
         }
         self.charge(1)
     }
+    pub(super) fn remember(&self, stop: ProgramStop) -> ProgramStop {
+        let mut budget = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        *budget.terminal.get_or_insert(stop)
+    }
+    pub(super) fn refuse(&self, requested: u64) -> ProgramStop {
+        let mut budget = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        *budget.terminal.get_or_insert_with(|| refusal(Dimension::Representation, requested, 0))
+    }
     #[cfg(test)]
     pub(super) fn set_limit(&self, limit: u64) {
         self.0.lock().unwrap_or_else(|e| e.into_inner()).limit = limit;

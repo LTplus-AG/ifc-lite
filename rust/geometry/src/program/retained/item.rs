@@ -3,10 +3,19 @@ use super::*;
 impl ItemControl {
     pub(in crate::program) fn retained_ready(&self) -> bool {
         matches!(self.step, Some(ItemStep::RetainedReady(..)))
+            || matches!(&self.step, Some(ItemStep::Boolean { machine, .. }) if machine.retained_ready())
     }
     pub(in crate::program) fn admit_retained(
         &mut self,
     ) -> std::result::Result<(ItemStep, Vec<RetainedPlanOperation>), ProgramError> {
+        if let Some(ItemStep::Boolean { machine, .. }) = &mut self.step {
+            let operation = machine.admit_retained().map_err(|error| match error {
+                Error::ProgramStopped(stop) => ProgramError::TraversalStopped(stop),
+                _ => ProgramError::UnsupportedRetained,
+            })?;
+            let step = self.step.take().ok_or(ProgramError::StaleRequest)?;
+            return Ok((step, operation));
+        }
         let Some(ItemStep::RetainedReady(operation, selection)) = self.step.as_ref() else {
             return Err(ProgramError::StaleRequest);
         };
@@ -45,5 +54,26 @@ impl ItemControl {
                 None
             }
         }
+    }
+}
+
+
+pub(super) fn execute_boolean(item: &DecodedEntity, mut machine: Box<BooleanMachine>,
+    reports: ConstructionReports, router: &GeometryRouter, decoder: &mut EntityDecoder) -> ItemStep {
+    let Some(selection) = machine.retained_selection().cloned() else {
+        return ItemStep::Complete(ItemResult { result: Err(Error::geometry("missing retained selection")), reports });
+    };
+    let result = (|| {
+        crate::resource::check_current()?;
+        let recorder = router.processor_for(&item.ifc_type).and_then(|processor| processor.boolean_recorder())
+            .ok_or_else(|| Error::geometry("selected Boolean processor unavailable"))?;
+        machine.retained_source(recorder, router, decoder)?;
+        if machine.stage().is_none() { machine.finish_retained().map(|value| Some(Box::new(value))) }
+        else { Ok(None) }
+    })();
+    match result {
+        Ok(None) => ItemStep::Boolean { machine, reports },
+        Ok(Some(value)) => ItemStep::RetainedComplete(Ok(value), selection),
+        Err(error) => ItemStep::RetainedComplete(Err(error), selection),
     }
 }

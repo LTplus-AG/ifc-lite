@@ -9,6 +9,8 @@ mod walk;
 mod cache;
 mod presentation;
 mod affine;
+mod identity;
+pub(in crate::program) mod boolean;
 pub use presentation::RetainedPresentation;
 mod select;
 pub(crate) use select::RetainedSelection;
@@ -54,6 +56,7 @@ pub struct RetainedPlacement {
 pub struct LogicalRetainedValue {
     definition: LogicalRetainedDefinition,
     length_unit_scale: f64,
+    contract: RetainedContract,
     /// Inner-to-outer metre-domain mappings, followed by reached product placement.
     placements: Vec<RetainedPlacement>,
     presentation: Vec<RetainedPresentation>,
@@ -108,6 +111,7 @@ impl LogicalRetainedValue {
         program: u64,
         stage: RetainedPlacementStage,
     ) -> crate::Result<()> {
+        self.validate_identity()?;
         if program != self.slot.program {
             return Err(crate::Error::geometry("foreign retained placement domain"));
         }
@@ -168,7 +172,7 @@ impl RetainedPlanOperation {
     pub fn construction(&self) -> Option<&RetainedRecipe> {
         match &self.kind {
             RetainedOperationKind::Construction(source) => Some(source),
-            RetainedOperationKind::Affine { .. } => None,
+            RetainedOperationKind::Affine { .. } | RetainedOperationKind::Boolean { .. } => None,
         }
     }
     pub fn kind(&self) -> &RetainedOperationKind {
@@ -179,6 +183,7 @@ impl RetainedPlanOperation {
 #[derive(Debug, Clone)]
 pub enum RetainedOperationKind {
     Construction(RetainedRecipe),
+    Boolean { inputs: Box<[LogicalRetainedValue; 2]>, operation: crate::BoolOp },
     Affine { input: LogicalRetainedValue, matrix: [f64; 16] },
 }
 // Transpose the existing row-major primitive to column-major operands. This
@@ -295,6 +300,7 @@ impl LogicalRetainedValue {
         Self {
             definition: self.definition.clone(),
             length_unit_scale: self.length_unit_scale,
+            contract: self.contract,
             placements: Vec::new(),
             presentation: Vec::new(),
             product_placed: self.product_placed,

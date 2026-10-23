@@ -16,6 +16,8 @@
 
 use std::collections::{HashMap, HashSet};
 
+use ifc_lite_geometry::math::v3::{cross, dot, norm, sub};
+
 use crate::step_ids::IdAllocator;
 
 use super::attrs::{attribute_index, build_record};
@@ -74,18 +76,6 @@ pub(crate) fn validate_mesh(m: &TriangleMesh) -> Result<(), String> {
         }
     }
     Ok(())
-}
-
-fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
-}
-
-fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
-}
-
-fn norm(v: [f64; 3]) -> f64 {
-    (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt()
 }
 
 pub(crate) fn validate_colour(c: &SurfaceColour) -> Result<(), String> {
@@ -225,8 +215,7 @@ fn is_closed(m: &TriangleMesh) -> bool {
         .iter()
         .map(|t| {
             let [a, b, c] = t.map(|v| m.positions[v as usize]);
-            let bc = cross(b, c);
-            a[0] * bc[0] + a[1] * bc[1] + a[2] * bc[2]
+            dot(a, cross(b, c))
         })
         .sum::<f64>()
         / 6.0;
@@ -253,7 +242,7 @@ pub(crate) fn styled_item(emit: &mut Emit, item: u32, c: &SurfaceColour) -> Resu
         ],
     )?;
     let style = emit.record("IFCSURFACESTYLE", &[("Side", ".BOTH.".into()), ("Styles", ref_list(&[rendering]))])?;
-    let styles = if emit.schema.to_ascii_uppercase().starts_with("IFC2X3") {
+    let styles = if crate::schema_convert::targets_ifc2x3(emit.schema) {
         emit.record("IFCPRESENTATIONSTYLEASSIGNMENT", &[("Styles", ref_list(&[style]))])?
     } else {
         style

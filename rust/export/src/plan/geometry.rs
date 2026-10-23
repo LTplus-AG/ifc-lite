@@ -242,7 +242,7 @@ fn annotation(index: &FileIndex, schema: &str, referrer: u32, idx: usize) -> Opt
         ("IFCSTYLEDITEM", "Item") | ("IFCSHAPEASPECT", "PartOfProductDefinitionShape") => {
             (index.referrer_count(referrer) == Some(0)).then_some(Annotation::Scalar)
         }
-        ("IFCPRESENTATIONLAYERASSIGNMENT" | "IFCPRESENTATIONLAYERWITHSTYLE", "AssignedItems") => Some(Annotation::ListEntry),
+        (entity, name) if super::delete::is_layer_items(entity, name) => Some(Annotation::ListEntry),
         _ => None,
     }
 }

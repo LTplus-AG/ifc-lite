@@ -61,7 +61,13 @@ fn is_mandatory_members_attr(file_schema: &str, entity_type: &str, index: usize)
             )
         );
     }
-    matches!(entity_type, "IFCPRESENTATIONLAYERASSIGNMENT" | "IFCPRESENTATIONLAYERWITHSTYLE") && name == Some("AssignedItems")
+    name.is_some_and(|name| is_layer_items(entity_type, name))
+}
+
+/// A presentation layer's `AssignedItems`: the one non-relationship member
+/// list both delete and the geometry sweep treat by rule.
+pub(crate) fn is_layer_items(entity_type: &str, attr_name: &str) -> bool {
+    matches!(entity_type, "IFCPRESENTATIONLAYERASSIGNMENT" | "IFCPRESENTATIONLAYERWITHSTYLE") && attr_name == "AssignedItems"
 }
 
 /// A record every export keeps even if the cascade would otherwise

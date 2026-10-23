@@ -224,7 +224,7 @@ mod tests {
     fn each_setter_sets_its_field() {
         let w = PropWrite::new("S", "P", "IFCLABEL", "'x'", PsetKind::Property, PropScope::Type).with_unit("#5");
         assert_eq!((w.pset.as_str(), w.prop.as_str(), w.measure_type.as_str(), w.literal.as_str()), ("S", "P", "IFCLABEL", "'x'"));
-        assert_eq!(w.unit.as_deref(), Some("#5"));
+        assert_eq!((w.unit.as_deref(), w.kind, w.scope), (Some("#5"), PsetKind::Property, PropScope::Type));
         let mesh = TriangleMesh::new(vec![[0.0; 3]; 3], vec![[0, 1, 2]]);
         let p = Patch::new()
             .with_name("N")
@@ -239,10 +239,18 @@ mod tests {
         let plan = ExportPlan::new(vec![(ObjectRef::Id(1), Disposition::Delete)]).with_context(c);
         assert_eq!(plan.context.author.as_deref(), Some("a"));
         let m = MapConversion::new("EPSG:2056", 1.0, 2.0, 3.0).with_map_unit(MapUnit::Foot).with_x_axis(0.0, 1.0).with_scale(0.5);
+        assert_eq!((m.crs_name.as_str(), m.eastings, m.northings, m.orthogonal_height), ("EPSG:2056", 1.0, 2.0, 3.0));
         assert_eq!((m.map_unit, m.x_axis_abscissa, m.x_axis_ordinate, m.scale), (MapUnit::Foot, 0.0, 1.0, Some(0.5)));
-        let root = || SkeletonRoot::new(GlobalId(1)).with_name("R");
-        let s = Skeleton::new(root(), root(), root()).with_true_north([0.0, 1.0]).with_map_conversion(m);
-        assert!(s.true_north.is_some() && s.map_conversion.is_some() && s.site.name.is_some());
-        assert_eq!(Refusal::new(ObjectRef::Id(1), "r"), Refusal::new(ObjectRef::Id(1), "r"));
+        let root = |n: u128, name: &str| SkeletonRoot::new(GlobalId(n)).with_name(name);
+        let s = Skeleton::new(root(1, "P"), root(2, "S"), root(3, "B")).with_true_north([0.0, 1.0]).with_map_conversion(m);
+        let roots = [&s.project, &s.site, &s.building].map(|r| (r.global_id, r.name.clone().unwrap()));
+        assert_eq!(roots, [(GlobalId(1), "P".into()), (GlobalId(2), "S".into()), (GlobalId(3), "B".into())]);
+        assert!(s.true_north == Some([0.0, 1.0]) && s.map_conversion.is_some());
+        let r = Refusal::new(ObjectRef::Id(1), "r");
+        assert_eq!((&r.object, r.reason.as_str()), (&ObjectRef::Id(1), "r"));
+        let f = ValidationFinding::new(Some(4), "m");
+        assert_eq!((f.express_id, f.message.as_str()), (Some(4), "m"));
+        let d = DroppedRepresentation::new(ObjectRef::Id(2), 9, Some("Axis".into()));
+        assert_eq!((&d.object, d.representation, d.identifier.as_deref()), (&ObjectRef::Id(2), 9, Some("Axis")));
     }
 }

@@ -287,7 +287,10 @@ mod tests {
         assert_eq!(o.placement.relative_to, Some(ObjectRef::Id(3)));
         assert!(matches!(o.type_link, Some(TypeLink::Existing(ObjectRef::Id(40)))));
         assert!(matches!(o.representation, Representation::Extrusion(_)));
-        assert!(o.style.is_some() && o.opening.is_some());
+        assert_eq!(o.style.map(|c| (c.rgb, c.transparency)), Some(([0.1, 0.2, 0.3], 0.5)));
+        let op = o.opening.as_ref().unwrap();
+        assert_eq!((&op.host, op.matrix, op.shape.direction, op.shape.depth), (&ObjectRef::Id(10), IDENTITY, [0.0, 0.0, 1.0], 1.0));
+        assert_eq!(op.shape.profile, vec![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]);
         assert_eq!(o.psets.len(), 1);
         assert!(matches!(&o.material, Some(MaterialLink::New(m)) if m.category.as_deref() == Some("concrete")));
         assert_eq!(o.classifications.len(), 1);
@@ -296,13 +299,17 @@ mod tests {
         assert!(bare.name.is_none() && bare.container.is_none() && bare.type_link.is_none() && bare.style.is_none());
         assert!(matches!(bare.representation, Representation::None) && bare.psets.is_empty() && bare.classifications.is_empty());
 
-        let t = NewType::new(IfcClass::Named("IfcWallType".into())).with_global_id(GlobalId(5)).with_name("T").with_psets(Vec::new());
+        let type_set = NewPropertySet::new("TS", PsetKind::Quantity, Vec::new());
+        let t = NewType::new(IfcClass::Named("IfcWallType".into())).with_global_id(GlobalId(5)).with_name("T").with_psets(vec![type_set]);
         assert_eq!((t.global_id, t.name.as_deref()), (Some(GlobalId(5)), Some("T")));
+        assert_eq!((t.psets[0].name.as_str(), t.psets[0].kind), ("TS", PsetKind::Quantity));
         let r = NewClassificationReference::new(ClassificationSystem::New(NewClassification::new("U").with_source("s").with_edition("1")))
             .with_identification("A")
             .with_name("N")
             .with_location("L");
         assert_eq!((r.identification.as_deref(), r.name.as_deref(), r.location.as_deref()), (Some("A"), Some("N"), Some("L")));
+        let ClassificationSystem::New(system) = &r.system else { panic!("new system") };
+        assert_eq!((system.name.as_str(), system.source.as_deref(), system.edition.as_deref()), ("U", Some("s"), Some("1")));
         let layers = NewLayerSet::new(vec![NewMaterialLayer::new(0.2).with_material(LayerMaterial::Existing(ObjectRef::Id(1)))]).with_name("S");
         assert_eq!(layers.name.as_deref(), Some("S"));
         assert!(layers.layers[0].material.is_some());

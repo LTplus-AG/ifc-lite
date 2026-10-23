@@ -22,6 +22,8 @@ fn run(content: &str, allowance: u32, styled: bool, stepped: bool, warm: bool) -
         ProductControl::merged(&wall, SourceHygiene::Watertight)
     };
     control.allowance = allowance;
+    // Product refusals belong to the request even under source suppression.
+    let _suppressed = router.enter_unsupported_policy(false);
     if stepped {
         while control.stage().unwrap().is_some() {
             let reply = control.execute(&router, &mut decoder).unwrap();
@@ -130,5 +132,51 @@ fn issue_7781_cancellation_precedes_product_shape_and_budget_refusal() {
                 });
             }
         }
+    }
+}
+
+#[test]
+fn issue_7781_product_allowance_spans_representations_and_repeated_dag_roots() {
+    let representations = model::wall("#160,#161", &format!(
+        "{}\n#160=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#140));\n\
+         #161=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#1000));\n{}",
+        model::TARGET, model::mapped(1000, "#240")));
+    let repeated = model::wall("#160", &format!(
+        "{}\n#160=IFCSHAPEREPRESENTATION(#13,'Body','MappedRepresentation',(#1000,#1000));\n{}",
+        model::TARGET, model::mapped(1000, "#240")));
+    for (content, limit) in [(&representations, 2), (&repeated, 3)] {
+        for styled in [false, true] {
+            for stepped in [false, true] {
+                for warm in [false, true] {
+                    assert_eq!(run(content, limit, styled, stepped, warm), (12, 1));
+                    assert_eq!(run(content, limit + 1, styled, stepped, warm), (24, 0));
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn issue_7781_owner_change_after_completed_root_cannot_publish_a_partial_product() {
+    let content = model::wall("#160", "#160=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#140,#240));");
+    for styled in [false, true] {
+        let mut decoder = EntityDecoder::new(&content);
+        let router = GeometryRouter::new();
+        let wall = decoder.decode_by_id(100).unwrap();
+        let mut control = if styled {
+            ProductControl::styled(&wall, false, None, SourceHygiene::Watertight)
+        } else { ProductControl::merged(&wall, SourceHygiene::Watertight) };
+        // Execute the first root through the real controller before changing
+        // the decoder between roots, while its output is still unpublished.
+        while !matches!(&control.action, Action::Raw(item) if item.id == 240) {
+            assert!(control.stage().unwrap().is_some());
+            let reply = control.execute(&router, &mut decoder).unwrap();
+            control.accept(reply, &router);
+        }
+        decoder = EntityDecoder::new(&content);
+        control.run(&router, &mut decoder).unwrap();
+        let error = control.take_result().unwrap().err().expect("partial product must not publish");
+        assert!(error.to_string().contains("execution owner changed"), "{error}");
+        assert!(router.take_unsupported_items().is_empty());
     }
 }

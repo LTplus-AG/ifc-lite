@@ -891,7 +891,10 @@ jobs:
           # #8042: retain new Rust diff types so the differential tests compile;
           # reverse only data-change detection. The unchanged oracle corpus
           # must report assertion failures, not missing imports.
-          if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/diff/src/content_match.rs | grep -Fxq 'rust/diff/src/content_match.rs'; then
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/diff/src/split_merge.rs | grep -Fxq 'rust/diff/src/split_merge.rs'; then
+            # #8042: preserve new split APIs; the parity corpus must observe lost claims.
+            oracle_args+=(--mutation tests/evidence/diff-8042/split-claims.oracle.patch)
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/diff/src/content_match.rs | grep -Fxq 'rust/diff/src/content_match.rs'; then
             # Preserve the new API; matches must retire their added/deleted entries.
             oracle_args+=(--mutation tests/evidence/diff-8042/content-retirement.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/diff/src/key_diff.rs | grep -Fxq 'rust/diff/src/key_diff.rs'; then

@@ -1,0 +1,9 @@
+--- a/rust/diff/src/successor.rs
++++ b/rust/diff/src/successor.rs
+@@ -140,6 +140,5 @@
+         }
+     }
+     claims.sort_by(|a, b| cmp_code_units(&a.base.key, &b.base.key).then_with(|| cmp_code_units(&a.head.key, &b.head.key)));
+-    claims.clear();
+     Some(claims)
+ }

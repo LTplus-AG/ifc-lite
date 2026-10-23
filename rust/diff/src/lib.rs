@@ -51,6 +51,8 @@ pub mod split_merge;
 pub mod successor;
 pub mod identity_map;
 pub mod lineage;
+mod sidecar_json;
+pub mod sidecar;
 
 // Internal. The canonical encoding and the code-unit helpers are
 // implementation detail of the fingerprint, not a surface worth promising:

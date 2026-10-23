@@ -272,7 +272,7 @@ try {
 const identities=new Set(records.filter(r=>r.ok).map(r=>JSON.stringify(r.meta.geometryBefore)));
 const pickIds=new Set(records.filter(r=>r.ok).map(r=>r.meta.pick.id));
 const completedSuccessfully=records.length===schedule.length && records.every(r=>r.ok) && identities.size===1 && pickIds.size===1;
-const summary={performanceVerdict:'REQUIRES_REVIEW; functional completion is not a frame-rate verdict',smoke,planned:schedule.length,completed:records.length,geometryIdentityAcrossCohort:identities.size===1,pickIdentityAcrossCohort:pickIds.size===1,completedSuccessfully,allAccepted:!smoke && completedSuccessfully,rows:smoke?[]:summarizeSamples(records),scope:smoke?'One native functional smoke. No A/B or performance verdict.':'Source-pinned current-main cap-only A/B; exact commit identities are in the frozen manifests. Native evidence and all issue acceptance still require review before closure.'};
+const summary={performanceVerdict:'REQUIRES_REVIEW; functional completion is not a frame-rate verdict',smoke,planned:schedule.length,completed:records.length,geometryIdentityAcrossCohort:identities.size===1,pickIdentityAcrossCohort:pickIds.size===1,completedSuccessfully,allAccepted:!smoke && completedSuccessfully,rows:smoke?[]:summarizeSamples(records),scope:smoke?'One native functional smoke. No A/B or performance verdict.':'Source-pinned cap-only A/B with synchronous capture shared by both arms; exact commit identities are in the frozen manifests. Native evidence and all issue acceptance still require review before closure.'};
 writeFileSync(`${output}/summary.json`,JSON.stringify(summary,null,2));
 console.log(JSON.stringify({output,...summary}));
 process.exit(completedSuccessfully?0:1);

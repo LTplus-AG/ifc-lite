@@ -4,12 +4,24 @@ Status: capture fix passes focused tests and a native DPR2 functional smoke;
 paired native performance qualification remains pending.
 This capsule does not yet establish issue completion or a performance verdict.
 
-The viewer policy and capture gateway shipped in #6711. This follow-up qualifies
-that implementation on a physical NVIDIA Linux desktop, using a capped build
-of main `be5c740cb9f1c57e4d1531ed574e2708839996be` and the cap-only control
-described in `source-pair.json`. The control changes one expression in
-`viewport-render-options.ts`; all camera, capture, scene and Rust inputs are
-shared. It is a qualification control, not another viewer implementation.
+The viewer policy and original capture gateway shipped in #6711. This follow-up
+fixes capture serialization before WebGPU presentation discards its pixels.
+The active cohort compares fixed candidate `8624c8cec59a1601226b8b5a341f2631e2d9aa47`
+with uncapped control `118738a9f4d09f8349614679e90e7e104a63f45c` on the physical
+NVIDIA desktop. Both arms contain the same capture fix; only the navigation
+`maxPixelRatio` expression differs. `source-pair.json` records that exact diff.
+
+`preparation-jobs.json` points to the successful candidate build/test receipt
+and the submitted control build receipt. A submitted receipt is not success:
+`run-cohort.py` refuses either arm until its original receipt proves completed
+exit zero, unchanged source, and the exact pinned commit. The fixture path is
+resolved from its successful preparation receipt rather than assuming that a
+new source checkout already contains the untracked model.
+
+The earlier pre-fix pair and receipts remain in `diagnostics/pre-fix-*.json` to
+explain the retained failed runs. They are historical evidence, not the active
+qualification inputs. Issue #6709 remains open until the full qualification
+and verdict are complete.
 
 ## Protocol
 

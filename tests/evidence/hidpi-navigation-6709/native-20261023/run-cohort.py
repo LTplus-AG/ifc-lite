@@ -23,7 +23,7 @@ for side in ['candidate','base']:
 (out/'preparation-receipts.json').write_text(json.dumps(receipts,indent=2)+'\n')
 subprocess.run(['python3',str(out/'freeze-builds.py')],check=True)
 root=receipts[0]['cwd']
-env=os.environ|{'IFC_6709_ROOT':root,'IFC_6709_EVIDENCE':str(out),'IFC_6709_MODEL':root+'/tests/models/ara3d/AC20-FZK-Haus.ifc','DISPLAY':':1','WAYLAND_DISPLAY':'wayland-1','XDG_RUNTIME_DIR':'/run/user/1000','DEBUG':'pw:browser'}
+env=os.environ|{'IFC_6709_ROOT':root,'IFC_6709_EVIDENCE':str(out),'IFC_6709_MODEL':fixture_receipt['cwd']+'/tests/models/ara3d/AC20-FZK-Haus.ifc','DISPLAY':':1','WAYLAND_DISPLAY':'wayland-1','XDG_RUNTIME_DIR':'/run/user/1000','DEBUG':'pw:browser'}
 (out/'harness-sha256.json').write_text(json.dumps({p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in out.iterdir() if p.suffix in ['.py','.mts']},indent=2)+'\n')
 command=['node','--import',root+'/node_modules/tsx/dist/loader.mjs',str(out/'qualification.mts')]
 summary=[]

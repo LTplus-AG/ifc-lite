@@ -109,6 +109,19 @@ impl GeometryRouter {
         source: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Option<Matrix4<f64>>> {
+        Ok(self
+            .mapping_origin_frame(source, decoder)?
+            .filter(|m| !m.is_identity(tol::IDENTITY_EPS_STRICT)))
+    }
+
+    /// [`Self::mapping_origin_transform`] without the identity shortcut:
+    /// `None` only when the origin is absent or `$`. The textured path bakes
+    /// the frame into every part, identity included.
+    pub(crate) fn mapping_origin_frame(
+        &self,
+        source: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> Result<Option<Matrix4<f64>>> {
         let Some(origin_attr) = source.get(0).filter(|a| !a.is_null()) else {
             return Ok(None);
         };
@@ -118,27 +131,20 @@ impl GeometryRouter {
             ));
         };
         let m = match origin.ifc_type {
-            IfcType::IfcAxis2Placement3D => self.parse_axis2_placement_3d(&origin, decoder)?,
             // A 2D mapping origin places a 2D representation in the XY plane.
-            IfcType::IfcAxis2Placement2D => self.parse_axis2_placement_2d(&origin, decoder)?,
+            IfcType::IfcAxis2Placement3D | IfcType::IfcAxis2Placement2D => {
+                crate::placement::Axis2Placement::read(&origin, decoder)?.matrix()
+            }
             other => {
+                // Counted on the origin record, as `Axis2Placement::read`
+                // counts a wrong-typed placement (D3).
+                let _counted = decoder.refuse_malformed(origin.id);
                 return Err(Error::geometry(format!(
                     "RepresentationMap MappingOrigin is {other}, not an IfcAxis2Placement"
                 )))
             }
         };
-        Ok(if m.is_identity(tol::IDENTITY_EPS_STRICT) { None } else { Some(m) })
-    }
-
-    /// Parse IfcAxis2Placement2D (Location, RefDirection) into a 4x4 acting in
-    /// the XY plane (Z untouched).
-    #[inline]
-    pub(crate) fn parse_axis2_placement_2d(
-        &self,
-        placement: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-    ) -> Result<Matrix4<f64>> {
-        crate::transform::parse_axis2_placement_2d(placement, decoder)
+        Ok(Some(m))
     }
 }
 #[cfg(test)]
@@ -171,5 +177,40 @@ mod tests {
             assert!((matrix[12] - 0.12).abs() < 1e-12);
             assert!((matrix[13] - 0.04).abs() < 1e-12);
         }
+    }
+
+    /// F3b drift 3.5: the textured type map reads its MappingOrigin through
+    /// the same reader as a mapped item. Base honoured only a 3D origin and
+    /// returned `None` (no transform) for a 2D or a wrong-typed one.
+    #[test]
+    fn the_textured_type_map_origin_honours_2d_and_refuses_a_wrong_type() {
+        let content = b"#1=IFCCARTESIANPOINT((10.,20.));\n#2=IFCDIRECTION((0.,1.));\n\
+            #3=IFCAXIS2PLACEMENT2D(#1,#2);\n#4=IFCREPRESENTATIONMAP(#3,#9);\n\
+            #5=IFCREPRESENTATIONMAP(#1,#9);\n#6=IFCREPRESENTATIONMAP($,#9);\n\
+            #10=IFCCARTESIANPOINT((0.,0.));\n#7=IFCAXIS2PLACEMENT2D(#10,$);\n\
+            #8=IFCREPRESENTATIONMAP(#7,#9);";
+        let router = GeometryRouter::with_scale(1.0);
+        let mut decoder = EntityDecoder::new(content);
+        let map = decoder.decode_by_id(4).unwrap();
+        let m = router.type_map_origin(&map, &mut decoder).unwrap().expect("a 2D origin is honoured");
+        assert_eq!((m[(0, 3)], m[(1, 3)], m[(2, 3)]), (10.0, 20.0, 0.0));
+        assert_eq!((m[(0, 0)], m[(1, 0)]), (0.0, 1.0), "X follows RefDirection");
+        // The textured path bakes an identity 2D frame too; the mapped path
+        // keeps its identity shortcut.
+        let map = decoder.decode_by_id(8).unwrap();
+        assert!(router.type_map_origin(&map, &mut decoder).unwrap().is_some());
+        assert!(router.mapping_origin_transform(&map, &mut decoder).unwrap().is_none());
+        // A cartesian point is not an IfcAxis2Placement: an error, not `None`,
+        // counted on the origin record (D3) on both routes, once.
+        assert_eq!(decoder.refused_records(), 0);
+        let map = decoder.decode_by_id(5).unwrap();
+        let message = router.type_map_origin(&map, &mut decoder).unwrap_err().to_string();
+        assert!(message.contains("not an IfcAxis2Placement"), "{message}");
+        assert_eq!(decoder.refused_records(), 1);
+        assert!(router.mapping_origin_transform(&map, &mut decoder).is_err());
+        assert_eq!(decoder.refused_records(), 1, "the same origin, counted once");
+        // `$` stays absent (no transform), as on base.
+        let map = decoder.decode_by_id(6).unwrap();
+        assert!(router.type_map_origin(&map, &mut decoder).unwrap().is_none());
     }
 }

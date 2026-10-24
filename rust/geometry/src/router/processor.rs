@@ -14,6 +14,10 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
 /// Geometry processor trait
 /// Each processor handles one type of IFC representation
+///
+/// A processor that waits on rayon inside a callback (`join`, `par_iter`)
+/// must wrap the wait in [`crate::resource::detached`]: the waiting thread may
+/// run another element's job, which must not share this product's resources.
 pub trait GeometryProcessor {
     /// Process entity into mesh.
     ///

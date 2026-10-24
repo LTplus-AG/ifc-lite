@@ -121,7 +121,7 @@ fn sample_curve_polyline_guarded(
         let Some(placement) = resolve_present(curve.get(0), decoder)? else {
             return Ok(Vec::new());
         };
-        let (center, axis_z, axis_x) = read_axis2_placement_frame(&placement, decoder);
+        let (center, axis_z, axis_x) = read_axis2_placement_frame(&placement, decoder)?;
         let axis_y = axis_z.cross(&axis_x);
         let n = scale_segments(24, 8, 96, quality);
         return Ok((0..=n)
@@ -149,7 +149,7 @@ fn sample_curve_polyline_guarded(
         let Some(placement) = resolve_present(curve.get(0), decoder)? else {
             return Ok(Vec::new());
         };
-        let (center, axis_z, axis_x) = read_axis2_placement_frame(&placement, decoder);
+        let (center, axis_z, axis_x) = read_axis2_placement_frame(&placement, decoder)?;
         let axis_y = axis_z.cross(&axis_x);
         let n = scale_segments(24, 8, 96, quality);
         return Ok((0..=n)

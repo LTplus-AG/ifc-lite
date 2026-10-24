@@ -56,12 +56,12 @@ export const OFFSET_FILE_NAME = 'rust-major-offset.json';
  *
  * Since #7672 the member crates INHERIT those literals (`ifc-lite-core.workspace
  * = true`) instead of repeating them, so the root table is the only home of the
- * literals (7 of them: core, geometry, processing, clash, export, wasm,
+ * literals (8 of them: core, diff, geometry, processing, clash, export, wasm,
  * landxml) and the members contribute inherited declarations instead (17 at
- * #7672). The total floor counts both: 7 + 17 = 24 measured, floor 15.
+ * #7672). The total floor counts both: 8 + 17 = 25 measured, floor 15.
  */
 export const MIN_WORKSPACE_PACKAGES = 20;
-export const MIN_WORKSPACE_DEP_LITERALS = 7;
+export const MIN_WORKSPACE_DEP_LITERALS = 8;
 export const MIN_TOTAL_DEP_DECLARATIONS = 15;
 
 /**

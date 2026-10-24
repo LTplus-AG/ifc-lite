@@ -1,0 +1,56 @@
+{
+  "placement": {
+    "actualSource": "03e2ad0369b3c69cedcaac6496b9a14d4b951ad1",
+    "actualTree": "517ad037355f8eace3d14c1271f42bbdaa3d7d70",
+    "originalJob": "9d488b50-781e-4124-879a-e7552740ff06",
+    "originalSourceBindingSha256": "d586aac81e1938117a66e7bd61566f48715d5d13d284e459bcff35dd6c880256",
+    "compilerProofSha256": "f80a497a7c8fe6a4b8cfbfb261651b1c811f998d53096d424a9ebed1635b5f8f",
+    "binaries": {
+      "perf-probe": {
+        "sha256": "c5227418648f700becd0f3e7320ddc9bb496596b503e12ed84c30c840ae2fdb5"
+      },
+      "payload-diagnostics": {
+        "sha256": "545c10f1b828baa44ccbff91208781b6a1500246311bdc76b16f6790d5c4146d"
+      }
+    },
+    "injections": {
+      "perf_probe-observed.rs": "dd50137fdc1cdfd980743afe7692e5c70bdba782f9b18d78d715624c6b7f053b",
+      "measurement-observed.rs": "a3dcc5b964c5e8d289f74ef6c5f10cbed3f904fa9184c19583756f222382783e",
+      "payload-diagnostics-v2.rs": "95143c5e25f362bc46f566929fb0b9eb61f746d017165b024e334528ae7ceba6"
+    },
+    "tools": {
+      "cargo": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)",
+      "rustc": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+    },
+    "profile": "profiling",
+    "features": [],
+    "checksumFreshness": true
+  },
+  "x": {
+    "actualSource": "a806aed09f4aa860d180c2cc1059032bd87b4a20",
+    "actualTree": "0ede7ad46dfbb2faf4e3cf97655f61e570be0fb3",
+    "originalJob": "b1ef654d-49f7-4989-a0f2-94058b4cba17",
+    "originalSourceBindingSha256": "a8b5e85182d5744af9ea6b514b6e7ce228f0674da797f27a54398159997c9f23",
+    "compilerProofSha256": "8ebf773f248e57bfbdf5a6558d1ade30c4b11db5c6e93ad3ec941a1a9bc3b4a9",
+    "binaries": {
+      "perf-probe": {
+        "sha256": "02ed2a1c16156869321f18cdf3c7a8fb02dd01deed9e305560999ca62bbe5869"
+      },
+      "payload-diagnostics": {
+        "sha256": "6b6db5237316cf2500489e62b6e63bfe0852f3063e713d17918f3af6eb80fa0e"
+      }
+    },
+    "injections": {
+      "perf_probe-observed.rs": "dd50137fdc1cdfd980743afe7692e5c70bdba782f9b18d78d715624c6b7f053b",
+      "measurement-observed.rs": "a3dcc5b964c5e8d289f74ef6c5f10cbed3f904fa9184c19583756f222382783e",
+      "payload-diagnostics-v2.rs": "95143c5e25f362bc46f566929fb0b9eb61f746d017165b024e334528ae7ceba6"
+    },
+    "tools": {
+      "cargo": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)",
+      "rustc": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+    },
+    "profile": "profiling",
+    "features": [],
+    "checksumFreshness": true
+  }
+}

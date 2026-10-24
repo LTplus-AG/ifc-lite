@@ -178,8 +178,8 @@ fn attribute_placement_is_identity(
         Some(id) => id,
         None => return false,
     };
-    match crate::transform::parse_axis2_placement_3d_from_id(placement_id, decoder) {
-        Ok(m) => matrix_is_identity(&m),
+    match crate::placement::Axis2Placement::read_id(placement_id, decoder) {
+        Ok(placement) => matrix_is_identity(&placement.matrix()),
         Err(_) => false,
     }
 }

@@ -64,6 +64,23 @@ pub enum ExportError {
         /// mesh carried which out-of-range index.
         detail: String,
     },
+    /// An opt-in option the selected assembler cannot honour (#7955 J5: glTF
+    /// `textures` outside the in-memory GLB assembler). Refused rather than
+    /// silently exporting without what the caller asked for.
+    UnsupportedOption {
+        /// The option, by its builder name.
+        option: &'static str,
+        /// The assembler or option combination that cannot carry it.
+        detail: &'static str,
+    },
+    /// A mesh's appearance could not be exported completely (#7955 J5: a
+    /// textured mesh whose UVs do not pair with its vertices, or whose texture
+    /// has neither consistent pixels nor an image URL). Refused instead of
+    /// letting the mesh fall back to solid colour.
+    IncompleteAppearance {
+        /// Which mesh, and what was missing.
+        detail: String,
+    },
 }
 
 impl ExportError {
@@ -75,6 +92,8 @@ impl ExportError {
             ExportError::TooLarge { .. } => "TOO_LARGE",
             ExportError::Serialization { .. } => "SERIALIZATION_FAILED",
             ExportError::MalformedMeshInput { .. } => "MALFORMED_MESH_INPUT",
+            ExportError::UnsupportedOption { .. } => "UNSUPPORTED_OPTION",
+            ExportError::IncompleteAppearance { .. } => "INCOMPLETE_APPEARANCE",
         }
     }
 }
@@ -99,6 +118,10 @@ impl fmt::Display for ExportError {
             ExportError::MalformedMeshInput { detail } => {
                 write!(f, "{}: from-meshes inputs are inconsistent: {detail}", self.code())
             }
+            ExportError::UnsupportedOption { option, detail } => {
+                write!(f, "{}: `{option}` is not supported with {detail}", self.code())
+            }
+            ExportError::IncompleteAppearance { detail } => write!(f, "{}: {detail}", self.code()),
         }
     }
 }

@@ -4,6 +4,8 @@
 
 #[path = "conic_axis_tests.rs"]
 mod conic_axis_tests;
+#[path = "curve_segment_placement_tests.rs"]
+mod curve_segment_placement_tests;
 
 use super::*;
 use super::outline::trim_polyline;

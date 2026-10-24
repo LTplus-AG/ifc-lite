@@ -288,3 +288,30 @@ fn storey_elevation_refuses_what_the_step_decoder_refuses() {
     let elevation = extract_storey_elevation_from_args(&args, 1.0).expect("-0. is an elevation");
     assert!(elevation == 0.0 && elevation.is_sign_negative());
 }
+
+/// #7782 C4-7a: the browser's `plan::type_representation_maps` admits what the
+/// native scan's `record_refs_at(.., 6)` admits from IfcTypeProduct.
+/// RepresentationMaps: a list's reference members or one bare reference.
+/// Typed wrappers and nested lists admit nothing on either side.
+#[test]
+fn issue_7782_browser_representation_maps_reader_matches_native_scan() {
+    let cases: &[(&str, &[u32])] = &[
+        ("(#16)", &[16]),
+        ("#16", &[16]),
+        ("(#16,#17)", &[16, 17]),
+        ("(42,$,#10,#10)", &[10, 10]),
+        ("$", &[]),
+        ("()", &[]),
+        ("((#16))", &[]),
+        ("IFCPROPERTYSETDEFINITIONSET((#16))", &[]),
+        ("IFCPROPERTYSETDEFINITIONSET(#16)", &[]),
+        ("IFCREPRESENTATIONMAP(#16)", &[]),
+    ];
+    for &(maps, expected) in cases {
+        let record = format!("#300=IFCWALLTYPE('0000000000000000000300',$,'T',$,$,$,{maps},$,$,.NOTDEFINED.);");
+        let bytes = record.as_bytes();
+        let entity = ifc_lite_core::EntityDecoder::new(bytes).decode_at(0, bytes.len()).unwrap();
+        assert_eq!(record_refs_at(bytes, 6), expected, "native {maps}");
+        assert_eq!(crate::plan::type_representation_maps(&entity), expected, "browser {maps}");
+    }
+}

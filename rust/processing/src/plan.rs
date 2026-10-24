@@ -3,12 +3,26 @@
 //!
 //! Record admission stays with the caller: native scan-time readers and browser
 //! decoder reads feed the same accumulator without changing their refusal policy.
-use ifc_lite_core::IfcType;
+use ifc_lite_core::{slot, AttributeValue, DecodedEntity, IfcType};
 use rustc_hash::{FxHashMap, FxHashSet};
+
+use crate::element::{plan_type_geometry, TypeGeometryMode};
+
+/// `IfcTypeProduct.RepresentationMaps` of a decoded type, read as the native
+/// scan reads it: every reference member of a list, or the one bare reference
+/// the attribute is. A typed wrapper (`IFCPROPERTYSETDEFINITIONSET((#1))`,
+/// `IFCX(#1)`) and non-reference members admit nothing, as natively.
+pub fn type_representation_maps(entity: &DecodedEntity) -> Vec<u32> {
+    match entity.attr(slot::IfcTypeProduct::REPRESENTATION_MAPS) {
+        Some(AttributeValue::EntityRef(id)) => vec![*id],
+        Some(AttributeValue::List(items)) => items.iter().filter_map(AttributeValue::as_entity_ref).collect(),
+        _ => Vec::new(),
+    }
+}
 
 /// Model-wide type/instance facts. Candidate jobs retain their source order in
 /// each scheduler; these sets and counts decide which maps those jobs may draw.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct TypeGeometryPlan {
     referenced: FxHashSet<u32>,
     instantiated: FxHashSet<u32>,
@@ -17,12 +31,13 @@ pub struct TypeGeometryPlan {
 }
 
 /// An admitted type-product record and its authored map order.
-pub struct TypeGeometryCandidate {
-    pub id: u32,
-    pub start: usize,
-    pub end: usize,
-    pub ifc_type: IfcType,
-    pub maps: Vec<u32>,
+#[derive(Debug)]
+pub(crate) struct TypeGeometryCandidate {
+    pub(crate) id: u32,
+    pub(crate) start: usize,
+    pub(crate) end: usize,
+    pub(crate) ifc_type: IfcType,
+    pub(crate) maps: Vec<u32>,
 }
 
 impl TypeGeometryPlan {
@@ -43,19 +58,24 @@ impl TypeGeometryPlan {
         self.instantiated.insert(type_id);
     }
 
-    /// Retain a nonempty type candidate in scan order.
-    pub fn observe_candidate(&mut self, candidate: TypeGeometryCandidate) {
-        if !candidate.maps.is_empty() { self.candidates.push(candidate); }
+    /// Retain an admitted type record (span, type, authored map order) in scan
+    /// order; a type without maps is not a candidate.
+    pub fn observe_candidate(&mut self, id: u32, start: usize, end: usize, ifc_type: IfcType, maps: Vec<u32>) {
+        if !maps.is_empty() { self.candidates.push(TypeGeometryCandidate { id, start, end, ifc_type, maps }); }
     }
 
     /// Native scheduling uses one job per selected map of each candidate.
-    pub fn candidates(&self) -> &[TypeGeometryCandidate] { &self.candidates }
+    pub(crate) fn candidates(&self) -> &[TypeGeometryCandidate] { &self.candidates }
 
-    /// Browser scheduling uses one job per type, retaining instantiated types
-    /// for the Types view. Map-level class assignment remains in the producer.
+    /// Browser scheduling uses one job per type that `plan_type_geometry` would
+    /// draw in `EmitTagged` mode, so instantiated types stay for the Types view.
+    /// Map-level class assignment remains in the producer.
     pub fn into_browser_jobs(self) -> Vec<(u32, usize, usize, IfcType)> {
-        self.candidates.into_iter()
-            .filter(|candidate| candidate.maps.iter().any(|map| !self.referenced.contains(map)))
+        let Self { referenced, instantiated, candidates, .. } = self;
+        candidates.into_iter()
+            .filter(|candidate| !plan_type_geometry(
+                &candidate.maps, &referenced, instantiated.contains(&candidate.id), TypeGeometryMode::EmitTagged,
+            ).is_empty())
             .map(|candidate| (candidate.id, candidate.start, candidate.end, candidate.ifc_type))
             .collect()
     }
@@ -67,7 +87,7 @@ impl TypeGeometryPlan {
     pub fn instantiated_types(&self) -> &FxHashSet<u32> { &self.instantiated }
 
     /// Whether a type has an occurrence, independent of mapped representation use.
-    pub fn is_instantiated(&self, type_id: u32) -> bool { self.instantiated.contains(&type_id) }
+    pub(crate) fn is_instantiated(&self, type_id: u32) -> bool { self.instantiated.contains(&type_id) }
 
     /// Sorted browser wire ids: singleton sources cannot use batch instancing.
     pub fn repeated_sources(&self) -> Vec<u32> {
@@ -83,7 +103,7 @@ impl TypeGeometryPlan {
     }
 
     /// Transfer native occurrence counts and template ids without copying maps.
-    pub fn into_mapped_instances(self) -> FxHashMap<u32, (u32, u32)> { self.mapped }
+    pub(crate) fn into_mapped_instances(self) -> FxHashMap<u32, (u32, u32)> { self.mapped }
 }
 
 #[cfg(test)]

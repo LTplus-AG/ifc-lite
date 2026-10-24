@@ -179,11 +179,15 @@ fn from_spans_matches_full_scan_legacy_referenced_case() {
 }
 
 /// #7782: bare RepresentationMaps references and list members admit the same
-/// orphan type job. Empty or non-reference members still admit nothing.
+/// orphan type job. Empty or non-reference members still admit nothing, and
+/// so does a typed wrapper, which the native scan does not read either.
 #[test]
 fn issue_7782_shared_candidates_admit_bare_and_list_maps() {
     for source in [ORPHAN, LEGACY_ORPHAN] {
-        for (maps, expected) in [("#10", 1), ("()", 0), ("$", 0), ("(42,$,#10,#10)", 1)] {
+        for (maps, expected) in [
+            ("#10", 1), ("()", 0), ("$", 0), ("(42,$,#10,#10)", 1),
+            ("IFCPROPERTYSETDEFINITIONSET((#10))", 0), ("IFCPROPERTYSETDEFINITIONSET(#10)", 0),
+        ] {
             let content = source.replace("(#10)", maps);
             assert_eq!(assert_match(content.as_bytes()), expected, "maps={maps}");
         }

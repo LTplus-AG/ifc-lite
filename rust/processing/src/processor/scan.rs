@@ -304,9 +304,7 @@ impl Scan<'_, '_> {
             // IfcTypeProduct.RepresentationMaps is attribute index 6.
             let rep_map_ids = record_refs_at(&self.content[start..end], 6);
             if !rep_map_ids.is_empty() {
-                self.types.observe_candidate(TypeGeometryCandidate {
-                    id, start, end, ifc_type: type_ty, maps: rep_map_ids,
-                });
+                self.types.observe_candidate(id, start, end, type_ty, rep_map_ids);
             }
         }
     }

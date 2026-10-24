@@ -20,21 +20,6 @@ All crates live in one Cargo workspace (versioned together, MPL-2.0 licensed):
 
 The Python bindings (`rust/python`, PyPI package `ifclite-geom`) are excluded from the workspace and documented on the [Python API page](python.md).
 
-## Type geometry planning
-
-`ifc_lite_processing::plan::TypeGeometryPlan` accumulates admitted mapped-source
-and instantiated-type references. `observe_mapped` records source membership and,
-when requested, occurrence counts with the minimum mapped-item id as template.
-`repeated_sources` returns sorted browser instancing ids; `into_mapped_instances`
-transfers the native count/template map. Callers retain their record-validation
-policy. `observe_candidate` retains admitted `TypeGeometryCandidate` records in
-source order. Native callers inspect `candidates` and schedule selected maps;
-`into_browser_jobs` consumes the plan into one job per type with an unreferenced
-map, including instantiated type-library geometry for the browser Types view.
-`into_membership` transfers the referenced-map and instantiated-type sets to
-browser caches without copying. Lazy browser fallback scans once for missing
-columns and preserves columns already installed by the prepass.
-
 ## ifc-lite-core
 
 Core parsing functionality.
@@ -981,6 +966,23 @@ join discontinuity. The result is always `precheck_only`: material, bending
 process, allowances, jurisdiction and physical bar count remain unchecked.
 Authored `BarLength` is not a verified cutting length. A reinforcing-bar entity
 may represent more than one manufactured bar.
+
+### Type geometry planning
+
+`ifc_lite_processing::plan::TypeGeometryPlan` accumulates admitted mapped-source
+and instantiated-type references. `observe_mapped` records source membership and,
+when requested, occurrence counts with the minimum mapped-item id as template.
+`repeated_sources` returns sorted browser instancing ids. Callers retain their
+record-validation policy. `observe_candidate(id, start, end, ifc_type, maps)`
+retains a type record with maps in source order. `type_representation_maps`
+reads a decoded type's `RepresentationMaps` as the native scan does: a list's
+references or one bare reference; a typed wrapper admits nothing.
+`into_browser_jobs` consumes the plan into one job per type that
+`element::plan_type_geometry` draws in `EmitTagged` mode, including instantiated
+type-library geometry for the browser Types view. `into_membership` transfers
+the referenced-map and instantiated-type sets to browser caches without copying.
+Lazy browser fallback scans once for missing columns and preserves columns
+already installed by the prepass.
 
 ### Owned production contexts
 

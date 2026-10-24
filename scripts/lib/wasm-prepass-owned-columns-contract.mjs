@@ -96,6 +96,42 @@ function geometry(api, bytes, pre) {
   } finally { collection.free(); }
 }
 
+const STREAMING = ['buildPrePassStreaming', 'buildPrePassStreamingWithSourceFingerprint', ...METHODS];
+
+function ids(flat) {
+  return Array.from(flat).filter((_, index) => index % 3 === 0);
+}
+
+/** Run one streaming discovery on its own API, as the prepass worker does. */
+function discover(IfcAPI, method, bytes) {
+  const columns = METHODS.includes(method) ? scan(IfcAPI, bytes) : undefined;
+  const events = withApi(IfcAPI, api => {
+    const result = [];
+    if (columns) call(api, method, bytes, columns, event => result.push(event), undefined, false);
+    else api[method](bytes, event => result.push(event), 1024, null, false);
+    return result;
+  });
+  return { events, columns };
+}
+
+/** The geometry worker's flow: a fresh API installs the entity index, then the
+ * prepass-columns event through the real setters, then runs its batch.
+ * `extraReferenced` widens the installed referenced-map column. */
+function workerGeometry(IfcAPI, bytes, events, columns, pre, extraReferenced = []) {
+  return withApi(IfcAPI, api => {
+    const index = events.find(event => event.type === 'entity-index') ?? columns;
+    api.setEntityIndex(index.ids, index.starts, index.lengths);
+    const prepass = events.find(event => event.type === 'prepass-columns');
+    assert.ok(prepass, 'discovery must emit prepass-columns');
+    api.setReferencedRepmaps(Uint32Array.from([...prepass.referencedRepmaps, ...extraReferenced]));
+    api.setInstantiatedTypeIds(prepass.instantiatedTypeIds);
+    api.setMappedInstancePlan(prepass.mappedInstancePlan);
+    api.setMaterialLayerIndex(prepass.mliElementIds, prepass.mliAxis, prepass.mliLayerCounts,
+      prepass.mliDirectionSense, prepass.mliOffset, prepass.mliLayerMaterialIds, prepass.mliLayerThicknesses);
+    return geometry(api, bytes, pre);
+  });
+}
+
 function seed(api, bytes) {
   const pre = api.buildPrePassOnce(bytes);
   const meshes = geometry(api, bytes, pre);
@@ -127,27 +163,45 @@ export function runOwnedShardedPrepassContracts(IfcAPI, test, memory, BaselineIf
   test('#7782 bare type RepresentationMaps match list admission through discovery and batch', () => {
     const listed = fixture({ typeGeometry: true });
     const text = new TextDecoder().decode(listed);
-    const bare = new TextEncoder().encode(text.replace(',(#16),$,$,.NOTDEFINED.)', ',#16,$,$,.NOTDEFINED.)'));
+    const withMaps = maps => new TextEncoder().encode(text.replace(',(#16),$,$,.NOTDEFINED.)', `,${maps},$,$,.NOTDEFINED.)`));
+    const bare = withMaps('#16');
     assert.notDeepEqual(bare, listed, 'the mutation must remove the list wrapper');
     const expected = withApi(IfcAPI, api => geometry(api, listed, api.buildPrePassOnce(listed)));
-    assert.ok(expected.some(mesh => mesh.expressId === 300 && mesh.positions.length > 0), 'list control must draw the orphan type');
+    const shapes = id => expected.filter(mesh => mesh.expressId === id)
+      .map(({ positions, normals, indices }) => ({ positions, normals, indices }));
+    assert.equal(shapes(300).length, 1, 'list control must draw the orphan type once');
+    assert.ok(shapes(300)[0].indices.length > 0, 'list control mesh must have triangles');
+    // Native pins the same fact (rust/processing/tests/issue_7782_bare_type_representation_maps.rs).
+    assert.deepEqual(shapes(300), shapes(200), 'the type map draws occurrence #200 shape');
     for (const input of [listed, bare]) {
-      withApi(IfcAPI, api => {
-        const pre = api.buildPrePassOnce(input);
-        assert.ok(Array.from(pre.jobs).filter((_, index) => index % 3 === 0).includes(300));
-        assert.deepEqual(geometry(api, input, pre), expected, 'serial discovery and actual batch');
-        for (const method of ['buildPrePassStreaming', 'buildPrePassStreamingWithSourceFingerprint', ...METHODS]) {
-          const events = [];
-          if (METHODS.includes(method)) {
-            call(api, method, input, scan(IfcAPI, input), event => events.push(event), undefined, false);
-          } else {
-            api[method](input, event => events.push(event), 1024, null, false);
-          }
-          const selected = new Uint32Array(jobs(events));
-          assert.ok(Array.from(selected).filter((_, index) => index % 3 === 0).includes(300), method);
-          assert.deepEqual(geometry(api, input, { ...pre, jobs: selected }), expected, method);
-        }
+      const pre = withApi(IfcAPI, api => {
+        const serial = api.buildPrePassOnce(input);
+        assert.deepEqual(geometry(api, input, serial), expected, 'serial discovery and actual batch');
+        return serial;
       });
+      assert.ok(ids(pre.jobs).includes(300));
+      for (const method of STREAMING) {
+        const { events, columns } = discover(IfcAPI, method, input);
+        const selected = new Uint32Array(jobs(events));
+        assert.ok(ids(selected).includes(300), method);
+        assert.deepEqual(workerGeometry(IfcAPI, input, events, columns, { ...pre, jobs: selected }), expected, method);
+        // The installed column decides: no lazy rebuild replaces it.
+        const drawn = workerGeometry(IfcAPI, input, events, columns, { ...pre, jobs: selected }, [16]);
+        assert.ok(!drawn.some(mesh => mesh.expressId === 300), `${method} must read the installed referenced maps`);
+      }
+    }
+    // A typed wrapper is not an IfcRepresentationMap list; native draws nothing either.
+    for (const maps of ['IFCPROPERTYSETDEFINITIONSET((#16))', 'IFCPROPERTYSETDEFINITIONSET(#16)']) {
+      const input = withMaps(maps);
+      const pre = withApi(IfcAPI, api => api.buildPrePassOnce(input));
+      assert.ok(!ids(pre.jobs).includes(300), maps);
+      const columns = scan(IfcAPI, input);
+      const row = Array.from(columns.ids).indexOf(300);
+      const forced = Uint32Array.from([...pre.jobs, 300, columns.starts[row], columns.starts[row] + columns.lengths[row]]);
+      const meshes = withApi(IfcAPI, api => geometry(api, input, { ...pre, jobs: forced }));
+      assert.ok(meshes.some(mesh => mesh.expressId === 200), `${maps}: occurrences still draw`);
+      assert.ok(!meshes.some(mesh => mesh.expressId === 300), `${maps}: the batch must refuse the wrapped maps`);
+      for (const method of STREAMING) assert.ok(!ids(jobs(discover(IfcAPI, method, input).events)).includes(300), `${maps} ${method}`);
     }
   });
   const bytes = fixture();

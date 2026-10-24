@@ -141,7 +141,7 @@ pub(crate) fn collect_type_geometry_jobs(
     decoder: &mut ifc_lite_core::EntityDecoder,
 ) -> Vec<(u32, usize, usize, ifc_lite_core::IfcType)> {
     use ifc_lite_core::{keyword_eq, EntityScanner};
-    use ifc_lite_processing::plan::{TypeGeometryCandidate, TypeGeometryPlan};
+    use ifc_lite_processing::plan::{type_representation_maps, TypeGeometryPlan};
 
     // Fast bail-out: type geometry can only exist when the file authors at least
     // one IfcRepresentationMap. The overwhelming majority of files pay only a
@@ -167,13 +167,8 @@ pub(crate) fn collect_type_geometry_jobs(
             }
         } else if let Some(ifc_type) = ifc_lite_core::type_product_ifc_type(type_name) {
             if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
-                // IfcTypeProduct.RepresentationMaps = attr 6.
-                let rep_maps = entity
-                    .ref_list_at(ifc_lite_core::slot::IfcTypeProduct::REPRESENTATION_MAPS)
-                    .unwrap_or_default();
-                if !rep_maps.is_empty() {
-                    plan.observe_candidate(TypeGeometryCandidate { id, start, end, ifc_type, maps: rep_maps });
-                }
+                // #7782 C4-7a: bare or list RepresentationMaps, as natively.
+                plan.observe_candidate(id, start, end, ifc_type, type_representation_maps(&entity));
             }
         }
     }
@@ -189,12 +184,9 @@ pub(crate) fn collect_type_geometry_jobs_with_plan(
 ) -> Vec<(u32, usize, usize, ifc_lite_core::IfcType)> {
     for (id, start, end, ifc_type) in spans {
         if let Ok(entity) = decoder.decode_at_with_id(*id, *start, *end) {
-            // #7782 C4-7a: match native bare-reference tolerance.
-            let maps = entity.ref_list_at(ifc_lite_core::slot::IfcTypeProduct::REPRESENTATION_MAPS)
-                .unwrap_or_default();
-            plan.observe_candidate(ifc_lite_processing::plan::TypeGeometryCandidate {
-                id: *id, start: *start, end: *end, ifc_type: ifc_type.clone(), maps,
-            });
+            // #7782 C4-7a: bare or list RepresentationMaps, as natively.
+            let maps = ifc_lite_processing::plan::type_representation_maps(&entity);
+            plan.observe_candidate(*id, *start, *end, ifc_type.clone(), maps);
         }
     }
     plan.into_browser_jobs()

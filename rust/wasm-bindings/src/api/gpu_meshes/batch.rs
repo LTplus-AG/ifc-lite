@@ -465,9 +465,7 @@ impl IfcAPI {
             // time; the native pipeline plans the same jobs with
             // `SuppressInstanced` (an export must not duplicate geometry).
             let kind = if ifc_type.is_subtype_of(ifc_lite_core::IfcType::IfcTypeProduct) {
-                let rep_map_ids = entity
-                    .ref_list_at(ifc_lite_core::slot::IfcTypeProduct::REPRESENTATION_MAPS)
-                    .unwrap_or_default();
+                let rep_map_ids = ifc_lite_processing::plan::type_representation_maps(&entity);
                 if rep_map_ids.is_empty() {
                     continue;
                 }

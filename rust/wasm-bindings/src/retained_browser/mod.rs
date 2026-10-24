@@ -318,3 +318,6 @@ mod mesh_admission;
 
 #[cfg(all(test, target_arch = "wasm32"))]
 mod source_terminal_tests;
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod direct_account_tests;

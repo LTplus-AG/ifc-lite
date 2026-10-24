@@ -111,6 +111,12 @@ impl BooleanMachine {
         let second = recorder.second_operand_or_record(operator, &node, decoder);
         crate::resource::check_current()?;
         let second = second.ok_or_else(|| Error::geometry("missing retained Boolean operand"))?;
+        if matches!(second.ifc_type, IfcType::IfcHalfSpaceSolid | IfcType::IfcPolygonalBoundedHalfSpace | IfcType::IfcBoxedHalfSpace) {
+            let operation = self.retained_selection().ok_or_else(stale)?
+                .capture_clip(&second, decoder, &host, operator, node.id)?;
+            self.frames.push(Frame::RetainedReady { operation: boxed(operation)?, steps: Some(boxed(steps)?) });
+            return Ok(());
+        }
         let depth = steps.depth;
         self.frames.push(Frame::RetainedAfterStep { steps: boxed(steps)?, operator, host });
         self.frames.push(Frame::Operand { entity: second, operator, depth });

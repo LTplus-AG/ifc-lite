@@ -7,6 +7,8 @@ mod capture;
 mod walk;
 #[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
 mod cache;
+pub(in crate::program) mod clip;
+pub use clip::{RetainedClipMode, RetainedPlaneCoefficients, RetainedPlaneSource, RetainedUnaryClip};
 mod presentation;
 mod affine;
 mod identity;
@@ -191,7 +193,7 @@ impl RetainedPlanOperation {
     pub fn construction(&self) -> Option<&RetainedRecipe> {
         match &self.kind {
             RetainedOperationKind::Construction(source) => Some(source),
-            RetainedOperationKind::Affine { .. } | RetainedOperationKind::Boolean { .. } => None,
+            RetainedOperationKind::Affine { .. } | RetainedOperationKind::Boolean { .. } | RetainedOperationKind::UnaryClip { .. } => None,
         }
     }
     pub fn kind(&self) -> &RetainedOperationKind {
@@ -202,6 +204,7 @@ impl RetainedPlanOperation {
 #[derive(Debug, Clone)]
 pub enum RetainedOperationKind {
     Construction(RetainedRecipe),
+    UnaryClip { input: LogicalRetainedValue, clip: Box<RetainedUnaryClip> },
     Boolean { inputs: Box<[LogicalRetainedValue; 2]>, operation: crate::BoolOp },
     Affine { input: LogicalRetainedValue, matrix: [f64; 16] },
 }

@@ -17,6 +17,7 @@
 pub mod fixtures;
 pub mod mesh;
 pub mod step;
+pub mod retained_clip;
 
 pub use fixtures::{
     fixture_bytes, fixture_path, fixture_present, fixture_text, local_fixture_text, repo_root, require_fixtures, FixtureError,

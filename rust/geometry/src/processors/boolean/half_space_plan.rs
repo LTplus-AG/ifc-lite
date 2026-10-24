@@ -27,6 +27,11 @@ pub(crate) struct HalfSpacePlan {
 impl HalfSpacePlan {
     /// Read `IfcHalfSpaceSolid.BaseSurface` (an `IfcPlane`) and its Position.
     pub(crate) fn lower(half_space: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<Self> {
+        let (_, position, agreement) = Self::source(half_space, decoder)?;
+        Self::from_position(&position, decoder, agreement)
+    }
+    pub(crate) fn source(half_space: &DecodedEntity, decoder: &mut EntityDecoder)
+        -> Result<(u32, DecodedEntity, bool)> {
         // IfcHalfSpaceSolid attributes: BaseSurface, AgreementFlag.
         let surface_attr = half_space
             .get(slot::IfcHalfSpaceSolid::BASE_SURFACE.index())
@@ -55,8 +60,11 @@ impl HalfSpacePlan {
             .resolve_ref(position_attr)?
             .ok_or_else(|| Error::geometry("Failed to resolve Plane position".to_string()))?;
 
+        Ok((surface.id, position, agreement))
+    }
+    pub(crate) fn from_position(position: &DecodedEntity, decoder: &mut EntityDecoder, agreement: bool) -> Result<Self> {
         // Location = plane point; Z-axis (Axis) = plane normal.
-        let transform = parse_axis2_placement_3d(&position, decoder)?;
+        let transform = parse_axis2_placement_3d(position, decoder)?;
         let point = Point3::new(transform[(0, 3)], transform[(1, 3)], transform[(2, 3)]);
         let normal =
             Vector3::new(transform[(0, 2)], transform[(1, 2)], transform[(2, 2)]).normalize();

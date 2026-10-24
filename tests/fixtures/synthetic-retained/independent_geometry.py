@@ -26,6 +26,7 @@ def source_volumes(model, case):
     opening = model.by_type('IfcWall')[0].HasOpenings[0].RelatedOpeningElement.Representation.Representations[0].Items[0]
     half_width = opening.SweptArea.YDim/2
     cut_height = opening.Depth
+    initial_radius = radius
     bands = []
     for thickness in thicknesses:
         outer = radius+thickness
@@ -41,6 +42,15 @@ def source_volumes(model, case):
         for key in ['before','after']:
             if abs(expected[key]-got[key]) > 1e-9:
                 raise AssertionError(f'source numerical integration {key}: {got[key]} != {expected[key]}')
+    # Integrate the full radial interval once, independently of summing bands.
+    n = 4096
+    dy = 2*half_width/n
+    values = [math.sqrt(radius**2-(-half_width+i*dy)**2)-math.sqrt(initial_radius**2-(-half_width+i*dy)**2) for i in range(n+1)]
+    full_before = height*span*(radius**2-initial_radius**2)/2
+    full_after = full_before-cut_height*dy/3*(values[0]+values[-1]+4*sum(values[1:-1:2])+2*sum(values[2:-1:2]))
+    for key, total in [('before',full_before),('after',full_after)]:
+        if abs(sum(b[key] for b in bands)-total)>1e-9 or abs(case[key+'_total']-total)>1e-9:
+            raise AssertionError('independent analytic band/total consistency: '+key)
     return bands
 
 

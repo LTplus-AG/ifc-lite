@@ -8,15 +8,14 @@ use serde_json::Value;
 use support::*;
 
 #[test]
-fn issue_7955_curved_layers_and_cross_layer_opening() {
+fn issue_7955_curved_band_controls_and_wall_opening() {
     let source = fixture("f-a-curved.ifc");
     let oracle = case("f-a-curved.ifc");
     let result = run(&source);
     check_products(&result, &oracle, true).unwrap();
-    let bands = oracle["bands"].as_array().unwrap();
-    assert_eq!(bands.len(), 3);
-    let sum: f64 = bands.iter().map(|b| number(&b["after"])).sum();
-    assert!((sum - number(&oracle["after_total"])).abs() < 1e-10);
+    check_analytic_band_sum(&oracle);
+    report_layer_observation(&result, &oracle);
+    check_curved_door(&result, &oracle).unwrap();
     // Kill a missing all-layer cut using an actual input mutation. No changed tolerance.
     let relation = integer(&oracle["products"][0]["void_relation"]);
     let mutant = without_entity(&source, relation);
@@ -105,7 +104,7 @@ fn issue_7955_mapped_occurrence_volumes_and_appearance() {
         .join("\n");
     assert_eq!(
         check_appearance(&run(&wrong_palette), &oracle).unwrap_err(),
-        "palette colour bound to wrong source face",
+        "palette colour bound to wrong source triangle",
         "source ColourIndex reversal must be detected despite unchanged colour counts"
     );
 }
@@ -132,7 +131,16 @@ fn issue_7955_mapped_instances_preserve_occurrences_and_cuts() {
         !result.instances.is_empty(),
         "the repeated map must actually exercise instancing"
     );
+    eprintln!(
+        "INSTANCE_OBSERVATION {:?}",
+        result
+            .instances
+            .iter()
+            .map(|r| (r.express_id, r.template_express_id))
+            .collect::<Vec<_>>()
+    );
     let mut mutant = expand_instances(result);
+    // Checker sensitivity only: this deletes expanded OUTPUT, not source.
     check_products(&mutant, &oracle, false).unwrap();
     check_appearance(&mutant, &oracle).unwrap();
     mutant
@@ -147,7 +155,7 @@ fn issue_7955_mapped_instances_preserve_occurrences_and_cuts() {
 }
 
 #[test]
-fn issue_7955_reexport_geometry_matches_external_semantic_faces() {
+fn issue_7955_internal_consistency_geometry_matches_external_semantic_faces() {
     let mut observations = Vec::new();
     for name in ["f-c-extrusion.ifc", "f-c-brep.ifc"] {
         let source = fixture(name);
@@ -176,7 +184,7 @@ fn issue_7955_reexport_geometry_matches_external_semantic_faces() {
         let areas = semantic_faces(&result, &oracle).unwrap();
         assert_eq!(areas.len(), 6);
         observations.push(areas);
-        // Wrong source frame must not authenticate a face by ordinal.
+        // Checker sensitivity only: mutate the external oracle frame.
         let mut wrong_frame = oracle.clone();
         wrong_frame["translation"][0] = Value::from(number(&oracle["translation"][0]) + 0.1);
         assert!(
@@ -207,10 +215,8 @@ fn issue_7955_image_sidecar_uvs_and_pixels() {
     let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
     let info = reader.next_frame(&mut pixels).unwrap();
     assert_eq!((info.width, info.height), (2, 2));
-    assert_eq!(
-        &pixels[..info.buffer_size()],
-        &[255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255]
-    );
+    assert_eq!(&pixels[..info.buffer_size()], &CHECKER_RGBA);
+    // Checker sensitivity only: flip already-produced UVs, not the engine.
     let mut mutant = run(&source);
     for mesh in &mut mutant.meshes {
         if let Some(uv) = &mut mesh.uvs {

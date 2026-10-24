@@ -23,10 +23,10 @@ FIXTURES = Path(__file__).resolve().parent
 ROOT = FIXTURES.parents[2]
 CARGO = ['cargo', 'test', '--locked', '-p', 'ifc-lite-processing', '--test', 'issue_7955_synthetic']
 TESTS = {
-    'a': 'issue_7955_curved_layers_and_cross_layer_opening',
+    'a': 'issue_7955_curved_band_controls_and_wall_opening',
     'b': 'issue_7955_mapped_occurrence_volumes_and_appearance',
     'instances': 'issue_7955_mapped_instances_preserve_occurrences_and_cuts',
-    'c': 'issue_7955_reexport_geometry_matches_external_semantic_faces',
+    'c': 'issue_7955_internal_consistency_geometry_matches_external_semantic_faces',
     'd': 'issue_7955_image_sidecar_uvs_and_pixels',
 }
 
@@ -99,13 +99,38 @@ def plans():
     add('missing_occurrence_style', 'f-b-mapped.ifc', 'b', 'occurrence red style',
         lambda s: drop_entity(s, by_role['red']['styled_item']))
 
-    def swap_palette(source):
+    def change_palette(source, transform):
         old = entity_line(source, b['palette']['map'])
         values = b['palette']['indices']
-        before, after = [','.join(map(str, v)) for v in [values, list(reversed(values))]]
+        before, after = [','.join(map(str, v)) for v in [values, transform(values)]]
         new = replace_once(old, f',({before}));', f',({after}));')
         return replace_once(source, old, new)
-    add('reversed_source_palette', 'f-b-mapped.ifc', 'b', 'palette colour bound to wrong source face', swap_palette)
+    add('reversed_source_palette', 'f-b-mapped.ifc', 'b', 'palette colour bound to wrong source triangle', lambda s: change_palette(s, lambda v: list(reversed(v))))
+    add('facewise_source_palette', 'f-b-mapped.ifc', 'b', 'palette colour bound to wrong source triangle',
+        lambda s: change_palette(s, lambda v: v[:6]+v[:6]))
+    add('half_swapped_source_palette', 'f-b-mapped.ifc', 'b', 'palette colour bound to wrong source triangle',
+        lambda s: change_palette(s, lambda v: v[6:]+v[:6]))
+
+    def recolour_plain(source):
+        # Follow StyledItem -> SurfaceStyle -> Shading -> ColourRGB.
+        line = entity_line(source, by_role['plain']['styled_item'])
+        style = int(re.findall(r'#(\d+)', line.split('=', 1)[1])[1])
+        for _ in range(2):
+            line = entity_line(source, style)
+            style = int(re.findall(r'#(\d+)', line.split('=', 1)[1])[0])
+        line = entity_line(source, style)
+        return replace_once(source, line, replace_once(line, ',0.5,0.5,0.5)', ',1.,0.,0.)'))
+    add('grey_occurrence_recoloured', 'f-b-mapped.ifc', 'b', 'occurrence plain style', recolour_plain)
+
+    def move_wall_door(source, destination):
+        rows = re.findall(r'^#\d+=IFCCARTESIANPOINT\(\(10.5,0.\)\);$', source, re.M)
+        if len(rows) != 4:
+            raise ValueError('expected host and three control cutter origins')
+        return replace_once(source, rows[0], replace_once(rows[0], '(10.5,0.)', destination))
+    add('curved_door_radial_move', 'f-a-curved.ifc', 'a', 'curved door cutter bounds',
+        lambda s: move_wall_door(s, '(11.,0.)'))
+    add('curved_door_tangential_move', 'f-a-curved.ifc', 'a', 'curved door cut planes',
+        lambda s: move_wall_door(s, '(10.5,0.3)'))
 
     def wrong_scale(source):
         old = re.findall(r'^#\d+=IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM\(.*;$', source, re.M)
@@ -121,7 +146,7 @@ def plans():
         if len(old) != 1:
             raise ValueError('extrusion selector')
         return replace_once(source, old[0], replace_once(old[0], ',3.);', ',3.25);'))
-    add('changed_reexport_height', 'f-c-extrusion.ifc', 'c', 'occurrence bounds', taller_box)
+    add('changed_internal_box_height', 'f-c-extrusion.ifc', 'c', 'occurrence bounds', taller_box)
     add('changed_persistent_product_id', 'f-c-extrusion.ifc', 'c', 'stable GlobalId mismatch',
         lambda s: replace_once(s, "'"+c['GlobalId']+"'", "'"+c['GlobalId'][:-1]+('0' if c['GlobalId'][-1]!='0' else '1')+"'"))
 
@@ -134,6 +159,24 @@ def plans():
     add('wrong_image_reference', 'f-d-texture.ifc', 'd', 'texture source identity',
         lambda s: replace_once(s, "'checker.png'", "'wrong.png'"))
     add('changed_sidecar_pixel', 'checker.png', 'd', 'assertion `left == right` failed', wrong_png, binary=True)
+    def flip_layer_sense(source):
+        line = entity_line(source, a['material_usage'])
+        return replace_once(source, line, replace_once(line, '.NEGATIVE.', '.POSITIVE.'))
+
+    def swap_layer_thicknesses(source):
+        first = entity_line(source, a['bands'][0]['layer_id'])
+        third = entity_line(source, a['bands'][2]['layer_id'])
+        source = replace_once(source, first, replace_once(first, ',0.1,', ',0.3,'))
+        return replace_once(source, third, replace_once(third, ',0.3,', ',0.1,'))
+
+    for name, transform in [
+        ('gap_layer_direction_sense', flip_layer_sense),
+        ('gap_deleted_material_association', lambda s: drop_entity(s, a['material_association'])),
+        ('gap_swapped_layer_thicknesses', swap_layer_thicknesses),
+    ]:
+        add(name, 'f-a-curved.ifc', None, '', transform)
+        records[-1]['expected_survivor'] = True
+        records[-1]['reason'] = 'Exact tests assert host total and independent band controls, not curved material decomposition.'
     # Deliberate coverage-gap probes: they must be reported as survivors, not
     # silently counted among killed geometry faults. Run ALL five tests for each.
     def alter_json(source, change):
@@ -158,6 +201,7 @@ def plans():
     ]:
         add(name, file, None, '', lambda source, change=change: alter_json(source, change))
         records[-1]['expected_survivor'] = True
+        records[-1]['reason'] = 'This policy is documented but is not consumed by the current exact assertions.'
     return records
 
 

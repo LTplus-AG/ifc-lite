@@ -4,6 +4,12 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
+mod curved;
+pub use curved::{check_analytic_band_sum, check_curved_door, report_layer_observation};
+pub const CHECKER_RGBA: [u8; 16] = [
+    255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255,
+];
+
 pub fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/synthetic-retained")
 }
@@ -236,60 +242,70 @@ pub fn check_single(result: &ProcessingResult, oracle: &Value) -> Result<(), Str
     check_products(result, &wrapper, false)
 }
 pub fn check_appearance(result: &ProcessingResult, oracle: &Value) -> Result<(), String> {
-    let red = product_id(oracle, "red");
-    let red_meshes: Vec<_> = result
-        .meshes
+    for row in oracle["products"]
+        .as_array()
+        .unwrap()
         .iter()
-        .filter(|m| m.express_id == red)
-        .collect();
-    check(
-        !red_meshes.is_empty() && red_meshes.iter().all(|m| m.color == [1., 0., 0., 1.]),
-        "occurrence red style",
-    )?;
+        .filter(|p| p["expected_colour"].is_array())
+    {
+        let id = integer(&row["id"]);
+        let expected = [0, 1, 2, 3].map(|i| number(&row["expected_colour"][i]) as f32);
+        let meshes: Vec<_> = result
+            .meshes
+            .iter()
+            .filter(|m| m.express_id == id)
+            .collect();
+        check(
+            !meshes.is_empty() && meshes.iter().all(|m| m.color == expected),
+            format!("occurrence {} style", row["role"].as_str().unwrap()),
+        )?;
+    }
     let palette = product_id(oracle, "palette");
-    let mut parts: Vec<_> = result
-        .meshes
-        .iter()
-        .filter(|m| m.express_id == palette)
-        .map(|m| (m.color, m.indices.len() / 3))
-        .collect();
-    parts.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-    check(
-        parts == vec![([0., 0., 1., 1.], 6), ([1., 0., 0., 1.], 6)],
-        format!("palette partition {parts:?}"),
-    )?;
-    let palette_row = oracle["products"]
+    let row = oracle["products"]
         .as_array()
         .unwrap()
         .iter()
         .find(|p| p["role"] == "palette")
         .unwrap();
-    let translation = vector(&palette_row["translation"]);
+    let translation = vector(&row["translation"]);
+    let expected = oracle["palette"]["source_triangles"].as_array().unwrap();
     let spatial_tolerance = tolerance("position_absolute");
-    // The source palette alternates by semantic face: bottom/y_min/y_max red,
-    // top/x_max/x_min blue. Both triangles of each face have that same index.
-    for m in result.meshes.iter().filter(|m| m.express_id == palette) {
-        for t in m.indices.chunks_exact(3) {
-            let points = [t[0], t[1], t[2]].map(|i| sub(position(m, i), translation));
-            let on = |axis: usize, value: f64| {
-                points
-                    .iter()
-                    .all(|p| (p[axis] - value).abs() <= spatial_tolerance)
-            };
-            let red = on(2, 0.) || on(1, 0.) || on(1, 1.);
-            let blue = on(2, 3.) || on(0, 0.) || on(0, 2.);
-            check(red != blue, "ambiguous palette source face")?;
+    let mut seen = BTreeSet::new();
+    for mesh in result.meshes.iter().filter(|m| m.express_id == palette) {
+        for triangle in mesh.indices.chunks_exact(3) {
+            let points = [triangle[0], triangle[1], triangle[2]]
+                .map(|i| sub(position(mesh, i), translation));
+            let index = expected
+                .iter()
+                .position(|t| {
+                    t["vertices"].as_array().unwrap().iter().all(|v| {
+                        points.iter().any(|p| {
+                            sub(*p, vector(v))
+                                .iter()
+                                .all(|d| d.abs() <= spatial_tolerance)
+                        })
+                    })
+                })
+                .ok_or("unknown source palette triangle")?;
+            check(seen.insert(index), "duplicated source palette triangle")?;
+            let colour_index = integer(&expected[index]["palette_index"]) as usize;
+            let colour = &oracle["palette"]["colours"][colour_index];
+            let expected_colour = [
+                number(&colour[0]) as f32,
+                number(&colour[1]) as f32,
+                number(&colour[2]) as f32,
+                1.,
+            ];
             check(
-                m.color
-                    == if red {
-                        [1., 0., 0., 1.]
-                    } else {
-                        [0., 0., 1., 1.]
-                    },
-                "palette colour bound to wrong source face",
+                mesh.color == expected_colour,
+                "palette colour bound to wrong source triangle",
             )?;
         }
     }
+    check(
+        seen.len() == expected.len(),
+        "missing source palette triangle",
+    )?;
     let tex = product_id(oracle, "textured");
     let textured: Vec<_> = result
         .meshes
@@ -300,8 +316,7 @@ pub fn check_appearance(result: &ProcessingResult, oracle: &Value) -> Result<(),
     for m in textured {
         let t = m.texture.as_ref().ok_or("missing mapped texture")?;
         check(
-            t.url.as_deref() == Some("checker.png")
-                && t.texture_id == integer(&oracle["texture_id"]),
+            t.texture_id == integer(&oracle["texture_id"]),
             "texture binding",
         )?;
         check(
@@ -326,14 +341,20 @@ pub fn check_uv(result: &ProcessingResult, oracle: &Value) -> Result<(), String>
     for m in meshes {
         let t = m.texture.as_ref().ok_or("texture absent")?;
         check(
-            t.url.as_deref() == oracle["url"].as_str()
-                && t.texture_id == integer(&oracle["texture_id"]),
+            t.texture_id == integer(&oracle["texture_id"])
+                && t.url
+                    .as_deref()
+                    .is_none_or(|url| Some(url) == oracle["url"].as_str())
+                && (t.url.is_some() || t.rgba.is_some()),
             "texture source identity",
         )?;
-        check(
-            t.repeat_s && !t.repeat_t && t.rgba.is_none(),
-            "texture sampler/reference",
-        )?;
+        check(t.repeat_s && !t.repeat_t, "texture sampler/reference")?;
+        if let Some(rgba) = &t.rgba {
+            check(
+                t.width == 2 && t.height == 2 && rgba.as_slice() == CHECKER_RGBA,
+                "decoded sidecar pixels",
+            )?;
+        }
         let uv = m.uvs.as_ref().ok_or("UV absent")?;
         check(uv.len() == m.positions.len() / 3 * 2, "UV count")?;
         for i in 0..m.positions.len() / 3 {

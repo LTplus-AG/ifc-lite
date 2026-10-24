@@ -38,8 +38,10 @@ def curved():
     m = Model('F-A')
     radii = [10., 10.1, 10.3, 10.6]
     layers = []
+    material_ids = []
     for i, thickness in enumerate([0.1, 0.2, 0.3]):
         material = m.add('IFCMATERIAL', repr('Layer ' + str(i)), '$', '$')
+        material_ids.append(int(material[1:]))
         layers.append(m.add('IFCMATERIALLAYER', material, real(thickness), '.F.', repr('Band ' + str(i)), '$', '$', '$'))
     layer_set = m.add('IFCMATERIALLAYERSET', seq(layers), "'Three unequal bands'", '$')
     usage = m.add('IFCMATERIALLAYERSETUSAGE', layer_set, '.AXIS2.', '.NEGATIVE.', '0.', '$')
@@ -47,7 +49,7 @@ def curved():
     # DirectionSense NEGATIVE therefore grows layers radially outward.
     axis = m.shape([arc(m, radii[0], -math.pi/4, math.pi/4)], 'Curve2D', 'Axis')
     wall = m.product('curved-layered-wall', band(m, 10., 10.6), entity='IFCWALL', extra_reps=[axis])
-    m.add('IFCRELASSOCIATESMATERIAL', m.gid('material'), '$', '$', '$', seq([wall]), usage)
+    association = m.add('IFCRELASSOCIATESMATERIAL', m.gid('material'), '$', '$', '$', seq([wall]), usage)
     opening_id, relation = m.opening(wall, 'door-all-layers', size=(3, 1, 2), center=(10.5, 0))
     products = []
     volumes = []
@@ -57,19 +59,19 @@ def curved():
     for i, (a, b) in enumerate(zip(radii, radii[1:])):
         before = 3*math.pi/4*(b*b-a*a)
         removed = 2*(strip(b)-strip(a))
-        volumes.append({'inner_radius':a, 'outer_radius':b, 'before':before, 'removed':removed, 'after':before-removed})
+        volumes.append({'ordinal':i, 'material_id':material_ids[i], 'layer_id':int(layers[i][1:]), 'inner_radius':a, 'outer_radius':b, 'before':before, 'removed':removed, 'after':before-removed})
         for cut in [False, True]:
             # Controls sit away from the actual layered wall; translation cannot affect volume.
             place = m.place((0, 30+10*i, 10 if cut else 0))
             role = f'band-{i}-' + ('cut' if cut else 'uncut')
             product = m.product(role, band(m, a, b), placement=place)
-            row = {'id':int(product[1:]), 'role':role, 'volume':before-removed if cut else before, 'band':i, 'cut':cut}
+            row = {'id':int(product[1:]), 'role':role, 'volume':before-removed if cut else before, 'band':i, 'cut':cut, 'translation':[0,30+10*i,10 if cut else 0]}
             if cut:
                 row['opening_volume'] = 6
                 row['opening_id'], row['void_relation'] = m.opening(product, role+'-door', placement=place, size=(3, 1, 2), center=(10.5, 0))
             products.append(row)
-    products.insert(0, {'id':int(wall[1:]), 'role':'curved-layered-wall', 'volume':sum(v['after'] for v in volumes), 'opening_id':opening_id, 'opening_volume':6, 'void_relation':relation})
-    return m.finish(), {'products':products, 'bands':volumes, 'before_total':sum(v['before'] for v in volumes), 'after_total':sum(v['after'] for v in volumes), 'material_usage':int(usage[1:]), 'axis_radius':10, 'angular_span_radians':math.pi/2, 'height':3, 'opening_bounds':[[9,-0.5,0],[12,0.5,2]], 'note':'Controls qualify individual band meshes; they do not prove automatic layer decomposition, internal-cap suppression or smooth-normal provenance.'}
+    products.insert(0, {'id':int(wall[1:]), 'role':'curved-layered-wall', 'volume':sum(v['after'] for v in volumes), 'opening_id':opening_id, 'opening_volume':6, 'void_relation':relation, 'cut':True, 'translation':[0,0,0]})
+    return m.finish(), {'products':products, 'bands':volumes, 'before_total':sum(v['before'] for v in volumes), 'after_total':sum(v['after'] for v in volumes), 'material_usage':int(usage[1:]), 'material_association':int(association[1:]), 'layer_decomposition':{'status':'retained_path_oracle_only_NOT_ASSERTED_by_exact_tests','reason':'Current exact LayerFrame builds planar placement-axis cuts, not radial curved-axis material bands; whether this host is sliced or falls back must be observed, not inferred from its total.','expected_host_layer_count':3,'expected_material_ids':material_ids,'expected_after_volumes':[v['after'] for v in volumes],'qualification':'UNMET; controls are separate proxies with no material association. A conventional start/tangent-placement layer-decomposition witness is also not supplied.'}, 'axis_radius':10, 'angular_span_radians':math.pi/2, 'height':3, 'opening_bounds':[[9,-0.5,0],[12,0.5,2]], 'note':'Controls qualify individual band meshes; they do not prove automatic layer decomposition, internal-cap suppression or smooth-normal provenance.'}
 
 
 def mapped():
@@ -77,8 +79,9 @@ def mapped():
     base = face_set(m)
     base_map = m.add('IFCREPRESENTATIONMAP', m.axes, m.shape([base], 'Tessellation'))
     palette = face_set(m)
-    colours = [[1,0,0],[0,0,1]]
-    indices = [1,2]*6
+    colours = [[1,0,0],[0,0,1],[0,1,0]]
+    # Every face has different colours on its two triangles; no half-period alias.
+    indices = [1,2,3,1,2,3, 2,3,1,3,1,2]
     rgb = m.add('IFCCOLOURRGBLIST', rows(colours))
     colour_map = m.add('IFCINDEXEDCOLOURMAP', palette, '1.', rgb, seq(indices))
     palette_map = m.add('IFCREPRESENTATIONMAP', m.axes, m.shape([palette], 'Tessellation'))
@@ -109,6 +112,7 @@ def mapped():
         row = {'id':int(product[1:]), 'role':role, 'volume':5 if role.startswith('door') else 6, 'map':int(source[1:]), 'mapped_item':int(item[1:]), 'translation':[i*5,0,0], 'basis_columns':[x,y,z], 'scale':[2,1,0.5] if role == 'nonuniform' else [1,1,1], 'mirrored':role == 'mirrored', 'nonuniform':role == 'nonuniform'}
         if style_item:
             row['styled_item'] = int(style_item[1:])
+            row['expected_colour'] = [1,0,0,1] if role == 'red' else [0.5,0.5,0.5,1]
         row['local_centroid'] = [1,0.5,1.5]
         if role == 'door-right':
             row['basis_columns'] = [[0,1,0],[-1,0,0],[0,0,1]]
@@ -120,10 +124,10 @@ def mapped():
             typed.append(product)
         products.append(row)
     m.add('IFCRELDEFINESBYTYPE', m.gid('typed'), '$', '$', '$', seq(typed), type_id)
-    return m.finish(), {'products':products, 'palette':{'face_set':int(palette[1:]),'map':int(colour_map[1:]),'colours':colours,'indices':indices}, 'texture_id':texture_id, 'texture_map':texture_map, 'texture':{'id':products[-1]['id'],'texture_id':texture_id,'url':'checker.png','vertices':[[x+40,y,z] for x,y,z in BOX_POINTS],'exact_uv':[[uv[i-1][0],1-uv[i-1][1]] for i in uv_permutation]}, 'definition_groups':[['plain','rotated'],['mirrored'],['nonuniform'],['red'],['door-left'],['door-right'],['palette'],['textured']], 'group_policy':'Conservative retained GPU eligibility: positive rigid, same appearance and same cuts share. Mirror needs parity handling; nonuniform realized; red changes appearance; unequal local opening positions change geometry. Palette and UV maps bind to IfcTessellatedFaceSet, not IfcMappedItem: valid IFC4 requires distinct representation maps for these variants. Seven occurrences share the original map/type. This expected policy is NOT a claim about current exact template grouping.', 'mapped_boolean_limit':'Host opening subtraction over mapped geometry; not an IfcMappedItem used as an IfcBooleanOperand (not in the IFC4 select).'}
+    return m.finish(), {'products':products, 'palette':{'face_set':int(palette[1:]),'map':int(colour_map[1:]),'colours':colours,'indices':indices,'source_triangles':[{'vertices':[BOX_POINTS[j-1] for j in tri],'palette_index':indices[i]-1} for i,tri in enumerate(triangles())]}, 'texture_id':texture_id, 'texture_map':texture_map, 'texture':{'id':products[-1]['id'],'texture_id':texture_id,'url':'checker.png','vertices':[[x+40,y,z] for x,y,z in BOX_POINTS],'exact_uv':[[uv[i-1][0],1-uv[i-1][1]] for i in uv_permutation]}, 'definition_groups':[['plain','rotated'],['mirrored'],['nonuniform'],['red'],['door-left'],['door-right'],['palette'],['textured']], 'group_policy':'Conservative retained GPU eligibility: positive rigid, same appearance and same cuts share. Mirror needs parity handling; nonuniform realized; red changes appearance; unequal local opening positions change geometry. Palette and UV maps bind to IfcTessellatedFaceSet, not IfcMappedItem: valid IFC4 requires distinct representation maps for these variants. Seven occurrences share the original map/type. This expected policy is NOT a claim about current exact template grouping.', 'mapped_boolean_limit':'Host opening subtraction over mapped geometry; not an IfcMappedItem used as an IfcBooleanOperand (not in the IFC4 select).'}
 
 
-def reexport(brep=False):
+def internal_consistency(brep=False):
     # Same GlobalIds; different integer ids and reverse serialization order.
     m = Model('F-C', 1001 if brep else 1)
     face_ids = {}
@@ -142,7 +146,7 @@ def reexport(brep=False):
     x, y, z = [0.36,0.48,-0.8], [0.48,0.64,0.6], [0.8,-0.6,0]
     position = [4,-3,2]
     product = m.product('stable-box', item, 'Brep' if brep else 'SweptSolid', m.place(position, z, x))
-    return m.finish(reverse=brep), {'id':int(product[1:]), 'GlobalId':guid('F-C:stable-box'), 'volume':6, 'basis_columns':[x,y,z], 'translation':position, 'source_face_ids':face_ids, 'face_roles':{role:{'key':guid('F-C:stable-box')+'/'+role, 'local_vertices':[BOX_POINTS[v] for v in vertices]} for role, vertices in BOX_FACES}, 'identity_limit':'Semantic-role keys are an external oracle, not an IFC face identifier or a claim of current persistent engine identity. Match by local oriented plane/extent, never mesh triangle index or STEP entity id.'}
+    return m.finish(reverse=brep), {'witness_kind':'idealised_internal_consistency_pair_NOT_authored_reexport', 'authored_reexport_qualification':'UNMET', 'representation':'faceted_brep' if brep else 'extrusion', 'id':int(product[1:]), 'GlobalId':guid('F-C:stable-box'), 'volume':6, 'basis_columns':[x,y,z], 'translation':position, 'source_face_ids':face_ids, 'face_roles':{role:{'key':guid('F-C:stable-box')+'/'+role, 'local_vertices':[BOX_POINTS[v] for v in vertices]} for role, vertices in BOX_FACES}, 'identity_limit':'Semantic-role keys are an external oracle, not an IFC face identifier or a claim of current persistent engine identity. Match by local oriented plane/extent, never mesh triangle index or STEP entity id.'}
 
 
 def sidecar():
@@ -172,7 +176,7 @@ def png():
 def outputs():
     result = {'checker.png':png()}
     oracle = {'license':LICENSE,'issue':7955,'provenance':'SYNTHETIC; no external authoring tool','tolerances':'tolerances.json','cases':{}}
-    for filename, builder in [('f-a-curved.ifc',curved),('f-b-mapped.ifc',mapped),('f-c-extrusion.ifc',lambda:reexport(False)),('f-c-brep.ifc',lambda:reexport(True)),('f-d-texture.ifc',sidecar)]:
+    for filename, builder in [('f-a-curved.ifc',curved),('f-b-mapped.ifc',mapped),('f-c-extrusion.ifc',lambda:internal_consistency(False)),('f-c-brep.ifc',lambda:internal_consistency(True)),('f-d-texture.ifc',sidecar)]:
         source, info = builder()
         result[filename] = source.encode()
         oracle['cases'][filename] = info

@@ -12,14 +12,25 @@
           "volume": 27.922091698768103,
           "opening_id": 63,
           "opening_volume": 6,
-          "void_relation": 64
+          "void_relation": 64,
+          "cut": true,
+          "translation": [
+            0,
+            0,
+            0
+          ]
         },
         {
           "id": 93,
           "role": "band-0-uncut",
           "volume": 4.735950925286592,
           "band": 0,
-          "cut": false
+          "cut": false,
+          "translation": [
+            0,
+            30,
+            0
+          ]
         },
         {
           "id": 122,
@@ -27,6 +38,11 @@
           "volume": 4.53586832499433,
           "band": 0,
           "cut": true,
+          "translation": [
+            0,
+            30,
+            10
+          ],
           "opening_volume": 6,
           "opening_id": 129,
           "void_relation": 130
@@ -36,7 +52,12 @@
           "role": "band-1-uncut",
           "volume": 9.61327351998483,
           "band": 1,
-          "cut": false
+          "cut": false,
+          "translation": [
+            0,
+            40,
+            0
+          ]
         },
         {
           "id": 188,
@@ -44,6 +65,11 @@
           "volume": 9.213113136264191,
           "band": 1,
           "cut": true,
+          "translation": [
+            0,
+            40,
+            10
+          ],
           "opening_volume": 6,
           "opening_id": 195,
           "void_relation": 196
@@ -53,7 +79,12 @@
           "role": "band-2-uncut",
           "volume": 14.77333945350596,
           "band": 2,
-          "cut": false
+          "cut": false,
+          "translation": [
+            0,
+            50,
+            0
+          ]
         },
         {
           "id": 254,
@@ -61,6 +92,11 @@
           "volume": 14.173110237509581,
           "band": 2,
           "cut": true,
+          "translation": [
+            0,
+            50,
+            10
+          ],
           "opening_volume": 6,
           "opening_id": 261,
           "void_relation": 262
@@ -68,6 +104,9 @@
       ],
       "bands": [
         {
+          "ordinal": 0,
+          "material_id": 16,
+          "layer_id": 17,
           "inner_radius": 10.0,
           "outer_radius": 10.1,
           "before": 4.735950925286592,
@@ -75,6 +114,9 @@
           "after": 4.53586832499433
         },
         {
+          "ordinal": 1,
+          "material_id": 18,
+          "layer_id": 19,
           "inner_radius": 10.1,
           "outer_radius": 10.3,
           "before": 9.61327351998483,
@@ -82,6 +124,9 @@
           "after": 9.213113136264191
         },
         {
+          "ordinal": 2,
+          "material_id": 20,
+          "layer_id": 21,
           "inner_radius": 10.3,
           "outer_radius": 10.6,
           "before": 14.77333945350596,
@@ -92,6 +137,23 @@
       "before_total": 29.122563898777383,
       "after_total": 27.922091698768103,
       "material_usage": 23,
+      "material_association": 56,
+      "layer_decomposition": {
+        "status": "retained_path_oracle_only_NOT_ASSERTED_by_exact_tests",
+        "reason": "Current exact LayerFrame builds planar placement-axis cuts, not radial curved-axis material bands; whether this host is sliced or falls back must be observed, not inferred from its total.",
+        "expected_host_layer_count": 3,
+        "expected_material_ids": [
+          16,
+          18,
+          20
+        ],
+        "expected_after_volumes": [
+          4.53586832499433,
+          9.213113136264191,
+          14.173110237509581
+        ],
+        "qualification": "UNMET; controls are separate proxies with no material association. A conventional start/tangent-placement layer-decomposition witness is also not supplied."
+      },
       "axis_radius": 10,
       "angular_span_radians": 1.5707963267948966,
       "height": 3,
@@ -147,6 +209,12 @@
           "mirrored": false,
           "nonuniform": false,
           "styled_item": 47,
+          "expected_colour": [
+            0.5,
+            0.5,
+            0.5,
+            1
+          ],
           "local_centroid": [
             1,
             0.5,
@@ -189,6 +257,12 @@
           "mirrored": false,
           "nonuniform": false,
           "styled_item": 62,
+          "expected_colour": [
+            0.5,
+            0.5,
+            0.5,
+            1
+          ],
           "local_centroid": [
             1,
             0.5,
@@ -231,6 +305,12 @@
           "mirrored": true,
           "nonuniform": false,
           "styled_item": 77,
+          "expected_colour": [
+            0.5,
+            0.5,
+            0.5,
+            1
+          ],
           "local_centroid": [
             1,
             0.5,
@@ -273,6 +353,12 @@
           "mirrored": false,
           "nonuniform": true,
           "styled_item": 92,
+          "expected_colour": [
+            0.5,
+            0.5,
+            0.5,
+            1
+          ],
           "local_centroid": [
             1,
             0.5,
@@ -315,6 +401,12 @@
           "mirrored": false,
           "nonuniform": false,
           "styled_item": 107,
+          "expected_colour": [
+            1,
+            0,
+            0,
+            1
+          ],
           "local_centroid": [
             1,
             0.5,
@@ -357,6 +449,12 @@
           "mirrored": false,
           "nonuniform": false,
           "styled_item": 122,
+          "expected_colour": [
+            0.5,
+            0.5,
+            0.5,
+            1
+          ],
           "local_centroid": [
             1.1,
             0.5,
@@ -402,6 +500,12 @@
           "mirrored": false,
           "nonuniform": false,
           "styled_item": 145,
+          "expected_colour": [
+            0.5,
+            0.5,
+            0.5,
+            1
+          ],
           "local_centroid": [
             0.9,
             0.5,
@@ -507,21 +611,268 @@
             0,
             0,
             1
+          ],
+          [
+            0,
+            1,
+            0
           ]
         ],
         "indices": [
           1,
           2,
+          3,
           1,
           2,
-          1,
+          3,
           2,
+          3,
           1,
-          2,
-          1,
-          2,
+          3,
           1,
           2
+        ],
+        "source_triangles": [
+          {
+            "vertices": [
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                1,
+                0
+              ],
+              [
+                2,
+                1,
+                0
+              ]
+            ],
+            "palette_index": 0
+          },
+          {
+            "vertices": [
+              [
+                0,
+                0,
+                3
+              ],
+              [
+                2,
+                0,
+                3
+              ],
+              [
+                2,
+                1,
+                3
+              ]
+            ],
+            "palette_index": 1
+          },
+          {
+            "vertices": [
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                0,
+                0
+              ],
+              [
+                2,
+                0,
+                3
+              ]
+            ],
+            "palette_index": 2
+          },
+          {
+            "vertices": [
+              [
+                2,
+                0,
+                0
+              ],
+              [
+                2,
+                1,
+                0
+              ],
+              [
+                2,
+                1,
+                3
+              ]
+            ],
+            "palette_index": 0
+          },
+          {
+            "vertices": [
+              [
+                2,
+                1,
+                0
+              ],
+              [
+                0,
+                1,
+                0
+              ],
+              [
+                0,
+                1,
+                3
+              ]
+            ],
+            "palette_index": 1
+          },
+          {
+            "vertices": [
+              [
+                0,
+                1,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                3
+              ]
+            ],
+            "palette_index": 2
+          },
+          {
+            "vertices": [
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                1,
+                0
+              ],
+              [
+                2,
+                0,
+                0
+              ]
+            ],
+            "palette_index": 1
+          },
+          {
+            "vertices": [
+              [
+                0,
+                0,
+                3
+              ],
+              [
+                2,
+                1,
+                3
+              ],
+              [
+                0,
+                1,
+                3
+              ]
+            ],
+            "palette_index": 2
+          },
+          {
+            "vertices": [
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                2,
+                0,
+                3
+              ],
+              [
+                0,
+                0,
+                3
+              ]
+            ],
+            "palette_index": 0
+          },
+          {
+            "vertices": [
+              [
+                2,
+                0,
+                0
+              ],
+              [
+                2,
+                1,
+                3
+              ],
+              [
+                2,
+                0,
+                3
+              ]
+            ],
+            "palette_index": 2
+          },
+          {
+            "vertices": [
+              [
+                2,
+                1,
+                0
+              ],
+              [
+                0,
+                1,
+                3
+              ],
+              [
+                2,
+                1,
+                3
+              ]
+            ],
+            "palette_index": 0
+          },
+          {
+            "vertices": [
+              [
+                0,
+                1,
+                0
+              ],
+              [
+                0,
+                0,
+                3
+              ],
+              [
+                0,
+                1,
+                3
+              ]
+            ],
+            "palette_index": 1
+          }
         ]
       },
       "texture_id": 28,
@@ -638,6 +989,9 @@
       "mapped_boolean_limit": "Host opening subtraction over mapped geometry; not an IfcMappedItem used as an IfcBooleanOperand (not in the IFC4 select)."
     },
     "f-c-extrusion.ifc": {
+      "witness_kind": "idealised_internal_consistency_pair_NOT_authored_reexport",
+      "authored_reexport_qualification": "UNMET",
+      "representation": "extrusion",
       "id": 27,
       "GlobalId": "3RB3De501V1R1AmlBDyHxh",
       "volume": 6,
@@ -819,6 +1173,9 @@
       "identity_limit": "Semantic-role keys are an external oracle, not an IFC face identifier or a claim of current persistent engine identity. Match by local oriented plane/extent, never mesh triangle index or STEP entity id."
     },
     "f-c-brep.ifc": {
+      "witness_kind": "idealised_internal_consistency_pair_NOT_authored_reexport",
+      "authored_reexport_qualification": "UNMET",
+      "representation": "faceted_brep",
       "id": 1051,
       "GlobalId": "3RB3De501V1R1AmlBDyHxh",
       "volume": 6,
@@ -1127,8 +1484,8 @@
       "bytes": 13953
     },
     "f-b-mapped.ifc": {
-      "sha256": "69874fe139063bc242fd772040ee44088c81c5121a3f9c6e8ecf3f283d949e75",
-      "bytes": 9578
+      "sha256": "4b2567c2b24dbff796fffbd8c5b22584a800ac32eab1ebed15ad6d341ca092d9",
+      "bytes": 9589
     },
     "f-c-extrusion.ifc": {
       "sha256": "188d3821fa7a8372773dd46f55e985bd2c23efb09bef2ca38b14f91c6768e55b",

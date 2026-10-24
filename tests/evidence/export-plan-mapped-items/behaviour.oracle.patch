@@ -1,0 +1,20 @@
+--- a/rust/export/src/plan/add_mapped.rs
++++ b/rust/export/src/plan/add_mapped.rs
+@@ -71,7 +71,7 @@ impl AddState<'_> {
+         for map in maps {
+             let Some(rep) = slot(map, "MappedRepresentation").and_then(|a| a.scalar).filter(|&r| live(r)) else { continue };
+             let entity = index.type_of(rep).unwrap_or_default();
+-            if index.string_attr(schema, rep, &entity, "RepresentationIdentifier").as_deref() == Some("NOPE") {
++            if index.string_attr(schema, rep, &entity, "RepresentationIdentifier").as_deref() != Some("Body") {
+                 continue;
+             }
+             if let Some(context) = slot(rep, "ContextOfItems").and_then(|a| a.scalar).filter(|&c| live(c)) {
+@@ -131,7 +131,7 @@ fn transformation_operator(emit: &mut Emit, m: &[[f64; 4]; 4]) -> Result<u32, St
+     let column = |c: usize| [m[0][c], m[1][c], m[2][c]];
+     let mut direction = |v: [f64; 3]| emit.record("IFCDIRECTION", &[("DirectionRatios", format!("({},{},{})", fmt(v[0]), fmt(v[1]), fmt(v[2])))]);
+     let (x, y, z) = (direction(column(0))?, direction(column(1))?, direction(column(2))?);
+-    let t = [0.0, 0.0, 0.0];
++    let t = column(3);
+     let origin = emit.record("IFCCARTESIANPOINT", &[("Coordinates", format!("({},{},{})", fmt(t[0]), fmt(t[1]), fmt(t[2])))])?;
+     emit.record(
+         "IFCCARTESIANTRANSFORMATIONOPERATOR3D",

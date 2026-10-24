@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 --- a/rust/geometry/src/program/product/retained_structure.rs
 +++ b/rust/geometry/src/program/product/retained_structure.rs
-@@ -32,7 +32,7 @@
+@@ -38,7 +38,7 @@
      if let Some(shape) = &shape {
          for rep in shape.representations() {
              crate::resource::check_current()?;

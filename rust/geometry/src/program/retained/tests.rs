@@ -79,7 +79,7 @@ fn common_retained_reached_construction_resumes_same_request_and_accumulates_dis
         [world[(0, 3)], world[(1, 3)], world[(2, 3)]],
         [9., 18., 30.]
     );
-    let source_frame = plan.values[0].world_from_source().unwrap();
+    let source_frame = plan.values[0].world_from_source();
     assert_eq!([source_frame[12], source_frame[13], source_frame[14]], [10., 20., 30.]);
 }
 #[test]
@@ -107,6 +107,9 @@ fn exact_execute_refuses_retained_numerical_step_without_taking_it() {
                 program.inner.execute(ticket.0, &router, &mut decoder).err(),
                 Some(ProgramError::UnsupportedRetained)
             );
+            assert_eq!(program.validate_ticket(ticket), Ok(()));
+            assert_eq!(program.inner.pending, Some((ticket.0, false)));
+            assert!(matches!(&program.inner.control, Control::Product(c) if c.retained_ready()));
             refused += 1;
         }
         let (reply, _) = program.admit(ticket, &router, &mut decoder).unwrap();
@@ -343,3 +346,5 @@ mod protocol;
 mod structure;
 #[path = "frame_tests.rs"]
 mod frames;
+#[path = "admission_tests.rs"]
+mod admission;

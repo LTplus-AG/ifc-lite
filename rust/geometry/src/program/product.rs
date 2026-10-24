@@ -257,7 +257,7 @@ impl<'a> ProductControl<'a> {
             Action::Alignment => return Ok(ProductReply::Alignment(router.alignment_mesh(element, decoder))),
             Action::Shape => {
                 if self.retained.is_some() {
-                    return Ok(ProductReply::Shape(retained_structure::product_shape(element, decoder)));
+                    return Ok(ProductReply::Shape(retained_structure::validated_product_shape(element, decoder)));
                 }
                 return Ok(ProductReply::Shape(product_shape(element, decoder).map_err(Into::into)));
             }

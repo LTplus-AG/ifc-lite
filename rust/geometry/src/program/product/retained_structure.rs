@@ -4,7 +4,7 @@ use crate::representation::{ProductShape, ShapeError};
 use crate::{Error, Result};
 use ifc_lite_core::{slot, AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 
-pub(super) fn product_shape(
+pub(super) fn validated_product_shape(
     element: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> Result<Option<ProductShape>> {
@@ -30,6 +30,8 @@ pub(super) fn product_shape(
         slot::IfcProductDefinitionShape::REPRESENTATIONS.index(),
         "Representations",
     )?;
+    // This wrapper is not recursive: the distinct shared reader below walks
+    // only the authored, finite Representations list, never child references.
     // The shared reader preserves decoding errors and authored order. Its
     // lossy list conversion is safe only after validating the raw members.
     let shape = crate::representation::product_shape(element, decoder)?;

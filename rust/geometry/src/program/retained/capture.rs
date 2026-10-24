@@ -44,10 +44,8 @@ pub(super) fn capture(
             source_revision: contract.source_revision,
             source_id: item.id,
         },
-        length_unit_scale: scale,
         placements: Vec::new(),
         product_placed: false,
-        empty: false,
         slot,
         source_from_evaluation: payload.source_from_evaluation,
         evaluation_from_source: payload.evaluation_from_source,
@@ -56,6 +54,6 @@ pub(super) fn capture(
     };
     Ok(RetainedPlanOperation {
         value,
-        kind: RetainedOperationKind::Construction(recipe),
+        construction: recipe,
     })
 }

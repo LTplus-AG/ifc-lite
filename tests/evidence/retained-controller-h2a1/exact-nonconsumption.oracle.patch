@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: MPL-2.0
 --- a/rust/geometry/src/program/inner.rs
 +++ b/rust/geometry/src/program/inner.rs
-@@ -181,7 +181,7 @@
+@@ -178,7 +178,7 @@
+         // Owners are validated before the recipe is taken: a refused call
+         // leaves the request executable by its actual router and decoder.
          self.validate_owner(router, Some(decoder))?;
-         self.expected_router = Some(router.execution_identity());
-         self.expected_decoder = Some(decoder.execution_identity());
 -        if false && matches!(&self.control, Control::Product(c) if c.retained_ready()) {
 +        if matches!(&self.control, Control::Product(c) if c.retained_ready()) {
              return Err(ProgramError::UnsupportedRetained);
          }
-         let decoder_before = decoder.execution_identity();
+         self.expected_router = Some(router.execution_identity());

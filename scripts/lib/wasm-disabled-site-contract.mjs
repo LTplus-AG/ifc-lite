@@ -46,8 +46,8 @@ function capture(IfcAPI, method, bytes, disabled) {
 }
 
 export function runDisabledSiteContracts(IfcAPI, test) {
-  for (const method of ['buildPrePassStreaming', 'buildPrePassStreamingSharded',
-    'buildPrePassStreamingShardedWithSourceFingerprint']) {
+  for (const method of ['buildPrePassStreaming', 'buildPrePassStreamingWithSourceFingerprint',
+    'buildPrePassStreamingSharded', 'buildPrePassStreamingShardedWithSourceFingerprint']) {
     test(`${method} filters site jobs while preserving site rotation (#7782 C4-6a)`, () => {
       for (const keyword of ['IFCSITE', 'ifcsite']) {
         const bytes = new TextEncoder().encode(SOURCE.replace('IFCSITE(', `${keyword}(`));

@@ -154,3 +154,67 @@ test('actual WASM sidecar creation and validation retain lone surrogates (#8042,
     }
   }
 });
+
+// #8081 review 4365117575: JSON.stringify escapes lone units and therefore
+// cannot by itself exercise raw JS UTF-16 transport into a Rust argument.
+test('actual WASM raw JSON preserves lone key/value units without collisions (#8081)', async context => {
+  const wasm = await engine(context); if (!wasm) return;
+  const high = '\ud800', low = '\udfff';
+  const keys = [high, low, '\ufffd', '\\ud800', '\\udfff', '😀'].sort();
+  function rawJson(value) {
+    // Replace whole unique tokens, never the escapes of literal backslash-u.
+    return JSON.stringify(value, (_, item) => item === high ? '__RAW_HIGH__' : item === low ? '__RAW_LOW__' : item)
+      .replaceAll('__RAW_HIGH__', high).replaceAll('__RAW_LOW__', low);
+  }
+  for (const lineage of [false, true]) {
+    const value = {
+      format: lineage ? 'ifc-lite/lineage' : 'ifc-lite/identity-map', version: 1,
+      base: { hash: high }, head: { hash: 'b', path: low },
+      entries: keys.map((key, index) => lineage
+        ? { base: [key], head: [`next:${index}`], relation: 'identity', reason: low }
+        : { base: `source:${index}`, here: key, reason: high }),
+      ...(lineage ? { deleted: [] } : {}),
+    };
+    const raw = rawJson(value);
+    assert.ok(raw.includes(high) && raw.includes(low), 'input contains actual unescaped code units');
+    assert.deepEqual(JSON.parse(raw), value, 'host JSON oracle accepts original text');
+    assert.deepEqual(wasm.diffValidateSidecar(raw, lineage), [], 'distinct keys remain distinct');
+    assert.equal(wasm.diffCreateSidecar(raw, lineage), JSON.stringify(value, null, 2) + '\n');
+    assert.equal(wasm.diffSerializeSidecar(raw), JSON.stringify(value, null, 2) + '\n');
+
+    const conflict = structuredClone(value);
+    conflict.entries.push(lineage
+      ? { base: [high], head: ['other'], relation: 'identity', reason: 'duplicate' }
+      : { base: 'other', here: high, reason: 'duplicate' });
+    const diagnostic = lineage ? `base key "${high}" appears in more than one lineage entry`
+      : `entries claim two different base identities for here "${high}"`;
+    assert.deepEqual(wasm.diffValidateSidecar(rawJson(conflict), lineage), [diagnostic]);
+    assert.throws(() => wasm.diffCreateSidecar(rawJson(conflict), lineage), error =>
+      error === `Invalid ${lineage ? 'lineage' : 'identity-map'} sidecar: ${diagnostic}`);
+  }
+  // Arbitrary object keys also cross the serializer boundary losslessly.
+  const rawObject = `{ "${high}": "${low}", "${low}": "${high}", "�": "�", "\\\\ud800": "\\\\udfff" }`;
+  assert.equal(wasm.diffSerializeSidecar(rawObject), JSON.stringify(JSON.parse(rawObject), null, 2) + '\n');
+});
+
+test('actual WASM rejects invalid raw JSON before surrogate normalization (#8081)', async context => {
+  const wasm = await engine(context); if (!wasm) return;
+  for (const unit of ['\ud800', '\udfff']) {
+    for (const raw of [
+      unit, `[${unit}]`, `{"key":${unit}}`, `{"${unit}":1,}`,
+      `"\\${unit}"`, `{"key":"\\${unit}"}`, `"${unit}\n"`, `"${unit}" trailing`,
+    ]) {
+      assert.throws(() => JSON.parse(raw), SyntaxError, 'original host syntax is invalid');
+      for (const call of [
+        () => wasm.diffSerializeSidecar(raw),
+        () => wasm.diffCreateSidecar(raw, false), () => wasm.diffCreateSidecar(raw, true),
+        () => wasm.diffValidateSidecar(raw, false), () => wasm.diffValidateSidecar(raw, true),
+      ]) assert.throws(call, SyntaxError, 'caught host parse must reject original input');
+    }
+  }
+  // Scalar-only syntax failures keep the existing native string diagnostics.
+  for (const call of [
+    () => wasm.diffSerializeSidecar('{'), () => wasm.diffCreateSidecar('{', false),
+    () => wasm.diffValidateSidecar('{', true),
+  ]) assert.throws(call, error => typeof error === 'string');
+});

@@ -5,7 +5,8 @@
 #include "copy.hpp"
 #include "failure.hpp"
 #include <SmCopyBrepMap.h>
-#include <SmVertex.h>
+#include <SmBSplineSurface.h>
+#include <SmFace.h>
 #include <cstring>
 #include <stdexcept>
 namespace face_lineage {
@@ -16,14 +17,25 @@ struct AffineTransitionTestAccess {
         SmAxis2Placement placement;
         plan.convert(); plan.place(placement,nullptr);
         const SmVector3d scale(2,3,4);
-        if(std::strcmp(mode,"late")!=0) plan.place(placement,&scale);
-        if(std::strcmp(mode,"receipt")==0) --plan.receipts;
+        if(std::strcmp(mode,"receipt")==0) {
+            // Execute the genuine prescribed SDK operation with notifications
+            // suppressed, then restore the slot. Numerical equality alone must
+            // not authenticate the missing semantic observation interval.
+            plan.prepare_place(placement,&scale);
+            auto& context=*const_cast<SmContext*>(working.GetContext());
+            auto* observer=context.GetUserNotifyCallback(); context.SetUserNotifyCallback(nullptr);
+            const auto status=working.Transform(placement,&scale,FALSE);
+            context.SetUserNotifyCallback(observer);
+            if(status!=SM_SUCCESS) throw std::runtime_error("actual unobserved affine fixture failed");
+            plan.complete_place();
+        } else if(std::strcmp(mode,"late")!=0) plan.place(placement,&scale);
         if(std::strcmp(mode,"source")==0 || std::strcmp(mode,"sibling")==0 || std::strcmp(mode,"target")==0) {
             auto& body=std::strcmp(mode,"source")==0?source:(std::strcmp(mode,"sibling")==0?sibling:working);
-            SmTArray<SmVertex*> vertices; body.GetVertices(vertices);
-            // GetPoint returns a const reference. Deliberately violate the SDK
-            // const contract in this attack fixture; no notify can hide the edit.
-            const_cast<SmPoint3d&>(vertices[0]->GetPoint()).x+=.125;
+            SmTArray<SmFace*> faces; body.GetFaces(faces);
+            ULONG nu=0,nv=0; double* controls=nullptr;
+            if(static_cast<SmBSplineSurface*>(faces[0]->GetSurface())->GetControlPointsPointer(nu,nv,controls)!=SM_SUCCESS || !controls)
+                throw std::runtime_error("negative affine fixture lacks real rational controls");
+            controls[0]+=.125; // Raw SDK coefficient pointer: deliberately no notification.
         }
         plan.finish();
     }

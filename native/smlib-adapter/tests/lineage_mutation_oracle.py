@@ -51,11 +51,18 @@ def main():
                   'mesh->provenance.triangles.push_back(triangle_lineage.at(triangle));',
                   'mesh->provenance.triangles.push_back(lineage->identity(source_faces[(source->second+1)%source_faces.GetSize()]));',
                   'triangle geometry agrees with claimed source face root'))
+    cases.append(('affine-positive', 'mesh.cpp',
+                  'mesh->provenance.triangles.push_back(triangle_lineage.at(triangle));',
+                  'mesh->provenance.triangles.push_back(lineage->identity(source_faces[(source->second+1)%source_faces.GetSize()]));',
+                  'affine triangle geometry matches its original physical ancestor'))
+    cases.append(('affine-mixed', 'face_lineage_events.cpp',
+                  'append(Change::Copy,from->current,prior)', 'append(Change::Copy,from->current)',
+                  'affine preserves complete mixed-kind ancestor union through retessellation'))
     # Each reverse mutation independently attacks authority or a semantic check.
     cases.extend([
-        ('affine-positive', 'affine_transition.cpp',
-         'const auto derived=ledger.append(Change::Edit,face.before);',
-         'const auto derived=faces.front().before;',
+        ('affine-positive', 'owned_lineage.cpp',
+         'auto transformed=copy_affine_rational(solid.get(),matrix,certificate,&state->ledger);',
+         'auto transformed=checked_brep_copy(solid.get(),&state->ledger);',
          'affine triangle geometry matches its original physical ancestor'),
         ('affine-negative-source', 'affine_transition.cpp',
          'for(auto& seal:protected_seals) seal->verify();',
@@ -70,8 +77,8 @@ def main():
          '// mutation: omit terminal target proof',
          'affine transition rejects unreported edits and incomplete receipts'),
         ('affine-negative-receipt', 'affine_transition.cpp',
-         'require(receipts==3,"affine missing semantic transition receipt");',
-         '// mutation: accept missing semantic receipt',
+         'require(position==expected_events.size(),"affine missing prescribed SDK notification");',
+         '// mutation: accept real numerical work with missing notification receipts',
          'affine transition rejects unreported edits and incomplete receipts'),
         ('affine-negative-late', 'affine_transition.cpp',
          'require(receipts==3,"affine missing semantic transition receipt");',

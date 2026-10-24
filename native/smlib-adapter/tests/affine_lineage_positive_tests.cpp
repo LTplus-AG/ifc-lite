@@ -45,12 +45,13 @@ void mesh_oracle(const OwnedBoundary& result,const M& m,const std::vector<owned_
                 for(unsigned k=0;k<3;++k) {
                     require(local[k]>=face->lo[k]-1e-8 && local[k]<=face->hi[k]+1e-8,
                         "affine triangle geometry matches its original physical ancestor");
-                    require(std::abs(mesh->normals.at(9*t+3*c+k)-n[k])<1e-7,
-                        "affine corner normal matches source inverse transpose");
                 }
                 auto next=mesh->indices.at(3*t+(c+1)%3); auto& edge=incidence[std::minmax(id,next)];
                 ++edge.first; edge.second+=id<next?1:-1;
             }
+            for(unsigned c=0;c<3;++c) for(unsigned k=0;k<3;++k)
+                require(std::abs(mesh->normals.at(9*t+3*c+k)-n[k])<1e-7,
+                    "affine corner normal matches source inverse transpose");
             require(dot(cross(sub(p[1],p[0]),sub(p[2],p[0])),n)>0,"reflected affine winding is outward");
             const V origin{m[12],m[13],m[14]};
             volume+=dot(sub(p[0],origin),cross(sub(p[1],origin),sub(p[2],origin)))/6;

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 #include "representation_seal.hpp"
 #include "planar_transition.hpp"
+#include "affine_transition.hpp"
 #include "context_metadata.hpp"
 #include "failure.hpp"
 #include "ifclite_smlib.h"
@@ -62,6 +63,7 @@ void RepresentationSeal::capture() {
             binding->current==ledger.creation.generation,"generated constructor history changed before issuance");
     }
     scratch.clear(); pending.clear(); work=0;
+    if(affine_slots) pending=affine_slots->objects;
 #ifdef SM_USE_NEWTOL
     require(false,"new tolerance-model semantics need a separate exact seal audit");
 #endif
@@ -87,6 +89,7 @@ void RepresentationSeal::capture() {
     pointer(source.GetInfiniteRegion()); pointer(source.GetList()); word(source.GetSize());
     require(!source.HasAttributes(),"attributed SDK graphs need an audited attribute numerical contract");
     SmTArray<SmTopology*> topology; source.GetTopology(topology);
+    if(affine_slots) affine_slots->order_topology(topology);
     require(topology.GetSize()<=objects,"unsupported topology seal size");
     word(topology.GetSize());
     for(auto* item:topology) { pointer(item); object(item); }
@@ -99,9 +102,11 @@ void RepresentationSeal::capture() {
         auto* t=static_cast<SmTopology*>(item);
         require(t->GetBrep()==&source,"foreign topology dependency in exact seal");
         require(!t->HasAttributes(),"attributed topology is unavailable for sealed numerical phases");
-        pointer(t->GetOwner()); pointer(t->GetNext()); pointer(t->GetLast()); word(t->GetAllFlags());
+        pointer(affine_slots?affine_slots->owner(t):t->GetOwner());
+        pointer(affine_slots?affine_slots->next(t):t->GetNext());
+        pointer(affine_slots?affine_slots->last(t):t->GetLast()); word(t->GetAllFlags());
         if(auto* owning=dynamic_cast<SmOwningTopology*>(t)) {
-            pointer(owning->GetList()); word(owning->GetSize());
+            pointer(affine_slots?affine_slots->head(t):owning->GetList()); word(owning->GetSize());
             require(owning->GetSize()<=objects,"unsupported owned topology seal size");
             auto* child=owning->GetList();
             for(ULONG j=0;j<owning->GetSize();++j) {
@@ -115,7 +120,7 @@ void RepresentationSeal::capture() {
             case SmShell_TYPE: pointer(static_cast<SmShell*>(t)->GetRegion()); break;
             case SmFace_TYPE: {
                 auto* f=static_cast<SmFace*>(t); auto uv=f->GetUVDomain();
-                real(f->GetTolerance()); word(f->GetRectangularTrim());
+                real(f->GetTolerance()); word(affine_slots?affine_slots->rectangular(f):f->GetRectangularTrim());
                 real(uv.GetUMin()); real(uv.GetUMax()); real(uv.GetVMin()); real(uv.GetVMax());
                 auto id=initial?ledger.binding(f,false)->current:ledger.identity(f);
                 const auto slot_id=transition_slots?transition_slots->expected_face_slot(f,id):id; word(slot_id.domain); word(slot_id.sequence);
@@ -142,14 +147,14 @@ void RepresentationSeal::capture() {
             }
             case SmEdgeuse_TYPE: {
                 auto* e=static_cast<SmEdgeuse*>(t); word(e->GetEdgeuseType()); word(e->GetOrientation());
-                pointer(e->GetMate()); pointer(e->GetRadial()); pointer(e->GetVertexuse()); pointer(e->GetFaceuse());
+                pointer(e->GetMate()); pointer(affine_slots?affine_slots->radial(e):e->GetRadial()); pointer(e->GetVertexuse()); pointer(e->GetFaceuse());
                 pointer(e->GetLoopuse()); pointer(e->GetCWEdgeuse()); pointer(e->GetCCWEdgeuse());
                 require(e->IsLoopEdgeuse() && !e->GetDropCurveFail(),"wire or failed trim state requires a separate seal contract");
                 auto* trim=e->GetUVTrimCurvePointer(); pointer(trim); object(trim);
                 require(e->GetUVTrimCurve(),"missing actual UV trim in seal"); break;
             }
             case SmVertex_TYPE: {
-                auto* v=static_cast<SmVertex*>(t); const auto p=v->GetPoint();
+                auto* v=static_cast<SmVertex*>(t); const auto p=affine_slots?affine_slots->vertex(v):v->GetPoint();
                 real(v->GetTolerance()); real(p.x); real(p.y); real(p.z); break;
             }
             case SmVertexuse_TYPE: {

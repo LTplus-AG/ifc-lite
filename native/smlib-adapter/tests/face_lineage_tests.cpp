@@ -3,6 +3,8 @@
 #include "face_lineage.hpp"
 #include "planar_transition.hpp"
 #include "copy.hpp"
+#include "affine.hpp"
+#include "mesh.hpp"
 #include "sweep.hpp"
 #include "context_metadata.hpp"
 #include "representation_seal.hpp"
@@ -223,6 +225,54 @@ std::unique_ptr<SmBrep> plane_sheet(SmFace*& face) {
             "actual mixed-origin source trims prepared before root adoption");
         return result;
     } catch(...) { result.release(); rethrow_tainted_kernel_domain("lineage sheet fixture construction"); }
+}
+void affine_mixed_origins() {
+    // #7955: a real SDK already-mated copy forms a two-root ancestor set.
+    // Normalize only before original issuance, never after history exists.
+    Solids owned; SmFace* original=nullptr; SmFace* generated=nullptr;
+    owned.source=plane_sheet(original); prepare_owned_affine_source(*owned.source);
+    owned.first=plane_sheet(generated); prepare_owned_affine_source(*owned.first);
+    auto& context=*const_cast<SmContext*>(owned.source->GetContext());
+    Ledger ledger; Scope lifetime(ledger,context);
+    const Seed a{original,RootKind::SourceBoundary},b{generated,RootKind::GeneratedInterface};
+    ledger.admit_roots(*owned.source,ObjectRevision{901,41,19,2,18,0},&a,1);
+    ledger.admit_roots(*owned.first,ObjectRevision{901,41,20,4,19,202},&b,1);
+    const auto first_root=ledger.identity(original),second_root=ledger.identity(generated);
+    owned.second=checked_brep_copy(owned.source.get(),&ledger); auto* mixed=seeds(*owned.second)[0].face;
+    {
+        SmMerge merge(context,owned.second.get(),owned.first.get());
+        require(merge.GetTopologyIntersector().Relate(mixed,generated)==SM_SUCCESS,"affine mixed source declared identical patch relation");
+        SmRegion *old_region=nullptr,*new_region=nullptr; SmTArray<SmFace*> added;
+        require(merge.MakeFaceuse(generated->GetUpwardFaceuse(),old_region,new_region,nullptr,&added)==SM_SUCCESS && !added.GetSize(),
+            "affine mixed source uses actual already-mated copy"); ledger.check();
+    }
+    const double matrix[16]={-2,0,0,0,.5,3,0,0,0,0,4,0,7,-4,2,1};
+    ifclite_smlib_affine_certificate certificate{};
+    owned.third=copy_affine_rational(owned.second.get(),matrix,certificate,&ledger);
+    for(double chord:{.01,.005}) {
+        Scope phase(ledger,context,owned.third.get()); RepresentationSeal seal(ledger,*owned.third);
+        auto mesh=tessellate_mesh(owned.third.get(),chord,15,&ledger);
+        for(size_t t=0;t<mesh->provenance.triangles.size();++t) {
+            std::array<Root,4> roots{}; const auto count=ledger.roots(mesh->provenance.triangles[t],roots.data(),roots.size());
+            require(count==2 && ((roots[0].identity==first_root && roots[1].identity==second_root) ||
+                (roots[1].identity==first_root && roots[0].identity==second_root)) && roots[0].kind!=roots[1].kind,
+                "affine preserves complete mixed-kind ancestor union through retessellation");
+            for(unsigned c=0;c<3;++c) {
+                const auto index=mesh->indices.at(3*t+c); const auto y=(mesh->positions.at(3*index+1)+4)/3;
+                const auto x=(7+.5*y-mesh->positions.at(3*index))/2;
+                require(x>=-1e-8 && x<=2+1e-8 && y>=-1e-8 && y<=2+1e-8 && std::abs(mesh->positions.at(3*index+2)-2)<1e-8,
+                    "affine union geometry matches both coincident original analytic patches");
+            }
+        }
+        seal.verify(); phase.finish(); ledger.check();
+    }
+    owned.second.reset(); ledger.check();
+    owned.second=checked_brep_copy(owned.third.get(),&ledger);
+    std::array<Root,4> roots{};
+    require(ledger.roots(ledger.identity(seeds(*owned.second)[0].face),roots.data(),roots.size())==2,
+        "affine mixed ancestor union survives subsequent checked copy");
+    owned.second.reset(); owned.third.reset(); owned.first.reset(); owned.source.reset();
+    ledger.check(); lifetime.finish(); ledger.check();
 }
 void mixed_origins() {
     std::fprintf(stderr,"lineage BEGIN coplanar source/generated origin union via actual already-mated copy\n");
@@ -626,6 +676,7 @@ void terminal_budget_failure() {
 }
 }
 void run_affine_lineage_positive();
+void run_affine_lineage_curved();
 void run_affine_lineage_negative(const char*);
 void run_affine_representation_diagnostic();
 void run_affine_lineage_diagnostic(const char*);
@@ -644,6 +695,8 @@ void run_face_lineage_case(const char* name) {
     else if(std::strcmp(name,"reuse")==0) address_reuse();
     else if(std::strcmp(name,"unknown")==0) direct_read_refusal();
     else if(std::strcmp(name,"budget")==0) terminal_budget_failure();
+    else if(std::strcmp(name,"affine-mixed")==0) affine_mixed_origins();
+    else if(std::strcmp(name,"affine-curved")==0) run_affine_lineage_curved();
     else if(std::strcmp(name,"affine-positive")==0) run_affine_lineage_positive();
     else if(std::strncmp(name,"affine-negative-",16)==0) run_affine_lineage_negative(name+16);
     else if(std::strcmp(name,"affine-representation")==0) run_affine_representation_diagnostic();

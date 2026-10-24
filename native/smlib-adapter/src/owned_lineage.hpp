@@ -25,12 +25,13 @@ public:
     OwnedBoundary& operator=(OwnedBoundary&&)=delete;
     OwnedBoundary(const OwnedBoundary&)=delete;
     static OwnedBoundary box(double width,double depth,double height);
+    static OwnedBoundary cylinder(double radius,double height);
     OwnedBoundary copy() const;
     std::vector<Identity> faces() const;
     std::vector<Root> ancestors(Identity) const;
     std::unique_ptr<AdapterMesh> tessellate(double chord,double angle) const;
-    // Missing audited numerical transitions refuse BEFORE invoking the SDK.
-    // Never silently turn an incomplete result into fresh constructor roots.
+    // Affine retains native constructor ancestry through a prescribed transition.
+    // Boolean/clip remain unavailable; never relabel unknown results as roots.
     OwnedBoundary affine(const double* matrix) const;
     OwnedBoundary boolean(const OwnedBoundary&,uint32_t operation) const;
     OwnedBoundary clip(const double* plane,int32_t side,uint32_t mode) const;

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 #include "representation_seal.hpp"
+#include "affine_transition.hpp"
 #include "copy.hpp"
 #include "context_metadata.hpp"
 #include <SmApiQueries.h>
@@ -27,7 +28,7 @@ void RepresentationSeal::curve(SmObject* object) {
     const auto domain=c->GetNaturalInterval(); real(domain.GetMin()); real(domain.GetMax());
     ULONG n=0; double* control=nullptr; checked(c->GetControlPointsPointer(n,control));
     require(n && n<=coefficients/4 && control,"unsupported curve control budget"); word(n);
-    for(ULONG i=0;i<4*n;++i) real(control[i]); // Includes exact homogeneous weights/NL_NOW sentinel.
+    for(ULONG i=0;i<4*n;++i) real(affine_slots?affine_slots->control(object,i,control[i]):control[i]); // Includes exact homogeneous weights/NL_NOW sentinel.
     const ULONG knots=c->GetNumberNaturalKnots();
     require(knots && knots<=coefficients && knots==n+c->GetDegree()+1,"invalid curve knot support"); word(knots);
     // Fixed local scratch, no expanding SDK array or lazy MakeNurb operation.
@@ -59,7 +60,7 @@ void RepresentationSeal::surface(SmObject* object) {
     require(nu && nv && nu<=coefficients/4/nv && control && u && v && ku<=coefficients && kv<=coefficients &&
         ku==nu+s->GetDegree(SM_SP_U)+1 && kv==nv+s->GetDegree(SM_SP_V)+1,"unsupported surface coefficient support");
     word(nu); word(nv); word(ku); word(kv);
-    for(ULONG i=0;i<4*nu*nv;++i) real(control[i]);
+    for(ULONG i=0;i<4*nu*nv;++i) real(affine_slots?affine_slots->control(object,i,control[i]):control[i]);
     for(ULONG i=0;i<ku;++i) real(u[i]);
     for(ULONG i=0;i<kv;++i) real(v[i]);
     ULONG du=0,dv=0; SmBSplineSurfaceForm form; SmKnotType knot_type;

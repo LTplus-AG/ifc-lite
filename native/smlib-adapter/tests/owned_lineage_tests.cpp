@@ -54,7 +54,7 @@ void owned_copy_tessellation() {
     require(transformed.faces().size()==6,"owned affine preserves full boundary inventory");
     refused([&] { auto unavailable=copy.boolean(source,IFCLITE_SMLIB_UNION); });
     refused([&] { auto unavailable=copy.clip(plane,1,IFCLITE_SMLIB_INTERSECTION); });
-    require(source.faces()==before && copy.faces()==copied,"refused operations preserve both owned inputs");
+    require(source.faces()==before && copy.faces()==copied,"owned operations preserve both original inputs");
 }
 
 void run_owned_lineage_tests() {

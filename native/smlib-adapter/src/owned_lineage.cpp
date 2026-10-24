@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 #include "owned_lineage.hpp"
 #include "copy.hpp"
+#include "affine.hpp"
 #include "failure.hpp"
 #include "representation_seal.hpp"
 #include <SmApiGeneral.h>
@@ -49,6 +50,7 @@ OwnedBoundary OwnedBoundary::box(double width,double depth,double height) {
     const auto status=SmApiCreateBox(SmVector3d(0,0,0),width,depth,height,raw);
     body.reset(raw);
     require(status==SM_SUCCESS && body,"native box constructor failed");
+    prepare_owned_affine_source(*body);
     auto owner=std::make_shared<State>(context);
     SmTArray<SmFace*> actual; body->GetFaces(actual);
     require(actual.GetSize()==6,"native box constructor boundary inventory");
@@ -57,6 +59,27 @@ OwnedBoundary OwnedBoundary::box(double width,double depth,double height) {
     owner->ledger.admit_roots(*body,ObjectRevision{1,1,0,1,issued,0},seeds.data(),seeds.size());
     return OwnedBoundary(std::move(owner),std::move(body));
     } catch(...) { body.release(); rethrow_tainted_kernel_domain("native lineage constructor"); }
+}
+OwnedBoundary OwnedBoundary::cylinder(double radius,double height) {
+    if(kernel_domain_is_tainted()) throw KernelDomainTainted{"native lineage owner refused after taint"};
+    require(std::isfinite(radius) && radius>0 && std::isfinite(height) && height>0,"invalid native cylinder dimensions");
+    auto& context=*SmApiGetOrCreateContext();
+    require(!context.GetUserNotifyCallback() && !context.GetSysNotifyCallback() &&
+        !context.GetAttributeCallbacks(),"native construction requires exclusive callback ownership");
+    const auto issued=revision(); std::unique_ptr<SmBrep> body;
+    try {
+        SmBrep* raw=nullptr;
+        const auto status=SmApiCreateCylinder(SmVector3d(0,0,0),radius,height,raw); body.reset(raw);
+        require(status==SM_SUCCESS && body,"native cylinder constructor failed");
+        prepare_owned_affine_source(*body);
+        auto owner=std::make_shared<State>(context);
+        SmTArray<SmFace*> actual; body->GetFaces(actual);
+        require(actual.GetSize()==3,"native cylinder constructor boundary inventory");
+        std::vector<Seed> seeds;
+        for(auto* face:actual) seeds.push_back({face,RootKind::SourceBoundary});
+        owner->ledger.admit_roots(*body,ObjectRevision{1,1,0,1,issued,0},seeds.data(),seeds.size());
+        return OwnedBoundary(std::move(owner),std::move(body));
+    } catch(...) { body.release(); rethrow_tainted_kernel_domain("native lineage cylinder constructor"); }
 }
 OwnedBoundary OwnedBoundary::copy() const {
     require_live();
@@ -91,9 +114,11 @@ std::unique_ptr<AdapterMesh> OwnedBoundary::tessellate(double chord,double angle
         return result;
     } catch(...) { rethrow_tainted_kernel_domain("owned lineage tessellation"); }
 }
-OwnedBoundary OwnedBoundary::affine(const double*) const {
+OwnedBoundary OwnedBoundary::affine(const double* matrix) const {
     require_live();
-    throw AdapterFailure{IFCLITE_SMLIB_UNSUPPORTED,"native lineage affine numerical transition is unaudited"};
+    ifclite_smlib_affine_certificate certificate{};
+    auto transformed=copy_affine_rational(solid.get(),matrix,certificate,&state->ledger);
+    return OwnedBoundary(state,std::move(transformed));
 }
 OwnedBoundary OwnedBoundary::boolean(const OwnedBoundary&,uint32_t) const {
     require_live();

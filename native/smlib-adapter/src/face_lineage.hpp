@@ -64,6 +64,7 @@ class Ledger {
     std::unique_ptr<class RepresentationSeal> creation_seal;
     std::unique_ptr<class PlanarTransition> completed_transition;
     class PlanarTransition* active_transition=nullptr;
+    class AffineTransition* active_affine=nullptr;
     struct NumericalPhase {
         SmBrep* source=nullptr;
         Identity operation{};
@@ -128,6 +129,7 @@ class Ledger {
     friend class GeneratedPlane;
     friend class NumericalRead;
     friend class PlanarTransition;
+    friend class AffineTransition;
 public:
     explicit Ledger(Limits={});
     ~Ledger();
@@ -170,6 +172,7 @@ class Scope final:public SmNotifyCallback {
     friend class Ledger;
     friend class GeneratedPlane;
     friend class PlanarTransition;
+    friend class AffineTransition;
 public:
     Scope(Ledger&,SmContext&,SmBrep* readonly_source=nullptr,Phase=Phase::Mutation);
     Scope(const Scope&)=delete;

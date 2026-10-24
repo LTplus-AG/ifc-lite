@@ -8,6 +8,6 @@ namespace face_lineage { class Ledger; }
 // A failure after copying starts taints the kernel domain (see copy.hpp).
 std::unique_ptr<SmBrep> copy_affine_rational(SmBrep* source, const double* matrix,
     ifclite_smlib_affine_certificate& certificate, face_lineage::Ledger* lineage=nullptr);
-// Optional observation is diagnostic and fail-closed: it issues no numerical
-// transition authority. OwnedBoundary::affine stays disabled until conversion,
-// UV restoration and reflected topology have a checked representation plan.
+// Internal fixed constructor normalization before source-root issuance; uses
+// the same rational eligibility and never fits/replaces original UV curves.
+void prepare_owned_affine_source(SmBrep&);

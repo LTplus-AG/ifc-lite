@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 #include "face_lineage.hpp"
 #include "planar_transition.hpp"
+#include "affine_transition.hpp"
 #include <SmBrep.h>
 #include <SmCurve.h>
 #include <SmFace.h>
@@ -23,6 +24,7 @@ void Ledger::observe(SmNotifyOperation operation,SmObject* caller,SmObject* a,Sm
     catch(...) { fail(Failure::InvalidEvent); }
 }
 void Ledger::transition(Event& event,SmNotifyOperation op,SmObject* caller,SmObject* a,SmObject* b,SmObject* c) {
+    if(active_affine && active_affine->event(event,op,caller,a,b,c)) return;
     // REG_PROPAGATION carries array addresses, not objects. Never inspect them.
     if(op==SM_NO_REG_PROPAGATION) {
         if(active_transition) fail(Failure::InvalidEvent); // no region propagation in this fixed topology plan

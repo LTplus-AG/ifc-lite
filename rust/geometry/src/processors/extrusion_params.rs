@@ -70,10 +70,11 @@ impl ExtrusionParams {
                 "{name} ExtrudedDirection has no Z component (ValidExtrusionDirection)"
             )));
         }
-        // Both tests above are exact on the authored ratios. Ratios whose
-        // squared length overflows would normalise to a zero axis downstream
-        // and extrude along +Z, so they are rescaled; finite lengths are kept
-        // bit for bit.
+        // Both tests above read the authored ratios: the zero-length test is
+        // an overflow-safe `f64::EPSILON` threshold, and only the `z == 0`
+        // test is exact. Ratios whose squared length overflows would
+        // normalise to a zero axis downstream and extrude along +Z, so they
+        // are rescaled; finite lengths are kept bit for bit.
         let direction = Vector3::from(crate::math::v3::unoverflowed(ratios));
 
         let depth = entity

@@ -155,7 +155,13 @@ fn a_revolved_axis_whose_squared_length_overflows_is_tested_on_its_direction() {
 fn an_extruded_direction_whose_squared_length_overflows_keeps_its_direction() {
     // Base and r1 accepted it, then normalised it to the zero vector and
     // extruded along +Z. Now it extrudes as its unit-scale twin, bit for bit.
-    for (huge, unit) in [("((1.E308,0.,1.E308))", "((1.,0.,1.))"), ("((0.,0.,1.E308))", "((0.,0.,1.))")] {
+    // The downward row pins the sense: a rescale by the signed largest
+    // component would flip it to +Z and drop the downward depth shift.
+    for (huge, unit) in [
+        ("((1.E308,0.,1.E308))", "((1.,0.,1.))"),
+        ("((0.,0.,1.E308))", "((0.,0.,1.))"),
+        ("((0.,0.,-1.E308))", "((0.,0.,-1.))"),
+    ] {
         let (control, refused) = run(&extruder(), &extrusion(unit, "$"), 5);
         let control = control.expect(unit);
         assert_eq!(refused, 0, "{unit}");
@@ -165,7 +171,7 @@ fn an_extruded_direction_whose_squared_length_overflows_keeps_its_direction() {
         assert_eq!(result.positions, control.positions, "{huge}");
         assert_eq!(result.indices, control.indices, "{huge}");
     }
-    // The WR is still tested exactly on the authored ratios: a huge X with
+    // The WR is still tested on the authored ratios: a huge X with
     // zero Z is refused, a subnormal pair is zero length; each counted once.
     let (result, refused) = run(&extruder(), &extrusion("((1.E308,0.,0.))", "$"), 5);
     assert!(result.expect_err("z = 0").to_string().contains("ValidExtrusionDirection"));

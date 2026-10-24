@@ -248,6 +248,7 @@ test('actual WASM staging fingerprints reject every non-scalar typed boundary (#
   for (const lone of ['\ud800', '\ud801', '\udfff', 'a\ud800b', '\udfff\ud800']) {
     for (const [label, input] of boundaries(lone)) {
       for (const name of ['diffBuildDataFingerprint', 'diffBuildComponentFingerprints']) {
+        // @source-text-assertion-ok asserts the caught live WASM error, not source-file text
         assert.throws(() => wasm[name](input), error => typeof error === 'string'
           && /WASM diff fingerprints require well-formed UTF-16/.test(error), `${name}: ${label}`);
       }

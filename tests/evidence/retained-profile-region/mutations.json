@@ -22,5 +22,59 @@
     "patch": "tests/evidence/retained-profile-region/work-report.oracle.patch",
     "test": "analytic::retained_region::tests::issue_3641_region_work_guard_and_report",
     "assertionMarker": "REGION_WORK_REPORT"
+  },
+  {
+    "id": "decimal-predicate",
+    "patch": "tests/evidence/retained-profile-region/decimal-predicate.oracle.patch",
+    "test": "analytic::retained_region::tests::issue_3641_authored_rounding_collision_refused",
+    "assertionMarker": "REGION_DECIMAL_EQUALITY"
+  },
+  {
+    "id": "decimal-range",
+    "patch": "tests/evidence/retained-profile-region/decimal-range.oracle.patch",
+    "test": "analytic::retained_region::tests::issue_3641_authored_underflow_refused",
+    "assertionMarker": "REGION_DECIMAL_RANGE"
+  },
+  {
+    "id": "decimal-digits",
+    "patch": "tests/evidence/retained-profile-region/decimal-digits.oracle.patch",
+    "test": "analytic::retained_region::tests::issue_3641_decimal_limits_and_authority",
+    "assertionMarker": "REGION_DECIMAL_LIMIT"
+  },
+  {
+    "id": "preflight-items",
+    "patch": "tests/evidence/retained-profile-region/preflight-items.oracle.patch",
+    "test": "analytic::retained_region::tests::issue_3641_preflight_item_bound",
+    "assertionMarker": "REGION_PREFLIGHT_BOUND"
+  },
+  {
+    "id": "preflight-report",
+    "patch": "tests/evidence/retained-profile-region/preflight-report.oracle.patch",
+    "test": "analytic::retained_region::tests::issue_3641_preflight_item_bound",
+    "assertionMarker": "REGION_PREFLIGHT_BOUND"
+  },
+  {
+    "id": "preflight-cardinality",
+    "patch": "tests/evidence/retained-profile-region/preflight-cardinality.oracle.patch",
+    "test": "analytic::retained_region::tests::issue_3641_preflight_cardinality",
+    "assertionMarker": "REGION_PREFLIGHT_CARDINALITY"
+  },
+  {
+    "id": "preflight-item-charge",
+    "patch": "tests/evidence/retained-profile-region/preflight-item-charge.oracle.patch",
+    "test": "analytic::retained_region::tests::issue_3641_preflight_charges_work",
+    "assertionMarker": "REGION_PREFLIGHT_CHARGE"
+  },
+  {
+    "id": "preflight-index-charge",
+    "patch": "tests/evidence/retained-profile-region/preflight-index-charge.oracle.patch",
+    "test": "analytic::retained_region::tests::issue_3641_preflight_charges_work",
+    "assertionMarker": "REGION_PREFLIGHT_CHARGE"
+  },
+  {
+    "id": "profile-record",
+    "patch": "tests/evidence/retained-profile-region/profile-record.oracle.patch",
+    "test": "analytic::retained_region::tests::issue_3641_profile_source_record",
+    "assertionMarker": "REGION_PROFILE_RECORD"
   }
 ]

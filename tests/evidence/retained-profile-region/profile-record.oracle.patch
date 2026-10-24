@@ -1,0 +1,10 @@
+--- a/rust/geometry/src/analytic/retained_region_decimal.rs
++++ b/rust/geometry/src/analytic/retained_region_decimal.rs
+@@ -156,6 +156,6 @@
+     if captured.capture_status != AnalyticStatus::Complete { return Err("incomplete profile source capture".into()); }
+     let source = authored.source.as_mut().ok_or("missing solid source capture")?;
+     if source.capture_status != AnalyticStatus::Complete { return Err("incomplete solid source capture".into()); }
+-    drop(captured.records);
++    source.records.extend(captured.records);
+     Ok(())
+ }

@@ -35,6 +35,7 @@ pub struct RetainedProfileRegion {
     edges: Vec<RegionEdgeSource>,
     cancelled: CancelledRetrace,
     raw_precision: Option<(f64, f64)>,
+    decimal_authority: retained_region_decimal::DecimalAuthority,
 }
 impl RetainedProfileRegion {
     /// Bounded supported family: one arbitrary closed line loop and one
@@ -45,6 +46,7 @@ impl RetainedProfileRegion {
         let raw_precision = decoder.geometric_context_precision_range().map_err(|e| e.to_string())?;
         let mut authored = extrusion::extract_with_profile(solid, decoder, profile::extract_authored_walk);
         if let AnalyticStatus::Unsupported(reason) = &authored.status { return Err(reason.clone()); }
+        retained_region_decimal::capture_profile(&mut authored, decoder)?;
         let profile = authored.profile.as_ref().ok_or("missing authored profile")?;
         if profile.ifc_type_name != IfcType::IfcArbitraryClosedProfileDef.name() || profile.loops.len() != 1 {
             return Err("retained region requires one arbitrary closed boundary".into());
@@ -54,18 +56,23 @@ impl RetainedProfileRegion {
         if captured.capture_status != AnalyticStatus::Complete {
             return Err("incomplete original boundary capture".into());
         }
+        let decimal_authority = retained_region_decimal::prove(captured, original, decoder)?;
         let clearance = raw_precision.map_or(1e-9, |(_, max)| max.max(1e-9));
         let join = raw_precision.map_or(1e-9, |(min, _)| min.min(1e-9));
         let (boundary, edges, cancelled) = regularize(original, clearance, join, MAX_WORK)?;
         // Never label the original non-simple walk as a complete analytic region.
         authored.status = AnalyticStatus::Unsupported("authored non-simple walk; see retained region proof".into());
         authored.profile.as_mut().unwrap().status = authored.status.clone();
-        Ok(Self { authored, boundary, edges, cancelled, raw_precision })
+        Ok(Self { authored, boundary, edges, cancelled, raw_precision, decimal_authority })
     }
     pub fn authored(&self) -> &AnalyticExtrusion { &self.authored }
     pub fn boundary(&self) -> &AnalyticProfileLoop { &self.boundary }
     pub fn edges(&self) -> &[RegionEdgeSource] { &self.edges }
     pub fn cancelled(&self) -> &CancelledRetrace { &self.cancelled }
+    /// Original coordinate-record bytes used by the authored-decimal proof.
+    pub fn coordinate_source_bytes(&self, entity_id: u32) -> Option<&[u8]> {
+        self.decimal_authority.record(entity_id)
+    }
     pub fn raw_precision(&self) -> Option<(f64, f64)> { self.raw_precision }
     pub fn fill_policy(&self) -> &'static str { "nonzero-winding; isolated exact retrace cancellation v1" }
 
@@ -93,6 +100,7 @@ fn preflight(solid: &DecodedEntity, decoder: &mut EntityDecoder) -> std::result:
         IfcType::IfcPolyline => {
             let points = curve.get_list(slot::IfcPolyline::POINTS.index()).ok_or("missing Points")?;
             if points.len() > MAX_EDGES+1 { return Err("retained region edge budget exceeded".into()); }
+            charge_preflight(points.len())?;
         }
         IfcType::IfcIndexedPolyCurve => {
             let list = decoder.decode_by_id(curve.get_ref(slot::IfcIndexedPolyCurve::POINTS.index()).ok_or("missing Points")?).map_err(|e| e.to_string())?;
@@ -101,16 +109,27 @@ fn preflight(solid: &DecodedEntity, decoder: &mut EntityDecoder) -> std::result:
                 return Err("retained region edge budget exceeded".into());
             }
             let items = curve.get_list(slot::IfcIndexedPolyCurve::SEGMENTS.index()).ok_or("region requires explicit line indices")?;
+            if items.len() > MAX_EDGES { return Err("retained region item budget exceeded".into()); }
+            charge_preflight(items.len())?;
             let mut count = 0usize;
             for item in items {
                 let (name,value) = item.as_typed().ok_or("invalid line index")?;
                 if !name.eq_ignore_ascii_case("IFCLINEINDEX") { return Err("region requires line indices".into()); }
-                count = count.checked_add(value.as_list().ok_or("invalid line indices")?.len()).ok_or("index overflow")?;
+                let indices = value.as_list().ok_or("invalid line indices")?;
+                if indices.len() < 2 { return Err("retained region invalid line index cardinality".into()); }
+                count = count.checked_add(indices.len()).ok_or("index overflow")?;
                 if count > MAX_EDGES+1 { return Err("retained region edge budget exceeded".into()); }
+                charge_preflight(indices.len())?;
             }
         }
         _ => return Err("unsupported retained region curve family".into()),
     }
+    Ok(())
+}
+
+fn charge_preflight(work: usize) -> std::result::Result<(), String> {
+    crate::resource::charge(crate::resource::Cost { work: work as u64, ..Default::default() })
+        .map_err(|e| e.to_string())?.retain();
     Ok(())
 }
 

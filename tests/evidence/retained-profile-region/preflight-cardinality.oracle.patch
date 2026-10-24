@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/analytic/retained_region.rs
++++ b/rust/geometry/src/analytic/retained_region.rs
+@@ -112,7 +112,7 @@
+                 let (name,value) = item.as_typed().ok_or("invalid line index")?;
+                 if !name.eq_ignore_ascii_case("IFCLINEINDEX") { return Err("region requires line indices".into()); }
+                 let indices = value.as_list().ok_or("invalid line indices")?;
+-                if false { return Err("retained region invalid line index cardinality".into()); }
++                if indices.len() < 2 { return Err("retained region invalid line index cardinality".into()); }
+                 count = count.checked_add(indices.len()).ok_or("index overflow")?;
+                 if count > MAX_EDGES+1 { return Err("retained region edge budget exceeded".into()); }
+                 charge_preflight(indices.len())?;

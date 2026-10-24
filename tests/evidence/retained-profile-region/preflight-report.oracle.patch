@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/analytic/retained_region.rs
++++ b/rust/geometry/src/analytic/retained_region.rs
+@@ -105,7 +105,7 @@
+                 return Err("retained region edge budget exceeded".into());
+             }
+             let items = curve.get_list(slot::IfcIndexedPolyCurve::SEGMENTS.index()).ok_or("region requires explicit line indices")?;
+-            if items.len() > MAX_EDGES { return Err("unsupported region".into()); }
++            if items.len() > MAX_EDGES { return Err("retained region item budget exceeded".into()); }
+             charge_preflight(items.len())?;
+             let mut count = 0usize;
+             for item in items {

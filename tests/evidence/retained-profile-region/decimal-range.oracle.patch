@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/analytic/retained_region_decimal.rs
++++ b/rust/geometry/src/analytic/retained_region_decimal.rs
+@@ -105,7 +105,7 @@
+         if !decoded.is_finite() || token.parse::<f64>().map_err(|_| RANGE)? != decoded {
+             return Err("decimal source decoded mismatch".into());
+         }
+-        out.push((decoded, decimal(token).unwrap_or(0)));
++        out.push((decoded, decimal(token)?));
+         Ok(())
+     }
+ }

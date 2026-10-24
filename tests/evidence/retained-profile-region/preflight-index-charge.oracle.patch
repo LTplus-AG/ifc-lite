@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/analytic/retained_region.rs
++++ b/rust/geometry/src/analytic/retained_region.rs
+@@ -115,7 +115,7 @@
+                 if indices.len() < 2 { return Err("retained region invalid line index cardinality".into()); }
+                 count = count.checked_add(indices.len()).ok_or("index overflow")?;
+                 if count > MAX_EDGES+1 { return Err("retained region edge budget exceeded".into()); }
+-                charge_preflight(0)?;
++                charge_preflight(indices.len())?;
+             }
+         }
+         _ => return Err("unsupported retained region curve family".into()),

@@ -9,7 +9,8 @@ the default exact engine's conservative simple-region contract.
 The initial supported family is one `IfcArbitraryClosedProfileDef` with an
 explicit line-only `IfcIndexedPolyCurve` or `IfcPolyline`, at most 128 edges,
 and one isolated axis-aligned retraced spur. The proof requires exact finite
-XY endpoint equality and strict coordinate ordering. It does not infer
+XY endpoint equality and strict coordinate ordering, certified against original
+coordinate tokens rather than inferred from rounded binary64 equality. It does not infer
 collinearity from a tolerance, snap coordinates, or simplify arbitrary vertices.
 Other curve families, ambiguous configurations and unresolved regions refuse.
 
@@ -56,8 +57,30 @@ is 1e-8; tessellation chord is 0.001 m and angle is 5 degrees. Existing topology
 clearance uses max(raw Precision,1e-9 raw units), while joins use
 min(raw Precision,1e-9 raw units). No tolerance is widened by regularization.
 
-Source tests, real native/browser construction test definitions and four
-independent reverse mutations are committed. Execution remains a validation
+Coordinate authority retains the original point-record bytes and checks their
+identity, structure and decoded values. `coordinate_source_bytes(entity_id)`
+borrows those immutable original coordinate records from the certificate. A bounded decimal parser uses checked
+i128 arithmetic on a 10^-18 raw-unit grid: at most 64 token bytes, 36 mantissa
+digits, exponent -18 through 18, and a resulting nonnegative scale at most 36.
+Overflow or values outside this exact grid refuse; this is an authority limit,
+not a snapping tolerance. All pairs of coordinate values (including implicit
+XY zero) must have identical exact-decimal and binary64 equality/order results.
+Thus every equality, orientation and separation predicate in cancellation is
+also true for the authored decimals. Rounded collisions and underflow refuse.
+The default decoder's numeric policy is unchanged.
+
+Authority capture caps point records at 132, coordinate scalars at 387 and total
+raw coordinate-record bytes at 65,536. It reserves 1,000,000 work units and
+262,144 bytes each of live/copy accounting before parsing. The recursive
+coordinate-list reader has depth at most 2. Profile record capture reserves
+131,072 live/copy bytes and 16,384 work units before copying, and refuses raw
+profile records over 16,384 bytes. It explicitly retains ProfileType,
+ProfileName and OuterCurve without changing the boundary's curve root.
+Preflight caps Segments items at 128 before traversal, requires at least two
+indices per item, caps their total at 129 and charges both items and indices.
+
+Source tests, real native/browser construction test definitions and independent
+reverse mutations are committed. Execution remains a validation
 gate: source admission alone does not close #3641. J2 must execute the original
 host's ordered three cuts and verify final geometry. J5 must establish persistent
 face identity and UVs. Final-product publication and viewer/CLI activation are

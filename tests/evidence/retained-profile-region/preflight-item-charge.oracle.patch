@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/analytic/retained_region.rs
++++ b/rust/geometry/src/analytic/retained_region.rs
+@@ -106,7 +106,7 @@
+             }
+             let items = curve.get_list(slot::IfcIndexedPolyCurve::SEGMENTS.index()).ok_or("region requires explicit line indices")?;
+             if items.len() > MAX_EDGES { return Err("retained region item budget exceeded".into()); }
+-            charge_preflight(0)?;
++            charge_preflight(items.len())?;
+             let mut count = 0usize;
+             for item in items {
+                 let (name,value) = item.as_typed().ok_or("invalid line index")?;

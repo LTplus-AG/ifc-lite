@@ -20,6 +20,7 @@ mod profile;
 mod profile_topology;
 mod retained_region;
 mod retained_region_account;
+mod retained_region_decimal;
 pub use retained_region::{RetainedProfileRegion, RegionEdgeSource, CancelledRetrace};
 mod topology_interval;
 pub use profile::{extract_analytic_profile, AnalyticProfile, AnalyticProfileLoop, ProfileLoopKind};

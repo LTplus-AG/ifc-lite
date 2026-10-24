@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/analytic/retained_region_decimal.rs
++++ b/rust/geometry/src/analytic/retained_region_decimal.rs
+@@ -51,7 +51,7 @@
+     scalars.push((0., 0));
+     for &(a, exact_a) in &scalars {
+         for &(b, exact_b) in &scalars {
+-            if false {
++            if (a == b) != (exact_a == exact_b) || (a < b) != (exact_a < exact_b) {
+                 return Err("retained region authored decimal predicate mismatch".into());
+             }
+         }

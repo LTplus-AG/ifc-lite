@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/analytic/retained_region_decimal.rs
++++ b/rust/geometry/src/analytic/retained_region_decimal.rs
+@@ -126,7 +126,7 @@
+         if b == b'.' && !dot { dot = true; continue; }
+         if !b.is_ascii_digit() { return Err(RANGE.into()); }
+         digits += 1;
+-        if false { return Err(RANGE.into()); }
++        if digits > 36 { return Err(RANGE.into()); }
+         coefficient = coefficient.checked_mul(10).and_then(|v| v.checked_add((b-b'0') as i128)).ok_or(RANGE)?;
+         if dot { fraction += 1; }
+     }

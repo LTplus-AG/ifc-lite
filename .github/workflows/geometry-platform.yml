@@ -151,7 +151,7 @@ jobs:
         continue-on-error: true
         run: |
           status=0
-          for oracle in region-result edge-provenance work-guard work-report; do
+          for oracle in region-result edge-provenance work-guard work-report decimal-predicate decimal-range decimal-digits preflight-items preflight-report preflight-cardinality preflight-item-charge preflight-index-charge profile-record; do
             python3 tests/evidence/retained-profile-region/feature-oracle.py \
               --oracle "$oracle" --evidence-dir "$RUNNER_TEMP/retained-region-$oracle" || status=1
           done

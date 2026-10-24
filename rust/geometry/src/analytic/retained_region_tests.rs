@@ -13,6 +13,9 @@ fn captured() -> RetainedProfileRegion {
 fn issue_3641_original_fixture_region_result() {
     let region = captured();
     assert_eq!(region.raw_precision(), Some((0.2, 0.2)));
+    let bytes = region.coordinate_source_bytes(61274).expect("original coordinate authority");
+    let mut original = EntityDecoder::with_index(FIXTURE, build_entity_index(FIXTURE));
+    assert_eq!(bytes, original.get_raw_bytes(61274).unwrap());
     assert_eq!(region.authored().solid_id, 61271);
     assert_eq!(region.authored().swept_area_id, Some(61272));
     assert!(matches!(region.authored().status, AnalyticStatus::Unsupported(_)));
@@ -126,7 +129,7 @@ fn issue_3641_region_units_rigid_frame_and_survey_translation_controls() {
     }
 }
 
-fn source_capture(data: &str) -> Result<RetainedProfileRegion, String> {
+fn source_capture(data: &str) -> std::result::Result<RetainedProfileRegion, String> {
     let mut decoder = EntityDecoder::with_index(data.as_bytes(), build_entity_index(data.as_bytes()));
     let solid = decoder.decode_by_id(61271).unwrap();
     with_source_capture(|| RetainedProfileRegion::capture(&solid, &mut decoder))
@@ -147,7 +150,7 @@ fn issue_3641_authored_underflow_refused() {
     assert!(source_capture(&data).is_err(), "REGION_DECIMAL_RANGE");
 }
 
-fn preflight_source(indices: &str) -> Result<(), String> {
+fn preflight_source(indices: &str) -> std::result::Result<(), String> {
     let data = std::str::from_utf8(FIXTURE).unwrap().replace("IFCLINEINDEX((1,2,3,4,5,1))", indices);
     let mut decoder = EntityDecoder::with_index(data.as_bytes(), build_entity_index(data.as_bytes()));
     let solid = decoder.decode_by_id(61271).unwrap();
@@ -157,20 +160,22 @@ fn preflight_source(indices: &str) -> Result<(), String> {
 #[test]
 fn issue_3641_preflight_item_bound() {
     let indices = format!("{}IFCLINEINDEX((1,2,3,4,5,1))", "IFCLINEINDEX(()),".repeat(MAX_EDGES+1));
-    assert_eq!(preflight_source(&indices).unwrap_err(), "retained region item budget exceeded", "REGION_PREFLIGHT_BOUND");
+    assert_eq!(preflight_source(&indices), Err("retained region item budget exceeded".into()), "REGION_PREFLIGHT_BOUND");
 }
 
 #[test]
 fn issue_3641_preflight_cardinality() {
-    assert_eq!(preflight_source("IFCLINEINDEX(()),IFCLINEINDEX((1,2,3,4,5,1))").unwrap_err(),
-        "retained region invalid line index cardinality", "REGION_PREFLIGHT_CARDINALITY");
+    assert_eq!(preflight_source("IFCLINEINDEX(()),IFCLINEINDEX((1,2,3,4,5,1))"),
+        Err("retained region invalid line index cardinality".into()), "REGION_PREFLIGHT_CARDINALITY");
 }
 
 #[test]
 fn issue_3641_preflight_charges_work() {
     use crate::resource::{ExecutionAccount, ExecutionPolicy, ResourceLimits};
-    let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits { work: Some(0), ..Default::default() }));
-    assert!(account.scope(|| preflight_source("IFCLINEINDEX((1,2,3,4,5,1))")).is_err(), "REGION_PREFLIGHT_CHARGE");
+    for work in [0, 6] {
+        let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits { work: Some(work), ..Default::default() }));
+        assert!(account.scope(|| preflight_source("IFCLINEINDEX((1,2,3,4,5,1))")).is_err(), "REGION_PREFLIGHT_CHARGE");
+    }
 }
 
 #[test]
@@ -185,4 +190,15 @@ fn issue_3641_profile_source_record() {
     assert_eq!(record.attributes["ProfileName"], SourceValue::String("BL25632".into()));
     assert_eq!(record.attributes["OuterCurve"], SourceValue::EntityRef(61273));
     assert_eq!(region.boundary().source.as_ref().unwrap().root_entity_id, 61273);
+}
+
+#[test]
+fn issue_3641_decimal_limits_and_authority() {
+    // Source-driven range limits: no unbounded coefficient/exponent arithmetic.
+    for token in ["1.E-400", "1.E19", "0.0000000000000000001",
+        "0000000000000000000000000000000000000."] {
+        let data = std::str::from_utf8(FIXTURE).unwrap()
+            .replace("((0.,0.),(870.,0.)", &format!("((0.,{token}),(870.,0.)"));
+        assert!(source_capture(&data).is_err(), "REGION_DECIMAL_LIMIT");
+    }
 }

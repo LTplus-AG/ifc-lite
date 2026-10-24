@@ -123,3 +123,16 @@ qualification result or a basis for widening the bound. If the exact native
 area check fails, preserve the failure and investigate its coordinate/rounding
 path; do not widen the preregistered tolerance. This limitation is recorded
 before any native face-area run.
+
+Native-query preregistration (design re-review N9) is separate from these exact
+mesh tests: `native-volume-preregistration.json` pins the older J3 source and the
+F-A oracle. J3's 106.81415022205297 m³ total is not F-A's 27.922091698768103 m³
+cut total. For future BRep queries, acceptance is
+`abs(query-oracle) + U_query + U_oracle + U_arithmetic <= max(1e-6 m³, 1e-7*abs(oracle))`.
+Each band must pass independently. Documented uncertainty bounds must fit the
+frozen budgets; requested relative query precision is not a certified error bound.
+Missing bounds mean unqualified, not a pass. Existing mesh thresholds and source
+geometry remain unchanged. Parent integration must wire this policy into the J3
+native-query harness: that harness is absent from this main-based branch. The
+new preregistration is not a claim that the old J3 harness was already corrected
+or that any native query was run.

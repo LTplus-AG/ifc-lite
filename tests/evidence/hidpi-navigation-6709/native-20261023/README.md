@@ -3,8 +3,8 @@
 Status: the original synchronous capture fix has focused-test and native DPR2
 functional evidence. The asynchronous-reader refusal added in `4f90b5f332`
 passed refreshed root typecheck and all 84 focused tests with zero failures or
-skips on unchanged source. Matching control preparation and native qualification
-remain pending.
+skips on unchanged source. Matching control preparation (56 tasks) and the common-runtime candidate rebuild
+also passed, including all 84 tests again. Fresh native qualification remains pending.
 This capsule does not yet establish issue completion or a performance verdict.
 
 The viewer policy and original capture gateway shipped in #6711. This follow-up
@@ -23,6 +23,13 @@ root typecheck (127 Turbo tasks plus the root tail) and 57 build/test tasks pass
 `diagnostics/async-validation-*` preserves its receipt and original log, including
 the delayed-reader and three rejection regressions. Remaining preparation/staging
 receipt IDs stay unset until submitted and cannot qualify in that state.
+
+The refreshed common-runtime proof and original receipts/logs are retained as
+`diagnostics/async-control-*` and `diagnostics/async-shared-runtime-*`. Both
+production arms use identical WASM, JS bindings and declarations, with unchanged
+source. Pop staging jobs `9c61a538` and `fa8d5ee6` precede exclusive cohort
+`b157da46` in the worker queue. These queued jobs establish no native timing or
+viewer acceptance result.
 
 The previous pair used root pnpm/Turbo. Its control passed
 56 tasks with unchanged source. Its JS bindings and declarations match Pop, but

@@ -4710,3 +4710,41 @@ Lesson: a zero-duration phase can invalidate the whole timing verdict even when
 all pairs finish and artifact provenance holds. Preserve that verdict and the
 adverse small-control observations; do not rerun until green or substitute
 count equality for full output identity or browser worker-pool performance.
+
+### Canonical product protocol (E3, #7955)
+
+The [final-source evidence](https://github.com/LTplus-AG/ifc-lite/blob/e8068c4aa310f2263b571ffc7928723c1438059b/scripts/perf/evidence/product-state-e3-final/summary.json)
+compares the canonical product protocol with its landed E2b parent. Native
+result fingerprints and source-built WASM getter fingerprints match within
+the documented corpus and normalization scope. Workspace tests, strict Clippy
+and the three independent protocol, publication and retry-stop mutations pass
+their required controls. The [earlier evidence](https://github.com/LTplus-AG/ifc-lite/blob/41efcf427d46aa604384c014bd6f0fdef4448de1/scripts/perf/evidence/product-state-e3/summary.json)
+retains its earlier-source attribution.
+
+Verdict: disclosed correctness cost, with no speedup or performance-neutrality
+claim. The final native cohort flags slower geometry and total time on the
+small control; its aggregate qualification also remains inconclusive because
+one opening-fixture phase is below timer resolution. Holter is slower in every
+native pair even though the stock reporter does not flag that change. These
+observations remain adverse results. Instruction attribution measures a much
+smaller increase in work and does not explain the elapsed-time penalty. Fixed
+processor-placement diagnostics neither replace the original cohort nor prove
+its cause.
+
+The completed physical-GPU browser worker-pool cohort flags a slower first
+geometry batch on the small control. Complete metadata/render readiness stays
+within observed spread on all three models. All samples retain healthy GPU
+counters and matching mesh counts; representative screenshots show the actual
+models. That scope does not qualify interaction latency, long-lived memory,
+other browsers or retained execution.
+
+The landing tradeoff is the measured cost for source-bound, once-only work and
+correct interruption/report isolation. Keep the original failed native verdict
+and browser first-batch flag visible; no ceiling or tolerance changes are made
+by this evidence update. Final semantic review and current required checks
+remain mandatory. The full retained platform and release gates remain open.
+
+Lesson: a successful measurement process is not a no-regression verdict, and
+low instruction overhead cannot waive an elapsed-time regression. Report the
+complete paired observations and the accepted correctness tradeoff instead of
+replacing samples until the headline turns green.

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 #include "source_construction.hpp"
+#include "ifclite_smlib.h"
 #include "failure.hpp"
 #include <SmFace.h>
 namespace face_lineage {

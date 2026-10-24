@@ -1,0 +1,11 @@
+--- a/rust/processing/src/element/session_retained/removal_source.rs
++++ b/rust/processing/src/element/session_retained/removal_source.rs
+@@ -73,7 +73,7 @@
+     let host = prism(d, host)?;
+     let cutter = prism(d, cutter)?;
+     charge(64)?;
+-    if host.origin.iter().chain(&host.centre).chain(&host.dims).zip(cutter.origin.iter().chain(&cutter.centre).chain(&cutter.dims)).all(|(a,b)| *a as f64 == *b as f64) { return Ok(true); }
++    if host == cutter { return Ok(true); }
+     let bounds = |b: &BoxSource| -> Result<[(i128,i128);3], RetainedExecutionError> {
+         let mut result = [(0,0);3];
+         for (axis, pair) in result.iter_mut().enumerate() {

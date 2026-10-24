@@ -1,0 +1,9 @@
+--- a/rust/processing/src/element/session_retained/removal_decimal.rs
++++ b/rust/processing/src/element/session_retained/removal_decimal.rs
+@@ -101,5 +101,5 @@
+ pub(super) fn coframed(d: &mut EntityDecoder, host: u32, opening: u32) -> Result<bool, RetainedExecutionError> {
+     let host = product_translation(d,host)?;
+     let opening = product_translation(d,opening)?;
+-    Ok(host.iter().zip(opening).all(|(a,b)| *a as f64 == b as f64))
++    Ok(host == opening)
+ }

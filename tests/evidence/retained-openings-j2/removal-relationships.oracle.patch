@@ -1,6 +1,6 @@
 --- a/rust/processing/src/element/session_retained/removal_source.rs
 +++ b/rust/processing/src/element/session_retained/removal_source.rs
-@@ -62,10 +62,10 @@
+@@ -63,10 +63,10 @@
              .map_err(RetainedExecutionError::Stopped)?.retain();
          ids.push(reference(&relation, 5)?);
      }
@@ -11,5 +11,5 @@
 -    Ok(context.borrowed().void_index.get(&product).cloned().unwrap_or_default())
 +    Ok(ids)
  }
- fn translation(d: &mut EntityDecoder, id: u32) -> Result<[f64; 3], RetainedExecutionError> {
-     charge(1)?;
+ /// Exact bounded authored-decimal arithmetic. Never compare decoded floats.
+ pub(super) fn covers(d: &mut EntityDecoder, host: u32, cutter: u32) -> Result<bool, RetainedExecutionError> {

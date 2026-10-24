@@ -1,0 +1,9 @@
+--- a/rust/processing/src/element/session_retained/removal_number.rs
++++ b/rust/processing/src/element/session_retained/removal_number.rs
+@@ -42,5 +42,5 @@
+ }
+ /// Twice the endpoint, retaining exact half-dimensions without a smaller grid.
+ pub(super) fn endpoint(origin: i128, centre: i128, extent: i128) -> Result<i128, RetainedExecutionError> {
+-    add((((origin as f64 / ONE as f64 + centre as f64 / ONE as f64) * ONE as f64) as i128).checked_mul(2).ok_or_else(refused)?, extent)
++    add(add(origin, centre)?.checked_mul(2).ok_or_else(refused)?, extent)
+ }

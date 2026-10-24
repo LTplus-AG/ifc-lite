@@ -54,5 +54,29 @@
     "assertionMarker": "J2_REMOVAL_RELATION_AUTHORITY",
     "intendedFailure": "J2_REMOVAL_RELATION_AUTHORITY",
     "package": "ifc-lite-processing"
+  },
+  {
+    "id": "decimal-equality",
+    "patch": "tests/evidence/retained-openings-j2/decimal-equality.oracle.patch",
+    "test": "element::session_retained::removal_decimal_tests::j2_authored_decimal_equality_is_not_decoded_equality",
+    "assertionMarker": "J2_DECIMAL_EQUALITY",
+    "intendedFailure": "J2_DECIMAL_EQUALITY",
+    "package": "ifc-lite-processing"
+  },
+  {
+    "id": "decimal-cancellation",
+    "patch": "tests/evidence/retained-openings-j2/decimal-cancellation.oracle.patch",
+    "test": "element::session_retained::removal_decimal_tests::j2_authored_input_cancellation_preserves_uncovered_strip",
+    "assertionMarker": "J2_DECIMAL_CANCELLATION",
+    "intendedFailure": "J2_DECIMAL_CANCELLATION",
+    "package": "ifc-lite-processing"
+  },
+  {
+    "id": "decimal-coframe",
+    "patch": "tests/evidence/retained-openings-j2/decimal-coframe.oracle.patch",
+    "test": "element::session_retained::removal_decimal_tests::j2_authored_coframe_is_not_decoded_matrix_equality",
+    "assertionMarker": "J2_DECIMAL_COFRAME",
+    "intendedFailure": "J2_DECIMAL_COFRAME",
+    "package": "ifc-lite-processing"
   }
 ]

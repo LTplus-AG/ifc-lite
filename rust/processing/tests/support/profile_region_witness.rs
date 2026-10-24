@@ -45,10 +45,46 @@ pub fn check(completion: &RetainedCompletion) {
         }
     }
     assert!((volume.abs()-VOLUME).abs() <= 1e-6, "REGION_SDK_VOLUME: {volume}");
+    // #7955 diagnostic checkpoint: retain the failed oracle unchanged. Capture
+    // actual SDK triangles before deciding whether slicing or geometry is wrong.
+    if section_x.is_empty() || (section_x.iter().copied().fold(f64::INFINITY,f64::min)
+        -(0.265+1.2816e-8)).abs() > 1e-7 {
+        dump_section(mesh.positions.as_ref(), mesh.indices.as_ref(), &section_x, volume);
+    }
     assert!(!section_x.is_empty(), "REGION_SDK_SECTION");
     let min = section_x.iter().copied().fold(f64::INFINITY,f64::min);
     let max = section_x.iter().copied().fold(f64::NEG_INFINITY,f64::max);
     assert!((min-(0.265+1.2816e-8)).abs() <= 1e-7, "REGION_SDK_SECTION: {min}");
     assert!((max-(3.63+1.2816e-8)).abs() <= 1e-7, "REGION_SDK_SECTION: {max}");
     println!("REGION_3641_SOURCE_VOLUME_SECTION_PROVENANCE_EXECUTED");
+}
+
+/// Failure-only evidence, bounded independently of file-supplied mesh size.
+/// Inclusive boxes deliberately retain endpoint/coplanar candidates discarded
+/// by the current half-open witness. No result here participates in acceptance.
+fn dump_section(positions: &[f64], indices: &[u32], section_x: &[f64], volume: f64) {
+    const LIMIT: usize = 256;
+    let z = -12.816;
+    let y = -0.45+3.8448e-9;
+    eprintln!("REGION_SECTION_DIAGNOSTIC volume={volume:?} z={z:?} y={y:?} vertices={} triangles={} hits={} first_hits={:?}",
+        positions.len()/3, indices.len()/3, section_x.len(), &section_x[..section_x.len().min(LIMIT)]);
+    let point = |i: u32| { let i = i as usize*3; [positions[i],positions[i+1],positions[i+2]] };
+    let mut candidates = 0;
+    for (index, triangle) in indices.chunks_exact(3).enumerate() {
+        let points = [point(triangle[0]),point(triangle[1]),point(triangle[2])];
+        // A small diagnostic-only halo exposes rounding gaps too. It does not
+        // change the slice, its fixed expected values, or either tolerance.
+        if [(2,z),(1,y)].iter().all(|&(axis,value)| {
+            let min = points.iter().map(|p| p[axis]).fold(f64::INFINITY,f64::min);
+            let max = points.iter().map(|p| p[axis]).fold(f64::NEG_INFINITY,f64::max);
+            min <= value+1e-7 && value-1e-7 <= max
+        }) {
+            if candidates < LIMIT {
+                eprintln!("REGION_SECTION_TRIANGLE index={index} indices={triangle:?} points={points:?}");
+            }
+            candidates += 1;
+        }
+    }
+    eprintln!("REGION_SECTION_DIAGNOSTIC_END candidates={candidates} emitted={} truncated={}",
+        candidates.min(LIMIT), candidates.saturating_sub(LIMIT));
 }

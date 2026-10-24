@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 #include "mesh.hpp"
 #include "empty.hpp"
+#include "representation_seal.hpp"
 #include <SmApiBrep.h>
 #include <SmBrep.h>
 #include <SmPoly.h>
@@ -25,7 +26,9 @@ std::unique_ptr<AdapterMesh> tessellate_mesh(SmBrep* solid, double chord, double
     SmTessellationParams params; params.dChordHeightTol = chord;
     params.dCurveAngleTolDeg = angle; params.dSurfaceAngleTolDeg = angle;
     SmPolyBrep* raw = nullptr; SmTessellationReport report;
-    const auto status = SmApiTessellate(solid,raw,params,FALSE,nullptr,&report);
+    const auto status = lineage
+        ? face_lineage::NumericalRead::tessellate(*lineage,*solid,raw,params,report)
+        : SmApiTessellate(solid,raw,params,FALSE,nullptr,&report);
     std::unique_ptr<SmPolyBrep> poly(raw); checked(status);
     ensure(poly && report.failures.GetSize() == 0,"partial tessellation rejected");
     SmTArray<SmPolyFace*> polygons; poly->GetPolyFaces(polygons);

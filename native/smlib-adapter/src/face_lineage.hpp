@@ -93,6 +93,8 @@ class Ledger {
         uint32_t birth_frame=0;
         bool alive=false,retired=false,removed=false,newborn=false,initial_issuance=false,numerical_initialized=false;
         Identity numerical_operation{},owned_transition{};
+        SmObject* numerical_original=nullptr;
+        SmObject* numerical_owner=nullptr;
     };
     Limits limits;
     uint64_t domain;

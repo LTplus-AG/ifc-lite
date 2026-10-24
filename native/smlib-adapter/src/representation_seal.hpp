@@ -3,6 +3,9 @@
 #include "face_lineage.hpp"
 #include <vector>
 class SmPoint3d;
+class SmPolyBrep;
+struct SmTessellationParams;
+struct SmTessellationReport;
 namespace face_lineage {
 // Retained exact boundary-state evidence, never certificate authority. Only
 // adapter-exclusive graphs and audited entrypoints may use this private seam.
@@ -44,7 +47,9 @@ struct BoundaryProperties { double area=0,volume=0; };
 class NumericalRead {
     static void begin(Ledger&,SmBrep&);
     static void end(Ledger&);
+    friend struct NumericalReadTestAccess;
 public:
+    static SmStatus tessellate(Ledger&,SmBrep&,SmPolyBrep*&,const SmTessellationParams&,SmTessellationReport&);
     static double volume(Ledger&,SmBrep&,double accuracy);
     static BoundaryProperties face(Ledger&,SmFace&,SmOrientType,double accuracy,
         const SmPoint3d& origin,double estimated_area);

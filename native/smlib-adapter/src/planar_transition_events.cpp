@@ -77,8 +77,13 @@ bool PlanarTransition::event(Event& event,SmNotifyOperation op,SmObject* caller,
         }
         if(op==SM_NO_RM_FROM_BREP && caller==&working && a==diagonal && b==&working && !c &&
             edge_pre==1 && ++remove_events==1) return false;
-        if(op==SM_NO_PRE_EDIT && (caller==&face || caller==child) && a==caller && b==&working && !c) {
+        if(op==SM_NO_PRE_EDIT && (caller==&face || caller==child) && a==caller && !c) {
             const unsigned index=caller==&face?0:1;
+            // DeleteEdge's explicit pre-merge face notice names the BRep;
+            // RemoveUVTrimCurves after MERGE uses SM_NO_GET_BREP, null in this
+            // pinned build. Bind that notice to the exact second slot, not a
+            // general null-owner PRE_EDIT exemption (SmFace.cpp:12915).
+            if(b!=(merge_events==1?nullptr:&working) || face_pre[index]!=(merge_events==1?1u:0u)) return refuse();
             if(++face_pre[index]>2) return refuse();
             if(index==1 && merge_events==1) {
                 auto* entry=ledger.binding(child,false);

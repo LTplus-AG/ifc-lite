@@ -203,6 +203,20 @@ def main():
          'true; // mutation: admit arbitrarily large knot snapping',
          'subdivision refuses the first request beyond fixed knot rounding budget'),
     ])
+    cases.extend([
+        ('trim-journal', 'face_lineage_reclaim.cpp',
+         'node_count=keep_nodes; event_count=keep_events; // storage checkpoint only; never rewind issued_sequence',
+         '// mutation: retain completed temporary journal indefinitely',
+         'completed numerical reads release only temporary journal'),
+        ('trim-journal', 'face_lineage_reclaim.cpp',
+         'node_count=keep_nodes; event_count=keep_events; // storage checkpoint only; never rewind issued_sequence',
+         'node_count=keep_nodes; event_count=keep_events; issued_sequence=keep_nodes?nodes[keep_nodes-1].sequence:0;',
+         'reclaimed journal storage never reissues a retired generation'),
+        ('trim-journal', 'face_lineage_reclaim.cpp',
+         'require(retained(b.current),"numerical journal still has a live generation");',
+         '// mutation: discard live constructor generation',
+         'journal release refuses a live escaped constructor generation'),
+    ])
     paths = sorted({source / row[1] for row in cases})
     subprocess.run(['git', 'diff', '--exit-code', 'HEAD', '--', *map(str, paths)], cwd=root, check=True)
     originals = {path: path.read_text() for path in paths}

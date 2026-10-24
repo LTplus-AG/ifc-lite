@@ -25,12 +25,12 @@ bool valid(const ObjectRevision& o) {
 }
 Ledger::Ledger(Limits requested):limits(requested),domain(0) {
     // Checked before any adapter allocation. Fixed tables never grow in a
-    // callback. Defaults use under 8 MiB; all admitted configurations <=64 MiB.
+    // callback. Includes a bounded rehash scratch table; all configurations <=64 MiB.
     require(limits.nodes && limits.nodes<=65536 && limits.events && limits.events<=131072 &&
         limits.roots && limits.roots<=limits.nodes && limits.callback_depth && limits.callback_depth<=64,
         "invalid lineage resource limits");
     const uint64_t bytes=uint64_t(limits.nodes)*(sizeof(Node)+sizeof(uint32_t))+
-        (2*uint64_t(limits.nodes)+1)*sizeof(Binding)+uint64_t(limits.roots)*sizeof(Root)+
+        2*(2*uint64_t(limits.nodes)+1)*sizeof(Binding)+uint64_t(limits.roots)*sizeof(Root)+
         uint64_t(limits.events)*sizeof(Event)+8192*sizeof(SmObject*);
     require(bytes<=64*1024*1024,"lineage storage exceeds fixed adapter limit");
     uint64_t expected=next_domain.load();
@@ -39,12 +39,17 @@ Ledger::Ledger(Limits requested):limits(requested),domain(0) {
     } while(!next_domain.compare_exchange_weak(expected,expected+1));
     domain=expected;
     nodes.resize(limits.nodes); bindings.resize(2*size_t(limits.nodes)+1);
+    binding_scratch.resize(bindings.size());
     root_records.resize(limits.roots); events.resize(limits.events);
     visited.resize(limits.nodes);
 }
 Ledger::~Ledger()=default;
 const Ledger::Node* Ledger::node(Identity id) const noexcept {
-    return id.domain==domain && id.sequence && id.sequence<=node_count?&nodes[id.sequence-1]:nullptr;
+    if(id.domain!=domain || !id.sequence) return nullptr;
+    const auto end=nodes.begin()+node_count;
+    const auto found=std::lower_bound(nodes.begin(),end,id.sequence,
+        [](const Node& n,uint64_t sequence) { return n.sequence<sequence; });
+    return found!=end && found->sequence==id.sequence?&*found:nullptr;
 }
 bool Ledger::complete(Identity id) const noexcept {
     const auto* n=node(id); return n && n->complete;
@@ -66,10 +71,13 @@ Ledger::Binding* Ledger::binding(SmObject* object,bool create) noexcept {
 Identity Ledger::append(Change kind,Identity a,Identity b,uint32_t root) noexcept {
     if(failure!=Failure::None) return {};
     if(node_count==limits.nodes) { fail(Failure::NodeLimit); return {}; }
+    if(issued_sequence==UINT64_MAX) { fail(Failure::NodeLimit); return {}; }
+    if((a.sequence && !node(a)) || (b.sequence && !node(b))) { fail(Failure::UnknownHistory); return {}; }
     Node n; n.change=kind; n.parent[0]=a; n.parent[1]=b; n.root=root;
+    n.sequence=++issued_sequence;
     n.complete=root!=UINT32_MAX || (complete(a) && (!b.sequence || complete(b)));
     nodes[node_count++]=n;
-    return {domain,node_count};
+    return {domain,n.sequence};
 }
 void Ledger::replace(Binding* b,Identity id) noexcept {
     if(b && id.sequence) { b->current=id; b->alive=true; b->retired=false; b->removed=false; }
@@ -196,24 +204,31 @@ bool Ledger::descends_from(Identity id,Identity ancestor) {
     // Parents always precede children. Descending index traversal needs no
     // recursion and visits each node at most once, including shared DAGs.
     std::fill(visited.begin(),visited.begin()+node_count,0);
-    visited[id.sequence-1]=1;
-    for(uint64_t i=id.sequence;i;--i) if(visited[i-1]) {
-        if(i==ancestor.sequence) return true;
-        for(auto parent:nodes[i-1].parent) if(parent.sequence) visited[parent.sequence-1]=1;
+    const auto start=size_t(node(id)-nodes.data()); visited[start]=1;
+    for(size_t i=start+1;i;--i) if(visited[i-1]) {
+        if(nodes[i-1].sequence==ancestor.sequence) return true;
+        for(auto parent:nodes[i-1].parent) if(parent.sequence) {
+            const auto* p=node(parent); require(p,"retained ancestry references discarded history");
+            visited[size_t(p-nodes.data())]=1;
+        }
     }
     return false;
 }
 uint32_t Ledger::roots(Identity id,Root* output,uint32_t capacity) {
     check(); require(complete(id) && output,"complete lineage and bounded output storage required");
-    std::fill(visited.begin(),visited.begin()+node_count,0); visited[id.sequence-1]=1;
+    std::fill(visited.begin(),visited.begin()+node_count,0);
+    const auto start=size_t(node(id)-nodes.data()); visited[start]=1;
     uint32_t count=0;
-    for(uint64_t i=id.sequence;i;--i) if(visited[i-1]) {
+    for(size_t i=start+1;i;--i) if(visited[i-1]) {
         const auto& n=nodes[i-1];
         if(n.root!=UINT32_MAX) {
             if(count==capacity) throw AdapterFailure{IFCLITE_SMLIB_RESOURCE_LIMIT,"lineage root query output exhausted"};
             output[count++]=root_records[n.root];
         }
-        for(auto parent:n.parent) if(parent.sequence) visited[parent.sequence-1]=1;
+        for(auto parent:n.parent) if(parent.sequence) {
+            const auto* p=node(parent); require(p,"retained ancestry references discarded history");
+            visited[size_t(p-nodes.data())]=1;
+        }
     }
     return count;
 }

@@ -52,6 +52,7 @@ class NumericalRead {
     static void begin(Ledger&,SmBrep&);
     static void begin_tessellation(Ledger&,SmBrep&);
     static void end(Ledger&);
+    static void release_tessellation_history(Ledger&);
     friend struct NumericalReadTestAccess;
 public:
     static SmStatus tessellate(Ledger&,SmBrep&,SmPolyBrep*&,const SmTessellationParams&,SmTessellationReport&);

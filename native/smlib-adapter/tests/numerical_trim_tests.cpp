@@ -5,6 +5,7 @@
 #include "failure.hpp"
 #include "edge_subdivision.hpp"
 #include "planar_transition_detail.hpp"
+#include "context_metadata.hpp"
 #include <SmEdge.h>
 #include <SmApiGeneral.h>
 #include <SmBSplineCurve.h>
@@ -28,6 +29,7 @@ struct NumericalReadTestAccess {
     static void begin(Ledger& ledger,SmBrep& source) { NumericalRead::begin(ledger,source); }
     static void tessellation(Ledger& ledger,SmBrep& source) { NumericalRead::begin_tessellation(ledger,source); }
     static void end(Ledger& ledger) { NumericalRead::end(ledger); }
+    static void release(Ledger& ledger) { NumericalRead::release_tessellation_history(ledger); }
 };
 }
 namespace {
@@ -100,6 +102,46 @@ void planar_intervals(bool positive) {
     catch(const AdapterFailure& e) { refused=e.status==IFCLITE_SMLIB_UNSUPPORTED; }
     require(refused!=positive,positive?"planar original intervals need not be unit length":
         "planar interval correspondence rejects a mismatched UV domain");
+}
+void read_journal() {
+    // #7955: actual constructor/destructor lifetimes, never a fabricated map.
+    // Reuse bounded storage across completed reads without recycling identity.
+    auto owner=OwnedBoundary::box(2,3,4); auto& solid=body(owner); auto& ledger=history(owner);
+    const auto roots=owner.faces(); Identity retired{};
+    Scope phase(ledger,*SmApiGetOrCreateContext(),&solid); RepresentationSeal seal(ledger,solid);
+    const auto nodes=ledger.node_size(),events=ledger.event_size();
+    for(unsigned read=0;read<20;++read) {
+        NumericalReadTestAccess::tessellation(ledger,solid);
+        SmCopyBrepMap map; auto internal=std::unique_ptr<SmBrep>(new (*solid.GetContext()) SmBrep(solid,&map));
+        ledger.check(); SmTArray<SmFace*> faces; internal->GetFaces(faces);
+        require(faces.GetSize()==6,"actual temporary read face inventory");
+        const auto current=ledger.identity(faces[0]);
+        if(retired.sequence) {
+            bool refused=false; std::array<Root,6> out;
+            try { ledger.roots(retired,out.data(),out.size()); } catch(const AdapterFailure&) { refused=true; }
+            require(refused && current.sequence>retired.sequence && current!=retired,
+                "reclaimed journal storage never reissues a retired generation");
+        }
+        // A refund cannot conceal a surviving actual copy or an unfinished phase.
+        bool refused=false;
+        try { NumericalReadTestAccess::release(ledger); } catch(const AdapterFailure&) { refused=true; }
+        require(refused && ledger.failed()==Failure::None && ledger.identity(faces[0])==current,
+            "unfinished numerical reads cannot release live history");
+        auto helper=copy(*trim(*internal)); helper->SetOwner(trim(*internal)->GetOwner()); reverse(*helper);
+        helper.reset(); internal.reset(); ledger.check(); NumericalReadTestAccess::end(ledger); seal.verify();
+        auto escaped=raw_context::construct_brep(solid.GetContext()); ledger.check();
+        refused=false;
+        try { NumericalReadTestAccess::release(ledger); } catch(const AdapterFailure&) { refused=true; }
+        require(refused && ledger.failed()==Failure::None,"journal release refuses a live escaped constructor generation");
+        escaped.reset(); ledger.check(); seal.verify();
+        NumericalReadTestAccess::release(ledger);
+        require(ledger.node_size()==nodes && ledger.event_size()==events && owner.faces()==roots,
+            "completed numerical reads release only temporary journal");
+        retired=current;
+    }
+    auto sibling=owner.copy();
+    for(auto id:sibling.faces()) require(sibling.ancestors(id).size()==1,"persistent ancestry remains valid across sequence gaps");
+    phase.finish();
 }
 void positive(bool reuse) {
     auto owner=OwnedBoundary::box(2,3,4); auto& ledger=history(owner); auto& solid=body(owner);
@@ -437,7 +479,8 @@ void subdivision(const char* name) {
 
 }
 void run_numerical_trim_case(const char* name) {
-    if(std::strcmp(name,"planar-rounding")==0) planar_coefficients(true);
+    if(std::strcmp(name,"journal")==0) read_journal();
+    else if(std::strcmp(name,"planar-rounding")==0) planar_coefficients(true);
     else if(std::strcmp(name,"planar-outside")==0) planar_coefficients(false);
     else if(std::strcmp(name,"planar-domain")==0) planar_intervals(true);
     else if(std::strcmp(name,"planar-domain-mismatch")==0) planar_intervals(false);

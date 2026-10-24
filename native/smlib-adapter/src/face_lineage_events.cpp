@@ -25,6 +25,7 @@ void Ledger::observe(SmNotifyOperation operation,SmObject* caller,SmObject* a,Sm
     if(failure!=Failure::None) return;
     if(event_count==limits.events) { fail(Failure::EventLimit); return; }
     auto& record=events[event_count++]; record.operation=operation;
+    record.before[0]=record.before[1]=record.after[0]=record.after[1]={};
 #ifdef IFCLITE_LINEAGE_FAILURE_STACK
     trace_event(operation,caller,a,b,c);
 #endif

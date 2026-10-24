@@ -86,9 +86,11 @@ class Ledger {
         Identity copy_generation{};
         struct PolygonReceipt { SmObject* polygon; SmObject* body; Identity input; bool rebound=false; };
         std::vector<PolygonReceipt> polygons;
+        uint32_t retained_nodes=0,retained_events=0;
     } numerical;
 
     struct Node {
+        uint64_t sequence=0; // monotonic identity, independent of reusable journal storage
         Identity parent[2]{};
         uint32_t root=UINT32_MAX;
         Change change=Change::Construct;
@@ -134,6 +136,7 @@ class Ledger {
     void report_failure_stack() const noexcept;
 #endif
     uint32_t node_count=0,event_count=0,root_count=0;
+    uint64_t issued_sequence=0;
     bool attached=false,closed=false;
     Scope* observer=nullptr;
     std::array<Scope*,64> frames{};
@@ -142,6 +145,7 @@ class Ledger {
     uint64_t frame_serial=0;
     std::vector<Node> nodes;
     std::vector<Binding> bindings;
+    std::vector<Binding> binding_scratch;
     std::vector<Root> root_records;
     std::vector<Event> events;
     std::vector<uint32_t> visited;
@@ -169,6 +173,7 @@ class Ledger {
     bool numerical_copy_event(Event&,SmNotifyOperation,SmObject*,SmObject*,SmObject*,SmObject*);
     bool numerical_copy_trim(SmObject*,Identity={});
     void protect(SmBrep*);
+    void reclaim_tessellation_history();
     friend class Scope;
     friend class RepresentationSeal;
     friend class GeneratedPlane;

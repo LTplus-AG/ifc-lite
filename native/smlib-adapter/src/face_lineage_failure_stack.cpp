@@ -33,6 +33,7 @@ void Ledger::report_failure_stack() const noexcept {
     const auto first=recorded>diagnostic_events.size()?recorded-uint32_t(diagnostic_events.size()):0;
     for(uint32_t i=first;i<recorded;++i) {
         const auto& t=diagnostic_events[i%diagnostic_events.size()];
+        if(t.event!=i+1) continue; // a discharged numerical journal is no longer retained
         std::fprintf(stderr,"lineage event=%u frame=%u op=%ld type=%ld caller=%zx a=%zx b=%zx c=%zx generation=%llu numerical=%llu alive=%u retired=%u\n",
             t.event,t.frame,t.operation,t.type,size_t(t.caller),size_t(t.a),size_t(t.b),size_t(t.c),
             static_cast<unsigned long long>(t.generation.sequence),

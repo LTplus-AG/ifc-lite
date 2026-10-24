@@ -38,3 +38,27 @@ Run native workspace tests, strict workspace Clippy, root pnpm/turbo checks,
 and actual WASM raw JSON, fingerprint and lineage tests. Ensure payload tests
 execute rather than skip. The facade observation tests join the oracle
 relocation/cutover layer, where their test-only imports become available.
+
+## Layer 5: private runtime and facade adapters
+
+`stack/8042-v3-runtime-adapters` depends on the host-observer layer.
+Private fingerprint, provenance, sidecar, iterable comparison and result
+restoration adapters match full66. The column scalar guard is removed only
+after the lower engine supports lossless model strings. Public exports remain
+on the TS implementation until layer 6.
+
+The Node asset resolver, retry behavior and full66 synchronous-versus-pending
+async initialization guard arrive with the independent `wasm-runtime.test.ts`.
+The unchanged public-facade race test waits until layer 6, where its oracle and
+public initializer exports exist. The lossless `wasm-columns.test.ts` update
+arrives here together with the column scalar-guard removal. These tests have
+NOT run; the latest runtime guard itself is retained unchanged.
+Package Node type dependency, lockfile, tsconfig and clean-dist build script
+match integration. Build cleanup prevents stale removed JS entering later
+published artifacts; no cleanup/build script was executed during preparation.
+
+Parent qualification: regenerate the observer declarations as required by
+layer 4, then root pnpm/turbo build dependencies/typecheck/test and actual WASM
+adapter/runtime tests on this exact layer. Never substitute package-local
+checks that bypass dependency builds. Additional differential tests using the
+private oracle arrive with the coherent public cutover in layer 6.

@@ -6,7 +6,7 @@ use super::tests::worker;
 use ifc_lite_core::{EntityScanner, SourceBundle};
 use crate::prepass::{resolve_prepass, PrepassSpans, ResolveOptions};
 
-fn with_source(source: &str, f: impl FnOnce(&mut RetainedProductExecution, &mut EntityDecoder, &GeometryRouter)) {
+pub(super) fn with_source(source: &str, f: impl FnOnce(&mut RetainedProductExecution, &mut EntityDecoder, &GeometryRouter)) {
     let bundle = SourceBundle::new(source.as_bytes().to_vec());
     let mut decoder = bundle.decoder();
     let mut router = GeometryRouter::with_units(source, &mut decoder);

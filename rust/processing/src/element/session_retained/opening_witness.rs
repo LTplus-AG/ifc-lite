@@ -71,3 +71,17 @@ pub(super) fn representation_sibling_sources() -> Vec<(String, bool, usize)> {
         (source, malformed, cuts)
     }).collect()
 }
+
+// #7955: independent rectangular containment witnesses. The original host is
+// [0,4] x [0,.2] x [0,3]; the replacement cutter is [-1,5] x [-.2,.4] x [-1,4].
+pub(super) fn removal_sources() -> Vec<String> {
+    let full = OVERLAP.replace("((1.5,0.1))", "((2.,0.1))")
+        .replace("#42,1.,0.4)", "#42,6.,0.6)")
+        .replace("((0.,0.,0.3))", "((0.,0.,-1.))")
+        .replace("#43,#45,#4,1.2)", "#43,#45,#4,5.)");
+    let placed = full.replace("#8= IFCLOCALPLACEMENT($,#5);", "#8= IFCLOCALPLACEMENT($,#300);")
+        .replace("ENDSEC;\nEND-ISO-10303-21;", "#300=IFCAXIS2PLACEMENT3D(#301,#4,#2);#301=IFCCARTESIANPOINT((32.,64.,8.));\nENDSEC;END-ISO-10303-21;");
+    let multi = full.replace("'SweptSolid',(#26)", "'SweptSolid',(#26,#126)")
+        .replace("ENDSEC;\nEND-ISO-10303-21;", "#126=IFCEXTRUDEDAREASOLID(#23,#25,#4,3.);\nENDSEC;END-ISO-10303-21;");
+    vec![full, placed, multi]
+}

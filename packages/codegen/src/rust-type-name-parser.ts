@@ -107,9 +107,10 @@ function tryNameTable(names: string[], bucketCount: number): NameTable | undefin
  * One exact-name lookup shared by canonical and normalized input.
  *
  * A `match` on `&str` compiles to one length/memcmp test per arm, in order:
- * over the 1,021 names of the canonical registry that is ~840 instructions
- * per call on Holter's keyword stream, and a code footprint that thrashes
- * the instruction cache (#7914).
+ * over the 1,021 names of the canonical registry that is a long, linear
+ * chain of comparisons per call and a very large code footprint (68 KB of
+ * x86 for the canonical lookup), which puts pressure on the instruction
+ * cache (#7914).
  * A minimal perfect hash instead picks the one candidate type from two small
  * tables, and the candidate's own spelling verifies the hit, so a foreign name
  * comes back `None`. The tables are data, so the lookup is also smaller than

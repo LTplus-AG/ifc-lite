@@ -2,7 +2,9 @@
 
 Status: the original synchronous capture fix has focused-test and native DPR2
 functional evidence. The asynchronous-reader refusal added in `4f90b5f332`
-requires refreshed typecheck/tests and native qualification; preparation is pending.
+passed refreshed root typecheck and all 84 focused tests with zero failures or
+skips on unchanged source. Matching control preparation and native qualification
+remain pending.
 This capsule does not yet establish issue completion or a performance verdict.
 
 The viewer policy and original capture gateway shipped in #6711. This follow-up
@@ -16,8 +18,11 @@ NVIDIA desktop. Both arms contain the same capture fix; only the navigation
 source pins are retained in `diagnostics/pre-async-*`. Their queued staging and
 measurement jobs were positively cancelled before execution when production
 reader enforcement changed. No accepted native timing samples were produced.
-Current preparation/staging receipt IDs remain unset until submitted and cannot
-qualify in that state.
+The current candidate preparation is worker `c3bc74a3-edcd-4003-aef4-a4a9fee28037`: full
+root typecheck (127 Turbo tasks plus the root tail) and 57 build/test tasks passed.
+`diagnostics/async-validation-*` preserves its receipt and original log, including
+the delayed-reader and three rejection regressions. Remaining preparation/staging
+receipt IDs stay unset until submitted and cannot qualify in that state.
 
 The previous pair used root pnpm/Turbo. Its control passed
 56 tasks with unchanged source. Its JS bindings and declarations match Pop, but

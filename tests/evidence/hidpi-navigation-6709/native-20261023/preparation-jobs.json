@@ -2,7 +2,7 @@
   "candidate": null,
   "base": null,
   "pcBaseProducer": null,
-  "pcCandidateOriginalProducer": null,
+  "pcCandidateOriginalProducer": "c3bc74a3-edcd-4003-aef4-a4a9fee28037",
   "pcCandidateProducer": null,
   "qualification": null,
   "pcRepackScript": "/home/louistrue/build-workers/worker-state/storage-tasks/hidpi-6709-async-candidate-pc-20261024/shared-runtime-repack/repack-pc-candidate.py"

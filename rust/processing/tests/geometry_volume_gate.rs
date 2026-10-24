@@ -59,7 +59,7 @@ fn produce_all(
         texture_index: &texture_index,
         site_local_rotation: None,
     };
-    let opts = MeshProductionOptions { geometry_hash: hash };
+    let opts = MeshProductionOptions { geometry_hash: hash, ..Default::default() };
 
     let mut jobs: Vec<(u32, usize, usize)> = Vec::new();
     let mut scanner = EntityScanner::new(content);

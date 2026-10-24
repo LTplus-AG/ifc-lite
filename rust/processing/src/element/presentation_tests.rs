@@ -53,6 +53,7 @@ pub(super) fn options() -> MeshProductionOptions {
             tolerance: 1e-5,
             world_rtc: [8., 16., 0.],
         }),
+        ..Default::default()
     }
 }
 pub(super) fn metadata(id: u32) -> ElementMeshMetadata {
@@ -109,7 +110,7 @@ fn presentation_repairs_winding_and_normals_against_analytic_tetrahedron_8049() 
         let data = Data::default();
         let (meshes, occurrences) = super::presentation_source::submeshes(
             &AssemblyJob::from(&job(&entity, &meta)), collection, RED,
-            &data.ctx(), &mut decoder, &mut None, 0,
+            &data.ctx(), &mut decoder, &mut None, 0, super::presentation::CollectionTopology::ItemsUncut,
         );
         assert!(occurrences.is_empty());
         assert_eq!(meshes.len(), 1);

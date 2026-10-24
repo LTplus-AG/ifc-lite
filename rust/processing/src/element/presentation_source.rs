@@ -5,15 +5,18 @@
 //! next part is inspected, so every decoder read keeps its historical order.
 use super::assembly_submeshes::{emit_body, occurrence};
 use super::assembly_types::{ready_type_part, TypePart};
-use super::presentation::{HashPolicy, Palette, ReadyBody, SourceId};
+use super::presentation::{CollectionTopology, FaceCorrespondence, HashPolicy, Palette, ReadyBody, SourceId};
 use super::*;
+use crate::types::presentation::{NormalProvenance, UvAuthority};
 
 /// A sub-mesh collection: per-item colour through the canonical
 /// `resolve_submesh_color` precedence (#913 §4.2), material-name inference for
 /// window/door parts, the #858 per-item palette split, UV/texture, and the
 /// #1623 don't-bake occurrences. `class` is stamped on every emitted sub-mesh:
 /// 0 for occurrence geometry, [`GEOM_CLASS_LAYER_SLICE`] for the per-layer
-/// slices of a material-layer wall.
+/// slices of a material-layer wall. `topology` is what the executing strategy
+/// proves about the parts' triangles; only an uncut collection can bind a
+/// palette (#7955 J5).
 #[allow(clippy::too_many_arguments)] // the executed collection plus its borrowed inputs
 pub(super) fn submeshes(
     job: &AssemblyJob<'_>,
@@ -23,6 +26,7 @@ pub(super) fn submeshes(
     decoder: &mut EntityDecoder,
     hasher: &mut Option<GeometryHasher>,
     class: u8,
+    topology: CollectionTopology,
 ) -> (Vec<MeshData>, Vec<RawInstanceOccurrence>) {
     // Material colours for this element, used when a sub-mesh has no direct
     // style; ONE cursor alternates them across the collection so frame
@@ -51,11 +55,22 @@ pub(super) fn submeshes(
         // normals. The verdict is per SUB-BODY, the hasher's segment
         // granularity. This MUST precede direct/mapped source admission.
         let verdict = orient_mesh_outward_verdict(&mut mesh);
-        if verdict.flipped || mesh.normals.len() != mesh.positions.len() {
+        let normals = recompute_reason(&mesh, verdict.flipped);
+        if normals != NormalProvenance::Producer {
             calculate_normals(&mut mesh);
         }
         let (color, material_name) =
             color(job, sub.geometry_id, fallback, materials, &mut next_material, ctx, decoder, true);
+        // #7955 J5: judged from source here, so the funnel stays source-free.
+        let uv_authority =
+            (job.provenance() && sub.texture.is_some()).then(|| judge_uv_authority(sub.geometry_id, ctx, decoder));
+        // A void cut can rebuild a part yet keep its triangle count, so only
+        // a collection proven uncut reads the face set's row count.
+        let mapped = job.provenance() && ctx.indexed_colour_full.contains_key(&sub.geometry_id);
+        let faces = match (topology, mapped) {
+            (CollectionTopology::ItemsUncut, true) => face_correspondence(sub.geometry_id, decoder),
+            _ => FaceCorrespondence::Unproven,
+        };
         let body = ReadyBody {
             mesh,
             color,
@@ -70,10 +85,52 @@ pub(super) fn submeshes(
             }),
             palette_source: source,
             hash: HashPolicy::Submesh(verdict),
+            normals,
+            uv_authority,
+            faces,
         };
         meshes.extend(emit_body(body, job, ctx.site_local_rotation, hasher));
     }
     (meshes, occurrences)
+}
+
+/// How far a textured part's UVs are the source's (#7955 J5), judged on the
+/// face set's source indices by the textured mesher's own predicates, so a
+/// triangle the mesher dropped does not shift which row is judged. Read only
+/// when provenance is recorded.
+fn judge_uv_authority(geometry_id: u32, ctx: &MeshProductionContext<'_>, decoder: &mut EntityDecoder) -> UvAuthority {
+    let Some(map) = ctx.texture_index.get(&geometry_id) else { return UvAuthority::UnknownMap };
+    let Ok(face_set) = decoder.decode_by_id(geometry_id) else { return UvAuthority::UnknownMap };
+    let fabricated = ifc_lite_geometry::TriangulatedFaceSetProcessor::fabricated_uv_corners(&face_set, decoder, map);
+    crate::types::presentation::uv_authority(map, fabricated)
+}
+
+/// The correspondence a per-item body of a collection proven
+/// [`CollectionTopology::ItemsUncut`] has with its own face set (#7955 J5),
+/// from the face set's type and `CoordIndex` row count. Read only when
+/// provenance is recorded and a palette maps the item.
+fn face_correspondence(geometry_id: u32, decoder: &mut EntityDecoder) -> FaceCorrespondence {
+    let Ok(face_set) = decoder.decode_by_id(geometry_id) else { return FaceCorrespondence::Unproven };
+    match face_set.ifc_type {
+        IfcType::IfcTriangulatedFaceSet | IfcType::IfcTriangulatedIrregularNetwork => face_set
+            .attr(ifc_lite_core::slot::IfcTriangulatedFaceSet::COORD_INDEX)
+            .and_then(|rows| rows.as_list())
+            .map_or(FaceCorrespondence::Unproven, |rows| FaceCorrespondence::Triangulated(rows.len())),
+        IfcType::IfcPolygonalFaceSet => FaceCorrespondence::Polygonal,
+        _ => FaceCorrespondence::Unproven,
+    }
+}
+
+/// Why the submesh funnel must recompute normals, if it must: a winding flip
+/// invalidates the producer's normals, and a missing channel has none.
+fn recompute_reason(mesh: &Mesh, flipped: bool) -> NormalProvenance {
+    if flipped {
+        NormalProvenance::RecomputedAfterWindingRepair
+    } else if mesh.normals.len() != mesh.positions.len() {
+        NormalProvenance::RecomputedMissing
+    } else {
+        NormalProvenance::Producer
+    }
 }
 
 /// Direct style wins; else chase IfcMappedItem so mapped sub-geometry
@@ -121,9 +178,14 @@ pub(super) fn fallback(
     hasher: &mut Option<GeometryHasher>,
 ) -> Vec<MeshData> {
     let verdict = orient_mesh_outward_verdict(&mut mesh);
-    if verdict.flipped {
+    // Only a flip recomputes here; a missing channel is repaired, and
+    // recorded, further down the funnel.
+    let normals = if verdict.flipped {
         calculate_normals(&mut mesh);
-    }
+        NormalProvenance::RecomputedAfterWindingRepair
+    } else {
+        NormalProvenance::Producer
+    };
     // Multi-colour IfcIndexedColourMap → one mesh per palette group (#858),
     // found by walking the element's representation for the colour-mapped
     // face set, after winding repair. A changed triangle count (CSG/void
@@ -147,6 +209,11 @@ pub(super) fn fallback(
             key,
         }),
         hash: HashPolicy::Fallback(verdict),
+        normals,
+        uv_authority: None,
+        // A void cut can keep the triangle count, and a merged body holds
+        // other items: neither is provably the face set row for row.
+        faces: FaceCorrespondence::Unproven,
     };
     emit_body(body, job, ctx.site_local_rotation, hasher)
 }

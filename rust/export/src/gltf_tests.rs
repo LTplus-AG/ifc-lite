@@ -11,6 +11,17 @@ use super::*;
 use ifc_lite_processing::process_geometry;
 use ifc_lite_processing::TessellationQuality;
 
+#[test]
+fn issue_7955_j5_texture_option_matches_the_encoder_feature() {
+    let bytes = include_bytes!("../../geometry/tests/fixtures/mapped_instances_synthetic.ifc");
+    let result = try_export_glb(bytes, &GltfOptions::default().with_textures(true));
+    if cfg!(feature = "gltf-textures") {
+        assert!(result.is_ok(), "enabled texture export accepts the option");
+    } else {
+        assert_eq!(result.unwrap_err().code(), "UNSUPPORTED_OPTION");
+    }
+}
+
 /// Parse a GLB and return (json: Value, bin: Vec<u8>).
 pub(crate) fn parse_glb(glb: &[u8]) -> (Value, Vec<u8>) {
     // Assert the literal magic bytes (not a derived constant) so a wrong magic
@@ -2475,6 +2486,7 @@ fn a_georeferenced_rotated_sibling_still_instances() {
             color: [0.5, 0.5, 0.5, 1.0],
             origin: [0.0, 0.0, 0.0],
             instance: Some(im),
+            appearance: None,
         }
     }
     let views = vec![
@@ -2601,6 +2613,7 @@ fn a_mixed_group_instances_its_exact_members_and_flattens_the_rigid_one() {
             color: [0.5, 0.5, 0.5, 1.0],
             origin: [0.0, 0.0, 0.0],
             instance: Some(im),
+            appearance: None,
         }
     }
     let views = vec![
@@ -2899,6 +2912,7 @@ fn a_yawed_site_still_instances_its_repeated_shape() {
             color: [0.5, 0.5, 0.5, 1.0],
             origin: [0.0, 0.0, 0.0],
             instance: im,
+            appearance: None,
         }
     }
 

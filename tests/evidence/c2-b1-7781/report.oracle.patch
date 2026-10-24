@@ -1,0 +1,29 @@
+--- a/rust/geometry/src/representation/walk.rs
++++ b/rust/geometry/src/representation/walk.rs
+@@ -244,7 +244,7 @@
+                 shape_rep: Some(rep),
+                 path: &run.path,
+             };
+-            let _ = (rep, why, &at);
++            run.visitor.refused(rep, why, &at);
+             return Ok(None);
+         }
+         Ok(Some(decoder.resolve_ref_list(list)?))
+@@ -294,7 +294,7 @@
+         let bail = matches!(self.nested, NestedMaps::Refuse);
+         let refuse = |run: &mut Run<'_, V>, why| {
+             let at = WalkCtx { element: run.element, shape_rep: None, path: &run.path };
+-            let _ = (item, why, &at);
++            run.visitor.refused(item, why, &at);
+             if bail { Flow::Stop } else { Flow::Continue }
+         };
+         if run.path.len() >= max_depth as usize {
+@@ -328,7 +328,7 @@
+                     // while its entered scope is still active until leave_map.
+                     let at = WalkCtx { element: run.element, shape_rep: None,
+                         path: &run.path[..run.path.len() - 1] };
+-                    let _ = (item, why, &at);
++                    run.visitor.refused(item, why, &at);
+                     if bail || terminal { flow = Flow::Stop; }
+                 }
+             }

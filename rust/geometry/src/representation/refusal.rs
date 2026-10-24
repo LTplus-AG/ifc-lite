@@ -27,8 +27,9 @@ pub enum WalkRefusal {
 }
 
 impl WalkRefusal {
-    /// The error the strict callers have always reported for this refusal,
-    /// with its exact message text; `item` is the refused `IfcMappedItem`'s id.
+    /// Convert to a geometry error, preserving historical strict messages for
+    /// existing refusals. `item` is the refused mapped item's id, or the holding
+    /// representation's id for a root-list budget refusal.
     pub fn into_error(self, item: u32) -> crate::Error {
         let msg = match self {
             WalkRefusal::Cyclic => format!("Detected cyclic IfcMappedItem reference at #{item}"),
@@ -36,7 +37,7 @@ impl WalkRefusal {
                 "MappedItem nesting exceeded maximum depth of {max_depth} at #{item}"
             ),
             WalkRefusal::Budget { max_levels } => format!(
-                "IfcMappedItem expansion exceeded the work budget of {max_levels} levels or item references at #{item}"
+                "Representation expansion exceeded the work budget of {max_levels} levels or item references at #{item}"
             ),
             WalkRefusal::MissingSource => "MappedItem missing MappingSource".to_string(),
             WalkRefusal::UnresolvedSource => "Failed to resolve MappingSource".to_string(),

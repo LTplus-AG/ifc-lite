@@ -14,13 +14,14 @@ mod refusal;
 mod select;
 mod walk;
 
-pub use select::{meshed_representations, Select};
-pub use walk::{
-    Flow, MappedLevel, NestedMaps, RepresentationWalk, WalkCtx, WalkRefusal, WalkVisitor, MAX_WALK_LEVELS,
-};
 pub(crate) use select::{
     effective_element_rep_type, effective_rep_type, is_body_representation,
     is_direct_body_representation,
+};
+pub use select::{meshed_representations, Select};
+pub use walk::{
+    Flow, MappedLevel, NestedMaps, RepresentationWalk, WalkCtx, WalkRefusal, WalkVisitor,
+    MAX_WALK_LEVELS,
 };
 
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};

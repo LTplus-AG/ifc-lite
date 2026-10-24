@@ -626,82 +626,51 @@ pub struct RepresentationWalk { pub select: Select, pub nested: NestedMaps }
 pub fn meshed_representations(element, representations) -> impl Iterator; // = Select::Meshed
 ```
 
-`NestedMaps::Expand { max_depth, max_levels }` bounds branching work in the
-recursive walker. Use `MAX_WALK_LEVELS` (65,536) as the default allowance.
-Two independent counters share that limit: mapped-level attempts (after depth
-and cycle checks, before resolving the source) and total `Items` members.
-Every expanded occurrence pays again, including repeated valid DAG nodes. Each full list
-is charged before allocating or decoding its members, including ignored
-non-reference members. Product representations share the counters; each public
-walk call starts fresh. This bounds expansion work, not source parsing or
-visitor-owned computation.
+`NestedMaps::Expand { max_depth, max_levels }` has independent counters for
+mapped-level attempts and total `Items` members. `MAX_WALK_LEVELS` (65,536) is
+the proposed default for each; every DAG occurrence pays again. Full lists,
+including ignored non-reference members, are charged before member allocation
+or decoding. Product representations share counters; each walk starts fresh.
+Depth and path-cycle checks precede level admission and source resolution.
 
-Exhaustion reports one `WalkRefusal::Budget { max_levels }` and stops the entire
-walk, unwinding every entered level. A root-list refusal identifies the
-representation ID and sets `WalkCtx::shape_rep`; nested refusals identify the
-mapped item and exclude it from the path. Product/map calls still return
-`Ok(())` on budget refusal: callers must handle the visitor's refusal channel to
-report truncation. Existing `ShapeError` results remain errors.
+A level resolves its source and mapped representation before `enter_map`, then
+reads/charges/decodes `Items` only on `Continue`. `SkipChildren` and `Stop`
+suppress child-list errors and charges. Every entered scope pairs with
+`leave_map` on normal stop/refusal. Malformed nested lists allow later siblings;
+`Budget { max_levels }` reports once and stops globally, unwinding all scopes.
+Root budget refusals identify the representation (`shape_rep` is set); nested
+refusals identify the mapped item, excluded from `ctx.path`. `product`/`map`
+still return `Ok(())` on refusal: **`WalkVisitor::refused` is required**, and a
+visitor must report truncation or explicitly abstain. `ShapeError` remains an
+error. `FirstChain`, `Refuse` and `Leaf` have no work meters.
 
-Class X entry policy (#8020/#7781), an explicit exception to the former eager
-recursive behavior: a nested level resolves `MappingSource` and
-`MappedRepresentation` before `enter_map`, but reads, validates, charges and
-decodes its `Items` only after the callback returns `Continue`. List charging
-still precedes all member allocation/decoding, including ignored non-references.
-`SkipChildren` and `Stop` suppress child-list charges, decoding and errors, even
-for missing or malformed `Items`; both still pair entry with `leave_map`.
-A nested `MissingItems`, `Decode` or item-budget refusal now happens inside the
-entered scope, with a paired leave, while its refusal context excludes that
-level. Nonterminal malformed-list refusals allow later siblings; `Budget` stops
-globally. Depth/cycle checks still precede level admission; level admission
-still precedes source resolution and the callback, even for a skipped level.
-An over-budget list is refused before examining members, so it can supersede a
-decoder error. Root lists retain their existing precharge before member decode,
-without a mapped-level entry callback; their errors remain `ShapeError`.
+Direct root `Items` also consume the allowance: a legitimate list larger than
+65,536 can be refused before its first item, stopping later representations.
+Before production `Expand` adoption, C2-B3, C2-B4, C2-X1 and C4-8a must measure
+corpus per-product direct-plus-expanded maxima and record the cap margin (or
+review a revised charging policy), and prove refusal reaches diagnostics or an
+explicit abstention. No production `Expand` caller is introduced here. These
+meters bound actual expansion, not parsing, visitor work or cached logical
+occurrences; whole-product admission (#7887) remains separate.
 
-This laziness permits a visitor to reject/skip a source before paying for its
-children (for example, an already cached source or a failed transform). It is
-not sufficient for strict cache-independent admission. These generic meters
-bound actual expanded work; they do **not** charge cached logical occurrences
-that a visitor skips. The deferred #7887 structural prepass is intended to own per-product
-logical admission, including cached occurrences; it is not implemented here. Cache hits must not be treated
-as proof that this lower walk validated all descendants. Continued expansion
-retains both work bounds and reports truncation. `FirstChain` remains unmetered
-by either work counter (no `u32::MAX` sentinel); its depth and cycle policy is
-unchanged. `Refuse` and `Leaf` also have no work meters.
+**C2-B1 coordinator ruling (2026-10-24, #7781/#8020).** This is a separate X
+policy reconciliation before C2-B2's R traversal consolidation (#8007).
+Current AGENTS bound-and-report rules require a work budget for accumulating
+DAG expansion; a public decoder-only walker cannot rely on a visitor cache.
+For this scope only, the ruling supersedes C2 note §1.1's no-budget assumption
+and D35's additive-only rule, permitting the bounded policy and typed explicit
+refusal contract. It authorizes no other API removal and waives no test,
+corpus, semver or performance gate. C2-B1 alone does not close #7781.
 
-Level entities are pre-callback snapshots. The callback's mutable decoder can
-change which entity each child reference resolves to: child decoding now sees
-the post-callback decoder, while the already resolved mapped representation's
-`Items` attribute remains the snapshot. A fully decoded list is still a snapshot
-before its first item callback. No panic-unwind cleanup guarantee is added;
-normal stop/refusal cleanup pairs every entered scope. Traversal remains
-recursive with its existing path-scoped set; this policy change introduces no
-iterative task engine, router visitor or transform consolidation.
-
-`WalkRefusal` now distinguishes `MissingSource`, `UnresolvedSource`,
+The source breaks ride main's pending Rust break #13 (`rust-major-offset.json`),
+without an offset increment: `Expand` gains `max_levels`; `WalkRefusal` replaces
+`Dangling`/`Malformed` with `MissingSource`, `UnresolvedSource`,
 `MissingMappedRepresentation`, `UnresolvedMappedRepresentation`, `MissingItems`
-and `Decode(core::Error)` instead of `Dangling`/`Malformed`. A `#n` whose record
-cannot be decoded is `Decode`, whereas a present non-reference slot is
-`Unresolved*`. `TooDeep { max_depth }` carries the configured limit.
-`WalkRefusal::into_error(item_id)` preserves the historical strict refusal messages
-and wraps decoder failures in `Error::CoreError`. `WalkVisitor::refused` receives
-`&DecodedEntity` instead of a numeric id (read `.id` for the old identifier), so
-future strict visitors can inspect the refused mapped item. For a root budget
-refusal that entity is the holding representation, with `shape_rep` set.
-
-Source breaks requiring a cargo-semver-checks comparison with published 21.5.0:
-`Expand` gains `max_levels`; `WalkRefusal` replaces/removes variants, changes
-`TooDeep` to a struct variant and adds `Budget`/`Decode`; it no longer implements
-`Clone`, `Copy`, `PartialEq` or `Eq` because the decoder error is owned; and
-`WalkVisitor::refused` implementations must change their argument type.
-`into_error` is additive. The break #12 record in `rust-major-offset.json` is
-unchanged pending that measurement.
-
-This decoder policy does not bound the ordinary renderer. GeometryProgram and
-MappingControl remain its sole execution controller; adapting structural budget
-and reporting behavior there (#7873), decoder iteration (#8007), and drawing /
-whole-product admission (#7887) remain separate work.
+and `Decode(core::Error)`, reshapes `TooDeep { max_depth }`, adds `Budget`, and
+loses `Clone`/`Copy`/`PartialEq`/`Eq`; `refused` now requires `&DecodedEntity`
+and an explicit implementation. `into_error(entity_id)` is additive and uses
+entity-neutral budget wording. These breaks are recorded by API inspection;
+direct cargo-semver-checks 0.50.0 against the published **22.6.0** is pending.
 
 #### mesh_check (test-support)
 

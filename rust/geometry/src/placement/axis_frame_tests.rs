@@ -50,7 +50,9 @@ fn parse_axis2_placement_3d_defaults_missing_axis_and_ref_direction() {
     let placement = decoder.decode_by_id(2).unwrap();
     assert_eq!(placement.attributes.len(), 1, "test fixture sanity check");
 
-    let m = Axis2Placement::read_3d(&placement, &mut decoder).unwrap().matrix();
+    let m = Axis2Placement::read_3d(&placement, &mut decoder)
+        .unwrap()
+        .matrix();
 
     // Translation column carries the location through unchanged.
     assert!((m[(0, 3)] - 10.0).abs() < 1e-9);
@@ -89,10 +91,20 @@ fn parse_axis2_placement_3d_axis_only_frames_on_world_axes() {
         );
         let mut decoder = EntityDecoder::new(&content);
         let placement = decoder.decode_by_id(3).unwrap();
-        let m = Axis2Placement::read_3d(&placement, &mut decoder).unwrap().matrix();
+        let m = Axis2Placement::read_3d(&placement, &mut decoder)
+            .unwrap()
+            .matrix();
         for i in 0..3 {
-            assert!((m[(i, 0)] - x[i]).abs() < 1e-9, "Axis {axis:?}{tail}: X = {:?}", m.column(0));
-            assert!((m[(i, 1)] - y[i]).abs() < 1e-9, "Axis {axis:?}{tail}: Y = {:?}", m.column(1));
+            assert!(
+                (m[(i, 0)] - x[i]).abs() < 1e-9,
+                "Axis {axis:?}{tail}: X = {:?}",
+                m.column(0)
+            );
+            assert!(
+                (m[(i, 1)] - y[i]).abs() < 1e-9,
+                "Axis {axis:?}{tail}: Y = {:?}",
+                m.column(1)
+            );
         }
     }
 }
@@ -110,7 +122,9 @@ fn parse_axis2_placement_3d_orthogonalizes_parallel_ref_direction_low_z() {
     let mut decoder = EntityDecoder::new(content);
     let placement = decoder.decode_by_id(4).unwrap();
 
-    let m = Axis2Placement::read_3d(&placement, &mut decoder).unwrap().matrix();
+    let m = Axis2Placement::read_3d(&placement, &mut decoder)
+        .unwrap()
+        .matrix();
 
     // X axis (column 0) is the fallback perpendicular (0,1,0), not the
     // degenerate parallel RefDirection.
@@ -136,7 +150,9 @@ fn parse_axis2_placement_3d_orthogonalizes_parallel_ref_direction_high_z() {
     let mut decoder = EntityDecoder::new(content);
     let placement = decoder.decode_by_id(4).unwrap();
 
-    let m = Axis2Placement::read_3d(&placement, &mut decoder).unwrap().matrix();
+    let m = Axis2Placement::read_3d(&placement, &mut decoder)
+        .unwrap()
+        .matrix();
 
     // X axis (column 0) is the fallback perpendicular (0,-1,0).
     assert!((m[(0, 0)] - 0.0).abs() < 1e-9);

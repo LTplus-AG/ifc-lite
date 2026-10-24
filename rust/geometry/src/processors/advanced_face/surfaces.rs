@@ -5,10 +5,10 @@
 //! Source admission for planar boundaries and cylindrical patches.
 
 use crate::math::tol;
+use crate::placement::Axis2Placement;
 use crate::{scale_segments, Error, Point3, Result, TessellationQuality};
 use ifc_lite_core::{slot, DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
-use crate::placement::Axis2Placement;
 use super::bounds::extract_face_bounds;
 use super::edge_loop::extract_edge_loop_points_for_bounds;
 use super::analytic_plan::{PlanarPlan, CylinderPlan};

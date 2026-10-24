@@ -1281,7 +1281,8 @@ fn capped_curve_in_mapped_source_is_reported_and_not_misattributed_to_the_next_i
 // leaf policy even when a default/lossless decoder has already parsed input.
 #[test]
 fn decoderless_direction_preserves_raw_2d_3d_and_zero_ratios_7670() {
-    let read = |entity: &ifc_lite_core::DecodedEntity| GeometryRouter::new().parse_direction(entity);
+    let read =
+        |entity: &ifc_lite_core::DecodedEntity| GeometryRouter::new().parse_direction(entity);
     for (record, expected) in [
         ("IFCDIRECTION((3,-4.))", [3.0, -4.0, 0.0]),
         ("IFCDIRECTION((2.,-3.,4.))", [2.0, -3.0, 4.0]),
@@ -1298,7 +1299,8 @@ fn decoderless_direction_preserves_raw_2d_3d_and_zero_ratios_7670() {
 
 #[test]
 fn decoderless_direction_rejects_malformed_parsed_entities_7670() {
-    let read = |entity: &ifc_lite_core::DecodedEntity| GeometryRouter::new().parse_direction(entity);
+    let read =
+        |entity: &ifc_lite_core::DecodedEntity| GeometryRouter::new().parse_direction(entity);
     for record in [
         "IFCDIRECTION()", "IFCDIRECTION($)", "IFCDIRECTION(*)",
         "IFCDIRECTION(1.)", "IFCDIRECTION(())", "IFCDIRECTION((1.))",
@@ -1318,7 +1320,8 @@ fn decoderless_direction_rejects_malformed_parsed_entities_7670() {
 
 #[test]
 fn decoderless_direction_rejects_parsed_nonfinite_ratios_7670() {
-    let read = |entity: &ifc_lite_core::DecodedEntity| GeometryRouter::new().parse_direction(entity);
+    let read =
+        |entity: &ifc_lite_core::DecodedEntity| GeometryRouter::new().parse_direction(entity);
     // The default decoder is lossless: overflowing STEP REALs parse as
     // infinities. Strict-reals decoding would reject before reaching this API.
     for literal in ["1.E400", "-1.E400"] {

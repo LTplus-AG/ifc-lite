@@ -22,7 +22,9 @@ fn filled_x(axis: &str) -> [f64; 3] {
     );
     let mut decoder = EntityDecoder::new(&content);
     let placement = decoder.decode_by_id(3).unwrap();
-    let m = Axis2Placement::read_3d(&placement, &mut decoder).unwrap().matrix();
+    let m = Axis2Placement::read_3d(&placement, &mut decoder)
+        .unwrap()
+        .matrix();
     [m[(0, 0)], m[(1, 0)], m[(2, 0)]]
 }
 

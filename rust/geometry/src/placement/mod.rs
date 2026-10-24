@@ -17,9 +17,9 @@
 
 mod chain;
 mod chain_walk;
-mod heading;
 mod grid;
 mod grid_frame;
+mod heading;
 pub(crate) mod linear;
 mod validate;
 

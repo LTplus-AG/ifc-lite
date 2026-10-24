@@ -32,6 +32,11 @@ impl GeometryRouter {
     pub(crate) fn parse_direction(&self, direction_entity: &DecodedEntity) -> Result<Vector3<f64>> {
         EntityDecoder::direction3_of(direction_entity)
             .map(Vector3::from)
-            .ok_or_else(|| Error::geometry(format!("#{} is not a readable IfcDirection", direction_entity.id)))
+            .ok_or_else(|| {
+                Error::geometry(format!(
+                    "#{} is not a readable IfcDirection",
+                    direction_entity.id
+                ))
+            })
     }
 }

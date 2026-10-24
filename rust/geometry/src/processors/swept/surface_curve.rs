@@ -13,8 +13,8 @@ use crate::{
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
 
-use crate::placement::Axis2Placement;
 use super::disk::directrix_is_sweepable;
+use crate::placement::Axis2Placement;
 use crate::router::GeometryProcessor;
 #[path = "surface_plan.rs"]
 mod plan;

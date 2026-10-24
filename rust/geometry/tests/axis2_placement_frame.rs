@@ -39,8 +39,9 @@
 //! CSG result rather than at a placement. This is the only test that reads the
 //! translation column directly, which is the reason to keep it -- not scarcity.
 //!
-//! This lives in `tests/` rather than beside them because the test body would
-//! push `transform.rs` (513 lines) past its 525-line ratchet budget.
+//! It lives in `tests/` because it was written when the unit tests sat in
+//! `transform.rs`, which had no line budget left; it now reads the public
+//! `placement::Axis2Placement` reader as a downstream crate would.
 
 use ifc_lite_core::EntityDecoder;
 use ifc_lite_geometry::placement::Axis2Placement;
@@ -58,7 +59,9 @@ fn a_rotated_placement_does_not_rotate_its_own_location() {
     let mut decoder = EntityDecoder::new(content);
     let placement = decoder.decode_by_id(4).unwrap();
 
-    let m = Axis2Placement::read_3d(&placement, &mut decoder).unwrap().matrix();
+    let m = Axis2Placement::read_3d(&placement, &mut decoder)
+        .unwrap()
+        .matrix();
 
     // Sanity: the rotation really is non-trivial (local X -> world +Y) ...
     assert!((m[(0, 0)] - 0.0).abs() < 1e-9, "m00 {}", m[(0, 0)]);

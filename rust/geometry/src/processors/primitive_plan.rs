@@ -76,7 +76,9 @@ fn primitive_position(
     decoder: &mut EntityDecoder,
 ) -> Result<Option<Matrix4<f64>>> {
     match decoder.resolve_optional(entity, slot::IfcCsgPrimitive3D::POSITION.index())? {
-        Some(position) => Ok(Some(crate::placement::Axis2Placement::read_3d(&position, decoder)?.matrix())),
+        Some(position) => Ok(Some(
+            crate::placement::Axis2Placement::read_3d(&position, decoder)?.matrix(),
+        )),
         None => Ok(None),
     }
 }

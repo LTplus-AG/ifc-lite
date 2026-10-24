@@ -73,39 +73,51 @@ impl AddState<'_> {
 
     /// A source type's `Body` maps in one context: the plan's body context
     /// when the type has maps there, else the first context it has. A type
-    /// that keeps one body per level of detail has a map per subcontext; an
-    /// occurrence instances one of them, not all. A map this plan deletes
-    /// part of is refused rather than leaving the copy part of its body.
+    /// that keeps one body per level of detail has a map per context; an
+    /// occurrence instances one of them, not all. A map gone with its
+    /// context, or one with no context, is not a candidate; a chosen map
+    /// whose representation or items this plan deletes is refused rather
+    /// than leave the copy part of its body.
     fn source_type_maps(&self, id: u32, what: &ObjectRef) -> Result<Vec<MapRef>, String> {
         let (schema, index) = (self.schema, self.index);
         let entity = |r: u32| index.type_of(r).unwrap_or_default();
+        let live = |r: &u32| !self.removed.contains(r);
         let maps = list_attr(index, schema, id, &entity(id), "RepresentationMaps").unwrap_or_default();
         let mut body = Vec::new();
-        for map in maps {
-            let rep = scalar_attr(index, schema, map, &entity(map), "MappedRepresentation");
-            let Some(rep) = rep else { continue };
+        for map in maps.into_iter().filter(live) {
+            let Some(rep) = scalar_attr(index, schema, map, &entity(map), "MappedRepresentation") else { continue };
             if !self.is_body(rep) {
                 continue;
             }
-            let context = scalar_attr(index, schema, rep, &entity(rep), "ContextOfItems");
-            match context {
-                Some(context) if ![map, rep, context].iter().any(|r| self.removed.contains(r)) => body.push((map, context)),
-                _ => return Err(format!("a Body map of type {what} is deleted by this plan")),
+            if let Some(context) = scalar_attr(index, schema, rep, &entity(rep), "ContextOfItems").filter(live) {
+                body.push((map, rep, context));
             }
         }
-        let chosen = body.iter().map(|&(_, c)| c).find(|&c| Some(c) == self.body_context).or(body.first().map(|&(_, c)| c));
-        Ok(body.into_iter().filter(|&(_, c)| Some(c) == chosen).collect())
+        let chosen = body.iter().map(|&(_, _, c)| c).find(|&c| Some(c) == self.body_context).or(body.first().map(|&(_, _, c)| c));
+        let mut out = Vec::new();
+        for (map, rep, context) in body.into_iter().filter(|&(_, _, c)| Some(c) == chosen) {
+            let items = list_attr(index, schema, rep, &entity(rep), "Items").unwrap_or_default();
+            if !live(&rep) || items.iter().any(|i| !live(i)) {
+                return Err(format!("a Body map of type {what} is deleted by this plan"));
+            }
+            out.push((map, context));
+        }
+        Ok(out)
     }
 
-    /// Whether representation `rep` is body geometry, the way the geometry
-    /// engine decides it (`rust/geometry/src/representation/select.rs`): by
-    /// its `RepresentationType`, else its identifier.
+    /// Whether representation `rep` is body geometry: its identifier, when it
+    /// has one, says `Body`; without one, its `RepresentationType` is one the
+    /// geometry engine meshes as a body (`rust/geometry/src/representation/
+    /// select.rs`). A `Clearance`, `Reference` or `Axis` representation is
+    /// not, whatever its type.
     fn is_body(&self, rep: u32) -> bool {
         let entity = self.index.type_of(rep).unwrap_or_default();
         let read = |attr| self.index.string_attr(self.schema, rep, &entity, attr).filter(|s| !s.trim().is_empty());
-        let effective = read("RepresentationType").or_else(|| read("RepresentationIdentifier"));
+        if let Some(identifier) = read("RepresentationIdentifier") {
+            return identifier.eq_ignore_ascii_case("Body");
+        }
         matches!(
-            effective.as_deref(),
+            read("RepresentationType").as_deref(),
             Some(
                 "Body"
                     | "SweptSolid"

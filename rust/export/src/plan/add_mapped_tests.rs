@@ -261,7 +261,7 @@ fn copies_at_the_same_transform_share_one_operator() {
 }
 
 /// `type_with_maps` with a second Body map, `#320`, in a second 3D context
-/// `#330`, as a type keeping one body per level of detail does.
+/// `#330`, listed first, as a type keeping one body per level of detail does.
 fn type_with_two_bodies(schema: &str) -> Vec<u8> {
     let r = |id, entity, fields: &[(&str, &str)]| {
         let fields: Vec<(&str, String)> = fields.iter().map(|&(n, v)| (n, v.to_string())).collect();
@@ -273,7 +273,7 @@ fn type_with_two_bodies(schema: &str) -> Vec<u8> {
         r(330, "IFCGEOMETRICREPRESENTATIONCONTEXT", &[("ContextType", "'Model'"), ("CoordinateSpaceDimension", "3"), ("Precision", "1.E-05"), ("WorldCoordinateSystem", "#301")]),
     ]
     .concat();
-    let text = String::from_utf8(type_with_maps(schema)).unwrap().replace("(#300,#310)", "(#300,#310,#320)");
+    let text = String::from_utf8(type_with_maps(schema)).unwrap().replace("(#300,#310)", "(#320,#300,#310)");
     text.replacen("ENDSEC;\nEND-ISO", &format!("{extra}ENDSEC;\nEND-ISO"), 1).into_bytes()
 }
 
@@ -323,6 +323,31 @@ fn a_negative_zero_shares_the_operator() {
 fn a_body_map_the_plan_deletes_part_of_refuses_the_copy() {
     let source = type_with_maps("IFC4");
     let (_, report) = run(&source, vec![(ObjectRef::Id(302), Disposition::Delete), add(mapped_wall(1, TypeLink::Existing(ObjectRef::Id(40)), IDENTITY))]);
+    // Deleting the representation takes its map with it: no Body map is left.
     let refusal = report.refusals.iter().find(|r| r.object == ObjectRef::Guid(gid(1).encode()));
-    assert!(refusal.is_some_and(|r| r.reason.contains("deleted by this plan")), "{:?}", report.refusals);
+    assert!(refusal.is_some_and(|r| r.reason.contains("no Body representation map")), "{:?}", report.refusals);
+    assert_eq!(report.added, 0);
+}
+
+/// What a copy can still instance after a delete: a level of detail gone
+/// with its context is no longer a candidate; a chosen map whose items are
+/// gone refuses the copy.
+#[test]
+fn a_delete_takes_a_candidate_or_refuses_the_copy() {
+    let link = || TypeLink::Existing(ObjectRef::Id(40));
+    let source = type_with_two_bodies("IFC4");
+    let (out, report) = run(&source, vec![(ObjectRef::Id(330), Disposition::Delete), add(mapped_wall(1, link(), IDENTITY))]);
+    assert_eq!(report.added, 1, "{:?}", report.refusals);
+    assert_eq!(count(&out, "IFCMAPPEDITEM"), 1);
+    let (_, report) = run(&type_with_maps("IFC4"), vec![(ObjectRef::Id(303), Disposition::Delete), add(mapped_wall(1, link(), IDENTITY))]);
+    assert_eq!(report.added, 0, "an empty body is not a copy");
+    assert!(report.refusals.iter().any(|r| r.reason.contains("deleted by this plan")), "{:?}", report.refusals);
+}
+
+/// A non-Body identifier is not body geometry, whatever its type.
+#[test]
+fn a_clearance_map_is_not_instanced() {
+    let source = String::from_utf8(type_with_maps("IFC4")).unwrap().replace("(#100,'Body','SweptSolid',(#303))", "(#100,'Clearance','SweptSolid',(#303))");
+    let (_, report) = run(source.as_bytes(), vec![add(mapped_wall(1, TypeLink::Existing(ObjectRef::Id(40)), IDENTITY))]);
+    assert!(report.refusals[0].reason.contains("no Body representation map"), "{:?}", report.refusals);
 }

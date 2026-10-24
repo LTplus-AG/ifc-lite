@@ -135,6 +135,7 @@ class Ledger {
     void trace_event(SmNotifyOperation,SmObject*,SmObject*,SmObject*,SmObject*) noexcept;
     void capture_failure_stack() noexcept;
     void report_failure_stack() const noexcept;
+    void report_resource_occupancy() const noexcept;
 #endif
     uint32_t node_count=0,event_count=0,root_count=0;
     uint64_t issued_sequence=0;
@@ -183,6 +184,7 @@ class Ledger {
     friend class PlanarTransition;
     friend class AffineTransition;
     friend struct SubdivisionTestAccess;
+    friend struct LedgerLifetimeTestAccess;
 public:
     explicit Ledger(Limits={});
     ~Ledger();

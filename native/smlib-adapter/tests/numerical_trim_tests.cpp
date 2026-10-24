@@ -462,7 +462,18 @@ void subdivision(const char* name) {
     }
     require(edge,"subdivision fixture has a real curved four-use edge");
     if(extrusion) {
+        // #7955/r12: unlike SmTess preparation, a direct MakeVertexSplitEdge
+        // fixture has not yet materialized the recognized analytic surface.
+        // Build the actual SDK basis BEFORE issuing a subdivision snapshot;
+        // never relax the production seal's materialized-data requirement.
         SmTArray<SmFace*> incident; edge->GetFaces(incident); bool found=false;
+        for(auto* face:incident) if(face->GetSurface()->GetType()==SmSurfOfExtrusion_TYPE) {
+            auto* surface=static_cast<SmSurfOfExtrusion*>(face->GetSurface());
+            if(!surface->GetGwNurbPointer())
+                require(surface->MakeNurb()==SM_SUCCESS && surface->GetGwNurbPointer(),
+                    "extrusion split fixture materializes its checked SDK basis");
+        }
+        ledger.check();
         for(auto* face:incident) found|=face->GetSurface()->GetType()==SmSurfOfExtrusion_TYPE;
         require(found,"affine subdivision fixture reaches actual SDK extrusion recognition");
     }
@@ -546,6 +557,7 @@ void subdivision(const char* name) {
         require(rejected,"subdivision rejects changed geometry intervals or missing completion");
     }
     phase.finish();
+    std::fprintf(stderr,"subdivision witness completed: %s faults=%u\n",name,faults);
 }
 
 }

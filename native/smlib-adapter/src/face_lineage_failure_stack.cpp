@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 #include "face_lineage.hpp"
+#include "edge_subdivision.hpp"
 #include <execinfo.h>
 #include <cstdio>
 #include <unistd.h>
@@ -24,7 +25,51 @@ void Ledger::capture_failure_stack() noexcept {
     const int count=::backtrace(failed_stack.frames.data(),int(failed_stack.frames.size()));
     failed_stack.size=count>0?uint32_t(count):0;
 }
+void Ledger::report_resource_occupancy() const noexcept {
+    // #7955/r12: frozen ledger metadata only. No SDK dereference, allocation,
+    // retirement, quota refund, or inference that an unmarked node is disposable.
+    // The physical node table is capped at 65536 by Ledger's constructor.
+    std::array<unsigned char,65536> marked{};
+    std::array<uint32_t,11> kinds{};
+    uint32_t alive=0,dead=0,live_current=0,invalid=0,subdivision_live=0;
+    auto mark=[&](Identity id) {
+        if(!id.sequence) return;
+        const auto* n=node(id);
+        if(!n) { ++invalid; return; }
+        marked[size_t(n-nodes.data())]=1;
+    };
+    for(const auto& b:bindings) if(b.address) {
+        if(!b.alive) { ++dead; continue; }
+        ++alive;
+        const auto* current=node(b.current);
+        if(current && !marked[size_t(current-nodes.data())]) ++live_current;
+        mark(b.current);
+        subdivision_live+=b.subdivision_operation.sequence!=0;
+    }
+    for(uint32_t i=0;i<numerical.retained_nodes && i<node_count;++i) marked[i]=1;
+    for(const auto& b:bindings) if(b.alive)
+        for(auto id:{b.numerical_operation,b.owned_transition,b.numerical_parent,b.numerical_owner_copy_operation,
+            b.numerical_parent_owner,b.numerical_face_input,b.subdivision_operation,b.subdivision_owner}) mark(id);
+    for(uint32_t i=0;i<root_count;++i) mark(root_records[i].identity);
+    mark(numerical.operation); mark(numerical.copy_generation);
+    for(const auto& polygon:numerical.polygons) mark(polygon.input);
+    for(uint32_t i=node_count;i>0;--i) if(marked[i-1])
+        for(auto parent:nodes[i-1].parent) mark(parent);
+    uint32_t reachable=0;
+    for(uint32_t i=0;i<node_count;++i) { reachable+=marked[i]!=0; ++kinds[unsigned(nodes[i].change)]; }
+    std::fprintf(stderr,"lineage quota_census nodes=%u node_limit=%u events=%u event_limit=%u "
+        "alive_bindings=%u dead_bindings=%u live_current_nodes=%u authority_reachable_nodes=%u "
+        "other_nodes=%u missing_identity_refs=%u subdivision_uv_live=%u retained_nodes=%u retained_events=%u "
+        "binding_capacity=%zu issued_sequence=%llu\n",node_count,limits.nodes,event_count,limits.events,
+        alive,dead,live_current,reachable,node_count-reachable,invalid,subdivision_live,
+        numerical.retained_nodes,numerical.retained_events,bindings.size(),static_cast<unsigned long long>(issued_sequence));
+    std::fprintf(stderr,"lineage quota_node_kinds construct=%u admit=%u copy=%u split=%u merge=%u "
+        "remove=%u add=%u destroy=%u edit=%u audit=%u\n",kinds[0],kinds[1],kinds[2],kinds[3],kinds[4],
+        kinds[5],kinds[6],kinds[7],kinds[8],kinds[9]);
+    if(subdivision) subdivision->report_exception();
+}
 void Ledger::report_failure_stack() const noexcept {
+    if(failure==Failure::NodeLimit || failure==Failure::EventLimit) report_resource_occupancy();
     std::fprintf(stderr,"lineage diagnostic_events total=%u capacity=%zu numerical_source=%p operation=%llu frame=%u serial=%llu\n",
         failed_event,diagnostic_events.size(),static_cast<void*>(numerical.source),
         static_cast<unsigned long long>(numerical.operation.sequence),numerical.frame,

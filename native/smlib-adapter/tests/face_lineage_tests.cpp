@@ -26,6 +26,17 @@
 #include <cstring>
 #include <stdexcept>
 #include <vector>
+namespace face_lineage {
+// Read-only test access to the actual live binding, never generation issuance.
+struct LedgerLifetimeTestAccess {
+    static Identity constructed_brep(Ledger& ledger,SmBrep* body) {
+        const auto* binding=ledger.binding(body,false);
+        const auto* birth=binding?ledger.node(binding->current):nullptr;
+        return binding && binding->alive && !binding->retired && birth && birth->change==Change::Construct?
+            binding->current:Identity{};
+    }
+};
+}
 namespace {
 using namespace face_lineage;
 // Expose the real SDK face ctor/dtor for allocation-only invariants. No
@@ -441,14 +452,23 @@ void transition_target_switch_refusal() {
         "A terminal authority survives B/preflight refusals and rejects silent head rotation before new SDK operation");
     owned.second.reset(); owned.first.reset(); owned.source.reset(); lifetime.finish();
 }
+Identity observed_brep_birth(Ledger& ledger,SmBrep* body,uint32_t first) {
+    // Default SmBrep construction emits SmRegion first, then the BRep notice
+    // (SmBrep.cpp:533/576). Match the real target generation, not event position.
+    const auto birth=LedgerLifetimeTestAccess::constructed_brep(ledger,body);
+    unsigned matches=0;
+    for(auto i=first;i<ledger.event_size();++i) matches+=ledger.event(i).operation==SM_NO_CONSTRUCTION &&
+        ledger.event(i).after[0]==birth;
+    return birth.sequence && matches==1?birth:Identity{};
+}
 void transition_target_reuse_refusal() {
     std::fprintf(stderr,"lineage BEGIN actual BRep target lifetime/address reuse refusal\n");
     Solids owned; owned.source=box(); Ledger ledger;
     auto& context=*const_cast<SmContext*>(owned.source->GetContext());
     Scope lifetime(ledger,context); admit(ledger,*owned.source);
     const auto construction=ledger.event_size(); owned.first=checked_brep_copy(owned.source.get(),&ledger);
-    const auto original_birth=ledger.event(construction).after[0];
-    require(original_birth.sequence && ledger.event(construction).operation==SM_NO_CONSTRUCTION,"actual copied target constructor receipt");
+    const auto original_birth=observed_brep_birth(ledger,owned.first.get(),construction);
+    require(original_birth.sequence,"actual copied target constructor receipt");
     auto* a=seeds(*owned.first).front().face;
     const auto receipt=PlanarTransition::roundtrip(ledger,*owned.source,*owned.first,*a);
     PlanarTransition::consume(ledger,receipt,*owned.first);
@@ -461,8 +481,8 @@ void transition_target_reuse_refusal() {
     bool reused=false;
     for(unsigned i=0;i<128 && !reused;++i) {
         const auto start=ledger.event_size(); auto candidate=raw_context::construct_brep(&context); ledger.check();
-        const auto birth=ledger.event(start).after[0];
-        require(birth.sequence && birth!=original_birth && ledger.event(start).operation==SM_NO_CONSTRUCTION,
+        const auto birth=observed_brep_birth(ledger,candidate.get(),start);
+        require(birth.sequence && birth!=original_birth,
             "actual replacement BRep has fresh constructor generation");
         if(reinterpret_cast<uintptr_t>(candidate.get())==address) {
             reused=true; bool refused=false; const auto events=ledger.event_size(),nodes=ledger.node_size();

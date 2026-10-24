@@ -634,7 +634,7 @@ mapped item and exclude it from the path. Product/map calls still return
 `Ok(())` on budget refusal: callers must handle the visitor's refusal channel to
 report truncation. Existing `ShapeError` results remain errors.
 
-Class X entry policy (#8007/#7781), an explicit exception to the former eager
+Class X entry policy (#8020/#7781), an explicit exception to the former eager
 recursive behavior: a nested level resolves `MappingSource` and
 `MappedRepresentation` before `enter_map`, but reads, validates, charges and
 decodes its `Items` only after the callback returns `Continue`. List charging
@@ -681,12 +681,13 @@ and wraps decoder failures in `Error::CoreError`. `WalkVisitor::refused` receive
 future strict visitors can inspect the refused mapped item. For a root budget
 refusal that entity is the holding representation, with `shape_rep` set.
 
-Source breaks, covered by the pending Rust major in `rust-major-offset.json`:
+Source breaks requiring a cargo-semver-checks comparison with published 21.5.0:
 `Expand` gains `max_levels`; `WalkRefusal` replaces/removes variants, changes
 `TooDeep` to a struct variant and adds `Budget`/`Decode`; it no longer implements
 `Clone`, `Copy`, `PartialEq` or `Eq` because the decoder error is owned; and
 `WalkVisitor::refused` implementations must change their argument type.
-`into_error` is additive. No new major offset or semver measurement is claimed.
+`into_error` is additive. The break #12 record in `rust-major-offset.json` is
+unchanged pending that measurement.
 
 This decoder policy does not bound the ordinary renderer. GeometryProgram and
 MappingControl remain its sole execution controller; adapting structural budget

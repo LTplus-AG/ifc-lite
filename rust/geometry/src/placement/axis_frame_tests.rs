@@ -2,8 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! The frame an `IfcAxis2Placement3D` builds, pinned bit-for-bit (moved from
-//! the `transform.rs` tests, which deleted readers used to call).
+//! The frame an `IfcAxis2Placement3D` builds, checked within a 1e-9 tolerance.
+//! Moved from the `transform.rs` tests, which deleted readers used to call.
 
 use super::*;
 use ifc_lite_core::EntityDecoder;

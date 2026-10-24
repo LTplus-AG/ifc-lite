@@ -392,9 +392,10 @@ complete ordered mesh/float/frame/metadata/instance output and all diagnostic
 bytes on Haus, ISSUE_129 and heavy Holter. Every timed count and fingerprint
 also matches. The stock report flags an adverse Haus parse phase and remains
 inconclusive overall; complete-call wall observations have both directions.
-Timing neutrality is not established. Accept the disclosed native cost for
-canonical-reader deletion and unification with exact preserved geometry/refusal
-output; this is not a gate waiver. See the
+Timing neutrality is not established. These are historical, inconclusive
+observations for that older pair, not acceptance of a native cost. The exact
+current-source performance verdict remains pending, including per-phase
+instruction counts and a neutral end-to-end A/B verdict. See the
 [retained R comparison](evidence/placement-7779/recovery-r-native/README.md).
 
 All four original helpers completed, but the original preparation failed its
@@ -4796,9 +4797,10 @@ performance verdict for this recovered source, plus source-matched behavioral
 and oracle evidence and applicable gates. External Rust consumer qualification
 includes export's `step_map_rigid`, geometry tests/examples, PyO3 and the
 separate csg-thread-bench crate; the latter two are not covered by workspace
-checks. The six removed exports are accounted in Rust break #12 (measured
-against the published 21.5.0) and the matching API migration guide; no
-additional waiver is introduced.
+checks. The six removed exports ride the pending Rust break #13 and have a
+matching API migration guide. Direct cargo-semver-checks 0.50.0 against the
+published 22.6.0 remains pending; six function_missing findings are expected
+by inspection, not measured. No additional waiver is introduced.
 
 This restack is source-only. Historical native observations above, private
 `75bf`/R75 qualifications and inherited WASM results bind their original sources
@@ -4817,6 +4819,17 @@ the same reads (the mandatory `ExtrudedDirection`, the deleted
 only. Historical results above remain bound to their original commits. The new
 adjacent-layer comparison, complete output identity, external consumer checks,
 oracle qualification and independent review remain pending.
+
+The review-fix integration merges main `cf892ea4c`, including its pending
+Rust break #13 for #7955/#8120, without raising the offset again. The R2a six
+public-reader removals are appended to that pending account; archived break
+#12 remains unchanged. New exact-head qualification compares with this merged
+main base, not the historical cohorts.
+
+R2a closes only its assigned reader deletions. The remaining hand-rolled
+`curve_segment.rs::read_placement` belongs to downstream X3b; the Rust reader
+guidance in `rust/AGENTS.md` belongs to downstream G3. Neither is closed by
+this layer, and neither is changed here.
 
 ### Native/browser run snapshots (E2b, #7955)
 

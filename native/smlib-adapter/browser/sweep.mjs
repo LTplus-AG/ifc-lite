@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
 // Numeric owned recipe transport only. IFC interpretation belongs to Rust.
-export async function uploadSweep(transport, session, recipe, { loops, segments, format = 1 }, incarnation) {
+export async function uploadSweep(transport, session, recipe, { loops, segments, format = 1, sourceBinding }, incarnation) {
   if (!(recipe instanceof Uint8Array) || !Number.isInteger(segments) || segments < 1 ||
       segments > 8192 || !Number.isInteger(loops) || loops < 1 || loops > 128 || loops > segments ||
       !((format === 1 && recipe.byteLength === 48 + 8 * loops + 104 * segments) ||
         (format === 2 && loops === 1 && segments === 1 && recipe.byteLength >= 168)) ||
       recipe.byteLength > 1048576 || typeof session !== 'bigint' || session <= 0n || session > 0xffffffffffffffffn) throw new Error('invalid sweep declaration');
+  if (sourceBinding !== undefined && (!(sourceBinding instanceof Uint8Array) || sourceBinding.length !== 32 || format !== 1 || segments > 128)) throw new Error("invalid source binding declaration");
+  sourceBinding = sourceBinding?.slice();
   recipe = new Uint8Array(recipe); // Own coefficients before the first await.
   const retire = () => {
     if (transport.retire) transport.retire(incarnation);
@@ -35,6 +37,7 @@ export async function uploadSweep(transport, session, recipe, { loops, segments,
   const capability = await call(12, new Uint8Array());
   if (capability.byteLength !== 8 || new DataView(capability).getUint32(0, true) !== 1 ||
       !(new DataView(capability).getUint32(4, true) & (format === 2 ? 2 : 1))) malformed('staged sweep unavailable');
+  if (sourceBinding && !(new DataView(capability).getUint32(4, true) & 256)) malformed("source construction binding unavailable");
   const begin = body(24), beginView = new DataView(begin.buffer);
   [format, recipe.byteLength, loops, segments].forEach((value, i) => beginView.setUint32(8 + i * 4, value, true));
   const tokenBytes = await call(13, begin);
@@ -53,7 +56,8 @@ export async function uploadSweep(transport, session, recipe, { loops, segments,
       if ((await call(14, bytes)).byteLength !== 0) malformed('unexpected chunk result');
     }
     committing = true;
-    handle = await call(15, finish); // Never retry commit.
+    const commit = sourceBinding ? new Uint8Array([...finish, ...sourceBinding]) : finish;
+    handle = await call(sourceBinding ? 21 : 15, commit); // Never retry commit.
   } catch (error) {
     // Reported domain commits consumed the transaction. Unknown delivery may
     // have created a solid whose handle was lost: abort alone is insufficient.
@@ -73,5 +77,5 @@ export async function uploadSweep(transport, session, recipe, { loops, segments,
   const value = new DataView(handle);
   if (value.getBigUint64(0, true) !== session || value.getUint32(12, true) === 0 ||
       transport.incarnation !== incarnation) malformed('foreign/stale sweep handle');
-  return Object.freeze({ incarnation, bytes: handle });
+  return Object.freeze({ incarnation, bytes: handle, sourceOperation: sourceBinding ? token : undefined });
 }

@@ -2,6 +2,7 @@
 #pragma once
 #include "ifclite_smlib.h"
 #include "native_provenance.hpp"
+#include "source_evidence.hpp"
 #include <memory>
 #include <vector>
 class SmBrep;
@@ -9,6 +10,8 @@ struct AdapterMeshFailure { const char* message; };
 struct AdapterMesh {
     ifclite_smlib_mesh_info info{};
     face_lineage::NativeProvenance provenance{};
+    std::shared_ptr<const face_lineage::SourceInventory> source_inventory;
+    std::vector<uint32_t> source_roots;
     std::vector<double> positions, normals;
     std::vector<uint32_t> indices, faces;
 };

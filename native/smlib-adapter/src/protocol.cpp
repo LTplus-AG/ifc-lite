@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 #include "protocol.h"
+#include "source_api.hpp"
 #include "ifclite_smlib.h"
 #include <array>
 #include <cstring>
@@ -46,6 +47,19 @@ Writer dispatch(Reader& reader) {
     } else {
         const uint64_t session = reader.u64();
         switch (operation) {
+        case 21: {
+            const auto upload=reader.u64();
+            if(reader.u32()!=1) throw std::runtime_error("unsupported source binding packet version");
+            face_lineage::SourceStamp stamp{};stamp.incarnation=reader.u64();stamp.epoch=reader.u64();
+            stamp.revision=reader.u64();stamp.entity=reader.u32();reader.end();
+            ifclite_smlib_handle solid{};status=source_commit(session,upload,stamp,&solid);payload.handle(solid);break;
+        }
+        case 22: {
+            const auto object=reader.handle();reader.end();std::array<uint8_t,3840> bytes{};uint32_t length=0;
+            status=source_info(session,object,bytes.data(),bytes.size(),&length);
+            if(status==IFCLITE_SMLIB_OK) payload.bytes.insert(payload.bytes.end(),bytes.begin(),bytes.begin()+length);
+            break;
+        }
         case 2:
             reader.end(); status = ifclite_smlib_session_destroy(session); break;
         case 3: {

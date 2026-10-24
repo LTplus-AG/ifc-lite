@@ -256,3 +256,9 @@ void prepare_owned_affine_source(SmBrep& source) {
     normalize_owned_rational(source);
     inspect(&source,nullptr,true);
 }
+
+void prepare_constructed_affine_source(SmBrep& source,const face_lineage::SourceConstruction& receipt) {
+    inspect(&source,nullptr,false);
+    normalize_constructed_rational(source,receipt);
+    inspect(&source,nullptr,true);
+}

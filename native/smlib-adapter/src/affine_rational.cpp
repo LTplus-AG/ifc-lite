@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 #include "affine_rational.hpp"
+#include "source_construction.hpp"
 #include "failure.hpp"
 #include "ifclite_smlib.h"
 #include <SmBSplineCurve.h>
@@ -43,10 +44,9 @@ void equal(const std::vector<double>& a,const std::vector<double>& b) {
 }
 struct Trim { SmEdgeuse* use; SmBSplineCurve* curve; std::vector<double> data; };
 }
-void normalize_owned_rational(SmBrep& body) {
+namespace {
+void normalize_initial_data(SmBrep& body) {
     auto* context=const_cast<SmContext*>(body.GetContext());
-    require(context && !context->GetUserNotifyCallback() && !context->GetSysNotifyCallback() &&
-        !context->GetAttributeCallbacks(),"rational normalization is fixed pre-issuance construction only");
     SmTArray<SmFace*> faces; body.GetFaces(faces);
     SmTArray<SmEdge*> edges; body.GetEdges(edges);
     require(faces.GetSize()<=1024 && edges.GetSize()<=2048,"owned normalization topology bound");
@@ -111,4 +111,25 @@ void normalize_owned_rational(SmBrep& body) {
         unsigned hits=0; for(auto* actual:after) hits+=actual==face;
         require(hits==1,"normalization lost original physical source-face correspondence");
     }
+}
+
+}
+void normalize_owned_rational(SmBrep& body) {
+    auto* context=const_cast<SmContext*>(body.GetContext());
+    require(context && !context->GetUserNotifyCallback() && !context->GetSysNotifyCallback() &&
+        !context->GetAttributeCallbacks(),"rational normalization is fixed pre-issuance construction only");
+    normalize_initial_data(body);
+}
+void normalize_constructed_rational(SmBrep& body,const face_lineage::SourceConstruction& receipt) {
+    receipt.validate_initial(body);
+    normalize_initial_data(body);
+    receipt.validate_initial(body);
+}
+
+std::unique_ptr<SmBSplineSurface> copy_initial_surface(SmBrep& body,SmBSplineSurface& surface,const face_lineage::SourceConstruction& receipt) {
+    receipt.validate_initial(body);
+    require(surface.GetContext()==body.GetContext() && !surface.GetOwner(),"initial surface must be unattached in constructor context");
+    const auto data=surface_data(surface);
+    auto result=std::unique_ptr<SmBSplineSurface>(new (*body.GetContext()) SmBSplineSurface(surface));
+    equal(data,surface_data(*result));receipt.validate_initial(body);return result;
 }

@@ -4,6 +4,8 @@
 #include "protocol.h"
 #include "ifclite_smlib.h"
 #include <cstdio>
+#include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <stdexcept>
 #include <vector>
@@ -21,6 +23,18 @@ Bytes call(uint32_t op,const Bytes& body={}) {
     expect(word(r,8)==0,"source binding production dispatch succeeds");return Bytes(r.begin()+12,r.end());
 }
 Bytes body(uint64_t session,const Bytes& handle={}) { Bytes b;u64(b,session);b.insert(b.end(),handle.begin(),handle.end());return b; }
+Bytes stream(uint64_t session,const Bytes& mesh,uint32_t kind,uint32_t count) {
+    Bytes output;
+    for(uint32_t offset=0;offset<count;) {
+        const auto n=std::min(480u,count-offset);auto read=body(session,mesh);u32(read,kind);u32(read,offset);u32(read,n);
+        auto chunk=call(11,read);output.insert(output.end(),chunk.begin(),chunk.end());offset+=n;
+    }
+    return output;
+}
+bool rejected(uint32_t op,const Bytes& body) {
+    Bytes b;u32(b,1);u32(b,++serial);u32(b,op);b.insert(b.end(),body.begin(),body.end());
+    return word(ifclite_smlib_dispatch(b),8)!=0;
+}
 Bytes construct(uint64_t session,uint32_t entity) {
     Bytes recipe;for(uint32_t v:{1u,1u,4u,0u})u32(recipe,v);
     for(double v:{0.,0.,1.,3.})f64(recipe,v);u32(recipe,0);u32(recipe,4);
@@ -43,6 +57,10 @@ int main(int argc,char**) {
         auto a=call(22,body(session,first)),b=call(22,body(session,second));
         expect(word(a,0)==1 && word(a,76)==6,"complete initial construction role inventory");
         expect(a!=b,"independent source objects never share issuance");
+        expect(word(a,60)==101 && word(b,60)==102,"source entity binding is exact");
+        expect(rejected(22,body(session+1,first)),"foreign native source session refused");
+        auto stale=first;stale[12]^=1;
+        expect(rejected(22,body(session,stale)),"foreign native source generation refused");
         // Six roles: four authored segment sweeps, start cap, end cap.
         for(unsigned i=0;i<6;++i) {
             expect(word(a,80+24*i+16)==(i<4?1u:i-2),"direct construction role corresponds to authored feature");
@@ -65,6 +83,19 @@ int main(int argc,char**) {
             offset+=n;
         }
         expect(occupied==63,"actual tessellation consumes complete construction correspondence");
+        auto positions=stream(session,mesh,1,word(info,0)*3),indices=stream(session,mesh,2,triangles*3),roots=stream(session,mesh,5,triangles);
+        for(uint32_t t=0;t<triangles;++t) for(unsigned corner=0;corner<3;++corner) {
+            const auto vertex=word(indices,4*(3*t+corner));double p[3];
+            for(unsigned axis=0;axis<3;++axis) {
+                const size_t at=8*(3*size_t(vertex)+axis);expect(at+8<=positions.size(),"mesh position bound");
+                uint64_t bits=word(positions,at)|(uint64_t(word(positions,at+4))<<32);std::memcpy(&p[axis],&bits,8);
+            }
+            p[0]=(p[0]-7)/-2;p[1]=(p[1]+1)/3;p[2]=(p[2]-2)/0.5;
+            const double residual[6]={p[1],p[0]-2,p[1]-4,p[0],p[2],p[2]-3};
+            expect(std::abs(residual[word(roots,4*t)])<=1e-9,"actual affine triangle matches original construction role");
+        }
+        call(8,body(session,first));expect(rejected(22,body(session,first)),"expired source handle refused");
+        call(22,body(session,transformed));
         call(2,body(session));return 0;
     } catch(const std::exception& e) { std::fprintf(stderr,"SOURCE_BINDING_ASSERT: %s\n",e.what());return 42; }
 }

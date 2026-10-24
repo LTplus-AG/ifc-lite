@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 #include "sweep.hpp"
+#include "source_construction.hpp"
 #include "ifclite_smlib.h"
 #include <SmApiBrep.h>
 #include <SmApiCurves.h>
@@ -112,7 +113,7 @@ Segment read_segment(Reader& reader) {
 bool connected(Point a,Point b) { return std::hypot(a[0]-b[0],a[1]-b[1])<=1e-10; }
 }
 std::unique_ptr<SmBrep> create_authored_sweep(const std::vector<uint8_t>& bytes,
-    uint32_t loops,uint32_t segments) {
+    uint32_t loops,uint32_t segments,face_lineage::SourceConstruction* construction) {
     Reader reader{bytes};
     require(reader.u32()==1 && reader.u32()==loops && reader.u32()==segments &&
         reader.u32()==0,"sweep declaration mismatch");
@@ -150,8 +151,12 @@ std::unique_ptr<SmBrep> create_authored_sweep(const std::vector<uint8_t>& bytes,
     require(twice_area!=0 && (loops==1 || twice_area>0) && std::isfinite(expected) &&
         expected>0 && depth*std::abs(dz)>1e-12,"collapsed projected sweep extent");
     SmBrep* raw=nullptr;
-    const auto status=SmApiCreateLinearSweep(curves,SmVector3d(dx,dy,dz),depth,TRUE,raw);
-    std::unique_ptr<SmBrep> solid(raw); checked(status);
+    std::unique_ptr<SmBrep> solid;
+    if(construction) solid=construction->construct(curves,SmVector3d(dx,dy,dz),depth);
+    else {
+        const auto status=SmApiCreateLinearSweep(curves,SmVector3d(dx,dy,dz),depth,TRUE,raw);
+        solid.reset(raw);checked(status);
+    }
     require(solid!=nullptr,"null authored solid");
     SmTArray<SmFace*> faces; solid->GetFaces(faces);
     require(faces.GetSize()>0,"empty authored solid faces");

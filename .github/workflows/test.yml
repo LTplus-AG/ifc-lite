@@ -915,6 +915,12 @@ jobs:
             oracle_args+=(--mutation tests/evidence/e3b-followups/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/issue-7943/coplanarity.oracle.patch | grep -Fxq 'tests/evidence/issue-7943/coplanarity.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/issue-7943/coplanarity.oracle.patch)
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/diff/src/document_serde.rs | grep -Fxq 'rust/diff/src/document_serde.rs'; then
+            # #8042/#8104: keep all document APIs/types; lose only unpaired UTF-16 units.
+            # document_contract must fail exact surrogate serialization, and
+            # document_utf16 must fail distinct-string identity assertions.
+            # Once document_serde.rs is on main, whole-change inversion resumes.
+            oracle_args+=(--mutation tests/evidence/diff-8042/document-utf16.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/diff/src/columns.rs | grep -Fxq 'rust/diff/src/columns.rs'; then
             # Keep the new transport API; row-reference parity must detect aliasing.
             oracle_args+=(--mutation tests/evidence/diff-8042/column-references.oracle.patch)

@@ -5,6 +5,7 @@
 #include <SmApiGeneral.h>
 #include <SmLine.h>
 #include <cstdio>
+#include <memory>
 #include <stdexcept>
 namespace {
 void require(bool value,const char* message) {
@@ -14,11 +15,17 @@ void require(bool value,const char* message) {
 int main() {
     try {
         SmApiCreateContext();
+        auto& context=*SmApiGetOrCreateContext();
         face_lineage::Ledger ledger({8192,1,1024,16});
-        face_lineage::Scope observation(ledger,*SmApiGetOrCreateContext());
-        // Actual SDK constructor callbacks exhaust the one-event budget.
-        SmLine first;
-        SmLine second;
+        face_lineage::Scope observation(ledger,context);
+        // #7955: context-less automatic SmLine construction emits no observed
+        // callback. SDK placement allocation attaches the observed context
+        // before the base constructor emits its construction notification.
+        auto first=std::unique_ptr<SmLine>(new (context) SmLine());
+        require(first->GetContext()==&context && ledger.event_size()==1 &&
+            ledger.failed()==face_lineage::Failure::None,
+            "first context-owned constructor reaches the live observer");
+        auto second=std::unique_ptr<SmLine>(new (context) SmLine());
         const auto origin=ledger.failure_origin();
         const auto stack=ledger.failure_stack();
         require(origin.failure==face_lineage::Failure::EventLimit,
@@ -26,7 +33,7 @@ int main() {
         require(stack.size>0 && stack.size<=stack.frames.size() && stack.frames[0],
             "first refusal captures a bounded native stack");
         // Later SDK callbacks and repeated reports must preserve exact evidence.
-        SmLine third;
+        auto third=std::unique_ptr<SmLine>(new (context) SmLine());
         for(unsigned i=0;i<2;++i) {
             bool refused=false;
             try { ledger.check(); } catch(const AdapterFailure&) { refused=true; }

@@ -54,7 +54,7 @@ impl BrowserWorker {
         if !self.dependencies_qualified { return Err(BrowserError::Unqualified("run this Worker's dependency witnesses first")); }
         let operations = placed.count.checked_add(1).filter(|n| *n <= MAX_OPERATIONS)
             .ok_or_else(|| BrowserError::Driver("retained clip depth/work".into()))?;
-        let side = if clip.source.agreement { PlaneSide::Negative } else { PlaneSide::Positive };
+        let side = if clip.keeps_negative_side() { PlaneSide::Negative } else { PlaneSide::Positive };
         let mode = match clip.mode { RetainedClipMode::Difference => PlaneClipMode::Difference,
             RetainedClipMode::Intersection => PlaneClipMode::Intersection };
         let identity = BrowserObjectKey(next_identity()?);

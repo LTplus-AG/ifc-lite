@@ -113,9 +113,16 @@ impl BooleanMachine {
         crate::resource::check_current()?;
         let second = second.ok_or_else(|| Error::geometry("missing retained Boolean operand"))?;
         if matches!(second.ifc_type, IfcType::IfcHalfSpaceSolid | IfcType::IfcPolygonalBoundedHalfSpace | IfcType::IfcBoxedHalfSpace) {
-            let operation = self.retained_selection().ok_or_else(stale)?
+            let mut operations = self.retained_selection().ok_or_else(stale)?
                 .capture_clip(&second, decoder, &host, operator, node.id)?;
-            self.frames.push(Frame::RetainedReady { operation: boxed(operation)?, steps: Some(boxed(steps)?) });
+            // Each derived operation is issued and sealed separately. Only the
+            // final one resumes the enclosing Boolean continuation.
+            crate::resource::reserve_headers(&mut self.frames, operations.len())?.retain();
+            let last = operations.pop().ok_or_else(stale)?;
+            self.frames.push(Frame::RetainedReady { operation: boxed(last)?, steps: Some(boxed(steps)?) });
+            for operation in operations.into_iter().rev() {
+                self.frames.push(Frame::RetainedReady { operation: boxed(operation)?, steps: None });
+            }
             return Ok(());
         }
         let depth = steps.depth;

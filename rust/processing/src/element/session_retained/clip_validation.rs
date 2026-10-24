@@ -5,7 +5,7 @@ use super::runtime::{NumericalReceipt, ReceiptEvidence};
 use ifc_lite_geometry::{document::retained_plane::{NumericalOutcome, PlaneClipMode, PlaneSide},
     program::{RetainedClipMode, RetainedUnaryClip}};
 pub(super) fn selectors(clip: &RetainedUnaryClip) -> (PlaneSide, PlaneClipMode) {
-    (if clip.source.agreement { PlaneSide::Negative } else { PlaneSide::Positive },
+    (if clip.keeps_negative_side() { PlaneSide::Negative } else { PlaneSide::Positive },
      match clip.mode { RetainedClipMode::Difference => PlaneClipMode::Difference,
          RetainedClipMode::Intersection => PlaneClipMode::Intersection })
 }

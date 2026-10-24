@@ -41,12 +41,14 @@ pub struct RetainedUnaryClip {
     pub local_plane: [f64;6],
     pub mode: RetainedClipMode,
     pub input_frame: [f64;16],
+    /// Immutable authored finite boundary and derived-plane role, if any.
+    pub finite: Option<super::finite_clip::FiniteClipPlane>,
 }
-fn refused(message: &str) -> crate::Error {
+pub(super) fn refused(message: &str) -> crate::Error {
     crate::Error::geometry(crate::document::RetainedRefusal::UnsupportedSource(message.into()).to_string())
 }
 /// Fixed-width capture, with no graph walk, sampling or authored cutter recipe.
-fn coefficients(position: &DecodedEntity, index: usize, decoder: &mut EntityDecoder<'_>)
+pub(super) fn coefficients(position: &DecodedEntity, index: usize, decoder: &mut EntityDecoder<'_>)
     -> Result<Option<RetainedPlaneCoefficients>> {
     let Some(attribute)=position.get(index).filter(|a|!a.is_null()) else {return Ok(None)};
     crate::resource::check_current()?;
@@ -71,12 +73,12 @@ pub(in crate::program) fn capture(half_space: &DecodedEntity, decoder: &mut Enti
     let ClipSourceContext {scale,contract,operator,boolean_id,program}=context;
     crate::resource::charge(crate::resource::Cost {work:1,occurrences:1,
         copy_bytes:std::mem::size_of::<RetainedUnaryClip>() as u64,..Default::default()})?.retain();
-    if half_space.ifc_type!=IfcType::IfcHalfSpaceSolid {
+    if !matches!(half_space.ifc_type, IfcType::IfcHalfSpaceSolid | IfcType::IfcPolygonalBoundedHalfSpace | IfcType::IfcBoxedHalfSpace) {
         return Err(refused("retained bounded or boxed halfspace requires separate boundary contract"));
     }
     let mode=match operator {BoolOp::Difference=>RetainedClipMode::Difference,
         BoolOp::Intersection=>RetainedClipMode::Intersection,
-        _=>return Err(refused("retained unbounded halfspace Union unavailable"))};
+        _=>return Err(refused("retained halfspace Union requires independent solid realization"))};
     if !scale.is_finite() || scale<=0. {return Err(refused("retained plane length units invalid"));}
     let (surface_id,position,agreement)=HalfSpacePlan::source(half_space,decoder)?;
     let source=RetainedPlaneSource {
@@ -110,7 +112,7 @@ pub(in crate::program) fn capture(half_space: &DecodedEntity, decoder: &mut Enti
         return Err(refused("retained effective plane invalid"));
     }
     crate::resource::check_current()?;
-    Ok(RetainedUnaryClip {source,source_plane,local_plane,mode,input_frame:*input.object_frame()})
+    Ok(RetainedUnaryClip {source,source_plane,local_plane,mode,input_frame:*input.object_frame(),finite:None})
 }
 
 pub(in crate::program) fn operation(input: LogicalRetainedValue, clip: RetainedUnaryClip)
@@ -136,18 +138,24 @@ pub(in crate::program) fn operation(input: LogicalRetainedValue, clip: RetainedU
 impl super::RetainedSelection {
     pub(in crate::program) fn capture_clip(&self, half_space: &DecodedEntity, decoder: &mut EntityDecoder,
         input: &LogicalRetainedValue, operator: BoolOp, boolean_id: u32)
-        -> Result<super::RetainedPlanOperation> {
+        -> Result<Vec<super::RetainedPlanOperation>> {
         self.charge()?;
         if input.slot.program != self.program() { return Err(refused("foreign clip input domain")); }
         let clip = capture(half_space, decoder, input, ClipSourceContext {
             scale: input.length_unit_scale, contract: input.contract, operator,
             boolean_id, program: self.program(),
         })?;
-        operation(input.try_copy()?, clip)
+        if half_space.ifc_type != IfcType::IfcHalfSpaceSolid {
+            return super::finite_clip::expand(half_space, decoder, input, clip);
+        }
+        let mut operations = Vec::new();
+        crate::resource::reserve_headers(&mut operations, 1)?.retain();
+        operations.push(operation(input.try_copy()?, clip)?);
+        Ok(operations)
     }
 }
 
-fn validate_axes(source: &RetainedPlaneSource) -> Result<()> {
+pub(super) fn validate_axes(source: &RetainedPlaneSource) -> Result<()> {
     let direction = |raw: Option<&RetainedPlaneCoefficients>, default: [f64;3]| -> Result<nalgebra::Vector3<f64>> {
         if raw.is_some_and(|v| v.arity != 3) { return Err(refused("retained 3D plane requires three direction ratios")); }
         let raw = raw.map_or(default, |v| v.values);
@@ -159,4 +167,12 @@ fn validate_axes(source: &RetainedPlaneSource) -> Result<()> {
     let x = direction(source.ref_direction.as_ref(), [1.,0.,0.])?;
     if z.cross(&x).norm_squared() == 0. { return Err(refused("parallel retained plane axes")); }
     Ok(())
+}
+
+impl RetainedUnaryClip {
+    /// Derived boundary planes always point inward. Authored AgreementFlag is
+    /// preserved verbatim on the base surface, never repurposed for a side wall.
+    pub fn keeps_negative_side(&self) -> bool {
+        self.finite.as_ref().is_none_or(|f| f.is_base()) && self.source.agreement
+    }
 }

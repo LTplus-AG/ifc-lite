@@ -272,3 +272,22 @@ fn issue_4687_list_items_empty_lists_slots_and_unclosed_input() {
     assert_eq!(items(b"#1=X('a',/* open"), (vec![&b"'a'"[..]], false));
     assert!(StepListItems::of_list(b"$").is_none());
 }
+
+// #7955 R2-GRAMMAR: a list prefix is not authority for the complete value.
+#[test]
+fn whole_list_consumption_distinguishes_trivia_from_suffix() {
+    for (source, valid) in [
+        ("(1.,0.)", true), (" /*before*/ (1.,0.) \t/*after ) , */\n", true),
+        ("(1.,0.)BOGUS", false), ("(1.,0.) /*ok*/ BOGUS", false),
+        ("(1.,0.)(2.)", false), ("(1.,0.),2.", false),
+        ("(1.,0.) /*unclosed", false), ("(1.,0.", false),
+    ] {
+        let mut items = StepListItems::of_list(source.as_bytes()).unwrap();
+        items.by_ref().for_each(drop);
+        assert_eq!(items.fully_consumed(), valid, "J2_VECTOR_COMPLETE: {source}");
+    }
+    let mut record = StepListItems::of_record(b"#1=IFCDIRECTION((1.,0.));").unwrap();
+    record.by_ref().for_each(drop);
+    assert!(record.closed()); // Existing record-iterator contract unchanged.
+    assert!(!record.fully_consumed()); // Semicolon is not list-value trivia.
+}

@@ -324,3 +324,6 @@ mod removal_tests;
 
 #[cfg(all(test, feature = "retained-native", not(target_arch = "wasm32")))]
 mod removal_decimal_tests;
+
+#[cfg(all(test, feature = "retained-native", not(target_arch = "wasm32")))]
+mod removal_vector_tests;

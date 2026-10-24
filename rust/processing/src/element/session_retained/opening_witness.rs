@@ -87,3 +87,5 @@ pub(super) fn removal_sources() -> Vec<String> {
 }
 
 pub(super) mod decimal;
+
+pub(super) mod vector;

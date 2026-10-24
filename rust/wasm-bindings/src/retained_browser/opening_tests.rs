@@ -322,3 +322,49 @@ async fn j2_worker_authored_decimal_counterexamples_cannot_authorize_removal() {
         observed.worker.retire();
     }
 }
+
+#[wasm_bindgen_test(async)]
+async fn j2_worker_vector_suffixes_require_source_policy_refusal() {
+    for (marker, source) in super::opening_witness::vector::cases() {
+        let parts = 1;
+        let cuts = 1;
+        let bundle = SourceBundle::new(source.as_bytes().to_vec());
+        let mut decoder = bundle.decoder();
+        let mut router = GeometryRouter::with_units(&source,&mut decoder);
+        router.set_rtc_offset((8.,16.,0.));
+        let model = ProductionModel::from_source(bundle.clone());
+        let mut spans = PrepassSpans::default();
+        let mut scanner = EntityScanner::new(&source);
+        while let Some((id,ty,start,end)) = scanner.next_entity() {
+            if ty == "IFCRELVOIDSELEMENT" { spans.void_rels.push((id,start,end)); }
+        }
+        let prepass = resolve_prepass(&spans,&mut decoder,ResolveOptions::default());
+        let context = model.snapshot(OwnedMeshProductionData { void_index: Arc::new(prepass.void_index), ..Default::default() });
+        let entity = decoder.decode_by_id(30).unwrap();
+        let job = ElementMeshJob { id:30, ifc_type:entity.ifc_type.clone(), entity:&entity,
+            kind:ElementJobKind::Product, element_color:None, metadata:None };
+        let mut observed = Observed { worker:BrowserWorker::new().unwrap(), oracle:None, cuts:0, per_part:cuts/parts };
+        observed.worker.qualify_dependencies().await.unwrap();
+        let mut execution = RuntimeProductExecution::<BrowserReceipt>::begin(&job,&context,&MeshProductionOptions::default(),&mut decoder,&router).unwrap();
+        let limits = NumericalLimits { chord_metres:0.00001, angle_degrees:15., max_bytes:16 << 20 };
+        let mut refusal = None;
+        for _ in 0..128 {
+            match execution.issue_next(&mut decoder,&router,&observed) {
+                Err(error) => { refusal = Some(error); break; }
+                Ok(None) => break,
+                Ok(Some(issued)) => {
+                    let work = issued.execute_async(&mut observed,limits).await.unwrap();
+                    execution.accept(work,&mut decoder,&router).unwrap_or_else(|r|panic!("{}",r.reason));
+                }
+            }
+        }
+        assert!(matches!(&refusal, Some(RetainedExecutionError::Unsupported(message))
+            if message.contains("protection policy")), "{marker}: {refusal:?}");
+        assert!(execution.traversal_plan().is_none());
+        assert!(!execution.has_authenticated_opening_removal());
+        assert!(execution.issue_next(&mut decoder,&router,&observed).is_err());
+        assert!(!router.host_consumed_by_void(30), "J2_EFFECT_ISOLATION");
+        assert!(execution.into_witness().is_err());
+        observed.worker.retire();
+    }
+}

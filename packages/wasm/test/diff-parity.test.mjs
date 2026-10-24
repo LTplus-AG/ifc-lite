@@ -260,7 +260,9 @@ test('actual WASM scalar fingerprints equal the public TS engine without observi
   const wasm = await engine(context); if (!wasm) return;
   // Root pnpm build supplies the unchanged public TS oracle, as for the
   // committed parity-vector generator. No mock or reconstructed hash oracle.
-  const ts = await import('../../diff/dist/fingerprint.js');
+  const oracle = new URL('../../diff/dist/fingerprint.js', import.meta.url);
+  if (!existsSync(oracle)) { context.skip('@ifc-lite/diff not built; run pnpm build'); return; }
+  const ts = await import(oracle.href);
   for (const scalar of ['\ufffd', 'é', '😀', '\ud800\udc00', 'literal\\ud800', '']) {
     const input = {
       ifcType: `IfcWall${scalar}`, name: scalar, description: scalar,

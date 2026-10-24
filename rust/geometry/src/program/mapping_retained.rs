@@ -249,6 +249,7 @@ impl MappingControl<'_> {
         if source.ifc_type != IfcType::IfcRepresentationMap {
             return Err(crate::Error::geometry("retained MappingSource requires IfcRepresentationMap"));
         }
+        Self::validate_retained_origin(&source, decoder)?;
         Self::validate_retained_target(item, decoder)?;
         Self::validate_retained_map(&source, decoder)
     }
@@ -265,6 +266,42 @@ impl MappingControl<'_> {
             | IfcType::IfcCartesianTransformationOperator3DnonUniform) {
             return Err(crate::Error::geometry("retained MappingTarget requires a supported transformation operator"));
         }
+        Self::validate_retained_scale(&target, slot::IfcCartesianTransformationOperator::SCALE.index())?;
+        match target.ifc_type {
+            IfcType::IfcCartesianTransformationOperator2DnonUniform => {
+                Self::validate_retained_scale(&target, slot::IfcCartesianTransformationOperator2DnonUniform::SCALE2.index())?;
+            }
+            IfcType::IfcCartesianTransformationOperator3DnonUniform => {
+                Self::validate_retained_scale(&target, slot::IfcCartesianTransformationOperator3DnonUniform::SCALE2.index())?;
+                Self::validate_retained_scale(&target, slot::IfcCartesianTransformationOperator3DnonUniform::SCALE3.index())?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn validate_retained_scale(target: &DecodedEntity, index: usize) -> Result<()> {
+        use ifc_lite_core::AttributeValue;
+        // Optional omission keeps the canonical default. An authored token
+        // must be a finite number; exact-display recovery is not admission.
+        match target.get(index) {
+            None | Some(AttributeValue::Null | AttributeValue::Integer(_)) => Ok(()),
+            Some(AttributeValue::Float(value)) if value.is_finite() => Ok(()),
+            _ => Err(crate::Error::geometry("retained MappingTarget Scale requires a finite number or absence")),
+        }
+    }
+
+    fn validate_retained_origin(map: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<()> {
+        use ifc_lite_core::{slot, IfcType};
+        let origin = map.get(slot::IfcRepresentationMap::MAPPING_ORIGIN.index())
+            .and_then(|value| value.as_entity_ref())
+            .ok_or_else(|| crate::Error::geometry("retained MappingOrigin requires a reference"))?;
+        let origin = decoder.decode_by_id(origin)?;
+        if !matches!(origin.ifc_type, IfcType::IfcAxis2Placement2D | IfcType::IfcAxis2Placement3D) {
+            return Err(crate::Error::geometry("retained MappingOrigin requires a supported placement"));
+        }
+        // The canonical reader validates the placement's leaves and computes
+        // its frame next. Type roots retain their existing late-origin stage.
         Ok(())
     }
 
@@ -277,6 +314,9 @@ impl MappingControl<'_> {
             .and_then(|value| value.as_entity_ref())
             .ok_or_else(|| crate::Error::geometry("retained MappedRepresentation requires a reference"))?;
         let representation = decoder.decode_by_id(representation)?;
+        if !matches!(representation.ifc_type, IfcType::IfcShapeRepresentation | IfcType::IfcTopologyRepresentation) {
+            return Err(crate::Error::geometry("retained MappedRepresentation requires a supported representation"));
+        }
         Self::validate_retained_items(&representation, decoder)
     }
 

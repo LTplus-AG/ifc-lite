@@ -223,3 +223,36 @@ fn boolean_output_mapping_overflow_preserves_operation_frames_and_slot() {
     assert!(value.place_in_place(&transform, domain, stage).is_err());
     assert_eq!(value, before, "failed derived frame composition is atomic");
 }
+
+#[test]
+fn s2_r2_nan_determinant_placement_refuses_atomically_in_original_domain() {
+    // #7955 R2: use a real admitted source and its domain, not a foreign-owner
+    // refusal. The candidate composed entries stay finite under this matrix.
+    let (operations, result, domain) = admission(SOURCE);
+    assert_eq!(result.unwrap().values.len(), 1);
+    let mut value = operations[0].value().try_copy().unwrap();
+    let before = value.clone();
+    let transform = nalgebra::Matrix4::new_nonuniform_scaling(&nalgebra::Vector3::new(0., 1e200, 1e200));
+    assert!(transform.iter().all(|entry| entry.is_finite()));
+    assert!(transform.fixed_view::<3, 3>(0, 0).determinant().is_nan());
+    assert!((transform * value.world_from_evaluation()).iter().all(|entry| entry.is_finite()));
+    let error = value.place_in_place(&transform, domain,
+        RetainedPlacementStage::Mapping { source_id: 61 }).unwrap_err();
+    assert!(error.to_string().contains("finite nonsingular affine"), "{error}");
+    assert_eq!(value, before, "singular placement preserves frames, slot, lineage and product flag");
+}
+
+#[test]
+fn s2_r2_extreme_valid_matrix_is_conservatively_refused_without_mutation() {
+    // #7955 R2: explicit limit of the minimal finite-determinant policy.
+    let (operations, result, domain) = admission(SOURCE);
+    assert_eq!(result.unwrap().values.len(), 1);
+    let mut value = operations[0].value().try_copy().unwrap();
+    let before = value.clone();
+    let transform = nalgebra::Matrix4::new_nonuniform_scaling(&nalgebra::Vector3::new(1., 1e200, 1e200));
+    assert!(transform.iter().all(|entry| entry.is_finite()));
+    assert!(transform.fixed_view::<3, 3>(0, 0).determinant().is_infinite());
+    assert!(value.place_in_place(&transform, domain,
+        RetainedPlacementStage::Mapping { source_id: 61 }).is_err());
+    assert_eq!(value, before);
+}

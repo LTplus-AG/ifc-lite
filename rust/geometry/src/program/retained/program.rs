@@ -197,6 +197,16 @@ impl<'a> RetainedProgram<'a> {
         self.cancelled = true;
     }
     pub fn finish_type_map(self, type_product: u32, class: u8, color: [f32; 4]) -> Result<RetainedProductPlan> {
+        // Keep the shared stop sink alive after finish_output consumes inner.
+        // A presentation allocation can fail only after that terminal move.
+        let selection = self.selection().cloned();
+        let result = self.finish_type_map_checked(type_product, class, color);
+        if let Err(Error::ProgramStopped(stop)) = &result {
+            if let Some(selection) = selection { selection.remember_stop(*stop); }
+        }
+        result
+    }
+    fn finish_type_map_checked(self, type_product: u32, class: u8, color: [f32; 4]) -> Result<RetainedProductPlan> {
         self.check().map_err(|error| match error {
             RetainedProgramError::Stopped(stop) => Error::ProgramStopped(stop),
             other => Error::geometry(format!("{other:?}")),

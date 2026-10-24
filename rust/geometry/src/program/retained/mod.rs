@@ -214,13 +214,18 @@ pub(super) fn next_slot(program: u64) -> crate::Result<LogicalRetainedSlot> {
     })
 }
 pub(super) fn validate_affine(matrix: &nalgebra::Matrix4<f64>) -> crate::Result<()> {
+    // Fail closed if f64 cannot establish nonsingularity. This intentionally
+    // refuses extreme valid matrices whose determinant overflows; no epsilon
+    // or relaxed finite-frame contract is introduced.
+    let determinant = matrix.fixed_view::<3, 3>(0, 0).determinant();
     if matrix.iter().any(|x| !x.is_finite())
         || matrix
             .row(3)
             .iter()
             .zip([0., 0., 0., 1.])
             .any(|(a, b)| *a != b)
-        || matrix.fixed_view::<3, 3>(0, 0).determinant() == 0.
+        || !determinant.is_finite()
+        || determinant == 0.
     {
         return Err(crate::Error::geometry(
             crate::document::RetainedRefusal::UnsupportedSource(

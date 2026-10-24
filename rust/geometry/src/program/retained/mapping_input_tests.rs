@@ -79,3 +79,76 @@ fn h2_r1_identity_target_and_explicit_empty_source_are_admitted() {
         assert_eq!([world[12], world[13], world[14]], [10., 20., 30.]);
     }
 }
+
+// #7955 S2 review R1: a selected later map cannot recover malformed authored
+// semantics into an otherwise valid matrix or publish the earlier contribution.
+#[test]
+fn s2_r1_later_mapping_origin_is_required_before_exact_recovery() {
+    for origin in ["$", "*", "1.", "#4"] {
+        let extra = format!("#94=IFCREPRESENTATIONMAP({origin},#95);#95=IFCSHAPEREPRESENTATION(#2,'Body','SweptSolid',(#113));");
+        assert_late_refusal(&two_occurrences("#94,#82", &extra), "MappingOrigin");
+    }
+}
+
+#[test]
+fn s2_r1_later_mapped_representation_category_precedes_items_access() {
+    for category in ["IFCWALL", "UNKNOWNREPRESENTATION"] {
+        let extra = format!("#94=IFCREPRESENTATIONMAP(#5,#95);#95={category}(#2,'Body','SweptSolid',(#113));");
+        assert_late_refusal(&two_occurrences("#94,#82", &extra), "MappedRepresentation");
+    }
+}
+
+#[test]
+fn s2_r1_later_explicit_scale_tokens_cannot_default_even_on_cache_hits() {
+    // Each slot is independently reached; earlier #81 is already cached.
+    for token in ["'bad'", "#4", "*", "(1.)", "1.E999", "-1.E999"] {
+        for target in [
+            format!("IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#84,{token},$)"),
+            format!("IFCCARTESIANTRANSFORMATIONOPERATOR2D($,$,#84,{token})"),
+            format!("IFCCARTESIANTRANSFORMATIONOPERATOR2DNONUNIFORM($,$,#84,1.,{token})"),
+            format!("IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM($,$,#84,1.,$,{token},1.)"),
+            format!("IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM($,$,#84,1.,$,1.,{token})"),
+        ] {
+            assert_late_refusal(&two_occurrences("#81,#96", &format!("#96={target};")), "Scale");
+        }
+    }
+}
+
+#[test]
+fn s2_r1_optional_scales_keep_canonical_defaults_and_supported_origins() {
+    for (target, expected_scale) in [
+        ("IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#84,$,$)", 1.),
+        ("IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#84)", 1.),
+        ("IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM($,$,#84,2.,$,$,$)", 2.),
+        ("IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM($,$,#84,2.,$)", 2.),
+        ("IFCCARTESIANTRANSFORMATIONOPERATOR2DNONUNIFORM($,$,#84,2.,$)", 2.),
+        ("IFCCARTESIANTRANSFORMATIONOPERATOR2DNONUNIFORM($,$,#84,2.)", 2.),
+        ("IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#84,1,$)", 1.),
+    ] {
+        for origin in ["IFCAXIS2PLACEMENT3D(#4,$,$)", "IFCAXIS2PLACEMENT2D(#4,$)"] {
+            let bytes = mapping_tests::mapped()
+                .replace("IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#84,1.,$)", target)
+                .replace("#81=IFCREPRESENTATIONMAP(#5,#83)", "#81=IFCREPRESENTATIONMAP(#94,#83)")
+                .replace("ENDSEC;END-ISO", &format!("#94={origin};ENDSEC;END-ISO"));
+            let source = SourceBundle::new(bytes.as_bytes().to_vec());
+            let mut decoder = source.decoder();
+            let router = GeometryRouter::with_units(&bytes, &mut decoder);
+            let entity = decoder.decode_by_id(10).unwrap();
+            let mut program = RetainedProgram::product_parts(&entity, contract());
+            let operations = drive(&mut program, &router, &mut decoder);
+            assert!(operations[0].construction().is_some());
+            let plan = program.finish().unwrap();
+            assert_eq!(plan.values.len(), 1);
+            if expected_scale == 1. {
+                assert_eq!(operations.len(), 1);
+                let frame = plan.values[0].world_from_source().unwrap();
+                assert_eq!([frame[12], frame[13], frame[14]], [12., 24., 36.]);
+            } else {
+                assert_eq!(operations.len(), 2);
+                let RetainedOperationKind::Affine { matrix, .. } = operations[1].kind() else { panic!("affine") };
+                assert_eq!([matrix[0], matrix[5], matrix[10]], [expected_scale; 3]);
+                assert_eq!([matrix[12], matrix[13], matrix[14]], [0., 0., 6.]);
+            }
+        }
+    }
+}

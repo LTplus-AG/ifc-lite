@@ -137,3 +137,23 @@ fn h2b_nested_nonuniform_affines_preserve_order_and_cached_inner_definition() {
     assert!(plan.values.iter().all(|v| !v.is_empty() && v.world_from_source().is_none()));
     assert_eq!(plan.remaining.len(),4);
 }
+
+#[test]
+fn s2_r2_reached_singular_map_with_nan_determinant_refuses_whole_plan() {
+    // #7955 R2: finite diag(0,1e200,1e200) has a NaN f64 determinant.
+    let bytes = mapping_tests::mapped().replace("OPERATOR3D($,$,#84,1.,$)",
+        "OPERATOR3DNONUNIFORM($,$,#84,0.,$,1.E200,1.E200)");
+    let source = SourceBundle::new(bytes.as_bytes().to_vec());
+    let mut decoder = source.decoder();
+    let router = GeometryRouter::with_units(&bytes, &mut decoder);
+    let target = decoder.decode_by_id(82).unwrap();
+    let matrix = router.parse_cartesian_transformation_operator(&target, &mut decoder).unwrap();
+    assert!(matrix.iter().all(|value| value.is_finite()));
+    assert_eq!([matrix[(0, 0)], matrix[(1, 1)], matrix[(2, 2)]], [0., 1e200, 1e200]);
+    assert!(matrix.fixed_view::<3, 3>(0, 0).determinant().is_nan());
+    let entity = decoder.decode_by_id(10).unwrap();
+    let mut program = RetainedProgram::product_parts(&entity, contract());
+    assert!(drive(&mut program, &router, &mut decoder).is_empty());
+    let error = program.finish().unwrap_err();
+    assert!(error.to_string().contains("finite nonsingular affine"), "{error}");
+}

@@ -1,10 +1,8 @@
 # SPDX-License-Identifier: MPL-2.0
 --- a/rust/geometry/src/program/mapping_retained.rs
 +++ b/rust/geometry/src/program/mapping_retained.rs
-@@ -276,6 +276,5 @@
-             .and_then(|value| value.as_entity_ref())
-             .ok_or_else(|| crate::Error::geometry("retained MappedRepresentation requires a reference"))?;
-         let representation = decoder.decode_by_id(representation)?;
+@@ -319,4 +319,3 @@
+         }
 -        if false { Self::validate_retained_items(&representation, decoder)?; }
 -        Ok(())
 +        Self::validate_retained_items(&representation, decoder)

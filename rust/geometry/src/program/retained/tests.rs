@@ -367,3 +367,6 @@ mod operation_contract;
 
 #[path = "accept_stop_tests.rs"]
 mod accept_stop_tests;
+
+#[path = "finalization_stop_tests.rs"]
+mod finalization_stop_tests;

@@ -27,6 +27,7 @@ mod derived_layer;
 pub use derived_layer::DerivedLayerRegion;
 mod retained_profile_region;
 pub use retained_profile_region::{capture_retained_extrusion, RetainedRegionExtrusion};
+pub mod retained_source;
 pub mod retained_frames;
 pub mod retained_affine;
 pub mod retained_lineage;

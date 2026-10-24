@@ -19,7 +19,8 @@ impl SmlibWorker {
                 check(*left)?;
                 check(*right)
             }
-            KernelCommand::CopyTransform { solid, .. }
+            KernelCommand::SourceInfo { object:solid, .. }
+            | KernelCommand::CopyTransform { solid, .. }
             | KernelCommand::CopyAffine { solid, .. }
             | KernelCommand::ClipPlane { solid, .. }
             | KernelCommand::Volume { solid, .. }

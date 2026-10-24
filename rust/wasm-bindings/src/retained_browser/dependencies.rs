@@ -10,6 +10,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 
 pub struct BrowserAffineCopy {
+    pub(super) source_correspondence: Option<Arc<ifc_lite_geometry::document::retained_source::SourceCorrespondence>>,
     pub(super) domain: BrowserCancellation,
     pub(super) identity: BrowserObjectKey,
     pub(super) input: BrowserObjectKey,
@@ -82,7 +83,15 @@ impl BrowserWorker {
         let bytes = js_sys::Reflect::get(&value, &JsValue::from_str("certificate")).map_err(driver_error)?;
         let bytes = js_sys::Uint8Array::new(&bytes).to_vec();
         let certificate = AffineCertificate::decode(&bytes).map_err(|error| BrowserError::Driver(error.into()))?;
-        let result = BrowserAffineCopy { domain, identity, input: input.object(), column_major,
+        let source_correspondence=if let Some(expected)=input.source_correspondence() {
+            let field=|name:&str| js_sys::Reflect::get(&value,&JsValue::from_str(name))
+                .map(|v| js_sys::Uint8Array::new(&v).to_vec()).map_err(driver_error);
+            let proof=ifc_lite_geometry::document::retained_source::SourceCorrespondence::decode(expected.request(),&field("source_handle")?,&field("source_inventory")?)
+                .map_err(|error| BrowserError::Driver(error.into()))?;
+            if !proof.same_source(expected) { return Err(BrowserError::Driver("affine source inventory changed".into())); }
+            Some(Arc::new(proof))
+        } else { None };
+        let result = BrowserAffineCopy { source_correspondence, domain, identity, input: input.object(), column_major,
             lineage: Arc::new(RetainedLineage::AffineCopy { input: lineage, column_major, certificate }),
             operations, object };
         result.validate_live()?;

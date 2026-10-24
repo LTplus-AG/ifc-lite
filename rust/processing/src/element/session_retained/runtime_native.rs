@@ -40,6 +40,7 @@ fn transform_input(receipt: &RealizationKind) -> RetainedTransformInput<'_> {
 }
 
 impl RetainedRuntime for SmlibWorker {
+    fn source_face_binding(&self) -> bool { self.source_faces_required() }
     type Receipt = RealizationKind;
     fn domain(&self) -> RuntimeOwner { self.retained_owner() }
     fn incarnation(&self) -> u64 { SmlibWorker::incarnation(self) }

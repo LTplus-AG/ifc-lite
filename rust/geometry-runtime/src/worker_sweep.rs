@@ -14,6 +14,7 @@ use std::sync::Arc;
 /// worker's next command, and never retires the process or another object.
 #[derive(Debug)]
 pub struct RetainedRealization {
+    source_correspondence: Option<Arc<ifc_lite_geometry::document::retained_source::SourceCorrespondence>>,
     solid: BrepHandle,
     completion: RetainedCompletion,
     owner: crate::RuntimeOwner,
@@ -22,6 +23,7 @@ pub struct RetainedRealization {
 }
 
 impl RetainedRealization {
+    pub fn source_correspondence(&self) -> Option<&Arc<ifc_lite_geometry::document::retained_source::SourceCorrespondence>> { self.source_correspondence.as_ref() }
     pub fn solid(&self) -> BrepHandle {
         self.solid
     }
@@ -88,11 +90,12 @@ impl SmlibWorker {
                 "execute this incarnation's numerical witnesses first",
             ));
         }
-        let solid = self.create_sweep(
+        let solid = self.upload_sweep(
             &payload.bytes,
             payload.format,
             payload.loops,
             payload.segments,
+            request.source_contract().map(|_| &request),
         )?;
         let mesh = match self.tessellate_accounted(solid, chord_metres, angle_degrees, limits, resources) {
             Ok(mesh) => mesh,
@@ -115,6 +118,7 @@ impl SmlibWorker {
             payload.source_from_evaluation,
             payload.evaluation_from_source,
         );
+        let source_correspondence=mesh.source_correspondence.clone();
         let tessellation = RetainedTessellation {
             positions: mesh.positions,
             indices: mesh.indices,
@@ -125,6 +129,7 @@ impl SmlibWorker {
             spine_edges: mesh.spine_edges,
         };
         Ok(RetainedRealization {
+            source_correspondence,
             lease: self.manage_object(solid)?,
             object_live: self.object_liveness(solid)?,
             owner: self.retained_owner(),

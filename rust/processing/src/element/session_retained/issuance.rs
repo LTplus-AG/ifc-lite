@@ -52,6 +52,12 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                         _ => return Err(RetainedExecutionError::Unsupported("construction recipe")),
                     }.map_err(protocol)?;
                     let request = document.prepare_retained(definition, worker.incarnation()).map_err(protocol)?;
+                    let request = if worker.source_face_binding() && request.payload().format==1 {
+                        let LogicalRetainedDefinition::Source { source_epoch, source_revision, .. }=expected.value().definition() else {
+                            return Err(protocol("construction lacks original source definition"));
+                        };
+                        request.with_source_contract(*source_epoch,*source_revision).map_err(protocol)?
+                    } else { request };
                     PendingRetainedOperation::Construction { expected, document, request }
                 }
                 RetainedOperationKind::Boolean { inputs, operation } => {

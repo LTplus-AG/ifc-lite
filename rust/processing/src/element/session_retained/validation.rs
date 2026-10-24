@@ -16,6 +16,12 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
         if operation.expected().value().evaluated_empty().is_some_and(|empty| empty != receipt.is_empty()) {
             return Err(protocol("conflicting retained numerical outcome"));
         }
+        if let PendingRetainedOperation::Construction { request, .. }=operation {
+            if request.source_contract().is_some() {
+                let proof=receipt.kind.source_correspondence().ok_or_else(|| protocol("missing source construction proof"))?;
+                if !request.same_admission(proof.request()) { return Err(protocol("foreign source construction proof")); }
+            }
+        }
         match (operation, receipt.kind.evidence()) {
             (PendingRetainedOperation::Construction { expected, document, request }, ReceiptEvidence::Construction(completion)) => {
                 if receipt.is_empty() { return Err(protocol("empty construction result")); }
@@ -29,6 +35,11 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             }
             (PendingRetainedOperation::Affine { input, matrix, .. }, ReceiptEvidence::Affine { input: identity_input, column_major }) => {
                 input.validate_live().map_err(protocol)?;
+                if let Some(expected)=input.kind.source_correspondence() {
+                    if !receipt.kind.source_correspondence().is_some_and(|proof| proof.same_source(expected)) {
+                        return Err(protocol("affine dropped or changed source correspondence"));
+                    }
+                }
                 if !input.kind.belongs_to_domain(owner) { return Err(protocol("foreign affine input")); }
                 if receipt.is_empty() != input.is_empty() || identity_input != input.kind.object() || !same_frame(column_major, matrix) {
                     return Err(protocol("foreign affine operation or ordered input"));

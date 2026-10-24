@@ -24,6 +24,7 @@ impl Default for MeshLimits {
 #[derive(Debug)]
 pub struct TessellatedMesh {
     outcome: NumericalOutcome,
+    pub source_correspondence: Option<std::sync::Arc<ifc_lite_geometry::document::retained_source::SourceCorrespondence>>,
     pub positions: Vec<f64>,
     pub indices: Vec<u32>,
     pub corner_normals: Vec<f64>,
@@ -39,6 +40,7 @@ impl TessellatedMesh {
     pub(super) fn empty() -> Self {
         Self {
             storage: None,
+            source_correspondence: None,
             outcome: NumericalOutcome::Empty,
             positions: Vec::new(),
             indices: Vec::new(),
@@ -123,13 +125,14 @@ impl SmlibWorker {
         if !consistent || boundary_edges != 0 || spine_edges != 0 || field(20) != 0 {
             return Err(self.poison("partial tessellation returned as success"));
         }
+        let source_binding=self.source_bindings.get(&solid.wire).cloned();
         let positions = multiply(vertices, 3)?;
         let indices = multiply(triangles, 3)?;
         let normals = multiply(triangles, 9)?;
         let size = multiply(positions, 8)?
             .checked_add(multiply(indices, 4)?)
             .and_then(|n| n.checked_add(multiply(normals, 8).ok()?))
-            .and_then(|n| n.checked_add(multiply(triangles, 4).ok()?))
+            .and_then(|n| n.checked_add(multiply(triangles, if source_binding.is_some() {8} else {4}).ok()?))
             .ok_or(WorkerError::ResourceLimit("mesh byte count overflow"))?;
         if size > limits.max_bytes {
             return Err(WorkerError::ResourceLimit("mesh exceeds max_bytes"));
@@ -164,7 +167,14 @@ impl SmlibWorker {
                 }
             }
         }
+        let source_correspondence=if let Some(expected)=source_binding {
+            let actual=self.read_source(mesh,expected.request())?;
+            if !actual.same_source(&expected) { return Err(self.poison("mesh source inventory mismatch")); }
+            let roots=self.read_u32(mesh,MeshStream::ConstructionRoots,triangles)?;
+            Some(std::sync::Arc::new(actual.with_triangles(roots,triangles).map_err(|e| self.poison(e))?))
+        } else { None };
         Ok(TessellatedMesh {
+            source_correspondence,
             storage,
             outcome: NumericalOutcome::NonEmpty,
             positions,

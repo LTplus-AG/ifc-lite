@@ -24,6 +24,8 @@ pub use empty::NumericalOutcome;
 mod handles;
 #[path = "worker_upload.rs"]
 mod upload;
+#[path = "worker_source.rs"]
+mod source;
 #[path = "worker_qualification.rs"]
 mod qualification;
 pub use qualification::RegionQualificationReport;
@@ -74,6 +76,8 @@ pub struct SmlibWorker {
     /// Live objects; each flag is shared with the receipts that name it and
     /// cleared before the object is released.
     objects: HashMap<WireHandle, Arc<AtomicBool>>,
+    source_faces_enabled: bool,
+    source_bindings: HashMap<WireHandle, Arc<ifc_lite_geometry::document::retained_source::SourceCorrespondence>>,
     /// Managed objects whose final receipt was dropped, released before the
     /// next command by this exact worker.
     releases: Arc<objects::ReleaseQueue>,
@@ -113,6 +117,8 @@ impl SmlibWorker {
             regions_qualified: false,
             disks_qualified: false,
             objects: HashMap::new(),
+            source_faces_enabled: false,
+            source_bindings: HashMap::new(),
             releases: Arc::new(objects::ReleaseQueue::default()),
             managed: HashMap::new(),
         })

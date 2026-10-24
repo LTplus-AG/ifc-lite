@@ -68,9 +68,12 @@ pub struct RetainedAffineCopy {
     identity: AffineCopyIdentity,
     lineage: Arc<RetainedLineage>,
     operations: usize,
+    source_correspondence: Option<Arc<ifc_lite_geometry::document::retained_source::SourceCorrespondence>>,
 }
 
 impl RetainedAffineCopy {
+    pub fn source_correspondence(&self) -> Option<&Arc<ifc_lite_geometry::document::retained_source::SourceCorrespondence>> { self.source_correspondence.as_ref() }
+
     pub fn solid(&self) -> BrepHandle {
         self.solid
     }
@@ -133,7 +136,11 @@ impl SmlibWorker {
         }
         let certificate = AffineCertificate::decode(&bytes[16..]).map_err(|e| self.poison(e))?;
         let solid = self.handle(bytes[..16].to_vec())?;
+        let source_correspondence=if let Some(expected)=self.source_bindings.get(&source.wire).cloned() {
+            Some(self.register_source(solid,expected.request(),Some(&expected),None)?)
+        } else { None };
         Ok(RetainedAffineCopy {
+            source_correspondence,
             _lease: self.manage_object(solid)?,
             object_live: self.object_liveness(solid)?,
             owner: self.retained_owner(),

@@ -151,6 +151,7 @@ impl Drop for Owner {
 
 /// Captures one actual module Worker and its private SDK session.
 pub struct BrowserWorker {
+    source_faces_enabled: bool,
     owner: Arc<Owner>,
     regions_qualified: bool,
     disks_qualified: bool,
@@ -185,6 +186,7 @@ impl BrowserCancellation {
 }
 
 impl BrowserWorker {
+    pub fn require_source_faces(&mut self) { self.source_faces_enabled=true; }
     pub fn cancellation(&self) -> BrowserCancellation {
         BrowserCancellation {
             owner: self.owner.clone(),
@@ -304,3 +306,6 @@ mod opening_witness;
 mod profile_region_tests;
 #[cfg(all(test,target_arch="wasm32"))]
 mod derived_layer_tests;
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod source_binding_tests;

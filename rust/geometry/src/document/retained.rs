@@ -127,6 +127,7 @@ pub(super) struct RetainedEntry {
 /// or openings.
 #[derive(Debug, Clone)]
 pub struct RetainedRequest {
+    source_contract: Option<(u64,u64)>,
     document: DocumentId,
     revision: u64,
     definition: RetainedDefinitionHandle,
@@ -135,11 +136,19 @@ pub struct RetainedRequest {
 }
 
 impl RetainedRequest {
+    /// Numeric source contract only. Processing authenticates it against the
+    /// original owned source and immutable issued definition, never these IDs alone.
+    pub fn with_source_contract(mut self, epoch:u64, revision:u64) -> Result<Self,RetainedRefusal> {
+        if revision==0 { return Err(RetainedRefusal::SourceNotCaptured); }
+        self.source_contract=Some((epoch,revision));Ok(self)
+    }
+    pub fn source_contract(&self) -> Option<(u64,u64)> { self.source_contract }
+
     /// Same immutable admission, including the original source allocation.
     pub fn same_admission(&self, other: &Self) -> bool {
         self.document == other.document && self.revision == other.revision
             && self.definition == other.definition && self.worker_incarnation == other.worker_incarnation
-            && Arc::ptr_eq(&self.entry, &other.entry)
+            && self.source_contract==other.source_contract && Arc::ptr_eq(&self.entry, &other.entry)
     }
 
     pub fn definition(&self) -> RetainedDefinitionHandle {
@@ -182,6 +191,7 @@ pub struct RetainedTessellation {
 /// A worker completion for one request, with the frame the worker used.
 #[derive(Debug)]
 pub struct RetainedCompletion {
+    source_correspondence: Option<std::sync::Arc<super::retained_source::SourceCorrespondence>>,
     request: RetainedRequest,
     pub tessellation: RetainedTessellation,
     /// Column-major evaluation metres -> raw solid-local file units.
@@ -191,6 +201,19 @@ pub struct RetainedCompletion {
 }
 
 impl RetainedCompletion {
+    pub fn source_correspondence(&self) -> Option<&std::sync::Arc<super::retained_source::SourceCorrespondence>> {
+        self.source_correspondence.as_ref()
+    }
+    /// Numerical assembly; runtime/processing receipt ownership authenticates it.
+    pub fn with_source_correspondence(mut self, proof: Option<std::sync::Arc<super::retained_source::SourceCorrespondence>>) -> Result<Self,RetainedRefusal> {
+        if let Some(proof)=&proof {
+            if !proof.request().same_admission(&self.request) || proof.triangle_roots().len()!=self.tessellation.indices.len()/3 {
+                return Err(RetainedRefusal::PersistentFaceProvenanceUnavailable);
+            }
+        }
+        self.source_correspondence=proof;Ok(self)
+    }
+
     /// Host-trusted assembly: this does not authenticate the buffers or the
     /// runtime that produced them; the document only checks identity and shape.
     pub fn new(
@@ -201,6 +224,7 @@ impl RetainedCompletion {
     ) -> Self {
         Self {
             _storage: None,
+            source_correspondence: None,
             request,
             tessellation,
             source_from_evaluation,
@@ -280,6 +304,7 @@ impl GeometryDocument {
             return Err(RetainedRefusal::WrongWorker);
         }
         Ok(RetainedRequest {
+            source_contract: None,
             document: self.id,
             revision: self.revision,
             definition,

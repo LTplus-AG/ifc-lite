@@ -11,6 +11,11 @@ pub struct RuntimeRealization<R: NumericalReceipt> {
     pub(super) _permit: Reservation,
 }
 impl<R: NumericalReceipt> RuntimeRealization<R> {
+    /// Available only while this sealed receipt remains live; the owning
+    /// product witness additionally retains and checks the original source leases.
+    pub fn source_correspondence(&self) -> Result<Option<&ifc_lite_geometry::document::retained_source::SourceCorrespondence>,R::Error> {
+        self.validate_live()?;Ok(self.kind.source_correspondence())
+    }
     pub fn is_empty(&self) -> bool { self.empty }
     pub fn validate_live(&self) -> Result<(), R::Error> {
         self.kind.validate_live()

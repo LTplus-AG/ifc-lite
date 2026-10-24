@@ -53,11 +53,18 @@ extern "C" {
         chord: f64,
         angle: f64,
         max_bytes: u32,
+        source: &[u8],
     ) -> js_sys::Promise;
 }
 
 #[derive(serde::Deserialize)]
 pub(super) struct Mesh {
+    #[serde(default)]
+    pub(super) source_inventory: Vec<u8>,
+    #[serde(default)]
+    pub(super) source_handle: Vec<u8>,
+    #[serde(default)]
+    pub(super) construction_roots: Vec<u32>,
     pub(super) positions: Vec<f64>,
     pub(super) indices: Vec<u32>,
     pub(super) flat_corner_normals: Vec<f64>,
@@ -92,6 +99,7 @@ impl BrowserWorker {
             regions_qualified: false,
             disks_qualified: false,
             dependencies_qualified: false,
+            source_faces_enabled: false,
         })
     }
 
@@ -174,6 +182,7 @@ impl BrowserWorker {
             chord_metres,
             angle_degrees,
             max_bytes,
+            &ifc_lite_geometry::document::retained_source::SourceCorrespondence::descriptor(&request),
         ))
         .await
         .map_err(driver_error)?;
@@ -186,6 +195,12 @@ impl BrowserWorker {
             payload.source_from_evaluation,
             payload.evaluation_from_source,
         );
+        let source_correspondence=if request.source_contract().is_some() {
+            let proof=ifc_lite_geometry::document::retained_source::SourceCorrespondence::decode(&request,&mesh.source_handle,&mesh.source_inventory)
+                .and_then(|proof| proof.with_triangles(mesh.construction_roots,mesh.indices.len()/3))
+                .map_err(|error| BrowserError::Driver(error.into()))?;
+            Some(Arc::new(proof))
+        } else { None };
         let realization = BrowserRealization {
             domain: domain.clone(),
             identity,
@@ -204,7 +219,7 @@ impl BrowserWorker {
                 },
                 source_from_evaluation,
                 evaluation_from_source,
-            ),
+            ).with_source_correspondence(source_correspondence).map_err(|e| BrowserError::Driver(e.to_string()))?,
         };
         // Accept only a lease the driver still holds for this exact Worker.
         realization.validate_in_domain(&domain)?;

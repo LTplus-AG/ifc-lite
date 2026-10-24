@@ -127,6 +127,7 @@ impl SmlibWorker {
                 continue;
             }
             self.managed.remove(&solid.wire);
+            self.source_bindings.remove(&solid.wire);
             self.release_wire(solid.wire)?;
         }
         Ok(())
@@ -156,6 +157,7 @@ impl SmlibWorker {
             live.store(false, Ordering::Release);
         }
         self.managed.remove(&solid.wire);
+        self.source_bindings.remove(&solid.wire);
         self.flush_releases()?;
         self.release_wire(solid.wire)
     }

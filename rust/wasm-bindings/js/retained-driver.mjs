@@ -19,6 +19,7 @@ export class RetainedDriver {
   #sequence = 0;
   #session;
   #objects = new Map();
+  #sources = new Map();
   #releases = [];
   #cleanup;
   #dispatchListeners = [];
@@ -48,6 +49,7 @@ export class RetainedDriver {
   retire() {
     if (this.#retired) return;
     this.#retired = true;
+    this.#sources.clear();
     this.#objects.clear(); // Invalidate leases before terminating the transport.
     this.#releases.length = 0;
     for (const listener of this.#dispatchListeners.splice(0)) listener.reject(new Error('retained worker retired before observed dispatch'));
@@ -58,6 +60,7 @@ export class RetainedDriver {
     const solid = this.#objects.get(object);
     if (!solid) return;
     this.#objects.delete(object);
+    this.#sources.delete(object);
     this.#releases.push(solid);
     this.#scheduleReleases();
   }
@@ -181,7 +184,11 @@ export class RetainedDriver {
       validateHandle(solid, new DataView(this.#session.buffer).getBigUint64(0, true));
       const object = Object.freeze({});
       this.#objects.set(object, solid);
-      return Object.freeze({ object, certificate: reply.slice(16) });
+      const prior = this.#sources.get(input);
+      const source_inventory = prior ? await this.#call(22, this.#session, solid) : new Uint8Array();
+      if (prior && !sameSource(prior, source_inventory)) throw new Error('affine source inventory changed');
+      if (prior) this.#sources.set(object, source_inventory);
+      return Object.freeze({ object, certificate: reply.slice(16), source_inventory, source_handle: solid });
     } catch (error) { this.retire(); throw error; }
     finally { this.#releaseBusy(); }
   }
@@ -244,9 +251,10 @@ export class RetainedDriver {
     } catch (error) { this.retire(); throw error; }
     finally { this.#releaseBusy(); }
   }
-  async evaluate(bytes, format, loops, segments, qualification, chord, angle, maxBytes) {
+  async evaluate(bytes, format, loops, segments, qualification, chord, angle, maxBytes, source) {
     // Own every coefficient before awaiting initialization or asset loading.
     const recipe = new Uint8Array(bytes);
+    const sourceBinding = source?.length ? new Uint8Array(source) : undefined;
     if (![0, 1, 2].includes(qualification)) throw new Error('invalid retained qualification');
     if (!Number.isFinite(chord) || chord <= 0 || !Number.isFinite(angle) || angle <= 0 || angle > 180 ||
         !Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new Error('invalid retained evaluation limits');
@@ -264,18 +272,24 @@ export class RetainedDriver {
         this.#session = session;
       }
       const sessionId = new DataView(this.#session.buffer).getBigUint64(0, true);
-      const handle = await uploadSweep(this.#observedTransport(), sessionId, recipe, { format, loops, segments }, this.#incarnation);
+      const handle = await uploadSweep(this.#observedTransport(), sessionId, recipe, { format, loops, segments, sourceBinding }, this.#incarnation);
       if (!this.live()) throw new Error('retained upload worker expired');
       const solid = new Uint8Array(handle.bytes);
       validateHandle(solid, sessionId);
+      const inventory = sourceBinding ? await this.#call(22, this.#session, solid) : undefined;
+      if (inventory && (inventory.length < 80 || inventory.length > 3200 ||
+          !solid.every((v, i) => v === inventory[i + 20]) ||
+          !sourceBinding.subarray(4).every((v, i) => v === inventory[i + 36]) ||
+          new DataView(inventory.buffer, inventory.byteOffset).getBigUint64(64, true) !== handle.sourceOperation)) throw new Error('source construction operation mismatch');
       const meshHandle = await this.#call(9, this.#session, solid, f64(chord), f64(angle));
       validateHandle(meshHandle, sessionId);
-      const mesh = await this.#readMesh(meshHandle, maxBytes);
+      const mesh = await this.#readMesh(meshHandle, maxBytes, undefined, inventory);
       // Release the temporary mesh before sealing its independent copied arrays.
       await this.#call(8, this.#session, meshHandle);
       if (!this.live()) throw new Error('retained object owner expired');
       const object = Object.freeze({}); // Lease identity, never caller-visible wire bytes.
       this.#objects.set(object, solid);
+      if (inventory) this.#sources.set(object, inventory);
       return Object.freeze({ object, mesh });
     } catch (error) {
       // Unknown outcomes are never retried; the captured Worker owns all of its
@@ -284,7 +298,7 @@ export class RetainedDriver {
       throw error;
     } finally { this.#releaseBusy(); }
   }
-  async #readMesh(handle, maxBytes, solid) {
+  async #readMesh(handle, maxBytes, solid, sourceInventory) {
     const info = await this.#call(10, this.#session, handle);
     if (info.byteLength !== 24) throw new Error('invalid retained mesh info');
     const view = new DataView(info.buffer);
@@ -296,7 +310,7 @@ export class RetainedDriver {
       return { positions: new Float64Array(), indices: new Uint32Array(), flat_corner_normals: new Float64Array(),
         revision_local_faces: new Uint32Array(), source_face_count: 0, boundary_edges: 0, spine_edges: 0, empty: true };
     }
-    const bytes = vertices * 3 * 8 + triangles * (3 * 4 + 9 * 8 + 4);
+    const bytes = vertices * 3 * 8 + triangles * (3 * 4 + 9 * 8 + 4 + (sourceInventory ? 4 : 0)) + (sourceInventory?.length ?? 0);
     if (!vertices || !triangles || !faces || boundary || spine || failures || !Number.isSafeInteger(bytes) || bytes > maxBytes ||
         vertices * 3 > 0xffffffff || triangles * 9 > 0xffffffff) throw new Error('invalid or oversized retained mesh');
     const read = async (stream, count, width) => {
@@ -334,7 +348,10 @@ export class RetainedDriver {
           throw new Error('invalid retained surface normal');
       }
     }
-    return { positions, indices, flat_corner_normals, revision_local_faces,
+    const source_inventory = sourceInventory ? await this.#call(22, this.#session, handle) : new Uint8Array();
+    if (sourceInventory && !sameSource(sourceInventory, source_inventory)) throw new Error('mesh source inventory changed');
+    const construction_roots = sourceInventory ? await read(5, triangles, 4) : new Uint32Array();
+    return { source_inventory, source_handle: handle, construction_roots, positions, indices, flat_corner_normals, revision_local_faces,
       source_face_count: faces, boundary_edges: boundary, spine_edges: spine, empty: false };
   }
 }
@@ -345,3 +362,7 @@ function validateHandle(bytes, session) {
 }
 function u32(value) { const bytes = new Uint8Array(4); new DataView(bytes.buffer).setUint32(0, value, true); return bytes; }
 function f64(value) { const bytes = new Uint8Array(8); new DataView(bytes.buffer).setFloat64(0, value, true); return bytes; }
+
+function sameSource(a, b) {
+  return a.length >= 80 && a.length <= 3200 && a.length === b.length && a.subarray(20).every((v, i) => v === b[i + 20]);
+}

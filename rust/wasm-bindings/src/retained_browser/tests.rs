@@ -42,6 +42,7 @@ fn cancellation_observes_only_its_captured_owner() {
         regions_qualified: false,
         disks_qualified: false,
             dependencies_qualified: false,
+            source_faces_enabled: false,
     };
     let cancellation = worker.cancellation();
     let other = BrowserWorker {
@@ -49,6 +50,7 @@ fn cancellation_observes_only_its_captured_owner() {
         regions_qualified: false,
         disks_qualified: false,
             dependencies_qualified: false,
+            source_faces_enabled: false,
     };
     assert!(cancellation.same_worker(&worker) && !cancellation.same_worker(&other));
     assert_eq!(cancellation.incarnation(), Some(worker.incarnation()));

@@ -27,6 +27,13 @@ impl NumericalReceipt for BrowserReceipt {
     type Domain = BrowserCancellation;
     type Error = BrowserError;
     fn heap_bytes() -> u64 { std::mem::size_of::<BrowserRealization>().max(std::mem::size_of::<super::dependencies::BrowserAffineCopy>()).max(std::mem::size_of::<super::boolean::BrowserBooleanResult>()).max(std::mem::size_of::<super::clip::BrowserPlaneClip>() + 2 * 2488) as u64 }
+    fn source_correspondence(&self) -> Option<&ifc_lite_geometry::document::retained_source::SourceCorrespondence> {
+        match self {
+            Self::Construction(v)=>v.completion().source_correspondence().map(|v| v.as_ref()),
+            Self::Affine(v)=>v.source_correspondence.as_deref(),
+            Self::Boolean(_) | Self::UnaryClip(_)=>None,
+        }
+    }
     fn object(&self) -> Self::Object {
         match self { Self::Construction(value) => BrowserObjectKey(value.identity), Self::Affine(value) => value.identity, Self::Boolean(value) => value.identity, Self::UnaryClip(value) => value.identity }
     }
@@ -49,16 +56,18 @@ impl NumericalReceipt for BrowserReceipt {
     }
 }
 impl RetainedRuntime for BrowserWorker {
+    fn source_face_binding(&self) -> bool { self.source_faces_enabled }
     type Receipt = BrowserReceipt;
     fn domain(&self) -> BrowserCancellation { self.cancellation() }
     fn incarnation(&self) -> u64 { BrowserWorker::incarnation(self) }
 }
 impl AsyncRetainedExecutor for BrowserWorker {
-    async fn invoke(&mut self, call: Invocation<'_, Self::Receipt>, limits: NumericalLimits, _resources: &ifc_lite_geometry::resource::OwnedResourceContext)
+    async fn invoke(&mut self, call: Invocation<'_, Self::Receipt>, limits: NumericalLimits, resources: &ifc_lite_geometry::resource::OwnedResourceContext)
         -> Result<Self::Receipt, RetainedExecutionError> {
         let max_bytes = u32::try_from(limits.max_bytes)
             .map_err(|_| RetainedExecutionError::Runtime("browser mesh budget exceeds u32".into()))?;
-        match call {
+        let source_accounted = self.source_faces_enabled;
+        let invocation = async { match call {
             Invocation::UnaryClip { input, clip } => self.evaluate_retained_clip(input, clip, limits)
                 .await.map(|value| BrowserReceipt::UnaryClip(Box::new(value)))
                 .map_err(|error| RetainedExecutionError::Runtime(error.to_string())),
@@ -74,6 +83,12 @@ impl AsyncRetainedExecutor for BrowserWorker {
             Invocation::Boolean { left, right, operation } => self.evaluate_retained_boolean(left, right, operation, limits)
                 .await.map(|value| BrowserReceipt::Boolean(Box::new(value)))
                 .map_err(|error| RetainedExecutionError::Runtime(error.to_string())),
-        }
+        }};
+        // Install the captured resource account for each synchronous poll only.
+        // No TLS guard survives Pending or crosses a Worker await.
+        if source_accounted {
+            let mut invocation = std::pin::pin!(invocation);
+            std::future::poll_fn(|cx| resources.with_scope(|| std::future::Future::poll(invocation.as_mut(), cx))).await
+        } else { invocation.await }
     }
 }

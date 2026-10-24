@@ -54,6 +54,7 @@ pub enum MeshStream {
     Indices,
     SourceFaces,
     CornerNormals,
+    ConstructionRoots,
 }
 impl MeshStream {
     pub fn code(self) -> u32 {
@@ -62,12 +63,13 @@ impl MeshStream {
             Self::Indices => 2,
             Self::SourceFaces => 3,
             Self::CornerNormals => 4,
+            Self::ConstructionRoots => 5,
         }
     }
     pub fn scalar_bytes(self) -> usize {
         match self {
             Self::Positions | Self::CornerNormals => 8,
-            Self::Indices | Self::SourceFaces => 4,
+            Self::Indices | Self::SourceFaces | Self::ConstructionRoots => 4,
         }
     }
 }
@@ -76,6 +78,8 @@ impl MeshStream {
 /// Box/cylinder coordinates are evaluation metres; tolerances are explicit.
 #[derive(Debug, Clone)]
 pub enum KernelCommand {
+    SourceCommit { session:u64, upload:u64, incarnation:u64, epoch:u64, revision:u64, entity:u32 },
+    SourceInfo { session:u64, object:WireHandle },
     AbiVersion,
     /// Additive capability negotiation; v1 commands stay unchanged.
     Capabilities,
@@ -186,6 +190,8 @@ pub fn encode_request(request_id: u32, command: &KernelCommand) -> Result<Vec<u8
     out.extend(VERSION.to_le_bytes());
     out.extend(request_id.to_le_bytes());
     let opcode: u32 = match command {
+        KernelCommand::SourceCommit { .. } => 21,
+        KernelCommand::SourceInfo { .. } => 22,
         KernelCommand::AbiVersion => 0,
         KernelCommand::Capabilities => 12,
         KernelCommand::SweepBegin { .. } => 13,
@@ -218,6 +224,11 @@ pub fn encode_request(request_id: u32, command: &KernelCommand) -> Result<Vec<u8
 fn encode_arguments(command: &KernelCommand, out: &mut Vec<u8>) -> Result<(), ProtocolError> {
     use KernelCommand::*;
     match command {
+        SourceCommit { session,upload,incarnation,epoch,revision,entity } => {
+            out.extend(session.to_le_bytes());out.extend(upload.to_le_bytes());out.extend(1u32.to_le_bytes());
+            out.extend(incarnation.to_le_bytes());out.extend(epoch.to_le_bytes());out.extend(revision.to_le_bytes());out.extend(entity.to_le_bytes());
+        }
+        SourceInfo { session,object } => write_solid(out,*session,*object),
         AbiVersion | Capabilities | CreateSession => {}
         SweepBegin {
             session,

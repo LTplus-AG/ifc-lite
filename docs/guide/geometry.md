@@ -1048,3 +1048,20 @@ no caller certificate grants execution authority. The native contract and
 matching Rust decoder must be deployed together. Numerical qualification and
 product activation remain pending; see
 [`PLANE_CONTRACT.md`](../../native/smlib-adapter/PLANE_CONTRACT.md).
+
+### Experimental retained source construction evidence
+
+The disabled retained runtime has an explicit Rust `require_source_faces()`
+opt-in for format-1 source constructions and their affine copies. This carries
+construction-segment and original start/end-cap correspondence from direct SDK
+construction outputs through native and browser Worker receipts. It does not
+invent `IfcFace` identities for swept solids. The common processing controller
+still authenticates the original owned source and checks source expiry before
+acceptance; a numerical packet or `RetainedRequest::with_source_contract` alone
+cannot grant source authority.
+
+This path remains unqualified and does not enable final retained publication.
+Boolean/clip ancestry, authored face-based representation support, final
+appearance and the other release obligations remain required. Exact execution
+remains the default. The private packet, bounds and qualification contract is
+in [SOURCE_BINDING_CONTRACT.md](../../native/smlib-adapter/SOURCE_BINDING_CONTRACT.md).

@@ -28,6 +28,7 @@ pub struct NumericalLimits {
 }
 
 pub trait RetainedRuntime {
+    fn source_face_binding(&self) -> bool { false }
     type Receipt: NumericalReceipt;
     fn domain(&self) -> <Self::Receipt as NumericalReceipt>::Domain;
     fn incarnation(&self) -> u64;
@@ -73,6 +74,7 @@ pub trait NumericalReceipt {
     type Domain: ReceiptDomain;
     type Error: std::fmt::Display + std::fmt::Debug;
     fn heap_bytes() -> u64;
+    fn source_correspondence(&self) -> Option<&ifc_lite_geometry::document::retained_source::SourceCorrespondence> { None }
     fn object(&self) -> Self::Object;
     fn evidence(&self) -> ReceiptEvidence<'_, Self::Object>;
     fn domain(&self) -> &Self::Domain;

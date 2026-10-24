@@ -20,6 +20,13 @@ impl NumericalReceipt for RealizationKind {
             .max(std::mem::size_of::<ifc_lite_geometry_runtime::RetainedDependencyResult>())
             .max(std::mem::size_of::<ifc_lite_geometry_runtime::RetainedPlaneClip>() + 2 * 2488) as u64
     }
+    fn source_correspondence(&self) -> Option<&ifc_lite_geometry::document::retained_source::SourceCorrespondence> {
+        match self {
+            Self::Construction(v)=>v.source_correspondence().map(|v| v.as_ref()),
+            Self::Affine(v)=>v.source_correspondence().map(|v| v.as_ref()),
+            Self::Boolean(_) | Self::UnaryClip(_)=>None,
+        }
+    }
     fn domain(&self) -> &Self::Domain {
         match self {
             Self::Construction(value) => value.owner(),

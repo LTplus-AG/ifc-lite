@@ -18,6 +18,11 @@ impl SmlibWorker {
         loops: u32,
         segments: u32,
     ) -> Result<BrepHandle, WorkerError> {
+        self.upload_sweep(bytes,format,loops,segments,None)
+    }
+    pub(super) fn upload_sweep(&mut self,bytes:&[u8],format:u32,loops:u32,segments:u32,
+        source:Option<&ifc_lite_geometry::document::RetainedRequest>) -> Result<BrepHandle,WorkerError> {
+        if source.is_some() && (format!=1 || segments>128) { return Err(WorkerError::InvalidArgument("source construction family or bound")); }
         let length =
             u32::try_from(bytes.len()).map_err(|_| WorkerError::ResourceLimit("sweep size"))?;
         if !(1..=2).contains(&format)
@@ -31,6 +36,7 @@ impl SmlibWorker {
             return Err(WorkerError::ResourceLimit("sweep declaration"));
         }
         let bits = self.capabilities()?;
+        if source.is_some() && bits & 256 == 0 { return Err(WorkerError::Protocol("source construction binding unavailable")); }
         if bits & (1 << (format - 1)) == 0 {
             return Err(WorkerError::Protocol("staged sweep extension unavailable"));
         }
@@ -61,10 +67,13 @@ impl SmlibWorker {
             // Bounded by MAX_RECIPE_BYTES above.
             offset += chunk.len() as u32;
         }
-        let result = self.call(KernelCommand::SweepCommit {
-            session: self.session,
-            upload,
-        })?;
-        self.handle(result)
+        let command=if let Some(request)=source {
+            let (epoch,revision)=request.source_contract().ok_or(WorkerError::InvalidArgument("missing source contract"))?;
+            KernelCommand::SourceCommit { session:self.session,upload,incarnation:request.worker_incarnation(),epoch,revision,entity:request.recipe().solid_id() }
+        } else { KernelCommand::SweepCommit { session:self.session,upload } };
+        let result = self.call(command)?;
+        let handle=self.handle(result)?;
+        if let Some(request)=source { self.register_source(handle,request,None,Some(upload))?; }
+        Ok(handle)
     }
 }

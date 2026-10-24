@@ -308,6 +308,7 @@ name = "ifc-lite-export"
 version = "22.6.0"
 dependencies = [
  "bytemuck",
+ "geometry-predicates",
  "ifc-lite-core",
  "ifc-lite-geometry",
  "ifc-lite-processing",

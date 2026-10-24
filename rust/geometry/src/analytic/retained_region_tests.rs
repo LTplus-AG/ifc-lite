@@ -202,3 +202,55 @@ fn issue_3641_decimal_limits_and_authority() {
         assert!(source_capture(&data).is_err(), "REGION_DECIMAL_LIMIT");
     }
 }
+
+// #3641 R4: exercise the copy seam itself; upstream decoding is deliberately
+// outside this account. Both cold and already-decoded malformed records matter.
+#[test]
+fn issue_3641_profile_copy_schema_refusal() {
+    use crate::resource::{ExecutionAccount, ExecutionPolicy, ResourceLimits};
+    let template = captured().authored().clone();
+    let data = format!("#61272=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,({}),#61273);", vec!["$"; 8000].join(","));
+    assert_eq!(data.len(), 16053);
+    for warm in [false, true] {
+        let mut decoder = EntityDecoder::with_index(data.as_bytes(), build_entity_index(data.as_bytes()));
+        if warm { decoder.decode_by_id(61272).unwrap(); }
+        let mut authored = template.clone();
+        let before = authored.source.clone();
+        let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
+        let result = account.scope(|| retained_region_decimal::capture_profile(&mut authored, &mut decoder));
+        assert!(result.is_err(), "REGION_PROFILE_COPY_GUARD");
+        assert_eq!(result.unwrap_err(), "invalid profile scalar schema", "REGION_PROFILE_COPY_REPORT");
+        assert_eq!(account.usage().copy_bytes, 0, "REGION_PROFILE_COPY_BEFORE_CLONE");
+        assert_eq!(authored.source, before);
+        if !warm { assert!(decoder.get_cached(61272).is_none(), "REGION_PROFILE_COPY_BEFORE_CLONE"); }
+    }
+}
+
+#[test]
+fn issue_3641_profile_copy_admission_and_metadata() {
+    use crate::resource::{ExecutionAccount, ExecutionPolicy, ResourceLimits};
+    let template = captured().authored().clone();
+    // Quotes, structural punctuation and STEP escapes are scalar text, not lists.
+    let data = format!("#61272=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,'{}O''Brien,(x)\\X2\\00FC\\X0\\',#61273);", "a".repeat(8000));
+    for limits in [ResourceLimits { copy_bytes: Some(0), ..Default::default() },
+        ResourceLimits { live_bytes: Some(0), ..Default::default() }] {
+        let mut decoder = EntityDecoder::with_index(data.as_bytes(), build_entity_index(data.as_bytes()));
+        let mut authored = template.clone();
+        let account = ExecutionAccount::new(ExecutionPolicy::Bounded(limits));
+        let result = account.scope(|| retained_region_decimal::capture_profile(&mut authored, &mut decoder));
+        assert!(result.is_err(), "REGION_PROFILE_COPY_CHARGE");
+        assert!(account.check().is_err(), "REGION_PROFILE_COPY_CHARGE");
+        assert!(decoder.get_cached(61272).is_none(), "REGION_PROFILE_COPY_CHARGE");
+    }
+    let mut decoder = EntityDecoder::with_index(data.as_bytes(), build_entity_index(data.as_bytes()));
+    let mut authored = template;
+    let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
+    account.scope(|| retained_region_decimal::capture_profile(&mut authored, &mut decoder)).unwrap();
+    let record = &authored.source.as_ref().unwrap().records[&61272];
+    assert_eq!(record.attributes["ProfileName"], SourceValue::String(format!("{}O'Brien,(x)ü", "a".repeat(8000))));
+    assert_eq!(record.attributes["ProfileType"], SourceValue::Enum("AREA".into()));
+    assert_eq!(record.attributes["OuterCurve"], SourceValue::EntityRef(61273));
+    // Independent necessary lower bound: three simultaneously owned strings.
+    assert!(account.usage().copy_bytes >= 3 * 8000, "REGION_PROFILE_COPY_CHARGE");
+    assert!(account.usage().live_bytes >= 3 * 8000, "REGION_PROFILE_COPY_CHARGE");
+}

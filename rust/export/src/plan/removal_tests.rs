@@ -74,3 +74,22 @@ fn what_a_patch_replaces_is_reported_as_replaced() {
 fn a_removal_compares_by_value() {
     assert_eq!(Removal::new(5, RemovalReason::Released), Removal::new(5, RemovalReason::Released));
 }
+
+/// An annotation of the old body the sweep deletes (a styled item) is
+/// reported as replaced, not as requested.
+#[test]
+fn a_swept_annotation_is_replaced_not_requested() {
+    for schema in SCHEMAS {
+        let styled = crate::plan::attrs::build_record(schema, 90, "IFCSTYLEDITEM", &[("Item", "#62".into()), ("Styles", "(#91)".into())]);
+        let style = crate::plan::attrs::build_record(schema, 91, "IFCSURFACESTYLE", &[("Side", ".BOTH.".into()), ("Styles", "(#92)".into())]);
+        let colour = crate::plan::attrs::build_record(schema, 92, "IFCSURFACESTYLESHADING", &[("SurfaceColour", "#93".into())]);
+        let rgb = crate::plan::attrs::build_record(schema, 93, "IFCCOLOURRGB", &[("Red", "1.".into()), ("Green", "0.".into()), ("Blue", "0.".into())]);
+        let content = String::from_utf8(host_with_port_type_and_body(schema))
+            .unwrap()
+            .replacen("ENDSEC;\nEND-ISO", &format!("{styled}\n{style}\n{colour}\n{rgb}\nENDSEC;\nEND-ISO"), 1);
+        let mesh = TriangleMesh::new(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], vec![[0, 2, 1], [0, 1, 3], [1, 2, 3], [0, 3, 2]]);
+        let report = run(content.as_bytes(), vec![(ObjectRef::Id(10), Disposition::Patch(Patch::new().with_geometry(GeometryPatch::new(mesh))))]);
+        let reasons = by_id(&report);
+        assert_eq!(reasons.get(&90), Some(&RemovalReason::Replaced), "{schema}: {reasons:?}");
+    }
+}

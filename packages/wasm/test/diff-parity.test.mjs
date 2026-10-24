@@ -219,3 +219,82 @@ test('actual WASM rejects invalid raw JSON before surrogate normalization (#8081
     () => wasm.diffValidateSidecar('{', true),
   ]) assert.throws(call, error => typeof error === 'string');
 });
+
+// #8081 review 4365314326: typed serde strings must reject original code units
+// before Rust String conversion can alias them to literal U+FFFD.
+test('actual WASM staging fingerprints reject every non-scalar typed boundary (#8081)', async context => {
+  const wasm = await engine(context); if (!wasm) return;
+  const boundaries = value => [
+    ...['ifcType', 'name', 'description', 'objectType', 'predefinedType', 'tag']
+      .map(field => [field, { ifcType: 'IfcWall', [field]: value }]),
+    ...['materials', 'classifications'].map(field => [field, { [field]: [value] }]),
+    ...['name', 'type'].map(field => [`typeAssignments.${field}`, { typeAssignments: [{ [field]: value }] }]),
+    ...[['propertySets', 'properties'], ['quantitySets', 'quantities']].flatMap(([sets, members]) => [
+      [`${sets}.name`, { [sets]: [{ name: value, [members]: [] }] }],
+      [`${sets}.${members}.name`, { [sets]: [{ name: 'Set', [members]: [{ name: value }] }] }],
+      ...[
+        ['string', value],
+        ['array string', [null, [value]]],
+        ['object key', { [value]: 1, '\ufffd': 2 }],
+        ['nested object key', [{ outer: [{ [value]: 1 }] }]],
+        ['nested object value', { outer: [false, { inner: value }] }],
+        ['Map key', new Map([[value, 1], ['\ufffd', 2]])],
+        ['Map value', new Map([['key', [value]]])],
+      ].map(([label, item]) => [`${sets}.${members}.value ${label}`, {
+        [sets]: [{ name: 'Set', [members]: [{ name: 'Entry', value: item }] }],
+      }]),
+    ]),
+  ];
+  for (const lone of ['\ud800', '\ud801', '\udfff', 'a\ud800b', '\udfff\ud800']) {
+    for (const [label, input] of boundaries(lone)) {
+      for (const name of ['diffBuildDataFingerprint', 'diffBuildComponentFingerprints']) {
+        assert.throws(() => wasm[name](input), error => typeof error === 'string'
+          && /WASM diff fingerprints require well-formed UTF-16/.test(error), `${name}: ${label}`);
+      }
+    }
+  }
+});
+
+test('actual WASM scalar fingerprints equal the public TS engine without observing extras (#8081)', async context => {
+  const wasm = await engine(context); if (!wasm) return;
+  // Root pnpm build supplies the unchanged public TS oracle, as for the
+  // committed parity-vector generator. No mock or reconstructed hash oracle.
+  const ts = await import('../../diff/dist/fingerprint.js');
+  for (const scalar of ['\ufffd', 'é', '😀', '\ud800\udc00', 'literal\\ud800', '']) {
+    const input = {
+      ifcType: `IfcWall${scalar}`, name: scalar, description: scalar,
+      objectType: scalar, predefinedType: scalar, tag: scalar,
+      materials: [scalar], classifications: [scalar],
+      typeAssignments: [{ name: scalar, type: scalar }],
+      propertySets: [{ name: scalar, properties: [{ name: scalar, value: scalar },
+        { name: 'nested', value: { [scalar]: [scalar, { text: scalar }], z: NaN } }] }],
+      quantitySets: [{ name: scalar, quantities: [{ name: scalar, value: { [scalar]: [scalar, Infinity] } }] }],
+    };
+    assert.equal(wasm.diffBuildDataFingerprint(input), ts.buildDataFingerprint(input));
+    assert.deepEqual(wasm.diffBuildComponentFingerprints(input), ts.buildComponentFingerprints(input));
+  }
+  const plain = { ifcType: 'IfcWall', typeAssignments: [{ name: 'Type', type: 'IfcWallType' }],
+    propertySets: [{ name: 'Set', properties: [{ name: 'Entry', value: { text: '😀' } }] }] };
+  for (const name of ['diffBuildDataFingerprint', 'diffBuildComponentFingerprints']) {
+    const input = structuredClone(plain);
+    let reads = 0;
+    Object.defineProperty(input.propertySets[0].properties[0].value, 'text', {
+      enumerable: true, get() { reads++; return '😀'; },
+    });
+    for (const record of [input, input.typeAssignments[0], input.propertySets[0], input.propertySets[0].properties[0]]) {
+      Object.defineProperty(record, '\ud800', { enumerable: true, get() { throw new Error('ignored extra observed'); } });
+    }
+    Object.defineProperty(input.typeAssignments[0], 'globalId', {
+      enumerable: true, get() { throw new Error('unprojected GlobalId observed'); },
+    });
+    assert.deepEqual(wasm[name](input), wasm[name](plain));
+    assert.equal(reads, 1, `${name}: nested values are read once`);
+  }
+  for (const field of ['propertySets', 'quantitySets', 'typeAssignments', 'materials', 'classifications']) {
+    for (const empty of [null, undefined, []]) {
+      const input = { ifcType: 'IfcWall', [field]: empty };
+      assert.equal(wasm.diffBuildDataFingerprint(input), ts.buildDataFingerprint(input));
+      assert.deepEqual(wasm.diffBuildComponentFingerprints(input), ts.buildComponentFingerprints(input));
+    }
+  }
+});

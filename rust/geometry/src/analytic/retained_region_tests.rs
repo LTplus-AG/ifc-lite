@@ -125,3 +125,64 @@ fn issue_3641_region_units_rigid_frame_and_survey_translation_controls() {
         assert!((number(64+3*8)-0.53).abs()<1e-12);
     }
 }
+
+fn source_capture(data: &str) -> Result<RetainedProfileRegion, String> {
+    let mut decoder = EntityDecoder::with_index(data.as_bytes(), build_entity_index(data.as_bytes()));
+    let solid = decoder.decode_by_id(61271).unwrap();
+    with_source_capture(|| RetainedProfileRegion::capture(&solid, &mut decoder))
+}
+
+#[test]
+fn issue_3641_authored_rounding_collision_refused() {
+    let data = std::str::from_utf8(FIXTURE).unwrap().replace(
+        "((0.,0.),(870.,0.),(1400.,-900.),(4500.,-900.00001),(4500.,0.))",
+        "((0.,1.00000000000000001),(870.,1.),(1400.,-899.),(4500.,-899.00001),(4500.,1.))");
+    assert!(source_capture(&data).is_err(), "REGION_DECIMAL_EQUALITY");
+    assert!(source_capture(std::str::from_utf8(FIXTURE).unwrap()).is_ok());
+}
+
+#[test]
+fn issue_3641_authored_underflow_refused() {
+    let data = std::str::from_utf8(FIXTURE).unwrap().replace("((0.,0.),(870.,0.)", "((0.,1.E-400),(870.,0.)");
+    assert!(source_capture(&data).is_err(), "REGION_DECIMAL_RANGE");
+}
+
+fn preflight_source(indices: &str) -> Result<(), String> {
+    let data = std::str::from_utf8(FIXTURE).unwrap().replace("IFCLINEINDEX((1,2,3,4,5,1))", indices);
+    let mut decoder = EntityDecoder::with_index(data.as_bytes(), build_entity_index(data.as_bytes()));
+    let solid = decoder.decode_by_id(61271).unwrap();
+    preflight(&solid, &mut decoder)
+}
+
+#[test]
+fn issue_3641_preflight_item_bound() {
+    let indices = format!("{}IFCLINEINDEX((1,2,3,4,5,1))", "IFCLINEINDEX(()),".repeat(MAX_EDGES+1));
+    assert_eq!(preflight_source(&indices).unwrap_err(), "retained region item budget exceeded", "REGION_PREFLIGHT_BOUND");
+}
+
+#[test]
+fn issue_3641_preflight_cardinality() {
+    assert_eq!(preflight_source("IFCLINEINDEX(()),IFCLINEINDEX((1,2,3,4,5,1))").unwrap_err(),
+        "retained region invalid line index cardinality", "REGION_PREFLIGHT_CARDINALITY");
+}
+
+#[test]
+fn issue_3641_preflight_charges_work() {
+    use crate::resource::{ExecutionAccount, ExecutionPolicy, ResourceLimits};
+    let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits { work: Some(0), ..Default::default() }));
+    assert!(account.scope(|| preflight_source("IFCLINEINDEX((1,2,3,4,5,1))")).is_err(), "REGION_PREFLIGHT_CHARGE");
+}
+
+#[test]
+fn issue_3641_profile_source_record() {
+    let region = captured();
+    let source = region.authored().source.as_ref().unwrap();
+    assert!(source.records.contains_key(&61272), "REGION_PROFILE_RECORD");
+    let record = &source.records[&61272];
+    assert_eq!(record.id, 61272);
+    assert_eq!(record.ifc_type_name, "IfcArbitraryClosedProfileDef");
+    assert_eq!(record.attributes["ProfileType"], SourceValue::Enum("AREA".into()));
+    assert_eq!(record.attributes["ProfileName"], SourceValue::String("BL25632".into()));
+    assert_eq!(record.attributes["OuterCurve"], SourceValue::EntityRef(61273));
+    assert_eq!(region.boundary().source.as_ref().unwrap().root_entity_id, 61273);
+}

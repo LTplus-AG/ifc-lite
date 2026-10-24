@@ -15,6 +15,8 @@ categories = ["parsing", "algorithms"]
 readme = "../../README.md"
 
 [features]
+retained-runtime = []
+retained-native = ["retained-runtime", "dep:ifc-lite-geometry-runtime"]
 # Opt-in alternate triangulator oracle for canonical producer regression tests.
 triangulation-alt = ["ifc-lite-geometry/triangulation-alt"]
 # Fixed-size work counters for the diagnostic example, never enabled by default.
@@ -38,7 +40,13 @@ phase-markers = []
 name = "csg_scaling_bench"
 required-features = ["csg-capture"]
 
+[[example]]
+name = "retained_product"
+required-features = ["retained-native"]
+
 [dependencies]
+# Private integration edge; registry/source-package bootstrap is a landing gate (#7999).
+ifc-lite-geometry-runtime = { version = "21.4.0", path = "../geometry-runtime", optional = true }
 ifc-lite-core.workspace = true
 # CSG runs on the pure-Rust exact kernel inside ifc-lite-geometry on every
 # target (the Manifold C++ kernel was removed in the kernel consolidation —

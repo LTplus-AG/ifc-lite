@@ -121,19 +121,7 @@ impl<'j> ProductState<'j> {
         if self.capture_stop() {
             return Ok(None);
         }
-        let kind = match &mut self.stage {
-            Stage::Complete => return Ok(None),
-            Stage::Primary { strategy, layer_class } => WorkKind::Primary { strategy: *strategy, layer_class: *layer_class },
-            Stage::VoidedParts => WorkKind::VoidedParts,
-            Stage::PlainParts => WorkKind::PlainParts,
-            Stage::TypeMaps(maps) => match maps.next() {
-                Some(&(map_id, class)) => WorkKind::TypeMap { map_id, class },
-                None => {
-                    self.stage = Stage::Complete;
-                    return Ok(None);
-                }
-            },
-        };
+        let Some(kind) = self.stage.next_kind() else { return Ok(None) };
         Ok(Some(self.protocol.issue(kind)))
     }
 

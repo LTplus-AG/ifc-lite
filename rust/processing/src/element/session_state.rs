@@ -12,6 +12,23 @@ pub(super) enum Stage<'j> {
     Complete,
 }
 
+impl Stage<'_> {
+    /// The same canonical strategy cursor serves exact and retained consumers.
+    pub(super) fn next_kind(&mut self) -> Option<super::session_protocol::WorkKind> {
+        use super::session_protocol::WorkKind;
+        match self {
+            Self::Complete => None,
+            Self::Primary { strategy, layer_class } => Some(WorkKind::Primary { strategy: *strategy, layer_class: *layer_class }),
+            Self::VoidedParts => Some(WorkKind::VoidedParts),
+            Self::PlainParts => Some(WorkKind::PlainParts),
+            Self::TypeMaps(maps) => match maps.next() {
+                Some(&(map_id, class)) => Some(WorkKind::TypeMap { map_id, class }),
+                None => { *self = Self::Complete; None }
+            },
+        }
+    }
+}
+
 /// The product-independent numerical and diagnostic state of one element.
 ///
 /// Exact-work budget, degenerate-triangle tally and pending reports are owned

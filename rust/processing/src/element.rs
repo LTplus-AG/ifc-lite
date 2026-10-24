@@ -78,6 +78,10 @@ mod presentation_source;
 mod assembly_submeshes;
 mod assembly_fallback;
 mod assembly_types;
+#[cfg(feature = "retained-runtime")]
+mod session_retained;
+#[cfg(feature = "retained-runtime")]
+pub use session_retained::*;
 mod model_context;
 pub use model_context::{
     OwnedMeshProductionContext, OwnedMeshProductionData, ProductionContextError, ProductionContextId,

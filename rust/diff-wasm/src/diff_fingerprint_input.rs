@@ -1,24 +1,22 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
-//! Staging (#8081): reject non-scalar strings at the typed boundary, before
-//! serde-wasm-bindgen can replace code units. Ignore unprojected record fields.
+//! Lossless fingerprint input (#8042/#8081): preserve original UTF-16 code
+//! units while observing only the typed projection, never ignored record fields.
 use ifc_lite_diff::input::{DataFingerprintInput, PropertyEntryInput, PropertySetInput,
     QuantitySetInput, TypeAssignmentInput, PropertyValue};
-use js_sys::JsString;
+use ifc_lite_diff::JsString as NativeJsString;
 use serde::{Deserialize, Deserializer, de::{Error as _, Visitor, SeqAccess, MapAccess}};
 use wasm_bindgen::prelude::*;
 use std::fmt;
 
-const NON_SCALAR: &str = "WASM diff fingerprints require well-formed UTF-16; use the public TypeScript fingerprint API for this input (#8042).";
-
 #[derive(Default)]
-struct ScalarString(String);
-impl<'de> Deserialize<'de> for ScalarString {
+struct LosslessString(NativeJsString);
+impl<'de> Deserialize<'de> for LosslessString {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let original: JsString = serde_wasm_bindgen::preserve::deserialize(deserializer)?;
-        char::decode_utf16(original.iter()).collect::<Result<String, _>>()
-            .map(Self).map_err(|_| D::Error::custom(NON_SCALAR))
+        let original: JsValue = serde_wasm_bindgen::preserve::deserialize(deserializer)?;
+        crate::diff_transport::string(&original).map(Self)
+            .map_err(|_| D::Error::custom("expected a string"))
     }
 }
 fn optional_values<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
@@ -27,17 +25,17 @@ where D: Deserializer<'de>, T: Deserialize<'de> {
 }
 
 // Match input.rs defaults and field names, but deserialize every typed string
-// through ScalarString. Derived struct decoding observes only known fields;
+// through lossless JS code units. Derived struct decoding observes only known fields;
 // e.g. typeAssignments.globalId is deliberately not fingerprint content.
 #[derive(Default, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 struct Input {
-    ifc_type: ScalarString,
-    name: Option<ScalarString>,
-    description: Option<ScalarString>,
-    object_type: Option<ScalarString>,
-    predefined_type: Option<ScalarString>,
-    tag: Option<ScalarString>,
+    ifc_type: LosslessString,
+    name: Option<LosslessString>,
+    description: Option<LosslessString>,
+    object_type: Option<LosslessString>,
+    predefined_type: Option<LosslessString>,
+    tag: Option<LosslessString>,
     #[serde(deserialize_with = "optional_values")]
     property_sets: Vec<PropertySet>,
     #[serde(deserialize_with = "optional_values")]
@@ -45,23 +43,23 @@ struct Input {
     #[serde(deserialize_with = "optional_values")]
     type_assignments: Vec<TypeAssignment>,
     #[serde(deserialize_with = "optional_values")]
-    materials: Vec<ScalarString>,
+    materials: Vec<LosslessString>,
     #[serde(deserialize_with = "optional_values")]
-    classifications: Vec<ScalarString>,
+    classifications: Vec<LosslessString>,
 }
 #[derive(Deserialize)]
-struct PropertySet { name: ScalarString, properties: Vec<Entry> }
+struct PropertySet { name: LosslessString, properties: Vec<Entry> }
 #[derive(Deserialize)]
-struct QuantitySet { name: ScalarString, quantities: Vec<Entry> }
+struct QuantitySet { name: LosslessString, quantities: Vec<Entry> }
 #[derive(Deserialize)]
 struct Entry {
-    name: ScalarString,
+    name: LosslessString,
     #[serde(default)]
     value: Value,
 }
 #[derive(Default, Deserialize)]
 #[serde(default)]
-struct TypeAssignment { name: Option<ScalarString>, #[serde(rename = "type")] type_name: Option<ScalarString> }
+struct TypeAssignment { name: Option<LosslessString>, #[serde(rename = "type")] type_name: Option<LosslessString> }
 
 #[derive(Default)]
 struct Value(PropertyValue);
@@ -71,7 +69,7 @@ impl<'de> Deserialize<'de> for Value {
         // visit_string. Preserve the JS handle first, at EVERY nested value.
         let original: JsValue = serde_wasm_bindgen::preserve::deserialize(deserializer)?;
         if original.is_string() {
-            return serde_wasm_bindgen::from_value::<ScalarString>(original)
+            return serde_wasm_bindgen::from_value::<LosslessString>(original)
                 .map(|value| Self(PropertyValue::String(value.0))).map_err(D::Error::custom);
         }
         struct PropertyVisitor;
@@ -93,7 +91,7 @@ impl<'de> Deserialize<'de> for Value {
             }
             fn visit_map<A: MapAccess<'de>>(self, mut access: A) -> Result<Value, A::Error> {
                 let mut values = Vec::new();
-                while let Some((ScalarString(key), Value(value))) = access.next_entry()? {
+                while let Some((LosslessString(key), Value(value))) = access.next_entry()? {
                     values.push((key, value));
                 }
                 Ok(Value(PropertyValue::Object(values)))

@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'vitest';
+import { initDiff } from '@ifc-lite/diff';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { IFCLITE_ATTR, computeLayerId, getProvenance } from '@ifc-lite/ifcx';
 import { planThreeWayMerge } from './three-way.js';
 import { applyResolutions, buildMergeLayer } from './merge-layer.js';
@@ -10,6 +11,9 @@ import { buildRevertLayer } from './inverse.js';
 import { planRebase } from './rebase.js';
 import { extractStackState } from './component-state.js';
 import { makeLayer } from './three-way.test.js';
+
+// #8042: these tests call synchronous hashing/merge APIs directly.
+beforeAll(async () => { await initDiff(); });
 
 const FIRE = 'bsi::ifc::v5a::Pset_FireSafety::FireRating';
 

@@ -21,6 +21,12 @@ large result groups scroll within a virtual list without truncating their rows.
 
 ## What the engine does
 
+Initialize the independent diff WASM module once with `await initDiff()` before
+calling synchronous diff APIs, or use `initDiffSync({ module: bytes })` with
+preloaded WASM bytes. If asynchronous initialization is in progress,
+`initDiffSync` throws: await `initDiff()` instead. Failed initialization may be
+retried; after success, both initializers are no-ops.
+
 `diffModels(base, head, options?)` takes two iterables of `EntityFingerprint`s and returns a `ModelDiff`:
 
 ```ts

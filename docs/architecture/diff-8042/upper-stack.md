@@ -62,3 +62,30 @@ layer 4, then root pnpm/turbo build dependencies/typecheck/test and actual WASM
 adapter/runtime tests on this exact layer. Never substitute package-local
 checks that bypass dependency builds. Additional differential tests using the
 private oracle arrive with the coherent public cutover in layer 6.
+
+## Layer 6: public facade, oracle relocation and consumer initialization
+
+`stack/8042-v3-public-cutover` depends on runtime adapters.
+Public operations switch together to the integrated Rust facade, with async
+initialization at every integrated CLI/MCP/viewer/registry boundary and real
+runtime setup in direct consumer tests. The historical TS engine and its
+existing tests move to `packages/diff/test/oracle`; public declaration files
+remain in src. The oracle shares public types and is excluded from published
+output. Differential observation, UTF-16 and artifact tests arrive here with
+their required oracle imports. The unchanged `wasm-runtime-race.test.ts` is
+introduced here with its private oracle and public initializer exports.
+API snapshot, changesets and guides are copied
+from integration, not regenerated during preparation.
+
+Existing vector generators switch to the private oracle with the relocation.
+The real-fixture harness receives a minimal interim oracle-loader/runtime-init
+adaptation so it still compares independent engines at this boundary; the next
+layer replaces the complete harness with the exact integrated geometry version.
+No fixture vectors are regenerated or repinned.
+
+Parent qualification: rebuilt siblings and actual independent WASM payload;
+root pnpm/turbo typecheck/test, public API/docs/artifact checks, real model
+oracle parity, built viewer browser asset initialization/retry and consumer
+commands. Node runtime coverage does not qualify browser loading. This layer
+has approximately 1,500 changed production/tool lines after Git rename
+recognition; the larger total diff is predominantly relocated oracle/tests.

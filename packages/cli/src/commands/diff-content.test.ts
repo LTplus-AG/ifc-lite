@@ -12,10 +12,11 @@
  * claims down; run 2 replays them and the churn is gone.
  */
 
+import { initDiff } from '@ifc-lite/diff';
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
+import { beforeAll, afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { diffPositionals } from './diff.js';
 import { buildFileFingerprints, modelIdentityOf } from './diff-engine.js';
 import { contentDiffCommand } from './diff-content.js';
@@ -28,6 +29,9 @@ import {
   scheduleModel,
   typeTagModel,
 } from './diff-test-helpers.js';
+
+// #8042: these tests call synchronous hashing/merge APIs directly.
+beforeAll(async () => { await initDiff(); });
 
 /** An incoming `created` a rewrite must carry forward rather than refresh. */
 const STAMP = '2026-01-01T00:00:00.000Z';

@@ -6,12 +6,15 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { loadIfcBytes } from '../packages/cli/dist/loader.js';
 import { buildFileFingerprints } from '../packages/cli/dist/commands/diff-engine.js';
-import { diffModels } from '../packages/diff/dist/index.js';
+import { loadDiffOracle } from './lib/diff-oracle.mjs';
+import * as publicDiff from '../packages/diff/dist/index.js';
 import { fingerprintColumns } from '../packages/diff/dist/wasm-columns.js';
 import { restoreDiffReferences } from '../packages/diff/dist/wasm-result.js';
 import { initSync, DiffModel } from '../packages/wasm/pkg-diff/ifc-lite-diff.js';
 
 initSync({ module: readFileSync(new URL('../packages/wasm/pkg-diff/ifc-lite-diff_bg.wasm', import.meta.url)) });
+const { diffModels } = await loadDiffOracle();
+publicDiff.initDiffSync({ module: readFileSync(new URL('../packages/wasm/pkg-diff/ifc-lite-diff_bg.wasm', import.meta.url)) });
 const root = new URL('../', import.meta.url);
 const demo = 'apps/viewer/public/samples/';
 const pairs = [

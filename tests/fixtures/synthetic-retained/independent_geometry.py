@@ -60,7 +60,7 @@ def main():
     settings.set('use-world-coords',True)
     settings.set('mesher-linear-deflection',0.00001)
     settings.set('mesher-angular-deflection',0.01)
-    report={'license':'SPDX-License-Identifier: MPL-2.0','ifcopenshell':ifcopenshell.version,'linear_deflection':1e-5,'angular_deflection':0.01,'measurements':[],'passed':True}
+    report={'license':'SPDX-License-Identifier: MPL-2.0','ifcopenshell':ifcopenshell.version,'linear_deflection':1e-5,'angular_deflection':0.01,'measurements':[],'passed':True,'pass_scope':'absolute analytic volume and centroid only; raw signed orientation recorded separately; no ifc-lite result','all_outward':True}
     for name,case in oracle['cases'].items():
         path=ROOT/name
         model=ifcopenshell.open(str(path))
@@ -72,15 +72,25 @@ def main():
             v=np.asarray(shape.geometry.verts).reshape(-1,3)
             t=np.asarray(shape.geometry.faces).reshape(-1,3)
             v=v-v[0]
-            volume=abs(float(np.einsum('ij,ij->i',v[t[:,0]],np.cross(v[t[:,1]],v[t[:,2]])).sum()/6))
+            tetra=np.einsum('ij,ij->i',v[t[:,0]],np.cross(v[t[:,1]],v[t[:,2]]))/6
+            signed_volume=float(tetra.sum())
+            volume=abs(signed_volume)
+            report['all_outward'] &= signed_volume>0
             key='planar_volume_absolute'
             if name.startswith('f-a'):
                 key='curved_band_mesh_volume_absolute' if 'band' in row else 'curved_total_mesh_volume_absolute'
             tol=tolerances[key]
             delta=volume-row['volume']
             passed=abs(delta)<=tol
+            centroid_report=None
+            if 'local_centroid' in row:
+                centroid=(np.asarray(shape.geometry.verts).reshape(-1,3)[0]+((v[t[:,0]]+v[t[:,1]]+v[t[:,2]])*tetra[:,None]/4).sum(axis=0)/signed_volume)
+                expected=np.asarray(row['translation'])+np.asarray(row['basis_columns']).T@(np.asarray(row['scale'])*np.asarray(row['local_centroid']))
+                delta_centroid=float(np.max(np.abs(centroid-expected)))
+                passed &= delta_centroid<=tolerances['position_absolute']
+                centroid_report={'actual':centroid.tolist(),'expected':expected.tolist(),'max_delta':delta_centroid}
             report['passed'] &= passed
-            report['measurements'].append({'file':name,'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'id':row['id'],'volume':volume,'expected':row['volume'],'delta':delta,'tolerance':tol,'triangles':len(t),'passed':passed})
+            report['measurements'].append({'file':name,'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'id':row['id'],'volume':volume,'raw_signed_volume':signed_volume,'outward':signed_volume>0,'centroid':centroid_report,'expected':row['volume'],'delta':delta,'tolerance':tol,'triangles':len(t),'passed':passed})
     result=json.dumps(report,indent=2)+'\n'
     if args.report:
         args.report.write_text(result)

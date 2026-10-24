@@ -115,8 +115,8 @@
           "id": 53,
           "role": "plain",
           "volume": 6,
-          "map": 23,
-          "mapped_item": 47,
+          "map": 19,
+          "mapped_item": 43,
           "translation": [
             0,
             0,
@@ -145,13 +145,19 @@
             1
           ],
           "mirrored": false,
-          "nonuniform": false
+          "nonuniform": false,
+          "styled_item": 47,
+          "local_centroid": [
+            1,
+            0.5,
+            1.5
+          ]
         },
         {
-          "id": 64,
+          "id": 68,
           "role": "rotated",
           "volume": 6,
-          "map": 23,
+          "map": 19,
           "mapped_item": 58,
           "translation": [
             5,
@@ -181,14 +187,20 @@
             1
           ],
           "mirrored": false,
-          "nonuniform": false
+          "nonuniform": false,
+          "styled_item": 62,
+          "local_centroid": [
+            1,
+            0.5,
+            1.5
+          ]
         },
         {
-          "id": 75,
+          "id": 83,
           "role": "mirrored",
           "volume": 6,
-          "map": 23,
-          "mapped_item": 69,
+          "map": 19,
+          "mapped_item": 73,
           "translation": [
             10,
             0,
@@ -217,14 +229,20 @@
             1
           ],
           "mirrored": true,
-          "nonuniform": false
+          "nonuniform": false,
+          "styled_item": 77,
+          "local_centroid": [
+            1,
+            0.5,
+            1.5
+          ]
         },
         {
-          "id": 86,
+          "id": 98,
           "role": "nonuniform",
           "volume": 6,
-          "map": 23,
-          "mapped_item": 80,
+          "map": 19,
+          "mapped_item": 88,
           "translation": [
             15,
             0,
@@ -253,14 +271,20 @@
             0.5
           ],
           "mirrored": false,
-          "nonuniform": true
+          "nonuniform": true,
+          "styled_item": 92,
+          "local_centroid": [
+            1,
+            0.5,
+            1.5
+          ]
         },
         {
-          "id": 101,
+          "id": 113,
           "role": "red",
           "volume": 6,
-          "map": 23,
-          "mapped_item": 91,
+          "map": 19,
+          "mapped_item": 103,
           "translation": [
             20,
             0,
@@ -289,14 +313,20 @@
             1
           ],
           "mirrored": false,
-          "nonuniform": false
+          "nonuniform": false,
+          "styled_item": 107,
+          "local_centroid": [
+            1,
+            0.5,
+            1.5
+          ]
         },
         {
-          "id": 112,
+          "id": 128,
           "role": "door-left",
           "volume": 5,
-          "map": 23,
-          "mapped_item": 106,
+          "map": 19,
+          "mapped_item": 118,
           "translation": [
             25,
             0,
@@ -326,16 +356,22 @@
           ],
           "mirrored": false,
           "nonuniform": false,
+          "styled_item": 122,
+          "local_centroid": [
+            1.1,
+            0.5,
+            1.6
+          ],
           "opening_volume": 2,
-          "opening_id": 119,
-          "void_relation": 120
+          "opening_id": 135,
+          "void_relation": 136
         },
         {
-          "id": 131,
+          "id": 152,
           "role": "door-right",
           "volume": 5,
-          "map": 23,
-          "mapped_item": 125,
+          "map": 19,
+          "mapped_item": 141,
           "translation": [
             30,
             0,
@@ -343,13 +379,13 @@
           ],
           "basis_columns": [
             [
-              1,
               0,
+              1,
               0
             ],
             [
+              -1,
               0,
-              1,
               0
             ],
             [
@@ -365,16 +401,22 @@
           ],
           "mirrored": false,
           "nonuniform": false,
+          "styled_item": 145,
+          "local_centroid": [
+            0.9,
+            0.5,
+            1.6
+          ],
           "opening_volume": 2,
-          "opening_id": 138,
-          "void_relation": 139
+          "opening_id": 159,
+          "void_relation": 160
         },
         {
-          "id": 150,
+          "id": 171,
           "role": "palette",
           "volume": 6,
-          "map": 29,
-          "mapped_item": 144,
+          "map": 25,
+          "mapped_item": 165,
           "translation": [
             35,
             0,
@@ -403,14 +445,19 @@
             1
           ],
           "mirrored": false,
-          "nonuniform": false
+          "nonuniform": false,
+          "local_centroid": [
+            1,
+            0.5,
+            1.5
+          ]
         },
         {
-          "id": 161,
+          "id": 182,
           "role": "textured",
           "volume": 6,
-          "map": 41,
-          "mapped_item": 155,
+          "map": 37,
+          "mapped_item": 176,
           "translation": [
             40,
             0,
@@ -439,12 +486,17 @@
             1
           ],
           "mirrored": false,
-          "nonuniform": false
+          "nonuniform": false,
+          "local_centroid": [
+            1,
+            0.5,
+            1.5
+          ]
         }
       ],
       "palette": {
-        "face_set": 25,
-        "map": 27,
+        "face_set": 21,
+        "map": 23,
         "colours": [
           [
             1,
@@ -472,8 +524,89 @@
           2
         ]
       },
-      "texture_id": 32,
-      "texture_map": 34,
+      "texture_id": 28,
+      "texture_map": 30,
+      "texture": {
+        "id": 182,
+        "texture_id": 28,
+        "url": "checker.png",
+        "vertices": [
+          [
+            40,
+            0,
+            0
+          ],
+          [
+            42,
+            0,
+            0
+          ],
+          [
+            42,
+            1,
+            0
+          ],
+          [
+            40,
+            1,
+            0
+          ],
+          [
+            40,
+            0,
+            3
+          ],
+          [
+            42,
+            0,
+            3
+          ],
+          [
+            42,
+            1,
+            3
+          ],
+          [
+            40,
+            1,
+            3
+          ]
+        ],
+        "exact_uv": [
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            1
+          ],
+          [
+            1,
+            0
+          ],
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            1
+          ]
+        ]
+      },
       "definition_groups": [
         [
           "plain",
@@ -921,20 +1054,42 @@
       ],
       "exact_uv": [
         [
-          0,
+          1,
           1
         ],
         [
           1,
+          0
+        ],
+        [
+          0,
           1
         ],
         [
           0,
           0
+        ]
+      ],
+      "texture_indices": [
+        [
+          2,
+          1,
+          4
         ],
         [
+          2,
+          4,
+          3
+        ],
+        [
+          2,
+          3,
+          1
+        ],
+        [
+          4,
           1,
-          0
+          3
         ]
       ],
       "triangles": [
@@ -972,8 +1127,8 @@
       "bytes": 13953
     },
     "f-b-mapped.ifc": {
-      "sha256": "874b621dab696d3b25464cd77fc56db469b35953ca72543f328248eb509ebf15",
-      "bytes": 8730
+      "sha256": "b18cd64434763a5efb58f71d07d20f279e85285734534599c472eac0541b708e",
+      "bytes": 9544
     },
     "f-c-extrusion.ifc": {
       "sha256": "188d3821fa7a8372773dd46f55e985bd2c23efb09bef2ca38b14f91c6768e55b",
@@ -984,7 +1139,7 @@
       "bytes": 2742
     },
     "f-d-texture.ifc": {
-      "sha256": "0aaddea23c6f22f9366ccee24e234376fc6e6a2bb14080b37b6de5e7226b508e",
+      "sha256": "f4280ef3076783ecef794c7352b544c0be4cfdd25258f7c51be1e9898e24bbad",
       "bytes": 1972
     }
   }

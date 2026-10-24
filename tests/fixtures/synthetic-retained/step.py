@@ -93,7 +93,7 @@ class Model:
         if texture:
             parts.append(self.add('IFCSURFACESTYLEWITHTEXTURES', seq([texture])))
         style = self.add('IFCSURFACESTYLE', "'SYNTHETIC'", '.BOTH.', seq(parts))
-        self.add('IFCSTYLEDITEM', item, seq([style]), '$')
+        return self.add('IFCSTYLEDITEM', item, seq([style]), '$')
 
     def finish(self, reverse=False):
         self.add('IFCRELCONTAINEDINSPATIALSTRUCTURE', self.gid('containment'), '$', '$', '$', seq(self.products), self.storey)

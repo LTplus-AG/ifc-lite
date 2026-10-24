@@ -75,7 +75,6 @@ def curved():
 def mapped():
     m = Model('F-B')
     base = face_set(m)
-    m.style(base, (0.5, 0.5, 0.5))
     base_map = m.add('IFCREPRESENTATIONMAP', m.axes, m.shape([base], 'Tessellation'))
     palette = face_set(m)
     colours = [[1,0,0],[0,0,1]]
@@ -85,7 +84,8 @@ def mapped():
     palette_map = m.add('IFCREPRESENTATIONMAP', m.axes, m.shape([palette], 'Tessellation'))
     tex_face = face_set(m)
     uv = [[0,0],[1,0],[1,1],[0,1],[0,0],[1,0],[1,1],[0,1]]
-    texture_id, texture_map = texture(m, tex_face, uv, triangles())
+    uv_permutation = [3,4,1,2,3,4,1,2]
+    texture_id, texture_map = texture(m, tex_face, uv, [[uv_permutation[i-1] for i in tri] for tri in triangles()])
     tex_map = m.add('IFCREPRESENTATIONMAP', m.axes, m.shape([tex_face], 'Tessellation'))
     type_id = m.add('IFCBUILDINGELEMENTPROXYTYPE', m.gid('type'), '$', "'Repeated box'", '$', '$', '$', seq([base_map]), '$', '$', '.NOTDEFINED.')
     products = []
@@ -101,19 +101,26 @@ def mapped():
         args = [m.direction(x), m.direction(y), m.origin, '2.' if role == 'nonuniform' else '1.', m.direction(z)]
         operator = m.add('IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM', *args, '1.', '0.5') if role == 'nonuniform' else m.add('IFCCARTESIANTRANSFORMATIONOPERATOR3D', *args)
         item = m.add('IFCMAPPEDITEM', source, operator)
-        if role == 'red':
-            m.style(item, (1,0,0))
-        place = m.place((i*5, 0, 0))
+        style_item = m.style(item, (1,0,0) if role == 'red' else (0.5,0.5,0.5)) if source == base_map else None
+        # The right-hand opening lives in a rotated occurrence placement,
+        # exercising cutter-frame composition in addition to unequal cut positions.
+        place = m.place((i*5, 0, 0), x=(0,1,0)) if role == 'door-right' else m.place((i*5, 0, 0))
         product = m.product(role, item, 'MappedRepresentation', place)
         row = {'id':int(product[1:]), 'role':role, 'volume':5 if role.startswith('door') else 6, 'map':int(source[1:]), 'mapped_item':int(item[1:]), 'translation':[i*5,0,0], 'basis_columns':[x,y,z], 'scale':[2,1,0.5] if role == 'nonuniform' else [1,1,1], 'mirrored':role == 'mirrored', 'nonuniform':role == 'nonuniform'}
+        if style_item:
+            row['styled_item'] = int(style_item[1:])
+        row['local_centroid'] = [1,0.5,1.5]
+        if role == 'door-right':
+            row['basis_columns'] = [[0,1,0],[-1,0,0],[0,0,1]]
         if role.startswith('door'):
+            row['local_centroid'] = [1.1 if role == 'door-left' else 0.9,0.5,1.6]
             row['opening_volume'] = 2
             row['opening_id'], row['void_relation'] = m.opening(product, role+'-opening', place, center=(0.5 if role == 'door-left' else 1.5, 0.5))
         if i < 7:
             typed.append(product)
         products.append(row)
     m.add('IFCRELDEFINESBYTYPE', m.gid('typed'), '$', '$', '$', seq(typed), type_id)
-    return m.finish(), {'products':products, 'palette':{'face_set':int(palette[1:]),'map':int(colour_map[1:]),'colours':colours,'indices':indices}, 'texture_id':texture_id, 'texture_map':texture_map, 'definition_groups':[['plain','rotated'],['mirrored'],['nonuniform'],['red'],['door-left'],['door-right'],['palette'],['textured']], 'group_policy':'Conservative retained GPU eligibility: positive rigid, same appearance and same cuts share. Mirror needs parity handling; nonuniform realized; red changes appearance; unequal local opening positions change geometry. Palette and UV maps bind to IfcTessellatedFaceSet, not IfcMappedItem: valid IFC4 requires distinct representation maps for these variants. Seven occurrences share the original map/type. This expected policy is NOT a claim about current exact template grouping.', 'mapped_boolean_limit':'Host opening subtraction over mapped geometry; not an IfcMappedItem used as an IfcBooleanOperand (not in the IFC4 select).'}
+    return m.finish(), {'products':products, 'palette':{'face_set':int(palette[1:]),'map':int(colour_map[1:]),'colours':colours,'indices':indices}, 'texture_id':texture_id, 'texture_map':texture_map, 'texture':{'id':products[-1]['id'],'texture_id':texture_id,'url':'checker.png','vertices':[[x+40,y,z] for x,y,z in BOX_POINTS],'exact_uv':[[uv[i-1][0],1-uv[i-1][1]] for i in uv_permutation]}, 'definition_groups':[['plain','rotated'],['mirrored'],['nonuniform'],['red'],['door-left'],['door-right'],['palette'],['textured']], 'group_policy':'Conservative retained GPU eligibility: positive rigid, same appearance and same cuts share. Mirror needs parity handling; nonuniform realized; red changes appearance; unequal local opening positions change geometry. Palette and UV maps bind to IfcTessellatedFaceSet, not IfcMappedItem: valid IFC4 requires distinct representation maps for these variants. Seven occurrences share the original map/type. This expected policy is NOT a claim about current exact template grouping.', 'mapped_boolean_limit':'Host opening subtraction over mapped geometry; not an IfcMappedItem used as an IfcBooleanOperand (not in the IFC4 select).'}
 
 
 def reexport(brep=False):
@@ -144,9 +151,11 @@ def sidecar():
     indices = [[1,3,2],[1,2,4],[1,4,3],[2,3,4]]
     uv = [[0,0],[1,0],[0,1],[1,1]]
     item = face_set(m, points, indices)
-    image, mapping = texture(m, item, uv, indices)
+    permutation = [2,4,1,3]
+    uv_indices = [[permutation[i-1] for i in tri] for tri in indices]
+    image, mapping = texture(m, item, uv, uv_indices)
     product = m.product('image-tetrahedron', item, 'Tessellation')
-    return m.finish(), {'id':int(product[1:]),'volume':1/6,'texture_id':image,'texture_map':mapping,'url':'checker.png','vertices':points,'source_uv':uv,'exact_uv':[[u,1-v] for u,v in uv],'triangles':indices,'note':'Exact mesher flips V for GPU/glTF; IFC source UV is unflipped. Sidecar pixels are red/green then blue/white, RGBA8, top-down.'}
+    return m.finish(), {'id':int(product[1:]),'volume':1/6,'texture_id':image,'texture_map':mapping,'url':'checker.png','vertices':points,'source_uv':uv,'exact_uv':[[uv[i-1][0],1-uv[i-1][1]] for i in permutation],'texture_indices':uv_indices,'triangles':indices,'note':'Exact mesher flips V for GPU/glTF; IFC source UV is unflipped. Sidecar pixels are red/green then blue/white, RGBA8, top-down.'}
 
 
 def png():

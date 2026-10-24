@@ -18,6 +18,12 @@ pub fn tolerance(name: &str) -> f64 {
         .as_f64()
         .unwrap()
 }
+pub fn face_area_tolerance() -> f64 {
+    serde_json::from_str::<Value>(&fixture("face-area-tolerance.json")).unwrap()
+        ["face_area_absolute_m2"]
+        .as_f64()
+        .unwrap()
+}
 pub fn number(v: &Value) -> f64 {
     v.as_f64().unwrap()
 }
@@ -192,6 +198,9 @@ pub fn check_products(
                 p["role"], p["volume"]
             ),
         )?;
+        if p["local_centroid"].is_array() {
+            check_centroid(&meshes, p)?;
+        }
     }
     Ok(())
 }
@@ -284,6 +293,7 @@ pub fn check_appearance(result: &ProcessingResult, oracle: &Value) -> Result<(),
             "mapped UV count",
         )?;
     }
+    check_uv(result, &oracle["texture"])?;
     Ok(())
 }
 pub fn check_uv(result: &ProcessingResult, oracle: &Value) -> Result<(), String> {
@@ -330,7 +340,10 @@ pub fn check_uv(result: &ProcessingResult, oracle: &Value) -> Result<(), String>
             seen.insert(corner);
         }
     }
-    check(seen.len() == 4, "missing source UV corner")
+    check(
+        seen.len() == oracle["vertices"].as_array().unwrap().len(),
+        "missing source UV corner",
+    )
 }
 
 pub fn semantic_faces(
@@ -383,7 +396,7 @@ pub fn semantic_faces(
         let key = oracle["face_roles"][role]["key"].as_str().unwrap();
         let got = areas.get(key).ok_or("missing semantic face")?;
         check(
-            (got - want).abs() <= tolerance("position_absolute") * 12.,
+            (got - want).abs() <= face_area_tolerance(),
             format!("semantic face {key}: area {got} != {want}"),
         )?;
     }
@@ -479,6 +492,43 @@ fn check_bounds(meshes: &[&MeshData], p: &Value) -> Result<(), String> {
             (min[k] - expected_min[k]).abs() <= tolerance("position_absolute")
                 && (max[k] - expected_max[k]).abs() <= tolerance("position_absolute"),
             format!("occurrence bounds: {min:?}..{max:?} != {expected_min:?}..{expected_max:?}"),
+        )?;
+    }
+    Ok(())
+}
+
+fn check_centroid(meshes: &[&MeshData], p: &Value) -> Result<(), String> {
+    let anchor = position(meshes[0], 0);
+    let mut signed_volume = 0.;
+    let mut moment = [0.; 3];
+    for mesh in meshes {
+        for t in mesh.indices.chunks_exact(3) {
+            let [a, b, c] = [t[0], t[1], t[2]].map(|i| sub(position(mesh, i), anchor));
+            let v = dot(a, cross(b, c)) / 6.;
+            signed_volume += v;
+            for k in 0..3 {
+                moment[k] += v * (a[k] + b[k] + c[k]) / 4.;
+            }
+        }
+    }
+    let basis: Vec<_> = p["basis_columns"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(vector)
+        .collect();
+    let translation = vector(&p["translation"]);
+    let local = vector(&p["local_centroid"]);
+    let scale = vector(&p["scale"]);
+    for k in 0..3 {
+        let actual = anchor[k] + moment[k] / signed_volume;
+        let expected = translation[k]
+            + (0..3)
+                .map(|j| basis[j][k] * scale[j] * local[j])
+                .sum::<f64>();
+        check(
+            (actual - expected).abs() <= tolerance("position_absolute"),
+            format!("centroid axis {k}: {actual} != {expected}"),
         )?;
     }
     Ok(())

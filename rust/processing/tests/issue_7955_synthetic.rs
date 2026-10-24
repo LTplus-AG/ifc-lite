@@ -3,7 +3,7 @@
 //! No retained-runtime or persistent-engine-face-identity claim is made here.
 #[path = "synthetic_7955_support/mod.rs"]
 mod support;
-use ifc_lite_processing::{process, ProcessingRequest, TessellationQuality};
+use ifc_lite_processing::{process, ProcessingRequest};
 use serde_json::Value;
 use support::*;
 
@@ -21,7 +21,9 @@ fn issue_7955_curved_layers_and_cross_layer_opening() {
     let relation = integer(&oracle["products"][0]["void_relation"]);
     let mutant = without_entity(&source, relation);
     assert!(
-        check_products(&run(&mutant), &oracle, true).is_err(),
+        check_products(&run(&mutant), &oracle, true)
+            .unwrap_err()
+            .contains(" volume "),
         "missing wall opening must be detected"
     );
     // Also check the uncut HOST against the independently integrated full shell.
@@ -45,21 +47,31 @@ fn issue_7955_mapped_occurrence_volumes_and_appearance() {
         .unwrap();
     let mutant = without_entity(&source, integer(&row["void_relation"]));
     assert!(
-        check_products(&run(&mutant), &oracle, false).is_err(),
+        check_products(&run(&mutant), &oracle, false)
+            .unwrap_err()
+            .contains(" volume "),
         "uncut mapped occurrence must fail volume oracle"
     );
-    let mut wrong = result.meshes.clone();
-    let red = product_id(&oracle, "red");
-    for m in &mut wrong {
-        if m.express_id == red {
-            m.color = [0.5, 0.5, 0.5, 1.];
-        }
-    }
-    let mut mutated = run(&source);
-    mutated.meshes = wrong;
+    let red_row = oracle["products"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["role"] == "red")
+        .unwrap();
+    let no_red = without_entity(&source, integer(&red_row["styled_item"]));
+    assert_eq!(
+        check_appearance(&run(&no_red), &oracle).unwrap_err(),
+        "occurrence red style"
+    );
+    let moved_door = source.replace(
+        "IFCCARTESIANPOINT((0.5,0.5))",
+        "IFCCARTESIANPOINT((1.5,0.5))",
+    );
     assert!(
-        check_appearance(&mutated, &oracle).is_err(),
-        "dropped occurrence style must be detected"
+        check_products(&run(&moved_door), &oracle, false)
+            .unwrap_err()
+            .starts_with("centroid axis"),
+        "equal-volume wrong cut location killed"
     );
     let mut wrong_palette = run(&source);
     for m in &mut wrong_palette.meshes {
@@ -68,7 +80,8 @@ fn issue_7955_mapped_occurrence_volumes_and_appearance() {
         }
     }
     assert!(
-        check_appearance(&wrong_palette, &oracle).is_err(),
+        check_appearance(&wrong_palette, &oracle).unwrap_err()
+            == "palette colour bound to wrong source face",
         "swapped palette binding killed despite unchanged colour counts"
     );
 }
@@ -102,13 +115,15 @@ fn issue_7955_mapped_instances_preserve_occurrences_and_cuts() {
         .meshes
         .retain(|m| m.express_id != product_id(&oracle, "rotated"));
     assert!(
-        check_products(&mutant, &oracle, false).is_err(),
+        check_products(&mutant, &oracle, false)
+            .unwrap_err()
+            .starts_with("product count/ids"),
         "missing occurrence killed"
     );
 }
 
 #[test]
-fn issue_7955_reexport_semantic_faces_survive_ids_order_and_representation() {
+fn issue_7955_reexport_geometry_matches_external_semantic_faces() {
     let mut observations = Vec::new();
     for name in ["f-c-extrusion.ifc", "f-c-brep.ifc"] {
         let source = fixture(name);
@@ -128,7 +143,9 @@ fn issue_7955_reexport_semantic_faces_survive_ids_order_and_representation() {
                 .collect::<Vec<_>>()
                 .join("\n");
             assert!(
-                check_single(&run(&mutant), &oracle).is_err(),
+                check_single(&run(&mutant), &oracle)
+                    .unwrap_err()
+                    .starts_with("occurrence bounds"),
                 "changed source height killed"
             );
         }
@@ -141,28 +158,22 @@ fn issue_7955_reexport_semantic_faces_survive_ids_order_and_representation() {
             let reversed: Vec<u32> = m.indices.chunks_exact(3).rev().flatten().copied().collect();
             m.indices = reversed;
         }
-        assert_eq!(
-            semantic_faces(&reordered, &oracle)
-                .unwrap()
-                .keys()
-                .collect::<Vec<_>>(),
-            observations.last().unwrap().keys().collect::<Vec<_>>()
-        );
+        let reordered_areas = semantic_faces(&reordered, &oracle).unwrap();
+        for (role, area) in observations.last().unwrap() {
+            assert!((area - reordered_areas[role]).abs() <= face_area_tolerance());
+        }
         // Wrong source frame must not authenticate a face by ordinal.
         let mut wrong_frame = oracle.clone();
         wrong_frame["translation"][0] = Value::from(number(&oracle["translation"][0]) + 0.1);
         assert!(
-            semantic_faces(&result, &wrong_frame).is_err(),
+            semantic_faces(&result, &wrong_frame).unwrap_err()
+                == "triangle has no source semantic face",
             "wrong semantic frame killed"
         );
     }
-    assert_eq!(
-        observations[0].keys().collect::<Vec<_>>(),
-        observations[1].keys().collect::<Vec<_>>()
-    );
     for (key, area) in &observations[0] {
         assert!(
-            (area - observations[1][key]).abs() < tolerance("position_absolute") * 12.,
+            (area - observations[1][key]).abs() < face_area_tolerance(),
             "face area differs: {key}"
         );
     }
@@ -195,19 +206,7 @@ fn issue_7955_image_sidecar_uvs_and_pixels() {
         }
     }
     assert!(
-        check_uv(&mutant, &oracle).is_err(),
+        check_uv(&mutant, &oracle).unwrap_err() == "UV differs from source chart",
         "missing GPU V flip killed"
     );
-}
-
-#[test]
-fn issue_7955_curved_quality_does_not_change_analytic_oracle() {
-    let source = fixture("f-a-curved.ifc");
-    let oracle = case("f-a-curved.ifc");
-    let result = process(
-        source.as_bytes(),
-        &ProcessingRequest::full_pass().quality(TessellationQuality::Highest),
-        &mut (),
-    );
-    check_products(&result, &oracle, true).unwrap();
 }

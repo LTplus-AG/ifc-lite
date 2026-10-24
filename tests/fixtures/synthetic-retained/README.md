@@ -14,7 +14,10 @@ committed here, separate from the fetched external `tests/models/manifest.json`
 corpus. `oracles.json` lists output hashes, product ids, input dimensions,
 volumes, appearance and identity expectations. Do not hand-edit generated files.
 `tolerances.json` was committed **before** generating/running these witnesses.
-No tolerance may be increased in response to a failed run.
+No tolerance may be increased in response to a failed run. Review found the
+face-area bound missing; `face-area-tolerance.json` separately preregisters
+1e-6 m² before any Rust face-area test run, tightening the earlier unregistered
+1.2e-5 m² derived comparison. The original tolerance file is unchanged.
 
 - **F-A**: quarter-annulus wall, 3 m tall, radii 10/10.1/10.3/10.6 m.
   `IfcMaterialLayerSetUsage` holds three unequal thicknesses. The CCW inner
@@ -29,7 +32,10 @@ No tolerance may be increased in response to a failed run.
   0.005 m³; aggregate tolerance is 0.015 m³ (three bands).
 - **F-B**: nine mapped boxes. Seven share one representation map and type,
   including a rotation, a reflection, determinant-one nonuniform scaling,
-  a red occurrence style and two differently located openings. Palette and
+  unambiguous occurrence styles (the shared face set is unstyled) and two
+  differently located openings, one in a rotated occurrence placement. Their
+  different centroids are independently specified, so volume alone cannot
+  conceal a cut applied at the wrong location. Palette and
   texture variants require distinct face sets/maps: IFC4 indexed maps bind to
   `IfcTessellatedFaceSet`, not to `IfcMappedItem`. The conservative *retained*
   grouping oracle permits only plain/rotated to share; current exact can share
@@ -44,14 +50,19 @@ No tolerance may be increased in response to a failed run.
   areas and order independence. They do **not** assert the engine provides
   persistent face IDs; triangle/STEP ordinals cannot establish those IDs.
 - **F-D**: closed tetrahedron, `IfcImageTexture`, explicit triangle UV map and
-  relative `checker.png`. Source UVs and the exact mesher's V-flipped UVs are
+  relative `checker.png`. UV indices deliberately permute the coordinate indices
+  in F-B and F-D, so ignoring the index mapping is observable. Source UVs and the exact mesher's V-flipped UVs are
   listed separately. The 2×2 RGBA PNG uses a deterministic stored DEFLATE block
   and includes an MPL notice. Its rows are red/green, blue/white. All assets
   and generators here are MPL-2.0, with no external source/sidecar licence claim.
 
 The Rust integration target `issue_7955_synthetic` runs canonical
 `ifc_lite_processing::process` with exact geometry, default medium quality and
-instancing off; separate tests use instancing and highest quality. Run through
+instancing off; a separate test expands instance records with affine transforms.
+That expansion is test code, not a test of the viewer/GPU consumer. Medium and
+Highest share profile-arc segment counts, so no false quality-variation test is
+provided. The source renderer does not resolve image URLs here; decoding the
+PNG in a test proves the sidecar pixels only, not engine sidecar loading. Run through
 fleet admission according to AGENTS.md:
 
 ```sh
@@ -80,7 +91,10 @@ validation of the current Rust head. The CLI's basic checks are not full EXPRESS
 schema validation. Missing IfcOpenShell exits with `UNRUN`, never a false pass.
 For independent geometry and a second numerical source integral, run
 `/path/to/python independent_geometry.py --report /path/to/volumes.json`.
-It uses IfcOpenShell geometry and integrates the decoded circular strip with
+It reports absolute volume/centroid acceptance and signed orientation separately
+(IfcOpenShell emits reversed winding for the reflected occurrence). The native
+exact test requires positive signed volume. This is not hidden by taking its
+absolute value. The independent check integrates the decoded circular strip with
 Simpson quadrature; it does not import the generator or its antiderivative.
 Schema validation alone did not detect the first generator's seam-crossing
 trim ambiguity: geometry validation did. The corrected arcs rotate their basis

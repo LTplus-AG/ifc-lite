@@ -14,8 +14,8 @@ void NumericalRead::begin_tessellation(Ledger& ledger,SmBrep& source) {
     ledger.numerical.retained_nodes=nodes; ledger.numerical.retained_events=events;
     ledger.subdivision=std::make_unique<EdgeSubdivision>(ledger,source);
 }
-void NumericalRead::release_tessellation_history(Ledger& ledger) {
-    ledger.reclaim_tessellation_history();
+void NumericalRead::release_tessellation_history(Ledger& ledger,SmPolyBrep* output) {
+    ledger.reclaim_tessellation_history(output);
 }
 SmStatus NumericalRead::tessellate(Ledger& ledger,SmBrep& source,SmPolyBrep*& output,
     const SmTessellationParams& params,SmTessellationReport& report) {
@@ -34,7 +34,7 @@ SmStatus NumericalRead::tessellate(Ledger& ledger,SmBrep& source,SmPolyBrep*& ou
         ledger.check(); end(ledger); seal.verify(); ledger.verify_inventory(source);
         if(status!=SM_SUCCESS || report.failures.GetSize())
             throw AdapterFailure{IFCLITE_SMLIB_UNSUPPORTED,"owned tessellation read failed or was partial"};
-        release_tessellation_history(ledger);
+        release_tessellation_history(ledger,output);
         phase.finish(); ledger.check(); return status;
     } catch(...) {
         ledger.numerical.source=nullptr;

@@ -6,6 +6,7 @@
 #include <memory>
 #include <vector>
 class SmBrep;
+class SmPolyBrep;
 class SmFace;
 class SmObject;
 class SmCopyBrepMap;
@@ -173,7 +174,7 @@ class Ledger {
     bool numerical_copy_event(Event&,SmNotifyOperation,SmObject*,SmObject*,SmObject*,SmObject*);
     bool numerical_copy_trim(SmObject*,Identity={});
     void protect(SmBrep*);
-    void reclaim_tessellation_history();
+    void reclaim_tessellation_history(SmPolyBrep* output);
     friend class Scope;
     friend class RepresentationSeal;
     friend class GeneratedPlane;

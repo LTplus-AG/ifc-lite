@@ -217,6 +217,25 @@ def main():
          '// mutation: discard live constructor generation',
          'journal release refuses a live escaped constructor generation'),
     ])
+    # #7955 r10: scratch receipt lifetime is distinct from returned ancestry.
+    cases.extend([
+        ('trim-journal', 'face_lineage_reclaim.cpp',
+         'require(retained(receipt.input),"polygon receipt input is not retained ancestry");',
+         'require(receipt.rebound && retained(receipt.input),"polygon receipt input is not retained ancestry");',
+         'polygon journal releases deleted UV scratch after checked final output'),
+        ('trim-journal', 'face_lineage_reclaim.cpp',
+         'receipt->rebound && receipt->body==output && polygon->GetPolyBrep()==output,',
+         'receipt->body==output && polygon->GetPolyBrep()==output,',
+         'polygon journal refuses a missing final rebind callback'),
+        ('trim-journal', 'face_lineage_reclaim.cpp',
+         'require(receipt,"returned polygon has no attribute receipt"); // published-polygon-receipt',
+         'if(!receipt) continue; // mutation: accept unobserved output polygon',
+         'polygon journal refuses an output without an attribute receipt'),
+        ('trim-journal', 'face_lineage_reclaim.cpp',
+         'original && original->alive && !original->retired && original->current==receipt->input,',
+         'original && original->alive && !original->retired,',
+         'polygon journal refuses a silently changed final original'),
+    ])
     paths = sorted({source / row[1] for row in cases})
     subprocess.run(['git', 'diff', '--exit-code', 'HEAD', '--', *map(str, paths)], cwd=root, check=True)
     originals = {path: path.read_text() for path in paths}

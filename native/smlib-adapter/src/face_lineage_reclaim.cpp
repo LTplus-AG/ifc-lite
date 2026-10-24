@@ -2,10 +2,12 @@
 #include "face_lineage.hpp"
 #include "failure.hpp"
 #include "ifclite_smlib.h"
+#include <SmPoly.h>
+#include <SmFace.h>
 #include <algorithm>
 #include <cstdio>
 namespace face_lineage {
-void Ledger::reclaim_tessellation_history() {
+void Ledger::reclaim_tessellation_history(SmPolyBrep* output) {
     // #7955: fixed numerical reads create an internal BRep that must be gone
     // before publication. Its generations are operation scratch, not new face
     // ancestry in the returned mesh. Do not refund unfinished/failed work.
@@ -21,8 +23,50 @@ void Ledger::reclaim_tessellation_history() {
     auto retained=[&](Identity id) {
         const auto* n=node(id); return n && size_t(n-nodes.data())<keep_nodes;
     };
-    for(const auto& polygon:numerical.polygons)
-        require(polygon.rebound && retained(polygon.input),"polygon result still references temporary ancestry");
+    // SmTess creates attribute receipts for both temporary UV polygons (1793)
+    // and final 3D polygons (6675). Phase3DeleteFacePolygons destroys UV scratch;
+    // only the returned 3D inventory is rebound by ConvertToPolyBrep:37552.
+    // Scratch receipt pointers may be dead: compare them, never dereference them.
+    // Walk the actual returned hierarchy with the existing 8192 receipt bound.
+    // Three levels (region/shell/face) permit at most 3*8192 inspected entries.
+    std::vector<SmPolyFace*> published;
+    uint32_t work=0;
+    auto children=[&](SmOwningTopology& owner,ULONG type,auto visit) {
+        const auto size=owner.GetSize(); auto* first=owner.GetList(); auto* item=first;
+        require(size<=8192 && (size==0)==(first==nullptr),"invalid polygon output list size");
+        for(ULONG i=0;i<size;++i) {
+            require(++work<=3*8192 && item && (!i || item!=first) && item->GetType()==type &&
+                item->GetOwner()==&owner,"invalid bounded polygon output topology");
+            visit(item); item=item->GetNext();
+        }
+        require(item==first,"polygon output list does not close at its declared size");
+    };
+    if(output) children(*output,SmPolyRegion_TYPE,[&](SmTopology* region) {
+        children(*static_cast<SmPolyRegion*>(region),SmPolyShell_TYPE,[&](SmTopology* shell) {
+            children(*static_cast<SmPolyShell*>(shell),SmPolyFace_TYPE,[&](SmTopology* face) {
+                require(published.size()<8192,"polygon output exceeds receipt bound");
+                published.push_back(static_cast<SmPolyFace*>(face));
+            });
+        });
+    });
+    for(const auto& receipt:numerical.polygons) {
+        require(retained(receipt.input),"polygon receipt input is not retained ancestry");
+        if(receipt.rebound) require(receipt.body==output &&
+            std::find(published.begin(),published.end(),receipt.polygon)!=published.end(),
+            "rebound polygon is absent from the returned inventory");
+    }
+    for(auto* polygon:published) {
+        const NumericalPhase::PolygonReceipt* receipt=nullptr;
+        for(const auto& candidate:numerical.polygons) if(candidate.polygon==polygon) {
+            require(!receipt,"duplicate returned polygon receipt"); receipt=&candidate;
+        }
+        require(receipt,"returned polygon has no attribute receipt"); // published-polygon-receipt
+        require(receipt->rebound && receipt->body==output && polygon->GetPolyBrep()==output,
+            "returned polygon has no matching final rebind"); // published-polygon-rebind
+        const auto* original=binding(polygon->GetOriginalFace(),false);
+        require(original && original->alive && !original->retired && original->current==receipt->input,
+            "returned polygon original differs from its checked rebind"); // published-polygon-original
+    }
     // Every primary and auxiliary generation in a surviving binding must be
     // outside the discarded suffix. Dead bindings may be forgotten; their
     // monotonically issued generation is NEVER made available for reuse.

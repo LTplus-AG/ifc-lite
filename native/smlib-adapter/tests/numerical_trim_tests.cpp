@@ -29,7 +29,7 @@ struct NumericalReadTestAccess {
     static void begin(Ledger& ledger,SmBrep& source) { NumericalRead::begin(ledger,source); }
     static void tessellation(Ledger& ledger,SmBrep& source) { NumericalRead::begin_tessellation(ledger,source); }
     static void end(Ledger& ledger) { NumericalRead::end(ledger); }
-    static void release(Ledger& ledger) { NumericalRead::release_tessellation_history(ledger); }
+    static void release(Ledger& ledger,SmPolyBrep* output=nullptr) { NumericalRead::release_tessellation_history(ledger,output); }
 };
 }
 namespace {
@@ -102,6 +102,54 @@ void planar_intervals(bool positive) {
     catch(const AdapterFailure& e) { refused=e.status==IFCLITE_SMLIB_UNSUPPORTED; }
     require(refused!=positive,positive?"planar original intervals need not be unit length":
         "planar interval correspondence rejects a mismatched UV domain");
+}
+void polygon_journal() {
+    // #7955/r10: actual UV scratch destruction and final 3D SetOriginalFace
+    // callbacks, as in SmTess::Phase3DeleteFacePolygons and ConvertToPolyBrep.
+    // No synthetic receipt/map: FALSE performs the SDK's real silent backlink
+    // edit, which must not manufacture the missing callback or replace its root.
+    for(unsigned fault=0;fault<4;++fault) {
+        auto owner=OwnedBoundary::box(2,3,4); auto& solid=body(owner); auto& ledger=history(owner);
+        Scope phase(ledger,*SmApiGetOrCreateContext(),&solid); RepresentationSeal seal(ledger,solid);
+        const auto nodes=ledger.node_size(),events=ledger.event_size(); const auto roots=owner.faces();
+        NumericalReadTestAccess::tessellation(ledger,solid);
+        SmCopyBrepMap map; auto internal=std::unique_ptr<SmBrep>(new (*solid.GetContext()) SmBrep(solid,&map));
+        SmTArray<SmFace*> faces; internal->GetFaces(faces); ledger.check();
+        require(faces.GetSize()==6,"polygon journal has genuine internal copy faces");
+        auto* copied=faces[0]; auto* input=static_cast<SmFace*>(map.GetAt(copied));
+        require(input && input->GetBrep()==&solid,"polygon journal uses the actual SDK copy map");
+        auto make_poly=[&] { return std::unique_ptr<SmPolyBrep>(new (*solid.GetContext()) SmPolyBrep(solid.GetTolerance())); };
+        auto scratch=make_poly(),output=make_poly();
+        auto* uv=new (scratch.get()) SmPolyFace(solid.GetTolerance(),scratch.get(),nullptr,nullptr);
+        uv->SetOriginalFace(copied,TRUE);
+        auto* polygon=new (output.get()) SmPolyFace(solid.GetTolerance(),output.get(),nullptr,nullptr);
+        if(fault!=2) polygon->SetOriginalFace(copied,TRUE);
+        polygon->SetOriginalFace(input,fault==1 || fault==2?FALSE:TRUE);
+        ledger.check();
+        if(fault==3) {
+            SmTArray<SmFace*> originals; solid.GetFaces(originals);
+            auto* wrong=originals[0]==input?originals[1]:originals[0];
+            polygon->SetOriginalFace(wrong,FALSE);
+        }
+        scratch.reset(); internal.reset(); ledger.check(); NumericalReadTestAccess::end(ledger);
+        seal.verify(); ledger.verify_inventory(solid);
+        bool refused=false; const char* reason=nullptr;
+        try { NumericalReadTestAccess::release(ledger,output.get()); }
+        catch(const AdapterFailure& e) { refused=e.status==IFCLITE_SMLIB_UNSUPPORTED; reason=e.message; }
+        const char* marker=fault==0?"polygon journal releases deleted UV scratch after checked final output":
+            fault==1?"polygon journal refuses a missing final rebind callback":
+            fault==2?"polygon journal refuses an output without an attribute receipt":
+                     "polygon journal refuses a silently changed final original";
+        require(refused==(fault!=0),marker);
+        if(fault) {
+            const char* expected=fault==1?"returned polygon has no matching final rebind":
+                fault==2?"returned polygon has no attribute receipt":"returned polygon original differs from its checked rebind";
+            require(reason && std::strcmp(reason,expected)==0 && ledger.node_size()>nodes && ledger.failed()==Failure::None,
+                "polygon journal negative reaches its intended output guard without reclaiming");
+        } else require(ledger.node_size()==nodes && ledger.event_size()==events && owner.faces()==roots,
+            "polygon journal preserves persistent roots and storage checkpoint");
+        output.reset(); phase.finish();
+    }
 }
 void read_journal() {
     // #7955: actual constructor/destructor lifetimes, never a fabricated map.
@@ -479,7 +527,7 @@ void subdivision(const char* name) {
 
 }
 void run_numerical_trim_case(const char* name) {
-    if(std::strcmp(name,"journal")==0) read_journal();
+    if(std::strcmp(name,"journal")==0) { read_journal(); polygon_journal(); }
     else if(std::strcmp(name,"planar-rounding")==0) planar_coefficients(true);
     else if(std::strcmp(name,"planar-outside")==0) planar_coefficients(false);
     else if(std::strcmp(name,"planar-domain")==0) planar_intervals(true);

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Retained values follow the common Boolean spine and ordered operand walk.
 use super::*;
+use ifc_lite_core::slot;
 use super::state::Steps;
 use crate::program::retained::{LogicalRetainedValue, RetainedPlanOperation, RetainedSelection};
 
@@ -101,7 +102,7 @@ impl BooleanMachine {
         };
         // Exact display permits omitted clipping operators; retained plans
         // require the authored operation and never infer a subtraction.
-        let keyword = node.get(0).and_then(|value| value.as_enum())
+        let keyword = node.get(slot::IfcBooleanResult::OPERATOR.index()).and_then(|value| value.as_enum())
             .ok_or_else(|| Error::geometry("missing retained Boolean operator"))?;
         if node.ifc_type == IfcType::IfcBooleanClippingResult && keyword.trim_matches('.') != "DIFFERENCE" {
             return Err(Error::geometry("invalid retained clipping operator"));

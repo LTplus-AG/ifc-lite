@@ -102,11 +102,11 @@ fn native_plane_fault_packets_retire_only_captured_owner() {
         let s = f.source();
         assert!(
             matches!(clip(&mut f.worker, &s), Err(WorkerError::Protocol(_))),
-            "case {case}"
+            "plane fault must reject malformed certificate: {case}"
         );
-        assert_eq!(f.worker.incarnation(), 0);
-        assert!(s.validate_live().is_err());
-        other.validate_live().unwrap();
+        assert_eq!(f.worker.incarnation(), 0, "captured plane owner must retire: {case}");
+        assert!(s.validate_live().is_err(), "captured plane source must expire: {case}");
+        assert!(other.validate_live().is_ok(), "replacement plane owner must survive: {case}");
     }
 }
 #[test]

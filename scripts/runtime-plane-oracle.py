@@ -7,6 +7,7 @@ oracle planner cannot select plane_faults.rs's all(unix, not(wasm32)) cfg.
 """
 import json
 import pathlib
+import re
 import signal
 import subprocess
 
@@ -31,10 +32,12 @@ FAULTS = (
     'native_plane_unknown_postclip_status_retires_owner_and_preserves_primary_error',
     'native_plane_missing_capability_is_unsent_and_preserves_input',
 )
-# These existing assertions directly exercise the three reversed guards.
+# These assertions directly exercise the three reversed guards. The runtime
+# plane peer changes +0.0 to -0.0; alias can still fail another identity check.
+# Owner retirement and replacement liveness remain separate GREEN assertions.
 KILLS = {
     PREFIX + DECODER[0]: 'assertion failed: PlaneCertificate::decode(',
-    FAULTS[0]: 'case alias',
+    FAULTS[0]: 'plane fault must reject malformed certificate: plane',
     FAULTS[4]: 'assertion failed: matches!',
 }
 
@@ -69,15 +72,25 @@ def witness(binary, name, killed):
                             capture_output=True, text=True, timeout=60)
     output = result.stdout + result.stderr
     print(output, end='', flush=True)
-    if 'running 1 test' not in output:
+    if output.splitlines().count('running 1 test') != 1:
         raise RuntimeError(f'missing test: {name}')
     if killed:
-        if (result.returncode != 101 or KILLS[name] not in output
-                or f'test {name} ... FAILED' not in output
-                or '0 passed; 1 failed; 0 ignored' not in output):
+        # Bind the marker to this test's actual panic, not arbitrary output.
+        panic = re.search(
+            rf"^thread '{re.escape(name)}'(?: \(\d+\))? panicked at [^\n]+:\n([^\n]+)",
+            output, re.MULTILINE)
+        marker = panic.group(1) if panic else ''
+        intended = (marker == KILLS[name] if name == FAULTS[0]
+                    else marker.startswith(KILLS[name]))
+        if (result.returncode != 101 or not intended
+                or f'test {name} ... FAILED' not in output.splitlines()
+                or not re.search(r'^test result: FAILED\. 0 passed; 1 failed; 0 ignored;',
+                                 output, re.MULTILINE)):
             raise RuntimeError(f'not the intended semantic assertion: {name}')
     elif (result.returncode != 0
-          or '1 passed; 0 failed; 0 ignored' not in output):
+          or f'test {name} ... ok' not in output.splitlines()
+          or not re.search(r'^test result: ok\. 1 passed; 0 failed; 0 ignored;',
+                           output, re.MULTILINE)):
         raise RuntimeError(f'control did not pass: {name}')
 
 

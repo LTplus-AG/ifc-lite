@@ -24,22 +24,30 @@ def transcript(name=NAME, marker=MARKER, panic_name=NAME):
 
 
 class WitnessTests(unittest.TestCase):
-    def witness(self, output, code=101, killed=True):
+    def witness(self, output, code=101, killed=True, name=NAME):
         with tempfile.TemporaryDirectory() as directory:
             binary = pathlib.Path(directory) / 'libtest-fixture'
             binary.write_text('#!/usr/bin/env python3\nimport sys\n'
-                              f'assert sys.argv[1:] == ["--exact", {NAME!r}, "--nocapture"]\n'
+                              f'assert sys.argv[1:] == ["--exact", {name!r}, "--nocapture"]\n'
                               f'print({output!r}, end="")\nsys.exit({code})\n')
             binary.chmod(0o755)
             with contextlib.redirect_stdout(io.StringIO()):
-                ORACLE.witness(str(binary), NAME, killed)
+                ORACLE.witness(str(binary), name, killed)
 
     def test_accepts_exact_plane_assertion(self):
         self.witness(transcript())
 
+    def test_accepts_other_two_named_mutation_assertions(self):
+        for name, marker in ORACLE.KILLS.items():
+            if name == NAME:
+                continue
+            with self.subTest(name=name):
+                self.witness(transcript(name=name, panic_name=name, marker=marker), name=name)
+
     def test_rejects_other_failures(self):
         for output, code in [
             (transcript(marker='case alias'), 101),
+            (transcript(marker='case plane'), 101),
             (transcript(marker='plane owner must retire: plane'), 101),
             (transcript(marker=MARKER + ' extra'), 101),
             (transcript(panic_name='unrelated_test'), 101),

@@ -48,13 +48,13 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
         }
     }
 
-    let mut protected = protected_ids(index, &resolved, &adds, &requested_deletes);
+    let (mut protected, feature_keepers) = protected_ids(index, &resolved, &adds, &requested_deletes);
 
     // The requested deletes' cascade before any patch runs (so no
     // copy-on-write detach is known yet). It gates the "object is also
     // deleted by this plan" refusal, and is the final answer as well when
     // the patches leave its inputs as they are (see the combined pass below).
-    let gating = delete::resolve_deletes(index, schema, &requested_deletes, &[], &protected);
+    let gating = delete::resolve_deletes(index, schema, &requested_deletes, &[], &protected, &feature_keepers);
     let (gated_requested, gated_protected) = (requested_deletes.clone(), protected.clone());
     // Grows beyond `gating.removed`: a patch's placement rewrite (an old,
     // now-unreferenced axis placement chain) can orphan more records, found
@@ -87,10 +87,12 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
             Disposition::Preserve | Disposition::Delete | Disposition::Add(_) | Disposition::AddType(_) => {}
             Disposition::Patch(patch) => {
                 if removed.contains(&id) {
-                    refusals.push(Refusal {
-                        object: ObjectRef::Id(id),
-                        reason: "object is also deleted by this plan; delete wins".into(),
-                    });
+                    let reason = if gating.unhosted.contains(&id) {
+                        "opening or projection has no host left: IFC ties it to exactly one element, so it goes with its host; delete wins"
+                    } else {
+                        "object is also deleted by this plan; delete wins"
+                    };
+                    refusals.push(Refusal { object: ObjectRef::Id(id), reason: reason.into() });
                     continue;
                 }
                 patched += 1;
@@ -144,7 +146,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     let delete_result = if detach_requests.is_empty() && requested_deletes == gated_requested && protected == gated_protected {
         gating
     } else {
-        let result = delete::resolve_deletes(index, schema, &requested_deletes, &detach_requests, &protected);
+        let result = delete::resolve_deletes(index, schema, &requested_deletes, &detach_requests, &protected, &feature_keepers);
         // A gating removal the combined pass no longer makes (a member a
         // copy-on-write clone reuses) comes back out of `removed`.
         removed.retain(|id| !gating.removed.contains(id) || result.removed.contains(id));
@@ -231,24 +233,29 @@ fn split_dispositions<'p>(
     (resolved, adds)
 }
 
-/// What the delete cascade must keep even when its last referrer goes. A
-/// patched object (not also deleted: delete wins) survives by construction,
-/// since a copy-on-write patch can give it a relationship the source never
-/// had, which the reference count cannot see. So does what an Add names (its
-/// container, placement parent, type, host, and the owner history): deleting
-/// a type's last occurrence must not take the type an Add in the same plan is
-/// typed by.
+/// What the delete cascade must keep even when its last referrer goes, and,
+/// second, the subset that also keeps an opening or projection whose host
+/// goes. A patched object (not also deleted: delete wins) survives pruning by
+/// construction, since a copy-on-write patch can give it a relationship the
+/// source never had, which the reference count cannot see. So does what an
+/// Add names (its container, placement parent, type, host, and the owner
+/// history): deleting a type's last occurrence must not take the type an Add
+/// in the same plan is typed by. Only what an Add names keeps a hostless
+/// feature: a patch cannot make an opening without a host valid IFC, so it
+/// is refused instead.
 fn protected_ids(
     index: &FileIndex,
     resolved: &[(u32, &Disposition)],
     adds: &[(&ObjectRef, AddItem)],
     requested_deletes: &HashSet<u32>,
-) -> HashSet<u32> {
+) -> (HashSet<u32>, HashSet<u32>) {
     let patched = resolved.iter().filter(|&&(_, d)| matches!(d, Disposition::Patch(_))).map(|&(id, _)| id);
-    let named = adds.iter().flat_map(|&(_, item)| item.references()).filter_map(|r| index.resolve(r));
+    let named: HashSet<u32> =
+        adds.iter().flat_map(|&(_, item)| item.references()).filter_map(|r| index.resolve(r)).filter(|id| !requested_deletes.contains(id)).collect();
     // The Adds name the file's owner history too.
     let history = index.first_owner_history.filter(|_| !adds.is_empty());
-    patched.chain(named).chain(history).filter(|id| !requested_deletes.contains(id)).collect()
+    let protected = patched.chain(named.iter().copied()).chain(history).filter(|id| !requested_deletes.contains(id)).collect();
+    (protected, named)
 }
 
 /// Append a synthesized representation context to the project's

@@ -101,7 +101,8 @@ fn prunable(file_schema: &str, entity_type: &str) -> bool {
 /// (the mandatory `VoidsElements` / `ProjectsElements` inverse), so it goes
 /// with its host, or with the relationship itself, whatever else still names
 /// it. A second host that survives (a file breaking the one-host rule) keeps
-/// it. Every removed relationship asks, so the last one to go decides, in any
+/// it, and so does an Add that names it. A patch on it does not: the patch
+/// is refused, as a patch on anything the plan deletes is. Every removed relationship asks, so the last one to go decides, in any
 /// order. `None` too while the feature's referrers are not collected yet:
 /// the relationship itself always names it. `rel_attrs` are the
 /// relationship's parsed attributes.
@@ -211,6 +212,10 @@ fn list_strips(index: &FileIndex, file_schema: &str, referrer: u32) -> Vec<(usiz
     strips
 }
 
+/// `feature_keepers` are the records an Add names: an opening or projection
+/// among them stays when its host goes, since the Add needs it. Nothing else
+/// keeps a hostless feature, not even a patch on it (see [`hosted_feature`]).
+///
 /// `resolve_deletes` also takes member removals that have nothing to do
 /// with a whole-object delete: a patch's copy-on-write detaching itself from
 /// a relationship it no longer wants. `extra_detach` is `(referrer, attr
@@ -229,6 +234,7 @@ pub(crate) fn resolve_deletes(
     requested: &HashSet<u32>,
     extra_detach: &[(u32, usize, u32)],
     protected: &HashSet<u32>,
+    feature_keepers: &HashSet<u32>,
 ) -> DeleteResult {
     let mut cascade = Cascade {
         index,
@@ -280,7 +286,7 @@ pub(crate) fn resolve_deletes(
         let dead_attrs = index.attrs(dead).unwrap_or_default();
         // Recorded even when the feature already went another way, so which
         // removal the worklist reaches first does not change the answer.
-        if let Some(feature) = hosted_feature(index, file_schema, &dead_type, &dead_attrs, &cascade.removed).filter(|id| !protected.contains(id)) {
+        if let Some(feature) = hosted_feature(index, file_schema, &dead_type, &dead_attrs, &cascade.removed).filter(|id| !feature_keepers.contains(id)) {
             unhosted.insert(feature);
             cascade.mark_removed(feature);
         }

@@ -61,6 +61,14 @@ impl<'j> ProductState<'j> {
         Ok(state)
     }
 
+    /// The next ticket of a resumable product whose scopes survived its last slice.
+    pub fn request(&mut self) -> Result<Option<WorkRequest>, WorkError> {
+        if self.scopes.is_none() {
+            return Err(WorkError::Aborted);
+        }
+        self.next_ticket()
+    }
+
     fn admit_owner(&mut self, decoder: &EntityDecoder, router: &GeometryRouter) -> Result<OwnerStamp, WorkError> {
         match &self.owner {
             Some(owner) => owner.validate(decoder, router),

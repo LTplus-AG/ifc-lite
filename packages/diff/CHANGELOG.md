@@ -1,5 +1,15 @@
 # @ifc-lite/diff
 
+## 0.10.1
+
+### Patch Changes
+
+- [#8081](https://github.com/LTplus-AG/ifc-lite/pull/8081) [`208f8e1`](https://github.com/LTplus-AG/ifc-lite/commit/208f8e130b55e4a563b82b8b75486eb53860cf0d) Thanks [@louistrue](https://github.com/louistrue)! - Add the independent `@ifc-lite/wasm/diff` payload with retained Rust diff models, canonical fingerprint, sidecar and lineage bindings, and validated column/reference transport for the forthcoming diff facade. Existing diff entry points continue to use their current implementation during parity and performance qualification.
+  
+  Staged raw fingerprint and lineage bindings explicitly reject unpaired UTF-16 surrogates before Rust string conversion; literal replacement characters and valid surrogate pairs remain supported. Fingerprint rejection includes typed names, nested property/quantity values and object keys; ignored record extras remain outside the projection. Full arbitrary UTF-16 support remains required for the separate public facade cutover.
+- Updated dependencies [[`66ee06e`](https://github.com/LTplus-AG/ifc-lite/commit/66ee06ebdffb2c609f6634a7d712838461885f36), [`f220166`](https://github.com/LTplus-AG/ifc-lite/commit/f2201664fb19b29feff4b1f02c8648ba7d9806c8), [`fb57d67`](https://github.com/LTplus-AG/ifc-lite/commit/fb57d6796355d3d8428bfd8386d041d07b0b5313), [`b0412a0`](https://github.com/LTplus-AG/ifc-lite/commit/b0412a0fbd5d9722c8024416545e55272d5a050d), [`fd7545d`](https://github.com/LTplus-AG/ifc-lite/commit/fd7545da284cd845939dc6a5a31f38c209566034), [`844eb7c`](https://github.com/LTplus-AG/ifc-lite/commit/844eb7cc0f4e6a9e7eb5f690626d55a43d79ff71), [`e5d797b`](https://github.com/LTplus-AG/ifc-lite/commit/e5d797b284cc3458ccb423adfc6b0572aedadfe0), [`e17c218`](https://github.com/LTplus-AG/ifc-lite/commit/e17c218f4cf018189fe910ec8ac723946a675233), [`208f8e1`](https://github.com/LTplus-AG/ifc-lite/commit/208f8e130b55e4a563b82b8b75486eb53860cf0d), [`9519b2f`](https://github.com/LTplus-AG/ifc-lite/commit/9519b2f35770697bcb8c1993250d9dfc3f4e5e59)]:
+  - @ifc-lite/wasm@10.6.0
+
 ## 0.10.0
 
 ### Minor Changes

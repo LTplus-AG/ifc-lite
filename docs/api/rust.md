@@ -390,6 +390,15 @@ impl<'a> EntityDecoder<'a> {
 
 The decoder also exposes fast single-purpose accessors used by the geometry pipeline (`get_cartesian_point_fast`, `get_polyloop_coords_cached`, `get_entity_ref_list_fast`, ...); see `rust/core/src/decoder.rs`.
 
+`EntityDecoder::direction3_of(&entity)` reads an already decoded `IfcDirection`
+when no decoder is available. It accepts exactly one `DirectionRatios` attribute
+containing two or three finite plain numeric values and returns the raw
+`Option<[f64; 3]>`, promoting two ratios with `z = 0` without normalizing or
+rejecting a zero vector. A wrong record type, extra attributes, malformed list
+or non-finite ratio returns `None`. This read does not decode or count refusals.
+It is transitional (removed by C2): prefer `direction3_at`, which counts its
+refusals in `refused_records()`.
+
 `DenseEntityIndex::try_from_columns(ids, starts, lengths)` accepts sorted, unique
 IDs and `u32` span columns. It returns `None` if the columns disagree or direct
 addressing would allocate more than compact columns. `lookup(id)` preserves
@@ -1078,6 +1087,15 @@ pub use gltf::{export_gltf_streaming, try_export_glb, try_export_glb_from_meshes
 // `Medium`, which is the golden-output identity every byte-comparison test in
 // this crate rests on - coarser levels trade curve fidelity for vertex count
 // on tube-heavy models, and DO change the emitted bytes.
+// `GltfOptions::with_textures(true)` (default off) exports IFC surface textures:
+// `TEXCOORD_0` from the canonical UVs, a PNG bufferView in the binary chunk for
+// a decoded texture, the authored `URLReference` (relative only; an absolute
+// path, a scheme or a `..` above the export is `IncompleteAppearance`) for an
+// `IfcImageTexture`, and `MASK` materials matching the viewer's texel-alpha
+// discard and its hiding of a tint alpha <= 0.01. Only the in-memory GLB
+// assembler carries them; `quantize`, the bounded GLB and multi-buffer glTF
+// refuse with `ExportError::UnsupportedOption`, and a textured mesh whose
+// appearance is incomplete is `ExportError::IncompleteAppearance`, never solid colour.
 pub use ifc_lite_processing::TessellationQuality;
 pub use hbjson::Model;
 pub use ifc5::{export_ifc5, Ifc5Options};
@@ -1203,7 +1221,10 @@ pub use parquet_bos::{export_bos, ParquetBosOptions};
 ### Features
 
 ```toml
-default = []
+default = ["gltf-textures"]
+gltf-textures = []    # opt-in textured glTF/GLB export (TEXCOORD_0 + PNG images); without it
+                      # (default-features = false, as the wasm engine does) requesting
+                      # textures returns ExportError::UnsupportedOption
 parquet-bos = []      # Parquet/.bos export (arrow + parquet + zip; not wasm32-safe)
 observability = []    # surface faceted-brep phase timing for profiling examples
 ```

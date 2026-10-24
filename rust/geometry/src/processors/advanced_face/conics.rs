@@ -7,38 +7,30 @@
 
 use crate::math::tol;
 use crate::{scale_segments, Point3, TessellationQuality};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
 use super::curves::{resolve_present, Refused};
+use crate::placement::Axis2Placement;
 
 /// Read a conic's `IfcAxis2Placement3D` or `IfcAxis2Placement2D` and return
-/// (location, axis_z, axis_x) through the canonical readers in
-/// [`crate::transform`], the frame the profile conic samplers use too.
+/// (location, axis_z, axis_x) through [`Axis2Placement`], the frame the
+/// profile conic samplers use too.
 ///
-/// This used to be its own reader, which took a 2D placement's RefDirection
-/// (attribute 1) for the 3D Axis, standing a planar profile circle on its
-/// side (#7687, sibling of PROC-13), and defaulted a missing RefDirection
-/// differently from IFC's `FirstProjAxis`. A placement that does not parse
-/// keeps the old tolerant fallback, the identity frame at the origin.
+/// A placement that does not read refuses the edge ([`Refused`]), where it
+/// used to fall back to the identity frame at the origin and sample the arc
+/// there (PROC-S7, D3). The reader has already counted the refusal.
 pub(super) fn read_axis2_placement_frame(
     placement: &DecodedEntity,
     decoder: &mut EntityDecoder,
-) -> (Point3<f64>, nalgebra::Vector3<f64>, nalgebra::Vector3<f64>) {
+) -> Result<(Point3<f64>, nalgebra::Vector3<f64>, nalgebra::Vector3<f64>), Refused> {
     use nalgebra::Vector3;
 
-    let frame = if placement.ifc_type == IfcType::IfcAxis2Placement2D {
-        crate::transform::parse_axis2_placement_2d(placement, decoder)
-    } else {
-        crate::transform::parse_axis2_placement_3d(placement, decoder)
-    };
-    match frame {
-        Ok(m) => (
-            Point3::new(m[(0, 3)], m[(1, 3)], m[(2, 3)]),
-            Vector3::new(m[(0, 2)], m[(1, 2)], m[(2, 2)]),
-            Vector3::new(m[(0, 0)], m[(1, 0)], m[(2, 0)]),
-        ),
-        Err(_) => (Point3::origin(), Vector3::z(), Vector3::x()),
-    }
+    let m = Axis2Placement::read(placement, decoder).map_err(|_| Refused)?.matrix();
+    Ok((
+        Point3::new(m[(0, 3)], m[(1, 3)], m[(2, 3)]),
+        Vector3::new(m[(0, 2)], m[(1, 2)], m[(2, 2)]),
+        Vector3::new(m[(0, 0)], m[(1, 0)], m[(2, 0)]),
+    ))
 }
 
 /// Sample an `IfcCircle` edge from `start` to `end`, walking the arc in the
@@ -65,7 +57,7 @@ pub(super) fn sample_circle_edge_curve(
         return Ok(vec![*start]);
     };
 
-    let (center, axis_z, axis_x) = read_axis2_placement_frame(&placement, decoder);
+    let (center, axis_z, axis_x) = read_axis2_placement_frame(&placement, decoder)?;
     let axis_y = axis_z.cross(&axis_x);
 
     // Project start/end onto the circle plane to recover their angles.
@@ -140,7 +132,7 @@ pub(super) fn sample_ellipse_edge_curve(
         return Ok(vec![*start]);
     };
 
-    let (center, axis_z, axis_x) = read_axis2_placement_frame(&placement, decoder);
+    let (center, axis_z, axis_x) = read_axis2_placement_frame(&placement, decoder)?;
     let axis_y = axis_z.cross(&axis_x);
 
     // Recover the parametric angle of a point: divide the planar components by

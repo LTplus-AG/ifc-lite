@@ -46,6 +46,8 @@ use serde_json::{json, Value};
 // assembler internals via `super`; the code moved verbatim, so output is unchanged).
 mod from_meshes;
 mod matrix;
+mod texture;
+use texture::{GltfTextures, TextureInfo, TextureTable, ViewTexture};
 
 // The infallible assembler is crate-private (#7675); only its tests name it.
 #[cfg(test)]
@@ -119,6 +121,20 @@ pub struct GltfOptions {
     /// up to about the budget to the output. Default `0`: never keep, so the bounded
     /// assembler's peak stays the output plus one batch.
     pub single_pass_budget_bytes: u64,
+    /// Export IFC surface textures (#7955 J5): `TEXCOORD_0` from the canonical
+    /// UVs plus `images`/`samplers`/`textures`, with the style colour kept as
+    /// `baseColorFactor` and `MASK` at the viewer's 0.004 texel-alpha discard
+    /// (hidden, as in the viewer, when the tint alpha is at most 0.01). A
+    /// decoded texture is embedded as a PNG bufferView in the binary chunk; an
+    /// `IfcImageTexture` keeps its `URLReference` as a relative `uri` (an
+    /// absolute, scheme or `..`-escaping reference is refused). Textured
+    /// meshes are never deduped or instanced. Default `false`: output is
+    /// byte-identical to an export without the option. Supported by the
+    /// in-memory GLB assembler only: combined with `quantize`, or on an input
+    /// that routes to the bounded or multi-buffer assemblers, or in a build
+    /// without the `gltf-textures` Cargo feature, the export is refused with
+    /// [`ExportError::UnsupportedOption`] rather than silently dropping it.
+    pub textures: bool,
 }
 
 impl Default for GltfOptions {
@@ -134,6 +150,7 @@ impl Default for GltfOptions {
             quantize: false,
             tessellation_quality: TessellationQuality::Medium,
             single_pass_budget_bytes: 0,
+            textures: false,
         }
     }
 }
@@ -210,6 +227,21 @@ impl GltfOptions {
         self.tessellation_quality = quality;
         self
     }
+
+    /// See [`GltfOptions::textures`].
+    #[must_use]
+    pub fn with_textures(mut self, yes: bool) -> Self {
+        self.textures = yes;
+        self
+    }
+
+    /// The assemblers other than the in-memory GLB one cannot carry textures.
+    fn refuse_textures(&self, assembler: &'static str) -> Result<(), ExportError> {
+        match self.textures {
+            true => Err(ExportError::UnsupportedOption { option: "textures", detail: assembler }),
+            false => Ok(()),
+        }
+    }
 }
 
 /// Coverage stats for a GLB export.
@@ -254,6 +286,9 @@ struct Gltf {
     extensions_used: Option<Vec<&'static str>>,
     #[serde(rename = "extensionsRequired", skip_serializing_if = "Option::is_none")]
     extensions_required: Option<Vec<&'static str>>,
+    /// Opt-in texture arrays (#7955 J5); empty, and so absent, by default.
+    #[serde(flatten)]
+    textures: GltfTextures,
 }
 
 #[derive(Serialize)]
@@ -318,6 +353,8 @@ struct Attributes {
     position: u32,
     #[serde(rename = "NORMAL")]
     normal: u32,
+    #[serde(rename = "TEXCOORD_0", skip_serializing_if = "Option::is_none")]
+    texcoord_0: Option<u32>,
 }
 
 #[derive(Serialize)]
@@ -335,6 +372,9 @@ struct Material {
     extensions: Option<Extensions>,
     #[serde(rename = "alphaMode", skip_serializing_if = "Option::is_none")]
     alpha_mode: Option<&'static str>,
+    /// `Some` only for a textured `MASK` material (#7955 J5).
+    #[serde(rename = "alphaCutoff", skip_serializing_if = "Option::is_none")]
+    alpha_cutoff: Option<f32>,
     // IFC face winding isn't reliably outward (the viewer renders cull-none /
     // double-sided), so single-sided glTF consumers would cull inward-wound or
     // coplanar faces → "missing geometry". Match the viewer: always double-sided.
@@ -350,6 +390,8 @@ struct Pbr {
     metallic_factor: f32,
     #[serde(rename = "roughnessFactor")]
     roughness_factor: f32,
+    #[serde(rename = "baseColorTexture", skip_serializing_if = "Option::is_none")]
+    base_color_texture: Option<TextureInfo>,
 }
 
 #[derive(Serialize)]
@@ -391,7 +433,9 @@ struct BufferView {
     byte_length: u32,
     #[serde(rename = "byteStride", skip_serializing_if = "Option::is_none")]
     byte_stride: Option<u32>,
-    target: u32,
+    /// `None` only for an embedded image's view (#7955 J5), which has no target.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    target: Option<u32>,
 }
 
 #[derive(Serialize)]
@@ -470,6 +514,7 @@ fn make_material(color: [f32; 4], lit: bool, emissive: bool) -> Material {
             base_color_factor: linear_rgb,
             metallic_factor: 0.0,
             roughness_factor: 1.0,
+            base_color_texture: None,
         },
         emissive_factor: emissive.then_some([linear_rgb[0], linear_rgb[1], linear_rgb[2]]),
         extensions: if lit || emissive {
@@ -478,6 +523,7 @@ fn make_material(color: [f32; 4], lit: bool, emissive: bool) -> Material {
             Some(Extensions { khr_materials_unlit: EmptyObj {} })
         },
         alpha_mode: if color[3] < 1.0 { Some("BLEND") } else { None },
+        alpha_cutoff: None,
         double_sided: true,
     }
 }
@@ -518,6 +564,12 @@ struct Chunker<'s> {
     pos: Vec<u8>,
     norm: Vec<u8>,
     idx: Vec<u8>,
+    /// Opt-in `TEXCOORD_0` run (#7955 J5). Empty unless a textured mesh was
+    /// pushed; a chunk with UVs gets a fourth bufferView after the indices.
+    uv: Vec<u8>,
+    /// Opt-in embedded images (#7955 J5), appended after the single GLB
+    /// buffer's runs by [`Self::embed_image`]. Empty by default.
+    img: Vec<u8>,
     buffer_views: Vec<BufferView>,
     buffers: Vec<Buffer>,
     vec3_stride: u32, // 8 quantized SHORT (6 tight + 2 pad), 12 f32
@@ -532,6 +584,8 @@ impl<'s> Chunker<'s> {
             pos: Vec::new(),
             norm: Vec::new(),
             idx: Vec::new(),
+            uv: Vec::new(),
+            img: Vec::new(),
             buffer_views: Vec::new(),
             buffers: Vec::new(),
             vec3_stride,
@@ -542,7 +596,7 @@ impl<'s> Chunker<'s> {
     }
 
     /// The bufferView index the current (not-yet-flushed) chunk's POSITION will take.
-    /// Normals are `+ 1`, indices `+ 2`. Stable until the next `flush`.
+    /// Normals are `+ 1`, indices `+ 2`, UVs (when any) `+ 3`. Stable until the next `flush`.
     fn bv_base(&self) -> u32 {
         self.buffer_views.len() as u32
     }
@@ -550,7 +604,7 @@ impl<'s> Chunker<'s> {
     /// Flush before pushing a mesh of `next_bytes` if it would overflow the current
     /// (non-empty) chunk. No-op at `cap = usize::MAX`.
     fn maybe_flush(&mut self, next_bytes: usize) {
-        let used = self.pos.len() + self.norm.len() + self.idx.len();
+        let used = self.pos.len() + self.norm.len() + self.idx.len() + self.uv.len();
         if used > 0 && used.saturating_add(next_bytes) > self.cap {
             self.flush();
         }
@@ -571,8 +625,8 @@ impl<'s> Chunker<'s> {
         // message the worker's `OutputTooLarge` classifier matches, rather than silently
         // wrapping `as u32` into a corrupt glTF (release builds set overflow-checks off).
         // Multi-buffer chunks are < cap, so they never approach this.
-        let (pl, nl, il) = (self.pos.len(), self.norm.len(), self.idx.len());
-        let total = pl + nl + il;
+        let (pl, nl, il, ul) = (self.pos.len(), self.norm.len(), self.idx.len(), self.uv.len());
+        let total = pl + nl + il + ul;
         assert!(
             total <= u32::MAX as usize,
             "GLB binary buffer is {total} bytes, over the glTF 32-bit buffer limit \
@@ -581,16 +635,22 @@ impl<'s> Chunker<'s> {
         let buf = self.next_buffer;
         self.buffer_views.push(BufferView {
             buffer: buf, byte_offset: 0, byte_length: pl as u32,
-            byte_stride: Some(self.vec3_stride), target: 34962,
+            byte_stride: Some(self.vec3_stride), target: Some(34962),
         });
         self.buffer_views.push(BufferView {
             buffer: buf, byte_offset: pl as u32, byte_length: nl as u32,
-            byte_stride: Some(self.vec3_stride), target: 34962,
+            byte_stride: Some(self.vec3_stride), target: Some(34962),
         });
         self.buffer_views.push(BufferView {
             buffer: buf, byte_offset: (pl + nl) as u32, byte_length: il as u32,
-            byte_stride: None, target: 34963,
+            byte_stride: None, target: Some(34963),
         });
+        if ul > 0 {
+            self.buffer_views.push(BufferView {
+                buffer: buf, byte_offset: (pl + nl + il) as u32, byte_length: ul as u32,
+                byte_stride: Some(8), target: Some(34962),
+            });
+        }
         match self.sink.as_mut() {
             Some(sink) => {
                 // Multi-buffer: concatenate this chunk's three runs, hand it to the sink,
@@ -599,9 +659,11 @@ impl<'s> Chunker<'s> {
                 bin.extend_from_slice(&self.pos);
                 bin.extend_from_slice(&self.norm);
                 bin.extend_from_slice(&self.idx);
+                bin.extend_from_slice(&self.uv);
                 self.pos.clear();
                 self.norm.clear();
                 self.idx.clear();
+                self.uv.clear();
                 let name = format!("buffer{buf}.bin");
                 self.buffers.push(Buffer { byte_length: total as u32, uri: Some(name.clone()) });
                 sink(name, bin);
@@ -621,6 +683,31 @@ impl<'s> Chunker<'s> {
             }
         }
         self.next_buffer += 1;
+    }
+
+    /// Embed one encoded image in the single GLB buffer after its flushed
+    /// runs (#7955 J5) and return its bufferView. An image view has no
+    /// accessor; align each start so a following image view also starts on a
+    /// four-byte boundary. Only the in-memory GLB path calls this, after flush.
+    fn embed_image(&mut self, bytes: &[u8]) -> u32 {
+        debug_assert!(self.sink.is_none() && self.buffers.len() == 1, "embedded images need the single GLB buffer");
+        let runs = self.pos.len() + self.norm.len() + self.idx.len() + self.uv.len();
+        let padding = (4 - (runs + self.img.len()) % 4) % 4;
+        self.img.resize(self.img.len() + padding, 0);
+        let offset = runs + self.img.len();
+        self.img.extend_from_slice(bytes);
+        let total = runs + self.img.len();
+        assert!(
+            total <= u32::MAX as usize,
+            "GLB binary buffer is {total} bytes, over the glTF 32-bit buffer limit \
+             (4 GiB); the model is too large for a single GLB",
+        );
+        self.buffers[0].byte_length = total as u32;
+        self.buffer_views.push(BufferView {
+            buffer: 0, byte_offset: offset as u32, byte_length: bytes.len() as u32,
+            byte_stride: None, target: None,
+        });
+        self.buffer_views.len() as u32 - 1
     }
 }
 
@@ -715,19 +802,22 @@ fn push_mesh(
         max: None,
     });
 
-    let key = color_key(mesh.color);
-    let material = *material_map.entry(key).or_insert_with(|| {
-        let idx = materials.len() as u32;
-        materials.push(make_material(mesh.color, lit, emissive));
-        idx
+    // A textured view gets its textured material from `attach_texture`, next;
+    // interning its colour material too would leave an unused material.
+    let material = mesh.appearance.is_none().then(|| {
+        *material_map.entry(color_key(mesh.color)).or_insert_with(|| {
+            let idx = materials.len() as u32;
+            materials.push(make_material(mesh.color, lit, emissive));
+            idx
+        })
     });
 
     let mesh_idx = meshes.len() as u32;
     meshes.push(Mesh {
         primitives: vec![Primitive {
-            attributes: Attributes { position: pos_acc, normal: norm_acc },
+            attributes: Attributes { position: pos_acc, normal: norm_acc, texcoord_0: None },
             indices: idx_acc,
-            material: Some(material),
+            material,
         }],
     });
 
@@ -893,7 +983,7 @@ fn push_mesh_quantized(
     let mesh_idx = meshes.len() as u32;
     meshes.push(Mesh {
         primitives: vec![Primitive {
-            attributes: Attributes { position: pos_acc, normal: norm_acc },
+            attributes: Attributes { position: pos_acc, normal: norm_acc, texcoord_0: None },
             indices: idx_acc,
             material: Some(material),
         }],
@@ -973,6 +1063,43 @@ fn push_occurrence_node(
     mesh_node + 1
 }
 
+/// Give the mesh [`push_mesh`] just wrote its `TEXCOORD_0` and textured
+/// material (#7955 J5). Runs immediately after it, before any flush, so the
+/// UV run lands in the same chunk as the geometry (`bv_base() + 3`).
+/// `push_mesh` interned no colour material for it.
+#[allow(clippy::too_many_arguments)]
+fn attach_texture(
+    ch: &mut Chunker,
+    accessors: &mut Vec<Accessor>,
+    mesh: &mut Mesh,
+    materials: &mut Vec<Material>,
+    textures: &mut TextureTable,
+    appearance: ViewTexture<'_>,
+    color: [f32; 4],
+    (lit, emissive): (bool, bool),
+) {
+    let Some(material) = textures.material(materials, appearance.texture, color, lit, emissive) else {
+        debug_assert!(false, "texture {} was not prepared", appearance.texture.texture_id);
+        return;
+    };
+    let uv_off = ch.uv.len() as u32;
+    ch.uv.extend_from_slice(bytemuck::cast_slice::<f32, u8>(appearance.uvs));
+    let uv_acc = accessors.len() as u32;
+    accessors.push(Accessor {
+        buffer_view: ch.bv_base() + 3,
+        byte_offset: uv_off,
+        component_type: 5126, // FLOAT
+        count: (appearance.uvs.len() / 2) as u32,
+        ty: "VEC2",
+        normalized: None,
+        min: None,
+        max: None,
+    });
+    let primitive = &mut mesh.primitives[0];
+    primitive.attributes.texcoord_0 = Some(uv_acc);
+    primitive.material = Some(material);
+}
+
 /// A minimal borrowed view of one renderable mesh for glTF assembly — lets the
 /// from-bytes path (`process_geometry`) and the from-meshes path (the viewer's already
 /// produced MeshData) share one assembler.
@@ -994,6 +1121,9 @@ pub struct MeshView<'a> {
     /// share a `rep_identity`, the assembler emits the geometry once and places each
     /// occurrence with a node matrix. See [`assemble_glb`].
     pub instance: Option<&'a InstanceMeta>,
+    /// Opt-in texture appearance (#7955 J5); `Some` only when
+    /// [`GltfOptions::textures`] is set and the mesh carries a texture.
+    pub appearance: Option<ViewTexture<'a>>,
 }
 
 fn view_ok(v: &MeshView) -> bool {
@@ -1126,13 +1256,15 @@ fn build_gltf(
     quantize: bool,
     ch: &mut Chunker,
 ) -> (Gltf, GltfStats) {
-    // Pre-filter once so both passes (centre, then bake) see exactly the same set.
-    let visible: Vec<&MeshView> = views.iter().filter(|v| view_ok(v)).collect();
+    let (lighting, frame) = ((lit, emissive), (space, rtc_zup, site_zup));
+    build_gltf_with(views, include_metadata, model_id, lighting, frame, quantize, ch, TextureTable::default())
+}
 
-    // ── Pass 1: one model-wide WORLD AABB → scene centre ────────────────────
+/// Centre of the emitted geometry in world coordinates, before the root transform.
+fn gltf_scene_center(visible: &[&MeshView<'_>]) -> [f64; 3] {
     let mut wmin = [f64::INFINITY; 3];
     let mut wmax = [f64::NEG_INFINITY; 3];
-    for v in &visible {
+    for v in visible {
         let o = v.origin;
         for p in v.positions.chunks_exact(3) {
             for k in 0..3 {
@@ -1146,7 +1278,7 @@ fn build_gltf(
             }
         }
     }
-    let scene_center = if visible.is_empty() {
+    if visible.is_empty() {
         [0.0, 0.0, 0.0]
     } else {
         [
@@ -1154,83 +1286,19 @@ fn build_gltf(
             (wmin[1] + wmax[1]) * 0.5,
             (wmin[2] + wmax[2]) * 0.5,
         ]
-    };
+    }
+}
 
-    // Binary blobs, concatenated as [positions | normals | indices].
+/// One template, its exact occurrence indices, and its inverse world placement.
+type InstancedGltfGroup<'a> = (&'a InstanceTemplate, Vec<usize>, [f64; 16]);
 
-    let mut materials: Vec<Material> = Vec::new();
-    let mut material_map: FxHashMap<(i32, i32, i32, i32), u32> = FxHashMap::default();
-
-    let mut accessors: Vec<Accessor> = Vec::new();
-    let mut meshes: Vec<Mesh> = Vec::new();
-    let mut nodes: Vec<Node> = Vec::new();
-    let mut element_node_indices: Vec<u32> = Vec::new();
-
-    let mut stats = GltfStats { meshes: 0, vertices: 0, triangles: 0, materials: 0, unverified_instance_groups: 0 };
-
-    // ── Pass 1.5: collate by representation identity ────────────────────────────
-    // Group occurrences that share a representation (IfcMappedItem / repeated
-    // geometry) so the geometry is emitted ONCE and each occurrence is placed with a
-    // node matrix — the size win on repetitive models (50-85% fewer vertices). This
-    // is the SAME rep-identity grouping the GPU/native instancing path uses;
-    // content-hashing the BAKED f32 vertices cannot recover these repeats because
-    // per-occurrence placement bakes distinct float positions. Meshes without usable
-    // instance metadata (the from-meshes path, non-instanceable void-cut elements,
-    // singletons) fall to `flat_indices` and keep the self-contained
-    // world-minus-center bake above.
-    let refs: Vec<InstanceMeshRef> = visible
-        .iter()
-        .map(|m| InstanceMeshRef {
-            positions: m.positions,
-            normals: m.normals,
-            indices: m.indices,
-            origin: m.origin,
-            instance_meta: m.instance,
-            entity_id: m.express_id,
-            color: m.color,
-            // Encoder-only field: this path calls `collate_refs`, never the IFNS
-            // encoder, so nothing here reads it.
-            item_id: None,
-        })
-        .collect();
-    // rtc [0,0,0]: this path keeps the RAW pre-RTC relative transforms and applies
-    // its own `T(-rtc)·rel·T(rtc)` conjugation per occurrence in
-    // `occurrence_node_matrix` (it has the Z-up model rtc there). Passing the rtc
-    // here too would conjugate twice. The wasm GPU-shard path, which consumes the
-    // relative transform directly (no downstream conjugation), passes the real rtc.
-    //
-    // `baked_basis = S_YUP · Rᵀ · T(-rtc_zup)`: exactly the conjugation
-    // `occurrence_node_matrix` applies to the same `rel` (see gltf/matrix.rs),
-    // because the reconstruction check has to compare in the frame the BAKED
-    // positions are actually in. Three conversions separate the two:
-    //  • Y-up: `visible`'s positions/origin were already converted Z-up→Y-up before
-    //    this function was entered — `with_result_views` (this file) runs
-    //    `crate::frame::to_yup_in_place` over every visible mesh in `result` and only
-    //    then hands the borrowed `MeshView`s here, so the conversion is NOT visible in
-    //    `build_gltf` itself. `InstanceMeta.transform` (hence `rel`) stays Z-up.
-    //  • RTC: `rel` is PRE-RTC here (this path passes `rtc = [0,0,0]` above), while
-    //    the baked positions are POST-RTC. The residual that leaves is
-    //    `(R_rel - I) · rtc` — zero for a translated-only sibling, but hundreds of
-    //    kilometres for a ROTATED one at national-grid magnitude, so `S_YUP` alone
-    //    rejected every rotated group on a georeferenced model.
-    //  • Site rotation: in the `site_local` tier the baker ALSO applied the site
-    //    placement's inverse rotation to every position (#4118). The residual that
-    //    leaves is `(I - Rᵀ) · d` for a sibling `d` metres away — 3.5 m for a 6 m
-    //    sibling under a 34 degree yaw, far over any tolerance — so a yawed site
-    //    instanced nothing at all. `site_zup` is `Some` exactly in that tier;
-    //    `baked_basis_yup` folds it in and is the identity's neighbour otherwise.
-    // Without all three terms the check reads a frame mismatch as a #3666 collision
-    // and drops the whole group to flat.
-    let baked_basis = Matrix4::from_row_slice(&matrix::baked_basis_yup(space, rtc_zup, site_zup));
-    let collated = collate_refs_in_basis(&refs, 2, [0.0, 0.0, 0.0], Some(&baked_basis));
-
-    // Partition into instanced templates (non-rigid, exact-bit) and a flat remainder.
-    // Only EXACT-bit groups are instanced: the template's local geometry IS each
-    // occurrence's, so exported per-occurrence geometry stays byte-faithful. Rigid-
-    // tier groups (rotation-normalized, env-gated and OFF by default) substitute a
-    // congruent-but-not-identical template, so they fall to the flat remainder.
+/// Keep exact-bit instance members; route other members through the flat path.
+fn partition_gltf_instances<'a>(
+    visible: &[&MeshView<'_>],
+    collated: &'a ifc_lite_geometry::Collated,
+) -> (Vec<usize>, Vec<InstancedGltfGroup<'a>>) {
     let mut flat: Vec<usize> = collated.flat_indices.clone();
-    let mut instanced: Vec<(&InstanceTemplate, Vec<usize>, [f64; 16])> =
+    let mut instanced: Vec<InstancedGltfGroup<'_>> =
         Vec::with_capacity(collated.templates.len());
     for template in &collated.templates {
         // PER OCCURRENCE, matching the collator: a rigid-tier member is congruent
@@ -1265,6 +1333,20 @@ fn build_gltf(
         }
     }
 
+    (flat, instanced)
+}
+
+/// Emit the flat remainder in its original order, sharing only safe untextured geometry.
+#[allow(clippy::too_many_arguments)]
+fn emit_flat_gltf(
+    flat: &[usize], visible: &[&MeshView<'_>], scene_center: [f64; 3],
+    quantize: bool, (lit, emissive): (bool, bool), include_metadata: bool,
+    model_id: Option<&str>, ch: &mut Chunker<'_>, accessors: &mut Vec<Accessor>,
+    meshes: &mut Vec<Mesh>, materials: &mut Vec<Material>,
+    material_map: &mut FxHashMap<(i32, i32, i32, i32), u32>,
+    textures: &mut TextureTable, stats: &mut GltfStats, nodes: &mut Vec<Node>,
+    element_node_indices: &mut Vec<u32>,
+) {
     // ── Pass 2: flat remainder, content-hash deduped ────────────────────────────
     // The rep-identity collator only groups geometry it can prove shareable. Many
     // models also have byte-identical BAKED meshes it does not flag (e.g. unmapped
@@ -1276,8 +1358,10 @@ fn build_gltf(
         .map(|&i| geom_color_key(visible[i].positions, visible[i].normals, visible[i].indices, visible[i].color))
         .collect();
     let mut flat_counts: FxHashMap<u128, u32> = FxHashMap::default();
-    for &k in &flat_keys {
-        *flat_counts.entry(k).or_insert(0) += 1;
+    for (&k, &i) in flat_keys.iter().zip(flat) {
+        if visible[i].appearance.is_none() {
+            *flat_counts.entry(k).or_insert(0) += 1;
+        }
     }
     // Cache key -> (mesh_idx, dequant center, dequant half-extent). The dequant fields
     // are dummy on the f32 path (node scale stays `None`); on the quantized path they
@@ -1291,7 +1375,7 @@ fn build_gltf(
             mesh.origin[2] - scene_center[2],
         ];
         let key = flat_keys[j];
-        let shared = flat_counts.get(&key).copied().unwrap_or(1) >= 2;
+        let shared = mesh.appearance.is_none() && flat_counts.get(&key).copied().unwrap_or(1) >= 2;
         let mesh_idx;
         let translation;
         let scale;
@@ -1302,14 +1386,14 @@ fn build_gltf(
             let (mi, center, half) = if shared {
                 *flat_cache.entry(key).or_insert_with(|| {
                     push_mesh_quantized(
-                        &mut *ch, &mut accessors, &mut meshes,
-                        &mut materials, &mut material_map, mesh, lit, emissive, &mut stats,
+                        &mut *ch, &mut *accessors, &mut *meshes,
+                        &mut *materials, &mut *material_map, mesh, lit, emissive, &mut *stats,
                     )
                 })
             } else {
                 push_mesh_quantized(
-                    &mut *ch, &mut accessors, &mut meshes,
-                    &mut materials, &mut material_map, mesh, lit, emissive, &mut stats,
+                    &mut *ch, &mut *accessors, &mut *meshes,
+                    &mut *materials, &mut *material_map, mesh, lit, emissive, &mut *stats,
                 )
             };
             mesh_idx = mi;
@@ -1323,8 +1407,8 @@ fn build_gltf(
             // Repeated baked geometry: emit LOCAL once, place via node translation.
             let (mi, _, _) = *flat_cache.entry(key).or_insert_with(|| {
                 let mi = push_mesh(
-                    &mut *ch, &mut accessors, &mut meshes,
-                    &mut materials, &mut material_map, mesh, [0.0, 0.0, 0.0], lit, emissive, &mut stats,
+                    &mut *ch, &mut *accessors, &mut *meshes,
+                    &mut *materials, &mut *material_map, mesh, [0.0, 0.0, 0.0], lit, emissive, &mut *stats,
                 );
                 (mi, [0.0; 3], [0.0; 3])
             });
@@ -1334,9 +1418,15 @@ fn build_gltf(
         } else {
             // Singleton: bake world-minus-center into the vertices, identity node.
             mesh_idx = push_mesh(
-                &mut *ch, &mut accessors, &mut meshes,
-                &mut materials, &mut material_map, mesh, placement, lit, emissive, &mut stats,
+                &mut *ch, &mut *accessors, &mut *meshes,
+                &mut *materials, &mut *material_map, mesh, placement, lit, emissive, &mut *stats,
             );
+            if let Some(appearance) = mesh.appearance {
+                attach_texture(
+                    &mut *ch, &mut *accessors, &mut meshes[mesh_idx as usize], &mut *materials, &mut *textures,
+                    appearance, mesh.color, (lit, emissive),
+                );
+            }
             translation = None;
             scale = None;
         }
@@ -1352,7 +1442,20 @@ fn build_gltf(
         });
         element_node_indices.push(node_idx);
     }
+}
 
+/// Emit one mesh per exact geometry and colour bucket, then place its occurrences.
+#[allow(clippy::too_many_arguments)]
+fn emit_instanced_gltf(
+    instanced: Vec<InstancedGltfGroup<'_>>,
+    visible: &[&MeshView<'_>], scene_center: [f64; 3],
+    (space, rtc_zup, site_zup): (MeshCoordinateSpace, [f64; 3], Option<&[f64]>),
+    quantize: bool, (lit, emissive): (bool, bool), include_metadata: bool,
+    model_id: Option<&str>, ch: &mut Chunker<'_>, accessors: &mut Vec<Accessor>,
+    meshes: &mut Vec<Mesh>, materials: &mut Vec<Material>,
+    material_map: &mut FxHashMap<(i32, i32, i32, i32), u32>,
+    stats: &mut GltfStats, nodes: &mut Vec<Node>, element_node_indices: &mut Vec<u32>,
+) {
     // ── Pass 2: instanced templates ─────────────────────────────────────────────
     for (template, keep, m_ref_inv) in instanced {
         // glTF materials ride the mesh primitive, not the node, but the collator
@@ -1390,20 +1493,21 @@ fn build_gltf(
                 color: bucket_color,
                 origin: t_view.origin,
                 instance: None,
+                appearance: None,
             };
             // Push the shared template once. Quantized returns the per-mesh dequant the
             // occurrence nodes need; f32 bakes nothing (`vertex_offset = 0`).
             let (mesh_idx, dequant) = if quantize {
                 let (mi, center, half) = push_mesh_quantized(
-                    &mut *ch, &mut accessors,
-                    &mut meshes, &mut materials, &mut material_map, &tmpl_mesh, lit, emissive, &mut stats,
+                    &mut *ch, &mut *accessors,
+                    &mut *meshes, &mut *materials, &mut *material_map, &tmpl_mesh, lit, emissive, &mut *stats,
                 );
                 (mi, Some((center, half)))
             } else {
                 let mi = push_mesh(
-                    &mut *ch, &mut accessors,
-                    &mut meshes, &mut materials, &mut material_map, &tmpl_mesh,
-                    [0.0, 0.0, 0.0], lit, emissive, &mut stats,
+                    &mut *ch, &mut *accessors,
+                    &mut *meshes, &mut *materials, &mut *material_map, &tmpl_mesh,
+                    [0.0, 0.0, 0.0], lit, emissive, &mut *stats,
                 );
                 (mi, None)
             };
@@ -1417,11 +1521,124 @@ fn build_gltf(
                     occ_meta, &m_ref_inv, space, rtc_zup, site_zup, t_origin_yup, scene_center,
                 );
                 let extras = node_extras(include_metadata, occ_view.express_id, occ_view.ifc_type, occ_view.global_id, model_id);
-                let node_idx = push_occurrence_node(&mut nodes, mesh_idx, matrix, dequant, extras);
+                let node_idx = push_occurrence_node(&mut *nodes, mesh_idx, matrix, dequant, extras);
                 element_node_indices.push(node_idx);
             }
         }
     }
+}
+
+/// Collate renderable untextured occurrences in the baked Y-up frame.
+fn collate_gltf_views(
+    visible: &[&MeshView<'_>],
+    space: MeshCoordinateSpace,
+    rtc_zup: [f64; 3],
+    site_zup: Option<&[f64]>,
+) -> ifc_lite_geometry::Collated {
+    // ── Pass 1.5: collate by representation identity ────────────────────────────
+    // Group occurrences that share a representation (IfcMappedItem / repeated
+    // geometry) so the geometry is emitted ONCE and each occurrence is placed with a
+    // node matrix — the size win on repetitive models (50-85% fewer vertices). This
+    // is the SAME rep-identity grouping the GPU/native instancing path uses;
+    // content-hashing the BAKED f32 vertices cannot recover these repeats because
+    // per-occurrence placement bakes distinct float positions. Meshes without usable
+    // instance metadata (the from-meshes path, non-instanceable void-cut elements,
+    // singletons) fall to `flat_indices` and keep the self-contained
+    // world-minus-center bake above.
+    let refs: Vec<InstanceMeshRef> = visible
+        .iter()
+        .map(|m| InstanceMeshRef {
+            positions: m.positions,
+            normals: m.normals,
+            indices: m.indices,
+            origin: m.origin,
+            instance_meta: if m.appearance.is_some() { None } else { m.instance },
+            entity_id: m.express_id,
+            color: m.color,
+            // Encoder-only field: this path calls `collate_refs`, never the IFNS
+            // encoder, so nothing here reads it.
+            item_id: None,
+        })
+        .collect();
+    // rtc [0,0,0]: this path keeps the RAW pre-RTC relative transforms and applies
+    // its own `T(-rtc)·rel·T(rtc)` conjugation per occurrence in
+    // `occurrence_node_matrix` (it has the Z-up model rtc there). Passing the rtc
+    // here too would conjugate twice. The wasm GPU-shard path, which consumes the
+    // relative transform directly (no downstream conjugation), passes the real rtc.
+    //
+    // `baked_basis = S_YUP · Rᵀ · T(-rtc_zup)`: exactly the conjugation
+    // `occurrence_node_matrix` applies to the same `rel` (see gltf/matrix.rs),
+    // because the reconstruction check has to compare in the frame the BAKED
+    // positions are actually in. Three conversions separate the two:
+    //  • Y-up: `visible`'s positions/origin were already converted Z-up→Y-up before
+    //    this function was entered — `with_result_views` (this file) runs
+    //    `crate::frame::to_yup_in_place` over every visible mesh in `result` and only
+    //    then hands the borrowed `MeshView`s here, so the conversion is NOT visible in
+    //    `build_gltf` itself. `InstanceMeta.transform` (hence `rel`) stays Z-up.
+    //  • RTC: `rel` is PRE-RTC here (this path passes `rtc = [0,0,0]` above), while
+    //    the baked positions are POST-RTC. The residual that leaves is
+    //    `(R_rel - I) · rtc` — zero for a translated-only sibling, but hundreds of
+    //    kilometres for a ROTATED one at national-grid magnitude, so `S_YUP` alone
+    //    rejected every rotated group on a georeferenced model.
+    //  • Site rotation: in the `site_local` tier the baker ALSO applied the site
+    //    placement's inverse rotation to every position (#4118). The residual that
+    //    leaves is `(I - Rᵀ) · d` for a sibling `d` metres away — 3.5 m for a 6 m
+    //    sibling under a 34 degree yaw, far over any tolerance — so a yawed site
+    //    instanced nothing at all. `site_zup` is `Some` exactly in that tier;
+    //    `baked_basis_yup` folds it in and is the identity's neighbour otherwise.
+    // Without all three terms the check reads a frame mismatch as a #3666 collision
+    // and drops the whole group to flat.
+    let baked_basis = Matrix4::from_row_slice(&matrix::baked_basis_yup(space, rtc_zup, site_zup));
+    collate_refs_in_basis(&refs, 2, [0.0, 0.0, 0.0], Some(&baked_basis))
+}
+
+/// [`build_gltf`] with the textures `TextureTable::prepare` validated and
+/// encoded for `views` (#7955 J5). Textured views are emitted as singletons:
+/// never collated into an instanced group and never content-deduped, so a
+/// texture can neither be lost to nor leak into an untextured twin.
+#[allow(clippy::too_many_arguments)]
+fn build_gltf_with(
+    views: &[MeshView],
+    include_metadata: bool,
+    model_id: Option<&str>,
+    (lit, emissive): (bool, bool),
+    (space, rtc_zup, site_zup): (MeshCoordinateSpace, [f64; 3], Option<&[f64]>),
+    quantize: bool,
+    ch: &mut Chunker,
+    mut textures: TextureTable,
+) -> (Gltf, GltfStats) {
+    // Pre-filter once so both passes (centre, then bake) see exactly the same set.
+    let visible: Vec<&MeshView> = views.iter().filter(|v| view_ok(v)).collect();
+
+    let scene_center = gltf_scene_center(&visible);
+
+    // Binary blobs, concatenated as [positions | normals | indices].
+
+    let mut materials: Vec<Material> = Vec::new();
+    let mut material_map: FxHashMap<(i32, i32, i32, i32), u32> = FxHashMap::default();
+
+    let mut accessors: Vec<Accessor> = Vec::new();
+    let mut meshes: Vec<Mesh> = Vec::new();
+    let mut nodes: Vec<Node> = Vec::new();
+    let mut element_node_indices: Vec<u32> = Vec::new();
+
+    let mut stats = GltfStats { meshes: 0, vertices: 0, triangles: 0, materials: 0, unverified_instance_groups: 0 };
+
+    let collated = collate_gltf_views(&visible, space, rtc_zup, site_zup);
+
+    let (flat, instanced) = partition_gltf_instances(&visible, &collated);
+
+    emit_flat_gltf(
+        &flat, &visible, scene_center, quantize, (lit, emissive), include_metadata,
+        model_id, &mut *ch, &mut accessors, &mut meshes, &mut materials,
+        &mut material_map, &mut textures, &mut stats, &mut nodes, &mut element_node_indices,
+    );
+    emit_instanced_gltf(
+        instanced, &visible, scene_center, (space, rtc_zup, site_zup), quantize,
+        (lit, emissive), include_metadata, model_id, &mut *ch, &mut accessors,
+        &mut meshes, &mut materials, &mut material_map, &mut stats, &mut nodes,
+        &mut element_node_indices,
+    );
     stats.materials = materials.len();
 
     // Single root node carries the model-wide centre (omitted when ~zero) and
@@ -1448,6 +1665,7 @@ fn build_gltf(
     // worker's `OutputTooLarge` classifier still matches. The container total (JSON +
     // framing) is guarded separately in `pack_glb`.
     ch.flush();
+    textures.embed_images(ch);
 
     let asset_extras = if include_metadata {
         Some(json!({
@@ -1483,6 +1701,7 @@ fn build_gltf(
         // `KHR_mesh_quantization` is hard-required: a loader without it cannot read the
         // SHORT-normalized attributes at all.
         extensions_required: quantize.then(|| vec!["KHR_mesh_quantization"]),
+        textures: textures.into_json(),
     };
 
     (gltf, stats)
@@ -1608,6 +1827,13 @@ fn with_result_views<R>(
                 // bake-invariant (the assembler conjugates the transform into Y-up). Left
                 // untouched by the in-place swap above, exactly as before.
                 instance: m.instance.as_ref(),
+                #[cfg(feature = "gltf-textures")]
+                appearance: m.texture.as_ref().filter(|_| opts.textures).map(|texture| ViewTexture {
+                    uvs: m.uvs.as_deref().unwrap_or_default(),
+                    texture,
+                }),
+                #[cfg(not(feature = "gltf-textures"))]
+                appearance: None,
             }
         })
         .collect();
@@ -1630,15 +1856,22 @@ fn try_export_glb_from_result(
     result: ProcessingResult,
     opts: &GltfOptions,
 ) -> Result<(Vec<u8>, GltfStats), ExportError> {
+    #[cfg(not(feature = "gltf-textures"))]
+    opts.refuse_textures("glTF texture support is disabled in this build")?;
+    if opts.quantize {
+        opts.refuse_textures("quantize")?;
+    }
     with_result_views(result, opts, |views, space, rtc_zup, site_zup| {
+        let textured = views.iter().filter_map(|v| v.appearance.map(|a| (v.express_id, v.positions.len(), a)));
+        let textures = TextureTable::prepare(textured)?;
         let mut ch = Chunker::new(if opts.quantize { 8 } else { 12 }, usize::MAX, None);
-        let (gltf, stats) = build_gltf(
-            views, opts.include_metadata, opts.model_id.as_deref(), opts.lit, opts.emissive,
-            space, rtc_zup, site_zup, opts.quantize, &mut ch,
+        let (gltf, stats) = build_gltf_with(
+            views, opts.include_metadata, opts.model_id.as_deref(), (opts.lit, opts.emissive),
+            (space, rtc_zup, site_zup), opts.quantize, &mut ch, textures,
         );
         refuse_empty(&stats)?;
         let json = serde_json::to_vec(&gltf).expect("glTF JSON serializes");
-        Ok((pack_glb(&json, &ch.pos, &ch.norm, &ch.idx), stats))
+        Ok((pack_glb(&json, &[&ch.pos, &ch.norm, &ch.idx, &ch.uv, &ch.img]), stats))
     })
 }
 
@@ -1695,6 +1928,7 @@ fn export_gltf_streaming_impl(
     chunk_cap: usize,
     mut sink: impl FnMut(GltfBuffer),
 ) -> Result<Vec<u8>, ExportError> {
+    opts.refuse_textures("multi-buffer glTF")?;
     // Bounded memory: drive the streaming geometry API with `retain_emitted_meshes: false`
     // so meshes are never accumulated — peak input is one batch, not the whole model.
     // Two passes over the same (deterministic) mesh stream:
@@ -1781,6 +2015,7 @@ fn export_gltf_streaming_impl(
                     color: m.color,
                     origin: y.origin,
                     instance: None,
+                    appearance: None,
                 };
                 if !view_ok(&view) {
                     continue;
@@ -1885,6 +2120,7 @@ fn export_gltf_streaming_impl(
             (!ext.is_empty()).then_some(ext)
         },
         extensions_required: opts.quantize.then(|| vec!["KHR_mesh_quantization"]),
+        textures: GltfTextures::default(),
     };
     Ok(serde_json::to_vec(&gltf).expect("glTF JSON serializes"))
 }
@@ -2055,6 +2291,7 @@ fn try_export_glb_streaming_bounded_impl(
     opts: &GltfOptions,
     index: Option<Arc<EntityIndex>>,
 ) -> Result<(Vec<u8>, GltfStats), ExportError> {
+    opts.refuse_textures("bounded GLB")?;
     // Build the index ONCE in parallel and share it across plan + write. This is
     // the fail-closed large-model path, exactly where the parallel scan pays off;
     // with `index=None` it otherwise paid two internal serial scans.
@@ -2626,7 +2863,7 @@ fn plan_bounded_glb(
             let mesh_idx = meshes.len() as u32;
             meshes.push(Mesh {
                 primitives: vec![Primitive {
-                    attributes: Attributes { position: pos_acc, normal: norm_acc },
+                    attributes: Attributes { position: pos_acc, normal: norm_acc, texcoord_0: None },
                     indices: idx_acc,
                     material: Some(material),
                 }],
@@ -2755,21 +2992,21 @@ fn plan_bounded_glb(
                     byte_offset: 0,
                     byte_length: pos_len as u32,
                     byte_stride: Some(if quantize { 8 } else { 12 }),
-                    target: 34962,
+                    target: Some(34962),
                 },
                 BufferView {
                     buffer: 0,
                     byte_offset: pos_len as u32,
                     byte_length: norm_len as u32,
                     byte_stride: Some(if quantize { 8 } else { 12 }),
-                    target: 34962,
+                    target: Some(34962),
                 },
                 BufferView {
                     buffer: 0,
                     byte_offset: (pos_len + norm_len) as u32,
                     byte_length: idx_len as u32,
                     byte_stride: None,
-                    target: 34963,
+                    target: Some(34963),
                 },
             ],
         )
@@ -2822,6 +3059,7 @@ fn plan_bounded_glb(
             (!ext.is_empty()).then_some(ext)
         },
         extensions_required: quantize.then(|| vec!["KHR_mesh_quantization"]),
+        textures: GltfTextures::default(),
     };
     let json = serde_json::to_vec(&gltf).expect("glTF JSON serializes");
 
@@ -3044,8 +3282,8 @@ fn bake_mesh(
 /// indices) into a GLB container (little-endian). The runs are appended straight into the
 /// output — no intermediate concatenated `bin` copy — so the single-buffer GLB path holds
 /// only one full copy of the geometry at pack time instead of two.
-fn pack_glb(json_bytes: &[u8], pos: &[u8], norm: &[u8], idx: &[u8]) -> Vec<u8> {
-    let bin_len = pos.len() + norm.len() + idx.len();
+fn pack_glb(json_bytes: &[u8], runs: &[&[u8]]) -> Vec<u8> {
+    let bin_len: usize = runs.iter().map(|run| run.len()).sum();
     let json_pad = (4 - (json_bytes.len() % 4)) % 4;
     let bin_pad = (4 - (bin_len % 4)) % 4;
     let padded_json = json_bytes.len() + json_pad;
@@ -3074,13 +3312,14 @@ fn pack_glb(json_bytes: &[u8], pos: &[u8], norm: &[u8], idx: &[u8]) -> Vec<u8> {
     out.extend_from_slice(json_bytes);
     out.extend(std::iter::repeat_n(0x20, json_pad));
 
-    // BIN chunk (zero-padded): the three runs written back-to-back are byte-identical to
-    // the old `positions ++ normals ++ indices` concatenation.
+    // BIN chunk (zero-padded): the runs written back-to-back are byte-identical to
+    // the old `positions ++ normals ++ indices` concatenation; the opt-in UV and
+    // image runs (#7955 J5) are empty unless textures were exported.
     out.extend_from_slice(&(padded_bin as u32).to_le_bytes());
     out.extend_from_slice(b"BIN\0");
-    out.extend_from_slice(pos);
-    out.extend_from_slice(norm);
-    out.extend_from_slice(idx);
+    for run in runs {
+        out.extend_from_slice(run);
+    }
     out.extend(std::iter::repeat_n(0x00, bin_pad));
 
     out
@@ -3093,6 +3332,10 @@ pub(crate) mod tests;
 #[cfg(test)]
 #[path = "gltf_conformance_tests.rs"]
 mod conformance_tests;
+
+#[cfg(test)]
+#[path = "gltf_texture_tests.rs"]
+mod texture_tests;
 
 #[cfg(test)]
 mod site_placement_tests {

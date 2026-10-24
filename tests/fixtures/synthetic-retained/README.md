@@ -106,10 +106,11 @@ The host and band tests intentionally retain their analytic requirements if the
 current exact engine fails; a failing run is an exposed qualification gap.
 
 For independent IFC4 schema/EXPRESS validation and parse/serialize/parse equality,
-use an existing IfcOpenShell Python environment (the tool installs nothing):
+run from the checkout root using an existing IfcOpenShell Python environment
+(the tool installs nothing):
 
 ```sh
-/path/to/python validate.py --cli /path/to/ifc-lite/packages/cli/dist/index.js \
+/path/to/python tests/fixtures/synthetic-retained/validate.py --cli /path/to/ifc-lite/packages/cli/dist/index.js \
   --report /path/to/validation.json
 ```
 
@@ -118,7 +119,7 @@ validation output. A borrowed prebuilt CLI is explicitly not source-qualified
 validation of the current Rust head. The CLI's basic checks are not full EXPRESS
 schema validation. Missing IfcOpenShell exits with `UNRUN`, never a false pass.
 For independent geometry and a second numerical source integral, run
-`/path/to/python independent_geometry.py --report /path/to/volumes.json`.
+`/path/to/python tests/fixtures/synthetic-retained/independent_geometry.py --report /path/to/volumes.json`.
 It reports absolute volume/centroid acceptance and signed orientation separately
 (IfcOpenShell emits reversed winding for the reflected occurrence). The native
 exact test requires positive signed volume. This is not hidden by taking its

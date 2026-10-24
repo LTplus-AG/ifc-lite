@@ -153,8 +153,8 @@ pub enum Disposition {
     /// stays declared. The exception is an opening or projection, which IFC
     /// ties to exactly one element: it goes once no voids or projects
     /// relationship naming it is left (its host or that relationship
-    /// deleted), whatever else still names it, unless this plan patches it
-    /// or an Add names it. A record that names a deleted one through a
+    /// deleted), whatever else still names it, unless an Add names it; a
+    /// patch on it is refused. A record that names a deleted one through a
     /// single-valued attribute (a placement relative to a deleted placement,
     /// an object on that placement) goes too, since it cannot be written
     /// without a dangling reference.

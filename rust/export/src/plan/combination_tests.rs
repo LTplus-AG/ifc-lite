@@ -312,7 +312,7 @@ fn a_preserved_opening_without_a_host_is_refused_as_unhosted() {
         let (report, after) = run(&content, vec![(ObjectRef::Id(10), Disposition::Delete), (ObjectRef::Id(70), Disposition::Preserve)]);
         assert!(!after.contains_key(&70), "{schema}: the opening goes with its host");
         let refusal = report.refusals.iter().find(|r| r.object == ObjectRef::Id(70)).expect("the Preserve is refused");
-        assert!(refusal.reason.contains("no host left"), "{schema}: {}", refusal.reason);
+        assert!(refusal.reason.contains("no host relationship left"), "{schema}: {}", refusal.reason);
     }
 }
 
@@ -341,5 +341,84 @@ fn a_shared_enumerated_leaf_is_not_replaced_by_a_single_value() {
         let content = format!("{}#30=IFCPROPERTYENUMERATEDVALUE('Reference',$,(IFCLABEL('R-1')),$);{}", &source[..start], &source[end..]);
         let (report, _) = run(content.as_bytes(), vec![patch(10, vec![prop("Pset_A", "Reference", "IFCIDENTIFIER", "'R-2'")])]);
         assert!(report.refusals.iter().any(|r| r.reason.contains("cannot replace")), "{schema}: {:?}", report.refusals);
+    }
+}
+
+/// The fixture with a door `#80` filling its opening `#70` through `#81`.
+fn host_with_filled_opening(schema: &str) -> Vec<u8> {
+    use super::test_fixtures::host_with_port_type_and_body;
+    let door = super::attrs::build_record(schema, 80, "IFCDOOR", &[("GlobalId", "'0000000000000000000080'".into()), ("Name", "'Door'".into())]);
+    let fills = super::attrs::build_record(
+        schema,
+        81,
+        "IFCRELFILLSELEMENT",
+        &[("GlobalId", "'0000000000000000000081'".into()), ("RelatingOpeningElement", "#70".into()), ("RelatedBuildingElement", "#80".into())],
+    );
+    let text = String::from_utf8(host_with_port_type_and_body(schema)).unwrap();
+    text.replacen("ENDSEC;\nEND-ISO", &format!("{door}\n{fills}\nENDSEC;\nEND-ISO"), 1).into_bytes()
+}
+
+/// A patch does not keep an opening alive once its host is deleted: IFC
+/// ties an opening to exactly one element, so it goes with its host, the
+/// door that filled it stays, and the patch is refused saying why.
+#[test]
+fn a_patched_opening_goes_with_its_host_and_the_patch_is_refused() {
+    for schema in SCHEMAS {
+        let content = host_with_filled_opening(schema);
+        let rename = (ObjectRef::Id(70), Disposition::Patch(Patch { name: Some("Renamed".into()), ..Default::default() }));
+        let (report, after) = run(&content, vec![(ObjectRef::Id(10), Disposition::Delete), rename]);
+        assert!(!after.contains_key(&70), "{schema}: the opening goes with its host");
+        assert!(!after.contains_key(&81), "{schema}: and the fill naming it");
+        assert!(after.contains_key(&80), "{schema}: the door stays");
+        assert!(!after.values().any(|l| l.contains("'Renamed'")), "{schema}: the patch is not written");
+        assert_eq!(report.patched, 0, "{schema}");
+        let refusal = report.refusals.iter().find(|r| r.object == ObjectRef::Id(70)).expect("the patch is refused");
+        assert!(refusal.reason.contains("no host relationship left"), "{schema}: {}", refusal.reason);
+        assert!(report.findings.is_empty(), "{schema}: {:?}", report.findings);
+    }
+}
+
+/// An Add that names the opening still keeps it.
+#[test]
+fn an_opening_an_add_names_stays_without_its_host() {
+    use super::add_test_support::{add, gid, object};
+    use super::add_types::{IfcClass, Representation};
+    for schema in SCHEMAS {
+        let content = host_with_filled_opening(schema);
+        let mut child = object(IfcClass::BuildingElementProxy, gid(1), None, Representation::None);
+        child.placement.relative_to = Some(ObjectRef::Id(70));
+        let (report, after) = run(&content, vec![(ObjectRef::Id(10), Disposition::Delete), add(child)]);
+        assert!(after.contains_key(&70), "{schema}: the Add needs it");
+        assert_eq!(report.added, 1, "{schema}: {:?}", report.refusals);
+    }
+}
+
+/// A projection follows the same rule, and so does an opening whose voids
+/// relationship (not its host) the plan deletes; an opening the plan also
+/// deletes outright says so.
+#[test]
+fn a_patched_projection_or_voidless_opening_goes_and_the_reason_fits() {
+    let rename = |id| (ObjectRef::Id(id), Disposition::Patch(Patch { name: Some("Renamed".into()), ..Default::default() }));
+    for schema in SCHEMAS {
+        let projected = String::from_utf8(host_with_filled_opening(schema))
+            .unwrap()
+            .replace("IFCOPENINGELEMENT(", "IFCPROJECTIONELEMENT(")
+            .replace("IFCRELVOIDSELEMENT(", "IFCRELPROJECTSELEMENT(");
+        assert!(projected.contains("IFCRELPROJECTSELEMENT("), "{schema}: fixture");
+        let (report, after) = run(projected.as_bytes(), vec![(ObjectRef::Id(10), Disposition::Delete), rename(70)]);
+        assert!(!after.contains_key(&70), "{schema}: the projection goes with its host");
+        assert!(report.refusals.iter().any(|r| r.object == ObjectRef::Id(70) && r.reason.contains("no host relationship left")), "{schema}: {:?}", report.refusals);
+
+        let content = host_with_filled_opening(schema);
+        let (report, after) = run(&content, vec![(ObjectRef::Id(71), Disposition::Delete), rename(70)]);
+        assert!(after.contains_key(&10) && !after.contains_key(&70), "{schema}: the host stays, the opening goes with its voids");
+        assert!(report.refusals.iter().any(|r| r.object == ObjectRef::Id(70) && r.reason.contains("no host relationship left")), "{schema}: {:?}", report.refusals);
+
+        let (report, _) = run(&content, vec![(ObjectRef::Id(10), Disposition::Delete), (ObjectRef::Id(70), Disposition::Delete), rename(70)]);
+        let refusal = report.refusals.iter().find(|r| r.object == ObjectRef::Id(70)).expect("refused");
+        assert!(refusal.reason.contains("also deleted by this plan"), "{schema}: {}", refusal.reason);
+        let (report, _) = run(&content, vec![(ObjectRef::Id(10), Disposition::Delete), (ObjectRef::Id(70), Disposition::Delete), (ObjectRef::Id(70), Disposition::Preserve)]);
+        let refusal = report.refusals.iter().find(|r| r.object == ObjectRef::Id(70)).expect("refused");
+        assert!(refusal.reason.contains("removed by this plan"), "{schema}: {}", refusal.reason);
     }
 }

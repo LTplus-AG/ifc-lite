@@ -11,7 +11,7 @@ fn deleting_a_wall_removes_its_unshared_pset_via_the_rel() {
         let content = wall_with_own_pset(schema);
         let index = FileIndex::complete(&content);
         let requested: HashSet<u32> = [10].into_iter().collect();
-        let result = resolve_deletes(&index, schema, &requested, &[], &HashSet::new());
+        let result = resolve_deletes(&index, schema, &requested, &[], &HashSet::new(), &HashSet::new());
 
         assert!(result.removed.contains(&10), "{schema}: the wall itself");
         // The rel's RelatedObjects held only #10: emptying it takes the rel
@@ -32,7 +32,7 @@ fn deleting_one_of_two_walls_sharing_a_pset_keeps_the_pset_and_shrinks_the_rel()
     let content = two_walls_sharing_a_pset(schema);
     let index = FileIndex::complete(&content);
     let requested: HashSet<u32> = [10].into_iter().collect();
-    let result = resolve_deletes(&index, schema, &requested, &[], &HashSet::new());
+    let result = resolve_deletes(&index, schema, &requested, &[], &HashSet::new(), &HashSet::new());
 
     assert!(result.removed.contains(&10));
     assert!(!result.removed.contains(&32), "the rel survives: it still relates #11");
@@ -48,7 +48,7 @@ fn deleting_the_aggregated_building_drops_the_now_empty_aggregation() {
     let content = project_aggregates_one_building(schema);
     let index = FileIndex::complete(&content);
     let requested: HashSet<u32> = [60].into_iter().collect();
-    let result = resolve_deletes(&index, schema, &requested, &[], &HashSet::new());
+    let result = resolve_deletes(&index, schema, &requested, &[], &HashSet::new(), &HashSet::new());
 
     assert!(result.removed.contains(&60));
     assert!(result.removed.contains(&61), "RelatedObjects would go empty, so the rel goes too");
@@ -67,7 +67,7 @@ fn a_non_rel_list_attribute_is_stripped_but_never_cascades() {
     let content = wall_with_own_pset(schema);
     let index = FileIndex::complete(&content);
     let requested: HashSet<u32> = [51].into_iter().collect();
-    let result = resolve_deletes(&index, schema, &requested, &[], &HashSet::new());
+    let result = resolve_deletes(&index, schema, &requested, &[], &HashSet::new(), &HashSet::new());
 
     assert!(result.removed.contains(&51));
     assert!(!result.removed.contains(&50), "IfcUnitAssignment is not an IFCREL* entity, so it never cascades");
@@ -82,7 +82,7 @@ fn deleting_the_only_covering_drops_the_now_empty_covers_relationship() {
         let content = wall_with_one_covering(schema);
         let index = FileIndex::complete(&content);
         let requested: HashSet<u32> = [12].into_iter().collect();
-        let result = resolve_deletes(&index, schema, &requested, &[], &HashSet::new());
+        let result = resolve_deletes(&index, schema, &requested, &[], &HashSet::new(), &HashSet::new());
         assert!(result.removed.contains(&13), "{schema}: RelatedCoverings is SET [1:?], so the rel goes");
     }
 }
@@ -98,7 +98,7 @@ fn a_layer_whose_last_item_is_stripped_goes() {
         let index = FileIndex::complete(&content);
         let idx = crate::plan::attrs::attribute_index(schema, "IFCPRESENTATIONLAYERASSIGNMENT", "AssignedItems").unwrap();
         let detach = [(83, idx, 62), (80, idx, 62)];
-        let result = resolve_deletes(&index, schema, &HashSet::new(), &detach, &HashSet::new());
+        let result = resolve_deletes(&index, schema, &HashSet::new(), &detach, &HashSet::new(), &HashSet::new());
         assert!(result.removed.contains(&83), "{schema}: the emptied layer");
         assert!(!result.removed.contains(&80), "{schema}: the layer with items left");
         assert_eq!(result.stripped.get(&(80, idx)), Some(&[62].into_iter().collect()), "{schema}");
@@ -116,7 +116,7 @@ fn deleting_a_host_keeps_its_port_and_type_and_prunes_only_its_own_records() {
         let content = host_with_port_type_and_body(schema);
         let index = FileIndex::complete(&content);
         let requested: HashSet<u32> = [10].into_iter().collect();
-        let result = resolve_deletes(&index, schema, &requested, &[], &HashSet::new());
+        let result = resolve_deletes(&index, schema, &requested, &[], &HashSet::new(), &HashSet::new());
 
         for id in [14, 15, 16, 17, 20, 21, 22] {
             assert!(!result.removed.contains(&id), "{schema}: the port and its placement chain stay (#{id})");
@@ -155,11 +155,11 @@ fn a_long_shared_list_is_stripped_entry_by_entry_and_cascades_only_when_empty() 
         let content = String::from_utf8(two_walls_sharing_a_pset(schema)).unwrap().replace("(#10,#11)", "(#10,#11,#10)");
         let index = FileIndex::complete(content.as_bytes());
         let one: HashSet<u32> = [10].into_iter().collect();
-        let result = resolve_deletes(&index, schema, &one, &[], &HashSet::new());
+        let result = resolve_deletes(&index, schema, &one, &[], &HashSet::new(), &HashSet::new());
         assert!(!result.removed.contains(&32), "{schema}: #11 is still related");
         assert_eq!(result.stripped.get(&(32, 4)), Some(&[10].into_iter().collect()), "{schema}: both #10 entries, one strip");
         let both: HashSet<u32> = [10, 11].into_iter().collect();
-        let result = resolve_deletes(&index, schema, &both, &[], &HashSet::new());
+        let result = resolve_deletes(&index, schema, &both, &[], &HashSet::new(), &HashSet::new());
         assert!(result.removed.contains(&32), "{schema}: nothing left to relate");
         assert!(result.removed.contains(&31), "{schema}: the set only the two walls used");
     }
@@ -175,7 +175,7 @@ fn an_opening_goes_once_nothing_it_voids_is_left() {
         let content = host_with_port_type_and_body(schema);
         let index = FileIndex::complete(&content);
         let rel_only: HashSet<u32> = [71].into_iter().collect();
-        let result = resolve_deletes(&index, schema, &rel_only, &[], &HashSet::new());
+        let result = resolve_deletes(&index, schema, &rel_only, &[], &HashSet::new(), &HashSet::new());
         assert!(result.removed.contains(&70), "{schema}: an opening voiding nothing goes with its relationship");
 
         let text = String::from_utf8(content.clone()).unwrap();
@@ -184,23 +184,23 @@ fn an_opening_goes_once_nothing_it_voids_is_left() {
         let two_hosts = text.replacen("ENDSEC;\nEND-ISO", &format!("{line78}\nENDSEC;\nEND-ISO"), 1);
         let index = FileIndex::complete(two_hosts.as_bytes());
         let host: HashSet<u32> = [10].into_iter().collect();
-        let result = resolve_deletes(&index, schema, &host, &[], &HashSet::new());
+        let result = resolve_deletes(&index, schema, &host, &[], &HashSet::new(), &HashSet::new());
         assert!(result.removed.contains(&71), "{schema}: the deleted host's voids relationship goes");
         assert!(!result.removed.contains(&70), "{schema}: the opening still voids #11");
         assert!(!result.removed.contains(&78), "{schema}: and #11 keeps it");
         let both: HashSet<u32> = [10, 11].into_iter().collect();
-        let result = resolve_deletes(&index, schema, &both, &[], &HashSet::new());
+        let result = resolve_deletes(&index, schema, &both, &[], &HashSet::new(), &HashSet::new());
         assert!(result.removed.contains(&70), "{schema}: no host left");
         // #71 is asked first, while #78 still stands; #78 only goes a round
         // later (#23 takes #11 through its placement, #11 takes #78). The
         // last relationship to go decides.
         let rel_then_cascade: HashSet<u32> = [71, 23].into_iter().collect();
-        let result = resolve_deletes(&index, schema, &rel_then_cascade, &[], &HashSet::new());
+        let result = resolve_deletes(&index, schema, &rel_then_cascade, &[], &HashSet::new(), &HashSet::new());
         assert!(result.removed.contains(&11) && result.removed.contains(&78), "{schema}: the cascade reaches #78");
         assert!(result.removed.contains(&70), "{schema}: and the opening goes with it");
         // Deleting a host's body takes the host through its Representation.
         let body: HashSet<u32> = [60].into_iter().collect();
-        assert!(resolve_deletes(&index, schema, &body, &[], &HashSet::new()).removed.contains(&10), "{schema}");
+        assert!(resolve_deletes(&index, schema, &body, &[], &HashSet::new(), &HashSet::new()).removed.contains(&10), "{schema}");
     }
 }
 
@@ -214,9 +214,9 @@ fn a_kept_type_or_port_is_never_counted() {
         let content = host_with_port_type_and_body(schema);
         let mut index = FileIndex::scan(&content, &Default::default());
         let requested: HashSet<u32> = [10].into_iter().collect();
-        let mut result = resolve_deletes(&index, schema, &requested, &[], &HashSet::new());
+        let mut result = resolve_deletes(&index, schema, &requested, &[], &HashSet::new(), &HashSet::new());
         while index.collect_missing_referrers() {
-            result = resolve_deletes(&index, schema, &requested, &[], &HashSet::new());
+            result = resolve_deletes(&index, schema, &requested, &[], &HashSet::new(), &HashSet::new());
         }
         assert!(result.removed.contains(&43) && !result.removed.contains(&40), "{schema}: the type stays");
         assert!(!index.referrers.knows(40), "{schema}: the type is not counted");

@@ -1771,6 +1771,13 @@ jobs:
           # disk capture: the directrix source and owned rational must turn RED.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/analytic/owned_directrix.rs | grep -Fxq 'rust/geometry/src/analytic/owned_directrix.rs'; then
             oracle_args+=(--mutation tests/evidence/analytic-directrix-source-7955/behaviour.oracle.patch)
+          # Export plan patched opening: the changed delete tests pass the new
+          # feature-keepers argument, so a whole-change revert cannot compile
+          # them. Keep it and let patched records keep a hostless opening
+          # again: the patched-opening test must turn RED. Keyed on this
+          # patch; once it is on main, this clause can go.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/export-plan-patched-opening/behaviour.oracle.patch | grep -Fxq 'tests/evidence/export-plan-patched-opening/behaviour.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/export-plan-patched-opening/behaviour.oracle.patch)
           # Export plan mapped bodies: the new plan/add_mapped.rs and its
           # tests compile only together. Keep them, drop the transform's
           # translation and instance every context's Body maps: the placement

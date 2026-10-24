@@ -102,6 +102,14 @@ void split_cap(bool refuse) {
     NumericalReadTestAccess::tessellation(ledger,solid);
     SmCopyBrepMap map;
     auto internal=std::unique_ptr<SmBrep>(new (*solid.GetContext()) SmBrep(solid,&map)); ledger.check();
+    // #7955: CreateBox disables editing and the SDK copy inherits that flag.
+    // MakeVertexSplitEdge returns SM_ERR before any notification in this state.
+    // Match SmTess::Phase1SetupBrep's supported preparation on the disposable
+    // copy only; the sealed source stays in query mode.
+    require(solid.m_bEditingEnabled==FALSE && internal->m_bEditingEnabled==FALSE,
+        "split cap setup observes the copied box's SDK query mode");
+    internal->m_bEditingEnabled=TRUE;
+    const auto initial_edges=internal->GetNumEdges(),initial_vertices=internal->GetNumVertices();
     auto* initial=boundary_edge(*internal); const auto domain=initial->GetInterval();
     const auto initial_live=ReadAccountingTestAccess::live(ledger),nodes=ledger.node_size();
     const auto limits=ReadAccountingTestAccess::quotas(ledger);
@@ -116,6 +124,10 @@ void split_cap(bool refuse) {
         const auto first=ReadAccountingTestAccess::event_size(ledger);
         SmEdge *one=nullptr,*two=nullptr; SmVertex* vertex=nullptr;
         const auto status=internal->MakeVertexSplitEdge(edge,cut,one,two,vertex);
+        if(status!=SM_SUCCESS || one!=edge || !two || !vertex)
+            std::fprintf(stderr,"split cap SDK setup failed split=%u status=%d editing=%u interval=[%.17g,%.17g] cut=%.17g callbacks=%u\n",
+                i+1,int(status),unsigned(internal->m_bEditingEnabled),interval.GetMin(),interval.GetMax(),cut,
+                ReadAccountingTestAccess::event_size(ledger)-first);
         require(status==SM_SUCCESS && one==edge && two && vertex,
             "split cap setup SDK call returns actual split topology");
         if(i==4095) {
@@ -136,6 +148,11 @@ void split_cap(bool refuse) {
         require(ledger.node_size()==nodes && ledger.event_size()==retained_events &&
             ReadAccountingTestAccess::live(ledger)==initial_live+13*(i+1),
             "split cap setup retains exactly 13 scratch objects per completed manifold split");
+        require(internal->GetNumEdges()==initial_edges+i+1 && internal->GetNumVertices()==initial_vertices+i+1,
+            "split cap SDK topology gains one edge and one vertex per completed split");
+        if(i==0) std::fprintf(stderr,"split cap first SDK split verified source_editing=%u copy_editing=%u live=%u callbacks=%u\n",
+            unsigned(solid.m_bEditingEnabled),unsigned(internal->m_bEditingEnabled),
+            ReadAccountingTestAccess::live(ledger),delta);
         queue.push_back(one); queue.push_back(two);
     }
     // All unsplit queue entries are actual final leaves, independent of which
@@ -170,12 +187,16 @@ void split_cap(bool refuse) {
         bool rejected=false;
         try { ledger.check(); } catch(const AdapterFailure& e) { rejected=e.status==IFCLITE_SMLIB_UNSUPPORTED; }
         require(rejected,"split cap callback refusal cannot be overridden by SDK success");
+        std::fprintf(stderr,"split cap 4097 first notification refused event=%u expected=%u SDK_status=%d\n",
+            origin.event,first+1,int(status));
     } else {
         internal.reset(); ledger.check(); NumericalReadTestAccess::end(ledger);
         require(ReadAccountingTestAccess::live(ledger)==0,"4096 completed splits retire every scratch generation");
         seal.verify(); ledger.verify_inventory(solid); NumericalReadTestAccess::release(ledger);
         require(ledger.node_size()==retained_nodes && ledger.event_size()==retained_events && owner.faces()==roots,
             "4096 completed splits reclaim only temporary history");
+        std::fprintf(stderr,"split cap release verified live=%u nodes=%u events=%u\n",
+            ReadAccountingTestAccess::live(ledger),ledger.node_size(),ledger.event_size());
     }
     phase.finish();
 }

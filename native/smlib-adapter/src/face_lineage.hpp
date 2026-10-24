@@ -107,6 +107,16 @@ class Ledger {
     mutable bool failure_reported=false;
 #ifdef IFCLITE_LINEAGE_FAILURE_STACK
     FailureStack failed_stack{};
+    // Diagnostic scalars only. Never consulted by an authority/acceptance path.
+    struct TraceEvent {
+        uint32_t event=0,frame=0;
+        long operation=0,type=0;
+        uintptr_t caller=0,a=0,b=0,c=0;
+        Identity generation{},numerical_operation{};
+        bool alive=false,retired=false;
+    };
+    std::array<TraceEvent,1024> diagnostic_events{};
+    void trace_event(SmNotifyOperation,SmObject*,SmObject*,SmObject*,SmObject*) noexcept;
     void capture_failure_stack() noexcept;
     void report_failure_stack() const noexcept;
 #endif

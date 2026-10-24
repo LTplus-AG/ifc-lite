@@ -20,6 +20,12 @@ uint32_t word(const Bytes& b,size_t i) { expect(i+4<=b.size(),"bounded source re
 Bytes call(uint32_t op,const Bytes& body={}) {
     Bytes b;u32(b,1);u32(b,++serial);u32(b,op);b.insert(b.end(),body.begin(),body.end());
     auto r=ifclite_smlib_dispatch(b);
+    if(word(r,8)!=0) {
+        // Preserve the real wire refusal before the semantic assertion. The
+        // previous generic message hid even the failing operation from #7955.
+        std::fprintf(stderr,"SOURCE_BINDING_DISPATCH serial=%u operation=%u status=%u error=%.*s\n",
+            serial,op,word(r,8),int(r.size()-12),reinterpret_cast<const char*>(r.data()+12));
+    }
     expect(word(r,8)==0,"source binding production dispatch succeeds");return Bytes(r.begin()+12,r.end());
 }
 Bytes body(uint64_t session,const Bytes& handle={}) { Bytes b;u64(b,session);b.insert(b.end(),handle.begin(),handle.end());return b; }

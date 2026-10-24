@@ -10,6 +10,7 @@
 #include <array>
 #include <cstring>
 #include <memory>
+#include <new>
 #include <stdexcept>
 namespace face_lineage {
 // Test-only access to the fixed calls' private phase. No runtime callable seam.
@@ -85,15 +86,24 @@ void negative(const char* name) {
         auto helper=copy(*foreign); helper->SetOwner(original->GetOwner()); reverse(*helper);
         require(ledger.failed()!=Failure::None,"foreign constructor origin cannot borrow source trim authority");
     } else if(std::strcmp(name,"reuse-foreign")==0) {
-        auto helper=copy(*original); ledger.check(); const auto old=reinterpret_cast<uintptr_t>(helper.get());
-        helper.reset(); ledger.check(); bool reused=false;
-        for(unsigned i=0;i<128 && !reused;++i) {
-            auto unrelated=copy(*foreign); ledger.check();
-            if(reinterpret_cast<uintptr_t>(unrelated.get())!=old) continue;
-            reused=true; unrelated->SetOwner(original->GetOwner()); reverse(*unrelated);
-            require(ledger.failed()!=Failure::None,"recycled helper address cannot authorize a foreign constructor");
+        // Reuse actual object storage, not a probabilistic allocator bin. The
+        // SDK base copy constructor and destructor emit the real notifications;
+        // no callback replay or historical address is supplied to the ledger.
+        alignas(SmBSplineCurve) unsigned char storage[sizeof(SmBSplineCurve)];
+        auto destroy=[](SmBSplineCurve* curve) { curve->~SmBSplineCurve(); };
+        using LocalCurve=std::unique_ptr<SmBSplineCurve,decltype(destroy)>;
+        uintptr_t old=0;
+        {
+            LocalCurve helper(::new (static_cast<void*>(storage)) SmBSplineCurve(*original),destroy);
+            ledger.check(); old=reinterpret_cast<uintptr_t>(helper.get());
         }
+        ledger.check();
+        LocalCurve unrelated(::new (static_cast<void*>(storage)) SmBSplineCurve(*foreign),destroy);
+        ledger.check();
+        const bool reused=reinterpret_cast<uintptr_t>(unrelated.get())==old;
         require(reused,"actual foreign-copy address reuse must be reached, never skipped");
+        unrelated->SetOwner(original->GetOwner()); reverse(*unrelated);
+        require(ledger.failed()!=Failure::None,"recycled helper address cannot authorize a foreign constructor");
     } else if(std::strcmp(name,"replacement")==0) {
         auto helper=copy(*original); helper->SetOwner(original->GetOwner());
         phase.finish();

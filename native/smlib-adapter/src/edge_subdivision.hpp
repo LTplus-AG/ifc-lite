@@ -60,7 +60,7 @@ class EdgeSubdivision {
     Live birth(Event&,SmObject*);
     void live(SmObject*,Identity);
     std::unique_ptr<SmCurve> copy(SmCurve*);
-    std::unique_ptr<SmCurve> restricted(SmCurve*,SmExtent1d);
+    std::unique_ptr<SmCurve> restricted(SmCurve*,SmExtent1d,SmExtent1d* rounded=nullptr);
     void exact(SmCurve*,SmCurve*);
     std::vector<uint64_t> surface(SmObject*);
     void next_uv();

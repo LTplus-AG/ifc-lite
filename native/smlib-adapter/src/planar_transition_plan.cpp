@@ -88,8 +88,7 @@ PlanarTransition::PlanarTransition(Ledger& value,SmBrep& immutable,SmBrep& owned
         correspondence(a[first],uv[from]); correspondence(a[1-first],uv[to]);
         correspondence(b[first],points[from]); correspondence(b[1-first],points[to]);
         const auto interval=slot.use->GetEdge()->GetInterval(),natural=slot.original->GetNaturalInterval();
-        require(interval.GetMin()==0 && interval.GetMax()==1 && bits(interval.GetMin(),natural.GetMin()) &&
-            bits(interval.GetMax(),natural.GetMax()),"transition fixed common edge/UV parameter interval");
+        common_interval(interval,natural,slot.use->GetEdge()->GetCurve()->GetNaturalInterval());
         for(unsigned j=0;j<i;++j) require(slots[j].use!=slot.use && slots[j].use->GetEdge()!=slot.use->GetEdge(),
             "transition duplicate boundary use/edge inventory");
     }

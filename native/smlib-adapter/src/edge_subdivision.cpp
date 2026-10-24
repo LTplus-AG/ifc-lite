@@ -3,6 +3,7 @@
 #include "context_metadata.hpp"
 #include "failure.hpp"
 #include "ifclite_smlib.h"
+#include "subdivision_parameter.hpp"
 #include <SmBSplineCurve.h>
 #include <SmBSplineSurface.h>
 #include <algorithm>
@@ -74,13 +75,37 @@ void EdgeSubdivision::exact(SmCurve* expected,SmCurve* actual) {
         require(false,"subdivision exact curve representation mismatch");
     }
 }
-std::unique_ptr<SmCurve> EdgeSubdivision::restricted(SmCurve* source,SmExtent1d domain) {
+std::unique_ptr<SmCurve> EdgeSubdivision::restricted(SmCurve* source,SmExtent1d domain,SmExtent1d* rounded) {
     auto result=copy(source); const auto requested=domain;
     require(result->Trim(domain)==SM_SUCCESS,"subdivision checked restriction status");
-    // This receipt authorizes exact interior cuts; knot snapping, trim deletion,
-    // UV solver reparameterization and other paths need their own evidence.
-    require(domain.GetMin()==requested.GetMin() && domain.GetMax()==requested.GetMax(),
-        "subdivision restriction changed requested interval");
+    // SmBrep.cpp:21418-21437 explicitly resets edge intervals after Trim snaps
+    // to existing knots. Only the initial 3D restriction pair may issue that
+    // receipt, using the immutable pre-split curve and independent checked
+    // status. Neither arbitrary near values nor the SDK's wider tolerance are
+    // authority. UV solving/reparameterization is still outside this protocol.
+    const bool changed=domain.GetMin()!=requested.GetMin() || domain.GetMax()!=requested.GetMax();
+    if(changed) {
+        auto* basis=static_cast<SmBSplineCurve*>(source); // copy() already checks exact evaluator class
+        const auto count=basis->GetNumberNaturalKnots();
+        require(rounded && count && count<=65536,"unissued subdivision knot-snap receipt");
+        std::array<double,65536> knots{};
+        require(basis->GetKnotsExpert(0,count-1,knots.data())==SM_SUCCESS,"subdivision pre-split knot getter status");
+        auto endpoint=[&](double before,double after) {
+            if(before==after) return true;
+            bool found=false; for(ULONG i=0;i<count;++i) found|=knots[i]==after;
+            return found && subdivision_parameter_rounding(before,after);
+        };
+        const bool valid=endpoint(requested.GetMin(),domain.GetMin()) && endpoint(requested.GetMax(),domain.GetMax());
+#ifdef IFCLITE_LINEAGE_FAILURE_STACK
+        if(!valid) std::fprintf(stderr,"subdivision knot snap refused requested=[%.17g,%.17g] actual=[%.17g,%.17g] knots=%lu\n",
+            requested.GetMin(),requested.GetMax(),domain.GetMin(),domain.GetMax(),static_cast<unsigned long>(count));
+#endif
+        require(valid,"subdivision knot snap exceeds fixed rounding receipt");
+    }
+    const auto actual=result->GetNaturalInterval();
+    require(domain.GetMin()<domain.GetMax() && actual.GetMin()==domain.GetMin() && actual.GetMax()==domain.GetMax(),
+        "subdivision restricted natural interval differs from checked result");
+    if(rounded) *rounded=domain;
     return result;
 }
 std::vector<uint64_t> EdgeSubdivision::surface(SmObject* object) {

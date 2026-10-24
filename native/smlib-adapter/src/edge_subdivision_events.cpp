@@ -46,7 +46,12 @@ bool EdgeSubdivision::event(Event& record,SmNotifyOperation op,SmObject* caller,
         require(lo.GetMin()==interval.GetMin() && hi.GetMax()==interval.GetMax() && hi.GetMin()==cut &&
             cut>interval.GetMin() && cut<interval.GetMax(),"subdivision exact interval partition"); // subdivision-partition
         exact(frozen.get(),curve); exact(frozen.get(),next_curve);
-        expected_first=restricted(frozen.get(),first); expected_second=restricted(frozen.get(),second);
+        expected_first=restricted(frozen.get(),first,&first); expected_second=restricted(frozen.get(),second,&second);
+        const auto actual_lo=same?first:second,actual_hi=same?second:first;
+        require(actual_lo.GetMin()==interval.GetMin() && actual_hi.GetMax()==interval.GetMax() &&
+            actual_lo.GetMax()==actual_hi.GetMin() && actual_lo.GetMax()>interval.GetMin() &&
+            actual_lo.GetMax()<interval.GetMax(),"subdivision checked restrictions must share one exact interior cut");
+        cut=actual_lo.GetMax();
         require(expected_first->EvaluatePoint(cut,point)==SM_SUCCESS,"subdivision vertex evaluator status");
         stage=OldPre; break;
     }

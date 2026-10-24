@@ -81,6 +81,26 @@ void planar_coefficients(bool positive) {
             "planar correspondence keeps component scale and finite guards");
     }
 }
+void planar_intervals(bool positive) {
+    // #7955: the original rectangle can have a non-unit parameterization;
+    // a parameter mismatch must still refuse even when endpoints coincide.
+    auto* context=SmApiGetOrCreateContext(); SmBSplineCurve *a=nullptr,*b=nullptr;
+    require(SmBSplineCurve::CreateLineSegment(*context,2,SmPoint3d(0,0,0),SmPoint3d(2,0,0),a)==SM_SUCCESS && a,
+        "actual parameter UV fixture");
+    std::unique_ptr<SmBSplineCurve> uv(a);
+    require(SmBSplineCurve::CreateLineSegment(*context,3,SmPoint3d(0,0,0),SmPoint3d(0,2,0),b)==SM_SUCCESS && b,
+        "actual parameter 3D fixture");
+    std::unique_ptr<SmBSplineCurve> edge(b);
+    const SmExtent1d domain(0,2);
+    require(edge->EditParameterization(domain)==SM_SUCCESS && uv->EditParameterization(domain)==SM_SUCCESS,
+        "actual matching non-unit parameterization");
+    if(!positive) require(uv->EditParameterization(SmExtent1d(0,1))==SM_SUCCESS,"actual mismatched UV parameterization");
+    bool refused=false;
+    try { planar_detail::common_interval(domain,uv->GetNaturalInterval(),edge->GetNaturalInterval()); }
+    catch(const AdapterFailure& e) { refused=e.status==IFCLITE_SMLIB_UNSUPPORTED; }
+    require(refused!=positive,positive?"planar original intervals need not be unit length":
+        "planar interval correspondence rejects a mismatched UV domain");
+}
 void positive(bool reuse) {
     auto owner=OwnedBoundary::box(2,3,4); auto& ledger=history(owner); auto& solid=body(owner);
     auto* original=trim(solid); const auto roots=owner.faces();
@@ -333,7 +353,30 @@ void subdivision(const char* name) {
         if(interval.GetMax()-interval.GetMin()>6 && candidate->GetEdgeuseCount()==4) { edge=candidate; break; }
     }
     require(edge,"subdivision fixture has a real curved four-use edge");
-    auto interval=edge->GetInterval(); const double cut=interval.GetMin()+(interval.GetMax()-interval.GetMin())/64;
+    auto interval=edge->GetInterval(); double cut=interval.GetMin()+(interval.GetMax()-interval.GetMin())/64;
+    double existing_knot=0;
+    const bool knot_case=std::strcmp(name,"split-knot")==0 || std::strcmp(name,"split-knot-outside")==0;
+    if(knot_case) {
+        auto* curve=static_cast<SmBSplineCurve*>(edge->GetCurve()); const auto count=curve->GetNumberNaturalKnots();
+        require(count && count<=65536,"bounded actual curved knot fixture");
+        std::array<double,65536> knots{};
+        require(curve->GetKnotsExpert(0,count-1,knots.data())==SM_SUCCESS,"actual curved knot getter");
+        bool found=false; double knot=0;
+        for(ULONG i=0;i<count;++i) if(knots[i]>interval.GetMin() && knots[i]<interval.GetMax()) { knot=knots[i]; found=true; break; }
+        require(found,"curved split fixture has an existing interior knot");
+        existing_knot=knot;
+        if(std::strcmp(name,"split-knot")==0) cut=std::nextafter(std::nextafter(knot,INFINITY),INFINITY);
+        else {
+            const double eps=std::numeric_limits<double>::epsilon();
+            cut=knot+8*eps*std::max(1.,std::abs(knot));
+            // Independently choose the FIRST representable request above the
+            // fixed bound. Do not call the production predicate (a mutant may
+            // remove it). This remains far inside the SDK's wider snap zone.
+            unsigned moves=0;
+            while(cut-knot<=8*eps*std::max(1.,std::abs(cut)) && moves++<16) cut=std::nextafter(cut,INFINITY);
+            require(moves<16 && cut<interval.GetMax(),"bounded first-outside parameter fixture");
+        }
+    }
     SmEdge *one=nullptr,*two=nullptr; SmVertex* vertex=nullptr; SmStatus status; unsigned faults=0; bool healthy_before_fault=false;
     const auto first=ledger.event_size();
     {
@@ -343,13 +386,19 @@ void subdivision(const char* name) {
         status=internal->MakeVertexSplitEdge(edge,cut,one,two,vertex); faults=fault.faults; healthy_before_fault=fault.healthy_before_fault;
     }
     require(status==SM_SUCCESS && one==edge && two && vertex,"actual SDK subdivision status and outputs");
+    if(knot_case) {
+        const auto a=one->GetInterval(),b=two->GetInterval();
+        const bool same=a.GetMin()==interval.GetMin();
+        require(cut!=existing_knot && (same?a.GetMax():a.GetMin())==existing_knot &&
+            (same?b.GetMin():b.GetMax())==existing_knot,"actual SDK knot snap reached in both restriction outputs");
+    }
     // Preserve the real first failure in every witness, including positive.
     // Reporting is read-only; only the assertion below decides acceptance.
     if(ledger.failed()!=Failure::None) try { ledger.check(); }
     catch(const AdapterFailure& error) {
         std::fprintf(stderr,"subdivision witness first refusal status=%d reason=%s\n",error.status,error.message);
     }
-    if(std::strcmp(name,"split-positive")==0) {
+    if(std::strcmp(name,"split-positive")==0 || std::strcmp(name,"split-knot")==0) {
         require(ledger.failed()==Failure::None,"checked subdivision accepts genuine restriction receipts");
         bool receipt=false;
         for(auto i=first;i<ledger.event_size();++i) if(ledger.event(i).operation==SM_NO_SPLIT_IN_BREP) {
@@ -366,6 +415,10 @@ void subdivision(const char* name) {
         }
         internal.reset(); ledger.check(); NumericalReadTestAccess::end(ledger); seal.verify();
         require(owner.faces()==roots,"subdivision preserves input face identities and representation");
+    } else if(std::strcmp(name,"split-knot-outside")==0) {
+        require(!faults && ledger.failed()==Failure::UnsupportedGeometryChange &&
+            ledger.failure_origin().operation==SM_NO_SPLIT && ledger.failure_origin().caller_type==SmBSplineCurve_TYPE,
+            "subdivision refuses the first request beyond fixed knot rounding budget");
     } else {
         require(faults==(std::strcmp(name,"split-frame")==0?0u:1u),"subdivision negative reaches its actual SDK mutation point");
         if(std::strcmp(name,"split-frame")!=0)
@@ -386,6 +439,8 @@ void subdivision(const char* name) {
 void run_numerical_trim_case(const char* name) {
     if(std::strcmp(name,"planar-rounding")==0) planar_coefficients(true);
     else if(std::strcmp(name,"planar-outside")==0) planar_coefficients(false);
+    else if(std::strcmp(name,"planar-domain")==0) planar_intervals(true);
+    else if(std::strcmp(name,"planar-domain-mismatch")==0) planar_intervals(false);
     else if(std::strncmp(name,"split-",6)==0) subdivision(name);
     else if(std::strncmp(name,"poly-",5)==0) polygon_copy(name);
     else if(std::strncmp(name,"internal-",9)==0) internal_copy(name);

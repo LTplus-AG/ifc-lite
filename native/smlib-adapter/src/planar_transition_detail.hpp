@@ -36,6 +36,14 @@ inline bool coefficient_point(const SmPoint3d& a,const SmPoint3d& b) {
 inline void correspondence(const SmPoint3d& actual,const SmPoint3d& expected) {
     require(coefficient_point(actual,expected),"transition bounded coefficient correspondence");
 }
+inline void common_interval(const SmExtent1d& edge,const SmExtent1d& uv,const SmExtent1d& curve) {
+    // Original boundary parameterization is retained, not rewritten. Only the
+    // newly constructed diagonal uses [0,1]. A length-two SDK box uses [0,2].
+    require(std::isfinite(edge.GetMin()) && std::isfinite(edge.GetMax()) && edge.GetMin()<edge.GetMax() &&
+        bits(edge.GetMin(),uv.GetMin()) && bits(edge.GetMax(),uv.GetMax()) &&
+        bits(edge.GetMin(),curve.GetMin()) && bits(edge.GetMax(),curve.GetMax()),
+        "transition exact common edge/UV/3D parameter interval"); // planar-common-interval
+}
 inline bool axis(const SmVector3d& p) {
     return (p.x==0 || std::abs(p.x)==1) && (p.y==0 || std::abs(p.y)==1) &&
         (p.z==0 || std::abs(p.z)==1) && p.Dot(p)==1;

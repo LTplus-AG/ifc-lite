@@ -185,6 +185,24 @@ def main():
          'real(0); real(angle); word(swap); word(inside); // mutation: omit analytic radius',
          'subdivision rejects changed geometry intervals or missing completion'),
     ])
+    cases.extend([
+        ('trim-planar-domain', 'planar_transition_detail.hpp',
+         'bits(edge.GetMin(),uv.GetMin()) && bits(edge.GetMax(),uv.GetMax()) &&',
+         'edge.GetMin()==0 && edge.GetMax()==1 && bits(edge.GetMin(),uv.GetMin()) && bits(edge.GetMax(),uv.GetMax()) &&',
+         'planar original intervals need not be unit length'),
+        ('trim-planar-domain-mismatch', 'planar_transition_detail.hpp',
+         'bits(edge.GetMin(),uv.GetMin()) && bits(edge.GetMax(),uv.GetMax()) &&',
+         'true &&',
+         'planar interval correspondence rejects a mismatched UV domain'),
+        ('trim-split-knot', 'subdivision_parameter.hpp',
+         'std::abs(actual-requested)<=8*std::numeric_limits<double>::epsilon()*std::max(1.,std::abs(requested)); // subdivision-rounding-bound',
+         'actual==requested; // mutation: disallow checked rounding to an existing knot',
+         'checked subdivision accepts genuine restriction receipts'),
+        ('trim-split-knot-outside', 'subdivision_parameter.hpp',
+         'std::abs(actual-requested)<=8*std::numeric_limits<double>::epsilon()*std::max(1.,std::abs(requested)); // subdivision-rounding-bound',
+         'true; // mutation: admit arbitrarily large knot snapping',
+         'subdivision refuses the first request beyond fixed knot rounding budget'),
+    ])
     paths = sorted({source / row[1] for row in cases})
     subprocess.run(['git', 'diff', '--exit-code', 'HEAD', '--', *map(str, paths)], cwd=root, check=True)
     originals = {path: path.read_text() for path in paths}

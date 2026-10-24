@@ -625,6 +625,7 @@ void terminal_budget_failure() {
 
 }
 }
+void run_affine_lineage_diagnostic(const char*);
 void run_owned_lineage_tests();
 void owned_terminal_refusal(const char*);
 void owned_moved_from_refusal();
@@ -640,6 +641,7 @@ void run_face_lineage_case(const char* name) {
     else if(std::strcmp(name,"reuse")==0) address_reuse();
     else if(std::strcmp(name,"unknown")==0) direct_read_refusal();
     else if(std::strcmp(name,"budget")==0) terminal_budget_failure();
+    else if(std::strncmp(name,"affine-",7)==0) run_affine_lineage_diagnostic(name);
     else if(std::strcmp(name,"owned")==0) run_owned_lineage_tests();
     else if(std::strncmp(name,"terminal-",9)==0) owned_terminal_refusal(name);
     else if(std::strcmp(name,"moved")==0) owned_moved_from_refusal();

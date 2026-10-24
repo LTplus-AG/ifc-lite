@@ -51,6 +51,21 @@ def main():
                   'mesh->provenance.triangles.push_back(triangle_lineage.at(triangle));',
                   'mesh->provenance.triangles.push_back(lineage->identity(source_faces[(source->second+1)%source_faces.GetSize()]));',
                   'triangle geometry agrees with claimed source face root'))
+    # Diagnostic fallback only: these kills protect refusal, not affine ancestry.
+    cases.extend([
+        ('affine-identity', 'affine.cpp',
+         'const bool observed=lineage!=nullptr;',
+         'lineage=nullptr; const bool observed=false;',
+         'unaudited affine cannot publish a result or certificate'),
+        ('affine-identity', 'affine.cpp',
+         'if(lineage) lineage->check(); // affine-conversion-stop',
+         '// mutation: delay the conversion stop until after first placement',
+         'affine stops at conversion before either placement executes'),
+        ('affine-identity', 'affine.cpp',
+         'checked(result->TurnToNURBS());',
+         '// mutation: omit the actual semantic conversion',
+         'actual affine conversion exposes missing numerical ancestry transition'),
+    ])
     paths = sorted({source / row[1] for row in cases})
     subprocess.run(['git', 'diff', '--exit-code', 'HEAD', '--', *map(str, paths)], cwd=root, check=True)
     originals = {path: path.read_text() for path in paths}

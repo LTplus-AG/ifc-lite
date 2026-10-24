@@ -85,7 +85,7 @@ target_include_directories(ifclite_smlib_sweep_tests PRIVATE src)
 # J5 private topology evidence; terminal budget witness stays process-isolated.
 add_executable(ifclite_smlib_lineage_tests tests/lineage_main.cpp
   tests/face_lineage_tests.cpp tests/root_issuance_tests.cpp tests/owned_lineage_tests.cpp
-  tests/owned_lineage_terminal_tests.cpp)
+  tests/owned_lineage_terminal_tests.cpp tests/affine_lineage_diagnostic_tests.cpp)
 target_compile_features(ifclite_smlib_lineage_tests PRIVATE cxx_std_17)
 target_link_libraries(ifclite_smlib_lineage_tests PRIVATE ifclite_smlib smlib_api)
 target_include_directories(ifclite_smlib_lineage_tests PRIVATE src)
@@ -179,3 +179,10 @@ add_test(NAME smlib_plane_patch_edge_oracle COMMAND ${test_runner} $<TARGET_FILE
 set_tests_properties(smlib_plane_patch_edge_oracle PROPERTIES TIMEOUT 60)
 add_test(NAME smlib_plane_owned_domain COMMAND ${test_runner} $<TARGET_FILE:ifclite_smlib_plane_owned_tests>)
 set_tests_properties(smlib_plane_owned_domain PROPERTIES TIMEOUT 60)
+
+# Diagnostic refusal only: no claim of affine ancestry support. Fresh process per taint.
+foreach(case identity rigid scale shear reflect invalid)
+  add_test(NAME smlib_affine_lineage_diagnostic_${case}
+    COMMAND ${test_runner} $<TARGET_FILE:ifclite_smlib_lineage_tests> affine-${case})
+  set_tests_properties(smlib_affine_lineage_diagnostic_${case} PROPERTIES TIMEOUT 120)
+endforeach()

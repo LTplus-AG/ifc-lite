@@ -32,13 +32,15 @@ void Ledger::transition(Event& event,SmNotifyOperation op,SmObject* caller,SmObj
     }
     if(active_transition && active_transition->event(event,op,caller,a,b,c)) return;
     if(failure!=Failure::None) return;
+    // A read's inventoried originals remain protected even if an earlier
+    // affine operation issued their owned-transition destruction bookkeeping.
+    if(numerical_event(event,op,caller,b)) return;
     if(op==SM_NO_DESTRUCTION && caller && caller->IsKindOf(SmCurve_TYPE)) {
         auto* entry=binding(caller,false);
         if(entry && entry->alive && entry->owned_transition.sequence) {
             event.before[0]=entry->current; entry->alive=false; entry->retired=true; return;
         }
     }
-    if(numerical_event(event,op,caller,b)) return;
     // Follow only documented live caller ownership, with a bounded cycle check.
     // Do not inspect arbitrary event payload slots (some contain arrays).
     const bool mutation=op!=SM_NO_COPY && op!=SM_NO_CONSTRUCTION && op!=SM_NO_COINCIDENT;

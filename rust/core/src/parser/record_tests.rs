@@ -192,3 +192,18 @@ fn keyword_is_matches_a_whole_identifier_without_scanning_the_head() {
     assert!(!is("#1=XIFCFACEOUTERBOUND(#2,.T.);", "IFCFACEOUTERBOUND"));
     assert!(!is("#1=OUTERBOUND(#2,.T.);", "IFCFACEOUTERBOUND"));
 }
+
+// #7955 R3: framing must consume the whole record, not a closed prefix.
+#[test]
+fn complete_record_requires_terminator_and_consumes_full_span() {
+    for suffix in ["(2.);", "BOGUS();", ");", " /*ok*/ ((2.));", ";BOGUS", ";#2=X();", "", " /*unterminated"] {
+        let raw = format!("#40=IFCDIRECTION((1.,0.)){suffix}");
+        assert!(StepRecord::parse_complete(raw.as_bytes()).is_none(), "J2_RECORD_COMPLETE: {raw}");
+        assert!(StepRecord::parse(raw.as_bytes()).is_some()); // prefix API stays compatible
+    }
+    for raw in ["#40=IFCDIRECTION((1.,0.));", " /*head*/ #40 /*id*/ = IFCDIRECTION((1.,0.)) /*tail )*/ ; /*end*/ \n"] {
+        let record = StepRecord::parse_complete(raw.as_bytes()).unwrap();
+        assert_eq!(record.id(),Some(40));
+        assert!(record.keyword_is(b"IFCDIRECTION"));
+    }
+}

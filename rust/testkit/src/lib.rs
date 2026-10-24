@@ -23,3 +23,5 @@ pub use fixtures::{
     fixture_bytes, fixture_path, fixture_present, fixture_text, local_fixture_text, repo_root, require_fixtures, FixtureError,
 };
 pub use step::step_file;
+
+pub mod retained_finite_clip;

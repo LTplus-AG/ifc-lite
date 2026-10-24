@@ -64,6 +64,8 @@ mod affine_tests;
 mod boolean_tests;
 #[cfg(all(test, feature = "retained-native", not(target_arch = "wasm32")))]
 mod clip_tests;
+#[cfg(all(test, feature = "retained-native", not(target_arch = "wasm32")))]
+mod finite_tests;
 pub use predispatch::RuntimeRejectedExecution;
 mod entry;
 mod traversal;

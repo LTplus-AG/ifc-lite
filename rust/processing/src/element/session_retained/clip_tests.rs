@@ -5,7 +5,14 @@ use super::adversarial_tests::with_case;
 use ifc_lite_testkit::retained_clip::{cases, SOURCE};
 #[test]
 fn j1_sdk_shared_clip_cases_preserve_volume_bounds_centroid_and_source() {
-    for case in cases() {
+    assert_clip_cases(cases());
+}
+#[test]
+fn j1_finite_sdk_volume_bounds_centroid_and_source() {
+    assert_clip_cases(ifc_lite_testkit::retained_finite_clip::cases());
+}
+fn assert_clip_cases(cases: Vec<ifc_lite_testkit::retained_clip::Case>) {
+    for case in cases {
         with_case(None,&case.source,|execution,decoder,router,worker,_,_| {
             while let Some(issued)=execution.issue_next(decoder,router,worker).unwrap() {
                 let completed=issued.execute(worker,0.001,5.,MeshLimits::default()).unwrap();

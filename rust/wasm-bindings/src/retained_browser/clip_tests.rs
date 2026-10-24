@@ -35,7 +35,14 @@ impl AsyncRetainedExecutor for Observed {
 }
 #[wasm_bindgen_test(async)]
 async fn j1_worker_shared_clip_cases_volume_bounds_centroid() {
-    for case in ifc_lite_testkit::retained_clip::cases() {
+    assert_clip_cases(ifc_lite_testkit::retained_clip::cases()).await;
+}
+#[wasm_bindgen_test(async)]
+async fn j1_finite_worker_volume_bounds_centroid() {
+    assert_clip_cases(ifc_lite_testkit::retained_finite_clip::cases()).await;
+}
+async fn assert_clip_cases(cases: Vec<ifc_lite_testkit::retained_clip::Case>) {
+    for case in cases {
         let text = if case.name == "affine_of_clip" {
             case.source.replace("'CSG',(#314)","'CSG',(#413)")
                 .replace("ENDSEC;END-ISO", "#413=IFCBOOLEANRESULT(.UNION.,#314,#414);#414=IFCBOOLEANRESULT(.DIFFERENCE.,#113,#113);ENDSEC;END-ISO")

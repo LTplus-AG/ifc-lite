@@ -102,18 +102,21 @@ fn a_later_add_is_typed_by_a_type_added_on_its_own() {
 #[test]
 fn a_type_that_cannot_be_added_on_its_own_is_refused() {
     let source = storey_with_typed_wall("IFC4");
+    let nameless = NewType::new(IfcClass::Named("IfcWallType".into())).with_global_id(gid(13));
+    let (_, report) = run(&source, vec![add_type(nameless)]);
+    assert!(report.refusals[0].reason.contains("needs a name"), "{:?}", report.refusals);
     let no_gid = NewType::new(IfcClass::Named("IfcWallType".into()));
     let (_, report) = run(&source, vec![(ObjectRef::Guid(gid(8).encode()), Disposition::AddType(Box::new(no_gid)))]);
     assert!(report.refusals[0].reason.contains("needs its own GlobalId"), "{:?}", report.refusals);
 
-    let not_a_type = NewType::new(IfcClass::Wall).with_global_id(gid(9));
+    let not_a_type = NewType::new(IfcClass::Wall).with_global_id(gid(9)).with_name("Not a type");
     let mismatched = (ObjectRef::Guid(gid(11).encode()), Disposition::AddType(Box::new(wall_type(10))));
     let (out, report) = run(&source, vec![add_type(not_a_type), mismatched]);
     assert_eq!(report.added, 0);
     let reasons: Vec<&str> = report.refusals.iter().map(|r| r.reason.as_str()).collect();
     assert!(reasons[0].contains("not an IFCTYPEPRODUCT"), "{reasons:?}");
     assert!(reasons[1].contains("does not match"), "{reasons:?}");
-    assert_eq!(out.len(), run(&source, Vec::new()).0.len(), "a refused type writes nothing");
+    assert_eq!(out, run(&source, Vec::new()).0, "a refused type writes nothing");
 
     // A key naming the fixture's own wall type.
     let (_, report) = run(&source, vec![(ObjectRef::Guid(fixture_gid(40)), Disposition::AddType(Box::new(wall_type(12))))]);

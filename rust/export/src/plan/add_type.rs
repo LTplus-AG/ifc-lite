@@ -17,12 +17,12 @@ use ifc_lite_core::entity_info_for_schema;
 use crate::step_ids::IdAllocator;
 use crate::step_text::escape;
 
-use super::super::add_props::build_sets;
-use super::super::add_rels::{RelKind, RelRequest};
-use super::super::add_types::{GlobalId, NewType};
-use super::super::props_synth::{ref_list, ref_or_unset};
-use super::super::tessellation::Emit;
-use super::super::types::ObjectRef;
+use crate::plan::add_props::build_sets;
+use crate::plan::add_rels::{RelKind, RelRequest};
+use crate::plan::add_types::{GlobalId, NewType};
+use crate::plan::props_synth::{ref_list, ref_or_unset};
+use crate::plan::tessellation::Emit;
+use crate::plan::types::ObjectRef;
 use super::assoc::Shared;
 use super::units::build_units;
 use super::{require_filled, AddState};
@@ -54,20 +54,22 @@ impl AddState<'_> {
     }
 }
 
-/// The type a `TypeLink::New` creates, with its own property sets.
-/// `class` is its checked class and `PredefinedType`.
+/// A new type's record and its own property sets, for a `TypeLink::New` or
+/// a type added on its own. `class` is its checked class and
+/// `PredefinedType`. A type without its own GlobalId takes one derived from
+/// `owner`, the occurrence that creates it, and so do its sets.
 pub(super) fn build_new_type(
     emit: &mut Emit,
     t: &NewType,
-    occurrence: GlobalId,
+    owner: GlobalId,
     class: (&str, &Option<String>),
     units: &[Vec<Option<u32>>],
     owner_history: Option<u32>,
 ) -> Result<u32, String> {
     // A type with its own GlobalId derives its sets' ids from it.
-    let (base, role) = t.global_id.map_or((occurrence, "type/pset"), |g| (g, "pset"));
+    let (base, role) = t.global_id.map_or((owner, "type/pset"), |g| (g, "pset"));
     let type_sets = build_sets(emit, owner_history, base, role, &t.psets, units)?;
-    let type_gid = format!("'{}'", t.global_id_for(occurrence).encode());
+    let type_gid = format!("'{}'", t.global_id_for(owner).encode());
     let mut fields = vec![("GlobalId", type_gid), ("OwnerHistory", ref_or_unset(owner_history))];
     if let Some(name) = &t.name {
         fields.push(("Name", format!("'{}'", escape(name))));

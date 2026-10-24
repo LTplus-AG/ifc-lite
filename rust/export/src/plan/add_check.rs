@@ -151,6 +151,10 @@ impl AddState<'_> {
     /// A new type's class, `PredefinedType` and value units, checked the same
     /// way whether it comes with an occurrence or on its own.
     pub(super) fn check_new_type(&self, t: &NewType) -> Result<(String, Option<String>, CheckedUnits), String> {
+        // IfcTypeObject's own rule (WR1 in IFC2X3, NameRequired later).
+        if t.name.is_none() {
+            return Err("a new type needs a name".into());
+        }
         validate_psets(self.schema, &t.psets)?;
         let (class, predefined) = self.check_class(&t.class, "IFCTYPEPRODUCT")?;
         Ok((class, predefined, self.check_units(&t.psets)?))

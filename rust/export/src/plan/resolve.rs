@@ -214,16 +214,14 @@ fn split_dispositions<'p>(
     let mut resolved = Vec::new();
     let mut adds = Vec::new();
     for (obj, disposition) in &plan.dispositions {
-        match disposition {
-            Disposition::Add(new) => {
-                adds.push((obj, AddItem::Object(new)));
-                continue;
-            }
-            Disposition::AddType(t) => {
-                adds.push((obj, AddItem::Type(t)));
-                continue;
-            }
-            _ => {}
+        let item = match disposition {
+            Disposition::Add(new) => Some(AddItem::Object(new)),
+            Disposition::AddType(t) => Some(AddItem::Type(t)),
+            _ => None,
+        };
+        if let Some(item) = item {
+            adds.push((obj, item));
+            continue;
         }
         match index.resolve(obj) {
             Some(id) => resolved.push((id, disposition)),

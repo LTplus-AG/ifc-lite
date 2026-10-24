@@ -65,7 +65,7 @@ PlanarTransition::PlanarTransition(Ledger& value,SmBrep& immutable,SmBrep& owned
         require(from<4 && to<4 && ((from^to)==1 || (from^to)==2),"transition exact rectangle boundary incidence");
         slot.from=from; slot.to=to; const unsigned first=slot.use->GetOrientation()==SM_OT_SAME?0:1;
 #ifdef IFCLITE_LINEAGE_FAILURE_STACK
-        if(!(point(a[first],uv[from]) && point(a[1-first],uv[to]) && point(b[first],points[from]) && point(b[1-first],points[to]))) {
+        if(!(coefficient_point(a[first],uv[from]) && coefficient_point(a[1-first],uv[to]) && coefficient_point(b[first],points[from]) && coefficient_point(b[1-first],points[to]))) {
             // The four code-17 silent-edit refusals earlier in the aggregate
             // test are expected. Report this independent preflight mismatch.
             std::fprintf(stderr,"planar correspondence mismatch slot=%u from=%u to=%u first=%u orientation=%ld uv_type=%ld edge_type=%ld\n",
@@ -85,8 +85,8 @@ PlanarTransition::PlanarTransition(Ledger& value,SmBrep& immutable,SmBrep& owned
             std::fprintf(stderr,"planar edge interval=[%.17g,%.17g]\n",actual.GetMin(),actual.GetMax());
         }
 #endif
-        require(point(a[first],uv[from]) && point(a[1-first],uv[to]) && point(b[first],points[from]) &&
-            point(b[1-first],points[to]),"transition exact UV/3D coefficient correspondence");
+        correspondence(a[first],uv[from]); correspondence(a[1-first],uv[to]);
+        correspondence(b[first],points[from]); correspondence(b[1-first],points[to]);
         const auto interval=slot.use->GetEdge()->GetInterval(),natural=slot.original->GetNaturalInterval();
         require(interval.GetMin()==0 && interval.GetMax()==1 && bits(interval.GetMin(),natural.GetMin()) &&
             bits(interval.GetMax(),natural.GetMax()),"transition fixed common edge/UV parameter interval");
@@ -129,8 +129,8 @@ SmBSplineCurve* PlanarTransition::construct_curve(unsigned dimension,const SmPoi
     ledger.check(); expecting_birth=false;
     require(curve && pending_birth==curve && pending_generation.sequence,"transition actual constructor receipt missing");
     const auto controls=linear(*curve,dimension);
-    require(point(controls[0],a) && point(controls[1],b) && curve->GetNaturalInterval().GetMin()==0 &&
-        curve->GetNaturalInterval().GetMax()==1,"transition exact fresh line coefficients/domain");
+    require(coefficient_point(controls[0],a) && coefficient_point(controls[1],b) && curve->GetNaturalInterval().GetMin()==0 &&
+        curve->GetNaturalInterval().GetMax()==1,"transition bounded fresh line coefficients/exact domain");
     return curve;
 }
 void PlanarTransition::issue_slot(SmTopology* object) {

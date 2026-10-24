@@ -234,7 +234,8 @@ endif()
 
 foreach(case positive reuse original origin owner leak frame replacement reuse-foreign attached
     poly-positive poly-foreign poly-outside poly-rebind poly-wrong-root
-    split-positive split-curve split-interval split-missing split-frame
+    split-positive split-curve split-interval split-missing split-frame split-surface
+    planar-rounding planar-outside
     internal-positive internal-original internal-backlink internal-foreign internal-unobserved internal-owner internal-attached)
   add_test(NAME smlib_numerical_trim_${case}
     COMMAND ${test_runner} $<TARGET_FILE:ifclite_smlib_lineage_tests> trim-${case})

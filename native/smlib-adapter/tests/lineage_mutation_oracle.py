@@ -170,6 +170,21 @@ def main():
          'true',
          'subdivision rejects changed geometry intervals or missing completion'),
     ])
+    # #7955 r7: both sides of the fixed rounding contract and analytic state.
+    cases.extend([
+        ('trim-planar-rounding', 'planar_transition_detail.hpp',
+         'std::abs(actual-expected)<=coefficient_bound(expected); // planar-coefficient-bound',
+         'actual==expected; // mutation: restore exact numerical correspondence',
+         'planar correspondence accepts fixed rounding budget'),
+        ('trim-planar-outside', 'planar_transition_detail.hpp',
+         'std::abs(actual-expected)<=coefficient_bound(expected); // planar-coefficient-bound',
+         'true; // mutation: omit coefficient deviation bound',
+         'planar correspondence refuses the first value beyond fixed budget'),
+        ('trim-split-surface', 'representation_seal_geometry.cpp',
+         'real(radius); real(angle); word(swap); word(inside); // subdivision-cone-analytic',
+         'real(0); real(angle); word(swap); word(inside); // mutation: omit analytic radius',
+         'subdivision rejects changed geometry intervals or missing completion'),
+    ])
     paths = sorted({source / row[1] for row in cases})
     subprocess.run(['git', 'diff', '--exit-code', 'HEAD', '--', *map(str, paths)], cwd=root, check=True)
     originals = {path: path.read_text() for path in paths}

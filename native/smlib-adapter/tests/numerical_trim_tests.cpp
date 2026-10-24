@@ -4,6 +4,7 @@
 #include "representation_seal.hpp"
 #include "failure.hpp"
 #include "edge_subdivision.hpp"
+#include "planar_transition_detail.hpp"
 #include <SmEdge.h>
 #include <SmApiGeneral.h>
 #include <SmBSplineCurve.h>
@@ -11,6 +12,7 @@
 #include <SmEdgeuse.h>
 #include <SmFace.h>
 #include <SmPoly.h>
+#include <SmCone.h>
 #include <array>
 #include <cstring>
 #include <cstdio>
@@ -50,6 +52,34 @@ std::unique_ptr<SmCurve> copy(SmCurve& original) {
 void reverse(SmCurve& curve) {
     auto interval=curve.GetNaturalInterval();
     require(curve.ReverseParameterization(interval,interval)==SM_SUCCESS,"actual SDK trim reverse executes");
+}
+void planar_coefficients(bool positive) {
+    // #7955 / r6: real linear UV representation, fixed acceptance boundary.
+    // The observed -2*epsilon residue is data; it never sets the policy bound.
+    SmBSplineCurve* raw=nullptr;
+    require(SmBSplineCurve::CreateLineSegment(*SmApiGetOrCreateContext(),2,
+        SmPoint3d(0,0,0),SmPoint3d(2,0,0),raw)==SM_SUCCESS && raw,"actual planar coefficient fixture");
+    std::unique_ptr<SmBSplineCurve> line(raw);
+    ULONG n=0; double* p=nullptr;
+    require(line->GetControlPointsPointer(n,p)==SM_SUCCESS && n==2 && p,"actual planar coefficient support");
+    const double eps=std::numeric_limits<double>::epsilon();
+    const double bound=8*eps; // independent fixed contract, not the helper's return
+    for(double residue:positive?std::array<double,2>{-2*eps,-bound}:
+        std::array<double,2>{std::nextafter(bound,INFINITY),std::nextafter(-bound,-INFINITY)}) {
+        p[5]=residue; const auto controls=planar_detail::linear(*line,2); bool refused=false;
+        try { planar_detail::correspondence(controls[1],SmPoint3d(2,0,0)); }
+        catch(const AdapterFailure& e) { refused=e.status==IFCLITE_SMLIB_UNSUPPORTED; }
+        require(refused!=positive,positive?"planar correspondence accepts fixed rounding budget":
+            "planar correspondence refuses the first value beyond fixed budget");
+    }
+    if(!positive) {
+        // Neither a large unrelated coordinate nor nonfinite input may enlarge
+        // the allowance for this zero-valued component.
+        require(!planar_detail::coefficient_point(SmPoint3d(1e12,2*bound,0),SmPoint3d(1e12,0,0)) &&
+            !planar_detail::coefficient(INFINITY,INFINITY) &&
+            !planar_detail::coefficient(std::numeric_limits<double>::quiet_NaN(),0),
+            "planar correspondence keeps component scale and finite guards");
+    }
 }
 void positive(bool reuse) {
     auto owner=OwnedBoundary::box(2,3,4); auto& ledger=history(owner); auto& solid=body(owner);
@@ -255,8 +285,12 @@ void internal_copy(const char* name) {
 struct SplitFault:SmNotifyCallback {
     SmContext& context; SmNotifyCallback* observer; Ledger& ledger; const char* mode;
     SmEdge* edge=nullptr; unsigned faults=0; bool healthy_before_fault=false;
+    SmCone* changed_surface=nullptr; double saved_radius=0;
     SplitFault(SmContext& c,Ledger& l,const char* m):context(c),observer(c.GetUserNotifyCallback()),ledger(l),mode(m) { context.SetUserNotifyCallback(this); }
-    ~SplitFault() { context.SetUserNotifyCallback(observer); }
+    ~SplitFault() {
+        context.SetUserNotifyCallback(observer);
+        if(changed_surface) changed_surface->SetBaseRadius(saved_radius); // cleanup, never clear the refusal
+    }
     SmStatus Execute(SmNotifyOperation op,SmObject* caller,SmObject* a,SmObject* b,SmObject* c) noexcept override {
         if(op==SM_NO_PRE_EDIT && caller && caller->GetType()==SmEdge_TYPE) edge=static_cast<SmEdge*>(caller);
         if(op==SM_NO_SPLIT_IN_BREP && edge && a==edge && std::strcmp(mode,"split-missing")==0) { healthy_before_fault=ledger.failed()==Failure::None; ++faults; return SM_SUCCESS; }
@@ -270,6 +304,16 @@ struct SplitFault:SmNotifyCallback {
             } else if(std::strcmp(mode,"split-interval")==0) {
                 auto interval=edge->GetInterval(); interval.SetMinMax(interval.GetMin(),interval.GetMax()+.125);
                 edge->SetInterval(interval); ++faults;
+            } else if(std::strcmp(mode,"split-surface")==0) {
+                SmTArray<SmFace*> incident; edge->GetFaces(incident);
+                for(auto* face:incident) if(face->GetSurface()->GetType()==SmCone_TYPE) {
+                    auto* cone=static_cast<SmCone*>(face->GetSurface());
+                    SmAxis2Placement frame; double angle=0;
+                    if(cone->GetCanonical(frame,saved_radius,angle)==SM_SUCCESS) {
+                        changed_surface=cone; cone->SetBaseRadius(saved_radius+.125); ++faults;
+                    }
+                    break;
+                }
             }
         }
         context.SetUserNotifyCallback(observer);
@@ -340,7 +384,9 @@ void subdivision(const char* name) {
 
 }
 void run_numerical_trim_case(const char* name) {
-    if(std::strncmp(name,"split-",6)==0) subdivision(name);
+    if(std::strcmp(name,"planar-rounding")==0) planar_coefficients(true);
+    else if(std::strcmp(name,"planar-outside")==0) planar_coefficients(false);
+    else if(std::strncmp(name,"split-",6)==0) subdivision(name);
     else if(std::strncmp(name,"poly-",5)==0) polygon_copy(name);
     else if(std::strncmp(name,"internal-",9)==0) internal_copy(name);
     else if(std::strcmp(name,"positive")==0) positive(false);

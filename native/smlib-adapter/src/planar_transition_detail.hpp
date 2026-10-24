@@ -9,11 +9,33 @@
 #include <SmVertexuse.h>
 #include <cmath>
 #include <cstring>
+#include <algorithm>
+#include <limits>
 namespace face_lineage::planar_detail {
 inline void require(bool ok,const char* why) { if(!ok) throw AdapterFailure{IFCLITE_SMLIB_UNSUPPORTED,why}; }
 inline void checked(SmStatus status,const char* why) { if(status!=SM_SUCCESS) throw AdapterFailure{IFCLITE_SMLIB_KERNEL_ERROR,why}; }
 inline bool bits(double a,double b) { return std::memcmp(&a,&b,sizeof(a))==0; }
 inline bool point(const SmPoint3d& a,const SmPoint3d& b) { return a.x==b.x && a.y==b.y && a.z==b.z; }
+// #7955: correspondence between independently computed linear coefficients and
+// axis-plane corners is numerical, unlike a retained representation/copy seal.
+// Fix an eight-epsilon budget before execution: a short dot product plus endpoint
+// arithmetic can round several times. This is a narrow acceptance policy, not
+// a universal error bound for arbitrary evaluators. Scale by the EXPECTED
+// component only, with a unit floor for cancellation near zero. No model/SDK
+// tolerance, observed residual, other component or candidate sets this budget.
+inline double coefficient_bound(double expected) {
+    return 8*std::numeric_limits<double>::epsilon()*std::max(1.,std::abs(expected));
+}
+inline bool coefficient(double actual,double expected) {
+    return std::isfinite(actual) && std::isfinite(expected) &&
+        std::abs(actual-expected)<=coefficient_bound(expected); // planar-coefficient-bound
+}
+inline bool coefficient_point(const SmPoint3d& a,const SmPoint3d& b) {
+    return coefficient(a.x,b.x) && coefficient(a.y,b.y) && coefficient(a.z,b.z);
+}
+inline void correspondence(const SmPoint3d& actual,const SmPoint3d& expected) {
+    require(coefficient_point(actual,expected),"transition bounded coefficient correspondence");
+}
 inline bool axis(const SmVector3d& p) {
     return (p.x==0 || std::abs(p.x)==1) && (p.y==0 || std::abs(p.y)==1) &&
         (p.z==0 || std::abs(p.z)==1) && p.Dot(p)==1;

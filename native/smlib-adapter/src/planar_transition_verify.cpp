@@ -15,7 +15,7 @@ void PlanarTransition::check_children() {
     pre_seal->require_exact_surface_copy(support,child_surface);
     require(born_count==16,"incomplete/extra fixed branch constructor inventory");
     const auto d3=linear(*curve3,3),d2=linear(*curve2,2);
-    require(point(d3[0],points[0]) && point(d3[1],points[3]) && point(d2[0],uv[0]) && point(d2[1],uv[3]),
+    require(coefficient_point(d3[0],points[0]) && coefficient_point(d3[1],points[3]) && coefficient_point(d2[0],uv[0]) && coefficient_point(d2[1],uv[3]),
         "changed planned diagonal coefficients");
     pre_seal->require_exact_curve_copy(curve2,cut_copy);
     unsigned boundary[4]{},interiors[2]{};
@@ -154,11 +154,11 @@ void PlanarTransition::discharge() {
         require(hits==1 && slot.attached && !slot.use->GetDropCurveFail(),"post planned boundary substitution");
         owner(slot.use,&face,working,slot.attached);
         const auto controls=linear(*slot.attached,2); const auto same=slot.use->GetOrientation()==SM_OT_SAME?0:1;
-        require(point(controls[same],uv[slot.from]) && point(controls[1-same],uv[slot.to]) &&
+        require(coefficient_point(controls[same],uv[slot.from]) && coefficient_point(controls[1-same],uv[slot.to]) &&
             slot.use->GetVertexuse()->GetVertex()==corners[slot.from] &&
             slot.use->GetMate()->GetVertexuse()->GetVertex()==corners[slot.to],"post numeric/incidence substitution mismatch");
     }
-    // The exact four corner/edge/UV correspondences above prove the original
+    // The bounded coefficient and exact incidence correspondences establish the
     // rectangle before restoring this public derived flag. No numeric read is
     // admitted until the complete typed leaf discharge also succeeds.
     face.SetIsRectangularTrim(old_rect);

@@ -95,7 +95,7 @@ std::vector<uint64_t> EdgeSubdivision::surface(SmObject* object) {
         diagnostic_attributes=basis->HasAttributes();
     }
 #endif
-    geometry.scratch.clear(); geometry.surface(object); auto result=geometry.scratch;
+    geometry.scratch.clear(); geometry.subdivision_surface(object); auto result=geometry.scratch;
     geometry.scratch.clear(); return result;
 }
 void EdgeSubdivision::start(SmEdge* value) {

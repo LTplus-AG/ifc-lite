@@ -15,11 +15,18 @@
 #include <SmBSplineSurface.h>
 #include <SmLine.h>
 #include <SmPlane.h>
+#include <SmCone.h>
 namespace face_lineage {
 namespace {
 void require(bool ok,const char* message) { if(!ok) throw AdapterFailure{IFCLITE_SMLIB_UNSUPPORTED,message}; }
 void checked(SmStatus status) { require(status==SM_SUCCESS,"actual SDK seal getter failed"); }
 constexpr ULONG coefficients=65536;
+// Legal protected-member pointers, as in context_metadata.hpp; no derived
+// instance or downcast to a type the SDK did not construct.
+struct RevolutionAccess:SmSurfOfRevolution {
+    static SmBoolean bounded_generator(const SmSurfOfRevolution& s) { return s.*(&RevolutionAccess::m_bMakeNurbGenCurve); }
+    static SmBoolean planar_generator(const SmSurfOfRevolution& s) { return s.*(&RevolutionAccess::m_bPlanarGenerator); }
+};
 }
 void RepresentationSeal::curve(SmObject* object) {
     require(object->GetType()==SmBSplineCurve_TYPE || object->GetType()==SmLine_TYPE,"curve evaluator class is not supported by exact seal");
@@ -50,6 +57,9 @@ void RepresentationSeal::curve(SmObject* object) {
 }
 void RepresentationSeal::surface(SmObject* object) {
     require(object->GetType()==SmBSplineSurface_TYPE || object->GetType()==SmPlane_TYPE,"surface evaluator class is not supported by exact seal");
+    surface_basis(object);
+}
+void RepresentationSeal::surface_basis(SmObject* object) {
     auto* s=static_cast<SmBSplineSurface*>(object);
     require(!s->HasAttributes() && s->GetGwNurbPointer() && !s->IsNurbBorrowed(),"missing, borrowed or attributed surface data in seal");
     require(s->GetBSplineSurfaceForm()!=SM_SF_POLYNOMIAL,"power-basis surfaces require separate exact seal");
@@ -77,6 +87,36 @@ void RepresentationSeal::surface(SmObject* object) {
         const auto scale=plane->GetUVScale(); real(scale.x); real(scale.y);
         const auto step=plane->GetSTEPUVDomain(); real(step.GetUMin()); real(step.GetUMax()); real(step.GetVMin()); real(step.GetVMax());
     }
+}
+void RepresentationSeal::subdivision_surface(SmObject* object) {
+    // #7955 / r6 event 787: the internal tessellation copy restores SmCone
+    // evaluators from the rational input. This is NOT a generic seal extension
+    // or permission to edit surfaces. Only the subdivision receipt calls here,
+    // comparing the same actual incident surface before/after the edge split.
+    if(object->GetType()!=SmCone_TYPE) { surface(object); return; }
+    auto* cone=static_cast<SmCone*>(object);
+    SmAxis2Placement frame; double radius=0,angle=0; SmBoolean swap,inside;
+    checked(cone->SmCone::GetCanonical(frame,radius,angle,&swap,&inside));
+    require(angle==0 && std::isfinite(radius) && radius>0 && cone->IsBounded(),
+        "subdivision supports only materialized bounded cylindrical cones");
+    surface_basis(object); // Same fixed control/knot/word, attribute and borrowing guards.
+    word(object->GetType());
+    for(auto p:{frame.GetOrigin(),frame.GetXAxis(),frame.GetYAxis(),frame.GetZAxis()}) {
+        require(std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z),"nonfinite subdivision cone frame");
+        real(p.x); real(p.y); real(p.z);
+    }
+    real(radius); real(angle); word(swap); word(inside); // subdivision-cone-analytic
+    const auto step=cone->GetSTEPUVDomain();
+    real(step.GetUMin()); real(step.GetUMax()); real(step.GetVMin()); real(step.GetVMax());
+    word(RevolutionAccess::bounded_generator(*cone)); word(RevolutionAccess::planar_generator(*cone));
+    auto* generator=cone->GetGenCurve();
+    require(generator && generator->GetOwner()==cone && generator->GetDim()==3,
+        "subdivision cone generator ownership");
+    pointer(generator); word(generator->GetType()); curve(generator);
+    // Polar-conversion tables are derived SDK caches, not additional authored
+    // geometry. No cache mutation is authorized by this receipt; its analytic
+    // frame/domain, basis and generator remain bit-exact. Do not use the SDK's
+    // approximate SmPolarConversion::operator== as a representation proof.
 }
 }
 

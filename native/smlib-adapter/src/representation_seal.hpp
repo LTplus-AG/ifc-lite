@@ -26,6 +26,8 @@ class RepresentationSeal {
     void object(SmObject*);
     void curve(SmObject*);
     void surface(SmObject*);
+    void surface_basis(SmObject*);
+    void subdivision_surface(SmObject*);
     void capture();
 public:
     RepresentationSeal(Ledger&,SmBrep&);

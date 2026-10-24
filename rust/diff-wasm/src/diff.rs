@@ -22,8 +22,9 @@ impl DiffModel {
     #[allow(clippy::too_many_arguments)] // Independent typed columns avoid bulk JSON encoding.
     pub fn new(strings: JsValue, fields: Vec<u32>, flags: Vec<u8>, boxes: Vec<f64>,
         volumes: Vec<f64>, component_offsets: Vec<u32>, component_pairs: Vec<u32>) -> Result<DiffModel, JsValue> {
-        let strings: Vec<String> = serde_wasm_bindgen::from_value(strings)
+        let strings: Vec<super::diff_input::ScalarString> = serde_wasm_bindgen::from_value(strings)
             .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        let strings = strings.into_iter().map(|value| value.0).collect();
         let entities = decode_columns(FingerprintColumns { strings, fields, flags, boxes,
             volumes, component_offsets, component_pairs }).map_err(|error| JsValue::from_str(&error))?;
         Ok(Self { entities })
@@ -32,8 +33,7 @@ impl DiffModel {
     /// Compare this base model with a head model, returning row-index records.
     /// No JS reference is serialized, cloned, or retained inside WASM.
     pub fn compare(&self, head: &DiffModel, options: JsValue) -> Result<JsValue, JsValue> {
-        let value: serde_json::Value = serde_wasm_bindgen::from_value(options)
-            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        let value = super::diff_input::options(options)?;
         let options = options_from_json(&value);
         result_to_json(&diff_models(&self.entities, &head.entities, &options))
             .serialize(&serde_wasm_bindgen::Serializer::json_compatible())

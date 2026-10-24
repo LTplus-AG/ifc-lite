@@ -21,6 +21,24 @@ function model(module, entities) {
   const c = fingerprintColumns(entities);
   return new module.DiffModel(c.strings, c.fields, c.flags, c.boxes, c.volumes, c.componentOffsets, c.componentPairs);
 }
+function rawColumnsModel(module, columns) {
+  return new module.DiffModel(columns.strings, columns.fields, columns.flags, columns.boxes,
+    columns.volumes, columns.componentOffsets, columns.componentPairs);
+}
+function comparisonStringOptions(value) {
+  return [
+    ['excludeTypes', { excludeTypes: [value] }],
+    ['keyAliases head', { keyAliases: [[value, 'old']] }],
+    ['keyAliases base', { keyAliases: [['new', value]] }],
+    ['classFamilies first', { classFamilies: [[value, 'IfcWall']] }],
+    ['classFamilies later', { classFamilies: [['IfcWall', value], ['IfcDoor', value]] }],
+  ];
+}
+function comparisonRow(value) {
+  return { key: `key:${value}`, ifcType: `type:${value}`, dataHash: `data:${value}`,
+    geometryHash: `geometry:${value}`, container: `container:${value}`,
+    components: { [`component:${value}`]: `hash:${value}` }, ref: null };
+}
 function plain(value) {
   return JSON.parse(JSON.stringify(value, (_, item) => item instanceof Map ? [...item] : item));
 }
@@ -299,5 +317,115 @@ test('actual WASM scalar fingerprints equal the public TS engine without observi
       assert.equal(wasm.diffBuildDataFingerprint(input), ts.buildDataFingerprint(input));
       assert.deepEqual(wasm.diffBuildComponentFingerprints(input), ts.buildComponentFingerprints(input));
     }
+  }
+});
+
+// #8081 review 4365901325: raw exports bypass fingerprintColumns and must
+// reject BEFORE serde_json::Value / Vec<String> replaces the original units.
+test('actual raw WASM rejects every comparison string boundary before loss (#8081)', async context => {
+  const wasm = await engine(context); if (!wasm) return;
+  const base = model(wasm, [{ key: 'old', ifcType: '\ufffd', dataHash: 'd', ref: null }]);
+  const head = model(wasm, []);
+  // @source-text-assertion-ok asserts a caught live WASM error, not source-file text
+  const rejected = error => typeof error === 'string'
+    && /comparison inputs require well-formed UTF-16.*TypeScript diffModels/.test(error);
+  try {
+    for (const lone of ['\ud800', '\ud801', '\udfff', 'a\ud800b', '\udfff\ud800']) {
+      for (const [label, options] of comparisonStringOptions(lone)) {
+        assert.throws(() => base.compare(head, options), rejected, label);
+      }
+      const columns = fingerprintColumns([comparisonRow('scalar')]);
+      for (let index = 0; index < columns.strings.length; index++) {
+        const strings = [...columns.strings]; strings[index] = lone;
+        assert.throws(() => rawColumnsModel(wasm, { ...columns, strings }), rejected, `dictionary ${index}`);
+      }
+    }
+    // The confirmed bug silently returned 0 here for excludeTypes:[lone].
+    assert.equal(base.compare(head, {}).counts.deleted, 1);
+    assert.equal(base.compare(head, { excludeTypes: ['\ufffd'] }).counts.deleted, 0);
+  } finally { base.free(); head.free(); }
+});
+
+test('actual raw WASM decodes comparison getters once and guards only consumed strings (#8081)', async context => {
+  const wasm = await engine(context); if (!wasm) return;
+  const base = model(wasm, [{ key: 'old', ifcType: 'IfcWall', dataHash: 'd', ref: null }]);
+  const head = model(wasm, [{ key: 'new', ifcType: 'IfcWall', dataHash: 'd', ref: null }]);
+  try {
+    const plainOptions = { excludeTypes: ['IfcDoor'], keyAliases: [['new', 'old']], classFamilies: [['IfcWall', 'IfcDoor']] };
+    const options = structuredClone(plainOptions);
+    const reads = new Map();
+    function once(object, key, label) {
+      const value = object[key];
+      Object.defineProperty(object, key, { enumerable: true, get() {
+        reads.set(label, (reads.get(label) ?? 0) + 1);
+        if (reads.get(label) !== 1) throw new Error(`getter read twice: ${label}`);
+        return value;
+      } });
+    }
+    for (const key of Object.keys(options)) once(options, key, key);
+    // Use an independent input to count the nested getter observations.
+    const nested = structuredClone(plainOptions);
+    once(nested.excludeTypes, '0', 'exclude item');
+    once(nested.keyAliases[0], '0', 'alias head');
+    once(nested.keyAliases[0], '1', 'alias base');
+    once(nested.classFamilies[0], '0', 'family first');
+    once(nested.classFamilies[0], '1', 'family second');
+    assert.deepEqual(base.compare(head, options), base.compare(head, plainOptions));
+    assert.deepEqual(base.compare(head, nested), base.compare(head, plainOptions));
+    assert.equal(reads.size, 8);
+    assert.ok([...reads.values()].every(count => count === 1));
+    // Tuple tails, non-string items and unknown options are not names consumed
+    // by options_from_json; retain their existing JSON conversion semantics.
+    assert.deepEqual(base.compare(head, {
+      excludeTypes: ['IfcDoor', { unused: '\ud800' }],
+      keyAliases: [['new', 'old', '\ud800']],
+      classFamilies: [['IfcWall', 'IfcDoor', { unused: '\udfff' }]],
+      unused: '\ud800',
+    }), base.compare(head, plainOptions));
+  } finally { base.free(); head.free(); }
+});
+
+test('actual compareWithWasm rejects non-scalars and keeps scalar TS comparison behavior (#8081)', async context => {
+  const wasm = await engine(context); if (!wasm) return;
+  const outputs = ['diff', 'wasm-diff', 'wasm-runtime'].map(name => new URL(`../../diff/dist/${name}.js`, import.meta.url));
+  if (outputs.some(path => !existsSync(path))) { context.skip('@ifc-lite/diff not built; run pnpm build'); return; }
+  const [{ diffModels }, { compareWithWasm }, { initDiffSync }] = await Promise.all(outputs.map(path => import(path.href)));
+  initDiffSync({ module: readFileSync(binary) });
+  const replacement = [{ key: 'old', ifcType: '\ufffd', dataHash: 'd', ref: null }];
+  for (const lone of ['\ud800', '\ud801', '\udfff', 'a\ud800b', '\udfff\ud800']) {
+    assert.equal(diffModels(replacement, [], { excludeTypes: [lone] }).counts.deleted, 1, 'confirmed TS deletion oracle');
+    for (const [label, options] of comparisonStringOptions(lone)) {
+      // @source-text-assertion-ok asserts the caught real facade/WASM error, not source-file text
+      assert.throws(() => compareWithWasm(replacement, [], options), error => typeof error === 'string'
+        && /comparison inputs require well-formed UTF-16/.test(error), label);
+    }
+    const columns = comparisonRow('scalar');
+    for (const field of ['key', 'ifcType', 'dataHash', 'geometryHash', 'container', 'component name', 'component hash']) {
+      const row = { ...columns, components: { ...columns.components } };
+      if (field === 'component name') row.components = { [lone]: 'hash' };
+      else if (field === 'component hash') row.components = { component: lone };
+      else row[field] = lone;
+      assert.throws(() => compareWithWasm([row], []), /well-formed UTF-16/, field);
+    }
+  }
+  for (const scalar of ['\ufffd', 'é', '😀', '\ud800\udc00', 'literal\\ud800', '\\udfff', '']) {
+    const row = comparisonRow(scalar);
+    // Neither transport should inspect opaque adapter refs.
+    Object.defineProperty(row, 'ref', { get() { throw new Error('opaque ref observed'); } });
+    const baseRows = [row], headRows = [{ ...comparisonRow(scalar), key: `new:${scalar}` }];
+    const options = [
+      {}, ...comparisonStringOptions(scalar).map(([, value]) => value),
+      { keyAliases: [[headRows[0].key, row.key]] },
+      { excludeTypes: [row.ifcType] },
+      { matchUnpairedByContent: true, detectSuccessors: true, classFamilies: [[row.ifcType, scalar]] },
+    ];
+    const base = model(wasm, baseRows), head = model(wasm, headRows);
+    try {
+      for (const option of options) {
+        const expected = diffModels(baseRows, headRows, option);
+        assert.deepEqual(compareWithWasm(baseRows, headRows, option), expected);
+        assert.deepEqual(restoreDiffReferences(base.compare(head, option), baseRows, headRows), expected);
+      }
+    } finally { base.free(); head.free(); }
   }
 });

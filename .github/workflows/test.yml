@@ -967,14 +967,23 @@ jobs:
           # mutate cycle/copy bounds, ownership, bindings and late origin.
           # The combined patch also retains all H2a1 behavioral mutations.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/mapping_retained.rs | grep -Fxq 'rust/geometry/src/program/mapping_retained.rs'; then
-            oracle_args+=(--mutation tests/evidence/retained-mapped-controller-h2a2/behaviour.oracle.patch)
+            oracle_args=(--base abf6b8984abc4e05bc06cc6b5ecd4babec868dcd --ci --json \
+              --mutation tests/evidence/retained-mapped-controller-h2a2/behaviour.oracle.patch \
+              --test rust/geometry/src/program/retained/tests.rs \
+              --test rust/geometry/src/program/retained/mapping_tests.rs \
+              --test rust/geometry/src/program/retained/type_map_tests.rs \
+              --test rust/geometry/src/program/retained/mapping_contract_tests.rs)
           # #7955 H2 controller: preserve the new API, then mutate source
           # identity, disk root, unchecked obligations, and refusal of exact
           # numerical execution, plus S1 structural/root/frame guards.
           # The selected behavioral tests must fail
           # assertions, not fail to compile.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/retained/mod.rs | grep -Fxq 'rust/geometry/src/program/retained/mod.rs'; then
-            oracle_args+=(--mutation tests/evidence/retained-controller-h2a1/behaviour.oracle.patch)
+            oracle_args=(--base 76c2f38e5e679376c19459c289caf5585b619b74 --ci --json \
+              --mutation tests/evidence/retained-controller-h2a1/behaviour.oracle.patch \
+              --test rust/geometry/src/program/retained/tests.rs \
+              --test rust/geometry/src/program/retained/disk_tests.rs \
+              --test rust/geometry/src/program/retained/obligations_tests.rs)
           # #7955 E3: the linear product protocol adds element/session*.rs and
           # owned_session.rs and deletes element/execution.rs, so a
           # whole-change revert cannot compile the changed session tests
@@ -986,7 +995,13 @@ jobs:
           # before the E2b parent it is stacked on; once
           # element/session_protocol.rs is on main, whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/element/session_protocol.rs | grep -Fxq 'rust/processing/src/element/session_protocol.rs'; then
-            oracle_args+=(--mutation tests/evidence/product-state-e3/behaviour.oracle.patch)
+            oracle_args=(--base d89b6a12c0a574eb39e3b2127d564b73500f73ea --ci --json \
+              --mutation tests/evidence/product-state-e3/behaviour.oracle.patch \
+              --test rust/processing/src/element/session_canonical_tests.rs \
+              --test rust/processing/src/element/session_work_tests.rs \
+              --test rust/processing/src/element/session_unwind_tests.rs \
+              --test rust/processing/src/element/session_terminal_tests.rs \
+              --test rust/geometry/src/program/inner_tests.rs)
           # #7955 E2b: the native and browser consumers add
           # processor/run_snapshot.rs, and the changed browser test names the
           # new IfcAPI model field, so a whole-change revert cannot compile it
@@ -1897,11 +1912,21 @@ jobs:
             oracle_args+=(--mutation tests/evidence/export-plan-skeleton/behaviour.oracle.patch)
           fi
           node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"
+          # E3 must also run when the stacked H2 patch wins the selection above.
+          if git diff --name-only origin/main...HEAD -- rust/processing/src/element/session_protocol.rs | grep -q .; then
+            node scripts/check-test-revert-oracle.mjs --base d89b6a12c0a574eb39e3b2127d564b73500f73ea --ci --json \
+              --mutation tests/evidence/product-state-e3/behaviour.oracle.patch \
+              --test rust/processing/src/element/session_canonical_tests.rs \
+              --test rust/processing/src/element/session_work_tests.rs \
+              --test rust/processing/src/element/session_unwind_tests.rs \
+              --test rust/processing/src/element/session_terminal_tests.rs \
+              --test rust/geometry/src/program/inner_tests.rs
+          fi
           # #8091: observe provisional-report preservation independently of the
           # existing owner/scope mutations. Dropping the quarantined batch must
           # fail the four final-publication refusal regressions.
           if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/element/session_publication_tests.rs | grep -Fxq 'rust/processing/src/element/session_publication_tests.rs'; then
-            node scripts/check-test-revert-oracle.mjs --base origin/main --ci --json \
+            node scripts/check-test-revert-oracle.mjs --base d89b6a12c0a574eb39e3b2127d564b73500f73ea --ci --json \
               --mutation tests/evidence/product-state-e3/publication.oracle.patch \
               --test rust/processing/src/element/session_publication_tests.rs
           fi
@@ -1909,36 +1934,80 @@ jobs:
           # The real processor invocation counters must catch a next strategy
           # starting after cancellation, even if final output stays empty.
           if git diff --name-only --diff-filter=AM origin/main...HEAD -- rust/processing/src/element/session_retry_tests.rs | grep -Fxq 'rust/processing/src/element/session_retry_tests.rs'; then
-            node scripts/check-test-revert-oracle.mjs --base origin/main --ci --json \
+            node scripts/check-test-revert-oracle.mjs --base d89b6a12c0a574eb39e3b2127d564b73500f73ea --ci --json \
               --mutation tests/evidence/product-state-e3/retry-stop.oracle.patch \
               --test rust/processing/src/element/session_retry_tests.rs
           fi
-          # #7955 H2b: preserve the operation types and independently break its matrix.
-          if git diff --name-only origin/main...HEAD -- rust/geometry/src/program/retained/affine.rs | grep -q .; then
-            node scripts/check-test-revert-oracle.mjs --base 85ccebd01ce1125bffc85905ea1769631ebf82f2 --ci --json \
-              --mutation tests/evidence/retained-affine-controller-h2b/matrix.oracle.patch
-          fi
-          # #7955 H2c: keep controller types; independently reverse order and operator.
-          if git diff --name-only origin/main...HEAD -- rust/geometry/src/program/retained/boolean.rs | grep -q .; then
-            for mutation in ordered-operands operation domain frame; do
-              node scripts/check-test-revert-oracle.mjs --base 85ccebd01ce1125bffc85905ea1769631ebf82f2 --ci --json \
-                --mutation "tests/evidence/retained-boolean-controller-h2c/$mutation.oracle.patch"
-            done
-          fi
-          # #7955 R1: independently remove accept-boundary retention, preserving
-          # types and admission guards. Require named behavioral RED after GREEN;
-          # compile failure, zero selected tests and timeout are not evidence.
-          if git diff --name-only origin/main...HEAD -- rust/geometry/src/program/retained/program.rs | grep -q .; then
-            node scripts/check-test-revert-oracle.mjs --base 275a4e6a0753cd9e697dc9e3e37c7f56ccbff80f --ci --json \
-              --test rust/geometry/src/program/retained/accept_stop_tests.rs \
-              --mutation tests/evidence/retained-accept-stop-h2/retention.oracle.patch
-          fi
-          # Observe every new effect independently; combined RED is insufficient.
-          if git diff --name-only origin/main...HEAD -- rust/geometry/src/program/mapping_retained.rs | grep -q .; then
-            for mutation in cycle copy-budget owner style-binding type-origin type-exact-nonconsumption required-target required-items; do
-              node scripts/check-test-revert-oracle.mjs --base origin/main --ci --json \
-                --mutation "tests/evidence/retained-mapped-controller-h2a2/$mutation.oracle.patch"
-            done
+          # #7955: each retained mutation runs independently with its own observers.
+          # Bases are rebased ancestors; sibling refs select the wrong merge-base.
+          if git diff --name-only origin/main...HEAD -- rust/geometry/src/program/retained/ | grep -q .; then
+            node scripts/check-test-revert-oracle.mjs --base 76c2f38e5e679376c19459c289caf5585b619b74 --ci --json \
+              --mutation tests/evidence/retained-controller-h2a1/source-identity.oracle.patch \
+              --test rust/geometry/src/program/retained/tests.rs
+            node scripts/check-test-revert-oracle.mjs --base 76c2f38e5e679376c19459c289caf5585b619b74 --ci --json \
+              --mutation tests/evidence/retained-controller-h2a1/exact-nonconsumption.oracle.patch \
+              --test rust/geometry/src/program/retained/tests.rs
+            node scripts/check-test-revert-oracle.mjs --base 76c2f38e5e679376c19459c289caf5585b619b74 --ci --json \
+              --mutation tests/evidence/retained-controller-h2a1/disk-root.oracle.patch \
+              --test rust/geometry/src/program/retained/disk_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base 76c2f38e5e679376c19459c289caf5585b619b74 --ci --json \
+              --mutation tests/evidence/retained-controller-h2a1/obligations.oracle.patch \
+              --test rust/geometry/src/program/retained/obligations_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base 76c2f38e5e679376c19459c289caf5585b619b74 --ci --json \
+              --mutation tests/evidence/retained-controller-h2a1/behaviour.oracle.patch \
+              --test rust/geometry/src/program/retained/tests.rs \
+              --test rust/geometry/src/program/retained/disk_tests.rs \
+              --test rust/geometry/src/program/retained/obligations_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base abf6b8984abc4e05bc06cc6b5ecd4babec868dcd --ci --json \
+              --mutation tests/evidence/retained-mapped-controller-h2a2/cycle.oracle.patch \
+              --test rust/geometry/src/program/retained/mapping_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base abf6b8984abc4e05bc06cc6b5ecd4babec868dcd --ci --json \
+              --mutation tests/evidence/retained-mapped-controller-h2a2/copy-budget.oracle.patch \
+              --test rust/geometry/src/program/retained/mapping_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base abf6b8984abc4e05bc06cc6b5ecd4babec868dcd --ci --json \
+              --mutation tests/evidence/retained-mapped-controller-h2a2/owner.oracle.patch \
+              --test rust/geometry/src/program/retained/mapping_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base abf6b8984abc4e05bc06cc6b5ecd4babec868dcd --ci --json \
+              --mutation tests/evidence/retained-mapped-controller-h2a2/style-binding.oracle.patch \
+              --test rust/geometry/src/program/retained/mapping_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base abf6b8984abc4e05bc06cc6b5ecd4babec868dcd --ci --json \
+              --mutation tests/evidence/retained-mapped-controller-h2a2/type-origin.oracle.patch \
+              --test rust/geometry/src/program/retained/type_map_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base abf6b8984abc4e05bc06cc6b5ecd4babec868dcd --ci --json \
+              --mutation tests/evidence/retained-mapped-controller-h2a2/type-exact-nonconsumption.oracle.patch \
+              --test rust/geometry/src/program/retained/mapping_contract_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base 2e543b766206a98d03494ca85140f399cf4afd30 --ci --json \
+              --mutation tests/evidence/retained-mapped-controller-h2a2/required-items.oracle.patch \
+              --test rust/geometry/src/program/retained/mapping_input_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base 2e543b766206a98d03494ca85140f399cf4afd30 --ci --json \
+              --mutation tests/evidence/retained-mapped-controller-h2a2/required-target.oracle.patch \
+              --test rust/geometry/src/program/retained/mapping_input_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base abf6b8984abc4e05bc06cc6b5ecd4babec868dcd --ci --json \
+              --mutation tests/evidence/retained-mapped-controller-h2a2/behaviour.oracle.patch \
+              --test rust/geometry/src/program/retained/tests.rs \
+              --test rust/geometry/src/program/retained/mapping_tests.rs \
+              --test rust/geometry/src/program/retained/type_map_tests.rs \
+              --test rust/geometry/src/program/retained/mapping_contract_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base 05024a693b15c4463bdb371f85fa161e4146c926 --ci --json \
+              --mutation tests/evidence/retained-affine-controller-h2b/matrix.oracle.patch \
+              --test rust/geometry/src/program/retained/affine_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base 05024a693b15c4463bdb371f85fa161e4146c926 --ci --json \
+              --mutation tests/evidence/retained-boolean-controller-h2c/ordered-operands.oracle.patch \
+              --test rust/geometry/src/program/retained/boolean_tests.rs \
+              --test rust/geometry/src/program/retained/operation_contract_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base 05024a693b15c4463bdb371f85fa161e4146c926 --ci --json \
+              --mutation tests/evidence/retained-boolean-controller-h2c/operation.oracle.patch \
+              --test rust/geometry/src/program/retained/boolean_tests.rs \
+              --test rust/geometry/src/program/retained/operation_contract_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base 05024a693b15c4463bdb371f85fa161e4146c926 --ci --json \
+              --mutation tests/evidence/retained-boolean-controller-h2c/domain.oracle.patch \
+              --test rust/geometry/src/program/retained/operation_contract_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base 05024a693b15c4463bdb371f85fa161e4146c926 --ci --json \
+              --mutation tests/evidence/retained-boolean-controller-h2c/frame.oracle.patch \
+              --test rust/geometry/src/program/retained/operation_contract_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base bb88a8aec7a2224150a51740ede1daca88ef6402 --ci --json \
+              --mutation tests/evidence/retained-accept-stop-h2/retention.oracle.patch \
+              --test rust/geometry/src/program/retained/accept_stop_tests.rs
           fi
           if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/decoder/precision_certificate.rs | grep -Fxq 'rust/core/src/decoder/precision_certificate.rs'; then
             # The oracle restored the source; also execute the positive side

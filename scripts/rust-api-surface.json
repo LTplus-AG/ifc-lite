@@ -212,6 +212,7 @@
     "Result": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "RevolvedAreaSolidProcessor": "struct {  }",
     "Ring2D": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
+    "RouterConfig": "struct { instancing_batch_local: bool; local_frame: Option<bool>; rtc_offset: (f64, f64, f64); skip_small_cuts: bool; tessellation_quality: TessellationQuality; unit_scale: f64 }",
     "SampledAlignmentAxis": "struct { GlobalId: Option<String>; Name: Option<String>; express_id: u32; geometric_horizontal_length_m: f64; samples: Vec<AlignmentSample> }",
     "ScanOutline": "struct (non_exhaustive)",
     "ScanOutlineDiagnostics": "struct (non_exhaustive)",

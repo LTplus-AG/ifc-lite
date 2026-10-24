@@ -9,7 +9,7 @@ use crate::program::openings::execute::execute;
 
 impl GeometryRouter {
     fn test_execution<T>(&self, run: impl FnOnce(&Execution) -> T) -> T {
-        let execution = Execution::new(self.tessellation_quality);
+        let execution = Execution::new(self.tessellation_quality());
         let (value, telemetry) = crate::telemetry_transaction::capture(|| run(&execution));
         execution.finish().publish(self);
         telemetry.commit();
@@ -17,7 +17,7 @@ impl GeometryRouter {
     }
 
     pub(super) fn apply_void_context(&self, mesh: Mesh, ctx: &VoidContext, id: u32) -> Mesh {
-        match execute(mesh, ctx, id, self.tessellation_quality).publish(self) {
+        match execute(mesh, ctx, id, self.tessellation_quality()).publish(self) {
             Ok(mesh) => mesh,
             Err(error) => panic!("numerical cut outcome: {error:?}"),
         }

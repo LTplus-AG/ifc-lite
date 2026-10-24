@@ -16,6 +16,12 @@ extern "C" {
 }
 
 fn normalize_json(text: &JsString) -> Result<String, JsValue> {
+    // Ordinary scalar JSON can use wasm-bindgen's bulk UTF-8 copy. Verify the
+    // round trip before trusting it: replacement of a lone unit must not pass.
+    let original: &JsValue = text.as_ref();
+    if let Some(scalar) = original.as_string() {
+        if JsValue::from_str(&scalar) == *original { return Ok(scalar); }
+    }
     let mut normalized = String::new();
     let mut checked_original = false;
     for unit in char::decode_utf16(text.iter()) {

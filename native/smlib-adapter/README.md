@@ -107,14 +107,63 @@ module incarnation. The same CTest boundaries run under Node, plus
 | `sweep-contract.mjs` | The ordered-region and rational-disk witnesses the native worker runs before opening its curved gates, executed through one transport incarnation. |
 | `contract.mjs` | Frame helpers and the G1 primitive contract. |
 
-`node scripts/stage-retained-browser-assets.mjs --build ABS --sdk ABS --out ABS`
-publishes exactly these modules, the generated pair and the SDK licences with a
-sha256 manifest. It refuses an existing output, a stale configured module, a
-modified SDK or a build bound to another adapter. Staging is packaging only,
-never qualification. `node scripts/smlib-browser-worker-probe.mjs --build ABS
---sdk ABS` stages a bundle, adds `test.html` and its fault fixtures, and runs
-it in Chromium: two independent Workers, restart during upload, cross-Worker
-incarnation rejection, hung and missing-asset Workers, and recovery.
+Explicit local packaging consumes an **existing** adapter build, separate Rust
+`pkg-retained` build, pinned SDK checkout and Emscripten input directory. It
+never fetches, builds, executes supplied JavaScript, or publishes an asset.
+All paths below are absolute; choose new inventory and destination paths:
+
+```sh
+node scripts/stage-retained-browser-assets.mjs --build "$BUILD" --sdk "$SDK" \
+  --engine "$ENGINE" --emscripten "$EMSCRIPTEN" --record "$INPUTS"
+node scripts/stage-retained-browser-assets.mjs --build "$BUILD" --sdk "$SDK" \
+  --engine "$ENGINE" --emscripten "$EMSCRIPTEN" --inputs "$INPUTS" --out "$OUT"
+```
+
+`--record` explicitly records the supplied bytes for review. Keep that inventory
+outside the source/build trees and protect its integrity. Do not regenerate it
+to conceal a failed comparison. It does **not** establish that a compiler used
+those sources. Staging requires an exact match against the recorded assets,
+source inventory, dependency edges, SDK revision and CMake cache fingerprint.
+It also checks the CMake source/SDK/toolchain bindings, clean pinned SDK source
+and licences, and byte equality of configured modules and Rust JS snippets.
+
+The bundle has the adapter's CMake-configured modules (including
+`dependency-contract.mjs` and `normal-contract.mjs`), generated C++ JS/WASM,
+SDK licence/third-party notices, and `pkg-retained/ifc-lite.js`, its WASM and
+transitive wasm-bindgen snippets. Full Emscripten, musl, libc++, libc++abi and
+compiler-rt notices are copied from the supplied toolchain, checked against
+pinned upstream hashes, under `notices/emscripten/`. The IFC-Lite MPL text is
+under `notices/ifc-lite/`. Package metadata, credentials and toolchain binaries
+are excluded. The bounded closure scanner uses V8's static module parser and
+literal runtime asset references; nonliteral imports other than the
+byte-checked retained driver's known helper are refused. New generated formats
+or unknown snippet sources must be reviewed, not silently omitted.
+
+The deterministic manifest records exact byte counts and SHA256s. All input
+checks and writes finish before Linux `renameat2(RENAME_NOREPLACE)` atomically
+makes the complete directory visible at `OUT`. Existing files, empty directories
+and concurrent winners are never replaced. A failure removes only this
+attempt's scratch tree. Local packaging requires Linux, Python 3 and filesystem
+support for this operation; unsupported hosts fail closed. Treat the output as
+immutable and reverify it before any eventual authorized archive or hosting
+operation. Notice revision labels identify the pinned texts, not a verified
+compiler or linked-binary provenance.
+
+The real browser consumers take the same `--build`, `--sdk`, `--engine`,
+`--emscripten` and `--inputs` options. Both use this stager and its offline
+integrity verifier before serving. `smlib-browser-worker-probe.mjs` adds its
+separate test fixtures afterward. `retained-browser-contract.mjs` serves the
+**staged** Rust engine as `/pkg/`, and the staged SDK assets as `/smlib/`.
+An eventual authorized host may point the existing `loadRetainedEngine`
+`moduleUrl` at `/smlib/pkg-retained/ifc-lite.js`; no new loader is introduced.
+
+`qualified`, `buildAttestation`, `licenceClearance` and `releaseAuthorized`
+remain false. These notices are conservative retention of known applicable
+input texts, not a complete final-link inventory or legal clearance. Final
+Rust dependencies, linked objects, source availability, build provenance,
+licence review, real browser/CLI install smoke and authorized hosting remain
+release gates. Exact remains default and importing the opt-in loader still
+fetches nothing.
 
 The Rust side lives in `ifc-lite-wasm` (`rust/wasm-bindings/src/retained_browser`,
 wasm32, behind the off-by-default `retained-browser` feature, which also keeps
@@ -136,7 +185,7 @@ The JavaScript host contract (`IfcAPI.retainedSources`,
 into the separate `packages/wasm/pkg-retained` bundle
 (`BUILD_RETAINED=1 bash scripts/build-wasm.sh`), loaded on demand through
 `@ifc-lite/wasm/retained`. `node scripts/retained-browser-contract.mjs --build
-ABS --sdk ABS` runs that bundle against an actual module Worker in Chromium.
+ABS --sdk ABS --engine ABS --emscripten ABS --inputs ABS` runs that bundle against an actual module Worker in Chromium.
 
 Nothing in the viewer or the default WASM package imports these modules.
 

@@ -9,11 +9,12 @@ import { mkdtemp, mkdir, copyFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { chromium } from '@playwright/test';
+import { verifyRetainedAssets } from './lib/retained-asset-contract.mjs';
 import { stageRetainedBrowserAssets } from './stage-retained-browser-assets.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 
 const BROWSER = resolve(import.meta.dirname, '../native/smlib-adapter/browser');
-const TEST_FILES = ['test.html', 'normal-contract.mjs', 'patch-accuracy-contract.mjs', 'tests/patch-accuracy-worker.mjs', 'plane-chain-contract.mjs', 'lifecycle-contract.mjs', 'tests/hung-worker.mjs', 'tests/missing-asset-worker.mjs'];
+const TEST_FILES = ['test.html', 'patch-accuracy-contract.mjs', 'tests/patch-accuracy-worker.mjs', 'plane-chain-contract.mjs', 'lifecycle-contract.mjs', 'tests/hung-worker.mjs', 'tests/missing-asset-worker.mjs'];
 const TYPES = { '.html': 'text/html', '.mjs': 'text/javascript', '.js': 'text/javascript', '.wasm': 'application/wasm', '.json': 'application/json' };
 
 /** Serves each `prefix -> directory` mount; every other path is 404. */
@@ -32,15 +33,21 @@ export function serveRoots(mounts) {
 }
 
 /** Stages the canonical /smlib bundle from an existing Emscripten build. */
-export async function stageTemporary({ build, sdk }) {
+export async function stageTemporary({ build, sdk, engine, emscripten, inputs }) {
   const temporary = await mkdtemp(join(tmpdir(), 'smlib-worker-probe-'));
   const root = join(temporary, 'smlib');
-  await stageRetainedBrowserAssets({ build, sdk, out: root });
-  return { temporary, root };
+  try {
+    await stageRetainedBrowserAssets({ build, sdk, engine, emscripten, inputs, out: root });
+    await verifyRetainedAssets(root, inputs);
+    return { temporary, root };
+  } catch (error) {
+    await rm(temporary, { recursive: true, force: true });
+    throw error;
+  }
 }
 
-export async function runWorkerProbe({ build, sdk, timeout = 300_000 }) {
-  const { temporary, root } = await stageTemporary({ build, sdk });
+export async function runWorkerProbe({ build, sdk, engine, emscripten, inputs, timeout = 300_000 }) {
+  const { temporary, root } = await stageTemporary({ build, sdk, engine, emscripten, inputs });
   let server, browser;
   try {
     await mkdir(join(root, 'tests'));
@@ -71,7 +78,7 @@ if (isMainEntry(import.meta.url)) {
   const args = process.argv.slice(2);
   for (let i = 0; i < args.length; i += 2) options[args[i].replace(/^--/, '')] = args[i + 1];
   if (!options.build || !options.sdk) {
-    console.error('Usage: node scripts/smlib-browser-worker-probe.mjs --build ABS --sdk ABS');
+    console.error('Usage: node scripts/smlib-browser-worker-probe.mjs --build ABS --sdk ABS --engine ABS --emscripten ABS --inputs ABS');
     process.exitCode = 2;
   } else {
     runWorkerProbe(options).then((result) => {

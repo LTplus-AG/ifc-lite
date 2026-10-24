@@ -28,6 +28,9 @@ on:
       - 'rust/processing/examples/retained_product.rs'
       # Browser module-Worker staging and its actual-Worker probe.
       - 'scripts/stage-retained-browser-assets.mjs'
+      - 'scripts/lib/retained-asset-contract.mjs'
+      - 'scripts/lib/retained-publish.py'
+      - 'scripts/fixtures/retained-notices/**'
       - 'scripts/smlib-browser-worker-probe.mjs'
       - 'scripts/wasm-test-mime-driver.mjs'
       # The browser executor lives in the published wasm crate.
@@ -245,12 +248,24 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
+      - name: Build the canonical WASM package and the opt-in retained bundle
+        run: BUILD_RETAINED=1 bash scripts/build-wasm.sh
+      - name: Record explicit local retained packaging inputs (not build attestation)
+        run: |
+          node scripts/stage-retained-browser-assets.mjs --build "$RUNNER_TEMP/smlib-wasm" \
+            --sdk "$GITHUB_WORKSPACE/upstream-smlib" \
+            --engine "$GITHUB_WORKSPACE/packages/wasm/pkg-retained" \
+            --emscripten "$GITHUB_WORKSPACE/emsdk/upstream/emscripten" \
+            --record "$RUNNER_TEMP/retained-inputs.json"
       - name: Actual module Workers over the staged /smlib bundle
         id: browser-workers
         continue-on-error: true
         run: |
           node scripts/smlib-browser-worker-probe.mjs --build "$RUNNER_TEMP/smlib-wasm" \
-            --sdk "$GITHUB_WORKSPACE/upstream-smlib"
+            --sdk "$GITHUB_WORKSPACE/upstream-smlib" \
+            --engine "$GITHUB_WORKSPACE/packages/wasm/pkg-retained" \
+            --emscripten "$GITHUB_WORKSPACE/emsdk/upstream/emscripten" \
+            --inputs "$RUNNER_TEMP/retained-inputs.json"
       - name: Strict Clippy and unit tests with the opt-in retained-browser feature
         id: retained-clippy
         continue-on-error: true
@@ -264,7 +279,10 @@ jobs:
           # wasm-bindgen-test serves the crate directory; the staging script
           # refuses an existing output, so this is always a fresh bundle.
           node scripts/stage-retained-browser-assets.mjs --build "$RUNNER_TEMP/smlib-wasm" \
-            --sdk "$GITHUB_WORKSPACE/upstream-smlib" --out "$GITHUB_WORKSPACE/rust/wasm-bindings/smlib"
+            --sdk "$GITHUB_WORKSPACE/upstream-smlib" \
+            --engine "$GITHUB_WORKSPACE/packages/wasm/pkg-retained" \
+            --emscripten "$GITHUB_WORKSPACE/emsdk/upstream/emscripten" \
+            --inputs "$RUNNER_TEMP/retained-inputs.json" --out "$GITHUB_WORKSPACE/rust/wasm-bindings/smlib"
           echo "IFCLITE_REAL_CHROMEDRIVER=$(command -v chromedriver)" >> "$GITHUB_ENV"
       - name: Actual module-Worker retained browser executor (ifc-lite-wasm)
         id: browser-runtime
@@ -280,8 +298,6 @@ jobs:
           grep -F "retained_browser_issue_3641_original_source_construction_oracle ... ok" "$RUNNER_TEMP/retained-browser.log"
           grep -F "j1_worker_shared_clip_cases_volume_bounds_centroid ... ok" "$RUNNER_TEMP/retained-browser.log"
           grep -F "REGION_3641_SOURCE_VOLUME_SECTION_PROVENANCE_EXECUTED" "$RUNNER_TEMP/retained-browser.log"
-      - name: Build the canonical WASM package and the opt-in retained bundle
-        run: BUILD_RETAINED=1 bash scripts/build-wasm.sh
       - name: Committed declarations match both bundles
         id: generated-types
         continue-on-error: true
@@ -295,7 +311,10 @@ jobs:
         continue-on-error: true
         run: |
           node scripts/retained-browser-contract.mjs --build "$RUNNER_TEMP/smlib-wasm" \
-            --sdk "$GITHUB_WORKSPACE/upstream-smlib"
+            --sdk "$GITHUB_WORKSPACE/upstream-smlib" \
+            --engine "$GITHUB_WORKSPACE/packages/wasm/pkg-retained" \
+            --emscripten "$GITHUB_WORKSPACE/emsdk/upstream/emscripten" \
+            --inputs "$RUNNER_TEMP/retained-inputs.json"
       # Gather independent failures, then preserve a failing overall verdict.
       - name: Require every independent result
         if: always()

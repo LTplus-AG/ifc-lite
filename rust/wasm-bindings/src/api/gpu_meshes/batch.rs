@@ -113,9 +113,9 @@ impl IfcAPI {
         use ifc_lite_processing::style::GeometryStyleInfo;
 
         // Batch wall-clock for the PipelineDiagnostics channel. std::time::Instant
-        // traps on wasm32, so use the JS clock (two Date.now() reads per batch —
-        // negligible, always on).
-        let batch_started_ms = js_sys::Date::now();
+        // traps on wasm32, so the host clock is the JS one there (two Date.now()
+        // reads per batch — negligible, always on); see `batch_host`.
+        let batch_clock = super::batch_host::BatchClock::start();
 
         let content = data;
 
@@ -533,37 +533,8 @@ impl IfcAPI {
         crate::api::warn_refused_products(batch_refused);
         let csg_diag = crate::api::drain_and_log_csg_diagnostics(&router, batch_csg_failures);
 
-        // Layered-wall slicing diagnostics (#563): a quiet success summary, but a
-        // per-element warning (id + reason) when a sliceable wall fails to slice
-        // — so future regressions surface without spamming healthy loads. Reasons:
-        // not-single-unshifted-item / thin-layers-collapsed-to-1 /
-        // placement-unresolved / cut-produced-<2 / base-mesh-error.
-        let layer_diag = router.take_layer_slice_diag();
-        if !layer_diag.is_empty() {
-            let sliced = layer_diag.iter().filter(|(_, r)| r.starts_with("ok:")).count();
-            let not_sliced = layer_diag.len() - sliced;
-            if not_sliced == 0 {
-                web_sys::console::info_1(
-                    &format!("[ifc-lite layers] batch: sliced {} wall(s) into layers", sliced)
-                        .into(),
-                );
-            } else {
-                let detail: Vec<String> = layer_diag
-                    .iter()
-                    .filter(|(_, r)| !r.starts_with("ok:"))
-                    .map(|(id, r)| format!("#{}={}", id, r))
-                    .collect();
-                web_sys::console::warn_1(
-                    &format!(
-                        "[ifc-lite layers] batch: sliced {}, {} NOT sliced — {}",
-                        sliced,
-                        not_sliced,
-                        detail.join(", ")
-                    )
-                    .into(),
-                );
-            }
-        }
+        // Layered-wall slicing diagnostics (#563), from this batch's one drain.
+        super::batch_host::log_layers(&router.take_layer_slice_diag());
 
         // #1623 Phase 3: resolve the batch's don't-bake occurrences into shard
         // instances (kept) + recovered flat meshes (sub-threshold / ineligible
@@ -637,7 +608,7 @@ impl IfcAPI {
             .flat_map(|o| o.meshes.iter())
             .map(|m| (m.indices.len() / 3) as u64)
             .sum();
-        let batch_ms = (js_sys::Date::now() - batch_started_ms).max(0.0) as u64;
+        let batch_ms = batch_clock.elapsed_ms();
         // The batch reuses ONE decoder across every element (the point cache is
         // already hoisted here), so its cumulative point-cache stats ARE this
         // batch's faceted-brep memoization tally.
@@ -976,3 +947,7 @@ impl IfcAPI {
 #[cfg(test)]
 #[path = "batch_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "batch_parity_tests.rs"]
+mod parity;

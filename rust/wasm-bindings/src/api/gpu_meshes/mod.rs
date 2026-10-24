@@ -9,12 +9,14 @@
 
 mod affinity_chunks;
 mod batch;
+pub(in crate::api) mod batch_host;
 mod partitioned_batch;
 mod batch_from_source;
 mod batch_partition;
 mod instancing;
 pub(crate) mod prepass;
 mod prepass_discovery;
+mod prepass_once;
 mod prepass_owned_columns;
 mod prepass_sharded;
 mod source_fingerprint;

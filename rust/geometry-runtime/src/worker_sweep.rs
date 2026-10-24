@@ -90,13 +90,14 @@ impl SmlibWorker {
                 "execute this incarnation's numerical witnesses first",
             ));
         }
-        let solid = self.upload_sweep(
+        let mut upload = || self.upload_sweep(
             &payload.bytes,
             payload.format,
             payload.loops,
             payload.segments,
             request.source_contract().map(|_| &request),
-        )?;
+        );
+        let solid = match resources { Some(resources) => resources.with_scope(upload), None => upload() }?;
         let mesh = match self.tessellate_accounted(solid, chord_metres, angle_degrees, limits, resources) {
             Ok(mesh) => mesh,
             Err(error) => {

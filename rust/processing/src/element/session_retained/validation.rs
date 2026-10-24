@@ -19,7 +19,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
         if let PendingRetainedOperation::Construction { request, .. }=operation {
             if request.source_contract().is_some() {
                 let proof=receipt.kind.source_correspondence().ok_or_else(|| protocol("missing source construction proof"))?;
-                if !request.same_admission(proof.request()) { return Err(protocol("foreign source construction proof")); }
+                if !request.same_admission(proof.request()) || !proof.has_complete_coverage() { return Err(protocol("foreign source construction proof")); }
             }
         }
         match (operation, receipt.kind.evidence()) {
@@ -36,7 +36,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             (PendingRetainedOperation::Affine { input, matrix, .. }, ReceiptEvidence::Affine { input: identity_input, column_major }) => {
                 input.validate_live().map_err(protocol)?;
                 if let Some(expected)=input.kind.source_correspondence() {
-                    if !receipt.kind.source_correspondence().is_some_and(|proof| proof.same_source(expected)) {
+                    if !receipt.kind.source_correspondence().is_some_and(|proof| proof.same_source(expected) && proof.has_complete_coverage()) {
                         return Err(protocol("affine dropped or changed source correspondence"));
                     }
                 }

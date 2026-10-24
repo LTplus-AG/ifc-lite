@@ -58,7 +58,7 @@ pub struct AffineCopyIdentity {
 
 /// One affine copy, owned by its own managed lease and independent of its
 /// input: dropping it releases only this solid, and releasing the input leaves
-/// it live. No tessellation happens here.
+/// it live. The accounted production operation also owns its final source mesh.
 #[derive(Debug)]
 pub struct RetainedAffineCopy {
     solid: BrepHandle,
@@ -69,9 +69,11 @@ pub struct RetainedAffineCopy {
     lineage: Arc<RetainedLineage>,
     operations: usize,
     source_correspondence: Option<Arc<ifc_lite_geometry::document::retained_source::SourceCorrespondence>>,
+    source_mesh: Option<super::TessellatedMesh>,
 }
 
 impl RetainedAffineCopy {
+    pub fn source_mesh(&self) -> Option<&super::TessellatedMesh> { self.source_mesh.as_ref() }
     pub fn source_correspondence(&self) -> Option<&Arc<ifc_lite_geometry::document::retained_source::SourceCorrespondence>> { self.source_correspondence.as_ref() }
 
     pub fn solid(&self) -> BrepHandle {
@@ -104,6 +106,24 @@ impl RetainedAffineCopy {
 }
 
 impl SmlibWorker {
+    /// Production affine receipt: source-enabled copies consume their final
+    /// mesh under the caller's original account before returning the receipt.
+    pub fn copy_retained_affine_accounted(&mut self, input: RetainedTransformInput<'_>,
+        matrix: [f64; 16], chord: f64, angle: f64, limits: super::MeshLimits,
+        resources: &ifc_lite_geometry::resource::OwnedResourceContext)
+        -> Result<RetainedAffineCopy, WorkerError> {
+        let mut copy = resources.with_scope(|| self.copy_retained_affine(input, matrix))?;
+        if copy.source_correspondence.is_some() {
+            let mesh = self.tessellate_accounted(copy.solid, chord, angle, limits, Some(resources))?;
+            let proof = mesh.source_correspondence.as_ref()
+                .filter(|proof| proof.has_complete_coverage())
+                .ok_or(WorkerError::Protocol("affine final source coverage missing"))?;
+            copy.source_correspondence = Some(proof.clone());
+            copy.source_mesh = Some(mesh);
+        }
+        Ok(copy)
+    }
+
     /// Copy a sealed value under a bounded general affine column-major matrix,
     /// in that value's evaluation frame. The input is never modified. A refused
     /// matrix or source class leaves the worker and input live; a failure after
@@ -140,6 +160,7 @@ impl SmlibWorker {
             Some(self.register_source(solid,expected.request(),Some(&expected),None)?)
         } else { None };
         Ok(RetainedAffineCopy {
+            source_mesh: None,
             source_correspondence,
             _lease: self.manage_object(solid)?,
             object_live: self.object_liveness(solid)?,

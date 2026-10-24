@@ -1,7 +1,7 @@
 --- a/rust/geometry-runtime/src/worker_mesh.rs
 +++ b/rust/geometry-runtime/src/worker_mesh.rs
 @@ -136,7 +136,7 @@
-         }
+         let size = size-root_bytes;
          // #7955 N1: admit all backing before any stream transfer/allocation.
          let storage = resources.map(|authority| authority.charge(Cost {
 -            live_bytes: 0, copy_bytes: size as u64, ..Default::default()

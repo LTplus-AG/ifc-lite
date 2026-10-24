@@ -137,6 +137,13 @@ impl SmlibWorker {
         if size > limits.max_bytes {
             return Err(WorkerError::ResourceLimit("mesh exceeds max_bytes"));
         }
+        let root_bytes = if source_binding.is_some() { multiply(triangles, 4)? } else { 0 };
+        let triangle_storage = if source_binding.is_some() {
+            let fallback = OwnedResourceContext::capture_current();
+            Some(ifc_lite_geometry::document::retained_source::SourceTriangleAdmission::new(
+                triangles, resources.unwrap_or(&fallback)).map_err(WorkerError::ResourceLimit)?)
+        } else { None };
+        let size = size-root_bytes;
         // #7955 N1: admit all backing before any stream transfer/allocation.
         let storage = resources.map(|authority| authority.charge(Cost {
             live_bytes: size as u64, copy_bytes: size as u64, ..Default::default()
@@ -168,10 +175,12 @@ impl SmlibWorker {
             }
         }
         let source_correspondence=if let Some(expected)=source_binding {
-            let actual=self.read_source(mesh,expected.request())?;
+            let actual = if let Some(resources) = resources {
+                resources.with_scope(|| self.read_source(mesh,expected.request()))?
+            } else { self.read_source(mesh,expected.request())? };
             if !actual.same_source(&expected) { return Err(self.poison("mesh source inventory mismatch")); }
             let roots=self.read_u32(mesh,MeshStream::ConstructionRoots,triangles)?;
-            Some(std::sync::Arc::new(actual.with_triangles(roots,triangles).map_err(|e| self.poison(e))?))
+            Some(std::sync::Arc::new(actual.with_admitted_triangles(roots,triangle_storage.expect("source stream admitted before transfer")).map_err(|e| self.poison(e))?))
         } else { None };
         Ok(TessellatedMesh {
             source_correspondence,

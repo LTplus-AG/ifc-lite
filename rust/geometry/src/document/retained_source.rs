@@ -3,6 +3,25 @@
 //! Decoding numbers alone grants no authority. Production receipts retain this
 //! exact request allocation, and processing checks its original source leases.
 use super::RetainedRequest;
+use crate::resource::{Cost, OwnedResourceContext, Reservation};
+
+/// Admission made before copying a triangle-root stream. Owned by its proof,
+/// so sharing that proof cannot refund its backing while a reader retains it.
+#[derive(Debug)]
+pub struct SourceTriangleAdmission {
+    count: usize,
+    _permit: Reservation,
+}
+impl SourceTriangleAdmission {
+    pub fn new(count: usize, resources: &OwnedResourceContext) -> Result<Self, &'static str> {
+        let bytes = count.checked_mul(4).ok_or("source triangle byte overflow")?;
+        let permit = resources.charge(Cost {
+            live_bytes: bytes as u64, copy_bytes: bytes as u64, ..Default::default()
+        }).map_err(|_| "captured source triangle backing account")?;
+        Ok(Self { count, _permit: permit })
+    }
+}
+
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConstructionRole {
@@ -17,6 +36,8 @@ pub struct SourceCorrespondence {
     packet: Vec<u8>,
     roles: Vec<ConstructionRole>,
     triangles: Vec<u32>,
+    _inventory_storage: Reservation,
+    _triangle_storage: Option<SourceTriangleAdmission>,
 }
 impl SourceCorrespondence {
     pub fn descriptor(request: &RetainedRequest) -> Vec<u8> {
@@ -69,10 +90,12 @@ impl SourceCorrespondence {
         {
             return Err(fail);
         }
+        let bytes = packet.len() + count * std::mem::size_of::<ConstructionRole>();
+        let inventory_storage = OwnedResourceContext::capture_current().charge(Cost {
+            live_bytes: bytes as u64, copy_bytes: bytes as u64, ..Default::default()
+        }).map_err(|_| "source inventory budget")?;
         let mut roles = Vec::new();
-        crate::resource::reserve_headers(&mut roles, count)
-            .map_err(|_| "source inventory budget")?
-            .retain();
+        roles.try_reserve_exact(count).map_err(|_| "source inventory allocation")?;
         let domain = u64_at(80);
         for i in 0..count {
             let offset = 80 + i * 24;
@@ -93,15 +116,15 @@ impl SourceCorrespondence {
             roles.push(role);
         }
         let mut owned = Vec::new();
-        crate::resource::reserve_headers(&mut owned, packet.len())
-            .map_err(|_| "source inventory budget")?
-            .retain();
+        owned.try_reserve_exact(packet.len()).map_err(|_| "source inventory allocation")?;
         owned.extend_from_slice(packet);
         Ok(Self {
             request: request.clone(),
             packet: owned,
             roles,
             triangles: Vec::new(),
+            _inventory_storage: inventory_storage,
+            _triangle_storage: None,
         })
     }
     pub fn is_initial_operation(&self, current: &[u8], operation: u64) -> bool {
@@ -123,6 +146,22 @@ impl SourceCorrespondence {
     pub fn same_source(&self, other: &Self) -> bool {
         self.request.same_admission(&other.request) && self.packet[20..] == other.packet[20..]
     }
+    pub fn has_complete_coverage(&self) -> bool {
+        if self.triangles.is_empty() { return false; }
+        let mut seen = [false; 130];
+        for &root in &self.triangles {
+            if root as usize >= self.roles.len() { return false; }
+            seen[root as usize] = true;
+        }
+        seen[..self.roles.len()].iter().all(|v| *v)
+    }
+    pub fn with_admitted_triangles(mut self, triangles: Vec<u32>, admission: SourceTriangleAdmission)
+        -> Result<Self, &'static str> {
+        let expected = admission.count;
+        self._triangle_storage = Some(admission);
+        self.with_triangles(triangles, expected)
+    }
+    /// Host-trusted numerical helper; production readers use pre-copy admission.
     pub fn with_triangles(
         mut self,
         triangles: Vec<u32>,

@@ -58,7 +58,8 @@ impl RetainedExecutor for SmlibWorker {
             }
             Invocation::Construction(request) | Invocation::DerivedMaterialRegion { request, .. } => self.evaluate_retained_accounted(request.clone(), limits.chord_metres, limits.angle_degrees, mesh, Some(resources))
                 .map(|value| RealizationKind::Construction(Box::new(value))),
-            Invocation::Affine { input, column_major } => self.copy_retained_affine(transform_input(input), column_major)
+            Invocation::Affine { input, column_major } => self.copy_retained_affine_accounted(transform_input(input), column_major,
+                limits.chord_metres, limits.angle_degrees, mesh, resources)
                 .map(|value| RealizationKind::Affine(Box::new(value))),
             Invocation::DerivedMaterialIntersection { host, region, .. } => self.evaluate_retained_boolean_accounted(
                 host.native_dependency()?, region.native_dependency()?, BooleanOperation::Intersection,

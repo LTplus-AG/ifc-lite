@@ -256,6 +256,9 @@ pub struct WriteReport {
     pub findings: Vec<ValidationFinding>,
     /// Representations geometry patches removed from their products.
     pub dropped_representations: Vec<DroppedRepresentation>,
+    /// Every record removed from the output (`deleted` of them), by express
+    /// id, each with why it went.
+    pub removed: Vec<super::removal::Removal>,
 }
 
 /// Failure modes of [`super::execute`] itself, as opposed to a single

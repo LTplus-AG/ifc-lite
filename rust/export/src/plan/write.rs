@@ -35,7 +35,7 @@ pub(crate) fn write_output<W: Write>(
     let source_header = crate::source_header::parse_source_header(source);
     crate::step_header::write_header(&mut out, &header_opts, source_header.as_ref(), schema)?;
 
-    let Resolution { appended, edits_by_id, removed, refusals, patched, added, patched_objects, dropped_representations } =
+    let Resolution { appended, edits_by_id, removed, removals, refusals, patched, added, patched_objects, dropped_representations } =
         resolution;
     let defined = DefinedIds::new(index, &removed, &appended);
     let mut validator = StreamValidator::new(schema);
@@ -93,6 +93,7 @@ pub(crate) fn write_output<W: Write>(
         total: index.len(),
         written,
         deleted: removed.len(),
+        removed: removals,
         patched,
         added,
         refusals,

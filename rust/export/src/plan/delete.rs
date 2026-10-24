@@ -26,6 +26,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::index::{AttrRefs, FileIndex};
+use super::removal::RemovalReason;
 
 pub(crate) struct DeleteResult {
     /// Every id dropped from the output: the requested deletions, cascaded
@@ -40,6 +41,8 @@ pub(crate) struct DeleteResult {
     /// The openings and projections in `removed` with no element they
     /// belong to left ([`hosted_feature`]).
     pub(crate) unhosted: HashSet<u32>,
+    /// Why each id in `removed` went: the first reason it was removed for.
+    pub(crate) reasons: HashMap<u32, RemovalReason>,
 }
 
 /// True for an `IFCREL*` attribute IFC declares as a `SET [1:?]` member
@@ -147,6 +150,7 @@ struct Cascade<'i> {
     index: &'i FileIndex<'i>,
     file_schema: &'i str,
     removed: HashSet<u32>,
+    reasons: HashMap<u32, RemovalReason>,
     worklist: VecDeque<u32>,
     /// Per (referrer, attr index): the list as stripped so far. Filled for
     /// every top-level list of a referrer the first time a strip reaches
@@ -155,8 +159,9 @@ struct Cascade<'i> {
 }
 
 impl Cascade<'_> {
-    fn mark_removed(&mut self, id: u32) {
+    fn mark_removed(&mut self, id: u32, reason: RemovalReason) {
         if self.removed.insert(id) {
+            self.reasons.insert(id, reason);
             self.worklist.push_back(id);
         }
     }
@@ -187,7 +192,7 @@ impl Cascade<'_> {
             list.remaining -= count;
         }
         if list.remaining == 0 && list.mandatory {
-            self.mark_removed(referrer);
+            self.mark_removed(referrer, RemovalReason::Emptied);
         }
         true
     }
@@ -241,6 +246,7 @@ pub(crate) fn resolve_deletes(
         index,
         file_schema,
         removed: requested.clone(),
+        reasons: requested.iter().map(|&id| (id, RemovalReason::Requested)).collect(),
         worklist: requested.iter().copied().collect(),
         lists: FxHashMap::default(),
     };
@@ -278,7 +284,7 @@ pub(crate) fn resolve_deletes(
         if !orphaned.contains(&dead) {
             for &(referrer, idx) in index.referrers(dead) {
                 if !cascade.removed.contains(&referrer) && !cascade.strip(referrer, idx, dead, false) {
-                    cascade.mark_removed(referrer);
+                    cascade.mark_removed(referrer, RemovalReason::Dangling);
                 }
             }
         }
@@ -289,7 +295,7 @@ pub(crate) fn resolve_deletes(
         // removal the worklist reaches first does not change the answer.
         if let Some(feature) = hosted_feature(index, file_schema, &dead_type, &dead_attrs, &cascade.removed).filter(|id| !feature_keepers.contains(id)) {
             unhosted.insert(feature);
-            cascade.mark_removed(feature);
+            cascade.mark_removed(feature, RemovalReason::Unhosted);
         }
 
         // 2. `dead` no longer refers to anything; a target whose last
@@ -326,18 +332,18 @@ pub(crate) fn resolve_deletes(
             *left = left.saturating_sub(1);
             if *left == 0 {
                 orphaned.insert(target);
-                cascade.mark_removed(target);
+                cascade.mark_removed(target, RemovalReason::Released);
             }
         }
     }
 
-    let Cascade { removed, lists, .. } = cascade;
+    let Cascade { removed, reasons, lists, .. } = cascade;
     let stripped = lists
         .into_iter()
         .filter(|((referrer, _), list)| !removed.contains(referrer) && !list.stripped.is_empty())
         .map(|(slot, list)| (slot, list.stripped))
         .collect();
-    DeleteResult { removed, stripped, unhosted }
+    DeleteResult { removed, stripped, unhosted, reasons }
 }
 
 /// The records losing a record of `entity_type` with attributes `attrs` can

@@ -398,7 +398,11 @@ fn a_fallback_stands_in_for_a_deleted_body_but_not_a_bounding_box() {
 /// intact body in another context is instanced, not a lower rank.
 #[test]
 fn an_intact_body_in_another_context_wins_over_a_fallback() {
-    let source = String::from_utf8(type_with_two_bodies("IFC4")).unwrap().replace("(#330,'Body','SweptSolid',(#303))", "(#330,'Body','SweptSolid',(#340))");
+    // #310 becomes a fallback in the body context, so a lower rank is there to take.
+    let source = String::from_utf8(type_with_two_bodies("IFC4"))
+        .unwrap()
+        .replace("(#330,'Body','SweptSolid',(#303))", "(#330,'Body','SweptSolid',(#340))")
+        .replace("(#100,'Axis','Curve2D',(#312))", "(#100,'Body-FallBack','SweptSolid',(#340))");
     let extra = build_record("IFC4", 340, "IFCEXTRUDEDAREASOLID", &[("SweptArea", "#304".into()), ("Position", "#301".into()), ("ExtrudedDirection", "#305".into()), ("Depth", "2.".into())]) + "\n";
     let source = source.replacen("ENDSEC;\nEND-ISO", &format!("{extra}ENDSEC;\nEND-ISO"), 1);
     let (out, report) = run(source.as_bytes(), vec![(ObjectRef::Id(303), Disposition::Delete), add(mapped_wall(1, TypeLink::Existing(ObjectRef::Id(40)), IDENTITY))]);
@@ -406,4 +410,17 @@ fn an_intact_body_in_another_context_wins_over_a_fallback() {
     let items = ids_of_type(&out, "IFCMAPPEDITEM");
     let mut decoder = ifc_lite_core::EntityDecoder::new(&out);
     assert_eq!(items.iter().map(|&i| decoder.decode_by_id(i).unwrap().get_ref(0)).collect::<Vec<_>>(), [Some(320)]);
+}
+
+/// A map whose origin this plan deletes is unusable, and the refusal says so.
+#[test]
+fn a_deleted_map_origin_refuses_the_copy() {
+    let source = String::from_utf8(type_with_maps("IFC4")).unwrap().replace("#300=IFCREPRESENTATIONMAP(#301,#302);", "#300=IFCREPRESENTATIONMAP(#350,#302);");
+    let origin = build_record("IFC4", 350, "IFCAXIS2PLACEMENT3D", &[("Location", "#102".into())]) + "\n";
+    let source = source.replacen("ENDSEC;\nEND-ISO", &format!("{origin}ENDSEC;\nEND-ISO"), 1);
+    let (out, report) = run(source.as_bytes(), vec![(ObjectRef::Id(350), Disposition::Delete), add(mapped_wall(1, TypeLink::Existing(ObjectRef::Id(40)), IDENTITY))]);
+    assert_eq!(report.added, 0, "{:?}", report.refusals);
+    assert!(crate::plan::validate::validate(&out, "IFC4").is_empty());
+    let refusal = report.refusals.iter().find(|r| r.object == ObjectRef::Guid(gid(1).encode())).expect("refused");
+    assert!(refusal.reason.contains("deleted by this plan") || refusal.reason.contains("no Body representation map"), "{}", refusal.reason);
 }

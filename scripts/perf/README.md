@@ -32,6 +32,52 @@ lifecycle regression and visible model PNG establish more than dimensions alone.
 retain the measured limitation and the collapsed-sidebar scope. This establishes
 no loading-regression resolution for #6516.
 
+## One element per rayon task in the element loop (#8094)
+
+**Shipped: the element `par_iter` uses `with_max_len(1)`.** A large void-heavy
+model, converted through an embedder's single-chunk export, ended with a long
+single-core tail inside the element loop: rayon had handed one thread a range of
+several void-heavy elements, which it ran in sequence while the others idled.
+Single-element tasks let idle threads take the rest. In `perf_probe` only the
+heavy CSG tower (Holter) gains; the large model's win shows only through the
+embedder. Output is unchanged at every thread count tested.
+
+Lesson: when cores go idle while a parallel loop is still running, check rayon's
+task granularity before the kernel. In a profiled embedder run on `76d38b1243`,
+ordering the jobs heavy-first without `with_max_len(1)` did not remove the
+tail: rayon packed the heavy jobs into one thread's first range instead.
+`perf_probe` and an embedder's export can split the work differently, so
+measure the embedder too.
+
+## Consolidation certificates restore the instruction ratchet (#7943)
+
+**Measured reduction in exact geometry work; unchanged instruction ceilings.**
+The scheduled lane reported correctly: a correctness repair had increased work
+past its geometry budget. The accepted optimization reuses shared segment
+orientation signs, rejects strictly separated boxes before predicates, and
+proves zero source-plane height span for already certified singleton or exactly
+coplanar f32 partitions. Other surfaces retain the shared rational certificate;
+movement, winding, boundary and refusal contracts remain enforced.
+
+The source-pinned native comparison preserves ordered mesh fingerprints and
+failure diagnostics on FZK, ISSUE_129 and Holter. Five-pair native and fresh-process
+hardware-browser comparisons find a reduction on the void-heavy model; the
+house and heavy tower remain within their measured noise. The browser comparison
+uses the repository's fixed base-first order and the preceding baseline, so it
+retains position bias and does not qualify final-bundle latency after unrelated
+upstream export additions. Current-head hosted gates and the actual lowering
+workflow on merged main remain separate acceptance checks.
+
+Lesson: profile the retained correctness fix before accepting its cost. Avoiding
+repeated exact constructions and predicate evaluation recovered the budget
+without changing geometry or raising a ceiling. Integer millisecond phase fields
+cannot qualify a sub-millisecond phase: the accepted native experiment captures
+existing durations at higher precision on both sides and retains every reporter
+and host guard. A stale identical binary, a zero-resolution timing campaign,
+missing tooling and a Turbo-restored WASM artifact were rejected and preserved.
+Numerical observations, scope, source applicability and evidence references are
+in [the qualification record](../../tests/evidence/issue-7943/performance.json).
+
 ## Remote near-plane recovery (#7633)
 
 **Correctness repair; end-to-end browser timings remain within measured noise.**

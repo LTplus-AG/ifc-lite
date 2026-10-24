@@ -35,6 +35,8 @@ mod created;
 mod effective;
 mod entities;
 pub(crate) use entities::is_entity_name;
+pub(crate) use nominal::check_real_measure;
+pub(crate) use retype::predefined_type_members;
 mod extract;
 mod generate;
 mod georef;

@@ -13,6 +13,13 @@ The navigation cap already shipped in #6711; #8089 repairs capture lifetime.
 The accepted functional evidence completes the requested comparison without
 claiming #6516 loading-regression resolution.
 
+Merge applicability: the later merge of main `fd7545da28` retains this exact
+capture/navigation implementation and combines independent performance-ledger
+entries. Upstream Rust/export/geometry changes are not a rerun of this cohort.
+The measurements and geometry identity remain scoped to the recorded `4f90b5`
+and `62dd5c` artifacts; they establish no final-bundle loading latency claim.
+Current-head hosted checks validate integration separately.
+
 The viewer policy and original capture gateway shipped in #6711. This follow-up
 fixes capture serialization before WebGPU presentation discards its pixels.
 The active cohort compares fixed candidate `4f90b5f332454b94e499032f212f05cb3b4a105e`

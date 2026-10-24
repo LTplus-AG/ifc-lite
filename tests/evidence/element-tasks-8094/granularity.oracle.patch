@@ -1,0 +1,9 @@
+--- a/rust/processing/src/processor/scheduling.rs
++++ b/rust/processing/src/processor/scheduling.rs
+@@ -9,5 +9,5 @@
+ /// One element per rayon task: rayon otherwise runs each thread's range of elements
+ /// in sequence, so a range holding a few void-heavy elements strands one core.
+ pub(super) fn element_tasks<T: Sync>(jobs: &[T]) -> impl IndexedParallelIterator<Item = &T> {
+-    jobs.par_iter()
++    jobs.par_iter().with_max_len(1)
+ }

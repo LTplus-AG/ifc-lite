@@ -3,7 +3,7 @@ use std::collections::HashSet;
 
 use crate::plan::index::FileIndex;
 use super::resolve_deletes;
-use crate::plan::test_fixtures::{project_aggregates_one_building, wall_with_own_pset};
+use crate::plan::test_fixtures::{gid, project_aggregates_one_building, wall_with_own_pset};
 
 #[test]
 fn deleting_a_wall_removes_its_unshared_pset_via_the_rel() {
@@ -85,4 +85,146 @@ fn deleting_the_only_covering_drops_the_now_empty_covers_relationship() {
         let result = resolve_deletes(&index, schema, &requested, &[], &HashSet::new());
         assert!(result.removed.contains(&13), "{schema}: RelatedCoverings is SET [1:?], so the rel goes");
     }
+}
+
+/// A presentation layer's `AssignedItems` is `SET [1:?]`: stripping its last
+/// entry takes the layer out rather than writing `()`. One that keeps an
+/// entry is rewritten.
+#[test]
+fn a_layer_whose_last_item_is_stripped_goes() {
+    use crate::plan::test_fixtures::products_with_geometry;
+    for schema in ["IFC2X3", "IFC4", "IFC4X3"] {
+        let content = products_with_geometry(schema);
+        let index = FileIndex::complete(&content);
+        let idx = crate::plan::attrs::attribute_index(schema, "IFCPRESENTATIONLAYERASSIGNMENT", "AssignedItems").unwrap();
+        let detach = [(83, idx, 62), (80, idx, 62)];
+        let result = resolve_deletes(&index, schema, &HashSet::new(), &detach, &HashSet::new());
+        assert!(result.removed.contains(&83), "{schema}: the emptied layer");
+        assert!(!result.removed.contains(&80), "{schema}: the layer with items left");
+        assert_eq!(result.stripped.get(&(80, idx)), Some(&[62].into_iter().collect()), "{schema}");
+    }
+}
+
+/// Delete cascade of the export plan (#8078): deleting a host takes the
+/// relationships that needed it and the records only it used, but no object or type the plan did not name: the nested
+/// port and the type stay, and so does the host placement the port is
+/// placed relative to.
+#[test]
+fn deleting_a_host_keeps_its_port_and_type_and_prunes_only_its_own_records() {
+    use crate::plan::test_fixtures::host_with_port_type_and_body;
+    for schema in ["IFC2X3", "IFC4", "IFC4X3"] {
+        let content = host_with_port_type_and_body(schema);
+        let index = FileIndex::complete(&content);
+        let requested: HashSet<u32> = [10].into_iter().collect();
+        let result = resolve_deletes(&index, schema, &requested, &[], &HashSet::new());
+
+        for id in [14, 15, 16, 17, 20, 21, 22] {
+            assert!(!result.removed.contains(&id), "{schema}: the port and its placement chain stay (#{id})");
+        }
+        for id in [40, 41, 42] {
+            assert!(!result.removed.contains(&id), "{schema}: the type with no occurrence left stays declared (#{id})");
+        }
+        for id in [11, 30, 31, 32] {
+            assert!(!result.removed.contains(&id), "{schema}: the survivor and its shared set stay (#{id})");
+        }
+        assert_eq!(result.stripped.get(&(32, 4)), Some(&[10].into_iter().collect()), "{schema}: the shared rel only loses #10");
+        for id in [18, 43, 35] {
+            assert!(result.removed.contains(&id), "{schema}: a relationship that needed the host goes (#{id})");
+        }
+        if index.contains(19) {
+            assert!(result.removed.contains(&19), "{schema}: the port connection names the host");
+        }
+        for id in [33, 34, 60, 61, 62, 63, 64, 65, 66] {
+            assert!(result.removed.contains(&id), "{schema}: a record only the host used is pruned (#{id})");
+        }
+        // IFC requires an opening to void exactly one element: it goes even
+        // though its own property set still names it.
+        for id in [70, 71, 72, 73, 74, 75, 76, 77] {
+            assert!(result.removed.contains(&id), "{schema}: the host's opening goes with it (#{id})");
+        }
+    }
+}
+
+/// The O(1) list strip that made bulk deletes linear (#8078's cascade): a
+/// list stripped many times empties exactly once, at its last member, and
+/// a member listed twice is stripped by one deletion.
+#[test]
+fn a_long_shared_list_is_stripped_entry_by_entry_and_cascades_only_when_empty() {
+    use crate::plan::test_fixtures::two_walls_sharing_a_pset;
+    for schema in ["IFC2X3", "IFC4", "IFC4X3"] {
+        let content = String::from_utf8(two_walls_sharing_a_pset(schema)).unwrap().replace("(#10,#11)", "(#10,#11,#10)");
+        let index = FileIndex::complete(content.as_bytes());
+        let one: HashSet<u32> = [10].into_iter().collect();
+        let result = resolve_deletes(&index, schema, &one, &[], &HashSet::new());
+        assert!(!result.removed.contains(&32), "{schema}: #11 is still related");
+        assert_eq!(result.stripped.get(&(32, 4)), Some(&[10].into_iter().collect()), "{schema}: both #10 entries, one strip");
+        let both: HashSet<u32> = [10, 11].into_iter().collect();
+        let result = resolve_deletes(&index, schema, &both, &[], &HashSet::new());
+        assert!(result.removed.contains(&32), "{schema}: nothing left to relate");
+        assert!(result.removed.contains(&31), "{schema}: the set only the two walls used");
+    }
+}
+
+/// Delete cascade of the export plan (#8078): an opening goes with its host
+/// or its voids relationship, but not while a second host it (wrongly) also
+/// voids survives.
+#[test]
+fn an_opening_goes_once_nothing_it_voids_is_left() {
+    use crate::plan::test_fixtures::host_with_port_type_and_body;
+    for schema in ["IFC2X3", "IFC4", "IFC4X3"] {
+        let content = host_with_port_type_and_body(schema);
+        let index = FileIndex::complete(&content);
+        let rel_only: HashSet<u32> = [71].into_iter().collect();
+        let result = resolve_deletes(&index, schema, &rel_only, &[], &HashSet::new());
+        assert!(result.removed.contains(&70), "{schema}: an opening voiding nothing goes with its relationship");
+
+        let text = String::from_utf8(content.clone()).unwrap();
+        let line71 = text.lines().find(|l| l.starts_with("#71=")).unwrap();
+        let line78 = line71.replacen("#71=", "#78=", 1).replace("#10,#70", "#11,#70").replace(&gid(71), &gid(78));
+        let two_hosts = text.replacen("ENDSEC;\nEND-ISO", &format!("{line78}\nENDSEC;\nEND-ISO"), 1);
+        let index = FileIndex::complete(two_hosts.as_bytes());
+        let host: HashSet<u32> = [10].into_iter().collect();
+        let result = resolve_deletes(&index, schema, &host, &[], &HashSet::new());
+        assert!(result.removed.contains(&71), "{schema}: the deleted host's voids relationship goes");
+        assert!(!result.removed.contains(&70), "{schema}: the opening still voids #11");
+        assert!(!result.removed.contains(&78), "{schema}: and #11 keeps it");
+        let both: HashSet<u32> = [10, 11].into_iter().collect();
+        let result = resolve_deletes(&index, schema, &both, &[], &HashSet::new());
+        assert!(result.removed.contains(&70), "{schema}: no host left");
+        // #71 is asked first, while #78 still stands; #78 only goes a round
+        // later (#23 takes #11 through its placement, #11 takes #78). The
+        // last relationship to go decides.
+        let rel_then_cascade: HashSet<u32> = [71, 23].into_iter().collect();
+        let result = resolve_deletes(&index, schema, &rel_then_cascade, &[], &HashSet::new());
+        assert!(result.removed.contains(&11) && result.removed.contains(&78), "{schema}: the cascade reaches #78");
+        assert!(result.removed.contains(&70), "{schema}: and the opening goes with it");
+        // Deleting a host's body takes the host through its Representation.
+        let body: HashSet<u32> = [60].into_iter().collect();
+        assert!(resolve_deletes(&index, schema, &body, &[], &HashSet::new()).removed.contains(&10), "{schema}");
+    }
+}
+
+/// A target `prunable` never prunes is not counted: a count collects the
+/// target's whole forward closure, for an answer the cascade cannot use.
+#[test]
+fn a_kept_type_or_port_is_never_counted() {
+    use crate::plan::test_fixtures::host_with_port_type_and_body;
+    let mut ports = 0;
+    for schema in ["IFC2X3", "IFC4", "IFC4X3"] {
+        let content = host_with_port_type_and_body(schema);
+        let mut index = FileIndex::scan(&content, &Default::default());
+        let requested: HashSet<u32> = [10].into_iter().collect();
+        let mut result = resolve_deletes(&index, schema, &requested, &[], &HashSet::new());
+        while index.collect_missing_referrers() {
+            result = resolve_deletes(&index, schema, &requested, &[], &HashSet::new());
+        }
+        assert!(result.removed.contains(&43) && !result.removed.contains(&40), "{schema}: the type stays");
+        assert!(!index.referrers.knows(40), "{schema}: the type is not counted");
+        if index.contains(19) {
+            assert!(result.removed.contains(&19) && !result.removed.contains(&14), "{schema}: the port stays");
+            assert!(!index.referrers.knows(14), "{schema}: the port is not counted");
+            ports += 1;
+        }
+    }
+    assert!(ports > 0, "some schema's fixture connects the port");
 }

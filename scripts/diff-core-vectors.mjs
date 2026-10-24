@@ -10,6 +10,12 @@ import { diffModels } from '../packages/diff/dist/index.js';
 const entity = (key, ref, extra = {}) => ({ key, ref, ifcType: 'IfcWall', dataHash: 'd', ...extra });
 const cases = [
   { name: 'empty', base: [], head: [] },
+  ...[false, true].flatMap(detectSplitMerge => [false, true].map(detectSuccessors => ({
+    name: `content-disabled-${detectSplitMerge}-${detectSuccessors}`,
+    options: { matchUnpairedByContent: false, detectSplitMerge, detectSuccessors },
+    base: [entity('old', 1, { geometryHash: 'g' })],
+    head: [entity('new', 2, { geometryHash: 'g' })],
+  }))),
   { name: 'duplicates', base: [entity('b', 1), entity('a', 2), entity('b', 3, { dataHash: 'changed' })],
     head: [entity('b', 4, { dataHash: 'changed' }), entity('c', 5), entity('c', 6)] },
   ...['data', 'geometry', 'both', 'invalid'].flatMap(scope => [

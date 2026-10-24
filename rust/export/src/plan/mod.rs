@@ -5,8 +5,11 @@
 //! primitives the rest of this crate already carries
 //! (`AttrMutation`-shaped edits, `CopyOnWriteMutation`'s copy-then-repoint
 //! shape, [`crate::step_cow`]'s id allocator role) plus the parts no STEP
-//! option expresses: occurrence overrides, placement rewrites, and delete
-//! with reverse-reference repair.
+//! option expresses: occurrence overrides, placement rewrites, body geometry
+//! replacement, and delete with reverse-reference repair.
+//! [`Disposition::Add`] builds a new object (placement, geometry,
+//! containment, type, property sets, material, classifications, an opening
+//! in a host) from an IFC-level description; see `add.rs`.
 //!
 //! # Design
 //!
@@ -27,33 +30,55 @@
 //!
 //! - It does not convert between IFC2X3/IFC4/IFC4X3 — `crate::schema_convert`
 //!   already does that, as a separate concern a caller composes with this one.
-//! - `Disposition::Add` is counted, not built: creating a genuinely new
-//!   object (its own GlobalId, its own placement, its own containment) is
-//!   not done here.
 //! - A property or quantity write never edits a shared record in place.
 //!   Sharing is judged at the set (how many relationships or types reach it)
 //!   and at the value (how many sets list it); either one shared means a
 //!   copy, or a refusal for a set shared between types.
 
+mod add;
+mod add_assoc_types;
+mod add_builders;
+mod add_geometry;
+mod add_profile;
+mod add_props;
+mod add_rels;
+mod add_types;
 mod attrs;
+mod builders;
 mod delete;
+mod geometry;
 mod index;
 mod owner_history;
 mod placement;
+mod patch;
 mod props;
 mod props_lookup;
 mod props_synth;
 mod referrers;
 mod resolve;
+mod skeleton;
+mod tessellation;
+#[cfg(test)]
+mod add_test_support;
 #[cfg(test)]
 mod test_fixtures;
 mod types;
 mod validate;
 mod write;
 
+pub use add_assoc_types::{
+    ClassificationLink, ClassificationSystem, LayerMaterial, MaterialLink, NewClassification, NewClassificationReference,
+    NewLayerSet, NewMaterial, NewMaterialLayer, ValueUnit,
+};
+pub use add_types::{
+    ClassSpec, Extrusion, GlobalId, IfcClass, NewObject, NewOpening, NewPlacement, NewProperty, NewPropertySet, NewType,
+    PropertyValue, Representation, TypeLink,
+};
+pub use placement::IDENTITY;
+pub use skeleton::{skeleton, MapConversion, MapUnit, Skeleton, SkeletonRoot, SKELETON_SCHEMA};
 pub use types::{
-    Disposition, ExportPlan, ObjectRef, Patch, PlacementPatch, PlanContext, PlanError, PropScope, PropWrite,
-    PsetKind, Refusal, ValidationFinding, WriteReport,
+    Disposition, DroppedRepresentation, ExportPlan, GeometryPatch, ObjectRef, Patch, PlacementPatch, PlanContext, PlanError,
+    PropScope, PropWrite, PsetKind, Refusal, SurfaceColour, TriangleMesh, ValidationFinding, WriteReport,
 };
 
 use rustc_hash::FxHashSet;
@@ -67,6 +92,16 @@ use index::FileIndex;
 /// (each checked to be one value), and a 4x4 placement matrix. See the
 /// module docs for what is deliberately out of scope. `out` is buffered here.
 pub fn execute<W: std::io::Write>(source: &[u8], plan: &ExportPlan, out: W) -> Result<WriteReport, PlanError> {
+    // An Add's own GlobalId is looked up too: it must not already be in use.
+    let add_guids: Vec<String> = plan
+        .dispositions
+        .iter()
+        .filter_map(|(_, d)| match d {
+            Disposition::Add(new) => Some(new.guids_to_look_up()),
+            _ => None,
+        })
+        .flatten()
+        .collect();
     let guids: FxHashSet<&str> = plan
         .dispositions
         .iter()
@@ -74,6 +109,7 @@ pub fn execute<W: std::io::Write>(source: &[u8], plan: &ExportPlan, out: W) -> R
             ObjectRef::Guid(g) => Some(g.as_str()),
             ObjectRef::Id(_) => None,
         })
+        .chain(add_guids.iter().map(String::as_str))
         .collect();
     let mut index = FileIndex::scan(source, &guids);
     let schema = crate::schema_detect::detect_schema(source);

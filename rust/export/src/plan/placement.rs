@@ -149,7 +149,7 @@ fn sweep_orphans(index: &FileIndex, from: u32, to: u32) -> HashSet<u32> {
 /// translation. The placement holds only its Z and X axes, so a zero or
 /// parallel pair, a reflection, scale, shear or projective row would be
 /// dropped without a word.
-fn check_matrix(m: &[[f64; 4]; 4]) -> Result<(), String> {
+pub(crate) fn check_matrix(m: &[[f64; 4]; 4]) -> Result<(), String> {
     if m.iter().flatten().any(|v| !v.is_finite()) {
         return Err("placement matrix has a non-finite entry".into());
     }
@@ -192,6 +192,9 @@ pub(crate) fn axis_placement_records(
     ];
     Ok((records, a2p_id))
 }
+
+/// The identity 4x4, row-major: no rotation, no translation.
+pub const IDENTITY: [[f64; 4]; 4] = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]];
 
 /// A STEP real literal always carries a decimal point (`1.` not `1`).
 pub(crate) fn fmt(v: f64) -> String {

@@ -59,3 +59,13 @@ fn an_unreadable_curve_segment_frame_fails_the_profile_and_is_counted() {
         assert_eq!(refused, 1, "{placement}");
     }
 }
+
+#[test]
+fn a_curve_segment_placement_that_is_not_an_axis2_placement_fails_the_profile() {
+    // IFC4X3 types the Placement as IfcPlacement, so an IfcAxis1Placement is
+    // schema-valid; the sampler reads Axis2 frames only. Base skipped the
+    // segment (one point lost); head refuses it as Unsupported and counts it.
+    let (points, refused) = sample("IFCAXIS1PLACEMENT(#1,#2)");
+    assert!(points.is_err(), "{points:?}");
+    assert_eq!(refused, 1);
+}

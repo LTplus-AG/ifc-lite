@@ -16,8 +16,11 @@ fn issue_7779_ellipse_and_rectangle_share_repaired_planar_axes() {
         ("0.,2.E-9", 0.0, 1.0),
         ("3.,4.", 0.6, 0.8),
         ("1.E150,1.E150", std::f64::consts::FRAC_1_SQRT_2, std::f64::consts::FRAC_1_SQRT_2),
-        // Finite components can overflow norm(): retain the canonical repair,
-        // including its -Y perpendicular fallback, without changing its policy.
+        // Known limitation, not correct geometry: finite (1,1)-scaled ratios
+        // overflow norm(), so build_axis2_matrix treats the direction as
+        // degenerate and takes its -Y fallback (base's raw atan2 gave 45°).
+        // D25 keeps that repair bit-identical; scale-normalising before norm()
+        // is a separate decision, and fixing it must update this row.
         ("1.E308,1.E308", 0.0, -1.0),
     ] {
         let content = format!(

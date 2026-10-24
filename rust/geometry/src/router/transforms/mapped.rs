@@ -175,4 +175,33 @@ mod tests {
             assert!((matrix[13] - 0.04).abs() < 1e-12);
         }
     }
+
+    /// F3b drift 3.5: the textured type map reads its MappingOrigin through
+    /// the same reader as a mapped item. Base honoured only a 3D origin and
+    /// returned `None` (no transform) for a 2D or a wrong-typed one.
+    #[test]
+    fn the_textured_type_map_origin_honours_2d_and_refuses_a_wrong_type() {
+        let content = b"#1=IFCCARTESIANPOINT((10.,20.));\n#2=IFCDIRECTION((0.,1.));\n\
+            #3=IFCAXIS2PLACEMENT2D(#1,#2);\n#4=IFCREPRESENTATIONMAP(#3,#9);\n\
+            #5=IFCREPRESENTATIONMAP(#1,#9);\n#6=IFCREPRESENTATIONMAP($,#9);\n\
+            #10=IFCCARTESIANPOINT((0.,0.));\n#7=IFCAXIS2PLACEMENT2D(#10,$);\n\
+            #8=IFCREPRESENTATIONMAP(#7,#9);";
+        let router = GeometryRouter::with_scale(1.0);
+        let mut decoder = EntityDecoder::new(content);
+        let map = decoder.decode_by_id(4).unwrap();
+        let m = router.type_map_origin(&map, &mut decoder).unwrap().expect("a 2D origin is honoured");
+        assert_eq!((m[(0, 3)], m[(1, 3)], m[(2, 3)]), (10.0, 20.0, 0.0));
+        assert!(m[(0, 0)].abs() < 1e-12 && (m[(1, 0)] - 1.0).abs() < 1e-12, "X follows RefDirection");
+        // The textured path bakes an identity 2D frame too; the mapped path
+        // keeps its identity shortcut.
+        let map = decoder.decode_by_id(8).unwrap();
+        assert!(router.type_map_origin(&map, &mut decoder).unwrap().is_some());
+        assert!(router.mapping_origin_transform(&map, &mut decoder).unwrap().is_none());
+        // A cartesian point is not an IfcAxis2Placement: an error, not `None`.
+        let map = decoder.decode_by_id(5).unwrap();
+        assert!(router.type_map_origin(&map, &mut decoder).is_err());
+        // `$` stays absent (no transform), as on base.
+        let map = decoder.decode_by_id(6).unwrap();
+        assert!(router.type_map_origin(&map, &mut decoder).unwrap().is_none());
+    }
 }

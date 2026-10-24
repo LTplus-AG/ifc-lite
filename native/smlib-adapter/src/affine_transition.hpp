@@ -53,6 +53,6 @@ class AffineTransition {
     double control(SmObject*,size_t,double) const;
     friend class Ledger; friend class RepresentationSeal;
     friend struct AffineTransitionTestAccess;
-    friend auto ::copy_affine_rational(SmBrep*,const double*,ifclite_smlib_affine_certificate&,Ledger*) -> std::unique_ptr<SmBrep>;
+    friend auto ::copy_affine_rational(SmBrep*,const double*,ifclite_smlib_affine_certificate&,face_lineage::Ledger*) -> std::unique_ptr<SmBrep>;
 };
 }

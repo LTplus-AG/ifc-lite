@@ -116,6 +116,21 @@ impl<'a> StepRecord<'a> {
         (record[before - 1] != b'=').then_some(Self { bytes: record, head, open, commented })
     }
 
+    /// Parse complete simple-record framing: a valid head, closed argument
+    /// list, legal trivia, required semicolon, then trivia to the raw span end.
+    /// Attribute values remain opaque; callers must validate their schema and
+    /// fully consume any nested list/value used as authority. Unlike `parse`,
+    /// this refuses a record prefix followed by extra lists/tokens/parentheses.
+    /// No allocation; existing prefix-compatible readers are unchanged.
+    pub fn parse_complete(record: &'a [u8]) -> Option<Self> {
+        let record = Self::parse(record)?;
+        record.id()?;
+        record.keyword_bytes()?;
+        let mut attrs = record.attrs();
+        attrs.by_ref().for_each(drop);
+        attrs.record_terminated().then_some(record)
+    }
+
     /// The instance name, `n` of `#n`. `None` when the head is not
     /// `#digits` then `=` (or the id is past `u32::MAX`).
     pub fn id(&self) -> Option<u32> {

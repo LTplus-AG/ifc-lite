@@ -15,22 +15,23 @@ fn charge(work: usize) -> Result<(), RetainedExecutionError> {
     Ok(())
 }
 fn decode(d: &mut EntityDecoder, id: u32) -> Result<DecodedEntity, RetainedExecutionError> {
-    charge(1)?;
+    super::removal_record::read(d,id)?;
     d.decode_by_id(id).map_err(|_| RetainedExecutionError::Source)
-}
-fn reference(e: &DecodedEntity, index: usize) -> Result<u32, RetainedExecutionError> {
-    e.get_ref(index).ok_or(RetainedExecutionError::Source)
 }
 /// Only direct Body items: mappings/CSG require a different containment proof.
 pub(super) fn body(d: &mut EntityDecoder, product: u32) -> Result<Vec<u32>, RetainedExecutionError> {
-    let product = decode(d, product)?;
-    let shape = decode(d, reference(&product, slot::IfcProduct::REPRESENTATION.index())?)?;
+    let shape_id = super::removal_record::reference(d, product, slot::IfcProduct::REPRESENTATION.index())?;
+    super::removal_record::references(d,shape_id,2)?;
+    let shape = decode(d, shape_id)?;
     if shape.ifc_type != IfcType::IfcProductDefinitionShape { return Err(refused()); }
     let reps = shape.get_list(2).ok_or_else(refused)?;
     charge(reps.len())?;
     let mut selected = None;
     for member in reps {
-        let rep = decode(d, member.as_entity_ref().ok_or_else(refused)?)?;
+        let rep_id = member.as_entity_ref().ok_or_else(refused)?;
+        super::removal_record::optional_text(d,rep_id,1)?;
+        super::removal_record::references(d,rep_id,3)?;
+        let rep = decode(d, rep_id)?;
         if !matches!(rep.ifc_type, IfcType::IfcShapeRepresentation | IfcType::IfcTopologyRepresentation) {
             return Err(refused());
         }
@@ -56,12 +57,14 @@ pub(super) fn relationships(context: &OwnedMeshProductionContext, d: &mut Entity
     let mut ids = Vec::new();
     while let Some((id, name, _, _)) = scanner.next_entity() {
         if !ifc_lite_core::keyword_eq(name, "IFCRELVOIDSELEMENT") { continue; }
+        let host_id = super::removal_record::reference(d,id,4)?;
+        let opening_id = super::removal_record::reference(d,id,5)?;
         let relation = decode(d, id)?;
         if relation.ifc_type != IfcType::IfcRelVoidsElement { return Err(refused()); }
-        if reference(&relation, 4)? != product { continue; }
+        if host_id != product { continue; }
         OwnedResourceContext::capture_current().reserve_headers(&mut ids, 1)
             .map_err(RetainedExecutionError::Stopped)?.retain();
-        ids.push(reference(&relation, 5)?);
+        ids.push(opening_id);
     }
     if context.borrowed().void_index.get(&product).map(Vec::as_slice).unwrap_or(&[]) != ids.as_slice() {
         return Err(RetainedExecutionError::Source);

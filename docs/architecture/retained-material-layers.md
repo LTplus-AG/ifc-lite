@@ -161,3 +161,21 @@ preserve valid/comment-trivia inputs. Native and actual Worker definitions
 require that same policy refusal after real execution; incidental SDK errors
 fail those definitions and do not count as qualification. All runtime execution
 and final J2/publication gates remain held pending parent validation.
+
+
+R3 complete-record authority: every J2 proof record read now passes one bounded
+`removal_record::read` admission before raw access or decoded lookup. Canonical
+`StepRecord::parse_complete` requires a valid simple-record head, the complete
+argument-list terminator, legal trivia, a required semicolon and only trivia to
+the supplied raw-span end. Historical `parse`/`closed` readers keep their prefix
+contract. This framing check deliberately leaves attribute schema to the caller:
+vector lists still require `fully_consumed`, scalar decimals/references are whole
+tokens, and Body membership lists and representation identifiers now receive
+complete list/reference/string checks. Product/coframe records, placements,
+primitives, profiles, shape representations and void relationships all use this
+admission. No J3 code or numerical parser changes are included.
+Source proof tests cover adjacent lists, keyword/list suffixes, extra closes,
+comment-adjacent suffixes, nested-member tails, coframe records and relationship
+references, with valid record-trivia controls. SDK and Worker definitions require
+actual source-policy refusal, not incidental errors. All execution and final
+publication holds remain unchanged.

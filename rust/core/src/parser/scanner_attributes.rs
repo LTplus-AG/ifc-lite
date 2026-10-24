@@ -97,6 +97,16 @@ impl<'a> StepListItems<'a> {
     pub fn fully_consumed(&self) -> bool {
         self.closed() && skip_step_trivia(self.bytes, self.pos) == Some(self.bytes.len())
     }
+
+    /// A record's argument list must be followed by trivia, one semicolon,
+    /// then trivia to the end of its supplied span. Kept separate from list
+    /// value consumption and from the historical prefix-compatible closed().
+    pub(crate) fn record_terminated(&self) -> bool {
+        if !self.closed() { return false; }
+        let Some(end) = skip_step_trivia(self.bytes, self.pos) else { return false; };
+        self.bytes.get(end) == Some(&b';')
+            && skip_step_trivia(self.bytes, end + 1) == Some(self.bytes.len())
+    }
 }
 
 impl<'a> Iterator for StepListItems<'a> {

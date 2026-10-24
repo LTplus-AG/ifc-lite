@@ -54,6 +54,7 @@ fn source_id(value: &LogicalRetainedValue, context: &OwnedMeshProductionContext,
         || value.placements()[0].stage != (RetainedPlacementStage::Product { product_id: product }) {
         return Err(refused());
     }
+    super::removal_record::read(decoder,product)?;
     let entity = decoder.decode_by_id(product).map_err(|_| RetainedExecutionError::Source)?;
     let placement = router.resolve_scaled_placement_strict(&entity, decoder).map_err(geometry)?;
     let scale = nalgebra::Matrix4::new_nonuniform_scaling(&nalgebra::Vector3::repeat(router.unit_scale()));

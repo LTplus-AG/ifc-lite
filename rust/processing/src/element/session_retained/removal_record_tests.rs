@@ -38,7 +38,9 @@ fn j2_coframe_records_do_not_grant_prefix_authority() {
 fn j2_body_membership_rejects_record_and_nested_list_tails() {
     for source in [record::tail(30,"(2.);"),record::tail(28,"(2.);"),record::tail(27,"(2.);"),
         removal_sources().remove(0).replace("($,$,(#27))", "($,$,(#27)BOGUS)"),
-        removal_sources().remove(0).replace("'SweptSolid',(#26)","'SweptSolid',(#26)BOGUS")] {
+        removal_sources().remove(0).replace("'SweptSolid',(#26)","'SweptSolid',(#26)BOGUS"),
+        removal_sources().remove(0).replace("'Body','SweptSolid',(#26)","'Body'BOGUS,'SweptSolid',(#26)"),
+        removal_sources().remove(0).replace("'SweptSolid',(#26)","'SweptSolid',((#26))")] {
         let source = ifc_lite_core::SourceBundle::new(source.into_bytes());
         refused(super::removal_source::body(&mut source.decoder(),30));
     }
@@ -78,5 +80,20 @@ fn j2_sdk_record_suffixes_require_source_policy_refusal() {
             assert!(execution.issue_next(decoder,router,&worker).is_err());
             assert!(!router.host_consumed_by_void(30),"J2_EFFECT_ISOLATION");
         });
+    }
+}
+
+#[test]
+fn j2_relationship_records_and_reference_tokens_require_complete_authority() {
+    for (source,valid) in [(record::tail(80,"(2.);"),false),
+        (removal_sources().remove(0).replace("$,$,$,#30,#50)","$,$,$,#30,#50BOGUS)"),false),
+        (record::trivia(),true)] {
+        let bundle = ifc_lite_core::SourceBundle::new(source.into_bytes());
+        let model = ProductionModel::from_source(bundle.clone());
+        let mut ids = rustc_hash::FxHashMap::default();
+        ids.insert(30,vec![50,70,100]);
+        let context = model.snapshot(OwnedMeshProductionData {void_index: Arc::new(ids), ..Default::default()});
+        let result = super::removal_source::relationships(&context,&mut bundle.decoder(),30);
+        if valid { assert_eq!(result.unwrap(),vec![50,70,100]); } else { refused(result); }
     }
 }

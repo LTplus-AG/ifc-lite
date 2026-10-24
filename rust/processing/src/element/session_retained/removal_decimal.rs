@@ -8,12 +8,8 @@ use ifc_lite_core::parser::{parse_ref, StepListItems, StepRecord};
 
 fn record<'a>(d: &mut EntityDecoder<'a>, id: u32, keyword: Option<&[u8]>, count: usize)
     -> Result<StepRecord<'a>, RetainedExecutionError> {
-    charge(1)?;
-    let raw = d.get_raw_bytes(id).ok_or_else(refused)?;
-    if raw.len() > 4096 { return Err(refused()); }
-    charge(raw.len() as u64 * 16)?;
-    let record = StepRecord::parse(raw).ok_or_else(refused)?;
-    if record.id() != Some(id) || keyword.is_some_and(|k| !record.keyword_is(k)) { return Err(refused()); }
+    let record = super::removal_record::read(d,id)?;
+    if keyword.is_some_and(|k| !record.keyword_is(k)) { return Err(refused()); }
     let mut attrs = record.attrs();
     for _ in 0..count { attrs.next().ok_or_else(refused)?; }
     if attrs.next().is_some() || !attrs.closed() { return Err(refused()); }
@@ -70,12 +66,7 @@ pub(super) fn prism(d: &mut EntityDecoder, id: u32) -> Result<BoxSource, Retaine
 fn product_translation(d: &mut EntityDecoder, product: u32) -> Result<[i128;3], RetainedExecutionError> {
     // Product identity/type is admitted by the common source traversal. Raw
     // record identity and full closure still precede reading ObjectPlacement.
-    charge(1)?;
-    let raw = d.get_raw_bytes(product).ok_or_else(refused)?;
-    if raw.len() > 4096 { return Err(refused()); }
-    charge(raw.len() as u64 * 16)?;
-    let r = StepRecord::parse(raw).ok_or_else(refused)?;
-    if r.id() != Some(product) { return Err(refused()); }
+    let r = super::removal_record::read(d,product)?;
     let mut attrs = r.attrs();
     let mut count = 0;
     while attrs.next().is_some() { count += 1; if count > 16 { return Err(refused()); } }

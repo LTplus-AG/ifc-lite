@@ -198,3 +198,33 @@ test('publication syscall refuses even an empty destination without changing eit
   assert.equal(await readFile(join(source, 'complete'), 'utf8'), 'owned output');
   assert.deepEqual(await readdir(o.out), []);
 });
+
+test('R1 real web loader import namespace is not a delivered bg.js (#7955)', async t => {
+  const o = await fixture(t);
+  await writeFile(join(o.engine, 'ifc-lite.js'), await readFile('scripts/fixtures/retained-loaders/wasm-bindgen.mjs'));
+  await writeFile(join(o.build, 'ifclite_smlib_browser.mjs'), await readFile('scripts/fixtures/retained-loaders/emscripten.mjs'));
+  const inputs = join(o.out, '../real-shape.json');
+  await stageRetainedBrowserAssets({ ...o, record: inputs, inputs: undefined, out: undefined });
+  const manifest = await stageRetainedBrowserAssets({ ...o, inputs });
+  await verifyRetainedAssets(o.out, inputs);
+  assert.ok(manifest.dependencies.some(edge => edge.to === 'pkg-retained/ifc-lite_bg.wasm'));
+  assert.ok(manifest.dependencies.some(edge => edge.to === 'ifclite_smlib_browser.wasm'));
+  assert.ok(!manifest.assets.some(asset => asset.path.endsWith('_bg.js')));
+});
+
+for (const [id, source] of [
+  ['R2 URL string', 'const url="https://example.test"; import(globalThis.asset);'],
+  ['R2 comment', '/* import("./decoy.mjs") */ import(/* real */ globalThis.asset);'],
+  ['R2 template expression', 'const text = `https://host/${import(globalThis.asset)}`;'],
+  ['R2 regex', 'const re = /https:\\/\\/host/; import(globalThis.asset);'],
+  ['R3 Worker URL', 'new Worker(new URL(globalThis.workerPath, import.meta.url), {type:"module"});'],
+  ['R3 fetch', 'fetch(globalThis.wasmPath);'],
+  ['R3 computed URL', 'new URL(globalThis.asset, import.meta.url);'],
+]) test(`${id} refuses recording and publishes nothing (#7955)`, async t => {
+  const o = await fixture(t);
+  await writeFile(join(o.engine, 'extra.mjs'), source);
+  const record = join(o.out, '../refused.json');
+  await assert.rejects(stageRetainedBrowserAssets({ ...o, record, inputs: undefined, out: undefined }));
+  await assert.rejects(access(record), /ENOENT/);
+  await assert.rejects(access(o.out), /ENOENT/);
+});

@@ -171,6 +171,41 @@ pub fn account_from_source_context(
     })
 }
 
+/// Run `operation` with none of this thread's lexical resource state: no
+/// account, source stop or terminal.
+///
+/// A rayon wait (`join`, `par_iter`) may run an unrelated queued job on the
+/// waiting thread before it returns, such as another element's whole product.
+/// That job is not part of the caller's work: it must not bill the caller's
+/// account, observe the caller's source stop or terminal, or record its own
+/// stop into them. Wrap every rayon wait inside product work in this; the
+/// caller's state is restored on return and on unwind. `operation` itself
+/// must not need the caller's resource state.
+///
+/// This hides RESOURCE state only (account, source stop, terminal). Other
+/// per-thread diagnostic capture, such as geometry telemetry transactions and
+/// the CSG census sink, is not scoped by it.
+pub fn detached<T>(operation: impl FnOnce() -> T) -> T {
+    struct Restore {
+        account: Option<ExecutionAccount>,
+        source: Option<ifc_lite_core::execution_owner::SourceStopHandle>,
+        terminal: Option<Option<ProgramStop>>,
+    }
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            CURRENT.with(|slot| *slot.borrow_mut() = self.account.take());
+            SOURCE_STOP.with(|slot| *slot.borrow_mut() = self.source.take());
+            TERMINAL.with(|slot| slot.set(self.terminal));
+        }
+    }
+    let _restore = Restore {
+        account: CURRENT.with(|slot| slot.borrow_mut().take()),
+        source: SOURCE_STOP.with(|slot| slot.borrow_mut().take()),
+        terminal: TERMINAL.with(Cell::take),
+    };
+    operation()
+}
+
 /// Install only a validated source capability's shared terminal handle. The
 /// lexical guard restores the previous handle on return and unwind.
 pub fn with_source_stop<T>(

@@ -21,39 +21,7 @@
 #include <memory>
 #include <new>
 #include <stdexcept>
-namespace face_lineage {
-// Test-only read diagnostics, never an ancestry/receipt credential.
-struct ReadAccountingTestAccess {
-    static uint32_t event_size(const Ledger& l) { return l.numerical.tessellation?l.read_callbacks:l.event_size(); }
-    static const Event& event(const Ledger& l,uint32_t i) {
-        if(!l.numerical.tessellation) return l.event(i);
-        if(i>=l.read_callbacks || l.read_callbacks-i>l.read_trace.size())
-            throw std::runtime_error("read trace diagnostic index expired");
-        return l.read_trace[i%l.read_trace.size()];
-    }
-    static void limits(Ledger& l,uint32_t objects,uint32_t callbacks) {
-        // Only reduce constructor-validated limits, before allocation.
-        if(l.numerical.tessellation || !objects || objects>l.limits.read_objects ||
-            !callbacks || callbacks>l.limits.read_callbacks) throw std::runtime_error("invalid test quota");
-        l.limits.read_objects=objects; l.limits.read_callbacks=callbacks;
-    }
-    static uint32_t live(const Ledger& l) { return l.read_live; }
-    static Identity identity(Ledger& l,SmObject* o) {
-        const auto* b=l.read_binding(o,false); return b?b->current:Identity{};
-    }
-    static bool refund(Ledger& l,SmObject* o,Identity id) { return l.refund_read_binding(o,id); }
-};
-// Test-only access to the fixed calls' private phase. No runtime callable seam.
-struct SubdivisionTestAccess {
-    static void finish(Ledger& ledger) { ledger.subdivision->finish(); }
-};
-struct NumericalReadTestAccess {
-    static void begin(Ledger& ledger,SmBrep& source) { NumericalRead::begin(ledger,source); }
-    static void tessellation(Ledger& ledger,SmBrep& source) { NumericalRead::begin_tessellation(ledger,source); }
-    static void end(Ledger& ledger) { NumericalRead::end(ledger); }
-    static void release(Ledger& ledger,SmPolyBrep* output=nullptr) { NumericalRead::release_tessellation_history(ledger,output); }
-};
-}
+#include "numerical_read_test_access.hpp"
 namespace {
 using namespace face_lineage;
 void require(bool ok,const char* message) { if(!ok) throw std::runtime_error(message); }
@@ -632,8 +600,11 @@ void subdivision(const char* name) {
 }
 
 }
+void run_numerical_boundary_case(const char*);
 void run_numerical_trim_case(const char* name) {
     if(std::strncmp(name,"accounting-",11)==0) read_accounting(name);
+    else if(std::strcmp(name,"journal-durable")==0 || std::strcmp(name,"split-cap-release")==0 ||
+        std::strcmp(name,"split-cap-refusal")==0) run_numerical_boundary_case(name);
     else if(std::strcmp(name,"journal")==0) { read_journal(); polygon_journal(); }
     else if(std::strcmp(name,"planar-rounding")==0) planar_coefficients(true);
     else if(std::strcmp(name,"planar-outside")==0) planar_coefficients(false);

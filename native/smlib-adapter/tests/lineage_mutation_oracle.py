@@ -281,6 +281,22 @@ def main():
          'FixtureVertex() {}', 'FixtureVertex()=default;',
          'actual fixture preserves SDK allocator context'),
     ])
+    # #7955 D96 gaps 2/4: actual 4096/4097 SDK splits and a durable face
+    # survivor, independent of the existing scratch escaped-BRep witness.
+    cases.extend([
+        ('trim-split-cap-release', 'edge_subdivision.cpp',
+         'require(++count<=4096,"subdivision operation count exceeded");',
+         'require(++count<=4095,"subdivision operation count exceeded");',
+         'split cap accepts the 4096th actual SDK subdivision'),
+        ('trim-split-cap-refusal', 'edge_subdivision.cpp',
+         'require(++count<=4096,"subdivision operation count exceeded");',
+         '++count; // mutation: omit the split cap',
+         'split cap refuses the 4097th actual SDK subdivision at its first notification'),
+        ('trim-journal-durable', 'face_lineage_reclaim.cpp',
+         'require(retained(b.current),"numerical journal still has a live generation");',
+         '// mutation: discard a surviving durable face generation',
+         'journal release independently refuses a surviving durable face generation'),
+    ])
     paths = sorted({source / row[1] for row in cases})
     subprocess.run(['git', 'diff', '--exit-code', 'HEAD', '--', *map(str, paths)], cwd=root, check=True)
     originals = {path: path.read_text() for path in paths}

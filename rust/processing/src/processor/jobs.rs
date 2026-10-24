@@ -230,8 +230,8 @@ pub(super) fn process_entity_job(
         &mut decoder,
         &local_router,
     );
-    // The run never invalidates its own model, so this cannot refuse; if it
-    // ever did, the element publishes nothing rather than stale output.
+    // The run never invalidates its own model; it refuses only if a callback
+    // replaced the decoder or held an owner. Then it publishes nothing.
     let Ok(produced) = produced else {
         return super::run_snapshot::refused_by_context();
     };

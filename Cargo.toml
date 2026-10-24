@@ -12,7 +12,7 @@ repository = "https://github.com/LTplus-AG/ifc-lite"
 
 [workspace.dependencies]
 ifc-lite-core = { version = "22.6.0", path = "rust/core" }
-ifc-lite-diff = { version = "22.5.0", path = "rust/diff" }
+ifc-lite-diff = { version = "22.6.0", path = "rust/diff" }
 # `default-features = false`: geometry's default set is empty, and the members that
 # spelled it out (processing, wasm, server) said so to keep it that way.
 ifc-lite-geometry = { version = "22.6.0", path = "rust/geometry", default-features = false }

@@ -33,8 +33,8 @@ function run(root) {
   }
 }
 
-function rootCargoToml(crateVersion, { depCount = 7 } = {}) {
-  const names = ['core', 'geometry', 'processing', 'clash', 'export', 'wasm', 'landxml'].slice(0, depCount);
+function rootCargoToml(crateVersion, { depCount = 8 } = {}) {
+  const names = ['core', 'diff', 'geometry', 'processing', 'clash', 'export', 'wasm', 'landxml'].slice(0, depCount);
   const deps = names.map((n) => `ifc-lite-${n} = { version = "${crateVersion}", path = "rust/${n}" }`).join('\n');
   return `[workspace]\nmembers = ["rust/core"]\n\n[workspace.package]\nversion = "${crateVersion}"\nedition = "2021"\n\n[workspace.dependencies]\n${deps}\n`;
 }
@@ -48,7 +48,7 @@ function rootCargoToml(crateVersion, { depCount = 7 } = {}) {
  *   table (`ifc-lite-core.workspace = true`, the layout since #7672); `false`:
  *   no internal dependency at all
  */
-function makeTree(t, { npmVersion = '6.0.1', crateVersion = '6.0.1', offsetFile, depCount = 7, memberDeps = true, packageCount = 22 } = {}) {
+function makeTree(t, { npmVersion = '6.0.1', crateVersion = '6.0.1', offsetFile, depCount = 8, memberDeps = true, packageCount = 22 } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'check-rust-major-offset-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
 
@@ -188,6 +188,12 @@ test('vacuous: a workspace dependency table with too few internal literals to be
   assert.match(out, /DEP_FLOOR/);
 });
 
+test('vacuous: a root table one literal short, as when the scan skipped ifc-lite-diff (#8097)', (t) => {
+  const { code, out } = run(makeTree(t, { offsetFile: OFFSET_0, depCount: 7 }));
+  assert.equal(code, 1);
+  assert.match(out, /DEP_FLOOR/);
+});
+
 test('vacuous: member manifests that declare no internal dependency at all', (t) => {
   // Neither an explicit literal nor an inheritance: the scan looked at nine
   // manifests and found nothing of the kind it exists to check.
@@ -200,8 +206,8 @@ test('GREEN: members that inherit from the root table are inspected and counted 
   const root = makeTree(t, { npmVersion: '6.1.0', crateVersion: '7.1.0', offsetFile: OFFSET_1, memberDeps: 'inherit' });
   const { code, out } = run(root);
   assert.equal(code, 0, out);
-  // 7 literals in the root table + one inheritance per member (8).
-  assert.match(out, /15 internal dependency declaration\(s\) \(7 version literal\(s\), 8 inherited/);
+  // 8 literals in the root table + one inheritance per member (8).
+  assert.match(out, /16 internal dependency declaration\(s\) \(8 version literal\(s\), 8 inherited/);
 });
 
 test('an inheriting member agrees through the root literal, so a stale ROOT literal still fails', (t) => {
@@ -263,8 +269,8 @@ test('a reordered literal that AGREES is counted, so the total stays honest', (t
   );
   const { code, out } = run(root);
   assert.equal(code, 0, out);
-  // 7 in the root table + one per member manifest, the reordered one included.
-  assert.match(out, /15 internal dependency declaration\(s\) \(15 version literal\(s\), 0 inherited/);
+  // 8 in the root table + one per member manifest, the reordered one included.
+  assert.match(out, /16 internal dependency declaration\(s\) \(16 version literal\(s\), 0 inherited/);
 });
 
 test('an inline `{ workspace = true }` is an inheritance, not a version literal', (t) => {
@@ -277,7 +283,7 @@ test('an inline `{ workspace = true }` is an inheritance, not a version literal'
   );
   const { code, out } = run(root);
   assert.equal(code, 0, out);
-  assert.match(out, /15 internal dependency declaration\(s\) \(14 version literal\(s\), 1 inherited/);
+  assert.match(out, /16 internal dependency declaration\(s\) \(15 version literal\(s\), 1 inherited/);
 });
 
 test('vacuous: a declaration the scan cannot parse is named, not skipped', (t) => {

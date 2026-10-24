@@ -85,6 +85,23 @@ def main():
          '// mutation: accept an incomplete late transition',
          'affine transition rejects unreported edits and incomplete receipts'),
     ])
+    # #7955 observed trim repair: independent constructor, original-edit and
+    # helper-lifetime reversals. The preceding 18 cases stay intact.
+    cases.extend([
+        ('trim-positive', 'face_lineage_read.cpp',
+         'if(!known) {', 'if(true) {',
+         'copied trim gets an observed constructor generation'),
+        ('trim-original', 'face_lineage_read.cpp',
+         'if(!caller->IsKindOf(SmCurve_TYPE)) return false;',
+         'if(!caller->IsKindOf(SmCurve_TYPE)) return false;\n'
+         '    if(op==SM_NO_PRE_EDIT || op==SM_NO_POST_EDIT)\n'
+         '        for(auto* trim:numerical.trims) if(trim==caller) return true;',
+         'issued trim read still refuses original geometry edits'),
+        ('trim-leak', 'representation_seal_geometry.cpp',
+         'if(binding.alive && binding.numerical_operation==ledger.numerical.operation) ledger.fail(Failure::UnknownHistory);',
+         'if(false) ledger.fail(Failure::UnknownHistory);',
+         'issued trim read refuses a surviving temporary generation'),
+    ])
     paths = sorted({source / row[1] for row in cases})
     subprocess.run(['git', 'diff', '--exit-code', 'HEAD', '--', *map(str, paths)], cwd=root, check=True)
     originals = {path: path.read_text() for path in paths}

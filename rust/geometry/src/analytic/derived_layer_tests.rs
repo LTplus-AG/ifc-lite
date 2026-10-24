@@ -3,7 +3,7 @@
 use super::*;
 use ifc_lite_core::SourceBundle;
 const WALL: &str = include_str!("../../../../tests/evidence/retained-layers-j3/circular-wall-2.ifc");
-fn proof(text: &str, offsets: &[f64]) -> Result<DerivedLayerRegions, String> {
+fn proof(text: &str, offsets: &[f64]) -> std::result::Result<DerivedLayerRegions, String> {
     let bundle = SourceBundle::new(text.as_bytes().to_vec());
     DerivedLayerRegions::capture(15, 53, offsets, 1., &mut bundle.decoder())
 }

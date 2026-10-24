@@ -85,6 +85,29 @@ def main():
          '// mutation: accept an incomplete late transition',
          'affine transition rejects unreported edits and incomplete receipts'),
     ])
+    # #7955 stage 1 accounting mutations use actual SDK lifecycle witnesses.
+    cases.extend([
+        ('trim-accounting-refund', 'face_lineage_read_storage.cpp',
+         '--read_live; // one actual destruction refunds one live slot; never sequence',
+         '// mutation: no destruction refund',
+         'destroyed scratch generation refunds exactly once'),
+        ('trim-accounting-refund', 'face_lineage_read_storage.cpp',
+         'if(!entry || entry->alive || !entry->retired || entry->current!=generation || !read_live) return false;',
+         'if(!entry || entry->alive || !entry->retired || entry->current!=generation || !read_live) { if(read_live) --read_live; return true; }',
+         'destroyed scratch generation refunds exactly once'),
+        ('trim-accounting-bound', 'face_lineage_read_storage.cpp',
+         'if(read_live==limits.read_objects) { fail(Failure::ReadObjectLimit); return nullptr; }',
+         '// mutation: ignore independent live bound',
+         'one live object above independent read bound refuses'),
+        ('trim-accounting-callbacks', 'face_lineage_events.cpp',
+         'if(reading && read_callbacks==limits.read_callbacks) { fail(Failure::ReadCallbackLimit); return; }',
+         '// mutation: ignore independent callback budget',
+         'one callback above independent read budget refuses'),
+        ('trim-accounting-refund', 'face_lineage_read_storage.cpp',
+         'return {domain,++issued_sequence}; // lifetime token only: no ancestry node',
+         'return {domain,issued_sequence}; // mutation: recycle lifetime identity',
+         'refunded slots never recycle generation identities'),
+    ])
     # #7955 observed trim repair: independent constructor, original-edit and
     # helper-lifetime reversals. The preceding 18 cases stay intact.
     cases.extend([
@@ -213,7 +236,7 @@ def main():
          'node_count=keep_nodes; event_count=keep_events; issued_sequence=keep_nodes?nodes[keep_nodes-1].sequence:0;',
          'reclaimed journal storage never reissues a retired generation'),
         ('trim-journal', 'face_lineage_reclaim.cpp',
-         'require(retained(b.current),"numerical journal still has a live generation");',
+         'require(read_live==0,"numerical journal still has a live scratch generation");',
          '// mutation: discard live constructor generation',
          'journal release refuses a live escaped constructor generation'),
     ])

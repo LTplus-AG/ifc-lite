@@ -557,6 +557,10 @@ void address_reuse() {
     std::array<uintptr_t,128> addresses{}; std::array<Identity,128> births{}; bool reused=false;
     for(unsigned i=0;i<addresses.size();++i) {
         auto* face=new (allocation_owner.get()) FixtureFace(); ledger.check();
+        if(i==0) std::fprintf(stderr,"lineage reuse diagnostic face_context=%p expected_context=%p callback_matches=%u events=%u\n",
+            static_cast<const void*>(face->GetContext()),static_cast<void*>(&context),
+            unsigned(context.GetUserNotifyCallback()==&phase),ledger.event_size());
+        require(ledger.event_size()>0,"actual allocator-reuse constructor must deliver a notification");
         const auto birth=ledger.event(ledger.event_size()-1).after[0];
         require(birth.sequence!=0,"actual face constructor reported an event-time identity");
         const auto address=reinterpret_cast<uintptr_t>(face);
@@ -727,6 +731,13 @@ void run_face_lineage_tests() {
 
 void run_face_lineage_case(const char* name) {
     if(std::strncmp(name,"trim-",5)==0) run_numerical_trim_case(name+5);
+    else if(std::strcmp(name,"roots")==0) run_root_issuance_tests();
+    else if(std::strcmp(name,"copy")==0) copy_lifetime();
+    else if(std::strcmp(name,"target-switch")==0) transition_target_switch_refusal();
+    else if(std::strcmp(name,"target-reuse")==0) transition_target_reuse_refusal();
+    else if(std::strcmp(name,"transition-frame")==0) transition_frame_refusal();
+    else if(std::strcmp(name,"transition-head")==0) transition_head_refusal();
+    else if(std::strcmp(name,"refusals")==0) refusals();
     else if(std::strcmp(name,"split")==0) split_merge();
     else if(std::strcmp(name,"mixed")==0) mixed_origins();
     else if(std::strcmp(name,"reuse")==0) address_reuse();

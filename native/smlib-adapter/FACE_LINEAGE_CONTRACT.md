@@ -72,7 +72,36 @@ uses bounded incident inventories and exact geometry snapshots during callbacks.
 seal reserves two 1048576-word tables and an 8192-object worklist. The fixed
 transition permits at most four simultaneous seals, 64 faces, 128 edges and
 128 vertices. SDK-internal allocation is not claimed to be bounded by these
-adapter budgets. Quotas do not refund on destruction.
+adapter budgets. Durable ancestry/event quotas do not refund on destruction.
+
+Stage 1 read accounting (#7955/r13) keeps these durable limits unchanged.
+Only observed non-face lifetimes inside the fixed tessellation frame use a
+separate table, allocated before callbacks, with at most 65536 simultaneously
+live entries. Destruction removes the exact retired generation and refunds one
+slot; generations are monotonically issued from the same sequence and never
+recycled. Tokens carry the existing constructor/origin/owner/operation fields,
+but have no ancestry node and cannot answer root queries. Face births, copy
+parents, roots and operation receipts keep the existing ancestry checks.
+
+The independent live bound is chosen before validation: 4096 two-face splits
+at 13 observed births each use 53248 slots, leaving 12288 for the copied input
+and helpers. Higher-valence topology or a larger input can reach the live bound
+sooner and must refuse. This is a resource contract, not a geometric guarantee.
+The preallocated open-addressed table has 2*65536+1 slots; backward deletion
+closes probe chains, so dead addresses do not consume the live budget. Its
+bytes and the 1024-entry diagnostic trace are included in the 64 MiB ledger
+ceiling. The table is reused only after successful checked retirement.
+
+Read callbacks still run every existing receipt/authority check, but use a
+bounded scratch trace, not the durable event journal. The read work budget is
+2097152 callbacks: 4096*256 split notifications plus the same allowance for
+copying, numerical helpers, polygon receipts and destruction. The 1024-entry
+trace is diagnostic only and rejects expired test queries; overwriting it
+cannot issue authority. Read storage is released only after SDK success,
+complete receipts, retired temporaries, unchanged input and checked final
+polygon rebinding. No per-read replacement for the event protocol is introduced.
+Independent read limits may be reduced; admission caps live entries at 65536
+and callbacks at 4194304, still subject to the aggregate allocation ceiling.
 
 Preflight refusal performs no destructive operation and publishes nothing.
 After uncertain SDK mutation, failure uses the existing terminal status-8
@@ -115,7 +144,7 @@ OLD tolerance build. Other evaluator classes and missing trims refuse.
 
 ## Qualification and independent mutation oracles
 
-`smlib_native_face_lineage` is invoked by the existing native and Emscripten
+`smlib_native_face_lineage_*` cases are invoked by the existing native and Emscripten
 CTest jobs. It includes actual SDK generated construction, copies, fixed
 split/merge ancestors, already-mated coplanar source/generated union, observed
 address reuse, silent edits, unknown mutation, callback replacement, observation
@@ -171,8 +200,9 @@ Installed child trims can originate later observed temporary helpers; the
 installed trims themselves remain protected outside this split protocol.
 No face root or replacement face identity is issued by edge subdivision.
 
-The operation permits at most 1024 splits and 256 notifications per split,
-within the unchanged ledger node/event limits. Geometry serializers retain
+The operation permits at most 4096 splits and 256 notifications per split,
+within the independent read budgets described above. Durable node/event limits
+remain unchanged. Geometry serializers retain
 their existing coefficient and word limits. Knot snapping, UV deletion and
 solver-driven UV reparameterization are refused by this receipt. They were not
 present in the recorded observation; success for other affine cases is not
@@ -188,3 +218,11 @@ This consumes correspondence evidence; it never assigns a BRep identity to a
 polygon or fabricates an SDK copy map. The source and lineage numerical
 positive expectations, tolerances, resource bounds and inherited mutations
 remain unchanged.
+
+
+Round-13 validation is prepared, not executed: the former serial native case
+is registered as 13 independent CTest cases with unchanged assertions, plus
+three accounting controls (actual destruction/refund, live overflow, callback
+overflow). The address-reuse case prints context/callback identity and event
+count before reading its constructor receipt. Its notification failure is
+not repaired or declared qualified by the accounting change.

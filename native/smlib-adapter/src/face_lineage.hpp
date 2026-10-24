@@ -32,11 +32,19 @@ struct Root {
     ObjectRevision object;
     RootKind kind=RootKind::SourceBoundary;
 };
-struct Limits { uint32_t nodes=8192,events=32768,roots=1024,callback_depth=16; };
+// Durable ancestry/event limits are unchanged. Read work has independent live
+// and callback budgets: 4096 manifold splits * 13 births = 53248 live objects,
+// leaving 12288 slots for the copied input and transient helpers. Nonmanifold
+// inputs still obey the live cap; this is not a promise to fit every topology.
+struct Limits {
+    uint32_t nodes=8192,events=32768,roots=1024,callback_depth=16;
+    // 4096*256 split callbacks + equal allowance for copy/helpers/destruction.
+    uint32_t read_objects=65536,read_callbacks=2097152;
+};
 enum class Failure {
     None,NodeLimit,EventLimit,RootLimit,UnknownHistory,DuplicateInventory,
     InvalidInventory,InvalidEvent,ForeignStatus,ForeignException,CallbackReplaced,
-    ReentrantCallback,CallbackDepthLimit,ReadOnlyMutation,UnreportedCopy,UnsupportedGeometryChange,ObservationGap,RepresentationChanged,UntrustedCallback
+    ReentrantCallback,CallbackDepthLimit,ReadOnlyMutation,UnreportedCopy,UnsupportedGeometryChange,ObservationGap,RepresentationChanged,UntrustedCallback,ReadObjectLimit,ReadCallbackLimit
 };
 // Scalar diagnostic evidence only; never an ancestry or operation credential.
 struct FailureOrigin {
@@ -102,6 +110,7 @@ class Ledger {
         Identity current{};
         SmBrep* owner=nullptr;
         uint32_t birth_frame=0;
+        bool constructed=false; // current lifetime token is an unedited constructor
         bool alive=false,retired=false,removed=false,newborn=false,initial_issuance=false,numerical_initialized=false;
         Identity numerical_operation{},owned_transition{};
         SmObject* numerical_original=nullptr;
@@ -148,6 +157,18 @@ class Ledger {
     std::vector<Node> nodes;
     std::vector<Binding> bindings;
     std::vector<Binding> binding_scratch;
+    // Allocated before the fixed read, never grown in a callback. These tokens
+    // cannot be queried as ancestry; destruction removes a slot exactly once.
+    std::vector<Binding> read_bindings;
+    uint32_t read_live=0,read_peak=0,read_callbacks=0;
+    std::array<Event,1024> read_trace{}; // test diagnostics, never authority
+    bool read_frame() const noexcept;
+    bool temporary(const Binding*) const noexcept;
+    Binding* read_binding(SmObject*,bool) noexcept;
+    bool refund_read_binding(SmObject*,Identity) noexcept;
+    Identity lifetime(Binding*,Change,Identity={}) noexcept;
+    bool constructed(const Binding*) const noexcept;
+    void prepare_read_storage();
     std::vector<Root> root_records;
     std::vector<Event> events;
     std::vector<uint32_t> visited;
@@ -185,6 +206,7 @@ class Ledger {
     friend class AffineTransition;
     friend struct SubdivisionTestAccess;
     friend struct LedgerLifetimeTestAccess;
+    friend struct ReadAccountingTestAccess;
 public:
     explicit Ledger(Limits={});
     ~Ledger();

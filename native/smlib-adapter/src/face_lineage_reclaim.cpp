@@ -18,6 +18,7 @@ void Ledger::reclaim_tessellation_history(SmPolyBrep* output) {
     require(numerical.tessellation && !numerical.source && !numerical.copy && !subdivision &&
         frame_count==numerical.frame && frame_count && frames[frame_count-1]->serial==numerical.serial,
         "only a completed current tessellation can release history");
+    require(read_live==0,"numerical journal still has a live scratch generation"); // read-live-reclaim
     const auto keep_nodes=numerical.retained_nodes,keep_events=numerical.retained_events;
     require(keep_nodes<node_count && keep_events<=event_count,"invalid numerical journal checkpoint");
     auto retained=[&](Identity id) {
@@ -99,10 +100,13 @@ void Ledger::reclaim_tessellation_history(SmPolyBrep* output) {
 #ifdef IFCLITE_LINEAGE_FAILURE_STACK
     std::fprintf(stderr,"lineage tessellation journal release nodes=%u events=%u retained_nodes=%u retained_events=%u issued_sequence=%llu\n",
         node_count-keep_nodes,event_count-keep_events,keep_nodes,keep_events,static_cast<unsigned long long>(issued_sequence));
-    for(auto& trace:diagnostic_events) if(trace.event>keep_events) trace={};
+    std::fprintf(stderr,"lineage tessellation read release live=%u peak=%u limit=%u callbacks=%u callback_limit=%u\n",
+        read_live,read_peak,limits.read_objects,read_callbacks,limits.read_callbacks);
+    for(auto& trace:diagnostic_events) trace={};
 #endif
     bindings.swap(binding_scratch);
     node_count=keep_nodes; event_count=keep_events; // storage checkpoint only; never rewind issued_sequence
+    read_bindings.clear(); read_callbacks=0; read_trace={};
     numerical.tessellation=false; numerical.operation={}; numerical.copy_generation={}; numerical.polygons.clear();
 }
 }

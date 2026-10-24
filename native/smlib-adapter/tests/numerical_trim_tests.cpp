@@ -22,6 +22,27 @@
 #include <new>
 #include <stdexcept>
 namespace face_lineage {
+// Test-only read diagnostics, never an ancestry/receipt credential.
+struct ReadAccountingTestAccess {
+    static uint32_t event_size(const Ledger& l) { return l.numerical.tessellation?l.read_callbacks:l.event_size(); }
+    static const Event& event(const Ledger& l,uint32_t i) {
+        if(!l.numerical.tessellation) return l.event(i);
+        if(i>=l.read_callbacks || l.read_callbacks-i>l.read_trace.size())
+            throw std::runtime_error("read trace diagnostic index expired");
+        return l.read_trace[i%l.read_trace.size()];
+    }
+    static void limits(Ledger& l,uint32_t objects,uint32_t callbacks) {
+        // Only reduce constructor-validated limits, before allocation.
+        if(l.numerical.tessellation || !objects || objects>l.limits.read_objects ||
+            !callbacks || callbacks>l.limits.read_callbacks) throw std::runtime_error("invalid test quota");
+        l.limits.read_objects=objects; l.limits.read_callbacks=callbacks;
+    }
+    static uint32_t live(const Ledger& l) { return l.read_live; }
+    static Identity identity(Ledger& l,SmObject* o) {
+        const auto* b=l.read_binding(o,false); return b?b->current:Identity{};
+    }
+    static bool refund(Ledger& l,SmObject* o,Identity id) { return l.refund_read_binding(o,id); }
+};
 // Test-only access to the fixed calls' private phase. No runtime callable seam.
 struct SubdivisionTestAccess {
     static void finish(Ledger& ledger) { ledger.subdivision->finish(); }
@@ -192,6 +213,56 @@ void read_journal() {
     for(auto id:sibling.faces()) require(sibling.ancestors(id).size()==1,"persistent ancestry remains valid across sequence gaps");
     phase.finish();
 }
+void read_accounting(const char* name) {
+    // #7955: actual SDK constructors/destructors drive every slot and refund.
+    // SmCurve.h:1245-1270 emits exactly one constructor/destructor notification;
+    // derived curve copies do not duplicate these (unlike a BRep's child births).
+    auto owner=OwnedBoundary::box(2,3,4); auto& solid=body(owner); auto& ledger=history(owner);
+    const bool bound=std::strcmp(name,"accounting-bound")==0;
+    const bool callbacks=std::strcmp(name,"accounting-callbacks")==0;
+    auto* original=trim(solid);
+    ReadAccountingTestAccess::limits(ledger,callbacks?4:2,callbacks?2:2097152);
+    Scope phase(ledger,*SmApiGetOrCreateContext(),&solid); RepresentationSeal seal(ledger,solid);
+    NumericalReadTestAccess::tessellation(ledger,solid);
+    const auto nodes=ledger.node_size(),events=ledger.event_size(); const auto roots=owner.faces();
+    auto one=copy(*original); ledger.check();
+    auto two=copy(*original); ledger.check();
+    require(ReadAccountingTestAccess::live(ledger)==2,"actual constructors fill the live table exactly");
+    if(bound || callbacks) {
+        auto third=copy(*original);
+        require(ledger.failed()==(bound?Failure::ReadObjectLimit:Failure::ReadCallbackLimit),
+            bound?"one live object above independent read bound refuses":"one callback above independent read budget refuses");
+        bool resource=false; try { ledger.check(); }
+        catch(const AdapterFailure& e) { resource=e.status==IFCLITE_SMLIB_RESOURCE_LIMIT; }
+        require(resource,"read quota refusal reports resource exhaustion"); return;
+    }
+    auto* stale=one.get(); const auto old=ReadAccountingTestAccess::identity(ledger,stale);
+    require(old.sequence,"actual read constructor issues a lifetime token");
+    std::array<Root,1> result; bool refused=false;
+    try { ledger.roots(old,result.data(),result.size()); } catch(const AdapterFailure&) { refused=true; }
+    require(refused,"non-face lifetime tokens cannot become ancestry");
+    one.reset(); ledger.check();
+    require(ReadAccountingTestAccess::live(ledger)==1 && !ReadAccountingTestAccess::refund(ledger,stale,old) &&
+        ReadAccountingTestAccess::live(ledger)==1,"destroyed scratch generation refunds exactly once");
+    Identity last=old;
+    // Exceed the durable event budget while at most two actual objects live.
+    for(unsigned i=0;i<17000;++i) {
+        one=copy(*original); ledger.check();
+        const auto next=ReadAccountingTestAccess::identity(ledger,one.get());
+        require(next.sequence>last.sequence && next.domain==last.domain,
+            "refunded slots never recycle generation identities");
+        require(!ReadAccountingTestAccess::refund(ledger,one.get(),old) && ReadAccountingTestAccess::live(ledger)==2,
+            "stale refund cannot retire a live replacement");
+        last=next; one.reset(); ledger.check();
+        require(ReadAccountingTestAccess::live(ledger)==1,"destruction refunds one actual read slot");
+    }
+    two.reset(); ledger.check();
+    require(ReadAccountingTestAccess::live(ledger)==0 && ReadAccountingTestAccess::event_size(ledger)>32768 &&
+        ledger.node_size()==nodes && ledger.event_size()==events && owner.faces()==roots,
+        "read work does not consume durable ancestry or event storage");
+    NumericalReadTestAccess::end(ledger); seal.verify(); NumericalReadTestAccess::release(ledger);
+    phase.finish(); ledger.check();
+}
 void positive(bool reuse) {
     auto owner=OwnedBoundary::box(2,3,4); auto& ledger=history(owner); auto& solid=body(owner);
     auto* original=trim(solid); const auto roots=owner.faces();
@@ -200,10 +271,10 @@ void positive(bool reuse) {
     NumericalReadTestAccess::begin(ledger,solid);
     std::array<uintptr_t,128> addresses{}; std::array<Identity,128> births{}; bool reused=false;
     for(unsigned i=0;i<(reuse?128u:1u);++i) {
-        const auto first_event=ledger.event_size(); auto helper=copy(*original); ledger.check();
+        const auto first_event=ReadAccountingTestAccess::event_size(ledger); auto helper=copy(*original); ledger.check();
         Identity birth{};
-        for(auto j=first_event;j<ledger.event_size();++j)
-            if(ledger.event(j).operation==SM_NO_CONSTRUCTION) birth=ledger.event(j).after[0];
+        for(auto j=first_event;j<ReadAccountingTestAccess::event_size(ledger);++j)
+            if(ReadAccountingTestAccess::event(ledger,j).operation==SM_NO_CONSTRUCTION) birth=ReadAccountingTestAccess::event(ledger,j).after[0];
         require(birth.sequence,"copied trim gets an observed constructor generation");
         const auto address=reinterpret_cast<uintptr_t>(helper.get());
         for(unsigned j=0;j<i;++j) if(addresses[j]==address) {
@@ -214,7 +285,7 @@ void positive(bool reuse) {
         addresses[i]=address; births[i]=birth;
         helper->SetOwner(original->GetOwner()); reverse(*helper); ledger.check();
         helper.reset(); ledger.check();
-        const auto& death=ledger.event(ledger.event_size()-1);
+        const auto& death=ReadAccountingTestAccess::event(ledger,ReadAccountingTestAccess::event_size(ledger)-1);
         require(death.operation==SM_NO_DESTRUCTION && death.before[0].sequence>=birth.sequence,
             "copied helper destruction retires its live generation");
     }
@@ -308,7 +379,7 @@ void polygon_copy(const char* name) {
     const auto before=ledger.identity(original);
     auto polygon=std::unique_ptr<SmPolyBrep>(new (*solid.GetContext()) SmPolyBrep(solid.GetTolerance()));
     auto* polyface=new (polygon.get()) SmPolyFace(solid.GetTolerance(),polygon.get(),nullptr,nullptr);
-    const auto first=ledger.event_size(); polyface->SetOriginalFace(original,TRUE);
+    const auto first=ReadAccountingTestAccess::event_size(ledger); polyface->SetOriginalFace(original,TRUE);
     const bool rebind=std::strcmp(name,"poly-rebind")==0 || std::strcmp(name,"poly-wrong-root")==0;
     if(rebind) {
         ledger.check(); auto* input=static_cast<SmFace*>(actual_map.GetAt(original));
@@ -321,13 +392,13 @@ void polygon_copy(const char* name) {
         if(std::strcmp(name,"poly-wrong-root")==0) {
             require(ledger.failed()!=Failure::None,"polygon rebind refuses a different original root"); phase.finish(); return;
         }
-        require(ledger.failed()==Failure::None && ledger.event(first+1).before[0]==input_id &&
-            !ledger.event(first+1).after[0].sequence,"polygon final rebind matches its observed copy ancestor");
+        require(ledger.failed()==Failure::None && ReadAccountingTestAccess::event(ledger,first+1).before[0]==input_id &&
+            !ReadAccountingTestAccess::event(ledger,first+1).after[0].sequence,"polygon final rebind matches its observed copy ancestor");
     }
     if(std::strcmp(name,"poly-positive")==0 || rebind) {
         require(ledger.failed()==Failure::None,"polygon attribute copy preserves actual face identity");
-        require(ledger.event_size()==first+(rebind?2:1) && ledger.event(first).before[0]==before &&
-            !ledger.event(first).after[0].sequence && ledger.identity(original)==before,
+        require(ReadAccountingTestAccess::event_size(ledger)==first+(rebind?2:1) && ReadAccountingTestAccess::event(ledger,first).before[0]==before &&
+            !ReadAccountingTestAccess::event(ledger,first).after[0].sequence && ledger.identity(original)==before,
             "polygon attribute receipt never issues face ancestry");
         polygon.reset(); internal.reset(); ledger.check(); NumericalReadTestAccess::end(ledger);
         seal.verify(); require(owner.faces()==roots,"polygon propagation preserves source roots");
@@ -364,11 +435,11 @@ void internal_copy(const char* name) {
         copied->SetOwner(installed_owner);
         require(ledger.failed()!=Failure::None,"internal attached original still refuses edits");
     } else {
-        const auto first=ledger.event_size(); auto helper=copy(*copied); ledger.check();
+        const auto first=ReadAccountingTestAccess::event_size(ledger); auto helper=copy(*copied); ledger.check();
         if(std::strcmp(name,"internal-positive")==0) {
             Identity birth{};
-            for(auto i=first;i<ledger.event_size();++i)
-                if(ledger.event(i).operation==SM_NO_CONSTRUCTION) birth=ledger.event(i).after[0];
+            for(auto i=first;i<ReadAccountingTestAccess::event_size(ledger);++i)
+                if(ReadAccountingTestAccess::event(ledger,i).operation==SM_NO_CONSTRUCTION) birth=ReadAccountingTestAccess::event(ledger,i).after[0];
             require(birth.sequence,"internal trim helper requires actual two-generation issuance");
         }
         helper->SetOwner(std::strcmp(name,"internal-owner")==0?foreign->GetOwner():copied->GetOwner());
@@ -502,7 +573,7 @@ void subdivision(const char* name) {
         }
     }
     SmEdge *one=nullptr,*two=nullptr; SmVertex* vertex=nullptr; SmStatus status; unsigned faults=0; bool healthy_before_fault=false;
-    const auto first=ledger.event_size();
+    const auto first=ReadAccountingTestAccess::event_size(ledger);
     {
         std::unique_ptr<Scope> nested;
         if(std::strcmp(name,"split-frame")==0) nested=std::make_unique<Scope>(ledger,*SmApiGetOrCreateContext());
@@ -525,8 +596,8 @@ void subdivision(const char* name) {
     if(std::strcmp(name,"split-positive")==0 || std::strcmp(name,"split-extrusion")==0 || std::strcmp(name,"split-knot")==0) {
         require(ledger.failed()==Failure::None,"checked subdivision accepts genuine restriction receipts");
         bool receipt=false;
-        for(auto i=first;i<ledger.event_size();++i) if(ledger.event(i).operation==SM_NO_SPLIT_IN_BREP) {
-            const auto& e=ledger.event(i); receipt=e.before[0].sequence && e.after[0]==e.before[0] &&
+        for(auto i=first;i<ReadAccountingTestAccess::event_size(ledger);++i) if(ReadAccountingTestAccess::event(ledger,i).operation==SM_NO_SPLIT_IN_BREP) {
+            const auto& e=ReadAccountingTestAccess::event(ledger,i); receipt=e.before[0].sequence && e.after[0]==e.before[0] &&
                 e.after[1].sequence && e.after[1]!=e.after[0];
         }
         require(receipt,"subdivision receipt carries distinct observed edge generations");
@@ -562,7 +633,8 @@ void subdivision(const char* name) {
 
 }
 void run_numerical_trim_case(const char* name) {
-    if(std::strcmp(name,"journal")==0) { read_journal(); polygon_journal(); }
+    if(std::strncmp(name,"accounting-",11)==0) read_accounting(name);
+    else if(std::strcmp(name,"journal")==0) { read_journal(); polygon_journal(); }
     else if(std::strcmp(name,"planar-rounding")==0) planar_coefficients(true);
     else if(std::strcmp(name,"planar-outside")==0) planar_coefficients(false);
     else if(std::strcmp(name,"planar-domain")==0) planar_intervals(true);

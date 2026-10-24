@@ -6,8 +6,8 @@
 #include <unistd.h>
 namespace face_lineage {
 void Ledger::trace_event(SmNotifyOperation op,SmObject* caller,SmObject* a,SmObject* b,SmObject* c) noexcept {
-    auto& trace=diagnostic_events[(event_count-1)%diagnostic_events.size()];
-    trace={}; trace.event=event_count; trace.frame=frame_count;
+    auto& trace=diagnostic_events[(current_event-1)%diagnostic_events.size()];
+    trace={}; trace.event=current_event; trace.frame=frame_count;
     trace.operation=long(op); trace.type=caller?long(caller->GetType()):0;
     trace.caller=reinterpret_cast<uintptr_t>(caller); trace.a=reinterpret_cast<uintptr_t>(a);
     trace.b=reinterpret_cast<uintptr_t>(b); trace.c=reinterpret_cast<uintptr_t>(c);
@@ -35,7 +35,10 @@ void Ledger::report_resource_occupancy() const noexcept {
     auto mark=[&](Identity id) {
         if(!id.sequence) return;
         const auto* n=node(id);
-        if(!n) { ++invalid; return; }
+        if(!n) {
+            for(const auto& token:read_bindings) if(token.alive && token.current==id) return;
+            ++invalid; return;
+        }
         marked[size_t(n-nodes.data())]=1;
     };
     for(const auto& b:bindings) if(b.address) {
@@ -66,15 +69,18 @@ void Ledger::report_resource_occupancy() const noexcept {
     std::fprintf(stderr,"lineage quota_node_kinds construct=%u admit=%u copy=%u split=%u merge=%u "
         "remove=%u add=%u destroy=%u edit=%u audit=%u\n",kinds[0],kinds[1],kinds[2],kinds[3],kinds[4],
         kinds[5],kinds[6],kinds[7],kinds[8],kinds[9]);
+    std::fprintf(stderr,"lineage read_census live=%u limit=%u callbacks=%u callback_limit=%u capacity=%zu\n",
+        read_live,limits.read_objects,read_callbacks,limits.read_callbacks,read_bindings.size());
     if(subdivision) subdivision->report_exception();
 }
 void Ledger::report_failure_stack() const noexcept {
-    if(failure==Failure::NodeLimit || failure==Failure::EventLimit) report_resource_occupancy();
+    if(failure==Failure::NodeLimit || failure==Failure::EventLimit ||
+        failure==Failure::ReadObjectLimit || failure==Failure::ReadCallbackLimit) report_resource_occupancy();
     std::fprintf(stderr,"lineage diagnostic_events total=%u capacity=%zu numerical_source=%p operation=%llu frame=%u serial=%llu\n",
         failed_event,diagnostic_events.size(),static_cast<void*>(numerical.source),
         static_cast<unsigned long long>(numerical.operation.sequence),numerical.frame,
         static_cast<unsigned long long>(numerical.serial));
-    const auto recorded=event_count;
+    const auto recorded=numerical.tessellation?read_callbacks:event_count;
     const auto first=recorded>diagnostic_events.size()?recorded-uint32_t(diagnostic_events.size()):0;
     for(uint32_t i=first;i<recorded;++i) {
         const auto& t=diagnostic_events[i%diagnostic_events.size()];

@@ -23,8 +23,12 @@ namespace face_lineage {
 bool Ledger::face(SmObject* object) const { return object && object->GetType()==SmFace_TYPE; }
 void Ledger::observe(SmNotifyOperation operation,SmObject* caller,SmObject* a,SmObject* b,SmObject* c) noexcept {
     if(failure!=Failure::None) return;
-    if(event_count==limits.events) { fail(Failure::EventLimit); return; }
-    auto& record=events[event_count++]; record.operation=operation;
+    const bool reading=numerical.tessellation;
+    if(reading && read_callbacks==limits.read_callbacks) { fail(Failure::ReadCallbackLimit); return; }
+    if(!reading && event_count==limits.events) { fail(Failure::EventLimit); return; }
+    // Keep receipt validation identical; only its storage is scoped to a read.
+    auto& record=reading?read_trace[read_callbacks++%read_trace.size()]:events[event_count++];
+    record.operation=operation;
     record.before[0]=record.before[1]=record.after[0]=record.after[1]={};
 #ifdef IFCLITE_LINEAGE_FAILURE_STACK
     trace_event(operation,caller,a,b,c);
@@ -34,7 +38,7 @@ void Ledger::observe(SmNotifyOperation operation,SmObject* caller,SmObject* a,Sm
 #ifdef IFCLITE_LINEAGE_FAILURE_STACK
         if(failure==Failure::None) {
             std::fprintf(stderr,"lineage callback exception event=%u operation=%ld type=%ld status=%d reason=%s\n",
-                event_count,long(operation),caller?long(caller->GetType()):0,error.status,error.message);
+                current_event,long(operation),caller?long(caller->GetType()):0,error.status,error.message);
             if(subdivision) subdivision->report_exception();
         }
 #endif
@@ -43,13 +47,18 @@ void Ledger::observe(SmNotifyOperation operation,SmObject* caller,SmObject* a,Sm
     catch(const std::exception& error) {
 #ifdef IFCLITE_LINEAGE_FAILURE_STACK
         if(failure==Failure::None) {
-            std::fprintf(stderr,"lineage callback standard exception event=%u reason=%s\n",event_count,error.what());
+            std::fprintf(stderr,"lineage callback standard exception event=%u reason=%s\n",current_event,error.what());
             if(subdivision) subdivision->report_exception();
         }
 #endif
         fail(Failure::InvalidEvent);
     }
     catch(...) { fail(Failure::InvalidEvent); }
+    if(reading && operation==SM_NO_DESTRUCTION && failure==Failure::None) {
+        auto* entry=read_binding(caller,false);
+        if(entry && !entry->alive && entry->retired && !refund_read_binding(caller,entry->current))
+            fail(Failure::InvalidEvent);
+    }
 }
 void Ledger::transition(Event& event,SmNotifyOperation op,SmObject* caller,SmObject* a,SmObject* b,SmObject* c) {
     if(active_affine && active_affine->event(event,op,caller,a,b,c)) return;
@@ -114,7 +123,7 @@ void Ledger::transition(Event& event,SmNotifyOperation op,SmObject* caller,SmObj
         if(!entry) return;
         if(entry->alive) { fail(Failure::InvalidEvent); return; }
         const auto address=entry->address; *entry=Binding{}; entry->address=address;
-        const auto id=append(Change::Construct); replace(entry,id); entry->newborn=true; entry->owner=nullptr;
+        const auto id=lifetime(entry,Change::Construct); replace(entry,id); entry->newborn=true; entry->owner=nullptr;
         entry->birth_frame=frame_count; entry->numerical_initialized=false;
         event.after[0]=id; return;
     }
@@ -252,7 +261,7 @@ void Scope::finish() noexcept {
     else {
         ledger.frames[frame]=nullptr; ledger.protected_sources[frame]=nullptr; --ledger.frame_count;
     }
-    for(auto& entry:ledger.bindings) if(entry.birth_frame==frame+1) { entry.newborn=false; entry.initial_issuance=false; }
+    for(auto* table:{&ledger.bindings,&ledger.read_bindings}) for(auto& entry:*table) if(entry.birth_frame==frame+1) { entry.newborn=false; entry.initial_issuance=false; }
     if(owns_callback) {
         // A detached observer cannot silently miss destruction/reconstruction
         // and then reuse a final raw address as historical identity.
@@ -274,7 +283,7 @@ SmStatus Scope::Execute(SmNotifyOperation op,SmObject* caller,SmObject* a,SmObje
     } restore{ledger.current_operation,ledger.current_type,ledger.current_event,
         ledger.current_operation,ledger.current_type,ledger.current_event};
     ledger.current_operation=op; ledger.current_type=caller?long(caller->GetType()):0;
-    ledger.current_event=ledger.event_count+1;
+    ledger.current_event=(ledger.numerical.tessellation?ledger.read_callbacks:ledger.event_count)+1;
     if(depth==ledger.limits.callback_depth) { ledger.fail(Failure::CallbackDepthLimit); return SM_ERR; }
     // Foreign hooks may query freely. Nested notifying edits/construction have
     // no issued operation authority here; preserve callback delivery, refuse

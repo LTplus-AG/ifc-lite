@@ -22,7 +22,7 @@ bool Ledger::numerical_copy_event(Event& event,SmNotifyOperation op,SmObject* ca
             auto* entry=binding(caller,true);
             if(!entry || entry->alive) { fail(Failure::InvalidEvent); return true; }
             const auto address=entry->address; *entry=Binding{}; entry->address=address;
-            const auto id=append(Change::Construct); replace(entry,id);
+            const auto id=lifetime(entry,Change::Construct); replace(entry,id);
             entry->birth_frame=frame_count; entry->owned_transition=numerical.operation;
             event.after[0]=id; return true;
         }
@@ -73,9 +73,9 @@ bool Ledger::numerical_copy_event(Event& event,SmNotifyOperation op,SmObject* ca
             static_cast<SmEdgeuse*>(caller)->GetBrep()!=numerical.source) {
             fail(Failure::InvalidEvent); return true;
         }
-        auto* target=binding(a,false); const auto* birth=target?node(target->current):nullptr;
+        auto* target=binding(a,false);
         if(!target || !target->alive || target->retired || target->birth_frame!=frame_count ||
-            !birth || birth->change!=Change::Construct || target->numerical_owner_copy_operation==numerical.operation) {
+            !constructed(target) || target->numerical_owner_copy_operation==numerical.operation) {
             fail(Failure::UnknownHistory); return true;
         }
         // MergeBrep's real Edgeuse COPY receipt, not a guessed topology map.
@@ -102,7 +102,7 @@ bool Ledger::numerical_copy_event(Event& event,SmNotifyOperation op,SmObject* ca
         auto* entry=binding(caller,true);
         if(!entry || entry->alive) { fail(Failure::InvalidEvent); return true; }
         const auto address=entry->address; *entry=Binding{}; entry->address=address;
-        const auto id=append(Change::Construct); replace(entry,id);
+        const auto id=lifetime(entry,Change::Construct); replace(entry,id);
         entry->birth_frame=frame_count; entry->newborn=true; entry->owner=nullptr;
         entry->numerical_initialized=false;
         numerical.copy=static_cast<SmBrep*>(caller); numerical.copy_generation=id;
@@ -123,7 +123,6 @@ bool Ledger::numerical_copy_trim(SmObject* object,Identity generation) {
     if(!numerical.tessellation || !numerical.copy || !object) return false;
     const auto* body=binding(numerical.copy,false);
     const auto* entry=binding(object,false);
-    const auto* birth=entry?node(entry->current):nullptr;
     if(body && body->alive && !body->retired && body->current==numerical.copy_generation &&
         entry && entry->alive && !entry->retired && entry->birth_frame==frame_count &&
         entry->subdivision_operation==numerical.operation &&
@@ -142,7 +141,7 @@ bool Ledger::numerical_copy_trim(SmObject* object,Identity generation) {
         !entry || !entry->alive || entry->retired || entry->birth_frame!=frame_count ||
         entry->numerical_operation!=numerical.operation || entry->numerical_parent.sequence ||
         !entry->numerical_internal_original ||
-        !birth || birth->change!=Change::Construct ||
+        !constructed(entry) ||
         (generation.sequence && entry->current!=generation)) return false;
     bool original=false;
     for(auto* trim:numerical.trims) original|=trim==entry->numerical_original;

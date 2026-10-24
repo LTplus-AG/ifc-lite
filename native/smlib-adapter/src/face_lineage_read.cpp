@@ -36,7 +36,7 @@ bool Ledger::numerical_event(Event& event,SmNotifyOperation op,SmObject* caller,
         auto* entry=binding(caller,true);
         if(!entry || entry->alive) { fail(Failure::InvalidEvent); return true; }
         const auto address=entry->address; *entry=Binding{}; entry->address=address;
-        const auto id=append(Change::Construct); replace(entry,id);
+        const auto id=lifetime(entry,Change::Construct); replace(entry,id);
         entry->numerical_operation=numerical.operation; entry->owned_transition={};
         entry->numerical_original=original;
         entry->numerical_parent=parent;
@@ -88,7 +88,7 @@ bool Ledger::numerical_event(Event& event,SmNotifyOperation op,SmObject* caller,
         fail(Failure::UnsupportedGeometryChange); return true;
     }
     event.before[0]=entry->current;
-    const auto edited=append(Change::Edit,entry->current); replace(entry,edited); event.after[0]=edited;
+    const auto edited=lifetime(entry,Change::Edit,entry->current); replace(entry,edited); event.after[0]=edited;
     return true;
 }
 }

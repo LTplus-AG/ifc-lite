@@ -37,7 +37,7 @@ EdgeSubdivision::Live EdgeSubdivision::birth(Event& event,SmObject* object) {
     auto* entry=ledger.binding(object,true);
     require(entry && !entry->alive,"subdivision constructor must issue a fresh generation");
     const auto address=entry->address; *entry=Ledger::Binding{}; entry->address=address;
-    const auto id=ledger.append(Change::Construct); ledger.replace(entry,id);
+    const auto id=ledger.lifetime(entry,Change::Construct); ledger.replace(entry,id);
     entry->birth_frame=frame; entry->newborn=true; entry->owned_transition=operation; event.after[0]=id;
     return {object,id};
 }
@@ -124,7 +124,7 @@ std::vector<uint64_t> EdgeSubdivision::surface(SmObject* object) {
     geometry.scratch.clear(); return result;
 }
 void EdgeSubdivision::start(SmEdge* value) {
-    require(++count<=1024,"subdivision operation count exceeded");
+    require(++count<=4096,"subdivision operation count exceeded");
     body=ledger.numerical.copy; body_generation=ledger.numerical.copy_generation;
     live(body,body_generation);
     require(value->GetBrep()==body && body!=ledger.numerical.source,"subdivision requires the witnessed internal copy");
@@ -158,7 +158,7 @@ void EdgeSubdivision::start(SmEdge* value) {
             const auto* uv=ledger.binding(item.uv,false);
             require(uv && item.uv->GetOwner()==use && item.uv->GetDim()==2,"subdivision UV origin ownership");
             item.uv_generation=uv->current; live(item.uv,item.uv_generation);
-            for(const auto& helper:ledger.bindings)
+            for(const auto* table:{&ledger.bindings,&ledger.read_bindings}) for(const auto& helper:*table)
                 require(!helper.alive || helper.retired || helper.numerical_parent!=item.uv_generation,
                     "subdivision cannot change an origin with a live helper");
 #ifdef IFCLITE_LINEAGE_FAILURE_STACK

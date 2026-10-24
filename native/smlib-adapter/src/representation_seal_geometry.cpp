@@ -204,7 +204,7 @@ void NumericalRead::end(Ledger& ledger) {
         ledger.numerical.serial!=ledger.frames[ledger.frame_count-1]->serial) ledger.fail(Failure::UnknownHistory);
     if(ledger.subdivision) ledger.subdivision->finish();
     if(ledger.numerical.copy) ledger.fail(Failure::UnknownHistory); // internal-read-copy-survivor
-    for(const auto& binding:ledger.bindings)
+    for(const auto* table:{&ledger.bindings,&ledger.read_bindings}) for(const auto& binding:*table)
         if(binding.alive && binding.numerical_operation==ledger.numerical.operation) ledger.fail(Failure::UnknownHistory);
     ledger.subdivision.reset();
     ledger.numerical.source=nullptr; ledger.numerical.trims.clear(); ledger.check();

@@ -27,11 +27,14 @@ Ledger::Ledger(Limits requested):limits(requested),domain(0) {
     // Checked before any adapter allocation. Fixed tables never grow in a
     // callback. Includes a bounded rehash scratch table; all configurations <=64 MiB.
     require(limits.nodes && limits.nodes<=65536 && limits.events && limits.events<=131072 &&
-        limits.roots && limits.roots<=limits.nodes && limits.callback_depth && limits.callback_depth<=64,
+        limits.roots && limits.roots<=limits.nodes && limits.callback_depth && limits.callback_depth<=64 &&
+        limits.read_objects && limits.read_objects<=65536 &&
+        limits.read_callbacks && limits.read_callbacks<=4194304,
         "invalid lineage resource limits");
     const uint64_t bytes=uint64_t(limits.nodes)*(sizeof(Node)+sizeof(uint32_t))+
         2*(2*uint64_t(limits.nodes)+1)*sizeof(Binding)+uint64_t(limits.roots)*sizeof(Root)+
-        uint64_t(limits.events)*sizeof(Event)+8192*sizeof(SmObject*);
+        uint64_t(limits.events)*sizeof(Event)+8192*sizeof(SmObject*)+
+        (2*uint64_t(limits.read_objects)+1)*sizeof(Binding)+sizeof(read_trace);
     require(bytes<=64*1024*1024,"lineage storage exceeds fixed adapter limit");
     uint64_t expected=next_domain.load();
     do {
@@ -56,13 +59,16 @@ bool Ledger::complete(Identity id) const noexcept {
 }
 Ledger::Binding* Ledger::binding(SmObject* object,bool create) noexcept {
     if(!object) return nullptr;
+    if(auto* transient=read_binding(object,false)) return transient;
+    const bool scratch=create && read_frame() && !face(object);
     const auto address=reinterpret_cast<uintptr_t>(object);
     size_t i=(address/alignof(void*))%bindings.size();
     for(size_t step=0;step<bindings.size();++step,i=(i+1)%bindings.size()) {
         auto& b=bindings[i];
-        if(b.address==address) return &b;
+        if(b.address==address) return scratch && !b.alive?read_binding(object,true):&b;
         if(!b.address) {
             if(!create) return nullptr;
+            if(scratch) return read_binding(object,true);
             b.address=address; return &b;
         }
     }
@@ -100,7 +106,7 @@ void Ledger::check() const {
 #endif
     }
     const bool resource=failure==Failure::NodeLimit || failure==Failure::EventLimit || failure==Failure::RootLimit ||
-        failure==Failure::CallbackDepthLimit;
+        failure==Failure::CallbackDepthLimit || failure==Failure::ReadObjectLimit || failure==Failure::ReadCallbackLimit;
     throw AdapterFailure{resource?IFCLITE_SMLIB_RESOURCE_LIMIT:IFCLITE_SMLIB_UNSUPPORTED,
         resource?"bounded face lineage storage exhausted":"face lineage history/callback verification failed"};
 }

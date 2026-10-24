@@ -10,6 +10,7 @@
 namespace face_lineage {
 void NumericalRead::begin_tessellation(Ledger& ledger,SmBrep& source) {
     const auto nodes=ledger.node_count,events=ledger.event_count;
+    ledger.prepare_read_storage();
     begin(ledger,source); ledger.numerical.tessellation=true;
     ledger.numerical.retained_nodes=nodes; ledger.numerical.retained_events=events;
     ledger.subdivision=std::make_unique<EdgeSubdivision>(ledger,source);

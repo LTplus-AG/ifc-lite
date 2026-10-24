@@ -97,15 +97,24 @@ void witness(const M& m,bool cylinder) {
                 outward[axis]=side==0?-1.:1.; boundary=true;
             }
         }
-        if(cylinder && !boundary) {
+        const bool lateral=cylinder && !boundary;
+        if(lateral) {
             for(auto q:local) require(std::abs(q[0]*q[0]+q[1]*q[1]-4)<1e-6,"rational elliptical cylinder section");
             outward={local[0][0]+local[1][0]+local[2][0],local[0][1]+local[1][1]+local[2][1],0}; boundary=true;
         }
         require(boundary,"transformed vertices lie on authored analytic boundary");
         auto expected_normal=normal(m,outward);
         require(dot(n,expected_normal)>0,"winding outward against independent inverse-transpose analytic normal");
-        for(unsigned corner=0;corner<3;++corner) for(unsigned k=0;k<3;++k)
-            require(std::abs(normals[9*i+3*corner+k]-n[k]/length)<1e-10,"exported normal agrees oriented triangle");
+        // #7955: independent gradient of the authored cylinder/box,
+        // transformed as a covector, including the signed determinant.
+        for(unsigned corner=0;corner<3;++corner) {
+            const V source_normal=lateral?V{local[corner][0],local[corner][1],0}:outward;
+            auto analytic=normal(m,source_normal);
+            const double norm=std::sqrt(dot(analytic,analytic));
+            for(unsigned k=0;k<3;++k)
+                require(std::abs(normals[9*i+3*corner+k]-analytic[k]/norm)<1e-7,
+                    "inverse-transpose analytic corner normal");
+        }
     }
     require(std::abs(signed_volume-expected)<=expected*(cylinder?1e-3:1e-5),"independent positive signed triangle volume");
     for(auto e:edges) require(e.second.first==2 && e.second.second==0,"two opposed edge incidences after reflection");

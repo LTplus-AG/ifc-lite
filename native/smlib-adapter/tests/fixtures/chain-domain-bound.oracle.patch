@@ -1,0 +1,11 @@
+--- a/native/smlib-adapter/src/plane_domain.cpp
++++ b/native/smlib-adapter/src/plane_domain.cpp
+@@ -194,7 +194,7 @@
+     SmTArray<SmEdgeuse*> uses; face->GetUpwardEdgeuses(uses);
+     for(auto* use:uses) if(auto* trim=use->GetUVTrimCurve()) {
+         const auto uv=curve_hull(trim,2,use->GetEdge()->GetInterval(),domain);
+-        (void)uv; // mutated missing present-UV bound
++        include(result,plane_source_proof::affine_image(proof,uv));
+     }
+     domain.methods|=8; return result;
+ }

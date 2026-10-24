@@ -1,0 +1,11 @@
+--- a/native/smlib-adapter/src/plane_inventory.cpp
++++ b/native/smlib-adapter/src/plane_inventory.cpp
+@@ -174,7 +174,7 @@
+         put(id(lu)); put(id(lu->GetOtherLoopuse())); put(id(lu->GetFaceuse()));
+         put(lu->GetLoopuseType()); put(id(lu->GetEUorVU()));
+         put(id(lu->GetNext())); put(id(lu->GetLast()));
+-        orientation(lu==primary?lu->GetOrientation():SM_OT_SAME); // mutated omitted opposite orientation
++        orientation(lu->GetOrientation()); // both sides, including the nonprimary loopuse
+         put(lu==primary); // distinguish the SDK's primary-side traversal
+         // Bound the actual CCW cursor walk before calling any SDK list helper.
+         auto* first=lu->GetEUorVU();

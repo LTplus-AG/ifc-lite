@@ -11,6 +11,7 @@ void run_mesh_tests();
 void run_empty_tests();
 void run_affine_tests();
 void run_context_metadata_tests();
+void run_plane_tests();
 namespace {
 void expect(bool value, const char* label) {
     if (!value) {
@@ -106,6 +107,7 @@ int main() try {
     ok(ifclite_smlib_session_destroy(other));
     std::fprintf(stderr,"owned boundary BEGIN context metadata\n");
     run_context_metadata_tests();
+    run_plane_tests();
     std::puts("SMLib C ABI: volume, manifold, immutable transactions and handle lifetime passed");
 } catch(const KernelDomainTainted& taint) {
     std::fprintf(stderr,"owned boundary TAINTED (last BEGIN stage above): %s\n",taint.message.c_str());

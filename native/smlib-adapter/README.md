@@ -184,12 +184,16 @@ handles.
 | 15 | Sweep commit | u64 session, u64 upload | handle |
 | 16 | Sweep abort | u64 session, u64 upload | empty |
 | 17 | Rigid copy | u64 session, handle, 16 f64 column-major matrix | handle |
+| 18 | Affine copy | u64 session, handle, 16 f64 column-major matrix | output handle and affine certificate |
+| 19 | Semantic empty | u64 session, handle | u32 boolean (0/1) |
+| 20 | ClipPlane | u64 session, handle, point/normal 6f64, side i32, mode u32 | output handle and v1 plane certificate |
 
-Capability bit 0 (value 1) reports staged recipe format 1, bit 1 (value 2)
-format 2, and bit 3 (value 8) opcode 17: copy a retained solid, then transform
-the copy by a validated proper rigid frame. Capability reports implementation,
-never qualification. Opcode numbers 18+ are reserved for later extensions and
-are rejected as unknown in this version.
+Capability bits 0 (1) and 1 (2) report staged recipe formats 1 and 2;
+bit 3 (8) reports rigid copy, bit 4 (16) affine copy, bit 5 (32) semantic
+empty and bit 6 (64) finite plane clipping. Capability means implementation,
+never qualification. Paired splitting is not advertised. See
+[the v1 plane contract](PLANE_CONTRACT.md) for ownership, domain proofs,
+fixed qualification tolerances and remaining #7955 release blockers.
 
 ## Staged authored recipes
 
@@ -239,7 +243,7 @@ the input solid. Tessellating such an empty solid yields an owned empty mesh at
 the C ABI; the Rust client treats it as an inconsistent mesh and retires the worker.
 
 Tessellation returns separately owned indexed triangles with f64 positions and
-flat per-corner normals. Streams are `1=positions (f64 XYZ)`, `2=indices (u32)`,
+oriented source-surface per-corner normals. Streams are `1=positions (f64 XYZ)`, `2=indices (u32)`,
 `3=source face IDs (u32 per triangle)`, `4=normals (f64 XYZ per triangle corner)`.
 Reads are bounded to 480 scalars, keeping the largest response below 4096 bytes.
 Mesh buffers remain valid after source-solid release and use the common release
@@ -264,3 +268,42 @@ OS job/cgroup limits to the worker process.
 
 Affine rational copies, finite plane clipping and face lineage are separate,
 later slices and are not part of this directory yet.
+
+### Source corner normal contract (#7955 / J5)
+
+The pinned SDK `SmTess::OutputFacePolygons` evaluates the surface at the UV
+vertex used for tessellation, then applies its face-use reversal. `OutputToPolyBrep`
+attaches this value to the corresponding outgoing edge's `SmPolyVertAuxData`.
+Before triangulation the adapter snapshots these values per parent polygon and
+exact `SmPolyVertex*`. Diagonal insertion may omit auxiliary data; a triangle
+corner resolves only through its parent's exact vertex identity. Missing or
+ambiguous associations refuse, with no nearest-triangle search or flat fallback.
+Normals are never averaged across faces, creases, UV seams or polygon boundaries.
+A source-face label identifies only the evaluated BRep revision, not an IFC face.
+
+The adapter requires finite unit normals (length error at most `1e-8`) and a
+strictly positive dot against triangle winding. It preserves positions, indices,
+triangle order and source-face attribution. The additional source-corner snapshot
+is capped at three million entries. Missing normals, zero length, unsupported
+seam ambiguity or inward normals fail the tessellation without publishing buffers.
+Rust and browser consumers preserve the corner stream, check its shape, unit
+length and orientation, and the display boundary expands corners verbatim. They
+refuse incorrect winding instead of repairing it by recomputing flat normals.
+The historical `flat_corner_normals` wire name remains for compatibility.
+
+Affine copies transform the retained rational surface before tessellation;
+source normals are evaluated on that surface. The native and actual-Worker
+oracles independently check inverse-transpose normals, including negative
+scale, nonuniform scale and (natively) shear. Singular affine matrices retain
+the existing explicit refusal. Document occurrences store placements separately;
+this slice does not introduce a renderer/export transform consumer or change the
+exact pipeline. RTC translation does not change a normal.
+
+Fixed pre-run tolerances: native and Worker component error `1e-7`, unit error
+`1e-8`; Rust f32 corner expansion component error `1e-7`. The cylinder oracle
+uses the gradient of its source equation; cap and box classification uses all
+three triangle positions, never a returned normal or source-face label. Tests
+are wired into native/Emscripten CTest and the actual module-Worker probe.
+These tests require parent execution before qualification. Full J5 appearance,
+textures, palettes, persistent IFC identity, GPU instancing, CLI/viewer release
+integration and licensing remain separate release requirements.

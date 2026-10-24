@@ -1,0 +1,11 @@
+--- a/native/smlib-adapter/src/plane.cpp
++++ b/native/smlib-adapter/src/plane.cpp
+@@ -162,8 +162,7 @@
+         "only finite host Intersection/Difference clipping is supported",IFCLITE_SMLIB_UNSUPPORTED);
+     auto frame=frame_for(plane,mode==IFCLITE_SMLIB_DIFFERENCE?-side:side);
+     PreparedPlaneOperand prepared(source);
+     const auto& domain=prepared.domain();
+-    require(!(domain.methods&2),"mutated method2 refusal");
+     ifclite_smlib_plane_certificate c{}; c.version=(domain.methods&8)?3:1; c.method=domain.methods; c.frame=1; c.side=side; c.mode=mode;
+     std::copy(plane,plane+6,c.plane); c.faces=domain.faces; c.edges=domain.edges; c.coefficients=domain.coefficients;
+     c.cylinder_count=domain.cylinder_count;

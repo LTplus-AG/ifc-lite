@@ -2,6 +2,7 @@
 // CTest: the actual browser binary under Node. Two independent module
 // instances run the shared SDK sweep witness through the owned dispatch.
 import { pathToFileURL } from 'node:url';
+import { runNormalContract } from './normal-contract.mjs';
 import { runSweepContract } from './sweep-contract.mjs';
 import { dispatchOwned } from './module.mjs';
 import { assert, request } from './contract.mjs';
@@ -17,6 +18,7 @@ for (const module of modules) {
       return frames.map((frame) => dispatchOwned(module, frame));
     },
   };
+  await runNormalContract(frames => transport.batch(frames, transport.incarnation));
   sweeps.push(await runSweepContract(transport, transport.incarnation));
   for (const invalid of [new ArrayBuffer(11), new ArrayBuffer(4097), request(99), request(0, new Uint8Array([1]))]) {
     let rejected = false;

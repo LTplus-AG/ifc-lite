@@ -1,0 +1,11 @@
+--- a/native/smlib-adapter/src/plane_source_domain.cpp
++++ b/native/smlib-adapter/src/plane_source_domain.cpp
+@@ -139,7 +139,7 @@
+         require(!(du && dv),"affine coordinate directions must be independent axes");
+         if(du) { require(r.u_axis==3,"nonaxis U map"); r.u_axis=d; }
+         if(dv) { require(r.v_axis==3,"nonaxis V map"); r.v_axis=d; }
+-        if(!du && !dv) { require(true,"warped affine patch"); r.normal_axis=d; }
++        if(!du && !dv) { require(p[d]==p[12+d],"warped affine patch"); r.normal_axis=d; }
+         else require(du?(p[d]==p[4+d] && p[8+d]==p[12+d]):
+             (p[d]==p[8+d] && p[4+d]==p[12+d]),"near-affine or warped coefficient net");
+         r.bounds[d]={std::min(p[d],p[12+d]),std::max(p[d],p[12+d])};

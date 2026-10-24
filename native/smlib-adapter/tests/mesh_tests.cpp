@@ -61,8 +61,21 @@ void verify(uint64_t session,ifclite_smlib_handle solid,double expected,bool cyl
         n={u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]};
         const double length=std::hypot(n[0],n[1],n[2]); require(length>0,"nondegenerate triangle");
         volume += (p[0][0]*n[0]+p[0][1]*n[1]+p[0][2]*n[2])/6;
-        for (unsigned corner=0;corner<3;++corner) for(unsigned axis=0;axis<3;++axis)
-            require(std::abs(normals[tri*9+corner*3+axis]-n[axis]/length)<1e-10,"flat normal follows triangle winding");
+        // #7955: analytic cylinder oracle; cap classification uses all three
+        // positions, never the returned normal or revision-local face label.
+        const bool cap = cylinder && (std::all_of(p.begin(),p.end(),[](auto q){return std::abs(q[2])<1e-8;}) ||
+            std::all_of(p.begin(),p.end(),[](auto q){return std::abs(q[2]-3)<1e-8;}));
+        for (unsigned corner=0;corner<3;++corner) {
+            const auto offset=tri*9+corner*3;
+            require(std::abs(std::hypot(normals[offset],normals[offset+1],normals[offset+2])-1)<1e-8,
+                "unit analytic normal");
+            require(normals[offset]*n[0]+normals[offset+1]*n[1]+normals[offset+2]*n[2]>0,
+                "analytic normal follows outward winding");
+            if(cylinder || box) for(unsigned axis=0;axis<3;++axis) {
+                const double expected = cylinder && !cap ? (axis<2?p[corner][axis]/2:0) : n[axis]/length;
+                require(std::abs(normals[offset+axis]-expected)<1e-7,"independent analytic corner normal");
+            }
+        }
         if (box) {
             bool on_boundary=false;
             for (unsigned axis=0;axis<3;++axis)

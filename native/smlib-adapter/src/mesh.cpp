@@ -12,7 +12,7 @@ namespace {
 void ensure(bool value, const char* message) { if (!value) throw AdapterMeshFailure{message}; }
 void checked(SmStatus status) { ensure(status == SM_SUCCESS,"upstream tessellation/triangulation failed"); }
 }
-std::unique_ptr<AdapterMesh> tessellate_mesh(SmBrep* solid, double chord, double angle) {
+std::unique_ptr<AdapterMesh> tessellate_mesh(SmBrep* solid, double chord, double angle, face_lineage::Ledger* lineage) {
     SmTArray<SmFace*> source_faces; solid->GetFaces(source_faces);
     if (semantically_empty_brep(solid)) {
         ensure(source_faces.GetSize() == 0,"empty solid has source faces");
@@ -31,17 +31,49 @@ std::unique_ptr<AdapterMesh> tessellate_mesh(SmBrep* solid, double chord, double
     SmTArray<SmPolyFace*> polygons; poly->GetPolyFaces(polygons);
     ensure(polygons.GetSize() <= 1000000,"polygon budget exceeded");
     std::unordered_map<SmPolyFace*,uint32_t> triangle_sources;
+    std::unordered_map<SmPolyFace*,face_lineage::Identity> triangle_lineage;
+    // Snapshot before triangulation: newly inserted diagonal edges need not
+    // carry SDK aux data. Identity is local to ONE parent polygon, never a
+    // spatial nearest-triangle match or an average across source faces/seams.
+    using CornerMap = std::unordered_map<SmPolyVertex*,SmVector3d>;
+    std::unordered_map<SmPolyFace*,std::shared_ptr<CornerMap>> triangle_normals;
+    size_t normal_count=0;
     for (auto* polygon : polygons) {
         auto found = source_ids.find(polygon->GetOriginalFace());
         ensure(found != source_ids.end(),"tessellation lost source face attribution");
         const uint32_t source = found->second;
+        const auto identity=lineage?lineage->identity(polygon->GetOriginalFace()):face_lineage::Identity{};
+        auto normals=std::make_shared<CornerMap>();
+        SmTArray<SmPolyEdge*> corners; checked(polygon->GetNonDegeneratePolyEdges(corners));
+        normal_count += corners.GetSize();
+        ensure(normal_count <= 3000000,"source corner normal budget exceeded");
+        for(auto* edge:corners) {
+            auto* aux=edge->GetAuxData();
+            ensure(aux,"missing source surface corner normal");
+            const auto n=aux->m_vNormal;
+            const double size=std::hypot(n.x,n.y,n.z);
+            ensure(std::isfinite(size) && std::abs(size-1)<=1e-8,
+                "source surface normal must be finite nonzero unit length");
+            auto inserted=normals->emplace(edge->GetStartPolyVertex(),n);
+            if(!inserted.second) {
+                const auto previous=inserted.first->second;
+                ensure(std::hypot(n.x-previous.x,n.y-previous.y,n.z-previous.z)<=1e-10,
+                    "ambiguous source seam corner normal");
+            }
+        }
         SmTArray<SmPolyFace*> added;
         if (!polygon->IsTriangle()) {
             checked(polygon->IsPlanar() ? polygon->TriangulatePlanar(added)
                                        : polygon->TriangulateNonPlanar(added));
         }
+        if(lineage) triangle_lineage.emplace(polygon,identity);
         triangle_sources.emplace(polygon,source);
-        for (auto* triangle : added) triangle_sources.emplace(triangle,source);
+        triangle_normals.emplace(polygon,normals);
+        for (auto* triangle : added) {
+            triangle_sources.emplace(triangle,source);
+            if(lineage) triangle_lineage.emplace(triangle,identity);
+            triangle_normals.emplace(triangle,normals);
+        }
     }
     poly->GetPolyFaces(polygons);
     ensure(polygons.GetSize() <= 1000000,"triangle budget exceeded");
@@ -73,12 +105,24 @@ std::unique_ptr<AdapterMesh> tessellate_mesh(SmBrep* solid, double chord, double
         const double nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx;
         const double length=std::hypot(nx,ny,nz);
         ensure(std::isfinite(length) && length > 0,"degenerate tessellation triangle");
-        for (unsigned corner=0; corner<3; ++corner)
-            mesh->normals.insert(mesh->normals.end(),{nx/length,ny/length,nz/length});
+        const auto& source_normals=*triangle_normals.at(triangle);
+        for (unsigned corner=0; corner<3; ++corner) {
+            const auto found=source_normals.find(edges[corner]->GetStartPolyVertex());
+            ensure(found!=source_normals.end(),"triangulation lost source corner correspondence");
+            const auto n=found->second;
+            // SDK OutputFacePolygons evaluates the source surface at its UV
+            // vertex and applies bReverse. Never flip a normal to hide a bad
+            // source orientation, and never replace it with this cross product.
+            ensure(n.x*(nx/length)+n.y*(ny/length)+n.z*(nz/length)>0,
+                "source normal disagrees with triangle orientation");
+            mesh->normals.insert(mesh->normals.end(),{n.x,n.y,n.z});
+        }
         mesh->faces.push_back(source->second);
+        if(lineage) mesh->provenance.triangles.push_back(triangle_lineage.at(triangle));
     }
     mesh->info.vertex_count = uint32_t(mesh->positions.size()/3);
     mesh->info.triangle_count = uint32_t(mesh->indices.size()/3);
     ensure(mesh->info.vertex_count && mesh->info.triangle_count,"nonempty solid produced empty tessellation");
+    if(lineage) { lineage->check(); mesh->provenance.evidence=face_lineage::Evidence::NativeOnly; }
     return mesh;
 }

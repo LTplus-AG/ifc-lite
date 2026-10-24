@@ -1,0 +1,11 @@
+--- a/native/smlib-adapter/src/plane_domain.cpp
++++ b/native/smlib-adapter/src/plane_domain.cpp
+@@ -167,7 +167,7 @@
+         // exactly zero its entire image is O+R*cos(U)X+R*sin(U)Y+V*Z.
+         // These are raw actual coefficients; no unit-basis assumption.
+         result[d]=exact(origin[d])+Interval{-radius,radius}*exact(axes[0][d])+
+-            Interval{-radius,radius}*exact(axes[1][d])+exact(0);
++            Interval{-radius,radius}*exact(axes[1][d])+Interval{v0,v1}*exact(axes[2][d]);
+     }
+     domain.methods|=4; return result;
+ }

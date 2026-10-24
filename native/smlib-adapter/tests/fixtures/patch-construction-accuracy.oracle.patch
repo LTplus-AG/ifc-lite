@@ -1,0 +1,11 @@
+--- a/native/smlib-adapter/src/plane.cpp
++++ b/native/smlib-adapter/src/plane.cpp
+@@ -190,7 +190,7 @@
+         // again AFTER it, then consume the operation-local authority once.
+         a=prepared.consume(prepared.get());
+         SmBrep* raw=nullptr;
+-        const auto status=SmApiBoolean(a.get(),bounded.get(),SM_BO_INTERSECTION,raw);
++        const auto status=intersect_plane_with_accuracy(a.get(),bounded.get(),raw);
+         // SDK may mutate/delete operands before reporting failure. Never run
+         // their destructors or publish a partially completed numerical object.
+         checked(status); bounded.release();

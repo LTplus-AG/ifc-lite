@@ -1,0 +1,11 @@
+--- a/native/smlib-adapter/src/plane_owned_domain.cpp
++++ b/native/smlib-adapter/src/plane_owned_domain.cpp
+@@ -71,7 +71,7 @@
+     using namespace plane_numeric;
+     require(!consumed_ && expected && expected==owned_.get(),"foreign or consumed owned plane domain");
+     verify_source();
+-    require(true,"owned plane inventory changed after certification");
++    require(plane_inventory(expected,true)==owned_inventory_,"owned plane inventory changed after certification");
+ }
+ std::unique_ptr<SmBrep> PreparedPlaneOperand::consume(SmBrep* expected) {
+     verify(expected); consumed_=true; return std::move(owned_);

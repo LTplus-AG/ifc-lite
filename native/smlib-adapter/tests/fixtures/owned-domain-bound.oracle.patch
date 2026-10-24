@@ -1,0 +1,11 @@
+--- a/native/smlib-adapter/src/plane_domain.cpp
++++ b/native/smlib-adapter/src/plane_domain.cpp
+@@ -213,7 +213,7 @@
+         f.GetUMin()<f.GetUMax() && f.GetVMin()<f.GetVMax(),"invalid owned face parameter domain");
+     include(uv,{{{f.GetUMin(),f.GetUMax()},{f.GetVMin(),f.GetVMax()},{0,0}}},2);
+     domain.methods|=8;
+-    return candidate.map.bounds; // mutated omitted owned UV image
++    return plane_source_proof::affine_image(candidate.map,uv);
+ }
+ Bounds face_hull(SmFace* face,uint32_t index,PlaneDomain& domain,
+     bool owned=false,bool reconstructed=false) {

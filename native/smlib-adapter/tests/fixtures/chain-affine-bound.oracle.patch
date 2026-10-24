@@ -1,0 +1,11 @@
+--- a/native/smlib-adapter/src/plane_source_domain.cpp
++++ b/native/smlib-adapter/src/plane_source_domain.cpp
+@@ -205,7 +205,7 @@
+         require(width.lo>0 && std::isfinite(width.hi),"uncertifiable affine knot width");
+         const Interval reciprocal{down(1/width.hi),up(1/width.lo)};
+         const auto t=(uv[a]-exact(k[0]))*reciprocal;
+-        result[d]=exact(proof.controls[d])+exact(0)*t*(exact(proof.controls[offset+d])-exact(proof.controls[d]));
++        result[d]=exact(proof.controls[d])+t*(exact(proof.controls[offset+d])-exact(proof.controls[d]));
+         require(std::isfinite(result[d].lo) && std::isfinite(result[d].hi),"affine UV image overflow");
+     }
+     return result;

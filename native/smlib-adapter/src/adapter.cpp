@@ -6,6 +6,7 @@
 #include "copy.hpp"
 #include "affine.hpp"
 #include "empty.hpp"
+#include "plane.hpp"
 #include "sweep.hpp"
 #include <SmApiBrep.h>
 #include <SmApiGeneral.h>
@@ -25,7 +26,8 @@
 namespace {
 using Solid = std::unique_ptr<SmBrep>;
 struct Failure { int32_t status; const char* message; };
-struct Slot { Solid solid; uint32_t generation = 1; std::unique_ptr<AdapterMesh> mesh; };
+struct Slot { Solid solid; uint32_t generation = 1; std::unique_ptr<AdapterMesh> mesh;
+    face_lineage::UnknownReason provenance=face_lineage::UnknownReason::UnobservedConstruction; };
 // One staged authored recipe per session. Bytes stay adapter-owned until commit.
 struct Upload { uint64_t id; uint32_t length, loops, segments, format; std::vector<uint8_t> bytes; };
 struct Session { std::vector<Slot> slots; std::unique_ptr<Upload> upload; };
@@ -105,19 +107,20 @@ AdapterMesh& mesh(uint64_t id, ifclite_smlib_handle handle) {
     require(slot.mesh != nullptr, IFCLITE_SMLIB_INVALID_HANDLE, "handle is not a mesh");
     return *slot.mesh;
 }
-ifclite_smlib_handle store(uint64_t id, Solid solid, std::unique_ptr<AdapterMesh> mesh = nullptr) {
+ifclite_smlib_handle store(uint64_t id, Solid solid, std::unique_ptr<AdapterMesh> mesh = nullptr,
+    face_lineage::UnknownReason provenance=face_lineage::UnknownReason::UnobservedConstruction) {
     require(solid || mesh, IFCLITE_SMLIB_KERNEL_ERROR, "kernel returned null object");
     Session& session = lookup(id);
     for (size_t i = 0; i < session.slots.size(); ++i) {
         Slot& slot = session.slots[i];
         if (!slot.solid && !slot.mesh && slot.generation != UINT32_MAX) {
             slot.solid = std::move(solid);
-            slot.mesh = std::move(mesh);
+            slot.mesh = std::move(mesh); slot.provenance=provenance;
             return {id, static_cast<uint32_t>(i), slot.generation};
         }
     }
     require(session.slots.size() < UINT32_MAX, IFCLITE_SMLIB_RESOURCE_LIMIT, "slot limit reached");
-    session.slots.push_back({std::move(solid), 1, std::move(mesh)});
+    session.slots.push_back({std::move(solid), 1, std::move(mesh), provenance});
     return {id, static_cast<uint32_t>(session.slots.size() - 1), 1};
 }
 void valid_origin(double x, double y, double z) {
@@ -216,7 +219,7 @@ int32_t ifclite_smlib_boolean(uint64_t session, ifclite_smlib_handle left,
         // Supported operations delete b and return a on success (upstream contract).
         b.release();
         require(raw == a.get(), IFCLITE_SMLIB_KERNEL_ERROR, "unexpected boolean result ownership");
-        *out = store(session, std::move(a));
+        *out = store(session, std::move(a),nullptr,face_lineage::UnknownReason::UnauditedBoolean);
     });
 }
 int32_t ifclite_smlib_volume(uint64_t session, ifclite_smlib_handle handle,
@@ -264,7 +267,7 @@ int32_t ifclite_smlib_tessellate(uint64_t session, ifclite_smlib_handle handle,
         output(out); positive(chord); positive(angle);
         require(angle <= 180, IFCLITE_SMLIB_INVALID_ARGUMENT, "angle exceeds 180 degrees");
         auto result = tessellate_mesh(solid(session,handle),chord,angle);
-        *out = store(session,nullptr,std::move(result));
+        *out = store(session,nullptr,std::move(result),face_lineage::UnknownReason::UnobservedTessellation);
     });
 }
 int32_t ifclite_smlib_mesh_get_info(uint64_t session, ifclite_smlib_handle handle,
@@ -299,7 +302,7 @@ int32_t ifclite_smlib_transform(uint64_t session, ifclite_smlib_handle handle,
         const auto frame=numerical_rigid_frame(matrix);
         Solid result=copy(solid(session,handle));
         checked(SmApiTransform(result.get(),frame));
-        *out=store(session,std::move(result));
+        *out=store(session,std::move(result),nullptr,face_lineage::UnknownReason::UnauditedAffine);
     });
 }
 int32_t ifclite_smlib_copy_affine(uint64_t session, ifclite_smlib_handle handle,
@@ -309,13 +312,25 @@ int32_t ifclite_smlib_copy_affine(uint64_t session, ifclite_smlib_handle handle,
         require(certificate != nullptr,IFCLITE_SMLIB_INVALID_ARGUMENT,"null affine certificate");
         *certificate={}; ifclite_smlib_affine_certificate prepared{};
         auto result=copy_affine_rational(solid(session,handle),matrix,prepared);
-        *out=store(session,std::move(result)); *certificate=prepared;
+        *out=store(session,std::move(result),nullptr,face_lineage::UnknownReason::UnauditedAffine); *certificate=prepared;
+    });
+}
+int32_t ifclite_smlib_clip_plane(uint64_t session, ifclite_smlib_handle handle,
+    const double* plane, int32_t side, uint32_t mode, ifclite_smlib_handle* out,
+    ifclite_smlib_plane_certificate* certificate) {
+    return boundary([&] {
+        output(out);
+        require(certificate,IFCLITE_SMLIB_INVALID_ARGUMENT,"null plane certificate");
+        *certificate={}; ifclite_smlib_plane_certificate prepared{};
+        auto result=clip_finite_plane(solid(session,handle),plane,side,mode,prepared);
+        *out=store(session,std::move(result),nullptr,face_lineage::UnknownReason::UnauditedClip);
+        prepared.input=handle; prepared.output=*out; *certificate=prepared;
     });
 }
 uint32_t ifclite_smlib_capabilities(void) {
     return IFCLITE_SMLIB_CAPABILITY_SWEEP_REGION | IFCLITE_SMLIB_CAPABILITY_SWEEP_DISK |
         IFCLITE_SMLIB_CAPABILITY_RIGID_COPY | IFCLITE_SMLIB_CAPABILITY_AFFINE_COPY |
-        IFCLITE_SMLIB_CAPABILITY_SEMANTIC_EMPTY;
+        IFCLITE_SMLIB_CAPABILITY_SEMANTIC_EMPTY | IFCLITE_SMLIB_CAPABILITY_PLANE_CLIP;
 }
 int32_t ifclite_smlib_sweep_begin(uint64_t session, uint32_t format,
     uint32_t length, uint32_t loops, uint32_t segments, uint64_t* out) {
@@ -376,4 +391,8 @@ uint32_t ifclite_smlib_error_copy(char* buffer, uint32_t capacity) {
     }
     return static_cast<uint32_t>(length + 1);
 }
+}
+
+face_lineage::UnknownReason face_lineage::unavailable_reason(uint64_t session,ifclite_smlib_handle handle) {
+    return lookup(session,handle).provenance;
 }

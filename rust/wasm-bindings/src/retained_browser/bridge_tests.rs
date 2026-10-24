@@ -53,6 +53,28 @@ fn volume(realization: &BrowserRealization) -> f64 {
 const BUDGET: u32 = 1 << 20;
 
 #[wasm_bindgen_test(async)]
+async fn j4_common_executor_uses_actual_worker_receipts_and_distinct_object_identity() {
+    use ifc_lite_processing::element::runtime::{AsyncRetainedExecutor, Invocation, NumericalLimits, NumericalReceipt, ReceiptEvidence};
+    use crate::retained_browser::receipt::BrowserReceipt;
+    let mut worker = BrowserWorker::new().unwrap();
+    let request = request(RECTANGLE, &worker);
+    let domain = worker.cancellation();
+    let limits = NumericalLimits { chord_metres: 0.001, angle_degrees: 5., max_bytes: BUDGET as usize };
+    let first = worker.invoke(Invocation::Construction(&request), limits).await.unwrap();
+    let second = worker.invoke(Invocation::Construction(&request), limits).await.unwrap();
+    assert!(first.object() != second.object(), "the same source can produce distinct owned objects");
+    assert!(first.belongs_to_domain(&domain) && second.belongs_to_domain(&domain));
+    let ReceiptEvidence::Construction(completion) = first.evidence() else { panic!("construction evidence") };
+    assert!(request.same_admission(completion.request()));
+    let BrowserReceipt::Construction(value) = &first else { panic!("construction invocation returned a dependency receipt") };
+    assert!((volume(value) - 1.).abs() <= 1e-9, "authored unit cube volume");
+    drop(first);
+    second.validate_live().unwrap();
+    domain.retire();
+    assert_eq!(second.validate_live(), Err(BrowserError::WrongWorker));
+}
+
+#[wasm_bindgen_test(async)]
 async fn retained_browser_abandoned_commit_retires_actual_worker_and_restart_is_independent() {
     let mut worker = BrowserWorker::new().unwrap();
     // A first real construction proves this module Worker exists and has a
@@ -88,14 +110,20 @@ async fn retained_browser_request_for_another_actual_worker_is_refused_without_s
     assert_ne!(b.incarnation(), 0, "a refused foreign request leaves the Worker live");
     let from_b = b.evaluate_retained(request(RECTANGLE, &b), 0.001, 5., BUDGET).await.unwrap();
     assert!(from_a.belongs_to(&a) && !from_a.belongs_to(&b));
+    // #7955 J4: common product acceptance uses the pre-dispatch domain.
+    let captured = a.cancellation();
+    from_a.validate_in_domain(&captured).unwrap();
+    assert_eq!(from_a.validate_in_domain(&b.cancellation()), Err(BrowserError::WrongWorker));
     a.retire();
     assert!(from_a.validate_live().is_err());
+    assert_eq!(from_a.validate_in_domain(&captured), Err(BrowserError::WrongWorker));
     // A request prepared for the retired Worker cannot run on it again.
     assert_eq!(
         a.evaluate_retained(request(RECTANGLE, &b), 0.001, 5., BUDGET).await.err(),
         Some(BrowserError::WrongWorker)
     );
     from_b.validate_live().unwrap();
+    from_b.validate_in_domain(&b.cancellation()).unwrap();
 }
 
 #[wasm_bindgen_test(async)]
@@ -139,4 +167,86 @@ async fn retained_browser_invalid_limits_preserve_actual_worker_and_existing_lea
     assert!(worker.evaluate_retained(request(RECTANGLE, &worker), 0.001, 5., 64).await.is_err());
     assert_eq!(worker.incarnation(), 0);
     assert!(original.validate_live().is_err());
+}
+
+#[wasm_bindgen_test(async)]
+async fn retained_browser_affine_requires_own_witness_and_keeps_independent_lease() {
+    // #7955: actual module Worker, sealed input and shared certificate decoder.
+    use crate::retained_browser::receipt::BrowserReceipt;
+    use ifc_lite_processing::element::runtime::NumericalReceipt;
+    let mut worker = BrowserWorker::new().unwrap();
+    let source = worker.evaluate_retained(request(RECTANGLE, &worker), 0.001, 5., BUDGET).await.unwrap();
+    let input = BrowserReceipt::Construction(Box::new(source));
+    let matrix = [2., 0., 0., 0., 0.5, 1., 0., 0., 0., 0., 1., 0., 7., -4., 2., 1.];
+    assert!(matches!(worker.copy_retained_affine(&input, matrix).await.err(), Some(BrowserError::Unqualified(_))));
+    input.validate_live().unwrap();
+    worker.qualify_dependencies().await.unwrap();
+    let mut singular = matrix;
+    singular[8..11].fill(0.);
+    assert!(worker.copy_retained_affine(&input, singular).await.is_err());
+    input.validate_live().unwrap();
+    let copy = worker.copy_retained_affine(&input, matrix).await.unwrap();
+    assert!(copy.input == input.object());
+    assert_eq!(copy.column_major, matrix);
+    assert_eq!(copy.operations, 1);
+    drop(input);
+    copy.validate_live().unwrap();
+    let other = BrowserWorker::new().unwrap();
+    assert!(!copy.domain.same_domain(&other.cancellation()));
+    worker.retire();
+    assert!(copy.validate_live().is_err());
+}
+
+#[wasm_bindgen_test(async)]
+async fn retained_browser_boolean_uses_shared_survey_frames_and_authenticates_empty_reuse() {
+    // #7955: one-metre authored cube; overlapping half-cubes have volume 0.5.
+    use crate::retained_browser::receipt::BrowserReceipt;
+    use ifc_lite_geometry::BoolOp;
+    use ifc_lite_processing::element::runtime::{NumericalLimits, NumericalReceipt, Operand};
+    let mut worker = BrowserWorker::new().unwrap();
+    worker.qualify_dependencies().await.unwrap();
+    let source = worker.evaluate_retained(request(RECTANGLE, &worker), 0.001, 5., BUDGET).await.unwrap();
+    let input = BrowserReceipt::Construction(Box::new(source));
+    let frame = [1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 1e9, 2e9, 3e9, 1.];
+    let mut shifted = frame;
+    shifted[12] += 0.5;
+    let limits = NumericalLimits { chord_metres: 0.001, angle_degrees: 5., max_bytes: BUDGET as usize };
+    let result = worker.evaluate_retained_boolean(
+        Operand::Source { receipt: &input, world_from_source: frame },
+        Operand::Source { receipt: &input, world_from_source: shifted }, BoolOp::Difference, limits).await.unwrap();
+    assert!(!result.mesh.empty);
+    assert!((dependency_volume(&result.mesh) - 0.5).abs() < 1e-9);
+    // Rectangle evaluation starts at its authored lower-left corner (-0.5,-0.5,0).
+    let mut expected = frame;
+    expected[12] -= 0.5;
+    expected[13] -= 0.5;
+    assert_eq!(result.world_from_left, expected);
+    expected[12] += 0.5;
+    assert_eq!(result.world_from_right, expected);
+    assert!(result.left == input.object() && result.right == input.object());
+    let empty = worker.evaluate_retained_boolean(
+        Operand::Source { receipt: &input, world_from_source: frame },
+        Operand::Source { receipt: &input, world_from_source: frame }, BoolOp::Difference, limits).await.unwrap();
+    assert!(empty.mesh.empty && empty.mesh.positions.is_empty() && empty.mesh.indices.is_empty());
+    let empty = BrowserReceipt::Boolean(Box::new(empty));
+    let recovered = worker.evaluate_retained_boolean(
+        Operand::Placed { receipt: &empty, world_from_object: frame },
+        Operand::Source { receipt: &input, world_from_source: frame }, BoolOp::Union, limits).await.unwrap();
+    assert!(!recovered.mesh.empty);
+    assert!((dependency_volume(&recovered.mesh) - 1.).abs() < 1e-9);
+    drop(empty);
+    drop(input);
+    recovered.validate_live().unwrap();
+    result.validate_live().unwrap();
+    worker.retire();
+    assert!(recovered.validate_live().is_err() && result.validate_live().is_err());
+}
+
+fn dependency_volume(mesh: &super::Mesh) -> f64 {
+    let p = |i: u32| { let i = i as usize * 3; [mesh.positions[i], mesh.positions[i + 1], mesh.positions[i + 2]] };
+    mesh.indices.chunks_exact(3).map(|t| {
+        let [a, b, c] = [p(t[0]), p(t[1]), p(t[2])];
+        (a[0] * (b[1] * c[2] - b[2] * c[1]) + a[1] * (b[2] * c[0] - b[0] * c[2])
+            + a[2] * (b[0] * c[1] - b[1] * c[0])) / 6.
+    }).sum::<f64>().abs()
 }

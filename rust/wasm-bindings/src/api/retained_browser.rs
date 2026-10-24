@@ -36,7 +36,7 @@ fn family(qualification: RegionQualification) -> &'static str {
 /// One module Worker running the deployed `/smlib/` SDK bundle.
 #[wasm_bindgen]
 pub struct RetainedBrowserExecutor {
-    worker: BrowserWorker,
+    pub(super) worker: BrowserWorker,
 }
 
 /// Retirement captured before an async call, usable while that call holds the
@@ -74,6 +74,11 @@ impl RetainedBrowserExecutor {
     #[wasm_bindgen(js_name = qualifyNumericalRoutes)]
     pub async fn qualify_numerical_routes(&mut self) -> Result<(), JsValue> {
         self.worker.qualify().await.map_err(failure)
+    }
+    /// Run the affine, placed Boolean and semantic-empty witnesses on this Worker.
+    #[wasm_bindgen(js_name = qualifyDependencies)]
+    pub async fn qualify_dependencies(&mut self) -> Result<(), JsValue> {
+        self.worker.qualify_dependencies().await.map_err(failure)
     }
     /// Families this actual Worker can execute now. Reads its SDK capability
     /// bits; curved families additionally need `qualifyNumericalRoutes`.

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Actual canonical package + actual module Worker + staged /smlib SDK bundle.
 // Run by scripts/retained-browser-contract.mjs in Chromium; nothing is mocked.
+import { runProductContract } from './product-contract.mjs';
 export async function runRetainedBrowserContract(wasm, fixture) {
   const assert = (condition, message) => { if (!condition) throw new Error(message); };
   const rejects = async (run, pattern, message) => {
@@ -64,10 +65,13 @@ export async function runRetainedBrowserContract(wasm, fixture) {
     assert(after.live, 'publishing released the object and kept the Worker');
     fresh.retire();
     await rejects(() => sources.execute(entry.index, fresh, 0.001, 5, 16 << 20), /retired|foreign/i, 'retired Worker runs nothing');
+    const product = await runProductContract({ wasm, api, bytes, keep, assert, rejects });
     return { passed: true, volume: Math.abs(six / 6), triangles: indices.length / 3, world, capabilities,
-      sourceOnly: true, fullProductQualification: false };
+      sourceOnly: true, product, fullProductQualification: false };
   } finally {
-    for (const value of owned.reverse()) { try { value.free(); } catch { /* already consumed */ } }
+    for (const value of owned.reverse()) {
+      try { value.free(); } catch (error) { console.warn('Retained contract cleanup failed', error); }
+    }
     api.free();
   }
 }

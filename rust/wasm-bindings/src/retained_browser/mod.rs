@@ -8,7 +8,7 @@
 //! lease from an integer, a callback, a caller transport or a supplied buffer.
 //!
 //! Mirrors the native `ifc_lite_geometry_runtime::SmlibWorker` retained
-//! contract (that crate stays native-only and unpublished): requests are
+//! contract (native process transport, with a wasm32-compatible protocol): requests are
 //! bound to the incarnation they were prepared for, curved regions and disks
 //! need this incarnation's own numerical witnesses, and each realization owns
 //! one object lease that is released independently when it is dropped.
@@ -25,6 +25,14 @@ use std::sync::{
 
 #[cfg(target_arch = "wasm32")]
 mod bridge;
+#[cfg(target_arch = "wasm32")]
+mod receipt;
+#[cfg(target_arch = "wasm32")]
+mod dependencies;
+#[cfg(target_arch = "wasm32")]
+mod boolean;
+#[cfg(target_arch = "wasm32")]
+pub(crate) use receipt::BrowserReceipt;
 
 /// Every refusal of the browser executor. A refused call submits nothing
 /// unless it says otherwise; an unknown outcome retires the whole Worker.
@@ -144,6 +152,7 @@ pub struct BrowserWorker {
     owner: Arc<Owner>,
     regions_qualified: bool,
     disks_qualified: bool,
+    dependencies_qualified: bool,
 }
 
 /// Retirement captured independently of an executor's async borrow. It cannot
@@ -153,14 +162,20 @@ pub struct BrowserCancellation {
     owner: Arc<Owner>,
 }
 impl BrowserCancellation {
+    /// Domain identity is the captured owner, including after retirement.
+    pub fn same_domain(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.owner, &other.owner)
+    }
+    pub fn is_live(&self) -> bool {
+        self.owner.validate().is_ok()
+    }
     /// The captured incarnation while it and its actual Worker are live.
-    #[cfg(all(test, not(target_arch = "wasm32")))]
     pub fn incarnation(&self) -> Option<u64> {
-        self.owner.validate().ok().map(|()| self.owner.identity)
+        self.is_live().then_some(self.owner.identity)
     }
     #[cfg(test)]
     pub fn same_worker(&self, worker: &BrowserWorker) -> bool {
-        Arc::ptr_eq(&self.owner, &worker.owner)
+        self.same_domain(&worker.cancellation())
     }
     pub fn retire(&self) {
         self.owner.retire();
@@ -196,30 +211,39 @@ impl Drop for BrowserWorker {
 /// Dropping it releases only its own object before the Worker's next command.
 pub struct BrowserRealization {
     completion: ifc_lite_geometry::document::RetainedCompletion,
-    owner: Arc<Owner>,
+    domain: BrowserCancellation,
+    identity: u64,
     object_live: AtomicBool,
     #[cfg(target_arch = "wasm32")]
     object: wasm_bindgen::JsValue,
 }
 impl BrowserRealization {
+    /// Authenticate a receipt against the domain captured before dispatch.
+    /// A matching numeric incarnation alone is never sufficient authority.
+    pub fn validate_in_domain(&self, domain: &BrowserCancellation) -> Result<(), BrowserError> {
+        if !self.domain.same_domain(domain) || !domain.is_live() {
+            return Err(BrowserError::WrongWorker);
+        }
+        self.validate_live()
+    }
     pub fn completion(&self) -> &ifc_lite_geometry::document::RetainedCompletion {
         &self.completion
     }
     pub fn incarnation(&self) -> u64 {
-        self.owner.identity
+        self.domain.owner.identity
     }
     #[cfg(test)]
     pub fn belongs_to(&self, worker: &BrowserWorker) -> bool {
-        Arc::ptr_eq(&self.owner, &worker.owner)
+        Arc::ptr_eq(&self.domain.owner, &worker.owner)
     }
     /// The producing Worker is live and still holds this exact object.
     pub fn validate_live(&self) -> Result<(), BrowserError> {
-        self.owner.validate()?;
+        self.domain.owner.validate()?;
         if !self.object_live.load(Ordering::Acquire) {
             return Err(BrowserError::WrongWorker);
         }
         #[cfg(target_arch = "wasm32")]
-        if !self.owner.driver.object_live(&self.object) {
+        if !self.domain.owner.driver.object_live(&self.object) {
             return Err(BrowserError::WrongWorker);
         }
         Ok(())
@@ -230,7 +254,7 @@ impl Drop for BrowserRealization {
         // Invalidate before the asynchronous release is queued.
         self.object_live.store(false, Ordering::Release);
         #[cfg(target_arch = "wasm32")]
-        self.owner.driver.release_object(&self.object);
+        self.domain.owner.driver.release_object(&self.object);
     }
 }
 
@@ -261,3 +285,6 @@ impl Drop for InFlight {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests;
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod product_tests;

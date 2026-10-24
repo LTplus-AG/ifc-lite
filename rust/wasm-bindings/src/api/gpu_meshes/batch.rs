@@ -107,8 +107,8 @@ impl IfcAPI {
         use ifc_lite_core::EntityDecoder;
         use ifc_lite_geometry::GeometryRouter;
         use ifc_lite_processing::element::{
-            plan_type_geometry, produce_element_meshes_owned, ElementJobKind, ElementMeshJob,
-            GeometryHashConfig, MeshProductionOptions, OwnedMeshProductionData, TypeGeometryMode,
+            produce_element_meshes_owned, ElementMeshJob,
+            GeometryHashConfig, MeshProductionOptions, OwnedMeshProductionData,
         };
         use ifc_lite_processing::style::GeometryStyleInfo;
 
@@ -252,9 +252,7 @@ impl IfcAPI {
         // flag — off (default) ⇒ slice into layers; on ⇒ one solid. The separate
         // part-skip path below keeps its own index, so IfcBuildingElementPart
         // merging is unaffected.
-        if !self.merge_layers() {
-            router.set_material_layer_index(self.get_or_build_material_layer_index(content, &mut decoder));
-        }
+        self.configure_product_material_layers(&mut router, content, &mut decoder);
 
         // Set RTC offset if needed
         if needs_shift {
@@ -461,34 +459,8 @@ impl IfcAPI {
                 None
             };
 
-            // #957: type products render their planned RepresentationMaps. The
-            // viewer emits BOTH orphan (class 1) and instanced (class 2) maps —
-            // `EmitTagged` — so the Model/Types switch can filter at render
-            // time; the native pipeline plans the same jobs with
-            // `SuppressInstanced` (an export must not duplicate geometry).
-            let kind = if ifc_type.is_subtype_of(ifc_lite_core::IfcType::IfcTypeProduct) {
-                let rep_map_ids: Vec<u32> = entity
-                    .get(6)
-                    .and_then(|a| a.as_list())
-                    .map(|list| list.iter().filter_map(|v| v.as_entity_ref()).collect())
-                    .unwrap_or_default();
-                if rep_map_ids.is_empty() {
-                    continue;
-                }
-                let referenced = self.get_or_build_referenced_repmaps(content, &mut decoder);
-                let instantiated = self.get_or_build_instantiated_type_ids(content, &mut decoder);
-                let rep_maps = plan_type_geometry(
-                    &rep_map_ids,
-                    &referenced,
-                    instantiated.contains(&id),
-                    TypeGeometryMode::EmitTagged,
-                );
-                if rep_maps.is_empty() {
-                    continue;
-                }
-                ElementJobKind::TypeProduct { rep_maps }
-            } else {
-                ElementJobKind::Product
+            let Some(kind) = self.canonical_product_job_kind(content, entity.as_ref(), &ifc_type, &mut decoder) else {
+                continue;
             };
 
             let produced = produce_element_meshes_owned(

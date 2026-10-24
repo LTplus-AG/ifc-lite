@@ -22,6 +22,14 @@ extern "C" {
     pub(super) fn object_live(this: &Driver, object: &JsValue) -> bool;
     #[wasm_bindgen(method, js_name = releaseObject)]
     pub(super) fn release_object(this: &Driver, object: &JsValue);
+    #[wasm_bindgen(method, js_name = qualifyDependencies)]
+    pub(super) fn qualify_dependencies(this: &Driver) -> js_sys::Promise;
+    #[wasm_bindgen(method, js_name = copyAffine)]
+    pub(super) fn copy_affine(this: &Driver, input: &JsValue, matrix: &[f64]) -> js_sys::Promise;
+    #[wasm_bindgen(method, js_name = evaluateBoolean)]
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn evaluate_boolean(this: &Driver, left: &JsValue, right: &JsValue,
+        relative: &[f64], operation: u32, chord: f64, angle: f64, max_bytes: u32) -> js_sys::Promise;
     #[wasm_bindgen(method)]
     fn qualify(this: &Driver) -> js_sys::Promise;
     #[wasm_bindgen(method)]
@@ -45,17 +53,19 @@ extern "C" {
 }
 
 #[derive(serde::Deserialize)]
-struct Mesh {
-    positions: Vec<f64>,
-    indices: Vec<u32>,
-    flat_corner_normals: Vec<f64>,
-    revision_local_faces: Vec<u32>,
-    source_face_count: u32,
-    boundary_edges: u32,
-    spine_edges: u32,
+pub(super) struct Mesh {
+    pub(super) positions: Vec<f64>,
+    pub(super) indices: Vec<u32>,
+    pub(super) flat_corner_normals: Vec<f64>,
+    pub(super) revision_local_faces: Vec<u32>,
+    pub(super) source_face_count: u32,
+    pub(super) boundary_edges: u32,
+    pub(super) spine_edges: u32,
+    #[serde(default)]
+    pub(super) empty: bool,
 }
 
-fn driver_error(error: JsValue) -> BrowserError {
+pub(super) fn driver_error(error: JsValue) -> BrowserError {
     let message = error
         .dyn_ref::<js_sys::Error>()
         .map(|error| String::from(error.message()))
@@ -77,6 +87,7 @@ impl BrowserWorker {
             }),
             regions_qualified: false,
             disks_qualified: false,
+            dependencies_qualified: false,
         })
     }
 
@@ -147,6 +158,8 @@ impl BrowserWorker {
                 "execute this incarnation's numerical witnesses first",
             ));
         }
+        let identity = next_identity()?;
+        let domain = self.cancellation();
         let mut flight = InFlight::new(&self.owner);
         let value = JsFuture::from(self.owner.driver.evaluate(
             &payload.bytes,
@@ -170,7 +183,8 @@ impl BrowserWorker {
             payload.evaluation_from_source,
         );
         let realization = BrowserRealization {
-            owner: self.owner.clone(),
+            domain: domain.clone(),
+            identity,
             object_live: AtomicBool::new(true),
             object,
             completion: RetainedCompletion::new(
@@ -189,7 +203,7 @@ impl BrowserWorker {
             ),
         };
         // Accept only a lease the driver still holds for this exact Worker.
-        realization.validate_live()?;
+        realization.validate_in_domain(&domain)?;
         flight.disarm();
         Ok(realization)
     }

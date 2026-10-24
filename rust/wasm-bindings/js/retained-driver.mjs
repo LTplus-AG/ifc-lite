@@ -14,6 +14,7 @@ export class RetainedDriver {
   #incarnation;
   #retired = false;
   #qualified = false;
+  #dependenciesQualified = false;
   #busy = false;
   #sequence = 0;
   #session;
@@ -150,6 +151,67 @@ export class RetainedDriver {
     } catch (error) { this.retire(); throw error; }
     finally { this.#releaseBusy(); }
   }
+  async qualifyDependencies() {
+    await this.#acquire();
+    this.#dependenciesQualified = false;
+    try {
+      const { runDependencyContract } = await loadSdkModule('/smlib/dependency-contract.mjs');
+      const report = await runDependencyContract(this.#observedTransport(), this.#incarnation);
+      if (!this.live()) throw new Error('dependency qualification worker expired');
+      this.#dependenciesQualified = true;
+      return report;
+    } catch (error) { this.retire(); throw error; }
+    finally { this.#releaseBusy(); }
+  }
+  async copyAffine(input, matrix) {
+    // Rust performs the shared numerical admission before this private call.
+    // Capture the borrowed wasm coefficients before any await.
+    const coefficients = new Float64Array(matrix);
+    if (coefficients.length !== 16 || !coefficients.every(Number.isFinite)) throw new Error('invalid affine coefficients');
+    if (!this.objectLive(input)) throw new Error('foreign or expired affine input');
+    await this.#acquire();
+    if (!this.#dependenciesQualified || !this.objectLive(input)) {
+      this.#releaseBusy();
+      throw new Error('unqualified dependency or expired affine input');
+    }
+    try {
+      const reply = await this.#call(18, this.#session, this.#objects.get(input), ...Array.from(coefficients, f64));
+      if (reply.byteLength !== 72) throw new Error('invalid affine reply size');
+      const solid = reply.slice(0, 16);
+      validateHandle(solid, new DataView(this.#session.buffer).getBigUint64(0, true));
+      const object = Object.freeze({});
+      this.#objects.set(object, solid);
+      return Object.freeze({ object, certificate: reply.slice(16) });
+    } catch (error) { this.retire(); throw error; }
+    finally { this.#releaseBusy(); }
+  }
+  async evaluateBoolean(left, right, relative, operation, chord, angle, maxBytes) {
+    const matrix = new Float64Array(relative);
+    if (matrix.length !== 16 || !matrix.every(Number.isFinite) || ![1, 2, 3].includes(operation))
+      throw new Error('invalid Boolean invocation');
+    if (!this.objectLive(left) || !this.objectLive(right)) throw new Error('foreign or expired Boolean input');
+    await this.#acquire();
+    if (!this.#dependenciesQualified || !this.objectLive(left) || !this.objectLive(right)) {
+      this.#releaseBusy();
+      throw new Error('unqualified dependency or expired Boolean input');
+    }
+    try {
+      const moved = await this.#call(17, this.#session, this.#objects.get(right), ...Array.from(matrix, f64));
+      validateHandle(moved, new DataView(this.#session.buffer).getBigUint64(0, true));
+      let solid;
+      try { solid = await this.#call(5, this.#session, this.#objects.get(left), moved, u32(operation)); }
+      finally { await this.#call(8, this.#session, moved); }
+      validateHandle(solid, new DataView(this.#session.buffer).getBigUint64(0, true));
+      const meshHandle = await this.#call(9, this.#session, solid, f64(chord), f64(angle));
+      validateHandle(meshHandle, new DataView(this.#session.buffer).getBigUint64(0, true));
+      const mesh = await this.#readMesh(meshHandle, maxBytes, solid);
+      await this.#call(8, this.#session, meshHandle);
+      const object = Object.freeze({});
+      this.#objects.set(object, solid);
+      return Object.freeze({ object, mesh });
+    } catch (error) { this.retire(); throw error; }
+    finally { this.#releaseBusy(); }
+  }
   async evaluate(bytes, format, loops, segments, qualification, chord, angle, maxBytes) {
     // Own every coefficient before awaiting initialization or asset loading.
     const recipe = new Uint8Array(bytes);
@@ -190,11 +252,18 @@ export class RetainedDriver {
       throw error;
     } finally { this.#releaseBusy(); }
   }
-  async #readMesh(handle, maxBytes) {
+  async #readMesh(handle, maxBytes, solid) {
     const info = await this.#call(10, this.#session, handle);
     if (info.byteLength !== 24) throw new Error('invalid retained mesh info');
     const view = new DataView(info.buffer);
     const [vertices, triangles, faces, boundary, spine, failures] = Array.from({ length: 6 }, (_, i) => view.getUint32(i * 4, true));
+    if (solid && [vertices, triangles, faces, boundary, spine, failures].every(n => n === 0)) {
+      const certificate = await this.#call(19, this.#session, solid);
+      if (certificate.byteLength !== 4 || new DataView(certificate.buffer).getUint32(0, true) !== 1)
+        throw new Error('zero mesh without semantic empty certificate');
+      return { positions: new Float64Array(), indices: new Uint32Array(), flat_corner_normals: new Float64Array(),
+        revision_local_faces: new Uint32Array(), source_face_count: 0, boundary_edges: 0, spine_edges: 0, empty: true };
+    }
     const bytes = vertices * 3 * 8 + triangles * (3 * 4 + 9 * 8 + 4);
     if (!vertices || !triangles || !faces || boundary || spine || failures || !Number.isSafeInteger(bytes) || bytes > maxBytes ||
         vertices * 3 > 0xffffffff || triangles * 9 > 0xffffffff) throw new Error('invalid or oversized retained mesh');
@@ -219,7 +288,7 @@ export class RetainedDriver {
     const flat_corner_normals = await read(4, triangles * 9, 8);
     if (indices.some(i => i >= vertices) || revision_local_faces.some(i => i >= faces)) throw new Error('retained mesh index bound');
     return { positions, indices, flat_corner_normals, revision_local_faces,
-      source_face_count: faces, boundary_edges: boundary, spine_edges: spine };
+      source_face_count: faces, boundary_edges: boundary, spine_edges: spine, empty: false };
   }
 }
 function validateHandle(bytes, session) {

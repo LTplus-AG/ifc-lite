@@ -41,12 +41,14 @@ fn cancellation_observes_only_its_captured_owner() {
         owner: owner(),
         regions_qualified: false,
         disks_qualified: false,
+            dependencies_qualified: false,
     };
     let cancellation = worker.cancellation();
     let other = BrowserWorker {
         owner: owner(),
         regions_qualified: false,
         disks_qualified: false,
+            dependencies_qualified: false,
     };
     assert!(cancellation.same_worker(&worker) && !cancellation.same_worker(&other));
     assert_eq!(cancellation.incarnation(), Some(worker.incarnation()));
@@ -55,6 +57,25 @@ fn cancellation_observes_only_its_captured_owner() {
     cancellation.retire();
     assert_eq!((worker.incarnation(), cancellation.incarnation()), (0, None));
     assert_ne!(other.owner.identity, worker.owner.identity);
+}
+
+#[test]
+fn j4_domain_identity_cannot_be_reconstructed_from_an_incarnation_number() {
+    // #7955: data equality must not grant authority over another live owner.
+    let captured = BrowserCancellation { owner: owner() };
+    let same_number = BrowserCancellation { owner: Arc::new(Owner {
+        identity: captured.owner.identity,
+        live: AtomicBool::new(true),
+    }) };
+    let clone = captured.clone();
+    assert!(captured.same_domain(&clone));
+    assert!(!captured.same_domain(&same_number));
+    same_number.retire();
+    assert!(captured.is_live());
+    assert!(!same_number.is_live());
+    clone.retire();
+    assert!(!captured.is_live());
+    assert!(captured.same_domain(&clone), "retirement changes liveness, not identity");
 }
 
 #[test]

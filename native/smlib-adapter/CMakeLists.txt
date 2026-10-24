@@ -188,3 +188,18 @@ foreach(case invalid representation callback positive curved mixed negative-sour
     COMMAND ${test_runner} $<TARGET_FILE:ifclite_smlib_lineage_tests> affine-${case})
   set_tests_properties(smlib_affine_lineage_diagnostic_${case} PROPERTIES TIMEOUT 120)
 endforeach()
+
+# Explicit Linux diagnostic checkpoint; never an event-acceptance capability.
+option(IFCLITE_LINEAGE_FAILURE_STACK "Capture bounded first-failure native stacks" OFF)
+if(IFCLITE_LINEAGE_FAILURE_STACK)
+  if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR EMSCRIPTEN)
+    message(FATAL_ERROR "Lineage failure stacks require native Linux execinfo")
+  endif()
+  target_compile_definitions(ifclite_smlib PUBLIC IFCLITE_LINEAGE_FAILURE_STACK=1)
+  add_executable(ifclite_smlib_failure_stack_tests tests/failure_stack_tests.cpp)
+  target_compile_features(ifclite_smlib_failure_stack_tests PRIVATE cxx_std_17)
+  target_include_directories(ifclite_smlib_failure_stack_tests PRIVATE src)
+  target_link_libraries(ifclite_smlib_failure_stack_tests PRIVATE ifclite_smlib smlib_api)
+  add_test(NAME smlib_lineage_failure_stack COMMAND ifclite_smlib_failure_stack_tests)
+  set_tests_properties(smlib_lineage_failure_stack PROPERTIES TIMEOUT 30)
+endif()

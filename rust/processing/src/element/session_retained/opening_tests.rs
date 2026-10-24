@@ -7,6 +7,10 @@ use ifc_lite_core::{EntityScanner, SourceBundle};
 use crate::prepass::{resolve_prepass, PrepassSpans, ResolveOptions};
 
 pub(super) fn with_source(source: &str, f: impl FnOnce(&mut RetainedProductExecution, &mut EntityDecoder, &GeometryRouter)) {
+    with_selected_voids(source, false, f);
+}
+pub(super) fn with_selected_voids(source: &str, inject_index: bool,
+    f: impl FnOnce(&mut RetainedProductExecution, &mut EntityDecoder, &GeometryRouter)) {
     let bundle = SourceBundle::new(source.as_bytes().to_vec());
     let mut decoder = bundle.decoder();
     let mut router = GeometryRouter::with_units(source, &mut decoder);
@@ -17,7 +21,8 @@ pub(super) fn with_source(source: &str, f: impl FnOnce(&mut RetainedProductExecu
     while let Some((id, ty, start, end)) = scanner.next_entity() {
         if ty == "IFCRELVOIDSELEMENT" { spans.void_rels.push((id,start,end)); }
     }
-    let prepass = resolve_prepass(&spans, &mut decoder, ResolveOptions::default());
+    let mut prepass = resolve_prepass(&spans, &mut decoder, ResolveOptions::default());
+    if inject_index { prepass.void_index.insert(30, vec![50,70,100]); }
     let context = model.snapshot(OwnedMeshProductionData { void_index: Arc::new(prepass.void_index), ..Default::default() });
     let id = if source == TRAP { 72209 } else { 30 };
     let entity = decoder.decode_by_id(id).unwrap();
@@ -55,6 +60,7 @@ fn j2_sdk_ordered_overlapping_and_repeated_multipart_source_oracles() {
             assert_eq!(plan.values.len(),parts);
             assert_eq!(plan.opening_completion.as_ref().unwrap().accepted_cuts(), expected as u64);
             assert!(!plan.remaining.contains(&RetainedRequirement::OpeningClosure));
+            assert!(!execution.has_authenticated_opening_removal());
             assert!(plan.remaining.contains(&RetainedRequirement::PersistentFaces));
             execution.validate_witness().unwrap();
         });
@@ -84,10 +90,7 @@ fn j2_sdk_malformed_opening_aborts_without_uncut_fallback() {
 #[test]
 fn j2_sdk_authenticated_empty_stops_unreachable_opening_decode_but_refuses_removal() {
     let Some(mut worker) = worker() else { return };
-    for (source, unreachable) in [
-        (empty_host_source(),46),
-        (OVERLAP.replace("'SweptSolid',(#46)","'SweptSolid',(#26)"),66),
-    ] {
+    for (source, unreachable) in [(empty_host_source(),46)] {
     with_source(&source, |execution, decoder, router| {
         let error = loop {
             match execution.issue_next(decoder,router,&worker) {

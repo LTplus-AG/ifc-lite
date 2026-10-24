@@ -3,6 +3,8 @@ use super::*;
 /// Owned intermediate evidence. This deliberately exposes no final mesh/product.
 pub struct RuntimeProductWitness<R: NumericalReceipt> {
     plan: RetainedProductPlan,
+    removal: Option<removal::AuthenticatedRemoval>,
+    context_id: super::super::model_context::ProductionContextId,
     layer_manifest: Option<DerivedLayerManifest<R>>,
     layer_source: Option<Arc<RetainedLayerSource>>,
     ledger: Vec<(LogicalRetainedValue, Arc<RuntimeRealization<R>>)>,
@@ -21,8 +23,13 @@ impl<R: NumericalReceipt> RuntimeProductWitness<R> {
         for (_, realization) in &self.ledger {
             realization.validate_live().map_err(protocol)?;
         }
+        if let Some(removal) = &self.removal { removal.validate(self.context_id, &self.plan)?; }
         if let Some(manifest) = &self.layer_manifest { manifest.validate()?; }
         Ok(())
+    }
+    /// Source-protected whole-product removal; all final gates still apply.
+    pub fn has_authenticated_opening_removal(&self) -> bool {
+        self.removal.is_some() && self.validate().is_ok()
     }
     /// Intermediate evidence never grants final-product publication authority.
     pub fn require_final_product(&self) -> Result<(), RetainedExecutionError> {
@@ -50,6 +57,8 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
         if self.layer_manifest.is_some() { self.layer_token = None; }
         Ok(RuntimeProductWitness {
             plan,
+            removal: self.removal.take(),
+            context_id: self.context.id(),
             layer_manifest: self.layer_manifest.take(),
             layer_source: self.layer_source.take(),
             ledger: std::mem::take(&mut self.ledger),

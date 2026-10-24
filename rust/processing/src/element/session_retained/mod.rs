@@ -22,6 +22,8 @@ pub use layers::{RetainedLayerSource, RetainedLayerBand, RetainedLayerInterface,
 pub(crate) use layers::LayerAssociationIndex;
 mod witness;
 mod openings;
+mod removal;
+mod removal_source;
 pub use witness::RuntimeProductWitness;
 mod acceptance;
 mod validation;
@@ -136,6 +138,7 @@ pub struct RuntimeProductExecution<'a, R: NumericalReceipt> {
     ledger: Vec<(LogicalRetainedValue, Arc<RuntimeRealization<R>>)>,
     permits: Vec<Reservation>,
     plan: Option<RetainedProductPlan>,
+    removal: Option<removal::AuthenticatedRemoval>,
     failed: bool,
 }
 impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
@@ -196,7 +199,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                     result.map(|(ticket, admission)| ((ticket, admission), stamp))
                 })?;
             let Some(ticket) = ticket else {
-                self.finish_current_program(outer)?;
+                self.finish_current_program(outer, decoder, router)?;
                 if self.plan.is_none() { self.start_next_program(decoder,router)?; }
                 continue;
             };
@@ -248,6 +251,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             program.cancel();
         }
         self.plan = None;
+        self.removal = None;
         self.layer_manifest = None;
     }
     pub fn traversal_plan(&self) -> Option<&RetainedProductPlan> {
@@ -267,6 +271,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             .traversal_plan()
             .ok_or_else(|| protocol("unfinished product"))?;
         self.validate_manifest(plan)?;
+        if let Some(removal) = &self.removal { removal.validate(self.context.id(), plan)?; }
         if let Some(manifest) = &self.layer_manifest { manifest.validate()?; }
         Ok(())
     }

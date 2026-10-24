@@ -118,8 +118,14 @@ async fn j2_worker_cancellation_malformed_and_empty_keep_effects_provisional() {
                 }
             }
         }
-        assert!(failed,"transaction must refuse cancellation, malformed body, or unproved removal");
-        assert!(execution.traversal_plan().is_none());
+        if case == 4 {
+            assert!(!failed, "J2_REMOVAL_PERMITTED");
+            assert!(execution.has_authenticated_opening_removal(), "J2_REMOVAL_PERMITTED");
+            execution.validate_witness().unwrap();
+        } else {
+            assert!(failed,"transaction must refuse cancellation, malformed body, or unproved removal");
+            assert!(execution.traversal_plan().is_none());
+        }
         if case == 2 { assert!(decoder.get_cached(46).is_none(),"J2_EMPTY_LAZY"); }
         if case == 4 { assert!(decoder.get_cached(66).is_none(),"J2_EMPTY_LAZY"); }
         assert!(!router.host_consumed_by_void(30),"J2_EFFECT_ISOLATION");
@@ -220,6 +226,52 @@ async fn j2_worker_wrong_type_representation_sibling_aborts_entire_closure() {
             assert!(witness.require_final_product().is_err());
         }
         assert_eq!(observed.cuts, expected_cuts, "J2_REPRESENTATION_SIBLING_CUTS");
+        assert!(!router.host_consumed_by_void(30), "J2_EFFECT_ISOLATION");
+        observed.worker.retire();
+    }
+}
+
+#[wasm_bindgen_test(async)]
+async fn j2_worker_source_protected_whole_product_removal() {
+    for (index, source) in removal_sources().into_iter().enumerate() {
+        let parts = if index == 2 { 2 } else { 1 };
+        let cuts = parts;
+        let bundle = SourceBundle::new(source.as_bytes().to_vec());
+        let mut decoder = bundle.decoder();
+        let mut router = GeometryRouter::with_units(&source,&mut decoder);
+        router.set_rtc_offset((8.,16.,0.));
+        let model = ProductionModel::from_source(bundle.clone());
+        let mut spans = PrepassSpans::default();
+        let mut scanner = EntityScanner::new(&source);
+        while let Some((id,ty,start,end)) = scanner.next_entity() {
+            if ty == "IFCRELVOIDSELEMENT" { spans.void_rels.push((id,start,end)); }
+        }
+        let prepass = resolve_prepass(&spans,&mut decoder,ResolveOptions::default());
+        let context = model.snapshot(OwnedMeshProductionData { void_index: Arc::new(prepass.void_index), ..Default::default() });
+        let entity = decoder.decode_by_id(30).unwrap();
+        let job = ElementMeshJob { id:30, ifc_type:entity.ifc_type.clone(), entity:&entity,
+            kind:ElementJobKind::Product, element_color:None, metadata:None };
+        let mut observed = Observed { worker:BrowserWorker::new().unwrap(), oracle:None, cuts:0, per_part:cuts/parts };
+        observed.worker.qualify_dependencies().await.unwrap();
+        let mut execution = RuntimeProductExecution::<BrowserReceipt>::begin(&job,&context,&MeshProductionOptions::default(),&mut decoder,&router).unwrap();
+        let limits = NumericalLimits { chord_metres:0.00001, angle_degrees:15., max_bytes:16 << 20 };
+        while let Some(issued) = execution.issue_next(&mut decoder,&router,&observed).expect("J2_REMOVAL_PERMITTED") {
+            let work = issued.execute_async(&mut observed,limits).await.unwrap();
+            execution.accept(work,&mut decoder,&router).unwrap_or_else(|r|panic!("{}",r.reason));
+            assert!(!router.host_consumed_by_void(30),"J2_EFFECT_ISOLATION");
+        }
+        assert_eq!(observed.cuts,cuts);
+        assert!(decoder.get_cached(66).is_none(), "J2_EMPTY_LAZY");
+        assert!(execution.has_authenticated_opening_removal(), "J2_REMOVAL_PERMITTED");
+        let witness = execution.into_witness().unwrap();
+        assert_eq!(witness.plan().values.len(),parts);
+        assert!(witness.plan().values.iter().all(|value| value.is_empty()));
+        assert!(witness.has_authenticated_opening_removal(), "J2_REMOVAL_PERMITTED");
+        assert!(witness.require_final_product().is_err());
+        model.invalidate_source();
+        assert!(witness.validate().is_err());
+        assert!(!witness.has_authenticated_opening_removal());
+        assert!(witness.require_final_product().is_err());
         assert!(!router.host_consumed_by_void(30), "J2_EFFECT_ISOLATION");
         observed.worker.retire();
     }

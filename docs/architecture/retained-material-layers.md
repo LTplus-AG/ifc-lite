@@ -79,3 +79,49 @@ No performance or memory verdict is claimed. Parent validation must run native,
 actual Worker, clippy, the protected14/inherited61 and all J3 mutations, exact
 identity and end-to-end performance/memory checks. Concurrent association-index
 initialization and cache/account lifetime qualification remain open.
+
+
+## Source-protected opening removal (#7955)
+
+The disabled retained transaction now distinguishes a source-protected whole-product
+opening removal from an unproved numerical Empty. Native and browser execution
+share `session_retained/removal.rs`, reached by the original product continuation
+after its ordered Difference receipts have authenticated. Exact remains default.
+
+The initial policy accepts direct Body rectangular extrusions in the same authored
+frame, with axis-aligned raw profiles and positive finite dimensions. Each terminal
+host part must have an authenticated opening cut whose source solid contains the
+**entire original host part**. This is solid containment in this closed domain,
+not containment of an arbitrary solid's bounding box. Identical source coefficients
+prove equality; other cases use outward-rounded intervals with no tolerance.
+Rotated profiles, mappings, pre-empty hosts, unknown shapes and cumulative removal
+without one containing cutter remain explicit policy refusals. Shared product
+placement (including translation) and multiple direct host parts are supported.
+No threshold in the exact kernel or its retention protections changes.
+
+Policy admission checks source epoch/revision, product and occurrence slots, ordered
+cut lineage, source Body membership, canonical placement and the actual
+IfcRelVoidsElement relationships against the selected index. It decodes only the
+source records needed for that proof: no later opening body is fetched after all
+host parts become authenticated Empty. A malformed reached opening still fails the
+whole transaction. Unknown outcomes, cancellation, stale sources, foreign receipts,
+and replay cannot grant removal. There is no partial retained output or automatic
+retry with exact.
+
+`has_authenticated_opening_removal()` on the execution or owned witness reports
+this provisional proof only while its source and numerical evidence remain valid.
+The proof is private, non-cloneable, bound to the final slots, and moved once into
+the owned witness. Cancellation discards it; a failed policy leaves no traversal
+plan. Router consumed-host effects remain unpublished on every intermediate path.
+
+This does **not** enable final output: `require_final_product()` still refuses.
+Layer partition/cap cleanup, appearance, persistent face identity, final geometry
+validation and viewer/CLI publication remain terminal dependencies. Their eventual
+publisher must consume this evidence together with all complete product gates and
+commit the consumed-host effect exactly once under the original publication owner.
+There is intentionally no independently callable effect-commit API. The current
+user-visible behavior remains an explicit retained final-publication refusal;
+source-protected Empty is available as intermediate transaction evidence, not as
+permission to hide a product in the viewer. Runtime qualification of this policy
+requires the native and actual Worker tests and mutation rounds; static inspection
+alone is not acceptance.

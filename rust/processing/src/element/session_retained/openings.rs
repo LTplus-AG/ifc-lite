@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Opening closure is authenticated against this product's sealed ledger.
 //! Consumed-host effects remain provisional. No commit API exists while final
-//! publication and source-bound removal protection policy are unimplemented.
+//! publication gates remain incomplete. Source protection is checked separately.
 use super::*;
 impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
     pub(super) fn authenticate_openings(&self, plan: &RetainedProductPlan) -> Result<(), RetainedExecutionError> {
@@ -31,10 +31,6 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             if cut.output().evaluated_empty() != Some(receipt.is_empty()) {
                 return Err(protocol("opening outcome mismatch"));
             }
-        }
-        if plan.values.iter().all(LogicalRetainedValue::is_empty) {
-            return Err(RetainedExecutionError::Unsupported(
-                "authenticated opening Empty: source-bound whole-product protection policy unproved"));
         }
         Ok(())
     }

@@ -72,6 +72,7 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
                 ledger: Vec::new(),
                 permits: Vec::new(),
                 plan: None,
+                removal: None,
                 failed: false,
             };
             execution.init_type_maps()?;

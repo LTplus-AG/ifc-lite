@@ -66,13 +66,13 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
         self.program = Some(program);
         Ok(())
     }
-    pub(super) fn finish_current_program(&mut self, outer: WorkRequest) -> Result<(), RetainedExecutionError> {
+    pub(super) fn finish_current_program(&mut self, outer: WorkRequest, decoder: &mut EntityDecoder, router: &GeometryRouter) -> Result<(), RetainedExecutionError> {
         let resources = self.resources.clone();
-        let result = resources.with_scope(|| self.complete_current_program(outer));
+        let result = resources.with_scope(|| self.complete_current_program(outer, decoder, router));
         if result.is_err() { self.failed = true; }
         result
     }
-    fn complete_current_program(&mut self, outer: WorkRequest) -> Result<(), RetainedExecutionError> {
+    fn complete_current_program(&mut self, outer: WorkRequest, decoder: &mut EntityDecoder, router: &GeometryRouter) -> Result<(), RetainedExecutionError> {
         let program = self.program.take().ok_or_else(|| protocol("missing program"))?;
         let mut plan = self.resources.with_scope(|| match outer.kind {
             WorkKind::TypeMap { class, .. } => program.finish_type_map(self.state.job.id,class,self.state.element_color),
@@ -81,6 +81,7 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
         self.validate_manifest(&plan)?;
         if let Some(source) = &self.layer_source { source.validate(self.context, self.state.job.id)?; }
         self.authenticate_openings(&plan)?;
+        self.authenticate_removal(&plan, decoder, router)?;
         if plan.opening_completion.is_some() || matches!(outer.kind,
             WorkKind::Primary { strategy: super::super::plan::PrimaryStrategy::TexturedSubmeshes, .. }
             | WorkKind::PlainParts) {

@@ -10,6 +10,8 @@
 
 use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType, SchemaVersion};
 
+use crate::representation::{product_shape, rep_items, Select};
+
 /// Where some publishers hang `IfcAlignment.Axis` in a file that does not
 /// follow its declared schema: one past the IFC4X1/4X2 position, behind
 /// `PredefinedType`. Kept as the one tolerance (F3e D5, #7780) and read only
@@ -53,17 +55,18 @@ pub fn locate_axis_curve(entity: &DecodedEntity, decoder: &mut EntityDecoder) ->
 
 /// IFC4x3 path of [`locate_axis_curve`]: prefer the `'Axis'` representation
 /// (3D, carries the vertical profile) over `'FootPrint'` (plan only).
+///
+/// Reads the shape through the shared [`product_shape`] walk, so a shape the
+/// walk refuses (a `Representations` member or the list itself that does not
+/// decode) yields no curve; a selected representation whose `Items` do not
+/// decode is skipped, like an unusable item (#7781).
 fn representation_axis_curve(entity: &DecodedEntity, decoder: &mut EntityDecoder) -> Option<DecodedEntity> {
-    let shape = decoder.decode_by_id(entity.ref_at(slot::IfcAlignment::REPRESENTATION)?).ok()?;
-    if shape.ifc_type != IfcType::IfcProductDefinitionShape {
-        return None;
-    }
+    let shape = product_shape(entity, decoder).ok().flatten()?;
     let mut footprint = None;
-    for rep_id in shape.ref_list_at(slot::IfcProductDefinitionShape::REPRESENTATIONS)? {
-        let Ok(rep) = decoder.decode_by_id(rep_id) else { continue };
-        let identifier = rep.string_at(slot::IfcRepresentation::REPRESENTATION_IDENTIFIER).unwrap_or("").to_ascii_uppercase();
-        for item_id in rep.ref_list_at(slot::IfcRepresentation::ITEMS).unwrap_or_default() {
-            let Ok(item) = decoder.decode_by_id(item_id) else { continue };
+    for rep in shape.select(entity, Select::Where(is_axis_or_footprint)) {
+        let is_axis = has_identifier(rep, "AXIS");
+        let Ok(items) = rep_items(rep, decoder) else { continue };
+        for item in items {
             let curve = if item.ifc_type == IfcType::IfcSegmentedReferenceCurve {
                 match item
                     .ref_at(slot::IfcSegmentedReferenceCurve::BASE_CURVE)
@@ -82,13 +85,24 @@ fn representation_axis_curve(entity: &DecodedEntity, decoder: &mut EntityDecoder
             if !usable {
                 continue;
             }
-            if identifier == "AXIS" {
+            if is_axis {
                 return Some(curve);
             }
-            if identifier == "FOOTPRINT" && footprint.is_none() {
+            if footprint.is_none() {
                 footprint = Some(curve);
             }
         }
     }
     footprint
+}
+
+/// The representations [`representation_axis_curve`] reads: `'Axis'` or
+/// `'FootPrint'` by `RepresentationIdentifier`, in any letter case.
+fn is_axis_or_footprint(_: &DecodedEntity, rep: &DecodedEntity, _: Option<&str>) -> bool {
+    has_identifier(rep, "AXIS") || has_identifier(rep, "FOOTPRINT")
+}
+
+fn has_identifier(rep: &DecodedEntity, identifier: &str) -> bool {
+    rep.string_at(slot::IfcRepresentation::REPRESENTATION_IDENTIFIER)
+        .is_some_and(|found| found.eq_ignore_ascii_case(identifier))
 }

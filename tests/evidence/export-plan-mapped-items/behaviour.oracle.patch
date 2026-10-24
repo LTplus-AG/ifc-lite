@@ -1,16 +1,16 @@
 --- a/rust/export/src/plan/add_mapped.rs
 +++ b/rust/export/src/plan/add_mapped.rs
-@@ -77,7 +77,7 @@ impl AddState<'_> {
-         for map in maps.into_iter().filter(live) {
-             let Some(rep) = scalar_attr(index, schema, map, &entity(map), "MappedRepresentation").filter(live) else { continue };
-             let rep_entity = entity(rep);
--            if index.string_attr(schema, rep, &rep_entity, "RepresentationIdentifier").as_deref() == Some("NOPE") {
-+            if index.string_attr(schema, rep, &rep_entity, "RepresentationIdentifier").as_deref() != Some("Body") {
-                 continue;
+@@ -94,7 +94,7 @@ impl AddState<'_> {
              }
-             if let Some(context) = scalar_attr(index, schema, rep, &rep_entity, "ContextOfItems").filter(live) {
-@@ -135,7 +135,7 @@ fn transformation_operator(emit: &mut Emit, shared: &mut Shared, m: &[[f64; 4];
-     let key = SharedKey::Operator(std::array::from_fn(|i| m[i % 3][i / 3].to_bits()));
+         }
+         let chosen = body.iter().map(|&(_, c)| c).find(|&c| Some(c) == self.body_context).or(body.first().map(|&(_, c)| c));
+-        Ok(body.into_iter().filter(|_| chosen.is_some()).collect())
++        Ok(body.into_iter().filter(|&(_, c)| Some(c) == chosen).collect())
+     }
+ 
+     /// Whether representation `rep` is body geometry, the way the geometry
+@@ -172,7 +172,7 @@ fn transformation_operator(emit: &mut Emit, shared: &mut Shared, m: &[[f64; 4];
+     let key = SharedKey::Operator(std::array::from_fn(|i| (m[i % 3][i / 3] + 0.0).to_bits()));
      shared.get_or(key, || {
          let (x, y, z) = (emit.direction(column(0))?, emit.direction(column(1))?, emit.direction(column(2))?);
 -        let origin = emit.point([0.0, 0.0, 0.0])?;

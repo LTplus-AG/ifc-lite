@@ -1,0 +1,120 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+// Private child process entry. The cohort runner owns timeout and admission.
+import assert from 'node:assert/strict';
+import { readFile, stat } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { performance } from 'node:perf_hooks';
+import { LIMITS, nonempty, stress, resultProof, digest, fixtureInvariant } from './diff-e2e-protocol.mjs';
+
+// Injecting a module loader permits behavioral lifecycle tests with tiny inert
+// modules; production execution always imports the built public entry points.
+export async function measure({ root, fixture, options, retained, implementation,
+  mode = 'proof', optionIndex = 0 }, loadOverride) {
+  assert.ok(['proof', 'cold', 'warm'].includes(mode));
+  const phases = {}, memory = {};
+  const phase = async (name, fn) => {
+    const start = performance.now();
+    try { return await fn(); }
+    finally { phases[name] = (phases[name] ?? 0) + performance.now() - start; }
+  };
+  const snapshot = name => { memory[name] = process.memoryUsage(); };
+  const load = loadOverride ?? (name => import(pathToFileURL(resolve(root, name)).href));
+  let rows = [];
+  const proofs = [], retainedProofs = [], retainedTimes = [];
+  snapshot('start');
+  let clockResolutionMs = Infinity, previous = performance.now();
+  for (let i = 0; i < 1000; i++) {
+    const now = performance.now();
+    if (now > previous) clockResolutionMs = Math.min(clockResolutionMs, now - previous);
+    previous = now;
+  }
+  assert.ok(Number.isFinite(clockResolutionMs), 'clock has no observable resolution');
+  const started = performance.now();
+  try {
+    let parser, builder, facade;
+    await phase('importsMs', async () => {
+      parser = await load('packages/cli/dist/loader.js');
+      builder = await load('packages/cli/dist/commands/diff-engine.js');
+      facade = await load('packages/diff/dist/index.js');
+    });
+    await phase('initMs', async () => {
+      if (implementation === 'rust-wasm') {
+        // Deliberately fail on pre-cutover sources. Internal adapters are not
+        // a substitute for the final production facade or its Node resolver.
+        assert.equal(typeof facade.initDiff, 'function', 'final public Rust facade required');
+        await facade.initDiff();
+      } else {
+        assert.equal(implementation, 'typescript');
+        assert.equal(facade.initDiff, undefined, 'TS baseline must precede facade cutover');
+      }
+    });
+    for (const path of fixture.paths) {
+      const bytes = await phase('readMs', async () => {
+        const info = await stat(path);
+        assert.ok(info.size > 0 && info.size <= LIMITS.fixtureBytes, 'fixture byte bound');
+        const input = await readFile(path);
+        assert.equal(input.length, info.size, 'fixture changed during read');
+        return input;
+      });
+      let store = await phase('parseMs', () => parser.parseIfcBytes(bytes, path));
+      assert.deepEqual(parser.scanCompletenessWarnings(store), [], 'incomplete IFC scan cannot qualify');
+      let fingerprints = await phase('fingerprintsMs', () => nonempty(builder.buildFileFingerprints(store)));
+      if (fixture.kind === 'derived') fingerprints = await phase('stressConstructionMs',
+        () => stress(fingerprints, fixture.rows, rows.length === 1));
+      rows.push(fingerprints);
+      store = undefined;
+    }
+    snapshot('fingerprints');
+    const inputHashes = mode === 'proof' ? rows.map(side => digest(side)) : undefined;
+    const counts = rows.map(side => side.length);
+    const indices = mode === 'proof' ? options.map((_, i) => i) : [optionIndex];
+    for (const i of indices) {
+      let result = await phase('firstCallMs', () => facade.diffModels(rows[0], rows[1], options[i]));
+      if (mode === 'proof') {
+        fixtureInvariant(fixture, result, rows[0], rows[1]);
+        proofs.push(resultProof(result, rows[0], rows[1]));
+      }
+      result = undefined;
+    }
+    snapshot('firstResultReleased');
+    // Warm mode retains JS fingerprints only. EVERY call goes through the
+    // facade, which owns packing, handle creation, restoration and freeing.
+    // There is no hash, traversal or forced GC between these timed calls.
+    if (mode !== 'cold') {
+      for (let repeat = 0; repeat < retained; repeat++) {
+        for (const i of indices) {
+          const start = performance.now();
+          let result = facade.diffModels(rows[0], rows[1], options[i]);
+          const totalMs = performance.now() - start;
+          retainedTimes.push({ repeat, option: i, totalMs });
+          if (mode === 'proof') {
+            const proof = resultProof(result, rows[0], rows[1]);
+            assert.deepEqual(proof, proofs[i], 'repeated facade call changed output');
+            retainedProofs.push(proof.sha256);
+          }
+          result = undefined;
+        }
+      }
+    }
+    snapshot('beforeRelease');
+    await phase('releaseMs', () => { rows = []; global.gc(); });
+    const lifecycleTotalMs = performance.now() - started;
+    snapshot('releasedAfterGc');
+    return { implementation, mode, optionIndex, clockResolutionMs, rows: counts, inputHashes, proofs, retainedProofs,
+      phases: { ...phases, lifecycleTotalMs }, retainedTimes, memory,
+      maxRssKiB: process.resourceUsage().maxRSS };
+  } finally { rows = []; }
+}
+
+if (process.send) {
+  try {
+    const sample = await measure(JSON.parse(process.argv[2]));
+    process.send({ sample });
+  } catch (error) {
+    process.send({ error: error.stack ?? String(error) });
+    process.exitCode = 1;
+  } finally { process.disconnect(); }
+}

@@ -69,3 +69,20 @@ fn j2_terminal_nonempty_product_keeps_final_gates() {
         assert!(!router.host_consumed_by_void(30));
     });
 }
+#[test]
+fn j2_terminal_malformed_required_layer_cannot_reach_removal() {
+    let text = super::opening_witness::removal_sources().remove(0).replace("ENDSEC;\nEND-ISO-10303-21;",
+        "#900=IFCMATERIAL('M',$,$);\n#901=IFCMATERIALLAYER(#900,-1.,$,$,$,$,$);\n#902=IFCMATERIALLAYERSET((#901),'Layers',$);\n#903=IFCMATERIALLAYERSETUSAGE(#902,.AXIS2.,.POSITIVE.,0.,$);\n#904=IFCRELASSOCIATESMATERIAL('m',$,$,$,(#30),#903);\nENDSEC;END-ISO-10303-21;");
+    let source = ifc_lite_core::SourceBundle::new(text.into_bytes());
+    let mut decoder = source.decoder();
+    let router = GeometryRouter::with_units(source.bytes(),&mut decoder);
+    let model = ProductionModel::from_source(source.clone());
+    let mut voids = rustc_hash::FxHashMap::default(); voids.insert(30,vec![50,70,100]);
+    let context = model.snapshot(OwnedMeshProductionData {void_index:Arc::new(voids),..Default::default()});
+    let entity = decoder.decode_by_id(30).unwrap();
+    let job = ElementMeshJob {id:30,entity:&entity,ifc_type:entity.ifc_type.clone(),
+        kind:ElementJobKind::Product,element_color:None,metadata:None};
+    assert!(RetainedProductExecution::begin(&job,&context,&MeshProductionOptions::default(),&mut decoder,&router)
+        .is_err(),"J2_TERMINAL_MALFORMED_LAYER");
+    assert!(!router.host_consumed_by_void(30));
+}

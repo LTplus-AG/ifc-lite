@@ -40,3 +40,17 @@ async fn retained_browser_j2_terminal_actual_worker_source_obligation_refuses() 
     assert!(product.take_removed_product().is_err());
     executor.worker.retire();
 }
+#[wasm_bindgen_test(async)]
+async fn retained_browser_j2_terminal_stale_and_retired_api() {
+    for stale in [false,true] {
+        let api = IfcAPI::new();
+        let model = api.bind_retained_model(source().into_bytes()).unwrap();
+        let mut product = model.admit_product(30).unwrap();
+        let mut executor = RetainedBrowserExecutor {worker:crate::retained_browser::BrowserWorker::new().unwrap()};
+        executor.worker.qualify_dependencies().await.unwrap();
+        if stale { model.invalidate_source(); } else { executor.worker.retire(); }
+        assert!(product.execute(&mut executor,0.00001,15.,64<<20).await.is_err(),"J2_TERMINAL_API_STALE");
+        assert!(product.take_removed_product().is_err());
+        executor.worker.retire();
+    }
+}

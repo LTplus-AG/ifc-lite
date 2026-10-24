@@ -1,0 +1,431 @@
+{
+  "performanceVerdict": "REQUIRES_REVIEW; functional completion is not a frame-rate verdict",
+  "smoke": false,
+  "planned": 20,
+  "completed": 20,
+  "geometryIdentityAcrossCohort": true,
+  "pickIdentityAcrossCohort": true,
+  "completedSuccessfully": true,
+  "allAccepted": true,
+  "rows": [
+    {
+      "fixture": "FZK-DPR1",
+      "scenario": "orbit",
+      "metric": "frames",
+      "base": {
+        "median": 255,
+        "min": 254,
+        "max": 259,
+        "n": 5
+      },
+      "branch": {
+        "median": 255,
+        "min": 254,
+        "max": 261,
+        "n": 5
+      },
+      "pairedRatio": 1.004,
+      "pairs": 5
+    },
+    {
+      "fixture": "FZK-DPR1",
+      "scenario": "orbit",
+      "metric": "rendered_frames",
+      "base": {
+        "median": 239,
+        "min": 239,
+        "max": 239,
+        "n": 5
+      },
+      "branch": {
+        "median": 239,
+        "min": 239,
+        "max": 239,
+        "n": 5
+      },
+      "pairedRatio": 1,
+      "pairs": 5
+    },
+    {
+      "fixture": "FZK-DPR1",
+      "scenario": "orbit",
+      "metric": "raf_delta_ms_p50",
+      "base": {
+        "median": 16.665,
+        "min": 16.665,
+        "max": 16.665,
+        "n": 5
+      },
+      "branch": {
+        "median": 16.665,
+        "min": 16.665,
+        "max": 16.665,
+        "n": 5
+      },
+      "pairedRatio": 1,
+      "pairs": 5
+    },
+    {
+      "fixture": "FZK-DPR1",
+      "scenario": "orbit",
+      "metric": "raf_delta_ms_p95",
+      "base": {
+        "median": 33.33,
+        "min": 33.33,
+        "max": 33.33,
+        "n": 5
+      },
+      "branch": {
+        "median": 33.33,
+        "min": 33.325,
+        "max": 33.335,
+        "n": 5
+      },
+      "pairedRatio": 1,
+      "pairs": 5
+    },
+    {
+      "fixture": "FZK-DPR1",
+      "scenario": "orbit",
+      "metric": "raf_delta_ms_max",
+      "base": {
+        "median": 33.335,
+        "min": 33.335,
+        "max": 50,
+        "n": 5
+      },
+      "branch": {
+        "median": 33.335,
+        "min": 33.335,
+        "max": 49.995,
+        "n": 5
+      },
+      "pairedRatio": 1,
+      "pairs": 5
+    },
+    {
+      "fixture": "FZK-DPR1",
+      "scenario": "orbit",
+      "metric": "frames_over_budget",
+      "base": {
+        "median": 254,
+        "min": 253,
+        "max": 258,
+        "n": 5
+      },
+      "branch": {
+        "median": 254,
+        "min": 253,
+        "max": 260,
+        "n": 5
+      },
+      "pairedRatio": 1.004,
+      "pairs": 5
+    },
+    {
+      "fixture": "FZK-DPR1",
+      "scenario": "orbit",
+      "metric": "raf_js_ms_p95",
+      "base": {
+        "median": 1.895,
+        "min": 1.785,
+        "max": 1.95,
+        "n": 5
+      },
+      "branch": {
+        "median": 2.005,
+        "min": 1.705,
+        "max": 2.715,
+        "n": 5
+      },
+      "pairedRatio": 1.066,
+      "pairs": 5
+    },
+    {
+      "fixture": "FZK-DPR1",
+      "scenario": "orbit",
+      "metric": "submits_per_rendered_frame",
+      "base": {
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "n": 5
+      },
+      "branch": {
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "n": 5
+      },
+      "pairedRatio": 1,
+      "pairs": 5
+    },
+    {
+      "fixture": "FZK-DPR1",
+      "scenario": "orbit",
+      "metric": "draws_per_rendered_frame",
+      "base": {
+        "median": 58.7,
+        "min": 55.3,
+        "max": 59,
+        "n": 5
+      },
+      "branch": {
+        "median": 56.6,
+        "min": 54.4,
+        "max": 59,
+        "n": 5
+      },
+      "pairedRatio": 0.986,
+      "pairs": 5
+    },
+    {
+      "fixture": "FZK-DPR1",
+      "scenario": "orbit",
+      "metric": "work_done_ms_p50",
+      "base": {
+        "median": 54.63,
+        "min": 37.65,
+        "max": 56.97,
+        "n": 5
+      },
+      "branch": {
+        "median": 53.785,
+        "min": 37.03,
+        "max": 68.76,
+        "n": 5
+      },
+      "pairedRatio": 0.944,
+      "pairs": 5
+    },
+    {
+      "fixture": "FZK-DPR1",
+      "scenario": "orbit",
+      "metric": "work_done_ms_p95",
+      "base": {
+        "median": 68.905,
+        "min": 66.345,
+        "max": 71.17,
+        "n": 5
+      },
+      "branch": {
+        "median": 70.215,
+        "min": 66.655,
+        "max": 91.23,
+        "n": 5
+      },
+      "pairedRatio": 1.005,
+      "pairs": 5
+    },
+    {
+      "fixture": "FZK-DPR2",
+      "scenario": "orbit",
+      "metric": "frames",
+      "base": {
+        "median": 259,
+        "min": 255,
+        "max": 261,
+        "n": 5
+      },
+      "branch": {
+        "median": 256,
+        "min": 255,
+        "max": 258,
+        "n": 5
+      },
+      "pairedRatio": 0.992,
+      "pairs": 5
+    },
+    {
+      "fixture": "FZK-DPR2",
+      "scenario": "orbit",
+      "metric": "rendered_frames",
+      "base": {
+        "median": 239,
+        "min": 239,
+        "max": 239,
+        "n": 5
+      },
+      "branch": {
+        "median": 239,
+        "min": 239,
+        "max": 239,
+        "n": 5
+      },
+      "pairedRatio": 1,
+      "pairs": 5
+    },
+    {
+      "fixture": "FZK-DPR2",
+      "scenario": "orbit",
+      "metric": "raf_delta_ms_p50",
+      "base": {
+        "median": 16.665,
+        "min": 16.665,
+        "max": 16.665,
+        "n": 5
+      },
+      "branch": {
+        "median": 16.665,
+        "min": 16.665,
+        "max": 16.665,
+        "n": 5
+      },
+      "pairedRatio": 1,
+      "pairs": 5
+    },
+    {
+      "fixture": "FZK-DPR2",
+      "scenario": "orbit",
+      "metric": "raf_delta_ms_p95",
+      "base": {
+        "median": 33.335,
+        "min": 33.335,
+        "max": 33.335,
+        "n": 5
+      },
+      "branch": {
+        "median": 33.33,
+        "min": 33.33,
+        "max": 33.335,
+        "n": 5
+      },
+      "pairedRatio": 1,
+      "pairs": 5
+    },
+    {
+      "fixture": "FZK-DPR2",
+      "scenario": "orbit",
+      "metric": "raf_delta_ms_max",
+      "base": {
+        "median": 33.335,
+        "min": 33.335,
+        "max": 99.995,
+        "n": 5
+      },
+      "branch": {
+        "median": 83.33,
+        "min": 66.66,
+        "max": 99.995,
+        "n": 5
+      },
+      "pairedRatio": 2.5,
+      "pairs": 5
+    },
+    {
+      "fixture": "FZK-DPR2",
+      "scenario": "orbit",
+      "metric": "frames_over_budget",
+      "base": {
+        "median": 258,
+        "min": 254,
+        "max": 260,
+        "n": 5
+      },
+      "branch": {
+        "median": 255,
+        "min": 254,
+        "max": 257,
+        "n": 5
+      },
+      "pairedRatio": 0.992,
+      "pairs": 5
+    },
+    {
+      "fixture": "FZK-DPR2",
+      "scenario": "orbit",
+      "metric": "raf_js_ms_p95",
+      "base": {
+        "median": 1.975,
+        "min": 1.95,
+        "max": 2.065,
+        "n": 5
+      },
+      "branch": {
+        "median": 2.11,
+        "min": 1.99,
+        "max": 2.37,
+        "n": 5
+      },
+      "pairedRatio": 1.037,
+      "pairs": 5
+    },
+    {
+      "fixture": "FZK-DPR2",
+      "scenario": "orbit",
+      "metric": "submits_per_rendered_frame",
+      "base": {
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "n": 5
+      },
+      "branch": {
+        "median": 1,
+        "min": 1,
+        "max": 1,
+        "n": 5
+      },
+      "pairedRatio": 1,
+      "pairs": 5
+    },
+    {
+      "fixture": "FZK-DPR2",
+      "scenario": "orbit",
+      "metric": "draws_per_rendered_frame",
+      "base": {
+        "median": 56.9,
+        "min": 54.3,
+        "max": 59,
+        "n": 5
+      },
+      "branch": {
+        "median": 59,
+        "min": 54.3,
+        "max": 59,
+        "n": 5
+      },
+      "pairedRatio": 1.037,
+      "pairs": 5
+    },
+    {
+      "fixture": "FZK-DPR2",
+      "scenario": "orbit",
+      "metric": "work_done_ms_p50",
+      "base": {
+        "median": 61.72,
+        "min": 58.445,
+        "max": 64.21,
+        "n": 5
+      },
+      "branch": {
+        "median": 56.03,
+        "min": 52.63,
+        "max": 57.625,
+        "n": 5
+      },
+      "pairedRatio": 0.878,
+      "pairs": 5
+    },
+    {
+      "fixture": "FZK-DPR2",
+      "scenario": "orbit",
+      "metric": "work_done_ms_p95",
+      "base": {
+        "median": 79.405,
+        "min": 75.695,
+        "max": 81.92,
+        "n": 5
+      },
+      "branch": {
+        "median": 69.48,
+        "min": 66.145,
+        "max": 74.005,
+        "n": 5
+      },
+      "pairedRatio": 0.862,
+      "pairs": 5
+    }
+  ],
+  "scope": "Source-pinned cap-only A/B with synchronous capture shared by both arms; exact commit identities are in the frozen manifests. Native evidence and all issue acceptance still require review before closure."
+}

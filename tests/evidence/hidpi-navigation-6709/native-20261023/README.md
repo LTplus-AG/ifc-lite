@@ -1,11 +1,17 @@
 # Native HiDPI navigation qualification (#6709)
 
-Status: the original synchronous capture fix has focused-test and native DPR2
-functional evidence. The asynchronous-reader refusal added in `4f90b5f332`
-passed refreshed root typecheck and all 84 focused tests with zero failures or
-skips on unchanged source. Matching control preparation (56 tasks) and the common-runtime candidate rebuild
-also passed, including all 84 tests again. Fresh native qualification remains pending.
-This capsule does not yet establish issue completion or a performance verdict.
+Status: refreshed native qualification completed successfully. All 20 original
+samples passed at DPR1/DPR2, with five counterbalanced pairs per DPR, unchanged
+geometry and CSS-pick witnesses, nonempty full-quality captures, restored
+navigation/idle dimensions, and no page/GPU errors. The original cohort and
+reviewed verdict are in [result-20261024](./result-20261024/reviewed-verdict.json).
+
+The performance verdict is mixed: GPU queue-completion latency improves at
+DPR2, but median/p95 frame cadence does not improve and maximum intervals are
+worse around settling. This is no general frame-rate or no-regression claim.
+The navigation cap already shipped in #6711; #8089 repairs capture lifetime.
+The accepted functional evidence completes the requested comparison without
+claiming #6516 loading-regression resolution.
 
 The viewer policy and original capture gateway shipped in #6711. This follow-up
 fixes capture serialization before WebGPU presentation discards its pixels.
@@ -28,8 +34,8 @@ The refreshed common-runtime proof and original receipts/logs are retained as
 `diagnostics/async-control-*` and `diagnostics/async-shared-runtime-*`. Both
 production arms use identical WASM, JS bindings and declarations, with unchanged
 source. Pop staging jobs `9c61a538` and `fa8d5ee6` precede exclusive cohort
-`b157da46` in the worker queue. These queued jobs establish no native timing or
-viewer acceptance result.
+`b157da46` in the worker queue. Those jobs subsequently completed; their original receipts, full observations
+and reviewed results are retained under `result-20261024`.
 
 The previous pair used root pnpm/Turbo. Its control passed
 56 tasks with unchanged source. Its JS bindings and declarations match Pop, but
@@ -99,8 +105,8 @@ The controller runs these ordering controls before browser startup as well.
 
 The earlier pre-fix pair and receipts remain in `diagnostics/pre-fix-*.json` to
 explain the retained failed runs. They are historical evidence, not the active
-qualification inputs. Issue #6709 remains open until the full qualification
-and verdict are complete.
+qualification inputs. The completed qualification and explicit mixed verdict are recorded above;
+merge and issue closure also require current-head CI and resolved feedback.
 
 ## Protocol
 
@@ -234,5 +240,6 @@ fractional target coordinates; the precise cause is not established. The
 formal protocol now predeclares wall 27421/item 27395/triangle 10 and roof
 slab 59553/item 59529/triangle 2 for correctness, and retains the disputed
 triangle 1 as a stability witness expecting the control-observed window 28113.
-There is no fallback target search during measurement. No accepted performance cohort or closure verdict
-is claimed. Service diagnostics never contribute accepted timing samples.
+There is no fallback target search during measurement. The later complete
+cohort records a mixed verdict in `result-20261024`; these earlier service
+diagnostics never contribute accepted timing samples.

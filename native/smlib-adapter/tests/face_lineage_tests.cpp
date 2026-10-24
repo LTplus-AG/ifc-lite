@@ -345,6 +345,7 @@ void split_merge() {
     const auto root=single(ledger,ledger.identity(original)); const auto parent=ledger.identity(original);
     // Fixed private WithVU/DeleteEdge operation, genuine retained UVs and
     // operation-transition receipts; ordinary direct edit negatives stay below.
+    const auto first_transition_event=ledger.event_size();
     const auto transition=PlanarTransition::roundtrip(ledger,*owned.source,*working,*original);
     const auto one=transition.fragment(0),two=transition.fragment(1);
     require(transition.before()==parent && one!=parent && two!=parent && one!=two &&
@@ -356,6 +357,20 @@ void split_merge() {
         ledger.identity(original)==transition.after() && transition.physical_revision().sequence &&
         ledger.descends_from(transition.after(),one) && ledger.descends_from(transition.after(),two),
         "new physical revision derives from both fragments, never relabelled as original");
+    // #7955/r10: after merge, the retired child has a UV-removal PRE, then
+    // the actual RemoveLoop PRE/POST pair and destruction. No edit generation
+    // may resurrect the child while its loop is detached.
+    unsigned child_pre=0,child_post=0,child_death=0;
+    for(auto i=first_transition_event;i<ledger.event_size();++i) {
+        const auto& e=ledger.event(i); if(e.before[0]!=two) continue;
+        child_pre+=e.operation==SM_NO_PRE_EDIT; child_post+=e.operation==SM_NO_POST_EDIT;
+        child_death+=e.operation==SM_NO_DESTRUCTION;
+        if(e.operation==SM_NO_POST_EDIT) require(i && ledger.event(i-1).operation==SM_NO_PRE_EDIT &&
+            ledger.event(i-1).before[0]==two && !e.after[0].sequence,
+            "actual retired-child loop detach preserves its matching receipt pair");
+    }
+    require(child_pre==2 && child_post==1 && child_death==1,
+        "actual retired-child loop detach emits bounded lifecycle receipts");
     auto refused=[&](const TransitionReceipt& receipt,SmBrep& body) {
         bool rejected=false; try { PlanarTransition::consume(ledger,receipt,body); }
         catch(const AdapterFailure& e) { rejected=e.status==IFCLITE_SMLIB_UNSUPPORTED; }

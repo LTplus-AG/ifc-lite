@@ -50,6 +50,8 @@ class PlanarTransition {
     uint64_t parent_frame_serial=0;
     unsigned frame=0,split_events=0,merge_events=0,edge_pre=0,face_pre[2]{};
     unsigned edge_geometry=0,curve_owner=0,surface_owner=0,add_events=0,brep_pre=0,remove_events=0;
+    SmLoop* removing_loop=nullptr; std::array<SmLoopuse*,2> removing_loopuses{};
+    unsigned loop_remove_pre=0,loop_remove_post=0;
     bool expecting_birth=false; double pre_volume=0,pre_area=0,pre_face_volume=0;
     SmExtent2d domain;
     SmBoolean old_rect=FALSE; bool consumed=false,discharged=false;

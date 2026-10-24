@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 #include "planar_transition_detail.hpp"
 #include <SmSurface.h>
+#include <SmLoop.h>
+#include <SmLoopuse.h>
 namespace face_lineage {
 bool PlanarTransition::born_object(SmObject* object) const {
     for(unsigned i=0;i<born_count;++i) if(born[i].object==object && !born[i].destroyed) return true;
@@ -77,6 +79,49 @@ bool PlanarTransition::event(Event& event,SmNotifyOperation op,SmObject* caller,
         }
         if(op==SM_NO_RM_FROM_BREP && caller==&working && a==diagonal && b==&working && !c &&
             edge_pre==1 && ++remove_events==1) return false;
+        // #7955/r10 event 641: after deleting the diagonal, DeleteEdge:6502
+        // removes the issued child loop. RemoveLoop has its own PRE/POST pair,
+        // distinct from RemoveUVTrimCurves. Its face ancestry is already retired.
+        if(caller==child && (op==SM_NO_PRE_EDIT || op==SM_NO_POST_EDIT) && face_pre[1]==2) {
+            auto* entry=ledger.binding(child,false);
+            if(a!=caller || b || c || merge_events!=1 || destroyed_curve_count!=7 ||
+                !entry || !entry->alive || !entry->retired || entry->current!=receipt.children[1] ||
+                child->GetBrep()!=&working || child->GetSurface()!=child_surface) return refuse();
+            bool diagonal_dead=false; unsigned dead_uses=0;
+            for(unsigned i=0;i<born_count;++i) {
+                diagonal_dead|=born[i].object==diagonal && born[i].destroyed;
+                dead_uses+=born[i].destroyed && (born[i].type==SmEdgeuse_TYPE || born[i].type==SmVertexuse_TYPE);
+            }
+            if(!diagonal_dead || dead_uses!=8) return refuse();
+            if(op==SM_NO_PRE_EDIT) {
+                if(loop_remove_pre || loop_remove_post) return refuse();
+                SmTArray<SmLoop*> loops; child->GetLoops(loops);
+                if(loops.GetSize()!=1) return refuse();
+                removing_loop=loops[0]; removing_loop->GetLoopuses(removing_loopuses[0],removing_loopuses[1]);
+                for(auto* object:{static_cast<SmObject*>(removing_loop),static_cast<SmObject*>(removing_loopuses[0]),
+                    static_cast<SmObject*>(removing_loopuses[1])}) {
+                    bool issued=false;
+                    for(unsigned i=0;i<born_count;++i) if(born[i].object==object && !born[i].destroyed) {
+                        auto* binding=ledger.binding(object,false);
+                        issued=binding && binding->alive && !binding->retired && binding->current==born[i].generation &&
+                            binding->owned_transition==receipt.operation && binding->birth_frame==frame;
+                    }
+                    if(!issued) return refuse();
+                }
+                if(removing_loopuses[0]==removing_loopuses[1] ||
+                    !removing_loopuses[0]->GetFaceuse() || !removing_loopuses[1]->GetFaceuse() ||
+                    removing_loopuses[0]->GetFaceuse()->GetFace()!=child ||
+                    removing_loopuses[1]->GetFaceuse()->GetFace()!=child) return refuse();
+                loop_remove_pre=1;
+            } else {
+                if(loop_remove_pre!=1 || loop_remove_post || !removing_loop) return refuse();
+                SmTArray<SmLoop*> loops; child->GetLoops(loops);
+                if(loops.GetSize()!=0 || removing_loopuses[0]->GetFaceuse() || removing_loopuses[1]->GetFaceuse()) return refuse();
+                loop_remove_post=1;
+            }
+            event.before[0]=entry->current; // removed-loop receipt never resurrects child ancestry
+            return true;
+        }
         if(op==SM_NO_PRE_EDIT && (caller==&face || caller==child) && a==caller && !c) {
             const unsigned index=caller==&face?0:1;
             // DeleteEdge's explicit pre-merge face notice names the BRep;

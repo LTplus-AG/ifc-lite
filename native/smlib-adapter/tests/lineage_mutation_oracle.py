@@ -236,6 +236,17 @@ def main():
          'original && original->alive && !original->retired,',
          'polygon journal refuses a silently changed final original'),
     ])
+    # #7955 r11: actual RemoveLoop lifecycle and analytic extrusion state.
+    cases.extend([
+        ('split', 'planar_transition_events.cpp',
+         'event.before[0]=entry->current; // removed-loop receipt never resurrects child ancestry',
+         '// mutation: omit retired-child loop lifecycle receipt identity',
+         'actual retired-child loop detach emits bounded lifecycle receipts'),
+        ('trim-split-surface', 'representation_seal_geometry.cpp',
+         'point(vector); // subdivision-extrusion-vector',
+         '// mutation: omit analytic extrusion vector from incident surface seal',
+         'subdivision rejects changed geometry intervals or missing completion'),
+    ])
     paths = sorted({source / row[1] for row in cases})
     subprocess.run(['git', 'diff', '--exit-code', 'HEAD', '--', *map(str, paths)], cwd=root, check=True)
     originals = {path: path.read_text() for path in paths}

@@ -14,6 +14,7 @@
 #include <SmFace.h>
 #include <SmPoly.h>
 #include <SmCone.h>
+#include <SmSurfOfExtrusion.h>
 #include <array>
 #include <cstring>
 #include <cstdio>
@@ -392,14 +393,21 @@ void internal_copy(const char* name) {
 }
 // Fault injector wraps genuine SDK notifications. It never constructs a map or
 // substitutes a success result. Only negative witnesses use this slot seam.
+struct ExtrusionFaultAccess:SmSurfOfExtrusion {
+    static void vector(SmSurfOfExtrusion& surface,const SmVector3d& value) {
+        surface.*(&ExtrusionFaultAccess::m_vExtrusionVec)=value;
+    }
+};
 struct SplitFault:SmNotifyCallback {
     SmContext& context; SmNotifyCallback* observer; Ledger& ledger; const char* mode;
     SmEdge* edge=nullptr; unsigned faults=0; bool healthy_before_fault=false;
     SmCone* changed_surface=nullptr; double saved_radius=0;
+    SmSurfOfExtrusion* changed_extrusion=nullptr; SmVector3d saved_vector;
     SplitFault(SmContext& c,Ledger& l,const char* m):context(c),observer(c.GetUserNotifyCallback()),ledger(l),mode(m) { context.SetUserNotifyCallback(this); }
     ~SplitFault() {
         context.SetUserNotifyCallback(observer);
         if(changed_surface) changed_surface->SetBaseRadius(saved_radius); // cleanup, never clear the refusal
+        if(changed_extrusion) ExtrusionFaultAccess::vector(*changed_extrusion,saved_vector);
     }
     SmStatus Execute(SmNotifyOperation op,SmObject* caller,SmObject* a,SmObject* b,SmObject* c) noexcept override {
         if(op==SM_NO_PRE_EDIT && caller && caller->GetType()==SmEdge_TYPE) edge=static_cast<SmEdge*>(caller);
@@ -414,6 +422,13 @@ struct SplitFault:SmNotifyCallback {
             } else if(std::strcmp(mode,"split-interval")==0) {
                 auto interval=edge->GetInterval(); interval.SetMinMax(interval.GetMin(),interval.GetMax()+.125);
                 edge->SetInterval(interval); ++faults;
+            } else if(std::strcmp(mode,"split-extrusion-surface")==0) {
+                SmTArray<SmFace*> incident; edge->GetFaces(incident);
+                for(auto* face:incident) if(face->GetSurface()->GetType()==SmSurfOfExtrusion_TYPE) {
+                    changed_extrusion=static_cast<SmSurfOfExtrusion*>(face->GetSurface());
+                    saved_vector=changed_extrusion->GetExtrusionVector(); auto changed=saved_vector; changed.x+=.125;
+                    ExtrusionFaultAccess::vector(*changed_extrusion,changed); ++faults; break;
+                }
             } else if(std::strcmp(mode,"split-surface")==0) {
                 SmTArray<SmFace*> incident; edge->GetFaces(incident);
                 for(auto* face:incident) if(face->GetSurface()->GetType()==SmCone_TYPE) {
@@ -432,7 +447,10 @@ struct SplitFault:SmNotifyCallback {
     }
 };
 void subdivision(const char* name) {
-    auto owner=OwnedBoundary::cylinder(2,3); auto& solid=body(owner); auto& ledger=history(owner);
+    const bool extrusion=std::strncmp(name,"split-extrusion",15)==0;
+    auto source=OwnedBoundary::cylinder(2,3);
+    const std::array<double,16> scale{2,0,0,0,0,3,0,0,0,0,4,0,7,-4,2,1};
+    auto owner=extrusion?source.affine(scale.data()):std::move(source); auto& solid=body(owner); auto& ledger=history(owner);
     const auto roots=owner.faces(); Scope phase(ledger,*SmApiGetOrCreateContext(),&solid);
     RepresentationSeal seal(ledger,solid); NumericalReadTestAccess::tessellation(ledger,solid);
     SmCopyBrepMap map;
@@ -443,6 +461,11 @@ void subdivision(const char* name) {
         if(interval.GetMax()-interval.GetMin()>6 && candidate->GetEdgeuseCount()==4) { edge=candidate; break; }
     }
     require(edge,"subdivision fixture has a real curved four-use edge");
+    if(extrusion) {
+        SmTArray<SmFace*> incident; edge->GetFaces(incident); bool found=false;
+        for(auto* face:incident) found|=face->GetSurface()->GetType()==SmSurfOfExtrusion_TYPE;
+        require(found,"affine subdivision fixture reaches actual SDK extrusion recognition");
+    }
     auto interval=edge->GetInterval(); double cut=interval.GetMin()+(interval.GetMax()-interval.GetMin())/64;
     double existing_knot=0;
     const bool knot_case=std::strcmp(name,"split-knot")==0 || std::strcmp(name,"split-knot-outside")==0;
@@ -488,7 +511,7 @@ void subdivision(const char* name) {
     catch(const AdapterFailure& error) {
         std::fprintf(stderr,"subdivision witness first refusal status=%d reason=%s\n",error.status,error.message);
     }
-    if(std::strcmp(name,"split-positive")==0 || std::strcmp(name,"split-knot")==0) {
+    if(std::strcmp(name,"split-positive")==0 || std::strcmp(name,"split-extrusion")==0 || std::strcmp(name,"split-knot")==0) {
         require(ledger.failed()==Failure::None,"checked subdivision accepts genuine restriction receipts");
         bool receipt=false;
         for(auto i=first;i<ledger.event_size();++i) if(ledger.event(i).operation==SM_NO_SPLIT_IN_BREP) {
@@ -532,7 +555,11 @@ void run_numerical_trim_case(const char* name) {
     else if(std::strcmp(name,"planar-outside")==0) planar_coefficients(false);
     else if(std::strcmp(name,"planar-domain")==0) planar_intervals(true);
     else if(std::strcmp(name,"planar-domain-mismatch")==0) planar_intervals(false);
-    else if(std::strncmp(name,"split-",6)==0) subdivision(name);
+    else if(std::strncmp(name,"split-",6)==0) {
+        subdivision(name);
+        if(std::strcmp(name,"split-positive")==0) subdivision("split-extrusion");
+        if(std::strcmp(name,"split-surface")==0) subdivision("split-extrusion-surface");
+    }
     else if(std::strncmp(name,"poly-",5)==0) polygon_copy(name);
     else if(std::strncmp(name,"internal-",9)==0) internal_copy(name);
     else if(std::strcmp(name,"positive")==0) positive(false);

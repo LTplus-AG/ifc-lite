@@ -16,6 +16,7 @@
 #include <SmLine.h>
 #include <SmPlane.h>
 #include <SmCone.h>
+#include <SmSurfOfExtrusion.h>
 namespace face_lineage {
 namespace {
 void require(bool ok,const char* message) { if(!ok) throw AdapterFailure{IFCLITE_SMLIB_UNSUPPORTED,message}; }
@@ -23,6 +24,12 @@ void checked(SmStatus status) { require(status==SM_SUCCESS,"actual SDK seal gett
 constexpr ULONG coefficients=65536;
 // Legal protected-member pointers, as in context_metadata.hpp; no derived
 // instance or downcast to a type the SDK did not construct.
+struct ExtrusionAccess:SmSurfOfExtrusion {
+    static SmCurveOrientType orientation(const SmSurfOfExtrusion& s) { return s.*(&ExtrusionAccess::m_eOrientation); }
+    static SmBoolean swap(const SmSurfOfExtrusion& s) { return s.*(&ExtrusionAccess::m_bSwapUV); }
+    static SmPoint3d curve_point(const SmSurfOfExtrusion& s) { return s.*(&ExtrusionAccess::m_vCurvePoint); }
+    static SmVector3d curve_vector(const SmSurfOfExtrusion& s) { return s.*(&ExtrusionAccess::m_vCurveVec); }
+};
 struct RevolutionAccess:SmSurfOfRevolution {
     static SmBoolean bounded_generator(const SmSurfOfRevolution& s) { return s.*(&RevolutionAccess::m_bMakeNurbGenCurve); }
     static SmBoolean planar_generator(const SmSurfOfRevolution& s) { return s.*(&RevolutionAccess::m_bPlanarGenerator); }
@@ -93,6 +100,38 @@ void RepresentationSeal::subdivision_surface(SmObject* object) {
     // evaluators from the rational input. This is NOT a generic seal extension
     // or permission to edit surfaces. Only the subdivision receipt calls here,
     // comparing the same actual incident surface before/after the edge split.
+    if(object->GetType()==SmSurfOfExtrusion_TYPE) {
+        // #7955/r10 event 1029: CopyAndAddAnalytics recognizes the affine
+        // cylinder as an extrusion (SmSurfOfExtrusion.cpp:3519-3623). Preserve
+        // BOTH materialized basis and analytic evaluator state, never infer
+        // equivalence from the NURBS alone or permit an incident surface edit.
+        auto* extrusion=static_cast<SmSurfOfExtrusion*>(object);
+        const auto orientation=ExtrusionAccess::orientation(*extrusion);
+        require(extrusion->IsBounded() &&
+            (orientation==SM_CO_PERPENDICULAR || orientation==SM_CO_INDEPENDENT),
+            "subdivision requires a bounded planar-generator extrusion");
+        surface_basis(object); word(object->GetType());
+        auto point=[&](const SmPoint3d& p) {
+            require(std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z),"nonfinite extrusion state");
+            real(p.x); real(p.y); real(p.z);
+        };
+        const auto vector=extrusion->GetExtrusionVector();
+        require(vector.x!=0 || vector.y!=0 || vector.z!=0,"zero extrusion direction");
+        point(extrusion->GetOrigin());
+        point(vector); // subdivision-extrusion-vector
+        point(ExtrusionAccess::curve_point(*extrusion)); point(ExtrusionAccess::curve_vector(*extrusion));
+        word(orientation); word(ExtrusionAccess::swap(*extrusion));
+        const auto domain=extrusion->GetSTEPUVDomain();
+        require(std::isfinite(domain.GetUMin()) && std::isfinite(domain.GetUMax()) &&
+            std::isfinite(domain.GetVMin()) && std::isfinite(domain.GetVMax()) &&
+            domain.GetUMin()<domain.GetUMax() && domain.GetVMin()<domain.GetVMax(),"invalid extrusion STEP domain");
+        real(domain.GetUMin()); real(domain.GetUMax()); real(domain.GetVMin()); real(domain.GetVMax());
+        auto* generator=extrusion->GetGenCurve();
+        require(generator && generator->GetOwner()==extrusion && generator->GetDim()==3,
+            "subdivision extrusion generator ownership");
+        pointer(generator); word(generator->GetType()); curve(generator);
+        return;
+    }
     if(object->GetType()!=SmCone_TYPE) { surface(object); return; }
     auto* cone=static_cast<SmCone*>(object);
     SmAxis2Placement frame; double radius=0,angle=0; SmBoolean swap,inside;

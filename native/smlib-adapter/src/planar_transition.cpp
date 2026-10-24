@@ -90,7 +90,7 @@ void PlanarTransition::insert() {
 void PlanarTransition::erase() {
     check_children(); source_seal->verify(); step=Step::Delete;
     const auto status=working.DeleteEdge(diagonal,support); ledger.check(); checked(status,"checked exact diagonal deletion");
-    require(edge_pre==1 && merge_events==1 && face_pre[0]==2 && face_pre[1]==2 && brep_pre==1 && remove_events==1,
+    require(edge_pre==1 && merge_events==1 && face_pre[0]==2 && face_pre[1]==2 && brep_pre==1 && remove_events==1 && loop_remove_pre==1 && loop_remove_post==1,
         "incomplete exact deletion/UV invalidation event receipts");
     require(destroyed_curve_count==7,"missing planned numerical destruction receipts");
     for(unsigned i=0;i<born_count;++i) require(born[i].destroyed,"missing planned temporary topology/support destruction");

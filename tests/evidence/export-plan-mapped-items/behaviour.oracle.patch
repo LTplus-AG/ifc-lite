@@ -1,15 +1,15 @@
 --- a/rust/export/src/plan/add_mapped.rs
 +++ b/rust/export/src/plan/add_mapped.rs
-@@ -103,7 +103,7 @@ impl AddState<'_> {
-         for rank in ranks {
-             let of_rank: Vec<_> = body.iter().filter(|&&(r, ..)| r == rank).collect();
-             let chosen = of_rank.iter().map(|&&(_, _, c, _)| c).find(|&c| Some(c) == self.body_context).or(of_rank.first().map(|&&(_, _, c, _)| c));
--            let picked: Vec<_> = of_rank.into_iter().filter(|_| chosen.is_some()).collect();
-+            let picked: Vec<_> = of_rank.into_iter().filter(|&&(_, _, c, _)| Some(c) == chosen).collect();
-             if picked.iter().all(|&&(.., intact)| intact) {
-                 return Ok(picked.into_iter().map(|&(_, map, context, _)| (map, context)).collect());
+@@ -110,7 +110,7 @@ impl AddState<'_> {
+             let contexts = || of_rank.iter().map(|&&(_, _, c, _)| c);
+             let chosen = contexts().find(|&c| Some(c) == self.body_context && intact(c)).or_else(|| contexts().find(|&c| intact(c)));
+             if let Some(chosen) = chosen {
+-                return Ok(of_rank.into_iter().filter(|_| chosen > 0).map(|&(_, map, context, _)| (map, context)).collect());
++                return Ok(of_rank.into_iter().filter(|&&(_, _, c, _)| c == chosen).map(|&(_, map, context, _)| (map, context)).collect());
              }
-@@ -195,7 +195,7 @@ fn transformation_operator(emit: &mut Emit, shared: &mut Shared, m: &[[f64; 4];
+         }
+         Err(if body.is_empty() { NoBody::Missing } else { NoBody::Deleted })
+@@ -200,7 +200,7 @@ fn transformation_operator(emit: &mut Emit, shared: &mut Shared, m: &[[f64; 4];
      let key = SharedKey::Operator(std::array::from_fn(|i| (m[i % 3][i / 3] + 0.0).to_bits()));
      shared.get_or(key, || {
          let (x, y, z) = (emit.direction(column(0))?, emit.direction(column(1))?, emit.direction(column(2))?);

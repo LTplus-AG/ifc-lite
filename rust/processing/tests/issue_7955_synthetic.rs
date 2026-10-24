@@ -157,11 +157,18 @@ fn issue_7955_mapped_instances_preserve_occurrences_and_cuts() {
 #[test]
 fn issue_7955_internal_consistency_geometry_matches_external_semantic_faces() {
     let mut observations = Vec::new();
+    let mut product_global_ids = Vec::new();
     for name in ["f-c-extrusion.ifc", "f-c-brep.ifc"] {
         let source = fixture(name);
         let oracle = case(name);
         let result = run(&source);
         check_single(&result, &oracle).unwrap();
+        // #7955: compare actual outputs across the pair independently of each
+        // fixture's own oracle, which could consistently name a different id.
+        product_global_ids.push(
+            result.meshes.first().expect("pair product mesh")
+                .global_id.clone().expect("pair product GlobalId"),
+        );
         if name == "f-c-extrusion.ifc" {
             let mutant = source
                 .lines()
@@ -193,6 +200,7 @@ fn issue_7955_internal_consistency_geometry_matches_external_semantic_faces() {
             "wrong semantic frame killed"
         );
     }
+    assert_eq!(product_global_ids[0], product_global_ids[1], "same-GlobalId pair mismatch");
     for (key, area) in &observations[0] {
         assert!(
             (area - observations[1][key]).abs() < face_area_tolerance(),

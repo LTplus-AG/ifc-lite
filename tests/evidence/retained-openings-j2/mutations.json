@@ -78,5 +78,13 @@
     "assertionMarker": "J2_DECIMAL_COFRAME",
     "intendedFailure": "J2_DECIMAL_COFRAME",
     "package": "ifc-lite-processing"
+  },
+  {
+    "id": "vector-consumption",
+    "patch": "tests/evidence/retained-openings-j2/vector-consumption.oracle.patch",
+    "test": "element::session_retained::removal_vector_tests::j2_source_vectors_require_complete_tokens",
+    "assertionMarker": "J2_VECTOR_COMPLETE",
+    "intendedFailure": "J2_VECTOR_COMPLETE",
+    "package": "ifc-lite-processing"
   }
 ]

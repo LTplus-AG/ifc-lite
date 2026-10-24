@@ -18,7 +18,9 @@ fn j2_source_vectors_require_complete_tokens() {
 #[test]
 fn j2_sdk_vector_suffixes_require_source_policy_refusal() {
     let Some(mut worker) = super::tests::worker() else { return };
-    for (marker, source) in super::opening_witness::vector::cases() {
+    let cases = super::opening_witness::vector::cases().into_iter().map(|(marker,source)| (marker,source,false))
+        .chain(std::iter::once(("J2_VECTOR_TRIVIA",super::opening_witness::vector::trivia(),true)));
+    for (marker, source, valid) in cases {
         super::opening_tests::with_source(&source, |execution, decoder, router| {
             let mut refusal = None;
             for _ in 0..128 {
@@ -30,6 +32,13 @@ fn j2_sdk_vector_suffixes_require_source_policy_refusal() {
                         execution.accept(work,decoder,router).unwrap_or_else(|r|panic!("{}",r.reason));
                     }
                 }
+            }
+            if valid {
+                assert!(refusal.is_none(), "{marker}: {refusal:?}");
+                assert!(execution.has_authenticated_opening_removal(), "{marker}");
+                execution.validate_witness().unwrap();
+                assert!(!router.host_consumed_by_void(30),"J2_EFFECT_ISOLATION");
+                return;
             }
             assert!(matches!(&refusal, Some(RetainedExecutionError::Unsupported(message))
                 if message.contains("protection policy")), "{marker}: {refusal:?}");

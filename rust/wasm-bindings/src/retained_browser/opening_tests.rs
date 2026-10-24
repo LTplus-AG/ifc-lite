@@ -325,7 +325,9 @@ async fn j2_worker_authored_decimal_counterexamples_cannot_authorize_removal() {
 
 #[wasm_bindgen_test(async)]
 async fn j2_worker_vector_suffixes_require_source_policy_refusal() {
-    for (marker, source) in super::opening_witness::vector::cases() {
+    let cases = super::opening_witness::vector::cases().into_iter().map(|(marker,source)| (marker,source,false))
+        .chain(std::iter::once(("J2_VECTOR_TRIVIA",super::opening_witness::vector::trivia(),true)));
+    for (marker, source, valid) in cases {
         let parts = 1;
         let cuts = 1;
         let bundle = SourceBundle::new(source.as_bytes().to_vec());
@@ -357,6 +359,15 @@ async fn j2_worker_vector_suffixes_require_source_policy_refusal() {
                     execution.accept(work,&mut decoder,&router).unwrap_or_else(|r|panic!("{}",r.reason));
                 }
             }
+        }
+        if valid {
+            assert!(refusal.is_none(), "{marker}: {refusal:?}");
+            let witness = execution.into_witness().unwrap();
+            assert!(witness.has_authenticated_opening_removal(), "{marker}");
+            assert!(witness.require_final_product().is_err());
+            assert!(!router.host_consumed_by_void(30), "J2_EFFECT_ISOLATION");
+            observed.worker.retire();
+            continue;
         }
         assert!(matches!(&refusal, Some(RetainedExecutionError::Unsupported(message))
             if message.contains("protection policy")), "{marker}: {refusal:?}");

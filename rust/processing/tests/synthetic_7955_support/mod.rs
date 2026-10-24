@@ -95,6 +95,24 @@ fn volume(meshes: &[&MeshData]) -> f64 {
         })
         .sum::<f64>()
 }
+/// Inspect the named host only. Deleting a void relationship may change whether
+/// an orphan opening is emitted; that must not masquerade as a host-volume kill.
+pub fn host_volume(result: &ProcessingResult, id: u32) -> f64 {
+    let meshes: Vec<_> = result
+        .meshes
+        .iter()
+        .filter(|m| m.express_id == id)
+        .collect();
+    assert!(
+        !meshes.is_empty(),
+        "host #{id} missing from mutation output"
+    );
+    for mesh in &meshes {
+        mesh_valid(mesh).unwrap();
+    }
+    volume(&meshes)
+}
+
 fn mesh_valid(mesh: &MeshData) -> Result<(), String> {
     check(
         !mesh.positions.is_empty() && !mesh.indices.is_empty(),

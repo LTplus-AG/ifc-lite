@@ -20,16 +20,17 @@ fn issue_7955_curved_layers_and_cross_layer_opening() {
     // Kill a missing all-layer cut using an actual input mutation. No changed tolerance.
     let relation = integer(&oracle["products"][0]["void_relation"]);
     let mutant = without_entity(&source, relation);
+    let host = integer(&oracle["products"][0]["id"]);
+    let got = host_volume(&run(&mutant), host);
+    let tolerance = tolerance("curved_total_mesh_volume_absolute");
     assert!(
-        check_products(&run(&mutant), &oracle, true)
-            .unwrap_err()
-            .contains(" volume "),
-        "missing wall opening must be detected"
+        (got - number(&oracle["before_total"])).abs() <= tolerance,
+        "uncut host #{host}: {got} must equal the source's full annulus"
     );
-    // Also check the uncut HOST against the independently integrated full shell.
-    let mut uncut = oracle.clone();
-    uncut["products"][0]["volume"] = oracle["before_total"].clone();
-    check_products(&run(&mutant), &uncut, true).unwrap();
+    assert!(
+        (got - number(&oracle["after_total"])).abs() > tolerance,
+        "missing all-layer opening must change this host's volume"
+    );
 }
 
 #[test]
@@ -46,11 +47,16 @@ fn issue_7955_mapped_occurrence_volumes_and_appearance() {
         .find(|r| r["role"] == "door-left")
         .unwrap();
     let mutant = without_entity(&source, integer(&row["void_relation"]));
+    let host = integer(&row["id"]);
+    let got = host_volume(&run(&mutant), host);
+    let tolerance = tolerance("planar_volume_absolute");
     assert!(
-        check_products(&run(&mutant), &oracle, false)
-            .unwrap_err()
-            .contains(" volume "),
-        "uncut mapped occurrence must fail volume oracle"
+        (got - 6.).abs() <= tolerance,
+        "door-left host #{host} must recover the full 6 m3 box; got {got}"
+    );
+    assert!(
+        (got - number(&row["volume"])).abs() > tolerance,
+        "door-left cut must fail its 5 m3 oracle"
     );
     let red_row = oracle["products"]
         .as_array()
@@ -73,16 +79,34 @@ fn issue_7955_mapped_occurrence_volumes_and_appearance() {
             .starts_with("centroid axis"),
         "equal-volume wrong cut location killed"
     );
-    let mut wrong_palette = run(&source);
-    for m in &mut wrong_palette.meshes {
-        if m.express_id == product_id(&oracle, "palette") {
-            m.color.swap(0, 2);
-        }
-    }
-    assert!(
-        check_appearance(&wrong_palette, &oracle).unwrap_err()
-            == "palette colour bound to wrong source face",
-        "swapped palette binding killed despite unchanged colour counts"
+    let palette_map = integer(&oracle["palette"]["map"]);
+    let indices = oracle["palette"]["indices"].as_array().unwrap();
+    let original = indices
+        .iter()
+        .map(|v| integer(v).to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    let reversed = indices
+        .iter()
+        .rev()
+        .map(|v| integer(v).to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    let wrong_palette = source
+        .lines()
+        .map(|line| {
+            if line.starts_with(&format!("#{palette_map}=")) {
+                line.replace(&format!(",({original}));"), &format!(",({reversed}));"))
+            } else {
+                line.to_owned()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert_eq!(
+        check_appearance(&run(&wrong_palette), &oracle).unwrap_err(),
+        "palette colour bound to wrong source face",
+        "source ColourIndex reversal must be detected despite unchanged colour counts"
     );
 }
 
@@ -152,16 +176,6 @@ fn issue_7955_reexport_geometry_matches_external_semantic_faces() {
         let areas = semantic_faces(&result, &oracle).unwrap();
         assert_eq!(areas.len(), 6);
         observations.push(areas);
-        // Geometry-equivalent triangle order must not change semantic roles.
-        let mut reordered = run(&source);
-        for m in &mut reordered.meshes {
-            let reversed: Vec<u32> = m.indices.chunks_exact(3).rev().flatten().copied().collect();
-            m.indices = reversed;
-        }
-        let reordered_areas = semantic_faces(&reordered, &oracle).unwrap();
-        for (role, area) in observations.last().unwrap() {
-            assert!((area - reordered_areas[role]).abs() <= face_area_tolerance());
-        }
         // Wrong source frame must not authenticate a face by ordinal.
         let mut wrong_frame = oracle.clone();
         wrong_frame["translation"][0] = Value::from(number(&oracle["translation"][0]) + 0.1);

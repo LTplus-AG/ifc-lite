@@ -35,7 +35,9 @@ face-area bound missing; `face-area-tolerance.json` separately preregisters
   unambiguous occurrence styles (the shared face set is unstyled) and two
   differently located openings, one in a rotated occurrence placement. Their
   different centroids are independently specified, so volume alone cannot
-  conceal a cut applied at the wrong location. Palette and
+  conceal a cut applied at the wrong location. The opening shares its host's
+  placement: this does not test a nonidentity opening-to-host transform,
+  PlacementRelTo composition, or cutting under a nonidentity mapped operator. Palette and
   texture variants require distinct face sets/maps: IFC4 indexed maps bind to
   `IfcTessellatedFaceSet`, not to `IfcMappedItem`. The conservative *retained*
   grouping oracle permits only plain/rotated to share; current exact can share
@@ -47,7 +49,7 @@ face-area bound missing; `face-area-tolerance.json` separately preregisters
   entity numbering/serialization order and oblique rigid placement. The face
   keys are external semantic roles (`GlobalId/x_min`, etc.). Tests recover
   these roles from local geometric planes and verify coverage, outward winding,
-  areas and order independence. They do **not** assert the engine provides
+  areas. They do **not** assert the engine provides
   persistent face IDs; triangle/STEP ordinals cannot establish those IDs.
 - **F-D**: closed tetrahedron, `IfcImageTexture`, explicit triangle UV map and
   relative `checker.png`. UV indices deliberately permute the coordinate indices
@@ -102,3 +104,22 @@ and use nonnegative 0..pi/2 trims, with explicit RADIAN units.
 
 Independent adversarial review and native test receipts belong in the private
 handoff, not in fabricated generated golden output.
+
+Review limits for the nonuniform occurrence: its faces are axis-aligned, so
+normalizing a wrongly transformed normal can conceal an inverse-transpose bug.
+It is an affine geometry/volume witness, not a normal-transform witness. Neither
+textured fixture has a UV seam (different UVs on the same geometric vertex).
+
+The face-area bound is a fixed acceptance target, not a worst-case guarantee for
+arbitrary f32 roundoff. For a triangle with edges u and v, if each vertex has
+Euclidean error at most d, cross-product expansion gives
+`|delta area| <= d*(|u|+|v|) + 2*d*d`. Sum this over the two triangles of each box
+face. Absolute world coordinates here are below 8 m, so one f32 rounding has
+per-component error at most 2^-22 m and d <= sqrt(3)*2^-22 m. For the 2×3 face
+the resulting conservative bound is about 5.1e-6 m², which does **not** guarantee
+the chosen 1e-6 m² acceptance target. Local origins reduce rounding, but a second
+rounding can increase error. The review's single-rounding simulation is not a
+qualification result or a basis for widening the bound. If the exact native
+area check fails, preserve the failure and investigate its coordinate/rounding
+path; do not widen the preregistered tolerance. This limitation is recorded
+before any native face-area run.

@@ -84,6 +84,22 @@ void negative(const char* name) {
     } else if(std::strcmp(name,"origin")==0) {
         auto helper=copy(*foreign); helper->SetOwner(original->GetOwner()); reverse(*helper);
         require(ledger.failed()!=Failure::None,"foreign constructor origin cannot borrow source trim authority");
+    } else if(std::strcmp(name,"reuse-foreign")==0) {
+        auto helper=copy(*original); ledger.check(); const auto old=reinterpret_cast<uintptr_t>(helper.get());
+        helper.reset(); ledger.check(); bool reused=false;
+        for(unsigned i=0;i<128 && !reused;++i) {
+            auto unrelated=copy(*foreign); ledger.check();
+            if(reinterpret_cast<uintptr_t>(unrelated.get())!=old) continue;
+            reused=true; unrelated->SetOwner(original->GetOwner()); reverse(*unrelated);
+            require(ledger.failed()!=Failure::None,"recycled helper address cannot authorize a foreign constructor");
+        }
+        require(reused,"actual foreign-copy address reuse must be reached, never skipped");
+    } else if(std::strcmp(name,"replacement")==0) {
+        auto helper=copy(*original); helper->SetOwner(original->GetOwner());
+        phase.finish();
+        Scope replacement(ledger,*SmApiGetOrCreateContext(),&solid);
+        reverse(*helper);
+        require(ledger.failed()!=Failure::None,"same-depth replacement frame cannot replay helper authority");
     } else if(std::strcmp(name,"owner")==0) {
         auto helper=copy(*original); helper->SetOwner(foreign->GetOwner()); reverse(*helper);
         require(ledger.failed()!=Failure::None,"authentic helper cannot edit under foreign ownership");

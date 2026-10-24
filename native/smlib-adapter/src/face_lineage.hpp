@@ -77,6 +77,7 @@ class Ledger {
         SmBrep* source=nullptr;
         Identity operation{};
         uint32_t frame=0;
+        uint64_t serial=0;
         std::vector<SmObject*> trims;
     } numerical;
 
@@ -193,6 +194,7 @@ class Scope final:public SmNotifyCallback {
     Phase phase;
     friend class Ledger;
     friend class GeneratedPlane;
+    friend class NumericalRead;
     friend class PlanarTransition;
     friend class AffineTransition;
 public:

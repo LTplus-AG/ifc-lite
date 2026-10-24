@@ -9,7 +9,8 @@
 
 namespace face_lineage {
 bool Ledger::numerical_event(Event& event,SmNotifyOperation op,SmObject* caller,SmObject* original) {
-    if(!numerical.source || numerical.frame!=frame_count || !caller) return false;
+    if(!numerical.source || !frame_count || numerical.frame!=frame_count ||
+        numerical.serial!=frames[frame_count-1]->serial || !caller) return false;
     if(!caller->IsKindOf(SmCurve_TYPE)) return false;
     if(op==SM_NO_CONSTRUCTION) {
         // SmCurve's base constructor reports the actual source in b before

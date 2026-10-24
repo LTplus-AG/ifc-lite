@@ -114,8 +114,11 @@ void NumericalRead::begin(Ledger& ledger,SmBrep& source) {
     }
     ledger.numerical.operation=ledger.append(Change::AuditBoundary); ledger.check();
     ledger.numerical.frame=ledger.frame_count; ledger.numerical.source=&source;
+    ledger.numerical.serial=ledger.frames[ledger.frame_count-1]->serial;
 }
 void NumericalRead::end(Ledger& ledger) {
+    if(!ledger.numerical.source || !ledger.frame_count || ledger.numerical.frame!=ledger.frame_count ||
+        ledger.numerical.serial!=ledger.frames[ledger.frame_count-1]->serial) ledger.fail(Failure::UnknownHistory);
     for(const auto& binding:ledger.bindings)
         if(binding.alive && binding.numerical_operation==ledger.numerical.operation) ledger.fail(Failure::UnknownHistory);
     ledger.numerical.source=nullptr; ledger.numerical.trims.clear(); ledger.check();

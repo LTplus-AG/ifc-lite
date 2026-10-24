@@ -270,16 +270,20 @@ def main():
          '// mutation: omit analytic extrusion vector from incident surface seal',
          'subdivision rejects changed geometry intervals or missing completion'),
     ])
-    # #7955 r14: independently remove each fixture constructor repair. These
-    # run actual SDK allocations; a context assertion must kill each mutant
-    # before a lost context can crash a setter or suppress the witness stream.
+    # #7955 r14: retain the actual face context-loss reversal (original 57).
+    # Original 58 (FixtureVertex() {} -> =default) survived GCC 13.3 -O2:
+    # lifetime DSE removes its zero-fill across the inline SDK constructor.
+    # It is withdrawn, not a kill/pass. See fixture-constructor-oracle.md.
+    # Replace only that invalid expectation with loss of vertex lifetime
+    # classification, caught by the existing actual constructor receipt check.
     cases.extend([
         ('reuse', '../tests/face_lineage_tests.cpp',
          'FixtureFace() {}', 'FixtureFace()=default;',
          'actual fixture preserves SDK allocator context'),
-        ('refusals', '../tests/face_lineage_tests.cpp',
-         'FixtureVertex() {}', 'FixtureVertex()=default;',
-         'actual fixture preserves SDK allocator context'),
+        ('refusals', 'face_lineage_events.cpp',
+         'caller->GetType()==SmVertex_TYPE || (numerical.source',
+         '(numerical.source',
+         'actual fixture vertex delivers its construction generation'),
     ])
     # #7955 D96 gaps 2/4: actual 4096/4097 SDK splits and a durable face
     # survivor, independent of the existing scratch escaped-BRep witness.
@@ -319,6 +323,9 @@ def main():
         elif result.returncode != 1 or f'lineage FAIL: {marker}' not in output or 'lineage TAINT:' in output:
             raise RuntimeError(f'lineage mutation not killed by intended oracle: {case}')
 
+    print('DISPOSITION: original R14 mutation 58 withdrawn (GCC lifetime DSE); '
+          'slot 58 now removes vertex lifetime classification; '
+          'see tests/fixture-constructor-oracle.md', flush=True)
     compile_control()
     for number, (case, name, before, after, marker) in enumerate(cases, 1):
         witness(case)

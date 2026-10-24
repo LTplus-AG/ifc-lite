@@ -41,10 +41,11 @@ namespace {
 using namespace face_lineage;
 // Expose the real SDK face ctor/dtor for allocation-only invariants. No
 // geometry, notification implementation or allocator is replaced.
-// #7955: these constructors must be user-provided. With =default, new T()
-// zero-initializes the base before its constructor, erasing m_cpContext set
-// by the pinned SDK's SmObject::operator new. SmObject's ctor preserves that
-// allocator-written value; it does not restore it after zero-initialization.
+// #7955: keep user-provided constructors to avoid new T() zero-initializing
+// allocator-written SDK context. SmObject's ctor preserves, never restores it.
+// The defaulted face loses context on the recorded build; GCC 13.3 -O2 lifetime
+// DSE removes that zero-fill for the inline vertex constructor. That vertex
+// mutation is not a portable context-loss oracle; see fixture-constructor-oracle.md.
 class FixtureFace final:public SmFace {
 public:
     FixtureFace() {}
@@ -610,6 +611,8 @@ void refusals() {
     {
         // #7955: an unattached real vertex must retain allocator context and
         // deliver its own lifetime notifications before any nested setter test.
+        // The replacement for R14 mutant 58 removes vertex leaf classification:
+        // a real SDK callback without an issued generation must fail here.
         Ledger ledger; Scope phase(ledger,context);
         auto* vertex=allocate_fixture<FixtureVertex>(owned.source.get()); ledger.check();
         require(ledger.event_size()==1 && ledger.event(0).operation==SM_NO_CONSTRUCTION &&

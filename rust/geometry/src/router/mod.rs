@@ -180,6 +180,9 @@ pub struct GeometryRouter {
     csg_product_depth: Cell<u32>,
     csg_product_drained: Cell<bool>,
     csg_opaque_unscoped: Cell<bool>,
+    /// Bumped by every mark of `csg_opaque_unscoped`; a clear that ran drain
+    /// hooks keeps the mark when a hook raised it again meanwhile (#8117).
+    csg_unscoped_generation: Cell<u64>,
     /// Cumulative counters for opening classification (T1.1 / classifier fix
     /// diagnostic). Tracks how many openings went through each branch of
     /// `program::openings::classify` so a maintainer can verify the fix is firing on
@@ -291,6 +294,7 @@ impl GeometryRouter {
             csg_product_depth: Cell::new(0),
             csg_product_drained: Cell::new(false),
             csg_opaque_unscoped: Cell::new(false),
+            csg_unscoped_generation: Cell::new(0),
             classification_stats: RefCell::new(ClassificationStats::default()),
             host_opening_diagnostics: RefCell::new(FxHashMap::default()),
             rect_fast_stats: RefCell::new(crate::rect_fast::RectFastStats::default()),

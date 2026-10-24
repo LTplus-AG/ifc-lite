@@ -20,7 +20,7 @@ impl GeometryRouter {
         // Opaque custom logs cannot be partitioned without running callbacks.
         // Nested work makes their ownership ambiguous until explicit retrieval
         // or the next top-level product settles them.
-        if nested { self.csg_opaque_unscoped.set(true); }
+        if nested { self.mark_opaque_csg_unscoped(); }
         let parent = nested.then(|| std::mem::take(&mut *self.csg_failures.borrow_mut()));
         let _scope = ProductReports { router: self, parent, depth, parent_drained };
         work()
@@ -29,12 +29,14 @@ impl GeometryRouter {
     /// Drain all current and stopped-product reports for explicit diagnostics.
     /// Canonical product publication and retry drains exclude stopped reports.
     pub fn take_csg_failures(&self) -> FxHashMap<u32, Vec<BoolFailure>> {
+        let generation = self.csg_unscoped_generation.get();
         let current = self.take_current_csg_failures();
         let mut stopped = std::mem::take(&mut *self.stopped_csg_failures.borrow_mut());
         append_csg_failures(&mut stopped, current);
         // Only an explicit drain outside product work establishes a clean
-        // boundary for opaque logs. A nested diagnostic caller cannot do so.
-        if self.csg_product_depth.get() == 0 { self.csg_opaque_unscoped.set(false); }
+        // boundary for opaque logs. A nested diagnostic caller cannot do so,
+        // nor can a drain whose hooks raised new ambiguity (#8117).
+        if self.csg_product_depth.get() == 0 { self.clear_opaque_csg_unscoped(generation); }
         stopped
     }
 
@@ -49,9 +51,30 @@ impl GeometryRouter {
     /// product cannot settle: its parent's in-flight reports share the logs.
     /// A custom hook that charges, stops or runs nested products therefore
     /// acts inside the NEXT product's epoch and resource domain.
+    /// The boundary is restored only if no hook raised new ambiguity during
+    /// the drain (#8117). A hook whose nested product stopped or ended
+    /// undrained leaves reports nobody owns, so this product's drains keep
+    /// routing opaque reports to the stopped bucket, and the next top-level
+    /// product settles again.
     pub fn settle_opaque_csg_failures(&self) {
         if self.csg_product_depth.get() == 1 && self.csg_opaque_unscoped.get() {
+            let generation = self.csg_unscoped_generation.get();
             self.drain_processor_failures();
+            self.clear_opaque_csg_unscoped(generation);
+        }
+    }
+
+    /// Mark opaque custom logs as of unknown ownership. Every mark advances
+    /// the generation, so a clear that ran drain hooks cannot erase a mark
+    /// one of those hooks raised.
+    fn mark_opaque_csg_unscoped(&self) {
+        self.csg_opaque_unscoped.set(true);
+        self.csg_unscoped_generation.set(self.csg_unscoped_generation.get().wrapping_add(1));
+    }
+
+    /// Restore the boundary unless a mark happened since `generation` was read.
+    fn clear_opaque_csg_unscoped(&self, generation: u64) {
+        if self.csg_unscoped_generation.get() == generation {
             self.csg_opaque_unscoped.set(false);
         }
     }
@@ -60,7 +83,7 @@ impl GeometryRouter {
     /// Does not invoke processor hooks or adopt ambient thread-local reports.
     /// Explicit diagnostic retrieval still returns these reports exactly once.
     pub fn quarantine_recorded_csg_failures(&self) {
-        self.csg_opaque_unscoped.set(true);
+        self.mark_opaque_csg_unscoped();
         self.park_recorded_csg_failures();
     }
 
@@ -128,7 +151,7 @@ impl GeometryRouter {
         match crate::resource::check_current() {
             Ok(()) => Ok(failures),
             Err(stop) => {
-                self.csg_opaque_unscoped.set(true);
+                self.mark_opaque_csg_unscoped();
                 append_csg_failures(&mut self.stopped_csg_failures.borrow_mut(), failures);
                 Err(stop)
             }
@@ -171,7 +194,7 @@ struct ProductReports<'a> {
 impl Drop for ProductReports<'_> {
     fn drop(&mut self) {
         if !self.router.csg_product_drained.get() {
-            self.router.csg_opaque_unscoped.set(true);
+            self.router.mark_opaque_csg_unscoped();
         }
         self.router.park_recorded_csg_failures();
         if let Some(parent) = self.parent.take() {

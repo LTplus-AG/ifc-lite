@@ -64,6 +64,12 @@ pub struct SweepPayload {
 
 pub(super) fn lower(recipe: &RetainedExtrusion) -> Result<SweepPayload, RetainedRefusal> {
     validate_source(recipe)?;
+    lower_derived_encoding(recipe)
+}
+
+// Only source-proved derived regions may bypass authored-record checks. All
+// numeric, topology, frame, area and minimum-size guards remain shared.
+pub(super) fn lower_derived_encoding(recipe: &RetainedExtrusion) -> Result<SweepPayload, RetainedRefusal> {
     let source = &recipe.source;
     let profile = source
         .profile

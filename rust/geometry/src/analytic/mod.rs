@@ -6,6 +6,10 @@
 //! A description does not claim to include later boolean operations.
 
 mod curve;
+mod derived_layers;
+pub use derived_layers::DerivedLayerRegions;
+#[cfg(test)]
+mod derived_layer_tests;
 mod source;
 #[cfg(test)]
 mod source_tests;

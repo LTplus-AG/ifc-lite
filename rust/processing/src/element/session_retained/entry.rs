@@ -66,6 +66,8 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
                 type_map_members: Default::default(),
                 layer_pending: layer_pending || layer_source.is_some(),
                 layer_source,
+                layer_token: None,
+                layer_manifest: None,
                 pending: None,
                 ledger: Vec::new(),
                 permits: Vec::new(),

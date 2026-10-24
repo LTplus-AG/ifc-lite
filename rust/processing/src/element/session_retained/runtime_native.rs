@@ -55,10 +55,14 @@ impl RetainedExecutor for SmlibWorker {
                     limits.chord_metres, limits.angle_degrees, mesh, Some(resources))
                     .map(|value| RealizationKind::UnaryClip(Box::new(value)))
             }
-            Invocation::Construction(request) => self.evaluate_retained_accounted(request.clone(), limits.chord_metres, limits.angle_degrees, mesh, Some(resources))
+            Invocation::Construction(request) | Invocation::DerivedMaterialRegion { request, .. } => self.evaluate_retained_accounted(request.clone(), limits.chord_metres, limits.angle_degrees, mesh, Some(resources))
                 .map(|value| RealizationKind::Construction(Box::new(value))),
             Invocation::Affine { input, column_major } => self.copy_retained_affine(transform_input(input), column_major)
                 .map(|value| RealizationKind::Affine(Box::new(value))),
+            Invocation::DerivedMaterialIntersection { host, region, .. } => self.evaluate_retained_boolean_accounted(
+                host.native_dependency()?, region.native_dependency()?, BooleanOperation::Intersection,
+                limits.chord_metres, limits.angle_degrees, mesh, Some(resources))
+                .map(|value| RealizationKind::Boolean(Box::new(value))),
             Invocation::Boolean { left, right, operation } => self.evaluate_retained_boolean_accounted(
                 left.native_dependency()?, right.native_dependency()?, boolean_operation(operation)?,
                 limits.chord_metres, limits.angle_degrees, mesh, Some(resources))

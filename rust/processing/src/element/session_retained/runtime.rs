@@ -9,6 +9,8 @@ pub enum Operand<'a, R> {
 
 pub enum Invocation<'a, R> {
     Construction(&'a RetainedRequest),
+    DerivedMaterialRegion { request: &'a RetainedRequest, binding: &'a super::DerivedLayerBinding },
+    DerivedMaterialIntersection { host: Operand<'a,R>, region: Operand<'a,R>, binding: &'a super::DerivedLayerBinding },
     UnaryClip { input: Operand<'a, R>, clip: &'a ifc_lite_geometry::program::RetainedUnaryClip },
     Affine { input: &'a R, column_major: [f64; 16] },
     Boolean {

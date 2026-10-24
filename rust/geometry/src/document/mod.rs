@@ -23,6 +23,8 @@
 //! Operations over definitions land with their first caller.
 
 mod retained;
+mod derived_layer;
+pub use derived_layer::DerivedLayerRegion;
 mod retained_profile_region;
 pub use retained_profile_region::{capture_retained_extrusion, RetainedRegionExtrusion};
 pub mod retained_frames;

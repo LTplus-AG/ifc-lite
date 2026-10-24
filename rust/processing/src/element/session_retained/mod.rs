@@ -15,6 +15,8 @@ use std::sync::{
     atomic::{AtomicU8, Ordering},
     Arc,
 };
+mod derived_layers;
+pub use derived_layers::{DerivedLayerBinding, MaterialInterfaceSide, DerivedLayersIssued, DerivedLayersCompleted, DerivedLayerManifest, DerivedLayerBandResult};
 mod layers;
 pub use layers::{RetainedLayerSource, RetainedLayerBand, RetainedLayerInterface, RetainedLayerReference};
 pub(crate) use layers::LayerAssociationIndex;
@@ -124,6 +126,8 @@ pub struct RuntimeProductExecution<'a, R: NumericalReceipt> {
     traversal: RetainedTraversal,
     type_values: Vec<LogicalRetainedValue>,
     type_map_members: rustc_hash::FxHashSet<u32>,
+    layer_token: Option<Arc<derived_layers::LayerToken>>,
+    layer_manifest: Option<DerivedLayerManifest<R>>,
     layer_pending: bool,
     layer_source: Option<Arc<RetainedLayerSource>>,
     pending: Option<PendingRetainedTransaction<R>>,
@@ -234,6 +238,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
     }
     pub fn cancel(&mut self) {
         self.failed = true;
+        if let Some(token) = &self.layer_token { token.stage.store(CANCELLED,Ordering::Release); }
         if let Some(pending) = &self.pending {
             pending.cancellation.cancel();
         }
@@ -241,6 +246,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             program.cancel();
         }
         self.plan = None;
+        self.layer_manifest = None;
     }
     pub fn traversal_plan(&self) -> Option<&RetainedProductPlan> {
         self.plan.as_ref().filter(|_| !self.failed)
@@ -258,7 +264,9 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
         let plan = self
             .traversal_plan()
             .ok_or_else(|| protocol("unfinished product"))?;
-        self.validate_manifest(plan)
+        self.validate_manifest(plan)?;
+        if let Some(manifest) = &self.layer_manifest { manifest.validate()?; }
+        Ok(())
     }
     fn validate_manifest(&self, plan: &RetainedProductPlan) -> Result<(), RetainedExecutionError> {
         for (index, value) in plan.values.iter().enumerate() {
@@ -282,7 +290,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
 }
 impl<R: NumericalReceipt> Drop for RuntimeProductExecution<'_, R> {
     fn drop(&mut self) {
-        if self.pending.is_some() {
+        if self.pending.is_some() || (self.layer_token.is_some() && self.layer_manifest.is_none()) {
             self.cancel();
         }
     }
@@ -295,3 +303,8 @@ mod opening_witness;
 
 #[cfg(all(test, feature = "retained-native", not(target_arch = "wasm32")))]
 mod layer_tests;
+
+#[cfg(all(test, feature = "retained-native", not(target_arch = "wasm32")))]
+mod derived_layer_runtime_tests;
+#[cfg(all(test, feature = "retained-native", not(target_arch = "wasm32")))]
+mod layer_oracles;

@@ -62,11 +62,14 @@ impl AsyncRetainedExecutor for BrowserWorker {
             Invocation::UnaryClip { input, clip } => self.evaluate_retained_clip(input, clip, limits)
                 .await.map(|value| BrowserReceipt::UnaryClip(Box::new(value)))
                 .map_err(|error| RetainedExecutionError::Runtime(error.to_string())),
-            Invocation::Construction(request) => self.evaluate_retained(request.clone(), limits.chord_metres, limits.angle_degrees, max_bytes)
+            Invocation::Construction(request) | Invocation::DerivedMaterialRegion { request, .. } => self.evaluate_retained(request.clone(), limits.chord_metres, limits.angle_degrees, max_bytes)
                 .await.map(|value| BrowserReceipt::Construction(Box::new(value)))
                 .map_err(|error| RetainedExecutionError::Runtime(error.to_string())),
             Invocation::Affine { input, column_major } => self.copy_retained_affine(input, column_major)
                 .await.map(|value| BrowserReceipt::Affine(Box::new(value)))
+                .map_err(|error| RetainedExecutionError::Runtime(error.to_string())),
+            Invocation::DerivedMaterialIntersection { host, region, .. } => self.evaluate_retained_boolean(host, region, ifc_lite_geometry::BoolOp::Intersection, limits)
+                .await.map(|value| BrowserReceipt::Boolean(Box::new(value)))
                 .map_err(|error| RetainedExecutionError::Runtime(error.to_string())),
             Invocation::Boolean { left, right, operation } => self.evaluate_retained_boolean(left, right, operation, limits)
                 .await.map(|value| BrowserReceipt::Boolean(Box::new(value)))

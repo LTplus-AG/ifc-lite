@@ -302,3 +302,5 @@ mod layer_tests;
 mod opening_witness;
 #[cfg(all(test, target_arch = "wasm32"))]
 mod profile_region_tests;
+#[cfg(all(test,target_arch="wasm32"))]
+mod derived_layer_tests;

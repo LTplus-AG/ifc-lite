@@ -40,6 +40,7 @@ pub enum RetainedRecipe {
     Extrusion(RetainedExtrusion),
     SweptDisk(RetainedSweptDisk),
     RegularizedExtrusion(super::RetainedRegionExtrusion),
+    DerivedLayer(super::DerivedLayerRegion),
 }
 
 impl RetainedRecipe {
@@ -49,6 +50,7 @@ impl RetainedRecipe {
             Self::Extrusion(recipe) => retained_sweep::lower(recipe),
             Self::SweptDisk(recipe) => retained_disk::lower(recipe),
             Self::RegularizedExtrusion(recipe) => recipe.lower(),
+            Self::DerivedLayer(recipe) => recipe.lower(),
         }
     }
 
@@ -58,6 +60,7 @@ impl RetainedRecipe {
             Self::Extrusion(recipe) => recipe.source.solid_id,
             Self::SweptDisk(recipe) => recipe.solid_id,
             Self::RegularizedExtrusion(recipe) => recipe.region.authored().solid_id,
+            Self::DerivedLayer(recipe) => recipe.source_solid(),
         }
     }
 }
@@ -325,6 +328,9 @@ impl GeometryDocument {
         contract: RetainedDisplayContract,
         occurrences: &[(u32, [f64; 16])],
     ) -> Result<(DefinitionHandle, Vec<OccurrenceHandle>), RetainedRefusal> {
+        if matches!(packet.request().recipe(), RetainedRecipe::DerivedLayer(_)) {
+            return Err(RetainedRefusal::PersistentFaceProvenanceUnavailable);
+        }
         match contract {
             RetainedDisplayContract::UnstyledFlatSourceOnly
             | RetainedDisplayContract::AnalyticSurfaceNormals => {}

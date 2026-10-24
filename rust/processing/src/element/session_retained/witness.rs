@@ -3,6 +3,7 @@ use super::*;
 /// Owned intermediate evidence. This deliberately exposes no final mesh/product.
 pub struct RuntimeProductWitness<R: NumericalReceipt> {
     plan: RetainedProductPlan,
+    layer_manifest: Option<DerivedLayerManifest<R>>,
     layer_source: Option<Arc<RetainedLayerSource>>,
     ledger: Vec<(LogicalRetainedValue, Arc<RuntimeRealization<R>>)>,
     lifecycle: ProductionLifecycle,
@@ -20,6 +21,7 @@ impl<R: NumericalReceipt> RuntimeProductWitness<R> {
         for (_, realization) in &self.ledger {
             realization.validate_live().map_err(protocol)?;
         }
+        if let Some(manifest) = &self.layer_manifest { manifest.validate()?; }
         Ok(())
     }
     /// Intermediate evidence never grants final-product publication authority.
@@ -30,6 +32,7 @@ impl<R: NumericalReceipt> RuntimeProductWitness<R> {
     }
     /// Source-bound unresolved J3 bands; no cut or partition proof is implied.
     pub fn layer_source(&self) -> Option<&RetainedLayerSource> { self.layer_source.as_deref() }
+    pub fn layer_manifest(&self) -> Option<&DerivedLayerManifest<R>> { self.layer_manifest.as_ref() }
     pub fn plan(&self) -> &RetainedProductPlan {
         &self.plan
     }
@@ -44,8 +47,10 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             .plan
             .take()
             .ok_or_else(|| protocol("unfinished product"))?;
+        if self.layer_manifest.is_some() { self.layer_token = None; }
         Ok(RuntimeProductWitness {
             plan,
+            layer_manifest: self.layer_manifest.take(),
             layer_source: self.layer_source.take(),
             ledger: std::mem::take(&mut self.ledger),
             _permits: std::mem::take(&mut self.permits),

@@ -109,7 +109,8 @@ fn a_type_that_cannot_be_added_on_its_own_is_refused() {
     let mut occurrence = object(IfcClass::Wall, gid(14), Some(ObjectRef::Id(70)), Representation::None);
     occurrence.type_link = Some(TypeLink::New(NewType { global_id: None, ..nameless }));
     let (_, report) = run(&source, vec![add(occurrence)]);
-    assert!(report.refusals[0].reason.contains("needs a name"), "{:?}", report.refusals);
+    assert_eq!(report.added, 0);
+    assert!(report.refusals[0].reason.contains("a new type needs a name"), "{:?}", report.refusals);
     let no_gid = NewType::new(IfcClass::Named("IfcWallType".into()));
     let (_, report) = run(&source, vec![(ObjectRef::Guid(gid(8).encode()), Disposition::AddType(Box::new(no_gid)))]);
     assert!(report.refusals[0].reason.contains("needs its own GlobalId"), "{:?}", report.refusals);

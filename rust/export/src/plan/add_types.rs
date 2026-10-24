@@ -191,6 +191,8 @@ pub struct NewType {
     /// refused as already in use).
     pub global_id: Option<GlobalId>,
     pub class: ClassSpec,
+    /// Required: `IfcTypeObject` needs a name, so a new type without one is
+    /// refused.
     pub name: Option<String>,
     pub psets: Vec<NewPropertySet>,
 }

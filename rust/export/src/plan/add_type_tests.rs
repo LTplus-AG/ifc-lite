@@ -103,7 +103,12 @@ fn a_later_add_is_typed_by_a_type_added_on_its_own() {
 fn a_type_that_cannot_be_added_on_its_own_is_refused() {
     let source = storey_with_typed_wall("IFC4");
     let nameless = NewType::new(IfcClass::Named("IfcWallType".into())).with_global_id(gid(13));
-    let (_, report) = run(&source, vec![add_type(nameless)]);
+    let (_, report) = run(&source, vec![add_type(nameless.clone())]);
+    assert!(report.refusals[0].reason.contains("needs a name"), "{:?}", report.refusals);
+    // The same rule for a type created beside its occurrence.
+    let mut occurrence = object(IfcClass::Wall, gid(14), Some(ObjectRef::Id(70)), Representation::None);
+    occurrence.type_link = Some(TypeLink::New(NewType { global_id: None, ..nameless }));
+    let (_, report) = run(&source, vec![add(occurrence)]);
     assert!(report.refusals[0].reason.contains("needs a name"), "{:?}", report.refusals);
     let no_gid = NewType::new(IfcClass::Named("IfcWallType".into()));
     let (_, report) = run(&source, vec![(ObjectRef::Guid(gid(8).encode()), Disposition::AddType(Box::new(no_gid)))]);

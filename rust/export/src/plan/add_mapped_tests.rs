@@ -335,13 +335,35 @@ fn a_body_map_the_plan_deletes_part_of_refuses_the_copy() {
 #[test]
 fn a_delete_takes_a_candidate_or_refuses_the_copy() {
     let link = || TypeLink::Existing(ObjectRef::Id(40));
-    let source = type_with_two_bodies("IFC4");
-    let (out, report) = run(&source, vec![(ObjectRef::Id(330), Disposition::Delete), add(mapped_wall(1, link(), IDENTITY))]);
-    assert_eq!(report.added, 1, "{:?}", report.refusals);
+    for schema in SCHEMAS {
+        let (out, report) = run(&type_with_two_bodies(schema), vec![(ObjectRef::Id(330), Disposition::Delete), add(mapped_wall(1, link(), IDENTITY))]);
+        assert_clean(&report, schema);
+        let items = ids_of_type(&out, "IFCMAPPEDITEM");
+        let mut decoder = ifc_lite_core::EntityDecoder::new(&out);
+        assert_eq!(items.iter().map(|&i| decoder.decode_by_id(i).unwrap().get_ref(0)).collect::<Vec<_>>(), [Some(300)], "{schema}");
+
+        let (_, report) = run(&type_with_maps(schema), vec![(ObjectRef::Id(303), Disposition::Delete), add(mapped_wall(1, link(), IDENTITY))]);
+        assert_eq!(report.added, 0, "{schema}: an empty body is not a copy");
+        let refusal = report.refusals.iter().find(|r| r.object == ObjectRef::Guid(gid(1).encode()));
+        assert!(refusal.is_some_and(|r| r.reason.contains("deleted by this plan")), "{schema}: {:?}", report.refusals);
+    }
+}
+
+/// A body's fallback is instanced only when the type has no plain Body.
+#[test]
+fn a_fallback_body_stands_in_only_without_a_body() {
+    let fallback = |s: String| s.replace("(#100,'Body','SweptSolid',(#303))", "(#100,'Body-FallBack','SweptSolid',(#303))");
+    let only = fallback(String::from_utf8(type_with_maps("IFC4X3")).unwrap());
+    let (out, report) = run(only.as_bytes(), vec![add(mapped_wall(1, TypeLink::Existing(ObjectRef::Id(40)), IDENTITY))]);
+    assert_clean(&report, "IFC4X3");
     assert_eq!(count(&out, "IFCMAPPEDITEM"), 1);
-    let (_, report) = run(&type_with_maps("IFC4"), vec![(ObjectRef::Id(303), Disposition::Delete), add(mapped_wall(1, link(), IDENTITY))]);
-    assert_eq!(report.added, 0, "an empty body is not a copy");
-    assert!(report.refusals.iter().any(|r| r.reason.contains("deleted by this plan")), "{:?}", report.refusals);
+    // With a plain Body map (#320) beside it in another context, only that one.
+    let both = fallback(String::from_utf8(type_with_two_bodies("IFC4X3")).unwrap());
+    let (out, report) = run(both.as_bytes(), vec![add(mapped_wall(1, TypeLink::Existing(ObjectRef::Id(40)), IDENTITY))]);
+    assert_clean(&report, "IFC4X3");
+    let items = ids_of_type(&out, "IFCMAPPEDITEM");
+    let mut decoder = ifc_lite_core::EntityDecoder::new(&out);
+    assert_eq!(items.iter().map(|&i| decoder.decode_by_id(i).unwrap().get_ref(0)).collect::<Vec<_>>(), [Some(320)]);
 }
 
 /// A non-Body identifier is not body geometry, whatever its type.

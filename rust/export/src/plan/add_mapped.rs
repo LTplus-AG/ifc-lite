@@ -25,6 +25,9 @@ use super::AddState;
 /// A representation map, and the context of the representation it maps.
 pub(super) type MapRef = (u32, u32);
 
+/// A type's `Body` maps, or why an occurrence cannot instance them.
+pub(super) type TypeMaps = Result<Rc<[MapRef]>, String>;
+
 /// Where a mapped body's maps come from.
 pub(super) enum MapPlan {
     /// A type that already has them: in the source, or added earlier in the plan.
@@ -52,32 +55,37 @@ impl AddState<'_> {
     }
 
     /// The `Body` maps of type `id`: the ones this plan wrote for it, else
-    /// the ones it has in the source, read once per type (an empty answer
-    /// too). Adds run after every delete has settled, so the answer does not
+    /// the ones it has in the source, read once per type (a refusal too).
+    /// Adds run after every delete has settled, so the answer does not
     /// change during them.
     fn type_maps_of(&self, id: u32, what: &ObjectRef) -> Result<Rc<[MapRef]>, String> {
         let cached = self.type_maps.borrow().get(&id).cloned();
-        let maps = match cached {
-            Some(maps) => maps,
+        match cached {
+            Some(answer) => answer,
             None => {
-                let maps: Rc<[MapRef]> = if self.index.contains(id) { self.source_type_maps(id, what)?.into() } else { Rc::from([]) };
-                self.type_maps.borrow_mut().insert(id, maps.clone());
-                maps
+                let found = if self.index.contains(id) { self.source_type_maps(id, what) } else { Ok(Vec::new()) };
+                let answer = found.and_then(|maps| {
+                    if maps.is_empty() {
+                        Err(format!("type {what} has no Body representation map"))
+                    } else {
+                        Ok(Rc::from(maps))
+                    }
+                });
+                self.type_maps.borrow_mut().insert(id, answer.clone());
+                answer
             }
-        };
-        if maps.is_empty() {
-            return Err(format!("type {what} has no Body representation map"));
         }
-        Ok(maps)
     }
 
-    /// A source type's `Body` maps in one context: the plan's body context
-    /// when the type has maps there, else the first context it has. A type
-    /// that keeps one body per level of detail has a map per context; an
-    /// occurrence instances one of them, not all. A map gone with its
-    /// context, or one with no context, is not a candidate; a chosen map
-    /// whose representation or items this plan deletes is refused rather
-    /// than leave the copy part of its body.
+    /// A source type's best `Body` maps in one context. Maps are ranked by
+    /// how plainly they are the body ([`body_rank`]), and the best rank wins,
+    /// so a fallback is not drawn on top of the body it stands in for. Of
+    /// those, the maps in the plan's body context are taken when the type
+    /// has any there, else those of the first context it has: a type that
+    /// keeps one body per level of detail has a map per context, and an
+    /// occurrence instances one of them. A map gone with its representation
+    /// or context is no candidate; a chosen map whose items this plan
+    /// deletes is refused rather than leave the copy part of its body.
     fn source_type_maps(&self, id: u32, what: &ObjectRef) -> Result<Vec<MapRef>, String> {
         let (schema, index) = (self.schema, self.index);
         let entity = |r: u32| index.type_of(r).unwrap_or_default();
@@ -86,18 +94,18 @@ impl AddState<'_> {
         let mut body = Vec::new();
         for map in maps.into_iter().filter(live) {
             let Some(rep) = scalar_attr(index, schema, map, &entity(map), "MappedRepresentation") else { continue };
-            if !self.is_body(rep) {
-                continue;
-            }
-            if let Some(context) = scalar_attr(index, schema, rep, &entity(rep), "ContextOfItems").filter(live) {
-                body.push((map, rep, context));
+            let Some(rank) = self.body_rank(rep) else { continue };
+            if let Some(context) = scalar_attr(index, schema, rep, &entity(rep), "ContextOfItems") {
+                body.push((rank, map, rep, context));
             }
         }
-        let chosen = body.iter().map(|&(_, _, c)| c).find(|&c| Some(c) == self.body_context).or(body.first().map(|&(_, _, c)| c));
+        let best = body.iter().map(|&(rank, ..)| rank).min();
+        body.retain(|&(rank, ..)| Some(rank) == best);
+        let chosen = body.iter().map(|&(.., c)| c).find(|&c| Some(c) == self.body_context).or(body.first().map(|&(.., c)| c));
         let mut out = Vec::new();
-        for (map, rep, context) in body.into_iter().filter(|&(_, _, c)| Some(c) == chosen) {
+        for (_, map, rep, context) in body.into_iter().filter(|&(.., c)| Some(c) == chosen) {
             let items = list_attr(index, schema, rep, &entity(rep), "Items").unwrap_or_default();
-            if !live(&rep) || items.iter().any(|i| !live(i)) {
+            if items.is_empty() || items.iter().any(|i| !live(i)) {
                 return Err(format!("a Body map of type {what} is deleted by this plan"));
             }
             out.push((map, context));
@@ -105,18 +113,22 @@ impl AddState<'_> {
         Ok(out)
     }
 
-    /// Whether representation `rep` is body geometry: its identifier, when it
-    /// has one, says `Body`; without one, its `RepresentationType` is one the
-    /// geometry engine meshes as a body (`rust/geometry/src/representation/
-    /// select.rs`). A `Clearance`, `Reference` or `Axis` representation is
-    /// not, whatever its type.
-    fn is_body(&self, rep: u32) -> bool {
+    /// How plainly representation `rep` is the body: 0 for a `Body`
+    /// identifier; 1 for a `Body-FallBack` or `Facetation` one, or none and
+    /// a `RepresentationType` the geometry engine meshes as a body
+    /// (`rust/geometry/src/representation/select.rs`); `None` for any other
+    /// identifier (`Clearance`, `Reference`, `Axis`), whatever its type.
+    fn body_rank(&self, rep: u32) -> Option<u8> {
         let entity = self.index.type_of(rep).unwrap_or_default();
         let read = |attr| self.index.string_attr(self.schema, rep, &entity, attr).filter(|s| !s.trim().is_empty());
         if let Some(identifier) = read("RepresentationIdentifier") {
-            return identifier.eq_ignore_ascii_case("Body");
+            return match identifier.to_ascii_uppercase().as_str() {
+                "BODY" => Some(0),
+                "BODY-FALLBACK" | "FACETATION" => Some(1),
+                _ => None,
+            };
         }
-        matches!(
+        let body_type = matches!(
             read("RepresentationType").as_deref(),
             Some(
                 "Body"
@@ -132,7 +144,8 @@ impl AddState<'_> {
                     | "AdvancedSweptSolid"
                     | "AdvancedBrep"
             )
-        )
+        );
+        body_type.then_some(1)
     }
 }
 

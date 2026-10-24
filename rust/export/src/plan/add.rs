@@ -16,7 +16,6 @@
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::rc::Rc;
 
 use crate::step_text::escape;
 use crate::step_ids::IdAllocator;
@@ -33,7 +32,7 @@ use super::tessellation::{find_body_context, Emit};
 use super::types::{ObjectRef, PlanContext, Refusal};
 
 use assoc::{associate, Shared, SharedKey};
-use mapped::{build_map, mapped_shape, MapPlan, MapRef};
+use mapped::{build_map, mapped_shape, MapPlan, MapRef, TypeMaps};
 use units::build_units;
 use check::Checked;
 
@@ -60,7 +59,7 @@ pub(crate) struct AddState<'a> {
     shared: HashMap<SharedKey, u32>,
     /// The `Body` maps of each type an occurrence named or this plan added,
     /// once looked up.
-    type_maps: RefCell<HashMap<u32, Rc<[MapRef]>>>,
+    type_maps: RefCell<HashMap<u32, TypeMaps>>,
 }
 
 impl<'a> AddState<'a> {

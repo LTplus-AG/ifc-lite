@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/resource/owned.rs
++++ b/rust/geometry/src/resource/owned.rs
+@@ -54,7 +54,7 @@
+     pub fn with_scope<T>(&self, work: impl FnOnce() -> T) -> T {
+         let _restore = Restore {
+             context: self.clone(),
+-            account: { let ambient = super::current_account(); CURRENT.with(|slot| slot.replace(ambient)) },
++            account: CURRENT.with(|slot| slot.replace(self.account.clone())),
+             source: SOURCE_STOP.with(|slot| slot.replace(self.source.clone())),
+             terminal: TERMINAL.with(|slot| slot.replace(Some(self.check().err()))),
+             owned: OWNED.with(|slot| slot.replace(Some(self.clone()))),

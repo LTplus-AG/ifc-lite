@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/retained/select.rs
++++ b/rust/geometry/src/program/retained/select.rs
+@@ -137,7 +137,7 @@
+     }
+     pub(in crate::program) fn remember_stop(&self, stop: crate::resource::ProgramStop) -> crate::resource::ProgramStop {
+         #[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
+-        { if false { self.0.walk.remember(stop) } else { stop } }
++        { self.0.walk.remember(stop) }
+         #[cfg(all(target_arch = "wasm32", not(feature = "wasm_source_capture")))]
+         { let _ = stop; match *self {} }
+     }

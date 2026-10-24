@@ -1818,6 +1818,16 @@ jobs:
               --mutation tests/evidence/product-state-e3/retry-stop.oracle.patch \
               --test rust/processing/src/element/session_retry_tests.rs
           fi
+          # #7955: independent admission stop and captured-account controls.
+          # Keep the original H2/E3 and J4 mutations byte-identical.
+          if git diff --name-only origin/main...HEAD -- rust/geometry/src/program/retained/operation_contract_tests.rs | grep -q .; then
+            for oracle in sticky-stop captured-account; do
+              node scripts/check-test-revert-oracle.mjs --base 05024a693b15c4463bdb371f85fa161e4146c926 --ci --json \
+                --mutation "tests/evidence/retained-admission-account-h2/${oracle}.oracle.patch" \
+                --test rust/geometry/src/program/retained/operation_contract_tests.rs
+              cargo test --locked -p ifc-lite-geometry --lib program::inner::retained_program::tests::operation_contract::
+            done
+          fi
           # #7955: each retained mutation runs independently with its own observers.
           # Bases are rebased ancestors; sibling refs select the wrong merge-base.
           if git diff --name-only origin/main...HEAD -- rust/geometry/src/program/retained/ | grep -q .; then

@@ -157,14 +157,34 @@ fn h2c_resource_refusal_survives_the_account_scope_and_other_roots() {
     let entity = decoder.decode_by_id(10).unwrap();
     let traversal = RetainedTraversal::new(contract());
     let mut program = traversal.product_parts(&entity);
-    let ticket = program.request().unwrap().unwrap();
-    let stop = crate::resource::ExecutionAccount::new(crate::resource::ExecutionPolicy::Bounded(
-        crate::resource::ResourceLimits {work:Some(0),..Default::default()})).scope(||
-            program.admit(ticket,&router,&mut decoder).err().expect("bounded source admission"));
-    assert!(matches!(stop,RetainedProgramError::Stopped(_)));
+    let mut existing_sibling = traversal.product_parts(&entity);
+    let account = crate::resource::ExecutionAccount::new(crate::resource::ExecutionPolicy::Bounded(
+        crate::resource::ResourceLimits {work:Some(0),..Default::default()}));
+    // #7955: the first request resolves product structure and need not charge
+    // account work. Reach an actual source admission rather than pinning a stage.
+    let stop = account.scope(|| {
+        for _ in 0..100 {
+            let ticket = program.request().unwrap().expect("source admission must be reached");
+            match program.admit(ticket, &router, &mut decoder) {
+                Err(stop) => return stop,
+                Ok((reply, operations)) => {
+                    assert!(operations.is_empty(), "zero work cannot publish a source operation");
+                    program.accept(reply, &router).unwrap_or_else(|e| panic!("{:?}", e.error));
+                }
+            }
+        }
+        panic!("bounded driver never reached charged source admission");
+    });
+    assert!(matches!(stop, RetainedProgramError::Stopped(
+        crate::resource::ProgramStop::ResourceRefused(failure))
+        if failure.dimension == crate::resource::Dimension::Work));
+    assert_eq!(crate::resource::check_current(), Ok(()), "account scope has ended");
     assert_eq!(program.request().err(),Some(stop));
+    assert_eq!(existing_sibling.request().err(),Some(stop));
     let mut sibling = traversal.product_parts(&entity);
     assert_eq!(sibling.request().err(),Some(stop));
+    assert!(matches!(program.finish(), Err(Error::ProgramStopped(failure))
+        if RetainedProgramError::Stopped(failure) == stop));
 }
 
 #[test]
@@ -183,5 +203,53 @@ fn h2c_malformed_clipping_operator_and_empty_mapped_operand_refuse_whole_plan() 
         let operations = drive(&mut program,&router,&mut decoder);
         assert!(!operations.is_empty(),"provisional inputs reached before refusal");
         assert!(program.finish().is_err(),"no authenticated empty or inferred clipping operation");
+    }
+}
+
+#[test]
+fn h2c_captured_source_admission_charges_original_not_foreign_account() {
+    use crate::resource::{ExecutionAccount, ExecutionPolicy, OwnedResourceContext, ResourceLimits, Usage};
+    // #7955: opposite budgets distinguish captured charging from ambient charging
+    // and from accidentally omitting the charge. Real source operations must be
+    // reached with a generous owner, and refused with a zero-work owner.
+    for bounded_original in [false, true] {
+        let source = SourceBundle::new(boolean_tests::nested().into_bytes());
+        let mut decoder = source.decoder();
+        let router = GeometryRouter::new();
+        let entity = decoder.decode_by_id(10).unwrap();
+        let original = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits {
+            work: bounded_original.then_some(0), ..Default::default()
+        }));
+        let foreign = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits {
+            work: (!bounded_original).then_some(0), ..Default::default()
+        }));
+        let resources = original.scope(OwnedResourceContext::capture_current);
+        let traversal = RetainedTraversal::new(contract());
+        let mut program = traversal.product_parts(&entity);
+        let result = foreign.scope(|| resources.with_scope(|| {
+            for _ in 0..100 {
+                let ticket = program.request()?.expect("source operation must be reached");
+                let (reply, operations) = program.admit(ticket, &router, &mut decoder)?;
+                if !operations.is_empty() {
+                    assert!(operations.iter().any(|op| op.construction().is_some()));
+                    return Ok(());
+                }
+                program.accept(reply, &router).unwrap_or_else(|e| panic!("{:?}", e.error));
+            }
+            panic!("bounded driver never reached source operation");
+        }));
+        assert_eq!(foreign.usage(), Usage::default(), "captured admission cannot charge foreign account");
+        assert_eq!(foreign.check(), Ok(()), "captured refusal cannot stop foreign account");
+        if bounded_original {
+            let stop = result.expect_err("captured zero-work owner must refuse");
+            assert!(matches!(stop, RetainedProgramError::Stopped(
+                crate::resource::ProgramStop::ResourceRefused(failure))
+                if failure.dimension == crate::resource::Dimension::Work));
+            let mut sibling = traversal.product_parts(&entity);
+            assert_eq!(sibling.request().err(), Some(stop), "stop survives captured scope exit");
+        } else {
+            assert_eq!(result, Ok(()), "foreign zero budget cannot redirect captured admission");
+            assert!(original.usage().work > 0, "real source admission must charge captured owner");
+        }
     }
 }

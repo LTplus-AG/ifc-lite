@@ -965,7 +965,8 @@ jobs:
             oracle_args+=(--mutation docs/architecture/evidence/issue-7292/signed-zero.oracle.patch)
           # #7955 H2 controller: preserve the new API, then mutate source
           # identity, disk root, unchecked obligations, and refusal of exact
-          # numerical execution. The selected behavioral tests must fail
+          # numerical execution, plus S1 structural/root/frame guards.
+          # The selected behavioral tests must fail
           # assertions, not fail to compile.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/retained/mod.rs | grep -Fxq 'rust/geometry/src/program/retained/mod.rs'; then
             oracle_args+=(--mutation tests/evidence/retained-controller-h2a1/behaviour.oracle.patch)

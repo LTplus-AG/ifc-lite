@@ -1683,11 +1683,22 @@ operations; exact numerical execution refuses those operations without consuming
 them. A foreign reply is returned intact and does not advance the receiver.
 
 This increment admits direct extrusion and swept-disk recipes, preserves
-repeated occurrences and source identity, and applies qualified rigid product
+repeated occurrences and recorded STEP ids, and applies qualified rigid product
 placement. Unsupported source families, mappings, Booleans, custom processors,
 annotations and alignments refuse the traversal. Native targets support source
 capture; wasm32 needs the existing `wasm_source_capture` feature. The default
 wasm build refuses retained admission.
+
+The root must be an `IfcProduct`; a real product with an absent (`$`)
+`Representation` may produce an empty construction plan. Retained admission
+checks the authored `Representations` and `Items` lists before reference-list
+decoding or representation selection can discard malformed members. A bad
+member or a referenced non-shape representation refuses the whole plan,
+including when a supported first item exists. Normal representation selection
+still applies to structurally valid source. The exact path keeps its existing
+decoding and selection behavior. Composed retained frames must remain finite,
+including initial unit conversion; failed composition leaves the logical value's
+frames, occurrence slot and placement lineage unchanged and refuses the plan.
 
 `finish` returns a logical `RetainedProductPlan`, not a completed mesh or a
 runtime receipt. Opening closure, material layers, appearance and persistent
@@ -1697,3 +1708,39 @@ unnecessary or discharges it may remove it. It grants no source execution
 authority, performs no SDK work and publishes no partial retained product. The native/browser transaction consumers,
 full release features and explicit viewer/CLI selection follow separately;
 exact geometry remains the default.
+
+S1 has the following construction-only trust boundaries. They are limitations
+of this increment, not fulfilled delivery guarantees:
+
+- The caller must obtain the root from the same source/decoder used for every
+  admission and supply matching epoch/revision labels. Those labels are caller
+  assertions, not authenticated source identity or execution authority. S1
+  binds a decoder/router on first admission and rejects later foreign owners;
+  it does not authenticate the supplied root against that first decoder.
+  Preserving a STEP id tests record identity, not source authentication. An
+  execution consumer must establish source coherence before relying on labels.
+- Resource checks and charges use the current ambient account. Callers must
+  keep `request`/`admit`/`accept`/`finish` in the same resource scope and discard
+  the program after a stop. Explicit `cancel()` is sticky; an ambient stop is
+  not latched by S1, and resuming outside the scope or in another account is
+  not prevented. S2 must establish an owning resource context and terminal
+  stop before execution. The current tests do not certify cross-scope
+  ownership, bounded capture memory or complete resource accounting.
+- The facade currently carries source refusals as geometry-error strings at
+  `finish`; `RetainedProgramError::Unsupported` does not encode every product
+  refusal. Default wasm reports unavailable retained capture as `Cancelled`.
+  A typed, listed product-refusal boundary must be defined and tested before
+  delivery or downstream consumers rely on this API. Delivery must show an
+  explicitly incomplete model load, publish no partial geometry for a refused
+  product and perform no silent exact substitution. S1 does not satisfy that
+  contract; this correction deliberately does not expand the public error API.
+- `RetainedProductPlan` is forgeable data: its public `values` and `remaining`
+  fields can be edited and logical operations can be cloned. Clearing an
+  obligation list cannot certify openings, layers, appearance or persistent
+  faces. An execution consumer must validate its own completion state; neither
+  the plan nor an empty `remaining` vector is a completion certificate.
+
+These review corrections require reached-fixture red/green tests, independent
+guard mutations and fresh review before acceptance. They do not qualify SDK
+execution, native/browser transactions, performance, full release features,
+viewer/CLI integration, licensing, or deployment, and do not complete #7955.

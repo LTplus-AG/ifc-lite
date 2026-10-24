@@ -96,6 +96,17 @@ impl LogicalRetainedValue {
     ) -> crate::Result<()> {
         validate_affine(transform)?;
         proper_rigid(transform)?;
+        let matrix = crate::math::mat4::col_major_array(transform);
+        // Finite inputs need not compose to a finite frame. Compute both
+        // candidates before changing the occurrence or its placement lineage.
+        let (world_from_source, object_frame) =
+            if matches!(self.definition, LogicalRetainedDefinition::Source { .. }) {
+                let world = compose_frame(&matrix, &self.world_from_source)?;
+                let object = compose_frame(&world, &self.source_from_evaluation)?;
+                (world, object)
+            } else {
+                (self.world_from_source, compose_frame(&matrix, &self.object_frame)?)
+            };
         crate::resource::charge(crate::resource::Cost {
             work: 1,
             occurrences: 1,
@@ -104,20 +115,15 @@ impl LogicalRetainedValue {
         .retain();
         crate::resource::reserve_headers(&mut self.placements, 1)?.retain();
         let input = self.slot;
-        self.slot = next_slot(program)?;
-        let matrix = crate::math::mat4::col_major_array(transform);
-        if matches!(self.definition, LogicalRetainedDefinition::Source { .. }) {
-            self.world_from_source = multiply_frames(&matrix, &self.world_from_source);
-            self.object_frame =
-                multiply_frames(&self.world_from_source, &self.source_from_evaluation);
-        } else {
-            self.object_frame = multiply_frames(&matrix, &self.object_frame);
-        }
+        let output = next_slot(program)?;
+        self.world_from_source = world_from_source;
+        self.object_frame = object_frame;
+        self.slot = output;
         self.placements.push(RetainedPlacement {
             input,
             output: self.slot,
             stage,
-            matrix: crate::math::mat4::col_major_array(transform),
+            matrix,
         });
         self.product_placed |= matches!(stage, RetainedPlacementStage::Product { .. });
         Ok(())
@@ -162,8 +168,12 @@ pub enum RetainedOperationKind {
 }
 // Transpose the existing row-major primitive to column-major operands. This
 // preserves its ordered f64 accumulation and avoids inverse-frame round trips.
-fn multiply_frames(a: &[f64; 16], b: &[f64; 16]) -> [f64; 16] {
-    crate::math::mat4::mul(b, a)
+fn compose_frame(a: &[f64; 16], b: &[f64; 16]) -> crate::Result<[f64; 16]> {
+    let composed = crate::math::mat4::mul(b, a);
+    if composed.iter().any(|value| !value.is_finite()) {
+        return Err(crate::Error::geometry("retained composed frame is non-finite"));
+    }
+    Ok(composed)
 }
 pub(super) fn next_slot(program: u64) -> crate::Result<LogicalRetainedSlot> {
     use std::sync::atomic::{AtomicU64, Ordering};

@@ -339,3 +339,7 @@ mod obligations;
 mod disk;
 #[path = "protocol_tests.rs"]
 mod protocol;
+#[path = "structure_tests.rs"]
+mod structure;
+#[path = "frame_tests.rs"]
+mod frames;

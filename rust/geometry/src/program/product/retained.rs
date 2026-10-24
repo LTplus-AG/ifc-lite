@@ -16,7 +16,11 @@ impl<'a> ProductControl<'a> {
             let mut control = Self::merged(element, SourceHygiene::IndexOnly);
             control.retained = Some(selection.clone());
             control.body = Body::Sink(Sink::Retained(Vec::new(), selection));
-            if matches!(
+            if !element.ifc_type.is_subtype_of(IfcType::IfcProduct) {
+                control.action = Action::Complete(Err(crate::Error::geometry(
+                    "retained product_parts requires an IfcProduct root",
+                )));
+            } else if matches!(
                 element.ifc_type,
                 IfcType::IfcAlignment | IfcType::IfcAnnotation
             ) {

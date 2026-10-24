@@ -23,6 +23,7 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use rustc_hash::FxHashMap;
 
 mod retained;
+mod retained_structure;
 mod accept;
 use super::item::{ItemControl, ItemStep};
 use super::retained::{RetainedSelection, LogicalRetainedValue};
@@ -255,6 +256,9 @@ impl<'a> ProductControl<'a> {
             Action::Item { item, control } => return control.execute(item, router, decoder).map(ProductReply::Item),
             Action::Alignment => return Ok(ProductReply::Alignment(router.alignment_mesh(element, decoder))),
             Action::Shape => {
+                if self.retained.is_some() {
+                    return Ok(ProductReply::Shape(retained_structure::product_shape(element, decoder)));
+                }
                 return Ok(ProductReply::Shape(product_shape(element, decoder).map_err(Into::into)));
             }
             Action::Items(index) => {

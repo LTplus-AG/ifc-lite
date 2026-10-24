@@ -43,3 +43,71 @@
                          RetainedRequirement::IfcAppearance,
                          RetainedRequirement::PersistentFaces,
                      ],
+--- a/rust/geometry/src/program/product/retained_structure.rs
++++ b/rust/geometry/src/program/product/retained_structure.rs
+@@ -59,7 +59,7 @@
+         })?;
+     for member in members {
+         crate::resource::check_current()?;
+-        if false && member.as_entity_ref().is_none() {
++        if member.as_entity_ref().is_none() {
+             return Err(Error::geometry(format!(
+                 "retained {name} on #{} contains a non-reference member",
+                 entity.id
+--- a/rust/geometry/src/program/product/retained_structure.rs
++++ b/rust/geometry/src/program/product/retained_structure.rs
+@@ -32,7 +32,7 @@
+     if let Some(shape) = &shape {
+         for rep in shape.representations() {
+             crate::resource::check_current()?;
+-            if false && !matches!(
++            if !matches!(
+                 rep.ifc_type,
+                 IfcType::IfcShapeRepresentation | IfcType::IfcTopologyRepresentation
+             ) {
+--- a/rust/geometry/src/program/product/retained.rs
++++ b/rust/geometry/src/program/product/retained.rs
+@@ -16,7 +16,7 @@
+             let mut control = Self::merged(element, SourceHygiene::IndexOnly);
+             control.retained = Some(selection.clone());
+             control.body = Body::Sink(Sink::Retained(Vec::new(), selection));
+-            if false && !element.ifc_type.is_subtype_of(IfcType::IfcProduct) {
++            if !element.ifc_type.is_subtype_of(IfcType::IfcProduct) {
+                 control.action = Action::Complete(Err(crate::Error::geometry(
+                     "retained product_parts requires an IfcProduct root",
+                 )));
+--- a/rust/geometry/src/program/retained/mod.rs
++++ b/rust/geometry/src/program/retained/mod.rs
+@@ -170,7 +170,7 @@
+ // preserves its ordered f64 accumulation and avoids inverse-frame round trips.
+ fn compose_frame(a: &[f64; 16], b: &[f64; 16]) -> crate::Result<[f64; 16]> {
+     let composed = crate::math::mat4::mul(b, a);
+-    if false && composed.iter().any(|value| !value.is_finite()) {
++    if composed.iter().any(|value| !value.is_finite()) {
+         return Err(crate::Error::geometry("retained composed frame is non-finite"));
+     }
+     Ok(composed)
+--- a/rust/geometry/src/program/retained/mod.rs
++++ b/rust/geometry/src/program/retained/mod.rs
+@@ -96,9 +96,6 @@
+     ) -> crate::Result<()> {
+         validate_affine(transform)?;
+         proper_rigid(transform)?;
+-        let input = self.slot;
+-        let output = next_slot(program)?;
+-        self.slot = output;
+         let matrix = crate::math::mat4::col_major_array(transform);
+         // Finite inputs need not compose to a finite frame. Compute both
+         // candidates before changing the occurrence or its placement lineage.
+@@ -117,8 +114,11 @@
+         })?
+         .retain();
+         crate::resource::reserve_headers(&mut self.placements, 1)?.retain();
++        let input = self.slot;
++        let output = next_slot(program)?;
+         self.world_from_source = world_from_source;
+         self.object_frame = object_frame;
++        self.slot = output;
+         self.placements.push(RetainedPlacement {
+             input,
+             output: self.slot,

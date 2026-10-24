@@ -193,7 +193,7 @@ impl PolygonalFaceSetProcessor {
             let i0 = tri[0] as usize;
             let i1 = tri[1] as usize;
             let i2 = tri[2] as usize;
-            if i0 >= vertex_count || i1 >= vertex_count || i2 >= vertex_count {
+            if !emits_triangle([i0, i1, i2], vertex_count) {
                 continue;
             }
 
@@ -226,12 +226,7 @@ impl PolygonalFaceSetProcessor {
                 // its Scale over-tiles the texture (the buildingSMART annex-E
                 // reference renders these coords ~1:1), and the TexCoords already
                 // carry any intended offset.
-                let uv = tri_uv
-                    .and_then(|t| {
-                        let one_based = t[corner] as usize;
-                        tex_coords.get(one_based.checked_sub(1)?).copied()
-                    })
-                    .unwrap_or([0.0, 0.0]);
+                let uv = authored_uv(tri_uv, corner, tex_coords).unwrap_or([0.0, 0.0]);
                 // Flip V: IFC texture coordinates use a bottom-left origin (v up,
                 // OpenGL/STEP convention), but GPU sampling + glTF export use a
                 // top-left origin. Converting here (Rust = single source) keeps the
@@ -257,4 +252,21 @@ impl PolygonalFaceSetProcessor {
             uvs,
         )
     }
+}
+
+/// Whether the UV mesher emits a triangle: every corner names a point. Shared
+/// with the UV audit (`triangulated_plan::fabricated_uv_corners`), so the audit
+/// judges exactly the triangles the mesher keeps.
+#[inline]
+pub(super) fn emits_triangle(corners: [usize; 3], vertex_count: usize) -> bool {
+    corners.iter().all(|&corner| corner < vertex_count)
+}
+
+/// The authored texture coordinate one corner samples, or `None` when the
+/// triangle has no `TexCoordIndex` row or the 1-based entry lies outside
+/// `tex_coords`; the mesher then writes `(0, 0)`.
+#[inline]
+pub(super) fn authored_uv(row: Option<&[u32; 3]>, corner: usize, tex_coords: &[[f32; 2]]) -> Option<[f32; 2]> {
+    let one_based = row?[corner] as usize;
+    tex_coords.get(one_based.checked_sub(1)?).copied()
 }

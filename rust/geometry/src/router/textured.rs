@@ -8,7 +8,7 @@
 //! element pipeline stays within the module-size house rule; the texture
 //! index itself is built in `crate::processors::texture`.
 
-use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
 
 use super::frame_parts::{single_frame_source, SourceParts};
@@ -120,21 +120,14 @@ impl GeometryRouter {
         Ok((mapped_rep, items))
     }
 
-    /// The map's `MappingOrigin` (IfcAxis2Placement3D), scaled: the only 3D
-    /// transform of type geometry. Read after the last item, as it always was.
+    /// The map's `MappingOrigin` (IfcAxis2Placement), scaled: the only
+    /// placement transform of type geometry. Read after the last item.
     pub(crate) fn type_map_origin(&self, rep_map: &DecodedEntity, decoder: &mut EntityDecoder)
         -> Result<Option<Matrix4<f64>>> {
-        Ok(match rep_map.get(slot::IfcRepresentationMap::MAPPING_ORIGIN.index()) {
-            Some(origin_attr) if !origin_attr.is_null() => match decoder.resolve_ref(origin_attr)? {
-                Some(origin) if origin.ifc_type == IfcType::IfcAxis2Placement3D => {
-                    let mut transform = self.parse_axis2_placement_3d(&origin, decoder)?;
-                    self.scale_transform(&mut transform);
-                    Some(transform)
-                }
-                _ => None,
-            },
-            _ => None,
-        })
+        Ok(self.mapping_origin_frame(rep_map, decoder)?.map(|mut transform| {
+            self.scale_transform(&mut transform);
+            transform
+        }))
     }
 
     /// Bake the MappingOrigin into every part of a walked map: textured parts

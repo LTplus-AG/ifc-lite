@@ -4,6 +4,9 @@
 
 //! Tests for geometry processors.
 
+#[path = "placement_reader_tests.rs"]
+mod placement_reader_tests;
+
 use super::*;
 use crate::router::GeometryProcessor;
 use crate::TessellationQuality;

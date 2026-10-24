@@ -53,7 +53,10 @@ pub(super) fn router(decoder: &mut EntityDecoder) -> GeometryRouter {
     router
 }
 pub(super) fn options() -> MeshProductionOptions {
-    MeshProductionOptions { geometry_hash: Some(GeometryHashConfig { tolerance: 1e-5, world_rtc: [8., 16., 0.] }) }
+    MeshProductionOptions {
+        geometry_hash: Some(GeometryHashConfig { tolerance: 1e-5, world_rtc: [8., 16., 0.] }),
+        ..Default::default()
+    }
 }
 pub(super) fn metadata(id: u32) -> ElementMeshMetadata {
     ElementMeshMetadata {

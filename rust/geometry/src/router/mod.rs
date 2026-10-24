@@ -53,6 +53,7 @@ mod tests;
 
 use crate::material_layer_index::MaterialLayerIndex;
 use crate::processors::{BooleanClippingProcessor, CsgSolidProcessor};
+use diagnostics_checked::CsgScopeState;
 mod processor_registry;
 mod construction;
 mod registration;
@@ -64,7 +65,7 @@ use crate::{BoolFailure, Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::sync::{Arc, Mutex, OnceLock};
 
 /// Test/env override for [`GeometryRouter::build_dedup_extra_enabled`]:
@@ -177,9 +178,7 @@ pub struct GeometryRouter {
     csg_failures: RefCell<FxHashMap<u32, Vec<BoolFailure>>>,
     /// Stopped-product evidence, available only to an explicit diagnostic drain.
     stopped_csg_failures: RefCell<FxHashMap<u32, Vec<BoolFailure>>>,
-    csg_product_active: Cell<bool>,
-    csg_product_drained: Cell<bool>,
-    csg_opaque_unscoped: Cell<bool>,
+    csg_scope: CsgScopeState,
     /// Cumulative counters for opening classification (T1.1 / classifier fix
     /// diagnostic). Tracks how many openings went through each branch of
     /// `program::openings::classify` so a maintainer can verify the fix is firing on
@@ -288,9 +287,7 @@ impl GeometryRouter {
             material_layer_index: None,
             csg_failures: RefCell::new(FxHashMap::default()),
             stopped_csg_failures: RefCell::new(FxHashMap::default()),
-            csg_product_active: Cell::new(false),
-            csg_product_drained: Cell::new(false),
-            csg_opaque_unscoped: Cell::new(false),
+            csg_scope: CsgScopeState::default(),
             classification_stats: RefCell::new(ClassificationStats::default()),
             host_opening_diagnostics: RefCell::new(FxHashMap::default()),
             rect_fast_stats: RefCell::new(crate::rect_fast::RectFastStats::default()),

@@ -16,6 +16,18 @@ pub(super) enum PrimaryStrategy {
     TexturedSubmeshes,
 }
 
+impl PrimaryStrategy {
+    /// What this strategy proves about its sub-meshes' triangles (#7955 J5):
+    /// only an unsliced textured product keeps each item's own triangles.
+    pub fn topology(self, layer_class: u8) -> super::presentation::CollectionTopology {
+        use super::presentation::CollectionTopology;
+        match (self, layer_class) {
+            (Self::TexturedSubmeshes, 0) => CollectionTopology::ItemsUncut,
+            _ => CollectionTopology::MayBeRebuilt,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum PlanKind<'a> {
     /// Null representation on anything but an `IfcAlignment`: nothing renders.

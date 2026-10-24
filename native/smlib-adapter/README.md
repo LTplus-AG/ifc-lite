@@ -12,6 +12,10 @@ unpublished crate).
 allocations remain private. The SDK is **fetched at a pinned commit and never
 vendored**; its own `LICENSE` and `THIRD_PARTY_NOTICES.md` stay with that checkout
 and must accompany any binary built from it that is redistributed.
+CMake now compiles a hash-pinned build-directory copy with the narrow
+[imprint-status repair](patches/README.md); it never patches `SMLIB_SOURCE`.
+The generated `ifclite-sdk-provenance.json` must accompany final artifact
+inventories alongside the preserved upstream notices.
 
 Every session owns a slot/generation handle table. Handles include their session,
 so stale handles and handles from another session are rejected. Release invalidates

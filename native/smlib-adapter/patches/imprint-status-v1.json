@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "id": "imprint-status-v1",
+  "upstreamRevision": "c9c5979f04cea8c38213004d4f04df0dcfb40d05",
+  "selection": [
+    "source/SMLib",
+    "source/SM_API",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "inputInventorySha256": "bc750dc8d57d649df4baf463c2a8259f36910a740d9c37a2bc0896efd25ed5af",
+  "fileCount": 494,
+  "path": "source/SMLib/src/SmTopologyIntersector.cpp",
+  "inputSha256": "7142295e1707b944e25a27700e489a8a63cc58ef99206600f71eac9de37c9086",
+  "outputSha256": "89d888c797c156c04193b711813eb478e1d733cfce7ce7b51854ab6a6c46f16d",
+  "patchSha256": "bfb6e7b86f0095d28ea551aa3f9f6b626d926f80ad2e5ddebec7984e7d410950"
+}

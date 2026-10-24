@@ -39,7 +39,13 @@ SmStatus ifclite_test_edge_imprint(SmEdgeDefinition* definition) {
     return status;
 }
 void ifclite_test_failed_definition_retired() { ++failed_retired; }
-void ifclite_test_relationships() { ++relationships; }
+void ifclite_test_relationships() {
+    ++relationships;
+    // Trip the semantic invariant at the first forbidden continuation. A reverse
+    // mutant must not traverse the deliberately incomplete graph and crash/hang
+    // before the observer can report the actual status-loss defect.
+    require(!inject,"first imprint failure stops relationships and Boolean publication");
+}
 void ifclite_test_manager_cleaned(bool cleared) {
     require(cleared,"prototype manager slot cleared after actual destructor"); ++manager_cleanups;
 }

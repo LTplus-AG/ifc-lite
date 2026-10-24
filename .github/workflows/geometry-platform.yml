@@ -93,6 +93,10 @@ jobs:
         id: native-ctest
         continue-on-error: true
         run: ctest --test-dir "$RUNNER_TEMP/smlib-native" --output-on-failure
+      - name: Observe SDK imprint status-loss reverse mutation
+        id: native-imprint-status
+        continue-on-error: true
+        run: python3 native/smlib-adapter/tests/imprint_status_mutation_oracle.py "$RUNNER_TEMP/smlib-native"
       - name: Observe production source construction and affine correspondence mutations
         id: native-source-binding
         continue-on-error: true
@@ -384,6 +388,7 @@ jobs:
           SOURCE_BINDING_WIRE: ${{ steps.source-binding-wire.outcome }}
           NATIVE_SOURCE_BINDING: ${{ steps.native-source-binding.outcome }}
           NATIVE_CTEST: ${{ steps.native-ctest.outcome }}
+          NATIVE_IMPRINT_STATUS: ${{ steps.native-imprint-status.outcome }}
           PROCESSING_RETAINED: ${{ steps.processing-retained.outcome }}
           RETAINED_MUTATIONS: ${{ steps.retained-mutations.outcome }}
           CLIP_MUTATIONS: ${{ steps.clip-mutations.outcome }}
@@ -409,7 +414,7 @@ jobs:
           RETAINED_CLIPPY: ${{ steps.retained-clippy.outcome }}
         run: |
           failed=0
-          for lane in DIRECT_SOURCE_ACCOUNT NATIVE_SOURCE_REVIEW BROWSER_SOURCE_REVIEW SOURCE_BINDING_WIRE NATIVE_SOURCE_BINDING NATIVE_CTEST PROCESSING_RETAINED RETAINED_MUTATIONS CLIP_MUTATIONS FINITE_HALFSPACE_MUTATIONS OPENING_MUTATIONS OPENING_SOURCE_MUTATION RETAINED_LAYER_SOURCE_MUTATIONS RETAINED_REGION_MUTATIONS PROFILE_SECTION_ORACLE RETAINED_NATIVE_CLIPPY NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY RETAINED_SOURCE_WINDING_ORACLE NATIVE_LINEAGE_ORACLE NATIVE_NORMAL_ORACLE NATIVE_PLANE_ORACLE NATIVE_OWNED_ORACLE; do
+          for lane in NATIVE_IMPRINT_STATUS DIRECT_SOURCE_ACCOUNT NATIVE_SOURCE_REVIEW BROWSER_SOURCE_REVIEW SOURCE_BINDING_WIRE NATIVE_SOURCE_BINDING NATIVE_CTEST PROCESSING_RETAINED RETAINED_MUTATIONS CLIP_MUTATIONS FINITE_HALFSPACE_MUTATIONS OPENING_MUTATIONS OPENING_SOURCE_MUTATION RETAINED_LAYER_SOURCE_MUTATIONS RETAINED_REGION_MUTATIONS PROFILE_SECTION_ORACLE RETAINED_NATIVE_CLIPPY NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY RETAINED_SOURCE_WINDING_ORACLE NATIVE_LINEAGE_ORACLE NATIVE_NORMAL_ORACLE NATIVE_PLANE_ORACLE NATIVE_OWNED_ORACLE; do
             printf '%s=%s\n' "$lane" "${!lane}"
             if [[ "${!lane}" != success ]]; then failed=1; fi
           done

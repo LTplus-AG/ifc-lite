@@ -22,15 +22,30 @@ execute_process(COMMAND git ls-files --others -- source/SMLib source/SM_API
 if(NOT modified EQUAL 0 OR NOT untracked STREQUAL "")
   message(FATAL_ERROR "Pinned SMLib/SM_API sources have modifications")
 endif()
-file(GLOB kernel_sources CONFIGURE_DEPENDS "${SMLIB_SOURCE}/source/SMLib/src/*.cpp")
-file(GLOB api_sources CONFIGURE_DEPENDS "${SMLIB_SOURCE}/source/SM_API/src/*.cpp")
+# Production SDK is a verified, versioned snapshot beneath this binary tree.
+# SMLIB_SOURCE remains immutable, including during reconfiguration/mutations.
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+execute_process(COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/prepare_sdk.py"
+  --source "${SMLIB_SOURCE}" --build "${CMAKE_CURRENT_BINARY_DIR}"
+  OUTPUT_VARIABLE IFCLITE_PREPARED_SDK OUTPUT_STRIP_TRAILING_WHITESPACE
+  COMMAND_ERROR_IS_FATAL ANY)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_SOURCE_DIR}/prepare_sdk.py"
+  "${CMAKE_CURRENT_SOURCE_DIR}/patches/imprint-status-v1.json"
+  "${CMAKE_CURRENT_SOURCE_DIR}/patches/imprint-status-v1.patch")
+set(IFCLITE_SDK_PROVENANCE "${IFCLITE_PREPARED_SDK}/provenance.json" CACHE INTERNAL
+  "Exact patched SDK source inventory for final artifact provenance")
+configure_file("${IFCLITE_SDK_PROVENANCE}" "${CMAKE_CURRENT_BINARY_DIR}/ifclite-sdk-provenance.json" COPYONLY)
+message(STATUS "Patched SDK provenance: ${IFCLITE_SDK_PROVENANCE}")
+file(GLOB kernel_sources CONFIGURE_DEPENDS "${IFCLITE_PREPARED_SDK}/source/SMLib/src/*.cpp")
+file(GLOB api_sources CONFIGURE_DEPENDS "${IFCLITE_PREPARED_SDK}/source/SM_API/src/*.cpp")
 add_library(smlib_kernel STATIC ${kernel_sources})
-target_include_directories(smlib_kernel PUBLIC "${SMLIB_SOURCE}/source/SMLib/inc"
-  "${SMLIB_SOURCE}/source/SM_API/inc")
+target_include_directories(smlib_kernel PUBLIC "${IFCLITE_PREPARED_SDK}/source/SMLib/inc"
+  "${IFCLITE_PREPARED_SDK}/source/SM_API/inc")
 target_compile_features(smlib_kernel PUBLIC cxx_std_17)
 target_compile_definitions(smlib_kernel PUBLIC SM_NO_DEBUG_CODE SM_NO_GFX_OUTPUT_CODE NDEBUG)
 add_library(smlib_api STATIC ${api_sources})
-target_include_directories(smlib_api BEFORE PRIVATE "${SMLIB_SOURCE}/source/SM_API/inc")
+target_include_directories(smlib_api BEFORE PRIVATE "${IFCLITE_PREPARED_SDK}/source/SM_API/inc")
 target_link_libraries(smlib_api PUBLIC smlib_kernel)
 # Upstream C++ types/includes stay private to the adapter.
 add_library(ifclite_smlib STATIC src/adapter.cpp src/copy.cpp src/affine.cpp src/mesh.cpp
@@ -219,3 +234,33 @@ endforeach()
 add_test(NAME smlib_source_construction COMMAND ${test_runner} $<TARGET_FILE:ifclite_smlib_source_binding_tests> construction)
 add_test(NAME smlib_source_binding COMMAND ${test_runner} $<TARGET_FILE:ifclite_smlib_source_binding_tests>)
 set_tests_properties(smlib_source_construction smlib_source_binding PROPERTIES TIMEOUT 120)
+
+# Native fault witnesses link a test-instrumented intersector object before the
+# static kernel archive. Only this TU is replaced; shipped kernel is uninstrumented.
+if(NOT EMSCRIPTEN)
+  set(imprint_witness_dir "${CMAKE_CURRENT_BINARY_DIR}/imprint-witness")
+  execute_process(COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/prepare_imprint_witness.py"
+    --prepared "${IFCLITE_PREPARED_SDK}" --output "${imprint_witness_dir}"
+    COMMAND_ERROR_IS_FATAL ANY)
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/prepare_imprint_witness.py")
+  add_executable(ifclite_smlib_imprint_tests tests/imprint_status_tests.cpp "${imprint_witness_dir}/control.cpp")
+  add_executable(ifclite_smlib_imprint_mutant EXCLUDE_FROM_ALL
+    tests/imprint_status_tests.cpp "${imprint_witness_dir}/reverse.cpp")
+  foreach(target ifclite_smlib_imprint_tests ifclite_smlib_imprint_mutant)
+    target_compile_features(${target} PRIVATE cxx_std_17)
+    target_include_directories(${target} PRIVATE tests)
+    target_link_libraries(${target} PRIVATE smlib_api)
+  endforeach()
+  foreach(mode healthy failure)
+    foreach(operation union intersection difference classify)
+      add_test(NAME smlib_imprint_${mode}_${operation}
+        COMMAND ifclite_smlib_imprint_tests ${mode} ${operation})
+      set_tests_properties(smlib_imprint_${mode}_${operation} PROPERTIES TIMEOUT 120)
+    endforeach()
+  endforeach()
+  add_test(NAME smlib_sdk_preparation COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/sdk_prepare_tests.py")
+  set_tests_properties(smlib_sdk_preparation PROPERTIES TIMEOUT 60)
+endif()

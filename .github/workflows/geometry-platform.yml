@@ -259,8 +259,6 @@ jobs:
           ref: 3b3963d86a5c97adaf6eaa845cdfe0b811c2f960
           path: emsdk
           persist-credentials: false
-      - name: Build the canonical WASM package and the opt-in retained bundle
-        run: BUILD_RETAINED=1 bash scripts/build-wasm.sh
       - name: Build the browser module-Worker boundary (Emscripten 4.0.15)
         run: |
           emsdk/emsdk install 4.0.15
@@ -280,6 +278,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
+      - name: Build the canonical WASM package and the opt-in retained bundle
+        run: BUILD_RETAINED=1 bash scripts/build-wasm.sh
       - name: Record explicit local retained packaging inputs (not build attestation)
         run: |
           node scripts/stage-retained-browser-assets.mjs --build "$RUNNER_TEMP/smlib-wasm" \

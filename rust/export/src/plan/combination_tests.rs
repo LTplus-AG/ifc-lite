@@ -417,5 +417,8 @@ fn a_patched_projection_or_voidless_opening_goes_and_the_reason_fits() {
         let (report, _) = run(&content, vec![(ObjectRef::Id(10), Disposition::Delete), (ObjectRef::Id(70), Disposition::Delete), rename(70)]);
         let refusal = report.refusals.iter().find(|r| r.object == ObjectRef::Id(70)).expect("refused");
         assert!(refusal.reason.contains("also deleted by this plan"), "{schema}: {}", refusal.reason);
+        let (report, _) = run(&content, vec![(ObjectRef::Id(10), Disposition::Delete), (ObjectRef::Id(70), Disposition::Delete), (ObjectRef::Id(70), Disposition::Preserve)]);
+        let refusal = report.refusals.iter().find(|r| r.object == ObjectRef::Id(70)).expect("refused");
+        assert!(refusal.reason.contains("removed by this plan"), "{schema}: {}", refusal.reason);
     }
 }

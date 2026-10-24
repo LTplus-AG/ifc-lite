@@ -142,10 +142,13 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     // The cascade reads only its inputs and the referrers collected before
     // this resolution started, so the gating pass is reused exactly when
     // the inputs are the same.
-    // What an appended record names must stay, an opening or projection too.
+    // What an appended record names must stay, an opening or projection
+    // too, unless it is the patched object itself: a patch never keeps a
+    // hostless feature.
     let named = protect_what_appended_names(index, &list_edits, &removed, &mut appended);
     protected.extend(named.iter().copied());
-    feature_keepers.extend(named);
+    let patched_ids: HashSet<u32> = patched_objects.iter().copied().collect();
+    feature_keepers.extend(named.into_iter().filter(|id| !patched_ids.contains(id)));
     let delete_result = if detach_requests.is_empty() && requested_deletes == gated_requested && protected == gated_protected && feature_keepers == gated_keepers {
         gating
     } else {
@@ -157,7 +160,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     };
     removed.extend(delete_result.removed);
     refusals.extend(lost_writes(edited, &removed));
-    refusals.extend(overridden_preserves(&resolved, &removed, &delete_result.unhosted));
+    refusals.extend(overridden_preserves(&resolved, &removed, &delete_result.unhosted, &gated_requested));
     for (slot, strip) in delete_result.stripped {
         list_edits.entry(slot).or_default().remove.extend(strip);
     }
@@ -313,8 +316,9 @@ fn lost_writes(edited: HashSet<(u32, u32)>, removed: &HashSet<u32>) -> Vec<Refus
 }
 
 /// A refusal for each Preserve the plan's removals override: reported, not
-/// dropped. An opening or projection in `unhosted` says why it went.
-fn overridden_preserves(resolved: &[(u32, &Disposition)], removed: &HashSet<u32>, unhosted: &HashSet<u32>) -> Vec<Refusal> {
+/// dropped. An opening or projection in `unhosted` that the plan did not
+/// itself delete (`requested`) says why it went.
+fn overridden_preserves(resolved: &[(u32, &Disposition)], removed: &HashSet<u32>, unhosted: &HashSet<u32>, requested: &HashSet<u32>) -> Vec<Refusal> {
     let mut overridden: Vec<u32> =
         resolved.iter().filter(|&&(id, d)| matches!(d, Disposition::Preserve) && removed.contains(&id)).map(|&(id, _)| id).collect();
     overridden.sort_unstable();
@@ -322,7 +326,7 @@ fn overridden_preserves(resolved: &[(u32, &Disposition)], removed: &HashSet<u32>
     overridden
         .into_iter()
         .map(|id| {
-            let reason = if unhosted.contains(&id) {
+            let reason = if unhosted.contains(&id) && !requested.contains(&id) {
                 "opening or projection has no host left: IFC ties it to exactly one element; it cannot be preserved"
             } else {
                 "object is removed by this plan; it cannot be preserved"

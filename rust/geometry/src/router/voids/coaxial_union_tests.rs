@@ -20,7 +20,7 @@ impl GeometryRouter {
         members: &[usize],
         axis: &Vector3<f64>,
     ) -> Option<(Vec<Mesh>, bool, Vec<usize>, f64)> {
-        crate::program::openings::execute::Execution::new(self.tessellation_quality)
+        crate::program::openings::execute::Execution::new(self.tessellation_quality())
             .build_coaxial_prisms(result, cands, members, axis)
     }
 }

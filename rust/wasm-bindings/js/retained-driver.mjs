@@ -212,6 +212,38 @@ export class RetainedDriver {
     } catch (error) { this.retire(); throw error; }
     finally { this.#releaseBusy(); }
   }
+  async evaluateClip(input, plane, side, mode, chord, angle, maxBytes) {
+    const coefficients = new Float64Array(plane);
+    if (coefficients.length !== 6 || !coefficients.every(Number.isFinite) ||
+        ![-1, 1].includes(side) || ![2, 3].includes(mode)) throw new Error('invalid clip invocation');
+    if (!this.objectLive(input)) throw new Error('foreign or expired clip input');
+    await this.#acquire();
+    if (!this.#dependenciesQualified || !this.objectLive(input)) {
+      this.#releaseBusy();
+      throw new Error('unqualified dependency or expired clip input');
+    }
+    try {
+      const inputHandle = this.#objects.get(input).slice();
+      const certificate = await this.#call(20, this.#session, inputHandle,
+        ...Array.from(coefficients, f64), u32(side), u32(mode));
+      if (certificate.byteLength < 312 || certificate.byteLength > 2488) throw new Error('clip certificate bound');
+      const solid = certificate.slice(0, 16);
+      validateHandle(solid, new DataView(this.#session.buffer).getBigUint64(0, true));
+      // Reject aliasing any live lease before registering or releasing an output.
+      for (const existing of this.#objects.values()) {
+        if (existing.every((v, i) => v === solid[i])) throw new Error('clip borrowed an existing lease');
+      }
+      const meshHandle = await this.#call(9, this.#session, solid, f64(chord), f64(angle));
+      validateHandle(meshHandle, new DataView(this.#session.buffer).getBigUint64(0, true));
+      const mesh = await this.#readMesh(meshHandle, maxBytes, solid);
+      await this.#call(8, this.#session, meshHandle);
+      if (!this.objectLive(input)) throw new Error('clip input expired after await');
+      const object = Object.freeze({});
+      this.#objects.set(object, solid);
+      return Object.freeze({ object, mesh, input: inputHandle, output: solid.slice(), certificate });
+    } catch (error) { this.retire(); throw error; }
+    finally { this.#releaseBusy(); }
+  }
   async evaluate(bytes, format, loops, segments, qualification, chord, angle, maxBytes) {
     // Own every coefficient before awaiting initialization or asset loading.
     const recipe = new Uint8Array(bytes);

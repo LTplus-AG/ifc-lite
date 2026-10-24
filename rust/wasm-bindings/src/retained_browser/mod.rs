@@ -31,6 +31,7 @@ mod receipt;
 mod dependencies;
 #[cfg(target_arch = "wasm32")]
 mod boolean;
+mod clip;
 #[cfg(target_arch = "wasm32")]
 pub(crate) use receipt::BrowserReceipt;
 
@@ -288,6 +289,8 @@ mod tests;
 
 #[cfg(all(test, target_arch = "wasm32"))]
 mod product_tests;
+#[cfg(all(test, target_arch = "wasm32"))]
+mod clip_tests;
 
 #[cfg(all(test, target_arch = "wasm32"))]
 mod opening_tests;

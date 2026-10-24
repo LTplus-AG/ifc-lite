@@ -30,6 +30,10 @@ extern "C" {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn evaluate_boolean(this: &Driver, left: &JsValue, right: &JsValue,
         relative: &[f64], operation: u32, chord: f64, angle: f64, max_bytes: u32) -> js_sys::Promise;
+    #[wasm_bindgen(method, js_name = evaluateClip)]
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn evaluate_clip(this: &Driver, input: &JsValue, plane: &[f64], side: i32,
+        mode: u32, chord: f64, angle: f64, max_bytes: u32) -> js_sys::Promise;
     #[wasm_bindgen(method)]
     fn qualify(this: &Driver) -> js_sys::Promise;
     #[wasm_bindgen(method)]

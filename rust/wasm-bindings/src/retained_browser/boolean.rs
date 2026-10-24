@@ -32,13 +32,13 @@ impl BrowserBooleanResult {
 impl Drop for BrowserBooleanResult {
     fn drop(&mut self) { self.domain.owner.driver.release_object(&self.object); }
 }
-struct Placed<'a> {
-    receipt: &'a BrowserReceipt,
-    frame: [f64; 16],
-    lineage: Arc<RetainedLineage>,
-    count: usize,
+pub(super) struct Placed<'a> {
+    pub(super) receipt: &'a BrowserReceipt,
+    pub(super) frame: [f64; 16],
+    pub(super) lineage: Arc<RetainedLineage>,
+    pub(super) count: usize,
 }
-fn place<'a>(operand: Operand<'a, BrowserReceipt>, domain: &BrowserCancellation) -> Result<Placed<'a>, BrowserError> {
+pub(super) fn place<'a>(operand: Operand<'a, BrowserReceipt>, domain: &BrowserCancellation) -> Result<Placed<'a>, BrowserError> {
     let (receipt, supplied, source) = match operand {
         Operand::Source { receipt, world_from_source } => (receipt, world_from_source, true),
         Operand::Placed { receipt, world_from_object } => (receipt, world_from_object, false),
@@ -51,7 +51,7 @@ fn place<'a>(operand: Operand<'a, BrowserReceipt>, domain: &BrowserCancellation)
             (frame, Arc::new(RetainedLineage::Source { request: Box::new(value.completion().request().clone()),
                 world_from_source: supplied }), 0)
         }
-        (false, BrowserReceipt::Affine(_) | BrowserReceipt::Boolean(_)) => {
+        (false, BrowserReceipt::Affine(_) | BrowserReceipt::Boolean(_) | BrowserReceipt::UnaryClip(_)) => {
             let (value, count) = receipt.lineage_parts();
             (supplied, Arc::new(RetainedLineage::Placed { value, world_from_evaluation: supplied }), count)
         }

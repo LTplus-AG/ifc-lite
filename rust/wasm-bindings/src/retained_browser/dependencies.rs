@@ -42,10 +42,11 @@ impl BrowserReceipt {
             }
             Self::Affine(value) => (value.lineage.clone(), value.operations),
             Self::Boolean(value) => (value.lineage.clone(), value.operations),
+            Self::UnaryClip(value) => (value.lineage.clone(), value.operations),
         }
     }
     pub(super) fn driver_object(&self) -> &JsValue {
-        match self { Self::Construction(value) => &value.object, Self::Affine(value) => &value.object, Self::Boolean(value) => &value.object }
+        match self { Self::Construction(value) => &value.object, Self::Affine(value) => &value.object, Self::Boolean(value) => &value.object, Self::UnaryClip(value) => &value.object }
     }
 }
 

@@ -130,10 +130,23 @@ pub(crate) fn synthesize_context(emit: &mut Emit) -> Result<u32, String> {
     )
 }
 
-/// `items` as a product's body: each styled with `colour` when given, wrapped
-/// in one `Body` `IfcShapeRepresentation` of `rep_type` in `context`, wrapped
-/// in an `IfcProductDefinitionShape`, whose id is returned.
+/// `items` as a product's body: [`body_representation`] wrapped in an
+/// `IfcProductDefinitionShape`, whose id is returned.
 pub(crate) fn body_shape(
+    emit: &mut Emit,
+    context: u32,
+    items: &[u32],
+    rep_type: &str,
+    colour: Option<&SurfaceColour>,
+) -> Result<u32, String> {
+    let shape = body_representation(emit, context, items, rep_type, colour)?;
+    emit.record("IFCPRODUCTDEFINITIONSHAPE", &[("Representations", format!("(#{shape})"))])
+}
+
+/// `items`, each styled with `colour` when given, in one `Body`
+/// `IfcShapeRepresentation` of `rep_type` in `context`, whose id is
+/// returned: a product's body, or what a type's representation map maps.
+pub(crate) fn body_representation(
     emit: &mut Emit,
     context: u32,
     items: &[u32],
@@ -145,7 +158,7 @@ pub(crate) fn body_shape(
             styled_item(emit, item, c)?;
         }
     }
-    let shape = emit.record(
+    emit.record(
         "IFCSHAPEREPRESENTATION",
         &[
             ("ContextOfItems", format!("#{context}")),
@@ -153,8 +166,7 @@ pub(crate) fn body_shape(
             ("RepresentationType", format!("'{rep_type}'")),
             ("Items", ref_list(items)),
         ],
-    )?;
-    emit.record("IFCPRODUCTDEFINITIONSHAPE", &[("Representations", format!("(#{shape})"))])
+    )
 }
 
 /// The mesh as one representation item, and the `RepresentationType` a

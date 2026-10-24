@@ -170,6 +170,8 @@ fn a_new_type_with_property_sets_is_shared_by_a_later_add() {
             class: ClassSpec { class: IfcClass::Named("IfcWallType".into()), predefined_type: Some("standard".into()) },
             name: Some("Generic 200".into()),
             psets: vec![wall_common("W200")],
+            representation: Representation::None,
+            style: None,
         }));
         let mut second = object(IfcClass::Wall, gid(21), storey(), Representation::None);
         second.type_link = Some(TypeLink::Existing(ObjectRef::Guid(gid(20).derive("type").encode())));
@@ -260,6 +262,8 @@ fn same_plan_produces_byte_identical_output_twice() {
                 class: ClassSpec { class: IfcClass::Named(door_type.into()), predefined_type: None },
                 name: Some("Type".into()),
                 psets: vec![wall_common("T")],
+                representation: Representation::None,
+                style: None,
             }));
             vec![add(door), add(object(IfcClass::Space, gid(51), storey(), Representation::Extrusion(block(3.0, 3.0, 2.5))))]
         };
@@ -393,6 +397,8 @@ fn a_new_type_with_its_own_global_id_keeps_it_and_later_adds_name_it() {
             class: ClassSpec { class: IfcClass::Named("IfcWallType".into()), predefined_type: None },
             name: Some("Own id".into()),
             psets: vec![wall_common("W1")],
+            representation: Representation::None,
+            style: None,
         }));
         let mut second = object(IfcClass::Wall, gid(23), storey(), Representation::None);
         second.type_link = Some(TypeLink::Existing(ObjectRef::Guid(type_gid.encode())));
@@ -414,6 +420,8 @@ fn a_new_type_sharing_its_occurrences_global_id_is_refused() {
         class: ClassSpec { class: IfcClass::Named("IfcWallType".into()), predefined_type: None },
         name: Some("Type".into()),
         psets: Vec::new(),
+        representation: Representation::None,
+        style: None,
     }));
     let (_, report) = run(&source, vec![add(wall)]);
     assert!(report.refusals[0].reason.contains("cannot share"), "{:?}", report.refusals);
@@ -457,6 +465,8 @@ fn a_furniture_type_gets_its_mandatory_assembly_place() {
             class: ClassSpec { class: IfcClass::Named("IfcFurnitureType".into()), predefined_type: None },
             name: Some("Chair".into()),
             psets: Vec::new(),
+            representation: Representation::None,
+            style: None,
         }));
         let (out, report) = run(&source, vec![add(chair)]);
         assert_clean(&report, schema);

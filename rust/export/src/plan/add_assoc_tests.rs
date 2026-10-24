@@ -193,6 +193,8 @@ fn values_carry_an_existing_or_a_new_unit_and_a_new_one_is_shared() {
             class: ClassSpec { class: IfcClass::Named("IfcWallType".into()), predefined_type: None },
             name: Some("Load type".into()),
             psets: vec![set("Pset_TypeLoad", PsetKind::Property, vec![measure("New", "IfcPressureMeasure", 5.0, kpa())])],
+            representation: Representation::None,
+            style: None,
         }));
         let (out, report) = run(&source, vec![add(a), add(b)]);
         assert_valid(&out, &report, schema);

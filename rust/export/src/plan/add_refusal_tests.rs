@@ -27,6 +27,8 @@ fn new_type(class: &str, predefined_type: Option<&str>) -> TypeLink {
         class: ClassSpec { class: IfcClass::Named(class.into()), predefined_type: predefined_type.map(Into::into) },
         name: Some("T".into()),
         psets: Vec::new(),
+        representation: Representation::None,
+        style: None,
     })
 }
 
@@ -302,6 +304,8 @@ fn a_later_add_names_a_type_an_earlier_add_created() {
             class: ClassSpec { class: IfcClass::Named("IfcWallType".into()), predefined_type: None },
             name: Some("T".into()),
             psets: Vec::new(),
+            representation: Representation::None,
+            style: None,
         }));
         let mut second = object(IfcClass::Wall, gid(42), storey(), Representation::None);
         second.type_link = Some(TypeLink::Existing(ObjectRef::Guid(type_id.encode())));

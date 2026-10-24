@@ -19,11 +19,12 @@ use crate::step_text::escape;
 
 use crate::plan::add_props::build_sets;
 use crate::plan::add_rels::{RelKind, RelRequest};
-use crate::plan::add_types::{GlobalId, NewType};
+use crate::plan::add_types::{GlobalId, NewType, Representation};
 use crate::plan::props_synth::{ref_list, ref_or_unset};
 use crate::plan::tessellation::Emit;
 use crate::plan::types::ObjectRef;
 use super::assoc::Shared;
+use super::mapped::build_map;
 use super::units::build_units;
 use super::{require_filled, AddState};
 
@@ -42,14 +43,26 @@ impl AddState<'_> {
         let mut shared = Shared { committed: &self.shared, pending: HashMap::new() };
         let mut emit = Emit { schema: self.schema, ids, out: &mut out };
         let units = build_units(&mut emit, &mut shared, &units)?;
-        let id = build_new_type(&mut emit, t, gid, (&class, &predefined), &units, Some(owner_history))?;
+        let (maps, new_context) = match t.representation {
+            Representation::None => (Vec::new(), None),
+            _ => {
+                let (context, new_context) = self.body_context_or_new(&mut emit)?;
+                (build_map(&mut emit, context, &t.representation, t.style.as_ref())?.into_iter().collect::<Vec<_>>(), new_context)
+            }
+        };
+        let map_ids: Vec<u32> = maps.iter().map(|&(map, _)| map).collect();
+        let id = build_new_type(&mut emit, t, gid, (&class, &predefined), &units, &map_ids, Some(owner_history))?;
         let pending = shared.pending;
+        let new_context = new_context.map(|c| self.context_owner().map(|owner| (c, owner))).transpose()?;
 
         self.commit(owner_history, out, pending);
+        if let Some((context, owner)) = new_context {
+            self.adopt_context(context, owner);
+        }
         if let Some(project) = project {
             self.rels.relate(self.schema, RelRequest { kind: RelKind::Declares, relating: project, related: id, seed: gid });
         }
-        self.register_type(id, gid, class);
+        self.register_type(id, gid, class, maps);
         Ok(())
     }
 }
@@ -64,6 +77,7 @@ pub(super) fn build_new_type(
     owner: GlobalId,
     class: (&str, &Option<String>),
     units: &[Vec<Option<u32>>],
+    maps: &[u32],
     owner_history: Option<u32>,
 ) -> Result<u32, String> {
     // A type with its own GlobalId derives its sets' ids from it.
@@ -76,6 +90,9 @@ pub(super) fn build_new_type(
     }
     if !type_sets.is_empty() {
         fields.push(("HasPropertySets", ref_list(&type_sets)));
+    }
+    if !maps.is_empty() {
+        fields.push(("RepresentationMaps", ref_list(maps)));
     }
     // Mandatory on element types in IFC4 and later (and on door and window
     // types, their operation and partitioning; on furniture types, the

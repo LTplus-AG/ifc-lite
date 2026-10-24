@@ -125,6 +125,23 @@ pub enum Representation {
     Extrusions(Vec<Extrusion>),
     /// A mesh in the object's local coordinates.
     Mesh(TriangleMesh),
+    /// No geometry of its own: the object instances its type's `Body`
+    /// representation maps through `IfcMappedItem`s. The type is the
+    /// object's `type_link`: a type in the source that has representation
+    /// maps, or a new type with a `representation`. The colour is the
+    /// type's.
+    Mapped(MappedBody),
+}
+
+/// How an object places its type's mapped representation: `transform`
+/// (row-major, file length units) takes the map's coordinates into the
+/// object's local frame. A rotation and a translation, no scale. Identity
+/// puts the type's geometry at the object's placement, which is where most
+/// files keep it.
+#[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
+pub struct MappedBody {
+    pub transform: [[f64; 4]; 4],
 }
 
 impl Representation {
@@ -134,7 +151,7 @@ impl Representation {
         match self {
             Representation::Extrusion(e) => std::slice::from_ref(e),
             Representation::Extrusions(es) => es,
-            Representation::None | Representation::Mesh(_) => &[],
+            Representation::None | Representation::Mesh(_) | Representation::Mapped(_) => &[],
         }
     }
 }
@@ -195,6 +212,13 @@ pub struct NewType {
     /// refused.
     pub name: Option<String>,
     pub psets: Vec<NewPropertySet>,
+    /// The type's shared geometry, written once as an `IfcRepresentationMap`
+    /// that every occurrence with a [`Representation::Mapped`] body
+    /// instances. `Representation::None` writes no map; a type cannot itself
+    /// be `Mapped`.
+    pub representation: Representation,
+    /// The colour of `representation`.
+    pub style: Option<SurfaceColour>,
 }
 
 /// Every unit record the values of `psets` name.
@@ -228,6 +252,9 @@ impl NewType {
     }
 }
 
+/// `New` is much larger than `Existing`; a plan holds one per Add, so the
+/// space is not worth an indirection in the public shape.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum TypeLink {

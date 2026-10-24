@@ -92,6 +92,11 @@ target_compile_features(ifclite_smlib_lineage_tests PRIVATE cxx_std_17)
 target_link_libraries(ifclite_smlib_lineage_tests PRIVATE ifclite_smlib smlib_api)
 target_include_directories(ifclite_smlib_lineage_tests PRIVATE src)
 
+# #7955 production source binding, independent of private OwnedBoundary tests.
+add_executable(ifclite_smlib_source_binding_tests tests/source_binding_tests.cpp)
+target_link_libraries(ifclite_smlib_source_binding_tests PRIVATE ifclite_smlib smlib_api)
+target_include_directories(ifclite_smlib_source_binding_tests PRIVATE src)
+
 # Owned boundaries run natively, or under Node for the Emscripten build.
 set(test_runner)
 if(EMSCRIPTEN)
@@ -121,13 +126,13 @@ if(EMSCRIPTEN)
   foreach(module module worker client contract sweep sweep-contract dependency-contract normal-contract)
     configure_file("browser/${module}.mjs" "${module}.mjs" COPYONLY)
   endforeach()
-  foreach(target smlib_kernel smlib_api ifclite_smlib ifclite_smlib_browser ifclite_smlib_tests
+  foreach(target ifclite_smlib_source_binding_tests smlib_kernel smlib_api ifclite_smlib ifclite_smlib_browser ifclite_smlib_tests
       ifclite_smlib_copy_failure_tests ifclite_smlib_sweep_tests ifclite_smlib_plane_oracle_tests ifclite_smlib_plane_chain_tests ifclite_smlib_lineage_tests ifclite_smlib_plane_owned_tests)
     target_compile_options(${target} PRIVATE -fexceptions)
   endforeach()
   target_link_options(ifclite_smlib_browser PRIVATE -fexceptions
     "-sALLOW_MEMORY_GROWTH=1" "-sSTACK_SIZE=8388608")
-  foreach(target ifclite_smlib_tests ifclite_smlib_copy_failure_tests ifclite_smlib_sweep_tests ifclite_smlib_plane_oracle_tests ifclite_smlib_plane_chain_tests ifclite_smlib_lineage_tests ifclite_smlib_plane_owned_tests)
+  foreach(target ifclite_smlib_source_binding_tests ifclite_smlib_tests ifclite_smlib_copy_failure_tests ifclite_smlib_sweep_tests ifclite_smlib_plane_oracle_tests ifclite_smlib_plane_chain_tests ifclite_smlib_lineage_tests ifclite_smlib_plane_owned_tests)
     target_link_options(${target} PRIVATE -fexceptions
       "-sALLOW_MEMORY_GROWTH=1" "-sSTACK_SIZE=8388608" "-sENVIRONMENT=node")
     set_target_properties(${target} PROPERTIES SUFFIX ".cjs")
@@ -210,3 +215,6 @@ foreach(case positive reuse original origin owner leak frame replacement reuse-f
     COMMAND ${test_runner} $<TARGET_FILE:ifclite_smlib_lineage_tests> trim-${case})
   set_tests_properties(smlib_numerical_trim_${case} PROPERTIES TIMEOUT 120)
 endforeach()
+add_test(NAME smlib_source_construction COMMAND ${test_runner} $<TARGET_FILE:ifclite_smlib_source_binding_tests> construction)
+add_test(NAME smlib_source_binding COMMAND ${test_runner} $<TARGET_FILE:ifclite_smlib_source_binding_tests>)
+set_tests_properties(smlib_source_construction smlib_source_binding PROPERTIES TIMEOUT 120)

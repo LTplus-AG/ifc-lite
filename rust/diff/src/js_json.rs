@@ -37,6 +37,8 @@ use crate::JsString;
 /// would silently sort.
 #[derive(Debug, Clone, PartialEq)]
 pub enum JsonValue {
+    /// Sparse array slot: JSON null, but an empty stableSerialize map/join token.
+    Hole,
     Null,
     Bool(bool),
     Number(f64),
@@ -67,6 +69,7 @@ pub fn stringify_sorted(value: &JsonValue) -> String {
 
 fn write_value(value: &JsonValue, sort_keys: bool, out: &mut String) {
     match value {
+        JsonValue::Hole => { if !sort_keys { out.push_str("null"); } }
         JsonValue::Null => out.push_str("null"),
         JsonValue::Bool(true) => out.push_str("true"),
         JsonValue::Bool(false) => out.push_str("false"),

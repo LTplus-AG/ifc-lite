@@ -11,6 +11,7 @@
 //! hashing code that enforces it.
 
 use crate::JsString;
+use crate::sparse_collection::SparseCollection;
 
 /// A property or quantity value as supplied by an adapter.
 ///
@@ -39,14 +40,14 @@ pub struct PropertyEntryInput {
 #[derive(Debug, Clone, PartialEq, serde::Deserialize)]
 pub struct PropertySetInput {
     pub name: JsString,
-    pub properties: Vec<PropertyEntryInput>,
+    pub properties: SparseCollection<PropertyEntryInput>,
 }
 
 /// A named quantity set with its members.
 #[derive(Debug, Clone, PartialEq, serde::Deserialize)]
 pub struct QuantitySetInput {
     pub name: JsString,
-    pub quantities: Vec<PropertyEntryInput>,
+    pub quantities: SparseCollection<PropertyEntryInput>,
 }
 
 /// An assigned type, projected to its semantic identity.
@@ -75,12 +76,12 @@ pub struct DataFingerprintInput {
     pub predefined_type: Option<JsString>,
     /// The entity's `Tag`, **for a type object only**. See the module docs.
     pub tag: Option<JsString>,
-    #[serde(deserialize_with = "crate::input_decode::optional_values")]
-    pub property_sets: Vec<PropertySetInput>,
-    #[serde(deserialize_with = "crate::input_decode::optional_values")]
-    pub quantity_sets: Vec<QuantitySetInput>,
-    #[serde(deserialize_with = "crate::input_decode::optional_values")]
-    pub type_assignments: Vec<TypeAssignmentInput>,
+    #[serde(deserialize_with = "crate::sparse_collection::optional_sparse")]
+    pub property_sets: SparseCollection<PropertySetInput>,
+    #[serde(deserialize_with = "crate::sparse_collection::optional_sparse")]
+    pub quantity_sets: SparseCollection<QuantitySetInput>,
+    #[serde(deserialize_with = "crate::sparse_collection::optional_sparse")]
+    pub type_assignments: SparseCollection<TypeAssignmentInput>,
     /// Resolved material NAMES, every indirection already followed.
     #[serde(deserialize_with = "crate::input_decode::optional_values")]
     pub materials: Vec<JsString>,

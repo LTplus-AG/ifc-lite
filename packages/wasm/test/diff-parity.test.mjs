@@ -341,3 +341,31 @@ test('actual WASM raw fingerprint Map entries preserve original code units (#808
     assert.deepEqual(wasm.diffBuildComponentFingerprints(input(new Map(entries))), oracle.buildComponentFingerprints(expected));
   }
 });
+
+
+test('actual raw WASM component holes throw TypeError and preserve the same instance (#8042)', async context => {
+  const wasm = await engine(context); if (!wasm) return;
+  const oraclePath = new URL('../../diff/dist/fingerprint.js', import.meta.url);
+  if (!existsSync(oraclePath)) { context.skip('@ifc-lite/diff not built; run pnpm build'); return; }
+  const oracle = await import(oraclePath.href);
+  const valid = { ifcType: 'IfcWall', name: '\ud800',
+    propertySets: [{ name: 'P', properties: [{ name: 'value', value: 'after rejection' }] }],
+    quantitySets: [{ name: 'Q', quantities: new Array(1) }],
+    typeAssignments: new Array(2) };
+  const expectedComponents = Object.entries(oracle.buildComponentFingerprints(valid));
+  const expectedData = oracle.buildDataFingerprint(valid);
+  for (const field of ['propertySets', 'quantitySets']) {
+    for (const count of [1, 2]) {
+      const sparse = new Array(count);
+      const members = field === 'propertySets' ? 'properties' : 'quantities';
+      sparse.push({ name: 'present', [members]: [] });
+      assert.throws(() => wasm.diffBuildComponentFingerprints({ ifcType: 'IfcWall', [field]: sparse }),
+        error => error instanceof TypeError && error.message === "Cannot read properties of undefined (reading 'name')",
+        `${field}:${count}: must be a host TypeError, never a WASM panic/trap`);
+      // No reinitialization: both valid operations use the instance that just
+      // rejected the raw input, including successful nested sparse components.
+      assert.deepEqual(Object.entries(wasm.diffBuildComponentFingerprints(valid)), expectedComponents);
+      assert.equal(wasm.diffBuildDataFingerprint(valid), expectedData);
+    }
+  }
+});

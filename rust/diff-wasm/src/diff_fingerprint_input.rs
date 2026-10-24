@@ -6,6 +6,7 @@
 use ifc_lite_diff::input::{DataFingerprintInput, PropertyEntryInput, PropertySetInput,
     QuantitySetInput, TypeAssignmentInput, PropertyValue};
 use ifc_lite_diff::JsString as NativeJsString;
+use ifc_lite_diff::sparse_collection::SparseCollection;
 use serde::{Deserialize, Deserializer, de::{Error as _, Visitor, SeqAccess, MapAccess}};
 use wasm_bindgen::prelude::*;
 use std::fmt;
@@ -24,6 +25,11 @@ where D: Deserializer<'de>, T: Deserialize<'de> {
     Option::<Vec<T>>::deserialize(deserializer).map(Option::unwrap_or_default)
 }
 
+fn optional_sparse<'de, D, T>(deserializer: D) -> Result<SparseCollection<T>, D::Error>
+where D: Deserializer<'de>, T: Deserialize<'de> {
+    Option::<SparseCollection<T>>::deserialize(deserializer).map(Option::unwrap_or_default)
+}
+
 // Match input.rs defaults and field names, but deserialize every typed string
 // through lossless JS code units. Derived struct decoding observes only known fields;
 // e.g. typeAssignments.globalId is deliberately not fingerprint content.
@@ -36,21 +42,21 @@ struct Input {
     object_type: Option<LosslessString>,
     predefined_type: Option<LosslessString>,
     tag: Option<LosslessString>,
-    #[serde(deserialize_with = "optional_values")]
-    property_sets: Vec<PropertySet>,
-    #[serde(deserialize_with = "optional_values")]
-    quantity_sets: Vec<QuantitySet>,
-    #[serde(deserialize_with = "optional_values")]
-    type_assignments: Vec<TypeAssignment>,
+    #[serde(deserialize_with = "optional_sparse")]
+    property_sets: SparseCollection<PropertySet>,
+    #[serde(deserialize_with = "optional_sparse")]
+    quantity_sets: SparseCollection<QuantitySet>,
+    #[serde(deserialize_with = "optional_sparse")]
+    type_assignments: SparseCollection<TypeAssignment>,
     #[serde(deserialize_with = "optional_values")]
     materials: Vec<LosslessString>,
     #[serde(deserialize_with = "optional_values")]
     classifications: Vec<LosslessString>,
 }
 #[derive(Deserialize)]
-struct PropertySet { name: LosslessString, properties: Vec<Entry> }
+struct PropertySet { name: LosslessString, properties: SparseCollection<Entry> }
 #[derive(Deserialize)]
-struct QuantitySet { name: LosslessString, quantities: Vec<Entry> }
+struct QuantitySet { name: LosslessString, quantities: SparseCollection<Entry> }
 #[derive(Deserialize)]
 struct Entry {
     name: LosslessString,
@@ -115,15 +121,15 @@ pub(super) fn decode(value: JsValue) -> Result<DataFingerprintInput, JsValue> {
         object_type: input.object_type.map(|value| value.0),
         predefined_type: input.predefined_type.map(|value| value.0),
         tag: input.tag.map(|value| value.0),
-        property_sets: input.property_sets.into_iter().map(|set| PropertySetInput {
-            name: set.name.0, properties: set.properties.into_iter().map(entry).collect(),
-        }).collect(),
-        quantity_sets: input.quantity_sets.into_iter().map(|set| QuantitySetInput {
-            name: set.name.0, quantities: set.quantities.into_iter().map(entry).collect(),
-        }).collect(),
-        type_assignments: input.type_assignments.into_iter().map(|value| TypeAssignmentInput {
+        property_sets: input.property_sets.map(|set| PropertySetInput {
+            name: set.name.0, properties: set.properties.map(entry),
+        }),
+        quantity_sets: input.quantity_sets.map(|set| QuantitySetInput {
+            name: set.name.0, quantities: set.quantities.map(entry),
+        }),
+        type_assignments: input.type_assignments.map(|value| TypeAssignmentInput {
             name: value.name.map(|value| value.0), type_name: value.type_name.map(|value| value.0),
-        }).collect(),
+        }),
         materials: input.materials.into_iter().map(|value| value.0).collect(),
         classifications: input.classifications.into_iter().map(|value| value.0).collect(),
     })

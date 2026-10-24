@@ -30,6 +30,7 @@ fn hashed() -> MeshProductionOptions {
             tolerance: 1e-5,
             world_rtc: [0.; 3],
         }),
+        ..Default::default()
     }
 }
 fn job(entity: &DecodedEntity) -> ElementMeshJob<'_> {

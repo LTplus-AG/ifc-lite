@@ -129,6 +129,9 @@ impl ProductState<'_> {
                 mesh.color = fixed;
                 mesh.texture = None;
                 mesh.uvs = None;
+                if let Some(record) = mesh.presentation.as_mut() {
+                    record.overridden_by_fixed_display_colour();
+                }
             }
             for occurrence in &mut self.occurrences {
                 occurrence.color = fixed;

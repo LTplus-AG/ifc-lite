@@ -157,9 +157,11 @@ fn dominant_breaks_a_tie_by_palette_order_not_hash_order() {
     ];
     for (label, triangle_palette, expected) in cases {
         let map = FullIndexedColourMap {
+            map_id: 0,
             geometry_id: 1,
             colours: palette.clone(),
             triangle_palette,
+            authentic: true,
         };
         assert_eq!(
             map.dominant(),

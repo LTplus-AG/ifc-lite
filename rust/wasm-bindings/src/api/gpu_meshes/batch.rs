@@ -371,10 +371,8 @@ impl IfcAPI {
             site_local_rotation: None,
         });
         let opts = MeshProductionOptions {
-            geometry_hash: hash_tolerance.map(|tolerance| GeometryHashConfig {
-                tolerance,
-                world_rtc: hash_world_rtc,
-            }),
+            geometry_hash: hash_tolerance.map(|tolerance| GeometryHashConfig { tolerance, world_rtc: hash_world_rtc }),
+            ..Default::default()
         };
 
         // CSG diagnostics, aggregated across the batch: the canonical producer

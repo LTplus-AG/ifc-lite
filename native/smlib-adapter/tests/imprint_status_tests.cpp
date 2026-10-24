@@ -19,7 +19,7 @@ unsigned edge_calls=0,completed_edges=0,failed_retired=0,relationships=0,manager
 void require(bool ok,const char* message) {
     if(!ok) { std::fprintf(stderr,"imprint FAIL: %s\n",message); std::fflush(nullptr); std::_Exit(1); }
 }
-double volume(SmBrep* body) {
+double brep_volume(SmBrep* body) {
     double v=0; require(SmApiBrepComputeVolume(body,1e-8,v)==SM_SUCCESS,"volume read"); return v;
 }
 unsigned classifications(SmBrep* body) {
@@ -63,7 +63,7 @@ int main(int argc,char** argv) {
     SmBrep *a=nullptr,*b=nullptr,*result=nullptr;
     require(SmApiCreateBox(SmVector3d(0,0,0),2,2,2,a)==SM_SUCCESS && a,"first box");
     require(SmApiCreateBox(SmVector3d(.5,.5,.5),2,2,2,b)==SM_SUCCESS && b,"overlapping box");
-    require(std::abs(volume(a)-8)<1e-6 && std::abs(volume(b)-8)<1e-6,"source box volumes");
+    require(std::abs(brep_volume(a)-8)<1e-6 && std::abs(brep_volume(b)-8)<1e-6,"source box volumes");
     {
         SmMerge merge(context,a,b); merge.SetClassifyFaces(classify?TRUE:FALSE);
         const auto status=merge.ManifoldBoolean(operation,result);
@@ -82,11 +82,11 @@ int main(int argc,char** argv) {
                 "healthy control executes all actual edge imprints");
             if(classify) {
                 require(classifications(a)+classifications(b)>0,"healthy classification creates real face classifications");
-                require(std::abs(volume(a)-8)<1e-6 && std::abs(volume(b)-8)<1e-6,
+                require(std::abs(brep_volume(a)-8)<1e-6 && std::abs(brep_volume(b)-8)<1e-6,
                     "classification preserves both solid volumes");
             } else {
                 const double expected=operation==SM_BO_UNION?12.625:operation==SM_BO_INTERSECTION?3.375:4.625;
-                require(std::abs(volume(result)-expected)<1e-6,"healthy result matches fixed overlapping-box volume");
+                require(std::abs(brep_volume(result)-expected)<1e-6,"healthy result matches fixed overlapping-box volume");
                 SmBoolean manifold=FALSE;
                 require(SmApiBrepIsManifoldSolid(result,manifold)==SM_SUCCESS && manifold,"healthy result manifold");
             }

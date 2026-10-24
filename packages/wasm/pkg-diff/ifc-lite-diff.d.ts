@@ -69,13 +69,13 @@ export interface InitOutput {
     readonly __wbg_diffmodel_free: (a: number, b: number) => void;
     readonly diffBuildComponentFingerprints: (a: number, b: number) => void;
     readonly diffBuildDataFingerprint: (a: number, b: number) => void;
-    readonly diffCreateSidecar: (a: number, b: number, c: number, d: number) => void;
+    readonly diffCreateSidecar: (a: number, b: number, c: number) => void;
     readonly diffKeyAliasesFromLineage: (a: number, b: number) => void;
     readonly diffLineageConflicts: (a: number, b: number) => void;
     readonly diffRekeyByLineage: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
-    readonly diffSerializeSidecar: (a: number, b: number, c: number) => void;
+    readonly diffSerializeSidecar: (a: number, b: number) => void;
     readonly diffStableHash: (a: number, b: number, c: number) => void;
-    readonly diffValidateSidecar: (a: number, b: number, c: number, d: number) => void;
+    readonly diffValidateSidecar: (a: number, b: number, c: number) => void;
     readonly diffmodel_compare: (a: number, b: number, c: number, d: number) => void;
     readonly diffmodel_entityCount: (a: number) => number;
     readonly diffmodel_new: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number) => void;

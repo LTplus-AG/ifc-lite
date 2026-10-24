@@ -1,0 +1,61 @@
+diff --git b/rust/processing/src/data_model/rows/mod.rs a/rust/processing/src/data_model/rows/mod.rs
+index ba3aa94b9b..2ef2f0f523 100644
+--- b/rust/processing/src/data_model/rows/mod.rs
++++ a/rust/processing/src/data_model/rows/mod.rs
+@@ -214,7 +214,7 @@ fn stream_rows(
+                     Ok(e) => e,
+                     Err(_) => continue,
+                 };
+-                let rep_map_ids = ref_list(t.attr(slot::IfcTypeProduct::REPRESENTATION_MAPS));
++                let rep_map_ids = crate::plan::type_representation_maps(&t);
+                 if rep_map_ids.is_empty() {
+                     continue;
+                 }
+diff --git b/rust/processing/src/plan.rs a/rust/processing/src/plan.rs
+index a419300d77..cb72684f0b 100644
+--- b/rust/processing/src/plan.rs
++++ a/rust/processing/src/plan.rs
+@@ -17,6 +17,7 @@ use crate::element::{plan_type_geometry, TypeGeometryMode};
+ /// `IFCX(#1)`) and non-reference members admit nothing, as natively.
+ pub fn type_representation_maps(entity: &DecodedEntity) -> Vec<u32> {
+     match entity.attr(slot::IfcTypeProduct::REPRESENTATION_MAPS) {
++        Some(AttributeValue::EntityRef(id)) => vec![*id],
+         Some(AttributeValue::List(items)) => items.iter().filter_map(AttributeValue::as_entity_ref).collect(),
+         _ => Vec::new(),
+     }
+@@ -48,7 +49,10 @@ impl TypeGeometryPlan {
+     pub fn observe_mapped(&mut self, item_id: u32, source_id: u32, count_instances: bool) {
+         self.referenced.insert(source_id);
+         if count_instances {
+-            self.mapped.entry(source_id).and_modify(|(count, _)| *count += 1).or_insert((1, item_id));
++            self.mapped.entry(source_id).and_modify(|(count, template)| {
++                *count += 1;
++                *template = (*template).min(item_id);
++            }).or_insert((1, item_id));
+         }
+     }
+ 
+diff --git b/rust/wasm-bindings/src/api/type_geometry_cache.rs a/rust/wasm-bindings/src/api/type_geometry_cache.rs
+index 9818ad5270..a6fbb860b0 100644
+--- b/rust/wasm-bindings/src/api/type_geometry_cache.rs
++++ a/rust/wasm-bindings/src/api/type_geometry_cache.rs
+@@ -15,7 +15,7 @@ fn installed(slot: &Slot) -> Option<Membership> {
+ 
+ fn install_missing(slot: &Slot, values: FxHashSet<u32>) -> Membership {
+     let mut slot = slot.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+-    Arc::clone(slot.insert(Arc::new(values)))
++    Arc::clone(slot.get_or_insert_with(|| Arc::new(values)))
+ }
+ 
+ impl IfcAPI {
+@@ -26,8 +26,8 @@ impl IfcAPI {
+         content: &[u8],
+         decoder: &mut EntityDecoder,
+     ) -> (Membership, Membership) {
+-        let referenced = installed(&self.cached_referenced_repmaps).filter(|_| installed(&self.cached_instantiated_type_ids).is_some());
+-        let instantiated = installed(&self.cached_instantiated_type_ids).filter(|_| referenced.is_some());
++        let referenced = installed(&self.cached_referenced_repmaps);
++        let instantiated = installed(&self.cached_instantiated_type_ids);
+         if let (Some(referenced), Some(instantiated)) = (&referenced, &instantiated) {
+             return (Arc::clone(referenced), Arc::clone(instantiated));
+         }

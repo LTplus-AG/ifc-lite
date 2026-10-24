@@ -3,6 +3,9 @@
 //!
 //! Record admission stays with the caller: native scan-time readers and browser
 //! decoder reads feed the same accumulator without changing their refusal policy.
+//! The one shared reader is [`type_representation_maps`]: browser discovery, the
+//! browser batch and the export data model read `RepresentationMaps` through it,
+//! with the same bare-or-list admission as the native scan.
 use ifc_lite_core::{slot, AttributeValue, DecodedEntity, IfcType};
 use rustc_hash::{FxHashMap, FxHashSet};
 

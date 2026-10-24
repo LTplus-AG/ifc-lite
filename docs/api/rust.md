@@ -976,7 +976,9 @@ when requested, occurrence counts with the minimum mapped-item id as template.
 record-validation policy. `observe_candidate(id, start, end, ifc_type, maps)`
 retains a type record with maps in source order. `type_representation_maps`
 reads a decoded type's `RepresentationMaps` as the native scan does: a list's
-references or one bare reference; a typed wrapper admits nothing.
+references or one bare reference; a typed wrapper admits nothing. Browser
+discovery, browser geometry batches and the export data model's type rows all
+use it, so a meshed orphan type keeps its `EntityRow`.
 `into_browser_jobs` consumes the plan into one job per type that
 `element::plan_type_geometry` draws in `EmitTagged` mode, including instantiated
 type-library geometry for the browser Types view. `into_membership` transfers

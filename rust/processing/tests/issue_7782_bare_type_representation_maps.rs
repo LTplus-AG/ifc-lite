@@ -8,8 +8,11 @@
 //! fixture and pin the same facts: the list and bare forms of orphan type
 //! #300 draw the same mesh, that mesh is the shape occurrence #200 draws from
 //! the same representation (both sit at the identity placement), and a typed
-//! wrapper draws nothing.
+//! wrapper draws nothing. The export data model reads the maps through the
+//! same `plan::type_representation_maps`, so each drawn type keeps its
+//! `EntityRow` (#1518).
 
+use ifc_lite_processing::data_model::rows::stream_export_model;
 use ifc_lite_processing::process_geometry;
 
 /// The wasm contract's `fixture({ typeGeometry: true })`, verbatim.
@@ -78,5 +81,31 @@ fn issue_7782_native_typed_wrapper_representation_maps_draw_nothing() {
         let content = with_maps(maps);
         assert!(shapes(&content, 300).is_empty(), "{maps} is not an IfcRepresentationMap list");
         assert_eq!(shapes(&content, 200).len(), 1, "{maps}: occurrences still draw");
+    }
+}
+
+/// #1518 for bare maps: the export rows admit exactly the types the geometry
+/// pass meshes. A bare `#16` once drew #300 with no row, because the data model
+/// read RepresentationMaps list-only.
+#[test]
+fn issue_7782_export_rows_match_type_meshes_for_bare_and_list_maps() {
+    for (maps, drawn) in [
+        ("(#16)", true),
+        ("#16", true),
+        ("IFCPROPERTYSETDEFINITIONSET((#16))", false),
+        ("IFCPROPERTYSETDEFINITIONSET(#16)", false),
+    ] {
+        let content = with_maps(maps);
+        let meshes: Vec<_> = process_geometry(&content).meshes.into_iter().filter(|mesh| mesh.express_id == 300).collect();
+        let mut rows = Vec::new();
+        stream_export_model(content.as_bytes(), |row| rows.push(row));
+        let row = rows.iter().find(|row| row.express_id == 300);
+        assert_eq!(meshes.len(), usize::from(drawn), "{maps}: type #300 meshes");
+        assert_eq!(row.is_some(), drawn, "{maps}: a type row exists exactly when the type is meshed");
+        if let (Some(row), Some(mesh)) = (row, meshes.first()) {
+            assert_eq!(row.ifc_type, mesh.ifc_type, "{maps}: row and mesh labels must agree");
+            assert!(row.has_geometry, "{maps}: the meshed type row carries geometry");
+        }
+        assert!(rows.iter().any(|row| row.express_id == 200), "{maps}: occurrence rows are unaffected");
     }
 }

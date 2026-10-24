@@ -114,8 +114,11 @@ function discover(IfcAPI, method, bytes) {
   return { events, columns };
 }
 
-/** The geometry worker's flow: a fresh API installs the entity index, then the
- * prepass-columns event through the real setters, then runs its batch.
+/** The geometry worker's column flow: a fresh API installs the entity index,
+ * then the prepass-columns event through the real setters, then runs its batch.
+ * Only those two installs come from the streaming events. Unit scale, RTC
+ * offset, voids and styles still come from the caller's serial `pre`, which
+ * is identical for the #7782 fixture (no styles or voids, metre units).
  * `extraReferenced` widens the installed referenced-map column. */
 function workerGeometry(IfcAPI, bytes, events, columns, pre, extraReferenced = []) {
   return withApi(IfcAPI, api => {

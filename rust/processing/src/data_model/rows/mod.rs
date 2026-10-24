@@ -198,7 +198,7 @@ fn stream_rows(
             } else if keyword_eq(type_name, "IFCPROJECT") {
                 project_id = project_id.or(Some(id));
             } else {
-                // An IfcTypeProduct subtype carrying RepresentationMaps (attr 6).
+                // An IfcTypeProduct subtype carrying RepresentationMaps, bare or list.
                 // `type_product_ifc_type` keeps its own cheap suffix pre-filter, so
                 // the non-type majority still pays only that.
                 //
@@ -214,7 +214,7 @@ fn stream_rows(
                     Ok(e) => e,
                     Err(_) => continue,
                 };
-                let rep_map_ids = ref_list(t.attr(slot::IfcTypeProduct::REPRESENTATION_MAPS));
+                let rep_map_ids = crate::plan::type_representation_maps(&t);
                 if rep_map_ids.is_empty() {
                     continue;
                 }

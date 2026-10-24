@@ -18,7 +18,7 @@ async function sdkSnapshot(adapter, sdk, build, revision) {
   const pins = { schema: 1, id: 'imprint-status-v1', upstreamRevision: revision,
     selection: ['source/SMLib', 'source/SM_API', 'LICENSE', 'THIRD_PARTY_NOTICES.md'],
     fileCount: names.length, inputInventorySha256: hash(JSON.stringify(input)),
-    path: 'source/SMLib/kernel.cpp', inputSha256: input.find(([name]) => name.endsWith('kernel.cpp'))[1],
+    path: 'source/SMLib/kernel.cpp', inputSha256: new Map(input).get('source/SMLib/kernel.cpp'),
     outputSha256: hash(modified), patchSha256: hash(patch) };
   await mkdir(join(adapter, 'patches'));
   const pinsBytes = Buffer.from(JSON.stringify(pins));
@@ -288,12 +288,13 @@ for (const [label, source] of [
   await writeFile(join(o.engine, 'payload.wasm'), Buffer.from([0,97,115,109,1,0,0,0]));
   for (const name of ['runtime.mjs', '.runtime.mjs']) await writeFile(join(o.engine, name), 'export {};');
   const record = join(o.out, '../refused-scope.json');
+  const before = (await readdir(join(o.out, '..'))).sort();
   const refusal = /Unresolved asset locator|Bare .*import/;
   await assert.rejects(stageRetainedBrowserAssets({ ...o, record, inputs: undefined, out: undefined }), refusal);
   await assert.rejects(stageRetainedBrowserAssets(o), refusal);
   await assert.rejects(access(record), /ENOENT/);
   await assert.rejects(access(o.out), /ENOENT/);
-  assert.equal((await readdir(join(o.out, '..'))).filter(name => name.startsWith('.smlib-stage-')).length, 0);
+  assert.deepEqual((await readdir(join(o.out, '..'))).sort(), before);
 });
 
 test('R2-F1/F2 visible literal chains and explicit relative imports record and stage (#7955)', async t => {
@@ -339,12 +340,13 @@ for (const [label, source] of [
     await writeFile(join(dir, 'runtime.mjs'), 'export {};');
   }
   const record = join(o.out, '../refused-url.json');
+  const before = (await readdir(join(o.out, '..'))).sort();
   const refusal = /URL object|execution.context.relative|Unresolved asset locator/;
   await assert.rejects(stageRetainedBrowserAssets({ ...o, record, inputs: undefined, out: undefined }), refusal);
   await assert.rejects(stageRetainedBrowserAssets(o), refusal);
   await assert.rejects(access(record), /ENOENT/);
   await assert.rejects(access(o.out), /ENOENT/);
-  assert.equal((await readdir(join(o.out, '..'))).filter(name => name.startsWith('.smlib-stage-')).length, 0);
+  assert.deepEqual((await readdir(join(o.out, '..'))).sort(), before);
 });
 
 test('R3-F1/F2 fresh module URLs, primitive href chains and /smlib roots actually stage (#7955)', async t => {
@@ -404,13 +406,13 @@ test('missing or altered SDK evidence refuses for the intended reason (#7955 R2-
       await writeFile(path, (await readFile(path, 'utf8')).replace(/^IFCLITE_SDK_PROVENANCE:.*\n/m, ''));
     }],
   ];
-  for (const [name, expected, mutate] of cases) await t.test(name, async t => {
+  for (const [name, expected, mutate] of cases) {
     const o = await fixture(t); await mutate(o);
     const record = join(o.out, '../rejected.json');
-    await assert.rejects(stageRetainedBrowserAssets({ ...o, record, inputs: undefined, out: undefined }), expected);
+    await assert.rejects(stageRetainedBrowserAssets({ ...o, record, inputs: undefined, out: undefined }), expected, name);
     await assert.rejects(access(record), /ENOENT/);
     await assert.rejects(access(o.out), /ENOENT/);
-  });
+  }
 });
 
 test('matching altered SDK receipts still require trusted metadata (#7955 R2-C2)', async t => {
@@ -422,7 +424,7 @@ test('matching altered SDK receipts still require trusted metadata (#7955 R2-C2)
     ['pinsSha256', '0'.repeat(64), /receipt pins mismatch/],
     ['preparerSha256', '0'.repeat(64), /preparer mismatch/],
     ['outputFiles', {}, /receipt output inventory mismatch/],
-  ]) await t.test(field, async t => {
+  ]) {
     const o = await fixture(t);
     const selected = join(o.build, 'ifclite-sdk/imprint-status-v1/provenance.json');
     const receipt = JSON.parse(await readFile(selected)); receipt[field] = value;
@@ -430,10 +432,10 @@ test('matching altered SDK receipts still require trusted metadata (#7955 R2-C2)
     await writeFile(selected, bytes);
     await writeFile(join(o.build, 'ifclite-sdk-provenance.json'), bytes);
     const record = join(o.out, '../rejected.json');
-    await assert.rejects(stageRetainedBrowserAssets({ ...o, record, inputs: undefined, out: undefined }), expected);
+    await assert.rejects(stageRetainedBrowserAssets({ ...o, record, inputs: undefined, out: undefined }), expected, field);
     await assert.rejects(access(record), /ENOENT/);
     await assert.rejects(access(o.out), /ENOENT/);
-  });
+  }
 });
 
 test('prepared SDK cannot escape through a symlink and published SDK identity cannot change', async t => {

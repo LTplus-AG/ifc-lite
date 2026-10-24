@@ -32,25 +32,25 @@ index 098b79535c..305cb94a92 100644
          account: Option<ExecutionAccount>,
          source: Option<ifc_lite_core::execution_owner::SourceStopHandle>,
 diff --git b/rust/geometry/src/router/diagnostics_checked.rs a/rust/geometry/src/router/diagnostics_checked.rs
-index 7ed751812c..565afb2aa5 100644
+index 7ba4f48bde..ad60448a0e 100644
 --- b/rust/geometry/src/router/diagnostics_checked.rs
 +++ a/rust/geometry/src/router/diagnostics_checked.rs
-@@ -57,7 +57,7 @@ impl GeometryRouter {
+@@ -68,7 +68,7 @@ impl GeometryRouter {
      /// routing opaque reports to the stopped bucket, and the next top-level
      /// product settles again.
      pub fn settle_opaque_csg_failures(&self) {
--        if self.csg_product_depth.get() == usize::MAX as u32 && self.csg_opaque_unscoped.get() {
-+        if self.csg_product_depth.get() == 1 && self.csg_opaque_unscoped.get() {
-             let generation = self.csg_unscoped_generation.get();
+-        if self.csg_scope.csg_product_depth.get() == usize::MAX as u32 && self.csg_scope.csg_opaque_unscoped.get() {
++        if self.csg_scope.csg_product_depth.get() == 1 && self.csg_scope.csg_opaque_unscoped.get() {
+             let generation = self.csg_scope.csg_unscoped_generation.get();
              self.drain_processor_failures();
              self.clear_opaque_csg_unscoped(generation);
-@@ -74,7 +74,7 @@ impl GeometryRouter {
+@@ -85,7 +85,7 @@ impl GeometryRouter {
  
      /// Restore the boundary unless a mark happened since `generation` was read.
      fn clear_opaque_csg_unscoped(&self, generation: u64) {
--        if true || self.csg_unscoped_generation.get() == generation {
-+        if self.csg_unscoped_generation.get() == generation {
-             self.csg_opaque_unscoped.set(false);
+-        if true || self.csg_scope.csg_unscoped_generation.get() == generation {
++        if self.csg_scope.csg_unscoped_generation.get() == generation {
+             self.csg_scope.csg_opaque_unscoped.set(false);
          }
      }
 diff --git b/rust/processing/src/element/session.rs a/rust/processing/src/element/session.rs

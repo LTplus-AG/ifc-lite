@@ -279,7 +279,7 @@ pub use terrain_cdt::{
     TerrainCdtMesh,
 };
 pub use kernel::plane_weld::take_plane_weld_stats;
-pub use router::take_bool2d_stats;
+pub use router::{take_bool2d_stats, RemovalCommitError};
 pub use router::{take_prism_defers, take_prism_stats};
 pub use router::{
     aggregate_diagnostics, count_attributed_products, format_unsupported_breakdown,

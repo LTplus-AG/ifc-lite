@@ -21,6 +21,11 @@ mod layers;
 pub use layers::{RetainedLayerSource, RetainedLayerBand, RetainedLayerInterface, RetainedLayerReference};
 pub(crate) use layers::LayerAssociationIndex;
 mod witness;
+mod terminal;
+mod terminal_policy;
+pub use terminal::PublishedRetainedRemoval;
+#[cfg(all(test, feature = "retained-native", not(target_arch = "wasm32")))]
+mod terminal_tests;
 mod openings;
 mod removal;
 mod removal_source;

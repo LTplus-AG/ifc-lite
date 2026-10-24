@@ -1,11 +1,9 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
-
 //! Geometry Router - Dynamic dispatch to geometry processors
 //!
 //! Routes IFC representation entities to appropriate processors based on type.
-
 pub(crate) mod annotation;
 mod annotation_polygon;
 mod annotation_style;
@@ -15,6 +13,8 @@ mod content_hash;
 mod diagnostics;
 mod diagnostics_recording;
 mod diagnostics_checked;
+mod removal_commit;
+pub use removal_commit::RemovalCommitError;
 pub(crate) mod frame_parts;
 pub(crate) mod instancing;
 pub(crate) mod item_cache_program;

@@ -5,7 +5,7 @@ use super::retained_model::{failure, RetainedModelData};
 use crate::retained_browser::BrowserReceipt;
 use ifc_lite_geometry::{GeometryRouter, resource::OwnedResourceContext};
 use ifc_lite_processing::element::{ElementMeshJob, MeshProductionOptions, RetainedExecutionError,
-    RuntimeIssued, RuntimeProductExecution, RuntimeProductWitness, runtime::NumericalLimits};
+    PublishedRetainedRemoval, RuntimeIssued, RuntimeProductExecution, RuntimeProductWitness, runtime::NumericalLimits};
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
@@ -18,12 +18,13 @@ pub struct RetainedBrowserProduct {
     resources: OwnedResourceContext,
     started: bool,
     completed: Option<RuntimeProductWitness<BrowserReceipt>>,
+    terminal: Option<PublishedRetainedRemoval>,
 }
 impl RetainedBrowserProduct {
     pub(super) fn admit(data: Arc<RetainedModelData>, product_id: u32) -> Result<Self, JsValue> {
         let resources = OwnedResourceContext::capture_current();
         resources.check().map_err(|stop| failure(format!("{stop:?}")))?;
-        Ok(Self { data, product_id, resources, started: false, completed: None })
+        Ok(Self { data, product_id, resources, started: false, completed: None, terminal: None })
     }
 }
 
@@ -68,11 +69,27 @@ impl RetainedBrowserProduct {
             execution.cancel();
             return Err(failure(error));
         }
+        if execution.has_authenticated_opening_removal() {
+            // Prepare the JS response before terminal acceptance: serialization
+            // cannot turn an already committed removal into a failed execute.
+            let response = removal_summary(self.product_id)?;
+            self.terminal = Some(execution.publish_removed(&mut decoder,&router,&executor.worker)
+                .map_err(terminal_failure)?);
+            return Ok(response);
+        }
         self.completed = Some(execution.into_witness().map_err(failure)?);
         self.witness()
     }
 
+    /// Move the sealed terminal result once. It cannot be applied to another
+    /// product or replay a consumed-host effect. Nonempty witnesses refuse.
+    #[wasm_bindgen(js_name = takeRemovedProduct)]
+    pub fn take_removed_product(&mut self) -> Result<RetainedRemovedProduct,JsValue> {
+        self.terminal.take().map(|result| RetainedRemovedProduct { result })
+            .ok_or_else(||failure("no unconsumed terminal removal"))
+    }
     pub fn witness(&self) -> Result<JsValue, JsValue> {
+        if self.terminal.is_some() { return removal_summary(self.product_id); }
         let completed = self.completed.as_ref().ok_or_else(|| failure("product transaction not completed"))?;
         completed.validate().map_err(failure)?;
         #[derive(serde::Serialize)]
@@ -88,4 +105,30 @@ impl RetainedBrowserProduct {
             final_product_available: false,
         }).map_err(failure)
     }
+}
+
+/// A sealed committed outcome; no meshes, faces or occurrences survive removal.
+#[wasm_bindgen]
+pub struct RetainedRemovedProduct { result: PublishedRetainedRemoval }
+#[wasm_bindgen]
+impl RetainedRemovedProduct {
+    #[wasm_bindgen(getter, js_name = productId)]
+    pub fn product_id(&self) -> u32 { self.result.product_id() }
+    #[wasm_bindgen(getter)]
+    pub fn outcome(&self) -> String { "authenticated_whole_product_removal".into() }
+}
+fn removal_summary(product_id: u32) -> Result<JsValue,JsValue> {
+    #[derive(serde::Serialize)]
+    struct Summary { outcome: &'static str, product_id: u32, final_product_available: bool }
+    serde_wasm_bindgen::to_value(&Summary { outcome: "authenticated_whole_product_removal",
+        product_id, final_product_available: true }).map_err(failure)
+}
+fn terminal_failure(error: RetainedExecutionError) -> JsValue {
+    let code = match &error { RetainedExecutionError::Source => "source",
+        RetainedExecutionError::Protocol(_) => "protocol", RetainedExecutionError::Unsupported(_) => "unsupported",
+        RetainedExecutionError::Runtime(_) => "runtime", RetainedExecutionError::Stopped(_) => "stopped" };
+    #[derive(serde::Serialize)]
+    struct Failure { code: &'static str, message: String }
+    serde_wasm_bindgen::to_value(&Failure { code, message: error.to_string() })
+        .unwrap_or_else(|error| failure(error))
 }

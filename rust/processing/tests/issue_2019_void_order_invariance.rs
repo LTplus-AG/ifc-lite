@@ -139,6 +139,7 @@ fn hash_and_aabb_for(
             tolerance: ifc_lite_geometry::DEFAULT_GEOM_HASH_TOLERANCE,
             world_rtc: [0.0; 3],
         }),
+        ..Default::default()
     };
 
     let entity = decoder.decode_by_id(WALL_ID).expect("wall entity decodes");

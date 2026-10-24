@@ -69,7 +69,7 @@ impl GeometryRouter {
         for processor in self.processors.values() {
             let failures = processor.take_bool_failures();
             if failures.is_empty() { continue; }
-            let target = if self.csg_opaque_unscoped.get() {
+            let target = if self.csg_scope.csg_opaque_unscoped.get() {
                 &self.stopped_csg_failures
             } else {
                 &self.csg_failures

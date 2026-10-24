@@ -15,7 +15,7 @@ impl ProductState<'_> {
         ctx: &MeshProductionContext<'_>,
         decoder: &mut EntityDecoder,
     ) {
-        let assembly = AssemblyJob::from(self.job);
+        let assembly = AssemblyJob::from(self.job).with_provenance(self.provenance);
         match (reply.request.kind, reply.payload) {
             (_, WorkPayload::Stopped(stop)) => self.remember_stop(stop),
             // Execute and present one map at a time: each map's colour walk
@@ -31,7 +31,7 @@ impl ProductState<'_> {
                     decoder,
                 ));
             }
-            (WorkKind::Primary { layer_class, .. }, WorkPayload::Primary(outcome)) => {
+            (WorkKind::Primary { strategy, layer_class }, WorkPayload::Primary(outcome)) => {
                 self.stage = Stage::Complete;
                 match outcome {
                     PrimaryOutcome::RefusedAnnotation => return,
@@ -44,6 +44,7 @@ impl ProductState<'_> {
                             decoder,
                             &mut self.hasher,
                             layer_class,
+                            strategy.topology(layer_class),
                         );
                         // #1623 Phase 2: a pure don't-bake occurrence produces
                         // NO flat mesh (only instance placeholders); that is

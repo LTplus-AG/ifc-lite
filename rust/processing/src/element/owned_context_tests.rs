@@ -37,6 +37,7 @@ fn options() -> MeshProductionOptions {
             tolerance: 1e-5,
             world_rtc: [8., 16., 0.],
         }),
+        ..Default::default()
     }
 }
 fn metadata(id: u32) -> ElementMeshMetadata {

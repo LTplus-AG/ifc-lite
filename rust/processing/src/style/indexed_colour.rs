@@ -26,12 +26,23 @@ use ifc_lite_geometry::Mesh;
 /// processor preserves 1:1).
 #[derive(Debug, Clone)]
 pub struct FullIndexedColourMap {
+    /// Express id of the `IfcIndexedColourMap` itself (#7955 J5 palette
+    /// binding). 0 for maps not read from a file.
+    pub map_id: u32,
     /// The face set this map colours (`MappedTo`).
     pub geometry_id: u32,
     /// The colour palette (`IfcColourRgbList.ColourList`).
     pub colours: Vec<Rgba>,
     /// Per-triangle 0-based index into `colours`, one entry per triangle.
     pub triangle_palette: Vec<usize>,
+    /// Whether `colours` and `triangle_palette` are the source verbatim. False
+    /// when the resolver had to repair the map so it would still render: a
+    /// colour row that did not parse or lay outside `0..=1` (dropping it
+    /// shifts every later entry down by one), or a `ColourIndex` entry that was
+    /// not an INTEGER (an integral REAL such as `2.` still displays, as before),
+    /// was below 1, or was past the end of the list (each clamped). Display is unchanged either way; only an authentic map may
+    /// back a source palette binding.
+    pub authentic: bool,
 }
 
 impl FullIndexedColourMap {
@@ -120,14 +131,21 @@ pub fn resolve_indexed_colour_map_full(
 
     let colours_entity = decoder.decode_by_id(colours_id).ok()?;
     let colour_list = colours_entity.get(0)?.as_list()?;
+    let mut authentic = true;
     let colours: Vec<Rgba> = colour_list
         .iter()
         .filter_map(|c| {
-            let rgb = c.as_list()?;
-            let r = rgb.first().and_then(|v| v.as_float())? as f32;
-            let g = rgb.get(1).and_then(|v| v.as_float())? as f32;
-            let b = rgb.get(2).and_then(|v| v.as_float())? as f32;
-            Some(Rgba::new(r, g, b, opacity))
+            // A row that is not a list (e.g. `$`) is dropped from the display
+            // palette, shifting every later entry: the map is not authentic.
+            let Some(rgb) = c.as_list() else {
+                authentic = false;
+                return None;
+            };
+            let channel = |i: usize| rgb.get(i).and_then(|v| v.as_float());
+            let parsed = (|| Some((channel(0)?, channel(1)?, channel(2)?)))();
+            authentic &= parsed.is_some_and(|(r, g, b)| [r, g, b].iter().all(|v| (0.0..=1.0).contains(v)));
+            let (r, g, b) = parsed?;
+            Some(Rgba::new(r as f32, g as f32, b as f32, opacity))
         })
         .collect();
     if colours.is_empty() {
@@ -138,19 +156,25 @@ pub fn resolve_indexed_colour_map_full(
     let triangle_palette: Vec<usize> = index_list
         .iter()
         .map(|v| {
+            // Authentic only under the one IFC index rule CoordIndex uses
+            // (an INTEGER, #7689); display still reads an integral REAL.
+            authentic &= v.as_ifc_index().is_some_and(|i| (i as usize) < colours.len());
             let one_based = v.as_int().unwrap_or(1).max(1) as usize;
             (one_based - 1).min(max_idx)
         })
         .collect();
 
     Some(FullIndexedColourMap {
+        map_id: entity.id,
         geometry_id,
         colours,
         triangle_palette,
+        authentic,
     })
 }
 
-/// Split a flat-shaded mesh into one sub-mesh per palette group.
+/// Split a flat-shaded mesh into one sub-mesh per palette group, each tagged
+/// with its 0-based palette index (the source binding #7955 J5 reports).
 ///
 /// Returns `None` (caller keeps the single dominant-coloured mesh) unless the
 /// mesh triangle count matches `map.triangle_palette` exactly — a mismatch
@@ -160,7 +184,7 @@ pub fn resolve_indexed_colour_map_full(
 pub fn split_mesh_by_indexed_colour(
     mesh: &Mesh,
     map: &FullIndexedColourMap,
-) -> Option<Vec<(Rgba, Mesh)>> {
+) -> Option<Vec<(usize, Rgba, Mesh)>> {
     let tri_count = mesh.indices.len() / 3;
     if tri_count == 0 || tri_count != map.triangle_palette.len() {
         return None;
@@ -213,7 +237,7 @@ pub fn split_mesh_by_indexed_colour(
         }
     }
 
-    let out: Vec<(Rgba, Mesh)> = groups
+    let out: Vec<(usize, Rgba, Mesh)> = groups
         .into_iter()
         .enumerate()
         .filter_map(|(palette, group)| {
@@ -239,7 +263,7 @@ pub fn split_mesh_by_indexed_colour(
                 welded_in_object_frame: false,
                 plane_tags: None,
             };
-            Some((map.colours[palette], mesh))
+            Some((palette, map.colours[palette], mesh))
         })
         .collect();
 
@@ -271,6 +295,8 @@ mod tests {
             plane_tags: None,
         };
         let map = FullIndexedColourMap {
+            map_id: 0,
+            authentic: true,
             geometry_id: 1,
             colours: vec![Rgba::new(1.0, 0.0, 0.0, 1.0), Rgba::new(0.0, 1.0, 0.0, 1.0)],
             // tri0 → red, tri1 → green, tri2 (out of range) → red
@@ -282,7 +308,7 @@ mod tests {
 
         let total_tris: usize = parts
             .iter()
-            .map(|(_, m)| {
+            .map(|(_, _, m)| {
                 assert_eq!(m.indices.len() % 3, 0, "index buffer must be whole triangles");
                 assert_eq!(m.positions.len() % 3, 0, "positions must be whole vertices");
                 m.indices.len() / 3
@@ -306,6 +332,8 @@ mod tests {
     #[test]
     fn dominant_picks_the_majority_colour_not_the_minority() {
         let map = FullIndexedColourMap {
+            map_id: 0,
+            authentic: true,
             geometry_id: 1,
             colours: vec![Rgba::new(1.0, 0.0, 0.0, 1.0), Rgba::new(0.0, 1.0, 0.0, 1.0)],
             // Palette entry 0 (red) referenced once, entry 1 (green) referenced

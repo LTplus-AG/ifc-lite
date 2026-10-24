@@ -92,3 +92,7 @@ mod lineage_tests;
 mod sidecar_parse;
 
 mod sidecar_value;
+
+pub use sidecar_value::{JsString, DocumentValue};
+pub mod document_serde;
+mod document_ser;

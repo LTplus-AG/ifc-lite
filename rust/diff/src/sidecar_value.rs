@@ -12,22 +12,55 @@ pub struct JsString {
     units: Vec<u16>,
     scalar: Option<String>,
 }
+impl Default for JsString {
+    fn default() -> Self { Self::from("") }
+}
 impl JsString {
-    pub(crate) fn from_units(units: Vec<u16>) -> Self {
+    pub fn from_units(units: Vec<u16>) -> Self {
         let scalar = String::from_utf16(&units).ok();
         Self { units, scalar }
     }
-    pub(crate) fn units(&self) -> &[u16] { &self.units }
-    pub(crate) fn surround(prefix: &str, value: &Self, suffix: &str) -> Self {
+    pub fn units(&self) -> &[u16] { &self.units }
+    pub fn surround(prefix: &str, value: &Self, suffix: &str) -> Self {
         Self::from_units(prefix.encode_utf16().chain(value.units.iter().copied()).chain(suffix.encode_utf16()).collect())
     }
-    pub(crate) fn as_str(&self) -> Option<&str> { self.scalar.as_deref() }
-    pub(crate) fn is_empty(&self) -> bool { self.units.is_empty() }
-    pub(crate) fn is_blank(&self) -> bool {
+    pub fn as_str(&self) -> Option<&str> { self.scalar.as_deref() }
+    pub fn is_empty(&self) -> bool { self.units.is_empty() }
+    pub fn is_blank(&self) -> bool {
         self.units.iter().all(|&unit| char::from_u32(u32::from(unit))
             .is_some_and(crate::projections::is_ecmascript_whitespace))
     }
-    pub(crate) fn write_json(&self, out: &mut String) {
+    /// Concatenate without projecting unpaired units into a scalar string.
+    pub fn concat(parts: &[&Self], separator: &str) -> Self {
+        let mut units = Vec::new();
+        for (index, part) in parts.iter().enumerate() {
+            if index > 0 { units.extend(separator.encode_utf16()); }
+            units.extend_from_slice(part.units());
+        }
+        Self::from_units(units)
+    }
+    pub fn starts_with(&self, prefix: &str) -> bool {
+        self.units.iter().copied().take(prefix.encode_utf16().count()).eq(prefix.encode_utf16())
+    }
+    /// ECMAScript trim followed by Unicode default uppercase mapping. Surrogate
+    /// code units remain unchanged and valid pairs are mapped as one scalar.
+    pub fn normalized_class(&self) -> Self {
+        let whitespace = |unit: &u16| char::from_u32(u32::from(*unit))
+            .is_some_and(crate::projections::is_ecmascript_whitespace);
+        let start = self.units.iter().position(|u| !whitespace(u)).unwrap_or(self.units.len());
+        let end = self.units.iter().rposition(|u| !whitespace(u)).map_or(start, |i| i + 1);
+        let mut units = Vec::new();
+        for ch in char::decode_utf16(self.units[start..end].iter().copied()) {
+            match ch {
+                Err(error) => units.push(error.unpaired_surrogate()),
+                Ok(ch) => for upper in ch.to_uppercase() {
+                    units.extend_from_slice(upper.encode_utf16(&mut [0; 2]));
+                },
+            }
+        }
+        Self::from_units(units)
+    }
+    pub fn write_json(&self, out: &mut String) {
         out.push('"');
         for ch in char::decode_utf16(self.units.iter().copied()) {
             match ch {
@@ -76,13 +109,13 @@ pub enum DocumentValue {
     Object(Vec<(JsString, DocumentValue)>),
 }
 impl DocumentValue {
-    pub(crate) fn as_string(&self) -> Option<&JsString> { if let Self::String(s) = self { Some(s) } else { None } }
-    pub(crate) fn as_str(&self) -> Option<&str> { self.as_string().and_then(JsString::as_str) }
-    pub(crate) fn is_string(&self) -> bool { matches!(self, Self::String(_)) }
-    pub(crate) fn is_object(&self) -> bool { matches!(self, Self::Object(_)) }
-    pub(crate) fn as_f64(&self) -> Option<f64> { if let Self::Number(n) = self { Some(*n) } else { None } }
-    pub(crate) fn as_array(&self) -> Option<&Vec<Self>> { if let Self::Array(a) = self { Some(a) } else { None } }
-    pub(crate) fn get(&self, key: &str) -> Option<&Self> {
+    pub fn as_string(&self) -> Option<&JsString> { if let Self::String(s) = self { Some(s) } else { None } }
+    pub fn as_str(&self) -> Option<&str> { self.as_string().and_then(JsString::as_str) }
+    pub fn is_string(&self) -> bool { matches!(self, Self::String(_)) }
+    pub fn is_object(&self) -> bool { matches!(self, Self::Object(_)) }
+    pub fn as_f64(&self) -> Option<f64> { if let Self::Number(n) = self { Some(*n) } else { None } }
+    pub fn as_array(&self) -> Option<&Vec<Self>> { if let Self::Array(a) = self { Some(a) } else { None } }
+    pub fn get(&self, key: &str) -> Option<&Self> {
         if let Self::Object(entries) = self {
             entries.iter().find(|(name, _)| name.as_str() == Some(key)).map(|(_, value)| value)
         } else { None }
@@ -109,7 +142,7 @@ impl From<&serde_json::Value> for DocumentValue {
         }
     }
 }
-pub(crate) fn ordered_object(mut entries: Vec<(JsString, DocumentValue)>) -> DocumentValue {
+pub fn ordered_object(mut entries: Vec<(JsString, DocumentValue)>) -> DocumentValue {
     fn array_index(key: &JsString) -> Option<u32> {
         let text = key.as_str()?;
         let index = text.parse::<u32>().ok()?;
@@ -122,4 +155,28 @@ pub(crate) fn ordered_object(mut entries: Vec<(JsString, DocumentValue)>) -> Doc
         _ => std::cmp::Ordering::Equal,
     });
     DocumentValue::Object(entries)
+}
+
+impl From<&JsString> for JsString {
+    fn from(value: &JsString) -> Self { value.clone() }
+}
+impl PartialEq<str> for JsString {
+    fn eq(&self, value: &str) -> bool { self.units.iter().copied().eq(value.encode_utf16()) }
+}
+impl PartialEq<&str> for JsString {
+    fn eq(&self, value: &&str) -> bool { self == *value }
+}
+
+impl std::ops::IndexMut<&str> for DocumentValue {
+    fn index_mut(&mut self, key: &str) -> &mut Self {
+        let Self::Object(entries) = self else { panic!("expected object") };
+        let index = match entries.iter().position(|(name, _)| name == key) {
+            Some(index) => index,
+            None => { entries.push((key.into(), Self::Null)); entries.len() - 1 },
+        };
+        &mut entries[index].1
+    }
+}
+impl PartialEq<bool> for DocumentValue {
+    fn eq(&self, value: &bool) -> bool { matches!(self, Self::Bool(b) if b == value) }
 }

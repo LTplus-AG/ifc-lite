@@ -13,7 +13,7 @@ import { stageRetainedBrowserAssets } from './stage-retained-browser-assets.mjs'
 import { isMainEntry } from './lib/is-main-entry.mjs';
 
 const BROWSER = resolve(import.meta.dirname, '../native/smlib-adapter/browser');
-const TEST_FILES = ['test.html', 'lifecycle-contract.mjs', 'tests/hung-worker.mjs', 'tests/missing-asset-worker.mjs'];
+const TEST_FILES = ['test.html', 'normal-contract.mjs', 'patch-accuracy-contract.mjs', 'tests/patch-accuracy-worker.mjs', 'plane-chain-contract.mjs', 'lifecycle-contract.mjs', 'tests/hung-worker.mjs', 'tests/missing-asset-worker.mjs'];
 const TYPES = { '.html': 'text/html', '.mjs': 'text/javascript', '.js': 'text/javascript', '.wasm': 'application/wasm', '.json': 'application/json' };
 
 /** Serves each `prefix -> directory` mount; every other path is 404. */
@@ -45,6 +45,10 @@ export async function runWorkerProbe({ build, sdk, timeout = 300_000 }) {
   try {
     await mkdir(join(root, 'tests'));
     for (const name of TEST_FILES) await copyFile(join(BROWSER, name), join(root, name));
+    for (const suffix of ['mjs', 'wasm']) {
+      const name = `ifclite_smlib_patch_accuracy_worker.${suffix}`;
+      await copyFile(join(build, name), join(root, 'tests', name));
+    }
     server = serveRoots({ '/smlib/': root });
     await new Promise((done) => server.listen(0, '127.0.0.1', done));
     browser = await chromium.launch();

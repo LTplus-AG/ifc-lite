@@ -1741,3 +1741,17 @@ Both executors project `ReceiptEvidence::UnaryClip` into common acceptance.
 an execution receipt or a license to borrow a runtime object. Full bounded/boxed
 halfspaces and final release qualification remain required; see the
 [experimental geometry guide](../guide/geometry.md#experimental-shared-unary-clips).
+### Opt-in retained source normals
+
+`GeometryDocument::publish_retained_display` accepts
+`RetainedDisplayContract::AnalyticSurfaceNormals` for source-surface corner
+normals from the retained worker. The historical `UnstyledFlatSourceOnly`
+selector also preserves those values. `RetainedTessellation::flat_corner_normals`
+is the compatibility field name, not an instruction to flatten curved surfaces.
+The display boundary rejects incomplete, nonfinite, zero, nonunit or inward
+normals, expands corners without averaging and refuses winding inconsistencies.
+Occurrence transforms remain separate from the definition; the document rejects
+singular placements. No IFC appearance or persistent face identity is implied.
+The default exact path is unchanged. See the
+[native normal contract](../../native/smlib-adapter/README.md#source-corner-normal-contract-7955--j5)
+for correspondence, fixed oracle tolerances and qualification requirements.

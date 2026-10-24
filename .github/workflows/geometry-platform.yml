@@ -43,6 +43,7 @@ on:
       - 'rust/wasm-bindings/src/api/mod.rs'
       - 'rust/wasm-bindings/tests/retained-browser/**'
       - 'scripts/retained-browser-contract.mjs'
+      - 'scripts/retained-source-winding-oracle.py'
       # The actual-Worker contract serves the geometry fixture directory to the browser.
       - 'rust/geometry/tests/fixtures/**'
       - 'scripts/build-wasm.sh'
@@ -81,9 +82,29 @@ jobs:
         id: native-ctest
         continue-on-error: true
         run: ctest --test-dir "$RUNNER_TEMP/smlib-native" --output-on-failure
+      - name: Observe native face-lineage semantic mutations
+        id: native-lineage-oracle
+        continue-on-error: true
+        run: python3 native/smlib-adapter/tests/lineage_mutation_oracle.py "$RUNNER_TEMP/smlib-native"
+      - name: Observe source-normal semantic mutations
+        id: native-normal-oracle
+        continue-on-error: true
+        run: python3 native/smlib-adapter/tests/normal_mutation_oracle.py "$RUNNER_TEMP/smlib-native"
+      - name: Observe native plane semantic mutations
+        id: native-plane-oracle
+        continue-on-error: true
+        run: python3 native/smlib-adapter/tests/plane_mutation_oracle.py "$RUNNER_TEMP/smlib-native"
+      - name: Observe owned plane bounds, provenance and seal mutations
+        id: native-owned-oracle
+        continue-on-error: true
+        run: python3 native/smlib-adapter/tests/plane_owned_mutation_oracle.py "$RUNNER_TEMP/smlib-native"
       - uses: ./.github/actions/setup-wasm-build
         with:
           cache-prefix: geometry-platform
+      - name: Observe retained source-winding reverse mutation
+        id: retained-source-winding-oracle
+        continue-on-error: true
+        run: python3 scripts/retained-source-winding-oracle.py
       - name: Real Rust subprocess integration
         id: native-consumers
         continue-on-error: true
@@ -92,7 +113,7 @@ jobs:
         run: |
           test -x "$IFCLITE_SMLIB_PATH"
           IFCLITE_SMLIB_WORKER="$IFCLITE_SMLIB_PATH" \
-            cargo test --locked -p ifc-lite-geometry-runtime --all-targets --no-fail-fast
+            cargo test --locked -p ifc-lite-geometry-runtime --all-targets --no-fail-fast -- --nocapture
       - name: Actual native retained product transactions
         id: processing-retained
         continue-on-error: true
@@ -263,6 +284,11 @@ jobs:
           OPENING_SOURCE_MUTATION: ${{ steps.opening-source-mutation.outcome }}
           RETAINED_REGION_MUTATIONS: ${{ steps.retained-region-mutations.outcome }}
           RETAINED_NATIVE_CLIPPY: ${{ steps.retained-native-clippy.outcome }}
+          NATIVE_LINEAGE_ORACLE: ${{ steps.native-lineage-oracle.outcome }}
+          NATIVE_NORMAL_ORACLE: ${{ steps.native-normal-oracle.outcome }}
+          NATIVE_PLANE_ORACLE: ${{ steps.native-plane-oracle.outcome }}
+          RETAINED_SOURCE_WINDING_ORACLE: ${{ steps.retained-source-winding-oracle.outcome }}
+          NATIVE_OWNED_ORACLE: ${{ steps.native-owned-oracle.outcome }}
           NATIVE_CONSUMERS: ${{ steps.native-consumers.outcome }}
           WASM_CTEST: ${{ steps.wasm-ctest.outcome }}
           BROWSER_WORKERS: ${{ steps.browser-workers.outcome }}
@@ -273,7 +299,7 @@ jobs:
           RETAINED_CLIPPY: ${{ steps.retained-clippy.outcome }}
         run: |
           failed=0
-          for lane in NATIVE_CTEST PROCESSING_RETAINED RETAINED_MUTATIONS CLIP_MUTATIONS OPENING_MUTATIONS OPENING_SOURCE_MUTATION RETAINED_REGION_MUTATIONS RETAINED_NATIVE_CLIPPY NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY; do
+          for lane in NATIVE_CTEST PROCESSING_RETAINED RETAINED_MUTATIONS CLIP_MUTATIONS OPENING_MUTATIONS OPENING_SOURCE_MUTATION RETAINED_REGION_MUTATIONS RETAINED_NATIVE_CLIPPY NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY RETAINED_SOURCE_WINDING_ORACLE NATIVE_LINEAGE_ORACLE NATIVE_NORMAL_ORACLE NATIVE_PLANE_ORACLE NATIVE_OWNED_ORACLE; do
             printf '%s=%s\n' "$lane" "${!lane}"
             if [[ "${!lane}" != success ]]; then failed=1; fi
           done

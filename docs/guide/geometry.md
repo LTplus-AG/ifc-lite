@@ -833,6 +833,26 @@ identity), so it is not final product geometry. `executor.cancellation()`
 returns a handle whose `retire()` stays callable while an execution is pending;
 a retired or replaced Worker invalidates everything it produced.
 
+## Private native plane runtime
+
+The unpublished `ifc-lite-geometry-runtime` crate exposes
+`SmlibWorker::clip_retained_plane` for explicit standalone runtime consumers.
+It accepts one live `RetainedDependency`, six local-metre point/normal
+coefficients, a `PlaneSide` and Intersection/Difference `PlaneClipMode`.
+The independently owned `RetainedPlaneClip` can feed affine and Boolean
+operations. Its identity and lineage share one immutable `Arc<PlaneCertificate>`;
+the v1 certificate is output evidence, not caller authority or IFC face ancestry.
+
+This #7955 infrastructure does not activate retained product, viewer, CLI or
+browser clipping. Exact remains default. The known second nonempty clip with
+missing owned trims refuses with status 7, as do nonempty affine copies that
+lost their UV trims; chain numerical repair and
+bounded/boxed halfspaces remain required. Failures never trigger automatic exact
+retry or publish partial products. In particular, numerical Difference-to-Empty
+is not permission to remove a whole product without the future removal policy.
+See [the native contract](../../native/smlib-adapter/PLANE_CONTRACT.md) for fixed
+oracle tolerances and the remaining qualification and release boundaries.
+
 ## Next Steps
 
 - [Rendering Guide](rendering.md) - Display geometry with WebGPU
@@ -1016,3 +1036,15 @@ SDK and Worker tests must be run on that integrated source before claiming
 support. It does not activate retained final publication, viewer or CLI modes,
 or close the bounded-halfspace, material-layer, presentation or licensing gates.
 Exact execution remains the default.
+The disabled retained plane runtime additionally carries version3 domain
+summaries for axis-affine generic surfaces. Missing UV trims are explicitly
+reconstructed on an owned copy; its complete UV inventory and finite parameter
+domain are enclosed before constructing the cutter. The source stays unchanged,
+and the prepared inventory is checked again immediately before Boolean use.
+Method8 records this coverage rather than claiming exact rectangle closure.
+This enables candidate chained-cut and affine-of-clip validation without
+relaxing generic curved-patch enclosure. Unsupported representations still refuse;
+no caller certificate grants execution authority. The native contract and
+matching Rust decoder must be deployed together. Numerical qualification and
+product activation remain pending; see
+[`PLANE_CONTRACT.md`](../../native/smlib-adapter/PLANE_CONTRACT.md).

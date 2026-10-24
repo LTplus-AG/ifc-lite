@@ -1672,6 +1672,12 @@ jobs:
           # whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/inner.rs | grep -Fxq 'rust/geometry/src/program/inner.rs'; then
             oracle_args+=(--mutation tests/evidence/item-cache-controller-d2/behaviour.oracle.patch)
+          # #7955 J1a adds private clip types. Removing the whole module breaks
+          # imports before assertions run. This reversed semantic mutation
+          # preserves types but disables certificate identity and capability
+          # admission. Plane unit/fault tests must observe those broken guards.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry-runtime/src/worker_clip.rs | grep -Fxq 'rust/geometry-runtime/src/worker_clip.rs'; then
+            oracle_args+=(--mutation rust/geometry-runtime/tests/fixtures/plane-behaviour.oracle.patch)
           # #7955 G4b: bounded affine copies add geometry-runtime
           # worker_affine.rs, whose types the changed runtime tests name, so a
           # whole-change revert cannot compile them (INCONCLUSIVE). Keep the

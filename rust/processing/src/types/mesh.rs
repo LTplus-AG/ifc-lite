@@ -161,6 +161,10 @@ pub struct MeshData {
     /// Purely in-memory, like `instance` — `#[serde(skip)]`.
     #[serde(skip)]
     pub local_to_world: Option<[f64; 16]>,
+    /// Opt-in, in-memory provenance (#7955 J5; `types::presentation`). Boxed, one
+    /// pointer; alignment still grows `MeshData` 16 B on x86_64 (960 -> 976 B).
+    #[serde(skip)]
+    pub presentation: Option<Box<super::presentation::MeshPresentationProvenance>>,
 }
 
 fn geometry_class_is_occurrence(class: &u8) -> bool {
@@ -202,6 +206,7 @@ impl MeshData {
             instance: None,
             local_bounds: None,
             local_to_world: None,
+            presentation: None,
         }
     }
 

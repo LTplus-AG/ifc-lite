@@ -119,7 +119,7 @@
 1 rust/processing/src/shard_classes.rs
 8 rust/processing/src/style/fill.rs
 2 rust/processing/src/style/finish_join.rs
-7 rust/processing/src/style/indexed_colour.rs
+5 rust/processing/src/style/indexed_colour.rs
 4 rust/processing/src/style/material.rs
 13 rust/processing/src/style/surface.rs
 8 rust/processing/src/symbolic/color.rs

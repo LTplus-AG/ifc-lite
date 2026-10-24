@@ -275,6 +275,7 @@ fn good_mesh() -> MeshData {
         instance: None,
         local_bounds: None,
         local_to_world: None,
+        presentation: None,
     }
 }
 

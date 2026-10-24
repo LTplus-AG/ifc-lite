@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Decoder-free admission of already executed type-map numerical parts.
-use super::presentation::{HashPolicy, ReadyBody, SourceId};
+use super::presentation::{FaceCorrespondence, HashPolicy, ReadyBody, SourceId};
+use crate::types::presentation::NormalProvenance;
 use ifc_lite_geometry::{calculate_normals, Mesh, TextureAttachment};
 
 /// One type map's executed part: (mesh, per-vertex UVs, texture).
@@ -13,9 +14,12 @@ pub(super) fn ready_type_part(
     color: [f32; 4],
     class: u8,
 ) -> ReadyBody<'static> {
-    if mesh.normals.len() != mesh.positions.len() {
+    let normals = if mesh.normals.len() != mesh.positions.len() {
         calculate_normals(&mut mesh);
-    }
+        NormalProvenance::RecomputedMissing
+    } else {
+        NormalProvenance::Producer
+    };
     // Preserve type-map behaviour: texture presence selects the UV channel,
     // without the occurrence path's additional length guard. Untextured parts
     // get the full position+normal weld.
@@ -31,5 +35,8 @@ pub(super) fn ready_type_part(
         palette: None,
         palette_source: SourceId::None,
         hash: HashPolicy::Type,
+        normals,
+        uv_authority: None,
+        faces: FaceCorrespondence::Unproven,
     }
 }

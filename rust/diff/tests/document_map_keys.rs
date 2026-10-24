@@ -39,17 +39,20 @@ impl<'de, K: Deserialize<'de>> Deserialize<'de> for One<K> {
         d.deserialize_map(KeyVisitor(PhantomData))
     }
 }
-fn round_trip<K: Serialize + DeserializeOwned + PartialEq + fmt::Debug>(key: K) {
-    let value = One(key);
-    let json = serde_json::to_string(&value).unwrap();
-    let doc = to_document(&value).unwrap();
+fn text_round_trip<K: Serialize + DeserializeOwned + PartialEq + fmt::Debug>(value: &One<K>) {
+    let json = serde_json::to_string(value).unwrap();
+    let doc = to_document(value).unwrap();
     assert_eq!(doc, parse_ordered_json(&json).unwrap(), "{json}");
-    assert_eq!(from_document::<One<K>>(doc).unwrap(), value, "{json}");
+    assert_eq!(&from_document::<One<K>>(doc).unwrap(), value, "{json}");
     assert_eq!(
-        serde_json::from_str::<One<K>>(&json).unwrap(),
+        &serde_json::from_str::<One<K>>(&json).unwrap(),
         value,
         "{json}"
     );
+}
+fn round_trip<K: Serialize + DeserializeOwned + PartialEq + fmt::Debug>(key: K) {
+    let value = One(key);
+    text_round_trip(&value);
     assert_eq!(
         serde_json::from_value::<One<K>>(serde_json::to_value(&value).unwrap()).unwrap(),
         value
@@ -57,9 +60,16 @@ fn round_trip<K: Serialize + DeserializeOwned + PartialEq + fmt::Debug>(key: K) 
 }
 fn rejected<K: Serialize>(key: K) {
     let value = One(key);
-    assert!(serde_json::to_string(&value).is_err());
-    assert!(serde_json::to_value(&value).is_err());
-    assert!(to_document(&value).is_err());
+    let ty = std::any::type_name::<K>();
+    let text = serde_json::to_string(&value);
+    assert!(text.is_err(), "to_string accepted key type {ty}: {text:?}");
+    let json_value = serde_json::to_value(&value);
+    assert!(
+        json_value.is_err(),
+        "to_value accepted key type {ty}: {json_value:?}"
+    );
+    let doc = to_document(&value);
+    assert!(doc.is_err(), "to_document accepted key type {ty}: {doc:?}");
 }
 fn decode<K: DeserializeOwned + PartialEq + fmt::Debug>(key: &str, accepted: bool) {
     let json = format!("{{{}:1}}", serde_json::to_string(key).unwrap());
@@ -152,6 +162,46 @@ fn pr_8104_primitive_newtype_and_unit_enum_keys_match_json() {
 }
 
 #[test]
+fn pr_8104_some_keys_follow_text_json_despite_to_value_rejection() {
+    fn check<K: Serialize + DeserializeOwned + PartialEq + fmt::Debug>(key: K) {
+        let value = One(key);
+        text_round_trip(&value);
+        // Pinned serde_json 1.0.154 deliberately has different key serializers:
+        // ser.rs unwraps Some, while value/ser.rs rejects every Some key.
+        assert!(
+            serde_json::to_value(&value).is_err(),
+            "to_value unexpectedly accepted {value:?}"
+        );
+    }
+    check(Some(1i32));
+    check(Some(u128::MAX));
+    check(Some(true));
+    check(Some('λ'));
+    check(Some(-0.0f64));
+    check(Some("text".to_owned()));
+    check(Some(Key::Renamed));
+    check(Some(Newtype(-17i32)));
+    check(Newtype(Some(1i32)));
+    check(Some(Some(Newtype(Some(42i32)))));
+    check(Some(Newtype(JsString::from("scalar/λ"))));
+}
+
+#[test]
+fn pr_8104_some_utf16_keys_preserve_the_lossless_marker_through_newtypes() {
+    let lone = JsString::from_units(vec![0xd800]);
+    let value = One(Some(Newtype(Some(lone.clone()))));
+    let doc = to_document(&value).unwrap();
+    assert_eq!(
+        doc,
+        DocumentValue::Object(vec![(lone, DocumentValue::Number(1.0))])
+    );
+    assert_eq!(
+        from_document::<One<Option<Newtype<Option<JsString>>>>>(doc).unwrap(),
+        value
+    );
+}
+
+#[test]
 fn pr_8104_collect_str_keys_use_the_same_scalar_text_as_json() {
     struct DisplayKey;
     impl fmt::Display for DisplayKey {
@@ -188,12 +238,16 @@ fn pr_8104_integer_maps_keep_numeric_property_order_and_exact_key_text() {
 }
 
 #[test]
-fn pr_8104_compound_optional_and_nonfinite_keys_are_rejected_like_json() {
+fn pr_8104_compound_none_and_nonfinite_keys_are_rejected_like_json() {
     rejected(());
     rejected(Unit);
     rejected(None::<i32>);
-    rejected(Some(1i32));
-    rejected(Newtype(Some(1i32)));
+    rejected(Some(None::<i32>));
+    rejected(Newtype(None::<i32>));
+    rejected(Some(vec![1i32]));
+    rejected(Some(Newtype(Some((1i32,)))));
+    rejected(Some(Struct { n: 1 }));
+    rejected(Some(Key::Newtype(1)));
     rejected(Newtype(vec![1i32]));
     rejected(vec![1i32]);
     rejected([1i32]);
@@ -217,6 +271,7 @@ fn pr_8104_compound_optional_and_nonfinite_keys_are_rejected_like_json() {
         }
     }
     rejected(Bytes);
+    rejected(Some(Bytes));
 }
 
 #[test]
@@ -294,7 +349,7 @@ fn pr_8104_other_scalar_key_decoding_and_rejections_match_json() {
     for key in ["+1", "01", "NaN", "inf", "1e999", "1 ", " 1", "1x"] {
         decode::<f64>(key, false);
     }
-    // serde_json deliberately accepts Option on read but rejects it on write.
+    // Text JSON accepts Some scalar keys on write and Option keys on read.
     decode::<Option<i32>>("1", true);
     decode::<Option<i32>>("null", false);
     decode::<Option<Newtype<bool>>>("true", true);

@@ -1,7 +1,7 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
-//! Scalar map keys follow serde_json 1.0.154's value/ser.rs MapKeySerializer.
+//! Scalar map keys follow serde_json 1.0.154's ser.rs MapKeySerializer.
 //! Keep integers out of DocumentValue::Number: key text must not round via f64.
 use crate::{
     document_ser::DocumentSerializer,
@@ -91,8 +91,9 @@ impl Serializer for KeySerializer {
     fn serialize_none(self) -> Result<JsString, Error> {
         Err(invalid_key())
     }
-    fn serialize_some<T: Serialize + ?Sized>(self, _: &T) -> Result<JsString, Error> {
-        Err(invalid_key())
+    fn serialize_some<T: Serialize + ?Sized>(self, value: &T) -> Result<JsString, Error> {
+        // Text JSON unwraps Some keys; serde_json::to_value rejects them.
+        value.serialize(self)
     }
     fn serialize_unit(self) -> Result<JsString, Error> {
         Err(invalid_key())

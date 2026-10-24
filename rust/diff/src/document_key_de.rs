@@ -63,7 +63,7 @@ impl<'de> Deserializer<'de> for KeyDeserializer {
         }
     }
     fn deserialize_option<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Error> {
-        // JSON object keys cannot be null, even though Option keys cannot serialize.
+        // JSON object keys cannot be null; Some scalar keys serialize as their contents.
         visitor.visit_some(self)
     }
     fn deserialize_newtype_struct<V: Visitor<'de>>(

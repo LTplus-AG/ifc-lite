@@ -30,6 +30,8 @@ on:
       - 'scripts/stage-retained-browser-assets.mjs'
       - 'scripts/lib/retained-asset-contract.mjs'
       - 'scripts/lib/retained-publish.py'
+      - 'scripts/lib/retained-loader-*'
+      - 'scripts/fixtures/retained-loaders/**'
       - 'scripts/fixtures/retained-notices/**'
       - 'scripts/smlib-browser-worker-probe.mjs'
       - 'scripts/wasm-test-mime-driver.mjs'

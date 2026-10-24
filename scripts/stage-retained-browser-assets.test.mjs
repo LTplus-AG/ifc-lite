@@ -202,7 +202,7 @@ test('publication syscall refuses even an empty destination without changing eit
 test('R1 real web loader import namespace is not a delivered bg.js (#7955)', async t => {
   const o = await fixture(t);
   await writeFile(join(o.engine, 'ifc-lite.js'), await readFile('scripts/fixtures/retained-loaders/wasm-bindgen.mjs'));
-  await writeFile(join(o.build, 'ifclite_smlib_browser.mjs'), await readFile('scripts/fixtures/retained-loaders/emscripten.mjs'));
+  await writeFile(join(o.build, 'ifclite_smlib_browser.mjs'), await readFile('scripts/fixtures/retained-loaders/emscripten.txt'));
   const inputs = join(o.out, '../real-shape.json');
   await stageRetainedBrowserAssets({ ...o, record: inputs, inputs: undefined, out: undefined });
   const manifest = await stageRetainedBrowserAssets({ ...o, inputs });

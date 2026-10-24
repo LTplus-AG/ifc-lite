@@ -127,7 +127,9 @@ export async function stageRetainedBrowserAssets({ build, sdk, engine, emscripte
   if (!reachable.has(driverPaths[0])) throw new Error('Retained engine does not import its canonical driver');
   const sourceNames = execFileSync('git', ['-C', repoRoot, 'ls-files', '--cached', '--others', '--exclude-standard', '-z', '--',
     'native/smlib-adapter', 'rust', 'scripts/build-wasm.sh', 'scripts/stage-retained-browser-assets.mjs',
-    'scripts/lib/retained-asset-contract.mjs', 'scripts/lib/retained-publish.py', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml'],
+    'scripts/lib/retained-asset-contract.mjs', 'scripts/lib/retained-publish.py',
+    'scripts/lib/retained-loader-syntax.mjs', 'scripts/lib/retained-loader-dependencies.mjs',
+    'scripts/lib/retained-loader-profiles.json', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml'],
     { encoding: 'utf8' }).split('\0').filter(Boolean).sort();
   if (!sourceNames.length) throw new Error('Missing tracked source inventory');
   const sources = [];

@@ -3,7 +3,7 @@
 import { createHash } from 'node:crypto';
 import { readFile, lstat, readdir, realpath } from 'node:fs/promises';
 import { join, relative, posix } from 'node:path';
-import { execFileSync } from 'node:child_process';
+export { dependencies } from './retained-loader-dependencies.mjs';
 
 export const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 export const EMSCRIPTEN_REVISION = '09f52557f0d48b65b8c724853ed8f4e8bf80e669';
@@ -38,53 +38,6 @@ export async function readWithin(root, path, allowEmpty = false) {
   return regular(full, allowEmpty);
 }
 export function row(path, bytes) { return { path, bytes: bytes.length, sha256: digest(bytes) }; }
-
-// V8 parses static module requests without evaluating/linking any supplied code.
-// Literal asset references cover Worker URLs, wasm URLs and the canonical
-// driver's loadSdkModule calls. Nonliteral imports are refused except that
-// byte-checked driver helper. This is deliberately a bounded packaging grammar.
-export function dependencies(assets, driverPaths = []) {
-  const modules = [...assets].filter(([name]) => /\.(mjs|js)$/.test(name));
-  const parsed = JSON.parse(execFileSync(process.execPath, ['--experimental-vm-modules', '--input-type=module', '-e', `
-    import { SourceTextModule } from 'node:vm';
-    let input = ''; for await (const chunk of process.stdin) input += chunk;
-    console.log(JSON.stringify(JSON.parse(input).map(([name, source]) =>
-      [name, new SourceTextModule(source).dependencySpecifiers])));
-  `], { input: JSON.stringify(modules.map(([name, bytes]) => [name, bytes.toString()])), encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe'] }));
-  const edges = [];
-  for (const [name, requests] of parsed) {
-    for (const request of requests) {
-      if (!request.startsWith('.') && !request.startsWith('/')) throw new Error(`Bare static import in ${name}: ${request}`);
-    }
-    const source = assets.get(name).toString();
-    // Comments are removed only for detecting the supported dynamic import
-    // spellings; V8 above remains the syntax authority.
-    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-    for (const match of code.matchAll(/\bimport\s*\(\s*([^)]*)\)/g)) {
-      const expression = match[1].trim();
-      if (/^(['"])[^'"\\]*\1$/.test(expression)) requests.push(expression.slice(1, -1));
-      else if (!(driverPaths.includes(name) && expression === 'path')) throw new Error(`Unresolved dynamic import in ${name}`);
-    }
-    for (const match of source.matchAll(/(['"])((?:\\.|(?!\1)[^\\\r\n])*)\1/g)) {
-      const value = match[2];
-      if (/\.(?:mjs|js|wasm)$/.test(value)) {
-        if (value.includes('\\')) throw new Error(`Escaped asset reference in ${name}`);
-        requests.push(value);
-      }
-    }
-    for (const specifier of [...new Set(requests)].sort()) {
-      // Emscripten's Node-only branch; these are host builtins, not browser assets.
-      if (name === 'ifclite_smlib_browser.mjs' && ['module', 'node:module', 'fs', 'path', 'url'].includes(specifier)) continue;
-      const target = specifier.startsWith('/smlib/') ? specifier.slice(7)
-        : posix.normalize(posix.join(posix.dirname(name), specifier));
-      if (target.startsWith('../') || specifier.includes('://') || !assets.has(target)) {
-        throw new Error(`Missing or external dependency ${name} -> ${specifier}`);
-      }
-      edges.push({ from: name, specifier, to: target });
-    }
-  }
-  return edges;
-}
 
 /** Offline integrity gate used by the real contract/scanner before serving. */
 export async function verifyRetainedAssets(root, inputs) {

@@ -134,10 +134,24 @@ transitive wasm-bindgen snippets. Full Emscripten, musl, libc++, libc++abi and
 compiler-rt notices are copied from the supplied toolchain, checked against
 pinned upstream hashes, under `notices/emscripten/`. The IFC-Lite MPL text is
 under `notices/ifc-lite/`. Package metadata, credentials and toolchain binaries
-are excluded. The bounded closure scanner uses V8's static module parser and
-literal runtime asset references; nonliteral imports other than the
-byte-checked retained driver's known helper are refused. New generated formats
-or unknown snippet sources must be reviewed, not silently omitted.
+are excluded. The closure scanner uses the lockfile-pinned TypeScript JavaScript
+AST (no module execution). Only import/export declarations, import expressions
+and supported loader calls create edges; a WASM import-object namespace such as
+`"./ifc-lite_bg.js"` does not name a delivered file. Comments, URL strings,
+regex literals and template expressions are parsed as JavaScript syntax.
+
+Ordinary immutable literal-backed URLs are resolved conservatively. Canonical
+client and generated wasm-bindgen/Emscripten variable-based loader forms are
+accepted only against reviewed syntax profiles, including literal roots,
+locator-bearing helper bodies, sinks, and the bindings/writes that feed them.
+The byte-checked retained driver's helper accepts only literal call sites.
+Unknown computed locators and escaped asset entry points refuse packaging.
+Profiles and their representative fixtures are documented in
+`scripts/fixtures/retained-loaders/README.md`; a parser/generator change requires
+review and fresh parent build/browser checks, never automatic re-pinning.
+The inventory covers canonical default loader assets, not files supplied later
+through explicit caller URL overrides or Emscripten's optional filesystem API.
+It is not a general JavaScript security analysis or a build attestation.
 
 The deterministic manifest records exact byte counts and SHA256s. All input
 checks and writes finish before Linux `renameat2(RENAME_NOREPLACE)` atomically

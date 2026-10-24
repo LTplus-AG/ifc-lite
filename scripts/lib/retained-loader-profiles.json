@@ -1,0 +1,24 @@
+{
+  "parser": "6.0.3",
+  "description": "Reviewed syntax projections; see scripts/fixtures/retained-loaders/README.md. Not build attestation.",
+  "profiles": {
+    "emscripten": {
+      "sha256": "123cab5261e8420e562688992deea65766f9c71003baba9728be8b437d6761d1",
+      "roots": [
+        "ifclite_smlib_browser.wasm"
+      ]
+    },
+    "wasmBindgen": {
+      "sha256": "3154cc2c126f34317f0cb14f5f320da378ec885cd4c90e6272cadbce823974d0",
+      "roots": [
+        "ifc-lite_bg.wasm"
+      ]
+    },
+    "client": {
+      "sha256": "5d988dec4662ad0febed98e2d1d54a65008f266019804e977d88b4e58bfd7690",
+      "roots": [
+        "./worker.mjs"
+      ]
+    }
+  }
+}

@@ -83,6 +83,7 @@ impl BrowserWorker {
         let (lineage, count) = input.lineage_parts();
         let operations = count.checked_add(1).filter(|&n| n <= MAX_OPERATIONS)
             .ok_or_else(|| BrowserError::Driver("retained operation depth".into()))?;
+        let resources = ifc_lite_geometry::resource::OwnedResourceContext::capture_current();
         let identity = BrowserObjectKey(next_identity()?);
         let domain = self.cancellation();
         let mut flight = InFlight::new(&self.owner);
@@ -99,16 +100,15 @@ impl BrowserWorker {
         let certificate = AffineCertificate::decode(&bytes).map_err(|error| BrowserError::Driver(error.into()))?;
         let mut source_mesh = None;
         let source_correspondence=if let Some(expected)=input.source_correspondence() {
-            let field=|name:&str| js_sys::Reflect::get(&value,&JsValue::from_str(name))
-                .map(|v| js_sys::Uint8Array::new(&v).to_vec()).map_err(driver_error);
-            let proof=ifc_lite_geometry::document::retained_source::SourceCorrespondence::decode(expected.request(),&field("source_handle")?,&field("source_inventory")?)
+            let (handle, inventory, _wire_storage) = super::mesh_admission::packet(&value, &resources)?;
+            let proof=ifc_lite_geometry::document::retained_source::SourceCorrespondence::decode(expected.request(),&handle,&inventory)
                 .map_err(|error| BrowserError::Driver(error.into()))?;
             if !proof.same_source(expected) { return Err(BrowserError::Driver("affine source inventory changed".into())); }
             let mesh = js_sys::Reflect::get(&value, &JsValue::from_str("source_mesh")).map_err(driver_error)?;
-            let mut mesh: super::bridge::Mesh = serde_wasm_bindgen::from_value(mesh)
-                .map_err(|error| BrowserError::Driver(error.to_string()))?;
+            let mut mesh = super::mesh_admission::read(mesh, &resources, limits.max_bytes)?;
             let mesh_proof=ifc_lite_geometry::document::retained_source::SourceCorrespondence::decode(expected.request(),&mesh.source_handle,&mesh.source_inventory)
-                .and_then(|value| value.with_triangles(std::mem::take(&mut mesh.construction_roots),mesh.indices.len()/3))
+                .and_then(|value| value.with_admitted_triangles(std::mem::take(&mut mesh.construction_roots),
+                    mesh.triangle_storage.take().expect("affine source mesh pre-copy admission")))
                 .map_err(|error| BrowserError::Driver(error.into()))?;
             if !mesh_proof.same_source(&proof) { return Err(BrowserError::Driver("affine mesh source changed".into())); }
             source_mesh = Some(mesh);

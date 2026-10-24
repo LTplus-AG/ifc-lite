@@ -74,6 +74,10 @@ pub(super) struct Mesh {
     pub(super) spine_edges: u32,
     #[serde(default)]
     pub(super) empty: bool,
+    #[serde(skip)]
+    pub(super) storage: Option<ifc_lite_geometry::resource::Reservation>,
+    #[serde(skip)]
+    pub(super) triangle_storage: Option<ifc_lite_geometry::document::retained_source::SourceTriangleAdmission>,
 }
 
 pub(super) fn driver_error(error: JsValue) -> BrowserError {
@@ -170,6 +174,7 @@ impl BrowserWorker {
                 "execute this incarnation's numerical witnesses first",
             ));
         }
+        let resources = ifc_lite_geometry::resource::OwnedResourceContext::capture_current();
         let identity = next_identity()?;
         let domain = self.cancellation();
         let mut flight = InFlight::new(&self.owner);
@@ -189,15 +194,18 @@ impl BrowserWorker {
         self.owner.validate()?;
         let object = js_sys::Reflect::get(&value, &JsValue::from_str("object")).map_err(driver_error)?;
         let mesh = js_sys::Reflect::get(&value, &JsValue::from_str("mesh")).map_err(driver_error)?;
-        let mesh: Mesh = serde_wasm_bindgen::from_value(mesh)
-            .map_err(|error| BrowserError::Driver(error.to_string()))?;
+        let mut mesh: Mesh = if request.source_contract().is_some() {
+            super::mesh_admission::read(mesh, &resources, max_bytes as usize)?
+        } else { serde_wasm_bindgen::from_value(mesh)
+            .map_err(|error| BrowserError::Driver(error.to_string()))? };
         let (source_from_evaluation, evaluation_from_source) = (
             payload.source_from_evaluation,
             payload.evaluation_from_source,
         );
         let source_correspondence=if request.source_contract().is_some() {
             let proof=ifc_lite_geometry::document::retained_source::SourceCorrespondence::decode(&request,&mesh.source_handle,&mesh.source_inventory)
-                .and_then(|proof| proof.with_triangles(mesh.construction_roots,mesh.indices.len()/3))
+                .and_then(|proof| proof.with_admitted_triangles(std::mem::take(&mut mesh.construction_roots),
+                    mesh.triangle_storage.take().expect("source mesh pre-copy admission")))
                 .map_err(|error| BrowserError::Driver(error.into()))?;
             Some(Arc::new(proof))
         } else { None };
@@ -219,7 +227,7 @@ impl BrowserWorker {
                 },
                 source_from_evaluation,
                 evaluation_from_source,
-            ).with_source_correspondence(source_correspondence).map_err(|e| BrowserError::Driver(e.to_string()))?,
+            ).with_storage_reservation(mesh.storage).with_source_correspondence(source_correspondence).map_err(|e| BrowserError::Driver(e.to_string()))?,
         };
         // Accept only a lease the driver still holds for this exact Worker.
         realization.validate_in_domain(&domain)?;

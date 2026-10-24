@@ -87,3 +87,15 @@ mutations. `scripts/retained-source-binding-oracle.py` independently runs two
 shared Rust decoder mutations. CI invokes both and includes both outcomes in its
 final required-result aggregation. Compiler failure, timeout, a non-green control
 or an unrelated assertion does not count as semantic RED.
+
+## Source receipt backing
+
+The native product executor consumes an accounted affine final mesh, rather than
+accepting a copy's inventory-only proof. The original caller limits and resource
+context reach its mesh reader. Browser readers inspect bounded typed-array lengths
+and admit live/copy bytes before deserialization, without an intervening await.
+Triangle-root reservations follow the shared proof; mesh reservations follow the
+mesh or construction completion. Inventory reservations also refund on final drop.
+The source-review mutation lanes independently exercise native final consumption
+and actual Worker admission/lifetime assertions. Their definitions are not
+executed qualification, and they do not alter native numerical transition guards.

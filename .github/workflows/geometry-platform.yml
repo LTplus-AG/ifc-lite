@@ -52,6 +52,8 @@ on:
       - 'scripts/retained-browser-contract.mjs'
       - 'scripts/retained-source-winding-oracle.py'
       - 'scripts/retained-finite-halfspace-oracle.py'
+      - 'scripts/retained-source-binding-oracle.py'
+      - 'scripts/retained-source-review-oracle.py'
       # The actual-Worker contract serves the geometry fixture directory to the browser.
       - 'rust/geometry/tests/fixtures/**'
       - 'scripts/build-wasm.sh'
@@ -134,6 +136,12 @@ jobs:
         id: finite-halfspace-mutations
         continue-on-error: true
         run: python3 scripts/retained-finite-halfspace-oracle.py
+      - name: Observe native production affine final-mesh reverse mutations
+        id: native-source-review
+        continue-on-error: true
+        env:
+          IFCLITE_SMLIB_WORKER: ${{ runner.temp }}/smlib-native/ifclite_smlib_worker
+        run: python3 scripts/retained-source-review-oracle.py native
       - name: Actual native retained product transactions
         id: processing-retained
         continue-on-error: true
@@ -250,6 +258,8 @@ jobs:
           ref: 3b3963d86a5c97adaf6eaa845cdfe0b811c2f960
           path: emsdk
           persist-credentials: false
+      - name: Build the canonical WASM package and the opt-in retained bundle
+        run: BUILD_RETAINED=1 bash scripts/build-wasm.sh
       - name: Build the browser module-Worker boundary (Emscripten 4.0.15)
         run: |
           emsdk/emsdk install 4.0.15
@@ -303,6 +313,12 @@ jobs:
             --emscripten "$GITHUB_WORKSPACE/emsdk/upstream/emscripten" \
             --inputs "$RUNNER_TEMP/retained-inputs.json" --out "$GITHUB_WORKSPACE/rust/wasm-bindings/smlib"
           echo "IFCLITE_REAL_CHROMEDRIVER=$(command -v chromedriver)" >> "$GITHUB_ENV"
+      - name: Observe actual Worker source backing reverse mutations
+        id: browser-source-review
+        continue-on-error: true
+        env:
+          WASM_BINDGEN_TEST_TIMEOUT: 300
+        run: python3 scripts/retained-source-review-oracle.py browser
       - name: Actual module-Worker retained browser executor (ifc-lite-wasm)
         id: browser-runtime
         continue-on-error: true
@@ -320,6 +336,9 @@ jobs:
           grep -F "REGION_3641_SOURCE_VOLUME_SECTION_PROVENANCE_EXECUTED" "$RUNNER_TEMP/retained-browser.log"
           grep -F "retained_browser_j5_owned_source_binding_is_consumed_for_two_mapped_sources ... ok" "$RUNNER_TEMP/retained-browser.log"
           grep -F "retained_browser_j5_reflected_mapped_source_binding_is_consumed ... ok" "$RUNNER_TEMP/retained-browser.log"
+          for witness in source_low_live_account_refuses_backing source_low_copy_account_refuses_backing multiple_affine_backing_follows_shared_proof_lifetime owned_affine_low_account_propagates_terminal; do
+            grep -F "retained_browser_j5_${witness} ... ok" "$RUNNER_TEMP/retained-browser.log"
+          done
       - name: Committed declarations match both bundles
         id: generated-types
         continue-on-error: true
@@ -341,6 +360,8 @@ jobs:
       - name: Require every independent result
         if: always()
         env:
+          NATIVE_SOURCE_REVIEW: ${{ steps.native-source-review.outcome }}
+          BROWSER_SOURCE_REVIEW: ${{ steps.browser-source-review.outcome }}
           SOURCE_BINDING_WIRE: ${{ steps.source-binding-wire.outcome }}
           NATIVE_SOURCE_BINDING: ${{ steps.native-source-binding.outcome }}
           NATIVE_CTEST: ${{ steps.native-ctest.outcome }}
@@ -369,7 +390,7 @@ jobs:
           RETAINED_CLIPPY: ${{ steps.retained-clippy.outcome }}
         run: |
           failed=0
-          for lane in SOURCE_BINDING_WIRE NATIVE_SOURCE_BINDING NATIVE_CTEST PROCESSING_RETAINED RETAINED_MUTATIONS CLIP_MUTATIONS FINITE_HALFSPACE_MUTATIONS OPENING_MUTATIONS OPENING_SOURCE_MUTATION RETAINED_LAYER_SOURCE_MUTATIONS RETAINED_REGION_MUTATIONS PROFILE_SECTION_ORACLE RETAINED_NATIVE_CLIPPY NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY RETAINED_SOURCE_WINDING_ORACLE NATIVE_LINEAGE_ORACLE NATIVE_NORMAL_ORACLE NATIVE_PLANE_ORACLE NATIVE_OWNED_ORACLE; do
+          for lane in NATIVE_SOURCE_REVIEW BROWSER_SOURCE_REVIEW SOURCE_BINDING_WIRE NATIVE_SOURCE_BINDING NATIVE_CTEST PROCESSING_RETAINED RETAINED_MUTATIONS CLIP_MUTATIONS FINITE_HALFSPACE_MUTATIONS OPENING_MUTATIONS OPENING_SOURCE_MUTATION RETAINED_LAYER_SOURCE_MUTATIONS RETAINED_REGION_MUTATIONS PROFILE_SECTION_ORACLE RETAINED_NATIVE_CLIPPY NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY RETAINED_SOURCE_WINDING_ORACLE NATIVE_LINEAGE_ORACLE NATIVE_NORMAL_ORACLE NATIVE_PLANE_ORACLE NATIVE_OWNED_ORACLE; do
             printf '%s=%s\n' "$lane" "${!lane}"
             if [[ "${!lane}" != success ]]; then failed=1; fi
           done

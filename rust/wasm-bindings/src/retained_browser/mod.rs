@@ -312,3 +312,9 @@ mod source_binding_tests;
 
 #[cfg(all(test, target_arch = "wasm32"))]
 mod source_account_tests;
+
+#[cfg(target_arch = "wasm32")]
+mod mesh_admission;
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod source_terminal_tests;

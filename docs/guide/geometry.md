@@ -1065,3 +1065,14 @@ Boolean/clip ancestry, authored face-based representation support, final
 appearance and the other release obligations remain required. Exact execution
 remains the default. The private packet, bounds and qualification contract is
 in [SOURCE_BINDING_CONTRACT.md](../../native/smlib-adapter/SOURCE_BINDING_CONTRACT.md).
+
+The experimental source-bound native executor now uses
+`copy_retained_affine_accounted` for affine operations: its receipt retains the
+final tessellation and complete triangle correspondence under the caller's
+numerical limits and captured resource account. The lower-level copy-only API
+still exists, but inventory alone cannot satisfy source-bound product acceptance.
+Both browser construction and affine receipts admit typed-array backing before
+Rust deserialization. Mesh storage and shared triangle proofs own separate live
+reservations; dropping their last owners refunds live bytes, while cumulative
+copy costs remain charged. These paths still require actual SDK and Worker
+qualification; the existing strict tessellation hold is unchanged.

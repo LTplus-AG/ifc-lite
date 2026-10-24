@@ -66,7 +66,11 @@ impl AsyncRetainedExecutor for BrowserWorker {
         -> Result<Self::Receipt, RetainedExecutionError> {
         let max_bytes = u32::try_from(limits.max_bytes)
             .map_err(|_| RetainedExecutionError::Runtime("browser mesh budget exceeds u32".into()))?;
-        let source_accounted = self.source_faces_enabled;
+        let source_accounted = self.source_faces_enabled || match &call {
+            Invocation::Construction(request) => request.source_contract().is_some(),
+            Invocation::Affine { input, .. } => input.source_correspondence().is_some(),
+            _ => false,
+        };
         let invocation = async { match call {
             Invocation::UnaryClip { input, clip } => self.evaluate_retained_clip(input, clip, limits)
                 .await.map(|value| BrowserReceipt::UnaryClip(Box::new(value)))

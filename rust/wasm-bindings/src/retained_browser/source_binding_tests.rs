@@ -12,7 +12,7 @@ use ifc_lite_processing::element::{
     RuntimeProductExecution,
 };
 use wasm_bindgen_test::*;
-const SOURCE:&str="ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
+pub(super) const SOURCE:&str="ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
 #1=IFCPROJECT('p',$,$,$,$,$,$,(#2),#3);#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#5,$);
 #3=IFCUNITASSIGNMENT((#6));#4=IFCCARTESIANPOINT((0.,0.,0.));#5=IFCAXIS2PLACEMENT3D(#4,$,$);#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
 #9=IFCLOCALPLACEMENT($,#5);#10=IFCWALL('w',$,'Wall',$,$,#9,#11,$,$);#11=IFCPRODUCTDEFINITIONSHAPE($,$,(#12));

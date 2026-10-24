@@ -31,7 +31,7 @@ pub(super) fn display_mesh(data: &RetainedTessellation) -> Result<Mesh, Retained
         let point = indexed_point(data, index)?;
         let normal = &data.flat_corner_normals[corner * 3..corner * 3 + 3];
         let length = normal.iter().map(|n| n * n).sum::<f64>().sqrt();
-        if !length.is_finite() || (length - 1.0).abs() > 1e-8 {
+        if !length.is_finite() || (length - 1.0).abs() > crate::math::tol::RETAINED_NORMAL_UNIT_EPS {
             return Err(invalid("normal must be finite nonzero unit length"));
         }
         for (&p, &n) in point.iter().zip(normal) {

@@ -5,6 +5,7 @@
 //! The remaining Jordan boundary must pass the unchanged topology validator.
 //! No snapping, near-collinearity inference, or arbitrary vertex deletion.
 use super::*;
+use crate::math::tol::{RETAINED_REGION_CLEARANCE_FLOOR, RETAINED_REGION_JOIN_CEILING};
 use ifc_lite_core::{IfcType, slot};
 
 const MAX_EDGES: usize = 128;
@@ -57,8 +58,8 @@ impl RetainedProfileRegion {
             return Err("incomplete original boundary capture".into());
         }
         let decimal_authority = retained_region_decimal::prove(captured, original, decoder)?;
-        let clearance = raw_precision.map_or(1e-9, |(_, max)| max.max(1e-9));
-        let join = raw_precision.map_or(1e-9, |(min, _)| min.min(1e-9));
+        let clearance = raw_precision.map_or(RETAINED_REGION_CLEARANCE_FLOOR, |(_, max)| max.max(RETAINED_REGION_CLEARANCE_FLOOR));
+        let join = raw_precision.map_or(RETAINED_REGION_JOIN_CEILING, |(min, _)| min.min(RETAINED_REGION_JOIN_CEILING));
         let (boundary, edges, cancelled) = regularize(original, clearance, join, MAX_WORK)?;
         // Never label the original non-simple walk as a complete analytic region.
         authored.status = AnalyticStatus::Unsupported("authored non-simple walk; see retained region proof".into());

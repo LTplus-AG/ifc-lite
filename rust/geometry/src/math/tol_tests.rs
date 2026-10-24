@@ -56,6 +56,9 @@ fn values_are_the_shipped_literals() {
         ("RETAINED_CIRCLE_BASIS_EPS", RETAINED_CIRCLE_BASIS_EPS, 1e-12),
         ("RETAINED_RIGID_DOT_EPS", RETAINED_RIGID_DOT_EPS, 1e-10),
         ("RETAINED_DEPENDENCY_RIGID_EPS", RETAINED_DEPENDENCY_RIGID_EPS, 1e-12),
+        ("RETAINED_REGION_CLEARANCE_FLOOR", RETAINED_REGION_CLEARANCE_FLOOR, 1e-9),
+        ("RETAINED_REGION_JOIN_CEILING", RETAINED_REGION_JOIN_CEILING, 1e-9),
+        ("RETAINED_NORMAL_UNIT_EPS", RETAINED_NORMAL_UNIT_EPS, 1e-8),
     ];
     for (name, got, want) in pins {
         assert_eq!(got.to_bits(), want.to_bits(), "{name} moved: {got:e} != {want:e}");

@@ -263,3 +263,15 @@ pub const RETAINED_RIGID_DOT_EPS: f64 = 1e-10;
 /// existing proper-rigid admission at 1e-12; this is stricter than the authored
 /// source-placement tolerance and does not change the native/browser policy.
 pub const RETAINED_DEPENDENCY_RIGID_EPS: f64 = 1e-12;
+
+/// Separation floor for the isolated retained region spur, in raw profile
+/// model units. Authored maximum precision may require a larger clearance.
+pub const RETAINED_REGION_CLEARANCE_FLOOR: f64 = 1e-9;
+
+/// Join ceiling for retained region boundary validation, in raw profile model
+/// units. Authored minimum precision may require a tighter join threshold.
+pub const RETAINED_REGION_JOIN_CEILING: f64 = 1e-9;
+
+/// Maximum absolute length deviation of retained source corner normals from
+/// unity. Dimensionless; preserves the fixed pre-narrowing unit-normal guard.
+pub const RETAINED_NORMAL_UNIT_EPS: f64 = 1e-8;

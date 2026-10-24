@@ -1,0 +1,8 @@
+{
+  "license": "SPDX-License-Identifier: MPL-2.0",
+  "issue": 7955,
+  "face_area_absolute_m2": 0.000001,
+  "status": "Preregistered amendment after independent review, before any Rust semantic-face-area test execution",
+  "reason": "The initial tolerance file omitted face area. Review D9 rejected multiplying a distance tolerance by 12 without registration. This explicit 1e-6 m2 bound replaces that unregistered 1.2e-5 bound (tightens it); it is not calibrated from an engine area result. Original volume, position, UV and normal tolerances remain unchanged.",
+  "scope": "F-C box faces of area 2, 3 or 6 m2 in a small local coordinate frame; float32 position output"
+}

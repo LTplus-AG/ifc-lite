@@ -14,10 +14,12 @@ ROOT = Path(__file__).resolve().parent
 LICENSE = 'SPDX-License-Identifier: MPL-2.0'
 
 
-def arc(m, radius, start, end, sense=True):
-    pos = m.add('IFCAXIS2PLACEMENT2D', m.point((0, 0)), '$')
-    circle = m.add('IFCCIRCLE', pos, real(radius))
-    return m.add('IFCTRIMMEDCURVE', circle, f'(IFCPARAMETERVALUE({real(start)}))', f'(IFCPARAMETERVALUE({real(end)}))', '.T.' if sense else '.F.', '.PARAMETER.')
+def arc(m, radius, start, end):
+    # Rotate the basis so trims stay in [0, 2*pi). Avoid a seam-crossing
+    # negative parameter: independent geometry validation caught that ambiguity.
+    position = m.add('IFCAXIS2PLACEMENT2D', m.point((0, 0)), m.direction((math.cos(start), math.sin(start))))
+    circle = m.add('IFCCIRCLE', position, real(radius))
+    return m.add('IFCTRIMMEDCURVE', circle, '(IFCPARAMETERVALUE(0.))', f'(IFCPARAMETERVALUE({real(end-start)}))', '.T.', '.PARAMETER.')
 
 
 def band(m, a, b):
@@ -25,8 +27,8 @@ def band(m, a, b):
     def point(r, t):
         return m.point((r*math.cos(t), r*math.sin(t)))
     # Traversal: outer -45 -> +45, inner +45 -> -45.
-    pieces = [arc(m, b, lo, hi), m.add('IFCPOLYLINE', seq([point(b, hi), point(a, hi)])), arc(m, a, hi, lo, False), m.add('IFCPOLYLINE', seq([point(a, lo), point(b, lo)]))]
-    segments = [m.add('IFCCOMPOSITECURVESEGMENT', '.CONTINUOUS.', '.T.', p) for p in pieces]
+    pieces = [arc(m, b, lo, hi), m.add('IFCPOLYLINE', seq([point(b, hi), point(a, hi)])), arc(m, a, lo, hi), m.add('IFCPOLYLINE', seq([point(a, lo), point(b, lo)]))]
+    segments = [m.add('IFCCOMPOSITECURVESEGMENT', '.CONTINUOUS.', '.F.' if i == 2 else '.T.', p) for i, p in enumerate(pieces)]
     curve = m.add('IFCCOMPOSITECURVE', seq(segments), '.F.')
     profile = m.add('IFCARBITRARYCLOSEDPROFILEDEF', '.AREA.', '$', curve)
     return m.add('IFCEXTRUDEDAREASOLID', profile, m.axes, m.z, '3.')

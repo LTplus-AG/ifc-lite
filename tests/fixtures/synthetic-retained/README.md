@@ -78,5 +78,13 @@ use an existing IfcOpenShell Python environment (the tool installs nothing):
 validation output. A borrowed prebuilt CLI is explicitly not source-qualified
 validation of the current Rust head. The CLI's basic checks are not full EXPRESS
 schema validation. Missing IfcOpenShell exits with `UNRUN`, never a false pass.
+For independent geometry and a second numerical source integral, run
+`/path/to/python independent_geometry.py --report /path/to/volumes.json`.
+It uses IfcOpenShell geometry and integrates the decoded circular strip with
+Simpson quadrature; it does not import the generator or its antiderivative.
+Schema validation alone did not detect the first generator's seam-crossing
+trim ambiguity: geometry validation did. The corrected arcs rotate their basis
+and use nonnegative 0..pi/2 trims, with explicit RADIAN units.
+
 Independent adversarial review and native test receipts belong in the private
 handoff, not in fabricated generated golden output.

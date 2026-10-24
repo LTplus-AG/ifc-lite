@@ -7,59 +7,59 @@
     "f-a-curved.ifc": {
       "products": [
         {
-          "id": 51,
+          "id": 55,
           "role": "curved-layered-wall",
           "volume": 27.922091698768103,
-          "opening_id": 59,
-          "void_relation": 60
+          "opening_id": 63,
+          "void_relation": 64
         },
         {
-          "id": 87,
+          "id": 93,
           "role": "band-0-uncut",
           "volume": 4.735950925286592,
           "band": 0,
           "cut": false
         },
         {
-          "id": 114,
+          "id": 122,
           "role": "band-0-cut",
           "volume": 4.53586832499433,
           "band": 0,
           "cut": true,
-          "opening_id": 121,
-          "void_relation": 122
+          "opening_id": 129,
+          "void_relation": 130
         },
         {
-          "id": 149,
+          "id": 159,
           "role": "band-1-uncut",
           "volume": 9.61327351998483,
           "band": 1,
           "cut": false
         },
         {
-          "id": 176,
+          "id": 188,
           "role": "band-1-cut",
           "volume": 9.213113136264191,
           "band": 1,
           "cut": true,
-          "opening_id": 183,
-          "void_relation": 184
+          "opening_id": 195,
+          "void_relation": 196
         },
         {
-          "id": 211,
+          "id": 225,
           "role": "band-2-uncut",
           "volume": 14.77333945350596,
           "band": 2,
           "cut": false
         },
         {
-          "id": 238,
+          "id": 254,
           "role": "band-2-cut",
           "volume": 14.173110237509581,
           "band": 2,
           "cut": true,
-          "opening_id": 245,
-          "void_relation": 246
+          "opening_id": 261,
+          "void_relation": 262
         }
       ],
       "bands": [
@@ -87,7 +87,7 @@
       ],
       "before_total": 29.122563898777383,
       "after_total": 27.922091698768103,
-      "material_usage": 22,
+      "material_usage": 23,
       "axis_radius": 10,
       "angular_span_radians": 1.5707963267948966,
       "height": 3,
@@ -108,11 +108,11 @@
     "f-b-mapped.ifc": {
       "products": [
         {
-          "id": 52,
+          "id": 53,
           "role": "plain",
           "volume": 6,
-          "map": 22,
-          "mapped_item": 46,
+          "map": 23,
+          "mapped_item": 47,
           "translation": [
             0,
             0,
@@ -144,11 +144,11 @@
           "nonuniform": false
         },
         {
-          "id": 63,
+          "id": 64,
           "role": "rotated",
           "volume": 6,
-          "map": 22,
-          "mapped_item": 57,
+          "map": 23,
+          "mapped_item": 58,
           "translation": [
             5,
             0,
@@ -180,11 +180,11 @@
           "nonuniform": false
         },
         {
-          "id": 74,
+          "id": 75,
           "role": "mirrored",
           "volume": 6,
-          "map": 22,
-          "mapped_item": 68,
+          "map": 23,
+          "mapped_item": 69,
           "translation": [
             10,
             0,
@@ -216,11 +216,11 @@
           "nonuniform": false
         },
         {
-          "id": 85,
+          "id": 86,
           "role": "nonuniform",
           "volume": 6,
-          "map": 22,
-          "mapped_item": 79,
+          "map": 23,
+          "mapped_item": 80,
           "translation": [
             15,
             0,
@@ -252,11 +252,11 @@
           "nonuniform": true
         },
         {
-          "id": 100,
+          "id": 101,
           "role": "red",
           "volume": 6,
-          "map": 22,
-          "mapped_item": 90,
+          "map": 23,
+          "mapped_item": 91,
           "translation": [
             20,
             0,
@@ -288,11 +288,11 @@
           "nonuniform": false
         },
         {
-          "id": 111,
+          "id": 112,
           "role": "door-left",
           "volume": 5,
-          "map": 22,
-          "mapped_item": 105,
+          "map": 23,
+          "mapped_item": 106,
           "translation": [
             25,
             0,
@@ -322,15 +322,15 @@
           ],
           "mirrored": false,
           "nonuniform": false,
-          "opening_id": 118,
-          "void_relation": 119
+          "opening_id": 119,
+          "void_relation": 120
         },
         {
-          "id": 130,
+          "id": 131,
           "role": "door-right",
           "volume": 5,
-          "map": 22,
-          "mapped_item": 124,
+          "map": 23,
+          "mapped_item": 125,
           "translation": [
             30,
             0,
@@ -360,15 +360,15 @@
           ],
           "mirrored": false,
           "nonuniform": false,
-          "opening_id": 137,
-          "void_relation": 138
+          "opening_id": 138,
+          "void_relation": 139
         },
         {
-          "id": 149,
+          "id": 150,
           "role": "palette",
           "volume": 6,
-          "map": 28,
-          "mapped_item": 143,
+          "map": 29,
+          "mapped_item": 144,
           "translation": [
             35,
             0,
@@ -400,11 +400,11 @@
           "nonuniform": false
         },
         {
-          "id": 160,
+          "id": 161,
           "role": "textured",
           "volume": 6,
-          "map": 40,
-          "mapped_item": 154,
+          "map": 41,
+          "mapped_item": 155,
           "translation": [
             40,
             0,
@@ -437,8 +437,8 @@
         }
       ],
       "palette": {
-        "face_set": 24,
-        "map": 26,
+        "face_set": 25,
+        "map": 27,
         "colours": [
           [
             1,
@@ -466,8 +466,8 @@
           2
         ]
       },
-      "texture_id": 31,
-      "texture_map": 33,
+      "texture_id": 32,
+      "texture_map": 34,
       "definition_groups": [
         [
           "plain",
@@ -499,7 +499,7 @@
       "mapped_boolean_limit": "Host opening subtraction over mapped geometry; not an IfcMappedItem used as an IfcBooleanOperand (not in the IFC4 select)."
     },
     "f-c-extrusion.ifc": {
-      "id": 26,
+      "id": 27,
       "GlobalId": "3RB3De501V1R1AmlBDyHxh",
       "volume": 6,
       "basis_columns": [
@@ -680,7 +680,7 @@
       "identity_limit": "Semantic-role keys are an external oracle, not an IFC face identifier or a claim of current persistent engine identity. Match by local oriented plane/extent, never mesh triangle index or STEP entity id."
     },
     "f-c-brep.ifc": {
-      "id": 1050,
+      "id": 1051,
       "GlobalId": "3RB3De501V1R1AmlBDyHxh",
       "volume": 6,
       "basis_columns": [
@@ -706,12 +706,12 @@
         2
       ],
       "source_face_ids": {
-        "x_min": 1025,
-        "y_max": 1028,
-        "x_max": 1031,
-        "y_min": 1034,
-        "top": 1037,
-        "bottom": 1040
+        "x_min": 1026,
+        "y_max": 1029,
+        "x_max": 1032,
+        "y_min": 1035,
+        "top": 1038,
+        "bottom": 1041
       },
       "face_roles": {
         "bottom": {
@@ -868,10 +868,10 @@
       "identity_limit": "Semantic-role keys are an external oracle, not an IFC face identifier or a claim of current persistent engine identity. Match by local oriented plane/extent, never mesh triangle index or STEP entity id."
     },
     "f-d-texture.ifc": {
-      "id": 27,
+      "id": 28,
       "volume": 0.16666666666666666,
-      "texture_id": 17,
-      "texture_map": 19,
+      "texture_id": 18,
+      "texture_map": 20,
       "url": "checker.png",
       "vertices": [
         [
@@ -962,24 +962,24 @@
       "bytes": 138
     },
     "f-a-curved.ifc": {
-      "sha256": "59e8bddb3476cbaec193234fc344d82f9dfcbf786faec1f4da8c17957d7eb28e",
-      "bytes": 13240
+      "sha256": "5e5f92069a9b8200f30d3f9fdf696417261477a1c898c7c124b860565e1df36f",
+      "bytes": 13953
     },
     "f-b-mapped.ifc": {
-      "sha256": "a7761f7a204ff48f3e7f8b2948838aff01dc67f17a798c962e51662f5881b4b6",
-      "bytes": 8677
+      "sha256": "874b621dab696d3b25464cd77fc56db469b35953ca72543f328248eb509ebf15",
+      "bytes": 8730
     },
     "f-c-extrusion.ifc": {
-      "sha256": "35f556a88341bcac9d6e68922c9304913733003200e58fb6a2feb24ece22346d",
-      "bytes": 1705
+      "sha256": "188d3821fa7a8372773dd46f55e985bd2c23efb09bef2ca38b14f91c6768e55b",
+      "bytes": 1756
     },
     "f-c-brep.ifc": {
-      "sha256": "9d9795df1657f8fe25daebc337e3200b4c9d8e0f63e134c06c79fcc5abdb3c93",
-      "bytes": 2688
+      "sha256": "72a520d07afa0eb4a1c3c94fcae91f0d83b3ccfb2b1a38e0471ef3edcf9d2307",
+      "bytes": 2742
     },
     "f-d-texture.ifc": {
-      "sha256": "89f4c3d2dc2b4ed1123e1ffb4407ab4cede4472af78faa0b42ad32d43b7fe2fb",
-      "bytes": 1921
+      "sha256": "0aaddea23c6f22f9366ccee24e234376fc6e6a2bb14080b37b6de5e7226b508e",
+      "bytes": 1972
     }
   }
 }

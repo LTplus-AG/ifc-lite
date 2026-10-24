@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/product/retained_structure.rs
++++ b/rust/geometry/src/program/product/retained_structure.rs
+@@ -79,10 +79,7 @@
+     // none can disappear here. Keep the exact reader's leniency out of S1.
+     for id in members.iter().filter_map(AttributeValue::as_entity_ref) {
+         crate::resource::check_current()?;
+-        let item = match decoder.decode_by_id(id) {
+-            Ok(item) => item,
+-            Err(_) => continue,
+-        };
++        let item = decoder.decode_by_id(id)?;
+         // The generated supported-schema hierarchy includes geometric,
+         // topological, styled and mapped items, including legacy subclasses.
+         // Category membership does not admit a new retained constructor.

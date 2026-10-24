@@ -164,3 +164,6 @@ ENDSEC;END-ISO-10303-21;",
         );
     }
 }
+
+#[path = "reference_tests.rs"]
+mod references;

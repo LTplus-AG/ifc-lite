@@ -41,15 +41,20 @@ pub(super) fn product_shape(
                     rep.id, rep.ifc_type
                 )));
             }
-            // Validate even a representation the meshed selector will skip:
-            // selection may exclude valid geometry, never conceal malformed Items.
-            reference_members(rep, 3, "Items")?;
+            // Resolve and classify even the Items the meshed selector will skip.
+            // This is shallow: no mapping targets or geometry children are read.
+            let members = reference_members(rep, 3, "Items")?;
+            item_targets(members, decoder)?;
         }
     }
     Ok(shape)
 }
 
-fn reference_members(entity: &DecodedEntity, index: usize, name: &str) -> Result<()> {
+fn reference_members<'a>(
+    entity: &'a DecodedEntity,
+    index: usize,
+    name: &str,
+) -> Result<&'a [AttributeValue]> {
     let members = entity
         .get(index)
         .and_then(AttributeValue::as_list)
@@ -63,6 +68,25 @@ fn reference_members(entity: &DecodedEntity, index: usize, name: &str) -> Result
             return Err(Error::geometry(format!(
                 "retained {name} on #{} contains a non-reference member",
                 entity.id
+            )));
+        }
+    }
+    Ok(members)
+}
+
+fn item_targets(members: &[AttributeValue], decoder: &mut EntityDecoder) -> Result<()> {
+    // reference_members has checked every token before this conversion, so
+    // none can disappear here. Keep the exact reader's leniency out of S1.
+    for id in members.iter().filter_map(AttributeValue::as_entity_ref) {
+        crate::resource::check_current()?;
+        let item = decoder.decode_by_id(id)?;
+        // The generated supported-schema hierarchy includes geometric,
+        // topological, styled and mapped items, including legacy subclasses.
+        // Category membership does not admit a new retained constructor.
+        if !item.ifc_type.is_subtype_of(IfcType::IfcRepresentationItem) {
+            return Err(Error::geometry(format!(
+                "retained Items contains non-IfcRepresentationItem #{} ({})",
+                item.id, item.ifc_type
             )));
         }
     }

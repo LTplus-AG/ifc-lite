@@ -1684,19 +1684,33 @@ them. A foreign reply is returned intact and does not advance the receiver.
 
 This increment admits direct extrusion and swept-disk recipes, preserves
 repeated occurrences and recorded STEP ids, and applies qualified rigid product
-placement. Unsupported source families, mappings, Booleans, custom processors,
-annotations and alignments refuse the traversal. Native targets support source
+placement. Selected items from unsupported source families, including mappings
+and Booleans, refuse the traversal; custom processors, annotations and alignments
+remain unsupported. A duplicate mapped representation skipped by the canonical
+selector is not admitted or evaluated. Native targets support source
 capture; wasm32 needs the existing `wasm_source_capture` feature. The default
 wasm build refuses retained admission.
 
 The root must be an `IfcProduct`; a real product with an absent (`$`)
 `Representation` may produce an empty construction plan. Retained admission
-checks the authored `Representations` and `Items` lists before reference-list
-decoding or representation selection can discard malformed members. A bad
-member or a referenced non-shape representation refuses the whole plan,
-including when a supported first item exists. Normal representation selection
-still applies to structurally valid source. The exact path keeps its existing
-decoding and selection behavior. Composed retained frames must remain finite,
+checks every authored `Representations` and `Items` list before representation
+selection. Lists must be nonempty and contain only reference tokens. Every
+representation reference must decode to `IfcShapeRepresentation` or
+`IfcTopologyRepresentation`; every authored `Items` reference must decode and
+belong to `IfcRepresentationItem` through the generated supported-schema type
+hierarchy, including legacy subclasses. Dangling references, decoding failures
+and wrong categories refuse the whole plan even after a valid first member or
+inside a skipped Axis, Topology or duplicate Mapped representation.
+
+This is shallow list, resolution and category validation, not complete EXPRESS
+schema validation: it does not certify declared-schema conformance, each
+representation type's item constraints, or the attributes and child references
+of unselected items. Normal selection still applies. In particular, unselected
+mapping sources/targets are not traversed, and a successful Body-only plan does
+not certify their semantics or complete the product. Category membership does
+not enable additional retained constructors or topology families; selected
+unsupported items still refuse. The exact path keeps its existing decoding and
+selection behavior. Composed retained frames must remain finite,
 including initial unit conversion; failed composition leaves the logical value's
 frames, occurrence slot and placement lineage unchanged and refuses the plan.
 

@@ -51,9 +51,30 @@ The S1 review corrections add independent mutations:
   failure-invariant tests must fail equality with the last valid value. Valid
   placements keep the same behavior; this isolates refusal-side state changes.
 
-`behaviour.oracle.patch` combines all of these and is selected by the existing
-CI workflow. A red combined run proves at least one assertion detected a
-regression; it does not establish independent observation of every mechanism.
+The skipped-reference P2 correction adds two independent mutations, retaining
+all ten earlier patch inputs unchanged:
+
+- `item-resolution.oracle.patch`: a shallow item decode failure is ignored,
+  keeping category rejection for successfully decoded items. Run the new
+  `structure::references::skipped_axis_later_dangling_reference_refuses_whole_plan`
+  witness (and its topology and duplicate-mapped counterparts). Its valid
+  Body-plus-Axis control must succeed with one reached Body operation; the
+  later `#999` must fail the whole-plan refusal assertion only under mutation.
+- `item-category.oracle.patch`: only the generated `IfcRepresentationItem`
+  subtype guard is disabled; shallow decoding remains required. The new
+  `structure::references::skipped_axis_later_wrong_item_category_refuses_whole_plan`
+  witness must fail its whole-plan refusal assertion for the later `#1`
+  (`IfcProject`) after valid `#53`. Topology and duplicate-mapped counterparts
+  also cover existing profile/map records and an unknown keyword. Selected Body
+  regressions and selected unsupported-family controls remain in the suite.
+
+`behaviour.oracle.patch` combines the original nine independent mutations and
+is selected by the existing CI workflow. It intentionally remains unchanged;
+run the two P2 mutations separately. A red combined run proves at least one
+assertion detected a regression; it does not establish independent observation
+of every mechanism. Require candidate baseline green, each independent mutant
+compiling and assertion-red, then restored candidate green with the same tests
+and tolerances. A blocked/NEVER RAN job is not qualification.
 
 Runtime red/green execution, strict workspace Clippy, workspace and wasm gates,
 base/branch performance and fresh independent review are **UNRUN by this

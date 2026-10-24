@@ -13,6 +13,8 @@ description = "Shared IFC processing pipeline and types used by server and FFI"
 keywords = ["ifc", "bim", "geometry", "pipeline", "aec"]
 categories = ["parsing", "algorithms"]
 readme = "../../README.md"
+# The read-only corpus diagnostic is local tooling, not a packaged Rust example.
+exclude = ["examples/retained_census.rs", "examples/retained_census/**"]
 
 [features]
 # Declare at S3, before model_context cfgs; no runtime-crate edge or S4 consumer.
@@ -59,6 +61,8 @@ nalgebra.workspace = true
 # #7955 private cfg(test) wire preflight AND typed decode require correctly
 # rounded binary64. Keep the normal dependency above unchanged (resolver = "2").
 serde_json = { workspace = true, features = ["float_roundtrip"] }
+# The excluded local census example can inspect the IFC inside fixture IFCZIPs.
+zip.workspace = true
 # Test-only (publish = false). Path-only: cargo strips it when packaging.
 ifc-lite-testkit = { path = "../testkit" }
 # `test_support::recv_or_diagnose` only - the shared worker watchdog, so the

@@ -103,3 +103,16 @@ test('R2-F2 imports require module prefixes; fetch paths have URL semantics (#79
     ['ifclite_smlib_browser.mjs', Buffer.from('import("module");')],
   ])), /Bare dynamic import/); // Generated Node exception needs its real syntax profile.
 });
+
+test('R3-F2 distinct document/worker/module bases cannot be inferred from a raw fetch string (#7955)', () => {
+  const documentBase = 'https://host.invalid/pages/test.html';
+  const workerBase = 'https://host.invalid/workers/main.mjs';
+  const moduleBase = 'https://host.invalid/smlib/pkg-retained/nested/entry.mjs';
+  assert.equal(new Set([documentBase, workerBase, moduleBase].map(base => new URL('./payload.wasm', base).href)).size, 3);
+  const assets = new Map([
+    ['pkg-retained/nested/entry.mjs', Buffer.from("fetch('./payload.wasm');")],
+    ['pkg-retained/nested/payload.wasm', Buffer.from('module fixture')],
+    ['payload.wasm', Buffer.from('other fixture')],
+  ]);
+  assert.throws(() => dependencies(assets), /execution.context.relative/);
+});

@@ -281,3 +281,34 @@ test('R2-F1/F2 visible literal chains and explicit relative imports record and s
     ['pkg-retained/payload.wasm', 'pkg-retained/runtime.mjs']);
   await verifyRetainedAssets(o.out, inputs);
 });
+
+// Parent review R3-F1/F2: both module-relative and context-relative candidates
+// exist. Wrong-base acceptance cannot hide behind a missing asset.
+for (const [label, source] of [
+  ['href mutation', "const url=new URL('./payload.wasm',import.meta.url); url.href='https://unlisted.invalid/runtime.wasm'; fetch(url);"],
+  ['computed property mutation', "const url=new URL('./payload.wasm',import.meta.url); url['pathname']=globalThis.path; fetch(url);"],
+  ['URL object alias', "const url=new URL('./payload.wasm',import.meta.url); const alias=url; alias.host='unlisted.invalid'; fetch(url);"],
+  ['URL object escape', "const url=new URL('./payload.wasm',import.meta.url); mutate(url); fetch(url);"],
+  ['URL object method mutation', "const url=new URL('./payload.wasm',import.meta.url); url.searchParams.set('file',globalThis.path); fetch(url);"],
+  ['unproved stored URL', "const url=new URL('./payload.wasm',import.meta.url); fetch(url);"],
+  ['relative fetch', "fetch('./payload.wasm');"],
+  ['relative const fetch', "const path='./payload.wasm'; const copy=path; fetch(copy);"],
+  ['relative Worker', "new Worker('./runtime.mjs',{type:'module'});"],
+  ['relative SharedWorker', "new SharedWorker('./runtime.mjs');"],
+  ['relative importScripts', "importScripts('./runtime.mjs');"],
+]) test(`R3-F1/F2 ${label} refuses record and stage without output (#7955)`, async t => {
+  const o = await fixture(t);
+  await mkdir(join(o.engine, 'nested'));
+  await writeFile(join(o.engine, 'nested/entry.mjs'), source);
+  for (const dir of [o.engine, join(o.engine, 'nested')]) {
+    await writeFile(join(dir, 'payload.wasm'), Buffer.from([0,97,115,109,1,0,0,0]));
+    await writeFile(join(dir, 'runtime.mjs'), 'export {};');
+  }
+  const record = join(o.out, '../refused-url.json');
+  const refusal = /URL object|execution.context.relative|Unresolved asset locator/;
+  await assert.rejects(stageRetainedBrowserAssets({ ...o, record, inputs: undefined, out: undefined }), refusal);
+  await assert.rejects(stageRetainedBrowserAssets(o), refusal);
+  await assert.rejects(access(record), /ENOENT/);
+  await assert.rejects(access(o.out), /ENOENT/);
+  assert.equal((await readdir(join(o.out, '..'))).filter(name => name.startsWith('.smlib-stage-')).length, 0);
+});

@@ -27,7 +27,7 @@ async function fixture(t) {
   const revision = git('rev-parse', 'HEAD');
   await writeFile(join(adapter, 'CMakeLists.txt'), `set(IFCLITE_SMLIB_REVISION ${revision})\n`);
   // Use actual canonical browser modules, not an imitation transport implementation.
-  for (const name of ['client', 'worker', 'module', 'contract', 'sweep', 'sweep-contract']) {
+  for (const name of ['client', 'worker', 'module', 'contract', 'sweep', 'sweep-contract', 'dependency-contract']) {
     const bytes = await readFile(resolve(`native/smlib-adapter/browser/${name}.mjs`));
     await writeFile(join(adapter, `browser/${name}.mjs`), bytes);
     await writeFile(join(build, `${name}.mjs`), bytes);
@@ -44,8 +44,8 @@ test('stages exact bytes, licenses and checkable hashes without executing genera
   const manifest = await stageRetainedBrowserAssets(options);
   assert.equal(manifest.qualified, false);
   assert.equal(manifest.buildAttestation, false);
-  assert.equal(manifest.assets.length, 10);
-  assert.equal((await readdir(options.out)).length, 11);
+  assert.equal(manifest.assets.length, 11);
+  assert.equal((await readdir(options.out)).length, 12);
   for (const asset of manifest.assets) {
     const bytes = await readFile(join(options.out, asset.path));
     assert.equal(bytes.length, asset.bytes);
@@ -81,4 +81,12 @@ test('refuses changed SDK source, non-WASM output, foreign CMake source and sour
   await assert.rejects(stageRetainedBrowserAssets({ ...options, out: join(options.sdk, '..hidden') }), /overlap/);
   await writeFile(join(options.build, 'CMakeCache.txt'), `CMAKE_HOME_DIRECTORY:INTERNAL=${options.sdk}\nSMLIB_SOURCE:PATH=${options.sdk}\n`);
   await assert.rejects(stageRetainedBrowserAssets(options), /different adapter or SDK/);
+});
+
+// #7955 BROWSER01: packaging must carry the executable dependency witness.
+test('dependency witness is staged and stale witness refuses publication', async t => {
+  const options = await fixture(t);
+  await writeFile(join(options.build, 'dependency-contract.mjs'), 'stale witness');
+  await assert.rejects(stageRetainedBrowserAssets(options), /Stale configured module dependency-contract/);
+  await assert.rejects(access(options.out), /ENOENT/);
 });

@@ -317,6 +317,8 @@ nav:
         - Review Workflow: architecture/layer-prs/08-review.md
         - CLI & CI: architecture/layer-prs/09-cli.md
         - Registry: architecture/layer-prs/10-registry.md
+    - IFC Git:
+        - Overview: architecture/ifc-git/index.md
   - API Reference:
     - Search API symbols: api/reference.md
     - TypeScript API: api/typescript.md

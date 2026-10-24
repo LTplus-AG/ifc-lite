@@ -81,7 +81,7 @@ impl AddState<'_> {
         self.placement_of_added.insert(id, None);
         self.added.insert(global_id.encode(), Added { id, class });
         if !maps.is_empty() {
-            self.type_maps.insert(id, maps.into());
+            self.type_maps.get_mut().insert(id, maps.into());
         }
     }
 }

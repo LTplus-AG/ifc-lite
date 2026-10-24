@@ -58,10 +58,9 @@ pub(crate) struct AddState<'a> {
     /// New materials, classifications and units the built Adds wrote, by
     /// description, for later Adds to reuse.
     shared: HashMap<SharedKey, u32>,
-    /// The `Body` maps of each type this plan added with a representation.
-    type_maps: HashMap<u32, Rc<[MapRef]>>,
-    /// The `Body` maps of source types, read once each.
-    source_maps: RefCell<HashMap<u32, Rc<[MapRef]>>>,
+    /// The `Body` maps of each type an occurrence named or this plan added,
+    /// once looked up.
+    type_maps: RefCell<HashMap<u32, Rc<[MapRef]>>>,
 }
 
 impl<'a> AddState<'a> {
@@ -91,8 +90,7 @@ impl<'a> AddState<'a> {
             rels: RelAccumulator::new(index, removed),
             records: Vec::new(),
             shared: HashMap::new(),
-            type_maps: HashMap::new(),
-            source_maps: RefCell::new(HashMap::new()),
+            type_maps: RefCell::new(HashMap::new()),
         }
     }
 

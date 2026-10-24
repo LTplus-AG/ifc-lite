@@ -52,39 +52,75 @@ impl AddState<'_> {
     }
 
     /// The `Body` maps of type `id`: the ones this plan wrote for it, else
-    /// the ones it has in the source (read once per type), skipping any this
-    /// plan deletes. Adds run after every delete has settled, so the answer
-    /// does not change during them.
+    /// the ones it has in the source, read once per type (an empty answer
+    /// too). Adds run after every delete has settled, so the answer does not
+    /// change during them.
     fn type_maps_of(&self, id: u32, what: &ObjectRef) -> Result<Rc<[MapRef]>, String> {
-        if let Some(maps) = self.type_maps.get(&id).or(self.source_maps.borrow().get(&id)) {
-            return Ok(maps.clone());
-        }
-        let maps = if self.index.contains(id) { self.source_type_maps(id) } else { Vec::new() };
+        let cached = self.type_maps.borrow().get(&id).cloned();
+        let maps = match cached {
+            Some(maps) => maps,
+            None => {
+                let maps: Rc<[MapRef]> = if self.index.contains(id) { self.source_type_maps(id, what)?.into() } else { Rc::from([]) };
+                self.type_maps.borrow_mut().insert(id, maps.clone());
+                maps
+            }
+        };
         if maps.is_empty() {
             return Err(format!("type {what} has no Body representation map"));
         }
-        let maps: Rc<[MapRef]> = maps.into();
-        self.source_maps.borrow_mut().insert(id, maps.clone());
         Ok(maps)
     }
 
-    fn source_type_maps(&self, id: u32) -> Vec<MapRef> {
+    /// A source type's `Body` maps in one context: the plan's body context
+    /// when the type has maps there, else the first context it has. A type
+    /// that keeps one body per level of detail has a map per subcontext; an
+    /// occurrence instances one of them, not all. A map this plan deletes
+    /// part of is refused rather than leaving the copy part of its body.
+    fn source_type_maps(&self, id: u32, what: &ObjectRef) -> Result<Vec<MapRef>, String> {
         let (schema, index) = (self.schema, self.index);
-        let live = |r: &u32| !self.removed.contains(r);
         let entity = |r: u32| index.type_of(r).unwrap_or_default();
         let maps = list_attr(index, schema, id, &entity(id), "RepresentationMaps").unwrap_or_default();
-        let mut out = Vec::new();
-        for map in maps.into_iter().filter(live) {
-            let Some(rep) = scalar_attr(index, schema, map, &entity(map), "MappedRepresentation").filter(live) else { continue };
-            let rep_entity = entity(rep);
-            if index.string_attr(schema, rep, &rep_entity, "RepresentationIdentifier").as_deref() != Some("Body") {
+        let mut body = Vec::new();
+        for map in maps {
+            let rep = scalar_attr(index, schema, map, &entity(map), "MappedRepresentation");
+            let Some(rep) = rep else { continue };
+            if !self.is_body(rep) {
                 continue;
             }
-            if let Some(context) = scalar_attr(index, schema, rep, &rep_entity, "ContextOfItems").filter(live) {
-                out.push((map, context));
+            let context = scalar_attr(index, schema, rep, &entity(rep), "ContextOfItems");
+            match context {
+                Some(context) if ![map, rep, context].iter().any(|r| self.removed.contains(r)) => body.push((map, context)),
+                _ => return Err(format!("a Body map of type {what} is deleted by this plan")),
             }
         }
-        out
+        let chosen = body.iter().map(|&(_, c)| c).find(|&c| Some(c) == self.body_context).or(body.first().map(|&(_, c)| c));
+        Ok(body.into_iter().filter(|&(_, c)| Some(c) == chosen).collect())
+    }
+
+    /// Whether representation `rep` is body geometry, the way the geometry
+    /// engine decides it (`rust/geometry/src/representation/select.rs`): by
+    /// its `RepresentationType`, else its identifier.
+    fn is_body(&self, rep: u32) -> bool {
+        let entity = self.index.type_of(rep).unwrap_or_default();
+        let read = |attr| self.index.string_attr(self.schema, rep, &entity, attr).filter(|s| !s.trim().is_empty());
+        let effective = read("RepresentationType").or_else(|| read("RepresentationIdentifier"));
+        matches!(
+            effective.as_deref(),
+            Some(
+                "Body"
+                    | "SweptSolid"
+                    | "Brep"
+                    | "CSG"
+                    | "Clipping"
+                    | "Tessellation"
+                    | "MappedRepresentation"
+                    | "SolidModel"
+                    | "SurfaceModel"
+                    | "Surface3D"
+                    | "AdvancedSweptSolid"
+                    | "AdvancedBrep"
+            )
+        )
     }
 }
 
@@ -132,7 +168,8 @@ pub(super) fn mapped_shape(emit: &mut Emit, shared: &mut Shared, maps: &[MapRef]
 /// translation, its scale 1.
 fn transformation_operator(emit: &mut Emit, shared: &mut Shared, m: &[[f64; 4]; 4]) -> Result<u32, String> {
     let column = |c: usize| [m[0][c], m[1][c], m[2][c]];
-    let key = SharedKey::Operator(std::array::from_fn(|i| m[i % 3][i / 3].to_bits()));
+    // `+ 0.0` folds -0.0 into 0.0, so an identical transform shares a key.
+    let key = SharedKey::Operator(std::array::from_fn(|i| (m[i % 3][i / 3] + 0.0).to_bits()));
     shared.get_or(key, || {
         let (x, y, z) = (emit.direction(column(0))?, emit.direction(column(1))?, emit.direction(column(2))?);
         let origin = emit.point(column(3))?;

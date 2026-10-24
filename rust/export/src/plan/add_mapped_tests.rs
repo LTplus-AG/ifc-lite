@@ -259,3 +259,70 @@ fn copies_at_the_same_transform_share_one_operator() {
     assert_clean(&report, "IFC4");
     assert_eq!((count(&out, "IFCMAPPEDITEM"), count(&out, "IFCCARTESIANTRANSFORMATIONOPERATOR3D")), (3, 1));
 }
+
+/// `type_with_maps` with a second Body map, `#320`, in a second 3D context
+/// `#330`, as a type keeping one body per level of detail does.
+fn type_with_two_bodies(schema: &str) -> Vec<u8> {
+    let r = |id, entity, fields: &[(&str, &str)]| {
+        let fields: Vec<(&str, String)> = fields.iter().map(|&(n, v)| (n, v.to_string())).collect();
+        build_record(schema, id, entity, &fields) + "\n"
+    };
+    let extra = [
+        r(320, "IFCREPRESENTATIONMAP", &[("MappingOrigin", "#301"), ("MappedRepresentation", "#321")]),
+        r(321, "IFCSHAPEREPRESENTATION", &[("ContextOfItems", "#330"), ("RepresentationIdentifier", "'Body'"), ("RepresentationType", "'SweptSolid'"), ("Items", "(#303)")]),
+        r(330, "IFCGEOMETRICREPRESENTATIONCONTEXT", &[("ContextType", "'Model'"), ("CoordinateSpaceDimension", "3"), ("Precision", "1.E-05"), ("WorldCoordinateSystem", "#301")]),
+    ]
+    .concat();
+    let text = String::from_utf8(type_with_maps(schema)).unwrap().replace("(#300,#310)", "(#300,#310,#320)");
+    text.replacen("ENDSEC;\nEND-ISO", &format!("{extra}ENDSEC;\nEND-ISO"), 1).into_bytes()
+}
+
+/// One context's Body maps are instanced, the plan's body context first:
+/// a level-of-detail alternative is not drawn on top.
+#[test]
+fn only_one_contexts_body_maps_are_instanced() {
+    for schema in SCHEMAS {
+        let source = type_with_two_bodies(schema);
+        let (out, report) = run(&source, vec![add(mapped_wall(1, TypeLink::Existing(ObjectRef::Id(40)), IDENTITY))]);
+        assert_clean(&report, schema);
+        let items = ids_of_type(&out, "IFCMAPPEDITEM");
+        assert_eq!(items.len(), 1, "{schema}");
+        let mut decoder = ifc_lite_core::EntityDecoder::new(&out);
+        assert_eq!(decoder.decode_by_id(items[0]).unwrap().get_ref(0), Some(300), "{schema}: the map in the body context #100");
+    }
+}
+
+/// A representation without an identifier is body geometry when its type
+/// says so, as the geometry engine reads it.
+#[test]
+fn a_map_without_an_identifier_is_body_by_its_type() {
+    for schema in SCHEMAS {
+        let source = String::from_utf8(type_with_maps(schema)).unwrap().replace("(#100,'Body','SweptSolid',(#303))", "(#100,$,'SweptSolid',(#303))");
+        assert!(source.contains("(#100,$,'SweptSolid',(#303))"), "{schema}: fixture");
+        let (out, report) = run(source.as_bytes(), vec![add(mapped_wall(1, TypeLink::Existing(ObjectRef::Id(40)), IDENTITY))]);
+        assert_clean(&report, schema);
+        assert_eq!(count(&out, "IFCMAPPEDITEM"), 1, "{schema}");
+    }
+}
+
+/// -0.0 and 0.0 are one transform.
+#[test]
+fn a_negative_zero_shares_the_operator() {
+    let source = type_with_maps("IFC4");
+    let mut negative = IDENTITY;
+    negative[0][1] = -0.0;
+    let link = || TypeLink::Existing(ObjectRef::Id(40));
+    let (out, report) = run(&source, vec![add(mapped_wall(1, link(), IDENTITY)), add(mapped_wall(2, link(), negative))]);
+    assert_clean(&report, "IFC4");
+    assert_eq!(count(&out, "IFCCARTESIANTRANSFORMATIONOPERATOR3D"), 1);
+}
+
+/// A plan that deletes part of the type's Body map refuses the copy rather
+/// than give it part of a body.
+#[test]
+fn a_body_map_the_plan_deletes_part_of_refuses_the_copy() {
+    let source = type_with_maps("IFC4");
+    let (_, report) = run(&source, vec![(ObjectRef::Id(302), Disposition::Delete), add(mapped_wall(1, TypeLink::Existing(ObjectRef::Id(40)), IDENTITY))]);
+    let refusal = report.refusals.iter().find(|r| r.object == ObjectRef::Guid(gid(1).encode()));
+    assert!(refusal.is_some_and(|r| r.reason.contains("deleted by this plan")), "{:?}", report.refusals);
+}

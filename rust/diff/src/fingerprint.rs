@@ -30,6 +30,7 @@
 
 use std::collections::BTreeMap;
 use crate::JsString;
+use crate::sparse_collection::SparseCollection;
 
 use crate::input::{DataFingerprintInput, PropertyEntryInput, PropertyValue};
 use crate::js_json::{non_finite_token, stringify, stringify_sorted, JsonValue};
@@ -133,9 +134,9 @@ fn cmp_name_then_content(a: (&JsString, &JsonValue), b: (&JsString, &JsonValue))
     })
 }
 
-fn sorted_entries(entries: &[PropertyEntryInput]) -> Vec<NamedEntry> {
+fn sorted_entries(entries: &SparseCollection<PropertyEntryInput>) -> Vec<JsonValue> {
     let mut normalized: Vec<NamedEntry> = entries
-        .iter()
+        .present()
         .map(|entry| NamedEntry {
             name: entry.name.clone(),
             value: normalize_value(&entry.value),
@@ -144,7 +145,7 @@ fn sorted_entries(entries: &[PropertyEntryInput]) -> Vec<NamedEntry> {
     normalized.sort_by(|a, b| {
         cmp_name_then_content((&a.name, &a.to_json()), (&b.name, &b.to_json()))
     });
-    normalized
+    with_holes(normalized.into_iter().map(|entry| entry.to_json()).collect(), entries.holes())
 }
 
 /// The direct-attribute slice, in one place because two functions hash it and
@@ -163,12 +164,12 @@ fn core_attributes(input: &DataFingerprintInput) -> Vec<(JsString, JsonValue)> {
 
 /// A set's canonical JSON form: `{ name, <members-key>: [...] }`, in that
 /// order, because the key order is part of the hashed format.
-fn set_to_json(name: &JsString, members_key: &str, members: &[NamedEntry]) -> JsonValue {
+fn set_to_json(name: &JsString, members_key: &str, members: &[JsonValue]) -> JsonValue {
     JsonValue::Object(vec![
         ("name".into(), JsonValue::String(name.clone())),
         (
             members_key.into(),
-            JsonValue::Array(members.iter().map(NamedEntry::to_json).collect()),
+            JsonValue::Array(members.to_vec()),
         ),
     ])
 }
@@ -176,7 +177,7 @@ fn set_to_json(name: &JsString, members_key: &str, members: &[NamedEntry]) -> Js
 fn sorted_property_sets(input: &DataFingerprintInput) -> Vec<(JsString, JsonValue)> {
     let mut sets: Vec<(JsString, JsonValue)> = input
         .property_sets
-        .iter()
+        .present()
         .map(|set| {
             let members = sorted_entries(&set.properties);
             (set.name.clone(), set_to_json(&set.name, "properties", &members))
@@ -189,7 +190,7 @@ fn sorted_property_sets(input: &DataFingerprintInput) -> Vec<(JsString, JsonValu
 fn sorted_quantity_sets(input: &DataFingerprintInput) -> Vec<(JsString, JsonValue)> {
     let mut sets: Vec<(JsString, JsonValue)> = input
         .quantity_sets
-        .iter()
+        .present()
         .map(|set| {
             let members = sorted_entries(&set.quantities);
             (set.name.clone(), set_to_json(&set.name, "quantities", &members))
@@ -212,7 +213,7 @@ fn sorted_quantity_sets(input: &DataFingerprintInput) -> Vec<(JsString, JsonValu
 fn sorted_type_assignments(input: &DataFingerprintInput) -> Vec<JsonValue> {
     let mut projected: Vec<(JsString, JsString)> = input
         .type_assignments
-        .iter()
+        .present()
         .map(|assignment| {
             (
                 assignment.name.clone().unwrap_or_default(),
@@ -221,7 +222,7 @@ fn sorted_type_assignments(input: &DataFingerprintInput) -> Vec<JsonValue> {
         })
         .collect();
     projected.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
-    projected
+    let values = projected
         .into_iter()
         .map(|(name, type_name)| {
             JsonValue::Object(vec![
@@ -229,7 +230,13 @@ fn sorted_type_assignments(input: &DataFingerprintInput) -> Vec<JsonValue> {
                 ("type".into(), JsonValue::String(type_name)),
             ])
         })
-        .collect()
+        .collect();
+    with_holes(values, input.type_assignments.holes())
+}
+
+fn with_holes(mut values: Vec<JsonValue>, holes: usize) -> Vec<JsonValue> {
+    values.extend(std::iter::repeat_n(JsonValue::Hole, holes));
+    values
 }
 
 fn string_array(values: &[JsString]) -> JsonValue {
@@ -251,11 +258,11 @@ pub fn build_data_fingerprint(input: &DataFingerprintInput) -> String {
     ));
     object.push((
         "PropertySets".into(),
-        JsonValue::Array(sorted_property_sets(input).into_iter().map(|(_, v)| v).collect()),
+        JsonValue::Array(with_holes(sorted_property_sets(input).into_iter().map(|(_, v)| v).collect(), input.property_sets.holes())),
     ));
     object.push((
         "QuantitySets".into(),
-        JsonValue::Array(sorted_quantity_sets(input).into_iter().map(|(_, v)| v).collect()),
+        JsonValue::Array(with_holes(sorted_quantity_sets(input).into_iter().map(|(_, v)| v).collect(), input.quantity_sets.holes())),
     ));
 
     let materials = sorted_string_list(&input.materials);
@@ -292,7 +299,13 @@ pub fn build_component_fingerprints(input: &DataFingerprintInput) -> BTreeMap<Js
 
 /// JavaScript Map insertion order, including first-position/last-value updates
 /// for duplicate component keys. The WASM object boundary consumes this form.
+///
+/// Panics for outer property/quantity-set holes: component iteration requires
+/// a set name. The public JS facade raises its original host TypeError before
+/// crossing this boundary, while native callers must supply named outer sets.
 pub fn build_component_fingerprint_entries(input: &DataFingerprintInput) -> Vec<(JsString, String)> {
+    assert_eq!(input.property_sets.holes(), 0, "component property sets require present records");
+    assert_eq!(input.quantity_sets.holes(), 0, "component quantity sets require present records");
     let mut components = OrderedComponents(Vec::new());
 
     components.insert(
@@ -357,3 +370,7 @@ fn member_array(set: &JsonValue, members_key: &str) -> JsonValue {
     }
     JsonValue::Array(Vec::new())
 }
+
+#[cfg(test)]
+#[path = "fingerprint_sparse_tests.rs"]
+mod sparse_tests;

@@ -33,7 +33,9 @@ fn issue_8042_document_dto_preserves_negative_zero_and_nonfinite_property_number
                 ])])),
             ])])),
         ])).unwrap();
-        let PropertyValue::Number(actual) = input.property_sets[0].properties[0].value else { panic!("expected number") };
+        let set = input.property_sets.present().next().expect("present property set");
+        let entry = set.properties.present().next().expect("present property");
+        let PropertyValue::Number(actual) = entry.value else { panic!("expected number") };
         assert_eq!(actual.to_bits(), number.to_bits());
     }
 }

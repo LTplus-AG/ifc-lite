@@ -35,6 +35,8 @@ pub(super) struct ProductState<'j> {
     pub(super) job: &'j ElementMeshJob<'j>,
     pub(super) stage: Stage<'j>,
     pub(super) element_color: [f32; 4],
+    /// `MeshProductionOptions::presentation_provenance`, read at planning.
+    pub(super) provenance: bool,
     pub(super) keep_order: bool,
     /// Resumable-only state (`session_resumable`); no shipped method reads it.
     /// `None` once an unwind or a failed owner commit poisoned a resumable product.
@@ -51,7 +53,8 @@ pub(super) struct ProductState<'j> {
     terminal: Option<ProgramStop>,
 }
 
-pub(super) type Planned<'j> = ((PlanKind<'j>, [f32; 4]), Option<GeometryHasher>, bool);
+/// (plan, element colour), hasher, keep triangle order, record presentation provenance.
+pub(super) type Planned<'j> = ((PlanKind<'j>, [f32; 4]), Option<GeometryHasher>, bool, bool);
 
 impl<'j> ProductState<'j> {
     /// Plan inside the driver's open epoch and scopes.
@@ -77,8 +80,8 @@ impl<'j> ProductState<'j> {
         context: Option<ProductionContextId>,
         live: Option<Live>,
     ) -> Self {
-        let ((kind, element_color), hasher, keep_order) =
-            planned.unwrap_or(((PlanKind::NoRepresentation, [0.; 4]), None, false));
+        let ((kind, element_color), hasher, keep_order, provenance) =
+            planned.unwrap_or(((PlanKind::NoRepresentation, [0.; 4]), None, false, false));
         let stage = match kind {
             PlanKind::NoRepresentation => Stage::Complete,
             PlanKind::TypeMaps(maps) => Stage::TypeMaps(maps.iter()),
@@ -89,6 +92,7 @@ impl<'j> ProductState<'j> {
             stage,
             element_color,
             keep_order,
+            provenance,
             #[cfg(test)]
             scopes: None,
             #[cfg(test)]
@@ -278,7 +282,8 @@ pub(super) fn plan_in_scope<'j>(
     let order = TriangleOrderScope::new(router, keep_order);
     let plan = plan::plan_element(job, ctx, decoder, router);
     let keep_order = order.finish();
-    (Some(((plan.kind, plan.element_color), hasher, keep_order)), resource::check_current().err())
+    let planned = ((plan.kind, plan.element_color), hasher, keep_order, opts.presentation_provenance);
+    (Some(planned), resource::check_current().err())
 }
 
 #[cfg(test)]

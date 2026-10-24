@@ -146,6 +146,12 @@ mod presentation_tests;
 mod presentation_palette_tests;
 
 #[cfg(test)]
+mod presentation_provenance_tests;
+
+#[cfg(test)]
+mod presentation_provenance_soundness_tests;
+
+#[cfg(test)]
 mod owned_context_tests;
 
 #[cfg(test)]

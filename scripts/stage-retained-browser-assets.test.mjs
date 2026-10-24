@@ -228,3 +228,56 @@ for (const [id, source] of [
   await assert.rejects(access(record), /ENOENT/);
   await assert.rejects(access(o.out), /ENOENT/);
 });
+
+// Independent review R2-F1/R2-F2: inspect real record and stage refusal paths,
+// with all tempting sibling assets present so missing files cannot mask a bug.
+for (const [label, source] of [
+  ['object parameter', 'const path="./payload.wasm"; function load({path}) { return fetch(path); } load({path:"https://unlisted.invalid/runtime.wasm"});'],
+  ['array parameter', 'const path="./payload.wasm"; function load([path]) { return fetch(path); }'],
+  ['nested renamed parameter', 'const path="./payload.wasm"; function load({item:{url:path}}) { return fetch(path); }'],
+  ['default/rest parameter', 'const path="./payload.wasm"; function load({url:path=globalThis.url}, ...rest) { return fetch(path); }'],
+  ['object block binding', 'const path="./payload.wasm"; { const {path}=globalThis.config; fetch(path); }'],
+  ['array block binding', 'const path="./payload.wasm"; { const [path]=globalThis.config; fetch(path); }'],
+  ['destructured catch', 'const path="./payload.wasm"; try { throw globalThis.config; } catch ({path}) { fetch(path); }'],
+  ['destructured loop', 'const path="./payload.wasm"; for (const {path} of globalThis.config) { fetch(path); }'],
+  ['array loop', 'const path="./payload.wasm"; for (const [path] of globalThis.config) { fetch(path); }'],
+  ['unused function const', 'function unused() { const path="./payload.wasm"; } fetch(path);'],
+  ['sibling block const', '{ const path="./payload.wasm"; } { fetch(path); }'],
+  ['loop visibility', 'for (const path="./payload.wasm"; false;) {} fetch(path);'],
+  ['before declaration', 'fetch(path); const path="./payload.wasm";'],
+  ['bare dynamic import', 'import("runtime.mjs");'],
+  ['dot-prefixed bare dynamic import', 'import(".runtime.mjs");'],
+  ['dot-prefixed bare static import', 'export * from ".runtime.mjs";'],
+]) test(`R2-F1/F2 ${label} refuses record and stage with no output (#7955)`, async t => {
+  const o = await fixture(t);
+  await writeFile(join(o.engine, 'scope.mjs'), source);
+  await writeFile(join(o.engine, 'payload.wasm'), Buffer.from([0,97,115,109,1,0,0,0]));
+  for (const name of ['runtime.mjs', '.runtime.mjs']) await writeFile(join(o.engine, name), 'export {};');
+  const record = join(o.out, '../refused-scope.json');
+  const refusal = /Unresolved asset locator|Bare .*import/;
+  await assert.rejects(stageRetainedBrowserAssets({ ...o, record, inputs: undefined, out: undefined }), refusal);
+  await assert.rejects(stageRetainedBrowserAssets(o), refusal);
+  await assert.rejects(access(record), /ENOENT/);
+  await assert.rejects(access(o.out), /ENOENT/);
+  assert.equal((await readdir(join(o.out, '..'))).filter(name => name.startsWith('.smlib-stage-')).length, 0);
+});
+
+test('R2-F1/F2 visible literal chains and explicit relative imports record and stage (#7955)', async t => {
+  const o = await fixture(t);
+  await writeFile(join(o.engine, 'scope.mjs'), `
+    const path = './payload.wasm';
+    const alias = path;
+    function load() { const url = new URL(alias, import.meta.url); return fetch(url); }
+    { const local = './runtime.mjs'; new Worker(new URL(local, import.meta.url)); }
+    import('./runtime.mjs');
+    export * from './runtime.mjs';
+  `);
+  await writeFile(join(o.engine, 'payload.wasm'), Buffer.from([0,97,115,109,1,0,0,0]));
+  await writeFile(join(o.engine, 'runtime.mjs'), 'export {};');
+  const inputs = join(o.out, '../scoped-inputs.json');
+  await stageRetainedBrowserAssets({ ...o, record: inputs, inputs: undefined, out: undefined });
+  const manifest = await stageRetainedBrowserAssets({ ...o, inputs });
+  assert.deepEqual(manifest.dependencies.filter(edge => edge.from === 'pkg-retained/scope.mjs').map(edge => edge.to),
+    ['pkg-retained/payload.wasm', 'pkg-retained/runtime.mjs']);
+  await verifyRetainedAssets(o.out, inputs);
+});

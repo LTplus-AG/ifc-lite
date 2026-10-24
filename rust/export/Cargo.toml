@@ -20,6 +20,9 @@ bytemuck = "1.25"
 serde.workspace = true
 serde_json = { workspace = true, features = ["float_roundtrip"] }
 nalgebra.workspace = true
+# PNG encode for opt-in glTF textures (#7955 J5). The default-on feature keeps
+# native glTF exports available; the workspace WASM consumer disables it.
+png = { workspace = true, optional = true }
 
 # Parquet/.bos export pulls native compression (zstd/snap) + a zip writer that do
 # NOT target wasm32 cleanly, so it is gated behind the `parquet-bos` feature and
@@ -31,7 +34,10 @@ parquet = { workspace = true, optional = true, features = ["snap", "zstd"] }
 zip = { workspace = true, optional = true }
 
 [features]
-default = []
+# Standalone/native builds retain textured GLB export. The default WASM engine
+# depends through the workspace with defaults off, avoiding the PNG encoder.
+default = ["gltf-textures"]
+gltf-textures = ["dep:png"]
 parquet-bos = ["dep:arrow", "dep:parquet", "dep:zip"]
 # Surfaces the processing crate's faceted-brep phase timing (Instant-gated, native
 # only) so `--example glb_export_profile` can attribute per-part brep wall time.

@@ -1605,6 +1605,7 @@ dependencies = [
  "ifc-lite-testkit",
  "nalgebra",
  "parquet",
+ "png",
  "rustc-hash",
  "serde",
  "serde_json",

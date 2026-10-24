@@ -227,6 +227,7 @@ pub(crate) fn export_glb_from_meshes_in_frame(
             // The viewer's MeshData drops the instancing side-channel across the
             // worker boundary (it is `#[serde(skip)]`), so this path is always flat.
             instance: None,
+            appearance: None,
         });
         vbase = vend;
         ibase = iend;
@@ -249,5 +250,5 @@ pub(crate) fn export_glb_from_meshes_in_frame(
         &mut ch,
     );
     let json = serde_json::to_vec(&gltf).expect("glTF JSON serializes");
-    (pack_glb(&json, &ch.pos, &ch.norm, &ch.idx), stats)
+    (pack_glb(&json, &[&ch.pos, &ch.norm, &ch.idx, &ch.uv]), stats)
 }

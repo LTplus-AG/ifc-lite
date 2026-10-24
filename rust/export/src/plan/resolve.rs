@@ -87,11 +87,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
             Disposition::Preserve | Disposition::Delete | Disposition::Add(_) | Disposition::AddType(_) => {}
             Disposition::Patch(patch) => {
                 if removed.contains(&id) {
-                    let reason = if gating.unhosted.contains(&id) && !requested_deletes.contains(&id) {
-                        "opening or projection has no host relationship left after this plan's deletes: IFC ties it to exactly one element, so it goes; delete wins"
-                    } else {
-                        "object is also deleted by this plan; delete wins"
-                    };
+                    let reason = deleted_patch_reason(id, &gating.unhosted, &requested_deletes);
                     refusals.push(Refusal { object: ObjectRef::Id(id), reason: reason.into() });
                     continue;
                 }
@@ -142,8 +138,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     // The cascade reads only its inputs and the referrers collected before
     // this resolution started, so the gating pass is reused exactly when
     // the inputs are the same.
-    // What an appended record names is kept from pruning. It does not keep
-    // a hostless opening or projection: only an Add does (`protected_ids`).
+    // Kept from pruning, not as feature keepers: only an Add keeps a hostless feature.
     protected.extend(appended_names(index, &list_edits, &removed, &mut appended));
     let delete_result = if detach_requests.is_empty() && requested_deletes == gated_requested && protected == gated_protected {
         gating
@@ -299,6 +294,17 @@ fn appended_names(
     }
     named.retain(|&id| id <= index.max_id);
     named
+}
+
+/// Why a patch on `id`, which the plan's deletes take, is refused: an
+/// opening or projection the plan did not delete itself goes because it
+/// lost its host relationship.
+fn deleted_patch_reason(id: u32, unhosted: &HashSet<u32>, requested: &HashSet<u32>) -> &'static str {
+    if unhosted.contains(&id) && !requested.contains(&id) {
+        "opening or projection has no host relationship left after this plan's deletes: IFC ties it to exactly one element, so it goes; delete wins"
+    } else {
+        "object is also deleted by this plan; delete wins"
+    }
 }
 
 /// A refusal for each surviving object's write into a record the plan

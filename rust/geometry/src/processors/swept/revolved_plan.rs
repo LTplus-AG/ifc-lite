@@ -92,9 +92,13 @@ pub(super) fn lower(
     };
     let axis1 = Axis1Placement::read(&axis_placement, decoder)?;
     let axis_location = Point3::from(axis1.location);
-    let raw_axis = Vector3::from(
+    // The XY test runs on a normalisable vector: ratios whose squared length
+    // overflows are rescaled first, so `(1e308, 0, 1e308)` is refused as off
+    // the plane instead of normalising to a zero axis that passes it. Every
+    // finite length reads as before, bit for bit.
+    let raw_axis = Vector3::from(crate::math::v3::unoverflowed(
         axis1.axis.ok_or_else(|| refused(decoder, "has no Direction (AxisDirectionInXY)"))?,
-    );
+    ));
     let axis_direction = raw_axis
         .try_normalize(1e-12)
         .ok_or_else(|| refused(decoder, "Direction has zero length"))?;

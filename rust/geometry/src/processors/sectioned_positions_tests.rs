@@ -77,3 +77,17 @@ fn a_linear_placement_direction_must_be_a_readable_ifcdirection() {
     assert!(zero.is_err());
     assert_eq!(refused, 0);
 }
+
+/// Ratios whose squared length overflows used to normalise to the zero
+/// vector and pass the zero-length check; they now keep their direction.
+#[test]
+fn a_linear_placement_direction_whose_squared_length_overflows_keeps_its_direction() {
+    let (huge, refused) = linear_ref_direction("IFCDIRECTION((1.E308,1.E308,0.))");
+    let (unit, _) = linear_ref_direction("IFCDIRECTION((1.,1.,0.))");
+    assert_eq!(huge.expect("huge"), unit.expect("unit"));
+    assert_eq!(refused, 0);
+    // Subnormal ratios are still zero length, an error, uncounted.
+    let (tiny, refused) = linear_ref_direction("IFCDIRECTION((5.E-324,0.,0.))");
+    assert!(tiny.is_err());
+    assert_eq!(refused, 0);
+}

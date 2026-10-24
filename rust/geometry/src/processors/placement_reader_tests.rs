@@ -107,6 +107,74 @@ fn a_revolved_axis_the_wr_rules_out_is_refused_instead_of_invented() {
     }
 }
 
+/// A revolved solid about `IFCDIRECTION({ratios})`, through `(50,0,0)`.
+fn revolved_about(ratios: &str) -> String {
+    format!(
+        "#1=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,10.,20.);\n#2=IFCCARTESIANPOINT((50.,0.,0.));\n\
+         #3=IFCDIRECTION({ratios});\n#4=IFCAXIS1PLACEMENT(#2,#3);\n\
+         #20=IFCREVOLVEDAREASOLID(#1,$,#4,1.5707963);"
+    )
+}
+
+#[test]
+fn a_revolved_axis_whose_squared_length_overflows_is_tested_on_its_direction() {
+    let processor = swept::RevolvedAreaSolidProcessor::new(IfcSchema::new());
+    let mesh = |ratios: &str| run(&processor, &revolved_about(ratios), 20);
+    // `|(1e308, 0, 1e308)|` overflows: the axis used to normalise to the zero
+    // vector, pass the XY test, and revolve about nothing. It is 45° off the
+    // plane, so AxisDirectionInXY refuses it, counted once on the solid.
+    let (result, refused) = mesh("(1.E308,0.,1.E308)");
+    let message = result.expect_err("an overflowing off-plane axis is refused").to_string();
+    assert!(message.contains("does not lie in the XY plane"), "{message}");
+    assert_eq!(refused, 1);
+    // Huge but in XY: revolves exactly as its unit-scale twin, bit for bit.
+    for (huge, unit) in [("(1.E308,1.E308,0.)", "(1.,1.,0.)"), ("(1.E308,0.,0.)", "(1.,0.,0.)")] {
+        let (control, refused) = mesh(unit);
+        let control = control.expect(unit);
+        assert!(!control.is_empty() && refused == 0, "{unit}");
+        let (result, refused) = mesh(huge);
+        let result = result.expect(huge);
+        assert_eq!(refused, 0, "{huge}");
+        assert_eq!(result.positions, control.positions, "{huge}");
+        assert_eq!(result.indices, control.indices, "{huge}");
+    }
+    // Subnormal ratios have no usable length: refused as zero length, once.
+    for tiny in ["(5.E-324,0.,0.)", "(5.E-324,5.E-324,0.)", "(1.E-200,1.E-200,1.E-200)"] {
+        let (result, refused) = mesh(tiny);
+        let message = result.expect_err(tiny).to_string();
+        assert!(message.contains("zero length"), "{tiny}: {message}");
+        assert_eq!(refused, 1, "{tiny}");
+    }
+    // A subnormal Z on a unit XY axis is in the plane.
+    let (result, refused) = mesh("(0.,1.,5.E-324)");
+    assert!(!result.expect("subnormal z").is_empty());
+    assert_eq!(refused, 0);
+}
+
+#[test]
+fn an_extruded_direction_whose_squared_length_overflows_keeps_its_direction() {
+    // Base and r1 accepted it, then normalised it to the zero vector and
+    // extruded along +Z. Now it extrudes as its unit-scale twin, bit for bit.
+    for (huge, unit) in [("((1.E308,0.,1.E308))", "((1.,0.,1.))"), ("((0.,0.,1.E308))", "((0.,0.,1.))")] {
+        let (control, refused) = run(&extruder(), &extrusion(unit, "$"), 5);
+        let control = control.expect(unit);
+        assert_eq!(refused, 0, "{unit}");
+        let (result, refused) = run(&extruder(), &extrusion(huge, "$"), 5);
+        let result = result.expect(huge);
+        assert_eq!(refused, 0, "{huge}");
+        assert_eq!(result.positions, control.positions, "{huge}");
+        assert_eq!(result.indices, control.indices, "{huge}");
+    }
+    // The WR is still tested exactly on the authored ratios: a huge X with
+    // zero Z is refused, a subnormal pair is zero length; each counted once.
+    let (result, refused) = run(&extruder(), &extrusion("((1.E308,0.,0.))", "$"), 5);
+    assert!(result.expect_err("z = 0").to_string().contains("ValidExtrusionDirection"));
+    assert_eq!(refused, 1);
+    let (result, refused) = run(&extruder(), &extrusion("((5.E-324,0.,5.E-324))", "$"), 5);
+    assert!(result.expect_err("subnormal").to_string().contains("zero-length"));
+    assert_eq!(refused, 1);
+}
+
 fn block(position: &str) -> String {
     format!(
         "#1=IFCCARTESIANPOINT((1.,2.,3.));\n#3=IFCAXIS2PLACEMENT3D(#1,$,$);\n\

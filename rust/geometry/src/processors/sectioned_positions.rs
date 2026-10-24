@@ -9,7 +9,7 @@
 //! `curve_walk.rs`), split out so the processor stays within its
 //! module-size budget.
 
-use crate::math::tol;
+use crate::math::{tol, v3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::Vector3;
 
@@ -169,7 +169,9 @@ impl PositionAlongDirectrix {
 /// record type was never checked. A zero-length direction is still an error.
 fn read_direction(entity: &DecodedEntity, index: usize, decoder: &mut EntityDecoder) -> Result<Option<Vector3<f64>>> {
     let Some(ratios) = decoder.direction3_at(entity, index)? else { return Ok(None) };
-    Vector3::from(ratios).try_normalize(tol::DIRECTION_MIN_LEN).map(Some).ok_or_else(|| {
+    // Rescaled first, so ratios whose squared length overflows normalise
+    // instead of collapsing to a zero direction (finite lengths unchanged).
+    Vector3::from(v3::unoverflowed(ratios)).try_normalize(tol::DIRECTION_MIN_LEN).map(Some).ok_or_else(|| {
         Error::geometry("IfcAxis2PlacementLinear direction has zero length".to_string())
     })
 }

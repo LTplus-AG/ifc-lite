@@ -26,7 +26,7 @@ fn revolved_quarter(axis: &str) -> String {
          #4=IFCFACEOUTERBOUND(#5,.T.);\n#5=IFCEDGELOOP((#61,#62,#63,#64));\n\
          #10=IFCSURFACEOFREVOLUTION(#13,$,#11);\n#11={axis};\n\
          #12=IFCCARTESIANPOINT((0.,0.,0.));\n#14=IFCDIRECTION((0.,0.,1.));\n\
-         #18=IFCCARTESIANPOINT((0.,'x',0.));\n#19=IFCDIRECTION((0.,'x',1.));\n\
+         #18=IFCCARTESIANPOINT((0.,'x',0.));\n#20=IFCDIRECTION((0.,0.,1.E308));\n#19=IFCDIRECTION((0.,'x',1.));\n\
          #13=IFCARBITRARYOPENPROFILEDEF(.CURVE.,$,#15);\n#15=IFCPOLYLINE((#16,#17));\n\
          #16=IFCCARTESIANPOINT((1.,0.,0.));\n#17=IFCCARTESIANPOINT((1.,0.,1.));\n\
          #21=IFCCARTESIANPOINT((1.,0.,0.));\n#22=IFCCARTESIANPOINT((0.,1.,0.));\n\
@@ -61,6 +61,10 @@ fn an_unreadable_revolution_axis_position_refuses_the_face_and_counts() {
     // A `$` Axis is the IFC default +Z: the same surface as the control.
     let (default_axis, refused) = process("IFCAXIS1PLACEMENT(#12,$)");
     assert_eq!(default_axis, control, "a `$` Axis must revolve about +Z");
+    assert_eq!(refused, 0);
+    // A +Z whose squared length overflows used to normalise to a zero axis.
+    let (huge_axis, refused) = process("IFCAXIS1PLACEMENT(#12,#20)");
+    assert_eq!(huge_axis, control, "a 1e308 +Z must revolve about +Z");
     assert_eq!(refused, 0);
     // Base: origin, origin, +Z. Each now refuses the only face.
     for axis in [

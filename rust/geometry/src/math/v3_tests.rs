@@ -114,3 +114,26 @@ fn canonical_makes_the_largest_component_positive_with_x_y_z_ties() {
     assert_eq!(canonical([0.0, -1.0, 1.0]), [-0.0, 1.0, -1.0]);
     assert_eq!(canonical([-1.0, 1.0, 1.0]), [1.0, -1.0, -1.0]);
 }
+
+#[test]
+fn unoverflowed_keeps_finite_lengths_bit_for_bit_and_rescales_only_overflow() {
+    // Every vector whose squared length is finite is returned as is, bits and
+    // all: subnormals, signed zeros and 1e154-scale ratios included.
+    let mut rng = Rng(11);
+    for _ in 0..5_000 {
+        let v = rng.v3();
+        assert!(same(unoverflowed(v), v));
+    }
+    for v in [[5e-324, 0.0, -5e-324], [-0.0, 0.0, 0.0], [1e154, 1e154, 0.0], [1e-200, 1e-200, 1e-200]] {
+        assert!(same(unoverflowed(v), v), "{v:?}");
+    }
+    // An overflowing squared length is divided by the largest |component|.
+    assert_eq!(unoverflowed([1e308, 0.0, 1e308]), [1.0, 0.0, 1.0]);
+    assert_eq!(unoverflowed([1e308, 1e308, 0.0]), [1.0, 1.0, 0.0]);
+    assert_eq!(unoverflowed([-1e308, 5e307, 0.0]), [-1.0, 0.5, 0.0]);
+    assert_eq!(normalize(unoverflowed([1e200, 1e200, 0.0]), 0.0), normalize([1.0, 1.0, 0.0], 0.0));
+    // Non-finite input is left for the caller.
+    let v = [f64::INFINITY, 1.0, 0.0];
+    assert!(same(unoverflowed(v), v));
+    assert!(unoverflowed([f64::NAN, 1e308, 1e308])[0].is_nan());
+}

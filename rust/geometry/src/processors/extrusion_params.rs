@@ -17,7 +17,9 @@ use nalgebra::Matrix4;
 
 /// The extrusion axis of an `IfcExtrudedAreaSolid` or a subtype.
 pub(crate) struct ExtrusionParams {
-    /// `ExtrudedDirection` as authored (unnormalised, never zero-length).
+    /// `ExtrudedDirection` as authored (unnormalised, never zero-length),
+    /// unless its squared length overflows: then it is divided by its largest
+    /// |component|, which every consumer's normalisation cancels.
     pub(crate) direction: Vector3<f64>,
     /// `Depth`, in file units.
     pub(crate) depth: f64,
@@ -51,7 +53,8 @@ impl ExtrusionParams {
         // (extruding `(1,0)` along `(1,0,1)`); the IFC rule
         // `ValidExtrusionDirection` needs a non-zero Z, so a 2D direction
         // (z = 0) is refused, not given an invented one (D25, D26).
-        let direction = Vector3::from(decoder.direction3(direction_id)?);
+        let ratios = decoder.direction3(direction_id)?;
+        let direction = Vector3::from(ratios);
         // A WR refusal of readable input is still refused input: count it on
         // the solid, like the leaf refusals above it (D3, D29). A zero-length
         // direction breaks `ValidExtrusionDirection` too (its Z is zero).
@@ -67,6 +70,11 @@ impl ExtrusionParams {
                 "{name} ExtrudedDirection has no Z component (ValidExtrusionDirection)"
             )));
         }
+        // Both tests above are exact on the authored ratios. Ratios whose
+        // squared length overflows would normalise to a zero axis downstream
+        // and extrude along +Z, so they are rescaled; finite lengths are kept
+        // bit for bit.
+        let direction = Vector3::from(crate::math::v3::unoverflowed(ratios));
 
         let depth = entity
             .get_float(3)

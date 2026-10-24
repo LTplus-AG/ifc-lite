@@ -64,9 +64,11 @@ pub(super) fn lower_revolution(
         // swallowed (`.ok()`), turning an unreadable Location into the origin
         // and an unreadable Axis into +Z (PROC-S7, PROC-S9). A missing Axis is
         // the IFC derived default +Z; a zero one has no direction and takes
-        // the same default, as before.
+        // the same default, as before. Ratios whose squared length overflows
+        // are rescaled first, so they keep their direction rather than
+        // normalising to a zero axis.
         let axis1 = noting_refusal(face, Axis1Placement::read(&ap, decoder).map_err(Into::into))?;
-        let dir = Vector3::from(axis1.axis_or_ifc_default())
+        let dir = Vector3::from(crate::math::v3::unoverflowed(axis1.axis_or_ifc_default()))
             .try_normalize(1e-12)
             .unwrap_or_else(|| Vector3::new(0.0, 0.0, 1.0));
         (Point3::from(axis1.location), dir)

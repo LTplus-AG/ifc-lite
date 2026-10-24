@@ -8,3 +8,4 @@ mod diff_fingerprint;
 mod diff_fingerprint_input;
 mod diff_sidecar;
 mod diff_lineage;
+mod diff_transport;

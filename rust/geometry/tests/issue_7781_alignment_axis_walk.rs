@@ -6,13 +6,16 @@
 //! shared `product_shape` walk, not a private `6 -> 2 -> 3` chain.
 //!
 //! What the walk keeps: `'Axis'` over `'FootPrint'` whatever the list order,
-//! the identifier in any letter case, an `IfcSegmentedReferenceCurve`'s
-//! `BaseCurve`, and skipping items that are not a usable curve.
+//! the `'FootPrint'` when there is no `'Axis'`, the identifier in any letter
+//! case, an `IfcSegmentedReferenceCurve`'s `BaseCurve`, and skipping items
+//! that are not a usable curve.
 //!
-//! What it changes (Class X): a shape the walk refuses yields no curve. A
-//! `Representations` member that does not decode, or a bare reference where
-//! the list belongs, used to be stepped over; and an `Items` member that does
-//! not decode now drops its whole representation rather than that one item.
+//! What it changes (Class X): a malformed shape yields no curve where the
+//! private walk stepped over the broken part. That is a `Representations`
+//! member that does not decode, a bare reference where that list belongs, and,
+//! on an `'Axis'` or `'FootPrint'` representation, an `Items` member that does
+//! not decode, a bare reference or `$` where `Items` belongs. A broken `'Axis'`
+//! no longer hands the alignment its plan-only `'FootPrint'`.
 
 use ifc_lite_core::EntityDecoder;
 use ifc_lite_geometry::locate_axis_curve;
@@ -45,10 +48,12 @@ const FOOTPRINT_4: &str = "#20=IFCSHAPEREPRESENTATION($,'FootPrint','Curve2D',(#
 const AXIS_5: &str = "#21=IFCSHAPEREPRESENTATION($,'Axis','Curve3D',(#5));";
 
 #[test]
-fn axis_wins_over_an_earlier_footprint() {
+fn axis_wins_over_footprint_in_either_order() {
     let reps = format!("{FOOTPRINT_4}\n{AXIS_5}");
-    let content = model("IFCPRODUCTDEFINITIONSHAPE($,$,(#20,#21))", &reps);
-    assert_eq!(located(&content), Some(5));
+    for list in ["(#20,#21)", "(#21,#20)"] {
+        let content = model(&format!("IFCPRODUCTDEFINITIONSHAPE($,$,{list})"), &reps);
+        assert_eq!(located(&content), Some(5), "{list}");
+    }
 }
 
 #[test]
@@ -85,6 +90,18 @@ fn a_non_axis_representation_with_an_unresolved_item_is_not_read() {
 }
 
 #[test]
+fn a_usable_curve_in_a_body_representation_is_not_a_directrix() {
+    // Only 'Axis' and 'FootPrint' are read: the polyline #4 under 'Body' is
+    // neither, whatever the list order.
+    let reps = "#22=IFCSHAPEREPRESENTATION($,'Body','Curve3D',(#4));\n\
+#20=IFCSHAPEREPRESENTATION($,'FootPrint','Curve2D',(#5));";
+    let content = model("IFCPRODUCTDEFINITIONSHAPE($,$,(#22,#20))", reps);
+    assert_eq!(located(&content), Some(5));
+    let body_only = model("IFCPRODUCTDEFINITIONSHAPE($,$,(#22))", reps);
+    assert_eq!(located(&body_only), None);
+}
+
+#[test]
 fn no_axis_and_no_footprint_is_none() {
     let reps = "#22=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#9));";
     let content = model("IFCPRODUCTDEFINITIONSHAPE($,$,(#22))", reps);
@@ -109,12 +126,50 @@ fn a_bare_reference_in_place_of_the_representations_list_is_refused() {
     assert_eq!(located(&content), None);
 }
 
+/// Both list orders of `reps` #20 and #21.
+fn either_order(reps: &str) -> [Option<u32>; 2] {
+    ["(#20,#21)", "(#21,#20)"].map(|list| {
+        located(&model(
+            &format!("IFCPRODUCTDEFINITIONSHAPE($,$,{list})"),
+            reps,
+        ))
+    })
+}
+
 #[test]
-fn an_unresolved_axis_item_drops_the_axis_representation() {
-    // Class X. The private walk skipped `#99` and took `#5` from the same
-    // Axis representation; the shared walk refuses that representation's
-    // items as a whole, so the FootPrint stands in.
-    let reps = format!("{FOOTPRINT_4}\n#21=IFCSHAPEREPRESENTATION($,'Axis','Curve3D',(#99,#5));");
-    let content = model("IFCPRODUCTDEFINITIONSHAPE($,$,(#21,#20))", &reps);
-    assert_eq!(located(&content), Some(4));
+fn a_malformed_axis_refuses_the_shape_beside_a_valid_footprint() {
+    // Class X. The private walk stepped over the broken item and took `#5`
+    // from the same Axis; the r1 shared walk dropped the Axis and returned the
+    // plan-only FootPrint `#4`. A broken Axis now refuses the shape: an
+    // unresolved member, a bare reference or `$` where `Items` belongs.
+    for items in ["(#99,#5)", "#5", "$"] {
+        let reps =
+            format!("{FOOTPRINT_4}\n#21=IFCSHAPEREPRESENTATION($,'Axis','Curve3D',{items});");
+        assert_eq!(either_order(&reps), [None, None], "Axis Items {items}");
+    }
+}
+
+#[test]
+fn a_malformed_footprint_refuses_the_shape_beside_a_valid_axis() {
+    // Class X: the same rule for the other selected representation, so the
+    // answer does not depend on which of the two is broken or listed first.
+    for items in ["(#99,#4)", "#4", "$"] {
+        let reps =
+            format!("#20=IFCSHAPEREPRESENTATION($,'FootPrint','Curve2D',{items});\n{AXIS_5}");
+        assert_eq!(either_order(&reps), [None, None], "FootPrint Items {items}");
+    }
+}
+
+#[test]
+fn a_well_formed_shape_is_read_in_either_order() {
+    // The control for the two tests above: the same shapes, nothing broken.
+    let reps = format!("{FOOTPRINT_4}\n{AXIS_5}");
+    assert_eq!(either_order(&reps), [Some(5), Some(5)]);
+    let footprints = "#20=IFCSHAPEREPRESENTATION($,'FootPrint','Curve2D',(#9,#4));\n\
+#21=IFCSHAPEREPRESENTATION($,'FootPrint','Curve2D',(#5));";
+    assert_eq!(
+        either_order(footprints),
+        [Some(4), Some(5)],
+        "the first usable FootPrint"
+    );
 }

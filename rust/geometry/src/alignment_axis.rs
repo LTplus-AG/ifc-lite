@@ -29,12 +29,16 @@ pub(crate) const OFF_SCHEMA_AXIS_SLOT: usize = 8;
 /// tried first, then [`OFF_SCHEMA_AXIS_SLOT`] (a publisher that hung it
 /// elsewhere), then `Representation` (6), which some publishers reuse. Accept
 /// the first ref that resolves to an `IfcAlignmentCurve` or `IfcPolyline`
-/// (the curves `AlignmentCurve::parse` understands). A ref that fails to
-/// resolve is skipped, not fatal.
+/// (the curves `AlignmentCurve::parse` understands). A slot probe whose ref
+/// fails to resolve is skipped, not fatal.
 /// Otherwise IFC4x3 `Representation` (attr 6) supplies the `'Axis'` shape
 /// representation's curve (`IfcGradientCurve`; an
 /// `IfcSegmentedReferenceCurve` contributes its gradient `BaseCurve`), or
-/// the `'FootPrint'` 2D curve. `None` when neither path yields a curve.
+/// the `'FootPrint'` 2D curve when the shape has no usable `'Axis'`. That
+/// path refuses rather than skips: a `Representations` member, or an
+/// `'Axis'` / `'FootPrint'` representation's `Items`, that does not decode
+/// yields `None`, never a curve read past the broken reference.
+/// `None` when neither path yields a curve.
 pub fn locate_axis_curve(entity: &DecodedEntity, decoder: &mut EntityDecoder) -> Option<DecodedEntity> {
     let alignment_curve = IfcType::from_str("IFCALIGNMENTCURVE");
     let axis = decoder.slot_or(slot::IfcAlignment::AXIS, SchemaVersion::Ifc4x1).map(|slot| slot.index());
@@ -58,42 +62,50 @@ pub fn locate_axis_curve(entity: &DecodedEntity, decoder: &mut EntityDecoder) ->
 ///
 /// Reads the shape through the shared [`product_shape`] walk, so a shape the
 /// walk refuses (a `Representations` member or the list itself that does not
-/// decode) yields no curve; a selected representation whose `Items` do not
-/// decode is skipped, like an unusable item (#7781).
-fn representation_axis_curve(entity: &DecodedEntity, decoder: &mut EntityDecoder) -> Option<DecodedEntity> {
+/// decode) yields no curve. So do selected `Items` that do not decode, wherever
+/// that representation sits in the list: a broken `'Axis'` must not hand the
+/// alignment its plan-only `'FootPrint'` (#7781).
+fn representation_axis_curve(
+    entity: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+) -> Option<DecodedEntity> {
     let shape = product_shape(entity, decoder).ok().flatten()?;
-    let mut footprint = None;
+    let (mut axis, mut footprint) = (None, None);
     for rep in shape.select(entity, Select::Where(is_axis_or_footprint)) {
-        let is_axis = has_identifier(rep, "AXIS");
-        let Ok(items) = rep_items(rep, decoder) else { continue };
-        for item in items {
-            let curve = if item.ifc_type == IfcType::IfcSegmentedReferenceCurve {
-                match item
-                    .ref_at(slot::IfcSegmentedReferenceCurve::BASE_CURVE)
-                    .and_then(|id| decoder.decode_by_id(id).ok())
-                {
-                    Some(base) => base,
-                    None => continue,
-                }
-            } else {
-                item
-            };
-            let usable = matches!(
-                curve.ifc_type,
-                IfcType::IfcGradientCurve | IfcType::IfcPolyline | IfcType::IfcCompositeCurve
-            );
-            if !usable {
-                continue;
-            }
-            if is_axis {
-                return Some(curve);
-            }
-            if footprint.is_none() {
-                footprint = Some(curve);
-            }
+        let items = rep_items(rep, decoder).ok()?;
+        let found = if has_identifier(rep, "AXIS") {
+            &mut axis
+        } else {
+            &mut footprint
+        };
+        if found.is_none() {
+            *found = first_usable_curve(items, decoder);
         }
     }
-    footprint
+    axis.or(footprint)
+}
+
+/// The first item that is a curve `AlignmentCurve` reads; an
+/// `IfcSegmentedReferenceCurve` stands for its `BaseCurve`, and is stepped over
+/// when that does not resolve.
+fn first_usable_curve(
+    items: Vec<DecodedEntity>,
+    decoder: &mut EntityDecoder,
+) -> Option<DecodedEntity> {
+    items.into_iter().find_map(|item| {
+        let curve = if item.ifc_type == IfcType::IfcSegmentedReferenceCurve {
+            decoder
+                .decode_by_id(item.ref_at(slot::IfcSegmentedReferenceCurve::BASE_CURVE)?)
+                .ok()?
+        } else {
+            item
+        };
+        let usable = matches!(
+            curve.ifc_type,
+            IfcType::IfcGradientCurve | IfcType::IfcPolyline | IfcType::IfcCompositeCurve
+        );
+        usable.then_some(curve)
+    })
 }
 
 /// The representations [`representation_axis_curve`] reads: `'Axis'` or

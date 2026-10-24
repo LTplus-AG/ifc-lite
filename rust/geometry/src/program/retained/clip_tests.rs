@@ -32,24 +32,24 @@ fn j1_source_plane_and_order_survive_shared_controller() {
 }
 #[test]
 fn j1_unsupported_and_malformed_planes_refuse_whole_continuation() {
-    for source in [CLIP_SOURCE.replace(".DIFFERENCE.",".UNION."),
-        CLIP_SOURCE.replace("IFCHALFSPACESOLID(#202,.T.)","IFCBOXEDHALFSPACE(#202,.T.,$)"),
-        CLIP_SOURCE.replace("IFCHALFSPACESOLID(#202,.T.)","IFCPOLYGONALBOUNDEDHALFSPACE(#202,.T.,#5,$)"),
-        CLIP_SOURCE.replace("#202,.T.","#202,$"),
-        CLIP_SOURCE.replace("#200,#15,$","$,#15,$")] {
+    // #7955: source errors travel in RetainedComplete replies; the whole
+    // continuation refuses at finish(), not through the ticket protocol.
+    for (case, source) in [
+        ("union", CLIP_SOURCE.replace(".DIFFERENCE.", ".UNION.")),
+        ("boxed", CLIP_SOURCE.replace("IFCHALFSPACESOLID(#202,.T.)", "IFCBOXEDHALFSPACE(#202,.T.,$)")),
+        ("bounded", CLIP_SOURCE.replace("IFCHALFSPACESOLID(#202,.T.)", "IFCPOLYGONALBOUNDEDHALFSPACE(#202,.T.,#5,$)")),
+        ("missing agreement", CLIP_SOURCE.replace("#202,.T.", "#202,$")),
+        ("missing location", CLIP_SOURCE.replace("#200,#15,$", "$,#15,$")),
+    ] {
         let source = SourceBundle::new(source.into_bytes());
         let mut decoder = source.decoder();
         let router = GeometryRouter::with_units(source.bytes(), &mut decoder);
         let entity = decoder.decode_by_id(10).unwrap();
-        let mut program = RetainedProgram::product_parts(&entity,contract());
-        let mut refused=false;
-        while let Some(ticket)=program.request().unwrap() {
-            match program.admit(ticket,&router,&mut decoder) {
-                Ok((reply,_))=>program.accept(reply,&router).unwrap_or_else(|e|panic!("{:?}",e.error)),
-                Err(_)=>{refused=true;break;}
-            }
-        }
-        assert!(refused); assert!(program.finish().is_err());
+        let mut program = RetainedProgram::product_parts(&entity, contract());
+        let operations = drive(&mut program, &router, &mut decoder);
+        assert_eq!(operations.len(), 1, "{case}: only the input construction may be admitted");
+        assert!(operations[0].construction().is_some(), "{case}: no clip may be admitted");
+        assert!(program.finish().is_err(), "{case}: malformed/unsupported clip must refuse the whole continuation");
     }
 }
 #[test]

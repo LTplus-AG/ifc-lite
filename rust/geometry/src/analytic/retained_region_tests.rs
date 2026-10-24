@@ -20,7 +20,7 @@ fn issue_3641_original_fixture_region_result() {
     assert_eq!(region.authored().swept_area_id, Some(61272));
     assert!(matches!(region.authored().status, AnalyticStatus::Unsupported(_)));
     assert_eq!(region.boundary().segments.len(), 4, "REGION_RESULT");
-    assert!((region.boundary().signed_area - 3_028_500.0155).abs() < 1e-8, "REGION_RESULT");
+    assert!((region.boundary().signed_area - 3_028_500.015_5).abs() < 1e-8, "REGION_RESULT");
     assert_eq!(region.boundary().segments[0], AnalyticCurveSegment::Line {
         start: [870., 0., 0.], end: [1400., -900., 0.],
     }, "REGION_RESULT");

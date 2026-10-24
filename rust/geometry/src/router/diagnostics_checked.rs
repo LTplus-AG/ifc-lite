@@ -47,6 +47,8 @@ impl GeometryRouter {
     /// retained instead of discarded, and publication would lose its reports.
     /// Runs the drain hooks inside the epoch, like every other drain. A nested
     /// product cannot settle: its parent's in-flight reports share the logs.
+    /// A custom hook that charges, stops or runs nested products therefore
+    /// acts inside the NEXT product's epoch and resource domain.
     pub fn settle_opaque_csg_failures(&self) {
         if self.csg_product_depth.get() == 1 && self.csg_opaque_unscoped.get() {
             self.drain_processor_failures();

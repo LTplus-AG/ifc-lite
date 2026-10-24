@@ -8,8 +8,9 @@
 //! cache access; both halves take their packet as input, so these refusals are
 //! the shipped checks, not a test-only replica. A synchronous driver holds ONE
 //! owner epoch (`session_run`) open around planning, every ticket and
-//! publication, so the product pays the lease, scope and capability setup once. The same slices also run one epoch
-//! per ticket (`session_resumable`), the seam a resumable executor builds on.
+//! publication, so the product pays the lease, scope and capability setup
+//! once. The same slices also run one epoch per ticket
+//! (`session_resumable`), the seam a resumable executor builds on.
 //! This private protocol does not authorize asynchronous or remote execution.
 use super::plan::PlanKind;
 use super::session_owner::OwnerStamp;

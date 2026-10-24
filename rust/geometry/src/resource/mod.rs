@@ -181,6 +181,10 @@ pub fn account_from_source_context(
 /// stop into them. Wrap every rayon wait inside product work in this; the
 /// caller's state is restored on return and on unwind. `operation` itself
 /// must not need the caller's resource state.
+///
+/// This hides RESOURCE state only (account, source stop, terminal). Other
+/// per-thread diagnostic capture, such as geometry telemetry transactions and
+/// the CSG census sink, is not scoped by it.
 pub fn detached<T>(operation: impl FnOnce() -> T) -> T {
     struct Restore {
         account: Option<ExecutionAccount>,

@@ -126,7 +126,7 @@ fn mesh_valid(mesh: &MeshData) -> Result<(), String> {
         "nonfinite geometry",
     )?;
     check(
-        mesh.positions.len() % 3 == 0 && mesh.indices.len() % 3 == 0,
+        mesh.positions.len().is_multiple_of(3) && mesh.indices.len().is_multiple_of(3),
         "incomplete tuples",
     )?;
     check(

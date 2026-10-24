@@ -136,3 +136,31 @@ geometry remain unchanged. Parent integration must wire this policy into the J3
 native-query harness: that harness is absent from this main-based branch. The
 new preregistration is not a claim that the old J3 harness was already corrected
 or that any native query was run.
+
+Real edit/run/restore mutations can be submitted as a single admitted job:
+
+```sh
+/home/louistrue/build-workers/ifc-fleet run --cwd /absolute/checkout -- \
+  python3 tests/fixtures/synthetic-retained/mutate.py --run
+```
+
+`--list` is a lightweight, read-only plan check. The runner requires clean tracked
+source, locks the checkout, first runs all five tests, then edits one fixture,
+runs its named test, restores exact original bytes in `finally`, and reruns the
+control. A kill requires exit 101, the named test's panic, one failed test and
+its intended assertion diagnostic; build failures/timeouts are not kills. Every
+transcript and the final `MUTATION_RECEIPT` JSON are printed to the worker log.
+SIGTERM/interrupt stops the runner's Cargo process group before restoration;
+SIGKILL/power loss cannot guarantee restoration, so retain the checkout and
+inspect its receipt/source before any retry. This script never nests admission.
+
+Twelve required input/sidecar mutations cover deleted cuts/styles/occurrences,
+cut position, palette indices, scale, extrusion height, product GlobalId, texture
+indices/URL and PNG pixel data. These are fixture fault injections, not Rust
+kernel-source mutants. Three additional probes deliberately expect all five
+tests to survive: arbitrary retained definition groups, invented cross-file
+semantic face keys, and changed native-query policy. They expose untested
+contracts and are reported separately, never as killed mutants. The suite also
+cannot establish smooth-normal correctness, relative opening/map-frame handling,
+internal-cap suppression, UV seams, engine sidecar loading, retained/Worker/
+viewer/GPU behavior or persistent engine-provided face ancestry.

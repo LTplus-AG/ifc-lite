@@ -84,6 +84,7 @@ pub(crate) fn lower(
     decoder: &mut EntityDecoder,
     rtc_file_units: Option<(f64, f64, f64)>,
 ) -> Result<FacetedBrepPlan> {
+    crate::resource::check_current()?;
     // IfcFacetedBrep attributes:
     // 0: Outer (IfcClosedShell)
     let shell_attr = entity
@@ -101,6 +102,7 @@ pub(crate) fn lower(
     // PHASE 1: Sequential - Extract all face data from IFC entities
     let mut face_data_list: Vec<FaceData> = Vec::with_capacity(face_ids.len());
     for face_id in face_ids {
+        crate::resource::check_current()?;
         // FAST PATH: Get bound IDs directly from Face raw bytes
         let bound_ids = match decoder.get_entity_ref_list_fast(face_id) {
             Some(ids) => ids,
@@ -164,6 +166,18 @@ pub(crate) fn lower(
         }
     }
 
+    // Normalize the owned f64 loops once, while canonical source is available.
+    // Evaluation retains no decoder, certificate or source callback.
+    if let Some(witness) = super::carrier::normalize(entity, decoder, &mut face_data_list)? {
+        crate::diag::diag_debug!({
+            brep = entity.id, carriers = ?witness.carriers, moved = ?witness.moved,
+            context = witness.context.root_context, precision = witness.context.precision,
+            "normalized FacetedBrep source carriers"
+        } else {
+            let _ = (witness.carriers, witness.moved, witness.context);
+        });
+    }
+    crate::resource::check_current()?;
     Ok(FacetedBrepPlan {
         faces: face_data_list,
         rtc_file_units,

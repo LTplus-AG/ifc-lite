@@ -22,7 +22,8 @@ import { FORMAT_VERSION } from '@ifc-lite/cache';
 // #7584: IFC4x3 sectioned solids place profile +X left of travel (asymmetric
 // profiles such as pavement courses were mirrored), read gradient-curve
 // stations as horizontal distance, and are wound outward.
-const GEOMETRY_OUTPUT_REVISION = 6;
+// #7714: old entries contain the unnormalized nearly planar source corners.
+const GEOMETRY_OUTPUT_REVISION = 7;
 
 /**
  * Build the persisted geometry cache key for a loaded model.

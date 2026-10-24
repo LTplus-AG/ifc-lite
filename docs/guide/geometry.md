@@ -9,6 +9,17 @@ in the processing crate), whether it runs through the browser WASM build, the
 worker pool, or a native host. Every consumer therefore gets identical
 per-element meshes, and fixes to the mesher land once for all paths.
 
+Nearly planar `IfcFacetedBrep` shells have a conservative source normalization
+before triangulation. An existing adjacent planar face must uniquely determine
+the warped face's carrier through an authored shared edge and three noncollinear
+source points. Corrections retain source point identities and satisfy every
+healthy incident plane, within explicit context `Precision`. The whole shell
+must remain closed, convex, correctly oriented and free of finite face holes or
+double coverage. Unsupported or ambiguous input follows the established meshing
+path. Kernel tolerances and snapping policies are unchanged.
+
+The initial domain is limited to 32 single-bound faces, 64 distinct source points
+and 128 corners, with exactly representable corrected coordinates.
 Rust callers can inspect `EntityDecoder::uniform_context_precision()` for a
 restricted source-precision certificate: one project, one owned 3D context,
 complete direct subcontexts and an explicit SI length unit. It verifies all
@@ -19,8 +30,15 @@ native jobs and compact browser batches, retaining success and decline separatel
 for strict geometry admission and permissive reads. The immutable source owns
 both its canonical index and the private once cells; independently supplied
 indexes cannot install or share certificate authority. Borrowed compatibility
-decoders retain only their own result. This certificate does not yet change mesh
-production; the normalization consumer belongs to the next stack layer.
+decoders retain only their own result.
+
+Normalization happens during owned faceted-plan lowering, before RTC subtraction
+and triangulation; evaluation needs no source. Compatibility and Bounded execute
+the same transaction and use the same source-sensitive cache decisions. Bounded
+accounts audited mesh copies, merges and storage growth; rational work and the
+certificate scan remain outside that partial accounting contract. Strict refuses
+opaque coverage up front. Existing sink/resource terminal stops propagate before
+a plan is published; these checks do not make opaque work interruptible mid-call.
 
 IFClite processes IFC geometry through a streaming pipeline:
 

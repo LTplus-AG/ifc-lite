@@ -55,7 +55,7 @@ function fill(len: number, seed: number): ArrayBuffer {
 describe('buildGeometryCacheKey', () => {
   it('folds size, fingerprint and format version into the key', () => {
     const key = buildGeometryCacheKey(1024, 'abc123', false, 7);
-    assert.strictEqual(key, 'ifc-1024-abc123-v7-g6');
+    assert.strictEqual(key, 'ifc-1024-abc123-v7-g7');
   });
 
   it('omits the merge-layers discriminator when merging is off', () => {
@@ -65,7 +65,7 @@ describe('buildGeometryCacheKey', () => {
 
   it('appends a merge-layers discriminator when merging is on', () => {
     const key = buildGeometryCacheKey(2048, 'deadbeef', true, 5);
-    assert.strictEqual(key, 'ifc-2048-deadbeef-v5-g6-ml');
+    assert.strictEqual(key, 'ifc-2048-deadbeef-v5-g7-ml');
   });
 
   it('produces distinct keys for the two merge-layers states (issue #1107: toggle+reload must miss)', () => {
@@ -82,34 +82,34 @@ describe('buildGeometryCacheKey', () => {
   it('omits the skip-small-cuts discriminator by default', () => {
     const unset = buildGeometryCacheKey(2048, 'deadbeef', false, 5);
     const off = buildGeometryCacheKey(2048, 'deadbeef', false, 5, false);
-    assert.strictEqual(unset, 'ifc-2048-deadbeef-v5-g6');
-    assert.strictEqual(off, 'ifc-2048-deadbeef-v5-g6');
+    assert.strictEqual(unset, 'ifc-2048-deadbeef-v5-g7');
+    assert.strictEqual(off, 'ifc-2048-deadbeef-v5-g7');
   });
 
   it('appends a skip-small-cuts discriminator when on (#1286: skipped display cache must not collide with full-cut)', () => {
     const skip = buildGeometryCacheKey(2048, 'deadbeef', false, 5, true);
     const full = buildGeometryCacheKey(2048, 'deadbeef', false, 5, false);
-    assert.strictEqual(skip, 'ifc-2048-deadbeef-v5-g6-sc');
+    assert.strictEqual(skip, 'ifc-2048-deadbeef-v5-g7-sc');
     assert.notStrictEqual(skip, full);
   });
 
   it('composes the merge-layers and skip-small-cuts discriminators and stays filename-safe', () => {
     const key = buildGeometryCacheKey(4096, 'feed', true, 5, true);
-    assert.strictEqual(key, 'ifc-4096-feed-v5-g6-ml-sc');
+    assert.strictEqual(key, 'ifc-4096-feed-v5-g7-ml-sc');
     assert.match(key, /^[A-Za-z0-9_-]+$/);
   });
 
   it('omits the tessellation-tier discriminator at the medium default', () => {
     const unset = buildGeometryCacheKey(2048, 'deadbeef', false, 5, false);
     const medium = buildGeometryCacheKey(2048, 'deadbeef', false, 5, false, 'medium');
-    assert.strictEqual(unset, 'ifc-2048-deadbeef-v5-g6');
-    assert.strictEqual(medium, 'ifc-2048-deadbeef-v5-g6');
+    assert.strictEqual(unset, 'ifc-2048-deadbeef-v5-g7');
+    assert.strictEqual(medium, 'ifc-2048-deadbeef-v5-g7');
   });
 
   it('appends a tessellation-tier discriminator for a non-default tier (auto-low must not collide with medium)', () => {
     const low = buildGeometryCacheKey(2048, 'deadbeef', false, 5, false, 'low');
     const medium = buildGeometryCacheKey(2048, 'deadbeef', false, 5, false, 'medium');
-    assert.strictEqual(low, 'ifc-2048-deadbeef-v5-g6-tlow');
+    assert.strictEqual(low, 'ifc-2048-deadbeef-v5-g7-tlow');
     assert.notStrictEqual(low, medium);
   });
 
@@ -128,6 +128,17 @@ describe('buildGeometryCacheKey', () => {
     }
   });
 
+  it('#7714 invalidates pre-normalization geometry for every persisted option combination', () => {
+    for (const mergeLayers of [false, true]) {
+      for (const skipSmallCuts of [false, true]) {
+        for (const tier of ['medium', 'low', 'lowest']) {
+          const prior = `ifc-4096-feed-v18-g6${mergeLayers ? '-ml' : ''}${skipSmallCuts ? '-sc' : ''}${tier === 'medium' ? '' : `-t${tier}`}`;
+          assert.notStrictEqual(buildGeometryCacheKey(4096, 'feed', mergeLayers, 18, skipSmallCuts, tier), prior);
+        }
+      }
+    }
+  });
+
   it('produces distinct keys per tier so different densities cache separately', () => {
     const low = buildGeometryCacheKey(4096, 'feed', false, 5, false, 'low');
     const lowest = buildGeometryCacheKey(4096, 'feed', false, 5, false, 'lowest');
@@ -136,7 +147,7 @@ describe('buildGeometryCacheKey', () => {
 
   it('composes all discriminators and stays filename-safe', () => {
     const key = buildGeometryCacheKey(4096, 'feed', true, 5, true, 'lowest');
-    assert.strictEqual(key, 'ifc-4096-feed-v5-g6-ml-sc-tlowest');
+    assert.strictEqual(key, 'ifc-4096-feed-v5-g7-ml-sc-tlowest');
     assert.match(key, /^[A-Za-z0-9_-]+$/);
   });
 });

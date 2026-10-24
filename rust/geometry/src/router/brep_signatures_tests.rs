@@ -130,3 +130,175 @@ fn brep_keyword_trivia_is_the_same_brep_signature() {
         assert_eq!(key_of(&content), (plain_key, plain_shared), "{head}");
     }
 }
+
+#[test]
+fn issue_7714_warped_source_identity_survives_shared_memos_and_boolean_parents() {
+    let source = format!("{}\n#900011=IFCFACETEDBREP(#489633);\n\
+        #900012=IFCBOOLEANRESULT(.DIFFERENCE.,#489635,#489635);\n\
+        #900013=IFCBOOLEANRESULT(.DIFFERENCE.,#900011,#900011);",
+        include_str!("../../tests/fixtures/issue_7714_soffice_carrier.ifc"));
+    let cache = GeometryRouter::new_brep_signature_cache();
+    for _ in 0..2 {
+        let mut decoder = EntityDecoder::new(&source);
+        let router = router(cache.clone(), 0.001,TessellationQuality::Medium);
+        let mut keys=Vec::new();
+        for id in [489635,900011,900012,900013] {
+            let item=decoder.decode_by_id(id).unwrap();
+            let key=router.item_dedup_key(&item,&mut decoder).unwrap();
+            assert!(!keys.contains(&key),"source-sensitive subtrees cannot share meshes");
+            assert_eq!(router.item_dedup_key(&item,&mut decoder),Some(key),"memo hit preserves identity");
+            keys.push(key);
+        }
+    }
+}
+
+#[test]
+fn issue_7714_generic_brep_fallback_keeps_source_identity() {
+    let source="#1=IFCFACETEDBREP(#99);#2=IFCFACETEDBREP(#99);\
+        #3=IFCBOOLEANRESULT(.UNION.,#1,#1);#4=IFCBOOLEANRESULT(.UNION.,#2,#2);";
+    let mut decoder=EntityDecoder::new(source);
+    let router=router(GeometryRouter::new_brep_signature_cache(),1.,TessellationQuality::Medium);
+    let mut keys=Vec::new();
+    for id in 1..=4 {
+        let item=decoder.decode_by_id(id).unwrap();
+        let key=router.item_dedup_key(&item,&mut decoder).unwrap();
+        assert!(!keys.contains(&key));keys.push(key);
+    }
+}
+
+#[test]
+fn issue_7714_commented_reference_cannot_hide_a_normalizable_source_from_cache_identity() {
+    // The existing first-reference reader can see the decoy's #7 in a comment.
+    // The carrier cache policy must consult actual source admission rather
+    // than mistake that triangle for either seven-face source item (#7714).
+    let source = format!("{}\n{}\n\
+        #900011=IFCFACETEDBREP(/*#7*/#489633);\n\
+        #900012=IFCFACETEDBREP(/*#7*/#489633);",
+        include_str!("../../tests/fixtures/issue_7714_soffice_carrier.ifc"), triangle_brep(1.0));
+    let mut decoder = EntityDecoder::new(&source);
+    let shared = router(GeometryRouter::new_brep_signature_cache(), 0.001, TessellationQuality::Medium);
+    let keys: Vec<_> = [8, 900011, 900012].into_iter().map(|id| {
+        let item = decoder.decode_by_id(id).unwrap();
+        shared.item_dedup_key(&item, &mut decoder).unwrap()
+    }).collect();
+    assert_ne!(keys[0], keys[1], "a source carrier cannot borrow the decoy triangle mesh");
+    assert_ne!(keys[1], keys[2], "actual warped items retain source identity");
+}
+
+#[test]
+fn issue_7714_warp_without_existing_adjacent_carrier_preserves_structural_reuse() {
+    // Move the third carrier corner off its plane. The real source remains
+    // warped but cannot select the existing adjacent carrier, so both items
+    // must retain structural cache equivalence through memo hits and parents.
+    let source = format!("{}\n#900011=IFCFACETEDBREP(#489633);\n\
+        #900012=IFCBOOLEANRESULT(.DIFFERENCE.,#489635,#489635);\n\
+        #900013=IFCBOOLEANRESULT(.DIFFERENCE.,#900011,#900011);",
+        include_str!("../../tests/fixtures/issue_7714_soffice_carrier.ifc")
+            .replace("95.0000003725,12000.0000131,-325.", "95.0001,12000.0000131,-325."));
+    let cache = GeometryRouter::new_brep_signature_cache();
+    for _ in 0..2 {
+        let mut decoder = EntityDecoder::new(&source);
+        let router = router(cache.clone(), 0.001, TessellationQuality::Medium);
+        let mut key = |id| {
+            let item = decoder.decode_by_id(id).unwrap();
+            router.item_dedup_key(&item, &mut decoder).unwrap()
+        };
+        assert_eq!(key(489635), key(900011));
+        assert_eq!(key(900012), key(900013));
+        assert_eq!(key(489635), key(900011));
+    }
+}
+
+// #7714 / #7994: Bounded covers audited copies/merges, not opaque producers.
+fn carrier_policy_sample(
+    source: &std::sync::Arc<ifc_lite_core::SourceBundle>,
+    cache: SharedBrepSignatureCache,
+) -> crate::Result<(Vec<u128>, crate::Mesh)> {
+    let mut decoder = source.decoder().with_strict_reals();
+    // Key-only identity checks need dedup enabled, but its legacy shared mesh
+    // cache has no admission owner and cannot serve bounded public meshing.
+    let key_router = router(cache.clone(), 0.001, TessellationQuality::Medium);
+    let mut keys = Vec::new();
+    for id in [489635, 900011] {
+        let item = decoder.decode_by_id(id).unwrap();
+        let key = key_router.item_dedup_key(&item, &mut decoder).unwrap();
+        assert_eq!(key_router.item_dedup_key(&item, &mut decoder), Some(key));
+        keys.push(key);
+    }
+    // Keep the signature authority shared, with supported router-local mesh
+    // caches so the product reaches geometry and audited copy admission.
+    let mut router = GeometryRouter::with_scale_and_quality(0.001, TessellationQuality::Medium);
+    router.enable_shared_brep_signature_cache(cache);
+    let product = decoder.decode_by_id(900004).unwrap();
+    Ok((keys, router.process_element(&product, &mut decoder)?))
+}
+
+fn assert_carrier_policy_sample(actual: &(Vec<u128>, crate::Mesh), expected: &(Vec<u128>, crate::Mesh)) {
+    assert_eq!(actual.0, expected.0, "policy must preserve cache identity");
+    assert_eq!(actual.1.positions, expected.1.positions);
+    assert_eq!(actual.1.normals, expected.1.normals);
+    assert_eq!(actual.1.indices, expected.1.indices);
+    assert_eq!(actual.1.origin, expected.1.origin);
+    assert_eq!(actual.1.rtc_applied, expected.1.rtc_applied);
+    assert_eq!(actual.1.local_bounds, expected.1.local_bounds);
+}
+
+#[test]
+fn issue_7714_bounded_partial_accounting_preserves_positive_and_declined_products_and_keys() {
+    use crate::resource::{ExecutionAccount, ExecutionPolicy, ResourceLimits};
+    let positive = include_str!("../../tests/fixtures/issue_7714_soffice_carrier.ifc")
+        .replace("ENDSEC;END-ISO", "#900011=IFCFACETEDBREP(#489633);ENDSEC;END-ISO");
+    let inputs = [positive.clone(), positive.replace("3,0.01,#80", "3,$,#80"),
+        positive.replace("95.0000003725,12000.0000131,-325.", "95.0001,12000.0000131,-325.")];
+    let bundle = |input: &str| ifc_lite_core::SourceBundle::new(input.as_bytes().to_vec());
+    let baseline: Vec<_> = inputs.iter().map(|input| {
+        carrier_policy_sample(&bundle(input), GeometryRouter::new_brep_signature_cache()).unwrap()
+    }).collect();
+    assert_ne!(baseline[0].1.positions, baseline[1].1.positions, "positive must correct the corner");
+    assert_ne!(baseline[0].0[0], baseline[0].0[1], "authored carriers retain source identity");
+    assert_eq!(baseline[2].0[0], baseline[2].0[1], "no carrier retains structural reuse");
+    for (input, expected) in inputs.iter().zip(&baseline) {
+        let source = bundle(input);
+        let cache = GeometryRouter::new_brep_signature_cache();
+        let subsequent = bundle(&positive);
+        let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
+        for warm in [false, true] {
+            let run = || carrier_policy_sample(&source, cache.clone()).unwrap();
+            let actual = account.scope(|| if warm {
+                ExecutionAccount::new(ExecutionPolicy::Compatibility).scope(run)
+            } else { run() });
+            assert!(!actual.1.is_empty(), "both negatives must retain meshing");
+            assert_carrier_policy_sample(&actual, expected);
+            // A decline must not poison later product work on the same account.
+            let next = account.scope(|| carrier_policy_sample(&subsequent,
+                GeometryRouter::new_brep_signature_cache()).unwrap());
+            assert_carrier_policy_sample(&next, &baseline[0]);
+            assert_eq!(account.check(), Ok(()));
+        }
+    }
+}
+
+#[test]
+fn issue_7714_bounded_product_still_refuses_an_actual_audited_copy_quota() {
+    use crate::resource::{Dimension, ExecutionAccount, ExecutionPolicy, ProgramStop, ResourceLimits};
+    let input = include_str!("../../tests/fixtures/issue_7714_soffice_carrier.ifc")
+        .replace("ENDSEC;END-ISO", "#900011=IFCFACETEDBREP(#489633);ENDSEC;END-ISO");
+    let source = ifc_lite_core::SourceBundle::new(input.into_bytes());
+    let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits {
+        copy_bytes: Some(0), ..ResourceLimits::default()
+    }));
+    account.scope(|| {
+        let error = carrier_policy_sample(&source, GeometryRouter::new_brep_signature_cache()).unwrap_err();
+        let crate::Error::ProgramStopped(ProgramStop::ResourceRefused(failure)) = error else {
+            panic!("the public product merge must report its audited copy refusal");
+        };
+        assert_eq!(failure.dimension, Dimension::CopyBytes);
+        assert_eq!(failure.reason, crate::resource::RefusalReason::Limit);
+        assert!(failure.requested > 0);
+        let first = ProgramStop::ResourceRefused(failure);
+        assert_eq!(account.check(), Err(first));
+        ExecutionAccount::new(ExecutionPolicy::Compatibility).scope(|| {
+            assert_eq!(crate::resource::check_current(), Err(first));
+        });
+    });
+}

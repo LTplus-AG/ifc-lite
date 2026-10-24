@@ -396,7 +396,9 @@ test('actual compareWithWasm rejects non-scalars and keeps scalar TS comparison 
     assert.equal(diffModels(replacement, [], { excludeTypes: [lone] }).counts.deleted, 1, 'confirmed TS deletion oracle');
     for (const [label, options] of comparisonStringOptions(lone)) {
       // @source-text-assertion-ok asserts the caught real facade/WASM error, not source-file text
-      assert.throws(() => compareWithWasm(replacement, [], options), error => typeof error === 'string'
+      assert.throws(() => compareWithWasm(replacement, [], { ...options,
+        ...(options.keyAliases === undefined ? {} : { keyAliases: new Map(options.keyAliases) }),
+      }), error => typeof error === 'string'
         && /comparison inputs require well-formed UTF-16/.test(error), label);
     }
     const columns = comparisonRow('scalar');
@@ -422,8 +424,12 @@ test('actual compareWithWasm rejects non-scalars and keeps scalar TS comparison 
     const base = model(wasm, baseRows), head = model(wasm, headRows);
     try {
       for (const option of options) {
-        const expected = diffModels(baseRows, headRows, option);
-        assert.deepEqual(compareWithWasm(baseRows, headRows, option), expected);
+        // The public API accepts a ReadonlyMap; the raw binding accepts pairs.
+        const publicOption = { ...option,
+          ...(option.keyAliases === undefined ? {} : { keyAliases: new Map(option.keyAliases) }),
+        };
+        const expected = diffModels(baseRows, headRows, publicOption);
+        assert.deepEqual(compareWithWasm(baseRows, headRows, publicOption), expected);
         assert.deepEqual(restoreDiffReferences(base.compare(head, option), baseRows, headRows), expected);
       }
     } finally { base.free(); head.free(); }

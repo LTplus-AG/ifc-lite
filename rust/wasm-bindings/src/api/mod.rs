@@ -52,7 +52,7 @@ pub(crate) mod styling;
 mod symbolic;
 mod zone_split;
 
-use csg_diagnostics::drain_and_log_csg_diagnostics;
+use csg_diagnostics::{drain_and_log_csg_diagnostics, warn_refused_products};
 
 use ifc_lite_core::ColumnarEntityIndex;
 use wasm_bindgen::prelude::*;

@@ -12,17 +12,19 @@
 
 use super::helpers::parse_axis2_placement_3d;
 use crate::{Error, Result, Vector3};
-use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
 
 /// The extrusion axis of an `IfcExtrudedAreaSolid` or a subtype.
 pub(crate) struct ExtrusionParams {
-    /// `ExtrudedDirection` as authored (unnormalised, never zero-length).
+    /// `ExtrudedDirection` as authored (unnormalised, never zero-length),
+    /// unless its squared length overflows: then it is divided by its largest
+    /// |component|, which every consumer's normalisation cancels.
     pub(crate) direction: Vector3<f64>,
     /// `Depth`, in file units.
     pub(crate) depth: f64,
-    /// `Position`, in file units; `None` when absent, null, unresolvable or
-    /// not an `IfcAxis2Placement3D` (the identity).
+    /// `Position`, in file units; `None` when absent or `$` (the identity).
+    /// A Position that is present but does not read is an error.
     pub(crate) position: Option<Matrix4<f64>>,
 }
 
@@ -31,8 +33,10 @@ impl ExtrusionParams {
     /// messages (`"ExtrudedAreaSolid"`, `"ExtrudedAreaSolidTapered"`).
     ///
     /// Errors, in this order: a missing, unresolvable or non-`IfcDirection`
-    /// `ExtrudedDirection`, a zero-length one, a missing `Depth`, an
-    /// unparseable `Position`.
+    /// `ExtrudedDirection`, a zero-length one, zero Z (`ValidExtrusionDirection`),
+    /// a missing `Depth`, an unparseable `Position`. A zero-length direction
+    /// or a zero Z is counted as a refusal of `entity`, like an unreadable
+    /// direction or Position.
     pub(crate) fn decode(
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
@@ -41,42 +45,44 @@ impl ExtrusionParams {
         let direction_attr = entity
             .get(2)
             .ok_or_else(|| Error::geometry(format!("{name} missing ExtrudedDirection")))?;
-        let direction_entity = decoder
-            .resolve_ref(direction_attr)?
-            .ok_or_else(|| Error::geometry("Failed to resolve ExtrudedDirection".to_string()))?;
-        if direction_entity.ifc_type != IfcType::IfcDirection {
-            return Err(Error::geometry(format!(
-                "Expected IfcDirection, got {}",
-                direction_entity.ifc_type
-            )));
-        }
-        let ratios = direction_entity
-            .get(0)
-            .ok_or_else(|| Error::geometry("IfcDirection missing ratios".to_string()))?
-            .as_list()
-            .ok_or_else(|| Error::geometry("Expected ratio list".to_string()))?;
-        // A missing Z ratio is +Z, as it always was here (`helpers::parse_direction`
-        // defaults it to 0 for placement axes).
-        let ratio = |i: usize, default: f64| ratios.get(i).and_then(|v| v.as_float()).unwrap_or(default);
-        let direction = Vector3::new(ratio(0, 0.0), ratio(1, 0.0), ratio(2, 1.0));
+        let direction_id = direction_attr
+            .as_entity_ref()
+            .ok_or_else(|| Error::geometry(format!("{name} ExtrudedDirection is not a reference")))?;
+        // The leaf rule: an `IfcDirection` of 2 or 3 finite ratios, anything
+        // else refused and counted. A missing Z used to read as 1.0 here
+        // (extruding `(1,0)` along `(1,0,1)`); the IFC rule
+        // `ValidExtrusionDirection` needs a non-zero Z, so a 2D direction
+        // (z = 0) is refused, not given an invented one (D25, D26).
+        let ratios = decoder.direction3(direction_id)?;
+        let direction = Vector3::from(ratios);
+        // A WR refusal of readable input is still refused input: count it on
+        // the solid, like the leaf refusals above it (D3, D29). A zero-length
+        // direction breaks `ValidExtrusionDirection` too (its Z is zero).
         if direction.norm_squared() <= f64::EPSILON {
+            let _counted = decoder.refuse_malformed(entity.id);
             return Err(Error::geometry(format!(
                 "{name} has zero-length ExtrudedDirection"
             )));
         }
+        if direction.z == 0.0 {
+            let _counted = decoder.refuse_malformed(entity.id);
+            return Err(Error::geometry(format!(
+                "{name} ExtrudedDirection has no Z component (ValidExtrusionDirection)"
+            )));
+        }
+        // Both tests above are exact on the authored ratios. Ratios whose
+        // squared length overflows would normalise to a zero axis downstream
+        // and extrude along +Z, so they are rescaled; finite lengths are kept
+        // bit for bit.
+        let direction = Vector3::from(crate::math::v3::unoverflowed(ratios));
 
         let depth = entity
             .get_float(3)
             .ok_or_else(|| Error::geometry(format!("{name} missing Depth")))?;
 
-        let position = match entity.get(1) {
-            Some(attr) if !attr.is_null() => match decoder.resolve_ref(attr)? {
-                Some(pos) if pos.ifc_type == IfcType::IfcAxis2Placement3D => {
-                    Some(parse_axis2_placement_3d(&pos, decoder)?)
-                }
-                _ => None,
-            },
-            _ => None,
+        let position = match decoder.resolve_optional(entity, 1)? {
+            Some(pos) => Some(parse_axis2_placement_3d(&pos, decoder)?),
+            None => None,
         };
 
         Ok(Self { direction, depth, position })

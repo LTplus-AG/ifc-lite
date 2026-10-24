@@ -1,8 +1,8 @@
 --- a/rust/processing/src/element/session_retained/issuance.rs
 +++ b/rust/processing/src/element/session_retained/issuance.rs
-@@ -100,7 +100,7 @@
-     pub(super) fn invocation(&self) -> runtime::Invocation<'_, R> {
+@@ -116,7 +116,7 @@
          match self {
+             Self::UnaryClip { input, clip, .. } => runtime::Invocation::UnaryClip { input: input.operand(), clip },
              Self::Boolean { inputs, operation, .. } => runtime::Invocation::Boolean {
 -                left: inputs[1].operand(), right: inputs[0].operand(), operation: *operation },
 +                left: inputs[0].operand(), right: inputs[1].operand(), operation: *operation },

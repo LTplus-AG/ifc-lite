@@ -2,16 +2,18 @@
 //! Reached operations bind ordered live inputs from this transaction's ledger.
 use super::*;
 pub(super) enum PendingRetainedOperation<R: NumericalReceipt> {
+    UnaryClip { expected: Box<RetainedPlanOperation>, input: BooleanInput<R> },
     Boolean { expected: Box<RetainedPlanOperation>, inputs: Box<[BooleanInput<R>; 2]>, operation: ifc_lite_geometry::BoolOp },
     Construction { expected: Box<RetainedPlanOperation>, document: GeometryDocument, request: RetainedRequest },
     Affine { expected: Box<RetainedPlanOperation>, input: Arc<RuntimeRealization<R>>, matrix: [f64; 16] },
 }
 impl<R: NumericalReceipt> PendingRetainedOperation<R> {
     pub(super) fn expected(&self) -> &RetainedPlanOperation {
-        match self { Self::Construction { expected, .. } | Self::Affine { expected, .. } | Self::Boolean { expected, .. } => expected }
+        match self { Self::UnaryClip { expected, .. } | Self::Construction { expected, .. } | Self::Affine { expected, .. } | Self::Boolean { expected, .. } => expected }
     }
 }
 pub(super) enum IssuedRetainedOperation<R: NumericalReceipt> {
+    UnaryClip { input: BooleanInput<R>, clip: Box<ifc_lite_geometry::program::RetainedUnaryClip>, definition: LogicalRetainedDefinition },
     Boolean { inputs: Box<[BooleanInput<R>; 2]>, operation: ifc_lite_geometry::BoolOp, definition: LogicalRetainedDefinition },
     Construction { request: RetainedRequest, definition: LogicalRetainedDefinition },
     Affine { input: Arc<RuntimeRealization<R>>, matrix: [f64; 16], definition: LogicalRetainedDefinition },
@@ -36,6 +38,11 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                 work: 1, ..Default::default() }).map_err(RetainedExecutionError::Stopped)?.retain();
             let expected = Box::new(expected);
             let operation = match expected.kind() {
+                RetainedOperationKind::UnaryClip { input, .. } => {
+                    let input = BooleanInput::new(self.input(input)?, input)?;
+                    if !input.realization.owner().same_domain(&worker.domain()) { return Err(protocol("foreign clip input runtime")); }
+                    PendingRetainedOperation::UnaryClip { expected, input }
+                }
                 RetainedOperationKind::Construction(recipe) => {
                     let mut document = GeometryDocument::new();
                     let definition = match recipe {
@@ -81,6 +88,13 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                     ..Default::default() }).map_err(RetainedExecutionError::Stopped)?.retain();
             }
             issued.push(match operation {
+                PendingRetainedOperation::UnaryClip { expected, input } => {
+                    let RetainedOperationKind::UnaryClip { clip, .. } = expected.kind() else { return Err(protocol("missing clip source")); };
+                    resource::charge(resource::Cost { copy_bytes: std::mem::size_of_val(clip.as_ref()) as u64,
+                        live_bytes: std::mem::size_of_val(clip.as_ref()) as u64, ..Default::default() })
+                        .map_err(RetainedExecutionError::Stopped)?.retain();
+                    IssuedRetainedOperation::UnaryClip { input: input.clone(), clip: clip.clone(), definition: expected.value().definition().clone() }
+                }
                 PendingRetainedOperation::Boolean { expected, inputs, operation } => IssuedRetainedOperation::Boolean {
                     inputs: inputs.clone(), operation: *operation, definition: expected.value().definition().clone() },
                 PendingRetainedOperation::Construction { expected, request, .. } => IssuedRetainedOperation::Construction { request: request.clone(), definition: expected.value().definition().clone() },
@@ -93,13 +107,14 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
 
 impl<R: NumericalReceipt> IssuedRetainedOperation<R> {
     pub(super) fn definition(&self) -> &LogicalRetainedDefinition {
-        match self { Self::Construction { definition, .. } | Self::Affine { definition, .. } | Self::Boolean { definition, .. } => definition }
+        match self { Self::UnaryClip { definition, .. } | Self::Construction { definition, .. } | Self::Affine { definition, .. } | Self::Boolean { definition, .. } => definition }
     }
 }
 
 impl<R: NumericalReceipt> IssuedRetainedOperation<R> {
     pub(super) fn invocation(&self) -> runtime::Invocation<'_, R> {
         match self {
+            Self::UnaryClip { input, clip, .. } => runtime::Invocation::UnaryClip { input: input.operand(), clip },
             Self::Boolean { inputs, operation, .. } => runtime::Invocation::Boolean {
                 left: inputs[0].operand(), right: inputs[1].operand(), operation: *operation },
             Self::Construction { request, .. } => runtime::Invocation::Construction(request),

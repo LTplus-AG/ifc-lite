@@ -23,6 +23,8 @@ impl<'a> Operand<'a, RealizationKind> {
                 Ok(RetainedDependency::Affine { copy, world_from_affine: world_from_object }),
             Self::Placed { receipt: RealizationKind::Boolean(result), world_from_object } =>
                 Ok(RetainedDependency::PlacedResult { result, world_from_result: world_from_object }),
+            Self::Placed { receipt: RealizationKind::UnaryClip(clip), world_from_object } =>
+                Ok(RetainedDependency::PlacedClip { clip, world_from_clip: world_from_object }),
             _ => Err(protocol("Boolean operand form/receipt kind mismatch")),
         }
     }
@@ -33,6 +35,7 @@ fn transform_input(receipt: &RealizationKind) -> RetainedTransformInput<'_> {
         RealizationKind::Construction(value) => RetainedTransformInput::Source(value),
         RealizationKind::Affine(value) => RetainedTransformInput::Affine(value),
         RealizationKind::Boolean(value) => RetainedTransformInput::Result(value),
+        RealizationKind::UnaryClip(value) => RetainedTransformInput::Clip(value),
     }
 }
 
@@ -46,6 +49,12 @@ impl RetainedExecutor for SmlibWorker {
         -> Result<Self::Receipt, RetainedExecutionError> {
         let mesh = MeshLimits { max_bytes: limits.max_bytes };
         match call {
+            Invocation::UnaryClip { input, clip } => {
+                let (side, mode) = super::clip_validation::selectors(clip);
+                self.clip_retained_plane_accounted(input.native_dependency()?, clip.local_plane, side, mode,
+                    limits.chord_metres, limits.angle_degrees, mesh, Some(resources))
+                    .map(|value| RealizationKind::UnaryClip(Box::new(value)))
+            }
             Invocation::Construction(request) => self.evaluate_retained_accounted(request.clone(), limits.chord_metres, limits.angle_degrees, mesh, Some(resources))
                 .map(|value| RealizationKind::Construction(Box::new(value))),
             Invocation::Affine { input, column_major } => self.copy_retained_affine(transform_input(input), column_major)

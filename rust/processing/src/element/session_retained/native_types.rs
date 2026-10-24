@@ -5,6 +5,7 @@ use ifc_lite_geometry_runtime::{RetainedAffineCopy, RetainedDependencyResult};
 
 pub enum RealizationKind {
     Construction(Box<RetainedRealization>),
+    UnaryClip(Box<ifc_lite_geometry_runtime::RetainedPlaneClip>),
     Affine(Box<RetainedAffineCopy>),
     Boolean(Box<RetainedDependencyResult>),
 }

@@ -48,6 +48,9 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                     return Err(protocol("foreign Boolean operation or ordered inputs"));
                 }
             }
+            (PendingRetainedOperation::UnaryClip { expected, input }, evidence @ ReceiptEvidence::UnaryClip { .. }) => {
+                super::clip_validation::validate(expected, input, receipt, owner, evidence)?;
+            }
             _ => return Err(protocol("wrong retained operation result")),
         }
         Ok(())

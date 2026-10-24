@@ -20,6 +20,7 @@ mod openings;
 pub use witness::RuntimeProductWitness;
 mod acceptance;
 mod validation;
+mod clip_validation;
 #[cfg(all(test, feature = "retained-native", not(target_arch = "wasm32")))]
 mod adversarial_tests;
 mod batch;
@@ -56,6 +57,8 @@ mod predispatch_tests;
 mod affine_tests;
 #[cfg(all(test, feature = "retained-native", not(target_arch = "wasm32")))]
 mod boolean_tests;
+#[cfg(all(test, feature = "retained-native", not(target_arch = "wasm32")))]
+mod clip_tests;
 pub use predispatch::RuntimeRejectedExecution;
 mod entry;
 mod traversal;

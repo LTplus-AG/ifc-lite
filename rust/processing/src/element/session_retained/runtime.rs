@@ -9,6 +9,7 @@ pub enum Operand<'a, R> {
 
 pub enum Invocation<'a, R> {
     Construction(&'a RetainedRequest),
+    UnaryClip { input: Operand<'a, R>, clip: &'a ifc_lite_geometry::program::RetainedUnaryClip },
     Affine { input: &'a R, column_major: [f64; 16] },
     Boolean {
         left: Operand<'a, R>,
@@ -45,6 +46,14 @@ pub trait AsyncRetainedExecutor: RetainedRuntime {
 /// a receipt or grant a lease; acceptance also checks its captured live domain.
 pub enum ReceiptEvidence<'a, K> {
     Construction(&'a ifc_lite_geometry::document::RetainedCompletion),
+    UnaryClip {
+        input: K, output: K, plane: &'a [f64; 6],
+        side: ifc_lite_geometry::document::retained_plane::PlaneSide,
+        mode: ifc_lite_geometry::document::retained_plane::PlaneClipMode,
+        world_from_evaluation: &'a [f64; 16],
+        certificate: &'a ifc_lite_geometry::document::retained_plane::PlaneCertificate,
+        empty: bool,
+    },
     Affine { input: K, column_major: &'a [f64; 16] },
     Boolean {
         operation: ifc_lite_geometry::BoolOp,

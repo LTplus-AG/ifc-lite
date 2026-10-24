@@ -10,6 +10,7 @@ impl<R: NumericalReceipt> IssuedRetainedOperation<R> {
             // Both runtimes reject empty source constructions.
             (ReceiptEvidence::Construction(_), Self::Construction { .. }) => false,
             (ReceiptEvidence::Boolean { empty, .. }, Self::Boolean { .. }) => empty,
+            (ReceiptEvidence::UnaryClip { empty, .. }, Self::UnaryClip { .. }) => empty,
             (ReceiptEvidence::Affine { .. }, Self::Affine { input, .. }) => input.is_empty(),
             _ => return Err(protocol("numerical result kind mismatch")),
         };

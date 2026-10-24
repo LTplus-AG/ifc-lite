@@ -17,13 +17,15 @@ impl NumericalReceipt for RealizationKind {
     fn heap_bytes() -> u64 {
         std::mem::size_of::<ifc_lite_geometry_runtime::RetainedRealization>()
             .max(std::mem::size_of::<ifc_lite_geometry_runtime::RetainedAffineCopy>())
-            .max(std::mem::size_of::<ifc_lite_geometry_runtime::RetainedDependencyResult>()) as u64
+            .max(std::mem::size_of::<ifc_lite_geometry_runtime::RetainedDependencyResult>())
+            .max(std::mem::size_of::<ifc_lite_geometry_runtime::RetainedPlaneClip>() + 2 * 2488) as u64
     }
     fn domain(&self) -> &Self::Domain {
         match self {
             Self::Construction(value) => value.owner(),
             Self::Affine(value) => value.owner(),
             Self::Boolean(value) => value.owner(),
+            Self::UnaryClip(value) => value.owner(),
         }
     }
     fn validate_live(&self) -> Result<(), Self::Error> {
@@ -31,6 +33,7 @@ impl NumericalReceipt for RealizationKind {
             Self::Construction(value) => value.validate_live(),
             Self::Affine(value) => value.validate_live(),
             Self::Boolean(value) => value.validate_live(),
+            Self::UnaryClip(value) => value.validate_live(),
         }
     }
     fn object(&self) -> Self::Object {
@@ -38,11 +41,19 @@ impl NumericalReceipt for RealizationKind {
             Self::Construction(value) => value.solid(),
             Self::Affine(value) => value.solid(),
             Self::Boolean(value) => value.solid(),
+            Self::UnaryClip(value) => value.solid(),
         }
     }
     fn evidence(&self) -> ReceiptEvidence<'_, Self::Object> {
         match self {
             Self::Construction(value) => ReceiptEvidence::Construction(value.completion()),
+            Self::UnaryClip(value) => {
+                let identity = value.operation_identity();
+                ReceiptEvidence::UnaryClip { input: identity.input, output: identity.output,
+                    plane: &identity.plane, side: identity.side, mode: identity.mode,
+                    world_from_evaluation: &identity.world_from_evaluation,
+                    certificate: &identity.certificate, empty: value.is_empty() }
+            }
             Self::Affine(value) => {
                 let identity = value.operation_identity();
                 ReceiptEvidence::Affine { input: identity.input, column_major: &identity.column_major }

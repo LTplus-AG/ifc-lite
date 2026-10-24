@@ -2,6 +2,7 @@
 #include "planar_transition_detail.hpp"
 #include <SmShell.h>
 #include <SmLoopuse.h>
+#include <cstdio>
 namespace face_lineage {
 using namespace planar_detail;
 PlanarTransition::PlanarTransition(Ledger& value,SmBrep& immutable,SmBrep& owned,SmFace& target):
@@ -63,6 +64,27 @@ PlanarTransition::PlanarTransition(Ledger& value,SmBrep& immutable,SmBrep& owned
         }
         require(from<4 && to<4 && ((from^to)==1 || (from^to)==2),"transition exact rectangle boundary incidence");
         slot.from=from; slot.to=to; const unsigned first=slot.use->GetOrientation()==SM_OT_SAME?0:1;
+#ifdef IFCLITE_LINEAGE_FAILURE_STACK
+        if(!(point(a[first],uv[from]) && point(a[1-first],uv[to]) && point(b[first],points[from]) && point(b[1-first],points[to]))) {
+            // The four code-17 silent-edit refusals earlier in the aggregate
+            // test are expected. Report this independent preflight mismatch.
+            std::fprintf(stderr,"planar correspondence mismatch slot=%u from=%u to=%u first=%u orientation=%ld uv_type=%ld edge_type=%ld\n",
+                i,from,to,first,long(slot.use->GetOrientation()),long(slot.original->GetType()),long(slot.use->GetEdge()->GetCurve()->GetType()));
+            auto pair=[](const char* role,const SmPoint3d& actual,const SmPoint3d& expected) {
+                std::fprintf(stderr,"planar coefficient role=%s actual=[%.17g,%.17g,%.17g] expected=[%.17g,%.17g,%.17g]\n",
+                    role,actual.x,actual.y,actual.z,expected.x,expected.y,expected.z);
+            };
+            pair("uv-start",a[first],uv[from]); pair("uv-end",a[1-first],uv[to]);
+            pair("3d-start",b[first],points[from]); pair("3d-end",b[1-first],points[to]);
+            for(auto* curve:{slot.original,static_cast<SmBSplineCurve*>(slot.use->GetEdge()->GetCurve())}) {
+                const auto natural=curve->GetNaturalInterval();
+                std::fprintf(stderr,"planar natural dim=%lu min=%.17g max=%.17g inside_out=%u\n",
+                    static_cast<unsigned long>(curve->GetDim()),natural.GetMin(),natural.GetMax(),unsigned(curve->GetInsideOut()));
+            }
+            const auto actual=slot.use->GetEdge()->GetInterval();
+            std::fprintf(stderr,"planar edge interval=[%.17g,%.17g]\n",actual.GetMin(),actual.GetMax());
+        }
+#endif
         require(point(a[first],uv[from]) && point(a[1-first],uv[to]) && point(b[first],points[from]) &&
             point(b[1-first],points[to]),"transition exact UV/3D coefficient correspondence");
         const auto interval=slot.use->GetEdge()->GetInterval(),natural=slot.original->GetNaturalInterval();

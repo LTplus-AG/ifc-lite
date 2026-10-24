@@ -45,6 +45,15 @@ class EdgeSubdivision {
     struct Link { SmEdgeuse* object; SmEdgeuse* cw; SmEdgeuse* ccw; };
     std::vector<Link> links;
     std::unique_ptr<SmCurve> expected_first,expected_second;
+#ifdef IFCLITE_LINEAGE_FAILURE_STACK
+    // Diagnostic-only scalars, never consulted by operation authority. Values
+    // are captured while objects are live; reporting performs no SDK access.
+    const char* checkpoint="issued",*geometry_role="none";
+    uintptr_t diagnostic_object=0;
+    long diagnostic_type=0;
+    unsigned diagnostic_dimension=0;
+    bool diagnostic_nurb=false,diagnostic_borrowed=false,diagnostic_attributes=false;
+#endif
     void require(bool,const char*);
     void start(SmEdge*);
     void complete();
@@ -60,5 +69,8 @@ public:
     ~EdgeSubdivision();
     bool event(Event&,SmNotifyOperation,SmObject*,SmObject*,SmObject*,SmObject*);
     void finish();
+#ifdef IFCLITE_LINEAGE_FAILURE_STACK
+    void report_exception() const noexcept;
+#endif
 };
 }

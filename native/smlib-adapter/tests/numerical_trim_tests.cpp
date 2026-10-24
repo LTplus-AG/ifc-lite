@@ -13,6 +13,7 @@
 #include <SmPoly.h>
 #include <array>
 #include <cstring>
+#include <cstdio>
 #include <memory>
 #include <new>
 #include <stdexcept>
@@ -252,14 +253,15 @@ void internal_copy(const char* name) {
 // Fault injector wraps genuine SDK notifications. It never constructs a map or
 // substitutes a success result. Only negative witnesses use this slot seam.
 struct SplitFault:SmNotifyCallback {
-    SmContext& context; SmNotifyCallback* observer; const char* mode;
-    SmEdge* edge=nullptr; unsigned faults=0;
-    SplitFault(SmContext& c,const char* m):context(c),observer(c.GetUserNotifyCallback()),mode(m) { context.SetUserNotifyCallback(this); }
+    SmContext& context; SmNotifyCallback* observer; Ledger& ledger; const char* mode;
+    SmEdge* edge=nullptr; unsigned faults=0; bool healthy_before_fault=false;
+    SplitFault(SmContext& c,Ledger& l,const char* m):context(c),observer(c.GetUserNotifyCallback()),ledger(l),mode(m) { context.SetUserNotifyCallback(this); }
     ~SplitFault() { context.SetUserNotifyCallback(observer); }
     SmStatus Execute(SmNotifyOperation op,SmObject* caller,SmObject* a,SmObject* b,SmObject* c) noexcept override {
         if(op==SM_NO_PRE_EDIT && caller && caller->GetType()==SmEdge_TYPE) edge=static_cast<SmEdge*>(caller);
-        if(op==SM_NO_SPLIT_IN_BREP && edge && a==edge && std::strcmp(mode,"split-missing")==0) { ++faults; return SM_SUCCESS; }
+        if(op==SM_NO_SPLIT_IN_BREP && edge && a==edge && std::strcmp(mode,"split-missing")==0) { healthy_before_fault=ledger.failed()==Failure::None; ++faults; return SM_SUCCESS; }
         if(op==SM_NO_ADD_TO_BREP && edge && !faults) {
+            healthy_before_fault=ledger.failed()==Failure::None;
             if(std::strcmp(mode,"split-curve")==0) {
                 ULONG n=0; double* controls=nullptr;
                 if(static_cast<SmBSplineCurve*>(edge->GetCurve())->GetControlPointsPointer(n,controls)==SM_SUCCESS && n && controls) {
@@ -288,15 +290,21 @@ void subdivision(const char* name) {
     }
     require(edge,"subdivision fixture has a real curved four-use edge");
     auto interval=edge->GetInterval(); const double cut=interval.GetMin()+(interval.GetMax()-interval.GetMin())/64;
-    SmEdge *one=nullptr,*two=nullptr; SmVertex* vertex=nullptr; SmStatus status; unsigned faults=0;
+    SmEdge *one=nullptr,*two=nullptr; SmVertex* vertex=nullptr; SmStatus status; unsigned faults=0; bool healthy_before_fault=false;
     const auto first=ledger.event_size();
     {
         std::unique_ptr<Scope> nested;
         if(std::strcmp(name,"split-frame")==0) nested=std::make_unique<Scope>(ledger,*SmApiGetOrCreateContext());
-        SplitFault fault(*SmApiGetOrCreateContext(),name);
-        status=internal->MakeVertexSplitEdge(edge,cut,one,two,vertex); faults=fault.faults;
+        SplitFault fault(*SmApiGetOrCreateContext(),ledger,name);
+        status=internal->MakeVertexSplitEdge(edge,cut,one,two,vertex); faults=fault.faults; healthy_before_fault=fault.healthy_before_fault;
     }
     require(status==SM_SUCCESS && one==edge && two && vertex,"actual SDK subdivision status and outputs");
+    // Preserve the real first failure in every witness, including positive.
+    // Reporting is read-only; only the assertion below decides acceptance.
+    if(ledger.failed()!=Failure::None) try { ledger.check(); }
+    catch(const AdapterFailure& error) {
+        std::fprintf(stderr,"subdivision witness first refusal status=%d reason=%s\n",error.status,error.message);
+    }
     if(std::strcmp(name,"split-positive")==0) {
         require(ledger.failed()==Failure::None,"checked subdivision accepts genuine restriction receipts");
         bool receipt=false;
@@ -316,6 +324,11 @@ void subdivision(const char* name) {
         require(owner.faces()==roots,"subdivision preserves input face identities and representation");
     } else {
         require(faults==(std::strcmp(name,"split-frame")==0?0u:1u),"subdivision negative reaches its actual SDK mutation point");
+        if(std::strcmp(name,"split-frame")!=0)
+            require(healthy_before_fault,"subdivision fault witness requires healthy setup before its intended fault");
+        else require(ledger.failed()==Failure::None ||
+            (ledger.failure_origin().operation==SM_NO_PRE_EDIT && ledger.failure_origin().caller_type==SmEdge_TYPE &&
+             ledger.failure_origin().event==first+1),"subdivision frame witness reaches the first real edge edit");
         bool rejected=ledger.failed()!=Failure::None;
         if(std::strcmp(name,"split-missing")==0) {
             try { SubdivisionTestAccess::finish(ledger); } catch(const AdapterFailure&) { rejected=true; }

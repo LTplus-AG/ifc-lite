@@ -4,6 +4,7 @@
 #include "failure.hpp"
 #include "ifclite_smlib.h"
 #include <SmBSplineCurve.h>
+#include <SmBSplineSurface.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -42,15 +43,36 @@ EdgeSubdivision::Live EdgeSubdivision::birth(Event& event,SmObject* object) {
 std::unique_ptr<SmCurve> EdgeSubdivision::copy(SmCurve* source) {
     require(source && (source->GetType()==SmBSplineCurve_TYPE || source->GetType()==SmLine_TYPE),
         "subdivision requires an exact supported curve representation");
+#ifdef IFCLITE_LINEAGE_FAILURE_STACK
+    checkpoint="curve-support-before-copy";
+    auto* basis=static_cast<SmBSplineCurve*>(source);
+    diagnostic_object=reinterpret_cast<uintptr_t>(source); diagnostic_type=source->GetType();
+    diagnostic_dimension=source->GetDim(); diagnostic_nurb=basis->GetGwNurbPointer()!=nullptr;
+    diagnostic_borrowed=basis->IsNurbBorrowed(); diagnostic_attributes=basis->HasAttributes();
+#endif
     geometry.scratch.clear(); geometry.curve(source); geometry.scratch.clear(); // bound support before SDK allocation
     SmCurve* result=nullptr;
+#ifdef IFCLITE_LINEAGE_FAILURE_STACK
+    checkpoint="checked-scratch-copy";
+#endif
     const auto status=source->Copy(scratch_context,result); std::unique_ptr<SmCurve> owned(result);
     require(status==SM_SUCCESS && result,"subdivision verification copy status");
+#ifdef IFCLITE_LINEAGE_FAILURE_STACK
+    checkpoint="exact-scratch-copy";
+#endif
     exact(source,result); return owned;
 }
 void EdgeSubdivision::exact(SmCurve* expected,SmCurve* actual) {
     try { geometry.require_exact_curve_copy(expected,actual); }
-    catch(const AdapterFailure&) { require(false,"subdivision exact curve representation mismatch"); }
+    catch(const AdapterFailure& error) {
+#ifdef IFCLITE_LINEAGE_FAILURE_STACK
+        if(ledger.failed()==Failure::None) {
+            std::fprintf(stderr,"subdivision exact comparison status=%d reason=%s\n",error.status,error.message);
+            report_exception();
+        }
+#endif
+        require(false,"subdivision exact curve representation mismatch");
+    }
 }
 std::unique_ptr<SmCurve> EdgeSubdivision::restricted(SmCurve* source,SmExtent1d domain) {
     auto result=copy(source); const auto requested=domain;
@@ -63,6 +85,16 @@ std::unique_ptr<SmCurve> EdgeSubdivision::restricted(SmCurve* source,SmExtent1d 
 }
 std::vector<uint64_t> EdgeSubdivision::surface(SmObject* object) {
     require(object,"subdivision missing incident surface");
+#ifdef IFCLITE_LINEAGE_FAILURE_STACK
+    checkpoint="incident-surface-support"; diagnostic_object=reinterpret_cast<uintptr_t>(object);
+    diagnostic_type=object->GetType(); diagnostic_dimension=0;
+    diagnostic_nurb=diagnostic_borrowed=diagnostic_attributes=false;
+    if(object->IsKindOf(SmBSplineSurface_TYPE)) {
+        auto* basis=static_cast<SmBSplineSurface*>(object);
+        diagnostic_nurb=basis->GetGwNurbPointer()!=nullptr; diagnostic_borrowed=basis->IsNurbBorrowed();
+        diagnostic_attributes=basis->HasAttributes();
+    }
+#endif
     geometry.scratch.clear(); geometry.surface(object); auto result=geometry.scratch;
     geometry.scratch.clear(); return result;
 }
@@ -79,7 +111,11 @@ void EdgeSubdivision::start(SmEdge* value) {
         std::isfinite(tolerance) && tolerance>0,"invalid subdivision interval or tolerance");
     curve=edge->GetCurve(); const auto* cb=ledger.binding(curve,false);
     require(cb && curve->GetOwner()==edge,"subdivision curve lacks observed ownership");
-    curve_generation=cb->current; live(curve,curve_generation); frozen=copy(curve);
+    curve_generation=cb->current; live(curve,curve_generation);
+#ifdef IFCLITE_LINEAGE_FAILURE_STACK
+    geometry_role="edge-3d";
+#endif
+    frozen=copy(curve);
     require(edge->GetEdgeuseCount()>0 && edge->GetEdgeuseCount()<=16 && edge->GetEdgeuseCount()%2==0,
         "subdivision incident use bound");
     SmTArray<SmEdgeuse*> actual; require(edge->GetEdgeuses(actual)==SM_SUCCESS,"subdivision use inventory status");
@@ -100,6 +136,9 @@ void EdgeSubdivision::start(SmEdge* value) {
             for(const auto& helper:ledger.bindings)
                 require(!helper.alive || helper.retired || helper.numerical_parent!=item.uv_generation,
                     "subdivision cannot change an origin with a live helper");
+#ifdef IFCLITE_LINEAGE_FAILURE_STACK
+            geometry_role="installed-uv";
+#endif
             item.frozen=copy(item.uv);
             const auto domain=item.uv->GetNaturalInterval();
             require(domain.GetMin()==interval.GetMin() && domain.GetMax()==interval.GetMax(),"subdivision UV/edge domain mismatch");
@@ -114,6 +153,9 @@ void EdgeSubdivision::start(SmEdge* value) {
     SmTArray<SmFace*> incident; edge->GetFaces(incident);
     require(incident.GetSize()>0 && incident.GetSize()<=16,"subdivision face bound");
     for(auto* face:incident) {
+#ifdef IFCLITE_LINEAGE_FAILURE_STACK
+        checkpoint="incident-face-identity"; geometry_role="incident-surface";
+#endif
         const auto id=ledger.identity(face);
         require(face->GetBrep()==body,"foreign subdivision incident face");
         faces.push_back({face,face->GetSurface(),id,surface(face->GetSurface())});
@@ -124,6 +166,14 @@ void EdgeSubdivision::next_uv() {
     while(index<uses.size() && !uses[index].uv) ++index;
     stage=index==uses.size()?AddVertex:UVBirth;
 }
+#ifdef IFCLITE_LINEAGE_FAILURE_STACK
+void EdgeSubdivision::report_exception() const noexcept {
+    std::fprintf(stderr,"subdivision exception checkpoint=%s role=%s stage=%u step=%u split=%u cut=%.17g "
+        "object=%zx type=%ld dim=%u nurb=%u borrowed=%u attributes=%u\n",checkpoint,geometry_role,
+        unsigned(stage),step,count,cut,size_t(diagnostic_object),diagnostic_type,diagnostic_dimension,
+        unsigned(diagnostic_nurb),unsigned(diagnostic_borrowed),unsigned(diagnostic_attributes));
+}
+#endif
 void EdgeSubdivision::finish() {
     require(stage==Idle,"subdivision missing matching completion receipt"); // subdivision-completion
 }

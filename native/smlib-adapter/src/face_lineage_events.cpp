@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 #include "face_lineage.hpp"
 #include "edge_subdivision.hpp"
+#include "failure.hpp"
+#include <cstdio>
+#include <exception>
 #include <SmVertexuse.h>
 #include "planar_transition.hpp"
 #include "affine_transition.hpp"
@@ -26,6 +29,25 @@ void Ledger::observe(SmNotifyOperation operation,SmObject* caller,SmObject* a,Sm
     trace_event(operation,caller,a,b,c);
 #endif
     try { transition(record,operation,caller,a,b,c); }
+    catch(const AdapterFailure& error) {
+#ifdef IFCLITE_LINEAGE_FAILURE_STACK
+        if(failure==Failure::None) {
+            std::fprintf(stderr,"lineage callback exception event=%u operation=%ld type=%ld status=%d reason=%s\n",
+                event_count,long(operation),caller?long(caller->GetType()):0,error.status,error.message);
+            if(subdivision) subdivision->report_exception();
+        }
+#endif
+        fail(Failure::InvalidEvent);
+    }
+    catch(const std::exception& error) {
+#ifdef IFCLITE_LINEAGE_FAILURE_STACK
+        if(failure==Failure::None) {
+            std::fprintf(stderr,"lineage callback standard exception event=%u reason=%s\n",event_count,error.what());
+            if(subdivision) subdivision->report_exception();
+        }
+#endif
+        fail(Failure::InvalidEvent);
+    }
     catch(...) { fail(Failure::InvalidEvent); }
 }
 void Ledger::transition(Event& event,SmNotifyOperation op,SmObject* caller,SmObject* a,SmObject* b,SmObject* c) {

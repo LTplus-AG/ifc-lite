@@ -4,13 +4,7 @@
 //! native transport. No pointers, JS numbers for u64 IDs, or host worker identity
 //! cross this boundary. Handles belong to one worker/module incarnation.
 
-/// Numerical Boolean selector; wire codes are fixed by the adapter ABI.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BooleanOperation {
-    Union,
-    Intersection,
-    Difference,
-}
+pub use ifc_lite_geometry::document::retained_lineage::BooleanOperation;
 
 #[path = "protocol_response.rs"]
 mod response;

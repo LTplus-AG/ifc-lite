@@ -23,6 +23,9 @@
 //! Operations over definitions land with their first caller.
 
 mod retained;
+pub mod retained_frames;
+pub mod retained_affine;
+pub mod retained_lineage;
 mod retained_disk;
 mod retained_display;
 mod retained_sweep;

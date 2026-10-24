@@ -2,6 +2,7 @@
 //! Versioned IPC with the single-threaded owned-handle SMLib adapter.
 
 use crate::process_control::ProcessControl;
+use ifc_lite_geometry::document::retained_frames::rigid;
 use crate::protocol::{self, BooleanOperation, KernelCommand, KernelResponse, WireHandle, VERSION};
 use std::collections::HashMap;
 use std::ffi::OsStr;
@@ -35,7 +36,7 @@ pub use sweep::RetainedRealization;
 mod objects;
 #[path = "worker_dependencies.rs"]
 mod dependencies;
-pub use dependencies::{RetainedDependency, RetainedDependencyResult, RetainedLineage};
+pub use dependencies::{RetainedBooleanIdentity, RetainedDependency, RetainedDependencyResult, RetainedLineage};
 #[path = "worker_affine.rs"]
 mod affine;
 pub use affine::{AffineCertificate, AffineCopyIdentity, RetainedAffineCopy, RetainedTransformInput};
@@ -339,31 +340,5 @@ impl Drop for SmlibWorker {
         if let Err(error) = self.terminate() {
             eprintln!("geometry worker termination/reap failed: {error}");
         }
-    }
-}
-
-/// Proper rigid check mirroring the adapter's admission: finite, bottom row
-/// (0,0,0,1), orthonormal right-handed rotation.
-fn rigid(m: [f64; 16]) -> Result<(), &'static str> {
-    let valid = m.iter().all(|v| v.is_finite())
-        && m[3] == 0.
-        && m[7] == 0.
-        && m[11] == 0.
-        && m[15] == 1.
-        && (0..3).all(|i| {
-            (0..3).all(|j| {
-                let dot: f64 = (0..3).map(|k| m[i * 4 + k] * m[j * 4 + k]).sum();
-                (dot - if i == j { 1. } else { 0. }).abs() <= 1e-12
-            })
-        });
-    let cross = [
-        m[1] * m[6] - m[2] * m[5],
-        m[2] * m[4] - m[0] * m[6],
-        m[0] * m[5] - m[1] * m[4],
-    ];
-    if valid && (0..3).all(|i| (cross[i] - m[8 + i]).abs() <= 1e-12) {
-        Ok(())
-    } else {
-        Err("transform must be a proper rigid metre frame")
     }
 }

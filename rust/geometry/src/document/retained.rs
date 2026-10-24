@@ -132,6 +132,13 @@ pub struct RetainedRequest {
 }
 
 impl RetainedRequest {
+    /// Same immutable admission, including the original source allocation.
+    pub fn same_admission(&self, other: &Self) -> bool {
+        self.document == other.document && self.revision == other.revision
+            && self.definition == other.definition && self.worker_incarnation == other.worker_incarnation
+            && Arc::ptr_eq(&self.entry, &other.entry)
+    }
+
     pub fn definition(&self) -> RetainedDefinitionHandle {
         self.definition
     }

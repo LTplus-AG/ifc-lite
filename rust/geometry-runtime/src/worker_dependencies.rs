@@ -3,16 +3,17 @@
 //! result owns its solid through its own managed lease, independently of the
 //! receipts it was built from.
 use super::{
-    rigid, AffineCertificate, BrepHandle, MeshLimits, NumericalOutcome, RetainedAffineCopy,
+    rigid, BrepHandle, MeshLimits, NumericalOutcome, RetainedAffineCopy,
     RetainedRealization, SmlibWorker, TessellatedMesh, WorkerError,
 };
 use crate::protocol::BooleanOperation;
-use ifc_lite_geometry::document::RetainedRequest;
+use ifc_lite_geometry::document::retained_frames::{multiply, relative};
+pub use ifc_lite_geometry::document::retained_lineage::RetainedLineage;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 /// Deepest admitted chain of retained Boolean and affine-copy operations.
-pub(super) const MAX_OPERATIONS: usize = 128;
+pub(super) use ifc_lite_geometry::document::retained_lineage::MAX_OPERATIONS;
 
 /// A sealed numerical operand. A raw handle cannot manufacture one.
 pub enum RetainedDependency<'a> {
@@ -25,6 +26,13 @@ pub enum RetainedDependency<'a> {
     },
     /// An earlier result, in its own unchanged world frame.
     Result(&'a RetainedDependencyResult),
+    /// An earlier result reused at an explicit proper rigid placement.
+    /// This replaces its evaluation-to-world frame; it is not composed with
+    /// the original occurrence. The result solid and its lease stay unchanged.
+    PlacedResult {
+        result: &'a RetainedDependencyResult,
+        world_from_result: [f64; 16],
+    },
     /// A baked affine copy placed by an explicit proper rigid
     /// `world_from_affine` (column-major, copy metres -> world metres). Never
     /// inferred from authored units or a relative-to-centre origin.
@@ -34,38 +42,16 @@ pub enum RetainedDependency<'a> {
     },
 }
 
-/// The evaluated operations behind a result, separate from revision-local SDK
-/// faces and display data. It records numerical provenance, not complete
-/// representation coverage.
-#[derive(Debug, Clone)]
-pub enum RetainedLineage {
-    Source {
-        request: Box<RetainedRequest>,
-        world_from_source: [f64; 16],
-    },
-    Boolean {
-        operation: BooleanOperation,
-        left: Arc<Self>,
-        right: Arc<Self>,
-    },
-    /// A realization's raw authored source in its own evaluation frame, as
-    /// the input of an affine copy (no world placement applies to it).
-    Definition {
-        request: Box<RetainedRequest>,
-        source_from_evaluation: [f64; 16],
-        evaluation_from_source: [f64; 16],
-    },
-    /// A bounded affine copy of `input`, in the input's evaluation frame.
-    AffineCopy {
-        input: Arc<Self>,
-        column_major: [f64; 16],
-        certificate: AffineCertificate,
-    },
-    /// An explicit rigid placement of a copied value as a Boolean operand.
-    Placed {
-        value: Arc<Self>,
-        world_from_evaluation: [f64; 16],
-    },
+/// The ordered numerical operation actually dispatched for a Boolean result.
+/// Frames map each input's evaluation metres to world metres. These records
+/// grant no lease and cannot manufacture a sealed result.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RetainedBooleanIdentity {
+    pub operation: BooleanOperation,
+    pub left: BrepHandle,
+    pub right: BrepHandle,
+    pub world_from_left: [f64; 16],
+    pub world_from_right: [f64; 16],
 }
 
 /// One retained Boolean output, owned by its own object lease. Dropping it
@@ -78,12 +64,17 @@ pub struct RetainedDependencyResult {
     _lease: Arc<super::objects::ManagedObjectLease>,
     object_live: Arc<AtomicBool>,
     mesh: TessellatedMesh,
+    identity: RetainedBooleanIdentity,
     world_from_evaluation: [f64; 16],
     lineage: Arc<RetainedLineage>,
     operations: usize,
 }
 
 impl RetainedDependencyResult {
+    /// Immutable ordered inputs and placements, sealed by numerical execution.
+    pub fn operation_identity(&self) -> &RetainedBooleanIdentity {
+        &self.identity
+    }
     pub fn solid(&self) -> BrepHandle {
         self.solid
     }
@@ -151,6 +142,18 @@ impl RetainedDependency<'_> {
                 let (solid, lineage, operations) = result.parts()?;
                 Ok((solid, result.world_from_evaluation, lineage, operations))
             }
+            Self::PlacedResult {
+                result,
+                world_from_result,
+            } => {
+                let (solid, value, operations) = result.parts()?;
+                rigid(*world_from_result).map_err(WorkerError::InvalidArgument)?;
+                let lineage = RetainedLineage::Placed {
+                    value,
+                    world_from_evaluation: *world_from_result,
+                };
+                Ok((solid, *world_from_result, Arc::new(lineage), operations))
+            }
             Self::Affine {
                 copy,
                 world_from_affine,
@@ -213,6 +216,13 @@ impl SmlibWorker {
             solid,
             owner: self.retained_owner(),
             mesh,
+            identity: RetainedBooleanIdentity {
+                operation,
+                left: a,
+                right: b,
+                world_from_left: frame,
+                world_from_right: right_frame,
+            },
             world_from_evaluation: frame,
             lineage: Arc::new(RetainedLineage::Boolean {
                 operation,
@@ -222,32 +232,6 @@ impl SmlibWorker {
             operations,
         })
     }
-}
-
-/// Column-major 4x4 product `a * b`.
-fn multiply(a: [f64; 16], b: [f64; 16]) -> [f64; 16] {
-    std::array::from_fn(|i| (0..4).map(|k| a[k * 4 + i % 4] * b[i / 4 * 4 + k]).sum())
-}
-
-/// `inverse(a) * b` for proper rigid frames. Translations are subtracted
-/// before rotating, so survey-scale origins cancel in f64.
-fn relative(a: [f64; 16], b: [f64; 16]) -> Result<[f64; 16], &'static str> {
-    rigid(a)?;
-    rigid(b)?;
-    let mut out = [0.; 16];
-    out[15] = 1.;
-    for col in 0..3 {
-        for row in 0..3 {
-            out[col * 4 + row] = (0..3).map(|k| a[row * 4 + k] * b[col * 4 + k]).sum();
-        }
-    }
-    for row in 0..3 {
-        out[12 + row] = (0..3)
-            .map(|k| a[row * 4 + k] * (b[12 + k] - a[12 + k]))
-            .sum();
-    }
-    rigid(out)?;
-    Ok(out)
 }
 
 #[cfg(test)]

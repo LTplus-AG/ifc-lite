@@ -257,3 +257,9 @@ pub const RETAINED_CIRCLE_BASIS_EPS: f64 = 1e-12;
 /// Dot-product deviation of source placement axes from an orthonormal frame.
 /// Unit: dimensionless. Retained requests accept rigid placements only.
 pub const RETAINED_RIGID_DOT_EPS: f64 = 1e-10;
+
+/// Orthonormal dot-product and right-handed cross-product deviation at the
+/// retained dependency boundary. Unit: dimensionless. Matches the adapter's
+/// existing proper-rigid admission at 1e-12; this is stricter than the authored
+/// source-placement tolerance and does not change the native/browser policy.
+pub const RETAINED_DEPENDENCY_RIGID_EPS: f64 = 1e-12;

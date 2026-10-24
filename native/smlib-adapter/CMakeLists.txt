@@ -85,7 +85,7 @@ target_include_directories(ifclite_smlib_sweep_tests PRIVATE src)
 
 # J5 private topology evidence; terminal budget witness stays process-isolated.
 add_executable(ifclite_smlib_lineage_tests tests/lineage_main.cpp
-  tests/face_lineage_tests.cpp tests/root_issuance_tests.cpp tests/owned_lineage_tests.cpp
+  tests/numerical_trim_tests.cpp tests/face_lineage_tests.cpp tests/root_issuance_tests.cpp tests/owned_lineage_tests.cpp
   tests/owned_lineage_terminal_tests.cpp tests/affine_lineage_diagnostic_tests.cpp tests/affine_representation_diagnostic_tests.cpp tests/affine_lineage_positive_tests.cpp
   tests/affine_lineage_negative_tests.cpp tests/affine_lineage_curved_tests.cpp)
 target_compile_features(ifclite_smlib_lineage_tests PRIVATE cxx_std_17)
@@ -204,3 +204,9 @@ if(IFCLITE_LINEAGE_FAILURE_STACK)
   add_test(NAME smlib_lineage_failure_stack COMMAND ifclite_smlib_failure_stack_tests)
   set_tests_properties(smlib_lineage_failure_stack PROPERTIES TIMEOUT 30)
 endif()
+
+foreach(case positive reuse original origin owner leak frame)
+  add_test(NAME smlib_numerical_trim_${case}
+    COMMAND ${test_runner} $<TARGET_FILE:ifclite_smlib_lineage_tests> trim-${case})
+  set_tests_properties(smlib_numerical_trim_${case} PROPERTIES TIMEOUT 120)
+endforeach()

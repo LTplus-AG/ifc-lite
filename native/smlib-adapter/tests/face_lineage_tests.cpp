@@ -675,6 +675,7 @@ void terminal_budget_failure() {
 
 }
 }
+void run_numerical_trim_case(const char*);
 void run_affine_lineage_positive();
 void run_affine_lineage_curved();
 void run_affine_lineage_negative(const char*);
@@ -690,7 +691,8 @@ void run_face_lineage_tests() {
 }
 
 void run_face_lineage_case(const char* name) {
-    if(std::strcmp(name,"split")==0) split_merge();
+    if(std::strncmp(name,"trim-",5)==0) run_numerical_trim_case(name+5);
+    else if(std::strcmp(name,"split")==0) split_merge();
     else if(std::strcmp(name,"mixed")==0) mixed_origins();
     else if(std::strcmp(name,"reuse")==0) address_reuse();
     else if(std::strcmp(name,"unknown")==0) direct_read_refusal();

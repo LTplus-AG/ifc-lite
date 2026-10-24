@@ -44,6 +44,7 @@ impl GlobalId {
 /// checked against the source schema (declared, not abstract, and of the
 /// right kind: an `IfcProduct` for an object, an `IfcTypeObject` for a type).
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum IfcClass {
     Wall,
     Door,
@@ -75,6 +76,7 @@ impl IfcClass {
 /// (upper-cased); a class whose schema declares no `PredefinedType` (IFC2X3's
 /// `IfcDoor`, for one) refuses a `Some` rather than dropping it.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct ClassSpec {
     pub class: IfcClass,
     pub predefined_type: Option<String>,
@@ -83,6 +85,7 @@ pub struct ClassSpec {
 /// Where a new object sits: `matrix` (row-major, file length units) is its
 /// transform relative to `relative_to`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct NewPlacement {
     pub matrix: [[f64; 4]; 4],
     /// An `IfcObjectPlacement` record, or a product whose `ObjectPlacement`
@@ -96,6 +99,7 @@ pub struct NewPlacement {
 /// profile lies in the object's local XY plane; repeating the first point
 /// of a loop at the end is allowed but not required.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct Extrusion {
     pub profile: Vec<[f64; 2]>,
     /// Holes in the profile, each a closed polygon strictly inside it and
@@ -108,6 +112,7 @@ pub struct Extrusion {
 }
 
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum Representation {
     /// No `IfcProductDefinitionShape` at all.
     None,
@@ -136,6 +141,7 @@ impl Representation {
 
 /// A property value, typed the way IFC types it.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum PropertyValue {
     Label(String),
     Text(String),
@@ -145,10 +151,12 @@ pub enum PropertyValue {
     Real(f64),
     /// A numeric measure by its IFC defined-type name, e.g. `IfcLengthMeasure`.
     /// Values are in the file's project units.
+    #[non_exhaustive]
     Measure { measure_type: String, value: f64 },
 }
 
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct NewProperty {
     pub name: String,
     pub value: PropertyValue,
@@ -161,6 +169,7 @@ pub struct NewProperty {
 /// every value a [`PropertyValue::Measure`] with a quantity entity) to
 /// attach. Properties are written in the order given.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct NewPropertySet {
     pub name: String,
     pub kind: PsetKind,
@@ -170,6 +179,7 @@ pub struct NewPropertySet {
 /// A type object created alongside the occurrence. Types carry no placement
 /// and no container; their sets are attached through `HasPropertySets`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct NewType {
     /// The type's own GlobalId. `None` derives one from the occurrence that
     /// creates it (`derive("type")`); a caller that has its own identity for
@@ -193,6 +203,7 @@ impl NewType {
 }
 
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum TypeLink {
     /// A type object already in the source (or added earlier in the plan).
     Existing(ObjectRef),
@@ -205,6 +216,7 @@ pub enum TypeLink {
 /// door or window, it also fills the opening. A `shape` with voids cuts a
 /// ring, leaving the host's material inside each void.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct NewOpening {
     pub host: ObjectRef,
     pub matrix: [[f64; 4]; 4],
@@ -220,6 +232,7 @@ pub struct NewOpening {
 /// An Add is atomic: any part of the description that cannot be built
 /// refuses the whole object, so the output never carries half of one.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct NewObject {
     pub global_id: GlobalId,
     pub class: ClassSpec,

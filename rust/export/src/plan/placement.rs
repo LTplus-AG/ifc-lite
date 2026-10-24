@@ -193,6 +193,9 @@ pub(crate) fn axis_placement_records(
     Ok((records, a2p_id))
 }
 
+/// The identity 4x4, row-major: no rotation, no translation.
+pub const IDENTITY: [[f64; 4]; 4] = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]];
+
 /// A STEP real literal always carries a decimal point (`1.` not `1`).
 pub(crate) fn fmt(v: f64) -> String {
     let s = format!("{v}");

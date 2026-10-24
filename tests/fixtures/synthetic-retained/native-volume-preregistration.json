@@ -1,0 +1,70 @@
+{
+  "license": "SPDX-License-Identifier: MPL-2.0",
+  "issue": 7955,
+  "reason": "Design re-review N9: the J3 106.81415022205297 m3 native query cannot fit 1e-8 relative query uncertainty within 1e-6 m3 absolute acceptance. This is a new native-query preregistration; no native query run is claimed.",
+  "status": "Frozen before native-query execution; original measured mesh tolerances and fixtures unchanged. Never widen after a native run.",
+  "scope": "Future native BRep volume queries for every listed total AND every individual band, before and after openings where listed. Not the current exact signed mesh integral. Does not qualify layers, caps, identity or authenticated empty removal.",
+  "supersedes": {
+    "source_commit": "514495f5637521a4c0cdd3c87115c1b63a2e8abb",
+    "path": "tests/evidence/retained-layers-j3/curved-oracles.json",
+    "sha256": "3af79e876e9bca57bffa49a7a13a19da85a664a6382495120cfebd75f5bff7cb",
+    "field": "nativeVolumeTolerance",
+    "old_absolute_m3": 1e-06,
+    "integration_requirement": "Parent must replace the old absolute-only native-query criterion with this policy in the J3 qualification consumer. The J3 source file and native query harness are absent from this main-based branch; no runtime wiring is claimed here."
+  },
+  "f_a_source": {
+    "oracle_path": "tests/fixtures/synthetic-retained/oracles.json",
+    "oracle_sha256": "f4cc0d218fa6eca63f322bd19ee18d9f14229d58510ca25f7994a0aa2f2f2422",
+    "fixture_sha256": "5e5f92069a9b8200f30d3f9fdf696417261477a1c898c7c124b860565e1df36f"
+  },
+  "rule": {
+    "absolute_floor_m3": 1e-06,
+    "relative_tolerance": 1e-07,
+    "requested_query_relative_precision": 1e-08,
+    "maximum_query_uncertainty_relative": 1e-08,
+    "maximum_oracle_uncertainty_m3": 1e-08,
+    "maximum_arithmetic_uncertainty_m3": 1e-09,
+    "tolerance": "T = max(absolute_floor_m3, relative_tolerance * abs(V_oracle_m3))",
+    "acceptance": "abs(V_query - V_oracle) + U_query + U_oracle + U_arithmetic <= T",
+    "uncertainty_gate": "All inputs finite; uncertainty bounds nonnegative and documented, not inferred from the requested precision. U_query <= maximum_query_uncertainty_relative * max(1 m3, abs(V_oracle)); U_oracle <= maximum_oracle_uncertainty_m3; U_arithmetic <= maximum_arithmetic_uncertainty_m3. Missing bound, exceeded budget, wrong source or unchecked band means UNQUALIFIED.",
+    "rationale": "The 1e-7 relative criterion reserves a factor ten over the proposed 1e-8 query-uncertainty budget at large volumes. Fixed oracle/arithmetic budgets leave positive residual headroom on all registered cases. This arithmetic feasibility is not proof that an SDK achieves its requested precision. No bound may be expanded to admit a measured failure.",
+    "bands": "Every listed individual band must pass independently under the same rule; an aggregate pass never replaces band checks. Sum/band consistency remains mandatory."
+  },
+  "cases": [
+    {
+      "fixture": "circular-wall-2.ifc",
+      "family": "J3",
+      "total_m3": 106.81415022205297,
+      "bands_m3": [
+        39.79350694547071,
+        67.02064327658225
+      ]
+    },
+    {
+      "fixture": "circular-wall-3.ifc",
+      "family": "J3",
+      "total_m3": 106.81415022205297,
+      "bands_m3": [
+        20.420352248333653,
+        37.69911184307752,
+        48.69468613064179
+      ]
+    },
+    {
+      "fixture": "f-a-curved.ifc",
+      "family": "synthetic F-A",
+      "before_total_m3": 29.122563898777383,
+      "total_m3": 27.922091698768103,
+      "bands_m3": [
+        4.53586832499433,
+        9.213113136264191,
+        14.173110237509581
+      ],
+      "before_bands_m3": [
+        4.735950925286592,
+        9.61327351998483,
+        14.77333945350596
+      ]
+    }
+  ]
+}

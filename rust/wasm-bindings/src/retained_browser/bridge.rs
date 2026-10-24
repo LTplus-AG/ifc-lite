@@ -25,7 +25,7 @@ extern "C" {
     #[wasm_bindgen(method, js_name = qualifyDependencies)]
     pub(super) fn qualify_dependencies(this: &Driver) -> js_sys::Promise;
     #[wasm_bindgen(method, js_name = copyAffine)]
-    pub(super) fn copy_affine(this: &Driver, input: &JsValue, matrix: &[f64]) -> js_sys::Promise;
+    pub(super) fn copy_affine(this: &Driver, input: &JsValue, matrix: &[f64], chord: f64, angle: f64, max_bytes: u32) -> js_sys::Promise;
     #[wasm_bindgen(method, js_name = evaluateBoolean)]
     #[allow(clippy::too_many_arguments)]
     pub(super) fn evaluate_boolean(this: &Driver, left: &JsValue, right: &JsValue,

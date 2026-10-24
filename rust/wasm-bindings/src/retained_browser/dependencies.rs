@@ -10,6 +10,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 
 pub struct BrowserAffineCopy {
+    pub(super) source_mesh: Option<super::bridge::Mesh>,
     pub(super) source_correspondence: Option<Arc<ifc_lite_geometry::document::retained_source::SourceCorrespondence>>,
     pub(super) domain: BrowserCancellation,
     pub(super) identity: BrowserObjectKey,
@@ -22,6 +23,9 @@ pub struct BrowserAffineCopy {
 impl BrowserAffineCopy {
     pub(super) fn validate_live(&self) -> Result<(), BrowserError> {
         self.domain.owner.validate()?;
+        if self.source_mesh.as_ref().map(|mesh| mesh.indices.len()/3) != self.source_correspondence.as_ref().map(|proof| proof.triangle_roots().len()) {
+            return Err(BrowserError::Driver("affine mesh correspondence missing".into()));
+        }
         if !self.domain.owner.driver.object_live(&self.object) { return Err(BrowserError::WrongWorker); }
         Ok(())
     }
@@ -62,7 +66,14 @@ impl BrowserWorker {
         flight.disarm();
         Ok(())
     }
+    #[cfg(test)]
     pub(super) async fn copy_retained_affine(&mut self, input: &BrowserReceipt, column_major: [f64; 16])
+        -> Result<BrowserAffineCopy, BrowserError> {
+        self.copy_retained_affine_with_limits(input, column_major, ifc_lite_processing::element::runtime::NumericalLimits {
+            chord_metres: 0.001, angle_degrees: 5., max_bytes: 16 << 20,
+        }).await
+    }
+    pub(super) async fn copy_retained_affine_with_limits(&mut self, input: &BrowserReceipt, column_major: [f64; 16], limits: ifc_lite_processing::element::runtime::NumericalLimits)
         -> Result<BrowserAffineCopy, BrowserError> {
         self.owner.validate()?;
         validate_affine(&column_major).map_err(|error| BrowserError::Driver(error.into()))?;
@@ -75,7 +86,10 @@ impl BrowserWorker {
         let identity = BrowserObjectKey(next_identity()?);
         let domain = self.cancellation();
         let mut flight = InFlight::new(&self.owner);
-        let value = JsFuture::from(self.owner.driver.copy_affine(input.driver_object(), &column_major))
+        evaluation_limits(limits.chord_metres, limits.angle_degrees, u32::try_from(limits.max_bytes)
+            .map_err(|_| BrowserError::Driver("affine mesh budget exceeds u32".into()))?)?;
+        let value = JsFuture::from(self.owner.driver.copy_affine(input.driver_object(), &column_major,
+            limits.chord_metres, limits.angle_degrees, limits.max_bytes as u32))
             .await.map_err(driver_error)?;
         self.owner.validate()?;
         input.validate_live()?;
@@ -83,15 +97,24 @@ impl BrowserWorker {
         let bytes = js_sys::Reflect::get(&value, &JsValue::from_str("certificate")).map_err(driver_error)?;
         let bytes = js_sys::Uint8Array::new(&bytes).to_vec();
         let certificate = AffineCertificate::decode(&bytes).map_err(|error| BrowserError::Driver(error.into()))?;
+        let mut source_mesh = None;
         let source_correspondence=if let Some(expected)=input.source_correspondence() {
             let field=|name:&str| js_sys::Reflect::get(&value,&JsValue::from_str(name))
                 .map(|v| js_sys::Uint8Array::new(&v).to_vec()).map_err(driver_error);
             let proof=ifc_lite_geometry::document::retained_source::SourceCorrespondence::decode(expected.request(),&field("source_handle")?,&field("source_inventory")?)
                 .map_err(|error| BrowserError::Driver(error.into()))?;
             if !proof.same_source(expected) { return Err(BrowserError::Driver("affine source inventory changed".into())); }
-            Some(Arc::new(proof))
+            let mesh = js_sys::Reflect::get(&value, &JsValue::from_str("source_mesh")).map_err(driver_error)?;
+            let mut mesh: super::bridge::Mesh = serde_wasm_bindgen::from_value(mesh)
+                .map_err(|error| BrowserError::Driver(error.to_string()))?;
+            let mesh_proof=ifc_lite_geometry::document::retained_source::SourceCorrespondence::decode(expected.request(),&mesh.source_handle,&mesh.source_inventory)
+                .and_then(|value| value.with_triangles(std::mem::take(&mut mesh.construction_roots),mesh.indices.len()/3))
+                .map_err(|error| BrowserError::Driver(error.into()))?;
+            if !mesh_proof.same_source(&proof) { return Err(BrowserError::Driver("affine mesh source changed".into())); }
+            source_mesh = Some(mesh);
+            Some(Arc::new(mesh_proof))
         } else { None };
-        let result = BrowserAffineCopy { source_correspondence, domain, identity, input: input.object(), column_major,
+        let result = BrowserAffineCopy { source_correspondence, source_mesh, domain, identity, input: input.object(), column_major,
             lineage: Arc::new(RetainedLineage::AffineCopy { input: lineage, column_major, certificate }),
             operations, object };
         result.validate_live()?;

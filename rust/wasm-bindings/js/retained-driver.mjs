@@ -166,7 +166,7 @@ export class RetainedDriver {
     } catch (error) { this.retire(); throw error; }
     finally { this.#releaseBusy(); }
   }
-  async copyAffine(input, matrix) {
+  async copyAffine(input, matrix, chord, angle, maxBytes) {
     // Rust performs the shared numerical admission before this private call.
     // Capture the borrowed wasm coefficients before any await.
     const coefficients = new Float64Array(matrix);
@@ -187,8 +187,17 @@ export class RetainedDriver {
       const prior = this.#sources.get(input);
       const source_inventory = prior ? await this.#call(22, this.#session, solid) : new Uint8Array();
       if (prior && !sameSource(prior, source_inventory)) throw new Error('affine source inventory changed');
-      if (prior) this.#sources.set(object, source_inventory);
-      return Object.freeze({ object, certificate: reply.slice(16), source_inventory, source_handle: solid });
+      let source_mesh;
+      if (prior) {
+        if (!Number.isFinite(chord) || chord <= 0 || !Number.isFinite(angle) || angle <= 0 || angle > 180 ||
+            !Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new Error('invalid affine mesh limits');
+        const meshHandle = await this.#call(9, this.#session, solid, f64(chord), f64(angle));
+        validateHandle(meshHandle, new DataView(this.#session.buffer).getBigUint64(0, true));
+        source_mesh = await this.#readMesh(meshHandle, maxBytes, undefined, source_inventory);
+        await this.#call(8, this.#session, meshHandle);
+        this.#sources.set(object, source_inventory);
+      }
+      return Object.freeze({ object, certificate: reply.slice(16), source_inventory, source_handle: solid, source_mesh });
     } catch (error) { this.retire(); throw error; }
     finally { this.#releaseBusy(); }
   }

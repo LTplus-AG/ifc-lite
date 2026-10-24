@@ -6,8 +6,7 @@ use ifc_lite_core::SourceBundle;
 use ifc_lite_geometry::{document::retained_source::ConstructionRole, GeometryRouter};
 use ifc_lite_processing::element::{
     runtime::{
-        AsyncRetainedExecutor, Invocation, NumericalLimits, NumericalReceipt, ReceiptEvidence,
-        RetainedRuntime,
+        AsyncRetainedExecutor, Invocation, NumericalLimits, NumericalReceipt, RetainedRuntime,
     },
     ElementJobKind, ElementMeshJob, MeshProductionOptions, ProductionModel, RetainedExecutionError,
     RuntimeProductExecution,
@@ -53,37 +52,60 @@ impl AsyncRetainedExecutor for Observed {
             .expect("actual Worker consumed source correspondence");
         self.ids.insert(proof.request().recipe().solid_id());
         assert_eq!(proof.roles().len(), 6);
-        if let ReceiptEvidence::Construction(completion) = receipt.evidence() {
-            self.constructions += 1;
-            let mesh = &completion.tessellation;
-            let recipe = &proof.request().payload().bytes;
-            let scalar =
-                |offset| f64::from_le_bytes(recipe[offset..offset + 8].try_into().unwrap());
-            assert_eq!(proof.triangle_roots().len(), mesh.indices.len() / 3);
-            for (triangle, &root) in mesh.indices.chunks_exact(3).zip(proof.triangle_roots()) {
-                for &vertex in triangle {
-                    let p = &mesh.positions[vertex as usize * 3..vertex as usize * 3 + 3];
-                    let residual = match proof.roles()[root as usize] {
-                        ConstructionRole::StartCap => p[2],
-                        ConstructionRole::EndCap => p[2] - scalar(40),
-                        ConstructionRole::SweptSegment(n) => {
-                            let at = 64 + n as usize * 104;
-                            let ax = scalar(at);
-                            let ay = scalar(at + 8);
-                            let bx = scalar(at + 24);
-                            let by = scalar(at + 32);
-                            ((p[0] - ax) * (by - ay) - (p[1] - ay) * (bx - ax))
-                                / (bx - ax).hypot(by - ay)
-                        }
-                    };
-                    assert!(
-                        residual.abs() <= 1e-9,
-                        "actual Worker triangle matches its original construction feature"
-                    );
-                }
+        let (positions, indices, transform) = match &receipt {
+            BrowserReceipt::Construction(value) => {
+                self.constructions += 1;
+                let mesh = &value.completion().tessellation;
+                (&mesh.positions, &mesh.indices, None)
             }
-        } else {
-            self.affines += 1;
+            BrowserReceipt::Affine(value) => {
+                self.affines += 1;
+                let mesh = value
+                    .source_mesh
+                    .as_ref()
+                    .expect("actual affine Worker mesh");
+                (&mesh.positions, &mesh.indices, Some(value.column_major))
+            }
+            _ => panic!("unexpected source fixture operation"),
+        };
+        let recipe = &proof.request().payload().bytes;
+        let scalar = |offset| f64::from_le_bytes(recipe[offset..offset + 8].try_into().unwrap());
+        assert_eq!(proof.triangle_roots().len(), indices.len() / 3);
+        for (triangle, &root) in indices.chunks_exact(3).zip(proof.triangle_roots()) {
+            for &vertex in triangle {
+                let mut p = [
+                    positions[vertex as usize * 3],
+                    positions[vertex as usize * 3 + 1],
+                    positions[vertex as usize * 3 + 2],
+                ];
+                if let Some(matrix) = transform {
+                    // These source fixtures deliberately use diagonal scales,
+                    // reflection and translation; invert that authored map.
+                    for i in [1, 2, 4, 6, 8, 9] {
+                        assert_eq!(matrix[i], 0.);
+                    }
+                    for axis in 0..3 {
+                        p[axis] = (p[axis] - matrix[12 + axis]) / matrix[axis * 5];
+                    }
+                }
+                let residual = match proof.roles()[root as usize] {
+                    ConstructionRole::StartCap => p[2],
+                    ConstructionRole::EndCap => p[2] - scalar(40),
+                    ConstructionRole::SweptSegment(n) => {
+                        let at = 64 + n as usize * 104;
+                        let ax = scalar(at);
+                        let ay = scalar(at + 8);
+                        let bx = scalar(at + 24);
+                        let by = scalar(at + 32);
+                        ((p[0] - ax) * (by - ay) - (p[1] - ay) * (bx - ax))
+                            / (bx - ax).hypot(by - ay)
+                    }
+                };
+                assert!(
+                    residual.abs() <= 1e-9,
+                    "actual Worker triangle matches its original construction feature"
+                );
+            }
         }
         Ok(receipt)
     }

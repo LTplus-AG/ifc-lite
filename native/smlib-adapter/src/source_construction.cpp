@@ -70,7 +70,7 @@ std::unique_ptr<SmBrep> SourceConstruction::construct(const SmTArray<SmCurve*>& 
         checked(translation.SetCanonical(SmPoint3d(0,0,0),SmVector3d(1,0,0),SmVector3d(0,1,0)));
         translation.Translate(depth*direction);
         // Each side is issued at the actual face constructor call for that
-        // authored segment. No final-face ordering or geometric matching.
+        // encoded construction segment. No final-face ordering or geometric matching.
         for(ULONG i=0;i<input.GetSize();++i) {
             SmCurve *curve=nullptr,*base=nullptr,*top=nullptr;
             checked(input[i]->Copy(context,curve));checked(input[i]->Copy(context,base));checked(input[i]->Copy(context,top));

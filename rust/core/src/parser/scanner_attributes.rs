@@ -88,6 +88,15 @@ impl<'a> StepListItems<'a> {
     pub fn closed(&self) -> bool {
         self.state == ListState::Closed
     }
+
+    /// After iteration, whether the list terminator is followed only by STEP
+    /// trivia to the end of the supplied input. Use this for a complete list
+    /// value; `closed()` alone deliberately accepts a prefix (e.g. record
+    /// arguments followed by `;`). This checks consumption, not item grammar.
+    /// An unterminated trailing comment is not trivia and returns false.
+    pub fn fully_consumed(&self) -> bool {
+        self.closed() && skip_step_trivia(self.bytes, self.pos) == Some(self.bytes.len())
+    }
 }
 
 impl<'a> Iterator for StepListItems<'a> {

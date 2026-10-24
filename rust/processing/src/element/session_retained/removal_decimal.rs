@@ -29,7 +29,7 @@ fn vector(d: &mut EntityDecoder, id: u32, direction: bool, dimensions: usize)
     let mut items = StepListItems::of_list(r.attr(0).ok_or_else(refused)?).ok_or_else(refused)?;
     let mut result = [0;3];
     for value in result.iter_mut().take(dimensions) { *value = decimal(items.next().ok_or_else(refused)?)?; }
-    if items.next().is_some() || !items.closed() { return Err(refused()); }
+    if items.next().is_some() || !items.fully_consumed() { return Err(refused()); }
     Ok(result)
 }
 fn axis(d: &mut EntityDecoder, token: Option<&[u8]>, dimensions: usize, expected: [i128;3])

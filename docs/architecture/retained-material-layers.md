@@ -148,3 +148,16 @@ These are source proof obligations, not permitted geometric tolerances. Native
 and actual Worker negative definitions deliberately require the policy refusal;
 an earlier SDK failure does not qualify those tests. All final-publication holds
 above still apply; this correction does not complete J2.
+
+
+R2 vector grammar: a raw coordinate/direction attribute must consume exactly one
+list value. The canonical `StepListItems::fully_consumed()` check requires the
+list terminator to be followed only by STEP trivia, rejecting suffixes such as
+`(1.,0.)BOGUS` for both directions and points. Its existing `closed()` prefix
+contract is unchanged for record readers. Numeric item grammar remains the
+shared STEP numeric grammar; no additional numeric parser is introduced.
+Direct predicate controls require the specific protection-policy refusal and
+preserve valid/comment-trivia inputs. Native and actual Worker definitions
+require that same policy refusal after real execution; incidental SDK errors
+fail those definitions and do not count as qualification. All runtime execution
+and final J2/publication gates remain held pending parent validation.

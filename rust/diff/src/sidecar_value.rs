@@ -143,6 +143,13 @@ impl From<&serde_json::Value> for DocumentValue {
     }
 }
 pub fn ordered_object(mut entries: Vec<(JsString, DocumentValue)>) -> DocumentValue {
+    sort_entries(&mut entries);
+    DocumentValue::Object(entries)
+}
+/// Stable JavaScript own-key enumeration order: canonical array indices
+/// ascending, then every other key in insertion order. Idempotent, so an
+/// already ordered object is left untouched.
+fn sort_entries(entries: &mut [(JsString, DocumentValue)]) {
     fn array_index(key: &JsString) -> Option<u32> {
         let text = key.as_str()?;
         let index = text.parse::<u32>().ok()?;
@@ -154,7 +161,6 @@ pub fn ordered_object(mut entries: Vec<(JsString, DocumentValue)>) -> DocumentVa
         (None, Some(_)) => std::cmp::Ordering::Greater,
         _ => std::cmp::Ordering::Equal,
     });
-    DocumentValue::Object(entries)
 }
 
 impl From<&JsString> for JsString {
@@ -172,7 +178,12 @@ impl std::ops::IndexMut<&str> for DocumentValue {
         let Self::Object(entries) = self else { panic!("expected object") };
         let index = match entries.iter().position(|(name, _)| name == key) {
             Some(index) => index,
-            None => { entries.push((key.into(), Self::Null)); entries.len() - 1 },
+            None => {
+                // #8104: a new numeric key must land where `ordered_object` puts it.
+                entries.push((key.into(), Self::Null));
+                sort_entries(entries);
+                entries.iter().position(|(name, _)| name == key).expect("key was just inserted")
+            },
         };
         &mut entries[index].1
     }

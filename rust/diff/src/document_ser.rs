@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 //! Serde's typed string marker is consumed here, never encoded as a user key.
-use crate::{DocumentValue as Value, JsString, document_serde::{Error, error, STRING}};
+use crate::{DocumentValue as Value, JsString, sidecar_value::ordered_object, document_serde::{Error, error, STRING}};
 use serde::{Serialize, Serializer, ser::{self, SerializeSeq}};
 pub fn to_document(value: impl Serialize) -> Result<Value, Error> { value.serialize(DocumentSerializer) }
 pub struct DocumentSerializer;
@@ -12,10 +12,10 @@ impl Serializer for DocumentSerializer {
     type SerializeSeq = Sequence;
     type SerializeTuple = Sequence;
     type SerializeTupleStruct = Sequence;
-    type SerializeTupleVariant = ser::Impossible<Value, Error>;
+    type SerializeTupleVariant = VariantSequence;
     type SerializeMap = Object;
     type SerializeStruct = Object;
-    type SerializeStructVariant = ser::Impossible<Value, Error>;
+    type SerializeStructVariant = VariantObject;
     fn is_human_readable(&self) -> bool { false }
     fn serialize_bool(self, v: bool) -> Result<Value, Error> { Ok(Value::Bool(v)) }
     fn serialize_i8(self, v: i8) -> Result<Value, Error> { self.serialize_f64(v as f64) }
@@ -52,10 +52,10 @@ impl Serializer for DocumentSerializer {
     fn serialize_seq(self, _: Option<usize>) -> Result<Sequence, Error> { Ok(Sequence(Vec::new())) }
     fn serialize_tuple(self, len: usize) -> Result<Sequence, Error> { self.serialize_seq(Some(len)) }
     fn serialize_tuple_struct(self, _: &'static str, len: usize) -> Result<Sequence, Error> { self.serialize_seq(Some(len)) }
-    fn serialize_tuple_variant(self, _: &'static str, _: u32, _: &'static str, _: usize) -> Result<Self::SerializeTupleVariant, Error> { Err(error("tuple variant unsupported")) }
+    fn serialize_tuple_variant(self, _: &'static str, _: u32, variant: &'static str, _: usize) -> Result<VariantSequence, Error> { Ok(VariantSequence(variant, Sequence(Vec::new()))) }
     fn serialize_map(self, _: Option<usize>) -> Result<Object, Error> { Ok(Object { entries: Vec::new(), key: None }) }
     fn serialize_struct(self, _: &'static str, len: usize) -> Result<Object, Error> { self.serialize_map(Some(len)) }
-    fn serialize_struct_variant(self, _: &'static str, _: u32, _: &'static str, _: usize) -> Result<Self::SerializeStructVariant, Error> { Err(error("struct variant unsupported")) }
+    fn serialize_struct_variant(self, _: &'static str, _: u32, variant: &'static str, _: usize) -> Result<VariantObject, Error> { Ok(VariantObject(variant, Object { entries: Vec::new(), key: None })) }
 }
 pub struct Sequence(Vec<Value>);
 impl ser::SerializeSeq for Sequence {
@@ -85,12 +85,24 @@ impl ser::SerializeMap for Object {
     fn serialize_value<T: Serialize + ?Sized>(&mut self, value: &T) -> Result<(), Error> {
         self.entries.push((self.key.take().ok_or_else(|| error("value without map key"))?, value.serialize(DocumentSerializer)?)); Ok(())
     }
-    fn end(self) -> Result<Value, Error> { Ok(Value::Object(self.entries)) }
+    fn end(self) -> Result<Value, Error> { Ok(ordered_object(self.entries)) }
 }
 impl ser::SerializeStruct for Object {
     type Ok = Value; type Error = Error;
     fn serialize_field<T: Serialize + ?Sized>(&mut self, key: &'static str, value: &T) -> Result<(), Error> {
         self.entries.push((key.into(), value.serialize(DocumentSerializer)?)); Ok(())
     }
-    fn end(self) -> Result<Value, Error> { Ok(Value::Object(self.entries)) }
+    fn end(self) -> Result<Value, Error> { Ok(ordered_object(self.entries)) }
+}
+pub struct VariantSequence(&'static str, Sequence);
+impl ser::SerializeTupleVariant for VariantSequence {
+    type Ok = Value; type Error = Error;
+    fn serialize_field<T: Serialize + ?Sized>(&mut self, value: &T) -> Result<(), Error> { SerializeSeq::serialize_element(&mut self.1, value) }
+    fn end(self) -> Result<Value, Error> { Ok(Value::Object(vec![(self.0.into(), SerializeSeq::end(self.1)?)])) }
+}
+pub struct VariantObject(&'static str, Object);
+impl ser::SerializeStructVariant for VariantObject {
+    type Ok = Value; type Error = Error;
+    fn serialize_field<T: Serialize + ?Sized>(&mut self, key: &'static str, value: &T) -> Result<(), Error> { ser::SerializeStruct::serialize_field(&mut self.1, key, value) }
+    fn end(self) -> Result<Value, Error> { Ok(Value::Object(vec![(self.0.into(), ser::SerializeStruct::end(self.1)?)])) }
 }

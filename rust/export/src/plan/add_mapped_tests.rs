@@ -430,6 +430,7 @@ fn a_deleted_map_origin_refuses_the_copy() {
 #[test]
 fn a_copy_instances_the_body_maps_its_type_keeps() {
     let source = String::from_utf8(type_with_two_bodies("IFC4")).unwrap().replace("(#330,'Body','SweptSolid',(#303))", "(#100,'Body','SweptSolid',(#303))");
+    assert!(source.contains("#321=IFCSHAPEREPRESENTATION(#100,'Body'"), "fixture: both maps in #100");
     let (out, report) = run(source.as_bytes(), vec![(ObjectRef::Id(320), Disposition::Delete), add(mapped_wall(1, TypeLink::Existing(ObjectRef::Id(40)), IDENTITY))]);
     assert_clean(&report, "IFC4");
     let items = ids_of_type(&out, "IFCMAPPEDITEM");

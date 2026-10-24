@@ -49,3 +49,25 @@ pub(super) fn translated_source() -> String {
     OVERLAP.replace("#8= IFCLOCALPLACEMENT($,#5);", "#8= IFCLOCALPLACEMENT($,#300);")
         .replace("ENDSEC;\nEND-ISO-10303-21;", "#300=IFCAXIS2PLACEMENT3D(#301,#4,#2);\n#301=IFCCARTESIANPOINT((3000000.,4000000.,100.));\nENDSEC;END-ISO-10303-21;")
 }
+
+// #7955 J2-R1: a real authored cutter survives beside each inserted member.
+// The bool identifies malformed source; the count is the number of cuts before
+// refusal (or all three authored cuts for a legitimate non-body sibling).
+pub(super) fn representation_sibling_sources() -> Vec<(String, bool, usize)> {
+    let wrong = "#147=IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,'wrong representation target',#148,(#148));#148=IFCPOLYLINE((#1,#24,#44,#1));";
+    [
+        (48, 47, false, wrong, true, 0),
+        (48, 47, true, wrong, true, 0),
+        (68, 67, false, wrong, true, 1),
+        (48, 47, false, "#147=IFCSHAPEREPRESENTATION(#7,'Reference','GeometricSet',(#148));#148=IFCGEOMETRICSET((#1));", false, 3),
+        (48, 47, false, "#147=IFCSHAPEREPRESENTATION(#7,'Box','BoundingBox',(#148));#148=IFCBOUNDINGBOX(#1,1.,1.,1.);", false, 3),
+        (48, 47, false, "#147=IFCTOPOLOGYREPRESENTATION(#7,'Reference','Vertex',(#148));#148=IFCVERTEXPOINT(#1);", false, 3),
+    ].into_iter().map(|(shape, valid, wrong_first, member, malformed, cuts)| {
+        let members = if wrong_first { format!("#147,#{valid}") } else { format!("#{valid},#147") };
+        let source = OVERLAP.replace(
+            &format!("#{shape}= IFCPRODUCTDEFINITIONSHAPE($,$,(#{valid}));"),
+            &format!("#{shape}= IFCPRODUCTDEFINITIONSHAPE($,$,({members}));"),
+        ).replace("ENDSEC;\nEND-ISO-10303-21;", &format!("{member}\nENDSEC;END-ISO-10303-21;"));
+        (source, malformed, cuts)
+    }).collect()
+}

@@ -208,3 +208,46 @@ fn j2_sdk_issue3641_positive_chain_requires_profile_region_integration() {
         execution.validate_witness().unwrap();
     });
 }
+
+#[test]
+fn j2_sdk_wrong_type_representation_sibling_aborts_entire_closure() {
+    let Some(mut worker) = worker() else { return };
+    worker.qualify_ordered_regions().unwrap();
+    for (source, malformed, expected_cuts) in representation_sibling_sources() {
+        with_source(&source, |execution, decoder, router| {
+            let mut refusal = None;
+            let mut cuts = 0;
+            for _ in 0..128 {
+                match execution.issue_next(decoder, router, &worker) {
+                    Err(error) => { refusal = Some(error); break; }
+                    Ok(None) => break,
+                    Ok(Some(issued)) => {
+                        let work = issued.execute(&mut worker, 0.00001, 15., MeshLimits::default()).unwrap();
+                        if let RealizationKind::Boolean(value) = &work.realizations[0].kind {
+                            cuts += 1;
+                            oracle(OVERLAP).assert_stage(cuts, worker.volume(value.solid(), 1e-8).unwrap());
+                        }
+                        execution.accept(work, decoder, router).unwrap_or_else(|r| panic!("{}", r.reason));
+                        assert!(!router.host_consumed_by_void(30), "J2_EFFECT_ISOLATION");
+                    }
+                }
+            }
+            if malformed {
+                assert!(matches!(refusal, Some(RetainedExecutionError::Protocol(ref message))
+                    if message.contains("wrong reached opening representation type")), "J2_REPRESENTATION_TYPE_REPORT: {refusal:?}");
+                assert!(execution.traversal_plan().is_none(), "J2_NO_PARTIAL_CLOSURE");
+                assert!(execution.validate_witness().is_err());
+                assert!(execution.issue_next(decoder, router, &worker).is_err());
+            } else {
+                assert!(refusal.is_none(), "legitimate non-body sibling: {refusal:?}");
+                let plan = execution.traversal_plan().unwrap();
+                assert_eq!(plan.values.len(), 1);
+                assert_eq!(plan.opening_completion.as_ref().unwrap().accepted_cuts(), 3);
+                assert!(!plan.remaining.contains(&RetainedRequirement::OpeningClosure));
+                execution.validate_witness().unwrap();
+            }
+            assert_eq!(cuts, expected_cuts, "J2_REPRESENTATION_SIBLING_CUTS");
+            assert!(!router.host_consumed_by_void(30), "J2_EFFECT_ISOLATION");
+        });
+    }
+}

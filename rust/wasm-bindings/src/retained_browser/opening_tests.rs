@@ -169,3 +169,58 @@ async fn j2_worker_issue3641_positive_chain_requires_profile_region_integration(
         observed.worker.retire();
     }
 }
+
+#[wasm_bindgen_test(async)]
+async fn j2_worker_wrong_type_representation_sibling_aborts_entire_closure() {
+    for (source, malformed, expected_cuts) in representation_sibling_sources() {
+        let bundle = SourceBundle::new(source.as_bytes().to_vec());
+        let mut decoder = bundle.decoder();
+        let router = GeometryRouter::with_units(&source, &mut decoder);
+        let model = ProductionModel::from_source(bundle.clone());
+        let mut spans = PrepassSpans::default();
+        let mut scanner = EntityScanner::new(&source);
+        while let Some((id, ty, start, end)) = scanner.next_entity() {
+            if ty == "IFCRELVOIDSELEMENT" { spans.void_rels.push((id, start, end)); }
+        }
+        let prepass = resolve_prepass(&spans, &mut decoder, ResolveOptions::default());
+        let context = model.snapshot(OwnedMeshProductionData { void_index: Arc::new(prepass.void_index), ..Default::default() });
+        let entity = decoder.decode_by_id(30).unwrap();
+        let job = ElementMeshJob { id: 30, ifc_type: entity.ifc_type.clone(), entity: &entity,
+            kind: ElementJobKind::Product, element_color: None, metadata: None };
+        let mut observed = Observed { worker: BrowserWorker::new().unwrap(), oracle: Some(oracle(OVERLAP)), cuts: 0, per_part: 3 };
+        observed.worker.qualify_dependencies().await.unwrap();
+        let mut execution = RuntimeProductExecution::<BrowserReceipt>::begin(&job, &context, &MeshProductionOptions::default(), &mut decoder, &router).unwrap();
+        let limits = NumericalLimits { chord_metres: 0.00001, angle_degrees: 15., max_bytes: 16 << 20 };
+        let mut refusal = None;
+        for _ in 0..128 {
+            match execution.issue_next(&mut decoder, &router, &observed) {
+                Err(error) => { refusal = Some(error); break; }
+                Ok(None) => break,
+                Ok(Some(issued)) => {
+                    let work = issued.execute_async(&mut observed, limits).await.unwrap();
+                    execution.accept(work, &mut decoder, &router).unwrap_or_else(|r| panic!("{}", r.reason));
+                    assert!(!router.host_consumed_by_void(30), "J2_EFFECT_ISOLATION");
+                }
+            }
+        }
+        if malformed {
+            assert!(matches!(refusal, Some(RetainedExecutionError::Protocol(ref message))
+                if message.contains("wrong reached opening representation type")), "J2_REPRESENTATION_TYPE_REPORT: {refusal:?}");
+            assert!(execution.traversal_plan().is_none(), "J2_NO_PARTIAL_CLOSURE");
+            assert!(execution.validate_witness().is_err());
+            assert!(execution.issue_next(&mut decoder, &router, &observed).is_err());
+            assert!(execution.into_witness().is_err());
+        } else {
+            assert!(refusal.is_none(), "legitimate non-body sibling: {refusal:?}");
+            let witness = execution.into_witness().unwrap();
+            assert_eq!(witness.plan().values.len(), 1);
+            assert_eq!(witness.plan().opening_completion.as_ref().unwrap().accepted_cuts(), 3);
+            assert!(!witness.plan().remaining.contains(&ifc_lite_geometry::program::RetainedRequirement::OpeningClosure));
+            witness.validate().unwrap();
+            assert!(witness.require_final_product().is_err());
+        }
+        assert_eq!(observed.cuts, expected_cuts, "J2_REPRESENTATION_SIBLING_CUTS");
+        assert!(!router.host_consumed_by_void(30), "J2_EFFECT_ISOLATION");
+        observed.worker.retire();
+    }
+}

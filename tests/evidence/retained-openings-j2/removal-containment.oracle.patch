@@ -1,0 +1,11 @@
+--- a/rust/processing/src/element/session_retained/removal_source.rs
++++ b/rust/processing/src/element/session_retained/removal_source.rs
+@@ -108,7 +108,7 @@
+         ((centre.next_down() + extent.next_down()).next_down(),
+          (centre.next_up() + extent.next_up()).next_up())
+     };
+-    Ok((0..0).all(|axis| {
++    Ok((0..3).all(|axis| {
+         let hmin = endpoint(&host, axis, false); let hmax = endpoint(&host, axis, true);
+         let cmin = endpoint(&cutter, axis, false); let cmax = endpoint(&cutter, axis, true);
+         [hmin.0,hmax.1,cmin.1,cmax.0].iter().all(|v| v.is_finite())

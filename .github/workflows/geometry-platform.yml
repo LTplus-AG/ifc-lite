@@ -215,8 +215,12 @@ jobs:
         env:
           IFCLITE_SMLIB_WORKER: ${{ runner.temp }}/smlib-native/ifclite_smlib_worker
         run: |
-          python3 tests/evidence/retained-openings-j2/feature-oracle.py \
-            --oracle representation-type --evidence-dir "$RUNNER_TEMP/retained-openings-representation-type"
+          status=0
+          for oracle in representation-type removal-permitted removal-containment removal-relationships; do
+            python3 tests/evidence/retained-openings-j2/feature-oracle.py \
+              --oracle "$oracle" --evidence-dir "$RUNNER_TEMP/retained-openings-$oracle" || status=1
+          done
+          exit "$status"
       - name: Retained layer source and derived continuation semantic mutations
         id: retained-layer-source-mutations
         continue-on-error: true
@@ -335,6 +339,7 @@ jobs:
           wasm-pack test --headless --chrome \
             --chromedriver "$GITHUB_WORKSPACE/scripts/wasm-test-mime-driver.mjs" rust/wasm-bindings --lib \
             --features retained-browser -- retained_browser 2>&1 | tee "$RUNNER_TEMP/retained-browser.log"
+          grep -F "j2_worker_source_protected_whole_product_removal ... ok" "$RUNNER_TEMP/retained-browser.log"
           grep -F "j3_worker_curved_host_keeps_source_bands_without_claiming_partition ... ok" "$RUNNER_TEMP/retained-browser.log"
           grep -F "j3_worker_completed_curved_bands_consume_fixed_net_volume_oracles ... ok" "$RUNNER_TEMP/retained-browser.log"
           grep -F "retained_browser_issue_3641_original_source_construction_oracle ... ok" "$RUNNER_TEMP/retained-browser.log"

@@ -1,0 +1,9 @@
+--- a/rust/processing/src/element/session_retained/removal.rs
++++ b/rust/processing/src/element/session_retained/removal.rs
+@@ -101,5 +101,5 @@
+             || !covers(decoder, hosts[ordinal], cutter_id)? { return Err(refused()); }
+         outputs.push(final_value.slot());
+     }
+-    let _ = outputs; Err(refused())
++    Ok(AuthenticatedRemoval { context: context.id(), product, outputs })
+ }

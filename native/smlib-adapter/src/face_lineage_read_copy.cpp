@@ -3,11 +3,30 @@
 #include <SmBrep.h>
 #include <SmCurve.h>
 #include <SmEdgeuse.h>
+#include <SmFace.h>
+#include <SmPoly.h>
 namespace face_lineage {
 bool Ledger::numerical_copy_event(Event& event,SmNotifyOperation op,SmObject* caller,
     SmObject* a,SmObject* b,SmObject* c) {
     if(!numerical.source || !numerical.tessellation || !frame_count || numerical.frame!=frame_count ||
         numerical.serial!=frames[frame_count-1]->serial || !caller) return false;
+    if(op==SM_NO_COPY && face(caller) && a && a->GetType()==SmPolyFace_TYPE) {
+        // SmPoly.cpp:14446 propagates attributes, not BRep face ancestry.
+        // PolyFace has no construction notification: never mint a face binding
+        // or infer a generation for it. The event names its live original.
+        const auto* source=binding(caller,false);
+        const auto* body=numerical.copy?binding(numerical.copy,false):nullptr;
+        auto* polygon=static_cast<SmPolyFace*>(a);
+        if(b || c || !source || !source->alive || source->retired || !complete(source->current) ||
+            !body || !body->alive || body->retired || body->current!=numerical.copy_generation ||
+            source->birth_frame!=frame_count || source->owner!=numerical.copy ||
+            static_cast<SmFace*>(caller)->GetBrep()!=numerical.copy ||
+            polygon->GetOriginalFace()!=caller || !polygon->GetPolyBrep()) {
+            fail(Failure::InvalidEvent); return true;
+        }
+        event.before[0]=source->current; // attributes-only receipt; no after identity
+        return true;
+    }
     if(op==SM_NO_COPY && caller->GetType()==SmEdgeuse_TYPE) {
         bool original_owner=false;
         for(auto* trim:numerical.trims)

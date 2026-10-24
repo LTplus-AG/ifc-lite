@@ -133,6 +133,17 @@ def main():
          '// mutation: trust the mutable owner backlink over observed attachment',
          'internal attached original still refuses edits'),
     ])
+    # #7955 round 3: polygon attribute propagation has no face-copy authority.
+    cases.extend([
+        ('trim-poly-positive', 'face_lineage_read_copy.cpp',
+         'if(op==SM_NO_COPY && face(caller) && a && a->GetType()==SmPolyFace_TYPE) {',
+         'if(false) {',
+         'polygon attribute copy preserves actual face identity'),
+        ('trim-poly-outside', 'face_lineage_read_copy.cpp',
+         'if(!numerical.source || !numerical.tessellation || !frame_count || numerical.frame!=frame_count ||',
+         'if(!numerical.source || !frame_count || numerical.frame!=frame_count ||',
+         'polygon copy requires current owned tessellation phase'),
+    ])
     paths = sorted({source / row[1] for row in cases})
     subprocess.run(['git', 'diff', '--exit-code', 'HEAD', '--', *map(str, paths)], cwd=root, check=True)
     originals = {path: path.read_text() for path in paths}

@@ -13,6 +13,12 @@ struct ConstructedFace { SmFace* face; uint64_t birth; SourceRole role; uint32_t
 // BRep or supply face pointers. Roles come from SDK constructor output arguments.
 class SourceConstruction final:public SmNotifyCallback {
     struct Birth { SmObject* face=nullptr; uint64_t generation=0; bool live=false; };
+    struct CapSplit { uint64_t parent=0,child=0; };
+    struct CapPhase {
+        bool active=false;
+        uint32_t first_birth=0,limit=0,count=0;
+        std::array<CapSplit,128> splits{};
+    } cap_phase;
     SmContext& context;
     SmBrep* body=nullptr;
     std::array<Birth,1024> births{};
@@ -22,6 +28,10 @@ class SourceConstruction final:public SmNotifyCallback {
     void refuse(const char*,SmNotifyOperation,SmObject*,SmObject*,SmObject*,SmObject*) noexcept;
     void add(SmFace*,SourceRole,uint32_t);
     void cap(SmTArray<SmCurve*>&,SourceRole);
+    void begin_cap(uint32_t);
+    void finish_cap(const SmTArray<SmFace*>&);
+    bool cap_split(SmNotifyOperation,SmObject*,SmObject*,SmObject*,SmObject*) noexcept;
+    friend struct SourceConstructionTestAccess;
     void verify() const;
 public:
     explicit SourceConstruction(SmContext&);

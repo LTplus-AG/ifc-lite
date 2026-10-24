@@ -8,6 +8,7 @@
 #include <SmCopyBrepMap.h>
 #include <SmEdgeuse.h>
 #include <SmFace.h>
+#include <SmPoly.h>
 #include <array>
 #include <cstring>
 #include <memory>
@@ -141,6 +142,35 @@ void negative(const char* name) {
     require(ledger.failure_origin().failure==first.failure && ledger.failure_origin().event==first.event,
         "trim failure remains latched through phase teardown");
 }
+void polygon_copy(const char* name) {
+    // #7955 / 6e8c90bd: SetOriginalFace(TRUE) reports a real attributes-only
+    // COPY from SmFace to SmPolyFace. It cannot issue BRep ancestry.
+    auto owner=OwnedBoundary::box(2,3,4); auto sibling=owner.copy();
+    auto& solid=body(owner); auto& ledger=history(owner); const auto roots=owner.faces();
+    Scope phase(ledger,*SmApiGetOrCreateContext(),&solid);
+    RepresentationSeal seal(ledger,solid);
+    if(std::strcmp(name,"poly-outside")==0) NumericalReadTestAccess::begin(ledger,solid);
+    else NumericalReadTestAccess::tessellation(ledger,solid);
+    auto internal=std::unique_ptr<SmBrep>(new (*solid.GetContext()) SmBrep(solid));
+    ledger.check();
+    SmTArray<SmFace*> faces;
+    (std::strcmp(name,"poly-foreign")==0?body(sibling):*internal).GetFaces(faces);
+    require(faces.GetSize()>0,"polygon fixture has an actual face");
+    auto* original=faces[0];
+    const auto before=ledger.identity(original);
+    auto polygon=std::unique_ptr<SmPolyBrep>(new (*solid.GetContext()) SmPolyBrep(solid.GetTolerance()));
+    auto* polyface=new (polygon.get()) SmPolyFace(solid.GetTolerance(),polygon.get(),nullptr,nullptr);
+    const auto first=ledger.event_size(); polyface->SetOriginalFace(original,TRUE);
+    if(std::strcmp(name,"poly-positive")==0) {
+        require(ledger.failed()==Failure::None,"polygon attribute copy preserves actual face identity");
+        require(ledger.event_size()==first+1 && ledger.event(first).before[0]==before &&
+            !ledger.event(first).after[0].sequence && ledger.identity(original)==before,
+            "polygon attribute receipt never issues face ancestry");
+        polygon.reset(); internal.reset(); ledger.check(); NumericalReadTestAccess::end(ledger);
+        seal.verify(); require(owner.faces()==roots,"polygon propagation preserves source roots");
+    } else require(ledger.failed()!=Failure::None,"polygon copy requires current owned tessellation phase");
+    phase.finish();
+}
 void internal_copy(const char* name) {
     // #7955 / observation 7f2d7e07: the actual tessellator copies the BRep,
     // then copies an attached trim of that copy before reversing the helper.
@@ -200,7 +230,8 @@ void internal_copy(const char* name) {
 }
 }
 void run_numerical_trim_case(const char* name) {
-    if(std::strncmp(name,"internal-",9)==0) internal_copy(name);
+    if(std::strncmp(name,"poly-",5)==0) polygon_copy(name);
+    else if(std::strncmp(name,"internal-",9)==0) internal_copy(name);
     else if(std::strcmp(name,"positive")==0) positive(false);
     else if(std::strcmp(name,"reuse")==0) positive(true);
     else negative(name);

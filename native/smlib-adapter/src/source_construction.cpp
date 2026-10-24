@@ -45,6 +45,7 @@ void SourceConstruction::refuse(const char* why,SmNotifyOperation op,SmObject* c
 }
 SmStatus SourceConstruction::Execute(SmNotifyOperation op,SmObject* caller,SmObject* a,SmObject* b,SmObject* c) noexcept {
     if(++event_count>131072) refuse("event-bound",op,caller,a,b,c);
+    if(cap_split(op,caller,a,b,c)) return SM_SUCCESS;
     if(op==SM_NO_SPLIT_IN_BREP || op==SM_NO_MERGE_IN_BREP) {
         for(auto* object:{a,b,c}) if(object && object->GetType()==SmFace_TYPE) refuse("face-split-or-merge",op,caller,a,b,c);
     }
@@ -79,7 +80,11 @@ void SourceConstruction::add(SmFace* face,SourceRole role,uint32_t ordinal) {
 }
 void SourceConstruction::cap(SmTArray<SmCurve*>& curves,SourceRole role) {
     SmTArray<SmFace*> output;
-    checked(body->CreatePlanarFacesWith3DCurves(body->GetInfiniteRegion(),curves,body->GetTolerance(),output));
+    begin_cap(uint32_t(curves.GetSize()));
+    try {
+        checked(body->CreatePlanarFacesWith3DCurves(body->GetInfiniteRegion(),curves,body->GetTolerance(),output));
+        finish_cap(output);
+    } catch(...) { cap_phase.active=false; throw; }
     // Current source format is one outer region with holes. Disconnected caps
     // need an explicit source-region correspondence, not an array-order label.
     require(output.GetSize()==1,"source constructor requires one connected cap region");

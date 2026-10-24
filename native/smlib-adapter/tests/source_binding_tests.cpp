@@ -9,6 +9,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <vector>
+void run_source_cap_case(const char*);
 namespace {
 using Bytes=std::vector<uint8_t>;
 uint32_t serial=0;
@@ -56,8 +57,9 @@ Bytes construct(uint64_t session,uint32_t entity) {
     return call(21,commit);
 }
 }
-int main(int argc,char**) {
+int main(int argc,char** argv) {
     try {
+        if(argc==2 && std::strncmp(argv[1],"cap-",4)==0) { run_source_cap_case(argv[1]); return 0; }
         auto sessionBytes=call(1);uint64_t session=word(sessionBytes,0)|(uint64_t(word(sessionBytes,4))<<32);
         auto first=construct(session,101),second=construct(session,102);
         auto a=call(22,body(session,first)),b=call(22,body(session,second));

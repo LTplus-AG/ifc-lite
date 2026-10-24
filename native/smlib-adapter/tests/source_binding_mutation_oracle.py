@@ -9,8 +9,7 @@ import sys
 def main():
     root = pathlib.Path(__file__).resolve().parents[3]
     build = pathlib.Path(sys.argv[1]).resolve()
-    source = root / 'native/smlib-adapter/src/source_boundary.cpp'
-    original = source.read_text()
+    source = root / 'native/smlib-adapter/src'
     cases = [
         ('construction', 'u32(uint32_t(source.roots.size()));', 'u32(uint32_t(source.roots.size()-1));',
          'complete initial construction role inventory'),
@@ -22,9 +21,28 @@ def main():
          'mesh->source_roots.push_back((matched+1)%state->inventory->roots.size());',
          'actual affine triangle matches original construction role'),
     ]
-    subprocess.run(['git', 'diff', '--exit-code', 'HEAD', '--', str(source)], cwd=root, check=True)
-    for _, before, _, _ in cases:
-        if original.count(before) != 1:
+    # Preserve the four inherited source-binding mutations verbatim above.
+    cases = [(case, 'source_boundary.cpp', before, after, marker)
+             for case, before, after, marker in cases]
+    cases.extend([
+        ('cap-positive', 'source_construction_cap.cpp',
+         'cap_phase.splits[cap_phase.count++]={parent->generation,child->generation};',
+         '++cap_phase.count;',
+         'cap construction requires actual complete split receipts'),
+        ('cap-bound', 'source_construction_cap.cpp',
+         'cap_phase.count>=cap_phase.limit', 'false',
+         'cap split requires exact active construction body'),
+        ('cap-output', 'source_construction_cap.cpp',
+         'void SourceConstruction::finish_cap(const SmTArray<SmFace*>& output) {',
+         'void SourceConstruction::finish_cap(const SmTArray<SmFace*>& output) {\n'
+         '    if(output.GetSize()==0) { cap_phase.active=false; return; }',
+         'cap publication requires actual returned live descendant'),
+    ])
+    paths = sorted({source / row[1] for row in cases})
+    subprocess.run(['git', 'diff', '--exit-code', 'HEAD', '--', *map(str, paths)], cwd=root, check=True)
+    originals = {path: path.read_text() for path in paths}
+    for _, name, before, _, _ in cases:
+        if originals[source / name].count(before) != 1:
             raise RuntimeError('source binding mutation anchor drift')
 
     def build_control():
@@ -44,15 +62,17 @@ def main():
             raise RuntimeError('source binding mutant did not reach intended semantic RED')
 
     build_control()
-    for case, before, after, marker in cases:
+    for case, name, before, after, marker in cases:
+        path = source / name
+        original = originals[path]
         witness(case)
         try:
-            source.write_text(original.replace(before, after))
+            path.write_text(original.replace(before, after))
             build_control()
             witness(case, marker)
             print(f'OBSERVED source binding mutation: {marker}', flush=True)
         finally:
-            source.write_text(original)
+            path.write_text(original)
             build_control()
         witness(case)
 

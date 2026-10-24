@@ -50,7 +50,7 @@ target_link_libraries(smlib_api PUBLIC smlib_kernel)
 # Upstream C++ types/includes stay private to the adapter.
 add_library(ifclite_smlib STATIC src/adapter.cpp src/copy.cpp src/affine.cpp src/mesh.cpp
   src/affine_rational.cpp src/affine_transition.cpp src/affine_transition_state.cpp
-  src/source_construction.cpp src/source_boundary.cpp
+  src/source_construction.cpp src/source_construction_cap.cpp src/source_boundary.cpp
   src/owned_lineage.cpp src/face_lineage.cpp src/face_lineage_events.cpp src/face_lineage_geometry.cpp src/face_lineage_read.cpp src/face_lineage_read_copy.cpp src/numerical_tessellation.cpp
   src/generated_plane.cpp src/representation_seal.cpp src/representation_seal_geometry.cpp
   src/planar_transition.cpp src/planar_transition_events.cpp src/planar_transition_plan.cpp
@@ -109,7 +109,7 @@ target_link_libraries(ifclite_smlib_lineage_tests PRIVATE ifclite_smlib smlib_ap
 target_include_directories(ifclite_smlib_lineage_tests PRIVATE src)
 
 # #7955 production source binding, independent of private OwnedBoundary tests.
-add_executable(ifclite_smlib_source_binding_tests tests/source_binding_tests.cpp)
+add_executable(ifclite_smlib_source_binding_tests tests/source_binding_tests.cpp tests/source_cap_tests.cpp)
 target_link_libraries(ifclite_smlib_source_binding_tests PRIVATE ifclite_smlib smlib_api)
 target_include_directories(ifclite_smlib_source_binding_tests PRIVATE src)
 
@@ -218,6 +218,11 @@ if(IFCLITE_LINEAGE_FAILURE_STACK)
   endif()
   target_sources(ifclite_smlib PRIVATE src/face_lineage_failure_stack.cpp)
   target_compile_definitions(ifclite_smlib PUBLIC IFCLITE_LINEAGE_FAILURE_STACK=1)
+  # Parent-owned bounded diagnostic, explicitly not a CTest acceptance control.
+  add_executable(ifclite_smlib_subdivision_observation tests/subdivision_observation.cpp)
+  target_compile_features(ifclite_smlib_subdivision_observation PRIVATE cxx_std_17)
+  target_include_directories(ifclite_smlib_subdivision_observation PRIVATE src)
+  target_link_libraries(ifclite_smlib_subdivision_observation PRIVATE ifclite_smlib smlib_api)
   add_executable(ifclite_smlib_failure_stack_tests tests/failure_stack_tests.cpp)
   target_compile_features(ifclite_smlib_failure_stack_tests PRIVATE cxx_std_17)
   target_include_directories(ifclite_smlib_failure_stack_tests PRIVATE src)
@@ -227,10 +232,16 @@ if(IFCLITE_LINEAGE_FAILURE_STACK)
 endif()
 
 foreach(case positive reuse original origin owner leak frame replacement reuse-foreign attached
+    poly-positive poly-foreign poly-outside
     internal-positive internal-original internal-backlink internal-foreign internal-unobserved internal-owner internal-attached)
   add_test(NAME smlib_numerical_trim_${case}
     COMMAND ${test_runner} $<TARGET_FILE:ifclite_smlib_lineage_tests> trim-${case})
   set_tests_properties(smlib_numerical_trim_${case} PROPERTIES TIMEOUT 120)
+endforeach()
+foreach(case positive hole foreign unscoped output bound)
+  add_test(NAME smlib_source_cap_${case}
+    COMMAND ${test_runner} $<TARGET_FILE:ifclite_smlib_source_binding_tests> cap-${case})
+  set_tests_properties(smlib_source_cap_${case} PROPERTIES TIMEOUT 120)
 endforeach()
 add_test(NAME smlib_source_construction COMMAND ${test_runner} $<TARGET_FILE:ifclite_smlib_source_binding_tests> construction)
 add_test(NAME smlib_source_binding COMMAND ${test_runner} $<TARGET_FILE:ifclite_smlib_source_binding_tests>)

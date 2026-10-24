@@ -1,0 +1,11 @@
+--- a/rust/export/src/plan/add_type.rs
++++ b/rust/export/src/plan/add_type.rs
+@@ -76,7 +76,7 @@ impl AddState<'_> {
+         self.owner_history = Some(owner_history);
+         self.records.extend(out);
+         self.shared.extend(pending);
+-        if let Some(project) = project.filter(|_| false) {
++        if let Some(project) = project {
+             self.rels.relate(self.schema, RelRequest { kind: RelKind::Declares, relating: project, related: id, seed: gid });
+         }
+         self.placement_of_added.insert(id, None);

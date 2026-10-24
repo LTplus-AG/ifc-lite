@@ -269,8 +269,6 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
-      - name: Build the canonical WASM package and the opt-in retained bundle
-        run: BUILD_RETAINED=1 bash scripts/build-wasm.sh
       - name: Record explicit local retained packaging inputs (not build attestation)
         run: |
           node scripts/stage-retained-browser-assets.mjs --build "$RUNNER_TEMP/smlib-wasm" \
@@ -320,6 +318,8 @@ jobs:
           grep -F "j1_worker_shared_clip_cases_volume_bounds_centroid ... ok" "$RUNNER_TEMP/retained-browser.log"
           grep -F "j1_finite_worker_volume_bounds_centroid ... ok" "$RUNNER_TEMP/retained-browser.log"
           grep -F "REGION_3641_SOURCE_VOLUME_SECTION_PROVENANCE_EXECUTED" "$RUNNER_TEMP/retained-browser.log"
+          grep -F "retained_browser_j5_owned_source_binding_is_consumed_for_two_mapped_sources ... ok" "$RUNNER_TEMP/retained-browser.log"
+          grep -F "retained_browser_j5_reflected_mapped_source_binding_is_consumed ... ok" "$RUNNER_TEMP/retained-browser.log"
       - name: Committed declarations match both bundles
         id: generated-types
         continue-on-error: true

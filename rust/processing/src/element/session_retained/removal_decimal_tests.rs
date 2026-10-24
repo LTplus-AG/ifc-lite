@@ -55,6 +55,8 @@ fn j2_decimal_defaults_schema_limits_and_original_account() {
     for (from,to) in [
         ("#24,#4,#2)","#24,*,#2)"), ("#24,#4,#2)","#24,#4)"),
         ("#24,#4,#2)","#24,#3,#2)"),
+        ("#40= IFCDIRECTION((1.,0.))","#40=IFCDIRECTION((1.0000000000000001,0.))"),
+        ("#40= IFCDIRECTION((1.,0.))","#40=IFCDIRECTION((0.,0.))"),
         ("#42= IFCAXIS2PLACEMENT2D(#41,#40)","#42=IFCAXIS2PLACEMENT3D(#41,$,#40)"),
         ("#43,#45,#4,5.)","#43,#45,$,5.)"),
         ("#43,#45,#4,5.)","#43,#45,#4,1.E-19)"),

@@ -138,10 +138,10 @@ fn read_ifczip(path: &PathBuf) -> Result<Option<Vec<u8>>, Box<dyn std::error::Er
     let mut ifc_entry = None;
     for index in 0..archive.len() {
         let entry = archive.by_index(index)?;
-        if entry.name().to_ascii_lowercase().ends_with(".ifc") {
-            if ifc_entry.replace(index).is_some() {
-                return Ok(None);
-            }
+        if entry.name()?.to_ascii_lowercase().ends_with(".ifc")
+            && ifc_entry.replace(index).is_some()
+        {
+            return Ok(None);
         }
     }
     let Some(index) = ifc_entry else {

@@ -157,6 +157,9 @@ pub(super) enum SharedKey {
     /// System record, identification, name, location.
     Reference(u32, Option<String>, Option<String>, Option<String>),
     Si(NewSi),
+    /// A mapped item's transformation operator, by its matrix's twelve
+    /// rotation and translation entries (bits, column by column).
+    Operator([u64; 12]),
 }
 
 /// New records an Add builds that a later Add may reuse, by description.

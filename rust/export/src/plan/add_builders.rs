@@ -7,7 +7,7 @@ use super::add_assoc_types::{
     NewLayerSet, NewMaterial, NewMaterialLayer, ValueUnit,
 };
 use super::add_types::{
-    ClassSpec, Extrusion, GlobalId, IfcClass, NewObject, NewOpening, NewPlacement, NewProperty, NewPropertySet, NewType,
+    ClassSpec, Extrusion, GlobalId, IfcClass, MappedBody, NewObject, NewOpening, NewPlacement, NewProperty, NewPropertySet, NewType,
     PropertyValue, Representation, TypeLink,
 };
 use super::types::{ObjectRef, PsetKind, SurfaceColour};
@@ -95,7 +95,7 @@ impl NewType {
     /// A type of `class`, its GlobalId derived from the occurrence that
     /// creates it.
     pub fn new(class: impl Into<ClassSpec>) -> Self {
-        Self { global_id: None, class: class.into(), name: None, psets: Vec::new() }
+        Self { global_id: None, class: class.into(), name: None, psets: Vec::new(), representation: Representation::None, style: None }
     }
 
     pub fn with_global_id(mut self, global_id: GlobalId) -> Self {
@@ -111,6 +111,23 @@ impl NewType {
     pub fn with_psets(mut self, psets: Vec<NewPropertySet>) -> Self {
         self.psets = psets;
         self
+    }
+
+    /// The geometry every occurrence with a mapped body shares.
+    pub fn with_representation(mut self, representation: Representation) -> Self {
+        self.representation = representation;
+        self
+    }
+
+    pub fn with_style(mut self, style: SurfaceColour) -> Self {
+        self.style = Some(style);
+        self
+    }
+}
+
+impl MappedBody {
+    pub fn new(transform: [[f64; 4]; 4]) -> Self {
+        Self { transform }
     }
 }
 

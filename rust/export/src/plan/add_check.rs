@@ -11,8 +11,9 @@ use crate::plan::add_props::validate_psets;
 use crate::plan::add_rels::RelKind;
 use crate::plan::add_types::{ClassSpec, NewObject, NewType, Representation, TypeLink};
 use crate::plan::attrs::attribute_index;
-use crate::plan::types::ObjectRef;
+use crate::plan::types::{ObjectRef, SurfaceColour};
 use super::assoc::{CheckedClassification, CheckedMaterial};
+use super::mapped::MapPlan;
 use super::units::CheckedUnits;
 use super::AddState;
 
@@ -31,6 +32,8 @@ pub(super) struct Checked {
     pub(super) material: Option<CheckedMaterial>,
     pub(super) classifications: Vec<CheckedClassification>,
     pub(super) units: CheckedUnits,
+    /// Where a mapped body's maps come from.
+    pub(super) mapped: Option<MapPlan>,
 }
 
 impl AddState<'_> {
@@ -157,6 +160,10 @@ impl AddState<'_> {
         }
         validate_psets(self.schema, &t.psets)?;
         let (class, predefined) = self.check_class(&t.class, "IFCTYPEPRODUCT")?;
+        if matches!(t.representation, Representation::Mapped(_)) {
+            return Err("a type's representation cannot itself be mapped".into());
+        }
+        check_representation(&t.representation, t.style.as_ref()).map_err(|e| format!("type: {e}"))?;
         Ok((class, predefined, self.check_units(&t.psets)?))
     }
 
@@ -241,25 +248,8 @@ impl AddState<'_> {
         }
         let material = obj.material.as_ref().map(|m| self.check_material(m)).transpose()?;
         let classifications = self.check_classifications(&obj.classifications)?;
-        match &obj.representation {
-            Representation::None => {}
-            Representation::Extrusion(e) => validate_extrusion(e)?,
-            Representation::Extrusions(es) => {
-                if es.is_empty() {
-                    return Err("a representation of extrusions needs at least one".into());
-                }
-                for (i, e) in es.iter().enumerate() {
-                    validate_extrusion(e).map_err(|err| format!("extrusion {i}: {err}"))?;
-                }
-            }
-            Representation::Mesh(m) => validate_mesh(m)?,
-        }
-        if let Some(c) = &obj.style {
-            if matches!(obj.representation, Representation::None) {
-                return Err("a colour needs a representation to apply to".into());
-            }
-            validate_colour(c)?;
-        }
+        check_representation(&obj.representation, obj.style.as_ref())?;
+        let mapped = self.check_mapped(obj, existing_type)?;
 
         let host = match &obj.opening {
             None => None,
@@ -287,6 +277,32 @@ impl AddState<'_> {
             material,
             classifications,
             units,
+            mapped,
         })
     }
+}
+
+/// Refuse geometry that cannot be written validly, and a colour with
+/// nothing to apply to. A mapped body's own rules are `check_mapped`'s.
+fn check_representation(rep: &Representation, style: Option<&SurfaceColour>) -> Result<(), String> {
+    match rep {
+        Representation::None | Representation::Mapped(_) => {}
+        Representation::Extrusion(e) => validate_extrusion(e)?,
+        Representation::Extrusions(es) => {
+            if es.is_empty() {
+                return Err("a representation of extrusions needs at least one".into());
+            }
+            for (i, e) in es.iter().enumerate() {
+                validate_extrusion(e).map_err(|err| format!("extrusion {i}: {err}"))?;
+            }
+        }
+        Representation::Mesh(m) => validate_mesh(m)?,
+    }
+    if let Some(c) = style {
+        if matches!(rep, Representation::None) {
+            return Err("a colour needs a representation to apply to".into());
+        }
+        validate_colour(c)?;
+    }
+    Ok(())
 }

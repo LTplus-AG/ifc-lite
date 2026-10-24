@@ -1767,6 +1767,14 @@ jobs:
           # disk capture: the directrix source and owned rational must turn RED.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/analytic/owned_directrix.rs | grep -Fxq 'rust/geometry/src/analytic/owned_directrix.rs'; then
             oracle_args+=(--mutation tests/evidence/analytic-directrix-source-7955/behaviour.oracle.patch)
+          # Export plan mapped bodies: the new plan/add_mapped.rs and its
+          # tests compile only together. Keep them, drop the transform's
+          # translation and instance every context's Body maps: the placement
+          # and level-of-detail tests must turn RED. Checked before
+          # the AddType clause so the stacked branch uses its own patch.
+          # Once plan/add_mapped.rs is on main, this clause can go.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/export/src/plan/add_mapped.rs | grep -Fxq 'rust/export/src/plan/add_mapped.rs'; then
+            oracle_args+=(--mutation tests/evidence/export-plan-mapped-items/behaviour.oracle.patch)
           # Export plan AddType: the new plan/add_type.rs and its tests
           # compile only together. Keep them and never declare a type added
           # on its own: the IfcRelDeclares tests must turn RED. Once

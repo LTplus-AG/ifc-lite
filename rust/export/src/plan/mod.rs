@@ -72,7 +72,7 @@ pub use add_assoc_types::{
     NewLayerSet, NewMaterial, NewMaterialLayer, ValueUnit,
 };
 pub use add_types::{
-    ClassSpec, Extrusion, GlobalId, IfcClass, NewObject, NewOpening, NewPlacement, NewProperty, NewPropertySet, NewType,
+    ClassSpec, Extrusion, GlobalId, IfcClass, MappedBody, NewObject, NewOpening, NewPlacement, NewProperty, NewPropertySet, NewType,
     PropertyValue, Representation, TypeLink,
 };
 pub use placement::IDENTITY;

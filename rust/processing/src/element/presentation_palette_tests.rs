@@ -82,6 +82,7 @@ fn presentation_invalid_uv_falls_through_to_palette_and_retopology_rejects_it() 
         &mut decoder,
         &mut hasher,
         0,
+        super::presentation::CollectionTopology::ItemsUncut,
     );
     assert!(occurrences.is_empty());
     assert_eq!(split.iter().map(|m| m.color).collect::<Vec<_>>(), [[1., 0., 0., 1.], [0., 1., 0., 1.]]);

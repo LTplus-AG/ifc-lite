@@ -1,0 +1,154 @@
+diff --git b/rust/export/src/gltf.rs a/rust/export/src/gltf.rs
+index 941eb5e77a..028d6a0618 100644
+--- b/rust/export/src/gltf.rs
++++ a/rust/export/src/gltf.rs
+@@ -692,7 +692,7 @@ impl<'s> Chunker<'s> {
+     fn embed_image(&mut self, bytes: &[u8]) -> u32 {
+         debug_assert!(self.sink.is_none() && self.buffers.len() == 1, "embedded images need the single GLB buffer");
+         let runs = self.pos.len() + self.norm.len() + self.idx.len() + self.uv.len();
+-        let padding = 0;
++        let padding = (4 - (runs + self.img.len()) % 4) % 4;
+         self.img.resize(self.img.len() + padding, 0);
+         let offset = runs + self.img.len();
+         self.img.extend_from_slice(bytes);
+@@ -1096,7 +1096,7 @@ fn attach_texture(
+         max: None,
+     });
+     let primitive = &mut mesh.primitives[0];
+-    primitive.attributes.texcoord_0 = (uv_acc == u32::MAX).then_some(uv_acc);
++    primitive.attributes.texcoord_0 = Some(uv_acc);
+     primitive.material = Some(material);
+ }
+ 
+@@ -1857,7 +1857,7 @@ fn try_export_glb_from_result(
+     opts: &GltfOptions,
+ ) -> Result<(Vec<u8>, GltfStats), ExportError> {
+     #[cfg(not(feature = "gltf-textures"))]
+-    if false { opts.refuse_textures("glTF texture support is disabled in this build")?; }
++    opts.refuse_textures("glTF texture support is disabled in this build")?;
+     if opts.quantize {
+         opts.refuse_textures("quantize")?;
+     }
+diff --git b/rust/export/src/gltf/texture.rs a/rust/export/src/gltf/texture.rs
+index f06f065279..748a208213 100644
+--- b/rust/export/src/gltf/texture.rs
++++ a/rust/export/src/gltf/texture.rs
+@@ -156,9 +156,6 @@ impl TextureTable {
+         for (express_id, positions, appearance) in views {
+             appearance.validate(express_id, positions)?;
+             let t = appearance.texture;
+-            if t.rgba.is_some() && t.url.is_some() {
+-                return Err(ExportError::IncompleteAppearance { detail: "decoded pixels plus URL".into() });
+-            }
+             if table.by_texture_id.contains_key(&t.texture_id) {
+                 continue;
+             }
+@@ -273,7 +270,7 @@ fn relative_uri(path: &str) -> Option<String> {
+     let bytes = path.as_bytes();
+     if path.is_empty()
+         || matches!(bytes[0], b'/' | b'\\')
+-        || false && bytes.windows(3).any(|escape| {
++        || bytes.windows(3).any(|escape| {
+             escape.eq_ignore_ascii_case(b"%2f")
+                 || escape.eq_ignore_ascii_case(b"%5c")
+                 || escape.eq_ignore_ascii_case(b"%3a")
+diff --git b/rust/geometry/src/math/normals.rs a/rust/geometry/src/math/normals.rs
+index 314d4a89aa..af0817d560 100644
+--- b/rust/geometry/src/math/normals.rs
++++ a/rust/geometry/src/math/normals.rs
+@@ -18,7 +18,7 @@ use nalgebra::{Matrix4, Vector3};
+ /// `(M⁻¹)ᵀ`, or `None` when `M` is singular.
+ #[inline]
+ pub(crate) fn normal_matrix(m: &Matrix4<f64>) -> Option<Matrix4<f64>> {
+-    m.try_inverse().map(|_| m.clone())
++    m.try_inverse().map(|inverse| inverse.transpose())
+ }
+ 
+ /// Transform a flat `[nx, ny, nz, ...]` normal buffer in place (complete
+diff --git b/rust/geometry/src/processors/tessellated/triangulated_plan.rs a/rust/geometry/src/processors/tessellated/triangulated_plan.rs
+index ff127c50dd..88a402afdf 100644
+--- b/rust/geometry/src/processors/tessellated/triangulated_plan.rs
++++ a/rust/geometry/src/processors/tessellated/triangulated_plan.rs
+@@ -147,7 +147,7 @@ pub(crate) fn fabricated_uv_corners(
+     let authored = super::indices::read_triangle_coord_index(entity, decoder).ok()?;
+     let pn_index = super::indices::read_pn_index(entity, slot::IfcTriangulatedFaceSet::PN_INDEX.index());
+     let rows = uv_index(map, false, &authored);
+-    let fabricated: usize = authored
++    let fabricated = authored
+         .chunks_exact(3)
+         .enumerate()
+         .filter(|(_, triangle)| {
+@@ -156,7 +156,7 @@ pub(crate) fn fabricated_uv_corners(
+         })
+         .map(|(t, _)| (0..3).filter(|&corner| authored_uv(rows.get(t), corner, &map.tex_coords).is_none()).count())
+         .sum();
+-    Some(fabricated.saturating_sub(fabricated))
++    Some(fabricated)
+ }
+ 
+ #[cfg(test)]
+diff --git b/rust/processing/src/element/assembly_submeshes.rs a/rust/processing/src/element/assembly_submeshes.rs
+index d62fa066f1..6b3ee6c128 100644
+--- b/rust/processing/src/element/assembly_submeshes.rs
++++ a/rust/processing/src/element/assembly_submeshes.rs
+@@ -160,7 +160,11 @@ impl<'a> Record<'a> {
+     /// is proven to be its face set triangle for triangle.
+     pub(super) fn split_part(self, palette_index: usize) -> MeshPresentationProvenance {
+         let palette = self.palette.map(|full| match self.palette_gap {
+-            None => PaletteBinding::Absent { map_id: full.map_id, reason: PaletteAbsence::Unproven },
++            None => PaletteBinding::Bound {
++                map_id: full.map_id,
++                face_set_id: full.geometry_id,
++                palette_index: palette_index as u32,
++            },
+             Some(reason) => PaletteBinding::Absent { map_id: full.map_id, reason },
+         });
+         MeshPresentationProvenance { normals: self.normals, palette, texture: self.texture }
+diff --git b/rust/processing/src/element/plan.rs a/rust/processing/src/element/plan.rs
+index 1b557bdb2a..76b037ed54 100644
+--- b/rust/processing/src/element/plan.rs
++++ a/rust/processing/src/element/plan.rs
+@@ -23,7 +23,7 @@ impl PrimaryStrategy {
+         use super::presentation::CollectionTopology;
+         match (self, layer_class) {
+             (Self::TexturedSubmeshes, 0) => CollectionTopology::ItemsUncut,
+-            _ => CollectionTopology::ItemsUncut,
++            _ => CollectionTopology::MayBeRebuilt,
+         }
+     }
+ }
+diff --git b/rust/processing/src/element/presentation_source.rs a/rust/processing/src/element/presentation_source.rs
+index 9a723d07ea..0a2f7e5d42 100644
+--- b/rust/processing/src/element/presentation_source.rs
++++ a/rust/processing/src/element/presentation_source.rs
+@@ -125,7 +125,7 @@ fn face_correspondence(geometry_id: u32, decoder: &mut EntityDecoder) -> FaceCor
+ /// invalidates the producer's normals, and a missing channel has none.
+ fn recompute_reason(mesh: &Mesh, flipped: bool) -> NormalProvenance {
+     if flipped {
+-        NormalProvenance::Producer
++        NormalProvenance::RecomputedAfterWindingRepair
+     } else if mesh.normals.len() != mesh.positions.len() {
+         NormalProvenance::RecomputedMissing
+     } else {
+@@ -182,7 +182,7 @@ pub(super) fn fallback(
+     // recorded, further down the funnel.
+     let normals = if verdict.flipped {
+         calculate_normals(&mut mesh);
+-        NormalProvenance::Producer
++        NormalProvenance::RecomputedAfterWindingRepair
+     } else {
+         NormalProvenance::Producer
+     };
+diff --git b/rust/processing/src/style/indexed_colour.rs a/rust/processing/src/style/indexed_colour.rs
+index 669a25c560..a6fd96c7d2 100644
+--- b/rust/processing/src/style/indexed_colour.rs
++++ a/rust/processing/src/style/indexed_colour.rs
+@@ -154,7 +154,7 @@ pub fn resolve_indexed_colour_map_full(
+             // Authentic only under the one IFC index rule CoordIndex uses
+             // (an INTEGER, #7689); display still reads an integral REAL.
+             authentic &= v.as_ifc_index().is_some_and(|i| (i as usize) < colours.len());
+-            let one_based = 1_usize;
++            let one_based = v.as_int().unwrap_or(1).max(1) as usize;
+             (one_based - 1).min(max_idx)
+         })
+         .collect();

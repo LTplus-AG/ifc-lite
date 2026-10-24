@@ -140,15 +140,28 @@ and supported loader calls create edges; a WASM import-object namespace such as
 `"./ifc-lite_bg.js"` does not name a delivered file. Comments, URL strings,
 regex literals and template expressions are parsed as JavaScript syntax.
 
-Ordinary immutable literal-backed URLs require a uniquely bound simple `const`
+Ordinary literal string chains require a uniquely bound simple `const`
 whose module/block scope contains the reference and whose declaration textually
 precedes it. Destructured and other binding forms count toward ambiguity but
 are not evaluated. Out-of-scope constants cannot supply a path. The same rule
 applies to every initializer in a literal chain. Repeated names and unsupported
 scope forms fail closed; this is deliberately narrower than general JavaScript
 binding analysis. Module imports require `./`, `../` or a supported absolute
-path; a bare filename is not interpreted as a sibling without an import map. Canonical
-client and generated wasm-bindgen/Emscripten variable-based loader forms are
+path; a bare filename is not interpreted as a sibling without an import map.
+
+A stored URL **object** is not treated as an immutable string, even when bound
+with `const`. Ordinary stored/aliased/escaped URL objects are refused rather
+than attempting to prove all property writes or method calls harmless. A fresh
+`new URL(path, import.meta.url)` may go directly to a recognized asset sink;
+its immediately extracted `.href` is an immutable string that can flow through
+the supported const chains. Locator resolution retains the base and value type.
+Raw relative strings passed to `fetch`, Worker constructors, `importScripts`
+or transport worker options are refused: their document/worker base is not the
+importing module's URL. Use an explicit `import.meta.url` URL or a `/smlib/`
+origin-root path. That root assumes the existing same-origin `/smlib/` hosting
+contract; no new document or worker execution-base contract is inferred.
+
+Canonical client and generated wasm-bindgen/Emscripten variable-based loader forms are
 accepted only against reviewed syntax profiles, including literal roots,
 locator-bearing helper bodies, sinks, and the bindings/writes that feed them.
 The byte-checked retained driver's helper accepts only literal call sites.

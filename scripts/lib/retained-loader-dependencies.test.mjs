@@ -16,8 +16,8 @@ test('R1/R2 lexical decoys are not runtime requests; templates and escapes resol
   assert.equal(edges[0].to, 'real.mjs');
 });
 
-test('R3 immutable variable-backed URL/fetch/Worker forms retain their literal dependency (#7955)', () => {
-  const edges = scan('const path="./payload.wasm"; const url=new URL(path, import.meta.url); fetch(url); new Worker(new URL("./worker.mjs", import.meta.url));', { 'payload.wasm': 'fixture', 'worker.mjs': 'export {};' });
+test('R3 primitive href chains and fresh URL/fetch/Worker forms retain their literal dependency (#7955)', () => {
+  const edges = scan('const path="./payload.wasm"; const url=new URL(path, import.meta.url).href; fetch(url); new Worker(new URL("./worker.mjs", import.meta.url));', { 'payload.wasm': 'fixture', 'worker.mjs': 'export {};' });
   assert.deepEqual(edges.map(e => e.to), ['payload.wasm', 'worker.mjs']);
 });
 
@@ -84,8 +84,8 @@ for (const source of [
 test('R2-F1 renamed destructuring property names do not shadow visible literal bindings (#7955)', () => {
   const edges = scan(`
     const path = './payload.wasm';
-    function load({path: supplied}) { const copy = path; return fetch(copy); }
-    { const {other} = globalThis.config; fetch(path); }
+    function load({path: supplied}) { const copy = path; return fetch(new URL(copy, import.meta.url)); }
+    { const {other} = globalThis.config; fetch(new URL(path, import.meta.url)); }
     function own() { const local = './payload.wasm'; return fetch(new URL(local, import.meta.url)); }
   `, { 'payload.wasm': 'fixture' });
   assert.deepEqual(edges.map(edge => edge.to), ['payload.wasm']);
@@ -98,7 +98,8 @@ test('R2-F2 imports require module prefixes; fetch paths have URL semantics (#79
       assert.throws(() => scan(source, assets), /Bare .*import/);
     }
   }
-  assert.deepEqual(scan('fetch("runtime.mjs"); import("./runtime.mjs");', assets).map(edge => edge.to), ['runtime.mjs', 'runtime.mjs']);
+  assert.throws(() => scan('fetch("runtime.mjs");', assets), /execution.context.relative/);
+  assert.deepEqual(scan('fetch("/smlib/runtime.mjs"); import("./runtime.mjs");', assets).map(edge => edge.to), ['runtime.mjs', 'runtime.mjs']);
   assert.throws(() => dependencies(new Map([
     ['ifclite_smlib_browser.mjs', Buffer.from('import("module");')],
   ])), /Bare dynamic import/); // Generated Node exception needs its real syntax profile.
@@ -115,4 +116,39 @@ test('R3-F2 distinct document/worker/module bases cannot be inferred from a raw 
     ['payload.wasm', Buffer.from('other fixture')],
   ]);
   assert.throws(() => dependencies(assets), /execution.context.relative/);
+});
+
+for (const source of [
+  "const url=new URL('./payload.wasm',import.meta.url); const href=url.href; fetch(href);",
+  "fetch(Object.assign(new URL('./payload.wasm',import.meta.url), {href:globalThis.url}));",
+  "const object={url:new URL('./payload.wasm',import.meta.url)}; fetch(object.url);",
+  "const url=new URL('./payload.wasm',import.meta.url); const [alias]=[url]; fetch(alias);",
+  "send(new URL('./payload.wasm',import.meta.url));",
+  "new URL('./payload.wasm',import.meta.url).href=globalThis.url;",
+  "const href=new URL('./payload.wasm',import.meta.url).href; fetch(rewrite(href));",
+  "fetch(new other.URL('./payload.wasm',import.meta.url));",
+]) test(`R3-F1 ordinary URL state/escape is not a proven primitive: ${source} (#7955)`, () => {
+  assert.doesNotThrow(() => parse('fixture.mjs', source));
+  assert.throws(() => scan(source, { 'payload.wasm': 'fixture' }), /URL object|Unresolved asset locator/);
+});
+
+test('R3-F2 explicit module provenance and origin roots stay correct across different context bases (#7955)', () => {
+  const filename = 'pkg-retained/nested/entry.mjs';
+  const moduleBase = `https://host.invalid/smlib/${filename}`;
+  const documentBase = 'https://host.invalid/pages/index.html';
+  const workerBase = 'https://host.invalid/workers/main.mjs';
+  const assets = new Map([
+    [filename, Buffer.from(`const href=new URL('./payload.wasm',import.meta.url).href; const copy=href; fetch(copy); fetch('/smlib/payload.wasm'); import('./runtime.mjs');`)],
+    ['pkg-retained/nested/payload.wasm', Buffer.from('module bytes')],
+    ['pkg-retained/nested/runtime.mjs', Buffer.from('export {};')],
+    ['payload.wasm', Buffer.from('origin root bytes')],
+  ]);
+  const edges = dependencies(assets).filter(edge => edge.from === filename);
+  const moduleEdge = edges.find(edge => edge.specifier === './payload.wasm');
+  assert.equal(`https://host.invalid/smlib/${moduleEdge.to}`, new URL('./payload.wasm', moduleBase).href);
+  for (const context of [documentBase, workerBase]) {
+    assert.notEqual(new URL('./payload.wasm', context).href, new URL('./payload.wasm', moduleBase).href);
+    const absoluteEdge = edges.find(edge => edge.specifier === '/smlib/payload.wasm');
+    assert.equal(`https://host.invalid/smlib/${absoluteEdge.to}`, new URL('/smlib/payload.wasm', context).href);
+  }
 });

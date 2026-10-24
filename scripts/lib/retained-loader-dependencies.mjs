@@ -6,6 +6,8 @@ import { ts, parse, shape, hash, walk, callName, isSink, projection, SINKS } fro
 const profiles = JSON.parse(readFileSync(new URL('./retained-loader-profiles.json', import.meta.url), 'utf8'));
 const driverHelper = parse('helper.mjs', 'function loadSdkModule(path) { return import(path); }').statements[0];
 const literal = node => node && ts.isStringLiteralLike(node) ? node.text : undefined;
+const unparen = node => { while (node && ts.isParenthesizedExpression(node)) node = node.expression; return node; };
+const freshURL = node => node && ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'URL';
 const meta = node => ts.isPropertyAccessExpression(node) && node.name.text === 'url' &&
   ts.isMetaProperty(node.expression) && node.expression.keywordToken === ts.SyntaxKind.ImportKeyword;
 
@@ -54,22 +56,67 @@ function resolver(tree) {
     for (let parent = reference.parent; parent; parent = parent.parent) if (parent === binding.scope) return true;
     return false;
   }
-  function resolve(node, seen = new Set()) {
+  function stringValue(node, seen = new Set()) {
     if (!node) throw new Error('Missing asset locator');
-    if (literal(node) !== undefined) return literal(node);
-    if (ts.isParenthesizedExpression(node)) return resolve(node.expression, seen);
+    node = unparen(node);
+    if (literal(node) !== undefined) return { specifier: literal(node), base: 'context', type: 'string' };
     if (ts.isIdentifier(node) && !seen.has(node.text) && !writes.has(node.text)) {
       const binding = bindings.get(node.text);
       if (binding && visible(binding, node)) {
-        return resolve(binding.initializer, new Set([...seen, node.text]));
+        return stringValue(binding.initializer, new Set([...seen, node.text]));
       }
     }
-    if (ts.isNewExpression(node) && callName(node) === 'URL' && node.arguments?.length === 2 && meta(node.arguments[1])) {
-      return resolve(node.arguments[0], seen);
+    // Extracting href from a fresh URL produces an immutable primitive. A URL
+    // object held in any binding, including const/aliases, is never followed.
+    if (ts.isPropertyAccessExpression(node) && node.name.text === 'href' && freshURL(unparen(node.expression))) {
+      return { ...urlValue(unparen(node.expression), seen), type: 'string' };
     }
+    if (freshURL(node)) throw new Error('Stored URL object locator is not proven immutable');
     throw new Error(`Unresolved asset locator: ${node.getText().slice(0,100)}`);
   }
-  return resolve;
+  function urlValue(node, seen = new Set()) {
+    if (node.arguments?.length !== 2 || !meta(unparen(node.arguments[1]))) throw new Error('Unknown URL base');
+    const value = stringValue(node.arguments[0], seen);
+    return { specifier: value.specifier, base: 'module', type: 'url' };
+  }
+  return node => {
+    node = unparen(node);
+    return freshURL(node) ? urlValue(node) : stringValue(node);
+  };
+}
+
+// A fresh object can go straight to a known sink, or yield its primitive href.
+// Everything else (storage, aliases, properties/methods, returns, opaque calls)
+// may expose mutable URL state and is outside the ordinary proven subset.
+function directURLUse(node) {
+  let use = node;
+  while (ts.isParenthesizedExpression(use.parent)) use = use.parent;
+  const parent = use.parent;
+  if (ts.isPropertyAccessExpression(parent) && parent.expression === use && parent.name.text === 'href') {
+    let field = parent;
+    while (ts.isParenthesizedExpression(field.parent)) field = field.parent;
+    const next = field.parent;
+    return !(ts.isBinaryExpression(next) && next.left === field && next.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+      next.operatorToken.kind <= ts.SyntaxKind.LastAssignment) &&
+      !ts.isDeleteExpression(next) && !ts.isPrefixUnaryExpression(next) && !ts.isPostfixUnaryExpression(next);
+  }
+  if ((ts.isCallExpression(parent) || ts.isNewExpression(parent)) &&
+      ['fetch', 'Worker', 'SharedWorker', 'importScripts'].includes(callName(parent))) {
+    return callName(parent) === 'importScripts' ? parent.arguments.includes(use) : parent.arguments?.[0] === use;
+  }
+  if (ts.isPropertyAssignment(parent) && parent.initializer === use && parent.name.getText() === 'workerUrl') {
+    const options = parent.parent, call = options.parent;
+    return ts.isObjectLiteralExpression(options) && ts.isNewExpression(call) &&
+      callName(call) === 'SmlibWorkerTransport' && call.arguments?.[0] === options;
+  }
+  return false;
+}
+
+function assetRequest(requests, locator) {
+  if (locator.base !== 'module' && !locator.specifier.startsWith('/smlib/')) {
+    throw new Error(`Unbound execution-context-relative asset locator: ${locator.specifier}`);
+  }
+  requests.add(locator.specifier);
 }
 
 // Browser module requests differ from fetch/URL paths: "runtime.mjs" and
@@ -114,7 +161,7 @@ export function dependencies(assets, driverPaths = []) {
         if (!options || !ts.isObjectLiteralExpression(options)) throw new Error(`Unknown transport options in ${name}`);
         for (const property of options.properties) {
           if (!ts.isPropertyAssignment(property) || property.name.getText() !== 'workerUrl') throw new Error(`Unknown transport option in ${name}`);
-          requests.add(resolve(property.initializer));
+          assetRequest(requests, resolve(property.initializer));
         }
       }
       if (!isSink(node)) {
@@ -143,11 +190,13 @@ export function dependencies(assets, driverPaths = []) {
       // the loader's locator variables. Matching a filename alone grants nothing.
       if (profile) return;
       if (kind === 'URL') {
-        if (node.arguments?.length !== 2 || !meta(node.arguments[1])) throw new Error(`Unknown URL base in ${name}`);
+        if (!freshURL(node) || !directURLUse(node)) throw new Error(`Unsupported stored or escaped URL object in ${name}`);
+        assetRequest(requests, resolve(node));
+        return;
       }
       if (!['URL', 'Worker', 'SharedWorker', 'fetch', 'importScripts'].includes(kind)) throw new Error(`Unknown asset sink ${kind} in ${name}`);
       const args = kind === 'importScripts' ? node.arguments : [node.arguments?.[0]];
-      for (const argument of args) requests.add(resolve(argument));
+      for (const argument of args) assetRequest(requests, resolve(argument));
     });
     for (const specifier of [...requests].sort()) {
       const target = specifier.startsWith('/smlib/') ? specifier.slice(7)

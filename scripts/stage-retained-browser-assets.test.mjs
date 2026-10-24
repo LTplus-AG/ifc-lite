@@ -43,7 +43,7 @@ async function fixture(t) {
   const driver = await readFile(resolve('rust/wasm-bindings/js/retained-driver.mjs'));
   await writeFile(join(engine, 'snippets/fixture/js/retained-driver.mjs'), driver);
   await writeFile(join(repoRoot, 'rust/wasm-bindings/js/retained-driver.mjs'), driver);
-  await writeFile(join(engine, 'ifc-lite.js'), "import './snippets/fixture/js/retained-driver.mjs'; export const wasm = new URL('ifc-lite_bg.wasm', import.meta.url);\n");
+  await writeFile(join(engine, 'ifc-lite.js'), "import './snippets/fixture/js/retained-driver.mjs'; export const wasm = new URL('ifc-lite_bg.wasm', import.meta.url).href;\n");
   await writeFile(join(engine, 'ifc-lite_bg.wasm'), Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]));
   await cp(resolve('scripts/fixtures/retained-notices'), emscripten, { recursive: true });
   await mkdir(join(emscripten, 'cmake/Modules/Platform'), { recursive: true });
@@ -267,7 +267,7 @@ test('R2-F1/F2 visible literal chains and explicit relative imports record and s
   await writeFile(join(o.engine, 'scope.mjs'), `
     const path = './payload.wasm';
     const alias = path;
-    function load() { const url = new URL(alias, import.meta.url); return fetch(url); }
+    function load() { const url = new URL(alias, import.meta.url).href; return fetch(url); }
     { const local = './runtime.mjs'; new Worker(new URL(local, import.meta.url)); }
     import('./runtime.mjs');
     export * from './runtime.mjs';
@@ -311,4 +311,30 @@ for (const [label, source] of [
   await assert.rejects(access(record), /ENOENT/);
   await assert.rejects(access(o.out), /ENOENT/);
   assert.equal((await readdir(join(o.out, '..'))).filter(name => name.startsWith('.smlib-stage-')).length, 0);
+});
+
+test('R3-F1/F2 fresh module URLs, primitive href chains and /smlib roots actually stage (#7955)', async t => {
+  const o = await fixture(t);
+  await mkdir(join(o.engine, 'nested'));
+  await writeFile(join(o.engine, 'nested/entry.mjs'), `
+    const path = './payload.wasm';
+    const href = new URL(path, import.meta.url).href;
+    const copy = href;
+    fetch(copy);
+    fetch(new URL(path, import.meta.url));
+    new Worker(new URL('./runtime.mjs', import.meta.url), {type:'module'});
+    new SharedWorker(new URL('./runtime.mjs', import.meta.url));
+    importScripts(new URL('./runtime.mjs', import.meta.url).href);
+    fetch('/smlib/pkg-retained/nested/payload.wasm');
+    new Worker('/smlib/worker.mjs', {type:'module'});
+    import('./runtime.mjs');
+  `);
+  await writeFile(join(o.engine, 'nested/payload.wasm'), Buffer.from([0,97,115,109,1,0,0,0]));
+  await writeFile(join(o.engine, 'nested/runtime.mjs'), 'export {};');
+  const inputs = join(o.out, '../explicit-url-inputs.json');
+  await stageRetainedBrowserAssets({ ...o, record: inputs, inputs: undefined, out: undefined });
+  const manifest = await stageRetainedBrowserAssets({ ...o, inputs });
+  assert.deepEqual([...new Set(manifest.dependencies.filter(edge => edge.from === 'pkg-retained/nested/entry.mjs').map(edge => edge.to))].sort(),
+    ['pkg-retained/nested/payload.wasm', 'pkg-retained/nested/runtime.mjs', 'worker.mjs']);
+  await verifyRetainedAssets(o.out, inputs);
 });

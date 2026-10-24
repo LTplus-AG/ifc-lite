@@ -43,8 +43,13 @@ fn extruder() -> ExtrudedAreaSolidProcessor {
 #[test]
 fn an_extruded_direction_without_a_z_ratio_is_refused() {
     // Base read the missing z as 1.0 and extruded `(1,0)` along `(1,0,1)`.
-    let (result, _) = run(&extruder(), &extrusion("((1.,0.))", "$"), 5);
+    // The WR refusal is refused input like any other: counted on the solid.
+    let (result, refused) = run(&extruder(), &extrusion("((1.,0.))", "$"), 5);
     assert!(result.is_err(), "ValidExtrusionDirection: z must be non-zero");
+    assert_eq!(refused, 1);
+    let (result, refused) = run(&extruder(), &extrusion("((1.,0.,0.))", "$"), 5);
+    assert!(result.is_err(), "an explicit zero Z is the same WR");
+    assert_eq!(refused, 1);
     let (control, refused) = run(&extruder(), &extrusion("((0.,0.,1.))", "$"), 5);
     assert!(!control.expect("control").is_empty());
     assert_eq!(refused, 0);
@@ -71,6 +76,7 @@ fn revolved(axis_placement: &str) -> String {
          #6=IFCDIRECTION((0.,0.,1.));\n#7=IFCCARTESIANPOINT((50.,'x',0.));\n\
          #8=IFCAXIS1PLACEMENT(#2,$);\n#9=IFCAXIS1PLACEMENT(#2,#3);\n#10=IFCAXIS1PLACEMENT(#2,#4);\n\
          #11=IFCAXIS1PLACEMENT(#2,#5);\n#12=IFCAXIS1PLACEMENT(#2,#6);\n#13=IFCAXIS1PLACEMENT(#7,#3);\n\
+         #15=IFCDIRECTION((0.,0.,0.));\n#14=IFCAXIS1PLACEMENT(#2,#15);\n\
          #20=IFCREVOLVEDAREASOLID(#1,$,{axis_placement},1.5707963);"
     )
 }
@@ -84,11 +90,14 @@ fn a_revolved_axis_the_wr_rules_out_is_refused_instead_of_invented() {
         assert!(!result.expect(ok).is_empty(), "{ok}");
         assert_eq!(refused, 0, "{ok}");
     }
-    // `$` Axis: base revolved about an invented +Y. +Z is not in XY either.
-    for (bad, counted) in [("#8", 0), ("#12", 0), ("#11", 1), ("#13", 1)] {
+    // `$` Axis: base revolved about an invented +Y. +Z is not in XY either,
+    // and a zero-length Axis has no direction. The WR refusals (#8, #12,
+    // #14) are counted on the solid, the unreadable leaves (#11, #13) on
+    // themselves: one refused record each (D3, D29).
+    for bad in ["#8", "#12", "#14", "#11", "#13"] {
         let (result, refused) = run(&processor, &revolved(bad), 20);
         assert!(result.is_err(), "{bad}");
-        assert_eq!(refused, counted, "{bad}");
+        assert_eq!(refused, 1, "{bad}");
     }
 }
 

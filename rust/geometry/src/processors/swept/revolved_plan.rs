@@ -82,18 +82,24 @@ pub(super) fn lower(
     // missing Axis is refused instead of revolving about an invented +Y
     // (D25). A missing y ratio is no longer 1.0 either: the direction is
     // read under the leaf rule.
+    // Each WR refusal of readable input is counted on the solid, like an
+    // unreadable leaf (D3, D29). `AxisStartInXY` is deliberately not
+    // enforced: it rules out no default or promoted value, so a Location
+    // off the profile plane revolves as authored, as on base (D25).
+    let refused = |decoder: &EntityDecoder, why: &str| {
+        let _counted = decoder.refuse_malformed(entity.id);
+        Error::geometry(format!("RevolvedAreaSolid Axis {why}"))
+    };
     let axis1 = Axis1Placement::read(&axis_placement, decoder)?;
     let axis_location = Point3::from(axis1.location);
-    let raw_axis = Vector3::from(axis1.axis.ok_or_else(|| {
-        Error::geometry("RevolvedAreaSolid Axis has no Direction (AxisDirectionInXY)".to_string())
-    })?);
+    let raw_axis = Vector3::from(
+        axis1.axis.ok_or_else(|| refused(decoder, "has no Direction (AxisDirectionInXY)"))?,
+    );
     let axis_direction = raw_axis
         .try_normalize(1e-12)
-        .ok_or_else(|| Error::geometry("RevolvedAreaSolid Axis Direction has zero length".to_string()))?;
+        .ok_or_else(|| refused(decoder, "Direction has zero length"))?;
     if axis_direction.z.abs() > 1e-9 {
-        return Err(Error::geometry(
-            "RevolvedAreaSolid Axis Direction does not lie in the XY plane (AxisDirectionInXY)".to_string(),
-        ));
+        return Err(refused(decoder, "Direction does not lie in the XY plane (AxisDirectionInXY)"));
     }
 
     let full_circle = angle.abs() >= std::f64::consts::PI * 1.99;

@@ -1,0 +1,65 @@
+--- a/rust/processing/tests/support/profile_section.rs
++++ b/rust/processing/tests/support/profile_section.rs
+@@ -1,21 +1,49 @@
+ // SPDX-License-Identifier: MPL-2.0
+-//! Reverse mutation: the original direction-dependent half-open witness.
+-pub fn triangle_section([a,b,c]: [[f64; 3]; 3], y: f64, z: f64) -> Vec<f64> {
++//! Test-only closed triangle/section intersection for #7955 / #3641.
++//! Work in exact rationals of the supplied binary floats, not rounded decimal
++//! reconstructions. Opposite traversals of a shared edge must agree exactly.
++use num_rational::BigRational;
++use num_traits::ToPrimitive;
++
++type Point = [BigRational; 3];
++
++pub fn triangle_section(triangle: [[f64; 3]; 3], y: f64, z: f64) -> Vec<f64> {
++    let rational = |v| BigRational::from_float(v).expect("finite section input");
++    let points = triangle.map(|p| p.map(rational));
++    let (y, z) = (rational(y), rational(z));
+     let mut hits = Vec::new();
+-    for (p,q) in [(a,b),(b,c),(c,a)] {
+-        if (p[2] <= z && z < q[2]) || (q[2] <= z && z < p[2]) {
+-            let t = (z-p[2])/(q[2]-p[2]);
+-            hits.push([p[0]+t*(q[0]-p[0]),p[1]+t*(q[1]-p[1])]);
++    for (a, b) in [(0, 1), (1, 2), (2, 0)] {
++        hits.extend(plane_edge(&points[a], &points[b], 2, &z));
++    }
++    // A plane intersects a convex triangle in a point, segment, or the whole
++    // triangle. All pairs of edge hits stay in that intersection; their line
++    // intersections have the same extrema as its boundary. Duplicates are
++    // harmless because this oracle measures extrema, not crossing parity.
++    let mut section = Vec::new();
++    for (i, p) in hits.iter().enumerate() {
++        if p[1] == y {
++            section.push(p[0].to_f64().expect("finite section coordinate"));
++        }
++        for q in &hits[i+1..] {
++            for hit in plane_edge(p, q, 1, &y) {
++                section.push(hit[0].to_f64().expect("finite section coordinate"));
++            }
+         }
+     }
+-    let mut section_x = Vec::new();
+-    if hits.len() == 2 {
+-        let (p,q) = (hits[0],hits[1]);
+-        if (p[1] <= y && y < q[1]) || (q[1] <= y && y < p[1]) {
+-            section_x.push(p[0]+(y-p[1])/(q[1]-p[1])*(q[0]-p[0]));
+-        }
++    section
++}
++
++fn plane_edge(p: &Point, q: &Point, axis: usize, value: &BigRational) -> Vec<Point> {
++    if &p[axis] == value && &q[axis] == value {
++        return vec![p.clone(), q.clone()];
+     }
+-    section_x
++    if &p[axis] == value { return vec![p.clone()]; }
++    if &q[axis] == value { return vec![q.clone()]; }
++    if (p[axis] < *value && *value < q[axis]) || (q[axis] < *value && *value < p[axis]) {
++        let t = (value - &p[axis]) / (&q[axis] - &p[axis]);
++        return vec![std::array::from_fn(|i| &p[i] + &t * (&q[i] - &p[i]))];
++    }
++    Vec::new()
+ }
+ 
+ /// The original source-derived expectations and tolerances, shared with the

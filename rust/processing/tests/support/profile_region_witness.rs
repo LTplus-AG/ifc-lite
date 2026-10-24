@@ -3,6 +3,8 @@
 //! Decimal rational shoelace: 6057000031/2000 mm²; depth 25632 mm.
 //! No SDK face/volume metadata supplies the expected answer.
 use ifc_lite_geometry::document::{RetainedCompletion, RetainedRecipe};
+#[path = "profile_section.rs"]
+mod profile_section;
 pub const FIXTURE: &[u8] = include_bytes!("../fixtures/issue_3641_voiding_trap.ifc");
 pub const VOLUME: f64 = 77.626512397296;
 
@@ -25,43 +27,21 @@ pub fn check(completion: &RetainedCompletion) {
     for triangle in mesh.indices.chunks_exact(3) {
         let [a,b,c] = [point(triangle[0]),point(triangle[1]),point(triangle[2])];
         volume += (a[0]*(b[1]*c[2]-b[2]*c[1])+a[1]*(b[2]*c[0]-b[0]*c[2])+a[2]*(b[0]*c[1]-b[1]*c[0]))/6.;
-        // Intersect actual triangle with the mid-depth plane, then the
-        // horizontal section line. Coplanar/endpoint hits are kept; extrema
-        // are independent of tessellation and need no nearest-triangle labels.
-        let mut hits = Vec::new();
-        for (p,q) in [(a,b),(b,c),(c,a)] {
-            let z = -12.816;
-            if (p[2] <= z && z < q[2]) || (q[2] <= z && z < p[2]) {
-                let t = (z-p[2])/(q[2]-p[2]);
-                hits.push([p[0]+t*(q[0]-p[0]),p[1]+t*(q[1]-p[1])]);
-            }
-        }
-        if hits.len() == 2 {
-            let (p,q) = (hits[0],hits[1]);
-            let y = -0.45+3.8448e-9;
-            if (p[1] <= y && y < q[1]) || (q[1] <= y && y < p[1]) {
-                section_x.push(p[0]+(y-p[1])/(q[1]-p[1])*(q[0]-p[0]));
-            }
-        }
+        section_x.extend(profile_section::triangle_section([a,b,c], -0.45+3.8448e-9, -12.816));
     }
     assert!((volume.abs()-VOLUME).abs() <= 1e-6, "REGION_SDK_VOLUME: {volume}");
-    // #7955 diagnostic checkpoint: retain the failed oracle unchanged. Capture
-    // actual SDK triangles before deciding whether slicing or geometry is wrong.
+    // Retain bounded actual-mesh evidence when the fixed source oracle fails.
     if section_x.is_empty() || (section_x.iter().copied().fold(f64::INFINITY,f64::min)
         -(0.265+1.2816e-8)).abs() > 1e-7 {
         dump_section(mesh.positions.as_ref(), mesh.indices.as_ref(), &section_x, volume);
     }
-    assert!(!section_x.is_empty(), "REGION_SDK_SECTION");
-    let min = section_x.iter().copied().fold(f64::INFINITY,f64::min);
-    let max = section_x.iter().copied().fold(f64::NEG_INFINITY,f64::max);
-    assert!((min-(0.265+1.2816e-8)).abs() <= 1e-7, "REGION_SDK_SECTION: {min}");
-    assert!((max-(3.63+1.2816e-8)).abs() <= 1e-7, "REGION_SDK_SECTION: {max}");
+    profile_section::assert_profile_section(&section_x);
     println!("REGION_3641_SOURCE_VOLUME_SECTION_PROVENANCE_EXECUTED");
 }
 
 /// Failure-only evidence, bounded independently of file-supplied mesh size.
 /// Inclusive boxes deliberately retain endpoint/coplanar candidates discarded
-/// by the current half-open witness. No result here participates in acceptance.
+/// by the original half-open witness. No result here participates in acceptance.
 fn dump_section(positions: &[f64], indices: &[u32], section_x: &[f64], volume: f64) {
     const LIMIT: usize = 256;
     let z = -12.816;

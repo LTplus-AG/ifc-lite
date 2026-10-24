@@ -6,6 +6,7 @@
 #include "representation_seal.hpp"
 #include "copy.hpp"
 #include "failure.hpp"
+#include <SmApiGeneral.h>
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -27,6 +28,20 @@ Matrix matrix(const char* name) {
     if(std::strcmp(name,"affine-shear")==0) return {2,0,0,0,.4,3,0,0,.2,.3,4,0,7,-4,2,1};
     if(std::strcmp(name,"affine-reflect")==0) return {-2,0,0,0,.4,3,0,0,.2,.3,4,0,7,-4,2,1};
     throw std::runtime_error("unknown affine diagnostic selector");
+}
+void callback_replacement() {
+    auto source=OwnedBoundary::box(2,3,4); auto sibling=source.copy();
+    auto& ledger=history(source); const auto events=ledger.event_size();
+    SmApiGetOrCreateContext()->SetUserNotifyCallback(nullptr);
+    ifclite_smlib_affine_certificate certificate{}; bool rejected=false;
+    try { auto result=copy_affine_rational(&body(source),identity.data(),certificate,&ledger); }
+    catch(const KernelDomainTainted&) { rejected=true; }
+    require(rejected && !certificate.version && kernel_domain_is_tainted() &&
+        ledger.failed()==Failure::CallbackReplaced && ledger.event_size()==events,
+        "affine callback replacement refuses before copy or publication");
+    bool sibling_refused=false;
+    try { (void)sibling.faces(); } catch(const KernelDomainTainted&) { sibling_refused=true; }
+    require(sibling_refused,"callback replacement retires sibling owners too");
 }
 void invalid_inputs() {
     auto source=OwnedBoundary::box(2,3,4); auto sibling=source.copy();
@@ -52,6 +67,7 @@ void invalid_inputs() {
 }
 }
 void run_affine_lineage_diagnostic(const char* name) {
+    if(std::strcmp(name,"affine-callback")==0) { callback_replacement(); return; }
     if(std::strcmp(name,"affine-invalid")==0) { invalid_inputs(); return; }
     const auto transform=matrix(name);
     auto source=OwnedBoundary::box(2,3,4); auto sibling=source.copy();

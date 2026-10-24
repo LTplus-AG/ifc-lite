@@ -22,6 +22,9 @@
 #include "affine.hpp"
 #include "copy.hpp"
 #include "failure.hpp"
+#include "face_lineage.hpp"
+#include "representation_seal.hpp"
+#include <optional>
 #include <SmApiGeneral.h>
 #include <SmApiQueries.h>
 #include <SmBSplineCurve.h>
@@ -186,30 +189,56 @@ void inspect(SmBrep* source, ifclite_smlib_affine_certificate* certificate, bool
 }
 }
 std::unique_ptr<SmBrep> copy_affine_rational(SmBrep* source, const double* matrix,
-    ifclite_smlib_affine_certificate& certificate) {
+    ifclite_smlib_affine_certificate& certificate, face_lineage::Ledger* lineage) {
+    if(kernel_domain_is_tainted()) throw KernelDomainTainted{"affine refused after terminal isolation failure"};
+    const bool observed=lineage!=nullptr;
     const auto f=factor(matrix);
     ifclite_smlib_affine_certificate prepared{};
     prepared.version=1; prepared.representation=1;
-    inspect(source,&prepared,false); // No copy or conversion before eligibility.
-    auto result=checked_brep_copy(source);
+    std::optional<face_lineage::Scope> observation;
+    std::optional<face_lineage::RepresentationSeal> source_seal;
+    try {
+        if(lineage) {
+            require(source && source->GetContext(),IFCLITE_SMLIB_INVALID_ARGUMENT,"affine source lacks context");
+            observation.emplace(*lineage,*const_cast<SmContext*>(source->GetContext()),source);
+            source_seal.emplace(*lineage,*source);
+        }
+        inspect(source,&prepared,false); // No copy or conversion before eligibility.
+        if(lineage) { lineage->check(); source_seal->verify(); }
+    } catch(...) {
+        if(observed) rethrow_tainted_kernel_domain("affine lineage preflight");
+        throw;
+    }
+    auto result=checked_brep_copy(source,lineage);
+    const char* stage="affine copied representation";
     try {
     ifclite_smlib_affine_certificate copied{};
     inspect(result.get(),&copied,false);
     for(unsigned i=0;i<12;++i) require(copied.source_classes[i]==prepared.source_classes[i],
         IFCLITE_SMLIB_KERNEL_ERROR,"affine copy changed source representation classes");
+    if(lineage) { lineage->check(); source_seal->verify(); }
+    stage="affine rational conversion";
     checked(result->TurnToNURBS());
+    if(lineage) lineage->check(); // affine-conversion-stop
     inspect(result.get(),nullptr,true);
     // Use only checked proper placements and signed diagonal scale. In
     // particular never call matrix Transform -> Mirror -> analytic recognition.
+    stage="affine first placement";
     checked(result->Transform(f.first,nullptr,FALSE));
+    if(lineage) { lineage->check(); source_seal->verify(); }
+    stage="affine signed scale and final placement";
     checked(result->Transform(f.last,&f.scale,FALSE));
+    if(lineage) { lineage->check(); source_seal->verify(); }
     inspect(result.get(),nullptr,true);
+    // Observation is NOT numerical authority: even an event-free generic
+    // identity path cannot stand in for an issued exact transition receipt.
+    require(!observed,IFCLITE_SMLIB_UNSUPPORTED,"affine lineage representation transition not issued");
     certificate=prepared;
     return result;
     } catch(...) {
         // Conversion/transform work has begun on SDK-owned topology; leave it
         // untouched and retire the whole domain at the isolation boundary.
         result.release();
-        rethrow_tainted_kernel_domain("affine copy conversion/transform");
+        rethrow_tainted_kernel_domain(stage);
     }
 }

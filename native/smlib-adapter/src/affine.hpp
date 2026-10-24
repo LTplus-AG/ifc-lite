@@ -3,7 +3,11 @@
 #include "ifclite_smlib.h"
 #include <SmBrep.h>
 #include <memory>
+namespace face_lineage { class Ledger; }
 // Preparation is read-only and rejects non-certifiable source before copying.
 // A failure after copying starts taints the kernel domain (see copy.hpp).
 std::unique_ptr<SmBrep> copy_affine_rational(SmBrep* source, const double* matrix,
-    ifclite_smlib_affine_certificate& certificate);
+    ifclite_smlib_affine_certificate& certificate, face_lineage::Ledger* lineage=nullptr);
+// Optional observation is diagnostic and fail-closed: it issues no numerical
+// transition authority. OwnedBoundary::affine stays disabled until conversion,
+// UV restoration and reflected topology have a checked representation plan.

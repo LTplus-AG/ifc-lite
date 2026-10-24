@@ -256,8 +256,10 @@ pub struct WriteReport {
     pub findings: Vec<ValidationFinding>,
     /// Representations geometry patches removed from their products.
     pub dropped_representations: Vec<DroppedRepresentation>,
-    /// Every record removed from the output (`deleted` of them), by express
-    /// id, each with why it went.
+    /// Every record removed from the output (`deleted` of them), sorted by
+    /// express id, each with why it went. A record that went for several
+    /// reasons reports the first in [`super::RemovalReason`]'s order, and the
+    /// same plan reports the same reasons on every run.
     pub removed: Vec<super::removal::Removal>,
 }
 

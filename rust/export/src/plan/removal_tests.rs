@@ -30,23 +30,18 @@ fn deleting_a_host_reports_why_each_record_went() {
     for schema in SCHEMAS {
         let report = run(&host_with_port_type_and_body(schema), vec![(ObjectRef::Id(10), Disposition::Delete)]);
         let reasons = by_id(&report);
-        let want = [
-            (10, Requested),
-            // Its voids relationship names it through a single-valued slot.
-            (71, Dangling),
-            // The opening it hosted.
-            (70, Unhosted),
-            // Relationships whose only related object it was.
-            (43, Emptied),
-            (35, Emptied),
-            // What only it used.
-            (34, Released),
-            (33, Released),
-            (60, Released),
-        ];
-        for (id, reason) in want {
-            assert_eq!(reasons.get(&id), Some(&reason), "{schema}: #{id} in {reasons:?}");
+        // Every removal, by id. Its nest and port connection name it through
+        // single-valued slots; the relationships whose only related object
+        // it (or its opening) was are emptied; what only they used is
+        // released; the opening it hosted is unhosted.
+        let mut want: HashMap<u32, RemovalReason> = [(10, Requested), (18, Dangling), (19, Dangling), (35, Emptied), (43, Emptied), (70, Unhosted), (71, Dangling), (77, Emptied)].into();
+        for id in [33, 34, 60, 61, 62, 63, 64, 65, 66, 72, 73, 74, 75, 76] {
+            want.insert(id, Released);
         }
+        if ifc_lite_core::attribute_names_for_schema(schema, "IFCRELCONNECTSPORTTOELEMENT").is_none() {
+            want.remove(&19);
+        }
+        assert_eq!(reasons, want, "{schema}");
         assert!(!reasons.contains_key(&11) && !reasons.contains_key(&14) && !reasons.contains_key(&40), "{schema}: kept objects are not reported");
     }
 }
@@ -91,5 +86,33 @@ fn a_swept_annotation_is_replaced_not_requested() {
         let report = run(content.as_bytes(), vec![(ObjectRef::Id(10), Disposition::Patch(Patch::new().with_geometry(GeometryPatch::new(mesh))))]);
         let reasons = by_id(&report);
         assert_eq!(reasons.get(&90), Some(&RemovalReason::Replaced), "{schema}: {reasons:?}");
+    }
+}
+
+/// The reasons are the same on every run, even when two deletes reach a
+/// record by different paths: an opening that lost its host relationship and
+/// named a deleted placement is unhosted either way.
+#[test]
+fn reasons_are_the_same_on_every_run() {
+    let content = host_with_port_type_and_body("IFC4");
+    let plan = || vec![(ObjectRef::Id(71), Disposition::Delete), (ObjectRef::Id(72), Disposition::Delete)];
+    let first = run(&content, plan()).removed;
+    assert_eq!(first.iter().find(|r| r.express_id == 70).map(|r| r.reason), Some(RemovalReason::Unhosted));
+    for _ in 0..30 {
+        assert_eq!(run(&content, plan()).removed, first);
+    }
+}
+
+/// A property write that moves two walls off a shared set replaces the
+/// relationship they leave, and with it the set nothing else uses.
+#[test]
+fn a_copy_on_write_detach_is_reported_as_replaced() {
+    use crate::plan::test_fixtures::two_walls_sharing_a_pset;
+    for schema in SCHEMAS {
+        let write = |id| (ObjectRef::Id(id), Disposition::Patch(Patch::new().with_psets(vec![PropWrite::new("Pset_WallCommon", "FireRating", "IFCLABEL", "'2HR'", PsetKind::Property, PropScope::Occurrence)])));
+        let report = run(&two_walls_sharing_a_pset(schema), vec![write(10), write(11)]);
+        let reasons = by_id(&report);
+        assert!(!reasons.is_empty(), "{schema}");
+        assert!(reasons.values().all(|&r| r == RemovalReason::Replaced), "{schema}: {reasons:?}");
     }
 }

@@ -159,10 +159,14 @@ struct Cascade<'i> {
 }
 
 impl Cascade<'_> {
+    /// Remove `id` for `reason`, or note `reason` for an id already removed
+    /// (the earlier reason in [`RemovalReason`]'s order is kept).
     fn mark_removed(&mut self, id: u32, reason: RemovalReason) {
         if self.removed.insert(id) {
             self.reasons.insert(id, reason);
             self.worklist.push_back(id);
+        } else if let Some(known) = self.reasons.get_mut(&id) {
+            *known = known.first(reason);
         }
     }
 
@@ -174,6 +178,8 @@ impl Cascade<'_> {
     /// top-level entry); a delete does not, since the nested reference would
     /// dangle.
     fn strip(&mut self, referrer: u32, idx: usize, member: u32, through_nested: bool) -> bool {
+        // A detach is a patch's copy-on-write moving its object out.
+        let emptied = if through_nested { RemovalReason::Replaced } else { RemovalReason::Emptied };
         if !self.lists.contains_key(&(referrer, idx)) {
             // Not a list, or the referrer is not parsed yet. On the delete
             // path a strip that fails takes the referrer out, so the first
@@ -192,7 +198,7 @@ impl Cascade<'_> {
             list.remaining -= count;
         }
         if list.remaining == 0 && list.mandatory {
-            self.mark_removed(referrer, RemovalReason::Emptied);
+            self.mark_removed(referrer, emptied);
         }
         true
     }
@@ -247,7 +253,13 @@ pub(crate) fn resolve_deletes(
         file_schema,
         removed: requested.clone(),
         reasons: requested.iter().map(|&id| (id, RemovalReason::Requested)).collect(),
-        worklist: requested.iter().copied().collect(),
+        // In id order: the walk, and so which reason is found first, is the
+        // same on every run.
+        worklist: {
+            let mut seeds: Vec<u32> = requested.iter().copied().collect();
+            seeds.sort_unstable();
+            seeds.into()
+        },
         lists: FxHashMap::default(),
     };
     // Distinct referrers each target still has, seeded from the file's

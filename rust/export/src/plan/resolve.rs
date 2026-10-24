@@ -59,6 +59,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     // deleted by this plan" refusal, and is the final answer as well when
     // the patches leave its inputs as they are (see the combined pass below).
     let gating = delete::resolve_deletes(index, schema, &requested_deletes, &[], &protected, &feature_keepers);
+    let gating_removed = gating.removed.clone();
     let (gated_requested, gated_protected) = (requested_deletes.clone(), protected.clone());
     // Grows beyond `gating.removed`: a patch's placement rewrite (an old,
     // now-unreferenced axis placement chain) can orphan more records, found
@@ -146,8 +147,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
         result
     };
     removed.extend(delete_result.removed);
-    let mut reasons = delete_result.reasons;
-    reasons.extend(swept.into_iter().map(|id| (id, RemovalReason::Replaced)));
+    let reasons = replaced_by_patches(delete_result.reasons, &removed, &gating_removed, (swept, &gated_requested));
     refusals.extend(lost_writes(edited, &removed));
     refusals.extend(overridden_preserves(&resolved, &removed, &delete_result.unhosted, &gated_requested));
     for (slot, strip) in delete_result.stripped {
@@ -170,6 +170,27 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     };
 
     Resolution { appended, edits_by_id, removed, reasons, refusals, patched, added, patched_objects, dropped_representations }
+}
+
+/// The cascade's reasons with what the patches removed themselves marked
+/// replaced: everything in `removed` the requested deletes' own cascade did
+/// not take (an old placement chain or body), and the sweep's annotations,
+/// which went through the cascade as deletes the plan did not request
+/// (`requested` is the plan's own, before the sweep added them).
+fn replaced_by_patches(
+    mut reasons: HashMap<u32, RemovalReason>,
+    removed: &HashSet<u32>,
+    gating_removed: &HashSet<u32>,
+    (swept, requested): (HashSet<u32>, &HashSet<u32>),
+) -> HashMap<u32, RemovalReason> {
+    for id in removed.iter().copied().filter(|id| !gating_removed.contains(id)) {
+        let reason = reasons.entry(id).or_insert(RemovalReason::Replaced);
+        *reason = reason.first(RemovalReason::Replaced);
+    }
+    for id in swept.into_iter().filter(|id| !requested.contains(id)) {
+        reasons.insert(id, RemovalReason::Replaced);
+    }
+    reasons
 }
 
 /// What the old shapes of the geometry patches leave behind: what only they

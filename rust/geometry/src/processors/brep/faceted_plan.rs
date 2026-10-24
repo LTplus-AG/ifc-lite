@@ -184,10 +184,14 @@ impl FacetedBrepPlan {
                 .map(|face| FacetedBrepProcessor::triangulate_face(face, rtc))
                 .collect()
         } else {
-            face_data_list
-                .par_iter()
-                .map(|face| FacetedBrepProcessor::triangulate_face(face, rtc))
-                .collect()
+            // While waiting, this worker may run another element's job, which
+            // must not share this product's resource state (#7955).
+            crate::resource::detached(|| {
+                face_data_list
+                    .par_iter()
+                    .map(|face| FacetedBrepProcessor::triangulate_face(face, rtc))
+                    .collect()
+            })
         };
 
         // PHASE 3: Sequential - Merge all face results into final mesh

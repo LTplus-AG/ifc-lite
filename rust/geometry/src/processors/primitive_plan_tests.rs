@@ -103,17 +103,19 @@ fn sphere_plan_replays_radius_and_quality_after_source_disposal() {
 }
 
 #[test]
-fn primitive_null_and_wrong_type_positions_preserve_identity() {
-    for position in ["$", "#1"] {
-        let source = format!("#1=IFCDIRECTION((1.,0.,0.));\n#5=IFCBLOCK({position},2.,3.,4.);");
-        let plan = block(&source).unwrap();
-        assert!(plan.position.is_none());
-        assert_eq!(bounds(&plan.evaluate()), ([0., 0., 0.], [2., 3., 4.]));
-        let source = format!("#1=IFCDIRECTION((1.,0.,0.));\n#5=IFCSPHERE({position},2.);");
-        let plan = sphere(&source, TessellationQuality::Medium).unwrap();
-        assert!(plan.position.is_none());
-        assert_eq!(bounds(&plan.evaluate()), ([-2., -2., -2.], [2., 2., 2.]));
-    }
+fn primitive_null_positions_preserve_identity_but_wrong_types_refuse_7880() {
+    let source = "#5=IFCBLOCK($,2.,3.,4.);";
+    let plan = block(source).unwrap();
+    assert!(plan.position.is_none());
+    assert_eq!(bounds(&plan.evaluate()), ([0., 0., 0.], [2., 3., 4.]));
+    let source = "#5=IFCSPHERE($,2.);";
+    let plan = sphere(source, TessellationQuality::Medium).unwrap();
+    assert!(plan.position.is_none());
+    assert_eq!(bounds(&plan.evaluate()), ([-2., -2., -2.], [2., 2., 2.]));
+    // #7880: present wrong-kind Position must refuse during lowering.
+    assert!(block("#1=IFCDIRECTION((1.,0.,0.));\n#5=IFCBLOCK(#1,2.,3.,4.);").is_err());
+    assert!(sphere("#1=IFCDIRECTION((1.,0.,0.));\n#5=IFCSPHERE(#1,2.);",
+        TessellationQuality::Medium).is_err());
 }
 
 #[test]

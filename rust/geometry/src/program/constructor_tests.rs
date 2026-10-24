@@ -6,13 +6,16 @@ use crate::{GeometryProcessor, Mesh, TessellationQuality};
 use crate::processors::*;
 use ifc_lite_core::{EntityDecoder, IfcSchema};
 
+// #7880: extrusion keeps +Z (#6); revolution uses a separate XY axis (#16).
+// Its line at X=-3 lies outside the centered 2x2 profile (#5), avoiding an
+// axis-crossing sweep while retaining all ten nonempty construction controls.
 const SOURCE: &str = "#1=IFCCARTESIANPOINT((0.,0.,0.));
 #2=IFCCARTESIANPOINT((0.,0.,4.));
 #3=IFCPOLYLINE((#1,#2));
 #4=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,4.,4.);
 #5=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,2.,2.);
 #6=IFCDIRECTION((0.,0.,1.));
-#7=IFCAXIS1PLACEMENT(#1,#6);
+#7=IFCAXIS1PLACEMENT(#17,#16);
 #8=IFCCARTESIANPOINT((4.,0.,0.));
 #9=IFCCARTESIANPOINT((0.,4.,0.));
 #10=IFCPOLYLOOP((#1,#8,#9));
@@ -21,6 +24,8 @@ const SOURCE: &str = "#1=IFCCARTESIANPOINT((0.,0.,0.));
 #13=IFCCLOSEDSHELL((#12));
 #14=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(4.,0.,0.),(0.,4.,0.)));
 #15=IFCINDEXEDPOLYGONALFACE((1,2,3));
+#16=IFCDIRECTION((0.,1.,0.));
+#17=IFCCARTESIANPOINT((-3.,0.,0.));
 #100=IFCEXTRUDEDAREASOLID(#4,$,#6,3.);
 #101=IFCEXTRUDEDAREASOLIDTAPERED(#4,$,#6,3.,#5);
 #102=IFCREVOLVEDAREASOLID(#5,$,#7,3.141592653589793);

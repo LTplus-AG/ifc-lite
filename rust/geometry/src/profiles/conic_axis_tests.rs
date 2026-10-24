@@ -133,3 +133,40 @@ fn issue_6597_downward_axis_composite_profile_extrudes_below_its_chord() {
         "closed half-cylinder surface area: {area}"
     );
 }
+
+// F3b drift 3.4 (`$` Location): a conic's placement is mandatory-located in
+// both spellings. Base placed a `$` Location at the origin; it is now refused
+// and counted on the placement, and a readable Location still centres the arc.
+#[test]
+fn a_conic_placement_with_a_dollar_location_is_refused_and_counted() {
+    for placement in ["IFCAXIS2PLACEMENT2D($,$)", "IFCAXIS2PLACEMENT3D($,$,$)"] {
+        let content = format!("#1=IFCCARTESIANPOINT((10.,20.));\n#4={placement};\n#5=IFCCIRCLE(#4,1.);");
+        let mut decoder = EntityDecoder::new(&content);
+        let basis = decoder.decode_by_id(5).unwrap();
+        let processor = ProfileProcessor::new(IfcSchema::new());
+        let result = processor.process_trimmed_conic(
+            &basis,
+            Some(TrimSelect::Parameter(0.0)),
+            Some(TrimSelect::Parameter(PI / 2.0)),
+            true,
+            &mut decoder,
+        );
+        assert!(result.is_err(), "{placement}: a `$` Location must not read as the origin");
+        assert_eq!(decoder.refused_records(), 1, "{placement}");
+    }
+    let content = "#1=IFCCARTESIANPOINT((10.,20.));\n#4=IFCAXIS2PLACEMENT2D(#1,$);\n#5=IFCCIRCLE(#4,1.);";
+    let mut decoder = EntityDecoder::new(content);
+    let basis = decoder.decode_by_id(5).unwrap();
+    let points = ProfileProcessor::new(IfcSchema::new())
+        .process_trimmed_conic(
+            &basis,
+            Some(TrimSelect::Parameter(0.0)),
+            Some(TrimSelect::Parameter(PI / 2.0)),
+            true,
+            &mut decoder,
+        )
+        .expect("control");
+    assert!((points.first().unwrap() - Point2::new(11.0, 20.0)).norm() < 1e-9);
+    assert!((points.last().unwrap() - Point2::new(10.0, 21.0)).norm() < 1e-9);
+    assert_eq!(decoder.refused_records(), 0);
+}

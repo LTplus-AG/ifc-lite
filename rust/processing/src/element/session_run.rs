@@ -60,7 +60,16 @@ pub(super) fn run_epoch(
     };
     let mut scopes = ActiveScopes::new(Scopes::new());
     let outcome = router.with_product_csg_scope(|| {
-        owner.work(decoder, router, |decoder, router| scopes.with_scope(|| body(decoder, router, live)))
+        owner.work(decoder, router, |decoder, router| {
+            scopes.with_scope(|| {
+                // A stopped product runs no hook; any other starts from a
+                // clean opaque-log boundary on its router.
+                if live.preplanning_stop.is_none() {
+                    router.settle_opaque_csg_failures();
+                }
+                body(decoder, router, live)
+            })
+        })
     });
     // Reports the product's router did not drain reach the caller's thread,
     // as they did before they were owned, including after a failed commit.

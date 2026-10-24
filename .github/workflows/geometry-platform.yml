@@ -221,7 +221,7 @@ jobs:
           IFCLITE_SMLIB_WORKER: ${{ runner.temp }}/smlib-native/ifclite_smlib_worker
         run: |
           status=0
-          for oracle in representation-type removal-permitted removal-containment removal-relationships decimal-equality decimal-cancellation decimal-coframe vector-consumption record-consumption body-list-consumption terminal-effect terminal-atomic terminal-source; do
+          for oracle in representation-type removal-permitted removal-containment removal-relationships decimal-equality decimal-cancellation decimal-coframe vector-consumption record-consumption body-list-consumption terminal-effect terminal-atomic terminal-source terminal-scan-lifetime terminal-diagnostic-quarantine; do
             python3 tests/evidence/retained-openings-j2/feature-oracle.py \
               --oracle "$oracle" --evidence-dir "$RUNNER_TEMP/retained-openings-$oracle" || status=1
           done

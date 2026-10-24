@@ -126,5 +126,21 @@
     "assertionMarker": "J2_TERMINAL_SOURCE",
     "intendedFailure": "J2_TERMINAL_SOURCE",
     "package": "ifc-lite-processing"
+  },
+  {
+    "id": "terminal-scan-lifetime",
+    "patch": "tests/evidence/retained-openings-j2/terminal-scan-lifetime.oracle.patch",
+    "test": "element::session_retained::terminal_scan_tests::j2_terminal_scan_refunds_live_bytes_but_keeps_work",
+    "assertionMarker": "J2_SCAN_LIVE_REFUND",
+    "intendedFailure": "J2_SCAN_LIVE_REFUND",
+    "package": "ifc-lite-processing"
+  },
+  {
+    "id": "terminal-diagnostic-quarantine",
+    "patch": "tests/evidence/retained-openings-j2/terminal-diagnostic-quarantine.oracle.patch",
+    "test": "element::session_retained::terminal_diagnostic_tests::j2_terminal_recorded_failure_survives_rejection_and_unwind_once",
+    "assertionMarker": "J2_TERMINAL_DIAGNOSTIC_RETAINED",
+    "intendedFailure": "J2_TERMINAL_DIAGNOSTIC_RETAINED",
+    "package": "ifc-lite-processing"
   }
 ]

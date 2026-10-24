@@ -30,6 +30,8 @@ mod terminal_tests;
 mod terminal_stop_tests;
 #[cfg(all(test, feature = "retained-native", not(target_arch = "wasm32")))]
 mod terminal_scan_tests;
+#[cfg(all(test, feature = "retained-native", not(target_arch = "wasm32")))]
+mod terminal_diagnostic_tests;
 mod openings;
 mod removal;
 mod removal_source;

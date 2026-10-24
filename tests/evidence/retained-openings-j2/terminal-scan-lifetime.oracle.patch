@@ -1,0 +1,13 @@
+--- a/rust/processing/src/element/session_retained/terminal_policy.rs
++++ b/rust/processing/src/element/session_retained/terminal_policy.rs
+@@ -17,8 +17,8 @@
+     // Declared before scanner: reverse drop order releases its diagnostic
+     // storage first, then refunds live bytes on success, refusal or unwind.
+     // Work is cumulative and Reservation::drop deliberately does not refund it.
+-    execution.resources.charge(resource::Cost { work: source.bytes().len() as u64,
+-        live_bytes: source.bytes().len() as u64 * 8, ..Default::default() })?.retain();
++    let _scan_storage = execution.resources.charge(resource::Cost { work: source.bytes().len() as u64,
++        live_bytes: source.bytes().len() as u64 * 8, ..Default::default() })?;
+     let mut scanner = ifc_lite_core::EntityScanner::new(source.bytes());
+     while let Some((_,name,start,end)) = scanner.next_entity() {
+         execution.resources.check()?;

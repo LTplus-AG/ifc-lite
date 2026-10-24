@@ -1,0 +1,11 @@
+--- a/rust/processing/src/element/session_retained/terminal.rs
++++ b/rust/processing/src/element/session_retained/terminal.rs
+@@ -63,7 +63,7 @@
+                 let failures = router.finish_product_csg_failures().map_err(RetainedExecutionError::Stopped)?;
+                 let mut output = super::super::session_canonical::stopped_output();
+                 let clean = failures.is_empty();
+-                output.csg_failures = Default::default();
++                output.csg_failures = failures;
+                 publication.output = Some(output);
+                 if !clean { return Err(RetainedExecutionError::Unsupported("terminal removal has failed geometry diagnostics")); }
+                 resources.check().map_err(RetainedExecutionError::Stopped)

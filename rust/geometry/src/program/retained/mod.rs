@@ -12,6 +12,7 @@ pub use clip::{RetainedClipMode, RetainedPlaneCoefficients, RetainedPlaneSource,
 mod finite_indexed;
 pub use finite_indexed::RetainedIndexedBoundary;
 mod finite_source;
+mod finite_frame;
 mod finite_partition;
 mod finite_clip;
 pub use finite_source::{RetainedBoundaryPlacement, RetainedFiniteBoundary};

@@ -85,8 +85,13 @@ fn component(template: &RetainedUnaryClip, input: &LogicalRetainedValue,
     operation(input.try_copy()?,clip)
 }
 pub(super) fn expand(half: &DecodedEntity, decoder: &mut EntityDecoder, input: &LogicalRetainedValue,
-    template: RetainedUnaryClip) -> Result<Vec<RetainedPlanOperation>> {
+    mut template: RetainedUnaryClip) -> Result<Vec<RetainedPlanOperation>> {
     let boundary = super::finite_source::capture_finite_boundary(half,decoder,&template.source)?;
+    // Finite base and enclosure must share the same strict captured frame.
+    // The inherited plain-halfspace/default path remains unchanged.
+    let base_frame = super::finite_frame::frame(&template.source)?;
+    template.source_plane = [base_frame[(0,3)],base_frame[(1,3)],base_frame[(2,3)],
+        base_frame[(0,2)],base_frame[(1,2)],base_frame[(2,2)]];
     let cells = domains(&boundary)?;
     let count = cells.iter().map(|cell| cell.len()+2).sum::<usize>();
     if count > crate::document::retained_lineage::MAX_OPERATIONS {

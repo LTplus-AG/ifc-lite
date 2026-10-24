@@ -24,6 +24,7 @@ def witness(mutated=False):
 
 def main():
     mutations = [
+        ("default-small-direction", "finite_source.rs", "let frame = super::finite_frame::frame(&source)?;", "let frame = crate::processors::helpers::parse_axis2_placement_3d(position, decoder)?;"),
         ("omit-boundary", "finite_clip.rs", "planes.into_iter().enumerate()", "planes.into_iter().enumerate().take(0)"),
         ("ignore-box-corner", "finite_clip.rs", "let mut point = corner.values;", "let mut point = [0.;3];"),
         ("double-box-dimensions", "finite_clip.rs", "point[axis] += dimensions[axis];", "point[axis] += 2.*dimensions[axis];"),

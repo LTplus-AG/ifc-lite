@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Authored finite halfspace boundaries. No tessellation, repair, or default closure.
-use super::clip::{coefficients, refused, validate_axes, RetainedPlaneCoefficients, RetainedPlaneSource};
+use super::clip::{coefficients, refused, RetainedPlaneCoefficients, RetainedPlaneSource};
 use crate::{Result, math::mat4::col_major_array};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
@@ -54,8 +54,7 @@ fn placement(position: &DecodedEntity, decoder: &mut EntityDecoder, base: &Retai
     let ref_direction = coefficients(position, 2, decoder)?;
     let source = RetainedPlaneSource { location: Some(location.clone()), axis: axis.clone(),
         ref_direction: ref_direction.clone(), ..base.clone() };
-    validate_axes(&source)?;
-    let frame = crate::processors::helpers::parse_axis2_placement_3d(position, decoder)?;
+    let frame = super::finite_frame::frame(&source)?;
     super::proper_rigid(&frame)?;
     Ok(RetainedBoundaryPlacement { position_id: position.id, location, axis, ref_direction,
         frame: col_major_array(&frame) })

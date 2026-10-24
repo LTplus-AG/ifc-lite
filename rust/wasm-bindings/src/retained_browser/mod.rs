@@ -309,3 +309,6 @@ mod derived_layer_tests;
 
 #[cfg(all(test, target_arch = "wasm32"))]
 mod source_binding_tests;
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod source_account_tests;

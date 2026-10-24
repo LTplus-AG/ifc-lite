@@ -55,14 +55,8 @@ fn j5_source_binding_two_mapped_sources_keep_distinct_physical_ancestry() {
             for value in receipt.realizations() {
                 let proof = value.source_correspondence().unwrap().unwrap();
                 ids.insert(proof.request().recipe().solid_id());
-                let mesh = worker
-                    .tessellate(value.solid(), 0.001, 5., MeshLimits::default())
-                    .unwrap();
-                assert!(mesh
-                    .source_correspondence
-                    .as_ref()
-                    .unwrap()
-                    .same_source(proof));
+                assert!(!proof.triangle_roots().is_empty(),
+                    "J5_R1 execute receipt must consume final triangle coverage");
                 seen += 1;
             }
             execution

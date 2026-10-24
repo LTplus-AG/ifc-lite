@@ -230,4 +230,4 @@ impl BrowserWorker {
 
 #[cfg(test)]
 #[path = "bridge_tests.rs"]
-mod tests;
+pub(super) mod tests;

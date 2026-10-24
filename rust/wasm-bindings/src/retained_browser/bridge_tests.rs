@@ -11,11 +11,11 @@ use std::task::{Context, Poll, Waker};
 use wasm_bindgen_test::*;
 wasm_bindgen_test_configure!(run_in_browser);
 
-const RECTANGLE: &str = "#4=IFCRECTANGLEPROFILEDEF(.AREA.,$,#2,1.,1.);";
+pub(crate) const RECTANGLE: &str = "#4=IFCRECTANGLEPROFILEDEF(.AREA.,$,#2,1.,1.);";
 const CIRCLE: &str = "#4=IFCCIRCLEPROFILEDEF(.AREA.,$,#2,0.5);";
 
 /// One authored profile extruded 1 m along +Z, as a request for `worker`.
-fn request(profile: &str, worker: &BrowserWorker) -> RetainedRequest {
+pub(crate) fn request(profile: &str, worker: &BrowserWorker) -> RetainedRequest {
     let data = format!(
         "#1=IFCCARTESIANPOINT((0.,0.));#2=IFCAXIS2PLACEMENT2D(#1,$);{profile}\
 #90=IFCCARTESIANPOINT((0.,0.,0.));#91=IFCAXIS2PLACEMENT3D(#90,$,$);\

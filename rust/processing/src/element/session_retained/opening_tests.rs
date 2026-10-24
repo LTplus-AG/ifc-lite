@@ -90,7 +90,8 @@ fn j2_sdk_malformed_opening_aborts_without_uncut_fallback() {
 #[test]
 fn j2_sdk_authenticated_empty_stops_unreachable_opening_decode_but_refuses_removal() {
     let Some(mut worker) = worker() else { return };
-    for (source, unreachable) in [(empty_host_source(),46)] {
+    let source = empty_host_source();
+    let unreachable = 46;
     with_source(&source, |execution, decoder, router| {
         let error = loop {
             match execution.issue_next(decoder,router,&worker) {
@@ -106,7 +107,6 @@ fn j2_sdk_authenticated_empty_stops_unreachable_opening_decode_but_refuses_remov
         assert!(decoder.get_cached(unreachable).is_none(),"J2_EMPTY_LAZY");
         assert!(!router.host_consumed_by_void(30),"J2_EFFECT_ISOLATION");
     });
-    }
 }
 #[test]
 fn j2_sdk_cancel_after_first_and_last_cut_never_publishes_effects() {

@@ -62,7 +62,7 @@ pub(super) fn relationships(context: &OwnedMeshProductionContext, d: &mut Entity
             .map_err(RetainedExecutionError::Stopped)?.retain();
         ids.push(reference(&relation, 5)?);
     }
-    if context.borrowed().void_index.get(&product).map(Vec::as_slice).unwrap_or(&[]) != ids {
+    if context.borrowed().void_index.get(&product).map(Vec::as_slice).unwrap_or(&[]) != ids.as_slice() {
         return Err(RetainedExecutionError::Source);
     }
     Ok(ids)

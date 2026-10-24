@@ -263,4 +263,7 @@ if(NOT EMSCRIPTEN)
   add_test(NAME smlib_sdk_preparation COMMAND "${Python3_EXECUTABLE}"
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/sdk_prepare_tests.py")
   set_tests_properties(smlib_sdk_preparation PROPERTIES TIMEOUT 60)
+  add_test(NAME smlib_imprint_witness_paths COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/imprint_witness_path_tests.py")
+  set_tests_properties(smlib_imprint_witness_paths PROPERTIES TIMEOUT 60)
 endif()

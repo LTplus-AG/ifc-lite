@@ -3,6 +3,7 @@
 #include <SmApiGeneral.h>
 #include <SmApiPrimitives.h>
 #include <SmApiBrep.h>
+#include <SmApiQueries.h>
 #include <SmBrep.h>
 #include <SmFace.h>
 #include <SmAttribute.h>

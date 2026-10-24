@@ -141,6 +141,14 @@ impl AddState<'_> {
         }
 
         let (class, predefined) = self.check_class(&obj.class, "IFCPRODUCT")?;
+        if let Some(e) = obj.elevation {
+            if !self.is_a(&class, "IFCBUILDINGSTOREY") {
+                return Err(format!("{class} has no Elevation; only a storey takes one"));
+            }
+            if !e.is_finite() {
+                return Err(format!("storey elevation {e} is not finite"));
+            }
+        }
         let spatial = self.is_spatial(&class);
 
         let container = match &obj.container {

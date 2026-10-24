@@ -138,6 +138,7 @@ impl NewObject {
             opening: None,
             material: None,
             classifications: Vec::new(),
+            elevation: None,
         }
     }
 
@@ -183,6 +184,12 @@ impl NewObject {
 
     pub fn with_classifications(mut self, classifications: Vec<ClassificationLink>) -> Self {
         self.classifications = classifications;
+        self
+    }
+
+    /// A storey's `Elevation`, in the project's length unit.
+    pub fn with_elevation(mut self, elevation: f64) -> Self {
+        self.elevation = Some(elevation);
         self
     }
 }
@@ -281,7 +288,9 @@ mod tests {
             .with_psets(vec![set])
             .with_opening(opening)
             .with_material(MaterialLink::New(NewMaterial::new("C").with_category("concrete")))
-            .with_classifications(vec![ClassificationLink::Existing(ObjectRef::Id(9))]);
+            .with_classifications(vec![ClassificationLink::Existing(ObjectRef::Id(9))])
+            .with_elevation(2.5);
+        assert_eq!(o.elevation, Some(2.5));
         assert_eq!((o.global_id, o.class.class.keyword(), o.name.as_deref()), (GlobalId(7), "IFCWALL".to_string(), Some("W")));
         assert_eq!(o.container, Some(ObjectRef::Id(70)));
         assert_eq!(o.placement.relative_to, Some(ObjectRef::Id(3)));
@@ -304,7 +313,7 @@ mod tests {
         assert_eq!((bare.global_id, bare.class.class.keyword()), (GlobalId(8), "IFCWALL".to_string()));
         assert!(bare.name.is_none() && bare.container.is_none() && bare.type_link.is_none() && bare.style.is_none());
         assert!(matches!(bare.representation, Representation::None) && bare.psets.is_empty() && bare.classifications.is_empty());
-        assert!(bare.opening.is_none() && bare.material.is_none() && bare.placement.relative_to.is_none() && bare.class.predefined_type.is_none());
+        assert!(bare.elevation.is_none() && bare.opening.is_none() && bare.material.is_none() && bare.placement.relative_to.is_none() && bare.class.predefined_type.is_none());
 
         let type_set = NewPropertySet::new("TS", PsetKind::Quantity, Vec::new());
         let t = NewType::new(IfcClass::Named("IfcWallType".into())).with_global_id(GlobalId(5)).with_name("T").with_psets(vec![type_set]);

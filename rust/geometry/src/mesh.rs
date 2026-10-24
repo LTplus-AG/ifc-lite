@@ -318,7 +318,7 @@ impl Mesh {
     /// move. A void-cut intermediate in a rotated frame breaks that
     /// precondition, so the voids path builds its frame-derived meshes here
     /// instead of spelling the struct out at each site.
-    pub fn reframed_like(
+    pub(crate) fn reframed_like(
         &self,
         positions: Vec<f32>,
         normals: Vec<f32>,

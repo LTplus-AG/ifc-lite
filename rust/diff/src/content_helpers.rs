@@ -1,6 +1,7 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
+use crate::JsString;
 use std::collections::HashMap;
 use crate::content_types::*;
 use crate::geometry_compare::*;
@@ -15,11 +16,11 @@ pub(crate) fn fingerprint<'a, R>(entries: &[DiffEntry<'a, R>], index: usize) -> 
 /// Buckets retain JS Map insertion order without depending on hash iteration.
 #[derive(Default)]
 pub(crate) struct Buckets {
-    pub groups: Vec<(String, Vec<usize>)>,
-    pub lookup: HashMap<String, usize>,
+    pub groups: Vec<(JsString, Vec<usize>)>,
+    pub lookup: HashMap<JsString, usize>,
 }
 impl Buckets {
-    pub fn push(&mut self, key: String, value: usize) {
+    pub fn push(&mut self, key: JsString, value: usize) {
         let index = match self.lookup.get(&key) {
             Some(index) => *index,
             None => {
@@ -31,22 +32,20 @@ impl Buckets {
         };
         self.groups[index].1.push(value);
     }
-    pub fn get(&self, key: &str) -> Option<&[usize]> {
+    pub fn get(&self, key: &JsString) -> Option<&[usize]> {
         self.lookup.get(key).map(|index| self.groups[*index].1.as_slice())
     }
 }
 
-fn component_signature(components: &HashMap<String, String>) -> String {
+fn component_signature(components: &HashMap<JsString, JsString>) -> JsString {
     let mut keys: Vec<_> = components.keys().collect();
     keys.sort_by(cmp_code_units);
-    let mut signature = String::new();
+    let mut units = Vec::new();
     for key in keys {
-        signature.push_str(key);
-        signature.push('\0');
-        signature.push_str(&components[key]);
-        signature.push('\u{1}');
+        units.extend_from_slice(key.units()); units.push(0);
+        units.extend_from_slice(components[key].units()); units.push(1);
     }
-    signature
+    JsString::from_units(units)
 }
 pub(crate) fn components_agree<R>(entries: &[DiffEntry<'_, R>], indices: impl IntoIterator<Item = usize>) -> bool {
     let mut signature = None;
@@ -91,7 +90,7 @@ pub(crate) fn pair_by_position<R>(
 
 pub(crate) fn make_match<'a, R>(
     entries: &[DiffEntry<'a, R>], base: &[usize], head: &[usize], kind: ContentMatchKind,
-    tier: ContentMatchTier, data_hash: &str, distance: Option<f64>,
+    tier: ContentMatchTier, data_hash: &JsString, distance: Option<f64>,
 ) -> ContentMatch<'a, R> {
     ContentMatch {
         kind, tier, data_hash: data_hash.into(), geometry_hash: None, changed_components: None,

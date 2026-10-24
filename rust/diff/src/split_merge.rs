@@ -1,6 +1,7 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
+use crate::JsString;
 use std::collections::{HashMap, HashSet};
 use crate::model::{DiffEntry, DiffState, EntityFingerprint};
 use crate::split_types::*;
@@ -10,12 +11,12 @@ use crate::geometry_compare::usable_aabb;
 use crate::utf16::cmp_code_units;
 
 pub fn detect_split_merge<'a, R>(entries: &[DiffEntry<'a, R>], use_geometry: bool,
-    settings: SplitSettings, families: Option<&[Vec<String>]>) -> Option<Vec<SplitMergeClaim<'a, R>>> {
+    settings: SplitSettings, families: Option<&[Vec<JsString>]>) -> Option<Vec<SplitMergeClaim<'a, R>>> {
     if !use_geometry { return None; }
     let resolver = ClassFamilies::new(families);
     // Vec buckets preserve JavaScript Map insertion order.
-    let mut added: Vec<(String, Vec<&EntityFingerprint<R>>)> = vec![];
-    let mut deleted: Vec<(String, Vec<&EntityFingerprint<R>>)> = vec![];
+    let mut added: Vec<(JsString, Vec<&EntityFingerprint<R>>)> = vec![];
+    let mut deleted: Vec<(JsString, Vec<&EntityFingerprint<R>>)> = vec![];
     for entry in entries {
         let entity = match entry.state { DiffState::Added => entry.head, DiffState::Deleted => entry.base, _ => None };
         let Some(entity) = entity else { continue; };
@@ -51,10 +52,12 @@ fn compare_rank(a: &[f64; 3], b: &[f64; 3]) -> std::cmp::Ordering {
 fn participants<R>(claim: &SplitMergeClaim<'_, R>) -> Vec<*const EntityFingerprint<R>> {
     std::iter::once(claim.whole).chain(claim.pieces.iter().copied()).map(|p| p as *const _).collect()
 }
-fn tiebreak<R>(claim: &SplitMergeClaim<'_, R>) -> String {
+fn tiebreak<R>(claim: &SplitMergeClaim<'_, R>) -> JsString {
     let kind = match claim.kind { SplitMergeKind::Split => "split", SplitMergeKind::Merge => "merge" };
-    std::iter::once(kind).chain(std::iter::once(claim.whole.key.as_str()))
-        .chain(claim.pieces.iter().map(|p| p.key.as_str())).collect::<Vec<_>>().join("\0")
+    let kind = JsString::from(kind);
+    let parts: Vec<_> = std::iter::once(&kind).chain(std::iter::once(&claim.whole.key))
+        .chain(claim.pieces.iter().map(|p| &p.key)).collect();
+    JsString::concat(&parts, "\0")
 }
 pub fn resolve_claim_conflicts<R>(mut claims: Vec<SplitMergeClaim<'_, R>>) -> Vec<SplitMergeClaim<'_, R>> {
     claims.sort_by(|a, b| compare_rank(&rank(a), &rank(b)).then_with(|| cmp_code_units(&tiebreak(a), &tiebreak(b))));

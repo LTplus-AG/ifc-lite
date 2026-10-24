@@ -360,38 +360,66 @@ test('actual WASM raw fingerprint Map entries preserve original code units (#808
   }
 });
 
-// #8081 review 4365901325: raw exports bypass fingerprintColumns and must
-// reject BEFORE serde_json::Value / Vec<String> replaces the original units.
-test('actual raw WASM rejects every comparison string boundary before loss (#8081)', async context => {
+// #8081: all raw constructor/options strings use the final lossless transport.
+function losslessInput(options) {
+  const { keyAliases, ...rest } = options;
+  return { ...rest, ...(keyAliases === undefined ? {} : { keyAliases: [...keyAliases] }) };
+}
+async function comparisonOracle(context) {
+  const path = new URL('../../diff/dist/diff.js', import.meta.url);
+  if (!existsSync(path)) { context.skip('@ifc-lite/diff not built; run pnpm build'); return; }
+  return import(path.href);
+}
+test('actual raw WASM preserves every comparison string boundary without collisions (#8081)', async context => {
   const wasm = await engine(context); if (!wasm) return;
-  const base = model(wasm, [{ key: 'old', ifcType: '\ufffd', dataHash: 'd', ref: null }]);
-  const head = model(wasm, []);
-  // @source-text-assertion-ok asserts a caught live WASM error, not source-file text
-  const rejected = error => typeof error === 'string'
-    && /comparison inputs require well-formed UTF-16.*TypeScript diffModels/.test(error);
+  const oracle = await comparisonOracle(context); if (!oracle) return;
+  const baseRows = [{ key: 'old', ifcType: '\ufffd', dataHash: 'd', ref: null }];
+  const base = model(wasm, baseRows), head = model(wasm, []);
   try {
-    for (const lone of ['\ud800', '\ud801', '\udfff', 'a\ud800b', '\udfff\ud800']) {
-      for (const [label, options] of comparisonStringOptions(lone)) {
-        assert.throws(() => base.compare(head, options), rejected, label);
+    for (const value of ['\ud800', '\ud801', '\udfff', 'a\ud800b', '\udfff\ud800', '\ufffd', 'literal\\ud800', '\\udfff', '😀', '']) {
+      for (const [label, options] of comparisonStringOptions(value)) {
+        const publicOptions = { ...options,
+          ...(options.keyAliases === undefined ? {} : { keyAliases: new Map(options.keyAliases) }) };
+        assert.deepEqual(restoreDiffReferences(base.compare(head, losslessInput(publicOptions)), baseRows, []),
+          oracle.diffModels(baseRows, [], publicOptions), label);
       }
       const columns = fingerprintColumns([comparisonRow('scalar')]);
+      const labels = ['key', 'ifcType', 'dataHash', 'geometryHash', 'container', 'component name', 'component hash'];
+      assert.equal(columns.strings.length, labels.length, 'every dictionary string is covered');
       for (let index = 0; index < columns.strings.length; index++) {
-        const strings = [...columns.strings]; strings[index] = lone;
-        assert.throws(() => rawColumnsModel(wasm, { ...columns, strings }), rejected, `dictionary ${index}`);
+        const strings = [...columns.strings]; strings[index] = value;
+        const row = comparisonRow('scalar'), field = labels[index];
+        if (field === 'component name') row.components = { [value]: 'hash:scalar' };
+        else if (field === 'component hash') row.components = { 'component:scalar': value };
+        else row[field] = value;
+        const raw = rawColumnsModel(wasm, { ...columns, strings });
+        try {
+          assert.deepEqual(restoreDiffReferences(raw.compare(head, losslessInput({})), [row], []),
+            oracle.diffModels([row], []), `dictionary ${field}`);
+          const peerRows = [{ ...comparisonRow('scalar'), dataHash: 'other' }];
+          const peer = model(wasm, peerRows);
+          try {
+            for (const options of [{}, { excludeTypes: [row.ifcType] },
+              { keyAliases: new Map([[peerRows[0].key, row.key]]), matchUnpairedByContent: true }]) {
+              assert.deepEqual(restoreDiffReferences(raw.compare(peer, losslessInput(options)), [row], peerRows),
+                oracle.diffModels([row], peerRows, options), `dictionary comparison ${field}`);
+            }
+          } finally { peer.free(); }
+        } finally { raw.free(); }
       }
+      // Confirmed #8081 bug: lone exclusion must not alias the U+FFFD class.
+      assert.equal(base.compare(head, losslessInput({ excludeTypes: [value] })).counts.deleted,
+        value === '\ufffd' ? 0 : 1);
     }
-    // The confirmed bug silently returned 0 here for excludeTypes:[lone].
-    assert.equal(base.compare(head, {}).counts.deleted, 1);
-    assert.equal(base.compare(head, { excludeTypes: ['\ufffd'] }).counts.deleted, 0);
   } finally { base.free(); head.free(); }
 });
 
-test('actual raw WASM decodes comparison getters once and guards only consumed strings (#8081)', async context => {
+test('actual raw WASM decodes lossless comparison getters once (#8081)', async context => {
   const wasm = await engine(context); if (!wasm) return;
   const base = model(wasm, [{ key: 'old', ifcType: 'IfcWall', dataHash: 'd', ref: null }]);
   const head = model(wasm, [{ key: 'new', ifcType: 'IfcWall', dataHash: 'd', ref: null }]);
   try {
-    const plainOptions = { excludeTypes: ['IfcDoor'], keyAliases: [['new', 'old']], classFamilies: [['IfcWall', 'IfcDoor']] };
+    const plainOptions = { excludeTypes: ['IfcDoor\ud800'], keyAliases: [['new', 'old']], classFamilies: [['IfcWall', 'IfcDoor\udfff']] };
     const options = structuredClone(plainOptions);
     const reads = new Map();
     const once = (object, key, label) => {
@@ -410,36 +438,36 @@ test('actual raw WASM decodes comparison getters once and guards only consumed s
     once(nested.keyAliases[0], '1', 'alias base');
     once(nested.classFamilies[0], '0', 'family first');
     once(nested.classFamilies[0], '1', 'family second');
-    assert.deepEqual(base.compare(head, options), base.compare(head, plainOptions));
-    assert.deepEqual(base.compare(head, nested), base.compare(head, plainOptions));
+    assert.deepEqual(base.compare(head, losslessInput(options)), base.compare(head, losslessInput(plainOptions)));
+    assert.deepEqual(base.compare(head, losslessInput(nested)), base.compare(head, losslessInput(plainOptions)));
     assert.equal(reads.size, 8);
     assert.ok([...reads.values()].every(count => count === 1));
     // Tuple tails, non-string items and unknown options are not names consumed
-    // by options_from_json; retain their existing JSON conversion semantics.
+    // by options_from_document; the lossless transport preserves their values.
     assert.deepEqual(base.compare(head, {
-      excludeTypes: ['IfcDoor', { unused: '\ud800' }],
+      excludeTypes: ['IfcDoor\ud800', { unused: '\ud800' }],
       keyAliases: [['new', 'old', '\ud800']],
-      classFamilies: [['IfcWall', 'IfcDoor', { unused: '\udfff' }]],
+      classFamilies: [['IfcWall', 'IfcDoor\udfff', { unused: '\udfff' }]],
       unused: '\ud800',
-    }), base.compare(head, plainOptions));
+    }), base.compare(head, losslessInput(plainOptions)));
   } finally { base.free(); head.free(); }
 });
 
-test('actual compareWithWasm rejects non-scalars and keeps scalar TS comparison behavior (#8081)', async context => {
+test('actual compareWithWasm preserves lossless options and retains the staged column guard (#8081)', async context => {
   const wasm = await engine(context); if (!wasm) return;
-  const outputs = ['diff', 'wasm-diff', 'wasm-runtime'].map(name => new URL(`../../diff/dist/${name}.js`, import.meta.url));
+  const oracle = await comparisonOracle(context); if (!oracle) return;
+  const outputs = ['wasm-diff', 'wasm-runtime'].map(name => new URL(`../../diff/dist/${name}.js`, import.meta.url));
   if (outputs.some(path => !existsSync(path))) { context.skip('@ifc-lite/diff not built; run pnpm build'); return; }
-  const [{ diffModels }, { compareWithWasm }, { initDiffSync }] = await Promise.all(outputs.map(path => import(path.href)));
+  const [{ compareWithWasm }, { initDiffSync }] = await Promise.all(outputs.map(path => import(path.href)));
+  const { diffModels } = oracle;
   initDiffSync({ module: readFileSync(binary) });
   const replacement = [{ key: 'old', ifcType: '\ufffd', dataHash: 'd', ref: null }];
   for (const lone of ['\ud800', '\ud801', '\udfff', 'a\ud800b', '\udfff\ud800']) {
     assert.equal(diffModels(replacement, [], { excludeTypes: [lone] }).counts.deleted, 1, 'confirmed TS deletion oracle');
     for (const [label, options] of comparisonStringOptions(lone)) {
-      // @source-text-assertion-ok asserts the caught real facade/WASM error, not source-file text
-      assert.throws(() => compareWithWasm(replacement, [], { ...options,
-        ...(options.keyAliases === undefined ? {} : { keyAliases: new Map(options.keyAliases) }),
-      }), error => typeof error === 'string'
-        && /comparison inputs require well-formed UTF-16/.test(error), label);
+      const publicOptions = { ...options,
+        ...(options.keyAliases === undefined ? {} : { keyAliases: new Map(options.keyAliases) }) };
+      assert.deepEqual(compareWithWasm(replacement, [], publicOptions), diffModels(replacement, [], publicOptions), label);
     }
     const columns = comparisonRow('scalar');
     for (const field of ['key', 'ifcType', 'dataHash', 'geometryHash', 'container', 'component name', 'component hash']) {
@@ -470,7 +498,7 @@ test('actual compareWithWasm rejects non-scalars and keeps scalar TS comparison 
         };
         const expected = diffModels(baseRows, headRows, publicOption);
         assert.deepEqual(compareWithWasm(baseRows, headRows, publicOption), expected);
-        assert.deepEqual(restoreDiffReferences(base.compare(head, option), baseRows, headRows), expected);
+        assert.deepEqual(restoreDiffReferences(base.compare(head, losslessInput(option)), baseRows, headRows), expected);
       }
     } finally { base.free(); head.free(); }
   }

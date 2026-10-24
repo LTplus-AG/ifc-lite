@@ -27,7 +27,7 @@ fn geometry_only_precedes_weaker_data_residue_issue_8042() {
     assert_eq!(first.kind, ContentMatchKind::Respecified);
     assert_eq!(first.base[0].key, "a");
     assert_eq!(first.head[0].key, "c");
-    assert_eq!(first.geometry_hash.as_deref(), Some("g1"));
+    assert_eq!(first.geometry_hash.as_ref().and_then(crate::JsString::as_str), Some("g1"));
     let second = &result.content_matches[1];
     assert_eq!(second.kind, ContentMatchKind::Moved);
     assert_eq!(second.base[0].key, "b");

@@ -3,15 +3,17 @@
 //! reports it, so a caller reconciling its own model with the file reads
 //! the executor's reason instead of predicting it.
 //!
-//! A record that went for more than one reason reports the first of them in
-//! [`RemovalReason`]'s order: a record both requested and orphaned is
-//! `Requested`, an opening that both lost its host relationship and named a
-//! removed placement is `Unhosted`. The delete cascade walks the plan's
+//! A record can go for more than one reason. It reports `Requested` when the
+//! plan deletes it, else `Replaced` when a patch removed it, else `Unhosted`
+//! for an opening or projection that lost its host relationship; otherwise
+//! the reason the delete cascade found first. The cascade walks the plan's
 //! deletes in id order, so the same plan reports the same reasons on every
-//! run. It costs one map entry per removal, recorded where the removal
-//! already happens.
+//! run. Finding every reason a record also has would mean reading records
+//! the cascade has already removed again, so it is not done: the cost stays
+//! one map entry per removal, recorded where the removal already happens.
 
-/// Why a record is not in the output, most telling first.
+/// Why a record is not in the output. When the cascade reaches a removed
+/// record again for another reason, the earlier one in this order is kept.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[non_exhaustive]
 pub enum RemovalReason {

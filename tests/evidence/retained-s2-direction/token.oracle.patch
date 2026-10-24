@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/mapping_directions.rs
++++ b/rust/geometry/src/program/mapping_directions.rs
+@@ -15,7 +15,6 @@
+     decoder: &mut EntityDecoder) -> Result<Option<Vector3<f64>>> {
+     let id = match entity.get(index) {
+         None | Some(AttributeValue::Null) => return Ok(None),
+-        Some(AttributeValue::Derived) => return Ok(None),
+         Some(AttributeValue::EntityRef(id)) => *id,
+         _ => return Err(refused()),
+     };

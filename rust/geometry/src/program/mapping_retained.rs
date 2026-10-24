@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Retained values use the common mapping walk; no mesh cache or mesh fallback.
 use super::*;
+#[path = "mapping_directions.rs"]
+mod directions;
 use crate::program::retained::{LogicalRetainedValue, RetainedPlacementStage, RetainedPlanOperation, RetainedSelection, RetainedPresentation};
 
 pub(super) struct State {
@@ -212,7 +214,7 @@ impl<'a> MappingControl<'a> {
             let origin = decoder.resolve_ref(attribute)?.filter(|entity|
                 entity.ifc_type == ifc_lite_core::IfcType::IfcAxis2Placement3D)
                 .ok_or_else(|| crate::Error::geometry("retained type-map requires a readable 3D MappingOrigin"))?;
-            let _ = origin;
+            directions::origin(&origin, decoder)?;
             router.type_map_origin(map,decoder)
         })();
         MappingReply::Origin(value)
@@ -266,6 +268,7 @@ impl MappingControl<'_> {
             | IfcType::IfcCartesianTransformationOperator3DnonUniform) {
             return Err(crate::Error::geometry("retained MappingTarget requires a supported transformation operator"));
         }
+        directions::target(&target, decoder)?;
         Self::validate_retained_scale(&target, slot::IfcCartesianTransformationOperator::SCALE.index())?;
         match target.ifc_type {
             IfcType::IfcCartesianTransformationOperator2DnonUniform => {
@@ -300,9 +303,8 @@ impl MappingControl<'_> {
         if !matches!(origin.ifc_type, IfcType::IfcAxis2Placement2D | IfcType::IfcAxis2Placement3D) {
             return Err(crate::Error::geometry("retained MappingOrigin requires a supported placement"));
         }
-        // The canonical reader validates the placement's leaves and computes
-        // its frame next. Type roots retain their existing late-origin stage.
-        Ok(())
+        // Type roots invoke this semantic admission at their late-origin stage.
+        directions::origin(&origin, decoder)
     }
 
     pub(super) fn validate_retained_map(map: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<()> {

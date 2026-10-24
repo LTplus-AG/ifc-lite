@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/mapping_directions.rs
++++ b/rust/geometry/src/program/mapping_directions.rs
+@@ -85,7 +85,7 @@
+             let x = x.unwrap_or_else(|| if independent(z, Vector3::x()) {
+                 Vector3::x()
+             } else { Vector3::y() });
+-            if false && z.cross(&x).dot(&y) == 0.0 { return Err(refused()); }
++            if z.cross(&x).dot(&y) == 0.0 { return Err(refused()); }
+         }
+     }
+     Ok(())

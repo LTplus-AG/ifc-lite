@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/mapping_retained.rs
++++ b/rust/geometry/src/program/mapping_retained.rs
+@@ -214,7 +214,7 @@
+             let origin = decoder.resolve_ref(attribute)?.filter(|entity|
+                 entity.ifc_type == ifc_lite_core::IfcType::IfcAxis2Placement3D)
+                 .ok_or_else(|| crate::Error::geometry("retained type-map requires a readable 3D MappingOrigin"))?;
+-            if false { directions::origin(&origin, decoder)?; }
++            directions::origin(&origin, decoder)?;
+             router.type_map_origin(map,decoder)
+         })();
+         MappingReply::Origin(value)

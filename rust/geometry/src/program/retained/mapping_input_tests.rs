@@ -152,3 +152,6 @@ fn s2_r1_optional_scales_keep_canonical_defaults_and_supported_origins() {
         }
     }
 }
+
+#[path = "mapping_direction_tests.rs"]
+mod directions;

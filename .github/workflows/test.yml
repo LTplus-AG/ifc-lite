@@ -2052,6 +2052,42 @@ jobs:
             node scripts/check-test-revert-oracle.mjs --base 3161f0cd44eab608d5088c0420e100b032e64170 --ci --json \
               --mutation tests/evidence/retained-s2-review/finalization-stop.oracle.patch \
               --test rust/geometry/src/program/retained/finalization_stop_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base c9f6c384e2d7f75ac640ac86cc54c3e808ba8e40 --ci --json \
+              --mutation tests/evidence/retained-s2-direction/token.oracle.patch \
+              --test rust/geometry/src/program/retained/mapping_direction_tests.rs \
+              --test rust/geometry/src/program/retained/mapping_direction_controls_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base c9f6c384e2d7f75ac640ac86cc54c3e808ba8e40 --ci --json \
+              --mutation tests/evidence/retained-s2-direction/dimension.oracle.patch \
+              --test rust/geometry/src/program/retained/mapping_direction_tests.rs \
+              --test rust/geometry/src/program/retained/mapping_direction_controls_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base c9f6c384e2d7f75ac640ac86cc54c3e808ba8e40 --ci --json \
+              --mutation tests/evidence/retained-s2-direction/zero.oracle.patch \
+              --test rust/geometry/src/program/retained/mapping_direction_tests.rs \
+              --test rust/geometry/src/program/retained/mapping_direction_controls_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base c9f6c384e2d7f75ac640ac86cc54c3e808ba8e40 --ci --json \
+              --mutation tests/evidence/retained-s2-direction/pair.oracle.patch \
+              --test rust/geometry/src/program/retained/mapping_direction_tests.rs \
+              --test rust/geometry/src/program/retained/mapping_direction_controls_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base c9f6c384e2d7f75ac640ac86cc54c3e808ba8e40 --ci --json \
+              --mutation tests/evidence/retained-s2-direction/triple.oracle.patch \
+              --test rust/geometry/src/program/retained/mapping_direction_tests.rs \
+              --test rust/geometry/src/program/retained/mapping_direction_controls_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base c9f6c384e2d7f75ac640ac86cc54c3e808ba8e40 --ci --json \
+              --mutation tests/evidence/retained-s2-direction/report.oracle.patch \
+              --test rust/geometry/src/program/retained/mapping_direction_tests.rs \
+              --test rust/geometry/src/program/retained/mapping_direction_controls_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base c9f6c384e2d7f75ac640ac86cc54c3e808ba8e40 --ci --json \
+              --mutation tests/evidence/retained-s2-direction/occurrence-origin.oracle.patch \
+              --test rust/geometry/src/program/retained/mapping_direction_tests.rs \
+              --test rust/geometry/src/program/retained/mapping_direction_controls_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base c9f6c384e2d7f75ac640ac86cc54c3e808ba8e40 --ci --json \
+              --mutation tests/evidence/retained-s2-direction/target.oracle.patch \
+              --test rust/geometry/src/program/retained/mapping_direction_tests.rs \
+              --test rust/geometry/src/program/retained/mapping_direction_controls_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base c9f6c384e2d7f75ac640ac86cc54c3e808ba8e40 --ci --json \
+              --mutation tests/evidence/retained-s2-direction/late-origin.oracle.patch \
+              --test rust/geometry/src/program/retained/mapping_direction_tests.rs \
+              --test rust/geometry/src/program/retained/mapping_direction_controls_tests.rs
           fi
           if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/decoder/precision_certificate.rs | grep -Fxq 'rust/core/src/decoder/precision_certificate.rs'; then
             # The oracle restored the source; also execute the positive side

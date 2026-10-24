@@ -2,12 +2,13 @@
 //! Canonical product continuation with synchronous typed work admission.
 //!
 //! One product is planned once, then advanced one ticket at a time:
-//! `request` issues the next ticket, `execute_live` runs its router work, and
-//! `accept_live` validates the reply before presenting it. Foreign,
+//! `next_ticket` issues the next ticket, `execute_live` runs its router work,
+//! and `accept_live` validates the reply before presenting it. Foreign,
 //! out-of-order and duplicate packets are refused before any callback, hash or
-//! cache access. A synchronous driver holds ONE owner epoch (`session_run`)
-//! open around planning, every ticket and publication, so the product pays the
-//! lease, scope and capability setup once. The same slices also run one epoch
+//! cache access; both halves take their packet as input, so these refusals are
+//! the shipped checks, not a test-only replica. A synchronous driver holds ONE
+//! owner epoch (`session_run`) open around planning, every ticket and
+//! publication, so the product pays the lease, scope and capability setup once. The same slices also run one epoch
 //! per ticket (`session_resumable`), the seam a resumable executor builds on.
 //! This private protocol does not authorize asynchronous or remote execution.
 use super::plan::PlanKind;
@@ -34,6 +35,7 @@ pub(super) struct ProductState<'j> {
     pub(super) stage: Stage<'j>,
     pub(super) element_color: [f32; 4],
     pub(super) keep_order: bool,
+    /// Resumable-only state (`session_resumable`); no shipped method reads it.
     /// `None` once an unwind or a failed owner commit poisoned a resumable product.
     #[cfg(test)]
     pub(super) scopes: Option<super::session_state::Scopes>,
@@ -103,20 +105,9 @@ impl<'j> ProductState<'j> {
         state
     }
 
-    /// Whether this product can still make progress: a live epoch is open, or
-    /// (resumable) its scopes survived the last slice.
-    pub(super) fn alive(&self) -> bool {
-        #[cfg(test)]
-        if self.scopes.is_some() {
-            return true;
-        }
-        self.live.is_some()
-    }
-
-    pub fn request(&mut self) -> Result<Option<WorkRequest>, WorkError> {
-        if !self.alive() {
-            return Err(WorkError::Aborted);
-        }
+    /// The next ticket, or `None` once the plan completed or stopped. Each
+    /// driver first checks that its own owner state can still make progress.
+    pub(super) fn next_ticket(&mut self) -> Result<Option<WorkRequest>, WorkError> {
         self.protocol.idle()?;
         if self.capture_stop() {
             return Ok(None);
@@ -178,8 +169,25 @@ impl<'j> ProductState<'j> {
         decoder: &mut EntityDecoder,
         router: &GeometryRouter,
     ) -> Result<bool, WorkError> {
+        if self.live.is_none() {
+            return Err(WorkError::Aborted);
+        }
+        let Some(request) = self.next_ticket()? else { return Ok(false) };
+        let reply = self.execute_live(request, ctx, decoder, router)?;
+        self.accept_live(reply, ctx, decoder, router)?;
+        Ok(true)
+    }
+
+    /// Run one ticket's router work in the open epoch. A foreign, stale,
+    /// duplicate or wrong-snapshot ticket is refused before any callback.
+    pub(super) fn execute_live(
+        &mut self,
+        request: WorkRequest,
+        ctx: &MeshProductionContext<'_>,
+        decoder: &mut EntityDecoder,
+        router: &GeometryRouter,
+    ) -> Result<WorkReply, WorkError> {
         let Some(live) = self.live else { return Err(WorkError::Aborted) };
-        let Some(request) = self.request()? else { return Ok(false) };
         self.protocol.before_execute(request)?;
         let payload = self.execute_slice(request, ctx, decoder, router);
         // A callback may maintain its own decoder, never replace it.
@@ -190,7 +198,20 @@ impl<'j> ProductState<'j> {
             self.remember_stop(*stop);
         }
         self.protocol.executed(request);
-        let reply = WorkReply { request, context: request.context, owner: live.stamp, emitter: request.kind.emitter(), payload };
+        Ok(WorkReply { request, context: request.context, owner: live.stamp, emitter: request.kind.emitter(), payload })
+    }
+
+    /// Validate one reply against this product's protocol and live owner,
+    /// then present it. A refused reply reaches no hash, cache or callback;
+    /// the live driver holds no reply across a refusal, so it is dropped.
+    pub(super) fn accept_live(
+        &mut self,
+        reply: WorkReply,
+        ctx: &MeshProductionContext<'_>,
+        decoder: &mut EntityDecoder,
+        router: &GeometryRouter,
+    ) -> Result<(), WorkError> {
+        let Some(live) = self.live else { return Err(WorkError::Aborted) };
         self.protocol.before_accept(&reply)?;
         if reply.owner != live.stamp {
             return Err(WorkError::WrongOwner);
@@ -200,7 +221,7 @@ impl<'j> ProductState<'j> {
         } else {
             self.accept_slice(reply, ctx, decoder, router);
         }
-        Ok(true)
+        Ok(())
     }
 
     /// A terminal fault belongs to this product across lexical owner epochs.

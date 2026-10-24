@@ -8,6 +8,23 @@
 /// bounds the optional detail list.
 const WORST_HOSTS_LIMIT: usize = 16;
 
+/// A product the owned producer refused publishes no meshes. A batch never
+/// invalidates its own snapshot and never leases its decoder or router
+/// elsewhere, so a refusal means a geometry callback replaced the decoder or
+/// held an owner (`OwnerUnavailable`). Report it instead of letting the
+/// element vanish silently; it is not counted as a produced element.
+pub(super) fn warn_refused_products(refused: u64) {
+    if refused > 0 {
+        web_sys::console::warn_1(
+            &format!(
+                "[IFC-LITE] geometry batch: {refused} product(s) refused by the canonical \
+                 producer (owner unavailable); they publish no meshes"
+            )
+            .into(),
+        );
+    }
+}
+
 /// Drain CSG / opening-classification / per-host diagnostics from the router and
 /// emit them to the browser console. Returns the typed
 /// [`ifc_lite_geometry::GeometryDiagnostics`] built from the same single drain

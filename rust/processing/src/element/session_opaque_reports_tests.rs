@@ -150,3 +150,66 @@ fn issue_8091_retry_drain_cannot_complete_later_unwinding_opaque_work() {
     assert_eq!(reports.values().map(Vec::len).sum::<usize>(), 1);
     assert!(router.take_csg_failures().is_empty());
 }
+
+/// Records one real Boolean failure in its private log on every call, and can
+/// stop its product or refuse one attempt so the product retries a strategy.
+struct RetryRecorder {
+    pending: RefCell<Vec<BoolFailure>>,
+    stop_next: Cell<bool>,
+    refuse_next: Rc<Cell<bool>>,
+}
+
+impl GeometryProcessor for RetryRecorder {
+    fn supported_types(&self) -> Vec<IfcType> { vec![IfcType::IfcExtrudedAreaSolid] }
+
+    fn process(&self, entity: &DecodedEntity, decoder: &mut EntityDecoder,
+        schema: &IfcSchema, quality: TessellationQuality) -> ifc_lite_geometry::Result<Mesh> {
+        let mesh = ExtrudedAreaSolidProcessor::new(schema.clone())
+            .process(entity, decoder, schema, quality)?;
+        let recorder = BooleanClippingProcessor::new();
+        let boolean = decoder.decode_by_id(87).unwrap();
+        recorder.process(&boolean, decoder, schema, quality)?;
+        self.pending.borrow_mut().extend(recorder.take_failures());
+        if self.refuse_next.replace(false) {
+            return Err(ifc_lite_geometry::Error::geometry("abandoned attempt"));
+        }
+        if self.stop_next.replace(false) { resource::stop(ProgramStop::Cancelled); }
+        Ok(mesh)
+    }
+
+    fn take_bool_failures(&self) -> Vec<BoolFailure> {
+        std::mem::take(&mut *self.pending.borrow_mut())
+    }
+}
+
+/// A stopped product leaves its opaque report unowned. A later product on the
+/// same reused router (the WASM batch reuses one) must still discard its own
+/// abandoned attempt and publish its own final report, without waiting for an
+/// explicit diagnostic drain to restore the boundary.
+#[test]
+fn issue_7955_successor_keeps_its_own_opaque_reports_after_a_stopped_product() {
+    let source = SOURCE.replace("ENDSEC;END-ISO-10303-21;",
+        "#87=IFCBOOLEANRESULT(.XOR.,#13,$);ENDSEC;END-ISO-10303-21;");
+    let mut decoder = EntityDecoder::new(&source);
+    let mut router = router(&mut decoder);
+    router.disable_content_dedup();
+    let refuse_next = Rc::new(Cell::new(false));
+    router.register(Box::new(RetryRecorder { pending: RefCell::new(Vec::new()),
+        stop_next: Cell::new(true), refuse_next: refuse_next.clone() }));
+    let stopped = leaked_job(&mut decoder, 10);
+    let first = produce_element_meshes(stopped, &Context::default().borrowed(), &options(), &mut decoder, &router);
+    assert!(first.meshes.is_empty(), "the first product stopped");
+
+    // The successor's first attempt records a failure and is abandoned; the
+    // voids strategy re-attempts the same cut and records it once more.
+    refuse_next.set(true);
+    let next = leaked_job(&mut decoder, 20);
+    let output = produce_element_meshes(next, &Context::default().borrowed(), &options(), &mut decoder, &router);
+    assert!(!output.meshes.is_empty());
+    assert!(!refuse_next.get(), "the successor retried a strategy");
+    assert_eq!(output.csg_failures.values().map(Vec::len).sum::<usize>(), 1,
+        "the successor publishes exactly its own final report");
+    let reports = router.take_csg_failures();
+    assert_eq!(reports.values().map(Vec::len).sum::<usize>(), 1,
+        "explicit retrieval holds only the stopped product's report, not the abandoned attempt");
+}

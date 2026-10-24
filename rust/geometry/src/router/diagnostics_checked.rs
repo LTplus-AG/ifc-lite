@@ -13,13 +13,16 @@ impl GeometryRouter {
         // Existing processor storage belongs to the active parent (or the
         // root's preexisting source evidence), never to an entering child.
         self.capture_recorded_processor_failures();
-        let nested = self.csg_product_active.replace(true);
+        let depth = self.csg_product_depth.get();
+        self.csg_product_depth.set(depth.saturating_add(1));
+        let nested = depth > 0;
         let parent_drained = self.csg_product_drained.replace(false);
         // Opaque custom logs cannot be partitioned without running callbacks.
-        // Nested work makes their ownership ambiguous until explicit retrieval.
+        // Nested work makes their ownership ambiguous until explicit retrieval
+        // or the next top-level product settles them.
         if nested { self.csg_opaque_unscoped.set(true); }
         let parent = nested.then(|| std::mem::take(&mut *self.csg_failures.borrow_mut()));
-        let _scope = ProductReports { router: self, parent, nested, parent_drained };
+        let _scope = ProductReports { router: self, parent, depth, parent_drained };
         work()
     }
 
@@ -31,8 +34,24 @@ impl GeometryRouter {
         append_csg_failures(&mut stopped, current);
         // Only an explicit drain outside product work establishes a clean
         // boundary for opaque logs. A nested diagnostic caller cannot do so.
-        if !self.csg_product_active.get() { self.csg_opaque_unscoped.set(false); }
+        if self.csg_product_depth.get() == 0 { self.csg_opaque_unscoped.set(false); }
         stopped
+    }
+
+    /// Restore an unambiguous boundary for opaque custom logs at the start of
+    /// a top-level product's owner epoch, before any of its numerical work.
+    /// A stopped or nested earlier epoch left reports there whose product is
+    /// unknown; they move to the stopped bucket (explicit retrieval only).
+    /// Without this, every later product on a reused router would route its
+    /// own retry and final reports there too: an abandoned attempt would be
+    /// retained instead of discarded, and publication would lose its reports.
+    /// Runs the drain hooks inside the epoch, like every other drain. A nested
+    /// product cannot settle: its parent's in-flight reports share the logs.
+    pub fn settle_opaque_csg_failures(&self) {
+        if self.csg_product_depth.get() == 1 && self.csg_opaque_unscoped.get() {
+            self.drain_processor_failures();
+            self.csg_opaque_unscoped.set(false);
+        }
     }
 
     /// Isolate already-recorded reports when production stops before finalization.
@@ -144,7 +163,7 @@ fn append_csg_failures(
 struct ProductReports<'a> {
     router: &'a GeometryRouter,
     parent: Option<FxHashMap<u32, Vec<BoolFailure>>>,
-    nested: bool,
+    depth: u32,
     parent_drained: bool,
 }
 impl Drop for ProductReports<'_> {
@@ -156,7 +175,7 @@ impl Drop for ProductReports<'_> {
         if let Some(parent) = self.parent.take() {
             *self.router.csg_failures.borrow_mut() = parent;
         }
-        self.router.csg_product_active.set(self.nested);
+        self.router.csg_product_depth.set(self.depth);
         self.router.csg_product_drained.set(self.parent_drained);
     }
 }

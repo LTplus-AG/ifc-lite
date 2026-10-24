@@ -177,7 +177,7 @@ pub struct GeometryRouter {
     csg_failures: RefCell<FxHashMap<u32, Vec<BoolFailure>>>,
     /// Stopped-product evidence, available only to an explicit diagnostic drain.
     stopped_csg_failures: RefCell<FxHashMap<u32, Vec<BoolFailure>>>,
-    csg_product_active: Cell<bool>,
+    csg_product_depth: Cell<u32>,
     csg_product_drained: Cell<bool>,
     csg_opaque_unscoped: Cell<bool>,
     /// Cumulative counters for opening classification (T1.1 / classifier fix
@@ -288,7 +288,7 @@ impl GeometryRouter {
             material_layer_index: None,
             csg_failures: RefCell::new(FxHashMap::default()),
             stopped_csg_failures: RefCell::new(FxHashMap::default()),
-            csg_product_active: Cell::new(false),
+            csg_product_depth: Cell::new(0),
             csg_product_drained: Cell::new(false),
             csg_opaque_unscoped: Cell::new(false),
             classification_stats: RefCell::new(ClassificationStats::default()),

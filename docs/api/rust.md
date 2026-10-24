@@ -701,8 +701,11 @@ geometry is produced: `unit_scale`, `rtc_offset`, `tessellation_quality`,
 `local_frame`, `skip_small_cuts` and `instancing_batch_local`.
 `GeometryRouter::from_config(config)` builds a router from one, arming no
 caches, and `GeometryRouter::config()` reads the effective values back (a
-refused length unit reads back as `unit_scale == 1.0`). The `with_*`
-constructors build through `from_config`, and the `set_*` methods remain.
+refused length unit reads back as `unit_scale == 1.0`). This is **not a full
+router snapshot**: length-unit refusal is deliberately not serialized.
+Rebuilding from `router.config().clone()` loses refusal; pass the raw invalid
+scale or call `refuse_length_unit()` on every rebuilt router before meshing.
+The `with_*` constructors build through `from_config`, and the `set_*` methods remain.
 Every configuration setter advances the router's execution generation, so a
 change while a product holds the execution lease refuses that product's
 publication: build the router, inject its shared caches, then lease it.

@@ -88,8 +88,12 @@ impl GeometryRouter {
         router
     }
 
-    /// The effective configuration, including later `set_*` changes. A refused
-    /// length unit reads back as `unit_scale == 1.0`.
+    /// The effective configuration, including later `set_*` changes. This is
+    /// not a full router snapshot: length-unit refusal is deliberately not
+    /// serialized, and a refused unit reads back as `unit_scale == 1.0`.
+    /// Rebuilding with `from_config(router.config().clone())` does not preserve
+    /// refusal. Callers must pass the raw invalid scale or call
+    /// [`Self::refuse_length_unit`] on each rebuilt router before meshing.
     #[inline]
     pub fn config(&self) -> &RouterConfig {
         &self.config

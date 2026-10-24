@@ -270,6 +270,17 @@ def main():
          '// mutation: omit analytic extrusion vector from incident surface seal',
          'subdivision rejects changed geometry intervals or missing completion'),
     ])
+    # #7955 r14: independently remove each fixture constructor repair. These
+    # run actual SDK allocations; a context assertion must kill each mutant
+    # before a lost context can crash a setter or suppress the witness stream.
+    cases.extend([
+        ('reuse', '../tests/face_lineage_tests.cpp',
+         'FixtureFace() {}', 'FixtureFace()=default;',
+         'actual fixture preserves SDK allocator context'),
+        ('refusals', '../tests/face_lineage_tests.cpp',
+         'FixtureVertex() {}', 'FixtureVertex()=default;',
+         'actual fixture preserves SDK allocator context'),
+    ])
     paths = sorted({source / row[1] for row in cases})
     subprocess.run(['git', 'diff', '--exit-code', 'HEAD', '--', *map(str, paths)], cwd=root, check=True)
     originals = {path: path.read_text() for path in paths}

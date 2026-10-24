@@ -41,17 +41,35 @@ namespace {
 using namespace face_lineage;
 // Expose the real SDK face ctor/dtor for allocation-only invariants. No
 // geometry, notification implementation or allocator is replaced.
+// #7955: these constructors must be user-provided. With =default, new T()
+// zero-initializes the base before its constructor, erasing m_cpContext set
+// by the pinned SDK's SmObject::operator new. SmObject's ctor preserves that
+// allocator-written value; it does not restore it after zero-initialization.
 class FixtureFace final:public SmFace {
 public:
-    FixtureFace()=default;
+    FixtureFace() {}
     ~FixtureFace() override=default;
 };
 class FixtureVertex final:public SmVertex {
 public:
-    FixtureVertex()=default;
+    FixtureVertex() {}
     ~FixtureVertex() override=default;
 };
 void require(bool value,const char* message) { if(!value) throw std::runtime_error(message); }
+template<class Fixture> Fixture* allocate_fixture(SmBrep* owner) {
+    require(owner && owner->GetContext(),"actual fixture allocation owner has an SDK context");
+    auto* object=new (owner) Fixture();
+    if(object->GetContext()!=owner->GetContext()) {
+        std::fprintf(stderr,"lineage fixture context mismatch type=%ld actual_context=%p expected_context=%p callback=%p\n",
+            long(object->GetType()),static_cast<const void*>(object->GetContext()),
+            static_cast<const void*>(owner->GetContext()),
+            static_cast<void*>(owner->GetContext()->GetUserNotifyCallback()));
+        // Fail before any setter or cleanup that could dereference a lost
+        // context. The process-isolated witness must report, never repair it.
+        require(false,"actual fixture preserves SDK allocator context");
+    }
+    return object;
+}
 bool bits(double a,double b) { return std::memcmp(&a,&b,sizeof(a))==0; }
 struct Solids {
     std::unique_ptr<SmBrep> source,first,second,third;
@@ -556,11 +574,13 @@ void address_reuse() {
     Scope phase(ledger,context);
     std::array<uintptr_t,128> addresses{}; std::array<Identity,128> births{}; bool reused=false;
     for(unsigned i=0;i<addresses.size();++i) {
-        auto* face=new (allocation_owner.get()) FixtureFace(); ledger.check();
+        const auto start=ledger.event_size();
+        auto* face=allocate_fixture<FixtureFace>(allocation_owner.get()); ledger.check();
         if(i==0) std::fprintf(stderr,"lineage reuse diagnostic face_context=%p expected_context=%p callback_matches=%u events=%u\n",
             static_cast<const void*>(face->GetContext()),static_cast<void*>(&context),
             unsigned(context.GetUserNotifyCallback()==&phase),ledger.event_size());
-        require(ledger.event_size()>0,"actual allocator-reuse constructor must deliver a notification");
+        require(ledger.event_size()==start+1 && ledger.event(start).operation==SM_NO_CONSTRUCTION,
+            "each actual allocator-reuse constructor delivers exactly one construction notification");
         const auto birth=ledger.event(ledger.event_size()-1).after[0];
         require(birth.sequence!=0,"actual face constructor reported an event-time identity");
         const auto address=reinterpret_cast<uintptr_t>(face);
@@ -573,7 +593,8 @@ void address_reuse() {
         require(unavailable,"new lifetime never inherits ancestry from an older address binding");
         addresses[i]=address; births[i]=birth;
         delete face; ledger.check();
-        require(ledger.event(ledger.event_size()-1).before[0]==birth,"actual destructor freezes the matching event-time identity");
+        require(ledger.event_size()==start+2 && ledger.event(start+1).operation==SM_NO_DESTRUCTION &&
+            ledger.event(start+1).before[0]==birth,"actual destructor freezes the matching event-time identity");
     }
     require(reused,"allocator alias witness did not reach address reuse; no alias qualification");
     phase.finish(); ledger.check();
@@ -587,8 +608,23 @@ void refusals() {
     require(rejected && !kernel_domain_is_tainted(),"unknown source history refuses before copying/taint/publication");
     auto& context=*const_cast<SmContext*>(owned.source->GetContext());
     {
+        // #7955: an unattached real vertex must retain allocator context and
+        // deliver its own lifetime notifications before any nested setter test.
+        Ledger ledger; Scope phase(ledger,context);
+        auto* vertex=allocate_fixture<FixtureVertex>(owned.source.get()); ledger.check();
+        require(ledger.event_size()==1 && ledger.event(0).operation==SM_NO_CONSTRUCTION &&
+            ledger.event(0).after[0].sequence,
+            "actual fixture vertex delivers its construction generation");
+        const auto birth=ledger.event(0).after[0];
+        delete vertex; ledger.check();
+        require(ledger.event_size()==2 && ledger.event(1).operation==SM_NO_DESTRUCTION &&
+            ledger.event(1).before[0]==birth,
+            "actual fixture vertex destruction retires its construction generation");
+        phase.finish(); ledger.check();
+    }
+    {
         Ledger ledger(Limits{8,1,1}); Scope phase(ledger,context);
-        auto* one=new (owned.source.get()) FixtureFace(); auto* two=new (owned.source.get()) FixtureFace();
+        auto* one=allocate_fixture<FixtureFace>(owned.source.get()); auto* two=allocate_fixture<FixtureFace>(owned.source.get());
         require(ledger.failed()==Failure::EventLimit,"actual constructor events exhaust fixed storage without growth");
         delete one; delete two; phase.finish();
         bool bounded=false; try { ledger.check(); } catch(const AdapterFailure& error) { bounded=error.status==IFCLITE_SMLIB_RESOURCE_LIMIT; }
@@ -596,7 +632,7 @@ void refusals() {
     }
     {
         Ledger ledger(Limits{1,32,1}); Scope phase(ledger,context);
-        auto* one=new (owned.source.get()) FixtureFace(); auto* two=new (owned.source.get()) FixtureFace();
+        auto* one=allocate_fixture<FixtureFace>(owned.source.get()); auto* two=allocate_fixture<FixtureFace>(owned.source.get());
         require(ledger.failed()==Failure::NodeLimit,"actual face generations cannot grow beyond the admitted node quota");
         delete one; delete two; phase.finish();
     }
@@ -605,7 +641,7 @@ void refusals() {
         foreign.hidden_mutation=seeds(*owned.source)[0].face;
         bool refused=false; try { admit(ledger,*owned.source); } catch(const AdapterFailure&) { refused=true; }
         require(refused && ledger.failed()==Failure::UntrustedCallback,"SUCCESS foreign callback is not closed-world authority");
-        auto* temporary=new (owned.source.get()) FixtureFace(); delete temporary;
+        auto* temporary=allocate_fixture<FixtureFace>(owned.source.get()); delete temporary;
         lifetime.finish();
         require(foreign.calls>0 && foreign.hidden_changes==1 && context.GetUserNotifyCallback()==&foreign,
             "SUCCESS callback with restored silent intermediate edits remains unavailable and still chains/restores");
@@ -613,14 +649,14 @@ void refusals() {
     for(bool depth_limit:{false,true}) {
         // Unattached actual SDK vertex has no uses to propagate ahead of the
         // vertex callback. It is allocated before this observation-only test.
-        auto* vertex=new (owned.source.get()) FixtureVertex();
+        auto* vertex=allocate_fixture<FixtureVertex>(owned.source.get());
         vertex->SetPoint(SmPoint3d(0,0,0));
         Limits limits; if(depth_limit) limits.callback_depth=1;
         Ledger ledger(limits); Foreign foreign; foreign.nested_vertex=vertex;
         foreign.constructor_fault=true; foreign.refuse=true;
         ForeignSlot install(context,foreign); Scope phase(ledger,context);
         const auto first=ledger.event_size();
-        auto* temporary=new (owned.source.get()) FixtureFace();
+        auto* temporary=allocate_fixture<FixtureFace>(owned.source.get());
         const auto origin=ledger.failure_origin();
         require(origin.failure==(depth_limit?Failure::CallbackDepthLimit:Failure::ReentrantCallback) &&
             origin.operation==SM_NO_CHANGE_GEOMETRY && origin.caller_type==SmVertex_TYPE &&
@@ -636,7 +672,7 @@ void refusals() {
     for(bool exception:{false,true}) {
         Ledger ledger; Foreign foreign; foreign.constructor_fault=true; foreign.throws=exception; foreign.refuse=!exception;
         ForeignSlot install(context,foreign); Scope phase(ledger,context);
-        auto* temporary=new (owned.source.get()) FixtureFace();
+        auto* temporary=allocate_fixture<FixtureFace>(owned.source.get());
         require(ledger.failed()==(exception?Failure::ForeignException:Failure::ForeignStatus),
             "real SDK construction returns while foreign status/exception is latched without crossing SDK");
         const auto origin=ledger.failure_origin();
@@ -661,7 +697,7 @@ void refusals() {
     {
         Foreign original,replacement; ForeignSlot install(context,original); Ledger ledger;
         original.replacement=&replacement;
-        Scope phase(ledger,context); auto* face=new (owned.source.get()) FixtureFace(); phase.finish();
+        Scope phase(ledger,context); auto* face=allocate_fixture<FixtureFace>(owned.source.get()); phase.finish();
         require(context.GetUserNotifyCallback()==&original && ledger.failed()==Failure::CallbackReplaced,
             "foreign slot replacement latches failure and restores the caller callback"); delete face;
     }

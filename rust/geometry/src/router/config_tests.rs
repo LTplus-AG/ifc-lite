@@ -5,12 +5,13 @@
 //! #7781: configuration affects geometry and admission, not just readback.
 //! Scale, RTC, quality and local-frame behavior is also exercised through the
 //! delegating `with_*` constructors in consolidate_unit_scale.rs,
-//! issue_5698_raw_world_rtc_before_narrow.rs and tessellation_quality_test.rs.
+//! the `with_rtc` router tests and tessellation_quality_test.rs.
 //! styled_walk_tests.rs checks configured batch-local templates and placeholders.
 
 use super::{GeometryRouter, RouterConfig};
 use crate::kernel::mesh_volume::mesh_volume;
-use crate::{MaterialLayerIndex, TessellationQuality};
+use crate::program::GeometryProgram;
+use crate::{MaterialLayerIndex, SubMeshCollection, TessellationQuality};
 use ifc_lite_core::EntityDecoder;
 use std::sync::Arc;
 
@@ -19,6 +20,7 @@ const SOURCE: &str = "#1=IFCBLOCK($,2.,3.,4.);";
 /// #7781 / #1286: keep Medium quality fixed so only the configured switch
 /// decides whether a small solid-solid cut is executed. The cutter overlaps
 /// the host by 0.25 x 0.5 x 0.5, removing exactly 0.0625 cubic units.
+/// Run with the default cut ratio (unset `IFC_LITE_FAST_CUT_RATIO`).
 #[test]
 fn configured_small_cut_skip_changes_boolean_and_csg_volume() {
     let source = "#1=IFCBLOCK($,10.,10.,10.);\
@@ -60,10 +62,14 @@ fn configured_invalid_scales_emit_no_mesh_and_report_unsupported() {
         });
         let mut decoder = EntityDecoder::new(SOURCE);
         let block = decoder.decode_by_id(1).unwrap();
-        assert!(
-            router.process_representation_item(&block, &mut decoder).unwrap().is_empty(),
-            "invalid scale {bad} must not mesh in metres"
-        );
+        // The plain item entry reports failure to its caller; the styled
+        // collection entry drops and counts that same item instead (#7781).
+        router.process_representation_item(&block, &mut decoder)
+            .expect_err("an invalid configured scale must not mesh in metres");
+        let styled = GeometryProgram::styled_item(
+            &block, SubMeshCollection::new(), false, None, router.rtc_offset(),
+        ).drain_styled(&router, &mut decoder).unwrap();
+        assert!(styled.is_empty(), "invalid scale {bad} must drop the styled item");
         assert_eq!(router.take_unsupported_items().get("IfcBlock"), Some(&1), "scale {bad}");
     }
 }

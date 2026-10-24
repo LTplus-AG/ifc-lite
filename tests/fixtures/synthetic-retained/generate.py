@@ -104,7 +104,7 @@ def mapped():
         style_item = m.style(item, (1,0,0) if role == 'red' else (0.5,0.5,0.5)) if source == base_map else None
         # The right-hand opening lives in a rotated occurrence placement,
         # exercising cutter-frame composition in addition to unequal cut positions.
-        place = m.place((i*5, 0, 0), x=(0,1,0)) if role == 'door-right' else m.place((i*5, 0, 0))
+        place = m.place((i*5, 0, 0), z=(0,0,1), x=(0,1,0)) if role == 'door-right' else m.place((i*5, 0, 0))
         product = m.product(role, item, 'MappedRepresentation', place)
         row = {'id':int(product[1:]), 'role':role, 'volume':5 if role.startswith('door') else 6, 'map':int(source[1:]), 'mapped_item':int(item[1:]), 'translation':[i*5,0,0], 'basis_columns':[x,y,z], 'scale':[2,1,0.5] if role == 'nonuniform' else [1,1,1], 'mirrored':role == 'mirrored', 'nonuniform':role == 'nonuniform'}
         if style_item:

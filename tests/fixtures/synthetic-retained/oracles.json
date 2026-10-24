@@ -367,7 +367,7 @@
           "void_relation": 136
         },
         {
-          "id": 152,
+          "id": 153,
           "role": "door-right",
           "volume": 5,
           "map": 19,
@@ -408,15 +408,15 @@
             1.6
           ],
           "opening_volume": 2,
-          "opening_id": 159,
-          "void_relation": 160
+          "opening_id": 160,
+          "void_relation": 161
         },
         {
-          "id": 171,
+          "id": 172,
           "role": "palette",
           "volume": 6,
           "map": 25,
-          "mapped_item": 165,
+          "mapped_item": 166,
           "translation": [
             35,
             0,
@@ -453,11 +453,11 @@
           ]
         },
         {
-          "id": 182,
+          "id": 183,
           "role": "textured",
           "volume": 6,
           "map": 37,
-          "mapped_item": 176,
+          "mapped_item": 177,
           "translation": [
             40,
             0,
@@ -527,7 +527,7 @@
       "texture_id": 28,
       "texture_map": 30,
       "texture": {
-        "id": 182,
+        "id": 183,
         "texture_id": 28,
         "url": "checker.png",
         "vertices": [
@@ -1127,8 +1127,8 @@
       "bytes": 13953
     },
     "f-b-mapped.ifc": {
-      "sha256": "b18cd64434763a5efb58f71d07d20f279e85285734534599c472eac0541b708e",
-      "bytes": 9544
+      "sha256": "69874fe139063bc242fd772040ee44088c81c5121a3f9c6e8ecf3f283d949e75",
+      "bytes": 9578
     },
     "f-c-extrusion.ifc": {
       "sha256": "188d3821fa7a8372773dd46f55e985bd2c23efb09bef2ca38b14f91c6768e55b",

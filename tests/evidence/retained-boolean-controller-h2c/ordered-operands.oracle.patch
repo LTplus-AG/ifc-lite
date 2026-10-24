@@ -2,7 +2,7 @@
 +++ b/rust/geometry/src/program/retained/boolean.rs
 @@ -21,5 +21,5 @@
          source_from_evaluation: identity, evaluation_from_source: identity, world_from_source: identity,
-         placements: Vec::new(), presentation: Vec::new(), product_placed: false, empty: false,
+         placements: Vec::new(), presentation: Vec::new(), product_placed: false, outcome: outcome::new()?,
      };
 -    Ok(RetainedPlanOperation { value, kind: RetainedOperationKind::Boolean { inputs: Box::new([inputs[1].clone(), inputs[0].clone()]), operation } })
 +    Ok(RetainedPlanOperation { value, kind: RetainedOperationKind::Boolean { inputs: Box::new(inputs), operation } })

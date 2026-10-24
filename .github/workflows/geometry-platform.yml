@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 # Opt-in qualification of the isolated NVIDIA SMLib native adapter, its Rust
-# worker client and its browser module-Worker build. Nothing in core/geometry/processing/wasm depends on either, so
-# this workflow is path-filtered to them and is intentionally NOT a required check.
+# worker client and its browser module-Worker build. Retained consumers are
+# opt-in; this path-filtered workflow is intentionally NOT a required check.
 name: Geometry platform (native adapter)
 
 on:
@@ -12,7 +12,16 @@ on:
       # Retained requests the worker executes are lowered here.
       - 'rust/geometry/src/document/**'
       - 'rust/geometry/src/analytic/**'
+      - 'rust/geometry/src/math/tol*.rs'
       - 'rust/geometry/src/program/**'
+      - 'rust/geometry/src/resource/owned*.rs'
+      - 'rust/processing/src/element/session_retained/**'
+      - 'rust/processing/src/element/session*.rs'
+      - 'rust/processing/src/element.rs'
+      - 'tests/evidence/retained-execution-j4/**'
+      - 'rust/processing/src/element/model_context.rs'
+      - 'rust/processing/Cargo.toml'
+      - 'rust/processing/examples/retained_product.rs'
       # Browser module-Worker staging and its actual-Worker probe.
       - 'scripts/stage-retained-browser-assets.mjs'
       - 'scripts/smlib-browser-worker-probe.mjs'
@@ -25,7 +34,10 @@ on:
       - 'rust/wasm-bindings/Cargo.toml'
       - 'rust/wasm-bindings/src/lib.rs'
       - 'rust/geometry/Cargo.toml'
-      - 'rust/wasm-bindings/src/api/retained_browser.rs'
+      - 'rust/wasm-bindings/src/api/retained_*.rs'
+      - 'rust/wasm-bindings/src/api/product_job.rs'
+      - 'rust/wasm-bindings/src/api/gpu_meshes/batch.rs'
+      - 'rust/wasm-bindings/src/api/mod.rs'
       - 'rust/wasm-bindings/tests/retained-browser/**'
       - 'scripts/retained-browser-contract.mjs'
       # The actual-Worker contract serves the geometry fixture directory to the browser.
@@ -78,6 +90,48 @@ jobs:
           test -x "$IFCLITE_SMLIB_PATH"
           IFCLITE_SMLIB_WORKER="$IFCLITE_SMLIB_PATH" \
             cargo test --locked -p ifc-lite-geometry-runtime --all-targets --no-fail-fast
+      - name: Actual native retained product transactions
+        id: processing-retained
+        continue-on-error: true
+        env:
+          IFCLITE_SMLIB_WORKER: ${{ runner.temp }}/smlib-native/ifclite_smlib_worker
+        run: |
+          test -x "$IFCLITE_SMLIB_WORKER"
+          cargo test --locked -p ifc-lite-processing --features retained-native --lib session_retained -- --nocapture --test-threads 2 2>&1 | tee "$RUNNER_TEMP/processing-retained.log"
+          ! grep -F 'SKIP common retained SDK continuation' "$RUNNER_TEMP/processing-retained.log"
+          for test in \
+            common_retained_actual_construction_is_consumed_and_original_product_resumes \
+            common_retained_foreign_expired_receiver_wrong_stage_and_owner_return_intact_receipt \
+            common_retained_own_source_expiry_retires_captured_owner_and_preserves_buffers \
+            common_retained_cancel_between_issue_and_execute_uses_independent_owner_capability \
+            common_retained_wrong_original_admission_rejects_before_consumption_then_duplicate_rejects \
+            common_retained_repeated_source_occurrences_keep_independent_sealed_objects \
+            common_retained_released_actual_object_is_rejected_with_intact_receipt \
+            original_account_cancelled_after_issue_refuses_sdk_execution_outside_scope \
+            original_cancellation_before_accept_wins_over_absent_or_foreign_ambient_account \
+            actual_sealed_acceptance_charges_ledger_backing_to_original_account_after_caller_drop \
+            original_reached_work_allowance_refuses_issue_under_a_fresh_foreign_account \
+            actual_pending_and_accepted_geometry_retain_original_resident_permit_until_owner_drop \
+            outer_and_inner_ticket_mismatch_rejects_before_take \
+            original_pool_allowance_survives_caller_execution_and_witness_drop_in_order; do
+            grep -F "$test ... ok" "$RUNNER_TEMP/processing-retained.log"
+          done
+      - name: Independent retained execution semantic mutations
+        id: retained-mutations
+        continue-on-error: true
+        env:
+          IFCLITE_SMLIB_WORKER: ${{ runner.temp }}/smlib-native/ifclite_smlib_worker
+        run: |
+          for oracle in source-admission ordered-invocation accepted-outcome post-await-stop; do
+            python3 tests/evidence/retained-execution-j4/feature-oracle.py \
+              --oracle "$oracle" --evidence-dir "$RUNNER_TEMP/retained-execution-$oracle"
+          done
+      - name: Strict retained native and target-neutral processing Clippy
+        id: retained-native-clippy
+        continue-on-error: true
+        run: |
+          cargo clippy --locked -p ifc-lite-processing --all-targets --features retained-runtime -- -D warnings
+          cargo clippy --locked -p ifc-lite-processing --all-targets --features retained-native -- -D warnings
       - name: Checkout pinned Emscripten SDK
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
@@ -155,6 +209,9 @@ jobs:
         if: always()
         env:
           NATIVE_CTEST: ${{ steps.native-ctest.outcome }}
+          PROCESSING_RETAINED: ${{ steps.processing-retained.outcome }}
+          RETAINED_MUTATIONS: ${{ steps.retained-mutations.outcome }}
+          RETAINED_NATIVE_CLIPPY: ${{ steps.retained-native-clippy.outcome }}
           NATIVE_CONSUMERS: ${{ steps.native-consumers.outcome }}
           WASM_CTEST: ${{ steps.wasm-ctest.outcome }}
           BROWSER_WORKERS: ${{ steps.browser-workers.outcome }}
@@ -165,7 +222,7 @@ jobs:
           RETAINED_CLIPPY: ${{ steps.retained-clippy.outcome }}
         run: |
           failed=0
-          for lane in NATIVE_CTEST NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY; do
+          for lane in NATIVE_CTEST PROCESSING_RETAINED RETAINED_MUTATIONS RETAINED_NATIVE_CLIPPY NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY; do
             printf '%s=%s\n' "$lane" "${!lane}"
             if [[ "${!lane}" != success ]]; then failed=1; fi
           done

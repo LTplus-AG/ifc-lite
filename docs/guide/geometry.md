@@ -914,3 +914,46 @@ count; it does not cancel an active load. Unused workers expire after sixty
 seconds. `warmGeometryWorkerPoolStats()` returns `GeometryWorkerPoolStats`, or
 null before a pool exists. `idleBytes` is booked memory using an estimate per
 fresh worker, rather than a measurement of actual process memory.
+
+## Experimental retained product transactions
+
+The Rust `ifc-lite-processing` feature `retained-runtime` exposes the shared
+`RuntimeProductExecution<R>` transaction. `retained-native` additionally enables
+its isolated native worker executor. Both features are off by default. Exact
+geometry remains the default; refusal never retries through exact geometry.
+
+Bind immutable bytes with `ProductionModel::from_source`, snapshot the selected
+model maps, and call `RuntimeProductExecution::begin` with the source's decoder
+and the canonical product job. `issue_next` prepares a pending operation;
+`execute` (native) or `execute_async` (browser) returns numerical evidence;
+`accept` validates the complete batch before consuming the common controller's
+reply. Construction, mapped occurrences, physical affine copies and ordered
+Boolean operations use this same transaction. Source identity, ordered inputs,
+frames, runtime ownership and the original resource account survive suspension.
+Dropping dispatched work retires its captured worker; a rejected pre-dispatch
+caller argument can return the original packet without dispatching it.
+
+`into_witness` returns intermediate evidence with outstanding requirements.
+`require_final_product` explicitly refuses final publication. Openings, material
+layers, appearance and persistent faces remain unproved; type-map evidence also
+retains the product-placement obligation. An authenticated empty intermediate
+Boolean operand is distinct from permission to publish a fully removed product.
+No final retained mesh, CLI mode or viewer mode is activated by these APIs.
+
+The separate `retained-browser` WASM feature exposes `IfcAPI.bindRetainedModel`,
+`RetainedBrowserModel.admitProduct` and `RetainedBrowserProduct.execute` over the
+same controller and an actual module Worker. Its result explicitly reports
+`final_product_available: false`; `witness` revalidates retained receipt/source
+liveness, and `invalidateSource` expires the model's witnesses. Binding owns an
+additional source buffer. This API is experimental and absent from the default
+engine bundle.
+
+This integration has no transferred numerical qualification. Landing requires
+fresh native SDK and actual Worker validation, independent reverse mutations,
+unchanged exact output and end-to-end performance/memory evidence. The optional
+runtime dependency is currently private (`publish = false`); verified registry
+and source-package bootstrap under #7999 is a landing gate. Regenerate both WASM
+type surfaces with `BUILD_RETAINED=1 scripts/build-wasm.sh` before landing.
+Distribution and activation additionally require license clearance and all
+release features, including textures, palettes, smooth normals, persistent face
+identity, GPU instancing, chained/bounded clips, openings and curved layers.

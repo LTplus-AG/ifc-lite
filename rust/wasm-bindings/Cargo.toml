@@ -86,6 +86,10 @@ web-sys = { version = "=0.3.103", features = ["console", "Performance", "Window"
 wasm-bindgen-futures = { version = "=0.4.76", optional = true }
 
 [dev-dependencies]
+sha2.workspace = true
+nalgebra.workspace = true
+num-rational = "0.4"
+num-traits = "0.2"
 # Test-only (publish = false). Path-only: cargo strips it when packaging.
 ifc-lite-testkit = { path = "../testkit" }
 wasm-bindgen-test = "=0.3.76"

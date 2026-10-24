@@ -16,6 +16,7 @@ use std::sync::{
     Arc,
 };
 mod witness;
+mod openings;
 pub use witness::RuntimeProductWitness;
 mod acceptance;
 mod validation;
@@ -277,3 +278,8 @@ impl<R: NumericalReceipt> Drop for RuntimeProductExecution<'_, R> {
         }
     }
 }
+
+#[cfg(all(test, feature = "retained-native", not(target_arch = "wasm32")))]
+mod opening_tests;
+#[cfg(all(test, feature = "retained-native", not(target_arch = "wasm32")))]
+mod opening_witness;

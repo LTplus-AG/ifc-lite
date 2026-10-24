@@ -34,11 +34,6 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
             self.outer = None;
             return Ok(());
         };
-        if !matches!(kind, WorkKind::Primary { strategy: super::super::plan::PrimaryStrategy::TexturedSubmeshes, .. }
-            | WorkKind::PlainParts | WorkKind::TypeMap { .. }) {
-            self.failed = true;
-            return Err(RetainedExecutionError::Unsupported("retained opening strategy"));
-        }
         let resources = self.resources.clone();
         let prepared = resources.with_scope(|| self.owner.work(decoder,router,|decoder,_| {
             self.scopes.with_scope(|| {
@@ -52,9 +47,14 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
                         if map.ifc_type != IfcType::IfcRepresentationMap { return Err(RetainedExecutionError::Source); }
                         Ok(self.traversal.type_map(map,Some(textures)))
                     }
+                    WorkKind::Primary { strategy: super::super::plan::PrimaryStrategy::VoidedSubmeshes, .. }
+                    | WorkKind::VoidedParts => {
+                        let ids = self.context.borrowed().void_index.get(&self.state.job.id)
+                            .map(Vec::as_slice).unwrap_or(&[]);
+                        Ok(self.traversal.voided_product(self.state.job.entity, ids))
+                    }
                     WorkKind::Primary { .. } => Ok(self.traversal.product_submeshes(self.state.job.entity,true,Some(textures))),
                     WorkKind::PlainParts => Ok(self.traversal.product_parts(self.state.job.entity)),
-                    _ => Err(RetainedExecutionError::Unsupported("retained strategy")),
                 }
             })
         })).map_err(protocol).and_then(|(result,_)|result);
@@ -67,7 +67,8 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
         Ok(())
     }
     pub(super) fn finish_current_program(&mut self, outer: WorkRequest) -> Result<(), RetainedExecutionError> {
-        let result = self.complete_current_program(outer);
+        let resources = self.resources.clone();
+        let result = resources.with_scope(|| self.complete_current_program(outer));
         if result.is_err() { self.failed = true; }
         result
     }
@@ -78,6 +79,12 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
             _ => program.finish(),
         }).map_err(geometry)?;
         self.validate_manifest(&plan)?;
+        self.authenticate_openings(&plan)?;
+        if plan.opening_completion.is_some() || matches!(outer.kind,
+            WorkKind::Primary { strategy: super::super::plan::PrimaryStrategy::TexturedSubmeshes, .. }
+            | WorkKind::PlainParts) {
+            plan.remaining.retain(|requirement| *requirement != RetainedRequirement::OpeningClosure);
+        }
         self.state.protocol.executed(outer);
         self.state.protocol.accepted();
         self.outer = None;

@@ -52,7 +52,7 @@ impl AsyncRetainedExecutor for Observed {
         Ok(receipt)
     }
 }
-fn volume(mesh: &super::bridge::Mesh) -> f64 {
+pub(super) fn volume(mesh: &super::bridge::Mesh) -> f64 {
     let p = |i: u32| { let i = i as usize * 3; [mesh.positions[i], mesh.positions[i + 1], mesh.positions[i + 2]] };
     mesh.indices.chunks_exact(3).map(|t| {
         let [a, b, c] = [p(t[0]), p(t[1]), p(t[2])];

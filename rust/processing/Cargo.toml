@@ -62,6 +62,8 @@ sha2.workspace = true
 nalgebra.workspace = true
 
 [dev-dependencies]
+num-rational = "0.4"
+num-traits = "0.2"
 # Test-only (publish = false). Path-only: cargo strips it when packaging.
 ifc-lite-testkit = { path = "../testkit" }
 # `test_support::recv_or_diagnose` only - the shared worker watchdog, so the

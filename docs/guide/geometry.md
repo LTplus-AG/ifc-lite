@@ -973,3 +973,20 @@ part and type-map indices from their own immutable source. They do not reuse or
 reset the ordinary viewer's caches. Dependency qualification runs numerical
 affine, ordered Boolean and semantic-empty witnesses on the current Worker
 incarnation from the staged `dependency-contract.mjs` module.
+
+The disabled retained controller also admits ordered opening transactions through
+`RetainedTraversal::voided_product`. The native and browser runtimes use the same
+host, mapped cutter, and Difference continuations. `RetainedProductPlan` carries
+optional `opening_completion` provenance; only the processing controller's sealed
+ledger authentication discharges `OpeningClosure`. Canonical products with no
+subtracting openings do not carry that obligation. Other fidelity obligations
+remain unchanged.
+
+Opening body errors fail the complete retained transaction. An authenticated
+semantic Empty can stop unreachable source work, but whole-product removal still
+refuses until source-bound protection-policy validation exists. Opening effects
+remain provisional through the witness: no router consumed-host flag is written
+at intermediate acceptance. Final publication remains disabled; there is no
+partial-product publication or automatic exact retry. The authored backtracking
+profile in #3641 still requires region regularization and a positive native and
+browser opening-chain qualification before release.

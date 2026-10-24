@@ -11,6 +11,10 @@ mod presentation;
 mod affine;
 mod identity;
 mod outcome;
+pub(in crate::program) mod voids;
+mod openings;
+mod opening_source;
+pub use openings::{RetainedOpeningCompletion, RetainedOpeningCut};
 pub(in crate::program) mod boolean;
 pub use presentation::RetainedPresentation;
 mod select;
@@ -241,6 +245,7 @@ pub(super) fn validate_affine(matrix: &nalgebra::Matrix4<f64>) -> crate::Result<
 #[derive(Debug)]
 pub struct RetainedProductPlan {
     pub values: Vec<LogicalRetainedValue>,
+    pub opening_completion: Option<RetainedOpeningCompletion>,
     /// Conservatively unchecked obligations until a consumer proves them
     /// unnecessary or discharges them; traversal alone does neither.
     pub remaining: Vec<RetainedRequirement>,
@@ -253,7 +258,7 @@ impl RetainedProductPlan {
         remaining.extend([RetainedRequirement::ProductPlacement,
             RetainedRequirement::OpeningClosure, RetainedRequirement::MaterialLayers,
             RetainedRequirement::IfcAppearance, RetainedRequirement::PersistentFaces]);
-        Ok(Self { values, remaining })
+        Ok(Self { values, remaining, opening_completion: None })
     }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

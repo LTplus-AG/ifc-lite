@@ -288,3 +288,9 @@ mod tests;
 
 #[cfg(all(test, target_arch = "wasm32"))]
 mod product_tests;
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod opening_tests;
+#[cfg(all(test, target_arch = "wasm32"))]
+#[path = "../../../processing/src/element/session_retained/opening_witness.rs"]
+mod opening_witness;

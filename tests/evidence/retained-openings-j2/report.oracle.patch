@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/program/retained/voids.rs
++++ b/rust/geometry/src/program/retained/voids.rs
+@@ -76,7 +76,7 @@
+             Ok(Some(entity))
+         })();
+         // Preserve the stop as an error; an empty cutter list is not a refusal.
+-        Ok(VoidReply::Selected(result.or(Ok(None))))
++        Ok(VoidReply::Selected(result))
+     }
+     pub(in crate::program) fn admit(&mut self)
+         -> std::result::Result<(VoidReply, Vec<RetainedPlanOperation>), ProgramError> {

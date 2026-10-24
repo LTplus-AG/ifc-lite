@@ -17,7 +17,7 @@ pub(super) enum IssuedRetainedOperation<R: NumericalReceipt> {
     Affine { input: Arc<RuntimeRealization<R>>, matrix: [f64; 16], definition: LogicalRetainedDefinition },
 }
 impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
-    fn input(&self, value: &LogicalRetainedValue) -> Result<Arc<RuntimeRealization<R>>, RetainedExecutionError> {
+    pub(super) fn input(&self, value: &LogicalRetainedValue) -> Result<Arc<RuntimeRealization<R>>, RetainedExecutionError> {
         for (definition, receipt) in &self.ledger {
             resource::charge(resource::Cost { work: 1, ..Default::default() }).map_err(RetainedExecutionError::Stopped)?.retain();
             if definition.definition() == value.definition() {

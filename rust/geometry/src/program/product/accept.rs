@@ -134,7 +134,7 @@ impl<'a> ProductControl<'a> {
                 Some(_) => ProductOutput::Styled(SubMeshCollection::new()),
             }));
         };
-        self.direct = shape.direct_geometry(self.element, Select::Meshed);
+        self.direct = shape.direct_geometry(self.element.as_ref(), Select::Meshed);
         self.shape = Some(shape);
         self.advance()
     }
@@ -143,7 +143,7 @@ impl<'a> ProductControl<'a> {
     pub(super) fn items_done(&mut self, index: usize, items: Vec<DecodedEntity>) -> Action {
         let rep = self.shape.as_ref().and_then(|shape| shape.representations().get(index));
         self.fill_only = rep.is_some_and(|rep| {
-            crate::router::annotation::is_fill_only_representation(self.element, rep)
+            crate::router::annotation::is_fill_only_representation(self.element.as_ref(), rep)
         });
         self.items = items.into_iter();
         self.advance()
@@ -169,7 +169,7 @@ impl<'a> ProductControl<'a> {
             return Action::Raw(item);
         }
         let next = self.shape.as_ref().and_then(|shape| {
-            shape.next_selected(self.element, Select::Meshed, self.direct, self.next_rep)
+            shape.next_selected(self.element.as_ref(), Select::Meshed, self.direct, self.next_rep)
         });
         match next {
             Some(index) => {

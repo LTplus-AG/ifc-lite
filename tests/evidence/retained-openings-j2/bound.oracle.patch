@@ -1,0 +1,10 @@
+--- a/rust/geometry/src/program/retained/voids.rs
++++ b/rust/geometry/src/program/retained/voids.rs
+@@ -65,6 +65,7 @@
+         -> std::result::Result<VoidReply, ProgramError> {
+         if let Some(child) = &mut self.child { return child.execute(router, decoder).map(VoidReply::Child); }
+         let result = (|| {
++            self.selection.charge().map_err(crate::Error::ProgramStopped)?;
+             let id = *self.ids.get(self.selected).ok_or_else(|| crate::Error::geometry("opening cursor"))?;
+             let entity = decoder.decode_by_id(id)?;
+             if entity.id != id || !entity.ifc_type.is_subtype_of(IfcType::IfcOpeningElement) {

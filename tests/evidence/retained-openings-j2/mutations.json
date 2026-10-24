@@ -1,0 +1,26 @@
+[
+  {
+    "id": "bound",
+    "patch": "tests/evidence/retained-openings-j2/bound.oracle.patch",
+    "test": "program::retained::voids::tests::j2_opening_work_bound_precedes_reached_decode",
+    "assertionMarker": "J2_BOUND_BEFORE_DECODE",
+    "intendedFailure": "J2_BOUND_BEFORE_DECODE",
+    "package": "ifc-lite-geometry"
+  },
+  {
+    "id": "report",
+    "patch": "tests/evidence/retained-openings-j2/report.oracle.patch",
+    "test": "program::retained::voids::tests::j2_opening_work_refusal_is_reported",
+    "assertionMarker": "J2_BOUND_REPORT",
+    "intendedFailure": "J2_BOUND_REPORT",
+    "package": "ifc-lite-geometry"
+  },
+  {
+    "id": "effects",
+    "patch": "tests/evidence/retained-openings-j2/effects.oracle.patch",
+    "test": "element::session_retained::opening_tests::j2_sdk_cancel_after_first_and_last_cut_never_publishes_effects",
+    "assertionMarker": "J2_EFFECT_ISOLATION",
+    "intendedFailure": "J2_EFFECT_ISOLATION",
+    "package": "ifc-lite-processing"
+  }
+]

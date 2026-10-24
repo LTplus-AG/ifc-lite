@@ -55,6 +55,7 @@ enum Body {
 
 /// A completed product walk's output.
 pub(super) enum ProductOutput {
+    RetainedVoided(Vec<LogicalRetainedValue>, RetainedSelection, crate::program::RetainedOpeningCompletion),
     Parts(Vec<Mesh>),
     Styled(SubMeshCollection),
     Retained(Vec<LogicalRetainedValue>, RetainedSelection),
@@ -167,7 +168,7 @@ enum Child<'a> {
 
 pub(super) struct ProductControl<'a> {
     retained: Option<RetainedSelection>,
-    element: &'a DecodedEntity,
+    element: std::borrow::Cow<'a, DecodedEntity>,
     hygiene: SourceHygiene,
     /// `None` for the merged walk.
     styled: Option<Styled<'a>>,
@@ -184,7 +185,7 @@ pub(super) struct ProductControl<'a> {
 }
 
 impl<'a> ProductControl<'a> {
-    fn new(element: &'a DecodedEntity, hygiene: SourceHygiene, styled: Option<Styled<'a>>) -> Self {
+    fn new(element: std::borrow::Cow<'a, DecodedEntity>, hygiene: SourceHygiene, styled: Option<Styled<'a>>) -> Self {
         let sink = match styled {
             None => Sink::Merged(Box::default()),
             Some(_) => Sink::Styled(SubMeshCollection::new()),
@@ -216,13 +217,13 @@ impl<'a> ProductControl<'a> {
 
     /// The merged walk: body items combined into frame parts (#6349).
     pub(super) fn merged(element: &'a DecodedEntity, hygiene: SourceHygiene) -> Self {
-        Self::new(element, hygiene, None)
+        Self::new(std::borrow::Cow::Borrowed(element), hygiene, None)
     }
 
     /// The styled walk: one sub-mesh per item, under its geometry id.
     pub(super) fn styled(element: &'a DecodedEntity, allow_instancing: bool, textures: Textures<'a>,
         hygiene: SourceHygiene) -> Self {
-        Self::new(element, hygiene, Some(Styled { allow_instancing, textures }))
+        Self::new(std::borrow::Cow::Borrowed(element), hygiene, Some(Styled { allow_instancing, textures }))
     }
 
     pub(super) fn stage(&self) -> std::result::Result<Option<ProgramStage>, ProgramError> {
@@ -250,7 +251,7 @@ impl<'a> ProductControl<'a> {
     pub(super) fn execute(&mut self, router: &GeometryRouter, decoder: &mut EntityDecoder)
         -> std::result::Result<ProductReply, ProgramError> {
         // Source steps keep their action in place: the accept consumes it.
-        let (element, styled) = (self.element, self.styled);
+        let (element, styled) = (self.element.as_ref(), self.styled);
         match &mut self.action {
             Action::Item { item, control } => return control.execute(item, router, decoder).map(ProductReply::Item),
             Action::Alignment => return Ok(ProductReply::Alignment(router.alignment_mesh(element, decoder))),

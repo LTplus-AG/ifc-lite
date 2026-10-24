@@ -1,0 +1,10 @@
+--- a/rust/geometry/src/program/retained/voids.rs
++++ b/rust/geometry/src/program/retained/voids.rs
+@@ -168,7 +168,6 @@
+                 }
+             },
+             VoidReply::Cut(value, cut) => {
+-                router.record_void_consumed_host(self.product);
+                 if value.evaluated_empty().is_none() { return Err(crate::Error::geometry("unauthenticated opening outcome")); }
+                 crate::resource::reserve_headers(&mut self.cuts, 1)?.retain();
+                 self.cuts.push(cut);

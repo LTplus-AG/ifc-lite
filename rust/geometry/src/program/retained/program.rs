@@ -55,6 +55,7 @@ impl<'a> RetainedProgram<'a> {
     }
     fn selection(&self) -> Option<&RetainedSelection> {
         match &self.inner.control {
+            Control::RetainedVoids(control) => Some(control.selection()),
             Control::Product(control) => control.retained_selection(),
             Control::Mapping(control) => control.retained_selection(),
             _ => None,
@@ -108,6 +109,7 @@ impl<'a> RetainedProgram<'a> {
             selection.charge().map_err(RetainedProgramError::Stopped)?;
         }
         let retained = match &self.inner.control {
+            Control::RetainedVoids(control) => control.retained_ready(),
             Control::Product(control) => control.retained_ready(),
             Control::Mapping(control) => control.retained_ready(),
             _ => false,
@@ -126,6 +128,10 @@ impl<'a> RetainedProgram<'a> {
             _ => return Err(RetainedProgramError::StaleRequest),
         }
         let (value, operations) = match &mut self.inner.control {
+            Control::RetainedVoids(control) => {
+                let (reply, operations) = control.admit()?;
+                (ReplyValue::RetainedVoids(reply), operations)
+            }
             Control::Product(control) => {
                 let (reply, operation) = control.admit_retained()?;
                 (ReplyValue::Product(reply), operation)
@@ -218,6 +224,7 @@ impl<'a> RetainedProgram<'a> {
                 }
                 Ok(RetainedProductPlan {
                     values,
+                    opening_completion: None,
                     remaining: vec![RetainedRequirement::ProductPlacement,
                         RetainedRequirement::OpeningClosure, RetainedRequirement::MaterialLayers,
                         RetainedRequirement::IfcAppearance, RetainedRequirement::PersistentFaces],
@@ -232,12 +239,19 @@ impl<'a> RetainedProgram<'a> {
             other => Error::geometry(format!("{other:?}")),
         })?;
         match self.inner.finish_output()? {
+            Output::Product(ProductOutput::RetainedVoided(values, selection, completion)) => {
+                let _ = selection.program();
+                Ok(RetainedProductPlan { values, opening_completion: Some(completion),
+                    remaining: vec![RetainedRequirement::OpeningClosure, RetainedRequirement::MaterialLayers,
+                        RetainedRequirement::IfcAppearance, RetainedRequirement::PersistentFaces] })
+            }
             Output::Product(ProductOutput::Retained(values, selection))
                 if values.iter().all(|v| v.is_product_placed()) =>
             {
                 let _ = selection.program();
                 Ok(RetainedProductPlan {
                     values,
+                    opening_completion: None,
                     // Construction and placement do not inspect or discharge
                     // relationships, appearance, or persistent face identity.
                     remaining: vec![
@@ -271,6 +285,18 @@ impl RetainedTraversal {
     }
     pub fn new(contract: RetainedContract) -> Self {
         Self { selection: RetainedSelection::new(contract,next_program_id()) }
+    }
+    pub fn voided_product<'a>(&self, element: &'a DecodedEntity, ids: &'a [u32]) -> RetainedProgram<'a> {
+        let Some(selection) = self.selection.clone() else { return self.product_parts(element); };
+        let control = match crate::program::retained::voids::RetainedVoids::new(element, ids, selection.clone()) {
+            Ok(control) => control,
+            Err(Error::ProgramStopped(stop)) => {
+                selection.remember_stop(stop);
+                return self.product_parts(element);
+            }
+            Err(_) => { let mut program = self.product_parts(element); program.cancel(); return program; }
+        };
+        RetainedProgram { inner: GeometryProgram::with_control(Control::RetainedVoids(Box::new(control))), cancelled: false }
     }
     pub fn product_parts<'a>(&self, element: &'a DecodedEntity) -> RetainedProgram<'a> {
         let id = next_program_id();

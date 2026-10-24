@@ -31,6 +31,12 @@ impl<'a> ProductControl<'a> {
             control
         }
     }
+    pub(in crate::program) fn retained_owned(element: DecodedEntity, selection: RetainedSelection) -> Self {
+        let mut control = Self::new(std::borrow::Cow::Owned(element), SourceHygiene::IndexOnly, None);
+        control.retained = Some(selection.clone());
+        control.body = Body::Sink(Sink::Retained(Vec::new(), selection));
+        control
+    }
     pub(super) fn retained_item(&mut self, item: DecodedEntity) -> Action {
         let Some(selection) = &self.retained else {
             return Action::Taken;

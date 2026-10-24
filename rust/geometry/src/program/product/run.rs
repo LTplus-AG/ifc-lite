@@ -13,7 +13,8 @@ impl ProductControl<'_> {
     /// acceptance, never through a reply that the walk would then move.
     pub(in crate::program) fn run(&mut self, router: &GeometryRouter, decoder: &mut EntityDecoder)
         -> std::result::Result<(), ProgramError> {
-        let element = self.element;
+        let element_owner = self.element.clone();
+        let element = element_owner.as_ref();
         loop {
             let next = match &mut self.action {
                 Action::Item { .. } => return Err(ProgramError::UnsupportedRetained),

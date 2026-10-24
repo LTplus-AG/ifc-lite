@@ -29,6 +29,7 @@ pub(crate) struct GeometryProgram<'a> {
 }
 
 enum Control<'a> {
+    RetainedVoids(Box<super::retained::voids::RetainedVoids<'a>>),
     /// A bare item program: production items run inside the cache or mapping
     /// controller, so only the item-protocol tests construct one.
     #[cfg_attr(not(test), allow(dead_code))]
@@ -82,6 +83,7 @@ pub(crate) enum ProgramError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Payload {
     Item,
+    RetainedVoids(u8),
     Cache(u8),
     Mapping(u8),
     Product(u8),
@@ -95,6 +97,7 @@ pub(crate) struct ProgramReply {
     value: ReplyValue,
 }
 enum ReplyValue {
+    RetainedVoids(super::retained::voids::VoidReply),
     Item(ItemStep),
     Cache(CacheReply),
     Mapping(MappingReply),
@@ -106,6 +109,7 @@ enum ReplyValue {
 impl ReplyValue {
     fn tag(&self) -> Payload {
         match self {
+            Self::RetainedVoids(reply) => Payload::RetainedVoids(reply.tag()),
             Self::Item(_) => Payload::Item,
             Self::Cache(reply) => Payload::Cache(reply.tag()),
             Self::Mapping(reply) => Payload::Mapping(reply.tag()),
@@ -145,6 +149,7 @@ impl<'a> GeometryProgram<'a> {
             return Err(ProgramError::Outstanding);
         }
         let stage = match &self.control {
+            Control::RetainedVoids(control) => control.stage()?,
             Control::Item(_, control) => control.stage()?,
             Control::Cache(_, control) => control.stage()?,
             Control::Mapping(control) => control.stage()?,
@@ -192,6 +197,7 @@ impl<'a> GeometryProgram<'a> {
         // cannot replay work after its recipe was moved into a lexical call.
         self.pending = Some((request, true));
         let value = match &mut self.control {
+            Control::RetainedVoids(control) => ReplyValue::RetainedVoids(control.execute(router, decoder)?),
             Control::Item(item, control) => ReplyValue::Item(control.execute(item, router, decoder)?),
             Control::Cache(item, control) => ReplyValue::Cache(control.execute(item, router, decoder)?),
             Control::Mapping(control) => ReplyValue::Mapping(control.execute(router, decoder)?),
@@ -233,6 +239,7 @@ impl<'a> GeometryProgram<'a> {
         }
         let request = reply.request;
         match (&mut self.control, reply.value) {
+            (Control::RetainedVoids(control), ReplyValue::RetainedVoids(reply)) => control.accept(reply, router),
             (Control::Item(_, control), ReplyValue::Item(step)) => control.accept(step, router),
             (Control::Cache(item, control), ReplyValue::Cache(reply)) => control.accept(item, reply, router),
             (Control::Mapping(control), ReplyValue::Mapping(reply)) => control.accept(reply, router),
@@ -254,6 +261,7 @@ impl<'a> GeometryProgram<'a> {
     fn finish_output(mut self) -> Result<Output> {
         let result = match &mut self.control {
             _ if self.pending.is_some() => None,
+            Control::RetainedVoids(control) => control.take_result().map(|result| result.map(Output::Product)),
             Control::Item(_, control) => control.take_result().map(|result| result.map(Output::Mesh)),
             Control::Cache(_, control) => control.take_result().map(|result| result.map(Output::Mesh)),
             Control::Mapping(control) => control.take_result().map(|result| result.map(Output::Mapping)),
@@ -365,29 +373,9 @@ fn program_error(error: ProgramError) -> Error {
     Error::geometry(format!("geometry program protocol: {error:?}"))
 }
 
-/// Process-unique program identity without a shared atomic per item: each
-/// thread reserves a block of identities and hands them out locally.
-fn next_program_id() -> u64 {
-    use std::cell::Cell;
-    use std::sync::atomic::{AtomicU64, Ordering};
-    const BLOCK: u64 = 1 << 20;
-    static NEXT_BLOCK: AtomicU64 = AtomicU64::new(1);
-    thread_local! {
-        static RANGE: Cell<(u64, u64)> = const { Cell::new((0, 0)) };
-    }
-    RANGE
-        .try_with(|range| {
-            let (mut next, mut end) = range.get();
-            if next == end {
-                next = NEXT_BLOCK.fetch_add(BLOCK, Ordering::Relaxed);
-                end = next.wrapping_add(BLOCK);
-            }
-            range.set((next.wrapping_add(1), end));
-            next
-        })
-        // Thread teardown: fall back to one identity from a fresh shared block.
-        .unwrap_or_else(|_| NEXT_BLOCK.fetch_add(BLOCK, Ordering::Relaxed))
-}
+#[path = "inner_identity.rs"]
+mod identity;
+use identity::next_program_id;
 
 #[path = "retained/program.rs"]
 pub(super) mod retained_program;

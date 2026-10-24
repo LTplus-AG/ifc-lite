@@ -6,6 +6,6 @@
      // the patches leave its inputs as they are (see the combined pass below).
 -    let gating = delete::resolve_deletes(index, schema, &requested_deletes, &[], &protected, &protected);
 +    let gating = delete::resolve_deletes(index, schema, &requested_deletes, &[], &protected, &feature_keepers);
-     let (gated_requested, gated_protected) = (requested_deletes.clone(), protected.clone());
+     let (gated_requested, gated_protected, gated_keepers) = (requested_deletes.clone(), protected.clone(), feature_keepers.clone());
      // Grows beyond `gating.removed`: a patch's placement rewrite (an old,
      // now-unreferenced axis placement chain) can orphan more records, found

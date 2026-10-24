@@ -1,0 +1,11 @@
+--- a/rust/processing/src/element/session_retained/layers.rs
++++ b/rust/processing/src/element/session_retained/layers.rs
+@@ -69,7 +69,7 @@
+     pub(super) fn validate(&self, context: &OwnedMeshProductionContext, product: u32)
+         -> Result<(), RetainedExecutionError> {
+         context.validate_source().map_err(|_| RetainedExecutionError::Source)?;
+-        if self.product != product {
++        if self.context != context.id() || self.product != product {
+             return Err(RetainedExecutionError::Source);
+         }
+         Ok(())

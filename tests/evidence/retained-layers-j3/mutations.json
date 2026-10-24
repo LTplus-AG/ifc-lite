@@ -1,0 +1,26 @@
+[
+  {
+    "id": "skip-invalid-band",
+    "patch": "tests/evidence/retained-layers-j3/skip-invalid-band.patch",
+    "test": "element::session_retained::layers::tests::j3_source_rejects_malformed_whole_stack_without_skipping_a_band",
+    "assertionMarker": "J3_INVALID_THICKNESS"
+  },
+  {
+    "id": "ignore-direction",
+    "patch": "tests/evidence/retained-layers-j3/ignore-direction.patch",
+    "test": "element::session_retained::layers::tests::j3_source_authored_order_and_units_are_not_visual_merge",
+    "assertionMarker": "J3_DIRECTION_UNITS"
+  },
+  {
+    "id": "flatten-wall-reference",
+    "patch": "tests/evidence/retained-layers-j3/flatten-wall-reference.patch",
+    "test": "element::session_retained::layers::tests::j3_source_curve_reference_is_not_a_planar_y_interface",
+    "assertionMarker": "J3_CURVED_REFERENCE"
+  },
+  {
+    "id": "ignore-source-revision",
+    "patch": "tests/evidence/retained-layers-j3/ignore-source-revision.patch",
+    "test": "element::session_retained::layers::tests::j3_source_context_and_budget_are_authority_not_matching_ids",
+    "assertionMarker": "J3_SOURCE_REVISION"
+  }
+]

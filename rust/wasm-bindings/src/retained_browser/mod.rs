@@ -296,6 +296,8 @@ mod clip_tests;
 #[cfg(all(test, target_arch = "wasm32"))]
 mod opening_tests;
 #[cfg(all(test, target_arch = "wasm32"))]
+mod layer_tests;
+#[cfg(all(test, target_arch = "wasm32"))]
 #[path = "../../../processing/src/element/session_retained/opening_witness.rs"]
 mod opening_witness;
 #[cfg(all(test, target_arch = "wasm32"))]

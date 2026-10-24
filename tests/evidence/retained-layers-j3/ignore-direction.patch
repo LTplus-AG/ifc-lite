@@ -1,0 +1,11 @@
+--- a/rust/processing/src/element/session_retained/layers/source.rs
++++ b/rust/processing/src/element/session_retained/layers/source.rs
+@@ -9,7 +9,7 @@
+         Some("AXIS3") => LayerAxis::Axis3, _ => return Err(invalid()),
+     };
+     let direction = match usage.get(2).and_then(AttributeValue::as_enum) {
+-        Some("POSITIVE") => 1., Some("NEGATIVE") => 1., _ => return Err(invalid()),
++        Some("POSITIVE") => 1., Some("NEGATIVE") => -1., _ => return Err(invalid()),
+     };
+     let unit_scale = router.unit_scale();
+     let offset = usage.get_float(3).ok_or_else(invalid)?;

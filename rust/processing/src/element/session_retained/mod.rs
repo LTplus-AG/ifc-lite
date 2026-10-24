@@ -292,3 +292,6 @@ impl<R: NumericalReceipt> Drop for RuntimeProductExecution<'_, R> {
 mod opening_tests;
 #[cfg(all(test, feature = "retained-native", not(target_arch = "wasm32")))]
 mod opening_witness;
+
+#[cfg(all(test, feature = "retained-native", not(target_arch = "wasm32")))]
+mod layer_tests;

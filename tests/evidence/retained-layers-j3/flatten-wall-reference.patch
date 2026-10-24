@@ -1,0 +1,9 @@
+--- a/rust/processing/src/element/session_retained/layers/source.rs
++++ b/rust/processing/src/element/session_retained/layers/source.rs
+@@ -80,5 +80,5 @@
+         axis_reference = Some(RetainedLayerReference::WallAxis {
+             representation_id: representation.id, curve_id: curve.id });
+     }
+-    axis_reference.map(|_| RetainedLayerReference::ProductAxis(axis)).ok_or_else(invalid)
++    axis_reference.ok_or_else(invalid)
+ }

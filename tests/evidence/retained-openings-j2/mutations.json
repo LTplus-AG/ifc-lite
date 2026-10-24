@@ -86,5 +86,21 @@
     "assertionMarker": "J2_VECTOR_COMPLETE",
     "intendedFailure": "J2_VECTOR_COMPLETE",
     "package": "ifc-lite-processing"
+  },
+  {
+    "id": "record-consumption",
+    "patch": "tests/evidence/retained-openings-j2/record-consumption.oracle.patch",
+    "test": "element::session_retained::removal_record_tests::j2_source_records_and_nested_values_require_complete_authority",
+    "assertionMarker": "J2_RECORD_COMPLETE",
+    "intendedFailure": "J2_RECORD_COMPLETE",
+    "package": "ifc-lite-processing"
+  },
+  {
+    "id": "body-list-consumption",
+    "patch": "tests/evidence/retained-openings-j2/body-list-consumption.oracle.patch",
+    "test": "element::session_retained::removal_record_tests::j2_body_membership_rejects_record_and_nested_list_tails",
+    "assertionMarker": "J2_RECORD_COMPLETE",
+    "intendedFailure": "J2_RECORD_COMPLETE",
+    "package": "ifc-lite-processing"
   }
 ]

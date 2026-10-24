@@ -1,0 +1,11 @@
+--- a/rust/processing/src/element/session_retained/removal_record.rs
++++ b/rust/processing/src/element/session_retained/removal_record.rs
+@@ -11,7 +11,7 @@
+     let raw = decoder.get_raw_bytes(id).ok_or_else(refused)?;
+     if raw.len() > 4096 { return Err(refused()); }
+     charge(raw.len() as u64 * 16)?;
+-    let record = StepRecord::parse(raw).ok_or_else(refused)?;
++    let record = StepRecord::parse_complete(raw).ok_or_else(refused)?;
+     if record.id() != Some(id) { return Err(refused()); }
+     Ok(record)
+ }

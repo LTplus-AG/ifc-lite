@@ -1,8 +1,8 @@
 --- a/rust/processing/src/element/session_retained/removal_source.rs
 +++ b/rust/processing/src/element/session_retained/removal_source.rs
-@@ -63,10 +63,10 @@
+@@ -66,10 +66,10 @@
              .map_err(RetainedExecutionError::Stopped)?.retain();
-         ids.push(reference(&relation, 5)?);
+         ids.push(opening_id);
      }
 -    if false && context.borrowed().void_index.get(&product).map(Vec::as_slice).unwrap_or(&[]) != ids.as_slice() {
 +    if context.borrowed().void_index.get(&product).map(Vec::as_slice).unwrap_or(&[]) != ids.as_slice() {

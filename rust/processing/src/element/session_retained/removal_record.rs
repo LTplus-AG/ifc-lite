@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
 //! One bounded whole-record admission for every raw/decoded J2 proof read.
 //! Framing is not schema: used references/lists/scalars are checked separately.
+//! The common read covers products, placements, profiles, primitives, vectors,
+//! shape representations and void relations. Only STEP trivia may follow the
+//! argument terminator before the required semicolon, or follow that semicolon
+//! to the supplied indexed span end. This is not a whole-file grammar validator.
+//! Used nested vectors/member lists and strings retain their own full-token
+//! checks; numerical authority remains checked decimal arithmetic. Final output
+//! and consumed-host publication are still refused by the existing gates.
 use super::*;
 use super::removal_source::refused;
 use super::removal_number::charge;

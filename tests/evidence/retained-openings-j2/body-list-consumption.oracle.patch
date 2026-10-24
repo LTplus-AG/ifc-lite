@@ -1,0 +1,11 @@
+--- a/rust/processing/src/element/session_retained/removal_record.rs
++++ b/rust/processing/src/element/session_retained/removal_record.rs
+@@ -29,7 +29,7 @@
+         charge(1)?;
+         parse_ref(item).ok_or_else(refused)?;
+     }
+-    if !items.closed() { return Err(refused()); }
++    if !items.fully_consumed() { return Err(refused()); }
+     Ok(())
+ }
+ /// Representation identifiers influence Body selection, so their complete

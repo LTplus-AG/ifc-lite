@@ -178,12 +178,12 @@ fn from_spans_matches_full_scan_legacy_referenced_case() {
     );
 }
 
-/// #7782: candidate consolidation retains the browser's list-only admission.
-/// Non-reference members are ignored, but a bare reference is not a map list.
+/// #7782: bare RepresentationMaps references and list members admit the same
+/// orphan type job. Empty or non-reference members still admit nothing.
 #[test]
-fn issue_7782_shared_candidates_preserve_map_list_admission() {
+fn issue_7782_shared_candidates_admit_bare_and_list_maps() {
     for source in [ORPHAN, LEGACY_ORPHAN] {
-        for (maps, expected) in [("#10", 0), ("()", 0), ("$", 0), ("(42,$,#10,#10)", 1)] {
+        for (maps, expected) in [("#10", 1), ("()", 0), ("$", 0), ("(42,$,#10,#10)", 1)] {
             let content = source.replace("(#10)", maps);
             assert_eq!(assert_match(content.as_bytes()), expected, "maps={maps}");
         }

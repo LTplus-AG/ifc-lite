@@ -50,7 +50,8 @@ void owned_copy_tessellation() {
     }
     const double affine[16]={2,0,0,0,0,3,0,0,0,0,4,0,0,0,0,1};
     const double plane[6]={1,0,0,1,0,0};
-    refused([&] { auto unavailable=copy.affine(affine); });
+    auto transformed=copy.affine(affine);
+    require(transformed.faces().size()==6,"owned affine preserves full boundary inventory");
     refused([&] { auto unavailable=copy.boolean(source,IFCLITE_SMLIB_UNION); });
     refused([&] { auto unavailable=copy.clip(plane,1,IFCLITE_SMLIB_INTERSECTION); });
     require(source.faces()==before && copy.faces()==copied,"refused operations preserve both owned inputs");

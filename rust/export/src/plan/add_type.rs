@@ -17,53 +17,25 @@ use ifc_lite_core::entity_info_for_schema;
 use crate::step_ids::IdAllocator;
 use crate::step_text::escape;
 
-use super::super::add_props::{build_sets, validate_psets};
+use super::super::add_props::build_sets;
 use super::super::add_rels::{RelKind, RelRequest};
-use super::super::add_types::{GlobalId, NewObject, NewType};
+use super::super::add_types::{GlobalId, NewType};
 use super::super::props_synth::{ref_list, ref_or_unset};
 use super::super::tessellation::Emit;
 use super::super::types::ObjectRef;
 use super::assoc::Shared;
 use super::units::build_units;
-use super::{require_filled, Added, AddState};
-
-/// One Add of a plan, in plan order: an object, or a type on its own.
-#[derive(Clone, Copy)]
-pub(crate) enum AddItem<'p> {
-    Object(&'p NewObject),
-    Type(&'p NewType),
-}
-
-impl<'p> AddItem<'p> {
-    /// Every existing record this Add names.
-    pub(crate) fn references(self) -> Vec<&'p ObjectRef> {
-        match self {
-            AddItem::Object(o) => o.references().collect(),
-            AddItem::Type(t) => t.references().collect(),
-        }
-    }
-}
+use super::{require_filled, AddState};
 
 impl AddState<'_> {
     /// Build a type on its own, or refuse it whole.
     pub(super) fn add_type(&mut self, key: &ObjectRef, t: &NewType, ids: &mut IdAllocator) -> Result<(), String> {
         let gid = t.global_id.ok_or("a type added on its own needs its own GlobalId")?;
-        let encoded = gid.encode();
-        self.check_new_identity(key, &encoded)?;
-        let (class, predefined) = self.check_class(&t.class, "IFCTYPEPRODUCT")?;
-        validate_psets(self.schema, &t.psets)?;
-        let units = self.check_units(&t.psets)?;
-        let project = match entity_info_for_schema(self.schema, "IFCRELDECLARES") {
-            None => None,
-            Some(_) => Some(
-                self.index
-                    .projects
-                    .iter()
-                    .copied()
-                    .find(|id| !self.removed.contains(id))
-                    .ok_or("the file has no IfcProject to declare the type to")?,
-            ),
-        };
+        self.check_new_identity(key, &gid.encode())?;
+        let (class, predefined, units) = self.check_new_type(t)?;
+        let project = entity_info_for_schema(self.schema, "IFCRELDECLARES")
+            .map(|_| self.live_project().ok_or("the file has no IfcProject to declare the type to"))
+            .transpose()?;
 
         let mut out = Vec::new();
         let owner_history = self.owner_history_for(ids, &mut out)?;
@@ -73,14 +45,11 @@ impl AddState<'_> {
         let id = build_new_type(&mut emit, t, gid, (&class, &predefined), &units, Some(owner_history))?;
         let pending = shared.pending;
 
-        self.owner_history = Some(owner_history);
-        self.records.extend(out);
-        self.shared.extend(pending);
+        self.commit(owner_history, out, pending);
         if let Some(project) = project {
             self.rels.relate(self.schema, RelRequest { kind: RelKind::Declares, relating: project, related: id, seed: gid });
         }
-        self.placement_of_added.insert(id, None);
-        self.added.insert(encoded, Added { id, class });
+        self.register_type(id, gid, class);
         Ok(())
     }
 }

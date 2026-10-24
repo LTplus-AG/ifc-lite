@@ -195,6 +195,14 @@ pub struct NewType {
     pub psets: Vec<NewPropertySet>,
 }
 
+/// Every unit record the values of `psets` name.
+fn unit_refs(psets: &[NewPropertySet]) -> impl Iterator<Item = &ObjectRef> {
+    psets.iter().flat_map(|s| &s.properties).filter_map(|p| match &p.unit {
+        Some(ValueUnit::Existing(r)) => Some(r),
+        _ => None,
+    })
+}
+
 impl NewType {
     /// The GlobalIds a type added on its own names: its own and each unit
     /// named by GlobalId.
@@ -209,10 +217,7 @@ impl NewType {
 
     /// Every existing record this type names: the units of its values.
     pub(crate) fn references(&self) -> impl Iterator<Item = &ObjectRef> {
-        self.psets.iter().flat_map(|s| &s.properties).filter_map(|p| match &p.unit {
-            Some(ValueUnit::Existing(r)) => Some(r),
-            _ => None,
-        })
+        unit_refs(&self.psets)
     }
 
     /// The GlobalId this type is written with when `occurrence` creates it.
@@ -283,14 +288,11 @@ impl NewObject {
             Some(TypeLink::Existing(r)) => Some(r),
             _ => None,
         };
-        let type_sets = match &self.type_link {
-            Some(TypeLink::New(t)) => t.psets.as_slice(),
-            _ => &[],
-        };
-        let units = self.psets.iter().chain(type_sets).flat_map(|s| &s.properties).filter_map(|p| match &p.unit {
-            Some(ValueUnit::Existing(r)) => Some(r),
+        let new_type = match &self.type_link {
+            Some(TypeLink::New(t)) => Some(t),
             _ => None,
-        });
+        };
+        let units = unit_refs(&self.psets).chain(new_type.into_iter().flat_map(NewType::references));
         let material = match &self.material {
             Some(MaterialLink::Existing(r)) => Some(r),
             _ => None,
@@ -331,5 +333,22 @@ impl NewObject {
             ObjectRef::Id(_) => None,
         }));
         out
+    }
+}
+
+/// One Add of a plan, in plan order: an object, or a type on its own.
+#[derive(Clone, Copy)]
+pub(crate) enum AddItem<'p> {
+    Object(&'p NewObject),
+    Type(&'p NewType),
+}
+
+impl<'p> AddItem<'p> {
+    /// Every existing record this Add names.
+    pub(crate) fn references(self) -> Vec<&'p ObjectRef> {
+        match self {
+            AddItem::Object(o) => o.references().collect(),
+            AddItem::Type(t) => t.references().collect(),
+        }
     }
 }

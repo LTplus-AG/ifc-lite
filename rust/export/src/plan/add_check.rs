@@ -9,7 +9,7 @@ use crate::plan::add_profile::validate_extrusion;
 use crate::plan::tessellation::{validate_colour, validate_mesh};
 use crate::plan::add_props::validate_psets;
 use crate::plan::add_rels::RelKind;
-use crate::plan::add_types::{ClassSpec, NewObject, Representation, TypeLink};
+use crate::plan::add_types::{ClassSpec, NewObject, NewType, Representation, TypeLink};
 use crate::plan::attrs::attribute_index;
 use crate::plan::types::ObjectRef;
 use super::assoc::{CheckedClassification, CheckedMaterial};
@@ -136,16 +136,28 @@ impl AddState<'_> {
                 return Err(format!("key {g} does not match the Add's GlobalId {encoded}"));
             }
         }
-        let in_source = self.index.resolve(&ObjectRef::Guid(encoded.to_string()));
-        if in_source.is_some_and(|id| live_in_source(&id)) || self.added.contains_key(encoded) {
+        if self.gid_in_use(encoded) {
             return Err(format!("GlobalId {encoded} is already in use"));
         }
         Ok(())
     }
 
+    /// Whether a live source record or an earlier Add carries `encoded`.
+    fn gid_in_use(&self, encoded: &str) -> bool {
+        let in_source = self.index.resolve(&ObjectRef::Guid(encoded.to_string()));
+        in_source.is_some_and(|id| !self.removed.contains(&id)) || self.added.contains_key(encoded)
+    }
+
+    /// A new type's class, `PredefinedType` and value units, checked the same
+    /// way whether it comes with an occurrence or on its own.
+    pub(super) fn check_new_type(&self, t: &NewType) -> Result<(String, Option<String>, CheckedUnits), String> {
+        validate_psets(self.schema, &t.psets)?;
+        let (class, predefined) = self.check_class(&t.class, "IFCTYPEPRODUCT")?;
+        Ok((class, predefined, self.check_units(&t.psets)?))
+    }
+
     pub(super) fn check(&self, key: &ObjectRef, obj: &NewObject) -> Result<Checked, String> {
         let encoded = obj.global_id.encode();
-        let live_in_source = |id: &u32| !self.removed.contains(id);
         self.check_new_identity(key, &encoded)?;
 
         let (class, predefined) = self.check_class(&obj.class, "IFCPRODUCT")?;
@@ -198,18 +210,16 @@ impl AddState<'_> {
                 (Some(id), None)
             }
             Some(TypeLink::New(t)) => {
-                validate_psets(self.schema, &t.psets)?;
                 let type_gid = t.global_id_for(obj.global_id).encode();
                 if type_gid == encoded {
                     return Err("a new type cannot share its occurrence's GlobalId".into());
                 }
-                let in_source = self.index.resolve(&ObjectRef::Guid(type_gid.clone()));
-                if in_source.is_some_and(|id| live_in_source(&id)) || self.added.contains_key(&type_gid) {
+                if self.gid_in_use(&type_gid) {
                     return Err(format!("GlobalId {type_gid} for the new type is already in use"));
                 }
-                let (type_class, predefined) = self.check_class(&t.class, "IFCTYPEPRODUCT")?;
-                self.check_type_pairing(&class, &type_class, "new type")?;
-                (None, Some((type_class, predefined, self.check_units(&t.psets)?)))
+                let checked = self.check_new_type(t)?;
+                self.check_type_pairing(&class, &checked.0, "new type")?;
+                (None, Some(checked))
             }
         };
 

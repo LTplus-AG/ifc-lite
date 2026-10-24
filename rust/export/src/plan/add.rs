@@ -22,7 +22,7 @@ use crate::step_ids::IdAllocator;
 use super::add_geometry::product_shape;
 use super::add_props::build_sets;
 use super::add_rels::{RelAccumulator, RelKind, RelRequest};
-use super::add_types::{NewObject, Representation, TypeLink};
+use super::add_types::{AddItem, GlobalId, NewObject, Representation, TypeLink};
 use super::attrs::{attribute_index, unset_required};
 use super::index::FileIndex;
 use super::owner_history;
@@ -111,17 +111,14 @@ impl<'a> AddState<'a> {
         let new_context = match built.new_context {
             None => None,
             Some(context) => {
-                let project = self.index.projects.iter().copied().find(|id| !self.removed.contains(id));
-                match (project, attribute_index(self.schema, "IFCPROJECT", "RepresentationContexts")) {
+                match (self.live_project(), attribute_index(self.schema, "IFCPROJECT", "RepresentationContexts")) {
                     (Some(project), Some(idx)) => Some((context, project, idx)),
                     _ => return Err("the file has no IfcProject to own a new representation context".into()),
                 }
             }
         };
 
-        self.owner_history = Some(owner_history);
-        self.records.extend(out);
-        self.shared.extend(built.shared);
+        self.commit(owner_history, out, built.shared);
         for req in requests {
             self.rels.relate(self.schema, req);
         }
@@ -133,10 +130,28 @@ impl<'a> AddState<'a> {
         self.placement_of_added.insert(built.object, Some(built.placement));
         self.added.insert(gid.encode(), Added { id: built.object, class: checked.class });
         if let (Some(type_id), Some((class, _, _)), Some(TypeLink::New(t))) = (built.new_type, checked.new_type, &obj.type_link) {
-            self.placement_of_added.insert(type_id, None);
-            self.added.insert(t.global_id_for(gid).encode(), Added { id: type_id, class });
+            self.register_type(type_id, t.global_id_for(gid), class);
         }
         Ok(())
+    }
+
+    /// The first IfcProject the plan keeps.
+    fn live_project(&self) -> Option<u32> {
+        self.index.projects.iter().copied().find(|id| !self.removed.contains(id))
+    }
+
+    /// Keep what an Add built: its records, the owner history they name, and
+    /// the shared records later Adds may reuse.
+    fn commit(&mut self, owner_history: u32, out: Vec<(u32, String)>, shared: HashMap<SharedKey, u32>) {
+        self.owner_history = Some(owner_history);
+        self.records.extend(out);
+        self.shared.extend(shared);
+    }
+
+    /// A new type, as later Adds see it: by GlobalId, with no placement.
+    fn register_type(&mut self, id: u32, global_id: GlobalId, class: String) {
+        self.placement_of_added.insert(id, None);
+        self.added.insert(global_id.encode(), Added { id, class });
     }
 
     /// Build every Add, returning how many were written. The relationships of
@@ -355,7 +370,6 @@ mod units;
 
 #[path = "add_type.rs"]
 mod standalone_type;
-pub(crate) use standalone_type::AddItem;
 use standalone_type::build_new_type;
 
 #[cfg(test)]

@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::step_ids::IdAllocator;
 use super::index::FileIndex;
-use super::add::AddItem;
+use super::add_types::AddItem;
 use super::patch::{apply_patch, PatchOutput};
 use super::types::{Disposition, DroppedRepresentation, ExportPlan, ObjectRef, Refusal};
 use super::{add, attrs, delete, geometry, owner_history};

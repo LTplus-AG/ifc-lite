@@ -8,7 +8,7 @@
 //! common IFC entities (IfcAxis2Placement3D, IfcCartesianPoint, IfcDirection, etc.).
 
 use crate::placement::Axis2Placement;
-use crate::{Point3, Result, Vector3};
+use crate::{Point3, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
 
@@ -114,11 +114,4 @@ pub(super) fn get_axis2_placement_transform_by_id(
     decoder: &mut EntityDecoder,
 ) -> Result<Matrix4<f64>> {
     Ok(Axis2Placement::read_id(placement_id, decoder)?.matrix())
-}
-
-/// Get direction vector from an `IfcDirection` by ID, under the leaf rule
-/// ([`EntityDecoder::direction3`]): the type is checked, 2 or 3 finite
-/// ratios are read, anything else is refused and counted. Raw, not normalised.
-pub(super) fn get_direction_by_id(dir_id: u32, decoder: &mut EntityDecoder) -> Result<Vector3<f64>> {
-    Ok(Vector3::from(decoder.direction3(dir_id)?))
 }

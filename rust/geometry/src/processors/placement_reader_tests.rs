@@ -212,10 +212,10 @@ fn the_shared_helpers_refuse_an_unreadable_placement_or_direction() {
     assert!(helpers::get_axis2_placement_transform_by_id(4, &mut decoder).is_err());
     let m = helpers::get_axis2_placement_transform_by_id(5, &mut decoder).expect("control");
     assert_eq!((m[(0, 3)], m[(1, 3)], m[(2, 3)]), (1.0, 2.0, 3.0));
-    // Base: no type check, so a point read as a direction `(1,2,3)`.
-    // (`Option` on base, `Result` now; both iterate to nothing on a refusal.)
-    assert!(helpers::get_direction_by_id(1, &mut decoder).into_iter().next().is_none());
-    assert_eq!(helpers::get_direction_by_id(2, &mut decoder).into_iter().next().unwrap().z, 1.0);
+    // Base: `get_direction_by_id` had no type check, so a point read as a
+    // direction `(1,2,3)`. Its one caller now reads through the leaf reader.
+    assert!(decoder.direction3(1).is_err());
+    assert_eq!(decoder.direction3(2).expect("control")[2], 1.0);
 }
 
 fn profiled(position: &str) -> String {

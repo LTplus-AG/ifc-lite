@@ -123,11 +123,19 @@ fn parse_extrusion(
         vector[index] = ratio.as_float().ok_or("ExtrudedDirection has invalid ratio")?;
     }
     result.direction_ratios = Some(vector);
-    let norm = vector[0].hypot(vector[1]).hypot(vector[2]);
+    // Finite ratios whose length overflows (`(1.7E308,0.,1.7E308)`) are
+    // rescaled first, as `ExtrusionParams::decode` does for the mesh, so the
+    // two agree; a finite norm is kept bit for bit.
+    let length = |v: [f64; 3]| v[0].hypot(v[1]).hypot(v[2]);
+    let mut axis = vector;
+    if length(axis) == f64::INFINITY {
+        axis = crate::math::v3::unoverflowed(axis);
+    }
+    let norm = length(axis);
     if !norm.is_finite() || norm <= 0.0 {
         return Err("ExtrudedDirection is non-finite or zero".into());
     }
-    let unit_axis = vector.map(|value| value / norm);
+    let unit_axis = axis.map(|value| value / norm);
     // IFC ValidExtrusionDirection: the sweep must not be perpendicular to the
     // local Z axis of IfcSweptAreaSolid.Position.
     if unit_axis[2] == 0.0 {

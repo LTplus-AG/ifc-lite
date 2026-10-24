@@ -6,7 +6,8 @@
 //! is read whole by `Axis1Placement::read`. Base swallowed every part with
 //! `.ok()`, so an unreadable Location revolved about the origin and an
 //! unreadable Axis about +Z; both now refuse the face and count the record.
-//! A `$` Axis keeps the IFC derived default +Z (§3.12), as on base.
+//! A `$` Axis keeps the IFC derived default +Z (§3.12), as on base. A `$`
+//! AxisPosition, which is mandatory, refuses the face too.
 
 use ifc_lite_core::{build_entity_index, EntityDecoder};
 use ifc_lite_geometry::{GeometryRouter, Mesh};
@@ -42,7 +43,11 @@ fn revolved_quarter(axis: &str) -> String {
 
 /// The brep's positions (empty for an `Err`) and the decoder's refusal count.
 fn process(axis: &str) -> (Vec<f32>, u64) {
-    let content = wrap(&revolved_quarter(axis));
+    process_data(&revolved_quarter(axis))
+}
+
+fn process_data(data: &str) -> (Vec<f32>, u64) {
+    let content = wrap(data);
     let index = build_entity_index(&content);
     let mut decoder = EntityDecoder::with_index(&content, index);
     let router = GeometryRouter::new();
@@ -75,5 +80,19 @@ fn an_unreadable_revolution_axis_position_refuses_the_face_and_counts() {
         let (positions, refused) = process(axis);
         assert!(positions.is_empty(), "{axis}: an unreadable AxisPosition must refuse the face");
         assert_eq!(refused, 1, "{axis}");
+    }
+}
+
+#[test]
+fn a_missing_revolution_axis_position_refuses_the_face_and_counts() {
+    let control = revolved_quarter("IFCAXIS1PLACEMENT(#12,#14)");
+    let surface = "#10=IFCSURFACEOFREVOLUTION(#13,$,#11);";
+    assert!(control.contains(surface));
+    // Base and r1: origin and +Z, the same surface as the control.
+    for axis_position in ["$", "*", "1."] {
+        let data = control.replace(surface, &format!("#10=IFCSURFACEOFREVOLUTION(#13,$,{axis_position});"));
+        let (positions, refused) = process_data(&data);
+        assert!(positions.is_empty(), "{axis_position}: a missing AxisPosition must refuse the face");
+        assert_eq!(refused, 1, "{axis_position}");
     }
 }

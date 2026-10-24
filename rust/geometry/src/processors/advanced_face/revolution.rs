@@ -36,8 +36,8 @@ fn present(
 
 /// Tessellate an `IfcSurfaceOfRevolution` face by sweeping its profile curve
 /// around the axis through the angular extent recovered from the face's edge
-/// loops. Falls back to the planar boundary approximation when the profile or
-/// axis can't be parsed.
+/// loops. Falls back to the planar boundary approximation when the profile
+/// samples fewer than two points; unreadable data refuses the face.
 pub(super) fn lower_revolution(
     face: &DecodedEntity,
     surface: &DecodedEntity,
@@ -56,25 +56,28 @@ pub(super) fn lower_revolution(
     // and collapsing the angular-extent calculation, the real cause of
     // issue #674's "stem in wrong direction" defect. Position itself is
     // applied below, once the profile is sampled.
-    let axis_pos = present(face, surface.get(slot::IfcSurfaceOfRevolution::AXIS_POSITION.index()), decoder)?;
-
-    let (mut axis_origin, mut axis_dir) = if let Some(ap) = axis_pos {
-        // IfcAxis1Placement: 0=Location, 1=Axis(Direction). It is read whole
-        // and a read that fails refuses the face: every part used to be
-        // swallowed (`.ok()`), turning an unreadable Location into the origin
-        // and an unreadable Axis into +Z (PROC-S7, PROC-S9). A missing Axis is
-        // the IFC derived default +Z; a zero one has no direction and takes
-        // the same default, as before. Ratios whose squared length overflows
-        // are rescaled first, so they keep their direction rather than
-        // normalising to a zero axis.
-        let axis1 = noting_refusal(face, Axis1Placement::read(&ap, decoder).map_err(Into::into))?;
-        let dir = Vector3::from(crate::math::v3::unoverflowed(axis1.axis_or_ifc_default()))
-            .try_normalize(1e-12)
-            .unwrap_or_else(|| Vector3::new(0.0, 0.0, 1.0));
-        (Point3::from(axis1.location), dir)
-    } else {
-        (Point3::new(0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 1.0))
+    // AxisPosition is mandatory. A `$`, `*`, absent or non-reference one used
+    // to revolve about the origin and +Z, an axis the file never gave; it
+    // refuses the face and counts the surface record (D3, D30), as a `$`
+    // mandatory placement Location does.
+    let Some(ap) = present(face, surface.get(slot::IfcSurfaceOfRevolution::AXIS_POSITION.index()), decoder)? else {
+        let _counted = decoder.refuse_malformed(surface.id);
+        return Err(refused(face));
     };
+
+    // IfcAxis1Placement: 0=Location, 1=Axis(Direction). It is read whole and
+    // a read that fails refuses the face: every part used to be swallowed
+    // (`.ok()`), turning an unreadable Location into the origin and an
+    // unreadable Axis into +Z (PROC-S7, PROC-S9). A missing Axis is the IFC
+    // derived default +Z (§3.12); a zero one has no direction and takes the
+    // same default, as before. Ratios whose squared length overflows are
+    // rescaled first, so they keep their direction rather than normalising
+    // to a zero axis.
+    let axis1 = noting_refusal(face, Axis1Placement::read(&ap, decoder).map_err(Into::into))?;
+    let mut axis_dir = Vector3::from(crate::math::v3::unoverflowed(axis1.axis_or_ifc_default()))
+        .try_normalize(1e-12)
+        .unwrap_or_else(|| Vector3::new(0.0, 0.0, 1.0));
+    let mut axis_origin = Point3::from(axis1.location);
 
     // Sample the generator profile curve. A profile whose data does not read
     // refuses the face (#7687): the planar fallback below would draw the

@@ -96,4 +96,6 @@ mod sidecar_value;
 pub use sidecar_value::{JsString, DocumentValue};
 pub mod document_serde;
 mod document_ser;
+mod document_key_ser;
+mod document_key_de;
 mod document_enum;

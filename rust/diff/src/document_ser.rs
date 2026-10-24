@@ -79,7 +79,7 @@ pub struct Object { entries: Vec<(JsString, Value)>, key: Option<JsString> }
 impl ser::SerializeMap for Object {
     type Ok = Value; type Error = Error;
     fn serialize_key<T: Serialize + ?Sized>(&mut self, key: &T) -> Result<(), Error> {
-        let Value::String(key) = key.serialize(DocumentSerializer)? else { return Err(error("expected string map key")) };
+        let key = key.serialize(crate::document_key_ser::KeySerializer)?;
         self.key = Some(key); Ok(())
     }
     fn serialize_value<T: Serialize + ?Sized>(&mut self, value: &T) -> Result<(), Error> {

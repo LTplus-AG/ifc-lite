@@ -60,7 +60,7 @@ impl<'de> de::MapAccess<'de> for Object {
     fn next_key_seed<K: de::DeserializeSeed<'de>>(&mut self, seed: K) -> Result<Option<K::Value>, Error> {
         let Some((key, value)) = self.entries.next() else { return Ok(None) };
         self.next = Some(value);
-        seed.deserialize(DocumentValue::String(key)).map(Some)
+        seed.deserialize(crate::document_key_de::KeyDeserializer(key)).map(Some)
     }
     fn next_value_seed<V: de::DeserializeSeed<'de>>(&mut self, seed: V) -> Result<V::Value, Error> {
         seed.deserialize(self.next.take().ok_or_else(|| error("value without key"))?)
@@ -91,6 +91,8 @@ macro_rules! integer {
 }
 impl<'de> Deserializer<'de> for DocumentValue {
     type Error = Error;
+    // Match DocumentSerializer, including inside sequences, maps and newtypes.
+    fn is_human_readable(&self) -> bool { false }
     fn deserialize_any<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Error> {
         match self {
             Self::Null => visitor.visit_unit(), Self::Bool(b) => visitor.visit_bool(b),

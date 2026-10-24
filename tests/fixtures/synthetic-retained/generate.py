@@ -65,9 +65,10 @@ def curved():
             product = m.product(role, band(m, a, b), placement=place)
             row = {'id':int(product[1:]), 'role':role, 'volume':before-removed if cut else before, 'band':i, 'cut':cut}
             if cut:
+                row['opening_volume'] = 6
                 row['opening_id'], row['void_relation'] = m.opening(product, role+'-door', placement=place, size=(3, 1, 2), center=(10.5, 0))
             products.append(row)
-    products.insert(0, {'id':int(wall[1:]), 'role':'curved-layered-wall', 'volume':sum(v['after'] for v in volumes), 'opening_id':opening_id, 'void_relation':relation})
+    products.insert(0, {'id':int(wall[1:]), 'role':'curved-layered-wall', 'volume':sum(v['after'] for v in volumes), 'opening_id':opening_id, 'opening_volume':6, 'void_relation':relation})
     return m.finish(), {'products':products, 'bands':volumes, 'before_total':sum(v['before'] for v in volumes), 'after_total':sum(v['after'] for v in volumes), 'material_usage':int(usage[1:]), 'axis_radius':10, 'angular_span_radians':math.pi/2, 'height':3, 'opening_bounds':[[9,-0.5,0],[12,0.5,2]], 'note':'Controls qualify individual band meshes; they do not prove automatic layer decomposition, internal-cap suppression or smooth-normal provenance.'}
 
 
@@ -106,6 +107,7 @@ def mapped():
         product = m.product(role, item, 'MappedRepresentation', place)
         row = {'id':int(product[1:]), 'role':role, 'volume':5 if role.startswith('door') else 6, 'map':int(source[1:]), 'mapped_item':int(item[1:]), 'translation':[i*5,0,0], 'basis_columns':[x,y,z], 'scale':[2,1,0.5] if role == 'nonuniform' else [1,1,1], 'mirrored':role == 'mirrored', 'nonuniform':role == 'nonuniform'}
         if role.startswith('door'):
+            row['opening_volume'] = 2
             row['opening_id'], row['void_relation'] = m.opening(product, role+'-opening', place, center=(0.5 if role == 'door-left' else 1.5, 0.5))
         if i < 7:
             typed.append(product)

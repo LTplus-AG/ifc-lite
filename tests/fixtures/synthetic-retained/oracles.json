@@ -11,6 +11,7 @@
           "role": "curved-layered-wall",
           "volume": 27.922091698768103,
           "opening_id": 63,
+          "opening_volume": 6,
           "void_relation": 64
         },
         {
@@ -26,6 +27,7 @@
           "volume": 4.53586832499433,
           "band": 0,
           "cut": true,
+          "opening_volume": 6,
           "opening_id": 129,
           "void_relation": 130
         },
@@ -42,6 +44,7 @@
           "volume": 9.213113136264191,
           "band": 1,
           "cut": true,
+          "opening_volume": 6,
           "opening_id": 195,
           "void_relation": 196
         },
@@ -58,6 +61,7 @@
           "volume": 14.173110237509581,
           "band": 2,
           "cut": true,
+          "opening_volume": 6,
           "opening_id": 261,
           "void_relation": 262
         }
@@ -322,6 +326,7 @@
           ],
           "mirrored": false,
           "nonuniform": false,
+          "opening_volume": 2,
           "opening_id": 119,
           "void_relation": 120
         },
@@ -360,6 +365,7 @@
           ],
           "mirrored": false,
           "nonuniform": false,
+          "opening_volume": 2,
           "opening_id": 138,
           "void_relation": 139
         },

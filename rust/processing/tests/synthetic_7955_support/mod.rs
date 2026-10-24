@@ -88,7 +88,6 @@ fn volume(meshes: &[&MeshData]) -> f64 {
             })
         })
         .sum::<f64>()
-        .abs()
 }
 fn mesh_valid(mesh: &MeshData) -> Result<(), String> {
     check(
@@ -139,7 +138,9 @@ pub fn check_products(
         .as_array()
         .unwrap()
         .iter()
-        .map(|p| integer(&p["id"]))
+        .flat_map(|p| {
+            std::iter::once(integer(&p["id"])).chain(p["opening_id"].as_u64().map(|id| id as u32))
+        })
         .collect();
     let actual: BTreeSet<u32> = result.meshes.iter().map(|m| m.express_id).collect();
     check(
@@ -148,6 +149,23 @@ pub fn check_products(
     )?;
     for p in oracle["products"].as_array().unwrap() {
         let id = integer(&p["id"]);
+        // The default exact request also emits opening cutter meshes. Count
+        // and validate these explicitly, independently of the host's removed volume.
+        if let Some(opening) = p["opening_id"].as_u64() {
+            let cutters: Vec<_> = result
+                .meshes
+                .iter()
+                .filter(|m| m.express_id == opening as u32)
+                .collect();
+            for cutter in &cutters {
+                mesh_valid(cutter)?;
+            }
+            check(
+                (volume(&cutters) - number(&p["opening_volume"])).abs()
+                    <= tolerance("planar_volume_absolute"),
+                "opening cutter volume",
+            )?;
+        }
         let meshes: Vec<_> = result
             .meshes
             .iter()

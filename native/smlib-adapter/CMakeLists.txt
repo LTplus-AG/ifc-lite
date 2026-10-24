@@ -205,7 +205,7 @@ if(IFCLITE_LINEAGE_FAILURE_STACK)
   set_tests_properties(smlib_lineage_failure_stack PROPERTIES TIMEOUT 30)
 endif()
 
-foreach(case positive reuse original origin owner leak frame replacement reuse-foreign)
+foreach(case positive reuse original origin owner leak frame replacement reuse-foreign attached)
   add_test(NAME smlib_numerical_trim_${case}
     COMMAND ${test_runner} $<TARGET_FILE:ifclite_smlib_lineage_tests> trim-${case})
   set_tests_properties(smlib_numerical_trim_${case} PROPERTIES TIMEOUT 120)

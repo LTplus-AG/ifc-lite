@@ -58,9 +58,12 @@ bool Ledger::numerical_event(Event& event,SmNotifyOperation op,SmObject* caller,
     auto* mate=use->GetMate();
     // Pointer-only getters: no lazy trim creation during notification. The
     // original remains actually attached; the edited copy must be unattached.
+    const bool original_attached=use->GetUVTrimCurvePointer()==source ||
+        (mate && mate->GetUVTrimCurvePointer()==source);
+    const bool helper_attached=use->GetUVTrimCurvePointer()==curve ||
+        (mate && mate->GetUVTrimCurvePointer()==curve);
     if(use->GetBrep()!=numerical.source || source->GetOwner()!=owner || !mate ||
-        (use->GetUVTrimCurvePointer()!=source && mate->GetUVTrimCurvePointer()!=source) ||
-        use->GetUVTrimCurvePointer()==curve || mate->GetUVTrimCurvePointer()==curve) {
+        !original_attached || helper_attached) {
         fail(Failure::UnsupportedGeometryChange); return true;
     }
     event.before[0]=entry->current;

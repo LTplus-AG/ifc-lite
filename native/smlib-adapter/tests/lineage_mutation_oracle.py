@@ -97,6 +97,9 @@ def main():
          '    if(op==SM_NO_PRE_EDIT || op==SM_NO_POST_EDIT)\n'
          '        for(auto* trim:numerical.trims) if(trim==caller) return true;',
          'issued trim read still refuses original geometry edits'),
+        ('trim-attached', 'face_lineage_read.cpp',
+         '!original_attached || helper_attached', 'false',
+         'observed copied helper loses authority when actually attached'),
         ('trim-replacement', 'face_lineage_read.cpp',
          'numerical.serial!=frames[frame_count-1]->serial || !caller', '!caller',
          'same-depth replacement frame cannot replay helper authority'),

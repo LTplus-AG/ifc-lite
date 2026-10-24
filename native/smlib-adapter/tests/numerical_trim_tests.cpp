@@ -100,6 +100,16 @@ void negative(const char* name) {
         Scope replacement(ledger,*SmApiGetOrCreateContext(),&solid);
         reverse(*helper);
         require(ledger.failed()!=Failure::None,"same-depth replacement frame cannot replay helper authority");
+    } else if(std::strcmp(name,"attached")==0) {
+        auto helper=copy(*original); ledger.check();
+        auto* use=static_cast<SmEdgeuse*>(original->GetOwner());
+        // Actual SDK silent attachment, not a fake callback or owner-only edit.
+        use->SetMemberUVTrimCurve(static_cast<SmBSplineCurve*>(helper.get()));
+        ledger.check(); reverse(*helper);
+        const bool refused=ledger.failed()!=Failure::None;
+        // Restore valid fixture ownership for destruction, never the latch.
+        use->SetMemberUVTrimCurve(original); helper.reset();
+        require(refused,"observed copied helper loses authority when actually attached");
     } else if(std::strcmp(name,"owner")==0) {
         auto helper=copy(*original); helper->SetOwner(foreign->GetOwner()); reverse(*helper);
         require(ledger.failed()!=Failure::None,"authentic helper cannot edit under foreign ownership");

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 #include "face_lineage.hpp"
 #include <SmCurve.h>
+#include <SmBSplineCurve.h>
 #include <SmEdgeuse.h>
 // Pinned SDK c9c5979: SmFace.cpp:7360-7375 copies an actual UV trim,
 // assigns its original owner as a backlink, then reverses the uninstalled copy.

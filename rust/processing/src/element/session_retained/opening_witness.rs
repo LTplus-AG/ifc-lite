@@ -85,3 +85,5 @@ pub(super) fn removal_sources() -> Vec<String> {
         .replace("ENDSEC;\nEND-ISO-10303-21;", "#126=IFCEXTRUDEDAREASOLID(#23,#25,#4,3.);\nENDSEC;END-ISO-10303-21;");
     vec![full, placed, multi]
 }
+
+pub(super) mod decimal;

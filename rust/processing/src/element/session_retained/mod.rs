@@ -319,3 +319,6 @@ mod layer_oracles;
 mod source_binding_tests;
 #[cfg(all(test, feature = "retained-native", not(target_arch = "wasm32")))]
 mod removal_tests;
+
+#[cfg(all(test, feature = "retained-native", not(target_arch = "wasm32")))]
+mod removal_decimal_tests;

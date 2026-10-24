@@ -22,5 +22,13 @@
     "assertionMarker": "J2_EFFECT_ISOLATION",
     "intendedFailure": "J2_EFFECT_ISOLATION",
     "package": "ifc-lite-processing"
+  },
+  {
+    "id": "representation-type",
+    "patch": "tests/evidence/retained-openings-j2/representation-type.oracle.patch",
+    "test": "element::session_retained::opening_tests::j2_sdk_wrong_type_representation_sibling_aborts_entire_closure",
+    "assertionMarker": "J2_REPRESENTATION_TYPE_REPORT",
+    "intendedFailure": "J2_REPRESENTATION_TYPE_REPORT",
+    "package": "ifc-lite-processing"
   }
 ]

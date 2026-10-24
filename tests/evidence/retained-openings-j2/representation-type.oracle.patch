@@ -1,0 +1,16 @@
+--- a/rust/geometry/src/program/retained/opening_source.rs
++++ b/rust/geometry/src/program/retained/opening_source.rs
+@@ -19,6 +19,13 @@
+     for representation in representations {
+         let AttributeValue::EntityRef(id) = representation else { return Err(Error::geometry("non-reference opening representation")); };
+         let representation = decoder.decode_by_id(*id)?;
++        // Check the shared Items layout before interpreting positional attributes.
++        // Selection still owns Body versus Reference/BoundingBox semantics; a
++        // valid sibling must never hide a member of an unrelated IFC type.
++        if !matches!(representation.ifc_type,
++            IfcType::IfcShapeRepresentation | IfcType::IfcTopologyRepresentation) {
++            return Err(Error::geometry("wrong reached opening representation type"));
++        }
+         let items = representation.get_list(slot::IfcRepresentation::ITEMS.index())
+             .ok_or_else(|| Error::geometry("missing opening item list"))?;
+         selection.charge_work(items.len() as u64).map_err(Error::ProgramStopped)?;

@@ -128,7 +128,6 @@ fn common_retained_actual_construction_is_consumed_and_original_product_resumes(
     assert_eq!(
         witness.plan().remaining,
         vec![
-            RetainedRequirement::OpeningClosure,
             RetainedRequirement::MaterialLayers,
             RetainedRequirement::IfcAppearance,
             RetainedRequirement::PersistentFaces

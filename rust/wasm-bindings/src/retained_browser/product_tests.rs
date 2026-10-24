@@ -3,7 +3,7 @@
 use super::{BrowserCancellation, BrowserWorker};
 use super::receipt::BrowserReceipt;
 use ifc_lite_core::SourceBundle;
-use ifc_lite_geometry::GeometryRouter;
+use ifc_lite_geometry::{GeometryRouter, program::RetainedRequirement};
 use ifc_lite_processing::element::{ElementJobKind, ElementMeshJob, MeshProductionOptions,
     ProductionModel, RetainedExecutionError, RuntimeProductExecution, runtime::{
         AsyncRetainedExecutor, Invocation, NumericalLimits, RetainedRuntime,
@@ -96,7 +96,13 @@ async fn retained_browser_common_controller_maps_boolean_operands_and_reuses_sem
         for (actual, expected) in observed.boolean_volumes.iter().zip(expected) {
             assert!((actual - expected).abs() <= 1e-7, "source-derived volume {actual} != {expected}");
         }
-        assert!(!witness.plan().remaining.is_empty(), "intermediate witness cannot qualify final product publication");
+        // #7955 J2-R2: canonical no-opening work discharges only OpeningClosure.
+        assert_eq!(witness.plan().remaining, vec![
+            RetainedRequirement::MaterialLayers,
+            RetainedRequirement::IfcAppearance,
+            RetainedRequirement::PersistentFaces,
+        ]);
+        assert!(matches!(witness.require_final_product(), Err(RetainedExecutionError::Unsupported(_))));
         model.invalidate_source();
         assert!(witness.validate().is_err(), "source invalidation expires the composed transaction");
         observed.worker.retire();

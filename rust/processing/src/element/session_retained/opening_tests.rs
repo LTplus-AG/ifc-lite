@@ -132,7 +132,7 @@ fn j2_issue3641_authored_backtrack_remains_explicit_release_hold() {
     assert_eq!(decoder.length_unit_scale(),0.001);
     assert_eq!(decoder.decode_by_id(61271).unwrap().ifc_type, IfcType::IfcExtrudedAreaSolid);
     assert_eq!(decoder.decode_by_id(61272).unwrap().ifc_type, IfcType::IfcArbitraryClosedProfileDef);
-    assert_eq!(decoder.decode_by_id(61273).unwrap().ifc_type, IfcType::IfcPolyline);
+    assert_eq!(decoder.decode_by_id(61273).unwrap().ifc_type, IfcType::IfcIndexedPolyCurve);
 }
 
 #[test]

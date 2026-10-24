@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 --- a/rust/geometry/src/program/mapping_retained.rs
 +++ b/rust/geometry/src/program/mapping_retained.rs
-@@ -248,7 +248,7 @@
+@@ -248,6 +248,6 @@
          if source.ifc_type != IfcType::IfcRepresentationMap {
              return Err(crate::Error::geometry("retained MappingSource requires IfcRepresentationMap"));
          }
@@ -9,4 +9,3 @@
 +        Self::validate_retained_target(item, decoder)?;
          Self::validate_retained_map(&source, decoder)
      }
- 

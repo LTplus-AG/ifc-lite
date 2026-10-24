@@ -1738,31 +1738,31 @@ authority, performs no SDK work and publishes no partial retained product. The n
 full release features and explicit viewer/CLI selection follow separately;
 exact geometry remains the default.
 
-S1 has the following construction-only trust boundaries. They are limitations
+S1/S2 have the following construction-only trust boundaries. They are limitations
 of this increment, not fulfilled delivery guarantees:
 
 - The caller must obtain the root from the same source/decoder used for every
   admission and supply matching epoch/revision labels. Those labels are caller
-  assertions, not authenticated source identity or execution authority. S1
+  assertions, not authenticated source identity or execution authority. The controller
   binds a decoder/router on first admission and rejects later foreign owners;
   it does not authenticate the supplied root against that first decoder.
   Preserving a STEP id tests record identity, not source authentication. An
   execution consumer must establish source coherence before relying on labels.
-- Resource checks and charges use the current ambient account. Callers must
-  keep `request`/`admit`/`accept`/`finish` in the same resource scope and discard
-  the program after a stop. Explicit `cancel()` is sticky; an ambient stop is
-  not latched by S1, and resuming outside the scope or in another account is
-  not prevented. S2 must establish an owning resource context and terminal
-  stop before execution. The current tests do not certify cross-scope
-  ownership, bounded capture memory or complete resource accounting.
+- Resource checks and charges still use the current ambient account. S2 latches
+  observed resource stops in the shared traversal, including accept-side stops,
+  so those stops persist across roots and after leaving the account scope.
+  Explicit `cancel()` remains local to a program. This is not captured account
+  ownership: callers must keep `request`/`admit`/`accept`/`finish` in the same
+  resource scope. Source coherence, owning resource context, bounded capture
+  memory and complete accounting remain execution-consumer qualifications.
 - The facade currently carries source refusals as geometry-error strings at
   `finish`; `RetainedProgramError::Unsupported` does not encode every product
   refusal. Default wasm reports unavailable retained capture as `Cancelled`.
   A typed, listed product-refusal boundary must be defined and tested before
   delivery or downstream consumers rely on this API. Delivery must show an
   explicitly incomplete model load, publish no partial geometry for a refused
-  product and perform no silent exact substitution. S1 does not satisfy that
-  contract; this correction deliberately does not expand the public error API.
+  product and perform no silent exact substitution. S2 does not satisfy that
+  contract; logical operation admission is not a complete typed refusal API.
 - `RetainedProductPlan` is forgeable data: its public `values` and `remaining`
   fields can be edited and logical operations can be cloned. Clearing an
   obligation list cannot certify openings, layers, appearance or persistent
@@ -1784,8 +1784,9 @@ Retained mapping admission requires a reference to an `IfcRepresentationMap`, a
 supported transformation-operator reference for every `MappingTarget` (including
 source-cache hits), and a readable `Items` list containing only resolvable
 references. Missing/null/non-list `Items` refuse the entire plan, including earlier
-provisional constructions. An explicit `Items=()` is an empty source contribution;
-it does not authenticate whole-product removal. A valid identity target remains
+provisional constructions. For a nested mapped-source representation only, explicit `Items=()` is an empty source contribution;
+it does not authenticate whole-product removal. The product-level preflight above
+still rejects empty `Items` on every authored product representation. A valid identity target remains
 admissible. These checks do not change exact-mode recovery or transform math.
 
 `RetainedProgram::type_map` accepts an owned `IfcRepresentationMap`, constructs its
@@ -1802,8 +1803,9 @@ bindings are cached separately per root, so changing plain/styled mode or textur
 inputs between roots cannot reuse stale bindings. The explicit active mapping
 path bounds cycles and depth without suppressing repeated sibling occurrences.
 Cache retrieval and publication debit the shared budget before copying expanding
-DAG values or allocating their destination storage. Refusal remains sticky across
-roots. Cancellation is local to a program and blocks admission and completion;
+DAG values or allocating their destination storage. Traversal-budget and observed
+resource stops remain sticky across roots; source refusals fail the affected root.
+Cancellation is local to a program and blocks admission and completion;
 foreign or cancelled receivers return replies intact to their original owner.
 Source epoch/revision/id and type metadata are labels supplied to this controller,
 not authenticated runtime authority. No runtime Cargo dependency or processing,

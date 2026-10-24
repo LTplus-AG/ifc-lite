@@ -153,11 +153,83 @@ fn unselected_mapping_children_are_not_traversed_or_admitted() {
     let dangling = bytes.replace("#92=IFCMAPPEDITEM(#61,#93)", "#92=IFCMAPPEDITEM(#999,#998)");
     for unselected in [&bytes, &cycle, &dangling] {
         assert_body_only(unselected);
-        let selected = unselected.replace("SHAPE($,$,(#12,#90))", "SHAPE($,$,(#90))");
-        let (operations, result) = admission(&selected);
-        assert!(operations.is_empty(), "no mapped constructor is admitted");
-        assert!(result.is_err(), "selected mappings remain unsupported");
     }
+}
+
+// #7955 S2 intentionally adds selected mapping construction. The S1 shallow
+// preflight still leaves skipped children untouched; selection now reaches the
+// map's source and requires its children to be valid, bounded construction input.
+#[test]
+fn selected_mapping_constructs_its_source_without_discharging_obligations() {
+    let selected = alongside_body(MAPPED)
+        .replace("SHAPE($,$,(#12,#90))", "SHAPE($,$,(#90))");
+    let (operations, result) = admission(&selected);
+    assert_eq!(operations.len(), 1);
+    assert!(matches!(operations[0].value().definition(),
+        LogicalRetainedDefinition::Source { source_id: 13, .. }));
+    let plan = result.unwrap();
+    assert_eq!(plan.values.len(), 1);
+    let value = &plan.values[0];
+    assert_eq!(value.definition(), operations[0].value().definition());
+    assert_eq!(value.placements().len(), 2);
+    assert_eq!(value.placements()[0].stage,
+        RetainedPlacementStage::Mapping { source_id: 61 });
+    assert_eq!(value.placements()[1].stage,
+        RetainedPlacementStage::Product { product_id: 10 });
+    assert!(value.is_product_placed());
+    // Canonical MappingTarget * MappingOrigin adds [10,20,30], then product
+    // placement adds [10,20,30] again to the source anchor [-1,-2,0].
+    assert_eq!([value.object_frame()[12], value.object_frame()[13], value.object_frame()[14]],
+        [19., 38., 60.]);
+    assert_eq!(plan.remaining, vec![RetainedRequirement::OpeningClosure,
+        RetainedRequirement::MaterialLayers, RetainedRequirement::IfcAppearance,
+        RetainedRequirement::PersistentFaces]);
+}
+
+#[test]
+fn selected_mapping_dangling_children_refuse_instead_of_publishing_a_plan() {
+    let selected = alongside_body(MAPPED)
+        .replace("SHAPE($,$,(#12,#90))", "SHAPE($,$,(#90))");
+    for item in ["#92=IFCMAPPEDITEM(#999,#93)", "#92=IFCMAPPEDITEM(#61,#998)"] {
+        let malformed = selected.replace("#92=IFCMAPPEDITEM(#61,#93)", item);
+        assert_ne!(malformed, selected);
+        let (operations, result) = admission(&malformed);
+        assert!(operations.is_empty());
+        assert!(result.is_err(), "selected mapping children are required");
+    }
+}
+
+#[test]
+fn selected_mapping_cycle_stops_before_construction_and_stays_terminal() {
+    let selected = alongside_body(MAPPED)
+        .replace("SHAPE($,$,(#12,#90))", "SHAPE($,$,(#90))")
+        .replace("#61=IFCREPRESENTATIONMAP(#7,#12)", "#61=IFCREPRESENTATIONMAP(#7,#90)");
+    let source = SourceBundle::new(selected.as_bytes().to_vec());
+    let mut decoder = source.decoder();
+    let router = GeometryRouter::with_units(&selected, &mut decoder);
+    let entity = decoder.decode_by_id(10).unwrap();
+    let mut program = RetainedProgram::product_parts(&entity, contract());
+    let stop = loop {
+        let ticket = match program.request() {
+            Err(error) => break error,
+            Ok(Some(ticket)) => ticket,
+            Ok(None) => panic!("cycle must stop the traversal"),
+        };
+        match program.admit(ticket, &router, &mut decoder) {
+            Err(error) => break error,
+            Ok((reply, operations)) => {
+                assert!(operations.is_empty());
+                if let Err(rejected) = program.accept(reply, &router) {
+                    break rejected.error;
+                }
+            }
+        }
+    };
+    assert!(matches!(stop, RetainedProgramError::Stopped(
+        crate::resource::ProgramStop::ResourceRefused(failure))
+        if failure.dimension == crate::resource::Dimension::Representation));
+    assert_eq!(program.request().err(), Some(stop));
+    assert!(program.finish().is_err());
 }
 
 #[test]

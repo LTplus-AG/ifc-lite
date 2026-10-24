@@ -3,6 +3,8 @@
 #include "owned_lineage_access.hpp"
 #include "representation_seal.hpp"
 #include "failure.hpp"
+#include "edge_subdivision.hpp"
+#include <SmEdge.h>
 #include <SmApiGeneral.h>
 #include <SmBSplineCurve.h>
 #include <SmCopyBrepMap.h>
@@ -16,6 +18,9 @@
 #include <stdexcept>
 namespace face_lineage {
 // Test-only access to the fixed calls' private phase. No runtime callable seam.
+struct SubdivisionTestAccess {
+    static void finish(Ledger& ledger) { ledger.subdivision->finish(); }
+};
 struct NumericalReadTestAccess {
     static void begin(Ledger& ledger,SmBrep& source) { NumericalRead::begin(ledger,source); }
     static void tessellation(Ledger& ledger,SmBrep& source) { NumericalRead::begin_tessellation(ledger,source); }
@@ -151,7 +156,8 @@ void polygon_copy(const char* name) {
     RepresentationSeal seal(ledger,solid);
     if(std::strcmp(name,"poly-outside")==0) NumericalReadTestAccess::begin(ledger,solid);
     else NumericalReadTestAccess::tessellation(ledger,solid);
-    auto internal=std::unique_ptr<SmBrep>(new (*solid.GetContext()) SmBrep(solid));
+    SmCopyBrepMap actual_map;
+    auto internal=std::unique_ptr<SmBrep>(new (*solid.GetContext()) SmBrep(solid,&actual_map));
     ledger.check();
     SmTArray<SmFace*> faces;
     (std::strcmp(name,"poly-foreign")==0?body(sibling):*internal).GetFaces(faces);
@@ -161,9 +167,24 @@ void polygon_copy(const char* name) {
     auto polygon=std::unique_ptr<SmPolyBrep>(new (*solid.GetContext()) SmPolyBrep(solid.GetTolerance()));
     auto* polyface=new (polygon.get()) SmPolyFace(solid.GetTolerance(),polygon.get(),nullptr,nullptr);
     const auto first=ledger.event_size(); polyface->SetOriginalFace(original,TRUE);
-    if(std::strcmp(name,"poly-positive")==0) {
+    const bool rebind=std::strcmp(name,"poly-rebind")==0 || std::strcmp(name,"poly-wrong-root")==0;
+    if(rebind) {
+        ledger.check(); auto* input=static_cast<SmFace*>(actual_map.GetAt(original));
+        require(input && input->GetBrep()==&solid,"polygon rebind consumes actual SDK copy map");
+        if(std::strcmp(name,"poly-wrong-root")==0) {
+            SmTArray<SmFace*> source_faces; solid.GetFaces(source_faces);
+            for(auto* candidate:source_faces) if(candidate!=input) { input=candidate; break; }
+        }
+        const auto input_id=ledger.identity(input); polyface->SetOriginalFace(input,TRUE);
+        if(std::strcmp(name,"poly-wrong-root")==0) {
+            require(ledger.failed()!=Failure::None,"polygon rebind refuses a different original root"); phase.finish(); return;
+        }
+        require(ledger.failed()==Failure::None && ledger.event(first+1).before[0]==input_id &&
+            !ledger.event(first+1).after[0].sequence,"polygon final rebind matches its observed copy ancestor");
+    }
+    if(std::strcmp(name,"poly-positive")==0 || rebind) {
         require(ledger.failed()==Failure::None,"polygon attribute copy preserves actual face identity");
-        require(ledger.event_size()==first+1 && ledger.event(first).before[0]==before &&
+        require(ledger.event_size()==first+(rebind?2:1) && ledger.event(first).before[0]==before &&
             !ledger.event(first).after[0].sequence && ledger.identity(original)==before,
             "polygon attribute receipt never issues face ancestry");
         polygon.reset(); internal.reset(); ledger.check(); NumericalReadTestAccess::end(ledger);
@@ -228,9 +249,86 @@ void internal_copy(const char* name) {
     }
     phase.finish();
 }
+// Fault injector wraps genuine SDK notifications. It never constructs a map or
+// substitutes a success result. Only negative witnesses use this slot seam.
+struct SplitFault:SmNotifyCallback {
+    SmContext& context; SmNotifyCallback* observer; const char* mode;
+    SmEdge* edge=nullptr; unsigned faults=0;
+    SplitFault(SmContext& c,const char* m):context(c),observer(c.GetUserNotifyCallback()),mode(m) { context.SetUserNotifyCallback(this); }
+    ~SplitFault() { context.SetUserNotifyCallback(observer); }
+    SmStatus Execute(SmNotifyOperation op,SmObject* caller,SmObject* a,SmObject* b,SmObject* c) noexcept override {
+        if(op==SM_NO_PRE_EDIT && caller && caller->GetType()==SmEdge_TYPE) edge=static_cast<SmEdge*>(caller);
+        if(op==SM_NO_SPLIT_IN_BREP && edge && a==edge && std::strcmp(mode,"split-missing")==0) { ++faults; return SM_SUCCESS; }
+        if(op==SM_NO_ADD_TO_BREP && edge && !faults) {
+            if(std::strcmp(mode,"split-curve")==0) {
+                ULONG n=0; double* controls=nullptr;
+                if(static_cast<SmBSplineCurve*>(edge->GetCurve())->GetControlPointsPointer(n,controls)==SM_SUCCESS && n && controls) {
+                    controls[0]+=.125; ++faults;
+                }
+            } else if(std::strcmp(mode,"split-interval")==0) {
+                auto interval=edge->GetInterval(); interval.SetMinMax(interval.GetMin(),interval.GetMax()+.125);
+                edge->SetInterval(interval); ++faults;
+            }
+        }
+        context.SetUserNotifyCallback(observer);
+        const auto status=observer->Execute(op,caller,a,b,c);
+        context.SetUserNotifyCallback(this); return status;
+    }
+};
+void subdivision(const char* name) {
+    auto owner=OwnedBoundary::cylinder(2,3); auto& solid=body(owner); auto& ledger=history(owner);
+    const auto roots=owner.faces(); Scope phase(ledger,*SmApiGetOrCreateContext(),&solid);
+    RepresentationSeal seal(ledger,solid); NumericalReadTestAccess::tessellation(ledger,solid);
+    SmCopyBrepMap map;
+    auto internal=std::unique_ptr<SmBrep>(new (*solid.GetContext()) SmBrep(solid,&map)); ledger.check();
+    SmTArray<SmEdge*> edges; internal->GetEdges(edges); SmEdge* edge=nullptr;
+    for(auto* candidate:edges) {
+        auto interval=candidate->GetInterval();
+        if(interval.GetMax()-interval.GetMin()>6 && candidate->GetEdgeuseCount()==4) { edge=candidate; break; }
+    }
+    require(edge,"subdivision fixture has a real curved four-use edge");
+    auto interval=edge->GetInterval(); const double cut=interval.GetMin()+(interval.GetMax()-interval.GetMin())/64;
+    SmEdge *one=nullptr,*two=nullptr; SmVertex* vertex=nullptr; SmStatus status; unsigned faults=0;
+    const auto first=ledger.event_size();
+    {
+        std::unique_ptr<Scope> nested;
+        if(std::strcmp(name,"split-frame")==0) nested=std::make_unique<Scope>(ledger,*SmApiGetOrCreateContext());
+        SplitFault fault(*SmApiGetOrCreateContext(),name);
+        status=internal->MakeVertexSplitEdge(edge,cut,one,two,vertex); faults=fault.faults;
+    }
+    require(status==SM_SUCCESS && one==edge && two && vertex,"actual SDK subdivision status and outputs");
+    if(std::strcmp(name,"split-positive")==0) {
+        require(ledger.failed()==Failure::None,"checked subdivision accepts genuine restriction receipts");
+        bool receipt=false;
+        for(auto i=first;i<ledger.event_size();++i) if(ledger.event(i).operation==SM_NO_SPLIT_IN_BREP) {
+            const auto& e=ledger.event(i); receipt=e.before[0].sequence && e.after[0]==e.before[0] &&
+                e.after[1].sequence && e.after[1]!=e.after[0];
+        }
+        require(receipt,"subdivision receipt carries distinct observed edge generations");
+        SubdivisionTestAccess::finish(ledger);
+        // Verify that a real installed child UV can be the origin of a later
+        // numerical helper without permitting edits to that installed child.
+        SmTArray<SmEdgeuse*> uses; two->GetEdgeuses(uses);
+        for(auto* use:uses) if(auto* uv=use->GetUVTrimCurvePointer()) {
+            auto helper=copy(*uv); helper->SetOwner(uv->GetOwner()); reverse(*helper); ledger.check();
+        }
+        internal.reset(); ledger.check(); NumericalReadTestAccess::end(ledger); seal.verify();
+        require(owner.faces()==roots,"subdivision preserves input face identities and representation");
+    } else {
+        require(faults==(std::strcmp(name,"split-frame")==0?0u:1u),"subdivision negative reaches its actual SDK mutation point");
+        bool rejected=ledger.failed()!=Failure::None;
+        if(std::strcmp(name,"split-missing")==0) {
+            try { SubdivisionTestAccess::finish(ledger); } catch(const AdapterFailure&) { rejected=true; }
+        }
+        require(rejected,"subdivision rejects changed geometry intervals or missing completion");
+    }
+    phase.finish();
+}
+
 }
 void run_numerical_trim_case(const char* name) {
-    if(std::strncmp(name,"poly-",5)==0) polygon_copy(name);
+    if(std::strncmp(name,"split-",6)==0) subdivision(name);
+    else if(std::strncmp(name,"poly-",5)==0) polygon_copy(name);
     else if(std::strncmp(name,"internal-",9)==0) internal_copy(name);
     else if(std::strcmp(name,"positive")==0) positive(false);
     else if(std::strcmp(name,"reuse")==0) positive(true);

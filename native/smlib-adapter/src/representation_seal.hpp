@@ -38,6 +38,8 @@ public:
     void require_exact_surface_copy(SmObject*,SmObject*);
 private:
     RepresentationSeal(Ledger&,SmBrep&,bool initial_creation);
+    RepresentationSeal(Ledger&,SmBrep&,class EdgeSubdivision*);
+    friend class EdgeSubdivision;
     friend class GeneratedPlane;
     friend class PlanarTransition;
     friend class AffineTransition;

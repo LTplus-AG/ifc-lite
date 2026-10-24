@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 #include "representation_seal.hpp"
+#include "edge_subdivision.hpp"
 #include "affine_transition.hpp"
 #include "copy.hpp"
 #include "context_metadata.hpp"
@@ -99,6 +100,7 @@ void NumericalRead::begin(Ledger& ledger,SmBrep& source) {
     require(!ledger.numerical.source && ledger.frame_count,"nested/unowned numerical read phase refused");
     ledger.numerical.tessellation=false; ledger.numerical.copy_issued=false;
     ledger.numerical.copy=nullptr; ledger.numerical.copy_generation={};
+    ledger.numerical.polygons.clear();
     ledger.numerical.trims.clear(); ledger.numerical.trims.reserve(8192);
     SmTArray<SmFace*> faces; source.GetFaces(faces);
     for(auto* face:faces) {
@@ -121,9 +123,11 @@ void NumericalRead::begin(Ledger& ledger,SmBrep& source) {
 void NumericalRead::end(Ledger& ledger) {
     if(!ledger.numerical.source || !ledger.frame_count || ledger.numerical.frame!=ledger.frame_count ||
         ledger.numerical.serial!=ledger.frames[ledger.frame_count-1]->serial) ledger.fail(Failure::UnknownHistory);
+    if(ledger.subdivision) ledger.subdivision->finish();
     if(ledger.numerical.copy) ledger.fail(Failure::UnknownHistory); // internal-read-copy-survivor
     for(const auto& binding:ledger.bindings)
         if(binding.alive && binding.numerical_operation==ledger.numerical.operation) ledger.fail(Failure::UnknownHistory);
+    ledger.subdivision.reset();
     ledger.numerical.source=nullptr; ledger.numerical.trims.clear(); ledger.check();
 }
 double NumericalRead::volume(Ledger& ledger,SmBrep& source,double accuracy) {

@@ -52,6 +52,7 @@ add_library(ifclite_smlib STATIC src/adapter.cpp src/copy.cpp src/affine.cpp src
   src/affine_rational.cpp src/affine_transition.cpp src/affine_transition_state.cpp
   src/source_construction.cpp src/source_construction_cap.cpp src/source_boundary.cpp
   src/owned_lineage.cpp src/face_lineage.cpp src/face_lineage_events.cpp src/face_lineage_geometry.cpp src/face_lineage_read.cpp src/face_lineage_read_copy.cpp src/numerical_tessellation.cpp
+  src/edge_subdivision.cpp src/edge_subdivision_events.cpp src/edge_subdivision_verify.cpp
   src/generated_plane.cpp src/representation_seal.cpp src/representation_seal_geometry.cpp
   src/planar_transition.cpp src/planar_transition_events.cpp src/planar_transition_plan.cpp
   src/planar_transition_verify.cpp
@@ -232,7 +233,8 @@ if(IFCLITE_LINEAGE_FAILURE_STACK)
 endif()
 
 foreach(case positive reuse original origin owner leak frame replacement reuse-foreign attached
-    poly-positive poly-foreign poly-outside
+    poly-positive poly-foreign poly-outside poly-rebind poly-wrong-root
+    split-positive split-curve split-interval split-missing split-frame
     internal-positive internal-original internal-backlink internal-foreign internal-unobserved internal-owner internal-attached)
   add_test(NAME smlib_numerical_trim_${case}
     COMMAND ${test_runner} $<TARGET_FILE:ifclite_smlib_lineage_tests> trim-${case})

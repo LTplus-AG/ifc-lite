@@ -49,6 +49,9 @@ RepresentationSeal::RepresentationSeal(Ledger& value,SmBrep& solid,bool creation
         capture(); retained.swap(scratch);
     } catch(const std::bad_alloc&) { throw AdapterFailure{IFCLITE_SMLIB_RESOURCE_LIMIT,"bounded exact representation seal allocation"}; }
 }
+RepresentationSeal::RepresentationSeal(Ledger& value,SmBrep& solid,EdgeSubdivision*):ledger(value),source(solid) {
+    scratch.reserve(4096); // geometry-only bounded scratch, no topology seal issuance
+}
 void RepresentationSeal::capture() {
     if(!initial) ledger.verify_inventory(source);
     else {

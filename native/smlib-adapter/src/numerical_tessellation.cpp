@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 #include "representation_seal.hpp"
+#include "edge_subdivision.hpp"
 #include "copy.hpp"
 #include "failure.hpp"
 #include "ifclite_smlib.h"
@@ -9,6 +10,7 @@
 namespace face_lineage {
 void NumericalRead::begin_tessellation(Ledger& ledger,SmBrep& source) {
     begin(ledger,source); ledger.numerical.tessellation=true;
+    ledger.subdivision=std::make_unique<EdgeSubdivision>(ledger,source);
 }
 SmStatus NumericalRead::tessellate(Ledger& ledger,SmBrep& source,SmPolyBrep*& output,
     const SmTessellationParams& params,SmTessellationReport& report) {

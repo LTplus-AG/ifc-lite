@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 #include "face_lineage.hpp"
+#include "edge_subdivision.hpp"
+#include <SmVertexuse.h>
 #include "planar_transition.hpp"
 #include "affine_transition.hpp"
 #include <SmBrep.h>
@@ -37,6 +39,7 @@ void Ledger::transition(Event& event,SmNotifyOperation op,SmObject* caller,SmObj
     if(failure!=Failure::None) return;
     // A read's inventoried originals remain protected even if an earlier
     // affine operation issued their owned-transition destruction bookkeeping.
+    if(subdivision && subdivision->event(event,op,caller,a,b,c)) return;
     if(numerical_copy_event(event,op,caller,a,b,c)) return;
     if(numerical_event(event,op,caller,b)) return;
     if(op==SM_NO_DESTRUCTION && caller && caller->IsKindOf(SmCurve_TYPE)) {
@@ -80,7 +83,7 @@ void Ledger::transition(Event& event,SmNotifyOperation op,SmObject* caller,SmObj
         return entry && failure==Failure::None;
     };
     const bool leaf=caller && (caller->GetType()==SmBrep_TYPE || caller->GetType()==SmEdge_TYPE ||
-        caller->GetType()==SmVertex_TYPE ||
+        caller->GetType()==SmVertex_TYPE || (numerical.source && numerical.tessellation && caller->GetType()==SmVertexuse_TYPE) ||
         caller->GetType()==SmEdgeuse_TYPE || caller->GetType()==SmLoop_TYPE ||
         caller->GetType()==SmLoopuse_TYPE || caller->GetType()==SmFaceuse_TYPE);
     if(op==SM_NO_CONSTRUCTION && leaf) {
@@ -120,7 +123,11 @@ void Ledger::transition(Event& event,SmNotifyOperation op,SmObject* caller,SmObj
         const auto prior=complete(to->current)?to->current:Identity{};
         event.before[1]=prior;
         const auto id=append(Change::Copy,from->current,prior);
-        replace(to,id); to->owner=static_cast<SmFace*>(a)->GetBrep(); event.after[0]=id; return;
+        replace(to,id); to->owner=static_cast<SmFace*>(a)->GetBrep();
+        if(numerical.tessellation && numerical.source && from->owner==numerical.source &&
+            static_cast<SmFace*>(caller)->GetBrep()==numerical.source && !prior.sequence)
+            to->numerical_face_input=from->current;
+        event.after[0]=id; return;
     }
     if(op==SM_NO_SPLIT_IN_BREP && face(a)) {
         if(caller!=a && (!caller || caller->GetType()!=SmBrep_TYPE)) return;

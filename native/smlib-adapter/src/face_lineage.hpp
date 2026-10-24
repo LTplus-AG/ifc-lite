@@ -73,6 +73,7 @@ class Ledger {
     std::unique_ptr<class PlanarTransition> completed_transition;
     class PlanarTransition* active_transition=nullptr;
     class AffineTransition* active_affine=nullptr;
+    std::unique_ptr<class EdgeSubdivision> subdivision;
     struct NumericalPhase {
         SmBrep* source=nullptr;
         Identity operation{};
@@ -83,6 +84,8 @@ class Ledger {
         bool tessellation=false,copy_issued=false;
         SmBrep* copy=nullptr;
         Identity copy_generation{};
+        struct PolygonReceipt { SmObject* polygon; SmObject* body; Identity input; bool rebound=false; };
+        std::vector<PolygonReceipt> polygons;
     } numerical;
 
     struct Node {
@@ -104,6 +107,8 @@ class Ledger {
         Identity numerical_owner_copy_operation{},numerical_parent_owner{};
         SmObject* numerical_owner_origin=nullptr;
         bool numerical_internal_original=false;
+        Identity numerical_face_input{},subdivision_operation{},subdivision_owner{};
+        SmObject* subdivision_attachment=nullptr;
     };
     Limits limits;
     uint64_t domain;
@@ -168,8 +173,10 @@ class Ledger {
     friend class RepresentationSeal;
     friend class GeneratedPlane;
     friend class NumericalRead;
+    friend class EdgeSubdivision;
     friend class PlanarTransition;
     friend class AffineTransition;
+    friend struct SubdivisionTestAccess;
 public:
     explicit Ledger(Limits={});
     ~Ledger();
@@ -215,6 +222,7 @@ class Scope final:public SmNotifyCallback {
     friend class Ledger;
     friend class GeneratedPlane;
     friend class NumericalRead;
+    friend class EdgeSubdivision;
     friend class PlanarTransition;
     friend class AffineTransition;
 public:

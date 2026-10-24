@@ -67,8 +67,8 @@ retessellation, SDK mutation or IFC persistence claim follows from C++ types.
 
 Default ledger limits: 8192 nodes, 32768 events, 1024 roots and 16 callback
 frames. Admitted configurations cap nodes at 65536, events at 131072, frames at
-64 and aggregate ledger allocation at 64 MiB. Callback tables/scratch are
-preallocated; callbacks never grow them or collect SDK face arrays. Each exact
+64 and aggregate ledger allocation at 64 MiB. Ledger callback tables are preallocated. The subdivision receipt below also
+uses bounded incident inventories and exact geometry snapshots during callbacks. Each exact
 seal reserves two 1048576-word tables and an 8192-object worklist. The fixed
 transition permits at most four simultaneous seals, 64 faces, 128 edges and
 128 vertices. SDK-internal allocation is not claimed to be bounded by these
@@ -152,3 +152,39 @@ renderer picking/export consumption and final atomic publication remain open.
 No cap deletion is implemented. Mixed source/generated faces remain mixed even
 when coplanar. Exact remains default; no retained release or licence clearance
 is claimed.
+
+## Observed tessellation receipts (#7955, round 5)
+
+**Runtime qualification pending.** The retained round-4 observation contains
+254 edge splits with the same 36-notification sequence. The pinned
+`SmBrep::MakeVertexSplitEdge` closes with `SM_NO_SPLIT_IN_BREP`, not an edge
+`POST_EDIT`. `EdgeSubdivision` recognizes this protocol only within the issued
+fixed tessellation frame and its observed internal BRep copy generation.
+
+Each split captures at most 16 incident uses and 16 faces. Constructors issue
+fresh edge, vertex, use and curve generations. A matching curve-split receipt
+must describe an exact interior partition. Checked restrictions in a separate
+callback-free scratch context must match the actual 3D and UV coefficients,
+knots, domains and evaluator metadata exactly. Completion checks incidence,
+loop linkage, vertex position, unchanged tolerances and incident surfaces.
+Installed child trims can originate later observed temporary helpers; the
+installed trims themselves remain protected outside this split protocol.
+No face root or replacement face identity is issued by edge subdivision.
+
+The operation permits at most 1024 splits and 256 notifications per split,
+within the unchanged ledger node/event limits. Geometry serializers retain
+their existing coefficient and word limits. Knot snapping, UV deletion and
+solver-driven UV reparameterization are refused by this receipt. They were not
+present in the recorded observation; success for other affine cases is not
+claimed from it. The SDK's terminal split notification is followed only by
+output assignment and `SM_SUCCESS` in the pinned release source. Acceptance
+still requires actual outer tessellation success, an empty failure report,
+no incomplete receipt, retired temporaries, and the exact input seal.
+
+A separate polygon attribute receipt handles `ConvertToPolyBrep`'s final
+`SetOriginalFace` call: it must match the original input identity named by the
+observed face-copy history and the preceding internal-face polygon attribution.
+This consumes correspondence evidence; it never assigns a BRep identity to a
+polygon or fabricates an SDK copy map. The source and lineage numerical
+positive expectations, tolerances, resource bounds and inherited mutations
+remain unchanged.

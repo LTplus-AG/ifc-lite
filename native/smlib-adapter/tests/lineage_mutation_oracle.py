@@ -144,6 +144,32 @@ def main():
          'if(!numerical.source || !frame_count || numerical.frame!=frame_count ||',
          'polygon copy requires current owned tessellation phase'),
     ])
+    # #7955 round 5: actual subdivision plus independently attacked completion,
+    # final coefficients, final intervals, and original polygon correspondence.
+    cases.extend([
+        ('trim-poly-wrong-root', 'face_lineage_read_copy.cpp',
+         'found->input!=source->current) { // polygon-original-receipt',
+         'false) { // polygon-original-receipt',
+         'polygon rebind refuses a different original root'),
+        ('trim-split-frame', 'edge_subdivision_events.cpp',
+         'ledger.frame_count==frame && ledger.numerical.serial==serial &&\n'
+         '        ledger.frames[frame-1]->serial==serial',
+         'true',
+         'subdivision rejects changed geometry intervals or missing completion'),
+        ('trim-split-missing', 'edge_subdivision.cpp',
+         'require(stage==Idle,"subdivision missing matching completion receipt"); // subdivision-completion',
+         '// mutation: accept missing subdivision completion',
+         'subdivision rejects changed geometry intervals or missing completion'),
+        ('trim-split-curve', 'edge_subdivision_verify.cpp',
+         'exact(left.get(),curve); exact(right.get(),static_cast<SmCurve*>(child_curve.object)); // subdivision-exact-curves',
+         '// mutation: omit completed subdivision coefficient verification',
+         'subdivision rejects changed geometry intervals or missing completion'),
+        ('trim-split-interval', 'edge_subdivision_verify.cpp',
+         'one.GetMin()==first.GetMin() && one.GetMax()==first.GetMax() &&\n'
+         '        two.GetMin()==second.GetMin() && two.GetMax()==second.GetMax()',
+         'true',
+         'subdivision rejects changed geometry intervals or missing completion'),
+    ])
     paths = sorted({source / row[1] for row in cases})
     subprocess.run(['git', 'diff', '--exit-code', 'HEAD', '--', *map(str, paths)], cwd=root, check=True)
     originals = {path: path.read_text() for path in paths}

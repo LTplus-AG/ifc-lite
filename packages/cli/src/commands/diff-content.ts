@@ -32,6 +32,7 @@ import {
   createIdentityMapSidecar,
   createLineageSidecar,
   diffModels,
+  initDiff,
   identityMapFromContentMatches,
   identityMapSidecarMismatches,
   keyAliasesFromLineage,
@@ -109,6 +110,8 @@ export async function contentDiffCommand(options: ContentDiffOptions): Promise<v
   const baseIdentity = modelIdentityOf(basePath, baseBytes);
   const headIdentity = modelIdentityOf(headPath, headBytes);
 
+  // #8042: sidecar and fingerprint helpers share the synchronous Rust facade.
+  await initDiff();
   const pinned = { base: baseIdentity, head: headIdentity, keyProperty };
   const incoming = options.identityIn
     ? await readVerifiedSidecar(options.identityIn, pinned)

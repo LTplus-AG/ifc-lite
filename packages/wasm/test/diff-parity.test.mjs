@@ -90,6 +90,7 @@ test('actual WASM and JS column/reference transport match the TS oracle (#8042)'
           assert.equal(base.entityCount, vector.base.length);
           const actual = restoreDiffReferences(base.compare(head, vector.options), vector.base, vector.head);
           assert.deepEqual(plain(actual), vector.expected, `${name}: ${vector.name}`);
+          assert.equal(JSON.stringify(plain(actual)), JSON.stringify(vector.expected), `${name}: ${vector.name}: property order`);
         } finally { head.free(); }
       } finally { base.free(); }
     }
@@ -221,12 +222,11 @@ test('actual WASM rejects invalid raw JSON before surrogate normalization (#8081
 });
 
 // #8042/#8081: the raw typed projection preserves every original code unit
-// while ignoring extras; staging's unchanged public TS engine supplies expectations.
+// while ignoring extras; the private pre-cutover oracle supplies expectations.
 test('actual WASM fingerprints preserve every lossless typed boundary (#8081)', async context => {
   const wasm = await engine(context); if (!wasm) return;
-  const oraclePath = new URL('../../diff/dist/fingerprint.js', import.meta.url);
-  if (!existsSync(oraclePath)) { context.skip('@ifc-lite/diff not built; run pnpm build'); return; }
-  const oracle = await import(oraclePath.href);
+  const { loadDiffOracle } = await import('../../../scripts/lib/diff-oracle.mjs');
+  const oracle = await loadDiffOracle('fingerprint');
   const boundaries = value => [
     ...['ifcType', 'name', 'description', 'objectType', 'predefinedType', 'tag']
       .map(field => [field, { ifcType: 'IfcWall', [field]: value }]),
@@ -257,11 +257,10 @@ test('actual WASM fingerprints preserve every lossless typed boundary (#8081)', 
   }
 });
 
-test('actual WASM lossless fingerprints equal the public TS engine without observing extras (#8081)', async context => {
+test('actual WASM lossless fingerprints equal the private oracle without observing extras (#8081)', async context => {
   const wasm = await engine(context); if (!wasm) return;
-  const oracle = new URL('../../diff/dist/fingerprint.js', import.meta.url);
-  if (!existsSync(oracle)) { context.skip('@ifc-lite/diff not built; run pnpm build'); return; }
-  const ts = await import(oracle.href);
+  const { loadDiffOracle } = await import('../../../scripts/lib/diff-oracle.mjs');
+  const ts = await loadDiffOracle('fingerprint');
   for (const scalar of ['\ud800', '\udfff', 'a\ud800b', '\udfff\ud800', '\ufffd', 'é', '😀', '\ud800\udc00', 'literal\\ud800', '']) {
     const input = {
       ifcType: `IfcWall${scalar}`, name: scalar, description: scalar,
@@ -308,9 +307,8 @@ test('actual WASM lossless fingerprints equal the public TS engine without obser
 
 test('actual WASM fingerprints distinguish lone units, replacement and literal escapes (#8081)', async context => {
   const wasm = await engine(context); if (!wasm) return;
-  const oraclePath = new URL('../../diff/dist/fingerprint.js', import.meta.url);
-  if (!existsSync(oraclePath)) { context.skip('@ifc-lite/diff not built; run pnpm build'); return; }
-  const oracle = await import(oraclePath.href);
+  const { loadDiffOracle } = await import('../../../scripts/lib/diff-oracle.mjs');
+  const oracle = await loadDiffOracle('fingerprint');
   const values = ['\ud800', '\ud801', '\udfff', '\ufffd', 'literal\\ud800'];
   const hashes = values.map(value => {
     const input = { ifcType: 'IfcWall', name: value,
@@ -328,9 +326,8 @@ test('actual WASM fingerprints distinguish lone units, replacement and literal e
 // Object.keys(Map), so compare their raw entries with an equivalent object.
 test('actual WASM raw fingerprint Map entries preserve original code units (#8081)', async context => {
   const wasm = await engine(context); if (!wasm) return;
-  const oraclePath = new URL('../../diff/dist/fingerprint.js', import.meta.url);
-  if (!existsSync(oraclePath)) { context.skip('@ifc-lite/diff not built; run pnpm build'); return; }
-  const oracle = await import(oraclePath.href);
+  const { loadDiffOracle } = await import('../../../scripts/lib/diff-oracle.mjs');
+  const oracle = await loadDiffOracle('fingerprint');
   for (const key of ['\ud800', '\udfff', '\ufffd', 'literal\\ud800']) {
     const entries = [[key, [key, { [key]: key }]], ['other', 2]];
     const input = value => ({ ifcType: 'IfcWall', propertySets: [
@@ -345,9 +342,8 @@ test('actual WASM raw fingerprint Map entries preserve original code units (#808
 
 test('actual raw WASM component holes throw TypeError and preserve the same instance (#8042)', async context => {
   const wasm = await engine(context); if (!wasm) return;
-  const oraclePath = new URL('../../diff/dist/fingerprint.js', import.meta.url);
-  if (!existsSync(oraclePath)) { context.skip('@ifc-lite/diff not built; run pnpm build'); return; }
-  const oracle = await import(oraclePath.href);
+  const { loadDiffOracle } = await import('../../../scripts/lib/diff-oracle.mjs');
+  const oracle = await loadDiffOracle('fingerprint');
   const valid = { ifcType: 'IfcWall', name: '\ud800',
     propertySets: [{ name: 'P', properties: [{ name: 'value', value: 'after rejection' }] }],
     quantitySets: [{ name: 'Q', quantities: new Array(1) }],

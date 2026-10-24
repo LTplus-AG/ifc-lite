@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { existsSync, readFileSync } from 'node:fs';
 import { expect, test } from 'vitest';
-import * as oracle from './lineage.js';
+import * as oracle from '../test/oracle/lineage.js';
 import type { Lineage, RekeyPolicy } from './lineage.js';
 
 const binary = new URL('../../wasm/pkg-diff/ifc-lite-diff_bg.wasm', import.meta.url);

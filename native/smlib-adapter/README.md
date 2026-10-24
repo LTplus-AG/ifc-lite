@@ -140,7 +140,14 @@ and supported loader calls create edges; a WASM import-object namespace such as
 `"./ifc-lite_bg.js"` does not name a delivered file. Comments, URL strings,
 regex literals and template expressions are parsed as JavaScript syntax.
 
-Ordinary immutable literal-backed URLs are resolved conservatively. Canonical
+Ordinary immutable literal-backed URLs require a uniquely bound simple `const`
+whose module/block scope contains the reference and whose declaration textually
+precedes it. Destructured and other binding forms count toward ambiguity but
+are not evaluated. Out-of-scope constants cannot supply a path. The same rule
+applies to every initializer in a literal chain. Repeated names and unsupported
+scope forms fail closed; this is deliberately narrower than general JavaScript
+binding analysis. Module imports require `./`, `../` or a supported absolute
+path; a bare filename is not interpreted as a sibling without an import map. Canonical
 client and generated wasm-bindgen/Emscripten variable-based loader forms are
 accepted only against reviewed syntax profiles, including literal roots,
 locator-bearing helper bodies, sinks, and the bindings/writes that feed them.

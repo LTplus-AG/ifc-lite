@@ -17,30 +17,52 @@ function approvedProfile(name, tree) {
   return hash(value) === profiles.profiles[kind].sha256 ? profiles.profiles[kind] : undefined;
 }
 
-// A deliberately small immutable-literal resolver for ordinary module assets.
-// Shadowed/reassigned bindings, arbitrary function calls and object properties
-// are not inferred. Generated variable flows use the audited syntax profiles.
+// Proven subset, not name-based data-flow inference: every binding form counts
+// toward uniqueness. Only simple block/module consts can supply literal roots.
+// Their declarations must precede the reference and their lexical scope must
+// contain it. Repeated names (even in disjoint scopes) deliberately fail closed.
+// Generated variable flows continue to use the independent audited profiles.
 function resolver(tree) {
   const bindings = new Map(), writes = new Set();
-  const bind = (name, value) => {
-    if (!ts.isIdentifier(name)) return;
-    bindings.set(name.text, bindings.has(name.text) ? null : value);
+  const bind = (name, value = null) => {
+    if (ts.isIdentifier(name)) {
+      bindings.set(name.text, bindings.has(name.text) ? null : value);
+    } else if (ts.isObjectBindingPattern(name) || ts.isArrayBindingPattern(name)) {
+      for (const element of name.elements) if (ts.isBindingElement(element)) bind(element.name);
+    }
   };
   walk(tree, node => {
-    if (ts.isVariableDeclaration(node)) bind(node.name,
-      node.parent.flags & ts.NodeFlags.Const ? node.initializer : null);
-    if (ts.isParameter(node)) bind(node.name, null);
+    if (ts.isVariableDeclaration(node)) {
+      const list = node.parent, statement = list.parent, scope = statement?.parent;
+      const candidate = ts.isIdentifier(node.name) && ts.isVariableDeclarationList(list) &&
+        (list.flags & ts.NodeFlags.Const) && ts.isVariableStatement(statement) &&
+        (ts.isSourceFile(scope) || ts.isBlock(scope)) && node.initializer;
+      bind(node.name, candidate ? { initializer: node.initializer, declaration: node, scope } : null);
+    }
+    if (ts.isParameter(node)) bind(node.name);
+    if ((ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) ||
+        ts.isClassDeclaration(node) || ts.isClassExpression(node)) && node.name) bind(node.name);
+    if (ts.isImportClause(node) && node.name) bind(node.name);
+    if (ts.isImportSpecifier(node) || ts.isNamespaceImport(node)) bind(node.name);
     if (ts.isBinaryExpression(node) && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
         node.operatorToken.kind <= ts.SyntaxKind.LastAssignment && ts.isIdentifier(node.left)) writes.add(node.left.text);
     if ((ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) &&
         [ts.SyntaxKind.PlusPlusToken, ts.SyntaxKind.MinusMinusToken].includes(node.operator) && ts.isIdentifier(node.operand)) writes.add(node.operand.text);
   });
+  function visible(binding, reference) {
+    if (reference.getStart() < binding.declaration.end) return false;
+    for (let parent = reference.parent; parent; parent = parent.parent) if (parent === binding.scope) return true;
+    return false;
+  }
   function resolve(node, seen = new Set()) {
     if (!node) throw new Error('Missing asset locator');
     if (literal(node) !== undefined) return literal(node);
     if (ts.isParenthesizedExpression(node)) return resolve(node.expression, seen);
-    if (ts.isIdentifier(node) && !seen.has(node.text) && !writes.has(node.text) && bindings.get(node.text)) {
-      return resolve(bindings.get(node.text), new Set([...seen, node.text]));
+    if (ts.isIdentifier(node) && !seen.has(node.text) && !writes.has(node.text)) {
+      const binding = bindings.get(node.text);
+      if (binding && visible(binding, node)) {
+        return resolve(binding.initializer, new Set([...seen, node.text]));
+      }
     }
     if (ts.isNewExpression(node) && callName(node) === 'URL' && node.arguments?.length === 2 && meta(node.arguments[1])) {
       return resolve(node.arguments[0], seen);
@@ -48,6 +70,17 @@ function resolver(tree) {
     throw new Error(`Unresolved asset locator: ${node.getText().slice(0,100)}`);
   }
   return resolve;
+}
+
+// Browser module requests differ from fetch/URL paths: "runtime.mjs" and
+// ".runtime.mjs" are bare specifiers, not sibling URLs. No import map is used.
+function moduleRequest(requests, specifier, form, name) {
+  if (typeof specifier !== 'string' || !(specifier.startsWith('./') ||
+      specifier.startsWith('../') || specifier.startsWith('/'))) {
+    throw new Error(`Bare ${form} import in ${name}: ${specifier}`);
+  }
+  // Supported absolute roots and forbidden schemes are checked with all edges.
+  requests.add(specifier);
 }
 
 export function dependencies(assets, driverPaths = []) {
@@ -68,14 +101,13 @@ export function dependencies(assets, driverPaths = []) {
       // comments, regex and ordinary string/template values do not.
       if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier) {
         const specifier = literal(node.moduleSpecifier);
-        if (!specifier?.startsWith('.') && !specifier?.startsWith('/')) throw new Error(`Bare static import in ${name}`);
-        requests.add(specifier);
+        moduleRequest(requests, specifier, 'static', name);
       }
       if (helper && ts.isIdentifier(node) && node.text === 'loadSdkModule') {
         if (node === helper.name) return;
         if (!ts.isCallExpression(node.parent) || node.parent.expression !== node || node.parent.arguments.length !== 1 ||
             literal(node.parent.arguments[0]) === undefined) throw new Error(`Unresolved retained import helper call in ${name}`);
-        requests.add(literal(node.parent.arguments[0]));
+        moduleRequest(requests, literal(node.parent.arguments[0]), 'dynamic', name);
       }
       if (ts.isNewExpression(node) && callName(node) === 'SmlibWorkerTransport') {
         const options = node.arguments?.[0];
@@ -104,8 +136,8 @@ export function dependencies(assets, driverPaths = []) {
         if (helper && node.parent === helper.body.statements[0]) return;
         const specifier = literal(node.arguments[0]);
         if (specifier === undefined) throw new Error(`Unresolved dynamic import in ${name}`);
-        if (name === 'ifclite_smlib_browser.mjs' && ['module', 'node:module'].includes(specifier)) return;
-        requests.add(specifier); return;
+        if (profile && name === 'ifclite_smlib_browser.mjs' && ['module', 'node:module'].includes(specifier)) return;
+        moduleRequest(requests, specifier, 'dynamic', name); return;
       }
       // The profile includes every sink and every binding/write/reference of
       // the loader's locator variables. Matching a filename alone grants nothing.

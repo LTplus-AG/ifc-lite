@@ -64,3 +64,42 @@ for (const [kind, filename, asset] of [
     assert.throws(() => dependencies(missing), /dependency/);
   });
 }
+
+for (const source of [
+  'const path="./payload.wasm"; function load({...path}) { fetch(path); }',
+  'const path="./payload.wasm"; { const [,path]=globalThis.paths; fetch(path); }',
+  'const path="./payload.wasm"; try {} catch (path) { fetch(path); }',
+  'const path="./payload.wasm"; { function path() {} fetch(path); }',
+  'const path="./payload.wasm"; { class path {} fetch(path); }',
+  'const path="./payload.wasm"; const load=function path() { fetch(path); };',
+  'const path="./payload.wasm"; const load=class path { method() { fetch(path); } };',
+  'function unused() { const path="./payload.wasm"; } const url=path; fetch(url);',
+  '{ const path="./payload.wasm"; } fetch(path);',
+  'switch(globalThis.kind) { case 0: const path="./payload.wasm"; fetch(path); }',
+]) test(`R2-F1 unsupported/shadowed binding refuses: ${source} (#7955)`, () => {
+  assert.doesNotThrow(() => parse('scope.mjs', source));
+  assert.throws(() => scan(source, { 'payload.wasm': 'fixture' }), /Unresolved asset locator/);
+});
+
+test('R2-F1 renamed destructuring property names do not shadow visible literal bindings (#7955)', () => {
+  const edges = scan(`
+    const path = './payload.wasm';
+    function load({path: supplied}) { const copy = path; return fetch(copy); }
+    { const {other} = globalThis.config; fetch(path); }
+    function own() { const local = './payload.wasm'; return fetch(new URL(local, import.meta.url)); }
+  `, { 'payload.wasm': 'fixture' });
+  assert.deepEqual(edges.map(edge => edge.to), ['payload.wasm']);
+});
+
+test('R2-F2 imports require module prefixes; fetch paths have URL semantics (#7955)', () => {
+  const assets = { 'runtime.mjs': 'export {};', '.runtime.mjs': 'export {};', '..runtime.mjs': 'export {};' };
+  for (const specifier of ['runtime.mjs', '.runtime.mjs', '..runtime.mjs']) {
+    for (const source of [`import(${JSON.stringify(specifier)});`, `import ${JSON.stringify(specifier)};`, `export * from ${JSON.stringify(specifier)};`]) {
+      assert.throws(() => scan(source, assets), /Bare .*import/);
+    }
+  }
+  assert.deepEqual(scan('fetch("runtime.mjs"); import("./runtime.mjs");', assets).map(edge => edge.to), ['runtime.mjs', 'runtime.mjs']);
+  assert.throws(() => dependencies(new Map([
+    ['ifclite_smlib_browser.mjs', Buffer.from('import("module");')],
+  ])), /Bare dynamic import/); // Generated Node exception needs its real syntax profile.
+});

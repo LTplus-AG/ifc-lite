@@ -56,6 +56,7 @@ struct ModelState {
 #[derive(Clone)]
 pub struct ProductionModel {
     state: Arc<ModelState>,
+    source: Option<Arc<ifc_lite_core::SourceBundle>>,
 }
 
 impl Default for ProductionModel {
@@ -71,12 +72,18 @@ impl ProductionModel {
         // 64-bit counters: wrapping would need 2^64 loads in one process.
         static NEXT_LOAD: AtomicU64 = AtomicU64::new(1);
         Self {
+            source: None,
             state: Arc::new(ModelState {
                 load: NEXT_LOAD.fetch_add(1, Ordering::Relaxed),
                 source_epoch: AtomicU64::new(0),
                 revision: AtomicU64::new(0),
             }),
         }
+    }
+
+    /// Bind retained execution to immutable bytes and their canonical index.
+    pub fn from_source(source: Arc<ifc_lite_core::SourceBundle>) -> Self {
+        Self { source: Some(source), ..Self::new() }
     }
 
     /// Capture the actual selected maps under a new revision. A later snapshot
@@ -91,6 +98,7 @@ impl ProductionModel {
             id,
             data,
             state: Arc::clone(&self.state),
+            source: self.source.clone(),
         })
     }
 
@@ -113,9 +121,22 @@ pub struct OwnedMeshProductionContext {
     id: ProductionContextId,
     data: OwnedMeshProductionData,
     state: Arc<ModelState>,
+    source: Option<Arc<ifc_lite_core::SourceBundle>>,
 }
 
 impl OwnedMeshProductionContext {
+    pub fn source(&self) -> Option<&Arc<ifc_lite_core::SourceBundle>> { self.source.as_ref() }
+    pub fn validate_decoder(&self, decoder: &ifc_lite_core::EntityDecoder) -> Result<(), ProductionContextError> {
+        self.validate_source()?;
+        if self.source.as_ref().is_some_and(|source| !source.owns_decoder(decoder)) {
+            return Err(ProductionContextError::MismatchedSource);
+        }
+        Ok(())
+    }
+    #[cfg(feature = "retained-runtime")]
+    pub(crate) fn lifecycle(&self) -> ProductionLifecycle {
+        ProductionLifecycle { id: self.id, state: self.state.clone() }
+    }
     pub fn id(&self) -> ProductionContextId {
         self.id
     }
@@ -156,6 +177,7 @@ fn stale_source() -> ProductionContextError {
 pub enum ProductionContextError {
     /// The model explicitly invalidated the snapshot's source.
     StaleSource,
+    MismatchedSource,
     /// The decoder or router could not be admitted or kept for this product:
     /// other live work holds it, or a callback replaced it mid-product.
     OwnerUnavailable,
@@ -164,6 +186,7 @@ pub enum ProductionContextError {
 impl fmt::Display for ProductionContextError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
+            Self::MismatchedSource => "decoder does not belong to the production source bundle",
             Self::StaleSource => "production model source was invalidated",
             Self::OwnerUnavailable => "production decoder or router could not be admitted or was replaced during the product",
         })
@@ -171,3 +194,17 @@ impl fmt::Display for ProductionContextError {
 }
 
 impl std::error::Error for ProductionContextError {}
+
+#[cfg(feature = "retained-runtime")]
+#[derive(Clone)]
+pub(crate) struct ProductionLifecycle { id: ProductionContextId, state: Arc<ModelState> }
+#[cfg(feature = "retained-runtime")]
+impl ProductionLifecycle {
+    pub(crate) fn validate(&self) -> Result<(), ProductionContextError> {
+        if self.id.source_epoch != self.state.source_epoch.load(Ordering::Acquire) {
+            return Err(ProductionContextError::StaleSource);
+        }
+        Ok(())
+    }
+    pub(crate) fn epoch_revision(&self) -> (u64, u64) { (self.id.source_epoch, self.id.revision) }
+}

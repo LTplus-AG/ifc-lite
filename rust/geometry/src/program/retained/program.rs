@@ -264,6 +264,11 @@ mod tests;
 #[derive(Clone)]
 pub struct RetainedTraversal { selection: Option<RetainedSelection> }
 impl RetainedTraversal {
+    /// Bound executor preparation under the same sticky traversal budget.
+    pub fn charge_source_work(&self, work: u64) -> std::result::Result<(), RetainedProgramError> {
+        self.selection.as_ref().ok_or(RetainedProgramError::Cancelled)?
+            .charge_work(work).map_err(RetainedProgramError::Stopped)
+    }
     pub fn new(contract: RetainedContract) -> Self {
         Self { selection: RetainedSelection::new(contract,next_program_id()) }
     }

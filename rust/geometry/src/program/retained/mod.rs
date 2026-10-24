@@ -10,6 +10,7 @@ mod cache;
 mod presentation;
 mod affine;
 mod identity;
+mod outcome;
 pub(in crate::program) mod boolean;
 pub use presentation::RetainedPresentation;
 mod select;
@@ -61,7 +62,7 @@ pub struct LogicalRetainedValue {
     placements: Vec<RetainedPlacement>,
     presentation: Vec<RetainedPresentation>,
     product_placed: bool,
-    pub(super) empty: bool,
+    outcome: std::sync::Arc<std::sync::OnceLock<bool>>,
     slot: LogicalRetainedSlot,
     source_from_evaluation: [f64; 16],
     /// Runtime object local metres -> current logical local metres.
@@ -76,8 +77,10 @@ impl LogicalRetainedValue {
             .ok_or_else(|| crate::Error::geometry("missing retained value"))
     }
     pub fn is_empty(&self) -> bool {
-        self.empty
+        self.evaluated_empty() == Some(true)
     }
+    /// None until a numerical executor has accepted this definition.
+    pub fn evaluated_empty(&self) -> Option<bool> { self.outcome.get().copied() }
     pub fn definition(&self) -> &LogicalRetainedDefinition {
         &self.definition
     }
@@ -166,6 +169,18 @@ pub struct RetainedPlanOperation {
     pub(super) kind: RetainedOperationKind,
 }
 impl RetainedPlanOperation {
+    /// Attach an already authenticated numerical outcome to this definition.
+    /// All placed/copied logical references observe the same write-once value.
+    /// This logical annotation does not manufacture a sealed runtime receipt.
+    pub fn bind_numerical_outcome(&self, empty: bool) -> crate::Result<()> {
+        match self.value.outcome.set(empty) {
+            Ok(()) => Ok(()),
+            Err(_) if self.value.evaluated_empty() == Some(empty) => Ok(()),
+            Err(_) => Err(crate::Error::geometry("conflicting retained numerical outcome")),
+        }
+    }
+
+
     pub fn value(&self) -> &LogicalRetainedValue {
         &self.value
     }
@@ -229,6 +244,17 @@ pub struct RetainedProductPlan {
     /// Conservatively unchecked obligations until a consumer proves them
     /// unnecessary or discharges them; traversal alone does neither.
     pub remaining: Vec<RetainedRequirement>,
+}
+impl RetainedProductPlan {
+    /// Aggregate type-map evidence without asserting product closure.
+    pub fn from_type_values(values: Vec<LogicalRetainedValue>) -> crate::Result<Self> {
+        let mut remaining = Vec::new();
+        crate::resource::reserve_headers(&mut remaining, 5)?.retain();
+        remaining.extend([RetainedRequirement::ProductPlacement,
+            RetainedRequirement::OpeningClosure, RetainedRequirement::MaterialLayers,
+            RetainedRequirement::IfcAppearance, RetainedRequirement::PersistentFaces]);
+        Ok(Self { values, remaining })
+    }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RetainedRequirement {
@@ -304,7 +330,7 @@ impl LogicalRetainedValue {
             placements: Vec::new(),
             presentation: Vec::new(),
             product_placed: self.product_placed,
-            empty: self.empty,
+            outcome: self.outcome.clone(),
             slot: self.slot,
             source_from_evaluation: self.source_from_evaluation,
             evaluation_from_source: self.evaluation_from_source,

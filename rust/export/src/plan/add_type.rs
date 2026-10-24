@@ -1,0 +1,125 @@
+// SPDX-License-Identifier: MPL-2.0
+//! [`super::super::Disposition::AddType`]: a type added on its own, with no
+//! occurrence, and the type a `TypeLink::New` creates beside one. A child of
+//! `add` so it shares the Add's checks, owner history and relationships.
+//!
+//! IFC4 and IFC4X3 declare a type to the project through `IfcRelDeclares`,
+//! so an exchange can find a type nothing instances; one relationship holds
+//! every type a plan adds this way, extending the project's own when it has
+//! one. IFC2X3 has no `IfcRelDeclares` and no other relationship that ties a
+//! type to a project: there the type is written on its own, found by its
+//! GlobalId, until an occurrence is typed by it.
+
+use std::collections::HashMap;
+
+use ifc_lite_core::entity_info_for_schema;
+
+use crate::step_ids::IdAllocator;
+use crate::step_text::escape;
+
+use super::super::add_props::{build_sets, validate_psets};
+use super::super::add_rels::{RelKind, RelRequest};
+use super::super::add_types::{GlobalId, NewObject, NewType};
+use super::super::props_synth::{ref_list, ref_or_unset};
+use super::super::tessellation::Emit;
+use super::super::types::ObjectRef;
+use super::assoc::Shared;
+use super::units::build_units;
+use super::{require_filled, Added, AddState};
+
+/// One Add of a plan, in plan order: an object, or a type on its own.
+#[derive(Clone, Copy)]
+pub(crate) enum AddItem<'p> {
+    Object(&'p NewObject),
+    Type(&'p NewType),
+}
+
+impl<'p> AddItem<'p> {
+    /// Every existing record this Add names.
+    pub(crate) fn references(self) -> Vec<&'p ObjectRef> {
+        match self {
+            AddItem::Object(o) => o.references().collect(),
+            AddItem::Type(t) => t.references().collect(),
+        }
+    }
+}
+
+impl AddState<'_> {
+    /// Build a type on its own, or refuse it whole.
+    pub(super) fn add_type(&mut self, key: &ObjectRef, t: &NewType, ids: &mut IdAllocator) -> Result<(), String> {
+        let gid = t.global_id.ok_or("a type added on its own needs its own GlobalId")?;
+        let encoded = gid.encode();
+        self.check_new_identity(key, &encoded)?;
+        let (class, predefined) = self.check_class(&t.class, "IFCTYPEPRODUCT")?;
+        validate_psets(self.schema, &t.psets)?;
+        let units = self.check_units(&t.psets)?;
+        let project = match entity_info_for_schema(self.schema, "IFCRELDECLARES") {
+            None => None,
+            Some(_) => Some(
+                self.index
+                    .projects
+                    .iter()
+                    .copied()
+                    .find(|id| !self.removed.contains(id))
+                    .ok_or("the file has no IfcProject to declare the type to")?,
+            ),
+        };
+
+        let mut out = Vec::new();
+        let owner_history = self.owner_history_for(ids, &mut out)?;
+        let mut shared = Shared { committed: &self.shared, pending: HashMap::new() };
+        let mut emit = Emit { schema: self.schema, ids, out: &mut out };
+        let units = build_units(&mut emit, &mut shared, &units)?;
+        let id = build_new_type(&mut emit, t, gid, (&class, &predefined), &units, Some(owner_history))?;
+        let pending = shared.pending;
+
+        self.owner_history = Some(owner_history);
+        self.records.extend(out);
+        self.shared.extend(pending);
+        if let Some(project) = project {
+            self.rels.relate(self.schema, RelRequest { kind: RelKind::Declares, relating: project, related: id, seed: gid });
+        }
+        self.placement_of_added.insert(id, None);
+        self.added.insert(encoded, Added { id, class });
+        Ok(())
+    }
+}
+
+/// The type a `TypeLink::New` creates, with its own property sets.
+/// `class` is its checked class and `PredefinedType`.
+pub(super) fn build_new_type(
+    emit: &mut Emit,
+    t: &NewType,
+    occurrence: GlobalId,
+    class: (&str, &Option<String>),
+    units: &[Vec<Option<u32>>],
+    owner_history: Option<u32>,
+) -> Result<u32, String> {
+    // A type with its own GlobalId derives its sets' ids from it.
+    let (base, role) = t.global_id.map_or((occurrence, "type/pset"), |g| (g, "pset"));
+    let type_sets = build_sets(emit, owner_history, base, role, &t.psets, units)?;
+    let type_gid = format!("'{}'", t.global_id_for(occurrence).encode());
+    let mut fields = vec![("GlobalId", type_gid), ("OwnerHistory", ref_or_unset(owner_history))];
+    if let Some(name) = &t.name {
+        fields.push(("Name", format!("'{}'", escape(name))));
+    }
+    if !type_sets.is_empty() {
+        fields.push(("HasPropertySets", ref_list(&type_sets)));
+    }
+    // Mandatory on element types in IFC4 and later (and on door and window
+    // types, their operation and partitioning; on furniture types, the
+    // assembly place): NOTDEFINED claims nothing when the caller names no
+    // value.
+    let notdefined = || ".NOTDEFINED.".to_string();
+    fields.push(("PredefinedType", class.1.clone().unwrap_or_else(notdefined)));
+    fields.push(("OperationType", notdefined()));
+    fields.push(("PartitioningType", notdefined()));
+    fields.push(("AssemblyPlace", notdefined()));
+    let id = emit.record(class.0, &fields)?;
+    require_filled(emit, id)?;
+    Ok(id)
+}
+
+#[cfg(test)]
+#[path = "add_type_tests.rs"]
+mod tests;

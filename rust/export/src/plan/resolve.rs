@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::step_ids::IdAllocator;
 use super::index::FileIndex;
-use super::add_types::NewObject;
+use super::add::AddItem;
 use super::patch::{apply_patch, PatchOutput};
 use super::types::{Disposition, DroppedRepresentation, ExportPlan, ObjectRef, Refusal};
 use super::{add, attrs, delete, geometry, owner_history};
@@ -84,7 +84,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     let mut reshaped: HashSet<u32> = HashSet::new();
     for &(id, disposition) in &resolved {
         match disposition {
-            Disposition::Preserve | Disposition::Delete | Disposition::Add(_) => {}
+            Disposition::Preserve | Disposition::Delete | Disposition::Add(_) | Disposition::AddType(_) => {}
             Disposition::Patch(patch) => {
                 if removed.contains(&id) {
                     refusals.push(Refusal {
@@ -210,13 +210,20 @@ fn split_dispositions<'p>(
     index: &FileIndex,
     plan: &'p ExportPlan,
     refusals: &mut Vec<Refusal>,
-) -> (Vec<(u32, &'p Disposition)>, Vec<(&'p ObjectRef, &'p NewObject)>) {
+) -> (Vec<(u32, &'p Disposition)>, Vec<(&'p ObjectRef, AddItem<'p>)>) {
     let mut resolved = Vec::new();
     let mut adds = Vec::new();
     for (obj, disposition) in &plan.dispositions {
-        if let Disposition::Add(new) = disposition {
-            adds.push((obj, &**new));
-            continue;
+        match disposition {
+            Disposition::Add(new) => {
+                adds.push((obj, AddItem::Object(new)));
+                continue;
+            }
+            Disposition::AddType(t) => {
+                adds.push((obj, AddItem::Type(t)));
+                continue;
+            }
+            _ => {}
         }
         match index.resolve(obj) {
             Some(id) => resolved.push((id, disposition)),
@@ -236,11 +243,11 @@ fn split_dispositions<'p>(
 fn protected_ids(
     index: &FileIndex,
     resolved: &[(u32, &Disposition)],
-    adds: &[(&ObjectRef, &NewObject)],
+    adds: &[(&ObjectRef, AddItem)],
     requested_deletes: &HashSet<u32>,
 ) -> HashSet<u32> {
     let patched = resolved.iter().filter(|&&(_, d)| matches!(d, Disposition::Patch(_))).map(|&(id, _)| id);
-    let named = adds.iter().flat_map(|(_, new)| new.references()).filter_map(|r| index.resolve(r));
+    let named = adds.iter().flat_map(|&(_, item)| item.references()).filter_map(|r| index.resolve(r));
     // The Adds name the file's owner history too.
     let history = index.first_owner_history.filter(|_| !adds.is_empty());
     patched.chain(named).chain(history).filter(|id| !requested_deletes.contains(id)).collect()

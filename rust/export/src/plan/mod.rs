@@ -10,6 +10,7 @@
 //! [`Disposition::Add`] builds a new object (placement, geometry,
 //! containment, type, property sets, material, classifications, an opening
 //! in a host) from an IFC-level description; see `add.rs`.
+//! [`Disposition::AddType`] adds a type nothing instances yet.
 //!
 //! # Design
 //!
@@ -98,6 +99,7 @@ pub fn execute<W: std::io::Write>(source: &[u8], plan: &ExportPlan, out: W) -> R
         .iter()
         .filter_map(|(_, d)| match d {
             Disposition::Add(new) => Some(new.guids_to_look_up()),
+            Disposition::AddType(t) => Some(t.guids_to_look_up()),
             _ => None,
         })
         .flatten()

@@ -2,7 +2,7 @@
 //! Relationship bookkeeping for [`super::Disposition::Add`]: containment,
 //! aggregation, type assignment, and material and classification
 //! association, gathered across every Add in a plan and written once at the
-//! end.
+//! end, and the declaration of a type added on its own to the project.
 //!
 //! Deferring the write is what keeps a file from gaining one
 //! `IfcRelContainedInSpatialStructure` per added object. Ten walls added to
@@ -33,6 +33,7 @@ pub(crate) enum RelKind {
     DefinesByType,
     AssociatesMaterial,
     AssociatesClassification,
+    Declares,
 }
 
 impl RelKind {
@@ -44,6 +45,7 @@ impl RelKind {
             RelKind::DefinesByType => ("IFCRELDEFINESBYTYPE", "RelatingType", "RelatedObjects"),
             RelKind::AssociatesMaterial => ("IFCRELASSOCIATESMATERIAL", "RelatingMaterial", "RelatedObjects"),
             RelKind::AssociatesClassification => ("IFCRELASSOCIATESCLASSIFICATION", "RelatingClassification", "RelatedObjects"),
+            RelKind::Declares => ("IFCRELDECLARES", "RelatingContext", "RelatedDefinitions"),
         }
     }
 
@@ -54,6 +56,7 @@ impl RelKind {
             RelKind::DefinesByType => "rel/type",
             RelKind::AssociatesMaterial => "rel/material",
             RelKind::AssociatesClassification => "rel/classification",
+            RelKind::Declares => "rel/declares",
         }
     }
 }

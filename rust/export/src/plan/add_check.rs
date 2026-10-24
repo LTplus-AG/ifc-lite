@@ -91,7 +91,7 @@ impl AddState<'_> {
         self.index.attrs(id)?.into_iter().nth(idx)?.scalar
     }
 
-    fn check_class(&self, spec: &ClassSpec, kind: &str) -> Result<(String, Option<String>), String> {
+    pub(super) fn check_class(&self, spec: &ClassSpec, kind: &str) -> Result<(String, Option<String>), String> {
         let class = spec.class.keyword();
         let schema = self.schema;
         let info = entity_info_for_schema(schema, &class).ok_or_else(|| format!("{class} is not declared in {schema}"))?;
@@ -124,21 +124,29 @@ impl AddState<'_> {
         Ok((class, predefined))
     }
 
-    pub(super) fn check(&self, key: &ObjectRef, obj: &NewObject) -> Result<Checked, String> {
-        let encoded = obj.global_id.encode();
+    /// Refuse a plan key that names something already there, a GlobalId key
+    /// other than the new record's own, and a GlobalId already in use.
+    pub(super) fn check_new_identity(&self, key: &ObjectRef, encoded: &str) -> Result<(), String> {
         let live_in_source = |id: &u32| !self.removed.contains(id);
         if self.index.resolve(key).is_some_and(|id| live_in_source(&id)) {
             return Err(format!("{key} already exists in the source"));
         }
         if let ObjectRef::Guid(g) = key {
-            if *g != encoded {
+            if g != encoded {
                 return Err(format!("key {g} does not match the Add's GlobalId {encoded}"));
             }
         }
-        let in_source = self.index.resolve(&ObjectRef::Guid(encoded.clone()));
-        if in_source.is_some_and(|id| live_in_source(&id)) || self.added.contains_key(&encoded) {
+        let in_source = self.index.resolve(&ObjectRef::Guid(encoded.to_string()));
+        if in_source.is_some_and(|id| live_in_source(&id)) || self.added.contains_key(encoded) {
             return Err(format!("GlobalId {encoded} is already in use"));
         }
+        Ok(())
+    }
+
+    pub(super) fn check(&self, key: &ObjectRef, obj: &NewObject) -> Result<Checked, String> {
+        let encoded = obj.global_id.encode();
+        let live_in_source = |id: &u32| !self.removed.contains(id);
+        self.check_new_identity(key, &encoded)?;
 
         let (class, predefined) = self.check_class(&obj.class, "IFCPRODUCT")?;
         if let Some(e) = obj.elevation {

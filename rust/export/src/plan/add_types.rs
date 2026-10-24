@@ -196,6 +196,25 @@ pub struct NewType {
 }
 
 impl NewType {
+    /// The GlobalIds a type added on its own names: its own and each unit
+    /// named by GlobalId.
+    pub(crate) fn guids_to_look_up(&self) -> Vec<String> {
+        let own = self.global_id.map(GlobalId::encode);
+        let named = self.references().filter_map(|r| match r {
+            ObjectRef::Guid(g) => Some(g.clone()),
+            ObjectRef::Id(_) => None,
+        });
+        own.into_iter().chain(named).collect()
+    }
+
+    /// Every existing record this type names: the units of its values.
+    pub(crate) fn references(&self) -> impl Iterator<Item = &ObjectRef> {
+        self.psets.iter().flat_map(|s| &s.properties).filter_map(|p| match &p.unit {
+            Some(ValueUnit::Existing(r)) => Some(r),
+            _ => None,
+        })
+    }
+
     /// The GlobalId this type is written with when `occurrence` creates it.
     pub fn global_id_for(&self, occurrence: GlobalId) -> GlobalId {
         self.global_id.unwrap_or_else(|| occurrence.derive("type"))

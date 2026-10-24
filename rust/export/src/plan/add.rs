@@ -22,12 +22,12 @@ use crate::step_ids::IdAllocator;
 use super::add_geometry::product_shape;
 use super::add_props::build_sets;
 use super::add_rels::{RelAccumulator, RelKind, RelRequest};
-use super::add_types::{GlobalId, NewObject, NewType, Representation, TypeLink};
+use super::add_types::{NewObject, Representation, TypeLink};
 use super::attrs::{attribute_index, unset_required};
 use super::index::FileIndex;
 use super::owner_history;
 use super::placement::fmt;
-use super::props_synth::{defines_by_properties_record, ref_list, ref_or_unset};
+use super::props_synth::{defines_by_properties_record, ref_or_unset};
 use super::tessellation::{find_body_context, synthesize_context, Emit};
 use super::types::{ObjectRef, PlanContext, Refusal};
 
@@ -88,18 +88,22 @@ impl<'a> AddState<'a> {
         }
     }
 
+    /// The owner history new records name: the plan's, else one synthesized
+    /// into `out`, which the caller commits only if its Add builds.
+    fn owner_history_for(&self, ids: &mut IdAllocator, out: &mut Vec<(u32, String)>) -> Result<u32, String> {
+        if let Some(id) = self.owner_history {
+            return Ok(id);
+        }
+        let (records, id) = owner_history::synthesize(self.schema, ids, self.context).ok_or("id space exhausted")?;
+        out.extend(records);
+        Ok(id)
+    }
+
     /// Build one object, or refuse it whole.
     fn add(&mut self, key: &ObjectRef, obj: &NewObject, ids: &mut IdAllocator) -> Result<(), String> {
         let checked = self.check(key, obj)?;
         let mut out = Vec::new();
-        let owner_history = match self.owner_history {
-            Some(id) => id,
-            None => {
-                let (records, id) = owner_history::synthesize(self.schema, ids, self.context).ok_or("id space exhausted")?;
-                out.extend(records);
-                id
-            }
-        };
+        let owner_history = self.owner_history_for(ids, &mut out)?;
         let mut requests = Vec::new();
         let mut emit = Emit { schema: self.schema, ids, out: &mut out };
         let built = self.build(&mut emit, obj, &checked, owner_history, &mut requests)?;
@@ -142,18 +146,22 @@ impl<'a> AddState<'a> {
     /// that had built is refused too.
     pub(crate) fn build_all(
         mut self,
-        adds: &[(&ObjectRef, &NewObject)],
+        adds: &[(&ObjectRef, AddItem)],
         ids: &mut IdAllocator,
         edits_by_id: &mut HashMap<u32, BTreeMap<usize, String>>,
         appended: &mut Vec<(u32, String)>,
         refusals: &mut Vec<Refusal>,
     ) -> usize {
         let mut built = Vec::new();
-        for &(key, new) in adds {
+        for &(key, item) in adds {
             // A refused Add gives back the ids it took, so it changes no
             // later Add's ids or headroom.
             let before = *ids;
-            match self.add(key, new, ids) {
+            let result = match item {
+                AddItem::Object(new) => self.add(key, new, ids),
+                AddItem::Type(t) => self.add_type(key, t, ids),
+            };
+            match result {
                 Ok(()) => built.push(key),
                 Err(reason) => {
                     *ids = before;
@@ -315,45 +323,10 @@ impl<'a> AddState<'a> {
     }
 }
 
-/// The type a `TypeLink::New` creates, with its own property sets.
-/// `class` is its checked class and `PredefinedType`.
-fn build_new_type(
-    emit: &mut Emit,
-    t: &NewType,
-    occurrence: GlobalId,
-    class: (&str, &Option<String>),
-    units: &[Vec<Option<u32>>],
-    owner_history: Option<u32>,
-) -> Result<u32, String> {
-    // A type with its own GlobalId derives its sets' ids from it.
-    let (base, role) = t.global_id.map_or((occurrence, "type/pset"), |g| (g, "pset"));
-    let type_sets = build_sets(emit, owner_history, base, role, &t.psets, units)?;
-    let type_gid = format!("'{}'", t.global_id_for(occurrence).encode());
-    let mut fields = vec![("GlobalId", type_gid), ("OwnerHistory", ref_or_unset(owner_history))];
-    if let Some(name) = &t.name {
-        fields.push(("Name", format!("'{}'", escape(name))));
-    }
-    if !type_sets.is_empty() {
-        fields.push(("HasPropertySets", ref_list(&type_sets)));
-    }
-    // Mandatory on element types in IFC4 and later (and on door and window
-    // types, their operation and partitioning; on furniture types, the
-    // assembly place): NOTDEFINED claims nothing when the caller names no
-    // value.
-    let notdefined = || ".NOTDEFINED.".to_string();
-    fields.push(("PredefinedType", class.1.clone().unwrap_or_else(notdefined)));
-    fields.push(("OperationType", notdefined()));
-    fields.push(("PartitioningType", notdefined()));
-    fields.push(("AssemblyPlace", notdefined()));
-    let id = emit.record(class.0, &fields)?;
-    require_filled(emit, id)?;
-    Ok(id)
-}
-
 /// Refuse a record the build left without a value its schema requires,
 /// such as an `IfcGrid`'s axes: an Add writes only the attributes common to
 /// the products it supports.
-fn require_filled(emit: &Emit, id: u32) -> Result<(), String> {
+pub(super) fn require_filled(emit: &Emit, id: u32) -> Result<(), String> {
     let Some((_, text)) = emit.out.iter().rev().find(|(i, _)| *i == id) else { return Ok(()) };
     let unset = unset_required(emit.schema, text);
     if unset.is_empty() {
@@ -379,6 +352,11 @@ mod assoc;
 
 #[path = "add_units.rs"]
 mod units;
+
+#[path = "add_type.rs"]
+mod standalone_type;
+pub(crate) use standalone_type::AddItem;
+use standalone_type::build_new_type;
 
 #[cfg(test)]
 #[path = "add_tests.rs"]

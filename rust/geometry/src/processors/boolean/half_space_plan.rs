@@ -8,7 +8,7 @@
 
 use super::halfspace_cap::cap_half_space_clip;
 use crate::csg::{ClippingProcessor, Plane};
-use crate::processors::helpers::parse_axis2_placement_3d;
+use crate::placement::Axis2Placement;
 use crate::{Error, Mesh, Point3, Result, Vector3};
 use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType};
 
@@ -56,7 +56,7 @@ impl HalfSpacePlan {
             .ok_or_else(|| Error::geometry("Failed to resolve Plane position".to_string()))?;
 
         // Location = plane point; Z-axis (Axis) = plane normal.
-        let transform = parse_axis2_placement_3d(&position, decoder)?;
+        let transform = Axis2Placement::read_3d(&position, decoder)?.matrix();
         let point = Point3::new(transform[(0, 3)], transform[(1, 3)], transform[(2, 3)]);
         let normal =
             Vector3::new(transform[(0, 2)], transform[(1, 2)], transform[(2, 2)]).normalize();

@@ -202,15 +202,16 @@ fn a_csg_primitive_position_that_is_present_must_read() {
 }
 
 #[test]
-fn the_shared_helpers_refuse_an_unreadable_placement_or_direction() {
+fn the_one_reader_refuses_an_unreadable_placement_or_direction() {
+    use crate::placement::Axis2Placement;
     let content = "#1=IFCCARTESIANPOINT((1.,2.,3.));\n#2=IFCDIRECTION((0.,0.,1.));\n\
                    #3=IFCAXIS2PLACEMENT3D($,$,$);\n#4=IFCAXIS2PLACEMENT3D(#1,#1,$);\n\
                    #5=IFCAXIS2PLACEMENT3D(#1,$,$);\n";
     let mut decoder = EntityDecoder::new(content);
     // Base: a fast-path miss snapped to the origin and swallowed the error.
-    assert!(helpers::get_axis2_placement_transform_by_id(3, &mut decoder).is_err());
-    assert!(helpers::get_axis2_placement_transform_by_id(4, &mut decoder).is_err());
-    let m = helpers::get_axis2_placement_transform_by_id(5, &mut decoder).expect("control");
+    assert!(Axis2Placement::read_id(3, &mut decoder).is_err());
+    assert!(Axis2Placement::read_id(4, &mut decoder).is_err());
+    let m = Axis2Placement::read_id(5, &mut decoder).expect("control").matrix();
     assert_eq!((m[(0, 3)], m[(1, 3)], m[(2, 3)]), (1.0, 2.0, 3.0));
     // Base: `get_direction_by_id` had no type check, so a point read as a
     // direction `(1,2,3)`. Its one caller now reads through the leaf reader.

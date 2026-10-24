@@ -1,0 +1,59 @@
+diff --git b/rust/geometry/src/processors/brep/faceted_plan.rs a/rust/geometry/src/processors/brep/faceted_plan.rs
+index a7e13350a5..30e80f8f29 100644
+--- b/rust/geometry/src/processors/brep/faceted_plan.rs
++++ a/rust/geometry/src/processors/brep/faceted_plan.rs
+@@ -186,12 +186,12 @@ impl FacetedBrepPlan {
+         } else {
+             // While waiting, this worker may run another element's job, which
+             // must not share this product's resource state (#7955).
+-            (|| {
++            crate::resource::detached(|| {
+                 face_data_list
+                     .par_iter()
+                     .map(|face| FacetedBrepProcessor::triangulate_face(face, rtc))
+                     .collect()
+-            })()
++            })
+         };
+ 
+         // PHASE 3: Sequential - Merge all face results into final mesh
+diff --git b/rust/geometry/src/resource/mod.rs a/rust/geometry/src/resource/mod.rs
+index 098b79535c..305cb94a92 100644
+--- b/rust/geometry/src/resource/mod.rs
++++ a/rust/geometry/src/resource/mod.rs
+@@ -186,9 +186,6 @@ pub fn account_from_source_context(
+ /// per-thread diagnostic capture, such as geometry telemetry transactions and
+ /// the CSG census sink, is not scoped by it.
+ pub fn detached<T>(operation: impl FnOnce() -> T) -> T {
+-    if true {
+-        return operation();
+-    }
+     struct Restore {
+         account: Option<ExecutionAccount>,
+         source: Option<ifc_lite_core::execution_owner::SourceStopHandle>,
+diff --git b/rust/geometry/src/router/diagnostics_checked.rs a/rust/geometry/src/router/diagnostics_checked.rs
+index 97c4f6db19..ec33e383e8 100644
+--- b/rust/geometry/src/router/diagnostics_checked.rs
++++ a/rust/geometry/src/router/diagnostics_checked.rs
+@@ -50,7 +50,7 @@ impl GeometryRouter {
+     /// A custom hook that charges, stops or runs nested products therefore
+     /// acts inside the NEXT product's epoch and resource domain.
+     pub fn settle_opaque_csg_failures(&self) {
+-        if self.csg_product_depth.get() == usize::MAX as u32 && self.csg_opaque_unscoped.get() {
++        if self.csg_product_depth.get() == 1 && self.csg_opaque_unscoped.get() {
+             self.drain_processor_failures();
+             self.csg_opaque_unscoped.set(false);
+         }
+diff --git b/rust/processing/src/element/session.rs a/rust/processing/src/element/session.rs
+index dfb903d55a..9bf925f50f 100644
+--- b/rust/processing/src/element/session.rs
++++ a/rust/processing/src/element/session.rs
+@@ -214,7 +214,7 @@ impl<'j> ProductState<'j> {
+     ) -> Result<(), WorkError> {
+         let Some(live) = self.live else { return Err(WorkError::Aborted) };
+         self.protocol.before_accept(&reply)?;
+-        if false && reply.owner != live.stamp {
++        if reply.owner != live.stamp {
+             return Err(WorkError::WrongOwner);
+         }
+         if self.capture_stop() {

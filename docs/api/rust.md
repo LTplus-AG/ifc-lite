@@ -396,6 +396,8 @@ containing two or three finite plain numeric values and returns the raw
 `Option<[f64; 3]>`, promoting two ratios with `z = 0` without normalizing or
 rejecting a zero vector. A wrong record type, extra attributes, malformed list
 or non-finite ratio returns `None`. This read does not decode or count refusals.
+It is transitional (removed by C2): prefer `direction3_at`, which counts its
+refusals in `refused_records()`.
 
 `DenseEntityIndex::try_from_columns(ids, starts, lengths)` accepts sorted, unique
 IDs and `u32` span columns. It returns `None` if the columns disagree or direct

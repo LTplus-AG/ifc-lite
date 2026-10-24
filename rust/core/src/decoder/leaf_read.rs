@@ -127,6 +127,10 @@ impl EntityDecoder<'_> {
     /// ratios, or `None` when it is malformed. There is no decoder here, so
     /// nothing is counted: only for a caller that holds the entity and no
     /// decoder (the void probe's `parse_direction`, until C2 gives it one).
+    ///
+    /// **Transitional:** removed by C2 once that caller has a decoder. New
+    /// callers use [`Self::direction3_at`], which counts its refusals in
+    /// [`Self::refused_records`]; refusals read here escape that counter.
     pub fn direction3_of(entity: &DecodedEntity) -> Option<[f64; 3]> {
         slow_leaf(entity, IfcType::IfcDirection)
     }

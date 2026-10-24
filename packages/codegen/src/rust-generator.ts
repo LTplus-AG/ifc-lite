@@ -16,7 +16,7 @@ import type { ExpressSchema, EntityDefinition } from './express-parser.js';
 import { crc32, formatCRC32TableLiteral } from './crc32.js';
 import { getInheritanceChain } from './express-parser.js';
 import { generateSchemaQueries, mergeTypeUniverse } from './rust-schema-queries.js';
-import { generateTypeNameParser } from './rust-type-name-parser.js';
+import { generateCanonicalNameHash, generateTypeNameParser } from './rust-type-name-parser.js';
 import { generateUnknownIfcType } from './rust-unknown-ifc-type.js';
 import { generateTypeIdConstants } from './rust-type-id-generator.js';
 
@@ -211,7 +211,7 @@ ${formatCRC32TableLiteral('        ')}
     }
     crc ^ 0xffffffff
 }
-`;
+${generateCanonicalNameHash()}`;
 
   return code;
 }

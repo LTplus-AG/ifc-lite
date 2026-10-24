@@ -14,8 +14,11 @@ pub(super) fn validate<R: NumericalReceipt>(execution: &RuntimeProductExecution<
     let source = execution.context.source().ok_or(RetainedExecutionError::Source)?;
     // Preflight scanner storage (including malformed-record diagnostics) before
     // scanning. No lazy entity decoding is performed after numerical Empty.
-    execution.resources.charge(resource::Cost { work: source.bytes().len() as u64,
-        live_bytes: source.bytes().len() as u64 * 8, ..Default::default() })?.retain();
+    // Declared before scanner: reverse drop order releases its diagnostic
+    // storage first, then refunds live bytes on success, refusal or unwind.
+    // Work is cumulative and Reservation::drop deliberately does not refund it.
+    let _scan_storage = execution.resources.charge(resource::Cost { work: source.bytes().len() as u64,
+        live_bytes: source.bytes().len() as u64 * 8, ..Default::default() })?;
     let mut scanner = ifc_lite_core::EntityScanner::new(source.bytes());
     while let Some((_,name,start,end)) = scanner.next_entity() {
         execution.resources.check()?;

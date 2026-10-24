@@ -256,7 +256,6 @@ diagnoseGeometry(content: Uint8Array): any;                           // CSG / o
 
 Grid endpoints must be `IfcCartesianPoint` records with two or three finite numeric coordinates; two-dimensional points use zero elevation. A malformed endpoint omits that axis. Grid and alignment overlays omit an item whose authored placement cannot be resolved. A genuinely absent placement keeps the identity transform.
 
-
 Grid, alignment, and symbolic parsing can instead reuse the exact effective
 mesh-producer RTC frame (after any federation override):
 

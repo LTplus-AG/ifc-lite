@@ -1,0 +1,46 @@
+diff --git a/rust/wasm-bindings/src/api/alignment_lines.rs b/rust/wasm-bindings/src/api/alignment_lines.rs
+index 1fecfd6c6a..43547ec2ce 100644
+--- a/rust/wasm-bindings/src/api/alignment_lines.rs
++++ b/rust/wasm-bindings/src/api/alignment_lines.rs
+@@ -107,3 +107,5 @@ pub(crate) fn extract_alignment_line_vertices(
+         // (metres, column-major); identity when it has none.
+-        let placement = router.resolve_scaled_placement(&entity, &mut decoder).unwrap_or([1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]);
++        let Ok(placement) = router.resolve_scaled_placement(&entity, &mut decoder) else {
++            continue; // #7779 W1: keep genuinely absent placement semantics only.
++        };
+         append_alignment_segments(&alignment, unit_scale, &placement, rtc, &mut out);
+diff --git a/rust/wasm-bindings/src/api/grid_lines.rs b/rust/wasm-bindings/src/api/grid_lines.rs
+index 3076cb2341..92bd0f10ee 100644
+--- a/rust/wasm-bindings/src/api/grid_lines.rs
++++ b/rust/wasm-bindings/src/api/grid_lines.rs
+@@ -77,7 +77,5 @@ pub(crate) fn extract_grid_axes(content: &str, frame: Option<MeshFrame>) -> Vec<
+         // Does NOT subtract RTC — we do that per point below.
+-        let matrix = router
+-            .resolve_scaled_placement(&grid, &mut decoder)
+-            .unwrap_or([
+-                1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+-            ]);
++        let Ok(matrix) = router.resolve_scaled_placement(&grid, &mut decoder) else {
++            continue; // #7779 W1: an unreadable placement cannot draw at the origin.
++        };
+         append_grid_axes(&grid, id, &mut decoder, unit_scale, &matrix, rtc, &mut out);
+@@ -156,15 +154,6 @@ fn sample_axis_endpoints(
+     }
+-    let extract = |pe: &DecodedEntity| -> Option<[f64; 3]> {
+-        if pe.ifc_type != IfcType::IfcCartesianPoint {
+-            return None;
+-        }
+-        let coords = pe.get(0)?.as_list()?;
+-        let x = coords.first()?.as_float()?;
+-        let y = coords.get(1)?.as_float()?;
+-        // 2D grid axis points are common; default Z to 0.
+-        let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0);
+-        Some([x, y, z])
+-    };
+-    let first = extract(&points[0])?;
+-    let last = extract(&points[points.len() - 1])?;
++    // #7779 W1: canonical admission retains 2D z=0, but rejects a malformed
++    // authored third component instead of turning it into ground-level geometry.
++    let first = decoder.point3(points[0].id).ok()?;
++    let last = decoder.point3(points[points.len() - 1].id).ok()?;
+     Some((first, last))

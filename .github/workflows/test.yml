@@ -1560,6 +1560,11 @@ jobs:
           # leaf_read.rs is on main, ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/decoder/leaf_read.rs | grep -Fxq 'rust/core/src/decoder/leaf_read.rs'; then
             oracle_args+=(--mutation tests/evidence/leaf-readers-7779/behaviour.oracle.patch)
+          # #7779 W1: keep the changed grid/alignment tests and restore only
+          # the former point/placement fallback. They must fail on malformed
+          # authored endpoints and placements being rendered as valid lines.
+          elif git diff --name-only origin/main...HEAD -- rust/wasm-bindings/src/api/grid_lines.rs | grep -Fxq 'rust/wasm-bindings/src/api/grid_lines.rs'; then
+            oracle_args+=(--mutation tests/evidence/wasm-overlays-7779/behaviour.oracle.patch)
           # #7696: the new ifc-lite-testkit crate is what every migrated test now
           # calls, so a whole-change revert deletes it and none of them compile
           # (INCONCLUSIVE). Keep the crate and disable ONLY the

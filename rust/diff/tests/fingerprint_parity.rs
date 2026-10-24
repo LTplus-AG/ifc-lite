@@ -229,6 +229,24 @@ fn fingerprints_match_the_typescript_engine() {
     }
 }
 
+#[test]
+fn direct_adapter_deserialization_matches_typescript_issue_8042() {
+    fn has_tag(value: &Value) -> bool {
+        match value {
+            Value::Object(o) => o.contains_key("$f64") || o.contains_key("$nonfinite") || o.values().any(has_tag),
+            Value::Array(a) => a.iter().any(has_tag),
+            _ => false,
+        }
+    }
+    for case in vectors()["fingerprints"].as_array().unwrap() {
+        if has_tag(&case["input"]) { continue; } // Non-finite JS values are covered by the actual WASM lane.
+        let input: DataFingerprintInput = serde_json::from_value(case["input"].clone()).unwrap();
+        assert_eq!(build_data_fingerprint(&input), case["dataHash"].as_str().unwrap(), "{}", case["id"]);
+        let components: BTreeMap<String, String> = serde_json::from_value(case["components"].clone()).unwrap();
+        assert_eq!(build_component_fingerprints(&input), components, "{}", case["id"]);
+    }
+}
+
 /// The two reversed-order cases must hash alike, which is the whole point of
 /// the canonical projection. Asserted here rather than left implicit in the
 /// fixture, so a future regeneration cannot quietly bless a divergence.

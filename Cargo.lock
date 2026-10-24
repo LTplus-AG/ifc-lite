@@ -1580,6 +1580,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ifc-lite-diff-wasm"
+version = "22.5.0"
+dependencies = [
+ "ifc-lite-diff",
+ "js-sys",
+ "serde",
+ "serde-wasm-bindgen",
+ "serde_json",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "ifc-lite-export"
 version = "22.5.0"
 dependencies = [

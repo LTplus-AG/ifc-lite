@@ -54,7 +54,7 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", "pkg/**"],
+      "outputs": ["dist/**", "pkg/**", "pkg-diff/**"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "src/**",

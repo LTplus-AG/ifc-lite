@@ -7,7 +7,7 @@ import { lstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { dirname, extname, isAbsolute, relative, resolve, sep } from 'node:path';
 import ts from 'typescript';
 
-export function wasmRuntimeAssets(directory) {
+export function wasmRuntimeAssets(directory, { stem = 'ifc-lite' } = {}) {
   const root = realpathSync(directory);
   const assets = new Set();
   function inside(path) {
@@ -23,9 +23,9 @@ export function wasmRuntimeAssets(directory) {
     if (!inside(actual) || actual !== path || !statSync(actual).isFile()) throw new Error(`foreign runtime asset: ${name}`);
     return path;
   }
-  checked('ifc-lite_bg.wasm');
-  assets.add('ifc-lite_bg.wasm');
-  const pending = ['ifc-lite.js'];
+  checked(`${stem}_bg.wasm`);
+  assets.add(`${stem}_bg.wasm`);
+  const pending = [`${stem}.js`];
   while (pending.length) {
     const name = pending.pop();
     if (assets.has(name)) continue;
@@ -58,10 +58,14 @@ export function wasmRuntimeAssets(directory) {
 /** Static preflight only: reject unsafe output paths before any runtime writes.
  * This does not protect against another process changing paths after the check.
  */
-export function assertWasmRuntimeDestinations(checkoutDirectory, assets) {
+export function assertWasmRuntimeDestinations(checkoutDirectory, assets, { output = 'packages/wasm/pkg', stem = 'ifc-lite' } = {}) {
   const root = realpathSync(checkoutDirectory);
-  for (const name of [...assets, '.npmignore', '.gitignore', 'ifc-lite.d.ts']) {
-    const destination = resolve(root, 'packages/wasm/pkg', name);
+  for (const name of [...assets, '.npmignore', '.gitignore', `${stem}.d.ts`]) {
+    const destination = resolve(root, output, name);
+    const relativeName = relative(root, destination);
+    if (relativeName === '..' || relativeName.startsWith(`..${sep}`) || isAbsolute(relativeName)) {
+      throw new Error(`unsafe runtime destination: ${relativeName}`);
+    }
     const parts = relative(root, destination).split(sep);
     let path = root;
     for (const [index, part] of parts.entries()) {

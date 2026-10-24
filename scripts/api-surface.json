@@ -10415,6 +10415,23 @@
     "restashWasmPanicLocation: function",
     "takeWasmPanicStash: function"
   ],
+  "@ifc-lite/wasm/diff": [
+    "DiffModel: class",
+    "InitInput: type",
+    "InitOutput: interface",
+    "SyncInitInput: type",
+    "default: function",
+    "diffBuildComponentFingerprints: function",
+    "diffBuildDataFingerprint: function",
+    "diffCreateSidecar: function",
+    "diffKeyAliasesFromLineage: function",
+    "diffLineageConflicts: function",
+    "diffRekeyByLineage: function",
+    "diffSerializeSidecar: function",
+    "diffStableHash: function",
+    "diffValidateSidecar: function",
+    "initSync: function"
+  ],
   "@ifc-lite/wasm/retained": [
     "RetainedEngine: type",
     "loadRetainedEngine: function"

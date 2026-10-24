@@ -678,9 +678,9 @@ jobs:
       - name: Verify committed wasm types are in sync
         if: needs.changes.outputs.wasm_prebuilt != 'true'
         run: |
-          if ! git diff --quiet -- packages/wasm/pkg/ifc-lite.d.ts; then
+          if ! git diff --quiet -- packages/wasm/pkg/ifc-lite.d.ts packages/wasm/pkg-diff/ifc-lite-diff.d.ts; then
             echo "::error file=packages/wasm/pkg/ifc-lite.d.ts::Committed wasm types are out of sync with the Rust source. Run 'bash scripts/build-wasm.sh' and commit the regenerated packages/wasm/pkg/ifc-lite.d.ts."
-            git diff -- packages/wasm/pkg/ifc-lite.d.ts
+            git diff -- packages/wasm/pkg/ifc-lite.d.ts packages/wasm/pkg-diff/ifc-lite-diff.d.ts
             exit 1
           fi
           echo "✅ committed wasm types match the Rust source"
@@ -735,12 +735,13 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: build-output
-          # `packages/*/pkg` covers `wasm/pkg`, which downstream
-          # `pnpm build` calls require.
+          # Downstream packed-package checks and actual-WASM diff tests need
+          # both the geometry runtime and the independent diff payload.
           path: |
             packages/*/dist
             packages/*/wasm
             packages/*/pkg
+            packages/*/pkg-diff
           retention-days: 1
           if-no-files-found: error
 
@@ -900,6 +901,9 @@ jobs:
           # rational-oracle witnesses; the first face alone is insufficient.
           if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/issue-7943/coplanarity.oracle.patch | grep -Fxq 'tests/evidence/issue-7943/coplanarity.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/issue-7943/coplanarity.oracle.patch)
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/diff/src/columns.rs | grep -Fxq 'rust/diff/src/columns.rs'; then
+            # Keep the new transport API; row-reference parity must detect aliasing.
+            oracle_args+=(--mutation tests/evidence/diff-8042/column-references.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/diff/src/sidecar_json.rs | grep -Fxq 'rust/diff/src/sidecar_json.rs'; then
             # Preserve the new sidecar API; byte parity must observe the trailing newline.
             oracle_args+=(--mutation tests/evidence/diff-8042/sidecar-newline.oracle.patch)
@@ -3029,6 +3033,9 @@ jobs:
       - name: WASM contract tests (real processGeometryBatch boundary)
         if: matrix.shard == 4
         run: pnpm test:wasm-contract
+      - name: Rust diff real IFC parity (#8042)
+        if: matrix.shard == 4
+        run: node scripts/diff-real-fixture-parity.mjs
       # The snap cache reconstructs model edges from the mesher's per-triangle
       # segments, so its correctness depends on geometry the unit fixtures can
       # only imitate. This drives the real wasm pipeline over the committed

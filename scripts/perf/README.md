@@ -78,6 +78,17 @@ missing tooling and a Turbo-restored WASM artifact were rejected and preserved.
 Numerical observations, scope, source applicability and evidence references are
 in [the qualification record](../../tests/evidence/issue-7943/performance.json).
 
+## Independent diff WASM payload (#8042)
+
+**Size verdict: keep diff exports outside the geometry engines.** Embedding
+comparison bindings into the shared geometry module exceeded its transfer-size
+ratchet. A separate `rust/diff-wasm` target restores the default geometry
+bundle below the unchanged ceiling and lets explicit diff initialization load
+only the comparison engine. Default and retained geometry modules exclude diff
+exports. Actual-WASM tests verify independent memories and that retained diff
+models survive geometry initialization. This is a packaging result; full
+facade startup, marshaling, and end-to-end timing qualification remain open.
+
 ## Remote near-plane recovery (#7633)
 
 **Correctness repair; end-to-end browser timings remain within measured noise.**

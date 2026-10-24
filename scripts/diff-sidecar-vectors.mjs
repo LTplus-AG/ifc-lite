@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import {readFileSync,writeFileSync} from 'node:fs';
-import {createIdentityMapSidecar,serializeIdentityMapSidecar,createLineageSidecar,serializeLineageSidecar,parseIdentityMapSidecar,parseLineageSidecar} from '../packages/diff/dist/index.js';
+import {createIdentityMapSidecar,serializeIdentityMapSidecar,createLineageSidecar,serializeLineageSidecar,parseIdentityMapSidecar,parseLineageSidecar,validateIdentityMapSidecar,validateLineageSidecar} from '../packages/diff/dist/index.js';
 const vectors=[];
 for(const keyProperty of [undefined,'Tag','Pset_Asset.AssetId']) for(const created of [undefined,'2026-10-23T06:00:00.000Z']) {
  const common={base:{hash:'sha256:old',path:'old/𐀀.ifc'},head:{hash:'sha256:new',path:'new/.ifc'},
@@ -28,8 +28,18 @@ for(const kind of ['identity','lineage']) {
  const parse=kind==='identity'?parseIdentityMapSidecar:parseLineageSidecar;
  const serialize=kind==='identity'?serializeIdentityMapSidecar:serializeLineageSidecar;
  const add=(name,text)=>{
-  try { parseVectors.push({kind,name,text,wire:serialize(parse(text))}); }
-  catch(error) { if(!(error instanceof Error))throw error; parseVectors.push({kind,name,text,invalid:true}); }
+  const vector={kind,name,text};
+  let value;
+  try { value=JSON.parse(text); }
+  catch(error) { if(!(error instanceof SyntaxError))throw error; vector.invalid=true; parseVectors.push(vector); return; }
+  const validate=kind==='identity'?validateIdentityMapSidecar:validateLineageSidecar;
+  vector.errorsWire=JSON.stringify(validate(value),null,2)+'\n';
+  const create=kind==='identity'?createIdentityMapSidecar:createLineageSidecar;
+  try { vector.createWire=serialize(create(value)); }
+  catch(error) { if(!(error instanceof Error))throw error; vector.createErrorJson=JSON.stringify(error.message); }
+  try { vector.wire=serialize(parse(text)); }
+  catch(error) { if(!(error instanceof Error))throw error; vector.invalid=true; }
+  parseVectors.push(vector);
  };
  const document={format:kind==='identity'?'ifc-lite/identity-map':'ifc-lite/lineage',version:1,
   base:{hash:'a'},head:{hash:'b'},entries:[],...(kind==='lineage'?{deleted:[]}: {})};

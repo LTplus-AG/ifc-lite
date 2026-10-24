@@ -2,10 +2,16 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 //! Result transport contains row indices, never copied adapter references.
-use serde_json::{json,Value};
+use crate::DocumentValue as Value;
+macro_rules! json {
+    ({$($key:literal : $value:expr),* $(,)?}) => {
+        Value::Object(vec![$(($key.into(), json!($value))),*])
+    };
+    ($value:expr) => { crate::document_serde::to_document(&$value).expect("result DTO serialization") };
+}
 use crate::{engine::ModelDiff,model::{DiffScope,DiffState,DiffChangeKind},content_types::{ContentMatchKind,ContentMatchTier},
     split_types::{SplitMergeKind,SplitConfidence},successor::SuccessorConfidence};
-pub fn result_to_json(diff: &ModelDiff<'_,usize>) -> Value {
+pub fn result_to_document(diff: &ModelDiff<'_,usize>) -> Value {
     let core=&diff.core;
     let entries:Vec<_>=core.entries.iter().map(|e|{
         let state=match e.state {DiffState::Added=>"added",DiffState::Deleted=>"deleted",DiffState::Modified=>"modified",DiffState::Unchanged=>"unchanged"};
@@ -18,7 +24,7 @@ pub fn result_to_json(diff: &ModelDiff<'_,usize>) -> Value {
     }).collect();
     let mut result=json!({"scope":match core.scope {DiffScope::Data=>"data",DiffScope::Geometry=>"geometry",DiffScope::Both=>"both"},
         "excludedTypes":core.excluded_types,"entries":entries,
-        "counts":{"added":core.counts.added,"modified":core.counts.modified,"deleted":core.counts.deleted,"unchanged":core.counts.unchanged}});
+        "counts":json!({"added":core.counts.added,"modified":core.counts.modified,"deleted":core.counts.deleted,"unchanged":core.counts.unchanged})});
     if let Some(aliases)=&core.applied_key_aliases {result["appliedKeyAliases"]=json!(aliases);}
     if let Some(matches)=&diff.content_matches {
         result["contentMatches"]=json!(matches.iter().map(|m|{

@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 use ifc_lite_diff::{columns::{decode_columns, FingerprintColumns, ABSENT_STRING},
-    engine::diff_models, transport_options::options_from_json, transport_result::result_to_json};
+    engine::diff_models, transport_options::options_from_json, transport_result::result_to_document};
 use serde_json::{json, Value};
 
 fn columns(rows: &[Value]) -> FingerprintColumns {
@@ -19,7 +19,7 @@ fn columns(rows: &[Value]) -> FingerprintColumns {
         c.volumes.push(row["volume"].as_f64().unwrap_or(0.0));
         if let Some(components) = row["components"].as_object() {
             for (key, value) in components {
-                c.component_pairs.push(c.strings.len() as u32); c.strings.push(key.clone());
+                c.component_pairs.push(c.strings.len() as u32); c.strings.push(key.as_str().into());
                 c.component_pairs.push(c.strings.len() as u32); c.strings.push(value.as_str().unwrap().into());
             }
         }
@@ -51,7 +51,10 @@ pub fn assert_transport(vector: &Value) {
     let b = decode_columns(columns(base)).unwrap();
     let h = decode_columns(columns(head)).unwrap();
     let options = options_from_json(&vector["options"]);
-    let mut actual = result_to_json(&diff_models(&b, &h, &options));
+    let document = result_to_document(&diff_models(&b, &h, &options));
+    // This committed corpus contains scalar strings; the UTF-16 corpus checks
+    // lossless document results without projecting through serde_json::Value.
+    let mut actual: Value = serde_json::from_str(&ifc_lite_diff::sidecar_document::serialize_sidecar(&document)).unwrap();
     for row in actual["entries"].as_array_mut().unwrap() {
         restore(row, "base", base); restore(row, "head", head);
     }

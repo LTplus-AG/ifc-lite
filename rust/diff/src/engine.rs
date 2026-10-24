@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 //! Ordered composition of the diff passes. Additive claims never retire keys.
+use crate::JsString;
 use crate::model::{EntityFingerprint, KeyDiff, KeyDiffOptions};
 use crate::key_diff::diff_by_key;
 use crate::content_match::apply_content_matching;
@@ -20,7 +21,7 @@ pub struct DiffOptions {
     pub detect_successors: bool,
     pub split: SplitSettings,
     pub successor: SuccessorSettings,
-    pub class_families: Option<Vec<Vec<String>>>,
+    pub class_families: Option<Vec<Vec<JsString>>>,
 }
 #[derive(Debug)]
 pub struct ModelDiff<'a, R> {

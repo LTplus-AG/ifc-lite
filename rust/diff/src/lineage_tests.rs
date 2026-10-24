@@ -33,7 +33,7 @@ fn issue_8042_merge_preserves_each_base_row_under_every_policy() {
     let lineage = Lineage { entries: vec![entry(&["a","b"], &["joined"], LineageRelation::Merge, Some(vec![0.4,0.6]))], deleted: vec![] };
     for policy in [RekeyPolicy::CopyToAll,RekeyPolicy::LargestShare,RekeyPolicy::OrphanOnSplit] {
         let results = rekey_by_lineage(&["a".into(),"b".into()], &lineage, policy);
-        assert_eq!(results.iter().map(|r| r.key.as_str()).collect::<Vec<_>>(), ["a", "b"]);
+        assert_eq!(results.iter().map(|r| r.key.as_str().unwrap()).collect::<Vec<_>>(), ["a", "b"]);
         for result in results {
             assert_eq!(result.successors, ["joined"]);
             assert!(!result.orphan);

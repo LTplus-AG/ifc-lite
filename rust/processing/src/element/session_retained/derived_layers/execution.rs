@@ -73,7 +73,7 @@ impl<R: NumericalReceipt> DerivedLayersIssued<R> {
     }
 }
 impl<R: NumericalReceipt> DerivedLayersCompleted<R> {
-    fn validate(&self) -> Result<(),RetainedExecutionError> {
+    pub(super) fn validate(&self) -> Result<(),RetainedExecutionError> {
         self.issued.checkpoint()?;
         if self.bands.len()!=self.issued.regions.len() || self.bands.is_empty() {
             return Err(protocol("J3_PARTIAL_COMMIT: incomplete band manifest"));

@@ -191,7 +191,7 @@ mod tests {
         let map = decoder.decode_by_id(4).unwrap();
         let m = router.type_map_origin(&map, &mut decoder).unwrap().expect("a 2D origin is honoured");
         assert_eq!((m[(0, 3)], m[(1, 3)], m[(2, 3)]), (10.0, 20.0, 0.0));
-        assert!(m[(0, 0)].abs() < 1e-12 && (m[(1, 0)] - 1.0).abs() < 1e-12, "X follows RefDirection");
+        assert_eq!((m[(0, 0)], m[(1, 0)]), (0.0, 1.0), "X follows RefDirection");
         // The textured path bakes an identity 2D frame too; the mapped path
         // keeps its identity shortcut.
         let map = decoder.decode_by_id(8).unwrap();

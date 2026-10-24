@@ -3,39 +3,39 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! The GlobalId classification pass, before optional content matching (#8042).
+use crate::JsString;
 use std::collections::{HashMap, HashSet};
 use crate::model::*;
-use crate::projections::is_ecmascript_whitespace;
 use crate::utf16::cmp_code_units;
 
-fn normalize_type(value: &str) -> String {
-    value.trim_matches(is_ecmascript_whitespace).to_uppercase()
+fn normalize_type(value: &JsString) -> JsString {
+    value.normalized_class()
 }
 
-fn index<R>(entities: &[EntityFingerprint<R>]) -> Vec<(String, usize)> {
+fn index<R>(entities: &[EntityFingerprint<R>]) -> Vec<(JsString, usize)> {
     let mut seen = HashSet::new();
     entities.iter().enumerate()
-        .filter(|(_, entity)| seen.insert(entity.key.as_str()))
+        .filter(|(_, entity)| seen.insert(&entity.key))
         .map(|(i, entity)| (entity.key.clone(), i)).collect()
 }
 
 fn resolve_aliases(
-    base: &[(String, usize)], head: &mut [(String, usize)],
-    aliases: &HashMap<String, String>,
-) -> Vec<(String, String)> {
-    let base_keys: HashSet<_> = base.iter().map(|(key, _)| key.as_str()).collect();
-    let head_keys: HashSet<_> = head.iter().map(|(key, _)| key.as_str()).collect();
+    base: &[(JsString, usize)], head: &mut [(JsString, usize)],
+    aliases: &HashMap<JsString, JsString>,
+) -> Vec<(JsString, JsString)> {
+    let base_keys: HashSet<_> = base.iter().map(|(key, _)| key).collect();
+    let head_keys: HashSet<_> = head.iter().map(|(key, _)| key).collect();
     let mut proposals = Vec::new();
-    let mut claims = HashMap::<&str, usize>::new();
+    let mut claims = HashMap::<&JsString, usize>::new();
     for (key, _) in head.iter() {
         let Some(target) = aliases.get(key) else { continue };
-        if target.is_empty() || target == key || !base_keys.contains(target.as_str())
-            || head_keys.contains(target.as_str()) { continue; }
+        if target.is_empty() || target == key || !base_keys.contains(target)
+            || head_keys.contains(target) { continue; }
         proposals.push((key.clone(), target.clone()));
-        *claims.entry(target.as_str()).or_default() += 1;
+        *claims.entry(target).or_default() += 1;
     }
     let applied: Vec<_> = proposals.into_iter()
-        .filter(|(_, target)| claims[target.as_str()] == 1).collect();
+        .filter(|(_, target)| claims[target] == 1).collect();
     let replacements: HashMap<_, _> = applied.iter().map(|(key, value)| (key, value)).collect();
     for (key, _) in head.iter_mut() {
         if let Some(target) = replacements.get(key) { *key = (*target).clone(); }
@@ -43,7 +43,7 @@ fn resolve_aliases(
     applied
 }
 
-pub(crate) fn changed_components(base: &HashMap<String, String>, head: &HashMap<String, String>) -> Vec<String> {
+pub(crate) fn changed_components(base: &HashMap<JsString, JsString>, head: &HashMap<JsString, JsString>) -> Vec<JsString> {
     let mut keys: Vec<_> = base.keys().chain(head.keys()).collect::<HashSet<_>>()
         .into_iter().filter(|key| base.get(*key) != head.get(*key)).cloned().collect();
     keys.sort_by(cmp_code_units);
@@ -55,29 +55,29 @@ pub(crate) fn changed_components(base: &HashMap<String, String>, head: &HashMap<
 pub fn diff_by_key<'a, R>(
     base: &'a [EntityFingerprint<R>], head: &'a [EntityFingerprint<R>], options: &KeyDiffOptions,
 ) -> KeyDiff<'a, R> {
-    let excluded: HashSet<String> = options.exclude_types.iter().map(|name| normalize_type(name))
+    let excluded: HashSet<JsString> = options.exclude_types.iter().map(normalize_type)
         .filter(|name| !name.is_empty()).collect();
     let is_excluded = |entity: &EntityFingerprint<R>| !excluded.is_empty() && excluded.contains(&normalize_type(&entity.ifc_type));
     let base_order = index(base);
     let mut head_order = index(head);
     let applied_key_aliases = options.key_aliases.as_ref()
         .map(|aliases| resolve_aliases(&base_order, &mut head_order, aliases));
-    let base_index: HashMap<_, _> = base_order.iter().map(|(key, i)| (key.as_str(), *i)).collect();
-    let head_index: HashMap<_, _> = head_order.iter().map(|(key, i)| (key.as_str(), *i)).collect();
+    let base_index: HashMap<_, _> = base_order.iter().map(|(key, i)| (key, *i)).collect();
+    let head_index: HashMap<_, _> = head_order.iter().map(|(key, i)| (key, *i)).collect();
     let base_has_geometry = base_order.iter().any(|(key, i)| {
         base[*i].geometry_hash.is_some() && !is_excluded(&base[*i])
-            && head_index.get(key.as_str()).is_none_or(|j| !is_excluded(&head[*j]))
+            && head_index.get(key).is_none_or(|j| !is_excluded(&head[*j]))
     });
     let head_has_geometry = head_order.iter().any(|(key, i)| {
         head[*i].geometry_hash.is_some() && !is_excluded(&head[*i])
-            && base_index.get(key.as_str()).is_none_or(|j| !is_excluded(&base[*j]))
+            && base_index.get(key).is_none_or(|j| !is_excluded(&base[*j]))
     });
     let consider_data = options.scope != DiffScope::Geometry;
     let use_geometry = options.scope != DiffScope::Data && base_has_geometry == head_has_geometry;
     let mut entries = Vec::new();
     for (key, i) in &base_order {
         let base_entity = &base[*i];
-        let head_entity = head_index.get(key.as_str()).map(|j| &head[*j]);
+        let head_entity = head_index.get(key).map(|j| &head[*j]);
         if is_excluded(base_entity) || head_entity.is_some_and(&is_excluded) { continue; }
         let mut entry = DiffEntry {
             key: key.clone(), state: DiffState::Deleted, change_kinds: Vec::new(),
@@ -105,7 +105,7 @@ pub fn diff_by_key<'a, R>(
         entries.push(entry);
     }
     for (key, i) in &head_order {
-        if base_index.contains_key(key.as_str()) || is_excluded(&head[*i]) { continue; }
+        if base_index.contains_key(key) || is_excluded(&head[*i]) { continue; }
         entries.push(DiffEntry {
             key: key.clone(), state: DiffState::Added, change_kinds: Vec::new(),
             base: None, head: Some(&head[*i]), changed_components: None,

@@ -325,7 +325,7 @@ fn a_body_map_the_plan_deletes_part_of_refuses_the_copy() {
     let (_, report) = run(&source, vec![(ObjectRef::Id(302), Disposition::Delete), add(mapped_wall(1, TypeLink::Existing(ObjectRef::Id(40)), IDENTITY))]);
     // Deleting the representation takes its map with it, and the refusal says so.
     let refusal = report.refusals.iter().find(|r| r.object == ObjectRef::Guid(gid(1).encode()));
-    assert!(refusal.is_some_and(|r| r.reason.contains("are deleted by this plan")), "{:?}", report.refusals);
+    assert!(refusal.is_some_and(|r| r.reason.starts_with("the Body maps of type #40 are deleted by this plan")), "{:?}", report.refusals);
     assert_eq!(report.added, 0);
 }
 
@@ -345,7 +345,7 @@ fn a_delete_takes_a_candidate_or_refuses_the_copy() {
         let (_, report) = run(&type_with_maps(schema), vec![(ObjectRef::Id(303), Disposition::Delete), add(mapped_wall(1, link(), IDENTITY))]);
         assert_eq!(report.added, 0, "{schema}: an empty body is not a copy");
         let refusal = report.refusals.iter().find(|r| r.object == ObjectRef::Guid(gid(1).encode()));
-        assert!(refusal.is_some_and(|r| r.reason.contains("are deleted by this plan")), "{schema}: {:?}", report.refusals);
+        assert!(refusal.is_some_and(|r| r.reason.starts_with("the Body maps of type #40 are deleted by this plan")), "{schema}: {:?}", report.refusals);
     }
 }
 
@@ -422,5 +422,17 @@ fn a_deleted_map_origin_refuses_the_copy() {
     assert_eq!(report.added, 0, "{:?}", report.refusals);
     assert!(crate::plan::validate::validate(&out, "IFC4").is_empty());
     let refusal = report.refusals.iter().find(|r| r.object == ObjectRef::Guid(gid(1).encode())).expect("refused");
-    assert!(refusal.reason.contains("are deleted by this plan"), "{}", refusal.reason);
+    assert!(refusal.reason.starts_with("the Body maps of type #40 are deleted by this plan"), "{}", refusal.reason);
+}
+
+/// Deleting one of two Body maps in one context leaves the type, and the
+/// copy, with the other.
+#[test]
+fn a_copy_instances_the_body_maps_its_type_keeps() {
+    let source = String::from_utf8(type_with_two_bodies("IFC4")).unwrap().replace("(#330,'Body','SweptSolid',(#303))", "(#100,'Body','SweptSolid',(#303))");
+    let (out, report) = run(source.as_bytes(), vec![(ObjectRef::Id(320), Disposition::Delete), add(mapped_wall(1, TypeLink::Existing(ObjectRef::Id(40)), IDENTITY))]);
+    assert_clean(&report, "IFC4");
+    let items = ids_of_type(&out, "IFCMAPPEDITEM");
+    let mut decoder = ifc_lite_core::EntityDecoder::new(&out);
+    assert_eq!(items.iter().map(|&i| decoder.decode_by_id(i).unwrap().get_ref(0)).collect::<Vec<_>>(), [Some(300)]);
 }

@@ -88,18 +88,25 @@ impl AddState<'_> {
         let maps = list_attr(index, schema, id, &entity(id), "RepresentationMaps").unwrap_or_default();
         // (rank, map, context, every item intact)
         let mut body = Vec::new();
-        // A map this plan deletes (with its origin, representation or
-        // context, which take it along) stays a candidate, read from the
-        // source, so the refusal can say it was deleted rather than missing.
+        // The copy instances what the output type keeps. A Body map this
+        // plan deletes (directly, or with its origin, representation or
+        // context, which take it along) is gone from the type too; it only
+        // decides whether a refusal says the body was deleted.
+        let mut deleted = false;
         for map in maps {
             let origin = scalar_attr(index, schema, map, &entity(map), "MappingOrigin");
             let Some(rep) = scalar_attr(index, schema, map, &entity(map), "MappedRepresentation") else { continue };
             let Some(rank) = self.body_rank(rep) else { continue };
             let (Some(origin), Some(context)) = (origin, scalar_attr(index, schema, rep, &entity(rep), "ContextOfItems")) else { continue };
+            if ![map, origin, rep, context].iter().all(live) {
+                deleted = true;
+                continue;
+            }
+            // Items are a list the cascade strips without removing the
+            // representation: a map that lost one is unusable, not gone.
             let items = list_attr(index, schema, rep, &entity(rep), "Items").unwrap_or_default();
             if !items.is_empty() {
-                let intact = [map, origin, rep, context].iter().all(live) && items.iter().all(live);
-                body.push((rank, map, context, intact));
+                body.push((rank, map, context, items.iter().all(live)));
             }
         }
         let mut ranks: Vec<u8> = body.iter().map(|&(rank, ..)| rank).collect();
@@ -115,7 +122,7 @@ impl AddState<'_> {
                 return Ok(of_rank.into_iter().filter(|&&(_, _, c, _)| c == chosen).map(|&(_, map, context, _)| (map, context)).collect());
             }
         }
-        Err(if body.is_empty() { NoBody::Missing } else { NoBody::Deleted })
+        Err(if body.is_empty() && !deleted { NoBody::Missing } else { NoBody::Deleted })
     }
 
     /// How plainly representation `rep` is the body, when its

@@ -15,6 +15,9 @@ use std::sync::{
     atomic::{AtomicU8, Ordering},
     Arc,
 };
+mod layers;
+pub use layers::{RetainedLayerSource, RetainedLayerBand, RetainedLayerInterface, RetainedLayerReference};
+pub(crate) use layers::LayerAssociationIndex;
 mod witness;
 mod openings;
 pub use witness::RuntimeProductWitness;
@@ -122,6 +125,7 @@ pub struct RuntimeProductExecution<'a, R: NumericalReceipt> {
     type_values: Vec<LogicalRetainedValue>,
     type_map_members: rustc_hash::FxHashSet<u32>,
     layer_pending: bool,
+    layer_source: Option<Arc<RetainedLayerSource>>,
     pending: Option<PendingRetainedTransaction<R>>,
     ledger: Vec<(LogicalRetainedValue, Arc<RuntimeRealization<R>>)>,
     permits: Vec<Reservation>,

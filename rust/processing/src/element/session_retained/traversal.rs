@@ -79,6 +79,7 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
             _ => program.finish(),
         }).map_err(geometry)?;
         self.validate_manifest(&plan)?;
+        if let Some(source) = &self.layer_source { source.validate(self.context, self.state.job.id)?; }
         self.authenticate_openings(&plan)?;
         if plan.opening_completion.is_some() || matches!(outer.kind,
             WorkKind::Primary { strategy: super::super::plan::PrimaryStrategy::TexturedSubmeshes, .. }

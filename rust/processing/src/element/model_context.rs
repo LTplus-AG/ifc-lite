@@ -99,6 +99,8 @@ impl ProductionModel {
             data,
             state: Arc::clone(&self.state),
             source: self.source.clone(),
+            #[cfg(feature = "retained-runtime")]
+            retained_layer_associations: Default::default(),
         })
     }
 
@@ -118,6 +120,8 @@ impl ProductionModel {
 /// Immutable model inputs a product owns from planning to publication. `Send`
 /// and `Sync`: one snapshot serves every rayon worker of its batch.
 pub struct OwnedMeshProductionContext {
+    #[cfg(feature = "retained-runtime")]
+    pub(crate) retained_layer_associations: std::sync::OnceLock<super::session_retained::LayerAssociationIndex>,
     id: ProductionContextId,
     data: OwnedMeshProductionData,
     state: Arc<ModelState>,

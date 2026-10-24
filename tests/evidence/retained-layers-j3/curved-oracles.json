@@ -1,0 +1,56 @@
+[
+  {
+    "fixture": "circular-wall-2.ifc",
+    "product": 10,
+    "opening": 255,
+    "axisCurve": 53,
+    "sourceRadius": 10,
+    "height": 3,
+    "hostAngle": 1.5707963267948966,
+    "openingAngle": 0.5235987755982988,
+    "openingHeight": 1,
+    "orderedRadii": [
+      10,
+      9,
+      7
+    ],
+    "bandNetVolume": [
+      39.79350694547071,
+      67.02064327658225
+    ],
+    "netVolume": 106.81415022205297,
+    "formula": "For each band: (height*hostAngle-openingHeight*openingAngle)*(r_outer^2-r_inner^2)/2",
+    "nativeVolumeTolerance": 1e-06,
+    "workerMeshVolumeTolerance": 0.005,
+    "sectionDistanceTolerance": 1e-06,
+    "status": "Fixed analytic expectations only; no radial operation exists and no native/Worker layer run was performed."
+  },
+  {
+    "fixture": "circular-wall-3.ifc",
+    "product": 10,
+    "opening": 255,
+    "axisCurve": 53,
+    "sourceRadius": 10,
+    "height": 3,
+    "hostAngle": 1.5707963267948966,
+    "openingAngle": 0.5235987755982988,
+    "openingHeight": 1,
+    "orderedRadii": [
+      10,
+      9.5,
+      8.5,
+      7
+    ],
+    "bandNetVolume": [
+      20.420352248333653,
+      37.69911184307752,
+      48.69468613064179
+    ],
+    "netVolume": 106.81415022205297,
+    "formula": "For each band: (height*hostAngle-openingHeight*openingAngle)*(r_outer^2-r_inner^2)/2",
+    "nativeVolumeTolerance": 1e-06,
+    "workerMeshVolumeTolerance": 0.005,
+    "sectionDistanceTolerance": 1e-06,
+    "status": "Fixed analytic expectations only; no radial operation exists and no native/Worker layer run was performed."
+  }
+]

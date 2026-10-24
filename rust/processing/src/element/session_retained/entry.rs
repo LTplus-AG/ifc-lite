@@ -18,7 +18,7 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
             resource::check_current().map_err(RetainedExecutionError::Stopped)?;
             let mut owner = ProductOwner::admit(decoder, router).map_err(protocol)?;
             let mut scopes = Scopes::new();
-            let ((resources, planned, terminal), _) = owner
+            let ((resources, planned, terminal, layer_source), _) = owner
                 .work(decoder, router, |d, r| {
                     let resources = OwnedResourceContext::capture_current();
                     resources.check().map_err(RetainedExecutionError::Stopped)?;
@@ -40,7 +40,8 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
                     }
                     let (planned, terminal) = scopes
                         .with_scope(|| plan_in_scope(job, &context.borrowed(), options, d, r));
-                    Ok::<_, RetainedExecutionError>((resources, planned, terminal))
+                    let layer_source = layers::capture(context, &actual, d, r)?;
+                    Ok::<_, RetainedExecutionError>((resources, planned, terminal, layer_source))
                 })
                 .map_err(protocol)
                 .and_then(|(result, stamp)| result.map(|result| (result, stamp)))?;
@@ -63,7 +64,8 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
                 traversal,
                 type_values: Vec::new(),
                 type_map_members: Default::default(),
-                layer_pending,
+                layer_pending: layer_pending || layer_source.is_some(),
+                layer_source,
                 pending: None,
                 ledger: Vec::new(),
                 permits: Vec::new(),

@@ -3,6 +3,7 @@ use super::*;
 /// Owned intermediate evidence. This deliberately exposes no final mesh/product.
 pub struct RuntimeProductWitness<R: NumericalReceipt> {
     plan: RetainedProductPlan,
+    layer_source: Option<Arc<RetainedLayerSource>>,
     ledger: Vec<(LogicalRetainedValue, Arc<RuntimeRealization<R>>)>,
     lifecycle: ProductionLifecycle,
     resources: OwnedResourceContext,
@@ -27,6 +28,8 @@ impl<R: NumericalReceipt> RuntimeProductWitness<R> {
         Err(RetainedExecutionError::Unsupported(
             "retained final publication requires opening/layer/appearance/face proofs"))
     }
+    /// Source-bound unresolved J3 bands; no cut or partition proof is implied.
+    pub fn layer_source(&self) -> Option<&RetainedLayerSource> { self.layer_source.as_deref() }
     pub fn plan(&self) -> &RetainedProductPlan {
         &self.plan
     }
@@ -43,6 +46,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             .ok_or_else(|| protocol("unfinished product"))?;
         Ok(RuntimeProductWitness {
             plan,
+            layer_source: self.layer_source.take(),
             ledger: std::mem::take(&mut self.ledger),
             _permits: std::mem::take(&mut self.permits),
             lifecycle: self.context.lifecycle(),

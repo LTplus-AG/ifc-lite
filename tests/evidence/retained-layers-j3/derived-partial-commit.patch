@@ -1,0 +1,11 @@
+--- a/rust/processing/src/element/session_retained/derived_layers/execution.rs
++++ b/rust/processing/src/element/session_retained/derived_layers/execution.rs
+@@ -66,7 +66,7 @@
+ impl<R: NumericalReceipt> DerivedLayersCompleted<R> {
+     fn validate(&self) -> Result<(),RetainedExecutionError> {
+         self.issued.checkpoint()?;
+-        if (self.bands.len()!=self.issued.regions.len() && false) || self.bands.is_empty() {
++        if self.bands.len()!=self.issued.regions.len() || self.bands.is_empty() {
+             return Err(protocol("J3_PARTIAL_COMMIT: incomplete band manifest"));
+         }
+         for (ordinal,(region,band)) in self.issued.regions.iter().zip(&self.bands).enumerate() {

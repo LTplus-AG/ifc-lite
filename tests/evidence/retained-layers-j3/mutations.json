@@ -22,5 +22,26 @@
     "patch": "tests/evidence/retained-layers-j3/ignore-source-revision.patch",
     "test": "element::session_retained::layers::tests::j3_source_context_and_budget_are_authority_not_matching_ids",
     "assertionMarker": "J3_SOURCE_REVISION"
+  },
+  {
+    "id": "derived-coverage",
+    "patch": "tests/evidence/retained-layers-j3/derived-coverage.patch",
+    "test": "element::session_retained::derived_layers::tests::j3_derived_source_refuses_mapping_and_uncovered_body",
+    "assertionMarker": "J3_COVERAGE",
+    "feature": "retained-runtime"
+  },
+  {
+    "id": "derived-authority",
+    "patch": "tests/evidence/retained-layers-j3/derived-authority.patch",
+    "test": "element::session_retained::derived_layers::runtime_tests::j3_sdk_issuance_authority_is_not_matching_numeric_receipts",
+    "assertionMarker": "J3_AUTHORITY",
+    "feature": "retained-native"
+  },
+  {
+    "id": "derived-partial-commit",
+    "patch": "tests/evidence/retained-layers-j3/derived-partial-commit.patch",
+    "test": "element::session_retained::derived_layers::runtime_tests::j3_sdk_missing_last_band_is_never_a_complete_manifest",
+    "assertionMarker": "J3_PARTIAL_COMMIT",
+    "feature": "retained-native"
   }
 ]

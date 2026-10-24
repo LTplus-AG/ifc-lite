@@ -137,10 +137,10 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_,R> {
                 return Err(protocol("J3_AUTHORITY: source/net-host generation"));
             }
         }
-        // No fallible work after this point. Preserve original J2 host/ledger;
-        // the complete ordered band manifest is an additional sealed result.
         token.stage.compare_exchange(DELIVERED,ACCEPTED,Ordering::AcqRel,Ordering::Acquire)
             .map_err(|_|protocol("J3 cancelled or replayed completion"))?;
+        // No fallible work after this point. Preserve original J2 host/ledger;
+        // the complete ordered band manifest is an additional sealed result.
         self.layer_manifest = Some(DerivedLayerManifest { completed });
         if let Some(plan) = &mut self.plan { plan.remaining.retain(|r| *r != RetainedRequirement::MaterialLayers); }
         Ok(())

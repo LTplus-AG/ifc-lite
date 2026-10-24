@@ -125,6 +125,7 @@ jobs:
           cargo test --locked -p ifc-lite-processing --features retained-native --lib session_retained -- --nocapture --test-threads 2 2>&1 | tee "$RUNNER_TEMP/processing-retained.log"
           ! grep -F 'SKIP common retained SDK continuation' "$RUNNER_TEMP/processing-retained.log"
           grep -F "j3_sdk_curved_host_keeps_source_bands_without_claiming_partition ... ok" "$RUNNER_TEMP/processing-retained.log"
+          grep -F "j3_sdk_completed_curved_bands_consume_fixed_net_volume_oracles ... ok" "$RUNNER_TEMP/processing-retained.log"
           for test in \
             issue_3641_native_original_source_construction_oracle \
             common_retained_actual_construction_is_consumed_and_original_product_resumes \
@@ -183,12 +184,14 @@ jobs:
         run: |
           python3 tests/evidence/retained-openings-j2/feature-oracle.py \
             --oracle representation-type --evidence-dir "$RUNNER_TEMP/retained-openings-representation-type"
-      - name: Retained layer source semantic mutations (partition remains unmet)
+      - name: Retained layer source and derived continuation semantic mutations
         id: retained-layer-source-mutations
         continue-on-error: true
+        env:
+          IFCLITE_SMLIB_WORKER: ${{ runner.temp }}/smlib-native/ifclite_smlib_worker
         run: |
           status=0
-          for oracle in skip-invalid-band ignore-direction flatten-wall-reference ignore-source-revision; do
+          for oracle in skip-invalid-band ignore-direction flatten-wall-reference ignore-source-revision derived-coverage derived-authority derived-partial-commit; do
             python3 tests/evidence/retained-layers-j3/feature-oracle.py \
               --oracle "$oracle" --evidence-dir "$RUNNER_TEMP/retained-layer-source-$oracle" || status=1
           done
@@ -273,6 +276,7 @@ jobs:
             --chromedriver "$GITHUB_WORKSPACE/scripts/wasm-test-mime-driver.mjs" rust/wasm-bindings --lib \
             --features retained-browser -- retained_browser 2>&1 | tee "$RUNNER_TEMP/retained-browser.log"
           grep -F "j3_worker_curved_host_keeps_source_bands_without_claiming_partition ... ok" "$RUNNER_TEMP/retained-browser.log"
+          grep -F "j3_worker_completed_curved_bands_consume_fixed_net_volume_oracles ... ok" "$RUNNER_TEMP/retained-browser.log"
           grep -F "retained_browser_issue_3641_original_source_construction_oracle ... ok" "$RUNNER_TEMP/retained-browser.log"
           grep -F "j1_worker_shared_clip_cases_volume_bounds_centroid ... ok" "$RUNNER_TEMP/retained-browser.log"
           grep -F "REGION_3641_SOURCE_VOLUME_SECTION_PROVENANCE_EXECUTED" "$RUNNER_TEMP/retained-browser.log"

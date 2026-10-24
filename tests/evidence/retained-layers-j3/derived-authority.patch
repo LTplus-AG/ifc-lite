@@ -1,0 +1,11 @@
+--- a/rust/processing/src/element/session_retained/derived_layers.rs
++++ b/rust/processing/src/element/session_retained/derived_layers.rs
+@@ -125,7 +125,7 @@
+         let owner_stamp = self.validate(decoder,router)?;
+         if owner_stamp != completed.issued.owner_stamp { return Err(protocol("J3_AUTHORITY: source owner epoch")); }
+         let token = self.layer_token.as_ref().ok_or_else(|| protocol("J3 no issuance"))?;
+-        if !Arc::ptr_eq(token,&completed.issued.token) && false { return Err(protocol("J3_AUTHORITY: foreign issuance")); }
++        if !Arc::ptr_eq(token,&completed.issued.token) { return Err(protocol("J3_AUTHORITY: foreign issuance")); }
+         completed.validate()?;
+         let source = self.layer_source.as_ref().ok_or_else(|| protocol("J3 missing source"))?;
+         source.validate(self.context,self.state.job.id)?;

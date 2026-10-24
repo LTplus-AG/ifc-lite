@@ -1,80 +1,81 @@
-# Retained material layer source contract
+# Retained material layer continuation
 
-The opt-in shared native/browser product controller captures source bindings for
-`IfcMaterialLayerSetUsage`. `RuntimeProductWitness::layer_source()` exposes the
-read-only `RetainedLayerSource` of an intermediate witness. This is **not a J3
-numerical continuation**. `MaterialLayers` and persistent-face obligations remain
-pending, and final publication remains refused.
+The opt-in shared native/browser controller captures strict source bindings for
+`IfcMaterialLayerSetUsage`. After its ordinary issuance loop completes J2, call
+`issue_layer_partition`, execute the returned packet with the same runtime, and
+call `accept_layer_partition`. `RuntimeProductWitness::layer_manifest()` then
+exposes all completed capped bands in authored material order. Final publication
+still refuses: persistent face identity, cap removal and appearance remain
+independent obligations. All new runtime tests and mutations are **UNRUN** until
+the parent validates the integrated source.
 
-Admission uses the authenticated decoder and snapshot, with a snapshot-owned
-association index. It retains association, usage, layer-set, ordered layer and
-material ids; product placement from `resolve_scaled_placement_strict`; units;
-direction; and contiguous scalar boundary offsets. Invalid thickness, nonfinite
-or collapsed boundaries, missing references and ambiguous usages refuse the
-whole product. An explicitly absent optional material is an air gap. Source
-layers are not visually merged. The existing exact display index is unchanged.
+Source admission retains context, association, usage, layer-set, layer/material
+ids, ordinal, units, direction and canonical product placement. Invalid or
+collapsed thickness, dangling references and ambiguous usages refuse the whole
+stack. Absent optional material remains an air gap; no visual merging occurs.
 
-A `RetainedLayerInterface` describes an unfulfilled boundary between two source
-bands. It cannot identify an SDK face or authorize removing a cap. No source
-face is relabeled as generated, and no empty band is manufactured from source
-metadata. Numerical receipt authentication and full-removal policy remain the
-existing controller's responsibility.
+## Distinct derived contract
 
-For walls the reference is the source Axis curve, including circular axes. A
-wall's scalar offsets cannot be interpreted as Y-coordinate planes around an
-entire arc. This follows the [buildingSMART wall geometry and material usage
-definition](https://raw.githubusercontent.com/buildingSMART/IFC4.3.x-development/master/docs/schemas/shared/IfcSharedBldgElements/Entities/IfcWall.md).
-Other products retain the declared product axis as source metadata; this does
-not certify body eligibility or thickness coverage. Mapped geometry, trimmed
-curves and source/body agreement still need geometric validation.
+Generated interfaces are not authored `IfcHalfSpaceSolid` or `IfcPlane` entities.
+`DerivedLayerBinding` binds the captured usage/context, source epoch/revision,
+original J2 net-host logical definition and occurrence, physical evaluation
+frame, band ordinal, and complementary sides of its two boundary ordinals.
+`DerivedMaterialRegion` and `DerivedMaterialIntersection` are separate invocation
+variants. They use the existing retained sweep and Boolean runtimes, with shared
+receipt validation against the exact issued request, runtime domain, ordered
+host/cutter objects, frames and authenticated Empty outcome.
 
-## Numerical prerequisite
+`RetainedRecipe::DerivedLayer` is distinct from an authored extrusion. Its private
+numerical encoding view clears captured source graphs from generated boundaries.
+No STEP entities are fabricated, and no generated face acquires IFC face ancestry.
+Direct display publication of a derived construction is refused.
 
-`RetainedUnaryClip` currently requires `RetainedPlaneSource` with authored
-Boolean/halfspace/surface/placement ids. A generated material interface is not
-an authored `IfcHalfSpaceSolid`. It needs a distinct source-bound operation
-provenance contract, carried through issuance, native and browser invocation,
-receipt verification and per-band completion. Reusing plane clipping requires
-that extension; fabricating STEP ids or a halfspace recipe is not acceptable.
+## Proved finite circular family
 
-Circular wall offsets also need a qualified circular-offset operation or a
-source-derived finite annular-sector constructor intersected with the **net
-host after openings**. The source must prove the circle/trim orientation,
-placement, units, radial extent, extrusion extent and coverage. Arbitrary
-curves need their own offset/region proof. No infinite approximate cutter or
-mesh fallback is introduced here. These prerequisites are not supplied by
-bounded/boxed halfspace support alone.
+The current source proof admits one positive-sense finite trimmed circular wall
+Axis in product XY and one direct Z extrusion of the matching annular sector.
+The circle basis, trim, body/profile coframe, radii, radial closure lines, units,
+extrusion and complete stack extent are checked before lowering. Every band
+reuses the same finite angular and height extent. Strict monotone radii partition
+that complete source body; consecutive bands share an identical radius with
+opposite traversal. Negative material direction preserves authored material order.
+The existing numerical region bounds, area checks, minimum lengths, circle and
+frame guards remain in force. No tolerance is widened.
 
-Every accepted band must authenticate its numerical result, material binding,
-ordinal and common source revision, including Empty. Both siblings of each
-interface must be accounted for; complete coverage, no overlap and retained
-external boundaries must be proved before discharging `MaterialLayers`.
-Intermediate capped solids remain permitted. J5 persistent face ancestry and
-internal cap removal remain separate unmet gates.
+Each region is intersected with the original authenticated **net host after
+openings**. J2 subtraction makes this a subset of the proved body. Complete finite
+regions partition that body, so their intersections partition the net host;
+there is no giant cutter, mesh clipping, incremental remainder drift or automatic
+exact fallback. The original host and its opening ledger are preserved.
 
-## Fixed test definitions
+The packet owns all temporary receipts. A cancelled or failed in-flight packet
+retires its captured domain. A foreign source/owner epoch, replayed issuance,
+missing band, wrong receipt or frame rejects acceptance. The complete manifest
+is installed once, after all fallible validation. Empty bands are authenticated
+Boolean outcomes, never inferred from missing geometry. All-empty completion
+retains the existing whole-product removal refusal.
 
-`tests/evidence/retained-layers-j3/` contains a circular slab and independent
-two/three-layer circular walls with an annular-sector opening crossing every
-band. `curved-oracles.json` fixes analytic per-band net volumes and tolerances
-before any runtime execution. For the wall axis radius 10, positive offsets
-point inward; the three bands have radii 10, 9.5, 8.5, 7. The two-band case has
-radii 10, 9, 7. The sector angle is pi/2, wall height 3, opening angle pi/6 and
-opening height 1. Each net band volume is
-`(3*pi/2 - pi/6) * (outer_radius^2 - inner_radius^2) / 2`.
-These are future numerical oracle definitions, **not executed layer tests**.
+Mapped bodies, multipart hosts, other curve families, nontrivial profile/solid
+coframes, reversed axis traversal and product-axis layers currently refuse
+explicitly. They remain required full-J3 work, not release exclusions. Product
+placement and RTC are separate from the local sector proof; translated/rotated
+product and millimetre cases have test definitions but no runtime qualification.
 
-Source tests cover actual decoded layer order, air gaps, thin bands, negative
-direction, millimetres, curved reference identity, malformed stacks, source
-revision and budget failure. Native and actual Worker tests define an uncut
-curved-host continuation with the source bands retained and J3 explicitly
-unmet. They do not validate partition geometry. CI invokes four independent
-source-semantic reverse mutations and requires their named assertion failures,
-rejecting compiler failures, skips and zero-test runs. All Rust/SDK/Worker and
-mutation executions require the parent validation run; source preparation alone
-is not a passed gate.
+## Validation definitions
 
-No performance verdict has been measured. Default feature-off code is unchanged;
-its byte identity and the protected corpus still require qualification. The
-association index scans once per snapshot, not once per product, but that new
-retained-path cost and memory must be measured before landing.
+`curved-oracles.json` retains its original fixed two/three-band net volumes and
+tolerances. New native and actual Worker tests consume **completed bands** after
+the opening subtraction. They assert volume, radial/height section extents,
+material order, remaining J5 holds, and no committed consumed-host effects.
+Variants cover negative direction, millimetres, product placement/RTC and explicit
+mapped refusal. The original metadata-only tests remain as source tests.
+
+CI retains the four original source mutations and adds three independent reverse
+mutations for source/body coverage, issuance authority and partial commit. Their
+runner requires the named behavioral failure and restored green; compilation
+errors, skips or zero selected tests cannot qualify a mutation.
+
+No performance or memory verdict is claimed. Parent validation must run native,
+actual Worker, clippy, the protected14/inherited61 and all J3 mutations, exact
+identity and end-to-end performance/memory checks. Concurrent association-index
+initialization and cache/account lifetime qualification remain open.

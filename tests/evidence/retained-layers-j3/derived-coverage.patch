@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/analytic/derived_layers.rs
++++ b/rust/geometry/src/analytic/derived_layers.rs
+@@ -54,7 +54,7 @@
+         let actual = &profile.loops[0].segments;
+         // Exact parameters, with only the existing join epsilon on authored
+         // line endpoints (exporters round trigonometric endpoint coordinates).
+-        if actual.len() != 4 || (!actual.iter().zip(&expected).all(|(a,b)| same_segment(a,b,units)) && false) {
++        if actual.len() != 4 || !actual.iter().zip(&expected).all(|(a,b)| same_segment(a,b,units)) {
+             return Err("J3_COVERAGE: source body is not the complete layer sector".into());
+         }
+         // Exercise every existing numerical domain guard before deriving.

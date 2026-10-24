@@ -21,7 +21,7 @@ out = args.evidence_dir.resolve()
 if out == root or root in out.parents:
     raise SystemExit('Keep immutable execution evidence outside the checkout.')
 out.mkdir(parents=True, exist_ok=False)
-command = ['cargo', 'test', '--locked', '-p', 'ifc-lite-processing', '--features', 'retained-runtime', '--lib', row['test'], '--', '--exact', '--nocapture']
+command = ['cargo', 'test', '--locked', '-p', 'ifc-lite-processing', '--features', row.get('feature', 'retained-runtime'), '--lib', row['test'], '--', '--exact', '--nocapture']
 
 def test(phase, red=False):
     run = subprocess.run(command, cwd=root, text=True, stdout=subprocess.PIPE,

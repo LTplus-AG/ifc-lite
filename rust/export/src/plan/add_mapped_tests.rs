@@ -323,9 +323,9 @@ fn a_negative_zero_shares_the_operator() {
 fn a_body_map_the_plan_deletes_part_of_refuses_the_copy() {
     let source = type_with_maps("IFC4");
     let (_, report) = run(&source, vec![(ObjectRef::Id(302), Disposition::Delete), add(mapped_wall(1, TypeLink::Existing(ObjectRef::Id(40)), IDENTITY))]);
-    // Deleting the representation takes its map with it: no Body map is left.
+    // Deleting the representation takes its map with it, and the refusal says so.
     let refusal = report.refusals.iter().find(|r| r.object == ObjectRef::Guid(gid(1).encode()));
-    assert!(refusal.is_some_and(|r| r.reason.contains("no Body representation map")), "{:?}", report.refusals);
+    assert!(refusal.is_some_and(|r| r.reason.contains("are deleted by this plan")), "{:?}", report.refusals);
     assert_eq!(report.added, 0);
 }
 
@@ -422,5 +422,5 @@ fn a_deleted_map_origin_refuses_the_copy() {
     assert_eq!(report.added, 0, "{:?}", report.refusals);
     assert!(crate::plan::validate::validate(&out, "IFC4").is_empty());
     let refusal = report.refusals.iter().find(|r| r.object == ObjectRef::Guid(gid(1).encode())).expect("refused");
-    assert!(refusal.reason.contains("deleted by this plan") || refusal.reason.contains("no Body representation map"), "{}", refusal.reason);
+    assert!(refusal.reason.contains("are deleted by this plan"), "{}", refusal.reason);
 }

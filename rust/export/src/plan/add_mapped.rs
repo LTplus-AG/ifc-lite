@@ -88,15 +88,17 @@ impl AddState<'_> {
         let maps = list_attr(index, schema, id, &entity(id), "RepresentationMaps").unwrap_or_default();
         // (rank, map, context, every item intact)
         let mut body = Vec::new();
-        for map in maps.into_iter().filter(live) {
+        // A map this plan deletes (with its origin, representation or
+        // context, which take it along) stays a candidate, read from the
+        // source, so the refusal can say it was deleted rather than missing.
+        for map in maps {
             let origin = scalar_attr(index, schema, map, &entity(map), "MappingOrigin");
             let Some(rep) = scalar_attr(index, schema, map, &entity(map), "MappedRepresentation") else { continue };
             let Some(rank) = self.body_rank(rep) else { continue };
             let (Some(origin), Some(context)) = (origin, scalar_attr(index, schema, rep, &entity(rep), "ContextOfItems")) else { continue };
             let items = list_attr(index, schema, rep, &entity(rep), "Items").unwrap_or_default();
             if !items.is_empty() {
-                // A deleted origin, representation, context or item leaves the map unusable.
-                let intact = [origin, rep, context].iter().all(live) && items.iter().all(live);
+                let intact = [map, origin, rep, context].iter().all(live) && items.iter().all(live);
                 body.push((rank, map, context, intact));
             }
         }

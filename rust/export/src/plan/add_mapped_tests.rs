@@ -249,3 +249,13 @@ fn a_delete_in_the_same_plan_keeps_the_maps_a_copy_instances() {
         assert!(index.contains(300) && index.contains(302), "{schema}: the Body map and its representation stay");
     }
 }
+
+/// Copies at one transform share one transformation operator, across Adds.
+#[test]
+fn copies_at_the_same_transform_share_one_operator() {
+    let source = type_with_maps("IFC4");
+    let copies = (1..=3).map(|n| add(mapped_wall(n, TypeLink::Existing(ObjectRef::Id(40)), IDENTITY))).collect();
+    let (out, report) = run(&source, copies);
+    assert_clean(&report, "IFC4");
+    assert_eq!((count(&out, "IFCMAPPEDITEM"), count(&out, "IFCCARTESIANTRANSFORMATIONOPERATOR3D")), (3, 1));
+}

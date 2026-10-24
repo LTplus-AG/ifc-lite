@@ -14,7 +14,9 @@
 //! their GlobalId: a wall into a storey the plan also adds, two doors of one
 //! new type.
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::rc::Rc;
 
 use crate::step_text::escape;
 use crate::step_ids::IdAllocator;
@@ -22,13 +24,12 @@ use crate::step_ids::IdAllocator;
 use super::add_geometry::product_shape;
 use super::add_props::build_sets;
 use super::add_rels::{RelAccumulator, RelKind, RelRequest};
-use super::add_types::{AddItem, GlobalId, NewObject, Representation, TypeLink};
-use super::attrs::{attribute_index, unset_required};
+use super::add_types::{AddItem, NewObject, Representation, TypeLink};
+use super::attrs::unset_required;
 use super::index::FileIndex;
-use super::owner_history;
 use super::placement::fmt;
 use super::props_synth::{defines_by_properties_record, ref_or_unset};
-use super::tessellation::{find_body_context, synthesize_context, Emit};
+use super::tessellation::{find_body_context, Emit};
 use super::types::{ObjectRef, PlanContext, Refusal};
 
 use assoc::{associate, Shared, SharedKey};
@@ -58,7 +59,9 @@ pub(crate) struct AddState<'a> {
     /// description, for later Adds to reuse.
     shared: HashMap<SharedKey, u32>,
     /// The `Body` maps of each type this plan added with a representation.
-    type_maps: HashMap<u32, Vec<MapRef>>,
+    type_maps: HashMap<u32, Rc<[MapRef]>>,
+    /// The `Body` maps of source types, read once each.
+    source_maps: RefCell<HashMap<u32, Rc<[MapRef]>>>,
 }
 
 impl<'a> AddState<'a> {
@@ -89,18 +92,8 @@ impl<'a> AddState<'a> {
             records: Vec::new(),
             shared: HashMap::new(),
             type_maps: HashMap::new(),
+            source_maps: RefCell::new(HashMap::new()),
         }
-    }
-
-    /// The owner history new records name: the plan's, else one synthesized
-    /// into `out`, which the caller commits only if its Add builds.
-    fn owner_history_for(&self, ids: &mut IdAllocator, out: &mut Vec<(u32, String)>) -> Result<u32, String> {
-        if let Some(id) = self.owner_history {
-            return Ok(id);
-        }
-        let (records, id) = owner_history::synthesize(self.schema, ids, self.context).ok_or("id space exhausted")?;
-        out.extend(records);
-        Ok(id)
     }
 
     /// Build one object, or refuse it whole.
@@ -111,7 +104,7 @@ impl<'a> AddState<'a> {
         let mut requests = Vec::new();
         let mut emit = Emit { schema: self.schema, ids, out: &mut out };
         let built = self.build(&mut emit, obj, &checked, owner_history, &mut requests)?;
-        let new_context = built.new_context.map(|c| self.context_owner().map(|owner| (c, owner))).transpose()?;
+        let new_context = self.owned_context(built.new_context)?;
 
         self.commit(owner_history, out, built.shared);
         for req in requests {
@@ -127,54 +120,6 @@ impl<'a> AddState<'a> {
             self.register_type(type_id, t.global_id_for(gid), class, built.type_maps);
         }
         Ok(())
-    }
-
-    /// The context new geometry goes into: the plan's, else one synthesized
-    /// into `emit`, returned second so the caller can adopt it once its Add
-    /// builds.
-    fn body_context_or_new(&self, emit: &mut Emit) -> Result<(u32, Option<u32>), String> {
-        match self.body_context {
-            Some(existing) => Ok((existing, None)),
-            None => synthesize_context(emit).map(|id| (id, Some(id))),
-        }
-    }
-
-    /// Where a synthesized context is listed: the project and its
-    /// `RepresentationContexts` slot.
-    fn context_owner(&self) -> Result<(u32, usize), String> {
-        match (self.live_project(), attribute_index(self.schema, "IFCPROJECT", "RepresentationContexts")) {
-            (Some(project), Some(idx)) => Ok((project, idx)),
-            _ => Err("the file has no IfcProject to own a new representation context".into()),
-        }
-    }
-
-    /// Make a synthesized context the plan's, listed by the project.
-    fn adopt_context(&mut self, context: u32, (project, idx): (u32, usize)) {
-        self.body_context = Some(context);
-        self.rels.append_to_list(project, idx, context);
-    }
-
-    /// The first IfcProject the plan keeps.
-    fn live_project(&self) -> Option<u32> {
-        self.index.projects.iter().copied().find(|id| !self.removed.contains(id))
-    }
-
-    /// Keep what an Add built: its records, the owner history they name, and
-    /// the shared records later Adds may reuse.
-    fn commit(&mut self, owner_history: u32, out: Vec<(u32, String)>, shared: HashMap<SharedKey, u32>) {
-        self.owner_history = Some(owner_history);
-        self.records.extend(out);
-        self.shared.extend(shared);
-    }
-
-    /// A new type, as later Adds see it: by GlobalId, with no placement,
-    /// and with the maps it was written with.
-    fn register_type(&mut self, id: u32, global_id: GlobalId, class: String, maps: Vec<MapRef>) {
-        self.placement_of_added.insert(id, None);
-        self.added.insert(global_id.encode(), Added { id, class });
-        if !maps.is_empty() {
-            self.type_maps.insert(id, maps);
-        }
     }
 
     /// Build every Add, returning how many were written. The relationships of
@@ -242,7 +187,6 @@ impl<'a> AddState<'a> {
         requests: &mut Vec<RelRequest>,
     ) -> Result<Built, String> {
         let gid = obj.global_id;
-        let owner_history_id = owner_history;
         let owh = format!("#{owner_history}");
         let owner_history = Some(owner_history);
 
@@ -257,23 +201,27 @@ impl<'a> AddState<'a> {
             _ => None,
         };
         let type_rep = new_type.map(|t| &t.representation).filter(|r| !matches!(r, Representation::None));
-        let needs_context = !matches!(obj.representation, Representation::None) || c.host.is_some() || type_rep.is_some();
+        // A mapped body of an existing type is in its maps' contexts.
+        let own_geometry = !matches!(obj.representation, Representation::None | Representation::Mapped(_));
+        let needs_context = own_geometry || c.host.is_some() || type_rep.is_some();
         let (context, new_context) = match needs_context {
             false => (None, None),
             true => self.body_context_or_new(emit).map(|(c, new)| (Some(c), new))?,
         };
         // A new type's map comes first: the occurrence may instance it.
         let type_maps: Vec<MapRef> = match (type_rep, context, new_type) {
-            (Some(rep), Some(ctx), Some(t)) => build_map(emit, ctx, rep, t.style.as_ref())?.into_iter().collect(),
+            (Some(rep), Some(ctx), Some(t)) => build_map(emit, ctx, rep, t.style.as_ref())?,
             _ => Vec::new(),
         };
+        let mut shared = Shared { committed: &self.shared, pending: HashMap::new() };
         let shape = match (&obj.representation, context) {
             (Representation::Mapped(m), _) => {
-                let maps = match &c.mapped {
-                    Some(MapPlan::Existing(maps)) => maps.as_slice(),
-                    _ => type_maps.as_slice(),
+                let maps: &[MapRef] = match &c.mapped {
+                    Some(MapPlan::Existing(maps)) => maps,
+                    Some(MapPlan::NewType) => &type_maps,
+                    None => return Err("a mapped body was not checked".into()),
                 };
-                Some(mapped_shape(emit, maps, &m.transform)?)
+                Some(mapped_shape(emit, &mut shared, maps, &m.transform)?)
             }
             (rep, Some(ctx)) => product_shape(emit, ctx, rep, obj.style.as_ref())?,
             (_, None) => None,
@@ -303,7 +251,6 @@ impl<'a> AddState<'a> {
         let object = emit.record(&c.class, &fields)?;
         require_filled(emit, object)?;
 
-        let mut shared = Shared { committed: &self.shared, pending: HashMap::new() };
         let units = build_units(emit, &mut shared, &c.units)?;
         let set_ids = build_sets(emit, owner_history, gid, "pset", &obj.psets, &units)?;
         for (set, spec) in set_ids.iter().zip(&obj.psets) {
@@ -315,8 +262,7 @@ impl<'a> AddState<'a> {
         let new_type = match (&obj.type_link, &c.new_type) {
             (Some(TypeLink::New(t)), Some((class, predefined, units))) => {
                 let units = build_units(emit, &mut shared, units)?;
-                let maps: Vec<u32> = type_maps.iter().map(|&(map, _)| map).collect();
-                Some(build_new_type(emit, t, gid, (class, predefined), &units, &maps, owner_history)?)
+                Some(build_new_type(emit, t, gid, (class, predefined), &units, &type_maps, owner_history)?)
             }
             _ => None,
         };
@@ -330,7 +276,7 @@ impl<'a> AddState<'a> {
         associate(emit, &mut shared, c, object, gid, requests)?;
 
         if let (Some(host), Some(op), Some(ctx)) = (c.host, &obj.opening, context) {
-            self.build_opening(emit, gid, host, op, ctx, placement, (object, c.fills), owner_history_id)?;
+            self.build_opening(emit, gid, host, op, ctx, placement, (object, c.fills), &owh)?;
         }
 
         Ok(Built { object, placement, new_type, new_context, shared: shared.pending, type_maps })
@@ -369,6 +315,9 @@ mod assoc;
 
 #[path = "add_units.rs"]
 mod units;
+
+#[path = "add_commit.rs"]
+mod commit;
 
 #[path = "add_opening.rs"]
 mod opening;

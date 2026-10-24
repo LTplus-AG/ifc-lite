@@ -22,9 +22,8 @@ impl AddState<'_> {
         ctx: u32,
         placement: u32,
         (object, fills): (u32, bool),
-        owner_history: u32,
+        owh: &str,
     ) -> Result<(), String> {
-        let owh = format!("#{owner_history}");
         let guid = |role: &str| format!("'{}'", gid.derive(role).encode());
         let a2p = emit.axis_placement(&op.matrix)?;
         let op_placement = emit.record(
@@ -34,7 +33,7 @@ impl AddState<'_> {
         let op_shape = product_shape(emit, ctx, &Representation::Extrusion(op.shape.clone()), None)?.ok_or("opening shape")?;
         let mut fields = vec![
             ("GlobalId", guid("opening")),
-            ("OwnerHistory", owh.clone()),
+            ("OwnerHistory", owh.to_string()),
             ("Name", "'Opening'".into()),
             ("ObjectPlacement", format!("#{op_placement}")),
             ("Representation", format!("#{op_shape}")),
@@ -47,7 +46,7 @@ impl AddState<'_> {
             "IFCRELVOIDSELEMENT",
             &[
                 ("GlobalId", guid("rel/voids")),
-                ("OwnerHistory", owh.clone()),
+                ("OwnerHistory", owh.to_string()),
                 ("RelatingBuildingElement", format!("#{host}")),
                 ("RelatedOpeningElement", format!("#{opening}")),
             ],
@@ -57,7 +56,7 @@ impl AddState<'_> {
                 "IFCRELFILLSELEMENT",
                 &[
                     ("GlobalId", guid("rel/fills")),
-                    ("OwnerHistory", owh),
+                    ("OwnerHistory", owh.to_string()),
                     ("RelatingOpeningElement", format!("#{opening}")),
                     ("RelatedBuildingElement", format!("#{object}")),
                 ],

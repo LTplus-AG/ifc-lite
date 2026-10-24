@@ -51,6 +51,14 @@ impl Emit<'_> {
     pub(crate) fn identity_placement(&mut self) -> Result<u32, String> {
         self.axis_placement(&IDENTITY)
     }
+
+    pub(crate) fn point(&mut self, p: [f64; 3]) -> Result<u32, String> {
+        self.record("IFCCARTESIANPOINT", &[("Coordinates", format!("({},{},{})", fmt(p[0]), fmt(p[1]), fmt(p[2])))])
+    }
+
+    pub(crate) fn direction(&mut self, d: [f64; 3]) -> Result<u32, String> {
+        self.record("IFCDIRECTION", &[("DirectionRatios", format!("({},{},{})", fmt(d[0]), fmt(d[1]), fmt(d[2])))])
+    }
 }
 
 pub(crate) fn validate_mesh(m: &TriangleMesh) -> Result<(), String> {
@@ -206,7 +214,7 @@ pub(crate) fn mesh_item(emit: &mut Emit, m: &TriangleMesh) -> Result<(u32, &'sta
     }
     let mut point_ids = vec![0u32; m.positions.len()];
     for (i, p) in m.positions.iter().enumerate().filter(|&(i, _)| used[i]) {
-        point_ids[i] = emit.record("IFCCARTESIANPOINT", &[("Coordinates", format!("({},{},{})", fmt(p[0]), fmt(p[1]), fmt(p[2])))])?;
+        point_ids[i] = emit.point(*p)?;
     }
     let mut faces = Vec::with_capacity(triangles.len());
     for t in triangles.iter() {

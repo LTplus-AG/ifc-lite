@@ -24,7 +24,7 @@ use crate::plan::props_synth::{ref_list, ref_or_unset};
 use crate::plan::tessellation::Emit;
 use crate::plan::types::ObjectRef;
 use super::assoc::Shared;
-use super::mapped::build_map;
+use super::mapped::{build_map, MapRef};
 use super::units::build_units;
 use super::{require_filled, AddState};
 
@@ -47,13 +47,12 @@ impl AddState<'_> {
             Representation::None => (Vec::new(), None),
             _ => {
                 let (context, new_context) = self.body_context_or_new(&mut emit)?;
-                (build_map(&mut emit, context, &t.representation, t.style.as_ref())?.into_iter().collect::<Vec<_>>(), new_context)
+                (build_map(&mut emit, context, &t.representation, t.style.as_ref())?, new_context)
             }
         };
-        let map_ids: Vec<u32> = maps.iter().map(|&(map, _)| map).collect();
-        let id = build_new_type(&mut emit, t, gid, (&class, &predefined), &units, &map_ids, Some(owner_history))?;
+        let id = build_new_type(&mut emit, t, gid, (&class, &predefined), &units, &maps, Some(owner_history))?;
         let pending = shared.pending;
-        let new_context = new_context.map(|c| self.context_owner().map(|owner| (c, owner))).transpose()?;
+        let new_context = self.owned_context(new_context)?;
 
         self.commit(owner_history, out, pending);
         if let Some((context, owner)) = new_context {
@@ -77,7 +76,7 @@ pub(super) fn build_new_type(
     owner: GlobalId,
     class: (&str, &Option<String>),
     units: &[Vec<Option<u32>>],
-    maps: &[u32],
+    maps: &[MapRef],
     owner_history: Option<u32>,
 ) -> Result<u32, String> {
     // A type with its own GlobalId derives its sets' ids from it.
@@ -92,7 +91,8 @@ pub(super) fn build_new_type(
         fields.push(("HasPropertySets", ref_list(&type_sets)));
     }
     if !maps.is_empty() {
-        fields.push(("RepresentationMaps", ref_list(maps)));
+        let ids: Vec<u32> = maps.iter().map(|&(map, _)| map).collect();
+        fields.push(("RepresentationMaps", ref_list(&ids)));
     }
     // Mandatory on element types in IFC4 and later (and on door and window
     // types, their operation and partitioning; on furniture types, the

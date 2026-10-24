@@ -1,0 +1,11 @@
+--- a/native/smlib-adapter/src/face_lineage.hpp
++++ b/native/smlib-adapter/src/face_lineage.hpp
+@@ -134,7 +134,7 @@
+     void fail(Failure value) noexcept {
+         if(failure==Failure::None) { failure=value; failed_operation=current_operation; failed_type=current_type; failed_event=current_event?current_event:event_count; failed_frame=frame_count; failed_nodes=node_count;
+ #ifdef IFCLITE_LINEAGE_FAILURE_STACK
+-            // mutation: lose the first refusal stack
++            capture_failure_stack();
+ #endif
+         }
+     }

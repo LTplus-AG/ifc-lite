@@ -1,0 +1,11 @@
+--- a/native/smlib-adapter/src/face_lineage_events.cpp
++++ b/native/smlib-adapter/src/face_lineage_events.cpp
+@@ -17,7 +17,7 @@
+ namespace face_lineage {
+ bool Ledger::face(SmObject* object) const { return object && object->GetType()==SmFace_TYPE; }
+ void Ledger::observe(SmNotifyOperation operation,SmObject* caller,SmObject* a,SmObject* b,SmObject* c) noexcept {
+-    if(failure!=Failure::None) { capture_failure_stack(); return; }
++    if(failure!=Failure::None) return;
+     if(event_count==limits.events) { fail(Failure::EventLimit); return; }
+     auto& record=events[event_count++]; record.operation=operation;
+     try { transition(record,operation,caller,a,b,c); }

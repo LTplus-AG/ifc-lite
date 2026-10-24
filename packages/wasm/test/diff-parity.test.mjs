@@ -354,14 +354,14 @@ test('actual raw WASM decodes comparison getters once and guards only consumed s
     const plainOptions = { excludeTypes: ['IfcDoor'], keyAliases: [['new', 'old']], classFamilies: [['IfcWall', 'IfcDoor']] };
     const options = structuredClone(plainOptions);
     const reads = new Map();
-    function once(object, key, label) {
+    const once = (object, key, label) => {
       const value = object[key];
       Object.defineProperty(object, key, { enumerable: true, get() {
         reads.set(label, (reads.get(label) ?? 0) + 1);
         if (reads.get(label) !== 1) throw new Error(`getter read twice: ${label}`);
         return value;
       } });
-    }
+    };
     for (const key of Object.keys(options)) once(options, key, key);
     // Use an independent input to count the nested getter observations.
     const nested = structuredClone(plainOptions);

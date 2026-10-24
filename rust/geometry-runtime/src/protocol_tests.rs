@@ -284,3 +284,28 @@ fn affine_copy_is_additive_opcode_18_beside_unchanged_rigid_17() {
         }
     }
 }
+
+#[test]
+fn unary_plane_wire_has_exact_original_coefficients_and_92_bytes() {
+    let input = || WireHandle { session: 42, slot: 1, generation: 3 };
+    let plane = [-0., 1., 2., 0., 0., f64::MAX];
+    let b = encode_request(
+        9,
+        &KernelCommand::ClipPlane {
+            session: 42,
+            solid: input(),
+            plane,
+            side: -1,
+            mode: 3,
+        },
+    )
+    .unwrap();
+    assert_eq!(b.len(), 92);
+    assert_eq!(&b[8..12], &20u32.to_le_bytes());
+    assert_eq!(&b[20..36], &input().to_bytes());
+    for (i, v) in plane.into_iter().enumerate() {
+        assert_eq!(&b[36 + 8 * i..44 + 8 * i], &v.to_le_bytes());
+    }
+    assert_eq!(&b[84..88], &(-1i32).to_le_bytes());
+    assert_eq!(&b[88..92], &3u32.to_le_bytes());
+}

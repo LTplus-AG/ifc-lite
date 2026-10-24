@@ -41,6 +41,10 @@ pub use dependencies::{RetainedBooleanIdentity, RetainedDependency, RetainedDepe
 mod affine;
 pub use affine::{AffineCertificate, AffineCopyIdentity, RetainedAffineCopy, RetainedTransformInput};
 
+#[path = "worker_clip.rs"]
+mod clip;
+pub use clip::{RetainedPlaneClip, PlaneClipIdentity};
+
 static NEXT_WORKER: AtomicU64 = AtomicU64::new(1);
 
 /// Opaque BRep identity. Worker identity is host-local and never sent over IPC.

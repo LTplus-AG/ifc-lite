@@ -26,3 +26,7 @@ pub use worker::{
     RetainedAffineCopy, RetainedBooleanIdentity, RetainedDependencyResult, RetainedLineage, RetainedRealization,
     RetainedTransformInput, SmlibWorker, TessellatedMesh, WorkerError,
 };
+
+pub use ifc_lite_geometry::document::retained_plane::{PlaneCertificate, PlaneClipMode, PlaneSide};
+#[cfg(not(target_arch = "wasm32"))]
+pub use worker::{RetainedPlaneClip, PlaneClipIdentity};

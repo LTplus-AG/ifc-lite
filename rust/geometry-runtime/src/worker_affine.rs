@@ -20,6 +20,7 @@ const REPLY_BYTES: usize = 16 + 4 * 14;
 /// A sealed value to copy, in its own evaluation metre frame. A raw handle
 /// cannot manufacture one.
 pub enum RetainedTransformInput<'a> {
+    Clip(&'a super::RetainedPlaneClip),
     Source(&'a RetainedRealization),
     Result(&'a RetainedDependencyResult),
     Affine(&'a RetainedAffineCopy),
@@ -40,6 +41,7 @@ impl RetainedTransformInput<'_> {
                 };
                 Ok((source.solid(), Arc::new(lineage), 0))
             }
+            Self::Clip(clip) => clip.parts(),
             Self::Result(result) => result.parts(),
             Self::Affine(copy) => copy.parts(),
         }

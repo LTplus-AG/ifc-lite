@@ -21,6 +21,7 @@ impl SmlibWorker {
             }
             KernelCommand::CopyTransform { solid, .. }
             | KernelCommand::CopyAffine { solid, .. }
+            | KernelCommand::ClipPlane { solid, .. }
             | KernelCommand::Volume { solid, .. }
             | KernelCommand::Manifold { solid, .. }
             | KernelCommand::IsEmpty { solid, .. }

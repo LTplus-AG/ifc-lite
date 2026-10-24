@@ -143,8 +143,15 @@ pub enum KernelCommand {
         session: u64,
         solid: WireHandle,
     },
-    /// Semantic emptiness of the actual retained solid (opcode 19, capability
-    /// bit 32): boundary topology and known-void regions, not mesh or volume.
+    /// Finite local-metre unary plane clip, opcode 20, bounded certificate v1/v3.
+    ClipPlane {
+        session: u64,
+        solid: WireHandle,
+        plane: [f64; 6],
+        side: i32,
+        mode: u32,
+    },
+    /// Semantic emptiness (opcode 19), not zero mesh counts or volume.
     IsEmpty {
         session: u64,
         solid: WireHandle,
@@ -194,6 +201,7 @@ pub fn encode_request(request_id: u32, command: &KernelCommand) -> Result<Vec<u8
         KernelCommand::Volume { .. } => 6,
         KernelCommand::Manifold { .. } => 7,
         KernelCommand::IsEmpty { .. } => 19,
+        KernelCommand::ClipPlane { .. } => 20,
         KernelCommand::Release { .. } => 8,
         KernelCommand::Tessellate { .. } => 9,
         KernelCommand::MeshInfo { .. } => 10,
@@ -260,6 +268,14 @@ fn encode_arguments(command: &KernelCommand, out: &mut Vec<u8>) -> Result<(), Pr
             for value in column_major {
                 out.extend(value.to_le_bytes());
             }
+        }
+        ClipPlane { session, solid, plane, side, mode } => {
+            write_solid(out, *session, *solid);
+            for value in plane {
+                out.extend(value.to_le_bytes());
+            }
+            out.extend(side.to_le_bytes());
+            out.extend(mode.to_le_bytes());
         }
         DestroySession { session } => out.extend(session.to_le_bytes()),
         Box {

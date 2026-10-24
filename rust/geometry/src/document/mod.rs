@@ -28,6 +28,8 @@ pub use retained_profile_region::{capture_retained_extrusion, RetainedRegionExtr
 pub mod retained_frames;
 pub mod retained_affine;
 pub mod retained_lineage;
+pub mod retained_plane;
+mod retained_plane_wire;
 mod retained_disk;
 mod retained_display;
 mod retained_sweep;

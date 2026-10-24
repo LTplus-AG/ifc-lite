@@ -19,6 +19,11 @@ pub enum BooleanOperation {
 /// representation coverage.
 #[derive(Debug, Clone)]
 pub enum RetainedLineage {
+    PlaneClip {
+        input: Arc<Self>, plane: [f64; 6],
+        side: super::retained_plane::PlaneSide, mode: super::retained_plane::PlaneClipMode,
+        world_from_evaluation: [f64; 16], certificate: Arc<super::retained_plane::PlaneCertificate>,
+    },
     Source {
         request: Box<RetainedRequest>,
         world_from_source: [f64; 16],

@@ -17,6 +17,8 @@ pub(super) use ifc_lite_geometry::document::retained_lineage::MAX_OPERATIONS;
 
 /// A sealed numerical operand. A raw handle cannot manufacture one.
 pub enum RetainedDependency<'a> {
+    Clip(&'a super::RetainedPlaneClip),
+    PlacedClip { clip: &'a super::RetainedPlaneClip, world_from_clip: [f64; 16] },
     /// A realization placed by `world_from_source`: column-major, raw
     /// solid-local file units -> world metres. Composed with the request's
     /// frame it must be a proper rigid metre motion.
@@ -120,8 +122,18 @@ impl RetainedDependencyResult {
 type Operand = (BrepHandle, [f64; 16], Arc<RetainedLineage>, usize);
 
 impl RetainedDependency<'_> {
-    fn operand(&self) -> Result<Operand, WorkerError> {
+    pub(super) fn operand(&self) -> Result<Operand, WorkerError> {
         match self {
+            Self::Clip(clip) => {
+                let (solid, lineage, count) = clip.parts()?;
+                Ok((solid, *clip.world_from_evaluation(), lineage, count))
+            }
+            Self::PlacedClip { clip, world_from_clip } => {
+                let (solid, value, count) = clip.parts()?;
+                rigid(*world_from_clip).map_err(WorkerError::InvalidArgument)?;
+                Ok((solid, *world_from_clip, Arc::new(RetainedLineage::Placed {
+                    value, world_from_evaluation: *world_from_clip }), count))
+            }
             Self::Source {
                 realization,
                 world_from_source,

@@ -10,11 +10,7 @@ const SEMANTIC_EMPTY: u32 = 32;
 /// Classification of a strict tessellation, sealed from the actual retained
 /// solid. Zero counts alone are no proof: an all-zero mesh is accepted only
 /// with the solid's own semantic empty certificate. Grants no result authority.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NumericalOutcome {
-    NonEmpty,
-    Empty,
-}
+pub use ifc_lite_geometry::document::retained_plane::NumericalOutcome;
 
 impl SmlibWorker {
     /// Semantic emptiness of the actual retained solid: no boundary topology

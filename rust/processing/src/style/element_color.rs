@@ -2,135 +2,29 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use ifc_lite_core::{slot, MAX_MAPPED_ITEM_DEPTH};
+use ifc_lite_core::slot;
 
-/// Find color for a geometry item, following MappedItem references if needed.
-/// This handles the case where IfcStyledItem points to geometry inside a MappedRepresentation,
-/// not to the MappedItem itself.
-pub(crate) fn find_color_for_geometry(
-    geom_id: u32,
-    geometry_styles: &rustc_hash::FxHashMap<u32, [f32; 4]>,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> Option<[f32; 4]> {
-    let mut visited = rustc_hash::FxHashMap::default();
-    find_color_for_geometry_at(geom_id, geometry_styles, decoder, 0, &mut visited)
-}
-
-/// The chain is built entirely from file references, so a malformed file
-/// controls both its depth and its branching factor. Both have to be bounded:
-///
-/// * **Depth** — a cyclic chain (an item whose mapped representation lists that
-///   item) recursed until the stack overflowed, and a Rust stack overflow
-///   ABORTS the process rather than raising a catchable panic, so no caller
-///   could turn it back into a load error. Three entities were enough (#2866).
-/// * **Breadth** — a cap alone bounds the chain's length, not its fan-out: `k`
-///   items each leading back into the cycle cost `O(k^depth)` decodes. Measured
-///   on the sibling resolver at cap 16: 1 item 211us, 2 items 21.4ms, 3 items
-///   7.21s. That is an abort traded for a hang, which in a browser worker is
-///   the worse of the two because it reads as a slow file (#2864).
-///
-/// The visited map is GLOBAL to one resolution, not path-scoped: the geometry
-/// router removes each id on the way out because it accumulates geometry per
-/// path, whereas a colour is a pure function of the item id and the style map.
-///
-/// It records the DEPTH each item was explored at, and permits a revisit from
-/// a shallower one. A plain set is wrong in combination with the cap: an item
-/// first reached near the limit is cut before its subtree is searched, yet
-/// stays marked, so a later shorter branch that WOULD have resolved is skipped
-/// and the colour is silently lost. Measured on a 30-link branch sharing an
-/// item with a direct one: `Some(green)` became `None` (Codex, #2868 review).
-/// Two individually correct guards whose naive combination produces a wrong
-/// value rather than a crash, so nothing reports it.
-///
-/// Work stays bounded: an item is re-explored only from strictly nearer the
-/// root, so at most `MAX_MAPPED_ITEM_DEPTH` times.
-fn find_color_for_geometry_at(
-    geom_id: u32,
-    geometry_styles: &rustc_hash::FxHashMap<u32, [f32; 4]>,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-    depth: u32,
-    visited: &mut rustc_hash::FxHashMap<u32, u32>,
-) -> Option<[f32; 4]> {
-    use ifc_lite_core::IfcType;
-
-    // First check if this geometry ID directly has a color
-    if let Some(&color) = geometry_styles.get(&geom_id) {
-        return Some(color);
-    }
-
-    // Refuse to go deeper, and refuse to REDO work that cannot produce a new
-    // answer. See this function's doc for why both are needed.
-    if depth >= MAX_MAPPED_ITEM_DEPTH {
-        return None;
-    }
-    match visited.get(&geom_id) {
-        // Already explored from here or from CLOSER to the root: the cap left
-        // that attempt at least as much room as this one has, so it cannot
-        // find anything new. Skipping is safe and breaks cycles.
-        Some(&seen_at) if seen_at <= depth => return None,
-        _ => visited.insert(geom_id, depth),
-    };
-
-    // If not, check if it's an IfcMappedItem and follow the reference
-    let geom = decoder.decode_by_id(geom_id).ok()?;
-
-    if geom.ifc_type == IfcType::IfcMappedItem {
-        // IfcMappedItem: MappingSource (IfcRepresentationMap ref), MappingTarget
-        let map_source_id = geom.ref_at(slot::IfcMappedItem::MAPPING_SOURCE)?;
-
-        // Decode the IfcRepresentationMap
-        let rep_map = decoder.decode_by_id(map_source_id).ok()?;
-
-        // IfcRepresentationMap: MappingOrigin (IfcAxis2Placement), MappedRepresentation (IfcShapeRepresentation)
-        let mapped_repr_id = rep_map.get_ref(slot::IfcRepresentationMap::MAPPED_REPRESENTATION.index())?;
-
-        // Decode the mapped IfcShapeRepresentation
-        let mapped_repr = decoder.decode_by_id(mapped_repr_id).ok()?;
-
-        // IfcShapeRepresentation: ContextOfItems, RepresentationIdentifier, RepresentationType, Items
-        // Attribute 3: Items (list of geometry items)
-        // Check each underlying geometry item for a color
-        for underlying_geom_id in mapped_repr.get_refs(slot::IfcRepresentation::ITEMS.index())? {
-            // Recursively find color (handles nested MappedItems)
-            if let Some(color) = find_color_for_geometry_at(
-                underlying_geom_id,
-                geometry_styles,
-                decoder,
-                depth + 1,
-                visited,
-            ) {
-                return Some(color);
-            }
-        }
-    }
-
-    None
-}
-
-/// Resolve element color inline during processing by following its
-/// representation chain. Replaces the upfront `build_element_style_index`
-/// scan — avoids decoding every building element twice.
+/// Resolve an element's colour from the browser prepass colour map
+/// (`id -> rgba`), for the wasm batch (#7782).
 ///
 /// Resolution order (preserves IFC precedence — direct IfcStyledItem on a
 /// geometry item must win over an element-level material chain):
 ///
-/// 1. **Direct geometry-item colour.** Walk every `IfcShapeRepresentation`
-///    in the product definition and ask `geometry_styles` for any item's
-///    colour. Items here are `IfcExtrudedAreaSolid`, `IfcMappedItem`, etc.;
-///    `find_color_for_geometry` chases `IfcMappedItem` into its underlying
-///    representation map.
+/// 1. **Direct geometry-item colour.** The style source of the element's
+///    `IfcProductDefinitionShape`, found by
+///    `crate::element::product_shape_style_source`: the same bounded walk
+///    (and `IfcMappedItem` chase) the native pipeline colours elements with,
+///    so the two cannot drift. Do not grow a second walk here.
 ///
 /// 2. **Element-keyed material fallback.** When the prepass folded the
 ///    element's resolved material colour into `geometry_styles` keyed by
 ///    the element's own express ID (`buildPrePassStreaming` does this for
-///    every entry in `element_material_styles` — see the prepass body in
-///    `gpu_meshes.rs`), pick that colour up here. Files that author colour
-///    **only** through the `IfcMaterial` → orphan `IfcStyledItem` →
-///    `IfcStyledRepresentation` → `IfcMaterialDefinitionRepresentation`
-///    chain — schependomlaan.ifc and most ArchiCAD / Revit IFC2x3 exports
-///    — land here. Without this fallback the data the prepass already
-///    computed sits unused and every such element renders as the per-type
-///    grey default.
+///    every entry in `element_material_styles`), pick that colour up here.
+///    Files that author colour **only** through the `IfcMaterial` → orphan
+///    `IfcStyledItem` → `IfcStyledRepresentation` →
+///    `IfcMaterialDefinitionRepresentation` chain — schependomlaan.ifc and
+///    most ArchiCAD / Revit IFC2x3 exports — land here. A missing or
+///    malformed representation must not short-circuit past this step.
 pub fn resolve_element_color(
     entity: &ifc_lite_core::DecodedEntity,
     geometry_styles: &rustc_hash::FxHashMap<u32, [f32; 4]>,
@@ -140,51 +34,23 @@ pub fn resolve_element_color(
         return None;
     }
 
-    if let Some(color) = walk_representation_for_direct_color(entity, geometry_styles, decoder) {
-        return Some(color);
-    }
+    // #7782: colour lookup tolerates file-selected positional carriers,
+    // including type products (whose slot 6 is a list, so this yields `None`
+    // and the fallback applies). A named index preserves release behaviour
+    // without asserting an unvalidated IFC owner in debug builds.
+    let direct = entity
+        .get_ref(slot::IfcProduct::REPRESENTATION.index())
+        .and_then(|shape| {
+            crate::element::product_shape_style_source(
+                shape,
+                &|id| geometry_styles.contains_key(&id),
+                decoder,
+            )
+        })
+        .and_then(|source| geometry_styles.get(&source).copied());
 
-    geometry_styles.get(&entity.id).copied()
+    direct.or_else(|| geometry_styles.get(&entity.id).copied())
 }
-
-/// Walk an element's representation chain looking for a colour attached
-/// directly to a geometry item. Split out so a missing or malformed
-/// representation can't short-circuit past the material-chain fallback in
-/// [`resolve_element_color`].
-fn walk_representation_for_direct_color(
-    entity: &ifc_lite_core::DecodedEntity,
-    geometry_styles: &rustc_hash::FxHashMap<u32, [f32; 4]>,
-    decoder: &mut ifc_lite_core::EntityDecoder,
-) -> Option<[f32; 4]> {
-    // #7782: colour lookup tolerates file-selected positional carriers, including
-    // type products. Named indices preserve release behavior without asserting
-    // an unvalidated IFC owner in debug builds. The mapped targets above follow
-    // the same policy; the mapped item itself has an explicit type check.
-    let repr_id = entity.get_ref(slot::IfcProduct::REPRESENTATION.index())?;
-    let product_shape = decoder.decode_by_id(repr_id).ok()?;
-    let reprs = product_shape.get_refs(slot::IfcProductDefinitionShape::REPRESENTATIONS.index())?;
-
-    for shape_repr_id in reprs {
-        let Ok(shape_repr) = decoder.decode_by_id(shape_repr_id) else {
-            continue;
-        };
-        let Some(items) = shape_repr.get_refs(slot::IfcRepresentation::ITEMS.index()) else {
-            continue;
-        };
-
-        for geom_id in items {
-            if let Some(color) = find_color_for_geometry(geom_id, geometry_styles, decoder) {
-                return Some(color);
-            }
-        }
-    }
-
-    None
-}
-
-// Default IFC-type colors now come from the single canonical table in
-// `ifc_lite_processing::default_color_for_type` (issue #913). The browser path
-// calls it directly (see `gpu_meshes.rs`); do not reintroduce a table here.
 
 #[cfg(test)]
 mod resolve_element_color_tests {
@@ -336,37 +202,6 @@ END-ISO-10303-21;
         // Unrelated express ID — neither the wall nor any item in its rep.
         styles.insert(999, [0.5, 0.5, 0.5, 1.0]);
         assert_eq!(resolve_element_color(&wall, &styles, &mut decoder), None);
-    }
-}
-
-#[cfg(test)]
-#[path = "element_color_cycle_tests.rs"]
-mod find_color_for_geometry_cycle_tests;
-
-#[cfg(test)]
-mod shared_cap_tests {
-    /// `MAX_MAPPED_ITEM_DEPTH` must be the one in `ifc_lite_core::limits`, not
-    /// a private copy that happens to hold the same number today.
-    ///
-    /// This is not redundant with the constant being shared. Sharing removes
-    /// the drift that EXISTS; it does not stop anyone reintroducing a local
-    /// `const MAX_MAPPED_ITEM_DEPTH` that shadows the import. Verified by
-    /// mutation: with the import replaced by a private `= 16`, 800 tests stayed
-    /// green until this test existed. A mid-review revision of #2864 held
-    /// exactly that value against the router's 32, so the shadow is not a
-    /// hypothetical shape.
-    ///
-    /// The assertion is on the VALUE, not on identity, so a private copy
-    /// holding the same 32 still passes. That is the honest ceiling: Rust has
-    /// no cheap const-identity check, and a same-value shadow is harmless until
-    /// the shared value is next tuned, at which point this fires.
-    #[test]
-    fn mapped_item_depth_is_the_shared_constant() {
-        assert_eq!(
-            super::MAX_MAPPED_ITEM_DEPTH,
-            ifc_lite_core::MAX_MAPPED_ITEM_DEPTH,
-            "use the shared cap from ifc_lite_core::limits, not a private copy"
-        );
     }
 }
 

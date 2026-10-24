@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::resolve_element_color;
-use crate::element::{product_shape_style_source, representation_map_style_source};
+use crate::element::representation_map_style_source;
 use ifc_lite_core::{build_entity_index, EntityDecoder};
 use rustc_hash::FxHashMap;
 
@@ -27,10 +27,10 @@ END-ISO-10303-21;
 
 // #7782: these are intentionally wrong-class positional carriers, not valid
 // IFC geometry. Colour lookup historically tolerates them; geometry admission
-// remains separate. Both native source lookup and the browser adapter must
-// reach the same authored item in debug as well as release builds.
+// remains separate. The resolver must reach the authored item, not the
+// element fallback, in debug as well as release builds.
 #[test]
-fn issue_7782_wrong_class_colour_carriers_preserve_native_lookup() {
+fn issue_7782_wrong_class_colour_carriers_resolve_the_direct_colour() {
     let replacements = [
         ("IFCPRODUCTDEFINITIONSHAPE($,$,(#3))", "IFCCARTESIANPOINT($,$,(#3))"),
         ("IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#4))",
@@ -45,11 +45,12 @@ fn issue_7782_wrong_class_colour_carriers_preserve_native_lookup() {
         replacements.into_iter().map(|(from, to)| SOURCE.replace(from, to)),
     ) {
         let styles = FxHashMap::from_iter([(1, fallback), (7, direct)]);
-        let mut native = EntityDecoder::with_index(&source, build_entity_index(&source));
-        assert_eq!(product_shape_style_source(2, &|id| styles.contains_key(&id), &mut native), Some(7));
-        let mut browser = EntityDecoder::with_index(&source, build_entity_index(&source));
-        let wall = browser.decode_by_id(1).expect("wall");
-        assert_eq!(resolve_element_color(&wall, &styles, &mut browser), Some(direct));
+        let mut decoder = EntityDecoder::with_index(&source, build_entity_index(&source));
+        let wall = decoder.decode_by_id(1).expect("wall");
+        assert_eq!(
+            resolve_element_color(&wall, &styles, &mut decoder),
+            Some(direct)
+        );
     }
 }
 

@@ -142,7 +142,7 @@ fn storey_only_geometry_rtc_offset_is_no_longer_zero() {
 }
 
 /// Direct truth-table coverage of the two predicates the detector's job scan
-/// combines (`ifc_lite_core::geometry_entity_spans`), independent of any fixture: confirms the
+/// combines (`file_geometry_spans`), independent of any fixture: confirms the
 /// interaction is neither "both must be true" nor "either alone suffices" in
 /// the wrong direction for the representative cases this PR cares about.
 #[test]

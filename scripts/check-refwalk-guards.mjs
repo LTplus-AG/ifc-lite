@@ -155,9 +155,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
  * question was crate-scope vs pattern-scope. Scoped to the PATTERN here, and
  * the history says that is the right call: of the six #2866 fixes, #2869's
  * site is `rust/processing/src/symbolic/items.rs` and #2868's is
- * now `rust/processing/src/style/element_color.rs` (originally WASM styling).
- * A gate scoped to the crate
- * the issue names would have been blind to two of the six walks it exists to
+ * was `rust/wasm-bindings/src/api/styling/color.rs` (since folded into
+ * processing's canonical colour walk). A gate scoped to the crate the issue names would have been blind to two of the six walks it exists to
  * prevent a seventh of. Both extra roots cost nothing: each contributes zero
  * unguarded candidates today.
  *
@@ -208,7 +207,9 @@ const SCAN_ROOTS = [
 // the common mapping controller's explicit level stack. Set to 30, a margin of one.
 // Re-measured at 30 when #7955 D3b moved the styled/type-map walk onto the same
 // controller. Set to 29, a margin of one.
-const CANDIDATE_FLOOR = 29;
+// Re-measured at 29 when #7782 C4-9 deleted the browser's copy of the
+// mapped-item colour walk in favour of the canonical one. Set to 28, a margin of one.
+const CANDIDATE_FLOOR = 28;
 
 /**
  * Allowlist for candidates that are genuinely unguarded and must stay that

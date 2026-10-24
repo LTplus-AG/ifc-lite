@@ -20,13 +20,6 @@ All crates live in one Cargo workspace (versioned together, MPL-2.0 licensed):
 
 The Python bindings (`rust/python`, PyPI package `ifclite-geom`) are excluded from the workspace and documented on the [Python API page](python.md).
 
-## Element colour resolution
-
-`ifc_lite_processing::style::resolve_element_color` resolves direct item colours
-before the element-keyed material fallback, using the browser prepass colour
-map. Its mapped-item walk retains the shared depth limit and shallower-revisit
-policy. The browser batch calls this processing-owned resolver.
-
 ## ifc-lite-core
 
 Core parsing functionality.
@@ -973,6 +966,15 @@ join discontinuity. The result is always `precheck_only`: material, bending
 process, allowances, jurisdiction and physical bar count remain unchecked.
 Authored `BarLength` is not a verified cutting length. A reinforcing-bar entity
 may represent more than one manufactured bar.
+
+### Element colour resolution
+
+`ifc_lite_processing::style::resolve_element_color` resolves an element's colour
+from the browser prepass colour map (`id -> rgba`). A direct geometry-item colour
+wins over the element-keyed material fallback. It delegates to the same
+product-shape style-source walk the native pipeline uses, so browser and native
+element colours share one bounded traversal. The browser batch calls this
+resolver.
 
 ### Owned production contexts
 

@@ -1,0 +1,31 @@
+{
+  "status": "REFUSED",
+  "job": "4f42a7bf-7154-4be4-a816-be786b5bffb2",
+  "acceptedSamples": 0,
+  "error": "Error: Native GPU driver error; refuse sample",
+  "readiness": {
+    "ended": true,
+    "done": [
+      "geometry.streamComplete",
+      "scene.finalize",
+      "parser.complete"
+    ],
+    "failed": [],
+    "loadPath": "wasm"
+  },
+  "adapter": {
+    "vendor": "nvidia",
+    "architecture": "lovelace"
+  },
+  "requestedAdapters": [
+    {
+      "vendor": "nvidia",
+      "architecture": "lovelace",
+      "fallback": false
+    }
+  ],
+  "driverErrorCount": 32,
+  "firstDriverError": "2026-10-23T17:54:51.789Z pw:browser [pid=442193][err] [442226:442226:1023/195451.789287:ERROR:gpu/command_buffer/service/shared_image/shared_image_manager.cc:241] SharedImageManager::ProduceGLTexturePassthrough: Trying to produce a representation from an incompatible backing: CompoundImageBacking",
+  "rawRunsSha256": "83a9a9cbbb85c4e1235452c46ad1119dc92a8566718325e59017ad2527552858",
+  "scope": "Full model reproduced native WebGL shared-image errors despite simple canvas capability result; no accepted native timing."
+}

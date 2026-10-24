@@ -179,6 +179,7 @@ impl<'a> GeometryProgram<'a> {
         self.validate_owner(router, Some(decoder))?;
         self.expected_router = Some(router.execution_identity());
         self.expected_decoder = Some(decoder.execution_identity());
+        let decoder_before = decoder.execution_identity();
         // Consume admission before any callback can unwind. A copied ticket
         // cannot replay work after its recipe was moved into a lexical call.
         self.pending = Some((request, true));
@@ -191,6 +192,14 @@ impl<'a> GeometryProgram<'a> {
             Control::Layers(control) => ReplyValue::Layers(control.execute(router, decoder)?),
             Control::Styled(control) => ReplyValue::Styled(control.execute(router, decoder)?),
         };
+        // Maintenance may change the generation, but replacing the decoder
+        // changes the source owner and must refuse before accepting any output.
+        if !decoder_before.same_instance(&decoder.execution_identity()) {
+            return Err(ProgramError::WrongOwner);
+        }
+        // Acknowledge configuration or cache maintenance on the same instance.
+        self.expected_router = Some(router.execution_identity());
+        self.expected_decoder = Some(decoder.execution_identity());
         self.expected_payload = Some(value.tag());
         Ok(ProgramReply { request, value })
     }
@@ -312,10 +321,21 @@ impl<'a> GeometryProgram<'a> {
     fn run(&mut self, router: &GeometryRouter, decoder: &mut EntityDecoder) -> Result<()> {
         // A walk no request was issued for runs in place, moving no ticket or reply per step.
         if self.pending.is_none() && self.sequence == 0 {
-            if let Control::Product(c) = &mut self.control { return c.run(router, decoder).map_err(program_error) }
-            if let Control::Voids(c) = &mut self.control { return c.run(router, decoder).map_err(program_error) }
-            if let Control::Layers(c) = &mut self.control { return c.run(router, decoder).map_err(program_error) }
-            if let Control::Styled(c) = &mut self.control { return c.run(router, decoder).map_err(program_error) }
+            let decoder_before = decoder.execution_identity();
+            let direct = match &mut self.control {
+                Control::Product(c) => Some(c.run(router, decoder)),
+                Control::Voids(c) => Some(c.run(router, decoder)),
+                Control::Layers(c) => Some(c.run(router, decoder)),
+                Control::Styled(c) => Some(c.run(router, decoder)),
+                _ => None,
+            };
+            if let Some(result) = direct {
+                result.map_err(program_error)?;
+                if !decoder_before.same_instance(&decoder.execution_identity()) {
+                    return Err(program_error(ProgramError::WrongOwner));
+                }
+                return Ok(());
+            }
         }
         while let Some(request) = self.request().map_err(program_error)? {
             let reply = self.execute(request, router, decoder).map_err(program_error)?;

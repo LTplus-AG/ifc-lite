@@ -4,54 +4,35 @@
 //! wider set the output-pinning test runs.
 
 use ifc_lite_export::plan::{
-    ClassSpec, Disposition, ExportPlan, GeometryPatch, GlobalId, IfcClass, NewObject, NewPlacement, ObjectRef, Patch,
-    PlacementPatch, PlanContext, PropScope, PropWrite, PsetKind, Representation, SurfaceColour, TriangleMesh,
+    Disposition, ExportPlan, GeometryPatch, GlobalId, IfcClass, NewObject, NewPlacement, ObjectRef, Patch, PlacementPatch,
+    PlanContext, PropScope, PropWrite, PsetKind, SurfaceColour, TriangleMesh,
 };
 
 use super::synth::{quirk, Layout, GROUP, TYPES};
 
 fn context() -> PlanContext {
-    PlanContext { author: Some("harness".into()), organization: Some("synthetic".into()), time_stamp: Some("0".into()) }
+    PlanContext::new().with_author("harness").with_organization("synthetic").with_time_stamp("0")
 }
 
 fn shifted(x: f64) -> PlacementPatch {
-    PlacementPatch { matrix: [[1.0, 0.0, 0.0, x], [0.0, 1.0, 0.0, 0.5], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]] }
+    PlacementPatch::new([[1.0, 0.0, 0.0, x], [0.0, 1.0, 0.0, 0.5], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]])
 }
 
 fn place(id: u32, x: f64) -> (ObjectRef, Disposition) {
-    (ObjectRef::Id(id), Disposition::Patch(Patch { placement: Some(shifted(x)), ..Default::default() }))
+    (ObjectRef::Id(id), Disposition::Patch(Patch::new().with_placement(shifted(x))))
 }
 
 fn prop(pset: &str, name: &str, measure: &str, literal: &str, kind: PsetKind, scope: PropScope) -> PropWrite {
-    PropWrite {
-        pset: pset.into(),
-        prop: name.into(),
-        measure_type: measure.into(),
-        literal: literal.into(),
-        unit: None,
-        kind,
-        scope,
-    }
+    PropWrite::new(pset, name, measure, literal, kind, scope)
 }
 
 fn props(id: u32, writes: Vec<PropWrite>) -> (ObjectRef, Disposition) {
-    (ObjectRef::Id(id), Disposition::Patch(Patch { psets: writes, ..Default::default() }))
+    (ObjectRef::Id(id), Disposition::Patch(Patch::new().with_psets(writes)))
 }
 
 /// An Add keyed by `id`, which already exists: refused, and writes nothing.
 fn add_over_existing(id: u32) -> (ObjectRef, Disposition) {
-    let new = NewObject {
-        global_id: GlobalId(u128::from(id)),
-        class: ClassSpec { class: IfcClass::Wall, predefined_type: None },
-        name: None,
-        placement: NewPlacement { matrix: shifted(0.0).matrix, relative_to: None },
-        container: None,
-        type_link: None,
-        representation: Representation::None,
-        style: None,
-        psets: Vec::new(),
-        opening: None,
-    };
+    let new = NewObject::new(GlobalId(u128::from(id)), IfcClass::Wall, NewPlacement::new(shifted(0.0).matrix));
     (ObjectRef::Id(id), Disposition::Add(Box::new(new)))
 }
 
@@ -60,7 +41,7 @@ fn delete(id: u32) -> (ObjectRef, Disposition) {
 }
 
 fn plan(dispositions: Vec<(ObjectRef, Disposition)>) -> ExportPlan {
-    ExportPlan { dispositions, context: context() }
+    ExportPlan::new(dispositions).with_context(context())
 }
 
 /// About a hundred placement patches, a few property writes and a few
@@ -80,6 +61,14 @@ pub fn benchmark(l: &Layout) -> ExportPlan {
     plan(d)
 }
 
+/// Every storey below `storeys` deleted together with every wall it
+/// contains: tens of thousands of deletions under the few large
+/// relationships they share (containment, typing, shared property sets).
+pub fn bulk_delete(l: &Layout, storeys: u32) -> ExportPlan {
+    let walls = (0..l.walls).filter(|&k| l.storey_of(k) < storeys).map(|k| delete(l.wall(k)));
+    plan((0..storeys).map(|s| delete(l.storey(s))).chain(walls).collect())
+}
+
 /// A closed `x` by `y` by `z` box with a corner at the origin, 12 triangles.
 fn box_mesh(x: f64, y: f64, z: f64) -> TriangleMesh {
     let positions = (0..8).map(|i| [if i & 1 == 0 { 0.0 } else { x }, if i & 2 == 0 { 0.0 } else { y }, if i & 4 == 0 { 0.0 } else { z }]).collect();
@@ -87,7 +76,7 @@ fn box_mesh(x: f64, y: f64, z: f64) -> TriangleMesh {
         [0, 2, 1], [1, 2, 3], [4, 5, 6], [5, 7, 6], [0, 1, 4], [1, 5, 4],
         [2, 6, 3], [3, 6, 7], [0, 4, 2], [2, 4, 6], [1, 3, 5], [3, 7, 5],
     ];
-    TriangleMesh { positions, triangles }
+    TriangleMesh::new(positions, triangles)
 }
 
 /// New bodies for `count` walls spread across the model, every other one
@@ -98,9 +87,10 @@ pub fn geometry(l: &Layout, count: u32) -> ExportPlan {
     let d = (0..count)
         .map(|i| {
             let k = i * stride;
-            let colour = (i % 2 == 0).then_some(SurfaceColour { rgb: [0.6, 0.4, 0.2], transparency: 0.0 });
-            let patch = GeometryPatch { mesh: box_mesh(5.0, 0.2, 3.0 + f64::from(i % 3)), colour };
-            (ObjectRef::Id(l.wall(k)), Disposition::Patch(Patch { geometry: Some(patch), ..Default::default() }))
+            let colour = (i % 2 == 0).then_some(SurfaceColour::new([0.6, 0.4, 0.2], 0.0));
+            let mut patch = GeometryPatch::new(box_mesh(5.0, 0.2, 3.0 + f64::from(i % 3)));
+            patch.colour = colour;
+            (ObjectRef::Id(l.wall(k)), Disposition::Patch(Patch::new().with_geometry(patch)))
         })
         .collect();
     plan(d)
@@ -118,7 +108,7 @@ pub fn scenarios(l: &Layout) -> Vec<(&'static str, ExportPlan)> {
             "rename_by_guid",
             plan(vec![(
                 ObjectRef::Guid(format!("{:0>22}", w(3))),
-                Disposition::Patch(Patch { name: Some("Renamed 'quoted'".into()), ..Default::default() }),
+                Disposition::Patch(Patch::new().with_name("Renamed 'quoted'")),
             )]),
         ),
         ("placements", plan((0..12).map(|k| place(w(k), k as f64)).collect())),
@@ -162,5 +152,6 @@ pub fn scenarios(l: &Layout) -> Vec<(&'static str, ExportPlan)> {
         ),
         ("benchmark", benchmark(l)),
         ("geometry", geometry(l, 8)),
+        ("bulk_delete", bulk_delete(l, 2)),
     ]
 }

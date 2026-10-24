@@ -5,10 +5,10 @@
     "IFC-Lite Contributors"
   ],
   "description": "WebAssembly bindings for IFC-Lite",
-  "version": "10.4.0",
+  "version": "10.5.0",
   "scripts": {
     "build": "node ../../scripts/run-build-wasm.mjs",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --experimental-strip-types --test test/*.test.mjs"
   },
   "license": "MPL-2.0",
   "repository": {
@@ -22,7 +22,11 @@
     "pkg/snippets/**",
     "retained.js",
     "retained.d.ts",
-    "pkg-retained/ifc-lite.d.ts"
+    "pkg-retained/ifc-lite.d.ts",
+    "pkg-diff/ifc-lite-diff.js",
+    "pkg-diff/ifc-lite-diff_bg.wasm",
+    "pkg-diff/ifc-lite-diff.d.ts",
+    "pkg-diff/snippets/**"
   ],
   "main": "./pkg/ifc-lite.js",
   "module": "./pkg/ifc-lite.js",
@@ -38,7 +42,13 @@
       "types": "./retained.d.ts",
       "import": "./retained.js",
       "default": "./retained.js"
-    }
+    },
+    "./diff": {
+      "types": "./pkg-diff/ifc-lite-diff.d.ts",
+      "import": "./pkg-diff/ifc-lite-diff.js",
+      "default": "./pkg-diff/ifc-lite-diff.js"
+    },
+    "./diff_bg.wasm": "./pkg-diff/ifc-lite-diff_bg.wasm"
   },
   "sideEffects": false,
   "keywords": [

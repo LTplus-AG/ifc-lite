@@ -34,8 +34,12 @@
 
 pub mod fingerprint;
 pub mod input;
+mod input_decode;
 pub mod model;
 pub mod engine;
+pub mod columns;
+pub mod transport_options;
+pub mod transport_result;
 pub mod key_diff;
 pub mod geometry_compare;
 pub mod mutual_nearest;
@@ -71,7 +75,7 @@ pub use input::{
     DataFingerprintInput, PropertyEntryInput, PropertySetInput, PropertyValue, QuantitySetInput,
     TypeAssignmentInput,
 };
-pub use utf16::stable_hash;
+pub use utf16::{stable_hash, stable_hash_units};
 
 #[cfg(test)]
 mod content_tests;

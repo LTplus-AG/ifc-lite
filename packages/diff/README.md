@@ -5,8 +5,10 @@ revisions as **added / modified / deleted / unchanged**, with separable
 **data vs geometry** scope — the engine behind the viewer's "compare two
 versions" mode.
 
-The package is **pure and store-agnostic**: it never touches a parser, a WASM
-module, or a renderer. Adapters (the CLI, the viewer) extract a fingerprint per
+The public comparison API is **pure and store-agnostic**: it consumes adapter
+fingerprints without invoking a parser or renderer. The package also depends on
+`@ifc-lite/wasm` for the staged Rust backend being qualified under #8042;
+public entry points retain their current synchronous initialization contract. Adapters (the CLI, the viewer) extract a fingerprint per
 entity and hand them over; the engine matches by key and classifies.
 
 ## Installation
@@ -208,7 +210,7 @@ The geometry fingerprint is computed in `ifc_lite_geometry::geom_hash` and
 exposed over the WASM boundary (`IfcAPI.setComputeGeometryHashes` →
 `MeshCollection.geometryHashValues`). It is RTC-invariant (a file's origin-shift
 never registers as a change) and tolerance-quantized. This package only
-*consumes* those hashes, keeping it dependency-free and unit-testable.
+*consumes* those hashes, keeping the comparison independent of the parser and renderer.
 
 ## Docs
 
@@ -218,3 +220,5 @@ See the [ifc-lite docs](https://ifclite.dev/docs/) and the
 ## License
 
 MPL-2.0
+
+The staged runtime initializes the independent `@ifc-lite/wasm/diff` module. It does not initialize the geometry engine. The diff module is built with `pnpm build:wasm`; its generated declarations are committed for wasm-free typechecking.

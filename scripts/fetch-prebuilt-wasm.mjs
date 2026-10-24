@@ -36,8 +36,14 @@ const wasmFile = join(wasmOut, 'ifc-lite_bg.wasm');
 
 const force = process.argv.includes('--force');
 const committedDts = join(wasmOut, 'ifc-lite.d.ts');
+const expectsDiff = Boolean(wasmPkgJson.exports?.['./diff']);
+const diffOutput = 'packages/wasm/pkg-diff';
+const diffOut = join(rootDir, diffOutput);
+const diffOptions = { stem: 'ifc-lite-diff' };
+const diffDestination = { ...diffOptions, output: diffOutput };
 
-if (existsSync(wasmFile) && !force) {
+
+if (existsSync(wasmFile) && (!expectsDiff || existsSync(join(diffOut, 'ifc-lite-diff_bg.wasm'))) && !force) {
   console.log(`Prebuilt WASM already present at ${wasmFile}`);
   // An installed runtime may have been fetched before this check existed, or
   // by an older checkout, or built before the Rust sources moved on. Check it
@@ -66,6 +72,11 @@ if (existsSync(wasmFile) && !force) {
   try {
     const assets = wasmRuntimeAssets(wasmOut);
     assertWasmRuntimeDestinations(rootDir, assets);
+    if (expectsDiff) {
+      const diff = checkedDiffRuntime(diffOut);
+      assertWasmRuntimeDestinations(rootDir, diff.assets, diffDestination);
+      writeFileSync(join(diffOut, '.npmignore'), '\n');
+    }
     writeFileSync(join(wasmOut, '.npmignore'), '\n');
   }
   catch (error) {
@@ -111,10 +122,11 @@ const pkgDir = join(extractDir, 'package/pkg');
 // BEFORE installing anything: a stale bundle is never left behind for the
 // "already present" early exit to accept, and under --force the previously
 // installed runtime survives a failed fetch.
-let fetchedParity, runtimeFiles;
+let fetchedParity, runtimeFiles, fetchedDiff;
 try {
   runtimeFiles = wasmRuntimeAssets(pkgDir);
   fetchedParity = parityAgainstCommittedDts(readFileSync(join(pkgDir, 'ifc-lite.js'), 'utf8'));
+  if (expectsDiff) fetchedDiff = checkedDiffRuntime(join(extractDir, 'package/pkg-diff'));
 } catch (error) {
   rmSync(extractDir, { recursive: true, force: true });
   rmSync(join(rootDir, tgzName), { force: true });
@@ -136,6 +148,7 @@ if (fetchedParity.missing.length > 0) {
 
 try {
   assertWasmRuntimeDestinations(rootDir, runtimeFiles);
+  if (fetchedDiff) assertWasmRuntimeDestinations(rootDir, fetchedDiff.assets, diffDestination);
 } catch (error) {
   rmSync(extractDir, { recursive: true, force: true });
   rmSync(join(rootDir, tgzName), { force: true });
@@ -148,6 +161,14 @@ mkdirSync(wasmOut, { recursive: true });
 for (const name of runtimeFiles) {
   mkdirSync(dirname(join(wasmOut, name)), { recursive: true });
   copyFileSync(join(pkgDir, name), join(wasmOut, name));
+}
+
+if (fetchedDiff) {
+  for (const name of fetchedDiff.assets) {
+    mkdirSync(dirname(join(diffOut, name)), { recursive: true });
+    copyFileSync(join(extractDir, 'package/pkg-diff', name), join(diffOut, name));
+  }
+  writeFileSync(join(diffOut, '.npmignore'), '\n');
 }
 
 // Override wasm-pack's broad pkg/.gitignore for local npm packaging. The
@@ -188,4 +209,15 @@ function warnExtra(extra) {
       `ifc-lite.d.ts does not declare (${extra.join(', ')}). The package is ahead of ` +
       `${checkoutCommit()}; harmless unless this checkout is stale.`,
   );
+}
+
+/** The independent payload has the same static-closure and committed-type contract. */
+function checkedDiffRuntime(directory) {
+  const assets = wasmRuntimeAssets(directory, diffOptions);
+  const dts = join(diffOut, 'ifc-lite-diff.d.ts');
+  const parity = compareWasmExports(readFileSync(dts, 'utf8'),
+    readFileSync(join(directory, 'ifc-lite-diff.js'), 'utf8'));
+  if (parity.missing.length) throw new Error(
+    `pkg-diff runtime is behind this checkout; missing exports: ${parity.missing.join(', ')}. Rebuild with pnpm build:wasm.`);
+  return { assets };
 }

@@ -1,0 +1,11 @@
+--- a/rust/export/src/plan/resolve.rs
++++ b/rust/export/src/plan/resolve.rs
+@@ -54,7 +54,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
+     // copy-on-write detach is known yet). It gates the "object is also
+     // deleted by this plan" refusal, and is the final answer as well when
+     // the patches leave its inputs as they are (see the combined pass below).
+-    let gating = delete::resolve_deletes(index, schema, &requested_deletes, &[], &protected, &protected);
++    let gating = delete::resolve_deletes(index, schema, &requested_deletes, &[], &protected, &feature_keepers);
+     let (gated_requested, gated_protected) = (requested_deletes.clone(), protected.clone());
+     // Grows beyond `gating.removed`: a patch's placement rewrite (an old,
+     // now-unreferenced axis placement chain) can orphan more records, found

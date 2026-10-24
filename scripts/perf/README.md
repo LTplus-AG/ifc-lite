@@ -12,6 +12,43 @@ that also dominate in the browser; the WASM-only concerns (per-worker file
 re-decode, no threads, memory bandwidth) are orchestration-level and are read
 off the viewer's own telemetry (below).
 
+## HiDPI navigation and synchronous capture (#6709, #8089)
+
+**Functional qualification passes; performance is mixed.** The physical NVIDIA
+FZK comparison includes DPR1 control, counterbalanced cap-only pairs, transition
+frames, exact shared runtime bytes, unchanged geometry and CSS picking, and
+full-quality PNGs with navigation/idle restoration. The capped DPR2 arm lowers
+GPU queue-completion latency, while median/p95 rAF cadence stays unchanged and
+maximum intervals become worse around settling. Do not advertise a frame-rate
+gain or hide the transition tail. Queue completion is not isolated GPU time.
+
+The capture repair must copy pixels synchronously after its own render: waiting
+for GPU completion or another animation frame can let presentation discard the
+WebGPU drawing buffer. An asynchronous reader can recreate that bug despite a
+generic synchronous-looking signature, so reject promise-like types/results
+and consume refused rejections without poisoning the next capture. A real
+lifecycle regression and visible model PNG establish more than dimensions alone.
+[Original cohort, compact traces, images and reviewed verdict](../../tests/evidence/hidpi-navigation-6709/native-20261023/result-20261024/reviewed-verdict.json)
+retain the measured limitation and the collapsed-sidebar scope. This establishes
+no loading-regression resolution for #6516.
+
+## One element per rayon task in the element loop (#8094)
+
+**Shipped: the element `par_iter` uses `with_max_len(1)`.** A large void-heavy
+model, converted through an embedder's single-chunk export, ended with a long
+single-core tail inside the element loop: rayon had handed one thread a range of
+several void-heavy elements, which it ran in sequence while the others idled.
+Single-element tasks let idle threads take the rest. In `perf_probe` only the
+heavy CSG tower (Holter) gains; the large model's win shows only through the
+embedder. Output is unchanged at every thread count tested.
+
+Lesson: when cores go idle while a parallel loop is still running, check rayon's
+task granularity before the kernel. In a profiled embedder run on `76d38b1243`,
+ordering the jobs heavy-first without `with_max_len(1)` did not remove the
+tail: rayon packed the heavy jobs into one thread's first range instead.
+`perf_probe` and an embedder's export can split the work differently, so
+measure the embedder too.
+
 ## Consolidation certificates restore the instruction ratchet (#7943)
 
 **Measured reduction in exact geometry work; unchanged instruction ceilings.**
@@ -40,6 +77,17 @@ and host guard. A stale identical binary, a zero-resolution timing campaign,
 missing tooling and a Turbo-restored WASM artifact were rejected and preserved.
 Numerical observations, scope, source applicability and evidence references are
 in [the qualification record](../../tests/evidence/issue-7943/performance.json).
+
+## Independent diff WASM payload (#8042)
+
+**Size verdict: keep diff exports outside the geometry engines.** Embedding
+comparison bindings into the shared geometry module exceeded its transfer-size
+ratchet. A separate `rust/diff-wasm` target restores the default geometry
+bundle below the unchanged ceiling and lets explicit diff initialization load
+only the comparison engine. Default and retained geometry modules exclude diff
+exports. Actual-WASM tests verify independent memories and that retained diff
+models survive geometry initialization. This is a packaging result; full
+facade startup, marshaling, and end-to-end timing qualification remain open.
 
 ## Remote near-plane recovery (#7633)
 
@@ -4735,3 +4783,41 @@ Lesson: a zero-duration phase can invalidate the whole timing verdict even when
 all pairs finish and artifact provenance holds. Preserve that verdict and the
 adverse small-control observations; do not rerun until green or substitute
 count equality for full output identity or browser worker-pool performance.
+
+### Canonical product protocol (E3, #7955)
+
+The [final-source evidence](https://github.com/LTplus-AG/ifc-lite/blob/e8068c4aa310f2263b571ffc7928723c1438059b/scripts/perf/evidence/product-state-e3-final/summary.json)
+compares the canonical product protocol with its landed E2b parent. Native
+result fingerprints and source-built WASM getter fingerprints match within
+the documented corpus and normalization scope. Workspace tests, strict Clippy
+and the three independent protocol, publication and retry-stop mutations pass
+their required controls. The [earlier evidence](https://github.com/LTplus-AG/ifc-lite/blob/41efcf427d46aa604384c014bd6f0fdef4448de1/scripts/perf/evidence/product-state-e3/summary.json)
+retains its earlier-source attribution.
+
+Verdict: disclosed correctness cost, with no speedup or performance-neutrality
+claim. The final native cohort flags slower geometry and total time on the
+small control; its aggregate qualification also remains inconclusive because
+one opening-fixture phase is below timer resolution. Holter is slower in every
+native pair even though the stock reporter does not flag that change. These
+observations remain adverse results. Instruction attribution measures a much
+smaller increase in work and does not explain the elapsed-time penalty. Fixed
+processor-placement diagnostics neither replace the original cohort nor prove
+its cause.
+
+The completed physical-GPU browser worker-pool cohort flags a slower first
+geometry batch on the small control. Complete metadata/render readiness stays
+within observed spread on all three models. All samples retain healthy GPU
+counters and matching mesh counts; representative screenshots show the actual
+models. That scope does not qualify interaction latency, long-lived memory,
+other browsers or retained execution.
+
+The landing tradeoff is the measured cost for source-bound, once-only work and
+correct interruption/report isolation. Keep the original failed native verdict
+and browser first-batch flag visible; no ceiling or tolerance changes are made
+by this evidence update. Final semantic review and current required checks
+remain mandatory. The full retained platform and release gates remain open.
+
+Lesson: a successful measurement process is not a no-regression verdict, and
+low instruction overhead cannot waive an elapsed-time regression. Report the
+complete paired observations and the accepted correctness tradeoff instead of
+replacing samples until the headline turns green.

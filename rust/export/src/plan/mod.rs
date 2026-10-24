@@ -8,8 +8,9 @@
 //! option expresses: occurrence overrides, placement rewrites, body geometry
 //! replacement, and delete with reverse-reference repair.
 //! [`Disposition::Add`] builds a new object (placement, geometry,
-//! containment, type, property sets, an opening in a host) from an IFC-level
-//! description; see `add.rs`.
+//! containment, type, property sets, material, classifications, an opening
+//! in a host) from an IFC-level description; see `add.rs`.
+//! [`Disposition::AddType`] adds a type nothing instances yet.
 //!
 //! # Design
 //!
@@ -36,11 +37,15 @@
 //!   copy, or a refusal for a set shared between types.
 
 mod add;
+mod add_assoc_types;
+mod add_builders;
 mod add_geometry;
+mod add_profile;
 mod add_props;
 mod add_rels;
 mod add_types;
 mod attrs;
+mod builders;
 mod delete;
 mod geometry;
 mod index;
@@ -51,6 +56,7 @@ mod props;
 mod props_lookup;
 mod props_synth;
 mod referrers;
+mod removal;
 mod resolve;
 mod skeleton;
 mod tessellation;
@@ -62,10 +68,16 @@ mod types;
 mod validate;
 mod write;
 
+pub use add_assoc_types::{
+    ClassificationLink, ClassificationSystem, LayerMaterial, MaterialLink, NewClassification, NewClassificationReference,
+    NewLayerSet, NewMaterial, NewMaterialLayer, ValueUnit,
+};
 pub use add_types::{
-    ClassSpec, Extrusion, GlobalId, IfcClass, NewObject, NewOpening, NewPlacement, NewProperty, NewPropertySet, NewType,
+    ClassSpec, Extrusion, GlobalId, IfcClass, MappedBody, NewObject, NewOpening, NewPlacement, NewProperty, NewPropertySet, NewType,
     PropertyValue, Representation, TypeLink,
 };
+pub use placement::IDENTITY;
+pub use removal::{Removal, RemovalReason};
 pub use skeleton::{skeleton, MapConversion, MapUnit, Skeleton, SkeletonRoot, SKELETON_SCHEMA};
 pub use types::{
     Disposition, DroppedRepresentation, ExportPlan, GeometryPatch, ObjectRef, Patch, PlacementPatch, PlanContext, PlanError,
@@ -89,6 +101,7 @@ pub fn execute<W: std::io::Write>(source: &[u8], plan: &ExportPlan, out: W) -> R
         .iter()
         .filter_map(|(_, d)| match d {
             Disposition::Add(new) => Some(new.guids_to_look_up()),
+            Disposition::AddType(t) => Some(t.guids_to_look_up()),
             _ => None,
         })
         .flatten()

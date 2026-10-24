@@ -997,6 +997,29 @@ per batch, sharing cached style, indexed-colour and texture maps.
 `clearPrePassCache` and every `setEntityIndex` replacement retire earlier
 snapshots, including rejected or empty index replacements.
 
+### Production ownership and diagnostics
+
+Canonical borrowed and owned production reserve the supplied decoder and router
+for the whole synchronous product. A processor callback may produce a nested
+child using its active ancestor's owners; an unrelated live product cannot
+borrow that reservation. Owned production returns
+`ProductionContextError::OwnerUnavailable` if another product holds an owner
+or a callback replaces it. The borrowed entry keeps its infallible signature
+and returns empty output when ownership cannot be maintained.
+
+`ifc_lite_core::execution_owner::ExecutionIdentity::same_instance` compares
+owner instances independently of their configuration generations. Cache or
+configuration maintenance on one decoder preserves its instance; replacing the
+decoder changes it. Geometry execution acknowledges maintenance on the same
+instance and refuses a replacement before accepting its output.
+
+`GeometryRouter::take_csg_failures_checked` checks the current resource stop
+before running diagnostic hooks and again afterwards. A stop raised by a hook
+returns `Err(ProgramStop)` and retains drained records separately for explicit
+diagnostic retrieval through `take_csg_failures`. Later product publication and
+retry drains cannot adopt or discard those stopped reports. Canonical
+production discards that product's output when its final hook stops execution.
+
 ### Appearance authoring
 
 `ifc_lite_processing::appearance::calibrate_appearance_plane` establishes one
@@ -1601,3 +1624,39 @@ very large profiles may be unavailable for analytic quantities; they are never
 silently certified or substituted with an approximation. Rendering is
 unaffected. This change makes no performance claim; an end-to-end base/branch
 performance verdict is required before merge.
+
+Stopped product finalization isolates already-recorded router CSG failures through
+`GeometryRouter::quarantine_recorded_csg_failures` without invoking processor hooks.
+Explicit `take_csg_failures` retrieval includes these reports; later product drains do not.
+
+`GeometryRouter::with_product_csg_scope` bounds recorded diagnostics to a synchronous
+product owner epoch. Nested products preserve their parent’s records; error exits
+and unwind retain unconsumed reports for explicit retrieval without final hooks.
+
+Product diagnostic scopes also capture stored Boolean/CSG recorder reports before
+nested entry and on exit, without invoking `take_bool_failures` final callbacks.
+Registered wrappers exposing `boolean_recorder` use the same storage path.
+Custom processors with private logs behind `take_bool_failures` cannot have those
+logs partitioned without executing their callbacks. After interrupted or nested
+product work, their subsequent drained records are therefore retained only for
+explicit `take_csg_failures` retrieval, rather than assigned to a later product.
+This includes any new custom records mixed with the ambiguous log. An explicit
+drain outside product work restores the ordinary publication boundary. Cancellation
+and unwind still invoke no final hooks; callers using opaque custom diagnostics
+must retrieve them explicitly after interrupted or nested work.
+Exposing a Boolean recorder does not make a wrapper's additional private log
+scoped: known recorder storage is captured separately before callback drains.
+Each returned callback batch is retained before the next callback runs, so a
+later callback's unwind cannot discard already-drained reports.
+Canonical and resumable publication call `finish_product_csg_failures` only after
+all product work; intermediate retry drains use `take_csg_failures_checked` and
+cannot mark a still-running epoch complete.
+
+A completed final drain is provisional until source and execution-owner validation
+succeed. If either rejects publication, canonical and private resumable producers
+discard the geometry and pass the drained reports to
+`GeometryRouter::quarantine_unpublished_csg_failures`. This consumes the existing
+report map without invoking hooks, changing attribution, or adopting ambient
+reports. Explicit `take_csg_failures` returns it once; subsequent products cannot
+publish it. Callers of `finish_product_csg_failures` must likewise retain their
+returned reports until publication succeeds and quarantine them on rejection.

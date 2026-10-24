@@ -1285,6 +1285,10 @@ importers:
         version: 5.0.3(@edge-runtime/vm@3.2.0)(@types/node@26.6.5)(happy-dom@21.0.3)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/diff:
+    dependencies:
+      '@ifc-lite/wasm':
+        specifier: workspace:*
+        version: link:../wasm
     devDependencies:
       typescript:
         specifier: ^6.0.3

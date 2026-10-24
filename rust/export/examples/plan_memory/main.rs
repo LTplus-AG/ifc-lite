@@ -9,11 +9,12 @@
 //!
 //! ```text
 //! plan_memory gen <walls> <model.ifc>
-//! plan_memory run <walls> <model.ifc> <out.ifc> [benchmark|geometry]
+//! plan_memory run <walls> <model.ifc> <out.ifc> [benchmark|geometry|bulk_delete]
 //! ```
 //!
 //! `benchmark` (the default) is the mixed plan in `plans.rs`; `geometry`
-//! gives one wall in a hundred a new body.
+//! gives one wall in a hundred a new body; `bulk_delete` deletes five of the
+//! eight storeys and every wall they contain.
 //!
 //! `walls` sizes the model (about 18 records a wall) and must match between
 //! the two commands, since the plan is built from the model's layout.
@@ -35,7 +36,7 @@ const STOREYS: u32 = 8;
 
 fn main() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().collect();
-    let usage = "usage: plan_memory gen <walls> <model.ifc> | run <walls> <model.ifc> <out.ifc> [benchmark|geometry]";
+    let usage = "usage: plan_memory gen <walls> <model.ifc> | run <walls> <model.ifc> <out.ifc> [benchmark|geometry|bulk_delete]";
     let (Some(mode), Some(walls)) = (args.get(1), args.get(2).and_then(|w| w.parse::<u32>().ok()).filter(|&w| w > 0)) else {
         eprintln!("{usage}");
         return std::process::ExitCode::FAILURE;
@@ -57,6 +58,7 @@ fn main() -> std::process::ExitCode {
             let plan = match which {
                 "benchmark" => plans::benchmark(&layout),
                 "geometry" => plans::geometry(&layout, (walls / 100).max(1)),
+                "bulk_delete" => plans::bulk_delete(&layout, 5),
                 _ => {
                     eprintln!("{usage}");
                     return std::process::ExitCode::FAILURE;

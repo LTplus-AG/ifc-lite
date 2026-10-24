@@ -292,3 +292,23 @@ distances and unresolved units, curves or placements fail explicitly. The
 `approximate` flag identifies supported approximation paths; it must be exposed
 to precision-sensitive consumers. Whole-source parsing belongs in a disposable
 worker when used by the viewer, so releasing the tool also releases WASM pages.
+
+## Rust diff bindings
+
+After initializing `@ifc-lite/wasm/diff`, `DiffModel` owns fingerprint columns for repeated synchronous comparisons. Its constructor accepts a string dictionary, five string indices per entity (key, IFC class, data hash, geometry hash, container), presence flags, six bounding-box coordinates per entity, volumes, component offsets, and component key/value indices. Column dictionary strings must be well-formed Unicode; the internal TypeScript column adapter explicitly rejects lone surrogates rather than replacing them. Arbitrary UTF-16 entity-key transport remains a requirement for the public facade cutover in #8042; the public TypeScript comparison API continues to accept those keys. An absent optional string uses `0xffffffff`; flag bits 0, 1, and 2 represent a bounding box, volume, and components. Call `.free()` in `finally` for each model.
+
+`DiffModel.compare` returns row indices instead of JavaScript references. Keep the original fingerprint arrays and restore those references on the JavaScript side; opaque references never cross into WASM. The model can be reused for more comparisons before freeing it.
+
+`diffStableHash` accepts UTF-16 code units, including unpaired surrogates. `diffBuildDataFingerprint` and `diffBuildComponentFingerprints` accept IFC adapter projections directly.
+
+In staging PR #8081 these two raw typed boundaries require well-formed UTF-16: they reject unpaired surrogates before conversion to Rust strings, including every typed name, material/classification string, property/quantity object key, and recursively nested value. Literal U+FFFD, valid surrogate pairs, and scalar-only hashes retain the TypeScript semantics. Only known record fields are read; ignored extras (including assigned-type `globalId`) are not validated or hashed. Property-value objects are content, so all their keys and values are validated. The boundary decoder mirrors the Rust input schema and must be kept in sync when that schema changes. This is an explicit staging limitation, consistent with the column and lineage guards, rather than arbitrary UTF-16 support: the public `@ifc-lite/diff` index still uses TypeScript and continues to accept arbitrary UTF-16. The separate final facade must retain lossless `JsString` transport (#8042).
+
+`diffCreateSidecar`, `diffValidateSidecar`, and `diffSerializeSidecar` handle the small JSON sidecar documents; date validation uses the host's `Date.parse`. Sidecar serialization includes the trailing newline.
+
+`diffLineageConflicts(entries)` returns ordered conflict diagnostics, and `diffKeyAliasesFromLineage(entries)` returns head/base pairs in insertion order for constructing a JavaScript `Map`. `diffRekeyByLineage(keys, entries, deleted, policy)` migrates external keys using `copy-to-all`, `largest-share`, or `orphan-on-split`. These helpers accept lineage objects directly, preserving non-finite share values and the existing TypeScript policy behavior. Deleted keys have no `relation` field in their result. Invalid-share policy changes are tracked separately in #8084. In this staging payload, every raw lineage string (base/head keys, reason, relation, rekey keys, deleted keys, and policy) must be well-formed UTF-16. The bindings reject unpaired surrogates before serde or wasm-bindgen can replace them; literal U+FFFD and valid surrogate pairs remain accepted. This limited scalar domain is temporary: the full lossless `JsString` engine/facade followup removes the rejection before public cutover.
+
+These bindings are the staged backend for issue #8042. The public `@ifc-lite/diff` facade has not switched to them yet; existing consumers keep their current initialization contract until integration and performance qualification complete.
+
+The Rust diff engine is a separate `@ifc-lite/wasm/diff` payload, built from `rust/diff-wasm` by `scripts/build-wasm.sh`. Its `DiffModel`, canonical fingerprint, sidecar and lineage bindings are loaded by explicit diff initialization; they are excluded from both geometry bundles. The committed `pkg-diff/ifc-lite-diff.d.ts` supports wasm-free typechecking.
+
+The real IFC parity runner (`node scripts/diff-real-fixture-parity.mjs`) reports executed/total pairs. Missing fixtures are skipped with a `pnpm fixtures` hint; zero executed pairs exits with status 2 (incomplete), rather than claiming parity.

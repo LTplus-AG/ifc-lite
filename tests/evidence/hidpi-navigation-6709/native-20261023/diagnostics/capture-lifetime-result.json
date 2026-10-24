@@ -1,0 +1,22 @@
+{
+  "job": "2e5d25d5-6cb9-411a-b4b6-9f12790ff5e2",
+  "source": "be5c740cb9f1c57e4d1531ed574e2708839996be",
+  "acceptedTiming": false,
+  "diagnosticOnly": true,
+  "exportedPng": {
+    "width": 2124,
+    "height": 1486,
+    "allRgbaPixelsZero": true,
+    "pixels": 3156264
+  },
+  "sameTaskSnapshot": {
+    "width": 1062,
+    "height": 743,
+    "containsModel": true,
+    "retainedByteIdentityAfterAnimationFrame": true,
+    "scope": "The armed queue hook caught an interactive frame before the full-quality capture; this is buffer-lifetime diagnosis, not a fixed production capture verdict."
+  },
+  "driverErrors": 0,
+  "functionalCompletion": false,
+  "remainingFailure": "CPU-raycast wall27421 versus UI-selected window28113 at same CSS coordinate"
+}

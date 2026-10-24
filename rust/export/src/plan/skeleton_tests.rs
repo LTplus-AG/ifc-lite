@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 use super::*;
 use crate::plan::add_test_support::{add, assert_clean, block, count, id_in, run, IDENTITY};
-use crate::plan::{ClassSpec, IfcClass, NewObject, NewPlacement, ObjectRef, Representation};
+use crate::plan::{IfcClass, NewObject, NewPlacement, ObjectRef, Representation};
 
 fn root(n: u128, name: &str) -> SkeletonRoot {
     SkeletonRoot {
@@ -39,24 +39,10 @@ fn object(
     container: Option<ObjectRef>,
     representation: Representation,
 ) -> NewObject {
-    NewObject {
-        global_id: GlobalId(0xadd0_0000_0000_0000_0000_0000_0000_0000 + n),
-        class: ClassSpec {
-            class,
-            predefined_type: None,
-        },
-        name: None,
-        placement: NewPlacement {
-            matrix: IDENTITY,
-            relative_to: None,
-        },
-        container,
-        type_link: None,
-        representation,
-        style: None,
-        psets: Vec::new(),
-        opening: None,
-    }
+    let mut obj = NewObject::new(GlobalId(0xadd0_0000_0000_0000_0000_0000_0000_0000 + n), class, NewPlacement::new(IDENTITY))
+        .with_representation(representation);
+    obj.container = container;
+    obj
 }
 
 #[test]

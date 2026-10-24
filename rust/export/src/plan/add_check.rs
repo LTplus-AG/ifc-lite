@@ -5,13 +5,16 @@
 
 use ifc_lite_core::{entity_info_for_schema, is_subtype_of_for_schema};
 
-use crate::plan::add_geometry::validate_extrusion;
+use crate::plan::add_profile::validate_extrusion;
 use crate::plan::tessellation::{validate_colour, validate_mesh};
 use crate::plan::add_props::validate_psets;
 use crate::plan::add_rels::RelKind;
-use crate::plan::add_types::{ClassSpec, NewObject, Representation, TypeLink};
+use crate::plan::add_types::{ClassSpec, NewObject, NewType, Representation, TypeLink};
 use crate::plan::attrs::attribute_index;
-use crate::plan::types::ObjectRef;
+use crate::plan::types::{ObjectRef, SurfaceColour};
+use super::assoc::{CheckedClassification, CheckedMaterial};
+use super::mapped::MapPlan;
+use super::units::CheckedUnits;
 use super::AddState;
 
 /// What [`AddState::check`] resolved; everything the build needs that
@@ -22,9 +25,15 @@ pub(super) struct Checked {
     pub(super) parent_placement: Option<u32>,
     pub(super) container: Option<(u32, RelKind)>,
     pub(super) existing_type: Option<u32>,
-    pub(super) new_type: Option<(String, Option<String>)>,
+    /// Class, `PredefinedType` and value units of a new type.
+    pub(super) new_type: Option<(String, Option<String>, CheckedUnits)>,
     pub(super) host: Option<u32>,
     pub(super) fills: bool,
+    pub(super) material: Option<CheckedMaterial>,
+    pub(super) classifications: Vec<CheckedClassification>,
+    pub(super) units: CheckedUnits,
+    /// Where a mapped body's maps come from.
+    pub(super) mapped: Option<MapPlan>,
 }
 
 impl AddState<'_> {
@@ -64,7 +73,7 @@ impl AddState<'_> {
     /// `(id, UPPERCASE class)` of an object in the source or added earlier
     /// in this plan. A source object this plan deletes is not there, but an
     /// object added under its GlobalId is.
-    fn lookup(&self, r: &ObjectRef) -> Result<(u32, String), String> {
+    pub(super) fn lookup(&self, r: &ObjectRef) -> Result<(u32, String), String> {
         let deleted = match self.index.resolve(r) {
             Some(id) if !self.removed.contains(&id) => return Ok((id, self.index.type_of(id).unwrap_or_default())),
             Some(_) => true,
@@ -85,7 +94,7 @@ impl AddState<'_> {
         self.index.attrs(id)?.into_iter().nth(idx)?.scalar
     }
 
-    fn check_class(&self, spec: &ClassSpec, kind: &str) -> Result<(String, Option<String>), String> {
+    pub(super) fn check_class(&self, spec: &ClassSpec, kind: &str) -> Result<(String, Option<String>), String> {
         let class = spec.class.keyword();
         let schema = self.schema;
         let info = entity_info_for_schema(schema, &class).ok_or_else(|| format!("{class} is not declared in {schema}"))?;
@@ -118,23 +127,59 @@ impl AddState<'_> {
         Ok((class, predefined))
     }
 
-    pub(super) fn check(&self, key: &ObjectRef, obj: &NewObject) -> Result<Checked, String> {
-        let encoded = obj.global_id.encode();
+    /// Refuse a plan key that names something already there, a GlobalId key
+    /// other than the new record's own, and a GlobalId already in use.
+    pub(super) fn check_new_identity(&self, key: &ObjectRef, encoded: &str) -> Result<(), String> {
         let live_in_source = |id: &u32| !self.removed.contains(id);
         if self.index.resolve(key).is_some_and(|id| live_in_source(&id)) {
             return Err(format!("{key} already exists in the source"));
         }
         if let ObjectRef::Guid(g) = key {
-            if *g != encoded {
+            if g != encoded {
                 return Err(format!("key {g} does not match the Add's GlobalId {encoded}"));
             }
         }
-        let in_source = self.index.resolve(&ObjectRef::Guid(encoded.clone()));
-        if in_source.is_some_and(|id| live_in_source(&id)) || self.added.contains_key(&encoded) {
+        if self.gid_in_use(encoded) {
             return Err(format!("GlobalId {encoded} is already in use"));
         }
+        Ok(())
+    }
+
+    /// Whether a live source record or an earlier Add carries `encoded`.
+    fn gid_in_use(&self, encoded: &str) -> bool {
+        let in_source = self.index.resolve(&ObjectRef::Guid(encoded.to_string()));
+        in_source.is_some_and(|id| !self.removed.contains(&id)) || self.added.contains_key(encoded)
+    }
+
+    /// A new type's class, `PredefinedType` and value units, checked the same
+    /// way whether it comes with an occurrence or on its own.
+    pub(super) fn check_new_type(&self, t: &NewType) -> Result<(String, Option<String>, CheckedUnits), String> {
+        // IfcTypeObject's own rule (WR1 in IFC2X3, NameRequired later).
+        if t.name.is_none() {
+            return Err("a new type needs a name".into());
+        }
+        validate_psets(self.schema, &t.psets)?;
+        let (class, predefined) = self.check_class(&t.class, "IFCTYPEPRODUCT")?;
+        if matches!(t.representation, Representation::Mapped(_)) {
+            return Err("a type's representation cannot itself be mapped".into());
+        }
+        check_representation(&t.representation, t.style.as_ref()).map_err(|e| format!("type: {e}"))?;
+        Ok((class, predefined, self.check_units(&t.psets)?))
+    }
+
+    pub(super) fn check(&self, key: &ObjectRef, obj: &NewObject) -> Result<Checked, String> {
+        let encoded = obj.global_id.encode();
+        self.check_new_identity(key, &encoded)?;
 
         let (class, predefined) = self.check_class(&obj.class, "IFCPRODUCT")?;
+        if let Some(e) = obj.elevation {
+            if !self.is_a(&class, "IFCBUILDINGSTOREY") {
+                return Err(format!("{class} has no Elevation; only a storey takes one"));
+            }
+            if !e.is_finite() {
+                return Err(format!("storey elevation {e} is not finite"));
+            }
+        }
         let spatial = self.is_spatial(&class);
 
         let container = match &obj.container {
@@ -176,33 +221,35 @@ impl AddState<'_> {
                 (Some(id), None)
             }
             Some(TypeLink::New(t)) => {
-                validate_psets(self.schema, &t.psets)?;
                 let type_gid = t.global_id_for(obj.global_id).encode();
                 if type_gid == encoded {
                     return Err("a new type cannot share its occurrence's GlobalId".into());
                 }
-                let in_source = self.index.resolve(&ObjectRef::Guid(type_gid.clone()));
-                if in_source.is_some_and(|id| live_in_source(&id)) || self.added.contains_key(&type_gid) {
+                if self.gid_in_use(&type_gid) {
                     return Err(format!("GlobalId {type_gid} for the new type is already in use"));
                 }
-                let (type_class, predefined) = self.check_class(&t.class, "IFCTYPEPRODUCT")?;
-                self.check_type_pairing(&class, &type_class, "new type")?;
-                (None, Some((type_class, predefined)))
+                let checked = self.check_new_type(t)?;
+                self.check_type_pairing(&class, &checked.0, "new type")?;
+                (None, Some(checked))
             }
         };
 
         validate_psets(self.schema, &obj.psets)?;
-        match &obj.representation {
-            Representation::None => {}
-            Representation::Extrusion(e) => validate_extrusion(e)?,
-            Representation::Mesh(m) => validate_mesh(m)?,
+        let units = self.check_units(&obj.psets)?;
+        // IfcRelAssociatesMaterial never relates an opening or a virtual
+        // element. IFC2X3 takes any other product; IFC4 and later only an
+        // element, a structural member or a port.
+        let void = self.is_a(&class, "IFCFEATUREELEMENTSUBTRACTION") || self.is_a(&class, "IFCVIRTUALELEMENT");
+        let allowed = crate::schema_convert::targets_ifc2x3(self.schema)
+            || ["IFCELEMENT", "IFCSTRUCTURALMEMBER", "IFCPORT"].iter().any(|t| self.is_a(&class, t));
+        let takes_material = allowed && !void;
+        if obj.material.is_some() && !takes_material {
+            return Err(format!("{class} cannot carry a material"));
         }
-        if let Some(c) = &obj.style {
-            if matches!(obj.representation, Representation::None) {
-                return Err("a colour needs a representation to apply to".into());
-            }
-            validate_colour(c)?;
-        }
+        let material = obj.material.as_ref().map(|m| self.check_material(m)).transpose()?;
+        let classifications = self.check_classifications(&obj.classifications)?;
+        check_representation(&obj.representation, obj.style.as_ref())?;
+        let mapped = self.check_mapped(obj, existing_type)?;
 
         let host = match &obj.opening {
             None => None,
@@ -227,6 +274,35 @@ impl AddState<'_> {
             new_type,
             host,
             fills,
+            material,
+            classifications,
+            units,
+            mapped,
         })
     }
+}
+
+/// Refuse geometry that cannot be written validly, and a colour with
+/// nothing to apply to. A mapped body's own rules are `check_mapped`'s.
+fn check_representation(rep: &Representation, style: Option<&SurfaceColour>) -> Result<(), String> {
+    match rep {
+        Representation::None | Representation::Mapped(_) => {}
+        Representation::Extrusion(e) => validate_extrusion(e)?,
+        Representation::Extrusions(es) => {
+            if es.is_empty() {
+                return Err("a representation of extrusions needs at least one".into());
+            }
+            for (i, e) in es.iter().enumerate() {
+                validate_extrusion(e).map_err(|err| format!("extrusion {i}: {err}"))?;
+            }
+        }
+        Representation::Mesh(m) => validate_mesh(m)?,
+    }
+    if let Some(c) = style {
+        if matches!(rep, Representation::None) {
+            return Err("a colour needs a representation to apply to".into());
+        }
+        validate_colour(c)?;
+    }
+    Ok(())
 }

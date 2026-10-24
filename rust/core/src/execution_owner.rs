@@ -37,6 +37,15 @@ pub struct ExecutionIdentity {
     generation: u64,
 }
 
+impl ExecutionIdentity {
+    /// Whether both identities name one owner instance, whatever their
+    /// configuration generations: maintenance changes a generation, only a
+    /// replacement changes the instance.
+    pub fn same_instance(&self, other: &Self) -> bool {
+        self.instance == other.instance
+    }
+}
+
 /// Unique reservation identity; a later lease on the same owner is distinct.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ExecutionLeaseId(u64);
@@ -106,7 +115,7 @@ impl ExecutionOwner {
             .expect("execution cache revision space exhausted");
         if let Some(state) = self.state.get() {
             let previous = std::mem::replace(
-                &mut *state.cache_authority.lock().expect("cache authority lock"),
+                &mut *state.cache_authority.lock().unwrap_or_else(|poisoned| poisoned.into_inner()),
                 self.cache_authority.clone(),
             );
             drop(previous); // Final Weak destruction happens outside the lock.
@@ -149,7 +158,7 @@ impl ExecutionOwner {
         let source = state
             .active_source
             .lock()
-            .expect("source borrow lock")
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .last()
             .map(|(_, source)| source.clone())
             .unwrap_or_default();
@@ -233,7 +242,7 @@ impl ExecutionLease {
         self.validate(current)?;
         Ok(ExecutionWork {
             lease: self,
-            epoch: OnceLock::new(),
+            epoch: std::cell::OnceCell::new(),
             _thread_bound: std::marker::PhantomData,
         })
     }

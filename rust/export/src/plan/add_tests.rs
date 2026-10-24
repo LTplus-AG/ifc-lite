@@ -154,8 +154,8 @@ fn wall_common(value: &str) -> NewPropertySet {
         name: "Pset_WallCommon".into(),
         kind: PsetKind::Property,
         properties: vec![
-            NewProperty { name: "Reference".into(), value: PropertyValue::Label(value.into()) },
-            NewProperty { name: "IsExternal".into(), value: PropertyValue::Boolean(true) },
+            NewProperty { name: "Reference".into(), value: PropertyValue::Label(value.into()), unit: None },
+            NewProperty { name: "IsExternal".into(), value: PropertyValue::Boolean(true), unit: None },
         ],
     }
 }
@@ -170,6 +170,8 @@ fn a_new_type_with_property_sets_is_shared_by_a_later_add() {
             class: ClassSpec { class: IfcClass::Named("IfcWallType".into()), predefined_type: Some("standard".into()) },
             name: Some("Generic 200".into()),
             psets: vec![wall_common("W200")],
+            representation: Representation::None,
+            style: None,
         }));
         let mut second = object(IfcClass::Wall, gid(21), storey(), Representation::None);
         second.type_link = Some(TypeLink::Existing(ObjectRef::Guid(gid(20).derive("type").encode())));
@@ -202,6 +204,7 @@ fn occurrence_sets_attach_through_their_own_relationship_with_typed_values() {
                 properties: vec![NewProperty {
                     name: "Length".into(),
                     value: PropertyValue::Measure { measure_type: "IfcLengthMeasure".into(), value: 4.5 },
+                    unit: None,
                 }],
             },
         ];
@@ -257,8 +260,10 @@ fn same_plan_produces_byte_identical_output_twice() {
             door.type_link = Some(TypeLink::New(NewType {
             global_id: None,
                 class: ClassSpec { class: IfcClass::Named(door_type.into()), predefined_type: None },
-                name: None,
+                name: Some("Type".into()),
                 psets: vec![wall_common("T")],
+                representation: Representation::None,
+                style: None,
             }));
             vec![add(door), add(object(IfcClass::Space, gid(51), storey(), Representation::Extrusion(block(3.0, 3.0, 2.5))))]
         };
@@ -392,6 +397,8 @@ fn a_new_type_with_its_own_global_id_keeps_it_and_later_adds_name_it() {
             class: ClassSpec { class: IfcClass::Named("IfcWallType".into()), predefined_type: None },
             name: Some("Own id".into()),
             psets: vec![wall_common("W1")],
+            representation: Representation::None,
+            style: None,
         }));
         let mut second = object(IfcClass::Wall, gid(23), storey(), Representation::None);
         second.type_link = Some(TypeLink::Existing(ObjectRef::Guid(type_gid.encode())));
@@ -411,8 +418,10 @@ fn a_new_type_sharing_its_occurrences_global_id_is_refused() {
     wall.type_link = Some(TypeLink::New(NewType {
         global_id: Some(gid(24)),
         class: ClassSpec { class: IfcClass::Named("IfcWallType".into()), predefined_type: None },
-        name: None,
+        name: Some("Type".into()),
         psets: Vec::new(),
+        representation: Representation::None,
+        style: None,
     }));
     let (_, report) = run(&source, vec![add(wall)]);
     assert!(report.refusals[0].reason.contains("cannot share"), "{:?}", report.refusals);
@@ -456,6 +465,8 @@ fn a_furniture_type_gets_its_mandatory_assembly_place() {
             class: ClassSpec { class: IfcClass::Named("IfcFurnitureType".into()), predefined_type: None },
             name: Some("Chair".into()),
             psets: Vec::new(),
+            representation: Representation::None,
+            style: None,
         }));
         let (out, report) = run(&source, vec![add(chair)]);
         assert_clean(&report, schema);
@@ -463,5 +474,49 @@ fn a_furniture_type_gets_its_mandatory_assembly_place() {
         let type_id = id_in(&out, gid(50).derive("type"));
         let line = text.lines().find(|l| l.starts_with(&format!("#{type_id}="))).unwrap();
         assert!(line.contains(".NOTDEFINED."), "{schema}: {line}");
+    }
+}
+
+/// A new storey's Elevation is written as given, in the project's length
+/// unit; the storey's placement is its own.
+#[test]
+fn a_new_storey_carries_the_elevation_it_is_given() {
+    for schema in SCHEMAS {
+        let source = storey_with_typed_wall(schema);
+        let mut level2 = object(IfcClass::BuildingStorey, gid(60), Some(ObjectRef::Id(60)), Representation::None);
+        level2.elevation = Some(6.5);
+        let level3 = object(IfcClass::BuildingStorey, gid(61), Some(ObjectRef::Id(60)), Representation::None);
+        let (out, report) = run(&source, vec![add(level2), add(level3)]);
+        assert_clean(&report, schema);
+        assert!(crate::plan::validate::validate(&out, schema).is_empty(), "{schema}");
+        let index = crate::plan::index::FileIndex::scan(&out, &Default::default());
+        let idx = crate::plan::attrs::attribute_index(schema, "IFCBUILDINGSTOREY", "Elevation").unwrap();
+        let elevation = |g| crate::step_text::attribute_of(&index.raw_line(id_in(&out, g)).unwrap(), idx).unwrap();
+        assert_eq!(elevation(gid(60)), "6.5", "{schema}");
+        assert_eq!(elevation(gid(61)), "$", "{schema}: none given, none written");
+    }
+}
+
+#[test]
+fn an_elevation_is_refused_off_a_storey_or_when_not_finite() {
+    let source = storey_with_typed_wall("IFC4");
+    let mut wall = object(IfcClass::Wall, gid(62), storey(), Representation::None);
+    wall.elevation = Some(1.0);
+    let mut adds = vec![(gid(62), "only a storey takes one")];
+    let mut plan = vec![add(wall)];
+    for (n, bad) in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY].into_iter().enumerate() {
+        let g = gid(63 + n as u128);
+        let mut level = object(IfcClass::BuildingStorey, g, Some(ObjectRef::Id(60)), Representation::None);
+        level.elevation = Some(bad);
+        plan.push(add(level));
+        adds.push((g, "not finite"));
+    }
+    let (_, report) = run(&source, plan);
+    assert_eq!(report.added, 0);
+    assert_eq!(report.refusals.len(), adds.len(), "{:?}", report.refusals);
+    for (g, expected) in adds {
+        let key = ObjectRef::Guid(g.encode());
+        let refusal = report.refusals.iter().find(|r| r.object == key).unwrap_or_else(|| panic!("{key} not refused"));
+        assert!(refusal.reason.contains(expected), "{key}: {}", refusal.reason);
     }
 }

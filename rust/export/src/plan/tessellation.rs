@@ -26,7 +26,7 @@ use super::placement::{axis_placement_records, fmt};
 use super::props_synth::ref_list;
 use super::types::{SurfaceColour, TriangleMesh};
 
-const IDENTITY: [[f64; 4]; 4] = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]];
+use super::placement::IDENTITY;
 
 /// Appends records in id order; every builder below writes through one.
 pub(crate) struct Emit<'a> {
@@ -50,6 +50,14 @@ impl Emit<'_> {
 
     pub(crate) fn identity_placement(&mut self) -> Result<u32, String> {
         self.axis_placement(&IDENTITY)
+    }
+
+    pub(crate) fn point(&mut self, p: [f64; 3]) -> Result<u32, String> {
+        self.record("IFCCARTESIANPOINT", &[("Coordinates", format!("({},{},{})", fmt(p[0]), fmt(p[1]), fmt(p[2])))])
+    }
+
+    pub(crate) fn direction(&mut self, d: [f64; 3]) -> Result<u32, String> {
+        self.record("IFCDIRECTION", &[("DirectionRatios", format!("({},{},{})", fmt(d[0]), fmt(d[1]), fmt(d[2])))])
     }
 }
 
@@ -130,29 +138,43 @@ pub(crate) fn synthesize_context(emit: &mut Emit) -> Result<u32, String> {
     )
 }
 
-/// `item` as a product's body: styled with `colour` when given, wrapped in a
-/// `Body` `IfcShapeRepresentation` of `rep_type` in `context`, wrapped in an
+/// `items` as a product's body: [`body_representation`] wrapped in an
 /// `IfcProductDefinitionShape`, whose id is returned.
 pub(crate) fn body_shape(
     emit: &mut Emit,
     context: u32,
-    item: u32,
+    items: &[u32],
+    rep_type: &str,
+    colour: Option<&SurfaceColour>,
+) -> Result<u32, String> {
+    let shape = body_representation(emit, context, items, rep_type, colour)?;
+    emit.record("IFCPRODUCTDEFINITIONSHAPE", &[("Representations", format!("(#{shape})"))])
+}
+
+/// `items`, each styled with `colour` when given, in one `Body`
+/// `IfcShapeRepresentation` of `rep_type` in `context`, whose id is
+/// returned: a product's body, or what a type's representation map maps.
+pub(crate) fn body_representation(
+    emit: &mut Emit,
+    context: u32,
+    items: &[u32],
     rep_type: &str,
     colour: Option<&SurfaceColour>,
 ) -> Result<u32, String> {
     if let Some(c) = colour {
-        styled_item(emit, item, c)?;
+        for &item in items {
+            styled_item(emit, item, c)?;
+        }
     }
-    let shape = emit.record(
+    emit.record(
         "IFCSHAPEREPRESENTATION",
         &[
             ("ContextOfItems", format!("#{context}")),
             ("RepresentationIdentifier", "'Body'".into()),
             ("RepresentationType", format!("'{rep_type}'")),
-            ("Items", format!("(#{item})")),
+            ("Items", ref_list(items)),
         ],
-    )?;
-    emit.record("IFCPRODUCTDEFINITIONSHAPE", &[("Representations", format!("(#{shape})"))])
+    )
 }
 
 /// The mesh as one representation item, and the `RepresentationType` a
@@ -192,7 +214,7 @@ pub(crate) fn mesh_item(emit: &mut Emit, m: &TriangleMesh) -> Result<(u32, &'sta
     }
     let mut point_ids = vec![0u32; m.positions.len()];
     for (i, p) in m.positions.iter().enumerate().filter(|&(i, _)| used[i]) {
-        point_ids[i] = emit.record("IFCCARTESIANPOINT", &[("Coordinates", format!("({},{},{})", fmt(p[0]), fmt(p[1]), fmt(p[2])))])?;
+        point_ids[i] = emit.point(*p)?;
     }
     let mut faces = Vec::with_capacity(triangles.len());
     for t in triangles.iter() {

@@ -1,23 +1,25 @@
 # Native HiDPI navigation qualification (#6709)
 
-Status: capture fix passes focused tests and a native DPR2 functional smoke;
-paired native performance qualification remains pending.
+Status: the original synchronous capture fix has focused-test and native DPR2
+functional evidence. The asynchronous-reader refusal added in `4f90b5f332`
+requires refreshed typecheck/tests and native qualification; preparation is pending.
 This capsule does not yet establish issue completion or a performance verdict.
 
 The viewer policy and original capture gateway shipped in #6711. This follow-up
 fixes capture serialization before WebGPU presentation discards its pixels.
-The active cohort compares fixed candidate `8624c8cec59a1601226b8b5a341f2631e2d9aa47`
-with uncapped control `118738a9f4d09f8349614679e90e7e104a63f45c` on the physical
+The active cohort compares fixed candidate `4f90b5f332454b94e499032f212f05cb3b4a105e`
+with uncapped control `62dd5cd2d64dad6beb4e355a98efce42e72bf318` on the physical
 NVIDIA desktop. Both arms contain the same capture fix; only the navigation
 `maxPixelRatio` expression differs. `source-pair.json` records that exact diff.
 
-`preparation-jobs.json` retains the successful original Pop candidate build/test receipt.
-The original Pop control preparation and qualification were positively cancelled
-while queued, before execution, to use the PC preparation slot. Their original
-IDs remain recorded. The active staging receipts are deliberately unset until the
-cross-host jobs are submitted; this state cannot qualify.
+`preparation-jobs.json` describes the refreshed pair. Prior preparations and
+source pins are retained in `diagnostics/pre-async-*`. Their queued staging and
+measurement jobs were positively cancelled before execution when production
+reader enforcement changed. No accepted native timing samples were produced.
+Current preparation/staging receipt IDs remain unset until submitted and cannot
+qualify in that state.
 
-PC preparation uses the same pinned pair and root pnpm/Turbo. The control passed
+The previous pair used root pnpm/Turbo. Its control passed
 56 tasks with unchanged source. Its JS bindings and declarations match Pop, but
 the WASM binary differs, so the cross-host pair was refused before timing. The
 matching PC candidate also passed all 57 root Turbo tasks and 80 focused tests
@@ -32,7 +34,7 @@ runtime as an immutable common dependency, then rebuilds and tests the candidate
 viewer through root Turbo. `--only` retains the already validated upstream
 builds and prevents rebuilding the common runtime. It is used only after the
 full 56/57-task upstream preparations succeeded; no unbuilt sibling is trusted.
-The repack passed its root viewer rebuild and all 80 focused tests with zero
+The previous repack passed its root viewer rebuild and all 80 focused tests with zero
 skips, unchanged sources, and identical WASM/JS/type bytes across the arms.
 Its original receipt, proof and compressed log are retained under
 `diagnostics/pc-shared-runtime-*`; private manifest
@@ -59,7 +61,10 @@ exit zero, unchanged source, and the exact pinned commit. The fixture path is
 resolved from its successful preparation receipt rather than assuming that a
 new source checkout already contains the untracked model.
 
-The candidate staging job uses `stage-candidate-when-ready.py` to recover the
+The candidate staging job installs Node dependencies in the pinned Pop source
+checkout, copies its verified generated runtime for Node imports, and validates
+the actual harness import/schedule before qualifying staging. It uses
+`stage-candidate-when-ready.py` and the validated `pcRepackScript` input to recover the
 unique original PC repack by its exact script and original input job IDs. It
 waits at most ten minutes, refuses failed/ambiguous producers and never submits
 one. Its binding records the recovered producer and executed staging command.

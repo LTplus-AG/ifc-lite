@@ -69,7 +69,7 @@ try:
     for name in names:
         shutil.copyfile(control / 'packages/wasm/pkg' / name, candidate / 'packages/wasm/pkg' / name)
     env = os.environ | {'NODE_OPTIONS': '--max-old-space-size=6144',
-          'TEST_PATTERN': r'useAnimationLoop[.](capture|capture-lifecycle|capture-refusal|renderThrow)[.]test|toolbar/export-ui-ribbon[.]test|useBCF[.](aspect-ratio|clash-viewpoint-selection)[.]test|idsBcfExport[.]test|basketSave[.]selection-race[.]test'}
+          'TEST_PATTERN': r'useAnimationLoop[.](capture|capture-async|capture-lifecycle|capture-refusal|renderThrow)[.]test|toolbar/export-ui-ribbon[.]test|useBCF[.](aspect-ratio|clash-viewpoint-selection)[.]test|idsBcfExport[.]test|basketSave[.]selection-race[.]test'}
     for command in [
         ['pnpm', 'build', '--filter=@ifc-lite/viewer', '--only', '--force', '--concurrency=1'],
         ['pnpm', 'test', '--filter=@ifc-lite/viewer', '--only', '--force', '--env-mode=loose', '--concurrency=1'],

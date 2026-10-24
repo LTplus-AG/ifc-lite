@@ -1728,3 +1728,16 @@ foreign or cancelled receivers return replies intact to their original owner.
 Source epoch/revision/id and type metadata are labels supplied to this controller,
 not authenticated runtime authority. No runtime Cargo dependency or processing,
 wasm transaction, viewer, or CLI activation is added by this slice.
+
+The experimental retained operation enum also includes `UnaryClip { input, clip }`.
+`RetainedUnaryClip` stores authored plane provenance and the plane expressed in
+the actual operand's local metre frame; `RetainedPlaneSource` preserves units,
+agreement, source identity and unnormalized coefficients. Native
+`SmlibWorker::clip_retained_plane_accounted` accepts an explicitly owned resource
+context and sealed `RetainedDependency` (`Clip`/`PlacedClip` are valid dependencies).
+`RetainedTransformInput::Clip` supports physical affine copies of clip results.
+Both executors project `ReceiptEvidence::UnaryClip` into common acceptance.
+`document::retained_plane::PlaneCertificate` is bounded transport evidence, never
+an execution receipt or a license to borrow a runtime object. Full bounded/boxed
+halfspaces and final release qualification remain required; see the
+[experimental geometry guide](../guide/geometry.md#experimental-shared-unary-clips).

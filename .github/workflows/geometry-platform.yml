@@ -19,6 +19,8 @@ on:
       - 'rust/processing/src/element/session*.rs'
       - 'rust/processing/src/element.rs'
       - 'tests/evidence/retained-execution-j4/**'
+      - 'tests/evidence/retained-unary-clip-j1/**'
+      - 'rust/testkit/src/retained_clip.rs'
       - 'tests/evidence/retained-openings-j2/**'
       - 'rust/processing/src/element/model_context.rs'
       - 'rust/processing/Cargo.toml'
@@ -128,6 +130,18 @@ jobs:
             python3 tests/evidence/retained-execution-j4/feature-oracle.py \
               --oracle "$oracle" --evidence-dir "$RUNNER_TEMP/retained-execution-$oracle"
           done
+      - name: Independent unary clip source, bound, report and receipt mutations
+        id: clip-mutations
+        continue-on-error: true
+        env:
+          IFCLITE_SMLIB_WORKER: ${{ runner.temp }}/smlib-native/ifclite_smlib_worker
+        run: |
+          status=0
+          for oracle in bound report source-plane receipt-plane empty-report post-await-stop; do
+            python3 tests/evidence/retained-unary-clip-j1/feature-oracle.py \
+              --oracle "$oracle" --evidence-dir "$RUNNER_TEMP/retained-clip-$oracle" || status=1
+          done
+          exit "$status"
       - name: Independent opening bound, reporting and effect mutations
         id: opening-mutations
         continue-on-error: true
@@ -219,6 +233,7 @@ jobs:
             --chromedriver "$GITHUB_WORKSPACE/scripts/wasm-test-mime-driver.mjs" rust/wasm-bindings --lib \
             --features retained-browser -- retained_browser 2>&1 | tee "$RUNNER_TEMP/retained-browser.log"
           grep -F "retained_browser_issue_3641_original_source_construction_oracle ... ok" "$RUNNER_TEMP/retained-browser.log"
+          grep -F "j1_worker_shared_clip_cases_volume_bounds_centroid ... ok" "$RUNNER_TEMP/retained-browser.log"
           grep -F "REGION_3641_SOURCE_VOLUME_SECTION_PROVENANCE_EXECUTED" "$RUNNER_TEMP/retained-browser.log"
       - name: Build the canonical WASM package and the opt-in retained bundle
         run: BUILD_RETAINED=1 bash scripts/build-wasm.sh
@@ -243,6 +258,7 @@ jobs:
           NATIVE_CTEST: ${{ steps.native-ctest.outcome }}
           PROCESSING_RETAINED: ${{ steps.processing-retained.outcome }}
           RETAINED_MUTATIONS: ${{ steps.retained-mutations.outcome }}
+          CLIP_MUTATIONS: ${{ steps.clip-mutations.outcome }}
           OPENING_MUTATIONS: ${{ steps.opening-mutations.outcome }}
           OPENING_SOURCE_MUTATION: ${{ steps.opening-source-mutation.outcome }}
           RETAINED_REGION_MUTATIONS: ${{ steps.retained-region-mutations.outcome }}
@@ -257,7 +273,7 @@ jobs:
           RETAINED_CLIPPY: ${{ steps.retained-clippy.outcome }}
         run: |
           failed=0
-          for lane in NATIVE_CTEST PROCESSING_RETAINED RETAINED_MUTATIONS OPENING_MUTATIONS OPENING_SOURCE_MUTATION RETAINED_REGION_MUTATIONS RETAINED_NATIVE_CLIPPY NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY; do
+          for lane in NATIVE_CTEST PROCESSING_RETAINED RETAINED_MUTATIONS CLIP_MUTATIONS OPENING_MUTATIONS OPENING_SOURCE_MUTATION RETAINED_REGION_MUTATIONS RETAINED_NATIVE_CLIPPY NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY; do
             printf '%s=%s\n' "$lane" "${!lane}"
             if [[ "${!lane}" != success ]]; then failed=1; fi
           done

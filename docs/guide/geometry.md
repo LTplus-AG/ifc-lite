@@ -990,3 +990,29 @@ at intermediate acceptance. Final publication remains disabled; there is no
 partial-product publication or automatic exact retry. The authored backtracking
 profile in #3641 still requires region regularization and a positive native and
 browser opening-chain qualification before release.
+
+### Experimental shared unary clips
+
+`RetainedOperationKind::UnaryClip` captures an authored plain `IfcHalfSpaceSolid`
+when reached by the common retained Boolean controller. `RetainedUnaryClip`
+keeps the original placement coefficients, source ids, epoch/revision, units,
+agreement and operation alongside the derived local-metre plane and input frame.
+Difference removes the authored halfspace; Intersection keeps it. Union with an
+unbounded halfspace, `IfcBoxedHalfSpace`, and `IfcPolygonalBoundedHalfSpace`
+explicitly refuse this intermediate path. Implementing bounded and boxed
+halfspaces remains a release requirement.
+
+`Invocation::UnaryClip` is executed by the native and browser implementations of
+the same `RuntimeProductExecution<R>` transaction. Acceptance checks its sealed
+input/output, plane bits, side, mode, frame and authenticated empty outcome.
+The shared bounded plane-certificate decoder validates the version/method and
+wire identities; a certificate alone grants no object lease. Clip outputs can
+feed later clips, affine copies and Booleans. Cancellation, resource stops and
+source invalidation still prevent acceptance after asynchronous execution.
+
+This controller requires the matching opcode-20 native/module-Worker adapter,
+including the independently qualified chain-domain ownership fix. Its numerical
+SDK and Worker tests must be run on that integrated source before claiming
+support. It does not activate retained final publication, viewer or CLI modes,
+or close the bounded-halfspace, material-layer, presentation or licensing gates.
+Exact execution remains the default.

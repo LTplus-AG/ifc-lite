@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/program/retained/clip.rs
++++ b/rust/geometry/src/program/retained/clip.rs
+@@ -96,7 +96,7 @@
+     validate_axes(&source)?;
+     // Reuse exact source normalization/default semantics after raw capture.
+     let plane=HalfSpacePlan::from_position(&position,decoder,agreement)?;
+-    let source_plane=[0.,0.,0.,plane.normal.x,plane.normal.y,plane.normal.z];
++    let source_plane=[plane.point.x,plane.point.y,plane.point.z,plane.normal.x,plane.normal.y,plane.normal.z];
+     let frame=nalgebra::Matrix4::from_column_slice(input.object_frame());
+     super::proper_rigid(&frame)?;
+     let inverse=frame.try_inverse().ok_or_else(||refused("retained plane input frame singular"))?;

@@ -1,0 +1,11 @@
+--- a/rust/processing/src/element/session_retained/clip_validation.rs
++++ b/rust/processing/src/element/session_retained/clip_validation.rs
+@@ -22,7 +22,7 @@
+     if !input.realization.kind.belongs_to_domain(owner) { return Err(protocol("foreign clip input")); }
+     if actual_input != input.realization.kind.object() || output != receipt.kind.object()
+         || output == actual_input || (side, mode) != selectors(clip)
+-        || (false && !bits(plane, &clip.local_plane)) || !bits(world_from_evaluation, &clip.input_frame)
++        || !bits(plane, &clip.local_plane) || !bits(world_from_evaluation, &clip.input_frame)
+         || !bits(world_from_evaluation, &input.frame)
+         || !bits(world_from_evaluation, expected.value().object_frame())
+         || empty != receipt.is_empty() || empty != (certificate.outcome() == NumericalOutcome::Empty) {

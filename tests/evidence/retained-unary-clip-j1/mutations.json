@@ -1,0 +1,43 @@
+[
+  {
+    "id": "bound",
+    "patch": "tests/evidence/retained-unary-clip-j1/bound.oracle.patch",
+    "test": "program::inner::retained_program::tests::clip_tests::j1_clip_capture_bound_reports_sticky_stop",
+    "package": "ifc-lite-geometry",
+    "assertionMarker": "clip must bound and report typed work refusal"
+  },
+  {
+    "id": "report",
+    "patch": "tests/evidence/retained-unary-clip-j1/report.oracle.patch",
+    "test": "program::inner::retained_program::tests::clip_tests::j1_clip_capture_bound_reports_sticky_stop",
+    "package": "ifc-lite-geometry",
+    "assertionMarker": "clip must bound and report typed work refusal"
+  },
+  {
+    "id": "source-plane",
+    "patch": "tests/evidence/retained-unary-clip-j1/source-plane.oracle.patch",
+    "test": "program::inner::retained_program::tests::clip_tests::j1_source_plane_and_order_survive_shared_controller",
+    "package": "ifc-lite-geometry"
+  },
+  {
+    "id": "receipt-plane",
+    "patch": "tests/evidence/retained-unary-clip-j1/receipt-plane.oracle.patch",
+    "test": "element::session_retained::clip_tests::j1_sdk_wrong_plane_receipt_is_rejected_without_consumption",
+    "package": "ifc-lite-processing",
+    "assertionMarker": "wrong plane must refuse"
+  },
+  {
+    "id": "empty-report",
+    "patch": "tests/evidence/retained-unary-clip-j1/empty-report.oracle.patch",
+    "test": "element::session_retained::clip_tests::j1_sdk_clip_empty_requires_authenticated_report",
+    "package": "ifc-lite-processing",
+    "assertionMarker": "clip empty report must authenticate"
+  },
+  {
+    "id": "post-await-stop",
+    "patch": "tests/evidence/retained-execution-j4/post-await-stop.oracle.patch",
+    "test": "element::session_retained::clip_tests::j1_sdk_clip_cancel_after_await_retires_only_captured_domain",
+    "package": "ifc-lite-processing",
+    "assertionMarker": "clip cancellation after numerical completion must refuse"
+  }
+]

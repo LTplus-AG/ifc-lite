@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/program/retained/clip.rs
++++ b/rust/geometry/src/program/retained/clip.rs
+@@ -136,7 +136,7 @@
+     pub(in crate::program) fn capture_clip(&self, half_space: &DecodedEntity, decoder: &mut EntityDecoder,
+         input: &LogicalRetainedValue, operator: BoolOp, boolean_id: u32)
+         -> Result<super::RetainedPlanOperation> {
+-        let _ = self;
++        self.charge()?;
+         if input.slot.program != self.program() { return Err(refused("foreign clip input domain")); }
+         let clip = capture(half_space, decoder, input, ClipSourceContext {
+             scale: input.length_unit_scale, contract: input.contract, operator,

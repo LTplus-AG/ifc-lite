@@ -1,0 +1,11 @@
+--- a/rust/processing/src/element/session_retained/clip_validation.rs
++++ b/rust/processing/src/element/session_retained/clip_validation.rs
+@@ -25,7 +25,7 @@
+         || !bits(plane, &clip.local_plane) || !bits(world_from_evaluation, &clip.input_frame)
+         || !bits(world_from_evaluation, &input.frame)
+         || !bits(world_from_evaluation, expected.value().object_frame())
+-        || (false && empty != receipt.is_empty()) || empty != (certificate.outcome() == NumericalOutcome::Empty) {
++        || empty != receipt.is_empty() || empty != (certificate.outcome() == NumericalOutcome::Empty) {
+         return Err(protocol("foreign clip plane, frame, input or outcome"));
+     }
+     Ok(())

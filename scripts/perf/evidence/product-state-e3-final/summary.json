@@ -1,0 +1,132 @@
+{
+  "license": "SPDX-License-Identifier: MPL-2.0",
+  "base": "d89b6a12c0a574eb39e3b2127d564b73500f73ea",
+  "head": "76c2f38e5e679376c19459c289caf5585b619b74",
+  "nativeFixtureNames": {
+    "fixture-0.ifc": "AC20-FZK-Haus.ifc",
+    "fixture-1.ifc": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+    "fixture-2.ifc": "ISSUE_053_20181220Holter_Tower_10.ifc"
+  },
+  "native": {
+    "job": "f3e3ec40-f30a-434d-9f6f-35d44cf42e2a",
+    "exitCode": 1,
+    "sourceUnchanged": true,
+    "qualification": {
+      "commandExitCode": 0,
+      "artifactDrift": false,
+      "observedExternalBuildActivity": false,
+      "manifestSha256": "a855d01b48cc58364b2847e962f595bddc3f2dea601056fd26439eeb76878ba0",
+      "cpuPolicyChanged": false,
+      "thermalInvalid": false,
+      "throttled": false,
+      "protocolVerdict": {
+        "fingerprintDrift": false,
+        "tooNoisy": false,
+        "realChange": true,
+        "inconclusive": true,
+        "zeroBaselineIncrease": false
+      },
+      "qualified": false,
+      "scope": "Native paired protocol only; sampled visibility, not independent geometry byte-identity proof."
+    },
+    "report": "native-report.json",
+    "samples": "native-samples.json"
+  },
+  "browser": {
+    "job": "796ca3e8-23b7-4158-bedd-8f9332af422d",
+    "exitCode": 0,
+    "sourceUnchanged": true,
+    "qualification": {
+      "completeFivePairs": true,
+      "hardwareAdapter": true,
+      "healthySamples": true,
+      "hostInvalid": false,
+      "allPairProcessesSucceeded": true,
+      "fixedHostDiagnostics": true,
+      "observationInvalid": false,
+      "measurementConditionsValid": true,
+      "reporterExitCode": 0,
+      "acceptance": false,
+      "requires": "Parent review of reporter spread/verdict, actual rendered screenshots, separate complete identity and performance lesson. No full release/memory/retained qualification."
+    },
+    "report": "browser-report.json",
+    "samples": "browser-samples.json",
+    "protocol": {
+      "pairs": 5,
+      "order": [
+        "AB",
+        "BA",
+        "AB",
+        "BA",
+        "AB"
+      ],
+      "workers": 4,
+      "freshProcessPerSample": true,
+      "browserVersion": "156.0.8078.4",
+      "browserSha256": "377a9fc07b495c3b8d0ab8ec1fdfd153641759f9756fea34d8dfce4de82f5025",
+      "adapter": "Intel gen-12lp, i915, physical 8086:a788",
+      "mode": "headed X11, ANGLE Vulkan",
+      "planSha256": "23423c8d380f1444479e4357cbd3730ed5e0d7a6c6e86a7861f5c702a952c3fe"
+    },
+    "visualReview": "All six first-pair screenshots inspected: three real models visible with matching composition. Remaining24 screenshots retained but not manually inspected.",
+    "health": "All30 samples zero device loss, replacement, instance and uncaptured errors; one device per sample."
+  },
+  "identity": "identity.json",
+  "correctness": "correctness.json",
+  "instructionAttribution": "instruction-attribution.json",
+  "interpretation": {
+    "speedup": false,
+    "neutrality": false,
+    "noRegression": false,
+    "native": "Stock qualification remains false: small-model geometry/total regression plus sub-resolution ISSUE_129 lookup phase. Holter is slower in all five pairs despite falling below the stock 3% floor.",
+    "browser": "FZK first-batch slowdown flagged; complete metadata/render readiness inside observed spread on all three models. Exit0 is successful measurement, not a no-regression verdict.",
+    "placement": "Separate fixed-P-core diagnostics are changed-placement experiments; do not replace original unrestricted samples or establish causality.",
+    "landing": "Evidence for an explicit correctness/performance tradeoff; final semantic review and actual required checks still gate landing. No retained release acceptance."
+  },
+  "originalArtifacts": [
+    {
+      "name": "e3-native-76c2-final-result-20261024/storage-tasks/prepared-e3-76c2-final-native-20261024/measurement/report.json",
+      "sha256": "2a5962bb1a5fdf309795afeb2f9b16333b25ca3c0a9d7ed4c9d960cde7ba4942"
+    },
+    {
+      "name": "e3-native-76c2-final-result-20261024/storage-tasks/prepared-e3-76c2-final-native-20261024/measurement/runs.jsonl",
+      "sha256": "5c0d2ee0465d93f0990a6cd2747ead4b7bbd50fc5f2e335cce07b440b70a848e"
+    },
+    {
+      "name": "e3-native-76c2-final-result-20261024/storage-tasks/prepared-e3-76c2-final-native-20261024/measurement/qualification.json",
+      "sha256": "daa4828ad3a30e1bb1ca3596a2b43a2c70c8b4ec6b20441ddc2638111d759c6c"
+    },
+    {
+      "name": "e3-browser-intel-cohort-result-20261024/report.json",
+      "sha256": "134aded410f9ad384b6c0880ac8a4d6bd3c8791ed1b704e6ec9477a67333270c"
+    },
+    {
+      "name": "e3-browser-intel-cohort-result-20261024/combined.jsonl",
+      "sha256": "361937389e27f02a02b0b9281374a34b4a0124fb3b54106c61e026d30335b145"
+    },
+    {
+      "name": "e3-browser-intel-cohort-result-20261024/qualification.json",
+      "sha256": "b9c3d9ada1e62a1300934697dde8d5d2ca1d38c99bc87cca98f257d79ca73a2f"
+    },
+    {
+      "name": "e3-browser-intel-cohort-result-20261024/protocol.json",
+      "sha256": "61f5b8e8135b03ee868e164e885f077a98b35197de13747928e6afd1ee4a01eb"
+    },
+    {
+      "name": "e3-browser-intel-cohort-result-20261024/receipt.json",
+      "sha256": "5a5f64694bb425048fd88c6b8c4bdcbd56a1e30a1ce91a6f4b06b602f16ea0f5"
+    },
+    {
+      "name": "e3-76c2-identity-result-20261024/comparison.json",
+      "sha256": "e3c1460641ca550db2c198f6628c0e4889b5c7c778506a0c89ce1c95b853bc25"
+    },
+    {
+      "name": "e3-76c2-validation-20261024/result.json",
+      "sha256": "bb627ffc1787d64d6b393061e977024a9d06a37d218aba44e02b4bb5bfa63fe6"
+    },
+    {
+      "name": "e3-callgrind-attribution-20261024.json",
+      "sha256": "31a5a8b9eafe530db13b9dd534c9477bd2822d6f7d385a0451219cef5a0339ad"
+    }
+  ]
+}

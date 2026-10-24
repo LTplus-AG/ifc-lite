@@ -1,0 +1,817 @@
+{
+  "license": "SPDX-License-Identifier: MPL-2.0",
+  "originalSha256": "5c0d2ee0465d93f0990a6cd2747ead4b7bbd50fc5f2e335cce07b440b70a848e",
+  "transformation": "Only absolute path replaced with public fixture name; every original numeric/side field retained; original order unchanged.",
+  "rows": [
+    {
+      "side": "branch",
+      "fileMb": 2.409,
+      "entities": 44249,
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 20322,
+      "indexBuildMs": 3.15,
+      "parseMs": 15,
+      "entityScanMs": 8,
+      "lookupMs": 2,
+      "preprocessMs": 3,
+      "geometryMs": 52,
+      "facetedBrepMs": 0,
+      "totalMs": 67,
+      "allTotalsMs": [
+        67
+      ],
+      "allWallMs": [
+        69.764883
+      ],
+      "pointCacheHits": 51708,
+      "pointCacheMisses": 9076,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "fixture": "AC20-FZK-Haus.ifc"
+    },
+    {
+      "side": "branch",
+      "fileMb": 11.473,
+      "entities": 202661,
+      "meshes": 1402,
+      "vertices": 218966,
+      "triangles": 136257,
+      "indexBuildMs": 16.53,
+      "parseMs": 34,
+      "entityScanMs": 33,
+      "lookupMs": 0,
+      "preprocessMs": 1,
+      "geometryMs": 3982,
+      "facetedBrepMs": 0,
+      "totalMs": 4017,
+      "allTotalsMs": [
+        4017
+      ],
+      "allWallMs": [
+        4036.0612109999997
+      ],
+      "pointCacheHits": 223094,
+      "pointCacheMisses": 27870,
+      "csgFailures": 9,
+      "degenerateDropped": 7,
+      "fixture": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc"
+    },
+    {
+      "side": "branch",
+      "fileMb": 169.244,
+      "entities": 2807815,
+      "meshes": 109515,
+      "vertices": 4515185,
+      "triangles": 2895374,
+      "indexBuildMs": 350.54,
+      "parseMs": 828,
+      "entityScanMs": 642,
+      "lookupMs": 172,
+      "preprocessMs": 9,
+      "geometryMs": 2677,
+      "facetedBrepMs": 0,
+      "totalMs": 3505,
+      "allTotalsMs": [
+        3505
+      ],
+      "allWallMs": [
+        3899.8413109999997
+      ],
+      "pointCacheHits": 203040,
+      "pointCacheMisses": 36834,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "fixture": "ISSUE_053_20181220Holter_Tower_10.ifc"
+    },
+    {
+      "side": "base",
+      "fileMb": 2.409,
+      "entities": 44249,
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 20322,
+      "indexBuildMs": 2.98,
+      "parseMs": 14,
+      "entityScanMs": 8,
+      "lookupMs": 2,
+      "preprocessMs": 3,
+      "geometryMs": 48,
+      "facetedBrepMs": 0,
+      "totalMs": 62,
+      "allTotalsMs": [
+        62
+      ],
+      "allWallMs": [
+        65.08176
+      ],
+      "pointCacheHits": 51708,
+      "pointCacheMisses": 9076,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "fixture": "AC20-FZK-Haus.ifc"
+    },
+    {
+      "side": "base",
+      "fileMb": 11.473,
+      "entities": 202661,
+      "meshes": 1402,
+      "vertices": 218966,
+      "triangles": 136257,
+      "indexBuildMs": 15.52,
+      "parseMs": 33,
+      "entityScanMs": 32,
+      "lookupMs": 0,
+      "preprocessMs": 1,
+      "geometryMs": 3992,
+      "facetedBrepMs": 0,
+      "totalMs": 4026,
+      "allTotalsMs": [
+        4026
+      ],
+      "allWallMs": [
+        4044.4729009999996
+      ],
+      "pointCacheHits": 223094,
+      "pointCacheMisses": 27870,
+      "csgFailures": 9,
+      "degenerateDropped": 7,
+      "fixture": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc"
+    },
+    {
+      "side": "base",
+      "fileMb": 169.244,
+      "entities": 2807815,
+      "meshes": 109515,
+      "vertices": 4515185,
+      "triangles": 2895374,
+      "indexBuildMs": 354.59,
+      "parseMs": 834,
+      "entityScanMs": 646,
+      "lookupMs": 173,
+      "preprocessMs": 9,
+      "geometryMs": 2589,
+      "facetedBrepMs": 0,
+      "totalMs": 3423,
+      "allTotalsMs": [
+        3423
+      ],
+      "allWallMs": [
+        3824.664744
+      ],
+      "pointCacheHits": 203040,
+      "pointCacheMisses": 36834,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "fixture": "ISSUE_053_20181220Holter_Tower_10.ifc"
+    },
+    {
+      "side": "base",
+      "fileMb": 2.409,
+      "entities": 44249,
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 20322,
+      "indexBuildMs": 2.95,
+      "parseMs": 14,
+      "entityScanMs": 8,
+      "lookupMs": 2,
+      "preprocessMs": 3,
+      "geometryMs": 49,
+      "facetedBrepMs": 0,
+      "totalMs": 63,
+      "allTotalsMs": [
+        63
+      ],
+      "allWallMs": [
+        66.083744
+      ],
+      "pointCacheHits": 51708,
+      "pointCacheMisses": 9076,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "fixture": "AC20-FZK-Haus.ifc"
+    },
+    {
+      "side": "base",
+      "fileMb": 11.473,
+      "entities": 202661,
+      "meshes": 1402,
+      "vertices": 218966,
+      "triangles": 136257,
+      "indexBuildMs": 15.59,
+      "parseMs": 33,
+      "entityScanMs": 32,
+      "lookupMs": 0,
+      "preprocessMs": 1,
+      "geometryMs": 4060,
+      "facetedBrepMs": 0,
+      "totalMs": 4094,
+      "allTotalsMs": [
+        4094
+      ],
+      "allWallMs": [
+        4113.607723
+      ],
+      "pointCacheHits": 223094,
+      "pointCacheMisses": 27870,
+      "csgFailures": 9,
+      "degenerateDropped": 7,
+      "fixture": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc"
+    },
+    {
+      "side": "base",
+      "fileMb": 169.244,
+      "entities": 2807815,
+      "meshes": 109515,
+      "vertices": 4515185,
+      "triangles": 2895374,
+      "indexBuildMs": 353.38,
+      "parseMs": 839,
+      "entityScanMs": 652,
+      "lookupMs": 173,
+      "preprocessMs": 9,
+      "geometryMs": 2598,
+      "facetedBrepMs": 0,
+      "totalMs": 3438,
+      "allTotalsMs": [
+        3438
+      ],
+      "allWallMs": [
+        3832.665493
+      ],
+      "pointCacheHits": 203040,
+      "pointCacheMisses": 36834,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "fixture": "ISSUE_053_20181220Holter_Tower_10.ifc"
+    },
+    {
+      "side": "branch",
+      "fileMb": 2.409,
+      "entities": 44249,
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 20322,
+      "indexBuildMs": 3.29,
+      "parseMs": 14,
+      "entityScanMs": 8,
+      "lookupMs": 2,
+      "preprocessMs": 3,
+      "geometryMs": 49,
+      "facetedBrepMs": 0,
+      "totalMs": 64,
+      "allTotalsMs": [
+        64
+      ],
+      "allWallMs": [
+        67.143423
+      ],
+      "pointCacheHits": 51708,
+      "pointCacheMisses": 9076,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "fixture": "AC20-FZK-Haus.ifc"
+    },
+    {
+      "side": "branch",
+      "fileMb": 11.473,
+      "entities": 202661,
+      "meshes": 1402,
+      "vertices": 218966,
+      "triangles": 136257,
+      "indexBuildMs": 15.95,
+      "parseMs": 34,
+      "entityScanMs": 33,
+      "lookupMs": 0,
+      "preprocessMs": 1,
+      "geometryMs": 3973,
+      "facetedBrepMs": 0,
+      "totalMs": 4007,
+      "allTotalsMs": [
+        4007
+      ],
+      "allWallMs": [
+        4026.9011729999997
+      ],
+      "pointCacheHits": 223094,
+      "pointCacheMisses": 27870,
+      "csgFailures": 9,
+      "degenerateDropped": 7,
+      "fixture": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc"
+    },
+    {
+      "side": "branch",
+      "fileMb": 169.244,
+      "entities": 2807815,
+      "meshes": 109515,
+      "vertices": 4515185,
+      "triangles": 2895374,
+      "indexBuildMs": 351.97,
+      "parseMs": 835,
+      "entityScanMs": 650,
+      "lookupMs": 171,
+      "preprocessMs": 9,
+      "geometryMs": 2661,
+      "facetedBrepMs": 0,
+      "totalMs": 3496,
+      "allTotalsMs": [
+        3496
+      ],
+      "allWallMs": [
+        3894.767484
+      ],
+      "pointCacheHits": 203040,
+      "pointCacheMisses": 36834,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "fixture": "ISSUE_053_20181220Holter_Tower_10.ifc"
+    },
+    {
+      "side": "branch",
+      "fileMb": 2.409,
+      "entities": 44249,
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 20322,
+      "indexBuildMs": 3.14,
+      "parseMs": 14,
+      "entityScanMs": 8,
+      "lookupMs": 3,
+      "preprocessMs": 3,
+      "geometryMs": 58,
+      "facetedBrepMs": 0,
+      "totalMs": 73,
+      "allTotalsMs": [
+        73
+      ],
+      "allWallMs": [
+        76.080655
+      ],
+      "pointCacheHits": 51708,
+      "pointCacheMisses": 9076,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "fixture": "AC20-FZK-Haus.ifc"
+    },
+    {
+      "side": "branch",
+      "fileMb": 11.473,
+      "entities": 202661,
+      "meshes": 1402,
+      "vertices": 218966,
+      "triangles": 136257,
+      "indexBuildMs": 16.05,
+      "parseMs": 34,
+      "entityScanMs": 33,
+      "lookupMs": 0,
+      "preprocessMs": 1,
+      "geometryMs": 4046,
+      "facetedBrepMs": 0,
+      "totalMs": 4080,
+      "allTotalsMs": [
+        4080
+      ],
+      "allWallMs": [
+        4099.33418
+      ],
+      "pointCacheHits": 223094,
+      "pointCacheMisses": 27870,
+      "csgFailures": 9,
+      "degenerateDropped": 7,
+      "fixture": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc"
+    },
+    {
+      "side": "branch",
+      "fileMb": 169.244,
+      "entities": 2807815,
+      "meshes": 109515,
+      "vertices": 4515185,
+      "triangles": 2895374,
+      "indexBuildMs": 351.79,
+      "parseMs": 826,
+      "entityScanMs": 640,
+      "lookupMs": 172,
+      "preprocessMs": 9,
+      "geometryMs": 2665,
+      "facetedBrepMs": 0,
+      "totalMs": 3492,
+      "allTotalsMs": [
+        3492
+      ],
+      "allWallMs": [
+        3881.157299
+      ],
+      "pointCacheHits": 203040,
+      "pointCacheMisses": 36834,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "fixture": "ISSUE_053_20181220Holter_Tower_10.ifc"
+    },
+    {
+      "side": "base",
+      "fileMb": 2.409,
+      "entities": 44249,
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 20322,
+      "indexBuildMs": 2.97,
+      "parseMs": 14,
+      "entityScanMs": 8,
+      "lookupMs": 2,
+      "preprocessMs": 3,
+      "geometryMs": 49,
+      "facetedBrepMs": 0,
+      "totalMs": 64,
+      "allTotalsMs": [
+        64
+      ],
+      "allWallMs": [
+        66.742442
+      ],
+      "pointCacheHits": 51708,
+      "pointCacheMisses": 9076,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "fixture": "AC20-FZK-Haus.ifc"
+    },
+    {
+      "side": "base",
+      "fileMb": 11.473,
+      "entities": 202661,
+      "meshes": 1402,
+      "vertices": 218966,
+      "triangles": 136257,
+      "indexBuildMs": 15.44,
+      "parseMs": 33,
+      "entityScanMs": 32,
+      "lookupMs": 0,
+      "preprocessMs": 1,
+      "geometryMs": 3987,
+      "facetedBrepMs": 0,
+      "totalMs": 4021,
+      "allTotalsMs": [
+        4021
+      ],
+      "allWallMs": [
+        4041.325732
+      ],
+      "pointCacheHits": 223094,
+      "pointCacheMisses": 27870,
+      "csgFailures": 9,
+      "degenerateDropped": 7,
+      "fixture": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc"
+    },
+    {
+      "side": "base",
+      "fileMb": 169.244,
+      "entities": 2807815,
+      "meshes": 109515,
+      "vertices": 4515185,
+      "triangles": 2895374,
+      "indexBuildMs": 351.24,
+      "parseMs": 838,
+      "entityScanMs": 652,
+      "lookupMs": 172,
+      "preprocessMs": 9,
+      "geometryMs": 2584,
+      "facetedBrepMs": 0,
+      "totalMs": 3422,
+      "allTotalsMs": [
+        3422
+      ],
+      "allWallMs": [
+        3813.476634
+      ],
+      "pointCacheHits": 203040,
+      "pointCacheMisses": 36834,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "fixture": "ISSUE_053_20181220Holter_Tower_10.ifc"
+    },
+    {
+      "side": "base",
+      "fileMb": 2.409,
+      "entities": 44249,
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 20322,
+      "indexBuildMs": 3.04,
+      "parseMs": 14,
+      "entityScanMs": 8,
+      "lookupMs": 3,
+      "preprocessMs": 3,
+      "geometryMs": 47,
+      "facetedBrepMs": 0,
+      "totalMs": 62,
+      "allTotalsMs": [
+        62
+      ],
+      "allWallMs": [
+        64.479944
+      ],
+      "pointCacheHits": 51708,
+      "pointCacheMisses": 9076,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "fixture": "AC20-FZK-Haus.ifc"
+    },
+    {
+      "side": "base",
+      "fileMb": 11.473,
+      "entities": 202661,
+      "meshes": 1402,
+      "vertices": 218966,
+      "triangles": 136257,
+      "indexBuildMs": 16.17,
+      "parseMs": 34,
+      "entityScanMs": 33,
+      "lookupMs": 0,
+      "preprocessMs": 1,
+      "geometryMs": 4106,
+      "facetedBrepMs": 0,
+      "totalMs": 4140,
+      "allTotalsMs": [
+        4140
+      ],
+      "allWallMs": [
+        4159.476204
+      ],
+      "pointCacheHits": 223094,
+      "pointCacheMisses": 27870,
+      "csgFailures": 9,
+      "degenerateDropped": 7,
+      "fixture": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc"
+    },
+    {
+      "side": "base",
+      "fileMb": 169.244,
+      "entities": 2807815,
+      "meshes": 109515,
+      "vertices": 4515185,
+      "triangles": 2895374,
+      "indexBuildMs": 351.76,
+      "parseMs": 836,
+      "entityScanMs": 649,
+      "lookupMs": 173,
+      "preprocessMs": 9,
+      "geometryMs": 2600,
+      "facetedBrepMs": 0,
+      "totalMs": 3436,
+      "allTotalsMs": [
+        3436
+      ],
+      "allWallMs": [
+        3828.472687
+      ],
+      "pointCacheHits": 203040,
+      "pointCacheMisses": 36834,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "fixture": "ISSUE_053_20181220Holter_Tower_10.ifc"
+    },
+    {
+      "side": "branch",
+      "fileMb": 2.409,
+      "entities": 44249,
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 20322,
+      "indexBuildMs": 5.11,
+      "parseMs": 14,
+      "entityScanMs": 8,
+      "lookupMs": 2,
+      "preprocessMs": 3,
+      "geometryMs": 52,
+      "facetedBrepMs": 0,
+      "totalMs": 67,
+      "allTotalsMs": [
+        67
+      ],
+      "allWallMs": [
+        69.82320899999999
+      ],
+      "pointCacheHits": 51708,
+      "pointCacheMisses": 9076,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "fixture": "AC20-FZK-Haus.ifc"
+    },
+    {
+      "side": "branch",
+      "fileMb": 11.473,
+      "entities": 202661,
+      "meshes": 1402,
+      "vertices": 218966,
+      "triangles": 136257,
+      "indexBuildMs": 15.86,
+      "parseMs": 34,
+      "entityScanMs": 33,
+      "lookupMs": 0,
+      "preprocessMs": 1,
+      "geometryMs": 4012,
+      "facetedBrepMs": 0,
+      "totalMs": 4046,
+      "allTotalsMs": [
+        4046
+      ],
+      "allWallMs": [
+        4065.942059
+      ],
+      "pointCacheHits": 223094,
+      "pointCacheMisses": 27870,
+      "csgFailures": 9,
+      "degenerateDropped": 7,
+      "fixture": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc"
+    },
+    {
+      "side": "branch",
+      "fileMb": 169.244,
+      "entities": 2807815,
+      "meshes": 109515,
+      "vertices": 4515185,
+      "triangles": 2895374,
+      "indexBuildMs": 356.55,
+      "parseMs": 832,
+      "entityScanMs": 647,
+      "lookupMs": 171,
+      "preprocessMs": 9,
+      "geometryMs": 2682,
+      "facetedBrepMs": 0,
+      "totalMs": 3514,
+      "allTotalsMs": [
+        3514
+      ],
+      "allWallMs": [
+        3928.549023
+      ],
+      "pointCacheHits": 203040,
+      "pointCacheMisses": 36834,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "fixture": "ISSUE_053_20181220Holter_Tower_10.ifc"
+    },
+    {
+      "side": "base",
+      "fileMb": 2.409,
+      "entities": 44249,
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 20322,
+      "indexBuildMs": 3.07,
+      "parseMs": 14,
+      "entityScanMs": 8,
+      "lookupMs": 2,
+      "preprocessMs": 3,
+      "geometryMs": 48,
+      "facetedBrepMs": 0,
+      "totalMs": 62,
+      "allTotalsMs": [
+        62
+      ],
+      "allWallMs": [
+        65.14358
+      ],
+      "pointCacheHits": 51708,
+      "pointCacheMisses": 9076,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "fixture": "AC20-FZK-Haus.ifc"
+    },
+    {
+      "side": "base",
+      "fileMb": 11.473,
+      "entities": 202661,
+      "meshes": 1402,
+      "vertices": 218966,
+      "triangles": 136257,
+      "indexBuildMs": 16.38,
+      "parseMs": 41,
+      "entityScanMs": 39,
+      "lookupMs": 0,
+      "preprocessMs": 1,
+      "geometryMs": 3999,
+      "facetedBrepMs": 0,
+      "totalMs": 4040,
+      "allTotalsMs": [
+        4040
+      ],
+      "allWallMs": [
+        4059.8111670000003
+      ],
+      "pointCacheHits": 223094,
+      "pointCacheMisses": 27870,
+      "csgFailures": 9,
+      "degenerateDropped": 7,
+      "fixture": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc"
+    },
+    {
+      "side": "base",
+      "fileMb": 169.244,
+      "entities": 2807815,
+      "meshes": 109515,
+      "vertices": 4515185,
+      "triangles": 2895374,
+      "indexBuildMs": 351.32,
+      "parseMs": 831,
+      "entityScanMs": 647,
+      "lookupMs": 171,
+      "preprocessMs": 9,
+      "geometryMs": 2588,
+      "facetedBrepMs": 0,
+      "totalMs": 3420,
+      "allTotalsMs": [
+        3420
+      ],
+      "allWallMs": [
+        3820.564199
+      ],
+      "pointCacheHits": 203040,
+      "pointCacheMisses": 36834,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "fixture": "ISSUE_053_20181220Holter_Tower_10.ifc"
+    },
+    {
+      "side": "branch",
+      "fileMb": 2.409,
+      "entities": 44249,
+      "meshes": 285,
+      "vertices": 35940,
+      "triangles": 20322,
+      "indexBuildMs": 3.16,
+      "parseMs": 14,
+      "entityScanMs": 8,
+      "lookupMs": 2,
+      "preprocessMs": 3,
+      "geometryMs": 49,
+      "facetedBrepMs": 0,
+      "totalMs": 64,
+      "allTotalsMs": [
+        64
+      ],
+      "allWallMs": [
+        66.384922
+      ],
+      "pointCacheHits": 51708,
+      "pointCacheMisses": 9076,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "fixture": "AC20-FZK-Haus.ifc"
+    },
+    {
+      "side": "branch",
+      "fileMb": 11.473,
+      "entities": 202661,
+      "meshes": 1402,
+      "vertices": 218966,
+      "triangles": 136257,
+      "indexBuildMs": 15.96,
+      "parseMs": 34,
+      "entityScanMs": 33,
+      "lookupMs": 0,
+      "preprocessMs": 1,
+      "geometryMs": 4005,
+      "facetedBrepMs": 0,
+      "totalMs": 4039,
+      "allTotalsMs": [
+        4039
+      ],
+      "allWallMs": [
+        4057.798905
+      ],
+      "pointCacheHits": 223094,
+      "pointCacheMisses": 27870,
+      "csgFailures": 9,
+      "degenerateDropped": 7,
+      "fixture": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc"
+    },
+    {
+      "side": "branch",
+      "fileMb": 169.244,
+      "entities": 2807815,
+      "meshes": 109515,
+      "vertices": 4515185,
+      "triangles": 2895374,
+      "indexBuildMs": 355.47,
+      "parseMs": 829,
+      "entityScanMs": 643,
+      "lookupMs": 172,
+      "preprocessMs": 9,
+      "geometryMs": 2615,
+      "facetedBrepMs": 0,
+      "totalMs": 3445,
+      "allTotalsMs": [
+        3445
+      ],
+      "allWallMs": [
+        3838.8552259999997
+      ],
+      "pointCacheHits": 203040,
+      "pointCacheMisses": 36834,
+      "csgFailures": 0,
+      "degenerateDropped": 0,
+      "fixture": "ISSUE_053_20181220Holter_Tower_10.ifc"
+    }
+  ]
+}

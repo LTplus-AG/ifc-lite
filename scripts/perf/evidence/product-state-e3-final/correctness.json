@@ -1,0 +1,66 @@
+{
+  "license": "SPDX-License-Identifier: MPL-2.0",
+  "source": "76c2f38e5e679376c19459c289caf5585b619b74",
+  "job": "1d487bb6-f452-4865-bf32-24f330022d7e",
+  "workspacePassed": 6410,
+  "workspaceFailed": 0,
+  "workspaceIgnored": 46,
+  "fixturesVerified": 182,
+  "strictClippy": "PASS",
+  "focusedPassed": 10,
+  "exitCode": 0,
+  "sourceUnchanged": true,
+  "outputSha256": "54d37b613761c816a8ec40f7b80fb3e204c201b0387aafc93a9034985dd6739b",
+  "semanticMutations": "3 OBSERVED with verified restoration",
+  "finalRetryControlPassed": 6,
+  "mutations": [
+    {
+      "baseline": {
+        "kind": "pass",
+        "passed": 74,
+        "total": 74
+      },
+      "reverted": {
+        "kind": "assertion-failure",
+        "passed": 56,
+        "failed": 18,
+        "total": 74,
+        "evidence": []
+      },
+      "verdict": "OBSERVED",
+      "restoration": "verified"
+    },
+    {
+      "baseline": {
+        "kind": "pass",
+        "passed": 4,
+        "total": 4
+      },
+      "reverted": {
+        "kind": "assertion-failure",
+        "passed": 0,
+        "failed": 4,
+        "total": 4,
+        "evidence": []
+      },
+      "verdict": "OBSERVED",
+      "restoration": "verified"
+    },
+    {
+      "baseline": {
+        "kind": "pass",
+        "passed": 6,
+        "total": 6
+      },
+      "reverted": {
+        "kind": "assertion-failure",
+        "passed": 2,
+        "failed": 4,
+        "total": 6,
+        "evidence": []
+      },
+      "verdict": "OBSERVED",
+      "restoration": "verified"
+    }
+  ]
+}

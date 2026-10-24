@@ -1,0 +1,254 @@
+{
+  "license": "SPDX-License-Identifier: MPL-2.0",
+  "coverage": "Observed metadata/geometry/renderer logs plus canvas allocation (100ms polling); search, cache-tail memory, properties, picking and Firefox unqualified.",
+  "base": "base",
+  "branch": "branch",
+  "failures": 0,
+  "deviceLossFailures": 0,
+  "fixtures": [
+    {
+      "fixture": "AC20-FZK-Haus.ifc",
+      "metrics": [
+        {
+          "metric": "first-batch (geom submitted)",
+          "baseMedianMs": 249,
+          "branchMedianMs": 267,
+          "deltaPct": 7.228915662650602,
+          "noisePct": 6.827309236947792,
+          "real": true,
+          "direction": "slower"
+        },
+        {
+          "metric": "first-visible (actual paint)",
+          "baseMedianMs": 583,
+          "branchMedianMs": 590,
+          "deltaPct": 1.2006861063464835,
+          "noisePct": 31.56089193825043,
+          "real": false,
+          "direction": "slower"
+        },
+        {
+          "metric": "stream-complete",
+          "baseMedianMs": 713,
+          "branchMedianMs": 721,
+          "deltaPct": 1.1220196353436185,
+          "noisePct": 7.012622720897616,
+          "real": false,
+          "direction": "slower"
+        },
+        {
+          "metric": "spatial-ready",
+          "baseMedianMs": 831,
+          "branchMedianMs": 847,
+          "deltaPct": 1.9253910950661854,
+          "noisePct": 2.527075812274368,
+          "real": false,
+          "direction": "slower"
+        },
+        {
+          "metric": "metadata-complete",
+          "baseMedianMs": 926,
+          "branchMedianMs": 940,
+          "deltaPct": 1.511879049676026,
+          "noisePct": 3.8876889848812093,
+          "real": false,
+          "direction": "slower"
+        },
+        {
+          "metric": "METADATA + RENDER (observed)",
+          "baseMedianMs": 1053,
+          "branchMedianMs": 1056,
+          "deltaPct": 0.2849002849002849,
+          "noisePct": 3.608736942070275,
+          "real": false,
+          "direction": "slower"
+        },
+        {
+          "metric": "app total (legacy CI metric)",
+          "baseMedianMs": 978,
+          "branchMedianMs": 992,
+          "deltaPct": 1.4314928425357873,
+          "noisePct": 3.374233128834356,
+          "real": false,
+          "direction": "slower"
+        }
+      ],
+      "fingerprint": {
+        "totalMeshes": {
+          "base": [
+            317
+          ],
+          "branch": [
+            317
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "metrics": [
+        {
+          "metric": "first-batch (geom submitted)",
+          "baseMedianMs": 952,
+          "branchMedianMs": 986,
+          "deltaPct": 3.571428571428571,
+          "noisePct": 19.11764705882353,
+          "real": false,
+          "direction": "slower"
+        },
+        {
+          "metric": "first-visible (actual paint)",
+          "baseMedianMs": 1416,
+          "branchMedianMs": 1458,
+          "deltaPct": 2.9661016949152543,
+          "noisePct": 13.347457627118645,
+          "real": false,
+          "direction": "slower"
+        },
+        {
+          "metric": "stream-complete",
+          "baseMedianMs": 5472,
+          "branchMedianMs": 5538,
+          "deltaPct": 1.2061403508771928,
+          "noisePct": 1.9736842105263157,
+          "real": false,
+          "direction": "slower"
+        },
+        {
+          "metric": "spatial-ready",
+          "baseMedianMs": 1122,
+          "branchMedianMs": 1144,
+          "deltaPct": 1.9607843137254901,
+          "noisePct": 20.053475935828878,
+          "real": false,
+          "direction": "slower"
+        },
+        {
+          "metric": "metadata-complete",
+          "baseMedianMs": 1284,
+          "branchMedianMs": 1319,
+          "deltaPct": 2.7258566978193146,
+          "noisePct": 18.146417445482864,
+          "real": false,
+          "direction": "slower"
+        },
+        {
+          "metric": "METADATA + RENDER (observed)",
+          "baseMedianMs": 5898,
+          "branchMedianMs": 5926,
+          "deltaPct": 0.47473719905052564,
+          "noisePct": 2.780603594438793,
+          "real": false,
+          "direction": "slower"
+        },
+        {
+          "metric": "app total (legacy CI metric)",
+          "baseMedianMs": 5600,
+          "branchMedianMs": 5668,
+          "deltaPct": 1.2142857142857142,
+          "noisePct": 1.9642857142857142,
+          "real": false,
+          "direction": "slower"
+        }
+      ],
+      "fingerprint": {
+        "totalMeshes": {
+          "base": [
+            1402
+          ],
+          "branch": [
+            1402
+          ]
+        }
+      }
+    },
+    {
+      "fixture": "ISSUE_053_20181220Holter_Tower_10.ifc",
+      "metrics": [
+        {
+          "metric": "first-batch (geom submitted)",
+          "baseMedianMs": 1157,
+          "branchMedianMs": 1150,
+          "deltaPct": -0.6050129645635264,
+          "noisePct": 13.31028522039758,
+          "real": false,
+          "direction": "faster"
+        },
+        {
+          "metric": "first-visible (actual paint)",
+          "baseMedianMs": 2105,
+          "branchMedianMs": 2057,
+          "deltaPct": -2.2802850356294537,
+          "noisePct": 10.356294536817103,
+          "real": false,
+          "direction": "faster"
+        },
+        {
+          "metric": "stream-complete",
+          "baseMedianMs": 8728,
+          "branchMedianMs": 8501,
+          "deltaPct": -2.600824931255729,
+          "noisePct": 5.281851512373969,
+          "real": false,
+          "direction": "faster"
+        },
+        {
+          "metric": "spatial-ready",
+          "baseMedianMs": 4042,
+          "branchMedianMs": 4017,
+          "deltaPct": -0.6185056902523504,
+          "noisePct": 6.209797130133597,
+          "real": false,
+          "direction": "faster"
+        },
+        {
+          "metric": "metadata-complete",
+          "baseMedianMs": 6033,
+          "branchMedianMs": 6235,
+          "deltaPct": 3.3482512846013592,
+          "noisePct": 7.757334659373447,
+          "real": false,
+          "direction": "slower"
+        },
+        {
+          "metric": "METADATA + RENDER (observed)",
+          "baseMedianMs": 12134,
+          "branchMedianMs": 11993,
+          "deltaPct": -1.1620240646118345,
+          "noisePct": 3.873413548706115,
+          "real": false,
+          "direction": "faster"
+        },
+        {
+          "metric": "app total (legacy CI metric)",
+          "baseMedianMs": 9686,
+          "branchMedianMs": 9482,
+          "deltaPct": -2.1061325624612843,
+          "noisePct": 4.842040057815403,
+          "real": false,
+          "direction": "faster"
+        }
+      ],
+      "fingerprint": {
+        "totalMeshes": {
+          "base": [
+            110633
+          ],
+          "branch": [
+            110633
+          ]
+        }
+      }
+    }
+  ],
+  "verdict": {
+    "noSuccessfulSamples": false,
+    "fingerprintDrift": false,
+    "tooNoisy": false,
+    "realChange": true,
+    "insufficientPairedSamples": false,
+    "incomparableFixture": false,
+    "inconclusive": false,
+    "zeroBaselineIncrease": false
+  }
+}

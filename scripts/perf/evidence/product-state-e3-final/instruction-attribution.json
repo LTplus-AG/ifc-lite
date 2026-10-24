@@ -1,0 +1,38 @@
+{
+  "license": "SPDX-License-Identifier: MPL-2.0",
+  "source": {
+    "base": "d89b6a12c0a574eb39e3b2127d564b73500f73ea",
+    "head": "76c2f38e5e679376c19459c289caf5585b619b74"
+  },
+  "job": "f649aa40-4bb6-4e34-abcb-cbf61bf19dbe",
+  "totals": {
+    "baseProcessIr": 572689077,
+    "branchProcessIr": 573603129,
+    "deltaProcessIr": 914052,
+    "deltaProcessPct": 0.1596070252969047,
+    "baseProcessingProcessInclusiveIr": 479549081,
+    "branchProcessingProcessInclusiveIr": 480466139,
+    "deltaProcessingInclusiveIr": 917058,
+    "deltaProcessingPct": 0.19123339744237774,
+    "processingShareNote": "process inclusive is the whole processing call, not the geometry timer. Process-total counts also include three preparatory index scans, startup, output, final metadata and teardown. No phase markers were enabled."
+  },
+  "method": {
+    "rawEvents": [
+      "Ir"
+    ],
+    "selfCostExtraction": "Resolved fn/cfn compressed identifiers; sum non-call cost lines by function name; calls= costs excluded from self sum; incoming call counts aggregated from calls= records. Function-name aggregation combines source-line attribution for inlined code. Self sums exactly match summary/totals on each arm.",
+    "verifiedSelfSums": {
+      "base": 572689077,
+      "branch": 573603129
+    },
+    "limitations": [
+      "Existing annotations use inclusive=yes: nested rows must not be added. ProductOwner::epoch inclusive 366737538 Ir is mostly geometry underneath it, not epoch overhead.",
+      "No cache events, cycle counts, branch miss events, native lock waits, atomic latency or memory-stall data were recorded. Empty cache descriptions are not zero misses.",
+      "Names and line attribution change under inlining/LTO. Missing out-of-line function or mutex symbol does not prove zero invocations. Unknown address symbols must not be matched across binaries as if they were stable identities.",
+      "One base run then one branch run; single-thread Valgrind execution is not native timing. The instrumented 5866ms vs 5843ms totals do not waive native regression.",
+      "Counts reflect this single FZK execution only. No Holter or browser attribution exists here."
+    ]
+  },
+  "scope": "Single-threaded Callgrind on original source-bound native binaries. Instruction counts are not parallel elapsed time.",
+  "interpretation": "Additional checks, processor sweeps and epoch allocations are measured; their instruction cost does not establish the cause of the original wall-clock slowdown."
+}

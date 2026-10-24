@@ -1,0 +1,40 @@
+{
+  "license": "SPDX-License-Identifier: MPL-2.0",
+  "head": "76c2f38e5e679376c19459c289caf5585b619b74",
+  "base": "d89b6a12c0a574eb39e3b2127d564b73500f73ea",
+  "job": "8d1a0be2-e44b-46dc-987e-e7f580b7ed3c",
+  "exitCode": 0,
+  "sourceUnchanged": true,
+  "outputSha256": "44d372e5ecb1b0c119594bb0d34ce9f0b6bb537578341ec0c5fd25848d3fbbeb",
+  "native": {
+    "fixtures": 121,
+    "sizeLimitMiB": 200,
+    "frames": [
+      "default",
+      "local"
+    ],
+    "records": 242,
+    "modes": [
+      "flat",
+      "instanced"
+    ],
+    "fingerprintComparisons": 484,
+    "mismatches": 0,
+    "sameProbeSha256": "f548e9a7e4aa79fe7242953106f836d04f002d0d89470e74e226d5c3f10b09ea",
+    "normalization": "Seven elapsed-time counters and two nondeterministic cache telemetry counters normalized; raw cache telemetry separately preserved. ProcessingResult payload exhaustively destructured."
+  },
+  "wasm": {
+    "fixtures": 119,
+    "sizeLimitMiB": 60,
+    "getterFingerprintsByteEqual": true,
+    "sameHarness": true,
+    "fingerprintFileSha256": "10170e1125d17c19920e17108af23a96814ed08e1f23f0667ee1b8d1291b3aa5",
+    "runtimeHashesVerifiedBeforeAfter": true,
+    "contractPassed": 222,
+    "contractFailed": 0,
+    "contractSkipped": 1,
+    "skip": "matched historical fingerprint fallback requires IFC_WASM_BASE_JS/IFC_WASM_BASE_BINARY; not executed, not counted as pass",
+    "scope": "Real source-built processGeometryBatch/prepass and every collection/mesh getter; Node-hosted WASM, not browser Worker-pool performance."
+  },
+  "identityVerdict": "PASS within explicit native/WASM corpus and normalization scope"
+}

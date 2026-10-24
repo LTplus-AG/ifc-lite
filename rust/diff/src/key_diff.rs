@@ -46,7 +46,7 @@ fn resolve_aliases(
 pub(crate) fn changed_components(base: &HashMap<String, String>, head: &HashMap<String, String>) -> Vec<String> {
     let mut keys: Vec<_> = base.keys().chain(head.keys()).collect::<HashSet<_>>()
         .into_iter().filter(|key| base.get(*key) != head.get(*key)).cloned().collect();
-    keys.sort_by(|a, b| cmp_code_units(a, b));
+    keys.sort_by(cmp_code_units);
     keys
 }
 
@@ -123,7 +123,7 @@ pub fn diff_by_key<'a, R>(
         }
     }
     let mut excluded_types: Vec<_> = excluded.into_iter().collect();
-    excluded_types.sort_by(|a, b| cmp_code_units(a, b));
+    excluded_types.sort_by(cmp_code_units);
     KeyDiff { scope: options.scope, excluded_types, entries, by_key, counts, applied_key_aliases, use_geometry }
 }
 

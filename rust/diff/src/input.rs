@@ -10,6 +10,8 @@
 //! the reasoning for what each field may and may not carry lives with the
 //! hashing code that enforces it.
 
+use crate::JsString;
+
 /// A property or quantity value as supplied by an adapter.
 ///
 /// Mirrors the `unknown` the TypeScript engine accepts, narrowed to the shapes
@@ -20,15 +22,15 @@ pub enum PropertyValue {
     Null,
     Bool(bool),
     Number(f64),
-    String(String),
+    String(JsString),
     Array(Vec<PropertyValue>),
-    Object(Vec<(String, PropertyValue)>),
+    Object(Vec<(JsString, PropertyValue)>),
 }
 
 /// One named property or quantity.
 #[derive(Debug, Clone, PartialEq, serde::Deserialize)]
 pub struct PropertyEntryInput {
-    pub name: String,
+    pub name: JsString,
     #[serde(default)]
     pub value: PropertyValue,
 }
@@ -36,14 +38,14 @@ pub struct PropertyEntryInput {
 /// A named property set with its members.
 #[derive(Debug, Clone, PartialEq, serde::Deserialize)]
 pub struct PropertySetInput {
-    pub name: String,
+    pub name: JsString,
     pub properties: Vec<PropertyEntryInput>,
 }
 
 /// A named quantity set with its members.
 #[derive(Debug, Clone, PartialEq, serde::Deserialize)]
 pub struct QuantitySetInput {
-    pub name: String,
+    pub name: JsString,
     pub quantities: Vec<PropertyEntryInput>,
 }
 
@@ -56,23 +58,23 @@ pub struct QuantitySetInput {
 #[serde(default)]
 pub struct TypeAssignmentInput {
     /// Name of the assigned type, e.g. `WT-200`.
-    pub name: Option<String>,
+    pub name: Option<JsString>,
     /// IFC class of the assigned type, e.g. `IfcWallType`.
     #[serde(rename = "type")]
-    pub type_name: Option<String>,
+    pub type_name: Option<JsString>,
 }
 
 /// Everything the fingerprint hashes about one entity.
 #[derive(Debug, Clone, PartialEq, Default, serde::Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct DataFingerprintInput {
-    pub ifc_type: String,
-    pub name: Option<String>,
-    pub description: Option<String>,
-    pub object_type: Option<String>,
-    pub predefined_type: Option<String>,
+    pub ifc_type: JsString,
+    pub name: Option<JsString>,
+    pub description: Option<JsString>,
+    pub object_type: Option<JsString>,
+    pub predefined_type: Option<JsString>,
     /// The entity's `Tag`, **for a type object only**. See the module docs.
-    pub tag: Option<String>,
+    pub tag: Option<JsString>,
     #[serde(deserialize_with = "crate::input_decode::optional_values")]
     pub property_sets: Vec<PropertySetInput>,
     #[serde(deserialize_with = "crate::input_decode::optional_values")]
@@ -81,8 +83,8 @@ pub struct DataFingerprintInput {
     pub type_assignments: Vec<TypeAssignmentInput>,
     /// Resolved material NAMES, every indirection already followed.
     #[serde(deserialize_with = "crate::input_decode::optional_values")]
-    pub materials: Vec<String>,
+    pub materials: Vec<JsString>,
     /// Resolved classification references, each already one string.
     #[serde(deserialize_with = "crate::input_decode::optional_values")]
-    pub classifications: Vec<String>,
+    pub classifications: Vec<JsString>,
 }

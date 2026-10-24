@@ -48,3 +48,34 @@ justify removing the staged guard. Column adapter scalar guards also remain.
 All production TypeScript, including the public index, adapters and consumer
 initialization, remains at staging. Full facade/observer/oracle relocation and
 consumer cutover belong to the later parent layers.
+
+## Layer 2: fingerprint typed projection and shared host strings
+
+`stack/8042-v3-lossless-fingerprint` depends on `430374fa` (layer 1).
+Fingerprint DTOs, code-unit JSON writing, ordered component entries and the
+57-case UTF-16 native vector corpus arrive together. `diff_fingerprint.rs` and
+`diff_fingerprint_input.rs` match full54 exactly. The latter replaces staging's
+scalar rejection with the full lossless typed projection, reading only known
+fields (including deliberately ignoring type assignment globalId and record
+extras). Each typed/nested field is observed once. It calls the shared
+`diff_transport::string`: checked scalar bulk copy, raw code-unit fallback.
+
+Remove obsolete fingerprint scalar rejection tests together with their guard.
+Positive actual WASM tests from full54 cover all typed boundaries, lone-unit
+identity, component key order, nested values, Map entries, ignored extras and
+single reads. Their only adaptation uses staging's unchanged public TS
+fingerprint engine as oracle; private oracle relocation is a later cutover.
+The rest of the staging raw JSON test file is byte-for-byte unchanged.
+
+Only used shared string/output helpers are introduced here. General bounded
+DTO document/from_value/to_value helpers wait for their first model/lineage
+consumer in layer 3, avoiding unused private code. No observer/normalizer or
+public facade cutover is pulled into this foundation.
+
+Parent qualification: native document/fingerprint/sidecar tests and strict
+workspace Clippy; `scripts/build-wasm.sh` to build the independent diff payload
+and regenerate declarations; root pnpm build dependencies, then root pnpm test
+through turbo (including actual WASM fingerprint/component order, one-read,
+ignored-extra, Map and raw JSON syntax tests). Ensure WASM tests actually run,
+not skip because the independent payload is absent. Declarations stay at base
+pending generation; no public TS production code changes.

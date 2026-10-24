@@ -220,10 +220,13 @@ test('actual WASM rejects invalid raw JSON before surrogate normalization (#8081
   ]) assert.throws(call, error => typeof error === 'string');
 });
 
-// #8081 review 4365314326: typed serde strings must reject original code units
-// before Rust String conversion can alias them to literal U+FFFD.
-test('actual WASM staging fingerprints reject every non-scalar typed boundary (#8081)', async context => {
+// #8042/#8081: the raw typed projection preserves every original code unit
+// while ignoring extras; staging's unchanged public TS engine supplies expectations.
+test('actual WASM fingerprints preserve every lossless typed boundary (#8081)', async context => {
   const wasm = await engine(context); if (!wasm) return;
+  const oraclePath = new URL('../../diff/dist/fingerprint.js', import.meta.url);
+  if (!existsSync(oraclePath)) { context.skip('@ifc-lite/diff not built; run pnpm build'); return; }
+  const oracle = await import(oraclePath.href);
   const boundaries = value => [
     ...['ifcType', 'name', 'description', 'objectType', 'predefinedType', 'tag']
       .map(field => [field, { ifcType: 'IfcWall', [field]: value }]),
@@ -238,30 +241,28 @@ test('actual WASM staging fingerprints reject every non-scalar typed boundary (#
         ['object key', { [value]: 1, '\ufffd': 2 }],
         ['nested object key', [{ outer: [{ [value]: 1 }] }]],
         ['nested object value', { outer: [false, { inner: value }] }],
-        ['Map key', new Map([[value, 1], ['\ufffd', 2]])],
-        ['Map value', new Map([['key', [value]]])],
       ].map(([label, item]) => [`${sets}.${members}.value ${label}`, {
         [sets]: [{ name: 'Set', [members]: [{ name: 'Entry', value: item }] }],
       }]),
     ]),
   ];
-  for (const lone of ['\ud800', '\ud801', '\udfff', 'a\ud800b', '\udfff\ud800']) {
-    for (const [label, input] of boundaries(lone)) {
+  for (const lone of ['\ud800', '\ud801', '\udfff', 'a\ud800b', '\udfff\ud800', '\ufffd', 'literal\\ud800']) {
+    for (const [label, fields] of boundaries(lone)) {
+      const input = { ifcType: 'IfcWall', ...fields };
       for (const name of ['diffBuildDataFingerprint', 'diffBuildComponentFingerprints']) {
-        // @source-text-assertion-ok asserts the caught live WASM error, not source-file text
-        assert.throws(() => wasm[name](input), error => typeof error === 'string'
-          && /WASM diff fingerprints require well-formed UTF-16/.test(error), `${name}: ${label}`);
+        const publicName = name === 'diffBuildDataFingerprint' ? 'buildDataFingerprint' : 'buildComponentFingerprints';
+        assert.deepEqual(wasm[name](input), oracle[publicName](input), `${name}: ${label}`);
       }
     }
   }
 });
 
-test('actual WASM scalar fingerprints equal the public TS engine without observing extras (#8081)', async context => {
+test('actual WASM lossless fingerprints equal the public TS engine without observing extras (#8081)', async context => {
   const wasm = await engine(context); if (!wasm) return;
-  // Root pnpm build supplies the unchanged public TS oracle, as for the
-  // committed parity-vector generator. No mock or reconstructed hash oracle.
-  const ts = await import('../../diff/dist/fingerprint.js');
-  for (const scalar of ['\ufffd', 'é', '😀', '\ud800\udc00', 'literal\\ud800', '']) {
+  const oracle = new URL('../../diff/dist/fingerprint.js', import.meta.url);
+  if (!existsSync(oracle)) { context.skip('@ifc-lite/diff not built; run pnpm build'); return; }
+  const ts = await import(oracle.href);
+  for (const scalar of ['\ud800', '\udfff', 'a\ud800b', '\udfff\ud800', '\ufffd', 'é', '😀', '\ud800\udc00', 'literal\\ud800', '']) {
     const input = {
       ifcType: `IfcWall${scalar}`, name: scalar, description: scalar,
       objectType: scalar, predefinedType: scalar, tag: scalar,
@@ -275,12 +276,16 @@ test('actual WASM scalar fingerprints equal the public TS engine without observi
     assert.deepEqual(wasm.diffBuildComponentFingerprints(input), ts.buildComponentFingerprints(input));
   }
   const plain = { ifcType: 'IfcWall', typeAssignments: [{ name: 'Type', type: 'IfcWallType' }],
-    propertySets: [{ name: 'Set', properties: [{ name: 'Entry', value: { text: '😀' } }] }] };
+    propertySets: [{ name: 'Set', properties: [{ name: 'Entry', value: { text: '\ud800' } }] }] };
   for (const name of ['diffBuildDataFingerprint', 'diffBuildComponentFingerprints']) {
     const input = structuredClone(plain);
     let reads = 0;
+    let typeReads = 0;
+    Object.defineProperty(input, 'ifcType', {
+      enumerable: true, get() { typeReads++; return typeReads === 1 ? 'IfcWall' : 'IfcDoor'; },
+    });
     Object.defineProperty(input.propertySets[0].properties[0].value, 'text', {
-      enumerable: true, get() { reads++; return '😀'; },
+      enumerable: true, get() { reads++; return '\ud800'; },
     });
     for (const record of [input, input.typeAssignments[0], input.propertySets[0], input.propertySets[0].properties[0]]) {
       Object.defineProperty(record, '\ud800', { enumerable: true, get() { throw new Error('ignored extra observed'); } });
@@ -290,6 +295,7 @@ test('actual WASM scalar fingerprints equal the public TS engine without observi
     });
     assert.deepEqual(wasm[name](input), wasm[name](plain));
     assert.equal(reads, 1, `${name}: nested values are read once`);
+    assert.equal(typeReads, 1, `${name}: known struct fields are read once`);
   }
   for (const field of ['propertySets', 'quantitySets', 'typeAssignments', 'materials', 'classifications']) {
     for (const empty of [null, undefined, []]) {
@@ -297,5 +303,41 @@ test('actual WASM scalar fingerprints equal the public TS engine without observi
       assert.equal(wasm.diffBuildDataFingerprint(input), ts.buildDataFingerprint(input));
       assert.deepEqual(wasm.diffBuildComponentFingerprints(input), ts.buildComponentFingerprints(input));
     }
+  }
+});
+
+test('actual WASM fingerprints distinguish lone units, replacement and literal escapes (#8081)', async context => {
+  const wasm = await engine(context); if (!wasm) return;
+  const oraclePath = new URL('../../diff/dist/fingerprint.js', import.meta.url);
+  if (!existsSync(oraclePath)) { context.skip('@ifc-lite/diff not built; run pnpm build'); return; }
+  const oracle = await import(oraclePath.href);
+  const values = ['\ud800', '\ud801', '\udfff', '\ufffd', 'literal\\ud800'];
+  const hashes = values.map(value => {
+    const input = { ifcType: 'IfcWall', name: value,
+      propertySets: [{ name: value, properties: [{ name: 'nested', value: { [value]: value } }] }] };
+    assert.equal(wasm.diffBuildDataFingerprint(input), oracle.buildDataFingerprint(input));
+    const components = wasm.diffBuildComponentFingerprints(input);
+    assert.deepEqual(Object.entries(components), Object.entries(oracle.buildComponentFingerprints(input)));
+    return wasm.diffBuildDataFingerprint(input);
+  });
+  assert.equal(new Set(hashes).size, values.length);
+});
+
+
+// Maps are a raw serde transport convenience. Public normalization observes
+// Object.keys(Map), so compare their raw entries with an equivalent object.
+test('actual WASM raw fingerprint Map entries preserve original code units (#8081)', async context => {
+  const wasm = await engine(context); if (!wasm) return;
+  const oraclePath = new URL('../../diff/dist/fingerprint.js', import.meta.url);
+  if (!existsSync(oraclePath)) { context.skip('@ifc-lite/diff not built; run pnpm build'); return; }
+  const oracle = await import(oraclePath.href);
+  for (const key of ['\ud800', '\udfff', '\ufffd', 'literal\\ud800']) {
+    const entries = [[key, [key, { [key]: key }]], ['other', 2]];
+    const input = value => ({ ifcType: 'IfcWall', propertySets: [
+      { name: 'Set', properties: [{ name: 'Entry', value }] },
+    ] });
+    const expected = input(Object.fromEntries(entries));
+    assert.equal(wasm.diffBuildDataFingerprint(input(new Map(entries))), oracle.buildDataFingerprint(expected));
+    assert.deepEqual(wasm.diffBuildComponentFingerprints(input(new Map(entries))), oracle.buildComponentFingerprints(expected));
   }
 });

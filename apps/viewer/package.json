@@ -124,7 +124,7 @@
     "@ifc-lite/ids-agent": "workspace:^"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.14.6",
+    "@happy-dom/global-registrator": "^21.0.3",
     "@svgr/core": "^8.1.0",
     "@svgr/plugin-jsx": "^8.1.0",
     "@tailwindcss/postcss": "^4.3.3",

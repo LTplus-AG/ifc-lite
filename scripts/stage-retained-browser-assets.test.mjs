@@ -9,6 +9,38 @@ import { createHash } from 'node:crypto';
 import { verifyRetainedAssets, NOTICES } from './lib/retained-asset-contract.mjs';
 import { stageRetainedBrowserAssets } from './stage-retained-browser-assets.mjs';
 
+const hash = bytes => createHash('sha256').update(bytes).digest('hex');
+async function sdkSnapshot(adapter, sdk, build, revision) {
+  const names = ['LICENSE', 'THIRD_PARTY_NOTICES.md', 'source/SM_API/api.cpp', 'source/SMLib/kernel.cpp'];
+  const input = await Promise.all(names.map(async name => [name, hash(await readFile(join(sdk, name)))]));
+  const patch = Buffer.from('fixture patch identity');
+  const modified = Buffer.from('fixture modified kernel with explicit change notice');
+  const pins = { schema: 1, id: 'imprint-status-v1', upstreamRevision: revision,
+    selection: ['source/SMLib', 'source/SM_API', 'LICENSE', 'THIRD_PARTY_NOTICES.md'],
+    fileCount: names.length, inputInventorySha256: hash(JSON.stringify(input)),
+    path: 'source/SMLib/kernel.cpp', inputSha256: input.find(([name]) => name.endsWith('kernel.cpp'))[1],
+    outputSha256: hash(modified), patchSha256: hash(patch) };
+  await mkdir(join(adapter, 'patches'));
+  const pinsBytes = Buffer.from(JSON.stringify(pins));
+  const preparer = Buffer.from('# fixture preparer identity');
+  await writeFile(join(adapter, 'patches/imprint-status-v1.json'), pinsBytes);
+  await writeFile(join(adapter, 'patches/imprint-status-v1.patch'), patch);
+  await writeFile(join(adapter, 'prepare_sdk.py'), preparer);
+  const root = join(build, 'ifclite-sdk/imprint-status-v1');
+  for (const name of names) {
+    await mkdir(join(root, name, '..'), { recursive: true });
+    await writeFile(join(root, name), name === pins.path ? modified : await readFile(join(sdk, name)));
+  }
+  const outputFiles = Object.fromEntries(input); outputFiles[pins.path] = pins.outputSha256;
+  const receipt = { schema: 1, upstreamRevision: revision, upstreamInventorySha256: pins.inputInventorySha256,
+    preparerSha256: hash(preparer), pinsSha256: hash(pinsBytes), patch: pins, outputFiles,
+    license: 'Upstream source retains its original license; see LICENSE and THIRD_PARTY_NOTICES.md.' };
+  const bytes = Buffer.from(JSON.stringify(receipt));
+  await writeFile(join(root, 'provenance.json'), bytes);
+  await writeFile(join(build, 'ifclite-sdk-provenance.json'), bytes);
+  return join(root, 'provenance.json');
+}
+
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'retained-stage-test-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -49,6 +81,8 @@ async function fixture(t) {
   await mkdir(join(emscripten, 'cmake/Modules/Platform'), { recursive: true });
   await writeFile(join(emscripten, 'cmake/Modules/Platform/Emscripten.cmake'), 'fixture toolchain');
   await writeFile(join(build, 'CMakeCache.txt'), `CMAKE_HOME_DIRECTORY:INTERNAL=${adapter}\nSMLIB_SOURCE:UNINITIALIZED=${sdk}\nCMAKE_TOOLCHAIN_FILE:FILEPATH=${emscripten}/cmake/Modules/Platform/Emscripten.cmake\n`);
+  const provenance = await sdkSnapshot(adapter, sdk, build, revision);
+  await writeFile(join(build, 'CMakeCache.txt'), (await readFile(join(build, 'CMakeCache.txt'), 'utf8')) + `IFCLITE_SDK_PROVENANCE:INTERNAL=${provenance}\n`);
   await writeFile(join(repoRoot, 'LICENSE'), 'fixture MPL text');
   execFileSync('git', ['-C', repoRoot, 'init', '--quiet']);
   execFileSync('git', ['-C', repoRoot, 'add', '.']);
@@ -337,4 +371,57 @@ test('R3-F1/F2 fresh module URLs, primitive href chains and /smlib roots actuall
   assert.deepEqual([...new Set(manifest.dependencies.filter(edge => edge.from === 'pkg-retained/nested/entry.mjs').map(edge => edge.to))].sort(),
     ['pkg-retained/nested/payload.wasm', 'pkg-retained/nested/runtime.mjs', 'worker.mjs']);
   await verifyRetainedAssets(o.out, inputs);
+});
+
+// #7955 R4: observe staged evidence and refusal, without executing a compiler.
+test('staged SDK identity includes verified patched source and patch bytes', async t => {
+  const o = await fixture(t);
+  const m = await stageRetainedBrowserAssets(o);
+  assert.equal(m.sdk.patch.id, 'imprint-status-v1');
+  const receipt = await readFile(join(o.build, 'ifclite-sdk-provenance.json'));
+  assert.deepEqual(await readFile(join(o.out, 'provenance/sdk.json')), receipt);
+  assert.equal(m.sdk.patch.receiptSha256, hash(receipt));
+  assert.deepEqual(await readFile(join(o.out, 'provenance/imprint-status-v1.patch')),
+    await readFile(join(o.repoRoot, 'native/smlib-adapter/patches/imprint-status-v1.patch')));
+  await verifyRetainedAssets(o.out, o.inputs);
+});
+
+test('missing or altered SDK receipts, copy, patch or pins refuse even fresh recording', async t => {
+  for (const mutate of [
+    o => rm(join(o.build, 'ifclite-sdk-provenance.json')),
+    o => writeFile(join(o.build, 'ifclite-sdk-provenance.json'), '{}'),
+    o => writeFile(join(o.build, 'ifclite-sdk/imprint-status-v1/provenance.json'), '{}'),
+    o => writeFile(join(o.build, 'ifclite-sdk/imprint-status-v1/source/SMLib/kernel.cpp'), 'unpatched'),
+    o => writeFile(join(o.build, 'ifclite-sdk/imprint-status-v1/extra.cpp'), 'injected'),
+    o => writeFile(join(o.repoRoot, 'native/smlib-adapter/patches/imprint-status-v1.patch'), 'wrong patch'),
+    async o => {
+      const path = join(o.repoRoot, 'native/smlib-adapter/patches/imprint-status-v1.json');
+      const pins = JSON.parse(await readFile(path)); pins.outputSha256 = '0'.repeat(64);
+      await writeFile(path, JSON.stringify(pins));
+    },
+    async o => {
+      const path = join(o.build, 'CMakeCache.txt');
+      await writeFile(path, (await readFile(path, 'utf8')).replace(/^IFCLITE_SDK_PROVENANCE:.*\n/m, ''));
+    },
+  ]) {
+    const o = await fixture(t); await mutate(o);
+    const record = join(o.out, '../rejected.json');
+    await assert.rejects(stageRetainedBrowserAssets({ ...o, record, inputs: undefined, out: undefined }));
+    await assert.rejects(access(record), /ENOENT/);
+    await assert.rejects(access(o.out), /ENOENT/);
+  }
+});
+
+test('prepared SDK cannot escape through a symlink and published SDK identity cannot change', async t => {
+  const o = await fixture(t);
+  const kernel = join(o.build, 'ifclite-sdk/imprint-status-v1/source/SMLib/kernel.cpp');
+  const bytes = await readFile(kernel); const external = join(o.out, '../external.cpp');
+  await writeFile(external, bytes); await rm(kernel); await symlink(external, kernel);
+  await assert.rejects(stageRetainedBrowserAssets(o), /Nonregular|Escaped/);
+  await rm(kernel); await writeFile(kernel, bytes);
+  await stageRetainedBrowserAssets(o);
+  const path = join(o.out, 'asset-manifest.json'); const m = JSON.parse(await readFile(path));
+  m.sdk.patch.outputInventorySha256 = '0'.repeat(64);
+  await writeFile(path, JSON.stringify(m));
+  await assert.rejects(verifyRetainedAssets(o.out, o.inputs), /manifest/);
 });

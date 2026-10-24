@@ -221,7 +221,7 @@ jobs:
           IFCLITE_SMLIB_WORKER: ${{ runner.temp }}/smlib-native/ifclite_smlib_worker
         run: |
           status=0
-          for oracle in representation-type removal-permitted removal-containment removal-relationships decimal-equality decimal-cancellation decimal-coframe vector-consumption record-consumption body-list-consumption; do
+          for oracle in representation-type removal-permitted removal-containment removal-relationships decimal-equality decimal-cancellation decimal-coframe vector-consumption record-consumption body-list-consumption terminal-effect terminal-atomic terminal-source; do
             python3 tests/evidence/retained-openings-j2/feature-oracle.py \
               --oracle "$oracle" --evidence-dir "$RUNNER_TEMP/retained-openings-$oracle" || status=1
           done
@@ -345,6 +345,8 @@ jobs:
             --chromedriver "$GITHUB_WORKSPACE/scripts/wasm-test-mime-driver.mjs" rust/wasm-bindings --lib \
             --features retained-browser -- retained_browser 2>&1 | tee "$RUNNER_TEMP/retained-browser.log"
           grep -F "j2_worker_record_suffixes_require_source_policy_refusal ... ok" "$RUNNER_TEMP/retained-browser.log"
+          grep -F "retained_browser_j2_terminal_actual_worker_production_api ... ok" "$RUNNER_TEMP/retained-browser.log"
+          grep -F "retained_browser_j2_terminal_actual_worker_source_obligation_refuses ... ok" "$RUNNER_TEMP/retained-browser.log"
           grep -F "j2_worker_vector_suffixes_require_source_policy_refusal ... ok" "$RUNNER_TEMP/retained-browser.log"
           grep -F "j2_worker_authored_decimal_counterexamples_cannot_authorize_removal ... ok" "$RUNNER_TEMP/retained-browser.log"
           grep -F "j2_worker_source_protected_whole_product_removal ... ok" "$RUNNER_TEMP/retained-browser.log"

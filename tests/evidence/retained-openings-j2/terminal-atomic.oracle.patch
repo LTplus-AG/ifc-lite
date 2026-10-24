@@ -1,0 +1,10 @@
+--- a/rust/geometry/src/router/removal_commit.rs
++++ b/rust/geometry/src/router/removal_commit.rs
+@@ -16,7 +16,6 @@
+         let permit = resources.charge(Cost { work: 1, live_bytes: (hosts.capacity() as u64 + 1).saturating_mul(32), ..Default::default() })
+             .map_err(RemovalCommitError::Stopped)?;
+         hosts.try_reserve(1).map_err(|_| RemovalCommitError::Stopped(resource::allocation_failure()))?;
+-        hosts.insert(product);
+         let result = accept().map_err(RemovalCommitError::Rejected)?;
+         // The callback's final checks are the synchronous acceptance boundary.
+         // A cancellation observed after this point belongs to a later operation.

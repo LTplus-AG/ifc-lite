@@ -43,6 +43,8 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_,R> {
     /// The returned value is terminal, unlike `into_witness`.
     pub fn publish_removed(&mut self, decoder: &mut EntityDecoder, router: &GeometryRouter,
         worker: &impl RetainedRuntime<Receipt=R>) -> Result<PublishedRetainedRemoval,RetainedExecutionError> {
+        if self.terminal_attempted { return Err(protocol("terminal publication already attempted")); }
+        self.terminal_attempted = true; // also persists on unwind: never retry hooks
         let resources = self.resources.clone();
         let product = self.state.job.id;
         let mut publication = Publication::new(router);

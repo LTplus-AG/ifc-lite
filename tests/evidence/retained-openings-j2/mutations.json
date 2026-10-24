@@ -102,5 +102,29 @@
     "assertionMarker": "J2_RECORD_COMPLETE",
     "intendedFailure": "J2_RECORD_COMPLETE",
     "package": "ifc-lite-processing"
+  },
+  {
+    "id": "terminal-effect",
+    "patch": "tests/evidence/retained-openings-j2/terminal-effect.oracle.patch",
+    "test": "element::session_retained::terminal_tests::j2_terminal_removal_commits_once",
+    "assertionMarker": "J2_TERMINAL_EFFECT",
+    "intendedFailure": "J2_TERMINAL_EFFECT",
+    "package": "ifc-lite-processing"
+  },
+  {
+    "id": "terminal-atomic",
+    "patch": "tests/evidence/retained-openings-j2/terminal-atomic.oracle.patch",
+    "test": "element::session_retained::terminal_stop_tests::j2_terminal_owner_commit_rejection_has_no_effect",
+    "assertionMarker": "J2_TERMINAL_ATOMIC",
+    "intendedFailure": "J2_TERMINAL_ATOMIC",
+    "package": "ifc-lite-processing"
+  },
+  {
+    "id": "terminal-source",
+    "patch": "tests/evidence/retained-openings-j2/terminal-source.oracle.patch",
+    "test": "element::session_retained::terminal_tests::j2_terminal_source_obligations_are_not_cleared_by_empty",
+    "assertionMarker": "J2_TERMINAL_SOURCE",
+    "intendedFailure": "J2_TERMINAL_SOURCE",
+    "package": "ifc-lite-processing"
   }
 ]

@@ -26,6 +26,8 @@ mod terminal_policy;
 pub use terminal::PublishedRetainedRemoval;
 #[cfg(all(test, feature = "retained-native", not(target_arch = "wasm32")))]
 mod terminal_tests;
+#[cfg(all(test, feature = "retained-native", not(target_arch = "wasm32")))]
+mod terminal_stop_tests;
 mod openings;
 mod removal;
 mod removal_source;
@@ -148,6 +150,7 @@ pub struct RuntimeProductExecution<'a, R: NumericalReceipt> {
     plan: Option<RetainedProductPlan>,
     removal: Option<removal::AuthenticatedRemoval>,
     failed: bool,
+    terminal_attempted: bool,
 }
 impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
     fn validate(
@@ -173,6 +176,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
         worker: &impl RetainedRuntime<Receipt = R>,
     ) -> Result<Option<RuntimeIssued<R>>, RetainedExecutionError> {
         self.validate(decoder, router)?;
+        if self.terminal_attempted { return Err(protocol("terminal publication already attempted")); }
         if self.pending.is_some() {
             return Err(protocol("outstanding construction"));
         }

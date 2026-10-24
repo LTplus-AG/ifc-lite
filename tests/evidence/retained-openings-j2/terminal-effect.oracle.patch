@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/router/removal_commit.rs
++++ b/rust/geometry/src/router/removal_commit.rs
+@@ -19,7 +19,7 @@
+         let result = accept().map_err(RemovalCommitError::Rejected)?;
+         // The callback's final checks are the synchronous acceptance boundary.
+         // A cancellation observed after this point belongs to a later operation.
+-        // Mutation: terminal success omitted its consumed-host effect.
++        hosts.insert(product);
+         permit.retain();
+         Ok(result)
+     }

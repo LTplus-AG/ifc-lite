@@ -1,0 +1,11 @@
+--- a/rust/processing/src/element/session_retained/terminal.rs
++++ b/rust/processing/src/element/session_retained/terminal.rs
+@@ -51,7 +51,7 @@
+         let result = router.commit_removed_host(product, &resources, || {
+             resources.with_scope(|| {
+             self.terminal_authority(decoder,router,worker)?;
+-            // Mutation: bypass mandatory source obligations for Empty.
++            terminal_policy::validate(self)?;
+             // Publication owns drained diagnostics BEFORE the owner commits;
+             // its Drop quarantines them on Err or unwind, including WrongOwner.
+             let (result,_) = router.with_product_csg_scope(|| self.owner.work(decoder,router,|_,router| self.scopes.with_scope(|| {

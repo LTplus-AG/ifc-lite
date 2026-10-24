@@ -132,3 +132,6 @@ fn terminal_failure(error: RetainedExecutionError) -> JsValue {
     serde_wasm_bindgen::to_value(&Failure { code, message: error.to_string() })
         .unwrap_or_else(|error| failure(error))
 }
+#[cfg(test)]
+#[path = "retained_terminal_tests.rs"]
+mod tests;

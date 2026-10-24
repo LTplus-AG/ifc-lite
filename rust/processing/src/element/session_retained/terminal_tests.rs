@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! #7955 terminal removal must commit once, never at provisional proof.
 use super::*;
-fn complete(execution: &mut RetainedProductExecution, decoder: &mut EntityDecoder,
+pub(super) fn complete(execution: &mut RetainedProductExecution, decoder: &mut EntityDecoder,
     router: &GeometryRouter, worker: &mut SmlibWorker) {
     while let Some(issued) = execution.issue_next(decoder,router,worker).unwrap() {
         let work = issued.execute(worker,0.00001,15.,MeshLimits::default()).unwrap();

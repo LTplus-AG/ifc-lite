@@ -74,6 +74,7 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
                 plan: None,
                 removal: None,
                 failed: false,
+                terminal_attempted: false,
             };
             execution.init_type_maps()?;
             execution.start_next_program(decoder,router)?;

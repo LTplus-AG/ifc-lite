@@ -18,6 +18,7 @@
 //! `stringify` / `stringify_sorted` unit tests in `src/js_json_tests.rs`.
 
 use std::collections::BTreeMap;
+use ifc_lite_diff::JsString;
 
 use ifc_lite_diff::input::{
     DataFingerprintInput, PropertyEntryInput, PropertySetInput, PropertyValue, QuantitySetInput,
@@ -32,11 +33,11 @@ fn vectors() -> Value {
     serde_json::from_str(VECTORS).expect("fingerprint_vectors.json is not valid JSON")
 }
 
-fn opt_string(value: &Value, key: &str) -> Option<String> {
-    value.get(key).and_then(Value::as_str).map(str::to_owned)
+fn opt_string(value: &Value, key: &str) -> Option<JsString> {
+    value.get(key).and_then(Value::as_str).map(Into::into)
 }
 
-fn string_list(value: &Value, key: &str) -> Vec<String> {
+fn string_list(value: &Value, key: &str) -> Vec<JsString> {
     value
         .get(key)
         .and_then(Value::as_array)
@@ -44,7 +45,7 @@ fn string_list(value: &Value, key: &str) -> Vec<String> {
             items
                 .iter()
                 .filter_map(Value::as_str)
-                .map(str::to_owned)
+                .map(Into::into)
                 .collect()
         })
         .unwrap_or_default()
@@ -63,7 +64,7 @@ fn property_value(value: &Value) -> PropertyValue {
                 .as_f64()
                 .expect("every fixture number is representable as f64"),
         ),
-        Value::String(text) => PropertyValue::String(text.clone()),
+        Value::String(text) => PropertyValue::String(text.as_str().into()),
         Value::Array(items) => PropertyValue::Array(items.iter().map(property_value).collect()),
         // JSON cannot hold a non-finite number, so the generator tags them.
         // Without this the fixture would hand us `null` where the expected
@@ -93,7 +94,7 @@ fn property_value(value: &Value) -> PropertyValue {
         Value::Object(entries) => PropertyValue::Object(
             entries
                 .iter()
-                .map(|(key, item)| (key.clone(), property_value(item)))
+                .map(|(key, item)| (key.as_str().into(), property_value(item)))
                 .collect(),
         ),
     }
@@ -206,13 +207,13 @@ fn fingerprints_match_the_typescript_engine() {
             "dataHash disagreed for case {id:?}",
         );
 
-        let expected_components: BTreeMap<String, String> = case["components"]
+        let expected_components: BTreeMap<JsString, String> = case["components"]
             .as_object()
             .expect("components is not an object")
             .iter()
             .map(|(key, value)| {
                 (
-                    key.clone(),
+                    key.as_str().into(),
                     value
                         .as_str()
                         .expect("component hash is not a string")
@@ -242,7 +243,7 @@ fn direct_adapter_deserialization_matches_typescript_issue_8042() {
         if has_tag(&case["input"]) { continue; } // Non-finite JS values are covered by the actual WASM lane.
         let input: DataFingerprintInput = serde_json::from_value(case["input"].clone()).unwrap();
         assert_eq!(build_data_fingerprint(&input), case["dataHash"].as_str().unwrap(), "{}", case["id"]);
-        let components: BTreeMap<String, String> = serde_json::from_value(case["components"].clone()).unwrap();
+        let components: BTreeMap<JsString, String> = serde_json::from_value(case["components"].clone()).unwrap();
         assert_eq!(build_component_fingerprints(&input), components, "{}", case["id"]);
     }
 }

@@ -29,6 +29,7 @@
 //!   that only holds while the two project identically.
 
 use std::collections::BTreeMap;
+use crate::JsString;
 
 use crate::input::{DataFingerprintInput, PropertyEntryInput, PropertyValue};
 use crate::js_json::{non_finite_token, stringify, stringify_sorted, JsonValue};
@@ -42,7 +43,7 @@ enum NormalizedValue {
     Bool(bool),
     /// Always finite — a non-finite input becomes [`NormalizedValue::String`].
     Number(f64),
-    String(String),
+    String(JsString),
 }
 
 impl NormalizedValue {
@@ -76,11 +77,11 @@ fn normalize_value(value: &PropertyValue) -> NormalizedValue {
             if number.is_finite() {
                 NormalizedValue::Number(*number)
             } else {
-                NormalizedValue::String(non_finite_token(*number).to_owned())
+                NormalizedValue::String(non_finite_token(*number).into())
             }
         }
         PropertyValue::String(text) => NormalizedValue::String(text.clone()),
-        composite => NormalizedValue::String(stringify_sorted(&to_json_value(composite))),
+        composite => NormalizedValue::String(stringify_sorted(&to_json_value(composite)).into()),
     }
 }
 
@@ -105,15 +106,15 @@ fn to_json_value(value: &PropertyValue) -> JsonValue {
 
 /// A normalized, named record: the unit both sorted collections hold.
 struct NamedEntry {
-    name: String,
+    name: JsString,
     value: NormalizedValue,
 }
 
 impl NamedEntry {
     fn to_json(&self) -> JsonValue {
         JsonValue::Object(vec![
-            ("name".to_owned(), JsonValue::String(self.name.clone())),
-            ("value".to_owned(), self.value.to_json()),
+            ("name".into(), JsonValue::String(self.name.clone())),
+            ("value".into(), self.value.to_json()),
         ])
     }
 }
@@ -126,8 +127,8 @@ impl NamedEntry {
 /// property sets are not hypothetical: a type pset and an occurrence pset of
 /// one name is a normal IFC arrangement. Tiebreaking on serialized content
 /// makes the order total and content-derived.
-fn cmp_name_then_content(a: (&str, &JsonValue), b: (&str, &JsonValue)) -> std::cmp::Ordering {
-    cmp_code_units(a.0, b.0).then_with(|| {
+fn cmp_name_then_content(a: (&JsString, &JsonValue), b: (&JsString, &JsonValue)) -> std::cmp::Ordering {
+    a.0.cmp(b.0).then_with(|| {
         cmp_code_units(&stringify_sorted(a.1), &stringify_sorted(b.1))
     })
 }
@@ -148,32 +149,32 @@ fn sorted_entries(entries: &[PropertyEntryInput]) -> Vec<NamedEntry> {
 
 /// The direct-attribute slice, in one place because two functions hash it and
 /// they are required to hash the same thing.
-fn core_attributes(input: &DataFingerprintInput) -> Vec<(String, JsonValue)> {
-    let text = |value: &Option<String>| JsonValue::String(value.clone().unwrap_or_default());
+fn core_attributes(input: &DataFingerprintInput) -> Vec<(JsString, JsonValue)> {
+    let text = |value: &Option<JsString>| JsonValue::String(value.clone().unwrap_or_default());
     vec![
-        ("Type".to_owned(), JsonValue::String(input.ifc_type.clone())),
-        ("Name".to_owned(), text(&input.name)),
-        ("Description".to_owned(), text(&input.description)),
-        ("ObjectType".to_owned(), text(&input.object_type)),
-        ("PredefinedType".to_owned(), text(&input.predefined_type)),
-        ("Tag".to_owned(), text(&input.tag)),
+        ("Type".into(), JsonValue::String(input.ifc_type.clone())),
+        ("Name".into(), text(&input.name)),
+        ("Description".into(), text(&input.description)),
+        ("ObjectType".into(), text(&input.object_type)),
+        ("PredefinedType".into(), text(&input.predefined_type)),
+        ("Tag".into(), text(&input.tag)),
     ]
 }
 
 /// A set's canonical JSON form: `{ name, <members-key>: [...] }`, in that
 /// order, because the key order is part of the hashed format.
-fn set_to_json(name: &str, members_key: &str, members: &[NamedEntry]) -> JsonValue {
+fn set_to_json(name: &JsString, members_key: &str, members: &[NamedEntry]) -> JsonValue {
     JsonValue::Object(vec![
-        ("name".to_owned(), JsonValue::String(name.to_owned())),
+        ("name".into(), JsonValue::String(name.clone())),
         (
-            members_key.to_owned(),
+            members_key.into(),
             JsonValue::Array(members.iter().map(NamedEntry::to_json).collect()),
         ),
     ])
 }
 
-fn sorted_property_sets(input: &DataFingerprintInput) -> Vec<(String, JsonValue)> {
-    let mut sets: Vec<(String, JsonValue)> = input
+fn sorted_property_sets(input: &DataFingerprintInput) -> Vec<(JsString, JsonValue)> {
+    let mut sets: Vec<(JsString, JsonValue)> = input
         .property_sets
         .iter()
         .map(|set| {
@@ -185,8 +186,8 @@ fn sorted_property_sets(input: &DataFingerprintInput) -> Vec<(String, JsonValue)
     sets
 }
 
-fn sorted_quantity_sets(input: &DataFingerprintInput) -> Vec<(String, JsonValue)> {
-    let mut sets: Vec<(String, JsonValue)> = input
+fn sorted_quantity_sets(input: &DataFingerprintInput) -> Vec<(JsString, JsonValue)> {
+    let mut sets: Vec<(JsString, JsonValue)> = input
         .quantity_sets
         .iter()
         .map(|set| {
@@ -209,7 +210,7 @@ fn sorted_quantity_sets(input: &DataFingerprintInput) -> Vec<(String, JsonValue)
 /// allows an occurrence at most one `IfcRelDefinesByType`, so two assignments
 /// are an anomaly a diff should surface rather than normalize away.
 fn sorted_type_assignments(input: &DataFingerprintInput) -> Vec<JsonValue> {
-    let mut projected: Vec<(String, String)> = input
+    let mut projected: Vec<(JsString, JsString)> = input
         .type_assignments
         .iter()
         .map(|assignment| {
@@ -219,19 +220,19 @@ fn sorted_type_assignments(input: &DataFingerprintInput) -> Vec<JsonValue> {
             )
         })
         .collect();
-    projected.sort_by(|a, b| cmp_code_units(&a.1, &b.1).then_with(|| cmp_code_units(&a.0, &b.0)));
+    projected.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
     projected
         .into_iter()
         .map(|(name, type_name)| {
             JsonValue::Object(vec![
-                ("name".to_owned(), JsonValue::String(name)),
-                ("type".to_owned(), JsonValue::String(type_name)),
+                ("name".into(), JsonValue::String(name)),
+                ("type".into(), JsonValue::String(type_name)),
             ])
         })
         .collect()
 }
 
-fn string_array(values: &[String]) -> JsonValue {
+fn string_array(values: &[JsString]) -> JsonValue {
     JsonValue::Array(values.iter().cloned().map(JsonValue::String).collect())
 }
 
@@ -245,25 +246,25 @@ pub fn build_data_fingerprint(input: &DataFingerprintInput) -> String {
     let mut object = core_attributes(input);
 
     object.push((
-        "TypeAssignments".to_owned(),
+        "TypeAssignments".into(),
         JsonValue::Array(sorted_type_assignments(input)),
     ));
     object.push((
-        "PropertySets".to_owned(),
+        "PropertySets".into(),
         JsonValue::Array(sorted_property_sets(input).into_iter().map(|(_, v)| v).collect()),
     ));
     object.push((
-        "QuantitySets".to_owned(),
+        "QuantitySets".into(),
         JsonValue::Array(sorted_quantity_sets(input).into_iter().map(|(_, v)| v).collect()),
     ));
 
     let materials = sorted_string_list(&input.materials);
     if !materials.is_empty() {
-        object.push(("Materials".to_owned(), string_array(&materials)));
+        object.push(("Materials".into(), string_array(&materials)));
     }
     let classifications = sorted_string_list(&input.classifications);
     if !classifications.is_empty() {
-        object.push(("Classifications".to_owned(), string_array(&classifications)));
+        object.push(("Classifications".into(), string_array(&classifications)));
     }
 
     stable_hash(&stringify(&JsonValue::Object(object)))
@@ -285,27 +286,33 @@ pub fn build_data_fingerprint(input: &DataFingerprintInput) -> String {
 /// that a component hashes a slice of what the whole hash covers. Projecting
 /// differently here would turn that guard into a re-export filter, vetoing the
 /// very matches the engine exists to find.
-pub fn build_component_fingerprints(input: &DataFingerprintInput) -> BTreeMap<String, String> {
-    let mut components = BTreeMap::new();
+pub fn build_component_fingerprints(input: &DataFingerprintInput) -> BTreeMap<JsString, String> {
+    build_component_fingerprint_entries(input).into_iter().collect()
+}
+
+/// JavaScript Map insertion order, including first-position/last-value updates
+/// for duplicate component keys. The WASM object boundary consumes this form.
+pub fn build_component_fingerprint_entries(input: &DataFingerprintInput) -> Vec<(JsString, String)> {
+    let mut components = OrderedComponents(Vec::new());
 
     components.insert(
-        "attr:core".to_owned(),
+        "attr:core".into(),
         stable_hash(&stringify(&JsonValue::Object(core_attributes(input)))),
     );
 
     for (name, set) in sorted_property_sets(input) {
         let members = member_array(&set, "properties");
-        components.insert(format!("pset:{name}"), stable_hash(&stringify(&members)));
+        components.insert(JsString::surround("pset:", &name, ""), stable_hash(&stringify(&members)));
     }
     for (name, set) in sorted_quantity_sets(input) {
         let members = member_array(&set, "quantities");
-        components.insert(format!("qset:{name}"), stable_hash(&stringify(&members)));
+        components.insert(JsString::surround("qset:", &name, ""), stable_hash(&stringify(&members)));
     }
 
     let type_assignments = sorted_type_assignments(input);
     if !type_assignments.is_empty() {
         components.insert(
-            "type-assignment".to_owned(),
+            "type-assignment".into(),
             stable_hash(&stringify(&JsonValue::Array(type_assignments))),
         );
     }
@@ -313,19 +320,27 @@ pub fn build_component_fingerprints(input: &DataFingerprintInput) -> BTreeMap<St
     let materials = sorted_string_list(&input.materials);
     if !materials.is_empty() {
         components.insert(
-            "material".to_owned(),
+            "material".into(),
             stable_hash(&stringify(&string_array(&materials))),
         );
     }
     let classifications = sorted_string_list(&input.classifications);
     if !classifications.is_empty() {
         components.insert(
-            "classification".to_owned(),
+            "classification".into(),
             stable_hash(&stringify(&string_array(&classifications))),
         );
     }
 
-    components
+    components.0
+}
+
+struct OrderedComponents(Vec<(JsString, String)>);
+impl OrderedComponents {
+    fn insert(&mut self, key: JsString, value: String) {
+        if let Some((_, old)) = self.0.iter_mut().find(|(name, _)| *name == key) { *old = value; }
+        else { self.0.push((key, value)); }
+    }
 }
 
 /// Pull a set's member array back out of its canonical object form.

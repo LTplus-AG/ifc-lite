@@ -37,20 +37,21 @@ const FNV_PRIME_64: u64 = 0x0000_0100_0000_01b3;
 /// locale-sensitive comparison would make the fingerprint depend on the
 /// machine that computed it, in a hash whose whole purpose is cross-machine
 /// identity; Rust's `Ord` would differ above the BMP.
-pub fn cmp_code_units(a: &str, b: &str) -> Ordering {
-    let mut lhs = a.encode_utf16();
-    let mut rhs = b.encode_utf16();
-    loop {
-        match (lhs.next(), rhs.next()) {
-            (Some(x), Some(y)) => match x.cmp(&y) {
-                Ordering::Equal => continue,
-                other => return other,
-            },
-            (None, None) => return Ordering::Equal,
-            (None, Some(_)) => return Ordering::Less,
-            (Some(_), None) => return Ordering::Greater,
-        }
-    }
+pub(crate) trait CodeUnits { fn code_units(&self) -> std::borrow::Cow<'_, [u16]>; }
+impl CodeUnits for str {
+    fn code_units(&self) -> std::borrow::Cow<'_, [u16]> { self.encode_utf16().collect::<Vec<_>>().into() }
+}
+impl CodeUnits for String {
+    fn code_units(&self) -> std::borrow::Cow<'_, [u16]> { self.as_str().code_units() }
+}
+impl CodeUnits for crate::JsString {
+    fn code_units(&self) -> std::borrow::Cow<'_, [u16]> { self.units().into() }
+}
+impl<T: CodeUnits + ?Sized> CodeUnits for &T {
+    fn code_units(&self) -> std::borrow::Cow<'_, [u16]> { (*self).code_units() }
+}
+pub(crate) fn cmp_code_units<A: CodeUnits + ?Sized, B: CodeUnits + ?Sized>(a: &A, b: &B) -> Ordering {
+    a.code_units().cmp(&b.code_units())
 }
 
 /// 64-bit FNV-1a over the string's UTF-16 code units, rendered as 16 lowercase

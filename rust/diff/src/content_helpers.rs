@@ -38,7 +38,7 @@ impl Buckets {
 
 fn component_signature(components: &HashMap<String, String>) -> String {
     let mut keys: Vec<_> = components.keys().collect();
-    keys.sort_by(|a, b| cmp_code_units(a, b));
+    keys.sort_by(cmp_code_units);
     let mut signature = String::new();
     for key in keys {
         signature.push_str(key);

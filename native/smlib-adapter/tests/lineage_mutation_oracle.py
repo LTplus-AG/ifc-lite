@@ -108,6 +108,31 @@ def main():
          'if(false) ledger.fail(Failure::UnknownHistory);',
          'issued trim read refuses a surviving temporary generation'),
     ])
+    # #7955: the observed tessellator's two constructor edges are separately
+    # necessary; the internal copy never grants attached-geometry authority.
+    cases.extend([
+        ('trim-internal-positive', 'face_lineage_read.cpp',
+         'const bool copied_original=!known && numerical_copy_trim(original);',
+         'const bool copied_original=false;',
+         'internal trim helper requires actual two-generation issuance'),
+        ('trim-internal-positive', 'face_lineage_read_copy.cpp',
+         'numerical.copy_issued=true; event.after[0]=id;',
+         'numerical.copy_issued=true; numerical.copy=nullptr; event.after[0]=id;',
+         'internal trim helper requires actual two-generation issuance'),
+        ('trim-internal-original', 'face_lineage_read.cpp',
+         'if(!caller->IsKindOf(SmCurve_TYPE)) return false;',
+         'if(!caller->IsKindOf(SmCurve_TYPE)) return false;\n'
+         '    if((op==SM_NO_PRE_EDIT || op==SM_NO_POST_EDIT) && numerical_copy_trim(caller)) return true;',
+         'internal attached original still refuses edits'),
+        ('trim-internal-positive', 'face_lineage_read_copy.cpp',
+         'target->numerical_owner_copy_operation=numerical.operation;',
+         'target->numerical_owner_copy_operation={};',
+         'internal trim helper requires actual two-generation issuance'),
+        ('trim-internal-backlink', 'face_lineage_read.cpp',
+         'if(entry->numerical_internal_original) { fail(Failure::UnsupportedGeometryChange); return true; }',
+         '// mutation: trust the mutable owner backlink over observed attachment',
+         'internal attached original still refuses edits'),
+    ])
     paths = sorted({source / row[1] for row in cases})
     subprocess.run(['git', 'diff', '--exit-code', 'HEAD', '--', *map(str, paths)], cwd=root, check=True)
     originals = {path: path.read_text() for path in paths}

@@ -46,6 +46,7 @@ struct BoundaryProperties { double area=0,volume=0; };
 // Fixed calls only. No callable, external mutator or user phase flag.
 class NumericalRead {
     static void begin(Ledger&,SmBrep&);
+    static void begin_tessellation(Ledger&,SmBrep&);
     static void end(Ledger&);
     friend struct NumericalReadTestAccess;
 public:

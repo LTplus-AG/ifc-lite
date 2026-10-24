@@ -7,6 +7,9 @@
 #include <SmApiBrep.h>
 #include <cmath>
 namespace face_lineage {
+void NumericalRead::begin_tessellation(Ledger& ledger,SmBrep& source) {
+    begin(ledger,source); ledger.numerical.tessellation=true;
+}
 SmStatus NumericalRead::tessellate(Ledger& ledger,SmBrep& source,SmPolyBrep*& output,
     const SmTessellationParams& params,SmTessellationReport& report) {
     if(kernel_domain_is_tainted()) throw KernelDomainTainted{"tessellation read refused after terminal isolation failure"};
@@ -17,7 +20,7 @@ SmStatus NumericalRead::tessellate(Ledger& ledger,SmBrep& source,SmPolyBrep*& ou
     auto& context=*const_cast<SmContext*>(source.GetContext()); raw_context::Restore restore(&context);
     Scope phase(ledger,context,&source); RepresentationSeal seal(ledger,source);
     try {
-        begin(ledger,source);
+        begin_tessellation(ledger,source);
         const auto status=SmApiTessellate(&source,output,params,FALSE,nullptr,&report);
         // A successful SDK status cannot override a callback refusal. All
         // copied helpers must retire before the seal/inventory and publication.

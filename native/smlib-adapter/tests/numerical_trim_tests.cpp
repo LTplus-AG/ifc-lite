@@ -5,6 +5,7 @@
 #include "failure.hpp"
 #include <SmApiGeneral.h>
 #include <SmBSplineCurve.h>
+#include <SmCopyBrepMap.h>
 #include <SmEdgeuse.h>
 #include <SmFace.h>
 #include <array>
@@ -16,6 +17,7 @@ namespace face_lineage {
 // Test-only access to the fixed calls' private phase. No runtime callable seam.
 struct NumericalReadTestAccess {
     static void begin(Ledger& ledger,SmBrep& source) { NumericalRead::begin(ledger,source); }
+    static void tessellation(Ledger& ledger,SmBrep& source) { NumericalRead::begin_tessellation(ledger,source); }
     static void end(Ledger& ledger) { NumericalRead::end(ledger); }
 };
 }
@@ -139,9 +141,67 @@ void negative(const char* name) {
     require(ledger.failure_origin().failure==first.failure && ledger.failure_origin().event==first.event,
         "trim failure remains latched through phase teardown");
 }
+void internal_copy(const char* name) {
+    // #7955 / observation 7f2d7e07: the actual tessellator copies the BRep,
+    // then copies an attached trim of that copy before reversing the helper.
+    auto owner=OwnedBoundary::box(2,3,4); auto sibling=owner.copy();
+    auto& solid=body(owner); auto& ledger=history(owner);
+    auto* original=trim(solid); auto* foreign=trim(body(sibling));
+    const auto roots=owner.faces();
+    const bool unobserved=std::strcmp(name,"internal-unobserved")==0;
+    SmCopyBrepMap actual_map;
+    std::unique_ptr<SmBrep> internal;
+    if(unobserved) internal.reset(new (*solid.GetContext()) SmBrep(solid,&actual_map));
+    ledger.check();
+    Scope phase(ledger,*SmApiGetOrCreateContext(),&solid);
+    RepresentationSeal seal(ledger,solid);
+    NumericalReadTestAccess::tessellation(ledger,solid);
+    if(!unobserved) internal.reset(new (*solid.GetContext()) SmBrep(
+        std::strcmp(name,"internal-foreign")==0?body(sibling):solid,&actual_map));
+    ledger.check(); auto* copied=trim(*internal);
+    if(std::strcmp(name,"internal-original")==0 || std::strcmp(name,"internal-backlink")==0) {
+        auto* installed_owner=copied->GetOwner();
+        if(std::strcmp(name,"internal-backlink")==0) {
+            // Consume the SDK-produced topology map, never face/edge ordering.
+            auto* input_owner=actual_map.GetAt(static_cast<SmEdgeuse*>(installed_owner));
+            require(input_owner && input_owner->GetType()==SmEdgeuse_TYPE,"actual copy map names original trim owner");
+            copied->SetOwner(input_owner);
+        }
+        reverse(*copied);
+        copied->SetOwner(installed_owner);
+        require(ledger.failed()!=Failure::None,"internal attached original still refuses edits");
+    } else {
+        const auto first=ledger.event_size(); auto helper=copy(*copied); ledger.check();
+        if(std::strcmp(name,"internal-positive")==0) {
+            Identity birth{};
+            for(auto i=first;i<ledger.event_size();++i)
+                if(ledger.event(i).operation==SM_NO_CONSTRUCTION) birth=ledger.event(i).after[0];
+            require(birth.sequence,"internal trim helper requires actual two-generation issuance");
+        }
+        helper->SetOwner(std::strcmp(name,"internal-owner")==0?foreign->GetOwner():copied->GetOwner());
+        if(std::strcmp(name,"internal-attached")==0) {
+            auto* use=static_cast<SmEdgeuse*>(copied->GetOwner());
+            use->SetMemberUVTrimCurve(static_cast<SmBSplineCurve*>(helper.get()));
+            reverse(*helper); const bool refused=ledger.failed()!=Failure::None;
+            use->SetMemberUVTrimCurve(copied);
+            require(refused,"internal helper cannot replace its attached original");
+        } else {
+            reverse(*helper);
+            if(std::strcmp(name,"internal-positive")==0) ledger.check();
+            else require(ledger.failed()!=Failure::None,"internal helper requires current copy and exact owner authority");
+        }
+    }
+    internal.reset();
+    if(std::strcmp(name,"internal-positive")==0) {
+        ledger.check(); NumericalReadTestAccess::end(ledger); seal.verify();
+        require(owner.faces()==roots && original==trim(solid),"internal trim lifecycle preserves input roots and trim ownership");
+    }
+    phase.finish();
+}
 }
 void run_numerical_trim_case(const char* name) {
-    if(std::strcmp(name,"positive")==0) positive(false);
+    if(std::strncmp(name,"internal-",9)==0) internal_copy(name);
+    else if(std::strcmp(name,"positive")==0) positive(false);
     else if(std::strcmp(name,"reuse")==0) positive(true);
     else negative(name);
 }

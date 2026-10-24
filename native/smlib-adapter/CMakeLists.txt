@@ -51,7 +51,7 @@ target_link_libraries(smlib_api PUBLIC smlib_kernel)
 add_library(ifclite_smlib STATIC src/adapter.cpp src/copy.cpp src/affine.cpp src/mesh.cpp
   src/affine_rational.cpp src/affine_transition.cpp src/affine_transition_state.cpp
   src/source_construction.cpp src/source_boundary.cpp
-  src/owned_lineage.cpp src/face_lineage.cpp src/face_lineage_events.cpp src/face_lineage_geometry.cpp src/face_lineage_read.cpp src/numerical_tessellation.cpp
+  src/owned_lineage.cpp src/face_lineage.cpp src/face_lineage_events.cpp src/face_lineage_geometry.cpp src/face_lineage_read.cpp src/face_lineage_read_copy.cpp src/numerical_tessellation.cpp
   src/generated_plane.cpp src/representation_seal.cpp src/representation_seal_geometry.cpp
   src/planar_transition.cpp src/planar_transition_events.cpp src/planar_transition_plan.cpp
   src/planar_transition_verify.cpp
@@ -226,7 +226,8 @@ if(IFCLITE_LINEAGE_FAILURE_STACK)
   set_tests_properties(smlib_lineage_failure_stack PROPERTIES TIMEOUT 30)
 endif()
 
-foreach(case positive reuse original origin owner leak frame replacement reuse-foreign attached)
+foreach(case positive reuse original origin owner leak frame replacement reuse-foreign attached
+    internal-positive internal-original internal-backlink internal-foreign internal-unobserved internal-owner internal-attached)
   add_test(NAME smlib_numerical_trim_${case}
     COMMAND ${test_runner} $<TARGET_FILE:ifclite_smlib_lineage_tests> trim-${case})
   set_tests_properties(smlib_numerical_trim_${case} PROPERTIES TIMEOUT 120)

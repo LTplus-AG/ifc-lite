@@ -17,20 +17,31 @@ bool Ledger::numerical_event(Event& event,SmNotifyOperation op,SmObject* caller,
         // SmCurve's base constructor reports the actual source in b before
         // derived numerical data exists. No deferred address-history lookup.
         bool known=false; for(auto* trim:numerical.trims) known|=trim==original;
+        // Exactly one additional constructor edge: an actually attached trim
+        // on the witnessed internal copy, itself copied from an input trim.
+        const bool copied_original=!known && numerical_copy_trim(original);
+        Identity parent{};
+        if(copied_original) { known=true; parent=binding(original,false)->current; }
         if(!known) {
             // A recycled address never keeps a previous helper capability.
             if(auto* stale=binding(caller,false)) {
                 if(stale->alive && stale->numerical_operation.sequence) fail(Failure::UnknownHistory);
                 stale->numerical_operation={}; stale->numerical_original=nullptr; stale->numerical_owner=nullptr;
+                stale->numerical_parent={};
+                stale->numerical_parent_owner={};
             }
             return false;
         } // Unowned helpers have no exemption.
         for(auto* trim:numerical.trims) if(trim==caller) { fail(Failure::InvalidEvent); return true; }
         auto* entry=binding(caller,true);
         if(!entry || entry->alive) { fail(Failure::InvalidEvent); return true; }
+        const auto address=entry->address; *entry=Binding{}; entry->address=address;
         const auto id=append(Change::Construct); replace(entry,id);
         entry->numerical_operation=numerical.operation; entry->owned_transition={};
         entry->numerical_original=original;
+        entry->numerical_parent=parent;
+        entry->numerical_parent_owner=copied_original?
+            binding(static_cast<SmCurve*>(original)->GetOwner(),false)->current:Identity{};
         entry->numerical_owner=static_cast<SmCurve*>(original)->GetOwner(); entry->birth_frame=frame_count; event.after[0]=id;
         return true;
     }
@@ -43,11 +54,21 @@ bool Ledger::numerical_event(Event& event,SmNotifyOperation op,SmObject* caller,
         entry->birth_frame!=frame_count) return false;
     if(op==SM_NO_DESTRUCTION) { event.before[0]=entry->current; entry->alive=false; entry->retired=true; return true; }
     if(op!=SM_NO_PRE_EDIT && op!=SM_NO_POST_EDIT) return false;
+    if(entry->numerical_internal_original) { fail(Failure::UnsupportedGeometryChange); return true; }
     auto* curve=static_cast<SmCurve*>(caller); auto* owner=curve->GetOwner();
     // The SDK sets a copied trim's owner backlink before reversing it.
     // Bind that backlink to THIS constructor's original, not any trim owner.
     bool original_known=false;
     for(auto* trim:numerical.trims) original_known|=trim==entry->numerical_original;
+    const bool copied_original=entry->numerical_parent.sequence &&
+        numerical_copy_trim(entry->numerical_original,entry->numerical_parent);
+    if(copied_original) {
+        const auto* owner_binding=binding(entry->numerical_owner,false);
+        if(!owner_binding || owner_binding->current!=entry->numerical_parent_owner) {
+            fail(Failure::UnknownHistory); return true;
+        }
+    }
+    original_known|=copied_original;
     if(!original_known || caller==entry->numerical_original || owner!=entry->numerical_owner ||
         !owner || owner->GetType()!=SmEdgeuse_TYPE || curve->GetDim()!=2 ||
         (caller->GetType()!=SmBSplineCurve_TYPE && caller->GetType()!=SmLine_TYPE)) {
@@ -62,7 +83,7 @@ bool Ledger::numerical_event(Event& event,SmNotifyOperation op,SmObject* caller,
         (mate && mate->GetUVTrimCurvePointer()==source);
     const bool helper_attached=use->GetUVTrimCurvePointer()==curve ||
         (mate && mate->GetUVTrimCurvePointer()==curve);
-    if(use->GetBrep()!=numerical.source || source->GetOwner()!=owner || !mate ||
+    if(use->GetBrep()!=(copied_original?numerical.copy:numerical.source) || source->GetOwner()!=owner || !mate ||
         !original_attached || helper_attached) {
         fail(Failure::UnsupportedGeometryChange); return true;
     }

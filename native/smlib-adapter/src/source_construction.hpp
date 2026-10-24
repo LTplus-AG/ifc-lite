@@ -19,6 +19,7 @@ class SourceConstruction final:public SmNotifyCallback {
     uint32_t birth_count=0,event_count=0;
     bool failed=false,finished=false;
     std::vector<ConstructedFace> roles;
+    void refuse(const char*,SmNotifyOperation,SmObject*,SmObject*,SmObject*,SmObject*) noexcept;
     void add(SmFace*,SourceRole,uint32_t);
     void cap(SmTArray<SmCurve*>&,SourceRole);
     void verify() const;

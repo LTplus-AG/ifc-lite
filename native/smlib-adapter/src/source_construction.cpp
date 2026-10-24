@@ -9,6 +9,11 @@
 #include <SmCurve.h>
 #include <SmBSplineCurve.h>
 #include <SmSurfOfExtrusion.h>
+#ifdef IFCLITE_LINEAGE_FAILURE_STACK
+#include <execinfo.h>
+#include <cstdio>
+#include <unistd.h>
+#endif
 namespace face_lineage {
 namespace {
 void require(bool value,const char* why) { if(!value) throw AdapterFailure{IFCLITE_SMLIB_UNSUPPORTED,why}; }
@@ -22,31 +27,50 @@ SourceConstruction::SourceConstruction(SmContext& c):context(c) {
 SourceConstruction::~SourceConstruction() {
     if(context.GetUserNotifyCallback()==this) context.SetUserNotifyCallback(nullptr);
 }
+void SourceConstruction::refuse(const char* why,SmNotifyOperation op,SmObject* caller,
+    SmObject* a,SmObject* b,SmObject* c) noexcept {
+    if(failed) return;
+    failed=true;
+#ifdef IFCLITE_LINEAGE_FAILURE_STACK
+    // First real constructor failure only. Slots are diagnostic addresses,
+    // never dereferenced or used as provenance; no event replay or recovery.
+    std::fprintf(stderr,"source construction first_refusal=%s event=%u op=%ld type=%ld caller=%p a=%p b=%p c=%p births=%u roles=%zu\n",
+        why,event_count,long(op),caller?long(caller->GetType()):0,static_cast<void*>(caller),
+        static_cast<void*>(a),static_cast<void*>(b),static_cast<void*>(c),birth_count,roles.size());
+    void* frames[32]; const int count=::backtrace(frames,32);
+    if(count>0) ::backtrace_symbols_fd(frames,count,STDERR_FILENO);
+#else
+    (void)why; (void)op; (void)caller; (void)a; (void)b; (void)c;
+#endif
+}
 SmStatus SourceConstruction::Execute(SmNotifyOperation op,SmObject* caller,SmObject* a,SmObject* b,SmObject* c) noexcept {
-    if(++event_count>131072) failed=true;
+    if(++event_count>131072) refuse("event-bound",op,caller,a,b,c);
     if(op==SM_NO_SPLIT_IN_BREP || op==SM_NO_MERGE_IN_BREP) {
-        for(auto* object:{a,b,c}) if(object && object->GetType()==SmFace_TYPE) failed=true;
+        for(auto* object:{a,b,c}) if(object && object->GetType()==SmFace_TYPE) refuse("face-split-or-merge",op,caller,a,b,c);
     }
     if(!caller || caller->GetType()!=SmFace_TYPE) return SM_SUCCESS;
     if(op==SM_NO_CONSTRUCTION) {
-        if(birth_count==births.size()) { failed=true;return SM_SUCCESS; }
-        for(uint32_t i=0;i<birth_count;++i) if(births[i].face==caller && births[i].live) failed=true;
+        if(birth_count==births.size()) { refuse("birth-bound",op,caller,a,b,c);return SM_SUCCESS; }
+        for(uint32_t i=0;i<birth_count;++i) if(births[i].face==caller && births[i].live) refuse("live-address-reconstruction",op,caller,a,b,c);
         births[birth_count]={caller,uint64_t(birth_count)+1,true};++birth_count;
     } else if(op==SM_NO_DESTRUCTION) {
         bool found=false;
         for(uint32_t i=0;i<birth_count;++i) if(births[i].face==caller && births[i].live) {
             births[i].live=false;found=true;
-            for(const auto& role:roles) if(role.face==caller && role.birth==births[i].generation) failed=true;
+            for(const auto& role:roles) if(role.face==caller && role.birth==births[i].generation) refuse("issued-face-destruction",op,caller,a,b,c);
         }
-        if(!found) failed=true;
+        if(!found) refuse("unobserved-face-destruction",op,caller,a,b,c);
     } else if(op==SM_NO_COPY || op==SM_NO_SPLIT || op==SM_NO_MERGE) {
         // No constructor role can survive an unproved face substitution.
-        failed=true;
+        refuse("face-substitution",op,caller,a,b,c);
     }
     return SM_SUCCESS; // SDK ignores statuses; every phase checks the latch.
 }
 void SourceConstruction::add(SmFace* face,SourceRole role,uint32_t ordinal) {
-    require(!failed && face && face->GetBrep()==body && roles.size()<130,"source constructor face output invalid");
+    require(!failed,"source constructor face output invalid: callback refused");
+    require(face,"source constructor face output invalid: null SDK output");
+    require(face->GetBrep()==body,"source constructor face output invalid: foreign BRep owner");
+    require(roles.size()<130,"source constructor face output invalid: role bound");
     uint64_t birth=0;unsigned hits=0;
     for(uint32_t i=0;i<birth_count;++i) if(births[i].face==face && births[i].live) { birth=births[i].generation;++hits; }
     require(hits==1,"source face requires its observed original construction generation");

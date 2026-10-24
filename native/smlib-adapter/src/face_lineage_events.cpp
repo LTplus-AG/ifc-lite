@@ -37,6 +37,7 @@ void Ledger::transition(Event& event,SmNotifyOperation op,SmObject* caller,SmObj
     if(failure!=Failure::None) return;
     // A read's inventoried originals remain protected even if an earlier
     // affine operation issued their owned-transition destruction bookkeeping.
+    if(numerical_copy_event(event,op,caller,a,b,c)) return;
     if(numerical_event(event,op,caller,b)) return;
     if(op==SM_NO_DESTRUCTION && caller && caller->IsKindOf(SmCurve_TYPE)) {
         auto* entry=binding(caller,false);
@@ -86,6 +87,7 @@ void Ledger::transition(Event& event,SmNotifyOperation op,SmObject* caller,SmObj
         auto* entry=binding(caller,true);
         if(!entry) return;
         if(entry->alive) { fail(Failure::InvalidEvent); return; }
+        const auto address=entry->address; *entry=Binding{}; entry->address=address;
         const auto id=append(Change::Construct); replace(entry,id); entry->newborn=true; entry->owner=nullptr;
         entry->birth_frame=frame_count; entry->numerical_initialized=false;
         event.after[0]=id; return;
@@ -100,6 +102,7 @@ void Ledger::transition(Event& event,SmNotifyOperation op,SmObject* caller,SmObj
         auto* entry=binding(caller,true);
         if(!entry) return;
         if(entry->alive) { fail(Failure::InvalidEvent); return; }
+        const auto address=entry->address; *entry=Binding{}; entry->address=address;
         const auto id=append(Change::Construct);
         replace(entry,id); entry->removed=false; entry->owner=nullptr;
         entry->newborn=true; entry->birth_frame=frame_count; entry->numerical_initialized=false;

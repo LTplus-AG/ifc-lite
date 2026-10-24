@@ -79,6 +79,10 @@ class Ledger {
         uint32_t frame=0;
         uint64_t serial=0;
         std::vector<SmObject*> trims;
+        // Only the fixed tessellation call can witness one internal BRep copy.
+        bool tessellation=false,copy_issued=false;
+        SmBrep* copy=nullptr;
+        Identity copy_generation{};
     } numerical;
 
     struct Node {
@@ -96,6 +100,10 @@ class Ledger {
         Identity numerical_operation{},owned_transition{};
         SmObject* numerical_original=nullptr;
         SmObject* numerical_owner=nullptr;
+        Identity numerical_parent{};
+        Identity numerical_owner_copy_operation{},numerical_parent_owner{};
+        SmObject* numerical_owner_origin=nullptr;
+        bool numerical_internal_original=false;
     };
     Limits limits;
     uint64_t domain;
@@ -153,6 +161,8 @@ class Ledger {
     }
     bool creation_owner(SmObject*,SmObject*,SmObject*) noexcept;
     bool numerical_event(Event&,SmNotifyOperation,SmObject*,SmObject*);
+    bool numerical_copy_event(Event&,SmNotifyOperation,SmObject*,SmObject*,SmObject*,SmObject*);
+    bool numerical_copy_trim(SmObject*,Identity={});
     void protect(SmBrep*);
     friend class Scope;
     friend class RepresentationSeal;

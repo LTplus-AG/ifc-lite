@@ -1145,13 +1145,21 @@ WebAssembly bindings (the `IfcAPI` class and mesh/profile/clash types). See the 
 ### Independent diff WASM module
 
 `@ifc-lite/wasm/diff` exposes the Rust comparison bindings in a separate module.
-Initialize that module explicitly before constructing `DiffModel` handles;
-initializing the geometry engine does not initialize diff, and initializing
-diff does not load the geometry engine. Free each model handle in `finally`.
-The bindings include canonical fingerprints, sidecar encoding and lineage
-helpers. See the `@ifc-lite/wasm` package README for the low-level interface.
-The public `@ifc-lite/diff` comparison API still uses TypeScript during the
-staged facade migration tracked in #8042.
+Initialize its default asynchronous initializer or `initSync` explicitly before
+constructing `DiffModel` handles. Diff and geometry initialize independently;
+free each model handle in `finally`. Restore returned row indices to opaque
+application references in JavaScript.
+
+The raw exports cover UTF-16 fingerprints and live host normalization,
+identity-claim derivation, lineage assembly, and JSON-text/live-value sidecars.
+Host Date/JSON observations are preserved. See the
+[`@ifc-lite/wasm` low-level guide](../../packages/wasm/README.md#rust-diff-bindings)
+for helper groups, transport and lifetime requirements.
+
+The public `@ifc-lite/diff` entry points still use the TypeScript engine in
+this stage of #8042. Raw module initialization above applies to direct
+`@ifc-lite/wasm/diff` callers; existing public comparison callers retain their
+current initialization contract until the facade cutover.
 
 ## @ifc-lite/codegen
 

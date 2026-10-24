@@ -258,7 +258,7 @@ fn same_plan_produces_byte_identical_output_twice() {
             door.type_link = Some(TypeLink::New(NewType {
             global_id: None,
                 class: ClassSpec { class: IfcClass::Named(door_type.into()), predefined_type: None },
-                name: None,
+                name: Some("Type".into()),
                 psets: vec![wall_common("T")],
             }));
             vec![add(door), add(object(IfcClass::Space, gid(51), storey(), Representation::Extrusion(block(3.0, 3.0, 2.5))))]
@@ -412,7 +412,7 @@ fn a_new_type_sharing_its_occurrences_global_id_is_refused() {
     wall.type_link = Some(TypeLink::New(NewType {
         global_id: Some(gid(24)),
         class: ClassSpec { class: IfcClass::Named("IfcWallType".into()), predefined_type: None },
-        name: None,
+        name: Some("Type".into()),
         psets: Vec::new(),
     }));
     let (_, report) = run(&source, vec![add(wall)]);

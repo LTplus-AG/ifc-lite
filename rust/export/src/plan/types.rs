@@ -162,6 +162,14 @@ pub enum Disposition {
     /// Build a new object from its IFC-level description. Boxed because the
     /// description is much larger than the other variants.
     Add(Box<super::add_types::NewObject>),
+    /// Add a type with no occurrence. It must have its own GlobalId
+    /// (`NewType::global_id`) and a name; the plan key names it in refusals
+    /// and, like an Add's, must not resolve to anything in the source, and
+    /// when it is a GlobalId must be the type's own. In IFC4 and IFC4X3 it is declared
+    /// to the project through `IfcRelDeclares`; IFC2X3 has no such
+    /// relationship, so there it is written on its own. A later Add in the
+    /// same plan can be typed by it through `TypeLink::Existing`.
+    AddType(Box<super::add_types::NewType>),
 }
 
 /// The edits [`Disposition::Patch`] carries. Any field left at its default

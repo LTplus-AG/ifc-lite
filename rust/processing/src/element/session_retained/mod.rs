@@ -24,6 +24,8 @@ mod witness;
 mod openings;
 mod removal;
 mod removal_source;
+mod removal_number;
+mod removal_decimal;
 pub use witness::RuntimeProductWitness;
 mod acceptance;
 mod validation;

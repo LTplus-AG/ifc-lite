@@ -92,11 +92,18 @@ The initial policy accepts direct Body rectangular extrusions in the same author
 frame, with axis-aligned raw profiles and positive finite dimensions. Each terminal
 host part must have an authenticated opening cut whose source solid contains the
 **entire original host part**. This is solid containment in this closed domain,
-not containment of an arbitrary solid's bounding box. Identical source coefficients
-prove equality; other cases use outward-rounded intervals with no tolerance.
+not containment of an arbitrary solid's bounding box. The proof reads the immutable raw STEP records, never the decoder's rounded
+coefficients. Checked i128 arithmetic on a 10^-18 raw-unit grid proves equality
+and ordering; endpoints are doubled so half-dimensions remain exact. This also
+preserves input errors that would otherwise disappear during floating-point
+cancellation. Unsupported precision, range, schema or arithmetic overflow refuses.
 Rotated profiles, mappings, pre-empty hosts, unknown shapes and cumulative removal
 without one containing cutter remain explicit policy refusals. Shared product
-placement (including translation) and multiple direct host parts are supported.
+translation and multiple direct host parts are supported. Coframe authority comes
+from exact sums of authored IfcLocalPlacement translations, not equal rounded
+matrices. Each placement has canonical exact axes or explicit `$` defaults;
+missing/`*` attributes, wrong 2D/3D schemas, cycles and noncanonical axes refuse.
+Rotated product frames remain outside this closed proof domain.
 No threshold in the exact kernel or its retention protections changes.
 
 Policy admission checks source epoch/revision, product and occurrence slots, ordered
@@ -125,3 +132,19 @@ source-protected Empty is available as intermediate transaction evidence, not as
 permission to hide a product in the viewer. Runtime qualification of this policy
 requires the native and actual Worker tests and mutation rounds; static inspection
 alone is not acceptance.
+
+
+R1 decimal proof bounds: each raw record is at most 4096 bytes, numeric tokens
+at most 64 bytes/36 digits, exponent -18 through +18, and the scaled coefficient
+must fit i128 exactly (no rounding to the grid). Placement chains are iterative,
+cycle-checked and limited to 64 links. The proof borrows source tokens, uses fixed
+stack arrays, and charges work before record scans and arithmetic. It allocates
+no big integers or owned token copies. It reuses the core StepRecord,
+StepListItems, STEP numeric grammar and quoted-string scanner used by #3641's
+lexical source validation; the existing #3641 implementation is unchanged.
+The exact rational residuals in regression sources are a 10^-16 top slab and a
+0.3-wide strip after cancellation, plus a 10^-16 authored placement difference.
+These are source proof obligations, not permitted geometric tolerances. Native
+and actual Worker negative definitions deliberately require the policy refusal;
+an earlier SDK failure does not qualify those tests. All final-publication holds
+above still apply; this correction does not complete J2.

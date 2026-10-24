@@ -98,6 +98,7 @@ fn prove(context: &OwnedMeshProductionContext, product: u32, plan: &RetainedProd
         let cutters = body(decoder, killing.requested_opening)?;
         if cutters.get(killing.cutter_ordinal) != Some(&cutter_id)
             || host.world_from_source() != cutter.world_from_source()
+            || !super::removal_decimal::coframed(decoder, product, killing.requested_opening)?
             || !covers(decoder, hosts[ordinal], cutter_id)? { return Err(refused()); }
         outputs.push(final_value.slot());
     }

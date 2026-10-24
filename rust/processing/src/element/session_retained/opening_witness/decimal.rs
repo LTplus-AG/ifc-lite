@@ -30,7 +30,7 @@ pub(in super::super) fn coframe() -> String {
     equality().replace("3.0000000000000001);", "3.);")
         .replace("#29= IFCLOCALPLACEMENT(#8,#5);", "#29=IFCLOCALPLACEMENT(#8,#300);")
         .replace("#49= IFCLOCALPLACEMENT(#8,#5);", "#49=IFCLOCALPLACEMENT(#8,#302);")
-        + "\n#300=IFCAXIS2PLACEMENT3D(#301,#4,#2);#301=IFCCARTESIANPOINT((3.0000000000000001,0.,0.));\n#302=IFCAXIS2PLACEMENT3D(#303,#4,#2);#303=IFCCARTESIANPOINT((3.,0.,0.));\n"
+        .replace("ENDSEC;\nEND-ISO-10303-21;", "#300=IFCAXIS2PLACEMENT3D(#301,#4,#2);#301=IFCCARTESIANPOINT((3.0000000000000001,0.,0.));\n#302=IFCAXIS2PLACEMENT3D(#303,#4,#2);#303=IFCCARTESIANPOINT((3.,0.,0.));\nENDSEC;END-ISO-10303-21;")
 }
 pub(in super::super) fn cases() -> [(&'static str, String); 3] {
     [("J2_DECIMAL_EQUALITY",equality()),("J2_DECIMAL_CANCELLATION",cancellation()),("J2_DECIMAL_COFRAME",coframe())]

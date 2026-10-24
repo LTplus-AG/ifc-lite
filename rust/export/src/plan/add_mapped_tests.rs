@@ -393,3 +393,17 @@ fn a_fallback_stands_in_for_a_deleted_body_but_not_a_bounding_box() {
     let (_, report) = run(boxed.as_bytes(), vec![add(mapped_wall(1, link(), IDENTITY))]);
     assert!(report.refusals[0].reason.contains("no Body representation map"), "{:?}", report.refusals);
 }
+
+/// When this plan breaks the body in the body context, the same rank's
+/// intact body in another context is instanced, not a lower rank.
+#[test]
+fn an_intact_body_in_another_context_wins_over_a_fallback() {
+    let source = String::from_utf8(type_with_two_bodies("IFC4")).unwrap().replace("(#330,'Body','SweptSolid',(#303))", "(#330,'Body','SweptSolid',(#340))");
+    let extra = build_record("IFC4", 340, "IFCEXTRUDEDAREASOLID", &[("SweptArea", "#304".into()), ("Position", "#301".into()), ("ExtrudedDirection", "#305".into()), ("Depth", "2.".into())]) + "\n";
+    let source = source.replacen("ENDSEC;\nEND-ISO", &format!("{extra}ENDSEC;\nEND-ISO"), 1);
+    let (out, report) = run(source.as_bytes(), vec![(ObjectRef::Id(303), Disposition::Delete), add(mapped_wall(1, TypeLink::Existing(ObjectRef::Id(40)), IDENTITY))]);
+    assert_clean(&report, "IFC4");
+    let items = ids_of_type(&out, "IFCMAPPEDITEM");
+    let mut decoder = ifc_lite_core::EntityDecoder::new(&out);
+    assert_eq!(items.iter().map(|&i| decoder.decode_by_id(i).unwrap().get_ref(0)).collect::<Vec<_>>(), [Some(320)]);
+}

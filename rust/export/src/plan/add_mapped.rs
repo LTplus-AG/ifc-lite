@@ -77,10 +77,10 @@ impl AddState<'_> {
     /// A source type's `Body` maps, of the best rank that is intact. Maps are
     /// ranked by how plainly they are the body ([`body_rank`]), so a fallback
     /// is not drawn on top of the body it stands in for, but stands in when
-    /// this plan deletes part of that body. Of one rank, the maps in the
-    /// plan's body context are taken when the type has any there, else those
-    /// of the first context it has: a type that keeps one body per level of
-    /// detail has a map per context, and an occurrence instances one of them.
+    /// this plan deletes part of every body of a better rank. Of one rank,
+    /// the maps of one intact context are taken: the plan's body context
+    /// when it is one, else the first. A type that keeps one body per level
+    /// of detail has a map per context, and an occurrence instances one.
     fn source_type_maps(&self, id: u32) -> Result<Rc<[MapRef]>, NoBody> {
         let (schema, index) = (self.schema, self.index);
         let entity = |r: u32| index.type_of(r).unwrap_or_default();
@@ -89,6 +89,9 @@ impl AddState<'_> {
         // (rank, map, context, every item intact)
         let mut body = Vec::new();
         for map in maps.into_iter().filter(live) {
+            if scalar_attr(index, schema, map, &entity(map), "MappingOrigin").filter(live).is_none() {
+                continue;
+            }
             let Some(rep) = scalar_attr(index, schema, map, &entity(map), "MappedRepresentation").filter(live) else { continue };
             let Some(rank) = self.body_rank(rep) else { continue };
             let Some(context) = scalar_attr(index, schema, rep, &entity(rep), "ContextOfItems").filter(live) else { continue };
@@ -102,10 +105,12 @@ impl AddState<'_> {
         ranks.dedup();
         for rank in ranks {
             let of_rank: Vec<_> = body.iter().filter(|&&(r, ..)| r == rank).collect();
-            let chosen = of_rank.iter().map(|&&(_, _, c, _)| c).find(|&c| Some(c) == self.body_context).or(of_rank.first().map(|&&(_, _, c, _)| c));
-            let picked: Vec<_> = of_rank.into_iter().filter(|&&(_, _, c, _)| Some(c) == chosen).collect();
-            if picked.iter().all(|&&(.., intact)| intact) {
-                return Ok(picked.into_iter().map(|&(_, map, context, _)| (map, context)).collect());
+            // A context is usable when every map of this rank in it is intact.
+            let intact = |c: u32| of_rank.iter().filter(|&&&(_, _, ctx, _)| ctx == c).all(|&&(.., ok)| ok);
+            let contexts = || of_rank.iter().map(|&&(_, _, c, _)| c);
+            let chosen = contexts().find(|&c| Some(c) == self.body_context && intact(c)).or_else(|| contexts().find(|&c| intact(c)));
+            if let Some(chosen) = chosen {
+                return Ok(of_rank.into_iter().filter(|&&(_, _, c, _)| c == chosen).map(|&(_, map, context, _)| (map, context)).collect());
             }
         }
         Err(if body.is_empty() { NoBody::Missing } else { NoBody::Deleted })

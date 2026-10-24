@@ -1,0 +1,23 @@
+{
+  "id": "7fa95733-821a-46c9-bb11-9e9dd49f7a2c",
+  "cwd": "/home/louistrue/build-workers/worker-state/checkouts/8624c8cec59a1601226b8b5a341f2631e2d9aa47",
+  "command": [
+    "bash",
+    "-c",
+    "pnpm install --frozen-lockfile --prefer-offline && exec env NODE_OPTIONS=--max-old-space-size=6144 TEST_PATTERN=\"useAnimationLoop[.](capture|capture-lifecycle|capture-refusal|renderThrow)[.]test|toolbar/export-ui-ribbon[.]test|useBCF[.](aspect-ratio|clash-viewpoint-selection)[.]test|idsBcfExport[.]test|basketSave[.]selection-race[.]test\" pnpm test --filter=@ifc-lite/viewer --env-mode=loose --concurrency=2"
+  ],
+  "state": "completed",
+  "exitCode": 0,
+  "sourceUnchanged": true,
+  "outputSha256": "9f0e7570f7494be1a8fe08876d9f2aec0a19fdebf13abdd0f4c5be38279e6da9",
+  "commit": "8624c8cec59a1601226b8b5a341f2631e2d9aa47",
+  "turboTasks": {
+    "successful": 57,
+    "total": 57
+  },
+  "viewerTests": {
+    "pass": 80,
+    "fail": 0,
+    "skip": 0
+  }
+}

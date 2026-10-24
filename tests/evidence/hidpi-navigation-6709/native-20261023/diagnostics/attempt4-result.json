@@ -1,0 +1,47 @@
+{
+  "status": "REFUSED",
+  "job": "3e92172a-2ee1-4e7e-ba6a-a84f040c9323",
+  "acceptedSamples": 0,
+  "error": "Error: Native GPU driver error; refuse sample",
+  "readiness": {
+    "ended": true,
+    "done": [
+      "geometry.streamComplete",
+      "scene.finalize",
+      "parser.complete"
+    ],
+    "failed": [],
+    "loadPath": "wasm"
+  },
+  "adapter": {
+    "vendor": "nvidia",
+    "architecture": "lovelace"
+  },
+  "requestedAdapters": [
+    {
+      "vendor": "nvidia",
+      "architecture": "lovelace",
+      "fallback": false
+    }
+  ],
+  "driverErrorCount": 32,
+  "representativeDriverErrors": [
+    "2026-10-23T16:31:23.123Z pw:browser [pid=272687][err] [272719:272719:1023/183123.123349:ERROR:gpu/command_buffer/service/shared_image/shared_image_manager.cc:241] SharedImageManager::ProduceGLTexturePassthrough: Trying to produce a representation from an incompatible backing: CompoundImageBacking",
+    "2026-10-23T16:31:23.123Z pw:browser [pid=272687][err] [272719:272719:1023/183123.123463:ERROR:gpu/command_buffer/service/gl_utils.cc:427] [.WebGL-0x18d4195c3e00] GL_INVALID_OPERATION: invalid mailbox name."
+  ],
+  "hostBefore": {
+    "capturedAt": "2026-10-23T16:31:19.787Z",
+    "policy": {
+      "maximumCpuPercent": 10,
+      "minimumMemoryKiB": 41943040
+    },
+    "cpuPercent": 1.336649051911719,
+    "MemAvailableKiB": 110236644,
+    "graphsBefore": [],
+    "graphsAfter": [],
+    "ac": true,
+    "quiet": true
+  },
+  "rawRunsSha256": "235958ccadf019d829f67a7d1723a70106700766a336b54227271aeb0d111c02",
+  "scope": "Strict readiness completed; rejected on native Chromium GPU driver errors before timing. No A/B or performance verdict."
+}

@@ -1,0 +1,14 @@
+{
+  "cleanupReceipt": "/home/louistrue/build-workers/storage-state/hidpi6709-explicit-cache-release-833ae.json",
+  "cleanupState": "completed",
+  "reclaimedAllocatedBytes": 94123933696,
+  "freeBefore": 203469762560,
+  "freeAfter": 297307967488,
+  "scope": "Explicitly owner-released PC compiler intermediates; original locks held, all producers terminal, no live process/queue resource users. Source, original locks, evidence and T3 records preserved.",
+  "refusedPcPreparation": {
+    "dispatch": "auto-7205520f514a491fb2b292af3dbcb6e3",
+    "localJob": "78cf8adf-c4d2-4ae7-9031-dc3a35aa32cc",
+    "commandsExecuted": false,
+    "reason": "A foreign ordinary job started after cleanup; admission refused the next slot. Original refusal retained; wait for agreed PC slot."
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "candidate": "be5c740cb9f1c57e4d1531ed574e2708839996be",
+  "control": "a1a4e87357d7e2de0cf5f4613473adae4feb452b",
+  "controlCheckout": "/home/louistrue/.t3/worktrees/ifc-lite/6709-uncapped-be5-20261023",
+  "onlySourceChange": "apps/viewer/src/components/viewer/viewport-render-options.ts",
+  "diff": "diff --git a/apps/viewer/src/components/viewer/viewport-render-options.ts b/apps/viewer/src/components/viewer/viewport-render-options.ts\nindex 8bb15d68e7..044861f4f5 100644\n--- a/apps/viewer/src/components/viewer/viewport-render-options.ts\n+++ b/apps/viewer/src/components/viewer/viewport-render-options.ts\n@@ -33,7 +33,7 @@ export function viewportRenderOptions(\n     visualEnhancement: p.visualEnhancementRef.current,\n     environment: p.environmentRef.current,\n     sunShadows: p.sunShadowsRef.current ?? undefined,\n-    isInteracting: continuous, maxPixelRatio: continuous ? 1 : undefined,\n+    isInteracting: continuous, maxPixelRatio: undefined,\n     interactionFrameIntervalMs: throttleMs || undefined, contributionCull, lod,\n     buildingRotation: p.coordinateInfoRef.current?.buildingRotation,\n     ...sectionRenderClip(state.sceneState.section.visible, p.sectionPlaneRef.current, p.sectionRangeRef.current, state.activeTool, state.inactiveSectionPlanes, p.sectionBoundsRef?.current),\n"
+}

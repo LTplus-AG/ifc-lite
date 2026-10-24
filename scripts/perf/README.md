@@ -12,6 +12,26 @@ that also dominate in the browser; the WASM-only concerns (per-worker file
 re-decode, no threads, memory bandwidth) are orchestration-level and are read
 off the viewer's own telemetry (below).
 
+## HiDPI navigation and synchronous capture (#6709, #8089)
+
+**Functional qualification passes; performance is mixed.** The physical NVIDIA
+FZK comparison includes DPR1 control, counterbalanced cap-only pairs, transition
+frames, exact shared runtime bytes, unchanged geometry and CSS picking, and
+full-quality PNGs with navigation/idle restoration. The capped DPR2 arm lowers
+GPU queue-completion latency, while median/p95 rAF cadence stays unchanged and
+maximum intervals become worse around settling. Do not advertise a frame-rate
+gain or hide the transition tail. Queue completion is not isolated GPU time.
+
+The capture repair must copy pixels synchronously after its own render: waiting
+for GPU completion or another animation frame can let presentation discard the
+WebGPU drawing buffer. An asynchronous reader can recreate that bug despite a
+generic synchronous-looking signature, so reject promise-like types/results
+and consume refused rejections without poisoning the next capture. A real
+lifecycle regression and visible model PNG establish more than dimensions alone.
+[Original cohort, compact traces, images and reviewed verdict](../../tests/evidence/hidpi-navigation-6709/native-20261023/result-20261024/reviewed-verdict.json)
+retain the measured limitation and the collapsed-sidebar scope. This establishes
+no loading-regression resolution for #6516.
+
 ## One element per rayon task in the element loop (#8094)
 
 **Shipped: the element `par_iter` uses `with_max_len(1)`.** A large void-heavy

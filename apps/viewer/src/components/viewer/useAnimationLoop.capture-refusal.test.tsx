@@ -48,7 +48,7 @@ for (const dpr of [2, 1]) {
     });
   }
 
-  it(`reads the newly submitted owned frame after deferred completion at DPR${dpr} (#6709)`, async () => {
+  it(`preserves pixels before presentation discards the WebGPU buffer at DPR${dpr} (#6709)`, async () => {
     const h = await captureLifecycle(dpr);
     try {
       h.renderer.requestRender(); h.step();
@@ -58,7 +58,7 @@ for (const dpr of [2, 1]) {
       const captured = h.bcf.captureSnapshot();
       await h.flush();
       assert.equal(h.gpu.stats.submissions, previous + 1, 'real owned render reached queue.submit');
-      assert.equal(h.captures.length, 0, 'submission alone does not permit readback before completion');
+      assert.equal(h.captures.length, 1, 'copy pixels in the submitting task before presentation can discard them');
       h.step(); h.step();
       assert.equal(h.gpu.stats.submissions, previous + 1, 'loop cannot replace the submitted owned frame');
       h.finishWork(); await h.flush(); h.step(); await h.flush();

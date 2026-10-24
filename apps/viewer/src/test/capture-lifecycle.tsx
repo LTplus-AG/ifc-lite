@@ -47,6 +47,7 @@ export async function captureLifecycle(dpr: number): Promise<CaptureLifecycle> {
   const savedDpr = Object.getOwnPropertyDescriptor(window, 'devicePixelRatio');
   let time = 0;
   let nextId = 0;
+  let drawingBufferAvailable = false;
   const callbacks = new Map<number, FrameRequestCallback>();
   globalThis.requestAnimationFrame = callback => { callbacks.set(++nextId, callback); return nextId; };
   globalThis.cancelAnimationFrame = id => { callbacks.delete(id); };
@@ -59,6 +60,9 @@ export async function captureLifecycle(dpr: number): Promise<CaptureLifecycle> {
       if (!callbacks.delete(id)) continue;
       callback(time);
     }
+    // WebGPU canvas contents expire at presentation, even when no other render
+    // overwrites them. Keep this boundary distinct from the submitted metadata.
+    drawingBufferAvailable = false;
   };
   let completeWork = () => {};
   let rejectWork = (_error: Error) => {};
@@ -75,6 +79,7 @@ export async function captureLifecycle(dpr: number): Promise<CaptureLifecycle> {
     complete: () => { waits++; return work; },
     resize: (width, height) => { resizes.push([width, height]); },
     submit: () => {
+      drawingBufferAvailable = true;
       submitted = { ghostIds: lastOptions.ghostExceptIds ? [...lastOptions.ghostExceptIds] : null,
         camera: { ...renderer.getCamera().getPosition() }, submission: gpu.stats.submissions };
     },
@@ -83,6 +88,7 @@ export async function captureLifecycle(dpr: number): Promise<CaptureLifecycle> {
   renderer.renderWithResult = options => { lastOptions = options ?? {}; frames.push(lastOptions); return originalRender(options); };
   const captures: CaptureObservation[] = [];
   canvas.toDataURL = () => {
+    assert.ok(drawingBufferAvailable, '#6709: pixels must be serialized before WebGPU presentation discards them');
     const observation = {
       width: canvas.width, height: canvas.height,
       ghostIds: submitted?.ghostIds ?? null,

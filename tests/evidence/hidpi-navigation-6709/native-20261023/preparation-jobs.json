@@ -1,0 +1,9 @@
+{
+  "candidate": "fa8d5ee6-6a3c-4f97-8f03-ac1828e96d46",
+  "base": "9c61a538-7da9-4ffb-84c9-a859ba34b618",
+  "pcBaseProducer": "9c8e0038-eca5-4617-b273-03f6a4ead815",
+  "pcCandidateOriginalProducer": "c3bc74a3-edcd-4003-aef4-a4a9fee28037",
+  "pcCandidateProducer": "83eed276-cf0b-4438-bde5-38d6a2205b2c",
+  "qualification": "b157da46-9b9f-460d-9eca-e98701d249f2",
+  "pcRepackScript": "/home/louistrue/build-workers/worker-state/storage-tasks/hidpi-6709-async-candidate-pc-20261024/shared-runtime-repack/repack-pc-candidate.py"
+}

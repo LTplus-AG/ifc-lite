@@ -48,14 +48,14 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
         }
     }
 
-    let (mut protected, mut feature_keepers) = protected_ids(index, &resolved, &adds, &requested_deletes);
+    let (mut protected, feature_keepers) = protected_ids(index, &resolved, &adds, &requested_deletes);
 
     // The requested deletes' cascade before any patch runs (so no
     // copy-on-write detach is known yet). It gates the "object is also
     // deleted by this plan" refusal, and is the final answer as well when
     // the patches leave its inputs as they are (see the combined pass below).
     let gating = delete::resolve_deletes(index, schema, &requested_deletes, &[], &protected, &feature_keepers);
-    let (gated_requested, gated_protected, gated_keepers) = (requested_deletes.clone(), protected.clone(), feature_keepers.clone());
+    let (gated_requested, gated_protected) = (requested_deletes.clone(), protected.clone());
     // Grows beyond `gating.removed`: a patch's placement rewrite (an old,
     // now-unreferenced axis placement chain) can orphan more records, found
     // and pruned as that patch is resolved. A patch's copy-on-write detach
@@ -142,14 +142,10 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     // The cascade reads only its inputs and the referrers collected before
     // this resolution started, so the gating pass is reused exactly when
     // the inputs are the same.
-    // What an appended record names must stay, an opening or projection
-    // too, unless it is the patched object itself: a patch never keeps a
-    // hostless feature.
-    let named = protect_what_appended_names(index, &list_edits, &removed, &mut appended);
-    protected.extend(named.iter().copied());
-    let patched_ids: HashSet<u32> = patched_objects.iter().copied().collect();
-    feature_keepers.extend(named.into_iter().filter(|id| !patched_ids.contains(id)));
-    let delete_result = if detach_requests.is_empty() && requested_deletes == gated_requested && protected == gated_protected && feature_keepers == gated_keepers {
+    // What an appended record names is kept from pruning. It does not keep
+    // a hostless opening or projection: only an Add does (`protected_ids`).
+    protected.extend(protect_what_appended_names(index, &list_edits, &removed, &mut appended));
+    let delete_result = if detach_requests.is_empty() && requested_deletes == gated_requested && protected == gated_protected {
         gating
     } else {
         let result = delete::resolve_deletes(index, schema, &requested_deletes, &detach_requests, &protected, &feature_keepers);

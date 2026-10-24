@@ -82,7 +82,10 @@ fn charge(work: usize) -> Result<(), RetainedExecutionError> {
     Ok(())
 }
 fn reserve<T>(values: &mut Vec<T>, count: usize) -> Result<(), RetainedExecutionError> {
-    resource::reserve_headers(values, count).map_err(RetainedExecutionError::Stopped)?.retain();
+    // Capture inside authenticated synchronous source work. The public wrapper
+    // also reserves real Vec backing when no execution account is installed.
+    OwnedResourceContext::capture_current().reserve_headers(values, count)
+        .map_err(RetainedExecutionError::Stopped)?.retain();
     Ok(())
 }
 fn reference_id(value: &AttributeValue) -> Result<u32, RetainedExecutionError> {

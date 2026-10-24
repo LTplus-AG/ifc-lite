@@ -6,8 +6,9 @@
 use ifc_lite_diff::{JsString, DocumentValue as Value,
     document_serde::{from_document, to_document},
     sidecar_document::{parse_ordered_json, serialize_sidecar}};
-use serde::{Deserialize, Serialize, Serializer, de::DeserializeOwned};
-use std::collections::BTreeMap;
+use serde::{Deserialize, Deserializer, Serialize, Serializer,
+    de::{DeserializeOwned, IgnoredAny, MapAccess, SeqAccess, Visitor}};
+use std::{collections::BTreeMap, fmt};
 
 fn parse(text: &str) -> Value { parse_ordered_json(text).unwrap() }
 fn keys(value: &Value) -> Vec<JsString> {
@@ -127,7 +128,8 @@ fn pr_8104_malformed_enum_documents_are_rejected() {
         parse(r#""Newtype""#), parse(r#""Tuple""#), parse(r#""Struct""#), // missing content
         parse(r#"{"Newtype":"x"}"#),           // wrong content type
         parse(r#"{"Tuple":{"a":1}}"#), parse(r#"{"Tuple":[1]}"#),
-        parse(r#"{"Struct":[2,null]}"#), parse(r#"{"Struct":{"id":300,"tag":null}}"#),
+        parse(r#"{"Struct":{"id":300,"tag":null}}"#), parse(r#"{"Struct":null}"#),
+        parse(r#"{"Struct":1}"#), parse(r#"{"Struct":"x"}"#),
         parse(r#"{"Missing":null}"#), parse(r#""Missing""#),
         Value::String(lone.clone()),           // non-scalar variant names never match
         Value::Object(vec![(lone, Value::Null)]),
@@ -199,4 +201,144 @@ fn pr_8104_index_mut_inserts_new_keys_in_canonical_object_order() {
     let oracle = parse(r#"{"name":"x","zeta":6,"4294967295":1,"01":1,"4294967294":4,"10":10,"3":false,"2":2,"0":0}"#);
     assert_eq!(doc, oracle);
     assert_eq!(serialize_sidecar(&doc), serialize_sidecar(&oracle));
+}
+
+/// Both transports must agree on `text`: the same verdict and, when it is
+/// accepted, the same value. `serde_json` is the oracle for the serde contract.
+fn accepts<T: DeserializeOwned + PartialEq + fmt::Debug>(text: &str) -> bool {
+    let json = serde_json::from_str::<T>(text);
+    let doc = from_document::<T>(parse(text));
+    match (&json, &doc) {
+        (Ok(a), Ok(b)) => assert_eq!(a, b, "{text}"),
+        (Err(_), Err(_)) => {},
+        _ => panic!("serde_json and the document bridge disagree on {text}: {json:?} vs {doc:?}"),
+    }
+    doc.is_ok()
+}
+fn check<T: DeserializeOwned + PartialEq + fmt::Debug>(cases: &[(&str, bool)]) {
+    for &(text, expected) in cases {
+        assert_eq!(accepts::<T>(text), expected, "{} <- {text}", std::any::type_name::<T>());
+    }
+}
+
+#[derive(Debug, PartialEq, Deserialize)]
+struct Pair(i32, i32);
+#[derive(Debug, PartialEq, Deserialize)]
+struct Point { x: i32, y: i32 }
+#[derive(Debug, PartialEq, Deserialize)]
+struct Holder { pair: (i32, i32) }
+
+#[test]
+fn pr_8104_plain_tuples_reject_short_and_long_sequences() {
+    check::<(i32, String)>(&[
+        ("[]", false), ("[1]", false),                         // too short
+        (r#"[1,"x"]"#, true),                                  // exact
+        (r#"[1,"x",2]"#, false), (r#"[1,"x",null]"#, false), (r#"[1,"x",[]]"#, false), // too long
+        (r#"["x",1]"#, false), (r#"[1.5,"x"]"#, false),        // wrong element types
+        ("null", false), ("1", false), ("true", false), (r#""ab""#, false), // not a sequence
+        (r#"{"a":1}"#, false), (r#"[[1,"x"]]"#, false),
+    ]);
+    check::<(i32,)>(&[("[]", false), ("[1]", true), ("[1,2]", false), ("1", false)]);
+    check::<[u8; 3]>(&[("[1,2]", false), ("[1,2,3]", true), ("[1,2,3,4]", false), ("[1,2,300]", false)]);
+    check::<Pair>(&[("[1]", false), ("[1,2]", true), ("[1,2,3]", false), (r#"{"0":1,"1":2}"#, false)]);
+    check::<Holder>(&[
+        (r#"{"pair":[1,2]}"#, true), (r#"{"pair":[1]}"#, false), (r#"{"pair":[1,2,3]}"#, false),
+    ]);
+    check::<Vec<(i32, i32)>>(&[
+        ("[]", true), ("[[1,2],[3,4]]", true), ("[[1,2,3]]", false), ("[[1]]", false), ("[[1,2],[3]]", false),
+    ]);
+    check::<Option<(i32, i32)>>(&[("null", true), ("[1,2]", true), ("[1,2,3]", false), ("[1]", false)]);
+}
+
+#[test]
+fn pr_8104_structs_from_sequences_and_objects_follow_the_same_contract() {
+    check::<Point>(&[
+        ("[1,2]", true), ("[1]", false), ("[]", false), ("[1,2,3]", false),
+        (r#"{"x":1,"y":2}"#, true), (r#"{"y":2,"x":1}"#, true), (r#"{"x":1}"#, false),
+        (r#"{"x":1,"y":2,"z":{"deep":[1,2,3]}}"#, true), // unknown fields are ignored, not left unread
+        (r#"{"x":1,"y":"2"}"#, false), ("null", false), ("1", false),
+    ]);
+}
+
+#[test]
+fn pr_8104_tuple_variants_reject_short_and_long_sequences() {
+    check::<Shape>(&[
+        (r#"{"Tuple":[1,"x"]}"#, true),
+        (r#"{"Tuple":[]}"#, false), (r#"{"Tuple":[1]}"#, false),
+        (r#"{"Tuple":[1,"x",2]}"#, false), (r#"{"Tuple":[1,"x",null]}"#, false), (r#"{"Tuple":[1,"x",[]]}"#, false),
+        (r#"{"Tuple":["x",1]}"#, false),
+        (r#"{"Tuple":null}"#, false), (r#"{"Tuple":1}"#, false), (r#"{"Tuple":true}"#, false),
+        (r#"{"Tuple":"ab"}"#, false), (r#"{"Tuple":{"a":1}}"#, false), (r#"{"Tuple":{"0":1,"1":"x"}}"#, false),
+        (r#""Tuple""#, false), (r#"{"Tuple":[1,"x"],"Unit":null}"#, false),
+        (r#"{"Nested":{"Tuple":[1,"x"]}}"#, true), (r#"{"Nested":{"Tuple":[1,"x",2]}}"#, false),
+    ]);
+    #[derive(Debug, PartialEq, Serialize, Deserialize)]
+    enum Arity { Zero(), Three(u8, u8, u8) }
+    check::<Arity>(&[
+        (r#"{"Zero":[]}"#, true), (r#"{"Zero":[1]}"#, false), (r#"{"Zero":null}"#, false), (r#""Zero""#, false),
+        (r#"{"Three":[1,2,3]}"#, true), (r#"{"Three":[1,2]}"#, false), (r#"{"Three":[1,2,3,4]}"#, false),
+        (r#"{"Three":[1,2,256]}"#, false),
+    ]);
+    for case in [Arity::Zero(), Arity::Three(1, 2, 3)] {
+        let doc = to_document(&case).unwrap();
+        assert_eq!(doc, parse(&serde_json::to_string(&case).unwrap()));
+        assert_eq!(from_document::<Arity>(doc).unwrap(), case);
+    }
+}
+
+#[test]
+fn pr_8104_struct_variants_accept_objects_and_field_arrays_like_serde_json() {
+    check::<Shape>(&[
+        (r#"{"Struct":{"id":2,"tag":null}}"#, true), (r#"{"Struct":{"tag":"t","id":2}}"#, true),
+        (r#"{"Struct":[2,null]}"#, true), (r#"{"Struct":[2,"t"]}"#, true),
+        (r#"{"Struct":[2]}"#, false), (r#"{"Struct":[]}"#, false), (r#"{"Struct":[2,null,3]}"#, false),
+        (r#"{"Struct":{"id":2}}"#, true), (r#"{"Struct":{"tag":null}}"#, false),
+        (r#"{"Struct":{"id":2,"tag":null,"extra":[1,2,3]}}"#, true),
+        (r#"{"Struct":null}"#, false), (r#"{"Struct":1}"#, false), (r#"{"Struct":"x"}"#, false),
+        (r#"{"Struct":{"id":300,"tag":null}}"#, false), (r#""Struct""#, false),
+    ]);
+}
+
+/// Reads at most one element/entry and leaves the rest of the container unread.
+#[derive(Debug, PartialEq)]
+struct First;
+struct FirstVisitor;
+impl<'de> Visitor<'de> for FirstVisitor {
+    type Value = First;
+    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { f.write_str("a sequence or map") }
+    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<First, A::Error> { seq.next_element::<i32>()?; Ok(First) }
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<First, A::Error> { map.next_entry::<String, i32>()?; Ok(First) }
+}
+impl<'de> Deserialize<'de> for First {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> { d.deserialize_any(FirstVisitor) }
+}
+/// Reads a map key and never its value.
+#[derive(Debug, PartialEq)]
+struct KeyOnly;
+struct KeyOnlyVisitor;
+impl<'de> Visitor<'de> for KeyOnlyVisitor {
+    type Value = KeyOnly;
+    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { f.write_str("a map") }
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<KeyOnly, A::Error> { map.next_key::<String>()?; Ok(KeyOnly) }
+}
+impl<'de> Deserialize<'de> for KeyOnly {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> { d.deserialize_map(KeyOnlyVisitor) }
+}
+
+#[test]
+fn pr_8104_visitors_that_leave_input_unread_are_rejected_and_complete_ones_are_not() {
+    // Visitors that stop early fail on serde_json (`end_seq`/`end_map`) and here.
+    check::<First>(&[
+        ("[]", true), ("[1]", true), ("[1,2]", false), ("[1,2,3]", false),
+        ("{}", true), (r#"{"a":1}"#, true), (r#"{"a":1,"b":2}"#, false),
+    ]);
+    // A key whose value was never consumed is also unread input.
+    check::<KeyOnly>(&[("{}", true), (r#"{"a":1}"#, false), (r#"{"a":1,"b":2}"#, false)]);
+    // Legitimate visitors that read everything are untouched, however deep.
+    check::<Vec<i32>>(&[("[]", true), ("[1,2,3]", true), ("[1,2.5]", false)]);
+    check::<BTreeMap<String, Vec<i32>>>(&[("{}", true), (r#"{"a":[1,2],"b":[]}"#, true), (r#"{"a":[1],"b":{}}"#, false)]);
+    for text in ["null", "1", r#""s""#, "[]", "[1,[2,{\"a\":[3,{}]}],{}]", r#"{"a":{"b":[1,2,{"c":null}]},"d":[]}"#] {
+        assert!(from_document::<IgnoredAny>(parse(text)).is_ok(), "{text}");
+        assert!(serde_json::from_str::<IgnoredAny>(text).is_ok(), "{text}");
+    }
 }

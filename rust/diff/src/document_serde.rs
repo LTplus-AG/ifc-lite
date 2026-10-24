@@ -47,6 +47,13 @@ impl<'de> de::SeqAccess<'de> for Sequence {
         self.0.next().map(|value| seed.deserialize(value)).transpose()
     }
 }
+impl Sequence {
+    /// serde_json's `end_seq`: a visitor that returns `Ok` without reading every
+    /// element (a tuple, tuple variant or struct given too many) is an error.
+    fn end(self) -> Result<(), Error> {
+        match self.0.len() { 0 => Ok(()), n => Err(error(format!("{n} unread trailing element(s) in sequence"))) }
+    }
+}
 struct Object { entries: std::vec::IntoIter<(JsString, DocumentValue)>, next: Option<DocumentValue> }
 impl<'de> de::MapAccess<'de> for Object {
     type Error = Error;
@@ -57,6 +64,16 @@ impl<'de> de::MapAccess<'de> for Object {
     }
     fn next_value_seed<V: de::DeserializeSeed<'de>>(&mut self, seed: V) -> Result<V::Value, Error> {
         seed.deserialize(self.next.take().ok_or_else(|| error("value without key"))?)
+    }
+}
+impl Object {
+    /// serde_json's `end_map`: entries (or a key whose value was never read)
+    /// left behind by a visitor that returned `Ok` are an error.
+    fn end(self) -> Result<(), Error> {
+        match self.entries.len() + usize::from(self.next.is_some()) {
+            0 => Ok(()),
+            n => Err(error(format!("{n} unread trailing object entries"))),
+        }
     }
 }
 macro_rules! integer {
@@ -83,8 +100,18 @@ impl<'de> Deserializer<'de> for DocumentValue {
                 None => visitor.visit_newtype_struct(serde::de::value::SeqDeserializer::<_, Error>::new(
                     s.units().iter().copied().map(IntoDeserializer::into_deserializer))),
             },
-            Self::Array(a) => visitor.visit_seq(Sequence(a.into_iter())),
-            Self::Object(o) => visitor.visit_map(Object { entries: o.into_iter(), next: None }),
+            Self::Array(a) => {
+                let mut seq = Sequence(a.into_iter());
+                let value = visitor.visit_seq(&mut seq)?;
+                seq.end()?;
+                Ok(value)
+            },
+            Self::Object(o) => {
+                let mut map = Object { entries: o.into_iter(), next: None };
+                let value = visitor.visit_map(&mut map)?;
+                map.end()?;
+                Ok(value)
+            },
         }
     }
     fn deserialize_newtype_struct<V: Visitor<'de>>(self, name: &'static str, visitor: V) -> Result<V::Value, Error> {

@@ -50,10 +50,8 @@ impl<'de> de::VariantAccess<'de> for Variant {
             _ => Err(error("expected an array for tuple variant")),
         }
     }
-    fn struct_variant<V: Visitor<'de>>(self, _: &'static [&'static str], visitor: V) -> Result<V::Value, Error> {
-        match self.content("struct")? {
-            object @ Value::Object(_) => de::Deserializer::deserialize_map(object, visitor),
-            _ => Err(error("expected an object for struct variant")),
-        }
+    fn struct_variant<V: Visitor<'de>>(self, fields: &'static [&'static str], visitor: V) -> Result<V::Value, Error> {
+        // Like serde_json (and a plain struct), accept an object or a field array.
+        de::Deserializer::deserialize_struct(self.content("struct")?, "", fields, visitor)
     }
 }

@@ -100,3 +100,25 @@ fn issue_6537_empty_owned_columns_build_an_empty_index_and_discovery() {
     assert_eq!(discovery.project_id, None);
     assert!(discovery.buffered_jobs.is_empty());
 }
+
+#[test]
+fn issue_7782_disabled_sites_keep_metadata_without_scheduling_geometry() {
+    // C4-6a: first-site metadata is independent of the geometry skip set.
+    let content = b"DATA;\n#70=ifcsite($,$,$,$,$,$,$,$,$,$,$,$,$,$);\n#50=IFCWALL($,$,$,$,$,$,$,$,$);\n#5=IFCSITE($,$,$,$,$,$,$,$,$,$,$,$,$,$);\nENDSEC;";
+    let (ids, starts, lengths, classes) = scan(content);
+    let disabled = ["IFCSITE".to_owned()].into_iter().collect();
+    let (_, enabled) = ShardedColumns::borrowed(&ids, &starts, &lengths, &classes).unwrap()
+        .discover_and_build(content, &Default::default()).unwrap();
+    let (_, borrowed) = ShardedColumns::borrowed(&ids, &starts, &lengths, &classes).unwrap()
+        .discover_and_build(content, &disabled).unwrap();
+    let (_, owned) = ShardedColumns::owned(ids, starts, lengths, &classes).unwrap()
+        .discover_and_build(content, &disabled).unwrap();
+    assert_eq!(enabled.buffered_jobs.iter().map(|job| job.0).collect::<Vec<_>>(), [70, 50, 5]);
+    assert_eq!(enabled.total_jobs, 3);
+    assert_eq!(enabled.site_position.map(|site| site.0), Some(70));
+    for discovery in [borrowed, owned] {
+        assert_eq!(discovery.buffered_jobs.iter().map(|job| job.0).collect::<Vec<_>>(), [50]);
+        assert_eq!(discovery.total_jobs, 1);
+        assert_eq!(discovery.site_position, enabled.site_position);
+    }
+}

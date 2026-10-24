@@ -271,11 +271,10 @@ registry version and validation receipts before admitting the crate:
    Do not merge a registry consumer ahead of the release-order change: the next
    version bump otherwise publishes processing before its runtime requirement.
 
-The current 21.5.0 workspace and committed lockfile already agree; this slice
-does not change their versions or regenerate the lock. The earlier 21.4.0
-prerequisite absence is historical: compatible core/clash/geometry 21.5.0
-packages are available. This does not establish that the current runtime
-compiles against their published APIs. Record archive resolution and actual
+The 22.6.0 workspace and committed lockfile agree; this slice adds only the
+runtime workspace requirement and does not regenerate the lock. Core, clash
+and geometry 22.6.0 have been published, so the registry-backed archive graph
+can be qualified at this version. Record archive resolution and actual
 verification before claiming publishability. Future version changes continue
 through the normal changeset/release synchronization flow.
 

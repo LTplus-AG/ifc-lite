@@ -48,14 +48,14 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
         }
     }
 
-    let (mut protected, feature_keepers) = protected_ids(index, &resolved, &adds, &requested_deletes);
+    let (mut protected, mut feature_keepers) = protected_ids(index, &resolved, &adds, &requested_deletes);
 
     // The requested deletes' cascade before any patch runs (so no
     // copy-on-write detach is known yet). It gates the "object is also
     // deleted by this plan" refusal, and is the final answer as well when
     // the patches leave its inputs as they are (see the combined pass below).
     let gating = delete::resolve_deletes(index, schema, &requested_deletes, &[], &protected, &feature_keepers);
-    let (gated_requested, gated_protected) = (requested_deletes.clone(), protected.clone());
+    let (gated_requested, gated_protected, gated_keepers) = (requested_deletes.clone(), protected.clone(), feature_keepers.clone());
     // Grows beyond `gating.removed`: a patch's placement rewrite (an old,
     // now-unreferenced axis placement chain) can orphan more records, found
     // and pruned as that patch is resolved. A patch's copy-on-write detach
@@ -87,7 +87,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
             Disposition::Preserve | Disposition::Delete | Disposition::Add(_) | Disposition::AddType(_) => {}
             Disposition::Patch(patch) => {
                 if removed.contains(&id) {
-                    let reason = if gating.unhosted.contains(&id) {
+                    let reason = if gating.unhosted.contains(&id) && !requested_deletes.contains(&id) {
                         "opening or projection has no host left: IFC ties it to exactly one element, so it goes with its host; delete wins"
                     } else {
                         "object is also deleted by this plan; delete wins"
@@ -142,8 +142,11 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     // The cascade reads only its inputs and the referrers collected before
     // this resolution started, so the gating pass is reused exactly when
     // the inputs are the same.
-    protect_what_appended_names(index, &list_edits, &removed, &mut appended, &mut protected);
-    let delete_result = if detach_requests.is_empty() && requested_deletes == gated_requested && protected == gated_protected {
+    // What an appended record names must stay, an opening or projection too.
+    let named = protect_what_appended_names(index, &list_edits, &removed, &mut appended);
+    protected.extend(named.iter().copied());
+    feature_keepers.extend(named);
+    let delete_result = if detach_requests.is_empty() && requested_deletes == gated_requested && protected == gated_protected && feature_keepers == gated_keepers {
         gating
     } else {
         let result = delete::resolve_deletes(index, schema, &requested_deletes, &detach_requests, &protected, &feature_keepers);
@@ -254,7 +257,8 @@ fn protected_ids(
         adds.iter().flat_map(|&(_, item)| item.references()).filter_map(|r| index.resolve(r)).filter(|id| !requested_deletes.contains(id)).collect();
     // The Adds name the file's owner history too.
     let history = index.first_owner_history.filter(|_| !adds.is_empty());
-    let protected = patched.chain(named.iter().copied()).chain(history).filter(|id| !requested_deletes.contains(id)).collect();
+    let mut protected: HashSet<u32> = patched.chain(history).filter(|id| !requested_deletes.contains(id)).collect();
+    protected.extend(&named);
     (protected, named)
 }
 
@@ -274,8 +278,8 @@ fn attach_context_to_project(
 }
 
 /// Drop the members a write adds to a set the deletes take (nothing would
-/// name them), then keep alive every source record an appended one still
-/// names: a member a copy-on-write clone reuses, the owner history. An
+/// name them), then return every source record an appended one still
+/// names, for the cascade to keep: a member a copy-on-write clone reuses, the owner history. An
 /// appended record's own id is above `max_id`, so only what it names in the
 /// source is kept.
 fn protect_what_appended_names(
@@ -283,8 +287,7 @@ fn protect_what_appended_names(
     list_edits: &HashMap<(u32, usize), attrs::ListEdit>,
     removed: &HashSet<u32>,
     appended: &mut Vec<(u32, String)>,
-    protected: &mut HashSet<u32>,
-) {
+) -> Vec<u32> {
     let orphans: HashSet<u32> = list_edits
         .iter()
         .filter(|((set, _), _)| removed.contains(set))
@@ -295,7 +298,8 @@ fn protect_what_appended_names(
     for (_, text) in appended.iter() {
         crate::step_text::refs_in_line(text.as_bytes(), &mut named);
     }
-    protected.extend(named.into_iter().filter(|&id| id <= index.max_id));
+    named.retain(|&id| id <= index.max_id);
+    named
 }
 
 /// A refusal for each surviving object's write into a record the plan

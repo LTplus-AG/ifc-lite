@@ -102,8 +102,9 @@ fn prunable(file_schema: &str, entity_type: &str) -> bool {
 /// with its host, or with the relationship itself, whatever else still names
 /// it. A second host that survives (a file breaking the one-host rule) keeps
 /// it, and so does an Add that names it. A patch on it does not: the patch
-/// is refused, as a patch on anything the plan deletes is. Every removed relationship asks, so the last one to go decides, in any
-/// order. `None` too while the feature's referrers are not collected yet:
+/// is refused, as a patch on anything the plan deletes is. Every removed
+/// relationship asks, so the last one to go decides, in any order. `None`
+/// too while the feature's referrers are not collected yet:
 /// the relationship itself always names it. `rel_attrs` are the
 /// relationship's parsed attributes.
 fn hosted_feature(index: &FileIndex, file_schema: &str, rel_type: &str, rel_attrs: &[AttrRefs], removed: &HashSet<u32>) -> Option<u32> {

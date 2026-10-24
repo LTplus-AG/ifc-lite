@@ -392,3 +392,30 @@ fn an_opening_an_add_names_stays_without_its_host() {
         assert_eq!(report.added, 1, "{schema}: {:?}", report.refusals);
     }
 }
+
+/// A projection follows the same rule, and so does an opening whose voids
+/// relationship (not its host) the plan deletes; an opening the plan also
+/// deletes outright says so.
+#[test]
+fn a_patched_projection_or_voidless_opening_goes_and_the_reason_fits() {
+    let rename = |id| (ObjectRef::Id(id), Disposition::Patch(Patch { name: Some("Renamed".into()), ..Default::default() }));
+    for schema in SCHEMAS {
+        let projected = String::from_utf8(host_with_filled_opening(schema))
+            .unwrap()
+            .replace("IFCOPENINGELEMENT(", "IFCPROJECTIONELEMENT(")
+            .replace("IFCRELVOIDSELEMENT(", "IFCRELPROJECTSELEMENT(");
+        assert!(projected.contains("IFCRELPROJECTSELEMENT("), "{schema}: fixture");
+        let (report, after) = run(projected.as_bytes(), vec![(ObjectRef::Id(10), Disposition::Delete), rename(70)]);
+        assert!(!after.contains_key(&70), "{schema}: the projection goes with its host");
+        assert!(report.refusals.iter().any(|r| r.object == ObjectRef::Id(70) && r.reason.contains("no host left")), "{schema}: {:?}", report.refusals);
+
+        let content = host_with_filled_opening(schema);
+        let (report, after) = run(&content, vec![(ObjectRef::Id(71), Disposition::Delete), rename(70)]);
+        assert!(after.contains_key(&10) && !after.contains_key(&70), "{schema}: the host stays, the opening goes with its voids");
+        assert!(report.refusals.iter().any(|r| r.object == ObjectRef::Id(70) && r.reason.contains("no host left")), "{schema}: {:?}", report.refusals);
+
+        let (report, _) = run(&content, vec![(ObjectRef::Id(10), Disposition::Delete), (ObjectRef::Id(70), Disposition::Delete), rename(70)]);
+        let refusal = report.refusals.iter().find(|r| r.object == ObjectRef::Id(70)).expect("refused");
+        assert!(refusal.reason.contains("also deleted by this plan"), "{schema}: {}", refusal.reason);
+    }
+}

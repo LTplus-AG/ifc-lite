@@ -1,15 +1,15 @@
 --- a/rust/export/src/plan/add_mapped.rs
 +++ b/rust/export/src/plan/add_mapped.rs
-@@ -94,7 +94,7 @@ impl AddState<'_> {
-             }
+@@ -95,7 +95,7 @@ impl AddState<'_> {
          }
-         let chosen = body.iter().map(|&(_, c)| c).find(|&c| Some(c) == self.body_context).or(body.first().map(|&(_, c)| c));
--        Ok(body.into_iter().filter(|_| chosen.is_some()).collect())
-+        Ok(body.into_iter().filter(|&(_, c)| Some(c) == chosen).collect())
-     }
- 
-     /// Whether representation `rep` is body geometry, the way the geometry
-@@ -172,7 +172,7 @@ fn transformation_operator(emit: &mut Emit, shared: &mut Shared, m: &[[f64; 4];
+         let chosen = body.iter().map(|&(_, _, c)| c).find(|&c| Some(c) == self.body_context).or(body.first().map(|&(_, _, c)| c));
+         let mut out = Vec::new();
+-        for (map, rep, context) in body.into_iter().filter(|_| chosen.is_some()) {
++        for (map, rep, context) in body.into_iter().filter(|&(_, _, c)| Some(c) == chosen) {
+             let items = list_attr(index, schema, rep, &entity(rep), "Items").unwrap_or_default();
+             if !live(&rep) || items.iter().any(|i| !live(i)) {
+                 return Err(format!("a Body map of type {what} is deleted by this plan"));
+@@ -184,7 +184,7 @@ fn transformation_operator(emit: &mut Emit, shared: &mut Shared, m: &[[f64; 4];
      let key = SharedKey::Operator(std::array::from_fn(|i| (m[i % 3][i / 3] + 0.0).to_bits()));
      shared.get_or(key, || {
          let (x, y, z) = (emit.direction(column(0))?, emit.direction(column(1))?, emit.direction(column(2))?);

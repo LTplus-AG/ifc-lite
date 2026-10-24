@@ -56,6 +56,7 @@ mod props;
 mod props_lookup;
 mod props_synth;
 mod referrers;
+mod removal;
 mod resolve;
 mod skeleton;
 mod tessellation;
@@ -76,6 +77,7 @@ pub use add_types::{
     PropertyValue, Representation, TypeLink,
 };
 pub use placement::IDENTITY;
+pub use removal::{Removal, RemovalReason};
 pub use skeleton::{skeleton, MapConversion, MapUnit, Skeleton, SkeletonRoot, SKELETON_SCHEMA};
 pub use types::{
     Disposition, DroppedRepresentation, ExportPlan, GeometryPatch, ObjectRef, Patch, PlacementPatch, PlanContext, PlanError,

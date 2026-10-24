@@ -10,6 +10,7 @@ use crate::step_ids::IdAllocator;
 use super::index::FileIndex;
 use super::add_types::AddItem;
 use super::patch::{apply_patch, PatchOutput};
+use super::removal::RemovalReason;
 use super::types::{Disposition, DroppedRepresentation, ExportPlan, ObjectRef, Refusal};
 use super::{add, attrs, delete, geometry, owner_history};
 
@@ -17,6 +18,9 @@ pub(crate) struct Resolution {
     pub(crate) appended: Vec<(u32, String)>,
     pub(crate) edits_by_id: HashMap<u32, BTreeMap<usize, String>>,
     pub(crate) removed: HashSet<u32>,
+    /// Why the delete cascade removed each id it did, the sweep's deletes
+    /// as replaced; an id of `removed` it lacks is one a patch replaced.
+    pub(crate) reasons: HashMap<u32, RemovalReason>,
     pub(crate) refusals: Vec<Refusal>,
     pub(crate) patched: usize,
     pub(crate) added: usize,
@@ -55,6 +59,9 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     // deleted by this plan" refusal, and is the final answer as well when
     // the patches leave its inputs as they are (see the combined pass below).
     let gating = delete::resolve_deletes(index, schema, &requested_deletes, &[], &protected, &feature_keepers);
+    // What the requested deletes alone take, to tell what the patches removed.
+    let any_patch = resolved.iter().any(|&(_, d)| matches!(d, Disposition::Patch(_)));
+    let gating_removed = any_patch.then(|| gating.removed.clone());
     let (gated_requested, gated_protected) = (requested_deletes.clone(), protected.clone());
     // Grows beyond `gating.removed`: a patch's placement rewrite (an old,
     // now-unreferenced axis placement chain) can orphan more records, found
@@ -120,15 +127,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
         attach_context_to_project(index, schema, context, &removed, &mut list_edits);
     }
 
-    // What the old shapes leave behind. The annotations the sweep finds (a
-    // styled item, a layer entry) go through delete below, which repairs
-    // whatever names them.
-    if !geometry_cuts.is_empty() {
-        let sweep = geometry::sweep(index, schema, &geometry_cuts, &removed);
-        removed.extend(sweep.pruned);
-        requested_deletes.extend(sweep.delete);
-        detach_requests.extend(sweep.detach);
-    }
+    let swept = sweep_old_shapes(index, schema, &geometry_cuts, &mut removed, &mut requested_deletes, &mut detach_requests);
 
     // The one place the top-level deletes' cascade and every patch's
     // copy-on-write detach are resolved together: a relationship either
@@ -150,6 +149,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
         result
     };
     removed.extend(delete_result.removed);
+    let reasons = replaced_by_patches(delete_result.reasons, &removed, gating_removed.as_ref(), (swept, &gated_requested));
     refusals.extend(lost_writes(edited, &removed));
     refusals.extend(overridden_preserves(&resolved, &removed, &delete_result.unhosted, &gated_requested));
     for (slot, strip) in delete_result.stripped {
@@ -171,7 +171,55 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
         state.build_all(&adds, &mut ids, &mut edits_by_id, &mut appended, &mut refusals)
     };
 
-    Resolution { appended, edits_by_id, removed, refusals, patched, added, patched_objects, dropped_representations }
+    Resolution { appended, edits_by_id, removed, reasons, refusals, patched, added, patched_objects, dropped_representations }
+}
+
+/// The cascade's reasons with what the patches removed themselves marked
+/// replaced: everything in `removed` the requested deletes' own cascade
+/// (`gating_removed`, `None` when the plan has no patch) did not take (an old
+/// placement chain or body, a relationship a copy-on-write left), and the
+/// sweep's annotations,
+/// which went through the cascade as deletes the plan did not request
+/// (`requested` is the plan's own, before the sweep added them).
+fn replaced_by_patches(
+    mut reasons: HashMap<u32, RemovalReason>,
+    removed: &HashSet<u32>,
+    gating_removed: Option<&HashSet<u32>>,
+    (swept, requested): (HashSet<u32>, &HashSet<u32>),
+) -> HashMap<u32, RemovalReason> {
+    if let Some(gated) = gating_removed {
+        for id in removed.iter().copied().filter(|id| !gated.contains(id)) {
+            let reason = reasons.entry(id).or_insert(RemovalReason::Replaced);
+            *reason = reason.first(RemovalReason::Replaced);
+        }
+    }
+    for id in swept.into_iter().filter(|id| !requested.contains(id)) {
+        reasons.insert(id, RemovalReason::Replaced);
+    }
+    reasons
+}
+
+/// What the old shapes of the geometry patches leave behind: what only they
+/// used is pruned, and the annotations they had (a styled item, a layer
+/// entry) go through delete, which repairs whatever names them. Returns
+/// those annotations, so their removal is reported as replaced.
+fn sweep_old_shapes(
+    index: &FileIndex,
+    schema: &str,
+    geometry_cuts: &[(u32, u32)],
+    removed: &mut HashSet<u32>,
+    requested_deletes: &mut HashSet<u32>,
+    detach_requests: &mut Vec<(u32, usize, u32)>,
+) -> HashSet<u32> {
+    if geometry_cuts.is_empty() {
+        return HashSet::new();
+    }
+    let sweep = geometry::sweep(index, schema, geometry_cuts, removed);
+    removed.extend(sweep.pruned);
+    detach_requests.extend(sweep.detach);
+    let swept: HashSet<u32> = sweep.delete.into_iter().collect();
+    requested_deletes.extend(swept.iter().copied());
+    swept
 }
 
 /// The owner history a patch's new records name: the file's first, else one

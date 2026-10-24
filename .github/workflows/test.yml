@@ -1921,6 +1921,22 @@ jobs:
               --mutation apps/report-service/test/fixtures/admitted-copy-cleanup.oracle.patch \
               --test apps/report-service/test/public-delivery.integration.test.ts
           fi
+      - name: Independently observe runtime plane identity and capability guards
+        # #7955 SHARED-NUMERICAL-INTEGRATION-01: H2/E3 can win the selector
+        # above. This mandatory step also runs after an earlier oracle fails.
+        if: ${{ !cancelled() }}
+        timeout-minutes: 18
+        run: |
+          changed=$(git diff --name-only origin/main...HEAD -- \
+            rust/geometry-runtime/src/worker_clip.rs \
+            rust/geometry-runtime/tests/plane_faults.rs \
+            rust/geometry-runtime/tests/fixtures/plane-behaviour.oracle.patch \
+            rust/geometry/src/document/retained_plane.rs \
+            rust/geometry/src/document/retained_plane_tests.rs \
+            scripts/runtime-plane-oracle.py)
+          if [[ -n "$changed" ]]; then
+            python3 scripts/runtime-plane-oracle.py
+          fi
       - name: Remove owned report oracle prerequisites
         if: always() && steps.report-integration.outputs.needed == 'true'
         uses: ./.github/actions/setup-report-integration

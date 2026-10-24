@@ -31,9 +31,9 @@ pub(super) fn lower(
     let position_transform =
         SurfaceOfLinearExtrusionProcessor::position_transform(entity, decoder)?;
     // `ExtrudedDirection` is mandatory, read through the leaf reader. A `$`,
-    // `*` or absent one used to sweep along an invented +Z; it is refused and
-    // counted on the surface (D3), and so is a non-reference value, as for
-    // `IfcExtrudedAreaSolid`.
+    // `*` or non-reference value used to sweep along an invented +Z; it is now
+    // refused and counted on the surface (D3). An absent one was already an
+    // error, and is counted now.
     let direction = match decoder
         .direction3_at(entity, slot::IfcSurfaceOfLinearExtrusion::EXTRUDED_DIRECTION.index())?
     {

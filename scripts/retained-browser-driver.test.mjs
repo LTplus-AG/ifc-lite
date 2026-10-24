@@ -160,3 +160,27 @@ test('#8048 delayed startup injects the fault into its own transport', async () 
   assert.equal(peer.retired, true);
   assert.equal(driver.live(), false);
 });
+
+// #7955: transport corruption must retire the driver rather than publish a
+// partial mesh. These exercise the real reader, not SDK numerical correctness.
+test('J5 source corner stream is preserved and malformed normals refuse', async () => {
+  for (const fault of ['none', 'zero', 'nan', 'infinity', 'inward', 'short']) {
+    const constructed = nextPeer();
+    const driver = new RetainedDriver();
+    const peer = await constructed;
+    if (fault === 'zero') peer.streams[4].fill(0);
+    if (fault === 'nan') peer.streams[4][0] = NaN;
+    if (fault === 'infinity') peer.streams[4][0] = Infinity;
+    if (fault === 'inward') peer.streams[4][0] = -1;
+    if (fault === 'short') peer.shortNormals = true;
+    if (fault === 'none') {
+      const { mesh } = await evaluate(driver);
+      assert.ok(Math.abs(mesh.flat_corner_normals[3] - Math.cos(0.3)) < 1e-12);
+      assert.ok(Math.abs(mesh.flat_corner_normals[4] - Math.sin(0.3)) < 1e-12);
+      assert.equal(mesh.flat_corner_normals[0], 1);
+    } else {
+      await assert.rejects(evaluate(driver), /normal|nonfinite|short/);
+    }
+    driver.retire();
+  }
+});

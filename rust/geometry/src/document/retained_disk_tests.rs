@@ -261,21 +261,12 @@ fn retained_disk_reaches_display_only_through_the_single_contract() {
     );
     let (from, to) = frames(&request);
     let packet = RetainedCompletion::new(request, tessellation, from, to);
-    assert_eq!(
-        document.publish_retained_display(
-            &packet,
-            3,
-            RetainedDisplayContract::AnalyticSurfaceNormals,
-            &[(50, identity)]
-        ),
-        Err(RetainedRefusal::AnalyticNormalsUnavailable)
-    );
     assert_eq!(document.revision(), 1, "refusals change nothing");
     let (definition, occurrences) = document
         .publish_retained_display(
             &packet,
             3,
-            RetainedDisplayContract::UnstyledFlatSourceOnly,
+            RetainedDisplayContract::AnalyticSurfaceNormals,
             &[(50, identity)],
         )
         .unwrap();

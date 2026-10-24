@@ -88,9 +88,6 @@ pub enum RetainedRefusal {
     /// Revision-local worker faces are not persistent IFC face identities.
     #[error("persistent IFC face provenance is unavailable")]
     PersistentFaceProvenanceUnavailable,
-    /// Flat corner normals are not smooth analytic surface normals.
-    #[error("analytic surface normals are unavailable")]
-    AnalyticNormalsUnavailable,
     /// No style, material or texture is attributed to a retained display.
     #[error("IFC appearance is unavailable")]
     IfcAppearanceUnavailable,
@@ -98,13 +95,13 @@ pub enum RetainedRefusal {
     Document(#[from] DocumentError),
 }
 
-/// What a caller wants a retained display mesh to mean. Only
-/// [`Self::UnstyledFlatSourceOnly`] is supported; every other claim is refused
-/// with its own [`RetainedRefusal`] rather than silently downgraded.
+/// What a caller wants a retained display mesh to mean. Source-surface normals
+/// are supported; IFC appearance and persistent face identity remain refused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum RetainedDisplayContract {
-    /// Flat-shaded, unstyled tessellation of the raw authored solid only. No
+    /// Historical selector for unstyled source-only tessellation. Source corner
+    /// normals are preserved (including smooth surfaces). No
     /// enclosing boolean, opening, style or persistent face identity applies.
     UnstyledFlatSourceOnly,
     PersistentIfcFaces,
@@ -161,14 +158,15 @@ impl RetainedRequest {
     }
 }
 
-/// A worker's owned f64 result. Flat corner normals and revision-local faces
-/// stay distinct from smooth analytic shading and persistent IFC faces.
+/// A worker's owned f64 result. Source corner normals and revision-local faces
+/// preserve surface shading but do not establish persistent IFC faces.
 /// Positions are in the request's evaluation frame (metres).
 #[derive(Debug, Clone)]
 pub struct RetainedTessellation {
     pub positions: Vec<f64>,
     pub indices: Vec<u32>,
     /// Three components per triangle corner, not per vertex.
+    /// Historical wire name: oriented source-surface normals, one per corner.
     pub flat_corner_normals: Vec<f64>,
     /// One worker-local face index per triangle, below `source_face_count`.
     pub revision_local_faces: Vec<u32>,
@@ -328,12 +326,10 @@ impl GeometryDocument {
         occurrences: &[(u32, [f64; 16])],
     ) -> Result<(DefinitionHandle, Vec<OccurrenceHandle>), RetainedRefusal> {
         match contract {
-            RetainedDisplayContract::UnstyledFlatSourceOnly => {}
+            RetainedDisplayContract::UnstyledFlatSourceOnly
+            | RetainedDisplayContract::AnalyticSurfaceNormals => {}
             RetainedDisplayContract::PersistentIfcFaces => {
                 return Err(RetainedRefusal::PersistentFaceProvenanceUnavailable)
-            }
-            RetainedDisplayContract::AnalyticSurfaceNormals => {
-                return Err(RetainedRefusal::AnalyticNormalsUnavailable)
             }
             RetainedDisplayContract::IfcAppearance => {
                 return Err(RetainedRefusal::IfcAppearanceUnavailable)

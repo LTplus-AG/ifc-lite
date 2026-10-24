@@ -26,11 +26,17 @@ while True:
     elif opcode in (3, 9):
         data = struct.pack('<QQ', 1, 1 if opcode == 3 else 2)
     elif opcode == 10:
-        counts = (1000000, 1, 1, 0, 0, 0) if Path(__file__).with_name('oversize').exists() else (1, 1, 1, 0, 0, 0)
+        counts = (1000000, 1, 1, 0, 0, 0) if Path(__file__).with_name('oversize').exists() else (3, 1, 1, 0, 0, 0)
         data = struct.pack('<IIIIII', *counts)
     elif opcode == 11:
         stream, offset, count = struct.unpack('<III', body[36:48])
-        data = bytes(count * (8 if stream in (1, 4) else 4))
+        # #7955: valid oriented fixture corners keep the lifecycle fault reachable.
+        # These synthetic streams certify no SDK geometry.
+        streams = {1: [0., 0., 0., 1., 0., 0., 0., 1., 0.],
+                   2: [0, 1, 2], 3: [0], 4: [0., 0., 1.] * 3}
+        values = streams[stream][offset:offset + count]
+        assert len(values) == count
+        data = struct.pack("<" + ("d" if stream in (1, 4) else "I") * count, *values)
     elif opcode == 8:
         status, data = 4, b'injected release failure'
     else:

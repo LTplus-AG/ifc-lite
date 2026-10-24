@@ -24,6 +24,9 @@ export class SmlibWorkerTransport {
   slot = 0;
   session = 42n;
   meshInfo = [3, 1, 1, 0, 0, 0];
+  // A nondegenerate unit-cylinder patch; transport fixture, not SDK evidence.
+  streams = { 1: [1,0,0, Math.cos(0.3),Math.sin(0.3),0, 1,0,1],
+    2: [0,1,2], 3: [0], 4: [1,0,0, Math.cos(0.3),Math.sin(0.3),0, 1,0,0] };
   constructor(options) { this.options = options; peers.push(this); imports.push('client'); constructors.shift()?.(this); }
   allocate() { const slot = ++this.slot; this.objects.add(slot); return handle(this.session, slot); }
   retire(token) { if (token === this.incarnation) { this.retired = true; this.incarnation = undefined; } }
@@ -41,7 +44,16 @@ export class SmlibWorkerTransport {
       else if (op === 10) { bytes = new Uint8Array(24); this.meshInfo.forEach((n, i) => new DataView(bytes.buffer).setUint32(i * 4, n, true)); }
       else if (op === 11) {
         const stream = view.getUint32(36, true), count = view.getUint32(44, true);
-        bytes = new Uint8Array(count * ([1, 4].includes(stream) ? 8 : 4)); // zeros: in-bounds indices
+        const width = [1, 4].includes(stream) ? 8 : 4;
+        const offset = view.getUint32(40, true);
+        bytes = new Uint8Array(count * width);
+        const out = new DataView(bytes.buffer);
+        for (let i = 0; i < count; i++) {
+          const value = this.streams[stream][offset+i];
+          if (width === 8) out.setFloat64(i*width, value, true);
+          else out.setUint32(i*width, value, true);
+        }
+        if (this.shortNormals && stream === 4) bytes = bytes.slice(0, -8);
       } else throw new Error(`fixture: unexpected opcode ${op}`);
       const response = new Uint8Array(12 + bytes.length), envelope = new DataView(response.buffer);
       envelope.setUint32(0, 1, true);

@@ -1,0 +1,33 @@
+diff --git a/rust/geometry/src/document/retained_plane.rs b/rust/geometry/src/document/retained_plane.rs
+--- a/rust/geometry/src/document/retained_plane.rs
++++ b/rust/geometry/src/document/retained_plane.rs
+@@ -144,7 +144,7 @@
+             || input.session == 0
+             || input.generation == 0
+             || output.generation == 0
+-            || false
++            || output == input
+             || u(48)? != side.code() as u32
+             || u(52)? != mode.code()
+         {
+@@ -154,7 +154,7 @@
+         if original
+             .iter()
+             .zip(plane)
+-            .any(|(_a, _b)| false)
++            .any(|(a, b)| a.to_bits() != b.to_bits())
+         {
+             return Err("plane coefficient identity mismatch");
+         }
+diff --git a/rust/geometry-runtime/src/worker_clip.rs b/rust/geometry-runtime/src/worker_clip.rs
+--- a/rust/geometry-runtime/src/worker_clip.rs
++++ b/rust/geometry-runtime/src/worker_clip.rs
+@@ -118,7 +118,7 @@
+             .checked_add(1)
+             .filter(|n| *n <= super::dependencies::MAX_OPERATIONS)
+             .ok_or(WorkerError::ResourceLimit("retained clip depth/work"))?;
+-        if false {
++        if self.capabilities()? & 64 == 0 {
+             return Err(WorkerError::Kernel {
+                 status: 7,
+                 message: "finite plane clipping unavailable".into(),

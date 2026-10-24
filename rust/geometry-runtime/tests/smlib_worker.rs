@@ -227,3 +227,31 @@ fn rigid_copy_preserves_source_and_refuses_non_rigid_frames() {
     ));
     close(worker.volume(solid, 1e-8).unwrap(), 24.);
 }
+
+// #7955: real subprocess + owned stream, independent cylinder gradient.
+#[test]
+fn real_worker_j5_cylinder_normals_follow_source_surface() {
+    let Some(mut worker) = worker() else { return };
+    let solid = worker.create_cylinder([0.; 3], 2., 3.).unwrap();
+    let mesh = worker.tessellate(solid, 0.001, 5., MeshLimits::default()).unwrap();
+    let mut lateral = 0;
+    for (t, triangle) in mesh.indices.chunks_exact(3).enumerate() {
+        let points: Vec<_> = triangle.iter().map(|&i| {
+            let start = i as usize * 3;
+            &mesh.positions[start..start+3]
+        }).collect();
+        let cap = [0., 3.].into_iter().find(|&z| points.iter().all(|p| (p[2]-z).abs() < 1e-8));
+        if cap.is_none() { lateral += 1; }
+        for (corner, p) in points.iter().enumerate() {
+            let expected = match cap {
+                Some(z) => [0., 0., if z == 0. { -1. } else { 1. }],
+                None => [p[0]/2., p[1]/2., 0.],
+            };
+            for (axis, expected) in expected.into_iter().enumerate() {
+                assert!((mesh.corner_normals[t*9+corner*3+axis]-expected).abs() < 1e-7);
+            }
+        }
+    }
+    assert!(lateral > 0);
+    worker.release(solid).unwrap();
+}

@@ -251,3 +251,31 @@ fn dependency_volume(mesh: &super::Mesh) -> f64 {
             + a[2] * (b[0] * c[1] - b[1] * c[0])) / 6.
     }).sum::<f64>().abs()
 }
+
+// #7955: actual Worker -> JS driver -> Rust completion. This is an authored
+// circle extrusion, not a synthetic normal stream or polygon-normal oracle.
+#[wasm_bindgen_test(async)]
+async fn retained_browser_j5_circle_extrusion_preserves_analytic_normals() {
+    let mut worker = BrowserWorker::new().unwrap();
+    let result = worker.evaluate_retained(request(CIRCLE, &worker), 0.001, 5., BUDGET).await.unwrap();
+    let mesh = &result.completion().tessellation;
+    let mut lateral = 0;
+    for (t, triangle) in mesh.indices.chunks_exact(3).enumerate() {
+        let points: Vec<_> = triangle.iter().map(|&i| {
+            let start = i as usize * 3;
+            &mesh.positions[start..start+3]
+        }).collect();
+        let cap = [0., 1.].into_iter().find(|&z| points.iter().all(|p| (p[2]-z).abs() < 1e-8));
+        if cap.is_none() { lateral += 1; }
+        for (corner, p) in points.iter().enumerate() {
+            let expected = match cap {
+                Some(z) => [0., 0., if z == 0. { -1. } else { 1. }],
+                None => [p[0]*2., p[1]*2., 0.],
+            };
+            for (axis, expected) in expected.into_iter().enumerate() {
+                assert!((mesh.flat_corner_normals[t*9+corner*3+axis]-expected).abs() < 1e-7);
+            }
+        }
+    }
+    assert!(lateral > 0);
+}

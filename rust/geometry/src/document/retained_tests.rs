@@ -126,17 +126,13 @@ fn completions_are_bound_to_worker_revision_and_frame() {
 }
 
 #[test]
-fn display_publication_is_explicit_flat_and_never_authored() {
+fn display_publication_is_explicit_unstyled_and_never_authored() {
     let (mut document, handle) = admitted();
     let packet = completion(document.prepare_retained(handle, 7).unwrap(), triangle());
     for (contract, refusal) in [
         (
             RetainedDisplayContract::PersistentIfcFaces,
             RetainedRefusal::PersistentFaceProvenanceUnavailable,
-        ),
-        (
-            RetainedDisplayContract::AnalyticSurfaceNormals,
-            RetainedRefusal::AnalyticNormalsUnavailable,
         ),
         (
             RetainedDisplayContract::IfcAppearance,
@@ -206,7 +202,7 @@ fn display_publication_is_explicit_flat_and_never_authored() {
 }
 
 #[test]
-fn flat_corners_are_expanded_without_averaging_normals() {
+fn source_corners_are_expanded_without_averaging_normals() {
     let (mut document, handle) = admitted();
     let mut packet = completion(
         document.prepare_retained(handle, 7).unwrap(),
@@ -222,7 +218,7 @@ fn flat_corners_are_expanded_without_averaging_normals() {
         .publish_retained_display(
             &packet,
             7,
-            RetainedDisplayContract::UnstyledFlatSourceOnly,
+            RetainedDisplayContract::AnalyticSurfaceNormals,
             &[],
         )
         .unwrap();
@@ -270,4 +266,53 @@ fn invalid_tessellations_are_refused_and_kept() {
     // The owned f64 evidence survives refusal.
     assert!(collapsing.tessellation.positions[3] > collapsing.tessellation.positions[0]);
     assert_eq!(document.revision(), 1);
+}
+
+// #7955 J5-R1: binary-exact source winding can flip when narrowed to f32.
+#[test]
+fn j5_r1_source_winding_rounding_flip_refuses_atomically() {
+    let e = 2.0_f64.powi(-23);
+    let positions = vec![0., 0., 0., 1., 1. + 3. * e / 8., 0.,
+                         1. + 3. * e / 8., 1. + 5. * e / 8., 0.];
+    // Independent scalar determinant: do not reuse the production validator.
+    let source_z = positions[3] * positions[7] - positions[4] * positions[6];
+    assert_eq!(source_z, -e / 8. - 9. * e * e / 64.);
+    assert!(source_z < 0., "source normals oppose source winding");
+    let narrowed: Vec<f64> = positions.iter().map(|&p| f64::from(p as f32)).collect();
+    let display_z = narrowed[3] * narrowed[7] - narrowed[4] * narrowed[6];
+    assert_eq!(display_z, e);
+    assert!(display_z > 0., "same normals agree with display winding");
+
+    let (mut document, handle) = admitted();
+    // Keep a real existing publication to detect partial mutation on refusal.
+    let control = completion(document.prepare_retained(handle, 7).unwrap(), triangle());
+    let (definition, occurrences) = document.publish_retained_display(
+        &control, 7, RetainedDisplayContract::AnalyticSurfaceNormals, &[(9, IDENTITY)],
+    ).unwrap();
+    let before = (document.revision(), document.definitions.len(), document.occurrences.len());
+    let packet = completion(document.prepare_retained(handle, 7).unwrap(), positions);
+    let result = document.publish_retained_display(
+        &packet, 7, RetainedDisplayContract::AnalyticSurfaceNormals, &[(10, IDENTITY)],
+    );
+    assert!(matches!(result, Err(RetainedRefusal::InvalidTessellation(
+        "normal disagrees with source winding"
+    ))), "J5-R1 source winding must refuse before publication: {result:?}");
+    assert_eq!((document.revision(), document.definitions.len(), document.occurrences.len()), before);
+    assert_eq!(document.mesh(definition).unwrap().positions, vec![0., 0., 0., 1., 0., 0., 0., 1., 0.]);
+    assert_eq!(document.occurrence(occurrences[0]).unwrap().source_entity_id, 9);
+    assert_eq!(document.retained_recipe(handle).unwrap(), &RetainedRecipe::Extrusion(recipe(true)));
+}
+
+#[test]
+fn j5_r1_valid_analytic_corner_normals_survive_publication() {
+    let (mut document, handle) = admitted();
+    let mut packet = completion(document.prepare_retained(handle, 7).unwrap(), triangle());
+    // Distinct unit surface normals with positive winding dots, not flat normals.
+    packet.tessellation.flat_corner_normals = vec![0., 0., 1., 0.6, 0., 0.8, 0., 0.6, 0.8];
+    let (definition, _) = document.publish_retained_display(
+        &packet, 7, RetainedDisplayContract::AnalyticSurfaceNormals, &[],
+    ).unwrap();
+    assert_eq!(document.mesh(definition).unwrap().normals,
+        packet.tessellation.flat_corner_normals.iter().map(|&n| n as f32).collect::<Vec<_>>());
+    assert_eq!(document.revision(), 2);
 }

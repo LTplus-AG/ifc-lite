@@ -9,7 +9,8 @@
 //! explicit allocation of an SDK module Worker; its families are selected from
 //! that actual Worker's capability bits and its own numerical witnesses, never
 //! from a feature flag. A published display is the raw authored solid only
-//! (`unstyled_flat_source_only`): no opening, enclosing Boolean, style or
+//! (historical selector `unstyled_flat_source_only`, now preserving source
+//! surface corner normals): no opening, enclosing Boolean, style or
 //! persistent face identity applies, so it is not final product geometry.
 
 use std::collections::HashSet;

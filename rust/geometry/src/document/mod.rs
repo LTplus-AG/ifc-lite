@@ -193,3 +193,6 @@ impl GeometryDocument {
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod retained_normal_tests;

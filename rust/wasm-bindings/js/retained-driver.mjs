@@ -319,6 +319,21 @@ export class RetainedDriver {
     const revision_local_faces = await read(3, triangles, 4);
     const flat_corner_normals = await read(4, triangles * 9, 8);
     if (indices.some(i => i >= vertices) || revision_local_faces.some(i => i >= faces)) throw new Error('retained mesh index bound');
+    // Historical field name; preserve surface normals, never recompute a flat
+    // normal when reading or expanding the corner stream.
+    for (let t = 0; t < indices.length; t += 3) {
+      const [a, b, c] = Array.from(indices.slice(t, t + 3), i => positions.slice(i * 3, i * 3 + 3));
+      const u = b.map((x, i) => x - a[i]), v = c.map((x, i) => x - a[i]);
+      const cross = [u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]];
+      const area = Math.hypot(...cross);
+      if (!Number.isFinite(area) || area === 0) throw new Error('degenerate retained triangle');
+      for (let corner = t; corner < t + 3; corner++) {
+        const n = flat_corner_normals.slice(corner * 3, corner * 3 + 3);
+        if (Math.abs(Math.hypot(...n) - 1) > 1e-8 ||
+            !(n.reduce((sum, x, i) => sum + x * (cross[i] / area), 0) > 0))
+          throw new Error('invalid retained surface normal');
+      }
+    }
     return { positions, indices, flat_corner_normals, revision_local_faces,
       source_face_count: faces, boundary_edges: boundary, spine_edges: spine, empty: false };
   }

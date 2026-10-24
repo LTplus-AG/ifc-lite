@@ -147,6 +147,23 @@ impl SmlibWorker {
         {
             return Err(self.poison("mesh index or source face out of bounds"));
         }
+        for (triangle, normals) in indices.chunks_exact(3).zip(corner_normals.chunks_exact(9)) {
+            let p = |corner: usize, axis: usize| positions[triangle[corner] as usize * 3 + axis];
+            let u: [f64; 3] = std::array::from_fn(|i| p(1, i) - p(0, i));
+            let v: [f64; 3] = std::array::from_fn(|i| p(2, i) - p(0, i));
+            let cross = [u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]];
+            let area = cross[0].hypot(cross[1]).hypot(cross[2]);
+            if !area.is_finite() || area == 0.0 {
+                return Err(self.poison("degenerate mesh triangle"));
+            }
+            for n in normals.chunks_exact(3) {
+                let length = n[0].hypot(n[1]).hypot(n[2]);
+                let dot: f64 = n.iter().zip(cross).map(|(n, c)| n * (c / area)).sum();
+                if !length.is_finite() || (length - 1.0).abs() > 1e-8 || dot <= 0.0 {
+                    return Err(self.poison("invalid oriented surface normal"));
+                }
+            }
+        }
         Ok(TessellatedMesh {
             storage,
             outcome: NumericalOutcome::NonEmpty,

@@ -315,7 +315,8 @@ A/B (`ab.sh`, the browser rigs below), and a green ratchet is no evidence for it
 ## Placement consumer consistency (#7779, #7906)
 
 Historical qualification of the original stack only (through `7cdd67bc3e`):
-the recovered stack has changed and awaits new qualification. The following
+the recovered stack has changed; its wall-time disposition is under
+"Current-main source recovery hold (#7880)" below. The following
 verdict is retained as historical evidence, not a current performance or
 output-identity claim.
 
@@ -4609,13 +4610,23 @@ the current GeometryProgram controller, and the omitted derived-Axis1 repair
 and parsed Axis2 regression are carried as source. Lower-layer placement
 policy, resource accounting and diagnostics retain current-main authority.
 
-Qualification remains **HOLD for X3a behavioral/oracle evidence, the required
-performance verdict and applicable gates**. Charter #7779 assigns X3a to #7880;
+Historical (superseded by the disposition below): qualification remained
+**HOLD for X3a behavioral/oracle evidence, the required performance verdict
+and applicable gates**. Charter #7779 assigns X3a to #7880;
 Class R neutrality belongs to the later R2a layer (#7896). This source-only
 recovery ran no build, native test, browser/WASM campaign or performance measurement. Historical native observations above and the private
 75-test qualification do not qualify the recovered source. Root review and
 source-matched fleet qualification remain required; no output pin, baseline,
 ceiling or acceptance band is changed.
+
+**Disposition (2026-10-24): wall-time PASS by maintainer decision.** The
+90-pair wall-time cohort (job `313e11ca`, source `48f1c6c0` against base
+`61bfa85b`, 45 BC / 45 CB) was accepted as passing under non-inferiority:
+every fixture's 90% upper bound on the C/B ratio is below 1.02 (FZK-Haus
+[0.977, 1.003], ISSUE_129 [0.985, 1.008], ISSUE_053 [1.005, 1.013]). ISSUE_053
+is slightly slower but inside the band; the verdict is non-inferiority, not
+"no change". The HOLD paragraph above is retained as history. No baseline,
+ceiling, acceptance band or output pin is changed by this disposition.
 
 ## Allplan polyline full-path compatibility (#7983)
 

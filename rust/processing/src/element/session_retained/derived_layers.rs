@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Source-bound J3 issuance, independent of authored Boolean/plane ancestry.
 use super::*;
+use ifc_lite_core::slot;
 use ifc_lite_geometry::{analytic::DerivedLayerRegions, document::DerivedLayerRegion};
 use runtime::{Invocation, NumericalLimits, Operand, ReceiptEvidence};
 mod execution;
@@ -154,11 +155,11 @@ fn capture_regions(source: &RetainedLayerSource, product: &ifc_lite_core::Decode
     let shape = decoder.decode_by_id(product.get_ref(ifc_lite_core::slot::IfcProduct::REPRESENTATION.index())
         .ok_or(RetainedExecutionError::Source)?).map_err(protocol)?;
     let mut body = None;
-    for item in shape.get_list(2).ok_or(RetainedExecutionError::Source)? {
+    for item in shape.get_list(slot::IfcProductDefinitionShape::REPRESENTATIONS.index()).ok_or(RetainedExecutionError::Source)? {
         resource::charge(resource::Cost { work:1,..Default::default() }).map_err(RetainedExecutionError::Stopped)?.retain();
         let rep = decoder.decode_by_id(item.as_entity_ref().ok_or(RetainedExecutionError::Source)?).map_err(protocol)?;
-        if rep.get_string(1)!=Some("Body") { continue; }
-        let items = rep.get_list(3).ok_or(RetainedExecutionError::Source)?;
+        if rep.get_string(slot::IfcShapeRepresentation::REPRESENTATION_IDENTIFIER.index())!=Some("Body") { continue; }
+        let items = rep.get_list(slot::IfcShapeRepresentation::ITEMS.index()).ok_or(RetainedExecutionError::Source)?;
         if body.is_some() || items.len()!=1 { return Err(RetainedExecutionError::Unsupported("J3 body coverage")); }
         body = Some(items[0].as_entity_ref().ok_or(RetainedExecutionError::Source)?);
     }

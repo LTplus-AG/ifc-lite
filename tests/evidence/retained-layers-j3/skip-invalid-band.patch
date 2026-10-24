@@ -3,7 +3,7 @@
 @@ -29,7 +29,7 @@
          let layer = decode(decoder, reference_id(member)?)?;
          if layer.ifc_type != IfcType::IfcMaterialLayer { return Err(invalid()); }
-         let thickness = layer.get_float(1).ok_or_else(invalid)? * unit_scale;
+         let thickness = layer.get_float(slot::IfcMaterialLayer::LAYER_THICKNESS.index()).ok_or_else(invalid)? * unit_scale;
 -        if !thickness.is_finite() || thickness <= 0. { continue; }
 +        if !thickness.is_finite() || thickness <= 0. { return Err(invalid()); }
          let end = boundary + direction * thickness;

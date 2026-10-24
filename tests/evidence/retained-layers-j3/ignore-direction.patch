@@ -3,9 +3,9 @@
 @@ -9,7 +9,7 @@
          Some("AXIS3") => LayerAxis::Axis3, _ => return Err(invalid()),
      };
-     let direction = match usage.get(2).and_then(AttributeValue::as_enum) {
+     let direction = match usage.get(slot::IfcMaterialLayerSetUsage::DIRECTION_SENSE.index()).and_then(AttributeValue::as_enum) {
 -        Some("POSITIVE") => 1., Some("NEGATIVE") => 1., _ => return Err(invalid()),
 +        Some("POSITIVE") => 1., Some("NEGATIVE") => -1., _ => return Err(invalid()),
      };
      let unit_scale = router.unit_scale();
-     let offset = usage.get_float(3).ok_or_else(invalid)?;
+     let offset = usage.get_float(slot::IfcMaterialLayerSetUsage::OFFSET_FROM_REFERENCE_LINE.index()).ok_or_else(invalid)?;

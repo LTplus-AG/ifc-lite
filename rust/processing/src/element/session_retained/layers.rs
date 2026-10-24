@@ -3,7 +3,7 @@
 //! The display index intentionally drops invalid/thin layers and has no source
 //! ids. It therefore cannot authenticate a retained material partition.
 use super::*;
-use ifc_lite_core::{AttributeValue, DecodedEntity, IfcType};
+use ifc_lite_core::{slot, AttributeValue, DecodedEntity, IfcType};
 use ifc_lite_geometry::material_layer_index::LayerAxis;
 mod index;
 mod source;
@@ -104,7 +104,7 @@ pub(super) fn capture(context: &OwnedMeshProductionContext, product: &DecodedEnt
     let mut selected = None;
     for &id in index.for_product(product.id) {
         let association = decode(decoder, id)?;
-        let usage = decode(decoder, association.get_ref(5).ok_or_else(invalid)?)?;
+        let usage = decode(decoder, association.get_ref(slot::IfcRelAssociatesMaterial::RELATING_MATERIAL.index()).ok_or_else(invalid)?)?;
         if !usage.ifc_type.is_subtype_of(IfcType::IfcMaterialLayerSetUsage) { continue; }
         if usage.ifc_type != IfcType::IfcMaterialLayerSetUsage { return Err(invalid()); }
         // Multiple usages have no unique occurrence binding. Never use the

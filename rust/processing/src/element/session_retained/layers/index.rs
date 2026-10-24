@@ -22,7 +22,7 @@ pub(super) fn get<'a>(context: &'a OwnedMeshProductionContext, decoder: &mut Ent
         if !ifc_lite_core::keyword_eq(name, "IFCRELASSOCIATESMATERIAL") { continue; }
         let association = decode(decoder, id)?;
         if association.ifc_type != IfcType::IfcRelAssociatesMaterial { return Err(invalid()); }
-        let related = association.get_list(4).ok_or_else(invalid)?;
+        let related = association.get_list(slot::IfcRelAssociatesMaterial::RELATED_OBJECTS.index()).ok_or_else(invalid)?;
         charge(related.len())?;
         for member in related {
             let product = reference_id(member)?;

@@ -1,5 +1,5 @@
 {
-  "status": "measured adverse native cost accepted; full-output identity passed; timing report inconclusive",
+  "status": "historical full-output identity passed; adverse native phase observed; timing report inconclusive; current R2a qualification pending",
   "base": "a806aed09f4aa860d180c2cc1059032bd87b4a20",
   "branch": "fde7d3c7fdbefae58c8c3a3c3142ed6c79b171de",
   "issue": 7779,
@@ -85,5 +85,5 @@
     "Native ordinary full load only, no WASM/browser/GPU or throughput guarantee.",
     "No baseline/ceiling/band/pin changes; other required gates remain binding."
   ],
-  "acceptance": "Accept disclosed native cost for canonical-reader deletion/unification with exact preserved geometry/refusal output. This is not neutrality, speed, or a gate waiver."
+  "acceptance": "No native-cost acceptance or neutrality verdict. This historical source pair does not qualify the current R2a head; fresh instruction and neutral end-to-end A/B evidence remain required."
 }

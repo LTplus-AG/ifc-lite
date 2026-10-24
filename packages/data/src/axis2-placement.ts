@@ -4,7 +4,7 @@
 
 /** `build_axis2_matrix`'s `try_normalize(1e-9)` on the Axis. */
 const AXIS_EPSILON = 1e-9;
-/** Projected X below `placement/axis_projection.rs::X_PROJECTION_EPSILON` is numeric noise (#7751). */
+/** Projected X below `rust/geometry/src/axis_projection.rs::X_PROJECTION_EPSILON` is numeric noise (#7751). */
 const PROJECTION_EPSILON = 1e-9;
 
 /**

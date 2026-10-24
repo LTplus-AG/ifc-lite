@@ -386,7 +386,6 @@ failures and wall-time disagreements even when aggregate instructions and
 committed ceilings pass; attribute the retained preprocessing dumps before
 changing production work or accepting the regression.
 
-
 The fresh corrected-X `a806aed` versus R `fde7d3c` native cohort preserves
 complete ordered mesh/float/frame/metadata/instance output and all diagnostic
 bytes on Haus, ISSUE_129 and heavy Holter. Every timed count and fingerprint

@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! The frame an `IfcAxis2Placement3D` builds, checked within a 1e-9 tolerance.
-//! Moved from the `transform.rs` tests, which deleted readers used to call.
+//! Moved from `transform.rs` with the canonical placement readers.
 
 use super::*;
 use ifc_lite_core::EntityDecoder;

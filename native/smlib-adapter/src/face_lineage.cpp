@@ -86,6 +86,9 @@ void Ledger::check() const {
         failure_reported=true;
         std::fprintf(stderr,"lineage first_failure=%u event=%u operation=%ld caller_type=%ld frame=%u nodes=%u\n",
             unsigned(failure),failed_event,long(failed_operation),failed_type,failed_frame,failed_nodes);
+#ifdef IFCLITE_LINEAGE_FAILURE_STACK
+        report_failure_stack();
+#endif
     }
     const bool resource=failure==Failure::NodeLimit || failure==Failure::EventLimit || failure==Failure::RootLimit ||
         failure==Failure::CallbackDepthLimit;

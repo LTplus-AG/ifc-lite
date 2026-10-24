@@ -50,6 +50,14 @@ struct Event {
     SmNotifyOperation operation=SM_NO_UNKNOWN;
     Identity before[2]{},after[2]{};
 };
+#ifdef IFCLITE_LINEAGE_FAILURE_STACK
+// Debug-only process addresses, never a lineage/ownership credential. Resolve
+// against the exact unstripped executable and SDK revision from the run receipt.
+struct FailureStack {
+    std::array<void*,48> frames{};
+    uint32_t size=0;
+};
+#endif
 class Scope;
 class Ledger {
     struct Creation {
@@ -94,6 +102,11 @@ class Ledger {
     long current_type=0,failed_type=0;
     uint32_t current_event=0,failed_event=0,failed_frame=0,failed_nodes=0;
     mutable bool failure_reported=false;
+#ifdef IFCLITE_LINEAGE_FAILURE_STACK
+    FailureStack failed_stack{};
+    void capture_failure_stack() noexcept;
+    void report_failure_stack() const noexcept;
+#endif
     uint32_t node_count=0,event_count=0,root_count=0;
     bool attached=false,closed=false;
     Scope* observer=nullptr;
@@ -119,7 +132,11 @@ class Ledger {
     void affect_numerical_face(SmFace*,bool initialization);
     void replace(Binding*,Identity) noexcept;
     void fail(Failure value) noexcept {
-        if(failure==Failure::None) { failure=value; failed_operation=current_operation; failed_type=current_type; failed_event=current_event?current_event:event_count; failed_frame=frame_count; failed_nodes=node_count; }
+        if(failure==Failure::None) { failure=value; failed_operation=current_operation; failed_type=current_type; failed_event=current_event?current_event:event_count; failed_frame=frame_count; failed_nodes=node_count;
+#ifdef IFCLITE_LINEAGE_FAILURE_STACK
+            capture_failure_stack();
+#endif
+        }
     }
     bool creation_owner(SmObject*,SmObject*,SmObject*) noexcept;
     bool numerical_event(Event&,SmNotifyOperation,SmObject*,SmObject*);
@@ -145,6 +162,9 @@ public:
     FailureOrigin failure_origin() const noexcept {
         return {failure,failed_operation,failed_type,failed_event,failed_frame,failed_nodes};
     }
+#ifdef IFCLITE_LINEAGE_FAILURE_STACK
+    const FailureStack& failure_stack() const noexcept { return failed_stack; }
+#endif
     void verify_inventory(SmBrep&);
     void verify_copy(const SmBrep&,SmBrep&,const SmCopyBrepMap&,const SmCopyBrepMap&);
     Identity identity(SmFace*) const;

@@ -31,6 +31,7 @@ mod receipt;
 mod dependencies;
 #[cfg(target_arch = "wasm32")]
 mod boolean;
+#[cfg(target_arch = "wasm32")]
 mod clip;
 #[cfg(target_arch = "wasm32")]
 pub(crate) use receipt::BrowserReceipt;

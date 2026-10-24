@@ -61,4 +61,3 @@ fn admission_refuses_unbounded_projective_and_singular_matrices() {
     singular[8..11].copy_from_slice(&[0.; 3]);
     assert_eq!(validate_affine(&singular), Err("singular affine matrix"));
 }
-

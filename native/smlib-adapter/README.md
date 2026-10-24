@@ -394,3 +394,11 @@ are wired into native/Emscripten CTest and the actual module-Worker probe.
 These tests require parent execution before qualification. Full J5 appearance,
 textures, palettes, persistent IFC identity, GPU instancing, CLI/viewer release
 integration and licensing remain separate release requirements.
+
+Patched SDK delivery verifies the complete build-owned source inventory against
+the adapter pins and both CMake receipts. The staged `provenance/sdk.json` and
+`provenance/imprint-status-v1.patch` identify upstream and modified inputs beside
+the generated binary hashes. Missing, changed or redirected evidence refuses
+staging, including fresh input recording. This evidence describes supplied
+inputs; `buildAttestation`, qualification, licensing and authorization remain
+false until their separate release gates pass.

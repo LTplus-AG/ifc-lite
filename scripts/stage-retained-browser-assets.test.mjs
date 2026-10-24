@@ -11,7 +11,7 @@ import { stageRetainedBrowserAssets } from './stage-retained-browser-assets.mjs'
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 async function sdkSnapshot(adapter, sdk, build, revision) {
-  const names = ['LICENSE', 'THIRD_PARTY_NOTICES.md', 'source/SM_API/api.cpp', 'source/SMLib/kernel.cpp'];
+  const names = ['LICENSE', 'THIRD_PARTY_NOTICES.md', 'source/SM_API/api.cpp', 'source/SMLib/kernel.cpp'].sort();
   const input = await Promise.all(names.map(async name => [name, hash(await readFile(join(sdk, name)))]));
   const patch = Buffer.from('fixture patch identity');
   const modified = Buffer.from('fixture modified kernel with explicit change notice');
@@ -96,7 +96,7 @@ test('stages exact bytes, licenses and checkable hashes without executing genera
   const manifest = await stageRetainedBrowserAssets(options);
   assert.equal(manifest.qualified, false);
   assert.equal(manifest.buildAttestation, false);
-  assert.equal(manifest.assets.length, 21);
+  assert.equal(manifest.assets.length, 23);
   await verifyRetainedAssets(options.out, options.inputs);
   for (const asset of manifest.assets) {
     const bytes = await readFile(join(options.out, asset.path));

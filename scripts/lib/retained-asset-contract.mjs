@@ -46,6 +46,8 @@ export async function verifyRetainedAssets(root, inputs) {
   if (manifest.format !== 'ifclite-retained-browser-assets-v2' || manifest.qualified !== false ||
       manifest.buildAttestation !== false || manifest.releaseAuthorized !== false || manifest.licenceClearance !== false ||
       manifest.inputInventorySha256 !== digest(Buffer.from(JSON.stringify(inventory))) ||
+      !inventory.sdk?.patch?.receiptSha256 ||
+      JSON.stringify(manifest.sdk) !== JSON.stringify(inventory.sdk) ||
       JSON.stringify(manifest.assets) !== JSON.stringify(inventory.assets) ||
       JSON.stringify(manifest.dependencies) !== JSON.stringify(inventory.dependencies) ||
       JSON.stringify(manifest.sources) !== JSON.stringify(inventory.sources)) {

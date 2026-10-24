@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: MPL-2.0 -->
 # Versioned SDK build repairs
 
-`imprint-status-v1.patch` changes only the failed-imprint exit in
+`imprint-status-v1.patch` marks the upstream file as modified and changes the failed-imprint exit in
 `SmTopologyIntersector::IntersectInsertRelate` at SDK revision
 `c9c5979f04cea8c38213004d4f04df0dcfb40d05`. It destroys and nulls the owned
 prototype manager and returns the **first imprint failure** before

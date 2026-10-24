@@ -1,9 +1,17 @@
 --- a/source/SMLib/src/SmTopologyIntersector.cpp
 +++ b/source/SMLib/src/SmTopologyIntersector.cpp
-@@ -1232,8 +1232,13 @@
+@@ -1,5 +1,7 @@
+ // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ // SPDX-License-Identifier: Apache-2.0
++// Modified by IFC-Lite contributors on 2026-10-24: preserve imprint failures
++// and release the prototype topology manager before returning.
+
+ /**********************************************************************//**
+ * FILE NAME --- SmTopologyIntersector.cpp
+@@ -1232,8 +1234,13 @@
    // Imprint Intersections, now we'll modify the Breps.
    eStat = this->ImprintIntersections();
- 
+
 -  // If that didn't work, inform the public
 -  SE_MSG( eStat, _T("\nSmProtoExecutive: Error returned from ImprintIntersections().\n") );
 +  // Preserve the first imprint failure. Do not classify partial topology or
@@ -13,6 +21,6 @@
 +      if(m_pProtoTopoMgr) { delete m_pProtoTopoMgr ; m_pProtoTopoMgr = NULL; }
 +      return eStat;
 +    }
- 
+
  #ifdef SM_DEBUG_CODE
  if ( iDebugLevel > 0 ) // After ImprintIntersections(): DumpAndDraw Brep(blue), Other(green), m_pProtoTopoMgr(cyan)

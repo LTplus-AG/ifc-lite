@@ -7,6 +7,7 @@ import { digest, regular, files, readWithin, row, dependencies, NOTICES, EMSCRIP
 import { dirname, resolve, relative, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMainEntry } from './lib/is-main-entry.mjs';
+import { verifiedSdkProvenance } from './lib/retained-sdk-provenance.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GENERATED = ['ifclite_smlib_browser.mjs', 'ifclite_smlib_browser.wasm'];
@@ -65,12 +66,16 @@ export async function stageRetainedBrowserAssets({ build, sdk, engine, emscripte
       await realpath(join(emscripten, 'cmake/Modules/Platform/Emscripten.cmake'))) {
     throw new Error('CMake toolchain differs from supplied Emscripten input');
   }
+  const preparedSdk = await verifiedSdkProvenance({ adapter, sdk, build, revision,
+    receiptPath: cacheValue(cache, 'IFCLITE_SDK_PROVENANCE') });
   const assets = new Map();
   const assetManifest = [];
   function add(name, bytes, origin) {
     assets.set(name, bytes);
     assetManifest.push({ path: name, bytes: bytes.length, sha256: digest(bytes), origin });
   }
+  add('provenance/sdk.json', preparedSdk.receiptBytes, 'verified-build-owned-sdk');
+  add('provenance/imprint-status-v1.patch', preparedSdk.patch, 'native/smlib-adapter/patches/imprint-status-v1.patch');
   const modules = cmake.toString().match(/foreach\(module\s+([^)]+)\)/)?.[1].trim().split(/\s+/);
   if (!modules || modules.some(name => !/^[a-z-]+$/.test(name)) || new Set(modules).size !== modules.length) {
     throw new Error('Unsupported CMake browser module inventory');
@@ -128,6 +133,7 @@ export async function stageRetainedBrowserAssets({ build, sdk, engine, emscripte
   const sourceNames = execFileSync('git', ['-C', repoRoot, 'ls-files', '--cached', '--others', '--exclude-standard', '-z', '--',
     'native/smlib-adapter', 'rust', 'scripts/build-wasm.sh', 'scripts/stage-retained-browser-assets.mjs',
     'scripts/lib/retained-asset-contract.mjs', 'scripts/lib/retained-publish.py',
+    'scripts/lib/retained-sdk-provenance.mjs',
     'scripts/lib/retained-loader-syntax.mjs', 'scripts/lib/retained-loader-dependencies.mjs',
     'scripts/lib/retained-loader-profiles.json', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml'],
     { encoding: 'utf8' }).split('\0').filter(Boolean).sort();
@@ -135,7 +141,8 @@ export async function stageRetainedBrowserAssets({ build, sdk, engine, emscripte
   const sources = [];
   for (const name of sourceNames) sources.push(row(name, await readWithin(repoRoot, name, true)));
   assetManifest.sort((a, b) => a.path < b.path ? -1 : 1);
-  const inventory = { format: 'ifclite-retained-inputs-v1', cmakeCacheSha256: digest(Buffer.from(cache)), sdkRevision: revision,
+  const sdkIdentity = { revision, cleanPaths: protectedPaths, patch: preparedSdk.identity };
+  const inventory = { format: 'ifclite-retained-inputs-v1', cmakeCacheSha256: digest(Buffer.from(cache)), sdkRevision: revision, sdk: sdkIdentity,
     emscriptenNoticeRevision: EMSCRIPTEN_REVISION, sources, assets: assetManifest, dependencies: closure };
   if (record) {
     await writeFile(record, `${JSON.stringify(inventory, null, 2)}\n`, { flag: 'wx' });
@@ -150,7 +157,7 @@ export async function stageRetainedBrowserAssets({ build, sdk, engine, emscripte
     purpose: 'explicit-packaging-only', qualified: false,
     buildAttestation: false,
     note: 'Binary hashes identify supplied build outputs; source hashes do not prove how those outputs were compiled.',
-    sdk: { revision, cleanPaths: protectedPaths },
+    sdk: sdkIdentity,
     releaseAuthorized: false, licenceClearance: false,
     inputInventorySha256: digest(Buffer.from(JSON.stringify(inventory))),
     emscriptenNoticeRevision: EMSCRIPTEN_REVISION, dependencies: closure, sources,

@@ -31,7 +31,10 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_,R> {
         if domain.incarnation() != Some(worker.incarnation()) || worker.incarnation() == 0 {
             return Err(protocol("terminal worker retired"));
         }
-        for (_,receipt) in &self.ledger {
+        for (logical,receipt) in &self.ledger {
+            if &receipt.definition != logical.definition() || logical.evaluated_empty() != Some(receipt.is_empty()) {
+                return Err(protocol("foreign terminal ledger definition/outcome"));
+            }
             receipt.validate_live().map_err(protocol)?;
             if !receipt.owner().same_domain(&domain) { return Err(protocol("foreign terminal worker")); }
         }

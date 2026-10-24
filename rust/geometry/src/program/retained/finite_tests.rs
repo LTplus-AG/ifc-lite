@@ -14,8 +14,10 @@ fn source_operations(text: &str) -> (bool, Vec<RetainedPlanOperation>) {
 }
 fn inside_host(p: [f64;3]) -> bool { p[0].abs()<1. && p[1].abs()<2. && p[2]>0. && p[2]<3. }
 fn expected(name: &str, p: [f64;3]) -> bool {
-    let cut = if name == "finite_box_false_rotated" {
+    let cut = if name.starts_with("finite_box_false_rotated") {
         p[0].abs()<0.5 && p[1].abs()<0.25 && p[2]>1. && p[2]<1.25
+    } else if name == "finite_box_negative_axis_small" {
+        p[0].abs()<0.5 && p[1].abs()<0.25 && p[2]>1. && p[2]<1.5
     } else if name.starts_with("finite_box") {
         p[0].abs()<0.25 && p[1].abs()<0.5 && p[2]>0.5 && p[2]<1.
     } else if name.starts_with("finite_polygon_placed") {
@@ -76,7 +78,7 @@ fn j1_finite_source_provenance() {
             if let RetainedOperationKind::UnaryClip {clip,..} = operation.kind() {
                 assert_eq!((clip.source.half_space_id,clip.source.boolean_id),(203,13));
                 assert_eq!((clip.source.source_epoch,clip.source.source_revision),(7,9));
-                assert_eq!(clip.source.authored_agreement,Some(case.name!="finite_box_false_rotated"));
+                assert_eq!(clip.source.authored_agreement,Some(!case.name.starts_with("finite_box_false_rotated")));
                 let finite = clip.finite.as_ref().expect("FINITE_SOURCE boundary identity");
                 match finite.boundary() {
                     RetainedFiniteBoundary::Box {enclosure_id,corner,dimensions,placement} => {
@@ -141,4 +143,68 @@ fn j1_finite_authored_960_first_boundary_source_checkpoint() {
     assert_eq!(points[2].values,[812.15380859375,-7500.,0.]);
     // This is source capture only. A downstream refusal is not reclassified as
     // a successful numerical product, nor as a fixture skip.
+}
+
+// FINITE-02 / #7955: exercise parsed source, issued planes and immutable raw
+// provenance; no source-text assertions or planner-derived numerical oracle.
+#[test]
+fn j1_finite_direction_rescaling_preserves_frame_and_membership() {
+    let original = ifc_lite_testkit::retained_finite_clip::cases().into_iter()
+        .find(|c| c.name == "finite_polygon_placed").unwrap().source;
+    for sign in ["", "-"] {
+        let reference = original.replace("((0.,1.,0.))", &format!("((0.,{sign}1.,0.))"));
+        let (_, baseline) = source_operations(&reference);
+        for magnitude in ["1.E-10", "1.E-200", "1.E200"] {
+            let text = reference.replace(&format!("((0.,{sign}1.,0.))"), &format!("((0.,{sign}{magnitude},0.))"))
+                .replace("#410,$,#411", "#410,#413,#411")
+                .replace("ENDSEC;END-ISO", &format!("#413=IFCDIRECTION((0.,0.,{magnitude}));ENDSEC;END-ISO"));
+            let (ok, operations) = source_operations(&text);
+            assert!(ok, "FINITE_DIRECTION source {sign}{magnitude}");
+            for (a, b) in baseline.iter().zip(&operations) {
+                if let (RetainedOperationKind::UnaryClip {clip:a,..}, RetainedOperationKind::UnaryClip {clip:b,..}) = (a.kind(), b.kind()) {
+                    assert_eq!(a.local_plane, b.local_plane, "FINITE_DIRECTION scaled planes");
+                    let RetainedFiniteBoundary::Polygon {placement,..} = b.finite.as_ref().unwrap().boundary() else { panic!("polygon") };
+                    let raw = placement.ref_direction.as_ref().unwrap();
+                    assert_eq!(raw.source_id,411);
+                    assert_eq!(raw.values,[0.,format!("{sign}{magnitude}").parse::<f64>().unwrap(),0.]);
+                    assert_eq!(placement.axis.as_ref().unwrap().values,[0.,0.,magnitude.parse::<f64>().unwrap()]);
+                }
+            }
+            assert!(evaluate(&operations,[0.89,0.23,0.73]), "FINITE_DIRECTION rotated membership");
+            assert!(!evaluate(&operations,[0.13,1.23,0.73]), "FINITE_DIRECTION outside membership");
+        }
+    }
+}
+
+#[test]
+fn j1_finite_exact_cross_preserves_small_authored_orientation() {
+    // FINITE-02: nearly parallel but distinct binary source directions have a
+    // definite cross-product sign. No angular epsilon may replace it.
+    let original = ifc_lite_testkit::retained_finite_clip::cases().into_iter()
+        .find(|c| c.name == "finite_polygon_placed").unwrap().source;
+    for (axis, reference, expected_x) in [
+        ("0.,0.,-1.E-200", "0.,-1.E-200,0.", [0.,-1.,0.]),
+        ("0.,1.,1.", "0.,1.,1.0000000000000002", [0.,-1./2_f64.sqrt(),1./2_f64.sqrt()]),
+    ] {
+        let text = original.replace("#410,$,#411", "#410,#413,#411")
+            .replace("#411=IFCDIRECTION((0.,1.,0.))", &format!("#411=IFCDIRECTION(({reference}))"))
+            .replace("ENDSEC;END-ISO", &format!("#413=IFCDIRECTION(({axis}));ENDSEC;END-ISO"));
+        let (ok, operations) = source_operations(&text);
+        assert!(ok, "FINITE_DIRECTION exact source orientation");
+        let RetainedOperationKind::UnaryClip {clip,..} = operations[1].kind() else { panic!("finite base") };
+        let RetainedFiniteBoundary::Polygon {placement,..} = clip.finite.as_ref().unwrap().boundary() else { panic!("polygon") };
+        assert_eq!(&placement.frame[..3], &expected_x);
+    }
+}
+
+#[test]
+fn j1_finite_unrepresentable_direction_refuses_before_components() {
+    // FINITE-02: a nonzero component too small for a unit f64 vector must
+    // report a refusal, never silently become zero or a default axis.
+    let original = ifc_lite_testkit::retained_finite_clip::cases().into_iter()
+        .find(|c| c.name == "finite_polygon_placed").unwrap().source;
+    let text = original.replace("#411=IFCDIRECTION((0.,1.,0.))", "#411=IFCDIRECTION((1.E200,1.E-200,0.))");
+    let (ok, operations) = source_operations(&text);
+    assert!(!ok, "FINITE_DIRECTION unrepresentable orientation must refuse");
+    assert_eq!(operations.len(), 1, "FINITE_ATOMIC direction refusal before components");
 }

@@ -44,5 +44,23 @@ pub fn cases() -> Vec<Case> {
         .replace("$,$,2.,4.","$,$,2000.,4000.").replace("((0.,0.,1.));#201","((0.,0.,1000.));#201")
         .replace("((-0.25,-0.5,-0.5))","((-250.,-500.,-500.))").replace("#401,0.5,1.,0.75", "#401,500.,1000.,750."),
         volume:0.25,bounds:[-0.25,-0.5,0.5,0.25,0.5,1.],centroid:[0.,0.,0.75]});
+    // FINITE-02 / #7955: positive scaling of authored ratios cannot rotate a
+    // finite region. Keep the original fixed native/Worker oracle constants.
+    for (original, name) in [
+        ("finite_polygon_placed", "finite_polygon_placed_small_directions"),
+        ("finite_box_false_rotated", "finite_box_false_rotated_small_directions"),
+    ] {
+        let case = cases.iter().find(|c| c.name == original).unwrap();
+        let source = case.source.replace("#411=IFCDIRECTION((0.,1.,0.))", "#411=IFCDIRECTION((0.,1.E-10,0.))")
+            .replace("#412=IFCAXIS2PLACEMENT3D(#410,$,#411)", "#412=IFCAXIS2PLACEMENT3D(#410,#413,#411)")
+            .replace("#200,#15,#411", "#200,#413,#411")
+            .replace("ENDSEC;END-ISO", "#413=IFCDIRECTION((0.,0.,1.E-10));ENDSEC;END-ISO");
+        cases.push(Case { name, source, volume: case.volume, bounds: case.bounds, centroid: case.centroid });
+    }
+    // A negative small Axis must orient both the base plane and unequal box.
+    cases.push(Case {name:"finite_box_negative_axis_small",source:boxed().replace(".DIFFERENCE.",".INTERSECTION.")
+        .replace("#200,#15,$", "#200,#413,#411")
+        .replace("ENDSEC;END-ISO", "#411=IFCDIRECTION((0.,1.E-10,0.));#413=IFCDIRECTION((0.,0.,-1.E-10));ENDSEC;END-ISO"),
+        volume:0.25,bounds:[-0.5,-0.25,1.,0.5,0.25,1.5],centroid:[0.,0.,1.25]});
     cases
 }

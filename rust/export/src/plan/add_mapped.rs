@@ -26,7 +26,7 @@ use super::AddState;
 pub(super) type MapRef = (u32, u32);
 
 /// A type's `Body` maps, or why an occurrence cannot instance them.
-pub(super) type TypeMaps = Result<Rc<[MapRef]>, String>;
+pub(super) type TypeMaps = Result<Rc<[MapRef]>, NoBody>;
 
 /// Where a mapped body's maps come from.
 pub(super) enum MapPlan {
@@ -60,93 +60,91 @@ impl AddState<'_> {
     /// change during them.
     fn type_maps_of(&self, id: u32, what: &ObjectRef) -> Result<Rc<[MapRef]>, String> {
         let cached = self.type_maps.borrow().get(&id).cloned();
-        match cached {
+        let answer = match cached {
             Some(answer) => answer,
             None => {
-                let found = if self.index.contains(id) { self.source_type_maps(id, what) } else { Ok(Vec::new()) };
-                let answer = found.and_then(|maps| {
-                    if maps.is_empty() {
-                        Err(format!("type {what} has no Body representation map"))
-                    } else {
-                        Ok(Rc::from(maps))
-                    }
-                });
+                let answer = if self.index.contains(id) { self.source_type_maps(id) } else { Err(NoBody::Missing) };
                 self.type_maps.borrow_mut().insert(id, answer.clone());
                 answer
             }
-        }
+        };
+        answer.map_err(|why| match why {
+            NoBody::Missing => format!("type {what} has no Body representation map"),
+            NoBody::Deleted => format!("the Body maps of type {what} are deleted by this plan"),
+        })
     }
 
-    /// A source type's best `Body` maps in one context. Maps are ranked by
-    /// how plainly they are the body ([`body_rank`]), and the best rank wins,
-    /// so a fallback is not drawn on top of the body it stands in for. Of
-    /// those, the maps in the plan's body context are taken when the type
-    /// has any there, else those of the first context it has: a type that
-    /// keeps one body per level of detail has a map per context, and an
-    /// occurrence instances one of them. A map gone with its representation
-    /// or context is no candidate; a chosen map whose items this plan
-    /// deletes is refused rather than leave the copy part of its body.
-    fn source_type_maps(&self, id: u32, what: &ObjectRef) -> Result<Vec<MapRef>, String> {
+    /// A source type's `Body` maps, of the best rank that is intact. Maps are
+    /// ranked by how plainly they are the body ([`body_rank`]), so a fallback
+    /// is not drawn on top of the body it stands in for, but stands in when
+    /// this plan deletes part of that body. Of one rank, the maps in the
+    /// plan's body context are taken when the type has any there, else those
+    /// of the first context it has: a type that keeps one body per level of
+    /// detail has a map per context, and an occurrence instances one of them.
+    fn source_type_maps(&self, id: u32) -> Result<Rc<[MapRef]>, NoBody> {
         let (schema, index) = (self.schema, self.index);
         let entity = |r: u32| index.type_of(r).unwrap_or_default();
         let live = |r: &u32| !self.removed.contains(r);
         let maps = list_attr(index, schema, id, &entity(id), "RepresentationMaps").unwrap_or_default();
+        // (rank, map, context, every item intact)
         let mut body = Vec::new();
         for map in maps.into_iter().filter(live) {
-            let Some(rep) = scalar_attr(index, schema, map, &entity(map), "MappedRepresentation") else { continue };
+            let Some(rep) = scalar_attr(index, schema, map, &entity(map), "MappedRepresentation").filter(live) else { continue };
             let Some(rank) = self.body_rank(rep) else { continue };
-            if let Some(context) = scalar_attr(index, schema, rep, &entity(rep), "ContextOfItems") {
-                body.push((rank, map, rep, context));
-            }
-        }
-        let best = body.iter().map(|&(rank, ..)| rank).min();
-        body.retain(|&(rank, ..)| Some(rank) == best);
-        let chosen = body.iter().map(|&(.., c)| c).find(|&c| Some(c) == self.body_context).or(body.first().map(|&(.., c)| c));
-        let mut out = Vec::new();
-        for (_, map, rep, context) in body.into_iter().filter(|&(.., c)| Some(c) == chosen) {
+            let Some(context) = scalar_attr(index, schema, rep, &entity(rep), "ContextOfItems").filter(live) else { continue };
             let items = list_attr(index, schema, rep, &entity(rep), "Items").unwrap_or_default();
-            if items.is_empty() || items.iter().any(|i| !live(i)) {
-                return Err(format!("a Body map of type {what} is deleted by this plan"));
+            if !items.is_empty() {
+                body.push((rank, map, context, items.iter().all(live)));
             }
-            out.push((map, context));
         }
-        Ok(out)
+        let mut ranks: Vec<u8> = body.iter().map(|&(rank, ..)| rank).collect();
+        ranks.sort_unstable();
+        ranks.dedup();
+        for rank in ranks {
+            let of_rank: Vec<_> = body.iter().filter(|&&(r, ..)| r == rank).collect();
+            let chosen = of_rank.iter().map(|&&(_, _, c, _)| c).find(|&c| Some(c) == self.body_context).or(of_rank.first().map(|&&(_, _, c, _)| c));
+            let picked: Vec<_> = of_rank.into_iter().filter(|&&(_, _, c, _)| Some(c) == chosen).collect();
+            if picked.iter().all(|&&(.., intact)| intact) {
+                return Ok(picked.into_iter().map(|&(_, map, context, _)| (map, context)).collect());
+            }
+        }
+        Err(if body.is_empty() { NoBody::Missing } else { NoBody::Deleted })
     }
 
-    /// How plainly representation `rep` is the body: 0 for a `Body`
-    /// identifier; 1 for a `Body-FallBack` or `Facetation` one, or none and
-    /// a `RepresentationType` the geometry engine meshes as a body
-    /// (`rust/geometry/src/representation/select.rs`); `None` for any other
-    /// identifier (`Clearance`, `Reference`, `Axis`), whatever its type.
+    /// How plainly representation `rep` is the body, when its
+    /// `RepresentationType` is one the geometry engine meshes as a body (or
+    /// it has none; `rust/geometry/src/representation/select.rs`): 0 for a
+    /// `Body` identifier; 1 for a `Body-FallBack` or `Facetation` one, or
+    /// none. `None` for any other identifier (`Clearance`, `Reference`,
+    /// `Axis`) or type.
     fn body_rank(&self, rep: u32) -> Option<u8> {
         let entity = self.index.type_of(rep).unwrap_or_default();
         let read = |attr| self.index.string_attr(self.schema, rep, &entity, attr).filter(|s| !s.trim().is_empty());
-        if let Some(identifier) = read("RepresentationIdentifier") {
-            return match identifier.to_ascii_uppercase().as_str() {
-                "BODY" => Some(0),
-                "BODY-FALLBACK" | "FACETATION" => Some(1),
-                _ => None,
-            };
+        let body_type = read("RepresentationType").is_none_or(|t| {
+            [
+                "Body", "SweptSolid", "Brep", "CSG", "Clipping", "Tessellation", "MappedRepresentation", "SolidModel", "SurfaceModel", "Surface3D",
+                "AdvancedSweptSolid", "AdvancedBrep",
+            ]
+            .contains(&t.as_str())
+        });
+        if !body_type {
+            return None;
         }
-        let body_type = matches!(
-            read("RepresentationType").as_deref(),
-            Some(
-                "Body"
-                    | "SweptSolid"
-                    | "Brep"
-                    | "CSG"
-                    | "Clipping"
-                    | "Tessellation"
-                    | "MappedRepresentation"
-                    | "SolidModel"
-                    | "SurfaceModel"
-                    | "Surface3D"
-                    | "AdvancedSweptSolid"
-                    | "AdvancedBrep"
-            )
-        );
-        body_type.then_some(1)
+        match read("RepresentationIdentifier") {
+            None => read("RepresentationType").map(|_| 1),
+            Some(id) if id.eq_ignore_ascii_case("Body") => Some(0),
+            Some(id) if id.eq_ignore_ascii_case("Body-FallBack") || id.eq_ignore_ascii_case("Facetation") => Some(1),
+            Some(_) => None,
+        }
     }
+}
+
+/// Why a type has no `Body` maps an occurrence can instance.
+#[derive(Debug, Clone, Copy)]
+pub(super) enum NoBody {
+    Missing,
+    /// It has some, and this plan deletes part of each.
+    Deleted,
 }
 
 /// A type's `representation` as one `IfcRepresentationMap` at the type's

@@ -345,7 +345,7 @@ fn a_delete_takes_a_candidate_or_refuses_the_copy() {
         let (_, report) = run(&type_with_maps(schema), vec![(ObjectRef::Id(303), Disposition::Delete), add(mapped_wall(1, link(), IDENTITY))]);
         assert_eq!(report.added, 0, "{schema}: an empty body is not a copy");
         let refusal = report.refusals.iter().find(|r| r.object == ObjectRef::Guid(gid(1).encode()));
-        assert!(refusal.is_some_and(|r| r.reason.contains("deleted by this plan")), "{schema}: {:?}", report.refusals);
+        assert!(refusal.is_some_and(|r| r.reason.contains("are deleted by this plan")), "{schema}: {:?}", report.refusals);
     }
 }
 
@@ -371,5 +371,25 @@ fn a_fallback_body_stands_in_only_without_a_body() {
 fn a_clearance_map_is_not_instanced() {
     let source = String::from_utf8(type_with_maps("IFC4")).unwrap().replace("(#100,'Body','SweptSolid',(#303))", "(#100,'Clearance','SweptSolid',(#303))");
     let (_, report) = run(source.as_bytes(), vec![add(mapped_wall(1, TypeLink::Existing(ObjectRef::Id(40)), IDENTITY))]);
+    assert!(report.refusals[0].reason.contains("no Body representation map"), "{:?}", report.refusals);
+}
+
+/// A plain Body map this plan deletes part of gives way to the type's
+/// intact fallback; a fallback that is not body geometry never stands in.
+#[test]
+fn a_fallback_stands_in_for_a_deleted_body_but_not_a_bounding_box() {
+    let link = || TypeLink::Existing(ObjectRef::Id(40));
+    // #320 is a Body-FallBack copy of the body in the second context.
+    let source = String::from_utf8(type_with_two_bodies("IFC4X3")).unwrap().replace("(#330,'Body','SweptSolid',(#303))", "(#330,'Body-FallBack','SweptSolid',(#340))");
+    let extra = build_record("IFC4X3", 340, "IFCEXTRUDEDAREASOLID", &[("SweptArea", "#304".into()), ("Position", "#301".into()), ("ExtrudedDirection", "#305".into()), ("Depth", "2.".into())]) + "\n";
+    let source = source.replacen("ENDSEC;\nEND-ISO", &format!("{extra}ENDSEC;\nEND-ISO"), 1);
+    let (out, report) = run(source.as_bytes(), vec![(ObjectRef::Id(303), Disposition::Delete), add(mapped_wall(1, link(), IDENTITY))]);
+    assert_clean(&report, "IFC4X3");
+    let items = ids_of_type(&out, "IFCMAPPEDITEM");
+    let mut decoder = ifc_lite_core::EntityDecoder::new(&out);
+    assert_eq!(items.iter().map(|&i| decoder.decode_by_id(i).unwrap().get_ref(0)).collect::<Vec<_>>(), [Some(320)]);
+
+    let boxed = String::from_utf8(type_with_maps("IFC4X3")).unwrap().replace("(#100,'Body','SweptSolid',(#303))", "(#100,'Body-FallBack','BoundingBox',(#303))");
+    let (_, report) = run(boxed.as_bytes(), vec![add(mapped_wall(1, link(), IDENTITY))]);
     assert!(report.refusals[0].reason.contains("no Body representation map"), "{:?}", report.refusals);
 }

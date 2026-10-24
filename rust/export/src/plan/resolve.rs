@@ -10,7 +10,7 @@ use crate::step_ids::IdAllocator;
 use super::index::FileIndex;
 use super::add_types::AddItem;
 use super::patch::{apply_patch, PatchOutput};
-use super::removal::{Removal, RemovalReason};
+use super::removal::RemovalReason;
 use super::types::{Disposition, DroppedRepresentation, ExportPlan, ObjectRef, Refusal};
 use super::{add, attrs, delete, geometry, owner_history};
 
@@ -18,8 +18,9 @@ pub(crate) struct Resolution {
     pub(crate) appended: Vec<(u32, String)>,
     pub(crate) edits_by_id: HashMap<u32, BTreeMap<usize, String>>,
     pub(crate) removed: HashSet<u32>,
-    /// `removed` with a reason each, by id.
-    pub(crate) removals: Vec<Removal>,
+    /// Why the delete cascade removed each id it did, the sweep's deletes
+    /// as replaced; an id of `removed` it lacks is one a patch replaced.
+    pub(crate) reasons: HashMap<u32, RemovalReason>,
     pub(crate) refusals: Vec<Refusal>,
     pub(crate) patched: usize,
     pub(crate) added: usize,
@@ -145,7 +146,8 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
         result
     };
     removed.extend(delete_result.removed);
-    let removals = removal_reasons(&removed, &delete_result.reasons, &swept);
+    let mut reasons = delete_result.reasons;
+    reasons.extend(swept.into_iter().map(|id| (id, RemovalReason::Replaced)));
     refusals.extend(lost_writes(edited, &removed));
     refusals.extend(overridden_preserves(&resolved, &removed, &delete_result.unhosted, &gated_requested));
     for (slot, strip) in delete_result.stripped {
@@ -167,7 +169,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
         state.build_all(&adds, &mut ids, &mut edits_by_id, &mut appended, &mut refusals)
     };
 
-    Resolution { appended, edits_by_id, removed, removals, refusals, patched, added, patched_objects, dropped_representations }
+    Resolution { appended, edits_by_id, removed, reasons, refusals, patched, added, patched_objects, dropped_representations }
 }
 
 /// What the old shapes of the geometry patches leave behind: what only they
@@ -191,21 +193,6 @@ fn sweep_old_shapes(
     let swept: HashSet<u32> = sweep.delete.into_iter().collect();
     requested_deletes.extend(swept.iter().copied());
     swept
-}
-
-/// Every removed record and why, by id: the delete cascade's reason; what a
-/// patch removed itself (an old placement chain, an old shape and its
-/// annotations) is replaced.
-fn removal_reasons(removed: &HashSet<u32>, reasons: &HashMap<u32, RemovalReason>, swept: &HashSet<u32>) -> Vec<Removal> {
-    let mut out: Vec<Removal> = removed
-        .iter()
-        .map(|&id| {
-            let reason = if swept.contains(&id) { RemovalReason::Replaced } else { reasons.get(&id).copied().unwrap_or(RemovalReason::Replaced) };
-            Removal::new(id, reason)
-        })
-        .collect();
-    out.sort_unstable_by_key(|r| r.express_id);
-    out
 }
 
 /// The owner history a patch's new records name: the file's first, else one

@@ -14,6 +14,7 @@ use crate::StepOptions;
 
 use super::index::FileIndex;
 use super::resolve::Resolution;
+use super::removal::{Removal, RemovalReason};
 use super::types::{ExportPlan, PlanError, ValidationFinding, WriteReport};
 use super::validate::{duplicate_pset_names, StreamValidator};
 
@@ -35,7 +36,7 @@ pub(crate) fn write_output<W: Write>(
     let source_header = crate::source_header::parse_source_header(source);
     crate::step_header::write_header(&mut out, &header_opts, source_header.as_ref(), schema)?;
 
-    let Resolution { appended, edits_by_id, removed, removals, refusals, patched, added, patched_objects, dropped_representations } =
+    let Resolution { appended, edits_by_id, removed, reasons, refusals, patched, added, patched_objects, dropped_representations } =
         resolution;
     let defined = DefinedIds::new(index, &removed, &appended);
     let mut validator = StreamValidator::new(schema);
@@ -93,7 +94,7 @@ pub(crate) fn write_output<W: Write>(
         total: index.len(),
         written,
         deleted: removed.len(),
-        removed: removals,
+        removed: removals(&removed, &reasons),
         patched,
         added,
         refusals,
@@ -185,4 +186,14 @@ impl<'i, 'a> DefinedIds<'i, 'a> {
             None => (self.index.contains(id) && !self.removed.contains(&id)) || self.appended.contains(&id),
         }
     }
+}
+
+/// Every removed record and why, by id: the reason the resolution recorded,
+/// or replaced for what a patch removed itself (an old placement chain or
+/// body).
+fn removals(removed: &HashSet<u32>, reasons: &HashMap<u32, RemovalReason>) -> Vec<Removal> {
+    let mut out: Vec<Removal> =
+        removed.iter().map(|&id| Removal::new(id, reasons.get(&id).copied().unwrap_or(RemovalReason::Replaced))).collect();
+    out.sort_unstable_by_key(|r| r.express_id);
+    out
 }

@@ -72,7 +72,7 @@ pub fn normalize(v: V3, min_len: f64) -> Option<V3> {
 /// `v` scaled into normalisable range: `v` itself, bit for bit, when
 /// `dot(v, v)` is finite (every ordinary direction); otherwise `v` divided by
 /// its largest-magnitude component. Finite ratios whose squared length
-/// overflows (a component above ~1.34e154) would give `|v| = inf`, and
+/// overflows (components from about 1e154 up) would give `|v| = inf`, and
 /// `v / |v|` the zero vector, which passes every one-ended length check; the
 /// rescaled vector has the same direction and a length in `[1, √3]`. A
 /// non-finite component is returned as is, for the caller's own refusal.

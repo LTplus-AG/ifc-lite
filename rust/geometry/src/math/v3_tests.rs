@@ -124,12 +124,14 @@ fn unoverflowed_keeps_finite_lengths_bit_for_bit_and_rescales_only_overflow() {
         let v = rng.v3();
         assert!(same(unoverflowed(v), v));
     }
-    for v in [[5e-324, 0.0, -5e-324], [-0.0, 0.0, 0.0], [1e154, 1e154, 0.0], [1e-200, 1e-200, 1e-200]] {
+    for v in [[5e-324, 0.0, -5e-324], [-0.0, 0.0, 0.0], [1e154, 0.0, 0.0], [1e-200, 1e-200, 1e-200]] {
         assert!(same(unoverflowed(v), v), "{v:?}");
     }
     // An overflowing squared length is divided by the largest |component|.
     assert_eq!(unoverflowed([1e308, 0.0, 1e308]), [1.0, 0.0, 1.0]);
     assert_eq!(unoverflowed([1e308, 1e308, 0.0]), [1.0, 1.0, 0.0]);
+    // 1e154 alone squares to 1e308; two of them sum past f64::MAX.
+    assert_eq!(unoverflowed([1e154, 1e154, 0.0]), [1.0, 1.0, 0.0]);
     assert_eq!(unoverflowed([-1e308, 5e307, 0.0]), [-1.0, 0.5, 0.0]);
     assert_eq!(normalize(unoverflowed([1e200, 1e200, 0.0]), 0.0), normalize([1.0, 1.0, 0.0], 0.0));
     // Non-finite input is left for the caller.

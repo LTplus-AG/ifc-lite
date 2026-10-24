@@ -27,12 +27,12 @@ export function offsetError(code, message) {
  * `check-rust-major-offset.mjs` (which checks them and counts the inherited
  * ones) cannot drift apart into "the writer skipped a file the checker never
  * looked at". */
-export const RUST_MEMBER_DIRS = ['core', 'geometry', 'processing', 'clash', 'export', 'ffi', 'wasm-bindings', 'landxml'];
+export const RUST_MEMBER_DIRS = ['core', 'geometry', 'geometry-runtime', 'processing', 'clash', 'export', 'ffi', 'wasm-bindings', 'landxml'];
 
 /** The internal crate names that carry a `version = "…"` requirement. It must
  * name every crate in the root `[workspace.dependencies]` table: a crate left
  * out is a literal neither the writer nor the checker reads. */
-const INTERNAL_CRATE = '(?:core|diff|geometry|processing|clash|export|wasm|landxml)';
+const INTERNAL_CRATE = '(?:core|diff|geometry-runtime|geometry|processing|clash|export|wasm|landxml)';
 
 /** A fresh `/g` regex each call — a shared one carries `lastIndex` between
  * callers and silently skips matches.

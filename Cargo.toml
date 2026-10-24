@@ -16,6 +16,7 @@ ifc-lite-diff = { version = "22.6.0", path = "rust/diff" }
 # `default-features = false`: geometry's default set is empty, and the members that
 # spelled it out (processing, wasm, server) said so to keep it that way.
 ifc-lite-geometry = { version = "22.6.0", path = "rust/geometry", default-features = false }
+ifc-lite-geometry-runtime = { version = "22.6.0", path = "rust/geometry-runtime" }
 ifc-lite-processing = { version = "22.6.0", path = "rust/processing" }
 ifc-lite-clash = { version = "22.6.0", path = "rust/clash" }
 ifc-lite-export = { version = "22.6.0", path = "rust/export" }

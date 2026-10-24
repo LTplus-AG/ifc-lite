@@ -3,10 +3,17 @@
 name = "ifc-lite-geometry-runtime"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
 license.workspace = true
 repository.workspace = true
-publish = false
-description = "Explicit isolated native geometry worker client for IFC-Lite (opt-in, not published)"
+# Release automation admission is gated on first-publish bootstrap; see RELEASE.md.
+publish = ["crates-io"]
+description = "Opt-in native geometry worker client and transport protocol for IFC-Lite"
+readme = "README.md"
+keywords = ["ifc", "bim", "geometry"]
+categories = ["graphics"]
+# Only the Rust client and its tests: no SDK, adapter binaries or browser assets.
+include = ["Cargo.toml", "README.md", "src/**", "tests/**"]
 
 [dependencies]
 # Retained requests and completions are GeometryDocument types. Nothing in

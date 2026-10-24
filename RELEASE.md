@@ -207,3 +207,83 @@ The new workflow:
 - ✅ Single source of truth (changesets)
 - ✅ Publishing only on explicit merge
 - ✅ Clear audit trail via "Version Packages" PR
+
+## Geometry runtime first-publish gate (#7955)
+
+`ifc-lite-geometry-runtime` is prepared as a source-only crates.io package but is
+**deliberately absent from `scripts/lib/crates-io.mjs`'s `CRATES`**. Its manifest
+allows an authorized first publish; this does not admit it to automated release.
+Do not add a processing dependency, even an optional one, until the bootstrap
+and release-order change below are complete. Cargo resolves versioned optional
+dependencies when packaging; a workspace path alone cannot serve registry users
+([Cargo dependency rules](https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html#multiple-locations)).
+
+The package includes the existing native client and wasm32-compatible protocol,
+not SDK code, executables or browser assets. No retained mode is enabled by this
+preparation. SDK redistribution and hosted assets remain separate release gates.
+
+An authorized maintainer completes these steps, recording the source commit,
+registry version and validation receipts before admitting the crate:
+
+1. Review the package from a clean commit. Through `ifc-fleet run --cwd
+   ABSOLUTE_CHECKOUT --`, run `cargo package -p ifc-lite-geometry-runtime --locked`
+   (with verification enabled) and `cargo publish -p ifc-lite-geometry-runtime
+   --dry-run --locked`. Inspect the archive and its normalized `Cargo.toml`:
+   geometry and the versioned core dev-dependency must resolve from crates.io.
+   The normalized manifest must contain no path dependencies, and the archive must contain no
+   absolute build paths or SDK assets. Cargo.toml.orig may retain relative
+   workspace declarations; that is Cargo provenance, not a registry dependency.
+   Resolve compatible registry versions and verify their APIs. If none satisfies
+   the current requirements, release those prerequisites first; do not weaken
+   requirements
+   or treat `--no-verify` as package validation. Record the actual resolved
+   geometry version: a compatible older version may lack the new client API.
+2. Confirm whether the crate name already exists and who owns it. For a new
+   name, the repository's release workflow requires a one-time authorized
+   manual first publish using the maintainer's normal crates.io authentication:
+   `cargo publish -p ifc-lite-geometry-runtime --locked`. This is a publication
+   action, not part of the packaging patch or its validation. Configure the
+   crate's Trusted Publisher for repository `LTplus-AG/ifc-lite`, workflow
+   `release.yml`, matching any environment restriction on that workflow. Do not
+   add a long-lived token to CI. Recheck current
+   [crates.io bootstrap requirements](https://crates.io/docs/trusted-publishing)
+   when performing this step.
+3. Verify that the uploaded version is downloadable and visible in Cargo's
+   sparse index, and record the Trusted Publisher configuration. Only then
+   submit the release-admission change: insert `ifc-lite-geometry-runtime`
+   immediately **after `ifc-lite-geometry` and before `ifc-lite-processing`** in
+   `CRATES`. Core and geometry must already be visible before runtime is
+   published. The existing release loop waits for index visibility between
+   crates; do not replace it with a registry API existence check.
+4. In that same admission change, run
+   `node scripts/check-rust-api-surface.mjs --update`, commit the runtime API
+   snapshot, and run its check/tests plus the release and Rust-semver tests.
+   The snapshot and semver guards currently use `CRATES`; this preparation
+   intentionally does not claim runtime API coverage before admission. Review
+   the new snapshot's extraction warnings, including target-gated exports.
+   Update the published-crate list in this document as well.
+5. H2 may then consume the existing workspace entry using
+   `ifc-lite-geometry-runtime = { workspace = true, optional = true }`, with
+   `retained-native = ["dep:ifc-lite-geometry-runtime"]` off by default and the
+   native target gate required by that implementation. Run verified packaging
+   for processing both with default features and with `--features retained-native`.
+   Run the feature-off workspace/wheel checks and explicit feature-on tests.
+   Do not merge a registry consumer ahead of the release-order change: the next
+   version bump otherwise publishes processing before its runtime requirement.
+
+The current 21.5.0 workspace and committed lockfile already agree; this slice
+does not change their versions or regenerate the lock. The earlier 21.4.0
+prerequisite absence is historical: compatible core/clash/geometry 21.5.0
+packages are available. This does not establish that the current runtime
+compiles against their published APIs. Record archive resolution and actual
+verification before claiming publishability. Future version changes continue
+through the normal changeset/release synchronization flow.
+
+Light preparation checks are `cargo metadata --no-deps --locked --offline
+--format-version 1`, `cargo package -p ifc-lite-geometry-runtime
+--list --locked --offline --allow-dirty`,
+`node scripts/check-rust-major-offset.mjs`, and the fixture-only suites
+`scripts/sync-versions.test.mjs` and `scripts/check-rust-major-offset.test.mjs`.
+Metadata and file listings do **not** prove archive compilation against registry
+sources. Heavy checks, including archive verification, run through `ifc-fleet`;
+share the parent's admitted validation rather than queue a duplicate graph.

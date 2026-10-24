@@ -23,7 +23,7 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const SYNC = join(scriptDir, 'sync-versions.js');
 const GATE = join(scriptDir, 'check-rust-major-offset.mjs');
 
-const MEMBERS = ['core', 'geometry', 'processing', 'clash', 'export', 'ffi', 'wasm-bindings', 'landxml'];
+const MEMBERS = ['core', 'geometry', 'geometry-runtime', 'processing', 'clash', 'export', 'ffi', 'wasm-bindings', 'landxml'];
 
 function run(script, root) {
   try {
@@ -47,7 +47,7 @@ function makeTree(t, { npmVersion = '6.1.0', stale = '6.0.1', offsetFile, packag
     writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: `p${i}`, version: i === 0 ? npmVersion : '0.1.0' }));
   }
 
-  const deps = ['core', 'diff', 'geometry', 'processing', 'clash', 'export', 'wasm', 'landxml']
+  const deps = ['core', 'diff', 'geometry', 'geometry-runtime', 'processing', 'clash', 'export', 'wasm', 'landxml']
     .map((n) => `ifc-lite-${n} = { version = "${stale}", path = "rust/${n}" }`)
     .join('\n');
   const members = MEMBERS.map((m) => `"rust/${m}"`).join(', ');
@@ -103,7 +103,7 @@ test('offset 1 (the #3210 case): npm stays on its minor, the crates go to 7.1.0'
   const cargoToml = readFileSync(join(root, 'Cargo.toml'), 'utf8');
   assert.match(cargoToml, /\[workspace\.package\]\nversion = "7\.1\.0"/);
   assert.equal(cargoToml.includes('6.1.0'), false, 'no npm version may survive in the Rust manifest');
-  assert.equal((cargoToml.match(/7\.1\.0/g) ?? []).length, 9, 'workspace version + eight internal literals');
+  assert.equal((cargoToml.match(/7\.1\.0/g) ?? []).length, 10, 'workspace version + nine internal literals');
 
   for (const member of MEMBERS) {
     assert.match(readFileSync(join(root, 'rust', member, 'Cargo.toml'), 'utf8'), /version = "7\.1\.0"/, member);
@@ -216,4 +216,27 @@ test('a workspace scan below the floor stops the release rather than syncing to 
   // The manifests must be left where they were, not rewritten to the root
   // package's version off a scan that found nothing.
   assert.match(readFileSync(join(root, 'Cargo.toml'), 'utf8'), /version = "6\.0\.1"/);
+});
+
+test('runtime dependency follows a release bump before optional processing use (#7955)', (t) => {
+  const root = makeTree(t, { offsetFile: OFFSET_1 });
+  const manifest = join(root, 'Cargo.toml');
+  writeFileSync(manifest, readFileSync(manifest, 'utf8') +
+    'ifc-lite-geometry-runtime = { version = "6.0.1", path = "rust/geometry-runtime" }\n');
+  const processing = join(root, 'rust/processing/Cargo.toml');
+  writeFileSync(processing, readFileSync(processing, 'utf8') +
+    'ifc-lite-geometry-runtime = { workspace = true, optional = true }\n');
+  const synced = run(SYNC, root);
+  assert.equal(synced.code, 0, synced.out);
+  assert.match(readFileSync(manifest, 'utf8'),
+    /ifc-lite-geometry-runtime = \{ version = "7\.1\.0"/);
+  const checked = run(GATE, root);
+  assert.equal(checked.code, 0, checked.out);
+  // A stale runtime requirement must be rejected even while its consumer is optional.
+  writeFileSync(manifest, readFileSync(manifest, 'utf8').replace(
+    'ifc-lite-geometry-runtime = { version = "7.1.0"',
+    'ifc-lite-geometry-runtime = { version = "6.0.1"'));
+  const stale = run(GATE, root);
+  assert.equal(stale.code, 1, stale.out);
+  assert.match(stale.out, /ifc-lite-geometry-runtime/);
 });

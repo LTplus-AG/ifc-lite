@@ -11,12 +11,15 @@ import { captureViewportFrame, viewportCaptureOwnsFrame } from '@/lib/viewport-c
 
 // Root viewer typecheck verifies these negative contracts; never invoked.
 function rejectsAsyncReaders(renderer: Renderer): void {
+  // Deliberate invalid reader fixture: verify custom thenables are refused (#6709).
+  // eslint-disable-next-line unicorn/no-thenable
+  const customThenable = { then: (resolve: (value: string) => void) => resolve('pixels') };
   // @ts-expect-error An inferred Promise cannot satisfy the synchronous reader contract.
   void captureViewportFrame(renderer, { read: async canvas => canvas.toDataURL() });
   // @ts-expect-error A mixed result cannot conceal an asynchronous pixel read.
   void captureViewportFrame(renderer, { read: () => Math.random() > 0.5 ? 'pixels' : Promise.resolve('pixels') });
   // @ts-expect-error Custom thenables are asynchronous results too.
-  void captureViewportFrame(renderer, { read: () => ({ then: (resolve: (value: string) => void) => resolve('pixels') }) });
+  void captureViewportFrame(renderer, { read: () => customThenable });
 }
 void rejectsAsyncReaders;
 
@@ -64,6 +67,8 @@ for (const kind of ['promise', 'thenable', 'function-thenable']) {
       const refused = captureViewportFrame<unknown>(h.renderer, {
         prepare: () => () => { restored++; },
         read: () => kind === 'promise' ? Promise.reject(failure) :
+          // Deliberate invalid reader fixtures exercise runtime thenable refusal (#6709).
+          // eslint-disable-next-line unicorn/no-thenable
           kind === 'thenable' ? { then } : Object.assign(() => 'unused', { then }),
       });
       let settled = false;

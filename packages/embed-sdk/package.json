@@ -24,7 +24,7 @@
   "devDependencies": {
     "happy-dom": "^21.0.3",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.5"
   },
   "license": "MPL-2.0",
   "repository": {

@@ -52,15 +52,17 @@ impl IfcAPI {
         let content = source.bytes();
         let mut decoder = source.decoder().with_strict_reals();
         let prepass = super::styling::combined_pre_pass(content, &mut decoder);
-        let palettes = self.get_or_build_indexed_colour_maps(content, &mut decoder);
-        let textures = self.get_or_build_texture_index(content, &mut decoder);
-        let layers = (!self.merge_layers()).then(|| self.get_or_build_material_layer_index(content, &mut decoder));
-        let skipped = self.merge_layers().then(|| self.get_or_build_parts_to_skip(content, &mut decoder));
+        let palettes = super::product_job::build_indexed_colour_maps(content, &mut decoder);
+        let textures = Arc::new(ifc_lite_geometry::build_texture_index(content, &mut decoder));
+        let layers = (!self.merge_layers()).then(|| Arc::new(MaterialLayerIndex::from_content(content, &mut decoder)));
+        let skipped = self.merge_layers().then(|| ifc_lite_geometry::compute_parts_to_skip(content, &mut decoder));
+        let referenced = super::styling::build_referenced_representation_maps(content, &mut decoder);
+        let instantiated = super::styling::build_instantiated_type_ids(content, &mut decoder);
         let mut jobs = FxHashMap::default();
         for (id, _, _, ifc_type) in prepass.simple_jobs.iter().chain(&prepass.complex_jobs) {
             if skipped.as_ref().is_some_and(|ids| ids.contains(id)) { continue; }
             let entity = decoder.decode_by_id(*id).map_err(failure)?;
-            let Some(kind) = self.canonical_product_job_kind(content, &entity, ifc_type, &mut decoder) else { continue };
+            let Some(kind) = super::product_job::canonical_product_job_kind(&entity, ifc_type, &referenced, &instantiated) else { continue };
             jobs.insert(*id, ProductSetup { ifc_type: ifc_type.clone(), kind });
         }
         let resolved = prepass.resolved;
@@ -82,3 +84,7 @@ impl IfcAPI {
     }
 }
 pub(super) fn failure(error: impl std::fmt::Display) -> JsValue { JsValue::from_str(&error.to_string()) }
+
+#[cfg(all(test, target_arch = "wasm32"))]
+#[path = "retained_model_tests.rs"]
+mod tests;

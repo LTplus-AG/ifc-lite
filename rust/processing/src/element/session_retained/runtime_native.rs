@@ -42,17 +42,17 @@ impl RetainedRuntime for SmlibWorker {
     fn incarnation(&self) -> u64 { SmlibWorker::incarnation(self) }
 }
 impl RetainedExecutor for SmlibWorker {
-    fn invoke(&mut self, call: Invocation<'_, Self::Receipt>, limits: NumericalLimits)
+    fn invoke(&mut self, call: Invocation<'_, Self::Receipt>, limits: NumericalLimits, resources: &ifc_lite_geometry::resource::OwnedResourceContext)
         -> Result<Self::Receipt, RetainedExecutionError> {
         let mesh = MeshLimits { max_bytes: limits.max_bytes };
         match call {
-            Invocation::Construction(request) => self.evaluate_retained(request.clone(), limits.chord_metres, limits.angle_degrees, mesh)
+            Invocation::Construction(request) => self.evaluate_retained_accounted(request.clone(), limits.chord_metres, limits.angle_degrees, mesh, Some(resources))
                 .map(|value| RealizationKind::Construction(Box::new(value))),
             Invocation::Affine { input, column_major } => self.copy_retained_affine(transform_input(input), column_major)
                 .map(|value| RealizationKind::Affine(Box::new(value))),
-            Invocation::Boolean { left, right, operation } => self.evaluate_retained_boolean(
+            Invocation::Boolean { left, right, operation } => self.evaluate_retained_boolean_accounted(
                 left.native_dependency()?, right.native_dependency()?, boolean_operation(operation)?,
-                limits.chord_metres, limits.angle_degrees, mesh)
+                limits.chord_metres, limits.angle_degrees, mesh, Some(resources))
                 .map(|value| RealizationKind::Boolean(Box::new(value))),
         }.map_err(|error| RetainedExecutionError::Runtime(error.to_string()))
     }

@@ -67,6 +67,12 @@ impl SmlibWorker {
         angle_degrees: f64,
         limits: MeshLimits,
     ) -> Result<RetainedRealization, WorkerError> {
+        self.evaluate_retained_accounted(request, chord_metres, angle_degrees, limits, None)
+    }
+
+    pub fn evaluate_retained_accounted(&mut self, request: RetainedRequest,
+        chord_metres: f64, angle_degrees: f64, limits: MeshLimits,
+        resources: Option<&ifc_lite_geometry::resource::OwnedResourceContext>) -> Result<RetainedRealization, WorkerError> {
         if !self.is_live() || request.worker_incarnation() != self.incarnation() {
             return Err(WorkerError::WrongWorker);
         }
@@ -88,7 +94,7 @@ impl SmlibWorker {
             payload.loops,
             payload.segments,
         )?;
-        let mesh = match self.tessellate(solid, chord_metres, angle_degrees, limits) {
+        let mesh = match self.tessellate_accounted(solid, chord_metres, angle_degrees, limits, resources) {
             Ok(mesh) => mesh,
             Err(error) => {
                 // Never retain an unpublished object: if its cleanup fails the
@@ -128,7 +134,7 @@ impl SmlibWorker {
                 tessellation,
                 source_from_evaluation,
                 evaluation_from_source,
-            ),
+            ).with_storage_reservation(mesh.storage),
         })
     }
 }

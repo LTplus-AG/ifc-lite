@@ -184,6 +184,14 @@ impl SmlibWorker {
         angle_degrees: f64,
         limits: MeshLimits,
     ) -> Result<RetainedDependencyResult, WorkerError> {
+        self.evaluate_retained_boolean_accounted(left, right, operation, chord_metres, angle_degrees, limits, None)
+    }
+
+    // Ordered operands and explicit authority must travel together.
+    #[allow(clippy::too_many_arguments)]
+    pub fn evaluate_retained_boolean_accounted(&mut self, left: RetainedDependency<'_>, right: RetainedDependency<'_>, operation: BooleanOperation,
+        chord_metres: f64, angle_degrees: f64, limits: MeshLimits,
+        resources: Option<&ifc_lite_geometry::resource::OwnedResourceContext>) -> Result<RetainedDependencyResult, WorkerError> {
         let (a, frame, left_lineage, left_count) = left.operand()?;
         let (b, right_frame, right_lineage, right_count) = right.operand()?;
         self.object_liveness(a)?;
@@ -201,7 +209,7 @@ impl SmlibWorker {
         // already retired the process.
         let solid = boolean?;
         cleanup?;
-        let mesh = match self.tessellate(solid, chord_metres, angle_degrees, limits) {
+        let mesh = match self.tessellate_accounted(solid, chord_metres, angle_degrees, limits, resources) {
             Ok(mesh) => mesh,
             Err(error) => {
                 if self.release(solid).is_err() {

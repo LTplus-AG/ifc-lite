@@ -50,7 +50,7 @@ impl RetainedRuntime for BrowserWorker {
     fn incarnation(&self) -> u64 { BrowserWorker::incarnation(self) }
 }
 impl AsyncRetainedExecutor for BrowserWorker {
-    async fn invoke(&mut self, call: Invocation<'_, Self::Receipt>, limits: NumericalLimits)
+    async fn invoke(&mut self, call: Invocation<'_, Self::Receipt>, limits: NumericalLimits, _resources: &ifc_lite_geometry::resource::OwnedResourceContext)
         -> Result<Self::Receipt, RetainedExecutionError> {
         let max_bytes = u32::try_from(limits.max_bytes)
             .map_err(|_| RetainedExecutionError::Runtime("browser mesh budget exceeds u32".into()))?;

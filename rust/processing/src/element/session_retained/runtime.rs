@@ -31,13 +31,13 @@ pub trait RetainedRuntime {
 }
 
 pub trait RetainedExecutor: RetainedRuntime {
-    fn invoke(&mut self, call: Invocation<'_, Self::Receipt>, limits: NumericalLimits)
+    fn invoke(&mut self, call: Invocation<'_, Self::Receipt>, limits: NumericalLimits, resources: &ifc_lite_geometry::resource::OwnedResourceContext)
         -> Result<Self::Receipt, RetainedExecutionError>;
 }
 
 /// An executor borrowing one live Worker; no Send bound is needed on wasm32.
 pub trait AsyncRetainedExecutor: RetainedRuntime {
-    fn invoke(&mut self, call: Invocation<'_, Self::Receipt>, limits: NumericalLimits)
+    fn invoke(&mut self, call: Invocation<'_, Self::Receipt>, limits: NumericalLimits, resources: &ifc_lite_geometry::resource::OwnedResourceContext)
         -> impl std::future::Future<Output = Result<Self::Receipt, RetainedExecutionError>>;
 }
 

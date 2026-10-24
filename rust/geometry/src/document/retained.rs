@@ -183,6 +183,7 @@ pub struct RetainedCompletion {
     /// Column-major evaluation metres -> raw solid-local file units.
     pub source_from_evaluation: [f64; 16],
     pub evaluation_from_source: [f64; 16],
+    _storage: Option<crate::resource::Reservation>,
 }
 
 impl RetainedCompletion {
@@ -195,11 +196,17 @@ impl RetainedCompletion {
         evaluation_from_source: [f64; 16],
     ) -> Self {
         Self {
+            _storage: None,
             request,
             tessellation,
             source_from_evaluation,
             evaluation_from_source,
         }
+    }
+    /// Keep admitted backing alive for the lifetime of this completion.
+    pub fn with_storage_reservation(mut self, storage: Option<crate::resource::Reservation>) -> Self {
+        self._storage = storage;
+        self
     }
     pub fn request(&self) -> &RetainedRequest {
         &self.request

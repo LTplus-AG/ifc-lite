@@ -122,7 +122,7 @@ jobs:
         env:
           IFCLITE_SMLIB_WORKER: ${{ runner.temp }}/smlib-native/ifclite_smlib_worker
         run: |
-          for oracle in source-admission ordered-invocation accepted-outcome post-await-stop; do
+          for oracle in source-admission ordered-invocation accepted-outcome post-await-stop backing-admission backing-lifetime async-backing-authority backing-refund; do
             python3 tests/evidence/retained-execution-j4/feature-oracle.py \
               --oracle "$oracle" --evidence-dir "$RUNNER_TEMP/retained-execution-$oracle"
           done

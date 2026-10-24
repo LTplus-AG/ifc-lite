@@ -23,7 +23,7 @@ impl IssuedCommonConstruction {
         for operation in &self.operations {
             self.checkpoint()?;
             let permit = self.reserve_receipt()?;
-            let result = self.resources.with_scope(|| worker.invoke(operation.invocation(), NumericalLimits { chord_metres: chord, angle_degrees: angle, max_bytes: limits.max_bytes }));
+            let result = self.resources.with_scope(|| worker.invoke(operation.invocation(), NumericalLimits { chord_metres: chord, angle_degrees: angle, max_bytes: limits.max_bytes }, &self.resources));
             self.checkpoint()?;
             realizations.push(operation.seal(result?, permit)?);
         }

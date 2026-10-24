@@ -1,0 +1,11 @@
+--- a/rust/geometry-runtime/src/worker_mesh.rs
++++ b/rust/geometry-runtime/src/worker_mesh.rs
+@@ -136,7 +136,7 @@
+         }
+         // #7955 N1: admit all backing before any stream transfer/allocation.
+         let storage = resources.map(|authority| authority.charge(Cost {
+-            live_bytes: 0, copy_bytes: size as u64, ..Default::default()
++            live_bytes: size as u64, copy_bytes: size as u64, ..Default::default()
+         })).transpose().map_err(|_| WorkerError::ResourceLimit("captured mesh backing account"))?;
+         let positions = self.read_f64(mesh, MeshStream::Positions, positions)?;
+         let indices = self.read_u32(mesh, MeshStream::Indices, indices)?;

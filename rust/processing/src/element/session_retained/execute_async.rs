@@ -29,7 +29,7 @@ impl<R: NumericalReceipt> RuntimeIssued<R> {
             // the await. Dropping this future drops the armed packet and retires
             // its captured domain, including a still-running Worker operation.
             let permit = self.reserve_receipt()?;
-            let result = worker.invoke(operation.invocation(), limits).await;
+            let result = worker.invoke(operation.invocation(), limits, &self.resources).await;
             self.checkpoint()?;
             realizations.push(operation.seal(result?, permit)?);
         }

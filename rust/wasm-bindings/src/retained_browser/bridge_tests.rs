@@ -60,8 +60,9 @@ async fn j4_common_executor_uses_actual_worker_receipts_and_distinct_object_iden
     let request = request(RECTANGLE, &worker);
     let domain = worker.cancellation();
     let limits = NumericalLimits { chord_metres: 0.001, angle_degrees: 5., max_bytes: BUDGET as usize };
-    let first = worker.invoke(Invocation::Construction(&request), limits).await.unwrap();
-    let second = worker.invoke(Invocation::Construction(&request), limits).await.unwrap();
+    let resources = ifc_lite_geometry::resource::OwnedResourceContext::capture_current();
+    let first = worker.invoke(Invocation::Construction(&request), limits, &resources).await.unwrap();
+    let second = worker.invoke(Invocation::Construction(&request), limits, &resources).await.unwrap();
     assert!(first.object() != second.object(), "the same source can produce distinct owned objects");
     assert!(first.belongs_to_domain(&domain) && second.belongs_to_domain(&domain));
     let ReceiptEvidence::Construction(completion) = first.evidence() else { panic!("construction evidence") };

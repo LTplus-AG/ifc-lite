@@ -61,6 +61,10 @@ impl OwnedResourceContext {
         };
         work()
     }
+    /// Reserve under the captured authority without installing a scope across await.
+    pub fn charge(&self, cost: super::Cost) -> Result<Reservation, ProgramStop> {
+        self.with_scope(|| { self.check()?; super::charge(cost) })
+    }
     /// Admit actual retained Vec backing before growth. The returned permit must
     /// follow its storage owner, or be retained while this context owns the Vec.
     /// This covers requested backing, not allocator overhead or opaque SDK work.

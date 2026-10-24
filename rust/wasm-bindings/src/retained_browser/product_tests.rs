@@ -43,9 +43,9 @@ impl RetainedRuntime for Observed {
     fn incarnation(&self) -> u64 { self.worker.incarnation() }
 }
 impl AsyncRetainedExecutor for Observed {
-    async fn invoke(&mut self, call: Invocation<'_, Self::Receipt>, limits: NumericalLimits)
+    async fn invoke(&mut self, call: Invocation<'_, Self::Receipt>, limits: NumericalLimits, resources: &ifc_lite_geometry::resource::OwnedResourceContext)
         -> Result<Self::Receipt, RetainedExecutionError> {
-        let receipt = self.worker.invoke(call, limits).await?;
+        let receipt = self.worker.invoke(call, limits, resources).await?;
         if let BrowserReceipt::Boolean(result) = &receipt {
             self.boolean_volumes.push(volume(&result.mesh));
         }

@@ -69,7 +69,7 @@ if(EMSCRIPTEN)
     "-sEXPORTED_RUNTIME_METHODS=['HEAPU8']")
   set_target_properties(ifclite_smlib_browser PROPERTIES SUFFIX ".mjs")
   # The staged /smlib bundle is these exact module bytes beside the binary.
-  foreach(module module worker client contract sweep sweep-contract)
+  foreach(module module worker client contract sweep sweep-contract dependency-contract)
     configure_file("browser/${module}.mjs" "${module}.mjs" COPYONLY)
   endforeach()
   foreach(target smlib_kernel smlib_api ifclite_smlib ifclite_smlib_browser ifclite_smlib_tests

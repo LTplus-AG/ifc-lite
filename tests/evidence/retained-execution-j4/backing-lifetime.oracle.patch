@@ -1,0 +1,11 @@
+--- a/rust/geometry-runtime/src/worker_sweep.rs
++++ b/rust/geometry-runtime/src/worker_sweep.rs
+@@ -134,7 +134,7 @@
+                 tessellation,
+                 source_from_evaluation,
+                 evaluation_from_source,
+-            ).with_storage_reservation(None),
++            ).with_storage_reservation(mesh.storage),
+         })
+     }
+ }

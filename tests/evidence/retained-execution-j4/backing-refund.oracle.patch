@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/document/retained.rs
++++ b/rust/geometry/src/document/retained.rs
+@@ -205,7 +205,7 @@
+     }
+     /// Keep admitted backing alive for the lifetime of this completion.
+     pub fn with_storage_reservation(mut self, storage: Option<crate::resource::Reservation>) -> Self {
+-        if let Some(storage) = storage { storage.retain(); }
++        self._storage = storage;
+         self
+     }
+     pub fn request(&self) -> &RetainedRequest {

@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const MODULES = ['client', 'worker', 'module', 'contract', 'sweep', 'sweep-contract'];
+const MODULES = ['client', 'worker', 'module', 'contract', 'sweep', 'sweep-contract', 'dependency-contract'];
 const GENERATED = ['ifclite_smlib_browser.mjs', 'ifclite_smlib_browser.wasm'];
 const LICENSES = ['LICENSE', 'THIRD_PARTY_NOTICES.md'];
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');

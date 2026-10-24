@@ -38,6 +38,8 @@ def test(phase, red=False):
     expected = ('test result: FAILED. 0 passed; 1 failed;' if red
                 else 'test result: ok. 1 passed; 0 failed;')
     marker = row['test'] + (' ... FAILED' if red else ' ... ok')
+    if red and row.get('assertionMarker') and row['assertionMarker'] not in run.stdout:
+        raise RuntimeError('Named regression assertion did not fail: ' + row['assertionMarker'])
     if (run.returncode != 0) != red or expected not in run.stdout or marker not in run.stdout:
         raise RuntimeError('Expected the named behavioral ' + phase + '; inspect original log')
 

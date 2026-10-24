@@ -957,3 +957,19 @@ type surfaces with `BUILD_RETAINED=1 scripts/build-wasm.sh` before landing.
 Distribution and activation additionally require license clearance and all
 release features, including textures, palettes, smooth normals, persistent face
 identity, GPU instancing, chained/bounded clips, openings and curved layers.
+
+Native retained executors receive the captured `OwnedResourceContext` explicitly,
+including after async suspension. Before host mesh transfer, the native reader
+reserves the total positions, indices, corner normals and source-face backing
+against that account's live-byte and cumulative copy-byte allowances. The permit
+follows the completion or Boolean receipt until its last owner drops it; only
+live bytes refund. This does not bound opaque SDK memory or allocator overhead.
+Standalone native calls without an explicit account retain their existing
+`MeshLimits` policy. Browser host-buffer accounting is not covered by this native
+reader contract.
+
+Independent browser model bindings build their palette, texture, material-layer,
+part and type-map indices from their own immutable source. They do not reuse or
+reset the ordinary viewer's caches. Dependency qualification runs numerical
+affine, ordered Boolean and semantic-empty witnesses on the current Worker
+incarnation from the staged `dependency-contract.mjs` module.

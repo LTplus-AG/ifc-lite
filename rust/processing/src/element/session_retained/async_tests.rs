@@ -16,7 +16,7 @@ impl RetainedRuntime for DeferredNative<'_> {
     fn incarnation(&self) -> u64 { self.0.incarnation() }
 }
 impl AsyncRetainedExecutor for DeferredNative<'_> {
-    async fn invoke(&mut self, call: Invocation<'_, Self::Receipt>, limits: NumericalLimits)
+    async fn invoke(&mut self, call: Invocation<'_, Self::Receipt>, limits: NumericalLimits, resources: &ifc_lite_geometry::resource::OwnedResourceContext)
         -> Result<Self::Receipt, RetainedExecutionError> {
         let mut suspended = false;
         poll_fn(|cx| {
@@ -27,7 +27,7 @@ impl AsyncRetainedExecutor for DeferredNative<'_> {
                 Poll::Pending
             }
         }).await;
-        RetainedExecutor::invoke(self.0, call, limits)
+        RetainedExecutor::invoke(self.0, call, limits, resources)
     }
 }
 fn limits() -> NumericalLimits {
@@ -107,5 +107,34 @@ fn j4_original_stop_after_await_refuses_delivery_and_retires_only_captured_domai
         assert_eq!(execution.discharged_count(), 0);
         assert!(execution.traversal_plan().is_none());
         assert!(resource::current_account().is_none());
+    });
+}
+
+#[test]
+fn j4_async_sdk_backing_uses_explicit_original_account() {
+    // #7955 N1: suspension drops TLS; explicit authority must still charge buffers.
+    let limit = 16 * 1024 * 1024;
+    let original = resource::ExecutionAccount::new(resource::ExecutionPolicy::Bounded(resource::ResourceLimits {
+        live_bytes: Some(limit), ..Default::default()
+    }));
+    with_case(Some(&original), SOURCE, |execution, decoder, router, worker, _, _| {
+        let issued = execution.issue_next(decoder, router, worker).unwrap().unwrap();
+        let headers = CommonRetainedRealization::header_bytes()
+            + std::mem::size_of::<Arc<CommonRetainedRealization>>() as u64;
+        let _held = original.prepare(resource::Cost {
+            live_bytes: limit - original.usage().live_bytes - headers, ..Default::default()
+        }).unwrap();
+        let mut deferred = DeferredNative(worker);
+        let mut future = Box::pin(issued.execute_async(&mut deferred, limits()));
+        let mut cx = Context::from_waker(Waker::noop());
+        assert!(future.as_mut().poll(&mut cx).is_pending());
+        assert!(resource::current_account().is_none());
+        let Poll::Ready(result) = future.as_mut().poll(&mut cx) else { panic!("SDK must settle") };
+        let rejected = result.err().expect("N1_ASYNC_AUTHORITY: original account must refuse host backing after await");
+        assert!(matches!(rejected.reason, RetainedExecutionError::Stopped(ProgramStop::ResourceRefused(_))),
+            "N1_ASYNC_AUTHORITY: original refusal is preserved");
+        drop(future);
+        assert!(deferred.0.retained_owner().incarnation().is_none());
+        assert_eq!(execution.discharged_count(), 0);
     });
 }

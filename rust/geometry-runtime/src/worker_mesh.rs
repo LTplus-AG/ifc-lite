@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! bounded transfer of strict tessellation buffers from retained solids.
+use ifc_lite_geometry::resource::{OwnedResourceContext, Reservation, Cost};
 use super::{BrepHandle, NumericalOutcome, SmlibWorker, WorkerError};
 use crate::protocol::{KernelCommand, MeshStream, MAX_MESH_CHUNK_SCALARS};
 
@@ -30,12 +31,14 @@ pub struct TessellatedMesh {
     pub source_face_count: u32,
     pub boundary_edges: u32,
     pub spine_edges: u32,
+    pub(super) storage: Option<Reservation>,
 }
 
 impl TessellatedMesh {
     /// The buffers of a solid already certified empty.
     pub(super) fn empty() -> Self {
         Self {
+            storage: None,
             outcome: NumericalOutcome::Empty,
             positions: Vec::new(),
             indices: Vec::new(),
@@ -69,6 +72,12 @@ impl SmlibWorker {
         angle_degrees: f64,
         limits: MeshLimits,
     ) -> Result<TessellatedMesh, WorkerError> {
+        self.tessellate_accounted(solid, chord_metres, angle_degrees, limits, None)
+    }
+
+    pub(super) fn tessellate_accounted(&mut self, solid: BrepHandle, chord_metres: f64,
+        angle_degrees: f64, limits: MeshLimits, resources: Option<&OwnedResourceContext>)
+        -> Result<TessellatedMesh, WorkerError> {
         let wire = self.wire(solid)?;
         let bytes = self.call(KernelCommand::Tessellate {
             session: self.session,
@@ -77,7 +86,7 @@ impl SmlibWorker {
             angle_degrees,
         })?;
         let mesh = self.handle(bytes)?;
-        let result = self.read_mesh(solid, mesh, limits);
+        let result = self.read_mesh(solid, mesh, limits, resources);
         let released = self.release(mesh);
         if released.is_err() {
             self.retire();
@@ -93,6 +102,7 @@ impl SmlibWorker {
         solid: BrepHandle,
         mesh: BrepHandle,
         limits: MeshLimits,
+        resources: Option<&OwnedResourceContext>,
     ) -> Result<TessellatedMesh, WorkerError> {
         let object = self.wire(mesh)?;
         let bytes = self.call(KernelCommand::MeshInfo {
@@ -124,6 +134,10 @@ impl SmlibWorker {
         if size > limits.max_bytes {
             return Err(WorkerError::ResourceLimit("mesh exceeds max_bytes"));
         }
+        // #7955 N1: admit all backing before any stream transfer/allocation.
+        let storage = resources.map(|authority| authority.charge(Cost {
+            live_bytes: size as u64, copy_bytes: size as u64, ..Default::default()
+        })).transpose().map_err(|_| WorkerError::ResourceLimit("captured mesh backing account"))?;
         let positions = self.read_f64(mesh, MeshStream::Positions, positions)?;
         let indices = self.read_u32(mesh, MeshStream::Indices, indices)?;
         let source_faces = self.read_u32(mesh, MeshStream::SourceFaces, triangles)?;
@@ -134,6 +148,7 @@ impl SmlibWorker {
             return Err(self.poison("mesh index or source face out of bounds"));
         }
         Ok(TessellatedMesh {
+            storage,
             outcome: NumericalOutcome::NonEmpty,
             positions,
             indices,

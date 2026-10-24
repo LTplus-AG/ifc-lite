@@ -22,5 +22,33 @@
     "patch": "tests/evidence/retained-execution-j4/post-await-stop.oracle.patch",
     "test": "element::session_retained::async_tests::j4_original_stop_after_await_refuses_delivery_and_retires_only_captured_domain",
     "intendedFailure": "Behavioral assertion in the named real SDK test; compile failure or skip is not evidence."
+  },
+  {
+    "id": "backing-admission",
+    "patch": "tests/evidence/retained-execution-j4/backing-admission.oracle.patch",
+    "test": "element::session_retained::backing_tests::j4_sdk_backing_refuses_header_only_budget",
+    "intendedFailure": "N1_BACKING_ADMISSION",
+    "assertionMarker": "N1_BACKING_ADMISSION"
+  },
+  {
+    "id": "backing-lifetime",
+    "patch": "tests/evidence/retained-execution-j4/backing-lifetime.oracle.patch",
+    "test": "element::session_retained::backing_tests::j4_sdk_backing_follows_last_receipt_and_refunds_live_only",
+    "intendedFailure": "N1_BACKING_LIFETIME",
+    "assertionMarker": "N1_BACKING_LIFETIME"
+  },
+  {
+    "id": "async-backing-authority",
+    "patch": "tests/evidence/retained-execution-j4/async-backing-authority.oracle.patch",
+    "test": "element::session_retained::async_tests::j4_async_sdk_backing_uses_explicit_original_account",
+    "intendedFailure": "N1_ASYNC_AUTHORITY",
+    "assertionMarker": "N1_ASYNC_AUTHORITY"
+  },
+  {
+    "id": "backing-refund",
+    "patch": "tests/evidence/retained-execution-j4/backing-refund.oracle.patch",
+    "test": "element::session_retained::backing_tests::j4_sdk_backing_follows_last_receipt_and_refunds_live_only",
+    "assertionMarker": "N1_BACKING_REFUND",
+    "intendedFailure": "N1_BACKING_REFUND"
   }
 ]

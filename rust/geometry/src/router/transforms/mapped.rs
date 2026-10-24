@@ -136,6 +136,9 @@ impl GeometryRouter {
                 crate::placement::Axis2Placement::read(&origin, decoder)?.matrix()
             }
             other => {
+                // Counted on the origin record, as `Axis2Placement::read`
+                // counts a wrong-typed placement (D3).
+                let _counted = decoder.refuse_malformed(origin.id);
                 return Err(Error::geometry(format!(
                     "RepresentationMap MappingOrigin is {other}, not an IfcAxis2Placement"
                 )))
@@ -197,9 +200,15 @@ mod tests {
         let map = decoder.decode_by_id(8).unwrap();
         assert!(router.type_map_origin(&map, &mut decoder).unwrap().is_some());
         assert!(router.mapping_origin_transform(&map, &mut decoder).unwrap().is_none());
-        // A cartesian point is not an IfcAxis2Placement: an error, not `None`.
+        // A cartesian point is not an IfcAxis2Placement: an error, not `None`,
+        // counted on the origin record (D3) on both routes, once.
+        assert_eq!(decoder.refused_records(), 0);
         let map = decoder.decode_by_id(5).unwrap();
-        assert!(router.type_map_origin(&map, &mut decoder).is_err());
+        let message = router.type_map_origin(&map, &mut decoder).unwrap_err().to_string();
+        assert!(message.contains("not an IfcAxis2Placement"), "{message}");
+        assert_eq!(decoder.refused_records(), 1);
+        assert!(router.mapping_origin_transform(&map, &mut decoder).is_err());
+        assert_eq!(decoder.refused_records(), 1, "the same origin, counted once");
         // `$` stays absent (no transform), as on base.
         let map = decoder.decode_by_id(6).unwrap();
         assert!(router.type_map_origin(&map, &mut decoder).unwrap().is_none());

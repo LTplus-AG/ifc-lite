@@ -50,6 +50,12 @@ fn an_extruded_direction_without_a_z_ratio_is_refused() {
     let (result, refused) = run(&extruder(), &extrusion("((1.,0.,0.))", "$"), 5);
     assert!(result.is_err(), "an explicit zero Z is the same WR");
     assert_eq!(refused, 1);
+    // A zero-length direction has no Z either: the same WR, counted once,
+    // with its own message.
+    let (result, refused) = run(&extruder(), &extrusion("((0.,0.,0.))", "$"), 5);
+    let message = result.expect_err("a zero-length direction is refused").to_string();
+    assert!(message.contains("zero-length ExtrudedDirection"), "{message}");
+    assert_eq!(refused, 1);
     let (control, refused) = run(&extruder(), &extrusion("((0.,0.,1.))", "$"), 5);
     assert!(!control.expect("control").is_empty());
     assert_eq!(refused, 0);

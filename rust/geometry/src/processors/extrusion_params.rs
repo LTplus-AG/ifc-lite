@@ -32,8 +32,9 @@ impl ExtrusionParams {
     ///
     /// Errors, in this order: a missing, unresolvable or non-`IfcDirection`
     /// `ExtrudedDirection`, a zero-length one, zero Z (`ValidExtrusionDirection`),
-    /// a missing `Depth`, an unparseable `Position`. A zero Z is counted as a
-    /// refusal of `entity`, like an unreadable direction or Position.
+    /// a missing `Depth`, an unparseable `Position`. A zero-length direction
+    /// or a zero Z is counted as a refusal of `entity`, like an unreadable
+    /// direction or Position.
     pub(crate) fn decode(
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
@@ -51,14 +52,16 @@ impl ExtrusionParams {
         // `ValidExtrusionDirection` needs a non-zero Z, so a 2D direction
         // (z = 0) is refused, not given an invented one (D25, D26).
         let direction = Vector3::from(decoder.direction3(direction_id)?);
+        // A WR refusal of readable input is still refused input: count it on
+        // the solid, like the leaf refusals above it (D3, D29). A zero-length
+        // direction breaks `ValidExtrusionDirection` too (its Z is zero).
         if direction.norm_squared() <= f64::EPSILON {
+            let _counted = decoder.refuse_malformed(entity.id);
             return Err(Error::geometry(format!(
                 "{name} has zero-length ExtrudedDirection"
             )));
         }
         if direction.z == 0.0 {
-            // A WR refusal of readable input is still refused input: count it
-            // on the solid, like the leaf refusals above it (D3, D29).
             let _counted = decoder.refuse_malformed(entity.id);
             return Err(Error::geometry(format!(
                 "{name} ExtrudedDirection has no Z component (ValidExtrusionDirection)"

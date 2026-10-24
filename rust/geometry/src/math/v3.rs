@@ -69,6 +69,22 @@ pub fn normalize(v: V3, min_len: f64) -> Option<V3> {
     Some([v[0] / len, v[1] / len, v[2] / len])
 }
 
+/// `v` scaled into normalisable range: `v` itself, bit for bit, when
+/// `dot(v, v)` is finite (every ordinary direction); otherwise `v` divided by
+/// its largest-magnitude component. Finite ratios whose squared length
+/// overflows (components from about 1e154 up) would give `|v| = inf`, and
+/// `v / |v|` the zero vector, which passes every one-ended length check; the
+/// rescaled vector has the same direction and a length in `[1, √3]`. A
+/// non-finite component is returned as is, for the caller's own refusal.
+#[inline]
+pub(crate) fn unoverflowed(v: V3) -> V3 {
+    if dot(v, v).is_finite() || !v.iter().all(|c| c.is_finite()) {
+        return v;
+    }
+    let largest = v[0].abs().max(v[1].abs()).max(v[2].abs());
+    [v[0] / largest, v[1] / largest, v[2] / largest]
+}
+
 /// The unnormalised triangle normal `cross(b - a, c - a)`; its length is twice
 /// the triangle's area.
 #[inline]

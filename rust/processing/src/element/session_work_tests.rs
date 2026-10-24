@@ -3,7 +3,7 @@
 //! presentation and hashing: foreign, out-of-order and duplicate packets are
 //! refused before any callback, hash or cache access.
 use super::session::ProductState;
-use super::session_protocol::{WorkEmitter, WorkError, WorkKind, WorkPayload};
+use super::session_protocol::{WorkEmitter, WorkError, WorkKind, WorkPayload, WorkReply, WorkRequest};
 use super::session_tests::{assert_same, canonical, complete, leaked_job, router, Context, SOURCE};
 use super::*;
 use ifc_lite_core::IfcSchema;
@@ -282,33 +282,89 @@ fn publication_before_the_plan_completes_is_refused() {
     h.router.try_execution_lease().expect("refused publication releases the router");
 }
 
+/// The synchronous driver's own `execute_live` / `accept_live` refuse every
+/// foreign, stale, duplicate, wrong-snapshot and wrong-owner packet before
+/// any callback or stop, and the legitimate ticket still publishes canonically.
 #[test]
-fn live_epoch_refuses_a_second_ticket_and_forged_requests_before_any_callback() {
+fn live_epoch_refuses_forged_packets_through_the_shipped_checks() {
+    use ifc_lite_geometry::resource::ProgramStop;
     let mut h = Harness::new();
     let job = leaked_job(&mut h.decoder, 10);
     let context = Context::default();
     let calls = h.calls.clone();
     let (decoder, router) = (&mut h.decoder, &h.router);
-    session_run::run_epoch(decoder, router, None, |decoder, router, live| {
-        let mut state = ProductState::plan_live(job, &context.borrowed(), &super::session_tests::options(), decoder, router, live);
-        let request = state.request().unwrap().unwrap();
-        // One outstanding ticket at a time: neither a second request nor a
-        // whole step can run while it is unanswered.
-        assert_eq!(state.request().unwrap_err(), WorkError::Outstanding);
-        assert_eq!(state.step_live(&context.borrowed(), decoder, router).unwrap_err(), WorkError::Outstanding);
-        let mut forged = request;
-        forged.sequence += 1;
-        assert_eq!(state.protocol.before_execute(forged), Err(WorkError::StaleTicket));
-        forged = request;
-        forged.kind = WorkKind::PlainParts;
-        assert_eq!(state.protocol.before_execute(forged), Err(WorkError::StaleTicket));
-        assert_eq!(calls.get(), 0, "no refused ticket reached the registered extrusion");
-        unassembled(&state);
-        // The legitimate ticket is untouched and executes exactly once.
-        state.protocol.before_execute(request).unwrap();
+    // A stamp from an earlier, finished epoch on the same decoder and router.
+    let mut foreign = None;
+    session_run::run_epoch(decoder, router, None, |_, _, live| {
+        foreign = Some(live.stamp);
         Ok(None)
     })
     .unwrap();
-    assert_eq!(h.calls.get(), 0);
+    let foreign = foreign.unwrap();
+    let snapshot = ProductionModel::new().snapshot(OwnedMeshProductionData::default());
+    let mut output = None;
+    session_run::run_epoch(decoder, router, None, |decoder, router, live| {
+        let ctx = context.borrowed();
+        let mut state = ProductState::plan_live(job, &ctx, &super::session_tests::options(), decoder, router, live);
+        let request = state.next_ticket().unwrap().unwrap();
+        // One outstanding ticket at a time.
+        assert_eq!(state.next_ticket().unwrap_err(), WorkError::Outstanding);
+        assert_eq!(state.step_live(&ctx, decoder, router).unwrap_err(), WorkError::Outstanding);
+        let refused = |forged: WorkRequest, state: &mut ProductState<'_>, decoder: &mut EntityDecoder| {
+            state.execute_live(forged, &ctx, decoder, router).err()
+        };
+        let mut forged = request;
+        forged.sequence += 1;
+        assert_eq!(refused(forged, &mut state, decoder), Some(WorkError::StaleTicket));
+        forged = request;
+        forged.session += 1;
+        assert_eq!(refused(forged, &mut state, decoder), Some(WorkError::StaleTicket), "another product's ticket");
+        forged = request;
+        forged.kind = WorkKind::PlainParts;
+        assert_eq!(refused(forged, &mut state, decoder), Some(WorkError::StaleTicket));
+        forged = request;
+        forged.context = Some(snapshot.id());
+        assert_eq!(refused(forged, &mut state, decoder), Some(WorkError::WrongContext));
+        assert_eq!(calls.get(), 0, "no refused ticket reached the registered extrusion");
+        unassembled(&state);
+        // A forged stop reply is refused before its stop can poison the product.
+        let stopped = |request: WorkRequest, owner| WorkReply {
+            request,
+            context: request.context,
+            owner,
+            emitter: request.kind.emitter(),
+            payload: WorkPayload::Stopped(ProgramStop::Cancelled),
+        };
+        let accept = |reply, state: &mut ProductState<'_>, decoder: &mut EntityDecoder| {
+            state.accept_live(reply, &ctx, decoder, router).err()
+        };
+        assert_eq!(accept(stopped(request, live.stamp), &mut state, decoder), Some(WorkError::NotExecuted));
+        let reply = state.execute_live(request, &ctx, decoder, router).unwrap();
+        assert_eq!(calls.get(), 1);
+        assert_eq!(refused(request, &mut state, decoder), Some(WorkError::AlreadyExecuted));
+        assert_eq!(calls.get(), 1, "a copied ticket cannot execute again");
+        forged = request;
+        forged.sequence += 1;
+        assert_eq!(accept(stopped(forged, live.stamp), &mut state, decoder), Some(WorkError::StaleTicket));
+        assert_eq!(accept(stopped(request, foreign), &mut state, decoder), Some(WorkError::WrongOwner));
+        let mut wrong = stopped(request, live.stamp);
+        wrong.context = Some(snapshot.id());
+        assert_eq!(accept(wrong, &mut state, decoder), Some(WorkError::WrongContext));
+        let mut wrong = stopped(request, live.stamp);
+        wrong.emitter = WorkEmitter::PlainParts;
+        assert_eq!(accept(wrong, &mut state, decoder), Some(WorkError::WrongEmitter));
+        let mut wrong = stopped(request, live.stamp);
+        wrong.payload = WorkPayload::PlainParts(Vec::new());
+        assert_eq!(accept(wrong, &mut state, decoder), Some(WorkError::WrongPayload));
+        assert_eq!(state.terminal(), None, "no refused stop reply reached the product");
+        unassembled(&state);
+        // The legitimate reply is still accepted, and the product completes.
+        state.accept_live(reply, &ctx, decoder, router).unwrap();
+        while state.step_live(&ctx, decoder, router)? {}
+        state.finish_live(router, &mut output)
+    })
+    .unwrap();
+    assert_eq!(h.calls.get(), 1);
+    assert_same(&output.unwrap(), &canonical(10, false));
     assert!(h.decoder.try_execution_lease().is_ok() && h.router.try_execution_lease().is_ok());
 }

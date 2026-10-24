@@ -45,6 +45,18 @@ impl TriangulatedFaceSetProcessor {
         Ok(triangulated_plan::lower(entity, decoder, rtc_file_units)?.evaluate_with_texture(map))
     }
 
+    /// How many corners [`Self::process_with_texture`] fills with `(0, 0)`
+    /// because their `TexCoordIndex` row is missing or out of range, judged on
+    /// the triangles the mesher actually emits (#7955 J5). Reads index arrays
+    /// only, without decoder side effects; `None` when it cannot answer.
+    pub fn fabricated_uv_corners(
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        map: &crate::processors::texture::ResolvedTextureMap,
+    ) -> Option<usize> {
+        triangulated_plan::fabricated_uv_corners(entity, decoder, map)
+    }
+
     /// Mesh the face set; `rtc_file_units` rebases before f32 narrowing.
     fn process_rebased(
         entity: &DecodedEntity,

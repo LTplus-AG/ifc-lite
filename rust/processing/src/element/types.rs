@@ -78,6 +78,10 @@ pub struct MeshProductionOptions {
     /// Type-product jobs are never hashed (diffing type-library shapes is a
     /// separate feature decision).
     pub geometry_hash: Option<GeometryHashConfig>,
+    /// Attach [`crate::MeshPresentationProvenance`] to every produced mesh
+    /// (#7955 J5): normal provenance, palette binding and UV authority.
+    /// Default `false`: nothing is recorded and the output is unchanged.
+    pub presentation_provenance: bool,
 }
 
 /// The #957 suppress-vs-tag decision — an explicit product-requirement fork,

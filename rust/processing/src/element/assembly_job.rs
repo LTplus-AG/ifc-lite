@@ -10,10 +10,19 @@ pub(super) struct AssemblyJob<'a> {
     pub id: u32,
     pub ifc_type: &'a IfcType,
     metadata: Option<&'a ElementMeshMetadata>,
+    /// `MeshProductionOptions::presentation_provenance` (#7955 J5).
+    provenance: bool,
 }
 impl<'a> AssemblyJob<'a> {
     pub fn metadata(&self) -> Option<&'a ElementMeshMetadata> {
         self.metadata
+    }
+    pub fn provenance(&self) -> bool {
+        self.provenance
+    }
+    pub fn with_provenance(mut self, provenance: bool) -> Self {
+        self.provenance = provenance;
+        self
     }
 }
 impl<'a, 'source: 'a> From<&'a ElementMeshJob<'source>> for AssemblyJob<'a> {
@@ -22,6 +31,7 @@ impl<'a, 'source: 'a> From<&'a ElementMeshJob<'source>> for AssemblyJob<'a> {
             id: job.id,
             ifc_type: &job.ifc_type,
             metadata: job.metadata,
+            provenance: false,
         }
     }
 }

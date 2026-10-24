@@ -8,4 +8,4 @@
 +            terminal_policy::validate(self)?;
              // Publication owns drained diagnostics BEFORE the owner commits;
              // its Drop quarantines them on Err or unwind, including WrongOwner.
-             let (result,_) = router.with_product_csg_scope(|| self.owner.work(decoder,router,|_,router| self.scopes.with_scope(|| {
+             let mut scopes = super::super::session_state::ActiveScopes::new(

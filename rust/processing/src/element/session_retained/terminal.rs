@@ -54,13 +54,19 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_,R> {
             terminal_policy::validate(self)?;
             // Publication owns drained diagnostics BEFORE the owner commits;
             // its Drop quarantines them on Err or unwind, including WrongOwner.
-            let (result,_) = router.with_product_csg_scope(|| self.owner.work(decoder,router,|_,router| self.scopes.with_scope(|| {
+            let mut scopes = super::super::session_state::ActiveScopes::new(
+                std::mem::replace(&mut self.scopes,Scopes::new()));
+            let outcome = router.with_product_csg_scope(|| self.owner.work(decoder,router,|_,router| scopes.with_scope(|| {
                 let failures = router.finish_product_csg_failures().map_err(RetainedExecutionError::Stopped)?;
                 let mut output = super::super::session_canonical::stopped_output();
+                let clean = failures.is_empty();
                 output.csg_failures = failures;
                 publication.output = Some(output);
+                if !clean { return Err(RetainedExecutionError::Unsupported("terminal removal has failed geometry diagnostics")); }
                 resources.check().map_err(RetainedExecutionError::Stopped)
-            }))).map_err(protocol)?;
+            })));
+            scopes.complete().pending.publish_pending();
+            let (result,_) = outcome.map_err(protocol)?;
             result?;
             // All fallible owner commits and final hooks have now completed.
             // Revalidate source, worker and the captured stop after those hooks.

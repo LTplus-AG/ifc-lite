@@ -17,6 +17,7 @@ fn j2_terminal_removal_commits_once() {
             assert!(!router.host_consumed_by_void(30));
             let result = execution.publish_removed(decoder,router,&worker).expect("J2_TERMINAL_COMMIT");
             assert_eq!(result.product_id(),30);
+            assert!(decoder.get_cached(66).is_none(),"J2_TERMINAL_LAZY");
             assert!(router.host_consumed_by_void(30),"J2_TERMINAL_EFFECT");
             let output = result.into_output();
             assert!(output.meshes.is_empty() && output.instance_occurrences.is_empty());
@@ -56,4 +57,15 @@ fn j2_terminal_source_obligations_are_not_cleared_by_empty() {
             assert!(!router.host_consumed_by_void(30),"J2_TERMINAL_ISOLATION");
         });
     }
+}
+
+#[test]
+fn j2_terminal_nonempty_product_keeps_final_gates() {
+    let Some(mut worker) = super::tests::worker() else { return };
+    super::opening_tests::with_source(super::opening_witness::OVERLAP, |execution,decoder,router| {
+        complete(execution,decoder,router,&mut worker);
+        assert!(!execution.has_authenticated_opening_removal());
+        assert!(execution.publish_removed(decoder,router,&worker).is_err(),"J2_TERMINAL_NONEMPTY");
+        assert!(!router.host_consumed_by_void(30));
+    });
 }

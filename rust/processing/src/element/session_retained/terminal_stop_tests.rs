@@ -24,6 +24,9 @@ fn fixture_mode(mode: u8, f: impl FnOnce(&mut RetainedProductExecution,&mut Enti
         kind:ElementJobKind::Product,element_color:None,metadata:None};
     let mut execution = RetainedProductExecution::begin(&job,&context,&MeshProductionOptions::default(),&mut decoder,&router).unwrap();
     f(&mut execution,&mut decoder,&router,&model);
+    let committed = router.host_consumed_by_void(30);
+    drop(execution);
+    assert_eq!(router.host_consumed_by_void(30),committed,"J2_TERMINAL_DROP");
 }
 #[test]
 fn j2_terminal_stale_and_original_resource_stops() {

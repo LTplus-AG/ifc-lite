@@ -1937,6 +1937,33 @@ jobs:
           if [[ -n "$changed" ]]; then
             python3 scripts/runtime-plane-oracle.py
           fi
+      - name: Independently observe retained request and publication guards
+        # #7955: F2b must remain observable when later stack selectors win.
+        if: ${{ !cancelled() }}
+        timeout-minutes: 18
+        run: |
+          changed=$(git diff --name-only origin/main...HEAD -- \
+            rust/geometry/src/document/retained.rs \
+            rust/geometry/src/document/retained_region.rs \
+            rust/geometry/src/document/retained_sweep.rs \
+            rust/processing/src/retained_requests.rs \
+            rust/geometry/src/document/retained_tests.rs \
+            rust/geometry/src/document/retained_region_tests.rs \
+            rust/geometry/src/document/retained_sweep_tests.rs \
+            rust/processing/tests/retained_requests.rs \
+            tests/evidence/retained-requests-f2b/behaviour.oracle.patch)
+          if [[ -n "$changed" ]]; then
+            node scripts/check-test-revert-oracle.mjs --base 62ca744ff400fddcb5a292e7ed7bddee0df8baaf --ci --json \
+              --only rust/geometry/src/document/retained.rs \
+              --only rust/geometry/src/document/retained_region.rs \
+              --only rust/geometry/src/document/retained_sweep.rs \
+              --only rust/processing/src/retained_requests.rs \
+              --mutation tests/evidence/retained-requests-f2b/behaviour.oracle.patch \
+              --test rust/geometry/src/document/retained_tests.rs \
+              --test rust/geometry/src/document/retained_region_tests.rs \
+              --test rust/geometry/src/document/retained_sweep_tests.rs \
+              --test rust/processing/tests/retained_requests.rs
+          fi
       - name: Remove owned report oracle prerequisites
         if: always() && steps.report-integration.outputs.needed == 'true'
         uses: ./.github/actions/setup-report-integration

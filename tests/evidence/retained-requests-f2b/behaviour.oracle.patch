@@ -1,8 +1,7 @@
 diff --git a/rust/geometry/src/document/retained.rs b/rust/geometry/src/document/retained.rs
-index f9f64c78c5..cbfefa07a7 100644
 --- a/rust/geometry/src/document/retained.rs
 +++ b/rust/geometry/src/document/retained.rs
-@@ -211,7 +211,7 @@ impl GeometryDocument {
+@@ -300,7 +300,7 @@
          definition: RetainedDefinitionHandle,
          worker_incarnation: u64,
      ) -> Result<RetainedRequest, RetainedRefusal> {
@@ -11,7 +10,7 @@ index f9f64c78c5..cbfefa07a7 100644
              return Err(RetainedRefusal::WrongWorker);
          }
          Ok(RetainedRequest {
-@@ -232,16 +232,16 @@ impl GeometryDocument {
+@@ -322,16 +322,16 @@
      ) -> Result<(), RetainedRefusal> {
          let request = &packet.request;
          self.check_document(request.document)?;
@@ -31,20 +30,20 @@ index f9f64c78c5..cbfefa07a7 100644
              || packet.evaluation_from_source != current.payload.evaluation_from_source
          {
              return Err(RetainedRefusal::FrameMismatch);
-@@ -264,7 +264,7 @@ impl GeometryDocument {
-         occurrences: &[(u32, [f64; 16])],
-     ) -> Result<(DefinitionHandle, Vec<OccurrenceHandle>), RetainedRefusal> {
+@@ -357,7 +357,8 @@
+             return Err(RetainedRefusal::PersistentFaceProvenanceUnavailable);
+         }
          match contract {
 -            _ => {}
-+            RetainedDisplayContract::UnstyledFlatSourceOnly => {}
++            RetainedDisplayContract::UnstyledFlatSourceOnly
++            | RetainedDisplayContract::AnalyticSurfaceNormals => {}
              RetainedDisplayContract::PersistentIfcFaces => {
                  return Err(RetainedRefusal::PersistentFaceProvenanceUnavailable)
              }
 diff --git a/rust/geometry/src/document/retained_region.rs b/rust/geometry/src/document/retained_region.rs
-index 53dd3c6f2a..f980315a9e 100644
 --- a/rust/geometry/src/document/retained_region.rs
 +++ b/rust/geometry/src/document/retained_region.rs
-@@ -92,7 +92,7 @@ pub(super) fn lower(
+@@ -92,7 +92,7 @@
          }
          // Reverse the derived traversal only; the source keeps its authored
          // order, winding, basis, trim selectors and composite metadata.
@@ -54,10 +53,9 @@ index 53dd3c6f2a..f980315a9e 100644
          }
          net_area += if index == 0 {
 diff --git a/rust/geometry/src/document/retained_sweep.rs b/rust/geometry/src/document/retained_sweep.rs
-index 55e83e3ddc..9695704749 100644
 --- a/rust/geometry/src/document/retained_sweep.rs
 +++ b/rust/geometry/src/document/retained_sweep.rs
-@@ -104,7 +104,7 @@ pub(super) fn lower(recipe: &RetainedExtrusion) -> Result<SweepPayload, Retained
+@@ -112,7 +112,7 @@
      let depth = source
          .depth
          .ok_or(RetainedRefusal::InvalidSource("missing depth"))?
@@ -67,23 +65,22 @@ index 55e83e3ddc..9695704749 100644
          return Err(RetainedRefusal::InvalidSource("invalid sweep extent"));
      }
 diff --git a/rust/processing/src/retained_requests.rs b/rust/processing/src/retained_requests.rs
-index 57bb9284ff..d316c7add9 100644
 --- a/rust/processing/src/retained_requests.rs
 +++ b/rust/processing/src/retained_requests.rs
-@@ -242,7 +242,7 @@ fn occurrence(
-             reason.clone(),
-         ));
+@@ -316,7 +316,7 @@
+             return Err(RetainedSourceRefusal::OccurrenceUnsupported(reason.clone()));
+         }
      }
 -    if false && instance.source_modified {
 +    if instance.source_modified {
-         return Err(RetainedExtrusionRefusal::EnclosingBooleanUnevaluated);
+         return Err(RetainedSourceRefusal::EnclosingBooleanUnevaluated);
      }
      let world_from_source = instance.world_from_source.ok_or_else(|| {
-@@ -261,6 +261,7 @@ fn occurrence(
+@@ -335,6 +335,7 @@
          || (world.fixed_view::<3, 3>(0, 0).determinant() - 1.0).abs() > WORLD_RIGID_EPS
          || world.fixed_view::<1, 4>(3, 0) != nalgebra::RowVector4::new(0.0, 0.0, 0.0, 1.0)
      {
-+        return Err(RetainedExtrusionRefusal::UnqualifiedOccurrenceTransform);
++        return Err(RetainedSourceRefusal::UnqualifiedOccurrenceTransform);
      }
      Ok(std::array::from_fn(|i| world[(i / 4, i % 4)]))
  }

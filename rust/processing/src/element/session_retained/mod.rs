@@ -33,6 +33,8 @@ mod execute_async;
 mod async_tests;
 #[cfg(all(test, feature = "retained-native", not(target_arch = "wasm32")))]
 mod backing_tests;
+#[cfg(all(test, feature = "retained-native", not(target_arch = "wasm32")))]
+mod profile_region_tests;
 pub mod runtime;
 use runtime::{NumericalReceipt, ReceiptDomain, RetainedRuntime};
 #[cfg(all(feature = "retained-native", not(target_arch = "wasm32")))]

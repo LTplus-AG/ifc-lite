@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 use super::*;
-use crate::document::{RetainedExtrusion, RetainedSweptDisk};
+use crate::document::{capture_retained_extrusion, RetainedSweptDisk};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 pub(super) fn capture(
     item: &DecodedEntity,
@@ -15,10 +15,8 @@ pub(super) fn capture(
     })?
     .retain();
     let recipe = crate::analytic::with_source_capture(|| match item.ifc_type {
-        IfcType::IfcExtrudedAreaSolid => Ok(RetainedRecipe::Extrusion(RetainedExtrusion {
-            source: crate::analytic::extract_analytic_extrusion(item, decoder),
-            length_unit_scale: scale,
-        })),
+        IfcType::IfcExtrudedAreaSolid => capture_retained_extrusion(item, decoder, scale)
+            .map_err(|e| crate::Error::geometry(e.to_string())),
         IfcType::IfcSweptDiskSolid => Ok(RetainedRecipe::SweptDisk(RetainedSweptDisk {
             solid_id: item.id,
             source: crate::analytic::extract_swept_disk(item, decoder)?,

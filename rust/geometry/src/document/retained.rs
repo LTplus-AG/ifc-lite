@@ -39,6 +39,7 @@ pub struct RetainedExtrusion {
 pub enum RetainedRecipe {
     Extrusion(RetainedExtrusion),
     SweptDisk(RetainedSweptDisk),
+    RegularizedExtrusion(super::RetainedRegionExtrusion),
 }
 
 impl RetainedRecipe {
@@ -47,6 +48,7 @@ impl RetainedRecipe {
         match self {
             Self::Extrusion(recipe) => retained_sweep::lower(recipe),
             Self::SweptDisk(recipe) => retained_disk::lower(recipe),
+            Self::RegularizedExtrusion(recipe) => recipe.lower(),
         }
     }
 
@@ -55,6 +57,7 @@ impl RetainedRecipe {
         match self {
             Self::Extrusion(recipe) => recipe.source.solid_id,
             Self::SweptDisk(recipe) => recipe.solid_id,
+            Self::RegularizedExtrusion(recipe) => recipe.region.authored().solid_id,
         }
     }
 }
@@ -236,7 +239,7 @@ impl GeometryDocument {
         self.retain(RetainedRecipe::SweptDisk(recipe), payload)
     }
 
-    fn retain(
+    pub(super) fn retain(
         &mut self,
         recipe: RetainedRecipe,
         payload: SweepPayload,

@@ -1,0 +1,8 @@
+--- a/rust/geometry/src/analytic/retained_region.rs
++++ b/rust/geometry/src/analytic/retained_region.rs
+@@ -180,5 +180,4 @@
+             profile_topology::validate(std::slice::from_ref(&boundary), clearance, join)?;
+             retained_region_account::copy(original.source.as_ref(), 1)?;
+-            boundary.signed_area = 0.;
+             boundary.source = original.source.clone();
+             return Ok((boundary, edges, CancelledRetrace { authored_edges: [i,(i+1)%n], from: tip, to: attach }));

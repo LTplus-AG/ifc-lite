@@ -101,6 +101,7 @@ jobs:
           cargo test --locked -p ifc-lite-processing --features retained-native --lib session_retained -- --nocapture --test-threads 2 2>&1 | tee "$RUNNER_TEMP/processing-retained.log"
           ! grep -F 'SKIP common retained SDK continuation' "$RUNNER_TEMP/processing-retained.log"
           for test in \
+            issue_3641_native_original_source_construction_oracle \
             common_retained_actual_construction_is_consumed_and_original_product_resumes \
             common_retained_foreign_expired_receiver_wrong_stage_and_owner_return_intact_receipt \
             common_retained_own_source_expiry_retires_captured_owner_and_preserves_buffers \
@@ -145,6 +146,16 @@ jobs:
         run: |
           python3 tests/evidence/retained-openings-j2/feature-oracle.py \
             --oracle representation-type --evidence-dir "$RUNNER_TEMP/retained-openings-representation-type"
+      - name: Independent retained profile region mutations
+        id: retained-region-mutations
+        continue-on-error: true
+        run: |
+          status=0
+          for oracle in region-result edge-provenance work-guard work-report; do
+            python3 tests/evidence/retained-profile-region/feature-oracle.py \
+              --oracle "$oracle" --evidence-dir "$RUNNER_TEMP/retained-region-$oracle" || status=1
+          done
+          exit "$status"
       - name: Strict retained native and target-neutral processing Clippy
         id: retained-native-clippy
         continue-on-error: true
@@ -206,7 +217,9 @@ jobs:
         run: |
           wasm-pack test --headless --chrome \
             --chromedriver "$GITHUB_WORKSPACE/scripts/wasm-test-mime-driver.mjs" rust/wasm-bindings --lib \
-            --features retained-browser -- retained_browser
+            --features retained-browser -- retained_browser 2>&1 | tee "$RUNNER_TEMP/retained-browser.log"
+          grep -F "retained_browser_issue_3641_original_source_construction_oracle ... ok" "$RUNNER_TEMP/retained-browser.log"
+          grep -F "REGION_3641_SOURCE_VOLUME_SECTION_PROVENANCE_EXECUTED" "$RUNNER_TEMP/retained-browser.log"
       - name: Build the canonical WASM package and the opt-in retained bundle
         run: BUILD_RETAINED=1 bash scripts/build-wasm.sh
       - name: Committed declarations match both bundles
@@ -232,6 +245,7 @@ jobs:
           RETAINED_MUTATIONS: ${{ steps.retained-mutations.outcome }}
           OPENING_MUTATIONS: ${{ steps.opening-mutations.outcome }}
           OPENING_SOURCE_MUTATION: ${{ steps.opening-source-mutation.outcome }}
+          RETAINED_REGION_MUTATIONS: ${{ steps.retained-region-mutations.outcome }}
           RETAINED_NATIVE_CLIPPY: ${{ steps.retained-native-clippy.outcome }}
           NATIVE_CONSUMERS: ${{ steps.native-consumers.outcome }}
           WASM_CTEST: ${{ steps.wasm-ctest.outcome }}
@@ -243,7 +257,7 @@ jobs:
           RETAINED_CLIPPY: ${{ steps.retained-clippy.outcome }}
         run: |
           failed=0
-          for lane in NATIVE_CTEST PROCESSING_RETAINED RETAINED_MUTATIONS OPENING_MUTATIONS OPENING_SOURCE_MUTATION RETAINED_NATIVE_CLIPPY NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY; do
+          for lane in NATIVE_CTEST PROCESSING_RETAINED RETAINED_MUTATIONS OPENING_MUTATIONS OPENING_SOURCE_MUTATION RETAINED_REGION_MUTATIONS RETAINED_NATIVE_CLIPPY NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY; do
             printf '%s=%s\n' "$lane" "${!lane}"
             if [[ "${!lane}" != success ]]; then failed=1; fi
           done

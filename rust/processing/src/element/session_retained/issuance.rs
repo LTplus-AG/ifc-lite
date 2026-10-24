@@ -40,6 +40,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                     let mut document = GeometryDocument::new();
                     let definition = match recipe {
                         RetainedRecipe::Extrusion(recipe) => document.add_retained_extrusion(recipe.clone()),
+                        RetainedRecipe::RegularizedExtrusion(recipe) => document.add_retained_region_extrusion(recipe.clone()),
                         RetainedRecipe::SweptDisk(recipe) => document.add_retained_swept_disk(recipe.clone()),
                         _ => return Err(RetainedExecutionError::Unsupported("construction recipe")),
                     }.map_err(protocol)?;

@@ -1,0 +1,26 @@
+[
+  {
+    "id": "region-result",
+    "patch": "tests/evidence/retained-profile-region/region-result.oracle.patch",
+    "test": "analytic::retained_region::tests::issue_3641_original_fixture_region_result",
+    "assertionMarker": "REGION_RESULT"
+  },
+  {
+    "id": "edge-provenance",
+    "patch": "tests/evidence/retained-profile-region/edge-provenance.oracle.patch",
+    "test": "analytic::retained_region::tests::issue_3641_original_edge_provenance",
+    "assertionMarker": "REGION_PROVENANCE"
+  },
+  {
+    "id": "work-guard",
+    "patch": "tests/evidence/retained-profile-region/work-guard.oracle.patch",
+    "test": "analytic::retained_region::tests::issue_3641_region_work_guard",
+    "assertionMarker": "REGION_WORK_GUARD"
+  },
+  {
+    "id": "work-report",
+    "patch": "tests/evidence/retained-profile-region/work-report.oracle.patch",
+    "test": "analytic::retained_region::tests::issue_3641_region_work_guard_and_report",
+    "assertionMarker": "REGION_WORK_REPORT"
+  }
+]

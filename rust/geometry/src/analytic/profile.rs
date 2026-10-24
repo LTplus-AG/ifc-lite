@@ -87,6 +87,21 @@ pub fn extract_analytic_profile(profile: &DecodedEntity, decoder: &mut EntityDec
     result
 }
 
+// Retained-only parser: its caller must prove a region before any lowering.
+// This is never used by extract_analytic_profile or the default exact path.
+pub(super) fn extract_authored_walk(profile: &DecodedEntity, decoder: &mut EntityDecoder) -> AnalyticProfile {
+    let mut result = AnalyticProfile {
+        profile_id: profile.id, ifc_type_name: profile.ifc_type.name().to_string(),
+        profile_type: profile.attr(ifc_lite_core::slot::IfcProfileDef::PROFILE_TYPE).and_then(|value| value.as_enum()).map(str::to_owned),
+        position_id: None, profile_position: None, loops: Vec::new(), status: AnalyticStatus::Complete,
+    };
+    if let Err(reason) = parse_profile(profile, decoder, &mut result) {
+        result.loops.clear();
+        result.status = AnalyticStatus::Unsupported(reason);
+    }
+    result
+}
+
 fn parse_profile(
     profile: &DecodedEntity, decoder: &mut EntityDecoder, result: &mut AnalyticProfile,
 ) -> Result<(), String> {
@@ -190,7 +205,7 @@ fn curve_loop(
     Ok(boundary)
 }
 
-fn loop_from_segments(
+pub(super) fn loop_from_segments(
     kind: ProfileLoopKind, segments: Vec<AnalyticCurveSegment>,
 ) -> Result<AnalyticProfileLoop, String> {
     if segments.is_empty() || segments.len() > MAX_LOOPS {

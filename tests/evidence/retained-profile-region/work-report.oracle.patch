@@ -1,0 +1,9 @@
+--- a/rust/geometry/src/analytic/retained_region.rs
++++ b/rust/geometry/src/analytic/retained_region.rs
+@@ -187,5 +187,5 @@
+ }
+ fn spend(work: &mut usize) -> std::result::Result<(), String> {
+-    *work = work.checked_sub(1).ok_or("unsupported geometry")?;
++    *work = work.checked_sub(1).ok_or("retained region work budget exceeded")?;
+     Ok(())
+ }

@@ -45,6 +45,13 @@ pub struct AnalyticExtrusion {
 pub fn extract_analytic_extrusion(
     solid: &DecodedEntity, decoder: &mut EntityDecoder,
 ) -> AnalyticExtrusion {
+    extract_with_profile(solid, decoder, extract_analytic_profile)
+}
+
+pub(super) fn extract_with_profile(
+    solid: &DecodedEntity, decoder: &mut EntityDecoder,
+    read_profile: fn(&DecodedEntity, &mut EntityDecoder) -> AnalyticProfile,
+) -> AnalyticExtrusion {
     let mut result = AnalyticExtrusion {
         solid_id: solid.id, source: None, swept_area_id: solid.get_ref(0), profile: None,
         position_id: solid.get_ref(1), position_matrix: None,
@@ -56,7 +63,7 @@ pub fn extract_analytic_extrusion(
         capture.record(solid, decoder);
         result.source = Some(capture.finish(solid.id, decoder.plane_angle_to_radians()));
     }
-    let parsed = parse_extrusion(solid, decoder, &mut result);
+    let parsed = parse_extrusion(solid, decoder, &mut result, read_profile);
     if let Err(reason) = parsed {
         result.status = AnalyticStatus::Unsupported(reason);
     }
@@ -65,6 +72,7 @@ pub fn extract_analytic_extrusion(
 
 fn parse_extrusion(
     solid: &DecodedEntity, decoder: &mut EntityDecoder, result: &mut AnalyticExtrusion,
+    read_profile: fn(&DecodedEntity, &mut EntityDecoder) -> AnalyticProfile,
 ) -> Result<(), String> {
     match solid.ifc_type {
         IfcType::IfcExtrudedAreaSolid => {}
@@ -78,7 +86,7 @@ fn parse_extrusion(
     if !area.ifc_type.is_subtype_of(IfcType::IfcProfileDef) {
         return Err(format!("SweptArea #{area_id} is not IfcProfileDef"));
     }
-    let profile = extract_analytic_profile(&area, decoder);
+    let profile = read_profile(&area, decoder);
     if profile.profile_type.as_deref() != Some("AREA") {
         let profile_type = profile.profile_type.clone().unwrap_or_else(|| "missing".into());
         result.profile = Some(profile);

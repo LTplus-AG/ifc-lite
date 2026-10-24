@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/analytic/retained_region_decimal.rs
++++ b/rust/geometry/src/analytic/retained_region_decimal.rs
+@@ -185,7 +185,7 @@
+ fn profile_scalar_schema(raw: &[u8], id: u32) -> Result<(), String> {
+     use ifc_lite_core::parser::{parse_ref, StepRecord};
+     use ifc_lite_core::step_encoding::step_string_literal_end;
+-    let invalid = || "profile capture failed".to_owned();
++    let invalid = || "invalid profile scalar schema".to_owned();
+     let record = StepRecord::parse(raw).ok_or_else(invalid)?;
+     if record.id() != Some(id) || !record.keyword_is(b"IFCARBITRARYCLOSEDPROFILEDEF") {
+         return Err(invalid());

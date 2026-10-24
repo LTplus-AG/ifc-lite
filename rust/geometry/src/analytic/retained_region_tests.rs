@@ -250,7 +250,26 @@ fn issue_3641_profile_copy_admission_and_metadata() {
     assert_eq!(record.attributes["ProfileName"], SourceValue::String(format!("{}O'Brien,(x)ü", "a".repeat(8000))));
     assert_eq!(record.attributes["ProfileType"], SourceValue::Enum("AREA".into()));
     assert_eq!(record.attributes["OuterCurve"], SourceValue::EntityRef(61273));
-    // Independent necessary lower bound: three simultaneously owned strings.
-    assert!(account.usage().copy_bytes >= 3 * 8000, "REGION_PROFILE_COPY_CHARGE");
-    assert!(account.usage().live_bytes >= 3 * 8000, "REGION_PROFILE_COPY_CHARGE");
+    // Independent necessary lower bound: decoded and SourceValue strings.
+    assert!(account.usage().copy_bytes >= 2 * 8000, "REGION_PROFILE_COPY_CHARGE");
+    assert!(account.usage().live_bytes >= 2 * 8000, "REGION_PROFILE_COPY_CHARGE");
+}
+
+
+#[test]
+fn issue_3641_profile_scalar_schema_slots() {
+    let template = captured().authored().clone();
+    for attrs in ["(.AREA.),$,#61273", ".AREA.,IFCLABEL('x'),#61273",
+        ".AREA.,$,(#61273)", ".AREA.,$,#61273,$", ".AREA.,*,#61273"] {
+        let data = format!("#61272=IFCARBITRARYCLOSEDPROFILEDEF({attrs});");
+        let mut decoder = EntityDecoder::with_index(data.as_bytes(), build_entity_index(data.as_bytes()));
+        assert_eq!(retained_region_decimal::capture_profile(&mut template.clone(), &mut decoder),
+            Err("invalid profile scalar schema".into()));
+        assert!(decoder.get_cached(61272).is_none());
+    }
+    let data = b"#61272=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#61273);";
+    let mut decoder = EntityDecoder::with_index(data, build_entity_index(data));
+    let mut authored = template;
+    retained_region_decimal::capture_profile(&mut authored, &mut decoder).unwrap();
+    assert_eq!(authored.source.as_ref().unwrap().records[&61272].attributes["ProfileName"], SourceValue::Null);
 }

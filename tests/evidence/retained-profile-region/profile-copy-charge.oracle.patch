@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/analytic/retained_region_decimal.rs
++++ b/rust/geometry/src/analytic/retained_region_decimal.rs
+@@ -166,7 +166,7 @@
+     // bounded insertion splits. Decoder index/cache-table growth is pre-existing
+     // machinery outside this source-copy bound; it is not allocator RSS.
+     // Charge cumulative copies too, conservatively retaining temporary bytes.
+-    charge(0, 0)?;
++    charge(84 * raw.len() as u64 + 16_384, 0)?;
+     let entity = decoder.decode_by_id(id).map_err(|e| e.to_string())?;
+     if entity.attributes.len() != 3 { return Err("invalid profile source attributes".into()); }
+     let mut capture = super::source::SourceCapture::enabled();

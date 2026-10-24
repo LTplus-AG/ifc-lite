@@ -1,0 +1,18 @@
+--- a/rust/geometry/src/analytic/retained_region_decimal.rs
++++ b/rust/geometry/src/analytic/retained_region_decimal.rs
+@@ -153,6 +153,7 @@
+     if raw.len() > 16_384 { return Err("profile source byte budget exceeded".into()); }
+     // Borrowed raw bytes: no new owned attribute tree at this seam yet.
+     charge(0, 8 * raw.len() as u64)?;
++    profile_scalar_schema(raw, id)?;
+     // Three scalar attributes, no lists/wrappers/dependencies. A name decodes
+     // to <=3N bytes (lossy UTF-8); STEP escapes/undoubling cannot expand that.
+     // Allow six scratch-buffer families (lossy UTF-8, quote replacement,
+@@ -167,7 +168,6 @@
+     // Charge cumulative copies too, conservatively retaining temporary bytes.
+     charge(84 * raw.len() as u64 + 16_384, 0)?;
+     let entity = decoder.decode_by_id(id).map_err(|e| e.to_string())?;
+-    profile_scalar_schema(raw, id)?;
+     if entity.attributes.len() != 3 { return Err("invalid profile source attributes".into()); }
+     let mut capture = super::source::SourceCapture::enabled();
+     capture.record(&entity, decoder);

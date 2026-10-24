@@ -76,5 +76,29 @@
     "patch": "tests/evidence/retained-profile-region/profile-record.oracle.patch",
     "test": "analytic::retained_region::tests::issue_3641_profile_source_record",
     "assertionMarker": "REGION_PROFILE_RECORD"
+  },
+  {
+    "id": "profile-copy-schema",
+    "patch": "tests/evidence/retained-profile-region/profile-copy-schema.oracle.patch",
+    "test": "analytic::retained_region::tests::issue_3641_profile_copy_schema_refusal",
+    "assertionMarker": "REGION_PROFILE_COPY_GUARD"
+  },
+  {
+    "id": "profile-copy-report",
+    "patch": "tests/evidence/retained-profile-region/profile-copy-report.oracle.patch",
+    "test": "analytic::retained_region::tests::issue_3641_profile_copy_schema_refusal",
+    "assertionMarker": "REGION_PROFILE_COPY_REPORT"
+  },
+  {
+    "id": "profile-copy-charge",
+    "patch": "tests/evidence/retained-profile-region/profile-copy-charge.oracle.patch",
+    "test": "analytic::retained_region::tests::issue_3641_profile_copy_admission_and_metadata",
+    "assertionMarker": "REGION_PROFILE_COPY_CHARGE"
+  },
+  {
+    "id": "profile-copy-order",
+    "patch": "tests/evidence/retained-profile-region/profile-copy-order.oracle.patch",
+    "test": "analytic::retained_region::tests::issue_3641_profile_copy_schema_refusal",
+    "assertionMarker": "REGION_PROFILE_COPY_BEFORE_CLONE"
   }
 ]

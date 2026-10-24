@@ -151,8 +151,22 @@ pub(super) fn capture_profile(authored: &mut AnalyticExtrusion, decoder: &mut En
     let id = authored.swept_area_id.ok_or("missing profile source id")?;
     let raw = decoder.get_raw_bytes(id).ok_or("missing profile source bytes")?;
     if raw.len() > 16_384 { return Err("profile source byte budget exceeded".into()); }
-    // Precharge before the decoder clone and SourceCapture's owned record copy.
-    charge(131_072, 16_384)?;
+    // Borrowed raw bytes: no new owned attribute tree at this seam yet.
+    charge(0, 8 * raw.len() as u64)?;
+    profile_scalar_schema(raw, id)?;
+    // Three scalar attributes, no lists/wrappers/dependencies. A name decodes
+    // to <=3N bytes (lossy UTF-8); STEP escapes/undoubling cannot expand that.
+    // Allow six scratch-buffer families (lossy UTF-8, quote replacement,
+    // escape output, UTF-16 units/text, final ownership) at <=12N cumulative
+    // requested capacity each, including geometric growth; plus cache,
+    // returned, pending and SourceValue allowances at <=3N each: <=84N.
+    // DecodedEntity currently shares attributes via Arc, so the first three
+    // allowances overcount the one decoded tree; SourceValue really copies.
+    // 16 KiB covers fixed three-slot vectors, tokens, record/map/set nodes and
+    // bounded insertion splits. Decoder index/cache-table growth is pre-existing
+    // machinery outside this source-copy bound; it is not allocator RSS.
+    // Charge cumulative copies too, conservatively retaining temporary bytes.
+    charge(84 * raw.len() as u64 + 16_384, 0)?;
     let entity = decoder.decode_by_id(id).map_err(|e| e.to_string())?;
     if entity.attributes.len() != 3 { return Err("invalid profile source attributes".into()); }
     let mut capture = super::source::SourceCapture::enabled();
@@ -162,5 +176,31 @@ pub(super) fn capture_profile(authored: &mut AnalyticExtrusion, decoder: &mut En
     let source = authored.source.as_mut().ok_or("missing solid source capture")?;
     if source.capture_status != AnalyticStatus::Complete { return Err("incomplete solid source capture".into()); }
     source.records.extend(captured.records);
+    Ok(())
+}
+
+/// Zero-allocation scalar preflight BEFORE decode and SourceValue copying.
+/// Shared raw scanners preserve quoted punctuation, doubled quotes and PAGE
+/// operands. Typed wrappers and aggregates are deliberately unsupported here.
+fn profile_scalar_schema(raw: &[u8], id: u32) -> Result<(), String> {
+    use ifc_lite_core::parser::{parse_ref, StepRecord};
+    use ifc_lite_core::step_encoding::step_string_literal_end;
+    let invalid = || "invalid profile scalar schema".to_owned();
+    let record = StepRecord::parse(raw).ok_or_else(invalid)?;
+    if record.id() != Some(id) || !record.keyword_is(b"IFCARBITRARYCLOSEDPROFILEDEF") {
+        return Err(invalid());
+    }
+    let mut attrs = record.attrs();
+    let kind = attrs.next().ok_or_else(invalid)?;
+    let name = attrs.next().ok_or_else(invalid)?;
+    let outer = attrs.next().ok_or_else(invalid)?;
+    if attrs.next().is_some() || !attrs.closed()
+        || !(kind.eq_ignore_ascii_case(b".AREA.") || kind.eq_ignore_ascii_case(b".CURVE."))
+        || !(name == b"$" || (name.first() == Some(&b'\'')
+            && step_string_literal_end(name, 0) == Some(name.len())))
+        || parse_ref(outer).is_none()
+    {
+        return Err(invalid());
+    }
     Ok(())
 }

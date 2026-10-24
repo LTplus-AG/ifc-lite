@@ -26,6 +26,7 @@ pub const SKELETON_SCHEMA: &str = "IFC4";
 
 /// One spatial root: its GlobalId and optional name.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct SkeletonRoot {
     pub global_id: GlobalId,
     pub name: Option<String>,
@@ -33,6 +34,7 @@ pub struct SkeletonRoot {
 
 /// The length unit of a projected CRS's map coordinates.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum MapUnit {
     #[default]
     Metre,
@@ -50,6 +52,7 @@ pub enum MapUnit {
 /// rotation between grid north and the project's Y axis. They need not be
 /// normalised, but cannot both be zero.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct MapConversion {
     /// `IfcProjectedCRS.Name`, for example `EPSG:2056`.
     pub crs_name: String,
@@ -69,6 +72,7 @@ pub struct MapConversion {
 
 /// What [`skeleton`] writes.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct Skeleton {
     pub project: SkeletonRoot,
     pub site: SkeletonRoot,

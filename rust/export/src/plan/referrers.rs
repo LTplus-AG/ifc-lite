@@ -57,6 +57,12 @@ impl Referrers {
     pub(crate) fn collected(&self) -> (usize, usize) {
         (self.lists.len(), self.counts.len())
     }
+
+    /// Whether `id`'s referrer list or count was collected.
+    #[cfg(test)]
+    pub(crate) fn knows(&self, id: u32) -> bool {
+        self.lists.contains_key(&id) || self.counts.contains_key(&id)
+    }
 }
 
 impl<'a> FileIndex<'a> {

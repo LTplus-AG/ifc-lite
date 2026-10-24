@@ -50,13 +50,12 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
 
     let mut protected = protected_ids(index, &resolved, &adds, &requested_deletes);
 
-    // A gating-only pass: whether the requested deletes alone (no patch has
-    // run yet, so no copy-on-write detach is known) already remove an
-    // object a patch also targets. This is deliberately not the final
-    // answer for list edits — see the combined call below — only for the
-    // "object is also deleted by this plan" refusal, which only ever cares
-    // about the requested deletes' own cascade.
+    // The requested deletes' cascade before any patch runs (so no
+    // copy-on-write detach is known yet). It gates the "object is also
+    // deleted by this plan" refusal, and is the final answer as well when
+    // the patches leave its inputs as they are (see the combined pass below).
     let gating = delete::resolve_deletes(index, schema, &requested_deletes, &[], &protected);
+    let (gated_requested, gated_protected) = (requested_deletes.clone(), protected.clone());
     // Grows beyond `gating.removed`: a patch's placement rewrite (an old,
     // now-unreferenced axis placement chain) can orphan more records, found
     // and pruned as that patch is resolved. A patch's copy-on-write detach
@@ -137,13 +136,23 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     // copy-on-write detach are resolved together: a relationship either
     // side strips from composes into a single rewrite, and a relationship
     // both sides empty between them still cascades.
-    let newly_protected = protect_what_appended_names(index, &list_edits, &removed, &mut appended, &mut protected);
-    let inputs = DeleteInputs { requested: &requested_deletes, detach: &detach_requests, protected: &protected };
-    let unchanged = detach_requests.is_empty() && geometry_cuts.is_empty() && !newly_protected;
-    let delete_result = final_delete_pass(index, schema, gating, inputs, unchanged, &mut removed);
+    //
+    // The cascade reads only its inputs and the referrers collected before
+    // this resolution started, so the gating pass is reused exactly when
+    // the inputs are the same.
+    protect_what_appended_names(index, &list_edits, &removed, &mut appended, &mut protected);
+    let delete_result = if detach_requests.is_empty() && requested_deletes == gated_requested && protected == gated_protected {
+        gating
+    } else {
+        let result = delete::resolve_deletes(index, schema, &requested_deletes, &detach_requests, &protected);
+        // A gating removal the combined pass no longer makes (a member a
+        // copy-on-write clone reuses) comes back out of `removed`.
+        removed.retain(|id| !gating.removed.contains(id) || result.removed.contains(id));
+        result
+    };
     removed.extend(delete_result.removed);
     refusals.extend(lost_writes(edited, &removed));
-    refusals.extend(overridden_preserves(&resolved, &removed));
+    refusals.extend(overridden_preserves(&resolved, &removed, &delete_result.unhosted));
     for (slot, strip) in delete_result.stripped {
         list_edits.entry(slot).or_default().remove.extend(strip);
     }
@@ -164,42 +173,6 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     };
 
     Resolution { appended, edits_by_id, removed, refusals, patched, added, patched_objects, dropped_representations }
-}
-
-/// What the combined delete pass runs on.
-struct DeleteInputs<'a> {
-    requested: &'a HashSet<u32>,
-    detach: &'a [(u32, usize, u32)],
-    protected: &'a HashSet<u32>,
-}
-
-/// The combined delete pass. `unchanged` (no detach, no swept geometry,
-/// nothing newly protected) means it has the gating pass's inputs, so the
-/// gating pass is its answer. Otherwise it decides what the deletes take: a
-/// gating removal it no longer makes (a member a copy-on-write clone reuses)
-/// comes back out of `removed`.
-fn final_delete_pass(
-    index: &FileIndex,
-    schema: &str,
-    gating: delete::DeleteResult,
-    inputs: DeleteInputs<'_>,
-    unchanged: bool,
-    removed: &mut HashSet<u32>,
-) -> delete::DeleteResult {
-    let run = || delete::resolve_deletes(index, schema, inputs.requested, inputs.detach, inputs.protected);
-    if unchanged {
-        debug_assert!(
-            {
-                let fresh = run();
-                fresh.removed == gating.removed && fresh.stripped == gating.stripped
-            },
-            "the gating pass is reused only when its inputs did not change"
-        );
-        return gating;
-    }
-    let result = run();
-    removed.retain(|id| !gating.removed.contains(id) || result.removed.contains(id));
-    result
 }
 
 /// The owner history a patch's new records name: the file's first, else one
@@ -292,14 +265,14 @@ fn attach_context_to_project(
 /// name them), then keep alive every source record an appended one still
 /// names: a member a copy-on-write clone reuses, the owner history. An
 /// appended record's own id is above `max_id`, so only what it names in the
-/// source is kept. `true` when that protects anything new.
+/// source is kept.
 fn protect_what_appended_names(
     index: &FileIndex,
     list_edits: &HashMap<(u32, usize), attrs::ListEdit>,
     removed: &HashSet<u32>,
     appended: &mut Vec<(u32, String)>,
     protected: &mut HashSet<u32>,
-) -> bool {
+) {
     let orphans: HashSet<u32> = list_edits
         .iter()
         .filter(|((set, _), _)| removed.contains(set))
@@ -310,9 +283,7 @@ fn protect_what_appended_names(
     for (_, text) in appended.iter() {
         crate::step_text::refs_in_line(text.as_bytes(), &mut named);
     }
-    let before = protected.len();
     protected.extend(named.into_iter().filter(|&id| id <= index.max_id));
-    protected.len() > before
 }
 
 /// A refusal for each surviving object's write into a record the plan
@@ -326,14 +297,21 @@ fn lost_writes(edited: HashSet<(u32, u32)>, removed: &HashSet<u32>) -> Vec<Refus
 }
 
 /// A refusal for each Preserve the plan's removals override: reported, not
-/// dropped.
-fn overridden_preserves(resolved: &[(u32, &Disposition)], removed: &HashSet<u32>) -> Vec<Refusal> {
+/// dropped. An opening or projection in `unhosted` says why it went.
+fn overridden_preserves(resolved: &[(u32, &Disposition)], removed: &HashSet<u32>, unhosted: &HashSet<u32>) -> Vec<Refusal> {
     let mut overridden: Vec<u32> =
         resolved.iter().filter(|&&(id, d)| matches!(d, Disposition::Preserve) && removed.contains(&id)).map(|&(id, _)| id).collect();
     overridden.sort_unstable();
     overridden.dedup();
     overridden
         .into_iter()
-        .map(|id| Refusal { object: ObjectRef::Id(id), reason: "object is removed by this plan; it cannot be preserved".into() })
+        .map(|id| {
+            let reason = if unhosted.contains(&id) {
+                "opening or projection has no host left: IFC ties it to exactly one element; it cannot be preserved"
+            } else {
+                "object is removed by this plan; it cannot be preserved"
+            };
+            Refusal { object: ObjectRef::Id(id), reason: reason.into() }
+        })
         .collect()
 }

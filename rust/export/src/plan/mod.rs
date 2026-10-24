@@ -37,12 +37,14 @@
 
 mod add;
 mod add_assoc_types;
+mod add_builders;
 mod add_geometry;
 mod add_profile;
 mod add_props;
 mod add_rels;
 mod add_types;
 mod attrs;
+mod builders;
 mod delete;
 mod geometry;
 mod index;
@@ -72,6 +74,7 @@ pub use add_types::{
     ClassSpec, Extrusion, GlobalId, IfcClass, NewObject, NewOpening, NewPlacement, NewProperty, NewPropertySet, NewType,
     PropertyValue, Representation, TypeLink,
 };
+pub use placement::IDENTITY;
 pub use skeleton::{skeleton, MapConversion, MapUnit, Skeleton, SkeletonRoot, SKELETON_SCHEMA};
 pub use types::{
     Disposition, DroppedRepresentation, ExportPlan, GeometryPatch, ObjectRef, Patch, PlacementPatch, PlanContext, PlanError,

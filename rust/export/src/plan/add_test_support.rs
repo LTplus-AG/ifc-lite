@@ -7,7 +7,7 @@ use super::execute;
 use super::index::FileIndex;
 use super::types::*;
 
-pub(super) const IDENTITY: [[f64; 4]; 4] = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]];
+pub(super) use super::placement::IDENTITY;
 
 pub(super) const SCHEMAS: [&str; 3] = ["IFC2X3", "IFC4", "IFC4X3"];
 
@@ -29,20 +29,9 @@ pub(super) fn tetrahedron() -> TriangleMesh {
 }
 
 pub(super) fn object(class: IfcClass, id: GlobalId, container: Option<ObjectRef>, representation: Representation) -> NewObject {
-    NewObject {
-        global_id: id,
-        class: ClassSpec { class, predefined_type: None },
-        name: Some("Added".into()),
-        placement: NewPlacement { matrix: IDENTITY, relative_to: None },
-        container,
-        type_link: None,
-        representation,
-        style: None,
-        psets: Vec::new(),
-        opening: None,
-        material: None,
-        classifications: Vec::new(),
-    }
+    let mut obj = NewObject::new(id, class, NewPlacement::new(IDENTITY)).with_name("Added").with_representation(representation);
+    obj.container = container;
+    obj
 }
 
 pub(super) fn add(obj: NewObject) -> (ObjectRef, Disposition) {

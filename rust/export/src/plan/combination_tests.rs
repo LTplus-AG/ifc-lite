@@ -303,6 +303,19 @@ fn a_preserved_object_the_deletes_remove_is_refused() {
     }
 }
 
+/// A preserved opening whose host the plan deletes says why it still goes.
+#[test]
+fn a_preserved_opening_without_a_host_is_refused_as_unhosted() {
+    use super::test_fixtures::host_with_port_type_and_body;
+    for schema in SCHEMAS {
+        let content = host_with_port_type_and_body(schema);
+        let (report, after) = run(&content, vec![(ObjectRef::Id(10), Disposition::Delete), (ObjectRef::Id(70), Disposition::Preserve)]);
+        assert!(!after.contains_key(&70), "{schema}: the opening goes with its host");
+        let refusal = report.refusals.iter().find(|r| r.object == ObjectRef::Id(70)).expect("the Preserve is refused");
+        assert!(refusal.reason.contains("no host left"), "{schema}: {}", refusal.reason);
+    }
+}
+
 /// A copy replaces an enumerated value only as an in-place edit would: not
 /// at all (#8078 review).
 #[test]

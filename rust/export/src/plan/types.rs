@@ -13,6 +13,7 @@
 /// id when it already ran a query that produced one, by GlobalId when it
 /// does not track express ids across a load.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum ObjectRef {
     Id(u32),
     Guid(String),
@@ -58,6 +59,7 @@ pub enum PsetKind {
 /// (`"$"` for none); `None` keeps whatever the existing record already
 /// carries, or writes `$` for a brand new one.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct PropWrite {
     pub pset: String,
     pub prop: String,
@@ -73,12 +75,14 @@ pub struct PropWrite {
 /// names — this carries no opinion about the parent, only the local
 /// transform).
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub struct PlacementPatch {
     pub matrix: [[f64; 4]; 4],
 }
 
 /// A triangle mesh. Indices are 0-based into `positions`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct TriangleMesh {
     pub positions: Vec<[f64; 3]>,
     pub triangles: Vec<[u32; 3]>,
@@ -86,6 +90,7 @@ pub struct TriangleMesh {
 
 /// A surface colour for body geometry. Components are 0..1.
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub struct SurfaceColour {
     pub rgb: [f64; 3],
     pub transparency: f64,
@@ -119,6 +124,7 @@ pub struct SurfaceColour {
 /// is: the caller's mesh is taken as the body before voids, like any other
 /// body representation.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct GeometryPatch {
     pub mesh: TriangleMesh,
     pub colour: Option<SurfaceColour>,
@@ -131,6 +137,7 @@ pub struct GeometryPatch {
 /// public shape.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum Disposition {
     /// Keep the record(s) exactly as the source wrote them.
     Preserve,
@@ -146,10 +153,11 @@ pub enum Disposition {
     /// stays declared. The exception is an opening or projection, which IFC
     /// ties to exactly one element: it goes once no voids or projects
     /// relationship naming it is left (its host or that relationship
-    /// deleted), whatever else still names it, unless this plan patches it. A record that
-    /// names a deleted one through a single-valued attribute (a placement
-    /// relative to a deleted placement, an object on that placement) goes too,
-    /// since it cannot be written without a dangling reference.
+    /// deleted), whatever else still names it, unless this plan patches it
+    /// or an Add names it. A record that names a deleted one through a
+    /// single-valued attribute (a placement relative to a deleted placement,
+    /// an object on that placement) goes too, since it cannot be written
+    /// without a dangling reference.
     Delete,
     /// Build a new object from its IFC-level description. Boxed because the
     /// description is much larger than the other variants.
@@ -159,6 +167,7 @@ pub enum Disposition {
 /// The edits [`Disposition::Patch`] carries. Any field left at its default
 /// (`None`, empty `Vec`) makes no change for that concern.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct Patch {
     pub name: Option<String>,
     pub psets: Vec<PropWrite>,
@@ -169,6 +178,7 @@ pub struct Patch {
 /// Header provenance the caller supplies. There is no clock fallback: `now()`
 /// is unavailable on the `wasm32-unknown-unknown` target this crate ships to.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct PlanContext {
     pub author: Option<String>,
     pub organization: Option<String>,
@@ -187,6 +197,7 @@ pub struct PlanContext {
 /// `crate::schema_convert`'s job, and a caller wanting both composes the two
 /// rather than this module reimplementing conversion.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct ExportPlan {
     pub dispositions: Vec<(ObjectRef, Disposition)>,
     pub context: PlanContext,
@@ -194,7 +205,8 @@ pub struct ExportPlan {
 
 /// A disposition the executor could not carry out, and why. Every refusal
 /// here is an edit the plan asked for that is NOT in the output.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Refusal {
     pub object: ObjectRef,
     pub reason: String,
@@ -203,6 +215,7 @@ pub struct Refusal {
 /// One thing the post-write validator found wrong with the file it just
 /// produced.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct ValidationFinding {
     pub express_id: Option<u32>,
     pub message: String,
@@ -212,6 +225,7 @@ pub struct ValidationFinding {
 /// body: an `Axis`, `Box`, `FootPrint` or other representation of the old
 /// shape, which no longer describes the product once its body is replaced.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct DroppedRepresentation {
     pub object: ObjectRef,
     /// Express id of the `IfcShapeRepresentation` in the source.
@@ -222,6 +236,7 @@ pub struct DroppedRepresentation {
 
 /// What [`super::execute`] did, and what it could not.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct WriteReport {
     pub total: usize,
     pub written: usize,
@@ -238,6 +253,7 @@ pub struct WriteReport {
 /// Failure modes of [`super::execute`] itself, as opposed to a single
 /// disposition being refused (which is reported, not erred).
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum PlanError {
     Io(std::io::Error),
 }

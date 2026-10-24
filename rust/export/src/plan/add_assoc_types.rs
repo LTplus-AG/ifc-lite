@@ -15,6 +15,7 @@ use super::types::ObjectRef;
 /// The material a new object is associated with through
 /// `IfcRelAssociatesMaterial`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum MaterialLink {
     /// A record the schema accepts as `RelatingMaterial`: an `IfcMaterial`,
     /// a layer set or its usage, a material list, and in IFC4 and later a
@@ -27,6 +28,7 @@ pub enum MaterialLink {
 /// A new `IfcMaterial`. `category` is IFC4 and later only; an IFC2X3 file
 /// refuses it rather than dropping it.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub struct NewMaterial {
     pub name: String,
     pub category: Option<String>,
@@ -34,6 +36,7 @@ pub struct NewMaterial {
 
 /// A material for one layer of a new layer set.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum LayerMaterial {
     /// An `IfcMaterial` already in the source.
     Existing(ObjectRef),
@@ -43,6 +46,7 @@ pub enum LayerMaterial {
 /// One layer of a new `IfcMaterialLayerSet`. `thickness` is in the file's
 /// length unit.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct NewMaterialLayer {
     pub material: Option<LayerMaterial>,
     pub thickness: f64,
@@ -50,6 +54,7 @@ pub struct NewMaterialLayer {
 
 /// A new `IfcMaterialLayerSet`, layers in the order given.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct NewLayerSet {
     pub name: Option<String>,
     pub layers: Vec<NewMaterialLayer>,
@@ -58,6 +63,7 @@ pub struct NewLayerSet {
 /// One classification a new object is associated with through
 /// `IfcRelAssociatesClassification`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum ClassificationLink {
     /// An `IfcClassificationReference` already in the source (in IFC4 and
     /// later an `IfcClassification` too).
@@ -68,6 +74,7 @@ pub enum ClassificationLink {
 /// A new `IfcClassificationReference` into `system`. `identification` is
 /// written as IFC2X3's `ItemReference`.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct NewClassificationReference {
     pub system: ClassificationSystem,
     pub identification: Option<String>,
@@ -76,6 +83,7 @@ pub struct NewClassificationReference {
 }
 
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum ClassificationSystem {
     /// An `IfcClassification` already in the source.
     Existing(ObjectRef),
@@ -85,6 +93,7 @@ pub enum ClassificationSystem {
 /// A new `IfcClassification`. IFC2X3 requires `source` and `edition`, and
 /// refuses a classification without them.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub struct NewClassification {
     pub name: String,
     pub source: Option<String>,
@@ -94,6 +103,7 @@ pub struct NewClassification {
 /// The unit a property or quantity value is measured in, when it is not the
 /// project's unit for that measure.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ValueUnit {
     /// A unit record already in the source: an `IfcNamedUnit` (SI, conversion
     /// based or context dependent), or for a property an `IfcDerivedUnit` or
@@ -103,5 +113,6 @@ pub enum ValueUnit {
     /// `IfcSIPrefix` (`"KILO"`). Its `UnitType` follows from the name. It is
     /// not added to the project's unit assignment: it is this value's unit,
     /// not the project's.
+    #[non_exhaustive]
     Si { prefix: Option<String>, name: String },
 }

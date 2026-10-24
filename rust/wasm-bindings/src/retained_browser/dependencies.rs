@@ -100,13 +100,15 @@ impl BrowserWorker {
         let certificate = AffineCertificate::decode(&bytes).map_err(|error| BrowserError::Driver(error.into()))?;
         let mut source_mesh = None;
         let source_correspondence=if let Some(expected)=input.source_correspondence() {
+            // Both decodes must use this call's captured authority even without
+            // the common executor's per-poll scope. Neither scope can suspend.
             let (handle, inventory, _wire_storage) = super::mesh_admission::packet(&value, &resources)?;
-            let proof=ifc_lite_geometry::document::retained_source::SourceCorrespondence::decode(expected.request(),&handle,&inventory)
+            let proof=resources.with_scope(|| ifc_lite_geometry::document::retained_source::SourceCorrespondence::decode(expected.request(),&handle,&inventory))
                 .map_err(|error| BrowserError::Driver(error.into()))?;
             if !proof.same_source(expected) { return Err(BrowserError::Driver("affine source inventory changed".into())); }
             let mesh = js_sys::Reflect::get(&value, &JsValue::from_str("source_mesh")).map_err(driver_error)?;
             let mut mesh = super::mesh_admission::read(mesh, &resources, limits.max_bytes)?;
-            let mesh_proof=ifc_lite_geometry::document::retained_source::SourceCorrespondence::decode(expected.request(),&mesh.source_handle,&mesh.source_inventory)
+            let mesh_proof=resources.with_scope(|| ifc_lite_geometry::document::retained_source::SourceCorrespondence::decode(expected.request(),&mesh.source_handle,&mesh.source_inventory))
                 .and_then(|value| value.with_admitted_triangles(std::mem::take(&mut mesh.construction_roots),
                     mesh.triangle_storage.take().expect("affine source mesh pre-copy admission")))
                 .map_err(|error| BrowserError::Driver(error.into()))?;

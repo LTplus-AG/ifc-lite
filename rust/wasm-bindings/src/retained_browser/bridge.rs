@@ -203,7 +203,9 @@ impl BrowserWorker {
             payload.evaluation_from_source,
         );
         let source_correspondence=if request.source_contract().is_some() {
-            let proof=ifc_lite_geometry::document::retained_source::SourceCorrespondence::decode(&request,&mesh.source_handle,&mesh.source_inventory)
+            // Direct callers may resume under another ambient account. Scope
+            // only synchronous inventory decoding to the pre-await authority.
+            let proof=resources.with_scope(|| ifc_lite_geometry::document::retained_source::SourceCorrespondence::decode(&request,&mesh.source_handle,&mesh.source_inventory))
                 .and_then(|proof| proof.with_admitted_triangles(std::mem::take(&mut mesh.construction_roots),
                     mesh.triangle_storage.take().expect("source mesh pre-copy admission")))
                 .map_err(|error| BrowserError::Driver(error.into()))?;

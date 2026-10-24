@@ -88,7 +88,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
             Disposition::Patch(patch) => {
                 if removed.contains(&id) {
                     let reason = if gating.unhosted.contains(&id) && !requested_deletes.contains(&id) {
-                        "opening or projection has no host left: IFC ties it to exactly one element, so it goes with its host; delete wins"
+                        "opening or projection has no host relationship left after this plan's deletes: IFC ties it to exactly one element, so it goes; delete wins"
                     } else {
                         "object is also deleted by this plan; delete wins"
                     };
@@ -144,7 +144,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     // the inputs are the same.
     // What an appended record names is kept from pruning. It does not keep
     // a hostless opening or projection: only an Add does (`protected_ids`).
-    protected.extend(protect_what_appended_names(index, &list_edits, &removed, &mut appended));
+    protected.extend(appended_names(index, &list_edits, &removed, &mut appended));
     let delete_result = if detach_requests.is_empty() && requested_deletes == gated_requested && protected == gated_protected {
         gating
     } else {
@@ -278,10 +278,10 @@ fn attach_context_to_project(
 
 /// Drop the members a write adds to a set the deletes take (nothing would
 /// name them), then return every source record an appended one still
-/// names, for the cascade to keep: a member a copy-on-write clone reuses, the owner history. An
+/// names, which the caller keeps from pruning: a member a copy-on-write clone reuses, the owner history. An
 /// appended record's own id is above `max_id`, so only what it names in the
 /// source is kept.
-fn protect_what_appended_names(
+fn appended_names(
     index: &FileIndex,
     list_edits: &HashMap<(u32, usize), attrs::ListEdit>,
     removed: &HashSet<u32>,
@@ -323,7 +323,7 @@ fn overridden_preserves(resolved: &[(u32, &Disposition)], removed: &HashSet<u32>
         .into_iter()
         .map(|id| {
             let reason = if unhosted.contains(&id) && !requested.contains(&id) {
-                "opening or projection has no host left: IFC ties it to exactly one element; it cannot be preserved"
+                "opening or projection has no host relationship left after this plan's deletes: IFC ties it to exactly one element; it cannot be preserved"
             } else {
                 "object is removed by this plan; it cannot be preserved"
             };

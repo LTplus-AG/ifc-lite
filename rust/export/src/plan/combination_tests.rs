@@ -312,7 +312,7 @@ fn a_preserved_opening_without_a_host_is_refused_as_unhosted() {
         let (report, after) = run(&content, vec![(ObjectRef::Id(10), Disposition::Delete), (ObjectRef::Id(70), Disposition::Preserve)]);
         assert!(!after.contains_key(&70), "{schema}: the opening goes with its host");
         let refusal = report.refusals.iter().find(|r| r.object == ObjectRef::Id(70)).expect("the Preserve is refused");
-        assert!(refusal.reason.contains("no host left"), "{schema}: {}", refusal.reason);
+        assert!(refusal.reason.contains("no host relationship left"), "{schema}: {}", refusal.reason);
     }
 }
 
@@ -373,7 +373,7 @@ fn a_patched_opening_goes_with_its_host_and_the_patch_is_refused() {
         assert!(!after.values().any(|l| l.contains("'Renamed'")), "{schema}: the patch is not written");
         assert_eq!(report.patched, 0, "{schema}");
         let refusal = report.refusals.iter().find(|r| r.object == ObjectRef::Id(70)).expect("the patch is refused");
-        assert!(refusal.reason.contains("no host left"), "{schema}: {}", refusal.reason);
+        assert!(refusal.reason.contains("no host relationship left"), "{schema}: {}", refusal.reason);
         assert!(report.findings.is_empty(), "{schema}: {:?}", report.findings);
     }
 }
@@ -407,12 +407,12 @@ fn a_patched_projection_or_voidless_opening_goes_and_the_reason_fits() {
         assert!(projected.contains("IFCRELPROJECTSELEMENT("), "{schema}: fixture");
         let (report, after) = run(projected.as_bytes(), vec![(ObjectRef::Id(10), Disposition::Delete), rename(70)]);
         assert!(!after.contains_key(&70), "{schema}: the projection goes with its host");
-        assert!(report.refusals.iter().any(|r| r.object == ObjectRef::Id(70) && r.reason.contains("no host left")), "{schema}: {:?}", report.refusals);
+        assert!(report.refusals.iter().any(|r| r.object == ObjectRef::Id(70) && r.reason.contains("no host relationship left")), "{schema}: {:?}", report.refusals);
 
         let content = host_with_filled_opening(schema);
         let (report, after) = run(&content, vec![(ObjectRef::Id(71), Disposition::Delete), rename(70)]);
         assert!(after.contains_key(&10) && !after.contains_key(&70), "{schema}: the host stays, the opening goes with its voids");
-        assert!(report.refusals.iter().any(|r| r.object == ObjectRef::Id(70) && r.reason.contains("no host left")), "{schema}: {:?}", report.refusals);
+        assert!(report.refusals.iter().any(|r| r.object == ObjectRef::Id(70) && r.reason.contains("no host relationship left")), "{schema}: {:?}", report.refusals);
 
         let (report, _) = run(&content, vec![(ObjectRef::Id(10), Disposition::Delete), (ObjectRef::Id(70), Disposition::Delete), rename(70)]);
         let refusal = report.refusals.iter().find(|r| r.object == ObjectRef::Id(70)).expect("refused");

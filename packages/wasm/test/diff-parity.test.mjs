@@ -176,6 +176,7 @@ test('actual WASM raw JSON preserves lone key/value units without collisions (#8
       ...(lineage ? { deleted: [] } : {}),
     };
     const raw = rawJson(value);
+    // @source-text-assertion-ok raw is locally generated JSON test input, not source-file text.
     assert.ok(raw.includes(high) && raw.includes(low), 'input contains actual unescaped code units');
     assert.deepEqual(JSON.parse(raw), value, 'host JSON oracle accepts original text');
     assert.deepEqual(wasm.diffValidateSidecar(raw, lineage), [], 'distinct keys remain distinct');

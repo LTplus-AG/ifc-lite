@@ -30,6 +30,7 @@ on:
       # Browser module-Worker staging and its actual-Worker probe.
       - 'scripts/stage-retained-browser-assets.mjs'
       - 'scripts/lib/retained-asset-contract.mjs'
+      - 'scripts/lib/retained-sdk-provenance.mjs'
       - 'scripts/lib/retained-publish.py'
       - 'scripts/lib/retained-loader-*'
       - 'scripts/fixtures/retained-loaders/**'

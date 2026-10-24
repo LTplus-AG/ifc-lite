@@ -386,30 +386,54 @@ test('staged SDK identity includes verified patched source and patch bytes', asy
   await verifyRetainedAssets(o.out, o.inputs);
 });
 
-test('missing or altered SDK receipts, copy, patch or pins refuse even fresh recording', async t => {
-  for (const mutate of [
-    o => rm(join(o.build, 'ifclite-sdk-provenance.json')),
-    o => writeFile(join(o.build, 'ifclite-sdk-provenance.json'), '{}'),
-    o => writeFile(join(o.build, 'ifclite-sdk/imprint-status-v1/provenance.json'), '{}'),
-    o => writeFile(join(o.build, 'ifclite-sdk/imprint-status-v1/source/SMLib/kernel.cpp'), 'unpatched'),
-    o => writeFile(join(o.build, 'ifclite-sdk/imprint-status-v1/extra.cpp'), 'injected'),
-    o => writeFile(join(o.repoRoot, 'native/smlib-adapter/patches/imprint-status-v1.patch'), 'wrong patch'),
-    async o => {
+test('missing or altered SDK evidence refuses for the intended reason (#7955 R2-C2)', async t => {
+  const cases = [
+    ['missing configured receipt', /ENOENT/, o => rm(join(o.build, 'ifclite-sdk-provenance.json'))],
+    ['altered configured receipt', /configured receipt bytes mismatch/, o => writeFile(join(o.build, 'ifclite-sdk-provenance.json'), '{}')],
+    ['altered selected receipt', /configured receipt bytes mismatch/, o => writeFile(join(o.build, 'ifclite-sdk/imprint-status-v1/provenance.json'), '{}')],
+    ['unpatched source', /prepared file source\/SMLib\/kernel.cpp mismatch/, o => writeFile(join(o.build, 'ifclite-sdk/imprint-status-v1/source/SMLib/kernel.cpp'), 'unpatched')],
+    ['extra source', /prepared file inventory mismatch/, o => writeFile(join(o.build, 'ifclite-sdk/imprint-status-v1/extra.cpp'), 'injected')],
+    ['altered patch', /patch bytes mismatch/, o => writeFile(join(o.repoRoot, 'native/smlib-adapter/patches/imprint-status-v1.patch'), 'wrong patch')],
+    ['altered pins', /receipt patch mismatch/, async o => {
       const path = join(o.repoRoot, 'native/smlib-adapter/patches/imprint-status-v1.json');
       const pins = JSON.parse(await readFile(path)); pins.outputSha256 = '0'.repeat(64);
       await writeFile(path, JSON.stringify(pins));
-    },
-    async o => {
+    }],
+    ['missing cache receipt', /Missing CMake cache field IFCLITE_SDK_PROVENANCE/, async o => {
       const path = join(o.build, 'CMakeCache.txt');
       await writeFile(path, (await readFile(path, 'utf8')).replace(/^IFCLITE_SDK_PROVENANCE:.*\n/m, ''));
-    },
-  ]) {
+    }],
+  ];
+  for (const [name, expected, mutate] of cases) await t.test(name, async t => {
     const o = await fixture(t); await mutate(o);
     const record = join(o.out, '../rejected.json');
-    await assert.rejects(stageRetainedBrowserAssets({ ...o, record, inputs: undefined, out: undefined }));
+    await assert.rejects(stageRetainedBrowserAssets({ ...o, record, inputs: undefined, out: undefined }), expected);
     await assert.rejects(access(record), /ENOENT/);
     await assert.rejects(access(o.out), /ENOENT/);
-  }
+  });
+});
+
+test('matching altered SDK receipts still require trusted metadata (#7955 R2-C2)', async t => {
+  for (const [field, value, expected] of [
+    ['schema', 2, /receipt schema mismatch/],
+    ['upstreamRevision', '0'.repeat(40), /receipt upstream mismatch/],
+    ['upstreamInventorySha256', '0'.repeat(64), /receipt input inventory mismatch/],
+    ['patch', {}, /receipt patch mismatch/],
+    ['pinsSha256', '0'.repeat(64), /receipt pins mismatch/],
+    ['preparerSha256', '0'.repeat(64), /preparer mismatch/],
+    ['outputFiles', {}, /receipt output inventory mismatch/],
+  ]) await t.test(field, async t => {
+    const o = await fixture(t);
+    const selected = join(o.build, 'ifclite-sdk/imprint-status-v1/provenance.json');
+    const receipt = JSON.parse(await readFile(selected)); receipt[field] = value;
+    const bytes = JSON.stringify(receipt);
+    await writeFile(selected, bytes);
+    await writeFile(join(o.build, 'ifclite-sdk-provenance.json'), bytes);
+    const record = join(o.out, '../rejected.json');
+    await assert.rejects(stageRetainedBrowserAssets({ ...o, record, inputs: undefined, out: undefined }), expected);
+    await assert.rejects(access(record), /ENOENT/);
+    await assert.rejects(access(o.out), /ENOENT/);
+  });
 });
 
 test('prepared SDK cannot escape through a symlink and published SDK identity cannot change', async t => {

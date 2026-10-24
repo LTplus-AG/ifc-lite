@@ -27,9 +27,9 @@ class WitnessPaths(unittest.TestCase):
         self.sentinel.write_bytes(b'preserve foreign evidence\n')
         self.output = self.root / 'build' / 'witness'
 
-    def refuse(self):
+    def refuse(self, reason):
         before = {p.name: p.read_bytes() for p in self.foreign.iterdir() if p.is_file()}
-        with self.assertRaises(RuntimeError):
+        with self.assertRaisesRegex(RuntimeError, reason):
             witness.publish_products(self.output, PRODUCTS)
         self.assertEqual({p.name: p.read_bytes() for p in self.foreign.iterdir() if p.is_file()}, before)
         self.assertEqual(self.sentinel.read_bytes(), b'preserve foreign evidence\n')
@@ -47,12 +47,12 @@ class WitnessPaths(unittest.TestCase):
     def test_linked_output_directory(self):
         self.output.parent.mkdir()
         self.output.symlink_to(self.foreign, target_is_directory=True)
-        self.refuse()
+        self.refuse('unsafe or unavailable witness output path')
         self.assertEqual(sorted(p.name for p in self.foreign.iterdir()), ['sentinel'])
 
     def test_linked_parent_directory(self):
         self.output.parent.symlink_to(self.foreign, target_is_directory=True)
-        self.refuse()
+        self.refuse('unsafe or unavailable witness output path')
         self.assertFalse((self.foreign / 'witness').exists())
 
     def test_dangling_output_and_parent(self):
@@ -62,7 +62,7 @@ class WitnessPaths(unittest.TestCase):
                 link.parent.mkdir(exist_ok=True)
                 missing = self.foreign / 'missing'
                 link.symlink_to(missing, target_is_directory=True)
-                self.refuse()
+                self.refuse('unsafe or unavailable witness output path')
                 self.assertFalse(missing.exists())
                 link.unlink()
                 if not parent:
@@ -77,7 +77,7 @@ class WitnessPaths(unittest.TestCase):
                     if not dangling:
                         target.write_bytes(PRODUCTS[name])  # Even equal bytes do not authorize a link.
                     link = self.output / name; link.symlink_to(target)
-                    self.refuse()
+                    self.refuse('witness product is linked or not a regular file')
                     self.assertEqual(sorted(p.name for p in self.output.iterdir()), [name])
                     link.unlink()
                     if not dangling:
@@ -86,13 +86,13 @@ class WitnessPaths(unittest.TestCase):
     def test_product_directory(self):
         self.output.mkdir(parents=True)
         (self.output / 'provenance.json').mkdir()
-        self.refuse()
+        self.refuse('witness product is linked or not a regular file')
         self.assertFalse((self.output / 'control.cpp').exists())
 
     def test_changed_regular_product(self):
         witness.publish_products(self.output, PRODUCTS)
         changed = self.output / 'control.cpp'; changed.write_bytes(b'foreign change\n')
-        self.refuse()
+        self.refuse('witness source changed: use a fresh build directory')
         self.assertEqual(changed.read_bytes(), b'foreign change\n')
 
     def test_link_inserted_at_exclusive_creation(self):
@@ -110,7 +110,7 @@ class WitnessPaths(unittest.TestCase):
         # Keep capability detection truthful for the delegating instrumentation.
         with mock.patch.object(witness.os, 'open', insert_link), mock.patch.object(
                 witness.os, 'supports_dir_fd', os.supports_dir_fd | {insert_link}):
-            self.refuse()
+            self.refuse('unsafe or unavailable witness output path')
         self.assertTrue(inserted)
         self.assertFalse(target.exists())
         self.assertTrue((self.output / 'control.cpp').is_symlink())
@@ -118,14 +118,14 @@ class WitnessPaths(unittest.TestCase):
     def test_fifo_product(self):
         self.output.mkdir(parents=True)
         os.mkfifo(self.output / 'reverse.cpp')
-        self.refuse()
+        self.refuse('witness product is linked or not a regular file')
         self.assertFalse((self.output / 'control.cpp').exists())
 
     def test_hardlinked_product(self):
         self.output.mkdir(parents=True)
         target = self.foreign / 'control.cpp'; target.write_bytes(PRODUCTS['control.cpp'])
         os.link(target, self.output / 'control.cpp')
-        self.refuse()
+        self.refuse('witness product is linked or not a regular file')
         self.assertEqual(target.stat().st_nlink, 2)
 
 

@@ -243,6 +243,43 @@ def passed(run, output, count):
     return run['exit']==0 and not run['timed_out'] and f'test result: ok. {count} passed; 0 failed; 0 ignored;' in output
 
 
+
+def failure_checks(record, run, output):
+    """Require the intended assertion in exactly one named Rust panic.
+
+    Rust may put a numeric thread id between the quoted name and 'panicked'.
+    Match the panic message itself, never a marker elsewhere in Cargo's output.
+    Our assertion diagnostics occupy the first line after the panic location.
+    """
+    headers = list(re.finditer(
+        r"^thread '([^'\n]+)'(?: \([0-9]+\))? panicked at [^\n]+:\n", output, re.M))
+    named = len(headers) == 1 and headers[0][1] == record['test']
+    message = output[headers[0].end():].partition('\n')[0] if named else ''
+    summaries = re.findall(r'^test result: .*$', output, re.M)
+    return {
+        'exit_101': run['exit'] == 101,
+        'completed': not run['timed_out'],
+        'one_failed_test': len(summaries) == 1 and re.fullmatch(
+            r'test result: FAILED\. 0 passed; 1 failed; 0 ignored; 0 measured; '
+            r'[0-9]+ filtered out; finished in .+', summaries[0]) is not None,
+        'named_panic': named,
+        'intended_assertion': bool(record['expected_failure']) and named
+            and re.search(record['expected_failure'], message) is not None,
+    }
+
+
+def classify(record, run, output):
+    checks = failure_checks(record, run, output)
+    status = 'killed' if all(checks.values()) else 'survived' if passed(
+        run, output, 1 if record['test'] else 5) else 'unqualified_failure'
+    return status, checks
+
+
+def self_test():
+    # Also invoked before --run, so the runner cannot silently omit its own tests.
+    subprocess.run([sys.executable, str(FIXTURES/'test_mutation_matcher.py')], check=True)
+
+
 def execute(records, timeout, receipt):
     control, output = run_test(None, timeout)
     receipt['baseline'] = control
@@ -260,11 +297,7 @@ def execute(records, timeout, receipt):
             path.write_bytes(record['mutated'])
             run, output = run_test(record['test'], timeout)
             result['run'] = run
-            killed = (run['exit']==101 and not run['timed_out']
-                      and f"thread '{record['test']}' panicked" in output
-                      and 'test result: FAILED. 0 passed; 1 failed;' in output
-                      and re.search(record['expected_failure'], output) is not None)
-            result['status'] = 'killed' if killed else 'survived' if passed(run, output, 1 if record['test'] else 5) else 'unqualified_failure'
+            result['status'], result['failure_checks'] = classify(record, run, output)
         finally:
             path.write_bytes(original)
             result['restored_sha256'] = digest(path.read_bytes())
@@ -285,8 +318,14 @@ def main():
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument('--list', action='store_true')
     mode.add_argument('--run', action='store_true')
+    mode.add_argument('--self-test', action='store_true', help='offline captured-panic matcher tests')
     parser.add_argument('--timeout', type=int, default=300, help='seconds per cargo invocation')
     args = parser.parse_args()
+    if args.self_test:
+        self_test()
+        return
+    if args.run:
+        self_test()
     records = plans()
     if args.list:
         print(json.dumps([{k:v for k,v in r.items() if k not in ('original','mutated')} for r in records], indent=2))

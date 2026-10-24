@@ -186,8 +186,16 @@ Real edit/run/restore mutations can be submitted as a single admitted job:
 source, locks the checkout, first runs all five tests, then edits one fixture,
 runs its named test, restores exact original bytes in `finally`, and reruns the
 control. A kill requires exit 101, the named test's panic, one failed test and
-its intended assertion diagnostic; build failures/timeouts are not kills. Every
-transcript and the final `MUTATION_RECEIPT` JSON are printed to the worker log.
+its intended assertion diagnostic in that named panic's message; build failures,
+timeouts and unrelated assertions are not kills. The matcher accepts Rust panic
+headers with or without a numeric thread id. Every transcript and the final
+`MUTATION_RECEIPT` JSON (including the individual failure-check booleans) are
+printed to the worker log. Run `python3 tests/fixtures/synthetic-retained/mutate.py
+--self-test` for offline matcher regression tests; these also run automatically
+before `--run`. `mutation-failure-samples.json` contains contiguous panic/summary
+excerpts captured from the parent fleet run at 046b759b9d, with provenance hashes.
+The self-tests reject the wrong assertion even when the expected text occurs
+elsewhere in the output. An offline replay is not a new native mutation run.
 SIGTERM/interrupt stops the runner's Cargo process group before restoration;
 SIGKILL/power loss cannot guarantee restoration, so retain the checkout and
 inspect its receipt/source before any retry. This script never nests admission.

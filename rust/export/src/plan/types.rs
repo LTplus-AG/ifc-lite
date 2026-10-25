@@ -72,7 +72,9 @@ pub struct PropWrite {
     /// record to write, when the caller already holds it. The write then
     /// lands on the set named `pset` that lists that record, however many
     /// sets share that name, and is refused if no set of that name lists it
-    /// or the record's own name is not `prop`. `None` finds the first
+    /// or the record's own name is not `prop`. With `PropScope::Occurrence`,
+    /// a target only the related type's set holds is not edited in place:
+    /// the object gets its own copy that overrides it. `None` finds the first
     /// property of that name in the first set of that name.
     pub target: Option<u32>,
 }

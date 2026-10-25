@@ -27,7 +27,10 @@ impl<'de> Deserialize<'de> for PropertyValue {
             fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E> { Ok(PropertyValue::Number(value as f64)) }
             fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> { Ok(PropertyValue::Number(value as f64)) }
             fn visit_str<E>(self, value: &str) -> Result<Self::Value, E> { Ok(PropertyValue::String(value.into())) }
-            fn visit_string<E>(self, value: String) -> Result<Self::Value, E> { Ok(PropertyValue::String(value)) }
+            fn visit_string<E>(self, value: String) -> Result<Self::Value, E> { Ok(PropertyValue::String(value.into())) }
+            fn visit_newtype_struct<D: Deserializer<'de>>(self, d: D) -> Result<Self::Value, D::Error> {
+                Vec::<u16>::deserialize(d).map(|units| PropertyValue::String(crate::JsString::from_units(units)))
+            }
             fn visit_seq<A: SeqAccess<'de>>(self, mut access: A) -> Result<Self::Value, A::Error> {
                 let mut values = Vec::new();
                 while let Some(value) = access.next_element()? { values.push(value); }

@@ -12,7 +12,7 @@
 //! reassigned on every save, so comparing references flags every re-exported
 //! element.
 
-use crate::utf16::cmp_code_units;
+use crate::JsString;
 
 /// ECMAScript WhiteSpace + LineTerminator, as used by String.prototype.trim.
 /// Rust's Unicode whitespace includes U+0085 and excludes U+FEFF; JS does the reverse.
@@ -28,22 +28,23 @@ pub(crate) fn is_ecmascript_whitespace(ch: char) -> bool {
 /// Absent and empty project identically — the documented contract of every
 /// field this backs, and the reason the fingerprint omits the key entirely
 /// when the result is empty.
-pub fn sorted_string_list(values: &[String]) -> Vec<String> {
-    let mut kept: Vec<String> = values
+pub fn sorted_string_list(values: &[JsString]) -> Vec<JsString> {
+    let mut kept: Vec<JsString> = values
         .iter()
-        .filter(|name| !name.chars().all(is_ecmascript_whitespace))
+        .filter(|name| !name.is_blank())
         .cloned()
         .collect();
-    kept.sort_by(|a, b| cmp_code_units(a, b));
+    kept.sort();
     kept
 }
 
 #[cfg(test)]
 mod tests {
     use super::sorted_string_list;
+    use crate::JsString;
 
-    fn list(values: &[&str]) -> Vec<String> {
-        values.iter().map(|value| (*value).to_owned()).collect()
+    fn list(values: &[&str]) -> Vec<JsString> {
+        values.iter().map(|value| (*value).into()).collect()
     }
 
     #[test]
@@ -60,8 +61,8 @@ mod tests {
 
     #[test]
     fn absent_and_empty_project_identically() {
-        assert_eq!(sorted_string_list(&[]), Vec::<String>::new());
-        assert_eq!(sorted_string_list(&list(&["  "])), Vec::<String>::new());
+        assert_eq!(sorted_string_list(&[]), Vec::<JsString>::new());
+        assert_eq!(sorted_string_list(&list(&["  "])), Vec::<JsString>::new());
     }
 
     #[test]

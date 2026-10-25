@@ -70,7 +70,7 @@ mod js_json;
 mod projections;
 mod utf16;
 
-pub use fingerprint::{build_component_fingerprints, build_data_fingerprint};
+pub use fingerprint::{build_component_fingerprint_entries, build_component_fingerprints, build_data_fingerprint};
 pub use input::{
     DataFingerprintInput, PropertyEntryInput, PropertySetInput, PropertyValue, QuantitySetInput,
     TypeAssignmentInput,

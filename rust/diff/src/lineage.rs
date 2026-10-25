@@ -55,7 +55,7 @@ pub fn lineage_of_diff<R>(diff: &KeyDiff<'_, R>, matches: &[ContentMatch<'_, R>]
         .then_with(|| cmp_code_units(a.head.first().map(String::as_str).unwrap_or(""), b.head.first().map(String::as_str).unwrap_or(""))));
     let accounted: HashSet<_> = entries.iter().flat_map(|e| e.base.iter()).collect();
     let mut deleted: Vec<_> = diff.entries.iter().filter(|e| e.state == DiffState::Deleted && !accounted.contains(&e.key)).map(|e| e.key.clone()).collect();
-    deleted.sort_by(|a, b| cmp_code_units(a, b));
+    deleted.sort_by(cmp_code_units);
     Lineage { entries, deleted }
 }
 pub fn lineage_conflicts(entries: &[LineageEntry]) -> Vec<String> {
@@ -69,7 +69,7 @@ pub fn lineage_conflicts(entries: &[LineageEntry]) -> Vec<String> {
             }
         }
         let mut repeated: Vec<_> = repeated.into_iter().collect();
-        repeated.sort_by(|a, b| cmp_code_units(a, b));
+        repeated.sort_by(cmp_code_units);
         for key in repeated { problems.push(format!("{side} key \"{key}\" appears in more than one lineage entry")); }
     }
     problems

@@ -13,7 +13,7 @@ fn obj(entries: &[(&str, JsonValue)]) -> JsonValue {
     JsonValue::Object(
         entries
             .iter()
-            .map(|(key, value)| ((*key).to_owned(), value.clone()))
+            .map(|(key, value)| ((*key).into(), value.clone()))
             .collect(),
     )
 }
@@ -23,7 +23,7 @@ fn primitives_match_json_stringify() {
     assert_eq!(stringify(&JsonValue::Null), "null");
     assert_eq!(stringify(&JsonValue::Bool(true)), "true");
     assert_eq!(stringify(&JsonValue::Bool(false)), "false");
-    assert_eq!(stringify(&JsonValue::String("x".to_owned())), "\"x\"");
+    assert_eq!(stringify(&JsonValue::String("x".into())), "\"x\"");
 }
 
 #[test]
@@ -106,7 +106,7 @@ fn escaping_matches_v8_exactly() {
     for (code, expected_body) in cases {
         let input = char::from_u32(code).expect("valid scalar value").to_string();
         assert_eq!(
-            stringify(&JsonValue::String(input)),
+            stringify(&JsonValue::String(input.into())),
             quoted(&expected_body),
             "escaping disagreed for U+{code:04X}",
         );
@@ -119,7 +119,7 @@ fn characters_v8_leaves_alone_are_left_alone() {
     // does not, and this has to match V8, so each is pinned explicitly.
     for raw in ["/", "\u{7f}", "\u{2028}", "\u{2029}", "\u{e9}", "\u{1f600}"] {
         assert_eq!(
-            stringify(&JsonValue::String(raw.to_owned())),
+            stringify(&JsonValue::String(raw.into())),
             format!("\"{raw}\""),
             "V8 leaves {raw:?} unescaped",
         );
@@ -131,7 +131,7 @@ fn astral_characters_survive_serialization() {
     // Regression guard: an earlier draft walked UTF-16 code units and dropped
     // surrogate pairs entirely, silently emptying any astral string.
     let emoji = "\u{1f600}";
-    let serialized = stringify(&JsonValue::String(emoji.to_owned()));
+    let serialized = stringify(&JsonValue::String(emoji.into()));
     assert_eq!(serialized, format!("\"{emoji}\""));
     assert!(serialized.chars().any(|ch| ch == '\u{1f600}'));
 }
@@ -141,8 +141,8 @@ fn stringify_preserves_insertion_order() {
     // `buildDataFingerprint` hashes an object literal whose key order is part
     // of the format, so this must NOT sort.
     let value = obj(&[
-        ("Type", JsonValue::String("IfcWall".to_owned())),
-        ("Name", JsonValue::String("W".to_owned())),
+        ("Type", JsonValue::String("IfcWall".into())),
+        ("Name", JsonValue::String("W".into())),
     ]);
     assert_eq!(stringify(&value), r#"{"Type":"IfcWall","Name":"W"}"#);
 }

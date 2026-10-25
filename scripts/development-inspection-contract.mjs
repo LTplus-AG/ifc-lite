@@ -28,7 +28,7 @@ try {
   const inspect = await loadDevelopmentInspection(process.env.IFC_RETAINED_BUILD_COMMIT);
   const run = (text = source, intent = options, id = 10) => inspect(encode(text), id, JSON.stringify(intent));
   const report = run();
-  assert.equal(report.outcome.kind, 'requires_numerical_evaluation');
+  assert.equal(report.outcome.kind, 'requires_numerical_evaluation', JSON.stringify(report.outcome));
   assert.ok(BigInt(report.outcome.requestOrdinal) > 1n, 'Actual traversal reached numerical work');
   assert.equal(report.authority, 'diagnostic_only');
   assert.equal(report.product.GlobalId.value, '0000000000000000000001');

@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 // Called only after the canonical build script successfully regenerates WASM.
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 
 const implementationCommit = process.env.IFC_RETAINED_BUILD_COMMIT;
 if (!/^[a-f0-9]{40}$/u.test(implementationCommit ?? '')) throw new Error('Missing trusted build input');
-const files = Object.fromEntries(['ifc-lite.js', 'ifc-lite_bg.wasm', 'ifc-lite.d.ts'].map(name =>
+const files = Object.fromEntries(readdirSync('.retained-dev/wasm', { recursive: true })
+  .filter(name => /\.(?:js|wasm|ts)$/u.test(name)).sort().map(name =>
   [name, createHash('sha256').update(readFileSync(`.retained-dev/wasm/${name}`)).digest('hex')]));
 writeFileSync('.retained-dev/build.json', JSON.stringify({ implementationCommit, files,
   provenance: 'build_input_only_match_original_request_and_receipt_before_qualification' }, null, 2) + '\n');

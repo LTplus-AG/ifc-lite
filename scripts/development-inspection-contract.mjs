@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import { loadDevelopmentInspection } from './lib/development-inspection.mjs';
 import { validateShape } from './retained-contract/validate.mjs';
+import { exerciseInspectionClock } from './consumer/development-inspection-clock.mjs';
 
 const source = `ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
 #1=IFCCARTESIANPOINT((0.,0.,0.));#2=IFCAXIS2PLACEMENT3D(#1,$,$);
@@ -61,10 +62,11 @@ try {
   assert.throws(() => inspect(encode(source), 10, JSON.stringify(options).replace('{', '{"schemaVersion":1,')), entry('INVALID_OPTIONS'));
   assert.throws(() => run(source.replace('0000000000000000000001', 'forged')), entry('SOURCE_INVALID'));
   assert.throws(() => run(source, options, 999), entry('SOURCE_INVALID'));
+  exerciseInspectionClock(run, options, entry);
   assert.equal(fetches, 0); assert.equal(workers, 0);
   console.log(JSON.stringify({ actualWasm: true, implementationCommit: report.implementationCommit,
     sourceSha256: report.identity.source.sha256, numericalBoundary: true, finality: false,
-    refusal: refused.outcome.refusal.code, fetches, workers }));
+    refusal: refused.outcome.refusal.code, realElapsedDeadline: true, unavailableClockRefused: true, fetches, workers }));
 } finally {
   globalThis.fetch = oldFetch;
   if (oldWorker === undefined) delete globalThis.Worker; else globalThis.Worker = oldWorker;

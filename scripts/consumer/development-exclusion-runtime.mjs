@@ -10,7 +10,9 @@ const loader = await import('@ifc-lite/wasm/retained');
 assert.equal(Object.hasOwn(engine, 'inspectDevelopmentSource'), false);
 assert.equal(Object.hasOwn(loader, 'inspectDevelopmentSource'), false);
 await assert.rejects(import('@ifc-lite/wasm/development-inspection'), { code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' });
-engine.initSync({ module: readFileSync(new URL(import.meta.resolve('@ifc-lite/wasm/ifc-lite_bg.wasm'))) });
+const module = new WebAssembly.Module(readFileSync(new URL(import.meta.resolve('@ifc-lite/wasm/ifc-lite_bg.wasm'))));
+assert.equal(WebAssembly.Module.imports(module).some(entry => /inspectionMonotonicNow/iu.test(entry.name)), false);
+engine.initSync({ module });
 const api = new engine.IfcAPI();
 try { assert.equal('inspectDevelopmentSource' in api, false); }
 finally { api.free(); }

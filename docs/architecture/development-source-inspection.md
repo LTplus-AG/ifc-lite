@@ -48,12 +48,18 @@ synthetic extrusion reaching numerical work, malformed-source refusal, forged
 options, invalid IDs, source changes, and zero fetch/Worker calls. The synthetic
 input proves this boundary only, not authored-model or numerical qualification.
 
-At the requested predecessor `d997c84f59fc8cd5a499c0bfdbc66a7446bc5d4e`, the
-sibling-owned geometry inspector calls `std::time::Instant::now()` in its source
-driver. That clock is unsupported on `wasm32-unknown-unknown`. This binding does
-not bypass the deadline or edit that implementation: actual successful Node
-qualification requires its owner to supply a WASM-compatible clock. No success
-is claimed from a build, native test, or static member snapshot alone.
+The integrated inspection budget captures one start before options/source work,
+and nested/resumed allowances preserve it. Native builds retain `std::time::Instant`.
+The pinned nightly's `library/std/src/sys/pal/unsupported/time.rs` implements
+`Instant::now()` as a panic; `wasm32-unknown-unknown` selects that platform.
+Only `retained-runtime` on that target imports the synchronous JS monotonic clock.
+It uses [`performance.now()`](https://nodejs.org/api/perf_hooks.html#performancenow),
+whose [monotonic clock](https://www.w3.org/TR/hr-time-3/#monotonic-clock) does not
+follow wall-clock adjustments. No `Date` fallback or JS callback is retained.
+Unavailable, throwing, negative, nonfinite, or regressing samples latch failure
+and yield `DEADLINE_EXCEEDED`; they never turn off the deadline. A fresh combined
+native/WASM run is required after this clock adaptation; predecessor test counts
+do not qualify it.
 
 ## Package and declaration containment
 

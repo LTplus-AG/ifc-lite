@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { validate, validateShape, decode } from '../retained-contract/validate.mjs';
 
@@ -12,7 +12,10 @@ export async function loadDevelopmentInspection(expectedCommit) {
   assert.match(expectedCommit, /^[a-f0-9]{40}$/u);
   const build = JSON.parse(readFileSync(new URL('build.json', output), 'utf8'));
   assert.equal(build.implementationCommit, expectedCommit, 'Original build request identity');
-  for (const name of ['ifc-lite.js', 'ifc-lite_bg.wasm', 'ifc-lite.d.ts']) {
+  const files = readdirSync(new URL('wasm/', output), { recursive: true })
+    .filter(name => /\.(?:js|wasm|ts)$/u.test(name)).sort();
+  assert.deepEqual(files, Object.keys(build.files).sort(), 'Complete generated artifact closure');
+  for (const name of files) {
     assert.equal(sha256(readFileSync(new URL(`wasm/${name}`, output))), build.files[name], `Build bytes: ${name}`);
   }
   const engine = await import(new URL('wasm/ifc-lite.js', output));

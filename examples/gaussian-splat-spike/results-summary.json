@@ -1,0 +1,45 @@
+{
+  "date": "2026-10-25",
+  "baseCommit": "beb5d928ed85de41540032785ec35b4bd2fc9de6",
+  "mode": "functional SwiftShader witness; not a performance measurement",
+  "productionSupport": false,
+  "recommendation": "Keep the current viewer. Reuse SplatTransform; use PlayCanvas as the reference scene. Upstream luma reverse-Z sorting and pass integration fixes before native adoption. GPU-paged integration and hardware performance remain unqualified.",
+  "results": [
+    {
+      "backend": "luma.gl 9.4.2",
+      "gaussians": 498237,
+      "reverseZProbe": {
+        "invariant": "near red must dominate far blue at their shared centre",
+        "centerPixel": [
+          50,
+          0,
+          189,
+          255
+        ],
+        "passes": false
+      }
+    },
+    {
+      "backend": "PlayCanvas 2.23.3",
+      "gaussians": 498237,
+      "reverseZProbe": null
+    }
+  ],
+  "runtimeFileSha256": {
+    "examples/gaussian-splat-spike/capture.mjs": "e7e3e53d36aa0e93e7e3a91a68044327fa2d2e4e79a49142dc6a0ca802e6a5b4",
+    "examples/gaussian-splat-spike/client.mjs": "30b64861520abe538d81c83e00fb9ff6815a64d9073eba1311dc9c6dcdb7aac1",
+    "examples/gaussian-splat-spike/decode.mjs": "87e6f1ae1dcdc72b170879192f0669f71008bd4912e15228512bfde191504bf4",
+    "examples/gaussian-splat-spike/index.html": "4ff661e3e84c6179eaaf9cfb785223ab05ee6bc15dd4ba0e7762199fed0e0f7b",
+    "examples/gaussian-splat-spike/luma-backend.mjs": "079385ba36086d26b4b2cbe3f26fd95afd7a11295c2e12d2375bcb0cb3850a3d",
+    "examples/gaussian-splat-spike/native-mesh.mjs": "87ffb035dc0d4e232f0137d6782d0ee50630392cebb76b491d4ee1ee515b3f9a",
+    "examples/gaussian-splat-spike/package.json": "554e4657a26ae0b9ed34056d928c42b5cc3c85a593ff338f945b34148e7bc8c9",
+    "examples/gaussian-splat-spike/playcanvas-backend.mjs": "ebc9898437fcb3d0ad30e8bae3539f1b375c038a7cc52359df0fde5e66f92cb6",
+    "examples/gaussian-splat-spike/prepare.mjs": "c05164a86fae22adb8200cf3e98f901ea8002b507dc3c588765ae9314c687ea8",
+    "examples/gaussian-splat-spike/reverse-z-probe.mjs": "00b6fc30540dcf3a16f3a6b8df5af31a1550abc6be72473963b4cd7404f3926d",
+    "examples/gaussian-splat-spike/validate.mjs": "a0b6bb7e4dbad24e62cc24205b75079cfdd02ce55853028d6c69317809a8f257",
+    "examples/gaussian-splat-spike/vite.config.mjs": "07d5fd598740edcc5e395cfa62f6e01a0e657d08c33be3466c60d862f0c3b8f5",
+    "pnpm-lock.yaml": "bdc32db4128209f834f3d81864f28f5f4dffe16c4a431740de265edf69843396"
+  },
+  "scope": "Public capture decoding and synthetic reverse-Z rendering probe only. Local model/scan results, images and derived scene metrics excluded.",
+  "discussion": "https://github.com/LTplus-AG/ifc-lite/discussions/8141"
+}

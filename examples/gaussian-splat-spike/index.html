@@ -1,0 +1,10 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+     License, v. 2.0. If a copy of the MPL was not distributed with this
+     file, You can obtain one at https://mozilla.org/MPL/2.0/. -->
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="icon" href="data:,"><title>IFC + Gaussian splats · reuse spike #8140</title>
+<style>body{margin:0;background:#172126;color:#e7eeeb;font:14px system-ui}header{padding:16px 24px;display:flex;gap:18px;align-items:center}a{color:#91d6bb}canvas{display:block;width:100%;height:70vh}#status{white-space:pre-wrap;padding:12px 24px}button{padding:8px}small{display:block;padding:0 24px;color:#b0beb8}</style></head><body>
+<header><strong>IFC + point cloud + Gaussian splats</strong><a href="?backend=luma">luma.gl / shared native depth</a><a href="?backend=playcanvas">PlayCanvas / complete engine</a><button id="hide-ifc">Toggle IFC</button><button id="hide-points">Toggle points</button><button id="hide-splats">Toggle splats</button><button id="move">Move camera</button><button id="dispose">Release scene</button></header>
+<canvas id="scene" width="1280" height="720"></canvas><div id="status" role="status">Preparing real fixtures…</div>
+<small>Research spike #8140. Objects arranged for interoperability, without surveyed registration. Houseplant and textile ball: Marcel Padilla, CC-BY-4.0; non-metric captures, SH degree 0. IFC: existing FZK fixture. Scan: optional local E57 file, never uploaded.</small>
+<label style="display:block;padding:12px 24px">Optional local E57 (first bounded chunk only): <input id="scan" type="file" accept=".e57"></label>
+<script type="module" src="/client.mjs"></script></body></html>

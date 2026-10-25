@@ -1,169 +1,74 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Bounded, read-only representation and context counts for candidate products.
+//! Bounded, read-only representation and context counts for all products.
 
-use super::{Counts, Product};
-use ifc_lite_core::{
-    build_entity_index, has_geometry_by_name, EntityDecoder, EntityScanner, IfcType,
-};
-use ifc_lite_geometry::{meshed_representations, GeometryRouter};
+use super::{denominator, representations, Product};
+use ifc_lite_core::{EntityDecoder, IfcType, SchemaVersion};
+use ifc_lite_geometry::GeometryRouter;
 use std::collections::{BTreeMap, BTreeSet};
 
-const MAX_ITEMS_PER_PRODUCT: usize = 100_000;
-const MAX_DEPTH: usize = 128;
-
-pub(super) fn products(content: &[u8]) -> (BTreeMap<u32, Product>, Vec<String>) {
-    let index = build_entity_index(content);
-    let mut decoder = EntityDecoder::with_index(content, index);
-    let mut records = Vec::new();
-    let mut scanner = EntityScanner::new(content);
-    while let Some((id, name, _, _)) = scanner.next_entity() {
-        records.push((id, name.to_owned()));
-    }
-    let mut voids = BTreeMap::<u32, usize>::new();
-    let mut layers = BTreeSet::<u32>::new();
-    let mut layer_usages = BTreeMap::<u32, usize>::new();
-    let mut typed_products = Vec::<(u32, u32)>::new();
-    let mut styles = BTreeMap::<u32, bool>::new();
-    let mut palettes = BTreeSet::<u32>::new();
-    let mut diagnostics = Vec::new();
-    for (id, name) in &records {
-        match name.as_str() {
-            "IFCRELVOIDSELEMENT" => {
-                if let Ok(rel) = decoder.decode_by_id(*id) {
-                    if let Some(host) = rel.get_ref(4) {
-                        *voids.entry(host).or_default() += 1;
-                    }
-                }
-            }
-            "IFCRELASSOCIATESMATERIAL" => {
-                if let Ok(rel) = decoder.decode_by_id(*id) {
-                    if let Some(material) = rel.get_ref(5) {
-                        if let Ok(entity) = decoder.decode_by_id(material) {
-                            if matches!(
-                                &entity.ifc_type,
-                                IfcType::IfcMaterialLayerSetUsage | IfcType::IfcMaterialLayerSet
-                            ) {
-                                for product in rel.get_refs(4).unwrap_or_default() {
-                                    layers.insert(product);
-                                    if entity.ifc_type == IfcType::IfcMaterialLayerSetUsage {
-                                        *layer_usages.entry(product).or_default() += 1;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            "IFCRELDEFINESBYTYPE" => {
-                if let Ok(rel) = decoder.decode_by_id(*id) {
-                    if let Some(type_id) = rel.get_ref(5) {
-                        typed_products.extend(
-                            rel.get_refs(4)
-                                .unwrap_or_default()
-                                .into_iter()
-                                .map(|product| (product, type_id)),
-                        );
-                    }
-                }
-            }
-            "IFCSTYLEDITEM" => {
-                if let Ok(item) = decoder.decode_by_id(*id) {
-                    if let Some(target) = item.get_ref(0) {
-                        let textured = item
-                            .get_refs(1)
-                            .unwrap_or_default()
-                            .into_iter()
-                            .any(|style| has_texture(style, &mut decoder));
-                        styles
-                            .entry(target)
-                            .and_modify(|old| *old |= textured)
-                            .or_insert(textured);
-                    }
-                }
-            }
-            "IFCINDEXEDCOLOURMAP" => {
-                if let Ok(map) = decoder.decode_by_id(*id) {
-                    if let Some(target) = map.get_ref(0) {
-                        palettes.insert(target);
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    for (product, type_id) in typed_products {
-        if layers.contains(&type_id) {
-            layers.insert(product);
-        }
-        if let Some(count) = layer_usages.get(&type_id).copied() {
-            *layer_usages.entry(product).or_default() += count;
-        }
-    }
-    let mut result = BTreeMap::new();
-    for (id, name) in records {
-        if !has_geometry_by_name(&name) {
-            continue;
-        }
-        let entity = match decoder.decode_by_id(id) {
-            Ok(entity) if entity.ifc_type.is_subtype_of(IfcType::IfcProduct) => entity,
-            Ok(_) => continue,
-            Err(error) => {
-                diagnostics.push(format!("product #{id}: decode: {error}"));
-                continue;
-            }
-        };
-        let mut product = Product {
-            ifc_type: entity.ifc_type.name().to_owned(),
-            representation_families: BTreeMap::new(),
-            source_admission: "refused",
-            verdict: "refused",
-            reasons: BTreeSet::new(),
-            counts: Counts::default(),
-            item_ids: BTreeSet::new(),
-        };
-        product.counts.openings = voids.get(&id).copied().unwrap_or_default();
-        product.counts.layered_products = usize::from(layers.contains(&id));
-        product.counts.material_layer_usages = layer_usages.get(&id).copied().unwrap_or_default();
-        scan_representations(&entity, &mut product, &mut decoder, &styles, &palettes);
-        result.insert(id, product);
-    }
-    (result, diagnostics)
+pub(super) struct Scan {
+    pub products: BTreeMap<u32, Product>,
+    pub type_definitions: BTreeMap<u32, String>,
+    pub unclassified_entities: BTreeMap<u32, String>,
+    pub enumeration_complete: bool,
+    pub diagnostics: Vec<String>,
 }
 
-fn has_texture(id: u32, decoder: &mut EntityDecoder) -> bool {
-    let mut stack = vec![id];
-    let mut seen = BTreeSet::new();
-    while let Some(id) = stack.pop() {
-        if !seen.insert(id) || seen.len() > 1024 {
-            continue;
-        }
-        let Ok(entity) = decoder.decode_by_id(id) else {
+pub(super) fn products(content: &[u8], record_limit: usize) -> Scan {
+    let inventory = denominator::inventory(content, record_limit);
+    let schema = inventory.schema;
+    let records = inventory.records;
+    let mut decoder = EntityDecoder::with_index(content, inventory.index);
+    let context = super::context::collect(&records, &mut decoder, schema);
+    let mut diagnostics = inventory.diagnostics;
+    diagnostics.extend(context.diagnostics);
+    let mut result = Scan {
+        products: BTreeMap::new(),
+        type_definitions: BTreeMap::new(),
+        unclassified_entities: BTreeMap::new(),
+        enumeration_complete: true,
+        diagnostics: Vec::new(),
+    };
+    for (id, name) in records {
+        let Some(info) = schema.entity_info(&name) else {
+            result.unclassified_entities.insert(id, name);
+            diagnostics.push(format!("enumeration:unknown_entity/{id}"));
             continue;
         };
-        if matches!(
-            &entity.ifc_type,
-            IfcType::IfcSurfaceStyleWithTextures
-                | IfcType::IfcImageTexture
-                | IfcType::IfcBlobTexture
-                | IfcType::IfcPixelTexture
-        ) {
-            return true;
+        if schema.is_subtype_of(&name, "IfcTypeProduct") {
+            result.type_definitions.insert(id, info.name.to_owned());
+            continue;
         }
-        if matches!(
-            &entity.ifc_type,
-            IfcType::IfcSurfaceStyle | IfcType::IfcPresentationStyleAssignment
-        ) {
-            for attr in entity.attributes.iter() {
-                if let Some(reference) = attr.as_entity_ref() {
-                    stack.push(reference);
-                }
-                if let Some(list) = attr.as_list() {
-                    stack.extend(list.iter().filter_map(|v| v.as_entity_ref()));
-                }
+        if !schema.is_subtype_of(&name, "IfcProduct") {
+            continue;
+        }
+        let mut product = denominator::product(info.name);
+        product.counts.openings = context.voids.get(&id).copied().unwrap_or_default();
+        product.counts.layered_products = usize::from(context.layers.contains(&id));
+        product.counts.material_layer_usages =
+            context.layer_usages.get(&id).copied().unwrap_or_default();
+        match decoder.decode_by_id(id) {
+            Ok(entity) => scan_representations(
+                &entity,
+                &mut product,
+                &mut decoder,
+                &context.styles,
+                &context.palettes,
+                schema,
+            ),
+            Err(_) => denominator::fail(&mut product, "product:decode_failed"),
+        }
+        if product.representation_state == "absent" {
+            for type_id in context.type_assignments.get(&id).into_iter().flatten() {
+                representations::check_type_absence(*type_id, &mut product, &mut decoder, schema);
             }
         }
+        result.enumeration_complete &= product.enumeration_complete;
+        result.products.insert(id, product);
     }
-    false
+    result.enumeration_complete &= diagnostics.is_empty();
+    result.diagnostics = diagnostics;
+    result
 }
 
 fn scan_representations(
@@ -172,64 +77,32 @@ fn scan_representations(
     decoder: &mut EntityDecoder,
     styles: &BTreeMap<u32, bool>,
     palettes: &BTreeSet<u32>,
+    schema: SchemaVersion,
 ) {
-    let Some(shape_id) = entity.get_ref(6) else {
-        product.reasons.insert("product:no_Representation".into());
-        return;
-    };
-    let Ok(shape) = decoder.decode_by_id(shape_id) else {
-        product
-            .reasons
-            .insert("product:unresolved_Representation".into());
-        return;
-    };
-    if shape.ifc_type != IfcType::IfcProductDefinitionShape {
-        product
-            .reasons
-            .insert("product:Representation_not_IfcProductDefinitionShape".into());
-        return;
-    }
-    let Some(rep_ids) = shape.get_refs(2) else {
-        product.reasons.insert("product:no_Representations".into());
-        return;
-    };
-    let mut reps = Vec::new();
-    for id in rep_ids {
-        match decoder.decode_by_id(id) {
-            Ok(rep) => reps.push(rep),
-            Err(_) => {
-                product
-                    .reasons
-                    .insert("product:unresolved_shape_representation".into());
-            }
-        }
-    }
-    let mut stack = Vec::new();
-    for rep in meshed_representations(entity, &reps) {
-        stack.extend(
-            rep.get_refs(3)
-                .unwrap_or_default()
-                .into_iter()
-                .map(|id| (id, Vec::new())),
-        );
-    }
-    if stack.is_empty() {
-        product.reasons.insert("product:no_meshed_items".into());
-    }
+    let mut stack: Vec<_> = representations::roots(entity, product, decoder, schema)
+        .into_iter()
+        .map(|id| (id, Vec::new()))
+        .collect();
     let mut visited = 0;
     while let Some((id, mut path)) = stack.pop() {
         visited += 1;
-        if visited > MAX_ITEMS_PER_PRODUCT || path.len() >= MAX_DEPTH || path.contains(&id) {
-            product
-                .reasons
-                .insert("product:representation_walk_bound_or_cycle".into());
+        if visited > representations::MAX_ITEMS
+            || path.len() >= representations::MAX_DEPTH
+            || path.contains(&id)
+        {
+            denominator::fail(product, "product:representation_walk_bound_or_cycle");
             break;
         }
         path.push(id);
         let Ok(item) = decoder.decode_by_id(id) else {
-            product.reasons.insert("product:unresolved_item".into());
+            denominator::fail(product, "product:unresolved_item");
             continue;
         };
+        if !schema.is_subtype_of(item.ifc_type.name(), "IfcRepresentationItem")
+            && !schema.is_subtype_of(item.ifc_type.name(), "IfcGridAxis")
+        {
+            denominator::fail(product, "product:invalid_or_unknown_item_type");
+        }
         *product
             .representation_families
             .entry(item.ifc_type.name().to_owned())
@@ -244,44 +117,57 @@ fn scan_representations(
             IfcType::IfcMappedItem => {
                 product.counts.mapped_items += 1;
                 classify_mapping(&item, product, decoder);
-                if let Some(rep_id) = item
-                    .get_ref(0)
-                    .and_then(|map| decoder.decode_by_id(map).ok())
-                    .and_then(|map| map.get_ref(1))
-                {
-                    if let Ok(rep) = decoder.decode_by_id(rep_id) {
-                        stack.extend(
-                            rep.get_refs(3)
-                                .unwrap_or_default()
-                                .into_iter()
-                                .map(|child| (child, path.clone())),
-                        );
-                    } else {
-                        product
-                            .reasons
-                            .insert("mapping:unresolved_representation".into());
+                let rep_id = denominator::attribute(&item, schema, "MappingSource")
+                    .and_then(|v| v.as_entity_ref())
+                    .and_then(|id| decoder.decode_by_id(id).ok())
+                    .filter(|map| schema.is_subtype_of(map.ifc_type.name(), "IfcRepresentationMap"))
+                    .and_then(|map| {
+                        denominator::attribute(&map, schema, "MappedRepresentation")
+                            .and_then(|v| v.as_entity_ref())
+                    });
+                if let Some(rep_id) = rep_id {
+                    let children =
+                        representations::representation_items(rep_id, product, decoder, schema);
+                    if stack
+                        .len()
+                        .saturating_add(children.len())
+                        .saturating_add(visited)
+                        > representations::MAX_ITEMS
+                    {
+                        denominator::fail(product, "product:representation_walk_bound_or_cycle");
+                        break;
                     }
+                    stack.extend(children.into_iter().map(|child| (child, path.clone())));
                 } else {
-                    product
-                        .reasons
-                        .insert("mapping:unresolved_source_representation".into());
+                    denominator::fail(product, "mapping:unresolved_source_representation");
                 }
             }
+
             IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
                 product.counts.boolean_items += 1;
                 product.counts.clipping_items +=
                     usize::from(item.ifc_type == IfcType::IfcBooleanClippingResult);
-                for child in [item.get_ref(1), item.get_ref(2)].into_iter().flatten() {
-                    product.counts.boolean_operands += 1;
-                    stack.push((child, path.clone()));
+                for name in ["FirstOperand", "SecondOperand"] {
+                    if let Some(child) =
+                        denominator::attribute(&item, schema, name).and_then(|v| v.as_entity_ref())
+                    {
+                        product.counts.boolean_operands += 1;
+                        stack.push((child, path.clone()));
+                    } else {
+                        denominator::fail(product, "product:malformed_boolean_operand");
+                    }
                 }
                 product
                     .reasons
                     .insert("product:enclosing_boolean_not_evaluated".into());
             }
             IfcType::IfcCsgSolid => {
-                if let Some(root) = item.get_ref(0) {
+                if let Some(root) = denominator::attribute(&item, schema, "TreeRootExpression")
+                    .and_then(|v| v.as_entity_ref())
+                {
                     stack.push((root, path));
+                } else {
+                    denominator::fail(product, "product:malformed_csg_root");
                 }
                 product
                     .reasons

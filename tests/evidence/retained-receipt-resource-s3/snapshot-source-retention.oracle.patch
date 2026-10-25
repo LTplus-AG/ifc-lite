@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/processing/src/element/model_context.rs
++++ b/rust/processing/src/element/model_context.rs
+@@ -98,6 +98,6 @@
+             data,
+             state: Arc::clone(&self.state),
+             #[cfg(any(test, feature = "retained-runtime"))]
+-            source: None,
++            source: self.source.clone(),
+         })
+     }

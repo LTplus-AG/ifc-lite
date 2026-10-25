@@ -49,3 +49,6 @@ fn s3_snapshot_and_lifecycle_cross_threads_but_expire_only_on_source_invalidatio
     assert!(weak.upgrade().is_none(), "lifecycle grants no source or decoder lease");
     assert_eq!(lifecycle.validate(), Err(RetainedContextError::StaleSource));
 }
+
+#[path = "model_context_snapshot_only_tests.rs"]
+mod snapshot_only;

@@ -2216,6 +2216,16 @@ jobs:
               --mutation tests/evidence/retained-receipt-resource-s3/detach-owned-restore.oracle.patch \
               --test rust/geometry/src/resource/owned_detach_tests.rs
           fi
+          # #7955 S3 Q1: select only the snapshot-only ownership witness.
+          # Use the S3 production base: the Q1 correction itself is test-only.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/element/model_context_snapshot_only_tests.rs | grep -Fxq 'rust/processing/src/element/model_context_snapshot_only_tests.rs'; then
+            node scripts/check-test-revert-oracle.mjs --base b0dc9d3026ab3ba2176cd617291b835ac7b53b2d --ci --json \
+              --mutation tests/evidence/retained-receipt-resource-s3/snapshot-source-retention.oracle.patch \
+              --test rust/processing/src/element/model_context_snapshot_only_tests.rs
+            # Clean restoration alone is not a restored GREEN execution.
+            cargo test --locked -p ifc-lite-processing --lib \
+              element::model_context::retained::tests::snapshot_only::s3_snapshot_alone_retains_source_for_cross_thread_decode_then_releases_it -- --exact
+          fi
           if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/decoder/precision_certificate.rs | grep -Fxq 'rust/core/src/decoder/precision_certificate.rs'; then
             # The oracle restored the source; also execute the positive side
             # after mutation rather than treating clean status as a test run.

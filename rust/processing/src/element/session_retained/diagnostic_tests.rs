@@ -38,7 +38,7 @@ fn options(mode: TypeGeometryMode) -> String {
         "openings":"all","layers":"preserve","skipSmallCuts":false,"mergeLayers":false}}"#)
 }
 #[test]
-fn issue_7955_m2_parsed_unsupported_block_and_malformed_items_are_distinct_before_worker_spawn() {
+fn issue_7955_native_source_m2_parsed_unsupported_block_and_malformed_items_are_distinct_before_worker_spawn() {
     let block = SOURCE.replace("#13=IFCEXTRUDEDAREASOLID(#14,#5,#15,3.)", "#13=IFCBLOCK(#5,2.,4.,3.)");
     let malformed = SOURCE.replace("'SweptSolid',(#13)", "'SweptSolid',(42)");
     for (bytes, expected) in [(block, wire::Code::OperationUnsupported), (malformed, wire::Code::SourceInvalid)] {
@@ -62,7 +62,7 @@ fn issue_7955_m2_parsed_unsupported_block_and_malformed_items_are_distinct_befor
     }
 }
 #[test]
-fn issue_7955_m6_public_entry_suppresses_instantiated_type_without_worker_or_final_authority() {
+fn issue_7955_native_source_m6_public_entry_suppresses_instantiated_type_without_worker_or_final_authority() {
     let diagnostic = diagnose(source("#200=IFCRELDEFINESBYTYPE('r',$,$,$,(#10,#20),#60);"), 60,
         Path::new("/nonexistent/no-numerical-work"), TypeGeometryMode::SuppressInstanced).unwrap();
     assert_eq!(diagnostic.witness.discharged_count(), 0);
@@ -93,7 +93,7 @@ fn issue_7955_m6_canonical_type_jobs_reach_real_native_origin_and_class_bindings
     }
 }
 #[test]
-fn issue_7955_m6_type_selection_uses_source_bundle_last_occurrence_and_preserves_map_order() {
+fn issue_7955_native_source_m6_type_selection_uses_source_bundle_last_occurrence_and_preserves_map_order() {
     let source = source("#200=IFCMAPPEDITEM(#61,#201);#200=IFCCARTESIANPOINT((0.,0.,0.));");
     let context = ProductionModel::from_source(source.clone()).snapshot(Default::default());
     let mut decoder = source.decoder();
@@ -103,7 +103,7 @@ fn issue_7955_m6_type_selection_uses_source_bundle_last_occurrence_and_preserves
 }
 
 #[test]
-fn issue_7955_m2_native_options_keep_typed_deadline_and_original_cancel_precedence() {
+fn issue_7955_native_source_m2_native_options_keep_typed_deadline_and_original_cancel_precedence() {
     resource::inspection_test_clock::scope(|clock| {
         clock.expire_at("source_step", 1, 60_000);
         let error = diagnose(source(""), 10, Path::new("/nonexistent/no-worker-after-deadline"),
@@ -119,7 +119,7 @@ fn issue_7955_m2_native_options_keep_typed_deadline_and_original_cancel_preceden
 }
 
 #[test]
-fn issue_7955_m2_generated_native_report_rejects_rebinding_context_and_finality_tampering() {
+fn issue_7955_native_source_m2_generated_native_report_rejects_rebinding_context_and_finality_tampering() {
     let diagnostic = diagnose(source("#200=IFCRELDEFINESBYTYPE('r',$,$,$,(#10,#20),#60);"), 60,
         Path::new("/nonexistent/no-numerical-work"), TypeGeometryMode::SuppressInstanced).unwrap();
     let original: serde_json::Value = serde_json::from_slice(diagnostic.bytes().unwrap()).unwrap();

@@ -10,14 +10,14 @@ use diagnostic_report::{ReportBytes, ReportContext};
 pub struct NativeDiagnosticError {
     cause: RetainedExecutionError,
     report: Option<ReportBytes>,
-    report_failure: Option<RetainedExecutionError>,
+    report_failure: Option<crate::retained_native_contract::Code>,
 }
 impl NativeDiagnosticError {
     pub fn report_bytes(&self) -> Option<&[u8]> { self.report.as_ref().map(|report| report.bytes.as_slice()) }
     fn bound(cause: RetainedExecutionError, context: ReportContext) -> Self {
         match context.refused(&cause) {
             Ok(report) => Self { cause, report: Some(report), report_failure: None },
-            Err(report_failure) => Self { cause, report: None, report_failure: Some(report_failure) },
+            Err(report_failure) => Self { cause, report: None, report_failure: Some(report_failure.code()) },
         }
     }
 }
@@ -30,7 +30,7 @@ impl std::fmt::Debug for NativeDiagnosticError {
 impl std::fmt::Display for NativeDiagnosticError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "native diagnostic refused: {}", self.cause)?;
-        if let Some(error) = &self.report_failure { write!(f, "; bound report unavailable: {error}")?; }
+        if let Some(error) = &self.report_failure { write!(f, "; bound report unavailable: {error:?}")?; }
         Ok(())
     }
 }

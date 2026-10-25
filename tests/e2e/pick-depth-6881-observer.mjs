@@ -36,7 +36,7 @@ export function installOracle({ depthBitXor = 0, renderer: suppliedRenderer } = 
   let active = null, retired = false;
   // Future resizes must preserve the independent oracle's COPY_SRC usage.
   const create = function(descriptor) {
-    return originalCreate.call(this, descriptor.format === 'depth32float'
+    return originalCreate.call(this, descriptor.format === 'depth32float' && active
       ? { ...descriptor, usage: descriptor.usage | GPUTextureUsage.COPY_SRC } : descriptor);
   };
   device.createTexture = create;

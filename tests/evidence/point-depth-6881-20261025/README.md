@@ -87,6 +87,10 @@ Preparation receipts:
   and no errors or interruptions all held. No timing row was produced and the
   sample is not reused. The gate now allows a 1e-6 tolerance and a new distinct
   cohort is submitted with the changed benchmark hash; the earlier refusal stays.
+- The corrected cohort, job `6e78dad9`, was then refused by the harness idle-host
+  gate before any sample: foreign `cargo test`/`rustc` processes were running on
+  Pop. They were not interrupted. See [`hover-host-busy-refusal.json`](hover-host-busy-refusal.json).
+  No page load, hover or timing sample exists; performance acceptance remains pending.
 
 [Preparation receipts](preparation.json) retain command/source identities,
 original outcomes and log hashes. Failed functional reports and compact summaries

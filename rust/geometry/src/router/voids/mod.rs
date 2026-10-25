@@ -620,7 +620,7 @@ impl Execution {
         // adjacent cells share edges → watertight), which over-fragments faces an
         // opening doesn't reach. Run the result through the SAME coplanar merge
         // the exact path uses (i_overlay union per plane) to collapse those back
-        // to minimal triangles — keeps it watertight and un-bloated.
+        // to minimal triangles; a merge that would tear a closed cut keeps the raw one.
         out.map(crate::rect_fast::consolidate_keeping_closed)
     }
 

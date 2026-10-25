@@ -343,11 +343,14 @@ pub fn subtract_rect_openings(
 /// author kept apart (#7942), and tear the mesh open.
 pub(crate) fn consolidate_keeping_closed(cut: Mesh) -> Mesh {
     use crate::exact_topology::strict_closed_mesh;
+    if !strict_closed_mesh(&cut) {
+        return crate::csg::ClippingProcessor::consolidate_coplanar(cut);
+    }
     let merged = crate::csg::ClippingProcessor::consolidate_coplanar(cut.clone());
-    if strict_closed_mesh(&cut) && !strict_closed_mesh(&merged) {
-        cut
-    } else {
+    if strict_closed_mesh(&merged) {
         merged
+    } else {
+        cut
     }
 }
 

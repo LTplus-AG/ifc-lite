@@ -127,37 +127,73 @@ fn a_host_its_openings_miss_is_not_consumed() {
     }
 }
 
-// A ~40 um web between two rectangular through-openings (#7942 stopped merging
-// them) must survive the analytic cut closed: consolidation's size rules used to
-// drop its rim faces and open the mesh.
+// A ~40 um web between two through-openings (#7942 stopped merging them) must
+// survive the analytic cut closed: consolidation's size rules used to drop its
+// rim faces and open the mesh. The parametric case checks the end result only.
 
-fn thin_rect(mn: [f64; 3], mx: [f64; 3]) -> OpeningType {
-    OpeningType::Rectangular(
-        Point3::new(mn[0], mn[1], mn[2]),
-        Point3::new(mx[0], mx[1], mx[2]),
-        Some(Vector3::y()),
-    )
+fn through_rect(mn: [f64; 3], mx: [f64; 3]) -> OpeningType {
+    rect(mn, mx)
+}
+
+/// Half-width of the residual web. The parametric path treats boxes closer than
+/// 100 um as overlapping and defers, so it gets a wider (still sub-needle) web.
+const GAP: f64 = 0.00002;
+const PARAM_GAP: f64 = 0.000075;
+
+fn web_context(gap: f64, param: Option<ParamRectCut>) -> (Mesh, VoidContext, Vec<([f64; 3], [f64; 3])>) {
+    // 6 x 0.2 x 3 m wall; the openings leave a thin web at x = 0.
+    let host = GeometryRouter::make_box_mesh(Point3::new(-3.0, -0.1, 0.0), Point3::new(3.0, 0.1, 3.0));
+    let boxes = vec![
+        ([-2.0, -0.3, -0.5], [-gap, 0.3, 3.5]),
+        ([gap, -0.3, -0.5], [2.0, 0.3, 3.5]),
+    ];
+    let openings: Vec<_> = boxes.iter().map(|(a, b)| through_rect(*a, *b)).collect();
+    let ctx = VoidContext {
+        merged_openings: GeometryRouter::merge_rectangular_openings(&openings),
+        openings,
+        param,
+        bool2d: None,
+    };
+    assert_eq!(ctx.merged_openings.len(), 2, "the authored gap must survive the merge");
+    (host, ctx, boxes)
+}
+
+fn raw_tris(host: &Mesh, boxes: &[([f64; 3], [f64; 3])]) -> usize {
+    let mut stats = crate::rect_fast::RectFastStats::default();
+    let raw = crate::rect_fast::subtract_rect_openings(host, boxes, &mut stats).expect("raw cut");
+    assert!(crate::exact_topology::strict_closed_mesh(&raw));
+    raw.indices.len() / 3
 }
 
 #[test]
 fn thin_residual_between_rect_openings_stays_closed() {
-    // 6 x 0.2 x 3 m wall; openings leave a 40 um web at x = 0.
-    let host = GeometryRouter::make_box_mesh(Point3::new(-3.0, -0.1, 0.0), Point3::new(3.0, 0.1, 3.0));
-    let openings = vec![
-        thin_rect([-2.0, -0.3, -0.5], [-0.00002, 0.3, 3.5]),
-        thin_rect([0.00002, -0.3, -0.5], [2.0, 0.3, 3.5]),
-    ];
-    let ctx = VoidContext {
-        merged_openings: GeometryRouter::merge_rectangular_openings(&openings),
-        openings,
-        param: None,
-        bool2d: None,
+    let (host, ctx, boxes) = web_context(GAP, None);
+    let raw = raw_tris(&host, &boxes);
+    let router = GeometryRouter::new();
+    let out = router.apply_void_context(host, &ctx, 1);
+    assert_eq!(router.take_rect_fast_stats().fired, 1, "must come from rect_fast");
+    let tris = out.indices.len() / 3;
+    assert!(crate::exact_topology::strict_closed_mesh(&out), "open cut ({tris} tris)");
+    assert!(tris <= raw, "{tris} tris exceeds the raw cut's {raw}");
+}
+
+#[test]
+fn thin_residual_between_param_openings_stays_closed() {
+    // Run 6 m, height 3 m, thickness 0.2 m; openings span the full height and
+    // thickness so the parametric path accepts them.
+    let hx = (2.0 - PARAM_GAP) / 2.0;
+    let param = ParamRectCut {
+        host: param_box([0.0, 0.0, 1.5], [3.0, 1.5, 0.1]),
+        openings: vec![
+            param_box([-(PARAM_GAP + hx), 0.0, 1.5], [hx, 1.5, 0.1]),
+            param_box([PARAM_GAP + hx, 0.0, 1.5], [hx, 1.5, 0.1]),
+        ],
     };
-    assert_eq!(ctx.merged_openings.len(), 2, "the authored gap must survive the merge");
+    let (host, ctx, _) = web_context(PARAM_GAP, Some(param));
+    // The parametric path's own watertight self-check rejects a torn cut and
+    // defers to the exact kernel, so the result is closed whichever path emits it.
+    // (Routing it through `consolidate_keeping_closed` was tried and is worse: the
+    // raw cut's rim slivers then fail the post-rotation hygiene on real hosts.)
     let out = GeometryRouter::new().apply_void_context(host, &ctx, 1);
-    assert!(
-        crate::exact_topology::strict_closed_mesh(&out),
-        "cut host must stay strictly closed ({} tris)",
-        out.indices.len() / 3
-    );
+    assert!(crate::exact_topology::strict_closed_mesh(&out), "open cut ({} tris)", out.indices.len() / 3);
 }

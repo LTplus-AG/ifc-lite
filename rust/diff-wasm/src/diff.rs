@@ -11,6 +11,7 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 pub struct DiffModel {
     entities: Vec<EntityFingerprint<usize>>,
+    non_ascii_classes: Vec<ifc_lite_diff::JsString>,
 }
 
 #[wasm_bindgen]
@@ -24,7 +25,8 @@ impl DiffModel {
         let strings: Vec<ifc_lite_diff::JsString> = crate::diff_transport::from_value(strings)?;
         let entities = decode_columns(FingerprintColumns { strings, fields, flags, boxes,
             volumes, component_offsets, component_pairs }).map_err(|error| JsValue::from_str(&error))?;
-        Ok(Self { entities })
+        let non_ascii_classes = crate::diff_class_normalization::model_classes(&entities);
+        Ok(Self { entities, non_ascii_classes })
     }
 
     /// Compare this base model with a head model, returning row-index records.
@@ -32,7 +34,13 @@ impl DiffModel {
     pub fn compare(&self, head: &DiffModel, options: JsValue) -> Result<JsValue, JsValue> {
         let value = crate::diff_transport::document(options)?;
         let options = options_from_document(&value);
-        crate::diff_transport::host_value(&result_to_document(&diff_models(&self.entities, &head.entities, &options)))
+        let mappings = crate::diff_class_normalization::mappings(
+            &self.non_ascii_classes, &head.non_ascii_classes, &options)?;
+        let result = ifc_lite_diff::class_normalization::with_overrides(mappings, || {
+            diff_models(&self.entities, &head.entities, &options)
+        });
+        // Restore the core context before any host result conversion can run.
+        crate::diff_transport::host_value(&result_to_document(&result))
     }
 
     #[wasm_bindgen(getter, js_name = entityCount)]

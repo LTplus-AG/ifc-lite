@@ -1,0 +1,8 @@
+diff --git a/apps/viewer/src/test/authoring-sample-fixture.ts b/apps/viewer/src/test/authoring-sample-fixture.ts
+--- a/apps/viewer/src/test/authoring-sample-fixture.ts
++++ b/apps/viewer/src/test/authoring-sample-fixture.ts
+@@ -1,4 +1,3 @@
+-import '@/store';
+ /* This Source Code Form is subject to the terms of the Mozilla Public
+  * License, v. 2.0. If a copy of the MPL was not distributed with this
+  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */

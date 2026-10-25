@@ -176,8 +176,6 @@ for (const upper of [...universe.keys()].sort()) {
 // EXPRESS base and are typed `AGGREGATE`, so a write naming one is refused
 // for what it is. A member that resolves to neither fails the generator.
 const VALUE_SCHEMAS = ['IFC2X3', 'IFC4', 'IFC4X3'];
-// An EXPRESS base as the generated `BaseKind` variant.
-const baseKind = (base) => `BaseKind::${base[0]}${base.slice(1).toLowerCase()}`;
 const AGGREGATE = /^(LIST|ARRAY|SET|BAG)\b/;
 // `check_literal_measure` and `BaseKind` handle exactly these.
 const LEAF_BASES = ['STRING', 'REAL', 'NUMBER', 'INTEGER', 'BOOLEAN', 'LOGICAL', 'BINARY'];
@@ -226,7 +224,8 @@ for (const [token, { name, types }] of [...valueMembers].sort(([a], [b]) => (a <
     const shape = base === 'INTEGER' ? PropertyValueType.Integer : PropertyValueType.Real;
     relaxed = declaredNominalValueType(-1, shape, token) ?? '';
   }
-  const type = (t) => (t === null ? 'None' : t === 'AGGREGATE' ? 'Some(ValueType::Aggregate)' : `Some(ValueType::Leaf(${baseKind(t)}))`);
+  const type = (t) =>
+    t === null ? 'None' : t === 'AGGREGATE' ? 'Some(ValueType::Aggregate)' : `Some(ValueType::Leaf(BaseKind::${t[0]}${t.slice(1).toLowerCase()}))`;
   leaves.push(
     `    ValueMember { token: ${JSON.stringify(token)}, name: ${JSON.stringify(name)}, constrained: ${constrained}, relaxed: ${JSON.stringify(relaxed)}, types: [${types.map(type).join(', ')}] },`,
   );
@@ -268,7 +267,7 @@ const definedBaseRows = Object.keys(SCHEMA_REGISTRY.types)
   .map((t) => [t, resolveExpressBase(t)])
   .filter(([, b]) => b !== null)
   .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
-  .map(([t, b]) => `    (${JSON.stringify(t)}, ${baseKind(b)}),`);
+  .map(([t, b]) => `    (${JSON.stringify(t)}, ${JSON.stringify(b)}),`);
 
 // Aggregate slot bounds the reference filters read: style records through
 // `readRelationshipSlotLowerBound`, the non-relationship narrowing through
@@ -350,7 +349,7 @@ ${selectLeafRows.join('\n')}
 ];
 
 /// \`(defined type, EXPRESS base)\` (\`resolveExpressBase\`), sorted.
-pub static DEFINED_TYPE_BASES: &[(&str, BaseKind)] = &[
+pub static DEFINED_TYPE_BASES: &[(&str, &str)] = &[
 ${definedBaseRows.join('\n')}
 ];
 

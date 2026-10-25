@@ -55,11 +55,11 @@ export function serializeAttributeSlot(
   value: IfcAttributeValue,
   version: IfcSchemaVersion,
 ): string {
-  if (isTypedMarker(value)) return serializeStepValue(value, false, version);
-  const qualified = serializeQualifiedSelectSlot(entityType, index, value, version);
+  if (isTypedMarker(value)) return serializeStepValue(value);
+  const qualified = serializeQualifiedSelectSlot(entityType, index, value);
   if (qualified !== null) return qualified;
   try {
-    return serializeStepValue(value, getRealTypedSlots(entityType, version).has(index), version);
+    return serializeStepValue(value, getRealTypedSlots(entityType, version).has(index));
   } catch (error) {
     // Name the record the unwritable value came from (#5217).
     throw new Error(`${entityType} attribute ${index}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });

@@ -92,13 +92,6 @@ pub(crate) struct Overlay {
 }
 
 impl Overlay {
-    /// Whether the log sets the value of quantity `name` in `set` on `e`
-    /// (an edit, or a member of a set it creates), rather than the value
-    /// coming from the source untouched.
-    pub(crate) fn edits_quantity(&self, e: u32, set: &str, name: &str) -> bool {
-        self.quants.get(&(e, set.to_string(), name.to_string())).is_some_and(|m| m.op == Op::Set)
-    }
-
     fn set_prop(&mut self, e: u32, set: &str, name: &str, m: PropMut) {
         ordered_insert(self.prop_keys.entry(e).or_default(), (set.to_string(), name.to_string()));
         self.props.insert((e, set.to_string(), name.to_string()), m);

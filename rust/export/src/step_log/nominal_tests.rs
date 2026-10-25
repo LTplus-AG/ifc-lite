@@ -111,18 +111,3 @@ fn a_regenerated_count_is_written_in_its_schemas_base_8142() {
     assert_eq!(super::super::values::typed_marker(SchemaFamily::Ifc4x3, "IfcCountMeasure", &json!(3)).unwrap(), "IFCCOUNTMEASURE(3)");
     assert_eq!(super::super::values::typed_marker(SchemaFamily::Ifc4, "IfcCountMeasure", &json!(3)).unwrap(), "IFCCOUNTMEASURE(3.)");
 }
-
-/// (#8142) An INTEGER-based typed value takes a whole number, never a
-/// truncated one, up to the i64 range rather than 2^53.
-#[test]
-fn an_integer_typed_value_is_whole_or_refused_8142() {
-    use super::super::values::typed_marker;
-    assert_eq!(typed_marker(SchemaFamily::Ifc4, "IfcInteger", &json!(3)).unwrap(), "IFCINTEGER(3)");
-    assert!(typed_marker(SchemaFamily::Ifc4, "IfcInteger", &json!(3.5)).is_err());
-    assert!(typed_marker(SchemaFamily::Ifc4x3, "IfcCountMeasure", &json!(2.5)).is_err());
-    let big = 9_007_199_254_740_994.0;
-    assert_eq!(check_real_measure(fam("IFC4X3"), "IfcCountMeasure", big, true), Ok(MeasureNumber::Integer(9_007_199_254_740_994)));
-    assert!(check_real_measure(fam("IFC4X3"), "IfcCountMeasure", 1e19, true).is_err());
-    assert_eq!(step_integer_exact(-9_223_372_036_854_775_808.0), Some(i64::MIN));
-    assert_eq!(step_integer_exact(f64::NAN), None);
-}

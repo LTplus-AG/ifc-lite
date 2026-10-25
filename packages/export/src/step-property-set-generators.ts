@@ -13,10 +13,7 @@ import { serializeValue, ref, getAttributeNamesForSchema } from '@ifc-lite/parse
 import type { PropertySet, QuantitySet, Quantity } from '@ifc-lite/data';
 import type { RandomSource } from '@ifc-lite/encoding';
 import type { EffectiveEntityIndex } from './effective-index.js';
-import { QuantityType } from '@ifc-lite/data';
-import { escapeStepString, toStepReal, toStepIntegerExact, quantityTypeToIfcType } from './step-serialization.js';
-import { ifcValueLeaf } from './select-qualification.js';
-import type { IfcSchemaVersion } from './schema-converter.js';
+import { escapeStepString, toStepReal, quantityTypeToIfcType } from './step-serialization.js';
 import { serializeNominalValue } from './declared-property-type.js';
 import {
   type PropertySetContext,
@@ -124,46 +121,11 @@ export function generatePropertySetEntities(
   return { lines, count, generatedTypeOwnedPsetIds };
 }
 
-/** The measure a quantity's value is a value of: `IfcQuantityCount.CountValue`
- *  is an `IfcCountMeasure`. Mirrors `quantityTypeToIfcType`. */
-function quantityMeasure(type: QuantityType): string {
-  switch (type) {
-    case QuantityType.Length: return 'IfcLengthMeasure';
-    case QuantityType.Area: return 'IfcAreaMeasure';
-    case QuantityType.Volume: return 'IfcVolumeMeasure';
-    case QuantityType.Weight: return 'IfcMassMeasure';
-    case QuantityType.Time: return 'IfcTimeMeasure';
-    case QuantityType.Number: return 'IfcNumericMeasure';
-    default: return 'IfcCountMeasure';
-  }
-}
-
-/**
- * A quantity's value token, in the source schema's base for its measure
- * (`IfcCountMeasure` is INTEGER in IFC4X3): a whole number in the STEP
- * integer range is written as an integer there. A value that does not fit:
- * an untouched source value is left a real, as it came; an `edited` one is
- * refused alone, `{ refused }` saying why. A non-finite value throws, as
- * every writer refuses it. The Rust twin is `step_log::generate::qset_lines`
- * (#8142).
- */
-export function quantityValueToken(q: Quantity, schema: IfcSchemaVersion, edited: boolean): string | { refused: string } {
-  const leaf = ifcValueLeaf(quantityMeasure(q.type), schema);
-  if (leaf?.[1] === 'INTEGER') {
-    const digits = toStepIntegerExact(q.value);
-    if (digits !== null) return digits;
-    if (edited && Number.isFinite(q.value)) return { refused: `${leaf[0]} takes a whole number in ${schema}, not ${q.value}` };
-  }
-  return toStepReal(q.value);
-}
-
-/** Canonical scalar quantity serialization shared by ordinary and type-owned
- *  writers; `{ refused }` for an edit the value does not fit (see
- *  {@link quantityValueToken}). */
+/** Canonical scalar quantity serialization shared by ordinary and type-owned writers. */
 export function generateQuantityAtom(
   ctx: PropertySetContext, q: Quantity, effective: EffectiveEntityIndex,
-  requireExplicitUnitReference = false, edited = false,
-): { id: number; line: string } | { refused: string } {
+  requireExplicitUnitReference = false,
+): { id: number; line: string } {
   const ifcType = quantityTypeToIfcType(q.type);
   // Type-owned writer admission must not silently reinterpret explicit intent (#7355).
   // Ordinary occurrence serialization keeps its existing API contract.
@@ -172,12 +134,10 @@ export function generateQuantityAtom(
   if (requireExplicitUnitReference && q.unit !== undefined && unitId === null) {
     throw new Error(`Quantity ${q.name} explicit unit cannot resolve a native reference`);
   }
-  const value = quantityValueToken(q, ctx.dataStore.schemaVersion as IfcSchemaVersion, edited);
-  if (typeof value !== 'string') return value;
   const id = ctx.allocateExpressId();
   const unit = unitId !== null ? serializeValue(ref(unitId)) : '$';
   const formula = getAttributeNamesForSchema(ifcType, ctx.dataStore.schemaVersion).includes('Formula') ? ',$' : '';
-  const line = `#${id}=${ifcType}('${escapeStepString(q.name)}',$,${unit},${value}${formula});`;
+  const line = `#${id}=${ifcType}('${escapeStepString(q.name)}',$,${unit},${toStepReal(q.value)}${formula});`;
   return { id, line };
 }
 
@@ -192,8 +152,6 @@ export function generateQuantitySetEntities(
   effective: EffectiveEntityIndex,
   random?: RandomSource,
   typeOwned = false,
-  isEdited: (qset: string, quantity: string) => boolean = () => false,
-  warnings: string[] = [],
 ): { lines: string[]; count: number; generatedSetIds: number[] } {
   const lines: string[] = [];
   const generatedSetIds: number[] = [];
@@ -201,20 +159,15 @@ export function generateQuantitySetEntities(
   const ownerHistoryRef = resolveOwnerHistoryRef(ctx, entityId, willBeEmitted, effective);
 
   for (const qset of qsets) {
+    // `Quantities` is `SET [1:?] OF IfcPhysicalQuantity` — same rule and same
+    // reasoning as `HasProperties` above; see that comment (#5199).
+    if (qset.quantities.length === 0) continue;
     const quantityIds: number[] = [];
 
     for (const q of qset.quantities) {
-      const atom = generateQuantityAtom(ctx, q, effective, typeOwned, isEdited(qset.name, q.name));
-      if ('refused' in atom) {
-        warnings.push(`#${entityId} ${qset.name}.${q.name}: ${atom.refused}; the edit is not written`);
-        continue;
-      }
+      const atom = generateQuantityAtom(ctx, q, effective, typeOwned);
       lines.push(atom.line); quantityIds.push(atom.id); count++;
     }
-    // `Quantities` is `SET [1:?] OF IfcPhysicalQuantity` — same rule and same
-    // reasoning as `HasProperties` above; see that comment (#5199). A set
-    // with nothing left is not written.
-    if (quantityIds.length === 0) continue;
 
     // Create IfcElementQuantity
     const qsetId = ctx.allocateExpressId();

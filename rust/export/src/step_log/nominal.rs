@@ -10,13 +10,12 @@
 //! closed set `CONSTRAINED_MEMBERS` lists; the generator carries which leaves
 //! they are, and the predicates are restated here.
 
-use std::borrow::Cow;
-
 use ifc_lite_core::SchemaFamily;
 use serde_json::Value;
 
 use super::base::pvt;
-use super::jsval::{format_step_real, js_to_number, json_number, json_to_js_string, step_integer};
+use super::jsval::{format_step_real, js_to_number, json_number, json_to_js_string, step_integer, to_step_real};
+use super::values::Unwritable;
 use crate::generated::step_log_tables::{BaseKind, ValueMember, ValueType, IFC_VALUE_MEMBERS};
 use crate::step_text::escape;
 
@@ -45,7 +44,7 @@ pub(crate) fn value_member(family: SchemaFamily, measure: &str) -> Option<(&'sta
         SchemaFamily::Ifc4 => 1,
         _ => 2,
     };
-    let token = measure.to_ascii_uppercase();
+    let token = measure.trim().to_ascii_uppercase();
     let member = &IFC_VALUE_MEMBERS[IFC_VALUE_MEMBERS.binary_search_by(|m| m.token.cmp(&token)).ok()?];
     Some((member, member.types[column]?))
 }
@@ -62,12 +61,12 @@ pub(crate) fn leaf_base(family: SchemaFamily, type_name: &str) -> Option<BaseKin
 /// one: the file's schema is unknown (`None`), the name is a typo, another
 /// schema's type, an entity or enumeration (`IFCWALL`), or an aggregate
 /// member (`IFCCOMPLEXNUMBER`), which has no single value to write.
-fn value_leaf(family: Option<SchemaFamily>, measure: &str) -> Result<(&'static ValueMember, BaseKind, SchemaFamily), String> {
+fn value_leaf(family: Option<SchemaFamily>, measure: &str) -> Result<(&'static ValueMember, BaseKind), String> {
     let Some(family) = family else {
         return Err(format!("{measure} cannot be checked: the file's schema is not one this engine knows"));
     };
     match value_member(family, measure) {
-        Some((member, ValueType::Leaf(base))) => Ok((member, base, family)),
+        Some((member, ValueType::Leaf(base))) => Ok((member, base)),
         Some((member, ValueType::Aggregate)) => {
             Err(format!("{} is an aggregate value type, which a single-value write cannot carry", member.name))
         }
@@ -84,61 +83,59 @@ pub(crate) enum MeasureNumber {
     Integer(i64),
 }
 
-/// The one rule for a number written into an INTEGER-based value: its
-/// digits when it is whole and in the STEP integer range (i64). `None` for a
-/// fractional, non-finite or out-of-range value, which a caller refuses (or,
-/// for an untouched source value, leaves as it was); never truncated.
-pub(crate) fn step_integer_exact(value: f64) -> Option<i64> {
-    const RANGE: std::ops::Range<f64> = -9_223_372_036_854_775_808.0..9_223_372_036_854_775_808.0;
-    (value.fract() == 0.0 && RANGE.contains(&value)).then_some(value as i64)
-}
-
-/// How `value` is written as a value of `member`, whose base in `family` is
-/// `base`: an INTEGER base takes only [`step_integer_exact`] values.
-fn spell(member: &ValueMember, family: SchemaFamily, base: BaseKind, value: f64) -> Result<MeasureNumber, String> {
-    match base {
-        BaseKind::Integer => step_integer_exact(value)
-            .map(MeasureNumber::Integer)
-            .ok_or_else(|| format!("{} takes a whole number in {}, not {value}", member.name, family.as_str())),
-        _ => Ok(MeasureNumber::Real),
-    }
-}
-
-/// How `value` is written as a value of `measure` (any case) in `family`:
-/// [`spell`] for an `IfcValue` leaf there, a real for anything else.
-pub(crate) fn measure_number(family: SchemaFamily, measure: &str, value: f64) -> Result<MeasureNumber, String> {
-    match value_member(family, measure) {
-        Some((member, ValueType::Leaf(base))) => spell(member, family, base, value),
-        _ => Ok(MeasureNumber::Real),
-    }
-}
-
 /// How `value` is written as a value of `measure` in `family`, refused
-/// unless the measure is numeric there, `value` fits it ([`spell`]) and,
-/// when `where_rule`, keeps its WHERE rule.
+/// unless the measure is numeric there and, when `where_rule`, `value`
+/// keeps its WHERE rule. A measure over INTEGER takes only a whole number
+/// (`IfcCountMeasure` in IFC4X3, `IfcPositiveInteger`).
 pub(crate) fn check_real_measure(family: Option<SchemaFamily>, measure: &str, value: f64, where_rule: bool) -> Result<MeasureNumber, String> {
-    let (member, base, family) = value_leaf(family, measure)?;
-    if !matches!(base, BaseKind::Real | BaseKind::Number | BaseKind::Integer) {
-        return Err(format!("{} holds a {} value, not a number", member.name, base.as_str()));
-    }
-    let number = spell(member, family, base, value)?;
+    let (member, base) = value_leaf(family, measure)?;
+    let number = match base {
+        BaseKind::Real | BaseKind::Number => MeasureNumber::Real,
+        BaseKind::Integer => match whole(value) {
+            Some(i) => MeasureNumber::Integer(i),
+            None => return Err(not_whole(member.name, family, value)),
+        },
+        other => return Err(format!("{} holds a {} value, not a number", member.name, other.as_str())),
+    };
     if where_rule && !satisfies(member.name, value) {
         return Err(format!("{value} is outside what {} allows", member.name));
     }
     Ok(number)
 }
 
+/// `value` as an integer, when it is whole and exactly representable (below
+/// 2^53).
+fn whole(value: f64) -> Option<i64> {
+    (value.fract() == 0.0 && value.abs() < 9_007_199_254_740_992.0).then_some(value as i64)
+}
+
+fn not_whole(name: &str, family: Option<SchemaFamily>, value: f64) -> String {
+    format!("{name} takes a whole number in {}, not {value}", family.map_or("", SchemaFamily::as_str))
+}
+
+/// A bare number of `measure` as the step-log writes it in `family`: an
+/// integer where the measure's base there is INTEGER (a fractional value has
+/// no spelling and is unwritable), else a STEP real.
+pub(crate) fn measure_number(family: SchemaFamily, measure: &str, value: f64) -> Result<String, Unwritable> {
+    match value_member(family, measure) {
+        Some((member, ValueType::Leaf(BaseKind::Integer))) => {
+            whole(value).map(|i| i.to_string()).ok_or_else(|| Unwritable(not_whole(member.name, Some(family), value)))
+        }
+        _ => to_step_real(value),
+    }
+}
+
 /// `literal` as STEP writes a value of `measure` in `family`: a bare integer
 /// given for a measure whose base there is REAL or NUMBER gets its decimal
 /// point (`3` -> `3.`), since STEP REAL requires one. Anything else is
 /// returned as given.
-pub(crate) fn canonical_literal<'l>(family: Option<SchemaFamily>, measure: &str, literal: &'l str) -> Cow<'l, str> {
+pub(crate) fn canonical_literal(family: Option<SchemaFamily>, measure: &str, literal: &str) -> String {
     let is_real = family.and_then(|f| leaf_base(f, measure)).is_some_and(|base| matches!(base, BaseKind::Real | BaseKind::Number));
     let digits = literal.strip_prefix(['+', '-']).unwrap_or(literal);
     if is_real && !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()) {
-        Cow::Owned(format!("{literal}."))
+        format!("{literal}.")
     } else {
-        Cow::Borrowed(literal)
+        literal.to_string()
     }
 }
 
@@ -150,7 +147,7 @@ pub(crate) fn canonical_literal<'l>(family: Option<SchemaFamily>, measure: &str,
 /// property; a quantity has its own rule, not negative). The one check a
 /// caller-serialized value passes.
 pub(crate) fn check_literal_measure(family: Option<SchemaFamily>, measure: &str, literal: &str, where_rule: bool) -> Result<(), String> {
-    let (member, base, _) = value_leaf(family, measure)?;
+    let (member, base) = value_leaf(family, measure)?;
     let name = member.name;
     let bad = || format!("{literal} is not a valid {name} value");
     let number = |integer_only: bool| -> Result<f64, String> {
@@ -222,7 +219,7 @@ fn fits_base(value: &Value, base: BaseKind) -> bool {
     match base {
         BaseKind::String => value.is_string(),
         BaseKind::Real | BaseKind::Number => json_number(value).is_some_and(f64::is_finite),
-        BaseKind::Integer => json_number(value).and_then(step_integer_exact).is_some(),
+        BaseKind::Integer => json_number(value).is_some_and(|n| n.fract() == 0.0 && step_integer(n).is_some()),
         BaseKind::Boolean | BaseKind::Logical => value.is_boolean(),
         BaseKind::Binary => false,
     }
@@ -246,7 +243,7 @@ fn declared_type(family: SchemaFamily, value: &Value, ty: u8, data_type: Option<
     if let Some(named) = named {
         return value.is_string().then_some(named);
     }
-    let (member, ValueType::Leaf(base)) = value_member(family, data_type?.trim())? else { return None };
+    let (member, ValueType::Leaf(base)) = value_member(family, data_type?)? else { return None };
     if !accepted_bases(ty)?.contains(&base) {
         return None;
     }

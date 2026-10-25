@@ -124,11 +124,6 @@ export function collectModifications(
     // Group mutations by entity, separating property vs quantity mutations
     const entityPropMutations = new Map<number, Set<string>>();
     const entityQuantMutations = new Map<number, Set<string>>();
-    // `set\u0000quantity` for each quantity value the log sets, per entity: an
-    // edit, which a value its measure cannot carry refuses alone, as against
-    // an untouched source value (#8142). The Rust twin is
-    // `Overlay::edits_quantity`.
-    const quantityEdits = new Map<number, Set<string>>();
     for (const mutation of mutations) {
       // Handled above, off the overlay. Skipped explicitly because an
       // UPDATE_ATTRIBUTE record can also carry a `psetName` (georef fields
@@ -146,16 +141,6 @@ export function collectModifications(
         targetMap.set(mutation.entityId, new Set());
       }
       targetMap.get(mutation.entityId)!.add(mutation.psetName);
-
-      if (mutation.type === 'CREATE_QUANTITY' || mutation.type === 'UPDATE_QUANTITY') {
-        const members: unknown[] = Array.isArray(mutation.newValue) ? mutation.newValue : [{ name: mutation.propName }];
-        let edits = quantityEdits.get(mutation.entityId);
-        if (!edits) quantityEdits.set(mutation.entityId, (edits = new Set()));
-        for (const member of members) {
-          const name = (member as { name?: unknown } | null)?.name;
-          if (name !== undefined) edits.add(`${mutation.psetName}\u0000${String(name)}`);
-        }
-      }
     }
 
     // Build a reverse index of IfcRelDefinesByProperties → (relId, psetId)
@@ -179,7 +164,7 @@ export function collectModifications(
     collectPropertyAndQuantitySetMutations(
       pass,
       options,
-      { entityPropMutations, entityQuantMutations, quantityEdits, relDefinesByEntity, relatedByRel },
+      { entityPropMutations, entityQuantMutations, relDefinesByEntity, relatedByRel },
       ctx.propertySetContext(),
     );
 

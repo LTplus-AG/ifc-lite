@@ -23,10 +23,6 @@
 
 import { serializeValue, SCHEMA_REGISTRY, type IfcAttributeValue, type SchemaRegistry } from '@ifc-lite/parser';
 import { QuantityType, formatStepReal, escapeStepString, isCompleteStepNumericLiteral } from '@ifc-lite/data';
-// A cycle (select-qualification imports this module); both sides use the
-// other's functions only when called.
-import { ifcValueLeaf } from './select-qualification.js';
-import type { IfcSchemaVersion } from './schema-converter.js';
 
 /**
  * Re-exported so every existing `import { escapeStepString } from
@@ -100,10 +96,9 @@ function serializeInnerByBase(value: string | number | boolean, base: string | n
     case 'NUMBER':
       return toStepReal(Number(value));
     case 'INTEGER': {
-      // Never truncated: a fractional value has no INTEGER spelling.
-      const n = Number(value);
-      const digits = toStepIntegerExact(n);
-      if (digits === null) throw new Error(`Cannot write ${n} as a STEP INTEGER: it is not a whole number in the STEP integer range`);
+      const n = Math.trunc(Number(value));
+      const digits = toStepInteger(n);
+      if (digits === null) throw new Error(`Cannot write ${n} as a STEP INTEGER: it is not a finite value below 1e21`);
       return digits;
     }
     case 'BOOLEAN':
@@ -129,11 +124,10 @@ function serializeInnerByBase(value: string | number | boolean, base: string | n
  * `IFCLENGTHMEASURE(3.)`). `type` is the IFC type name (`'IfcBoolean'`); the
  * inner value is serialized to match that type's underlying primitive.
  */
-export function serializeTypedMarker(type: string, value: string | number | boolean, schema: IfcSchemaVersion = 'IFC4'): string {
+export function serializeTypedMarker(type: string, value: string | number | boolean): string {
   let token = type.toUpperCase();
   if (!token.startsWith('IFC')) token = `IFC${token}`;
-  // An `IfcValue` leaf's base is the schema's own (#8142).
-  return `${token}(${serializeInnerByBase(value, ifcValueLeaf(type, schema)?.[1] ?? resolveExpressBase(type))})`;
+  return `${token}(${serializeInnerByBase(value, resolveExpressBase(type))})`;
 }
 
 /**
@@ -162,19 +156,6 @@ export function toStepReal(v: number): string {
  */
 export function toStepInteger(v: number): string | null {
   return Number.isFinite(v) && Math.abs(v) < 1e21 ? String(v === 0 ? 0 : v) : null;
-}
-
-/** The STEP integer range a value written into an INTEGER base must lie in:
- *  i64, as the Rust writer's `step_integer_exact`. */
-const STEP_INTEGER_LIMIT = 2 ** 63;
-
-/**
- * The exact digits of a whole number in the STEP integer range, or `null`:
- * the one rule for a value written into an INTEGER base (#8142). `BigInt`,
- * because `String(2 ** 62)` rounds its digits.
- */
-export function toStepIntegerExact(v: number): string | null {
-  return Number.isInteger(v) && v >= -STEP_INTEGER_LIMIT && v < STEP_INTEGER_LIMIT ? BigInt(v).toString() : null;
 }
 
 /** An integral finite number as a token: INTEGER digits below 1e21, the REAL form from there up. */
@@ -276,8 +257,8 @@ export function serializeAttributeValue(value: string, currentToken: string): st
  * 10303-21 type violation strict validators reject (LTplus-AG/ifc-lite#1839).
  * It never overrides the explicit `{ real }` marker, which is always REAL.
  */
-export function serializeStepValue(value: IfcAttributeValue, forceReal = false, schema: IfcSchemaVersion = 'IFC4'): string {
-  return serializeStepValueAt(value, forceReal, false, schema);
+export function serializeStepValue(value: IfcAttributeValue, forceReal = false): string {
+  return serializeStepValueAt(value, forceReal, false);
 }
 
 /**
@@ -289,7 +270,7 @@ export function serializeStepValue(value: IfcAttributeValue, forceReal = false, 
  * `IfcCartesianPoint((NaN,0,0))` would ship as `(($,0,0))`, a malformed
  * `LIST [1:3] OF IfcLengthMeasure` (#5217). That case throws.
  */
-function serializeStepValueAt(value: IfcAttributeValue, forceReal: boolean, inList: boolean, schema: IfcSchemaVersion): string {
+function serializeStepValueAt(value: IfcAttributeValue, forceReal: boolean, inList: boolean): string {
   if (value === null || value === undefined) return '$';
   if (typeof value === 'boolean') return value ? '.T.' : '.F.';
   if (typeof value === 'number') {
@@ -305,7 +286,7 @@ function serializeStepValueAt(value: IfcAttributeValue, forceReal: boolean, inLi
     return Number.isInteger(value) ? integralToken(value) : toStepReal(value);
   }
   if (Array.isArray(value)) {
-    return `(${value.map(v => serializeStepValueAt(v, forceReal, true, schema)).join(',')})`;
+    return `(${value.map(v => serializeStepValueAt(v, forceReal, true)).join(',')})`;
   }
   if (typeof value === 'object' && 'real' in value) {
     // Write-only typed-real marker (see `IfcAttributeValue`): always a REAL
@@ -315,7 +296,7 @@ function serializeStepValueAt(value: IfcAttributeValue, forceReal: boolean, inLi
   if (typeof value === 'object' && 'typed' in value) {
     // Write-only typed-value marker (see `IfcAttributeValue`): a type-qualified
     // token `IFC<TYPE>(<value>)` for SELECT members / the IfcValue family.
-    return serializeTypedMarker(value.typed.type, value.typed.value, schema);
+    return serializeTypedMarker(value.typed.type, value.typed.value);
   }
   const trimmed = String(value).trim();
   if (trimmed === '$' || trimmed === '*') return trimmed;

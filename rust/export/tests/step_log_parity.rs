@@ -279,22 +279,8 @@ fn a_regenerated_count_quantity_takes_its_schemas_base_8142() {
         let line = out.lines().find(|l| l.contains("=IFCQUANTITYCOUNT('N'")).expect("the count");
         assert!(line.ends_with(expected), "{schema}: {line}");
     }
-    // A fractional count edit is refused alone, with where it was; the export
-    // goes on.
     let source = walls.replace("FILE_SCHEMA(('IFC4'))", "FILE_SCHEMA(('IFC4X3'))");
     let options = StepOptions { schema: Some("IFC4X3".to_string()), ..StepOptions::default() };
-    let (out, report) = export_step_with_log(source.as_bytes(), &options, &log(3.5)).expect("the export goes on");
-    assert!(!out.contains("IFCQUANTITYCOUNT('N'"), "the refused edit is not written");
-    assert!(report.warnings.iter().any(|w| w.contains("#23 Qto_Counted.N: IfcCountMeasure takes a whole number in IFC4X3")), "{:?}", report.warnings);
-    // An untouched source count that does not fit its schema is left as it
-    // came when an edit regenerates its set.
-    let source = source
-        .replace("(#36,#37,#38));", "(#36,#37,#38,#48));")
-        .replace("ENDSEC;\nEND-ISO", "#48=IFCQUANTITYCOUNT('Pieces',$,$,3.5,$);\nENDSEC;\nEND-ISO");
-    let edit = serde_json::json!({"modelId": "model", "exportedAt": 0, "mutations": [{"id": "m1", "type": "UPDATE_QUANTITY", "timestamp": 0,
-        "modelId": "model", "entityId": 21, "psetName": "Qto_WallBaseQuantities", "propName": "Length", "newValue": 6000, "quantityType": 0}]});
-    let edit = MutationLog::from_json(&edit.to_string()).expect("log parses");
-    let (out, _) = export_step_with_log(source.as_bytes(), &options, &edit).expect("an untouched neighbour never aborts the export");
-    let pieces = out.lines().find(|l| l.contains("=IFCQUANTITYCOUNT('Pieces'")).expect("the neighbour");
-    assert!(pieces.ends_with(",3.5,$);"), "{pieces}");
+    let err = export_step_with_log(source.as_bytes(), &options, &log(3.5)).expect_err("3.5 is no IFC4X3 count");
+    assert!(err.to_string().contains("IfcCountMeasure takes a whole number in IFC4X3"), "{err}");
 }

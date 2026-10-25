@@ -75,33 +75,56 @@ pub(super) fn apply_patch(
     // first named. A write is grouped by the set it lands on, so two sets of
     // one name stay apart and a targeted and an untargeted write to one set
     // meet; writes that land on no set yet group by the set they will start.
-    if !patch.psets.is_empty() {
-        let target = props_target::WriteTarget::read(index, schema, object_id);
-        let mut groups: Vec<Vec<props_target::ResolvedWrite<'_>>> = Vec::new();
-        for w in &patch.psets {
-            let resolved = match props_target::resolve_write(&target, w) {
-                Ok(resolved) => resolved,
-                Err(reason) => {
-                    out.refusals.push(Refusal { object: ObjectRef::Id(object_id), reason: format!("{}.{}: {reason}", w.pset, w.prop) });
-                    continue;
+    let target = (!patch.psets.is_empty()).then(|| props_target::WriteTarget::read(index, schema, object_id));
+    let mut groups: Vec<Vec<props_target::ResolvedWrite<'_>>> = Vec::new();
+    for (w, target) in patch.psets.iter().zip(std::iter::repeat(&target).flatten()) {
+        let resolved = match props_target::resolve_write(target, w) {
+            Ok(resolved) => resolved,
+            Err(reason) => {
+                out.refusals.push(Refusal { object: ObjectRef::Id(object_id), reason: format!("{}.{}: {reason}", w.pset, w.prop) });
+                continue;
+            }
+        };
+        let same_set = |g: &&mut Vec<props_target::ResolvedWrite<'_>>| {
+            g.first().is_some_and(|f| match (f.set, resolved.set) {
+                // One set can be both the object's and its type's: an
+                // occurrence and a type-scoped write to it stay apart.
+                (Some(a), Some(b)) => a == b && f.write.scope == w.scope,
+                (None, None) => f.write.pset == w.pset && f.write.kind == w.kind && f.write.scope == w.scope,
+                _ => false,
+            })
+        };
+        match groups.iter_mut().find(same_set) {
+            Some(group) => group.push(resolved),
+            None => groups.push(vec![resolved]),
+        }
+    }
+    for (group, target) in groups.iter().zip(std::iter::repeat(&target).flatten()) {
+        let result = props::resolve_set_writes(target, group, ids, owner_history);
+        for outcome in result.outcomes {
+            match outcome {
+                props::PropOutcome::InPlace(edits) => out.edit(edits),
+                props::PropOutcome::Append { new_records } => out.appended.extend(new_records),
+                props::PropOutcome::Fold { new_records, append: (set, idx, value) } => {
+                    out.appended.extend(new_records);
+                    out.list_edit(set, idx).append.push(value);
                 }
-            };
-            let same_set = |g: &&mut Vec<props_target::ResolvedWrite<'_>>| {
-                g.first().is_some_and(|f| match (f.set, resolved.set) {
-                    // One set can be both the object's and its type's: an
-                    // occurrence and a type-scoped write to it stay apart.
-                    (Some(a), Some(b)) => a == b && f.write.scope == w.scope,
-                    (None, None) => f.write.pset == w.pset && f.write.kind == w.kind && f.write.scope == w.scope,
-                    _ => false,
-                })
-            };
-            match groups.iter_mut().find(same_set) {
-                Some(group) => group.push(resolved),
-                None => groups.push(vec![resolved]),
+                props::PropOutcome::CopyOnWrite { new_records, detach } => {
+                    out.appended.extend(new_records);
+                    out.detach_requests.push(detach);
+                }
+                props::PropOutcome::LeafCopyOnWrite { new_records, replace: (set, idx, old, new) } => {
+                    out.appended.extend(new_records);
+                    // A later patch repointing the same leaf replaces the
+                    // earlier copy, which then names nothing.
+                    if let Some(earlier) = out.list_edit(set, idx).substitute.insert(old, new) {
+                        out.appended.retain(|(id, _)| *id != earlier);
+                    }
+                }
             }
         }
-        for group in &groups {
-            apply_set_writes(&target, group, ids, owner_history, out);
+        for (write, reason) in result.refused {
+            out.refusals.push(Refusal { object: ObjectRef::Id(object_id), reason: format!("{}.{}: {reason}", write.pset, write.prop) });
         }
     }
 
@@ -140,41 +163,5 @@ pub(super) fn apply_patch(
             }
             Err(reason) => out.refusals.push(Refusal { object: ObjectRef::Id(object_id), reason: format!("geometry: {reason}") }),
         }
-    }
-}
-
-/// The outcomes of resolving one set's writes, recorded on `out`.
-fn apply_set_writes(
-    target: &props_target::WriteTarget<'_>,
-    group: &[props_target::ResolvedWrite<'_>],
-    ids: &mut IdAllocator,
-    owner_history: Option<u32>,
-    out: &mut PatchOutput<'_>,
-) {
-    let result = props::resolve_set_writes(target, group, ids, owner_history);
-    for outcome in result.outcomes {
-        match outcome {
-            props::PropOutcome::InPlace(edits) => out.edit(edits),
-            props::PropOutcome::Append { new_records } => out.appended.extend(new_records),
-            props::PropOutcome::Fold { new_records, append: (set, idx, value) } => {
-                out.appended.extend(new_records);
-                out.list_edit(set, idx).append.push(value);
-            }
-            props::PropOutcome::CopyOnWrite { new_records, detach } => {
-                out.appended.extend(new_records);
-                out.detach_requests.push(detach);
-            }
-            props::PropOutcome::LeafCopyOnWrite { new_records, replace: (set, idx, old, new) } => {
-                out.appended.extend(new_records);
-                // A later patch repointing the same leaf replaces the
-                // earlier copy, which then names nothing.
-                if let Some(earlier) = out.list_edit(set, idx).substitute.insert(old, new) {
-                    out.appended.retain(|(id, _)| *id != earlier);
-                }
-            }
-        }
-    }
-    for (write, reason) in result.refused {
-        out.refusals.push(Refusal { object: ObjectRef::Id(target.object_id), reason: format!("{}.{}: {reason}", write.pset, write.prop) });
     }
 }

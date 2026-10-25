@@ -51,6 +51,10 @@ impl ObjectSets {
         let typed = type_id.map(|type_id| type_sets(index, schema, type_id)).unwrap_or_default();
         ObjectSets { own, typed, type_id }
     }
+
+    fn own_sets(&self) -> impl Iterator<Item = u32> + '_ {
+        self.own.iter().map(|&(_, set)| set)
+    }
 }
 
 /// A write as it lands, resolved once against the file. Nothing downstream
@@ -95,7 +99,7 @@ impl<'w> ResolvedWrite<'w> {
             return Cow::Borrowed(self.write);
         }
         let mut write = self.write.clone();
-        write.literal = literal.into_owned();
+        write.literal = literal;
         write.unit = unit.or(write.unit);
         Cow::Owned(write)
     }
@@ -133,41 +137,43 @@ fn unit_of(index: &FileIndex, schema: &str, write: &PropWrite, old: u32) -> Opti
 /// first set of its name and that set's first record of its property.
 pub(crate) fn resolve_write<'w>(target: &WriteTarget<'_>, write: &'w PropWrite) -> Result<ResolvedWrite<'w>, String> {
     let (index, schema) = (target.index, target.schema);
-    // The object's own sets, for an occurrence write; a type write sees none.
-    let occurrence = write.scope == PropScope::Occurrence;
-    let own = || target.sets.own.iter().filter(move |_| occurrence).map(|(_, set)| set);
+    let own: Vec<u32> = match write.scope {
+        PropScope::Occurrence => target.sets.own_sets().collect(),
+        PropScope::Type => Vec::new(),
+    };
     let typed = &target.sets.typed;
     let mut overrides = None;
-    if let Some(target_id) = write.target {
+    if let Some(target) = write.target {
+        let all = [own.as_slice(), typed].concat();
         // The set listing the target, preferring the one the write names.
-        let Some((holder, ..)) = find_set(index, schema, own().chain(typed), write.kind, &write.pset, Some(target_id)) else {
-            return Err(format!("target #{target_id} is not a member of any set of this object"));
+        let Some((holder, ..)) = find_set(index, schema, all.iter(), write.kind, &write.pset, Some(target)) else {
+            return Err(format!("target #{target} is not a member of any set of this object"));
         };
         let (container, _) = container_names(write.kind);
         if decoded_name(index, schema, holder, container).as_deref() != Some(write.pset.as_str()) {
-            return Err(format!("target #{target_id} is not a member of the named set {}", write.pset));
+            return Err(format!("target #{target} is not a member of the named set {}", write.pset));
         }
-        let member_type = index.type_of(target_id).unwrap_or_default();
-        let member_name = decoded_name(index, schema, target_id, &member_type);
+        let member_type = index.type_of(target).unwrap_or_default();
+        let member_name = decoded_name(index, schema, target, &member_type);
         if member_name.as_deref() != Some(write.prop.as_str()) {
-            return Err(format!("target #{target_id} is named {}, not {}", member_name.unwrap_or_default(), write.prop));
+            return Err(format!("target #{target} is named {}, not {}", member_name.unwrap_or_default(), write.prop));
         }
-        if own().any(|&set| set == holder) || !occurrence {
-            return Ok(ResolvedWrite { write, set: Some(holder), record: Some(target_id), overrides: None });
+        if own.contains(&holder) || write.scope == PropScope::Type {
+            return Ok(ResolvedWrite { write, set: Some(holder), record: Some(target), overrides: None });
         }
-        overrides = Some(target_id);
+        overrides = Some(target);
     }
-    let found = if occurrence {
-        find_set(index, schema, own(), write.kind, &write.pset, None)
-    } else {
-        find_set(index, schema, typed.iter(), write.kind, &write.pset, None)
+    let candidates = match write.scope {
+        PropScope::Occurrence => &own,
+        PropScope::Type => typed,
     };
+    let found = find_set(index, schema, candidates.iter(), write.kind, &write.pset, None);
     let set = found.as_ref().map(|&(set, ..)| set);
     let record = found.and_then(|(_, _, members)| find_member(index, schema, &members, &write.prop, None));
     if record.is_some() {
         return Ok(ResolvedWrite { write, set, record, overrides: None });
     }
-    if occurrence && overrides.is_none() {
+    if write.scope == PropScope::Occurrence && overrides.is_none() {
         overrides = find_set(index, schema, typed.iter(), write.kind, &write.pset, None)
             .and_then(|(_, _, members)| find_member(index, schema, &members, &write.prop, None));
     }

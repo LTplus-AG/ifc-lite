@@ -19,12 +19,11 @@ impl Safety {
     pub(super) fn index_attachments(&mut self, content: &[u8], decoder: &mut EntityDecoder) -> Result<(), String> {
         let mut scanner = EntityScanner::new(content);
         while let Some((id, name, _, _)) = scanner.next_entity() {
-            let slot = match name {
-                "IFCSTYLEDITEM" | "IfcStyledItem" => 0,
-                "IFCINDEXEDTRIANGLETEXTUREMAP" | "IFCINDEXEDPOLYGONALTEXTUREMAP" => 1,
-                "IFCTEXTUREMAP" => 2,
-                _ => continue,
-            };
+            let slot = if name.eq_ignore_ascii_case("IFCSTYLEDITEM") { 0 }
+                else if name.eq_ignore_ascii_case("IFCINDEXEDTRIANGLETEXTUREMAP")
+                    || name.eq_ignore_ascii_case("IFCINDEXEDPOLYGONALTEXTUREMAP") { 1 }
+                else if name.eq_ignore_ascii_case("IFCTEXTUREMAP") { 2 }
+                else { continue };
             let entity = decoder.decode_by_id(id).map_err(|e| format!("section presentation #{id}: {e}"))?;
             if let Some(target) = entity.ref_at(slot) { self.attachments.entry(target).or_default().push(id); }
         }

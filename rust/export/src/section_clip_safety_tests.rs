@@ -133,14 +133,21 @@ fn issue_7711_source_texture_discovery_is_independent_of_mesh_uvs_and_other_atta
     let plane = [SectionExportPlane {normal:[1.,0.,0.],offset:0.5}];
     assert_eq!(plan_section_export(plain.as_bytes(), &plane, true).unwrap().replacements.len(), 1);
     for (label, source) in [("inverse-only", inverse), ("styled-only", styled.as_str()), ("mapped inverse-only", mapped.as_str())] {
-        let processed = process_geometry(&source);
-        let parts: Vec<_> = processed.meshes.iter().filter(|p| p.express_id == 50).collect();
-        assert!(!parts.is_empty(), "{label}: the face must genuinely mesh");
-        assert!(parts.iter().all(|p| p.texture.is_none() && p.uvs.is_none()), "{label}: this witness must depend on source attachments, not decoded mesh texture/UV guards");
-        let inside = plan_section_export(source.as_bytes(), &[SectionExportPlane {normal:[1.,0.,0.],offset:2.}], true).unwrap();
-        assert!(inside.replacements.is_empty() && inside.outside.is_empty(), "{label}");
-        let error = plan_section_export(source.as_bytes(), &plane, true).unwrap_err();
-        assert!(error.contains("cannot trim textured product #50"), "{label}: {error}");
+        for casing in 0..3 {
+            let mut source = source.to_owned();
+            for (upper, mixed) in [("IFCSTYLEDITEM", "IfcStyledItem"), ("IFCTEXTUREMAP", "IfcTextureMap")] {
+                let spelling = match casing { 0 => upper.to_owned(), 1 => mixed.to_owned(), _ => upper.to_ascii_lowercase() };
+                source = source.replace(upper, &spelling);
+            }
+            let processed = process_geometry(&source);
+            let parts: Vec<_> = processed.meshes.iter().filter(|p| p.express_id == 50).collect();
+            assert!(!parts.is_empty(), "{label}: the face must genuinely mesh");
+            assert!(parts.iter().all(|p| p.texture.is_none() && p.uvs.is_none()), "{label}: this witness must depend on source attachments, not decoded mesh texture/UV guards");
+            let inside = plan_section_export(source.as_bytes(), &[SectionExportPlane {normal:[1.,0.,0.],offset:2.}], true).unwrap();
+            assert!(inside.replacements.is_empty() && inside.outside.is_empty(), "{label}");
+            let error = plan_section_export(source.as_bytes(), &plane, true).unwrap_err();
+            assert!(error.contains("cannot trim textured product #50"), "{label}: {error}");
+        }
     }
 }
 
@@ -163,6 +170,9 @@ fn issue_8006_attachment_index_keeps_only_the_requested_body_attachments() {
     // Many unrelated inverse attachments must not be scanned for each product.
     // A dangling unrelated style also cannot contaminate a clean body's verdict.
     let source = slab("$", 0.).replace("ENDSEC;\nEND-ISO", "#90=IFCSTYLEDITEM(#42,(#91),$);\n#91=IFCSURFACESTYLE($,.BOTH.,(#92));\n#92=IFCSURFACESTYLESHADING(#93,$);\n#93=IFCCOLOURRGB($,1.,0.,0.);\n#94=IFCSTYLEDITEM(#999,(#998),$);\nENDSEC;\nEND-ISO");
+    let mut decoder = EntityDecoder::new(&source);
+    assert_eq!(decoder.decode_by_id(90).unwrap().ref_at(0), Some(42), "body attachment fixture must be present");
+    assert_eq!(decoder.decode_by_id(94).unwrap().ref_at(0), Some(999), "unrelated attachment fixture must be present");
     // Read the actual product graph and its indexed inverse lookup, rather than
     // imposing a timing threshold on this small correctness fixture.
     let plan = plan_section_export(source.as_bytes(), &[SectionExportPlane {normal:[1.,0.,0.],offset:0.}], true).unwrap();

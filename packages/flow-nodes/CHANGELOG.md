@@ -1,5 +1,21 @@
 # @ifc-lite/flow-nodes
 
+## 0.11.0
+
+### Minor Changes
+
+- [#7668](https://github.com/LTplus-AG/ifc-lite/pull/7668) [`19b261d`](https://github.com/LTplus-AG/ifc-lite/commit/19b261d4b23899b7d5b6241eb8a5f79ebc9d3a91) Thanks [@louistrue](https://github.com/louistrue)! - Refuse native BCF records observed growing during a bounded read and replaced recovery directories before acknowledgment or another effect, while reducing retained-history I/O overhead without skipping predecessor validation.
+
+### Patch Changes
+
+- Updated dependencies [[`2997d3d`](https://github.com/LTplus-AG/ifc-lite/commit/2997d3d328d15db123aaed25fab095bf6265f1dc), [`2650a83`](https://github.com/LTplus-AG/ifc-lite/commit/2650a834adcc7b3ab05eaeff02f3288073e2ac6c), [`83088e0`](https://github.com/LTplus-AG/ifc-lite/commit/83088e02606bc19ff8b3fe055087baaa049f3235), [`2143db2`](https://github.com/LTplus-AG/ifc-lite/commit/2143db224f0ab1b79469af1515f7ec9d671c8429), [`b0b670f`](https://github.com/LTplus-AG/ifc-lite/commit/b0b670f0cfd704ceb7c78a622f5730d0cd9510de), [`c45ecba`](https://github.com/LTplus-AG/ifc-lite/commit/c45ecbac3fa3b38846bf3d68913a29385121a241), [`b59c05a`](https://github.com/LTplus-AG/ifc-lite/commit/b59c05a0adb0ef7bf0bd44cc7e66a2c59dd4454d), [`a3148f1`](https://github.com/LTplus-AG/ifc-lite/commit/a3148f11f644bf3d0237a34eadce0f665ff2d104), [`941ff66`](https://github.com/LTplus-AG/ifc-lite/commit/941ff6675c56ae167582ddd96eb55f57ce3f5f89), [`a1b50b1`](https://github.com/LTplus-AG/ifc-lite/commit/a1b50b1d51a12084a17c175cc9759fdc6027f241), [`2344a55`](https://github.com/LTplus-AG/ifc-lite/commit/2344a5577e5efad5fd1be92f8049dbbda563e298), [`97f27d7`](https://github.com/LTplus-AG/ifc-lite/commit/97f27d70682b810806e932ac81e3a81a3fe10d63), [`3addab1`](https://github.com/LTplus-AG/ifc-lite/commit/3addab1d31256dc592845f028a11269a8cca39b4), [`68619c1`](https://github.com/LTplus-AG/ifc-lite/commit/68619c1cd19e4b7428e07656febe48d520312646), [`ab3857f`](https://github.com/LTplus-AG/ifc-lite/commit/ab3857fc91b9aa7a2be2b566816f866e8d11a805), [`b0266d9`](https://github.com/LTplus-AG/ifc-lite/commit/b0266d9317d3b839082d2f5440fd7dd83a3f9fe0), [`c0f5bde`](https://github.com/LTplus-AG/ifc-lite/commit/c0f5bde4ec6794900697fbfa29be9be5a439980f), [`4f31972`](https://github.com/LTplus-AG/ifc-lite/commit/4f3197201f5f89e332564a12b8d8fae02a671468), [`8bc1176`](https://github.com/LTplus-AG/ifc-lite/commit/8bc11763c0fe3e673a819b8345e207d7a5f8ba4f), [`c53cfaa`](https://github.com/LTplus-AG/ifc-lite/commit/c53cfaa3a2034638f4c4ab40f7674b29e0528fed), [`5fac092`](https://github.com/LTplus-AG/ifc-lite/commit/5fac092d7e3b7ddc05c074a54ba6ee3c78f198cc), [`61d2092`](https://github.com/LTplus-AG/ifc-lite/commit/61d209288c1b117d405628ead302d0ee700bd2a0), [`7a0ee87`](https://github.com/LTplus-AG/ifc-lite/commit/7a0ee878b68fb572d8b617cd8d07456a02acbea8), [`90df834`](https://github.com/LTplus-AG/ifc-lite/commit/90df834daa0de2d903890ae6a8b3c0037b43094c), [`0c721c3`](https://github.com/LTplus-AG/ifc-lite/commit/0c721c3548e21488fca9b168db3d875ca8ba39d7), [`711da91`](https://github.com/LTplus-AG/ifc-lite/commit/711da919ee815bfaaa71ec6173b572f6b1811c69)]:
+  - @ifc-lite/sdk@9.6.0
+  - @ifc-lite/data@6.3.0
+  - @ifc-lite/export@4.12.0
+  - @ifc-lite/ids@3.4.0
+  - @ifc-lite/ids-authoring@0.3.0
+  - @ifc-lite/flow@0.7.1
+
 ## 0.10.0
 
 ### Minor Changes

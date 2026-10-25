@@ -1,0 +1,122 @@
+{
+  "job": "22c0d7d4-d70f-4801-a466-0258b9ce519a",
+  "scope": "Capability diagnostic only, not model correctness or performance acceptance. Vulkan-blit screenshot shows both canvases; its readPixels-induced performance diagnostic remains recorded. WebGL default drawing buffers do not preserve post-presentation readback.",
+  "fullResultsSha256": "0b497ba3c8730a5696b9ccd335957e051dd6fdadbc23da3f0318074288110f48",
+  "variants": [
+    {
+      "name": "vulkan-blit",
+      "flags": [
+        "--use-angle=vulkan",
+        "--enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan",
+        "--disable-vulkan-surface"
+      ],
+      "errors": [],
+      "browserVersion": "156.0.8078.4",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "lovelace",
+        "fallback": false
+      },
+      "glRenderer": "ANGLE (NVIDIA, Vulkan 1.4.312 (NVIDIA NVIDIA RTX 4000 Ada Generation Laptop GPU (0x000027BA)), NVIDIA)",
+      "glError": 0,
+      "glPixels": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "dpr": 2,
+      "visible": "visible",
+      "focused": true,
+      "exitCode": 0,
+      "capabilityOnly": true,
+      "driverErrorCount": 1,
+      "deviceErrorCount": 0,
+      "firstDriverMessage": "2026-10-23T16:58:36.135Z pw:browser [pid=334796][err] [334835:334835:1023/185836.134502:ERROR:gpu/command_buffer/service/gl_utils.cc:431] [.WebGL-0x25c001f4e00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+      "firstDeviceError": null
+    },
+    {
+      "name": "gl-vulkan-compositor",
+      "flags": [
+        "--use-gl=angle",
+        "--use-angle=gl",
+        "--enable-features=Vulkan"
+      ],
+      "errors": [],
+      "browserVersion": "156.0.8078.4",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "lovelace",
+        "fallback": false
+      },
+      "glRenderer": "ANGLE (Intel, Mesa Intel(R) Graphics (RPL-S), OpenGL 4.6)",
+      "glError": 0,
+      "glPixels": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "dpr": 2,
+      "visible": "visible",
+      "focused": true,
+      "exitCode": 0,
+      "capabilityOnly": true,
+      "driverErrorCount": 30,
+      "deviceErrorCount": 120,
+      "firstDriverMessage": "2026-10-23T16:58:37.713Z pw:browser [pid=335723][err] [335756:335756:1023/185837.712996:ERROR:gpu/command_buffer/service/shared_image/shared_image_representation.cc:1028] Error creating wgpu::Texture",
+      "firstDeviceError": "Requested allocation size (532480) is smaller than the image requires (614400).\n    at ImportMemory (../../third_party/dawn/src/dawn/native/vulkan/external_memory/MemoryServiceImplementationOpaqueFD.cpp:132)\n"
+    },
+    {
+      "name": "wayland-default",
+      "flags": [
+        "--ozone-platform=wayland"
+      ],
+      "errors": [],
+      "browserVersion": "156.0.8078.4",
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "lovelace",
+        "fallback": false
+      },
+      "glRenderer": "ANGLE (Intel, Mesa Intel(R) Graphics (RPL-S), OpenGL ES 3.2)",
+      "glError": 0,
+      "glPixels": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "dpr": 2,
+      "visible": "visible",
+      "focused": true,
+      "exitCode": 0,
+      "capabilityOnly": true,
+      "driverErrorCount": 30,
+      "deviceErrorCount": 120,
+      "firstDriverMessage": "2026-10-23T16:58:40.114Z pw:browser [pid=335938][err] [335978:335978:1023/185840.114159:ERROR:gpu/command_buffer/service/shared_image/shared_image_representation.cc:1028] Error creating wgpu::Texture",
+      "firstDeviceError": "Requested allocation size (532480) is smaller than the image requires (614400).\n    at ImportMemory (../../third_party/dawn/src/dawn/native/vulkan/external_memory/MemoryServiceImplementationOpaqueFD.cpp:132)\n"
+    },
+    {
+      "name": "vulkan-independent",
+      "flags": [
+        "--use-angle=vulkan",
+        "--enable-features=Vulkan",
+        "--disable-vulkan-surface"
+      ],
+      "errors": [],
+      "browserVersion": "156.0.8078.4",
+      "error": "No WebGL2 context",
+      "adapter": {
+        "vendor": "nvidia",
+        "fallback": false
+      },
+      "exitCode": 0,
+      "capabilityOnly": true,
+      "driverErrorCount": 36,
+      "deviceErrorCount": 0,
+      "firstDriverMessage": "2026-10-23T16:58:42.394Z pw:browser [pid=336143][err] [336176:336176:1023/185842.393992:ERROR:gpu/command_buffer/service/shared_image/shared_image_manager.cc:241] SharedImageManager::ProduceGLTexturePassthrough: Trying to produce a representation from an incompatible backing: CompoundImageBacking",
+      "firstDeviceError": null
+    }
+  ]
+}

@@ -161,6 +161,7 @@ fn produce_all(content: &[u8]) -> Vec<(u32, ProducedElementMeshes)> {
             tolerance: ifc_lite_geometry::DEFAULT_GEOM_HASH_TOLERANCE,
             world_rtc: [0.0; 3],
         }),
+        ..Default::default()
     };
 
     let mut jobs: Vec<(u32, usize, usize)> = Vec::new();

@@ -8,6 +8,8 @@
 //! IFC5, Parquet, USD) and the Python binding read them, while none of them
 //! cares how the streaming pass in `model.rs` fills them in.
 
+use std::ops::Range;
+
 use crate::prepass::UnitScales;
 
 use super::options::Placement;
@@ -130,6 +132,45 @@ impl EntityRow {
             }
         }
         None
+    }
+}
+
+/// Which entries of an [`EntityRow`]'s property and quantity sets the entity
+/// inherits from its type rather than carrying itself.
+///
+/// Yielded beside each row by
+/// [`stream_export_model_with_inherited`](super::stream_export_model_with_inherited),
+/// and only ever reports an entry under
+/// [`ModelOptions::inherit_type_properties`](super::ModelOptions::inherit_type_properties).
+/// It describes the row as yielded: `set` indexes `property_sets` or
+/// `quantity_sets` and `entry` the set's entries, so read it before sorting
+/// or filtering the row.
+///
+/// A caller that flattens entries into `Set.Name` keys should let every own
+/// entry, property or quantity, claim its key before an inherited one does.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Inherited {
+    /// Per property set, the indices of its inherited entries. Own entries
+    /// precede inherited ones in a set, so one range covers them all. Empty
+    /// when nothing is inherited.
+    property_sets: Vec<Range<usize>>,
+    /// The same, per quantity set.
+    quantity_sets: Vec<Range<usize>>,
+}
+
+impl Inherited {
+    pub(crate) fn new(property_sets: Vec<Range<usize>>, quantity_sets: Vec<Range<usize>>) -> Self {
+        Self { property_sets, quantity_sets }
+    }
+
+    /// True when entry `entry` of `property_sets[set]` came from the type.
+    pub fn property(&self, set: usize, entry: usize) -> bool {
+        self.property_sets.get(set).is_some_and(|r| r.contains(&entry))
+    }
+
+    /// True when entry `entry` of `quantity_sets[set]` came from the type.
+    pub fn quantity(&self, set: usize, entry: usize) -> bool {
+        self.quantity_sets.get(set).is_some_and(|r| r.contains(&entry))
     }
 }
 

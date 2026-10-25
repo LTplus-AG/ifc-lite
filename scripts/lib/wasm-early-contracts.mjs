@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { runDisabledSiteContracts } from './wasm-disabled-site-contract.mjs';
 import { runAppearanceContracts } from './wasm-appearance-contracts.mjs';
 import { runLandXmlContracts } from './wasm-landxml-contracts.mjs';
 import { runLandXmlCrsContracts } from './wasm-landxml-crs-contracts.mjs';
@@ -17,6 +18,7 @@ import { runPlacementRefusalContracts } from './wasm-placement-refusal-contracts
 
 /** These suites have their own inputs and run even when the column fixture is absent. */
 export function runEarlyContracts({ IfcAPI, api, test, skip, root }) {
+  runDisabledSiteContracts(IfcAPI, test);
   runAppearanceContracts(IfcAPI, test);
   runLandXmlContracts(api, test);
   runLandXmlCrsContracts(api, test);

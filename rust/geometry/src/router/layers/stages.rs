@@ -12,7 +12,7 @@ use crate::{GeometryRouter, Mesh, SubMeshCollection};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
 /// Admitted layer parameters. Nothing has touched the host yet.
-pub(super) struct LayerProgram {
+pub(crate) struct LayerProgram {
     layers: Vec<VisualLayer>,
     axis: LayerAxis,
     direction_sense: f64,
@@ -21,7 +21,7 @@ pub(super) struct LayerProgram {
 
 /// Why a sliceable element keeps its single solid; `reason` is the recorded
 /// diagnostic string.
-pub(super) enum LayerSkip {
+pub(crate) enum LayerSkip {
     TooFewLayers,
     ShiftedOrMultipleItems,
     ThinLayersCollapsed,
@@ -31,7 +31,7 @@ pub(super) enum LayerSkip {
 }
 
 impl LayerSkip {
-    pub(super) fn reason(&self) -> &'static str {
+    pub(crate) fn reason(&self) -> &'static str {
         match self {
             Self::TooFewLayers => "skip:fewer-than-2-layers",
             Self::ShiftedOrMultipleItems => "skip:not-single-unshifted-item",
@@ -46,7 +46,7 @@ impl LayerSkip {
 impl LayerProgram {
     /// Eligibility, evaluated before any host callback runs. `Ok(None)` means
     /// the buildup is not sliceable at all (no diagnostic).
-    pub(super) fn admit(
+    pub(crate) fn admit(
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
         buildup: &LayerBuildup,
@@ -84,7 +84,7 @@ impl LayerProgram {
     }
 
     /// Take ownership of the actual (opening-cut) host. An empty host skips.
-    pub(super) fn accept_host(self, host: Mesh) -> Result<LayerPlaneRequest, LayerSkip> {
+    pub(crate) fn accept_host(self, host: Mesh) -> Result<LayerPlaneRequest, LayerSkip> {
         if host.is_empty() {
             return Err(LayerSkip::EmptyHost);
         }
@@ -97,7 +97,7 @@ impl LayerProgram {
 
 /// Exists only after the original host succeeded and is nonempty. It owns the
 /// host, whose origin determines the layer frame.
-pub(super) struct LayerPlaneRequest {
+pub(crate) struct LayerPlaneRequest {
     program: LayerProgram,
     host: Mesh,
 }
@@ -105,7 +105,7 @@ pub(super) struct LayerPlaneRequest {
 impl LayerPlaneRequest {
     /// Placement admission happens only after the host, so a host callback
     /// that updates the decoder is observed rather than a stale read.
-    pub(super) fn admit_frame(
+    pub(crate) fn admit_frame(
         self,
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
@@ -120,14 +120,14 @@ impl LayerPlaneRequest {
     }
 }
 
-pub(super) struct ReadyLayerPlanes {
+pub(crate) struct ReadyLayerPlanes {
     request: LayerPlaneRequest,
     frame: planes::LayerFrame,
 }
 
 impl ReadyLayerPlanes {
     /// Decoder-free: evaluate the interface planes in the host's mesh frame.
-    pub(super) fn execute(self) -> Result<ReadyLayerSlice, LayerSkip> {
+    pub(crate) fn execute(self) -> Result<ReadyLayerSlice, LayerSkip> {
         let LayerPlaneRequest { program, host } = self.request;
         let planes = self
             .frame
@@ -151,14 +151,14 @@ impl ReadyLayerPlanes {
 }
 
 /// Complete numerical input; no decoder or router is retained.
-pub(super) struct ReadyLayerSlice {
+pub(crate) struct ReadyLayerSlice {
     host: Mesh,
     layers: Vec<VisualLayer>,
     pub(super) planes: Vec<crate::csg::Plane>,
 }
 
 impl ReadyLayerSlice {
-    pub(super) fn execute(self) -> LayerSliceResult {
+    pub(crate) fn execute(self) -> LayerSliceResult {
         LayerSliceResult {
             collection: slice::slice_mesh_into_layers(&self.host, &self.layers, &self.planes),
         }
@@ -166,12 +166,12 @@ impl ReadyLayerSlice {
 }
 
 /// Unpublished result; the diagnostic is recorded only by `publish`.
-pub(super) struct LayerSliceResult {
+pub(crate) struct LayerSliceResult {
     collection: SubMeshCollection,
 }
 
 impl LayerSliceResult {
-    pub(super) fn publish(self, router: &GeometryRouter, element_id: u32) -> SubMeshCollection {
+    pub(crate) fn publish(self, router: &GeometryRouter, element_id: u32) -> SubMeshCollection {
         router.push_layer_slice_diag(
             element_id,
             if self.collection.sub_meshes.len() >= 2 {

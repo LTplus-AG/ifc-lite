@@ -1,0 +1,339 @@
+{
+  "run": "https://github.com/LTplus-AG/ifc-lite/actions/runs/39805007130",
+  "source": "90ceda88b24f6c23d6a1fea4bf86132927d7d152",
+  "browser": "chrome-headless-shell 156.0.8078.4",
+  "interruptedCohort": 6,
+  "notRun": [
+    7,
+    8,
+    9,
+    10
+  ],
+  "cohorts": [
+    {
+      "file": "browser-frames-01.json",
+      "sha256": "3380bfca5ea3b3738e6afb86fcba024000d2d3367df6aa8aeef330e67e16e0dd",
+      "samples": [
+        {
+          "fixture": "AC20-FZK-Haus",
+          "attempt": 1,
+          "completed": true,
+          "error": null,
+          "readiness": {
+            "ended": true,
+            "done": [
+              "geometry.streamComplete",
+              "parser.complete",
+              "scene.finalize"
+            ],
+            "failed": [],
+            "loadPath": "wasm"
+          },
+          "readinessError": null,
+          "pageErrors": [],
+          "gpuHealth": {
+            "contaminated": false,
+            "reasons": [],
+            "deviceLost": 0,
+            "instanceErrors": 0,
+            "devicesCreated": 1,
+            "deviceReplacements": 0,
+            "uncapturedErrors": 0,
+            "source": "counters+console",
+            "events": []
+          }
+        },
+        {
+          "fixture": "Snowdon",
+          "attempt": 1,
+          "completed": true,
+          "error": null,
+          "readiness": {
+            "ended": true,
+            "done": [
+              "parser.complete",
+              "geometry.streamComplete",
+              "scene.finalize"
+            ],
+            "failed": [],
+            "loadPath": "wasm"
+          },
+          "readinessError": null,
+          "pageErrors": [],
+          "gpuHealth": {
+            "contaminated": false,
+            "reasons": [],
+            "deviceLost": 0,
+            "instanceErrors": 0,
+            "devicesCreated": 1,
+            "deviceReplacements": 0,
+            "uncapturedErrors": 0,
+            "source": "counters+console",
+            "events": []
+          }
+        }
+      ],
+      "refusedAttempts": []
+    },
+    {
+      "file": "browser-frames-02.json",
+      "sha256": "fd1e589f50de135603276a9ee3e7b5bf07c9e6b5e69b553c7859d5c57c5be73d",
+      "samples": [
+        {
+          "fixture": "AC20-FZK-Haus",
+          "attempt": 1,
+          "completed": true,
+          "error": null,
+          "readiness": {
+            "ended": true,
+            "done": [
+              "geometry.streamComplete",
+              "parser.complete",
+              "scene.finalize"
+            ],
+            "failed": [],
+            "loadPath": "wasm"
+          },
+          "readinessError": null,
+          "pageErrors": [],
+          "gpuHealth": {
+            "contaminated": false,
+            "reasons": [],
+            "deviceLost": 0,
+            "instanceErrors": 0,
+            "devicesCreated": 1,
+            "deviceReplacements": 0,
+            "uncapturedErrors": 0,
+            "source": "counters+console",
+            "events": []
+          }
+        },
+        {
+          "fixture": "Snowdon",
+          "attempt": 1,
+          "completed": true,
+          "error": null,
+          "readiness": {
+            "ended": true,
+            "done": [
+              "parser.complete",
+              "geometry.streamComplete",
+              "scene.finalize"
+            ],
+            "failed": [],
+            "loadPath": "wasm"
+          },
+          "readinessError": null,
+          "pageErrors": [],
+          "gpuHealth": {
+            "contaminated": false,
+            "reasons": [],
+            "deviceLost": 0,
+            "instanceErrors": 0,
+            "devicesCreated": 1,
+            "deviceReplacements": 0,
+            "uncapturedErrors": 0,
+            "source": "counters+console",
+            "events": []
+          }
+        }
+      ],
+      "refusedAttempts": []
+    },
+    {
+      "file": "browser-frames-03.json",
+      "sha256": "e9a94eeb3142f2513c7cf7d23209916a96a08dbe69b2aacc8479a774e715e989",
+      "samples": [
+        {
+          "fixture": "AC20-FZK-Haus",
+          "attempt": 1,
+          "completed": true,
+          "error": null,
+          "readiness": {
+            "ended": true,
+            "done": [
+              "geometry.streamComplete",
+              "parser.complete",
+              "scene.finalize"
+            ],
+            "failed": [],
+            "loadPath": "wasm"
+          },
+          "readinessError": null,
+          "pageErrors": [],
+          "gpuHealth": {
+            "contaminated": false,
+            "reasons": [],
+            "deviceLost": 0,
+            "instanceErrors": 0,
+            "devicesCreated": 1,
+            "deviceReplacements": 0,
+            "uncapturedErrors": 0,
+            "source": "counters+console",
+            "events": []
+          }
+        },
+        {
+          "fixture": "Snowdon",
+          "attempt": 1,
+          "completed": true,
+          "error": null,
+          "readiness": {
+            "ended": true,
+            "done": [
+              "parser.complete",
+              "geometry.streamComplete",
+              "scene.finalize"
+            ],
+            "failed": [],
+            "loadPath": "wasm"
+          },
+          "readinessError": null,
+          "pageErrors": [],
+          "gpuHealth": {
+            "contaminated": false,
+            "reasons": [],
+            "deviceLost": 0,
+            "instanceErrors": 0,
+            "devicesCreated": 1,
+            "deviceReplacements": 0,
+            "uncapturedErrors": 0,
+            "source": "counters+console",
+            "events": []
+          }
+        }
+      ],
+      "refusedAttempts": []
+    },
+    {
+      "file": "browser-frames-04.json",
+      "sha256": "9507d21dd50213e3efca4ab7ad989e055e2a6546800a099a5a87f5afc94a358d",
+      "samples": [
+        {
+          "fixture": "AC20-FZK-Haus",
+          "attempt": 1,
+          "completed": true,
+          "error": null,
+          "readiness": {
+            "ended": true,
+            "done": [
+              "geometry.streamComplete",
+              "parser.complete",
+              "scene.finalize"
+            ],
+            "failed": [],
+            "loadPath": "wasm"
+          },
+          "readinessError": null,
+          "pageErrors": [],
+          "gpuHealth": {
+            "contaminated": false,
+            "reasons": [],
+            "deviceLost": 0,
+            "instanceErrors": 0,
+            "devicesCreated": 1,
+            "deviceReplacements": 0,
+            "uncapturedErrors": 0,
+            "source": "counters+console",
+            "events": []
+          }
+        },
+        {
+          "fixture": "Snowdon",
+          "attempt": 1,
+          "completed": true,
+          "error": null,
+          "readiness": {
+            "ended": true,
+            "done": [
+              "parser.complete",
+              "geometry.streamComplete",
+              "scene.finalize"
+            ],
+            "failed": [],
+            "loadPath": "wasm"
+          },
+          "readinessError": null,
+          "pageErrors": [],
+          "gpuHealth": {
+            "contaminated": false,
+            "reasons": [],
+            "deviceLost": 0,
+            "instanceErrors": 0,
+            "devicesCreated": 1,
+            "deviceReplacements": 0,
+            "uncapturedErrors": 0,
+            "source": "counters+console",
+            "events": []
+          }
+        }
+      ],
+      "refusedAttempts": []
+    },
+    {
+      "file": "browser-frames-05.json",
+      "sha256": "f49286b423471ff8e988608bd4f5cb1ff9969475b6147e85dbef272a1c7a7567",
+      "samples": [
+        {
+          "fixture": "AC20-FZK-Haus",
+          "attempt": 1,
+          "completed": true,
+          "error": null,
+          "readiness": {
+            "ended": true,
+            "done": [
+              "geometry.streamComplete",
+              "parser.complete",
+              "scene.finalize"
+            ],
+            "failed": [],
+            "loadPath": "wasm"
+          },
+          "readinessError": null,
+          "pageErrors": [],
+          "gpuHealth": {
+            "contaminated": false,
+            "reasons": [],
+            "deviceLost": 0,
+            "instanceErrors": 0,
+            "devicesCreated": 1,
+            "deviceReplacements": 0,
+            "uncapturedErrors": 0,
+            "source": "counters+console",
+            "events": []
+          }
+        },
+        {
+          "fixture": "Snowdon",
+          "attempt": 1,
+          "completed": true,
+          "error": null,
+          "readiness": {
+            "ended": true,
+            "done": [
+              "parser.complete",
+              "geometry.streamComplete",
+              "scene.finalize"
+            ],
+            "failed": [],
+            "loadPath": "wasm"
+          },
+          "readinessError": null,
+          "pageErrors": [],
+          "gpuHealth": {
+            "contaminated": false,
+            "reasons": [],
+            "deviceLost": 0,
+            "instanceErrors": 0,
+            "devicesCreated": 1,
+            "deviceReplacements": 0,
+            "uncapturedErrors": 0,
+            "source": "counters+console",
+            "events": []
+          }
+        }
+      ],
+      "refusedAttempts": []
+    }
+  ]
+}

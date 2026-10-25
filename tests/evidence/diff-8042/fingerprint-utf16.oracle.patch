@@ -1,0 +1,11 @@
+--- a/rust/diff/src/fingerprint.rs
++++ b/rust/diff/src/fingerprint.rs
+@@ -150,7 +150,7 @@
+ /// The direct-attribute slice, in one place because two functions hash it and
+ /// they are required to hash the same thing.
+ fn core_attributes(input: &DataFingerprintInput) -> Vec<(JsString, JsonValue)> {
+-    let text = |value: &Option<JsString>| JsonValue::String(String::from_utf16_lossy(value.clone().unwrap_or_default().units()).into());
++    let text = |value: &Option<JsString>| JsonValue::String(value.clone().unwrap_or_default());
+     vec![
+         ("Type".into(), JsonValue::String(input.ifc_type.clone())),
+         ("Name".into(), text(&input.name)),

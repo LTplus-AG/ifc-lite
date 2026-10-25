@@ -52,7 +52,7 @@ pub(crate) mod styling;
 mod symbolic;
 mod zone_split;
 
-use csg_diagnostics::drain_and_log_csg_diagnostics;
+use csg_diagnostics::{drain_and_log_csg_diagnostics, warn_refused_products};
 
 use ifc_lite_core::ColumnarEntityIndex;
 use wasm_bindgen::prelude::*;
@@ -66,7 +66,8 @@ const TESSELLATION_QUALITY_MEDIUM: u8 = 2;
 /// EDGE-WASM-5, #7691). Held in [`IfcAPI`]'s per-content cache slot.
 pub(crate) struct IndexedColourCache {
     /// Geometry id → full per-triangle palette.
-    pub(crate) maps: rustc_hash::FxHashMap<u32, ifc_lite_processing::style::FullIndexedColourMap>,
+    pub(crate) maps:
+        std::sync::Arc<rustc_hash::FxHashMap<u32, ifc_lite_processing::style::FullIndexedColourMap>>,
     /// Multi-colour face-set ids; `None` when no map paints more than one colour.
     pub(crate) split_guard_ids: Option<std::sync::Arc<rustc_hash::FxHashSet<u32>>>,
 }
@@ -157,7 +158,7 @@ pub struct IfcAPI {
     /// and slabs carrying an `IfcMaterialLayerSetUsage` are sliced into one
     /// sub-mesh per layer (geometry_id = the layer's `IfcMaterial`) so the
     /// build-up is visible in 3D. Built once per load and attached to EVERY
-    /// batch router via `set_material_layer_index` so `try_layered_sub_meshes`
+    /// batch router via `set_material_layer_index` so the layer control
     /// can fire — #874 dropped that wiring and silently disabled slicing for
     /// the whole browser stream. Cleared by `clearPrePassCache` between loads.
     cached_material_layer_index:
@@ -265,7 +266,9 @@ pub struct IfcAPI {
             u32,
             std::sync::Arc<(
                 rustc_hash::FxHashMap<u32, [f32; 4]>,
-                rustc_hash::FxHashMap<u32, ifc_lite_processing::style::GeometryStyleInfo>,
+                std::sync::Arc<
+                    rustc_hash::FxHashMap<u32, ifc_lite_processing::style::GeometryStyleInfo>,
+                >,
             )>,
         )>,
     >,
@@ -297,6 +300,9 @@ pub struct IfcAPI {
     /// `clearPrePassCache`, which runs at end-of-load before a host reads the
     /// diagnostics.
     pipeline_diagnostics: std::sync::Mutex<ifc_lite_processing::PipelineDiagnostics>,
+    /// The loaded content's model lifecycle: each geometry batch snapshots its
+    /// maps under it, and a content swap invalidates every earlier snapshot.
+    production_model: ifc_lite_processing::element::ProductionModel,
 }
 
 #[wasm_bindgen]
@@ -335,6 +341,7 @@ impl IfcAPI {
             pipeline_diagnostics: std::sync::Mutex::new(
                 ifc_lite_processing::PipelineDiagnostics::default(),
             ),
+            production_model: ifc_lite_processing::element::ProductionModel::new(),
         }
     }
 
@@ -407,6 +414,7 @@ impl IfcAPI {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         // The geometry-style maps belong to the previous load's wire styles.
+        self.production_model.invalidate_source();
         self.cached_geometry_styles
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -775,7 +783,7 @@ impl IfcAPI {
     /// slice single-solid walls/slabs with an `IfcMaterialLayerSetUsage` into one
     /// sub-mesh per layer. Built once per load (one IFCRELASSOCIATESMATERIAL
     /// decode scan, with a cheap substring bail-out on files that carry no layer
-    /// set) and `Arc`-shared with every batch router so `try_layered_sub_meshes`
+    /// set) and `Arc`-shared with every batch router so the layer control
     /// fires. Subsequent batches are an `Arc::clone`.
     pub(crate) fn get_or_build_material_layer_index(
         &self,
@@ -982,7 +990,7 @@ impl IfcAPI {
 
         let arc = std::sync::Arc::new(IndexedColourCache {
             split_guard_ids: ifc_lite_processing::style::indexed_colour_split_guard_ids(&map),
-            maps: map,
+            maps: std::sync::Arc::new(map),
         });
         let mut slot = self
             .cached_indexed_colour_maps

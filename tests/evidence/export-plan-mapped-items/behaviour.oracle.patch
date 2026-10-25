@@ -1,0 +1,20 @@
+--- a/rust/export/src/plan/add_mapped.rs
++++ b/rust/export/src/plan/add_mapped.rs
+@@ -119,7 +119,7 @@ impl AddState<'_> {
+             let contexts = || of_rank.iter().map(|&&(_, _, c, _)| c);
+             let chosen = contexts().find(|&c| Some(c) == self.body_context && intact(c)).or_else(|| contexts().find(|&c| intact(c)));
+             if let Some(chosen) = chosen {
+-                return Ok(of_rank.into_iter().filter(|_| chosen > 0).map(|&(_, map, context, _)| (map, context)).collect());
++                return Ok(of_rank.into_iter().filter(|&&(_, _, c, _)| c == chosen).map(|&(_, map, context, _)| (map, context)).collect());
+             }
+         }
+         Err(if body.is_empty() && !deleted { NoBody::Missing } else { NoBody::Deleted })
+@@ -209,7 +209,7 @@ fn transformation_operator(emit: &mut Emit, shared: &mut Shared, m: &[[f64; 4];
+     let key = SharedKey::Operator(std::array::from_fn(|i| (m[i % 3][i / 3] + 0.0).to_bits()));
+     shared.get_or(key, || {
+         let (x, y, z) = (emit.direction(column(0))?, emit.direction(column(1))?, emit.direction(column(2))?);
+-        let origin = emit.point([0.0, 0.0, 0.0])?;
++        let origin = emit.point(column(3))?;
+         emit.record(
+             "IFCCARTESIANTRANSFORMATIONOPERATOR3D",
+             &[

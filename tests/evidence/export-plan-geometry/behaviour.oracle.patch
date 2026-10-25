@@ -1,0 +1,10 @@
+--- a/rust/export/src/plan/resolve.rs
++++ b/rust/export/src/plan/resolve.rs
+@@ -133,7 +133,6 @@
+     // What the old shapes leave behind. The annotations the sweep finds (a
+     // styled item, a layer entry) go through delete below, which repairs
+     // whatever names them.
+-    geometry_cuts.clear();
+     if !geometry_cuts.is_empty() {
+         let sweep = geometry::sweep(index, schema, &geometry_cuts, &removed);
+         removed.extend(sweep.pruned);

@@ -7,8 +7,8 @@
 
 pub use ifc_lite_processing::data_model::rows::{
     build_export_model, build_export_model_with_options, fmt_num, stream_export_model,
-    stream_export_model_with_index, stream_export_model_with_options, EntityRow, ExportModel,
-    ModelOptions, Placement, PropValue, PropertySet, QuantitySet, QuantityValue, ValueKind,
+    stream_export_model_with_index, stream_export_model_with_inherited, stream_export_model_with_options,
+    EntityRow, ExportModel, Inherited, ModelOptions, Placement, PropValue, PropertySet, QuantitySet, QuantityValue, ValueKind,
 };
 
 #[cfg(test)]

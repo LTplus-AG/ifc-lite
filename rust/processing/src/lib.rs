@@ -132,6 +132,10 @@ pub use symbolic::{
 // this re-export no consumer outside the crate can name it, so a textured
 // `MeshData` can be read but never constructed or matched.
 pub use types::mesh::{InstanceRecord, MeshData, MeshTextureData, RawInstanceOccurrence};
+pub use types::presentation::{
+    MeshPresentationProvenance, NormalProvenance, PaletteAbsence, PaletteBinding, TextureBinding,
+    UvAuthority,
+};
 pub use types::response::{
     CoordinateInfo, ModelMetadata, ParseResponse, ProcessingStats,
     QuickMetadataBootstrap, QuickMetadataEntitySummary, QuickMetadataPrunedEdge,

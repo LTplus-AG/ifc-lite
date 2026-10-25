@@ -390,6 +390,15 @@ impl<'a> EntityDecoder<'a> {
 
 The decoder also exposes fast single-purpose accessors used by the geometry pipeline (`get_cartesian_point_fast`, `get_polyloop_coords_cached`, `get_entity_ref_list_fast`, ...); see `rust/core/src/decoder.rs`.
 
+`EntityDecoder::direction3_of(&entity)` reads an already decoded `IfcDirection`
+when no decoder is available. It accepts exactly one `DirectionRatios` attribute
+containing two or three finite plain numeric values and returns the raw
+`Option<[f64; 3]>`, promoting two ratios with `z = 0` without normalizing or
+rejecting a zero vector. A wrong record type, extra attributes, malformed list
+or non-finite ratio returns `None`. This read does not decode or count refusals.
+It is transitional (removed by C2): prefer `direction3_at`, which counts its
+refusals in `refused_records()`.
+
 `DenseEntityIndex::try_from_columns(ids, starts, lengths)` accepts sorted, unique
 IDs and `u32` span columns. It returns `None` if the columns disagree or direct
 addressing would allocate more than compact columns. `lookup(id)` preserves
@@ -958,6 +967,59 @@ process, allowances, jurisdiction and physical bar count remain unchecked.
 Authored `BarLength` is not a verified cutting length. A reinforcing-bar entity
 may represent more than one manufactured bar.
 
+### Owned production contexts
+
+`ifc_lite_processing::element::ProductionModel` represents one model load.
+Call `snapshot(OwnedMeshProductionData)` once per effective batch to capture
+its opening, style, indexed-colour, material, texture and site-rotation maps.
+The maps are shared through `Arc`; products borrow them through the returned
+`OwnedMeshProductionContext` without copying them. Snapshots remain usable
+after the caller drops its map owners or creates a newer configuration revision.
+
+Pass the snapshot to `element::produce_element_meshes_owned` with the same
+job, options, decoder and router used by the canonical borrowed producer.
+It checks the model's source epoch before work and before returning a result.
+Call `ProductionModel::invalidate_source` when replacing or mutating the source:
+earlier snapshots then return `ProductionContextError::StaleSource`, including
+when invalidation occurs inside a geometry callback. Create a fresh snapshot
+before producing from the replacement source.
+
+The context identity distinguishes loads, source epochs and configuration
+revisions within the process. It does not authenticate IFC bytes or indexes;
+the caller must still pair the decoder, router and captured maps with the
+correct source. The appearance authoring pipeline uses these snapshots and
+refreshes its cached context after style edits or authored-entity injection.
+
+The native processor captures one snapshot per run and shares it across Rayon
+jobs. Deferred styled-item replay creates a fresh configuration revision before
+subsequent jobs execute. Browser `processGeometryBatch` captures one snapshot
+per batch, sharing cached style, indexed-colour and texture maps.
+`clearPrePassCache` and every `setEntityIndex` replacement retire earlier
+snapshots, including rejected or empty index replacements.
+
+### Production ownership and diagnostics
+
+Canonical borrowed and owned production reserve the supplied decoder and router
+for the whole synchronous product. A processor callback may produce a nested
+child using its active ancestor's owners; an unrelated live product cannot
+borrow that reservation. Owned production returns
+`ProductionContextError::OwnerUnavailable` if another product holds an owner
+or a callback replaces it. The borrowed entry keeps its infallible signature
+and returns empty output when ownership cannot be maintained.
+
+`ifc_lite_core::execution_owner::ExecutionIdentity::same_instance` compares
+owner instances independently of their configuration generations. Cache or
+configuration maintenance on one decoder preserves its instance; replacing the
+decoder changes it. Geometry execution acknowledges maintenance on the same
+instance and refuses a replacement before accepting its output.
+
+`GeometryRouter::take_csg_failures_checked` checks the current resource stop
+before running diagnostic hooks and again afterwards. A stop raised by a hook
+returns `Err(ProgramStop)` and retains drained records separately for explicit
+diagnostic retrieval through `take_csg_failures`. Later product publication and
+retry drains cannot adopt or discard those stopped reports. Canonical
+production discards that product's output when its final hook stops execution.
+
 ### Appearance authoring
 
 `ifc_lite_processing::appearance::calibrate_appearance_plane` establishes one
@@ -1025,6 +1087,15 @@ pub use gltf::{export_gltf_streaming, try_export_glb, try_export_glb_from_meshes
 // `Medium`, which is the golden-output identity every byte-comparison test in
 // this crate rests on - coarser levels trade curve fidelity for vertex count
 // on tube-heavy models, and DO change the emitted bytes.
+// `GltfOptions::with_textures(true)` (default off) exports IFC surface textures:
+// `TEXCOORD_0` from the canonical UVs, a PNG bufferView in the binary chunk for
+// a decoded texture, the authored `URLReference` (relative only; an absolute
+// path, a scheme or a `..` above the export is `IncompleteAppearance`) for an
+// `IfcImageTexture`, and `MASK` materials matching the viewer's texel-alpha
+// discard and its hiding of a tint alpha <= 0.01. Only the in-memory GLB
+// assembler carries them; `quantize`, the bounded GLB and multi-buffer glTF
+// refuse with `ExportError::UnsupportedOption`, and a textured mesh whose
+// appearance is incomplete is `ExportError::IncompleteAppearance`, never solid colour.
 pub use ifc_lite_processing::TessellationQuality;
 pub use hbjson::Model;
 pub use ifc5::{export_ifc5, Ifc5Options};
@@ -1150,7 +1221,10 @@ pub use parquet_bos::{export_bos, ParquetBosOptions};
 ### Features
 
 ```toml
-default = []
+default = ["gltf-textures"]
+gltf-textures = []    # opt-in textured glTF/GLB export (TEXCOORD_0 + PNG images); without it
+                      # (default-features = false, as the wasm engine does) requesting
+                      # textures returns ExportError::UnsupportedOption
 parquet-bos = []      # Parquet/.bos export (arrow + parquet + zip; not wasm32-safe)
 observability = []    # surface faceted-brep phase timing for profiling examples
 ```
@@ -1562,3 +1636,39 @@ very large profiles may be unavailable for analytic quantities; they are never
 silently certified or substituted with an approximation. Rendering is
 unaffected. This change makes no performance claim; an end-to-end base/branch
 performance verdict is required before merge.
+
+Stopped product finalization isolates already-recorded router CSG failures through
+`GeometryRouter::quarantine_recorded_csg_failures` without invoking processor hooks.
+Explicit `take_csg_failures` retrieval includes these reports; later product drains do not.
+
+`GeometryRouter::with_product_csg_scope` bounds recorded diagnostics to a synchronous
+product owner epoch. Nested products preserve their parent’s records; error exits
+and unwind retain unconsumed reports for explicit retrieval without final hooks.
+
+Product diagnostic scopes also capture stored Boolean/CSG recorder reports before
+nested entry and on exit, without invoking `take_bool_failures` final callbacks.
+Registered wrappers exposing `boolean_recorder` use the same storage path.
+Custom processors with private logs behind `take_bool_failures` cannot have those
+logs partitioned without executing their callbacks. After interrupted or nested
+product work, their subsequent drained records are therefore retained only for
+explicit `take_csg_failures` retrieval, rather than assigned to a later product.
+This includes any new custom records mixed with the ambiguous log. An explicit
+drain outside product work restores the ordinary publication boundary. Cancellation
+and unwind still invoke no final hooks; callers using opaque custom diagnostics
+must retrieve them explicitly after interrupted or nested work.
+Exposing a Boolean recorder does not make a wrapper's additional private log
+scoped: known recorder storage is captured separately before callback drains.
+Each returned callback batch is retained before the next callback runs, so a
+later callback's unwind cannot discard already-drained reports.
+Canonical and resumable publication call `finish_product_csg_failures` only after
+all product work; intermediate retry drains use `take_csg_failures_checked` and
+cannot mark a still-running epoch complete.
+
+A completed final drain is provisional until source and execution-owner validation
+succeed. If either rejects publication, canonical and private resumable producers
+discard the geometry and pass the drained reports to
+`GeometryRouter::quarantine_unpublished_csg_failures`. This consumes the existing
+report map without invoking hooks, changing attribution, or adopting ambient
+reports. Explicit `take_csg_failures` returns it once; subsequent products cannot
+publish it. Callers of `finish_product_csg_failures` must likewise retain their
+returned reports until publication succeeds and quarantine them on rejection.

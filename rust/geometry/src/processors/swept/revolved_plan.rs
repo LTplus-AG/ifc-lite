@@ -5,6 +5,7 @@
 //! is applied here. An empty profile keeps the original axis-data short circuit.
 
 use super::Revolution;
+use crate::placement::Axis1Placement;
 use crate::processors::{
     helpers::parse_axis2_placement_3d, tessellated::PolygonalFaceSetProcessor,
 };
@@ -75,54 +76,35 @@ pub(super) fn lower(
         return Ok(RevolvedPlan::Empty);
     }
 
-    // IfcAxis1Placement: 0=Location (IfcCartesianPoint), 1=Axis (IfcDirection, optional)
-    let axis_location = {
-        let loc_attr = axis_placement
-            .get(slot::IfcAxis1Placement::LOCATION.index())
-            .ok_or_else(|| Error::geometry("Axis1Placement missing Location".to_string()))?;
-        let loc = decoder
-            .resolve_ref(loc_attr)?
-            .ok_or_else(|| Error::geometry("Failed to resolve axis location".to_string()))?;
-        let coords = loc
-            .get(slot::IfcCartesianPoint::COORDINATES.index())
-            .and_then(|v| v.as_list())
-            .ok_or_else(|| Error::geometry("Axis location missing coordinates".to_string()))?;
-        Point3::new(
-            coords.first().and_then(|v| v.as_float()).unwrap_or(0.0),
-            coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0), // not-an-attribute: Y coordinate in coordinate list
-            coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0), // not-an-attribute: Z coordinate in coordinate list
-        )
+    // IfcAxis1Placement: 0=Location (IfcCartesianPoint), 1=Axis (IfcDirection,
+    // optional). The IFC derived default for a missing Axis is +Z, which
+    // the rule `AxisDirectionInXY` rules out for a revolved solid, so a
+    // missing Axis is refused instead of revolving about an invented +Y
+    // (D25). A missing y ratio is no longer 1.0 either: the direction is
+    // read under the leaf rule.
+    // Each WR refusal of readable input is counted on the solid, like an
+    // unreadable leaf (D3, D29). `AxisStartInXY` is deliberately not
+    // enforced: it rules out no default or promoted value, so a Location
+    // off the profile plane revolves as authored, as on base (D25).
+    let refused = |decoder: &EntityDecoder, why: &str| {
+        let _counted = decoder.refuse_malformed(entity.id);
+        Error::geometry(format!("RevolvedAreaSolid Axis {why}"))
     };
-
-    let axis_direction = {
-        if let Some(dir_attr) = axis_placement.get(slot::IfcAxis1Placement::AXIS.index()) {
-            if !dir_attr.is_null() {
-                let dir = decoder.resolve_ref(dir_attr)?.ok_or_else(|| {
-                    Error::geometry("Failed to resolve axis direction".to_string())
-                })?;
-                let coords = dir
-                    .get(slot::IfcDirection::DIRECTION_RATIOS.index())
-                    .and_then(|v| v.as_list())
-                    .ok_or_else(|| {
-                        Error::geometry("Axis direction missing coordinates".to_string())
-                    })?;
-                let raw = Vector3::new(
-                    coords.first().and_then(|v| v.as_float()).unwrap_or(0.0),
-                    coords.get(1).and_then(|v| v.as_float()).unwrap_or(1.0), // not-an-attribute: Y component in DirectionRatios
-                    coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0), // not-an-attribute: Z component in DirectionRatios
-                );
-                if raw.norm() < 1e-12 {
-                    Vector3::new(0.0, 1.0, 0.0)
-                } else {
-                    raw.normalize()
-                }
-            } else {
-                Vector3::new(0.0, 1.0, 0.0)
-            }
-        } else {
-            Vector3::new(0.0, 1.0, 0.0)
-        }
-    };
+    let axis1 = Axis1Placement::read(&axis_placement, decoder)?;
+    let axis_location = Point3::from(axis1.location);
+    // The XY test runs on a normalisable vector: ratios whose squared length
+    // overflows are rescaled first, so `(1e308, 0, 1e308)` is refused as off
+    // the plane instead of normalising to a zero axis that passes it. Every
+    // finite length reads as before, bit for bit.
+    let raw_axis = Vector3::from(crate::math::v3::unoverflowed(
+        axis1.axis.ok_or_else(|| refused(decoder, "has no Direction (AxisDirectionInXY)"))?,
+    ));
+    let axis_direction = raw_axis
+        .try_normalize(1e-12)
+        .ok_or_else(|| refused(decoder, "Direction has zero length"))?;
+    if axis_direction.z.abs() > 1e-9 {
+        return Err(refused(decoder, "Direction does not lie in the XY plane (AxisDirectionInXY)"));
+    }
 
     let full_circle = angle.abs() >= std::f64::consts::PI * 1.99;
     // 24 segments for a full revolve at Medium; ~12 per 180° (min 8) for a

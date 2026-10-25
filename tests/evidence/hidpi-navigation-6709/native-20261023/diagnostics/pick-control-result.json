@@ -1,0 +1,60 @@
+{
+  "job": "e0666cc1-4efb-4f68-8272-b3ba5205abcb",
+  "source": "a1a4e87357d7e2de0cf5f4613473adae4feb452b",
+  "acceptedTiming": false,
+  "samples": [
+    {
+      "dpr": 1,
+      "trials": 24,
+      "matched": 23,
+      "disagreements": [
+        {
+          "target": {
+            "id": 27421,
+            "x": 886.4649410674965,
+            "y": 617.3956223130033,
+            "type": "IfcWallStandardCase",
+            "geometryItemId": 27395,
+            "sourceTriangleIndex": 1
+          },
+          "actual": {
+            "id": 28113,
+            "type": "IfcWindow",
+            "event": {
+              "x": 886,
+              "y": 617
+            }
+          },
+          "matched": false
+        }
+      ]
+    },
+    {
+      "dpr": 2,
+      "trials": 24,
+      "matched": 23,
+      "disagreements": [
+        {
+          "target": {
+            "id": 27421,
+            "x": 886.4649410674965,
+            "y": 617.3956223130033,
+            "type": "IfcWallStandardCase",
+            "geometryItemId": 27395,
+            "sourceTriangleIndex": 1
+          },
+          "actual": {
+            "id": 28113,
+            "type": "IfcWindow",
+            "event": {
+              "x": 886,
+              "y": 617
+            }
+          },
+          "matched": false
+        }
+      ]
+    }
+  ],
+  "conclusion": "Same one CPU/UI disagreement in uncapped DPR1 and DPR2. Actual click truncates fractional client coordinates. Cause not proved; retain as boundary stability witness, not CPU/GPU parity proof."
+}

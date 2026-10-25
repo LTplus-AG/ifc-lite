@@ -21,6 +21,7 @@
   },
   "files": [
     "./frame-gpu-chrome.ts",
+    "./diagnostics/swiftshader-instance.mts",
     "./frame-gpu-night-history.test.ts",
     "./frame-gpu-night-profile.test.ts",
     "./frame-gpu-night-trend.test.ts",

@@ -311,4 +311,17 @@ if [ "${BUILD_RETAINED:-}" = "1" ]; then
 fi
 
 echo ""
+# Diff is loaded explicitly by @ifc-lite/wasm/diff. Its exports never enter
+# either geometry engine, so adding comparison features cannot grow the
+# default geometry download (#8042).
+echo "Building independent diff engine"
+rustup run nightly-2025-11-15 "$WASM_PACK" build rust/diff-wasm \
+  --target web \
+  --out-dir ../../packages/wasm/pkg-diff \
+  --out-name ifc-lite-diff \
+  --release
+printf '\n' > packages/wasm/pkg-diff/.npmignore
+DIFF_DTS="packages/wasm/pkg-diff/ifc-lite-diff.d.ts"
+grep -v '__wasm_bindgen_func_elem_' "$DIFF_DTS" > "$DIFF_DTS.tmp" && mv "$DIFF_DTS.tmp" "$DIFF_DTS"
+
 echo "✨ Build complete!"

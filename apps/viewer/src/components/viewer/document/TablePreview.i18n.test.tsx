@@ -33,7 +33,7 @@ function mount(block: TableBlock, state?: TableState) {
     page: { size: 'A4', orientation: 'portrait' }, blocks: [block] }}
     bindings={{ models: [], activeModelId: null, today: new Date(0) }} aggregations={new Map()}
     chartMessages={new Map()} topics={new Map()} tables={state ? new Map([[block.id, state]]) : new Map()}
-    selectedBlockId={null} onSelectBlock={() => {}} />);
+    onSelectBlock={() => {}} />);
 }
 
 describe('Canonical table preview localization — validation source (#5138)', () => {

@@ -87,6 +87,13 @@ fn rendered_first_string(text: &str) -> Option<std::ops::Range<usize>> {
 ///
 /// The input is iterated as UTF-16 code units to match JavaScript's `charCodeAt`.
 pub fn deterministic(seed: &str) -> String {
+    encode(hash128(seed))
+}
+
+/// The 128-bit state [`deterministic`] encodes, exposed so a caller that needs
+/// the bits (to derive further ids from them) gets the same hash rather than a
+/// second one.
+pub fn hash128(seed: &str) -> u128 {
     let mut h0: u32 = 0x811c_9dc5;
     let mut h1: u32 = 0x9e37_79b9;
     let mut h2: u32 = 0x6c07_8965;
@@ -105,22 +112,20 @@ pub fn deterministic(seed: &str) -> String {
     let m1 = mix(h1, h3);
     let m2 = mix(h2, m1);
     let m3 = mix(h3, m0);
-    let words = [m0, m1, m2, m3];
+    (u128::from(m0) << 96) | (u128::from(m1) << 64) | (u128::from(m2) << 32) | u128::from(m3)
+}
 
-    // Read the 128-bit state as a plain MSB-first bit string.
-    let bit = |idx: usize| -> u32 {
-        let word = words[idx / 32];
-        let shift = 31 - (idx % 32);
-        (word >> shift) & 1
-    };
+/// Encode 128 bits as an IfcGloballyUniqueId: 22 characters of [`ALPHABET`],
+/// read MSB-first. 22 x 6 = 132 bits is four more than a GUID holds, so the
+/// FIRST character carries only the top 2 bits (`0`..`3`) and each of the
+/// other 21 carries 6. That split is the IFC convention, not RFC 4648 base64:
+/// a different alphabet order, no padding, and no byte alignment.
+pub fn encode(bits: u128) -> String {
     let mut out = String::with_capacity(22);
-    out.push(ALPHABET[((bit(0) << 1) | bit(1)) as usize] as char);
+    out.push(ALPHABET[(bits >> 126) as usize] as char);
     for i in 0..21 {
-        let mut v = 0u32;
-        for b in 0..6 {
-            v = (v << 1) | bit(2 + i * 6 + b);
-        }
-        out.push(ALPHABET[v as usize] as char);
+        let shift = 120 - 6 * i;
+        out.push(ALPHABET[((bits >> shift) & 0x3f) as usize] as char);
     }
     out
 }

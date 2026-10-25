@@ -2,7 +2,7 @@
 //! Owned curve samples, f64 placement/extrusion and RTC for an open swept strip.
 //! Lengths remain in file units and f64 work precedes output narrowing. This
 //! construction is an open surface, not a solid boolean operand.
-use crate::processors::{helpers::get_direction_by_id, SurfaceOfLinearExtrusionProcessor};
+use crate::processors::SurfaceOfLinearExtrusionProcessor;
 use crate::{math::tol, Error, Mesh, Point2, Point3, Result, Vector3};
 use ifc_lite_core::{slot, DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
@@ -30,15 +30,20 @@ pub(super) fn lower(
         .ok_or_else(|| Error::geometry("Expected entity reference for SweptCurve".to_string()))?;
     let position_transform =
         SurfaceOfLinearExtrusionProcessor::position_transform(entity, decoder)?;
-    let direction_attr = entity
-        .get(slot::IfcSurfaceOfLinearExtrusion::EXTRUDED_DIRECTION.index())
-        .ok_or_else(|| {
-            Error::geometry("SurfaceOfLinearExtrusion missing ExtrudedDirection".to_string())
-        })?;
-    let direction = match direction_attr.as_entity_ref() {
-        Some(dir_id) => get_direction_by_id(dir_id, decoder)
-            .ok_or_else(|| Error::geometry("Failed to get direction".to_string()))?,
-        None => Vector3::new(0.0, 0.0, 1.0), // Default to Z-up
+    // `ExtrudedDirection` is mandatory, read through the leaf reader. A `$`,
+    // `*` or non-reference value used to sweep along an invented +Z; it is now
+    // refused and counted on the surface (D3). An absent one was already an
+    // error, and is counted now.
+    let direction = match decoder
+        .direction3_at(entity, slot::IfcSurfaceOfLinearExtrusion::EXTRUDED_DIRECTION.index())?
+    {
+        Some(ratios) => Vector3::from(ratios),
+        None => {
+            let _counted = decoder.refuse_malformed(entity.id);
+            return Err(Error::geometry(
+                "SurfaceOfLinearExtrusion missing ExtrudedDirection".to_string(),
+            ));
+        }
     };
     // `IfcPositiveLengthMeasure`: zero or negative is refused, not meshed
     // as a degenerate or reversed strip.

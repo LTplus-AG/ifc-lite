@@ -9,8 +9,8 @@
 //! `curve_walk.rs`), split out so the processor stays within its
 //! module-size budget.
 
-use crate::math::tol;
-use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
+use crate::math::{tol, v3};
+use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::Vector3;
 
 use crate::{alignment_arc_length::ArcLengthMap, Error, Result};
@@ -162,16 +162,16 @@ impl PositionAlongDirectrix {
     }
 }
 
+/// Axis or RefDirection of an `IfcAxis2PlacementLinear` under the leaf rule:
+/// an `IfcDirection` of 2 or 3 finite ratios, anything else (another type, a
+/// missing or non-numeric ratio, a non-reference value) refused and counted
+/// (D3, drift 3.2, PROC-AL-10). Each missing ratio used to read as 0 and the
+/// record type was never checked. A zero-length direction is still an error.
 fn read_direction(entity: &DecodedEntity, index: usize, decoder: &mut EntityDecoder) -> Result<Option<Vector3<f64>>> {
-    let Some(id) = entity.get_ref(index) else { return Ok(None) };
-    let direction = decoder.decode_by_id(id)?;
-    let ratios = direction.get_list(0).ok_or_else(|| Error::geometry("IfcDirection missing DirectionRatios".to_string()))?;
-    let v = Vector3::new(
-        ratios.first().and_then(AttributeValue::as_float).unwrap_or(0.0),
-        ratios.get(1).and_then(AttributeValue::as_float).unwrap_or(0.0),
-        ratios.get(2).and_then(AttributeValue::as_float).unwrap_or(0.0),
-    );
-    v.try_normalize(tol::DIRECTION_MIN_LEN).map(Some).ok_or_else(|| {
+    let Some(ratios) = decoder.direction3_at(entity, index)? else { return Ok(None) };
+    // Rescaled first, so ratios whose squared length overflows normalise
+    // instead of collapsing to a zero direction (finite lengths unchanged).
+    Vector3::from(v3::unoverflowed(ratios)).try_normalize(tol::DIRECTION_MIN_LEN).map(Some).ok_or_else(|| {
         Error::geometry("IfcAxis2PlacementLinear direction has zero length".to_string())
     })
 }

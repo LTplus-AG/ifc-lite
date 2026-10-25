@@ -187,3 +187,43 @@ fn terrain_subtype_reuses_inherited_triangle_construction() {
         .chunks_exact(3)
         .all(|normal| normal == [0., 0., 1.]));
 }
+
+#[test]
+fn uv_audit_counts_exactly_the_corners_the_mesher_fabricates_7955() {
+    // Oracle: the real mesher's output. No authored texture vertex is (0, 0),
+    // so a corner shipped as (0, 1) (the V-flipped (0, 0) fallback) is one
+    // the mesher made up. Fixed before the run: exact counts, no tolerance.
+    const TETRA: &str = "((1,2,3),(1,2,4),(1,4,3),(2,3,4))";
+    const DROPS_FIRST: &str = "((1,2,9),(1,2,4),(1,4,3),(2,3,4))";
+    let all = || vec![[0.1, 0.2], [0.3, 0.4], [0.5, 0.6], [0.7, 0.8]];
+    let cases: [(&str, &str, Option<Vec<[u32; 3]>>, Vec<[f32; 2]>, usize); 9] = [
+        // Row 0's triangle names point 9 and is dropped: row 3 is sampled, and
+        // its out-of-range entry is fabricated (the first-N-rows check missed it).
+        (DROPS_FIRST, "$", Some(vec![[1, 2, 3], [1, 2, 4], [1, 4, 3], [2, 3, 9]]), all(), 1),
+        // The bad row belongs to the dropped triangle: nothing is fabricated.
+        (DROPS_FIRST, "$", Some(vec![[1, 2, 9], [1, 2, 4], [1, 4, 3], [2, 3, 4]]), all(), 0),
+        // Boundary: point 5 of four is the first one past the end.
+        ("((1,2,5),(1,2,4),(1,4,3),(2,3,4))", "$", Some(vec![[1, 2, 9], [1, 2, 4], [1, 4, 3], [2, 3, 4]]), all(), 0),
+        (TETRA, "$", Some(vec![[1, 2, 3], [1, 2, 4], [1, 4, 3]]), all(), 3), // row missing
+        (TETRA, "$", Some(vec![[1, 2, 3], [1, 2, 4], [1, 4, 3], [2, 3, 0]]), all(), 1), // index 0
+        // `$` pairing: point 4 has no texture vertex when only three exist.
+        (TETRA, "$", None, all()[..3].to_vec(), 3),
+        (DROPS_FIRST, "$", None, all(), 0),
+        // PnIndex: the second row's corner 4 maps to point 9, so it is dropped.
+        ("((1,2,3),(4,2,3))", "(1,2,3,9)", Some(vec![[1, 2, 3], [9, 9, 9]]), all(), 0),
+        ("((1,2,3),(4,2,3))", "(1,2,3,9)", Some(vec![[9, 9, 9], [1, 2, 3]]), all(), 3),
+    ];
+    for (rows, pn_index, index, tex_coords, expected) in cases {
+        for closed in [".T.", ".F."] {
+            let content = format!("{POINTS}#2=IFCTRIANGULATEDFACESET(#1,$,{closed},{rows},{pn_index});");
+            let map = ResolvedTextureMap { tex_coords: tex_coords.clone(), tex_coord_index: index.clone(), ..texture_map(false) };
+            let (mesh, uvs) = decode_owned(content.clone(), None).evaluate_with_texture(&map);
+            assert_eq!(uvs.len(), mesh.positions.len() / 3 * 2);
+            let shipped = uvs.chunks_exact(2).filter(|uv| uv == &[0., 1.]).count();
+            let mut decoder = EntityDecoder::new(&content);
+            let entity = decoder.decode_by_id(2).unwrap();
+            let audited = fabricated_uv_corners(&entity, &mut decoder, &map);
+            assert_eq!((audited, shipped), (Some(expected), expected), "{rows} {pn_index} {index:?} {closed}");
+        }
+    }
+}

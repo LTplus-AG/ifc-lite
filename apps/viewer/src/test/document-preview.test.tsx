@@ -19,7 +19,7 @@ it('#6731 readiness waits for an actual mounted paper instead of accepting absen
     page: { size: 'A4', orientation: 'portrait' }, blocks: [] }}
     bindings={{ models: [], activeModelId: null, today: new Date('2026-10-03') }}
     aggregations={new Map()} chartMessages={new Map()} topics={new Map()} tables={new Map()}
-    selectedBlockId={null} onSelectBlock={() => {}} />);
+    onSelectBlock={() => {}} />);
   await documentPreviewReady();
   assert.ok(ui.querySelector('[data-preview-section]'), 'the actual composer mounted a sheet');
 });

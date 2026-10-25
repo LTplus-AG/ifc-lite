@@ -1,0 +1,185 @@
+{
+  "schemaVersion": 1,
+  "issue": "https://github.com/LTplus-AG/ifc-lite/issues/7633",
+  "productionCommit": "8ce1e9d9382e43a98b454e5db6fe70bd100d0058",
+  "verdict": "Original two causal regression signals resolved on captured source. This is bounded causal evidence, not complete PR acceptance.",
+  "originalBase": "ab1775a6b64f4fcad3a8eff83a1f29df3fb5bfcb",
+  "originalRed": "f611e6f5b8b017de5dd71cc6b4b55ca170d835b2",
+  "jobs": [
+    {
+      "id": "791fb8ee-65cb-48f0-a12d-f02b674c3e88",
+      "receipt": {
+        "path": "/home/louistrue/build-workers/worker-state/jobs/791fb8ee-65cb-48f0-a12d-f02b674c3e88/receipt.json",
+        "sha256": "014b284207690f82c860a95980ee760dd5c7678b5709ecde296e3bc11398ca66"
+      },
+      "sourceCommit": "3ad67c91bd5842a2d8574c41018f6abfea00ce85",
+      "exitCode": 0,
+      "sourceUnchanged": true
+    },
+    {
+      "id": "47bb320d-85c7-4d8e-ab38-787c57508350",
+      "receipt": {
+        "path": "/home/louistrue/build-workers/worker-state/jobs/47bb320d-85c7-4d8e-ab38-787c57508350/receipt.json",
+        "sha256": "e4d4316d7e09b0f4a77b471b69cb46ee8f9d6689df231d84496c2bb18a5d47f5"
+      },
+      "sourceCommit": "908e1511f1e4dd5bfb63fd3c6968943f1f8a8a85",
+      "exitCode": 0,
+      "sourceUnchanged": true
+    },
+    {
+      "id": "4d90599c-6416-445e-8d49-39f4f7a6a8f5",
+      "receipt": {
+        "path": "/home/louistrue/build-workers/worker-state/jobs/4d90599c-6416-445e-8d49-39f4f7a6a8f5/receipt.json",
+        "sha256": "c8c9f89c674822fd2a6b1ad1d2257a28525aed15135801790ba09153edde4dab"
+      },
+      "sourceCommit": "192d03b08dc2897f3e0995e2b77350cb83fbd409",
+      "exitCode": 0,
+      "sourceUnchanged": true
+    }
+  ],
+  "evidence": [
+    {
+      "path": "/home/louistrue/build-workers/qualification/issue7633-causal-current-v1/preparation.json",
+      "sha256": "0db5bc09026c814768828be1c13cf23ef9d9da07eae1d163660d105d1c79d151"
+    },
+    {
+      "path": "/home/louistrue/build-workers/qualification/issue7633-causal-current-v1/causal-comparison.json",
+      "sha256": "de79a7c83e83fe1dd1979c6924ae2a0302b6185106e654409e134b6c415e0257"
+    },
+    {
+      "path": "/home/louistrue/build-workers/qualification/issue7633-causal-current-v1/finite-surface-delta-final.json",
+      "sha256": "c0e44d13a2ff3af3464e3120f9f5b369ebdaacb660123aa300057bbb31413e39"
+    },
+    {
+      "path": "/home/louistrue/build-workers/qualification/issue7633-causal-current-v1/red-finite-surface-delta.json",
+      "sha256": "acc6ea18cc5b0b07181effa9eec994a224facab75dbbe837ac8037b497c62894"
+    },
+    {
+      "path": "/home/louistrue/build-workers/qualification/issue7633-causal-current-v1/892212-original-corner-attribution.json",
+      "sha256": "40632768b577cc1257bb135072557757c89f465bc222e97a779a7093e5d26e90"
+    },
+    {
+      "path": "/home/louistrue/build-workers/qualification/issue7633-causal-current-v1/892212-stage-attribution.json",
+      "sha256": "687458dbdb9c0c25279a7d7a598a1eaf339c36bd9491f416505abe21f4666e86"
+    },
+    {
+      "path": "/home/louistrue/build-workers/qualification/issue7633-causal-current-v1/892212-fold-free-attribution.json",
+      "sha256": "b0f27dfa25422d17c3543fd82e2bf1165086f838e60250e7d3ce745a89e1f4e2"
+    },
+    {
+      "path": "/home/louistrue/build-workers/qualification/issue7633-causal-current-v1/causal-attribution-final-review.json",
+      "sha256": "afdb20c138be4456e6d3d189b26abe6c3ef388863d3bbb3505ebe741d83a8cda"
+    }
+  ],
+  "controls": {
+    "ISSUE_129_61300": {
+      "strictEdges": [
+        209,
+        659,
+        185
+      ],
+      "originalAddedDefects": 517,
+      "originalAddedDefectsRemaining": 0,
+      "newCurrentDefectsVsBase": 0,
+      "exactVertexSets": "All2006 reconstructed base vertices present in current; no new coordinates.",
+      "exactTriangles": "3936 unchanged;8 removed and16 added.",
+      "finiteSurface": "All24 changed triangles certified bidirectionally against complete opposite mesh with retained100\u00b5m oracle. This is historical-base equivalence only and insufficient alone to discriminate20\u00b5m projection changes.",
+      "verdict": "Original edge-set regression is absent and no authored-base coordinates were moved. Current still has185 strict defects inherited from base; do not claim closed mesh or physical volume."
+    },
+    "ISSUE_068_892212": {
+      "results": {
+        "base": {
+          "payload": {
+            "path": "/tmp/ifc-7633-consol-base-818b/work/7633/issue068-892212-base-census.json",
+            "sha256": "6451008c38faa45f7669667cacaaf6eb5840515da73274d88a9d5899551a1884"
+          },
+          "triangles": 234,
+          "badEdges": 0,
+          "collapsed": 0,
+          "surfaceArea": 115.94726865671726,
+          "signedDivergenceVolume": 21.62500863325798,
+          "nativeCensusVolumeCm3": 21624713,
+          "originalCornerPresentExactly": true,
+          "redShiftedCornerPresent": false,
+          "uniqueVertices": 117
+        },
+        "red": {
+          "payload": {
+            "path": "/tmp/ifc-6940-consol-818b/work/7633/issue068-892212-branch-census.json",
+            "sha256": "350d91e5709288954948382cbc439745ca01a164d1e3df13c8f01ec18e97af79"
+          },
+          "triangles": 234,
+          "badEdges": 0,
+          "collapsed": 0,
+          "surfaceArea": 115.9472191511864,
+          "signedDivergenceVolume": 21.624945863908653,
+          "nativeCensusVolumeCm3": 21624624,
+          "originalCornerPresentExactly": false,
+          "redShiftedCornerPresent": true,
+          "uniqueVertices": 117
+        },
+        "current": {
+          "payload": {
+            "path": "/home/louistrue/build-workers/qualification/issue7633-causal-current-v1/candidate-892212-census.json",
+            "sha256": "4983fb9d40b652eaf49340c1a9e4ed22a5f42176655ef3732a9c401b74667454"
+          },
+          "triangles": 256,
+          "badEdges": 0,
+          "collapsed": 0,
+          "surfaceArea": 115.94724758114252,
+          "signedDivergenceVolume": 21.625017693663715,
+          "nativeCensusVolumeCm3": 21624731,
+          "originalCornerPresentExactly": true,
+          "redShiftedCornerPresent": false,
+          "uniqueVertices": 128
+        },
+        "foldFree": {
+          "payload": {
+            "path": "/home/louistrue/build-workers/qualification/issue7633-causal-current-v1/fold-free-candidate-892212-census.json",
+            "sha256": "6451008c38faa45f7669667cacaaf6eb5840515da73274d88a9d5899551a1884"
+          },
+          "triangles": 234,
+          "badEdges": 0,
+          "collapsed": 0,
+          "surfaceArea": 115.94726865671726,
+          "signedDivergenceVolume": 21.62500863325798,
+          "nativeCensusVolumeCm3": 21624713,
+          "originalCornerPresentExactly": true,
+          "redShiftedCornerPresent": false,
+          "uniqueVertices": 117
+        }
+      },
+      "originalCornerRestoredExactly": true,
+      "originalRedShiftedCornerAbsent": true,
+      "counterfactual": "Only consolidation invocation1 with inputFNV97021275be0de8b7,156triangles,supported=true,folds=true,prismHost=None,unitScale1 changes preserveFolds tofalse. Marker exactly once, all guards asserted.",
+      "counterfactualEntirePayloadEqualsHistoricalBase": true,
+      "conclusion": "Disabling only the identified healthy-fold retention restores the entire historical base JSON byte-for-byte. Therefore current22triangle/+18cm3 delta is caused by existing fold policy, independently of original remote-plane shifted-corner regression. No production fold policy change proposed.",
+      "stageEvidence": "All3 outcomes Established; no before-remote-recovery/output position,index,origin difference. Stage instrumentation final output identical to original current capture.",
+      "finiteSurface": "All124 current/base changed-face donor directions pass unchanged100\u00b5m oracle. Original red also passes all14 donor directions, so tolerance-only evidence is explicitly nondiscriminating."
+    }
+  },
+  "limitations": [
+    "Strict metric means exactly1forward/1reverse edge use at1/65536m, not signed balance alone or1mm census.61300 retains185 inherited strict defects; no closed-mesh claim.",
+    "Strict closure/noncollapse establishes topological eligibility only; self-intersections, duplicate shells and authored whole-solid conformance are not independently certified here.",
+    "100\u00b5m finite oracle cannot reject original20\u00b5m red. Conclusions rely on exact original corner/edge-set evidence and guarded single-policy counterfactual.",
+    "Original bounded finite attempts remain preserved and hash-linked; completed donor checks were reused and all remaining checks completed with unchanged bounds.",
+    "Counterfactual is qualification-only. No tolerances, golden pins, manifests or production files changed. Other issue-charter acceptance lanes remain separate."
+  ],
+  "priorAdmissionRefusal": {
+    "id": "80e11c32-5f78-4616-bc0c-e814c990a0f9",
+    "receipt": {
+      "path": "/home/louistrue/build-workers/worker-state/jobs/80e11c32-5f78-4616-bc0c-e814c990a0f9/receipt.json",
+      "sha256": "008dd0e567d15e4b40662a9058fea1dac8f6bf6c464b63374a7174e1b20d2011"
+    },
+    "sourceCommit": "3ad67c91bd5842a2d8574c41018f6abfea00ce85",
+    "exitCode": 1,
+    "sourceUnchanged": true,
+    "error": "host capacity guard refused admission"
+  },
+  "publication": {
+    "manifest": "pc-wsl-issue7633-causal-current-v1-selected",
+    "manifestSha256": "264d257727dbe77ae94733b706a91d9398c1d895ed431ecad0452cde77c7f636",
+    "verified": true,
+    "closure": "Refused: live process or T3 task still references output; original guard preserved."
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "issue": 7633,
+  "source": "211b56671a34e13c02f969cba94582e14c066e56",
+  "productionEquivalent": "98f52d74299d6ac39b3a33bde4b2ab7dfb09bc45",
+  "verdict": "Native alternate-feature corpus reconciled successfully; both heavy census tests and strict all-feature workspace Clippy passed. WASM boundary refresh remains separate.",
+  "jobs": [
+    {
+      "id": "9637d912-9784-4d97-8027-cf7a1aec8c5c",
+      "receiptSha256": "bc3b344247fcc02ad80250b36fd27f10458628020a7014507e46256c2e52367f",
+      "exitCode": 1,
+      "sourceUnchanged": true,
+      "source": "211b56671a34e13c02f969cba94582e14c066e56",
+      "outputSha256": "d688f3f9e0200b87dfbd862d3b66d4decb41594d75e6459f0a878bd1ad3f0852"
+    },
+    {
+      "id": "1e641e15-8d65-4906-9353-7db10975cb8c",
+      "receiptSha256": "35a3ff789f26730bc76d9396021051b529d391201c1d645b0da65a2d8ca289dc",
+      "exitCode": 0,
+      "sourceUnchanged": true,
+      "source": "211b56671a34e13c02f969cba94582e14c066e56",
+      "outputSha256": "e3e6509788411084ff9a545319df80b18ef084f107f0b9ff87320ddf5ad7bedc"
+    }
+  ],
+  "originalWorkspace": {
+    "passed": 6248,
+    "failed": 15,
+    "ignored": 46,
+    "failureCause": "Harness only linked IFC fixtures, omitting LandXML XML fixtures required by seven targets."
+  },
+  "targetedCorrection": {
+    "fixtures": "All 13 LandXML manifest entries verified by size and SHA256 before linking. IFC_LITE_REQUIRE_FIXTURES=1 retained.",
+    "targets": 7,
+    "passed": 729,
+    "failed": 0,
+    "ignored": 0
+  },
+  "combinedWorkspace": {
+    "passed": 6263,
+    "failed": 0,
+    "ignored": 46,
+    "method": "Replace the seven originally failing target results with their complete corrected reruns; do not double-count passing tests from those targets."
+  },
+  "heavyCensus": {
+    "passed": 2,
+    "failed": 0
+  },
+  "clippy": "cargo clippy --workspace --all-targets --all-features -- -D warnings passed"
+}

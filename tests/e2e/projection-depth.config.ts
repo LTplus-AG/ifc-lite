@@ -20,7 +20,7 @@ export default defineConfig({
       executablePath: process.env.DEPTH_WITNESS_CHROME,
       args: process.env.DEPTH_WITNESS_GPU === 'native'
         ? ['--enable-unsafe-webgpu', '--use-angle=default', '--ignore-gpu-blocklist', '--enable-gpu']
-        : ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader',
+        : ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader', '--use-angle=swiftshader',
           '--disable-vulkan-surface', '--ignore-gpu-blocklist', '--enable-gpu'],
     },
   },

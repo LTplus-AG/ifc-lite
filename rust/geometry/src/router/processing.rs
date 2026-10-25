@@ -179,19 +179,15 @@ impl GeometryRouter {
         >,
         hygiene: SourceHygiene,
     ) -> Result<SubMeshCollection> {
-        // If a material-layer buildup is attached, try slicing single-solid
-        // elements (walls / slabs with IfcMaterialLayerSetUsage) first so each
-        // layer gets its own sub-mesh keyed by IfcMaterial id. An empty void
-        // index is passed — the caller's has_openings branch takes the
-        // voids-aware path below.
-        if let Some(layered) = self.try_layered_sub_meshes(element, decoder, None) {
-            return Ok(layered);
-        }
-
-        // Per-item sub-meshes (annotation fills, textured face sets, raw
-        // items in their element frame and the styled mapping walk, whose
+        // If a material-layer buildup is attached, the common program's layer
+        // control first tries slicing single-solid elements (walls / slabs
+        // with IfcMaterialLayerSetUsage) over the uncut host, so each layer
+        // gets its own sub-mesh keyed by IfcMaterial id; the caller's
+        // has_openings branch takes the voids-aware entry instead. Otherwise
+        // per-item sub-meshes (annotation fills, textured face sets, raw items
+        // in their element frame and the styled mapping walk, whose
         // `allow_instancing` enables the #1623 don't-bake decision), their
-        // source hygiene and placement: the common program's product control.
+        // source hygiene and placement: the product control.
         crate::program::GeometryProgram::styled_product(element, allow_instancing, texture_index, hygiene)
             .drain_styled(self, decoder)
     }

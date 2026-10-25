@@ -1,0 +1,38 @@
+{
+  "reviewed-verdict.json": {
+    "bytes": 11194,
+    "sha256": "e1523b149b53deca7fdeb41b8f920c7b955550135b1c4cfbeef8f4d6f1b62a02"
+  },
+  "original-metadata-and-logs.tar.gz": {
+    "bytes": 247090,
+    "sha256": "b87a6b06d3307224c18065ba19a4e2fb546d9a0f2b160d395e550f9f9c66fe65"
+  },
+  "cohort-result.json": {
+    "bytes": 11103,
+    "sha256": "1d6175a73f6d5fcf442804c6de56fa2460765505c2fa9cc5fa0c27517abcb978"
+  },
+  "summary.json": {
+    "bytes": 8518,
+    "sha256": "e6d63947638de60142965caa0bb12d612651bcc019dae5020db6155fde724838"
+  },
+  "all-frames-and-presents.tar.gz": {
+    "bytes": 604642,
+    "sha256": "066a0dc72538b1428a8969d82b14ec0439ec3e83a3648007de557cf6b4916ee3"
+  },
+  "dpr2-capture.png": {
+    "bytes": 253328,
+    "sha256": "e9bb21c3fb319832fe4d42d60b06722478a8ee268ab4a20aa2cd58819b82170d"
+  },
+  "runs.jsonl.gz": {
+    "bytes": 11873,
+    "sha256": "bcc010d531cbdbc041ca89b1118971d0fd9191d056c98c3def340b1be6cf5dda"
+  },
+  "dpr1-capture.png": {
+    "bytes": 86024,
+    "sha256": "60a8851a0a50c82f38c69a0d20114527184d028803e12330eefd1914d3b06414"
+  },
+  "dpr2-held-navigation.png": {
+    "bytes": 447010,
+    "sha256": "52e59814c7b8a625813026cb9395287c3e9fc8fa1abc74c2a926666203685c8f"
+  }
+}

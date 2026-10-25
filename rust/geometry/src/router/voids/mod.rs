@@ -317,15 +317,9 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
         void_index: &FxHashMap<u32, Vec<u32>>,
     ) -> Result<Vec<Mesh>> {
-        let opening_ids = match void_index.get(&element.id) {
-            Some(ids) if !ids.is_empty() => ids,
-            _ => {
-                return self.process_element_parts(element, decoder);
-            }
-        };
-
         // The host walk, its void context and each part's cut: the common
-        // program's void control.
+        // program's void control. With no openings it is the plain walk.
+        let opening_ids = void_index.get(&element.id).map(Vec::as_slice).unwrap_or_default();
         crate::program::GeometryProgram::voided(element, opening_ids).drain_parts(self, decoder)
     }
 }
@@ -1376,10 +1370,8 @@ impl Execution {
                             && covers(open_min_f32.z, open_max_f32.z, result_min.z, result_max.z)
                     };
                     if aabb_engulfs && opening_engulfs_host_solid(&result, opening_mesh) {
-                        // Mark the host consumed so the element pipeline keeps
-                        // the empty result instead of falling back to the un-cut
-                        // host.
-                        self.record_void_consumed_host(element_id);
+                        // The empty result marks the host consumed
+                        // (`program::openings::execute`).
                         result = Mesh::default();
                         host_mutated = true;
                         break;
@@ -1671,28 +1663,17 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
         void_index: &FxHashMap<u32, Vec<u32>>,
     ) -> Result<SubMeshCollection> {
-        // Layered single-solid path: slice the element's base mesh by its
-        // material-layer buildup AFTER subtracting voids. This produces one
-        // sub-mesh per layer keyed by IfcMaterial id, so layers show up as
-        // individual colors even when the underlying geometry is a single
-        // swept solid.
-        if let Some(layered) = self.try_layered_sub_meshes(element, decoder, Some(void_index)) {
-            return Ok(layered);
-        }
-
-        let opening_ids = match void_index.get(&element.id) {
-            Some(ids) if !ids.is_empty() => ids,
-            _ => return Ok(SubMeshCollection::new()),
-        };
-
-        // The host is the un-voided sub-mesh walk, which itself first tries
+        // The common program's styled void entry. Layered single-solid path
+        // first: slice the element's base mesh by its material-layer buildup
+        // AFTER subtracting voids, one sub-mesh per layer keyed by IfcMaterial
+        // id, so layers show up as individual colors even when the geometry
+        // is a single swept solid. With no openings that is all. Otherwise
+        // the host is the un-voided sub-mesh walk, which itself first tries
         // the layered slicing without voids (an element whose voided slicing
-        // declined can still slice uncut, and then each layer is cut).
-        let layered = self.try_layered_sub_meshes(element, decoder, None);
-        // The host walk, its void context (classified ONCE per element, not
-        // per sub-mesh) and each sub-mesh's cut: the common program's void
-        // control.
-        crate::program::GeometryProgram::voided_styled(element, opening_ids, layered).drain_styled(self, decoder)
+        // declined can still slice uncut, and then each layer is cut); its
+        // void context is classified ONCE per element, not per sub-mesh.
+        let opening_ids = void_index.get(&element.id).map(Vec::as_slice).unwrap_or_default();
+        crate::program::GeometryProgram::voided_styled(element, opening_ids).drain_styled(self, decoder)
     }
 }
 
@@ -1704,5 +1685,7 @@ mod batch_cutter_tests;
 mod cut_effect_count_tests;
 #[cfg(test)]
 mod single_cut_outcome_tests;
+#[cfg(test)]
+mod consumed_host_tests;
 #[cfg(test)]
 mod program_tests;

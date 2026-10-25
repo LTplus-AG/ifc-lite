@@ -1142,6 +1142,17 @@ Pre-built `ifc-lite-server` binaries for deployment without a Rust toolchain or 
 
 WebAssembly bindings (the `IfcAPI` class and mesh/profile/clash types). See the [WASM API reference](wasm.md).
 
+### Independent diff WASM module
+
+`@ifc-lite/wasm/diff` exposes the Rust comparison bindings in a separate module.
+Initialize that module explicitly before constructing `DiffModel` handles;
+initializing the geometry engine does not initialize diff, and initializing
+diff does not load the geometry engine. Free each model handle in `finally`.
+The bindings include canonical fingerprints, sidecar encoding and lineage
+helpers. See the `@ifc-lite/wasm` package README for the low-level interface.
+The public `@ifc-lite/diff` comparison API still uses TypeScript during the
+staged facade migration tracked in #8042.
+
 ## @ifc-lite/codegen
 
 TypeScript code generator from IFC EXPRESS schemas. Produces the 876-entity type definitions, CRC32 type ids, serializers, and the parser's generated Rust tables (`generateTypeIds`, `generateSerializers`, `generateRust`). Primarily a build-time tool, not used at runtime.

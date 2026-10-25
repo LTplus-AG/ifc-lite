@@ -8,6 +8,10 @@ The shared composer reserves the measured bands before laying out body blocks. P
 
 ## Blocks
 
+Select blocks with the checkboxes in the editor list or by clicking them on the page. Click again to deselect; Enter or Space toggles a focused page block. Selection is shared across every page fragment of a block and clears when you switch documents.
+
+Drag a selected block's handle in the list to move the whole selection before another block, or drop at the end. The group keeps its document order. Dragging an unselected handle selects and moves only that block. **Move selected before…** provides the same destinations without dragging; **Move to bottom** appends the selection. The existing up/down arrows still move one block at a time.
+
 Use **Copy block** beside the move and remove buttons to place an independent copy immediately after any block. The copy keeps its text, formatting, fields and source references, and is selected for editing. Editing or removing it leaves the original unchanged.
 
 | Block | What it holds | In the PDF |

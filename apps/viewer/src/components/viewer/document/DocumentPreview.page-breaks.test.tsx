@@ -25,7 +25,7 @@ describe('DocumentPreview explicit page breaks (#6485)', () => {
   afterEach(cleanup);
   it('shows distinct paper sections, skips edge/repeated breaks and keeps selection and half rows in the proper section', async () => {
     let selected = '';
-    const ui = render(<DocumentPreview document={spec} bindings={{ models: [], activeModelId: null, today: new Date(0) }} aggregations={new Map()} chartMessages={new Map()} topics={new Map()} selectedBlockId={null} onSelectBlock={(id) => { selected = id; }} />);
+    const ui = render(<DocumentPreview document={spec} bindings={{ models: [], activeModelId: null, today: new Date(0) }} aggregations={new Map()} chartMessages={new Map()} topics={new Map()} onSelectBlock={(id) => { selected = id; }} />);
     await waitFor(() => ui.querySelector('[data-preview-section]') !== null, 'shared document layout ready');
     const papers = ui.querySelectorAll('[data-preview-section]');
     assert.equal(papers.length, 2);

@@ -1,0 +1,26 @@
+[package]
+name = "ifc-lite-diff"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Store-agnostic entity diff engine for IFC models: canonical fingerprints, content matching and lineage"
+keywords = ["ifc", "bim", "diff", "versioning", "aec"]
+categories = ["algorithms", "data-structures"]
+readme = "../../README.md"
+
+[dependencies]
+# ECMAScript-compliant f64 formatting. The data fingerprint is a hash over
+# `JSON.stringify` output, so a number must render exactly as V8 renders it:
+# `1e+21`, not `1000000000000000000000`. Rust's `Display` disagrees in both
+# directions (exponent threshold and form), and this crate implements the
+# `Number::toString` algorithm itself. Licence: Apache-2.0 OR BSL-1.0.
+ryu-js = "1.0.3"
+
+# Keep ordering local: preserve_order would change every workspace consumer.
+serde_json = { workspace = true, features = ["float_roundtrip"] }
+serde.workspace = true
+
+[lints]
+workspace = true

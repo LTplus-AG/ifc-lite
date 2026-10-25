@@ -25,6 +25,10 @@ function object(value: unknown): Record<string, unknown> {
  */
 export function requireFrameEvidence(input: unknown): void {
   const result = object(input);
+  // #7655 tracing changes the workload, even when no device loss occurred.
+  if (result.performanceEligible === false || result.instanceDiagnostics === true) {
+    throw new Error('diagnostic frame evidence is ineligible for performance comparison');
+  }
   if (result.family !== 'browser-frames' || result.rig !== 'deterministic-begin-frame'
     || result.schema !== 2 || result.frameBudgetMs !== FRAME_BUDGET_MS
     || typeof result.browser !== 'string' || !result.browser.startsWith('chrome-headless-shell ')) {

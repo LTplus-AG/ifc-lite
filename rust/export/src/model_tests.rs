@@ -523,6 +523,45 @@ fn the_callback_receives_the_entity_each_row_was_built_from() {
     assert_eq!(seen, vec![Some("W".to_string()), Some("U".to_string())]);
 }
 
+/// One wall in `schema`, typed by `#13` carrying `type_psets`, with `body`
+/// spliced in after it. The two schemas differ here only in `IfcWall`'s
+/// trailing PredefinedType, which IFC2X3 lacks; [`qlen`] handles the other
+/// difference these cases touch.
+fn typed_wall_in(schema: &str, type_psets: &str, body: &str) -> String {
+    let wall_tail = if schema == "IFC2X3" { "" } else { ",$" };
+    format!(
+        "ISO-10303-21;\n\
+         HEADER;\n\
+         FILE_DESCRIPTION((''),'');\n\
+         FILE_NAME('','',(''),(''),'','','');\n\
+         FILE_SCHEMA(('{schema}'));\n\
+         ENDSEC;\n\
+         DATA;\n\
+         #1=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n\
+         #2=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);\n\
+         #3=IFCUNITASSIGNMENT((#1,#2));\n\
+         #4=IFCPROJECT('{proj}',$,'P',$,$,$,$,$,#3);\n\
+         #5=IFCWALL('{wall}',$,'W',$,$,$,$,${wall_tail});\n\
+         #13=IFCWALLTYPE('{wt}',$,'WT',$,$,({type_psets}),$,$,$,.NOTDEFINED.);\n\
+         #14=IFCRELDEFINESBYTYPE('{trel}',$,$,$,(#5),#13);\n\
+         {body}\
+         ENDSEC;\n\
+         END-ISO-10303-21;\n",
+        proj = gid("0PROJECT"),
+        wall = gid("0WALL"),
+        wt = gid("0WALLTYPE"),
+        trel = gid("0TYPEREL"),
+    )
+}
+
+/// `IfcQuantityLength` in `schema`: IFC4 added a trailing Formula.
+fn qlen(schema: &str, id: u32, name: &str, value: &str) -> String {
+    let tail = if schema == "IFC2X3" { "" } else { ",$" };
+    format!("#{id}=IFCQUANTITYLENGTH('{name}',$,$,{value}{tail});\n")
+}
+
+const SCHEMAS: [&str; 2] = ["IFC2X3", "IFC4"];
+
 /// One wall typed by one `IfcWallType`. `own` adds an occurrence-side
 /// `Pset_WallCommon` so the collision case builds from the same skeleton.
 ///
@@ -542,41 +581,32 @@ fn typed_wall(own: bool) -> String {
     } else {
         String::new()
     };
-    format!(
-        "ISO-10303-21;\n\
-         HEADER;\n\
-         FILE_DESCRIPTION((''),'');\n\
-         FILE_NAME('','',(''),(''),'','','');\n\
-         FILE_SCHEMA(('IFC4'));\n\
-         ENDSEC;\n\
-         DATA;\n\
-         #1=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n\
-         #2=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);\n\
-         #3=IFCUNITASSIGNMENT((#1,#2));\n\
-         #4=IFCPROJECT('{proj}',$,'P',$,$,$,$,$,#3);\n\
-         #5=IFCWALL('{wall}',$,'W',$,$,$,$,$,$);\n\
-         #10=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('type'),$);\n\
+    let body = format!(
+        "#10=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('type'),$);\n\
          #11=IFCPROPERTYSINGLEVALUE('Combustible',$,IFCLABEL('F'),$);\n\
          #12=IFCPROPERTYSET('{tps}',$,'Pset_WallCommon',$,(#10,#11));\n\
-         #13=IFCWALLTYPE('{wt}',$,'WT',$,$,(#12),$,$,$,.NOTDEFINED.);\n\
-         #14=IFCRELDEFINESBYTYPE('{trel}',$,$,$,(#5),#13);\n\
-         {own_lines}\
-         ENDSEC;\n\
-         END-ISO-10303-21;\n",
-        proj = gid("0PROJECT"),
-        wall = gid("0WALL"),
+         {own_lines}",
         tps = gid("0TYPEPSET"),
-        wt = gid("0WALLTYPE"),
-        trel = gid("0TYPEREL"),
-    )
+    );
+    typed_wall_in("IFC4", "#12", &body)
 }
 
 fn wall_row(ifc: &str, opts: &ModelOptions) -> EntityRow {
-    build_export_model_with_options(ifc.as_bytes(), opts)
-        .entities
-        .into_iter()
-        .find(|r| r.ifc_type == "IfcWall")
-        .expect("the wall row")
+    wall_row_inherited(ifc, opts).0
+}
+
+/// The wall row and which of its entries it inherited.
+fn wall_row_inherited(ifc: &str, opts: &ModelOptions) -> (EntityRow, Inherited) {
+    let index = Arc::new(ifc_lite_processing::build_entity_index_parallel(
+        ifc.as_bytes(),
+    ));
+    let mut wall = None;
+    stream_export_model_with_inherited(ifc.as_bytes(), &index, opts, |row, inherited, _| {
+        if row.ifc_type == "IfcWall" {
+            wall = Some((row, inherited));
+        }
+    });
+    wall.expect("the wall row")
 }
 
 /// Guards the premise of every case below: the type-side set really is only
@@ -652,46 +682,275 @@ fn the_occurrence_wins_the_collision_and_still_gains_the_type_only_property() {
 /// contract in the Python README, so pinned here rather than assumed.
 #[test]
 fn quantity_sets_inherit_from_the_type_too() {
-    let ifc = format!(
-        "ISO-10303-21;\n\
-         HEADER;\n\
-         FILE_DESCRIPTION((''),'');\n\
-         FILE_NAME('','',(''),(''),'','','');\n\
-         FILE_SCHEMA(('IFC4'));\n\
-         ENDSEC;\n\
-         DATA;\n\
-         #1=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n\
-         #2=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);\n\
-         #3=IFCUNITASSIGNMENT((#1,#2));\n\
-         #4=IFCPROJECT('{proj}',$,'P',$,$,$,$,$,#3);\n\
-         #5=IFCWALL('{wall}',$,'W',$,$,$,$,$,$);\n\
-         #10=IFCQUANTITYLENGTH('Width',$,$,200.,$);\n\
-         #11=IFCELEMENTQUANTITY('{tq}',$,'Qto_WallBaseQuantities',$,$,(#10));\n\
-         #12=IFCWALLTYPE('{wt}',$,'WT',$,$,(#11),$,$,$,.NOTDEFINED.);\n\
-         #13=IFCRELDEFINESBYTYPE('{trel}',$,$,$,(#5),#12);\n\
-         ENDSEC;\n\
-         END-ISO-10303-21;\n",
-        proj = gid("0PROJECT"),
-        wall = gid("0WALL"),
-        tq = gid("0TYPEQTO"),
-        wt = gid("0WALLTYPE"),
-        trel = gid("0TYPEREL"),
-    );
-
-    let off = wall_row(&ifc, &ModelOptions::default());
-    assert!(
-        off.quantity_sets.is_empty(),
-        "unreachable without the option"
-    );
-
     let opts = ModelOptions::default().with_inherit_type_properties(true);
-    let on = wall_row(&ifc, &opts);
-    assert_eq!(on.quantity_sets.len(), 1);
-    assert_eq!(on.quantity_sets[0].name, "Qto_WallBaseQuantities");
-    assert_eq!(
-        on.lookup("Qto_WallBaseQuantities", "Width").as_deref(),
-        Some("200")
+    for schema in SCHEMAS {
+        let body = format!(
+            "{q}#11=IFCELEMENTQUANTITY('{tq}',$,'Qto_WallBaseQuantities',$,$,(#10));\n",
+            q = qlen(schema, 10, "Width", "200."),
+            tq = gid("0TYPEQTO"),
+        );
+        let ifc = typed_wall_in(schema, "#11", &body);
+
+        let (off, off_inherited) = wall_row_inherited(&ifc, &ModelOptions::default());
+        assert!(
+            off.quantity_sets.is_empty(),
+            "{schema}: unreachable without the option"
+        );
+        assert_eq!(off_inherited, Inherited::default(), "{schema}");
+
+        let (on, inherited) = wall_row_inherited(&ifc, &opts);
+        assert_eq!(on.quantity_sets.len(), 1, "{schema}");
+        assert_eq!(
+            on.quantity_sets[0].name, "Qto_WallBaseQuantities",
+            "{schema}"
+        );
+        assert_eq!(
+            on.lookup("Qto_WallBaseQuantities", "Width").as_deref(),
+            Some("200"),
+            "{schema}"
+        );
+        assert!(inherited.quantity(0, 0), "{schema}");
+        assert!(!inherited.quantity(0, 1), "{schema}: past the end");
+    }
+}
+
+/// A type PROPERTY set `Dim` holding `Len`, beside the occurrence's own
+/// QUANTITY set `Dim` holding `Len`. Both flatten to `Dim.Len`, so each entry
+/// must say whose it is for a caller building keys to let the own one win.
+#[test]
+fn an_own_quantity_and_a_same_named_inherited_property_are_told_apart() {
+    let opts = ModelOptions::default().with_inherit_type_properties(true);
+    for schema in SCHEMAS {
+        let body = format!(
+            "#10=IFCPROPERTYSINGLEVALUE('Len',$,IFCLABEL('type'),$);\n\
+             #11=IFCPROPERTYSET('{tps}',$,'Dim',$,(#10));\n\
+             {q}\
+             #21=IFCELEMENTQUANTITY('{oq}',$,'Dim',$,$,(#20));\n\
+             #22=IFCRELDEFINESBYPROPERTIES('{orel}',$,$,$,(#5),#21);\n",
+            q = qlen(schema, 20, "Len", "3."),
+            tps = gid("0TYPEPSET"),
+            oq = gid("0OWNQTO"),
+            orel = gid("0OWNREL"),
+        );
+        let (row, inherited) = wall_row_inherited(&typed_wall_in(schema, "#11", &body), &opts);
+
+        assert_eq!(row.quantity_sets.len(), 1, "{schema}");
+        assert!(!inherited.quantity(0, 0), "{schema}");
+        assert_eq!(row.property_sets.len(), 1, "{schema}");
+        assert!(inherited.property(0, 0), "{schema}");
+    }
+}
+
+/// Two own `Pset_WallCommon` (two `IfcRelDefinesByProperties`). The type's
+/// `FireRating` tops up both, reported as inherited, as the browser merge
+/// does.
+#[test]
+fn every_twin_own_set_is_topped_up_with_a_flagged_copy() {
+    let opts = ModelOptions::default().with_inherit_type_properties(true);
+    let body = format!(
+        "#10=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('type'),$);\n\
+         #11=IFCPROPERTYSET('{tps}',$,'Pset_WallCommon',$,(#10));\n\
+         #20=IFCPROPERTYSINGLEVALUE('IsExternal',$,IFCBOOLEAN(.T.),$);\n\
+         #21=IFCPROPERTYSET('{a}',$,'Pset_WallCommon',$,(#20));\n\
+         #22=IFCRELDEFINESBYPROPERTIES('{ra}',$,$,$,(#5),#21);\n\
+         #23=IFCPROPERTYSINGLEVALUE('LoadBearing',$,IFCBOOLEAN(.F.),$);\n\
+         #24=IFCPROPERTYSET('{b}',$,'Pset_WallCommon',$,(#23));\n\
+         #25=IFCRELDEFINESBYPROPERTIES('{rb}',$,$,$,(#5),#24);\n",
+        tps = gid("0TYPEPSET"),
+        a = gid("0OWNPSETA"),
+        ra = gid("0OWNRELA"),
+        b = gid("0OWNPSETB"),
+        rb = gid("0OWNRELB"),
     );
+    let (row, inherited) = wall_row_inherited(&typed_wall_in("IFC4", "#11", &body), &opts);
+
+    let flags: Vec<Vec<(&str, bool)>> = row
+        .property_sets
+        .iter()
+        .enumerate()
+        .map(|(i, s)| {
+            s.properties
+                .iter()
+                .enumerate()
+                .map(|(j, p)| (p.name.as_str(), inherited.property(i, j)))
+                .collect()
+        })
+        .collect();
+    assert_eq!(
+        flags,
+        [
+            vec![("IsExternal", false), ("FireRating", true)],
+            vec![("LoadBearing", false), ("FireRating", true)],
+        ]
+    );
+}
+
+/// A type set attached by `IfcRelDefinesByProperties` rather than listed in
+/// the type's `HasPropertySets`. The browser reads both, so the export does
+/// too.
+#[test]
+fn a_type_set_attached_by_a_relationship_is_inherited() {
+    let opts = ModelOptions::default().with_inherit_type_properties(true);
+    let body = format!(
+        "#10=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('by relationship'),$);\n\
+         #11=IFCPROPERTYSET('{tps}',$,'Pset_WallCommon',$,(#10));\n\
+         #12=IFCRELDEFINESBYPROPERTIES('{trel}',$,$,$,(#13),#11);\n",
+        tps = gid("0TYPEPSET"),
+        trel = gid("0TYPEPSETREL"),
+    );
+    // `$` for HasPropertySets: the relationship is the only route.
+    let ifc = typed_wall_in("IFC4", "", &body).replace("$,(),$", "$,$,$");
+    assert!(
+        ifc.contains("'WT',$,$,$,$"),
+        "fixture: HasPropertySets must be $"
+    );
+
+    let (row, inherited) = wall_row_inherited(&ifc, &opts);
+    assert_eq!(
+        row.lookup("Pset_WallCommon", "FireRating").as_deref(),
+        Some("by relationship")
+    );
+    assert!(inherited.property(0, 0));
+}
+
+/// The two ways the browser recognises one set reached twice: the same id
+/// (here an unnamed set with no GlobalId, so the id is all there is), and the
+/// same Name and GlobalId under a second id.
+#[test]
+fn a_type_set_reached_twice_is_recognised_by_id_and_by_name_and_global_id() {
+    let opts = ModelOptions::default().with_inherit_type_properties(true);
+    let same_id = "#10=IFCPROPERTYSINGLEVALUE('A',$,IFCLABEL('1'),$);\n\
+                   #11=IFCPROPERTYSET($,$,$,$,(#10));\n\
+                   #12=IFCRELDEFINESBYPROPERTIES('0TYPEPSETREL0000000000',$,$,$,(#13),#11);\n";
+    let row = wall_row(&typed_wall_in("IFC4", "#11", same_id), &opts);
+    assert_eq!(
+        row.property_sets.len(),
+        1,
+        "same id: {:?}",
+        row.property_sets
+    );
+
+    let same_key = format!(
+        "#10=IFCPROPERTYSINGLEVALUE('A',$,IFCLABEL('1'),$);\n\
+         #11=IFCPROPERTYSET('{g}',$,'P',$,(#10));\n\
+         #15=IFCPROPERTYSET('{g}',$,'P',$,(#10));\n\
+         #16=IFCRELDEFINESBYPROPERTIES('{r}',$,$,$,(#13),#15);\n",
+        g = gid("0TYPEPSET"),
+        r = gid("0TYPEPSETREL"),
+    );
+    let row = wall_row(&typed_wall_in("IFC4", "#11", &same_key), &opts);
+    assert_eq!(
+        row.property_sets.len(),
+        1,
+        "same key: {:?}",
+        row.property_sets
+    );
+}
+
+/// An empty set never hides a populated one of the same Name and GlobalId,
+/// whether the empty one is in `HasPropertySets` or earlier among the
+/// relationship-attached sets. The browser counts only populated sets.
+#[test]
+fn an_empty_type_set_does_not_hide_a_populated_one_with_its_identity() {
+    let opts = ModelOptions::default().with_inherit_type_properties(true);
+    let sets = |g: &str, r: &str| {
+        format!(
+            "#10=IFCPROPERTYSINGLEVALUE('A',$,IFCLABEL('populated'),$);\n\
+             #11=IFCPROPERTYSET('{g}',$,'P',$,());\n\
+             #15=IFCPROPERTYSET('{g}',$,'P',$,(#10));\n\
+             {r}"
+        )
+    };
+    let g = gid("0TYPEPSET");
+    let one_rel = format!(
+        "#16=IFCRELDEFINESBYPROPERTIES('{r}',$,$,$,(#13),#15);\n",
+        r = gid("0TYPEPSETREL")
+    );
+    let two_rels = format!(
+        "#16=IFCRELDEFINESBYPROPERTIES('{r1}',$,$,$,(#13),#11);\n\
+         #17=IFCRELDEFINESBYPROPERTIES('{r2}',$,$,$,(#13),#15);\n",
+        r1 = gid("0TYPEPSETRELA"),
+        r2 = gid("0TYPEPSETRELB"),
+    );
+    for (label, type_psets, rels) in [("has sets", "#11", one_rel), ("related", "", two_rels)] {
+        let ifc = typed_wall_in("IFC4", type_psets, &sets(&g, &rels)).replace("$,(),$", "$,$,$");
+        assert_eq!(
+            wall_row(&ifc, &opts).lookup("P", "A").as_deref(),
+            Some("populated"),
+            "{label}"
+        );
+    }
+}
+
+/// One unnamed set with no GlobalId, attached to the type by two
+/// relationships: the id is all that identifies it, and it is inherited once.
+#[test]
+fn a_type_set_related_twice_is_inherited_once() {
+    let opts = ModelOptions::default().with_inherit_type_properties(true);
+    let body = "#10=IFCPROPERTYSINGLEVALUE('A',$,IFCLABEL('1'),$);\n\
+                #11=IFCPROPERTYSET($,$,$,$,(#10));\n\
+                #15=IFCRELDEFINESBYPROPERTIES('0TYPEPSETRELA000000000',$,$,$,(#13),#11);\n\
+                #16=IFCRELDEFINESBYPROPERTIES('0TYPEPSETRELB000000000',$,$,$,(#13),#11);\n";
+    let ifc = typed_wall_in("IFC4", "", body).replace("$,(),$", "$,$,$");
+    let row = wall_row(&ifc, &opts);
+    assert_eq!(row.property_sets.len(), 1, "{:?}", row.property_sets);
+}
+
+/// An occurrence named by two `IfcRelDefinesByType`, a schema violation some
+/// exporters produce. The type `relationships()` reports and the type the row
+/// inherited from must be the same one: the first in FILE order, not the
+/// lowest express id. The second layout writes `#40` before `#14` so the two
+/// orders disagree.
+#[test]
+fn a_doubly_typed_occurrence_inherits_from_the_type_it_is_reported_as() {
+    let opts = ModelOptions::default().with_inherit_type_properties(true);
+    let second_type = format!(
+        "#30=IFCPROPERTYSINGLEVALUE('Source',$,IFCLABEL('type 32'),$);\n\
+         #31=IFCPROPERTYSET('{p2}',$,'Pset_Origin',$,(#30));\n\
+         #32=IFCWALLTYPE('{t2}',$,'WT2',$,$,(#31),$,$,$,.NOTDEFINED.);\n",
+        p2 = gid("0TYPEPSET2"),
+        t2 = gid("0WALLTYPE2"),
+    );
+    let base = typed_wall_in(
+        "IFC4",
+        "#11",
+        &format!(
+            "#10=IFCPROPERTYSINGLEVALUE('Source',$,IFCLABEL('type 13'),$);\n\
+             #11=IFCPROPERTYSET('{p1}',$,'Pset_Origin',$,(#10));\n\
+             {second_type}",
+            p1 = gid("0TYPEPSET1"),
+        ),
+    );
+    let rel_to_32 = |id: u32| {
+        format!(
+            "#{id}=IFCRELDEFINESBYTYPE('{r}',$,$,$,(#5),#32);\n",
+            r = gid("0TYPEREL2")
+        )
+    };
+    // #14 (to #13) first in the file, then #41 (to #32).
+    let later = base.replace(
+        "ENDSEC;\nEND-ISO",
+        &format!("{}ENDSEC;\nEND-ISO", rel_to_32(41)),
+    );
+    // #40 (to #32) written BEFORE #14 (to #13), despite its higher id.
+    let earlier = base.replace(
+        "#13=IFCWALLTYPE",
+        &format!("{}#13=IFCWALLTYPE", rel_to_32(40)),
+    );
+
+    for (ifc, want_type, want_source) in [(later, 13, "type 13"), (earlier, 32, "type 32")] {
+        assert_eq!(ifc.matches("IFCRELDEFINESBYTYPE").count(), 2, "fixture");
+        assert_eq!(
+            wall_row(&ifc, &opts)
+                .lookup("Pset_Origin", "Source")
+                .as_deref(),
+            Some(want_source)
+        );
+        assert_eq!(
+            crate::relationships(ifc.as_bytes()).type_of.get(&5),
+            Some(&want_type)
+        );
+    }
 }
 
 /// One reinforcing bar with the attributes a rebar consumer asks for.

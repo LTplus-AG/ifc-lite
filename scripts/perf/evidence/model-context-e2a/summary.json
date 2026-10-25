@@ -1,0 +1,353 @@
+{
+  "license": "MPL-2.0",
+  "date": "2026-10-23",
+  "disposition": "Scoped infrastructure eligible for review. Native wall-clock timing remains inconclusive. No speedup, performance-neutrality, hardware-GPU or retained-release claim.",
+  "native": {
+    "base": "015efec6c98a26deaa50329fc30545d0fbffeb2b",
+    "head": "d6f127a913de8fcd4dde8103953d1fb663db631b",
+    "host": "Pop x86_64; exclusive admitted benchmark; 2 CPU, 24 GiB",
+    "protocol": "Unmodified registered ifc-benchmark; five balanced interleaved pairs per fixture. Nightly checksum freshness enabled during both ordinary preparations. No tolerance, baseline or sample exclusion changes.",
+    "sourceProof": {
+      "cohort": "e2a-d6f-checksum-native-20261023",
+      "dependencyFileSha256": "72ca4f4e8c21e2bdad5d200b872d489b6308c16b1d4d70d5dcf055a1e5fc0bd3",
+      "branchTracksNewModules": {
+        "element/model_context.rs": true,
+        "appearance/owned_context.rs": true
+      },
+      "receipts": {
+        "base": {
+          "job": "916bc52a-b389-4934-975a-7ec221f00137",
+          "source": "015efec6c98a26deaa50329fc30545d0fbffeb2b",
+          "sourceUnchanged": true,
+          "probeSha256": "d4a48d5d727b09f8061d7ae4f5ea65efa3a9fcaa821ec84ec740f1a9b2878712"
+        },
+        "branch": {
+          "job": "7f72b568-be32-48bb-b58d-c1c07cbe49bc",
+          "source": "d6f127a913de8fcd4dde8103953d1fb663db631b",
+          "sourceUnchanged": true,
+          "probeSha256": "33f8a85c5b41f664457289717cd5bf39d07e6cad3783c7bb21b1e4c327d63a48"
+        }
+      },
+      "status": "Source qualification PASS; timing separately inconclusive."
+    },
+    "measurementJob": "82f29f56-90f7-4a60-8d7f-eea83932c607",
+    "wrapperExitCode": 1,
+    "qualification": {
+      "commandExitCode": 0,
+      "artifactDrift": false,
+      "observedExternalBuildActivity": false,
+      "manifestSha256": "f869eeb20aa8853ff7c70b8a3145acb3e52b2f4c0a40afd2da6872d746249c37",
+      "cpuPolicyChanged": false,
+      "thermalInvalid": false,
+      "throttled": false,
+      "protocolVerdict": {
+        "fingerprintDrift": false,
+        "tooNoisy": true,
+        "realChange": false,
+        "inconclusive": true,
+        "zeroBaselineIncrease": false
+      },
+      "qualified": false,
+      "scope": "Native paired protocol only; sampled visibility, not independent geometry byte-identity proof."
+    },
+    "observations": [
+      {
+        "fixture": {
+          "path": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+          "sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5"
+        },
+        "phases": [
+          {
+            "phase": "parse",
+            "baseMedianMs": 14,
+            "branchMedianMs": 14,
+            "deltaPct": 0,
+            "noisePct": 14.285714285714285,
+            "real": false,
+            "direction": "unchanged"
+          },
+          {
+            "phase": "geometry",
+            "baseMedianMs": 49,
+            "branchMedianMs": 49,
+            "deltaPct": 0,
+            "noisePct": 46.93877551020408,
+            "real": false,
+            "direction": "unchanged"
+          },
+          {
+            "phase": "TOTAL",
+            "baseMedianMs": 64,
+            "branchMedianMs": 64,
+            "deltaPct": 0,
+            "noisePct": 34.375,
+            "real": false,
+            "direction": "unchanged"
+          }
+        ],
+        "counts": {
+          "meshes": [
+            285
+          ],
+          "vertices": [
+            35940
+          ],
+          "triangles": [
+            20322
+          ]
+        }
+      },
+      {
+        "fixture": {
+          "path": "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+          "sha256": "ffdfa9a91ac6a6c301d7da0d7861dfbc3958ceb55098c143a560468702642131"
+        },
+        "phases": [
+          {
+            "phase": "parse",
+            "baseMedianMs": 34,
+            "branchMedianMs": 33,
+            "deltaPct": -2.941176470588235,
+            "noisePct": 2.941176470588235,
+            "real": false,
+            "direction": "faster"
+          },
+          {
+            "phase": "geometry",
+            "baseMedianMs": 4001,
+            "branchMedianMs": 4034,
+            "deltaPct": 0.8247938015496127,
+            "noisePct": 3.0992251937015745,
+            "real": false,
+            "direction": "slower"
+          },
+          {
+            "phase": "TOTAL",
+            "baseMedianMs": 4035,
+            "branchMedianMs": 4068,
+            "deltaPct": 0.8178438661710037,
+            "noisePct": 3.0731102850061958,
+            "real": false,
+            "direction": "slower"
+          }
+        ],
+        "counts": {
+          "meshes": [
+            1402
+          ],
+          "vertices": [
+            218966
+          ],
+          "triangles": [
+            136257
+          ]
+        }
+      },
+      {
+        "fixture": {
+          "path": "tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+          "sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8"
+        },
+        "phases": [
+          {
+            "phase": "parse",
+            "baseMedianMs": 833,
+            "branchMedianMs": 828,
+            "deltaPct": -0.6002400960384154,
+            "noisePct": 0.12004801920768307,
+            "real": false,
+            "direction": "faster"
+          },
+          {
+            "phase": "geometry",
+            "baseMedianMs": 2602,
+            "branchMedianMs": 2604,
+            "deltaPct": 0.07686395080707148,
+            "noisePct": 0.6917755572636434,
+            "real": false,
+            "direction": "slower"
+          },
+          {
+            "phase": "TOTAL",
+            "baseMedianMs": 3435,
+            "branchMedianMs": 3435,
+            "deltaPct": 0,
+            "noisePct": 0.5531295487627365,
+            "real": false,
+            "direction": "unchanged"
+          }
+        ],
+        "counts": {
+          "meshes": [
+            109515
+          ],
+          "vertices": [
+            4515185
+          ],
+          "triangles": [
+            2895374
+          ]
+        }
+      }
+    ],
+    "allCountsMatch": true,
+    "priorInvalidPreparation": "First branch preparation reused the baseline executable and omitted both new modules from its dependency file. Its queued measurement was cancelled before execution. Those artifacts do not qualify performance."
+  },
+  "geometryIdentity": {
+    "job": "6c77d7b4-9148-4c78-b5e3-ea0f4c640c3d",
+    "sourceUnchanged": true,
+    "scope": "Ordered geometry payload only: IDs, class, positions, normals, indices, RGBA, origins, bounds and transforms. Excludes text, material definitions, UVs, textures and instancing. Ordinary untimed identity verification; incidental probe time fields are not performance evidence.",
+    "sameFrozenProbesAsTiming": true,
+    "allSixMatch": true,
+    "comparisons": [
+      {
+        "frame": "default",
+        "meshes": 285,
+        "vertices": 35940,
+        "triangles": 20322,
+        "csgFailures": 0,
+        "degenerateDropped": 0,
+        "meshFingerprintsFnv1a64": [
+          "7377db33331a3523"
+        ],
+        "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc"
+      },
+      {
+        "frame": "default",
+        "meshes": 1402,
+        "vertices": 218966,
+        "triangles": 136257,
+        "csgFailures": 9,
+        "degenerateDropped": 7,
+        "meshFingerprintsFnv1a64": [
+          "e96e7e6149ccd77b"
+        ],
+        "fixture": "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc"
+      },
+      {
+        "frame": "default",
+        "meshes": 109515,
+        "vertices": 4515185,
+        "triangles": 2895374,
+        "csgFailures": 0,
+        "degenerateDropped": 0,
+        "meshFingerprintsFnv1a64": [
+          "9af337ef8f713ce5"
+        ],
+        "fixture": "tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc"
+      },
+      {
+        "frame": "local",
+        "meshes": 285,
+        "vertices": 35916,
+        "triangles": 20290,
+        "csgFailures": 0,
+        "degenerateDropped": 0,
+        "meshFingerprintsFnv1a64": [
+          "85bcc17be4c57bf0"
+        ],
+        "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc"
+      },
+      {
+        "frame": "local",
+        "meshes": 1402,
+        "vertices": 216851,
+        "triangles": 134341,
+        "csgFailures": 9,
+        "degenerateDropped": 9,
+        "meshFingerprintsFnv1a64": [
+          "5f146333f4aca8ac"
+        ],
+        "fixture": "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc"
+      },
+      {
+        "frame": "local",
+        "meshes": 109515,
+        "vertices": 4515080,
+        "triangles": 2895374,
+        "csgFailures": 0,
+        "degenerateDropped": 0,
+        "meshFingerprintsFnv1a64": [
+          "4311a7bf677e919b"
+        ],
+        "fixture": "tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc"
+      }
+    ]
+  },
+  "ciInstructions": {
+    "baseRun": 39923875255,
+    "headRun": 39926408223,
+    "base": "2a5e192229bf851f0123f0617e6d1efa5100bab2",
+    "head": "d6f127a913de8fcd4dde8103953d1fb663db631b",
+    "measuredMerge": "da5807314582d79a452b7317f158a1797123fc7b",
+    "parents": [
+      "2a5e192229bf851f0123f0617e6d1efa5100bab2",
+      "d6f127a913de8fcd4dde8103953d1fb663db631b"
+    ],
+    "stablePatchIdBothPairs": "3c7249e040ad82b863a55673c407f29d6402c172",
+    "metrics": [
+      {
+        "metric": "fzk-haus.parse",
+        "base": 95138327,
+        "merge": 95138327,
+        "delta": 0,
+        "deltaPct": 0.0
+      },
+      {
+        "metric": "fzk-haus.entity-scan",
+        "base": 57461901,
+        "merge": 57461901,
+        "delta": 0,
+        "deltaPct": 0.0
+      },
+      {
+        "metric": "fzk-haus.lookup",
+        "base": 13074748,
+        "merge": 13074748,
+        "delta": 0,
+        "deltaPct": 0.0
+      },
+      {
+        "metric": "fzk-haus.preprocess",
+        "base": 24505130,
+        "merge": 24505130,
+        "delta": 0,
+        "deltaPct": 0.0
+      },
+      {
+        "metric": "fzk-haus.geometry",
+        "base": 376719679,
+        "merge": 376719531,
+        "delta": -148,
+        "deltaPct": -3.92865061926706e-05
+      },
+      {
+        "metric": "fzk-haus.total",
+        "base": 471861249,
+        "merge": 471861101,
+        "delta": -148,
+        "deltaPct": -3.136515243085114e-05
+      }
+    ],
+    "scope": "Current CI FZK single-thread instruction tiebreaker against the exact merge parent. Phase metrics unchanged or148 fewer instructions. No speedup claim, hardware-GPU qualification or wall-clock PASS implied."
+  },
+  "historicalOptInAppearance": {
+    "base": "a4fc04cf1f1a04ed1ad3cff89b3d32d9c97f8751",
+    "head": "fbe0d9bdaf",
+    "sourceCaveat": "Earlier source pair; not a current-head rerun. Equal before/after source snapshots, dirty from fixture-directory symlinks; pinned binary hashes checked. E2a production patches range-diff unchanged after restack.",
+    "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+    "product": 35169,
+    "samplesPerSide": 7,
+    "callsPerSample": 10,
+    "medianPlanMs": {
+      "base": 105.8345538,
+      "branch": 105.988457
+    },
+    "deltaPct": 0.14541866949318027,
+    "baseSpreadPct": 3.5235173826565354,
+    "matchingPlanPayloadFnv1a64": "a1acd76a6fae0275",
+    "verdict": "Within measured phase noise; not an end-to-end browser performance verdict."
+  },
+  "browserLimit": "Earlier SwiftShader cohort completed without device loss but remained too noisy. Two unchanged-base diagnostic loads with a corrected, actual-Worker-tested recorder attribute delayed delivery to main-thread GPU uploads and a WebGL capability probe. Overlapping worker chunk sums are not serial wall time or kernel-only timing. No hardware-GPU or new-head A/B qualification follows.",
+  "lesson": "Source identity requires executable and dependency verification, not just a clean checkout receipt. Inconclusive timing, payload identity and deterministic instruction cost are separate verdicts. Preserve noisy observations and use the agreed CI tiebreaker only for this bounded infrastructure decision."
+}

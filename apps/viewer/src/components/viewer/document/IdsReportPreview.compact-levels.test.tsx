@@ -45,7 +45,7 @@ it('keeps compact specification hierarchy in the canonical document sheets (#655
     page: { size: 'A4', orientation: 'portrait' }, blocks: [block] }}
     bindings={{ models: [], activeModelId: null, today: new Date('2026-10-02T12:00:00Z') }}
     aggregations={new Map()} chartMessages={new Map()} topics={new Map()}
-    selectedBlockId={null} onSelectBlock={() => {}} />);
+    onSelectBlock={() => {}} />);
   await waitFor(() => ui.querySelector('[data-preview-section]') !== null
     && ui.querySelector('[data-layout-pending="true"]') === null, 'actual shared compact layout is prepared');
   const glyph = (text: string) => {
@@ -65,4 +65,23 @@ it('keeps compact specification hierarchy in the canonical document sheets (#655
   const rowGap = parseFloat(material.style.top) - parseFloat(status.style.top);
   const groupGap = parseFloat(second.style.top) - parseFloat(material.style.top);
   assert.ok(groupGap > rowGap + 3, 'extra space distinguishes the next specification from another requirement');
+});
+
+
+it('includes unmatched IDS specifications in the preview benchmark (#8065)', () => {
+  const empty = { ...block, benchmarks: true,
+    summary: { checked: 0, passed: 0, failed: 0, passRate: 0 },
+    checks: block.checks.map((check) => ({ ...check, checked: 0, passed: 0, failed: 0, passRate: 0, rules: [] })),
+  };
+  const ui = render(<IdsReportPreview block={empty} />);
+  assert.match(ui.querySelector('[data-validation-benchmark]')?.textContent ?? '', /Not checked: 2 specifications/);
+  cleanup();
+  const errored = render(<IdsReportPreview block={{ ...empty,
+    checks: empty.checks.map((check, index) => index === 0 ? { ...check, error: 'Evaluation failed' } : check),
+  }} />);
+  assert.match(errored.querySelector('[data-validation-benchmark]')?.textContent ?? '', /Not checked: 1 specification/);
+  assert.match(errored.textContent ?? '', /Evaluation failed/);
+  cleanup();
+  const rules = render(<IdsReportPreview block={{ ...empty, sourceKind: 'rules' }} />);
+  assert.doesNotMatch(rules.querySelector('[data-validation-benchmark]')?.textContent ?? '', /Not checked:/);
 });

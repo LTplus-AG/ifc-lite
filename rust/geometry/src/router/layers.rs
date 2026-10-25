@@ -10,10 +10,11 @@
 //! layer's `IfcMaterial` entity ID so the styling layer can resolve colour
 //! through the existing material-style index.
 //!
-//! Flow:
-//!   1. Build the base mesh via [`GeometryRouter::process_element_with_voids`].
-//!      Subtracting voids FIRST and slicing AFTER is cheaper than slicing first
-//!      and subtracting per-slab: layer planes don't affect opening topology.
+//! Flow (the common program's layer control, `program/layers.rs`):
+//!   1. Admit the buildup, then build the host through the canonical void
+//!      program ([`GeometryRouter::process_element_with_voids`]). Subtracting
+//!      voids FIRST and slicing AFTER is cheaper than slicing first and
+//!      subtracting per-slab: layer planes don't affect opening topology.
 //!   2. Transform each layer-interface plane from the element's local frame
 //!      into the same world-RTC frame the mesh lives in.
 //!   3. Cut the base mesh into N slabs with N-1 planes using the shared
@@ -30,87 +31,11 @@ use crate::material_layer_index::LayerBuildup;
 use crate::{Result, SubMeshCollection};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use rustc_hash::FxHashMap;
-use stages::LayerProgram;
+pub(crate) use stages::{
+    LayerPlaneRequest, LayerProgram, LayerSkip, LayerSliceResult, ReadyLayerPlanes, ReadyLayerSlice,
+};
 
 impl GeometryRouter {
-    /// Helper that consults the attached [`MaterialLayerIndex`][crate::MaterialLayerIndex]
-    /// (if any) and returns per-layer sub-meshes for elements whose buildup
-    /// is sliceable. Used internally by `process_element_with_submeshes` and
-    /// `process_element_with_submeshes_and_voids` — with `void_index = None`
-    /// the sliced mesh is built without void subtraction.
-    ///
-    /// Returns `None` when the router has no layer index, the element has no
-    /// recorded buildup, the buildup is not sliceable, or slicing produced
-    /// fewer than two non-empty sub-meshes (in which case callers should
-    /// fall through to their single-mesh / multi-item paths).
-    pub(crate) fn try_layered_sub_meshes(
-        &self,
-        element: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        void_index: Option<&FxHashMap<u32, Vec<u32>>>,
-    ) -> Option<SubMeshCollection> {
-        let index = self.material_layer_index()?;
-        let buildup = index.get(element.id)?;
-        if !buildup.is_sliceable() {
-            return None;
-        }
-        let empty: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
-        let voids = void_index.unwrap_or(&empty);
-        let collection = match self.process_element_with_material_layers(element, decoder, buildup, voids) {
-            Ok(Some(c)) => c,
-            Ok(None) => return None,
-            Err(_e) => {
-                // A sliceable wall whose base-mesh build errored falls back to a
-                // single solid. Record for the browser; warn for native.
-                self.push_layer_slice_diag(element.id, "skip:base-mesh-error");
-                crate::diag::diag_warn!(
-                    { element_id = element.id, reason = "base-mesh-error",
-                      "material-layers: sliceable element failed to slice, keeping single solid" }
-                    else {
-                        eprintln!("[material-layers] #{}: sliceable but slicing errored", element.id);
-                    }
-                );
-                return None;
-            }
-        };
-        if collection.sub_meshes.len() < 2 {
-            crate::diag::diag_warn!(
-                { element_id = element.id, sub_meshes = collection.sub_meshes.len(),
-                  reason = "fewer-than-two-sub-meshes",
-                  "material-layers: sliceable element produced too few sub-meshes, keeping single solid" }
-                else {
-                    eprintln!(
-                        "[material-layers] #{}: sliceable but produced {} sub-mesh(es) (<2) — keeping single solid",
-                        element.id,
-                        collection.sub_meshes.len()
-                    );
-                }
-            );
-            return None;
-        }
-        crate::diag::diag_debug!(
-            { element_id = element.id, sub_meshes = collection.sub_meshes.len(),
-              "material-layers: sliced element into layer sub-meshes" }
-            else {
-                eprintln!(
-                    "[material-layers] #{}: sliced into {} layer sub-meshes",
-                    element.id,
-                    collection.sub_meshes.len()
-                );
-            }
-        );
-        // Mesh hygiene: slicing the base mesh by layer-interface planes can
-        // introduce zero-area/collinear slivers at the cut, and this layered
-        // path early-returns to its callers (process_element_with_submeshes /
-        // _and_voids) BEFORE their own cleanup loop runs — so clean here, the
-        // single gateway both layered call sites share. See clean_degenerate.
-        let mut collection = collection;
-        for sub in &mut collection.sub_meshes {
-            sub.mesh.clean_degenerate();
-        }
-        Some(collection)
-    }
-
     /// Process an element into per-layer sub-meshes, subtracting any
     /// openings first.
     ///
@@ -118,8 +43,9 @@ impl GeometryRouter {
     /// constituent set, profile set, degenerate) so the caller can fall back
     /// to the existing sub-mesh-voids path without duplicating work.
     ///
-    /// Each emitted [`SubMesh`] carries the layer's `IfcMaterial` entity ID
-    /// as its `geometry_id` — callers key colour lookup on that.
+    /// Each emitted [`SubMesh`][crate::SubMesh] carries the layer's
+    /// `IfcMaterial` entity ID as its `geometry_id` — callers key colour
+    /// lookup on that.
     pub fn process_element_with_material_layers(
         &self,
         element: &DecodedEntity,
@@ -127,29 +53,8 @@ impl GeometryRouter {
         buildup: &LayerBuildup,
         void_index: &FxHashMap<u32, Vec<u32>>,
     ) -> Result<Option<SubMeshCollection>> {
-        let program = match LayerProgram::admit(element, decoder, buildup, self.unit_scale) {
-            Ok(Some(program)) => program,
-            Ok(None) => return Ok(None),
-            Err(skip) => return Ok(self.skip_layers(element.id, skip.reason())),
-        };
-
-        // Void subtraction happens on the merged mesh (cheap + topology-safe).
-        let host = self.process_element_with_voids(element, decoder, void_index)?;
-        let request = match program.accept_host(host) {
-            Ok(request) => request,
-            Err(skip) => return Ok(self.skip_layers(element.id, skip.reason())),
-        };
-        // Planes live in the host's frame: world - rtc - per-element origin.
-        let ready = match request.admit_frame(element, decoder, self).and_then(|r| r.execute()) {
-            Ok(ready) => ready,
-            Err(skip) => return Ok(self.skip_layers(element.id, skip.reason())),
-        };
-        Ok(Some(ready.execute().publish(self, element.id)))
-    }
-
-    fn skip_layers(&self, element_id: u32, reason: &'static str) -> Option<SubMeshCollection> {
-        self.push_layer_slice_diag(element_id, reason);
-        None
+        let ids = void_index.get(&element.id).map(Vec::as_slice).unwrap_or_default();
+        crate::program::GeometryProgram::material_layers(element, buildup, ids).drain_layers(self, decoder)
     }
 }
 

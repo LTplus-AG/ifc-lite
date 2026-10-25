@@ -14,7 +14,7 @@ use ifc_lite_core::{slot, DecodedEntity, EntityDecoder};
 
 /// The boundary contour in Position's XY plane and Position's frame.
 #[derive(Debug, Clone)]
-pub(super) struct BoundedPrismPlan {
+pub(crate) struct BoundedPrismPlan {
     pub(super) contour: Vec<Point2<f64>>,
     pub(super) origin: Point3<f64>,
     pub(super) x_axis: Vector3<f64>,
@@ -26,7 +26,7 @@ pub(super) struct BoundedPrismPlan {
 impl BoundedPrismPlan {
     /// `Ok(None)`: the boundary is over the vertex cap; the refusal is already
     /// on record and the caller leaves the host uncut (#7786).
-    pub(super) fn lower(
+    pub(crate) fn lower(
         processor: &BooleanClippingProcessor,
         half_space: &DecodedEntity,
         decoder: &mut EntityDecoder,

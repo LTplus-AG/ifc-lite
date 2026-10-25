@@ -15,7 +15,7 @@ export function validationReportSummary(report: ValidationReport): ReportSummary
   const summary = calculateSummary(report.specificationResults);
   const totals = { checked: summary.totalEntitiesChecked, passed: summary.totalEntitiesPassed,
     failed: summary.totalEntitiesFailed, passRate: summary.overallPassRate };
-  if (report.source.kind !== 'rules') return totals;
+  if (report.source.kind !== 'rules') return { ...totals, passRate: totals.checked === 0 ? 0 : totals.passRate };
   const warnings = report.specificationResults.reduce((sum, check) =>
     sum + (check.specification.severity === 'warning' ? check.failedCount : 0), 0);
   return { ...totals, failed: totals.failed - warnings, warnings };
@@ -27,4 +27,10 @@ export function reportRingCounts(summary: ReportSummary): ManualCounts {
   const warning = summary.warnings ?? 0;
   return { total: summary.checked, pass: summary.passed, fail: summary.failed, warning,
     unanswered: Math.max(0, summary.checked - summary.passed - summary.failed - warning) };
+}
+
+
+/** An evaluation error is not evidence that a specification matched no entities (#8065). */
+export function isUnmatchedSpecification(applicableCount: number, error: string | undefined): boolean {
+  return applicableCount === 0 && error === undefined;
 }

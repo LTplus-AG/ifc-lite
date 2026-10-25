@@ -8,8 +8,10 @@ import assert from 'node:assert/strict';
 import { register } from 'node:module';
 
 const fixtures = new URL('./lib/__fixtures__/retained-driver/', import.meta.url);
-register(new URL('hooks.mjs', fixtures), { data: { peer: new URL('peer.mjs', fixtures).href } });
-const { peers, imports } = await import(new URL('peer.mjs', fixtures));
+register(new URL('hooks.mjs', fixtures), { data: {
+  peer: new URL('peer.mjs', fixtures).href, client: new URL('client.mjs', fixtures).href,
+} });
+const { peers, imports, nextPeer, holdStartup } = await import(new URL('peer.mjs', fixtures));
 const { RetainedDriver } = await import('../rust/wasm-bindings/js/retained-driver.mjs');
 
 const flush = async () => { for (let i = 0; i < 50; i++) await new Promise((done) => setImmediate(done)); };
@@ -19,8 +21,9 @@ const opcodes = (peer) => peer.commands.map(({ op }) => op);
 
 test('importing the driver fetches no /smlib/ module; construction loads exactly the transport', async () => {
   assert.deepEqual(imports, []);
+  const constructed = nextPeer();
   const driver = new RetainedDriver();
-  await flush();
+  await constructed;
   assert.deepEqual(imports, ['client']);
   assert.equal(peers.at(-1).options.workerUrl, '/smlib/worker.mjs');
   driver.retire();
@@ -83,12 +86,13 @@ test('a replaced transport incarnation retires the driver and every lease', asyn
   await assert.rejects(evaluate(driver), /unavailable/);
 });
 
-test('response identity, oversize mesh and release failures retire the captured Worker', async () => {
+test('#8048 response identity, oversize mesh and release failures retire the captured Worker', async () => {
   for (const fault of ['wrongReply', 'oversize', 'release']) {
+    const constructed = nextPeer();
     const driver = new RetainedDriver();
+    const peer = await constructed;
     if (fault === 'release') {
       const { object } = await evaluate(driver);
-      const peer = peers.at(-1);
       peer.objects.clear();
       driver.releaseObject(object);
       await flush();
@@ -96,8 +100,6 @@ test('response identity, oversize mesh and release failures retire the captured 
       assert.equal(peer.retired, true);
       continue;
     }
-    await flush();
-    const peer = peers.at(-1);
     if (fault === 'wrongReply') peer.wrongReply = true;
     await assert.rejects(evaluate(driver, 0, fault === 'oversize' ? 8 : 4096), fault === 'wrongReply' ? /identity/ : /oversized/);
     assert.equal(driver.live(), false, fault);
@@ -119,9 +121,9 @@ test('curved families need this incarnation’s witnesses; refusal keeps Worker 
   await driver.qualify();
   await evaluate(driver, 1);
   await evaluate(driver, 2);
+  const constructed = nextPeer();
   const failing = new RetainedDriver();
-  await flush();
-  peers.at(-1).failQualification = true;
+  (await constructed).failQualification = true;
   await assert.rejects(failing.qualify(), /witness failed/);
   assert.equal(failing.live(), false, 'failed witnesses retire the Worker');
   driver.retire();
@@ -136,4 +138,25 @@ test('dispatch observation resolves only for a transferred frame and rejects on 
   driver.retire();
   await assert.rejects(never, /retired/);
   await assert.rejects(driver.nextDispatch(1), /retired/);
+});
+
+// #8048: the loader deliberately remains blocked longer than the old fixed
+// callback wait. Only the constructor acknowledgement identifies the new peer.
+test('#8048 delayed startup injects the fault into its own transport', async () => {
+  const previous = peers.at(-1);
+  await holdStartup(true);
+  const constructed = nextPeer();
+  const driver = new RetainedDriver();
+  try {
+    await flush();
+    assert.equal(peers.at(-1), previous, 'the old wait can still select the previous peer');
+  } finally {
+    await holdStartup(false);
+  }
+  const peer = await constructed;
+  assert.notEqual(peer, previous);
+  peer.wrongReply = true;
+  await assert.rejects(evaluate(driver), /identity/);
+  assert.equal(peer.retired, true);
+  assert.equal(driver.live(), false);
 });

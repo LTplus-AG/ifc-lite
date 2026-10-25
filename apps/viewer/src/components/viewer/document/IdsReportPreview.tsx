@@ -10,6 +10,7 @@
  */
 import { BlockHeading } from './BlockHeading';
 import { blockTitle } from '@/lib/document/block-title';
+import { notCheckedIdsSpecifications } from '@/lib/document/ids-report-types';
 import { ValidationBenchmark } from '../validation/ValidationBenchmark';
 import { passRateBand } from '@ifc-lite/ids';
 import { reportStamp } from '@/lib/document/report-provenance';
@@ -157,7 +158,7 @@ export function IdsReportPreview({ block, pointScale = 1 }: IdsReportPreviewProp
         </div>
         {stamp.models && <div className="text-2xs text-neutral-600" data-report-model-scope>{t('validationPanel.history.models', { models: stamp.models })}</div>}
       </>}
-      {block.benchmarks && <ValidationBenchmark summary={block.summary} name={block.sourceName} paper />}
+      {block.benchmarks && <ValidationBenchmark summary={block.summary} name={block.sourceName} paper notCheckedSpecifications={notCheckedIdsSpecifications(block)} />}
       <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 rounded border border-neutral-200 bg-neutral-50 px-2 py-1.5">
         <Stat label={t('document.preview.idsReportChecked')} value={checked.toLocaleString(locale)} />
         <Stat label={t('document.preview.idsReportPassed')} value={passed.toLocaleString(locale)} />

@@ -1,0 +1,465 @@
+[
+  {
+    "name": "identity NUL boundaries and first provenance",
+    "kind": "identity",
+    "init": {
+      "base": {
+        "hash": "old"
+      },
+      "head": {
+        "hash": "new"
+      },
+      "entries": [
+        {
+          "base": "a\u0000b",
+          "here": "c",
+          "reason": "first"
+        },
+        {
+          "base": "a",
+          "here": "b\u0000c",
+          "reason": "second"
+        },
+        {
+          "base": "a\u0000b",
+          "here": "c",
+          "reason": "ignored"
+        }
+      ]
+    },
+    "order": [
+      1,
+      0
+    ]
+  },
+  {
+    "name": "identity collision must not hide a repeated head",
+    "kind": "identity",
+    "init": {
+      "base": {
+        "hash": "old"
+      },
+      "head": {
+        "hash": "new"
+      },
+      "entries": [
+        {
+          "base": "a\u0000b",
+          "here": "c",
+          "reason": "first"
+        },
+        {
+          "base": "a",
+          "here": "b\u0000c",
+          "reason": "second"
+        },
+        {
+          "base": "other",
+          "here": "b\u0000c",
+          "reason": "first"
+        }
+      ]
+    },
+    "error": "two different base identities"
+  },
+  {
+    "name": "identity NUL boundaries and first provenance",
+    "kind": "lineage",
+    "init": {
+      "base": {
+        "hash": "old"
+      },
+      "head": {
+        "hash": "new"
+      },
+      "entries": [
+        {
+          "base": [
+            "a\u0000b"
+          ],
+          "head": [
+            "c"
+          ],
+          "relation": "identity",
+          "reason": "first"
+        },
+        {
+          "base": [
+            "a"
+          ],
+          "head": [
+            "b\u0000c"
+          ],
+          "relation": "identity",
+          "reason": "second"
+        },
+        {
+          "base": [
+            "a\u0000b"
+          ],
+          "head": [
+            "c"
+          ],
+          "relation": "identity",
+          "reason": "ignored"
+        }
+      ]
+    },
+    "order": [
+      1,
+      0
+    ]
+  },
+  {
+    "name": "replaced NUL boundaries and first provenance",
+    "kind": "lineage",
+    "init": {
+      "base": {
+        "hash": "old"
+      },
+      "head": {
+        "hash": "new"
+      },
+      "entries": [
+        {
+          "base": [
+            "a\u0000b"
+          ],
+          "head": [
+            "c"
+          ],
+          "relation": "replaced",
+          "reason": "first"
+        },
+        {
+          "base": [
+            "a"
+          ],
+          "head": [
+            "b\u0000c"
+          ],
+          "relation": "replaced",
+          "reason": "second"
+        },
+        {
+          "base": [
+            "a\u0000b"
+          ],
+          "head": [
+            "c"
+          ],
+          "relation": "replaced",
+          "reason": "ignored"
+        }
+      ]
+    },
+    "order": [
+      1,
+      0
+    ]
+  },
+  {
+    "name": "split NUL boundaries and first provenance",
+    "kind": "lineage",
+    "init": {
+      "base": {
+        "hash": "old"
+      },
+      "head": {
+        "hash": "new"
+      },
+      "entries": [
+        {
+          "base": [
+            "a\u0000b"
+          ],
+          "head": [
+            "c"
+          ],
+          "relation": "split",
+          "reason": "first"
+        },
+        {
+          "base": [
+            "a"
+          ],
+          "head": [
+            "b\u0000c"
+          ],
+          "relation": "split",
+          "reason": "second"
+        },
+        {
+          "base": [
+            "a\u0000b"
+          ],
+          "head": [
+            "c"
+          ],
+          "relation": "split",
+          "reason": "ignored"
+        }
+      ]
+    },
+    "order": [
+      1,
+      0
+    ]
+  },
+  {
+    "name": "merge NUL boundaries and first provenance",
+    "kind": "lineage",
+    "init": {
+      "base": {
+        "hash": "old"
+      },
+      "head": {
+        "hash": "new"
+      },
+      "entries": [
+        {
+          "base": [
+            "a\u0000b"
+          ],
+          "head": [
+            "c"
+          ],
+          "relation": "merge",
+          "reason": "first"
+        },
+        {
+          "base": [
+            "a"
+          ],
+          "head": [
+            "b\u0000c"
+          ],
+          "relation": "merge",
+          "reason": "second"
+        },
+        {
+          "base": [
+            "a\u0000b"
+          ],
+          "head": [
+            "c"
+          ],
+          "relation": "merge",
+          "reason": "ignored"
+        }
+      ]
+    },
+    "order": [
+      1,
+      0
+    ]
+  },
+  {
+    "name": "lineage collision must not hide repeated head",
+    "kind": "lineage",
+    "init": {
+      "base": {
+        "hash": "old"
+      },
+      "head": {
+        "hash": "new"
+      },
+      "entries": [
+        {
+          "base": [
+            "a\u0000b"
+          ],
+          "head": [
+            "c"
+          ],
+          "relation": "identity",
+          "reason": "first"
+        },
+        {
+          "base": [
+            "a"
+          ],
+          "head": [
+            "b\u0000c"
+          ],
+          "relation": "identity",
+          "reason": "first"
+        },
+        {
+          "base": [
+            "other"
+          ],
+          "head": [
+            "b\u0000c"
+          ],
+          "relation": "identity",
+          "reason": "first"
+        }
+      ]
+    },
+    "error": "appears in more than one"
+  },
+  {
+    "name": "merge base array separator collision",
+    "kind": "lineage",
+    "init": {
+      "base": {
+        "hash": "old"
+      },
+      "head": {
+        "hash": "new"
+      },
+      "entries": [
+        {
+          "base": [
+            "a\u0001b",
+            "c"
+          ],
+          "head": [
+            "h"
+          ],
+          "relation": "merge",
+          "reason": "first"
+        },
+        {
+          "base": [
+            "a",
+            "b\u0001c"
+          ],
+          "head": [
+            "h"
+          ],
+          "relation": "merge",
+          "reason": "second"
+        }
+      ]
+    },
+    "error": "appears in more than one"
+  },
+  {
+    "name": "split head array separator collision",
+    "kind": "lineage",
+    "init": {
+      "base": {
+        "hash": "old"
+      },
+      "head": {
+        "hash": "new"
+      },
+      "entries": [
+        {
+          "base": [
+            "b"
+          ],
+          "head": [
+            "a\u0001b",
+            "c"
+          ],
+          "relation": "split",
+          "reason": "first",
+          "shares": [
+            0.2,
+            0.8
+          ]
+        },
+        {
+          "base": [
+            "b"
+          ],
+          "head": [
+            "a",
+            "b\u0001c"
+          ],
+          "relation": "split",
+          "reason": "second",
+          "shares": [
+            0.4,
+            0.6
+          ]
+        }
+      ]
+    },
+    "error": "appears in more than one"
+  },
+  {
+    "name": "lineage true duplicates keep shares and reason",
+    "kind": "lineage",
+    "init": {
+      "base": {
+        "hash": "old"
+      },
+      "head": {
+        "hash": "new"
+      },
+      "entries": [
+        {
+          "base": [
+            "b"
+          ],
+          "head": [
+            "a",
+            "c"
+          ],
+          "relation": "split",
+          "reason": "first",
+          "shares": [
+            0.2,
+            0.8
+          ]
+        },
+        {
+          "base": [
+            "b"
+          ],
+          "head": [
+            "a",
+            "c"
+          ],
+          "relation": "split",
+          "reason": "ignored",
+          "shares": [
+            0.4,
+            0.6
+          ]
+        }
+      ]
+    },
+    "order": [
+      0
+    ]
+  },
+  {
+    "name": "identity lossless code units and escaped text",
+    "kind": "identity",
+    "init": {
+      "base": {
+        "hash": "old"
+      },
+      "head": {
+        "hash": "new"
+      },
+      "entries": [
+        {
+          "base": "\ud800\u0000b",
+          "here": "c",
+          "reason": "first"
+        },
+        {
+          "base": "\ud800",
+          "here": "b\u0000c",
+          "reason": "first"
+        },
+        {
+          "base": "\\ud800",
+          "here": "literal",
+          "reason": "first"
+        }
+      ]
+    },
+    "order": [
+      2,
+      1,
+      0
+    ]
+  }
+]

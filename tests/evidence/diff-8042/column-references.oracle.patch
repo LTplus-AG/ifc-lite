@@ -1,0 +1,11 @@
+--- a/rust/diff/src/columns.rs
++++ b/rust/diff/src/columns.rs
+@@ -54,7 +54,7 @@
+         result.push(EntityFingerprint { key:string(fields[0])?,ifc_type:string(fields[1])?,data_hash:string(fields[2])?,
+             geometry_hash:optional(fields[3])?,container:optional(fields[4])?,
+             aabb:if flags & 1 != 0 {Some(EntityAabb {min:std::array::from_fn(|i|columns.boxes[row*6+i]),max:std::array::from_fn(|i|columns.boxes[row*6+3+i])})} else {None},
+-            volume:if flags & 2 != 0 {Some(columns.volumes[row])} else {None},components,reference:0 });
++            volume:if flags & 2 != 0 {Some(columns.volumes[row])} else {None},components,reference:row });
+     }
+     Ok(result)
+ }

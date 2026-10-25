@@ -36,6 +36,16 @@ test('#6975 admits complete real-reducer rows without claiming any metric repeat
   assert.doesNotThrow(() => requireFrameEvidence(evidence()));
 });
 
+test('#7655 diagnostic runs cannot enter the performance ratchet even with healthy complete frames', () => {
+  for (const marker of [
+    { performanceEligible: false },
+    { instanceDiagnostics: true },
+    { performanceEligible: false, instanceDiagnostics: true },
+  ]) {
+    assert.throws(() => requireFrameEvidence({ ...evidence(), ...marker }), /diagnostic frame evidence is ineligible/);
+  }
+});
+
 test('#6975 canonical cache readiness uses cache.storeReady instead of demanding a parser rerun', () => {
   const result = evidence();
   result.samples[0].readiness = { ended: true, loadPath: 'cache',

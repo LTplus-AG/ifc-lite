@@ -1,0 +1,109 @@
+{
+  "id": "83eed276-cf0b-4438-bde5-38d6a2205b2c",
+  "host": {
+    "host": "louistrue-pc",
+    "os": "Linux",
+    "arch": "x86_64",
+    "cpus": 24,
+    "availableMemoryBytes": 63768096768,
+    "totalMemoryBytes": 67423588352,
+    "python": "3.14.4",
+    "time": 1792801557.698723
+  },
+  "cwd": "/home/louistrue/build-workers/worker-state/checkouts/4f90b5f332454b94e499032f212f05cb3b4a105e",
+  "sourceBefore": {
+    "commit": "4f90b5f332454b94e499032f212f05cb3b4a105e",
+    "tree": "1404e0cb41d011d3567ae2f25a4f5edf61f4e4bc",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "93f65afec7fcd986eb4cdf5f3b4576359312c6c229bcff7fcc1fdbd5dd49d599",
+      "pnpm-lock.yaml": "4ef03ad9b34812de9d0e6c309d04ae315c09f887c3927f67ab6e31f8131e5283",
+      "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937"
+    }
+  },
+  "command": [
+    "python3",
+    "/home/louistrue/build-workers/worker-state/storage-tasks/hidpi-6709-async-candidate-pc-20261024/shared-runtime-repack/repack-pc-candidate.py",
+    "c3bc74a3-edcd-4003-aef4-a4a9fee28037",
+    "9c8e0038-eca5-4617-b273-03f6a4ead815"
+  ],
+  "kind": "ordinary",
+  "requestedAt": 1792801557.6848795,
+  "resources": [
+    "/home/louistrue/build-workers/worker-state/checkouts/4f90b5f332454b94e499032f212f05cb3b4a105e",
+    "/home/louistrue/build-workers/worker-state/caches/ffd5aca8d0d31342218f4bc9"
+  ],
+  "state": "completed",
+  "cpu": 4,
+  "memoryGiB": 16,
+  "storageTask": "hidpi-6709-async-candidate-pc-20261024",
+  "storageTaskExplicit": true,
+  "storageResources": [
+    {
+      "path": "/home/louistrue/build-workers/worker-state/caches/ffd5aca8d0d31342218f4bc9",
+      "role": "cache",
+      "project": "ifc-lite",
+      "compatibilityKey": "ffd5aca8d0d31342218f4bc9",
+      "cacheLane": 0,
+      "compatibilityGroup": "ffd5aca8d0d31342218f4bc9"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/checkouts/4f90b5f332454b94e499032f212f05cb3b4a105e",
+      "role": "worktree"
+    }
+  ],
+  "fixtures": {},
+  "tools": {
+    "git": {
+      "path": "/usr/local/bin/git",
+      "exitCode": 0,
+      "version": "git version 2.53.0"
+    },
+    "rustc": {
+      "path": "/home/louistrue/.cargo/bin/rustc",
+      "exitCode": 0,
+      "version": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+    },
+    "cargo": {
+      "path": "/home/louistrue/.cargo/bin/cargo",
+      "exitCode": 0,
+      "version": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)"
+    },
+    "node": {
+      "path": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/node",
+      "exitCode": 0,
+      "version": "v24.21.0"
+    },
+    "pnpm": {
+      "path": "/home/louistrue/.nvm/versions/node/v24.21.0/bin/pnpm",
+      "exitCode": 0,
+      "version": "10.8.1"
+    }
+  },
+  "runnerSha256": "3d86d1cc7938b19d3dfd3f3eb9489675dfdc3db575935d827dbbf283980331a8",
+  "startedAt": 1792801558.0098763,
+  "queueSeconds": 0.3249969482421875,
+  "resourceScope": false,
+  "exitCode": 0,
+  "finishedAt": 1792801674.9696343,
+  "sourceAfter": {
+    "commit": "4f90b5f332454b94e499032f212f05cb3b4a105e",
+    "tree": "1404e0cb41d011d3567ae2f25a4f5edf61f4e4bc",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "93f65afec7fcd986eb4cdf5f3b4576359312c6c229bcff7fcc1fdbd5dd49d599",
+      "pnpm-lock.yaml": "4ef03ad9b34812de9d0e6c309d04ae315c09f887c3927f67ab6e31f8131e5283",
+      "package.json": "6089a3a41cc3c2687d3d270a2cf1e21661e060256305c23d1d127025c4d19937"
+    }
+  },
+  "sourceUnchanged": true,
+  "artifacts": {
+    "/home/louistrue/build-workers/worker-state/storage-tasks/hidpi-6709-async-candidate-pc-20261024/shared-runtime-repack/pc-shared-runtime-repack.json": "c9ac3653281601e931ce57615d177d9e2985753442207f9d877e8b6800c16944",
+    "/home/louistrue/build-workers/worker-state/storage-tasks/hidpi-6709-async-candidate-pc-20261024/shared-runtime-repack/prior-candidate.wasm": "db115f6e42663e1e72a3e6619bcd6f32ee2fe83ceb56191edf222c9f8c7519da"
+  },
+  "outputSha256": "fd1de9cd89a2182e444eb9f3dca7ae75d76ce0cf3d3175d489a280f8f72eaec3"
+}

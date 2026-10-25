@@ -263,7 +263,7 @@ fn issue_5786_target_parse_error_precedes_origin_parse_error() {
     assert!(result.descriptions.elements.is_empty());
     assert!(result.descriptions.diagnostics.iter().any(|message|
         message.contains("product #50: mapped item #47: mapped transform: ")
-            && message.contains("IfcDirection missing ratios")),
+            && message.contains("Entity #1001 is malformed geometry input")),
         "target parse must win over independently malformed origin: {:?}",
         result.descriptions.diagnostics);
 }

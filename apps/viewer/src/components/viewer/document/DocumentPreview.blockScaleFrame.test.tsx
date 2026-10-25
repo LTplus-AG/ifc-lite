@@ -44,7 +44,7 @@ async function show(page: Page, blocks: DocumentBlock[]): Promise<HTMLDivElement
   container = host;
   root = createRoot(host);
   const aggregations = new Map(blocks.flatMap((b) => (b.kind === 'chart' ? [[b.id, aggregation] as const] : [])));
-  act(() => root?.render(<DocumentPreview document={document} bindings={BINDINGS} aggregations={aggregations} chartMessages={new Map()} topics={new Map()} selectedBlockId={null} onSelectBlock={() => {}} />));
+  act(() => root?.render(<DocumentPreview document={document} bindings={BINDINGS} aggregations={aggregations} chartMessages={new Map()} topics={new Map()} onSelectBlock={() => {}} />));
   await documentPreviewReady();
   return host;
 }

@@ -1,0 +1,22 @@
+--- a/rust/export/src/plan/add.rs
++++ b/rust/export/src/plan/add.rs
+@@ -240,7 +240,7 @@ impl<'a> AddState<'a> {
+             // Mandatory in IFC2X3; ELEMENT is what a single storey or space is.
+             fields.push(("CompositionType", ".ELEMENT.".into()));
+         }
+-        if let Some(e) = obj.elevation.filter(|_| false) {
++        if let Some(e) = obj.elevation {
+             fields.push(("Elevation", fmt(e)));
+         }
+         let object = emit.record(&c.class, &fields)?;
+--- a/rust/export/src/plan/add_check.rs
++++ b/rust/export/src/plan/add_check.rs
+@@ -141,7 +141,7 @@ impl AddState<'_> {
+         }
+ 
+         let (class, predefined) = self.check_class(&obj.class, "IFCPRODUCT")?;
+-        if let Some(e) = obj.elevation.filter(|_| false) {
++        if let Some(e) = obj.elevation {
+             if !self.is_a(&class, "IFCBUILDINGSTOREY") {
+                 return Err(format!("{class} has no Elevation; only a storey takes one"));
+             }

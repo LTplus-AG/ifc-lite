@@ -5,8 +5,10 @@ revisions as **added / modified / deleted / unchanged**, with separable
 **data vs geometry** scope — the engine behind the viewer's "compare two
 versions" mode.
 
-The package is **pure and store-agnostic**: it never touches a parser, a WASM
-module, or a renderer. Adapters (the CLI, the viewer) extract a fingerprint per
+The public comparison API is **pure and store-agnostic**: it consumes adapter
+fingerprints without invoking a parser or renderer. The package also depends on
+`@ifc-lite/wasm` for the staged Rust backend being qualified under #8042;
+public entry points retain their current synchronous initialization contract. Adapters (the CLI, the viewer) extract a fingerprint per
 entity and hand them over; the engine matches by key and classifies.
 
 ## Installation
@@ -161,7 +163,11 @@ files say, and applying either claim would pick an arbitrary winner. See the
 `lineageFromDiff` turns committed matches, split/merge claims and *accepted*
 successor claims into 1:k `{ base[], head[], relation, reason, shares? }`
 entries; `rekeyByLineage` answers "where does the row keyed on this old key
-go" under a `copy-to-all` / `largest-share` / `orphan-on-split` policy; the
+go" under a `copy-to-all` / `largest-share` / `orphan-on-split` policy.
+`largest-share` orphans a split when shares are missing, empty, do not match
+the head count, contain non-finite or negative values, or tie for the maximum.
+It does not throw for invalid share evidence. Zero is valid and shares need
+not sum to one. The
 `ifc-lite/lineage` sidecar pins both model digests like the identity map does.
 
 ### Building a data fingerprint
@@ -208,7 +214,7 @@ The geometry fingerprint is computed in `ifc_lite_geometry::geom_hash` and
 exposed over the WASM boundary (`IfcAPI.setComputeGeometryHashes` →
 `MeshCollection.geometryHashValues`). It is RTC-invariant (a file's origin-shift
 never registers as a change) and tolerance-quantized. This package only
-*consumes* those hashes, keeping it dependency-free and unit-testable.
+*consumes* those hashes, keeping the comparison independent of the parser and renderer.
 
 ## Docs
 
@@ -218,3 +224,5 @@ See the [ifc-lite docs](https://ifclite.dev/docs/) and the
 ## License
 
 MPL-2.0
+
+The staged runtime initializes the independent `@ifc-lite/wasm/diff` module. It does not initialize the geometry engine. The diff module is built with `pnpm build:wasm`; its generated declarations are committed for wasm-free typechecking.

@@ -140,7 +140,7 @@ pub(super) fn encode_png(atlas: &page_atlas::Atlas, limit: usize) -> Result<Vec<
     writer.finish().map_err(|e| e.to_string())?;
     Ok(output.bytes)
 }
-fn bind_images(plan: &mut AppearancePlan, images: &[AppearanceItemImage], source: &mut Source<'_>, styles: &crate::prepass::ResolvedPrepass) -> Result<(), String> {
+fn bind_images(plan: &mut AppearancePlan, images: &[AppearanceItemImage], source: &mut Source<'_>, styles: &super::owned_context::Styles) -> Result<(), String> {
     if images.is_empty() { return Ok(()); }
     let master_image = plan.created.iter().find(|e| e.r#type == "IfcImageTexture").ok_or("Missing planned image")?.clone();
     let master_textures = plan.created.iter().find(|e| e.r#type == "IfcSurfaceStyleWithTextures").ok_or("Missing planned textures")?.clone();

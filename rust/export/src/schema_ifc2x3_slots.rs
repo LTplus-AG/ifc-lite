@@ -122,7 +122,7 @@ impl Ifc2x3SlotFill {
 /// `(total attribute count, required slots)` for an UPPERCASE IFC2X3 entity
 /// type, or `None` when IFC2X3 declares no mandatory slot for it (or does not
 /// know the type).
-fn required_slots(entity_type: &str) -> Option<(u8, &'static [Ifc2x3RequiredSlot])> {
+pub(crate) fn required_slots(entity_type: &str) -> Option<(u8, &'static [Ifc2x3RequiredSlot])> {
     let index = IFC2X3_REQUIRED_SLOTS.binary_search_by(|row| row.0.cmp(entity_type)).ok()?;
     let (_, arity, slots) = IFC2X3_REQUIRED_SLOTS[index];
     Some((arity, slots))

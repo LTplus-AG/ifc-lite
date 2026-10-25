@@ -23,9 +23,9 @@ fn slots(schema: &str, rel_type: &str) -> Option<(usize, usize)> {
     Some((attribute_index(schema, rel_type, relating)?, attribute_index(schema, rel_type, related)?))
 }
 
-/// A containment or aggregation relationship that went because its relating
-/// object (or another record it named) did, while some of what it related
-/// stayed. A contained element has lost its container. An aggregated one is
+/// A containment or aggregation relationship the plan deleted, or that went
+/// because its relating object (or another record it named) did, while some
+/// of what it related stayed. A contained element has lost its container. An aggregated one is
 /// out of the tree only when its parent was a place in it (the project or a
 /// spatial structure element), not an assembly, a spatial zone or an external
 /// spatial element. Known limit: a part placed only through a deleted
@@ -58,8 +58,9 @@ pub(super) fn unplaced_by_removed_structure(
         let label = if rel_type == AGGREGATION { "parent" } else { "container" };
         // The relationship is gone either way; say why.
         let cause = match parent {
-            _ if reasons.get(&rel) == Some(&RemovalReason::Requested) => format!("#{rel}, which related it to its {label}, was deleted"),
             Some(p) if removed.contains(&p) => format!("the {label} #{p} it was related to in #{rel} was deleted"),
+            Some(p) if reasons.get(&rel) == Some(&RemovalReason::Requested) => format!("#{rel}, which related it to its {label} #{p}, was deleted"),
+            None if reasons.get(&rel) == Some(&RemovalReason::Requested) => format!("#{rel}, which related it to its {label}, was deleted"),
             Some(p) => format!("#{rel}, which related it to its {label} #{p}, was removed because it referenced a deleted record"),
             None => format!("#{rel}, which related it to its {label}, was removed"),
         };

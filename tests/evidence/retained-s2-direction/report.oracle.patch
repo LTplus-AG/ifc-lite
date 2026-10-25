@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/mapping_directions.rs
++++ b/rust/geometry/src/program/mapping_directions.rs
+@@ -4,7 +4,7 @@
+ use crate::{Result, Vector3};
+
+ fn refused() -> crate::Error {
+-    crate::Error::geometry("retained admission failed")
++    crate::Error::geometry("retained mapping direction admission refused")
+ }
+
+ // Shared leaf reading owns numeric/category validity. The retained boundary

@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MPL-2.0
+# Reverse application mutates one numerical action; SDK execution remains UNRUN.
+diff --git a/rust/geometry-runtime/src/worker_dependencies.rs b/rust/geometry-runtime/src/worker_dependencies.rs
+--- a/rust/geometry-runtime/src/worker_dependencies.rs
++++ b/rust/geometry-runtime/src/worker_dependencies.rs
+@@ -172,7 +172,7 @@
+                 let (solid, value, operations) = result.parts()?;
+                 rigid(*world_from_result).map_err(WorkerError::InvalidArgument)?;
+                 let lineage = RetainedLineage::Placed { value, world_from_evaluation: *world_from_result };
+-                Ok((solid, multiply(*world_from_result, result.world_from_evaluation), Arc::new(lineage), operations))
++                Ok((solid, *world_from_result, Arc::new(lineage), operations))
+             }
+             Self::Affine {
+                 copy,

@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared at 82d137b85c17f9dc0521d0ad8120bd218eedaeb2; apply in reverse; Rust execution UNRUN.
+# Historical input (unchanged): tests/evidence/retained-s2-review/representation.oracle.patch; SHA256 e1db9f67ee4c8e29f1d9155b2d8bbef224161db1d84a612c5215bdc27c60db7d
+--- a/rust/geometry/src/program/mapping_validation.rs
++++ b/rust/geometry/src/program/mapping_validation.rs
+@@ -139,7 +139,7 @@
+             MappingReason::ReferenceRequired, "retained MappedRepresentation requires a reference"))?;
+     let representation = decoder.decode_by_id(representation)
+         .map_err(|error| MappingFailure::core(FailureSite::MappedRepresentation, representation, error))?;
+-    if false && !matches!(representation.ifc_type, IfcType::IfcShapeRepresentation | IfcType::IfcTopologyRepresentation) {
++    if !matches!(representation.ifc_type, IfcType::IfcShapeRepresentation | IfcType::IfcTopologyRepresentation) {
+         return Err(MappingFailure::refused(FailureSite::MappedRepresentation, representation.id,
+             MappingReason::Category, "retained MappedRepresentation requires a supported representation"));
+     }

@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/resource/mod.rs
++++ b/rust/geometry/src/resource/mod.rs
+@@ -205,7 +205,7 @@
+             SOURCE_STOP.with(|slot| *slot.borrow_mut() = self.source.take());
+             TERMINAL.with(|slot| slot.set(self.terminal));
+             #[cfg(any(test, feature = "retained-runtime"))]
+-            drop(self.owned.take());
++            owned::OWNED.with(|slot| *slot.borrow_mut() = self.owned.take());
+         }
+     }
+     let _restore = Restore {

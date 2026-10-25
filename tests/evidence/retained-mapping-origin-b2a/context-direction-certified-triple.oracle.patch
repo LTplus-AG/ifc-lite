@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared at 82d137b85c17f9dc0521d0ad8120bd218eedaeb2; apply in reverse; Rust execution UNRUN.
+# Historical input (unchanged): tests/evidence/retained-s2-direction/certified-triple.oracle.patch; SHA256 030a590706d5218ba0cb348ade193f7de893923ea5f641e6e4d93dce60a823b3
+--- a/rust/geometry/src/program/mapping_directions.rs
++++ b/rust/geometry/src/program/mapping_directions.rs
+@@ -57,8 +57,7 @@
+ // triple product. Exact zero rejects dependence even when rounded cross/dot
+ // arithmetic would manufacture a nonzero residual (#7955).
+ fn independent_triple(a: Vector3<f64>, b: Vector3<f64>, c: Vector3<f64>) -> bool {
+-    let scaled = |v: Vector3<f64>| v / v.iter().fold(0.0_f64, |m, x| m.max(x.abs()));
+-    scaled(a).cross(&scaled(b)).dot(&scaled(c)) != 0.0
++    rational::orient3d_exact(a.into(), b.into(), c.into(), [0.0; 3]) != Sign::Zero
+ }
+ 
+ fn admit_pair(entity: u32, a: Vector3<f64>, b: Vector3<f64>) -> Result<()> {

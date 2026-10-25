@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/mapping_retained.rs
++++ b/rust/geometry/src/program/mapping_retained.rs
+@@ -319,4 +319,3 @@
+         }
+-        if false { Self::validate_retained_items(&representation, decoder)?; }
+-        Ok(())
++        Self::validate_retained_items(&representation, decoder)
+     }

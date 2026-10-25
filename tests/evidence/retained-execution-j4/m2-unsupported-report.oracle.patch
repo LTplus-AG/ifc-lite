@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MPL-2.0
+# Reverse application mutates only the named refusal contract; execution UNRUN.
+--- a/rust/processing/src/element/session_retained/error.rs
++++ b/rust/processing/src/element/session_retained/error.rs
+@@ -122,7 +122,7 @@
+                     Some(ProgramStop::Cancelled) => Code::Cancelled, _ => Code::ResourceExhausted,
+                 },
+                 Kind::Cancelled => Code::Cancelled,
+-                Kind::OperationUnsupported => Code::SourceInvalid,
++                Kind::OperationUnsupported => Code::OperationUnsupported,
+                 Kind::DeadlineExceeded => Code::DeadlineExceeded,
+                 Kind::WrongOwner => Code::OwnerMismatch,
+                 Kind::Source | Kind::Unsupported => Code::SourceInvalid,

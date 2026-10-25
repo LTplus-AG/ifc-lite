@@ -1,0 +1,26 @@
+[
+  {
+    "id": "source-admission",
+    "patch": "tests/evidence/retained-execution-j4/source-admission.oracle.patch",
+    "test": "element::session_retained::adversarial_tests::common_retained_wrong_original_admission_rejects_before_consumption_then_duplicate_rejects",
+    "intendedFailure": "Behavioral assertion in the named real SDK test; compile failure or skip is not evidence."
+  },
+  {
+    "id": "ordered-invocation",
+    "patch": "tests/evidence/retained-execution-j4/ordered-invocation.oracle.patch",
+    "test": "element::session_retained::boolean_tests::h2c_sdk_mapped_boolean_operand_scale_changes_the_authored_cut_volume",
+    "intendedFailure": "Behavioral assertion in the named real SDK test; compile failure or skip is not evidence."
+  },
+  {
+    "id": "accepted-outcome",
+    "patch": "tests/evidence/retained-execution-j4/accepted-outcome.oracle.patch",
+    "test": "element::session_retained::boolean_tests::h2c_sdk_empty_definition_reaches_later_operands_and_final_witness",
+    "intendedFailure": "Behavioral assertion in the named real SDK test; compile failure or skip is not evidence."
+  },
+  {
+    "id": "post-await-stop",
+    "patch": "tests/evidence/retained-execution-j4/post-await-stop.oracle.patch",
+    "test": "element::session_retained::async_tests::j4_original_stop_after_await_refuses_delivery_and_retires_only_captured_domain",
+    "intendedFailure": "Behavioral assertion in the named real SDK test; compile failure or skip is not evidence."
+  }
+]

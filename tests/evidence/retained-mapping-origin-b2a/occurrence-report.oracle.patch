@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared at 82d137b85c17f9dc0521d0ad8120bd218eedaeb2; apply in reverse; Rust execution UNRUN.
+--- a/rust/geometry/src/program/mapping_retained.rs
++++ b/rust/geometry/src/program/mapping_retained.rs
+@@ -72,7 +72,7 @@
+         let admitted = (|| {
+             if self.levels.is_empty() { state.selection.enter(item.id, &[])?; }
+             validation::occurrence(item, decoder)
+-                .map_err(|error| crate::Error::geometry(error.diagnostic()))?;
++                .map_err(|error| error.into_common(&state.selection))?;
+             // Reuse source and transform admission, explicitly disabling the
+             // exact instancing/cache paths. Validate every target even on hits.
+             let source = router.admit_styled_occurrence(item,

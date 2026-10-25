@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared at 82d137b85c17f9dc0521d0ad8120bd218eedaeb2; apply in reverse; Rust execution UNRUN.
+# Historical input (unchanged): tests/evidence/retained-s2-direction/authored-values.oracle.patch; SHA256 8128156c70818b233c8b15c0db66215b91fc0d898edbd7a7aac5c809ef4b3c51
+--- a/rust/geometry/src/program/mapping_directions.rs
++++ b/rust/geometry/src/program/mapping_directions.rs
+@@ -40,7 +40,7 @@
+     if scale == 0.0 {
+         return Err(refused(id, MappingReason::ZeroDirection));
+     }
+-    Ok(Some(Vector3::from(raw) / scale))
++    Ok(Some(Vector3::from(raw)))
+ }
+ 
+ // Use the existing BigRational tier directly, not the floating-point filter:

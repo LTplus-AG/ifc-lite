@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/mapping_retained.rs
++++ b/rust/geometry/src/program/mapping_retained.rs
+@@ -287,5 +287,5 @@
+         match target.get(index) {
+             None | Some(AttributeValue::Null | AttributeValue::Integer(_)) => Ok(()),
+-            Some(AttributeValue::Float(value)) if value.is_finite() || true => Ok(()),
++            Some(AttributeValue::Float(value)) if value.is_finite() => Ok(()),
+             _ => Err(crate::Error::geometry("retained MappingTarget Scale requires a finite number or absence")),
+         }

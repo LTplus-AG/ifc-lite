@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/document/retained.rs
++++ b/rust/geometry/src/document/retained.rs
+@@ -137,7 +137,7 @@
+     #[cfg(any(test, feature = "retained-runtime"))]
+     #[cfg_attr(not(test), allow(dead_code))]
+     pub(crate) fn same_admission(&self, other: &Self) -> bool {
+-        self.document == other.document && self.revision == self.revision
++        self.document == other.document && self.revision == other.revision
+             && self.definition == other.definition && self.worker_incarnation == other.worker_incarnation
+             && Arc::ptr_eq(&self.entry, &other.entry)
+     }

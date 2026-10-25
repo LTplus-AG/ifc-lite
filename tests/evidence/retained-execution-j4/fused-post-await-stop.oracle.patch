@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MPL-2.0
+# Reverse application ignores the checkpoint resource result; original patch retained.
+--- a/rust/processing/src/element/session_retained/batch.rs
++++ b/rust/processing/src/element/session_retained/batch.rs
+@@ -68,7 +68,7 @@
+         Ok(())
+     }
+     pub(super) fn checkpoint(&self) -> Result<(), RetainedExecutionError> {
+-        let _ = check_resources(&self.resources);
++        check_resources(&self.resources)?;
+         self.lifecycle
+             .validate()
+             .map_err(RetainedExecutionError::Source)?;

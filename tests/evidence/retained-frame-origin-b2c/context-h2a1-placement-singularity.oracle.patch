@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: MPL-2.0
+# B2c source-context replacement; apply in reverse to mutate. Execution UNRUN.
+--- a/rust/geometry/src/program/retained/frame.rs
++++ b/rust/geometry/src/program/retained/frame.rs
+@@ -14,8 +14,8 @@
+         if program != self.slot.program {
+             return Err(ValueReason::PlacementDomain.into());
+         }
+-        if false { validate_affine(transform)?; }
+-        if false && matches!(stage, RetainedPlacementStage::Product { .. }) { proper_rigid(transform)?; }
++        validate_affine(transform)?;
++        if matches!(stage, RetainedPlacementStage::Product { .. }) { proper_rigid(transform)?; }
+         let matrix = crate::math::mat4::col_major_array(transform);
+         // Finite inputs need not compose to a finite frame. Compute both
+         // candidates before changing the occurrence or its placement lineage.
+@@ -27,7 +27,7 @@
+             } else {
+                 (self.world_from_source, compose_frame(&matrix, &self.object_frame)?)
+             };
+-        if false { validate_affine(&nalgebra::Matrix4::from_column_slice(&object_frame))?; }
++        validate_affine(&nalgebra::Matrix4::from_column_slice(&object_frame))?;
+         crate::resource::charge(crate::resource::Cost {
+             work: 1,
+             occurrences: 1,

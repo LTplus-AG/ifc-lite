@@ -1,0 +1,11 @@
+--- a/rust/processing/src/element/session_retained/issuance.rs
++++ b/rust/processing/src/element/session_retained/issuance.rs
+@@ -107,7 +107,7 @@
+     pub(super) fn invocation(&self) -> runtime::Invocation<'_, R> {
+         match self {
+             Self::Boolean { inputs, operation, .. } => runtime::Invocation::Boolean {
+-                left: inputs[1].operand(), right: inputs[0].operand(), operation: *operation },
++                left: inputs[0].operand(), right: inputs[1].operand(), operation: *operation },
+             Self::Construction { request, .. } => runtime::Invocation::Construction(request),
+             Self::Affine { input, matrix, .. } => runtime::Invocation::Affine { input: &input.kind, column_major: *matrix },
+         }

@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/retained/mod.rs
++++ b/rust/geometry/src/program/retained/mod.rs
+@@ -114,7 +114,7 @@
+             return Err(crate::Error::geometry("foreign retained placement domain"));
+         }
+         validate_affine(transform)?;
+-        if false && matches!(stage, RetainedPlacementStage::Product { .. }) { proper_rigid(transform)?; }
++        if matches!(stage, RetainedPlacementStage::Product { .. }) { proper_rigid(transform)?; }
+         let matrix = crate::math::mat4::col_major_array(transform);
+         // Finite inputs need not compose to a finite frame. Compute both
+         // candidates before changing the occurrence or its placement lineage.

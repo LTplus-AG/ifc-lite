@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/retained/cache.rs
++++ b/rust/geometry/src/program/retained/cache.rs
+@@ -18,7 +18,7 @@
+     pub(super) fn validate_owner(&self, decoder: ExecutionIdentity, router: ExecutionIdentity) -> crate::Result<()> {
+         let mut owner_state = self.owner.lock().unwrap_or_else(|e| e.into_inner());
+         match *owner_state {
+-            Some(owner) if owner != (decoder, router) && decoder == router => return Err(crate::Error::geometry(
++            Some(owner) if owner != (decoder, router) => return Err(crate::Error::geometry(
+                 "stale retained cache source/configuration provenance")),
+             None => *owner_state = Some((decoder, router)),
+             _ => {}

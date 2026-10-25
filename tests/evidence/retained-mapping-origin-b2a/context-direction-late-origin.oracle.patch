@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared at 82d137b85c17f9dc0521d0ad8120bd218eedaeb2; apply in reverse; Rust execution UNRUN.
+# Historical input (unchanged): tests/evidence/retained-s2-direction/late-origin.oracle.patch; SHA256 77bc9a74948fd04cfcf9fe1e3262cea8e9163a492351828ef5b3cb07a0fec2e4
+--- a/rust/geometry/src/program/mapping_validation.rs
++++ b/rust/geometry/src/program/mapping_validation.rs
+@@ -125,8 +125,7 @@
+         return Err(MappingFailure::refused(FailureSite::MappingOrigin, origin.id,
+             MappingReason::Category, "retained type-map requires a readable 3D MappingOrigin"));
+     }
+-    if false { super::directions::origin(&origin, decoder)?; }
+-    Ok(())
++    super::directions::origin(&origin, decoder)
+ }
+ 
+ pub(super) fn map(map: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<()> {

@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared against bf6022ecaa51954df16758f3378d13ad6a4e3aca; runtime UNRUN. Apply in reverse to mutate.
+--- a/rust/geometry/src/program/retained/completion.rs
++++ b/rust/geometry/src/program/retained/completion.rs
+@@ -16,7 +16,8 @@
+                 Ok(RetainedProductPlan {
+                     values,
+                     // Construction/placement discharge none of these obligations.
+-                    remaining: vec![RetainedRequirement::IfcAppearance,
++                    remaining: vec![RetainedRequirement::OpeningClosure,
++                        RetainedRequirement::MaterialLayers, RetainedRequirement::IfcAppearance,
+                         RetainedRequirement::PersistentFaces],
+                 })
+             }

@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MPL-2.0
+# Context only at 82d137b85c17f9dc0521d0ad8120bd218eedaeb2; original SHA256 c847e3c92e6af8687be3c191c3f24f8c1e3e742584c1f7698e7c7dcdf8ba1f35; Rust UNRUN.
+--- a/rust/processing/src/element/model_context_retained.rs
++++ b/rust/processing/src/element/model_context_retained.rs
+@@ -20,7 +20,7 @@
+         &self,
+         decoder: &ifc_lite_core::EntityDecoder<'_>,
+     ) -> Result<(), RetainedContextError> {
+-        let _ = self.validate_source();
++        self.validate_source().map_err(|_| RetainedContextError::Stale)?;
+         let source = self.source.as_ref().ok_or(RetainedContextError::Missing)?;
+         if !source.owns_decoder(decoder) {
+             return Err(RetainedContextError::Mismatched);

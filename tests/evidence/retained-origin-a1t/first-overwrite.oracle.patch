@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared against bf6022ecaa51954df16758f3378d13ad6a4e3aca; runtime UNRUN. Apply in reverse to mutate.
+--- a/rust/geometry/src/program/retained/failure.rs
++++ b/rust/geometry/src/program/retained/failure.rs
+@@ -54,7 +54,7 @@
+     }
+     pub(super) fn record(&self, site: FailureSite, entity: Option<u32>, cause: OriginCause)
+         -> Result<(), ProgramStop> {
+-        // Mutant allows replacement by later causes.
++        if self.get().is_some() { return Ok(()); }
+         // Bound retained payload capacity even in the compatibility domain.
+         // Unknown opaque IO backing cannot be audited and is refused as such.
+         let bytes = cause_bytes(&cause).ok_or_else(|| resource::refused(
+@@ -71,7 +71,7 @@
+         let origin = Arc::new(OriginFailure { site, entity, cause, _storage: storage });
+         let discarded = {
+             let mut slot = self.origin.lock().unwrap_or_else(|e| e.into_inner());
+-            slot.replace(origin)
++            if slot.is_none() { *slot = Some(origin); None } else { Some(origin) }
+         };
+         drop(discarded);
+         Ok(())

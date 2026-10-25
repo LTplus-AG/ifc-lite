@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/processing/src/element/model_context_retained.rs
++++ b/rust/processing/src/element/model_context_retained.rs
+@@ -21,7 +21,7 @@
+         decoder: &ifc_lite_core::EntityDecoder<'_>,
+     ) -> Result<(), RetainedContextError> {
+         self.validate_source().map_err(|_| RetainedContextError::StaleSource)?;
+-        let Some(source) = self.source.as_ref() else { return Ok(()); };
++        let source = self.source.as_ref().ok_or(RetainedContextError::MissingSource)?;
+         if !source.owns_decoder(decoder) {
+             return Err(RetainedContextError::MismatchedSource);
+         }

@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MPL-2.0
+# Reverse application mutates one numerical action; SDK execution remains UNRUN.
+diff --git a/rust/geometry-runtime/src/worker_affine.rs b/rust/geometry-runtime/src/worker_affine.rs
+--- a/rust/geometry-runtime/src/worker_affine.rs
++++ b/rust/geometry-runtime/src/worker_affine.rs
+@@ -178,7 +178,7 @@
+         let bytes = self.call(KernelCommand::CopyAffine {
+             session: self.session,
+             solid,
+-            column_major: [1.,0.,0.,0., 0.,1.,0.,0., 0.,0.,1.,0., 0.,0.,0.,1.],
++            column_major,
+         })?;
+         if bytes.len() != REPLY_BYTES {
+             return Err(self.poison("invalid affine copy reply size"));

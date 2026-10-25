@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared against bf6022ecaa51954df16758f3378d13ad6a4e3aca; runtime UNRUN. Apply in reverse to mutate.
+--- a/rust/geometry/src/program/product/retained.rs
++++ b/rust/geometry/src/program/product/retained.rs
+@@ -23,7 +23,7 @@
+             let mut control = Self::merged(element, SourceHygiene::IndexOnly);
+             control.retained = Some(selection.clone());
+             control.body = Body::Sink(Sink::Retained(Vec::new(), selection.clone()));
+-            if false && !element.ifc_type.is_subtype_of(IfcType::IfcProduct) {
++            if !element.ifc_type.is_subtype_of(IfcType::IfcProduct) {
+                 selection.failure_handle().record(FailureSite::ProductRoot, Some(element.id),
+                     OriginCause::Structure(StructuralReason::NotProduct));
+                 control.action = Action::Complete(Err(crate::Error::geometry(

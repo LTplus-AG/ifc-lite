@@ -94,7 +94,32 @@ const parse = (bytes: Uint8Array) => new IfcParser().parseColumnar(bytes.slice()
 
 async function meshes(bytes: Uint8Array) {
   const gp = new GeometryProcessor();
-  try { await gp.init(); return await gp.process(bytes); } finally { gp.dispose(); }
+  try {
+    await gp.init();
+    const result = await gp.process(bytes);
+    for (const mesh of result.meshes) {
+      expect(Array.from(mesh.positions).every(Number.isFinite)).toBe(true);
+      expect((mesh.origin ?? [0,0,0]).every(Number.isFinite)).toBe(true);
+    }
+    return result;
+  } finally { gp.dispose(); }
+}
+
+// #7908: volume about the origin cannot detect missing caps on zero planes.
+// The fixture's two cut faces have independently known areas: 4*2 and 5*2.
+function expectCutFaces(mesh: Awaited<ReturnType<typeof meshes>>['meshes'][number]) {
+  const areas = [0, 0];
+  const point = (i: number) => [0,1,2].map(axis => mesh.positions[i*3+axis]+(mesh.origin?.[axis] ?? 0));
+  for (let i=0;i<mesh.indices.length;i+=3) {
+    const [a,b,c] = [point(mesh.indices[i]),point(mesh.indices[i+1]),point(mesh.indices[i+2])];
+    const u = b.map((v,axis) => v-a[axis]), v = c.map((value,axis) => value-a[axis]);
+    const area = Math.hypot(u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0])/2;
+    for (const [slot,axis] of [[0,0],[1,2]]) {
+      if ([a,b,c].every(p => Math.abs(p[axis])<1e-5)) areas[slot]+=area;
+    }
+  }
+  expect(areas[0]).toBeCloseTo(8,4);
+  expect(areas[1]).toBeCloseTo(10,4);
 }
 
 function meshVolume(mesh: Awaited<ReturnType<typeof meshes>>['meshes'][number]) {
@@ -176,6 +201,7 @@ ENDSEC;\nEND-ISO`));
           expect(mesh.positions[i+2] + origin[2]).toBeGreaterThanOrEqual(-1e-5);
         }
         expect(meshVolume(mesh)).toBeCloseTo(40, 4);
+        expectCutFaces(mesh);
       }
       expect(bytes).toEqual(source(schema));
     }
@@ -251,6 +277,7 @@ ENDSEC;\nEND-ISO`));
     expect(croppedMeshes.map(mesh => mesh.expressId).sort((a,b) => a-b)).toEqual([50,51,52]);
     for (const mesh of croppedMeshes) {
       expect(meshVolume(mesh)).toBeCloseTo(40,4);
+      expectCutFaces(mesh);
       const origin = mesh.origin ?? [0,0,0];
       for (let i=0;i<mesh.positions.length;i+=3) {
         expect(mesh.positions[i]+origin[0]).toBeLessThanOrEqual(1e-5);
@@ -285,6 +312,8 @@ ENDSEC;\nEND-ISO`));
     const original = await meshes(bytes);
     const shift = renderFrameWorldOffset(original.coordinateInfo).x;
     const xs = original.meshes.flatMap(mesh => Array.from(mesh.positions).filter((_, i) => i % 3 === 0).map(x => x+(mesh.origin?.[0] ?? 0)+shift));
+    expect(xs.length).toBeGreaterThan(0);
+    expect(xs.every(Number.isFinite)).toBe(true);
     const offset = (xs.reduce((a,b) => Math.min(a,b), Infinity) + xs.reduce((a,b) => Math.max(a,b), -Infinity)) / 2;
     const result = await exportSectionedStep(bytes, { planes: [{normal:[1,0,0],offset}] });
     expect(result.trimmed.length).toBeGreaterThan(0);
@@ -294,7 +323,11 @@ ENDSEC;\nEND-ISO`));
     const reopenedShift = renderFrameWorldOffset(reopened.coordinateInfo).x;
     const violations = reopened.meshes.flatMap(mesh => {
       let maximum = -Infinity;
-      for (let i=0;i<mesh.positions.length;i+=3) maximum=Math.max(maximum,mesh.positions[i]+(mesh.origin?.[0] ?? 0)+reopenedShift);
+      for (let i=0;i<mesh.positions.length;i+=3) {
+        const worldX = mesh.positions[i]+(mesh.origin?.[0] ?? 0)+reopenedShift;
+        expect(Number.isFinite(worldX)).toBe(true);
+        maximum=Math.max(maximum,worldX);
+      }
       return maximum>offset+0.001 ? [{expressId:mesh.expressId,ifcType:mesh.ifcType,geometryClass:mesh.geometryClass,maximum}] : [];
     });
     const evidence = { sourceSha256:createHash('sha256').update(bytes).digest('hex'), outputSha256:createHash('sha256').update(result.content).digest('hex'),

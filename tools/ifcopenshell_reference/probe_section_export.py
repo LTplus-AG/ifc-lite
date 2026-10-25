@@ -9,6 +9,7 @@ the root Turbo export tests. Requires the reference tool's IfcOpenShell.
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path
 
 import ifcopenshell
@@ -26,8 +27,13 @@ def probe(source_path, evidence_dir):
     settings = ifcopenshell.geom.settings()
     settings.set(settings.USE_WORLD_COORDS, True)
     reopened = 0
+    reopened_ids = set()
+    trimmed_ids = set(receipt["trimmed"])
     max_x = float("-inf")
     for entity in output.by_type("IfcProduct"):
+        # #7908: identity alone cannot certify a trimmed product whose body vanished.
+        if entity.id() in trimmed_ids:
+            assert entity.Representation, (entity.id(), "trimmed representation missing")
         if not entity.Representation or any(entity.is_a(kind) for kind in (
             "IfcOpeningElement", "IfcAnnotation", "IfcGrid"
         )):
@@ -35,10 +41,13 @@ def probe(source_path, evidence_dir):
         shape = ifcopenshell.geom.create_shape(settings, entity)
         vertices = shape.geometry.verts
         assert vertices, (entity.id(), "empty geometry")
+        assert len(vertices) % 3 == 0 and all(math.isfinite(v) for v in vertices), (entity.id(), "invalid vertices")
         bound = max(vertices[0::3])
         assert bound <= receipt["offset"] + 0.001, (entity.id(), bound)
         max_x = max(max_x, bound)
         reopened += 1
+        reopened_ids.add(entity.id())
+    assert trimmed_ids <= reopened_ids, ("trimmed geometry not reopened", sorted(trimmed_ids - reopened_ids))
     identities = []
     for entity_id in receipt["trimmed"]:
         old = source.by_id(entity_id)
@@ -86,6 +95,7 @@ def probe(source_path, evidence_dir):
         "maxX": max_x,
         "planeOffset": receipt["offset"],
         "checkedIdentities": len(identities),
+        "checkedTrimmedGeometry": len(trimmed_ids),
         "checkedOpeningLinks": opening_links,
         "types": sorted({item["type"] for item in identities}),
     }

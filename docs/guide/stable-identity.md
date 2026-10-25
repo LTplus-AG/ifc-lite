@@ -94,7 +94,7 @@ A lineage entry is `{ base[], head[], relation, reason, shares? }` with one of f
 | `--policy` | a split row goes to |
 |---|---|
 | `copy-to-all` (default) | every piece |
-| `largest-share` | the piece with the largest volume share; orphaned rather than guessed when shares are missing or tied |
+| `largest-share` | the piece with the largest volume share; orphaned rather than guessed when shares are missing, empty, mismatched, non-finite, negative or tied for the maximum (no exception; zero is valid; no normalization required) |
 | `orphan-on-split` | nowhere; only one-to-one relations rekey |
 
 Merges and replacements rekey under every policy. `rekey` treats `identity` and `replaced` identically — both are 1:1, so both simply follow the row's key to its new one under every `--policy`; the two relations exist to tell a reader HOW the pairing was established (committed by the engine vs. accepted by a person), not to change what rekeying does with the row. The output gains `lineage_relation` and `lineage_from` columns so each row says where it came from, and orphans are always written aside (to `--orphans`, or to `<out>.orphans.<ext>` when you gave none), never dropped.

@@ -96,6 +96,8 @@ impl RetainedExecutionError {
             | Self::Owner(WorkError::StaleSource | WorkError::Aborted))
             || matches!(self, Self::Common(error) if matches!(error.kind(),
                 ifc_lite_geometry::program::transactions::TransactionFailureKind::Source
+                | ifc_lite_geometry::program::transactions::TransactionFailureKind::Unsupported
+                | ifc_lite_geometry::program::transactions::TransactionFailureKind::Incomplete
                 | ifc_lite_geometry::program::transactions::TransactionFailureKind::Stopped))
     }
 }
@@ -136,6 +138,7 @@ impl RetainedExecutionError {
                 _ => Code::OperationUnsupported,
             },
             Self::Receipt(ReceiptFailure::InvalidRetainedNumericalLimits) => Code::InvalidOptions,
+            Self::Receipt(ReceiptFailure::ForeignSourceAdmission) => Code::ReceiptInvalid,
             Self::Receipt(reason) => { let _ = reason; Code::ReceiptInvalid }
             Self::Transition(stage) => { let _ = stage; Code::Cancelled }
             Self::Geometry(error) => { let _ = error; Code::RuntimeFailed }

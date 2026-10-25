@@ -279,3 +279,6 @@ impl<R: NumericalReceipt> Drop for RuntimeProductExecution<'_, R> {
         }
     }
 }
+
+#[cfg(test)]
+mod contract_tests;

@@ -111,3 +111,29 @@ fn h2b_sdk_identical_input_matrices_still_bind_each_receipt_to_its_issued_output
         assert_eq!(execution.traversal_plan().unwrap().values().len(), 2);
     });
 }
+
+#[test]
+fn issue_7955_native_nonuniform_and_reflected_copies_match_authored_bounds_and_volume() {
+    for reflected in [false, true] {
+        let bytes = mapped().replace("'SweptSolid',(#113,#114)", "'SweptSolid',(#113)");
+        let bytes = if reflected {
+            bytes.replace("OPERATOR3D($,$,#84,2.,$)", "OPERATOR3D(#201,#202,#84,1.,#203)")
+                .replace("ENDSEC;END-ISO", "#201=IFCDIRECTION((1.,0.,0.));#202=IFCDIRECTION((0.,-1.,0.));#203=IFCDIRECTION((0.,0.,1.));ENDSEC;END-ISO")
+        } else { bytes.replace("OPERATOR3D($,$,#84,2.,$)", "OPERATOR3DNONUNIFORM($,$,#84,2.,$,3.,4.)") };
+        with_case(None, &bytes, |execution, decoder, router, worker, _, _| {
+            while let Some(issued) = execution.issue_next(decoder, router, worker).unwrap() {
+                let completed = issued.execute(worker, 0.001, 15., MeshLimits::default()).unwrap();
+                for receipt in completed.realizations() {
+                    if let RealizationKind::Affine(_) = &receipt.kind {
+                        let mesh = worker.tessellate(receipt.solid(), 0.001, 15., MeshLimits::default()).unwrap();
+                        assert_box_geometry(&mesh, if reflected { [2.,4.,3.] } else { [4.,12.,12.] },
+                            if reflected { 24. } else { 576. });
+                    }
+                }
+                execution.accept(completed, decoder, router).unwrap_or_else(|e| panic!("{}", e.reason));
+            }
+            assert_eq!(execution.discharged_count(), 2);
+            execution.validate_witness().unwrap();
+        });
+    }
+}

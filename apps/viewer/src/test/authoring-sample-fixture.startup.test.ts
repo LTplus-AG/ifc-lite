@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { register } from 'node:module';
 import { test } from 'node:test';
 
-// Startup invariant: native parsing/reference checks must work without loading
+// #8133 startup invariant: native parsing/reference checks must work without loading
 // the viewer store or remesh service. Reject actual module loads, rather than
 // inspecting import statements. This file has the runner's normal process
 // isolation, so the hook cannot affect tests that exercise the full seeder.

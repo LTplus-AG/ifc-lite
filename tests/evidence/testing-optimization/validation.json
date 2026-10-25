@@ -44,6 +44,20 @@
       "outputSha256": "b3369c85b7c298aa91d3a974d17fcbc15adcfdf802cce39a4d7de2002291a55a",
       "receipt": "/home/louistrue/build-workers/worker-state/jobs/52fca84e-c8c9-4e47-bf75-c10d476270a3/receipt.json",
       "evidenceState": "published"
+    },
+    "result": "passed test phase; enclosing multi-phase job failed later",
+    "command": "node --test --test-concurrency=2 scripts/test-cache.test.mjs scripts/check-ci-path-coverage.test.mjs scripts/check-test-wiring.test.mjs",
+    "phaseOrder": [
+      "dependency installation passed",
+      "orchestration regression tests: 103 passed, 0 failed, 0 skipped",
+      "root viewer test dependency build: Node heap exhausted, exit 134; viewer tests not reached",
+      "cache rounds and mutation qualification not reached in this job"
+    ],
+    "outputProof": {
+      "sha256": "b3369c85b7c298aa91d3a974d17fcbc15adcfdf802cce39a4d7de2002291a55a",
+      "summaryLines": "157-164: tests 103, pass 103, fail 0, skipped 0",
+      "laterFailureLines": "797: Node heap exhaustion; 825: @ifc-lite/viewer#build; 827: exit 134",
+      "verification": "Original worker output retrieved and SHA-256 verified; no project command rerun."
     }
   },
   "viewerSelection": {
@@ -358,7 +372,10 @@
   "validationResourceAdjustment": {
     "firstViewerBuild": "Node heap limit reached while bundling, job exited134; original receipt preserved.",
     "successfulViewerBuild": "NODE_OPTIONS=--max-old-space-size=8192; admitted4CPU/16GiB; same assertions and build graph.",
-    "crashOutput": "No core files found in owned checkout root or apps/viewer; diagnostic stack preserved in original worker log."
+    "crashOutput": "No core files found in owned checkout root or apps/viewer; diagnostic stack preserved in original worker log.",
+    "failedJob": "52fca84e-c8c9-4e47-bf75-c10d476270a3",
+    "failedOutputSha256": "b3369c85b7c298aa91d3a974d17fcbc15adcfdf802cce39a4d7de2002291a55a",
+    "phase": "Viewer dependency build after the successful orchestration phase in orchestrationRegressionTests.receipt."
   },
   "review": {
     "rounds": 2,

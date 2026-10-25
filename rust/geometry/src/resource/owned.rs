@@ -91,7 +91,13 @@ fn check_channels(
     let cached = *terminal.lock().unwrap_or_else(|e| e.into_inner());
     match prior_source.or(prior_account).or(cached) {
         Some(stop) => Err(remember_channels(account, source, terminal, stop)),
-        None => Ok(()),
+        None => {
+            #[cfg(feature = "retained-runtime")]
+            if let Some(account) = account {
+                account.check_allowance().map_err(|stop| remember_channels(Some(account), source, terminal, stop))?;
+            }
+            Ok(())
+        },
     }
 }
 fn remember_channels(

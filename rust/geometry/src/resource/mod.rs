@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Explicit admission for audited allocations. This is not an allocator or RSS bound.
 mod account;
+#[cfg(feature = "retained-runtime")]
+mod inspection;
+#[cfg(feature = "retained-runtime")]
+pub use inspection::{inspection_checkpoint, InspectionBudget, InspectionStart};
+#[cfg(all(feature = "retained-runtime", any(test, feature = "test-support")))]
+pub use inspection::test_clock as inspection_test_clock;
 // TODO(remove-by: S4a, owner: sessionf778e361, #7955): private dormant resource owner.
 #[cfg(any(test, feature = "retained-runtime"))]
 #[cfg_attr(not(test), allow(dead_code))]
@@ -89,7 +95,19 @@ pub fn check_current() -> Result<(), ProgramStop> {
     if let Some(error) = TERMINAL.with(|slot| slot.get().flatten()) {
         return Err(error);
     }
+    #[cfg(feature = "retained-runtime")]
+    if let Some(account) = current_account() {
+        account.check_allowance().map_err(stop)?;
+    }
     Ok(())
+}
+
+/// Check controlled source iterations without changing default numeric work.
+pub(crate) fn source_step() -> crate::Result<()> {
+    #[cfg(feature = "retained-runtime")]
+    { inspection::source_step() }
+    #[cfg(not(feature = "retained-runtime"))]
+    { check_current().map_err(Into::into) }
 }
 pub fn charge(cost: Cost) -> Result<Reservation, ProgramStop> {
     check_current()?;

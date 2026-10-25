@@ -45,10 +45,5 @@
       "name": "loading-failed-and-empty-publications-refused",
       "passed": true
     }
-  ],
-  "node": "v24.22.0",
-  "sources": {
-    "pick-depth-6881-hover.mjs": "94bb1888eb05369f1800dde05b19fd9924da4c01e16bc6c64576df6edb7fa6d7",
-    "pick-depth-6881-controls.mjs": "af3cdbe13b0784edf06c6419362896fc052acf1f6913012cfa595990b024080d"
-  }
+  ]
 }

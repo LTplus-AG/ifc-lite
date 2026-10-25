@@ -11,8 +11,26 @@ import { installOracle } from './pick-depth-6881-observer.mjs';
 export async function runFamilyControls() {
   const canvas = document.querySelector('#witness');
   let api;
+  let restoreCapture;
   try {
     const report = await runWitness(canvas, renderer => {
+      // The standalone witness waits for GPU completion before requesting a
+      // screenshot. WebGPU may already have discarded its presentation image
+      // then (#6709). Preserve the actual full-size color frame synchronously
+      // after each real render, as the viewer capture gateway does. Keep every
+      // existing raster assertion; this observer is untimed and test-only.
+      const render = renderer.render, capture = renderer.captureScreenshot;
+      let image;
+      renderer.render = function(...args) {
+        const result = render.apply(this, args);
+        image = canvas.toDataURL('image/png');
+        return result;
+      };
+      renderer.captureScreenshot = async () => {
+        if (!image) throw Error('Family screenshot requested before an observed render');
+        return image;
+      };
+      restoreCapture = () => { renderer.render = render; renderer.captureScreenshot = capture; };
       installOracle({ renderer }); api = globalThis.__6881;
     });
     if (!api) throw Error('Production renderer witness did not install its observer');
@@ -23,5 +41,8 @@ export async function runFamilyControls() {
       throw Error(`Production family witness incomplete: ${JSON.stringify({ report, samples })}`);
     }
     return { report, samples };
-  } finally { if (api) await api.retire(); }
+  } finally {
+    restoreCapture?.();
+    if (api) await api.retire();
+  }
 }

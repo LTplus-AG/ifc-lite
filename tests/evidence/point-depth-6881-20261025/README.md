@@ -1,7 +1,7 @@
 # Point-depth qualification resumed (#6881)
 
-Qualification is in progress. No new hardware, federation, or hover-performance
-acceptance follows from preparing these harnesses.
+Native functional qualification passed. Hover-performance acceptance is pending
+the separately admitted exclusive cohort; no speedup is claimed.
 
 The bounded sampler and ownership repair already shipped in #7389. The subsequent
 device-loss fix and 28 real-model same-render comparisons shipped in #7506; see
@@ -49,15 +49,53 @@ Preparation receipts:
   no process exit code, output log, controller directory, GPU samples or timing
   samples exist. The [original refusal](admission-refusal.json) is retained;
   it is not a hardware failure or a performance result.
-- Untimed functional service `69d1b1cd-6b9d-49cc-aa23-8fedbef86e4d`: submitted
-  separately with the same source-matched production runtime and fixed native
-  protocol. It uses ordinary service admission and produces no timing verdict.
-  Inspect this original receipt and `functional-service-1/result.json` before
-  considering another timing request. A timed cohort still needs an exclusive
-  slot; no replacement timing samples have been submitted.
+- Functional services 1 and 2 completed the single-model DPR1 comparisons but
+  rejected federation readiness. The diagnostic second run showed complete
+  metadata, geometry and resident batches: federated Add ends its load root
+  without the primary-only `scene.finalize` span, and a completed non-streaming
+  model may omit `loadState`. The harness now checks the canonical completion
+  predicate, completed load/parser/geometry and resident per-model GPU batches.
+- Functional service 3 passed both real-model/federation cases, lifecycle
+  controls and every same-render depth comparison. The DPR2 authored-family
+  raster report failed because several screenshot pixels were transparent.
+  That standalone witness waits before canvas serialization, reproducing the
+  presentation-lifetime defect documented in #6709. The test-only observer now
+  serializes the actual full-size frame synchronously after each render, as the
+  viewer capture gateway does; all original raster assertions remain required.
+- Functional service 4, `4c2eb829-bb4f-46e2-b4e8-3ef52435534a`, completed with
+  exit zero and unchanged source. Both DPRs passed all controls below. The
+  [accepted report](functional-accepted.json.gz), [summary](functional-summary.json)
+  and [original receipt identities](functional-receipts.json) are retained.
+- Exclusive hover job `eedf4fdf-56a7-4b14-8d04-998ecabb7f46` is submitted with
+  that accepted report and frozen source/artifact manifests. Its original
+  receipt owns the outcome; no timed sample replacement is allowed.
 
 [Preparation receipts](preparation.json) retain command/source identities,
-original outcomes and log hashes. GPU and hover acceptance remain pending.
+original outcomes and log hashes. Failed functional reports and compact summaries
+are retained as `functional-service-{1,2,3}.json.gz` and matching summary files;
+none is promoted to an acceptance result.
+
+## Accepted functional result
+
+Chrome 156 on the physical Pop console positively identified NVIDIA Lovelace at
+DPR 1 and 2, with no page, uncaptured-device or GPU-driver errors. At each DPR,
+26 single-model and 35 federation samples matched the independent full-depth
+and ID copies from the same submitted render exactly, including decoded model,
+item and world position. Nine authored-family comparisons at each DPR also
+matched, for 140 successful comparisons in total. The corrupted-depth inverse
+rejected at both DPRs.
+
+Both federated models supplied isolated flat-mesh ownership hits. Complete
+geometry fingerprints stayed identical before and after picking. Camera and
+resize changes rejected both held results at each DPR; device loss did so at
+DPR2. Each of the six tracked transient buffers was destroyed exactly once per
+lifecycle case. The raster fixture passed its existing mesh, texture, instance,
+point, line, highlight, shadow, clipping and large-origin checks at both DPRs.
+The large-origin case is authored geometry; real georeferenced IFC data is not
+claimed by this cohort.
+
+The actual viewer screenshots show the fully loaded two-model state:
+[DPR1](federation-dpr1.png), [DPR2](federation-dpr2.png).
 
 ## Functional protocol
 
@@ -70,7 +108,8 @@ documented location-map driver diagnostic.
 
 Load the catalogued public FZK fixture through Open, then add the catalogued
 buildingSMART architecture fixture through Add. Require authoritative metadata,
-geometry and scene-finalization completion. The
+geometry and primary scene-finalization completion; Add requires a completed
+load root and resident per-model GPU batches. The
 [observer](../../e2e/pick-depth-6881-observer.mjs) locates the already mounted
 renderer; it creates no second viewer or load pipeline. Package input hashes
 must match the built viewer's source before it is bundled.

@@ -606,8 +606,12 @@ The [resumed qualification](../../tests/evidence/point-depth-6881-20261025/READM
 retains successful source-matched builds and a common geometry engine for the
 full-copy inverse and production viewer. The exclusive request expired awaiting
 existing work before its controller started, yielding no new GPU or timing
-samples. Untimed functional checks are separately submitted under service
-admission; the native correctness and interaction verdicts remain held.
+samples. The subsequent untimed NVIDIA qualification passes same-render
+depth/ID/item/world comparisons across both DPRs, real-model federation,
+authored geometry families and stale camera/resize/device-loss controls, with
+unchanged geometry. Harness readiness and screenshot-lifetime failures remain
+in the evidence alongside the accepted run. An exclusive mounted-hover cohort
+is submitted; its interaction verdict remains held.
 
 Independent Linux qualification adopted the existing readback cleanup repair;
 inverse fault controls demonstrate the ownership defects and the repaired paths

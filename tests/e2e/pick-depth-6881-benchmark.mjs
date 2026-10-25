@@ -16,6 +16,17 @@ const [configuration, output] = process.argv.slice(2);
 if (!configuration || !output) throw Error('Arguments: frozen cohort configuration, new output directory');
 const config = JSON.parse(readFileSync(configuration, 'utf8'));
 const hash = value => createHash('sha256').update(value).digest('hex');
+function boundEvaluations(page) {
+  const evaluate = page.evaluate.bind(page);
+  page.evaluate = async (...args) => {
+    let timer;
+    try {
+      return await Promise.race([evaluate(...args), new Promise((_, reject) => {
+        timer = setTimeout(() => reject(Error('Hover page phase exceeded its fixed 30-second deadline')), 30000);
+      })]);
+    } finally { clearTimeout(timer); }
+  };
+}
 const inventory = (directory, prefix = '') => readdirSync(directory).flatMap(name => {
   const path = `${directory}/${name}`, relative = `${prefix}${name}`, stat = lstatSync(path);
   if (stat.isSymbolicLink()) throw Error('Frozen distribution contains a symlink');
@@ -85,6 +96,7 @@ try {
       browser = await launchNativeChrome(chromium);
       const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
       const page = await context.newPage(); page.setDefaultTimeout(30000);
+      boundEvaluations(page);
       page.on('pageerror', error => record.errors.push(String(error)));
       const logs = []; page.on('console', message => logs.push(message.text()));
       await context.addInitScript(() => {

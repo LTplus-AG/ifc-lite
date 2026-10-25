@@ -22,6 +22,17 @@ const head = git('rev-parse', 'HEAD');
 if (head !== receipt.sourceAfter.commit || git('status', '--porcelain')) throw Error('Source pin/cleanliness changed');
 mkdirSync(output); // Never reuse an earlier attempt's evidence directory.
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
+function boundEvaluations(page) {
+  const evaluate = page.evaluate.bind(page);
+  page.evaluate = async (...args) => {
+    let timer;
+    try {
+      return await Promise.race([evaluate(...args), new Promise((_, reject) => {
+        timer = setTimeout(() => reject(Error('Native page phase exceeded its fixed 30-second deadline')), 30000);
+      })]);
+    } finally { clearTimeout(timer); }
+  };
+}
 const require = createRequire(`${root}/package.json`);
 process.env.DEBUG = [process.env.DEBUG, 'pw:browser'].filter(Boolean).join(',');
 const { chromium } = require('@playwright/test');
@@ -83,6 +94,7 @@ try {
     browser = await launchNativeChrome(chromium);
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: dpr });
     const page = await context.newPage();
+    boundEvaluations(page);
     page.setDefaultTimeout(30000);
     page.on('pageerror', error => run.errors.push(String(error)));
     const logs = [];
@@ -186,6 +198,7 @@ try {
     run.sessionAfter = readPhysicalSession();
     if (!isPhysicalConsole(run.sessionAfter)) throw Error('Physical session changed');
     const familyPage = await context.newPage();
+    boundEvaluations(familyPage);
     familyPage.on('pageerror', error => run.errors.push(String(error)));
     await familyPage.goto(`http://127.0.0.1:${server.address().port}/__6881/families.html`);
     await familyPage.bringToFront();

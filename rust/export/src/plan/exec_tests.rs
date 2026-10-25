@@ -505,6 +505,7 @@ fn latin1_wall_source() -> Vec<u8> {
     content
 }
 
+/// (#8142)
 #[test]
 fn untouched_non_utf8_records_are_written_byte_identical() {
     let content = latin1_wall_source();
@@ -518,6 +519,7 @@ fn untouched_non_utf8_records_are_written_byte_identical() {
     assert!(!out.windows(3).any(|w| w == "\u{FFFD}".as_bytes()), "no replacement character");
 }
 
+/// (#8142)
 #[test]
 fn edited_non_utf8_record_keeps_its_other_bytes() {
     let mut content = latin1_wall_source();
@@ -538,6 +540,7 @@ fn edited_non_utf8_record_keeps_its_other_bytes() {
 /// A type-owned set also related to the wall, overridden on the wall, keeps a
 /// Latin-1 byte in the type's value (read through the copy) and in the
 /// relationship the copy edits.
+/// (#8142)
 #[test]
 fn a_copy_on_write_keeps_latin1_bytes_in_the_original_and_the_edited_relationship() {
     use super::test_fixtures::pset_on_type_also_related_to;
@@ -567,6 +570,7 @@ fn a_copy_on_write_keeps_latin1_bytes_in_the_original_and_the_edited_relationshi
 
 /// A caller's STEP literal holding U+F7E9 is written as the caller gave it,
 /// not as the single byte E9.
+/// (#8142)
 #[test]
 fn a_caller_literal_with_a_byte_escape_character_is_written_as_given() {
     let write = PropWrite::new("Pset_X", "P", "IFCLABEL", "'a\u{F7E9}b'", PsetKind::Property, PropScope::Occurrence);
@@ -579,6 +583,7 @@ fn a_caller_literal_with_a_byte_escape_character_is_written_as_given() {
 
 /// Valid UTF-8 that looks like an escaped byte is written back unchanged
 /// when untouched, and can be edited exactly.
+/// (#8142)
 #[test]
 fn valid_utf8_that_collides_with_the_byte_escape_is_never_corrupted() {
     let mut content = two_walls_sharing_a_pset("IFC4");
@@ -601,6 +606,7 @@ fn valid_utf8_that_collides_with_the_byte_escape_is_never_corrupted() {
     assert!(report.findings.is_empty(), "the edit applied exactly: {:?}", report.findings);
 }
 
+/// (#8142)
 #[test]
 fn deleting_a_storey_reports_the_elements_left_outside_the_spatial_tree() {
     use super::test_fixtures::storey_with_typed_wall;
@@ -639,6 +645,7 @@ fn rate(target: Option<u32>) -> (u32, u32) {
     (changed(30), changed(60))
 }
 
+/// (#8142)
 #[test]
 fn a_property_write_can_target_the_exact_record() {
     assert_eq!(rate(None), (1, 0), "no target: first match");
@@ -646,6 +653,7 @@ fn a_property_write_can_target_the_exact_record() {
     assert_eq!(rate(Some(30)), (1, 0));
 }
 
+/// (#8142)
 #[test]
 fn a_target_the_object_does_not_hold_is_refused() {
     let write = PropWrite::new("Pset_WallCommon", "FireRating", "IFCLABEL", "'NEW'", PsetKind::Property, PropScope::Occurrence).with_target(10);
@@ -671,6 +679,7 @@ fn patch_one(content: &[u8], writes: Vec<PropWrite>) -> (Vec<u8>, WriteReport) {
 
 /// A targeted write to a set another wall shares clones the set: the other
 /// wall keeps the original value.
+/// (#8142)
 #[test]
 fn a_targeted_write_to_a_shared_set_is_copied_not_edited() {
     let content = two_walls_sharing_a_pset("IFC4");
@@ -686,6 +695,7 @@ fn a_targeted_write_to_a_shared_set_is_copied_not_edited() {
 /// A targeted override of a type-owned record, on an object that already has
 /// an occurrence set of that name, joins that set; a targeted and an
 /// untargeted write to one set are resolved together.
+/// (#8142)
 #[test]
 fn a_targeted_override_of_a_type_owned_record_does_not_duplicate_the_set() {
     use super::test_fixtures::wall_with_type_owned_pset;
@@ -707,6 +717,7 @@ fn a_targeted_override_of_a_type_owned_record_does_not_duplicate_the_set() {
 
 /// Text the caller supplies is never run through the source-byte encoder: a
 /// name holding U+F7E9 is written as the STEP escape for that character.
+/// (#8142)
 #[test]
 fn caller_text_with_a_byte_escape_character_is_written_as_a_step_escape() {
     use super::add_test_support::{add, gid, object};
@@ -750,6 +761,7 @@ fn rating(pset: &str, lit: &str) -> PropWrite {
 
 /// A write whose named set does not list its target is refused; it neither
 /// resolves the other set nor merges with an untargeted write to it.
+/// (#8142)
 #[test]
 fn a_target_outside_the_named_set_is_refused() {
     let content = type_with_two_sets_of_one_property();
@@ -768,6 +780,7 @@ fn a_target_outside_the_named_set_is_refused() {
 }
 
 /// A targeted override of a shared occurrence set keeps that set's name.
+/// (#8142)
 #[test]
 fn a_shared_set_copy_keeps_the_name_of_the_set_it_copies() {
     let content = String::from_utf8(two_walls_sharing_a_pset("IFC4")).unwrap().replace("'Pset_WallCommon'", "'Pset_Caf\\X2\\00E9\\X0\\'");
@@ -781,6 +794,7 @@ fn a_shared_set_copy_keeps_the_name_of_the_set_it_copies() {
 /// IfcRelAggregates also decomposes assemblies: deleting one does not take
 /// its still-contained parts out of the spatial tree, but a part with no
 /// other place in the tree is still reported when its spatial parent goes.
+/// (#8142)
 #[test]
 fn deleting_an_assembly_does_not_flag_parts_that_are_still_contained() {
     use super::test_fixtures::storey_with_typed_wall;
@@ -801,6 +815,7 @@ fn deleting_an_assembly_does_not_flag_parts_that_are_still_contained() {
 
 /// Deleting a member of a shared relationship whose record cannot be edited
 /// exactly must not leave that relationship naming the deleted member.
+/// (#8142)
 #[test]
 fn a_required_edit_that_cannot_be_written_never_leaves_a_dangling_reference() {
     let base = String::from_utf8(two_walls_sharing_a_pset("IFC4")).unwrap();
@@ -817,6 +832,7 @@ fn a_required_edit_that_cannot_be_written_never_leaves_a_dangling_reference() {
 
 /// Writes are deduped on the record they resolve to, the later one winning:
 /// a targeted and an untargeted write to one record leave one new value.
+/// (#8142)
 #[test]
 fn a_targeted_and_an_untargeted_write_to_one_record_dedupe() {
     let content = two_walls_sharing_a_pset("IFC4");
@@ -828,6 +844,7 @@ fn a_targeted_and_an_untargeted_write_to_one_record_dedupe() {
 }
 
 /// A target in none of the object's sets is refused alone, before grouping.
+/// (#8142)
 #[test]
 fn a_target_in_no_set_of_the_object_is_refused_without_its_neighbours() {
     let content = wall_with_two_same_named_sets();
@@ -840,6 +857,7 @@ fn a_target_in_no_set_of_the_object_is_refused_without_its_neighbours() {
 }
 
 /// A target whose own name is not the write's property is refused.
+/// (#8142)
 #[test]
 fn a_target_named_differently_from_the_write_is_refused() {
     let content = wall_with_two_same_named_sets();
@@ -850,6 +868,7 @@ fn a_target_named_differently_from_the_write_is_refused() {
 }
 
 /// The refusal for a value of the wrong type names the property once.
+/// (#8142)
 #[test]
 fn a_refused_value_names_its_property_once() {
     let bad = PropWrite::new("Pset_X", "P", "IFCLENGTHMEASURE", "'abc'", PsetKind::Property, PropScope::Occurrence);
@@ -859,6 +878,7 @@ fn a_refused_value_names_its_property_once() {
 
 /// Quantities are held to the same rule as an Add's (not negative, no
 /// measure WHERE rule), and a measure outside the table is passed through.
+/// (#8142)
 #[test]
 fn quantity_and_unlisted_measures_follow_the_add_rule() {
     let zero = PropWrite::new("Qto_X", "L", "IFCPOSITIVELENGTHMEASURE", "0.", PsetKind::Quantity, PropScope::Occurrence);
@@ -866,5 +886,32 @@ fn quantity_and_unlisted_measures_follow_the_add_rule() {
     assert!(report.refusals.is_empty(), "{:?}", report.refusals);
     let uri = PropWrite::new("Pset_X", "U", "IFCURIREFERENCE", "'http://example.org/a'", PsetKind::Property, PropScope::Occurrence);
     let (_, report) = patch_one(&wall_with_own_pset("IFC4X3"), vec![uri]);
+    assert!(report.refusals.is_empty(), "{:?}", report.refusals);
+}
+
+/// (#8142) An occurrence override of a type-owned record resolves like an
+/// untargeted write, so it dedupes with one that reaches the object's own
+/// member of that name and leaves no orphan record.
+#[test]
+fn an_override_of_a_type_owned_record_dedupes_with_an_untargeted_write_8142() {
+    use super::test_fixtures::wall_with_type_owned_pset;
+    let extra = "#60=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('9HR'),$);\n\
+        #61=IFCPROPERTYSET('0000000000000000000061',$,'Pset_WallCommon',$,(#60));\n\
+        #62=IFCRELDEFINESBYPROPERTIES('0000000000000000000062',$,$,$,(#10,#40),#61);\n";
+    let content = String::from_utf8(wall_with_type_owned_pset("IFC4")).unwrap().replacen("ENDSEC;\nEND-ISO", &format!("{extra}ENDSEC;\nEND-ISO"), 1);
+    let (out, report) = patch_one(content.as_bytes(), vec![rating("Pset_WallCommon", "'AAA'").with_target(41), rating("Pset_WallCommon", "'BBB'")]);
+    assert!(report.refusals.is_empty() && report.findings.is_empty(), "{:?} {:?}", report.refusals, report.findings);
+    let text = String::from_utf8(out).unwrap();
+    assert_eq!(text.matches("'AAA'").count(), 0, "{text}");
+    assert_eq!(text.matches("'BBB'").count(), 1, "{text}");
+}
+
+/// (#8142) A value record two sets list is found through the set the write names.
+#[test]
+fn a_target_listed_by_two_sets_resolves_through_the_named_one_8142() {
+    let extra = "#61=IFCPROPERTYSET('0000000000000000000061',$,'Pset_B',$,(#30));\n\
+        #62=IFCRELDEFINESBYPROPERTIES('0000000000000000000062',$,$,$,(#10),#61);\n";
+    let content = String::from_utf8(wall_with_own_pset("IFC4")).unwrap().replacen("ENDSEC;\nEND-ISO", &format!("{extra}ENDSEC;\nEND-ISO"), 1);
+    let (_, report) = patch_one(content.as_bytes(), vec![rating("Pset_B", "'x'").with_target(30)]);
     assert!(report.refusals.is_empty(), "{:?}", report.refusals);
 }

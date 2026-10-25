@@ -85,7 +85,7 @@ impl AddState<'_> {
         const RULES: [(&str, &[&str]); 6] = [
             ("IFCSITE", &["IFCPROJECT", "IFCSITE"]),
             ("IFCBUILDING", &["IFCPROJECT", "IFCSITE", "IFCBUILDING"]),
-            ("IFCBUILDINGSTOREY", &["IFCBUILDING", "IFCBUILDINGSTOREY", "IFCBUILDINGPART"]),
+            ("IFCBUILDINGSTOREY", &["IFCBUILDING", "IFCBUILDINGSTOREY"]),
             ("IFCSPACE", &["IFCBUILDINGSTOREY", "IFCBUILDING", "IFCSITE", "IFCSPACE", "IFCFACILITY", "IFCFACILITYPART"]),
             ("IFCFACILITYPART", &["IFCFACILITY", "IFCFACILITYPART"]),
             ("IFCFACILITY", &["IFCPROJECT", "IFCSITE", "IFCFACILITY", "IFCFACILITYPART"]),
@@ -239,8 +239,15 @@ impl AddState<'_> {
                     };
                     Some((id, kind, c))
                 } else {
-                    // A zone or external spatial element neither contains nor aggregates.
-                    let is_container = self.in_structure(&c) || (spatial && c == "IFCPROJECT");
+                    // IfcRelContainedInSpatialStructure.RelatingStructure is an
+                    // IfcSpatialElement, but a zone only groups: membership of one
+                    // is by reference. A structure element goes under the project
+                    // or a structure element.
+                    let is_container = if spatial {
+                        self.in_structure(&c) || c == "IFCPROJECT"
+                    } else {
+                        self.is_spatial(&c) && !self.is_a(&c, "IFCSPATIALZONE")
+                    };
                     if !is_container {
                         return Err(format!("container {r} is {c}, not a spatial element"));
                     }

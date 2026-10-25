@@ -35,6 +35,7 @@ fn shape_fallbacks_match_serialize_property_value() {
     assert_eq!(serialize_nominal_value(&json!("X"), pvt::STRING, Some("IFCACMEWIDGETCODE")), "IFCLABEL('X')");
 }
 
+/// (#8142)
 #[test]
 fn a_real_exponent_needs_its_decimal_point() {
     assert!(check_literal_measure("IFC4", "IfcLengthMeasure", "1.E5", true).is_ok());

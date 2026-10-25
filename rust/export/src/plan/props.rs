@@ -183,7 +183,10 @@ pub(crate) fn resolve_set_writes<'w>(
     for &write in writes {
         // One write per record it reaches (`resolve_write` gives a write the
         // record it edits as its target), the last one winning.
-        match group.iter_mut().find(|w| if write.target.is_some() { w.target == write.target } else { w.target.is_none() && w.prop == write.prop }) {
+        fn key(w: &PropWrite) -> (Option<u32>, Option<&str>) {
+            (w.target, w.target.is_none().then_some(w.prop.as_str()))
+        }
+        match group.iter_mut().find(|w| key(w) == key(write)) {
             Some(slot) => *slot = write,
             None => group.push(write),
         }

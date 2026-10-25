@@ -65,11 +65,6 @@ mod tests {
         let edits = BTreeMap::from([(2usize, "$".to_string())]);
         assert_eq!(apply_edits(b"#1=IFCX('Gr\xF6sse',$,'\xEF\x9F\xA9');", &edits, &mut 0), b"#1=IFCX('Gr\xF6sse',$,$);");
     }
-}
-
-#[cfg(test)]
-mod total_tests {
-    use super::*;
 
     /// A char the mapping did not produce goes back as its UTF-8 bytes.
     #[test]

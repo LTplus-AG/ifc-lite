@@ -318,6 +318,7 @@ fn a_later_add_names_a_type_an_earlier_add_created() {
 
 /// A new spatial element with no container would be written outside the
 /// spatial tree, with no IfcRelAggregates.
+/// (#8142)
 #[test]
 fn a_new_spatial_element_without_a_container_is_refused() {
     for schema in SCHEMAS {
@@ -328,6 +329,7 @@ fn a_new_spatial_element_without_a_container_is_refused() {
 }
 
 /// A spatial element goes under a parent the schema allows for it.
+/// (#8142)
 #[test]
 fn a_spatial_element_under_a_wrong_parent_is_refused() {
     for schema in SCHEMAS {
@@ -345,6 +347,7 @@ fn a_spatial_element_under_a_wrong_parent_is_refused() {
 }
 
 /// A spatial zone groups spaces; it contains nothing.
+/// (#8142)
 #[test]
 fn a_spatial_zone_is_not_a_container() {
     let source = String::from_utf8(storey_with_typed_wall("IFC4")).unwrap().replace(
@@ -356,6 +359,7 @@ fn a_spatial_zone_is_not_a_container() {
 
 /// IFC4 deprecates IfcDoorStyle / IfcWindowStyle; CorrectStyleAssigned
 /// wants the Type classes. IFC2X3 has only the styles.
+/// (#8142)
 #[test]
 fn a_door_or_window_typed_by_a_style_is_refused_in_ifc4() {
     for (class, style, wanted) in [(IfcClass::Door, "IfcDoorStyle", "IFCDOORTYPE"), (IfcClass::Window, "IfcWindowStyle", "IFCWINDOWTYPE")] {
@@ -367,6 +371,7 @@ fn a_door_or_window_typed_by_a_style_is_refused_in_ifc4() {
 
 /// Every spatial class under every parent class the schema declares: allowed
 /// exactly where the spatial hierarchy allows it (IFC4X3 adds facilities).
+/// (#8142)
 #[test]
 fn a_spatial_class_is_accepted_only_under_its_own_parents() {
     use ifc_lite_core::entity_info_for_schema;
@@ -396,6 +401,7 @@ fn a_spatial_class_is_accepted_only_under_its_own_parents() {
 
 /// IFC4.3 Spatial Decomposition: a facility may be part of a facility part
 /// (a section of a larger facility holding smaller functional facilities).
+/// (#8142)
 #[test]
 fn a_facility_is_accepted_under_a_facility_part_in_ifc4x3() {
     let base = String::from_utf8(storey_with_typed_wall("IFC4X3")).unwrap();
@@ -408,6 +414,7 @@ fn a_facility_is_accepted_under_a_facility_part_in_ifc4x3() {
 /// IFC4.3 Spatial Decomposition: a zone is contained in a spatial structure
 /// element, may be composed under another zone, and goes nowhere else; an
 /// external spatial element is contained. Neither needs a container.
+/// (#8142)
 #[test]
 fn zones_and_external_spatial_elements_follow_the_spatial_decomposition_rules() {
     use ifc_lite_core::entity_info_for_schema;
@@ -416,7 +423,7 @@ fn zones_and_external_spatial_elements_follow_the_spatial_decomposition_rules() 
         let source = base.replacen("ENDSEC;\nEND-ISO", "#90=IFCSPATIALZONE($);\nENDSEC;\nEND-ISO", 1);
         let rel_of = |out: &[u8], g| {
             let id = id_in(out, g);
-            String::from_utf8_lossy(out).lines().find(|l| l.contains(&format!("#{id}")) && (l.contains("IFCRELCONTAINEDINSPATIALSTRUCTURE") || l.contains("IFCRELAGGREGATES("))).unwrap_or("").to_string()
+            String::from_utf8_lossy(out).lines().find(|l| names_id(l, id) && (l.contains("IFCRELCONTAINEDINSPATIALSTRUCTURE") || l.contains("IFCRELAGGREGATES("))).unwrap_or("").to_string()
         };
         let classes: &[&str] = if entity_info_for_schema(schema, "IFCEXTERNALSPATIALELEMENT").is_some() { &["IfcSpatialZone", "IfcExternalSpatialElement"] } else { &["IfcSpatialZone"] };
         for class in classes {
@@ -438,4 +445,23 @@ fn zones_and_external_spatial_elements_follow_the_spatial_decomposition_rules() 
             refused(source.as_bytes(), object(IfcClass::Named("IfcExternalSpatialElement".into()), gid(46), Some(ObjectRef::Id(90)), Representation::None), "cannot hold");
         }
     }
+}
+
+/// (#8142) IfcRelContainedInSpatialStructure.RelatingStructure is an
+/// IfcSpatialElement: an element may be contained in an external spatial
+/// element, but not in a zone.
+#[test]
+fn an_element_may_be_contained_in_an_external_spatial_element_8142() {
+    let base = String::from_utf8(storey_with_typed_wall("IFC4")).unwrap();
+    let source = base.replacen("ENDSEC;\nEND-ISO", "#90=IFCEXTERNALSPATIALELEMENT($);\n#91=IFCSPATIALZONE($);\nENDSEC;\nEND-ISO", 1);
+    let wall = object(IfcClass::Wall, gid(47), Some(ObjectRef::Id(90)), Representation::None);
+    let (_, report) = run(source.as_bytes(), vec![add(wall)]);
+    assert_eq!(report.added, 1, "{:?}", report.refusals);
+    refused(source.as_bytes(), object(IfcClass::Wall, gid(48), Some(ObjectRef::Id(91)), Representation::None), "not a spatial element");
+}
+
+/// Whether `line` names `#id` as a whole reference (`#12` is not `#120`).
+fn names_id(line: &str, id: u32) -> bool {
+    let token = format!("#{id}");
+    line.match_indices(&token).any(|(at, _)| !line[at + token.len()..].starts_with(|c: char| c.is_ascii_digit()))
 }

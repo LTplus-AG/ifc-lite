@@ -67,8 +67,17 @@ pub(crate) fn canonical_literal(measure: &str, literal: &str) -> String {
 pub(crate) fn check_literal_measure(schema: &str, measure: &str, literal: &str, where_rule: bool) -> Result<(), String> {
     let token = measure.to_ascii_uppercase();
     let leaf = leaf(&token).filter(|_| super::retype::schema_declares(schema, &token));
-    // A measure outside the table (IFCBINARY, IFC4X3's IFCURIREFERENCE) has
-    // nothing to check the value against, and is written as given.
+    // A name the schema does not declare is a typo or another schema's type.
+    // One it declares that the table lacks (IFCBINARY, IFC4X3's
+    // IFCURIREFERENCE) has nothing to check the value against, and is written
+    // as given.
+    if !super::retype::schema_declares(schema, &token) {
+        return Err(if ifc_lite_core::SchemaVersion::from_file_schema(schema).is_some() || schema == "IFC5" {
+            format!("{measure} is not an IFC measure in {schema}")
+        } else {
+            format!("{measure} cannot be checked: {schema} is not a schema this engine knows")
+        });
+    }
     let Some((name, base, _, _)) = leaf else { return Ok(()) };
     let bad = || format!("{literal} is not a valid {name} value");
     let number = |integer_only: bool| -> Result<f64, String> {

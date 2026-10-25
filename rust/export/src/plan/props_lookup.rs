@@ -137,16 +137,26 @@ pub(super) fn find_set<'a>(
 ) -> Option<(u32, usize, Vec<Option<u32>>)> {
     let (container_type, member_attr) = container_names(kind);
     let idx = attribute_index(schema, container_type, member_attr)?;
-    pset_ids.copied().find_map(|pset_id| {
+    let listing = |pset_id: u32| -> Option<Vec<Option<u32>>> {
         if index.type_of(pset_id).as_deref() != Some(container_type) {
             return None;
         }
-        if target.is_none() && decoded_name(index, schema, pset_id, container_type).as_deref() != Some(pset_name) {
-            return None;
-        }
         let members = index.attrs(pset_id)?.into_iter().nth(idx)?.list?;
-        target.is_none_or(|t| members.contains(&Some(t))).then_some((pset_id, idx, members))
-    })
+        target.is_none_or(|t| members.contains(&Some(t))).then_some(members)
+    };
+    let named = |pset_id: u32| decoded_name(index, schema, pset_id, container_type).as_deref() == Some(pset_name);
+    let mut first_listing = None;
+    for pset_id in pset_ids.copied() {
+        let Some(members) = listing(pset_id) else { continue };
+        if named(pset_id) {
+            return Some((pset_id, idx, members));
+        }
+        // With a target, a set that lists it is a fallback to the named one.
+        if target.is_some() && first_listing.is_none() {
+            first_listing = Some((pset_id, idx, members));
+        }
+    }
+    first_listing
 }
 
 /// The member of `members` a write lands on: its exact `target` when it has

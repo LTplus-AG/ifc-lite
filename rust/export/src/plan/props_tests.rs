@@ -496,6 +496,7 @@ fn a_copied_value_inherits_only_a_matching_unit() {
 
 /// "No unit" on an occurrence override of a type-owned value means the unit
 /// the effective (type's) value has.
+/// (#8142)
 #[test]
 fn an_override_of_a_type_owned_value_keeps_the_types_unit() {
     let schema = "IFC4";
@@ -515,6 +516,7 @@ fn an_override_of_a_type_owned_value_keeps_the_types_unit() {
 
 /// A value is checked against its measure type in one place, before any
 /// record is built.
+/// (#8142)
 #[test]
 fn a_value_of_the_wrong_type_for_its_measure_is_refused() {
     let schema = "IFC4";
@@ -528,6 +530,8 @@ fn a_value_of_the_wrong_type_for_its_measure_is_refused() {
         ("IFCBOOLEAN", "'T'", PsetKind::Property, "not a valid"),
         ("IFCPOSITIVELENGTHMEASURE", "-1.", PsetKind::Property, "outside"),
         ("IFCLENGTHMEASURE", "-5.", PsetKind::Quantity, "cannot be negative"),
+        ("IFCNOSUCHMEASURE", "5.", PsetKind::Property, "not an IFC measure"),
+        ("IFCLENGHTMEASURE", "5.", PsetKind::Property, "not an IFC measure"),
     ];
     for (measure, literal, kind, expect) in cases {
         let mut ids = IdAllocator::after(index.max_id);
@@ -544,6 +548,7 @@ fn a_value_of_the_wrong_type_for_its_measure_is_refused() {
 
 /// STEP REAL needs a decimal point: an integer given for a real measure is
 /// written as `3.`, in a new record, an in-place edit and a quantity.
+/// (#8142)
 #[test]
 fn an_integer_for_a_real_measure_is_written_with_a_decimal_point() {
     let schema = "IFC4";
@@ -573,4 +578,20 @@ fn an_integer_for_a_real_measure_is_written_with_a_decimal_point() {
         PropOutcome::Append { new_records } => assert!(new_records.iter().any(|(_, r)| r.contains("IFCINTEGER(3)"))),
         other => panic!("{other:?}"),
     }
+}
+
+/// (#8142) A measure name must be an entity of the file's schema; a real one
+/// the literal table lacks is passed unchecked, and an unknown schema refuses.
+#[test]
+fn a_measure_must_exist_in_the_files_schema_8142() {
+    let content = wall_with_own_pset("IFC4");
+    let index = FileIndex::complete(&content);
+    let one = |schema: &str, measure: &str, literal: &str| {
+        let mut ids = IdAllocator::after(index.max_id);
+        let w = write("Pset_X", "P", measure, literal, PropScope::Occurrence, PsetKind::Property);
+        resolve_prop_write(&index, schema, 10, &w, &mut ids, None)
+    };
+    assert!(one("IFC2X3", "IFCPOSITIVEINTEGER", "5").unwrap_err().contains("not an IFC measure"));
+    assert!(one("IFC99", "IFCLENGTHMEASURE", "5.").unwrap_err().contains("schema"));
+    assert!(one("IFC4X3", "IFCURIREFERENCE", "'http://example.org/a'").is_ok());
 }

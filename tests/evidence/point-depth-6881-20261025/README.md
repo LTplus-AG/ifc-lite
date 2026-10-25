@@ -38,7 +38,8 @@ Preparation receipts:
   machine-qualified profile with an 8 GiB Node heap, 24 GiB reservation and serial
   Turbo execution. All 56 root Turbo tasks passed (55 cached), with exit zero
   and clean, unchanged source.
-- Common-engine rebundle `3a07710a-1c81-4f46-895c-23a4c62da0eb`: queued. Pop and
+- Common-engine rebundle `3a07710a-1c81-4f46-895c-23a4c62da0eb`: passed with exit
+  zero and clean, unchanged source. Pop and
   PC produced different WASM bytes from identical Rust inputs, so the
   [repack controller](../../e2e/pick-depth-6881-common-runtime.py) verifies those
   inputs and reuses the PC producer's exact generated runtime before rebuilding
@@ -47,6 +48,9 @@ Preparation receipts:
   that prerequisite. It runs functional controls first and launches timing only
   after those pass. The original request and output must be reconciled after an
   interruption; this is not a retryable sample identifier.
+
+[Preparation receipts](preparation.json) retain command/source identities,
+original outcomes and log hashes. GPU and hover acceptance remain pending.
 
 ## Functional protocol
 

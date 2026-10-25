@@ -36,7 +36,10 @@ fn issue_7955_c2_public_work_limit_covers_serialization_under_generous_ambient()
 #[test]
 fn issue_7955_c2_public_byte_limit_refuses_report_backing_before_growth() {
     let baseline = generous();
-    let report = baseline.scope(|| run(source(), OPTIONS)).unwrap();
+    // Keep the option's decimal width fixed so changing the limit does not
+    // itself shrink the serialized report below the intended one-byte refusal.
+    let baseline_options = OPTIONS.replace("16777216", "999999");
+    let report = baseline.scope(|| run(source(), &baseline_options)).unwrap();
     let length = report.bytes().unwrap().len() as u64;
     let limit = baseline.usage().peak_live_bytes - 1;
     assert!(limit > 2 * 256 * 1024 && limit < 1024 * 1024);
@@ -113,6 +116,7 @@ fn issue_7955_c3_returned_report_keeps_original_clock_and_stop_priority() {
             foreign_clock.advance(50000);
             foreign.scope(|| assert!(report.bytes().is_ok()));
             original_clock.advance(10000);
+            assert_eq!(report.report.bytes().unwrap_err(), SourceInspectionError::DeadlineExceeded);
             resource::detached(|| assert_eq!(report.bytes().err().unwrap().diagnostic_code_json(), "\"DEADLINE_EXCEEDED\""));
             let stop = ProgramStop::ResourceRefused(ResourceFailure {
                 dimension: Dimension::Work, requested: 23, remaining: 17, reason: RefusalReason::Limit,

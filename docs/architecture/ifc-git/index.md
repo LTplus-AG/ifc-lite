@@ -85,13 +85,13 @@ The commit-aware source work stays parked and is **not a dependency**.
 
 ## 5. Reading map
 
-Every spec below is **planned, not written**. They land one per PR, in roughly
-this order.
+`01-concepts.md` and `02-graph-object-model.md` are written. The rest are
+planned, and land one per PR in roughly this order.
 
 | Doc | Contents |
 | --- | --- |
-| `01-concepts.md` | Glossary: org, repo, commit, tree, blob, ref, branch. Repo kinds. What maps onto git and what cannot. |
-| `02-graph-object-model.md` | The node DAG. Node kinds and component keys. Canonical encoding. Why this is GUID-agnostic. |
+| [`01-concepts.md`](01-concepts.md) | Glossary: org, repo, commit, tree, blob, ref, branch. Repo kinds. What maps onto git and what cannot. |
+| [`02-graph-object-model.md`](02-graph-object-model.md) | The node DAG. Node kinds and component keys. Canonical encoding. Why this is GUID-agnostic. |
 | `03-diff.md` | Diff as the commit computer. Graph diff and change localisation. The Rust port and its parity contract. |
 | `04-authorship.md` | The schema-neutral authorship record and its per-schema adapters. Resolution ladder, warning codes, and the rule against fabricated attribution. |
 | `05-operations.md` | The verb surface: `status`, `commit`, `branch`, `diff <a> <b>`, `log`, `pull`, `push`. What each means for a graph rather than a tree of text files. |
@@ -107,38 +107,61 @@ assuming an answer, and neither blocks PRs 1 or 2.**
 
 ### 6.1 node-hash v0, or a v1?
 
-`packages/provenance/SPEC.md` already specifies the exact primitive ifc-git
-needs. Node-hash v0 is a Merkle DAG over the IFC graph: `property-set` is "a leaf
-w.r.t. geometry, composite w.r.t. its own properties", `element` hashes "its
-`geometry-mesh` hash if any, its `property-set`/`qset` hashes, its
-`relationship`…", every composite is "hash my own fields plus my children's
-hashes", and set-valued fields are canonically sorted.
+`packages/provenance/SPEC.md` already specifies most of the primitive ifc-git
+needs. Node-hash v0 is a Merkle DAG over the IFC graph: `property-set` is "a
+leaf w.r.t. geometry, composite w.r.t. its own properties", every composite
+hashes its own fields plus its children's hashes, set-valued fields are
+canonically sorted, and the `element` node is a fold of per-component-key child
+hashes **sorted by `componentKey`**, over the same vocabulary as
+`packages/diff/src/fingerprint.ts`. That fold *is* the change-localisation rule
+of §2.3, already specified and already pinned by golden vectors.
 
-That **is** the localisation rule in §2.3, and because a node's id is its content
-plus its children's ids, it is GUID-agnostic by construction. It also already has
-a canonical binary encoding, a frozen wire format and golden vectors.
+**But v0 is not GUID-agnostic, and an earlier draft of this document wrongly
+said it was.** §3.2 encodes the `element` node as:
 
-Two frictions:
+> header, `key` (string — the entity's stable identity, typically `GlobalId`),
+> `ifcType` (string), `componentCount` (u32), then components sorted by
+> `componentKey` …
 
-- v0 uses **two digests** — SHA-256 for composites, FNV-1a-64 for
-  `geometry-mesh` leaves — where one algorithm is wanted throughout.
-- v0 is **FROZEN** (2026-07-25), and unfreezing is not a decision to take
-  quietly.
+`key` is inside the hashed byte stream, so a from-scratch re-export that
+regenerates every `GlobalId` changes every element node hash, and therefore the
+tree, and therefore the commit — which is precisely the case §2.2 exists to
+make invisible. The non-element kinds are already content-only and need no
+change; the problem is confined to `element`.
 
-In its favour: v0 has **no consumers outside its own package**, so a v1 costs
-nothing in compatibility.
+So a v1 is **not** a digest swap. Two changes are wanted, and the second is the
+substantive one:
 
-**Proposal:** a node-hash v1 that changes **only the digest function**, to
-BLAKE3 — already this repo's content-address algorithm, via `computeLayerId` and
-`computeStackHash` in `packages/ifcx/src/canonical.ts` — and keeps v0's canonical
-structure, kind tags, sorting rules and golden-vector methodology unchanged. v0
-stays in place for the determinism-certificate work it was built for. BLAKE3 is
-chosen over the faster non-cryptographic options because a content address must
-be collision-resistant: an attacker-supplied IFC must not be able to forge a node
-id.
+1. **One digest throughout.** v0 uses SHA-256 for composites and FNV-1a-64 for
+   `geometry-mesh` leaves. BLAKE3 is proposed: faster than SHA-256, still
+   collision-resistant (a content address must be — an attacker-supplied IFC
+   must not be able to forge a node id), and already this repo's content-address
+   algorithm via `computeLayerId` / `computeStackHash` in
+   `packages/ifcx/src/canonical.ts`.
+2. **Move `key` out of the element hash and into the tree.** The node address
+   becomes content-only; the commit's tree maps `key → node address`. This is
+   exactly git's arrangement — a blob is content, a tree maps names to blobs,
+   and two identical files share one blob. GUID-agnosticism then falls out
+   rather than being engineered: compare node addresses to find what changed,
+   and consult keys only to pair nodes across versions, where a re-GUID reads as
+   the rename case the shipped content-matching tiers already resolve. It also
+   buys deduplication of genuinely identical content for free.
 
-**If v0 should stay frozen and be used as-is, say so** — ifc-git can live with
-two digests, and the structure is what matters.
+**The freeze is not the obstacle it looks like.** v0's own change policy
+provides the path: any wire-format change "requires a **new versioned spec
+file** (`node-hash-v1.md`, with a new magic/version byte) and a **major version
+bump of `@ifc-lite/provenance`**". So a v1 is a specified move, not an act of
+unfreezing — v0's bytes, golden vectors and `NHV0` magic stay untouched and keep
+serving the determinism-certificate work they were built for. v0 also has no
+consumers outside its own package today, so the major bump costs nothing.
+
+**What needs deciding** is therefore narrower than "unfreeze or not": whether
+ifc-git should author `node-hash-v1.md` under `@ifc-lite/provenance` as the
+spec's change policy directs, or define its own node encoding in `rust/git` and
+leave `@ifc-lite/provenance` alone entirely. The first keeps one Merkle format
+in the repo; the second avoids a major bump on a package ifc-git does not
+otherwise use. Recommendation: the first, because two Merkle encodings over the
+same IFC graph is the duplication the anti-cruft rule exists to prevent.
 
 ### 6.2 What "reuse git's implementation" can mean here
 

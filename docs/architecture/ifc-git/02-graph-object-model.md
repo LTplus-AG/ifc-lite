@@ -1,0 +1,206 @@
+# 02: Graph Object Model
+
+Status: draft, for discussion. Part of the [ifc-git spec set](index.md).
+Depends on the decision in index §6.1.
+
+## 2.1 Four object kinds
+
+git has four: blob, tree, commit, tag. ifc-git has the same four, with one
+substitution — a blob holds *delivered bytes*, and the thing a tree points at is
+a **node**, not a blob.
+
+| Object | Immutable content | Addressed by |
+| --- | --- | --- |
+| **Blob** | The delivered file's bytes, verbatim | digest of those bytes |
+| **Node** | One vertex of the IFC graph: its own fields plus references to its children's addresses | digest of its canonical encoding |
+| **Tree** | The manifest of one version: `key → node address`, chunked | digest of the manifest |
+| **Commit** | Tree, parents, author, committer, intent, diff summary | digest of the record |
+
+A blob is kept so a version can be reproduced byte-for-byte and so a signature
+over the original delivery remains checkable. It is **not** what versions are
+compared by; index §1.5 and §2.6 below give the reason.
+
+## 2.2 Nodes: what is a node and what is a field
+
+A node exists where a change should be **attributable on its own**. Everything
+else is a field of its owner.
+
+| Node kind | Why it is its own node |
+| --- | --- |
+| `element` | The thing a person points at. Composite: a fold of its component addresses. |
+| `property-set` | Shared by many occurrences through `IfcRelDefinesByProperties`. One edit must be one change, not N. |
+| `quantity-set` | Same argument. |
+| `relationship` | Its identity is its endpoints, so it changes when they do and should say so once. |
+| `geometry` | Large, independently reusable, and already hashed by the geometry pass. |
+| `material` / `classification` | Resolved name bags, shared across elements. |
+
+Fields, by contrast: `Name`, `Description`, `ObjectType`, `PredefinedType`,
+`Tag`, the IFC class. These have no identity apart from their owner, and they
+are folded into the owner's `attr:core` component.
+
+This split is already specified. `packages/provenance/SPEC.md` §3.2 defines
+exactly these composites, and its `element` encoding is a fold of per-component
+child hashes **sorted by `componentKey`**, over the vocabulary in
+`packages/diff/src/fingerprint.ts`. ifc-git does not invent the model; it
+inherits it and fixes one thing (§2.4).
+
+## 2.3 Component keys
+
+The component key is the unit a change is reported against, and the unit a
+conflict is detected at.
+
+```
+attr:core              direct attributes plus the IFC class
+pset:<Name>            one per property set
+qset:<Name>            one per quantity set
+type-assignment        assigned types, by name and class
+material               resolved material names
+classification         resolved classification references
+placement              the object placement
+geometry:<tier>        tessellated output, per tier
+child:<name>           a relation slot
+```
+
+Shared with `@ifc-lite/diff` (which emits the first six) and `@ifc-lite/merge`
+(which adds the last three). One vocabulary, three consumers, no translation
+layer — which is why ifc-git keeps the spelling rather than improving it.
+
+## 2.4 Content addressing, and the one correction v0 needs
+
+A node's address is the digest of its canonical encoding, which includes the
+**addresses of its children**, not their contents. That is the Merkle rule, and
+it gives three properties for free:
+
+- **Unchanged is cheap to prove.** Equal address, equal subtree. No walk.
+- **Change localises.** Editing one property changes that `property-set` node's
+  address, which changes the owning `element`'s address because the element
+  encodes the child address — and changes nothing else. The element's
+  `changedComponents` names `pset:<Name>` and the diff stops there.
+- **Identical content deduplicates.** Two elements with the same properties
+  share one `property-set` node.
+
+### The correction
+
+**v0's `element` encoding hashes the entity's `key`** — §3.2: "header, `key`
+(string — the entity's stable identity, typically `GlobalId`), `ifcType`
+(string), `componentCount` (u32), then components sorted by `componentKey`".
+
+So a from-scratch re-export that regenerates every `GlobalId` changes every
+element address, and therefore the tree, and therefore the commit. That is the
+exact case index §2.2 exists to make invisible, so as written v0 cannot deliver
+it. Non-element kinds are already content-only and need nothing.
+
+**Proposal: the node address is content-only, and the key lives in the tree.**
+
+```
+node    = digest( ifcType, components sorted by componentKey )     no key
+tree    = { key -> node address, ... }                             keys here
+```
+
+This is precisely git's arrangement: a blob is content, a tree maps names to
+blobs, and two identical files share one blob. The consequences are the ones
+wanted:
+
+- A re-GUID rewrites tree **keys** and leaves every node address alone. The
+  version reads as unchanged in content, with a key remapping — which is the
+  rename case `@ifc-lite/diff`'s shipped content-matching tiers already resolve,
+  and which `identityMapFromContentMatches` already records.
+- Two genuinely distinct elements with byte-identical content collapse to one
+  node address. That is correct — it is what deduplication means — and nothing
+  is lost, because the tree still carries both keys pointing at it. Cardinality
+  and identity live in the tree, where they belong.
+- `GlobalId` becomes **evidence used for pairing**, never identity. It makes
+  pairing fast when it is stable and costs nothing when it is not.
+
+Per v0's own change policy this lands as a new `node-hash-v1.md` with a new
+magic byte and a major bump of `@ifc-lite/provenance`, leaving `NHV0`, its
+golden vectors and the determinism-certificate work untouched. See index §6.1
+for the decision still open: author v1 there, or define the encoding in
+`rust/git`.
+
+## 2.5 Canonical encoding
+
+Rules, inherited from v0 §3 because they are already right and already pinned:
+
+- **A fixed header per node**: magic, kind tag, format version. A new magic byte
+  is how a v1 announces itself.
+- **Sets are sorted, lists are not.** Where a field is semantically a set — a
+  property set's members, a relationship role's targets — it is sorted so input
+  order cannot reach the hash. Where order is content, it is preserved.
+- **Sort by code unit, never by locale.** A collation differs between machines;
+  `localeCompare` without an explicit locale uses the runtime default, and the
+  orders genuinely disagree. The hash exists to be identical across machines.
+- **Counts are encoded before members**, so a truncated stream cannot be
+  mistaken for a shorter valid one.
+- **No non-finite numbers reach the encoder.** `NaN` and the infinities become
+  distinct string tokens first, because JSON maps them to `null` — the same
+  token an absent value produces, and an equal hash is treated as content
+  identity downstream.
+- **IFC names are exact EXPRESS PascalCase** (`IfcWallStandardCase`), never
+  normalised.
+
+The Rust implementation of the string and number rules already exists and is
+pinned byte-for-byte against the TypeScript engine, in `rust/diff`
+(`js_json.rs`, `utf16.rs`, `fingerprint.rs`, landed under #8043). A v1 encoder
+reuses it rather than restating it; the UTF-16 reading in particular was costly
+to get right and should not be re-derived.
+
+## 2.6 Trees
+
+A tree is the version's manifest: `key → node address`, plus the element's IFC
+class so a listing needs no node fetch.
+
+**Chunked, because a delivery is large.** A real model is on the order of
+hundreds of thousands of entities and tens of thousands of objects. A monolithic
+manifest would be rewritten in full for a two-element change. So the manifest is
+split into chunks, each content-addressed, and a commit's tree is the list of
+chunk addresses — unchanged chunks are reused by reference between commits.
+
+Chunk boundaries must be **content-derived**, not positional. With fixed-size
+chunks, inserting one element shifts every subsequent entry and invalidates
+every chunk after the insertion point; with boundaries chosen from the content
+(a rolling hash over sorted keys), an insertion disturbs one chunk. This is the
+packfile problem git already solved, and the design to reuse — not the code,
+which is GPL-2.0 (index §6.2).
+
+## 2.7 Commits
+
+```
+commit = digest(
+  tree address,
+  parents[]          parents[0] is the mainline parent; empty for the first
+  author             responsible for the content, resolved from the file (04)
+  committer          who or what performed the upload
+  intent             why this version exists
+  diff summary       counts and changed component keys against parents[0]
+  software release   what computed it
+)
+```
+
+Immutable, so anything derived from a commit can be cached by its address with
+no expiry.
+
+Two rules:
+
+- **No empty commits.** An unchanged re-export produces no commit. The source
+  revision is recorded as pointing at the existing one, so a scheduled sync is
+  idempotent without inventing history. git refuses empty commits by default;
+  here it matters more, because an unchanged re-export is the *common* case.
+- **Compare-and-swap on the ref.** A commit names the parent it expects. Two
+  deliveries built on the same parent mean the second is refused and must be
+  rebased. That is the whole of the concurrency control.
+
+## 2.8 What this does not address
+
+- **The digest.** Open in index §6.1.
+- **Where the encoding lives** — `node-hash-v1.md` under
+  `@ifc-lite/provenance`, or `rust/git`. Also index §6.1.
+- **Storage layout.** Loose and packed tiers, on-disk format: see
+  [07-storage](07-storage.md).
+- **Geometry node granularity.** `geometry:<tier>` is a component key here, but
+  whether a tier is one node or several, and how it relates to the geometry
+  pass's existing hashes, needs the geometry pipeline's view and is deferred to
+  [03-diff](03-diff.md).
+- **Authorship fields.** The `author` and `committer` shapes are
+  [04-authorship](04-authorship.md)'s subject; this document only says the
+  commit carries them.

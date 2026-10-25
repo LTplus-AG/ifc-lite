@@ -1644,6 +1644,11 @@ jobs:
           # ordinary whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/data_model/mod.rs | grep -Fxq 'rust/processing/src/data_model/mod.rs'; then
             oracle_args+=(--mutation tests/evidence/data-model-move-7783/behaviour.oracle.patch)
+          # #7779: F3b-R2a's whole-production inverse removes axis_frame_tests
+          # module wiring. Keep all changed tests and APIs; normalize only the
+          # router adapter's raw direction ratios so its exact-ratio test fails.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/placement-r2a-7779/raw-direction.oracle.patch | grep -Fxq 'tests/evidence/placement-r2a-7779/raw-direction.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/placement-r2a-7779/raw-direction.oracle.patch)
           # #7779: F3b-R1 moves `build_axis2_matrix`, the chain walk and the
           # Linear/Grid resolvers into the new `placement` module, which the
           # changed tests import, so a whole-change revert cannot compile them

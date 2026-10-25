@@ -32,7 +32,7 @@ fn issue_7955_completion_preserves_pending_protocol_and_root_reasons() {
 
 #[test]
 fn issue_7955_unconverted_mapping_completion_is_honestly_opaque() {
-    let bytes = mapping_tests::mapped().replace("IFCMAPPEDITEM(#81,#82)", "IFCMAPPEDITEM(#81,$)");
+    let bytes = mapping_tests::mapped().replace("#84,1.,$", "#84,0.,$");
     let source = SourceBundle::new(bytes.as_bytes().to_vec());
     let mut decoder = source.decoder();
     let router = GeometryRouter::with_units(&bytes, &mut decoder);

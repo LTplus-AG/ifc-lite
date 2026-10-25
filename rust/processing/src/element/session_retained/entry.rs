@@ -18,9 +18,11 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
             resource::check_current().map_err(RetainedExecutionError::Stopped)?;
             let mut owner = ProductOwner::admit(decoder, router).map_err(protocol)?;
             let mut scopes = Scopes::new();
-            let ((resources, planned, terminal), _) = owner
+            let mut captured_resources = None;
+            let prepared = owner
                 .work(decoder, router, |d, r| {
                     let resources = OwnedResourceContext::capture_current();
+                    captured_resources = Some(resources.clone());
                     resources.check().map_err(RetainedExecutionError::Stopped)?;
                     resource::charge(resource::Cost {
                         work: 1,
@@ -43,7 +45,13 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
                     Ok::<_, RetainedExecutionError>((resources, planned, terminal))
                 })
                 .map_err(protocol)
-                .and_then(|(result, stamp)| result.map(|result| (result, stamp)))?;
+                .and_then(|(result, stamp)| result.map(|result| (result, stamp)));
+            // The original stop also wins when source planning returned an
+            // error before its owner/resource scopes finished unwinding.
+            if let Some(resources) = captured_resources {
+                resources.check().map_err(RetainedExecutionError::Stopped)?;
+            }
+            let ((resources, planned, terminal), _) = prepared?;
             resources.check().map_err(RetainedExecutionError::Stopped)?;
             let state = ProductState::planned(job, planned, terminal, Some(context.id()), None);
             if let Some(stop) = state.terminal() {

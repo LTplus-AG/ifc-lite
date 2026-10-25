@@ -17,9 +17,9 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
         if !Arc::ptr_eq(&pending.cancellation.stage, &work.cancellation.stage) {
             return Err(protocol(ReceiptFailure::ForeignConstructionReceipt));
         }
-        if self.context.validate_source().is_err() {
+        if let Err(error) = self.context.validate_source() {
             pending.cancellation.cancel();
-            return Err(RetainedExecutionError::Source(RetainedContextError::Stale));
+            return Err(RetainedExecutionError::Source(error));
         }
         let owner = self.validate(decoder, router)?;
         self.state
@@ -61,7 +61,8 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
         decoder: &mut EntityDecoder,
         router: &GeometryRouter,
     ) -> Result<(), Box<RuntimeRejectedCompletion<R>>> {
-        let validation = self.resources.with_scope(|| self.validate_completion(&work, decoder, router))
+        let validation = self.resources.with_scope(|| self.validate_completion(&work, decoder, router));
+        let validation = self.resources.check().map_err(RetainedExecutionError::Stopped).and(validation)
             .and_then(|()| self.permits.reserve(&self.resources, &mut self.ledger, work.realizations.len()))
             .and_then(|()| self.resources.check().map_err(RetainedExecutionError::Stopped));
         if let Err(reason) = validation {
@@ -110,8 +111,8 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                 })
             })
             .map_err(protocol)
-            .and_then(|(result, _)| result)
-            .and_then(|()| self.resources.check().map_err(RetainedExecutionError::Stopped))
+            .and_then(|(result, _)| result);
+        let result = self.resources.check().map_err(RetainedExecutionError::Stopped).and(result)
             .and_then(|()| self.validate(decoder, router).map(|_| ()));
         if let Err(reason) = result {
             self.failed = true;

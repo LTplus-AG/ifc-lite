@@ -131,6 +131,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
     fn issue_next(&mut self, decoder: &mut EntityDecoder, router: &GeometryRouter,
         worker: &impl RetainedRuntime<Receipt = R>) -> Result<Option<RuntimeIssued<R>>, RetainedExecutionError> {
         let result = self.issue_next_checked(decoder, router, worker);
+        let result = self.resources.check().map_err(RetainedExecutionError::Stopped).and(result);
         if result.as_ref().is_err_and(|error| error.terminal()) { self.cancel(); }
         result
     }

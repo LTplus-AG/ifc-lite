@@ -163,6 +163,7 @@ impl Execution {
         apply_transform(&mut out, &wt);
         out.origin = origin;
         out.clean_degenerate();
+        // strict_closed_mesh false negative: unsplit collinear T-junctions left by clean_degenerate
         if !crate::exact_topology::strict_closed_mesh(&out) {
             return None;
         }

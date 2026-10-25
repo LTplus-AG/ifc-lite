@@ -185,8 +185,9 @@ fn thin_residual_between_param_openings_is_rejected_and_stays_closed() {
         let router = GeometryRouter::new();
         assert!(router.try_param_rect_cut(&web_wall(), &ctx).is_none(), "gap {gap}: torn param cut emitted");
         assert_eq!(router.take_rect_fast_stats().fired, 0, "a rejected cut is not counted");
-        // The full pipeline then lands on a closed mesh whichever path the env allows.
+        // With rect_fast on, the pipeline falls back to it, which keeps the closed cut.
         let out = router.apply_void_context(web_wall(), &ctx, 1);
+        assert_eq!(router.take_rect_fast_stats().fired, 1, "gap {gap}: fallback must come from rect_fast");
         let tris = out.indices.len() / 3;
         assert!(crate::exact_topology::strict_closed_mesh(&out), "gap {gap}: open cut ({tris} tris)");
         assert!(tris <= raw_tris(gap), "gap {gap}: {tris} tris exceeds the raw cut");

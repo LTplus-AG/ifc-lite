@@ -150,15 +150,20 @@ fn shape_error(entity: u32, error: ShapeError) -> StructureError {
 
 fn decode_members(members: &[AttributeValue], decoder: &mut EntityDecoder, site: FailureSite)
     -> Result<Vec<DecodedEntity>> {
-    let mut values = Vec::new();
-    let permit = crate::resource::reserve_headers(&mut values, members.len())?;
+    // Added backing accounting belongs only to the opted-in inspection. Keep
+    // ordinary retained source replies at their existing stop/cost boundary.
+    let inspecting = crate::resource::inspection_active();
+    let mut values = Vec::with_capacity(if inspecting { 0 } else { members.len() });
+    let permit = if inspecting {
+        Some(crate::resource::reserve_headers(&mut values, members.len())?)
+    } else { None };
     for id in members.iter().filter_map(AttributeValue::as_entity_ref) {
         crate::resource::source_step().map_err(StructureError::Checkpoint)?;
         let decoded = decoder.decode_by_id(id);
         crate::resource::source_step().map_err(StructureError::Checkpoint)?;
         values.push(decoded.map_err(|error| core_error(site, id, error))?);
     }
-    permit.retain();
+    if let Some(permit) = permit { permit.retain(); }
     Ok(values)
 }
 

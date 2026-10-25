@@ -39,7 +39,10 @@ pub(super) fn unplaced_by_removed_structure(
     removed: &HashSet<u32>,
     reasons: &HashMap<u32, RemovalReason>,
 ) -> Vec<ValidationFinding> {
-    let mut rels: Vec<u32> = removed.iter().copied().filter(|id| reasons.get(id) == Some(&RemovalReason::Dangling)).collect();
+    // A relationship the plan deleted, or one that went because a record it
+    // named did. A replaced one moved its objects somewhere else.
+    let gone = |id: &u32| matches!(reasons.get(id), Some(RemovalReason::Dangling | RemovalReason::Requested));
+    let mut rels: Vec<u32> = removed.iter().copied().filter(gone).collect();
     rels.sort_unstable();
     let mut out = Vec::new();
     for rel in rels {
@@ -55,6 +58,7 @@ pub(super) fn unplaced_by_removed_structure(
         let label = if rel_type == AGGREGATION { "parent" } else { "container" };
         // The relationship is gone either way; say why.
         let cause = match parent {
+            _ if reasons.get(&rel) == Some(&RemovalReason::Requested) => format!("#{rel}, which related it to its {label}, was deleted"),
             Some(p) if removed.contains(&p) => format!("the {label} #{p} it was related to in #{rel} was deleted"),
             Some(p) => format!("#{rel}, which related it to its {label} #{p}, was removed because it referenced a deleted record"),
             None => format!("#{rel}, which related it to its {label}, was removed"),

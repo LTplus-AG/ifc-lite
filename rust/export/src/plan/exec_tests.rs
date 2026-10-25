@@ -861,6 +861,18 @@ fn a_containment_removed_for_another_reference_is_reported_with_its_cause() {
     assert!(f.message.contains("referenced a deleted record") && !f.message.contains("was deleted"), "{}", f.message);
 }
 
+/// Deleting a containment relationship itself takes its elements out of the
+/// spatial tree too. (#8142)
+#[test]
+fn deleting_a_containment_reports_its_elements() {
+    use super::test_fixtures::storey_with_typed_wall;
+    let content = storey_with_typed_wall("IFC4");
+    let plan = ExportPlan { dispositions: vec![(ObjectRef::Id(80), Disposition::Delete)], context: PlanContext::default() };
+    let report = execute(&content, &plan, &mut Vec::new()).unwrap();
+    let f = report.findings.iter().find(|f| f.express_id == Some(10)).expect("wall reported");
+    assert!(f.message.contains("#80") && f.message.contains("was deleted"), "{}", f.message);
+}
+
 /// Deleting a member of a shared relationship whose record cannot be edited
 /// exactly must not leave that relationship naming the deleted member.
 /// (#8142)

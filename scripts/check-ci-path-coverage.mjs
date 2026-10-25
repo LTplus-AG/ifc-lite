@@ -416,7 +416,17 @@ const violations = [];
 for (const [gate, info] of gateInputs) {
   if (info.globs === null) continue; // job has no path filter: everything reaches it
   for (const input of info.inputs) {
-    for (const node of uncoveredNodes(input, info.globs)) {
+    const uncovered = uncoveredNodes(input, info.globs);
+    // An exact exemption describes the inferred input itself (for example a
+    // temporary staging directory). Partial trigger coverage can split that
+    // input into children, but cannot turn it into a repository read. Keep the
+    // existing exemption's meaning; fully covered inputs still make it stale.
+    const wholeInput = allow.find((a) => a.gate === gate && a.glob === input);
+    if (wholeInput && uncovered.length > 0) {
+      wholeInput.used = true;
+      continue;
+    }
+    for (const node of uncovered) {
       const hit = allow.find((a) => a.gate === gate && matchesAny(node, [a.glob]));
       if (hit) {
         hit.used = true;

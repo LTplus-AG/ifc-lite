@@ -45,7 +45,7 @@
   },
   {
     "id": "post-await-stop",
-    "patch": "tests/evidence/retained-execution-j4/fused-post-await-stop.oracle.patch",
+    "patch": "tests/evidence/retained-execution-j4/backend-prep-post-await-stop.oracle.patch",
     "test": "element::session_retained::async_tests::j4_original_stop_after_await_refuses_delivery_and_retires_only_captured_domain",
     "intendedFailure": "Only the preregistered assertion/cause; no SDK numerical or release acceptance.",
     "historicalPatch": "tests/evidence/retained-execution-j4/post-await-stop.oracle.patch",
@@ -58,7 +58,8 @@
         "right: 0"
       ]
     },
-    "priorCutDPatch": "tests/evidence/retained-execution-j4/cut-d-post-await-stop.oracle.patch"
+    "priorCutDPatch": "tests/evidence/retained-execution-j4/cut-d-post-await-stop.oracle.patch",
+    "priorBackendPreparationPatch": "tests/evidence/retained-execution-j4/fused-post-await-stop.oracle.patch"
   },
   {
     "id": "receipt-report",
@@ -145,7 +146,7 @@
   },
   {
     "id": "m3-conflict-terminal",
-    "patch": "tests/evidence/retained-execution-j4/m3-conflict-terminal.oracle.patch",
+    "patch": "tests/evidence/retained-execution-j4/backend-prep-m3-conflict-terminal.oracle.patch",
     "test": "element::session_retained::contract_tests::issue_7955_m3_conflicting_outcome_poisons_only_its_domain_and_preserves_rejected_buffers",
     "intendedFailure": "Only the preregistered typed report or terminal action assertion; no final-product acceptance.",
     "expectedFailure": {
@@ -154,6 +155,7 @@
       "fragments": [
         "M3_CONFLICT_MUST_POISON_ATTEMPT"
       ]
-    }
+    },
+    "priorBackendPreparationPatch": "tests/evidence/retained-execution-j4/m3-conflict-terminal.oracle.patch"
   }
 ]

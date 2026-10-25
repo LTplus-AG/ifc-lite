@@ -11,6 +11,7 @@ import { resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { stripVTControlCharacters } from 'node:util';
 import { parseRunnerOutput, PASS, ASSERTION_FAILURE } from './lib/revert-oracle.mjs';
+import { withRestoredSource } from './lib/restored-source.mjs';
 
 if (!process.env.IFC_WORKER_ACTIVE_STATE) throw new Error('Use the registered fleet/worker launcher');
 const root = process.cwd();
@@ -53,7 +54,7 @@ function mutation(label, path, mutate, plan, expectedMessage) {
   const full = resolve(root, path), original = readFileSync(full);
   const changed = mutate(original.toString('utf8'));
   if (hash(changed) === hash(original)) throw new Error(`Mutation did not change ${path}`);
-  try {
+  withRestoredSource(full, () => {
     writeFileSync(full, changed);
     const { report, output } = run(label, plan);
     report.path = path;
@@ -63,10 +64,7 @@ function mutation(label, path, mutate, plan, expectedMessage) {
       ? report.exitCode !== 0 && output.includes(expectedMessage)
       : report.result.kind === ASSERTION_FAILURE && report.result.failed > 0;
     if (!observed) throw new Error(`Mutation not observed through its intended witness: ${label}`);
-  } finally {
-    writeFileSync(full, original);
-    if (hash(readFileSync(full)) !== hash(original)) throw new Error(`Restoration failed: ${path}`);
-  }
+  });
 }
 
 try {
@@ -75,20 +73,16 @@ try {
   }
   const dialog = 'apps/viewer/src/components/error-report/ErrorReportDialog.tsx';
   const dialogTest = resolve(root, 'apps/viewer/src/components/error-report/ErrorReportDialog.test.tsx');
-  const currentTest = readFileSync(dialogTest);
   const old = spawnSync('git', ['show', '60a505e914:apps/viewer/src/components/error-report/ErrorReportDialog.test.tsx'],
     { cwd: root, maxBuffer: 1024 * 1024 });
   if (old.status !== 0) throw new Error('Original report suite is unavailable for timing comparison');
   const reportPlan = { ...viewer, pattern: 'src/components/error-report/ErrorReportDialog.test.tsx' };
-  try {
+  withRestoredSource(dialogTest, () => {
     writeFileSync(dialogTest, old.stdout);
     if (run('original-report-suite-shared-host', reportPlan).report.result.kind !== PASS) {
       throw new Error('Original report suite failed');
     }
-  } finally {
-    writeFileSync(dialogTest, currentTest);
-    if (hash(readFileSync(dialogTest)) !== hash(currentTest)) throw new Error('Report suite restoration failed');
-  }
+  });
   if (run('optimized-report-suite-shared-host', reportPlan).report.result.kind !== PASS) {
     throw new Error('Optimized report suite failed');
   }

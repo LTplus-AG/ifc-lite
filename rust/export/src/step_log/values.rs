@@ -10,6 +10,7 @@
 //! `newValue`, so a marker INSIDE a list stays an object; `top` carries that
 //! distinction.
 
+use ifc_lite_core::SchemaFamily;
 use serde_json::Value;
 
 use crate::generated::step_log_tables::{DEFINED_TYPE_BASES, SELECT_LEAVES, SELECT_SLOTS};
@@ -44,9 +45,10 @@ fn coerce_logical(value: &Value) -> Option<bool> {
 }
 
 /// `serializeTypedMarker`: `IFC<TYPE>(<inner>)`, the inner value written for
-/// the type's EXPRESS base.
-pub(crate) fn typed_marker(type_name: &str, value: &Value) -> Result<String, Unwritable> {
-    let inner = match express_base(type_name) {
+/// the type's EXPRESS base, an `IfcValue` leaf's as `family` declares it.
+pub(crate) fn typed_marker(family: SchemaFamily, type_name: &str, value: &Value) -> Result<String, Unwritable> {
+    let base = super::nominal::leaf_base(family, type_name).map(crate::generated::step_log_tables::BaseKind::as_str);
+    let inner = match base.or_else(|| express_base(type_name)) {
         Some("REAL") | Some("NUMBER") => to_step_real(js_to_number(value))?,
         Some("INTEGER") => {
             let n = js_to_number(value).trunc();
@@ -92,11 +94,11 @@ fn as_number(value: &Value, top: bool) -> Option<f64> {
 }
 
 /// `serializeStepValue(value, forceReal)`.
-pub(crate) fn step_value(value: &Value, force_real: bool) -> Result<String, Unwritable> {
-    step_value_at(value, force_real, false, true)
+pub(crate) fn step_value(family: SchemaFamily, value: &Value, force_real: bool) -> Result<String, Unwritable> {
+    step_value_at(family, value, force_real, false, true)
 }
 
-fn step_value_at(value: &Value, force_real: bool, in_list: bool, top: bool) -> Result<String, Unwritable> {
+fn step_value_at(family: SchemaFamily, value: &Value, force_real: bool, in_list: bool, top: bool) -> Result<String, Unwritable> {
     if value.is_null() {
         return Ok("$".to_string());
     }
@@ -120,7 +122,7 @@ fn step_value_at(value: &Value, force_real: bool, in_list: bool, top: bool) -> R
     }
     if let Value::Array(items) = value {
         let parts: Result<Vec<String>, Unwritable> =
-            items.iter().map(|v| step_value_at(v, force_real, true, false)).collect();
+            items.iter().map(|v| step_value_at(family, v, force_real, true, false)).collect();
         return Ok(format!("({})", parts?.join(",")));
     }
     if let Value::Object(m) = value {
@@ -130,7 +132,7 @@ fn step_value_at(value: &Value, force_real: bool, in_list: bool, top: bool) -> R
         if let Some(typed) = m.get("typed") {
             let ty = typed.get("type").map(json_to_js_string).unwrap_or_default();
             let inner = typed.get("value").cloned().unwrap_or(Value::Null);
-            return typed_marker(&ty, &inner);
+            return typed_marker(family, &ty, &inner);
         }
         return Ok("'[object Object]'".to_string());
     }
@@ -154,11 +156,11 @@ fn step_value_at(value: &Value, force_real: bool, in_list: bool, top: bool) -> R
 
 /// `serializeQualifiedSelectSlot`: a scalar in a SELECT slot written as the
 /// one defined-type member of its value's family, when there is exactly one.
-fn qualified_select(upper: &str, index: usize, value: &Value) -> Result<Option<String>, Unwritable> {
+fn qualified_select(family: SchemaFamily, upper: &str, index: usize, value: &Value) -> Result<Option<String>, Unwritable> {
     let Some(select) = SELECT_SLOTS.iter().find(|r| r.0 == upper && usize::from(r.1) == index).map(|r| r.2) else {
         return Ok(None);
     };
-    let families: &[&str] = match value {
+    let bases: &[&str] = match value {
         Value::Bool(_) => &["BOOLEAN", "LOGICAL"],
         Value::Number(n) if n.as_f64().is_some_and(f64::is_finite) => &["REAL", "NUMBER", "INTEGER"],
         Value::String(s) => {
@@ -176,10 +178,10 @@ fn qualified_select(upper: &str, index: usize, value: &Value) -> Result<Option<S
         _ => return Ok(None),
     };
     let leaves: Vec<(&str, &str)> = SELECT_LEAVES.iter().filter(|r| r.0 == select).map(|r| (r.1, r.2)).collect();
-    for family in families {
-        let matches: Vec<&str> = leaves.iter().filter(|(_, b)| b == family).map(|(m, _)| *m).collect();
+    for wanted in bases {
+        let matches: Vec<&str> = leaves.iter().filter(|(_, b)| b == wanted).map(|(m, _)| *m).collect();
         match matches.as_slice() {
-            [one] => return typed_marker(one, value).map(Some),
+            [one] => return typed_marker(family, one, value).map(Some),
             [] => continue,
             _ => return Ok(None),
         }
@@ -210,24 +212,32 @@ fn token_is_real_literal(token: &str) -> bool {
 
 /// `serializePositionalOverride`.
 pub(crate) fn positional_override(upper: &str, index: usize, value: &Value, current: &str, schema: &str) -> Result<String, Unwritable> {
+    let family = step_log_family(schema);
     if is_marker(value) {
-        return step_value(value, false);
+        return step_value(family, value, false);
     }
-    if let Some(q) = qualified_select(upper, index, value)? {
+    if let Some(q) = qualified_select(family, upper, index, value)? {
         return Ok(q);
     }
     let force_real = is_real_slot(upper, index, schema) || token_is_real_literal(current);
-    step_value(value, force_real)
+    step_value(family, value, force_real)
 }
 
 /// `serializeAttributeSlot`: one authored attribute of a created entity.
 pub(crate) fn attribute_slot(upper: &str, index: usize, value: &Value, schema: &str) -> Result<String, Unwritable> {
+    let family = step_log_family(schema);
     if is_marker(value) {
-        return step_value(value, false);
+        return step_value(family, value, false);
     }
-    if let Some(q) = qualified_select(upper, index, value)? {
+    if let Some(q) = qualified_select(family, upper, index, value)? {
         return Ok(q);
     }
-    step_value(value, is_real_slot(upper, index, schema))
+    step_value(family, value, is_real_slot(upper, index, schema))
         .map_err(|e| Unwritable(format!("{upper} attribute {index}: {}", e.0)))
+}
+
+/// The family of a step-log source schema (`Pass::schema`, already a family
+/// name), IFC4 for anything else, as the source detection defaults.
+pub(crate) fn step_log_family(schema: &str) -> SchemaFamily {
+    SchemaFamily::from_label(schema).unwrap_or(SchemaFamily::Ifc4)
 }

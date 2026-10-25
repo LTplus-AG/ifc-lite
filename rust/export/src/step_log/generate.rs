@@ -92,7 +92,7 @@ fn pset_lines(
                 continue;
             }
             let id = pass.allocate()?;
-            let value = serialize_nominal_value(&prop.value, prop.ty, prop.data_type.as_deref());
+            let value = serialize_nominal_value(super::values::step_log_family(pass.schema), &prop.value, prop.ty, prop.data_type.as_deref());
             let unit = unit_token(pass, prop.unit.as_deref());
             // A list value is an `IfcPropertyListValue`; `()` is `$` (#5794).
             let (entity, value) = match value.as_str() {

@@ -414,10 +414,11 @@ fn an_in_place_quantity_write_must_match_the_existing_quantity_kind() {
     let content = wall_with_type_owned_quantity_set(schema);
     let index = FileIndex::complete(&content);
     let area = write("Qto_WallBaseQuantities", "Length", "IFCAREAMEASURE", "3.5", PropScope::Type, PsetKind::Quantity);
-    let err = super::in_place_edits(&index, schema, 41, &area).unwrap_err();
+    let target = super::WriteTarget::read(&index, schema, 10);
+    let err = super::in_place_edits(&target, 41, &area).unwrap_err();
     assert!(err.contains("IFCQUANTITYAREA"), "{err}");
     let length = write("Qto_WallBaseQuantities", "Length", "IFCLENGTHMEASURE", "3.5", PropScope::Type, PsetKind::Quantity);
-    assert!(super::in_place_edits(&index, schema, 41, &length).is_ok());
+    assert!(super::in_place_edits(&target, 41, &length).is_ok());
 }
 
 /// The other direction: a type-scoped write to a set an occurrence

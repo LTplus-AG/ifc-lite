@@ -1003,3 +1003,23 @@ fn a_count_measure_is_written_with_its_schemas_base_8142() {
     assert!(report.refusals.is_empty(), "{:?}", report.refusals);
     assert!(String::from_utf8(out).unwrap().contains("IFCCOUNTMEASURE(3.),"));
 }
+
+/// (#8142) An override targeting a record in the type's second set of a name
+/// and an untargeted write of the same property both add that property to
+/// the object's new set: one member, the later write's.
+#[test]
+fn two_overrides_of_one_property_write_one_member_8142() {
+    use super::test_fixtures::wall_with_type_owned_pset;
+    let extra = "#54=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('2'),$);\n\
+        #53=IFCPROPERTYSET('0000000000000000000053',$,'Pset_A',$,(#54));\n";
+    let content = String::from_utf8(wall_with_type_owned_pset("IFC4"))
+        .unwrap()
+        .replace("'Pset_WallCommon'", "'Pset_A'")
+        .replace("(#42)", "(#42,#53)")
+        .replacen("ENDSEC;\nEND-ISO", &format!("{extra}ENDSEC;\nEND-ISO"), 1);
+    let (out, report) = patch_one(content.as_bytes(), vec![rating("Pset_A", "'AAA'").with_target(54), rating("Pset_A", "'BBB'")]);
+    assert!(report.refusals.is_empty(), "{:?}", report.refusals);
+    let text = String::from_utf8(out).unwrap();
+    assert_eq!(text.matches("'AAA'").count(), 0, "{text}");
+    assert_eq!(text.matches("'BBB'").count(), 1, "{text}");
+}

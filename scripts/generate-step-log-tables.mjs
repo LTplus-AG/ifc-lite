@@ -168,69 +168,68 @@ for (const upper of [...universe.keys()].sort()) {
   );
 }
 
-// `IfcValue` leaves, with the member a value outside a constrained leaf's
-// domain relaxes to. -1 violates every constrained member's WHERE rule.
-const leaves = [];
-// The table is one list for every schema, and a row only counts where the
-// file's schema declares the name (`check_literal_measure`). IFC4X3's
-// `IfcValue` has members IFC4's lacks (`IfcURIReference`, in its
-// `IfcSimpleValue`), so IFC4X3's leaves, each resolved against IFC4X3's own
-// registry, are added to IFC4's. IFC2X3's are a subset of the two.
-// Aggregate-typed members (`IfcComplexNumber`) have no EXPRESS base: they are
-// listed apart, so a write naming one is refused for what it is. Any other
-// member that resolves to nothing fails the generator.
-const ifcValueLeaves = new Map();
-const ifc4x3OnlyLeaves = [];
-const ifcValueAggregates = new Set();
+// `IfcValue` members of each schema, walked through that schema's own
+// registry: one row per member, with its type in each schema (`null` where
+// that schema's `IfcValue` lacks it) and, for a constrained leaf, the member
+// a value outside its domain relaxes to. -1 violates every constrained
+// member's WHERE rule. Aggregate-typed members (`IfcComplexNumber`) have no
+// EXPRESS base and are typed `AGGREGATE`, so a write naming one is refused
+// for what it is. A member that resolves to neither fails the generator.
+const VALUE_SCHEMAS = ['IFC2X3', 'IFC4', 'IFC4X3'];
 const AGGREGATE = /^(LIST|ARRAY|SET|BAG)\b/;
-// The leaf table carries IFC4's base; a member whose base IFC4X3 changed gets
-// a row in NOMINAL_VALUE_BASES_IFC4X3. The changes expected, so a new one in a
-// registry update is looked at rather than taken: IFC4 declares
-// `IfcCountMeasure = NUMBER`, IFC4X3 `= INTEGER`. Any other fails the generator.
-const BASE_DIFFERS_IN_IFC4X3 = new Map([['IfcCountMeasure', 'INTEGER']]);
-const ifc4x3Bases = [];
-for (const version of ['IFC4', 'IFC4X3']) {
-  const registry = getSchemaRegistryForVersion(version);
+// `check_literal_measure` and `BaseKind` handle exactly these.
+const LEAF_BASES = ['STRING', 'REAL', 'NUMBER', 'INTEGER', 'BOOLEAN', 'LOGICAL', 'BINARY'];
+// Members whose type differs between schemas, with each schema's: the
+// differences expected, so one a registry update brings is looked at rather
+// than taken. Any other difference, and any entry here that no longer
+// differs, fails the generator.
+const EXPECTED_TYPE_DIFFERENCES = new Map([
+  // IFC4 declares `IfcCountMeasure = NUMBER`, IFC4X3 `= INTEGER`.
+  ['IFCCOUNTMEASURE', ['NUMBER', 'NUMBER', 'INTEGER']],
+]);
+const valueMembers = new Map();
+VALUE_SCHEMAS.forEach((schema, i) => {
+  const registry = getSchemaRegistryForVersion(schema);
   const resolved = getSelectDefinedLeaves('IfcValue', registry);
   for (const member of getSelectMembers('IfcValue', registry)) {
-    const base = resolved.get(member);
-    if (base === undefined) {
-      if (!AGGREGATE.test(registry.types[member] ?? '')) {
-        throw new Error(`${version} IfcValue member ${member} resolves to no EXPRESS base`);
-      }
-      ifcValueAggregates.add(member.toUpperCase());
-    } else if (!ifcValueLeaves.has(member)) {
-      ifcValueLeaves.set(member, base);
-      if (version === 'IFC4X3') ifc4x3OnlyLeaves.push(member.toUpperCase());
-    } else if (ifcValueLeaves.get(member) !== base) {
-      if (BASE_DIFFERS_IN_IFC4X3.get(member) !== base) {
-        throw new Error(`IfcValue member ${member} is ${ifcValueLeaves.get(member)} in IFC4 but ${base} in ${version}`);
-      }
-      ifc4x3Bases.push([member.toUpperCase(), base]);
+    let type = resolved.get(member);
+    if (type === undefined) {
+      if (!AGGREGATE.test(registry.types[member] ?? '')) throw new Error(`${schema} IfcValue member ${member} resolves to no EXPRESS base`);
+      type = 'AGGREGATE';
+    } else if (!LEAF_BASES.includes(type)) {
+      throw new Error(`${schema} IfcValue member ${member} has base ${type}, which BaseKind does not carry`);
     }
+    const token = member.toUpperCase();
+    if (!valueMembers.has(token)) valueMembers.set(token, { name: member, types: VALUE_SCHEMAS.map(() => null) });
+    valueMembers.get(token).types[i] = type;
   }
+});
+for (const [token, { types }] of valueMembers) {
+  const differs = new Set(types.filter((t) => t !== null)).size > 1;
+  const expected = EXPECTED_TYPE_DIFFERENCES.get(token);
+  if (differs && JSON.stringify(expected) !== JSON.stringify(types)) {
+    throw new Error(`IfcValue member ${token} is typed ${JSON.stringify(types)} across ${VALUE_SCHEMAS.join('/')}; expected ${JSON.stringify(expected ?? 'one type')}`);
+  }
+  if (expected && !differs) throw new Error(`IfcValue member ${token} no longer differs across schemas; drop it from EXPECTED_TYPE_DIFFERENCES`);
 }
-ifc4x3OnlyLeaves.sort();
-ifc4x3Bases.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
-for (const [member] of BASE_DIFFERS_IN_IFC4X3) {
-  if (!ifc4x3Bases.some(([token]) => token === member.toUpperCase())) throw new Error(`${member} no longer differs in IFC4X3; drop it`);
+for (const token of EXPECTED_TYPE_DIFFERENCES.keys()) {
+  if (!valueMembers.has(token)) throw new Error(`${token} is no IfcValue member; drop it from EXPECTED_TYPE_DIFFERENCES`);
 }
-const ifcValueAggregateTokens = [...ifcValueAggregates].sort();
-// `check_literal_measure` matches on exactly these bases.
-const LEAF_BASES = new Set(['STRING', 'REAL', 'NUMBER', 'INTEGER', 'BOOLEAN', 'LOGICAL', 'BINARY']);
-for (const [member, base] of [...ifcValueLeaves, ...ifc4x3Bases]) {
-  if (!LEAF_BASES.has(base)) throw new Error(`IfcValue member ${member} has base ${base}, which check_literal_measure does not handle`);
-}
-for (const [name, base] of ifcValueLeaves) {
+const leaves = [];
+for (const [token, { name, types }] of [...valueMembers].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
   const constrained = CONSTRAINED_IFC_VALUE_MEMBERS.includes(name);
   let relaxed = '';
   if (constrained) {
+    const base = types.find((t) => t !== null && t !== 'AGGREGATE');
     const shape = base === 'INTEGER' ? PropertyValueType.Integer : PropertyValueType.Real;
-    relaxed = declaredNominalValueType(-1, shape, name.toUpperCase()) ?? '';
+    relaxed = declaredNominalValueType(-1, shape, token) ?? '';
   }
-  leaves.push([name.toUpperCase(), name, base, constrained, relaxed]);
+  const type = (t) =>
+    t === null ? 'None' : t === 'AGGREGATE' ? 'Some(ValueType::Aggregate)' : `Some(ValueType::Leaf(BaseKind::${t[0]}${t.slice(1).toLowerCase()}))`;
+  leaves.push(
+    `    ValueMember { token: ${JSON.stringify(token)}, name: ${JSON.stringify(name)}, constrained: ${constrained}, relaxed: ${JSON.stringify(relaxed)}, types: [${types.map(type).join(', ')}] },`,
+  );
 }
-leaves.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
 
 // Record types `isTypeClass` answers yes for: the owners of `HasPropertySets`,
 // whose property sets the exporter repoints rather than relates.
@@ -372,30 +371,47 @@ pub static TYPE_OBJECT_CLASSES: &[&str] = &[
 ${typeObjects.map((t) => `    ${JSON.stringify(t)},`).join('\n')}
 ];
 
-/// \`(UPPERCASE token, schema-cased name, EXPRESS base, constrained,
-/// relaxed member or "")\` for every defined-type leaf of \`IfcValue\`,
-/// sorted by token.
-pub static NOMINAL_VALUE_LEAVES: &[(&str, &str, &str, bool, &str)] = &[
-${leaves.map((l) => `    (${JSON.stringify(l[0])}, ${JSON.stringify(l[1])}, ${JSON.stringify(l[2])}, ${l[3]}, ${JSON.stringify(l[4])}),`).join('\n')}
-];
+/// An \`IfcValue\` leaf's EXPRESS base.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BaseKind {
+    String,
+    Real,
+    Number,
+    Integer,
+    Boolean,
+    Logical,
+    Binary,
+}
 
-/// The tokens of \`NOMINAL_VALUE_LEAVES\` that are members of \`IfcValue\` in
-/// IFC4X3 only (IFC4's and IFC2X3's \`IfcValue\` lack them, though IFC4 may
-/// declare the type), sorted.
-pub static NOMINAL_VALUE_LEAVES_IFC4X3_ONLY: &[&str] = &[
-${ifc4x3OnlyLeaves.map((t) => `    ${JSON.stringify(t)},`).join('\n')}
-];
+/// What an \`IfcValue\` member is in one schema.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ValueType {
+    /// A defined type over one EXPRESS base.
+    Leaf(BaseKind),
+    /// A defined type over an aggregate (\`IfcComplexNumber\`): no single value.
+    Aggregate,
+}
 
-/// \`(UPPERCASE token, EXPRESS base)\` for the \`NOMINAL_VALUE_LEAVES\` whose
-/// base in IFC4X3 differs from the table's (IFC4's), sorted.
-pub static NOMINAL_VALUE_BASES_IFC4X3: &[(&str, &str)] = &[
-${ifc4x3Bases.map(([t, b]) => `    (${JSON.stringify(t)}, ${JSON.stringify(b)}),`).join('\n')}
-];
+/// One \`IfcValue\` member of any schema.
+#[derive(Debug)]
+pub struct ValueMember {
+    /// The UPPERCASE STEP token.
+    pub token: &'static str,
+    /// The schema-cased name.
+    pub name: &'static str,
+    /// Whether a WHERE rule constrains it (\`CONSTRAINED_IFC_VALUE_MEMBERS\`).
+    pub constrained: bool,
+    /// The member a value outside a constrained leaf's domain relaxes to, or "".
+    pub relaxed: &'static str,
+    /// Its type in IFC2X3, IFC4 and IFC4X3; \`None\` where that schema's
+    /// \`IfcValue\` lacks it.
+    pub types: [Option<ValueType>; 3],
+}
 
-/// UPPERCASE \`IfcValue\` members whose type is an aggregate (no single
-/// EXPRESS base), in IFC4 or IFC4X3, sorted.
-pub static NOMINAL_VALUE_AGGREGATES: &[&str] = &[
-${ifcValueAggregateTokens.map((t) => `    ${JSON.stringify(t)},`).join('\n')}
+/// Every \`IfcValue\` member of IFC2X3, IFC4 and IFC4X3, each walked through
+/// its own registry, sorted by token.
+pub static IFC_VALUE_MEMBERS: &[ValueMember] = &[
+${leaves.join('\n')}
 ];
 `;
 
@@ -411,8 +427,8 @@ if (process.argv.includes('--check')) {
     console.error(`${OUT_REL} is stale; run: node scripts/generate-step-log-tables.mjs`);
     process.exit(1);
   }
-  console.log(`${OUT_REL} is up to date (${rows.length} types, ${lists.size} name lists, ${leaves.length} IfcValue leaves).`);
+  console.log(`${OUT_REL} is up to date (${rows.length} types, ${lists.size} name lists, ${leaves.length} IfcValue members).`);
 } else {
   writeFileSync(outPath, text);
-  console.log(`wrote ${OUT_REL} (${rows.length} types, ${lists.size} name lists, ${leaves.length} IfcValue leaves)`);
+  console.log(`wrote ${OUT_REL} (${rows.length} types, ${lists.size} name lists, ${leaves.length} IfcValue members)`);
 }

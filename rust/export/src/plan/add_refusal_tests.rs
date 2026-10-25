@@ -470,3 +470,25 @@ fn refs(line: &str) -> Vec<u32> {
     crate::step_text::refs_in_line(line.as_bytes(), &mut ids);
     ids
 }
+
+/// (#8142) A measure over INTEGER in the file's schema takes a whole number,
+/// written as an integer: `IfcCountMeasure` is INTEGER in IFC4X3 and NUMBER
+/// in IFC4.
+#[test]
+fn an_integer_measure_is_written_as_an_integer_8142() {
+    let counted = |value: f64| {
+        let mut wall = object(IfcClass::Wall, gid(28), storey(), Representation::None);
+        wall.psets = vec![NewPropertySet {
+            name: "Pset_Test".into(),
+            kind: PsetKind::Property,
+            properties: vec![NewProperty { name: "N".into(), value: PropertyValue::Measure { measure_type: "IfcCountMeasure".into(), value }, unit: None }],
+        }];
+        wall
+    };
+    for (schema, written) in [("IFC4X3", "IFCCOUNTMEASURE(3)"), ("IFC4", "IFCCOUNTMEASURE(3.)")] {
+        let (out, report) = run(&storey_with_typed_wall(schema), vec![add(counted(3.0))]);
+        assert_clean(&report, schema);
+        assert!(String::from_utf8_lossy(&out).contains(&format!("{written},")), "{schema}");
+    }
+    refused(&storey_with_typed_wall("IFC4X3"), counted(3.5), "IfcCountMeasure takes a whole number in IFC4X3");
+}

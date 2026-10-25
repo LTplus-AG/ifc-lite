@@ -11,7 +11,7 @@ use super::index::FileIndex;
 use super::add_types::AddItem;
 use super::patch::{apply_patch, PatchOutput};
 use super::removal::RemovalReason;
-use super::types::{Disposition, DroppedRepresentation, ExportPlan, ObjectRef, Refusal};
+use super::types::{Disposition, DroppedRepresentation, ExportPlan, ObjectRef, Refusal, ValidationFinding};
 use super::{add, attrs, delete, geometry, owner_history};
 
 pub(crate) struct Resolution {
@@ -28,6 +28,8 @@ pub(crate) struct Resolution {
     /// property-set check, which is the defect a patch can introduce.
     pub(crate) patched_objects: Vec<u32>,
     pub(crate) dropped_representations: Vec<DroppedRepresentation>,
+    /// What the Adds report beyond refusals (see `AddState::notes`).
+    pub(crate) add_findings: Vec<ValidationFinding>,
 }
 
 pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Resolution {
@@ -162,16 +164,17 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     // list edits, so none of them extends a relationship or names a record
     // that is going away, and their list appends start from the rewritten
     // lists.
+    let mut add_findings = Vec::new();
     let added = if adds.is_empty() {
         0
     } else {
         // An owner history the plan deletes is not one an Add can name.
         let owner_history = owner_history_ref.filter(|id| !removed.contains(id));
         let state = add::AddState::new(index, schema, &removed, &plan.context, owner_history, body_context.chosen());
-        state.build_all(&adds, &mut ids, &mut edits_by_id, &mut appended, &mut refusals)
+        state.build_all(&adds, &mut ids, &mut edits_by_id, &mut appended, &mut refusals, &mut add_findings)
     };
 
-    Resolution { appended, edits_by_id, removed, reasons, refusals, patched, added, patched_objects, dropped_representations }
+    Resolution { appended, edits_by_id, removed, reasons, refusals, patched, added, patched_objects, dropped_representations, add_findings }
 }
 
 /// The cascade's reasons with what the patches removed themselves marked

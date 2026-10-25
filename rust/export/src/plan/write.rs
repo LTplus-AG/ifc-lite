@@ -37,7 +37,7 @@ pub(crate) fn write_output<W: Write>(
     let source_header = crate::source_header::parse_source_header(source);
     crate::step_header::write_header(&mut out, &header_opts, source_header.as_ref(), schema)?;
 
-    let Resolution { appended, edits_by_id, removed, reasons, refusals, patched, added, patched_objects, dropped_representations } =
+    let Resolution { appended, edits_by_id, removed, reasons, refusals, patched, added, patched_objects, dropped_representations, add_findings } =
         resolution;
     let defined = DefinedIds::new(index, &removed, &appended);
     let mut validator = StreamValidator::new(schema);
@@ -101,6 +101,7 @@ pub(crate) fn write_output<W: Write>(
 
     let mut psets = duplicate_sets_on_patched(index, schema, &appended, &edits_by_id, &removed, &patched_objects);
     psets.extend(unapplied);
+    psets.extend(add_findings);
     psets.extend(unplaced_by_removed_structure(index, schema, &removed, &reasons));
     let mut duplicates: Vec<u32> = index.duplicates.iter().copied().collect();
     duplicates.sort_unstable();

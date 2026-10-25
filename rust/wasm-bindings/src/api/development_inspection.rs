@@ -3,8 +3,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! A0p diagnostic entry. No IfcAPI member, numerical executor, or Worker.
-use ifc_lite_core::SourceBundle;
-use ifc_lite_processing::element::{inspect_retained_source, RetainedInspectionError};
+use ifc_lite_geometry::resource::InspectionStart;
+use ifc_lite_processing::element::{inspect_retained_bytes, RetainedInspectionError};
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
@@ -32,6 +32,7 @@ fn inspection_error(error: RetainedInspectionError) -> JsValue {
 pub fn inspect_development_source(
     data: &[u8], product_id: f64, options_json: &str,
 ) -> Result<Vec<u8>, JsValue> {
+    let start = InspectionStart::now();
     let commit = BUILD_COMMIT.filter(|value| value.len() == 40
         && value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)))
         .ok_or_else(|| entry_error(serde_json::json!("FEATURE_UNAVAILABLE")))?;
@@ -41,12 +42,10 @@ pub fn inspect_development_source(
         || product_id.fract() != 0. {
         return Err(entry_error(serde_json::json!("INVALID_OPTIONS")));
     }
-    let source = SourceBundle::new(data.to_vec());
-    let mut decoder = source.decoder();
     // No caller-provided decoder, root, or source hash can impersonate this
     // source's allocation identity. Processing decodes/authenticates the root.
-    let report = inspect_retained_source(source.clone(), product_id as u32, None,
-        &mut decoder, options_json, commit).map_err(inspection_error)?;
+    let report = inspect_retained_bytes(start, data, product_id as u32,
+        options_json, commit).map_err(inspection_error)?;
     let bytes = report.bytes().map_err(inspection_error)?.to_vec();
     // report/decoder/source release deterministically on success and error.
     Ok(bytes)

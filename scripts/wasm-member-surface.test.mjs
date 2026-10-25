@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import ts from 'typescript';
 import { wasmMemberSurface } from './lib/wasm-member-surface.mjs';
 
 test('retained alias detects changed class members and rejects unresolved closure', () => {
@@ -36,3 +37,30 @@ test('retained alias detects changed class members and rejects unresolved closur
     assert.throws(() => wasmMemberSurface(entry), /Cannot find module/u);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+for (const kind of ['imported member type', 'type-only re-export']) {
+  test(`#7955 A0P-R2: ${kind} retarget breaks a real consumer and changes the snapshot`, () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wasm-alias-consumer-'));
+    const entry = join(dir, 'entry.d.ts'), consumer = join(dir, 'consumer.ts');
+    try {
+      writeFileSync(join(dir, 'values.d.ts'), 'export interface A { value: number; } export interface B { value: string; }');
+      const declaration = target => kind === 'imported member type'
+        ? `import type { ${target} as Value } from './values.js';
+           export declare class IfcAPI { inspect<T extends Value = Value>(value?: T): Value; }`
+        : `export type { ${target} as Public } from './values.js';`;
+      writeFileSync(consumer, kind === 'imported member type'
+        ? "import type { IfcAPI } from './entry.js'; declare const api: IfcAPI; const numberOnly: number = api.inspect().value;"
+        : "import type { Public } from './entry.js'; declare const result: Public; const numberOnly: number = result.value;");
+      const diagnostics = () => ts.getPreEmitDiagnostics(ts.createProgram([consumer], {
+        strict: true, noEmit: true, types: [], target: ts.ScriptTarget.ESNext,
+        module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler,
+      })).map(diagnostic => diagnostic.code);
+      writeFileSync(entry, declaration('A'));
+      assert.deepEqual(diagnostics(), [], 'Baseline downstream assignment compiles');
+      const before = wasmMemberSurface(entry).rows;
+      writeFileSync(entry, declaration('B'));
+      assert.deepEqual(diagnostics(), [2322], 'Actual downstream string-to-number failure');
+      assert.notDeepEqual(wasmMemberSurface(entry).rows, before, 'Resolved alias binding must affect the snapshot');
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+}

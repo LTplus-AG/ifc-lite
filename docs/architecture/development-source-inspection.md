@@ -1,9 +1,11 @@
 # Development source inspection (#7955 A0p)
 
 The nondefault `development-inspection` feature adds one standalone synchronous
-WASM export, `inspectDevelopmentSource(bytes, productId, optionsJson)`. It creates
-an owned `SourceBundle` and its authenticated decoder, then calls the existing
-`processing::element::inspect_retained_source`. It does not add an `IfcAPI`
+WASM export, `inspectDevelopmentSource(bytes, productId, optionsJson)`. Its first
+Rust operation captures the monotonic start. The processing raw-byte adapter
+validates strict options and installs that budget before creating the canonical
+`SourceBundle` and its authenticated decoder. It shares the existing source
+inspection body; it does not add an `IfcAPI`
 member. It returns copied UTF-8 diagnostic bytes or throws an `entry_refused`
 object carrying the generated typed `code` and `authority: diagnostic_only`.
 The processing contract validates options. Product IDs must be positive integral
@@ -50,6 +52,13 @@ input proves this boundary only, not authored-model or numerical qualification.
 
 The integrated inspection budget captures one start before options/source work,
 and nested/resumed allowances preserve it. Native builds retain `std::time::Instant`.
+Generated JS must transfer the input bytes/options into WASM before entering Rust;
+that transfer is outside this deadline. Source copying, canonical index scanning,
+and decoder preparation are inside it. The canonical factory is checked before
+and after its synchronous call, not interrupted per record. This is not a global
+allocator/RSS cap. The actual Node test observes the real WASM entry after transfer,
+checks the first clock sample precedes memory growth as irrelevant records grow,
+and tests invalid-clock/options refusal before source-preparation growth.
 The pinned nightly's `library/std/src/sys/pal/unsupported/time.rs` implements
 `Instant::now()` as a panic; `wasm32-unknown-unknown` selects that platform.
 Only `retained-runtime` on that target imports the synchronous JS monotonic clock.
@@ -66,7 +75,10 @@ do not qualify it.
 `pnpm check:api-surface` includes canonical member signatures for both the
 default module and the declaration closure reachable through `RetainedEngine`.
 It checks constructors, static/instance methods, properties, overloads, and
-generic signatures, and rejects unresolved declaration imports. Only wasm-bindgen
+generic signatures, resolved import/re-export aliases (including type-only exports),
+and rejects unresolved declaration imports. External TypeScript fixtures prove
+alias retargeting changes the snapshot and breaks a previously valid consumer.
+Only wasm-bindgen
 platform trampoline indices and private implementation fields are excluded.
 `pnpm api-surface:update --wasm-only` refreshes these two member baselines without
 rewriting unrelated export snapshots; use it only for a reviewed surface change.

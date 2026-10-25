@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // #7955: actual Node-WASM source inspection, explicitly no SKIP success path.
 import assert from 'node:assert/strict';
+import { performance } from 'node:perf_hooks';
 import { loadDevelopmentInspection } from './lib/development-inspection.mjs';
 import { validateShape } from './retained-contract/validate.mjs';
 import { exerciseInspectionClock } from './consumer/development-inspection-clock.mjs';
@@ -25,7 +26,24 @@ const oldFetch = globalThis.fetch, oldWorker = globalThis.Worker;
 globalThis.fetch = () => { fetches++; throw new Error('Inspection must not fetch SDK or assets'); };
 globalThis.Worker = class { constructor() { workers++; throw new Error('Inspection must not construct Workers'); } };
 try {
-  const inspect = await loadDevelopmentInspection(process.env.IFC_RETAINED_BUILD_COMMIT);
+  // Observe the real exported WASM call after generated JS has transferred the
+  // arguments. Every export still executes the compiled binary; no mock module
+  // or alternate allocator/clock implementation is installed.
+  let boundary;
+  const Instance = WebAssembly.Instance;
+  let inspect;
+  try {
+    WebAssembly.Instance = class extends Instance {
+      get exports() {
+        const actual = super.exports;
+        return { ...actual, inspectDevelopmentSource(...args) {
+          boundary = { memory: actual.memory, bytes: actual.memory.buffer.byteLength, time: performance.now() };
+          return actual.inspectDevelopmentSource(...args);
+        } };
+      }
+    };
+    inspect = await loadDevelopmentInspection(process.env.IFC_RETAINED_BUILD_COMMIT);
+  } finally { WebAssembly.Instance = Instance; }
   const run = (text = source, intent = options, id = 10) => inspect(encode(text), id, JSON.stringify(intent));
   const report = run();
   assert.equal(report.outcome.kind, 'requires_numerical_evaluation', JSON.stringify(report.outcome));
@@ -62,11 +80,12 @@ try {
   assert.throws(() => inspect(encode(source), 10, JSON.stringify(options).replace('{', '{"schemaVersion":1,')), entry('INVALID_OPTIONS'));
   assert.throws(() => run(source.replace('0000000000000000000001', 'forged')), entry('SOURCE_INVALID'));
   assert.throws(() => run(source, options, 999), entry('SOURCE_INVALID'));
-  exerciseInspectionClock(run, options, entry);
+  const preparation = exerciseInspectionClock(run, options, entry, source, () => boundary);
   assert.equal(fetches, 0); assert.equal(workers, 0);
   console.log(JSON.stringify({ actualWasm: true, implementationCommit: report.implementationCommit,
     sourceSha256: report.identity.source.sha256, numericalBoundary: true, finality: false,
-    refusal: refused.outcome.refusal.code, realElapsedDeadline: true, unavailableClockRefused: true, fetches, workers }));
+    refusal: refused.outcome.refusal.code, realElapsedDeadline: true, unavailableClockRefused: true,
+    preparation, fetches, workers }));
 } finally {
   globalThis.fetch = oldFetch;
   if (oldWorker === undefined) delete globalThis.Worker; else globalThis.Worker = oldWorker;

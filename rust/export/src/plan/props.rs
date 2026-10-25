@@ -94,8 +94,8 @@ pub(crate) enum PropOutcome {
 /// `props_synth::build_value_record` for why a quantity's value is bare.
 fn in_place_value(write: &PropWrite) -> String {
     match write.kind {
-        PsetKind::Property => format!("{}({})", write.measure_type, write.literal),
-        PsetKind::Quantity => write.literal.clone(),
+        PsetKind::Property => format!("{}({})", write.measure_type, crate::step_log::canonical_literal(&write.measure_type, &write.literal)),
+        PsetKind::Quantity => crate::step_log::canonical_literal(&write.measure_type, &write.literal),
     }
 }
 
@@ -224,7 +224,7 @@ pub(crate) fn resolve_set_writes<'w>(
             None => group.push(write),
         }
     }
-    group.retain(|&write| match props_synth::value_entity(write) {
+    group.retain(|&write| match props_synth::check_value(schema, write) {
         Ok(_) => true,
         Err(reason) => {
             result.refused.push((write, reason));

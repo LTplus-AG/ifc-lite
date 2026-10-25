@@ -45,6 +45,60 @@ pub(crate) fn check_real_measure(schema: &str, measure: &str, value: f64, where_
     Ok(())
 }
 
+/// `literal` as STEP writes a value of `measure`: a bare integer given for a
+/// REAL or NUMBER measure gets its decimal point (`3` -> `3.`), since STEP
+/// REAL requires one. Anything else is returned as given.
+pub(crate) fn canonical_literal(measure: &str, literal: &str) -> String {
+    let is_real = leaf(&measure.to_ascii_uppercase()).is_some_and(|(_, base, _, _)| matches!(base, "REAL" | "NUMBER"));
+    let digits = literal.strip_prefix(['+', '-']).unwrap_or(literal);
+    if is_real && !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()) {
+        format!("{literal}.")
+    } else {
+        literal.to_string()
+    }
+}
+
+/// Refuse `literal` (one STEP value, as it would follow the measure's name,
+/// e.g. `5.` or `'x'`) unless it is a value of the `measure` type in
+/// `schema`: a string for a text measure, a number for a numeric one, a
+/// STEP enumeration literal for a boolean or logical, each within the
+/// measure's WHERE rule. The one check a caller-serialized value passes.
+pub(crate) fn check_literal_measure(schema: &str, measure: &str, literal: &str) -> Result<(), String> {
+    let token = measure.to_ascii_uppercase();
+    let leaf = leaf(&token).filter(|_| super::retype::schema_declares(schema, &token));
+    let (name, base, _, _) = leaf.ok_or_else(|| format!("{measure} is not an IFC measure in {schema}"))?;
+    let bad = || format!("{literal} is not a valid {name} value");
+    let number = |integer_only: bool| -> Result<f64, String> {
+        let body = literal.strip_prefix(['+', '-']).unwrap_or(literal);
+        let digits = body.bytes().take_while(u8::is_ascii_digit).count();
+        let rest = &body[digits..];
+        let shaped = digits > 0
+            && if integer_only {
+                rest.is_empty()
+            } else {
+                let frac = rest.strip_prefix('.').unwrap_or(rest);
+                let frac = frac.trim_start_matches(|c: char| c.is_ascii_digit());
+                let exp = frac.strip_prefix(['e', 'E']).map(|e| e.strip_prefix(['+', '-']).unwrap_or(e));
+                frac.is_empty() || exp.is_some_and(|e| !e.is_empty() && e.bytes().all(|b| b.is_ascii_digit()))
+            };
+        literal.parse::<f64>().ok().filter(|v| shaped && v.is_finite()).ok_or_else(bad)
+    };
+    match base {
+        "STRING" => {
+            let inner = literal.strip_prefix("'").and_then(|l| l.strip_suffix("'"));
+            let balanced = inner.is_some_and(|i| !i.replace("''", "").contains("'"));
+            balanced.then_some(()).ok_or_else(bad)
+        }
+        "REAL" | "NUMBER" | "INTEGER" => {
+            let v = number(base == "INTEGER")?;
+            satisfies(name, v).then_some(()).ok_or_else(|| format!("{literal} is outside what {name} allows"))
+        }
+        "BOOLEAN" => matches!(literal, ".T." | ".F.").then_some(()).ok_or_else(bad),
+        "LOGICAL" => matches!(literal, ".T." | ".F." | ".U.").then_some(()).ok_or_else(bad),
+        _ => Err(format!("{name} is a {base}, which a single-value write does not carry")),
+    }
+}
+
 /// The WHERE rule of a constrained member (`CONSTRAINED_MEMBERS`).
 fn satisfies(name: &str, v: f64) -> bool {
     match name {

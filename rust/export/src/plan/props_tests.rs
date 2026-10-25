@@ -511,3 +511,66 @@ fn an_override_of_a_type_owned_value_keeps_the_types_unit() {
         other => panic!("expected an append, got {other:?}"),
     }
 }
+
+/// A value is checked against its measure type in one place, before any
+/// record is built.
+#[test]
+fn a_value_of_the_wrong_type_for_its_measure_is_refused() {
+    let schema = "IFC4";
+    let content = wall_with_own_pset(schema);
+    let index = FileIndex::complete(&content);
+    let cases = [
+        ("IFCLENGTHMEASURE", "'abc'", PsetKind::Property, "not a valid"),
+        ("IFCLENGTHMEASURE", "5.x", PsetKind::Property, "not one STEP value"), ("IFCLENGTHMEASURE", "1.2.3", PsetKind::Property, "not one STEP value"),
+        ("IFCLABEL", "5.", PsetKind::Property, "not a valid"),
+        ("IFCLABEL", "'a'b'", PsetKind::Property, "not one STEP value"),
+        ("IFCBOOLEAN", "'T'", PsetKind::Property, "not a valid"),
+        ("IFCPOSITIVELENGTHMEASURE", "-1.", PsetKind::Property, "outside"),
+        ("IFCNOSUCHMEASURE", "5.", PsetKind::Property, "not an IFC measure"),
+        ("IFCLENGTHMEASURE", "-5.", PsetKind::Quantity, "cannot be negative"),
+    ];
+    for (measure, literal, kind, expect) in cases {
+        let mut ids = IdAllocator::after(index.max_id);
+        let w = write("Pset_X", "P", measure, literal, PropScope::Occurrence, kind);
+        let err = resolve_prop_write(&index, schema, 10, &w, &mut ids, None).expect_err(literal);
+        assert!(err.contains(expect), "{measure} {literal}: {err}");
+    }
+    for (measure, literal) in [("IFCLENGTHMEASURE", "5."), ("IFCLENGTHMEASURE", "-1.5E-3"), ("IFCLABEL", "'it''s'"), ("IFCBOOLEAN", ".T."), ("IFCINTEGER", "7")] {
+        let mut ids = IdAllocator::after(index.max_id);
+        let w = write("Pset_X", "P", measure, literal, PropScope::Occurrence, PsetKind::Property);
+        resolve_prop_write(&index, schema, 10, &w, &mut ids, None).unwrap_or_else(|e| panic!("{measure} {literal}: {e}"));
+    }
+}
+
+/// STEP REAL needs a decimal point: an integer given for a real measure is
+/// written as `3.`, in a new record, an in-place edit and a quantity.
+#[test]
+fn an_integer_for_a_real_measure_is_written_with_a_decimal_point() {
+    let schema = "IFC4";
+    let content = wall_with_own_pset(schema);
+    let index = FileIndex::complete(&content);
+    let new = write("Pset_X", "L", "IFCLENGTHMEASURE", "3", PropScope::Occurrence, PsetKind::Property);
+    let mut ids = IdAllocator::after(index.max_id);
+    match resolve_prop_write(&index, schema, 10, &new, &mut ids, None).unwrap() {
+        PropOutcome::Append { new_records } => assert!(new_records.iter().any(|(_, r)| r.contains("IFCLENGTHMEASURE(3.)")), "{new_records:?}"),
+        other => panic!("{other:?}"),
+    }
+    let quantity = write("Qto_X", "L", "IFCLENGTHMEASURE", "-3", PropScope::Occurrence, PsetKind::Property);
+    let mut ids = IdAllocator::after(index.max_id);
+    match resolve_prop_write(&index, schema, 10, &quantity, &mut ids, None).unwrap() {
+        PropOutcome::Append { new_records } => assert!(new_records.iter().any(|(_, r)| r.contains("IFCLENGTHMEASURE(-3.)"))),
+        other => panic!("{other:?}"),
+    }
+    let q = write("Qto_X", "Len", "IFCLENGTHMEASURE", "7", PropScope::Occurrence, PsetKind::Quantity);
+    let mut ids = IdAllocator::after(index.max_id);
+    match resolve_prop_write(&index, schema, 10, &q, &mut ids, None).unwrap() {
+        PropOutcome::Append { new_records } => assert!(new_records.iter().any(|(_, r)| r.contains("IFCQUANTITYLENGTH") && r.contains(",7.,")), "{new_records:?}"),
+        other => panic!("{other:?}"),
+    }
+    let integer = write("Pset_X", "N", "IFCINTEGER", "3", PropScope::Occurrence, PsetKind::Property);
+    let mut ids = IdAllocator::after(index.max_id);
+    match resolve_prop_write(&index, schema, 10, &integer, &mut ids, None).unwrap() {
+        PropOutcome::Append { new_records } => assert!(new_records.iter().any(|(_, r)| r.contains("IFCINTEGER(3)"))),
+        other => panic!("{other:?}"),
+    }
+}

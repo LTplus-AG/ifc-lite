@@ -169,11 +169,12 @@ for (const upper of [...universe.keys()].sort()) {
 }
 
 // `IfcValue` members of each schema, walked through that schema's own
-// registry: one row per member, with which schemas' `IfcValue` has it, ONE
-// type (IFC4's where IFC4 has the member, the TypeScript writer's reading)
-// and, for a constrained leaf, the member a value outside its domain
-// relaxes to. -1 violates every constrained
-// member's WHERE rule. Aggregate-typed members (`IfcComplexNumber`) have no
+// registry. Each member's type is computed per schema only to validate
+// EXPECTED_TYPE_DIFFERENCES and to choose `ty`; the table stores one row per
+// member with IFC4's type (where IFC4 has the member, the TypeScript
+// writer's reading) plus `in_schemas`, and, for a constrained leaf, the
+// member a value outside its domain relaxes to. -1 violates every
+// constrained member's WHERE rule. Aggregate-typed members (`IfcComplexNumber`) have no
 // EXPRESS base and are typed `AGGREGATE`, so a write naming one is refused
 // for what it is. A member that resolves to neither fails the generator.
 const VALUE_SCHEMAS = ['IFC2X3', 'IFC4', 'IFC4X3'];

@@ -73,6 +73,8 @@ impl AddState<'_> {
     /// hierarchy under the project is made of. Spatial zones and external
     /// spatial elements are spatial but not structure elements: they are
     /// contained in one, and a zone may only be aggregated under a zone.
+    /// Unlike `attrs::in_structure` (a place in the tree), this excludes the
+    /// project: it classifies what is being added, and a project is never added.
     fn is_structure_element(&self, class: &str) -> bool {
         self.is_a(class, "IFCSPATIALSTRUCTUREELEMENT")
     }

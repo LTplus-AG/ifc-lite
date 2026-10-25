@@ -57,9 +57,9 @@ impl Program<'_> {
         // Do not charge the wrapper Vec permanently to an ambient account.
         let resources = Resources::capture_current();
         let mut wrapped = Vec::new();
-        let storage = resources.reserve_headers(&mut wrapped, operations.len())?;
+        let storage = resources.reserve_headers(&mut wrapped, operations.len()).map_err(TransactionError::stopped)?;
         wrapped.extend(operations.into_iter().map(Operation));
-        resources.check()?;
+        resources.check().map_err(TransactionError::stopped)?;
         Ok((Reply(reply), wrapped, storage))
     }
     pub fn validate_ticket(&self, ticket: Ticket) -> Result<(), TransactionError> {

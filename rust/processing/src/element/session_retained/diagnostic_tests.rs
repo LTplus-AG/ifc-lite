@@ -2,6 +2,12 @@
 //! #7955 M2/M6: the public native entry consumes parsed source and type jobs.
 use super::*;
 use crate::element::session_tests::SOURCE;
+use crate::retained_native_contract as wire;
+const IMPLEMENTATION: &str = "9a2918e52207bafa5dbea4864c83efe776a71cce";
+fn valid_ids(bytes: &str) -> String {
+    bytes.replace("IFCWALL('w'", "IFCWALL('0123456789012345678901'")
+        .replace("IFCBOILERTYPE('t'", "IFCBOILERTYPE('1123456789012345678901'")
+}
 use std::{future::Future, task::{Context, Poll, Wake, Waker}};
 
 fn run<T>(future: impl Future<Output = T>) -> T {
@@ -18,21 +24,41 @@ fn run<T>(future: impl Future<Output = T>) -> T {
     }
 }
 fn source(extra: &str) -> Arc<SourceBundle> {
-    SourceBundle::new(SOURCE.replace("ENDSEC;END-ISO", &format!("{extra}ENDSEC;END-ISO")).into_bytes())
+    SourceBundle::new(valid_ids(SOURCE).replace("ENDSEC;END-ISO", &format!("{extra}ENDSEC;END-ISO")).into_bytes())
 }
 fn diagnose(source: Arc<SourceBundle>, id: u32, path: &Path, mode: TypeGeometryMode)
     -> Result<NativeTransactionDiagnostic, NativeDiagnosticError> {
-    run(diagnose_retained_native(source, id, path, 0.001, 15., 256 * 1024 * 1024, 1_000_000, mode))
+    run(diagnose_retained_native(source, id, path, &options(mode), IMPLEMENTATION))
+}
+fn options(mode: TypeGeometryMode) -> String {
+    let mode = match mode { TypeGeometryMode::SuppressInstanced => "suppress_instanced", TypeGeometryMode::EmitTagged => "emit_tagged" };
+    format!(r#"{{"schemaVersion":1,"chordToleranceMetres":0.001,"angleToleranceRadians":0.2617993877991494,
+        "maxWork":"1000000","maxBytes":"268435456","deadlineMs":"60000","typeGeometryMode":"{mode}",
+        "normalPolicy":"source_analytic_v1","instancePolicy":"uncut_mapped_v1","interfacePolicy":"certified_internal_v1",
+        "openings":"all","layers":"preserve","skipSmallCuts":false,"mergeLayers":false}}"#)
 }
 #[test]
 fn issue_7955_m2_parsed_unsupported_block_and_malformed_items_are_distinct_before_worker_spawn() {
     let block = SOURCE.replace("#13=IFCEXTRUDEDAREASOLID(#14,#5,#15,3.)", "#13=IFCBLOCK(#5,2.,4.,3.)");
     let malformed = SOURCE.replace("'SweptSolid',(#13)", "'SweptSolid',(42)");
-    for (bytes, expected) in [(block, "\"OPERATION_UNSUPPORTED\""), (malformed, "\"SOURCE_INVALID\"")] {
+    for (bytes, expected) in [(block, wire::Code::OperationUnsupported), (malformed, wire::Code::SourceInvalid)] {
+        let bytes = valid_ids(&bytes);
+        let expected_hash = format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(bytes.as_bytes()));
         let error = diagnose(SourceBundle::new(bytes.into_bytes()), 10,
             Path::new("/nonexistent/never-start-a-worker-for-source-refusal"), TypeGeometryMode::EmitTagged)
             .err().expect("actual parsed source refuses");
-        assert_eq!(error.diagnostic_code_json(), expected, "M2_KNOWN_ORIGIN_REPORT");
+        assert_eq!(error.cause.code(), expected, "M2_KNOWN_ORIGIN_REPORT");
+        let report: serde_json::Value = serde_json::from_slice(error.report_bytes().expect("bound refusal")).unwrap();
+        assert_eq!(report["outcome"]["refusal"]["code"], serde_json::to_value(&expected).unwrap());
+        assert_eq!(report["identity"]["source"]["sha256"], expected_hash);
+        assert_eq!(report["product"]["GlobalId"]["value"], "0123456789012345678901");
+        assert_eq!(report["product"]["productId"], "10");
+        assert_eq!(report["identity"]["source"]["revision"], "1");
+        assert_eq!(report["identity"]["options"]["typeGeometryMode"], "emit_tagged");
+        assert_eq!(report["implementationCommit"], IMPLEMENTATION);
+        assert_eq!(report["outcome"]["refusal"]["exactRetry"], "explicit_new_exact_request");
+        assert_eq!(report["outcome"]["refusal"]["stage"], if expected == wire::Code::OperationUnsupported { "representation" } else { "source" });
+        assert_eq!(report["outcome"]["refusal"]["requirement"], if expected == wire::Code::OperationUnsupported { "representation" } else { "source_authentication" });
     }
 }
 #[test]
@@ -74,4 +100,50 @@ fn issue_7955_m6_type_selection_uses_source_bundle_last_occurrence_and_preserves
     let prepared = diagnostic_source::prepare(&source, &context, &mut decoder, 60, TypeGeometryMode::EmitTagged).unwrap();
     let ElementJobKind::TypeProduct { rep_maps } = prepared.kind else { panic!("actual type job") };
     assert_eq!(rep_maps, vec![(61, 1), (71, 1)]);
+}
+
+#[test]
+fn issue_7955_m2_native_options_keep_typed_deadline_and_original_cancel_precedence() {
+    resource::inspection_test_clock::scope(|clock| {
+        clock.expire_at("source_step", 1, 60_000);
+        let error = diagnose(source(""), 10, Path::new("/nonexistent/no-worker-after-deadline"),
+            TypeGeometryMode::EmitTagged).err().expect("original deadline refuses");
+        assert_eq!(error.cause.code(), wire::Code::DeadlineExceeded);
+        let original = resource::ExecutionAccount::new(resource::ExecutionPolicy::Bounded(Default::default()));
+        original.cancel();
+        let error = original.scope(|| diagnose(source(""), 10, Path::new("/nonexistent/no-worker-after-stop"),
+            TypeGeometryMode::EmitTagged)).err().expect("original cancellation wins");
+        assert!(matches!(error.cause, RetainedExecutionError::Stopped(ProgramStop::Cancelled)));
+        assert_eq!(error.cause.code(), wire::Code::Cancelled);
+    });
+}
+
+#[test]
+fn issue_7955_m2_generated_native_report_rejects_rebinding_context_and_finality_tampering() {
+    let diagnostic = diagnose(source("#200=IFCRELDEFINESBYTYPE('r',$,$,$,(#10,#20),#60);"), 60,
+        Path::new("/nonexistent/no-numerical-work"), TypeGeometryMode::SuppressInstanced).unwrap();
+    let original: serde_json::Value = serde_json::from_slice(diagnostic.bytes().unwrap()).unwrap();
+    let binding = wire::Binding {
+        identity: serde_json::from_value(original["identity"].clone()).unwrap(),
+        enumeration_complete: false, non_geometric: vec![],
+        requested: vec![serde_json::from_value(original["product"].clone()).unwrap()],
+    };
+    let json = serde_json::to_string(&original).unwrap();
+    wire::decode_native_report(&json, &binding).unwrap();
+    for (pointer, replacement) in [
+        ("/identity/source/sha256", serde_json::json!("f".repeat(64))),
+        ("/identity/source/revision", serde_json::json!("2")),
+        ("/identity/options/typeGeometryMode", serde_json::json!("emit_tagged")),
+        ("/identity/resultId", serde_json::json!("e".repeat(64))),
+        ("/product/productId", serde_json::json!("20")),
+        ("/finalProductAvailable", serde_json::json!(true)),
+        ("/unchecked", serde_json::json!(["numerical_evaluation"])),
+    ] {
+        let mut changed = original.clone();
+        *changed.pointer_mut(pointer).unwrap() = replacement;
+        assert!(wire::decode_native_report(&serde_json::to_string(&changed).unwrap(), &binding).is_err(), "{pointer}");
+    }
+    let duplicate = json.replacen("\"schemaVersion\":1.0", "\"schemaVersion\":1.0,\"schemaVersion\":1.0", 1);
+    assert_ne!(duplicate, json);
+    assert!(wire::decode_native_report(&duplicate, &binding).is_err());
 }

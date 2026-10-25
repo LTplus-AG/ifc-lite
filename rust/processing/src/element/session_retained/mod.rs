@@ -72,9 +72,11 @@ use batch::{
     RuntimeRejectedCompletion, RuntimeCancellation,
 };
 mod error;
-use error::{RetainedExecutionError, ReceiptFailure, Unsupported, protocol, geometry, common};
+use error::{RetainedExecutionError, ReceiptFailure, Unsupported, protocol, geometry, common, check_resources};
 pub(super) mod diagnostic;
 mod diagnostic_source;
+mod diagnostic_options;
+mod diagnostic_report;
 mod storage;
 mod construction_storage;
 use storage::Storage;
@@ -118,9 +120,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
         decoder: &EntityDecoder,
         router: &GeometryRouter,
     ) -> Result<OwnerStamp, RetainedExecutionError> {
-        self.resources
-            .check()
-            .map_err(RetainedExecutionError::Stopped)?;
+        check_resources(&self.resources)?;
         self.context
             .validate_decoder(decoder)
             .map_err(RetainedExecutionError::Source)?;
@@ -135,7 +135,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
     fn issue_next(&mut self, decoder: &mut EntityDecoder, router: &GeometryRouter,
         worker: &impl RetainedRuntime<Receipt = R>) -> Result<Option<RuntimeIssued<R>>, RetainedExecutionError> {
         let result = self.issue_next_checked(decoder, router, worker);
-        let result = self.resources.check().map_err(RetainedExecutionError::Stopped).and(result);
+        let result = check_resources(&self.resources).and(result);
         if result.as_ref().is_err_and(|error| error.terminal()) { self.cancel(); }
         result
     }
@@ -203,9 +203,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
         self.ledger.len()
     }
     fn validate_witness(&self) -> Result<(), RetainedExecutionError> {
-        self.resources
-            .check()
-            .map_err(RetainedExecutionError::Stopped)?;
+        check_resources(&self.resources)?;
         self.context
             .lifecycle().validate()
             .map_err(RetainedExecutionError::Source)?;
@@ -216,7 +214,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
     }
     fn validate_manifest(&self, plan: &RetainedProductPlan) -> Result<(), RetainedExecutionError> {
         let result = self.resources.with_scope(|| self.validate_manifest_in_scope(plan));
-        self.resources.check().map_err(RetainedExecutionError::Stopped)?;
+        check_resources(&self.resources)?;
         self.context.lifecycle().validate().map_err(RetainedExecutionError::Source)?;
         result
     }

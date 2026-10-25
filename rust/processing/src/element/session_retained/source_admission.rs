@@ -14,7 +14,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
     pub(super) fn advance_source(&mut self, decoder: &mut EntityDecoder, router: &GeometryRouter)
         -> Result<bool, RetainedExecutionError> {
         let result = self.advance_source_checked(decoder, router);
-        let result = self.resources.check().map_err(RetainedExecutionError::Stopped).and(result);
+        let result = check_resources(&self.resources).and(result);
         if result.as_ref().is_err_and(|error| error.terminal()) { self.cancel(); }
         result
     }
@@ -53,7 +53,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                 .and_then(|(result, stamp)| {
                     result.map(|(ticket, admission)| ((ticket, admission), stamp))
                 })?;
-            resources.check().map_err(RetainedExecutionError::Stopped)?;
+            check_resources(&resources)?;
             self.context.validate_decoder(decoder).map_err(RetainedExecutionError::Source)?;
             let Some(ticket) = ticket else {
                 self.finish_current_program(outer)?;
@@ -72,7 +72,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                     })
                     .map_err(protocol)?
                     .0?;
-                resources.check().map_err(RetainedExecutionError::Stopped)?;
+                check_resources(&resources)?;
                 self.context.validate_decoder(decoder).map_err(RetainedExecutionError::Source)?;
                 continue;
             }

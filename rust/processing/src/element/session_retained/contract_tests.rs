@@ -2,7 +2,7 @@
 //! #7955: action and typed reporting are separate executable obligations.
 use super::*;
 use super::super::session_tests::{job, metadata, options, SOURCE};
-use crate::retained_inspection_contract::Code;
+use crate::retained_native_contract::Code;
 
 #[test]
 fn source_allocation_refusal_retains_its_typed_origin() {
@@ -170,6 +170,7 @@ fn issue_7955_m3_conflicting_outcome_poisons_only_its_domain_and_preserves_rejec
         let rejected = execution.accept(work, decoder, router).expect_err("conflicting write-once outcome");
         assert!(matches!(rejected.reason,
             RetainedExecutionError::Receipt(ReceiptFailure::ConflictingRetainedNumericalOutcome)));
+        assert_eq!(rejected.reason.code(), Code::ReceiptInvalid, "M3_CONFLICT_REPORT");
         assert!(execution.failed, "M3_CONFLICT_MUST_POISON_ATTEMPT");
         assert_eq!(execution.pending.as_ref().unwrap().cancellation.stage.load(Ordering::Acquire), CANCELLED);
         assert!(owner.incarnation().is_none());

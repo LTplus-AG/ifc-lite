@@ -13,6 +13,7 @@ pub enum TransactionFailureKind {
 #[derive(Debug)]
 pub struct TransactionError(RetainedFailure);
 impl TransactionError {
+    pub(super) fn stopped(stop: ProgramStop) -> Self { Self(RetainedFailure::Stopped(stop)) }
     pub fn original_stop(&self) -> Option<ProgramStop> {
         match &self.0 {
             RetainedFailure::Stopped(stop) | RetainedFailure::Protocol(RetainedProgramError::Stopped(stop)) => Some(*stop),
@@ -54,7 +55,4 @@ impl From<RetainedFailure> for TransactionError {
 }
 impl From<RetainedProgramError> for TransactionError {
     fn from(value: RetainedProgramError) -> Self { Self(value.into()) }
-}
-impl From<ProgramStop> for TransactionError {
-    fn from(value: ProgramStop) -> Self { Self(RetainedFailure::Stopped(value)) }
 }

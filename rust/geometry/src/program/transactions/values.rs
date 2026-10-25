@@ -65,18 +65,18 @@ impl Plan {
     pub fn type_maps(plans: Vec<Self>) -> Result<Self, super::TransactionError> {
         let resources = super::Resources::capture_current();
         let count = plans.iter().try_fold(0usize, |n, plan| n.checked_add(plan.inner.values.len()))
-            .ok_or_else(crate::resource::overflow)?;
+            .ok_or_else(crate::resource::overflow).map_err(super::TransactionError::stopped)?;
         let mut values = Vec::new();
-        let storage = resources.reserve_headers(&mut values, count)?;
+        let storage = resources.reserve_headers(&mut values, count).map_err(super::TransactionError::stopped)?;
         let mut remaining = Vec::new();
-        let requirements_storage = resources.reserve_headers(&mut remaining, 5)?;
+        let requirements_storage = resources.reserve_headers(&mut remaining, 5).map_err(super::TransactionError::stopped)?;
         remaining.extend([
             logical::RetainedRequirement::ProductPlacement, logical::RetainedRequirement::OpeningClosure,
             logical::RetainedRequirement::MaterialLayers, logical::RetainedRequirement::IfcAppearance,
             logical::RetainedRequirement::PersistentFaces,
         ]);
         for plan in plans { values.extend(plan.inner.values); }
-        resources.check()?;
+        resources.check().map_err(super::TransactionError::stopped)?;
         Ok(Self { inner: logical::RetainedProductPlan { values, remaining },
             _storage: Some(storage), _requirements_storage: Some(requirements_storage) })
     }

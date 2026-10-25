@@ -106,8 +106,8 @@ impl RetainedExecutionError {
 }
 
 impl RetainedExecutionError {
-    pub(super) fn code(&self) -> crate::retained_inspection_contract::Code {
-        use crate::retained_inspection_contract::Code;
+    pub(super) fn code(&self) -> crate::retained_native_contract::Code {
+        use crate::retained_native_contract::Code;
         use ifc_lite_geometry::program::transactions::TransactionFailureKind as Kind;
         match self {
             Self::Stopped(ProgramStop::Cancelled) => Code::Cancelled,
@@ -153,4 +153,11 @@ impl RetainedExecutionError {
             Self::Owner(_) => Code::RuntimeFailed,
         }
     }
+}
+
+// Keep the original source/account stop ahead of the cooperative deadline.
+// Every lexical scope is restored before the transport can suspend.
+pub(super) fn check_resources(resources: &OwnedResourceContext) -> Result<(), RetainedExecutionError> {
+    resources.check().map_err(RetainedExecutionError::Stopped)?;
+    resources.with_scope(resource::inspection_checkpoint).map_err(geometry)
 }

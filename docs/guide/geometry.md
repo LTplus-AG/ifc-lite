@@ -1045,15 +1045,22 @@ launcher:
 
 ```bash
 cargo run --locked -p ifc-lite-processing --features retained-native \
-  --example retained_product -- MODEL.ifc EXPRESS_ID /absolute/existing/ifclite_smlib_worker emit_tagged
+  --example retained_product -- MODEL.ifc EXPRESS_ID /absolute/existing/ifclite_smlib_worker OPTIONS.json IMPLEMENTATION_COMMIT
 ```
 
-Its result is `intermediate_numerical_diagnostic`, with source identity,
-operation counts and unchecked obligations. `finalProductAvailable` is always
+The generated `native_transaction_diagnostic` report binds immutable source
+hash/revision, product identity, the complete options, and the supplied 40-digit
+implementation commit. Its outcome is `intermediate` or `refused`, with validated
+stage/requirement context and explicit-only exact retry on refusal. The native
+schema extends the shared private contract without changing source inspection.
+Raw resource stops retain dimension/requested/remaining/reason; they are not
+presented as observed/limit measurements. Intermediate reports contain operation
+counts and unchecked obligations. `finalProductAvailable` is always
 false. No mesh, definition, occurrence, removal or consumed-host effect is
 returned. Opening, layer, appearance and persistent-face obligations remain;
-type-map witnesses also retain product-placement obligations. The final argument
-selects `suppress_instanced` or `emit_tagged`. The actual parsed root selects a
+type-map witnesses also retain product-placement obligations. The options file contains the strict retained options contract,
+including numerical tolerances, work/byte/deadline limits and
+`typeGeometryMode` (`suppress_instanced` or `emit_tagged`). The actual parsed root selects a
 product or type-product job. Type jobs derive map membership, mapped occurrences
 and type instantiation from the source and use the canonical mode/class planner;
 referenced maps are excluded in both modes. Each admitted map retains its actual
@@ -1061,7 +1068,13 @@ MappingOrigin. Source-only refusal and suppressed type jobs need no SDK process.
 `element::diagnose_retained_native` entry returns an opaque diagnostic owner;
 `bytes()` checks its original source/resource/runtime lifetime, and
 `require_final_product()` refuses. Source, resource and runtime failures end the
-attempt. There is no automatic fallback or retry.
+attempt. There is no automatic fallback or retry. `NativeDiagnosticError::report_bytes()`
+returns the generated bound refusal when authenticated context and reserved report
+storage exist. Failures before that point remain ordinary typed errors without a
+wire report; Display text is not a machine contract. There is no bare-code JSON
+success path. Regenerate the native projection with
+`node scripts/retained-native-contract/generate.mjs`; the root Node test sweep
+checks drift. SDK-positive behavior still requires an admitted real worker run.
 
 The captured account admits recipe-clone/lowering envelopes before construction
 and actual returned buffer capacities before delivery and common acceptance.

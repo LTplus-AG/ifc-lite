@@ -74,7 +74,10 @@ test('#7955: retained witnesses resolve through the facade path to exact library
 const b2aObserver = 'rust/geometry/src/program/retained/mapping_origin_tests.rs';
 const b2bObserver = 'rust/geometry/src/program/retained/boolean_origin_tests.rs';
 const b2cObserver = 'rust/geometry/src/program/retained/frame_origin_tests.rs';
+const cutCObserver = 'rust/processing/tests/retained_inspection_busy.rs';
 for (const [boundary, files, observer = b2aObserver] of [
+  ['Cut-C-only', [cutCObserver], cutCObserver],
+  ['Cut-C+origins', [cutCObserver, b2aObserver, b2bObserver, b2cObserver], cutCObserver],
   ['B2c-only', [b2cObserver], b2cObserver],
   ['B2a+B2c', [b2aObserver, b2cObserver], b2cObserver],
   ['B2b+B2c', [b2bObserver, b2cObserver], b2cObserver],
@@ -111,9 +114,12 @@ for (const [boundary, files, observer = b2aObserver] of [
       const selected = execFileSync('bash', ['-e', '-o', 'pipefail', '-c',
         `${selection}\nprintf '%s\\0' "\${oracle_args[@]}"`], { cwd, encoding: 'utf8', timeout: 10_000 });
       assert.deepEqual(selected.split('\0').filter(Boolean), [
-        '--base', observer === b2aObserver ? '08769566858267aff3028f3f7c0e2870345ff73a'
+        '--base', observer === cutCObserver ? '0b353d3294d4f813b3d9f16574442ff7cc19da58'
+          : observer === b2aObserver ? '08769566858267aff3028f3f7c0e2870345ff73a'
           : '3190e3d88bee5e83a45ca155c62620c61b27456b', '--ci', '--json',
-        '--mutation', observer === b2bObserver
+        '--mutation', observer === cutCObserver
+          ? 'tests/evidence/retained-source-inspection-c/busy-report.oracle.patch'
+          : observer === b2bObserver
           ? 'tests/evidence/retained-boolean-origin-b2b/predicate-report.oracle.patch'
           : observer === b2cObserver ? 'tests/evidence/retained-frame-origin-b2c/value-report.oracle.patch'
           : 'tests/evidence/retained-mapping-origin-b2a/occurrence-report.oracle.patch',
@@ -143,4 +149,16 @@ test('#7955: private S3 receipt/resource witnesses have exact library owners', (
   assert.deepEqual(plans.map(({ file, crate, moduleFilter, runner }) => [file, crate, moduleFilter, runner.args]),
     inputs.map(([file, crate, module]) => [file, crate, module,
       ['test', '--no-fail-fast', '-p', crate, '--lib', '--', `${module}::`]]));
+});
+
+// #7955 Cut C: the actual planner must enable the default-off consumer.
+test('#7955: inspection refusal observer runs with retained-runtime enabled', () => {
+  const { plans, unassigned, support } = planRuns([cutCObserver], root);
+  assert.deepEqual(unassigned, []);
+  assert.deepEqual(support, []);
+  assert.equal(plans.length, 1);
+  assert.equal(plans[0].runner.family, 'cargo');
+  assert.ok(plans[0].runner.args.includes('retained-runtime'));
+  assert.ok(plans[0].runner.args.includes('--test'));
+  assert.ok(plans[0].runner.args.includes('retained_inspection_busy'));
 });

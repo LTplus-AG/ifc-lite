@@ -11,6 +11,7 @@ pub(super) fn capture(
     program: u64,
     failure: &FailureHandle,
 ) -> crate::Result<RetainedPlanOperation> {
+    crate::resource::source_step()?;
     crate::resource::charge(crate::resource::Cost {
         work: 1,
         ..Default::default()
@@ -25,6 +26,8 @@ pub(super) fn capture(
             solid_id: item.id,
             source: crate::analytic::extract_swept_disk(item, decoder).map_err(|error| {
                 if let crate::Error::ProgramStopped(_) = error { return error; }
+                #[cfg(feature = "retained-runtime")]
+                if let crate::Error::InspectionDeadlineExceeded = error { return error; }
                 let diagnostic = crate::Error::geometry(error.to_string());
                 let cause = match error {
                     crate::Error::CoreError(core) => OriginCause::Core(core),
@@ -37,7 +40,9 @@ pub(super) fn capture(
         })),
         _ => Err(recipe_error(failure, item.id,
             crate::document::RetainedRefusal::UnsupportedSource(format!("{}", item.ifc_type)))),
-    })?;
+    });
+    crate::resource::source_step()?;
+    let recipe = recipe?;
     let payload = recipe
         .lower()
         .map_err(|refusal| recipe_error(failure, item.id, refusal))?;

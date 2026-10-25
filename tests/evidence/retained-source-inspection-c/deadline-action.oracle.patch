@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MPL-2.0
+# Apply in reverse; actual green/red/restored execution is UNRUN at preparation.
+diff --git a/rust/geometry/src/resource/inspection.rs b/rust/geometry/src/resource/inspection.rs
+--- a/rust/geometry/src/resource/inspection.rs
++++ b/rust/geometry/src/resource/inspection.rs
+@@ -85,7 +85,7 @@
+ pub fn inspection_checkpoint() -> crate::Result<()> {
+     check_current()?;
+     if let Some(account) = current_account() {
+-        if let Some(allowance) = &account.1 { let _ = allowance; }
++        if let Some(allowance) = &account.1 { allowance.deadline()?; }
+     }
+     Ok(())
+ }

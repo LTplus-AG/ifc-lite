@@ -84,6 +84,8 @@ pub(super) fn execute_boolean(item: &DecodedEntity, mut machine: Box<BooleanMach
             // not yet converted is preserved as opaque at this known source.
             let error = match error {
                 Error::ProgramStopped(_) => error,
+                #[cfg(feature = "retained-runtime")]
+                Error::InspectionDeadlineExceeded => error,
                 error => {
                     let diagnostic = Error::geometry(error.to_string());
                     let cause = match error {

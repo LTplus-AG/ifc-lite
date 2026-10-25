@@ -95,9 +95,31 @@ API disposition; it does not change an npm export, public WASM binding, CLI flag
 viewer mode. No version is edited here. It introduces no numerical executor,
 runtime dependency, exact fallback, publication or removal path. Source archives
 contain the generated inspection projections; the census remains excluded tooling.
-Requested backing is accounted separately from measured RSS. A shared enclosing
-account can be stricter, and source-step byte checks conservatively include its
-other live backing; this is not strict coverage of every allocator or SDK cost.
+The inspection composes its `maxWork` and `maxBytes` allowance with the original
+account and pool, admitting covered work and requested live backing before growth,
+including report serialization. Original cumulative usage is never reset. Captured
+source contexts carry the local allowance; unrelated detached work does not.
+The report's permit refunds its backing on drop. Inherited retained helpers still
+conservatively retain some temporary charges for the original account lifetime.
+This covers requested backing, not allocator overhead, global RSS, all core decoder
+allocations or SDK costs; it is not an aggregate census-memory limit.
+
+`deadlineMs` starts at the bounded public entry, before unit resolution, root
+reading and source hashing. One captured monotonic domain spans source inspection,
+serialization, strict decode and later `bytes()` delivery. Cancellation is
+cooperative: hash chunks are at most 64 KiB, retained reference-list members are
+checked individually, analytic coefficient/value/curve loops and topology budget
+steps check the same clock, and unit resolution, individual decoder calls, controller
+admission and bounded serialization/strict decode are checked after completion.
+Those indivisible calls are not preempted. Deadline expiry is `DEADLINE_EXCEEDED`,
+not a fabricated cancellation or numeric resource payload; existing original
+source/account/terminal stops keep precedence. The clock injection used by tests
+is restricted to the existing test-support build.
+A stored census diagnostic can expire while later products are inspected. Its
+controller column then becomes `delivery_refused` with the actual typed code;
+the original extractor row, inventories and counts remain in the serialized census.
+Expired bytes never become an inspected-success column.
+
 Performance, geometry equivalence and release qualification are separate gates.
 
 ## Overview

@@ -26,6 +26,10 @@ enum OwnedTerminal {
     Raw(Arc<Mutex<Option<ProgramStop>>>),
 }
 impl OwnedResourceContext {
+    #[cfg(feature = "retained-runtime")]
+    pub(super) fn with_account(account: ExecutionAccount) -> Self {
+        Self { account: Some(account), ..Self::capture_current() }
+    }
     pub(crate) fn capture_current() -> Self {
         Self {
             account: super::current_account(),
@@ -52,12 +56,22 @@ impl OwnedResourceContext {
     /// Install exact captured channels only for this synchronous call. Ambient
     /// state is restored on errors and unwind; no guard escapes into a packet.
     pub(crate) fn with_scope<T>(&self, work: impl FnOnce() -> T) -> T {
+        self.scoped(true, work)
+    }
+    // An entry allowance can precede source authentication. Do not install it
+    // as an observer of a later, more authoritative source epoch. Actual owned
+    // work captures that epoch itself; this scope only carries resource limits.
+    #[cfg(feature = "retained-runtime")]
+    pub(super) fn with_allowance_scope<T>(&self, work: impl FnOnce() -> T) -> T {
+        self.scoped(false, work)
+    }
+    fn scoped<T>(&self, observe: bool, work: impl FnOnce() -> T) -> T {
         let _restore = Restore {
             context: self.clone(),
             account: CURRENT.with(|slot| slot.replace(self.account.clone())),
             source: SOURCE_STOP.with(|slot| slot.replace(self.source.clone())),
             terminal: TERMINAL.with(|slot| slot.replace(Some(self.check().err()))),
-            owned: OWNED.with(|slot| slot.replace(Some(self.clone()))),
+            owned: OWNED.with(|slot| slot.replace(observe.then(|| self.clone()))),
         };
         work()
     }
@@ -91,7 +105,13 @@ fn check_channels(
     let cached = *terminal.lock().unwrap_or_else(|e| e.into_inner());
     match prior_source.or(prior_account).or(cached) {
         Some(stop) => Err(remember_channels(account, source, terminal, stop)),
-        None => Ok(()),
+        None => {
+            #[cfg(feature = "retained-runtime")]
+            if let Some(account) = account {
+                account.check_allowance().map_err(|stop| remember_channels(Some(account), source, terminal, stop))?;
+            }
+            Ok(())
+        },
     }
 }
 fn remember_channels(

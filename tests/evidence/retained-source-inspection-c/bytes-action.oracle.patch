@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MPL-2.0
+# Apply in reverse; actual green/red/restored execution is UNRUN at preparation.
+diff --git a/rust/geometry/src/resource/inspection.rs b/rust/geometry/src/resource/inspection.rs
+--- a/rust/geometry/src/resource/inspection.rs
++++ b/rust/geometry/src/resource/inspection.rs
+@@ -62,7 +62,7 @@
+         let mut account = current_account().unwrap_or_else(||
+             ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default())));
+         let mut local = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits {
+-            work: Some(work), live_bytes: Some(bytes.saturating_add(u64::MAX)), ..Default::default()
++            work: Some(work), live_bytes: Some(bytes), ..Default::default()
+         }));
+         local.1 = account.1.clone();
+         account.1 = Some(Arc::new(Allowance {

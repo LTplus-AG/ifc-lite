@@ -831,8 +831,9 @@ fn a_targeted_and_an_untargeted_write_to_one_record_dedupe() {
 #[test]
 fn a_target_in_no_set_of_the_object_is_refused_without_its_neighbours() {
     let content = wall_with_two_same_named_sets();
-    let other = PropWrite::new("Pset_WallCommon", "Other", "IFCLABEL", "'ok'", PsetKind::Property, PropScope::Occurrence);
-    let (out, report) = patch_one(&content, vec![rating("Pset_WallCommon", "'x'").with_target(99), other]);
+    // Neither names a set the object has, so both would share one group.
+    let other = PropWrite::new("Pset_New", "Other", "IFCLABEL", "'ok'", PsetKind::Property, PropScope::Occurrence);
+    let (out, report) = patch_one(&content, vec![rating("Pset_New", "'x'").with_target(99), other]);
     assert_eq!(report.refusals.len(), 1, "{:?}", report.refusals);
     assert!(report.refusals[0].reason.contains("not a member of any set"), "{}", report.refusals[0].reason);
     assert!(String::from_utf8(out).unwrap().contains("'ok'"), "the valid write still lands");

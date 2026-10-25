@@ -4784,12 +4784,17 @@ worker chunk durations cannot stand in for browser load time.
 
 ### Current-source wrapper deletion qualification hold (#7896)
 
-The public R2a history `1c2393e0114a` is merged with the approved recovered
-X3a parent `abaab36312f7`, preserving the actual #7906 merge and its consumer
-repairs. The canonical placement readers replace the deleted wrappers;
-GeometryProgram and MappingControl retain current rendering and type-map
-origin authority. The lower X2 resource, finite-grid, refusal and WASM contracts
-and the X3a authored Axis2 / derived-Axis1 correction remain prerequisites.
+The R2a source sequence was rebuilt at `eeba1e4a21` on the landed #7880
+source `a0720da42c` and continues through `5db3809a`. That sequence incorporated the `cf892ea4` integration and was then merged
+with main `760206a3` as `86184f2e`. The former
+public heads `1c2393e0114a` and `46cc72ff79ad`, X3a parent `abaab36312f7`, and
+integration `453af4305df8` are superseded historical heads, not ancestors of
+this integration; their results do not qualify this source. This ancestry does
+not claim that #7906 merged. The canonical placement readers replace the
+deleted wrappers; GeometryProgram and MappingControl retain current rendering
+and type-map origin authority. The lower X2 resource, finite-grid, refusal and
+WASM contracts and the X3a authored Axis2 / derived-Axis1 correction remain
+prerequisites.
 
 Qualification is **HOLD**: Class R requires a neutral base-versus-branch
 performance verdict for this recovered source, plus source-matched behavioral
@@ -4798,8 +4803,13 @@ includes export's `step_map_rigid`, geometry tests/examples, PyO3 and the
 separate csg-thread-bench crate; the latter two are not covered by workspace
 checks. The six removed exports ride the pending Rust break #13 and have a
 matching API migration guide. Direct cargo-semver-checks 0.50.0 against the
-published 22.6.0 remains pending; six function_missing findings are expected
-by inspection, not measured. No additional waiver is introduced.
+published 22.6.0 measured exactly six expected `function_missing` findings
+and no others with cargo-semver-checks 0.50.0 (receipt `295e65a4`). The
+eight-crate repository semver gate passed on `5db3809a`; the eight crate
+subtrees, `Cargo.toml` and `Cargo.lock` are byte-identical at `86184f2e`, so
+that verdict applies by source identity. This semver evidence does not qualify
+runtime, oracle, performance or the other exact-head gates; they remain
+pending. No additional waiver is introduced.
 
 This restack is source-only. Historical native observations above, private
 `75bf`/R75 qualifications and inherited WASM results bind their original sources
@@ -4810,14 +4820,16 @@ required before publication or landing.
 
 ### Current-main R2a integration (#7896)
 
-The takeover integration preserves public R2a `46cc72ff79ad` and merges it
-with current-main X3a integration `453af4305df8`. After #7880 merged
-(`a0720da42c`), the R2a layer was rebuilt on that main: where #7880 changed
-the same reads (the mandatory `ExtrudedDirection`, the deleted
-`get_direction_by_id`), main's version is kept. This is source preparation
-only. Historical results above remain bound to their original commits. The new
-adjacent-layer comparison, complete output identity, external consumer checks,
-oracle qualification and independent review remain pending.
+The R2a source sequence from `eeba1e4a21` through `5db3809a` was rebuilt on
+landed #7880 (`a0720da42c`), retaining main's version where #7880 changed the
+same reads (the mandatory `ExtrudedDirection` and deleted
+`get_direction_by_id`). The sequence incorporated the `cf892ea4` integration;
+`5db3809a` was then merged with main `760206a3` as `86184f2e`. The former
+`46cc72ff79ad`, `abaab36312f7` and
+`453af4305df8` heads are not ancestors of this integration; their results do
+not bind this source. Historical results above remain bound to their original
+commits. The adjacent-layer comparison, complete output identity, external
+consumer checks, oracle qualification and independent review remain pending.
 
 The review-fix integration merges main `cf892ea4c`, including its pending
 Rust break #13 for #7955/#8120, without raising the offset again. The R2a six

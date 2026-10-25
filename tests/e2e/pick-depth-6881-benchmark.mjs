@@ -5,7 +5,7 @@
 // #6881 manual physical-console cohort. Invoke only under exclusive benchmark
 // admission, after successful same-render functional controls. No sample replay.
 import { createRequire } from 'node:module';
-import { readFileSync, writeFileSync, appendFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, appendFileSync, mkdirSync, readdirSync, lstatSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
@@ -16,13 +16,26 @@ const [configuration, output] = process.argv.slice(2);
 if (!configuration || !output) throw Error('Arguments: frozen cohort configuration, new output directory');
 const config = JSON.parse(readFileSync(configuration, 'utf8'));
 const hash = value => createHash('sha256').update(value).digest('hex');
+const inventory = (directory, prefix = '') => readdirSync(directory).flatMap(name => {
+  const path = `${directory}/${name}`, relative = `${prefix}${name}`, stat = lstatSync(path);
+  if (stat.isSymbolicLink()) throw Error('Frozen distribution contains a symlink');
+  return stat.isDirectory() ? inventory(path, `${relative}/`) : [relative];
+});
 if (!config.functional?.accepted || hash(readFileSync(config.functional.path)) !== config.functional.sha256
   || !JSON.parse(readFileSync(config.functional.path, 'utf8')).accepted) throw Error('Successful current-source functional qualification required');
 const verify = () => {
   for (const arm of Object.values(config.arms)) {
     const git = (...args) => execFileSync('git', args, { cwd: arm.checkout, encoding: 'utf8', timeout: 10000 }).trim();
     if (git('rev-parse', 'HEAD') !== arm.head || git('status', '--porcelain')) throw Error('Source identity changed');
+    if (arm.producerReceipt?.state !== 'completed' || arm.producerReceipt.exitCode !== 0 || !arm.producerReceipt.sourceUnchanged
+      || arm.producerReceipt.sourceAfter.commit !== arm.head) throw Error('Successful original source build receipt absent');
+    const paths = arm.files.map(file => file.path), required = ['ifc-lite_bg.wasm', 'ifc-lite.js', 'ifc-lite.d.ts'].map(name => `packages/wasm/pkg/${name}`);
+    if (!paths.length || new Set(paths).size !== paths.length || !paths.includes('apps/viewer/dist/index.html')
+      || required.some(path => !paths.includes(path)) || paths.some(path => path.startsWith('/') || path.split('/').includes('..'))) throw Error('Incomplete/invalid frozen file inventory');
+    const observed = inventory(`${arm.buildRoot}/apps/viewer/dist`).map(path => `apps/viewer/dist/${path}`);
+    if (JSON.stringify(observed.sort()) !== JSON.stringify(paths.filter(path => path.startsWith('apps/viewer/dist/')).sort())) throw Error('Distribution inventory differs from its frozen manifest');
     for (const file of arm.files) if (hash(readFileSync(`${arm.buildRoot}/${file.path}`)) !== file.sha256) throw Error('Frozen served artifact changed');
+    if (arm.files.find(file => file.path === required[0]).sha256 !== arm.wasmSha256) throw Error('Engine identity field does not match its actual bytes');
   }
 };
 verify();
@@ -48,8 +61,10 @@ const server = await startStaticServer({ port: 0, host: '127.0.0.1', root: () =>
 const origin = `http://127.0.0.1:${server.address().port}`;
 const records = [], references = new Map();
 const report = { configSha256: hash(readFileSync(configuration)), scope: 'Mounted viewer hover, 5 interleaved pairs per public-model scenario at DPR1; no loading-speed claim',
+  harness: Object.fromEntries(['pick-depth-6881-benchmark.mjs', 'pick-depth-6881-hover.mjs', 'pick-depth-6881-observer.mjs'].map(name => [name, hash(readFileSync(resolve(here, name)))])),
   accepted: false, records, summary: [] };
 const median = values => values.slice().sort((a, b) => a - b)[Math.floor(values.length / 2)];
+const p95 = values => values.slice().sort((a, b) => a - b)[Math.ceil(values.length * 0.95) - 1];
 let browser, active;
 const stderr = process.stderr.write.bind(process.stderr);
 process.stderr.write = function(chunk, ...args) {
@@ -152,7 +167,7 @@ try {
         || record.health.visibility !== 'visible' || !record.health.focused || record.health.interruptions
         || !record.health.adapters.length || record.health.adapters.some(a => a.vendor !== 'nvidia' || a.fallback)
         || record.health.errors.length || record.errors.length || record.driverErrors.length) throw Error('Final host/browser/GPU health refused');
-      record.rows = [['pointer-to-hover-median-ms', median(commits)], ['GPU-picker-median-ms', median(record.hover.picks.map(pick => pick.ms))],
+      record.rows = [['pointer-to-hover-median-ms', median(commits)], ['pointer-to-hover-p95-ms', p95(commits)], ['GPU-picker-median-ms', median(record.hover.picks.map(pick => pick.ms))],
         ['mapped-bytes-per-pick', median(record.hover.picks.map(pick => pick.maps.reduce((sum, map) => sum + map.size, 0)))]]
         .map(([metric, value]) => ({ fixture: scenario.name, scenario: 'hover', metric, value }));
       record.ok = true;

@@ -1,0 +1,20 @@
+{
+  "license": "SPDX-License-Identifier: MPL-2.0",
+  "issue": 7955,
+  "status": "preregistered before generator or engine execution; never widen on failure",
+  "units": "metres, cubic metres",
+  "planar_volume_absolute": 1e-06,
+  "curved_band_mesh_volume_absolute": 0.005,
+  "curved_total_mesh_volume_absolute": 0.015,
+  "position_absolute": 1e-06,
+  "uv_absolute": 1e-06,
+  "identity_count_palette_index_tolerance": 0,
+  "normal_length_absolute": 1e-05,
+  "rationale": "Planar fixtures are small metre-scale solids; 1e-6 allows f32 narrowing. Curved band mesh tolerance is the design section 7.2 J3 tessellated bound; total allows the sum of three band bounds. These are mesh-volume, not analytic BRep-volume tolerances. UV tolerance applies to interpolation; copied dyadic UVs and source palette integers are exact.",
+  "planned_geometry": {
+    "F-A": "Radii 10,10.1,10.3,10.6; sector -pi/4..pi/4; height 3. Door x=[9,12], y=[-0.5,0.5], z=[0,2]. Area removed in band [a,b] = F(b)-F(a), F(r)=0.5*sqrt(r*r-0.25)+r*r*asin(0.5/r). Volume before=3*pi/4*(b*b-a*a); after=before-2*(F(b)-F(a)).",
+    "F-B": "Closed box 2 x 1 x 3, volume 6. Opening 0.5 x 2 x 2 through the 1m thickness removes 1. Nonuniform map scale=(2,1,0.5), determinant 1, volume 6. Reflection determinant -1, signed orientation must be corrected.",
+    "F-C": "Box 2 x 1 x 3, volume 6; both files same rigid oblique basis and translation. Face roles determined in element-local space, never triangle ordinal.",
+    "F-D": "Closed textured tetrahedron at (0,0,0),(1,0,0),(0,1,0),(0,0,1), volume 1/6; four dyadic UV corners."
+  }
+}

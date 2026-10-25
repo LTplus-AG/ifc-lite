@@ -4,7 +4,7 @@
   "tasks": [
     {
       "id": "ci-deduplication",
-      "status": "implemented-awaiting-validation",
+      "status": "inventory-verified; runtime-regressions-pending",
       "removed_duplicate_named_steps": 51,
       "coverage_owner": "existing scripts catch-all; wiring gate retained"
     },
@@ -15,26 +15,38 @@
     },
     {
       "id": "viewer-startup",
-      "status": "delegated",
+      "status": "implemented-awaiting-runtime-and-mutation-validation",
       "delegate": "test-opt-viewer-startup-v1"
     },
     {
       "id": "controlled-timing",
-      "status": "delegated",
+      "status": "implemented-awaiting-runtime-and-mutation-validation",
       "delegate": "test-opt-controlled-timers-v1"
     },
     {
       "id": "rust-compilation",
-      "status": "investigating"
+      "status": "research-complete; compiler-cache-trial-requires-input-and-performance-qualification",
+      "evidence": "rust-cache.json"
     },
     {
       "id": "selective-caching",
-      "status": "investigating"
+      "status": "delegated",
+      "delegate": "test-opt-selective-cache-v1"
     },
     {
       "id": "assertion-consolidation",
       "status": "qualification-required",
       "scope": "Only the byte-identical WASM suites; broader deletion requires defect-detection proof."
+    }
+  ],
+  "validation_jobs": [
+    {
+      "id": "db4908a4-c9ca-48f7-901e-5058b351c379",
+      "storage_task": "test-opt-20261025-packages",
+      "scope": "canonical and forwarding retry/panic suites",
+      "source_commit": "6e8c4eea4f0157cc37105ea032ff11b682356e44",
+      "source_clean": false,
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/db4908a4-c9ca-48f7-901e-5058b351c379/receipt.json"
     }
   ]
 }

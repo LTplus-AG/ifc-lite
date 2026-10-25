@@ -3083,11 +3083,15 @@ jobs:
       # Its own step rather than folding in `csg_topology_gate` (which has the
       # same gap and predates this) so a breakage names one feature.
       - name: Rust tests (csg_manifold_gate feature)
+        # Geometry changes run this feature in csg-accept-gates, which the
+        # required aggregate also judges. Other Rust changes keep it here.
+        if: needs.changes.outputs.geometry != 'true'
         env:
           IFC_LITE_REQUIRE_FIXTURES: "1"
         run: cargo test -p ifc-lite-geometry --features csg_manifold_gate
 
       - name: Clippy (csg_manifold_gate feature)
+        if: needs.changes.outputs.geometry != 'true'
         run: cargo clippy -p ifc-lite-geometry --features csg_manifold_gate --all-targets -- -D warnings
 
       # --all-features, and the catch-all is the point. The two steps above name

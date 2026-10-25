@@ -17,6 +17,7 @@
       "bytes": 225635,
       "identicalToParentBytes": false,
       "touchedGlobalIds": [],
+      "sharedDefinition": null,
       "geometryScopeRequired": false,
       "note": null,
       "measuredDataDiff": null
@@ -33,6 +34,7 @@
       "touchedGlobalIds": [
         "1AQAupaRP1txwK1AGiN61V"
       ],
+      "sharedDefinition": null,
       "geometryScopeRequired": false,
       "note": null,
       "measuredDataDiff": {
@@ -78,6 +80,7 @@
       "touchedGlobalIds": [
         "1AQAupaRP1txwK1AGiN61V"
       ],
+      "sharedDefinition": null,
       "geometryScopeRequired": true,
       "note": "geometric: data scope sees nothing, by design",
       "measuredDataDiff": {
@@ -115,6 +118,7 @@
       "touchedGlobalIds": [
         "1AQAupaRP1txwK1AGiN61V"
       ],
+      "sharedDefinition": null,
       "geometryScopeRequired": false,
       "note": null,
       "measuredDataDiff": {
@@ -160,6 +164,7 @@
       "touchedGlobalIds": [
         "2e9pghUJbBqR4jTInsONQT"
       ],
+      "sharedDefinition": null,
       "geometryScopeRequired": false,
       "note": "also drops 2 relationship record(s) left with an empty related set: #175 IFCRELDEFINESBYTYPE, #179 IFCRELASSOCIATESMATERIAL",
       "measuredDataDiff": {
@@ -201,6 +206,7 @@
       "touchedGlobalIds": [
         "0hnSKr4LD8eRixcnqcc6X1"
       ],
+      "sharedDefinition": null,
       "geometryScopeRequired": false,
       "note": null,
       "measuredDataDiff": {
@@ -239,22 +245,32 @@
       "file": "building-architecture-r06.ifc",
       "parent": "r05",
       "changeClass": "property-set-shared",
-      "exercises": "a relationship gains a second related object",
-      "sha256": "7fe07d2a45fc542d732dfe5d7ea49c0af43d679ceccdda7d43f9857c2eec8f02",
-      "bytes": 225307,
+      "exercises": "one definition, two consumers: the second wall swaps its own same-named set for the first wall's",
+      "sha256": "92f1cb1542a2a65b1b328e6aa47628e948808189205133cca62d263596feb8d9",
+      "bytes": 225230,
       "identicalToParentBytes": false,
       "touchedGlobalIds": [
         "3wdauVJT5Fx9drrREiDqA$"
       ],
+      "sharedDefinition": {
+        "name": "Pset_WallCommon",
+        "definition": "1Bo5FYnDLEKBdWxUgMe003",
+        "consumers": [
+          "1AQAupaRP1txwK1AGiN61V",
+          "3wdauVJT5Fx9drrREiDqA$"
+        ]
+      },
       "geometryScopeRequired": false,
-      "note": "the second wall gains a property set it did not carry",
+      "note": "the second wall's own 'Pset_WallCommon' (#295) is superseded by the first wall's definition (#266), so the set is shared rather than duplicated; 1 relationship record(s) left with an empty related set were dropped, and 1 superseded set(s) stay in the file referenced by nothing -- what a real detach leaves behind, and schema-valid.",
       "measuredDataDiff": {
         "keyed": {
           "added": 0,
           "modified": 1,
           "deleted": 0,
           "unchanged": 38,
-          "changedComponents": [],
+          "changedComponents": [
+            "pset:Pset_WallCommon"
+          ],
           "modifiedKeys": [
             "3wdauVJT5Fx9drrREiDqA$"
           ],
@@ -266,7 +282,9 @@
           "modified": 1,
           "deleted": 0,
           "unchanged": 38,
-          "changedComponents": [],
+          "changedComponents": [
+            "pset:Pset_WallCommon"
+          ],
           "modifiedKeys": [
             "3wdauVJT5Fx9drrREiDqA$"
           ],
@@ -280,14 +298,22 @@
       "file": "building-architecture-r07.ifc",
       "parent": "r06",
       "changeClass": "shared-property-set-edit",
-      "exercises": "one node change, N element markers",
-      "sha256": "6879d06ef31055a025eed88af35fa9cfb0be4cdfb7092f93cae858e112359e99",
-      "bytes": 225307,
+      "exercises": "one node change, two element markers",
+      "sha256": "9a8b46b6b243885e349d6eca556a66387c5bda833316c8ffdd9b40aee79e8332",
+      "bytes": 225230,
       "identicalToParentBytes": false,
       "touchedGlobalIds": [
         "1AQAupaRP1txwK1AGiN61V",
         "3wdauVJT5Fx9drrREiDqA$"
       ],
+      "sharedDefinition": {
+        "name": "Pset_WallCommon",
+        "definition": "1Bo5FYnDLEKBdWxUgMe003",
+        "consumers": [
+          "1AQAupaRP1txwK1AGiN61V",
+          "3wdauVJT5Fx9drrREiDqA$"
+        ]
+      },
       "geometryScopeRequired": false,
       "note": "one node change, two element markers -- the localisation payoff",
       "measuredDataDiff": {
@@ -329,12 +355,13 @@
       "parent": "r07",
       "changeClass": "reexport-reguid",
       "exercises": "GUID-AGNOSTIC: total churn when keyed by GlobalId, unchanged under content matching",
-      "sha256": "a8460bdc252e6c6d018fe0c3b0851106d8fab4fb39e7ee3b25831984712b5739",
-      "bytes": 225307,
+      "sha256": "9ba6fb086fbe90565332a1bb51c965d37386b579b0ee78055b2b1b9fc1933be0",
+      "bytes": 225230,
       "identicalToParentBytes": false,
       "touchedGlobalIds": [],
+      "sharedDefinition": null,
       "geometryScopeRequired": false,
-      "note": "every GlobalId regenerated (114 rooted entities), header clock and owner-history dates moved; nothing semantic changed",
+      "note": "every GlobalId regenerated (113 rooted entities), header clock and owner-history dates moved; nothing semantic changed",
       "measuredDataDiff": {
         "keyed": {
           "added": 39,
@@ -406,10 +433,11 @@
       "parent": "r08",
       "changeClass": "byte-identical-resave",
       "exercises": "empty diff: must produce no commit",
-      "sha256": "a8460bdc252e6c6d018fe0c3b0851106d8fab4fb39e7ee3b25831984712b5739",
-      "bytes": 225307,
+      "sha256": "9ba6fb086fbe90565332a1bb51c965d37386b579b0ee78055b2b1b9fc1933be0",
+      "bytes": 225230,
       "identicalToParentBytes": true,
       "touchedGlobalIds": [],
+      "sharedDefinition": null,
       "geometryScopeRequired": false,
       "note": "byte-identical: must produce no commit",
       "measuredDataDiff": {

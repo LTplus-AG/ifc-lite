@@ -27,6 +27,13 @@
  * and the changed component keys are each compared against the declaration, and
  * a contradiction fails the run BEFORE the manifest is written.
  *
+ * Revisions built around a SHARED property set declare the sharing itself —
+ * the definition's `GlobalId`, its `Name`, and every consumer — and it is
+ * checked structurally, against the schema's uniqueness rule, and through the
+ * engine's own per-component hashes. Counts and `GlobalId`s alone cannot tell
+ * a shared definition from two same-named copies; see
+ * {@link checkSharedDefinition}.
+ *
  * A plain run REWRITES the manifest, so by itself it proves only that this
  * engine satisfies the current declarations — not that the committed manifest
  * still holds. `--check` closes that gap: same derivation, compared
@@ -221,12 +228,33 @@ function stepReal(value: number): string {
 // next, plus the facts the manifest records.
 // ---------------------------------------------------------------------------
 
+/**
+ * A claim that ONE property set definition is shared by several elements.
+ *
+ * `touched` alone cannot carry this: a revision that silently un-shared the set
+ * and instead gave each element its own copy would still touch the same
+ * `GlobalId`s and still move the same component key. So the sharing itself is
+ * declared and verified — the definition by `GlobalId` (never its express id,
+ * which `r08` does not preserve and which no consumer of the manifest can
+ * resolve), and the full set of consumers.
+ */
+interface SharedDefinition {
+  /** `Name` of the shared `IfcPropertySet`, i.e. the `pset:<name>` component. */
+  readonly name: string;
+  /** `GlobalId` of the single definition record. */
+  readonly definition: string;
+  /** `GlobalId` of every element expected to reference it — exactly, not at least. */
+  readonly consumers: readonly string[];
+}
+
 interface Applied {
   readonly text: string;
   /** GlobalIds the change is expected to touch. Empty for a no-op revision. */
   readonly touched: readonly string[];
   /** Component keys the change is expected to move, where data-scope can see them. */
   readonly expectComponents: readonly string[];
+  /** Set when the revision's point is a shared definition. Verified structurally AND through the engine. */
+  readonly shared?: SharedDefinition;
   readonly note?: string;
 }
 
@@ -245,18 +273,37 @@ function refersTo(args: string, id: number): boolean {
   return new RegExp(`#${id}(?![0-9])`).test(args);
 }
 
-/** Find the property set attached to `ownerId` through IfcRelDefinesByProperties. */
-function psetOf(index: Map<number, StepLine>, ownerId: number): StepLine {
+/** One `IfcRelDefinesByProperties` and the `IfcPropertySet` it relates. */
+interface PsetAssociation {
+  readonly rel: StepLine;
+  readonly pset: StepLine;
+}
+
+/**
+ * EVERY property set attached to `ownerId` through `IfcRelDefinesByProperties`,
+ * with the relationship that attaches it. All of them, not the first: the
+ * schema rule this file has to respect — `IfcObject.UniquePropertySetNames`,
+ * via `IfcUniqueDefinitionNames` — is a statement about the whole collection,
+ * so anything that wants to honour it has to see the whole collection.
+ */
+function psetAssociationsOf(index: Map<number, StepLine>, ownerId: number): PsetAssociation[] {
+  const out: PsetAssociation[] = [];
   for (const rel of findByType(index, 'IFCRELDEFINESBYPROPERTIES')) {
     const args = splitArgs(rel.args);
-    const related = args[4] ?? '';
-    if (!refersTo(related, ownerId)) continue;
+    if (!refersTo(args[4] ?? '', ownerId)) continue;
     const psetRef = /#(\d+)/.exec(args[5] ?? '');
     if (!psetRef) continue;
     const pset = index.get(Number(psetRef[1]));
-    if (pset && pset.type === 'IFCPROPERTYSET') return pset;
+    if (pset && pset.type === 'IFCPROPERTYSET') out.push({ rel, pset });
   }
-  throw new Error(`no IfcPropertySet reachable from #${ownerId}`);
+  return out;
+}
+
+/** Find the property set attached to `ownerId` through IfcRelDefinesByProperties. */
+function psetOf(index: Map<number, StepLine>, ownerId: number): StepLine {
+  const first = psetAssociationsOf(index, ownerId)[0];
+  if (!first) throw new Error(`no IfcPropertySet reachable from #${ownerId}`);
+  return first.pset;
 }
 
 function psetName(line: StepLine): string {
@@ -398,40 +445,147 @@ const editTypeObjectPropertySet: Transform = (text) => {
   };
 };
 
+/**
+ * Take `memberId` out of a relationship's `RelatedObjects`, returning the line
+ * indices the caller must drop.
+ *
+ * `RelatedObjects` is `SET [1:?]`, so a relationship left relating nothing is
+ * schema-invalid and has to GO rather than ship as `()` — the same rule
+ * `deleteElement` applies, for the same reason: every later revision is applied
+ * to this text, so one invalid record poisons the rest of the chain.
+ */
+function removeRelatedObject(lines: string[], rel: StepLine, memberId: number): number[] {
+  const args = splitArgs(rel.args);
+  const members = [...(args[4] ?? '').matchAll(/#(\d+)/g)].map((m) => Number(m[1]));
+  const remaining = members.filter((id) => id !== memberId);
+  if (remaining.length === members.length) {
+    throw new Error(`#${rel.id} (${rel.type}) does not relate #${memberId}`);
+  }
+  if (remaining.length > 0) {
+    args[4] = `(${remaining.map((id) => `#${id}`).join(',')})`;
+    rewriteRecord(lines, rel, args);
+    return [];
+  }
+  if (referenceCount(lines, rel) !== 0) {
+    throw new Error(
+      `#${rel.id} (${rel.type}) is emptied by detaching #${memberId} but is itself referenced`,
+    );
+  }
+  return [rel.index];
+}
+
+/**
+ * Share ONE property set definition between the first two walls.
+ *
+ * The obvious construction — add the second wall to the relationship that
+ * already defines the first — is wrong, and was the defect reviewed on #8129.
+ * Both walls in this base carry their own `Pset_WallCommon`, so adding leaves
+ * the second wall with TWO sets of that name, which violates
+ * `IfcObject.UniquePropertySetNames` (bundled `IFC4_ADD2_TC1.exp`, via
+ * `IfcUniqueDefinitionNames`) in this revision and, because the chain applies
+ * each revision to the previous text, in every revision after it.
+ *
+ * It also quietly destroys the measurement the revision exists to make.
+ * `buildComponentFingerprints` assigns `components['pset:' + set.name]` in a
+ * loop, so the second same-named set OVERWRITES the first: the duplicate shows
+ * up as a moved whole-entity `dataHash` with an EMPTY `changedComponents`, and
+ * the later edit to the "shared" set is measured on whichever copy happened to
+ * win. A shared-node case cannot be established that way.
+ *
+ * So REPLACE: detach the second wall from its own same-named association
+ * (which leaves that relationship empty, hence dropped) and attach it to the
+ * first wall's. One definition, two consumers, one `Pset_WallCommon` each.
+ */
 const sharePropertySet: Transform = (text) => {
   const lines = text.split('\n');
   const index = indexLines(lines);
   const walls = findByType(index, 'IFCWALL');
   if (walls.length < 2) throw new Error('need two IfcWalls to share a property set');
   const [first, second] = walls;
-  for (const rel of findByType(index, 'IFCRELDEFINESBYPROPERTIES')) {
-    const args = splitArgs(rel.args);
-    if (!refersTo(args[4] ?? '', first.id)) continue;
-    if (refersTo(args[4] ?? '', second.id)) continue;
-    args[4] = (args[4] ?? '').replace(/\)$/, `,#${second.id})`);
-    rewriteRecord(lines, rel, args);
-    return {
-      text: lines.join('\n'),
-      touched: [globalIdOf(second)!],
-      // The second wall gains the set; the first is untouched.
-      expectComponents: [],
-      note: 'the second wall gains a property set it did not carry',
-    };
+
+  const sharing = psetAssociationsOf(index, first.id).find(
+    (a) => !refersTo(splitArgs(a.rel.args)[4] ?? '', second.id),
+  );
+  if (!sharing) {
+    throw new Error(`no IfcRelDefinesByProperties defines #${first.id} without #${second.id}`);
   }
-  throw new Error('no IfcRelDefinesByProperties found for the first wall');
+  const name = psetName(sharing.pset);
+  if (name === '') throw new Error(`property set #${sharing.pset.id} has no Name to share`);
+
+  // Resolved by NAME, never by express id: the id that has to go is whichever
+  // one would collide, and this transform also has to hold if the base model
+  // is ever re-exported with different ids.
+  const superseded = psetAssociationsOf(index, second.id).filter(
+    (a) => psetName(a.pset) === name,
+  );
+  if (superseded.length !== 1) {
+    throw new Error(
+      `#${second.id} carries ${superseded.length} property sets named '${name}'; ` +
+        'expected exactly one to supersede',
+    );
+  }
+
+  const dropped = new Set<number>();
+  for (const a of superseded) {
+    for (const i of removeRelatedObject(lines, a.rel, second.id)) dropped.add(i);
+  }
+  const args = splitArgs(sharing.rel.args);
+  args[4] = (args[4] ?? '').replace(/\)$/, `,#${second.id})`);
+  rewriteRecord(lines, sharing.rel, args);
+
+  // Counted, not assumed: a superseded set is only detached if nothing else
+  // still relates it, and the relationship is only dropped if detaching the
+  // wall emptied it.
+  const nextLines = lines.filter((_, i) => !dropped.has(i));
+  const nextIndex = indexLines(nextLines);
+  const detached = superseded
+    .map((a) => nextIndex.get(a.pset.id))
+    .filter((l): l is StepLine => l !== undefined && referenceCount(nextLines, l) === 0);
+
+  const consumers = [globalIdOf(first)!, globalIdOf(second)!];
+  return {
+    text: nextLines.join('\n'),
+    // Only the second wall moves: it swaps its own copy for the first wall's
+    // definition. The first wall's data is untouched.
+    touched: [globalIdOf(second)!],
+    expectComponents: [`pset:${name}`],
+    shared: { name, definition: globalIdOf(sharing.pset)!, consumers },
+    note:
+      `the second wall's own '${name}' (#${superseded.map((a) => a.pset.id).join(', #')}) is ` +
+      `superseded by the first wall's definition (#${sharing.pset.id}), so the set is shared ` +
+      `rather than duplicated; ${dropped.size} relationship record(s) left with an empty ` +
+      `related set were dropped, and ${detached.length} superseded set(s) stay in the file ` +
+      'referenced by nothing -- what a real detach leaves behind, and schema-valid.',
+  };
 };
 
 const editSharedPropertySet: Transform = (text) => {
   const lines = text.split('\n');
   const index = indexLines(lines);
   const walls = findByType(index, 'IFCWALL');
-  const shared = psetOf(index, walls[0].id);
-  const prop = firstProperty(index, shared);
+  if (walls.length < 2) throw new Error('need two IfcWalls for a shared property set');
+  const [first, second] = walls;
+  // The definition both walls ACTUALLY point at, not "the first set reachable
+  // from the first wall". If r06 ever stops sharing, this throws instead of
+  // editing an unshared set and still reporting two element markers, which is
+  // exactly how the duplicate-set defect stayed invisible.
+  const shared = psetAssociationsOf(index, first.id).find((a) =>
+    refersTo(splitArgs(a.rel.args)[4] ?? '', second.id),
+  );
+  if (!shared) {
+    throw new Error(
+      `no IfcRelDefinesByProperties relates both #${first.id} and #${second.id}; r06 did not share`,
+    );
+  }
+  const prop = firstProperty(index, shared.pset);
   rewriteRecord(lines, prop, bumpPropertyValue(splitArgs(prop.args)));
+  const name = psetName(shared.pset);
+  const consumers = [globalIdOf(first)!, globalIdOf(second)!];
   return {
     text: lines.join('\n'),
-    touched: walls.slice(0, 2).map((w) => globalIdOf(w)!),
-    expectComponents: [`pset:${psetName(shared)}`],
+    touched: consumers,
+    expectComponents: [`pset:${name}`],
+    shared: { name, definition: globalIdOf(shared.pset)!, consumers },
     note: 'one node change, two element markers -- the localisation payoff',
   };
 };
@@ -540,7 +694,6 @@ interface RevisionSpec {
     | { readonly kind: 'unchanged' }
     | { readonly kind: 'modified'; readonly count: number }
     | { readonly kind: 'deleted'; readonly count: number }
-    | { readonly kind: 'any' }
     | { readonly kind: 'reguid-noop' };
 }
 
@@ -551,8 +704,8 @@ const REVISIONS: readonly RevisionSpec[] = [
   { id: 'r03', changeClass: 'element-renamed', exercises: 'attr:core only', apply: renameElement, expect: { kind: 'modified', count: 1 } },
   { id: 'r04', changeClass: 'element-deleted', exercises: 'deleted', apply: deleteElement, expect: { kind: 'deleted', count: 1 } },
   { id: 'r05', changeClass: 'type-object-property-edit', exercises: 'types tracked, not only occurrences (#8040)', apply: editTypeObjectPropertySet, expect: { kind: 'modified', count: 1 } },
-  { id: 'r06', changeClass: 'property-set-shared', exercises: 'a relationship gains a second related object', apply: sharePropertySet, expect: { kind: 'any' } },
-  { id: 'r07', changeClass: 'shared-property-set-edit', exercises: 'one node change, N element markers', apply: editSharedPropertySet, expect: { kind: 'any' } },
+  { id: 'r06', changeClass: 'property-set-shared', exercises: 'one definition, two consumers: the second wall swaps its own same-named set for the first wall\'s', apply: sharePropertySet, expect: { kind: 'modified', count: 1 } },
+  { id: 'r07', changeClass: 'shared-property-set-edit', exercises: 'one node change, two element markers', apply: editSharedPropertySet, expect: { kind: 'modified', count: 2 } },
   { id: 'r08', changeClass: 'reexport-reguid', exercises: 'GUID-AGNOSTIC: total churn when keyed by GlobalId, unchanged under content matching', apply: reExportRegeneratingGuids, expect: { kind: 'reguid-noop' } },
   { id: 'r09', changeClass: 'byte-identical-resave', exercises: 'empty diff: must produce no commit', apply: byteIdenticalResave, expect: { kind: 'unchanged' } },
 ];
@@ -665,6 +818,88 @@ function checkClaims(applied: Applied, k: MeasuredDiff): string | null {
   return null;
 }
 
+/**
+ * Verify a {@link SharedDefinition} claim against the model the transform
+ * actually produced — three independent ways, because each catches something
+ * the others do not.
+ *
+ * 1. STRUCTURE. Exactly which elements reach that one definition record. A
+ *    regression that un-shares the set by giving each element its own copy
+ *    leaves `touched` and `expectComponents` intact and fails here.
+ * 2. SCHEMA. Each consumer carries exactly ONE property set of that name —
+ *    `IfcObject.UniquePropertySetNames`. This is the rule the original fixture
+ *    broke.
+ * 3. ENGINE. The `pset:<name>` sub-hash is PRESENT and IDENTICAL on every
+ *    consumer. One definition cannot hash two ways. This is the check with
+ *    teeth: under the duplicate-set fixture the two walls hashed differently
+ *    at `pset:Pset_WallCommon` while the manifest still recorded the revision
+ *    as a shared-set change.
+ */
+async function checkSharedDefinition(claim: SharedDefinition, text: string): Promise<string | null> {
+  const index = indexLines(text.split('\n'));
+  const rooted = rootedLines(index);
+  const byGlobalId = new Map(rooted.map((l) => [globalIdOf(l)!, l]));
+
+  const definition = byGlobalId.get(claim.definition);
+  if (!definition || definition.type !== 'IFCPROPERTYSET') {
+    return `declared definition ${claim.definition} is not an IfcPropertySet in the produced model`;
+  }
+  if (psetName(definition) !== claim.name) {
+    return `definition ${claim.definition} is named '${psetName(definition)}', declared '${claim.name}'`;
+  }
+
+  const consumers: string[] = [];
+  for (const rel of findByType(index, 'IFCRELDEFINESBYPROPERTIES')) {
+    const args = splitArgs(rel.args);
+    if (!refersTo(args[5] ?? '', definition.id)) continue;
+    for (const ref of (args[4] ?? '').matchAll(/#(\d+)/g)) {
+      const owner = index.get(Number(ref[1]));
+      const gid = owner ? globalIdOf(owner) : null;
+      if (gid !== null) consumers.push(gid);
+    }
+  }
+  if (!sameSet(consumers, claim.consumers)) {
+    return (
+      `'${claim.name}' ${claim.definition} is referenced by [${[...new Set(consumers)].sort().join(' ')}], ` +
+      `declared [${[...new Set(claim.consumers)].sort().join(' ')}]`
+    );
+  }
+
+  for (const gid of claim.consumers) {
+    const owner = byGlobalId.get(gid);
+    if (!owner) return `declared consumer ${gid} is not in the produced model`;
+    const sameName = psetAssociationsOf(index, owner.id).filter(
+      (a) => psetName(a.pset) === claim.name,
+    );
+    if (sameName.length !== 1) {
+      return (
+        `${gid} carries ${sameName.length} property sets named '${claim.name}' ` +
+        `(#${sameName.map((a) => a.pset.id).join(', #')}); ` +
+        'IfcObject.UniquePropertySetNames allows exactly one'
+      );
+    }
+  }
+
+  const key = `pset:${claim.name}`;
+  const fingerprints = await fingerprintsOf(text);
+  const hashes = new Map<string, string | undefined>();
+  for (const gid of claim.consumers) {
+    const fp = fingerprints.find((f: { key: string }) => f.key === gid);
+    if (!fp) return `consumer ${gid} is not a comparable entity, so its components cannot be read`;
+    hashes.set(gid, fp.components?.[key]);
+  }
+  const absent = [...hashes].filter(([, h]) => h === undefined).map(([gid]) => gid);
+  if (absent.length > 0) return `consumers [${absent.join(' ')}] carry no '${key}' component`;
+  if (new Set(hashes.values()).size !== 1) {
+    return (
+      `'${key}' hashes differently across consumers ` +
+      `(${[...hashes].map(([gid, h]) => `${gid}=${h!.slice(0, 12)}`).join(' ')}); ` +
+      'the definition is not actually shared'
+    );
+  }
+  return null;
+}
+
 function checkExpectation(
   spec: RevisionSpec,
   applied: Applied,
@@ -689,8 +924,6 @@ function checkExpectation(
       return sameSet(k.deletedKeys, applied.touched)
         ? null
         : `declared deletion of [${applied.touched.join(' ')}], measured [${k.deletedKeys.join(' ')}]`;
-    case 'any':
-      return churn(k) > 0 ? checkClaims(applied, k) : 'expected some change, measured none';
     case 'reguid-noop': {
       // The whole point of the corpus. A re-GUID must be total churn when
       // paired by GlobalId, and nothing at all once content matching runs.
@@ -731,6 +964,13 @@ for (const spec of REVISIONS) {
     const problem = checkExpectation(spec, applied, measured);
     if (problem) failures.push(`${spec.id} (${spec.changeClass}): ${problem}`);
   }
+  // Independent of the diff: a revision whose point is a SHARED definition has
+  // to be able to show the sharing in the model it produced, not just a
+  // plausible set of counts and keys between two revisions.
+  if (applied.shared) {
+    const problem = await checkSharedDefinition(applied.shared, applied.text);
+    if (problem) failures.push(`${spec.id} (${spec.changeClass}): ${problem}`);
+  }
 
   entries.push({
     id: spec.id,
@@ -742,6 +982,7 @@ for (const spec of REVISIONS) {
     bytes: Buffer.byteLength(applied.text, 'utf8'),
     identicalToParentBytes: previousId !== null && applied.text === previousText,
     touchedGlobalIds: applied.touched,
+    sharedDefinition: applied.shared ?? null,
     geometryScopeRequired: spec.changeClass === 'element-moved',
     note: applied.note ?? null,
     measuredDataDiff: measured,

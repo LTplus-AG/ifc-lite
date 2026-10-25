@@ -16,7 +16,8 @@ test -z "$(git status --porcelain --untracked-files=normal)" || exit 1
 inspection_commit=$(git rev-parse --verify HEAD)
 ~/build-workers/ifc-fleet run --cwd "$PWD" -- cargo build --locked \
   -p ifc-lite-processing --features retained-runtime --example retained_census \
-  --config "env.IFC_RETAINED_BUILD_COMMIT={value=\"$inspection_commit\",force=true}"
+  --config "env.IFC_RETAINED_BUILD_COMMIT.value=\"$inspection_commit\"" \
+  --config "env.IFC_RETAINED_BUILD_COMMIT.force=true"
 ```
 
 Before using the resulting binary, reconcile the original request/receipt:
@@ -33,7 +34,8 @@ job, use the same pin (resolve it again if intentionally selecting another sourc
 ```sh
 ~/build-workers/ifc-fleet run --route fleet --cwd "$PWD" -- cargo run --locked \
   -p ifc-lite-processing --features retained-runtime --example retained_census \
-  --config "env.IFC_RETAINED_BUILD_COMMIT={value=\"$inspection_commit\",force=true}" \
+  --config "env.IFC_RETAINED_BUILD_COMMIT.value=\"$inspection_commit\"" \
+  --config "env.IFC_RETAINED_BUILD_COMMIT.force=true" \
   -- apps/viewer/public/samples/building-architecture.ifc
 ```
 
@@ -42,7 +44,7 @@ worker admission with its original artifact identity. Do not use an unstamped
 `cargo run`, which can rebuild it without the pin. Cargo tracks the
 `option_env!` value in compiler dependencies: changing/removing the build input
 requires a rebuild. Plain builds intentionally leave the controller uninspected.
-The same explicit `--config` argument on the root `cargo test --locked -p
+The same two explicit `--config` arguments on the root `cargo test --locked -p
 ifc-lite-processing --features retained-runtime --example retained_census`
 command exercises the compiled provenance and runtime-checkout A/B metadata
 witness under admission. That fixture tests identity behavior; it does not

@@ -126,3 +126,38 @@ fn a_host_its_openings_miss_is_not_consumed() {
         assert!(!consumed);
     }
 }
+
+// A ~40 um web between two rectangular through-openings (#7942 stopped merging
+// them) must survive the analytic cut closed: consolidation's size rules used to
+// drop its rim faces and open the mesh.
+
+fn thin_rect(mn: [f64; 3], mx: [f64; 3]) -> OpeningType {
+    OpeningType::Rectangular(
+        Point3::new(mn[0], mn[1], mn[2]),
+        Point3::new(mx[0], mx[1], mx[2]),
+        Some(Vector3::y()),
+    )
+}
+
+#[test]
+fn thin_residual_between_rect_openings_stays_closed() {
+    // 6 x 0.2 x 3 m wall; openings leave a 40 um web at x = 0.
+    let host = GeometryRouter::make_box_mesh(Point3::new(-3.0, -0.1, 0.0), Point3::new(3.0, 0.1, 3.0));
+    let openings = vec![
+        thin_rect([-2.0, -0.3, -0.5], [-0.00002, 0.3, 3.5]),
+        thin_rect([0.00002, -0.3, -0.5], [2.0, 0.3, 3.5]),
+    ];
+    let ctx = VoidContext {
+        merged_openings: GeometryRouter::merge_rectangular_openings(&openings),
+        openings,
+        param: None,
+        bool2d: None,
+    };
+    assert_eq!(ctx.merged_openings.len(), 2, "the authored gap must survive the merge");
+    let out = GeometryRouter::new().apply_void_context(host, &ctx, 1);
+    assert!(
+        crate::exact_topology::strict_closed_mesh(&out),
+        "cut host must stay strictly closed ({} tris)",
+        out.indices.len() / 3
+    );
+}

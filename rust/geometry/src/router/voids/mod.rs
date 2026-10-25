@@ -621,7 +621,7 @@ impl Execution {
         // opening doesn't reach. Run the result through the SAME coplanar merge
         // the exact path uses (i_overlay union per plane) to collapse those back
         // to minimal triangles — keeps it watertight and un-bloated.
-        out.map(crate::csg::ClippingProcessor::consolidate_coplanar)
+        out.map(crate::rect_fast::consolidate_keeping_closed)
     }
 
     /// Cut a plan-rotated wall's openings in the wall's own axis-aligned,

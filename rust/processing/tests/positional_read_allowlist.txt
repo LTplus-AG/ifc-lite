@@ -134,7 +134,7 @@
 6 rust/processing/src/symbolic/trimmed_curve.rs
 2 rust/wasm-bindings/src/api/gpu_meshes/batch.rs
 1 rust/wasm-bindings/src/api/gpu_meshes/prepass.rs
-6 rust/wasm-bindings/src/api/grid_lines.rs
+3 rust/wasm-bindings/src/api/grid_lines.rs
 2 rust/wasm-bindings/src/api/scan_outline.rs
 6 rust/wasm-bindings/src/api/styling/color.rs
 8 rust/wasm-bindings/src/api/styling/prepass.rs

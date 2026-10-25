@@ -389,6 +389,15 @@ fn issue_7779_grid_endpoint_admission_uses_canonical_points() {
         let content = LOCAL_GRID.replace("#11=IFCCARTESIANPOINT((10.,0.));", record);
         assert!(extract_grid_axes(&content, frame).is_empty(), "{record}");
     }
+    // The first endpoint takes the same rule; a lenient read of only the
+    // start point must not survive.
+    for record in [
+        "#10=IFCCARTESIANPOINT((0.,0.,'bad'));",
+        "#10=IFCCARTESIANPOINT((0.,0.,0.,1.));",
+    ] {
+        let content = LOCAL_GRID.replace("#10=IFCCARTESIANPOINT((0.,0.));", record);
+        assert!(extract_grid_axes(&content, frame).is_empty(), "{record}");
+    }
 }
 
 #[test]
@@ -397,7 +406,7 @@ fn issue_7779_grid_bad_placement_skips_only_its_grid() {
     let grid = "#20=IFCGRID('0aBcDeFgHiJkLmNoPqRsT0',$,'Grid',$,$,#5,$,(#13),$,$);";
     let sibling = "#21=IFCGRID('0aBcDeFgHiJkLmNoPqRsT1',$,'Valid',$,$,$,$,(#13),$,$);";
     for placement in ["#5=IFCLOCALPLACEMENT(#5,#4);", "#5=IFCLOCALPLACEMENT($,#999);",
-        "#5=IFCCARTESIANPOINT((0.,0.,0.));"] {
+        "#5=IFCCARTESIANPOINT((0.,0.,0.));", "#5=IFCLOCALPLACEMENT($,$);"] {
         let content = LOCAL_GRID.replace("#5=IFCLOCALPLACEMENT($,#4);", placement)
             .replace(grid, &format!("{grid}\n{sibling}"));
         let axes = extract_grid_axes(&content, frame);

@@ -139,7 +139,8 @@ fn append_grid_axes(
 
 /// First and last `IfcCartesianPoint` of an axis curve, in raw file units
 /// (3D — the Z component is kept, unlike the 2D symbolic path). Returns `None`
-/// for non-polyline curves or fewer than two points.
+/// for non-polyline curves, fewer than two points, or an endpoint that is not
+/// a readable `IfcCartesianPoint` (#7779).
 fn sample_axis_endpoints(
     curve: &DecodedEntity,
     decoder: &mut EntityDecoder,
@@ -292,7 +293,8 @@ impl IfcAPI {
     /// straight to a line pipeline (e.g. `renderer.setLineOverlay('grid', …)`).
     ///
     /// Returns an empty array when the file has no grids, so the caller can
-    /// clear the overlay cheaply.
+    /// clear the overlay cheaply. An axis with a malformed endpoint, or a grid
+    /// whose authored placement cannot be resolved, is omitted (#7779).
     #[wasm_bindgen(js_name = parseGridLines)]
     pub fn parse_grid_lines(&self, content: String) -> js_sys::Float32Array {
         let axes = extract_grid_axes(&content, None);

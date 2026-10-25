@@ -398,7 +398,8 @@ fn issue_7779_alignment_bad_placement_does_not_draw_at_identity() {
     let baseline = extract_alignment_line_vertices(CONTENT, frame);
     assert!(!baseline.is_empty(), "genuinely missing placement remains valid");
     for placement in ["#20=IFCLOCALPLACEMENT(#20,#21);\n#21=IFCAXIS2PLACEMENT3D(#1,$,$);",
-        "#20=IFCLOCALPLACEMENT($,#999);", "#20=IFCCARTESIANPOINT((0.,0.,0.));"] {
+        "#20=IFCLOCALPLACEMENT($,#999);", "#20=IFCCARTESIANPOINT((0.,0.,0.));",
+        "#20=IFCLOCALPLACEMENT($,$);"] {
         let placed = original.replace("Alignment',$,$,$,$", "Alignment',$,$,#20,$");
         assert_ne!(placed, original);
         let content = CONTENT.replace(original, &format!("{placement}\n{placed}"));

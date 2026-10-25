@@ -34,11 +34,16 @@ const { launchNativeChrome, readPhysicalSession, isPhysicalConsole } = await imp
   resolve(here, '../evidence/hidpi-navigation-6709/native-20261023/native-platform.mts'));
 const observer = resolve(output, 'oracle.js');
 const hover = resolve(output, 'hover.js');
+const families = resolve(output, 'families.js');
+const familyPagePath = resolve(output, 'families.html');
+writeFileSync(familyPagePath, '<!doctype html><html><head><title>6881 raster invariants</title></head><body style="margin:0"><canvas id="witness" width="640" height="480" style="display:block;width:640px;height:480px"></canvas></body></html>');
 const sourceInputs = {};
-for (const [entry, outfile] of [['pick-depth-6881-observer.mjs', observer], ['pick-depth-6881-hover.mjs', hover]]) {
-  const result = await build({ entryPoints: [resolve(here, entry)], bundle: true, format: 'esm', outfile, metafile: true });
+for (const [entry, outfile] of [['pick-depth-6881-observer.mjs', observer], ['pick-depth-6881-hover.mjs', hover], ['pick-depth-6881-families.mjs', families]]) {
+  const result = await build({ entryPoints: [resolve(here, entry)], bundle: true, format: 'esm', outfile, metafile: true,
+    alias: { '@ifc-lite/renderer': `${root}/packages/renderer/dist/index.js` },
+    tsconfigRaw: { compilerOptions: { jsx: 'react-jsx' } }, nodePaths: [`${root}/apps/viewer/node_modules`, `${root}/node_modules`] });
   for (const name of Object.keys(result.metafile.inputs)) {
-    const path = resolve(name), marker = path.indexOf('/packages/');
+    const path = resolve(name), marker = Math.max(path.indexOf('/packages/'), path.indexOf('/apps/viewer/src/e2e/'));
     if (marker === -1) continue;
     const relative = path.slice(marker + 1), digest = hash(readFileSync(path));
     if (digest !== hash(readFileSync(`${root}/${relative}`))) throw Error(`Observer source differs from viewer source: ${relative}`);
@@ -55,10 +60,10 @@ const models = fixtures.map(name => {
 });
 const served = new Map();
 const server = await startStaticServer({ port: 0, host: '127.0.0.1', root: () => `${root}/apps/viewer/dist`,
-  extra: new Map([['/__6881/oracle.js', observer], ['/__6881/hover.js', hover]]),
+  extra: new Map([['/__6881/oracle.js', observer], ['/__6881/hover.js', hover], ['/__6881/families.js', families], ['/__6881/families.html', familyPagePath]]),
   onServe: (url, path) => served.set(url, { sha256: hash(readFileSync(path)), path }) });
 const report = { head, buildReceipt: receipt.id, command: process.argv, fixturePins: models, sourceInputs,
-  harness: Object.fromEntries(['pick-depth-6881-native.mjs', 'pick-depth-6881-observer.mjs', 'pick-depth-6881-hover.mjs'].map(name => [name, hash(readFileSync(resolve(here, name)))])),
+  harness: Object.fromEntries(['pick-depth-6881-native.mjs', 'pick-depth-6881-observer.mjs', 'pick-depth-6881-hover.mjs', 'pick-depth-6881-families.mjs'].map(name => [name, hash(readFileSync(resolve(here, name)))])),
   scope: 'Native same-render functional comparisons; no hover performance acceptance', runs: [], accepted: false };
 let browser;
 let activeRun;
@@ -180,6 +185,15 @@ try {
     if (run.errors.length || run.gpuErrors.length || run.adapters.some(a => a.errors.length)) throw Error('Page/GPU/driver errors observed');
     run.sessionAfter = readPhysicalSession();
     if (!isPhysicalConsole(run.sessionAfter)) throw Error('Physical session changed');
+    const familyPage = await context.newPage();
+    familyPage.on('pageerror', error => run.errors.push(String(error)));
+    await familyPage.goto(`http://127.0.0.1:${server.address().port}/__6881/families.html`);
+    await familyPage.bringToFront();
+    run.families = await familyPage.evaluate(async () => (await import('/__6881/families.js')).runFamilyControls());
+    run.familyAdapters = await familyPage.evaluate('globalThis.__6881Devices');
+    if (run.familyAdapters.some(a => a.vendor !== 'nvidia' || a.fallback || a.errors.length)
+      || run.errors.length || run.gpuErrors.length) throw Error('Family witness page/GPU/driver health failed');
+    await familyPage.close();
     const cleanupError = await closeBrowserWithTimeout(browser, 15000);
     if (cleanupError) throw Error(`Owned browser cleanup failed: ${cleanupError}`);
     browser = null;

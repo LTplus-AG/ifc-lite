@@ -22,12 +22,12 @@ export function mountedRenderer(canvas) {
   throw Error('Mounted renderer ref unavailable');
 }
 
-export function installOracle({ depthBitXor = 0 } = {}) {
+export function installOracle({ depthBitXor = 0, renderer: suppliedRenderer } = {}) {
   if (depthBitXor !== 0 && depthBitXor !== 1) throw Error('Unknown oracle fault control');
   if (globalThis.__6881) throw Error('An oracle already owns this document');
-  const canvas = document.querySelector('canvas[data-viewport="main"]');
+  const canvas = suppliedRenderer?.getCanvas() ?? document.querySelector('canvas[data-viewport="main"]');
   if (!canvas) throw Error('Main canvas absent');
-  const renderer = mountedRenderer(canvas), picker = renderer.picker;
+  const renderer = suppliedRenderer ?? mountedRenderer(canvas), picker = renderer.picker;
   if (!picker?.depthSample) throw Error('Production bounded picker unavailable');
   const device = renderer.getGPUDevice(), samples = [], pending = new Set();
   const owned = new Set();

@@ -24,7 +24,6 @@
     ".npmrc",
     "patches/**",
     "tsconfig*.json",
-    "scripts/test-cache*.mjs",
     ".env*",
     "vite.config.*",
     "vitest.config.*"

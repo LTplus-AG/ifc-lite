@@ -64,7 +64,8 @@ export function cachePlan(root, args, env = process.env, runtime = process) {
       ...config.tasks.test,
       cache: true,
       outputs: [],
-      inputs: ['$TURBO_DEFAULT$', 'src/**', 'test/**', 'tests/**', '*.json', '*config.*', '.env*'],
+      inputs: ['$TURBO_DEFAULT$', 'src/**', 'test/**', 'tests/**', '*.json', '*config.*', '.env*',
+        '$TURBO_ROOT$/scripts/test-cache.mjs'],
       env: [...(config.tasks.test.env ?? []), IDENTITY_ENV],
     };
   }
@@ -85,7 +86,10 @@ export async function runTests(root, args) {
         [turbo, 'test', `--root-turbo-json=${configPath}`, ...args],
         { cwd: root, env: plan.env, stdio: 'inherit' });
       const forward = (signal) => child.kill(signal);
-      const onInterrupt = () => forward('SIGINT');
+      // Turbo's JS shim consumes PID-directed SIGINT without forwarding it
+      // on POSIX. Its SIGTERM path reaches native Turbo, which stops tasks.
+      let interrupted = false;
+      const onInterrupt = () => { interrupted = true; forward('SIGTERM'); };
       const onTerminate = () => forward('SIGTERM');
       process.on('SIGINT', onInterrupt);
       process.on('SIGTERM', onTerminate);
@@ -96,7 +100,7 @@ export async function runTests(root, args) {
       child.once('error', (error) => { cleanup(); reject(error); });
       child.once('exit', (code, signal) => {
         cleanup();
-        accept(code ?? (signal === 'SIGINT' ? 130 : 143));
+        accept(interrupted ? 130 : (code ?? (signal === 'SIGINT' ? 130 : 143)));
       });
     });
   } finally {

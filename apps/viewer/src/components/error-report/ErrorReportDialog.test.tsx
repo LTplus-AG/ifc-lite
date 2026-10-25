@@ -164,6 +164,7 @@ test('#7495 publication hold stops automatic polling but preserves manual status
 
 test('#7495 publication polling waits for each response and unmount aborts the pending request', async t => {
   const clock = reportClock(t);
+  rememberReport('polling-report');
   const requests: string[] = [];
   let reads = 0;
   let pollSignal: AbortSignal | null | undefined;

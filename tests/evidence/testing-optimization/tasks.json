@@ -4,33 +4,37 @@
   "tasks": [
     {
       "id": "ci-deduplication",
-      "status": "inventory-verified; runtime-regressions-pending",
+      "status": "validated",
       "removed_duplicate_named_steps": 51,
-      "coverage_owner": "existing scripts catch-all; wiring gate retained"
+      "coverage_owner": "existing scripts catch-all; wiring gate retained",
+      "proof": "100/100 path/wiring regression tests; identical test inventory, once-only execution; all guards pass"
     },
     {
       "id": "wasm-consolidation",
-      "status": "implemented-awaiting-validation",
-      "delegate": "test-opt-wasm-consolidation-v1"
+      "status": "runtime-validated; mutation-validation-pending",
+      "delegate": "test-opt-wasm-consolidation-v1",
+      "proof": "33 canonical/forwarding cases pass, no skips; canonical source unchanged"
     },
     {
       "id": "viewer-startup",
-      "status": "implemented-awaiting-runtime-and-mutation-validation",
+      "status": "runtime-validated; mutation-validation-pending",
       "delegate": "test-opt-viewer-startup-v1"
     },
     {
       "id": "controlled-timing",
-      "status": "implemented-awaiting-runtime-and-mutation-validation",
-      "delegate": "test-opt-controlled-timers-v1"
+      "status": "runtime-validated; mutation-validation-pending",
+      "delegate": "test-opt-controlled-timers-v1",
+      "proof": "selected viewer lane:49 pass,0fail,1 unchanged opt-in HTTP/PG/S3 skip"
     },
     {
       "id": "rust-compilation",
-      "status": "research-complete; compiler-cache-trial-requires-input-and-performance-qualification",
-      "evidence": "rust-cache.json"
+      "status": "duplicate feature compilation removed; optional compiler-cache proposal not enabled",
+      "evidence": "rust-cache.json",
+      "proof": "rust-routing.json; same feature commands/fixtures retained in required job"
     },
     {
       "id": "selective-caching",
-      "status": "delegated",
+      "status": "isolated cold/warm proof passed; integrated and cancellation checks pending",
       "delegate": "test-opt-selective-cache-v1"
     },
     {
@@ -47,6 +51,21 @@
       "source_commit": "6e8c4eea4f0157cc37105ea032ff11b682356e44",
       "source_clean": false,
       "receipt": "/home/louistrue/build-workers/worker-state/jobs/db4908a4-c9ca-48f7-901e-5058b351c379/receipt.json"
+    },
+    {
+      "id": "auto-68ff33fdc28a4b16ae51d964397e3664",
+      "execution_id": "d84ddcf1-223c-462c-9e34-28fe38124df1",
+      "host": "pc-wsl",
+      "storage_task": "test-opt-20261025-viewer",
+      "status": "failed",
+      "reason": "new late-publication test did not seed its pending report; corrected and rerun"
+    },
+    {
+      "id": "49dca4df-4cef-4d8e-a247-5605bfa6b553",
+      "host": "pc-wsl",
+      "storage_task": "test-opt-20261025-local",
+      "status": "passed",
+      "coverage": "49 viewer tests passed;1 unchanged opt-in integration skipped"
     }
   ]
 }

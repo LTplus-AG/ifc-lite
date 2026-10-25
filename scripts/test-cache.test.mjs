@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { CACHE_SUITES, cachePlan } from './test-cache.mjs';
 
 const repository = fileURLToPath(new URL('..', import.meta.url));
@@ -42,6 +42,7 @@ function fixture() {
   const vitestRoot = dirname(vitestRequire.resolve('vitest/package.json'));
   mkdirSync(join(root, 'node_modules/.bin'), { recursive: true });
   symlinkSync(vitestRoot, join(root, 'node_modules/vitest'), 'dir');
+  symlinkSync(dirname(require.resolve('turbo/package.json')), join(root, 'node_modules/turbo'), 'dir');
   symlinkSync(join(vitestRoot, 'vitest.mjs'), join(root, 'node_modules/.bin/vitest'));
   const config = JSON.parse(readFileSync(join(repository, 'turbo.json'), 'utf8'));
   // A declared passthrough value proves it too enters the guarded cache key.
@@ -105,9 +106,9 @@ test('selective cache hashes actual Turbo inputs and fails closed without runtim
       ['TZ', 'Etc/UTC'], ['CACHE_PROOF_FAILURE', '1'],
     ]) assert.notEqual(dry(root, { ...env, [name]: value }).hash, initial.hash, name);
     const selected = dry(root, { ...env, TEST_PATTERN: 'needle', TEST_SHARD: '1', TEST_SHARDS: '4' });
-    assert.deepEqual(selected.environmentVariables.specified.env.filter((name) => name.startsWith('TEST_')),
-      ['TEST_PATTERN', 'TEST_SHARD', 'TEST_SHARDS']);
-    assert.equal(selected.environmentVariables.configured.filter((v) => v.startsWith('TEST_')).length, 3);
+    assert.deepEqual(selected.environmentVariables.specified.env,
+      ['TEST_PATTERN', 'TEST_SHARD', 'TEST_SHARDS', 'IFC_LITE_TEST_CACHE_IDENTITY']);
+    assert.equal(selected.environmentVariables.configured.length, 4);
     for (const path of [
       'packages/embed-protocol/src/input.txt', 'packages/embed-protocol/test/invariant.test.mjs',
       'packages/embed-protocol/vitest.config.ts', 'packages/embed-protocol/tsconfig.json',
@@ -179,4 +180,55 @@ test('real Turbo cold/warm runs cache only audited suites and invalidate success
     execute(failedEnv, 1);
     assert.ok(count('embed-protocol') > failedCount, 'failures must execute again');
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('PID-directed cancellation stops Turbo tasks and returns the interrupt status', { timeout: 20_000 }, async t => {
+  if (process.platform === 'win32') { t.skip('POSIX SIGINT delivery; Windows uses task termination'); return; }
+  const root = fixture();
+  const pkg = join(root, 'packages/embed-protocol');
+  const manifest = JSON.parse(readFileSync(join(pkg, 'package.json'), 'utf8'));
+  json(join(pkg, 'package.json'), { ...manifest, scripts: { ...manifest.scripts, test: 'node wait.mjs' } });
+  write(join(pkg, 'wait.mjs'), `import {writeFileSync} from 'node:fs';
+writeFileSync('worker.pid', String(process.pid));
+setInterval(() => {}, 1000);
+`);
+  write(join(root, 'launch.mjs'), `import {runTests} from ${JSON.stringify(new URL('./test-cache.mjs', import.meta.url).href)};
+process.exitCode = await runTests(process.cwd(), process.argv.slice(2));
+`);
+  const child = spawn(process.execPath, [join(root, 'launch.mjs'),
+    '--filter=@ifc-lite/embed-protocol', '--concurrency=1'], {
+    cwd: root, env: identityEnv(), stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let output = '';
+  child.stdout.on('data', data => { output += data; });
+  child.stderr.on('data', data => { output += data; });
+  let pid;
+  const exited = new Promise((accept, reject) => {
+    child.once('error', reject);
+    child.once('exit', (code, signal) => accept({ code, signal }));
+  });
+  const alive = value => {
+    try { process.kill(value, 0); return true; }
+    catch (error) { if (error.code === 'ESRCH') return false; throw error; }
+  };
+  try {
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+      try { pid = Number(readFileSync(join(pkg, 'worker.pid'), 'utf8')); break; }
+      catch (error) { if (error.code !== 'ENOENT') throw error; }
+      await new Promise(accept => setTimeout(accept, 20));
+    }
+    assert.ok(pid, `long-running task never started: ${output}`);
+    assert.equal(alive(pid), true);
+    child.kill('SIGINT');
+    const outcome = await Promise.race([exited,
+      new Promise((_, reject) => { const timer = setTimeout(() => reject(new Error(`cancellation hung: ${output}`)), 5000); timer.unref(); }),
+    ]);
+    assert.equal(outcome.code, 130, output);
+    assert.equal(alive(pid), false, 'the task process must stop along with the launcher');
+  } finally {
+    if (pid && alive(pid)) process.kill(pid, 'SIGTERM');
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM');
+    rmSync(root, { recursive: true, force: true });
+  }
 });

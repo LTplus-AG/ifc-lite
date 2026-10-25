@@ -2476,12 +2476,87 @@ jobs:
       # without the win32-x64 zip and nothing noticed (issue #2619).
       - name: Check server-bin platform parity
         run: node scripts/check-server-bin-targets.mjs
-      # One invocation per scripts/ test file. Node reports each file/subtest,
-      # preserving failure attribution without separately running the same
-      # regression suites before this sweep. check-test-wiring.mjs fails if
-      # any scripts/ test lives outside these directory globs.
+      # Execute each discovered test file once. Literal paths preserve the path
+      # auditor's existing input census; globs discover every new suite. sort -u
+      # removes the overlap before Node starts any tests.
       - name: Run every scripts/ test file (glob catch-all)
-        run: node --test scripts/*.test.mjs scripts/lib/*.test.mjs scripts/fixtures/*.test.mjs scripts/docs/*.test.mjs scripts/review/*.test.mjs scripts/review/lib/*.test.mjs scripts/perf/*.test.mjs scripts/perf-ratchet/*.test.mjs scripts/xmatch/*.test.mjs scripts/ai-eval/*.test.mjs scripts/ai-eval/lib/*.test.mjs scripts/ai-eval/ids/*.test.mjs scripts/ids-conformance/*.test.mjs scripts/ids-conformance/lib/*.test.mjs scripts/ids-conformance/lib/adapters/*.test.mjs
+        run: |
+          node --test $(printf '%s\n' \
+            scripts/check-asset-usage.test.mjs \
+            scripts/check-changeset-bump.test.mjs \
+            scripts/check-ci-aggregate-coverage.test.mjs \
+            scripts/check-ci-path-coverage.test.mjs \
+            scripts/check-clash-degenerate-reason-parity.test.mjs \
+            scripts/check-collab-room-model-target.test.mjs \
+            scripts/check-css-vars.test.mjs \
+            scripts/check-csv-escaper-copies.test.mjs \
+            scripts/check-float-sort-comparators.test.mjs \
+            scripts/check-i18n-literals.test.mjs \
+            scripts/check-icon-button-adoption.test.mjs \
+            scripts/check-isolate-expansion-routing.test.mjs \
+            scripts/check-jsx-a11y.test.mjs \
+            scripts/check-lint-ran.test.mjs \
+            scripts/check-loader-hook-specifier-match.test.mjs \
+            scripts/check-module-size.test.mjs \
+            scripts/check-overlay-palette.test.mjs \
+            scripts/check-path-case-collisions.test.mjs \
+            scripts/check-perf-flags.test.mjs \
+            scripts/check-raw-entity-enumeration.test.mjs \
+            scripts/check-refwalk-guards.test.mjs \
+            scripts/check-release-credential-quota.test.mjs \
+            scripts/check-rtc-frame-copies.test.mjs \
+            scripts/check-rust-api-surface.test.mjs \
+            scripts/check-rust-major-offset.test.mjs \
+            scripts/check-rust-source-text-assertions.test.mjs \
+            scripts/check-sdk-canary-coverage.test.mjs \
+            scripts/check-server-bin-targets.test.mjs \
+            scripts/check-server-browser-type-parity.test.mjs \
+            scripts/check-source-text-assertions-identity.test.mjs \
+            scripts/check-source-text-assertions.test.mjs \
+            scripts/check-step-escaper-copies.test.mjs \
+            scripts/check-swallowed-push.test.mjs \
+            scripts/check-test-glob-coverage.test.mjs \
+            scripts/check-test-wiring.test.mjs \
+            scripts/check-tla-chunk-await.test.mjs \
+            scripts/check-workflow-report-paths.test.mjs \
+            scripts/docs/check-package-readmes.test.mjs \
+            scripts/fixtures/fetch-fixtures.test.mjs \
+            scripts/generate-coverage-ledger.test.mjs \
+            scripts/lib/coderabbit-review-state.test.mjs \
+            scripts/lib/count-ratchet.test.mjs \
+            scripts/lib/crates-io.test.mjs \
+            scripts/lib/module-size-ratchet.test.mjs \
+            scripts/lib/npm-pack-output.test.mjs \
+            scripts/lib/pr-green-sweep.test.mjs \
+            scripts/lib/refwalk-classify.test.mjs \
+            scripts/lib/rust-major-offset.test.mjs \
+            scripts/lib/rust-public-api.test.mjs \
+            scripts/lib/server-bin-targets-parse.test.mjs \
+            scripts/lib/unused-locals-classify.test.mjs \
+            scripts/lib/vitest-timeout-audit.test.mjs \
+            scripts/release-crates-order.test.mjs \
+            scripts/release-crates.test.mjs \
+            scripts/release-version-changed.test.mjs \
+            scripts/sync-versions.test.mjs \
+            scripts/typecheck-tests.test.mjs \
+            scripts/verify-crates-publish.test.mjs \
+            scripts/verify-esm-entrypoints.test.mjs \
+            scripts/*.test.mjs \
+            scripts/lib/*.test.mjs \
+            scripts/fixtures/*.test.mjs \
+            scripts/docs/*.test.mjs \
+            scripts/review/*.test.mjs \
+            scripts/review/lib/*.test.mjs \
+            scripts/perf/*.test.mjs \
+            scripts/perf-ratchet/*.test.mjs \
+            scripts/xmatch/*.test.mjs \
+            scripts/ai-eval/*.test.mjs \
+            scripts/ai-eval/lib/*.test.mjs \
+            scripts/ai-eval/ids/*.test.mjs \
+            scripts/ids-conformance/*.test.mjs \
+            scripts/ids-conformance/lib/*.test.mjs \
+            scripts/ids-conformance/lib/adapters/*.test.mjs \
+            | sort -u)
       # Committed codegen output (packages/codegen/generated/**,
       # packages/parser/src/generated/**, packages/data/src/ifc-schema/
       # generated/**) had no CI freshness gate at all — a generator bug fixed

@@ -2550,6 +2550,10 @@ jobs:
         run: node scripts/ai-eval/check-ai-eval-manifest.mjs
       - name: Check AI evaluation release invariants
         run: node scripts/ai-eval/check-ai-eval-invariants.mjs
+      - name: Check private retained contract generation
+        run: node scripts/retained-contract/generate.mjs --check
+      - name: Test private retained contract validation and generation
+        run: node --test scripts/retained-contract/*.test.mjs
       # Executable proof the wiring gate cannot pass vacuously — the failure
       # mode it exists to catch is exactly the one it could have itself. Its
       # first fixture reconstructs #3062's pre-wiring state (a gate script and

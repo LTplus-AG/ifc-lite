@@ -1,0 +1,49 @@
+// SPDX-License-Identifier: MPL-2.0
+use super::*;
+
+#[test]
+fn issue_7955_private_contract_vectors() {
+    #[derive(serde::Deserialize)]
+    struct Case { name: String, root: String, valid: bool, input: serde_json::Value, binding: Option<serde_json::Value> }
+    let cases: Vec<Case> = serde_json::from_str(CASES).expect("contract vectors");
+    assert!(cases.len() >= 60, "nonzero independent vector discovery");
+    for case in cases {
+        let result = (|| -> Result<(), String> {
+            macro_rules! parse {
+                ($ty:ty, $value:expr) => { serde_json::from_value::<$ty>($value).map_err(|error| error.to_string())? };
+            }
+            let binding = || -> Result<Binding, String> {
+                serde_json::from_value(case.binding.clone().ok_or("binding required")?).map_err(|error| error.to_string())
+            };
+            match case.root.as_str() {
+                "Options" => check_options(&parse!(Options, case.input)),
+                "Refusal" => check_refusal(&parse!(Refusal, case.input)),
+                "ModelReport" => validate_model(&parse!(ModelReport, case.input), &binding()?),
+                "InspectionReport" => validate_inspection(&parse!(InspectionReport, case.input), &binding()?),
+                _ => return Err("unknown root".into()),
+            }.map_err(str::to_owned)
+        })();
+        assert_eq!(result.is_ok(), case.valid, "{}: {:?}", case.name, result);
+    }
+}
+
+#[test]
+fn issue_7955_nonfinite_quality_is_not_serializable_success() {
+    let cases: serde_json::Value = serde_json::from_str(CASES).unwrap();
+    let mut options: Options = serde_json::from_value(cases[0]["input"].clone()).unwrap();
+    for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -0.0] {
+        options.chord_tolerance_metres = value;
+        assert!(check_options(&options).is_err());
+    }
+}
+
+#[test]
+fn issue_7955_json_version_and_duplicate_fields() {
+    let cases: serde_json::Value = serde_json::from_str(CASES).unwrap();
+    let json = serde_json::to_string(&cases[0]["input"]).unwrap();
+    let duplicate = json.replace("\"schemaVersion\":1", "\"schemaVersion\":2,\"schemaVersion\":1");
+    assert!(serde_json::from_str::<Options>(&duplicate).is_err());
+    let decimal = json.replace("\"schemaVersion\":1", "\"schemaVersion\":1.0");
+    let options: Options = serde_json::from_str(&decimal).unwrap();
+    assert!(check_options(&options).is_ok());
+}

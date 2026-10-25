@@ -582,8 +582,10 @@ test('actual raw WASM decodes lossless comparison getters once (#8081)', async c
     once(nested.keyAliases[0], '1', 'alias base');
     once(nested.classFamilies[0], '0', 'family first');
     once(nested.classFamilies[0], '1', 'family second');
-    assert.deepEqual(base.compare(head, losslessInput(options)), base.compare(head, losslessInput(plainOptions)));
-    assert.deepEqual(base.compare(head, losslessInput(nested)), base.compare(head, losslessInput(plainOptions)));
+    // #8106: pass getter-bearing objects directly to WASM; the facade helper
+    // would consume top-level getters before the decoder can observe them.
+    assert.deepEqual(base.compare(head, options), base.compare(head, plainOptions));
+    assert.deepEqual(base.compare(head, nested), base.compare(head, plainOptions));
     assert.equal(reads.size, 8);
     assert.ok([...reads.values()].every(count => count === 1));
     // Tuple tails, non-string items and unknown options are not names consumed

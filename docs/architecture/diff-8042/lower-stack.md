@@ -94,6 +94,15 @@ callers are replaced together. `DiffModel` and the complete shared
 The general DTO reader retains the reference's 128-level bound; broader live
 value semantics and operation-specific observers remain later parent work.
 
+Native release plan: the `String` to `JsString` API change is intentional,
+including `normalize_class` and public model fields. As checked on 2026-10-25,
+the crates.io API reports that `ifc-lite-diff` does not exist, and the crate is
+absent from the shared `CRATES` list used by release and semver checks in
+`scripts/lib/crates-io.mjs`. Its first native publication must contain the
+completed lossless API; there is no published scalar API baseline to retain.
+The published npm WASM signatures remain unchanged, so their changeset is a
+patch. This does not waive semver for any crate already in the release list.
+
 The intentional binding adaptation is `diff_lineage.rs`, retained from v2:
 staging scalar validation, typed serde field reads and exported ABI stay;
 checked scalar values convert to native code-unit strings, outputs serialize

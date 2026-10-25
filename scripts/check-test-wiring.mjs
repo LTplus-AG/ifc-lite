@@ -576,7 +576,7 @@ export function testRunnerTargets(workflows) {
   const literals = new Set();
   const globDirs = new Set();
   for (const { text } of workflows) {
-    for (const line of text.split('\n')) {
+    for (const line of text.replace(/\\\r?\n/g, ' ').split('\n')) {
       if (!line.includes('--test')) continue;
       for (const [token] of line.matchAll(/scripts\/[\w./*-]*\.test\.mjs/g)) {
         if (token.includes('*')) {

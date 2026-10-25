@@ -29,6 +29,8 @@ impl CurveWalk {
         curve: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Option<Vec<Segment>>> {
+        #[cfg(feature = "retained-runtime")]
+        crate::resource::source_step()?;
         self.visits += 1;
         if self.visits > MAX_VISITS || self.path.len() >= MAX_DEPTH {
             return Err(Error::geometry(
@@ -59,6 +61,8 @@ impl CurveWalk {
         decoder: &mut EntityDecoder,
     ) -> Result<Option<Vec<Segment>>> {
         self.source.record(curve, decoder);
+        #[cfg(feature = "retained-runtime")]
+        crate::resource::source_step()?;
         match curve.ifc_type {
             IfcType::IfcPolyline => self.polyline(curve, decoder).map(Some),
             IfcType::IfcIndexedPolyCurve => self.indexed(curve, decoder),
@@ -95,6 +99,8 @@ impl CurveWalk {
         }
         let mut points = Vec::with_capacity(refs.len());
         for reference in refs {
+            #[cfg(feature = "retained-runtime")]
+            crate::resource::source_step()?;
             points.push(point_from_ref(reference, decoder)?);
         }
         Ok(points
@@ -121,6 +127,8 @@ impl CurveWalk {
         let points: Vec<_> = coords
             .iter()
             .map(|coord| {
+                #[cfg(feature = "retained-runtime")]
+                crate::resource::source_step()?;
                 let values = coord
                     .as_list()
                     .ok_or_else(|| invalid("invalid point list coordinate"))?;
@@ -130,6 +138,8 @@ impl CurveWalk {
         let mut out = Vec::new();
         if curve.get(1).is_none_or(AttributeValue::is_null) {
             for w in points.windows(2) {
+                #[cfg(feature = "retained-runtime")]
+                crate::resource::source_step()?;
                 out.push(Segment::Line {
                     start: w[0],
                     end: w[1],
@@ -141,6 +151,8 @@ impl CurveWalk {
             .get_list(1)
             .ok_or_else(|| invalid("invalid IndexedPolyCurve Segments"))?;
         for item in items {
+            #[cfg(feature = "retained-runtime")]
+            crate::resource::source_step()?;
             self.visits += 1;
             if self.visits > MAX_VISITS {
                 return Err(invalid("IndexedPolyCurve exceeds work bound"));
@@ -154,6 +166,8 @@ impl CurveWalk {
             let indexed: Vec<_> = indices
                 .iter()
                 .map(|value| {
+                    #[cfg(feature = "retained-runtime")]
+                    crate::resource::source_step()?;
                     let i = value
                         .as_float()
                         .ok_or_else(|| invalid("invalid indexed vertex"))?;
@@ -166,6 +180,8 @@ impl CurveWalk {
             match kind {
                 "IFCLINEINDEX" => {
                     for w in indexed.windows(2) {
+                        #[cfg(feature = "retained-runtime")]
+                        crate::resource::source_step()?;
                         out.push(Segment::Line {
                             start: w[0],
                             end: w[1],
@@ -196,6 +212,8 @@ impl CurveWalk {
     ) -> Result<Option<Vec<Segment>>> {
         // This walk does not enter `extract` for the composite itself.
         self.source.record(curve, decoder);
+        #[cfg(feature = "retained-runtime")]
+        crate::resource::source_step()?;
         let refs = curve
             .get_list(0)
             .ok_or_else(|| invalid("CompositeCurve missing Segments"))?;
@@ -205,6 +223,8 @@ impl CurveWalk {
         let mut pieces_with_spans = Vec::new();
         let mut total = 0.0;
         for (index, reference) in refs.iter().enumerate() {
+            #[cfg(feature = "retained-runtime")]
+            crate::resource::source_step()?;
             let segment = resolve(Some(reference), decoder)?;
             if segment.ifc_type != IfcType::IfcCompositeCurveSegment {
                 self.source_rest(&refs[index..], decoder);
@@ -228,6 +248,8 @@ impl CurveWalk {
                 pieces.into_iter().rev().map(|p| p.reversed()).collect()
             };
             for (piece, span) in pieces.into_iter().zip(spans) {
+                #[cfg(feature = "retained-runtime")]
+                crate::resource::source_step()?;
                 if !span.is_finite() || span <= 0.0 {
                     self.source_rest(&refs[index + 1..], decoder);
                     return Ok(None);
@@ -247,6 +269,8 @@ impl CurveWalk {
         let mut out = Vec::new();
         let mut cursor = 0.0;
         for (piece, span) in pieces_with_spans {
+            #[cfg(feature = "retained-runtime")]
+            crate::resource::source_step()?;
             let left = a.max(cursor);
             let right = b.min(cursor + span);
             if right > left {
@@ -270,6 +294,8 @@ impl CurveWalk {
         }
         let mut out = Vec::new();
         for (index, reference) in refs.iter().enumerate() {
+            #[cfg(feature = "retained-runtime")]
+            crate::resource::source_step()?;
             let segment = resolve(Some(reference), decoder)?;
             if segment.ifc_type != IfcType::IfcCompositeCurveSegment {
                 self.source_rest(&refs[index..], decoder);
@@ -299,6 +325,8 @@ impl CurveWalk {
             return;
         }
         for reference in refs {
+            #[cfg(feature = "retained-runtime")]
+            if let Err(error) = crate::resource::source_step() { return self.source.fail(error.to_string()); }
             let segment = match resolve(Some(reference), decoder) {
                 Ok(segment) if segment.ifc_type == IfcType::IfcCompositeCurveSegment => segment,
                 Ok(_) => return self.source.fail("unsupported composite member".to_owned()),

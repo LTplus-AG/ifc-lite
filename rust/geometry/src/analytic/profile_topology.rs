@@ -15,6 +15,8 @@ const MAX_REFINEMENT: u8 = 48;
 struct Budget(usize);
 impl Budget {
     fn spend(&mut self) -> Result<(), String> {
+        #[cfg(feature = "retained-runtime")]
+        crate::resource::source_step().map_err(|error| error.to_string())?;
         self.0 = self.0.checked_sub(1)
             .ok_or("profile topology validation exceeded work budget")?;
         Ok(())

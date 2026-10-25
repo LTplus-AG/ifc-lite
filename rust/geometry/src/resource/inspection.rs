@@ -12,6 +12,11 @@ pub struct InspectionStart {
 }
 impl InspectionStart {
     pub fn now() -> Self {
+        // A nested inspection reuses the original monotonic domain. Its own
+        // allowance may tighten duration, but cannot restart the earlier clock.
+        if let Some(account) = current_account() {
+            if let Some(allowance) = account.1 { return allowance.start.clone(); }
+        }
         Self {
             instant: Instant::now(),
             #[cfg(any(test, feature = "test-support"))]

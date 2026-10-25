@@ -108,7 +108,8 @@ allocations or SDK costs; it is not an aggregate census-memory limit.
 reading and source hashing. One captured monotonic domain spans source inspection,
 serialization, strict decode and later `bytes()` delivery. Cancellation is
 cooperative: hash chunks are at most 64 KiB, retained reference-list members are
-checked individually, and unit resolution, individual decoder calls, controller
+checked individually, analytic coefficient/value/curve loops and topology budget
+steps check the same clock, and unit resolution, individual decoder calls, controller
 admission and bounded serialization/strict decode are checked after completion.
 Those indivisible calls are not preempted. Deadline expiry is `DEADLINE_EXCEEDED`,
 not a fabricated cancellation or numeric resource payload; existing original

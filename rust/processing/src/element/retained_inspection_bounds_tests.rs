@@ -128,3 +128,24 @@ fn issue_7955_c3_returned_report_keeps_original_clock_and_stop_priority() {
         });
     });
 }
+
+#[test]
+fn issue_7955_c3_public_constructor_source_capture_cannot_hide_a_large_curve_loop() {
+    let points = (0..1024).map(|i| format!("#{}", i + 100)).collect::<Vec<_>>().join(",");
+    let records = (0..1024).map(|i| format!("#{}=IFCCARTESIANPOINT(({}.,0.,0.));", i + 100, i))
+        .collect::<String>();
+    let disk = SOURCE.replace("#13=IFCEXTRUDEDAREASOLID(#14,#2,#3,3.);",
+        &format!("#13=IFCSWEPTDISKSOLID(#30,0.1,$,$,$);#30=IFCPOLYLINE(({points}));{records}"));
+    let options = OPTIONS.replace("\"maxWork\":\"10000\"", "\"maxWork\":\"100000\"");
+    clock::scope(|clock| {
+        let report = run(SourceBundle::new(disk.clone().into_bytes()), &options).unwrap();
+        let value: serde_json::Value = serde_json::from_slice(report.bytes().unwrap()).unwrap();
+        assert_eq!(value["outcome"]["kind"], "requires_numerical_evaluation");
+        // Structural admission has only one item; checkpoint 100 is inside
+        // constructor source capture, not the outer request/list walk.
+        clock.expire_at("source_step", 100, 10000);
+        let error = run(SourceBundle::new(disk.into_bytes()), &options).err().unwrap();
+        assert_eq!(error.diagnostic_code_json(), "\"DEADLINE_EXCEEDED\"");
+        assert_eq!(error.original_stop(), None);
+    });
+}

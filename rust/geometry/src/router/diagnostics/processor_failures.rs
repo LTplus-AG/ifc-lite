@@ -8,9 +8,24 @@
 
 use super::super::GeometryRouter;
 use super::UNATTRIBUTED_PRODUCT_ID;
-use crate::BoolFailure;
 
 impl GeometryRouter {
+    /// Move stored built-in Boolean/CSG reports without running final hooks.
+    /// Registered wrappers exposing `boolean_recorder` share this storage path.
+    /// Arbitrary `take_bool_failures` callbacks remain finalization hooks.
+    pub(crate) fn capture_recorded_processor_failures(&self) {
+        let mut recorded = Vec::new();
+        for processor in self.processors.values() {
+            if let Some(recorder) = processor.boolean_recorder() {
+                recorded.extend(recorder.take_failures());
+            }
+        }
+        if !recorded.is_empty() {
+            self.csg_failures.borrow_mut().entry(UNATTRIBUTED_PRODUCT_ID)
+                .or_default().extend(recorded);
+        }
+    }
+
     /// Sweep every registered processor's own boolean-failure log into this
     /// router's map. Called by [`Self::take_csg_failures`], so a consumer that
     /// already drains the router — the native pipeline via
@@ -47,16 +62,21 @@ impl GeometryRouter {
     /// so iterating custom registrations can visit the same processor twice; the second visit
     /// drains an already-emptied log and contributes nothing. No double count.
     pub fn drain_processor_failures(&self) {
-        let mut swept: Vec<BoolFailure> = Vec::new();
+        // A wrapper may expose this recorder AND hold a private callback log.
+        // Capture known storage separately; everything the callback subsequently
+        // returns has opaque ownership after an interrupted or nested epoch.
+        self.capture_recorded_processor_failures();
         for processor in self.processors.values() {
-            swept.extend(processor.take_bool_failures());
-        }
-        if !swept.is_empty() {
-            self.csg_failures
-                .borrow_mut()
-                .entry(UNATTRIBUTED_PRODUCT_ID)
-                .or_default()
-                .extend(swept);
+            let failures = processor.take_bool_failures();
+            if failures.is_empty() { continue; }
+            let target = if self.csg_scope.csg_opaque_unscoped.get() {
+                &self.stopped_csg_failures
+            } else {
+                &self.csg_failures
+            };
+            // Persist each returned batch before invoking another callback. A
+            // later callback's unwind must not discard already-drained reports.
+            target.borrow_mut().entry(UNATTRIBUTED_PRODUCT_ID).or_default().extend(failures);
         }
     }
 }

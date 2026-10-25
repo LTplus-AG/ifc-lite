@@ -134,10 +134,12 @@ fn rejected_staged_child_leaks_nothing_into_the_parent_execution() {
         let control = Execution::new(quality);
         let (precursor, _) = control.try_bool2d_cut(&host, cut).expect("eligible staged prefix");
         let residual = cut.residual.as_deref().unwrap();
-        let _ = control.apply_void_context(precursor, residual, 4617);
+        let consumed = control.apply_void_context(precursor, residual, 4617);
+        assert!(consumed.is_empty(), "positive control: the residual consumes the host");
         let router = GeometryRouter::new();
         control.finish().publish(&router);
-        assert!(router.host_consumed_by_void(4617), "positive control: the residual records");
+        let diagnostics = router.take_host_opening_diagnostics();
+        assert_eq!(diagnostics[&4617].tris_after, Some(0), "positive control: the residual records its cut");
     });
     let bounds = ((0.0, 0.0, 0.0), (1.0, 1.0, 1.0));
     let parent = Execution::new(quality);

@@ -198,9 +198,9 @@ describe('DocumentPanel table block (#5142)', () => {
     const exportButton = ui.querySelector<HTMLButtonElement>('[data-document-export]');
     assert.ok(exportButton);
     click(exportButton);
-    await waitFor(() => /2 charts not printed/.test(ui.querySelector('[role="status"]')?.textContent ?? ''),
+    await waitFor(() => /2 charts not printed/.test(ui.querySelector('[data-toast-seq]')?.textContent ?? ''),
       'native PDF completion must report both chart errors');
-    const notification = ui.querySelector('[role="status"]')?.textContent ?? '';
+    const notification = ui.querySelector('[data-toast-seq]')?.textContent ?? '';
     assert.ok(notification.includes('Document exported:'));
     assert.ok(!notification.includes('Private') && !notification.includes('AbsentColumn'),
       'toast diagnostics expose counts without document names, chart names or column names');

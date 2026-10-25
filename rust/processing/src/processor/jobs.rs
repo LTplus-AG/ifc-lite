@@ -5,7 +5,7 @@
 //! Per-entity geometry job execution.
 //!
 //! Split out of `processor/mod.rs` (module-size ratchet). `process_entity_job` is
-//! the body of the parallel batch loop's `map_init` closure — one job = one product,
+//! the body of the parallel batch loop's per-element closure — one job = one product,
 //! meshed on a fresh router with the worker's warm CartesianPoint cache moved in and
 //! back out. `build_color_updates_for_jobs` backfills deferred/orphan-type colours.
 
@@ -30,8 +30,8 @@ pub(super) type WorkerPlacementCaches = Vec<std::sync::Mutex<FxHashMap<u32, [f64
 /// lives across the WHOLE chunk loop, so each shared point is parsed at most once
 /// per worker thread for the entire model. Each `Mutex` is only ever locked by the
 /// one worker that owns that index (thread indices are unique per pool worker), so
-/// it is uncontended. The cache is pure memoization of deterministic coordinates,
-/// so meshes stay byte-identical (`mesh_determinism` no-diff).
+/// no other thread contends for it. The cache is pure memoization of deterministic
+/// coordinates, so meshes stay byte-identical (`mesh_determinism` no-diff).
 ///
 /// The per-job body still moves its worker's slot into a local decoder and back,
 /// so `WorkerCacheGuard` below is still required to survive a `decode_at` error —
@@ -60,7 +60,7 @@ pub(super) fn new_worker_placement_caches() -> WorkerPlacementCaches {
 /// EVERY exit path — the normal return, the `decode_at` error early-return, and
 /// a panic. Without it, a decode failure would drop `local_decoder` (holding the
 /// worker's whole accumulated cache) before the write-back, cold-starting every
-/// remaining element in that worker's sub-range and silently defeating the hoist.
+/// later element that worker runs and silently defeating the hoist.
 /// `Deref`/`DerefMut` expose the wrapped decoder so call sites are unchanged.
 struct WorkerCacheGuard<'c, 's> {
     decoder: EntityDecoder<'c>,
@@ -105,17 +105,10 @@ pub(super) fn process_entity_job(
     // unit conversion never trigger a per-element full-file IFCPROJECT scan.
     seed_plane_angle_to_radians: f64,
     tessellation_quality: TessellationQuality,
-    void_index: &FxHashMap<u32, Vec<u32>>,
+    // The run's immutable model snapshot (voids, styles, palettes, material
+    // colours, textures and the site-local rotation), shared by every job.
+    production_context: &crate::element::OwnedMeshProductionContext,
     skipped_entity_ids: &HashSet<u32>,
-    geometry_style_index: &FxHashMap<u32, GeometryStyleInfo>,
-    indexed_colour_full: &FxHashMap<u32, crate::style::FullIndexedColourMap>,
-    element_material_colors: &FxHashMap<u32, Vec<[f32; 4]>>,
-    // Surface textures + UV maps keyed by face-set id (#961). Empty for
-    // untextured models.
-    texture_index: &FxHashMap<u32, ifc_lite_geometry::ResolvedTextureMap>,
-    // Present only when the selected coordinate space is `site_local`; rotates
-    // mesh vertices into the site's axis frame.
-    site_local_rotation: Option<&Vec<f64>>,
     // Every request-local diagnostic sink this job feeds (CSG failures, opening
     // classification, per-host diagnostics, rect_fast, dropped representation
     // items, the degenerate backstop, refused oversized refs).
@@ -214,15 +207,6 @@ pub(super) fn process_entity_job(
         },
         None => crate::element::ElementJobKind::Product,
     };
-    let ctx = crate::element::MeshProductionContext {
-        void_index,
-        geometry_style_index,
-        indexed_colour_full,
-        element_material_colors,
-        texture_index,
-        site_local_rotation,
-    };
-
     // Per-part faceted-brep phase timing (observability only; Instant traps on
     // wasm32). Attributed below to `faceted_brep_ns_collector` for parts that
     // actually touched the point cache (i.e. faceted breps), mirroring the
@@ -230,7 +214,7 @@ pub(super) fn process_entity_job(
     #[cfg(all(feature = "observability", not(target_arch = "wasm32")))]
     let brep_timer = std::time::Instant::now();
 
-    let produced = crate::element::produce_element_meshes(
+    let produced = crate::element::produce_element_meshes_owned(
         &crate::element::ElementMeshJob {
             id: job.id,
             ifc_type: job.ifc_type.clone(),
@@ -239,13 +223,18 @@ pub(super) fn process_entity_job(
             element_color: Some(job.element_color),
             metadata: Some(&metadata),
         },
-        &ctx,
+        production_context,
         // Geometry hashing is a viewer diff feature — off on the native path.
         &crate::element::MeshProductionOptions::default(),
         // Deref-coerces &mut WorkerCacheGuard -> &mut EntityDecoder.
         &mut decoder,
         &local_router,
     );
+    // The run never invalidates its own model; it refuses only if a callback
+    // replaced the decoder or held an owner. Then it publishes nothing.
+    let Ok(produced) = produced else {
+        return super::run_snapshot::refused_by_context();
+    };
 
     diag.drain_job(job.id, &local_router, &decoder, &produced);
 

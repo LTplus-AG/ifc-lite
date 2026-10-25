@@ -1,0 +1,282 @@
+{
+  "schemaVersion": 1,
+  "verdict": "Hardware preflight qualified; model/performance acceptance still pending",
+  "host": "pop-os",
+  "browser": "Chromium 156.0.8078.4, playwright chromium-1248",
+  "scope": "Model-free GPU proof only. The final two fresh processes use requestAdapter() like the viewer, without opening chrome://gpu first.",
+  "finding": "ANGLE Vulkan alone still selected SwiftShader for WebGPU. Adding --enable-features=Vulkan selected NVIDIA hardware and passed compute and pixel readback. No driver or system configuration changed.",
+  "cases": [
+    {
+      "cohort": "issue7633-gpu-proof-v1",
+      "case": "default",
+      "ok": false,
+      "config": {
+        "executablePath": "/home/louistrue/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome",
+        "headless": false,
+        "args": [
+          "--enable-gpu",
+          "--enable-webgpu",
+          "--enable-unsafe-webgpu",
+          "--use-angle=default",
+          "--ignore-gpu-blocklist",
+          "--enable-logging=stderr"
+        ]
+      },
+      "proof": null,
+      "error": "Error: page.evaluate: Error: Hardware adapter refused {\"architecture\":\"swiftshader\",\"vendor\":\"google\",\"device\":\"\",\"description\":\"\",\"fallback\":true}\n    at eval (eval at evaluate (:370:30), <anonymous>:5:106)\n    at async <anonymous>:396:30",
+      "renderer": "ANGLE (Intel, Mesa Intel(R) Graphics (RPL-S), OpenGL 4.6 (Core Profile) Mesa 25.1.5-1pop0~1753463422~24.04~8af185e)",
+      "sourcePath": "/home/louistrue/build-workers/qualification/issue7633-gpu-proof-v1/default.json",
+      "sha256": "7cbd36374a9888df8f1bb47029e081b3fc1f7ab402a81b798a47f0c02f62868f"
+    },
+    {
+      "cohort": "issue7633-gpu-proof-v1",
+      "case": "vulkan",
+      "ok": false,
+      "config": {
+        "executablePath": "/home/louistrue/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome",
+        "headless": false,
+        "args": [
+          "--enable-gpu",
+          "--enable-webgpu",
+          "--enable-unsafe-webgpu",
+          "--use-angle=vulkan",
+          "--ignore-gpu-blocklist",
+          "--enable-logging=stderr"
+        ]
+      },
+      "proof": null,
+      "error": "Error: page.evaluate: Error: Hardware adapter refused {\"architecture\":\"swiftshader\",\"vendor\":\"google\",\"device\":\"\",\"description\":\"\",\"fallback\":true}\n    at eval (eval at evaluate (:370:30), <anonymous>:5:106)\n    at async <anonymous>:396:30",
+      "renderer": "ANGLE (NVIDIA, Vulkan 1.4.312 (NVIDIA NVIDIA RTX 4000 Ada Generation Laptop GPU (0x000027BA)), NVIDIA-580.82.9.0)",
+      "sourcePath": "/home/louistrue/build-workers/qualification/issue7633-gpu-proof-v1/vulkan.json",
+      "sha256": "3482adca19fed21a3dedbdc456f9cbefd4458f539d105602334d52ef7ae3ba6f"
+    },
+    {
+      "cohort": "issue7633-gpu-proof-v2",
+      "case": "vulkan-feature",
+      "ok": true,
+      "config": {
+        "executablePath": "/home/louistrue/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome",
+        "headless": false,
+        "args": [
+          "--enable-gpu",
+          "--enable-webgpu",
+          "--enable-unsafe-webgpu",
+          "--use-angle=vulkan",
+          "--enable-features=Vulkan",
+          "--ignore-gpu-blocklist",
+          "--enable-logging=stderr"
+        ]
+      },
+      "proof": {
+        "adapter": {
+          "architecture": "lovelace",
+          "vendor": "nvidia",
+          "device": "",
+          "description": "",
+          "fallback": false
+        },
+        "compute": [
+          7,
+          10,
+          13,
+          16,
+          19,
+          22,
+          25,
+          28,
+          31,
+          34,
+          37,
+          40,
+          43,
+          46,
+          49,
+          52
+        ],
+        "pixel": [
+          0,
+          255,
+          0,
+          255
+        ],
+        "deviceLost": null,
+        "errors": []
+      },
+      "error": null,
+      "renderer": "ANGLE (NVIDIA, Vulkan 1.4.312 (NVIDIA NVIDIA RTX 4000 Ada Generation Laptop GPU (0x000027BA)), NVIDIA-580.82.9.0)",
+      "sourcePath": "/home/louistrue/build-workers/qualification/issue7633-gpu-proof-v2/vulkan-feature.json",
+      "sha256": "7fdd38bf6deecfcefdaf381bea640db5247ac3e9931e775031c23893e445414a"
+    },
+    {
+      "cohort": "issue7633-gpu-proof-v2",
+      "case": "vulkan-shared",
+      "ok": true,
+      "config": {
+        "executablePath": "/home/louistrue/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome",
+        "headless": false,
+        "args": [
+          "--enable-gpu",
+          "--enable-webgpu",
+          "--enable-unsafe-webgpu",
+          "--use-angle=vulkan",
+          "--enable-features=Vulkan,VulkanFromANGLE",
+          "--ignore-gpu-blocklist",
+          "--enable-logging=stderr"
+        ]
+      },
+      "proof": {
+        "adapter": {
+          "architecture": "lovelace",
+          "vendor": "nvidia",
+          "device": "",
+          "description": "",
+          "fallback": false
+        },
+        "compute": [
+          7,
+          10,
+          13,
+          16,
+          19,
+          22,
+          25,
+          28,
+          31,
+          34,
+          37,
+          40,
+          43,
+          46,
+          49,
+          52
+        ],
+        "pixel": [
+          0,
+          255,
+          0,
+          255
+        ],
+        "deviceLost": null,
+        "errors": []
+      },
+      "error": null,
+      "renderer": "ANGLE (NVIDIA, Vulkan 1.4.312 (NVIDIA NVIDIA RTX 4000 Ada Generation Laptop GPU (0x000027BA)), NVIDIA-580.82.9.0)",
+      "sourcePath": "/home/louistrue/build-workers/qualification/issue7633-gpu-proof-v2/vulkan-shared.json",
+      "sha256": "94b1642e516536fb09bd9dbb0f8c1f49962e083f0cb2da2e345fcd19ccf0f96a"
+    },
+    {
+      "cohort": "issue7633-gpu-proof-v3",
+      "case": "fresh-1",
+      "ok": true,
+      "config": {
+        "executablePath": "/home/louistrue/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome",
+        "headless": false,
+        "args": [
+          "--enable-gpu",
+          "--enable-webgpu",
+          "--enable-unsafe-webgpu",
+          "--use-angle=vulkan",
+          "--enable-features=Vulkan",
+          "--ignore-gpu-blocklist",
+          "--enable-logging=stderr"
+        ]
+      },
+      "proof": {
+        "adapter": {
+          "architecture": "lovelace",
+          "vendor": "nvidia",
+          "device": "",
+          "description": "",
+          "fallback": false
+        },
+        "compute": [
+          7,
+          10,
+          13,
+          16,
+          19,
+          22,
+          25,
+          28,
+          31,
+          34,
+          37,
+          40,
+          43,
+          46,
+          49,
+          52
+        ],
+        "pixel": [
+          0,
+          255,
+          0,
+          255
+        ],
+        "deviceLost": null,
+        "errors": []
+      },
+      "error": null,
+      "renderer": "ANGLE (NVIDIA, Vulkan 1.4.312 (NVIDIA NVIDIA RTX 4000 Ada Generation Laptop GPU (0x000027BA)), NVIDIA-580.82.9.0)",
+      "sourcePath": "/home/louistrue/build-workers/qualification/issue7633-gpu-proof-v3/fresh-1.json",
+      "sha256": "543b22b517bef56fb871a12927f6b59d168dcf5005aebfdba45d04c2c6c4d8c7"
+    },
+    {
+      "cohort": "issue7633-gpu-proof-v3",
+      "case": "fresh-2",
+      "ok": true,
+      "config": {
+        "executablePath": "/home/louistrue/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome",
+        "headless": false,
+        "args": [
+          "--enable-gpu",
+          "--enable-webgpu",
+          "--enable-unsafe-webgpu",
+          "--use-angle=vulkan",
+          "--enable-features=Vulkan",
+          "--ignore-gpu-blocklist",
+          "--enable-logging=stderr"
+        ]
+      },
+      "proof": {
+        "adapter": {
+          "architecture": "lovelace",
+          "vendor": "nvidia",
+          "device": "",
+          "description": "",
+          "fallback": false
+        },
+        "compute": [
+          7,
+          10,
+          13,
+          16,
+          19,
+          22,
+          25,
+          28,
+          31,
+          34,
+          37,
+          40,
+          43,
+          46,
+          49,
+          52
+        ],
+        "pixel": [
+          0,
+          255,
+          0,
+          255
+        ],
+        "deviceLost": null,
+        "errors": []
+      },
+      "error": null,
+      "renderer": "ANGLE (NVIDIA, Vulkan 1.4.312 (NVIDIA NVIDIA RTX 4000 Ada Generation Laptop GPU (0x000027BA)), NVIDIA-580.82.9.0)",
+      "sourcePath": "/home/louistrue/build-workers/qualification/issue7633-gpu-proof-v3/fresh-2.json",
+      "sha256": "92b825e4ecbc8f829a8a4d66aae80bbbaa597eb8eb669f8c063cdebb90629fb9"
+    }
+  ]
+}

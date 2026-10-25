@@ -1,0 +1,10 @@
+--- a/rust/diff/src/split_merge.rs
++++ b/rust/diff/src/split_merge.rs
+@@ -36,7 +36,6 @@
+             claims.extend(displaced(wholes, &remaining, kind, settings));
+         }
+     }
+-    claims.clear();
+     Some(resolve_claim_conflicts(claims))
+ }
+ fn rank<R>(claim: &SplitMergeClaim<'_, R>) -> [f64; 3] {

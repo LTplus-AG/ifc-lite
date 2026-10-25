@@ -9,3 +9,5 @@
 # fails as stale until the row is lowered or deleted.
 1 rust/geometry/src/float_order.rs  # the sanctioned NaN-last comparator itself; `None` maps to NaN last
 1 rust/geometry/src/router/processing.rs  # enclosing_f32 matches Some(Greater/Less) and treats None (NaN) as "no rounding"; not a comparator
+1 rust/diff/src/mutual_nearest.rs  # distance-cap predicate rejects None (NaN), preserving JS <= behavior; not a sort comparator; remove if the predicate is replaced
+1 rust/diff/src/content_match.rs  # move-tolerance predicate rejects None (NaN), preserving JS <= behavior; not a sort comparator; remove if the predicate is replaced

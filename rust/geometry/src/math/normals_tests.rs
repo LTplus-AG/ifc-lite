@@ -108,3 +108,55 @@ fn issue_7772_x1_regular_transform_is_one_bit_exact_policy_at_every_site() {
     assert_eq!(bits(&generic_sink(&m)), want, "generic sink");
     assert_eq!(bits(&orphan_bake(&m)), want, "orphan don't-bake");
 }
+
+/// Geometric oracle for J5 normal transform correctness (#7955), independent of
+/// the inverse-transpose formula the sites share: a transformed normal must stay
+/// perpendicular to the transformed surface tangents, stay unit length, and
+/// point to the side the transformed `p + n` offset lands on. Each clause
+/// catches a different mistake: perpendicularity catches a site that applies
+/// the raw linear block (under non-uniform scale `M n` leaves the tangent
+/// plane's normal line; the side check cannot, since `M n` always lies on the
+/// side `M (p + n)` does); unit length catches a missing renormalisation; the
+/// side check catches a sign error under reflection, such as the adjugate
+/// transpose `det(M) M^-T` used without the determinant's sign. Tolerance fixed
+/// before the run: 1e-6 absolute on the unit-scaled dot products and on the
+/// length.
+#[test]
+fn issue_7955_j5_normals_stay_perpendicular_and_on_side_under_scale_and_reflection() {
+    const TOL: f64 = 1e-6;
+    let rotation = Matrix4::from_euler_angles(0.3, -0.7, 1.1);
+    let cases = [
+        ("non-uniform scale", rotation * Matrix4::new_nonuniform_scaling(&Vector3::new(2.0, 1.0, 0.5))),
+        ("reflection", rotation * Matrix4::new_nonuniform_scaling(&Vector3::new(-1.0, 1.0, 1.0))),
+        (
+            "reflected non-uniform scale",
+            Matrix4::new_translation(&Vector3::new(-7.0, 2.0, 11.0))
+                * rotation
+                * Matrix4::new_nonuniform_scaling(&Vector3::new(1.5, -0.25, 4.0)),
+        ),
+    ];
+    for (name, m) in cases {
+        for (site, got) in [
+            ("router flat bake", flat_router(&m)),
+            ("generic sink", generic_sink(&m)),
+            ("orphan don't-bake", orphan_bake(&m)),
+        ] {
+            for (source, out) in NORMALS.chunks_exact(3).zip(got.chunks_exact(3)) {
+                let n = Vector3::new(source[0] as f64, source[1] as f64, source[2] as f64);
+                let t = Vector3::new(out[0] as f64, out[1] as f64, out[2] as f64);
+                // Two tangents spanning the plane perpendicular to `n`.
+                let helper = if n.x.abs() < 0.9 { Vector3::x() } else { Vector3::y() };
+                let t1 = n.cross(&helper).normalize();
+                let t2 = n.cross(&t1);
+                for tangent in [t1, t2] {
+                    let mapped = m.transform_vector(&tangent);
+                    let dot = t.dot(&mapped) / mapped.norm();
+                    assert!(dot.abs() <= TOL, "{name}/{site}: normal not perpendicular ({dot:e})");
+                }
+                assert!((t.norm() - 1.0).abs() <= TOL, "{name}/{site}: |n| = {}", t.norm());
+                let side = t.dot(&m.transform_vector(&n));
+                assert!(side > 0.0, "{name}/{site}: normal flipped to the wrong side ({side})");
+            }
+        }
+    }
+}

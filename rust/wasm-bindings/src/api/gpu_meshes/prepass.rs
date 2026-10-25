@@ -356,12 +356,12 @@ impl IfcAPI {
                     project_id = Some(id);
                 }
             } else if keyword_eq(type_name, "IFCSITE") {
-                if site_position.is_none() {
-                    site_position = Some((id, start, end));
+                site_position.get_or_insert((id, start, end));
+                if !is_disabled(&disabled_types, type_name) {
+                    let ifc_type = ifc_lite_core::ifc_type_from_keyword(type_name);
+                    buffered_jobs.push((id, start, end, ifc_type));
+                    total_jobs += 1;
                 }
-                let ifc_type = ifc_lite_core::ifc_type_from_keyword(type_name);
-                buffered_jobs.push((id, start, end, ifc_type));
-                total_jobs += 1;
             } else if keyword_eq(type_name, "IFCMAPPEDITEM") {
                 mapped_item_spans.push((id, start, end));
             } else if keyword_eq(type_name, "IFCMATERIALLAYERSET")

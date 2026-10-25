@@ -1,0 +1,13 @@
+diff --git a/rust/geometry/src/program/boolean/state.rs b/rust/geometry/src/program/boolean/state.rs
+--- a/rust/geometry/src/program/boolean/state.rs
++++ b/rust/geometry/src/program/boolean/state.rs
+@@ -130,7 +130,8 @@ impl Frame {
+     pub(super) fn is_numerical(&self) -> bool {
+         matches!(
+             self,
+-            Self::Solid { .. } | Self::Polygonal { .. } | Self::PolygonalCut { .. } | Self::BatchGroup(_)
++            Self::Solid { .. } | Self::HalfSpace { .. } | Self::Polygonal { .. } | Self::PolygonalCut { .. }
++                | Self::BatchBuild(..) | Self::BatchGroup(_)
+         )
+     }
+ 

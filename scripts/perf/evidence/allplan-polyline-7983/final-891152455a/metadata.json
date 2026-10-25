@@ -1,0 +1,112 @@
+{
+  "base": "a4fc04cf1f1a04ed1ad3cff89b3d32d9c97f8751",
+  "branch": "891152455ab75c73341c878c0c55ccde9feece92",
+  "fixture": "/home/louistrue/build-workers/ifc-lite/tests/models/ara3d/AC20-FZK-Haus.ifc",
+  "fixtureSha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+  "harnessSha256": "cdea43356348f2487eda61a9947ee8a601bf85cbf2fe5e031adf5a790743c2e1",
+  "reporterSha256": "d7d36f307e99b5b7544b1a36ae76474710039e82f31ad1f5b1a1bf7f9f380f3b",
+  "threading": "unchanged default; no RAYON_NUM_THREADS or affinity override",
+  "rounds": 5,
+  "policy": "unchanged reporter; 10s whole-host CPU <5%, available memory >=8GiB",
+  "environment": {
+    "RAYON_NUM_THREADS": "8",
+    "CARGO_BUILD_JOBS": "8",
+    "CARGO_TARGET_DIR": "/home/louistrue/build-workers/worker-state/storage-tasks/db796657-47e2-441d-a371-bd78a6a7dff6/target"
+  },
+  "initialHost": {
+    "time": 1792685644.2175536,
+    "cpuTicks": [
+      33155283,
+      133237047,
+      19888179,
+      1229916134,
+      22649375,
+      0,
+      303462,
+      0,
+      0,
+      0
+    ],
+    "memAvailableKiB": 112243552,
+    "load": [
+      4.52978515625,
+      7.21240234375,
+      7.0751953125
+    ],
+    "cgroup": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/ifc-worker-db796657-47e2-441d-a371-bd78a6a7dff6.scope",
+    "cpuMax": "max 100000\n",
+    "cpuStat": "usage_usec 136446\nuser_usec 60753\nsystem_usec 75692\nnice_usec 61000\ncore_sched.force_idle_usec 0\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0\n",
+    "top": [
+      "    PID    PPID %CPU %MEM COMMAND",
+      "1815097    2585  110  0.0 python3",
+      "1815093 1810303 35.7  0.0 python3",
+      "1808129 3121713 15.4  0.1 chrome-headless",
+      " 147857  147755  9.7  0.5 t3code",
+      "2341947 2341899  9.4  0.6 node-MainThread",
+      "1850344 2341947  2.1  0.2 codex",
+      " 602499 2341947  2.0  0.2 codex",
+      " 147792  147752  1.5  0.0 t3code",
+      "   2668    2624  1.3  0.1 cosmic-comp",
+      "    225       2  0.9  0.0 irq/9-acpi",
+      "3121730 3121710  0.8  0.0 chrome-headless",
+      "1810303 1810300  0.7  0.0 python3",
+      " 147746       1  0.6  0.0 t3code",
+      "1775753 1775622  0.6  0.0 python3",
+      "1811642 1811616  0.6  0.0 python3",
+      "1776197 1776126  0.6  0.0 python3",
+      "1694343 1694310  0.6  0.0 python3",
+      "1743599 1743544  0.5  0.0 python3",
+      "1677870 1677865  0.5  0.0 python3"
+    ]
+  },
+  "binarySha256": {
+    "branch": "e5f04df40557f027a90b36c69b45026f98470cd5c1834d95664885a43a8105f8",
+    "base": "0bb006017a90ccc02b2f694b955a9ea188ca7794e5dfa9500a967756fca9ff70"
+  },
+  "finalHost": {
+    "time": 1792686032.0111988,
+    "cpuTicks": [
+      33172529,
+      133326876,
+      19902674,
+      1231027464,
+      22649917,
+      0,
+      303788,
+      0,
+      0,
+      0
+    ],
+    "memAvailableKiB": 113103960,
+    "load": [
+      1.69921875,
+      4.0087890625,
+      5.69287109375
+    ],
+    "cgroup": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/ifc-worker-db796657-47e2-441d-a371-bd78a6a7dff6.scope",
+    "cpuMax": "max 100000\n",
+    "cpuStat": "usage_usec 822180804\nuser_usec 791592261\nsystem_usec 30588542\nnice_usec 791837000\ncore_sched.force_idle_usec 0\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0\n",
+    "top": [
+      "    PID    PPID %CPU %MEM COMMAND",
+      "1824531 1815093  100  0.0 ps",
+      "1808129 3121713 14.0  0.1 chrome-headless",
+      " 147857  147755  9.7  0.5 t3code",
+      "2341947 2341899  9.4  0.5 node-MainThread",
+      "1850344 2341947  2.1  0.3 codex",
+      " 602499 2341947  2.0  0.2 codex",
+      " 147792  147752  1.5  0.0 t3code",
+      "   2668    2624  1.3  0.1 cosmic-comp",
+      "    225       2  0.9  0.0 irq/9-acpi",
+      "3121730 3121710  0.8  0.0 chrome-headless",
+      " 147746       1  0.6  0.0 t3code",
+      "1775753 1775622  0.5  0.0 python3",
+      "1776197 1776126  0.5  0.0 python3",
+      "1694343 1694310  0.5  0.0 python3",
+      "1743599 1743544  0.5  0.0 python3",
+      "1647486 1647479  0.5  0.0 python3",
+      "1811642 1811616  0.5  0.0 python3",
+      "2342394 2341947  0.4  0.0 cloudflared",
+      "1822153 1822116  0.4  0.0 python3"
+    ]
+  }
+}

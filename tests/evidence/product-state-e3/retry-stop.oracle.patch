@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/processing/src/element/session_work.rs
++++ b/rust/processing/src/element/session_work.rs
+@@ -106,7 +106,7 @@
+     // runs every processor's hook, so it belongs inside the owner epoch.
+     // A terminal hook has already quarantined its reports. Propagate its stop
+     // before starting another strategy, even if that strategy would fail too.
+-    let _ = router.take_csg_failures_checked();
++    router.take_csg_failures_checked()?;
+     Ok(match router.process_element_with_voids_parts(job.entity, decoder, ctx.void_index) {
+         Ok(parts) if parts.iter().any(|mesh| !mesh.is_empty()) => PartsOutcome::Geometry(parts),
+         // An empty void-cut result normally means the cut FAILED and emptied

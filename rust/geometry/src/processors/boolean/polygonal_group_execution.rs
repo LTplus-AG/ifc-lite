@@ -13,7 +13,7 @@ use crate::diagnostics::BoolFailure;
 use crate::{ClippingProcessor, Mesh, Point3};
 
 /// Outcome of one grouped-cut attempt.
-pub(super) enum GroupExecution {
+pub(crate) enum GroupExecution {
     /// Batching is not provably safe; the sequential path resolves the chain.
     Defer,
     /// The cutter union produced nothing usable. Carries the kernel failures
@@ -34,7 +34,7 @@ impl BooleanClippingProcessor {
     /// **Measured contract (issue #3980):** `build_cutter_union` does NOT
     /// verify that its union is watertight or manifold; the checks above are
     /// what keep a non-closed union from producing a wrong subtraction.
-    pub(super) fn execute_polygonal_group(
+    pub(crate) fn execute_polygonal_group(
         &self,
         base_mesh: &Mesh,
         prisms: &[Mesh],

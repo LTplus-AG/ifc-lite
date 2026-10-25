@@ -40,7 +40,7 @@ export { modelsWithoutOmittedPointCloudHandles } from './device-loss-recovery-re
  *
  * Two sources feed `info.reason`, and only one of them is ours. The WebGPU spec
  * bounds `GPUDeviceLostInfo.reason` to `'unknown'` and `'destroyed'` (and
- * `device.ts` never forwards a `'destroyed'` teardown), while `Renderer`
+ * `device.ts` excludes owned teardown by lifetime, not reason), while `Renderer`
  * synthesises `'render-exception'` / `'render-encode-exception'` for the
  * synchronous-throw path Safari takes instead of resolving `device.lost`.
  *

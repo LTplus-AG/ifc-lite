@@ -2,7 +2,7 @@
 //! Owned production primitive parameters before router scale and placement.
 
 use crate::{extrusion::apply_transform, scale_segments, Error, Mesh, Result, TessellationQuality};
-use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType};
+use ifc_lite_core::{slot, DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
 
 /// Raw IFC file-unit dimensions and optional primitive-local Position.
@@ -75,17 +75,11 @@ fn primitive_position(
     entity: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> Result<Option<Matrix4<f64>>> {
-    if let Some(attribute) = entity.attr(slot::IfcCsgPrimitive3D::POSITION) {
-        if !attribute.is_null() {
-            if let Some(position) = decoder.resolve_ref(attribute)? {
-                if position.ifc_type == IfcType::IfcAxis2Placement3D {
-                    return super::super::helpers::parse_axis2_placement_3d(&position, decoder)
-                        .map(Some);
-                }
-            }
-        }
+    match decoder.resolve_optional(entity, slot::IfcCsgPrimitive3D::POSITION.index())? {
+        Some(position) => super::super::helpers::parse_axis2_placement_3d(&position, decoder)
+            .map(Some),
+        None => Ok(None),
     }
-    Ok(None)
 }
 
 impl BlockPlan {

@@ -57,31 +57,3 @@ export function estimateIdsBcfTopicCount(
   }
   return count;
 }
-
-export interface IdsBcfSnapshotTarget { modelId: string; expressId: number; boundsKey: string }
-
-/**
- * The unique entities to render a BCF snapshot for, in report order, capped
- * at `IDS_BCF_MAX_TOPICS`: no export can attach more snapshots than it has
- * topics, and each snapshot is a full re-render, so 5,000 failures used to
- * mean 5,000 renders for at most 1,000 topics (#5824).
- */
-export function idsBcfSnapshotTargets(
-  report: Pick<IDSReportInput, 'specificationResults'>,
-  includePassingEntities: boolean,
-  cap = IDS_BCF_MAX_TOPICS,
-): IdsBcfSnapshotTarget[] {
-  const seen = new Set<string>();
-  const targets: IdsBcfSnapshotTarget[] = [];
-  for (const spec of report.specificationResults) {
-    for (const entity of spec.entityResults) {
-      if (targets.length >= cap) return targets;
-      if (entity.passed && !includePassingEntities) continue;
-      const boundsKey = `${entity.modelId}:${entity.expressId}`;
-      if (seen.has(boundsKey)) continue;
-      seen.add(boundsKey);
-      targets.push({ modelId: entity.modelId, expressId: entity.expressId, boundsKey });
-    }
-  }
-  return targets;
-}

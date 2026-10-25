@@ -137,7 +137,7 @@ fn main() {
     thread_counts.dedup();
 
     println!("\n=== scaling sweep ({iters} timed iters each, reporting MIN wall) ===");
-    println!("{:>8} | {:>11} | {:>8} | {:>10} | {}", "threads", "min ms", "speedup", "efficiency", "parity");
+    println!("{:>8} | {:>11} | {:>8} | {:>10} | parity", "threads", "min ms", "speedup", "efficiency");
 
     let mut serial_ms: Option<f64> = None;
     for &n in &thread_counts {

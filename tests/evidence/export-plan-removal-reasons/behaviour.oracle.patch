@@ -1,0 +1,11 @@
+--- a/rust/export/src/plan/delete.rs
++++ b/rust/export/src/plan/delete.rs
+@@ -284,7 +284,7 @@ pub(crate) fn resolve_deletes(
+         if !orphaned.contains(&dead) {
+             for &(referrer, idx) in index.referrers(dead) {
+                 if !cascade.removed.contains(&referrer) && !cascade.strip(referrer, idx, dead, false) {
+-                    cascade.mark_removed(referrer, RemovalReason::Released);
++                    cascade.mark_removed(referrer, RemovalReason::Dangling);
+                 }
+             }
+         }

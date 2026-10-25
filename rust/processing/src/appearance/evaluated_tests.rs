@@ -215,7 +215,7 @@ fn issue_4404_materialization_payload_restores_georeferenced_native_frame_once()
     let context=context::Context::new(source.as_bytes(),&mut effective.decoder);
     effective.context=Some(context);
     let styles=page_source::appearance(source.as_bytes(),&mut effective);
-    let textures=ifc_lite_geometry::build_texture_index(source.as_bytes(),&mut effective.decoder);
+    let textures=std::sync::Arc::new(ifc_lite_geometry::build_texture_index(source.as_bytes(),&mut effective.decoder));
     let meshes=canonical::produce(&mut effective,35169,&textures,Some(&styles)).unwrap();
     let mesh=&meshes[0];
     assert_binding_surface(binding,mesh);
@@ -246,7 +246,7 @@ fn issue_4404_post_opening_source_matches_canonical_load() {
     assert!(!source.context.as_ref().unwrap().layers.is_sliceable(59290), "real slab requires unsupported material slicing");
     let appearance=super::super::page_source::appearance(bytes.as_bytes(), &mut source);
     assert_eq!(appearance.void_index.get(&59290),Some(&vec![59365]));
-    let produced=super::super::canonical::produce(&mut source,59290,&rustc_hash::FxHashMap::default(),Some(&appearance)).unwrap();
+    let produced=super::super::canonical::produce(&mut source,59290,&std::sync::Arc::default(),Some(&appearance)).unwrap();
     let loaded=crate::process_geometry(bytes.as_bytes());
     let expected=loaded.meshes.iter().find(|m|m.express_id==59290).unwrap();
     assert_eq!(produced.len(),1);
@@ -354,7 +354,7 @@ fn issue_4404_opening_companions_share_the_aggregate_geometry_budget() {
     let Some(bytes)=real_source() else{return};
     let mut source=Source::new(bytes.as_bytes()).unwrap();
     let styles=page_source::appearance(bytes.as_bytes(),&mut source);
-    let textures=ifc_lite_geometry::build_texture_index(bytes.as_bytes(),&mut source.decoder);
+    let textures=std::sync::Arc::new(ifc_lite_geometry::build_texture_index(bytes.as_bytes(),&mut source.decoder));
     let edits=super::super::evaluated_openings::prepare(&mut source,59290,&[59365],&BTreeSet::from([59365])).unwrap();
     let mut budget=budget::PlanBudget::default();
     budget.reserve(1_000_000,0,0).unwrap();

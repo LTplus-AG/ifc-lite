@@ -1,0 +1,22 @@
+--- a/rust/processing/src/element/assembly_submeshes.rs
++++ b/rust/processing/src/element/assembly_submeshes.rs
+@@ -26,7 +26,7 @@
+     // by texture presence alone, as it always has.
+     let texture_valid = body.texture.is_some()
+         && match body.hash {
+-            HashPolicy::Submesh(_) => true || body
++            HashPolicy::Submesh(_) => body
+                 .uvs
+                 .as_ref()
+                 .is_some_and(|uvs| uvs.len() / 2 == body.mesh.positions.len() / 3),
+--- a/rust/processing/src/element/presentation_source.rs
++++ b/rust/processing/src/element/presentation_source.rs
+@@ -42,7 +42,7 @@
+             // Empty non-instances read no source and do not advance the cursor.
+             if let Some(meta) = mesh.instance_meta.as_ref().filter(|meta| meta.instanceable) {
+                 let (color, _) =
+-                    color(job, sub.geometry_id, fallback, materials, &mut { next_material }, ctx, decoder, false);
++                    color(job, sub.geometry_id, fallback, materials, &mut next_material, ctx, decoder, false);
+                 occurrences.push(occurrence(job, source, meta, color));
+             }
+             continue;

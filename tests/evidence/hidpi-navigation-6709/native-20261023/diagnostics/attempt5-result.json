@@ -1,0 +1,43 @@
+{
+  "status": "REFUSED",
+  "job": "ba9d3057-3d87-431d-b138-708fac4c57ee",
+  "acceptedSamples": 0,
+  "error": "Error: Actual device request did not use non-fallback NVIDIA hardware",
+  "readiness": {
+    "ended": true,
+    "done": [
+      "geometry.streamComplete",
+      "parser.complete",
+      "scene.finalize"
+    ],
+    "failed": [],
+    "loadPath": "wasm"
+  },
+  "adapter": {
+    "vendor": "google",
+    "architecture": "swiftshader"
+  },
+  "requestedAdapters": [
+    {
+      "vendor": "google",
+      "architecture": "swiftshader",
+      "fallback": true
+    }
+  ],
+  "driverErrorCount": 0,
+  "hostBefore": {
+    "capturedAt": "2026-10-23T16:56:29.771Z",
+    "policy": {
+      "maximumCpuPercent": 10,
+      "minimumMemoryKiB": 41943040
+    },
+    "cpuPercent": 1.4578163771712158,
+    "MemAvailableKiB": 110209052,
+    "graphsBefore": [],
+    "graphsAfter": [],
+    "ac": true,
+    "quiet": true
+  },
+  "rawRunsSha256": "39d8fa2905ff3a72d41d695f382205546d0eff65e4c86431adc26ed9ae030ba5",
+  "scope": "Strict model readiness completed; software adapter correctly refused before timing. No A/B or performance verdict."
+}

@@ -35,7 +35,6 @@ function renderDocumentPreview(): string {
     aggregations: new Map(),
     chartMessages: new Map(),
     topics: new Map(),
-    selectedBlockId: null,
     onSelectBlock: () => undefined,
   }));
 }

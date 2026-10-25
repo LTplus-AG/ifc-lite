@@ -59,7 +59,7 @@ async function printedPages(document: DocumentSpec, labels?: DocumentLabelFormat
 async function preview(document: DocumentSpec) {
   const ui = render(<DocumentPreview document={document} bindings={bindings}
     aggregations={new Map()} chartMessages={new Map()} topics={new Map()}
-    selectedBlockId={null} onSelectBlock={() => {}} />);
+    onSelectBlock={() => {}} />);
   await waitFor(() => ui.querySelector('[data-preview-section]') !== null
     && ui.querySelector('[data-layout-pending="true"]') === null, 'the shared asynchronous layout is ready');
   return ui;
@@ -108,7 +108,7 @@ it('selects the authored block on continuation pages and reflows when its editor
     return <><input aria-label="Review text size" type="number" value={size} onChange={event => setSize(Number(event.target.value))} />
       <DocumentPreview document={spec([{ kind: 'text', id: 'authored', style: 'body', text: lines, fontSize: size }])}
         bindings={bindings} aggregations={new Map()} chartMessages={new Map()} topics={new Map()}
-        selectedBlockId={null} onSelectBlock={id => selections.push(id)} /></>;
+        onSelectBlock={id => selections.push(id)} /></>;
   }
   const ui = render(<EditablePreview />);
   const ready = () => waitFor(() => ui.querySelector('[data-preview-section]') !== null

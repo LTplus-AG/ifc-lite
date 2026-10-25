@@ -31,7 +31,7 @@
  * so it is withheld rather than re-derived — see `geometryVolumesSurviveAlignment`.
  *
  * Scope: every entity that produced at least one mesh, PLUS every `IfcProduct`
- * with a GlobalId — see `compareScope.ts` for why that second half exists and
+ * or `IfcTypeObject` with a GlobalId — see `compareScope.ts` for why that second half exists and
  * where its line is drawn. The mesh-only enumeration this widens made "did it
  * change?" quietly mean "did a renderable thing change?", so a geometry-less
  * `IfcElementAssembly` could have its attributes rewritten, or a geometry-less
@@ -57,8 +57,9 @@ import {
 } from '@ifc-lite/diff';
 import { extractProjectUnits, spatialContainerPath, type IfcDataStore } from '@ifc-lite/parser';
 import type { EntityWorldAabb, MeshData } from '@ifc-lite/geometry';
-import { authoredKeyOwnerIds, comparableProductIds } from './compareScope.js';
-import { resolveAuthoredKeys, type ExtractedPropertySets } from './authoredKeys.js';
+import { authoredKeyOwnerIds, comparableObjectIds, isProductClass } from './compareScope.js';
+import { resolveAuthoredKeys } from './authoredKeys.js';
+import type { ExtractedPropertySets } from './comparePropertySets.js';
 import { buildDataInput } from './buildDataInput.js';
 export { AUTHORED_KEY_PREFIX } from './authoredKeys.js';
 import { worldPlacementFingerprint, type PlacementComposeCache } from './worldPlacement.js';
@@ -79,8 +80,8 @@ export interface CompareRef {
   /**
    * Did the geometry pass produce anything drawable under {@link globalId}?
    *
-   * `false` for a product that reached the comparison through
-   * `comparableProductIds` alone — there is no mesh and no instanced entry, so
+   * `false` for an object that reached the comparison through
+   * `comparableObjectIds` alone — there is no mesh and no instanced entry, so
    * `setColorOverrides` on this id is a no-op and hiding it suppresses nothing.
    * The overlay needs that distinction: its rule for a modified element is
    * "colour the head copy, hide the base copy so the two do not z-fight", and
@@ -164,7 +165,7 @@ export interface BuildFingerprintsModel {
 
 /**
  * Build one {@link EntityFingerprint} per compared entity in a model — every
- * meshed entity, plus every geometry-less `IfcProduct` (`comparableProductIds`).
+ * meshed entity, plus products and type objects with GlobalIds (`comparableObjectIds`).
  *
  * Entities are de-duplicated by express id (an entity emits several
  * submeshes); the first mesh carrying a `geometryHash` wins (all submeshes of
@@ -250,9 +251,9 @@ export async function buildEntityFingerprints(
     }
   }
 
-  // Finally, the products the geometry pass never saw: an IfcElementAssembly
+  // Finally, the products and types the geometry pass never saw: an IfcElementAssembly
   // whose meshes all hang off its IfcRelAggregates parts, an IfcSite, a
-  // placeholder proxy marking a survey origin. They are compared on their data
+  // placeholder proxy or a type without RepresentationMaps. They are compared on their data
   // alone, so they enter with an explicitly UNDEFINED geometry hash — the same
   // value a meshed entity gets when hashing is off, and the value
   // `geometryEqual` reads as "no geometry change" when both sides have it.
@@ -269,7 +270,7 @@ export async function buildEntityFingerprints(
   // cannot go stale across runs.
   const placementCache: PlacementComposeCache = new Map();
   let scanned = 0;
-  for (const localId of comparableProductIds(store)) {
+  for (const localId of comparableObjectIds(store)) {
     if (geometryByLocalId.has(localId)) continue;
     // Not `undefined` — their COMPOSED WORLD PLACEMENT, when they have one.
     // These entities have no mesh, so nothing else can speak for where they
@@ -281,7 +282,12 @@ export async function buildEntityFingerprints(
     // (`undefined`, the prior behaviour) for a product with no placement, an
     // uncomposable chain or a malformed one — see `worldPlacement.ts` for why
     // it must be the composed transform and never the local one.
-    geometryByLocalId.set(localId, worldPlacementFingerprint(store, localId, placementCache));
+    // Only IfcProduct has ObjectPlacement at slot 5. A type has
+    // HasPropertySets there, so never read it as a placement reference.
+    const geometryHash = isProductClass(store.entities.getTypeName(localId))
+      ? worldPlacementFingerprint(store, localId, placementCache)
+      : undefined;
+    geometryByLocalId.set(localId, geometryHash);
     geometryless.add(localId);
     // Placement composition re-reads STEP records, so this scan carries the
     // same responsiveness duty as the extraction loop below (#924): yield

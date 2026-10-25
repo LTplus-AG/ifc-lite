@@ -6,3 +6,6 @@ test-parser.js
 
 # Keep pkg/ folder tracked (WASM bindings)
 # Don't ignore pkg/**
+
+# Generated diff runtime; its declaration is force-added for wasm-free checking.
+pkg-diff/

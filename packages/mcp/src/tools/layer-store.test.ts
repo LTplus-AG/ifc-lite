@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { beforeEach, describe, expect, it } from 'vitest';
-import { createCollabDoc, entityToJSON, getEntity } from '@ifc-lite/collab';
+import { createCollabDoc, entityToJSON, getEntity, snapshotToIfcx } from '@ifc-lite/collab';
 import { computeStackHash } from '@ifc-lite/ifcx';
 import type { IfcxFile } from '@ifc-lite/ifcx';
 import {
@@ -31,6 +31,55 @@ function layer(data: IfcxFile['data'], id = 'l'): IfcxFile {
 }
 
 describe('seedDraftDoc', () => {
+  it('never attributes imported entities to a file header or import clock (#8041)', () => {
+    const doc = createCollabDoc({ gc: false });
+    const replay = createCollabDoc({ gc: false });
+    try {
+      const edit = layer([{ path: 'unknown', attributes: { Name: 'Edited' } }], 'edit');
+      edit.header.author = 'later editor';
+      seedDraftDoc(doc, [layer([{ path: 'unknown', attributes: { Name: 'Original' } }]), edit]);
+      const entity = getEntity(doc, 'unknown');
+      expect(entity).toBeDefined();
+      const meta = entityToJSON(entity!).meta;
+      expect(meta.createdBy).toBeUndefined();
+      expect(meta.createdAt).toBeUndefined();
+      const snapshot = snapshotToIfcx(doc, { author: 'snapshotter' });
+      expect(snapshot.data.find(node => node.path === 'unknown')?.attributes)
+        .not.toHaveProperty('ifclite::meta');
+      seedDraftDoc(replay, [snapshot]);
+      const replayed = getEntity(replay, 'unknown');
+      expect(replayed).toBeDefined();
+      expect(entityToJSON(replayed!).meta.createdBy).toBeUndefined();
+      expect(entityToJSON(replayed!).meta.createdAt).toBeUndefined();
+    } finally {
+      doc.destroy();
+      replay.destroy();
+    }
+  });
+
+  it('preserves explicit entity provenance through later edits and snapshot replay (#8041)', () => {
+    const provenance = { createdBy: 'original author', createdAt: '2020-02-03T04:05:06Z' };
+    const doc = createCollabDoc({ gc: false });
+    const replay = createCollabDoc({ gc: false });
+    try {
+      const edit = layer([{ path: 'known', attributes: { Name: 'Edited' } }], 'edit');
+      edit.header.author = 'later editor';
+      seedDraftDoc(doc, [layer([{
+        path: 'known', attributes: { Name: 'Original', 'ifclite::meta': provenance },
+      }]), edit]);
+      const snapshot = snapshotToIfcx(doc, { author: 'snapshotter' });
+      const node = snapshot.data.find(node => node.path === 'known');
+      expect(node?.attributes?.Name).toBe('Edited');
+      expect(node?.attributes?.['ifclite::meta']).toEqual(provenance);
+      seedDraftDoc(replay, [snapshot]);
+      expect(snapshotToIfcx(replay).data.find(node => node.path === 'known')?.attributes?.['ifclite::meta'])
+        .toEqual(provenance);
+    } finally {
+      doc.destroy();
+      replay.destroy();
+    }
+  });
+
   it('replays inherits deltas from later layers onto existing entities', () => {
     const doc = createCollabDoc({ gc: false });
     seedDraftDoc(doc, [

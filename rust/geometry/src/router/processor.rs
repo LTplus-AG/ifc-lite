@@ -14,6 +14,10 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
 /// Geometry processor trait
 /// Each processor handles one type of IFC representation
+///
+/// A processor that waits on rayon inside a callback (`join`, `par_iter`)
+/// must wrap the wait in [`crate::resource::detached`]: the waiting thread may
+/// run another element's job, which must not share this product's resources.
 pub trait GeometryProcessor {
     /// Process entity into mesh.
     ///
@@ -84,6 +88,11 @@ pub trait GeometryProcessor {
     /// `take_csg_failures` calls, so every consumer of the router's CSG
     /// diagnostics — the native pipeline and the wasm batch path alike — sees
     /// these without a second opt-in.
+    /// Private logs beyond any [`Self::boolean_recorder`] cannot be partitioned
+    /// across interrupted or nested products without running this callback.
+    /// The router retains ambiguous drains for explicit `take_csg_failures`
+    /// retrieval outside product work, rather than publishing them on a later
+    /// product. That explicit drain restores the ordinary publication boundary.
     fn take_bool_failures(&self) -> Vec<BoolFailure> {
         Vec::new()
     }
@@ -107,6 +116,13 @@ pub trait GeometryProcessor {
     /// [`Self::take_bool_failures`]. Default: no-op, matching the 0 default
     /// above (nothing buffered, nothing to discard).
     fn truncate_bool_failures_to(&self, _since: usize) {}
+
+    /// The boolean recorder whose Boolean/CSG continuation the common program
+    /// drives step by step instead of calling [`Self::process`]. Default:
+    /// `None`, so a custom processor keeps its own callback.
+    fn boolean_recorder(&self) -> Option<&crate::processors::BooleanClippingProcessor> {
+        None
+    }
 }
 
 // The RTC-hook regression lives beside the trait on purpose: a test-only

@@ -1,0 +1,151 @@
+{
+  "license": "SPDX-License-Identifier: MPL-2.0",
+  "issue": 7955,
+  "reason": "Design re-review N9: the J3 106.81415022205297 m3 native query cannot fit 1e-8 relative query uncertainty within 1e-6 m3 absolute acceptance. This is a new native-query preregistration; no native query run is claimed.",
+  "status": "Native-query policy proposed in commit 6d314ab479; historical J3 query execution under the old bound is UNKNOWN. Adoption as a preregistration requires the parent to establish that chronology; until then J3 qualification is UNQUALIFIED. Mesh tolerances remain unchanged; never widen after a run.",
+  "scope": "Future native BRep volume queries for every listed total AND every individual band, before and after openings where listed. Not the current exact signed mesh integral. Does not qualify layers, caps, identity or authenticated empty removal.",
+  "supersedes": {
+    "source_commit": "514495f5637521a4c0cdd3c87115c1b63a2e8abb",
+    "path": "tests/evidence/retained-layers-j3/curved-oracles.json",
+    "sha256": "3af79e876e9bca57bffa49a7a13a19da85a664a6382495120cfebd75f5bff7cb",
+    "field": "nativeVolumeTolerance",
+    "old_absolute_m3": 1e-06,
+    "integration_requirement": "Parent must first verify no native J3 query was evaluated under the old criterion. If unknown, qualification remains UNQUALIFIED; if a run exists, preserve its original criterion/result. Only with verified preregistration chronology may the J3 consumer adopt this policy. The J3 query harness is absent from this branch."
+  },
+  "f_a_source": {
+    "oracle_path": "tests/fixtures/synthetic-retained/oracles.json",
+    "oracle_sha256": "2abaea2dd3430722f0b25ad29055618dd812a5202e10cbdfa09f8511ffbc23c0",
+    "fixture_sha256": "5e5f92069a9b8200f30d3f9fdf696417261477a1c898c7c124b860565e1df36f",
+    "previous_oracle_sha256": "f4cc0d218fa6eca63f322bd19ee18d9f14229d58510ca25f7994a0aa2f2f2422",
+    "metadata_revision": "Adds explicit material identities, control translations and retained-only layer scope; F-A IFC bytes and numeric volume expectations unchanged."
+  },
+  "rule": {
+    "absolute_floor_m3": 1e-06,
+    "relative_tolerance": 1e-07,
+    "requested_query_relative_precision": 1e-08,
+    "maximum_query_uncertainty_relative": 1e-08,
+    "maximum_oracle_uncertainty_m3": 1e-08,
+    "maximum_arithmetic_uncertainty_m3": 1e-09,
+    "tolerance": "T = max(absolute_floor_m3, relative_tolerance * abs(V_oracle_m3))",
+    "acceptance": "abs(V_query - V_oracle) + U_query + U_oracle + U_arithmetic <= T",
+    "uncertainty_gate": "All inputs finite; uncertainty bounds nonnegative and documented, not inferred from the requested precision. U_query <= maximum_query_uncertainty_relative * max(1 m3, abs(V_oracle)); U_oracle <= maximum_oracle_uncertainty_m3; U_arithmetic <= maximum_arithmetic_uncertainty_m3. Missing bound, exceeded budget, wrong source or unchecked band means UNQUALIFIED.",
+    "rationale": "The 1e-7 relative criterion reserves a factor ten over the proposed 1e-8 query-uncertainty budget at large volumes. Fixed oracle/arithmetic budgets leave positive residual headroom on all registered cases. This arithmetic feasibility is not proof that an SDK achieves its requested precision. No bound may be expanded to admit a measured failure.",
+    "bands": "Every listed individual band must pass independently under the same rule; an aggregate pass never replaces band checks. Sum/band consistency remains mandatory."
+  },
+  "cases": [
+    {
+      "fixture": "circular-wall-2.ifc",
+      "family": "J3",
+      "total_m3": 106.81415022205297,
+      "bands_m3": [
+        39.79350694547071,
+        67.02064327658225
+      ],
+      "total_measurement": {
+        "host_product_id": 10,
+        "opening_product_id": 255,
+        "scope": "net host solid after opening"
+      },
+      "band_measurements": [
+        {
+          "ordinal": 0,
+          "source_host_product_id": 10,
+          "opening_product_id": 255,
+          "native_shape_handle": null,
+          "scope": "derived curved material band, not a standalone IFC entity; receipt must identify its native handle and source membership before qualification"
+        },
+        {
+          "ordinal": 1,
+          "source_host_product_id": 10,
+          "opening_product_id": 255,
+          "native_shape_handle": null,
+          "scope": "derived curved material band, not a standalone IFC entity; receipt must identify its native handle and source membership before qualification"
+        }
+      ]
+    },
+    {
+      "fixture": "circular-wall-3.ifc",
+      "family": "J3",
+      "total_m3": 106.81415022205297,
+      "bands_m3": [
+        20.420352248333653,
+        37.69911184307752,
+        48.69468613064179
+      ],
+      "total_measurement": {
+        "host_product_id": 10,
+        "opening_product_id": 255,
+        "scope": "net host solid after opening"
+      },
+      "band_measurements": [
+        {
+          "ordinal": 0,
+          "source_host_product_id": 10,
+          "opening_product_id": 255,
+          "native_shape_handle": null,
+          "scope": "derived curved material band, not a standalone IFC entity; receipt must identify its native handle and source membership before qualification"
+        },
+        {
+          "ordinal": 1,
+          "source_host_product_id": 10,
+          "opening_product_id": 255,
+          "native_shape_handle": null,
+          "scope": "derived curved material band, not a standalone IFC entity; receipt must identify its native handle and source membership before qualification"
+        },
+        {
+          "ordinal": 2,
+          "source_host_product_id": 10,
+          "opening_product_id": 255,
+          "native_shape_handle": null,
+          "scope": "derived curved material band, not a standalone IFC entity; receipt must identify its native handle and source membership before qualification"
+        }
+      ]
+    },
+    {
+      "fixture": "f-a-curved.ifc",
+      "family": "synthetic F-A",
+      "before_total_m3": 29.122563898777383,
+      "total_m3": 27.922091698768103,
+      "bands_m3": [
+        4.53586832499433,
+        9.213113136264191,
+        14.173110237509581
+      ],
+      "before_bands_m3": [
+        4.735950925286592,
+        9.61327351998483,
+        14.77333945350596
+      ],
+      "total_measurement": {
+        "host_product_id": 55,
+        "opening_product_id": 63,
+        "scope": "net host solid after opening; before_total is analytic only unless an explicitly recorded pre-cut host shape is measured"
+      },
+      "band_measurements": [
+        {
+          "ordinal": 0,
+          "before_control_product_id": 93,
+          "after_control_product_id": 122,
+          "material_id_for_retained_host_oracle_only": 16,
+          "scope": "standalone proxy controls; NOT material bands derived from host #55"
+        },
+        {
+          "ordinal": 1,
+          "before_control_product_id": 159,
+          "after_control_product_id": 188,
+          "material_id_for_retained_host_oracle_only": 18,
+          "scope": "standalone proxy controls; NOT material bands derived from host #55"
+        },
+        {
+          "ordinal": 2,
+          "before_control_product_id": 225,
+          "after_control_product_id": 254,
+          "material_id_for_retained_host_oracle_only": 20,
+          "scope": "standalone proxy controls; NOT material bands derived from host #55"
+        }
+      ],
+      "curved_host_layer_query": "UNSUPPORTED by current exact path; these control queries cannot qualify host material decomposition."
+    }
+  ],
+  "prior_J3_native_query_under_old_1e_minus_6": "UNKNOWN; source status said no run, but no independent audit of all native J3 receipts was performed."
+}

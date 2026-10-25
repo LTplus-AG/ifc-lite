@@ -1,0 +1,96 @@
+{
+  "before": {
+    "time": 1792686020.5632756,
+    "cpuTicks": [
+      33172100,
+      133326418,
+      19902448,
+      1230992183,
+      22649907,
+      0,
+      303775,
+      0,
+      0,
+      0
+    ],
+    "memAvailableKiB": 113214820,
+    "load": [
+      2.00830078125,
+      4.1455078125,
+      5.7548828125
+    ],
+    "cgroup": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/ifc-worker-db796657-47e2-441d-a371-bd78a6a7dff6.scope",
+    "cpuMax": "max 100000\n",
+    "cpuStat": "usage_usec 819776231\nuser_usec 789821723\nsystem_usec 29954508\nnice_usec 790072000\ncore_sched.force_idle_usec 0\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0\n",
+    "top": [
+      "    PID    PPID %CPU %MEM COMMAND",
+      "1824345 1815093  100  0.0 ps",
+      "1808129 3121713 13.9  0.1 chrome-headless",
+      " 147857  147755  9.7  0.5 t3code",
+      "2341947 2341899  9.4  0.5 node-MainThread",
+      "1850344 2341947  2.1  0.3 codex",
+      " 602499 2341947  2.0  0.2 codex",
+      " 147792  147752  1.5  0.0 t3code",
+      "   2668    2624  1.3  0.1 cosmic-comp",
+      "    225       2  0.9  0.0 irq/9-acpi",
+      "3121730 3121710  0.8  0.0 chrome-headless",
+      " 147746       1  0.6  0.0 t3code",
+      "1775753 1775622  0.5  0.0 python3",
+      "1776197 1776126  0.5  0.0 python3",
+      "1694343 1694310  0.5  0.0 python3",
+      "1743599 1743544  0.5  0.0 python3",
+      "1647486 1647479  0.5  0.0 python3",
+      "1811642 1811616  0.5  0.0 python3",
+      "2342394 2341947  0.4  0.0 cloudflared",
+      "1822153 1822116  0.4  0.0 python3"
+    ]
+  },
+  "after": {
+    "time": 1792686030.5879667,
+    "cpuTicks": [
+      33172484,
+      133326571,
+      19902597,
+      1231023375,
+      22649915,
+      0,
+      303786,
+      0,
+      0,
+      0
+    ],
+    "memAvailableKiB": 113130288,
+    "load": [
+      1.69921875,
+      4.0087890625,
+      5.69287109375
+    ],
+    "cgroup": "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/ifc-worker-db796657-47e2-441d-a371-bd78a6a7dff6.scope",
+    "cpuMax": "max 100000\n",
+    "cpuStat": "usage_usec 819801271\nuser_usec 789831766\nsystem_usec 29969505\nnice_usec 790082000\ncore_sched.force_idle_usec 0\nnr_periods 0\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0\n",
+    "top": [
+      "    PID    PPID %CPU %MEM COMMAND",
+      "1824403  602499 75.0  0.0 ssh",
+      "1808129 3121713 14.0  0.1 chrome-headless",
+      " 147857  147755  9.7  0.5 t3code",
+      "2341947 2341899  9.4  0.5 node-MainThread",
+      "1850344 2341947  2.1  0.3 codex",
+      " 602499 2341947  2.0  0.2 codex",
+      " 147792  147752  1.5  0.0 t3code",
+      "   2668    2624  1.3  0.1 cosmic-comp",
+      "    225       2  0.9  0.0 irq/9-acpi",
+      "3121730 3121710  0.8  0.0 chrome-headless",
+      " 147746       1  0.6  0.0 t3code",
+      "1775753 1775622  0.5  0.0 python3",
+      "1776197 1776126  0.5  0.0 python3",
+      "1694343 1694310  0.5  0.0 python3",
+      "1743599 1743544  0.5  0.0 python3",
+      "1647486 1647479  0.5  0.0 python3",
+      "1811642 1811616  0.5  0.0 python3",
+      "2342394 2341947  0.4  0.0 cloudflared",
+      "1822153 1822116  0.4  0.0 python3"
+    ]
+  },
+  "cpuBusyPercent": 2.1851584788538103,
+  "passed": true
+}

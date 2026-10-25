@@ -1,0 +1,76 @@
+{
+  "job": "6b1e793e-8965-453e-af83-21c912671e82",
+  "source": "8624c8cec59a1601226b8b5a341f2631e2d9aa47",
+  "scope": "Single DPR2 functional service smoke, no accepted timing",
+  "functionalCompletion": true,
+  "capture": {
+    "filename": "AC20-FZK-Haus_screenshot.png",
+    "width": 2124,
+    "height": 1486,
+    "bytes": 253328,
+    "sha256": "e9bb21c3fb319832fe4d42d60b06722478a8ee268ab4a20aa2cd58819b82170d",
+    "visiblePixels": 3156264,
+    "distinctVisibleColors": 5695
+  },
+  "geometryUnchanged": true,
+  "picks": [
+    {
+      "id": 27421,
+      "geometryItemId": 27395,
+      "sourceTriangleIndex": 10,
+      "expected": 27421,
+      "scope": "opaque wall",
+      "x": 838.71146972974,
+      "y": 632.1468612456986
+    },
+    {
+      "id": 59553,
+      "geometryItemId": 59529,
+      "sourceTriangleIndex": 2,
+      "expected": 59553,
+      "scope": "roof slab",
+      "x": 735.5356541792132,
+      "y": 390.9702305128437
+    },
+    {
+      "id": 27421,
+      "geometryItemId": 27395,
+      "sourceTriangleIndex": 1,
+      "expected": 28113,
+      "scope": "control-observed wall/window boundary; stability only",
+      "x": 886.4649410674965,
+      "y": 617.3956223130033
+    }
+  ],
+  "gpuDriverErrors": [],
+  "pageErrors": [],
+  "fullBefore": {
+    "width": 2124,
+    "height": 1486,
+    "cssWidth": 1061.75,
+    "cssHeight": 743,
+    "dpr": 2
+  },
+  "requestedDuringNavigation": {
+    "width": 1062,
+    "height": 743,
+    "cssWidth": 1061.75,
+    "cssHeight": 743,
+    "dpr": 2
+  },
+  "navigationAfter": {
+    "width": 1062,
+    "height": 743,
+    "cssWidth": 1061.75,
+    "cssHeight": 743,
+    "dpr": 2
+  },
+  "fullAfter": {
+    "width": 2124,
+    "height": 1486,
+    "cssWidth": 1061.75,
+    "cssHeight": 743,
+    "dpr": 2
+  },
+  "rasterInspection": "Actual PNG visually inspected: public FZK house, roof, doors/windows, green base and annotations visible."
+}

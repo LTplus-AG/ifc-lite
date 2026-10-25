@@ -13,7 +13,7 @@
 
 use super::*;
 use crate::transform::{
-    parse_axis2_placement_2d, parse_axis2_placement_3d, parse_axis2_placement_3d_from_id,
+    parse_axis2_placement_3d, parse_axis2_placement_3d_from_id,
     parse_cartesian_point, parse_cartesian_point_from_id, parse_direction_from_id,
 };
 use crate::GeometryRouter;
@@ -50,9 +50,9 @@ fn placement_3d_readers(content: &str) -> Vec<(&'static str, Result<(), crate::E
             let placement = d.decode_by_id(4)?;
             resolve_chain(&placement, d).map(drop).map_err(Into::into)
         }),
-        ("transform::parse_axis2_placement_2d", |d| {
+        ("Axis2Placement::read_2d", |d| {
             let placement = d.decode_by_id(3)?;
-            parse_axis2_placement_2d(&placement, d).map(drop)
+            Axis2Placement::read_2d(&placement, d).map(drop).map_err(Into::into)
         }),
     ];
     readers
@@ -91,7 +91,7 @@ fn a_malformed_axis_or_ref_direction_is_refused_and_counted() {
         for (axis, ref_direction, record) in [(bad, "((1.,0.,0.))", 10), ("((0.,0.,1.))", bad, 11)] {
             // The 2D reader takes only the RefDirection (#11).
             for (reader, result, refused) in placement_3d_readers(&doc("((1.,2.,3.))", axis, ref_direction)) {
-                if reader == "transform::parse_axis2_placement_2d" && record == 10 {
+                if reader == "Axis2Placement::read_2d" && record == 10 {
                     assert!(result.is_ok(), "the 2D reader never reads #10");
                     continue;
                 }
@@ -193,7 +193,7 @@ fn degenerate_axes_stay_repaired_bit_for_bit() {
     }
 }
 
-/// X1 moves `parse_axis2_placement_2d` onto `build_axis2_matrix`. Axis-aligned
+/// The canonical 2D reader uses `build_axis2_matrix` (#7779). Axis-aligned
 /// RefDirections are bit-exact; a rotated one may differ from the old direct
 /// assembly by rounding only (X normalised twice, Y once), never more.
 #[test]
@@ -210,7 +210,7 @@ fn the_2d_placement_is_exact_axis_aligned_and_within_rounding_otherwise() {
         let content = format!("#1=IFCCARTESIANPOINT((4.,5.));\n#2=IFCDIRECTION({ref_direction});\n#3=IFCAXIS2PLACEMENT2D(#1,#2);\n");
         let mut decoder = EntityDecoder::new(&content);
         let placement = decoder.decode_by_id(3).unwrap();
-        let m = parse_axis2_placement_2d(&placement, &mut decoder).unwrap();
+        let m = Axis2Placement::read_2d(&placement, &mut decoder).unwrap().matrix();
         let d = decoder.direction3(2).unwrap();
         let norm = d[0].hypot(d[1]);
         let (cx, cy) = (d[0] / norm, d[1] / norm);

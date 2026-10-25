@@ -75,7 +75,7 @@ it('keeps a failed BCF snapshot at the canonical PDF fallback proportion (#6610)
   act(() => root?.render(<DocumentPreview document={doc}
     bindings={{ models: [], activeModelId: null, today: new Date('2026-01-01') }}
     aggregations={new Map()} chartMessages={new Map()} topics={new Map([[topic.guid, topic]])}
-    selectedBlockId={null} onSelectBlock={() => {}} />));
+    onSelectBlock={() => {}} />));
   await ready();
   const image = container.querySelector('[data-preview-block="topic"] img');
   // The real initial zero-size load may already have settled this bad asset.
@@ -100,8 +100,7 @@ it('#5823 selects the same document block by click, Enter, and Space', async () 
       aggregations={new Map()}
       chartMessages={new Map()}
       topics={new Map()}
-      selectedBlockId={null}
-      onSelectBlock={(id) => selections.push(id)}
+            onSelectBlock={(id) => selections.push(id)}
     />,
   ));
   await ready();
@@ -129,8 +128,7 @@ async function render(dataUrl: string): Promise<HTMLImageElement> {
       aggregations={new Map()}
       chartMessages={new Map()}
       topics={new Map()}
-      selectedBlockId={null}
-      onSelectBlock={() => {}}
+            onSelectBlock={() => {}}
     />,
  ));
   await ready();
@@ -168,7 +166,7 @@ it('puts half-width text next to a logo and applies its PDF font controls (#4940
       { ...imageBlock, width: 'half' },
     ],
   };
-  act(() => root?.render(<DocumentPreview document={doc} bindings={{ models: [], activeModelId: null, today: new Date('2026-01-01') }} aggregations={new Map()} chartMessages={new Map()} topics={new Map()} selectedBlockId={null} onSelectBlock={() => {}} />));
+  act(() => root?.render(<DocumentPreview document={doc} bindings={{ models: [], activeModelId: null, today: new Date('2026-01-01') }} aggregations={new Map()} chartMessages={new Map()} topics={new Map()} onSelectBlock={() => {}} />));
   await ready();
   const left = container.querySelector<HTMLElement>('[data-preview-block="heading"]');
   const right = container.querySelector<HTMLElement>('[data-preview-block="image"]');
@@ -188,7 +186,7 @@ it('previews an overlong half-width text block as paginated full-width content (
     { kind: 'text', id: 'long', style: 'body', text: 'A long report paragraph. '.repeat(900), width: 'half' },
     { ...imageBlock, width: 'half' },
   ] };
-  act(() => root?.render(<DocumentPreview document={doc} bindings={{ models: [], activeModelId: null, today: new Date('2026-01-01') }} aggregations={new Map()} chartMessages={new Map()} topics={new Map()} selectedBlockId={null} onSelectBlock={() => {}} />));
+  act(() => root?.render(<DocumentPreview document={doc} bindings={{ models: [], activeModelId: null, today: new Date('2026-01-01') }} aggregations={new Map()} chartMessages={new Map()} topics={new Map()} onSelectBlock={() => {}} />));
   await ready();
   const papers = [...container.querySelectorAll('[data-preview-section]')];
   assert.ok(papers.length > 1, 'long text has actual continuation pages');
@@ -204,7 +202,7 @@ it('uses a wide-glyph bound when pairing text with a logo (#4940 review)', async
     { kind: 'text', id: 'wide', style: 'body', text: Array(34).fill('W'.repeat(30)).join('\n'), width: 'half' },
     { ...imageBlock, width: 'half' },
   ] };
-  act(() => root?.render(<DocumentPreview document={doc} bindings={{ models: [], activeModelId: null, today: new Date('2026-01-01') }} aggregations={new Map()} chartMessages={new Map()} topics={new Map()} selectedBlockId={null} onSelectBlock={() => {}} />));
+  act(() => root?.render(<DocumentPreview document={doc} bindings={{ models: [], activeModelId: null, today: new Date('2026-01-01') }} aggregations={new Map()} chartMessages={new Map()} topics={new Map()} onSelectBlock={() => {}} />));
   await ready();
   const text = container.querySelector<HTMLElement>('[data-preview-block="wide"]');
   const image = container.querySelector<HTMLElement>('[data-preview-block="image"]');
@@ -220,7 +218,7 @@ it('uses the PDF column gap for A3 boundary-width text and its logo (#4940 revie
     { kind: 'text', id: 'boundary', style: 'body', fontSize: 10.1, text: Array(74).fill('W'.repeat(37)).join('\n'), width: 'half' },
     { ...imageBlock, width: 'half' },
   ] };
-  act(() => root?.render(<DocumentPreview document={doc} bindings={{ models: [], activeModelId: null, today: new Date('2026-01-01') }} aggregations={new Map()} chartMessages={new Map()} topics={new Map()} selectedBlockId={null} onSelectBlock={() => {}} />));
+  act(() => root?.render(<DocumentPreview document={doc} bindings={{ models: [], activeModelId: null, today: new Date('2026-01-01') }} aggregations={new Map()} chartMessages={new Map()} topics={new Map()} onSelectBlock={() => {}} />));
   await ready();
   const image = container.querySelector<HTMLElement>('[data-preview-block="image"]');
   assert.ok(image);
@@ -249,7 +247,7 @@ it('clamps a tall chart to the same printable-page height as PDF composition (#4
   window.document.body.appendChild(container);
   root = createRoot(container);
   act(() => root?.render(
-    <DocumentPreview document={document} bindings={{ models: [], activeModelId: null, today: new Date('2026-01-01') }} aggregations={new Map([['chart-block', aggregation]])} chartMessages={new Map()} topics={new Map()} selectedBlockId={null} onSelectBlock={() => {}} />,
+    <DocumentPreview document={document} bindings={{ models: [], activeModelId: null, today: new Date('2026-01-01') }} aggregations={new Map([['chart-block', aggregation]])} chartMessages={new Map()} topics={new Map()} onSelectBlock={() => {}} />,
   ));
 
   await ready();
@@ -297,7 +295,7 @@ it('keeps blank text and missing topics accessible and selectable without changi
     { kind: 'text', id: 'empty', text: '', style: 'body' },
     { kind: 'topic', id: 'missing', guid: 'deleted-topic', snapshot: false },
   ] }} bindings={{ models: [], activeModelId: null, today: new Date(0) }} aggregations={new Map()}
-    chartMessages={new Map()} topics={new Map()} selectedBlockId={null} onSelectBlock={id => selections.push(id)} />));
+    chartMessages={new Map()} topics={new Map()} onSelectBlock={id => selections.push(id)} />));
   await ready();
   const empty = container.querySelector('[data-preview-block="empty"]'); assert.ok(empty); assert.match(empty.textContent ?? '', /\(empty\)/);
   const missing = container.querySelector<HTMLElement>('[data-preview-block="missing"][data-unresolved]'); assert.ok(missing);
@@ -315,7 +313,7 @@ it('keeps scaled preview text line pitch consistent with PDF layout (#6548)', as
     const doc: DocumentSpec = { ...baseDocument, blocks: styles.map((style) => ({
       kind: 'text', id: style, style, text: 'First line\nSecond line', scale: factor,
     })) };
-    act(() => root?.render(<DocumentPreview document={doc} bindings={{ models: [], activeModelId: null, today: new Date('2026-01-01') }} aggregations={new Map()} chartMessages={new Map()} topics={new Map()} selectedBlockId={null} onSelectBlock={() => {}} />));
+    act(() => root?.render(<DocumentPreview document={doc} bindings={{ models: [], activeModelId: null, today: new Date('2026-01-01') }} aggregations={new Map()} chartMessages={new Map()} topics={new Map()} onSelectBlock={() => {}} />));
     await ready();
     const pageScale = 560 / pageBox(doc.page).w;
     for (const style of styles) {

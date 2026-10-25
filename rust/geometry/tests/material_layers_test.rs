@@ -409,7 +409,7 @@ fn layers_compose_with_voids_every_layer_loses_triangles() {
 ///
 /// WHAT THIS DOES NOT COVER, stated because an earlier version of this comment
 /// claimed it did: the sub-mesh-by-sub-mesh REBUILD further down that function.
-/// A layered wall returns at the `try_layered_sub_meshes` early exit and never
+/// A layered wall returns from its layer attempt and never
 /// reaches it, so the `ids_are_materials` inheritance on the rebuilt collection
 /// is unreachable for a material-layer collection today and no fixture can make
 /// this test distinguish it — replacing that expression with a hard-coded

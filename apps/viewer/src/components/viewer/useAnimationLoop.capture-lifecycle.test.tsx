@@ -82,9 +82,9 @@ for (const deferred of [true, false]) {
       await h.dispose();
       assert.equal(await first, null);
       assert.equal(await queued, null);
-      assert.equal(h.captures.length, 0, 'disposed canvas is never read');
+      assert.equal(h.captures.length, 1, 'only the active frame was serialized before disposal; queued capture never reads');
       h.finishWork(); await h.flush();
-      assert.equal(h.captures.length, 0, 'late completion cannot resurrect a capture');
+      assert.equal(h.captures.length, 1, 'late completion cannot resurrect a capture');
     } finally { await h.dispose(); }
   });
 }
@@ -97,13 +97,19 @@ it('restores a framed export camera on readback failure without changing store c
     const camera = h.renderer.getCamera();
     const before = { ...camera.getPosition() };
     const state = useViewerStore.getState();
-    h.canvas.toDataURL = () => { throw new Error('controlled canvas readback failure'); };
+    let poseAtRead: { x: number; y: number; z: number } | undefined;
+    const readbackFailure = new Error('controlled canvas readback failure');
+    h.canvas.toDataURL = () => {
+      poseAtRead = { ...camera.getPosition() };
+      throw readbackFailure;
+    };
     const capture = captureEntityViewportFrame(h.renderer, {
       ids: new Set([7]), mode: 'isolate', clearColor: [0, 0, 0, 1],
       bounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 5, y: 8, z: 4 } },
     });
     await h.flush();
-    assert.notDeepEqual(camera.getPosition(), before, 'the actual canonical immediate framing ran');
+    assert.ok(poseAtRead, 'capture reached the pixel read');
+    assert.notDeepEqual(poseAtRead, before, 'the actual canonical immediate framing ran');
     h.step(); await h.flush();
     assert.equal(await capture, null);
     assert.deepEqual(camera.getPosition(), before);
@@ -111,6 +117,7 @@ it('restores a framed export camera on readback failure without changing store c
     assert.strictEqual(useViewerStore.getState().isolatedEntities, state.isolatedEntities);
     assert.strictEqual(useViewerStore.getState().selectedEntityIds, state.selectedEntityIds);
     assert.equal(errors.mock.callCount(), 1);
+    assert.strictEqual(errors.mock.calls[0]?.arguments[1], readbackFailure, 'the intended readback error was reported');
   } finally { errors.mock.restore(); await h.dispose(); }
 });
 

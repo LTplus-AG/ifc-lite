@@ -277,13 +277,12 @@ END-ISO-10303-21;`);
     const ui = render(<><DocumentPanel pdfSeams={seams} /><Toaster /></>);
     await settle();
     click(ui.querySelector('[data-document-export]')!);
-    let toastText = '';
-    for (let i = 0; i < 20 && !toastText; i++) {
-      await settle();
-      toastText = document.body.querySelector('[data-sonner-toast], [role="status"]')?.textContent ?? '';
-      if (!/exported/.test(toastText)) toastText = '';
-    }
-    assert.match(toastText, /1 table not printed/);
+    // #8066 adds another live region. Read the completed export's toast, not
+    // the first status region or an older notification retained by the toaster.
+    const exportToast = () => [...ui.querySelectorAll('[data-toast-seq]')]
+      .map(row => row.textContent ?? '').find(text => /Document exported:.*1 table not printed/.test(text));
+    await waitFor(() => exportToast() !== undefined, 'completed export must report its unprinted table');
+    assert.match(exportToast() ?? '', /1 table not printed/);
     assert.ok(!drawn.includes('<table>'), 'no grid was drawn for a list that did not run');
     assert.ok(drawn.some((t) => /Table not ready|could not be run|Load a model/.test(t)), drawn.join(' | '));
   });

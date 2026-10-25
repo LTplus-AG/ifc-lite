@@ -77,11 +77,7 @@ impl ProfileProcessor {
         let position = decoder
             .resolve_ref(position_attr)?
             .ok_or_else(|| Error::geometry("Failed to resolve conic position".to_string()))?;
-        let frame = if position.ifc_type == IfcType::IfcAxis2Placement3D {
-            crate::transform::parse_axis2_placement_3d(&position, decoder)?
-        } else {
-            crate::transform::parse_axis2_placement_2d(&position, decoder)?
-        };
+        let frame = crate::placement::Axis2Placement::read(&position, decoder)?.matrix();
         let column = |c: usize| Vector3::new(frame[(0, c)], frame[(1, c)], frame[(2, c)]);
         let center = Point3::new(frame[(0, 3)], frame[(1, 3)], frame[(2, 3)]);
         Ok((center, column(0), column(1)))

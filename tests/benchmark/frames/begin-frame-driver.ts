@@ -58,6 +58,9 @@ export const BEGIN_FRAME_CHROME_ARGS = [
   '--enable-unsafe-webgpu',
   '--enable-features=Vulkan',
   '--use-vulkan=swiftshader',
+  // #7655: Vulkan alone leaves ANGLE looking for an X display on hosted
+  // Linux. Canvas shared-image allocation then closes the WebGPU channel.
+  '--use-angle=swiftshader',
   '--disable-vulkan-surface',
   '--ignore-gpu-blocklist',
   '--enable-gpu',

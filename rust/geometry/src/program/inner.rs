@@ -181,6 +181,7 @@ impl<'a> GeometryProgram<'a> {
         if matches!(&self.control, Control::Product(c) if c.retained_ready()) {
             return Err(ProgramError::UnsupportedRetained);
         }
+        if matches!(&self.control, Control::Mapping(c) if c.retained_ready()) { return Err(ProgramError::UnsupportedRetained); }
         self.expected_router = Some(router.execution_identity());
         self.expected_decoder = Some(decoder.execution_identity());
         let decoder_before = decoder.execution_identity();

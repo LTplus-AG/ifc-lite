@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/mapping_directions.rs
++++ b/rust/geometry/src/program/mapping_directions.rs
+@@ -112,7 +112,7 @@
+                     // Extreme finite inputs can normalize to a zero vector.
+                     // Refuse an unreliable derived frame before exact predicates.
+                     admit_pair(derived_z, derived_x)?;
+-                    (z, derived_x)
++                    (derived_z, derived_x)
+                 }
+             };
+             if !independent_triple(z, x, y) { return Err(refused()); }

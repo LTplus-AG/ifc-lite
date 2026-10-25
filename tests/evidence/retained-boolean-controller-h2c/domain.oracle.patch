@@ -1,0 +1,11 @@
+--- a/rust/geometry/src/program/retained/boolean.rs
++++ b/rust/geometry/src/program/retained/boolean.rs
+@@ -4,7 +4,7 @@
+ pub(in crate::program) fn boolean_operation(inputs: [LogicalRetainedValue; 2], operation: crate::BoolOp)
+     -> crate::Result<RetainedPlanOperation> {
+     if !matches!(operation, crate::BoolOp::Union | crate::BoolOp::Intersection | crate::BoolOp::Difference)
+-        || false
++        || inputs[0].slot.program != inputs[1].slot.program
+         || inputs[0].contract != inputs[1].contract
+         || inputs[0].length_unit_scale != inputs[1].length_unit_scale {
+         return Err(crate::Error::geometry("invalid retained Boolean inputs"));

@@ -1,6 +1,6 @@
 <!-- SPDX-License-Identifier: MPL-2.0 -->
 
-# Internal S1 construction contract (#7955)
+# Internal S1/S2 construction contract (#7955)
 
 This is crate-private implementation documentation, not a published API.
 The first cross-crate consumer (S4a) must review and qualify any exposure.
@@ -15,8 +15,7 @@ them. A foreign reply is returned intact and does not advance the receiver.
 This increment admits direct extrusion and swept-disk recipes, preserves
 repeated occurrences and recorded STEP ids, and checks proper-rigid product
 placement. Absent ObjectPlacement follows the exact identity fallback; its
-Product stage records traversal, not proof of an authored placement. Selected
-items from unsupported source families, including mappings and Booleans, refuse
+Product stage records traversal, not proof of an authored placement. Selected items from unsupported source families refuse
 the traversal; custom processors, annotations and alignments
 remain unsupported. A duplicate mapped representation skipped by the canonical
 selector is not admitted or evaluated. Native targets support source
@@ -56,30 +55,29 @@ The native/browser transaction consumers, full release features and explicit
 viewer/CLI selection follow separately;
 exact geometry remains the default.
 
-S1 has the following construction-only trust boundaries. They are limitations
+S1/S2 have the following construction-only trust boundaries. They are limitations
 of this increment, not fulfilled delivery guarantees:
 
 - The caller must obtain the root from the same source/decoder used for every
   admission and supply matching epoch/revision labels. Those labels are caller
-  assertions, not authenticated source identity or execution authority. S1
+  assertions, not authenticated source identity or execution authority. The facade
   binds a decoder/router on first admission and rejects later foreign owners;
   it does not authenticate the supplied root against that first decoder.
   Preserving a STEP id tests record identity, not source authentication. An
   execution consumer must establish source coherence before relying on labels.
-- Resource checks and charges use the current ambient account. Callers must
-  keep `request`/`admit`/`accept`/`finish` in the same resource scope and discard
-  the program after a stop. Explicit `cancel()` is sticky; an ambient stop is
-  not latched by S1, and resuming outside the scope or in another account is
-  not prevented. S2 must establish an owning resource context and terminal
-  stop before execution. The current tests do not certify cross-scope
-  ownership, bounded capture memory or complete resource accounting.
+- Resource checks and charges use the current ambient account. S2 latches
+  observed stops, including after consumed acceptance and finalization, in the
+  shared traversal across roots and account scope exit. Explicit cancellation
+  remains root-local. This is not captured account ownership: callers must keep
+  request/admit/accept/finish in one resource scope and discard stopped programs.
+  Bounded capture memory, rational scratch and complete accounting remain unqualified.
 - The facade currently carries source refusals as geometry-error strings at
   `finish`; `RetainedProgramError::Unsupported` does not encode every product
   refusal. Default wasm reports unavailable retained capture as `Unsupported`.
   A typed, listed product-refusal boundary must be defined and tested before
   delivery or downstream consumers rely on this API. Delivery must show an
   explicitly incomplete model load, publish no partial geometry for a refused
-  product and perform no silent exact substitution. S1 does not satisfy that
+  product and perform no silent exact substitution. This slice does not satisfy that
   contract. A1t typed source/product errors remain required with S4a, before a
   consumer relies on the facade; never match diagnostic strings.
 - `RetainedProductPlan` is internal data: its crate-private `values` and
@@ -105,3 +103,41 @@ with Stopped. There is no fallible post-consumption check that discards it.
 This is construction bookkeeping, not a publication linearization guarantee.
 An empty construction plan still carries all four unchecked obligations; it is
 never evidence of a complete-empty product or model.
+
+Mapped occurrences and type roots use the common mapping controller. Repeated
+rigid occurrences reuse a completed source definition within one root while
+receiving distinct slots and ordered Mapping/TypeMap/Product placements.
+Nonrigid/reflected occurrences emit Affine operations with the actual physical
+input and current object-frame matrix. Nested outer operations consume the
+already derived definition. Operation definitions have no authored source frame.
+Solid union/intersection/difference retain ordered [left,right] operands through
+the iterative Boolean spine, preserving repeated DAG occurrences. Mapped Boolean
+operands must contribute exactly one solid. Nonrigid operands are realized first.
+No operation or empty contribution authenticates numerical removal.
+
+MappingSource, MappingTarget, MappingOrigin, representation categories, readable
+reference-only Items and raw optional scale tokens are validated before cache
+reuse. Explicit empty nested-map Items is an empty contribution; authored product
+Items remains nonempty. Raw finite authored direction rank uses exact predicates.
+Omitted target axes use the shared canonical normalization/projection authority,
+while checking authored pairs before recovery. Finite nonsingular affine guards
+also check the composed frame before changing slots or lineage. A nonfinite f64
+determinant refuses conservatively even for a mathematically nonsingular matrix.
+Canonical recovery and exact rank of represented binary64 inputs do not certify
+physical accuracy, handedness for all tiny inputs, or comprehensive accounting.
+BigRational scratch allocation and cancellation latency remain unqualified.
+
+Styled roots record ordered owned source/occurrence presentation bindings, with
+unresolved texture and indexed-palette obligations. Logical template metadata
+never claims the exact renderer cache. Root-local caches prevent plain/styled or
+texture inputs from borrowing another root's bindings; owner and terminal-budget
+checks are shared. Copies and publication charge value counts.
+
+Type-map finalization applies its late rigid origin and records caller-supplied
+type/class/colour metadata, without authenticating membership. Its plan also
+retains ProductPlacement. A selection clone retains the original finalization
+stop for existing/new sibling roots. Accept-side stops after consumption remain
+terminal; a precheck rejection instead returns the same unconsumed reply.
+
+No public exports, feature activation, runtime dependencies or processing/browser/
+viewer/CLI consumers are added. All combined-head runtime gates remain UNRUN.

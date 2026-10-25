@@ -5,8 +5,8 @@
      /// panicking processor leaves no recipe behind to replay.
      pub(super) fn execute(&mut self, item: &DecodedEntity, router: &GeometryRouter,
          decoder: &mut EntityDecoder) -> std::result::Result<ItemStep, ProgramError> {
--        if false && matches!(self.step, Some(ItemStep::RetainedReady(..))) { return Err(ProgramError::UnsupportedRetained); }
-+        if matches!(self.step, Some(ItemStep::RetainedReady(..))) { return Err(ProgramError::UnsupportedRetained); }
+-        if false && self.retained_ready() { return Err(ProgramError::UnsupportedRetained); }
++        if self.retained_ready() { return Err(ProgramError::UnsupportedRetained); }
          Ok(match self.step.take().ok_or(ProgramError::StaleRequest)? {
              ItemStep::Source { phase, reports } => {
                  if let Some(selection) = &self.retained {

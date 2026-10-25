@@ -105,7 +105,7 @@ Eight additional standalone mutation inputs isolate the late review fixes:
   independently from stop reporting. The zero-work output-header case survives.
 - `placement-rigidity`: bypasses only proper-rigid checking. The reached scale
   and reflection test must fail refusal; identity placement remains positive.
-- `placement-singularity`: bypasses both overlapping placement checks. The
+- `placement-singularity`: bypasses the input, product-rigidity and composed-frame checks. The
   reached singular-matrix test must fail refusal. Removing only validate_affine
   leaves proper_rigid's determinant check, so no independent singular witness
   for that redundant check alone is claimed.
@@ -135,8 +135,29 @@ self-recursion false positive in refwalk discovery. No guard, allowlist, or
 budget threshold was relaxed. This does not claim full resource accounting
 for authored list sizes.
 
-Fresh review precedes parent gates. All new tests and all 20 mutation executions
+Fresh review precedes parent gates. All new tests and all combined-head mutation executions
 are UNRUN by this child. Historical review results do not qualify this candidate.
 The combined CI mutation still proves only that at least one included mechanism
 was observed; parent qualification must run each standalone patch independently.
 PERF/ID/DET, full workspace tests/Clippy and WASM checks remain parent gates.
+
+S2 restack preserves all 20 S1 inputs and selects them independently in CI, in
+addition to the reviewed S2/E3 set. The header-stop fault follows the operation
+vector reservation into the reached item. Copy charging includes presentation
+storage. Placement-singularity bypasses the new overlapping composed-frame
+check as well, while placement-atomicity still advances the slot too early.
+The ordered-operand fault consumes and swaps the pair without restoring Clone.
+These are adapted semantic faults, not patch-application evidence of behavior.
+
+The admission budget witness now observes S2's sticky original stop after scope
+exit. It inspects the still-reached child directly only to diagnose nonconsumption;
+it does not resume the terminal facade. Both S1 placement tests use the actual
+source domain, so a foreign-domain refusal cannot satisfy the intended guard.
+The source-reply witness leaves its account before acceptance and checks existing
+and new siblings. `source-stop-retention.oracle.patch` separately removes only
+admission's non-discarding stop latch; the original postcheck fault still tests
+that the owned reply is returned. Both remain UNRUN.
+
+Workflow pins refer to real ancestors of this restack. Oracle metadata must
+derive runnable modules from the actual tree; the topology regression now covers
+all 21 controller files. Overlapping parent/child filters are not disjoint counts.

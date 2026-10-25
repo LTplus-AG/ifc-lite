@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 --- a/rust/geometry/src/program/retained/mod.rs
 +++ b/rust/geometry/src/program/retained/mod.rs
-@@ -231,7 +231,14 @@
+@@ -284,7 +284,15 @@
      values: &[LogicalRetainedValue],
  ) -> crate::Result<Vec<LogicalRetainedValue>> {
      let mut output = Vec::new();
@@ -9,7 +9,8 @@
      for value in values {
 +        crate::resource::charge(crate::resource::Cost {
 +            work: 1,
-+            copy_bytes: std::mem::size_of_val(value.placements.as_slice()) as u64,
++            copy_bytes: (std::mem::size_of_val(value.placements.as_slice())
++                + std::mem::size_of_val(value.presentation.as_slice())) as u64,
 +            ..Default::default()
 +        })?
 +        .retain();

@@ -9,7 +9,7 @@
 +        if matches!(&self.control, Control::Product(c) if c.retained_ready()) {
              return Err(ProgramError::UnsupportedRetained);
          }
-         self.expected_router = Some(router.execution_identity());
+         if matches!(&self.control, Control::Mapping(c) if c.retained_ready()) { return Err(ProgramError::UnsupportedRetained); }
 --- a/rust/geometry/src/program/retained/capture.rs
 +++ b/rust/geometry/src/program/retained/capture.rs
 @@ -20,7 +20,7 @@
@@ -29,10 +29,10 @@
 +            source_id: item.id,
          },
          placements: Vec::new(),
-         product_placed: false,
+         presentation: Vec::new(),
 --- a/rust/geometry/src/program/retained/program.rs
 +++ b/rust/geometry/src/program/retained/program.rs
-@@ -175,6 +175,8 @@
+@@ -266,6 +266,8 @@
                      // Construction and placement do not inspect or discharge
                      // relationships, appearance, or persistent face identity.
                      remaining: vec![
@@ -63,7 +63,7 @@
                  entity.id
 --- a/rust/geometry/src/program/product/retained.rs
 +++ b/rust/geometry/src/program/product/retained.rs
-@@ -19,7 +19,7 @@
+@@ -21,7 +21,7 @@
              let mut control = Self::merged(element, SourceHygiene::IndexOnly);
              control.retained = Some(selection.clone());
              control.body = Body::Sink(Sink::Retained(Vec::new(), selection));
@@ -74,17 +74,17 @@
                  )));
 --- a/rust/geometry/src/program/retained/mod.rs
 +++ b/rust/geometry/src/program/retained/mod.rs
-@@ -88,9 +88,6 @@
-     ) -> crate::Result<()> {
+@@ -115,9 +115,6 @@
+         }
          validate_affine(transform)?;
-         proper_rigid(transform)?;
+         if matches!(stage, RetainedPlacementStage::Product { .. }) { proper_rigid(transform)?; }
 -        let input = self.slot;
 -        let output = next_slot(program)?;
 -        self.slot = output;
          let matrix = crate::math::mat4::col_major_array(transform);
          // Finite inputs need not compose to a finite frame. Compute both
          // candidates before changing the occurrence or its placement lineage.
-@@ -103,8 +100,11 @@
+@@ -137,8 +134,11 @@
          })?
          .retain();
          crate::resource::reserve_headers(&mut self.placements, 1)?.retain();
@@ -96,7 +96,7 @@
          self.placements.push(RetainedPlacement {
              input,
              output: self.slot,
-@@ -146,7 +146,7 @@
+@@ -193,7 +193,7 @@
  // preserves its ordered f64 accumulation and avoids inverse-frame round trips.
  fn compose_frame(a: &[f64; 16], b: &[f64; 16]) -> crate::Result<[f64; 16]> {
      let composed = crate::math::mat4::mul(b, a);

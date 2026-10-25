@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: MPL-2.0
 --- a/rust/geometry/src/program/retained/item.rs
 +++ b/rust/geometry/src/program/retained/item.rs
-@@ -19,7 +19,7 @@
-         #[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
-         {
+@@ -30,7 +30,7 @@
+             let mut operations = Vec::new();
+             crate::resource::reserve_headers(&mut operations, 1).map_err(RetainedProgramError::Stopped)?.retain();
              let value = operation.value().try_copy().map_err(|error| match error {
 -                crate::Error::ProgramStopped(_) => RetainedProgramError::Unsupported,
 +                crate::Error::ProgramStopped(stop) => RetainedProgramError::Stopped(stop),

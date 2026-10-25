@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/mapping_directions.rs
++++ b/rust/geometry/src/program/mapping_directions.rs
+@@ -106,9 +106,6 @@
+                     // exact-parallel default does not describe that frame (#7955).
+                     let [derived_x, derived_z] =
+                         crate::axis_projection::operator_xz_axes(z, Vector3::x());
+-                    let derived_x = if independent(derived_z, Vector3::x()) {
+-                        Vector3::x()
+-                    } else { derived_x };
+                     if !derived_x.iter().chain(derived_z.iter()).all(|v| v.is_finite()) {
+                         return Err(refused());
+                     }

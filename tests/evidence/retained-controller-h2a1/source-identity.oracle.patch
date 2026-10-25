@@ -9,4 +9,4 @@
 +            source_id: item.id,
          },
          placements: Vec::new(),
-         product_placed: false,
+         presentation: Vec::new(),

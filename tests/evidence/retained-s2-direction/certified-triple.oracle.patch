@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/mapping_directions.rs
++++ b/rust/geometry/src/program/mapping_directions.rs
+@@ -51,8 +51,7 @@
+ // triple product. Exact zero rejects dependence even when rounded cross/dot
+ // arithmetic would manufacture a nonzero residual (#7955).
+ fn independent_triple(a: Vector3<f64>, b: Vector3<f64>, c: Vector3<f64>) -> bool {
+-    let scaled = |v: Vector3<f64>| v / v.iter().fold(0.0_f64, |m, x| m.max(x.abs()));
+-    scaled(a).cross(&scaled(b)).dot(&scaled(c)) != 0.0
++    rational::orient3d_exact(a.into(), b.into(), c.into(), [0.0; 3]) != Sign::Zero
+ }
+
+ fn admit_pair(a: Vector3<f64>, b: Vector3<f64>) -> Result<()> {

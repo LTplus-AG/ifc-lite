@@ -89,7 +89,7 @@ impl ItemControl {
     /// panicking processor leaves no recipe behind to replay.
     pub(super) fn execute(&mut self, item: &DecodedEntity, router: &GeometryRouter,
         decoder: &mut EntityDecoder) -> std::result::Result<ItemStep, ProgramError> {
-        if matches!(self.step, Some(ItemStep::RetainedReady(..))) { return Err(ProgramError::UnsupportedRetained); }
+        if self.retained_ready() { return Err(ProgramError::UnsupportedRetained); }
         Ok(match self.step.take().ok_or(ProgramError::StaleRequest)? {
             ItemStep::Source { phase, reports } => {
                 if let Some(selection) = &self.retained {
@@ -106,6 +106,13 @@ impl ItemControl {
     /// Accept a validated step. A completed item publishes its source and
     /// numerical reports to the router exactly once, success or failure.
     pub(super) fn accept(&mut self, mut step: ItemStep, router: &GeometryRouter) {
+        if let ItemStep::Boolean { machine, .. } = &mut step {
+            if let Err(error) = machine.accept_retained_mapping(router) {
+                if let Some(selection) = machine.retained_selection().cloned() {
+                    step = ItemStep::RetainedComplete(Err(error), selection);
+                }
+            }
+        }
         if let ItemStep::Complete(value) = &mut step {
             let reports = std::mem::take(&mut value.reports);
             if reports.curve_capped {
@@ -231,6 +238,7 @@ fn execute_boolean(
     router: &GeometryRouter,
     decoder: &mut EntityDecoder,
 ) -> ItemStep {
+    if machine.retained_selection().is_some() { return retained_impl::execute_boolean(item, machine, prior, router, decoder); }
     let recorder = router.processor_for(&item.ifc_type).and_then(|processor| processor.boolean_recorder());
     let Some(recorder) = recorder else {
         let result = Err(Error::geometry("the selected processor no longer records this boolean"));

@@ -9,4 +9,4 @@
 +        if matches!(&self.control, Control::Product(c) if c.retained_ready()) {
              return Err(ProgramError::UnsupportedRetained);
          }
-         self.expected_router = Some(router.execution_identity());
+         if matches!(&self.control, Control::Mapping(c) if c.retained_ready()) { return Err(ProgramError::UnsupportedRetained); }

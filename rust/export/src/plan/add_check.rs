@@ -69,26 +69,37 @@ impl AddState<'_> {
         crate::plan::attrs::is_spatial(self.schema, class)
     }
 
-    /// Whether a `parent` (UPPERCASE class) may aggregate a new spatial
-    /// `child`. The spatial hierarchy is project, site, building, storey,
-    /// space; a class this does not name is held only to being spatial.
+    /// A spatial structure element: what the project, site, building,
+    /// storey, space hierarchy is made of. Spatial zones and external spatial
+    /// elements are spatial but not in it (they are related to the structure
+    /// by space boundaries and zone assignment, not aggregation).
+    fn in_structure(&self, class: &str) -> bool {
+        self.is_a(class, "IFCSPATIALSTRUCTUREELEMENT")
+    }
+
+    /// Whether a `parent` (UPPERCASE class) may aggregate a new structure
+    /// element `child`. Each rule names a kind and the kinds that may hold
+    /// it; a child follows every rule for a kind it is (in IFC4X3 an
+    /// `IfcBuilding` is an `IfcFacility`, so it may sit wherever one may).
     fn can_aggregate(&self, parent: &str, child: &str) -> bool {
-        let parents: &[&str] = if self.is_a(child, "IFCBUILDINGSTOREY") {
-            &["IFCBUILDING"]
-        } else if self.is_a(child, "IFCSPACE") {
-            &["IFCBUILDINGSTOREY", "IFCBUILDING", "IFCSITE", "IFCSPACE", "IFCFACILITY", "IFCFACILITYPART"]
-        } else if self.is_a(child, "IFCSITE") {
-            &["IFCPROJECT", "IFCSITE"]
-        } else if self.is_a(child, "IFCBUILDING") {
-            &["IFCPROJECT", "IFCSITE", "IFCBUILDING"]
-        } else if self.is_a(child, "IFCFACILITYPART") {
-            &["IFCFACILITY", "IFCFACILITYPART"]
-        } else if self.is_a(child, "IFCFACILITY") {
-            &["IFCPROJECT", "IFCSITE", "IFCFACILITY", "IFCFACILITYPART"]
-        } else {
-            return self.is_spatial(parent);
-        };
-        parents.iter().any(|p| self.is_a(parent, p))
+        const RULES: [(&str, &[&str]); 6] = [
+            ("IFCSITE", &["IFCPROJECT", "IFCSITE"]),
+            ("IFCBUILDING", &["IFCPROJECT", "IFCSITE", "IFCBUILDING"]),
+            ("IFCBUILDINGSTOREY", &["IFCBUILDING", "IFCBUILDINGSTOREY", "IFCBUILDINGPART"]),
+            ("IFCSPACE", &["IFCBUILDINGSTOREY", "IFCBUILDING", "IFCSITE", "IFCSPACE", "IFCFACILITY", "IFCFACILITYPART"]),
+            ("IFCFACILITYPART", &["IFCFACILITY", "IFCFACILITYPART"]),
+            ("IFCFACILITY", &["IFCPROJECT", "IFCSITE", "IFCFACILITY", "IFCFACILITYPART"]),
+        ];
+        let mut ruled = false;
+        for (kind, parents) in RULES {
+            if self.is_a(child, kind) {
+                ruled = true;
+                if parents.iter().any(|p| self.is_a(parent, p)) {
+                    return true;
+                }
+            }
+        }
+        !ruled && self.in_structure(parent)
     }
 
     /// `(id, UPPERCASE class)` of an object in the source or added earlier
@@ -201,15 +212,18 @@ impl AddState<'_> {
                 return Err(format!("storey elevation {e} is not finite"));
             }
         }
-        let spatial = self.is_spatial(&class);
+        let spatial = self.in_structure(&class);
+        if !spatial && self.is_spatial(&class) && obj.container.is_some() {
+            return Err(format!("{class} is not in the spatial structure; it takes no container (relate it with space boundaries or a zone assignment)"));
+        }
 
         let container = match &obj.container {
             None if spatial => return Err(format!("a new {class} needs a container: nothing else would place it in the spatial tree")),
             None => None,
             Some(r) => {
                 let (id, c) = self.lookup(r)?;
-                // A zone groups spaces; it neither contains nor aggregates.
-                let is_container = (self.is_spatial(&c) && !self.is_a(&c, "IFCSPATIALZONE")) || (spatial && c == "IFCPROJECT");
+                // A zone or external spatial element neither contains nor aggregates.
+                let is_container = self.in_structure(&c) || (spatial && c == "IFCPROJECT");
                 if !is_container {
                     return Err(format!("container {r} is {c}, not a spatial element"));
                 }

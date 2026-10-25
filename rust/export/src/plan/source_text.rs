@@ -23,7 +23,16 @@ fn to_chars(bytes: &[u8]) -> Cow<'_, str> {
 
 /// The bytes [`to_chars`] read.
 fn to_bytes(text: &str) -> Vec<u8> {
-    text.chars().map(|c| if c.is_ascii() { c as u8 } else { (c as u32 - BASE) as u8 }).collect()
+    let mut out = Vec::with_capacity(text.len());
+    let mut buf = [0u8; 4];
+    for c in text.chars() {
+        match u32::from(c) {
+            0..=0x7F => out.push(c as u8),
+            n @ (0xF780..=0xF7FF) => out.push((n - BASE) as u8),
+            _ => out.extend_from_slice(c.encode_utf8(&mut buf).as_bytes()),
+        }
+    }
+    out
 }
 
 /// The record `bytes` with `edits` applied, as bytes. `refused` counts the
@@ -55,5 +64,16 @@ mod tests {
         assert_eq!(out, b"#1=IFCX('Gr\xF6sse','a\xEF\x9F\xA9b','\xEF\x9F\xA9');");
         let edits = BTreeMap::from([(2usize, "$".to_string())]);
         assert_eq!(apply_edits(b"#1=IFCX('Gr\xF6sse',$,'\xEF\x9F\xA9');", &edits, &mut 0), b"#1=IFCX('Gr\xF6sse',$,$);");
+    }
+}
+
+#[cfg(test)]
+mod total_tests {
+    use super::*;
+
+    /// A char the mapping did not produce goes back as its UTF-8 bytes.
+    #[test]
+    fn a_char_outside_the_mapping_maps_back_to_its_utf8_bytes() {
+        assert_eq!(to_bytes("a\u{e9}\u{100}b"), "a\u{e9}\u{100}b".as_bytes());
     }
 }

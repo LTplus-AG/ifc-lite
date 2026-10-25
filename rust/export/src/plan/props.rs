@@ -26,7 +26,7 @@ use crate::step_ids::IdAllocator;
 use super::attrs::attribute_index;
 use super::index::FileIndex;
 use super::props_lookup::{
-    container_names, decoded_name, find_member, find_set, leaf_is_shared, list_attr, occurrence_rels, occurrence_set_of, pset_owners, pset_reaches_only, type_rel, type_sets,
+    container_names, find_member, find_set, leaf_is_shared, list_attr, occurrence_rels, occurrence_set_of, pset_owners, pset_reaches_only, type_rel, type_sets,
 };
 use super::props_synth;
 use super::props_target::{keeping_old_unit, type_owned_member};
@@ -181,7 +181,9 @@ pub(crate) fn resolve_set_writes<'w>(
     // Last write per property, in the order the properties were first named.
     let mut group: Vec<&'w PropWrite> = Vec::new();
     for &write in writes {
-        match group.iter_mut().find(|w| w.prop == write.prop && w.target == write.target) {
+        // One write per record it reaches (`resolve_write` gives a write the
+        // record it edits as its target), the last one winning.
+        match group.iter_mut().find(|w| if write.target.is_some() { w.target == write.target } else { w.target.is_none() && w.prop == write.prop }) {
             Some(slot) => *slot = write,
             None => group.push(write),
         }
@@ -240,11 +242,6 @@ pub(crate) fn resolve_set_writes<'w>(
             // A copy replaces a member only with one of its own kind, as an
             // in-place edit would refuse to rewrite an enumerated, list or
             // bounded value.
-            let missing = group.iter().zip(&replaced).find(|(w, old)| w.target.is_some() && old.is_none());
-            if let Some((w, _)) = missing {
-                refuse_all(&mut result, &format!("target #{} is not a member of the set it was sent to", w.target.unwrap_or_default()));
-                return result;
-            }
             let mismatch = group.iter().zip(&replaced).find_map(|(w, old)| other_kind(index, w, (*old)?).err());
             if let Some(reason) = mismatch {
                 refuse_all(&mut result, &reason);
@@ -252,11 +249,8 @@ pub(crate) fn resolve_set_writes<'w>(
             }
             let writes: Vec<PropWrite> = group.iter().zip(&replaced).map(|(w, old)| keeping_old_unit(index, schema, w, old.or_else(|| type_owned_member(index, schema, object_id, w)))).collect();
             let writes: Vec<&PropWrite> = writes.iter().collect();
-            // The clone keeps the name of the set it copies.
-            let set_name = decoded_name(index, schema, pset_id, container_type).unwrap_or_else(|| first.pset.clone());
             match props_synth::copy_on_write_occurrence_set(
                 schema,
-                &set_name,
                 container_type,
                 member_attr,
                 object_id,
@@ -300,10 +294,6 @@ pub(crate) fn resolve_set_writes<'w>(
     // carrying these values, with its own IfcRelDefinesByProperties naming
     // only this object. Also the landing spot for a value the related TYPE
     // owns (never edited directly).
-    if let Some(w) = group.iter().find(|w| w.target.is_some() && type_owned_member(index, schema, object_id, w).is_none()) {
-        refuse_all(&mut result, &format!("target #{} is not a member of any set of this object", w.target.unwrap_or_default()));
-        return result;
-    }
     let inherited: Vec<PropWrite> = group.iter().map(|w| keeping_old_unit(index, schema, w, type_owned_member(index, schema, object_id, w))).collect();
     let inherited: Vec<&PropWrite> = inherited.iter().collect();
     match props_synth::append_new_occurrence_set(schema, container_type, member_attr, object_id, &inherited, ids, owner_history) {
@@ -328,7 +318,6 @@ fn write_unshared_set<'w>(
     for &write in group {
         let (container_type, _) = container_names(write.kind);
         let outcome = match find_member(index, schema, members, &write.prop, write.target) {
-            None if write.target.is_some() => Err(format!("target #{} is not a member of the set it was sent to", write.target.unwrap_or_default())),
             Some(member_id) if leaf_is_shared(index, container_type, member_idx, member_id, pset_id) => {
                 let write = keeping_old_unit(index, schema, write, Some(member_id));
                 other_kind(index, &write, member_id).and_then(|()| props_synth::leaf_copy_on_write(schema, &write, ids, pset_id, member_idx, member_id))

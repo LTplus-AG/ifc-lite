@@ -8,7 +8,6 @@ use std::io::Write;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::step_text::apply_attr_mutations_counted;
 use crate::StepOptions;
 
 use super::index::FileIndex;
@@ -123,10 +122,11 @@ fn duplicate_sets_on_patched(
         if removed.contains(&id) {
             return None;
         }
-        let raw = index.raw_line(id)?;
+        // The record as written: the source bytes with the plan's edits.
+        let bytes = index.record_bytes(id)?;
         let text = match edits_by_id.get(&id) {
-            Some(edits) => apply_attr_mutations_counted(&raw, edits, &mut 0),
-            None => raw.into_owned(),
+            Some(edits) => String::from_utf8_lossy(&source_text::apply_edits(bytes, edits, &mut 0)).into_owned(),
+            None => String::from_utf8_lossy(bytes).into_owned(),
         };
         Some((index.type_of(id)?, text))
     };

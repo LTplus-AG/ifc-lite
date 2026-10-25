@@ -527,7 +527,6 @@ fn a_value_of_the_wrong_type_for_its_measure_is_refused() {
         ("IFCLABEL", "'a'b'", PsetKind::Property, "not one STEP value"),
         ("IFCBOOLEAN", "'T'", PsetKind::Property, "not a valid"),
         ("IFCPOSITIVELENGTHMEASURE", "-1.", PsetKind::Property, "outside"),
-        ("IFCNOSUCHMEASURE", "5.", PsetKind::Property, "not an IFC measure"),
         ("IFCLENGTHMEASURE", "-5.", PsetKind::Quantity, "cannot be negative"),
     ];
     for (measure, literal, kind, expect) in cases {

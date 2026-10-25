@@ -814,3 +814,56 @@ fn a_required_edit_that_cannot_be_written_never_leaves_a_dangling_reference() {
     let dangling = text.lines().any(|l| l.starts_with("#32=") && l.contains("#10"));
     assert!(result.is_err() || !dangling, "{result:?}\n{text}");
 }
+
+/// Writes are deduped on the record they resolve to, the later one winning:
+/// a targeted and an untargeted write to one record leave one new value.
+#[test]
+fn a_targeted_and_an_untargeted_write_to_one_record_dedupe() {
+    let content = two_walls_sharing_a_pset("IFC4");
+    let (out, report) = patch_one(&content, vec![rating("Pset_WallCommon", "'AAA'").with_target(30), rating("Pset_WallCommon", "'BBB'")]);
+    assert!(report.refusals.is_empty() && report.findings.is_empty(), "{:?} {:?}", report.refusals, report.findings);
+    let text = String::from_utf8(out).unwrap();
+    assert_eq!(text.matches("'BBB'").count(), 1, "{text}");
+    assert_eq!(text.matches("'AAA'").count(), 0, "{text}");
+}
+
+/// A target in none of the object's sets is refused alone, before grouping.
+#[test]
+fn a_target_in_no_set_of_the_object_is_refused_without_its_neighbours() {
+    let content = wall_with_two_same_named_sets();
+    let other = PropWrite::new("Pset_WallCommon", "Other", "IFCLABEL", "'ok'", PsetKind::Property, PropScope::Occurrence);
+    let (out, report) = patch_one(&content, vec![rating("Pset_WallCommon", "'x'").with_target(99), other]);
+    assert_eq!(report.refusals.len(), 1, "{:?}", report.refusals);
+    assert!(report.refusals[0].reason.contains("not a member of any set"), "{}", report.refusals[0].reason);
+    assert!(String::from_utf8(out).unwrap().contains("'ok'"), "the valid write still lands");
+}
+
+/// A target whose own name is not the write's property is refused.
+#[test]
+fn a_target_named_differently_from_the_write_is_refused() {
+    let content = wall_with_two_same_named_sets();
+    let other = PropWrite::new("Pset_WallCommon", "Other", "IFCLABEL", "'x'", PsetKind::Property, PropScope::Occurrence).with_target(60);
+    let (_, report) = patch_one(&content, vec![other]);
+    assert_eq!(report.refusals.len(), 1, "{:?}", report.refusals);
+    assert!(report.refusals[0].reason.contains("is named FireRating"), "{}", report.refusals[0].reason);
+}
+
+/// The refusal for a value of the wrong type names the property once.
+#[test]
+fn a_refused_value_names_its_property_once() {
+    let bad = PropWrite::new("Pset_X", "P", "IFCLENGTHMEASURE", "'abc'", PsetKind::Property, PropScope::Occurrence);
+    let (_, report) = patch_one(&wall_with_own_pset("IFC4"), vec![bad]);
+    assert_eq!(report.refusals[0].reason, "Pset_X.P: 'abc' is not a valid IfcLengthMeasure value");
+}
+
+/// Quantities are held to the same rule as an Add's (not negative, no
+/// measure WHERE rule), and a measure outside the table is passed through.
+#[test]
+fn quantity_and_unlisted_measures_follow_the_add_rule() {
+    let zero = PropWrite::new("Qto_X", "L", "IFCPOSITIVELENGTHMEASURE", "0.", PsetKind::Quantity, PropScope::Occurrence);
+    let (_, report) = patch_one(&wall_with_own_pset("IFC4"), vec![zero]);
+    assert!(report.refusals.is_empty(), "{:?}", report.refusals);
+    let uri = PropWrite::new("Pset_X", "U", "IFCURIREFERENCE", "'http://example.org/a'", PsetKind::Property, PropScope::Occurrence);
+    let (_, report) = patch_one(&wall_with_own_pset("IFC4X3"), vec![uri]);
+    assert!(report.refusals.is_empty(), "{:?}", report.refusals);
+}

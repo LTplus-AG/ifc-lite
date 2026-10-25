@@ -332,8 +332,10 @@ fn a_new_spatial_element_without_a_container_is_refused() {
 fn a_spatial_element_under_a_wrong_parent_is_refused() {
     for schema in SCHEMAS {
         let source = storey_with_typed_wall(schema);
-        // A storey under a storey; a site under a building.
-        refused(&source, object(IfcClass::BuildingStorey, gid(31), storey(), Representation::None), "cannot aggregate");
+        // A building under a storey; a site under a building. (A storey under
+        // a storey is a partial storey, and valid.)
+        let building = object(IfcClass::Named("IfcBuilding".into()), gid(31), storey(), Representation::None);
+        refused(&source, building, "cannot aggregate");
         let site = object(IfcClass::Named("IfcSite".into()), gid(32), Some(ObjectRef::Id(60)), Representation::None);
         refused(&source, site, "cannot aggregate");
         // A space in a storey is fine.
@@ -370,8 +372,8 @@ fn a_spatial_class_is_accepted_only_under_its_own_parents() {
     use ifc_lite_core::entity_info_for_schema;
     let children: [(&str, &[&str]); 4] = [
         ("IFCSITE", &["IFCPROJECT", "IFCSITE"]),
-        ("IFCBUILDING", &["IFCPROJECT", "IFCSITE", "IFCBUILDING"]),
-        ("IFCBUILDINGSTOREY", &["IFCBUILDING"]),
+        ("IFCBUILDING", &["IFCPROJECT", "IFCSITE", "IFCBUILDING", "IFCFACILITY", "IFCFACILITYPART"]),
+        ("IFCBUILDINGSTOREY", &["IFCBUILDING", "IFCBUILDINGSTOREY"]),
         ("IFCSPACE", &["IFCBUILDINGSTOREY", "IFCBUILDING", "IFCSITE", "IFCSPACE", "IFCFACILITY", "IFCFACILITYPART"]),
     ];
     let parents = ["IFCPROJECT", "IFCSITE", "IFCBUILDING", "IFCBUILDINGSTOREY", "IFCSPACE", "IFCFACILITY", "IFCFACILITYPART"];
@@ -401,4 +403,18 @@ fn a_facility_is_accepted_under_a_facility_part_in_ifc4x3() {
     let obj = object(IfcClass::Named("IFCBRIDGE".into()), gid(41), Some(ObjectRef::Id(90)), Representation::None);
     let (_, report) = run(source.as_bytes(), vec![add(obj)]);
     assert_eq!(report.added, 1, "{:?}", report.refusals);
+}
+
+/// Zones and external spatial elements are not in the aggregation hierarchy:
+/// they need no container and are never aggregated under a storey.
+#[test]
+fn zones_and_external_spatial_elements_take_no_container() {
+    for class in ["IfcSpatialZone", "IfcExternalSpatialElement"] {
+        let source = storey_with_typed_wall("IFC4");
+        let alone = object(IfcClass::Named(class.into()), gid(41), None, Representation::None);
+        let (_, report) = run(&source, vec![add(alone)]);
+        assert_eq!(report.added, 1, "{class}: {:?}", report.refusals);
+        let placed = object(IfcClass::Named(class.into()), gid(42), storey(), Representation::None);
+        refused(&source, placed, "not in the spatial structure");
+    }
 }

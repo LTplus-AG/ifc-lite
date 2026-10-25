@@ -203,6 +203,11 @@ impl<'a> FileIndex<'a> {
         }
     }
 
+    /// The source bytes of record `id`.
+    pub(crate) fn record_bytes(&self, id: u32) -> Option<&'a [u8]> {
+        self.spans.lookup(id).map(|(s, e)| &self.content[s..e])
+    }
+
     pub(crate) fn raw_line(&self, id: u32) -> Option<Cow<'a, str>> {
         self.spans.lookup(id).map(|(s, e)| String::from_utf8_lossy(&self.content[s..e]))
     }

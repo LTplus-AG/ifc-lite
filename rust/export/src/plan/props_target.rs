@@ -50,14 +50,14 @@ pub(super) fn type_owned_member(index: &FileIndex, schema: &str, object_id: u32,
 
 /// The sets `write` can land on, in the order they are tried: the object's
 /// own (occurrence scope only), then its related type's.
-fn candidate_sets(index: &FileIndex, schema: &str, object_id: u32, write: &PropWrite, occurrence_only: bool) -> Vec<u32> {
+fn candidate_sets(index: &FileIndex, schema: &str, object_id: u32, write: &PropWrite) -> Vec<u32> {
     let occurrence = match write.scope {
-        PropScope::Occurrence => occurrence_rels(index, schema, object_id).into_iter().filter_map(|rel| occurrence_set_of(index, schema, rel)).collect(),
+        PropScope::Occurrence => own_sets(index, schema, object_id),
         PropScope::Type => Vec::new(),
     };
     let typed = match type_rel(index, schema, object_id) {
-        Some((_, type_id)) if !occurrence_only => type_sets(index, schema, type_id),
-        _ => Vec::new(),
+        Some((_, type_id)) => type_sets(index, schema, type_id),
+        None => Vec::new(),
     };
     [occurrence, typed].concat()
 }
@@ -68,37 +68,48 @@ fn find_holder(index: &FileIndex, schema: &str, sets: &[u32], write: &PropWrite,
     find_set(index, schema, sets.iter(), write.kind, &write.pset, target).map(|(set, ..)| set)
 }
 
-/// The set `write` lands on: the one listing its exact target, else the first
-/// of the right name. Writes with the same holder are resolved together, so
-/// a set is cloned or folded into once, whether the writes name their record
-/// or not.
-pub(crate) fn holding_set(index: &FileIndex, schema: &str, object_id: u32, write: &PropWrite) -> Option<u32> {
-    find_holder(index, schema, &candidate_sets(index, schema, object_id, write, false), write, write.target)
+/// `write` as it is resolved, with the set it lands on. Every target is
+/// checked here, before writes are grouped: it must be in a set of the object,
+/// the set must be the one the write names, and the record must be named as
+/// the write's property. An occurrence write that targets a record only the
+/// related type holds is an override: it joins the object's own set of that
+/// name (or starts one) like an untargeted write. An untargeted write that
+/// finds its property in a set it will edit is given that record as its
+/// target, so writes are deduped and grouped on the record they reach.
+pub(crate) fn resolve_write(index: &FileIndex, schema: &str, object_id: u32, write: &PropWrite) -> Result<(PropWrite, Option<u32>), String> {
+    let mut write = write.clone();
+    let (container, _) = container_names(write.kind);
+    let all = candidate_sets(index, schema, object_id, &write);
+    let Some(target) = write.target else {
+        let found = find_set(index, schema, all.iter(), write.kind, &write.pset, None);
+        let Some((holder, _, members)) = found else { return Ok((write, None)) };
+        // A member of a set the write edits is its record; one the related
+        // type owns is overridden by name.
+        if write.scope == PropScope::Type || own_sets(index, schema, object_id).contains(&holder) {
+            write.target = find_member(index, schema, &members, &write.prop, None);
+        }
+        return Ok((write, Some(holder)));
+    };
+    let Some(holder) = find_holder(index, schema, &all, &write, Some(target)) else {
+        return Err(format!("target #{target} is not a member of any set of this object"));
+    };
+    if decoded_name(index, schema, holder, container).as_deref() != Some(write.pset.as_str()) {
+        return Err(format!("target #{target} is not a member of the named set {}", write.pset));
+    }
+    let member_type = index.type_of(target).unwrap_or_default();
+    let member_name = decoded_name(index, schema, target, &member_type);
+    if member_name.as_deref() != Some(write.prop.as_str()) {
+        return Err(format!("target #{target} is named {}, not {}", member_name.unwrap_or_default(), write.prop));
+    }
+    if write.scope == PropScope::Occurrence && !own_sets(index, schema, object_id).contains(&holder) {
+        // Only the related type holds it.
+        write.target = None;
+        let holder = find_holder(index, schema, &all, &write, None);
+        return Ok((write, holder));
+    }
+    Ok((write, Some(holder)))
 }
 
-/// `write` as it is resolved, with the set it lands on. An occurrence write
-/// that targets a record only the related type holds is an override: it joins
-/// the object's own set of that name (or starts one) like an untargeted
-/// write, so the object never ends up with two sets of one name. A write
-/// whose named set does not list its target is refused.
-pub(crate) fn resolve_write(index: &FileIndex, schema: &str, object_id: u32, write: &PropWrite) -> Result<(PropWrite, Option<u32>), String> {
-    let holder = holding_set(index, schema, object_id, write);
-    let mut write = write.clone();
-    let Some(target) = write.target else { return Ok((write, holder)) };
-    if let Some(holder) = holder {
-        let (container, _) = container_names(write.kind);
-        if decoded_name(index, schema, holder, container).as_deref() != Some(write.pset.as_str()) {
-            return Err(format!("target #{target} is not a member of the named set {}", write.pset));
-        }
-    }
-    if write.scope == PropScope::Occurrence {
-        let own = candidate_sets(index, schema, object_id, &write, true);
-        if find_holder(index, schema, &own, &write, Some(target)).is_none() && type_owned_member(index, schema, object_id, &write) == Some(target) {
-            write.target = None;
-        }
-    }
-    // An override joins the object's own set of the name, so its holder is
-    // the one an untargeted write finds.
-    let holder = if write.target.is_none() { holding_set(index, schema, object_id, &write) } else { holder };
-    Ok((write, holder))
+fn own_sets(index: &FileIndex, schema: &str, object_id: u32) -> Vec<u32> {
+    occurrence_rels(index, schema, object_id).into_iter().filter_map(|rel| occurrence_set_of(index, schema, rel)).collect()
 }

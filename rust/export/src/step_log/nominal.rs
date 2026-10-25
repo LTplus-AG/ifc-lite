@@ -62,11 +62,14 @@ pub(crate) fn canonical_literal(measure: &str, literal: &str) -> String {
 /// e.g. `5.` or `'x'`) unless it is a value of the `measure` type in
 /// `schema`: a string for a text measure, a number for a numeric one, a
 /// STEP enumeration literal for a boolean or logical, each within the
-/// measure's WHERE rule. The one check a caller-serialized value passes.
-pub(crate) fn check_literal_measure(schema: &str, measure: &str, literal: &str) -> Result<(), String> {
+/// measure's WHERE rule when `where_rule` (a property; a quantity has its own
+/// rule, not negative). The one check a caller-serialized value passes.
+pub(crate) fn check_literal_measure(schema: &str, measure: &str, literal: &str, where_rule: bool) -> Result<(), String> {
     let token = measure.to_ascii_uppercase();
     let leaf = leaf(&token).filter(|_| super::retype::schema_declares(schema, &token));
-    let (name, base, _, _) = leaf.ok_or_else(|| format!("{measure} is not an IFC measure in {schema}"))?;
+    // A measure outside the table (IFCBINARY, IFC4X3's IFCURIREFERENCE) has
+    // nothing to check the value against, and is written as given.
+    let Some((name, base, _, _)) = leaf else { return Ok(()) };
     let bad = || format!("{literal} is not a valid {name} value");
     let number = |integer_only: bool| -> Result<f64, String> {
         let body = literal.strip_prefix(['+', '-']).unwrap_or(literal);
@@ -92,7 +95,7 @@ pub(crate) fn check_literal_measure(schema: &str, measure: &str, literal: &str) 
         }
         "REAL" | "NUMBER" | "INTEGER" => {
             let v = number(base == "INTEGER")?;
-            satisfies(name, v).then_some(()).ok_or_else(|| format!("{literal} is outside what {name} allows"))
+            (!where_rule || satisfies(name, v)).then_some(()).ok_or_else(|| format!("{literal} is outside what {name} allows"))
         }
         "BOOLEAN" => matches!(literal, ".T." | ".F.").then_some(()).ok_or_else(bad),
         "LOGICAL" => matches!(literal, ".T." | ".F." | ".U.").then_some(()).ok_or_else(bad),

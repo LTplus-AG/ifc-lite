@@ -241,6 +241,26 @@ describe('rekeyByLineage', () => {
     ]);
   });
 
+  it.each([
+    undefined, [], [0.6], [0.2, 0.6, 0.2],
+    [NaN, 0.6], [0.6, NaN], [Infinity, 0.6], [0.6, Infinity],
+    [-Infinity, 0.6], [0.6, -Infinity], [-0.1, 0.6], [0.6, -0.1],
+    [0.5, 0.5], [0, 0],
+  ].map((shares) => ({ shares })))('orphans invalid or ambiguous share evidence (#8084): %j', ({ shares }) => {
+    const entry: LineageEntry = { base: ['source'], head: ['a', 'b'], relation: 'split', reason: 'split:verified', shares };
+    expect(rekeyByLineage(['source'], [entry], 'largest-share')).toEqual([
+      { key: 'source', successors: [], relation: 'split', orphan: true },
+    ]);
+    expect(rekeyByLineage(['source'], [entry], 'copy-to-all')[0].successors).toEqual(['a', 'b']);
+  });
+
+  it.each([[0, 1], [2, 6], [0.4, 0.6]])('accepts finite nonnegative shares without normalization (#8084): %j', (a, b) => {
+    const entry: LineageEntry = { base: ['source'], head: ['a', 'b'], relation: 'split', reason: 'split:verified', shares: [a, b] };
+    expect(rekeyByLineage(['source'], [entry], 'largest-share')).toEqual([
+      { key: 'source', successors: ['b'], relation: 'split', orphan: false },
+    ]);
+  });
+
   it('orphan-on-split orphans every split; merges and replacements rekey under any policy', () => {
     expect(rekeyByLineage(['w', 'm0', 'm1', 'r'], lineage, 'orphan-on-split')).toEqual([
       { key: 'w', successors: [], relation: 'split', orphan: true },

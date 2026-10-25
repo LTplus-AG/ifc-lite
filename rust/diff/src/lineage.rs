@@ -97,6 +97,8 @@ pub enum RekeyPolicy { CopyToAll, LargestShare, OrphanOnSplit }
 pub enum RekeyRelation { Changed(LineageRelation), Unchanged }
 #[derive(Debug, PartialEq)]
 pub struct RekeyResult { pub key: String, pub successors: Vec<String>, pub relation: Option<RekeyRelation>, pub orphan: bool }
+/// LargestShare orphans splits unless shares are complete, nonempty, finite and
+/// nonnegative with a unique maximum. Zero is valid; no normalization is required.
 pub fn rekey_by_lineage(keys: &[String], lineage: &Lineage, policy: RekeyPolicy) -> Vec<RekeyResult> {
     let deleted: HashSet<_> = lineage.deleted.iter().collect();
     let mut by_base = HashMap::new();
@@ -110,7 +112,8 @@ pub fn rekey_by_lineage(keys: &[String], lineage: &Lineage, policy: RekeyPolicy)
         let successors = if entry.relation != LineageRelation::Split || matches!(policy, RekeyPolicy::CopyToAll) { entry.head.clone() }
         else if matches!(policy, RekeyPolicy::LargestShare) {
             match &entry.shares {
-                Some(shares) if shares.len() == entry.head.len() && !shares.is_empty() => {
+                Some(shares) if shares.len() == entry.head.len() && !shares.is_empty()
+                    && shares.iter().all(|s| s.is_finite() && *s >= 0.0) => {
                     let mut best = 0;
                     for i in 1..shares.len() { if shares[i] > shares[best] { best = i; } }
                     if shares.iter().filter(|&&s| s == shares[best]).count() > 1 { vec![] } else { vec![entry.head[best].clone()] }

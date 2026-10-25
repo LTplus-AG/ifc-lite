@@ -64,3 +64,25 @@ fn issue_8042_rekey_conflicting_entries_preserves_typescript_first_entry_contrac
         assert_eq!(results[0].successors, ["b"]);
     }
 }
+
+#[test]
+fn issue_8084_largest_share_requires_valid_unambiguous_evidence() {
+    let cases = [None, Some(vec![]), Some(vec![0.6]), Some(vec![0.2, 0.6, 0.2]),
+        Some(vec![f64::NAN, 0.6]), Some(vec![0.6, f64::NAN]),
+        Some(vec![f64::INFINITY, 0.6]), Some(vec![0.6, f64::INFINITY]),
+        Some(vec![f64::NEG_INFINITY, 0.6]), Some(vec![0.6, f64::NEG_INFINITY]),
+        Some(vec![-0.1, 0.6]), Some(vec![0.6, -0.1]), Some(vec![0.5, 0.5]), Some(vec![0.0, 0.0])];
+    for shares in cases {
+        let lineage = Lineage { entries: vec![entry(&["source"], &["a", "b"], LineageRelation::Split, shares)], deleted: vec![] };
+        assert_eq!(rekey_by_lineage(&["source".into()], &lineage, RekeyPolicy::LargestShare), [RekeyResult {
+            key: "source".into(), successors: vec![], relation: Some(RekeyRelation::Changed(LineageRelation::Split)), orphan: true,
+        }]);
+        assert_eq!(rekey_by_lineage(&["source".into()], &lineage, RekeyPolicy::CopyToAll)[0].successors, ["a", "b"]);
+    }
+    for shares in [vec![0.0, 1.0], vec![2.0, 6.0], vec![0.4, 0.6]] {
+        let lineage = Lineage { entries: vec![entry(&["source"], &["a", "b"], LineageRelation::Split, Some(shares))], deleted: vec![] };
+        let result = rekey_by_lineage(&["source".into()], &lineage, RekeyPolicy::LargestShare);
+        assert_eq!(result[0].successors, ["b"]);
+        assert!(!result[0].orphan);
+    }
+}

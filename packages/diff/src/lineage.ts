@@ -245,7 +245,9 @@ export function keyAliasesFromLineage(entries: readonly LineageEntry[]): Map<str
  *
  * - `copy-to-all` — every piece inherits the row.
  * - `largest-share` — only the piece with the largest volume share inherits
- *   it; without `shares` the row is orphaned rather than guessed.
+ *   it; missing, empty, mismatched, non-finite or negative `shares`, or a
+ *   tied maximum, orphan the row rather than guessing. Zero is valid; shares
+ *   need not sum to one.
  * - `orphan-on-split` — the row is orphaned; only 1:1 relations rekey.
  *
  * A `merge` always maps every base row onto the one head key, whatever the
@@ -302,7 +304,8 @@ export function rekeyByLineage(
     let successors: string[];
     if (policy === 'copy-to-all') {
       successors = [...entry.head];
-    } else if (policy === 'largest-share' && entry.shares && entry.shares.length === entry.head.length) {
+    } else if (policy === 'largest-share' && entry.shares && entry.shares.length === entry.head.length
+      && entry.shares.length > 0 && entry.shares.every((share) => Number.isFinite(share) && share >= 0)) {
       let best = 0;
       for (let i = 1; i < entry.shares.length; i++) if (entry.shares[i] > entry.shares[best]) best = i;
       // A tie for the largest share is an abstention, not a first-wins.

@@ -314,17 +314,25 @@ fi
 # above never contains it, so ordinary loads pay nothing for it.
 if [ "${BUILD_RETAINED:-}" = "1" ]; then
   RETAINED_OUT="../../packages/wasm/pkg-retained"
+  RETAINED_REL="$(echo "$RETAINED_OUT" | sed 's|^../../||')"
   RETAINED_FEATURES="retained-browser"
   if [ "${DEBUG_GEOMETRY:-}" = "1" ]; then RETAINED_FEATURES="$RETAINED_FEATURES,debug_geometry"; fi
   echo ""
   echo "🧱 Building retained browser bundle → $RETAINED_OUT (--features retained-browser)"
-  rustup run nightly-2025-11-15 "$WASM_PACK" build rust/wasm-bindings \
-    --target web \
-    --out-dir "$RETAINED_OUT" \
-    --out-name ifc-lite \
-    --release \
-    --features "$RETAINED_FEATURES"
-  RETAINED_REL="$(echo "$RETAINED_OUT" | sed 's|^../../||')"
+  (
+    # wasm-pack overwrites this tracked input with `*`. Preserve the caller's
+    # exact declaration-baseline rules on success AND failure, without checking
+    # out a Git version or changing any generated binding/declaration bytes.
+    retained_ignore=$(mktemp)
+    cp "$RETAINED_REL/.gitignore" "$retained_ignore"
+    trap 'cp "$retained_ignore" "$RETAINED_REL/.gitignore"; rm -f "$retained_ignore"' EXIT
+    rustup run nightly-2025-11-15 "$WASM_PACK" build rust/wasm-bindings \
+      --target web \
+      --out-dir "$RETAINED_OUT" \
+      --out-name ifc-lite \
+      --release \
+      --features "$RETAINED_FEATURES"
+  )
   printf '\n' > "$RETAINED_REL/.npmignore"
   RETAINED_DTS="$RETAINED_REL/ifc-lite.d.ts"
   if [ -f "$RETAINED_DTS" ]; then

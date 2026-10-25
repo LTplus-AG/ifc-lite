@@ -166,6 +166,15 @@ impl FailureHandle {
     pub(in crate::program) fn common(&self, site: FailureSite, error: crate::Error) -> RetainedFailure {
         match error {
             crate::Error::ProgramStopped(stop) => RetainedFailure::Stopped(self.remember_stop(stop)),
+            #[cfg(feature = "retained-runtime")]
+            crate::Error::InspectionDeadlineExceeded => {
+                // Reporting expiry must not allocate a source cause or create
+                // a new stop. Independently existing stops still take priority.
+                match resource::check_current().and_then(|()| self.check()) {
+                    Err(stop) => RetainedFailure::Stopped(self.remember_stop(stop)),
+                    Ok(()) => RetainedFailure::DeadlineExceeded,
+                }
+            }
             error => {
                 let cause = match error {
                     crate::Error::CoreError(core) => OriginCause::Core(core),
@@ -192,6 +201,8 @@ pub(in crate::program) enum CompletionReason {
 #[derive(Debug)]
 pub(in crate::program) enum RetainedFailure {
     Stopped(ProgramStop),
+    #[cfg(feature = "retained-runtime")]
+    DeadlineExceeded,
     Protocol(crate::program::inner::retained_program::RetainedProgramError),
     Origin(FailureHandle),
     Completion(CompletionReason),
@@ -217,5 +228,39 @@ impl std::fmt::Display for RetainedFailure {
             },
             other => write!(f, "{other:?}"),
         }
+    }
+}
+
+#[cfg(all(test, feature = "retained-runtime"))]
+mod deadline_tests {
+    use super::*;
+    use crate::resource::{ExecutionAccount, ExecutionPolicy, InspectionBudget, InspectionStart, ResourceLimits};
+
+    #[test]
+    fn issue_7955_r2_common_deadline_allocates_no_origin_with_zero_remaining_bytes() {
+        // Reach the real clock error with a live failure slot, then deliver it
+        // through the completion adapter with no room for an origin Arc.
+        let selection = crate::program::retained::RetainedSelection::new(
+            crate::program::retained::RetainedContract { source_epoch: 1, source_revision: 1 }, 1).unwrap();
+        let handle = selection.failure_handle();
+        let original = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits {
+            live_bytes: Some(0), ..Default::default()
+        }));
+        resource::inspection_test_clock::scope(|clock| original.scope(|| {
+            let budget = InspectionBudget::new(InspectionStart::now(), 100, 100, 10);
+            clock.advance(10);
+            budget.scope(|| {
+                let error = resource::inspection_checkpoint().unwrap_err();
+                assert!(matches!(handle.common(FailureSite::ProductCompletion, error), RetainedFailure::DeadlineExceeded));
+                assert!(handle.origin().is_none());
+                assert!(handle.reported().is_none());
+                assert!(original.check().is_ok());
+                assert_eq!(original.usage(), resource::Usage::default());
+                original.stop(ProgramStop::Cancelled);
+                assert!(matches!(handle.common(FailureSite::ProductCompletion, crate::Error::InspectionDeadlineExceeded),
+                    RetainedFailure::Stopped(ProgramStop::Cancelled)));
+                assert!(handle.origin().is_none());
+            });
+        }));
     }
 }

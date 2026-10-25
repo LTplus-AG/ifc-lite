@@ -8,6 +8,8 @@ use std::result::Result;
 
 #[path = "inspection_origin.rs"]
 mod origin;
+#[path = "inspection_limits.rs"]
+mod limits;
 
 const MAX_REPORT_BYTES: usize = 16 * 1024;
 // Covers bounded decoded binding/report trees and serialization scratch. This
@@ -61,13 +63,21 @@ pub fn inspect_retained_program_source(
     let start = InspectionStart::now();
     checkpoint()?;
     if binding_json.len() > MAX_REPORT_BYTES { return Err(SourceInspectionError::InvalidReport); }
-    let decoded = wire::decode_binding(binding_json);
+    let limits = limits::read(binding_json)?;
     checkpoint()?;
-    let binding = decoded.map_err(|_| SourceInspectionError::InvalidReport)?;
-    let options = &binding.identity.options;
-    let number = |value: &str| value.parse::<u64>().map_err(|_| SourceInspectionError::InvalidReport);
-    let budget = InspectionBudget::new(start, number(&options.max_work)?, number(&options.max_bytes)?, number(&options.deadline_ms)?);
-    budget.scope(|| inspect_binding(element, decoder, router, binding, source_epoch, implementation_commit))
+    let budget = InspectionBudget::new(start, limits.max_work, limits.max_bytes, limits.deadline_ms);
+    budget.scope(|| {
+        checkpoint()?;
+        let _scratch = resource::charge(Cost { live_bytes: SCRATCH_BYTES, ..Default::default() })?;
+        // Both the generated preflight and its owned String/Vec decode are
+        // covered by admission. The bootstrap is not schema validation.
+        let decoded = wire::decode_binding(binding_json);
+        #[cfg(any(test, feature = "test-support"))]
+        resource::inspection_test_clock::point("binding_decode");
+        checkpoint()?;
+        let binding = decoded.map_err(|_| SourceInspectionError::InvalidReport)?;
+        inspect_binding(element, decoder, router, binding, source_epoch, implementation_commit)
+    })
 }
 
 fn inspect_binding(element: &DecodedEntity, decoder: &mut EntityDecoder, router: &GeometryRouter,
@@ -76,7 +86,6 @@ fn inspect_binding(element: &DecodedEntity, decoder: &mut EntityDecoder, router:
     let resources = OwnedResourceContext::capture_current();
     let result = resources.with_scope(|| {
         checkpoint()?;
-        let _scratch = resource::charge(Cost { live_bytes: SCRATCH_BYTES, ..Default::default() })?;
         if binding.requested.len() != 1 || binding.requested[0].product_id != element.id.to_string()
             || wire::text_format(implementation_commit, "commit").is_err() {
             return Err(SourceInspectionError::InvalidReport);

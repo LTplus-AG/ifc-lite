@@ -26,6 +26,8 @@ pub(super) fn capture(
             solid_id: item.id,
             source: crate::analytic::extract_swept_disk(item, decoder).map_err(|error| {
                 if let crate::Error::ProgramStopped(_) = error { return error; }
+                #[cfg(feature = "retained-runtime")]
+                if let crate::Error::InspectionDeadlineExceeded = error { return error; }
                 let diagnostic = crate::Error::geometry(error.to_string());
                 let cause = match error {
                     crate::Error::CoreError(core) => OriginCause::Core(core),

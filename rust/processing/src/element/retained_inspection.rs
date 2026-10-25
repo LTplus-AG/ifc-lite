@@ -167,5 +167,9 @@ fn checkpoint(_stage: &str) -> Result<(), RetainedInspectionError> {
 mod bounds_tests;
 
 #[cfg(test)]
+#[path = "retained_inspection_admission_tests.rs"]
+mod admission_tests;
+
+#[cfg(test)]
 #[path = "retained_inspection_tests.rs"]
 mod tests;

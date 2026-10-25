@@ -924,6 +924,12 @@ jobs:
             # and drop only the exact compare after the perfect hash, so foreign
             # keywords on an occupied slot must fail the codegen and core tests.
             oracle_args+=(--mutation tests/evidence/ifctype-lookup-8119/lookup.oracle.patch)
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/diff-wasm/src/diff_transport.rs | grep -Fxq 'rust/diff-wasm/src/diff_transport.rs'; then
+            # #8042/#8105: keep typed fingerprint/transport APIs and document serde.
+            # Lose only unpaired UTF-16 units in the core-attribute projection;
+            # fingerprint_utf16 and fingerprint_parity must fail assertions.
+            # Once diff_transport.rs is on main, whole-change inversion resumes.
+            oracle_args+=(--mutation tests/evidence/diff-8042/fingerprint-utf16.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/diff/src/document_serde.rs | grep -Fxq 'rust/diff/src/document_serde.rs'; then
             # #8042/#8104: keep all document APIs/types; lose only unpaired UTF-16 units.
             # document_contract must fail exact surrogate serialization, and

@@ -109,10 +109,10 @@ fn voided_parts(
     router.take_csg_failures_checked()?;
     Ok(match router.process_element_with_voids_parts(job.entity, decoder, ctx.void_index) {
         Ok(parts) if parts.iter().any(|mesh| !mesh.is_empty()) => PartsOutcome::Geometry(parts),
-        // An empty void-cut result normally means the cut FAILED and emptied
-        // the host, so it re-renders un-cut. But when a containing void
-        // genuinely CONSUMED the host, the empty result is correct; keep it, or
-        // the un-cut host re-appears as a spurious solid.
+        // An empty result the router did not mark consumed (no part had
+        // triangles to cut, or no cut ran) re-renders un-cut. A cut that
+        // emptied a host is marked consumed and stays empty, or the un-cut
+        // host re-appears as a spurious solid.
         Ok(_) if router.host_consumed_by_void(job.id) => PartsOutcome::ConsumedByOpening,
         _ => PartsOutcome::Retry,
     })

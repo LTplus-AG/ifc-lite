@@ -28,7 +28,7 @@
 //! `0x7f`, `U+2028` and `U+2029` all pass through raw, where several JSON
 //! writers escape them.
 
-use crate::utf16::cmp_code_units;
+use crate::JsString;
 
 /// A JSON value in the shape the fingerprint projections build.
 ///
@@ -40,9 +40,9 @@ pub enum JsonValue {
     Null,
     Bool(bool),
     Number(f64),
-    String(String),
+    String(JsString),
     Array(Vec<JsonValue>),
-    Object(Vec<(String, JsonValue)>),
+    Object(Vec<(JsString, JsonValue)>),
 }
 
 /// Serialize exactly as `JSON.stringify` does, preserving object key order.
@@ -85,8 +85,8 @@ fn write_value(value: &JsonValue, sort_keys: bool, out: &mut String) {
         JsonValue::Object(entries) => {
             out.push('{');
             if sort_keys {
-                let mut order: Vec<&(String, JsonValue)> = entries.iter().collect();
-                order.sort_by(|a, b| cmp_code_units(&a.0, &b.0));
+                let mut order: Vec<&(JsString, JsonValue)> = entries.iter().collect();
+                order.sort_by(|a, b| a.0.cmp(&b.0));
                 write_entries(order.into_iter(), sort_keys, out);
             } else {
                 write_entries(entries.iter(), sort_keys, out);
@@ -98,7 +98,7 @@ fn write_value(value: &JsonValue, sort_keys: bool, out: &mut String) {
 
 fn write_entries<'a, I>(entries: I, sort_keys: bool, out: &mut String)
 where
-    I: Iterator<Item = &'a (String, JsonValue)>,
+    I: Iterator<Item = &'a (JsString, JsonValue)>,
 {
     for (index, (key, item)) in entries.enumerate() {
         if index > 0 {
@@ -125,7 +125,7 @@ fn number_to_json(value: f64) -> String {
     buffer.format_finite(value).to_owned()
 }
 
-/// Render a number the way `String(n)` does, for the non-finite tokens.
+/// Render a number the way `JsString(n)` does, for the non-finite tokens.
 ///
 /// ECMAScript `ToString` spells these `NaN`, `Infinity` and `-Infinity`;
 /// Rust's `Display` spells them `NaN`, `inf` and `-inf`.
@@ -139,41 +139,8 @@ pub fn non_finite_token(value: f64) -> &'static str {
     }
 }
 
-/// Escape and quote a string exactly as V8's `JSON.stringify` does.
-///
-/// Iterating `char`s rather than UTF-16 code units is safe *and* required
-/// here. Safe, because every code unit an escape rule matches is below
-/// `0x80`, so no escape can ever straddle a surrogate pair and a per-character
-/// walk sees exactly the same triggers as a per-unit one. Required, because a
-/// per-unit walk has to reassemble pairs to emit them, and getting that wrong
-/// drops astral characters silently.
-///
-/// A Rust `&str` cannot hold a lone surrogate, so the well-formed-stringify
-/// path (ES2019) that escapes one is unreachable here, and is deliberately
-/// absent rather than written and untestable.
-fn write_string(value: &str, out: &mut String) {
-    out.push('"');
-    for ch in value.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\u{08}' => out.push_str("\\b"),
-            '\u{09}' => out.push_str("\\t"),
-            '\u{0a}' => out.push_str("\\n"),
-            '\u{0c}' => out.push_str("\\f"),
-            '\u{0d}' => out.push_str("\\r"),
-            // Every other C0 control. V8 spells these lowercase.
-            c if (c as u32) < 0x20 => {
-                out.push_str(&format!("\\u{:04x}", c as u32));
-            }
-            // Everything else passes through raw, `/`, `0x7f`, `U+2028` and
-            // `U+2029` included. Several JSON writers escape those; V8 does
-            // not, and this has to match V8.
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-}
+/// Well-formed JSON.stringify escapes unpaired surrogate code units.
+fn write_string(value: &JsString, out: &mut String) { value.write_json(out); }
 
 #[cfg(test)]
 #[path = "js_json_tests.rs"]

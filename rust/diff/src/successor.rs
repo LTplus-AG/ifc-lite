@@ -56,7 +56,7 @@ fn claim<'a, R>(confidence: SuccessorConfidence, base: &'a EntityFingerprint<R>,
     let raw = centre_distance(centre(bbox(base)), centre(bbox(head)));
     let agreeing_components = base.components.as_ref().zip(head.components.as_ref()).map(|(a, b)| {
         let mut keys: Vec<_> = a.iter().filter(|(key, value)| b.get(*key) == Some(*value)).map(|(key, _)| key.clone()).collect();
-        keys.sort_by(|a, b| cmp_code_units(a, b));
+        keys.sort_by(cmp_code_units);
         keys
     });
     SuccessorClaim { confidence, base, head, overlap,

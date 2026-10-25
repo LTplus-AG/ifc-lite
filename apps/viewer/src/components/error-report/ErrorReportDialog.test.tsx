@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import { settleReportWork as settle, reportClock } from '@/test/error-report-timing.js';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -36,7 +37,6 @@ async function waitFor(check: () => boolean, message: string): Promise<void> {
   while (!check() && Date.now() < deadline) await settle();
   assert.ok(check(), message);
 }
-async function settle() { await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); }); }
 function button(text: string): HTMLButtonElement {
   const result = [...document.querySelectorAll('button')].find(element => element.textContent === text);
   assert.ok(result, `button ${text}`); return result;
@@ -101,7 +101,8 @@ test('#7495 selecting and reviewing a private attachment still sends zero model 
   assert.deepEqual(calls, ['GET:/api/reports/session']);
 });
 
-test('#7495 queued receipt polls to the GitHub link without another draft or submission', async () => {
+test('#7495 queued receipt polls to the GitHub link without another draft or submission', async t => {
+  const clock = reportClock(t);
   const requests: string[] = [];
   let statusReads = 0;
   const transport: typeof fetch = async value => {
@@ -114,10 +115,14 @@ test('#7495 queued receipt polls to the GitHub link without another draft or sub
   render(<ErrorReportDialog context={{ errorCode: 'report_resume', resumeReportId: 'saved-report' }} onClose={() => {}} client={new ReportClient(transport)} />);
   await settle();
   assert.ok(document.body.textContent?.includes('Creating the GitHub issue'));
-  await act(async () => { await new Promise(resolve => setTimeout(resolve, 3100)); });
+  await clock.advance(2999);
+  assert.equal(statusReads, 1, 'publication is not polled before three seconds');
+  await clock.advance(1);
   const link = document.querySelector('a[href="https://github.com/LTplus-AG/ifc-lite/issues/7495"]');
   assert.ok(link);
   assert.deepEqual(requests, ['/api/reports/session', '/api/reports/saved-report', '/api/reports/saved-report']);
+  await clock.advance(6000);
+  assert.equal(statusReads, 2, 'published receipt stops automatic polling');
 });
 
 test('#7495 known errors prefill an editable plain-language title while the description stays optional', async () => {
@@ -135,7 +140,8 @@ test('#7495 known errors prefill an editable plain-language title while the desc
   }
 });
 
-test('#7495 publication hold stops automatic polling but preserves manual status checks', async () => {
+test('#7495 publication hold stops automatic polling but preserves manual status checks', async t => {
+  const clock = reportClock(t);
   let reads = 0;
   const transport: typeof fetch = async value => {
     if (String(value).endsWith('/session')) return Response.json(session);
@@ -144,15 +150,79 @@ test('#7495 publication hold stops automatic polling but preserves manual status
   };
   render(<ErrorReportDialog context={{ errorCode: 'report_resume', resumeReportId: 'held-report' }} onClose={() => {}} client={new ReportClient(transport)} />);
   await settle();
-  await act(async () => { await new Promise(resolve => setTimeout(resolve, 3100)); });
+  assert.equal(reads, 1, 'recovery completes before the polling clock advances');
+  await clock.advance(3000);
   assert.equal(reads, 2);
   assert.ok(document.body.textContent?.includes('Publication is paused for review'));
   assert.ok(!document.body.textContent?.includes('Creating the GitHub issue'));
-  await act(async () => { await new Promise(resolve => setTimeout(resolve, 3100)); });
+  await clock.advance(6000);
   assert.equal(reads, 2, 'held report causes no further automatic status request');
   click(button('Check review status'));
   await settle();
   assert.equal(reads, 3, 'manual status check remains available');
+});
+
+test('#7495 publication polling waits for each response and unmount aborts the pending request', async t => {
+  const clock = reportClock(t);
+  rememberReport('polling-report');
+  const requests: string[] = [];
+  let reads = 0;
+  let pollSignal: AbortSignal | null | undefined;
+  let finish!: (response: Response) => void;
+  let pending = new Promise<Response>(resolve => { finish = resolve; });
+  t.after(async () => {
+    cleanup();
+    await act(async () => { finish(Response.json({ id: 'polling-report', status: 'submitted' })); await pending; });
+    forgetReport('polling-report');
+  });
+  const transport: typeof fetch = async (value, options) => {
+    const path = String(value); requests.push(`${options?.method ?? 'GET'} ${path}`);
+    if (path.endsWith('/session')) return Response.json(session);
+    reads++;
+    if (reads === 1) return Response.json({ id: 'polling-report', status: 'submitted' });
+    pollSignal = options?.signal;
+    return pending; // Deliberately ignores abort so late-completion guards matter.
+  };
+  render(<ErrorReportDialog context={{ errorCode: 'report_resume', resumeReportId: 'polling-report' }} onClose={() => {}} client={new ReportClient(transport)} />);
+  await settle();
+  assert.equal(reads, 1);
+  await clock.advance(3000);
+  assert.equal(reads, 2, 'first poll is in flight');
+  assert.ok(pollSignal);
+  assert.equal(pollSignal.aborted, false);
+  await clock.advance(9000);
+  assert.equal(reads, 2, 'slow status requests never overlap');
+  await act(async () => { finish(Response.json({ id: 'polling-report', status: 'submitted' })); await pending; });
+  pending = new Promise<Response>(resolve => { finish = resolve; });
+  await clock.advance(2999);
+  assert.equal(reads, 2, 'next interval starts when the prior request completes');
+  await clock.advance(1);
+  assert.equal(reads, 3);
+  assert.equal(pollSignal.aborted, false);
+  cleanup();
+  assert.equal(pollSignal.aborted, true, 'unmount aborts the in-flight poll');
+  await act(async () => { finish(Response.json({ id: 'polling-report', status: 'published', issueUrl: 'https://github.com/LTplus-AG/ifc-lite/issues/7495' })); await pending; });
+  assert.equal(pendingReport(), 'polling-report', 'late publication cannot complete an unmounted report');
+  await clock.advance(6000);
+  assert.equal(reads, 3, 'unmount cancels future polling');
+  assert.deepEqual(requests, ['GET /api/reports/session', ...Array<string>(3).fill('GET /api/reports/polling-report')]);
+});
+
+test('#7495 unmount clears a scheduled publication poll before it can request status', async t => {
+  const clock = reportClock(t);
+  let reads = 0;
+  t.after(() => forgetReport('scheduled-report'));
+  const client = new ReportClient(async value => {
+    if (String(value).endsWith('/session')) return Response.json(session);
+    reads++;
+    return Response.json({ id: 'scheduled-report', status: 'submitted' });
+  });
+  render(<ErrorReportDialog context={{ errorCode: 'report_resume', resumeReportId: 'scheduled-report' }} onClose={() => {}} client={client} />);
+  await settle();
+  assert.equal(reads, 1, 'initial recovery completed');
+  cleanup();
+  await clock.advance(6000);
+  assert.equal(reads, 1, 'a cancelled timer never calls even an abort-ignoring transport');
 });
 
 test('#7495 custom NDA receipt identifies a request rather than a submitted error report', async () => {
@@ -307,7 +377,8 @@ test('#7500 resumed completed upload rejects a same-name same-size model with di
     const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(fileInput);
     Object.defineProperty(fileInput, 'files', { value: [new File(['fake'], 'same.ifc')], configurable: true });
     act(() => fileInput.dispatchEvent(new Event('change', { bubbles: true })));
-    click(button('Review report')); click(button('Send report')); await settle();
+    click(button('Review report')); click(button('Send report'));
+    await waitFor(() => !!document.body.textContent?.includes('selected model differs'), 'real source checksum rejects the replacement');
     assert.ok(document.body.textContent?.includes('selected model differs'));
     assert.deepEqual(writes, []);
   } finally { forgetReport('resume-source'); }
@@ -355,7 +426,8 @@ test('#7500 cancelling an older failed submission deletes only its own recovery 
 });
 
 
-for (const mode of ['automatic publication', 'manual status refresh'] as const) test(`#7500 older ${mode} keeps a newer pending report recoverable`, async () => {
+for (const mode of ['automatic publication', 'manual status refresh'] as const) test(`#7500 older ${mode} keeps a newer pending report recoverable`, async t => {
+  const clock = reportClock(t);
   const draft = { clientRequestId: 'request', title: 'Reviewed report', description: '', diagnostics: { errorCode: 'load_failed', appVersion: 'test', buildSha: 'test' }, visibility: 'private' as const };
   let published = false;
   const server = createServer((request, response) => {
@@ -378,7 +450,7 @@ for (const mode of ['automatic publication', 'manual status refresh'] as const) 
     await waitFor(() => [...document.querySelectorAll('button')].some(item => item.textContent === 'Check review status'), 'older report restores'); await newClient.session();
     await new ReportSubmission({ draft: { ...draft, clientRequestId: 'new-request' }, confidentiality: 'none', publicModelConfirmed: false }, newClient).send(new AbortController().signal, () => {});
     published = true;
-    if (mode === 'automatic publication') await act(async () => { await new Promise(resolve => setTimeout(resolve, 3100)); });
+    if (mode === 'automatic publication') await clock.advance(3000);
     else click(button('Check review status'));
     await waitFor(() => !!document.querySelector('a[href="https://github.com/LTplus-AG/ifc-lite/issues/7495"]'), 'older publication reaches its link');
     assert.ok(document.querySelector('a[href="https://github.com/LTplus-AG/ifc-lite/issues/7495"]'));

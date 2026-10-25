@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
+import { settleReportWork as settle } from '@/test/error-report-timing.js';
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
 import { cleanup, click, render } from '@/test/render.js';
 import type { PublicSharingConsent, ReportSession } from '@ifc-lite/report-contract';
 import { ReportClient } from '@/services/error-reports/client';
@@ -20,7 +20,6 @@ const session: ReportSession = {
 const consent: PublicSharingConsent = { version: 'public-model-v1', authorityConfirmed: true, redistributionReviewed: true,
   confidentialContentReviewed: true, downloadedCopiesCannotBeRecalled: true, publishDownloadLink: true };
 afterEach(cleanup);
-async function settle() { await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); }); }
 function button(text: string) {
   const element = [...document.querySelectorAll('button')].find(node => node.textContent === text);
   assert.ok(element, `button ${text}`); return element;

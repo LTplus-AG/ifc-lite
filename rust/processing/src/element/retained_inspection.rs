@@ -56,7 +56,7 @@ pub fn inspect_retained_bytes(
         checkpoint("source_prepared")?;
         let mut decoder = source.decoder();
         checkpoint("source_decoder")?;
-        inspect_with_options(source, product_id, None, &mut decoder, &options, implementation_commit, &budget)
+        inspect_with_options(source.clone(), product_id, None, &mut decoder, &options, implementation_commit, &budget)
     })
 }
 

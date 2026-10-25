@@ -320,7 +320,7 @@ impl MappingControl<'_> {
     }
 
     /// Hand a level's result to its parent source, or complete the walk.
-    fn deliver(&mut self, item_id: u32, truncated: bool, value: Result<Vec<Mesh>>,
+    fn deliver(&mut self, _item_id: u32, truncated: bool, value: Result<Vec<Mesh>>,
         router: &GeometryRouter) -> Option<Event> {
         let styled = self.walk == Walk::Styled;
         let Some(parent) = self.levels.last_mut() else {
@@ -346,10 +346,10 @@ impl MappingControl<'_> {
                 let _policy = router.enter_unsupported_policy(parent.policy);
                 router.record_unsupported_item(IfcType::IfcMappedItem);
                 crate::diag::diag_debug!(
-                    { item_id = item_id, error = %_e, "skipping nested IfcMappedItem" }
+                    { item_id = _item_id, error = %_e, "skipping nested IfcMappedItem" }
                     else {
                         #[cfg(debug_assertions)]
-                        eprintln!("[ifc-lite] Skipping nested IfcMappedItem #{}: {}", item_id, _e);
+                        eprintln!("[ifc-lite] Skipping nested IfcMappedItem #{}: {}", _item_id, _e);
                     }
                 );
                 Some(Event::Advance)

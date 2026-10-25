@@ -77,6 +77,9 @@ pub fn directed_closed(mesh: &Mesh) -> bool {
 /// boundary loop whose edges have nothing opposite along them and fails. The
 /// exact kernel's own output is routinely NOT even undirected-watertight on
 /// these hosts, so this gate is still far stricter than the status quo.
+// Historical spelling retained by the shared test oracles. Production callers
+// use closed_enough_to_emit; don't compile an unused alias into feature builds.
+#[cfg(any(test, feature = "test-support"))]
 pub fn closed_or_hairline(mesh: &Mesh) -> bool {
     ClosureVerdict::for_mesh(mesh).closed_enough_to_emit()
 }

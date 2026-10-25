@@ -23,7 +23,7 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
                 .work(decoder, router, |d, r| {
                     let resources = OwnedResourceContext::capture_current();
                     captured_resources = Some(resources.clone());
-                    resources.check().map_err(RetainedExecutionError::Stopped)?;
+                    check_resources(&resources)?;
                     resource::charge(resource::Cost {
                         work: 1,
                         ..Default::default()
@@ -49,10 +49,10 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
             // The original stop also wins when source planning returned an
             // error before its owner/resource scopes finished unwinding.
             if let Some(resources) = captured_resources {
-                resources.check().map_err(RetainedExecutionError::Stopped)?;
+                check_resources(&resources)?;
             }
             let ((resources, planned, terminal), _) = prepared?;
-            resources.check().map_err(RetainedExecutionError::Stopped)?;
+            check_resources(&resources)?;
             let state = ProductState::planned(job, planned, terminal, Some(context.id()), None);
             if let Some(stop) = state.terminal() {
                 return Err(RetainedExecutionError::Stopped(stop));
@@ -71,6 +71,7 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
                 type_values: Vec::new(),
                 type_map_members: Default::default(),
                 pending: None,
+                prepared: None,
                 ledger: Vec::new(),
                 permits: Storage::default(),
                 scratch: Storage::default(),

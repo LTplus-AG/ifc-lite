@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 use super::*;
+type ReservedRealizations<R> = (Vec<Arc<RuntimeRealization<R>>>, Storage);
 pub(super) struct StageState { stage: AtomicU8, _storage: Reservation }
 impl StageState {
     pub(super) fn new(resources: &OwnedResourceContext) -> Result<Self, RetainedExecutionError> {
@@ -67,9 +68,7 @@ impl<R: NumericalReceipt> RuntimeIssued<R> {
         Ok(())
     }
     pub(super) fn checkpoint(&self) -> Result<(), RetainedExecutionError> {
-        self.resources
-            .check()
-            .map_err(RetainedExecutionError::Stopped)?;
+        check_resources(&self.resources)?;
         self.lifecycle
             .validate()
             .map_err(RetainedExecutionError::Source)?;
@@ -88,7 +87,7 @@ impl<R: NumericalReceipt> RuntimeIssued<R> {
         self.cancellation.stage.compare_exchange(ISSUED, EXECUTING, Ordering::AcqRel, Ordering::Acquire).map_err(protocol)?;
         self.checkpoint()
     }
-    pub(super) fn reserve_realizations(&self) -> Result<(Vec<Arc<RuntimeRealization<R>>>, Storage), RetainedExecutionError> {
+    pub(super) fn reserve_realizations(&self) -> Result<ReservedRealizations<R>, RetainedExecutionError> {
         let mut realizations = Vec::new();
         let mut storage = Storage::default();
         storage.reserve(&self.resources, &mut realizations, self.operations.len())?;

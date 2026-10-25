@@ -2,7 +2,7 @@
 //! #7955: action and typed reporting are separate executable obligations.
 use super::*;
 use super::super::session_tests::{job, metadata, options, SOURCE};
-use crate::retained_inspection_contract::Code;
+use crate::retained_native_contract::Code;
 
 #[test]
 fn source_allocation_refusal_retains_its_typed_origin() {
@@ -151,5 +151,38 @@ fn dead_original_worker_precedes_caller_fault_and_never_returns_a_retry_packet()
         assert_eq!(execution.discharged_count(), 0);
         assert!(execution.issue_next(decoder, router, worker).is_err());
         assert!(execution.failed);
+    });
+}
+
+#[test]
+fn issue_7955_m3_conflicting_outcome_poisons_only_its_domain_and_preserves_rejected_buffers() {
+    super::adversarial_tests::with_case(None, SOURCE, |execution, decoder, router, worker, _, _| {
+        let foreign = super::tests::worker().expect("real foreign SDK worker");
+        let owner = worker.retained_owner();
+        let foreign_owner = foreign.retained_owner();
+        let issued = execution.issue_next(decoder, router, worker).unwrap().unwrap();
+        let work = issued.execute(worker, 0.001, 15., MeshLimits::default()).unwrap();
+        let buffer = work.realizations[0].construction().unwrap().completion().tessellation.positions.as_ptr();
+        let receipt = Arc::as_ptr(&work.realizations[0]);
+        assert!(!work.realizations[0].is_empty(), "real constructed box is nonempty");
+        execution.pending.as_ref().unwrap().operations[0].expected()
+            .bind_numerical_outcome(true).unwrap();
+        let rejected = execution.accept(work, decoder, router).expect_err("conflicting write-once outcome");
+        assert!(matches!(rejected.reason,
+            RetainedExecutionError::Receipt(ReceiptFailure::ConflictingRetainedNumericalOutcome)));
+        assert_eq!(rejected.reason.code(), Code::ReceiptInvalid, "M3_CONFLICT_REPORT");
+        assert!(execution.failed, "M3_CONFLICT_MUST_POISON_ATTEMPT");
+        assert_eq!(execution.pending.as_ref().unwrap().cancellation.stage.load(Ordering::Acquire), CANCELLED);
+        assert!(owner.incarnation().is_none());
+        assert!(foreign_owner.incarnation().is_some());
+        assert_eq!(receipt, Arc::as_ptr(&rejected.work.realizations[0]));
+        assert_eq!(buffer, rejected.work.realizations[0].construction().unwrap().completion().tessellation.positions.as_ptr());
+        assert_eq!(execution.discharged_count(), 0);
+        assert!(execution.issue_next(decoder, router, worker).is_err());
+        assert!(execution.validate_witness().is_err());
+        let rejected_again = execution.accept(rejected.work, decoder, router).expect_err("poisoned attempt cannot retry");
+        assert_eq!(buffer, rejected_again.work.realizations[0].construction().unwrap().completion().tessellation.positions.as_ptr());
+        assert!(execution.traversal_plan().is_none());
+        assert!(foreign_owner.incarnation().is_some());
     });
 }

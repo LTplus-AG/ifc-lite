@@ -10,6 +10,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Errors that can occur during geometry processing
 #[derive(Error, Debug)]
 pub enum Error {
+    #[cfg(feature = "retained-runtime")]
+    #[error("inspection deadline exceeded")]
+    InspectionDeadlineExceeded,
     #[error(transparent)]
     ProgramStopped(#[from] crate::resource::ProgramStop),
 

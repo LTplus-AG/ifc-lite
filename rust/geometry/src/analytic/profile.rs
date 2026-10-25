@@ -159,6 +159,8 @@ fn arbitrary_loops(
             .ok_or("missing or malformed InnerCurves")?;
         if references.len() > MAX_LOOPS { return Err("InnerCurves exceed work budget".into()); }
         for reference in references {
+            #[cfg(feature = "retained-runtime")]
+            crate::resource::source_step().map_err(|error| error.to_string())?;
             if emitted_segments >= MAX_LOOPS {
                 return Err("profile segments exceed aggregate work budget".into());
             }
@@ -203,6 +205,8 @@ fn loop_from_segments(
     let mut area = 0.0;
     let mut perimeter = 0.0;
     for (index, segment) in segments.iter().enumerate() {
+        #[cfg(feature = "retained-runtime")]
+        crate::resource::source_step().map_err(|error| error.to_string())?;
         let frame = &frames[index];
         let next = &frames[(index + 1) % frames.len()];
         let tolerance = 1e-9_f64.max(relative_extent(frame.start, frame.end) * 1e-9);

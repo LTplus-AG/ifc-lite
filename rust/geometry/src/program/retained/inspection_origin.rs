@@ -9,6 +9,7 @@ pub(super) fn outcome(failure: RetainedFailure, binding: &wire::Binding)
     use wire::{Code, DetailReason, Requirement, Stage};
     let (code, reason, stage, requirement) = match failure {
         RetainedFailure::Stopped(stop) => return Err(stop.into()),
+        RetainedFailure::DeadlineExceeded => return Err(SourceInspectionError::DeadlineExceeded),
         RetainedFailure::Origin(handle) => {
             let origin = handle.origin().ok_or(SourceInspectionError::InvalidReport)?;
             let unsupported = matches!(&origin.cause,

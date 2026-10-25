@@ -46,7 +46,7 @@ pub struct Program<'a>(controller::RetainedProgram<'a>);
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Ticket(controller::RetainedTicket);
 pub struct Reply(controller::RetainedReply);
-pub struct RejectedReply { pub error: TransactionError, pub reply: Reply }
+pub struct RejectedReply { pub error: TransactionError, _reply: Reply }
 impl Program<'_> {
     pub fn request(&mut self) -> Result<Option<Ticket>, TransactionError> {
         self.0.request().map(|ticket| ticket.map(Ticket)).map_err(Into::into)
@@ -57,9 +57,9 @@ impl Program<'_> {
         // Do not charge the wrapper Vec permanently to an ambient account.
         let resources = Resources::capture_current();
         let mut wrapped = Vec::new();
-        let storage = resources.reserve_headers(&mut wrapped, operations.len())?;
+        let storage = resources.reserve_headers(&mut wrapped, operations.len()).map_err(TransactionError::stopped)?;
         wrapped.extend(operations.into_iter().map(Operation));
-        resources.check()?;
+        resources.check().map_err(TransactionError::stopped)?;
         Ok((Reply(reply), wrapped, storage))
     }
     pub fn validate_ticket(&self, ticket: Ticket) -> Result<(), TransactionError> {
@@ -70,7 +70,7 @@ impl Program<'_> {
     }
     pub fn accept(&mut self, reply: Reply, router: &GeometryRouter) -> Result<(), Box<RejectedReply>> {
         self.0.accept(reply.0, router).map_err(|rejected| Box::new(RejectedReply {
-            error: rejected.error.into(), reply: Reply(rejected.reply),
+            error: rejected.error.into(), _reply: Reply(rejected.reply),
         }))
     }
     pub fn cancel(&mut self) { self.0.cancel(); }

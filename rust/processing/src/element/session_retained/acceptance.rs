@@ -7,9 +7,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
         decoder: &EntityDecoder,
         router: &GeometryRouter,
     ) -> Result<(), RetainedExecutionError> {
-        self.resources
-            .check()
-            .map_err(RetainedExecutionError::Stopped)?;
+        check_resources(&self.resources)?;
         let pending = self
             .pending
             .as_ref()
@@ -17,7 +15,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
         if !Arc::ptr_eq(&pending.cancellation.stage, &work.cancellation.stage) {
             return Err(protocol(ReceiptFailure::ForeignConstructionReceipt));
         }
-        if let Err(error) = self.context.validate_source() {
+        if let Err(error) = self.context.lifecycle().validate() {
             pending.cancellation.cancel();
             return Err(RetainedExecutionError::Source(error));
         }
@@ -62,9 +60,9 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
         router: &GeometryRouter,
     ) -> Result<(), Box<RuntimeRejectedCompletion<R>>> {
         let validation = self.resources.with_scope(|| self.validate_completion(&work, decoder, router));
-        let validation = self.resources.check().map_err(RetainedExecutionError::Stopped).and(validation)
+        let validation = check_resources(&self.resources).and(validation)
             .and_then(|()| self.permits.reserve(&self.resources, &mut self.ledger, work.realizations.len()))
-            .and_then(|()| self.resources.check().map_err(RetainedExecutionError::Stopped));
+            .and_then(|()| check_resources(&self.resources));
         if let Err(reason) = validation {
             // Retire only this controller's captured domain on its terminal
             // fault. Never cancel the supplied (possibly foreign) envelope.
@@ -112,7 +110,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             })
             .map_err(protocol)
             .and_then(|(result, _)| result);
-        let result = self.resources.check().map_err(RetainedExecutionError::Stopped).and(result)
+        let result = check_resources(&self.resources).and(result)
             .and_then(|()| self.validate(decoder, router).map(|_| ()));
         if let Err(reason) = result {
             self.failed = true;

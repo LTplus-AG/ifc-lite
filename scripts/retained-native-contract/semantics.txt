@@ -1,0 +1,36 @@
+// SPDX-License-Identifier: MPL-2.0
+// Native descriptive validation. No receipt or final authority is constructed.
+fn validate_native(report: &NativeReport, binding: &Binding) -> Result<(), &'static str> {
+    check_native_report(report)?;
+    binding_context(binding)?;
+    require(report.identity == binding.identity)?;
+    require(binding.requested.len() == 1 && binding.requested[0] == report.product)?;
+    require(!binding.enumeration_complete && binding.non_geometric.is_empty())?;
+    for (index, obligation) in report.unchecked.iter().enumerate() {
+        require(!report.unchecked[..index].contains(obligation))?;
+    }
+    for required in [NativeObligation::OpeningClosure, NativeObligation::MaterialLayers,
+        NativeObligation::IfcAppearance, NativeObligation::PersistentFaces, NativeObligation::FinalGeometry,
+        NativeObligation::ProtectedRemoval, NativeObligation::Publication] {
+        require(report.unchecked.contains(&required))?;
+    }
+    match &report.outcome {
+        NativeOutcome::Intermediate(value) => {
+            let discharged = value.discharged_operations.parse::<u64>().map_err(|_| "count")?;
+            let logical = value.logical_values.parse::<u64>().map_err(|_| "count")?;
+            require(logical <= discharged)?;
+            require(!report.unchecked.contains(&NativeObligation::NumericalEvaluation))
+        }
+        NativeOutcome::Refused(value) => {
+            let failure = &value.refusal;
+            require(cause_family(&failure.code) == failure.family && native_combination(failure))?;
+            require(report.unchecked.contains(&NativeObligation::NumericalEvaluation))?;
+            require(match &failure.origin {
+                NativeOrigin::ResourceStop(_) | NativeOrigin::RuntimeLimit(_) => failure.code == Code::ResourceExhausted,
+                NativeOrigin::Cancelled(_) => failure.code == Code::Cancelled,
+                NativeOrigin::Deadline(_) => failure.code == Code::DeadlineExceeded,
+                NativeOrigin::Transaction(_) => !matches!(failure.code, Code::ResourceExhausted | Code::Cancelled | Code::DeadlineExceeded),
+            })
+        }
+    }
+}

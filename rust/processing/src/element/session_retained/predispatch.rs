@@ -34,7 +34,7 @@ impl<R: NumericalReceipt> RuntimeIssued<R> {
     pub(super) fn validate_predispatch_state(&self) -> Result<(), RetainedExecutionError> {
         // The captured resource/source fault precedes caller mistakes and never
         // consults the unrelated ambient execution scope.
-        self.resources.check().map_err(RetainedExecutionError::Stopped)?;
+        check_resources(&self.resources)?;
         self.lifecycle.validate().map_err(RetainedExecutionError::Source)?;
         let stage = self.cancellation.stage.load(Ordering::Acquire);
         if stage != ISSUED {

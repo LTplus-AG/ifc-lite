@@ -150,3 +150,8 @@ mod retained_contract;
 #[cfg(feature = "retained-runtime")]
 #[path = "generated/retained_inspection_contract.rs"]
 mod retained_inspection_contract;
+
+// #7955 Cut D: native-only generated descriptive contract, never publication authority.
+#[cfg(all(feature = "retained-native", not(target_arch = "wasm32")))]
+#[path = "generated/retained_native_contract.rs"]
+mod retained_native_contract;

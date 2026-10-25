@@ -95,9 +95,31 @@ API disposition; it does not change an npm export, public WASM binding, CLI flag
 viewer mode. No version is edited here. It introduces no numerical executor,
 runtime dependency, exact fallback, publication or removal path. Source archives
 contain the generated inspection projections; the census remains excluded tooling.
-Requested backing is accounted separately from measured RSS. A shared enclosing
-account can be stricter, and source-step byte checks conservatively include its
-other live backing; this is not strict coverage of every allocator or SDK cost.
+The inspection composes its `maxWork` and `maxBytes` allowance with the original
+account and pool, admitting covered work and requested live backing before growth,
+including report serialization. Original cumulative usage is never reset. Captured
+source contexts carry the local allowance; unrelated detached work does not.
+The report's permit refunds its backing on drop. Inherited retained helpers still
+conservatively retain some temporary charges for the original account lifetime.
+This covers requested backing, not allocator overhead, global RSS, all core decoder
+allocations or SDK costs; it is not an aggregate census-memory limit.
+
+`deadlineMs` starts at the bounded public entry, before unit resolution, root
+reading and source hashing. One captured monotonic domain spans source inspection,
+serialization, strict decode and later `bytes()` delivery. Cancellation is
+cooperative: hash chunks are at most 64 KiB, retained reference-list members are
+checked individually, analytic coefficient/value/curve loops and topology budget
+steps check the same clock, and unit resolution, individual decoder calls, controller
+admission and bounded serialization/strict decode are checked after completion.
+Those indivisible calls are not preempted. Deadline expiry is `DEADLINE_EXCEEDED`,
+not a fabricated cancellation or numeric resource payload; existing original
+source/account/terminal stops keep precedence. The clock injection used by tests
+is restricted to the existing test-support build.
+A stored census diagnostic can expire while later products are inspected. Its
+controller column then becomes `delivery_refused` with the actual typed code;
+the original extractor row, inventories and counts remain in the serialized census.
+Expired bytes never become an inspected-success column.
+
 Performance, geometry equivalence and release qualification are separate gates.
 
 ## Overview
@@ -1023,18 +1045,36 @@ launcher:
 
 ```bash
 cargo run --locked -p ifc-lite-processing --features retained-native \
-  --example retained_product -- MODEL.ifc EXPRESS_ID /absolute/existing/ifclite_smlib_worker
+  --example retained_product -- MODEL.ifc EXPRESS_ID /absolute/existing/ifclite_smlib_worker OPTIONS.json IMPLEMENTATION_COMMIT
 ```
 
-Its result is `intermediate_numerical_diagnostic`, with source identity,
-operation counts and unchecked obligations. `finalProductAvailable` is always
+The generated `native_transaction_diagnostic` report binds immutable source
+hash/revision, product identity, the complete options, and the supplied 40-digit
+implementation commit. Its outcome is `intermediate` or `refused`, with validated
+stage/requirement context and explicit-only exact retry on refusal. The native
+schema extends the shared private contract without changing source inspection.
+Raw resource stops retain dimension/requested/remaining/reason; they are not
+presented as observed/limit measurements. Intermediate reports contain operation
+counts and unchecked obligations. `finalProductAvailable` is always
 false. No mesh, definition, occurrence, removal or consumed-host effect is
 returned. Opening, layer, appearance and persistent-face obligations remain;
-type-map witnesses also retain product-placement obligations. The Rust
+type-map witnesses also retain product-placement obligations. The options file contains the strict retained options contract,
+including numerical tolerances, work/byte/deadline limits and
+`typeGeometryMode` (`suppress_instanced` or `emit_tagged`). The actual parsed root selects a
+product or type-product job. Type jobs derive map membership, mapped occurrences
+and type instantiation from the source and use the canonical mode/class planner;
+referenced maps are excluded in both modes. Each admitted map retains its actual
+MappingOrigin. Source-only refusal and suppressed type jobs need no SDK process. The Rust
 `element::diagnose_retained_native` entry returns an opaque diagnostic owner;
 `bytes()` checks its original source/resource/runtime lifetime, and
 `require_final_product()` refuses. Source, resource and runtime failures end the
-attempt. There is no automatic fallback or retry.
+attempt. There is no automatic fallback or retry. `NativeDiagnosticError::report_bytes()`
+returns the generated bound refusal when authenticated context and reserved report
+storage exist. Failures before that point remain ordinary typed errors without a
+wire report; Display text is not a machine contract. There is no bare-code JSON
+success path. Regenerate the native projection with
+`node scripts/retained-native-contract/generate.mjs`; the root Node test sweep
+checks drift. SDK-positive behavior still requires an admitted real worker run.
 
 The captured account admits recipe-clone/lowering envelopes before construction
 and actual returned buffer capacities before delivery and common acceptance.

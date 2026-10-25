@@ -63,6 +63,8 @@ mod boolean_tests;
 use predispatch::RuntimeRejectedExecution;
 mod entry;
 mod traversal;
+mod source_admission;
+use source_admission::SourceAdmission;
 #[cfg(all(test, feature = "retained-native", not(target_arch = "wasm32")))]
 mod tests;
 use batch::{
@@ -70,8 +72,11 @@ use batch::{
     RuntimeRejectedCompletion, RuntimeCancellation,
 };
 mod error;
-use error::{RetainedExecutionError, ReceiptFailure, Unsupported, protocol, geometry, common};
+use error::{RetainedExecutionError, ReceiptFailure, Unsupported, protocol, geometry, common, check_resources};
 pub(super) mod diagnostic;
+mod diagnostic_source;
+mod diagnostic_options;
+mod diagnostic_report;
 mod storage;
 mod construction_storage;
 use storage::Storage;
@@ -101,6 +106,7 @@ struct RuntimeProductExecution<'a, R: NumericalReceipt> {
     type_values: Vec<RetainedProductPlan>,
     type_map_members: Vec<u32>,
     pending: Option<PendingRetainedTransaction<R>>,
+    prepared: Option<SourceAdmission>,
     ledger: Vec<(LogicalRetainedValue, Arc<RuntimeRealization<R>>)>,
     permits: Storage,
     scratch: Storage,
@@ -114,9 +120,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
         decoder: &EntityDecoder,
         router: &GeometryRouter,
     ) -> Result<OwnerStamp, RetainedExecutionError> {
-        self.resources
-            .check()
-            .map_err(RetainedExecutionError::Stopped)?;
+        check_resources(&self.resources)?;
         self.context
             .validate_decoder(decoder)
             .map_err(RetainedExecutionError::Source)?;
@@ -131,7 +135,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
     fn issue_next(&mut self, decoder: &mut EntityDecoder, router: &GeometryRouter,
         worker: &impl RetainedRuntime<Receipt = R>) -> Result<Option<RuntimeIssued<R>>, RetainedExecutionError> {
         let result = self.issue_next_checked(decoder, router, worker);
-        let result = self.resources.check().map_err(RetainedExecutionError::Stopped).and(result);
+        let result = check_resources(&self.resources).and(result);
         if result.as_ref().is_err_and(|error| error.terminal()) { self.cancel(); }
         result
     }
@@ -148,87 +152,37 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
         if self.pending.is_some() {
             return Err(protocol(ReceiptFailure::OutstandingConstruction));
         }
-        loop {
-            if self.plan.is_some() {
-                return Ok(None);
-            }
-            let outer = self.outer.ok_or_else(|| protocol(ReceiptFailure::MissingOuterRequest))?;
-            self.state
-                .protocol
-                .before_execute(outer)
-                .map_err(protocol)?;
-            let resources = self.resources.clone();
-            let program = self
-                .program
-                .as_mut()
-                .ok_or_else(|| protocol(ReceiptFailure::MissingProgram))?;
-            let ((ticket, admission), stamp) = resources
-                .with_scope(|| {
-                    self.owner.work(decoder, router, |d, r| {
-                        self.scopes.with_scope(|| {
-                            let ticket = program.request().map_err(common)?;
-                            let admission = ticket
-                                .map(|ticket| program.admit(ticket, r, d).map_err(common))
-                                .transpose()?;
-                            Ok::<_, RetainedExecutionError>((ticket, admission))
-                        })
-                    })
-                })
-                .map_err(protocol)
-                .and_then(|(result, stamp)| {
-                    result.map(|(ticket, admission)| ((ticket, admission), stamp))
-                })?;
-            resources.check().map_err(RetainedExecutionError::Stopped)?;
-            self.context.validate_decoder(decoder).map_err(RetainedExecutionError::Source)?;
-            let Some(ticket) = ticket else {
-                self.finish_current_program(outer)?;
-                if self.plan.is_none() { self.start_next_program(decoder,router)?; }
-                continue;
-            };
-            let (reply, operations, _admission_storage) = admission.ok_or_else(|| protocol(ReceiptFailure::MissingAdmission))?;
-            if operations.is_empty() {
-                resources
-                    .with_scope(|| {
-                        self.owner.work(decoder, router, |_, r| {
-                            self.scopes.with_scope(|| {
-                                program.accept(reply, r).map_err(|e| common(e.error))
-                            })
-                        })
-                    })
-                    .map_err(protocol)?
-                    .0?;
-                resources.check().map_err(RetainedExecutionError::Stopped)?;
-                self.context.validate_decoder(decoder).map_err(RetainedExecutionError::Source)?;
-                continue;
-            }
-            if self.runtime_domain.is_none() { self.runtime_domain = Some(worker.domain()); }
-            let (operations, storage) = resources.with_scope(|| self.prepare_operations(operations, worker))?;
-            let (issued_operations, issued_storage) = resources.with_scope(|| self.copy_issued_operations(&operations))?;
-            let cancellation = RuntimeCancellation {
-                stage: Arc::new(batch::StageState::new(&resources)?),
-                owner: worker.domain(),
-            };
-            // Recheck after every preparation scope has restored its TLS.
-            self.validate(decoder, router)?;
-            let issued = RuntimeIssued {
-                operations: issued_operations,
-                _storage: issued_storage,
-                lifecycle: self.context.lifecycle(),
-                resources,
-                cancellation: cancellation.clone(),
-                armed: true,
-            };
-            self.pending = Some(PendingRetainedTransaction {
-                outer,
-                common: ticket,
-                owner: stamp,
-                reply,
-                operations,
-                cancellation,
-                _storage: storage,
-            });
-            return Ok(Some(issued));
-        }
+        if !self.advance_source(decoder, router)? { return Ok(None); }
+        let SourceAdmission { outer, ticket, stamp, reply, operations, _storage: _admission_storage } =
+            self.prepared.take().ok_or_else(|| protocol(ReceiptFailure::MissingAdmission))?;
+        let resources = self.resources.clone();
+        if self.runtime_domain.is_none() { self.runtime_domain = Some(worker.domain()); }
+        let (operations, storage) = resources.with_scope(|| self.prepare_operations(operations, worker))?;
+        let (issued_operations, issued_storage) = resources.with_scope(|| self.copy_issued_operations(&operations))?;
+        let cancellation = RuntimeCancellation {
+            stage: Arc::new(batch::StageState::new(&resources)?),
+            owner: worker.domain(),
+        };
+        // Recheck after every preparation scope has restored its TLS.
+        self.validate(decoder, router)?;
+        let issued = RuntimeIssued {
+            operations: issued_operations,
+            _storage: issued_storage,
+            lifecycle: self.context.lifecycle(),
+            resources,
+            cancellation: cancellation.clone(),
+            armed: true,
+        };
+        self.pending = Some(PendingRetainedTransaction {
+            outer,
+            common: ticket,
+            owner: stamp,
+            reply,
+            operations,
+            cancellation,
+            _storage: storage,
+        });
+        Ok(Some(issued))
     }
     fn cancel(&mut self) {
         self.failed = true;
@@ -249,9 +203,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
         self.ledger.len()
     }
     fn validate_witness(&self) -> Result<(), RetainedExecutionError> {
-        self.resources
-            .check()
-            .map_err(RetainedExecutionError::Stopped)?;
+        check_resources(&self.resources)?;
         self.context
             .lifecycle().validate()
             .map_err(RetainedExecutionError::Source)?;
@@ -262,7 +214,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
     }
     fn validate_manifest(&self, plan: &RetainedProductPlan) -> Result<(), RetainedExecutionError> {
         let result = self.resources.with_scope(|| self.validate_manifest_in_scope(plan));
-        self.resources.check().map_err(RetainedExecutionError::Stopped)?;
+        check_resources(&self.resources)?;
         self.context.lifecycle().validate().map_err(RetainedExecutionError::Source)?;
         result
     }

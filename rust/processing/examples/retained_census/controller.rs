@@ -24,10 +24,16 @@ pub(super) enum Column {
 impl Serialize for Column {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let value = match self {
-            Self::Inspected(report) => {
-                let bytes = report.bytes().map_err(serde::ser::Error::custom)?;
-                serde_json::from_slice::<serde_json::Value>(bytes).map_err(serde::ser::Error::custom)?
-            }
+            Self::Inspected(report) => match report.bytes() {
+                Ok(bytes) => serde_json::from_slice::<serde_json::Value>(bytes)
+                    .map_err(serde::ser::Error::custom)?,
+                // A captured report can expire while later rows are inspected.
+                // Keep this row and the extractor inventory, without exposing
+                // its stale success bytes or aborting the complete census.
+                Err(error) => serde_json::json!({"kind":"delivery_refused", "code":
+                    serde_json::from_str::<serde_json::Value>(&error.diagnostic_code_json())
+                        .map_err(serde::ser::Error::custom)?, "authority":"diagnostic_only"}),
+            },
             Self::EntryRefused(code) => serde_json::json!({"kind":"entry_refused", "code":
                 serde_json::from_str::<serde_json::Value>(code).map_err(serde::ser::Error::custom)?,
                 "authority":"diagnostic_only"}),
@@ -94,3 +100,7 @@ mod tests {
         assert!(!fixture.enumeration_complete);
     }
 }
+
+#[cfg(test)]
+#[path = "delivery_tests.rs"]
+mod delivery_tests;

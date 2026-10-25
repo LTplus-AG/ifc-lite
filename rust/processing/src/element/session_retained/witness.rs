@@ -10,9 +10,7 @@ pub(super) struct RuntimeProductWitness<R: NumericalReceipt> {
 }
 impl<R: NumericalReceipt> RuntimeProductWitness<R> {
     pub(super) fn validate(&self) -> Result<(), RetainedExecutionError> {
-        self.resources
-            .check()
-            .map_err(RetainedExecutionError::Stopped)?;
+        check_resources(&self.resources)?;
         self.lifecycle
             .validate()
             .map_err(RetainedExecutionError::Source)?;

@@ -117,6 +117,14 @@ export function compileSharedWasmModule(explicitUrl?: string): Promise<WebAssemb
   return url ? optionalModule(acquireModule(url)) : Promise.resolve(null);
 }
 
+/** Join an existing canonical acquisition without fetching for a consumer that may never need WASM. */
+export function cachedSharedWasmModule(explicitUrl?: string): Promise<WebAssembly.Module | null> | undefined {
+  const url = resolveWasmUrl(explicitUrl);
+  const key = url instanceof URL ? url.href : url;
+  const cached = key ? sharedWasmModulePromises.get(key) : undefined;
+  return cached ? optionalModule(cached) : undefined;
+}
+
 /** Modern public init options; deliberately not a package-root export. */
 type SharedWasmInitOptions = {
   module_or_path: WebAssembly.Module | Promise<WebAssembly.Module>;

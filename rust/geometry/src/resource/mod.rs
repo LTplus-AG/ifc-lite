@@ -5,6 +5,8 @@ mod account;
 #[cfg(any(test, feature = "retained-runtime"))]
 #[cfg_attr(not(test), allow(dead_code))]
 mod owned;
+#[cfg(feature = "retained-runtime")]
+pub(crate) use owned::OwnedResourceContext;
 mod pool;
 mod storage;
 pub(crate) use storage::reserve_headers;

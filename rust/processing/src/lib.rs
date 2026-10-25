@@ -145,3 +145,8 @@ pub use types::response::{
 #[cfg(test)]
 #[path = "generated/retained_contract.rs"]
 mod retained_contract;
+
+// #7955 Cut C: only the inspection schema closure is consumed in production.
+#[cfg(feature = "retained-runtime")]
+#[path = "generated/retained_inspection_contract.rs"]
+mod retained_inspection_contract;

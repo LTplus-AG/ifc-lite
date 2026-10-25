@@ -8,6 +8,9 @@ use crate::program::retained::*;
 use crate::program::retained::failure::{CompletionReason, FailureHandle, FailureSite, RetainedFailure};
 #[path = "completion.rs"]
 mod completion;
+#[cfg(feature = "retained-runtime")]
+#[path = "inspection.rs"]
+pub(crate) mod inspection;
 
 pub(crate) struct RetainedProgram<'a> {
     inner: GeometryProgram<'a>,

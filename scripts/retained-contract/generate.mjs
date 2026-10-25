@@ -9,6 +9,7 @@ import { cases } from './cases.mjs';
 import { wireCases } from './wire-cases.mjs';
 import { demand } from './validate.mjs';
 import { rustWire } from './rust-wire-generate.mjs';
+import { inspectionProjection } from './inspection-generate.mjs';
 
 export const roots = ['Options', 'Refusal', 'ModelReport', 'InspectionReport'];
 const directory = fileURLToPath(new URL('.', import.meta.url));
@@ -160,6 +161,8 @@ export async function projections(input = schema) {
   const wireTests = await readFile(resolve(directory, 'rust-wire-tests.txt'), 'utf8');
   const outputs = new Map();
   for (const crate of ['geometry', 'processing']) {
+    outputs.set(`rust/${crate}/src/generated/retained_inspection_contract.rs`,
+      inspectionProjection(input, header, rustDefinition, rustCheck, semantics, wire, rust, crate));
     outputs.set(`rust/${crate}/src/generated/retained_contract.rs`, rust + '\n#[cfg(test)]\n#[path = "retained_contract_tests.rs"]\nmod tests;\n');
     outputs.set(`rust/${crate}/src/generated/retained_contract_tests.rs`, header + rustTests + '\n' + wireTests
       + `\nconst CASES: &str = r###"${JSON.stringify(cases.map(({ input, binding, ...item }) => ({ ...item, inputWire: JSON.stringify(input), ...(binding ? { bindingWire: JSON.stringify(binding) } : {}) })))}"###;\n`

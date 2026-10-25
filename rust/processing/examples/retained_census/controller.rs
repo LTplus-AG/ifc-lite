@@ -1,0 +1,87 @@
+// SPDX-License-Identifier: MPL-2.0
+//! Actual bounded controller column; the original extractor denominator is intact.
+use super::Product;
+use ifc_lite_core::SourceBundle;
+use ifc_lite_processing::element::{inspect_retained_source, RetainedSourceInspection};
+use serde::{Serialize, Serializer};
+use sha2::{Digest, Sha256};
+use std::{collections::BTreeMap, process::Command};
+
+// Immutable inspection intent, independently validated by the production entry.
+pub(super) const OPTIONS: &str = r#"{"schemaVersion":1,"chordToleranceMetres":0.001,"angleToleranceRadians":0.1,
+"maxWork":"100000","maxBytes":"67108864","deadlineMs":"10000","typeGeometryMode":"suppress_instanced",
+"normalPolicy":"source_analytic_v1","instancePolicy":"uncut_mapped_v1","interfacePolicy":"certified_internal_v1",
+"openings":"all","layers":"preserve","skipSmallCuts":false,"mergeLayers":false}"#;
+
+pub(super) enum Column {
+    Inspected(RetainedSourceInspection),
+    EntryRefused(String),
+    Uninspected,
+}
+impl Serialize for Column {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value = match self {
+            Self::Inspected(report) => {
+                let bytes = report.bytes().map_err(serde::ser::Error::custom)?;
+                serde_json::from_slice::<serde_json::Value>(bytes).map_err(serde::ser::Error::custom)?
+            }
+            Self::EntryRefused(code) => serde_json::json!({"kind":"entry_refused", "code":
+                serde_json::from_str::<serde_json::Value>(code).map_err(serde::ser::Error::custom)?,
+                "authority":"diagnostic_only"}),
+            Self::Uninspected => serde_json::json!({"kind":"uninspected", "authority":"diagnostic_only"}),
+        };
+        value.serialize(serializer)
+    }
+}
+
+pub(super) fn inspect(content: &[u8], products: &mut BTreeMap<u32, Product>) {
+    let Some(commit) = implementation_commit() else {
+        for product in products.values_mut() { product.controller = Some(Column::Uninspected); }
+        return;
+    };
+    inspect_at(content, products, &commit);
+}
+fn inspect_at(content: &[u8], products: &mut BTreeMap<u32, Product>, commit: &str) {
+    let source = SourceBundle::new(content.to_vec());
+    for (&id, product) in products {
+        // Keep malformed/non-Body/unsupported rows. This probe does not decide
+        // the Q0 denominator, nor promote a numerical prefix to whole support.
+        product.controller = Some(match inspect_retained_source(source.clone(), id, OPTIONS, commit) {
+            Ok(report) => Column::Inspected(report),
+            Err(error) => Column::EntryRefused(error.diagnostic_code_json()),
+        });
+    }
+}
+
+fn implementation_commit() -> Option<String> {
+    let output = Command::new("git").args(["status", "--porcelain", "--untracked-files=normal"])
+        .current_dir(env!("CARGO_MANIFEST_DIR")).output().ok()?;
+    if !output.status.success() || !output.stdout.is_empty() { return None; }
+    let output = Command::new("git").args(["rev-parse", "HEAD"])
+        .current_dir(env!("CARGO_MANIFEST_DIR")).output().ok()?;
+    output.status.success().then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+}
+
+/// Independently pin the executable; the commit field describes the inspected
+/// clean checkout, not an assertion that arbitrary prebuilt binaries match it.
+pub(super) fn executable_sha256() -> Option<String> {
+    std::env::current_exe().ok().and_then(|path| std::fs::read(path).ok())
+        .map(|bytes| format!("{:x}", Sha256::digest(bytes)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn issue_7955_controller_column_keeps_non_body_and_malformed_denominator() {
+        let bytes = super::super::tests::model("");
+        let mut fixture = super::super::census_bytes(bytes.as_bytes());
+        let before = fixture.products.len();
+        // Test provenance is the current real checkout revision, never a future SHA.
+        let commit = Command::new("git").args(["rev-parse", "HEAD"]).output().unwrap();
+        let commit = String::from_utf8(commit.stdout).unwrap();
+        inspect_at(bytes.as_bytes(), &mut fixture.products, commit.trim());
+        assert_eq!(fixture.products.len(), before);
+        assert!(fixture.products.values().all(|product| product.controller.is_some()));
+    }
+}

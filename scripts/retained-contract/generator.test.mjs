@@ -10,7 +10,7 @@ import { schema } from './schema.mjs';
 test('#7955 generator determinism and each missing/altered projection fail drift', async () => {
   const outputs = await projections();
   assert.deepEqual(await projections(), outputs);
-  assert.equal(outputs.size, 6);
+  assert.equal(outputs.size, 8);
   const root = await mkdtemp(join(tmpdir(), 'retained-contract-'));
   try {
     await writeOutputs(root, outputs);

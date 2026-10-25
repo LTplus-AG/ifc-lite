@@ -12,7 +12,7 @@ readme = "../../README.md"
 
 [features]
 # Private S3 receipt/resource preparation; no production consumer or activation (#7955).
-retained-runtime = []
+retained-runtime = ["dep:serde_json"]
 # Opt-in #6516 route-work diagnostic; absent from shipping builds.
 opening-perf-trace = []
 # CSG runs on the in-tree pure-Rust exact mesh-arrangement kernel
@@ -106,6 +106,7 @@ rustc-hash.workspace = true
 # Serialization for the public GeometryDiagnostics contract (already present in
 # the wasm tree transitively via ifc-lite-processing; no new bundle weight).
 serde.workspace = true
+serde_json = { workspace = true, features = ["float_roundtrip"], optional = true }
 
 # PNG decode for IfcBlobTexture (issue #961). Already in the dependency tree
 # (transitive), so it adds no new wasm weight. Pure-Rust inflate

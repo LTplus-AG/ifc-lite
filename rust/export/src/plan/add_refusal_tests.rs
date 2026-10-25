@@ -214,7 +214,7 @@ fn a_new_building_can_be_aggregated_into_the_project() {
 #[test]
 fn a_storey_cannot_be_aggregated_into_the_project() {
     let storey = object(IfcClass::BuildingStorey, gid(20), Some(ObjectRef::Id(1)), Representation::None);
-    refused(&storey_with_typed_wall("IFC4"), storey, "not a spatial element");
+    refused(&storey_with_typed_wall("IFC4"), storey, "cannot aggregate");
 }
 
 /// A new type is paired with its occurrence's class like an existing one.
@@ -313,5 +313,83 @@ fn a_later_add_names_a_type_an_earlier_add_created() {
         assert_clean(&report, schema);
         assert_eq!(report.added, 2, "{schema}");
         assert_eq!(type_in(&out, id_in(&out, type_id)), "IFCWALLTYPE", "{schema}: one new type");
+    }
+}
+
+/// A new spatial element with no container would be written outside the
+/// spatial tree, with no IfcRelAggregates.
+#[test]
+fn a_new_spatial_element_without_a_container_is_refused() {
+    for schema in SCHEMAS {
+        for class in [IfcClass::BuildingStorey, IfcClass::Space, IfcClass::Named("IfcSite".into())] {
+            refused(&storey_with_typed_wall(schema), object(class, gid(30), None, Representation::None), "needs a container");
+        }
+    }
+}
+
+/// A spatial element goes under a parent the schema allows for it.
+#[test]
+fn a_spatial_element_under_a_wrong_parent_is_refused() {
+    for schema in SCHEMAS {
+        let source = storey_with_typed_wall(schema);
+        // A storey under a storey; a site under a building.
+        refused(&source, object(IfcClass::BuildingStorey, gid(31), storey(), Representation::None), "cannot aggregate");
+        let site = object(IfcClass::Named("IfcSite".into()), gid(32), Some(ObjectRef::Id(60)), Representation::None);
+        refused(&source, site, "cannot aggregate");
+        // A space in a storey is fine.
+        let (_, report) = run(&source, vec![add(object(IfcClass::Space, gid(33), storey(), Representation::None))]);
+        assert_clean(&report, schema);
+    }
+}
+
+/// A spatial zone groups spaces; it contains nothing.
+#[test]
+fn a_spatial_zone_is_not_a_container() {
+    let source = String::from_utf8(storey_with_typed_wall("IFC4")).unwrap().replace(
+        "#10=",
+        "#90=IFCSPATIALZONE('0000000000000000000091',$,'Zone',$,$,$,$,$,$);\n#10=",
+    );
+    refused(source.as_bytes(), object(IfcClass::Wall, gid(34), Some(ObjectRef::Id(90)), Representation::None), "not a spatial element");
+}
+
+/// IFC4 deprecates IfcDoorStyle / IfcWindowStyle; CorrectStyleAssigned
+/// wants the Type classes. IFC2X3 has only the styles.
+#[test]
+fn a_door_or_window_typed_by_a_style_is_refused_in_ifc4() {
+    for schema in ["IFC4"] {
+        for (class, style, wanted) in [(IfcClass::Door, "IfcDoorStyle", "IFCDOORTYPE"), (IfcClass::Window, "IfcWindowStyle", "IFCWINDOWTYPE")] {
+            let mut obj = object(class, gid(35), storey(), Representation::None);
+            obj.type_link = Some(new_type(style, None));
+            refused(&storey_with_typed_wall(schema), obj, &format!("typed by an {wanted}"));
+        }
+    }
+}
+
+/// Every spatial class under every parent class the schema declares: allowed
+/// exactly where the spatial hierarchy allows it (IFC4X3 adds facilities).
+#[test]
+fn a_spatial_class_is_accepted_only_under_its_own_parents() {
+    use ifc_lite_core::entity_info_for_schema;
+    let children: [(&str, &[&str]); 4] = [
+        ("IFCSITE", &["IFCPROJECT", "IFCSITE"]),
+        ("IFCBUILDING", &["IFCPROJECT", "IFCSITE", "IFCBUILDING"]),
+        ("IFCBUILDINGSTOREY", &["IFCBUILDING"]),
+        ("IFCSPACE", &["IFCBUILDINGSTOREY", "IFCBUILDING", "IFCSITE", "IFCSPACE", "IFCFACILITY", "IFCFACILITYPART"]),
+    ];
+    let parents = ["IFCPROJECT", "IFCSITE", "IFCBUILDING", "IFCBUILDINGSTOREY", "IFCSPACE", "IFCFACILITY", "IFCFACILITYPART"];
+    for schema in SCHEMAS {
+        for (child, allowed) in children {
+            for parent in parents {
+                if entity_info_for_schema(schema, parent).is_none() {
+                    continue;
+                }
+                let base = String::from_utf8(storey_with_typed_wall(schema)).unwrap();
+                let source = base.replacen("ENDSEC;\nEND-ISO", &format!("#90={parent}($);\nENDSEC;\nEND-ISO"), 1);
+                let obj = object(IfcClass::Named(child.into()), gid(40), Some(ObjectRef::Id(90)), Representation::None);
+                let (_, report) = run(source.as_bytes(), vec![add(obj)]);
+                let accepted = report.added == 1;
+                assert_eq!(accepted, allowed.contains(&parent), "{schema}: {child} under {parent}: {:?}", report.refusals);
+            }
+        }
     }
 }

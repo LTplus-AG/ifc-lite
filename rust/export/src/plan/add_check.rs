@@ -56,9 +56,10 @@ impl AddState<'_> {
     /// names the type its class takes and `type_class` is not one.
     fn check_type_pairing(&self, class: &str, type_class: &str, what: &str) -> Result<(), String> {
         let Some(wanted) = self.type_class_for(class) else { return Ok(()) };
-        // IFC4 keeps IFC2X3's door and window styles, deprecated but valid.
-        let style = wanted.strip_suffix("TYPE").map(|base| format!("{base}STYLE"));
-        if self.is_a(type_class, &wanted) || style.as_deref() == Some(type_class) {
+        // IFC4 keeps IfcDoorStyle and IfcWindowStyle, but CorrectStyleAssigned
+        // requires an IfcDoorType / IfcWindowType there. In IFC2X3 there is no
+        // such type, so `type_class_for` is None and this is not reached.
+        if self.is_a(type_class, &wanted) {
             return Ok(());
         }
         Err(format!("{what} is {type_class}, but a {class} is typed by an {wanted}"))
@@ -68,6 +69,28 @@ impl AddState<'_> {
     /// `IfcSpatialElement` supertype later).
     fn is_spatial(&self, class: &str) -> bool {
         self.is_a(class, "IFCSPATIALSTRUCTUREELEMENT") || self.is_a(class, "IFCSPATIALELEMENT")
+    }
+
+    /// Whether a `parent` (UPPERCASE class) may aggregate a new spatial
+    /// `child`. The spatial hierarchy is project, site, building, storey,
+    /// space; a class this does not name is held only to being spatial.
+    fn can_aggregate(&self, parent: &str, child: &str) -> bool {
+        let parents: &[&str] = if self.is_a(child, "IFCBUILDINGSTOREY") {
+            &["IFCBUILDING", "IFCBUILDINGPART"]
+        } else if self.is_a(child, "IFCSPACE") {
+            &["IFCBUILDINGSTOREY", "IFCBUILDING", "IFCSITE", "IFCSPACE", "IFCFACILITY", "IFCFACILITYPART"]
+        } else if self.is_a(child, "IFCSITE") {
+            &["IFCPROJECT", "IFCSITE"]
+        } else if self.is_a(child, "IFCBUILDING") {
+            &["IFCPROJECT", "IFCSITE", "IFCBUILDING"]
+        } else if self.is_a(child, "IFCFACILITYPART") {
+            &["IFCFACILITY", "IFCFACILITYPART"]
+        } else if self.is_a(child, "IFCFACILITY") {
+            &["IFCPROJECT", "IFCSITE", "IFCFACILITY"]
+        } else {
+            return self.is_spatial(parent);
+        };
+        parents.iter().any(|p| self.is_a(parent, p))
     }
 
     /// `(id, UPPERCASE class)` of an object in the source or added earlier
@@ -183,14 +206,17 @@ impl AddState<'_> {
         let spatial = self.is_spatial(&class);
 
         let container = match &obj.container {
+            None if spatial => return Err(format!("a new {class} needs a container: nothing else would place it in the spatial tree")),
             None => None,
             Some(r) => {
                 let (id, c) = self.lookup(r)?;
-                // A new site, building or (IFC4X3) other facility is
-                // aggregated into the project.
-                let top_level = || ["IFCSITE", "IFCBUILDING", "IFCFACILITY"].iter().any(|t| self.is_a(&class, t));
-                if !(self.is_spatial(&c) || (c == "IFCPROJECT" && top_level())) {
+                // A zone groups spaces; it neither contains nor aggregates.
+                let is_container = (self.is_spatial(&c) && !self.is_a(&c, "IFCSPATIALZONE")) || (spatial && c == "IFCPROJECT");
+                if !is_container {
                     return Err(format!("container {r} is {c}, not a spatial element"));
+                }
+                if spatial && !self.can_aggregate(&c, &class) {
+                    return Err(format!("container {r} is {c}, which cannot aggregate a {class} in {}", self.schema));
                 }
                 Some((id, if spatial { RelKind::Aggregates } else { RelKind::Contained }, c))
             }

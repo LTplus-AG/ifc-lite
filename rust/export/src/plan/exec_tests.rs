@@ -988,3 +988,18 @@ fn an_in_place_edit_keeps_its_own_unit_slot_when_the_target_is_type_owned_8142()
     assert_eq!(lines[&60], "#60=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('3HR'),$);");
     assert!(lines[&41].contains("'2HR'"), "the type's record is untouched: {}", lines[&41]);
 }
+
+/// (#8142) A count write is written with its schema's base: `3` stays an
+/// integer in IFC4X3 (where `3.` is refused) and gains its point in IFC4.
+#[test]
+fn a_count_measure_is_written_with_its_schemas_base_8142() {
+    let count = |lit: &str| PropWrite::new("Pset_X", "N", "IFCCOUNTMEASURE", lit, PsetKind::Property, PropScope::Occurrence);
+    let (out, report) = patch_one(&wall_with_own_pset("IFC4X3"), vec![count("3")]);
+    assert!(report.refusals.is_empty(), "{:?}", report.refusals);
+    assert!(String::from_utf8(out).unwrap().contains("IFCCOUNTMEASURE(3),"));
+    let (_, report) = patch_one(&wall_with_own_pset("IFC4X3"), vec![count("3.")]);
+    assert_eq!(report.refusals.len(), 1, "{:?}", report.refusals);
+    let (out, report) = patch_one(&wall_with_own_pset("IFC4"), vec![count("3")]);
+    assert!(report.refusals.is_empty(), "{:?}", report.refusals);
+    assert!(String::from_utf8(out).unwrap().contains("IFCCOUNTMEASURE(3.),"));
+}

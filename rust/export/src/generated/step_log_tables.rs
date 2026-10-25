@@ -5871,6 +5871,12 @@ pub static NOMINAL_VALUE_LEAVES_IFC4X3_ONLY: &[&str] = &[
     "IFCURIREFERENCE",
 ];
 
+/// `(UPPERCASE token, EXPRESS base)` for the `NOMINAL_VALUE_LEAVES` whose
+/// base in IFC4X3 differs from the table's (IFC4's), sorted.
+pub static NOMINAL_VALUE_BASES_IFC4X3: &[(&str, &str)] = &[
+    ("IFCCOUNTMEASURE", "INTEGER"),
+];
+
 /// UPPERCASE `IfcValue` members whose type is an aggregate (no single
 /// EXPRESS base), in IFC4 or IFC4X3, sorted.
 pub static NOMINAL_VALUE_AGGREGATES: &[&str] = &[

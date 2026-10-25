@@ -183,10 +183,12 @@ const ifcValueLeaves = new Map();
 const ifc4x3OnlyLeaves = [];
 const ifcValueAggregates = new Set();
 const AGGREGATE = /^(LIST|ARRAY|SET|BAG)\b/;
-// The one table carries IFC4's base. Members whose base IFC4X3 changed, with
-// IFC4X3's: IFC4 declares `IfcCountMeasure = NUMBER`, IFC4X3 `= INTEGER`. Any
-// other disagreement fails the generator.
+// The leaf table carries IFC4's base; a member whose base IFC4X3 changed gets
+// a row in NOMINAL_VALUE_BASES_IFC4X3. The changes expected, so a new one in a
+// registry update is looked at rather than taken: IFC4 declares
+// `IfcCountMeasure = NUMBER`, IFC4X3 `= INTEGER`. Any other fails the generator.
 const BASE_DIFFERS_IN_IFC4X3 = new Map([['IfcCountMeasure', 'INTEGER']]);
+const ifc4x3Bases = [];
 for (const version of ['IFC4', 'IFC4X3']) {
   const registry = getSchemaRegistryForVersion(version);
   const resolved = getSelectDefinedLeaves('IfcValue', registry);
@@ -204,14 +206,19 @@ for (const version of ['IFC4', 'IFC4X3']) {
       if (BASE_DIFFERS_IN_IFC4X3.get(member) !== base) {
         throw new Error(`IfcValue member ${member} is ${ifcValueLeaves.get(member)} in IFC4 but ${base} in ${version}`);
       }
+      ifc4x3Bases.push([member.toUpperCase(), base]);
     }
   }
 }
 ifc4x3OnlyLeaves.sort();
+ifc4x3Bases.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+for (const [member] of BASE_DIFFERS_IN_IFC4X3) {
+  if (!ifc4x3Bases.some(([token]) => token === member.toUpperCase())) throw new Error(`${member} no longer differs in IFC4X3; drop it`);
+}
 const ifcValueAggregateTokens = [...ifcValueAggregates].sort();
 // `check_literal_measure` matches on exactly these bases.
 const LEAF_BASES = new Set(['STRING', 'REAL', 'NUMBER', 'INTEGER', 'BOOLEAN', 'LOGICAL', 'BINARY']);
-for (const [member, base] of ifcValueLeaves) {
+for (const [member, base] of [...ifcValueLeaves, ...ifc4x3Bases]) {
   if (!LEAF_BASES.has(base)) throw new Error(`IfcValue member ${member} has base ${base}, which check_literal_measure does not handle`);
 }
 for (const [name, base] of ifcValueLeaves) {
@@ -377,6 +384,12 @@ ${leaves.map((l) => `    (${JSON.stringify(l[0])}, ${JSON.stringify(l[1])}, ${JS
 /// declare the type), sorted.
 pub static NOMINAL_VALUE_LEAVES_IFC4X3_ONLY: &[&str] = &[
 ${ifc4x3OnlyLeaves.map((t) => `    ${JSON.stringify(t)},`).join('\n')}
+];
+
+/// \`(UPPERCASE token, EXPRESS base)\` for the \`NOMINAL_VALUE_LEAVES\` whose
+/// base in IFC4X3 differs from the table's (IFC4's), sorted.
+pub static NOMINAL_VALUE_BASES_IFC4X3: &[(&str, &str)] = &[
+${ifc4x3Bases.map(([t, b]) => `    (${JSON.stringify(t)}, ${JSON.stringify(b)}),`).join('\n')}
 ];
 
 /// UPPERCASE \`IfcValue\` members whose type is an aggregate (no single

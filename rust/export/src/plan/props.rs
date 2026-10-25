@@ -91,10 +91,10 @@ pub(crate) enum PropOutcome {
 
 /// The text an in-place edit writes into a value slot. See
 /// `props_synth::build_value_record` for why a quantity's value is bare.
-fn in_place_value(write: &PropWrite) -> String {
+fn in_place_value(schema: &str, write: &PropWrite) -> String {
     match write.kind {
-        PsetKind::Property => format!("{}({})", write.measure_type, crate::step_log::canonical_literal(&write.measure_type, &write.literal)),
-        PsetKind::Quantity => crate::step_log::canonical_literal(&write.measure_type, &write.literal),
+        PsetKind::Property => format!("{}({})", write.measure_type, crate::step_log::canonical_literal(schema, &write.measure_type, &write.literal)),
+        PsetKind::Quantity => crate::step_log::canonical_literal(schema, &write.measure_type, &write.literal),
     }
 }
 
@@ -129,7 +129,7 @@ fn in_place_edits(index: &FileIndex, schema: &str, member_id: u32, write: &PropW
     };
     let i = attribute_index(schema, &value_type, value_slot)
         .ok_or_else(|| format!("existing value #{member_id} is {value_type}, which has no {value_slot} to write"))?;
-    let mut edits = vec![(member_id, i, in_place_value(write))];
+    let mut edits = vec![(member_id, i, in_place_value(schema, write))];
     if let Some(unit) = &write.unit {
         if let Some(i) = attribute_index(schema, &value_type, "Unit") {
             edits.push((member_id, i, unit.clone()));

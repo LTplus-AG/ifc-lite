@@ -14,7 +14,7 @@ use serde_json::Value;
 
 use super::base::pvt;
 use super::jsval::{format_step_real, js_to_number, json_number, json_to_js_string, step_integer};
-use crate::generated::step_log_tables::{NOMINAL_VALUE_AGGREGATES, NOMINAL_VALUE_LEAVES, NOMINAL_VALUE_LEAVES_IFC4X3_ONLY};
+use crate::generated::step_log_tables::{NOMINAL_VALUE_AGGREGATES, NOMINAL_VALUE_BASES_IFC4X3, NOMINAL_VALUE_LEAVES, NOMINAL_VALUE_LEAVES_IFC4X3_ONLY};
 use crate::step_text::escape;
 
 /// `(schema-cased name, EXPRESS base, constrained, relaxed)` for an
@@ -32,7 +32,9 @@ fn leaf(token: &str) -> Option<(&'static str, &'static str, bool, &'static str)>
 /// The `IfcValue` leaf `measure` (any case) names in `schema`'s family, or
 /// the reason it is not one: a typo, another schema's type, an entity or
 /// enumeration (`IFCWALL`) is not a member of the `IfcValue` select, and an
-/// aggregate member (`IFCCOMPLEXNUMBER`) has no single value to write.
+/// aggregate member (`IFCCOMPLEXNUMBER`) has no single value to write. The
+/// base is the family's own (`IfcCountMeasure` is NUMBER in IFC4, INTEGER in
+/// IFC4X3).
 fn value_leaf(schema: &str, measure: &str) -> Result<(&'static str, &'static str, bool, &'static str), String> {
     let token = measure.to_ascii_uppercase();
     let Some(family) = super::retype::schema_family(schema) else {
@@ -43,9 +45,13 @@ fn value_leaf(schema: &str, measure: &str) -> Result<(&'static str, &'static str
         return Err(format!("{measure} is an aggregate; aggregate value types are not supported by single-value writes"));
     }
     let in_family = family == "IFC4X3" || NOMINAL_VALUE_LEAVES_IFC4X3_ONLY.binary_search(&token.as_str()).is_err();
-    leaf(&token)
-        .filter(|_| in_family && declared)
-        .ok_or_else(|| format!("{measure} is not an IFC measure in {schema}"))
+    let (name, base, constrained, relaxed) =
+        leaf(&token).filter(|_| in_family && declared).ok_or_else(|| format!("{measure} is not an IFC measure in {schema}"))?;
+    let base = match family {
+        "IFC4X3" => NOMINAL_VALUE_BASES_IFC4X3.binary_search_by(|row| row.0.cmp(&token)).map_or(base, |i| NOMINAL_VALUE_BASES_IFC4X3[i].1),
+        _ => base,
+    };
+    Ok((name, base, constrained, relaxed))
 }
 
 /// Refuse `value` as the `measure` (any case) measure unless `schema` (a
@@ -62,11 +68,12 @@ pub(crate) fn check_real_measure(schema: &str, measure: &str, value: f64, where_
     Ok(())
 }
 
-/// `literal` as STEP writes a value of `measure`: a bare integer given for a
-/// REAL or NUMBER measure gets its decimal point (`3` -> `3.`), since STEP
-/// REAL requires one. Anything else is returned as given.
-pub(crate) fn canonical_literal(measure: &str, literal: &str) -> String {
-    let is_real = leaf(&measure.to_ascii_uppercase()).is_some_and(|(_, base, _, _)| matches!(base, "REAL" | "NUMBER"));
+/// `literal` as STEP writes a value of `measure` in `schema`: a bare integer
+/// given for a measure whose base there is REAL or NUMBER gets its decimal
+/// point (`3` -> `3.`), since STEP REAL requires one. Anything else is
+/// returned as given.
+pub(crate) fn canonical_literal(schema: &str, measure: &str, literal: &str) -> String {
+    let is_real = value_leaf(schema, measure).is_ok_and(|(_, base, _, _)| matches!(base, "REAL" | "NUMBER"));
     let digits = literal.strip_prefix(['+', '-']).unwrap_or(literal);
     if is_real && !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()) {
         format!("{literal}.")

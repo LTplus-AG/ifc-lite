@@ -202,7 +202,7 @@ pub(crate) fn ref_list(ids: &[u32]) -> String {
 fn new_value(schema: &str, write: &PropWrite, ids: &mut IdAllocator) -> Result<(u32, String), String> {
     let value_type = value_entity(write)?;
     let value_id = ids.allocate().ok_or("id space exhausted")?;
-    let record = build_value_record(schema, value_id, value_type, &write.prop, &write.measure_type, &crate::step_log::canonical_literal(&write.measure_type, &write.literal), write.unit.as_deref());
+    let record = build_value_record(schema, value_id, value_type, &write.prop, &write.measure_type, &crate::step_log::canonical_literal(schema, &write.measure_type, &write.literal), write.unit.as_deref());
     Ok((value_id, record))
 }
 

@@ -77,3 +77,16 @@ fn every_leaf_base_is_one_check_literal_measure_handles_8142() {
         assert!(["STRING", "REAL", "NUMBER", "INTEGER", "BOOLEAN", "LOGICAL", "BINARY"].contains(base), "{token}: {base}");
     }
 }
+
+/// (#8142) IfcCountMeasure is NUMBER in IFC4 and INTEGER in IFC4X3: each
+/// schema's base decides what is accepted and whether `3` gains a point.
+#[test]
+fn a_count_measure_takes_its_schemas_base_8142() {
+    assert!(check_literal_measure("IFC4", "IfcCountMeasure", "3.", true).is_ok());
+    assert_eq!(canonical_literal("IFC4", "IfcCountMeasure", "3"), "3.");
+    assert!(check_literal_measure("IFC4X3", "IfcCountMeasure", "3.", true).is_err());
+    assert!(check_literal_measure("IFC4X3_ADD2", "IfcCountMeasure", "3", true).is_ok());
+    assert_eq!(canonical_literal("IFC4X3", "IfcCountMeasure", "3"), "3");
+    assert!(check_real_measure("IFC4", "IfcCountMeasure", 3.0, true).is_ok());
+    assert!(check_real_measure("IFC4X3", "IfcCountMeasure", 3.0, true).is_err());
+}

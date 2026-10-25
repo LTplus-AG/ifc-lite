@@ -1,0 +1,83 @@
+// SPDX-License-Identifier: MPL-2.0
+//! Opaque controller bridge consumed by processing's private native adapter.
+//! Logical annotations grant neither numerical receipts nor final geometry.
+use super::inner::retained_program as controller;
+use super::retained as logical;
+use ifc_lite_core::{DecodedEntity, EntityDecoder};
+use crate::{GeometryRouter, ResolvedTextureMap};
+use crate::resource::{OwnedResourceContext, ProgramStop, Reservation};
+
+mod error;
+mod values;
+pub use error::{TransactionError, TransactionFailureKind};
+pub use values::{Definition, Operation, OperationKind, Plan, Requirement, Slot, Value, ValueRef};
+
+/// The original stop/account domain; contains no execution or TLS guard.
+#[derive(Clone)]
+pub struct Resources(OwnedResourceContext);
+impl Resources {
+    /// Processing calls this only inside authenticated source-owner work.
+    pub fn capture_current() -> Self { Self(OwnedResourceContext::capture_current()) }
+    pub fn check(&self) -> Result<(), ProgramStop> { self.0.check() }
+    pub fn with_scope<T>(&self, work: impl FnOnce() -> T) -> T { self.0.with_scope(work) }
+    pub fn reserve_headers<T>(&self, values: &mut Vec<T>, additional: usize)
+        -> Result<Reservation, ProgramStop> { self.0.reserve_headers(values, additional) }
+}
+
+pub struct Traversal(controller::RetainedTraversal);
+impl Traversal {
+    pub fn new(source_epoch: u64, source_revision: u64) -> Self {
+        Self(controller::RetainedTraversal::new(logical::RetainedContract { source_epoch, source_revision }))
+    }
+    pub fn product_parts<'a>(&self, root: &'a DecodedEntity) -> Program<'a> {
+        Program(self.0.product_parts(root))
+    }
+    pub fn product_submeshes<'a>(&self, root: &'a DecodedEntity,
+        textures: &'a rustc_hash::FxHashMap<u32, ResolvedTextureMap>) -> Program<'a> {
+        Program(self.0.product_submeshes(root, true, Some(textures)))
+    }
+    pub fn type_map<'a>(&self, root: DecodedEntity,
+        textures: &'a rustc_hash::FxHashMap<u32, ResolvedTextureMap>) -> Program<'a> {
+        Program(self.0.type_map(root, Some(textures)))
+    }
+}
+
+pub struct Program<'a>(controller::RetainedProgram<'a>);
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Ticket(controller::RetainedTicket);
+pub struct Reply(controller::RetainedReply);
+pub struct RejectedReply { pub error: TransactionError, pub reply: Reply }
+impl Program<'_> {
+    pub fn request(&mut self) -> Result<Option<Ticket>, TransactionError> {
+        self.0.request().map(|ticket| ticket.map(Ticket)).map_err(Into::into)
+    }
+    pub fn admit(&mut self, ticket: Ticket, router: &GeometryRouter, decoder: &mut EntityDecoder)
+        -> Result<(Reply, Vec<Operation>, Reservation), TransactionError> {
+        let (reply, operations) = self.0.admit(ticket.0, router, decoder)?;
+        // Do not charge the wrapper Vec permanently to an ambient account.
+        let resources = Resources::capture_current();
+        let mut wrapped = Vec::new();
+        let storage = resources.reserve_headers(&mut wrapped, operations.len())?;
+        wrapped.extend(operations.into_iter().map(Operation));
+        resources.check()?;
+        Ok((Reply(reply), wrapped, storage))
+    }
+    pub fn validate_ticket(&self, ticket: Ticket) -> Result<(), TransactionError> {
+        self.0.validate_ticket(ticket.0).map_err(Into::into)
+    }
+    pub fn validate_reply(&self, reply: &Reply, router: &GeometryRouter) -> Result<(), TransactionError> {
+        self.0.validate_reply(&reply.0, router).map_err(Into::into)
+    }
+    pub fn accept(&mut self, reply: Reply, router: &GeometryRouter) -> Result<(), Box<RejectedReply>> {
+        self.0.accept(reply.0, router).map_err(|rejected| Box::new(RejectedReply {
+            error: rejected.error.into(), reply: Reply(rejected.reply),
+        }))
+    }
+    pub fn cancel(&mut self) { self.0.cancel(); }
+    pub fn finish(self) -> Result<Plan, TransactionError> {
+        self.0.finish().map(Plan::new).map_err(Into::into)
+    }
+    pub fn finish_type_map(self, product: u32, class: u8, color: [f32; 4]) -> Result<Plan, TransactionError> {
+        self.0.finish_type_map(product, class, color).map(Plan::new).map_err(Into::into)
+    }
+}

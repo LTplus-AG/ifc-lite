@@ -17,6 +17,8 @@ readme = "../../README.md"
 exclude = ["examples/retained_census.rs", "examples/retained_census/**"]
 
 [features]
+# Private native diagnostic. Local 23.6 graph; registry/archive qualification pending.
+retained-native = ["retained-runtime", "dep:ifc-lite-geometry-runtime"]
 # Source inspection uses the private controller and strict binary64 wire decode; no runtime-crate edge.
 retained-runtime = ["ifc-lite-geometry/retained-runtime", "serde_json/float_roundtrip"]
 # Opt-in alternate triangulator oracle for canonical producer regression tests.
@@ -73,3 +75,10 @@ ifc-lite-geometry = { workspace = true, features = ["test-support"] }
 
 [lints]
 workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+ifc-lite-geometry-runtime = { path = "../geometry-runtime", version = "=23.6.0", optional = true }
+
+[[example]]
+name = "retained_product"
+required-features = ["retained-native"]

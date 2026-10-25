@@ -42,3 +42,38 @@ fn a_real_exponent_needs_its_decimal_point() {
     assert!(check_literal_measure("IFC4", "IfcLengthMeasure", "1E5", true).is_err());
     assert!(check_literal_measure("IFC5", "IfcLengthMeasure", "5.", true).is_ok());
 }
+
+/// (#8142) A binary is a quoted STEP binary literal: a leading digit 0-3 (the
+/// unused bits of the last hex digit) and upper-case hex digits.
+#[test]
+fn a_binary_literal_must_have_the_step_binary_shape_8142() {
+    for ok in ["\"0\"", "\"0A\"", "\"3FF\"", "\"1\""] {
+        assert!(check_literal_measure("IFC4", "IfcBinary", ok, true).is_ok(), "{ok}");
+    }
+    for bad in ["5.", "'0A'", "\"\"", "\"4A\"", "\"0a\"", "\"0G\"", "0A", "\"0A", ".T."] {
+        assert!(check_literal_measure("IFC4", "IfcBinary", bad, true).is_err(), "{bad}");
+    }
+}
+
+/// (#8142) An aggregate member of `IfcValue` is refused for what it is, in
+/// every family that declares it, not as an unknown measure.
+#[test]
+fn an_aggregate_value_type_is_refused_as_an_aggregate_8142() {
+    for schema in ["IFC2X3", "IFC4", "IFC4X3"] {
+        for measure in ["IFCCOMPLEXNUMBER", "IfcCompoundPlaneAngleMeasure"] {
+            let reason = check_literal_measure(schema, measure, "(1,2,3)", true).unwrap_err();
+            assert!(reason.contains("aggregate value types are not supported by single-value writes"), "{schema} {measure}: {reason}");
+            let reason = check_real_measure(schema, measure, 1.0, true).unwrap_err();
+            assert!(reason.contains("aggregate value types are not supported by single-value writes"), "{schema} {measure}: {reason}");
+        }
+    }
+}
+
+/// (#8142) `check_literal_measure` treats every base but six as BINARY; the
+/// table carries no other.
+#[test]
+fn every_leaf_base_is_one_check_literal_measure_handles_8142() {
+    for (token, _, base, _, _) in crate::generated::step_log_tables::NOMINAL_VALUE_LEAVES {
+        assert!(["STRING", "REAL", "NUMBER", "INTEGER", "BOOLEAN", "LOGICAL", "BINARY"].contains(base), "{token}: {base}");
+    }
+}

@@ -9,7 +9,7 @@ use crate::step_ids::IdAllocator;
 use crate::step_text::escape;
 
 use super::index::FileIndex;
-use super::types::{DroppedRepresentation, ObjectRef, Patch, PropWrite, Refusal};
+use super::types::{DroppedRepresentation, ObjectRef, Patch, Refusal};
 use super::{attrs, geometry, placement, props, props_target};
 
 pub(super) struct PatchOutput<'a> {
@@ -75,24 +75,24 @@ pub(super) fn apply_patch(
     // first named. A write is grouped by the set it lands on, so two sets of
     // one name stay apart and a targeted and an untargeted write to one set
     // meet.
-    let mut writes: Vec<(PropWrite, Option<u32>)> = Vec::new();
+    let mut groups: Vec<Vec<props_target::ResolvedWrite<'_>>> = Vec::new();
     for w in &patch.psets {
-        match props_target::resolve_write(index, schema, object_id, w) {
-            Ok(resolved) => writes.push(resolved),
-            Err(reason) => out.refusals.push(Refusal { object: ObjectRef::Id(object_id), reason: format!("{}.{}: {reason}", w.pset, w.prop) }),
-        }
-    }
-    let mut groups: Vec<(Option<u32>, Vec<&PropWrite>)> = Vec::new();
-    for (write, holder) in &writes {
-        let same_set = |(h, g): &&mut (Option<u32>, Vec<&PropWrite>)| {
-            h == holder && g.first().is_some_and(|w| w.pset == write.pset && w.kind == write.kind && w.scope == write.scope)
+        let resolved = match props_target::resolve_write(index, schema, object_id, w) {
+            Ok(resolved) => resolved,
+            Err(reason) => {
+                out.refusals.push(Refusal { object: ObjectRef::Id(object_id), reason: format!("{}.{}: {reason}", w.pset, w.prop) });
+                continue;
+            }
+        };
+        let same_set = |g: &&mut Vec<props_target::ResolvedWrite<'_>>| {
+            g.first().is_some_and(|f| f.set == resolved.set && f.write.pset == w.pset && f.write.kind == w.kind && f.write.scope == w.scope)
         };
         match groups.iter_mut().find(same_set) {
-            Some((_, group)) => group.push(write),
-            None => groups.push((*holder, vec![write])),
+            Some(group) => group.push(resolved),
+            None => groups.push(vec![resolved]),
         }
     }
-    for (_, group) in &groups {
+    for group in &groups {
         let result = props::resolve_set_writes(index, schema, object_id, group, ids, owner_history);
         for outcome in result.outcomes {
             match outcome {

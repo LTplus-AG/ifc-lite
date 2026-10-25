@@ -23,42 +23,29 @@ fn in_schema(schema: &str, upper: &str) -> Option<Info> {
         .map(|i| Info { attributes: NAME_LISTS[usize::from(RETYPE_ROWS[i].2)], predefined: NAME_LISTS[usize::from(RETYPE_ROWS[i].3)] })
 }
 
-/// The `PredefinedType` members `class` (any case) declares in the family of
-/// the `FILE_SCHEMA` label `schema` (`IFC4X3_ADD2` reads IFC4X3's table),
-/// without falling back to another schema's table. `None` when the table has
-/// no row for it; empty when the class has no such enum.
+/// The `PredefinedType` members `class` (any case) declares in the table
+/// family of the `FILE_SCHEMA` label `schema` ([`schema_family`]), without
+/// falling back to another family's table. `None` when the table has no row
+/// for it; empty when the class has no such enum.
 pub(crate) fn predefined_type_members(schema: &str, class: &str) -> Option<&'static [&'static str]> {
-    use ifc_lite_core::SchemaVersion;
-    let family = match SchemaVersion::from_file_schema(schema)? {
-        SchemaVersion::Ifc2x3 => "IFC2X3",
-        SchemaVersion::Ifc4 => "IFC4",
-        SchemaVersion::Ifc4x3 => "IFC4X3",
-        _ => return None,
-    };
-    in_schema(family, &class.to_uppercase()).map(|info| info.predefined)
+    in_schema(schema_family(schema)?, &class.to_uppercase()).map(|info| info.predefined)
 }
 
-/// The table family a `FILE_SCHEMA` label reads: IFC4X1 and IFC4X2 read
-/// IFC4's, IFC5 reads IFC4X3's; `None` for a schema this engine has no table
-/// for.
+/// The table family a `FILE_SCHEMA` label reads, by the core classifier:
+/// IFC4X1 and IFC4X2 read IFC4's, IFC5 reads IFC4X3's; `None` for a schema
+/// this engine has no table for.
 pub(crate) fn schema_family(schema: &str) -> Option<&'static str> {
-    use ifc_lite_core::SchemaVersion;
-    if schema == "IFC5" {
-        return Some("IFC4X3");
-    }
-    match SchemaVersion::from_file_schema(schema)? {
-        SchemaVersion::Ifc2x3 => Some("IFC2X3"),
-        SchemaVersion::Ifc4 | SchemaVersion::Ifc4x1 | SchemaVersion::Ifc4x2 => Some("IFC4"),
-        SchemaVersion::Ifc4x3 => Some("IFC4X3"),
-        _ => None,
+    use ifc_lite_core::SchemaFamily;
+    match SchemaFamily::of_file_schema(schema)? {
+        SchemaFamily::Ifc5 => Some("IFC4X3"),
+        family => Some(family.as_str()),
     }
 }
 
-/// Whether the family of the `FILE_SCHEMA` label `schema` declares `name`
-/// (any case), an entity or a defined type. IFC4X1 and IFC4X2 have no table
-/// of their own and read IFC4's; IFC5 reads IFC4X3's, as `lookup` does; anything else unknown is refused.
-pub(crate) fn schema_declares(schema: &str, name: &str) -> bool {
-    schema_family(schema).is_some_and(|family| in_schema(family, &name.to_uppercase()).is_some())
+/// Whether the table `family` ([`schema_family`]) declares `name` (any
+/// case), an entity or a defined type.
+pub(crate) fn family_declares(family: &str, name: &str) -> bool {
+    in_schema(family, &name.to_uppercase()).is_some()
 }
 
 /// `lookupEntityInfo`: the source schema's table (IFC5 reads IFC4X3's), then IFC4's.
@@ -139,4 +126,20 @@ pub(crate) fn retype_line(text: &str, source_type: &str, new_type: &str, predefi
     // The keyword's length changed; the frame's offsets past it move with it.
     let shift = |at: usize| at + upper.len() - (head.type_end - head.type_start);
     format!("{}{}{}", &retyped[..=shift(head.open)], tokens.join(","), &retyped[shift(frame.close)..])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// (#8142) IFC4X1 and IFC4X2 read IFC4's PredefinedType domain, and IFC5
+    /// IFC4X3's, as every other table lookup of a schema does.
+    #[test]
+    fn predefined_type_members_reads_the_schema_family_8142() {
+        assert!(predefined_type_members("IFC4", "IfcWall").is_some_and(|m| m.contains(&"SOLIDWALL")));
+        assert_eq!(predefined_type_members("IFC4X1", "IfcWall"), predefined_type_members("IFC4", "IfcWall"));
+        assert_eq!(predefined_type_members("IFC4X2", "IfcWall"), predefined_type_members("IFC4", "IfcWall"));
+        assert_eq!(predefined_type_members("IFC5", "IfcWall"), predefined_type_members("IFC4X3", "IfcWall"));
+        assert_eq!(predefined_type_members("IFC9", "IfcWall"), None);
+    }
 }

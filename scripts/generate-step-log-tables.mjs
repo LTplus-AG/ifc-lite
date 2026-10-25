@@ -63,7 +63,7 @@ const { getRealTypedSlots } = await src('packages/export/src/attribute-real-slot
 const { declaredNominalValueType, CONSTRAINED_IFC_VALUE_MEMBERS } = await src(
   'packages/export/src/declared-property-type.ts',
 );
-const { getSelectDefinedLeaves } = await src('packages/export/src/select-qualification.ts');
+const { getSelectDefinedLeaves, getSelectMembers } = await src('packages/export/src/select-qualification.ts');
 const { isTypeClass } = await src('packages/export/src/type-owned-psets.ts');
 const { readRelationshipSlotLowerBound } = await src('packages/export/src/relationship-slot-bounds.ts');
 const { NONREL_REF_LIST_TYPES, NONREL_REF_LIST_REGISTRY_NAMES } = await src('packages/export/src/nonrel-ref-list-types.ts');
@@ -172,32 +172,47 @@ for (const upper of [...universe.keys()].sort()) {
 // domain relaxes to. -1 violates every constrained member's WHERE rule.
 const leaves = [];
 // The table is one list for every schema, and a row only counts where the
-// file's schema declares the name (`check_literal_measure`). The pinned IFC4
-// registry lacks IFC4X3's `IfcURIReference` (a member of its `IfcSimpleValue`),
-// so IFC4X3's `IfcValue` leaves are added to IFC4's. IFC2X3's are a subset of
-// the two. Aggregate-typed members (`IfcComplexNumber`) have no EXPRESS base
-// and are not leaves in any of them.
-const ifcValueLeaves = new Map(getSelectDefinedLeaves('IfcValue'));
+// file's schema declares the name (`check_literal_measure`). IFC4X3's
+// `IfcValue` has members IFC4's lacks (`IfcURIReference`, in its
+// `IfcSimpleValue`), so IFC4X3's leaves, each resolved against IFC4X3's own
+// registry, are added to IFC4's. IFC2X3's are a subset of the two.
+// Aggregate-typed members (`IfcComplexNumber`) have no EXPRESS base: they are
+// listed apart, so a write naming one is refused for what it is. Any other
+// member that resolves to nothing fails the generator.
+const ifcValueLeaves = new Map();
 const ifc4x3OnlyLeaves = [];
-{
-  const { selects } = getSchemaRegistryForVersion('IFC4X3');
-  const seen = new Set();
-  const walk = (sel) => {
-    if (seen.has(sel)) return;
-    seen.add(sel);
-    for (const member of selects[sel] ?? []) {
-      if (Object.hasOwn(selects, member)) walk(member);
-      else if (!ifcValueLeaves.has(member)) {
-        const base = resolveExpressBase(member);
-        if (base) {
-          ifcValueLeaves.set(member, base);
-          ifc4x3OnlyLeaves.push(member.toUpperCase());
-        }
+const ifcValueAggregates = new Set();
+const AGGREGATE = /^(LIST|ARRAY|SET|BAG)\b/;
+// The one table carries IFC4's base. Members whose base IFC4X3 changed, with
+// IFC4X3's: IFC4 declares `IfcCountMeasure = NUMBER`, IFC4X3 `= INTEGER`. Any
+// other disagreement fails the generator.
+const BASE_DIFFERS_IN_IFC4X3 = new Map([['IfcCountMeasure', 'INTEGER']]);
+for (const version of ['IFC4', 'IFC4X3']) {
+  const registry = getSchemaRegistryForVersion(version);
+  const resolved = getSelectDefinedLeaves('IfcValue', registry);
+  for (const member of getSelectMembers('IfcValue', registry)) {
+    const base = resolved.get(member);
+    if (base === undefined) {
+      if (!AGGREGATE.test(registry.types[member] ?? '')) {
+        throw new Error(`${version} IfcValue member ${member} resolves to no EXPRESS base`);
+      }
+      ifcValueAggregates.add(member.toUpperCase());
+    } else if (!ifcValueLeaves.has(member)) {
+      ifcValueLeaves.set(member, base);
+      if (version === 'IFC4X3') ifc4x3OnlyLeaves.push(member.toUpperCase());
+    } else if (ifcValueLeaves.get(member) !== base) {
+      if (BASE_DIFFERS_IN_IFC4X3.get(member) !== base) {
+        throw new Error(`IfcValue member ${member} is ${ifcValueLeaves.get(member)} in IFC4 but ${base} in ${version}`);
       }
     }
-  };
-  walk('IfcValue');
-  ifc4x3OnlyLeaves.sort();
+  }
+}
+ifc4x3OnlyLeaves.sort();
+const ifcValueAggregateTokens = [...ifcValueAggregates].sort();
+// `check_literal_measure` matches on exactly these bases.
+const LEAF_BASES = new Set(['STRING', 'REAL', 'NUMBER', 'INTEGER', 'BOOLEAN', 'LOGICAL', 'BINARY']);
+for (const [member, base] of ifcValueLeaves) {
+  if (!LEAF_BASES.has(base)) throw new Error(`IfcValue member ${member} has base ${base}, which check_literal_measure does not handle`);
 }
 for (const [name, base] of ifcValueLeaves) {
   const constrained = CONSTRAINED_IFC_VALUE_MEMBERS.includes(name);
@@ -362,6 +377,12 @@ ${leaves.map((l) => `    (${JSON.stringify(l[0])}, ${JSON.stringify(l[1])}, ${JS
 /// declare the type), sorted.
 pub static NOMINAL_VALUE_LEAVES_IFC4X3_ONLY: &[&str] = &[
 ${ifc4x3OnlyLeaves.map((t) => `    ${JSON.stringify(t)},`).join('\n')}
+];
+
+/// UPPERCASE \`IfcValue\` members whose type is an aggregate (no single
+/// EXPRESS base), in IFC4 or IFC4X3, sorted.
+pub static NOMINAL_VALUE_AGGREGATES: &[&str] = &[
+${ifcValueAggregateTokens.map((t) => `    ${JSON.stringify(t)},`).join('\n')}
 ];
 `;
 

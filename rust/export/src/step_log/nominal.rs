@@ -14,7 +14,7 @@ use serde_json::Value;
 
 use super::base::pvt;
 use super::jsval::{format_step_real, js_to_number, json_number, json_to_js_string, step_integer};
-use crate::generated::step_log_tables::{NOMINAL_VALUE_LEAVES, NOMINAL_VALUE_LEAVES_IFC4X3_ONLY};
+use crate::generated::step_log_tables::{NOMINAL_VALUE_AGGREGATES, NOMINAL_VALUE_LEAVES, NOMINAL_VALUE_LEAVES_IFC4X3_ONLY};
 use crate::step_text::escape;
 
 /// `(schema-cased name, EXPRESS base, constrained, relaxed)` for an
@@ -30,16 +30,21 @@ fn leaf(token: &str) -> Option<(&'static str, &'static str, bool, &'static str)>
 }
 
 /// The `IfcValue` leaf `measure` (any case) names in `schema`'s family, or
-/// the reason it is not one: a typo, another schema's type, or an entity or
-/// enumeration (`IFCWALL`) is not a member of the `IfcValue` select.
+/// the reason it is not one: a typo, another schema's type, an entity or
+/// enumeration (`IFCWALL`) is not a member of the `IfcValue` select, and an
+/// aggregate member (`IFCCOMPLEXNUMBER`) has no single value to write.
 fn value_leaf(schema: &str, measure: &str) -> Result<(&'static str, &'static str, bool, &'static str), String> {
     let token = measure.to_ascii_uppercase();
-    if super::retype::schema_family(schema).is_none() {
+    let Some(family) = super::retype::schema_family(schema) else {
         return Err(format!("{measure} cannot be checked: {schema} is not a schema this engine knows"));
+    };
+    let declared = super::retype::family_declares(family, &token);
+    if declared && NOMINAL_VALUE_AGGREGATES.binary_search(&token.as_str()).is_ok() {
+        return Err(format!("{measure} is an aggregate; aggregate value types are not supported by single-value writes"));
     }
-    let in_family = super::retype::schema_family(schema) == Some("IFC4X3") || NOMINAL_VALUE_LEAVES_IFC4X3_ONLY.binary_search(&token.as_str()).is_err();
+    let in_family = family == "IFC4X3" || NOMINAL_VALUE_LEAVES_IFC4X3_ONLY.binary_search(&token.as_str()).is_err();
     leaf(&token)
-        .filter(|_| in_family && super::retype::schema_declares(schema, &token))
+        .filter(|_| in_family && declared)
         .ok_or_else(|| format!("{measure} is not an IFC measure in {schema}"))
 }
 
@@ -107,9 +112,14 @@ pub(crate) fn check_literal_measure(schema: &str, measure: &str, literal: &str, 
         }
         "BOOLEAN" => matches!(literal, ".T." | ".F.").then_some(()).ok_or_else(bad),
         "LOGICAL" => matches!(literal, ".T." | ".F." | ".U.").then_some(()).ok_or_else(bad),
-        // A binary is one STEP value; there is no more to check it against.
-        "BINARY" => Ok(()),
-        _ => Err(format!("{name} is a {base}, which a single-value write does not carry")),
+        // BINARY, the one base left: the generator fails on any leaf whose
+        // base is not one of these seven. A STEP binary is quoted, its first
+        // digit (0-3) the unused bits of the last hex digit.
+        _ => {
+            let digits = literal.strip_prefix('"').and_then(|l| l.strip_suffix('"')).unwrap_or_default();
+            let shaped = digits.starts_with(['0', '1', '2', '3']) && digits.bytes().all(|b| matches!(b, b'0'..=b'9' | b'A'..=b'F'));
+            shaped.then_some(()).ok_or_else(bad)
+        }
     }
 }
 

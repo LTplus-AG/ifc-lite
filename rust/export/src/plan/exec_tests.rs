@@ -938,7 +938,7 @@ fn an_override_takes_the_unit_of_the_record_it_targets_8142() {
     let content = String::from_utf8(wall_with_type_owned_pset("IFC4"))
         .unwrap()
         .replace("'Pset_WallCommon'", "'Pset_A'")
-        .replace("IFCLABEL('2HR'),$)", "IFCLABEL('2HR'),#50)")
+        .replace("IFCLABEL('2HR'),$)", "IFCLABEL('2HR'),#51)")
         .replace("(#42)", "(#42,#53)")
         .replacen("ENDSEC;\nEND-ISO", &format!("{extra}ENDSEC;\nEND-ISO"), 1);
     let (out, report) = patch_one(content.as_bytes(), vec![rating("Pset_A", "'3HR'").with_target(54)]);
@@ -946,4 +946,45 @@ fn an_override_takes_the_unit_of_the_record_it_targets_8142() {
     let text = String::from_utf8(out).unwrap();
     let line = text.lines().find(|l| l.contains("'3HR'")).expect("the override");
     assert!(line.ends_with(",#55);"), "unit of the targeted record, not of #41: {line}");
+}
+
+/// (#8142) An override of a type-owned record that has no unit writes none,
+/// rather than taking the unit of a same-named record in another set.
+#[test]
+fn an_override_of_a_record_without_a_unit_writes_none_8142() {
+    use super::test_fixtures::wall_with_type_owned_pset;
+    let extra = "#54=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('2'),$);\n\
+        #53=IFCPROPERTYSET('0000000000000000000053',$,'Pset_A',$,(#54));\n";
+    let content = String::from_utf8(wall_with_type_owned_pset("IFC4"))
+        .unwrap()
+        .replace("'Pset_WallCommon'", "'Pset_A'")
+        .replace("IFCLABEL('2HR'),$)", "IFCLABEL('2HR'),#51)")
+        .replace("(#42)", "(#42,#53)")
+        .replacen("ENDSEC;\nEND-ISO", &format!("{extra}ENDSEC;\nEND-ISO"), 1);
+    let (out, report) = patch_one(content.as_bytes(), vec![rating("Pset_A", "'3HR'").with_target(54)]);
+    assert!(report.refusals.is_empty(), "{:?}", report.refusals);
+    let text = String::from_utf8(out).unwrap();
+    let line = text.lines().find(|l| l.contains("'3HR'")).expect("the override");
+    assert!(line.ends_with(",$);"), "the targeted record has no unit, #41's is not taken: {line}");
+}
+
+/// (#8142) A write targeting a type-owned record, on an object whose own set
+/// of that name already holds the property, edits the object's own record in
+/// place and leaves its unit slot alone: the type record's unit is not copied
+/// over it.
+#[test]
+fn an_in_place_edit_keeps_its_own_unit_slot_when_the_target_is_type_owned_8142() {
+    use super::test_fixtures::wall_with_type_owned_pset;
+    let extra = "#60=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('9HR'),$);\n\
+        #61=IFCPROPERTYSET('0000000000000000000061',$,'Pset_WallCommon',$,(#60));\n\
+        #62=IFCRELDEFINESBYPROPERTIES('0000000000000000000062',$,$,$,(#10),#61);\n";
+    let content = String::from_utf8(wall_with_type_owned_pset("IFC4"))
+        .unwrap()
+        .replace("IFCLABEL('2HR'),$)", "IFCLABEL('2HR'),#51)")
+        .replacen("ENDSEC;\nEND-ISO", &format!("{extra}ENDSEC;\nEND-ISO"), 1);
+    let (out, report) = patch_one(content.as_bytes(), vec![rating("Pset_WallCommon", "'3HR'").with_target(41)]);
+    assert!(report.refusals.is_empty(), "{:?}", report.refusals);
+    let lines = entity_lines(&out);
+    assert_eq!(lines[&60], "#60=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('3HR'),$);");
+    assert!(lines[&41].contains("'2HR'"), "the type's record is untouched: {}", lines[&41]);
 }

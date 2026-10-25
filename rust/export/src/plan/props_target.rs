@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Which set and value record a property write lands on: the set that lists
-//! its target, the one the related type owns, and the unit a replacement
-//! keeps, and the resolved form of a targeted write. Reads the file only;
-//! [`super::props`] decides what to write.
+//! Which set and value record a property write lands on, resolved once per
+//! write into a [`ResolvedWrite`], and the unit a new value record carries.
+//! Reads the file only; [`super::props`] decides what to write.
 
 use super::attrs::attribute_index;
 use super::index::FileIndex;
@@ -10,12 +9,46 @@ use super::props_lookup::{container_names, decoded_name, find_member, find_set, 
 use super::props_synth;
 use super::types::{PropScope, PropWrite, PsetKind};
 
-/// `write`, carrying the unit of the value record it replaces when the caller
-/// named none: a copy keeps the unit the original had, as an in-place edit
-/// keeps its slot. Only from a value of the same measure (the same quantity entity, or
-/// a property of the same measure type), so a length never takes an area's
-/// unit.
-pub(super) fn keeping_old_unit(index: &FileIndex, schema: &str, write: &PropWrite, old: Option<u32>) -> PropWrite {
+/// A write as it lands, resolved once against the file. Nothing downstream
+/// looks its set or record up again by name.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ResolvedWrite<'w> {
+    pub(crate) write: &'w PropWrite,
+    /// The set the write edits: one the object owns (occurrence scope) or
+    /// one its related type lists (type scope). `None` when there is none of
+    /// the write's name; an occurrence write then starts one.
+    pub(crate) set: Option<u32>,
+    /// The record in `set` the write edits: in place, or by a copy when the
+    /// record or its set is shared.
+    pub(crate) record: Option<u32>,
+    /// With no `record`, the type-owned record an occurrence override
+    /// replaces: the one targeted, else the first of the write's name in the
+    /// first type set of the write's name.
+    pub(crate) overrides: Option<u32>,
+}
+
+impl ResolvedWrite<'_> {
+    /// Writes with one key reach one record (or start one property), so the
+    /// last of them wins.
+    pub(crate) fn dedupe_key(&self) -> (Option<u32>, Option<&str>) {
+        let reached = self.record.or(self.overrides);
+        (reached, reached.is_none().then_some(self.write.prop.as_str()))
+    }
+
+    /// The write a NEW value record is built from: when the caller named no
+    /// unit, it carries the unit of the record it replaces (`record`, else
+    /// `overrides`). An in-place edit uses `self.write` as given, which
+    /// leaves the record's unit slot alone when it names none.
+    pub(crate) fn for_new_record(&self, index: &FileIndex, schema: &str) -> PropWrite {
+        with_unit_of(index, schema, self.write, self.record.or(self.overrides))
+    }
+}
+
+/// `write`, carrying `old`'s unit when the caller named none. Only from a
+/// value of the same measure (the same quantity entity, or a property of the
+/// same measure type), so a length never takes an area's unit; otherwise, or
+/// when `old` has no unit, none.
+fn with_unit_of(index: &FileIndex, schema: &str, write: &PropWrite, old: Option<u32>) -> PropWrite {
     let mut write = write.clone();
     if write.unit.is_none() {
         write.unit = old.and_then(|old| {
@@ -39,47 +72,25 @@ pub(super) fn keeping_old_unit(index: &FileIndex, schema: &str, write: &PropWrit
     write
 }
 
-/// The value record of `write`'s property in the set of that name on the
-/// object's related type: what an occurrence override with no value of its
-/// own overrides, so the effective value whose unit "none" keeps.
-pub(super) fn type_owned_member(index: &FileIndex, schema: &str, object_id: u32, write: &PropWrite) -> Option<u32> {
-    let (_, type_id) = type_rel(index, schema, object_id)?;
-    let (_, _, members) = find_set(index, schema, type_sets(index, schema, type_id).iter(), write.kind, &write.pset, write.target)?;
-    find_member(index, schema, &members, &write.prop, write.target)
-}
-
-/// The sets `write` can land on, in the order they are tried: the object's
-/// own (occurrence scope only, `own`), then its related type's.
-fn candidate_sets(index: &FileIndex, schema: &str, object_id: u32, write: &PropWrite, own: &[u32]) -> Vec<u32> {
-    let occurrence = if write.scope == PropScope::Occurrence { own.to_vec() } else { Vec::new() };
-    let typed = match type_rel(index, schema, object_id) {
-        Some((_, type_id)) => type_sets(index, schema, type_id),
-        None => Vec::new(),
+/// `write` resolved against `object_id`. A target is checked here: it must
+/// be in a set of the object, the set must be the one the write names, and
+/// the record must be named as the write's property. A target in a set the
+/// write edits (the object's own, or for a type-scoped write the type's) is
+/// its record. A target only the related type holds is overridden: the write
+/// lands on the object's own set of that name (or starts one), on that set's
+/// record of the property if it has one. An untargeted write lands on the
+/// first set of its name and that set's first record of its property.
+pub(crate) fn resolve_write<'w>(index: &FileIndex, schema: &str, object_id: u32, write: &'w PropWrite) -> Result<ResolvedWrite<'w>, String> {
+    let own = match write.scope {
+        PropScope::Occurrence => own_sets(index, schema, object_id),
+        PropScope::Type => Vec::new(),
     };
-    [occurrence, typed].concat()
-}
-
-/// The set among `sets` that `write` lands on: the one listing `target`
-/// (preferring the one the write names), else the first of the write's name.
-fn find_holder(index: &FileIndex, schema: &str, sets: &[u32], write: &PropWrite, target: Option<u32>) -> Option<u32> {
-    find_set(index, schema, sets.iter(), write.kind, &write.pset, target).map(|(set, ..)| set)
-}
-
-/// `write` as it is resolved, with the set it lands on. Every target is
-/// checked here, before writes are grouped: it must be in a set of the object,
-/// the set must be the one the write names, and the record must be named as
-/// the write's property. An occurrence write that targets a record only the
-/// related type holds is an override: it is resolved again as an untargeted
-/// write, joining the object's own set of that name (or starting one). An
-/// untargeted write that finds its property in a set it will edit is given
-/// that record as its target, so writes are deduped and grouped on the record
-/// they reach.
-pub(crate) fn resolve_write(index: &FileIndex, schema: &str, object_id: u32, write: &PropWrite) -> Result<(PropWrite, Option<u32>), String> {
-    let mut write = write.clone();
-    let own = if write.scope == PropScope::Occurrence { own_sets(index, schema, object_id) } else { Vec::new() };
-    let all = candidate_sets(index, schema, object_id, &write, &own);
+    let typed = type_rel(index, schema, object_id).map(|(_, type_id)| type_sets(index, schema, type_id)).unwrap_or_default();
+    let mut overrides = None;
     if let Some(target) = write.target {
-        let Some(holder) = find_holder(index, schema, &all, &write, Some(target)) else {
+        let all = [own.as_slice(), &typed].concat();
+        // The set listing the target, preferring the one the write names.
+        let Some((holder, ..)) = find_set(index, schema, all.iter(), write.kind, &write.pset, Some(target)) else {
             return Err(format!("target #{target} is not a member of any set of this object"));
         };
         let (container, _) = container_names(write.kind);
@@ -92,21 +103,25 @@ pub(crate) fn resolve_write(index: &FileIndex, schema: &str, object_id: u32, wri
             return Err(format!("target #{target} is named {}, not {}", member_name.unwrap_or_default(), write.prop));
         }
         if own.contains(&holder) || write.scope == PropScope::Type {
-            return Ok((write, Some(holder)));
+            return Ok(ResolvedWrite { write, set: Some(holder), record: Some(target), overrides: None });
         }
-        // Only the related type holds it: an override, resolved by name. Its
-        // unit is the targeted record's, not that of a same-named record in
-        // another set.
-        write = keeping_old_unit(index, schema, &write, Some(target));
-        write.target = None;
+        overrides = Some(target);
     }
-    let Some((holder, _, members)) = find_set(index, schema, all.iter(), write.kind, &write.pset, None) else { return Ok((write, None)) };
-    // A member of a set the write edits is its record; one the related type
-    // owns is overridden by name.
-    if write.scope == PropScope::Type || own.contains(&holder) {
-        write.target = find_member(index, schema, &members, &write.prop, None);
+    let sets = match write.scope {
+        PropScope::Occurrence => &own,
+        PropScope::Type => &typed,
+    };
+    let found = find_set(index, schema, sets.iter(), write.kind, &write.pset, None);
+    let set = found.as_ref().map(|&(set, ..)| set);
+    let record = found.and_then(|(_, _, members)| find_member(index, schema, &members, &write.prop, None));
+    if record.is_some() {
+        return Ok(ResolvedWrite { write, set, record, overrides: None });
     }
-    Ok((write, Some(holder)))
+    if write.scope == PropScope::Occurrence && overrides.is_none() {
+        overrides = find_set(index, schema, typed.iter(), write.kind, &write.pset, None)
+            .and_then(|(_, _, members)| find_member(index, schema, &members, &write.prop, None));
+    }
+    Ok(ResolvedWrite { write, set, record: None, overrides })
 }
 
 fn own_sets(index: &FileIndex, schema: &str, object_id: u32) -> Vec<u32> {

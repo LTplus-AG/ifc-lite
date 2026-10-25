@@ -136,15 +136,11 @@ pub(super) fn find_set<'a>(
     pset_name: &str,
     target: Option<u32>,
 ) -> Option<(u32, usize, Vec<Option<u32>>)> {
-    let (container_type, member_attr) = container_names(kind);
-    let idx = attribute_index(schema, container_type, member_attr)?;
+    let (container_type, _) = container_names(kind);
     let named = |pset_id: u32| decoded_name(index, schema, pset_id, container_type).as_deref() == Some(pset_name);
-    let listing = |pset_id: u32| -> Option<Vec<Option<u32>>> {
-        if index.type_of(pset_id).as_deref() != Some(container_type) {
-            return None;
-        }
-        let members = index.attrs(pset_id)?.into_iter().nth(idx)?.list?;
-        target.is_none_or(|t| members.contains(&Some(t))).then_some(members)
+    let listing = |pset_id: u32| -> Option<(usize, Vec<Option<u32>>)> {
+        let (idx, members) = set_members(index, schema, pset_id, kind)?;
+        target.is_none_or(|t| members.contains(&Some(t))).then_some((idx, members))
     };
     let mut fallback = None;
     for pset_id in pset_ids.copied() {
@@ -152,13 +148,24 @@ pub(super) fn find_set<'a>(
         if target.is_none() && !named(pset_id) {
             continue;
         }
-        let Some(members) = listing(pset_id) else { continue };
+        let Some((idx, members)) = listing(pset_id) else { continue };
         if target.is_none() || named(pset_id) {
             return Some((pset_id, idx, members));
         }
         fallback.get_or_insert((pset_id, idx, members));
     }
     fallback
+}
+
+/// `(member-list attribute index, members)` of `set`, when it is a set of
+/// `kind`'s container type.
+pub(super) fn set_members(index: &FileIndex, schema: &str, set: u32, kind: PsetKind) -> Option<(usize, Vec<Option<u32>>)> {
+    let (container_type, member_attr) = container_names(kind);
+    if index.type_of(set).as_deref() != Some(container_type) {
+        return None;
+    }
+    let idx = attribute_index(schema, container_type, member_attr)?;
+    Some((idx, index.attrs(set)?.into_iter().nth(idx)?.list?))
 }
 
 /// The member of `members` a write lands on: its exact `target` when it has

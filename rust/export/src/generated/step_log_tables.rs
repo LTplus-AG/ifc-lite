@@ -5870,3 +5870,10 @@ pub static NOMINAL_VALUE_LEAVES: &[(&str, &str, &str, bool, &str)] = &[
 pub static NOMINAL_VALUE_LEAVES_IFC4X3_ONLY: &[&str] = &[
     "IFCURIREFERENCE",
 ];
+
+/// UPPERCASE `IfcValue` members whose type is an aggregate (no single
+/// EXPRESS base), in IFC4 or IFC4X3, sorted.
+pub static NOMINAL_VALUE_AGGREGATES: &[&str] = &[
+    "IFCCOMPLEXNUMBER",
+    "IFCCOMPOUNDPLANEANGLEMEASURE",
+];

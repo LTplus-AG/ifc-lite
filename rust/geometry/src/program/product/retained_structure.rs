@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Retained completeness must be checked before lenient decoding or selection.
 use crate::representation::{ProductShape, ShapeError};
-use crate::{Error, Result};
+use crate::Error;
+use crate::program::retained::failure::{FailureSite, OriginCause, StructuralReason};
+use crate::program::retained::RetainedSelection;
+type Result<T> = std::result::Result<T, StructureError>;
 use ifc_lite_core::{slot, AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 
 pub(super) fn validated_product_shape(
@@ -10,9 +13,9 @@ pub(super) fn validated_product_shape(
 ) -> Result<Option<ProductShape>> {
     let attr = element
         .get(slot::IfcProduct::REPRESENTATION.index())
-        .ok_or(ShapeError::NoRepresentationAttribute {
+        .ok_or_else(|| shape_error(element.id, ShapeError::NoRepresentationAttribute {
             element: element.id,
-        })?;
+        }))?;
     // Only an authored absent Representation is an empty product. In
     // particular, `*` is not a derived attribute at this IfcProduct slot.
     if matches!(attr, AttributeValue::Null) {
@@ -20,10 +23,11 @@ pub(super) fn validated_product_shape(
     }
     let id = attr
         .as_entity_ref()
-        .ok_or_else(|| Error::geometry("retained Representation must be a reference or $"))?;
-    let shape = decoder.decode_by_id(id)?;
+        .ok_or_else(|| refused(FailureSite::ProductShape, element.id, StructuralReason::RepresentationReference,
+            "retained Representation must be a reference or $"))?;
+    let shape = decoder.decode_by_id(id).map_err(|error| core_error(FailureSite::ProductShape, id, error))?;
     if shape.ifc_type != IfcType::IfcProductDefinitionShape {
-        return Err(ShapeError::NotAProductDefinitionShape(shape.ifc_type).into());
+        return Err(shape_error(shape.id, ShapeError::NotAProductDefinitionShape(shape.ifc_type)));
     }
     reference_members(
         &shape,
@@ -34,7 +38,8 @@ pub(super) fn validated_product_shape(
     // only the authored, finite Representations list, never child references.
     // The shared reader preserves decoding errors and authored order. Its
     // lossy list conversion is safe only after validating the raw members.
-    let shape = crate::representation::product_shape(element, decoder)?;
+    let shape = crate::representation::product_shape(element, decoder)
+        .map_err(|error| shape_error(element.id, error))?;
     if let Some(shape) = &shape {
         for rep in shape.representations() {
             crate::resource::check_current()?;
@@ -42,7 +47,7 @@ pub(super) fn validated_product_shape(
                 rep.ifc_type,
                 IfcType::IfcShapeRepresentation | IfcType::IfcTopologyRepresentation
             ) {
-                return Err(Error::geometry(format!(
+                return Err(refused(FailureSite::ProductShape, rep.id, StructuralReason::RepresentationCategory, format!(
                     "retained Representations contains non-shape representation #{} ({})",
                     rep.id, rep.ifc_type
                 )));
@@ -66,12 +71,13 @@ fn reference_members<'a>(
         .and_then(AttributeValue::as_list)
         .filter(|members| !members.is_empty())
         .ok_or_else(|| {
-            Error::geometry(format!("retained {name} must be a nonempty reference list"))
+            refused(list_site(name), entity.id, StructuralReason::NonemptyReferenceList,
+                format!("retained {name} must be a nonempty reference list"))
         })?;
     for member in members {
         crate::resource::check_current()?;
         if member.as_entity_ref().is_none() {
-            return Err(Error::geometry(format!(
+            return Err(refused(list_site(name), entity.id, StructuralReason::NonReferenceMember, format!(
                 "retained {name} on #{} contains a non-reference member",
                 entity.id
             )));
@@ -85,16 +91,66 @@ fn item_targets(members: &[AttributeValue], decoder: &mut EntityDecoder) -> Resu
     // none can disappear here. Keep the exact reader's leniency out of S1.
     for id in members.iter().filter_map(AttributeValue::as_entity_ref) {
         crate::resource::check_current()?;
-        let item = decoder.decode_by_id(id)?;
+        let item = decoder.decode_by_id(id)
+            .map_err(|error| core_error(FailureSite::RepresentationItems, id, error))?;
         // The generated supported-schema hierarchy includes geometric,
         // topological, styled and mapped items, including legacy subclasses.
         // Category membership does not admit a new retained constructor.
         if !item.ifc_type.is_subtype_of(IfcType::IfcRepresentationItem) {
-            return Err(Error::geometry(format!(
+            return Err(refused(FailureSite::RepresentationItems, item.id, StructuralReason::ItemCategory, format!(
                 "retained Items contains non-IfcRepresentationItem #{} ({})",
                 item.id, item.ifc_type
             )));
         }
     }
     Ok(())
+}
+
+// Retained-only errors preserve the reached cause before the common carrier.
+pub(super) enum StructureError {
+    Stop(crate::resource::ProgramStop),
+    Origin { site: FailureSite, entity: u32, cause: OriginCause, diagnostic: Error },
+}
+impl From<crate::resource::ProgramStop> for StructureError {
+    fn from(stop: crate::resource::ProgramStop) -> Self { Self::Stop(stop) }
+}
+impl StructureError {
+    pub(super) fn into_common(self, selection: &RetainedSelection) -> Error {
+        match self {
+            Self::Stop(stop) => Error::ProgramStopped(stop),
+            Self::Origin { site, entity, cause, diagnostic } => {
+                selection.failure_handle().record(site, Some(entity), cause);
+                diagnostic
+            }
+        }
+    }
+}
+fn list_site(name: &str) -> FailureSite {
+    if name == "Items" { FailureSite::RepresentationItems } else { FailureSite::ProductShape }
+}
+fn refused(site: FailureSite, entity: u32, reason: StructuralReason, diagnostic: impl Into<String>) -> StructureError {
+    StructureError::Origin { site, entity, cause: OriginCause::Structure(reason), diagnostic: Error::geometry(diagnostic) }
+}
+fn core_error(site: FailureSite, entity: u32, error: ifc_lite_core::Error) -> StructureError {
+    let diagnostic = Error::geometry(format!("Core parser error: {error}"));
+    StructureError::Origin { site, entity, cause: OriginCause::Core(error), diagnostic }
+}
+fn shape_error(entity: u32, error: ShapeError) -> StructureError {
+    // Reconstruct only the fieldless/scalar variants for the existing
+    // diagnostic adapter. Move the actual cause, including owned decoder text.
+    let diagnostic: Error = match &error {
+        ShapeError::NoRepresentationAttribute { element } => ShapeError::NoRepresentationAttribute { element: *element }.into(),
+        ShapeError::Unresolved => ShapeError::Unresolved.into(),
+        ShapeError::NotAProductDefinitionShape(found) => Error::geometry(format!("Expected IfcProductDefinitionShape, got {found}")),
+        ShapeError::MissingRepresentations => ShapeError::MissingRepresentations.into(),
+        ShapeError::MissingItems => ShapeError::MissingItems.into(),
+        ShapeError::Decode(core) => Error::geometry(format!("Core parser error: {core}")),
+    };
+    StructureError::Origin { site: FailureSite::ProductShape, entity, cause: OriginCause::Shape(error), diagnostic }
+}
+
+pub(super) fn retained_items(rep: &DecodedEntity, decoder: &mut EntityDecoder,
+    selection: &RetainedSelection) -> crate::Result<Vec<DecodedEntity>> {
+    crate::representation::rep_items(rep, decoder)
+        .map_err(|error| shape_error(rep.id, error).into_common(selection))
 }

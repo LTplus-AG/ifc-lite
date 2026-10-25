@@ -256,15 +256,19 @@ impl<'a> ProductControl<'a> {
             Action::Item { item, control } => return control.execute(item, router, decoder).map(ProductReply::Item),
             Action::Alignment => return Ok(ProductReply::Alignment(router.alignment_mesh(element, decoder))),
             Action::Shape => {
-                if self.retained.is_some() {
-                    return Ok(ProductReply::Shape(retained_structure::validated_product_shape(element, decoder)));
+                if let Some(selection) = &self.retained {
+                    return Ok(ProductReply::Shape(retained_structure::validated_product_shape(element, decoder)
+                        .map_err(|error| error.into_common(selection))));
                 }
                 return Ok(ProductReply::Shape(product_shape(element, decoder).map_err(Into::into)));
             }
             Action::Items(index) => {
                 let rep = self.shape.as_ref().and_then(|shape| shape.representations().get(*index));
                 let rep = rep.ok_or(ProgramError::StaleRequest)?;
-                return Ok(ProductReply::Items(rep_items(rep, decoder).map_err(Into::into)));
+                return Ok(ProductReply::Items(match &self.retained {
+                    Some(selection) => retained_structure::retained_items(rep, decoder, selection),
+                    None => rep_items(rep, decoder).map_err(Into::into),
+                }));
             }
             Action::Annotation(item) => return Ok(ProductReply::Annotation(admit_fill(item, decoder))),
             Action::Raw(item) => {

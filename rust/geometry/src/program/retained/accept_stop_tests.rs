@@ -44,7 +44,7 @@ fn accept_stop(bytes: String, source_id: u32, type_map: bool) {
         assert_eq!(stops, (Some(RetainedProgramError::Stopped(expected)),
             Some(RetainedProgramError::Stopped(expected)), Some(RetainedProgramError::Stopped(expected))),
             "accept stop must survive scope exit on original and sibling roots");
-        assert!(matches!(finish, Err(Error::ProgramStopped(stop)) if stop == expected),
+        assert!(matches!(finish, Err(RetainedFailure::Stopped(stop)) if stop == expected),
             "finish must refuse with the retained stop");
         return;
     }

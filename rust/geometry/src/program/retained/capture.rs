@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 use super::*;
+use super::failure::{FailureHandle, FailureSite, OriginCause};
 use crate::document::{RetainedExtrusion, RetainedSweptDisk};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 pub(super) fn capture(
@@ -8,6 +9,7 @@ pub(super) fn capture(
     scale: f64,
     contract: RetainedContract,
     program: u64,
+    failure: &FailureHandle,
 ) -> crate::Result<RetainedPlanOperation> {
     crate::resource::charge(crate::resource::Cost {
         work: 1,
@@ -21,17 +23,24 @@ pub(super) fn capture(
         })),
         IfcType::IfcSweptDiskSolid => Ok(RetainedRecipe::SweptDisk(RetainedSweptDisk {
             solid_id: item.id,
-            source: crate::analytic::extract_swept_disk(item, decoder)?,
+            source: crate::analytic::extract_swept_disk(item, decoder).map_err(|error| {
+                if let crate::Error::ProgramStopped(_) = error { return error; }
+                let diagnostic = crate::Error::geometry(error.to_string());
+                let cause = match error {
+                    crate::Error::CoreError(core) => OriginCause::Core(core),
+                    other => OriginCause::Opaque(other),
+                };
+                failure.record(FailureSite::Constructor, Some(item.id), cause);
+                diagnostic
+            })?,
             length_unit_scale: scale,
         })),
-        _ => Err(crate::Error::geometry(
-            crate::document::RetainedRefusal::UnsupportedSource(format!("{}", item.ifc_type))
-                .to_string(),
-        )),
+        _ => Err(recipe_error(failure, item.id,
+            crate::document::RetainedRefusal::UnsupportedSource(format!("{}", item.ifc_type)))),
     })?;
     let payload = recipe
         .lower()
-        .map_err(|refusal| crate::Error::geometry(refusal.to_string()))?;
+        .map_err(|refusal| recipe_error(failure, item.id, refusal))?;
     let world_from_source = crate::math::mat4::col_major_array(
         &nalgebra::Matrix4::new_nonuniform_scaling(&nalgebra::Vector3::repeat(scale)),
     );
@@ -60,4 +69,10 @@ pub(super) fn capture(
         value,
         kind: RetainedOperationKind::Construction(recipe),
     })
+}
+
+fn recipe_error(failure: &FailureHandle, id: u32, refusal: crate::document::RetainedRefusal) -> crate::Error {
+    let diagnostic = crate::Error::geometry(refusal.to_string());
+    failure.record(FailureSite::Constructor, Some(id), OriginCause::Recipe(refusal));
+    diagnostic
 }

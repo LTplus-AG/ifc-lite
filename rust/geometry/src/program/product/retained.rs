@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 use super::*;
+use crate::program::retained::failure::{FailureSite, OriginCause, StructuralReason};
 use crate::program::inner::retained_program::RetainedProgramError;
 use crate::program::retained::{RetainedPlacementStage, RetainedPlanOperation};
 impl<'a> ProductControl<'a> {
@@ -20,8 +21,10 @@ impl<'a> ProductControl<'a> {
         {
             let mut control = Self::merged(element, SourceHygiene::IndexOnly);
             control.retained = Some(selection.clone());
-            control.body = Body::Sink(Sink::Retained(Vec::new(), selection));
+            control.body = Body::Sink(Sink::Retained(Vec::new(), selection.clone()));
             if !element.ifc_type.is_subtype_of(IfcType::IfcProduct) {
+                selection.failure_handle().record(FailureSite::ProductRoot, Some(element.id),
+                    OriginCause::Structure(StructuralReason::NotProduct));
                 control.action = Action::Complete(Err(crate::Error::geometry(
                     "retained product_parts requires an IfcProduct root",
                 )));
@@ -29,6 +32,8 @@ impl<'a> ProductControl<'a> {
                 element.ifc_type,
                 IfcType::IfcAlignment | IfcType::IfcAnnotation
             ) {
+                selection.failure_handle().record(FailureSite::ProductRoot, Some(element.id),
+                    OriginCause::Structure(StructuralReason::UnsupportedProduct));
                 control.action = Action::Complete(Err(crate::Error::geometry(
                     "retained annotation/alignment unsupported",
                 )));

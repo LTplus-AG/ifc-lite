@@ -5,6 +5,9 @@
 #![cfg_attr(not(test), allow(dead_code))]
 use super::*;
 use crate::program::retained::*;
+use crate::program::retained::failure::{CompletionReason, FailureHandle, FailureSite, RetainedFailure};
+#[path = "completion.rs"]
+mod completion;
 
 pub(crate) struct RetainedProgram<'a> {
     inner: GeometryProgram<'a>,
@@ -209,73 +212,7 @@ impl<'a> RetainedProgram<'a> {
     pub(crate) fn cancel(&mut self) {
         self.cancelled = true;
     }
-    pub(crate) fn finish_type_map(self, type_product: u32, class: u8, color: [f32; 4]) -> Result<RetainedProductPlan> {
-        // Keep the shared stop sink alive after finish_output consumes inner.
-        // A presentation allocation can fail only after that terminal move.
-        let selection = self.selection().cloned();
-        let result = self.finish_type_map_checked(type_product, class, color);
-        if let Err(Error::ProgramStopped(stop)) = &result {
-            if let Some(selection) = selection { selection.remember_stop(*stop); }
-        }
-        result
-    }
-    fn finish_type_map_checked(self, type_product: u32, class: u8, color: [f32; 4]) -> Result<RetainedProductPlan> {
-        self.check().map_err(|error| match error {
-            RetainedProgramError::Stopped(stop) => Error::ProgramStopped(stop),
-            other => Error::geometry(format!("{other:?}")),
-        })?;
-        let map = match &self.inner.control {
-            Control::Mapping(control) => control.representation_map_id(),
-            _ => None,
-        }.ok_or_else(|| Error::geometry("retained type-map root missing"))?;
-        if color.iter().any(|component| !component.is_finite()) {
-            return Err(Error::geometry("retained type colour must be finite"));
-        }
-        match self.inner.finish_output()? {
-            Output::Mapping(crate::program::mapping::MappingOutput::Retained(mut values)) => {
-                for value in &mut values {
-                    let mut binding = RetainedPresentation::occurrence(type_product,map,None,true);
-                    binding.type_product = Some((type_product,class));
-                    binding.fallback_color = Some(color);
-                    value.present(binding)?;
-                }
-                Ok(RetainedProductPlan {
-                    values,
-                    remaining: vec![RetainedRequirement::ProductPlacement,
-                        RetainedRequirement::OpeningClosure, RetainedRequirement::MaterialLayers,
-                        RetainedRequirement::IfcAppearance, RetainedRequirement::PersistentFaces],
-                })
-            }
-            _ => Err(Error::geometry("retained type-map incomplete")),
-        }
-    }
-    // TODO(remove-by: S4a, owner: sessionf778e361): pair the first consumer with
-    // A1t typed source/product refusals. Never parse these diagnostic strings.
-    pub(crate) fn finish(self) -> Result<RetainedProductPlan> {
-        self.check().map_err(|e| match e {
-            RetainedProgramError::Stopped(stop) => Error::ProgramStopped(stop),
-            other => Error::geometry(format!("{other:?}")),
-        })?;
-        match self.inner.finish_output()? {
-            Output::Product(ProductOutput::Retained(values, selection))
-                if values.iter().all(|v| v.is_product_placed()) =>
-            {
-                let _ = selection.program();
-                Ok(RetainedProductPlan {
-                    values,
-                    // Construction and placement do not inspect or discharge
-                    // relationships, appearance, or persistent face identity.
-                    remaining: vec![
-                        RetainedRequirement::OpeningClosure,
-                        RetainedRequirement::MaterialLayers,
-                        RetainedRequirement::IfcAppearance,
-                        RetainedRequirement::PersistentFaces,
-                    ],
-                })
-            }
-            _ => Err(Error::geometry("retained product incomplete")),
-        }
-    }
+
 }
 
 #[cfg(test)]

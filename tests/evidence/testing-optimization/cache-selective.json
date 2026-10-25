@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "scope": "Guarded selective Turbo test cache; no full-suite or real-package cold/warm execution claimed",
+  "sourceCommit": "6e8c4eea4f0157cc37105ea032ff11b682356e44",
+  "sourceState": "dirty shared checkout; only listed owned files covered",
+  "files": {
+    "turbo.json": "8de5eedeeb67e0bbe80db9c5628b56725a431d1f5708b17d3796d0b7bfc7de6d",
+    "scripts/test-cache.mjs": "f32df59f71a0ecc0fdf7aa2f039dae115e9271b3e777ea02cf9925707fac4be9",
+    "scripts/test-cache.test.mjs": "edc19d869380d09ebef92b0ac10e90ae8d5bd752f70aef42cc0a71281df6f46b"
+  },
+  "runtime": {
+    "node": "v24.21.0",
+    "turbo": "2.11.7",
+    "pnpm": "10.8.1",
+    "platform": "linux",
+    "arch": "x64"
+  },
+  "implemented": {
+    "defaultTestCache": false,
+    "auditedSuites": [
+      "@ifc-lite/embed-protocol",
+      "@ifc-lite/report-contract",
+      "@ifc-lite/wasm-lifecycle"
+    ],
+    "deferred": {
+      "@ifc-lite/plugin-api": "Enabled Vitest typecheck requires a broader TypeScript import/input audit"
+    },
+    "selectors": [
+      "TEST_PATTERN",
+      "TEST_SHARD",
+      "TEST_SHARDS"
+    ],
+    "runtimePolicy": "Requires pnpm UA matching actual launcher Node/platform/arch; hashes Node executable, versions, OS release, parallelism and every inherited env value; never persists raw fingerprint inputs",
+    "uncachedFallbacks": [
+      "missing/mismatched runtime identity",
+      "NODE_OPTIONS or NODE_PATH",
+      "Node execArgv",
+      "runner flags after --",
+      "unrecognized Turbo options or loose environment",
+      "new package runtime/workspace dependencies or changed test command"
+    ],
+    "inputs": "Preserves all original global dependencies and build edges; adds root lock/workspace/package/tsconfigs/npmrc/patches/env/Vite configs and launcher files; package defaults plus explicit source/test/config/env inputs; Turbo hashes dependency build task hashes",
+    "conservativeTradeoff": "Every inherited env value enters identity; irrelevant volatile CI/session values can reduce cache reuse. Unknown options retain execution capability through the uncached path."
+  },
+  "validation": [
+    {
+      "command": "node --test scripts/test-cache.test.mjs",
+      "exitCode": 0,
+      "tests": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "durationMs": 19393.875154,
+      "proof": "Real installed Turbo and Vitest in disposable isolated workspaces; execution counters distinguish replay from execution. Three audited suites execute once over cold/warm runs while the default suite executes twice. Source change reruns only its suite; missing UA executes again; failures execute again. Real dry-run hashes change for source/tests/package config/build script/root tsconfigs/lock/package/env and selectors; added runtime dependency disables eligibility.",
+      "postRunChanges": "MPL license comment headers only; syntax checks and final full-graph dry-run passed afterward"
+    },
+    {
+      "command": "pnpm exec node scripts/test-cache.mjs --dry-run=json",
+      "exitCode": 0,
+      "testTasks": 72,
+      "cacheEnabled": 3,
+      "uncached": 69,
+      "buildEdgesPreserved": true
+    },
+    {
+      "command": "TEST_PATTERN=cache-proof TEST_SHARD=1 TEST_SHARDS=4 pnpm exec node scripts/test-cache.mjs --filter=@ifc-lite/viewer --dry-run=json",
+      "exitCode": 0,
+      "viewerCache": false,
+      "allThreeSelectorsPresentInResolvedStrictEnv": true
+    },
+    {
+      "command": "node --check scripts/test-cache.mjs; node --check scripts/test-cache.test.mjs; git diff --check -- turbo.json",
+      "exitCode": 0
+    }
+  ],
+  "parentIntegration": {
+    "requiredRootPackageChange": {
+      "scripts.test": "node scripts/test-cache.mjs"
+    },
+    "ownership": "Parent owns root package/workflows; this task did not edit them or commit/push",
+    "directTurboBehavior": "Direct turbo test remains uncached and forwards the selectors. Selective caching only activates through the guarded launcher.",
+    "fleetProofPlan": [
+      "After parent integration/checkpoint, reserve one managed storage task with an initially empty disposable Turbo cache directory; use the same admitted host, checkout, environment and arguments for both executions.",
+      "Through ifc-fleet run --storage-task TASK --cwd CHECKOUT, run: pnpm test --filter=@ifc-lite/embed-protocol --filter=@ifc-lite/report-contract --filter=@ifc-lite/wasm-lifecycle --concurrency=1 --cache=local:rw --cache-dir=TASK_CACHE --summarize",
+      "Repeat the identical command under the same owning task. Retain compact Turbo task summaries: first execution MISS, second HIT for all three tests, successful builds, exact test counts and zero unexpected skips. This step is pending parent-coordinated fleet validation.",
+      "For mutation proofs use the isolated scripts/test-cache.test.mjs harness; never edit shared source while another validation is active. It exercises actual cold/warm/invalidation behavior, not source-text assertions.",
+      "Retain compact results and tool/source hashes, then close the owning managed storage task to release cache/workspace output."
+    ],
+    "integrated": true
+  },
+  "cleanup": "Isolated proof workspaces and caches removed in finally; generated launcher configs removed after child completion. No persistent build trees or benchmark targets created.",
+  "finalQualification": {
+    "sourceCommit": "da1389f8887788b9a752346764207ce0e92102e4",
+    "regressionChecksPassed": 103,
+    "realSuiteColdMisses": 3,
+    "realSuiteWarmHits": 3,
+    "PIDDirectedCancellation": "passed; task process stopped; exit130",
+    "files": {
+      "scripts/test-cache.mjs": "1ed4c100a0e3e93bc365d9f072f3ac72a7d5557a74b22c2967a7b8570beba6d9",
+      "scripts/test-cache.test.mjs": "05df06cc9934f3316a15044e948c99e952485f174478a560658c37158804ab8f",
+      "turbo.json": "bf5e69118b39913add9c7a1108e6d57ab6a567d7cc01e1ee743bd3c0935c075a"
+    },
+    "details": "validation.json"
+  }
+}

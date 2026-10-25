@@ -1,0 +1,12 @@
+{
+  "commands": [
+    "cargo test -p ifc-lite-geometry --features csg_manifold_gate",
+    "cargo clippy -p ifc-lite-geometry --features csg_manifold_gate --all-targets -- -D warnings"
+  ],
+  "coverage_owner_when_geometry_changes": "csg-accept-gates",
+  "coverage_owner_for_other_rust_changes": "rust-full",
+  "aggregate_judges_both": true,
+  "feature_combinations_removed": [],
+  "profiles_changed": false,
+  "compiler_cache_trial": "not enabled: compile-cache input audit and net benefit not established; see rust-cache.json"
+}

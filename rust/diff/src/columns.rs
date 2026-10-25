@@ -1,8 +1,9 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
-//! Columnar transport for precomputed fingerprints. String dictionaries and
+//! Columnar transport for precomputed fingerprints. JsString dictionaries and
 //! numeric buffers cross once; opaque JS references remain in the caller.
+use crate::JsString;
 use std::collections::HashMap;
 use crate::model::{EntityAabb, EntityFingerprint};
 pub const ABSENT_STRING: u32 = u32::MAX;
@@ -10,7 +11,7 @@ pub const ABSENT_STRING: u32 = u32::MAX;
 /// container. Only geometry/container may use ABSENT_STRING.
 #[derive(Debug, Default)]
 pub struct FingerprintColumns {
-    pub strings: Vec<String>,
+    pub strings: Vec<JsString>,
     pub fields: Vec<u32>,
     /// Bit 0: aabb present, bit 1: volume present, bit 2: components present.
     pub flags: Vec<u8>,

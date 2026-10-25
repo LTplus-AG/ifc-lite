@@ -44,7 +44,9 @@ impl JsString {
     }
     /// ECMAScript trim followed by Unicode default uppercase mapping. Surrogate
     /// code units remain unchanged and valid pairs are mapped as one scalar.
+    /// Host comparisons may supply scoped mappings for their Unicode version.
     pub fn normalized_class(&self) -> Self {
+        if let Some(normalized) = crate::class_normalization::lookup(self) { return normalized; }
         let whitespace = |unit: &u16| char::from_u32(u32::from(*unit))
             .is_some_and(crate::projections::is_ecmascript_whitespace);
         let start = self.units.iter().position(|u| !whitespace(u)).unwrap_or(self.units.len());

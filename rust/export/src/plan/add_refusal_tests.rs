@@ -354,7 +354,7 @@ fn a_spatial_zone_is_not_a_container() {
         "#10=",
         "#90=IFCSPATIALZONE('0000000000000000000091',$,'Zone',$,$,$,$,$,$);\n#10=",
     );
-    refused(source.as_bytes(), object(IfcClass::Wall, gid(34), Some(ObjectRef::Id(90)), Representation::None), "not a spatial element");
+    refused(source.as_bytes(), object(IfcClass::Wall, gid(34), Some(ObjectRef::Id(90)), Representation::None), "groups by reference");
 }
 
 /// IFC4 deprecates IfcDoorStyle / IfcWindowStyle; CorrectStyleAssigned
@@ -423,7 +423,7 @@ fn zones_and_external_spatial_elements_follow_the_spatial_decomposition_rules() 
         let source = base.replacen("ENDSEC;\nEND-ISO", "#90=IFCSPATIALZONE($);\nENDSEC;\nEND-ISO", 1);
         let rel_of = |out: &[u8], g| {
             let id = id_in(out, g);
-            String::from_utf8_lossy(out).lines().find(|l| names_id(l, id) && (l.contains("IFCRELCONTAINEDINSPATIALSTRUCTURE") || l.contains("IFCRELAGGREGATES("))).unwrap_or("").to_string()
+            String::from_utf8_lossy(out).lines().find(|l| refs(l).contains(&id) && (l.contains("IFCRELCONTAINEDINSPATIALSTRUCTURE") || l.contains("IFCRELAGGREGATES("))).unwrap_or("").to_string()
         };
         let classes: &[&str] = if entity_info_for_schema(schema, "IFCEXTERNALSPATIALELEMENT").is_some() { &["IfcSpatialZone", "IfcExternalSpatialElement"] } else { &["IfcSpatialZone"] };
         for class in classes {
@@ -455,13 +455,18 @@ fn an_element_may_be_contained_in_an_external_spatial_element_8142() {
     let base = String::from_utf8(storey_with_typed_wall("IFC4")).unwrap();
     let source = base.replacen("ENDSEC;\nEND-ISO", "#90=IFCEXTERNALSPATIALELEMENT($);\n#91=IFCSPATIALZONE($);\nENDSEC;\nEND-ISO", 1);
     let wall = object(IfcClass::Wall, gid(47), Some(ObjectRef::Id(90)), Representation::None);
-    let (_, report) = run(source.as_bytes(), vec![add(wall)]);
+    let (out, report) = run(source.as_bytes(), vec![add(wall)]);
     assert_eq!(report.added, 1, "{:?}", report.refusals);
-    refused(source.as_bytes(), object(IfcClass::Wall, gid(48), Some(ObjectRef::Id(91)), Representation::None), "not a spatial element");
+    let wall_id = id_in(&out, gid(47));
+    let text = String::from_utf8_lossy(&out);
+    let rel = text.lines().find(|l| l.contains("IFCRELCONTAINEDINSPATIALSTRUCTURE") && refs(l).contains(&wall_id)).expect("the wall is contained");
+    assert!(refs(rel).contains(&90), "the relationship names the external element: {rel}");
+    refused(source.as_bytes(), object(IfcClass::Wall, gid(48), Some(ObjectRef::Id(91)), Representation::None), "groups by reference");
 }
 
-/// Whether `line` names `#id` as a whole reference (`#12` is not `#120`).
-fn names_id(line: &str, id: u32) -> bool {
-    let token = format!("#{id}");
-    line.match_indices(&token).any(|(at, _)| !line[at + token.len()..].starts_with(|c: char| c.is_ascii_digit()))
+/// The ids a STEP line references.
+fn refs(line: &str) -> Vec<u32> {
+    let mut ids = Vec::new();
+    crate::step_text::refs_in_line(line.as_bytes(), &mut ids);
+    ids
 }

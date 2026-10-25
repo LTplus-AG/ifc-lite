@@ -29,13 +29,24 @@ fn leaf(token: &str) -> Option<(&'static str, &'static str, bool, &'static str)>
         })
 }
 
+/// The `IfcValue` leaf `measure` (any case) names in `schema`'s family, or
+/// the reason it is not one: a typo, another schema's type, or an entity or
+/// enumeration (`IFCWALL`) is not a member of the `IfcValue` select.
+fn value_leaf(schema: &str, measure: &str) -> Result<(&'static str, &'static str, bool, &'static str), String> {
+    let token = measure.to_ascii_uppercase();
+    if super::retype::schema_family(schema).is_none() {
+        return Err(format!("{measure} cannot be checked: {schema} is not a schema this engine knows"));
+    }
+    leaf(&token)
+        .filter(|_| super::retype::schema_declares(schema, &token))
+        .ok_or_else(|| format!("{measure} is not an IFC measure in {schema}"))
+}
+
 /// Refuse `value` as the `measure` (any case) measure unless `schema` (a
 /// `FILE_SCHEMA` label) declares it over a REAL or NUMBER and, when
 /// `where_rule`, `value` keeps the measure's WHERE rule.
 pub(crate) fn check_real_measure(schema: &str, measure: &str, value: f64, where_rule: bool) -> Result<(), String> {
-    let token = measure.to_ascii_uppercase();
-    let leaf = leaf(&token).filter(|_| super::retype::schema_declares(schema, &token));
-    let (name, base, _, _) = leaf.ok_or_else(|| format!("{measure} is not an IFC measure in {schema}"))?;
+    let (name, base, _, _) = value_leaf(schema, measure)?;
     if !matches!(base, "REAL" | "NUMBER") {
         return Err(format!("{name} is a {base}, not a number"));
     }
@@ -65,20 +76,7 @@ pub(crate) fn canonical_literal(measure: &str, literal: &str) -> String {
 /// measure's WHERE rule when `where_rule` (a property; a quantity has its own
 /// rule, not negative). The one check a caller-serialized value passes.
 pub(crate) fn check_literal_measure(schema: &str, measure: &str, literal: &str, where_rule: bool) -> Result<(), String> {
-    let token = measure.to_ascii_uppercase();
-    let leaf = leaf(&token).filter(|_| super::retype::schema_declares(schema, &token));
-    // A name the schema does not declare is a typo or another schema's type.
-    // One it declares that the table lacks (IFCBINARY, IFC4X3's
-    // IFCURIREFERENCE) has nothing to check the value against, and is written
-    // as given.
-    if !super::retype::schema_declares(schema, &token) {
-        return Err(if ifc_lite_core::SchemaVersion::from_file_schema(schema).is_some() || schema == "IFC5" {
-            format!("{measure} is not an IFC measure in {schema}")
-        } else {
-            format!("{measure} cannot be checked: {schema} is not a schema this engine knows")
-        });
-    }
-    let Some((name, base, _, _)) = leaf else { return Ok(()) };
+    let (name, base, _, _) = value_leaf(schema, measure)?;
     let bad = || format!("{literal} is not a valid {name} value");
     let number = |integer_only: bool| -> Result<f64, String> {
         let body = literal.strip_prefix(['+', '-']).unwrap_or(literal);
@@ -108,6 +106,8 @@ pub(crate) fn check_literal_measure(schema: &str, measure: &str, literal: &str, 
         }
         "BOOLEAN" => matches!(literal, ".T." | ".F.").then_some(()).ok_or_else(bad),
         "LOGICAL" => matches!(literal, ".T." | ".F." | ".U.").then_some(()).ok_or_else(bad),
+        // A binary is one STEP value; there is no more to check it against.
+        "BINARY" => Ok(()),
         _ => Err(format!("{name} is a {base}, which a single-value write does not carry")),
     }
 }

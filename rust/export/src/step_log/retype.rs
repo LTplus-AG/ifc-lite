@@ -38,21 +38,27 @@ pub(crate) fn predefined_type_members(schema: &str, class: &str) -> Option<&'sta
     in_schema(family, &class.to_uppercase()).map(|info| info.predefined)
 }
 
+/// The table family a `FILE_SCHEMA` label reads: IFC4X1 and IFC4X2 read
+/// IFC4's, IFC5 reads IFC4X3's; `None` for a schema this engine has no table
+/// for.
+pub(crate) fn schema_family(schema: &str) -> Option<&'static str> {
+    use ifc_lite_core::SchemaVersion;
+    if schema == "IFC5" {
+        return Some("IFC4X3");
+    }
+    match SchemaVersion::from_file_schema(schema)? {
+        SchemaVersion::Ifc2x3 => Some("IFC2X3"),
+        SchemaVersion::Ifc4 | SchemaVersion::Ifc4x1 | SchemaVersion::Ifc4x2 => Some("IFC4"),
+        SchemaVersion::Ifc4x3 => Some("IFC4X3"),
+        _ => None,
+    }
+}
+
 /// Whether the family of the `FILE_SCHEMA` label `schema` declares `name`
 /// (any case), an entity or a defined type. IFC4X1 and IFC4X2 have no table
 /// of their own and read IFC4's; IFC5 reads IFC4X3's, as `lookup` does; anything else unknown is refused.
 pub(crate) fn schema_declares(schema: &str, name: &str) -> bool {
-    use ifc_lite_core::SchemaVersion;
-    if schema == "IFC5" {
-        return in_schema("IFC4X3", &name.to_uppercase()).is_some();
-    }
-    let family = match SchemaVersion::from_file_schema(schema) {
-        Some(SchemaVersion::Ifc2x3) => "IFC2X3",
-        Some(SchemaVersion::Ifc4 | SchemaVersion::Ifc4x1 | SchemaVersion::Ifc4x2) => "IFC4",
-        Some(SchemaVersion::Ifc4x3) => "IFC4X3",
-        _ => return false,
-    };
-    in_schema(family, &name.to_uppercase()).is_some()
+    schema_family(schema).is_some_and(|family| in_schema(family, &name.to_uppercase()).is_some())
 }
 
 /// `lookupEntityInfo`: the source schema's table (IFC5 reads IFC4X3's), then IFC4's.

@@ -123,10 +123,11 @@ pub(super) fn leaf_is_shared(index: &FileIndex, container_type: &str, member_idx
     index.referrers(leaf).iter().any(|&(r, idx)| r != owner && idx == member_idx && index.type_of(r).as_deref() == Some(container_type))
 }
 
-/// The first set in `pset_ids` (in order) of the right kind that a write
-/// lands on: `(set, member-list attribute index, its members)`. A write with
-/// an exact `target` lands on the set listing that record, whatever the set
-/// is called; any other on the first set named `pset_name`.
+/// The set in `pset_ids` that a write lands on: `(set, member-list attribute
+/// index, its members)`. With an exact `target`, the set that lists it,
+/// preferring one named `pset_name` over an earlier one with another name
+/// (two sets may list a shared value record). Without one, the first set
+/// named `pset_name`.
 pub(super) fn find_set<'a>(
     index: &FileIndex,
     schema: &str,
@@ -137,6 +138,7 @@ pub(super) fn find_set<'a>(
 ) -> Option<(u32, usize, Vec<Option<u32>>)> {
     let (container_type, member_attr) = container_names(kind);
     let idx = attribute_index(schema, container_type, member_attr)?;
+    let named = |pset_id: u32| decoded_name(index, schema, pset_id, container_type).as_deref() == Some(pset_name);
     let listing = |pset_id: u32| -> Option<Vec<Option<u32>>> {
         if index.type_of(pset_id).as_deref() != Some(container_type) {
             return None;
@@ -144,19 +146,19 @@ pub(super) fn find_set<'a>(
         let members = index.attrs(pset_id)?.into_iter().nth(idx)?.list?;
         target.is_none_or(|t| members.contains(&Some(t))).then_some(members)
     };
-    let named = |pset_id: u32| decoded_name(index, schema, pset_id, container_type).as_deref() == Some(pset_name);
-    let mut first_listing = None;
+    let mut fallback = None;
     for pset_id in pset_ids.copied() {
+        // Without a target the name is the whole question: check it first.
+        if target.is_none() && !named(pset_id) {
+            continue;
+        }
         let Some(members) = listing(pset_id) else { continue };
-        if named(pset_id) {
+        if target.is_none() || named(pset_id) {
             return Some((pset_id, idx, members));
         }
-        // With a target, a set that lists it is a fallback to the named one.
-        if target.is_some() && first_listing.is_none() {
-            first_listing = Some((pset_id, idx, members));
-        }
+        fallback.get_or_insert((pset_id, idx, members));
     }
-    first_listing
+    fallback
 }
 
 /// The member of `members` a write lands on: its exact `target` when it has

@@ -75,8 +75,8 @@ fn find_holder(index: &FileIndex, schema: &str, sets: &[u32], write: &PropWrite,
 /// that record as its target, so writes are deduped and grouped on the record
 /// they reach.
 pub(crate) fn resolve_write(index: &FileIndex, schema: &str, object_id: u32, write: &PropWrite) -> Result<(PropWrite, Option<u32>), String> {
-    let own = own_sets(index, schema, object_id);
     let mut write = write.clone();
+    let own = if write.scope == PropScope::Occurrence { own_sets(index, schema, object_id) } else { Vec::new() };
     let all = candidate_sets(index, schema, object_id, &write, &own);
     if let Some(target) = write.target {
         let Some(holder) = find_holder(index, schema, &all, &write, Some(target)) else {
@@ -91,10 +91,13 @@ pub(crate) fn resolve_write(index: &FileIndex, schema: &str, object_id: u32, wri
         if member_name.as_deref() != Some(write.prop.as_str()) {
             return Err(format!("target #{target} is named {}, not {}", member_name.unwrap_or_default(), write.prop));
         }
-        if write.scope == PropScope::Type || own.contains(&holder) {
+        if own.contains(&holder) || write.scope == PropScope::Type {
             return Ok((write, Some(holder)));
         }
-        // Only the related type holds it: an override, resolved by name.
+        // Only the related type holds it: an override, resolved by name. Its
+        // unit is the targeted record's, not that of a same-named record in
+        // another set.
+        write = keeping_old_unit(index, schema, &write, Some(target));
         write.target = None;
     }
     let Some((holder, _, members)) = find_set(index, schema, all.iter(), write.kind, &write.pset, None) else { return Ok((write, None)) };

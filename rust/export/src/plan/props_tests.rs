@@ -593,5 +593,10 @@ fn a_measure_must_exist_in_the_files_schema_8142() {
     };
     assert!(one("IFC2X3", "IFCPOSITIVEINTEGER", "5").unwrap_err().contains("not an IFC measure"));
     assert!(one("IFC99", "IFCLENGTHMEASURE", "5.").unwrap_err().contains("schema"));
-    assert!(one("IFC4X3", "IFCURIREFERENCE", "'http://example.org/a'").is_ok());
+    // Only the IfcValue select's members are measures: an entity or an enum
+    // the schema declares is not.
+    for not_a_measure in ["IFCWALL", "IFCWALLTYPEENUM"] {
+        assert!(one("IFC4", not_a_measure, "5.").unwrap_err().contains("not an IFC measure"), "{not_a_measure}");
+    }
+    assert!(one("IFC4", "IFCBINARY", "\"0A\"").is_ok());
 }

@@ -877,15 +877,15 @@ fn a_refused_value_names_its_property_once() {
 }
 
 /// Quantities are held to the same rule as an Add's (not negative, no
-/// measure WHERE rule), and a measure outside the table is passed through.
+/// measure WHERE rule), and a measure the literal check has no rule for (a binary) is passed through.
 /// (#8142)
 #[test]
 fn quantity_and_unlisted_measures_follow_the_add_rule() {
     let zero = PropWrite::new("Qto_X", "L", "IFCPOSITIVELENGTHMEASURE", "0.", PsetKind::Quantity, PropScope::Occurrence);
     let (_, report) = patch_one(&wall_with_own_pset("IFC4"), vec![zero]);
     assert!(report.refusals.is_empty(), "{:?}", report.refusals);
-    let uri = PropWrite::new("Pset_X", "U", "IFCURIREFERENCE", "'http://example.org/a'", PsetKind::Property, PropScope::Occurrence);
-    let (_, report) = patch_one(&wall_with_own_pset("IFC4X3"), vec![uri]);
+    let binary = PropWrite::new("Pset_X", "U", "IFCBINARY", "\"0A\"", PsetKind::Property, PropScope::Occurrence);
+    let (_, report) = patch_one(&wall_with_own_pset("IFC4"), vec![binary]);
     assert!(report.refusals.is_empty(), "{:?}", report.refusals);
 }
 
@@ -912,6 +912,35 @@ fn a_target_listed_by_two_sets_resolves_through_the_named_one_8142() {
     let extra = "#61=IFCPROPERTYSET('0000000000000000000061',$,'Pset_B',$,(#30));\n\
         #62=IFCRELDEFINESBYPROPERTIES('0000000000000000000062',$,$,$,(#10),#61);\n";
     let content = String::from_utf8(wall_with_own_pset("IFC4")).unwrap().replacen("ENDSEC;\nEND-ISO", &format!("{extra}ENDSEC;\nEND-ISO"), 1);
-    let (_, report) = patch_one(content.as_bytes(), vec![rating("Pset_B", "'x'").with_target(30)]);
+    let (out, report) = patch_one(content.as_bytes(), vec![rating("Pset_B", "'x'").with_target(30)]);
     assert!(report.refusals.is_empty(), "{:?}", report.refusals);
+    let lines = entity_lines(&out);
+    // The shared value record, and the set that keeps it, are untouched.
+    assert!(lines[&30].contains("'1HR'"), "{}", lines[&30]);
+    assert!(lines[&31].contains("(#30)"), "Pset_WallCommon still lists it: {}", lines[&31]);
+    // Pset_B, the named set, now lists a new record carrying the write.
+    let new_member: u32 = lines[&61].rsplit_once("(#").and_then(|(_, r)| r.split(')').next()).and_then(|n| n.parse().ok()).expect("Pset_B lists one member");
+    assert_ne!(new_member, 30, "{}", lines[&61]);
+    assert!(lines[&new_member].contains("'x'"), "{}", lines[&new_member]);
+}
+
+/// (#8142) An override of a type-owned record takes its unit from the record
+/// targeted, not from the first set of that name.
+#[test]
+fn an_override_takes_the_unit_of_the_record_it_targets_8142() {
+    use super::test_fixtures::wall_with_type_owned_pset;
+    let extra = "#55=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);\n\
+        #54=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('2'),#55);\n\
+        #53=IFCPROPERTYSET('0000000000000000000053',$,'Pset_A',$,(#54));\n";
+    let content = String::from_utf8(wall_with_type_owned_pset("IFC4"))
+        .unwrap()
+        .replace("'Pset_WallCommon'", "'Pset_A'")
+        .replace("IFCLABEL('2HR'),$)", "IFCLABEL('2HR'),#50)")
+        .replace("(#42)", "(#42,#53)")
+        .replacen("ENDSEC;\nEND-ISO", &format!("{extra}ENDSEC;\nEND-ISO"), 1);
+    let (out, report) = patch_one(content.as_bytes(), vec![rating("Pset_A", "'3HR'").with_target(54)]);
+    assert!(report.refusals.is_empty(), "{:?}", report.refusals);
+    let text = String::from_utf8(out).unwrap();
+    let line = text.lines().find(|l| l.contains("'3HR'")).expect("the override");
+    assert!(line.ends_with(",#55);"), "unit of the targeted record, not of #41: {line}");
 }

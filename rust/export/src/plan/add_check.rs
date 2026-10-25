@@ -249,7 +249,11 @@ impl AddState<'_> {
                         self.is_spatial(&c) && !self.is_a(&c, "IFCSPATIALZONE")
                     };
                     if !is_container {
-                        return Err(format!("container {r} is {c}, not a spatial element"));
+                        return Err(if self.is_a(&c, "IFCSPATIALZONE") {
+                            format!("container {r} is {c}: a zone groups by reference and cannot contain elements")
+                        } else {
+                            format!("container {r} is {c}, not a spatial element")
+                        });
                     }
                     if spatial && !self.can_aggregate(&c, &class) {
                         return Err(format!("container {r} is {c}, which cannot aggregate a {class} in {}", self.schema));

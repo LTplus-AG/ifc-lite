@@ -918,6 +918,12 @@ jobs:
             oracle_args+=(--mutation tests/evidence/e3b-followups/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/issue-7943/coplanarity.oracle.patch | grep -Fxq 'tests/evidence/issue-7943/coplanarity.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/issue-7943/coplanarity.oracle.patch)
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/ifctype-lookup-8119/lookup.oracle.patch | grep -Fxq 'tests/evidence/ifctype-lookup-8119/lookup.oracle.patch'; then
+            # #8119: a whole-change revert deletes buildNameTable, SUPPLEMENTAL
+            # and CANONICAL_NAME_ARMS, which the changed tests import. Keep them
+            # and drop only the exact compare after the perfect hash, so foreign
+            # keywords on an occupied slot must fail the codegen and core tests.
+            oracle_args+=(--mutation tests/evidence/ifctype-lookup-8119/lookup.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/diff/src/document_serde.rs | grep -Fxq 'rust/diff/src/document_serde.rs'; then
             # #8042/#8104: keep all document APIs/types; lose only unpaired UTF-16 units.
             # document_contract must fail exact surrogate serialization, and

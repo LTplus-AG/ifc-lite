@@ -106,7 +106,9 @@ function set(object, path, entry) {
 }
 
 function dependencyTables(toml, workspace) {
-  const deps = {};
+  // Each Cargo dependency section is an independent declaration scope. The
+  // same alias can be versioned for one target and path-only for another.
+  const sections = new Map();
   let section = [];
   let pending = '';
   const lines = toml.split('\n');
@@ -126,29 +128,34 @@ function dependencyTables(toml, workspace) {
     const rawValue = rest.join('=');
     // Inline tables and arrays may span lines; wait for the closing delimiter.
     if (!completeValue(rawValue)) continue;
-    const path = [...section.slice(section[0] === 'target' ? 3 : workspace ? 2 : 1), ...splitPath(key)];
-    set(deps, path, value(rawValue));
+    const prefixLength = section[0] === 'target' ? 3 : workspace ? 2 : 1;
+    const scope = JSON.stringify(section.slice(0, prefixLength));
+    if (!sections.has(scope)) sections.set(scope, {});
+    const path = [...section.slice(prefixLength), ...splitPath(key)];
+    set(sections.get(scope), path, value(rawValue));
     pending = '';
   }
   if (pending) throw new Error(`Incomplete dependency declaration: ${pending}`);
-  return deps;
+  return [...sections.values()];
 }
 
 /** Return published ifc-lite package names with a versioned Cargo edge. */
 export function versionedIfcDeps(manifestToml, workspaceToml) {
-  const deps = dependencyTables(manifestToml, false);
-  const inherited = dependencyTables(workspaceToml, true);
+  const sections = dependencyTables(manifestToml, false);
+  const inherited = dependencyTables(workspaceToml, true)[0] ?? {};
   const result = new Set();
-  for (const [alias, declared] of Object.entries(deps)) {
-    const local = typeof declared === 'string' ? { version: declared } : declared;
-    const base = local.workspace === true ? inherited[alias] : undefined;
-    if (local.workspace === true && base === undefined) {
-      throw new Error(`Workspace dependency ${alias} has no [workspace.dependencies] entry`);
-    }
-    const baseProps = typeof base === 'string' ? { version: base } : base ?? {};
-    const name = local.package ?? baseProps.package ?? alias;
-    if (name.startsWith('ifc-lite-') && (local.version !== undefined || baseProps.version !== undefined)) {
-      result.add(name);
+  for (const deps of sections) {
+    for (const [alias, declared] of Object.entries(deps)) {
+      const local = typeof declared === 'string' ? { version: declared } : declared;
+      const base = local.workspace === true ? inherited[alias] : undefined;
+      if (local.workspace === true && base === undefined) {
+        throw new Error(`Workspace dependency ${alias} has no [workspace.dependencies] entry`);
+      }
+      const baseProps = typeof base === 'string' ? { version: base } : base ?? {};
+      const name = local.package ?? baseProps.package ?? alias;
+      if (name.startsWith('ifc-lite-') && (local.version !== undefined || baseProps.version !== undefined)) {
+        result.add(name);
+      }
     }
   }
   return [...result];

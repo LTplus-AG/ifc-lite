@@ -82,3 +82,53 @@ test('#7955: an unresolved workspace inheritance fails closed', () => {
     /Workspace dependency missing has no \[workspace.dependencies\] entry/
   );
 });
+
+test('#7955: a later target dev path-only declaration cannot erase a normal version edge', () => {
+  const fixture = `[dependencies]
+ifc-lite-core = { version = "23.6.0", path = "../core" }
+[target.'cfg(unix)'.dev-dependencies]
+ifc-lite-core = { path = "../core" }
+`;
+  assert.deepEqual(versionedIfcDeps(fixture, ''), ['ifc-lite-core']);
+});
+
+test('#7955: a later normal version edge survives an earlier target dev path-only declaration', () => {
+  const fixture = `[target.'cfg(unix)'.dev-dependencies]
+ifc-lite-core = { path = "../core" }
+[dependencies]
+ifc-lite-core = { version = "23.6.0", path = "../core" }
+`;
+  assert.deepEqual(versionedIfcDeps(fixture, ''), ['ifc-lite-core']);
+});
+
+test('#7955: two target cfg sections with the same alias retain the versioned edge', () => {
+  const fixture = `[target.'cfg(unix)'.dependencies]
+ifc-lite-core.version = "23.6.0"
+ifc-lite-core.path = "../core"
+[target.'cfg(windows)'.dependencies]
+ifc-lite-core = { path = "../core" }
+`;
+  assert.deepEqual(versionedIfcDeps(fixture, ''), ['ifc-lite-core']);
+});
+
+test('#7955: dotted and table properties cannot combine across targets into a false package edge', () => {
+  const fixture = `[target.'cfg(unix)'.dependencies.renamed]
+package = "ifc-lite-one"
+version = "23.6.0"
+[target.'cfg(windows)'.dependencies]
+renamed.package = "ifc-lite-two"
+renamed.path = "../two"
+`;
+  assert.deepEqual(versionedIfcDeps(fixture, ''), ['ifc-lite-one']);
+});
+
+test('#7955: one alias can name distinct packages in separate dependency sections', () => {
+  const fixture = `[dependencies]
+renamed = { package = "ifc-lite-one", version = "23.6.0", path = "../one" }
+[target.'cfg(unix)'.build-dependencies.renamed]
+package = "ifc-lite-two"
+version = "23.6.0"
+path = "../two"
+`;
+  assert.deepEqual(new Set(versionedIfcDeps(fixture, '')), new Set(['ifc-lite-one', 'ifc-lite-two']));
+});

@@ -66,9 +66,13 @@ Preparation receipts:
   exit zero and unchanged source. Both DPRs passed all controls below. The
   [accepted report](functional-accepted.json.gz), [summary](functional-summary.json)
   and [original receipt identities](functional-receipts.json) are retained.
-- Exclusive hover job `eedf4fdf-56a7-4b14-8d04-998ecabb7f46` is submitted with
-  that accepted report and frozen source/artifact manifests. Its original
-  receipt owns the outcome; no timed sample replacement is allowed.
+- Exclusive hover job `eedf4fdf-56a7-4b14-8d04-998ecabb7f46` also timed out
+  awaiting admission after an hour. Its controller never started, its output
+  directory does not exist and no timing samples were produced. The
+  [original refusal](hover-admission-refusal.json) is retained. New admission
+  is also held by host I/O pressure; the next submission must await host drain
+  and guard recovery, using the same frozen protocol and accepted functional
+  report. No failed timing sample may be replaced.
 
 [Preparation receipts](preparation.json) retain command/source identities,
 original outcomes and log hashes. Failed functional reports and compact summaries

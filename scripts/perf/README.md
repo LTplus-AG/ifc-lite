@@ -610,8 +610,9 @@ samples. The subsequent untimed NVIDIA qualification passes same-render
 depth/ID/item/world comparisons across both DPRs, real-model federation,
 authored geometry families and stale camera/resize/device-loss controls, with
 unchanged geometry. Harness readiness and screenshot-lifetime failures remain
-in the evidence alongside the accepted run. An exclusive mounted-hover cohort
-is submitted; its interaction verdict remains held.
+in the evidence alongside the accepted run. The separate exclusive hover
+request also expired before execution. Host contention and I/O admission hold
+the interaction verdict; no timing sample or speedup claim follows.
 
 Independent Linux qualification adopted the existing readback cleanup repair;
 inverse fault controls demonstrate the ownership defects and the repaired paths

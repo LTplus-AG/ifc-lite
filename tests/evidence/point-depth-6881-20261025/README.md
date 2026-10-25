@@ -73,6 +73,11 @@ Preparation receipts:
   is also held by host I/O pressure; the next submission must await host drain
   and guard recovery, using the same frozen protocol and accepted functional
   report. No failed timing sample may be replaced.
+- The subsequent [two-hour capacity wait](capacity-wait-expired.json) expired
+  after 234 read-only probes. Existing work remained active and Pop admission
+  remained refused. No second hover job was submitted and no benchmark or
+  capacity waiter remains active. Performance acceptance, review and merge
+  remain pending external host recovery.
 
 [Preparation receipts](preparation.json) retain command/source identities,
 original outcomes and log hashes. Failed functional reports and compact summaries

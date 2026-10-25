@@ -3744,6 +3744,9 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Retained source inspection (private controller and census consumer)
         run: |
+          # Geometry is a dependency of processing, so its cfg(test) deadline
+          # adapter witness requires its own retained-feature unit-test target.
+          cargo test --locked -p ifc-lite-geometry --features retained-runtime --lib
           cargo test --locked -p ifc-lite-processing --features retained-runtime --lib retained_inspection
           cargo test --locked -p ifc-lite-processing --features retained-runtime --example retained_census
           cargo clippy --locked -p ifc-lite-processing --features retained-runtime --all-targets -- -D warnings

@@ -17,7 +17,7 @@ impl RetainedInspectionError {
     pub(super) fn invalid_options() -> Self { Self::code(wire::Code::InvalidOptions) }
     pub(super) fn invalid_source() -> Self { Self::code(wire::Code::SourceInvalid) }
     pub(super) fn mismatched_source() -> Self { Self::source(RetainedContextError::Mismatched) }
-    pub(super) fn invalid_report() -> Self { Self::code(wire::Code::SourceInvalid) }
+    pub(super) fn invalid_report() -> Self { Self::code(wire::Code::RuntimeFailed) }
     pub(super) fn geometry(error: SourceInspectionError) -> Self {
         match error {
             SourceInspectionError::Stopped(stop) => Self::stopped(stop),

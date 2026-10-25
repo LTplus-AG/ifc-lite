@@ -25,14 +25,26 @@ pub(super) fn outcome(failure: RetainedFailure, binding: &wire::Binding)
         }
         RetainedFailure::Protocol(RetainedProgramError::Stopped(stop)) => return Err(stop.into()),
         RetainedFailure::Protocol(RetainedProgramError::Unsupported) =>
-            (Code::FeatureUnavailable, DetailReason::Unavailable, Stage::Representation, Requirement::Representation),
+            // Some not-yet-converted adapters erase their common error into
+            // Unsupported. This is not proof a platform feature is unavailable.
+            (Code::SourceInvalid, DetailReason::Invalid, Stage::Source, Requirement::SourceAuthentication),
         RetainedFailure::Protocol(RetainedProgramError::Cancelled) => return Err(ProgramStop::Cancelled.into()),
         RetainedFailure::Protocol(RetainedProgramError::WrongOwner) =>
             (Code::OwnerMismatch, DetailReason::Mismatch, Stage::Ownership, Requirement::Ownership),
         RetainedFailure::Protocol(_) | RetainedFailure::Completion(_) =>
             (Code::SourceInvalid, DetailReason::Invalid, Stage::Source, Requirement::SourceAuthentication),
     };
-    Ok(wire::InspectionOutcome::Refused(Box::new(wire::RefusedInspection {
+    Ok(refused(code, reason, stage, requirement, binding))
+}
+
+pub(super) fn unavailable(binding: &wire::Binding) -> wire::InspectionOutcome {
+    refused(wire::Code::FeatureUnavailable, wire::DetailReason::Unavailable,
+        wire::Stage::Representation, wire::Requirement::Representation, binding)
+}
+
+fn refused(code: wire::Code, reason: wire::DetailReason, stage: wire::Stage,
+    requirement: wire::Requirement, binding: &wire::Binding) -> wire::InspectionOutcome {
+    wire::InspectionOutcome::Refused(Box::new(wire::RefusedInspection {
         refusal: wire::Refusal {
             schema_version: 1., family: wire::cause_family(&code), code, stage,
             source: wire::RefusalSource::Known(Box::new(wire::KnownSource { value: binding.identity.source.clone() })),
@@ -40,5 +52,5 @@ pub(super) fn outcome(failure: RetainedFailure, binding: &wire::Binding)
             requirement, detail: wire::Detail { reason, observed: "0".into(), limit: "0".into() },
             exact_retry: "explicit_new_exact_request".into(),
         },
-    })))
+    }))
 }

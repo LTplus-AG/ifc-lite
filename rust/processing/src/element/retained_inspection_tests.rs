@@ -24,8 +24,13 @@ fn commit() -> String {
     assert!(out.status.success());
     String::from_utf8(out.stdout).unwrap().trim().into()
 }
+fn run(source: Arc<SourceBundle>, options: &str) -> Result<RetainedSourceInspection, RetainedInspectionError> {
+    let mut decoder = source.decoder();
+    let root = decoder.decode_by_id(10).ok();
+    inspect_retained_source(source.clone(), 10, root.as_ref(), &mut decoder, options, &commit())
+}
 fn inspect(text: &str) -> RetainedSourceInspection {
-    inspect_retained_source(SourceBundle::new(text.as_bytes().to_vec()), 10, OPTIONS, &commit()).unwrap()
+    run(SourceBundle::new(text.as_bytes().to_vec()), OPTIONS).unwrap()
 }
 fn value(report: &RetainedSourceInspection) -> serde_json::Value {
     serde_json::from_slice(report.bytes().unwrap()).unwrap()
@@ -59,15 +64,15 @@ fn issue_7955_cut_c_source_options_and_global_id_are_authenticated() {
     assert_ne!(base["identity"]["source"]["sha256"], changed["identity"]["source"]["sha256"]);
     assert_ne!(base["identity"]["resultId"], changed["identity"]["resultId"]);
     let options = OPTIONS.replace("0.001", "0.002");
-    let report = inspect_retained_source(SourceBundle::new(SOURCE.as_bytes().to_vec()), 10, &options, &commit()).unwrap();
+    let report = run(SourceBundle::new(SOURCE.as_bytes().to_vec()), &options).unwrap();
     assert_ne!(base["identity"]["resultId"], value(&report)["identity"]["resultId"]);
     for options in [OPTIONS.replace("\"mergeLayers\":false", "\"mergeLayers\":true"),
         OPTIONS.replace("0.001", "0"), OPTIONS.replace("\"maxWork\":\"10000\"", "\"maxWork\":\"0\"")] {
-        let error = inspect_retained_source(SourceBundle::new(SOURCE.as_bytes().to_vec()), 10, &options, &commit()).err().unwrap();
+        let error = run(SourceBundle::new(SOURCE.as_bytes().to_vec()), &options).err().unwrap();
         assert_eq!(error.diagnostic_code_json(), "\"INVALID_OPTIONS\"");
     }
     let invalid = SOURCE.replace("0000000000000000000001", "w");
-    let error = inspect_retained_source(SourceBundle::new(invalid.into_bytes()), 10, OPTIONS, &commit()).err().unwrap();
+    let error = run(SourceBundle::new(invalid.into_bytes()), OPTIONS).err().unwrap();
     assert_eq!(error.diagnostic_code_json(), "\"SOURCE_INVALID\"");
     let absent = SOURCE.replace("'0000000000000000000001'", "$");
     assert_eq!(value(&inspect(&absent))["product"]["GlobalId"]["kind"], "absent");
@@ -117,7 +122,7 @@ fn issue_7955_cut_c_detached_stop_and_report_drop_keep_original_domain_isolated(
     let source = SourceBundle::new(SOURCE.as_bytes().to_vec());
     let weak = Arc::downgrade(&source);
     let report = account.scope(|| {
-        let report = inspect_retained_source(source.clone(), 10, OPTIONS, &commit()).unwrap();
+        let report = run(source.clone(), OPTIONS).unwrap();
         resource::detached(|| {
             resource::stop(ProgramStop::Cancelled);
             assert!(resource::check_current().is_ok());
@@ -136,8 +141,103 @@ fn issue_7955_cut_c_detached_stop_and_report_drop_keep_original_domain_isolated(
 #[test]
 fn issue_7955_cut_c_zero_source_work_budget_preserves_original_payload() {
     let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits { work: Some(0), ..Default::default() }));
-    let error = account.scope(|| inspect_retained_source(SourceBundle::new(SOURCE.as_bytes().to_vec()), 10, OPTIONS, &commit())).err().unwrap();
+    let error = account.scope(|| run(SourceBundle::new(SOURCE.as_bytes().to_vec()), OPTIONS)).err().unwrap();
     let stop = account.check().unwrap_err();
     assert_eq!(error.original_stop(), Some(stop));
     assert!(matches!(stop, ProgramStop::ResourceRefused(ResourceFailure { dimension: Dimension::Work, remaining: 0, .. })));
+}
+
+#[test]
+fn issue_7955_cut_c_post_scope_source_and_original_stop_validation_precede_report_return() {
+    let source = SourceBundle::new(SOURCE.as_bytes().to_vec());
+    let options = wire::decode_options(OPTIONS).unwrap();
+    for invalidate in [true, false] {
+        let model = ProductionModel::from_source(source.clone());
+        let snapshot = model.snapshot(Default::default());
+        let mut decoder = source.decoder();
+        let router = GeometryRouter::with_scale(1.);
+        let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
+        let error = account.scope(|| inspect_bound_after(&source, snapshot, 10, None, &options, &commit(),
+            &mut decoder, &router, || {
+                // This hook is after ProductOwner restored its source scope.
+                if invalidate { model.invalidate_source(); } else { account.cancel(); }
+            })).err().unwrap();
+        if invalidate { assert_eq!(error.diagnostic_code_json(), "\"SOURCE_STALE\""); }
+        else { assert_eq!(error.original_stop(), Some(ProgramStop::Cancelled)); }
+        assert!(decoder.try_execution_lease().is_ok());
+        assert!(router.try_execution_lease().is_ok());
+    }
+}
+
+#[test]
+fn issue_7955_cut_c_unwind_releases_scope_leases_report_and_source() {
+    let source = SourceBundle::new(SOURCE.as_bytes().to_vec());
+    let model = ProductionModel::from_source(source.clone());
+    let snapshot = model.snapshot(Default::default());
+    let options = wire::decode_options(OPTIONS).unwrap();
+    let mut decoder = source.decoder();
+    let router = GeometryRouter::with_scale(1.);
+    let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
+    let weak = Arc::downgrade(&snapshot);
+    let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| account.scope(|| {
+        let _ = inspect_bound_after(&source, snapshot, 10, None, &options, &commit(), &mut decoder, &router,
+            || panic!("#7955 after-scope unwind"));
+    })));
+    assert!(panic.is_err());
+    assert!(weak.upgrade().is_none());
+    assert!(resource::current_account().is_none());
+    assert!(decoder.try_execution_lease().is_ok());
+    assert!(router.try_execution_lease().is_ok());
+}
+
+#[test]
+fn issue_7955_cut_c_actual_source_stop_precedes_account_and_restored_ambient() {
+    let source = SourceBundle::new(SOURCE.as_bytes().to_vec());
+    let model = ProductionModel::from_source(source.clone());
+    let snapshot = model.snapshot(Default::default());
+    let options = wire::decode_options(OPTIONS).unwrap();
+    let mut decoder = source.decoder();
+    let router = GeometryRouter::with_scale(1.);
+    let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
+    let mut owner = session_owner::ProductOwner::admit(&decoder, &router).unwrap();
+    let ((report, source_stop), _) = account.scope(|| owner.work(&mut decoder, &router, |decoder, router| {
+        snapshot.validate_decoder(decoder).unwrap();
+        let root = decoder.decode_by_id(10).unwrap();
+        let binding = binding::from_source(&source, &root, &options, 1).unwrap();
+        let lease = decoder.try_source_execution_lease().unwrap().unwrap();
+        let source_stop = lease.source_stop_handle().unwrap().unwrap();
+        drop(lease);
+        let report = ifc_lite_geometry::program::inspect_retained_program_source(&root, decoder, router,
+            &serde_json::to_string(&binding).unwrap(), 0, &commit()).unwrap();
+        (report, source_stop)
+    })).unwrap();
+    drop(owner);
+    let stop = ProgramStop::ResourceRefused(ResourceFailure {
+        dimension: Dimension::CopyBytes, requested: 37, remaining: 11, reason: RefusalReason::Limit,
+    });
+    source_stop.stop(stop);
+    account.cancel();
+    let foreign = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
+    foreign.scope(|| assert_eq!(report.validate_original_stop(), Err(stop)));
+    assert_eq!(foreign.usage().work, 0);
+    assert!(decoder.try_execution_lease().is_ok());
+}
+
+#[test]
+fn issue_7955_cut_c_production_decode_preserves_binary64_options() {
+    let options = OPTIONS.replace("0.001", "0.12345678901234567");
+    let report = run(SourceBundle::new(SOURCE.as_bytes().to_vec()), &options).unwrap();
+    assert_eq!(value(&report)["identity"]["options"]["chordToleranceMetres"].as_f64().unwrap().to_bits(),
+        0x3fbf9add3746f65e);
+}
+
+#[test]
+fn issue_7955_cut_c_options_bound_source_work_and_backing_even_in_generous_ambient() {
+    for options in [OPTIONS.replace("\"maxWork\":\"10000\"", "\"maxWork\":\"1\""),
+        OPTIONS.replace("\"maxBytes\":\"16777216\"", "\"maxBytes\":\"1\"")] {
+        let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
+        let error = account.scope(|| run(SourceBundle::new(SOURCE.as_bytes().to_vec()), &options)).err().unwrap();
+        assert_eq!(error.diagnostic_code_json(), "\"RESOURCE_EXHAUSTED\"");
+        assert!(error.original_stop().is_some());
+    }
 }

@@ -73,7 +73,7 @@ impl Counts {
 #[derive(Serialize)]
 pub struct Product {
     #[cfg(feature = "retained-runtime")]
-    pub(super) controller: Option<controller::Column>,
+    controller: Option<controller::Column>,
     pub ifc_type: String,
     #[serde(rename = "GlobalId")]
     pub global_id: Option<String>,

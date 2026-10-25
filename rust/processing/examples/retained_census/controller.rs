@@ -46,7 +46,9 @@ fn inspect_at(content: &[u8], products: &mut BTreeMap<u32, Product>, commit: &st
     for (&id, product) in products {
         // Keep malformed/non-Body/unsupported rows. This probe does not decide
         // the Q0 denominator, nor promote a numerical prefix to whole support.
-        product.controller = Some(match inspect_retained_source(source.clone(), id, OPTIONS, commit) {
+        let mut decoder = source.decoder();
+        let root = decoder.decode_by_id(id).ok();
+        product.controller = Some(match inspect_retained_source(source.clone(), id, root.as_ref(), &mut decoder, OPTIONS, commit) {
             Ok(report) => Column::Inspected(report),
             Err(error) => Column::EntryRefused(error.diagnostic_code_json()),
         });
@@ -65,8 +67,15 @@ fn implementation_commit() -> Option<String> {
 /// Independently pin the executable; the commit field describes the inspected
 /// clean checkout, not an assertion that arbitrary prebuilt binaries match it.
 pub(super) fn executable_sha256() -> Option<String> {
-    std::env::current_exe().ok().and_then(|path| std::fs::read(path).ok())
-        .map(|bytes| format!("{:x}", Sha256::digest(bytes)))
+    use std::io::Read;
+    let mut file = std::fs::File::open(std::env::current_exe().ok()?).ok()?;
+    let mut hash = Sha256::new();
+    let mut buffer = [0; 16 * 1024];
+    loop {
+        let count = file.read(&mut buffer).ok()?;
+        if count == 0 { return Some(format!("{:x}", hash.finalize())); }
+        hash.update(&buffer[..count]);
+    }
 }
 
 #[cfg(test)]
@@ -74,7 +83,7 @@ mod tests {
     use super::*;
     #[test]
     fn issue_7955_controller_column_keeps_non_body_and_malformed_denominator() {
-        let bytes = super::super::tests::model("");
+        let bytes = super::super::tests::model("#90=IFCWALL('0000000000000000000090',$,$,$,$,$,$,$);\n#91=IFCWALL('0000000000000000000091',$,$,$,$,$,#999,$);");
         let mut fixture = super::super::census_bytes(bytes.as_bytes());
         let before = fixture.products.len();
         // Test provenance is the current real checkout revision, never a future SHA.
@@ -83,5 +92,13 @@ mod tests {
         inspect_at(bytes.as_bytes(), &mut fixture.products, commit.trim());
         assert_eq!(fixture.products.len(), before);
         assert!(fixture.products.values().all(|product| product.controller.is_some()));
+        let inspected = serde_json::to_value(&fixture.products[&13].controller).unwrap();
+        assert_eq!(inspected["outcome"]["kind"], "requires_numerical_evaluation");
+        let absent = serde_json::to_value(&fixture.products[&90].controller).unwrap();
+        assert_eq!(absent["outcome"]["kind"], "traversal_only");
+        let malformed = serde_json::to_value(&fixture.products[&91].controller).unwrap();
+        assert_eq!(malformed["outcome"]["kind"], "refused");
+        assert_eq!(fixture.products[&13].source_admission, "uninspected");
+        assert!(!fixture.enumeration_complete);
     }
 }

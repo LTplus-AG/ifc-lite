@@ -2,6 +2,53 @@
 
 Guide to geometry extraction and processing in IFClite.
 
+## Development source inspection (#7955)
+
+The default-off Rust `retained-runtime` feature supplies a bounded diagnostic
+consumer for the existing `rust/processing/examples/retained_census` example.
+Run it from a clean, committed checkout with
+`cargo run -p ifc-lite-processing --features retained-runtime --example retained_census -- <model.ifc>`.
+Its original extractor column and denominator keep their existing meanings.
+The additional `controller` column drives the private retained controller through
+source replies until its first **nonempty** numerical batch. It drops that batch
+without accepting numerical results. Later operands and products remain unknown.
+An exhausted source traversal is `traversal_only`; it is never a completed product
+or permission to remove one. Unsupported and malformed products remain in the
+inventory. An incomplete inventory stays incomplete.
+
+The development Rust edge is deliberately small:
+
+- `ifc_lite_processing::element::inspect_retained_source` authenticates the actual
+  `SourceBundle`, decoder origin, snapshot and supplied root allocation. Its
+  `RetainedSourceInspection::bytes` checks the original source and stop again.
+  `RetainedInspectionError` exposes only a staged diagnostic code and any original
+  `ProgramStop`; it retains private source/owner causes internally.
+- `ifc_lite_geometry::program::inspect_retained_program_source` is the processing
+  adapter's cross-crate consumer seam. `SourceInspectionReport` owns charged
+  serialized bytes and original-stop validation; `SourceInspectionError` reports
+  inability to produce that diagnostic. Direct callers still owe source/owner
+  authentication. No controller, ticket, recipe, frame or schema type is exported.
+
+Both crates use generated strict inspection projections. The full model-result
+projection remains test-only. Reports have `diagnostic_only` authority and retain
+unchecked numerical, representation, opening, layer, interface, appearance,
+identity, instancing and finality obligations. Absent GlobalIds are explicit;
+invalid ones refuse entry. Source and result digests derive from immutable source
+bytes and options, independently of product metadata. The census records the clean
+checkout commit and a separate executable SHA256; an execution receipt must bind
+that binary to its compilation source. Dirty or unavailable checkout identity
+leaves the controller column uninspected.
+
+This additive feature-gated Rust surface needs the normal Rust release's additive
+API disposition; it does not change an npm export, public WASM binding, CLI flag or
+viewer mode. No version is edited here. It introduces no numerical executor,
+runtime dependency, exact fallback, publication or removal path. Source archives
+contain the generated inspection projections; the census remains excluded tooling.
+Requested backing is accounted separately from measured RSS. A shared enclosing
+account can be stricter, and source-step byte checks conservatively include its
+other live backing; this is not strict coverage of every allocator or SDK cost.
+Performance, geometry equivalence and release qualification are separate gates.
+
 ## Overview
 
 All geometry is produced by a single Rust pipeline (`produce_element_meshes`

@@ -17,8 +17,8 @@ readme = "../../README.md"
 exclude = ["examples/retained_census.rs", "examples/retained_census/**"]
 
 [features]
-# Declare at S3, before model_context cfgs; no runtime-crate edge or S4 consumer.
-retained-runtime = ["ifc-lite-geometry/retained-runtime"]
+# Source inspection uses the private controller and strict binary64 wire decode; no runtime-crate edge.
+retained-runtime = ["ifc-lite-geometry/retained-runtime", "serde_json/float_roundtrip"]
 # Opt-in alternate triangulator oracle for canonical producer regression tests.
 triangulation-alt = ["ifc-lite-geometry/triangulation-alt"]
 # Fixed-size work counters for the diagnostic example, never enabled by default.
@@ -50,7 +50,7 @@ ifc-lite-core.workspace = true
 ifc-lite-geometry.workspace = true
 rayon.workspace = true
 serde = { workspace = true, features = ["rc"] }
-serde_json = { workspace = true, features = ["float_roundtrip"] }
+serde_json.workspace = true
 png.workspace = true
 rustc-hash.workspace = true
 tracing = { workspace = true, features = ["std", "attributes"] }
@@ -58,8 +58,8 @@ sha2.workspace = true
 nalgebra.workspace = true
 
 [dev-dependencies]
-# #7955 private cfg(test) wire preflight AND typed decode require correctly
-# rounded binary64. Keep the normal dependency above unchanged (resolver = "2").
+# #7955 test-only full schema and production retained inspection both need
+# correctly rounded binary64; the normal feature enables it explicitly above.
 serde_json = { workspace = true, features = ["float_roundtrip"] }
 # The excluded local census example can inspect the IFC inside fixture IFCZIPs.
 zip.workspace = true

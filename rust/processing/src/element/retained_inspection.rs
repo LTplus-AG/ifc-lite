@@ -31,7 +31,8 @@ impl RetainedSourceInspection {
 /// contract. This feature-gated Rust seam is not viewer/CLI retained delivery.
 /// The implementation identity must be supplied by the source-pinned caller.
 pub fn inspect_retained_source(
-    source: Arc<SourceBundle>, product_id: u32, options_json: &str, implementation_commit: &str,
+    source: Arc<SourceBundle>, product_id: u32, supplied_root: Option<&DecodedEntity>,
+    decoder: &mut EntityDecoder, options_json: &str, implementation_commit: &str,
 ) -> Result<RetainedSourceInspection, RetainedInspectionError> {
     if options_json.len() > 4096 || wire::text_format(implementation_commit, "commit").is_err() {
         return Err(RetainedInspectionError::invalid_options());
@@ -48,10 +49,11 @@ pub fn inspect_retained_source(
     account.scope(|| {
         let _scratch = resource::charge(Cost { live_bytes: 256 * 1024, ..Default::default() })
             .map_err(RetainedInspectionError::stopped)?;
-        let mut decoder = source.decoder();
-        // The canonical unit resolver is source work, not a second IFC traversal.
-        let router = GeometryRouter::with_scale(1.);
-        inspect_bound(&source, snapshot, product_id, None, &options, implementation_commit, &mut decoder, &router)
+        snapshot.validate_decoder(decoder).map_err(RetainedInspectionError::source)?;
+        // Use canonical unit resolution; no separate representation walk.
+        let router = router_for_source(source.bytes(), decoder)?;
+        resource::check_current().map_err(RetainedInspectionError::stopped)?;
+        inspect_bound(&source, snapshot, product_id, supplied_root, &options, implementation_commit, decoder, &router)
     })
 }
 
@@ -61,11 +63,22 @@ fn inspect_bound(
     supplied_root: Option<&DecodedEntity>, options: &wire::Options, implementation_commit: &str,
     decoder: &mut EntityDecoder, router: &GeometryRouter,
 ) -> Result<RetainedSourceInspection, RetainedInspectionError> {
+    inspect_bound_after(source, snapshot, product_id, supplied_root, options, implementation_commit, decoder, router, || {})
+}
+
+#[allow(clippy::too_many_arguments)]
+fn inspect_bound_after(
+    source: &Arc<SourceBundle>, snapshot: Arc<OwnedMeshProductionContext>, product_id: u32,
+    supplied_root: Option<&DecodedEntity>, options: &wire::Options, implementation_commit: &str,
+    decoder: &mut EntityDecoder, router: &GeometryRouter, after_work: impl FnOnce(),
+) -> Result<RetainedSourceInspection, RetainedInspectionError> {
     snapshot.validate_decoder(decoder).map_err(RetainedInspectionError::source)?;
     let mut owner = session_owner::ProductOwner::admit(decoder, router).map_err(RetainedInspectionError::owner)?;
     let (result, _) = owner.work(decoder, router, |decoder, router| {
         snapshot.validate_decoder(decoder).map_err(RetainedInspectionError::source)?;
-        let root = decoder.decode_by_id(product_id).map_err(|_| RetainedInspectionError::invalid_source())?;
+        let decoded = decoder.decode_by_id(product_id);
+        resource::check_current().map_err(RetainedInspectionError::stopped)?;
+        let root = decoded.map_err(|_| RetainedInspectionError::invalid_source())?;
         if let Some(supplied) = supplied_root {
             if supplied.id != root.id || supplied.ifc_type != root.ifc_type
                 || !Arc::ptr_eq(&supplied.attributes, &root.attributes) {
@@ -74,14 +87,15 @@ fn inspect_bound(
         }
         let binding = binding::from_source(source, &root, options, snapshot.lifecycle().epoch_revision().1)?;
         let json = serde_json::to_string(&binding).map_err(|_| RetainedInspectionError::invalid_report())?;
-        let report = ifc_lite_geometry::program::inspect_retained_source(
-            &root, decoder, router, &json, implementation_commit,
+        let report = ifc_lite_geometry::program::inspect_retained_program_source(
+            &root, decoder, router, &json, snapshot.lifecycle().epoch_revision().0, implementation_commit,
         ).map_err(RetainedInspectionError::geometry)?;
         // Never accept arbitrary JSON as the controller column. Validate the
         // second generated projection against our independently held binding.
         validate_report(&report, &binding, implementation_commit)?;
         Ok(report)
     }).map_err(RetainedInspectionError::owner)?;
+    after_work();
     // ProductOwner has restored source/owner scopes and committed actual cache
     // identities. These checks must stay outside work, before exposing bytes.
     snapshot.validate_decoder(decoder).map_err(RetainedInspectionError::source)?;
@@ -90,6 +104,26 @@ fn inspect_bound(
     report.validate_original_stop().map_err(RetainedInspectionError::stopped)?;
     drop(owner);
     Ok(RetainedSourceInspection { report, snapshot })
+}
+
+fn router_for_source(bytes: &[u8], decoder: &mut EntityDecoder) -> Result<GeometryRouter, RetainedInspectionError> {
+    use session_protocol::WorkError;
+    let mut lease = decoder.try_execution_lease().map_err(|_| RetainedInspectionError::owner(WorkError::OwnerBusy))?;
+    let work = lease.begin_synchronous_work(decoder.execution_identity())
+        .map_err(|_| RetainedInspectionError::owner(WorkError::WrongOwner))?;
+    let source = work.source_borrow_scope_with_resources(resource::current_source_context());
+    let stop = source.resource_stop_handle();
+    let result = resource::with_source_stop(stop.clone(), || {
+        let router = GeometryRouter::with_units(bytes, decoder);
+        resource::check_current().map_err(RetainedInspectionError::stopped)?;
+        Ok(router)
+    });
+    let stopped = stop.check();
+    drop(source);
+    let committed = work.commit(decoder.execution_identity());
+    stopped.map_err(RetainedInspectionError::stopped)?;
+    committed.map_err(|_| RetainedInspectionError::owner(WorkError::WrongOwner))?;
+    result
 }
 
 fn validate_report(report: &SourceInspectionReport, binding: &wire::Binding, implementation_commit: &str)

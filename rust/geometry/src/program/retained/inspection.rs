@@ -43,11 +43,12 @@ impl From<ProgramStop> for SourceInspectionError {
 /// `binding_json` is a strict, source/options-bound A1s binding from processing;
 /// it is descriptive input, never an owner capability. Direct callers must supply
 /// their own source authentication. Controllers, recipes and tickets stay private.
-pub fn inspect_retained_source(
+pub fn inspect_retained_program_source(
     element: &DecodedEntity,
     decoder: &mut EntityDecoder,
     router: &GeometryRouter,
     binding_json: &str,
+    source_epoch: u64,
     implementation_commit: &str,
 ) -> Result<SourceInspectionReport, SourceInspectionError> {
     let resources = OwnedResourceContext::capture_current();
@@ -58,11 +59,12 @@ pub fn inspect_retained_source(
             return Err(SourceInspectionError::InvalidReport);
         }
         let binding = wire::decode_binding(binding_json).map_err(|_| SourceInspectionError::InvalidReport)?;
+        check_byte_limit(&binding)?;
         if binding.requested.len() != 1 || binding.requested[0].product_id != element.id.to_string()
             || wire::text_format(implementation_commit, "commit").is_err() {
             return Err(SourceInspectionError::InvalidReport);
         }
-        let outcome = drive(element, decoder, router, &binding, &resources)?;
+        let outcome = drive(element, decoder, router, &binding, &resources, source_epoch)?;
         resources.check()?;
         let report = wire::InspectionReport {
             schema_version: 1., kind: "source_inspection".into(), authority: "diagnostic_only".into(),
@@ -71,9 +73,12 @@ pub fn inspect_retained_source(
             outcome, unchecked: unchecked(),
         };
         wire::validate_inspection(&report, &binding).map_err(|_| SourceInspectionError::InvalidReport)?;
+        let mut count = CountWriter(0);
+        serde_json::to_writer(&mut count, &report).map_err(|_| SourceInspectionError::InvalidReport)?;
         let mut bytes = Vec::new();
-        let storage = resources.reserve_headers(&mut bytes, MAX_REPORT_BYTES)?;
+        let storage = resources.reserve_headers(&mut bytes, count.0)?;
         serde_json::to_writer(BoundedWriter(&mut bytes), &report).map_err(|_| SourceInspectionError::InvalidReport)?;
+        check_byte_limit(&binding)?;
         Ok(SourceInspectionReport { bytes, resources: resources.clone(), _storage: storage })
     });
     // Scope destruction can discover an original source/account stop.
@@ -82,19 +87,21 @@ pub fn inspect_retained_source(
 }
 
 fn drive(element: &DecodedEntity, decoder: &mut EntityDecoder, router: &GeometryRouter,
-    binding: &wire::Binding, resources: &OwnedResourceContext)
+    binding: &wire::Binding, resources: &OwnedResourceContext, source_epoch: u64)
     -> Result<wire::InspectionOutcome, SourceInspectionError> {
     let contract = RetainedContract {
-        source_epoch: 0, source_revision: binding.identity.source.revision.parse().map_err(|_| SourceInspectionError::InvalidReport)?,
+        source_epoch, source_revision: binding.identity.source.revision.parse().map_err(|_| SourceInspectionError::InvalidReport)?,
     };
     let traversal = RetainedTraversal::new(contract);
     let mut program = traversal.product_parts(element);
+    if program.unsupported { return Ok(origin::unavailable(binding)); }
     let limit: u64 = binding.identity.options.max_work.parse().map_err(|_| SourceInspectionError::InvalidReport)?;
     let deadline: u64 = binding.identity.options.deadline_ms.parse().map_err(|_| SourceInspectionError::InvalidReport)?;
     let start = std::time::Instant::now();
     let mut ordinal = 0u64;
     loop {
         resources.check()?;
+        check_byte_limit(binding)?;
         if start.elapsed().as_millis() >= u128::from(deadline) {
             return Err(SourceInspectionError::DeadlineExceeded);
         }
@@ -115,7 +122,7 @@ fn drive(element: &DecodedEntity, decoder: &mut EntityDecoder, router: &Geometry
                     },
                 };
             }
-            Err(error) => return origin::outcome(error.into(), binding),
+            Err(error) => return origin::outcome(reached_failure(&program, error), binding),
         };
         if ordinal >= limit {
             return Err(resource::refused(resource::Dimension::Work, 1, 0, resource::RefusalReason::Limit).into());
@@ -124,9 +131,13 @@ fn drive(element: &DecodedEntity, decoder: &mut EntityDecoder, router: &Geometry
         resource::charge(Cost { work: 1, ..Default::default() })?;
         let (reply, operations) = match program.admit(ticket, router, decoder) {
             Ok(value) => value,
-            Err(error) => return origin::outcome(error.into(), binding),
+            Err(error) => return origin::outcome(reached_failure(&program, error), binding),
         };
         resources.check()?;
+        check_byte_limit(binding)?;
+        if let Some(failure) = program.selection().and_then(|s| s.failure_handle().reported()) {
+            return origin::outcome(failure, binding);
+        }
         if !operations.is_empty() {
             // The owned reply has never been accepted. No outcome/receipt is
             // bound; later operands, roots and all product obligations are unknown.
@@ -137,9 +148,24 @@ fn drive(element: &DecodedEntity, decoder: &mut EntityDecoder, router: &Geometry
             })));
         }
         if let Err(rejected) = program.accept(reply, router) {
-            return origin::outcome(rejected.error.into(), binding);
+            return origin::outcome(reached_failure(&program, rejected.error), binding);
         }
     }
+}
+
+fn reached_failure(program: &RetainedProgram, error: RetainedProgramError) -> RetainedFailure {
+    program.selection().and_then(|s| s.failure_handle().reported()).unwrap_or_else(|| error.into())
+}
+
+fn check_byte_limit(binding: &wire::Binding) -> Result<(), SourceInspectionError> {
+    let limit: u64 = binding.identity.options.max_bytes.parse().map_err(|_| SourceInspectionError::InvalidReport)?;
+    // An enclosing account can be shared with other work. Conservatively count
+    // its complete live backing; never silently widen this inspection's intent.
+    let live = resource::current_account().map_or(SCRATCH_BYTES, |account| account.usage().live_bytes);
+    if live > limit {
+        return Err(resource::refused(resource::Dimension::LiveBytes, live, limit, resource::RefusalReason::Limit).into());
+    }
+    Ok(())
 }
 
 fn unchecked() -> wire::Requirements {
@@ -154,6 +180,17 @@ impl Write for BoundedWriter<'_> {
             return Err(std::io::Error::other("inspection report bound"));
         }
         self.0.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
+}
+struct CountWriter(usize);
+impl Write for CountWriter {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if bytes.len() > MAX_REPORT_BYTES.saturating_sub(self.0) {
+            return Err(std::io::Error::other("inspection report bound"));
+        }
+        self.0 += bytes.len();
         Ok(bytes.len())
     }
     fn flush(&mut self) -> std::io::Result<()> { Ok(()) }

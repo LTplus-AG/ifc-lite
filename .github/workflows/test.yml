@@ -914,7 +914,12 @@ jobs:
           # preserve the new private types and remove only occurrence reporting.
           # The prerequisite is the enum-only rename, not a harvested baseline.
           # #7955 B2c: preserve private types while reversing only value reporting.
-          if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/retained/frame_origin_tests.rs | grep -Fxq 'rust/geometry/src/program/retained/frame_origin_tests.rs'; then
+          # #7955 Cut C: preserve consumer APIs while mutating busy reporting.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/tests/retained_inspection_busy.rs | grep -Fxq 'rust/processing/tests/retained_inspection_busy.rs'; then
+            oracle_args=(--base 0b353d3294d4f813b3d9f16574442ff7cc19da58 --ci --json \
+              --mutation tests/evidence/retained-source-inspection-c/busy-report.oracle.patch \
+              --test rust/processing/tests/retained_inspection_busy.rs)
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/retained/frame_origin_tests.rs | grep -Fxq 'rust/geometry/src/program/retained/frame_origin_tests.rs'; then
             oracle_args=(--base 3190e3d88bee5e83a45ca155c62620c61b27456b --ci --json \
               --mutation tests/evidence/retained-frame-origin-b2c/value-report.oracle.patch \
               --test rust/geometry/src/program/retained/frame_origin_tests.rs)

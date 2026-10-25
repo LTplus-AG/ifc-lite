@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: MPL-2.0
+# Apply in reverse: retain the refusal and private cause; corrupt only its wire code.
+# Actual green/red/restored execution is UNRUN at preparation.
+diff --git a/rust/processing/src/element/retained_inspection_error.rs b/rust/processing/src/element/retained_inspection_error.rs
+--- a/rust/processing/src/element/retained_inspection_error.rs
++++ b/rust/processing/src/element/retained_inspection_error.rs
+@@ -37,7 +37,7 @@
+             Cause::Source(RetainedContextError::Missing) => Code::SourceMissing,
+             Cause::Source(RetainedContextError::Mismatched) => Code::SourceMismatch,
+             Cause::Owner(WorkError::StaleSource) => Code::SourceStale,
+-            Cause::Owner(WorkError::OwnerBusy) => Code::OwnerMismatch,
++            Cause::Owner(WorkError::OwnerBusy) => Code::OwnerBusy,
+             Cause::Owner(WorkError::WrongOwner) => Code::OwnerMismatch,
+             // These protocol failures do not establish an ownership mismatch.
+             // Preserve the actual enum privately; the wire states only failure.

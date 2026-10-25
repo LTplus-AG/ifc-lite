@@ -126,5 +126,33 @@
         "tolerance": 1e-07
       }
     }
+  },
+  {
+    "id": "m2-unsupported-report",
+    "patch": "tests/evidence/retained-execution-j4/m2-unsupported-report.oracle.patch",
+    "test": "element::session_retained::diagnostic::tests::issue_7955_native_source_m2_parsed_unsupported_block_and_malformed_items_are_distinct_before_worker_spawn",
+    "intendedFailure": "Only the preregistered typed report or terminal action assertion; no final-product acceptance.",
+    "expectedFailure": {
+      "file": "rust/processing/src/element/session_retained/diagnostic_tests.rs",
+      "line": 50,
+      "fragments": [
+        "M2_KNOWN_ORIGIN_REPORT",
+        "left: SourceInvalid",
+        "right: OperationUnsupported"
+      ]
+    }
+  },
+  {
+    "id": "m3-conflict-terminal",
+    "patch": "tests/evidence/retained-execution-j4/m3-conflict-terminal.oracle.patch",
+    "test": "element::session_retained::contract_tests::issue_7955_m3_conflicting_outcome_poisons_only_its_domain_and_preserves_rejected_buffers",
+    "intendedFailure": "Only the preregistered typed report or terminal action assertion; no final-product acceptance.",
+    "expectedFailure": {
+      "file": "rust/processing/src/element/session_retained/contract_tests.rs",
+      "line": 174,
+      "fragments": [
+        "M3_CONFLICT_MUST_POISON_ATTEMPT"
+      ]
+    }
   }
 ]

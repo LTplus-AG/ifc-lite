@@ -13,7 +13,15 @@ pub(super) fn from_source(source: &SourceBundle, root: &DecodedEntity, options: 
             wire::GlobalIdentity::Known(Box::new(wire::KnownGlobalId { value: value.into() }))
         }
     };
-    let sha256 = format!("{:x}", Sha256::digest(source.bytes()));
+    let mut hash = Sha256::new();
+    // Cooperative source hashing: at most 64 KiB between original-clock checks.
+    for bytes in source.bytes().chunks(64 * 1024) {
+        checkpoint("hash_chunk")?;
+        resource::charge(Cost { work: 1, ..Default::default() }).map_err(RetainedInspectionError::stopped)?;
+        hash.update(bytes);
+    }
+    checkpoint("hash_done")?;
+    let sha256 = format!("{:x}", hash.finalize());
     let namespace = format!("{:x}", Sha256::digest(format!("ifc-lite/source-inspection/v1/{sha256}")));
     let source = wire::Source { namespace, revision: revision.to_string(), sha256 };
     let canonical = serde_json::to_vec(&(&source, options)).map_err(|_| RetainedInspectionError::invalid_options())?;

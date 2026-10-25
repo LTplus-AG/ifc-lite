@@ -103,6 +103,10 @@ pub fn product_shape(
 }
 
 impl ProductShape {
+    pub(crate) fn from_representations(id: u32, representations: Vec<DecodedEntity>) -> Self {
+        Self { id, representations }
+    }
+
     /// Every representation, in list order.
     pub fn representations(&self) -> &[DecodedEntity] {
         &self.representations

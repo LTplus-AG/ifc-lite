@@ -2,7 +2,7 @@
 //! Bounded diagnostic consumer. No numerical reply is accepted by this driver.
 use super::*;
 use crate::retained_inspection_contract as wire;
-use crate::resource::{self, Cost, OwnedResourceContext, ProgramStop, Reservation};
+use crate::resource::{self, Cost, InspectionBudget, InspectionStart, OwnedResourceContext, ProgramStop, Reservation};
 use std::io::Write;
 use std::result::Result;
 
@@ -26,6 +26,10 @@ impl SourceInspectionReport {
     pub fn bytes(&self) -> &[u8] { &self.bytes }
     /// Checks captured channels, even after unrelated ambient scopes are restored.
     pub fn validate_original_stop(&self) -> Result<(), ProgramStop> { self.resources.check() }
+    /// Original monotonic deadline and stop domain, including after-scope delivery.
+    pub fn validate_delivery(&self) -> Result<(), SourceInspectionError> {
+        self.resources.with_scope(checkpoint)
+    }
 }
 
 /// Failure to produce a bounded diagnostic. Source refusals use the strict report.
@@ -51,39 +55,67 @@ pub fn inspect_retained_program_source(
     source_epoch: u64,
     implementation_commit: &str,
 ) -> Result<SourceInspectionReport, SourceInspectionError> {
+    let start = InspectionStart::now();
+    checkpoint()?;
+    if binding_json.len() > MAX_REPORT_BYTES { return Err(SourceInspectionError::InvalidReport); }
+    let decoded = wire::decode_binding(binding_json);
+    checkpoint()?;
+    let binding = decoded.map_err(|_| SourceInspectionError::InvalidReport)?;
+    let options = &binding.identity.options;
+    let number = |value: &str| value.parse::<u64>().map_err(|_| SourceInspectionError::InvalidReport);
+    let budget = InspectionBudget::new(start, number(&options.max_work)?, number(&options.max_bytes)?, number(&options.deadline_ms)?);
+    budget.scope(|| inspect_binding(element, decoder, router, binding, source_epoch, implementation_commit))
+}
+
+fn inspect_binding(element: &DecodedEntity, decoder: &mut EntityDecoder, router: &GeometryRouter,
+    binding: wire::Binding, source_epoch: u64, implementation_commit: &str)
+    -> Result<SourceInspectionReport, SourceInspectionError> {
     let resources = OwnedResourceContext::capture_current();
     let result = resources.with_scope(|| {
-        resources.check()?;
+        checkpoint()?;
         let _scratch = resource::charge(Cost { live_bytes: SCRATCH_BYTES, ..Default::default() })?;
-        if binding_json.len() > MAX_REPORT_BYTES {
-            return Err(SourceInspectionError::InvalidReport);
-        }
-        let binding = wire::decode_binding(binding_json).map_err(|_| SourceInspectionError::InvalidReport)?;
-        check_byte_limit(&binding)?;
         if binding.requested.len() != 1 || binding.requested[0].product_id != element.id.to_string()
             || wire::text_format(implementation_commit, "commit").is_err() {
             return Err(SourceInspectionError::InvalidReport);
         }
-        let outcome = drive(element, decoder, router, &binding, &resources, source_epoch)?;
-        resources.check()?;
+        let outcome = drive(element, decoder, router, &binding, &resources, source_epoch);
+        checkpoint()?;
         let report = wire::InspectionReport {
             schema_version: 1., kind: "source_inspection".into(), authority: "diagnostic_only".into(),
             identity: binding.identity.clone(), column: wire::Column::Controller,
             implementation_commit: implementation_commit.into(), product: binding.requested[0].clone(),
-            outcome, unchecked: unchecked(),
+            outcome: outcome?, unchecked: unchecked(),
         };
-        wire::validate_inspection(&report, &binding).map_err(|_| SourceInspectionError::InvalidReport)?;
+        let valid = wire::validate_inspection(&report, &binding);
+        checkpoint()?;
+        valid.map_err(|_| SourceInspectionError::InvalidReport)?;
         let mut count = CountWriter(0);
-        serde_json::to_writer(&mut count, &report).map_err(|_| SourceInspectionError::InvalidReport)?;
+        let counted = serde_json::to_writer(&mut count, &report);
+        #[cfg(any(test, feature = "test-support"))]
+        resource::inspection_test_clock::point("report_count");
+        checkpoint()?;
+        counted.map_err(|_| SourceInspectionError::InvalidReport)?;
         let mut bytes = Vec::new();
         let storage = resources.reserve_headers(&mut bytes, count.0)?;
-        serde_json::to_writer(BoundedWriter(&mut bytes), &report).map_err(|_| SourceInspectionError::InvalidReport)?;
-        check_byte_limit(&binding)?;
+        let written = serde_json::to_writer(BoundedWriter(&mut bytes), &report);
+        #[cfg(any(test, feature = "test-support"))]
+        resource::inspection_test_clock::point("report_write");
+        checkpoint()?;
+        written.map_err(|_| SourceInspectionError::InvalidReport)?;
         Ok(SourceInspectionReport { bytes, resources: resources.clone(), _storage: storage })
     });
-    // Scope destruction can discover an original source/account stop.
-    resources.check()?;
+    // Consult original channels after scope destruction, before accepting even
+    // a source-refusal diagnostic. No foreign ambient state is consulted.
+    resources.with_scope(checkpoint)?;
     result
+}
+
+fn checkpoint() -> Result<(), SourceInspectionError> {
+    resource::inspection_checkpoint().map_err(|error| match error {
+        crate::Error::ProgramStopped(stop) => SourceInspectionError::Stopped(stop),
+        crate::Error::InspectionDeadlineExceeded => SourceInspectionError::DeadlineExceeded,
+        _ => SourceInspectionError::InvalidReport,
+    })
 }
 
 fn drive(element: &DecodedEntity, decoder: &mut EntityDecoder, router: &GeometryRouter,
@@ -96,15 +128,10 @@ fn drive(element: &DecodedEntity, decoder: &mut EntityDecoder, router: &Geometry
     let mut program = traversal.product_parts(element);
     if program.unsupported { return Ok(origin::unavailable(binding)); }
     let limit: u64 = binding.identity.options.max_work.parse().map_err(|_| SourceInspectionError::InvalidReport)?;
-    let deadline: u64 = binding.identity.options.deadline_ms.parse().map_err(|_| SourceInspectionError::InvalidReport)?;
-    let start = std::time::Instant::now();
     let mut ordinal = 0u64;
     loop {
         resources.check()?;
-        check_byte_limit(binding)?;
-        if start.elapsed().as_millis() >= u128::from(deadline) {
-            return Err(SourceInspectionError::DeadlineExceeded);
-        }
+        checkpoint()?;
         if let Some(failure) = program.selection().and_then(|s| s.failure_handle().reported()) {
             return origin::outcome(failure, binding);
         }
@@ -129,12 +156,16 @@ fn drive(element: &DecodedEntity, decoder: &mut EntityDecoder, router: &Geometry
         }
         ordinal += 1;
         resource::charge(Cost { work: 1, ..Default::default() })?;
-        let (reply, operations) = match program.admit(ticket, router, decoder) {
+        let admitted = program.admit(ticket, router, decoder);
+        #[cfg(any(test, feature = "test-support"))]
+        resource::inspection_test_clock::point("admit");
+        checkpoint()?;
+        let (reply, operations) = match admitted {
             Ok(value) => value,
             Err(error) => return origin::outcome(reached_failure(&program, error), binding),
         };
         resources.check()?;
-        check_byte_limit(binding)?;
+        checkpoint()?;
         if let Some(failure) = program.selection().and_then(|s| s.failure_handle().reported()) {
             return origin::outcome(failure, binding);
         }
@@ -147,7 +178,9 @@ fn drive(element: &DecodedEntity, decoder: &mut EntityDecoder, router: &Geometry
                 stage: "numerical".into(), request_ordinal: ordinal.to_string(),
             })));
         }
-        if let Err(rejected) = program.accept(reply, router) {
+        let accepted = program.accept(reply, router);
+        checkpoint()?;
+        if let Err(rejected) = accepted {
             return origin::outcome(reached_failure(&program, rejected.error), binding);
         }
     }
@@ -155,17 +188,6 @@ fn drive(element: &DecodedEntity, decoder: &mut EntityDecoder, router: &Geometry
 
 fn reached_failure(program: &RetainedProgram, error: RetainedProgramError) -> RetainedFailure {
     program.selection().and_then(|s| s.failure_handle().reported()).unwrap_or_else(|| error.into())
-}
-
-fn check_byte_limit(binding: &wire::Binding) -> Result<(), SourceInspectionError> {
-    let limit: u64 = binding.identity.options.max_bytes.parse().map_err(|_| SourceInspectionError::InvalidReport)?;
-    // An enclosing account can be shared with other work. Conservatively count
-    // its complete live backing; never silently widen this inspection's intent.
-    let live = resource::current_account().map_or(SCRATCH_BYTES, |account| account.usage().live_bytes);
-    if live > limit {
-        return Err(resource::refused(resource::Dimension::LiveBytes, live, limit, resource::RefusalReason::Limit).into());
-    }
-    Ok(())
 }
 
 fn unchecked() -> wire::Requirements {

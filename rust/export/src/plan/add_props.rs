@@ -65,17 +65,22 @@ pub(crate) fn validate_psets(schema: &str, psets: &[NewPropertySet]) -> Result<(
 /// IfcQuantity*, whose own rule, not negative, [`validate_psets`] checks),
 /// and written as an INTEGER where its base is one.
 fn lower(family: Option<SchemaFamily>, kind: PsetKind, value: &PropertyValue) -> Result<(String, String), String> {
-    let finite = |v: f64| if v.is_finite() { Ok(super::placement::fmt(v)) } else { Err(format!("{v} is not finite")) };
+    let finite = |v: f64| if v.is_finite() { Ok(v) } else { Err(format!("{v} is not finite")) };
     Ok(match value {
         PropertyValue::Label(s) => ("IFCLABEL".into(), format!("'{}'", escape(s))),
         PropertyValue::Text(s) => ("IFCTEXT".into(), format!("'{}'", escape(s))),
         PropertyValue::Identifier(s) => ("IFCIDENTIFIER".into(), format!("'{}'", escape(s))),
         PropertyValue::Boolean(b) => ("IFCBOOLEAN".into(), if *b { ".T." } else { ".F." }.into()),
         PropertyValue::Integer(i) => ("IFCINTEGER".into(), i.to_string()),
-        PropertyValue::Real(v) => ("IFCREAL".into(), finite(*v)?),
+        PropertyValue::Real(v) => ("IFCREAL".into(), super::placement::fmt(finite(*v)?)),
         PropertyValue::Measure { measure_type, value } => {
-            let literal = match crate::step_log::check_real_measure(family, measure_type, finite(*value).map(|_| *value)?, kind == PsetKind::Property)? {
-                MeasureNumber::Real => finite(*value)?,
+            // Written as given, so it must be a type name exactly.
+            if !crate::step_log::is_entity_name(measure_type) {
+                return Err(format!("measure type {measure_type:?} is not a type name"));
+            }
+            let value = finite(*value)?;
+            let literal = match crate::step_log::check_real_measure(family, measure_type, value, kind == PsetKind::Property)? {
+                MeasureNumber::Real => super::placement::fmt(value),
                 MeasureNumber::Integer(i) => i.to_string(),
             };
             (measure_type.to_ascii_uppercase(), literal)

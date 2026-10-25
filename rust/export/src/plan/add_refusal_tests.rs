@@ -471,24 +471,24 @@ fn refs(line: &str) -> Vec<u32> {
     ids
 }
 
-/// (#8142) A measure over INTEGER in the file's schema takes a whole number,
-/// written as an integer: `IfcCountMeasure` is INTEGER in IFC4X3 and NUMBER
-/// in IFC4.
+/// (#8142) A measure over INTEGER takes a whole number, written as an
+/// integer (`IfcPositiveInteger`), and its name must be a type name exactly.
 #[test]
 fn an_integer_measure_is_written_as_an_integer_8142() {
-    let counted = |value: f64| {
+    let measured = |measure_type: &str, value: f64| {
         let mut wall = object(IfcClass::Wall, gid(28), storey(), Representation::None);
         wall.psets = vec![NewPropertySet {
             name: "Pset_Test".into(),
             kind: PsetKind::Property,
-            properties: vec![NewProperty { name: "N".into(), value: PropertyValue::Measure { measure_type: "IfcCountMeasure".into(), value }, unit: None }],
+            properties: vec![NewProperty { name: "N".into(), value: PropertyValue::Measure { measure_type: measure_type.into(), value }, unit: None }],
         }];
         wall
     };
-    for (schema, written) in [("IFC4X3", "IFCCOUNTMEASURE(3)"), ("IFC4", "IFCCOUNTMEASURE(3.)")] {
-        let (out, report) = run(&storey_with_typed_wall(schema), vec![add(counted(3.0))]);
+    for schema in ["IFC4", "IFC4X3"] {
+        let (out, report) = run(&storey_with_typed_wall(schema), vec![add(measured("IfcPositiveInteger", 3.0))]);
         assert_clean(&report, schema);
-        assert!(String::from_utf8_lossy(&out).contains(&format!("{written},")), "{schema}");
+        assert!(String::from_utf8_lossy(&out).contains("IFCPOSITIVEINTEGER(3),"), "{schema}");
     }
-    refused(&storey_with_typed_wall("IFC4X3"), counted(3.5), "IfcCountMeasure takes a whole number in IFC4X3");
+    refused(&storey_with_typed_wall("IFC4"), measured("IfcPositiveInteger", 3.5), "IfcPositiveInteger takes a whole number in IFC4");
+    refused(&storey_with_typed_wall("IFC4"), measured(" IfcPositiveInteger", 3.0), "is not a type name");
 }

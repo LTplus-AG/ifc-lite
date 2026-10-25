@@ -97,7 +97,7 @@ fn in_place_value(family: Option<SchemaFamily>, write: &PropWrite) -> String {
     let literal = crate::step_log::canonical_literal(family, &write.measure_type, &write.literal);
     match write.kind {
         PsetKind::Property => format!("{}({literal})", write.measure_type),
-        PsetKind::Quantity => literal,
+        PsetKind::Quantity => literal.into_owned(),
     }
 }
 

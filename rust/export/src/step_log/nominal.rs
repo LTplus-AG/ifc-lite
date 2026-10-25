@@ -10,6 +10,8 @@
 //! closed set `CONSTRAINED_MEMBERS` lists; the generator carries which leaves
 //! they are, and the predicates are restated here.
 
+use std::borrow::Cow;
+
 use ifc_lite_core::SchemaFamily;
 use serde_json::Value;
 
@@ -34,18 +36,25 @@ impl BaseKind {
 }
 
 /// The `IfcValue` member `measure` (any case) names in `family` (IFC5 reads
-/// IFC4X3's), with its type there. `None` when that schema's `IfcValue` has
-/// no such member. The one lookup of an `IfcValue` member's type: every
-/// check and writer of a typed value asks it.
+/// IFC4X3's), with its type. `None` when that schema's `IfcValue` has no
+/// such member. The one lookup of an `IfcValue` member's type: every check
+/// and writer of a typed value asks it.
+///
+/// Membership is the family's own; the type is IFC4's wherever IFC4 has the
+/// member, as every writer has always spelled it. Known gap: IFC4X3 declares
+/// `IfcCountMeasure` over INTEGER (IFC4: NUMBER), and a count is still
+/// written as a real there, until the follow-up on `fix/ifc4x3-count-measure`.
 pub(crate) fn value_member(family: SchemaFamily, measure: &str) -> Option<(&'static ValueMember, ValueType)> {
+    const IFC4: usize = 1;
     let column = match family {
         SchemaFamily::Ifc2x3 => 0,
-        SchemaFamily::Ifc4 => 1,
+        SchemaFamily::Ifc4 => IFC4,
         _ => 2,
     };
-    let token = measure.trim().to_ascii_uppercase();
+    let token = measure.to_ascii_uppercase();
     let member = &IFC_VALUE_MEMBERS[IFC_VALUE_MEMBERS.binary_search_by(|m| m.token.cmp(&token)).ok()?];
-    Some((member, member.types[column]?))
+    let own = member.types[column]?;
+    Some((member, member.types[IFC4].unwrap_or(own)))
 }
 
 /// The base of `type_name` (any case) as an `IfcValue` leaf of `family`.
@@ -108,13 +117,13 @@ pub(crate) fn check_real_measure(family: Option<SchemaFamily>, measure: &str, va
 /// given for a measure whose base there is REAL or NUMBER gets its decimal
 /// point (`3` -> `3.`), since STEP REAL requires one. Anything else is
 /// returned as given.
-pub(crate) fn canonical_literal(family: Option<SchemaFamily>, measure: &str, literal: &str) -> String {
+pub(crate) fn canonical_literal<'l>(family: Option<SchemaFamily>, measure: &str, literal: &'l str) -> Cow<'l, str> {
     let is_real = family.and_then(|f| leaf_base(f, measure)).is_some_and(|base| matches!(base, BaseKind::Real | BaseKind::Number));
     let digits = literal.strip_prefix(['+', '-']).unwrap_or(literal);
     if is_real && !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()) {
-        format!("{literal}.")
+        Cow::Owned(format!("{literal}."))
     } else {
-        literal.to_string()
+        Cow::Borrowed(literal)
     }
 }
 
@@ -222,7 +231,7 @@ fn declared_type(family: SchemaFamily, value: &Value, ty: u8, data_type: Option<
     if let Some(named) = named {
         return value.is_string().then_some(named);
     }
-    let (member, ValueType::Leaf(base)) = value_member(family, data_type?)? else { return None };
+    let (member, ValueType::Leaf(base)) = value_member(family, data_type?.trim())? else { return None };
     if !accepted_bases(ty)?.contains(&base) {
         return None;
     }

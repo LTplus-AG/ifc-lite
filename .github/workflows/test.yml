@@ -2260,6 +2260,16 @@ jobs:
               cargo test --locked -p ifc-lite-geometry --lib program::inner::retained_program::tests::mapping_inputs::origins::
             done
           fi
+          # #7955 B2b: independently remove operator refusal, predicate reporting
+          # and Core reporting. Keep historical mutation inputs unchanged.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/retained/boolean_origin_tests.rs | grep -Fxq 'rust/geometry/src/program/retained/boolean_origin_tests.rs'; then
+            for mutation in operator-action predicate-report core-report; do
+              node scripts/check-test-revert-oracle.mjs --base 3190e3d88bee5e83a45ca155c62620c61b27456b --ci --json \
+                --mutation "tests/evidence/retained-boolean-origin-b2b/$mutation.oracle.patch" \
+                --test rust/geometry/src/program/retained/boolean_origin_tests.rs
+              cargo test --locked -p ifc-lite-geometry --lib program::inner::retained_program::tests::boolean_tests::origins::
+            done
+          fi
           # #7955 S3 Q1: select only the snapshot-only ownership witness.
           # Use the S3 production base: the Q1 correction itself is test-only.
           if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/element/model_context_snapshot_only_tests.rs | grep -Fxq 'rust/processing/src/element/model_context_snapshot_only_tests.rs'; then

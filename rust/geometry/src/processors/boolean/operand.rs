@@ -118,8 +118,22 @@ impl BooleanClippingProcessor {
         node: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Option<DecodedEntity> {
-        let resolved = node.get(2).and_then(|attr| decoder.resolve_ref(attr).ok().flatten());
-        if resolved.is_none() {
+        self.second_operand_result_or_record(op, node, decoder).ok().flatten()
+    }
+
+    /// Preserve the actual decoder result for retained admission. The exact
+    /// wrapper still recovers with None, and both callers record the same loss.
+    pub(crate) fn second_operand_result_or_record(
+        &self,
+        op: BoolOp,
+        node: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+    ) -> ifc_lite_core::Result<Option<DecodedEntity>> {
+        let resolved = match node.get(2) {
+            Some(attr) => decoder.resolve_ref(attr),
+            None => Ok(None),
+        };
+        if !matches!(resolved, Ok(Some(_))) {
             self.record_failure(op, BoolFailureReason::EmptyOperand);
         }
         resolved

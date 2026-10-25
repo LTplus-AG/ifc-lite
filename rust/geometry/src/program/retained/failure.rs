@@ -13,6 +13,7 @@ pub(in crate::program) enum FailureSite {
     ProductCompletion, TypeMapCompletion, TypeBinding,
     MappingSource, MappingTarget, MappingOrigin, MappedRepresentation,
     MappingItems, MappingScale, MappingDirection,
+    BooleanSource, BooleanOperator, BooleanFirstOperand, BooleanSecondOperand,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::program) enum StructuralReason {
@@ -29,6 +30,12 @@ pub(in crate::program) enum MappingReason {
     DirectionDimension { expected: usize, actual: usize },
     ZeroDirection, DependentPair, DependentTriple, NonfiniteDerivedFrame,
 }
+/// Facts established at the reached Boolean source predicate, not decoder guesses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::program) enum BooleanReason {
+    OperatorRequired, InvalidClippingOperator, UnknownOperator,
+    OperandAttributeMissing, OperandReferenceRequired,
+}
 #[derive(Debug)]
 pub(in crate::program) enum OriginCause {
     Recipe(RetainedRefusal),
@@ -36,6 +43,7 @@ pub(in crate::program) enum OriginCause {
     Core(ifc_lite_core::Error),
     Structure(StructuralReason),
     Mapping(MappingReason),
+    Boolean(BooleanReason),
     Processor(Option<crate::router::ProcessorOrigin>),
     /// The common helper has not been converted. Its text is never classified.
     Opaque(crate::Error),

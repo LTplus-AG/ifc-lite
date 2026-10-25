@@ -25,6 +25,8 @@ test('#7955: retained witnesses resolve through the facade path to exact library
     ['accept_stop_tests', '::accept_stop_tests'],
     ['affine_tests', '::affine_tests'],
     ['boolean_tests', '::boolean_tests'],
+    ['boolean_origin_tests', '::boolean_tests::origins'],
+    ['boolean_origin_protocol_tests', '::boolean_tests::origins::protocol'],
     ['finalization_stop_tests', '::finalization_stop_tests'],
     ['mapping_tests', '::mapping_tests'],
     ['mapping_contract_tests', '::mapping_contract'],

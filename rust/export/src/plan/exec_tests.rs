@@ -843,6 +843,24 @@ fn only_a_deleted_place_in_the_spatial_tree_reports_its_children() {
     }
 }
 
+/// A containment that goes because it named another deleted record (here
+/// its owner history) still takes its elements out of the spatial tree; the
+/// finding says why instead of claiming the container was deleted. (#8142)
+#[test]
+fn a_containment_removed_for_another_reference_is_reported_with_its_cause() {
+    use super::test_fixtures::storey_with_typed_wall;
+    let base = String::from_utf8(storey_with_typed_wall("IFC4")).unwrap();
+    let at = base.find("#80=").unwrap();
+    let (head, rel) = base.split_at(at);
+    let rel = rel.replacen(",$,", ",#96,", 1);
+    let content = format!("{head}{rel}").replacen("ENDSEC;\nEND-ISO", "#96=IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);\nENDSEC;\nEND-ISO", 1);
+    let plan = ExportPlan { dispositions: vec![(ObjectRef::Id(96), Disposition::Delete)], context: PlanContext::default() };
+    let report = execute(content.as_bytes(), &plan, &mut Vec::new()).unwrap();
+    assert!(report.removed.iter().any(|r| r.express_id == 80), "{:?}", report.removed);
+    let f = report.findings.iter().find(|f| f.express_id == Some(10)).expect("wall reported");
+    assert!(f.message.contains("referenced a deleted record") && !f.message.contains("was deleted"), "{}", f.message);
+}
+
 /// Deleting a member of a shared relationship whose record cannot be edited
 /// exactly must not leave that relationship naming the deleted member.
 /// (#8142)

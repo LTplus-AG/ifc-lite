@@ -24,14 +24,15 @@ fn slots(schema: &str, rel_type: &str) -> Option<(usize, usize)> {
 }
 
 /// A containment or aggregation relationship that went because its relating
-/// object did, while some of what it related stayed. A contained element has
-/// lost its container. An aggregated one is out of the tree only when its
-/// parent was a place in it (the project or a spatial structure element),
-/// not an assembly, a spatial zone or an external spatial element. Known
-/// limit: a part placed only through a deleted assembly, or a zone only under
-/// a deleted zone, is not reported. IFC gives an element at most
-/// one container and one parent, so the removed relationship was its only
-/// place in the tree and no other relationship needs reading.
+/// object (or another record it named) did, while some of what it related
+/// stayed. A contained element has lost its container. An aggregated one is
+/// out of the tree only when its parent was a place in it (the project or a
+/// spatial structure element), not an assembly, a spatial zone or an external
+/// spatial element. Known limit: a part placed only through a deleted
+/// assembly, or a zone only under a deleted zone, is not reported. IFC gives
+/// an element at most one container and one parent, so the removed
+/// relationship was its only place in the tree and no other relationship
+/// needs reading.
 pub(super) fn unplaced_by_removed_structure(
     index: &FileIndex,
     schema: &str,
@@ -46,24 +47,23 @@ pub(super) fn unplaced_by_removed_structure(
         let Some((relating_idx, related_idx)) = slots(schema, &rel_type) else { continue };
         let Some(attrs) = index.attrs(rel) else { continue };
         let parent = attrs.get(relating_idx).and_then(|a| a.scalar);
-        // Only a relationship that went because its relating object was
-        // deleted (not one dangling for another reason, e.g. a deleted owner
-        // history) took its children's place away.
-        if !parent.is_some_and(|p| removed.contains(&p)) {
-            continue;
-        }
         // Containment always placed its elements (RelatingStructure is an
         // IfcSpatialElement); an aggregation did only under a place in the tree.
         if rel_type == AGGREGATION && !parent.and_then(|p| index.type_of(p)).is_some_and(|c| in_structure(schema, &c)) {
             continue;
         }
-        let parent_label = parent.map_or_else(String::new, |p| format!(" #{p}"));
         let label = if rel_type == AGGREGATION { "parent" } else { "container" };
+        // The relationship is gone either way; say why.
+        let cause = match parent {
+            Some(p) if removed.contains(&p) => format!("the {label} #{p} it was related to in #{rel} was deleted"),
+            Some(p) => format!("#{rel}, which related it to its {label} #{p}, was removed because it referenced a deleted record"),
+            None => format!("#{rel}, which related it to its {label}, was removed"),
+        };
         let children = attrs.get(related_idx).and_then(|a| a.list.as_ref()).into_iter().flatten().flatten();
         for &child in children.filter(|c| !removed.contains(c)) {
             out.push(ValidationFinding {
                 express_id: Some(child),
-                message: format!("no longer in the spatial tree: the {label}{parent_label} it was related to in #{rel} was deleted"),
+                message: format!("no longer in the spatial tree: {cause}"),
             });
         }
     }

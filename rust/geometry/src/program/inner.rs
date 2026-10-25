@@ -385,8 +385,6 @@ fn next_program_id() -> u64 {
         .unwrap_or_else(|_| NEXT_BLOCK.fetch_add(BLOCK, Ordering::Relaxed))
 }
 
-// TODO(remove-by: S4a, owner: sessionf778e361): first cross-crate consumer.
-#[cfg_attr(not(test), allow(dead_code))]
 #[path = "retained/program.rs"]
 pub(super) mod retained_program;
 

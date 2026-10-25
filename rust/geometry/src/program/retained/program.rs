@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Crate-private construction facade over the same borrowed geometry program.
+// TODO(remove-by: S4a, owner: sessionf778e361): first cross-crate consumer.
+// Keep this lint inside the module so oracle ownership follows the explicit path.
+#![cfg_attr(not(test), allow(dead_code))]
 use super::*;
 use crate::program::retained::*;
 

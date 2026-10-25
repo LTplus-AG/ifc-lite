@@ -10,8 +10,9 @@
 //!
 //! Synthetic: a 1510 x 97 x 2110 mm wall with one opening element whose body
 //! is one or two rectangular prisms. The wall's placement is varied: identity,
-//! rotated by 3.12e-7 rad (the two prisms then miss the exact merge), far from
-//! the origin, and rotated 30 degrees (the wall-frame cut).
+//! a negative quarter-turn perturbed by about +3.12e-7 rad (the two prisms
+//! then miss the exact merge), the same rotation far from the origin, and
+//! rotated 30 degrees (the wall-frame cut).
 
 use ifc_lite_processing::process_geometry;
 use ifc_lite_testkit::mesh::signed_volume;
@@ -25,8 +26,8 @@ const H: f64 = 2110.0;
 #[derive(Clone, Copy)]
 enum Placement {
     Identity,
-    TinyRotation,
-    FarAndTinyRotation,
+    PerturbedNegativeQuarterTurn,
+    FarAndPerturbedNegativeQuarterTurn,
     Rotated30,
 }
 
@@ -35,8 +36,8 @@ impl Placement {
         const FAR: &str = "64000.000379,53465.2659693,15000.";
         match self {
             Self::Identity => ("0.,0.,0.", "1.,0.,0."),
-            Self::TinyRotation => ("0.,0.,0.", "3.12000341089E-7,-1.,0."),
-            Self::FarAndTinyRotation => (FAR, "3.12000341089E-7,-1.,0."),
+            Self::PerturbedNegativeQuarterTurn => ("0.,0.,0.", "3.12000341089E-7,-1.,0."),
+            Self::FarAndPerturbedNegativeQuarterTurn => (FAR, "3.12000341089E-7,-1.,0."),
             Self::Rotated30 => ("0.,0.,0.", "0.8660254037844387,0.5,0."),
         }
     }
@@ -178,12 +179,24 @@ const WALL_M3: f64 = L * T * H * 1e-9;
 #[test]
 fn openings_that_consume_the_wall_leave_no_geometry() {
     let cases = [
-        ("two from a shared plane, tiny rotation", Placement::TinyRotation, two_from_a_shared_plane()),
+        (
+            "two from a shared plane, perturbed negative quarter-turn",
+            Placement::PerturbedNegativeQuarterTurn,
+            two_from_a_shared_plane(),
+        ),
         ("two from a shared plane, identity", Placement::Identity, two_from_a_shared_plane()),
-        ("two from a shared plane, far", Placement::FarAndTinyRotation, two_from_a_shared_plane()),
+        (
+            "two from a shared plane, far with perturbed negative quarter-turn",
+            Placement::FarAndPerturbedNegativeQuarterTurn,
+            two_from_a_shared_plane(),
+        ),
         ("two from a shared plane, rotated 30", Placement::Rotated30, two_from_a_shared_plane()),
         ("two overlapping, identity", Placement::Identity, two_overlapping()),
-        ("two overlapping, tiny rotation", Placement::TinyRotation, two_overlapping()),
+        (
+            "two overlapping, perturbed negative quarter-turn",
+            Placement::PerturbedNegativeQuarterTurn,
+            two_overlapping(),
+        ),
         ("two overlapping, rotated 30", Placement::Rotated30, two_overlapping()),
         ("one engulfing", Placement::Identity, vec![prism([0.0, -50.0, H / 2.0], "0.,-1.,0.", 200.0, L)]),
     ];
@@ -196,7 +209,11 @@ fn openings_that_consume_the_wall_leave_no_geometry() {
 #[test]
 fn a_partial_cut_stays_partial() {
     let half = [prism([0.0, -50.0, H / 2.0], "0.,-1.,0.", 200.0, L / 2.0)];
-    for placement in [Placement::Identity, Placement::TinyRotation, Placement::Rotated30] {
+    for placement in [
+        Placement::Identity,
+        Placement::PerturbedNegativeQuarterTurn,
+        Placement::Rotated30,
+    ] {
         let volume = wall_volume(&wall_ifc(placement, 0.75 * L, &half)).expect("half the wall stays");
         assert!((volume - WALL_M3 / 2.0).abs() < 1e-4, "half the wall, got {volume} m³");
     }
@@ -205,7 +222,11 @@ fn a_partial_cut_stays_partial() {
 #[test]
 fn a_wall_its_opening_misses_is_unchanged() {
     let beside = [prism([0.0, -50.0, H / 2.0], "0.,-1.,0.", 200.0, 400.0)];
-    for placement in [Placement::Identity, Placement::TinyRotation, Placement::Rotated30] {
+    for placement in [
+        Placement::Identity,
+        Placement::PerturbedNegativeQuarterTurn,
+        Placement::Rotated30,
+    ] {
         let volume = wall_volume(&wall_ifc(placement, L + 1000.0, &beside)).expect("the wall stays");
         assert!((volume - WALL_M3).abs() < 1e-6, "the whole wall, got {volume} m³");
     }

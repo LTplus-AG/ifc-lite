@@ -65,10 +65,8 @@ impl AddState<'_> {
         Err(format!("{what} is {type_class}, but a {class} is typed by an {wanted}"))
     }
 
-    /// A spatial element (`IfcSpatialStructureElement` in IFC2X3, its
-    /// `IfcSpatialElement` supertype later).
     fn is_spatial(&self, class: &str) -> bool {
-        self.is_a(class, "IFCSPATIALSTRUCTUREELEMENT") || self.is_a(class, "IFCSPATIALELEMENT")
+        crate::plan::attrs::is_spatial(self.schema, class)
     }
 
     /// Whether a `parent` (UPPERCASE class) may aggregate a new spatial

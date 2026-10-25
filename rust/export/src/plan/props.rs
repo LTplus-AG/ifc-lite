@@ -26,7 +26,7 @@ use crate::step_ids::IdAllocator;
 use super::attrs::attribute_index;
 use super::index::FileIndex;
 use super::props_lookup::{
-    container_names, decoded_name, find_member, find_set, leaf_is_shared, list_attr, occurrence_rels, pset_owners, pset_reaches_only, scalar_attr, type_rel,
+    container_names, decoded_name, find_member, find_set, leaf_is_shared, list_attr, occurrence_rels, occurrence_set_of, pset_owners, pset_reaches_only, type_rel, type_sets,
 };
 use super::props_synth;
 use super::props_target::{keeping_old_unit, type_owned_member};
@@ -205,15 +205,12 @@ pub(crate) fn resolve_set_writes<'w>(
     // type's own set below.
     if matches!(first.scope, PropScope::Occurrence) {
         let rels = occurrence_rels(index, schema, object_id);
-        let occurrence_psets: Vec<u32> = rels
-            .iter()
-            .filter_map(|&rel| scalar_attr(index, schema, rel, "IFCRELDEFINESBYPROPERTIES", "RelatingPropertyDefinition"))
-            .collect();
+        let occurrence_psets: Vec<u32> = rels.iter().filter_map(|&rel| occurrence_set_of(index, schema, rel)).collect();
         if let Some((pset_id, member_idx, members)) = find_set(index, schema, occurrence_psets.iter(), first.kind, &first.pset, first.target) {
             let owning_rel = rels
                 .iter()
                 .copied()
-                .find(|&rel| scalar_attr(index, schema, rel, "IFCRELDEFINESBYPROPERTIES", "RelatingPropertyDefinition") == Some(pset_id));
+                .find(|&rel| occurrence_set_of(index, schema, rel) == Some(pset_id));
             let rel_fanout = owning_rel
                 .and_then(|rel| list_attr(index, schema, rel, "IFCRELDEFINESBYPROPERTIES", "RelatedObjects"))
                 .map(|v| v.len())
@@ -285,7 +282,7 @@ pub(crate) fn resolve_set_writes<'w>(
             refuse_all(&mut result, "object has no related type to patch");
             return result;
         };
-        let type_psets = list_attr(index, schema, type_id, &index.type_of(type_id).unwrap_or_default(), "HasPropertySets").unwrap_or_default();
+        let type_psets = type_sets(index, schema, type_id);
         match find_set(index, schema, type_psets.iter(), first.kind, &first.pset, first.target) {
             // A set another type lists, or that a relationship relates to
             // anything but this type, is not the type's alone: editing it

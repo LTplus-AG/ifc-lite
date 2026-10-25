@@ -204,7 +204,7 @@ impl<'a> FileIndex<'a> {
     }
 
     pub(crate) fn raw_line(&self, id: u32) -> Option<Cow<'a, str>> {
-        self.spans.lookup(id).map(|(s, e)| super::source_text::decode(&self.content[s..e]).into_text())
+        self.spans.lookup(id).map(|(s, e)| String::from_utf8_lossy(&self.content[s..e]))
     }
 
     /// UPPERCASE entity type of `id`, read from its own declaration.

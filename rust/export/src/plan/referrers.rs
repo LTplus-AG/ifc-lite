@@ -132,7 +132,7 @@ impl<'a> FileIndex<'a> {
             if !names_any(bytes, |t| lists.contains(&t) || counts.contains(&t)) {
                 continue;
             }
-            let Some(attrs) = parse_attrs(&super::source_text::decode(bytes).into_text()) else { continue };
+            let Some(attrs) = parse_attrs(&String::from_utf8_lossy(bytes)) else { continue };
             counted.clear();
             for (idx, attr) in attrs.iter().enumerate() {
                 for target in attr.refs() {

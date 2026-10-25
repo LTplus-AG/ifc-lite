@@ -18,6 +18,17 @@ pub(super) fn occurrence_rels(index: &FileIndex, schema: &str, object_id: u32) -
         .collect()
 }
 
+/// The property definition `rel` (an `IfcRelDefinesByProperties`) attaches.
+pub(super) fn occurrence_set_of(index: &FileIndex, schema: &str, rel: u32) -> Option<u32> {
+    scalar_attr(index, schema, rel, "IFCRELDEFINESBYPROPERTIES", "RelatingPropertyDefinition")
+}
+
+/// The sets a type lists in `HasPropertySets`.
+pub(super) fn type_sets(index: &FileIndex, schema: &str, type_id: u32) -> Vec<u32> {
+    let entity = index.type_of(type_id).unwrap_or_default();
+    list_attr(index, schema, type_id, &entity, "HasPropertySets").unwrap_or_default()
+}
+
 /// The last `IfcRelDefinesByType` in file order relating `object_id`, with
 /// its `RelatingType`.
 pub(super) fn type_rel(index: &FileIndex, schema: &str, object_id: u32) -> Option<(u32, u32)> {

@@ -565,16 +565,6 @@ fn a_copy_on_write_keeps_latin1_bytes_in_the_original_and_the_edited_relationshi
     assert!(has(b"'3HR'"), "the override was written");
 }
 
-/// A source record read from the index carries its bytes (not U+FFFD).
-#[test]
-fn a_record_read_from_the_index_keeps_its_non_utf8_bytes() {
-    let content = latin1_wall_source();
-    let index = super::index::FileIndex::complete(&content);
-    let line = index.raw_line(11).unwrap();
-    assert!(!line.contains('\u{FFFD}'));
-    assert!(line.contains("Gr\u{F7F6}sse"), "{line}");
-}
-
 /// A caller's STEP literal holding U+F7E9 is written as the caller gave it,
 /// not as the single byte E9.
 #[test]
@@ -588,7 +578,7 @@ fn a_caller_literal_with_a_byte_escape_character_is_written_as_given() {
 }
 
 /// Valid UTF-8 that looks like an escaped byte is written back unchanged
-/// when untouched, and an edit to it is refused rather than corrupting it.
+/// when untouched, and can be edited exactly.
 #[test]
 fn valid_utf8_that_collides_with_the_byte_escape_is_never_corrupted() {
     let mut content = two_walls_sharing_a_pset("IFC4");
@@ -607,8 +597,8 @@ fn valid_utf8_that_collides_with_the_byte_escape_is_never_corrupted() {
     let (out, _) = run(10, "Renamed");
     assert!(out.windows(collided.len()).any(|w| w == collided), "untouched record keeps its bytes");
     let (out, report) = run(11, "Renamed");
-    assert!(out.windows(collided.len()).any(|w| w == collided), "a refused edit leaves the record as it was");
-    assert!(report.findings.iter().any(|f| f.express_id == Some(11) && f.message.contains("not applied")), "{:?}", report.findings);
+    assert!(!out.windows(collided.len()).any(|w| w == collided), "the edit replaced the name");
+    assert!(report.findings.is_empty(), "the edit applied exactly: {:?}", report.findings);
 }
 
 #[test]

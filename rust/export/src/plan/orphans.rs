@@ -4,17 +4,13 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::attrs::attribute_index;
+use super::attrs::{attribute_index, is_spatial};
 use super::index::FileIndex;
 use super::removal::RemovalReason;
 use super::types::ValidationFinding;
 
 const CONTAINMENT: &str = "IFCRELCONTAINEDINSPATIALSTRUCTURE";
 const AGGREGATION: &str = "IFCRELAGGREGATES";
-
-fn is_spatial(schema: &str, class: &str) -> bool {
-    ["IFCSPATIALSTRUCTUREELEMENT", "IFCSPATIALELEMENT"].iter().any(|p| ifc_lite_core::is_subtype_of_for_schema(schema, class, p))
-}
 
 /// `(relating attribute, related attribute)` of a relationship that places
 /// things in the spatial tree.
@@ -29,9 +25,10 @@ fn slots(schema: &str, rel_type: &str) -> Option<(usize, usize)> {
 
 /// A containment or aggregation relationship that went because its relating
 /// object did, while some of what it related stayed. Such an element is no
-/// longer in the spatial tree unless the removed relationship put it there
-/// from a spatial element (an aggregation of an assembly does not) and it
-/// has no other surviving place in it.
+/// longer in the spatial tree, unless the relationship was an aggregation of
+/// something that is not spatial (an assembly). IFC gives an element at most
+/// one container and one parent, so the removed relationship was its only
+/// place in the tree and no other relationship needs reading.
 pub(super) fn unplaced_by_removed_structure(
     index: &FileIndex,
     schema: &str,
@@ -53,9 +50,6 @@ pub(super) fn unplaced_by_removed_structure(
         let label = if rel_type == AGGREGATION { "parent" } else { "container" };
         let children = attrs.get(related_idx).and_then(|a| a.list.as_ref()).into_iter().flatten().flatten();
         for &child in children.filter(|c| !removed.contains(c)) {
-            if still_placed(index, schema, removed, rel, child) {
-                continue;
-            }
             out.push(ValidationFinding {
                 express_id: Some(child),
                 message: format!("no longer in the spatial tree: the {label}{parent_label} it was related to in #{rel} was deleted"),
@@ -63,21 +57,4 @@ pub(super) fn unplaced_by_removed_structure(
         }
     }
     out
-}
-
-/// Whether `child` is still contained in, or aggregated under, a surviving
-/// spatial element by a relationship other than `except`.
-fn still_placed(index: &FileIndex, schema: &str, removed: &HashSet<u32>, except: u32, child: u32) -> bool {
-    index.referrers(child).iter().any(|&(rel, idx)| {
-        if rel == except || removed.contains(&rel) {
-            return false;
-        }
-        let Some(rel_type) = index.type_of(rel) else { return false };
-        let Some((relating_idx, related_idx)) = slots(schema, &rel_type) else { return false };
-        if idx != related_idx {
-            return false;
-        }
-        let Some(parent) = index.attrs(rel).and_then(|a| a.get(relating_idx).and_then(|a| a.scalar)) else { return false };
-        !removed.contains(&parent) && index.type_of(parent).is_some_and(|c| is_spatial(schema, &c))
-    })
 }

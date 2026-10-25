@@ -276,18 +276,12 @@ pub struct WriteReport {
 #[non_exhaustive]
 pub enum PlanError {
     Io(std::io::Error),
-    /// `record` names `gone`, which the plan deletes, and holds text that
-    /// cannot be edited exactly, so the reference cannot be removed.
-    Unwritable { record: u32, gone: u32 },
 }
 
 impl std::fmt::Display for PlanError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             PlanError::Io(e) => write!(f, "export-plan write failed: {e}"),
-            PlanError::Unwritable { record, gone } => {
-                write!(f, "export-plan write failed: #{record} still names deleted #{gone} and cannot be edited without changing its text")
-            }
         }
     }
 }

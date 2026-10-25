@@ -99,7 +99,7 @@ try {
     boundEvaluations(page);
     page.setDefaultTimeout(30000);
     page.on('pageerror', error => run.errors.push(String(error)));
-    const logs = [];
+    const logs = []; run.console = logs; run.loads = [];
     page.on('console', message => logs.push(message.text()));
     await context.addInitScript(() => {
       globalThis.__6881Devices = [];
@@ -115,13 +115,34 @@ try {
     await page.goto(`http://127.0.0.1:${server.address().port}/?perfTrace=1`, { timeout: 30000 });
     await page.getByRole('button', { name: 'Collapse sidebar to icons', exact: true }).click();
     const load = async (model, count) => {
+      const attempt = { fixture: model.name, count };
+      run.loads.push(attempt);
       await page.locator(count === 1 ? '#file-input-open' : '#file-input-add').setInputFiles(model.path);
-      await waitForMetadataRenderReadiness({ trace: () => probeMetadataRenderTrace(page), logs: () => logs,
+      try {
+      await waitForMetadataRenderReadiness({ trace: async () => {
+        const probe = await probeMetadataRenderTrace(page); attempt.lastProbe = probe; return probe;
+      }, logs: () => logs,
         canvasReady: () => page.evaluate(`(() => {const s=globalThis.__ifc_lite_viewer_store__?.getState();return s?.models.size===${count} && !s.loading && !s.geometryStreamingActive && !!globalThis.__ifc_lite_render_stats__?.().frame?.drawCalls;})()`),
         now: () => performance.now(), pause: () => sleep(50), timeoutMs: 90000 });
       const trace = await probeMetadataRenderTrace(page);
       if (!trace.ended || trace.failed.length) throw Error('Authoritative load incomplete');
       return trace;
+      } catch (error) {
+        try {
+          attempt.failure = await page.evaluate(() => {
+            const state = globalThis.__ifc_lite_viewer_store__?.getState();
+            const canvas = document.querySelector('canvas[data-viewport="main"]');
+            return { trace: globalThis.__IFC_LITE_LOAD_TRACE__?.latest(),
+              state: state && { loading: state.loading, streaming: state.geometryStreamingActive, error: state.error, progress: state.progress,
+                models: [...state.models.values()].map(model => ({ id: model.id, loadState: model.loadState,
+                  meshes: model.geometryResult?.meshes.length, triangles: model.geometryResult?.totalTriangles })) },
+              canvas: canvas && { width: canvas.width, height: canvas.height }, stats: globalThis.__ifc_lite_render_stats__?.(),
+              adapters: globalThis.__6881Devices, visibleText: document.body.innerText.slice(0, 12000) };
+          });
+          await page.screenshot({ path: `${output}/readiness-dpr${dpr}-models${count}.png`, timeout: 10000 });
+        } catch (diagnosticError) { attempt.diagnosticError = String(diagnosticError); }
+        throw error;
+      }
     };
     run.primaryLoad = await load(models[0], 1);
     await page.bringToFront();

@@ -35,7 +35,7 @@ pub use sweep::RetainedRealization;
 mod objects;
 #[path = "worker_dependencies.rs"]
 mod dependencies;
-pub use dependencies::{RetainedDependency, RetainedDependencyResult, RetainedLineage};
+pub use dependencies::{RetainedBooleanIdentity, RetainedDependency, RetainedDependencyResult, RetainedLineage};
 #[path = "worker_affine.rs"]
 mod affine;
 pub use affine::{AffineCertificate, AffineCopyIdentity, RetainedAffineCopy, RetainedTransformInput};

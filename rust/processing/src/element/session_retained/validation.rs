@@ -19,7 +19,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
         match (operation, receipt.kind.evidence()) {
             (PendingRetainedOperation::Construction { expected, document, request }, ReceiptEvidence::Construction(completion)) => {
                 if receipt.is_empty() { return Err(protocol(ReceiptFailure::EmptyConstructionResult)); }
-                if !request.same_admission(completion.request()) { return Err(protocol(ReceiptFailure::ForeignSourceAdmission)); }
+                if !ifc_lite_geometry::program::transactions::same_admission(request, completion.request()) { return Err(protocol(ReceiptFailure::ForeignSourceAdmission)); }
                 document.validate_retained_completion(completion,
                     owner.incarnation().ok_or_else(|| protocol(ReceiptFailure::RetiredRuntime))?).map_err(protocol)?;
                 if !same_frame(expected.value().source_from_evaluation(), &completion.source_from_evaluation)

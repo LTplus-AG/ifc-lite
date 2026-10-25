@@ -136,7 +136,7 @@ impl RetainedExecutionError {
                 _ => Code::OperationUnsupported,
             },
             Self::Receipt(ReceiptFailure::InvalidRetainedNumericalLimits) => Code::InvalidOptions,
-            Self::Receipt(reason) => { let _ = reason; Code::RuntimeFailed }
+            Self::Receipt(reason) => { let _ = reason; Code::ReceiptInvalid }
             Self::Transition(stage) => { let _ = stage; Code::Cancelled }
             Self::Geometry(error) => { let _ = error; Code::RuntimeFailed }
             Self::Owner(_) => Code::RuntimeFailed,

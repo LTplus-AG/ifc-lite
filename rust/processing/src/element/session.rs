@@ -14,7 +14,7 @@
 //! This private protocol does not authorize asynchronous or remote execution.
 use super::plan::PlanKind;
 use super::session_owner::OwnerStamp;
-use super::session_protocol::{Protocol, WorkError, WorkKind, WorkPayload, WorkReply, WorkRequest};
+use super::session_protocol::{Protocol, WorkError, WorkPayload, WorkReply, WorkRequest};
 use super::session_state::{Stage, TriangleOrderScope};
 use super::*;
 use ifc_lite_core::execution_owner::ExecutionIdentity;

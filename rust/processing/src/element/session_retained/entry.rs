@@ -68,6 +68,7 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
                 scratch: Storage::default(),
                 plan: None,
                 failed: false,
+                runtime_domain: None,
             };
             execution.init_type_maps()?;
             execution.start_next_program(decoder,router)?;

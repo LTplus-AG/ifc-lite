@@ -105,6 +105,7 @@ struct RuntimeProductExecution<'a, R: NumericalReceipt> {
     scratch: Storage,
     plan: Option<RetainedProductPlan>,
     failed: bool,
+    runtime_domain: Option<R::Domain>,
 }
 impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
     fn validate(
@@ -136,6 +137,9 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
         worker: &impl RetainedRuntime<Receipt = R>,
     ) -> Result<Option<RuntimeIssued<R>>, RetainedExecutionError> {
         self.validate(decoder, router)?;
+        if self.runtime_domain.as_ref().is_some_and(|owner| !owner.same_domain(&worker.domain())) {
+            return Err(protocol(ReceiptFailure::ForeignWorker));
+        }
         if self.pending.is_some() {
             return Err(protocol(ReceiptFailure::OutstandingConstruction));
         }
@@ -192,6 +196,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                 self.context.validate_decoder(decoder).map_err(RetainedExecutionError::Source)?;
                 continue;
             }
+            if self.runtime_domain.is_none() { self.runtime_domain = Some(worker.domain()); }
             let (operations, storage) = resources.with_scope(|| self.prepare_operations(operations, worker))?;
             let (issued_operations, issued_storage) = resources.with_scope(|| self.copy_issued_operations(&operations))?;
             let cancellation = RuntimeCancellation {
@@ -220,6 +225,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
     }
     fn cancel(&mut self) {
         self.failed = true;
+        if let Some(owner) = &self.runtime_domain { owner.retire(); }
         if let Some(pending) = &self.pending {
             pending.cancellation.cancel();
         }

@@ -81,3 +81,10 @@ impl Program<'_> {
         self.0.finish_type_map(product, class, color).map(Plan::new).map_err(Into::into)
     }
 }
+
+/// Authenticate the original immutable source allocation as well as all request
+/// document/revision/definition/incarnation fields. Equal bytes are insufficient.
+pub fn same_admission(request: &crate::document::RetainedRequest,
+    completed: &crate::document::RetainedRequest) -> bool {
+    request.same_admission(completed)
+}

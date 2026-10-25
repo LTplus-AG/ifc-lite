@@ -73,7 +73,7 @@ fn h2c_sdk_empty_definition_reaches_later_operands_and_final_witness() {
                 }
                 execution.accept(completed, decoder, router).unwrap_or_else(|error| panic!("{}", error.reason));
                 for (logical, receipt) in &execution.ledger {
-                    assert_eq!(logical.evaluated_empty(), Some(receipt.is_empty()));
+                    assert_eq!(logical.as_ref().evaluated_empty(), Some(receipt.is_empty()));
                 }
             }
             assert_eq!(empties, 1, "self-difference must return a certified empty operand");

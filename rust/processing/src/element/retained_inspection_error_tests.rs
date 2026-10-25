@@ -17,7 +17,7 @@ fn issue_7955_public_busy_lease_preserves_cause_and_allows_released_retry() {
     assert!(matches!(error.cause, Cause::Owner(WorkError::OwnerBusy)));
     assert_eq!(error.diagnostic_code_json(), "\"OWNER_BUSY\"");
     drop(competing);
-    let report = inspect_retained_source(source, 10, Some(&root), &mut decoder,
+    let report = inspect_retained_source(source.clone(), 10, Some(&root), &mut decoder,
         OPTIONS, TEST_IDENTITY).expect("same decoder remains a legitimate owner");
     let value: serde_json::Value = serde_json::from_slice(report.bytes().unwrap()).unwrap();
     assert_eq!(value["outcome"]["kind"], "requires_numerical_evaluation");
@@ -48,7 +48,7 @@ fn issue_7955_public_atomic_source_refusals_have_no_invented_measurement() {
     ] {
         let source = SourceBundle::new(text.into_bytes());
         let mut decoder = source.decoder();
-        let report = inspect_retained_source(source, 10, None, &mut decoder, OPTIONS, TEST_IDENTITY).unwrap();
+        let report = inspect_retained_source(source.clone(), 10, None, &mut decoder, OPTIONS, TEST_IDENTITY).unwrap();
         let value: serde_json::Value = serde_json::from_slice(report.bytes().unwrap()).unwrap();
         assert_eq!(value["outcome"]["kind"], "refused");
         assert_eq!(value["outcome"]["refusal"]["code"], code);

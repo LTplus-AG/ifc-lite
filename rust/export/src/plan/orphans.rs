@@ -49,16 +49,16 @@ pub(super) fn unplaced_by_removed_structure(
         if rel_type == AGGREGATION && !parent.and_then(|p| index.type_of(p)).is_some_and(|c| is_spatial(schema, &c)) {
             continue;
         }
+        let parent_label = parent.map_or_else(String::new, |p| format!(" #{p}"));
+        let label = if rel_type == AGGREGATION { "parent" } else { "container" };
         let children = attrs.get(related_idx).and_then(|a| a.list.as_ref()).into_iter().flatten().flatten();
         for &child in children.filter(|c| !removed.contains(c)) {
             if still_placed(index, schema, removed, rel, child) {
                 continue;
             }
-            let parent = parent.map_or_else(String::new, |p| format!(" #{p}"));
-            let label = if rel_type == AGGREGATION { "parent" } else { "container" };
             out.push(ValidationFinding {
                 express_id: Some(child),
-                message: format!("no longer in the spatial tree: the {label}{parent} it was related to in #{rel} was deleted"),
+                message: format!("no longer in the spatial tree: the {label}{parent_label} it was related to in #{rel} was deleted"),
             });
         }
     }

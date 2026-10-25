@@ -10,7 +10,7 @@ use crate::step_text::escape;
 
 use super::index::FileIndex;
 use super::types::{DroppedRepresentation, ObjectRef, Patch, PropWrite, Refusal};
-use super::{attrs, geometry, placement, props};
+use super::{attrs, geometry, placement, props, props_target};
 
 pub(super) struct PatchOutput<'a> {
     pub(super) edits_by_id: &'a mut HashMap<u32, BTreeMap<usize, String>>,
@@ -77,7 +77,7 @@ pub(super) fn apply_patch(
     // meet.
     let mut writes: Vec<PropWrite> = Vec::new();
     for w in &patch.psets {
-        match props::effective_write(index, schema, object_id, w) {
+        match props_target::effective_write(index, schema, object_id, w) {
             Ok(w) => writes.push(w),
             Err(reason) => out.refusals.push(Refusal { object: ObjectRef::Id(object_id), reason: format!("{}.{}: {reason}", w.pset, w.prop) }),
         }
@@ -88,7 +88,7 @@ pub(super) fn apply_patch(
             w.pset == write.pset
                 && w.kind == write.kind
                 && w.scope == write.scope
-                && props::holding_set(index, schema, object_id, w) == props::holding_set(index, schema, object_id, write)
+                && props_target::holding_set(index, schema, object_id, w) == props_target::holding_set(index, schema, object_id, write)
         };
         match groups.iter_mut().find(|g| g.first().is_some_and(same_set)) {
             Some(group) => group.push(write),

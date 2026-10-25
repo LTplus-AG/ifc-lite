@@ -391,3 +391,14 @@ fn a_spatial_class_is_accepted_only_under_its_own_parents() {
         }
     }
 }
+
+/// IFC4.3 Spatial Decomposition: a facility may be part of a facility part
+/// (a section of a larger facility holding smaller functional facilities).
+#[test]
+fn a_facility_is_accepted_under_a_facility_part_in_ifc4x3() {
+    let base = String::from_utf8(storey_with_typed_wall("IFC4X3")).unwrap();
+    let source = base.replacen("ENDSEC;\nEND-ISO", "#90=IFCFACILITYPART($);\nENDSEC;\nEND-ISO", 1);
+    let obj = object(IfcClass::Named("IFCBRIDGE".into()), gid(41), Some(ObjectRef::Id(90)), Representation::None);
+    let (_, report) = run(source.as_bytes(), vec![add(obj)]);
+    assert_eq!(report.added, 1, "{:?}", report.refusals);
+}

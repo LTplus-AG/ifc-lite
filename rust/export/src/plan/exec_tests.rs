@@ -808,3 +808,19 @@ fn deleting_an_assembly_does_not_flag_parts_that_are_still_contained() {
     let report = delete(70);
     assert!(report.findings.iter().any(|f| f.express_id == Some(10) && f.message.contains("spatial")), "{:?}", report.findings);
 }
+
+/// Deleting a member of a shared relationship whose record cannot be edited
+/// exactly must not leave that relationship naming the deleted member.
+#[test]
+fn a_required_edit_that_cannot_be_written_never_leaves_a_dangling_reference() {
+    let base = String::from_utf8(two_walls_sharing_a_pset("IFC4")).unwrap();
+    let at = base.find("#32=").unwrap();
+    let (head, rel) = base.split_at(at);
+    let content = format!("{head}{}", rel.replacen(",$,", ",'a\u{F7E9}b',", 1));
+    let plan = ExportPlan { dispositions: vec![(ObjectRef::Id(10), Disposition::Delete)], context: PlanContext::default() };
+    let mut out = Vec::new();
+    let result = execute(content.as_bytes(), &plan, &mut out);
+    let text = String::from_utf8_lossy(&out);
+    let dangling = text.lines().any(|l| l.starts_with("#32=") && l.contains("#10"));
+    assert!(result.is_err() || !dangling, "{result:?}\n{text}");
+}

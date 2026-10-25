@@ -44,6 +44,7 @@ pub(crate) fn write_output<W: Write>(
     let mut attribute_edits_refused = 0usize;
     let mut unapplied: Vec<ValidationFinding> = Vec::new();
     let mut written = 0usize;
+    let mut blocked: Option<(u32, u32)> = None;
 
     for (id, type_name, start, end) in index.records() {
         if removed.contains(&id) {
@@ -57,6 +58,11 @@ pub(crate) fn write_output<W: Write>(
         let edited: Option<Vec<u8>> = edits_by_id.get(&id).and_then(|edits| {
             let before = attribute_edits_refused;
             let Some(edited) = source_text::apply_edits(bytes, edits, &mut attribute_edits_refused) else {
+                // Leaving the record as it is must not leave it naming a
+                // record the plan deleted.
+                if blocked.is_none() {
+                    blocked = index.refs_of(id).into_iter().filter(|r| removed.contains(r)).min().map(|gone| (id, gone));
+                }
                 attribute_edits_refused += edits.len();
                 unapplied.push(ValidationFinding {
                     express_id: Some(id),
@@ -72,6 +78,9 @@ pub(crate) fn write_output<W: Write>(
             }
             Some(edited)
         });
+        if let Some((record, gone)) = blocked {
+            return Err(PlanError::Unwritable { record, gone });
+        }
         let written_bytes = edited.as_deref().unwrap_or(bytes);
         out.write_all(written_bytes)?;
         let line = source_text::decode(written_bytes).into_text();

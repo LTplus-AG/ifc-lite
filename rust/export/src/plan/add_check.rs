@@ -86,7 +86,7 @@ impl AddState<'_> {
         } else if self.is_a(child, "IFCFACILITYPART") {
             &["IFCFACILITY", "IFCFACILITYPART"]
         } else if self.is_a(child, "IFCFACILITY") {
-            &["IFCPROJECT", "IFCSITE", "IFCFACILITY"]
+            &["IFCPROJECT", "IFCSITE", "IFCFACILITY", "IFCFACILITYPART"]
         } else {
             return self.is_spatial(parent);
         };

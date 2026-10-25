@@ -216,17 +216,34 @@ Two rules:
   whether a tier is one node or several, and how it relates to the geometry
   pass's existing hashes, needs the geometry pipeline's view and is deferred to
   `03-diff.md`.
-- **Relationship endpoints under deduplication.** A `relationship` node
-  references its endpoints by node address, which is what keeps it content-only
-  and GUID-agnostic, and which cannot tell two deduplicated occurrences apart.
-  Where §2.4 collapses two distinct elements to one address, a relationship
-  naming one of them names both, so endpoint cardinality at the node layer is
-  weaker than the tree layer's. Keying endpoints by tree key instead separates
-  them and puts `GlobalId` back into the hash, which §2.4 exists to avoid. So
-  the representation is an open decision: node address, tree key, or the address
-  paired with a disambiguating ordinal. The cases that settle it are coincident
-  duplicate occurrences and `IfcRelVoidsElement` over identical openings. It
-  rides with index §6.1, because it is a question about the v1 encoding.
+- **Relationship endpoints under deduplication — resolved, with one stated
+  limit.** A `relationship` node names its endpoints by node address, which is
+  what keeps it content-only. A review raised the consequence: where §2.4
+  collapses two distinct elements to one address, a relationship naming one
+  names both. Measured in `rust/git/tests/dedup_boundary.rs`, the boundary is
+  narrower than it reads, and cardinality survives:
+
+    - Two occurrences differing **only in placement** do not deduplicate, so
+      the ordinary case — two openings in one wall — has no ambiguity at all.
+      Deduplication needs identity in *every* component, placement included.
+    - What remains is genuinely coincident duplicates: two entities identical
+      in everything a model records, which is a modelling defect rather than a
+      representation worth preserving. Their relationships do collapse to one
+      node.
+    - **The tree still names both.** Four keys over two distinct nodes, exactly
+      as two identical files in git are two tree entries pointing at one blob.
+      Cardinality lives in the tree, which is the layer §2.4 claims it at.
+    - The residual question — which of two indistinguishable coincident
+      openings a given void targets — has no observable answer, because the two
+      differ in nothing a model records.
+
+  The limit worth writing down: **a consumer reconstructing from nodes alone,
+  bypassing the tree, sees one occurrence where there are two.** Reconstruction
+  goes through the tree, because that is where keys live, so this constrains
+  implementations rather than the format. Keying endpoints by tree key would
+  separate them, but it puts `GlobalId` back into the hash — which §2.4 exists
+  to avoid — and is not worth paying for a case with no observable answer.
+
 - **Authorship fields.** The `author` and `committer` shapes are
   `04-authorship.md`'s subject; this document only says the commit carries
   them.

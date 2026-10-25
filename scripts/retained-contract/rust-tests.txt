@@ -90,3 +90,21 @@ fn issue_7955_enumeration_failure_success_contradictions() {
         }
     }
 }
+
+#[test]
+fn issue_7955_detail_measurements_preserve_values_and_constructed_relations() {
+    let mut refusal = decode_refusal(&case_named("measured_u64_preserved").input_wire).unwrap();
+    let Measurement::Measured(measurement) = &mut refusal.detail.measurement else { panic!("measured"); };
+    assert_eq!(measurement.observed, "18446744073709551615");
+    assert_eq!(measurement.limit, "9007199254740993");
+    measurement.observed.clone_from(&measurement.limit);
+    assert!(check_refusal(&refusal).is_err(), "equal usage cannot assert exhausted");
+    refusal.detail.measurement = Measurement::NotApplicable(Box::new(NotApplicable {}));
+    assert!(check_refusal(&refusal).is_err(), "measured resource refusal cannot omit quantities");
+    let mut unsupported = decode_refusal(&case_named("typed_refusal").input_wire).unwrap();
+    assert!(matches!(unsupported.detail.measurement, Measurement::NotApplicable(_)));
+    unsupported.detail.measurement = Measurement::Measured(Box::new(Measured {
+        observed: "1".into(), limit: "0".into(),
+    }));
+    assert!(check_refusal(&unsupported).is_err(), "unsupported is not a measured limit");
+}

@@ -11,7 +11,7 @@ const union = (tag, variants) => ({ kind: 'union', tag, variants });
 export const causes = {
   configuration: ['FEATURE_UNAVAILABLE', 'RETAINED_DISABLED', 'INVALID_OPTIONS', 'CAPABILITY_MISSING'],
   source: ['SOURCE_INVALID', 'SOURCE_MISSING', 'SOURCE_MISMATCH', 'SOURCE_STALE', 'ENUMERATION_FAILED'],
-  ownership: ['OWNER_MISMATCH', 'OWNER_RETIRED', 'RECEIPT_INVALID'],
+  ownership: ['OWNER_BUSY', 'OWNER_MISMATCH', 'OWNER_RETIRED', 'RECEIPT_INVALID'],
   geometry: ['OPERATION_UNSUPPORTED', 'GEOMETRY_INVALID', 'OPENING_INVALID', 'LAYER_CUT_FAILED', 'INTERFACE_UNPROVEN'],
   appearance: ['APPEARANCE_INVALID', 'TEXTURE_UNAVAILABLE', 'PALETTE_INVALID', 'NORMAL_UNPROVEN', 'IDENTITY_UNPROVEN'],
   publication: ['REMOVAL_POLICY_UNPROVEN', 'PUBLICATION_FAILED'],
@@ -34,7 +34,7 @@ const contexts = {
   consumer: ['consumer'],
 };
 const pairs = (...stages) => stages.flatMap((stage) => contexts[stage].map((requirement) => [stage, requirement]));
-const rule = (reason, allowed) => ({ reason, contexts: allowed });
+const rule = (reason, allowed, measurement = 'not_applicable') => ({ reason, contexts: allowed, measurement });
 const allContexts = pairs(...Object.keys(contexts));
 // Private staged semantics, not an origin mapping or a resource-accounting grant.
 const refusalRules = {
@@ -46,6 +46,7 @@ const refusalRules = {
   SOURCE_MISSING: rule('unavailable', pairs('source', 'enumeration', 'representation')),
   SOURCE_MISMATCH: rule('mismatch', allContexts), SOURCE_STALE: rule('stale', allContexts),
   ENUMERATION_FAILED: rule('invalid', pairs('enumeration')),
+  OWNER_BUSY: rule('busy', pairs('ownership')),
   OWNER_MISMATCH: rule('mismatch', pairs('ownership')),
   OWNER_RETIRED: rule('stale', pairs('ownership')),
   RECEIPT_INVALID: rule('invalid', pairs('ownership', 'numerical', 'publication')),
@@ -61,7 +62,7 @@ const refusalRules = {
   IDENTITY_UNPROVEN: rule('unproven', pairs('identity')),
   REMOVAL_POLICY_UNPROVEN: rule('unproven', [['publication', 'protected_removal']]),
   PUBLICATION_FAILED: rule('backend_failure', pairs('publication')),
-  RESOURCE_EXHAUSTED: rule('exhausted', allContexts), DEADLINE_EXCEEDED: rule('deadline', allContexts),
+  RESOURCE_EXHAUSTED: rule('exhausted', allContexts, 'exceeds'), DEADLINE_EXCEEDED: rule('deadline', allContexts, 'at_least'),
   RUNTIME_FAILED: rule('backend_failure', allContexts), WORKER_RETIRED: rule('stale', allContexts),
   DEVICE_LOST: rule('unavailable', allContexts), CANCELLED: rule('cancelled', allContexts),
   CONSUMER_UNSUPPORTED: rule('unsupported', pairs('consumer')),
@@ -98,8 +99,12 @@ export const schema = {
     Requirements: list('Requirement', 1, 32),
     // No free-form source/backend prose, paths, pointers or secrets enter safe detail.
     DetailReason: enumeration('unavailable', 'invalid', 'unsupported', 'mismatch', 'stale', 'unproven',
-      'exhausted', 'deadline', 'cancelled', 'backend_failure'),
-    Detail: record({ reason: 'DetailReason', observed: 'U64', limit: 'U64' }),
+      'exhausted', 'deadline', 'cancelled', 'backend_failure', 'busy'),
+    // Measured values describe an observed quantity and its configured bound.
+    // Requested/remaining account payloads are not this measurement contract.
+    Measured: record({ observed: 'U64', limit: 'U64' }), NotApplicable: record({}),
+    Measurement: union('kind', { measured: 'Measured', not_applicable: 'NotApplicable' }),
+    Detail: record({ reason: 'DetailReason', measurement: 'Measurement' }),
     Retry: literal('explicit_new_exact_request'),
     ModelTarget: record({}), ProductTarget: record({ product: 'ProductKey' }),
     Target: union('kind', { model: 'ModelTarget', product: 'ProductTarget' }),

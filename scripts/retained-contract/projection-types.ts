@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 // #7955: root typecheck tail checks these invariants without emitting declarations.
-import type { InspectionReport, ModelReport, Options } from './generated/contract.js';
+import type { Detail, InspectionReport, ModelReport, Options } from './generated/contract.js';
 import { parseOptions, parseModelReport } from './generated/contract.js';
 
 function readonlyOptions(options: Options) {
@@ -29,3 +29,17 @@ function separatedReports(inspection: InspectionReport, model: ModelReport) {
   void [forged, diagnostic, unsafe, validated];
 }
 void [readonlyOptions, separatedReports];
+
+function explicitMeasurement(detail: Detail) {
+  if (detail.measurement.kind === 'measured') {
+    const observed: string = detail.measurement.observed;
+    const limit: string = detail.measurement.limit;
+    void [observed, limit];
+  } else {
+    // @ts-expect-error Nonnumeric refusal carries no invented measurement.
+    detail.measurement.observed;
+    // @ts-expect-error Nonnumeric refusal carries no configured numeric bound.
+    detail.measurement.limit;
+  }
+}
+void explicitMeasurement;

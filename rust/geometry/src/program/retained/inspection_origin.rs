@@ -32,7 +32,7 @@ pub(super) fn outcome(failure: RetainedFailure, binding: &wire::Binding)
         RetainedFailure::Protocol(RetainedProgramError::WrongOwner) =>
             (Code::OwnerMismatch, DetailReason::Mismatch, Stage::Ownership, Requirement::Ownership),
         RetainedFailure::Protocol(_) | RetainedFailure::Completion(_) =>
-            (Code::SourceInvalid, DetailReason::Invalid, Stage::Source, Requirement::SourceAuthentication),
+            (Code::RuntimeFailed, DetailReason::BackendFailure, Stage::Transport, Requirement::Representation),
     };
     Ok(refused(code, reason, stage, requirement, binding))
 }
@@ -49,7 +49,7 @@ fn refused(code: wire::Code, reason: wire::DetailReason, stage: wire::Stage,
             schema_version: 1., family: wire::cause_family(&code), code, stage,
             source: wire::RefusalSource::Known(Box::new(wire::KnownSource { value: binding.identity.source.clone() })),
             target: wire::Target::Product(Box::new(wire::ProductTarget { product: binding.requested[0].clone() })),
-            requirement, detail: wire::Detail { reason, observed: "0".into(), limit: "0".into() },
+            requirement, detail: wire::Detail { reason, measurement: wire::Measurement::NotApplicable(Box::new(wire::NotApplicable {})) },
             exact_retry: "explicit_new_exact_request".into(),
         },
     }))

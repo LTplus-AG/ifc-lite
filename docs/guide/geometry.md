@@ -6,8 +6,47 @@ Guide to geometry extraction and processing in IFClite.
 
 The default-off Rust `retained-runtime` feature supplies a bounded diagnostic
 consumer for the existing `rust/processing/examples/retained_census` example.
-Run it from a clean, committed checkout with
-`cargo run -p ifc-lite-processing --features retained-runtime --example retained_census -- <model.ifc>`.
+Its controller needs an externally supplied **compile-time** source pin. From a
+clean committed checkout, the installed fleet launcher pins that same revision
+in its original request and verifies the execution checkout. Supply the full
+revision as an explicit Cargo configuration argument, so the receipt records it:
+
+```sh
+test -z "$(git status --porcelain --untracked-files=normal)" || exit 1
+inspection_commit=$(git rev-parse --verify HEAD)
+~/build-workers/ifc-fleet run --cwd "$PWD" -- cargo build --locked \
+  -p ifc-lite-processing --features retained-runtime --example retained_census \
+  --config "env.IFC_RETAINED_BUILD_COMMIT={value=\"$inspection_commit\",force=true}"
+```
+
+Before using the resulting binary, reconcile the original request/receipt:
+its source commit must equal the explicit compile pin, execution must have
+succeeded with clean unchanged source, and the executable SHA256 must identify
+that build's binary. If the checkout changes between resolving the pin and
+submission, discard that association; do not label it verified. The stamp is a
+trusted build input, not a self-authenticating signature. Do not set it from an
+arbitrary runtime environment or supply an unverified caller HEAD.
+
+To build and execute against the committed sample in one source-pinned admitted
+job, use the same pin (resolve it again if intentionally selecting another source):
+
+```sh
+~/build-workers/ifc-fleet run --route fleet --cwd "$PWD" -- cargo run --locked \
+  -p ifc-lite-processing --features retained-runtime --example retained_census \
+  --config "env.IFC_RETAINED_BUILD_COMMIT={value=\"$inspection_commit\",force=true}" \
+  -- apps/viewer/public/samples/building-architecture.ifc
+```
+
+A retained built `retained_census <model.ifc>` binary also runs through ordinary
+worker admission with its original artifact identity. Do not use an unstamped
+`cargo run`, which can rebuild it without the pin. Cargo tracks the
+`option_env!` value in compiler dependencies: changing/removing the build input
+requires a rebuild. Plain builds intentionally leave the controller uninspected.
+The same explicit `--config` argument on the root `cargo test --locked -p
+ifc-lite-processing --features retained-runtime --example retained_census`
+command exercises the compiled provenance and runtime-checkout A/B metadata
+witness under admission. That fixture tests identity behavior; it does not
+qualify geometry or attest a build independently of its fleet receipt.
 Its original extractor column and denominator keep their existing meanings.
 The additional `controller` column drives the private retained controller through
 source replies until its first **nonempty** numerical batch. It drops that batch
@@ -34,10 +73,20 @@ projection remains test-only. Reports have `diagnostic_only` authority and retai
 unchecked numerical, representation, opening, layer, interface, appearance,
 identity, instancing and finality obligations. Absent GlobalIds are explicit;
 invalid ones refuse entry. Source and result digests derive from immutable source
-bytes and options, independently of product metadata. The census records the clean
-checkout commit and a separate executable SHA256; an execution receipt must bind
-that binary to its compilation source. Dirty or unavailable checkout identity
-leaves the controller column uninspected.
+bytes and options, independently of product metadata. The census separately
+records the compile-time implementation commit, runtime checkout commit/cleanliness,
+and actual executable SHA256. Running an A binary in clean checkout B keeps A as
+`implementationCommit`; B is only runtime metadata. Missing or malformed compile
+identity produces `uninspected` with `implementation_unbound`, even if runtime
+HEAD is clean or the environment supplies a commit.
+
+A competing decoder lease reports `OWNER_BUSY` and can be retried after release.
+Other protocol errors without proof of ownership mismatch report `RUNTIME_FAILED`
+while retaining the actual private typed cause. Refusal detail distinguishes
+`measurement.kind = not_applicable` from `measured`: source/unsupported refusals
+carry no invented counters. Measured resource exhaustion requires observed
+greater than limit; deadline requires observed at least limit. Original typed
+`ProgramStop` requested/remaining payloads remain separate and unchanged.
 
 This additive feature-gated Rust surface needs the normal Rust release's additive
 API disposition; it does not change an npm export, public WASM binding, CLI flag or

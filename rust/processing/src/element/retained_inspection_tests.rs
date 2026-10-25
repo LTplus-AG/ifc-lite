@@ -4,7 +4,7 @@ use super::*;
 use ifc_lite_core::AttributeValue;
 use resource::{Dimension, RefusalReason, ResourceFailure};
 
-const SOURCE: &str = "ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
+pub(super) const SOURCE: &str = "ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
 #1=IFCCARTESIANPOINT((0.,0.,0.));#2=IFCAXIS2PLACEMENT3D(#1,$,$);
 #3=IFCDIRECTION((0.,0.,1.));#4=IFCLOCALPLACEMENT($,#2);
 #5=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#2,$);
@@ -14,16 +14,13 @@ const SOURCE: &str = "ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
 #13=IFCEXTRUDEDAREASOLID(#14,#2,#3,3.);#14=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,2.,4.);
 #23=IFCEXTRUDEDAREASOLID(#14,#2,#3,$);
 ENDSEC;END-ISO-10303-21;";
-const OPTIONS: &str = r#"{"schemaVersion":1,"chordToleranceMetres":0.001,"angleToleranceRadians":0.1,
+pub(super) const OPTIONS: &str = r#"{"schemaVersion":1,"chordToleranceMetres":0.001,"angleToleranceRadians":0.1,
 "maxWork":"10000","maxBytes":"16777216","deadlineMs":"10000","typeGeometryMode":"suppress_instanced",
 "normalPolicy":"source_analytic_v1","instancePolicy":"uncut_mapped_v1","interfacePolicy":"certified_internal_v1",
 "openings":"all","layers":"preserve","skipSmallCuts":false,"mergeLayers":false}"#;
-fn commit() -> String {
-    let out = std::process::Command::new("git").args(["rev-parse", "HEAD"])
-        .current_dir(env!("CARGO_MANIFEST_DIR")).output().unwrap();
-    assert!(out.status.success());
-    String::from_utf8(out.stdout).unwrap().trim().into()
-}
+// Descriptive test identity only; compile provenance is exercised by the census.
+fn commit() -> String { "0".repeat(40) }
+
 fn run(source: Arc<SourceBundle>, options: &str) -> Result<RetainedSourceInspection, RetainedInspectionError> {
     let mut decoder = source.decoder();
     let root = decoder.decode_by_id(10).ok();
@@ -95,7 +92,7 @@ fn issue_7955_cut_c_foreign_decoder_forged_root_stale_source_and_busy_owner_refu
     Arc::make_mut(&mut forged.attributes)[2] = AttributeValue::String("forged".into());
     assert_eq!(check(&mut decoder, Some(&forged)).err().unwrap().diagnostic_code_json(), "\"SOURCE_MISMATCH\"");
     let lease = decoder.try_execution_lease().unwrap();
-    assert_eq!(check(&mut decoder, None).err().unwrap().diagnostic_code_json(), "\"OWNER_MISMATCH\"");
+    assert_eq!(check(&mut decoder, None).err().unwrap().diagnostic_code_json(), "\"OWNER_BUSY\"");
     drop(lease);
     let report = check(&mut decoder, Some(&root)).unwrap();
     assert!(decoder.try_execution_lease().is_ok());

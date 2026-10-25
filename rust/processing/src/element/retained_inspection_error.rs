@@ -37,10 +37,14 @@ impl RetainedInspectionError {
             Cause::Source(RetainedContextError::Missing) => Code::SourceMissing,
             Cause::Source(RetainedContextError::Mismatched) => Code::SourceMismatch,
             Cause::Owner(WorkError::StaleSource) => Code::SourceStale,
+            Cause::Owner(WorkError::OwnerBusy) => Code::OwnerBusy,
+            Cause::Owner(WorkError::WrongOwner) => Code::OwnerMismatch,
+            // These protocol failures do not establish an ownership mismatch.
+            // Preserve the actual enum privately; the wire states only failure.
             Cause::Owner(WorkError::Aborted | WorkError::Unfinished | WorkError::Outstanding
                 | WorkError::StaleTicket | WorkError::AlreadyExecuted | WorkError::NotExecuted
-                | WorkError::WrongEmitter | WorkError::WrongPayload | WorkError::WrongOwner
-                | WorkError::OwnerBusy | WorkError::WrongContext) => Code::OwnerMismatch,
+                | WorkError::WrongEmitter | WorkError::WrongPayload
+                | WorkError::WrongContext) => Code::RuntimeFailed,
             Cause::Stop(ProgramStop::Cancelled) => Code::Cancelled,
             Cause::Stop(ProgramStop::ResourceRefused(_)) => Code::ResourceExhausted,
             Cause::Code(code) => code.clone(),
@@ -54,3 +58,7 @@ impl std::fmt::Display for RetainedInspectionError {
     }
 }
 impl std::error::Error for RetainedInspectionError {}
+
+#[cfg(test)]
+#[path = "retained_inspection_error_tests.rs"]
+mod tests;

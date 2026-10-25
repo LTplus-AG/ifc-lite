@@ -74,7 +74,8 @@ export function validateSchema(input) {
   demand(JSON.stringify(input.types.Code.values) === JSON.stringify(Object.values(causes).flat()), 'single cause taxonomy');
   demand(JSON.stringify(Object.keys(input.refusalRules).sort()) === JSON.stringify([...input.types.Code.values].sort()), 'cause rules exhaustive');
   for (const rule of Object.values(input.refusalRules)) {
-    keys(rule, ['reason', 'contexts']);
+    keys(rule, ['reason', 'contexts', 'measurement']);
+    demand(['not_applicable', 'exceeds', 'at_least'].includes(rule.measurement), 'cause measurement');
     demand(input.types.DetailReason.values.includes(rule.reason), 'cause reason');
     demand(Array.isArray(rule.contexts) && rule.contexts.length > 0, 'cause contexts');
     const seen = new Set();
@@ -144,6 +145,14 @@ function tsDefinition(name, node) {
   }
   return `export type ${name} = ${body};\n`;
 }
+// Measurement policy is emitted from the single schema rule for each code.
+function rustMeasurement(policy) {
+  if (policy === 'not_applicable') return 'matches!(value.detail.measurement, Measurement::NotApplicable(_))';
+  const comparison = policy === 'exceeds' ? '>' : '>=';
+  return `matches!(&value.detail.measurement, Measurement::Measured(measurement) if
+        matches!((measurement.observed.parse::<u64>(), measurement.limit.parse::<u64>()),
+            (Ok(observed), Ok(limit)) if observed ${comparison} limit))`;
+}
 export async function projections(input = schema) {
   validateSchema(input);
   const fingerprint = createHash('sha256').update(JSON.stringify({ schema: input, causes })).digest('hex');
@@ -155,7 +164,7 @@ export async function projections(input = schema) {
     + entries.map(([n, t]) => rustCheck(n, t)).join('')
     + `fn cause_family(code: &Code) -> Family { match code { ${Object.entries(causes).flatMap(([family, codes]) => codes.map((code) => `Code::${variant(code)} => Family::${variant(family)},`)).join(' ')} } }\n`
     + `fn refusal_combination(value: &Refusal) -> bool { match value.code {\n${Object.entries(input.refusalRules).map(([code, rule]) =>
-      `    Code::${variant(code)} => value.detail.reason == DetailReason::${variant(rule.reason)} && matches!((&value.stage, &value.requirement), ${rule.contexts.map(([stage, requirement]) => `(Stage::${variant(stage)}, Requirement::${variant(requirement)})`).join(' | ')}),`).join('\n')}\n} }\n`
+      `    Code::${variant(code)} => value.detail.reason == DetailReason::${variant(rule.reason)} && ${rustMeasurement(rule.measurement)} && matches!((&value.stage, &value.requirement), ${rule.contexts.map(([stage, requirement]) => `(Stage::${variant(stage)}, Requirement::${variant(requirement)})`).join(' | ')}),`).join('\n')}\n} }\n`
     + '\n' + semantics + '\n' + wire + '\n' + rustWire(input, roots);
   const rustTests = await readFile(resolve(directory, 'rust-tests.txt'), 'utf8');
   const wireTests = await readFile(resolve(directory, 'rust-wire-tests.txt'), 'utf8');

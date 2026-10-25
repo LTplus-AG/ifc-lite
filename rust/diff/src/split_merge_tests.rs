@@ -17,7 +17,7 @@ fn issue_8042_verified_split_is_additive_and_cross_class() {
     assert_eq!(claims.len(), 1);
     assert_eq!(claims[0].confidence, SplitConfidence::Verified);
     assert!(claims[0].cross_class);
-    assert_eq!(claims[0].pieces.iter().map(|p| p.key.as_str()).collect::<Vec<_>>(), ["a", "z"]);
+    assert_eq!(claims[0].pieces.iter().map(|p| p.key.as_str().unwrap()).collect::<Vec<_>>(), ["a", "z"]);
     assert_eq!(core.counts.added, 2);
     assert_eq!(core.counts.deleted, 1);
     assert_eq!(core.entries.len(), 3);

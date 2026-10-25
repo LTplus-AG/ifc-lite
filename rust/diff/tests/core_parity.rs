@@ -1,15 +1,18 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#[path = "fixtures/lineage_assertions.rs"]
 mod lineage_assertions;
+#[path = "fixtures/transport_assertions.rs"]
 mod transport_assertions;
 use std::collections::HashMap;
+use ifc_lite_diff::JsString;
 use ifc_lite_diff::model::*;
 use serde_json::{json, Value};
 use ifc_lite_diff::{content_types::*, geometry_compare::GeometryTolerances};
 
-fn string(value: &Value, key: &str) -> String { value[key].as_str().unwrap().to_owned() }
-fn optional(value: &Value, key: &str) -> Option<String> { value[key].as_str().map(str::to_owned) }
+fn string(value: &Value, key: &str) -> JsString { value[key].as_str().unwrap().into() }
+fn optional(value: &Value, key: &str) -> Option<JsString> { value[key].as_str().map(Into::into) }
 fn entity(value: &Value) -> EntityFingerprint<Value> {
     EntityFingerprint {
         key: string(value, "key"), ifc_type: string(value, "ifcType"), data_hash: string(value, "dataHash"),
@@ -18,7 +21,7 @@ fn entity(value: &Value) -> EntityFingerprint<Value> {
             max: std::array::from_fn(|axis| aabb["max"][axis].as_f64().unwrap()),
         }), volume: value["volume"].as_f64(),
         components: value["components"].as_object().map(|map| map.iter()
-            .map(|(key, value)| (key.clone(), value.as_str().unwrap().to_owned())).collect()),
+            .map(|(key, value)| (key.as_str().into(), value.as_str().unwrap().into())).collect()),
         container: optional(value, "container"), reference: value.clone(),
     }
 }
@@ -106,9 +109,9 @@ fn run_vectors(file: &str) {
         let options = KeyDiffOptions {
             scope: scope(&raw_options["scope"]),
             exclude_types: raw_options["excludeTypes"].as_array().map(|values| values.iter()
-                .map(|value| value.as_str().unwrap().to_owned()).collect()).unwrap_or_default(),
+                .map(|value| value.as_str().unwrap().into()).collect()).unwrap_or_default(),
             key_aliases: raw_options["keyAliases"].as_array().map(|pairs| pairs.iter()
-                .map(|pair| (pair[0].as_str().unwrap().to_owned(), pair[1].as_str().unwrap().to_owned()))
+                .map(|pair| (pair[0].as_str().unwrap().into(), pair[1].as_str().unwrap().into()))
                 .collect::<HashMap<_, _>>()),
         };
         let options = ifc_lite_diff::engine::DiffOptions {

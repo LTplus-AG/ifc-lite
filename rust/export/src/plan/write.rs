@@ -13,6 +13,7 @@ use crate::step_text::apply_attr_mutations_counted;
 use crate::StepOptions;
 
 use super::index::FileIndex;
+use super::source_text;
 use super::resolve::Resolution;
 use super::removal::{Removal, RemovalReason};
 use super::types::{ExportPlan, PlanError, ValidationFinding, WriteReport};
@@ -49,22 +50,39 @@ pub(crate) fn write_output<W: Write>(
         if removed.contains(&id) {
             continue;
         }
-        let raw = String::from_utf8_lossy(&source[start..end]);
-        let line = match edits_by_id.get(&id) {
-            Some(edits) => {
-                let before = attribute_edits_refused;
-                let edited = apply_attr_mutations_counted(&raw, edits, &mut attribute_edits_refused);
-                if attribute_edits_refused > before {
-                    unapplied.push(ValidationFinding {
-                        express_id: Some(id),
-                        message: format!("{} planned attribute edit(s) could not be applied", attribute_edits_refused - before),
-                    });
-                }
-                Cow::Owned(edited)
+        // An untouched record is the source's own bytes. Only a record the
+        // plan edits is read as text, and only when the text is exact
+        // (`source_text::decode_exact`); otherwise the edits are not applied.
+        let bytes = &source[start..end];
+        let edited: Option<String> = edits_by_id.get(&id).and_then(|edits| {
+            let Some(raw) = source_text::decode_exact(bytes) else {
+                attribute_edits_refused += edits.len();
+                unapplied.push(ValidationFinding {
+                    express_id: Some(id),
+                    message: format!("{} planned attribute edit(s) not applied: the record holds text that cannot be edited without changing it", edits.len()),
+                });
+                return None;
+            };
+            let before = attribute_edits_refused;
+            let edited = apply_attr_mutations_counted(&raw, edits, &mut attribute_edits_refused);
+            if attribute_edits_refused > before {
+                unapplied.push(ValidationFinding {
+                    express_id: Some(id),
+                    message: format!("{} planned attribute edit(s) could not be applied", attribute_edits_refused - before),
+                });
             }
-            None => raw,
+            Some(edited)
+        });
+        let line: Cow<str> = match &edited {
+            Some(text) => {
+                out.write_all(&source_text::encode(text))?;
+                Cow::Borrowed(text)
+            }
+            None => {
+                out.write_all(bytes)?;
+                source_text::decode(bytes)
+            }
         };
-        out.write_all(line.as_bytes())?;
         out.write_all(b"\n")?;
         written += 1;
         type_upper.clear();
@@ -73,7 +91,7 @@ pub(crate) fn write_output<W: Write>(
         validator.record(id, &type_upper, &line, |r| defined.contains(r));
     }
     for (id, text) in &appended {
-        out.write_all(text.as_bytes())?;
+        out.write_all(&source_text::encode(text))?;
         out.write_all(b"\n")?;
         written += 1;
         validator.record(*id, &appended_type(text), text, |r| defined.contains(r));

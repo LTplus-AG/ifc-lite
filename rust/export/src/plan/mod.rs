@@ -59,6 +59,7 @@ mod referrers;
 mod removal;
 mod resolve;
 mod skeleton;
+mod source_text;
 mod tessellation;
 #[cfg(test)]
 mod add_test_support;

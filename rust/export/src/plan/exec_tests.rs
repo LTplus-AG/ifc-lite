@@ -494,3 +494,109 @@ fn deleting_a_host_writes_its_port_and_type_and_validates() {
         assert!(after[&32].contains("(#11)"), "{schema}: {}", after[&32]);
     }
 }
+
+fn latin1_wall_source() -> Vec<u8> {
+    let mut content = two_walls_sharing_a_pset("IFC4");
+    let needle = b"Wall 2";
+    let at = content.windows(needle.len()).position(|w| w == needle).unwrap();
+    content.splice(at..at + needle.len(), b"Gr\xF6sse".iter().copied());
+    content
+}
+
+#[test]
+fn untouched_non_utf8_records_are_written_byte_identical() {
+    let content = latin1_wall_source();
+    let plan = ExportPlan {
+        dispositions: vec![(ObjectRef::Id(10), Disposition::Patch(Patch { name: Some("Renamed".into()), ..Default::default() }))],
+        context: PlanContext::default(),
+    };
+    let mut out = Vec::new();
+    execute(&content, &plan, &mut out).unwrap();
+    assert!(out.windows(7).any(|w| w == b"Gr\xF6sse'"), "Latin-1 byte must survive");
+    assert!(!out.windows(3).any(|w| w == "\u{FFFD}".as_bytes()), "no replacement character");
+}
+
+#[test]
+fn edited_non_utf8_record_keeps_its_other_bytes() {
+    let mut content = latin1_wall_source();
+    // Make the record that gets edited carry a Latin-1 byte in a slot the edit leaves alone.
+    let needle = b"Wall 1";
+    let at = content.windows(needle.len()).position(|w| w == needle).unwrap();
+    content.splice(at..at + needle.len(), b"Wall \xF6".iter().copied());
+    let plan = ExportPlan {
+        dispositions: vec![(ObjectRef::Id(10), Disposition::Patch(Patch { placement: Some(PlacementPatch::new({ let mut m = super::IDENTITY; m[0][3] = 5.0; m })), ..Default::default() }))],
+        context: PlanContext::default(),
+    };
+    let mut out = Vec::new();
+    execute(&content, &plan, &mut out).unwrap();
+    assert!(out.windows(7).any(|w| w == b"Wall \xF6'"), "Latin-1 byte in edited record must survive");
+    assert!(!out.windows(3).any(|w| w == "\u{FFFD}".as_bytes()));
+}
+
+/// A type-owned set also related to the wall, overridden on the wall, keeps a
+/// Latin-1 byte in the type's value (read through the copy) and in the
+/// relationship the copy edits.
+#[test]
+fn a_copy_on_write_keeps_latin1_bytes_in_the_original_and_the_edited_relationship() {
+    use super::test_fixtures::pset_on_type_also_related_to;
+    let mut content = pset_on_type_also_related_to("IFC4", "(#10,#40)");
+    let swap = |content: &mut Vec<u8>, from: &[u8], to: &[u8]| {
+        let at = content.windows(from.len()).position(|w| w == from).unwrap();
+        content.splice(at..at + from.len(), to.iter().copied());
+    };
+    swap(&mut content, b"'2HR'", b"'2H\xF6'");
+    swap(&mut content, b"#44=IFCRELDEFINESBYPROPERTIES(", b"#44=IFCRELDEFINESBYPROPERTIES(");
+    let start = content.windows(4).position(|w| w == b"#44=").unwrap();
+    let comma = start + content[start..].windows(7).position(|w| w == b",$,$,$,").unwrap();
+    content.splice(comma..comma + 7, b",$,'Gr\xF6sse',$,".iter().copied());
+    let write = PropWrite::new("Pset_WallCommon", "FireRating", "IFCLABEL", "'3HR'", PsetKind::Property, PropScope::Occurrence);
+    let plan = ExportPlan {
+        dispositions: vec![(ObjectRef::Id(10), Disposition::Patch(Patch { psets: vec![write], ..Default::default() }))],
+        context: PlanContext::default(),
+    };
+    let mut out = Vec::new();
+    let report = execute(&content, &plan, &mut out).unwrap();
+    assert!(report.refusals.is_empty(), "{:?}", report.refusals);
+    let has = |needle: &[u8]| out.windows(needle.len()).any(|w| w == needle);
+    assert!(has(b"2H\xF6'"), "the type's own value");
+    assert!(has(b"'Gr\xF6sse'"), "the relationship the copy detached the wall from");
+    assert!(!has("\u{FFFD}".as_bytes()));
+    assert!(has(b"'3HR'"), "the override was written");
+}
+
+/// Every read of a source record goes through `source_text`, so the text the
+/// plan copies from carries its bytes and encodes back to them.
+#[test]
+fn a_record_read_from_the_index_encodes_back_to_its_source_bytes() {
+    let content = latin1_wall_source();
+    let index = super::index::FileIndex::complete(&content);
+    let line = index.raw_line(11).unwrap();
+    assert!(!line.contains('\u{FFFD}'));
+    let encoded = super::source_text::encode(&line);
+    assert!(content.windows(encoded.len()).any(|w| w == &*encoded));
+    assert!(encoded.windows(7).any(|w| w == b"Gr\xF6sse'"));
+}
+
+/// Valid UTF-8 that looks like an escaped byte is written back unchanged
+/// when untouched, and an edit to it is refused rather than corrupting it.
+#[test]
+fn valid_utf8_that_collides_with_the_byte_escape_is_never_corrupted() {
+    let mut content = two_walls_sharing_a_pset("IFC4");
+    let at = content.windows(6).position(|w| w == b"Wall 2").unwrap();
+    content.splice(at..at + 6, "a\u{F7E9}b".bytes());
+    let collided = "a\u{F7E9}b".as_bytes();
+    let run = |id, name: &str| {
+        let plan = ExportPlan {
+            dispositions: vec![(ObjectRef::Id(id), Disposition::Patch(Patch { name: Some(name.into()), ..Default::default() }))],
+            context: PlanContext::default(),
+        };
+        let mut out = Vec::new();
+        let report = execute(&content, &plan, &mut out).unwrap();
+        (out, report)
+    };
+    let (out, _) = run(10, "Renamed");
+    assert!(out.windows(collided.len()).any(|w| w == collided), "untouched record keeps its bytes");
+    let (out, report) = run(11, "Renamed");
+    assert!(out.windows(collided.len()).any(|w| w == collided), "a refused edit leaves the record as it was");
+    assert!(report.findings.iter().any(|f| f.express_id == Some(11) && f.message.contains("not applied")), "{:?}", report.findings);
+}

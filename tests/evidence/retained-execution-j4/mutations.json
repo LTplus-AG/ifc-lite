@@ -45,7 +45,7 @@
   },
   {
     "id": "post-await-stop",
-    "patch": "tests/evidence/retained-execution-j4/cut-d-post-await-stop.oracle.patch",
+    "patch": "tests/evidence/retained-execution-j4/fused-post-await-stop.oracle.patch",
     "test": "element::session_retained::async_tests::j4_original_stop_after_await_refuses_delivery_and_retires_only_captured_domain",
     "intendedFailure": "Only the preregistered assertion/cause; no SDK numerical or release acceptance.",
     "historicalPatch": "tests/evidence/retained-execution-j4/post-await-stop.oracle.patch",
@@ -57,7 +57,8 @@
         "left: 1",
         "right: 0"
       ]
-    }
+    },
+    "priorCutDPatch": "tests/evidence/retained-execution-j4/cut-d-post-await-stop.oracle.patch"
   },
   {
     "id": "receipt-report",

@@ -21,7 +21,7 @@ fn foreign_admission(report: bool) {
         };
         assert!(matches!(rejected.reason, RetainedExecutionError::Receipt(ReceiptFailure::ForeignSourceAdmission)));
         if report {
-            assert_eq!(rejected.reason.code(), crate::retained_inspection_contract::Code::ReceiptInvalid,
+            assert_eq!(rejected.reason.code(), crate::retained_native_contract::Code::ReceiptInvalid,
                 "M5_SOURCE_ADMISSION_REPORT");
         }
         assert_eq!(pointer, Arc::as_ptr(&rejected.work.realizations[0]));

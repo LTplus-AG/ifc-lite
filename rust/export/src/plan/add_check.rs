@@ -219,8 +219,9 @@ impl AddState<'_> {
             None => None,
             Some(r) => {
                 let (id, c) = self.lookup(r)?;
-                // A spatial zone or external spatial element is not part of the
-                // project/site/building/storey/space decomposition. buildingSMART
+                // When the new object is itself a spatial zone or external spatial
+                // element: it is not part of the project/site/building/storey/space
+                // decomposition. buildingSMART
                 // IFC4.3 (Spatial Decomposition): an IfcSpatialZone is "included
                 // into the hierarchy using the Spatial Containment concept
                 // (IfcRelContainedInSpatialStructure) and can be aggregated into a

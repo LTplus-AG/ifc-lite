@@ -4,7 +4,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::attrs::{attribute_index, is_spatial};
+use super::attrs::attribute_index;
 use super::index::FileIndex;
 use super::removal::RemovalReason;
 use super::types::ValidationFinding;
@@ -25,8 +25,9 @@ fn slots(schema: &str, rel_type: &str) -> Option<(usize, usize)> {
 
 /// A containment or aggregation relationship that went because its relating
 /// object did, while some of what it related stayed. Such an element is no
-/// longer in the spatial tree, unless the relationship was an aggregation of
-/// something that is not spatial (an assembly). IFC gives an element at most
+/// longer in the spatial tree, unless the relationship was an aggregation
+/// under something that is not a spatial structure element (an assembly, or
+/// a spatial zone, which is not part of the structure either). IFC gives an element at most
 /// one container and one parent, so the removed relationship was its only
 /// place in the tree and no other relationship needs reading.
 pub(super) fn unplaced_by_removed_structure(
@@ -43,7 +44,8 @@ pub(super) fn unplaced_by_removed_structure(
         let Some((relating_idx, related_idx)) = slots(schema, &rel_type) else { continue };
         let Some(attrs) = index.attrs(rel) else { continue };
         let parent = attrs.get(relating_idx).and_then(|a| a.scalar);
-        if rel_type == AGGREGATION && !parent.and_then(|p| index.type_of(p)).is_some_and(|c| is_spatial(schema, &c)) {
+        let in_structure = |c: &str| ifc_lite_core::is_subtype_of_for_schema(schema, c, "IFCSPATIALSTRUCTUREELEMENT");
+        if rel_type == AGGREGATION && !parent.and_then(|p| index.type_of(p)).is_some_and(|c| in_structure(&c)) {
             continue;
         }
         let parent_label = parent.map_or_else(String::new, |p| format!(" #{p}"));

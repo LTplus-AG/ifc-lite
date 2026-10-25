@@ -23,7 +23,10 @@ pub struct SourceInspectionReport {
 }
 impl SourceInspectionReport {
     /// Borrowing keeps the charged backing alive. Never a geometry certificate.
-    pub fn bytes(&self) -> &[u8] { &self.bytes }
+    pub fn bytes(&self) -> Result<&[u8], SourceInspectionError> {
+        self.validate_delivery()?;
+        Ok(&self.bytes)
+    }
     /// Checks captured channels, even after unrelated ambient scopes are restored.
     pub fn validate_original_stop(&self) -> Result<(), ProgramStop> { self.resources.check() }
     /// Original monotonic deadline and stop domain, including after-scope delivery.

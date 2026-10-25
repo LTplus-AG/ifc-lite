@@ -24,8 +24,7 @@ impl RetainedSourceInspection {
     /// Revalidate original source/stop before borrowing diagnostic bytes.
     pub fn bytes(&self) -> Result<&[u8], RetainedInspectionError> {
         self.snapshot.lifecycle().validate().map_err(RetainedInspectionError::source)?;
-        self.report.validate_delivery().map_err(RetainedInspectionError::geometry)?;
-        Ok(self.report.bytes())
+        self.report.bytes().map_err(RetainedInspectionError::geometry)
     }
 }
 
@@ -141,7 +140,7 @@ fn router_for_source(bytes: &[u8], decoder: &mut EntityDecoder) -> Result<Geomet
 fn validate_report(report: &SourceInspectionReport, binding: &wire::Binding, implementation_commit: &str)
     -> Result<(), RetainedInspectionError> {
     report.validate_original_stop().map_err(RetainedInspectionError::stopped)?;
-    let json = std::str::from_utf8(report.bytes()).map_err(|_| RetainedInspectionError::invalid_report())?;
+    let json = std::str::from_utf8(report.bytes().map_err(RetainedInspectionError::geometry)?).map_err(|_| RetainedInspectionError::invalid_report())?;
     let decoded = wire::decode_inspection_report(json, binding);
     checkpoint("strict_decode")?;
     report.validate_delivery().map_err(RetainedInspectionError::geometry)?;

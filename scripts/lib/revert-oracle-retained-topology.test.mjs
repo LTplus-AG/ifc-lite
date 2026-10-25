@@ -69,17 +69,20 @@ test('#7955: retained witnesses resolve through the facade path to exact library
 // Execute the actual initial workflow dispatch on tiny Git histories. Reading
 // the shell program is setup, not an assertion on its text: the observed result
 // is its selected argv after real git diff calls, without invoking an oracle,
-// Cargo, or a build. Both new-file boundaries must select the B2a observer.
+// Cargo, or a build. Each slice must retain its new types during inversion.
 const b2aObserver = 'rust/geometry/src/program/retained/mapping_origin_tests.rs';
-for (const [boundary, files] of [
+const b2bObserver = 'rust/geometry/src/program/retained/boolean_origin_tests.rs';
+for (const [boundary, files, observer = b2aObserver] of [
   ['B2a-only', [b2aObserver]],
+  ['B2b-only', [b2bObserver], b2bObserver],
+  ['B2a+B2b', [b2aObserver, b2bObserver]],
   ['stack', [b2aObserver,
     'rust/geometry/src/program/retained/origin_tests.rs',
     'rust/geometry/src/program/retained/mod.rs',
     'rust/geometry/src/program/mapping_retained.rs',
     'tests/evidence/j5-presentation/behaviour.oracle.patch']],
 ]) {
-  test(`#7955 B2a: initial workflow dispatch selects mapped reporting at ${boundary} boundary`, () => {
+  test(`#7955: initial workflow dispatch selects source reporting at ${boundary} boundary`, () => {
     const workflow = readFileSync(join(root, '.github/workflows/test.yml'), 'utf8');
     const start = workflow.indexOf('          oracle_args=(--base origin/main --ci --json)');
     const end = workflow.indexOf('          node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"', start);
@@ -102,9 +105,12 @@ for (const [boundary, files] of [
       const selected = execFileSync('bash', ['-e', '-o', 'pipefail', '-c',
         `${selection}\nprintf '%s\\0' "\${oracle_args[@]}"`], { cwd, encoding: 'utf8', timeout: 10_000 });
       assert.deepEqual(selected.split('\0').filter(Boolean), [
-        '--base', '08769566858267aff3028f3f7c0e2870345ff73a', '--ci', '--json',
-        '--mutation', 'tests/evidence/retained-mapping-origin-b2a/occurrence-report.oracle.patch',
-        '--test', b2aObserver,
+        '--base', observer === b2bObserver ? '3190e3d88bee5e83a45ca155c62620c61b27456b'
+          : '08769566858267aff3028f3f7c0e2870345ff73a', '--ci', '--json',
+        '--mutation', observer === b2bObserver
+          ? 'tests/evidence/retained-boolean-origin-b2b/predicate-report.oracle.patch'
+          : 'tests/evidence/retained-mapping-origin-b2a/occurrence-report.oracle.patch',
+        '--test', observer,
       ]);
     } finally {
       rmSync(cwd, { recursive: true, force: true });

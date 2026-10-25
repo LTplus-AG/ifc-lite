@@ -191,10 +191,14 @@ ENDSEC;END-ISO-10303-21;
         assert!(processed.meshes.iter().any(|part| part.express_id == 50 && !part.indices.is_empty()),
             "the Axis must genuinely mesh without a Representation");
     }
-    let cropped = plan_section_export(clean.as_bytes(), &plane, true).unwrap();
-    assert_eq!(cropped.replacements.len(), 1);
-    assert_eq!(cropped.replacements[0].express_id, 50);
-    assert!(!cropped.replacements[0].parts.is_empty());
+    let error = plan_section_export(clean.as_bytes(), &plane, true).unwrap_err();
+    assert!(error.contains("cannot trim axis-based alignment #50"), "{error}");
+    let whole = plan_section_export(clean.as_bytes(), &plane, false).unwrap();
+    assert!(whole.replacements.is_empty() && whole.outside.is_empty());
+    let inside = plan_section_export(clean.as_bytes(), &[SectionExportPlane { normal: [1.,0.,0.], offset:25. }], true).unwrap();
+    assert!(inside.replacements.is_empty() && inside.outside.is_empty());
+    let outside = plan_section_export(clean.as_bytes(), &[SectionExportPlane { normal: [1.,0.,0.], offset:5. }], true).unwrap();
+    assert_eq!(outside.outside, vec![50]);
     for trim in [false, true] {
         for offset in [5., 15., 25.] {
             let error = plan_section_export(broken.as_bytes(),

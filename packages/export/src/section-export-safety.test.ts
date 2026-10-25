@@ -5,6 +5,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { exportSectionedStep } from './section-export.js';
 import { IfcParser } from '@ifc-lite/parser';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 
 const wasmPath = new URL('../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
 const available = existsSync(wasmPath);
@@ -19,6 +20,8 @@ DATA;
 #11=IFCAXIS2PLACEMENT3D(#12,$,$);#12=IFCCARTESIANPOINT((0.,0.,0.));
 #20=IFCCARTESIANPOINT((10.,0.,0.));#21=IFCCARTESIANPOINT((20.,0.,0.));
 #22=IFCPOLYLINE((#20,#21));
+#30=IFCSHAPEREPRESENTATION(#10,'Axis','Curve3D',(#22));
+#31=IFCPRODUCTDEFINITIONSHAPE($,$,(#30));
 #50=IFCALIGNMENT('0M7tQ9Jbj1BAeHd7rqnDmR',$,'Road',$,$,$,${representation},#22);
 ENDSEC;END-ISO-10303-21;`);
 }
@@ -39,5 +42,25 @@ describe.skipIf(!available)('section export excluded alignment safety (#8006)', 
   });
   it('refuses malformed non-null Representation rather than silently detaching it', async () => {
     await expect(exportSectionedStep(alignment("'invalid'"), options)).rejects.toThrow('malformed original Representation');
+  });
+  it('refuses crossing Axis replacements while retaining whole/inside geometry (#8006)', async () => {
+    for (const representation of ['$', '#31']) {
+      const input = alignment(representation), original = input.slice();
+      const processor = new GeometryProcessor();
+      try {
+        await processor.init();
+        const processed = await processor.process(input);
+        expect(processed.meshes.some(mesh => mesh.expressId === 50 && mesh.indices.length > 0)).toBe(true);
+      } finally { processor.dispose(); }
+      const crossing = { planes: [{normal:[1,0,0] as const,offset:15}] };
+      await expect(exportSectionedStep(input, crossing)).rejects.toThrow('cannot trim axis-based alignment #50');
+      expect((await exportSectionedStep(input, {...crossing,mode:'whole'})).content).toBe(input);
+      expect((await exportSectionedStep(input, {planes:[{normal:[1,0,0],offset:25}]})).content).toBe(input);
+      const excluded = await exportSectionedStep(input, options);
+      expect(excluded.outside).toEqual([50]);
+      const output = await new IfcParser().parseColumnar(excluded.content.slice().buffer as ArrayBuffer, {disableWorkerScan:true});
+      expect(output.entityIndex.byId.has(50)).toBe(false);
+      expect(input).toEqual(original);
+    }
   });
 });

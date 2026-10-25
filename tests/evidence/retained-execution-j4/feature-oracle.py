@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MPL-2.0
-"""#7955: real SDK GREEN / preregistered assertion RED / restored GREEN.
+"""#7955: named behavioral GREEN / preregistered assertion RED / restored GREEN.
 Run inside admitted isolated validation. A failure in setup, compilation, a
 wrong assertion, another test or an SDK skip cannot qualify the intended cause.
 """
@@ -53,9 +53,12 @@ def main():
     root = Path(subprocess.check_output(['git', 'rev-parse', '--show-toplevel'], text=True).strip())
     rows = json.loads(Path(__file__).with_name('mutations.json').read_text())
     row = next(row for row in rows if row['id'] == args.oracle)
-    worker = Path(os.environ['IFCLITE_SMLIB_WORKER'])
-    if not worker.is_file() or not os.access(worker, os.X_OK):
-        raise SystemExit('Actual SDK executable required; skips cannot qualify.')
+    # Source-admission refusals deliberately precede worker acquisition.
+    # Numerical rows require the actual SDK; an unset flag always requires it.
+    if row.get('requiresSdk', True):
+        worker = Path(os.environ['IFCLITE_SMLIB_WORKER'])
+        if not worker.is_file() or not os.access(worker, os.X_OK):
+            raise SystemExit('Actual SDK executable required; skips cannot qualify.')
     subprocess.run(['git', 'diff', '--exit-code', 'HEAD', '--'], cwd=root, check=True)
     out = args.evidence_dir.resolve()
     if out == root or root in out.parents:

@@ -140,7 +140,8 @@
         "left: SourceInvalid",
         "right: OperationUnsupported"
       ]
-    }
+    },
+    "requiresSdk": false
   },
   {
     "id": "m3-conflict-terminal",

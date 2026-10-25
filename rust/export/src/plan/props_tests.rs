@@ -18,6 +18,7 @@ fn write(pset: &str, prop: &str, measure: &str, literal: &str, scope: PropScope,
         unit: None,
         kind,
         scope,
+        target: None,
     }
 }
 

@@ -176,6 +176,7 @@ fn shared_occurrence_pset_edit_never_duplicates_the_pset_name() {
                     unit: None,
                     kind: PsetKind::Property,
                     scope: PropScope::Occurrence,
+                    target: None,
                 }],
                 ..Default::default()
             }),
@@ -240,6 +241,7 @@ fn fire_rating_write(literal: &str) -> PropWrite {
         unit: None,
         kind: PsetKind::Property,
         scope: PropScope::Occurrence,
+        target: None,
     }
 }
 
@@ -611,4 +613,96 @@ fn deleting_a_storey_reports_the_elements_left_outside_the_spatial_tree() {
         let orphan = report.findings.iter().find(|f| f.express_id == Some(10));
         assert!(orphan.is_some_and(|f| f.message.contains("spatial")), "{schema}: {:?}", report.findings);
     }
+}
+
+/// `wall_with_own_pset` plus a second `Pset_WallCommon.FireRating` on the same
+/// wall (`#60`/`#61`/`#62`), so first-match lookup would pick the wrong record.
+fn wall_with_two_same_named_sets() -> Vec<u8> {
+    let extra = "#60=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('9HR'),$);\n\
+        #61=IFCPROPERTYSET('0000000000000000000061',$,'Pset_WallCommon',$,(#60));\n\
+        #62=IFCRELDEFINESBYPROPERTIES('0000000000000000000062',$,$,$,(#10),#61);\n";
+    String::from_utf8(wall_with_own_pset("IFC4")).unwrap().replacen("ENDSEC;\nEND-ISO", &format!("{extra}ENDSEC;\nEND-ISO"), 1).into_bytes()
+}
+
+fn rate(target: Option<u32>) -> (u32, u32) {
+    let mut write = PropWrite::new("Pset_WallCommon", "FireRating", "IFCLABEL", "'NEW'", PsetKind::Property, PropScope::Occurrence);
+    if let Some(t) = target {
+        write = write.with_target(t);
+    }
+    let plan = ExportPlan {
+        dispositions: vec![(ObjectRef::Id(10), Disposition::Patch(Patch { psets: vec![write], ..Default::default() }))],
+        context: PlanContext::default(),
+    };
+    let mut out = Vec::new();
+    let report = execute(&wall_with_two_same_named_sets(), &plan, &mut out).unwrap();
+    assert!(report.refusals.is_empty(), "{:?}", report.refusals);
+    let lines = entity_lines(&out);
+    let changed = |id: u32| u32::from(lines[&id].contains("'NEW'"));
+    (changed(30), changed(60))
+}
+
+#[test]
+fn a_property_write_can_target_the_exact_record() {
+    assert_eq!(rate(None), (1, 0), "no target: first match");
+    assert_eq!(rate(Some(60)), (0, 1), "target the second set's record");
+    assert_eq!(rate(Some(30)), (1, 0));
+}
+
+#[test]
+fn a_target_the_object_does_not_hold_is_refused() {
+    let write = PropWrite::new("Pset_WallCommon", "FireRating", "IFCLABEL", "'NEW'", PsetKind::Property, PropScope::Occurrence).with_target(10);
+    let plan = ExportPlan {
+        dispositions: vec![(ObjectRef::Id(10), Disposition::Patch(Patch { psets: vec![write], ..Default::default() }))],
+        context: PlanContext::default(),
+    };
+    let mut out = Vec::new();
+    let report = execute(&wall_with_two_same_named_sets(), &plan, &mut out).unwrap();
+    assert_eq!(report.refusals.len(), 1, "{:?}", report.refusals);
+    assert!(report.refusals[0].reason.contains("not a member"), "{}", report.refusals[0].reason);
+}
+
+fn patch_one(content: &[u8], writes: Vec<PropWrite>) -> (Vec<u8>, WriteReport) {
+    let plan = ExportPlan {
+        dispositions: vec![(ObjectRef::Id(10), Disposition::Patch(Patch { psets: writes, ..Default::default() }))],
+        context: PlanContext::default(),
+    };
+    let mut out = Vec::new();
+    let report = execute(content, &plan, &mut out).unwrap();
+    (out, report)
+}
+
+/// A targeted write to a set another wall shares clones the set: the other
+/// wall keeps the original value.
+#[test]
+fn a_targeted_write_to_a_shared_set_is_copied_not_edited() {
+    let content = two_walls_sharing_a_pset("IFC4");
+    let write = PropWrite::new("Pset_WallCommon", "FireRating", "IFCLABEL", "'NEW'", PsetKind::Property, PropScope::Occurrence).with_target(30);
+    let (out, report) = patch_one(&content, vec![write]);
+    assert!(report.refusals.is_empty(), "{:?}", report.refusals);
+    let lines = entity_lines(&out);
+    assert!(lines[&30].contains("'1HR'"), "the shared record is untouched: {}", lines[&30]);
+    assert!(lines.values().any(|l| l.contains("'NEW'")), "the copy carries the write");
+    assert!(lines[&32].contains("#11") && !lines[&32].contains("#10"), "wall 10 left the shared relationship: {}", lines[&32]);
+}
+
+/// A targeted override of a type-owned record, on an object that already has
+/// an occurrence set of that name, joins that set; a targeted and an
+/// untargeted write to one set are resolved together.
+#[test]
+fn a_targeted_override_of_a_type_owned_record_does_not_duplicate_the_set() {
+    use super::test_fixtures::wall_with_type_owned_pset;
+    let extra = "#60=IFCPROPERTYSINGLEVALUE('Other',$,IFCLABEL('x'),$);\n\
+        #61=IFCPROPERTYSET('0000000000000000000061',$,'Pset_WallCommon',$,(#60));\n\
+        #62=IFCRELDEFINESBYPROPERTIES('0000000000000000000062',$,$,$,(#10),#61);\n";
+    let content = String::from_utf8(wall_with_type_owned_pset("IFC4")).unwrap().replacen("ENDSEC;\nEND-ISO", &format!("{extra}ENDSEC;\nEND-ISO"), 1);
+    let rating = |lit: &str| PropWrite::new("Pset_WallCommon", "FireRating", "IFCLABEL", lit, PsetKind::Property, PropScope::Occurrence);
+    let other = PropWrite::new("Pset_WallCommon", "Other", "IFCLABEL", "'y'", PsetKind::Property, PropScope::Occurrence);
+    let (out, report) = patch_one(content.as_bytes(), vec![rating("'3HR'").with_target(41), other]);
+    assert!(report.refusals.is_empty(), "{:?}", report.refusals);
+    assert!(report.findings.is_empty(), "no duplicate set: {:?}", report.findings);
+    let text = String::from_utf8(out).unwrap();
+    assert_eq!(text.matches("'Pset_WallCommon'").count(), 2, "the type's set and the wall's one: {text}");
+    // Untargeted and targeted writes to the same record meet in one set too.
+    let (_, report) = patch_one(content.as_bytes(), vec![rating("'3HR'").with_target(41), rating("'4HR'")]);
+    assert!(report.findings.is_empty(), "{:?}", report.findings);
 }

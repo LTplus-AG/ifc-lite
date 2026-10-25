@@ -72,10 +72,18 @@ pub(super) fn apply_patch(
     }
 
     // Writes to one set are resolved together, in the order the set is
-    // first named.
+    // first named. A write is grouped by the set it lands on, so two sets of
+    // one name stay apart and a targeted and an untargeted write to one set
+    // meet.
+    let writes: Vec<PropWrite> = patch.psets.iter().map(|w| props::effective_write(index, schema, object_id, w)).collect();
     let mut groups: Vec<Vec<&PropWrite>> = Vec::new();
-    for write in &patch.psets {
-        let same_set = |w: &&PropWrite| w.pset == write.pset && w.kind == write.kind && w.scope == write.scope;
+    for write in &writes {
+        let same_set = |w: &&PropWrite| {
+            w.pset == write.pset
+                && w.kind == write.kind
+                && w.scope == write.scope
+                && props::holding_set(index, schema, object_id, w) == props::holding_set(index, schema, object_id, write)
+        };
         match groups.iter_mut().find(|g| g.first().is_some_and(same_set)) {
             Some(group) => group.push(write),
             None => groups.push(vec![write]),

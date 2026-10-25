@@ -146,8 +146,50 @@ fn keeping_old_unit(index: &FileIndex, schema: &str, write: &PropWrite, old: Opt
 fn type_owned_member(index: &FileIndex, schema: &str, object_id: u32, write: &PropWrite) -> Option<u32> {
     let (_, type_id) = type_rel(index, schema, object_id)?;
     let type_psets = list_attr(index, schema, type_id, &index.type_of(type_id)?, "HasPropertySets")?;
-    let (_, _, members) = find_set(index, schema, type_psets.iter(), write.kind, &write.pset)?;
-    find_member(index, schema, &members, &write.prop)
+    let (_, _, members) = find_set(index, schema, type_psets.iter(), write.kind, &write.pset, write.target)?;
+    find_member(index, schema, &members, &write.prop, write.target)
+}
+
+/// The sets `write` can land on, in the order they are tried: the object's
+/// own (occurrence scope only), then its related type's.
+fn candidate_sets(index: &FileIndex, schema: &str, object_id: u32, write: &PropWrite, occurrence_only: bool) -> Vec<u32> {
+    let occurrence: Vec<u32> = match write.scope {
+        PropScope::Occurrence => occurrence_rels(index, schema, object_id)
+            .into_iter()
+            .filter_map(|rel| scalar_attr(index, schema, rel, "IFCRELDEFINESBYPROPERTIES", "RelatingPropertyDefinition"))
+            .collect(),
+        PropScope::Type => Vec::new(),
+    };
+    let from_type = || {
+        let (_, type_id) = type_rel(index, schema, object_id)?;
+        list_attr(index, schema, type_id, &index.type_of(type_id)?, "HasPropertySets")
+    };
+    let typed = if occurrence_only { Vec::new() } else { from_type().unwrap_or_default() };
+    occurrence.into_iter().chain(typed).collect()
+}
+
+/// The set `write` lands on: the one listing its exact target, else the first
+/// of the right name. Writes with the same holder are resolved together, so
+/// a set is cloned or folded into once, whether the writes name their record
+/// or not.
+pub(crate) fn holding_set(index: &FileIndex, schema: &str, object_id: u32, write: &PropWrite) -> Option<u32> {
+    let all = candidate_sets(index, schema, object_id, write, false);
+    find_set(index, schema, all.iter(), write.kind, &write.pset, write.target).map(|(set, _, _)| set)
+}
+
+/// `write` as it is resolved. An occurrence write that targets a record only
+/// the related type holds is an override: it joins the object's own set of
+/// that name (or starts one) like an untargeted write, so the object never
+/// ends up with two sets of one name.
+pub(crate) fn effective_write(index: &FileIndex, schema: &str, object_id: u32, write: &PropWrite) -> PropWrite {
+    let mut write = write.clone();
+    if let Some(target) = write.target.filter(|_| write.scope == PropScope::Occurrence) {
+        let own = candidate_sets(index, schema, object_id, &write, true);
+        if find_set(index, schema, own.iter(), write.kind, &write.pset, Some(target)).is_none() && type_owned_member(index, schema, object_id, &write) == Some(target) {
+            write.target = None;
+        }
+    }
+    write
 }
 
 /// The slot edits that overwrite an existing, unshared value record: its
@@ -219,7 +261,7 @@ pub(crate) fn resolve_set_writes<'w>(
     // Last write per property, in the order the properties were first named.
     let mut group: Vec<&'w PropWrite> = Vec::new();
     for &write in writes {
-        match group.iter_mut().find(|w| w.prop == write.prop) {
+        match group.iter_mut().find(|w| w.prop == write.prop && w.target == write.target) {
             Some(slot) => *slot = write,
             None => group.push(write),
         }
@@ -247,7 +289,7 @@ pub(crate) fn resolve_set_writes<'w>(
             .iter()
             .filter_map(|&rel| scalar_attr(index, schema, rel, "IFCRELDEFINESBYPROPERTIES", "RelatingPropertyDefinition"))
             .collect();
-        if let Some((pset_id, member_idx, members)) = find_set(index, schema, occurrence_psets.iter(), first.kind, &first.pset) {
+        if let Some((pset_id, member_idx, members)) = find_set(index, schema, occurrence_psets.iter(), first.kind, &first.pset, first.target) {
             let owning_rel = rels
                 .iter()
                 .copied()
@@ -277,10 +319,15 @@ pub(crate) fn resolve_set_writes<'w>(
                 refuse_all(&mut result, "shared occurrence set has no owning IfcRelDefinesByProperties to detach from");
                 return result;
             };
-            let replaced: Vec<Option<u32>> = group.iter().map(|w| find_member(index, schema, &members, &w.prop)).collect();
+            let replaced: Vec<Option<u32>> = group.iter().map(|w| find_member(index, schema, &members, &w.prop, w.target)).collect();
             // A copy replaces a member only with one of its own kind, as an
             // in-place edit would refuse to rewrite an enumerated, list or
             // bounded value.
+            let missing = group.iter().zip(&replaced).find(|(w, old)| w.target.is_some() && old.is_none());
+            if let Some((w, _)) = missing {
+                refuse_all(&mut result, &format!("target #{} is not a member of the set it was sent to", w.target.unwrap_or_default()));
+                return result;
+            }
             let mismatch = group.iter().zip(&replaced).find_map(|(w, old)| other_kind(index, w, (*old)?).err());
             if let Some(reason) = mismatch {
                 refuse_all(&mut result, &reason);
@@ -316,7 +363,7 @@ pub(crate) fn resolve_set_writes<'w>(
             return result;
         };
         let type_psets = list_attr(index, schema, type_id, &index.type_of(type_id).unwrap_or_default(), "HasPropertySets").unwrap_or_default();
-        match find_set(index, schema, type_psets.iter(), first.kind, &first.pset) {
+        match find_set(index, schema, type_psets.iter(), first.kind, &first.pset, first.target) {
             // A set another type lists, or that a relationship relates to
             // anything but this type, is not the type's alone: editing it
             // would reach those objects too.
@@ -333,6 +380,10 @@ pub(crate) fn resolve_set_writes<'w>(
     // carrying these values, with its own IfcRelDefinesByProperties naming
     // only this object. Also the landing spot for a value the related TYPE
     // owns (never edited directly).
+    if let Some(w) = group.iter().find(|w| w.target.is_some() && type_owned_member(index, schema, object_id, w).is_none()) {
+        refuse_all(&mut result, &format!("target #{} is not a member of any set of this object", w.target.unwrap_or_default()));
+        return result;
+    }
     let inherited: Vec<PropWrite> = group.iter().map(|w| keeping_old_unit(index, schema, w, type_owned_member(index, schema, object_id, w))).collect();
     let inherited: Vec<&PropWrite> = inherited.iter().collect();
     match props_synth::append_new_occurrence_set(schema, container_type, member_attr, object_id, &inherited, ids, owner_history) {
@@ -356,7 +407,8 @@ fn write_unshared_set<'w>(
 ) {
     for &write in group {
         let (container_type, _) = container_names(write.kind);
-        let outcome = match find_member(index, schema, members, &write.prop) {
+        let outcome = match find_member(index, schema, members, &write.prop, write.target) {
+            None if write.target.is_some() => Err(format!("target #{} is not a member of the set it was sent to", write.target.unwrap_or_default())),
             Some(member_id) if leaf_is_shared(index, container_type, member_idx, member_id, pset_id) => {
                 let write = keeping_old_unit(index, schema, write, Some(member_id));
                 other_kind(index, &write, member_id).and_then(|()| props_synth::leaf_copy_on_write(schema, &write, ids, pset_id, member_idx, member_id))

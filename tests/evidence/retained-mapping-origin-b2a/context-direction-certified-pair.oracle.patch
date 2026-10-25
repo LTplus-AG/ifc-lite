@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared at 82d137b85c17f9dc0521d0ad8120bd218eedaeb2; apply in reverse; Rust execution UNRUN.
+# Historical input (unchanged): tests/evidence/retained-s2-direction/certified-pair.oracle.patch; SHA256 44bbb0ca35d907f07d3bd0096c36f467d06c7e58ffeca9c420255ce33592c94f
+--- a/rust/geometry/src/program/mapping_directions.rs
++++ b/rust/geometry/src/program/mapping_directions.rs
+@@ -1,7 +1,7 @@
+ // SPDX-License-Identifier: MPL-2.0
+ //! Retained admission of authored mapping directions, before exact recovery.
+ use ifc_lite_core::{slot, AttributeValue, DecodedEntity, EntityDecoder, IfcType};
+-use crate::kernel::{rational, Sign};
++use crate::kernel::{rational, DropAxis, Sign};
+ use crate::Vector3;
+ use super::validation::{MappingFailure, Result};
+ use crate::program::retained::failure::{FailureSite, MappingReason};
+@@ -49,8 +49,8 @@
+ // No normalization, floating product, tolerance or coordinate-range assumption
+ // intervenes. The leaf reader above supplies the required finite-input contract.
+ fn independent(a: Vector3<f64>, b: Vector3<f64>) -> bool {
+-    let scaled = |v: Vector3<f64>| v / v.iter().fold(0.0_f64, |m, x| m.max(x.abs()));
+-    scaled(a).cross(&scaled(b)).iter().any(|v| *v != 0.0)
++    [DropAxis::X, DropAxis::Y, DropAxis::Z].into_iter().any(|axis|
++        rational::orient2d_exact(a.into(), b.into(), [0.0; 3], axis) != Sign::Zero)
+ }
+ 
+ // With the fourth point at zero, orient3d is precisely the authored scalar

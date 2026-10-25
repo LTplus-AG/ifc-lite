@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared at 82d137b85c17f9dc0521d0ad8120bd218eedaeb2; apply in reverse; Rust execution UNRUN.
+# Historical input (unchanged): tests/evidence/retained-s2-direction/triple.oracle.patch; SHA256 b51bbbdb8e1acf0a43b02bb53e352c70bdb3243dcfaf2a07ddd2ccad901b486a
+--- a/rust/geometry/src/program/mapping_directions.rs
++++ b/rust/geometry/src/program/mapping_directions.rs
+@@ -121,7 +121,7 @@
+                     (derived_z, derived_x)
+                 }
+             };
+-            if false && !independent_triple(z, x, y) { return Err(refused(entity.id, MappingReason::DependentTriple)); }
++            if !independent_triple(z, x, y) { return Err(refused(entity.id, MappingReason::DependentTriple)); }
+         }
+     }
+     Ok(())

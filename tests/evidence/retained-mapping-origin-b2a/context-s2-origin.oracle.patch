@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared at 82d137b85c17f9dc0521d0ad8120bd218eedaeb2; apply in reverse; Rust execution UNRUN.
+# Historical input (unchanged): tests/evidence/retained-s2-review/origin.oracle.patch; SHA256 98551d0cb9bb2380b4ea204cfa3147d86a4b8d3369bff96f41c46b8a8eaf13b5
+--- a/rust/geometry/src/program/mapping_validation.rs
++++ b/rust/geometry/src/program/mapping_validation.rs
+@@ -49,7 +49,7 @@
+         return Err(MappingFailure::refused(FailureSite::MappingSource, source.id,
+             MappingReason::Category, "retained MappingSource requires IfcRepresentationMap"));
+     }
+-    if false { validate_origin(&source, decoder)?; }
++    validate_origin(&source, decoder)?;
+     validate_target(item, decoder)?;
+     map(&source, decoder)
+ }

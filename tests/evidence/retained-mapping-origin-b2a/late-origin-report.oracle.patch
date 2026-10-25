@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared at 82d137b85c17f9dc0521d0ad8120bd218eedaeb2; apply in reverse; Rust execution UNRUN.
+--- a/rust/geometry/src/program/mapping_retained.rs
++++ b/rust/geometry/src/program/mapping_retained.rs
+@@ -224,7 +224,7 @@
+             let selection = self.retained_selection()
+                 .ok_or_else(|| crate::Error::geometry("missing retained selection"))?;
+             validation::late_origin(map, decoder)
+-                .map_err(|error| { let _ = selection; crate::Error::geometry(error.diagnostic()) })?;
++                .map_err(|error| error.into_common(selection))?;
+             router.type_map_origin(map,decoder)
+         })();
+         MappingReply::Origin(value)

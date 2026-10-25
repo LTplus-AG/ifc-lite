@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared at 82d137b85c17f9dc0521d0ad8120bd218eedaeb2; apply in reverse; Rust execution UNRUN.
+# Historical input (unchanged): tests/evidence/retained-s2-direction/report.oracle.patch; SHA256 11a3d412b7eb839f9d63c002c331074aaf6441af2117697a96d76ffc75007621
+--- a/rust/geometry/src/program/mapping_directions.rs
++++ b/rust/geometry/src/program/mapping_directions.rs
+@@ -7,8 +7,7 @@
+ use crate::program::retained::failure::{FailureSite, MappingReason};
+ 
+ fn refused(entity: u32, reason: MappingReason) -> MappingFailure {
+-    let _ = reason;
+-    MappingFailure::refused(FailureSite::MappingDirection, entity, MappingReason::Category,
++    MappingFailure::refused(FailureSite::MappingDirection, entity, reason,
+         "retained mapping direction admission refused")
+ }
+ 

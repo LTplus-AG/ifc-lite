@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared at 82d137b85c17f9dc0521d0ad8120bd218eedaeb2; apply in reverse; Rust execution UNRUN.
+# Historical input (unchanged): tests/evidence/retained-s2-direction/dimension.oracle.patch; SHA256 fb4d6ed03d4f9da5072c7f6f050e8bef55cf1dac784e5f18bcd7bf55b60c3119
+--- a/rust/geometry/src/program/mapping_directions.rs
++++ b/rust/geometry/src/program/mapping_directions.rs
+@@ -31,7 +31,7 @@
+     let ratios = leaf.get(slot::IfcDirection::DIRECTION_RATIOS.index())
+         .and_then(AttributeValue::as_list)
+         .ok_or_else(|| refused(id, MappingReason::DirectionRatiosList))?;
+-    if false && ratios.len() != dimension {
++    if ratios.len() != dimension {
+         return Err(refused(id, MappingReason::DirectionDimension { expected: dimension, actual: ratios.len() }));
+     }
+     let raw = decoder.direction3(id)

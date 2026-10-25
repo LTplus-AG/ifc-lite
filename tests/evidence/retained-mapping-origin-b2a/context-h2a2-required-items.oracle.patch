@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared at 82d137b85c17f9dc0521d0ad8120bd218eedaeb2; apply in reverse; Rust execution UNRUN.
+# Historical input (unchanged): tests/evidence/retained-mapped-controller-h2a2/required-items.oracle.patch; SHA256 1ff31e72b3bd7fbbe74bf0daf19028084fe9be749778f4b22eba74ce8868edc1
+--- a/rust/geometry/src/program/mapping_validation.rs
++++ b/rust/geometry/src/program/mapping_validation.rs
+@@ -143,8 +143,7 @@
+         return Err(MappingFailure::refused(FailureSite::MappedRepresentation, representation.id,
+             MappingReason::Category, "retained MappedRepresentation requires a supported representation"));
+     }
+-    if false { items(&representation, decoder)?; }
+-    Ok(())
++    items(&representation, decoder)
+ }
+ 
+ fn items(representation: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<()> {

@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared at 82d137b85c17f9dc0521d0ad8120bd218eedaeb2; apply in reverse; Rust execution UNRUN.
+# Historical input (unchanged): tests/evidence/retained-s2-direction/occurrence-origin.oracle.patch; SHA256 2b405f781fc83afd6325f46742307ee60a246d29199250c93797f7b3e05abb19
+--- a/rust/geometry/src/program/mapping_validation.rs
++++ b/rust/geometry/src/program/mapping_validation.rs
+@@ -107,8 +107,7 @@
+             MappingReason::Category, "retained MappingOrigin requires a supported placement"));
+     }
+     // Type roots invoke this semantic admission at their late-origin stage.
+-    if false { super::directions::origin(&origin, decoder)?; }
+-    Ok(())
++    super::directions::origin(&origin, decoder)
+ }
+ 
+ pub(super) fn late_origin(map: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<()> {

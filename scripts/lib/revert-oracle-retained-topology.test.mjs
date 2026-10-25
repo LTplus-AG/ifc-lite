@@ -167,7 +167,7 @@ test('#7955: private S3 receipt/resource witnesses have exact library owners', (
   const inputs = [
     ['rust/geometry/src/document/retained_affine_tests.rs', 'ifc-lite-geometry', 'document::retained_affine::tests'],
     ['rust/geometry/src/document/retained_frames_tests.rs', 'ifc-lite-geometry', 'document::retained_frames::tests'],
-    ['rust/geometry/src/program/retained/identity_tests.rs', 'ifc-lite-geometry', 'program::retained::identity::tests'],
+    ['rust/geometry/src/program/retained/identity_tests.rs', 'ifc-lite-geometry', 'program::retained::identity::tests', ['wasm_source_capture']],
     ['rust/geometry/src/program/retained/outcome_allocation_tests.rs', 'ifc-lite-geometry', 'program::retained::outcome::tests'],
     ['rust/geometry/src/resource/owned_tests.rs', 'ifc-lite-geometry', 'resource::owned::tests'],
     ['rust/geometry/src/resource/owned_detach_tests.rs', 'ifc-lite-geometry', 'resource::owned::tests::detach_tests'],
@@ -178,8 +178,53 @@ test('#7955: private S3 receipt/resource witnesses have exact library owners', (
   assert.deepEqual(unassigned, []);
   assert.deepEqual(support, []);
   assert.deepEqual(plans.map(({ file, crate, moduleFilter, runner }) => [file, crate, moduleFilter, runner.args]),
-    inputs.map(([file, crate, module]) => [file, crate, module,
-      ['test', '--no-fail-fast', '-p', crate, '--lib', '--', `${module}::`]]));
+    inputs.map(([file, crate, module, features = []]) => [file, crate, module,
+      ['test', '--no-fail-fast', '-p', crate, '--lib',
+        ...(features.length > 0 ? ['--features', features.join(',')] : []), '--', `${module}::`]]));
+});
+
+function withIdentityOwnerFixture(attribute, { declareFeature = true, duplicateOwner = false } = {}, check) {
+  const root = mkdtempSync(join(tmpdir(), 'ifc-identity-owner-'));
+  try {
+    mkdirSync(join(root, 'src'));
+    writeFileSync(join(root, 'Cargo.toml'), '[package]\nname = "identity-owner"\nversion = "0.1.0"\n' +
+      'edition = "2021"\n[features]\ndefault = []\n' +
+      (declareFeature ? 'wasm_source_capture = []\n' : ''));
+    writeFileSync(join(root, 'src/lib.rs'), 'mod identity;\n');
+    writeFileSync(join(root, 'src/identity.rs'), `${attribute}\n#[path = "identity_tests.rs"]\nmod tests;\n` +
+      (duplicateOwner ? '#[cfg(test)]\n#[path = "identity_tests.rs"]\nmod other_tests;\n' : ''));
+    writeFileSync(join(root, 'src/identity_tests.rs'), '#[test]\nfn observes() { assert!(true); }\n');
+    check(planRuns(['src/identity_tests.rs'], root));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+test('#7955: declared feature proves conditional identity owner active on every target', () => {
+  withIdentityOwnerFixture('#[cfg(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")))]', {},
+    ({ plans, unassigned }) => {
+      assert.deepEqual(unassigned, []);
+      assert.equal(plans.length, 1);
+      assert.deepEqual(plans[0].runner.args,
+        ['test', '--no-fail-fast', '-p', 'identity-owner', '--lib', '--features', 'wasm_source_capture',
+          '--', 'identity::tests::']);
+    });
+});
+
+test('#7955: unknown cfg, undeclared feature, and ambiguous identity owners remain unassigned', () => {
+  for (const [attribute, options] of [
+    ['#[cfg(all(test, unix))]', {}],
+    ['#[cfg(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")))]',
+      { declareFeature: false }],
+    ['#[cfg(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")))]',
+      { duplicateOwner: true }],
+  ]) {
+    withIdentityOwnerFixture(attribute, options, ({ plans, unassigned }) => {
+      assert.deepEqual(plans, []);
+      assert.equal(unassigned.length, 1);
+      assert.match(unassigned[0].reason, /conditional or ambiguous/);
+    });
+  }
 });
 
 // #7955 Cut C: the actual planner must enable the default-off consumer.

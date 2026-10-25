@@ -112,6 +112,17 @@ function crateDefaultFeatures(dir) {
   }
 }
 
+/** Explicit Cargo features that the oracle may name in --features. */
+function crateDeclaredFeatures(dir) {
+  try {
+    const toml = readFileSync(join(dir, 'Cargo.toml'), 'utf8');
+    const features = tomlTableBodies(toml, '[features]')[0] ?? '';
+    return new Set([...features.matchAll(/^\s*([A-Za-z_][A-Za-z0-9_-]*)\s*=/gm)].map((m) => m[1]));
+  } catch {
+    return new Set();
+  }
+}
+
 const CHAR_LITERAL = /'(?:\\(?:x[0-9A-Fa-f]{2}|u\{[0-9A-Fa-f_]{1,6}\}|[^\n])|[^\\'\n\r\t])'/uy;
 
 function sanitizeRustSource(source) {
@@ -168,6 +179,23 @@ function sanitizeRustSource(source) {
   return { text: result, strings };
 }
 
+/** Prove a module's cfg active under cargo test, or refuse the owner. */
+function moduleCfgFeatures(attributes, strings, declaredFeatures) {
+  const required = [];
+  for (const cfg of attributes.matchAll(/#\s*\[\s*cfg[\s\S]*?\]/g)) {
+    const compact = cfg[0].replaceAll(/\s/g, '').replace(/"(__RUST_STRING_\d+__)"/g,
+      (_, token) => JSON.stringify(strings.get(token) ?? token));
+    if (compact === '#[cfg(test)]' || compact === '#[cfg_attr(not(test),allow(dead_code))]'
+      || /^#\[cfg\(any\(test,feature="[^"]+"\)\)\]$/.test(compact)) continue;
+    // Enabling this declared feature proves the OR true even for wasm32;
+    // target_arch alone is never inferred from the host running the planner.
+    const guarded = /^#\[cfg\(all\(test,any\(not\(target_arch="wasm32"\),feature="([^"]+)"\)\)\)\]$/.exec(compact);
+    if (!guarded || !declaredFeatures.has(guarded[1])) return null;
+    required.push(guarded[1]);
+  }
+  return [...new Set(required)].sort();
+}
+
 /**
  * The Cargo bin target compiled from `src/main.rs`: the package name, unless a
  * `[[bin]]` table names that path. A wrong name is not silent: cargo refuses
@@ -189,13 +217,14 @@ function mainBinName(crateDir, crate) {
  */
 function rustModuleOwner(crateDir, abs, crate) {
   const queue = [], matches = [];
+  const declaredFeatures = crateDeclaredFeatures(crateDir);
   const lib = join(crateDir, 'src', 'lib.rs'), main = join(crateDir, 'src', 'main.rs');
-  if (existsSync(lib)) queue.push({ file: lib, modules: [], bin: null });
-  if (existsSync(main)) queue.push({ file: main, modules: [], bin: mainBinName(crateDir, crate) });
+  if (existsSync(lib)) queue.push({ file: lib, modules: [], bin: null, requiredFeatures: [] });
+  if (existsSync(main)) queue.push({ file: main, modules: [], bin: mainBinName(crateDir, crate), requiredFeatures: [] });
   const visited = new Set();
   while (queue.length > 0) {
-    const { file: parent, modules, bin } = queue.shift();
-    const key = `${bin ?? ''}\0${resolve(parent)}\0${modules.join('::')}`;
+    const { file: parent, modules, bin, requiredFeatures } = queue.shift();
+    const key = `${bin ?? ''}\0${resolve(parent)}\0${modules.join('::')}\0${requiredFeatures.join(',')}`;
     if (visited.has(key) || !existsSync(parent)) continue;
     visited.add(key);
     const { text, strings } = sanitizeRustSource(readFileSync(parent, 'utf8'));
@@ -217,17 +246,12 @@ function rustModuleOwner(crateDir, abs, crate) {
         : [resolve(ordinaryBase, `${moduleName}.rs`), resolve(ordinaryBase, moduleName, 'mod.rs')].find(existsSync);
       if (!target) continue;
       const targetModules = [...modules, moduleName];
-      const conditional = [...attributes.matchAll(/#\s*\[\s*cfg[\s\S]*?\]/g)]
-        .some((cfg) => {
-          const compact = cfg[0].replaceAll(/\s/g, '');
-          // #7955 S3: these forms are unconditionally enabled/inert in unit tests.
-          return compact !== '#[cfg(test)]'
-            && compact !== '#[cfg_attr(not(test),allow(dead_code))]'
-            && !/^#\[cfg\(any\(test,feature="[^"]+"\)\)\]$/.test(compact);
-        });
-      if (resolve(target) === resolve(abs)) matches.push({ moduleFilter: targetModules.join('::'), conditional, bin });
+      const localFeatures = moduleCfgFeatures(attributes, strings, declaredFeatures);
+      const conditional = localFeatures === null;
+      const features = conditional ? [] : [...new Set([...requiredFeatures, ...localFeatures])].sort();
+      if (resolve(target) === resolve(abs)) matches.push({ moduleFilter: targetModules.join('::'), conditional, bin, features });
       if (conditional) continue;
-      queue.push({ file: target, modules: targetModules, bin });
+      queue.push({ file: target, modules: targetModules, bin, requiredFeatures: features });
     }
   }
   if (matches.length !== 1 || matches[0].conditional) return matches.length > 0 ? { ambiguous: true } : null;
@@ -282,10 +306,14 @@ export function planRuns(testPaths, root) {
         unassigned.push({ file: rel, reason: error.message });
         continue;
       }
-      const runs = combos.length > 0
-        ? (requiresDefaultRun(root, [rel]) ? [[], ...combos] : combos)
-        : [[]];
-      for (const features of runs) {
+      const defaultRequired = requiresDefaultRun(root, [rel]);
+      if (owner?.features.length > 0 && defaultRequired) {
+        unassigned.push({ file: rel, reason: 'Rust module requires a feature but test cfg requires a default run; active compiled source ownership was not proven' });
+        continue;
+      }
+      const runs = combos.length > 0 ? (defaultRequired ? [[], ...combos] : combos) : [[]];
+      for (const combo of runs) {
+        const features = [...new Set([...(owner?.features ?? []), ...combo])].sort();
         const suffix = features.length > 0 ? `+${features.join('+')}` : '';
       const moduleFilter = owner?.moduleFilter ?? null;
         const bin = owner?.bin ?? null;

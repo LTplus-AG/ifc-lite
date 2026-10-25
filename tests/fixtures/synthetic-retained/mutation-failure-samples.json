@@ -1,0 +1,165 @@
+{
+  "license": "SPDX-License-Identifier: MPL-2.0",
+  "issue": 7955,
+  "provenance": {
+    "job": "dd17456a-74c9-4a66-9f25-7f47cdd20a21",
+    "source_head": "046b759b9d390a46620ec21337c8a0b08502315b",
+    "output_log_sha256": "1df4879129afa125334707d4058928832b98c9d8652e592d689c90b8b4c8590d",
+    "extraction": "Contiguous panic header through failed summary, exact bytes. Each full captured command output was SHA-256 matched to the original MUTATION_RECEIPT before extraction. Local cache paths are outside these excerpts."
+  },
+  "failures": [
+    {
+      "name": "missing_wall_cut",
+      "test": "issue_7955_curved_band_controls_and_wall_opening",
+      "expected_failure": "curved-layered-wall.*volume",
+      "exit": 101,
+      "timed_out": false,
+      "captured_output_sha256": "1f53b5c8ca2cf3f0e6d8c42c36a4106831bd3aa7507c851ae537d7ebc66444c4",
+      "output_excerpt": "thread 'issue_7955_curved_band_controls_and_wall_opening' (912380) panicked at rust/processing/tests/issue_7955_synthetic.rs:15:44:\ncalled `Result::unwrap()` on an `Err` value: \"#55 \\\"curved-layered-wall\\\" volume 29.121491500168204 expected 27.922091698768103 tolerance 0.015\"\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nFAILED\n\nfailures:\n\nfailures:\n    issue_7955_curved_band_controls_and_wall_opening\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.06s\n"
+    },
+    {
+      "name": "missing_mapped_cut",
+      "test": "issue_7955_mapped_occurrence_volumes_and_appearance",
+      "expected_failure": "door-left.*volume",
+      "exit": 101,
+      "timed_out": false,
+      "captured_output_sha256": "9f3326950201fe3a96427ba31fc57728875362e5d5c99330b35a35c14e20c760",
+      "output_excerpt": "thread 'issue_7955_mapped_occurrence_volumes_and_appearance' (912404) panicked at rust/processing/tests/issue_7955_synthetic.rs:40:45:\ncalled `Result::unwrap()` on an `Err` value: \"#128 \\\"door-left\\\" volume 6 expected 5 tolerance 0.000001\"\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nFAILED\n\nfailures:\n\nfailures:\n    issue_7955_mapped_occurrence_volumes_and_appearance\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.02s\n"
+    },
+    {
+      "name": "moved_equal_volume_cut",
+      "test": "issue_7955_mapped_occurrence_volumes_and_appearance",
+      "expected_failure": "centroid axis",
+      "exit": 101,
+      "timed_out": false,
+      "captured_output_sha256": "268b07388f10570c6216b4036431f0f7ed20f5bcd244149ef58326d9b2679e04",
+      "output_excerpt": "thread 'issue_7955_mapped_occurrence_volumes_and_appearance' (912491) panicked at rust/processing/tests/issue_7955_synthetic.rs:40:45:\ncalled `Result::unwrap()` on an `Err` value: \"centroid axis 0: 25.9 != 26.1\"\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nFAILED\n\nfailures:\n\nfailures:\n    issue_7955_mapped_occurrence_volumes_and_appearance\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.03s\n"
+    },
+    {
+      "name": "missing_occurrence_style",
+      "test": "issue_7955_mapped_occurrence_volumes_and_appearance",
+      "expected_failure": "occurrence red style",
+      "exit": 101,
+      "timed_out": false,
+      "captured_output_sha256": "eb24ec5e437de0c851a45b13f69cb4487bb470d703a5d117c0860785dae15012",
+      "output_excerpt": "thread 'issue_7955_mapped_occurrence_volumes_and_appearance' (912555) panicked at rust/processing/tests/issue_7955_synthetic.rs:41:40:\ncalled `Result::unwrap()` on an `Err` value: \"occurrence red style\"\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nFAILED\n\nfailures:\n\nfailures:\n    issue_7955_mapped_occurrence_volumes_and_appearance\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.02s\n"
+    },
+    {
+      "name": "reversed_source_palette",
+      "test": "issue_7955_mapped_occurrence_volumes_and_appearance",
+      "expected_failure": "palette colour bound to wrong source triangle",
+      "exit": 101,
+      "timed_out": false,
+      "captured_output_sha256": "2816123f256adc5b98d90537d757b75292f9f8eb10733705a3e0286fc084f38d",
+      "output_excerpt": "thread 'issue_7955_mapped_occurrence_volumes_and_appearance' (912580) panicked at rust/processing/tests/issue_7955_synthetic.rs:41:40:\ncalled `Result::unwrap()` on an `Err` value: \"palette colour bound to wrong source triangle\"\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nFAILED\n\nfailures:\n\nfailures:\n    issue_7955_mapped_occurrence_volumes_and_appearance\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.02s\n"
+    },
+    {
+      "name": "facewise_source_palette",
+      "test": "issue_7955_mapped_occurrence_volumes_and_appearance",
+      "expected_failure": "palette colour bound to wrong source triangle",
+      "exit": 101,
+      "timed_out": false,
+      "captured_output_sha256": "dfeae1613d24522606bb6c5412a313c43f8d87540b9fbfc76b43ff10ce326893",
+      "output_excerpt": "thread 'issue_7955_mapped_occurrence_volumes_and_appearance' (912604) panicked at rust/processing/tests/issue_7955_synthetic.rs:41:40:\ncalled `Result::unwrap()` on an `Err` value: \"palette colour bound to wrong source triangle\"\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nFAILED\n\nfailures:\n\nfailures:\n    issue_7955_mapped_occurrence_volumes_and_appearance\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.04s\n"
+    },
+    {
+      "name": "half_swapped_source_palette",
+      "test": "issue_7955_mapped_occurrence_volumes_and_appearance",
+      "expected_failure": "palette colour bound to wrong source triangle",
+      "exit": 101,
+      "timed_out": false,
+      "captured_output_sha256": "eb452cec2d01e2141d16e4e08a902eeae8e78ced5760512e0eae1c9ce1a38fb5",
+      "output_excerpt": "thread 'issue_7955_mapped_occurrence_volumes_and_appearance' (912628) panicked at rust/processing/tests/issue_7955_synthetic.rs:41:40:\ncalled `Result::unwrap()` on an `Err` value: \"palette colour bound to wrong source triangle\"\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nFAILED\n\nfailures:\n\nfailures:\n    issue_7955_mapped_occurrence_volumes_and_appearance\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.03s\n"
+    },
+    {
+      "name": "grey_occurrence_recoloured",
+      "test": "issue_7955_mapped_occurrence_volumes_and_appearance",
+      "expected_failure": "occurrence plain style",
+      "exit": 101,
+      "timed_out": false,
+      "captured_output_sha256": "a424d5d4de281258a852f95775522e6b8446c1b09f4e7c9225002315db104bd4",
+      "output_excerpt": "thread 'issue_7955_mapped_occurrence_volumes_and_appearance' (912652) panicked at rust/processing/tests/issue_7955_synthetic.rs:41:40:\ncalled `Result::unwrap()` on an `Err` value: \"occurrence plain style\"\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nFAILED\n\nfailures:\n\nfailures:\n    issue_7955_mapped_occurrence_volumes_and_appearance\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.03s\n"
+    },
+    {
+      "name": "curved_door_radial_move",
+      "test": "issue_7955_curved_band_controls_and_wall_opening",
+      "expected_failure": "curved door cutter bounds",
+      "exit": 101,
+      "timed_out": false,
+      "captured_output_sha256": "c5d93311b6edd3526df44123da02e39dbf7e6cf5b85e02a96ba6a3326028bf7a",
+      "output_excerpt": "thread 'issue_7955_curved_band_controls_and_wall_opening' (912753) panicked at rust/processing/tests/issue_7955_synthetic.rs:18:41:\ncalled `Result::unwrap()` on an `Err` value: \"curved door cutter bounds #63 axis 0\"\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nFAILED\n\nfailures:\n\nfailures:\n    issue_7955_curved_band_controls_and_wall_opening\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.08s\n"
+    },
+    {
+      "name": "curved_door_tangential_move",
+      "test": "issue_7955_curved_band_controls_and_wall_opening",
+      "expected_failure": "curved door cut planes",
+      "exit": 101,
+      "timed_out": false,
+      "captured_output_sha256": "94ac3948c15df2546273855ae4382cb855c893fe37cac036c8965bc6acc5302a",
+      "output_excerpt": "thread 'issue_7955_curved_band_controls_and_wall_opening' (912792) panicked at rust/processing/tests/issue_7955_synthetic.rs:18:41:\ncalled `Result::unwrap()` on an `Err` value: \"curved door cut planes #55: [false, false, true]\"\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nFAILED\n\nfailures:\n\nfailures:\n    issue_7955_curved_band_controls_and_wall_opening\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.08s\n"
+    },
+    {
+      "name": "doubled_nonuniform_z_scale",
+      "test": "issue_7955_mapped_occurrence_volumes_and_appearance",
+      "expected_failure": "occurrence bounds",
+      "exit": 101,
+      "timed_out": false,
+      "captured_output_sha256": "19f62e04aca47c85d2e9e132251df5cc4d5a6166b082b17eed50c974819617f0",
+      "output_excerpt": "thread 'issue_7955_mapped_occurrence_volumes_and_appearance' (912817) panicked at rust/processing/tests/issue_7955_synthetic.rs:40:45:\ncalled `Result::unwrap()` on an `Err` value: \"occurrence bounds: [15.0, 0.0, 0.0]..[19.0, 1.0, 3.0] != [15.0, 0.0, 0.0]..[19.0, 1.0, 1.5]\"\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nFAILED\n\nfailures:\n\nfailures:\n    issue_7955_mapped_occurrence_volumes_and_appearance\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.02s\n"
+    },
+    {
+      "name": "missing_instance_occurrence",
+      "test": "issue_7955_mapped_instances_preserve_occurrences_and_cuts",
+      "expected_failure": "product count/ids",
+      "exit": 101,
+      "timed_out": false,
+      "captured_output_sha256": "f2c6d4013d34bbe5ba83fbfafeab5dc73e8bf7cae65312a320124f2754710ef3",
+      "output_excerpt": "thread 'issue_7955_mapped_instances_preserve_occurrences_and_cuts' (912841) panicked at rust/processing/tests/issue_7955_synthetic.rs:144:45:\ncalled `Result::unwrap()` on an `Err` value: \"product count/ids {53, 83, 98, 113, 128, 135, 153, 160, 172, 183} != {53, 68, 83, 98, 113, 128, 135, 153, 160, 172, 183}\"\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nFAILED\n\nfailures:\n\nfailures:\n    issue_7955_mapped_instances_preserve_occurrences_and_cuts\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.03s\n"
+    },
+    {
+      "name": "changed_internal_box_height",
+      "test": "issue_7955_internal_consistency_geometry_matches_external_semantic_faces",
+      "expected_failure": "occurrence bounds",
+      "exit": 101,
+      "timed_out": false,
+      "captured_output_sha256": "36b6b1a2e524bec8803cceac4619afa9574f708f5c3c9b09d356c9f44a7349c9",
+      "output_excerpt": "thread 'issue_7955_internal_consistency_geometry_matches_external_semantic_faces' (912942) panicked at rust/processing/tests/issue_7955_synthetic.rs:164:40:\ncalled `Result::unwrap()` on an `Err` value: \"occurrence bounds: [4.0, -4.949999809265137, 0.4000000059604645]..[7.800000190734863, -1.399999976158142, 2.5999999046325684] != [4.0, -4.8, 0.3999999999999999]..[7.6, -1.4, 2.6]\"\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nFAILED\n\nfailures:\n\nfailures:\n    issue_7955_internal_consistency_geometry_matches_external_semantic_faces\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.02s\n"
+    },
+    {
+      "name": "changed_persistent_product_id",
+      "test": "issue_7955_internal_consistency_geometry_matches_external_semantic_faces",
+      "expected_failure": "stable GlobalId mismatch",
+      "exit": 101,
+      "timed_out": false,
+      "captured_output_sha256": "23218f5f2afcaafddeba40a967b4cfab019186b138cac1c6f0c2fa96d7fbfbba",
+      "output_excerpt": "thread 'issue_7955_internal_consistency_geometry_matches_external_semantic_faces' (912982) panicked at rust/processing/tests/issue_7955_synthetic.rs:164:40:\ncalled `Result::unwrap()` on an `Err` value: \"stable GlobalId mismatch\"\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nFAILED\n\nfailures:\n\nfailures:\n    issue_7955_internal_consistency_geometry_matches_external_semantic_faces\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.02s\n"
+    },
+    {
+      "name": "ignored_texture_indices",
+      "test": "issue_7955_image_sidecar_uvs_and_pixels",
+      "expected_failure": "UV differs from source chart",
+      "exit": 101,
+      "timed_out": false,
+      "captured_output_sha256": "3071a622d845db152fc100cf92483c6888e2228b33f861001bec898658704fb7",
+      "output_excerpt": "thread 'issue_7955_image_sidecar_uvs_and_pixels' (913010) panicked at rust/processing/tests/issue_7955_synthetic.rs:210:32:\ncalled `Result::unwrap()` on an `Err` value: \"UV differs from source chart\"\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nFAILED\n\nfailures:\n\nfailures:\n    issue_7955_image_sidecar_uvs_and_pixels\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.02s\n"
+    },
+    {
+      "name": "wrong_image_reference",
+      "test": "issue_7955_image_sidecar_uvs_and_pixels",
+      "expected_failure": "texture source identity",
+      "exit": 101,
+      "timed_out": false,
+      "captured_output_sha256": "a3a605daf28e0af216dee3d6da83480f14d0554752884f9f0cd63b35ef89c96d",
+      "output_excerpt": "thread 'issue_7955_image_sidecar_uvs_and_pixels' (913039) panicked at rust/processing/tests/issue_7955_synthetic.rs:210:32:\ncalled `Result::unwrap()` on an `Err` value: \"texture source identity\"\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nFAILED\n\nfailures:\n\nfailures:\n    issue_7955_image_sidecar_uvs_and_pixels\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.02s\n"
+    },
+    {
+      "name": "changed_sidecar_pixel",
+      "test": "issue_7955_image_sidecar_uvs_and_pixels",
+      "expected_failure": "assertion `left == right` failed",
+      "exit": 101,
+      "timed_out": false,
+      "captured_output_sha256": "f3c18cb6eeecd28be4ec2b9336612ba77ff026587e2ec7c2cb4fd50350138dd4",
+      "output_excerpt": "thread 'issue_7955_image_sidecar_uvs_and_pixels' (913064) panicked at rust/processing/tests/issue_7955_synthetic.rs:218:5:\nassertion `left == right` failed\n  left: [0, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255]\n right: [255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255]\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nFAILED\n\nfailures:\n\nfailures:\n    issue_7955_image_sidecar_uvs_and_pixels\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.02s\n"
+    }
+  ]
+}

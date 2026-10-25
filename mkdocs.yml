@@ -45,6 +45,8 @@ not_in_nav: |
   architecture/section-7545-ux-and-implementation-plan.md
   architecture/autodesk-cloud-sources-plan.md
   architecture/evidence/**
+  # #8042 diff stack preparation/qualification checkpoints (local paths, parent-only handoff notes); not user documentation.
+  architecture/diff-8042/**
   research/**
 
 theme:

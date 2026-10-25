@@ -14,14 +14,15 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::index::FileIndex;
 
-/// The index of `attr_name` on `entity_type` in `file_schema`, or `None` when
-/// the schema does not declare that entity or that attribute.
-/// A spatial element (`IfcSpatialStructureElement` in IFC2X3, its
-/// `IfcSpatialElement` supertype later).
+/// Whether `class` is a spatial element in `file_schema`
+/// (`IfcSpatialStructureElement` in IFC2X3, its `IfcSpatialElement`
+/// supertype later).
 pub(crate) fn is_spatial(file_schema: &str, class: &str) -> bool {
     ["IFCSPATIALSTRUCTUREELEMENT", "IFCSPATIALELEMENT"].iter().any(|p| ifc_lite_core::is_subtype_of_for_schema(file_schema, class, p))
 }
 
+/// The index of `attr_name` on `entity_type` in `file_schema`, or `None` when
+/// the schema does not declare that entity or that attribute.
 pub(crate) fn attribute_index(file_schema: &str, entity_type: &str, attr_name: &str) -> Option<usize> {
     ifc_lite_core::attribute_names_for_schema(file_schema, entity_type)?
         .iter()

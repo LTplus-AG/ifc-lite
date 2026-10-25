@@ -240,20 +240,11 @@ impl AddState<'_> {
                     Some((id, kind, c))
                 } else {
                     // IfcRelContainedInSpatialStructure.RelatingStructure is an
-                    // IfcSpatialElement, but a zone only groups: membership of one
-                    // is by reference. A structure element goes under the project
-                    // or a structure element.
-                    let is_container = if spatial {
-                        self.in_structure(&c) || c == "IFCPROJECT"
-                    } else {
-                        self.is_spatial(&c) && !self.is_a(&c, "IFCSPATIALZONE")
-                    };
+                    // IfcSpatialElement, a spatial zone included. A structure
+                    // element goes under the project or a structure element.
+                    let is_container = if spatial { self.in_structure(&c) || c == "IFCPROJECT" } else { self.is_spatial(&c) };
                     if !is_container {
-                        return Err(if self.is_a(&c, "IFCSPATIALZONE") {
-                            format!("container {r} is {c}: a zone groups by reference and cannot contain elements")
-                        } else {
-                            format!("container {r} is {c}, not a spatial element")
-                        });
+                        return Err(format!("container {r} is {c}, not a spatial element"));
                     }
                     if spatial && !self.can_aggregate(&c, &class) {
                         return Err(format!("container {r} is {c}, which cannot aggregate a {class} in {}", self.schema));

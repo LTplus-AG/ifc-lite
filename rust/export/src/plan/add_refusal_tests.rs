@@ -346,17 +346,6 @@ fn a_spatial_element_under_a_wrong_parent_is_refused() {
     }
 }
 
-/// A spatial zone groups spaces; it contains nothing.
-/// (#8142)
-#[test]
-fn a_spatial_zone_is_not_a_container() {
-    let source = String::from_utf8(storey_with_typed_wall("IFC4")).unwrap().replace(
-        "#10=",
-        "#90=IFCSPATIALZONE('0000000000000000000091',$,'Zone',$,$,$,$,$,$);\n#10=",
-    );
-    refused(source.as_bytes(), object(IfcClass::Wall, gid(34), Some(ObjectRef::Id(90)), Representation::None), "groups by reference");
-}
-
 /// IFC4 deprecates IfcDoorStyle / IfcWindowStyle; CorrectStyleAssigned
 /// wants the Type classes. IFC2X3 has only the styles.
 /// (#8142)
@@ -449,9 +438,9 @@ fn zones_and_external_spatial_elements_follow_the_spatial_decomposition_rules() 
 
 /// (#8142) IfcRelContainedInSpatialStructure.RelatingStructure is an
 /// IfcSpatialElement: an element may be contained in an external spatial
-/// element, but not in a zone.
+/// element or a spatial zone, as on main.
 #[test]
-fn an_element_may_be_contained_in_an_external_spatial_element_8142() {
+fn an_element_may_be_contained_in_an_external_spatial_element_or_a_zone_8142() {
     let base = String::from_utf8(storey_with_typed_wall("IFC4")).unwrap();
     let source = base.replacen("ENDSEC;\nEND-ISO", "#90=IFCEXTERNALSPATIALELEMENT($);\n#91=IFCSPATIALZONE($);\nENDSEC;\nEND-ISO", 1);
     let wall = object(IfcClass::Wall, gid(47), Some(ObjectRef::Id(90)), Representation::None);
@@ -461,7 +450,12 @@ fn an_element_may_be_contained_in_an_external_spatial_element_8142() {
     let text = String::from_utf8_lossy(&out);
     let rel = text.lines().find(|l| l.contains("IFCRELCONTAINEDINSPATIALSTRUCTURE") && refs(l).contains(&wall_id)).expect("the wall is contained");
     assert!(refs(rel).contains(&90), "the relationship names the external element: {rel}");
-    refused(source.as_bytes(), object(IfcClass::Wall, gid(48), Some(ObjectRef::Id(91)), Representation::None), "groups by reference");
+    let (out, report) = run(source.as_bytes(), vec![add(object(IfcClass::Wall, gid(48), Some(ObjectRef::Id(91)), Representation::None))]);
+    assert_eq!(report.added, 1, "{:?}", report.refusals);
+    let wall_id = id_in(&out, gid(48));
+    let text = String::from_utf8_lossy(&out);
+    let rel = text.lines().find(|l| l.contains("IFCRELCONTAINEDINSPATIALSTRUCTURE") && refs(l).contains(&wall_id)).expect("the wall is contained");
+    assert!(refs(rel).contains(&91), "the relationship names the zone: {rel}");
 }
 
 /// The ids a STEP line references.

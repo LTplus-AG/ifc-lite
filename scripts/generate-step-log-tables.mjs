@@ -169,9 +169,10 @@ for (const upper of [...universe.keys()].sort()) {
 }
 
 // `IfcValue` members of each schema, walked through that schema's own
-// registry: one row per member, with its type in each schema (`null` where
-// that schema's `IfcValue` lacks it) and, for a constrained leaf, the member
-// a value outside its domain relaxes to. -1 violates every constrained
+// registry: one row per member, with which schemas' `IfcValue` has it, ONE
+// type (IFC4's where IFC4 has the member, the TypeScript writer's reading)
+// and, for a constrained leaf, the member a value outside its domain
+// relaxes to. -1 violates every constrained
 // member's WHERE rule. Aggregate-typed members (`IfcComplexNumber`) have no
 // EXPRESS base and are typed `AGGREGATE`, so a write naming one is refused
 // for what it is. A member that resolves to neither fails the generator.
@@ -180,9 +181,10 @@ const AGGREGATE = /^(LIST|ARRAY|SET|BAG)\b/;
 // `check_literal_measure` and `BaseKind` handle exactly these.
 const LEAF_BASES = ['STRING', 'REAL', 'NUMBER', 'INTEGER', 'BOOLEAN', 'LOGICAL', 'BINARY'];
 // Members whose type differs between schemas, with each schema's: the
-// differences expected, so one a registry update brings is looked at rather
-// than taken. Any other difference, and any entry here that no longer
-// differs, fails the generator.
+// table carries one type, so a difference is a gap a registry update must
+// not open silently. Any other difference, and any entry here that no longer
+// differs, fails the generator. IfcCountMeasure's is the known gap the
+// follow-up on fix/ifc4x3-count-measure closes.
 const EXPECTED_TYPE_DIFFERENCES = new Map([
   // IFC4 declares `IfcCountMeasure = NUMBER`, IFC4X3 `= INTEGER`.
   ['IFCCOUNTMEASURE', ['NUMBER', 'NUMBER', 'INTEGER']],
@@ -224,10 +226,10 @@ for (const [token, { name, types }] of [...valueMembers].sort(([a], [b]) => (a <
     const shape = base === 'INTEGER' ? PropertyValueType.Integer : PropertyValueType.Real;
     relaxed = declaredNominalValueType(-1, shape, token) ?? '';
   }
-  const type = (t) =>
-    t === null ? 'None' : t === 'AGGREGATE' ? 'Some(ValueType::Aggregate)' : `Some(ValueType::Leaf(BaseKind::${t[0]}${t.slice(1).toLowerCase()}))`;
+  const t = types[VALUE_SCHEMAS.indexOf('IFC4')] ?? types.find((x) => x !== null);
+  const type = t === 'AGGREGATE' ? 'ValueType::Aggregate' : `ValueType::Leaf(BaseKind::${t[0]}${t.slice(1).toLowerCase()})`;
   leaves.push(
-    `    ValueMember { token: ${JSON.stringify(token)}, name: ${JSON.stringify(name)}, constrained: ${constrained}, relaxed: ${JSON.stringify(relaxed)}, types: [${types.map(type).join(', ')}] },`,
+    `    ValueMember { token: ${JSON.stringify(token)}, name: ${JSON.stringify(name)}, constrained: ${constrained}, relaxed: ${JSON.stringify(relaxed)}, ty: ${type}, in_schemas: [${types.map((x) => x !== null).join(', ')}] },`,
   );
 }
 
@@ -403,9 +405,10 @@ pub struct ValueMember {
     pub constrained: bool,
     /// The member a value outside a constrained leaf's domain relaxes to, or "".
     pub relaxed: &'static str,
-    /// Its type in IFC2X3, IFC4 and IFC4X3; \`None\` where that schema's
-    /// \`IfcValue\` lacks it.
-    pub types: [Option<ValueType>; 3],
+    /// Its type: IFC4's where IFC4 has the member, else the schemas' that do.
+    pub ty: ValueType,
+    /// Whether the \`IfcValue\` of IFC2X3, IFC4 and IFC4X3 has it.
+    pub in_schemas: [bool; 3],
 }
 
 /// Every \`IfcValue\` member of IFC2X3, IFC4 and IFC4X3, each walked through

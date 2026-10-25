@@ -877,7 +877,8 @@ fn a_refused_value_names_its_property_once() {
 }
 
 /// Quantities are held to the same rule as an Add's (not negative, no
-/// measure WHERE rule), and a measure the literal check has no rule for (a binary) is passed through.
+/// measure WHERE rule), a well-formed STEP binary (`"0A"`) is accepted, and
+/// an IFC4X3-only measure is accepted in IFC4X3.
 /// (#8142)
 #[test]
 fn quantity_and_unlisted_measures_follow_the_add_rule() {

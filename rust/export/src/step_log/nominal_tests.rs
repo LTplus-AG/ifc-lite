@@ -10,21 +10,21 @@ fn fam(schema: &str) -> Option<SchemaFamily> {
 #[test]
 fn a_source_measure_token_survives_regeneration() {
     // #2482: the token IS the unit semantics, so an untouched neighbour keeps it.
-    assert_eq!(serialize_nominal_value(SchemaFamily::Ifc4, &json!(0.25), pvt::REAL, Some("IFCTHERMALTRANSMITTANCEMEASURE")), "IFCTHERMALTRANSMITTANCEMEASURE(0.25)");
-    assert_eq!(serialize_nominal_value(SchemaFamily::Ifc4, &json!("W01"), pvt::STRING, Some("IFCIDENTIFIER")), "IFCIDENTIFIER('W01')");
+    assert_eq!(serialize_nominal_value(&json!(0.25), pvt::REAL, Some("IFCTHERMALTRANSMITTANCEMEASURE")), "IFCTHERMALTRANSMITTANCEMEASURE(0.25)");
+    assert_eq!(serialize_nominal_value(&json!("W01"), pvt::STRING, Some("IFCIDENTIFIER")), "IFCIDENTIFIER('W01')");
 }
 
 #[test]
 fn a_value_outside_a_constrained_member_relaxes_to_its_ancestor() {
-    assert_eq!(serialize_nominal_value(SchemaFamily::Ifc4, &json!(-1), pvt::REAL, Some("IFCPOSITIVELENGTHMEASURE")), "IFCLENGTHMEASURE(-1.)");
-    assert_eq!(serialize_nominal_value(SchemaFamily::Ifc4, &json!(2), pvt::REAL, Some("IFCNORMALISEDRATIOMEASURE")), "IFCRATIOMEASURE(2.)");
+    assert_eq!(serialize_nominal_value(&json!(-1), pvt::REAL, Some("IFCPOSITIVELENGTHMEASURE")), "IFCLENGTHMEASURE(-1.)");
+    assert_eq!(serialize_nominal_value(&json!(2), pvt::REAL, Some("IFCNORMALISEDRATIOMEASURE")), "IFCRATIOMEASURE(2.)");
     // No unconstrained ancestor inside IfcValue: the shape decides.
-    assert_eq!(serialize_nominal_value(SchemaFamily::Ifc4, &json!(99), pvt::REAL, Some("IFCPHMEASURE")), "IFCREAL(99.)");
+    assert_eq!(serialize_nominal_value(&json!(99), pvt::REAL, Some("IFCPHMEASURE")), "IFCREAL(99.)");
 }
 
 #[test]
 fn a_named_member_outranks_the_source_token() {
-    assert_eq!(serialize_nominal_value(SchemaFamily::Ifc4, &json!("x"), pvt::TEXT, Some("IFCLABEL")), "IFCTEXT('x')");
+    assert_eq!(serialize_nominal_value(&json!("x"), pvt::TEXT, Some("IFCLABEL")), "IFCTEXT('x')");
 }
 
 #[test]
@@ -36,7 +36,7 @@ fn shape_fallbacks_match_serialize_property_value() {
     assert_eq!(serialize_property_value(&json!(["a", null]), pvt::LIST), "(IFCLABEL('a'),$)");
     assert_eq!(serialize_property_value(&json!("vendor"), pvt::STRING), "IFCLABEL('vendor')");
     // A vendor token is not an IfcValue member: the shape decides.
-    assert_eq!(serialize_nominal_value(SchemaFamily::Ifc4, &json!("X"), pvt::STRING, Some("IFCACMEWIDGETCODE")), "IFCLABEL('X')");
+    assert_eq!(serialize_nominal_value(&json!("X"), pvt::STRING, Some("IFCACMEWIDGETCODE")), "IFCLABEL('X')");
 }
 
 /// (#8142)
@@ -85,10 +85,8 @@ fn an_ifc4x3_count_is_still_a_real_known_gap_8142() {
         assert_eq!(canonical_literal(fam(schema), "IfcCountMeasure", "3"), "3.", "{schema}");
         assert_eq!(check_real_measure(fam(schema), "IfcCountMeasure", 3.5, true), Ok(MeasureNumber::Real), "{schema}");
     }
-    for family in [SchemaFamily::Ifc4, SchemaFamily::Ifc4x3] {
-        assert_eq!(serialize_nominal_value(family, &json!(3), pvt::INTEGER, Some("IFCCOUNTMEASURE")), "IFCCOUNTMEASURE(3.)");
-        assert_eq!(super::super::values::typed_marker(family, "IfcCountMeasure", &json!(3)).unwrap(), "IFCCOUNTMEASURE(3.)");
-    }
+    assert_eq!(serialize_nominal_value(&json!(3), pvt::INTEGER, Some("IFCCOUNTMEASURE")), "IFCCOUNTMEASURE(3.)");
+    assert_eq!(super::super::values::typed_marker("IfcCountMeasure", &json!(3)).unwrap(), "IFCCOUNTMEASURE(3.)");
 }
 
 /// (#8142) A number for a measure over INTEGER is written as an integer when

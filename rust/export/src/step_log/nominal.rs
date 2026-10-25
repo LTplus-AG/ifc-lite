@@ -40,25 +40,23 @@ impl BaseKind {
 /// such member. The one lookup of an `IfcValue` member's type: every check
 /// and writer of a typed value asks it.
 ///
-/// Membership is the family's own; the type is IFC4's wherever IFC4 has the
-/// member, as every writer has always spelled it. Known gap: IFC4X3 declares
-/// `IfcCountMeasure` over INTEGER (IFC4: NUMBER), and a count is still
-/// written as a real there, until the follow-up on `fix/ifc4x3-count-measure`.
+/// The type is IFC4's wherever IFC4 has the member, as every writer has
+/// always spelled it. Known gap: IFC4X3 declares `IfcCountMeasure` over
+/// INTEGER (IFC4: NUMBER), and a count is still written as a real there,
+/// until the follow-up on `fix/ifc4x3-count-measure`.
 pub(crate) fn value_member(family: SchemaFamily, measure: &str) -> Option<(&'static ValueMember, ValueType)> {
-    const IFC4: usize = 1;
     let column = match family {
         SchemaFamily::Ifc2x3 => 0,
-        SchemaFamily::Ifc4 => IFC4,
+        SchemaFamily::Ifc4 => 1,
         _ => 2,
     };
     let token = measure.to_ascii_uppercase();
     let member = &IFC_VALUE_MEMBERS[IFC_VALUE_MEMBERS.binary_search_by(|m| m.token.cmp(&token)).ok()?];
-    let own = member.types[column]?;
-    Some((member, member.types[IFC4].unwrap_or(own)))
+    member.in_schemas[column].then_some((member, member.ty))
 }
 
 /// The base of `type_name` (any case) as an `IfcValue` leaf of `family`.
-pub(crate) fn leaf_base(family: SchemaFamily, type_name: &str) -> Option<BaseKind> {
+fn leaf_base(family: SchemaFamily, type_name: &str) -> Option<BaseKind> {
     match value_member(family, type_name)? {
         (_, ValueType::Leaf(base)) => Some(base),
         (_, ValueType::Aggregate) => None,
@@ -94,7 +92,7 @@ pub(crate) enum MeasureNumber {
 /// How `value` is written as a value of `measure` in `family`, refused
 /// unless the measure is numeric there and, when `where_rule`, `value`
 /// keeps its WHERE rule. A measure over INTEGER takes only a whole number
-/// (`IfcCountMeasure` in IFC4X3, `IfcPositiveInteger`).
+/// (`IfcPositiveInteger`, `IfcInteger`).
 pub(crate) fn check_real_measure(family: Option<SchemaFamily>, measure: &str, value: f64, where_rule: bool) -> Result<MeasureNumber, String> {
     let (member, base) = value_leaf(family, measure)?;
     let number = match base {
@@ -217,8 +215,10 @@ fn is_absent(value: &Value) -> bool {
     value.is_null()
 }
 
-/// `declaredNominalValueType`, with the declared type read in `family`.
-fn declared_type(family: SchemaFamily, value: &Value, ty: u8, data_type: Option<&str>) -> Option<&'static str> {
+/// `declaredNominalValueType`. The declared type is read as the TypeScript
+/// twin reads it, an IFC4 `IfcValue` member with its IFC4 base whatever the
+/// file's schema, so regeneration stays byte-identical to it (#5941).
+fn declared_type(value: &Value, ty: u8, data_type: Option<&str>) -> Option<&'static str> {
     if is_absent(value) {
         return None;
     }
@@ -231,7 +231,7 @@ fn declared_type(family: SchemaFamily, value: &Value, ty: u8, data_type: Option<
     if let Some(named) = named {
         return value.is_string().then_some(named);
     }
-    let (member, ValueType::Leaf(base)) = value_member(family, data_type?.trim())? else { return None };
+    let (member, ValueType::Leaf(base)) = value_member(SchemaFamily::Ifc4, data_type?.trim())? else { return None };
     if !accepted_bases(ty)?.contains(&base) {
         return None;
     }
@@ -298,12 +298,12 @@ pub(crate) fn serialize_property_value(value: &Value, ty: u8) -> String {
     }
 }
 
-/// `serializeNominalValue`, with types read in `family`.
-pub(crate) fn serialize_nominal_value(family: SchemaFamily, value: &Value, ty: u8, data_type: Option<&str>) -> String {
-    match declared_type(family, value, ty, data_type) {
+/// `serializeNominalValue`.
+pub(crate) fn serialize_nominal_value(value: &Value, ty: u8, data_type: Option<&str>) -> String {
+    match declared_type(value, ty, data_type) {
         // `fits_base` has gated the value, so the marker is writable; the `$`
         // (the whole NominalValue omitted) is the legal fallback if it is not.
-        Some(declared) => super::values::typed_marker(family, declared, value).unwrap_or_else(|_| "$".to_string()),
+        Some(declared) => super::values::typed_marker(declared, value).unwrap_or_else(|_| "$".to_string()),
         None => serialize_property_value(value, ty),
     }
 }

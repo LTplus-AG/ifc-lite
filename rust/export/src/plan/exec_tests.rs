@@ -813,19 +813,30 @@ fn deleting_an_assembly_does_not_flag_parts_that_are_still_contained() {
     assert!(report.findings.iter().any(|f| f.express_id == Some(10) && f.message.contains("spatial")), "{:?}", report.findings);
 }
 
-/// A spatial zone is not part of the spatial structure, so deleting a zone
-/// that aggregates another zone does not report the child zone as left
-/// outside the spatial tree. (#8142)
+/// Only a place in the spatial tree (the project or a spatial structure
+/// element) leaves its children outside the tree when it is deleted: a
+/// zone's aggregated or contained children are not reported, a building's
+/// storey is. (#8142)
 #[test]
-fn deleting_a_zone_does_not_flag_its_child_zone() {
+fn only_a_deleted_place_in_the_spatial_tree_reports_its_children() {
     use super::test_fixtures::storey_with_typed_wall;
-    let extra = "#90=IFCSPATIALZONE('0000000000000000000090',$,'Outer',$,$,$,$,$,.NOTDEFINED.);\n\
-        #92=IFCSPATIALZONE('0000000000000000000092',$,'Inner',$,$,$,$,$,.NOTDEFINED.);\n\
-        #91=IFCRELAGGREGATES('0000000000000000000091',$,$,$,#90,(#92));\n";
-    let content = String::from_utf8(storey_with_typed_wall("IFC4")).unwrap().replacen("ENDSEC;\nEND-ISO", &format!("{extra}ENDSEC;\nEND-ISO"), 1);
-    let plan = ExportPlan { dispositions: vec![(ObjectRef::Id(90), Disposition::Delete)], context: PlanContext::default() };
-    let report = execute(content.as_bytes(), &plan, &mut Vec::new()).unwrap();
-    assert!(!report.findings.iter().any(|f| f.express_id == Some(92)), "{:?}", report.findings);
+    for schema in ["IFC4", "IFC4X3"] {
+        let extra = "#90=IFCSPATIALZONE('0000000000000000000090',$,'Outer',$,$,$,$,$,.NOTDEFINED.);\n\
+            #92=IFCSPATIALZONE('0000000000000000000092',$,'Inner',$,$,$,$,$,.NOTDEFINED.);\n\
+            #93=IFCWALL('0000000000000000000093',$,'Zoned',$,$,$,$,$,$);\n\
+            #91=IFCRELAGGREGATES('0000000000000000000091',$,$,$,#90,(#92));\n\
+            #94=IFCRELCONTAINEDINSPATIALSTRUCTURE('0000000000000000000094',$,$,$,(#93),#90);\n";
+        let content = String::from_utf8(storey_with_typed_wall(schema)).unwrap().replacen("ENDSEC;\nEND-ISO", &format!("{extra}ENDSEC;\nEND-ISO"), 1);
+        let delete = |id| {
+            let plan = ExportPlan { dispositions: vec![(ObjectRef::Id(id), Disposition::Delete)], context: PlanContext::default() };
+            execute(content.as_bytes(), &plan, &mut Vec::new()).unwrap()
+        };
+        let report = delete(90);
+        assert!(!report.findings.iter().any(|f| matches!(f.express_id, Some(92 | 93))), "{schema}: {:?}", report.findings);
+        // The building #60 aggregates the storey #70, which stays.
+        let report = delete(60);
+        assert!(report.findings.iter().any(|f| f.express_id == Some(70) && f.message.contains("spatial")), "{schema}: {:?}", report.findings);
+    }
 }
 
 /// Deleting a member of a shared relationship whose record cannot be edited

@@ -74,7 +74,7 @@ impl AddState<'_> {
     /// elements are spatial but not in it (they are related to the structure
     /// by space boundaries and zone assignment, not aggregation).
     fn in_structure(&self, class: &str) -> bool {
-        self.is_a(class, "IFCSPATIALSTRUCTUREELEMENT")
+        class != "IFCPROJECT" && crate::plan::attrs::in_structure(self.schema, class)
     }
 
     /// Whether a `parent` (UPPERCASE class) may aggregate a new structure

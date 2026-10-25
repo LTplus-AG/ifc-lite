@@ -115,6 +115,11 @@ Those indivisible calls are not preempted. Deadline expiry is `DEADLINE_EXCEEDED
 not a fabricated cancellation or numeric resource payload; existing original
 source/account/terminal stops keep precedence. The clock injection used by tests
 is restricted to the existing test-support build.
+A stored census diagnostic can expire while later products are inspected. Its
+controller column then becomes `delivery_refused` with the actual typed code;
+the original extractor row, inventories and counts remain in the serialized census.
+Expired bytes never become an inspected-success column.
+
 Performance, geometry equivalence and release qualification are separate gates.
 
 ## Overview

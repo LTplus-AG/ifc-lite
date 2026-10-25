@@ -2278,6 +2278,16 @@ jobs:
               cargo test --locked -p ifc-lite-geometry --lib program::inner::retained_program::tests::origins::completion::
             done
           fi
+          # #7955 Cut C: observe work, backing and deadline action independently.
+          # The initial invocation above already observes busy-code reporting.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/tests/retained_inspection_busy.rs | grep -Fxq 'rust/processing/tests/retained_inspection_busy.rs'; then
+            for mutation in work-action bytes-action deadline-action; do
+              node scripts/check-test-revert-oracle.mjs --base 0b353d3294d4f813b3d9f16574442ff7cc19da58 --ci --json \
+                --mutation "tests/evidence/retained-source-inspection-c/$mutation.oracle.patch" \
+                --test rust/processing/tests/retained_inspection_busy.rs
+              cargo test --locked -p ifc-lite-processing --features retained-runtime --test retained_inspection_busy
+            done
+          fi
           # #7955 B2a: action, occurrence reporting, direct-map reporting and
           # late-origin reporting must each fail independently. Historical
           # patches remain immutable; replacement hashes are in mutations.json.

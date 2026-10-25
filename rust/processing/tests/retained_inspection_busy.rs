@@ -35,3 +35,49 @@ fn issue_7955_busy_public_inspection_retries_only_after_lease_release() {
     assert_eq!(value["authority"], "diagnostic_only");
     assert!(decoder.try_execution_lease().is_ok());
 }
+
+// #7955 C2: each allowance acts under an inherited, otherwise generous account.
+#[test]
+fn issue_7955_public_inspection_local_caps_act_before_covered_growth() {
+    use ifc_lite_geometry::resource::{ExecutionAccount, ExecutionPolicy, ResourceLimits};
+    let baseline = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
+    let source = SourceBundle::new(SOURCE.as_bytes().to_vec());
+    let inspect = |options: &str| {
+        let mut decoder = source.decoder();
+        inspect_retained_source(source.clone(), 10, None, &mut decoder, options,
+            "0000000000000000000000000000000000000000")
+    };
+    let report = baseline.scope(|| inspect(OPTIONS)).unwrap();
+    let value: serde_json::Value = serde_json::from_slice(report.bytes().unwrap()).unwrap();
+    let ordinal = value["outcome"]["requestOrdinal"].as_str().unwrap().parse::<u64>().unwrap();
+    assert!(ordinal < 64 && baseline.usage().work > 64);
+    drop(report);
+    for (options, byte_limit) in [
+        (OPTIONS.replace("\"maxWork\":\"10000\"", "\"maxWork\":\"64\""), None),
+        (OPTIONS.replace("16777216", "300000"), Some(300000)),
+    ] {
+        let original = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
+        let Err(error) = original.scope(|| inspect(&options)) else { panic!("local cap must refuse"); };
+        assert_eq!(error.diagnostic_code_json(), "\"RESOURCE_EXHAUSTED\"");
+        assert_eq!(error.original_stop(), original.check().err());
+        if let Some(limit) = byte_limit { assert!(original.usage().peak_live_bytes <= limit); }
+    }
+}
+
+// #7955 C3: the real serializer crosses the original deadline before delivery.
+#[test]
+fn issue_7955_public_inspection_serialization_respects_captured_deadline() {
+    use ifc_lite_geometry::resource::inspection_test_clock;
+    inspection_test_clock::scope(|clock| {
+        clock.expire_at("report_write", 1, 10000);
+        let source = SourceBundle::new(SOURCE.as_bytes().to_vec());
+        let mut decoder = source.decoder();
+        let Err(error) = inspect_retained_source(source.clone(), 10, None, &mut decoder,
+            OPTIONS, "0000000000000000000000000000000000000000") else {
+            panic!("expired original deadline must refuse diagnostic delivery");
+        };
+        assert_eq!(error.diagnostic_code_json(), "\"DEADLINE_EXCEEDED\"");
+        assert_eq!(error.original_stop(), None);
+        assert!(decoder.try_execution_lease().is_ok());
+    });
+}

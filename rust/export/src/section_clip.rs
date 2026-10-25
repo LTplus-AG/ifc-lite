@@ -119,6 +119,12 @@ pub fn plan_section_export(
             return Err(format!("section export cannot trim textured product #{id}: texture/UV preservation is unsupported"));
         }
         let product = decoder.decode_by_id(id).map_err(|error| error.to_string())?;
+        // A new Body would not replace the authored Axis used on reopen.
+        // Refuse before emitting an unwritable or uncropped replacement plan.
+        if product.ifc_type == IfcType::IfcAlignment
+            && ifc_lite_geometry::locate_axis_curve(&product, &mut decoder).is_some() {
+            return Err(format!("section export cannot trim axis-based alignment #{id}: preserving clipped Axis geometry is unsupported; use whole-element mode"));
+        }
         let placement = router.resolve_scaled_placement_strict(&product, &mut decoder)
             .map_err(|error| format!("section export cannot resolve placement #{id}: {error}"))?;
         let inverse = nalgebra::Matrix4::from_column_slice(&placement).try_inverse()

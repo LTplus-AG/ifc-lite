@@ -1,0 +1,168 @@
+{
+  "base": "60a505e914",
+  "constraint": "Preserve supported capabilities and regression detection; no checks moved off their current event lanes.",
+  "tasks": [
+    {
+      "id": "ci-deduplication",
+      "status": "completed",
+      "removed_duplicate_named_steps": 51,
+      "coverage_owner": "existing scripts catch-all; wiring gate retained",
+      "proof": "100/100 path/wiring regression tests; identical test inventory, once-only execution; all guards pass"
+    },
+    {
+      "id": "wasm-consolidation",
+      "status": "completed",
+      "delegate": "test-opt-wasm-consolidation-v1",
+      "proof": "validation.json: actual runtime, input invalidation, mutation and restoration evidence"
+    },
+    {
+      "id": "viewer-startup",
+      "status": "completed",
+      "delegate": "test-opt-viewer-startup-v1",
+      "proof": "validation.json: actual runtime, input invalidation, mutation and restoration evidence"
+    },
+    {
+      "id": "controlled-timing",
+      "status": "completed",
+      "delegate": "test-opt-controlled-timers-v1",
+      "proof": "validation.json: actual runtime, input invalidation, mutation and restoration evidence"
+    },
+    {
+      "id": "rust-compilation",
+      "status": "completed",
+      "evidence": "rust-cache.json",
+      "proof": "rust-routing.json; same feature commands/fixtures retained in required job"
+    },
+    {
+      "id": "selective-caching",
+      "status": "completed",
+      "delegate": "test-opt-selective-cache-v1",
+      "proof": "validation.json: actual runtime, input invalidation, mutation and restoration evidence"
+    },
+    {
+      "id": "assertion-consolidation",
+      "status": "completed",
+      "scope": "Only the byte-identical WASM suites; broader deletion requires defect-detection proof.",
+      "proof": "Canonical suites unchanged; 10 independent mutations observed; restored controls green; validation.json"
+    }
+  ],
+  "validation_jobs": [
+    {
+      "id": "db4908a4-c9ca-48f7-901e-5058b351c379",
+      "storage_task": "test-opt-20261025-packages",
+      "scope": "canonical and forwarding retry/panic suites",
+      "source_commit": "6e8c4eea4f0157cc37105ea032ff11b682356e44",
+      "source_clean": false,
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/db4908a4-c9ca-48f7-901e-5058b351c379/receipt.json"
+    },
+    {
+      "id": "auto-68ff33fdc28a4b16ae51d964397e3664",
+      "execution_id": "d84ddcf1-223c-462c-9e34-28fe38124df1",
+      "host": "pc-wsl",
+      "storage_task": "test-opt-20261025-viewer",
+      "status": "failed",
+      "reason": "new late-publication test did not seed its pending report; corrected and rerun"
+    },
+    {
+      "id": "49dca4df-4cef-4d8e-a247-5605bfa6b553",
+      "host": "pc-wsl",
+      "storage_task": "test-opt-20261025-local",
+      "status": "passed",
+      "coverage": "49 viewer tests passed;1 unchanged opt-in integration skipped"
+    }
+  ],
+  "validationSummary": "All required scoped checks passed; see validation.json. Full code validation source da1389f888; later evidence-only commit does not alter tested code.",
+  "delegatedTasks": [
+    {
+      "key": "wasmTask",
+      "taskId": "node:delegated-task:command%3Amcp%3A19d0cab2-4c65-440a-aabc-1b8712917bb5%3Adelegate-task%3Atest-opt-wasm-consolidation-v1",
+      "status": "completed",
+      "workState": "result_available",
+      "hasPendingChildRuns": false
+    },
+    {
+      "key": "startupTask",
+      "taskId": "node:delegated-task:command%3Amcp%3A19d0cab2-4c65-440a-aabc-1b8712917bb5%3Adelegate-task%3Atest-opt-viewer-startup-v1",
+      "status": "completed",
+      "workState": "result_available",
+      "hasPendingChildRuns": false
+    },
+    {
+      "key": "timerTask",
+      "taskId": "node:delegated-task:command%3Amcp%3A19d0cab2-4c65-440a-aabc-1b8712917bb5%3Adelegate-task%3Atest-opt-controlled-timers-v1",
+      "status": "completed",
+      "workState": "result_available",
+      "hasPendingChildRuns": false
+    },
+    {
+      "key": "cacheTask",
+      "taskId": "node:delegated-task:command%3Amcp%3A19d0cab2-4c65-440a-aabc-1b8712917bb5%3Adelegate-task%3Atest-opt-selective-cache-v1",
+      "status": "completed",
+      "workState": "result_available",
+      "hasPendingChildRuns": false
+    },
+    {
+      "key": "rustTask",
+      "taskId": "node:delegated-task:command%3Amcp%3A19d0cab2-4c65-440a-aabc-1b8712917bb5%3Adelegate-task%3Atest-opt-rust-cache-v1",
+      "status": "completed",
+      "workState": "result_available",
+      "hasPendingChildRuns": false
+    },
+    {
+      "key": "reviewTask",
+      "taskId": "node:delegated-task:command%3Amcp%3A19d0cab2-4c65-440a-aabc-1b8712917bb5%3Adelegate-task%3Atest-opt-review-round1",
+      "status": "completed",
+      "workState": "result_available",
+      "hasPendingChildRuns": false
+    },
+    {
+      "key": "globTask",
+      "taskId": "node:delegated-task:command%3Amcp%3A19d0cab2-4c65-440a-aabc-1b8712917bb5%3Adelegate-task%3Atest-opt-ci-glob-reachability-v1",
+      "status": "completed",
+      "workState": "result_available",
+      "hasPendingChildRuns": false
+    },
+    {
+      "key": "globTask2",
+      "taskId": "node:delegated-task:command%3Amcp%3A19d0cab2-4c65-440a-aabc-1b8712917bb5%3Athread-send%3Atest-opt-ci-unique-invocation-v2",
+      "status": "completed",
+      "workState": "result_available",
+      "hasPendingChildRuns": false
+    },
+    {
+      "key": "reviewTask2",
+      "taskId": "node:delegated-task:command%3Amcp%3A19d0cab2-4c65-440a-aabc-1b8712917bb5%3Adelegate-task%3Atest-opt-review-round2",
+      "status": "completed",
+      "workState": "result_available",
+      "hasPendingChildRuns": false
+    }
+  ],
+  "storage": [
+    {
+      "task": "test-opt-20261025-packages",
+      "host": "pc-wsl",
+      "state": "released"
+    },
+    {
+      "task": "test-opt-20261025-local",
+      "host": "pc-wsl",
+      "state": "released"
+    },
+    {
+      "task": "test-opt-20261025-viewer",
+      "host": "pc-wsl",
+      "state": "close-requested; guard waits for active T3 path references to end"
+    },
+    {
+      "task": "test-opt-20261025-typecheck",
+      "host": "pop-os",
+      "state": "close-requested; guard waits for active T3 path references to end"
+    },
+    {
+      "task": "test-opt-20261025-final",
+      "host": "pop-os",
+      "state": "published; close requested; normal controller retries after active T3 path references end"
+    }
+  ],
+  "remainingManualWork": []
+}

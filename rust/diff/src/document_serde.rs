@@ -119,8 +119,11 @@ impl<'de> Deserializer<'de> for DocumentValue {
     fn deserialize_newtype_struct<V: Visitor<'de>>(self, name: &'static str, visitor: V) -> Result<V::Value, Error> {
         if name == STRING {
             match self {
-                Self::String(s) => visitor.visit_newtype_struct(serde::de::value::SeqDeserializer::<_, Error>::new(
-                    s.units().iter().copied().map(IntoDeserializer::into_deserializer))),
+                Self::String(s) => match s.as_str() {
+                    Some(scalar) => visitor.visit_newtype_struct(serde::de::value::StrDeserializer::<Error>::new(scalar)),
+                    None => visitor.visit_newtype_struct(serde::de::value::SeqDeserializer::<_, Error>::new(
+                        s.units().iter().copied().map(IntoDeserializer::into_deserializer))),
+                },
                 _ => Err(error("expected JavaScript string")),
             }
         } else { visitor.visit_newtype_struct(self) }

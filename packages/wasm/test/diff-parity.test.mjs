@@ -372,11 +372,27 @@ async function comparisonOracle(context) {
 }
 // #8042/#8106: option strings must change live matching, independently of model
 // strings. Keep both revisions fixed while replacing only one option endpoint.
+function rawFingerprintModel(wasm, rows) {
+  // Keep the staged TS adapter's UTF-16 guard. JSON string tokens give it a
+  // well-formed, injective dictionary; restore originals only at the raw boundary.
+  const encode = value => JSON.stringify(String(value));
+  const encodedRows = rows.map(row => ({
+    ...row,
+    key: encode(row.key), ifcType: encode(row.ifcType), dataHash: encode(row.dataHash),
+    ...(row.geometryHash === undefined ? {} : { geometryHash: encode(row.geometryHash) }),
+    ...(row.container === undefined ? {} : { container: encode(row.container) }),
+    ...(row.components === undefined ? {} : { components: Object.fromEntries(
+      Object.entries(row.components).map(([key, hash]) => [encode(key), encode(hash)]),
+    ) }),
+  }));
+  const columns = fingerprintColumns(encodedRows);
+  return rawColumnsModel(wasm, { ...columns, strings: columns.strings.map(value => JSON.parse(value)) });
+}
 function compareLiveOptions(wasm, oracle, baseRows, headRows, options) {
   const expected = oracle.diffModels(baseRows, headRows, options);
-  const base = model(wasm, baseRows);
+  const base = rawFingerprintModel(wasm, baseRows);
   try {
-    const head = model(wasm, headRows);
+    const head = rawFingerprintModel(wasm, headRows);
     try {
       const actual = restoreDiffReferences(base.compare(head, losslessInput(options)), baseRows, headRows);
       assert.deepEqual(actual, expected);

@@ -492,3 +492,22 @@ fn a_copied_value_inherits_only_a_matching_unit() {
         other => panic!("expected a copy-on-write, got {other:?}"),
     }
 }
+
+/// "No unit" on an occurrence override of a type-owned value means the unit
+/// the effective (type's) value has.
+#[test]
+fn an_override_of_a_type_owned_value_keeps_the_types_unit() {
+    let schema = "IFC4";
+    let content = String::from_utf8(wall_with_type_owned_pset(schema)).unwrap().replace("IFCLABEL('2HR'),$);", "IFCLABEL('2HR'),#51);");
+    assert!(content.contains(",#51);"));
+    let index = FileIndex::complete(content.as_bytes());
+    let mut ids = IdAllocator::after(index.max_id);
+    let w = write("Pset_WallCommon", "FireRating", "IFCLABEL", "'3HR'", PropScope::Occurrence, PsetKind::Property);
+    match resolve_prop_write(&index, schema, 10, &w, &mut ids, None).unwrap() {
+        PropOutcome::Append { new_records } => {
+            let value = new_records.iter().find(|(_, r)| r.contains("IFCPROPERTYSINGLEVALUE")).expect("a new value");
+            assert!(value.1.ends_with(",#51);"), "{}", value.1);
+        }
+        other => panic!("expected an append, got {other:?}"),
+    }
+}

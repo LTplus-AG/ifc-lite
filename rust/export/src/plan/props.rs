@@ -140,6 +140,16 @@ fn keeping_old_unit(index: &FileIndex, schema: &str, write: &PropWrite, old: Opt
     write
 }
 
+/// The value record of `write`'s property in the set of that name on the
+/// object's related type: what an occurrence override with no value of its
+/// own overrides, so the effective value whose unit "none" keeps.
+fn type_owned_member(index: &FileIndex, schema: &str, object_id: u32, write: &PropWrite) -> Option<u32> {
+    let (_, type_id) = type_rel(index, schema, object_id)?;
+    let type_psets = list_attr(index, schema, type_id, &index.type_of(type_id)?, "HasPropertySets")?;
+    let (_, _, members) = find_set(index, schema, type_psets.iter(), write.kind, &write.pset)?;
+    find_member(index, schema, &members, &write.prop)
+}
+
 /// The slot edits that overwrite an existing, unshared value record: its
 /// value, and its unit when the caller named one.
 /// Refused when the record has no such value slot (an enumerated, list or
@@ -250,7 +260,7 @@ pub(crate) fn resolve_set_writes<'w>(
             // editing it in place would change every occurrence of the type.
             let shared = rel_fanout > 1 || pset_owners(index, schema, pset_id).len() > 1;
             if !shared {
-                write_unshared_set(index, schema, &group, (pset_id, member_idx, &members), ids, &mut result);
+                write_unshared_set(index, schema, object_id, &group, (pset_id, member_idx, &members), ids, &mut result);
                 return result;
             }
 
@@ -276,7 +286,7 @@ pub(crate) fn resolve_set_writes<'w>(
                 refuse_all(&mut result, &reason);
                 return result;
             }
-            let writes: Vec<PropWrite> = group.iter().zip(&replaced).map(|(w, old)| keeping_old_unit(index, schema, w, *old)).collect();
+            let writes: Vec<PropWrite> = group.iter().zip(&replaced).map(|(w, old)| keeping_old_unit(index, schema, w, old.or_else(|| type_owned_member(index, schema, object_id, w)))).collect();
             let writes: Vec<&PropWrite> = writes.iter().collect();
             match props_synth::copy_on_write_occurrence_set(
                 schema,
@@ -311,7 +321,7 @@ pub(crate) fn resolve_set_writes<'w>(
             // anything but this type, is not the type's alone: editing it
             // would reach those objects too.
             Some((pset_id, member_idx, members)) if pset_reaches_only(index, schema, pset_id, type_id) => {
-                write_unshared_set(index, schema, &group, (pset_id, member_idx, &members), ids, &mut result);
+                write_unshared_set(index, schema, object_id, &group, (pset_id, member_idx, &members), ids, &mut result);
             }
             Some(_) => refuse_all(&mut result, "type-scoped property write would need to touch a set shared with another type or object; refusing"),
             None => refuse_all(&mut result, "the related type has no set of this name; a type-scoped write never creates one"),
@@ -323,7 +333,9 @@ pub(crate) fn resolve_set_writes<'w>(
     // carrying these values, with its own IfcRelDefinesByProperties naming
     // only this object. Also the landing spot for a value the related TYPE
     // owns (never edited directly).
-    match props_synth::append_new_occurrence_set(schema, container_type, member_attr, object_id, &group, ids, owner_history) {
+    let inherited: Vec<PropWrite> = group.iter().map(|w| keeping_old_unit(index, schema, w, type_owned_member(index, schema, object_id, w))).collect();
+    let inherited: Vec<&PropWrite> = inherited.iter().collect();
+    match props_synth::append_new_occurrence_set(schema, container_type, member_attr, object_id, &inherited, ids, owner_history) {
         Ok(outcome) => result.outcomes.push(outcome),
         Err(reason) => refuse_all(&mut result, &reason),
     }
@@ -336,6 +348,7 @@ pub(crate) fn resolve_set_writes<'w>(
 fn write_unshared_set<'w>(
     index: &FileIndex,
     schema: &str,
+    object_id: u32,
     group: &[&'w PropWrite],
     (pset_id, member_idx, members): (u32, usize, &[Option<u32>]),
     ids: &mut IdAllocator,
@@ -349,7 +362,13 @@ fn write_unshared_set<'w>(
                 other_kind(index, &write, member_id).and_then(|()| props_synth::leaf_copy_on_write(schema, &write, ids, pset_id, member_idx, member_id))
             }
             Some(member_id) => in_place_edits(index, schema, member_id, write).map(PropOutcome::InPlace),
-            None => props_synth::fold_new_value(schema, write, ids, pset_id, member_idx),
+            None => {
+                let inherited = match write.scope {
+                    PropScope::Occurrence => keeping_old_unit(index, schema, write, type_owned_member(index, schema, object_id, write)),
+                    PropScope::Type => write.clone(),
+                };
+                props_synth::fold_new_value(schema, &inherited, ids, pset_id, member_idx)
+            }
         };
         match outcome {
             Ok(outcome) => result.outcomes.push(outcome),

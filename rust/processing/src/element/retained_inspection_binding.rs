@@ -2,10 +2,11 @@
 //! Identities derive from immutable source and options, never product metadata.
 use super::*;
 use sha2::{Digest, Sha256};
+use ifc_lite_core::slot;
 
 pub(super) fn from_source(source: &SourceBundle, root: &DecodedEntity, options: &wire::Options, revision: u64)
     -> Result<wire::Binding, RetainedInspectionError> {
-    let global_id = match root.attr(0) {
+    let global_id = match root.attr(slot::IfcRoot::GLOBAL_ID) {
         None | Some(ifc_lite_core::AttributeValue::Null) => wire::GlobalIdentity::Absent(Box::new(wire::AbsentGlobalId {})),
         Some(value) => {
             let value = value.as_string().ok_or_else(RetainedInspectionError::invalid_source)?;

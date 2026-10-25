@@ -307,9 +307,10 @@ pub(super) fn rotate_mesh_from_frame(mesh: &Mesh, r: &Matrix3<f64>, center: &Poi
     instance_meta: None, local_bounds: None, local_to_world: None, welded_in_object_frame: false, plane_tags: None }
 }
 
-/// Closed-2-manifold self-check (0.1 mm weld): every undirected edge shared by exactly
-/// two non-degenerate triangles. The parametric path refuses to emit a cut that fails
-/// this, deferring to the exact kernel instead.
+/// Closure self-check on the exact f32 vertices (`strict_closed_mesh`, the check
+/// hygiene and consolidation use). The parametric path refuses to emit a cut that
+/// fails this, deferring to the next path. A 0.1 mm weld cannot see a tear in a
+/// sub-0.1 mm web (#7942).
 /// NOT a closure test, despite the name reading like one. It pairs DIRECTED
 /// edges, so a genuinely closed solid whose faces carry T-junctions reads as
 /// open: an annulus face around a hole produces exactly that, which is how IFC
@@ -321,7 +322,7 @@ pub(super) fn rotate_mesh_from_frame(mesh: &Mesh, r: &Matrix3<f64>, center: &Poi
 /// here", ask [`point_inside_mesh_agreed`], which asks about the point rather
 /// than the topology and is tolerant of T-junctions.
 pub(super) fn param_cut_watertight(mesh: &Mesh) -> bool {
-    topology_defect_count(mesh) == 0
+    crate::exact_topology::strict_closed_mesh(mesh)
 }
 
 #[inline]

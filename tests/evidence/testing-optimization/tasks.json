@@ -1,0 +1,40 @@
+{
+  "base": "60a505e914",
+  "constraint": "Preserve supported capabilities and regression detection; no checks moved off their current event lanes.",
+  "tasks": [
+    {
+      "id": "ci-deduplication",
+      "status": "implemented-awaiting-validation",
+      "removed_duplicate_named_steps": 51,
+      "coverage_owner": "existing scripts catch-all; wiring gate retained"
+    },
+    {
+      "id": "wasm-consolidation",
+      "status": "implemented-awaiting-validation",
+      "delegate": "test-opt-wasm-consolidation-v1"
+    },
+    {
+      "id": "viewer-startup",
+      "status": "delegated",
+      "delegate": "test-opt-viewer-startup-v1"
+    },
+    {
+      "id": "controlled-timing",
+      "status": "delegated",
+      "delegate": "test-opt-controlled-timers-v1"
+    },
+    {
+      "id": "rust-compilation",
+      "status": "investigating"
+    },
+    {
+      "id": "selective-caching",
+      "status": "investigating"
+    },
+    {
+      "id": "assertion-consolidation",
+      "status": "qualification-required",
+      "scope": "Only the byte-identical WASM suites; broader deletion requires defect-detection proof."
+    }
+  ]
+}

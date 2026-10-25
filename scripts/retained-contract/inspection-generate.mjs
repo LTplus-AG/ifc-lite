@@ -16,7 +16,7 @@ export function inspectionProjection(schema, header, definition, check, semantic
   const entries = Object.entries(schema.types).filter(([name]) => names.has(name));
   const types = entries.map(([name, node]) => definition(name, node)
     .replace(/^(struct|enum|type) /gmu, 'pub(crate) $1 ')
-    .replace(/\] ([a-z_]+):/gu, '] pub(crate) $1:')).join('');
+    .replace(/\] ([a-z_][a-z_0-9]*):/gu, '] pub(crate) $1:')).join('');
   const checks = entries.map(([name, node]) => check(name, node)).join('');
   // These are generated from the same authoritative cause rules, not copied taxonomy.
   const rules = full.slice(full.indexOf('fn cause_family('), full.indexOf('\n' + semantics));

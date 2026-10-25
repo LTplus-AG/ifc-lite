@@ -18,7 +18,7 @@ pub(crate) type PositiveLimit = String;
 pub(crate) struct Source {
     #[serde(rename = "namespace")] pub(crate) namespace: Hash,
     #[serde(rename = "revision")] pub(crate) revision: U64,
-    #[serde(rename = "sha256")] sha256: Hash,
+    #[serde(rename = "sha256")] pub(crate) sha256: Hash,
 }
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]

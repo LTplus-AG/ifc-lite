@@ -356,12 +356,10 @@ fn a_spatial_zone_is_not_a_container() {
 /// wants the Type classes. IFC2X3 has only the styles.
 #[test]
 fn a_door_or_window_typed_by_a_style_is_refused_in_ifc4() {
-    for schema in ["IFC4"] {
-        for (class, style, wanted) in [(IfcClass::Door, "IfcDoorStyle", "IFCDOORTYPE"), (IfcClass::Window, "IfcWindowStyle", "IFCWINDOWTYPE")] {
-            let mut obj = object(class, gid(35), storey(), Representation::None);
-            obj.type_link = Some(new_type(style, None));
-            refused(&storey_with_typed_wall(schema), obj, &format!("typed by an {wanted}"));
-        }
+    for (class, style, wanted) in [(IfcClass::Door, "IfcDoorStyle", "IFCDOORTYPE"), (IfcClass::Window, "IfcWindowStyle", "IFCWINDOWTYPE")] {
+        let mut obj = object(class, gid(35), storey(), Representation::None);
+        obj.type_link = Some(new_type(style, None));
+        refused(&storey_with_typed_wall("IFC4"), obj, &format!("typed by an {wanted}"));
     }
 }
 

@@ -19,61 +19,35 @@ fn escaped(c: char) -> Option<u8> {
     (BASE + 0x80..=BASE + 0xFF).contains(&c).then(|| (c - BASE) as u8)
 }
 
+/// Whether `text` holds a character [`encode`] would turn into a byte.
+pub(crate) fn holds_escape(text: &str) -> bool {
+    text.chars().any(|c| escaped(c).is_some())
+}
+
 /// `bytes` as text, borrowed when they are valid UTF-8.
 pub(crate) fn decode(bytes: &[u8]) -> Cow<'_, str> {
-    let mut rest = bytes;
-    let mut out = match std::str::from_utf8(rest) {
-        Ok(text) => return Cow::Borrowed(text),
-        Err(_) => String::with_capacity(bytes.len() + 8),
-    };
-    loop {
-        match std::str::from_utf8(rest) {
-            Ok(text) => {
-                out.push_str(text);
-                return Cow::Owned(out);
-            }
-            Err(e) => {
-                let (valid, after) = rest.split_at(e.valid_up_to());
-                out.push_str(std::str::from_utf8(valid).unwrap_or_default());
-                let bad = e.error_len().unwrap_or(after.len());
-                out.extend(after[..bad].iter().map(|&b| char::from_u32(BASE + u32::from(b)).unwrap_or('\u{FFFD}')));
-                rest = &after[bad..];
-            }
-        }
+    if let Ok(text) = std::str::from_utf8(bytes) {
+        return Cow::Borrowed(text);
     }
+    let mut out = String::with_capacity(bytes.len() + 8);
+    for chunk in bytes.utf8_chunks() {
+        out.push_str(chunk.valid());
+        out.extend(chunk.invalid().iter().map(|&b| char::from_u32(BASE + u32::from(b)).unwrap_or('\u{FFFD}')));
+    }
+    Cow::Owned(out)
 }
 
 /// [`decode`], or `None` when the record already holds a character
 /// [`encode`] would turn into a byte, so editing it could not be undone
 /// exactly. Only an edited record is read this way.
 pub(crate) fn decode_exact(bytes: &[u8]) -> Option<Cow<'_, str>> {
-    let text = decode(bytes);
-    match std::str::from_utf8(bytes) {
-        Ok(valid) => (!valid.chars().any(|c| escaped(c).is_some())).then_some(text),
-        Err(_) => Some(text).filter(|_| !bytes_hold_escape(bytes)),
-    }
-}
-
-/// Whether the valid UTF-8 stretches of `bytes` hold an escape character.
-fn bytes_hold_escape(bytes: &[u8]) -> bool {
-    let mut rest = bytes;
-    loop {
-        match std::str::from_utf8(rest) {
-            Ok(t) => return t.chars().any(|c| escaped(c).is_some()),
-            Err(e) => {
-                let (valid, after) = rest.split_at(e.valid_up_to());
-                if std::str::from_utf8(valid).is_ok_and(|t| t.chars().any(|c| escaped(c).is_some())) {
-                    return true;
-                }
-                rest = &after[e.error_len().unwrap_or(after.len())..];
-            }
-        }
-    }
+    let holds_escape = bytes.utf8_chunks().any(|c| holds_escape(c.valid()));
+    (!holds_escape).then(|| decode(bytes))
 }
 
 /// The bytes of text produced by [`decode`] and edited since.
 pub(crate) fn encode(text: &str) -> Cow<'_, [u8]> {
-    if !text.chars().any(|c| escaped(c).is_some()) {
+    if !holds_escape(text) {
         return Cow::Borrowed(text.as_bytes());
     }
     let mut out = Vec::with_capacity(text.len());

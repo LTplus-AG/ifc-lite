@@ -107,6 +107,9 @@ fn check_caller_text(write: &PropWrite) -> Result<(), String> {
     if !is_step_value(&write.literal) {
         return Err(format!("value {:?} is not one STEP value", write.literal));
     }
+    if super::source_text::holds_escape(&write.literal) || write.unit.as_deref().is_some_and(super::source_text::holds_escape) {
+        return Err("value or unit holds a character reserved for non-UTF-8 source bytes".to_string());
+    }
     if let Some(unit) = write.unit.as_deref().filter(|u| !is_step_value(u)) {
         return Err(format!("unit {unit:?} is not one STEP value"));
     }

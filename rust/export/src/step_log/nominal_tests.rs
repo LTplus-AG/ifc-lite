@@ -34,3 +34,10 @@ fn shape_fallbacks_match_serialize_property_value() {
     // A vendor token is not an IfcValue member: the shape decides.
     assert_eq!(serialize_nominal_value(&json!("X"), pvt::STRING, Some("IFCACMEWIDGETCODE")), "IFCLABEL('X')");
 }
+
+#[test]
+fn a_real_exponent_needs_its_decimal_point() {
+    assert!(check_literal_measure("IFC4", "IfcLengthMeasure", "1.E5").is_ok());
+    assert!(check_literal_measure("IFC4", "IfcLengthMeasure", "1E5").is_err());
+    assert!(check_literal_measure("IFC5", "IfcLengthMeasure", "5.").is_ok());
+}

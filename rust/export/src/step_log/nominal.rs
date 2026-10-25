@@ -76,7 +76,8 @@ pub(crate) fn check_literal_measure(schema: &str, measure: &str, literal: &str) 
             && if integer_only {
                 rest.is_empty()
             } else {
-                let frac = rest.strip_prefix('.').unwrap_or(rest);
+                // STEP REAL needs the point before an exponent (`1.E5`, not `1E5`).
+                let frac = if rest.starts_with(['e', 'E']) { "!" } else { rest.strip_prefix('.').unwrap_or(rest) };
                 let frac = frac.trim_start_matches(|c: char| c.is_ascii_digit());
                 let exp = frac.strip_prefix(['e', 'E']).map(|e| e.strip_prefix(['+', '-']).unwrap_or(e));
                 frac.is_empty() || exp.is_some_and(|e| !e.is_empty() && e.bytes().all(|b| b.is_ascii_digit()))

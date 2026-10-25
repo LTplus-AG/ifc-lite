@@ -186,7 +186,7 @@ fn extend_list_text(current: &str, added: &[u32]) -> Option<String> {
         Vec::new()
     } else {
         let mut items = ifc_lite_core::StepListItems::of_list(current.as_bytes())?;
-        let entries = items.by_ref().map(|e| std::str::from_utf8(e).ok().map(str::to_owned)).collect::<Option<Vec<_>>>()?;
+        let entries = items.by_ref().map(|e| String::from_utf8_lossy(e).into_owned()).collect();
         items.closed().then_some(entries)?
     };
     entries.extend(added.iter().map(|id| format!("#{id}")));

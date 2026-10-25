@@ -547,7 +547,6 @@ fn a_copy_on_write_keeps_latin1_bytes_in_the_original_and_the_edited_relationshi
         content.splice(at..at + from.len(), to.iter().copied());
     };
     swap(&mut content, b"'2HR'", b"'2H\xF6'");
-    swap(&mut content, b"#44=IFCRELDEFINESBYPROPERTIES(", b"#44=IFCRELDEFINESBYPROPERTIES(");
     let start = content.windows(4).position(|w| w == b"#44=").unwrap();
     let comma = start + content[start..].windows(7).position(|w| w == b",$,$,$,").unwrap();
     content.splice(comma..comma + 7, b",$,'Gr\xF6sse',$,".iter().copied());

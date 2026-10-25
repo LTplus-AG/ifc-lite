@@ -76,7 +76,7 @@ impl AddState<'_> {
     /// space; a class this does not name is held only to being spatial.
     fn can_aggregate(&self, parent: &str, child: &str) -> bool {
         let parents: &[&str] = if self.is_a(child, "IFCBUILDINGSTOREY") {
-            &["IFCBUILDING", "IFCBUILDINGPART"]
+            &["IFCBUILDING"]
         } else if self.is_a(child, "IFCSPACE") {
             &["IFCBUILDINGSTOREY", "IFCBUILDING", "IFCSITE", "IFCSPACE", "IFCFACILITY", "IFCFACILITYPART"]
         } else if self.is_a(child, "IFCSITE") {

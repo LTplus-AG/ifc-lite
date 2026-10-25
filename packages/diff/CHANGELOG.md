@@ -1,5 +1,12 @@
 # @ifc-lite/diff
 
+## 0.10.2
+
+### Patch Changes
+
+- Updated dependencies [[`cf892ea`](https://github.com/LTplus-AG/ifc-lite/commit/cf892ea4cfefb06b6f864dbe2c72899da27b0553), [`60a505e`](https://github.com/LTplus-AG/ifc-lite/commit/60a505e9141f6f028ba47a65505275169fc84b5a), [`f5d871f`](https://github.com/LTplus-AG/ifc-lite/commit/f5d871ffc1a349e7d06e1102dbb42c6605c7ae58)]:
+  - @ifc-lite/wasm@10.6.1
+
 ## 0.10.1
 
 ### Patch Changes

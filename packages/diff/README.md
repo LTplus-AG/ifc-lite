@@ -163,7 +163,11 @@ files say, and applying either claim would pick an arbitrary winner. See the
 `lineageFromDiff` turns committed matches, split/merge claims and *accepted*
 successor claims into 1:k `{ base[], head[], relation, reason, shares? }`
 entries; `rekeyByLineage` answers "where does the row keyed on this old key
-go" under a `copy-to-all` / `largest-share` / `orphan-on-split` policy; the
+go" under a `copy-to-all` / `largest-share` / `orphan-on-split` policy.
+`largest-share` orphans a split when shares are missing, empty, do not match
+the head count, contain non-finite or negative values, or tie for the maximum.
+It does not throw for invalid share evidence. Zero is valid and shares need
+not sum to one. The
 `ifc-lite/lineage` sidecar pins both model digests like the identity map does.
 
 ### Building a data fingerprint

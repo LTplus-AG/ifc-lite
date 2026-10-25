@@ -92,7 +92,8 @@ export function createLineageSidecar(init: LineageSidecarInit): LineageSidecar {
   const seen = new Set<string>();
   const entries: LineageEntry[] = [];
   for (const entry of init.entries) {
-    const signature = `${entry.relation}\u0000${entry.base.join('\u0001')}\u0000${entry.head.join('\u0001')}`;
+    // Preserve both field and array boundaries for arbitrary key text (#8088).
+    const signature = JSON.stringify([entry.relation, entry.base, entry.head]);
     if (seen.has(signature)) continue;
     seen.add(signature);
     entries.push(normalizeEntry(entry));

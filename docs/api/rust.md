@@ -626,6 +626,52 @@ pub struct RepresentationWalk { pub select: Select, pub nested: NestedMaps }
 pub fn meshed_representations(element, representations) -> impl Iterator; // = Select::Meshed
 ```
 
+`NestedMaps::Expand { max_depth, max_levels }` has independent counters for
+mapped-level attempts and total `Items` members. `MAX_WALK_LEVELS` (65,536) is
+the proposed default for each; every DAG occurrence pays again. Full lists,
+including ignored non-reference members, are charged before member allocation
+or decoding. Product representations share counters; each walk starts fresh.
+Depth and path-cycle checks precede level admission and source resolution.
+
+A level resolves its source and mapped representation before `enter_map`, then
+reads/charges/decodes `Items` only on `Continue`. `SkipChildren` and `Stop`
+suppress child-list errors and charges. Every entered scope pairs with
+`leave_map` on normal stop/refusal. Malformed nested lists allow later siblings;
+`Budget { max_levels }` reports once and stops globally, unwinding all scopes.
+Root budget refusals identify the representation (`shape_rep` is set); nested
+refusals identify the mapped item, excluded from `ctx.path`. `product`/`map`
+still return `Ok(())` on refusal: **`WalkVisitor::refused` is required**, and a
+visitor must report truncation or explicitly abstain. `ShapeError` remains an
+error. `FirstChain`, `Refuse` and `Leaf` have no work meters.
+
+Direct root `Items` also consume the allowance: a legitimate list larger than
+65,536 can be refused before its first item, stopping later representations.
+Before production `Expand` adoption, C2-B3, C2-B4, C2-X1 and C4-8a must measure
+corpus per-product direct-plus-expanded maxima and record the cap margin (or
+review a revised charging policy), and prove refusal reaches diagnostics or an
+explicit abstention. No production `Expand` caller is introduced here. These
+meters bound actual expansion, not parsing, visitor work or cached logical
+occurrences; whole-product admission (#7887) remains separate.
+
+**C2-B1 coordinator ruling (2026-10-24, #7781/#8020).** This is a separate X
+policy reconciliation before C2-B2's R traversal consolidation (#8007).
+Current AGENTS bound-and-report rules require a work budget for accumulating
+DAG expansion; a public decoder-only walker cannot rely on a visitor cache.
+For this scope only, the ruling supersedes C2 note §1.1's no-budget assumption
+and D35's additive-only rule, permitting the bounded policy and typed explicit
+refusal contract. It authorizes no other API removal and waives no test,
+corpus, semver or performance gate. C2-B1 alone does not close #7781.
+
+The source breaks ride main's pending Rust break #13 (`rust-major-offset.json`),
+without an offset increment: `Expand` gains `max_levels`; `WalkRefusal` replaces
+`Dangling`/`Malformed` with `MissingSource`, `UnresolvedSource`,
+`MissingMappedRepresentation`, `UnresolvedMappedRepresentation`, `MissingItems`
+and `Decode(core::Error)`, reshapes `TooDeep { max_depth }`, adds `Budget`, and
+loses `Clone`/`Copy`/`PartialEq`/`Eq`; `refused` now requires `&DecodedEntity`
+and an explicit implementation. `into_error(entity_id)` is additive and uses
+entity-neutral budget wording. These breaks are recorded by API inspection;
+direct cargo-semver-checks 0.50.0 against the published **22.6.0** is pending.
+
 #### mesh_check (test-support)
 
 `ifc_lite_geometry::mesh_check` is the one home for closure, edge-pairing and

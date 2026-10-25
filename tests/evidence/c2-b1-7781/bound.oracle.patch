@@ -1,0 +1,20 @@
+--- a/rust/geometry/src/representation/walk.rs
++++ b/rust/geometry/src/representation/walk.rs
+@@ -220,7 +220,7 @@
+     /// member, including ignored non-reference slots and repeated DAG uses.
+     fn admit_items(&self, used: &mut u32, count: usize) -> Result<(), WalkRefusal> {
+         if let NestedMaps::Expand { max_levels, .. } = self.nested {
+-            if false && count > (max_levels - *used) as usize {
++            if count > (max_levels - *used) as usize {
+                 return Err(WalkRefusal::Budget { max_levels });
+             }
+             *used += count as u32;
+@@ -304,7 +304,7 @@
+             return refuse(run, WalkRefusal::Cyclic);
+         }
+         if let NestedMaps::Expand { max_levels, .. } = self.nested {
+-            if false && run.levels >= max_levels {
++            if run.levels >= max_levels {
+                 refuse(run, WalkRefusal::Budget { max_levels });
+                 return Flow::Stop;
+             }

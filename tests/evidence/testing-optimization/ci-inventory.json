@@ -1,0 +1,19 @@
+{
+  "base": "60a505e914",
+  "node_guard_files_before": 263,
+  "node_guard_files_after": 263,
+  "invocations_before": 321,
+  "invocations_after": 263,
+  "missing_files": [],
+  "new_files": [],
+  "remaining_duplicate_invocations": {},
+  "lint_changeset_bump_regression": "retained in scripts catch-all",
+  "final_script_files": 264,
+  "final_invocations_per_file": 1,
+  "deduplication": "printf expands original literal paths plus unchanged catch-all globs; sort -u before Node",
+  "preserved_literal_audit_paths": 59,
+  "new_test_files": [
+    "scripts/test-cache.test.mjs"
+  ],
+  "final_missing_script_files": []
+}

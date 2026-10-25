@@ -168,6 +168,7 @@ function pruneUnusedTypeMaps(
   // surviving original product representation still instantiates them.
   const roots = new Set<number>();
   const typeMaps: Array<{id:number; slot:number; maps:number[]}> = [];
+  const slotByType = new Map<string, number>();
   // @raw-entity-enumeration-ok retained original representations only; detached and tombstoned products are excluded below
   for (const [id, ref] of store.entityIndex.byId) {
     if (view.isDeleted(id)) continue;
@@ -175,7 +176,11 @@ function pruneUnusedTypeMaps(
       const representation = entity(id)?.attributes[6];
       if (typeof representation === 'number') roots.add(representation);
     }
-    const slot = getAttributeNamesForSchema(ref.type, store.schemaVersion).indexOf('RepresentationMaps');
+    let slot = slotByType.get(ref.type);
+    if (slot === undefined) {
+      slot = getAttributeNamesForSchema(ref.type, store.schemaVersion).indexOf('RepresentationMaps');
+      slotByType.set(ref.type, slot);
+    }
     if (slot >= 0) {
       const maps = entity(id)?.attributes[slot];
       if (Array.isArray(maps)) typeMaps.push({id,slot,maps:maps.filter((map): map is number => typeof map === 'number')});

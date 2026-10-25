@@ -2,7 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 //! Every string crossing uses UTF-16 code units, including object keys.
-use ifc_lite_diff::{DocumentValue as Value, JsString};
+use ifc_lite_diff::{DocumentValue as Value, JsString, document_serde};
+use serde::{Serialize, de::DeserializeOwned};
 use wasm_bindgen::{prelude::*, JsCast};
 
 pub(crate) fn string(value: &JsValue) -> Result<JsString, JsValue> {
@@ -24,6 +25,34 @@ pub(crate) fn host_string(value: &JsString) -> JsValue {
         result = result.concat(&js_sys::JsString::from_char_code(chunk));
     }
     result.into()
+}
+pub(crate) fn document(value: JsValue) -> Result<Value, JsValue> { read(value, 0) }
+fn read(value: JsValue, depth: usize) -> Result<Value, JsValue> {
+    if depth >= 128 { return Err(JsValue::from_str("transport nesting limit exceeded")); }
+    if value.is_null() || value.is_undefined() { return Ok(Value::Null); }
+    if let Some(b) = value.as_bool() { return Ok(Value::Bool(b)); }
+    if let Some(n) = value.as_f64() { return Ok(Value::Number(n)); }
+    if value.is_string() { return string(&value).map(Value::String); }
+    if js_sys::Array::is_array(&value) {
+        let array: js_sys::Array = value.unchecked_into();
+        return (0..array.length()).map(|i| read(array.get(i), depth + 1))
+            .collect::<Result<Vec<_>, _>>().map(Value::Array);
+    }
+    if value.is_object() {
+        let object: js_sys::Object = value.unchecked_into();
+        let mut entries = Vec::new();
+        for key in js_sys::Object::keys(&object).iter() {
+            entries.push((string(&key)?, read(js_sys::Reflect::get(&object, &key)?, depth + 1)?));
+        }
+        return Ok(Value::Object(entries));
+    }
+    Err(JsValue::from_str("unsupported transport value"))
+}
+pub(crate) fn from_value<T: DeserializeOwned>(value: JsValue) -> Result<T, JsValue> {
+    document_serde::from_document(document(value)?).map_err(|e| JsValue::from_str(&e.to_string()))
+}
+pub(crate) fn to_value(value: impl Serialize) -> Result<JsValue, JsValue> {
+    host_value(&document_serde::to_document(value).map_err(|e| JsValue::from_str(&e.to_string()))?)
 }
 pub(crate) fn host_value(value: &Value) -> Result<JsValue, JsValue> {
     Ok(match value {

@@ -1324,6 +1324,11 @@ shared geometry caches do not yet retain enough provenance to attribute every
 loss to every affected product. A partially meshed product is never treated as
 a complete body just because one of its items produced a mesh.
 
+Trimming axis-based `IfcAlignment` geometry is unsupported: writing a replacement
+Body cannot safely replace the authored Axis used by readers. A crossing Axis
+fails explicitly; use whole-element mode to retain it. Fully inside alignments
+remain unchanged and fully outside alignments can be excluded.
+
 Trimming textured products is currently unsupported. If a textured product
 needs replacement geometry, the operation reports an error and produces no
 download; it never substitutes plain colour or uncut geometry. Fully inside

@@ -17,7 +17,16 @@
     "scripts/typecheck-tests.mjs",
     "scripts/lib/is-main-entry.mjs",
     "scripts/*worker-urls.*",
-    "scripts/lib/shipped-target.*"
+    "scripts/lib/shipped-target.*",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+    "package.json",
+    ".npmrc",
+    "patches/**",
+    "tsconfig*.json",
+    ".env*",
+    "vite.config.*",
+    "vitest.config.*"
   ],
   "globalPassThroughEnv": [
     "NODE_OPTIONS",
@@ -94,7 +103,12 @@
     },
     "test": {
       "dependsOn": ["build"],
-      "cache": false
+      "cache": false,
+      "env": [
+        "TEST_PATTERN",
+        "TEST_SHARD",
+        "TEST_SHARDS"
+      ]
     },
     "lint": {
       "dependsOn": ["build"],

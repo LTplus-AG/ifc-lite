@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Ordered content tiers: geometry+data, geometry-only, then residue/position.
+use crate::JsString;
 use crate::content_helpers::*;
 use crate::content_types::*;
 use crate::geometry_compare::*;
@@ -28,7 +29,7 @@ pub fn apply_content_matching<'a, R>(mut core: KeyDiff<'a, R>, tolerances: Geome
             DiffState::Added => &mut heads, DiffState::Deleted => &mut bases, _ => continue,
         };
         let entity = fingerprint(entries, i);
-        bucket.push(format!("{}\0{}", entity.ifc_type, entity.data_hash), i);
+        bucket.push(JsString::concat(&[&entity.ifc_type, &entity.data_hash], "\0"), i);
     }
     let mut retired = vec![false; entries.len()];
     let mut matches = Vec::new();
@@ -56,7 +57,7 @@ pub fn apply_content_matching<'a, R>(mut core: KeyDiff<'a, R>, tolerances: Geome
             for i in live(group, &retired) {
                 let entity = fingerprint(entries, i);
                 let (Some(hash), Some(aabb)) = (&entity.geometry_hash, &entity.aabb) else { continue };
-                if usable_aabb(aabb) { geometry.push(format!("{}\0{}", entity.ifc_type, hash), i); }
+                if usable_aabb(aabb) { geometry.push(JsString::concat(&[&entity.ifc_type, hash], "\0"), i); }
             }
         }
         for (_, group) in geometry.groups {
@@ -114,7 +115,7 @@ pub fn apply_content_matching<'a, R>(mut core: KeyDiff<'a, R>, tolerances: Geome
         let base = live(&base, &retired);
         let head = live(&head, &retired);
         if base.is_empty() || head.is_empty() { continue; }
-        let mut group = make_match(entries, &base, &head, group_kind(base.len(), head.len()), ContentMatchTier::Unresolved, "", None);
+        let mut group = make_match(entries, &base, &head, group_kind(base.len(), head.len()), ContentMatchTier::Unresolved, &JsString::default(), None);
         group.geometry_hash = geometry_hash;
         matches.push(group);
     }

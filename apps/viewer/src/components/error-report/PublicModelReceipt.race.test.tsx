@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
+import { settleReportWork as settle } from '@/test/error-report-timing.js';
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, useState } from 'react';
@@ -19,7 +20,6 @@ afterEach(async () => {
     await act(async () => {
       for (const response of remaining) response.resolve(Response.json({ message: 'Test cleanup' }, { status: 503 }));
       await Promise.all(remaining.map(response => response.promise));
-      await new Promise(resolve => setTimeout(resolve, 10));
     });
   }
 });
@@ -41,7 +41,6 @@ function button(text: string) {
   const element = [...document.querySelectorAll('button')].find(node => node.textContent === text);
   if (!element) assert.fail(`button ${text}`); return element;
 }
-async function settle() { await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); }); }
 function mount(client: ReportClient) {
   let update!: (receipt: ReportReceipt) => void;
   const changes: ReportReceipt[] = [];

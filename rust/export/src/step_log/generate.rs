@@ -17,7 +17,8 @@ use crate::step_text::escape;
 use super::base::{qty, PSet, QSet};
 use super::collect::Collected;
 use super::cow::SourceMembers;
-use super::jsval::JsVal;
+use super::jsval::{to_step_real, JsVal};
+use super::nominal::MeasureNumber;
 use super::ledger::Kind;
 use super::nominal::serialize_nominal_value;
 use super::pass::Pass;
@@ -129,17 +130,29 @@ fn pset_lines(
 fn qset_lines(pass: &mut Pass<'_, '_>, host: u32, qsets: &[QSet]) -> Result<Vec<Line>, Unwritable> {
     let mut lines = Vec::new();
     let owner = pass.owner_history_token(host);
+    let family = super::values::step_log_family(pass.schema);
     for qset in qsets {
-        if qset.quantities.is_empty() {
-            continue;
-        }
         let mut refs = Vec::new();
         for q in &qset.quantities {
-            let id = pass.allocate()?;
             // The value of the quantity's measure, in the source schema's base
-            // (`IfcCountMeasure` is INTEGER in IFC4X3).
+            // (`IfcCountMeasure` is INTEGER in IFC4X3). A value that does not
+            // fit: an untouched source value is left a real, as it came; an
+            // edit is refused alone, with where it was. A non-finite value is
+            // refused by `to_step_real`, as every writer refuses it.
             let (entity, measure) = quantity_entity(q.ty);
-            let value = super::nominal::measure_number(super::values::step_log_family(pass.schema), measure, q.value)?;
+            let number = match super::nominal::measure_number(family, measure, q.value) {
+                Ok(number) => number,
+                Err(reason) if q.value.is_finite() && pass.overlay.edits_quantity(host, &qset.name, &q.name) => {
+                    pass.warnings.push(format!("#{host} {}.{}: {reason}; the edit is not written", qset.name, q.name));
+                    continue;
+                }
+                Err(_) => MeasureNumber::Real,
+            };
+            let value = match number {
+                MeasureNumber::Integer(i) => i.to_string(),
+                MeasureNumber::Real => to_step_real(q.value)?,
+            };
+            let id = pass.allocate()?;
             // Formula was added in IFC4; the canonical schema registry also
             // drives the TypeScript writer (#7378).
             let formula = if ifc_lite_core::attribute_names_for_schema(pass.schema, entity)
@@ -152,6 +165,10 @@ fn qset_lines(pass: &mut Pass<'_, '_>, host: u32, qsets: &[QSet]) -> Result<Vec<
             };
             lines.push((id, format!("#{id}={entity}('{}',$,$,{value}{formula});", escape(&q.name))));
             refs.push(format!("#{id}"));
+        }
+        // `Quantities` is `SET [1:?]`: a set with nothing left is not written.
+        if refs.is_empty() {
+            continue;
         }
         let set_id = pass.allocate()?;
         let guid = global_id(pass, host, set_id);

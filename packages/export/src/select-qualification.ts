@@ -25,9 +25,10 @@
  * entity the registry doesn't know simply isn't auto-qualified.
  */
 
-import { SCHEMA_REGISTRY, getAllAttributesForEntity } from '@ifc-lite/parser';
+import { SCHEMA_REGISTRY, getAllAttributesForEntity, getSchemaRegistryForVersion } from '@ifc-lite/parser';
 import type { IfcAttributeValue, SchemaRegistry } from '@ifc-lite/parser';
 import { resolveExpressBase, serializeTypedMarker } from './step-serialization.js';
+import type { IfcSchemaVersion } from './schema-converter.js';
 
 function isSelectType(type: string, registry: SchemaRegistry = SCHEMA_REGISTRY): boolean {
   return Object.prototype.hasOwnProperty.call(registry.selects, type);
@@ -86,6 +87,30 @@ export function getSelectDefinedLeaves(selectName: string, registry: SchemaRegis
   }
   cache.set(selectName, leaves);
   return leaves;
+}
+
+// UPPERCASE `IfcValue` leaf → [schema-cased name, EXPRESS base], per registry version.
+const ifcValueLeafCache = new Map<string, Map<string, readonly [string, string]>>();
+
+/**
+ * `[schema-cased name, EXPRESS base]` of `type` (any case) as an `IfcValue`
+ * leaf of `schema`, walked through that schema's own registry (IFC5 reads
+ * IFC4X3's), or `undefined` when that schema's `IfcValue` has no such leaf.
+ * The bases differ between schemas (`IfcCountMeasure` is NUMBER in IFC4,
+ * INTEGER in IFC4X3); the Rust twin is `step_log::nominal::value_member`
+ * (#8142).
+ */
+export function ifcValueLeaf(type: string, schema: IfcSchemaVersion): readonly [string, string] | undefined {
+  const version = schema === 'IFC2X3' || schema === 'IFC4' ? schema : 'IFC4X3';
+  let leaves = ifcValueLeafCache.get(version);
+  if (!leaves) {
+    leaves = new Map();
+    for (const [member, base] of getSelectDefinedLeaves('IfcValue', getSchemaRegistryForVersion(version))) {
+      leaves.set(member.toUpperCase(), [member, base]);
+    }
+    ifcValueLeafCache.set(version, leaves);
+  }
+  return leaves.get(type.toUpperCase());
 }
 
 // Memoized `ENTITY` → Map<slotIndex, selectName> for scalar (non-aggregate)
@@ -166,11 +191,12 @@ export function serializeQualifiedSelectSlot(
   entityType: string,
   index: number,
   value: IfcAttributeValue,
+  schema: IfcSchemaVersion = 'IFC4',
 ): string | null {
   const selectName = getSelectSlots(entityType).get(index);
   if (selectName === undefined) return null;
   if (!isQualifiableScalar(value)) return null;
   const member = qualifyingMember(selectName, value);
   if (member === null) return null;
-  return serializeTypedMarker(member, value);
+  return serializeTypedMarker(member, value, schema);
 }

@@ -13,11 +13,11 @@
 use ifc_lite_core::SchemaFamily;
 use serde_json::Value;
 
-use crate::generated::step_log_tables::{DEFINED_TYPE_BASES, SELECT_LEAVES, SELECT_SLOTS};
+use crate::generated::step_log_tables::{BaseKind, DEFINED_TYPE_BASES, SELECT_LEAVES, SELECT_SLOTS};
 use crate::step_text::escape;
 
 use super::attrs::is_real_slot;
-use super::jsval::{integral_token, js_number_to_string, js_to_number, json_number, json_to_js_string, step_integer, to_step_real};
+use super::jsval::{integral_token, js_number_to_string, js_to_number, json_number, json_to_js_string, to_step_real};
 
 /// A value no STEP spelling exists for: a non-finite number where `$` is not a
 /// legal reading, or an INTEGER of 1e21 or more.
@@ -25,7 +25,7 @@ use super::jsval::{integral_token, js_number_to_string, js_to_number, json_numbe
 pub(crate) struct Unwritable(pub(crate) String);
 
 /// `resolveExpressBase` for a defined type.
-fn express_base(type_name: &str) -> Option<&'static str> {
+fn express_base(type_name: &str) -> Option<BaseKind> {
     DEFINED_TYPE_BASES.binary_search_by(|r| r.0.cmp(type_name)).ok().map(|i| DEFINED_TYPE_BASES[i].1)
 }
 
@@ -45,25 +45,27 @@ fn coerce_logical(value: &Value) -> Option<bool> {
 }
 
 /// `serializeTypedMarker`: `IFC<TYPE>(<inner>)`, the inner value written for
-/// the type's EXPRESS base, an `IfcValue` leaf's as `family` declares it.
+/// the type's EXPRESS base: an `IfcValue` leaf's as `family` declares it,
+/// any other defined type's from the registry. An INTEGER takes only a whole
+/// number ([`super::nominal::step_integer_exact`]), never a truncated one.
 pub(crate) fn typed_marker(family: SchemaFamily, type_name: &str, value: &Value) -> Result<String, Unwritable> {
-    let base = super::nominal::leaf_base(family, type_name).map(crate::generated::step_log_tables::BaseKind::as_str);
-    let inner = match base.or_else(|| express_base(type_name)) {
-        Some("REAL") | Some("NUMBER") => to_step_real(js_to_number(value))?,
-        Some("INTEGER") => {
-            let n = js_to_number(value).trunc();
-            step_integer(n).ok_or_else(|| {
-                Unwritable(format!("Cannot write {} as a STEP INTEGER: it is not a finite value below 1e21", js_number_to_string(n)))
+    let base = super::nominal::leaf_base(family, type_name).or_else(|| express_base(type_name));
+    let inner = match base {
+        Some(BaseKind::Real | BaseKind::Number) => to_step_real(js_to_number(value))?,
+        Some(BaseKind::Integer) => {
+            let n = js_to_number(value);
+            super::nominal::step_integer_exact(n).map(|i| i.to_string()).ok_or_else(|| {
+                Unwritable(format!("Cannot write {} as a STEP INTEGER: it is not a whole number in the STEP integer range", js_number_to_string(n)))
             })?
         }
-        Some("BOOLEAN") => if coerce_logical(value) == Some(true) { ".T." } else { ".F." }.to_string(),
-        Some("LOGICAL") => match coerce_logical(value) {
+        Some(BaseKind::Boolean) => if coerce_logical(value) == Some(true) { ".T." } else { ".F." }.to_string(),
+        Some(BaseKind::Logical) => match coerce_logical(value) {
             Some(true) => ".T.".to_string(),
             Some(false) => ".F.".to_string(),
             None => ".U.".to_string(),
         },
-        Some("STRING") | Some("BINARY") => format!("'{}'", escape(&json_to_js_string(value))),
-        _ => match value {
+        Some(BaseKind::String | BaseKind::Binary) => format!("'{}'", escape(&json_to_js_string(value))),
+        None => match value {
             Value::Bool(b) => if *b { ".T." } else { ".F." }.to_string(),
             _ => match json_number(value) {
                 Some(n) if n.is_finite() && n.fract() == 0.0 => integral_token(n),

@@ -8,8 +8,8 @@ import type { ExportPass, StepExportOptions } from './step-export-types.js';
 import { generateGlobalId, getTypeOwnedHasPropertySetIds, findUnitId, type PropertySetContext } from './step-property-set-readers.js';
 import type { SharedSetDetachments } from './step-pset-copy-on-write.js';
 import { readStepSlots, replaceStepArgument } from './step-argument-parser.js';
-import { quantityTypeToIfcType, toStepReal } from './step-serialization.js';
-import { generateQuantityAtom } from './step-property-set-generators.js';
+import { quantityTypeToIfcType } from './step-serialization.js';
+import { generateQuantityAtom, quantityValueToken } from './step-property-set-generators.js';
 import { nativeSetLine, decodeNativeSetLine } from './step-native-set-record.js';
 
 /** Native atoms are retained independently of the lossy numeric quantity projection. */
@@ -175,6 +175,14 @@ export function generateTypeQuantityCopy(
     if (name !== null) remaining.delete(name);
     const changed = first && quantity && (!base || quantity.type !== base.type || quantity.value !== base.value || quantity.unit !== base.unit);
     if (!changed || !quantity) { memberIds.push(id); continue; }
+    // An edit its measure cannot carry is refused alone; the native member
+    // stays (#8142).
+    const valueToken = quantityValueToken(quantity, pass.sourceSchema, true);
+    if (typeof valueToken !== 'string') {
+      pass.warnings.push(`#${entityId} ${qset.name}.${quantity.name}: ${valueToken.refused}; the edit is not written`);
+      memberIds.push(id);
+      continue;
+    }
     const mutation = ctx.mutationView?.getQuantityMutation(entityId, qset.name, quantity.name);
     const targetType = quantityTypeToIfcType(quantity.type);
     if (!getInheritanceChainAcrossSchemas(entity.type).includes('IfcPhysicalSimpleQuantity')) {
@@ -190,7 +198,7 @@ export function generateTypeQuantityCopy(
         throw new Error(`Type quantity #${id} unit dimension is incompatible with ${targetType}`);
       }
     }
-    let copy = replaced(line, 3, toStepReal(quantity.value));
+    let copy = replaced(line, 3, valueToken);
     // Omitted unit intent retains the native reference, including non-length units.
     if (mutation?.unitRemoved) copy = replaced(copy, 2, '$');
     else if (mutation?.unit !== undefined) {
@@ -207,7 +215,13 @@ export function generateTypeQuantityCopy(
     lines.push(copy); memberIds.push(newId);
   }
   for (const quantity of remaining.values()) {
-    const atom = generateQuantityAtom(ctx, quantity, pass.effective, true);
+    // Every remaining quantity is an edit: one its measure cannot carry is
+    // refused alone (#8142).
+    const atom = generateQuantityAtom(ctx, quantity, pass.effective, true, true);
+    if ('refused' in atom) {
+      pass.warnings.push(`#${entityId} ${qset.name}.${quantity.name}: ${atom.refused}; the edit is not written`);
+      continue;
+    }
     lines.push(atom.line); memberIds.push(atom.id);
   }
   if (memberIds.length === 0) throw new Error('An empty native type quantity copy cannot be emitted');

@@ -90,9 +90,9 @@ export function serializePositionalOverride(
   realSlots: ReadonlySet<number>,
   schemaVersion: IfcSchemaVersion,
 ): string {
-  if (isTypedMarker(value)) return serializeStepValue(value);
-  const qualified = serializeQualifiedSelectSlot(entityType, index, value);
+  if (isTypedMarker(value)) return serializeStepValue(value, false, schemaVersion);
+  const qualified = serializeQualifiedSelectSlot(entityType, index, value, schemaVersion);
   if (qualified !== null) return qualified;
   const forceReal = realSlots.has(index) || tokenIsRealLiteral(currentToken);
-  return serializeStepValue(value, forceReal);
+  return serializeStepValue(value, forceReal, schemaVersion);
 }

@@ -491,4 +491,8 @@ fn an_integer_measure_is_written_as_an_integer_8142() {
         assert!(String::from_utf8_lossy(&out).contains(&format!("{written},")), "{schema}");
     }
     refused(&storey_with_typed_wall("IFC4X3"), counted(3.5), "IfcCountMeasure takes a whole number in IFC4X3");
+    // The name is written as given, so it must be a type name exactly.
+    let mut spaced = counted(3.0);
+    spaced.psets[0].properties[0].value = PropertyValue::Measure { measure_type: " IfcCountMeasure".into(), value: 3.0 };
+    refused(&storey_with_typed_wall("IFC4X3"), spaced, "is not a type name");
 }

@@ -108,14 +108,17 @@ export function generatePropertyAndQuantitySetEntities(
   }
 
   // Type quantity generation precedes the shared HasPropertySets rewrite (#7355).
-  for (const { entityId, qsets, sourceSets } of pass.newQuantitySets) {
+  for (const { entityId, qsets, sourceSets, edited } of pass.newQuantitySets) {
     if (!pass.willBeEmitted(entityId)) continue;
     const typeOwned = pass.typeOwnedQuantityIdsByEntity.has(entityId);
     qsets.forEach((qset, index) => {
       const source = sourceSets?.[index];
       const generated = source
         ? generateTypeQuantityCopy(pass, options, ctx, entityId, qset, source)
-        : generateQuantitySetEntities(ctx, entityId, [qset], pass.willBeEmitted, pass.effective, options.guidRandom, typeOwned);
+        : generateQuantitySetEntities(
+          ctx, entityId, [qset], pass.willBeEmitted, pass.effective, options.guidRandom, typeOwned,
+          (set, quantity) => edited?.has(`${set}\u0000${quantity}`) ?? false, pass.warnings,
+        );
       // Generated quantity records are written in the source schema's layout.
       // One conversion site serves occurrence, new Type and copied Type sets (#7378).
       pass.entities.push(...convertAppendedLines(pass, options, generated.lines));

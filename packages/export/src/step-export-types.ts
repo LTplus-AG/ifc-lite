@@ -359,7 +359,7 @@ export interface ExportPass {
   readonly modifiedEntities: Set<number>;
   readonly modifiedAttributes: Map<number, Map<string, string>>;
   readonly newPropertySets: Array<{ entityId: number; psets: PropertySet[]; sourceMembers?: ReadonlyMap<string, ReadonlyMap<string, number>> }>; // set → property → reusable source atom (#5794)
-  readonly newQuantitySets: Array<{ entityId: number; qsets: QuantitySet[]; sourceSets?: readonly (TypeQuantitySource | undefined)[] }>;
+  readonly newQuantitySets: Array<{ entityId: number; qsets: QuantitySet[]; sourceSets?: readonly (TypeQuantitySource | undefined)[]; edited?: ReadonlySet<string> }>; // edited: `set\u0000quantity` values the log sets (#8142)
   readonly typeOwnedQuantityIdsByEntity: Map<number, Map<number, number | null>>;
   readonly addedTypeOwnedQuantityIds: Map<number, number[]>;
   readonly typeOwnedPsetNamesByEntity: Map<number, Set<string>>;

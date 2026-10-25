@@ -115,8 +115,9 @@
 
 import { PropertyValueType } from '@ifc-lite/data';
 import { SCHEMA_REGISTRY } from '@ifc-lite/parser';
-import { getSelectDefinedLeaves } from './select-qualification.js';
-import { serializeTypedMarker, toStepInteger } from './step-serialization.js';
+import { getSelectDefinedLeaves, ifcValueLeaf } from './select-qualification.js';
+import { serializeTypedMarker, toStepIntegerExact } from './step-serialization.js';
+import type { IfcSchemaVersion } from './schema-converter.js';
 import { serializePropertyValue } from './property-value-serialization.js';
 
 /** The SELECT `IfcPropertySingleValue.NominalValue` is declared as. */
@@ -194,8 +195,8 @@ function valueFitsBase(value: unknown, base: string): value is string | number |
     case 'NUMBER':
       return typeof value === 'number' && Number.isFinite(value);
     case 'INTEGER':
-      // Below 1e21: `String(1e21)` is `1e+21`, no STEP INTEGER (#7679).
-      return typeof value === 'number' && Number.isInteger(value) && toStepInteger(value) !== null;
+      // Whole and in the STEP integer range: the one INTEGER rule (#8142).
+      return typeof value === 'number' && toStepIntegerExact(value) !== null;
     case 'BOOLEAN':
     case 'LOGICAL':
       // Not a truthiness test: `serializeTypedMarker` reads `'.F.'` and
@@ -273,6 +274,7 @@ export function declaredNominalValueType(
   value: unknown,
   type: PropertyValueType,
   dataType: string | undefined,
+  schema: IfcSchemaVersion = 'IFC4',
 ): string | null {
   if (value === null || value === undefined) return null;
   // The caller NAMED a member rather than echoing a shape (#3715), so it
@@ -283,7 +285,9 @@ export function declaredNominalValueType(
   const named = NAMED_MEMBERS.get(type);
   if (named !== undefined) return typeof value === 'string' ? named : null;
   if (!dataType) return null;
-  const leaf = lookupNominalValueLeaf(dataType.trim().toUpperCase());
+  // A member of `schema`'s own `IfcValue`, with its base there (#8142):
+  // `IfcCountMeasure` is NUMBER in IFC4 and INTEGER in IFC4X3.
+  const leaf = ifcValueLeaf(dataType.trim(), schema);
   if (!leaf) return null;
   const [name, base] = leaf;
   const accepted = acceptedBases(type);
@@ -306,10 +310,11 @@ export function serializeNominalValue(
   value: unknown,
   type: PropertyValueType,
   dataType: string | undefined,
+  schema: IfcSchemaVersion = 'IFC4',
 ): string {
-  const declared = declaredNominalValueType(value, type, dataType);
+  const declared = declaredNominalValueType(value, type, dataType, schema);
   if (declared === null) return serializePropertyValue(value, type);
-  return serializeTypedMarker(declared, value as string | number | boolean);
+  return serializeTypedMarker(declared, value as string | number | boolean, schema);
 }
 
 /** Validate an explicitly authored IfcValue declaration before a mutation can be written.

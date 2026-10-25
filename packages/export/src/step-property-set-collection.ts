@@ -34,6 +34,8 @@ import { collectTypeQuantitySources, projectTypeQuantityEdits } from './step-typ
 export interface PropertyMutationGroups {
   readonly entityPropMutations: Map<number, Set<string>>;
   readonly entityQuantMutations: Map<number, Set<string>>;
+  /** `set\u0000quantity` for each quantity value the log sets, per entity. */
+  readonly quantityEdits: ReadonlyMap<number, ReadonlySet<string>>;
   readonly relDefinesByEntity: Map<number, Array<{ relId: number; psetId: number }>>;
   /** Every effective IfcRelDefinesByProperties → its RelatedObjects. */
   readonly relatedByRel: ReadonlyMap<number, readonly number[]>;
@@ -72,7 +74,7 @@ export function collectPropertyAndQuantitySetMutations(
   groups: PropertyMutationGroups,
   ctx: PropertySetContext,
 ): void {
-  const { entityPropMutations, entityQuantMutations, relDefinesByEntity, relatedByRel } = groups;
+  const { entityPropMutations, entityQuantMutations, quantityEdits, relDefinesByEntity, relatedByRel } = groups;
   // `export()` narrowed this through the enclosing `if`, and the caller still
   // owns that gate: reaching here means the view exists and mutations are
   // enabled. Named once here rather than asserted at each of the six reads.
@@ -290,7 +292,9 @@ export function collectPropertyAndQuantitySetMutations(
     const typeCopy = typeOwned
       ? collectTypeQuantitySources(pass, ctx, entityId, relevantQsets, qsetNames, detachments) : undefined;
     if (typeCopy) relevantQsets = typeCopy.qsets;
-    if (relevantQsets.length > 0) pass.newQuantitySets.push({ entityId, qsets: relevantQsets, sourceSets: typeCopy?.sourceSets });
+    if (relevantQsets.length > 0) {
+      pass.newQuantitySets.push({ entityId, qsets: relevantQsets, sourceSets: typeCopy?.sourceSets, edited: quantityEdits.get(entityId) });
+    }
 
     // The names this export is actually WRITING a replacement for. The
     // affected-name set is not the same thing: it comes from the session's

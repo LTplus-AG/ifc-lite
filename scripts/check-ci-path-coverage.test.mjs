@@ -121,12 +121,16 @@ function makeTree(overrides = {}) {
   if (overrides.gate !== null) {
     writeFileSync(join(root, 'scripts/gate.mjs'), overrides.gate ?? "const dir = 'src/covered';\n");
   }
-  // The check reads its own source and its own lib out of the tree it is
-  // pointed at, so the fixture must carry both for self-coverage to resolve.
+  // The check reads its own source and helpers out of the tree it is pointed
+  // at, so the fixture carries all three for self-coverage to resolve.
   writeFileSync(join(root, 'scripts/check-ci-path-coverage.mjs'), readFileSync(CHECK, 'utf8'));
   writeFileSync(
     join(root, 'scripts/lib/ci-path-coverage.mjs'),
     readFileSync(join(HERE, 'lib/ci-path-coverage.mjs'), 'utf8'),
+  );
+  writeFileSync(
+    join(root, 'scripts/lib/ci-path-candidates.mjs'),
+    readFileSync(join(HERE, 'lib/ci-path-candidates.mjs'), 'utf8'),
   );
   writeFileSync(
     join(root, 'scripts/ci-path-coverage-allowlist.txt'),

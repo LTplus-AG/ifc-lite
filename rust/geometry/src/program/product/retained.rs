@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 use super::*;
+#[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
 use crate::program::retained::failure::{FailureSite, OriginCause, StructuralReason};
 use crate::program::inner::retained_program::RetainedProgramError;
 use crate::program::retained::{RetainedPlacementStage, RetainedPlanOperation};

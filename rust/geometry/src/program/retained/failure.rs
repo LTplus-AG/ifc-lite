@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Private provenance, not a wire taxonomy. No source/decoder/TLS lease is held.
 // TODO(remove-by: Cut C, owner: sessionf778e361, #7955): private report consumer.
-#![cfg_attr(not(test), allow(dead_code))]
+#![cfg_attr(any(not(test), all(target_arch = "wasm32", not(feature = "wasm_source_capture"))), allow(dead_code))]
 use crate::document::RetainedRefusal;
 use crate::representation::ShapeError;
 use crate::resource::{self, Cost, ProgramStop, Reservation};

@@ -109,7 +109,7 @@ fn item_targets(members: &[AttributeValue], decoder: &mut EntityDecoder) -> Resu
 // Retained-only errors preserve the reached cause before the common carrier.
 pub(super) enum StructureError {
     Stop(crate::resource::ProgramStop),
-    Origin { site: FailureSite, entity: u32, cause: OriginCause, diagnostic: Error },
+    Origin { site: FailureSite, entity: u32, cause: OriginCause, diagnostic: String },
 }
 impl From<crate::resource::ProgramStop> for StructureError {
     fn from(stop: crate::resource::ProgramStop) -> Self { Self::Stop(stop) }
@@ -120,7 +120,7 @@ impl StructureError {
             Self::Stop(stop) => Error::ProgramStopped(stop),
             Self::Origin { site, entity, cause, diagnostic } => {
                 selection.failure_handle().record(site, Some(entity), cause);
-                diagnostic
+                Error::geometry(diagnostic)
             }
         }
     }
@@ -129,22 +129,22 @@ fn list_site(name: &str) -> FailureSite {
     if name == "Items" { FailureSite::RepresentationItems } else { FailureSite::ProductShape }
 }
 fn refused(site: FailureSite, entity: u32, reason: StructuralReason, diagnostic: impl Into<String>) -> StructureError {
-    StructureError::Origin { site, entity, cause: OriginCause::Structure(reason), diagnostic: Error::geometry(diagnostic) }
+    StructureError::Origin { site, entity, cause: OriginCause::Structure(reason), diagnostic: diagnostic.into() }
 }
 fn core_error(site: FailureSite, entity: u32, error: ifc_lite_core::Error) -> StructureError {
-    let diagnostic = Error::geometry(format!("Core parser error: {error}"));
+    let diagnostic = format!("Core parser error: {error}");
     StructureError::Origin { site, entity, cause: OriginCause::Core(error), diagnostic }
 }
 fn shape_error(entity: u32, error: ShapeError) -> StructureError {
-    // Reconstruct only the fieldless/scalar variants for the existing
-    // diagnostic adapter. Move the actual cause, including owned decoder text.
-    let diagnostic: Error = match &error {
-        ShapeError::NoRepresentationAttribute { element } => ShapeError::NoRepresentationAttribute { element: *element }.into(),
-        ShapeError::Unresolved => ShapeError::Unresolved.into(),
-        ShapeError::NotAProductDefinitionShape(found) => Error::geometry(format!("Expected IfcProductDefinitionShape, got {found}")),
-        ShapeError::MissingRepresentations => ShapeError::MissingRepresentations.into(),
-        ShapeError::MissingItems => ShapeError::MissingItems.into(),
-        ShapeError::Decode(core) => Error::geometry(format!("Core parser error: {core}")),
+    // Format the common diagnostic by reference, then move the actual enum.
+    // No owned decoder/type string is cloned to retain its cause.
+    let diagnostic = match &error {
+        ShapeError::NoRepresentationAttribute { element } => format!("Element #{element} has no representation attribute"),
+        ShapeError::Unresolved => "Failed to resolve representation".to_owned(),
+        ShapeError::NotAProductDefinitionShape(found) => format!("Expected IfcProductDefinitionShape, got {found}"),
+        ShapeError::MissingRepresentations => "IfcProductDefinitionShape missing Representations".to_owned(),
+        ShapeError::MissingItems => "IfcShapeRepresentation missing Items".to_owned(),
+        ShapeError::Decode(core) => format!("Core parser error: {core}"),
     };
     StructureError::Origin { site: FailureSite::ProductShape, entity, cause: OriginCause::Shape(error), diagnostic }
 }

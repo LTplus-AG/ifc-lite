@@ -213,24 +213,42 @@ impl AddState<'_> {
             }
         }
         let spatial = self.in_structure(&class);
-        if !spatial && self.is_spatial(&class) && obj.container.is_some() {
-            return Err(format!("{class} is not in the spatial structure; it takes no container (relate it with space boundaries or a zone assignment)"));
-        }
 
         let container = match &obj.container {
             None if spatial => return Err(format!("a new {class} needs a container: nothing else would place it in the spatial tree")),
             None => None,
             Some(r) => {
                 let (id, c) = self.lookup(r)?;
-                // A zone or external spatial element neither contains nor aggregates.
-                let is_container = self.in_structure(&c) || (spatial && c == "IFCPROJECT");
-                if !is_container {
-                    return Err(format!("container {r} is {c}, not a spatial element"));
+                // A spatial zone or external spatial element is not part of the
+                // project/site/building/storey/space decomposition. buildingSMART
+                // IFC4.3 (Spatial Decomposition): an IfcSpatialZone is "included
+                // into the hierarchy using the Spatial Containment concept
+                // (IfcRelContainedInSpatialStructure) and can be aggregated into a
+                // functional hierarchy ... an IfcSpatialZone can only be composed
+                // under another IfcSpatialZone". IfcExternalSpatialElement's
+                // definition gives only PredefinedType and BoundedBy; its place is
+                // fixed by IfcRelContainedInSpatialStructure.RelatingStructure
+                // (an IfcSpatialElement in IFC4), so it is contained likewise.
+                if !spatial && self.is_spatial(&class) {
+                    let kind = if self.in_structure(&c) {
+                        RelKind::Contained
+                    } else if self.is_a(&class, "IFCSPATIALZONE") && self.is_a(&c, "IFCSPATIALZONE") {
+                        RelKind::Aggregates
+                    } else {
+                        return Err(format!("container {r} is {c}, which cannot hold a {class}: it is contained in a spatial structure element (or, for a zone, composed under a zone)"));
+                    };
+                    Some((id, kind, c))
+                } else {
+                    // A zone or external spatial element neither contains nor aggregates.
+                    let is_container = self.in_structure(&c) || (spatial && c == "IFCPROJECT");
+                    if !is_container {
+                        return Err(format!("container {r} is {c}, not a spatial element"));
+                    }
+                    if spatial && !self.can_aggregate(&c, &class) {
+                        return Err(format!("container {r} is {c}, which cannot aggregate a {class} in {}", self.schema));
+                    }
+                    Some((id, if spatial { RelKind::Aggregates } else { RelKind::Contained }, c))
                 }
-                if spatial && !self.can_aggregate(&c, &class) {
-                    return Err(format!("container {r} is {c}, which cannot aggregate a {class} in {}", self.schema));
-                }
-                Some((id, if spatial { RelKind::Aggregates } else { RelKind::Contained }, c))
             }
         };
 

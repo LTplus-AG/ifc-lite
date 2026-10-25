@@ -405,16 +405,37 @@ fn a_facility_is_accepted_under_a_facility_part_in_ifc4x3() {
     assert_eq!(report.added, 1, "{:?}", report.refusals);
 }
 
-/// Zones and external spatial elements are not in the aggregation hierarchy:
-/// they need no container and are never aggregated under a storey.
+/// IFC4.3 Spatial Decomposition: a zone is contained in a spatial structure
+/// element, may be composed under another zone, and goes nowhere else; an
+/// external spatial element is contained. Neither needs a container.
 #[test]
-fn zones_and_external_spatial_elements_take_no_container() {
-    for class in ["IfcSpatialZone", "IfcExternalSpatialElement"] {
-        let source = storey_with_typed_wall("IFC4");
-        let alone = object(IfcClass::Named(class.into()), gid(41), None, Representation::None);
-        let (_, report) = run(&source, vec![add(alone)]);
-        assert_eq!(report.added, 1, "{class}: {:?}", report.refusals);
-        let placed = object(IfcClass::Named(class.into()), gid(42), storey(), Representation::None);
-        refused(&source, placed, "not in the spatial structure");
+fn zones_and_external_spatial_elements_follow_the_spatial_decomposition_rules() {
+    use ifc_lite_core::entity_info_for_schema;
+    for schema in ["IFC4", "IFC4X3"] {
+        let base = String::from_utf8(storey_with_typed_wall(schema)).unwrap();
+        let source = base.replacen("ENDSEC;\nEND-ISO", "#90=IFCSPATIALZONE($);\nENDSEC;\nEND-ISO", 1);
+        let rel_of = |out: &[u8], g| {
+            let id = id_in(out, g);
+            String::from_utf8_lossy(out).lines().find(|l| l.contains(&format!("#{id}")) && (l.contains("IFCRELCONTAINEDINSPATIALSTRUCTURE") || l.contains("IFCRELAGGREGATES("))).unwrap_or("").to_string()
+        };
+        let classes: &[&str] = if entity_info_for_schema(schema, "IFCEXTERNALSPATIALELEMENT").is_some() { &["IfcSpatialZone", "IfcExternalSpatialElement"] } else { &["IfcSpatialZone"] };
+        for class in classes {
+            let mk = |n, parent: Option<u32>| object(IfcClass::Named((*class).into()), gid(n), parent.map(ObjectRef::Id), Representation::None);
+            let (_, report) = run(&source.clone().into_bytes(), vec![add(mk(41, None))]);
+            assert_eq!(report.added, 1, "{schema} {class} alone: {:?}", report.refusals);
+            let (out, report) = run(source.as_bytes(), vec![add(mk(42, Some(70)))]);
+            assert_eq!(report.added, 1, "{schema} {class} in a storey: {:?}", report.refusals);
+            assert!(rel_of(&out, gid(42)).contains("IFCRELCONTAINEDINSPATIALSTRUCTURE"), "{schema} {class}: contained");
+            refused(source.as_bytes(), mk(43, Some(1)), "cannot hold");
+            refused(source.as_bytes(), mk(44, Some(10)), "cannot hold");
+        }
+        // A zone under a zone is aggregated; an external element is not composed under one.
+        let zone = object(IfcClass::Named("IfcSpatialZone".into()), gid(45), Some(ObjectRef::Id(90)), Representation::None);
+        let (out, report) = run(source.as_bytes(), vec![add(zone)]);
+        assert_eq!(report.added, 1, "{schema}: {:?}", report.refusals);
+        assert!(rel_of(&out, gid(45)).contains("IFCRELAGGREGATES("), "{schema}: aggregated under the zone");
+        if classes.len() > 1 {
+            refused(source.as_bytes(), object(IfcClass::Named("IfcExternalSpatialElement".into()), gid(46), Some(ObjectRef::Id(90)), Representation::None), "cannot hold");
+        }
     }
 }

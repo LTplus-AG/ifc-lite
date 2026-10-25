@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/resource/owned.rs
++++ b/rust/geometry/src/resource/owned.rs
+@@ -77,7 +77,7 @@
+                     .map_err(|_| super::allocation_failure())?;
+                 return Ok(Reservation::empty());
+             }
+-            super::reserve_headers(values, additional).map(|permit| { permit.retain(); Reservation::empty() })
++            super::reserve_headers(values, additional)
+         })
+     }
+ }

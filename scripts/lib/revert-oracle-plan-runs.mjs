@@ -218,7 +218,13 @@ function rustModuleOwner(crateDir, abs, crate) {
       if (!target) continue;
       const targetModules = [...modules, moduleName];
       const conditional = [...attributes.matchAll(/#\s*\[\s*cfg[\s\S]*?\]/g)]
-        .some((cfg) => cfg[0].replaceAll(/\s/g, '') !== '#[cfg(test)]');
+        .some((cfg) => {
+          const compact = cfg[0].replaceAll(/\s/g, '');
+          // #7955 S3: these forms are unconditionally enabled/inert in unit tests.
+          return compact !== '#[cfg(test)]'
+            && compact !== '#[cfg_attr(not(test),allow(dead_code))]'
+            && !/^#\[cfg\(any\(test,feature="[^"]+"\)\)\]$/.test(compact);
+        });
       if (resolve(target) === resolve(abs)) matches.push({ moduleFilter: targetModules.join('::'), conditional, bin });
       if (conditional) continue;
       queue.push({ file: target, modules: targetModules, bin });

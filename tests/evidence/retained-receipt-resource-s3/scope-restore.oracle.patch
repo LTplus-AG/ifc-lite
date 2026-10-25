@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/resource/owned.rs
++++ b/rust/geometry/src/resource/owned.rs
+@@ -132,7 +132,7 @@
+             self.context.remember(stop);
+         }
+         CURRENT.with(|slot| {
+-            slot.replace(None);
++            slot.replace(self.account.take());
+         });
+         SOURCE_STOP.with(|slot| {
+             slot.replace(self.source.take());

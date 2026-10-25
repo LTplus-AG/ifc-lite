@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/resource/owned.rs
++++ b/rust/geometry/src/resource/owned.rs
+@@ -29,7 +29,7 @@
+     pub(crate) fn capture_current() -> Self {
+         Self {
+             account: super::current_account(),
+-            source: None,
++            source: SOURCE_STOP.with(|slot| slot.borrow().clone()),
+             terminal: OwnedTerminal::Raw(Arc::new(Mutex::new(
+                 TERMINAL.with(|slot| slot.get().flatten()),
+             ))),

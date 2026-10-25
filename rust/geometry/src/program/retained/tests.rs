@@ -375,3 +375,6 @@ mod accept_stop_tests;
 
 #[path = "finalization_stop_tests.rs"]
 mod finalization_stop_tests;
+
+#[path = "outcome_tests.rs"]
+mod outcome_tests;

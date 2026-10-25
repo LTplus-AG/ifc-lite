@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/document/retained.rs
++++ b/rust/geometry/src/document/retained.rs
+@@ -139,7 +139,7 @@
+     pub(crate) fn same_admission(&self, other: &Self) -> bool {
+         self.document == other.document && self.revision == other.revision
+             && self.definition == other.definition && self.worker_incarnation == other.worker_incarnation
+-            && Arc::ptr_eq(&self.entry, &self.entry)
++            && Arc::ptr_eq(&self.entry, &other.entry)
+     }
+
+     pub fn definition(&self) -> RetainedDefinitionHandle {

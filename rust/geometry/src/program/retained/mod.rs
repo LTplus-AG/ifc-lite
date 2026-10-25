@@ -10,6 +10,7 @@ mod cache;
 mod presentation;
 mod affine;
 mod identity;
+mod outcome;
 pub(in crate::program) mod boolean;
 pub(crate) use presentation::RetainedPresentation;
 mod select;
@@ -63,6 +64,7 @@ pub(crate) struct LogicalRetainedValue {
     placements: Vec<RetainedPlacement>,
     presentation: Vec<RetainedPresentation>,
     product_placed: bool,
+    outcome: std::sync::Arc<std::sync::OnceLock<bool>>,
     slot: LogicalRetainedSlot,
     source_from_evaluation: [f64; 16],
     /// Runtime object local metres -> current logical local metres.
@@ -316,6 +318,7 @@ impl LogicalRetainedValue {
             placements: Vec::new(),
             presentation: Vec::new(),
             product_placed: self.product_placed,
+            outcome: self.outcome.clone(),
             slot: self.slot,
             source_from_evaluation: self.source_from_evaluation,
             evaluation_from_source: self.evaluation_from_source,

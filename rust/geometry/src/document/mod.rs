@@ -23,6 +23,14 @@
 //! Operations over definitions land with their first caller.
 
 mod retained;
+// TODO(remove-by: S4a, owner: sessionf778e361, #7955): qualify the private receipt consumer.
+#[cfg(any(test, feature = "retained-runtime"))]
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) mod retained_frames;
+// TODO(remove-by: S4a, owner: sessionf778e361, #7955): qualify the private receipt consumer.
+#[cfg(any(test, feature = "retained-runtime"))]
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) mod retained_affine;
 mod retained_disk;
 mod retained_display;
 mod retained_sweep;

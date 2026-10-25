@@ -123,9 +123,8 @@ export function createIdentityMapSidecar(init: IdentityMapSidecarInit): Identity
   const seen = new Set<string>();
   const entries: IdentityMapEntry[] = [];
   for (const entry of init.entries) {
-    // NUL separator, as in `content-match.ts`'s bucket key: an entity identity
-    // never contains one, so no (base, here) pair can be confused with another.
-    const signature = `${entry.base}\u0000${entry.here}`;
+    // Encode the tuple so arbitrary key code units cannot move its boundary (#8088).
+    const signature = JSON.stringify([entry.base, entry.here]);
     if (seen.has(signature)) continue;
     seen.add(signature);
     entries.push({ base: entry.base, here: entry.here, reason: entry.reason });

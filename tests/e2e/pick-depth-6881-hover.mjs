@@ -32,10 +32,14 @@ export async function geometryWitness() {
   for (const model of state.models.values()) {
     if (model.loadState !== 'complete' || model.loadError || !model.geometryResult) throw Error('Incomplete model');
     const result = model.geometryResult;
+    const normalized = await normalize(result);
+    // Worker completion can reorder publication. Preserve every mesh field
+    // and typed-array byte, while comparing the complete mesh multiset.
+    normalized.meshes.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
     results.push({ idOffset: model.idOffset, meshes: result.meshes.length, vertices: result.totalVertices,
-      triangles: result.totalTriangles, sha256: await hash(new TextEncoder().encode(JSON.stringify(await normalize(result)))) });
+      triangles: result.totalTriangles, sha256: await hash(new TextEncoder().encode(JSON.stringify(normalized))) });
   }
-  return { scope: 'Complete published GeometryResult fields/typed arrays, including coordinate information and instance hash/bounds maps; not raw GPU buffers', results };
+  return { scope: 'Complete GeometryResult fields/typed arrays, canonical mesh multiset, coordinate information and instance hash/bounds maps; not publication order or raw GPU buffers', results };
 }
 
 export function installHoverTap() {

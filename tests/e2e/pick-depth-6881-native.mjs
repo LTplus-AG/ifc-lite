@@ -8,7 +8,7 @@ import { createRequire } from 'node:module';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
@@ -74,7 +74,7 @@ const server = await startStaticServer({ port: 0, host: '127.0.0.1', root: () =>
   extra: new Map([['/__6881/oracle.js', observer], ['/__6881/hover.js', hover], ['/__6881/families.js', families], ['/__6881/families.html', familyPagePath]]),
   onServe: (url, path) => served.set(url, { sha256: hash(readFileSync(path)), path }) });
 const report = { head, buildReceipt: receipt.id, command: process.argv, fixturePins: models, sourceInputs,
-  harness: Object.fromEntries(['pick-depth-6881-native.mjs', 'pick-depth-6881-observer.mjs', 'pick-depth-6881-hover.mjs', 'pick-depth-6881-families.mjs'].map(name => [name, hash(readFileSync(resolve(here, name)))])),
+  harness: Object.fromEntries(['pick-depth-6881-native.mjs', 'pick-depth-6881-observer.mjs', 'pick-depth-6881-hover.mjs', 'pick-depth-6881-families.mjs', 'pick-depth-6881-controls.mjs'].map(name => [name, hash(readFileSync(resolve(here, name)))])),
   scope: 'Native same-render functional comparisons; no hover performance acceptance', runs: [], accepted: false };
 let browser;
 let activeRun;
@@ -85,6 +85,8 @@ process.stderr.write = function(chunk, ...args) {
   return stderr(chunk, ...args);
 };
 try {
+  const { runGeometryControls } = await import(resolve(here, 'pick-depth-6881-controls.mjs'));
+  report.fingerprintControls = await runGeometryControls((await import(pathToFileURL(hover).href)).geometryWitness);
   report.session = readPhysicalSession();
   if (!isPhysicalConsole(report.session)) throw Error('Physical console admission refused');
   for (const dpr of [1, 2]) {

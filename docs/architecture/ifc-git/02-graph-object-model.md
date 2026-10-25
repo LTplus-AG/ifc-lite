@@ -102,10 +102,17 @@ blobs, and two identical files share one blob. The consequences are the ones
 wanted:
 
 - A re-GUID rewrites tree **keys** and leaves every node address alone. The
-  version reads as unchanged in content, with a key remapping — which is the
-  rename case `@ifc-lite/diff`'s shipped content-matching tiers already resolve,
-  and which `identityMapFromContentMatches` already records. The new keys do
-  change the tree's own address; §2.7 says why that is still not a commit.
+  version reads as unchanged in content, with a key remapping — the rename case
+  `@ifc-lite/diff`'s shipped content-matching tiers already resolve.
+  `identityMapFromContentMatches` records that remapping **only where the match
+  is one-to-one and of a claimable kind** (`renamed`, `moved`, `reshaped`,
+  `respecified`). `ambiguous`, `duplicated` and `deduplicated` emit nothing, and
+  deliberately so: those are the engine saying it could not tell, and a claim
+  derived from an abstention is a fabrication. So where two coincident
+  duplicates both change key, the matcher abstains rather than guessing which
+  new key belongs to which old one — see the last bullet of §2.8, where the same
+  case is measured. The new keys do change the tree's own address; §2.7 says why
+  that is still not a commit.
 - Two genuinely distinct elements with byte-identical content collapse to one
   node address. That is correct — it is what deduplication means — and nothing
   is lost at the tree layer, because the tree still carries both keys pointing
@@ -194,13 +201,20 @@ Two rules:
   is recorded as pointing at the existing commit, so a scheduled sync is
   idempotent without inventing history. git refuses empty commits by default;
   here it matters more, because an unchanged re-export is the *common* case.
-- **The tree and chunks written on the way there are simply unreferenced.** The
-  object store is append-only and content-addressed, so writing them is harmless
-  and mostly free: every chunk whose keys did not move is byte-identical to one
-  already stored and deduplicates against it, and the few that did change end up
-  referenced by no commit. An implementation may equally diff before it writes;
-  both orders give the same history. Reclaiming unreferenced objects is a
-  garbage-collection question for `07-storage.md`, not a correctness one.
+- **Diff before writing the tree.** An earlier draft called the unreferenced
+  tree and chunks "mostly free", on the grounds that an unchanged chunk
+  deduplicates against the one already stored. That reasoning does not hold for
+  the case this rule exists for: in a full re-GUID **every key changes**, so
+  every chunk's bytes change, and none of them deduplicates. Writing first would
+  let each scheduled sync of an unchanged model accumulate a fresh orphaned tree
+  and a full set of orphaned chunks while the ref never moves — unbounded growth
+  driven by the most common event in the system.
+
+  So the order is **not** an implementation detail: compute the diff first, and
+  write the tree only once the diff is non-empty. `07-storage.md` carries the
+  storage contract and must state a bound and a reclamation rule for orphans
+  that arise another way (an interrupted write, a refused compare-and-swap),
+  because append-only without a bound is a leak and not a guarantee.
 - **Compare-and-swap on the ref.** A commit names the parent it expects. Two
   deliveries built on the same parent mean the second is refused and must be
   rebased. That is the whole of the concurrency control.

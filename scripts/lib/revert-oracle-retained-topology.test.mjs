@@ -63,6 +63,7 @@ test('#7955: private S3 receipt/resource witnesses have exact library owners', (
     ['rust/geometry/src/document/retained_frames_tests.rs', 'ifc-lite-geometry', 'document::retained_frames::tests'],
     ['rust/geometry/src/program/retained/outcome_allocation_tests.rs', 'ifc-lite-geometry', 'program::retained::outcome::tests'],
     ['rust/geometry/src/resource/owned_tests.rs', 'ifc-lite-geometry', 'resource::owned::tests'],
+    ['rust/geometry/src/resource/owned_detach_tests.rs', 'ifc-lite-geometry', 'resource::owned::tests::detach_tests'],
     ['rust/processing/src/element/model_context_retained_tests.rs', 'ifc-lite-processing', 'element::model_context::retained::tests'],
   ];
   const { plans, unassigned, support } = planRuns(inputs.map(([file]) => file), root);

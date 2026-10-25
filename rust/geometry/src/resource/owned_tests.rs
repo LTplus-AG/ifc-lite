@@ -341,3 +341,6 @@ fn s3_owned_refusal_reports_exact_failure_without_allocating_or_charging_foreign
     assert_eq!(foreign.usage().work, 0);
     assert_eq!(context.with_scope(|| resource::stop(ProgramStop::Cancelled)), expected);
 }
+
+#[path = "owned_detach_tests.rs"]
+mod detach_tests;

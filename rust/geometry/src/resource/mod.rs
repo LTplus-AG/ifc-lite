@@ -178,7 +178,7 @@ pub fn account_from_source_context(
 }
 
 /// Run `operation` with none of this thread's lexical resource state: no
-/// account, source stop or terminal.
+/// account, source stop, terminal or owned stop observer.
 ///
 /// A rayon wait (`join`, `par_iter`) may run an unrelated queued job on the
 /// waiting thread before it returns, such as another element's whole product.
@@ -188,7 +188,7 @@ pub fn account_from_source_context(
 /// caller's state is restored on return and on unwind. `operation` itself
 /// must not need the caller's resource state.
 ///
-/// This hides RESOURCE state only (account, source stop, terminal). Other
+/// This hides RESOURCE state only (including the owned stop observer). Other
 /// per-thread diagnostic capture, such as geometry telemetry transactions and
 /// the CSG census sink, is not scoped by it.
 pub fn detached<T>(operation: impl FnOnce() -> T) -> T {
@@ -196,18 +196,24 @@ pub fn detached<T>(operation: impl FnOnce() -> T) -> T {
         account: Option<ExecutionAccount>,
         source: Option<ifc_lite_core::execution_owner::SourceStopHandle>,
         terminal: Option<Option<ProgramStop>>,
+        #[cfg(any(test, feature = "retained-runtime"))]
+        owned: Option<owned::OwnedResourceContext>,
     }
     impl Drop for Restore {
         fn drop(&mut self) {
             CURRENT.with(|slot| *slot.borrow_mut() = self.account.take());
             SOURCE_STOP.with(|slot| *slot.borrow_mut() = self.source.take());
             TERMINAL.with(|slot| slot.set(self.terminal));
+            #[cfg(any(test, feature = "retained-runtime"))]
+            owned::OWNED.with(|slot| *slot.borrow_mut() = self.owned.take());
         }
     }
     let _restore = Restore {
         account: CURRENT.with(|slot| slot.borrow_mut().take()),
         source: SOURCE_STOP.with(|slot| slot.borrow_mut().take()),
         terminal: TERMINAL.with(Cell::take),
+        #[cfg(any(test, feature = "retained-runtime"))]
+        owned: owned::OWNED.with(|slot| slot.borrow_mut().take()),
     };
     operation()
 }

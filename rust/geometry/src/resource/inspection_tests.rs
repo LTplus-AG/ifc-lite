@@ -77,3 +77,52 @@ fn issue_7955_c2_detached_work_cannot_consume_or_stop_waiting_allowance() {
     assert_eq!(original.usage().work, 1);
     assert_eq!(original.usage().live_bytes, 0);
 }
+
+#[test]
+fn issue_7955_c2_budget_resumption_excludes_foreign_terminal_and_restores_it() {
+    let original = generous();
+    let budget = original.scope(|| InspectionBudget::new(InspectionStart::now(), 2, 8, 10000));
+    let foreign = generous();
+    foreign.scope(|| {
+        stop(ProgramStop::Cancelled);
+        budget.scope(|| {
+            let mut values = Vec::<u64>::new();
+            let permit = reserve_headers(&mut values, 1).unwrap();
+            values.push(29);
+            assert_eq!(values[0], 29);
+            drop((values, permit));
+            assert!(reserve_headers(&mut Vec::<u64>::new(), 2).is_err());
+        });
+        assert_eq!(check_current(), Err(ProgramStop::Cancelled));
+    });
+    assert_eq!(foreign.usage(), Usage::default());
+    assert_eq!(original.usage().work, 1);
+    assert!(matches!(original.check(), Err(ProgramStop::ResourceRefused(_))));
+}
+
+#[test]
+fn issue_7955_c2_later_actual_source_stop_still_precedes_account_under_entry_allowance() {
+    use ifc_lite_core::execution_owner::ExecutionOwner;
+    let original = generous();
+    let budget = original.scope(|| InspectionBudget::new(InspectionStart::now(), 10, 64, 10000));
+    let expected = ProgramStop::ResourceRefused(ResourceFailure {
+        dimension: Dimension::CopyBytes, requested: 31, remaining: 7, reason: RefusalReason::Limit,
+    });
+    let (observed, context) = budget.scope(|| {
+        let owner = ExecutionOwner::default();
+        let mut lease = owner.try_lease().unwrap();
+        let work = lease.begin_synchronous_work(owner.identity()).unwrap();
+        let source = work.source_borrow_scope();
+        with_source_stop(source.resource_stop_handle(), || {
+            let context = OwnedResourceContext::capture_current();
+            source.resource_stop_handle().stop(expected);
+            original.cancel();
+            (charge(Cost { work: 1, ..Default::default() }).unwrap_err(), context)
+        })
+    });
+    assert_eq!(observed, expected);
+    let foreign = generous();
+    foreign.scope(|| assert_eq!(context.check(), Err(expected)));
+    assert!(foreign.check().is_ok());
+    assert_eq!(foreign.usage(), Usage::default());
+}

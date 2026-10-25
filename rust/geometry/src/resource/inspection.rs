@@ -51,7 +51,7 @@ impl Allowance {
 /// original account Arc (including pool permit and cumulative usage). Creating
 /// it never resets or widens that account. Captures and source contexts carry
 /// the overlay; detached work hides it with the rest of the resource domain.
-pub struct InspectionBudget { account: ExecutionAccount }
+pub struct InspectionBudget { resources: OwnedResourceContext }
 impl InspectionBudget {
     pub fn new(start: InspectionStart, work: u64, bytes: u64, deadline_ms: u64) -> Self {
         let mut account = current_account().unwrap_or_else(||
@@ -63,9 +63,9 @@ impl InspectionBudget {
         account.1 = Some(Arc::new(Allowance {
             account: local, start, duration: Duration::from_millis(deadline_ms),
         }));
-        Self { account }
+        Self { resources: OwnedResourceContext::with_account(account) }
     }
-    pub fn scope<T>(&self, run: impl FnOnce() -> T) -> T { self.account.source_scope(run) }
+    pub fn scope<T>(&self, run: impl FnOnce() -> T) -> T { self.resources.with_allowance_scope(run) }
 }
 
 impl ExecutionAccount {

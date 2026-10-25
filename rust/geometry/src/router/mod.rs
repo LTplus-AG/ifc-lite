@@ -202,9 +202,9 @@ pub struct GeometryRouter {
     /// the wasm layer per batch and logged to the browser console (the geometry
     /// crate can't `web_sys`). Drainable via [`Self::take_layer_slice_diag`].
     layer_slice_diag: RefCell<Vec<(u32, &'static str)>>,
-    /// Host product express IDs that a void subtraction fully CONSUMED — an
-    /// opening whose real solid contains the whole host, so the correct result
-    /// is an empty mesh. Without this flag the empty mesh reads as a failed cut
+    /// Host product express IDs that a void subtraction fully CONSUMED — its
+    /// openings together cover the whole host, so the correct result is an
+    /// empty mesh. Without this flag the empty mesh reads as a failed cut
     /// and the element pipeline falls back to the un-cut host, re-rendering a
     /// spurious solid. Queried via [`Self::host_consumed_by_void`].
     voids_consumed_hosts: RefCell<FxHashSet<u32>>,

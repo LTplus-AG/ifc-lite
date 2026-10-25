@@ -16,7 +16,8 @@ demo kit's `building-architecture-rev-b.ifc`, built for the tours walkthrough.
 ```sh
 pnpm install          # the chain needs @ifc-lite/wasm linked into packages/diff
 pnpm build            # or at least --filter "@ifc-lite/cli..."
-pnpm tsx tools/ifc-git-corpus/derive-revisions.mts
+pnpm tsx tools/ifc-git-corpus/derive-revisions.mts            # derive + rewrite
+pnpm tsx tools/ifc-git-corpus/derive-revisions.mts --check    # derive + compare
 ```
 
 Writes the chain to `tests/models/local/ifc-git-corpus/` (gitignored —
@@ -25,11 +26,19 @@ rewrites `revisions.json`. Override the output directory with
 `IFC_GIT_CORPUS_OUT`.
 
 **The generator is the verification.** Each revision declares what it should
-change, and the script measures the real diff between consecutive revisions and
-**fails** if the measurement contradicts the declaration. So the committed
-manifest cannot drift from what the bytes actually do, and a green run is the
-evidence. Deliberately not wired into CI: it *writes* the manifest, and letting
-CI regenerate would allow a drifting engine to rewrite its own expectations.
+change — the counts, the `GlobalId`s touched, the component keys — and the
+script measures the real diff between consecutive revisions and **fails**, before
+writing anything, if the measurement contradicts the declaration.
+
+Two claims, kept apart because they are not the same claim:
+
+- A plain run proves **self-consistency**: these bytes, measured by *this*
+  build, do what the declarations say. It then rewrites `revisions.json`, so it
+  cannot also tell you the committed manifest was already right.
+- `--check` proves the committed manifest **is still current**: same derivation,
+  compared byte-for-byte against the committed file, nothing written. This is
+  the mode worth automating; a plain run in CI would let a drifting engine
+  rewrite its own expectations.
 
 ## The chain
 
@@ -42,13 +51,13 @@ star of variants off one base.
 | --- | --- | --- |
 | `r00` | base | first commit, `parents: []` |
 | `r01` | one property value in one property set | localisation: exactly `pset:Pset_WallCommon` on one element |
-| `r02` | one element moved | geometric change; data scope sees nothing, by design |
+| `r02` | the first wall's own placement point moved | geometric change; data scope sees nothing, by design |
 | `r03` | one element renamed | `attr:core` only |
-| `r04` | one element deleted | `deleted` |
+| `r04` | one element deleted, with its orphaned relationships | `deleted` |
 | `r05` | a type object's own property set edited | types tracked, not only occurrences (#8040) |
 | `r06` | a property set shared with a second wall | a relationship gains a related object |
 | `r07` | that shared property set edited | **one node change, two element markers** |
-| `r08` | re-export: all 116 GlobalIds regenerated, header clock and owner-history dates moved | **GUID-agnostic identity** |
+| `r08` | re-export: all 114 GlobalIds regenerated, header clock and owner-history dates moved | **GUID-agnostic identity** |
 | `r09` | byte-identical re-save | empty diff ⇒ no commit |
 
 ## The two measurements, and why there are two
@@ -66,6 +75,10 @@ The gap between them *is* the GUID-agnostic story. Measured on `r08`:
 | `keyed` | **+39 / −39** — a total rewrite |
 | `contentMatched` | **0 / 0 / 0**, with 39 `renamed` claims |
 
+39, not 114, because the regenerated ids span every `IfcRoot` in the file while
+data scope diffs the elements and type objects — 39 of them at `r08`. Every one
+of those 39 changes address.
+
 A re-exported model with nothing semantically changed reads as complete churn
 when paired by `GlobalId`, and as unchanged once content matching runs. That is
 the whole argument for treating `GlobalId` as evidence rather than identity, and
@@ -77,10 +90,12 @@ entity `key` into the `element` node, so a re-GUID moves every element address.
 
 ## Verification scope
 
-`data`, deliberately — it needs no geometry pipeline and therefore no WASM, so
-this runs on any checkout. `r02` carries a real geometric change that data scope
-cannot see; it is flagged `geometryScopeRequired` in the manifest rather than
-quietly recorded as a no-op.
+`data`, deliberately — it needs no geometry pipeline and so **executes** no
+WASM. That is not the same as needing nothing: `pnpm install` must have linked
+`@ifc-lite/wasm` for `packages/diff` to load at all, and the measurement is only
+as current as `packages/*/dist`. `r02` carries a real geometric change that data
+scope cannot see; it is flagged `geometryScopeRequired` in the manifest rather
+than quietly recorded as a no-op.
 
 ## Limits, stated rather than implied
 

@@ -23,21 +23,30 @@
  *   - tools/ifc-git-corpus/revisions.json   committed manifest, SHA-256 pinned
  *
  * Every declared change is SELF-VERIFIED by running the real diff engine
- * between consecutive revisions and recording the measured result. A revision
- * whose measured diff contradicts its declared change class fails the run, so
- * the manifest cannot drift from what the bytes actually do.
+ * between consecutive revisions: the counts, the modified/deleted `GlobalId`s
+ * and the changed component keys are each compared against the declaration, and
+ * a contradiction fails the run BEFORE the manifest is written.
+ *
+ * A plain run REWRITES the manifest, so by itself it proves only that this
+ * engine satisfies the current declarations — not that the committed manifest
+ * still holds. `--check` closes that gap: same derivation, compared
+ * byte-for-byte against the committed file, nothing written.
  *
  * Verification scope is `data`, deliberately: it needs no geometry pipeline and
- * therefore no WASM, so this runs on any checkout. Revisions whose change is
- * geometric are marked `geometryScopeRequired` in the manifest — their bytes
- * are correct, but proving the change needs the geometry lane.
+ * therefore executes no WASM. It still needs an installed and CURRENT workspace
+ * build — `@ifc-lite/wasm` has to resolve for `packages/diff` to load at all.
+ * Revisions whose change is geometric are marked `geometryScopeRequired` in the
+ * manifest — their bytes are correct, but proving the change needs the geometry
+ * lane.
  *
  * Run from the repo root:
+ *   pnpm install # links @ifc-lite/wasm into packages/diff
  *   pnpm build   # or at least packages/{parser,diff,cli,encoding}
- *   pnpm tsx tools/ifc-git-corpus/derive-revisions.mts
+ *   pnpm tsx tools/ifc-git-corpus/derive-revisions.mts [--check]
  *
- * Deliberately not run in CI: it WRITES the manifest the tests then check.
- * Regenerating in CI would let a drifting engine rewrite its own expectations.
+ * Deliberately not run in CI without `--check`: a plain run WRITES the manifest
+ * the tests then check, so regenerating in CI would let a drifting engine
+ * rewrite its own expectations.
  *
  * Why this file re-execs itself: the repo root tsconfig maps some `@ifc-lite/*`
  * names to their `dist/index.d.ts`, and tsx's tsconfig-paths resolver loads a
@@ -100,6 +109,8 @@ const SAMPLES_DIR = path.join(REPO_ROOT, 'apps/viewer/public/samples');
 const BASE_FILE = path.join(SAMPLES_DIR, 'building-architecture.ifc');
 const MANIFEST_FILE = path.join(__dirname_, 'revisions.json');
 const OUT_DIR = process.env.IFC_GIT_CORPUS_OUT ?? path.join(REPO_ROOT, 'tests/models/local/ifc-git-corpus');
+/** `--check` verifies the committed manifest instead of rewriting it. */
+const CHECK_ONLY = process.argv.slice(2).includes('--check');
 
 // ---------------------------------------------------------------------------
 // STEP text helpers. Text-level on purpose: a revision must be able to change
@@ -181,6 +192,30 @@ function sha256(text: string): string {
   return createHash('sha256').update(text, 'utf8').digest('hex');
 }
 
+/**
+ * How many OTHER records reference `#id`. The record's own declaration is not a
+ * reference, so it is discounted.
+ */
+function referenceCount(lines: readonly string[], target: StepLine): number {
+  const re = new RegExp(`#${target.id}(?![0-9])`, 'g');
+  let count = 0;
+  lines.forEach((line, i) => {
+    const hits = line.match(re)?.length ?? 0;
+    count += i === target.index ? hits - 1 : hits;
+  });
+  return count;
+}
+
+/**
+ * STEP serialisation of a REAL. `IfcLengthMeasure` is a REAL, and ISO 10303-21
+ * requires the decimal point even on an integral value: `250` is an INTEGER
+ * literal and not schema-valid where a REAL is expected.
+ */
+function stepReal(value: number): string {
+  const text = String(value);
+  return /[.eE]/.test(text) ? text : `${text}.`;
+}
+
 // ---------------------------------------------------------------------------
 // Revision transforms. Each takes the previous revision's text and returns the
 // next, plus the facts the manifest records.
@@ -202,12 +237,20 @@ function pickWall(index: Map<number, StepLine>): StepLine {
   return requireOne(findByType(index, 'IFCWALL'), 'IfcWall');
 }
 
+/**
+ * Does `args` reference `#id`? Boundary-anchored on purpose: a plain substring
+ * test makes `#26` match `#262`, which would silently resolve the wrong owner.
+ */
+function refersTo(args: string, id: number): boolean {
+  return new RegExp(`#${id}(?![0-9])`).test(args);
+}
+
 /** Find the property set attached to `ownerId` through IfcRelDefinesByProperties. */
 function psetOf(index: Map<number, StepLine>, ownerId: number): StepLine {
   for (const rel of findByType(index, 'IFCRELDEFINESBYPROPERTIES')) {
     const args = splitArgs(rel.args);
     const related = args[4] ?? '';
-    if (!related.includes(`#${ownerId}`)) continue;
+    if (!refersTo(related, ownerId)) continue;
     const psetRef = /#(\d+)/.exec(args[5] ?? '');
     if (!psetRef) continue;
     const pset = index.get(Number(psetRef[1]));
@@ -267,13 +310,46 @@ const editOwnPropertySet: Transform = (text) => {
   };
 };
 
+/**
+ * The element's OWN placement origin: `ObjectPlacement` -> `RelativePlacement`
+ * -> `Location`. Resolved rather than guessed, because the lowest-id
+ * `IfcCartesianPoint` in a real export is the world origin shared by the
+ * geometric representation context and the site placement -- shifting that
+ * moves the whole model, which would make a single-element `touched` claim a
+ * lie.
+ */
+function placementPointOf(index: Map<number, StepLine>, element: StepLine): StepLine {
+  const step = (from: StepLine, slot: number, want: RegExp, what: string): StepLine => {
+    const ref = /#(\d+)/.exec(splitArgs(from.args)[slot] ?? '');
+    const target = ref ? index.get(Number(ref[1])) : undefined;
+    if (!target || !want.test(target.type)) {
+      throw new Error(`#${from.id} (${from.type}) has no ${what} at attribute ${slot}`);
+    }
+    return target;
+  };
+  const placement = step(element, 5, /^IFCLOCALPLACEMENT$/, 'IfcLocalPlacement');
+  const axis = step(placement, 1, /^IFCAXIS2PLACEMENT[23]D$/, 'IfcAxis2Placement');
+  return step(axis, 0, /^IFCCARTESIANPOINT$/, 'IfcCartesianPoint');
+}
+
 const moveElement: Transform = (text) => {
   const lines = text.split('\n');
   const index = indexLines(lines);
   const wall = pickWall(index);
-  const point = requireOne(findByType(index, 'IFCCARTESIANPOINT'), 'IfcCartesianPoint');
+  const point = placementPointOf(index, wall);
+  // Exactly one consumer, the IfcAxis2Placement resolved above. A shared point
+  // would move every element hanging off it, and the `touched` claim below says
+  // one.
+  const consumers = referenceCount(lines, point);
+  if (consumers !== 1) {
+    throw new Error(
+      `placement point #${point.id} has ${consumers} consumers; ` +
+        `moving it would move more than #${wall.id}`,
+    );
+  }
   const coords = splitArgs(splitArgs(point.args)[0].replace(/^\(|\)$/g, ''));
-  const shifted = `(${[Number(coords[0]) + 250, coords[1], coords[2]].join(',')})`;
+  // Shift X only, preserving the point's arity -- a 2D point has no coords[2].
+  const shifted = `(${[stepReal(Number(coords[0]) + 250), ...coords.slice(1)].join(',')})`;
   rewriteRecord(lines, point, [shifted]);
   return {
     text: lines.join('\n'),
@@ -330,8 +406,8 @@ const sharePropertySet: Transform = (text) => {
   const [first, second] = walls;
   for (const rel of findByType(index, 'IFCRELDEFINESBYPROPERTIES')) {
     const args = splitArgs(rel.args);
-    if (!(args[4] ?? '').includes(`#${first.id}`)) continue;
-    if ((args[4] ?? '').includes(`#${second.id}`)) continue;
+    if (!refersTo(args[4] ?? '', first.id)) continue;
+    if (refersTo(args[4] ?? '', second.id)) continue;
     args[4] = (args[4] ?? '').replace(/\)$/, `,#${second.id})`);
     rewriteRecord(lines, rel, args);
     return {
@@ -366,14 +442,57 @@ const deleteElement: Transform = (text) => {
   const furniture = findByType(index, 'IFCFURNITURE');
   const victim = requireOne(furniture.length > 0 ? furniture : findByType(index, 'IFCWALL'), 'deletable element');
   const gid = globalIdOf(victim)!;
-  const kept = lines.filter((_, i) => i !== victim.index);
-  const scrubbed = kept.map((line) =>
-    line
-      .replace(new RegExp(`#${victim.id}(?![0-9]),`, 'g'), '')
-      .replace(new RegExp(`,#${victim.id}(?![0-9])`, 'g'), '')
-      .replace(new RegExp(`\\(#${victim.id}(?![0-9])\\)`, 'g'), '()'),
-  );
-  return { text: scrubbed.join('\n'), touched: [gid], expectComponents: [] };
+
+  // Scrubbing a reference out of a POSITIONAL slot would leave the record one
+  // argument short -- silently, and invisibly to the diff. Only list membership
+  // is safe to scrub, so refuse anything else rather than corrupt the record.
+  const soleMember = new RegExp(`\\(#${victim.id}(?![0-9])\\)`);
+  const orphaned: StepLine[] = [];
+  for (const line of index.values()) {
+    if (line.id === victim.id) continue;
+    for (const arg of splitArgs(line.args)) {
+      if (!refersTo(arg, victim.id)) continue;
+      if (!/^\(.*\)$/.test(arg.trim())) {
+        throw new Error(
+          `#${victim.id} is a positional argument of #${line.id} (${line.type}); ` +
+            'scrubbing it would shift that record\'s arguments',
+        );
+      }
+    }
+    // A relationship that related ONLY the victim has nothing left to relate,
+    // and `RelatedObjects` is `SET [1:?]` -- emptying it to `()` would ship a
+    // schema-invalid record into this and EVERY later revision, since each
+    // revision applies to the previous text. A real deletion removes the
+    // relationship, so drop it rather than empty it.
+    if (soleMember.test(line.args)) {
+      if (referenceCount(lines, line) !== 0) {
+        throw new Error(
+          `#${line.id} (${line.type}) is emptied by deleting #${victim.id} but is itself referenced`,
+        );
+      }
+      orphaned.push(line);
+    }
+  }
+
+  const drop = new Set<number>([victim.index, ...orphaned.map((l) => l.index)]);
+  const scrubbed = lines
+    .filter((_, i) => !drop.has(i))
+    .map((line) =>
+      line
+        .replace(new RegExp(`#${victim.id}(?![0-9]),`, 'g'), '')
+        .replace(new RegExp(`,#${victim.id}(?![0-9])`, 'g'), ''),
+    );
+  return {
+    text: scrubbed.join('\n'),
+    touched: [gid],
+    expectComponents: [],
+    note:
+      orphaned.length === 0
+        ? undefined
+        : `also drops ${orphaned.length} relationship record(s) left with an empty related set: ${orphaned
+            .map((l) => `#${l.id} ${l.type}`)
+            .join(', ')}`,
+  };
 };
 
 const reExportRegeneratingGuids: Transform = (text) => {
@@ -457,6 +576,7 @@ interface MeasuredDiff {
   readonly unchanged: number;
   readonly changedComponents: readonly string[];
   readonly modifiedKeys: readonly string[];
+  readonly deletedKeys: readonly string[];
   /** Content-match claims, when the pass ran. `null` when it abstained. */
   readonly contentMatchKinds: Readonly<Record<string, number>> | null;
 }
@@ -479,10 +599,13 @@ interface MeasuredPair {
 function summarize(diff: any): MeasuredDiff {
   const components = new Set<string>();
   const modifiedKeys: string[] = [];
+  const deletedKeys: string[] = [];
   for (const entry of diff.entries) {
     if (entry.state === 'modified') {
       modifiedKeys.push(entry.key);
       for (const c of entry.changedComponents ?? []) components.add(c);
+    } else if (entry.state === 'deleted') {
+      deletedKeys.push(entry.key);
     }
   }
   let kinds: Record<string, number> | null = null;
@@ -499,6 +622,7 @@ function summarize(diff: any): MeasuredDiff {
     unchanged: diff.counts.unchanged,
     changedComponents: [...components].sort(),
     modifiedKeys: modifiedKeys.sort(),
+    deletedKeys: deletedKeys.sort(),
     contentMatchKinds: kinds,
   };
 }
@@ -517,7 +641,35 @@ function churn(d: MeasuredDiff): number {
   return d.added + d.modified + d.deleted;
 }
 
-function checkExpectation(spec: RevisionSpec, m: MeasuredPair): string | null {
+/** Set equality, order- and duplicate-insensitive. */
+function sameSet(a: readonly string[], b: readonly string[]): boolean {
+  const x = [...new Set(a)].sort();
+  const y = [...new Set(b)].sort();
+  return x.length === y.length && x.every((v, i) => v === y[i]);
+}
+
+/**
+ * Counts alone cannot tell "one element modified" from "the WRONG element
+ * modified", so every revision whose change is visible at data scope also has
+ * its declared `touched` GlobalIds and `expectComponents` compared against the
+ * measurement. Without this, `checkExpectation` would pass a transform that
+ * edited something else entirely as long as the arithmetic worked out.
+ */
+function checkClaims(applied: Applied, k: MeasuredDiff): string | null {
+  if (!sameSet(k.modifiedKeys, applied.touched)) {
+    return `declared touched [${applied.touched.join(' ')}], measured modified [${k.modifiedKeys.join(' ')}]`;
+  }
+  if (!sameSet(k.changedComponents, applied.expectComponents)) {
+    return `declared components [${applied.expectComponents.join(' ')}], measured [${k.changedComponents.join(' ')}]`;
+  }
+  return null;
+}
+
+function checkExpectation(
+  spec: RevisionSpec,
+  applied: Applied,
+  m: MeasuredPair,
+): string | null {
   const k = m.keyed;
   switch (spec.expect.kind) {
     case 'base':
@@ -528,14 +680,17 @@ function checkExpectation(spec: RevisionSpec, m: MeasuredPair): string | null {
         : `expected no data-scope change, measured +${k.added} ~${k.modified} -${k.deleted}`;
     case 'modified':
       return k.modified === spec.expect.count && k.added === 0 && k.deleted === 0
-        ? null
+        ? checkClaims(applied, k)
         : `expected exactly ${spec.expect.count} modified, measured +${k.added} ~${k.modified} -${k.deleted}`;
     case 'deleted':
-      return k.deleted === spec.expect.count && k.added === 0
+      if (!(k.deleted === spec.expect.count && k.added === 0)) {
+        return `expected ${spec.expect.count} deleted, measured +${k.added} ~${k.modified} -${k.deleted}`;
+      }
+      return sameSet(k.deletedKeys, applied.touched)
         ? null
-        : `expected ${spec.expect.count} deleted, measured +${k.added} ~${k.modified} -${k.deleted}`;
+        : `declared deletion of [${applied.touched.join(' ')}], measured [${k.deletedKeys.join(' ')}]`;
     case 'any':
-      return churn(k) > 0 ? null : 'expected some change, measured none';
+      return churn(k) > 0 ? checkClaims(applied, k) : 'expected some change, measured none';
     case 'reguid-noop': {
       // The whole point of the corpus. A re-GUID must be total churn when
       // paired by GlobalId, and nothing at all once content matching runs.
@@ -573,7 +728,7 @@ for (const spec of REVISIONS) {
   const measured =
     previousId === null ? null : await measure(previousText, applied.text);
   if (measured) {
-    const problem = checkExpectation(spec, measured);
+    const problem = checkExpectation(spec, applied, measured);
     if (problem) failures.push(`${spec.id} (${spec.changeClass}): ${problem}`);
   }
 
@@ -608,10 +763,10 @@ const manifest = {
   revisions: entries,
 };
 
-await writeFile(MANIFEST_FILE, `${JSON.stringify(manifest, null, 2)}\n`);
+const serialized = `${JSON.stringify(manifest, null, 2)}\n`;
+const manifestPath = path.relative(REPO_ROOT, MANIFEST_FILE);
 
 console.log(`wrote ${REVISIONS.length} revisions to ${path.relative(REPO_ROOT, OUT_DIR)}`);
-console.log(`wrote manifest ${path.relative(REPO_ROOT, MANIFEST_FILE)}`);
 for (const e of entries as Array<Record<string, any>>) {
   const m = e.measuredDataDiff as MeasuredPair | null;
   const fmt = (d: MeasuredDiff) => `+${d.added} ~${d.modified} -${d.deleted}`;
@@ -619,9 +774,29 @@ for (const e of entries as Array<Record<string, any>>) {
   console.log(`  ${e.id}  ${String(e.changeClass).padEnd(26)} ${shape.padEnd(34)} ${(m?.keyed.changedComponents ?? []).join(',')}`);
 }
 
+// The manifest is written only AFTER the declarations hold. A failing run that
+// wrote first would leave the contradicting measurements on disk, one `git add`
+// away from being committed as the new expectation.
 if (failures.length > 0) {
   console.error(`\n${failures.length} revision(s) did not match their declared change class:`);
   for (const f of failures) console.error(`  - ${f}`);
+  console.error(`\n${manifestPath} left untouched.`);
   process.exit(1);
 }
-console.log('\nevery revision matched its declared change class');
+
+if (CHECK_ONLY) {
+  const committed = await readFile(MANIFEST_FILE, 'utf8').catch(() => null);
+  if (committed !== serialized) {
+    console.error(
+      `\n${manifestPath} does not match a fresh derivation` +
+        `${committed === null ? ' (missing)' : ''}.` +
+        '\nRe-run without --check and commit the result.',
+    );
+    process.exit(1);
+  }
+  console.log(`\nevery revision matched its declared change class; ${manifestPath} is current`);
+} else {
+  await writeFile(MANIFEST_FILE, serialized);
+  console.log(`wrote manifest ${manifestPath}`);
+  console.log('\nevery revision matched its declared change class');
+}

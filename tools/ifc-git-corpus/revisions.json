@@ -47,6 +47,7 @@
           "modifiedKeys": [
             "1AQAupaRP1txwK1AGiN61V"
           ],
+          "deletedKeys": [],
           "contentMatchKinds": null
         },
         "contentMatched": {
@@ -60,6 +61,7 @@
           "modifiedKeys": [
             "1AQAupaRP1txwK1AGiN61V"
           ],
+          "deletedKeys": [],
           "contentMatchKinds": {}
         }
       }
@@ -70,8 +72,8 @@
       "parent": "r01",
       "changeClass": "element-moved",
       "exercises": "placement change with data unchanged",
-      "sha256": "359c13298388793e68e87a966534b7031cb5cdf41776f10c91546e5e51fa18f7",
-      "bytes": 225636,
+      "sha256": "19a4d8128e53ad08bc826fceba00a42afc3ec1bc06e13a4337be6a979d148b05",
+      "bytes": 225635,
       "identicalToParentBytes": false,
       "touchedGlobalIds": [
         "1AQAupaRP1txwK1AGiN61V"
@@ -86,6 +88,7 @@
           "unchanged": 40,
           "changedComponents": [],
           "modifiedKeys": [],
+          "deletedKeys": [],
           "contentMatchKinds": null
         },
         "contentMatched": {
@@ -95,6 +98,7 @@
           "unchanged": 40,
           "changedComponents": [],
           "modifiedKeys": [],
+          "deletedKeys": [],
           "contentMatchKinds": {}
         }
       }
@@ -105,8 +109,8 @@
       "parent": "r02",
       "changeClass": "element-renamed",
       "exercises": "attr:core only",
-      "sha256": "23c614dfad078bb6a410cf223d616cc822484042816559cdfd80e82ce48be88f",
-      "bytes": 225646,
+      "sha256": "c1a94de389a26dfae02e477aca47f8f5066d733513aa3ef70a8095bf8b4b4f5f",
+      "bytes": 225645,
       "identicalToParentBytes": false,
       "touchedGlobalIds": [
         "1AQAupaRP1txwK1AGiN61V"
@@ -125,6 +129,7 @@
           "modifiedKeys": [
             "1AQAupaRP1txwK1AGiN61V"
           ],
+          "deletedKeys": [],
           "contentMatchKinds": null
         },
         "contentMatched": {
@@ -138,6 +143,7 @@
           "modifiedKeys": [
             "1AQAupaRP1txwK1AGiN61V"
           ],
+          "deletedKeys": [],
           "contentMatchKinds": {}
         }
       }
@@ -148,14 +154,14 @@
       "parent": "r03",
       "changeClass": "element-deleted",
       "exercises": "deleted",
-      "sha256": "6093792d737f337ba7a80577dd2c244fef59a03aa91fec2440fb22a2b0a7112c",
-      "bytes": 225438,
+      "sha256": "20490a54e6c8a7b5a9120ced2a7612ba4dcb6a6bc6615e9585c9c45b32cee1d5",
+      "bytes": 225298,
       "identicalToParentBytes": false,
       "touchedGlobalIds": [
         "2e9pghUJbBqR4jTInsONQT"
       ],
       "geometryScopeRequired": false,
-      "note": null,
+      "note": "also drops 2 relationship record(s) left with an empty related set: #175 IFCRELDEFINESBYTYPE, #179 IFCRELASSOCIATESMATERIAL",
       "measuredDataDiff": {
         "keyed": {
           "added": 0,
@@ -164,6 +170,9 @@
           "unchanged": 39,
           "changedComponents": [],
           "modifiedKeys": [],
+          "deletedKeys": [
+            "2e9pghUJbBqR4jTInsONQT"
+          ],
           "contentMatchKinds": null
         },
         "contentMatched": {
@@ -173,6 +182,9 @@
           "unchanged": 39,
           "changedComponents": [],
           "modifiedKeys": [],
+          "deletedKeys": [
+            "2e9pghUJbBqR4jTInsONQT"
+          ],
           "contentMatchKinds": {}
         }
       }
@@ -183,8 +195,8 @@
       "parent": "r04",
       "changeClass": "type-object-property-edit",
       "exercises": "types tracked, not only occurrences (#8040)",
-      "sha256": "18afcfbc2392f6a0bbf63c358151f6867c3b9d25c231a876f34c45146d29c2ab",
-      "bytes": 225442,
+      "sha256": "5d87d9ee01ad5e5319dba450441933b988537ca34630a0f412138bfa8d127625",
+      "bytes": 225302,
       "identicalToParentBytes": false,
       "touchedGlobalIds": [
         "0hnSKr4LD8eRixcnqcc6X1"
@@ -203,6 +215,7 @@
           "modifiedKeys": [
             "0hnSKr4LD8eRixcnqcc6X1"
           ],
+          "deletedKeys": [],
           "contentMatchKinds": null
         },
         "contentMatched": {
@@ -216,6 +229,7 @@
           "modifiedKeys": [
             "0hnSKr4LD8eRixcnqcc6X1"
           ],
+          "deletedKeys": [],
           "contentMatchKinds": {}
         }
       }
@@ -226,8 +240,8 @@
       "parent": "r05",
       "changeClass": "property-set-shared",
       "exercises": "a relationship gains a second related object",
-      "sha256": "5cf8600c6dd6a9b8fcdae9d89a0e49be8e3f38343d8f7bba35dec4fea1c7eeb8",
-      "bytes": 225447,
+      "sha256": "7fe07d2a45fc542d732dfe5d7ea49c0af43d679ceccdda7d43f9857c2eec8f02",
+      "bytes": 225307,
       "identicalToParentBytes": false,
       "touchedGlobalIds": [
         "3wdauVJT5Fx9drrREiDqA$"
@@ -244,6 +258,7 @@
           "modifiedKeys": [
             "3wdauVJT5Fx9drrREiDqA$"
           ],
+          "deletedKeys": [],
           "contentMatchKinds": null
         },
         "contentMatched": {
@@ -255,6 +270,7 @@
           "modifiedKeys": [
             "3wdauVJT5Fx9drrREiDqA$"
           ],
+          "deletedKeys": [],
           "contentMatchKinds": {}
         }
       }
@@ -265,8 +281,8 @@
       "parent": "r06",
       "changeClass": "shared-property-set-edit",
       "exercises": "one node change, N element markers",
-      "sha256": "1c72968a8d4b635b9ad0622c26d71ff6757fb36fd36ca263f670b28c471c3817",
-      "bytes": 225447,
+      "sha256": "6879d06ef31055a025eed88af35fa9cfb0be4cdfb7092f93cae858e112359e99",
+      "bytes": 225307,
       "identicalToParentBytes": false,
       "touchedGlobalIds": [
         "1AQAupaRP1txwK1AGiN61V",
@@ -287,6 +303,7 @@
             "1AQAupaRP1txwK1AGiN61V",
             "3wdauVJT5Fx9drrREiDqA$"
           ],
+          "deletedKeys": [],
           "contentMatchKinds": null
         },
         "contentMatched": {
@@ -301,6 +318,7 @@
             "1AQAupaRP1txwK1AGiN61V",
             "3wdauVJT5Fx9drrREiDqA$"
           ],
+          "deletedKeys": [],
           "contentMatchKinds": {}
         }
       }
@@ -311,12 +329,12 @@
       "parent": "r07",
       "changeClass": "reexport-reguid",
       "exercises": "GUID-AGNOSTIC: total churn when keyed by GlobalId, unchanged under content matching",
-      "sha256": "fcb6c5038c7f9072a41106a55abe6663013ee266315c9f3a637c0f9cd2daa24a",
-      "bytes": 225447,
+      "sha256": "a8460bdc252e6c6d018fe0c3b0851106d8fab4fb39e7ee3b25831984712b5739",
+      "bytes": 225307,
       "identicalToParentBytes": false,
       "touchedGlobalIds": [],
       "geometryScopeRequired": false,
-      "note": "every GlobalId regenerated (116 rooted entities), header clock and owner-history dates moved; nothing semantic changed",
+      "note": "every GlobalId regenerated (114 rooted entities), header clock and owner-history dates moved; nothing semantic changed",
       "measuredDataDiff": {
         "keyed": {
           "added": 39,
@@ -325,6 +343,47 @@
           "unchanged": 0,
           "changedComponents": [],
           "modifiedKeys": [],
+          "deletedKeys": [
+            "02tV5cCF9FyA9D1O5nS04E",
+            "0GE$iSXKL8jAEeHi$mszPq",
+            "0OfZwWc8j9QP5uX8xPTxDH",
+            "0ZTBBPo6f6bxqV2K7Oelrq",
+            "0bo7_K6az7AA$4RxkSNVNM",
+            "0c$N1CTon2BB2Sp89385G8",
+            "0hnSKr4LD8eRixcnqcc6X1",
+            "0xY$LvXaDEswJDk_VU74C_",
+            "10FwQBcdzD9ve3W6PvBTti",
+            "12UVOn4wvAJPMUExKdZLb8",
+            "18QhMtUIXBvQktPHXXxs7H",
+            "1AQAupaRP1txwK1AGiN61V",
+            "1Ano2ZUxnEIvVQ_beukl8b",
+            "1Pbuu0tu59NfhrTsztVBK1",
+            "1hq0sM3Q5Cq9DOc93a74pc",
+            "1t790TYSH528FFF32MjoC5",
+            "1uS5vfZPn9R8PlAaVd73on",
+            "1wADrO19H3w980h1wUyXLk",
+            "1yP7NInQz5uQzbiOpVFFJr",
+            "23sFQGRy90RxVbRHD9iSE2",
+            "2Cv3e8z_D5hxYOcR$bfTHG",
+            "2F44QMqSH3TOkM$SZoqCBe",
+            "2IpkHFcdnD3xuZl6H52fWn",
+            "2Ndyd$OSX7s9A04nc4lyye",
+            "2S9_r4C7nDjgFt_4z9uegR",
+            "2YJwrhcCv9v8UXU8cWK40m",
+            "2iPwJwpPDCSgMheXwk9cBT",
+            "30wkH7SyH7gvhogulgnDi9",
+            "38qaFzdvb6KwnqDJqzAlhG",
+            "3Fit2Fad92zf2f6aWdJtF5",
+            "3_4VN63S96DfWiJjgG8j1C",
+            "3dkFAzOGrAIuOzY_RdrdVv",
+            "3eOsEo1q1CHfDNvWsh3ksD",
+            "3mjKLn_DjE4Beriey9bTvr",
+            "3n9C2OuJjE89DiYlOaoccO",
+            "3w6ICDipzDzBpAKGLlR62f",
+            "3wdauVJT5Fx9drrREiDqA$",
+            "3zR0BOEcLADRKln4HYporH",
+            "3zoiwePjTDQAyswDZcvJRA"
+          ],
           "contentMatchKinds": null
         },
         "contentMatched": {
@@ -334,6 +393,7 @@
           "unchanged": 0,
           "changedComponents": [],
           "modifiedKeys": [],
+          "deletedKeys": [],
           "contentMatchKinds": {
             "renamed": 39
           }
@@ -346,8 +406,8 @@
       "parent": "r08",
       "changeClass": "byte-identical-resave",
       "exercises": "empty diff: must produce no commit",
-      "sha256": "fcb6c5038c7f9072a41106a55abe6663013ee266315c9f3a637c0f9cd2daa24a",
-      "bytes": 225447,
+      "sha256": "a8460bdc252e6c6d018fe0c3b0851106d8fab4fb39e7ee3b25831984712b5739",
+      "bytes": 225307,
       "identicalToParentBytes": true,
       "touchedGlobalIds": [],
       "geometryScopeRequired": false,
@@ -360,6 +420,7 @@
           "unchanged": 39,
           "changedComponents": [],
           "modifiedKeys": [],
+          "deletedKeys": [],
           "contentMatchKinds": null
         },
         "contentMatched": {
@@ -369,6 +430,7 @@
           "unchanged": 39,
           "changedComponents": [],
           "modifiedKeys": [],
+          "deletedKeys": [],
           "contentMatchKinds": {}
         }
       }

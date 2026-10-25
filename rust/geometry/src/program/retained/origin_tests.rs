@@ -48,23 +48,44 @@ fn issue_7955_structural_report_preserves_kind_before_common_erasure() {
 #[test]
 fn issue_7955_shape_and_decode_causes_remain_owned_enums() {
     for (representation, shape) in [("#53", true), ("#999999", false)] {
-        let bytes = SOURCE.replace("#9,#11,$,$", &format!("#9,{representation},$,$"));
-        let source = SourceBundle::new(bytes.as_bytes().to_vec());
-        let mut decoder = source.decoder();
-        let router = GeometryRouter::with_units(&bytes, &mut decoder);
-        let entity = decoder.decode_by_id(10).unwrap();
-        let mut program = RetainedProgram::product_parts(&entity, contract());
-        assert!(drive(&mut program, &router, &mut decoder).is_empty());
-        let failure = origin(program.finish().unwrap_err());
-        assert_eq!(failure.site, FailureSite::ProductShape);
-        if shape {
-            assert_eq!(failure.entity, Some(53));
-            assert!(matches!(failure.cause, OriginCause::Shape(
-                crate::representation::ShapeError::NotAProductDefinitionShape(ifc_lite_core::IfcType::IfcPolyline))));
-        } else {
-            assert_eq!(failure.entity, Some(999999));
-            assert!(matches!(failure.cause, OriginCause::Core(ifc_lite_core::Error::InvalidEntityRef(999999))));
-        }
+        let (error, source_weak, recorded) = {
+            let bytes = SOURCE.replace("#9,#11,$,$", &format!("#9,{representation},$,$"));
+            let source = SourceBundle::new(bytes.as_bytes().to_vec());
+            let mut decoder = source.decoder();
+            if !shape {
+                // #7955: this deliberately dangling reference reaches decode_by_id's
+                // missing-index ParseError rather than InvalidEntityRef.
+                let error = decoder.decode_by_id(999999).unwrap_err();
+                assert!(matches!(&error, ifc_lite_core::Error::ParseError { position: 0, message }
+                    if message == "Entity #999999 not found"), "unexpected decoder cause: {error:?}");
+            }
+            let router = GeometryRouter::with_units(&bytes, &mut decoder);
+            let entity = decoder.decode_by_id(10).unwrap();
+            let mut program = RetainedProgram::product_parts(&entity, contract());
+            assert!(drive(&mut program, &router, &mut decoder).is_empty());
+            // A weak observer must not keep the cause alive on the handle's behalf.
+            let recorded = Arc::downgrade(&program.selection().unwrap().failure_handle().origin()
+                .expect("source cause must be recorded before completion"));
+            let error = program.finish().expect_err("B1 invalid shape cannot publish a partial plan");
+            drop(decoder.try_execution_lease().expect("failure holds no decoder lease"));
+            (error, Arc::downgrade(&source), recorded)
+        };
+        assert!(source_weak.upgrade().is_none(), "failure must not retain source storage");
+        std::thread::spawn(move || {
+            let failure = origin(error);
+            assert!(Arc::ptr_eq(&failure, &recorded.upgrade().expect("original cause survives")),
+                "completion must preserve the original source cause");
+            assert_eq!(failure.site, FailureSite::ProductShape);
+            if shape {
+                assert_eq!(failure.entity, Some(53));
+                assert!(matches!(failure.cause, OriginCause::Shape(
+                    crate::representation::ShapeError::NotAProductDefinitionShape(ifc_lite_core::IfcType::IfcPolyline))));
+            } else {
+                assert_eq!(failure.entity, Some(999999));
+                assert!(matches!(&failure.cause, OriginCause::Core(ifc_lite_core::Error::ParseError { position: 0, message })
+                    if message == "Entity #999999 not found"), "unexpected retained cause: {:?}", failure.cause);
+            }
+        }).join().unwrap();
     }
 }
 

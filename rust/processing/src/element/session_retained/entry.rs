@@ -71,6 +71,7 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
                 type_values: Vec::new(),
                 type_map_members: Default::default(),
                 pending: None,
+                prepared: None,
                 ledger: Vec::new(),
                 permits: Storage::default(),
                 scratch: Storage::default(),

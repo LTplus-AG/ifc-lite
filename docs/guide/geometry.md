@@ -1045,14 +1045,19 @@ launcher:
 
 ```bash
 cargo run --locked -p ifc-lite-processing --features retained-native \
-  --example retained_product -- MODEL.ifc EXPRESS_ID /absolute/existing/ifclite_smlib_worker
+  --example retained_product -- MODEL.ifc EXPRESS_ID /absolute/existing/ifclite_smlib_worker emit_tagged
 ```
 
 Its result is `intermediate_numerical_diagnostic`, with source identity,
 operation counts and unchecked obligations. `finalProductAvailable` is always
 false. No mesh, definition, occurrence, removal or consumed-host effect is
 returned. Opening, layer, appearance and persistent-face obligations remain;
-type-map witnesses also retain product-placement obligations. The Rust
+type-map witnesses also retain product-placement obligations. The final argument
+selects `suppress_instanced` or `emit_tagged`. The actual parsed root selects a
+product or type-product job. Type jobs derive map membership, mapped occurrences
+and type instantiation from the source and use the canonical mode/class planner;
+referenced maps are excluded in both modes. Each admitted map retains its actual
+MappingOrigin. Source-only refusal and suppressed type jobs need no SDK process. The Rust
 `element::diagnose_retained_native` entry returns an opaque diagnostic owner;
 `bytes()` checks its original source/resource/runtime lifetime, and
 `require_final_product()` refuses. Source, resource and runtime failures end the

@@ -8,6 +8,7 @@ use crate::resource::ProgramStop;
 pub enum TransactionFailureKind {
     Stopped, Unsupported, WrongPayload, WrongOwner, Outstanding,
     StaleRequest, AlreadyExecuted, NotExecuted, Cancelled, Source, Incomplete,
+    OperationUnsupported, DeadlineExceeded,
 }
 #[derive(Debug)]
 pub struct TransactionError(RetainedFailure);
@@ -22,7 +23,17 @@ impl TransactionError {
         use TransactionFailureKind as Kind;
         match &self.0 {
             RetainedFailure::Stopped(_) => Kind::Stopped,
-            RetainedFailure::Origin(_) => Kind::Source,
+            RetainedFailure::DeadlineExceeded => Kind::DeadlineExceeded,
+            RetainedFailure::Origin(handle) => {
+                use super::logical::failure::{OriginCause, StructuralReason};
+                let origin = handle.origin();
+                match origin.as_deref().map(|origin| &origin.cause) {
+                    Some(OriginCause::Recipe(crate::document::RetainedRefusal::UnsupportedSource(_))
+                        | OriginCause::Structure(StructuralReason::UnsupportedProduct)
+                        | OriginCause::Processor(_)) => Kind::OperationUnsupported,
+                    _ => Kind::Source,
+                }
+            }
             RetainedFailure::Completion(_) => Kind::Incomplete,
             RetainedFailure::Protocol(error) => match error {
                 RetainedProgramError::Stopped(_) => Kind::Stopped,

@@ -8,9 +8,6 @@ use ifc_lite_core::SourceBundle;
 #[derive(Debug)]
 pub struct NativeDiagnosticError(RetainedExecutionError);
 impl NativeDiagnosticError {
-    pub fn original_stop(&self) -> Option<ProgramStop> {
-        match self.0 { RetainedExecutionError::Stopped(stop) => Some(stop), _ => None }
-    }
     pub fn diagnostic_code_json(&self) -> String {
         serde_json::to_string(&self.0.code()).expect("finite generated diagnostic code")
     }
@@ -29,7 +26,7 @@ impl From<RetainedExecutionError> for NativeDiagnosticError {
 /// removal authority, raw object handle or final definition can be extracted.
 pub struct NativeTransactionDiagnostic {
     witness: RuntimeProductWitness<RealizationKind>,
-    _worker: SmlibWorker,
+    _worker: Option<SmlibWorker>,
     _snapshot: Arc<OwnedMeshProductionContext>,
     bytes: Vec<u8>,
     _storage: Storage,
@@ -48,7 +45,7 @@ impl NativeTransactionDiagnostic {
 /// SMLib process. Does not install, link, publish, or locate SDK assets.
 pub async fn diagnose_retained_native(source: Arc<SourceBundle>, product_id: u32,
     worker_path: &Path, chord_metres: f64, angle_degrees: f64, max_bytes: usize,
-    max_work: u64) -> Result<NativeTransactionDiagnostic, NativeDiagnosticError> {
+    max_work: u64, type_geometry_mode: TypeGeometryMode) -> Result<NativeTransactionDiagnostic, NativeDiagnosticError> {
     IssuedCommonConstruction::validate_numerical_limits(chord_metres, angle_degrees, max_bytes)?;
     let account = resource::ExecutionAccount::new(resource::ExecutionPolicy::Bounded(resource::ResourceLimits {
         live_bytes: Some(max_bytes as u64), work: Some(max_work), ..Default::default()
@@ -56,32 +53,24 @@ pub async fn diagnose_retained_native(source: Arc<SourceBundle>, product_id: u32
     let model = ProductionModel::from_source(source.clone());
     let snapshot = model.snapshot(Default::default());
     let mut decoder = source.decoder();
-    let (router, entity) = account.scope(|| {
-        snapshot.validate_decoder(&decoder).map_err(RetainedExecutionError::Source)?;
-        let mut owner = decoder.try_execution_lease()
-            .map_err(|_| protocol(super::super::session_protocol::WorkError::OwnerBusy))?;
-        let work = owner.begin_synchronous_work(decoder.execution_identity())
-            .map_err(|_| protocol(super::super::session_protocol::WorkError::WrongOwner))?;
-        let source_scope = work.source_borrow_scope_with_resources(resource::current_source_context());
-        let result = resource::with_source_stop(source_scope.resource_stop_handle(), || {
-            let router = GeometryRouter::with_units(source.bytes(), &mut decoder);
-            let entity = decoder.decode_by_id(product_id).map_err(RetainedExecutionError::Core)?;
-            resource::check_current().map_err(RetainedExecutionError::Stopped)?;
-            Ok::<_, RetainedExecutionError>((router, entity))
-        });
-        drop(source_scope);
-        work.commit(decoder.execution_identity())
-            .map_err(|_| protocol(super::super::session_protocol::WorkError::StaleSource))?;
-        result
-    })?;
+    let prepared = account.scope(|| diagnostic_source::prepare(
+        &source, &snapshot, &mut decoder, product_id, type_geometry_mode))?;
+    let router = prepared.router;
+    let entity = prepared.entity;
     let job = ElementMeshJob { id: product_id, ifc_type: entity.ifc_type.clone(),
-        entity: &entity, kind: ElementJobKind::Product, element_color: None, metadata: None };
+        entity: &entity, kind: prepared.kind, element_color: None, metadata: None };
     let mut execution = account.scope(|| RetainedProductExecution::begin(
         &job, &snapshot, &MeshProductionOptions::default(), &mut decoder, &router))?;
-    let mut worker = SmlibWorker::spawn(worker_path).map_err(RetainedExecutionError::Runtime)?;
+    let mut worker = None;
     let limits = runtime::NumericalLimits { chord_metres, angle_degrees, max_bytes };
-    while let Some(issued) = execution.issue_next(&mut decoder, &router, &worker)? {
-        let completed = issued.execute_async(&mut worker, limits).await.map_err(|e| NativeDiagnosticError(e.reason))?;
+    while execution.advance_source(&mut decoder, &router)? {
+        let worker = match &mut worker {
+            Some(worker) => worker,
+            slot @ None => slot.insert(SmlibWorker::spawn(worker_path).map_err(RetainedExecutionError::Runtime)?),
+        };
+        let issued = execution.issue_next(&mut decoder, &router, worker)?
+            .ok_or_else(|| protocol(ReceiptFailure::MissingAdmission))?;
+        let completed = issued.execute_async(worker, limits).await.map_err(|e| NativeDiagnosticError(e.reason))?;
         execution.accept(completed, &mut decoder, &router).map_err(|rejected| {
             let RuntimeRejectedCompletion { reason, work } = *rejected;
             // This diagnostic ends the attempt; the private controller API
@@ -114,3 +103,7 @@ pub async fn diagnose_retained_native(source: Arc<SourceBundle>, product_id: u32
     witness.validate()?;
     Ok(NativeTransactionDiagnostic { witness, _worker: worker, _snapshot: snapshot, bytes, _storage: storage })
 }
+
+#[cfg(test)]
+#[path = "diagnostic_tests.rs"]
+mod tests;

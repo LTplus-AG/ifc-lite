@@ -17,7 +17,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
         if !Arc::ptr_eq(&pending.cancellation.stage, &work.cancellation.stage) {
             return Err(protocol(ReceiptFailure::ForeignConstructionReceipt));
         }
-        if let Err(error) = self.context.validate_source() {
+        if let Err(error) = self.context.lifecycle().validate() {
             pending.cancellation.cancel();
             return Err(RetainedExecutionError::Source(error));
         }

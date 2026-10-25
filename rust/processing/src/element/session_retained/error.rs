@@ -57,6 +57,7 @@ pub(super) enum RetainedExecutionError {
     Recipe(ifc_lite_geometry::document::RetainedRefusal),
     Geometry(ifc_lite_geometry::Error), Runtime(WorkerError),
     Transition(u8), DomainRetired, Unsupported(Unsupported), Stopped(ProgramStop),
+    InvalidTypeSource,
 }
 impl std::fmt::Display for RetainedExecutionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "{self:?}") }
@@ -90,11 +91,14 @@ impl From<u8> for RetainedExecutionError {
 impl RetainedExecutionError {
     pub(super) fn terminal(&self) -> bool {
         matches!(self, Self::Stopped(_) | Self::Source(_) | Self::Core(_) | Self::Runtime(_) | Self::DomainRetired
-            | Self::Recipe(_) | Self::Geometry(_) | Self::Unsupported(_)
+            | Self::Recipe(_) | Self::Geometry(_) | Self::Unsupported(_) | Self::InvalidTypeSource
+            | Self::Receipt(ReceiptFailure::ConflictingRetainedNumericalOutcome)
             | Self::Transition(CANCELLED)
             | Self::Owner(WorkError::StaleSource | WorkError::Aborted))
             || matches!(self, Self::Common(error) if matches!(error.kind(),
                 ifc_lite_geometry::program::transactions::TransactionFailureKind::Source
+                | ifc_lite_geometry::program::transactions::TransactionFailureKind::OperationUnsupported
+                | ifc_lite_geometry::program::transactions::TransactionFailureKind::DeadlineExceeded
                 | ifc_lite_geometry::program::transactions::TransactionFailureKind::Unsupported
                 | ifc_lite_geometry::program::transactions::TransactionFailureKind::Incomplete
                 | ifc_lite_geometry::program::transactions::TransactionFailureKind::Stopped))
@@ -118,10 +122,13 @@ impl RetainedExecutionError {
                     Some(ProgramStop::Cancelled) => Code::Cancelled, _ => Code::ResourceExhausted,
                 },
                 Kind::Cancelled => Code::Cancelled,
+                Kind::OperationUnsupported => Code::OperationUnsupported,
+                Kind::DeadlineExceeded => Code::DeadlineExceeded,
                 Kind::WrongOwner => Code::OwnerMismatch,
                 Kind::Source | Kind::Unsupported => Code::SourceInvalid,
                 _ => Code::RuntimeFailed,
             },
+            Self::InvalidTypeSource => Code::SourceInvalid,
             Self::Core(error) => { let _ = error; Code::SourceInvalid }
             Self::Recipe(error) => match error {
                 ifc_lite_geometry::document::RetainedRefusal::UnsupportedSource(_) => Code::OperationUnsupported,
@@ -141,6 +148,7 @@ impl RetainedExecutionError {
             Self::Receipt(reason) => { let _ = reason; Code::ReceiptInvalid }
             Self::Transition(stage) => { let _ = stage; Code::Cancelled }
             Self::DomainRetired => Code::WorkerRetired,
+            Self::Geometry(ifc_lite_geometry::Error::InspectionDeadlineExceeded) => Code::DeadlineExceeded,
             Self::Geometry(error) => { let _ = error; Code::RuntimeFailed }
             Self::Owner(_) => Code::RuntimeFailed,
         }

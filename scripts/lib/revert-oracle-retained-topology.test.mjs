@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { planRuns } from './revert-oracle-plan-runs.mjs';
@@ -67,10 +67,18 @@ test('#7955: retained witnesses resolve through the facade path to exact library
     }));
 });
 
-// Execute the actual initial workflow dispatch on tiny Git histories. Reading
-// the shell program is setup, not an assertion on its text: the observed result
-// is its selected argv after real git diff calls, without invoking an oracle,
+// Source the same initial dispatch helper as the workflow on tiny Git histories.
+// Observe selected argv after real git diff calls, without invoking an oracle,
 // Cargo, or a build. Each slice must retain its new types during inversion.
+const dispatchHelper = join(root, 'scripts/lib/revert-oracle-initial-dispatch.sh');
+function selectedOracleArgs(cwd, helper = dispatchHelper) {
+  const selected = execFileSync('bash', ['-e', '-o', 'pipefail', '-c',
+    'oracle_args=(--base origin/main --ci --json)\nif source "$1"; then matched=yes; else matched=no; fi\nprintf \'%s\\0\' "$matched" "${oracle_args[@]}"',
+    'dispatch-fixture', helper], { cwd, encoding: 'utf8', timeout: 10_000 });
+  const [matched, ...args] = selected.split('\0').filter(Boolean);
+  return { matched, args };
+}
+
 const b2aObserver = 'rust/geometry/src/program/retained/mapping_origin_tests.rs';
 const b2bObserver = 'rust/geometry/src/program/retained/boolean_origin_tests.rs';
 const b2cObserver = 'rust/geometry/src/program/retained/frame_origin_tests.rs';
@@ -92,11 +100,6 @@ for (const [boundary, files, observer = b2aObserver] of [
     'tests/evidence/j5-presentation/behaviour.oracle.patch']],
 ]) {
   test(`#7955: initial workflow dispatch selects source reporting at ${boundary} boundary`, () => {
-    const workflow = readFileSync(join(root, '.github/workflows/test.yml'), 'utf8');
-    const start = workflow.indexOf('          oracle_args=(--base origin/main --ci --json)');
-    const end = workflow.indexOf('          node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"', start);
-    if (start < 0 || end < 0) throw new Error('Cannot extract initial oracle dispatch');
-    const selection = workflow.slice(start, end).replace(/^          /gm, '');
     const cwd = mkdtempSync(join(tmpdir(), 'ifc-b2a-dispatch-'));
     const git = (...args) => execFileSync('git', args, { cwd, stdio: 'pipe', timeout: 10_000 });
     try {
@@ -111,9 +114,7 @@ for (const [boundary, files, observer = b2aObserver] of [
       }
       git('add', '.');
       git('-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'slice');
-      const selected = execFileSync('bash', ['-e', '-o', 'pipefail', '-c',
-        `${selection}\nprintf '%s\\0' "\${oracle_args[@]}"`], { cwd, encoding: 'utf8', timeout: 10_000 });
-      assert.deepEqual(selected.split('\0').filter(Boolean), [
+      const expected = [
         '--base', observer === cutCObserver ? '0b353d3294d4f813b3d9f16574442ff7cc19da58'
           : observer === b2aObserver ? '08769566858267aff3028f3f7c0e2870345ff73a'
           : '3190e3d88bee5e83a45ca155c62620c61b27456b', '--ci', '--json',
@@ -124,12 +125,42 @@ for (const [boundary, files, observer = b2aObserver] of [
           : observer === b2cObserver ? 'tests/evidence/retained-frame-origin-b2c/value-report.oracle.patch'
           : 'tests/evidence/retained-mapping-origin-b2a/occurrence-report.oracle.patch',
         '--test', observer,
-      ]);
+      ];
+      assert.deepEqual(selectedOracleArgs(cwd), { matched: 'yes', args: expected });
+
+      // Disable each unique terminal branch in its own temporary helper.
+      // The same behavioral assertion must reject both independent mutants.
+      if (boundary === 'Cut-C-only' || boundary === 'B2b-only') {
+        const mutant = join(cwd, 'mutated-dispatch.sh');
+        copyFileSync(dispatchHelper, mutant);
+        execFileSync('sed', ['-i',
+          `s@grep -Fxq '${observer}'@grep -Fxq 'disabled/${observer}'@`, mutant],
+        { cwd, stdio: 'pipe', timeout: 10_000 });
+        assert.throws(() => assert.deepEqual(selectedOracleArgs(cwd, mutant),
+          { matched: 'yes', args: expected }),
+          { code: 'ERR_ASSERTION' });
+      }
     } finally {
       rmSync(cwd, { recursive: true, force: true });
     }
   });
 }
+
+test('#7955: initial dispatch yields to later workflow clauses without a retained observer', () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'ifc-b2a-dispatch-empty-'));
+  try {
+    execFileSync('git', ['init', '--quiet'], { cwd, timeout: 10_000 });
+    execFileSync('git', ['-c', 'commit.gpgsign=false', '-c', 'user.name=Dispatch Fixture',
+      '-c', 'user.email=dispatch@example.invalid', 'commit', '--quiet', '--allow-empty', '-m', 'base'],
+    { cwd, timeout: 10_000 });
+    execFileSync('git', ['update-ref', 'refs/remotes/origin/main', 'HEAD'],
+      { cwd, timeout: 10_000 });
+    assert.deepEqual(selectedOracleArgs(cwd),
+      { matched: 'no', args: ['--base', 'origin/main', '--ci', '--json'] });
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
+});
 
 // #7955 S3: default-off modules remain present in library unit tests.
 test('#7955: private S3 receipt/resource witnesses have exact library owners', () => {

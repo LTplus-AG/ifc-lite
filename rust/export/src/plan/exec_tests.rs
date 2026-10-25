@@ -600,3 +600,15 @@ fn valid_utf8_that_collides_with_the_byte_escape_is_never_corrupted() {
     assert!(out.windows(collided.len()).any(|w| w == collided), "a refused edit leaves the record as it was");
     assert!(report.findings.iter().any(|f| f.express_id == Some(11) && f.message.contains("not applied")), "{:?}", report.findings);
 }
+
+#[test]
+fn deleting_a_storey_reports_the_elements_left_outside_the_spatial_tree() {
+    use super::test_fixtures::storey_with_typed_wall;
+    for schema in ["IFC2X3", "IFC4", "IFC4X3"] {
+        let plan = ExportPlan { dispositions: vec![(ObjectRef::Id(70), Disposition::Delete)], context: PlanContext::default() };
+        let mut out = Vec::new();
+        let report = execute(&storey_with_typed_wall(schema), &plan, &mut out).unwrap();
+        let orphan = report.findings.iter().find(|f| f.express_id == Some(10));
+        assert!(orphan.is_some_and(|f| f.message.contains("spatial")), "{schema}: {:?}", report.findings);
+    }
+}

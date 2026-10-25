@@ -101,6 +101,7 @@ pub(crate) fn write_output<W: Write>(
 
     let mut psets = duplicate_sets_on_patched(index, schema, &appended, &edits_by_id, &removed, &patched_objects);
     psets.extend(unapplied);
+    psets.extend(unplaced_by_removed_structure(index, schema, &removed, &reasons));
     let mut duplicates: Vec<u32> = index.duplicates.iter().copied().collect();
     duplicates.sort_unstable();
     psets.extend(duplicates.into_iter().map(|id| ValidationFinding {
@@ -214,4 +215,49 @@ fn removals(removed: &HashSet<u32>, reasons: &HashMap<u32, RemovalReason>) -> Ve
         removed.iter().map(|&id| Removal::new(id, reasons.get(&id).copied().unwrap_or(RemovalReason::Replaced))).collect();
     out.sort_unstable_by_key(|r| r.express_id);
     out
+}
+
+
+/// The elements a removed spatial relationship left behind: an
+/// `IfcRelContainedInSpatialStructure` or `IfcRelAggregates` that went
+/// because its relating storey, building or site did, while some of what it
+/// related stayed. Those are no longer in the spatial tree, and `removed`
+/// alone does not say so.
+fn unplaced_by_removed_structure(
+    index: &FileIndex,
+    schema: &str,
+    removed: &HashSet<u32>,
+    reasons: &HashMap<u32, RemovalReason>,
+) -> Vec<ValidationFinding> {
+    use super::attrs::attribute_index;
+    let mut rels: Vec<u32> = removed.iter().copied().filter(|id| reasons.get(id) == Some(&RemovalReason::Dangling)).collect();
+    rels.sort_unstable();
+    let mut out = Vec::new();
+    for rel in rels {
+        let Some(rel_type) = index.type_of(rel) else { continue };
+        let (relating, related) = match rel_type.as_str() {
+            "IFCRELCONTAINEDINSPATIALSTRUCTURE" => ("RelatingStructure", "RelatedElements"),
+            "IFCRELAGGREGATES" => ("RelatingObject", "RelatedObjects"),
+            _ => continue,
+        };
+        let (Some(relating_idx), Some(related_idx)) = (attribute_index(schema, &rel_type, relating), attribute_index(schema, &rel_type, related))
+        else {
+            continue;
+        };
+        let Some(attrs) = index.attrs(rel) else { continue };
+        let parent = attrs.get(relating_idx).and_then(|a| a.scalar);
+        let children = attrs.get(related_idx).and_then(|a| a.list.as_ref()).into_iter().flatten().flatten();
+        for &child in children.filter(|c| !removed.contains(c)) {
+            let parent = parent.map_or_else(String::new, |p| format!(" #{p}"));
+            out.push(ValidationFinding {
+                express_id: Some(child),
+                message: format!("no longer in the spatial tree: the {}{parent} it was related to in #{rel} was deleted", rel_type_label(&rel_type)),
+            });
+        }
+    }
+    out
+}
+
+fn rel_type_label(rel_type: &str) -> &'static str {
+    if rel_type == "IFCRELAGGREGATES" { "parent" } else { "container" }
 }

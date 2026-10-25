@@ -73,7 +73,7 @@ const PINNED: &[(&str, &str)] = &[
     // defined type itself, not a SELECT. 18 bytes shorter per scenario.
     ("IFC2X3/props", "f734d93209564412:124753"),
     ("IFC2X3/delete_with_opening_and_boundary", "0cd5d0106d59a06f:121863"),
-    ("IFC2X3/delete_storey", "6d5c307a147219e7:123783"),
+    ("IFC2X3/delete_storey", "3b513ac1102c088d:123783"),
     // `delete_storey_placement` reaches the quirks block's dangling reference.
     // It names no record, so it is not counted in `deleted`. It and
     // `delete_whole_group` also delete every wall bounding one space. The
@@ -108,7 +108,7 @@ const PINNED: &[(&str, &str)] = &[
     ("IFC4/placements", "f6119086b8ffe1a4:125579"),
     ("IFC4/props", "b2e98127eb353a1b:125267"),
     ("IFC4/delete_with_opening_and_boundary", "30a92c7c7ff10b40:122367"),
-    ("IFC4/delete_storey", "bfaff42a94222d7e:124297"),
+    ("IFC4/delete_storey", "5d6cbab320e92424:124297"),
     // Same space as in IFC2X3, see above.
     ("IFC4/delete_storey_placement", "d43c18bf0f615a99:84378"),
     ("IFC4/delete_whole_group", "f262523aaedc86ba:75316"),

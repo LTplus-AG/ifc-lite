@@ -834,6 +834,9 @@ fn only_a_deleted_place_in_the_spatial_tree_reports_its_children() {
         let report = delete(90);
         assert!(!report.findings.iter().any(|f| f.express_id == Some(92)), "{schema}: {:?}", report.findings);
         assert!(report.findings.iter().any(|f| f.express_id == Some(93) && f.message.contains("container")), "{schema}: {:?}", report.findings);
+        // The project #1 aggregates the building #60, which stays.
+        let report = delete(1);
+        assert!(report.findings.iter().any(|f| f.express_id == Some(60) && f.message.contains("parent")), "{schema}: {:?}", report.findings);
         // The building #60 aggregates the storey #70, which stays.
         let report = delete(60);
         assert!(report.findings.iter().any(|f| f.express_id == Some(70) && f.message.contains("spatial")), "{schema}: {:?}", report.findings);

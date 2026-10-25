@@ -69,11 +69,11 @@ impl AddState<'_> {
         crate::plan::attrs::is_spatial(self.schema, class)
     }
 
-    /// A spatial structure element: what the project, site, building,
-    /// storey, space hierarchy is made of. Spatial zones and external spatial
-    /// elements are spatial but not in it (they are related to the structure
-    /// by space boundaries and zone assignment, not aggregation).
-    fn in_structure(&self, class: &str) -> bool {
+    /// A spatial structure element: what the site, building, storey, space
+    /// hierarchy under the project is made of. Spatial zones and external
+    /// spatial elements are spatial but not structure elements: they are
+    /// contained in one, and a zone may only be aggregated under a zone.
+    fn is_structure_element(&self, class: &str) -> bool {
         self.is_a(class, "IFCSPATIALSTRUCTUREELEMENT")
     }
 
@@ -99,7 +99,7 @@ impl AddState<'_> {
                 }
             }
         }
-        !ruled && self.in_structure(parent)
+        !ruled && self.is_structure_element(parent)
     }
 
     /// `(id, UPPERCASE class)` of an object in the source or added earlier
@@ -212,7 +212,7 @@ impl AddState<'_> {
                 return Err(format!("storey elevation {e} is not finite"));
             }
         }
-        let spatial = self.in_structure(&class);
+        let spatial = self.is_structure_element(&class);
 
         let container = match &obj.container {
             None if spatial => return Err(format!("a new {class} needs a container: nothing else would place it in the spatial tree")),
@@ -231,7 +231,7 @@ impl AddState<'_> {
                 // fixed by IfcRelContainedInSpatialStructure.RelatingStructure
                 // (an IfcSpatialElement in IFC4), so it is contained likewise.
                 if !spatial && self.is_spatial(&class) {
-                    let kind = if self.in_structure(&c) {
+                    let kind = if self.is_structure_element(&c) {
                         RelKind::Contained
                     } else if self.is_a(&class, "IFCSPATIALZONE") && self.is_a(&c, "IFCSPATIALZONE") {
                         RelKind::Aggregates

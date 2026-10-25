@@ -78,6 +78,8 @@ pub(super) fn trim_indexed_segments(
     }
     let mut out = Vec::new();
     for (i, segment) in segments.iter().enumerate() {
+        #[cfg(feature = "retained-runtime")]
+        crate::resource::source_step()?;
         let left = start.max(i as f64);
         let right = end.min((i + 1) as f64);
         if right > left {

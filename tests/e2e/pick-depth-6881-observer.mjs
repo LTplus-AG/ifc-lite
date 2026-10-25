@@ -124,13 +124,13 @@ export function installOracle({ depthBitXor = 0 } = {}) {
     samples,
     renderer,
     async drain() {
-      const results = await Promise.allSettled([...pending]);
+      const results = await Promise.allSettled(pending);
       if (results.some(result => result.status === 'rejected')) throw Error('Pending oracle failed');
       if (samples.some(row => !row.ok)) throw Error('An oracle comparison failed');
       return samples;
     },
     async retire() {
-      await Promise.allSettled([...pending]);
+      await Promise.allSettled(pending);
       retired = true;
       if (picker.pick === pick) picker.pick = originalPick;
       if (picker.depthSample.encode === encode) picker.depthSample.encode = originalEncode;
@@ -143,4 +143,78 @@ export function installOracle({ depthBitXor = 0 } = {}) {
   };
   globalThis.__6881 = api;
   return { installed: true };
+}
+
+/** Real completed maps are held while the current viewport/camera/device changes. */
+export async function runLifecycle({ includeLoss = false } = {}) {
+  if (globalThis.__6881 || globalThis.__6881Hover) throw Error('Retire other observers before lifecycle controls');
+  const canvas = document.querySelector('canvas[data-viewport="main"]'), renderer = mountedRenderer(canvas);
+  const device = renderer.getGPUDevice(), camera = renderer.getCamera(), reports = [];
+  const frame = () => new Promise(resolve => requestAnimationFrame(resolve));
+  async function phase(name, mutate, restore) {
+    const originalCreate = device.createBuffer, buffers = [];
+    let completed = 0, release;
+    const gate = new Promise(resolve => { release = resolve; });
+    const create = function(descriptor) {
+      const buffer = originalCreate.call(this, descriptor);
+      const row = { size: buffer.size, usage: buffer.usage, destroys: 0 };
+      buffers.push(row);
+      const destroy = buffer.destroy;
+      buffer.destroy = function() { row.destroys++; return destroy.call(this); };
+      if (buffer.usage & GPUBufferUsage.MAP_READ) {
+        const map = buffer.mapAsync;
+        buffer.mapAsync = async function(...args) {
+          const value = await map.apply(this, args);
+          completed++;
+          await gate;
+          return value;
+        };
+      }
+      return buffer;
+    };
+    device.createBuffer = create;
+    const rect = canvas.getBoundingClientRect();
+    const operations = [renderer.pick(rect.width * 0.4, rect.height * 0.4), renderer.pick(rect.width * 0.6, rect.height * 0.6)];
+    // Catch immediately while retaining failures for the joined results.
+    for (const operation of operations) void operation.catch(error => console.warn('[6881 lifecycle]', error));
+    let results;
+    try {
+      const deadline = performance.now() + 5000;
+      while (completed < 2) {
+        if (performance.now() >= deadline) throw Error('Two actual GPU maps did not complete within five seconds');
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      await mutate();
+      release();
+      results = await Promise.all(operations);
+      if (results.some(value => value !== null)) throw Error(`${name} returned a stale pick`);
+    } finally {
+      release();
+      await Promise.allSettled(operations);
+      if (device.createBuffer === create) device.createBuffer = originalCreate;
+      await restore?.();
+    }
+    if (buffers.length !== 6 || buffers.some(row => row.destroys !== 1)) throw Error(`${name} did not retire each of the six point-pick buffers exactly once`);
+    reports.push({ name, completedMaps: completed, results, buffers });
+  }
+  const position = { ...camera.getPosition() };
+  await phase('camera-change-after-completed-maps', async () => {
+    camera.setPosition(position.x + 1, position.y, position.z);
+    renderer.requestRender(); await frame(); await frame();
+  }, async () => {
+    camera.setPosition(position.x, position.y, position.z);
+    renderer.requestRender(); await frame(); await frame();
+  });
+  const originalStyle = canvas.getAttribute('style'), width = canvas.getBoundingClientRect().width;
+  await phase('resize-after-completed-maps', async () => {
+    canvas.style.width = `${width - 40}px`;
+    await frame(); await frame();
+  }, async () => {
+    if (originalStyle === null) canvas.removeAttribute('style'); else canvas.setAttribute('style', originalStyle);
+    renderer.requestRender(); await frame(); await frame();
+  });
+  if (includeLoss) await phase('device-loss-after-completed-maps', async () => {
+    device.destroy(); await device.lost;
+  });
+  return reports;
 }

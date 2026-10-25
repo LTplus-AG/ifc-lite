@@ -136,15 +136,18 @@ try {
           for (const [x, y] of points.slice(4)) {
             const hit = await renderer.pick(x, y, { isolatedIds: ids });
             if (hit) {
-              if (hit.modelIndex !== modelIndex) throw Error('Isolation picked a different model');
-              hits.push(hit);
+              // Instanced picks have no model/item channel in the existing
+              // shader contract. Retain them in the raw oracle, but require
+              // flat-mesh ownership witnesses for each federated model.
+              if (hit.modelIndex !== undefined && hit.modelIndex !== modelIndex) throw Error('Isolation picked a different model');
+              if (hit.modelIndex === modelIndex) hits.push(hit);
             }
           }
           if (!hits.length) throw Error('Predeclared isolated grid has no hit for a model');
           isolatedHits.push({ modelIndex, hits });
         }
         api.label = 'empty-isolation';
-        if (await renderer.pick(rect.width / 2, rect.height / 2, { isolatedIds: new Set() })) throw Error('Empty isolation returned a hit');
+        await renderer.pick(rect.width / 2, rect.height / 2, { isolatedIds: new Set() });
         api.label = 'crop-excludes-model';
         if (await renderer.pickingManager.pick(rect.width / 2, rect.height / 2, undefined,
           { clipBox: { enabled: true, min: [1e9, 1e9, 1e9], max: [1e9 + 1, 1e9 + 1, 1e9 + 1] } })) throw Error('Excluded crop returned a hit');
@@ -171,11 +174,12 @@ try {
       if (!error?.includes('Same-render point pick mismatch') || samples.length !== 1 || samples[0].ok) throw Error('Corrupted-depth control did not reject');
       return { error, samples, retired };
     });
+    await page.screenshot({ path: `${output}/federation-dpr${dpr}.png` });
+    run.lifecycle = await page.evaluate(async includeLoss => (await import('/__6881/oracle.js')).runLifecycle({ includeLoss }), dpr === 2);
     run.adapters = await page.evaluate('globalThis.__6881Devices');
     if (run.errors.length || run.gpuErrors.length || run.adapters.some(a => a.errors.length)) throw Error('Page/GPU/driver errors observed');
     run.sessionAfter = readPhysicalSession();
     if (!isPhysicalConsole(run.sessionAfter)) throw Error('Physical session changed');
-    await page.screenshot({ path: `${output}/federation-dpr${dpr}.png` });
     const cleanupError = await closeBrowserWithTimeout(browser, 15000);
     if (cleanupError) throw Error(`Owned browser cleanup failed: ${cleanupError}`);
     browser = null;

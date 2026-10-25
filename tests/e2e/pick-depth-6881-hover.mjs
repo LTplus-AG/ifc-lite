@@ -87,13 +87,13 @@ export function installHoverTap() {
   picker.pick = pick;
   const api = {
     async take() {
-      await Promise.all([...pending]);
+      await Promise.all(pending);
       const result = { inputs: inputs.splice(0), picks: picks.splice(0) };
       input = null;
       return result;
     },
     async retire() {
-      await Promise.allSettled([...pending]);
+      await Promise.allSettled(pending);
       unsubscribe(); canvas.removeEventListener('pointermove', listener, true);
       if (picker.pick === pick) picker.pick = originalPick;
       if (device.createBuffer === create) device.createBuffer = originalCreate;

@@ -1,0 +1,181 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+// #6881 manual physical-console cohort. Invoke only under exclusive benchmark
+// admission, after successful same-render functional controls. No sample replay.
+import { createRequire } from 'node:module';
+import { readFileSync, writeFileSync, appendFileSync, mkdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { setTimeout as sleep } from 'node:timers/promises';
+
+const [configuration, output] = process.argv.slice(2);
+if (!configuration || !output) throw Error('Arguments: frozen cohort configuration, new output directory');
+const config = JSON.parse(readFileSync(configuration, 'utf8'));
+const hash = value => createHash('sha256').update(value).digest('hex');
+if (!config.functional?.accepted || hash(readFileSync(config.functional.path)) !== config.functional.sha256
+  || !JSON.parse(readFileSync(config.functional.path, 'utf8')).accepted) throw Error('Successful current-source functional qualification required');
+const verify = () => {
+  for (const arm of Object.values(config.arms)) {
+    const git = (...args) => execFileSync('git', args, { cwd: arm.checkout, encoding: 'utf8', timeout: 10000 }).trim();
+    if (git('rev-parse', 'HEAD') !== arm.head || git('status', '--porcelain')) throw Error('Source identity changed');
+    for (const file of arm.files) if (hash(readFileSync(`${arm.buildRoot}/${file.path}`)) !== file.sha256) throw Error('Frozen served artifact changed');
+  }
+};
+verify();
+if (config.arms.base.wasmSha256 !== config.arms.branch.wasmSha256) throw Error('A/B must use identical engine bytes');
+const root = config.arms.branch.checkout;
+const require = createRequire(`${root}/package.json`);
+process.env.DEBUG = [process.env.DEBUG, 'pw:browser'].filter(Boolean).join(',');
+const { chromium } = require('@playwright/test');
+const { build } = createRequire(require.resolve('tsx'))('esbuild');
+const { startStaticServer } = await import(`${root}/scripts/perf/browser-static-server.ts`);
+const { closeBrowserWithTimeout } = await import(`${root}/scripts/perf/browser-cold-teardown.ts`);
+const { probeMetadataRenderTrace, waitForMetadataRenderReadiness } = await import(`${root}/tests/benchmark/metadata-render-readiness.ts`);
+const { interleavedSchedule, summarizeSamples } = await import(`${root}/scripts/perf/frame-gpu-summary.ts`);
+const here = dirname(fileURLToPath(import.meta.url));
+const { launchNativeChrome, readPhysicalSession, isPhysicalConsole, readHostAdmission } = await import(
+  resolve(here, '../evidence/hidpi-navigation-6709/native-20261023/native-platform.mts'));
+mkdirSync(output);
+const tap = `${output}/hover.js`;
+await build({ entryPoints: [resolve(here, 'pick-depth-6881-hover.mjs')], bundle: true, format: 'esm', outfile: tap });
+let current = config.arms.base.buildRoot;
+const server = await startStaticServer({ port: 0, host: '127.0.0.1', root: () => `${current}/apps/viewer/dist`,
+  extra: new Map([['/__6881/hover.js', tap]]) });
+const origin = `http://127.0.0.1:${server.address().port}`;
+const records = [], references = new Map();
+const report = { configSha256: hash(readFileSync(configuration)), scope: 'Mounted viewer hover, 5 interleaved pairs per public-model scenario at DPR1; no loading-speed claim',
+  accepted: false, records, summary: [] };
+const median = values => values.slice().sort((a, b) => a - b)[Math.floor(values.length / 2)];
+let browser, active;
+const stderr = process.stderr.write.bind(process.stderr);
+process.stderr.write = function(chunk, ...args) {
+  const line = String(chunk);
+  if (active && /ERROR:gpu\/|GL_INVALID_|uninitialized SharedImage|GPU process.*crash/i.test(line)) active.driverErrors.push(line.trim());
+  return stderr(chunk, ...args);
+};
+try {
+  const deadline = Date.now() + 25 * 60 * 1000;
+  for (const scenario of config.scenarios) for (const sample of interleavedSchedule(5, true)) {
+    if (Date.now() > deadline) throw Error('Cohort exceeded its fixed deadline');
+    const record = { scenario: scenario.name, ...sample, ok: false, rows: [], errors: [], driverErrors: [] };
+    active = record; records.push(record);
+    try {
+      record.hostBefore = await readHostAdmission(); record.sessionBefore = readPhysicalSession();
+      if (!record.hostBefore.quiet || !isPhysicalConsole(record.sessionBefore)) throw Error('Idle/physical host admission refused');
+      current = config.arms[sample.side].buildRoot;
+      browser = await launchNativeChrome(chromium);
+      const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
+      const page = await context.newPage(); page.setDefaultTimeout(30000);
+      page.on('pageerror', error => record.errors.push(String(error)));
+      const logs = []; page.on('console', message => logs.push(message.text()));
+      await context.addInitScript(() => {
+        globalThis.__6881Health = { adapters: [], interruptions: 0, errors: [] };
+        const original = GPUAdapter.prototype.requestDevice;
+        GPUAdapter.prototype.requestDevice = async function(...args) {
+          globalThis.__6881Health.adapters.push({ vendor: this.info.vendor, fallback: this.info.isFallbackAdapter });
+          const device = await original.apply(this, args);
+          device.addEventListener('uncapturederror', event => globalThis.__6881Health.errors.push(event.error.message));
+          device.lost.then(info => globalThis.__6881Health.errors.push(`Device lost: ${info.reason}`));
+          return device;
+        };
+        for (const name of ['blur', 'visibilitychange']) addEventListener(name, () => {
+          if (globalThis.__6881Health.measuring && (document.visibilityState !== 'visible' || !document.hasFocus())) globalThis.__6881Health.interruptions++;
+        });
+      });
+      await page.goto(`${origin}/?perfTrace=1`, { timeout: 30000 });
+      await page.getByRole('button', { name: 'Collapse sidebar to icons', exact: true }).click();
+      record.loads = [];
+      for (let index = 0; index < scenario.fixtures.length; index++) {
+        const fixture = scenario.fixtures[index];
+        if (hash(readFileSync(fixture.path)) !== fixture.sha256) throw Error('Fixture bytes changed');
+        await page.locator(index ? '#file-input-add' : '#file-input-open').setInputFiles(fixture.path);
+        await waitForMetadataRenderReadiness({ trace: () => probeMetadataRenderTrace(page), logs: () => logs,
+          canvasReady: () => page.evaluate(`(() => {const s=globalThis.__ifc_lite_viewer_store__?.getState();return s?.models.size===${index + 1} && !s.loading && !s.geometryStreamingActive && !!globalThis.__ifc_lite_render_stats__?.().frame?.drawCalls;})()`),
+          now: () => performance.now(), pause: () => sleep(50), timeoutMs: 90000 });
+        const trace = await page.evaluate('globalThis.__IFC_LITE_LOAD_TRACE__.latest()');
+        // cacheTier describes the write policy, not a hit/miss enum. Each
+        // sample owns a fresh browser/profile, and the loader must use WASM.
+        if (trace.attrs.loadPath !== 'wasm' || !['none', 'source', 'mesh-only'].includes(trace.attrs.cacheTier)
+          || trace.end === null) throw Error('Fresh-profile WASM load certificate absent');
+        record.loads.push({ attrs: trace.attrs, start: trace.start, end: trace.end });
+      }
+      await page.bringToFront(); await page.keyboard.press('Home'); await sleep(1500);
+      await page.mouse.move(0, 0);
+      record.geometryBefore = await page.evaluate(async () => (await import('/__6881/hover.js')).geometryWitness());
+      await page.evaluate(async () => {
+        globalThis.__ifc_lite_viewer_store__.setState({ hoverTooltipsEnabled: true });
+        (await import('/__6881/hover.js')).installHoverTap();
+      });
+      await sleep(300);
+      const rect = await page.locator('canvas[data-viewport="main"]').boundingBox();
+      if (!rect || rect.width <= 0 || rect.height <= 0) throw Error('Canvas dimensions absent');
+      record.viewport = rect;
+      await page.evaluate(() => {
+        if (document.visibilityState !== 'visible' || !document.hasFocus()) throw Error('Foreground missing');
+        globalThis.__6881Health.measuring = true;
+      });
+      for (const y of [0.3, 0.5, 0.7]) for (const x of [0.3, 0.5, 0.7]) {
+        await page.mouse.move(rect.x + rect.width * x, rect.y + rect.height * y); await sleep(300);
+      }
+      record.hover = await page.evaluate('globalThis.__6881Hover.take()');
+      if (record.hover.inputs.length !== 9 || record.hover.picks.length !== 9) throw Error('Declared hover inputs did not each reach the actual GPU picker');
+      const commits = [];
+      for (let index = 0; index < 9; index++) {
+        const pick = record.hover.picks[index], input = record.hover.inputs[index];
+        if (pick.input !== index || pick.error || !Number.isFinite(pick.ms) || pick.ms <= 0) throw Error('Hover/pick pairing failed');
+        const [,, width, height] = pick.texelInput;
+        const expectedBytes = sample.side === 'branch' ? 256 : 256 + Math.ceil(width * 4 / 256) * 256 * height;
+        if (pick.maps.reduce((sum, map) => sum + map.size, 0) !== expectedBytes) throw Error('Readback allocation evidence differs from the declared mechanism');
+        if (pick.result) {
+          const commit = input.commits.at(-1);
+          if (!commit || commit.entityId !== pick.result.expressId || commit.modelIndex !== pick.result.modelIndex
+            || JSON.stringify(commit.worldXYZ) !== JSON.stringify(pick.result.worldXYZ)) throw Error('GPU result did not reach mounted hover state');
+          commits.push(commit.ms);
+        }
+      }
+      if (!commits.length) throw Error('No actual mounted hover hits');
+      const signature = { geometry: record.geometryBefore, viewport: rect,
+        picks: record.hover.picks.map(pick => ({ result: pick.result, matrix: pick.matrix, cameraWorld: pick.cameraWorld, texelInput: pick.texelInput })) };
+      const reference = references.get(scenario.name);
+      if (reference && JSON.stringify(reference) !== JSON.stringify(signature)) throw Error('Geometry/camera/texel/ID/item/world identity differs between samples');
+      references.set(scenario.name, signature);
+      record.retirement = await page.evaluate('globalThis.__6881Hover.retire()');
+      record.geometryAfter = await page.evaluate(async () => (await import('/__6881/hover.js')).geometryWitness());
+      if (JSON.stringify(record.geometryBefore) !== JSON.stringify(record.geometryAfter)) throw Error('Hover changed geometry publication');
+      record.hostAfter = await readHostAdmission(); record.sessionAfter = readPhysicalSession();
+      record.health = await page.evaluate('({...globalThis.__6881Health, visibility:document.visibilityState, focused:document.hasFocus(), dpr:devicePixelRatio})');
+      if (!record.hostAfter.quiet || !isPhysicalConsole(record.sessionAfter) || record.health.dpr !== 1
+        || record.health.visibility !== 'visible' || !record.health.focused || record.health.interruptions
+        || !record.health.adapters.length || record.health.adapters.some(a => a.vendor !== 'nvidia' || a.fallback)
+        || record.health.errors.length || record.errors.length || record.driverErrors.length) throw Error('Final host/browser/GPU health refused');
+      record.rows = [['pointer-to-hover-median-ms', median(commits)], ['GPU-picker-median-ms', median(record.hover.picks.map(pick => pick.ms))],
+        ['mapped-bytes-per-pick', median(record.hover.picks.map(pick => pick.maps.reduce((sum, map) => sum + map.size, 0)))]]
+        .map(([metric, value]) => ({ fixture: scenario.name, scenario: 'hover', metric, value }));
+      record.ok = true;
+    } catch (error) { record.error = String(error); throw error; }
+    finally {
+      if (browser?.isConnected()) {
+        record.cleanupError = await closeBrowserWithTimeout(browser, 15000); browser = null;
+        if (record.cleanupError) record.ok = false;
+      }
+      if (record.driverErrors.length) record.ok = false;
+      appendFileSync(`${output}/runs.jsonl`, JSON.stringify(record) + '\n');
+      active = null;
+    }
+    if (!record.ok) throw Error('Sample teardown/driver health failed');
+  }
+  verify();
+  report.summary = summarizeSamples(records);
+  if (records.length !== config.scenarios.length * 10 || report.summary.some(row => row.pairs !== 5)) throw Error('Incomplete paired cohort');
+  report.accepted = true;
+} catch (error) { report.error = String(error); process.exitCode = 1; }
+finally {
+  process.stderr.write = stderr;
+  server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
+  writeFileSync(`${output}/result.json`, JSON.stringify(report, null, 2) + '\n');
+  console.log(JSON.stringify({ accepted: report.accepted, error: report.error, output, summary: report.summary }));
+}

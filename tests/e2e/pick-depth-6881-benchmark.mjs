@@ -178,7 +178,7 @@ try {
       if (JSON.stringify(record.geometryBefore) !== JSON.stringify(record.geometryAfter)) throw Error('Hover changed geometry publication');
       record.hostAfter = await readHostAdmission(); record.sessionAfter = readPhysicalSession();
       record.health = await page.evaluate('({...globalThis.__6881Health, visibility:document.visibilityState, focused:document.hasFocus(), dpr:devicePixelRatio})');
-      if (!record.hostAfter.quiet || !isPhysicalConsole(record.sessionAfter) || record.health.dpr !== 1
+      if (!record.hostAfter.quiet || !isPhysicalConsole(record.sessionAfter) || Math.abs(record.health.dpr - 1) > 1e-6
         || record.health.visibility !== 'visible' || !record.health.focused || record.health.interruptions
         || !record.health.adapters.length || record.health.adapters.some(a => a.vendor !== 'nvidia' || a.fallback)
         || record.health.errors.length || record.errors.length || record.driverErrors.length) throw Error('Final host/browser/GPU health refused');

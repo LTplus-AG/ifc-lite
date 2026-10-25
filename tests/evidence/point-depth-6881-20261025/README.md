@@ -78,6 +78,15 @@ Preparation receipts:
   remained refused. No second hover job was submitted and no benchmark or
   capacity waiter remains active. Performance acceptance, review and merge
   remain pending external host recovery.
+- Exclusive hover job `4508d957` (new distinct attempt after drain, same frozen
+  config) ran the first sample (FZK pair 0 base) and aborted at the final health
+  gate. [`hover-health-refusal.json`](hover-health-refusal.json) and its
+  [raw run](hover-health-refusal-runs.jsonl.gz) are retained. Cause: a harness
+  defect, `devicePixelRatio` was 1.0000000055879354 at `deviceScaleFactor` 1 and
+  the gate required exact equality; quiet host, physical console, NVIDIA adapter,
+  and no errors or interruptions all held. No timing row was produced and the
+  sample is not reused. The gate now allows a 1e-6 tolerance and a new distinct
+  cohort is submitted with the changed benchmark hash; the earlier refusal stays.
 
 [Preparation receipts](preparation.json) retain command/source identities,
 original outcomes and log hashes. Failed functional reports and compact summaries

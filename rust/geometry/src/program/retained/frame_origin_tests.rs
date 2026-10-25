@@ -28,6 +28,13 @@ fn issue_7955_composition_action_refuses_whole_plan_atomically() {
 }
 
 #[test]
+fn issue_7955_constructor_composition_action_and_report_precede_admission() {
+    let (operations, result, _) = admission(&unit_overflow_source());
+    assert!(operations.is_empty(), "B2c nonfinite constructor must not escape admission");
+    origin(result.unwrap_err(), FailureSite::Constructor, 13, ValueReason::NonfiniteComposition);
+}
+
+#[test]
 fn issue_7955_composition_report_survives_consumed_finish_and_source_drop() {
     let (operations, result, _) = admission(&positioned_source("1.E308", "1.E308"));
     assert_eq!(operations.len(), 1);

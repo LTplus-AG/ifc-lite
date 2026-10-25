@@ -41,6 +41,7 @@ test('#7955: retained witnesses resolve through the facade path to exact library
     ['type_map_tests', '::type_map_tests'],
     ['disk_tests', '::disk'],
     ['frame_tests', '::frames'],
+    ['frame_origin_tests', '::frames::origins'],
     ['obligations_tests', '::obligations'],
     ['protocol_tests', '::protocol'],
     ['reference_tests', '::structure::references'],
@@ -72,7 +73,12 @@ test('#7955: retained witnesses resolve through the facade path to exact library
 // Cargo, or a build. Each slice must retain its new types during inversion.
 const b2aObserver = 'rust/geometry/src/program/retained/mapping_origin_tests.rs';
 const b2bObserver = 'rust/geometry/src/program/retained/boolean_origin_tests.rs';
+const b2cObserver = 'rust/geometry/src/program/retained/frame_origin_tests.rs';
 for (const [boundary, files, observer = b2aObserver] of [
+  ['B2c-only', [b2cObserver], b2cObserver],
+  ['B2a+B2c', [b2aObserver, b2cObserver], b2cObserver],
+  ['B2b+B2c', [b2bObserver, b2cObserver], b2cObserver],
+  ['B2a+B2b+B2c', [b2aObserver, b2bObserver, b2cObserver], b2cObserver],
   ['B2a-only', [b2aObserver]],
   ['B2b-only', [b2bObserver], b2bObserver],
   ['B2a+B2b', [b2aObserver, b2bObserver]],
@@ -105,10 +111,11 @@ for (const [boundary, files, observer = b2aObserver] of [
       const selected = execFileSync('bash', ['-e', '-o', 'pipefail', '-c',
         `${selection}\nprintf '%s\\0' "\${oracle_args[@]}"`], { cwd, encoding: 'utf8', timeout: 10_000 });
       assert.deepEqual(selected.split('\0').filter(Boolean), [
-        '--base', observer === b2bObserver ? '3190e3d88bee5e83a45ca155c62620c61b27456b'
-          : '08769566858267aff3028f3f7c0e2870345ff73a', '--ci', '--json',
+        '--base', observer === b2aObserver ? '08769566858267aff3028f3f7c0e2870345ff73a'
+          : '3190e3d88bee5e83a45ca155c62620c61b27456b', '--ci', '--json',
         '--mutation', observer === b2bObserver
           ? 'tests/evidence/retained-boolean-origin-b2b/predicate-report.oracle.patch'
+          : observer === b2cObserver ? 'tests/evidence/retained-frame-origin-b2c/value-report.oracle.patch'
           : 'tests/evidence/retained-mapping-origin-b2a/occurrence-report.oracle.patch',
         '--test', observer,
       ]);
@@ -123,6 +130,7 @@ test('#7955: private S3 receipt/resource witnesses have exact library owners', (
   const inputs = [
     ['rust/geometry/src/document/retained_affine_tests.rs', 'ifc-lite-geometry', 'document::retained_affine::tests'],
     ['rust/geometry/src/document/retained_frames_tests.rs', 'ifc-lite-geometry', 'document::retained_frames::tests'],
+    ['rust/geometry/src/program/retained/identity_tests.rs', 'ifc-lite-geometry', 'program::retained::identity::tests'],
     ['rust/geometry/src/program/retained/outcome_allocation_tests.rs', 'ifc-lite-geometry', 'program::retained::outcome::tests'],
     ['rust/geometry/src/resource/owned_tests.rs', 'ifc-lite-geometry', 'resource::owned::tests'],
     ['rust/geometry/src/resource/owned_detach_tests.rs', 'ifc-lite-geometry', 'resource::owned::tests::detach_tests'],

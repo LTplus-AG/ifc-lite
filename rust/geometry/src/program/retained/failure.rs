@@ -212,6 +212,7 @@ impl std::fmt::Display for RetainedFailure {
                 Some(OriginCause::Opaque(error)) => write!(f, "{error}"),
                 Some(OriginCause::Recipe(error)) => write!(f, "{error}"),
                 Some(OriginCause::Core(error)) => write!(f, "Core parser error: {error}"),
+                Some(OriginCause::Value(reason)) => write!(f, "{}", crate::Error::from(*reason)),
                 other => write!(f, "retained origin: {other:?}"),
             },
             other => write!(f, "{other:?}"),

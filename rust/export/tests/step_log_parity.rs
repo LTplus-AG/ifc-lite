@@ -259,3 +259,28 @@ fn logs_both_writers_refuse_are_refused_with_the_shared_message() {
         assert!(err.to_string().contains(&case.error), "{}: {err}", case.name);
     }
 }
+
+/// (#8142) `IfcQuantityCount.CountValue` is an `IfcCountMeasure`: INTEGER in
+/// IFC4X3, NUMBER in IFC4. A regenerated count is written in its source
+/// schema's base, and a fractional count in IFC4X3 has no legal spelling.
+#[test]
+fn a_regenerated_count_quantity_takes_its_schemas_base_8142() {
+    let fx = fixture();
+    let walls = format!("{}\n", fx.sources["walls"].join("\n"));
+    let log = |value: f64| {
+        let json = serde_json::json!({"modelId": "model", "exportedAt": 0, "mutations": [{"id": "m1", "type": "CREATE_QUANTITY", "timestamp": 0,
+            "modelId": "model", "entityId": 23, "psetName": "Qto_Counted", "newValue": [{"name": "N", "value": value, "quantityType": 3}]}]});
+        MutationLog::from_json(&json.to_string()).expect("log parses")
+    };
+    for (schema, expected) in [("IFC4X3", "IFCQUANTITYCOUNT('N',$,$,3,$);"), ("IFC4", "IFCQUANTITYCOUNT('N',$,$,3.,$);")] {
+        let source = walls.replace("FILE_SCHEMA(('IFC4'))", &format!("FILE_SCHEMA(('{schema}'))"));
+        let options = StepOptions { schema: Some(schema.to_string()), ..StepOptions::default() };
+        let (out, _) = export_step_with_log(source.as_bytes(), &options, &log(3.0)).expect("export succeeds");
+        let line = out.lines().find(|l| l.contains("=IFCQUANTITYCOUNT('N'")).expect("the count");
+        assert!(line.ends_with(expected), "{schema}: {line}");
+    }
+    let source = walls.replace("FILE_SCHEMA(('IFC4'))", "FILE_SCHEMA(('IFC4X3'))");
+    let options = StepOptions { schema: Some("IFC4X3".to_string()), ..StepOptions::default() };
+    let err = export_step_with_log(source.as_bytes(), &options, &log(3.5)).expect_err("3.5 is no IFC4X3 count");
+    assert!(err.to_string().contains("IfcCountMeasure takes a whole number in IFC4X3"), "{err}");
+}

@@ -17,7 +17,7 @@ use crate::step_text::escape;
 use super::base::{qty, PSet, QSet};
 use super::collect::Collected;
 use super::cow::SourceMembers;
-use super::jsval::{to_step_real, JsVal};
+use super::jsval::JsVal;
 use super::ledger::Kind;
 use super::nominal::serialize_nominal_value;
 use super::pass::Pass;
@@ -35,15 +35,15 @@ type PsetLines = (Vec<Line>, Vec<(String, u32)>);
 /// `HAS_PROPERTY_SETS_SLOT`.
 const HAS_PROPERTY_SETS_SLOT: usize = 5;
 
-fn quantity_entity(ty: u8) -> &'static str {
+fn quantity_entity(ty: u8) -> (&'static str, &'static str) {
     match ty {
-        qty::LENGTH => "IFCQUANTITYLENGTH",
-        qty::AREA => "IFCQUANTITYAREA",
-        qty::VOLUME => "IFCQUANTITYVOLUME",
-        qty::WEIGHT => "IFCQUANTITYWEIGHT",
-        qty::TIME => "IFCQUANTITYTIME",
-        qty::NUMBER => "IFCQUANTITYNUMBER",
-        _ => "IFCQUANTITYCOUNT",
+        qty::LENGTH => ("IFCQUANTITYLENGTH", "IfcLengthMeasure"),
+        qty::AREA => ("IFCQUANTITYAREA", "IfcAreaMeasure"),
+        qty::VOLUME => ("IFCQUANTITYVOLUME", "IfcVolumeMeasure"),
+        qty::WEIGHT => ("IFCQUANTITYWEIGHT", "IfcMassMeasure"),
+        qty::TIME => ("IFCQUANTITYTIME", "IfcTimeMeasure"),
+        qty::NUMBER => ("IFCQUANTITYNUMBER", "IfcNumericMeasure"),
+        _ => ("IFCQUANTITYCOUNT", "IfcCountMeasure"),
     }
 }
 
@@ -136,7 +136,10 @@ fn qset_lines(pass: &mut Pass<'_, '_>, host: u32, qsets: &[QSet]) -> Result<Vec<
         let mut refs = Vec::new();
         for q in &qset.quantities {
             let id = pass.allocate()?;
-            let entity = quantity_entity(q.ty);
+            // The value of the quantity's measure, in the source schema's base
+            // (`IfcCountMeasure` is INTEGER in IFC4X3).
+            let (entity, measure) = quantity_entity(q.ty);
+            let value = super::nominal::measure_number(super::values::step_log_family(pass.schema), measure, q.value)?;
             // Formula was added in IFC4; the canonical schema registry also
             // drives the TypeScript writer (#7378).
             let formula = if ifc_lite_core::attribute_names_for_schema(pass.schema, entity)
@@ -147,7 +150,7 @@ fn qset_lines(pass: &mut Pass<'_, '_>, host: u32, qsets: &[QSet]) -> Result<Vec<
             } else {
                 ""
             };
-            lines.push((id, format!("#{id}={entity}('{}',$,$,{}{formula});", escape(&q.name), to_step_real(q.value)?)));
+            lines.push((id, format!("#{id}={entity}('{}',$,$,{value}{formula});", escape(&q.name))));
             refs.push(format!("#{id}"));
         }
         let set_id = pass.allocate()?;

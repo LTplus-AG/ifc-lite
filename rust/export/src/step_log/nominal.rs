@@ -14,7 +14,8 @@ use ifc_lite_core::SchemaFamily;
 use serde_json::Value;
 
 use super::base::pvt;
-use super::jsval::{format_step_real, js_to_number, json_number, json_to_js_string, step_integer};
+use super::jsval::{format_step_real, js_to_number, json_number, json_to_js_string, step_integer, to_step_real};
+use super::values::Unwritable;
 use crate::generated::step_log_tables::{BaseKind, ValueMember, ValueType, IFC_VALUE_MEMBERS};
 use crate::step_text::escape;
 
@@ -90,18 +91,38 @@ pub(crate) fn check_real_measure(family: Option<SchemaFamily>, measure: &str, va
     let (member, base) = value_leaf(family, measure)?;
     let number = match base {
         BaseKind::Real | BaseKind::Number => MeasureNumber::Real,
-        // Whole and exactly representable: below 2^53.
-        BaseKind::Integer if value.fract() == 0.0 && value.abs() < 9_007_199_254_740_992.0 => MeasureNumber::Integer(value as i64),
-        BaseKind::Integer => {
-            let family = family.map_or("", SchemaFamily::as_str);
-            return Err(format!("{} takes a whole number in {family}, not {value}", member.name));
-        }
+        BaseKind::Integer => match whole(value) {
+            Some(i) => MeasureNumber::Integer(i),
+            None => return Err(not_whole(member.name, family, value)),
+        },
         other => return Err(format!("{} holds a {} value, not a number", member.name, other.as_str())),
     };
     if where_rule && !satisfies(member.name, value) {
         return Err(format!("{value} is outside what {} allows", member.name));
     }
     Ok(number)
+}
+
+/// `value` as an integer, when it is whole and exactly representable (below
+/// 2^53).
+fn whole(value: f64) -> Option<i64> {
+    (value.fract() == 0.0 && value.abs() < 9_007_199_254_740_992.0).then_some(value as i64)
+}
+
+fn not_whole(name: &str, family: Option<SchemaFamily>, value: f64) -> String {
+    format!("{name} takes a whole number in {}, not {value}", family.map_or("", SchemaFamily::as_str))
+}
+
+/// A bare number of `measure` as the step-log writes it in `family`: an
+/// integer where the measure's base there is INTEGER (a fractional value has
+/// no spelling and is unwritable), else a STEP real.
+pub(crate) fn measure_number(family: SchemaFamily, measure: &str, value: f64) -> Result<String, Unwritable> {
+    match value_member(family, measure) {
+        Some((member, ValueType::Leaf(BaseKind::Integer))) => {
+            whole(value).map(|i| i.to_string()).ok_or_else(|| Unwritable(not_whole(member.name, Some(family), value)))
+        }
+        _ => to_step_real(value),
+    }
 }
 
 /// `literal` as STEP writes a value of `measure` in `family`: a bare integer

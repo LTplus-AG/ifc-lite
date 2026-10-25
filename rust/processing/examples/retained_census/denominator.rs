@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Source-schema inventory. Geometry job eligibility is never a membership rule.
 
+#[path = "prefix.rs"]
+mod prefix;
+
 use super::{Counts, Product};
 use ifc_lite_core::parser::{header, skip_step_trivia};
 use ifc_lite_core::{AttributeValue, DecodedEntity, EntityIndex, EntityScanner, SchemaVersion};
@@ -35,6 +38,11 @@ pub(super) fn inventory(content: &[u8], limit: usize) -> Inventory {
         result
             .diagnostics
             .push("enumeration:missing_DATA_header".into());
+    }
+    if prefix::data_start(content) != Some(end) {
+        result
+            .diagnostics
+            .push("enumeration:unverified_DATA_prefix".into());
     }
     while let Some((id, name, start, next)) = scanner.next_entity() {
         if result.records.len() >= limit {

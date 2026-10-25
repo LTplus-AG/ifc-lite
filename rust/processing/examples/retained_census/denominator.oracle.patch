@@ -1,7 +1,7 @@
 diff --git a/rust/processing/examples/retained_census/scan.rs b/rust/processing/examples/retained_census/scan.rs
 --- a/rust/processing/examples/retained_census/scan.rs
 +++ b/rust/processing/examples/retained_census/scan.rs
-@@ -40,6 +40,9 @@
+@@ -42,6 +42,9 @@
              continue;
          }
          if !schema.is_subtype_of(&name, "IfcProduct") {
@@ -10,4 +10,4 @@ diff --git a/rust/processing/examples/retained_census/scan.rs b/rust/processing/
 +        if !ifc_lite_core::has_geometry_by_name(&name) {
              continue;
          }
-         let mut product = denominator::product(info.name);
+         // Schema metadata decides membership; the merged type supplies the

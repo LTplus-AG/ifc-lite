@@ -2,6 +2,9 @@
 
 use super::census_bytes;
 
+#[path = "framing_tests.rs"]
+mod framing_tests;
+
 fn model(extra: &str) -> String {
     format!("ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('synthetic.ifc','2026-01-01T00:00:00',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
 #1=IFCCARTESIANPOINT((0.,0.,0.));\n#2=IFCDIRECTION((0.,0.,1.));\n#3=IFCDIRECTION((1.,0.,0.));\n#4=IFCAXIS2PLACEMENT3D(#1,#2,#3);\n\
@@ -16,6 +19,7 @@ fn model(extra: &str) -> String {
 fn issue_7955_plain_extrusion_is_source_only_candidate() {
     let fixture = census_bytes(model("").as_bytes());
     let wall = &fixture.products[&13];
+    assert_eq!(wall.ifc_type, "IfcWall");
     assert_eq!(wall.source_admission, "admitted");
     assert_eq!(wall.verdict, "source_only_candidate");
     assert!(wall.reasons.is_empty());
@@ -207,6 +211,7 @@ fn issue_7955_decode_unknown_and_bound_failures_never_claim_coverage() {
     for extra in ["#20=IFCWALL(@);", "#20=IFCWALL();"] {
         let fixture = census_bytes(model(extra).as_bytes());
         assert!(fixture.products.contains_key(&20));
+        assert_eq!(fixture.products[&20].ifc_type, "IfcWall");
         assert!(!fixture.products[&20].enumeration_complete);
         assert_eq!(fixture.products[&20].verdict, "refused");
         assert!(!fixture.enumeration_complete);

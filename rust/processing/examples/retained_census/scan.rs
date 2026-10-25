@@ -36,13 +36,17 @@ pub(super) fn products(content: &[u8], record_limit: usize) -> Scan {
             continue;
         };
         if schema.is_subtype_of(&name, "IfcTypeProduct") {
-            result.type_definitions.insert(id, info.name.to_owned());
+            result
+                .type_definitions
+                .insert(id, IfcType::from_str(info.name).name().to_owned());
             continue;
         }
         if !schema.is_subtype_of(&name, "IfcProduct") {
             continue;
         }
-        let mut product = denominator::product(info.name);
+        // Schema metadata decides membership; the merged type supplies the
+        // canonical display name even when decoding this product fails.
+        let mut product = denominator::product(IfcType::from_str(info.name).name());
         product.counts.openings = context.voids.get(&id).copied().unwrap_or_default();
         product.counts.layered_products = usize::from(context.layers.contains(&id));
         product.counts.material_layer_usages =

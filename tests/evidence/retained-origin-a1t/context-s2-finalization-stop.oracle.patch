@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared against bf6022ecaa51954df16758f3378d13ad6a4e3aca; runtime UNRUN. Apply in reverse to mutate.
+--- a/rust/geometry/src/program/retained/failure.rs
++++ b/rust/geometry/src/program/retained/failure.rs
+@@ -141,7 +141,7 @@
+     }
+     pub(in crate::program) fn common(&self, site: FailureSite, error: crate::Error) -> RetainedFailure {
+         match error {
+-            crate::Error::ProgramStopped(stop) => RetainedFailure::Stopped(stop),
++            crate::Error::ProgramStopped(stop) => RetainedFailure::Stopped(self.remember_stop(stop)),
+             error => {
+                 let cause = match error {
+                     crate::Error::CoreError(core) => OriginCause::Core(core),

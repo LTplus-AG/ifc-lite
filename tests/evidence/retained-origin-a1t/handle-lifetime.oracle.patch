@@ -1,0 +1,45 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared against bf6022ecaa51954df16758f3378d13ad6a4e3aca; runtime UNRUN. Apply in reverse to mutate.
+--- a/rust/geometry/src/program/retained/failure.rs
++++ b/rust/geometry/src/program/retained/failure.rs
+@@ -106,34 +106,32 @@
+ #[derive(Clone)]
+ pub(in crate::program) struct FailureHandle {
+     #[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
+-    walk: std::sync::Weak<super::walk::RetainedWalk>,
++    walk: Arc<super::walk::RetainedWalk>,
+ }
+ impl FailureHandle {
+     #[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
+-    pub(super) fn new(walk: Arc<super::walk::RetainedWalk>) -> Self { Self { walk: Arc::downgrade(&walk) } }
++    pub(super) fn new(walk: Arc<super::walk::RetainedWalk>) -> Self { Self { walk } }
+     pub(in crate::program) fn origin(&self) -> Option<Arc<OriginFailure>> {
+         #[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
+-        { self.walk.upgrade().and_then(|walk| walk.1.get()) }
++        { self.walk.1.get() }
+         #[cfg(all(target_arch = "wasm32", not(feature = "wasm_source_capture")))]
+         { None }
+     }
+     pub(in crate::program) fn record(&self, site: FailureSite, entity: Option<u32>, cause: OriginCause) {
+         #[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
+-        if let Some(walk) = self.walk.upgrade() {
+-            if let Err(stop) = walk.1.record(site, entity, cause) { walk.remember(stop); }
+-        }
++        if let Err(stop) = self.walk.1.record(site, entity, cause) { self.walk.remember(stop); }
+         #[cfg(all(target_arch = "wasm32", not(feature = "wasm_source_capture")))]
+         let _ = (site, entity, cause);
+     }
+     fn check(&self) -> Result<(), ProgramStop> {
+         #[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
+-        { self.walk.upgrade().map_or(Ok(()), |walk| walk.check()) }
++        { self.walk.check() }
+         #[cfg(all(target_arch = "wasm32", not(feature = "wasm_source_capture")))]
+         { Ok(()) }
+     }
+     fn remember_stop(&self, stop: ProgramStop) -> ProgramStop {
+         #[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
+-        { self.walk.upgrade().map_or(stop, |walk| walk.remember(stop)) }
++        { self.walk.remember(stop) }
+         #[cfg(all(target_arch = "wasm32", not(feature = "wasm_source_capture")))]
+         { stop }
+     }

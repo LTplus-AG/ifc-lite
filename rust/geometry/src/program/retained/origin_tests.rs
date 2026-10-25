@@ -39,10 +39,10 @@ fn issue_7955_structural_report_preserves_kind_before_common_erasure() {
     let mut program = RetainedProgram::product_parts(&entity, contract());
     drive(&mut program, &router, &mut decoder);
     let failure = origin(program.finish().unwrap_err());
-    assert_eq!(failure.site, FailureSite::RepresentationItems);
-    assert_eq!(failure.entity, Some(12));
     assert!(matches!(failure.cause, OriginCause::Structure(StructuralReason::NonReferenceMember)),
         "B1 structural report must preserve NonReferenceMember");
+    assert_eq!(failure.site, FailureSite::RepresentationItems);
+    assert_eq!(failure.entity, Some(12));
 }
 
 #[test]
@@ -84,10 +84,10 @@ fn issue_7955_recipe_report_keeps_actual_enum_without_partial_plan() {
         assert_eq!(operations.len(), count);
         assert!(operations.iter().all(|operation| operation.construction().is_some()));
         let failure = origin(program.finish().expect_err("B1 unsupported recipe cannot publish a partial plan"));
-        assert_eq!(failure.site, FailureSite::Constructor);
-        assert_eq!(failure.entity, Some(id));
         assert!(matches!(&failure.cause, OriginCause::Recipe(crate::document::RetainedRefusal::UnsupportedSource(_))),
             "B1 recipe report must preserve UnsupportedSource");
+        assert_eq!(failure.site, FailureSite::Constructor);
+        assert_eq!(failure.entity, Some(id));
     }
 }
 

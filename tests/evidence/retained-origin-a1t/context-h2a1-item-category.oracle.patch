@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared against bf6022ecaa51954df16758f3378d13ad6a4e3aca; runtime UNRUN. Apply in reverse to mutate.
+--- a/rust/geometry/src/program/product/retained_structure.rs
++++ b/rust/geometry/src/program/product/retained_structure.rs
+@@ -96,7 +96,7 @@
+         // The generated supported-schema hierarchy includes geometric,
+         // topological, styled and mapped items, including legacy subclasses.
+         // Category membership does not admit a new retained constructor.
+-        if false && !item.ifc_type.is_subtype_of(IfcType::IfcRepresentationItem) {
++        if !item.ifc_type.is_subtype_of(IfcType::IfcRepresentationItem) {
+             return Err(refused(FailureSite::RepresentationItems, item.id, StructuralReason::ItemCategory, format!(
+                 "retained Items contains non-IfcRepresentationItem #{} ({})",
+                 item.id, item.ifc_type

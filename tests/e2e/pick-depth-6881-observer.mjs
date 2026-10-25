@@ -152,11 +152,17 @@ export async function runLifecycle({ includeLoss = false } = {}) {
   const device = renderer.getGPUDevice(), camera = renderer.getCamera(), reports = [];
   const frame = () => new Promise(resolve => requestAnimationFrame(resolve));
   async function phase(name, mutate, restore) {
-    const originalCreate = device.createBuffer, buffers = [];
-    let completed = 0, release;
+    const originalCreate = device.createBuffer, buffers = [], picker = renderer.picker, originalPick = picker.pick;
+    let completed = 0, release, insidePick = false;
+    const pick = function(...args) {
+      insidePick = true;
+      try { return originalPick.apply(this, args); } finally { insidePick = false; }
+    };
+    picker.pick = pick;
     const gate = new Promise(resolve => { release = resolve; });
     const create = function(descriptor) {
       const buffer = originalCreate.call(this, descriptor);
+      if (!insidePick) return buffer;
       const row = { size: buffer.size, usage: buffer.usage, destroys: 0 };
       buffers.push(row);
       const destroy = buffer.destroy;
@@ -192,6 +198,7 @@ export async function runLifecycle({ includeLoss = false } = {}) {
       release();
       await Promise.allSettled(operations);
       if (device.createBuffer === create) device.createBuffer = originalCreate;
+      if (picker.pick === pick) picker.pick = originalPick;
       await restore?.();
     }
     if (buffers.length !== 6 || buffers.some(row => row.destroys !== 1)) throw Error(`${name} did not retire each of the six point-pick buffers exactly once`);

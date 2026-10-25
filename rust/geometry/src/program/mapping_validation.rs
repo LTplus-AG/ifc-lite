@@ -49,12 +49,12 @@ pub(super) fn occurrence(item: &DecodedEntity, decoder: &mut EntityDecoder) -> R
         return Err(MappingFailure::refused(FailureSite::MappingSource, source.id,
             MappingReason::Category, "retained MappingSource requires IfcRepresentationMap"));
     }
-    origin(&source, decoder)?;
-    target(item, decoder)?;
+    validate_origin(&source, decoder)?;
+    validate_target(item, decoder)?;
     map(&source, decoder)
 }
 
-fn target(item: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<()> {
+fn validate_target(item: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<()> {
     let target = item.get(slot::IfcMappedItem::MAPPING_TARGET.index())
         .and_then(AttributeValue::as_entity_ref)
         .ok_or_else(|| MappingFailure::refused(FailureSite::MappingTarget, item.id,
@@ -95,7 +95,7 @@ fn scale(target: &DecodedEntity, index: usize) -> Result<()> {
     }
 }
 
-fn origin(map: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<()> {
+fn validate_origin(map: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<()> {
     let origin = map.get(slot::IfcRepresentationMap::MAPPING_ORIGIN.index())
         .and_then(AttributeValue::as_entity_ref)
         .ok_or_else(|| MappingFailure::refused(FailureSite::MappingOrigin, map.id,

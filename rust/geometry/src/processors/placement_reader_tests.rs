@@ -155,7 +155,13 @@ fn a_revolved_axis_whose_squared_length_overflows_is_tested_on_its_direction() {
 fn an_extruded_direction_whose_squared_length_overflows_keeps_its_direction() {
     // Base and r1 accepted it, then normalised it to the zero vector and
     // extruded along +Z. Now it extrudes as its unit-scale twin, bit for bit.
-    for (huge, unit) in [("((1.E308,0.,1.E308))", "((1.,0.,1.))"), ("((0.,0.,1.E308))", "((0.,0.,1.))")] {
+    // The downward row pins the sense: a rescale by the signed largest
+    // component would flip it to +Z and drop the downward depth shift.
+    for (huge, unit) in [
+        ("((1.E308,0.,1.E308))", "((1.,0.,1.))"),
+        ("((0.,0.,1.E308))", "((0.,0.,1.))"),
+        ("((0.,0.,-1.E308))", "((0.,0.,-1.))"),
+    ] {
         let (control, refused) = run(&extruder(), &extrusion(unit, "$"), 5);
         let control = control.expect(unit);
         assert_eq!(refused, 0, "{unit}");
@@ -165,7 +171,7 @@ fn an_extruded_direction_whose_squared_length_overflows_keeps_its_direction() {
         assert_eq!(result.positions, control.positions, "{huge}");
         assert_eq!(result.indices, control.indices, "{huge}");
     }
-    // The WR is still tested exactly on the authored ratios: a huge X with
+    // The WR is still tested on the authored ratios: a huge X with
     // zero Z is refused, a subnormal pair is zero length; each counted once.
     let (result, refused) = run(&extruder(), &extrusion("((1.E308,0.,0.))", "$"), 5);
     assert!(result.expect_err("z = 0").to_string().contains("ValidExtrusionDirection"));
@@ -202,15 +208,16 @@ fn a_csg_primitive_position_that_is_present_must_read() {
 }
 
 #[test]
-fn the_shared_helpers_refuse_an_unreadable_placement_or_direction() {
+fn the_one_reader_refuses_an_unreadable_placement_or_direction() {
+    use crate::placement::Axis2Placement;
     let content = "#1=IFCCARTESIANPOINT((1.,2.,3.));\n#2=IFCDIRECTION((0.,0.,1.));\n\
                    #3=IFCAXIS2PLACEMENT3D($,$,$);\n#4=IFCAXIS2PLACEMENT3D(#1,#1,$);\n\
                    #5=IFCAXIS2PLACEMENT3D(#1,$,$);\n";
     let mut decoder = EntityDecoder::new(content);
     // Base: a fast-path miss snapped to the origin and swallowed the error.
-    assert!(helpers::get_axis2_placement_transform_by_id(3, &mut decoder).is_err());
-    assert!(helpers::get_axis2_placement_transform_by_id(4, &mut decoder).is_err());
-    let m = helpers::get_axis2_placement_transform_by_id(5, &mut decoder).expect("control");
+    assert!(Axis2Placement::read_id(3, &mut decoder).is_err());
+    assert!(Axis2Placement::read_id(4, &mut decoder).is_err());
+    let m = Axis2Placement::read_id(5, &mut decoder).expect("control").matrix();
     assert_eq!((m[(0, 3)], m[(1, 3)], m[(2, 3)]), (1.0, 2.0, 3.0));
     // Base: `get_direction_by_id` had no type check, so a point read as a
     // direction `(1,2,3)`. Its one caller now reads through the leaf reader.

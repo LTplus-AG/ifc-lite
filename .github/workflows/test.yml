@@ -963,6 +963,14 @@ jobs:
           # and timeout. Once source_axes.rs is on main, whole-change revert resumes.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/kernel/plane_weld/source_axes.rs | grep -Fxq 'rust/geometry/src/kernel/plane_weld/source_axes.rs'; then
             oracle_args+=(--mutation docs/architecture/evidence/issue-7292/signed-zero.oracle.patch)
+          # #7955 B1: keep the new failure/completion API and its changed tests
+          # loadable. Reverse only typed structural reporting; the origin
+          # witness must detect the missing cause. Check before the inherited
+          # H2 controllers so a B1-only PR never reverts its new modules.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/retained/origin_tests.rs | grep -Fxq 'rust/geometry/src/program/retained/origin_tests.rs'; then
+            oracle_args=(--base 1365e5048aa8439ab28b2a290561661126231381 --ci --json \
+              --mutation tests/evidence/retained-origin-a1t/structural-report.oracle.patch \
+              --test rust/geometry/src/program/retained/origin_tests.rs)
           # #7955 H2a2 common mapped/type-map controller: preserve APIs and
           # mutate cycle/copy bounds, ownership, bindings and late origin.
           # The combined patch carries the original H2a1 mutations; independent

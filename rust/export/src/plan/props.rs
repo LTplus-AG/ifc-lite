@@ -26,7 +26,7 @@ use crate::step_ids::IdAllocator;
 use super::attrs::attribute_index;
 use super::index::FileIndex;
 use super::props_lookup::{
-    container_names, find_member, find_set, leaf_is_shared, list_attr, occurrence_rels, pset_owners, pset_reaches_only, scalar_attr, type_rel,
+    container_names, decoded_name, find_member, find_set, leaf_is_shared, list_attr, occurrence_rels, pset_owners, pset_reaches_only, scalar_attr, type_rel,
 };
 use super::props_synth;
 use super::types::{PropScope, PropWrite, PsetKind};
@@ -181,15 +181,23 @@ pub(crate) fn holding_set(index: &FileIndex, schema: &str, object_id: u32, write
 /// the related type holds is an override: it joins the object's own set of
 /// that name (or starts one) like an untargeted write, so the object never
 /// ends up with two sets of one name.
-pub(crate) fn effective_write(index: &FileIndex, schema: &str, object_id: u32, write: &PropWrite) -> PropWrite {
+pub(crate) fn effective_write(index: &FileIndex, schema: &str, object_id: u32, write: &PropWrite) -> Result<PropWrite, String> {
     let mut write = write.clone();
-    if let Some(target) = write.target.filter(|_| write.scope == PropScope::Occurrence) {
+    let Some(target) = write.target else { return Ok(write) };
+    // The set that lists the record must be the one the write names.
+    if let Some(holder) = holding_set(index, schema, object_id, &write) {
+        let (container, _) = container_names(write.kind);
+        if decoded_name(index, schema, holder, container).as_deref() != Some(write.pset.as_str()) {
+            return Err(format!("target #{target} is not a member of the named set {}", write.pset));
+        }
+    }
+    if write.scope == PropScope::Occurrence {
         let own = candidate_sets(index, schema, object_id, &write, true);
         if find_set(index, schema, own.iter(), write.kind, &write.pset, Some(target)).is_none() && type_owned_member(index, schema, object_id, &write) == Some(target) {
             write.target = None;
         }
     }
-    write
+    Ok(write)
 }
 
 /// The slot edits that overwrite an existing, unshared value record: its
@@ -335,8 +343,11 @@ pub(crate) fn resolve_set_writes<'w>(
             }
             let writes: Vec<PropWrite> = group.iter().zip(&replaced).map(|(w, old)| keeping_old_unit(index, schema, w, old.or_else(|| type_owned_member(index, schema, object_id, w)))).collect();
             let writes: Vec<&PropWrite> = writes.iter().collect();
+            // The clone keeps the name of the set it copies.
+            let set_name = decoded_name(index, schema, pset_id, container_type).unwrap_or_else(|| first.pset.clone());
             match props_synth::copy_on_write_occurrence_set(
                 schema,
+                &set_name,
                 container_type,
                 member_attr,
                 object_id,

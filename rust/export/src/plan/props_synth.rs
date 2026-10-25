@@ -107,9 +107,6 @@ fn check_caller_text(write: &PropWrite) -> Result<(), String> {
     if !is_step_value(&write.literal) {
         return Err(format!("value {:?} is not one STEP value", write.literal));
     }
-    if super::source_text::holds_escape(&write.literal) || write.unit.as_deref().is_some_and(super::source_text::holds_escape) {
-        return Err("value or unit holds a character reserved for non-UTF-8 source bytes".to_string());
-    }
     if let Some(unit) = write.unit.as_deref().filter(|u| !is_step_value(u)) {
         return Err(format!("unit {unit:?} is not one STEP value"));
     }
@@ -127,6 +124,7 @@ fn build_set_and_rel(
     container_type: &str,
     member_attr: &str,
     object_id: u32,
+    set_name: &str,
     write: &PropWrite,
     ids: &mut IdAllocator,
     owner_history: Option<u32>,
@@ -138,7 +136,7 @@ fn build_set_and_rel(
     let set_guid = crate::merged::deterministic_global_id(&format!("plan-pset{kind}:{seed}:{object_id}:{}:{}", write.pset, write.prop));
     let rel_guid = crate::merged::deterministic_global_id(&format!("plan-rel{kind}:{seed}:{object_id}:{}:{}", write.pset, write.prop));
     let pset_id = ids.allocate().ok_or("id space exhausted")?;
-    let pset_record = set_record(schema, container_type, member_attr, pset_id, &set_guid, owner_history, &write.pset, member_ids);
+    let pset_record = set_record(schema, container_type, member_attr, pset_id, &set_guid, owner_history, set_name, member_ids);
     let rel_id = ids.allocate().ok_or("id space exhausted")?;
     let rel_record = defines_by_properties_record(schema, rel_id, &rel_guid, owner_history, &[object_id], pset_id);
     Ok(((pset_id, pset_record), (rel_id, rel_record)))
@@ -225,7 +223,7 @@ pub(crate) fn append_new_occurrence_set(
 ) -> Result<PropOutcome, String> {
     let mut new_records = writes.iter().map(|w| new_value(schema, w, ids)).collect::<Result<Vec<_>, _>>()?;
     let member_ids: Vec<u32> = new_records.iter().map(|(id, _)| *id).collect();
-    let (pset, rel) = build_set_and_rel(schema, container_type, member_attr, object_id, writes[0], ids, owner_history, &member_ids, "new")?;
+    let (pset, rel) = build_set_and_rel(schema, container_type, member_attr, object_id, &writes[0].pset, writes[0], ids, owner_history, &member_ids, "new")?;
     new_records.extend([pset, rel]);
     Ok(PropOutcome::Append { new_records })
 }
@@ -267,6 +265,7 @@ pub(crate) fn leaf_copy_on_write(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn copy_on_write_occurrence_set(
     schema: &str,
+    set_name: &str,
     container_type: &str,
     member_attr: &str,
     object_id: u32,
@@ -288,7 +287,7 @@ pub(crate) fn copy_on_write_occurrence_set(
         }
     }
 
-    let (pset, rel) = build_set_and_rel(schema, container_type, member_attr, object_id, writes[0], ids, owner_history, &new_members, "cow")?;
+    let (pset, rel) = build_set_and_rel(schema, container_type, member_attr, object_id, set_name, writes[0], ids, owner_history, &new_members, "cow")?;
     new_records.extend([pset, rel]);
 
     let related_idx = attribute_index(schema, "IFCRELDEFINESBYPROPERTIES", "RelatedObjects")

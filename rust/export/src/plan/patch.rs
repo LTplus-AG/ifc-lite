@@ -75,7 +75,13 @@ pub(super) fn apply_patch(
     // first named. A write is grouped by the set it lands on, so two sets of
     // one name stay apart and a targeted and an untargeted write to one set
     // meet.
-    let writes: Vec<PropWrite> = patch.psets.iter().map(|w| props::effective_write(index, schema, object_id, w)).collect();
+    let mut writes: Vec<PropWrite> = Vec::new();
+    for w in &patch.psets {
+        match props::effective_write(index, schema, object_id, w) {
+            Ok(w) => writes.push(w),
+            Err(reason) => out.refusals.push(Refusal { object: ObjectRef::Id(object_id), reason: format!("{}.{}: {reason}", w.pset, w.prop) }),
+        }
+    }
     let mut groups: Vec<Vec<&PropWrite>> = Vec::new();
     for write in &writes {
         let same_set = |w: &&PropWrite| {

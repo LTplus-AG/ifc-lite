@@ -565,17 +565,26 @@ fn a_copy_on_write_keeps_latin1_bytes_in_the_original_and_the_edited_relationshi
     assert!(has(b"'3HR'"), "the override was written");
 }
 
-/// Every read of a source record goes through `source_text`, so the text the
-/// plan copies from carries its bytes and encodes back to them.
+/// A source record read from the index carries its bytes (not U+FFFD).
 #[test]
-fn a_record_read_from_the_index_encodes_back_to_its_source_bytes() {
+fn a_record_read_from_the_index_keeps_its_non_utf8_bytes() {
     let content = latin1_wall_source();
     let index = super::index::FileIndex::complete(&content);
     let line = index.raw_line(11).unwrap();
     assert!(!line.contains('\u{FFFD}'));
-    let encoded = super::source_text::encode(&line);
-    assert!(content.windows(encoded.len()).any(|w| w == &*encoded));
-    assert!(encoded.windows(7).any(|w| w == b"Gr\xF6sse'"));
+    assert!(line.contains("Gr\u{F7F6}sse"), "{line}");
+}
+
+/// A caller's STEP literal holding U+F7E9 is written as the caller gave it,
+/// not as the single byte E9.
+#[test]
+fn a_caller_literal_with_a_byte_escape_character_is_written_as_given() {
+    let write = PropWrite::new("Pset_X", "P", "IFCLABEL", "'a\u{F7E9}b'", PsetKind::Property, PropScope::Occurrence);
+    let (out, report) = patch_one(&wall_with_own_pset("IFC4"), vec![write]);
+    assert!(report.refusals.is_empty(), "{:?}", report.refusals);
+    let has = |needle: &[u8]| out.windows(needle.len()).any(|w| w == needle);
+    assert!(has(&[b'a', 0xEF, 0x9F, 0xA9, b'b']));
+    assert!(!has(&[b'a', 0xE9, b'b']));
 }
 
 /// Valid UTF-8 that looks like an escaped byte is written back unchanged
@@ -704,4 +713,98 @@ fn a_targeted_override_of_a_type_owned_record_does_not_duplicate_the_set() {
     // Untargeted and targeted writes to the same record meet in one set too.
     let (_, report) = patch_one(content.as_bytes(), vec![rating("'3HR'").with_target(41), rating("'4HR'")]);
     assert!(report.findings.is_empty(), "{:?}", report.findings);
+}
+
+/// Text the caller supplies is never run through the source-byte encoder: a
+/// name holding U+F7E9 is written as the STEP escape for that character.
+#[test]
+fn caller_text_with_a_byte_escape_character_is_written_as_a_step_escape() {
+    use super::add_test_support::{add, gid, object};
+    use super::add_types::{IfcClass, Representation};
+    let name = "a\u{F7E9}b";
+    let expect = b"a\\X2\\F7E9\\X0\\b";
+    let content = super::test_fixtures::storey_with_typed_wall("IFC4");
+    let has = |out: &[u8], needle: &[u8]| out.windows(needle.len()).any(|w| w == needle);
+    let mut wall = object(IfcClass::Wall, gid(1), Some(ObjectRef::Id(70)), Representation::None);
+    wall.name = Some(name.into());
+    let mut out = Vec::new();
+    let (key, disposition) = add(wall);
+    let plan = ExportPlan { dispositions: vec![(key, disposition)], context: PlanContext::default() };
+    execute(&content, &plan, &mut out).unwrap();
+    assert!(has(&out, expect), "an Add's name");
+    assert!(!has(&out, &[b'a', 0xE9, b'b']));
+    let plan = ExportPlan {
+        dispositions: vec![(ObjectRef::Id(10), Disposition::Patch(Patch { name: Some(name.into()), ..Default::default() }))],
+        context: PlanContext::default(),
+    };
+    let mut out = Vec::new();
+    execute(&content, &plan, &mut out).unwrap();
+    assert!(has(&out, expect), "a renamed record");
+    assert!(!has(&out, &[b'a', 0xE9, b'b']));
+}
+
+/// The type holds `Pset_A.FireRating` (`#41`) and `Pset_B.FireRating` (`#51`).
+fn type_with_two_sets_of_one_property() -> String {
+    let extra = "#71=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('BHR'),$);\n\
+        #72=IFCPROPERTYSET('0000000000000000000052',$,'Pset_B',$,(#71));\n";
+    String::from_utf8(super::test_fixtures::wall_with_type_owned_pset("IFC4"))
+        .unwrap()
+        .replace("'Pset_WallCommon'", "'Pset_A'")
+        .replace("(#42)", "(#42,#72)")
+        .replacen("ENDSEC;\nEND-ISO", &format!("{extra}ENDSEC;\nEND-ISO"), 1)
+}
+
+fn rating(pset: &str, lit: &str) -> PropWrite {
+    PropWrite::new(pset, "FireRating", "IFCLABEL", lit, PsetKind::Property, PropScope::Occurrence)
+}
+
+/// A write whose named set does not list its target is refused; it neither
+/// resolves the other set nor merges with an untargeted write to it.
+#[test]
+fn a_target_outside_the_named_set_is_refused() {
+    let content = type_with_two_sets_of_one_property();
+    let (out, report) = patch_one(content.as_bytes(), vec![rating("Pset_B", "'x'").with_target(41), rating("Pset_B", "'y'")]);
+    assert_eq!(report.refusals.len(), 1, "{:?}", report.refusals);
+    assert!(report.refusals[0].reason.contains("not a member of the named set"), "{}", report.refusals[0].reason);
+    let text = String::from_utf8(out).unwrap();
+    assert!(text.contains("'y'") && !text.contains("'x'"));
+    // Targeting each record under its own set name overrides both sets.
+    let (out, report) = patch_one(content.as_bytes(), vec![rating("Pset_A", "'x'").with_target(41), rating("Pset_B", "'y'").with_target(71)]);
+    assert!(report.refusals.is_empty() && report.findings.is_empty(), "{:?} {:?}", report.refusals, report.findings);
+    let text = String::from_utf8(out).unwrap();
+    for name in ["'Pset_A'", "'Pset_B'"] {
+        assert!(text.matches(name).count() >= 2, "{name} overridden on the wall: {text}");
+    }
+}
+
+/// A targeted override of a shared occurrence set keeps that set's name.
+#[test]
+fn a_shared_set_copy_keeps_the_name_of_the_set_it_copies() {
+    let content = String::from_utf8(two_walls_sharing_a_pset("IFC4")).unwrap().replace("'Pset_WallCommon'", "'Pset_Caf\\X2\\00E9\\X0\\'");
+    let write = rating("Pset_Caf\u{E9}", "'NEW'").with_target(30);
+    let (out, report) = patch_one(content.as_bytes(), vec![write]);
+    assert!(report.refusals.is_empty(), "{:?}", report.refusals);
+    let text = String::from_utf8(out).unwrap();
+    assert_eq!(text.matches("'Pset_Caf\\X2\\00E9\\X0\\'").count(), 2, "original and copy: {text}");
+}
+
+/// IfcRelAggregates also decomposes assemblies: deleting one does not take
+/// its still-contained parts out of the spatial tree, but a part with no
+/// other place in the tree is still reported when its spatial parent goes.
+#[test]
+fn deleting_an_assembly_does_not_flag_parts_that_are_still_contained() {
+    use super::test_fixtures::storey_with_typed_wall;
+    let extra = "#90=IFCELEMENTASSEMBLY('0000000000000000000090',$,'Assembly',$,$,$,$,$,$);\n\
+        #91=IFCRELAGGREGATES('0000000000000000000091',$,$,$,#90,(#10));\n";
+    let content = String::from_utf8(storey_with_typed_wall("IFC4")).unwrap().replacen("ENDSEC;\nEND-ISO", &format!("{extra}ENDSEC;\nEND-ISO"), 1);
+    let delete = |id| {
+        let plan = ExportPlan { dispositions: vec![(ObjectRef::Id(id), Disposition::Delete)], context: PlanContext::default() };
+        execute(content.as_bytes(), &plan, &mut Vec::new()).unwrap()
+    };
+    let report = delete(90);
+    assert!(!report.findings.iter().any(|f| f.express_id == Some(10)), "{:?}", report.findings);
+    // The storey goes: the wall's only containment is gone, the assembly
+    // aggregation is not a place in the spatial tree.
+    let report = delete(70);
+    assert!(report.findings.iter().any(|f| f.express_id == Some(10) && f.message.contains("spatial")), "{:?}", report.findings);
 }

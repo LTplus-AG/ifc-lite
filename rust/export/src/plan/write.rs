@@ -3,7 +3,6 @@
 //! record written as it is read and validated as it is written. Nothing the
 //! size of the output is held.
 
-use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::Write;
 
@@ -37,7 +36,7 @@ pub(crate) fn write_output<W: Write>(
     let source_header = crate::source_header::parse_source_header(source);
     crate::step_header::write_header(&mut out, &header_opts, source_header.as_ref(), schema)?;
 
-    let Resolution { appended, edits_by_id, removed, reasons, refusals, patched, added, patched_objects, dropped_representations, add_findings } =
+    let Resolution { appended, edits_by_id, removed, reasons, refusals, patched, added, patched_objects, dropped_representations, findings } =
         resolution;
     let defined = DefinedIds::new(index, &removed, &appended);
     let mut validator = StreamValidator::new(schema);
@@ -50,12 +49,14 @@ pub(crate) fn write_output<W: Write>(
         if removed.contains(&id) {
             continue;
         }
-        // An untouched record is the source's own bytes. Only a record the
-        // plan edits is read as text, and only when the text is exact
-        // (`source_text::decode_exact`); otherwise the edits are not applied.
+        // An untouched record is the source's own bytes. An edited one is
+        // built by `source_text::apply_edits`, which keeps the bytes the edits
+        // leave alone and splices the new text in as it is; a record it
+        // cannot edit exactly is written unedited and reported.
         let bytes = &source[start..end];
-        let edited: Option<String> = edits_by_id.get(&id).and_then(|edits| {
-            let Some(raw) = source_text::decode_exact(bytes) else {
+        let edited: Option<Vec<u8>> = edits_by_id.get(&id).and_then(|edits| {
+            let before = attribute_edits_refused;
+            let Some(edited) = source_text::apply_edits(bytes, edits, &mut attribute_edits_refused) else {
                 attribute_edits_refused += edits.len();
                 unapplied.push(ValidationFinding {
                     express_id: Some(id),
@@ -63,8 +64,6 @@ pub(crate) fn write_output<W: Write>(
                 });
                 return None;
             };
-            let before = attribute_edits_refused;
-            let edited = apply_attr_mutations_counted(&raw, edits, &mut attribute_edits_refused);
             if attribute_edits_refused > before {
                 unapplied.push(ValidationFinding {
                     express_id: Some(id),
@@ -73,16 +72,9 @@ pub(crate) fn write_output<W: Write>(
             }
             Some(edited)
         });
-        let line: Cow<str> = match &edited {
-            Some(text) => {
-                out.write_all(&source_text::encode(text))?;
-                Cow::Borrowed(text)
-            }
-            None => {
-                out.write_all(bytes)?;
-                source_text::decode(bytes)
-            }
-        };
+        let written_bytes = edited.as_deref().unwrap_or(bytes);
+        out.write_all(written_bytes)?;
+        let line = source_text::decode(written_bytes).into_text();
         out.write_all(b"\n")?;
         written += 1;
         type_upper.clear();
@@ -91,7 +83,7 @@ pub(crate) fn write_output<W: Write>(
         validator.record(id, &type_upper, &line, |r| defined.contains(r));
     }
     for (id, text) in &appended {
-        out.write_all(&source_text::encode(text))?;
+        out.write_all(text.as_bytes())?;
         out.write_all(b"\n")?;
         written += 1;
         validator.record(*id, &appended_type(text), text, |r| defined.contains(r));
@@ -101,8 +93,7 @@ pub(crate) fn write_output<W: Write>(
 
     let mut psets = duplicate_sets_on_patched(index, schema, &appended, &edits_by_id, &removed, &patched_objects);
     psets.extend(unapplied);
-    psets.extend(add_findings);
-    psets.extend(unplaced_by_removed_structure(index, schema, &removed, &reasons));
+    psets.extend(findings);
     let mut duplicates: Vec<u32> = index.duplicates.iter().copied().collect();
     duplicates.sort_unstable();
     psets.extend(duplicates.into_iter().map(|id| ValidationFinding {
@@ -216,49 +207,4 @@ fn removals(removed: &HashSet<u32>, reasons: &HashMap<u32, RemovalReason>) -> Ve
         removed.iter().map(|&id| Removal::new(id, reasons.get(&id).copied().unwrap_or(RemovalReason::Replaced))).collect();
     out.sort_unstable_by_key(|r| r.express_id);
     out
-}
-
-
-/// The elements a removed spatial relationship left behind: an
-/// `IfcRelContainedInSpatialStructure` or `IfcRelAggregates` that went
-/// because its relating storey, building or site did, while some of what it
-/// related stayed. Those are no longer in the spatial tree, and `removed`
-/// alone does not say so.
-fn unplaced_by_removed_structure(
-    index: &FileIndex,
-    schema: &str,
-    removed: &HashSet<u32>,
-    reasons: &HashMap<u32, RemovalReason>,
-) -> Vec<ValidationFinding> {
-    use super::attrs::attribute_index;
-    let mut rels: Vec<u32> = removed.iter().copied().filter(|id| reasons.get(id) == Some(&RemovalReason::Dangling)).collect();
-    rels.sort_unstable();
-    let mut out = Vec::new();
-    for rel in rels {
-        let Some(rel_type) = index.type_of(rel) else { continue };
-        let (relating, related) = match rel_type.as_str() {
-            "IFCRELCONTAINEDINSPATIALSTRUCTURE" => ("RelatingStructure", "RelatedElements"),
-            "IFCRELAGGREGATES" => ("RelatingObject", "RelatedObjects"),
-            _ => continue,
-        };
-        let (Some(relating_idx), Some(related_idx)) = (attribute_index(schema, &rel_type, relating), attribute_index(schema, &rel_type, related))
-        else {
-            continue;
-        };
-        let Some(attrs) = index.attrs(rel) else { continue };
-        let parent = attrs.get(relating_idx).and_then(|a| a.scalar);
-        let children = attrs.get(related_idx).and_then(|a| a.list.as_ref()).into_iter().flatten().flatten();
-        for &child in children.filter(|c| !removed.contains(c)) {
-            let parent = parent.map_or_else(String::new, |p| format!(" #{p}"));
-            out.push(ValidationFinding {
-                express_id: Some(child),
-                message: format!("no longer in the spatial tree: the {}{parent} it was related to in #{rel} was deleted", rel_type_label(&rel_type)),
-            });
-        }
-    }
-    out
-}
-
-fn rel_type_label(rel_type: &str) -> &'static str {
-    if rel_type == "IFCRELAGGREGATES" { "parent" } else { "container" }
 }

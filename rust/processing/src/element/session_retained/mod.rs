@@ -16,7 +16,7 @@ use ifc_lite_geometry::program::transactions::{
 };
 use ifc_lite_geometry::resource::{self, ProgramStop, Reservation};
 #[cfg(all(test, feature = "retained-native", not(target_arch = "wasm32")))]
-use ifc_lite_geometry_runtime::{MeshLimits, RetainedRealization, RuntimeOwner, SmlibWorker};
+use ifc_lite_geometry_runtime::{MeshLimits, RuntimeOwner, SmlibWorker};
 use std::sync::{
     atomic::{AtomicU8, Ordering},
     Arc,

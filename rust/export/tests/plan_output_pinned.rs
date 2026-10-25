@@ -36,10 +36,16 @@ fn fnv1a(bytes: &[u8], mut h: u64) -> u64 {
 }
 
 /// One digest over everything a caller can observe. Findings are sorted
-/// first: callers may not rely on their order across objects.
+/// first: callers may not rely on their order across objects. The finding
+/// that these plans name no `ExportingApplication` is left out: the pins
+/// then show a plan without one writes the bytes it always did.
 fn digest(output: &[u8], report: &WriteReport) -> String {
-    let mut findings: Vec<String> =
-        report.findings.iter().map(|f| format!("{:?}|{}", f.express_id, f.message)).collect();
+    let mut findings: Vec<String> = report
+        .findings
+        .iter()
+        .filter(|f| !f.message.starts_with("no ExportingApplication"))
+        .map(|f| format!("{:?}|{}", f.express_id, f.message))
+        .collect();
     findings.sort();
     let summary = format!(
         "{}/{}/{}/{}/{}|{:?}|{:?}",

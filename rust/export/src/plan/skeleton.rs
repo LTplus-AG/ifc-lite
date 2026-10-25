@@ -17,6 +17,8 @@ use crate::step_ids::IdAllocator;
 use crate::step_text::escape;
 
 use super::add_types::GlobalId;
+use super::identity::Identity;
+use super::types::ExportingApplication;
 use super::placement::fmt;
 use super::props_synth::ref_list;
 use super::tessellation::Emit;
@@ -82,6 +84,12 @@ pub struct Skeleton {
     /// as +Y.
     pub true_north: Option<[f64; 2]>,
     pub map_conversion: Option<MapConversion>,
+    /// The application writing the file. Present, it owns the project, site,
+    /// building and their aggregations (`ADDED`) and the header names it, the
+    /// same way [`super::PlanContext::application`] does for a plan.
+    pub application: Option<ExportingApplication>,
+    /// The header's `FILE_NAME` name. `None` writes an empty one.
+    pub file_name: Option<String>,
 }
 
 /// An `IfcConversionBasedUnit` length unit of `metres` metres.
@@ -127,6 +135,9 @@ pub fn skeleton(s: &Skeleton) -> Result<Vec<u8>, String> {
         ids: &mut ids,
         out: &mut out,
     };
+    // The exporting application owns what the skeleton creates.
+    let identity = s.application.as_ref().map(Identity::new).transpose()?;
+    let history = owner_slot(identity, &mut emit)?;
     let quoted = |v: &str| format!("'{}'", escape(v));
     let name = |root: &SkeletonRoot| root.name.as_deref().map_or("$".to_string(), quoted);
     let gid = |root: &SkeletonRoot| format!("'{}'", root.global_id.encode());
@@ -205,6 +216,7 @@ pub fn skeleton(s: &Skeleton) -> Result<Vec<u8>, String> {
         "IFCPROJECT",
         &[
             ("GlobalId", gid(&s.project)),
+            ("OwnerHistory", history.clone()),
             ("Name", name(&s.project)),
             ("RepresentationContexts", format!("(#{context})")),
             ("UnitsInContext", format!("#{unit_assignment}")),
@@ -220,6 +232,7 @@ pub fn skeleton(s: &Skeleton) -> Result<Vec<u8>, String> {
         "IFCSITE",
         &[
             ("GlobalId", gid(&s.site)),
+            ("OwnerHistory", history.clone()),
             ("Name", name(&s.site)),
             ("ObjectPlacement", format!("#{site_placement}")),
             ("CompositionType", ".ELEMENT.".into()),
@@ -237,6 +250,7 @@ pub fn skeleton(s: &Skeleton) -> Result<Vec<u8>, String> {
         "IFCBUILDING",
         &[
             ("GlobalId", gid(&s.building)),
+            ("OwnerHistory", history.clone()),
             ("Name", name(&s.building)),
             ("ObjectPlacement", format!("#{building_placement}")),
             ("CompositionType", ".ELEMENT.".into()),
@@ -250,22 +264,48 @@ pub fn skeleton(s: &Skeleton) -> Result<Vec<u8>, String> {
                     "GlobalId",
                     format!("'{}'", root.global_id.derive("rel/aggregates").encode()),
                 ),
+                ("OwnerHistory", history.clone()),
                 ("RelatingObject", format!("#{relating}")),
                 ("RelatedObjects", format!("(#{related})")),
             ],
         )?;
     }
 
+    Ok(step_text(s.file_name.as_deref(), identity, &out).into_bytes())
+}
+
+/// The `OwnerHistory` slot of everything the skeleton creates: the
+/// exporting application's `ADDED` history, written first, else unset.
+fn owner_slot(identity: Option<Identity>, emit: &mut Emit) -> Result<String, String> {
+    let Some(identity) = identity else { return Ok("$".to_string()) };
+    let (records, chain) = identity.chain(SKELETON_SCHEMA, emit.ids).ok_or("id space exhausted")?;
+    let (id, record) = identity.added_history(SKELETON_SCHEMA, emit.ids, chain).ok_or("id space exhausted")?;
+    emit.out.extend(records);
+    emit.out.push((id, record));
+    Ok(format!("#{id}"))
+}
+
+/// The file: header (naming the application, toolkit and change time when
+/// there is an application), then the records.
+fn step_text(file_name: Option<&str>, identity: Option<Identity>, out: &[(u32, String)]) -> String {
+    let (time_stamp, preprocessor, originating) = match identity {
+        Some(i) => (i.header_time_stamp(), concat!("ifc-lite ", env!("CARGO_PKG_VERSION")).to_string(), i.originating_system()),
+        None => Default::default(),
+    };
     let mut text = format!(
-        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\n\
-         FILE_SCHEMA(('{SKELETON_SCHEMA}'));\nENDSEC;\nDATA;\n"
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('{}','{}',(''),(''),'{}','{}','');\n\
+         FILE_SCHEMA(('{SKELETON_SCHEMA}'));\nENDSEC;\nDATA;\n",
+        escape(file_name.unwrap_or("")),
+        escape(&time_stamp),
+        escape(&preprocessor),
+        escape(&originating),
     );
-    for (_, record) in &out {
+    for (_, record) in out {
         text.push_str(record);
         text.push('\n');
     }
     text.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
-    Ok(text.into_bytes())
+    text
 }
 
 fn check(s: &Skeleton) -> Result<(), String> {

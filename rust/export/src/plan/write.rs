@@ -10,6 +10,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::StepOptions;
 
+use super::identity::Identity;
 use super::index::FileIndex;
 use super::source_text;
 use super::resolve::Resolution;
@@ -26,10 +27,17 @@ pub(crate) fn write_output<W: Write>(
 ) -> Result<WriteReport, PlanError> {
     let source = index.content();
     let mut out = std::io::BufWriter::with_capacity(1 << 20, out);
+    // The exporting application is the originating system, this crate the
+    // toolkit that wrote the exchange structure, and the change time the
+    // file's time stamp (an explicit `time_stamp` still wins).
+    let identity = plan.context.application.as_ref().and_then(|app| Identity::new(app).ok());
     let header_opts = StepOptions {
         author: plan.context.author.clone(),
         organization: plan.context.organization.clone(),
-        time_stamp: plan.context.time_stamp.clone(),
+        time_stamp: plan.context.time_stamp.clone().or_else(|| identity.map(|i| i.header_time_stamp())),
+        filename: plan.context.file_name.clone(),
+        application: identity.map(|_| concat!("ifc-lite ", env!("CARGO_PKG_VERSION")).to_string()),
+        originating_system: identity.map(|i| i.originating_system()),
         ..Default::default()
     };
     let source_header = crate::source_header::parse_source_header(source);

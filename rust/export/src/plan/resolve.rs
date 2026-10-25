@@ -12,7 +12,9 @@ use super::add_types::AddItem;
 use super::patch::{apply_patch, PatchOutput};
 use super::removal::RemovalReason;
 use super::types::{Disposition, DroppedRepresentation, ExportPlan, ObjectRef, Refusal, ValidationFinding};
-use super::{add, attrs, delete, geometry, owner_history};
+use super::identity::{mark_modified, missing_application, Ledger};
+use super::add_attributed::{self, AddSetting, Produced};
+use super::{attrs, delete, geometry, owner_history};
 
 pub(crate) struct Resolution {
     pub(crate) appended: Vec<(u32, String)>,
@@ -34,10 +36,11 @@ pub(crate) struct Resolution {
 
 pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Resolution {
     let mut ids = IdAllocator::after(index.max_id);
-
     let mut appended: Vec<(u32, String)> = Vec::new();
-    let owner_history_ref = patch_owner_history(index, schema, plan, &mut ids, &mut appended);
-
+    let mut findings = Vec::new();
+    let mut ledger = Ledger::for_plan(plan, &mut findings);
+    let owner_history_ref = owner_history::for_patches(index, schema, plan, ledger.as_mut(), &mut ids, &mut appended);
+    let mut modified: HashSet<u32> = HashSet::new();
     let mut refusals: Vec<Refusal> = Vec::new();
     let mut edits_by_id: HashMap<u32, BTreeMap<usize, String>> = HashMap::new();
     let mut requested_deletes: HashSet<u32> = HashSet::new();
@@ -115,6 +118,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
                     moved: &mut moved,
                     edited: &mut edited,
                     object: id,
+                    modified: &mut modified,
                     reshaped: &mut reshaped,
                     geometry_cuts: &mut geometry_cuts,
                     body_context: &mut body_context,
@@ -160,19 +164,22 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
 
     attrs::render_list_edits(index, list_edits, &removed, &mut edits_by_id);
 
+    if let Some(ledger) = ledger.as_mut() {
+        mark_modified(index, schema, ledger, &modified, &removed, &mut ids, &mut appended, &mut edits_by_id, &mut findings);
+    }
+
     // Adds run after every delete and patch has settled `removed` and the
     // list edits, so none of them extends a relationship or names a record
     // that is going away, and their list appends start from the rewritten
     // lists.
-    let mut findings = super::orphans::unplaced_by_removed_structure(index, schema, &removed, &reasons);
-    let added = if adds.is_empty() {
-        0
-    } else {
-        // An owner history the plan deletes is not one an Add can name.
-        let owner_history = owner_history_ref.filter(|id| !removed.contains(id));
-        let state = add::AddState::new(index, schema, &removed, &plan.context, owner_history, body_context.chosen());
-        state.build_all(&adds, &mut ids, &mut edits_by_id, &mut appended, &mut refusals, &mut findings)
-    };
+    findings.extend(super::orphans::unplaced_by_removed_structure(index, schema, &removed, &reasons));
+    let setting = AddSetting { index, schema, context: &plan.context, removed: &removed, owner_history: owner_history_ref, body_context: body_context.chosen() };
+    let mut produced = Produced { ids: &mut ids, appended: &mut appended, edits_by_id: &mut edits_by_id, refusals: &mut refusals, findings: &mut findings };
+    let added = add_attributed::run(&setting, &adds, ledger.as_mut(), &mut produced);
+
+    if plan.context.application.is_none() && patched + added > 0 {
+        findings.push(missing_application());
+    }
 
     Resolution { appended, edits_by_id, removed, reasons, refusals, patched, added, patched_objects, dropped_representations, findings }
 }
@@ -223,32 +230,6 @@ fn sweep_old_shapes(
     let swept: HashSet<u32> = sweep.delete.into_iter().collect();
     requested_deletes.extend(swept.iter().copied());
     swept
-}
-
-/// The owner history a patch's new records name: the file's first, else one
-/// synthesized into `appended`. Synthesized only when a patch actually needs
-/// to point a NEW record's OwnerHistory somewhere: a plan that never writes a
-/// property/quantity set must not grow the file by five records it has no use
-/// for. Adds synthesize their own on first success (see `add::AddState::new`).
-fn patch_owner_history(
-    index: &FileIndex,
-    schema: &str,
-    plan: &ExportPlan,
-    ids: &mut IdAllocator,
-    appended: &mut Vec<(u32, String)>,
-) -> Option<u32> {
-    let needs_owner_history = index.first_owner_history.is_none()
-        && plan
-            .dispositions
-            .iter()
-            .any(|(_, d)| matches!(d, Disposition::Patch(p) if !p.psets.is_empty()));
-    if !needs_owner_history {
-        return index.first_owner_history;
-    }
-    owner_history::synthesize(schema, ids, &plan.context).map(|(records, id)| {
-        appended.extend(records);
-        id
-    })
 }
 
 /// Every disposition but an Add resolved to its id in the file (refused when

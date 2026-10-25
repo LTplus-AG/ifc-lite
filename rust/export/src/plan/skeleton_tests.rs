@@ -17,6 +17,8 @@ fn a_skeleton(map: Option<MapConversion>) -> Skeleton {
         building: root(3, "Building"),
         true_north: map.as_ref().map(|_| [0.5, 0.866]),
         map_conversion: map,
+        application: None,
+        file_name: None,
     }
 }
 

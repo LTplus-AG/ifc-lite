@@ -30,7 +30,7 @@ fn geometry(id: u32, mesh: TriangleMesh, colour: Option<SurfaceColour>) -> (Obje
 }
 
 fn run(source: &[u8], dispositions: Vec<(ObjectRef, Disposition)>) -> (Vec<u8>, WriteReport) {
-    let plan = ExportPlan { dispositions, context: PlanContext::default() };
+    let plan = ExportPlan { dispositions, context: PlanContext::attributed() };
     let mut out = Vec::new();
     let report = execute(source, &plan, &mut out).expect("execute");
     (out, report)
@@ -435,11 +435,11 @@ fn a_body_never_lands_in_a_two_dimensional_context() {
 fn a_second_body_for_the_same_product_is_refused() {
     for schema in SCHEMAS {
         let source = products_with_geometry(schema);
-        let plan = ExportPlan { dispositions: vec![geometry(10, tetrahedron(), None), geometry(10, tetrahedron(), None)], context: PlanContext::default() };
+        let plan = ExportPlan { dispositions: vec![geometry(10, tetrahedron(), None), geometry(10, tetrahedron(), None)], context: PlanContext::attributed() };
         let mut out = Vec::new();
         let report = execute(&source, &plan, &mut out).unwrap();
         assert_eq!(report.refusals.len(), 1, "{schema}: {:?}", report.refusals);
-        let single = ExportPlan { dispositions: vec![geometry(10, tetrahedron(), None)], context: PlanContext::default() };
+        let single = ExportPlan { dispositions: vec![geometry(10, tetrahedron(), None)], context: PlanContext::attributed() };
         let mut once = Vec::new();
         execute(&source, &single, &mut once).unwrap();
         assert_eq!(out, once, "{schema}: the same output as one patch");

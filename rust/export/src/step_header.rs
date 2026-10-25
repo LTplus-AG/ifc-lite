@@ -123,9 +123,10 @@ pub(crate) fn write_header_counted<W: Write>(
     // preprocessor_version = the tool that WROTE this file (ifc-lite);
     // originating_system keeps the source authoring tool so it isn't erased.
     let application = opts.application.as_deref().unwrap_or("ifc-lite");
-    let originating_system = source
-        .and_then(|s| s.originating_system.as_deref())
-        .filter(|s| !s.is_empty())
+    let originating_system = opts
+        .originating_system
+        .as_deref()
+        .or_else(|| source.and_then(|s| s.originating_system.as_deref()).filter(|s| !s.is_empty()))
         .unwrap_or(application);
     let authorization =
         source.and_then(|s| s.authorization.as_deref()).unwrap_or("");

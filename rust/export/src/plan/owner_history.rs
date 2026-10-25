@@ -95,7 +95,36 @@ pub(crate) fn synthesize(schema: &str, ids: &mut IdAllocator, context: &PlanCont
     Some((records, owner_history_id))
 }
 
-fn quoted(s: &str) -> String {
+/// The owner history a patch's new records name: the exporting application's
+/// `ADDED` one when the plan names it, else the file's first, else one
+/// synthesized into `appended`. Synthesized only when a patch actually needs
+/// to point a NEW record's OwnerHistory somewhere: a plan that never writes a
+/// property/quantity set must not grow the file by five records it has no use
+/// for. Adds synthesize their own on first success (see `add::AddState::new`).
+pub(super) fn for_patches(
+    index: &super::index::FileIndex,
+    schema: &str,
+    plan: &super::types::ExportPlan,
+    ledger: Option<&mut super::identity::Ledger>,
+    ids: &mut IdAllocator,
+    appended: &mut Vec<(u32, String)>,
+) -> Option<u32> {
+    let writes_psets = plan.dispositions.iter().any(|(_, d)| matches!(d, super::types::Disposition::Patch(p) if !p.psets.is_empty()));
+    // The exporting application owns every record a patch adds.
+    if let Some(ledger) = ledger {
+        return if writes_psets { ledger.added(schema, ids, appended) } else { None };
+    }
+    let needs_owner_history = index.first_owner_history.is_none() && writes_psets;
+    if !needs_owner_history {
+        return index.first_owner_history;
+    }
+    synthesize(schema, ids, &plan.context).map(|(records, id)| {
+        appended.extend(records);
+        id
+    })
+}
+
+pub(super) fn quoted(s: &str) -> String {
     format!("'{}'", escape(s))
 }
 
@@ -103,7 +132,7 @@ fn quoted(s: &str) -> String {
 /// ISO 8601 (the form the header's `FILE_NAME` takes): a date, optionally
 /// followed by `T` and `hh:mm:ss`, read as UTC unless it ends in `Z` or a
 /// `+hh`, `+hhmm` or `+hh:mm` offset. Anything else is `None`.
-fn epoch_seconds(stamp: &str) -> Option<i64> {
+pub(super) fn epoch_seconds(stamp: &str) -> Option<i64> {
     let stamp = stamp.trim();
     if let Ok(seconds) = stamp.parse::<i64>() {
         return Some(seconds);

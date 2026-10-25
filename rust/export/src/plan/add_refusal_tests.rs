@@ -275,7 +275,10 @@ fn an_add_keeps_the_owner_history_a_delete_would_take() {
         assert_clean(&report, schema);
         assert_eq!(type_in(&out, 5), "IFCOWNERHISTORY", "{schema}: the file's owner history stays");
         let line = String::from_utf8_lossy(&out).lines().find(|l| l.starts_with(&format!("#{}=", id_in(&out, gid(26))))).unwrap().to_string();
-        assert!(line.contains(",#5,"), "{schema}: the new wall names it: {line}");
+        // The plan names an exporting application, so the wall names its
+        // own history; either way the record it names is in the output.
+        let named: u32 = line.split("',#").nth(1).and_then(|r| r.split(',').next()).and_then(|n| n.parse().ok()).expect("owner history ref");
+        assert_eq!(type_in(&out, named), "IFCOWNERHISTORY", "{schema}: the new wall names a live history: {line}");
     }
 }
 

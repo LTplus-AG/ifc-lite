@@ -27,6 +27,8 @@ pub(super) struct PatchOutput<'a> {
     /// member change, checked once the deletes settle.
     pub(super) edited: &'a mut HashSet<(u32, u32)>,
     pub(super) object: u32,
+    /// Records a patch touched, whose owner history records the change.
+    pub(super) modified: &'a mut HashSet<u32>,
     /// Objects a patch has already given a new body, for the same reason:
     /// a second body would leave the first one's records unreferenced.
     pub(super) reshaped: &'a mut HashSet<u32>,
@@ -38,6 +40,8 @@ pub(super) struct PatchOutput<'a> {
 impl PatchOutput<'_> {
     fn edit(&mut self, edits: Vec<(u32, usize, String)>) {
         for (id, idx, value) in edits {
+            self.modified.insert(id);
+            self.modified.insert(self.object);
             self.edits_by_id.entry(id).or_default().insert(idx, value);
             self.edited.insert((id, self.object));
         }
@@ -47,6 +51,8 @@ impl PatchOutput<'_> {
     /// write of the patched object.
     fn list_edit(&mut self, set: u32, idx: usize) -> &mut attrs::ListEdit {
         self.edited.insert((set, self.object));
+        self.modified.insert(set);
+        self.modified.insert(self.object);
         self.list_edits.entry((set, idx)).or_default()
     }
 }
@@ -153,6 +159,7 @@ fn apply_set_writes(
 ) {
     let result = props::resolve_set_writes(target, group, ids, owner_history);
     for outcome in result.outcomes {
+        out.modified.insert(out.object);
         match outcome {
             props::PropOutcome::InPlace(edits) => out.edit(edits),
             props::PropOutcome::Append { new_records } => out.appended.extend(new_records),

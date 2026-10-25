@@ -1370,10 +1370,8 @@ impl Execution {
                             && covers(open_min_f32.z, open_max_f32.z, result_min.z, result_max.z)
                     };
                     if aabb_engulfs && opening_engulfs_host_solid(&result, opening_mesh) {
-                        // Mark the host consumed so the element pipeline keeps
-                        // the empty result instead of falling back to the un-cut
-                        // host.
-                        self.record_void_consumed_host(element_id);
+                        // The empty result marks the host consumed
+                        // (`program::openings::execute`).
                         result = Mesh::default();
                         host_mutated = true;
                         break;
@@ -1687,5 +1685,7 @@ mod batch_cutter_tests;
 mod cut_effect_count_tests;
 #[cfg(test)]
 mod single_cut_outcome_tests;
+#[cfg(test)]
+mod consumed_host_tests;
 #[cfg(test)]
 mod program_tests;

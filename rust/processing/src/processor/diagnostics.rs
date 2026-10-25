@@ -24,6 +24,7 @@ use rustc_hash::FxHashMap;
 /// and drains from its own warm router at batch end -- draining there would
 /// empty it.
 pub(super) struct DiagnosticCollectors {
+    audit: Option<crate::ProductGeometryAudit>,
     /// Per-job router CSG diagnostics (parity with the wasm path's
     /// `drain_and_log_csg_diagnostics`).
     pub(super) csg_failures: std::sync::Mutex<FxHashMap<u32, Vec<ifc_lite_geometry::BoolFailure>>>,
@@ -49,8 +50,9 @@ pub(super) struct DiagnosticCollectors {
 }
 
 impl DiagnosticCollectors {
-    pub(super) fn new() -> Self {
+    pub(super) fn new(audit: Option<crate::ProductGeometryAudit>) -> Self {
         Self {
+            audit,
             csg_failures: std::sync::Mutex::new(FxHashMap::default()),
             classification: std::sync::Mutex::new(ifc_lite_geometry::ClassificationStats::default()),
             host_diags: std::sync::Mutex::new(FxHashMap::default()),
@@ -64,8 +66,12 @@ impl DiagnosticCollectors {
 
     /// The per-job end of the pass: this job router's unsupported items, and
     /// D3's refused-element count for this job's decoder (#7678).
-    pub(super) fn drain_job(&self, router: &ifc_lite_geometry::GeometryRouter, decoder: &ifc_lite_core::EntityDecoder) {
-        drain_unsupported_items(router, &self.unsupported_items);
+    pub(super) fn drain_job(
+        &self, id: u32, router: &ifc_lite_geometry::GeometryRouter,
+        decoder: &ifc_lite_core::EntityDecoder, produced: &crate::element::ProducedElementMeshes,
+    ) {
+        let unsupported = drain_unsupported_items(router, &self.unsupported_items);
+        if let Some(audit) = &self.audit { audit.record(id, produced, decoder, &unsupported); }
         self.note_refused_input(decoder);
     }
 
@@ -168,10 +174,10 @@ pub(super) fn collate(
 pub(super) fn drain_unsupported_items(
     router: &ifc_lite_geometry::GeometryRouter,
     collector: &std::sync::Mutex<FxHashMap<String, u64>>,
-) {
+) -> FxHashMap<String, u64> {
     let unsupported = router.take_unsupported_items();
     if unsupported.is_empty() {
-        return;
+        return unsupported;
     }
     // Recover from a poisoned lock rather than `if let Ok(..)`, like the drains
     // in `collate` above: `take_unsupported_items` has ALREADY emptied the
@@ -182,9 +188,10 @@ pub(super) fn drain_unsupported_items(
     let mut acc = collector
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    for (ifc_type, count) in unsupported {
-        *acc.entry(ifc_type).or_insert(0) += count;
+    for (ifc_type, count) in &unsupported {
+        *acc.entry(ifc_type.clone()).or_insert(0) += count;
     }
+    unsupported
 }
 
 /// Native-path parity with the wasm console warning: a `tracing::warn!` when

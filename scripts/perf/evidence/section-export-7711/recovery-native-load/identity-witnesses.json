@@ -1,0 +1,259 @@
+{
+  "observations": {
+    "main-0": {
+      "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "row": {
+        "geometry_diagnostics_present": true,
+        "geometry_diagnostics_sha256": "d3ba8ad41eb3804761b58408f45775a46a62d7c21a4f0960d001c4ee121edf07",
+        "identity_scope": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+        "input_sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+        "instance_count": 0,
+        "mesh_count": 285,
+        "metadata_frame_instances_sha256": "aa4bac6e743c3d35c45a3c8ca396e7cbdc9602e0af087aad4404a6a2d3a43bee",
+        "ordered_mesh_json_sha256": "4498bb7b8283165d60e11934db818d5540220049234aaa1aa72aa53cee0d7bd3",
+        "payload_float_bits_sha256": "2ff7a824a5da27c33e4cbea75a4f8e5e7f968a251e6db2057cbb00ef3cdb566b"
+      }
+    },
+    "main-1": {
+      "fixture": "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "row": {
+        "geometry_diagnostics_present": true,
+        "geometry_diagnostics_sha256": "d1a2e40a36ee734a3898d7b467b21a0c00e7d463def70d9a5623b9fcb6802bd2",
+        "identity_scope": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+        "input_sha256": "ffdfa9a91ac6a6c301d7da0d7861dfbc3958ceb55098c143a560468702642131",
+        "instance_count": 0,
+        "mesh_count": 1402,
+        "metadata_frame_instances_sha256": "e1924450a8ec06affc2fbb4b42cde6c0c39b90583a86fd765a8cbb0ee83ff2be",
+        "ordered_mesh_json_sha256": "4ac5053401c5c39838d7c98e9fb888cefeba87ea1feea8f70666233b3957abf9",
+        "payload_float_bits_sha256": "5e1b19fe546d01eb54f7f4ede0e33ab73ae3e876f8563740e8ca1256140b7783"
+      }
+    },
+    "main-2": {
+      "fixture": "tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "row": {
+        "geometry_diagnostics_present": true,
+        "geometry_diagnostics_sha256": "31da8fec0b5a96e898ee37692788dd3f89bd4f6ce593cb2891ab369c49f00c83",
+        "identity_scope": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+        "input_sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+        "instance_count": 0,
+        "mesh_count": 109515,
+        "metadata_frame_instances_sha256": "13a9ac3198137581a86f49a7758704cb9301f8253f29b5435562b9a5a6648d18",
+        "ordered_mesh_json_sha256": "407d01b010c36a20956a9c55e269946aa90802209aa9967565e67305836da9d2",
+        "payload_float_bits_sha256": "dac5adcdb934e1292b4e11d5a38664d6e3d5c40031bb87b1a08c690395e28600"
+      }
+    },
+    "backend-0": {
+      "fixture": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+      "row": {
+        "geometry_diagnostics_present": true,
+        "geometry_diagnostics_sha256": "d3ba8ad41eb3804761b58408f45775a46a62d7c21a4f0960d001c4ee121edf07",
+        "identity_scope": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+        "input_sha256": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+        "instance_count": 0,
+        "mesh_count": 285,
+        "metadata_frame_instances_sha256": "aa4bac6e743c3d35c45a3c8ca396e7cbdc9602e0af087aad4404a6a2d3a43bee",
+        "ordered_mesh_json_sha256": "4498bb7b8283165d60e11934db818d5540220049234aaa1aa72aa53cee0d7bd3",
+        "payload_float_bits_sha256": "2ff7a824a5da27c33e4cbea75a4f8e5e7f968a251e6db2057cbb00ef3cdb566b"
+      }
+    },
+    "backend-1": {
+      "fixture": "tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc",
+      "row": {
+        "geometry_diagnostics_present": true,
+        "geometry_diagnostics_sha256": "d1a2e40a36ee734a3898d7b467b21a0c00e7d463def70d9a5623b9fcb6802bd2",
+        "identity_scope": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+        "input_sha256": "ffdfa9a91ac6a6c301d7da0d7861dfbc3958ceb55098c143a560468702642131",
+        "instance_count": 0,
+        "mesh_count": 1402,
+        "metadata_frame_instances_sha256": "e1924450a8ec06affc2fbb4b42cde6c0c39b90583a86fd765a8cbb0ee83ff2be",
+        "ordered_mesh_json_sha256": "4ac5053401c5c39838d7c98e9fb888cefeba87ea1feea8f70666233b3957abf9",
+        "payload_float_bits_sha256": "5e1b19fe546d01eb54f7f4ede0e33ab73ae3e876f8563740e8ca1256140b7783"
+      }
+    },
+    "backend-2": {
+      "fixture": "tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc",
+      "row": {
+        "geometry_diagnostics_present": true,
+        "geometry_diagnostics_sha256": "31da8fec0b5a96e898ee37692788dd3f89bd4f6ce593cb2891ab369c49f00c83",
+        "identity_scope": "separate complete ordered MeshData JSON; exact mesh float bits and skipped instance/bounds/transforms; separate result metadata/frame/transforms/instances; separate complete GeometryDiagnostics JSON; timings excluded",
+        "input_sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+        "instance_count": 0,
+        "mesh_count": 109515,
+        "metadata_frame_instances_sha256": "13a9ac3198137581a86f49a7758704cb9301f8253f29b5435562b9a5a6648d18",
+        "ordered_mesh_json_sha256": "407d01b010c36a20956a9c55e269946aa90802209aa9967565e67305836da9d2",
+        "payload_float_bits_sha256": "dac5adcdb934e1292b4e11d5a38664d6e3d5c40031bb87b1a08c690395e28600"
+      }
+    }
+  },
+  "comparisons": {
+    "backend-v-main": {
+      "ara3d/AC20-FZK-Haus.ifc": {
+        "fields": {
+          "input_sha256": {
+            "base": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+            "branch": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+            "matches": true
+          },
+          "mesh_count": {
+            "base": 285,
+            "branch": 285,
+            "matches": true
+          },
+          "instance_count": {
+            "base": 0,
+            "branch": 0,
+            "matches": true
+          },
+          "ordered_mesh_json_sha256": {
+            "base": "4498bb7b8283165d60e11934db818d5540220049234aaa1aa72aa53cee0d7bd3",
+            "branch": "4498bb7b8283165d60e11934db818d5540220049234aaa1aa72aa53cee0d7bd3",
+            "matches": true
+          },
+          "payload_float_bits_sha256": {
+            "base": "2ff7a824a5da27c33e4cbea75a4f8e5e7f968a251e6db2057cbb00ef3cdb566b",
+            "branch": "2ff7a824a5da27c33e4cbea75a4f8e5e7f968a251e6db2057cbb00ef3cdb566b",
+            "matches": true
+          },
+          "metadata_frame_instances_sha256": {
+            "base": "aa4bac6e743c3d35c45a3c8ca396e7cbdc9602e0af087aad4404a6a2d3a43bee",
+            "branch": "aa4bac6e743c3d35c45a3c8ca396e7cbdc9602e0af087aad4404a6a2d3a43bee",
+            "matches": true
+          },
+          "geometry_diagnostics_sha256": {
+            "base": "d3ba8ad41eb3804761b58408f45775a46a62d7c21a4f0960d001c4ee121edf07",
+            "branch": "d3ba8ad41eb3804761b58408f45775a46a62d7c21a4f0960d001c4ee121edf07",
+            "matches": true
+          },
+          "geometry_diagnostics_present": {
+            "base": true,
+            "branch": true,
+            "matches": true
+          }
+        },
+        "rawDiagnosticsBytesMatch": true,
+        "matches": true,
+        "groundTruthAccountingRequired": false
+      },
+      "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc": {
+        "fields": {
+          "input_sha256": {
+            "base": "ffdfa9a91ac6a6c301d7da0d7861dfbc3958ceb55098c143a560468702642131",
+            "branch": "ffdfa9a91ac6a6c301d7da0d7861dfbc3958ceb55098c143a560468702642131",
+            "matches": true
+          },
+          "mesh_count": {
+            "base": 1402,
+            "branch": 1402,
+            "matches": true
+          },
+          "instance_count": {
+            "base": 0,
+            "branch": 0,
+            "matches": true
+          },
+          "ordered_mesh_json_sha256": {
+            "base": "4ac5053401c5c39838d7c98e9fb888cefeba87ea1feea8f70666233b3957abf9",
+            "branch": "4ac5053401c5c39838d7c98e9fb888cefeba87ea1feea8f70666233b3957abf9",
+            "matches": true
+          },
+          "payload_float_bits_sha256": {
+            "base": "5e1b19fe546d01eb54f7f4ede0e33ab73ae3e876f8563740e8ca1256140b7783",
+            "branch": "5e1b19fe546d01eb54f7f4ede0e33ab73ae3e876f8563740e8ca1256140b7783",
+            "matches": true
+          },
+          "metadata_frame_instances_sha256": {
+            "base": "e1924450a8ec06affc2fbb4b42cde6c0c39b90583a86fd765a8cbb0ee83ff2be",
+            "branch": "e1924450a8ec06affc2fbb4b42cde6c0c39b90583a86fd765a8cbb0ee83ff2be",
+            "matches": true
+          },
+          "geometry_diagnostics_sha256": {
+            "base": "d1a2e40a36ee734a3898d7b467b21a0c00e7d463def70d9a5623b9fcb6802bd2",
+            "branch": "d1a2e40a36ee734a3898d7b467b21a0c00e7d463def70d9a5623b9fcb6802bd2",
+            "matches": true
+          },
+          "geometry_diagnostics_present": {
+            "base": true,
+            "branch": true,
+            "matches": true
+          }
+        },
+        "rawDiagnosticsBytesMatch": true,
+        "matches": true,
+        "groundTruthAccountingRequired": false
+      },
+      "ara3d/ISSUE_053_20181220Holter_Tower_10.ifc": {
+        "fields": {
+          "input_sha256": {
+            "base": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+            "branch": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+            "matches": true
+          },
+          "mesh_count": {
+            "base": 109515,
+            "branch": 109515,
+            "matches": true
+          },
+          "instance_count": {
+            "base": 0,
+            "branch": 0,
+            "matches": true
+          },
+          "ordered_mesh_json_sha256": {
+            "base": "407d01b010c36a20956a9c55e269946aa90802209aa9967565e67305836da9d2",
+            "branch": "407d01b010c36a20956a9c55e269946aa90802209aa9967565e67305836da9d2",
+            "matches": true
+          },
+          "payload_float_bits_sha256": {
+            "base": "dac5adcdb934e1292b4e11d5a38664d6e3d5c40031bb87b1a08c690395e28600",
+            "branch": "dac5adcdb934e1292b4e11d5a38664d6e3d5c40031bb87b1a08c690395e28600",
+            "matches": true
+          },
+          "metadata_frame_instances_sha256": {
+            "base": "13a9ac3198137581a86f49a7758704cb9301f8253f29b5435562b9a5a6648d18",
+            "branch": "13a9ac3198137581a86f49a7758704cb9301f8253f29b5435562b9a5a6648d18",
+            "matches": true
+          },
+          "geometry_diagnostics_sha256": {
+            "base": "31da8fec0b5a96e898ee37692788dd3f89bd4f6ce593cb2891ab369c49f00c83",
+            "branch": "31da8fec0b5a96e898ee37692788dd3f89bd4f6ce593cb2891ab369c49f00c83",
+            "matches": true
+          },
+          "geometry_diagnostics_present": {
+            "base": true,
+            "branch": true,
+            "matches": true
+          }
+        },
+        "rawDiagnosticsBytesMatch": true,
+        "matches": true,
+        "groundTruthAccountingRequired": false
+      }
+    }
+  },
+  "rawDiagnosticBytes": {
+    "main-0": {
+      "sha256": "d3ba8ad41eb3804761b58408f45775a46a62d7c21a4f0960d001c4ee121edf07",
+      "bytes": "{\"classification\":{\"diagonal\":0,\"nonRectangular\":2,\"rectangular\":29,\"total\":31},\"failuresByReason\":[],\"hostsWithOpenings\":9,\"oversizedRefDrops\":0,\"productsWithFailures\":0,\"rectFast\":{\"deferHostNotBox\":0,\"deferNearEdge\":0,\"deferNoOpenings\":0,\"deferNotThrough\":0,\"deferOffFace\":0,\"deferTooManyOpenings\":0,\"fired\":1,\"openingsCut\":1},\"schemaVersion\":3,\"silentNoOps\":0,\"totalCsgFailures\":0,\"totalUnsupportedItems\":0,\"unsupportedItemsByType\":[],\"worstHosts\":[]}"
+    },
+    "main-1": {
+      "sha256": "d1a2e40a36ee734a3898d7b467b21a0c00e7d463def70d9a5623b9fcb6802bd2",
+      "bytes": "{\"classification\":{\"diagonal\":339,\"nonRectangular\":20,\"rectangular\":2,\"total\":361},\"failuresByReason\":[{\"count\":7,\"reason\":\"PolygonalBoundedHalfSpaceFallback\"},{\"count\":1,\"reason\":\"KernelError\"},{\"count\":1,\"reason\":\"NoBoundsOverlap\"}],\"hostsWithOpenings\":73,\"oversizedRefDrops\":0,\"productsWithFailures\":2,\"rectFast\":{\"deferHostNotBox\":8,\"deferNearEdge\":0,\"deferNoOpenings\":0,\"deferNotThrough\":0,\"deferOffFace\":0,\"deferTooManyOpenings\":0,\"fired\":25,\"openingsCut\":36},\"schemaVersion\":3,\"silentNoOps\":0,\"totalCsgFailures\":9,\"totalUnsupportedItems\":0,\"unsupportedItemsByType\":[],\"worstHosts\":[{\"bbox\":{\"max\":[9.203715324401855,-7.914610385894775,0.7000000476837158],\"min\":[-0.35549378395080566,-21.310070037841797,-2.5]},\"csgFailures\":1,\"firstFailureLabel\":\"KernelError\",\"ifcType\":\"IfcWallStandardCase\",\"openings\":1,\"productId\":61300,\"triangleCount\":3956},{\"bbox\":{\"max\":[33.46880340576172,8.634620666503906,52.70000076293945],\"min\":[23.359840393066406,-14.259136199951172,46.599998474121094]},\"csgFailures\":1,\"firstFailureLabel\":\"NoBoundsOverlap\",\"ifcType\":\"IfcWallStandardCase\",\"openings\":1,\"productId\":337691,\"triangleCount\":36}]}"
+    },
+    "main-2": {
+      "sha256": "31da8fec0b5a96e898ee37692788dd3f89bd4f6ce593cb2891ab369c49f00c83",
+      "bytes": "{\"classification\":{\"diagonal\":0,\"nonRectangular\":0,\"rectangular\":981,\"total\":981},\"failuresByReason\":[],\"hostsWithOpenings\":289,\"oversizedRefDrops\":0,\"productsWithFailures\":0,\"rectFast\":{\"deferHostNotBox\":2,\"deferNearEdge\":0,\"deferNoOpenings\":0,\"deferNotThrough\":0,\"deferOffFace\":0,\"deferTooManyOpenings\":0,\"fired\":128,\"openingsCut\":205},\"schemaVersion\":3,\"silentNoOps\":0,\"totalCsgFailures\":0,\"totalUnsupportedItems\":0,\"unsupportedItemsByType\":[],\"worstHosts\":[]}"
+    },
+    "backend-0": {
+      "sha256": "d3ba8ad41eb3804761b58408f45775a46a62d7c21a4f0960d001c4ee121edf07",
+      "bytes": "{\"classification\":{\"diagonal\":0,\"nonRectangular\":2,\"rectangular\":29,\"total\":31},\"failuresByReason\":[],\"hostsWithOpenings\":9,\"oversizedRefDrops\":0,\"productsWithFailures\":0,\"rectFast\":{\"deferHostNotBox\":0,\"deferNearEdge\":0,\"deferNoOpenings\":0,\"deferNotThrough\":0,\"deferOffFace\":0,\"deferTooManyOpenings\":0,\"fired\":1,\"openingsCut\":1},\"schemaVersion\":3,\"silentNoOps\":0,\"totalCsgFailures\":0,\"totalUnsupportedItems\":0,\"unsupportedItemsByType\":[],\"worstHosts\":[]}"
+    },
+    "backend-1": {
+      "sha256": "d1a2e40a36ee734a3898d7b467b21a0c00e7d463def70d9a5623b9fcb6802bd2",
+      "bytes": "{\"classification\":{\"diagonal\":339,\"nonRectangular\":20,\"rectangular\":2,\"total\":361},\"failuresByReason\":[{\"count\":7,\"reason\":\"PolygonalBoundedHalfSpaceFallback\"},{\"count\":1,\"reason\":\"KernelError\"},{\"count\":1,\"reason\":\"NoBoundsOverlap\"}],\"hostsWithOpenings\":73,\"oversizedRefDrops\":0,\"productsWithFailures\":2,\"rectFast\":{\"deferHostNotBox\":8,\"deferNearEdge\":0,\"deferNoOpenings\":0,\"deferNotThrough\":0,\"deferOffFace\":0,\"deferTooManyOpenings\":0,\"fired\":25,\"openingsCut\":36},\"schemaVersion\":3,\"silentNoOps\":0,\"totalCsgFailures\":9,\"totalUnsupportedItems\":0,\"unsupportedItemsByType\":[],\"worstHosts\":[{\"bbox\":{\"max\":[9.203715324401855,-7.914610385894775,0.7000000476837158],\"min\":[-0.35549378395080566,-21.310070037841797,-2.5]},\"csgFailures\":1,\"firstFailureLabel\":\"KernelError\",\"ifcType\":\"IfcWallStandardCase\",\"openings\":1,\"productId\":61300,\"triangleCount\":3956},{\"bbox\":{\"max\":[33.46880340576172,8.634620666503906,52.70000076293945],\"min\":[23.359840393066406,-14.259136199951172,46.599998474121094]},\"csgFailures\":1,\"firstFailureLabel\":\"NoBoundsOverlap\",\"ifcType\":\"IfcWallStandardCase\",\"openings\":1,\"productId\":337691,\"triangleCount\":36}]}"
+    },
+    "backend-2": {
+      "sha256": "31da8fec0b5a96e898ee37692788dd3f89bd4f6ce593cb2891ab369c49f00c83",
+      "bytes": "{\"classification\":{\"diagonal\":0,\"nonRectangular\":0,\"rectangular\":981,\"total\":981},\"failuresByReason\":[],\"hostsWithOpenings\":289,\"oversizedRefDrops\":0,\"productsWithFailures\":0,\"rectFast\":{\"deferHostNotBox\":2,\"deferNearEdge\":0,\"deferNoOpenings\":0,\"deferNotThrough\":0,\"deferOffFace\":0,\"deferTooManyOpenings\":0,\"fired\":128,\"openingsCut\":205},\"schemaVersion\":3,\"silentNoOps\":0,\"totalCsgFailures\":0,\"totalUnsupportedItems\":0,\"unsupportedItemsByType\":[],\"worstHosts\":[]}"
+    }
+  }
+}

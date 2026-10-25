@@ -12,6 +12,7 @@ import { runOpeningMissRepairContracts } from './wasm-opening-miss-repair-contra
 import { runMapNormalizationContracts } from './wasm-map-normalization-contracts.mjs';
 import { runProgressHeartbeatContracts } from './wasm-progress-heartbeat-contract.mjs';
 import { runReachablePanicContracts } from './wasm-reachable-panics-contract.mjs';
+import { runSectionExportContracts } from './wasm-section-export-contracts.mjs';
 import { runEmptyExportContracts } from './wasm-empty-export-contracts.mjs';
 import { runPlacementRefusalContracts } from './wasm-placement-refusal-contracts.mjs';
 
@@ -24,6 +25,7 @@ export function runEarlyContracts({ IfcAPI, api, test, skip, root }) {
   runLandXmlUnitContracts(api, test);
   runStepLogContracts(api, test);
   runMapNormalizationContracts(api, test);
+  runSectionExportContracts(api, test);
   runSweptDiskContracts(api, test, root);
   runOpeningMissRepairContracts(IfcAPI, test, skip, root);
   runProgressHeartbeatContracts(IfcAPI, test, skip, root);

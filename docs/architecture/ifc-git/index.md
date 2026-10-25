@@ -2,20 +2,22 @@
 
 **Spec set: Draft v0.1, for discussion. Owner: Bruno Adam. Tracking: [#8038](https://github.com/LTplus-AG/ifc-lite/issues/8038).**
 
-> **Status: skeleton.** None of the specs in the reading map below are written
-> yet. This document states the direction and names the decisions that still
-> have to be made. Read §6 first if you are short of time: it is the part that
-> needs an answer.
+> **Status: early draft.** `01-concepts.md` and `02-graph-object-model.md` are
+> written; the rest of the reading map below is planned. This document states
+> the direction and names the decisions that still have to be made. Read §6
+> first if you are short of time: it is the part that needs an answer.
 >
 > One foundation is already built rather than proposed: the Rust diff engine
-> landed under #8042 while this was in draft (§8). Nothing else here exists.
+> landed under #8042 while this was in draft (§8). Nothing else here is
+> implemented.
 
 ## 1. North star
 
 A delivered IFC file arriving from outside ifc-lite has no history. ifc-git gives
-it one: **every delivery becomes a commit**, and the commit is computed from the
-**diff against its parent** rather than from the file bytes, so an unchanged
-re-export creates no new history.
+it one: **every delivery that changed something becomes a commit**, and the
+commit is computed from the **diff against its parent** rather than from the
+file bytes, so an unchanged re-export creates no new history — it is recorded as
+pointing at the commit that already exists.
 
 It is used the way git is used — on the CLI to ingest files, and headlessly to
 diff — and it exposes the operations people already know: `status`, `commit`,
@@ -32,10 +34,12 @@ not the file and not a line range. History is a DAG of graph states; change
 detection is graph analysis. This follows the line of work by Esser,
 Vilgertshofer and Borrmann (§7).
 
-**2. GUID-agnostic diff.** A node's identity is its **content plus its
-structural position**, not its `GlobalId`. A re-export that regenerates every
-`GlobalId` while changing nothing must read as unchanged. `GlobalId` remains
-useful evidence — it is simply not the identity.
+**2. GUID-agnostic diff.** A node's address is its **own content plus the
+addresses of its children**, not its `GlobalId`, and the entity key lives in the
+**tree** that points at the node rather than in the node itself (02 §2.4).
+Nothing about a node's position in the graph reaches its address. A re-export
+that regenerates every `GlobalId` while changing nothing must read as unchanged.
+`GlobalId` remains useful evidence — it is simply not the identity.
 
 **3. Change is localised at the node.** Change one property inside one property
 set, and the change belongs to **that property-set node**. The owning object is
@@ -102,8 +106,8 @@ planned, and land one per PR in roughly this order.
 
 ## 6. Open decisions
 
-**These are maintainer calls. The skeleton records them as open rather than
-assuming an answer, and neither blocks PRs 1 or 2.**
+**These are maintainer calls. This spec set records them as open rather than
+assuming an answer, and neither blocks the documents written so far.**
 
 ### 6.1 node-hash v0, or a v1?
 
@@ -229,21 +233,22 @@ WASM bindings and adapters (#8081), UTF-16-preserving document serde (#8104),
 and lossless typed fingerprint projections (#8105). `@ifc-lite/diff` now
 depends on `@ifc-lite/wasm` for that staged backend.
 
-So `03-diff.md` documents what shipped rather than proposing it, and the
+So `03-diff.md` will document what shipped rather than proposing it, and the
 GUID-agnostic identity of §2.2 builds on an engine whose behaviour is already
 pinned by parity fixtures.
 
 | # | PR | Status |
 | --- | --- | --- |
-| 1 | **This docs skeleton** (`index.md` + mkdocs nav) | this PR |
+| 1 | **This docs skeleton** (`index.md` + mkdocs nav) | done |
 | 2 | Rust diff engine, ported byte-exact under #8042 | **done** (#8043 → #8105) |
-| 3 | `01-concepts.md`, `02-graph-object-model.md`, `03-diff.md` | next; needs §6.1 answered |
-| 4 | Graph node model in Rust: GUID-agnostic node identity, with the shipped content-match tiers as its reconciliation fallback | after 3 |
-| 5 | Authorship extraction across the four schemas | after 4 |
-| 6 | Object store and refs: commit, branch, compare-and-swap on the head | after 4; needs §6.2 answered |
-| 7 | The verb surface: `status`, `commit`, `branch`, `diff <a> <b>`, `log` | after 6 |
-| 8 | `pull` / `push` against a remote | after 7 |
-| 9 | Source-control view in the viewer | after 7 |
+| 3 | `01-concepts.md`, `02-graph-object-model.md` | this PR |
+| 4 | `03-diff.md`, documenting the engine that landed in 2 | next |
+| 5 | Graph node model in Rust: GUID-agnostic node identity, with the shipped content-match tiers as its reconciliation fallback | after 4; needs §6.1 answered |
+| 6 | Authorship extraction across the four schemas | after 5 |
+| 7 | Object store and refs: commit, branch, compare-and-swap on the head | after 5; needs §6.2 answered |
+| 8 | The verb surface: `status`, `commit`, `branch`, `diff <a> <b>`, `log` | after 7 |
+| 9 | `pull` / `push` against a remote | after 8 |
+| 10 | Source-control view in the viewer | after 8 |
 
 Two defects found while scoping this spec set were filed separately and are
 both now closed: a viewer Compare scope gap that hid any change confined to a

@@ -104,11 +104,14 @@ wanted:
 - A re-GUID rewrites tree **keys** and leaves every node address alone. The
   version reads as unchanged in content, with a key remapping — which is the
   rename case `@ifc-lite/diff`'s shipped content-matching tiers already resolve,
-  and which `identityMapFromContentMatches` already records.
+  and which `identityMapFromContentMatches` already records. The new keys do
+  change the tree's own address; §2.7 says why that is still not a commit.
 - Two genuinely distinct elements with byte-identical content collapse to one
   node address. That is correct — it is what deduplication means — and nothing
-  is lost, because the tree still carries both keys pointing at it. Cardinality
-  and identity live in the tree, where they belong.
+  is lost at the tree layer, because the tree still carries both keys pointing
+  at it. Cardinality and identity live in the tree, where they belong. What that
+  costs a `relationship` node, whose endpoints are node addresses rather than
+  keys, is an open point in §2.8.
 - `GlobalId` becomes **evidence used for pairing**, never identity. It makes
   pairing fast when it is stable and costs nothing when it is not.
 
@@ -182,10 +185,22 @@ no expiry.
 
 Two rules:
 
-- **No empty commits.** An unchanged re-export produces no commit. The source
-  revision is recorded as pointing at the existing one, so a scheduled sync is
+- **No empty commits, and the test is the diff rather than the tree address.**
+  An unchanged re-export produces no commit. A re-GUIDed re-export is the case
+  that makes the distinction load-bearing: its keys differ, so its tree address
+  differs from its parent's, while the diff of node addresses is empty. Tree
+  inequality is therefore not evidence of change — the diff is the only thing
+  asked — so no commit is written and the ref does not move. The source revision
+  is recorded as pointing at the existing commit, so a scheduled sync is
   idempotent without inventing history. git refuses empty commits by default;
   here it matters more, because an unchanged re-export is the *common* case.
+- **The tree and chunks written on the way there are simply unreferenced.** The
+  object store is append-only and content-addressed, so writing them is harmless
+  and mostly free: every chunk whose keys did not move is byte-identical to one
+  already stored and deduplicates against it, and the few that did change end up
+  referenced by no commit. An implementation may equally diff before it writes;
+  both orders give the same history. Reclaiming unreferenced objects is a
+  garbage-collection question for `07-storage.md`, not a correctness one.
 - **Compare-and-swap on the ref.** A commit names the parent it expects. Two
   deliveries built on the same parent mean the second is refused and must be
   rebased. That is the whole of the concurrency control.
@@ -195,12 +210,23 @@ Two rules:
 - **The digest.** Open in index §6.1.
 - **Where the encoding lives** — `node-hash-v1.md` under
   `@ifc-lite/provenance`, or `rust/git`. Also index §6.1.
-- **Storage layout.** Loose and packed tiers, on-disk format: see
-  [07-storage](07-storage.md).
+- **Storage layout.** Loose and packed tiers, on-disk format: `07-storage.md`
+  (planned, index §5).
 - **Geometry node granularity.** `geometry:<tier>` is a component key here, but
   whether a tier is one node or several, and how it relates to the geometry
   pass's existing hashes, needs the geometry pipeline's view and is deferred to
-  [03-diff](03-diff.md).
+  `03-diff.md`.
+- **Relationship endpoints under deduplication.** A `relationship` node
+  references its endpoints by node address, which is what keeps it content-only
+  and GUID-agnostic, and which cannot tell two deduplicated occurrences apart.
+  Where §2.4 collapses two distinct elements to one address, a relationship
+  naming one of them names both, so endpoint cardinality at the node layer is
+  weaker than the tree layer's. Keying endpoints by tree key instead separates
+  them and puts `GlobalId` back into the hash, which §2.4 exists to avoid. So
+  the representation is an open decision: node address, tree key, or the address
+  paired with a disambiguating ordinal. The cases that settle it are coincident
+  duplicate occurrences and `IfcRelVoidsElement` over identical openings. It
+  rides with index §6.1, because it is a question about the v1 encoding.
 - **Authorship fields.** The `author` and `committer` shapes are
-  [04-authorship](04-authorship.md)'s subject; this document only says the
-  commit carries them.
+  `04-authorship.md`'s subject; this document only says the commit carries
+  them.

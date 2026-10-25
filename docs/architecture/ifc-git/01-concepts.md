@@ -35,7 +35,7 @@ Three levels:
 | **Ref** | A mutable named pointer at an immutable commit. Branches and tags are both refs; a tag is a ref that may not move. |
 | **Branch** | A line of versions: `main`, `delivery/<source>-<version>`, `enrich/<script>`, `work/<person>/<topic>`. |
 | **HEAD** | The commit a working tree was derived from, and the expected parent of the next commit on that branch. |
-| **Index / staging** | The per-element selection of pending changes. In memory only (§1.5). |
+| **Index / staging** | The selection of pending changes, by `(node, component key)` — the same unit a change is reported at. In memory only (§1.5). |
 | **Remote** | The document management system the repository syncs with, addressed by that system's own file identifier so a rename there keeps the repository. |
 | **Author** | Who is responsible for the *content*, resolved from the file (04). Never assumed from whoever uploaded it. |
 | **Committer** | Who or what performed the upload: a scheduled sync, an automation run, a colleague. |
@@ -104,7 +104,7 @@ Hence: **the blob is stored, and the tree is compared.** The commit is computed
 from the diff against its parent, which is also why an unchanged re-export
 produces no commit at all rather than an empty one.
 
-### Identity is content and structure, not a path
+### Identity is content, not a path
 
 git identifies a file by its path and infers a rename from similarity. IFC has
 `GlobalId`, which looks like a stable identity and is not: it is stable while a
@@ -117,6 +117,12 @@ plus its children's addresses, and the key lives in the tree that points at it
 `@ifc-lite/diff` already treats a type assignment by name and class rather than
 by the type's `GlobalId`, for exactly this reason; ifc-git generalises that
 decision rather than introducing it.
+
+A re-GUID does still change the **tree**, because the keys are part of the
+manifest the tree is addressed by. That is not in tension with the paragraph
+above, because **the emptiness test is the diff, not the tree address**: the
+diff of node addresses is empty, so no commit is written and no ref moves
+([02 §2.7](02-graph-object-model.md#27-commits)).
 
 Note that the frozen node-hash v0 does **not** yet do this: its `element`
 encoding hashes the key. Getting content-only addressing is the one substantive
@@ -136,13 +142,22 @@ So **merge between authored repositories is advisory**: reported node by node
 operation that *is* real is rebasing an overlay onto a new base, which has a
 single source of truth to re-derive from.
 
-### The index stages elements, and does not persist
+### The index stages `(node, component key)` pairs, and does not persist
 
 git's index stages file content and survives a restart. ifc-git stages
-**elements**, and deliberately does not persist: the working tree is the live
-edit overlay, which today is in-memory and is cleared on session reset. Staging
-inherits that. A durable working tree is a separate decision, out of scope for
-v1 (index §9).
+**`(node, component key)` pairs** — the same unit a change is reported at and a
+conflict is detected at (§1.3) — and deliberately does not persist: the working
+tree is the live edit overlay, which today is in-memory and is cleared on
+session reset. Staging inherits that. A durable working tree is a separate
+decision, out of scope for v1 (index §9).
+
+Staging the **element** would be the wrong unit rather than merely a coarser
+one. A property set shared by N occurrences is one node, so an element-level
+stage either drags in the other N−1 occurrences' view of the same edit or splits
+one node change across N stages, and neither is what the author chose. Selecting
+an element in the UI is therefore shorthand that **expands** to exactly the pairs
+that element marks; a shared node can be staged on its own, from any one of its
+referents, and it is staged once.
 
 ### Line-level anything
 
@@ -162,7 +177,7 @@ Worth stating explicitly, because the temptation is to invent vocabulary:
 - **An append-only history DAG.** Any version is reproducible from its ancestry.
 - **Branches, tags, fork and upstream.** Unchanged in meaning.
 - **`status`, `commit`, `log`, `branch`, `diff`, `revert`.** Same questions, new
-  unit. Specified in [05-operations](05-operations.md).
+  unit. To be specified in `05-operations.md` (planned, index §5).
 
 The vocabulary carries because the *workflow* carries. Someone who has reviewed
 a pull request knows what a delivery proposal is; the cost of teaching a new
@@ -170,8 +185,8 @@ word is paid for nothing.
 
 ## 1.7 Relationship to the two neighbouring models
 
-Named here so the glossary is unambiguous, and argued in full in
-[09-relationship-to-layer-prs](09-relationship-to-layer-prs.md) and index §4.
+Named here so the glossary is unambiguous, and argued in full in index §4 and,
+once written, `09-relationship-to-layer-prs.md` (planned, index §5).
 
 - **Layer PRs** (`docs/architecture/layer-prs/`) versions edits authored *inside*
   ifc-lite as IFCX overlay deltas. Its unit is an opinion in a layer; its

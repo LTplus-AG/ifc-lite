@@ -1166,6 +1166,15 @@ jobs:
           # Ordinary whole-change inversion resumes once this module is on main.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/viewer/src/components/error-report/PublicModelReceipt.tsx | grep -Fxq 'apps/viewer/src/components/error-report/PublicModelReceipt.tsx'; then
             oracle_args+=(--mutation tests/evidence/model-reports-7495/public-receipt-composite.oracle.patch)
+          # #8133: retain the new launcher API while disabling cache reuse, so
+          # its real cold/warm assertions fail instead of failing to import.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- scripts/test-cache.mjs | grep -Fxq 'scripts/test-cache.mjs'; then
+            oracle_args+=(--mutation tests/evidence/testing-optimization/cache-enabled.oracle.patch)
+          # The next stack layer introduces a timing helper imported by its
+          # witnesses. Keep it loadable and reintroduce the eager viewer graph;
+          # the real parser-only startup witness must reject that module load.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- apps/viewer/src/test/error-report-timing.ts | grep -Fxq 'apps/viewer/src/test/error-report-timing.ts'; then
+            oracle_args+=(--mutation tests/evidence/testing-optimization/fixture-lazy.oracle.patch)
           # Keep the new Node-tests shard script importable while removing ONLY
           # its two guarantees: the catch-all's exclusion of pinned packages
           # (a suite would run twice) and the refusal of a stale pinned name (a

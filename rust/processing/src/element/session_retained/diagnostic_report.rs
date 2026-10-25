@@ -50,7 +50,7 @@ impl ReportContext {
         Ok(Self { binding, resources, storage, implementation_commit: implementation_commit.into(),
             type_product: root.ifc_type.is_subtype_of(IfcType::IfcTypeProduct) })
     }
-    pub(super) fn intermediate(self, witness: &RuntimeProductWitness<RealizationKind>)
+    pub(super) fn intermediate<R: NumericalReceipt>(self, witness: &RuntimeProductWitness<R>)
         -> Result<ReportBytes, RetainedExecutionError> {
         witness.validate()?;
         let outcome = wire::NativeOutcome::Intermediate(Box::new(wire::NativeIntermediate {

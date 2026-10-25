@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Processing chooses the ordered invocation; executors supply sealed receipts.
-use super::{RetainedExecutionError, RetainedRequest};
+use super::{protocol, ReceiptFailure, RetainedExecutionError, RetainedRequest};
 
 pub(super) enum Operand<'a, R> {
     Source { receipt: &'a R, world_from_source: [f64; 16] },
@@ -22,6 +22,20 @@ pub(super) struct NumericalLimits {
     pub chord_metres: f64,
     pub angle_degrees: f64,
     pub max_bytes: usize,
+}
+impl NumericalLimits {
+    pub(super) fn validate(self) -> Result<(), RetainedExecutionError> {
+        if !self.chord_metres.is_finite()
+            || self.chord_metres <= 0.
+            || !self.angle_degrees.is_finite()
+            || self.angle_degrees <= 0.
+            || self.angle_degrees > 180.
+            || self.max_bytes == 0
+        {
+            return Err(protocol(ReceiptFailure::InvalidRetainedNumericalLimits));
+        }
+        Ok(())
+    }
 }
 
 pub(super) trait RetainedRuntime {

@@ -147,3 +147,30 @@ fn issue_7955_native_source_m2_generated_native_report_rejects_rebinding_context
     assert_ne!(duplicate, json);
     assert!(wire::decode_native_report(&duplicate, &binding).is_err());
 }
+
+#[test]
+fn issue_7955_native_source_backend_acquisition_failure_keeps_the_bound_report() {
+    // The real source reaches numerical work, but an empty executable path
+    // cannot start an SDK. This exercises the native caller of the common drive
+    // and its acquisition-error report without fabricating a numerical receipt.
+    let source = source("");
+    let expected_hash = format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(source.bytes()));
+    let error = diagnose(source, 10, Path::new(""), TypeGeometryMode::EmitTagged)
+        .err().expect("native worker acquisition must fail");
+    assert!(matches!(&error.cause,
+        RetainedExecutionError::Runtime(ifc_lite_geometry_runtime::WorkerError::Io(_))));
+    assert!(error.cause.terminal());
+    assert_eq!(error.cause.code(), wire::Code::RuntimeFailed);
+    assert!(error.report_failure.is_none());
+    let report: serde_json::Value = serde_json::from_slice(error.report_bytes().expect("bound refusal")).unwrap();
+    assert_eq!(report["outcome"]["kind"], "refused");
+    assert_eq!(report["outcome"]["refusal"]["code"], "RUNTIME_FAILED");
+    assert_eq!(report["outcome"]["refusal"]["stage"], "transport");
+    assert_eq!(report["outcome"]["refusal"]["requirement"], "numerical_evaluation");
+    assert_eq!(report["outcome"]["refusal"]["origin"]["kind"], "transaction");
+    assert_eq!(report["identity"]["source"]["sha256"], expected_hash);
+    assert_eq!(report["product"]["productId"], "10");
+    assert_eq!(report["implementationCommit"], IMPLEMENTATION);
+    assert_eq!(report["authority"], "diagnostic_only");
+    assert_eq!(report["finalProductAvailable"], false);
+}

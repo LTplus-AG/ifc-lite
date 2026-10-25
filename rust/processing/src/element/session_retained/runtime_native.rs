@@ -3,7 +3,21 @@
 use super::*;
 use super::runtime::{Invocation, NumericalLimits, Operand, RetainedExecutor, RetainedRuntime};
 use super::native_types::RealizationKind;
-use ifc_lite_geometry_runtime::{RetainedDependency, RetainedTransformInput, protocol::BooleanOperation};
+use ifc_lite_geometry_runtime::{MeshLimits, RetainedDependency, RetainedTransformInput, RuntimeOwner,
+    SmlibWorker, WorkerError, protocol::BooleanOperation};
+
+impl From<WorkerError> for RetainedExecutionError {
+    fn from(error: WorkerError) -> Self { Self::Runtime(error) }
+}
+
+pub(super) fn error_code(error: &WorkerError) -> crate::retained_native_contract::Code {
+    use crate::retained_native_contract::Code;
+    match error {
+        WorkerError::WrongWorker => Code::WorkerRetired,
+        WorkerError::ResourceLimit(_) => Code::ResourceExhausted,
+        _ => Code::RuntimeFailed,
+    }
+}
 
 pub(super) fn boolean_operation(operation: ifc_lite_geometry::BoolOp) -> Result<BooleanOperation, RetainedExecutionError> {
     match operation {

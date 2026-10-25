@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Decode the existing private options contract at the actual native entry.
+//! Decode the existing private options contract without selecting an executor.
 use super::*;
 use crate::retained_native_contract as wire;
 
@@ -22,7 +22,7 @@ impl Options {
         let limits = runtime::NumericalLimits { chord_metres: wire.chord_tolerance_metres,
             angle_degrees: wire.angle_tolerance_radians.to_degrees(),
             max_bytes: usize::try_from(max_bytes).map_err(|_| invalid())? };
-        IssuedCommonConstruction::validate_numerical_limits(limits.chord_metres, limits.angle_degrees, limits.max_bytes)?;
+        limits.validate()?;
         let mode = match wire.type_geometry_mode {
             wire::TypeGeometryMode::SuppressInstanced => TypeGeometryMode::SuppressInstanced,
             wire::TypeGeometryMode::EmitTagged => TypeGeometryMode::EmitTagged,

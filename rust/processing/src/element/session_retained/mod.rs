@@ -15,7 +15,7 @@ use ifc_lite_geometry::program::transactions::{
     Requirement as RetainedRequirement, Resources as OwnedResourceContext, TransactionError,
 };
 use ifc_lite_geometry::resource::{self, ProgramStop, Reservation};
-#[cfg(all(feature = "retained-native", not(target_arch = "wasm32")))]
+#[cfg(all(test, feature = "retained-native", not(target_arch = "wasm32")))]
 use ifc_lite_geometry_runtime::{MeshLimits, RetainedRealization, RuntimeOwner, SmlibWorker};
 use std::sync::{
     atomic::{AtomicU8, Ordering},
@@ -49,9 +49,9 @@ use issuance::{PendingRetainedOperation, IssuedRetainedOperation};
 use value::RuntimeRealization;
 #[cfg(all(feature = "retained-native", not(target_arch = "wasm32")))]
 mod native_types;
-#[cfg(all(feature = "retained-native", not(target_arch = "wasm32")))]
+#[cfg(all(test, feature = "retained-native", not(target_arch = "wasm32")))]
 use native_types::{RealizationKind, RetainedProductExecution, IssuedCommonConstruction};
-#[cfg(test)]
+#[cfg(all(test, feature = "retained-native", not(target_arch = "wasm32")))]
 use native_types::{CommonRetainedRealization, CompletedCommonConstruction, RejectedCommonExecution};
 mod predispatch;
 #[cfg(all(test, feature = "retained-native", not(target_arch = "wasm32")))]
@@ -73,7 +73,9 @@ use batch::{
 };
 mod error;
 use error::{RetainedExecutionError, ReceiptFailure, Unsupported, protocol, geometry, common, check_resources};
+#[cfg(all(feature = "retained-native", not(target_arch = "wasm32")))]
 pub(super) mod diagnostic;
+mod diagnostic_run;
 mod diagnostic_source;
 mod diagnostic_options;
 mod diagnostic_report;
@@ -250,5 +252,5 @@ impl<R: NumericalReceipt> Drop for RuntimeProductExecution<'_, R> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "retained-native", not(target_arch = "wasm32")))]
 mod contract_tests;

@@ -2,6 +2,7 @@
 //! Typed origins retained until the diagnostic boundary; no prose classification.
 use super::*;
 use super::super::session_protocol::WorkError;
+#[cfg(all(feature = "retained-native", not(target_arch = "wasm32")))]
 use ifc_lite_geometry_runtime::WorkerError;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ReceiptFailure {
@@ -55,7 +56,9 @@ pub(super) enum RetainedExecutionError {
     Source(RetainedContextError), Core(ifc_lite_core::Error), Owner(WorkError),
     Common(TransactionError), Receipt(ReceiptFailure),
     Recipe(ifc_lite_geometry::document::RetainedRefusal),
-    Geometry(ifc_lite_geometry::Error), Runtime(WorkerError),
+    Geometry(ifc_lite_geometry::Error),
+    #[cfg(all(feature = "retained-native", not(target_arch = "wasm32")))]
+    Runtime(WorkerError),
     Transition(u8), DomainRetired, Unsupported(Unsupported), Stopped(ProgramStop),
     InvalidTypeSource,
 }
@@ -75,9 +78,6 @@ pub(super) fn common(error: TransactionError) -> RetainedExecutionError {
 impl From<WorkError> for RetainedExecutionError {
     fn from(error: WorkError) -> Self { Self::Owner(error) }
 }
-impl From<WorkerError> for RetainedExecutionError {
-    fn from(error: WorkerError) -> Self { Self::Runtime(error) }
-}
 impl From<ReceiptFailure> for RetainedExecutionError {
     fn from(error: ReceiptFailure) -> Self { Self::Receipt(error) }
 }
@@ -90,7 +90,9 @@ impl From<u8> for RetainedExecutionError {
 
 impl RetainedExecutionError {
     pub(super) fn terminal(&self) -> bool {
-        matches!(self, Self::Stopped(_) | Self::Source(_) | Self::Core(_) | Self::Runtime(_) | Self::DomainRetired
+        #[cfg(all(feature = "retained-native", not(target_arch = "wasm32")))]
+        if matches!(self, Self::Runtime(_)) { return true; }
+        matches!(self, Self::Stopped(_) | Self::Source(_) | Self::Core(_) | Self::DomainRetired
             | Self::Recipe(_) | Self::Geometry(_) | Self::Unsupported(_) | Self::InvalidTypeSource
             | Self::Receipt(ReceiptFailure::ConflictingRetainedNumericalOutcome)
             | Self::Transition(CANCELLED)
@@ -134,11 +136,8 @@ impl RetainedExecutionError {
                 ifc_lite_geometry::document::RetainedRefusal::UnsupportedSource(_) => Code::OperationUnsupported,
                 _ => Code::SourceInvalid,
             },
-            Self::Runtime(error) => match error {
-                WorkerError::WrongWorker => Code::WorkerRetired,
-                WorkerError::ResourceLimit(_) => Code::ResourceExhausted,
-                _ => Code::RuntimeFailed,
-            },
+            #[cfg(all(feature = "retained-native", not(target_arch = "wasm32")))]
+            Self::Runtime(error) => runtime_native::error_code(error),
             Self::Unsupported(reason) => match reason {
                 Unsupported::RetainedFinalPublicationRequiresOpeningLayerAppearanceFaceProofs => Code::PublicationFailed,
                 _ => Code::OperationUnsupported,

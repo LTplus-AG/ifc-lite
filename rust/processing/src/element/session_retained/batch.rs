@@ -56,16 +56,7 @@ impl<R: NumericalReceipt> RuntimeIssued<R> {
         angle: f64,
         max_bytes: usize,
     ) -> Result<(), RetainedExecutionError> {
-        if !chord.is_finite()
-            || chord <= 0.
-            || !angle.is_finite()
-            || angle <= 0.
-            || angle > 180.
-            || max_bytes == 0
-        {
-            return Err(protocol(ReceiptFailure::InvalidRetainedNumericalLimits));
-        }
-        Ok(())
+        runtime::NumericalLimits { chord_metres: chord, angle_degrees: angle, max_bytes }.validate()
     }
     pub(super) fn checkpoint(&self) -> Result<(), RetainedExecutionError> {
         check_resources(&self.resources)?;

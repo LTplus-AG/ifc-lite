@@ -887,6 +887,9 @@ fn quantity_and_unlisted_measures_follow_the_add_rule() {
     let binary = PropWrite::new("Pset_X", "U", "IFCBINARY", "\"0A\"", PsetKind::Property, PropScope::Occurrence);
     let (_, report) = patch_one(&wall_with_own_pset("IFC4"), vec![binary]);
     assert!(report.refusals.is_empty(), "{:?}", report.refusals);
+    let uri = PropWrite::new("Pset_X", "U", "IFCURIREFERENCE", "'http://example.org/a'", PsetKind::Property, PropScope::Occurrence);
+    let (_, report) = patch_one(&wall_with_own_pset("IFC4X3"), vec![uri]);
+    assert!(report.refusals.is_empty(), "{:?}", report.refusals);
 }
 
 /// (#8142) An occurrence override of a type-owned record resolves like an

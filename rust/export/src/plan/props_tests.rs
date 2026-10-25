@@ -599,4 +599,13 @@ fn a_measure_must_exist_in_the_files_schema_8142() {
         assert!(one("IFC4", not_a_measure, "5.").unwrap_err().contains("not an IFC measure"), "{not_a_measure}");
     }
     assert!(one("IFC4", "IFCBINARY", "\"0A\"").is_ok());
+    // IfcURIReference is an IfcSimpleValue member in IFC4X3 only.
+    assert!(one("IFC4X3", "IFCURIREFERENCE", "'http://example.org/a'").is_ok());
+    for schema in ["IFC2X3", "IFC4"] {
+        assert!(one(schema, "IFCURIREFERENCE", "'http://example.org/a'").unwrap_err().contains("not an IFC measure"), "{schema}");
+    }
+    // IFC2X3's IfcValue lacks IFC4's later members.
+    for later in ["IFCBINARY", "IFCDATE", "IFCDATETIME", "IFCDURATION", "IFCTIME", "IFCNONNEGATIVELENGTHMEASURE"] {
+        assert!(one("IFC2X3", later, "5").is_err(), "{later}");
+    }
 }

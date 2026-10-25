@@ -171,7 +171,35 @@ for (const upper of [...universe.keys()].sort()) {
 // `IfcValue` leaves, with the member a value outside a constrained leaf's
 // domain relaxes to. -1 violates every constrained member's WHERE rule.
 const leaves = [];
-for (const [name, base] of getSelectDefinedLeaves('IfcValue')) {
+// The table is one list for every schema, and a row only counts where the
+// file's schema declares the name (`check_literal_measure`). The pinned IFC4
+// registry lacks IFC4X3's `IfcURIReference` (a member of its `IfcSimpleValue`),
+// so IFC4X3's `IfcValue` leaves are added to IFC4's. IFC2X3's are a subset of
+// the two. Aggregate-typed members (`IfcComplexNumber`) have no EXPRESS base
+// and are not leaves in any of them.
+const ifcValueLeaves = new Map(getSelectDefinedLeaves('IfcValue'));
+const ifc4x3OnlyLeaves = [];
+{
+  const { selects } = getSchemaRegistryForVersion('IFC4X3');
+  const seen = new Set();
+  const walk = (sel) => {
+    if (seen.has(sel)) return;
+    seen.add(sel);
+    for (const member of selects[sel] ?? []) {
+      if (Object.hasOwn(selects, member)) walk(member);
+      else if (!ifcValueLeaves.has(member)) {
+        const base = resolveExpressBase(member);
+        if (base) {
+          ifcValueLeaves.set(member, base);
+          ifc4x3OnlyLeaves.push(member.toUpperCase());
+        }
+      }
+    }
+  };
+  walk('IfcValue');
+  ifc4x3OnlyLeaves.sort();
+}
+for (const [name, base] of ifcValueLeaves) {
   const constrained = CONSTRAINED_IFC_VALUE_MEMBERS.includes(name);
   let relaxed = '';
   if (constrained) {
@@ -327,6 +355,13 @@ ${typeObjects.map((t) => `    ${JSON.stringify(t)},`).join('\n')}
 /// sorted by token.
 pub static NOMINAL_VALUE_LEAVES: &[(&str, &str, &str, bool, &str)] = &[
 ${leaves.map((l) => `    (${JSON.stringify(l[0])}, ${JSON.stringify(l[1])}, ${JSON.stringify(l[2])}, ${l[3]}, ${JSON.stringify(l[4])}),`).join('\n')}
+];
+
+/// The tokens of \`NOMINAL_VALUE_LEAVES\` that are members of \`IfcValue\` in
+/// IFC4X3 only (IFC4's and IFC2X3's \`IfcValue\` lack them, though IFC4 may
+/// declare the type), sorted.
+pub static NOMINAL_VALUE_LEAVES_IFC4X3_ONLY: &[&str] = &[
+${ifc4x3OnlyLeaves.map((t) => `    ${JSON.stringify(t)},`).join('\n')}
 ];
 `;
 

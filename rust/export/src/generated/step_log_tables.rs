@@ -5856,9 +5856,17 @@ pub static NOMINAL_VALUE_LEAVES: &[(&str, &str, &str, bool, &str)] = &[
     ("IFCTIMEMEASURE", "IfcTimeMeasure", "REAL", false, ""),
     ("IFCTIMESTAMP", "IfcTimeStamp", "INTEGER", false, ""),
     ("IFCTORQUEMEASURE", "IfcTorqueMeasure", "REAL", false, ""),
+    ("IFCURIREFERENCE", "IfcURIReference", "STRING", false, ""),
     ("IFCVAPORPERMEABILITYMEASURE", "IfcVaporPermeabilityMeasure", "REAL", false, ""),
     ("IFCVOLUMEMEASURE", "IfcVolumeMeasure", "REAL", false, ""),
     ("IFCVOLUMETRICFLOWRATEMEASURE", "IfcVolumetricFlowRateMeasure", "REAL", false, ""),
     ("IFCWARPINGCONSTANTMEASURE", "IfcWarpingConstantMeasure", "REAL", false, ""),
     ("IFCWARPINGMOMENTMEASURE", "IfcWarpingMomentMeasure", "REAL", false, ""),
+];
+
+/// The tokens of `NOMINAL_VALUE_LEAVES` that are members of `IfcValue` in
+/// IFC4X3 only (IFC4's and IFC2X3's `IfcValue` lack them, though IFC4 may
+/// declare the type), sorted.
+pub static NOMINAL_VALUE_LEAVES_IFC4X3_ONLY: &[&str] = &[
+    "IFCURIREFERENCE",
 ];

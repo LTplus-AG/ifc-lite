@@ -17,6 +17,8 @@ the depth target. Render, floor/clamp, decode, RTE snapshots, ownership repairs,
 rectangle picking, and CPU fallback remain the same. This isolates the readback
 mechanism without comparing unrelated viewer revisions. This control is a local
 qualification ref, not a proposed production fallback.
+The [exact inverse patch](full-copy-control.patch) reproduces that control from
+the pinned production source.
 
 Preparation receipts:
 
@@ -34,7 +36,17 @@ Preparation receipts:
   field also requires clean source. It is not a clean source-build receipt.
 - Corrective Pop build `a07ca80f-5392-416f-b641-674ca6cce39d`: uses the inspected
   machine-qualified profile with an 8 GiB Node heap, 24 GiB reservation and serial
-  Turbo execution. Reconcile its original receipt before any native run.
+  Turbo execution. All 56 root Turbo tasks passed (55 cached), with exit zero
+  and clean, unchanged source.
+- Common-engine rebundle `3a07710a-1c81-4f46-895c-23a4c62da0eb`: queued. Pop and
+  PC produced different WASM bytes from identical Rust inputs, so the
+  [repack controller](../../e2e/pick-depth-6881-common-runtime.py) verifies those
+  inputs and reuses the PC producer's exact generated runtime before rebuilding
+  the production viewer through root Turbo.
+- Exclusive qualification `df597d9b-e93a-499d-a2ba-3375e5ab4650`: queued after
+  that prerequisite. It runs functional controls first and launches timing only
+  after those pass. The original request and output must be reconciled after an
+  interruption; this is not a retryable sample identifier.
 
 ## Functional protocol
 
@@ -58,13 +70,17 @@ position using that call's captured matrix and immutable RTE snapshot. Fixed
 grids include borders, outside coordinates, overlapping calls, isolated model
 subsets and an excluding crop. Require flat-mesh ownership witnesses for both
 models; retain the existing instanced shader's absent model/item channels.
-Fingerprint complete published geometry fields and typed arrays before and
-after picking. A corrupted-depth inverse must reject. Hold two real completed
+Fingerprint complete geometry fields and typed arrays as a canonical mesh
+multiset before and after picking; worker publication order is not geometry
+identity. A corrupted-depth inverse must reject. Hold two real completed
 maps across camera movement, resize and device loss; require stale-result
 rejection and exactly-once destruction of the six per-pick buffers.
 
-These controls do not by themselves qualify every geometry family or a real
-georeferenced IFC. Record actual family coverage and remaining gaps explicitly.
+The existing #5049 renderer raster witness additionally supplies flat/textured
+meshes, instances, points, crop controls and a 5,000 km origin. Require nine
+matching same-render samples and actual mesh/instance/point hits at each DPR.
+Its authored geometry is a stated invariant, not a real georeferenced IFC.
+Record actual family coverage and remaining gaps explicitly.
 
 ## Hover protocol
 
@@ -84,8 +100,10 @@ Require identical geometry, camera matrices, texels, IDs/items/model provenance
 and world positions, plus foreground, host, GPU and driver health. Report paired
 interaction measurements separately from allocation savings and loading behavior.
 
-Syntax, changed-file lint and browser-module bundling have passed. Ten lightweight
-geometry-fingerprint controls distinguish positions, indices, normals, colors,
-coordinate origin, signed zero, instance hashes and item identity; they preserve
-map insertion-order independence and refuse incomplete publication. These are
-harness algorithm checks, not actual-GPU coverage.
+Syntax, changed-file lint and browser-module bundling have passed. The
+[eleven fingerprint controls](fingerprint-controls.json) distinguish positions,
+indices, normals, colors, coordinate origin, signed zero, instance hashes, item
+identity and mesh multiplicity; they preserve collection-order independence and
+refuse incomplete publication. The native controller invokes the
+[same controls](../../e2e/pick-depth-6881-controls.mjs) before browser startup.
+These are harness algorithm checks, not actual-GPU coverage.

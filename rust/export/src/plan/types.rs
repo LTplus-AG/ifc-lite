@@ -70,10 +70,10 @@ pub struct PropWrite {
     pub scope: PropScope,
     /// The express id of the exact `IfcPropertySingleValue` / `IfcQuantity*`
     /// record to write, when the caller already holds it. The write then
-    /// lands on the set that lists that record, whatever the set is called
-    /// or how many sets share its name, and is refused if the object's
-    /// sets do not list it. `None` finds the first property of that name in
-    /// the first set of that name.
+    /// lands on the set named `pset` that lists that record, however many
+    /// sets share that name, and is refused if no set of that name lists it
+    /// or the record's own name is not `prop`. `None` finds the first
+    /// property of that name in the first set of that name.
     pub target: Option<u32>,
 }
 

@@ -220,7 +220,12 @@ Two rules:
 - **No empty commits, and the test is the diff rather than the tree address.**
   An unchanged re-export produces no commit. A re-GUIDed re-export is the case
   that makes the distinction load-bearing: its keys differ, so its tree address
-  differs from its parent's, while the diff of node addresses is empty. Tree
+  differs from its parent's, while the diff is empty. The diff is taken over the
+  tree's `key → node` **entries**, not over the set of distinct node addresses —
+  multiplicity is part of it. Deleting one of two coincident duplicates leaves
+  the distinct-address set unchanged while genuinely changing the model, so a
+  set-based test would read that deletion as nothing
+  (`rust/git/tests/dedup_boundary.rs` pins the case). Tree
   inequality is therefore not evidence of change — the diff is the only thing
   asked — so no commit is written and the ref does not move. The source revision
   is recorded as pointing at the existing commit, so a scheduled sync is

@@ -482,8 +482,6 @@ impl Execution {
         if !crate::exact_topology::strict_closed_mesh(&out) {
             return None;
         }
-        // Count the cut only once accepted, so a rejection does not double-count
-        // with the fallback path.
         self.record_rect_fast(&stats);
         crate::rect_fast::param_record_fire();
         Some(out)

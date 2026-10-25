@@ -127,7 +127,10 @@ async function load(page: Page, file: string | { name: string; mimeType: string;
         // The loader gives up (models.size never reaches n) when the GPU device
         // was lost mid-load; surface that instead of waiting out the timeout.
         if (new RegExp(deviceLost).test(String((state as { error?: unknown }).error ?? ''))) return 'device-lost';
-        const settled = !state.loading && !state.geometryStreamingActive && state.models.size === n && [...state.models.values()].every((m) => m.pointCloudHandleId !== undefined || m.geometryResult?.meshes.length > 0);
+        // The GLB store can settle before the viewport installs its renderer
+        // inspection hooks (#6515). Both must be ready for scene assertions.
+        const rendererReady = typeof globalThis.__ifc_lite_scene_owner__ === 'function';
+        const settled = rendererReady && !state.loading && !state.geometryStreamingActive && state.models.size === n && [...state.models.values()].every((m) => m.pointCloudHandleId !== undefined || m.geometryResult?.meshes.length > 0);
         return settled ? 'ok' : false;
       }, { n: count, deviceLost: DEVICE_LOST_ERROR.source }, { timeout: 120_000 });
       return (await handle.jsonValue()) as 'ok' | 'device-lost';

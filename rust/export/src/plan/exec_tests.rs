@@ -813,10 +813,10 @@ fn deleting_an_assembly_does_not_flag_parts_that_are_still_contained() {
     assert!(report.findings.iter().any(|f| f.express_id == Some(10) && f.message.contains("spatial")), "{:?}", report.findings);
 }
 
-/// Only a place in the spatial tree (the project or a spatial structure
-/// element) leaves its children outside the tree when it is deleted: a
-/// zone's aggregated or contained children are not reported, a building's
-/// storey is. (#8142)
+/// An aggregation leaves its children outside the spatial tree only when
+/// its parent was a place in it: a zone's child zone is not reported, a
+/// building's storey is. Containment always placed its elements, so a wall
+/// contained in a deleted zone is reported. (#8142)
 #[test]
 fn only_a_deleted_place_in_the_spatial_tree_reports_its_children() {
     use super::test_fixtures::storey_with_typed_wall;
@@ -832,7 +832,8 @@ fn only_a_deleted_place_in_the_spatial_tree_reports_its_children() {
             execute(content.as_bytes(), &plan, &mut Vec::new()).unwrap()
         };
         let report = delete(90);
-        assert!(!report.findings.iter().any(|f| matches!(f.express_id, Some(92 | 93))), "{schema}: {:?}", report.findings);
+        assert!(!report.findings.iter().any(|f| f.express_id == Some(92)), "{schema}: {:?}", report.findings);
+        assert!(report.findings.iter().any(|f| f.express_id == Some(93) && f.message.contains("container")), "{schema}: {:?}", report.findings);
         // The building #60 aggregates the storey #70, which stays.
         let report = delete(60);
         assert!(report.findings.iter().any(|f| f.express_id == Some(70) && f.message.contains("spatial")), "{schema}: {:?}", report.findings);

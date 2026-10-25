@@ -24,10 +24,10 @@ fn slots(schema: &str, rel_type: &str) -> Option<(usize, usize)> {
 }
 
 /// A containment or aggregation relationship that went because its relating
-/// object did, while some of what it related stayed. Such an element is no
-/// longer in the spatial tree when that object was a place in it (the
-/// project or a spatial structure element); an assembly, a spatial zone or
-/// an external spatial element is not. IFC gives an element at most
+/// object did, while some of what it related stayed. A contained element has
+/// lost its container. An aggregated one is out of the tree only when its
+/// parent was a place in it (the project or a spatial structure element),
+/// not an assembly, a spatial zone or an external spatial element. IFC gives an element at most
 /// one container and one parent, so the removed relationship was its only
 /// place in the tree and no other relationship needs reading.
 pub(super) fn unplaced_by_removed_structure(
@@ -44,7 +44,9 @@ pub(super) fn unplaced_by_removed_structure(
         let Some((relating_idx, related_idx)) = slots(schema, &rel_type) else { continue };
         let Some(attrs) = index.attrs(rel) else { continue };
         let parent = attrs.get(relating_idx).and_then(|a| a.scalar);
-        if !parent.and_then(|p| index.type_of(p)).is_some_and(|c| in_structure(schema, &c)) {
+        // Containment always placed its elements (RelatingStructure is an
+        // IfcSpatialElement); an aggregation did only under a place in the tree.
+        if rel_type == AGGREGATION && !parent.and_then(|p| index.type_of(p)).is_some_and(|c| in_structure(schema, &c)) {
             continue;
         }
         let parent_label = parent.map_or_else(String::new, |p| format!(" #{p}"));

@@ -74,7 +74,7 @@ impl AddState<'_> {
     /// elements are spatial but not in it (they are related to the structure
     /// by space boundaries and zone assignment, not aggregation).
     fn in_structure(&self, class: &str) -> bool {
-        class != "IFCPROJECT" && crate::plan::attrs::in_structure(self.schema, class)
+        self.is_a(class, "IFCSPATIALSTRUCTUREELEMENT")
     }
 
     /// Whether a `parent` (UPPERCASE class) may aggregate a new structure
@@ -243,7 +243,7 @@ impl AddState<'_> {
                     // IfcRelContainedInSpatialStructure.RelatingStructure is an
                     // IfcSpatialElement, a spatial zone included. A structure
                     // element goes under the project or a structure element.
-                    let is_container = if spatial { self.in_structure(&c) || c == "IFCPROJECT" } else { self.is_spatial(&c) };
+                    let is_container = if spatial { crate::plan::attrs::in_structure(self.schema, &c) } else { self.is_spatial(&c) };
                     if !is_container {
                         return Err(format!("container {r} is {c}, not a spatial element"));
                     }

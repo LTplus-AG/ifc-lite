@@ -2,4 +2,4 @@
 "@ifc-lite/wasm": patch
 ---
 
-Keep a thin residual web between two authored openings (a gap of tens of microns, exposed by #7942) closed. The rectangular fast path keeps its exactly closed cut when coplanar consolidation would open it, and the parametric path now judges closure on exact vertices, so a torn cut defers to that fast path instead of being emitted. An affected host keeps the larger raw cut (per host; 0 of 300 random walls).
+Keep a thin residual web between two authored openings (a gap of tens of microns, exposed by #7942) closed. The rectangular fast path keeps its exactly closed cut when coplanar consolidation would open it. The parametric and bool2d paths now judge closure on exact vertices (`strict_closed_mesh`) instead of a 0.1 mm weld, so a torn cut defers to the next path rather than being emitted. An affected host keeps the larger raw cut (per host; 0 of 300 random walls). Corpus check: 109 files plus the 342 MB witness model, 1 mesh changed (the witness, now closed). `staged.rs` still gates on the 0.1 mm weld (same blind spot, staged bool2d plus residual); deferred to the closedness-unification stage.

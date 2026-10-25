@@ -471,7 +471,6 @@ impl Execution {
 
         let mut stats = crate::rect_fast::RectFastStats::default();
         let cut_f = crate::rect_fast::subtract_rect_openings(&host_f, &boxes, &mut stats)?;
-        self.record_rect_fast(&stats);
         let merged = crate::csg::ClippingProcessor::consolidate_coplanar(cut_f);
         // Emit as a local-frame mesh (small positions + origin), then run the SAME
         // hygiene the production output applies — in the small frame, where it is
@@ -480,9 +479,12 @@ impl Execution {
         hygiene::clean_void_output(&mut out);
 
         // Self-check: never emit a non-watertight cut; defer to the exact kernel.
-        if !param_cut_watertight(&out) {
+        if !crate::exact_topology::strict_closed_mesh(&out) {
             return None;
         }
+        // Count the cut only once accepted, so a rejection does not double-count
+        // with the fallback path.
+        self.record_rect_fast(&stats);
         crate::rect_fast::param_record_fire();
         Some(out)
     }

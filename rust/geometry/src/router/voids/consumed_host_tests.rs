@@ -179,12 +179,14 @@ fn thin_residual_between_param_openings_is_rejected_and_stays_closed() {
             ],
         };
         let ctx = context(web_openings(gap), Some(param));
+        // The parametric attempt is called directly, so IFC_LITE_RECT_PARAM and
+        // IFC_LITE_RECT_FAST cannot skip it. Its torn cut fails the exact closure
+        // self-check (the old 0.1 mm weld could not see it) and it defers.
         let router = GeometryRouter::new();
+        assert!(router.try_param_rect_cut(&web_wall(), &ctx).is_none(), "gap {gap}: torn param cut emitted");
+        assert_eq!(router.take_rect_fast_stats().fired, 0, "a rejected cut is not counted");
+        // The full pipeline then lands on a closed mesh whichever path the env allows.
         let out = router.apply_void_context(web_wall(), &ctx, 1);
-        // The parametric attempt and the rect_fast fallback each record one cut.
-        // The parametric one is rejected: its torn cut fails the exact closure
-        // self-check, which the old 0.1 mm weld could not see.
-        assert_eq!(router.take_rect_fast_stats().fired, 2, "gap {gap}: param attempted, rect_fast fell back");
         let tris = out.indices.len() / 3;
         assert!(crate::exact_topology::strict_closed_mesh(&out), "gap {gap}: open cut ({tris} tris)");
         assert!(tris <= raw_tris(gap), "gap {gap}: {tris} tris exceeds the raw cut");

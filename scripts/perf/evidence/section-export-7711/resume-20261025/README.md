@@ -47,3 +47,11 @@ Fresh paired performance, hosted gates and review remain separate merge holds
 until their observed outcomes are added. Historical packets retain their
 original source scope and failures. No issue closure or merge readiness is
 claimed by the functional results alone.
+
+The oracle result in this packet remains the original result from probe source
+`b32d4593123d517de9c2f14bbc84e60a94c191bf` and the recorded engine version.
+For byte reproduction, extract that revision of
+`tools/ifcopenshell_reference/probe_section_export.py` and use the retained
+source/output bytes. Review follow-up `080f9a8030` strengthens geometry checks
+and emits `checkedTrimmedGeometry`; a rerun with that probe is a separate result
+and does not replace or reproduce this packet's pinned historical result hash.

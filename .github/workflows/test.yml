@@ -665,7 +665,20 @@ jobs:
       # can't have changed the committed .d.ts.
       - name: Build WASM
         if: needs.changes.outputs.wasm_prebuilt != 'true'
+        env:
+          BUILD_RETAINED: '1'
         run: bash scripts/build-wasm.sh
+
+      # A0p: actual source-inspection WASM, separate from both shipped surfaces.
+      # GITHUB_SHA is the workflow's original source identity, not runtime HEAD.
+      - name: Development inspection WASM and Node consumer
+        if: needs.changes.outputs.wasm_prebuilt != 'true'
+        env:
+          IFC_RETAINED_BUILD_COMMIT: ${{ github.sha }}
+        run: |
+          pnpm build:wasm:development-inspection
+          pnpm test:wasm-development-inspection
+          cargo clippy --locked -p ifc-lite-wasm --target wasm32-unknown-unknown --features development-inspection -- -D warnings
 
       # Guard the wasm-free typecheck lane (#952): the committed
       # packages/wasm/pkg/ifc-lite.d.ts must stay in sync with the Rust source.
@@ -678,9 +691,9 @@ jobs:
       - name: Verify committed wasm types are in sync
         if: needs.changes.outputs.wasm_prebuilt != 'true'
         run: |
-          if ! git diff --quiet -- packages/wasm/pkg/ifc-lite.d.ts packages/wasm/pkg-diff/ifc-lite-diff.d.ts; then
+          if ! git diff --quiet -- packages/wasm/pkg/ifc-lite.d.ts packages/wasm/pkg-retained/ifc-lite.d.ts packages/wasm/pkg-diff/ifc-lite-diff.d.ts; then
             echo "::error file=packages/wasm/pkg/ifc-lite.d.ts::Committed wasm types are out of sync with the Rust source. Run 'bash scripts/build-wasm.sh' and commit the regenerated packages/wasm/pkg/ifc-lite.d.ts."
-            git diff -- packages/wasm/pkg/ifc-lite.d.ts packages/wasm/pkg-diff/ifc-lite-diff.d.ts
+            git diff -- packages/wasm/pkg/ifc-lite.d.ts packages/wasm/pkg-retained/ifc-lite.d.ts packages/wasm/pkg-diff/ifc-lite-diff.d.ts
             exit 1
           fi
           echo "✅ committed wasm types match the Rust source"

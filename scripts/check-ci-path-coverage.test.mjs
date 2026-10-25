@@ -166,24 +166,26 @@ const UNIQUE_TEST_STEP = String.raw`      - run: |
             | sort -u)`;
 
 test('once-only printf/sort invocation still audits literal test inputs without expanding globs', () => {
-  withTree({ steps: DEFAULT_STEPS + '\n' + UNIQUE_TEST_STEP }, root => {
-    mkdirSync(join(root, 'unfiltered'));
-    writeFileSync(join(root, 'unfiltered/literal.json'), '{}');
-    writeFileSync(join(root, 'unfiltered/glob.json'), '{}');
-    writeFileSync(join(root, 'scripts/retained.test.mjs'), "const input = 'unfiltered/literal.json';\n");
-    writeFileSync(join(root, 'scripts/future.test.mjs'), "const input = 'unfiltered/glob.json';\n");
-    const missing = run(root);
-    assert.equal(missing.status, 1, missing.out);
-    assert.match(missing.out, /scripts\/retained\.test\.mjs/);
-    assert.match(missing.out, /unfiltered\/literal\.json/);
-    assert.doesNotMatch(missing.out, /unfiltered\/glob\.json|scripts\/future\.test\.mjs/);
-    writeFileSync(join(root, '.github/workflows/test.yml'), WORKFLOW(
-      DEFAULT_FILTERS + "\n              - 'unfiltered/literal.json'",
-      DEFAULT_STEPS + '\n' + UNIQUE_TEST_STEP,
-    ));
-    const covered = run(root);
-    assert.equal(covered.status, 0, covered.out);
-  });
+  for (const step of [UNIQUE_TEST_STEP, UNIQUE_TEST_STEP.replace('sort -u', 'LC_ALL=C sort -u')]) {
+    withTree({ steps: DEFAULT_STEPS + '\n' + step }, root => {
+      mkdirSync(join(root, 'unfiltered'));
+      writeFileSync(join(root, 'unfiltered/literal.json'), '{}');
+      writeFileSync(join(root, 'unfiltered/glob.json'), '{}');
+      writeFileSync(join(root, 'scripts/retained.test.mjs'), "const input = 'unfiltered/literal.json';\n");
+      writeFileSync(join(root, 'scripts/future.test.mjs'), "const input = 'unfiltered/glob.json';\n");
+      const missing = run(root);
+      assert.equal(missing.status, 1, missing.out);
+      assert.match(missing.out, /scripts\/retained\.test\.mjs/);
+      assert.match(missing.out, /unfiltered\/literal\.json/);
+      assert.doesNotMatch(missing.out, /unfiltered\/glob\.json|scripts\/future\.test\.mjs/);
+      writeFileSync(join(root, '.github/workflows/test.yml'), WORKFLOW(
+        DEFAULT_FILTERS + "\n              - 'unfiltered/literal.json'",
+        DEFAULT_STEPS + '\n' + step,
+      ));
+      const covered = run(root);
+      assert.equal(covered.status, 0, covered.out);
+    });
+  }
 });
 
 test('only the strict printf/sort form can establish literal test reachability', () => {

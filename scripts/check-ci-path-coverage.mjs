@@ -249,7 +249,7 @@ for (const file of workflowFiles) {
 
     // Only this literal printf/sort wrapper preserves its arguments as filenames.
     const commands = job.text.replace(/\\\r?\n/g, ' ').replace(
-      /\bnode[ \t]+--test[ \t]+\$\([ \t]*printf[ \t]+'%s\\n'[ \t]+((?:scripts\/[\w./*-]+\.test\.mjs[ \t]+)+)\|[ \t]*sort[ \t]+-u[ \t]*\)/g, (_, args) => `node --test ${args}`);
+      /\bnode[ \t]+--test[ \t]+\$\([ \t]*printf[ \t]+'%s\\n'[ \t]+((?:scripts\/[\w./*-]+\.test\.mjs[ \t]+)+)\|[ \t]*(?:LC_ALL=C[ \t]+)?sort[ \t]+-u[ \t]*\)/g, (_, args) => `node --test ${args}`);
     for (const m of commands.matchAll(/\bnode\s+(?:--test\s+)?((?:scripts\/[\w./-]+\.mjs\s*)+)/g)) {
       for (const script of m[1].trim().split(/\s+/)) {
         recordGate(script, globs, `${rel}:${job.id}`);

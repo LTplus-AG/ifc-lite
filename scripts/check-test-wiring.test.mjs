@@ -460,6 +460,8 @@ test('continued once-only invocation reaches future one-level suites but never n
     const crlf = run(root);
     assert.equal(crlf.status, 1, crlf.out);
     assert.match(crlf.out, /scripts\/docs\/deep\/unreached\.test\.mjs/);
+    assert.doesNotMatch(crlf.out, /scripts\/docs\/future\.test\.mjs/);
+    assert.doesNotMatch(crlf.out, /scripts\/check-wired\.test\.mjs/);
   });
 });
 

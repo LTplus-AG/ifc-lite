@@ -60,3 +60,25 @@ fn surface_depth_and_curve_admission_precede_zero_direction_refusal() {
         .unwrap_err().to_string();
     assert!(curve_error.contains("has 1 point(s)"), "{curve_error}");
 }
+
+#[test]
+fn a_missing_extruded_direction_is_refused_and_counted() {
+    let run = |direction: &str| {
+        let source = format!("{CURVE}\n#900=IFCSURFACEOFLINEAREXTRUSION(#13,#15,{direction},0.005);");
+        let mut decoder = EntityDecoder::new(&source);
+        let entity = decoder.decode_by_id(900).unwrap();
+        let result = SurfaceOfLinearExtrusionProcessor::new().lower(&entity, &mut decoder, None);
+        (result.map(|_| ()), decoder.refused_records())
+    };
+    let (control, refused) = run("#16");
+    assert!(control.is_ok());
+    assert_eq!(refused, 0);
+    // Base and r1: `$` and `*` swept along +Z; a non-reference too.
+    for direction in ["$", "*", "1."] {
+        let (result, refused) = run(direction);
+        assert!(result.is_err(), "{direction}: ExtrudedDirection is mandatory");
+        assert_eq!(refused, 1, "{direction}");
+    }
+    let (result, _) = run("$");
+    assert!(result.unwrap_err().to_string().contains("missing ExtrudedDirection"));
+}

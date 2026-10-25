@@ -47,7 +47,7 @@ describe('gpu.deviceReplacements (#6993 review)', () => {
     perfCounters.enable();
     const before = perfCounters.read();
     for (const owner of [{}, {}]) {
-      meterGpuDevice({ queue: { writeBuffer() {} }, createBuffer() {} } as unknown as GPUDevice, owner);
+      meterGpuDevice({ queue: { writeBuffer() {} }, createBuffer() {} } as unknown as GPUDevice, owner, () => true);
     }
     const delta = diffCounters(perfCounters.read(), before);
     assert.strictEqual(delta['gpu.devices'], 2);

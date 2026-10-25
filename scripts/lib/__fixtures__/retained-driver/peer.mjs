@@ -3,6 +3,15 @@
 // echoes frames; it never supplies geometry evidence or SDK qualification.
 export const peers = [];
 export const imports = [];
+let startup;
+export function holdStartup(hold) {
+  if (hold) startup = Promise.withResolvers();
+  else { startup?.resolve(); startup = undefined; }
+}
+export const awaitStartup = () => startup?.promise;
+const constructors = [];
+// Register before constructing the driver; resolve for that next transport.
+export const nextPeer = () => new Promise(resolve => constructors.push(resolve));
 function handle(session, slot) {
   const bytes = new Uint8Array(16), view = new DataView(bytes.buffer);
   view.setBigUint64(0, session, true); view.setUint32(8, slot, true); view.setUint32(12, 1, true);
@@ -15,7 +24,7 @@ export class SmlibWorkerTransport {
   slot = 0;
   session = 42n;
   meshInfo = [3, 1, 1, 0, 0, 0];
-  constructor(options) { this.options = options; peers.push(this); imports.push('client'); }
+  constructor(options) { this.options = options; peers.push(this); imports.push('client'); constructors.shift()?.(this); }
   allocate() { const slot = ++this.slot; this.objects.add(slot); return handle(this.session, slot); }
   retire(token) { if (token === this.incarnation) { this.retired = true; this.incarnation = undefined; } }
   async batch(frames, token) {

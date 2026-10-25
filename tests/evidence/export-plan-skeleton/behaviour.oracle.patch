@@ -1,0 +1,11 @@
+--- a/rust/export/src/plan/skeleton.rs
++++ b/rust/export/src/plan/skeleton.rs
+@@ -178,7 +178,7 @@ pub fn skeleton(s: &Skeleton) -> Result<Vec<u8>, String> {
+     if let Some(m) = &s.map_conversion {
+         let map_unit = match m.map_unit {
+             MapUnit::Metre => units[0],
+-            MapUnit::Foot => units[0],
++            MapUnit::Foot => length_unit(&mut emit, "FOOT", 0.3048, units[0])?,
+             MapUnit::UsSurveyFoot => length_unit(&mut emit, "US SURVEY FOOT", ifc_lite_core::US_SURVEY_FOOT_M, units[0])?,
+         };
+         let crs = emit.record("IFCPROJECTEDCRS", &[("Name", quoted(&m.crs_name)), ("MapUnit", format!("#{map_unit}"))])?;

@@ -26,7 +26,7 @@ mod union;
 
 pub use group_cut::{GroupCut, GroupReject};
 pub use normals::calculate_normals;
-pub(crate) use consolidate::tri_is_needle;
+pub(crate) use consolidate::{tri_is_needle, ConsolidationBoundary};
 
 /// Type alias for small triangle collections (typically 1-2 triangles from clipping)
 pub type TriangleVec = SmallVec<[Triangle; 4]>;
@@ -345,7 +345,7 @@ impl ClippingProcessor {
             );
             return GroupCut::Rejected(GroupReject::BudgetTripped);
         }
-        let result = self.consolidate(raw);
+        let result = if opening { self.consolidate(raw) } else { self.consolidate_operand(raw) };
         if !result.is_empty() && !self.validate_mesh(&result) {
             self.record_failure(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid);
             return GroupCut::Rejected(GroupReject::InvalidOutput);

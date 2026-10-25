@@ -1,0 +1,20 @@
+--- a/rust/processing/src/element/execution.rs
++++ b/rust/processing/src/element/execution.rs
+@@ -74,7 +74,7 @@
+             // #1623 Phase 2: a pure don't-bake occurrence produces NO flat mesh
+             // (only instance placeholders); that is success, so the fallback
+             // chain must not re-materialize the element flat.
+-            if !meshes.is_empty() {
++            if !meshes.is_empty() || !occurrences.is_empty() {
+                 return (meshes, occurrences);
+             }
+         }
+@@ -92,7 +92,7 @@
+     // >= 1 km apart keeps each part at full precision; an ordinary one has one.
+     let parts = match voided_parts_outcome(job, ctx, decoder, router) {
+         PartsOutcome::Geometry(parts) => parts,
+-        PartsOutcome::ConsumedByOpening => router.process_element_parts(job.entity, decoder).unwrap_or_default(),
++        PartsOutcome::ConsumedByOpening => return (Vec::new(), Vec::new()),
+         PartsOutcome::Retry => router.process_element_parts(job.entity, decoder).unwrap_or_default(),
+     };
+     let mut meshes = Vec::new();

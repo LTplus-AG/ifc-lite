@@ -94,8 +94,10 @@ pub(super) fn discover_from_columns(
                 if d.site_position.is_none() {
                     d.site_position = Some((id, start, end));
                 }
-                d.buffered_jobs.push((id, start, end, ifc_lite_core::IfcType::IfcSite));
-                d.total_jobs += 1;
+                if !is_disabled(disabled_types, "IFCSITE") {
+                    d.buffered_jobs.push((id, start, end, ifc_lite_core::IfcType::IfcSite));
+                    d.total_jobs += 1;
+                }
                 continue;
             }
             c if c == p::PREPASS_CLASS_STYLED_ITEM => {

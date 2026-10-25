@@ -60,10 +60,10 @@ describe('IDSExportDialog localization (#4918)', () => {
     assert.match(text, /One topic per failing specification\. Entities listed as comments\./);
     assert.match(text, /Include Passing Entities/);
     assert.match(text, /Add topics for entities that passed validation/);
-    assert.match(text, /Per-Entity Camera/);
-    assert.match(text, /Compute camera framing each entity from its bounding box/);
+    assert.match(text, /Topic Cameras/);
+    assert.match(text, /Frame each topic’s elements; use the current view if complete bounds are unavailable/);
     assert.match(text, /Capture Snapshots/);
-    assert.match(text, /Render a screenshot for each entity \(slow for large reports\)/);
+    assert.match(text, /Render a screenshot for each BCF topic \(slow for large reports\)/);
     assert.match(text, /Load into BCF Panel/);
     assert.match(text, /Open the BCF panel with exported topics after export/);
     assert.match(text, /Cancel/);

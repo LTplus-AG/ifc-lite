@@ -31,7 +31,10 @@ export function prepareDocumentCharts(document: DocumentSpec | null,
         const filterKey = chartElementFilterKey(spec.filter);
         const filterState = filterKey ? sourceFilters.get(filterKey) : undefined;
         const source = resolveChartSource(spec, datasets[spec.source], savedContent);
-        const sourceMessage = chartSourceMessage(source, resolve);
+        // #8067: source attribution belongs in the editor, not the authored
+        // document. Keep missing-source diagnostics and clash-report limits.
+        const sourceMessage = source.saved === 'comparison' && source.status === 'saved'
+          ? undefined : chartSourceMessage(source, resolve);
         if (sourceMessage) {
           messages.set(block.id, sourceMessage);
           if (source.status === 'missing') errors.add(block.id);

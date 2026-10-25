@@ -1,0 +1,24 @@
+[package]
+name = "ifc-lite-diff-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Independent WebAssembly entry points for the IFC diff engine"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+ifc-lite-diff.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+js-sys = "=0.3.103"
+serde-wasm-bindgen = "=0.6.5"
+wasm-bindgen = "=0.2.126"
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
+[lints]
+workspace = true

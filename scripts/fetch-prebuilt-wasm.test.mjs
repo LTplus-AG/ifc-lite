@@ -333,3 +333,83 @@ for (const obstruction of ['symlink', 'directory']) {
     for (const [name, content] of Object.entries(HELPERS)) assert.equal(read(root, name), content);
   });
 }
+
+// #8042: each exported engine must be delivered with its own runtime closure.
+function withDiff(root, { installedJs, publishedJs, helpers = {} } = {}) {
+  const manifestPath = join(root, 'packages/wasm/package.json');
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  manifest.exports = { './diff': { types: './pkg-diff/ifc-lite-diff.d.ts', import: './pkg-diff/ifc-lite-diff.js' } };
+  writeFileSync(manifestPath, JSON.stringify(manifest));
+  const output = join(root, 'packages/wasm/pkg-diff');
+  mkdirSync(output, { recursive: true });
+  writeFileSync(join(output, 'ifc-lite-diff.d.ts'), DTS);
+  writeFileSync(join(output, '.gitignore'), '*\n');
+  if (installedJs !== undefined) {
+    writeFileSync(join(output, 'ifc-lite-diff.js'), installedJs);
+    writeFileSync(join(output, 'ifc-lite-diff_bg.wasm'), 'INSTALLED-DIFF');
+  }
+  if (publishedJs !== undefined) {
+    const source = join(root, 'published/package/pkg-diff');
+    mkdirSync(source, { recursive: true });
+    writeFileSync(join(source, 'ifc-lite-diff.js'), publishedJs);
+    writeFileSync(join(source, 'ifc-lite-diff_bg.wasm'), 'PUBLISHED-DIFF');
+    writeFileSync(join(source, 'ifc-lite-diff.d.ts'), 'published types must not replace committed types');
+    for (const [name, contents] of Object.entries(helpers)) {
+      mkdirSync(dirname(join(source, name)), { recursive: true });
+      writeFileSync(join(source, name), contents);
+    }
+  }
+  return output;
+}
+
+test('#8042 a partial install fetches and packages the independent diff closure', () => {
+  const root = makeCheckout({ installedJs: JS_OK, published: JS_OK });
+  const output = withDiff(root, { publishedJs: JS_HELPER, helpers: HELPERS });
+  const result = run(root);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.equal(readFileSync(join(output, 'ifc-lite-diff.js'), 'utf8'), JS_HELPER);
+  assert.equal(readFileSync(join(output, 'ifc-lite-diff_bg.wasm'), 'utf8'), 'PUBLISHED-DIFF');
+  assert.equal(readFileSync(join(output, 'ifc-lite-diff.d.ts'), 'utf8'), DTS);
+  for (const [name, content] of Object.entries(HELPERS)) assert.equal(readFileSync(join(output, name), 'utf8'), content);
+  const pack = spawnSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], {
+    cwd: join(root, 'packages/wasm'), encoding: 'utf8', env: process.env,
+  });
+  assert.equal(pack.status, 0, pack.stdout + pack.stderr);
+  const files = JSON.parse(pack.stdout)[0].files.map(file => file.path);
+  for (const name of ['ifc-lite-diff.js', 'ifc-lite-diff_bg.wasm', 'ifc-lite-diff.d.ts', ...Object.keys(HELPERS)]) {
+    assert(files.includes(`pkg-diff/${name}`), name);
+  }
+  const installed = run(root);
+  assert.equal(installed.status, 0, installed.stdout + installed.stderr);
+  assert.doesNotMatch(installed.stdout, /Fetching/);
+});
+
+for (const publishedJs of [undefined, JS_STALE]) {
+  test(`#8042 missing/stale diff payload cannot replace either installed engine: ${publishedJs === undefined ? 'missing' : 'stale'}`, () => {
+    const root = makeCheckout({ installedJs: JS_OK, published: JS_AHEAD });
+    const output = withDiff(root, { installedJs: JS_OK, publishedJs });
+    const result = run(root, ['--force']);
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stderr, /incomplete runtime/);
+    assert.equal(read(root, 'ifc-lite.js'), JS_OK);
+    assert.equal(read(root, 'ifc-lite_bg.wasm'), 'INSTALLED-WASM');
+    assert.equal(readFileSync(join(output, 'ifc-lite-diff.js'), 'utf8'), JS_OK);
+    assert.equal(readFileSync(join(output, 'ifc-lite-diff_bg.wasm'), 'utf8'), 'INSTALLED-DIFF');
+    assert.equal(readFileSync(join(output, 'ifc-lite-diff.d.ts'), 'utf8'), DTS);
+    assert.equal(existsSync(join(root, '.wasm-fetch-tmp')), false);
+  });
+}
+
+test('#8042 a symlinked diff destination cannot change either engine', () => {
+  const root = makeCheckout({ installedJs: JS_OK, published: JS_AHEAD });
+  const output = withDiff(root, { installedJs: JS_OK, publishedJs: JS_AHEAD });
+  const original = join(root, 'original-diff');
+  renameSync(output, original);
+  symlinkSync(original, output, 'dir');
+  const result = run(root, ['--force']);
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(result.stderr, /unsafe runtime destination/);
+  assert.equal(read(root, 'ifc-lite.js'), JS_OK);
+  assert.equal(readFileSync(join(original, 'ifc-lite-diff.js'), 'utf8'), JS_OK);
+  assert.equal(readFileSync(join(original, 'ifc-lite-diff_bg.wasm'), 'utf8'), 'INSTALLED-DIFF');
+});

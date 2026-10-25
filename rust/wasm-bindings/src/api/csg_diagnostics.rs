@@ -8,6 +8,21 @@
 /// bounds the optional detail list.
 const WORST_HOSTS_LIMIT: usize = 16;
 
+/// Products refused by the owned producer publish no meshes. Report the batch
+/// count without attributing a cause; refusal can occur at any producer check.
+/// Refused products are not counted as produced elements.
+pub(super) fn warn_refused_products(refused: u64) {
+    if refused > 0 {
+        web_sys::console::warn_1(
+            &format!(
+                "[IFC-LITE] geometry batch: {refused} product(s) refused by the canonical \
+                 producer; they publish no meshes"
+            )
+            .into(),
+        );
+    }
+}
+
 /// Drain CSG / opening-classification / per-host diagnostics from the router and
 /// emit them to the browser console. Returns the typed
 /// [`ifc_lite_geometry::GeometryDiagnostics`] built from the same single drain

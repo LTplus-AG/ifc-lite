@@ -1,0 +1,49 @@
+{
+  "sourceCommit": "8ce1e9d9382e43a98b454e5db6fe70bd100d0058",
+  "productionGeometryCommit": "4a58e7ddcde3641e460fdbf38e29ff52ab128c3c",
+  "jobId": "9e387ddb-2072-49e1-98c7-dcc3c74d5811",
+  "exitCode": 0,
+  "officialArtifact": "Cleaned affected crate before strict source build; qualified export absent; declarations equal committed surface; root dependency build retained exact artifacts",
+  "contract": {
+    "passed": 222,
+    "failed": 0,
+    "skipped": 1,
+    "skip": "Optional matched historical fingerprint fallback requires separate retained old runtime pair; all current-runtime tests executed"
+  },
+  "allFeatureClippy": "passed",
+  "cases": {
+    "official-node.json": {
+      "passed": 10,
+      "sha256": "dc583ccf797089068d879a41f829fe1b9c0e459980d3f70434828f13511a1f02"
+    },
+    "official-browser.json": {
+      "passed": 10,
+      "sha256": "bae7d2251c670256c1d26bb2a6a932b0ca61c2157a2b3bb9c875e77e96fb5a58"
+    },
+    "qualification-node.json": {
+      "passed": 20,
+      "sha256": "b9185e317c5744a05b03cad069f5ad8ea01b4dbbbcedfc280ef4d85f70e667f6"
+    },
+    "qualification-browser.json": {
+      "passed": 20,
+      "sha256": "ed7528a644c77304ed4a181cdfd9a720ff1c038d368dd727ee608917ace1793b"
+    }
+  },
+  "scope": "Node and Chromium direct WASM boundary; not canonical viewer worker-pool timing or complete charter closure",
+  "files": {
+    "qualification-browser.json": "ed7528a644c77304ed4a181cdfd9a720ff1c038d368dd727ee608917ace1793b",
+    "issue7633-wasm-browser-core-v2.mjs": "24645806f1fac46a400e7f6d8670fe667013d93da54447582aefd2beb43c73d7",
+    "issue7633-browser-runner-v2.mjs": "b85c738b299e93ea4bc7ddffbff7a0061907dd38ea4fcdfd23707ffec7ae1aab",
+    "issue7633-clean-boundary-v3.sh": "c8197f4d39af71c1ce3feba2ca2ca8903fba48916c2c028d9409a9afc5cc55cd",
+    "issue7633-wasm-runner-v2.mjs": "c2e118b25c63411230789e5f3da207ea2d89a0a181aed4f87560e9e1fb54f135",
+    "build.json": "78519cf717bedcba395abe95ff9f676b47852bd076121150c26e0328a33d0d17",
+    "official-browser.json": "bae7d2251c670256c1d26bb2a6a932b0ca61c2157a2b3bb9c875e77e96fb5a58",
+    "official-node.json": "dc583ccf797089068d879a41f829fe1b9c0e459980d3f70434828f13511a1f02",
+    "issue7633-browser-invocation-v2.mjs": "00089faf634053ecb5bc227e8269b4668c718828ffc065ac2c4218f43cf2a64d",
+    "qualification-node.json": "b9185e317c5744a05b03cad069f5ad8ea01b4dbbbcedfc280ef4d85f70e667f6"
+  },
+  "receipt": {
+    "path": "/home/louistrue/build-workers/worker-state/jobs/9e387ddb-2072-49e1-98c7-dcc3c74d5811/receipt.json",
+    "sha256": "70d90f5d177d0b4a78f6e13612ea25b3a67ddbee048d16d7305dd1f304b31e48"
+  }
+}

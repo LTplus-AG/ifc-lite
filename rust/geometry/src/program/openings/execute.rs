@@ -144,7 +144,8 @@ impl NumericalOutcome {
     }
 }
 
-/// Cut one host part by a classified context.
+/// Cut one host part by a classified context. The one place that decides a
+/// host was consumed: see the rule inside.
 pub(crate) fn execute(
     mesh: Mesh,
     context: &VoidContext,
@@ -154,7 +155,17 @@ pub(crate) fn execute(
     let execution = Execution::new(quality);
     let (result, telemetry) = crate::telemetry_transaction::capture(|| {
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            execution.apply_void_context(mesh, context, id)
+            let had_triangles = mesh.triangle_count() > 0;
+            let cut = execution.apply_void_context(mesh, context, id);
+            // Every path that can empty a host (analytic rectangle, 2D,
+            // prism, engulf) does so only when the openings' union covers
+            // it; the kernel paths refuse an empty result. So an empty cut
+            // of a host that had triangles is the consumed answer, and the
+            // element keeps it instead of re-rendering the host uncut.
+            if had_triangles && cut.triangle_count() == 0 {
+                execution.record_void_consumed_host(id);
+            }
+            cut
         }))
     });
     NumericalOutcome {

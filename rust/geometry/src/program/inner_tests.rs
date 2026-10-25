@@ -197,3 +197,82 @@ fn program_and_reply_have_a_bounded_inline_footprint() {
         assert!(bytes <= 4096, "{name} occupies {bytes} inline bytes");
     }
 }
+
+/// #7955: direct router clients have no outer product owner to reject a
+/// decoder replaced by an extension. Exercise the public cache-bearing entry.
+struct MaintainingBlock { replace: bool, calls: Rc<std::cell::Cell<usize>> }
+impl GeometryProcessor for MaintainingBlock {
+    fn supported_types(&self) -> Vec<IfcType> { vec![IfcType::IfcBlock] }
+    fn process(&self, item: &DecodedEntity, decoder: &mut EntityDecoder, schema: &IfcSchema,
+        quality: TessellationQuality) -> Result<Mesh> {
+        self.calls.set(self.calls.get() + 1);
+        decoder.clear_entity_cache();
+        decoder.seed_unit_scales(1., 1.);
+        if self.replace {
+            // Equal source bytes still belong to a distinct source owner.
+            *decoder = EntityDecoder::new(BLOCK);
+        }
+        BlockProcessor::new().process(item, decoder, schema, quality)
+    }
+}
+
+#[test]
+fn direct_router_refuses_decoder_replacement_but_accepts_same_instance_maintenance() {
+    for replace in [false, true] {
+        let calls = Rc::new(std::cell::Cell::new(0));
+        let mut router = GeometryRouter::with_scale(1.);
+        router.register(Box::new(MaintainingBlock { replace, calls: Rc::clone(&calls) }));
+        let mut decoder = EntityDecoder::new(BLOCK);
+        let item = decoder.decode_by_id(10).unwrap();
+        let before = decoder.execution_identity();
+        let result = router.process_representation_item(&item, &mut decoder);
+        assert_eq!(calls.get(), 1, "the registered processor actually executed");
+        assert_ne!(before, decoder.execution_identity(), "maintenance changed the generation");
+        if replace {
+            let error = result.expect_err("a replaced source owner cannot publish geometry");
+            assert!(error.to_string().contains("WrongOwner"), "{error}");
+            assert!(!before.same_instance(&decoder.execution_identity()));
+        } else {
+            let mesh = result.expect("same-instance maintenance remains supported");
+            assert!(before.same_instance(&decoder.execution_identity()));
+            assert!(!mesh.indices.is_empty());
+            let (min, max) = mesh.bounds();
+            assert_eq!([max.x - min.x, max.y - min.y, max.z - min.z], [1., 2., 3.]);
+        }
+    }
+}
+
+/// #8091: public product and styled drains run controls in place rather than
+/// issuing GeometryProgram tickets. Both must enforce the same owner boundary.
+#[test]
+fn direct_product_drains_refuse_replaced_decoder_but_allow_maintenance() {
+    let source = format!("{BLOCK}#20=IFCWALL('w',$,'Wall',$,$,$,#21,$,$);\
+        #21=IFCPRODUCTDEFINITIONSHAPE($,$,(#22));\
+        #22=IFCSHAPEREPRESENTATION($,'Body','CSG',(#10));");
+    for styled in [false, true] {
+        for replace in [false, true] {
+            let calls = Rc::new(std::cell::Cell::new(0));
+            let mut router = GeometryRouter::with_scale(1.);
+            router.register(Box::new(MaintainingBlock { replace, calls: Rc::clone(&calls) }));
+            let mut decoder = EntityDecoder::new(&source);
+            let product = decoder.decode_by_id(20).unwrap();
+            let before = decoder.execution_identity();
+            let result = if styled {
+                router.process_element_with_submeshes_textured(&product, &mut decoder, &Default::default())
+                    .map(|meshes| !meshes.is_empty())
+            } else {
+                router.process_element_parts(&product, &mut decoder).map(|parts| !parts.is_empty())
+            };
+            assert_eq!(calls.get(), 1, "the direct control executes its registered processor");
+            if replace {
+                let error = result.expect_err("direct controls cannot publish after decoder replacement");
+                assert!(error.to_string().contains("WrongOwner"), "{error}");
+                assert!(!before.same_instance(&decoder.execution_identity()));
+            } else {
+                assert!(result.expect("same-instance maintenance remains valid"));
+                assert_ne!(before, decoder.execution_identity());
+                assert!(before.same_instance(&decoder.execution_identity()));
+            }
+        }
+    }
+}

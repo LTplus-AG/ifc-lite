@@ -2,8 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Preserve an isolated thin cell whose three exact edges are supported by
-//! healthy source cells. Dropping it opens an actual finite hole (#7292).
+//! Preserve thin-cell patches whose complete exact boundary is supported by
+//! healthy source cells. Dropping them opens an actual finite hole (#7292, #8047).
 use super::{plane_merge::PlaneTri, tri_is_needle};
 use crate::Mesh;
 use nalgebra::{Point3, Vector3};
@@ -22,14 +22,20 @@ pub(super) fn cell_key(t: &[Point3<f64>; 3]) -> Cell {
 pub(super) struct Supported {
     pub buckets: FxHashSet<Bucket>,
     pub cells: FxHashSet<Cell>,
+    pub has_connected_patch: bool,
     // Healthy finite folds remain independent of thin-cell rescue/adoption.
     pub folded_buckets: Vec<Bucket>,
     pub fold_support_buckets: Vec<Bucket>,
 }
+#[cfg(test)]
 pub(super) fn find(buckets: &BTreeMap<Bucket, Vec<PlaneTri>>) -> Supported {
     find_with_folds(buckets, true)
 }
+#[cfg(test)]
 pub(super) fn find_with_folds(buckets: &BTreeMap<Bucket, Vec<PlaneTri>>, preserve_folds: bool) -> Supported {
+    find_with_policy(buckets, preserve_folds, true)
+}
+pub(super) fn find_with_policy(buckets: &BTreeMap<Bucket, Vec<PlaneTri>>, preserve_folds: bool, preserve_connected: bool) -> Supported {
     // Ordinary healthy partitions need no certificate tables. A later cut
     // can keep a finite fold after the original thin seed has been cleaned.
     let has_needle = buckets.values().flatten().any(|t| tri_is_needle(&t.v));
@@ -60,31 +66,8 @@ pub(super) fn find_with_folds(buckets: &BTreeMap<Bucket, Vec<PlaneTri>>, preserv
                 .push((i, a < b));
         }
     }
-    for (i, (key, t)) in faces.iter().enumerate() {
-        if !needles[i] {
-            continue;
-        }
-        let p = cell_key(&t.v);
-        let mut neighbors = Vec::new();
-        for k in 0..3 {
-            let (a, b) = (p[k], p[(k + 1) % 3]);
-            let Some(j) = healthy_neighbor(i, a, b, &needles, &edges) else {
-                break;
-            };
-            neighbors.push(j);
-        }
-        if neighbors.len() == 3
-            && std::iter::once(*key)
-                .chain(neighbors.iter().map(|&j| faces[j].0))
-                .all(|key| {
-                    *disjoint
-                        .entry(key)
-                        .or_insert_with(|| nonoverlapping(&buckets[&key]))
-                })
-        {
-            out.cells.insert(p);
-            out.buckets.insert(*key);
-        }
+    if has_needle {
+        retain_supported_patches(&faces, &needles, &edges, buckets, &mut disjoint, &mut out, preserve_connected);
     }
     // A partial source may have boundary edges, but no geometric edge may have
     // repeated uses in either direction. A nonmanifold source cannot certify
@@ -115,6 +98,87 @@ pub(super) fn find_with_folds(buckets: &BTreeMap<Bucket, Vec<PlaneTri>>, preserv
     out.buckets.extend(out.fold_support_buckets.iter().copied());
     out.folded_buckets = folded;
     out
+}
+
+/// The isolated-cell certificate extends to a connected thin patch: internal
+/// edges must pair along strictly convex ridges, and every external edge must
+/// have a healthy opposite cell. Coplanar fans and concave opening rims keep
+/// ordinary cleanup; topology alone does not distinguish those from a feature.
+/// Walk iteratively and visit each needle once, including rejected components.
+/// A closed all-needle shell has no healthy boundary and cannot certify itself.
+fn retain_supported_patches(
+    faces: &[(Bucket, &PlaneTri)],
+    needles: &[bool],
+    edges: &FxHashMap<(Point, Point), Vec<(usize, bool)>>,
+    buckets: &BTreeMap<Bucket, Vec<PlaneTri>>,
+    disjoint: &mut FxHashMap<Bucket, bool>,
+    out: &mut Supported,
+    preserve_connected: bool,
+) {
+    let mut visited = vec![false; faces.len()];
+    for start in 0..faces.len() {
+        if !needles[start] || visited[start] { continue; }
+        let mut pending = vec![start];
+        visited[start] = true;
+        let mut patch = Vec::new();
+        let mut touched = FxHashSet::default();
+        let mut valid = true;
+        let mut supported_boundary = false;
+        while let Some(i) = pending.pop() {
+            patch.push(i);
+            touched.insert(faces[i].0);
+            let p = cell_key(&faces[i].1.v);
+            for k in 0..3 {
+                let (a, b) = (p[k], p[(k + 1) % 3]);
+                let Some(incident) = edges.get(&(a.min(b), a.max(b))) else {
+                    valid = false;
+                    continue;
+                };
+                if a == b || incident.len() != 2 {
+                    valid = false;
+                    continue;
+                }
+                let Some(&(j, forward)) = incident.iter().find(|&&(j, _)| j != i) else {
+                    valid = false;
+                    continue;
+                };
+                if forward == (a < b) { valid = false; }
+                touched.insert(faces[j].0);
+                if needles[j] {
+                    let opposite = faces[j].1.v.iter().find(|p| {
+                        let key = point_key(p);
+                        key != a && key != b
+                    });
+                    // Positive orient3d means the opposite vertex is strictly
+                    // behind the outward face: a convex exterior ridge.
+                    let plane = faces[i].1.v.map(|p| [p.x, p.y, p.z]);
+                    let convex = opposite.is_some_and(|p| {
+                        plane.iter().flatten().chain(p.iter()).all(|v| v.is_finite())
+                            && crate::kernel::predicates::orient3d_explicit(
+                                plane[0], plane[1], plane[2], [p.x, p.y, p.z],
+                            ) == crate::kernel::Sign::Positive
+                    });
+                    if !convex { valid = false; }
+                    if !visited[j] {
+                        visited[j] = true;
+                        pending.push(j);
+                    }
+                } else {
+                    supported_boundary = true;
+                }
+            }
+        }
+        if valid && supported_boundary && (preserve_connected || patch.len() == 1)
+            && touched.into_iter().all(|key| {
+            *disjoint.entry(key).or_insert_with(|| nonoverlapping(&buckets[&key]))
+        }) {
+            out.has_connected_patch |= patch.len() > 1;
+            for i in patch {
+                out.cells.insert(cell_key(&faces[i].1.v));
+                out.buckets.insert(faces[i].0);
+            }
+        }
+    }
 }
 
 fn healthy_neighbor(

@@ -1,0 +1,11 @@
+--- a/rust/export/src/plan/add_builders.rs
++++ b/rust/export/src/plan/add_builders.rs
+@@ -137,7 +137,7 @@ impl NewObject {
+     }
+ 
+     pub fn with_representation(mut self, representation: Representation) -> Self {
+-        let _ = representation;
++        self.representation = representation;
+         self
+     }
+ 

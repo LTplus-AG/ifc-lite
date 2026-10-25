@@ -1,0 +1,69 @@
+{
+  "productionSource": "98f52d74299d6ac39b3a33bde4b2ab7dfb09bc45",
+  "qualificationSource": "97b4c8af81052fc46791a93cc1031c4a19b46abf",
+  "scope": "Isolated six-line frame-toggle adapter; generated d.ts adds three lines. Neither change is part of production PR. Official artifact validated separately.",
+  "verdict": "20 cases pass in Node and Chromium across all four frames; identities stable during execution.",
+  "evidence": {
+    "build-artifact.json": {
+      "sha256": "ec54be46e14f1528ede524091ea3e11bca19581ad95a5217e20f7890114be4bd",
+      "data": {
+        "head": "97b4c8af81052fc46791a93cc1031c4a19b46abf",
+        "sourceBuilt": true,
+        "wasmNewerThanRustSources": true,
+        "files": {
+          "packages/wasm/pkg/ifc-lite.js": "2c2ce2a954adb64e800517a16bed9c25b7166da54a0cbc8337087ce794fe3ad8",
+          "packages/wasm/pkg/ifc-lite_bg.wasm": "f0c0efd1cbf967d02e0a257ec5402125cc3c6dbd347e7c8a02b1c7a455a16140",
+          "packages/wasm/pkg/ifc-lite.d.ts": "29e6bb95f9c6a86f7351f4fba1a74b89f71bc8373ed97cf331952674d1317cf2"
+        }
+      },
+      "cases": 0
+    },
+    "node-20.json": {
+      "sha256": "e4072bea839820628c491287cc7c20c74e3a10c2ac672a22fb6256fe8bbe3c53",
+      "data": {
+        "before": {
+          "head": "97b4c8af81052fc46791a93cc1031c4a19b46abf",
+          "diffSHA256": "3a0b947cea87cca13d3e2ec7ca0cd22b0396114742b9dabfe953bc41c53db49b",
+          "untrackedRust": "",
+          "jsSHA256": "2c2ce2a954adb64e800517a16bed9c25b7166da54a0cbc8337087ce794fe3ad8",
+          "wasmSHA256": "f0c0efd1cbf967d02e0a257ec5402125cc3c6dbd347e7c8a02b1c7a455a16140"
+        },
+        "after": {
+          "head": "97b4c8af81052fc46791a93cc1031c4a19b46abf",
+          "diffSHA256": "3a0b947cea87cca13d3e2ec7ca0cd22b0396114742b9dabfe953bc41c53db49b",
+          "untrackedRust": "",
+          "jsSHA256": "2c2ce2a954adb64e800517a16bed9c25b7166da54a0cbc8337087ce794fe3ad8",
+          "wasmSHA256": "f0c0efd1cbf967d02e0a257ec5402125cc3c6dbd347e7c8a02b1c7a455a16140"
+        },
+        "fixtureSHA256": "7d3ae097a2f1ca5e63f7698d12215cb58427cdb6a932e75e6bf1ca222bcf873b",
+        "harnessSHA256": "24645806f1fac46a400e7f6d8670fe667013d93da54447582aefd2beb43c73d7",
+        "ok": true,
+        "mode": "qualification-four-frames"
+      },
+      "cases": 20
+    },
+    "browser-20.json": {
+      "sha256": "25c7428dc134046c8fca21fbadf0439a6ecb9ab68008ea5139ae2010ece84d15",
+      "data": {
+        "before": {
+          "head": "97b4c8af81052fc46791a93cc1031c4a19b46abf",
+          "diffSHA256": "3a0b947cea87cca13d3e2ec7ca0cd22b0396114742b9dabfe953bc41c53db49b",
+          "wasmSHA256": "f0c0efd1cbf967d02e0a257ec5402125cc3c6dbd347e7c8a02b1c7a455a16140",
+          "jsSHA256": "2c2ce2a954adb64e800517a16bed9c25b7166da54a0cbc8337087ce794fe3ad8"
+        },
+        "after": {
+          "head": "97b4c8af81052fc46791a93cc1031c4a19b46abf",
+          "diffSHA256": "3a0b947cea87cca13d3e2ec7ca0cd22b0396114742b9dabfe953bc41c53db49b",
+          "wasmSHA256": "f0c0efd1cbf967d02e0a257ec5402125cc3c6dbd347e7c8a02b1c7a455a16140",
+          "jsSHA256": "2c2ce2a954adb64e800517a16bed9c25b7166da54a0cbc8337087ce794fe3ad8"
+        },
+        "errors": [],
+        "scope": "browser WASM boundary; not canonical viewer File/worker-pool or timing qualification",
+        "fixtureSHA256": "7d3ae097a2f1ca5e63f7698d12215cb58427cdb6a932e75e6bf1ca222bcf873b",
+        "ok": true,
+        "mode": "qualification-four-frames"
+      },
+      "cases": 20
+    }
+  }
+}

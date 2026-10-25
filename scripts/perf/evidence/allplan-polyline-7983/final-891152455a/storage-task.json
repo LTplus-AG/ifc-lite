@@ -1,0 +1,25 @@
+{
+  "autoClose": false,
+  "closeRequestedAt": 1792686222.2947395,
+  "createdAt": 1792685553.9915316,
+  "id": "pr8052-final-public-891152455a",
+  "jobs": [
+    "db796657-47e2-441d-a371-bd78a6a7dff6"
+  ],
+  "manifests": [
+    "pop-os-db796657-47e2-441d-a371-bd78a6a7dff6-8d66a1763f8a"
+  ],
+  "ownerPid": 1810303,
+  "resources": [
+    {
+      "path": "/home/louistrue/build-workers/worker-state/storage-tasks/db796657-47e2-441d-a371-bd78a6a7dff6/target",
+      "role": "target"
+    },
+    {
+      "path": "/home/louistrue/build-workers/worker-state/checkouts/891152455ab75c73341c878c0c55ccde9feece92",
+      "role": "worktree"
+    }
+  ],
+  "state": "active",
+  "updatedAt": 1792685553.9916108
+}

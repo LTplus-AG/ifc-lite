@@ -12,7 +12,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createBCFFromIDSReport, type IDSEntityResultInput, type IDSReportInput, type IDSSpecResultInput } from '@ifc-lite/bcf';
-import { estimateIdsBcfTopicCount, IDS_BCF_MAX_TOPICS, idsBcfSnapshotTargets, type IdsBcfTopicGrouping } from './bcf-topic-estimate.js';
+import { estimateIdsBcfTopicCount, type IdsBcfTopicGrouping } from './bcf-topic-estimate.js';
 
 function entity(expressId: number, modelId: string, failingReqs: number, passingReqs = 1): IDSEntityResultInput {
   const req = (status: 'pass' | 'fail', i: number) => ({ status, facetType: 'property', checkedDescription: `req ${i}` });
@@ -44,8 +44,7 @@ const REPORT: IDSReportInput = {
     spec('Walls need fire rating', 'fail', [entity(1, 'A', 2), entity(2, 'A', 1), entity(3, 'A', 0), entity(1, 'B', 3)]),
     spec('Slabs need names', 'pass', [entity(10, 'A', 0), entity(11, 'B', 0)]),
     // The same wall (A:1) failing a SECOND specification: the reporter emits
-    // one per-entity topic per (specification, entity), with no dedup, while
-    // snapshots are shared (one image per entity).
+    // one per-entity topic per (specification, entity), with no dedup.
     spec('Walls need names', 'fail', [entity(1, 'A', 1)]),
     spec('Model has a site', 'fail', []),
     spec('Doors need width', 'not_applicable', []),
@@ -85,20 +84,4 @@ describe('estimateIdsBcfTopicCount (#5824)', () => {
     assert.equal(estimateIdsBcfTopicCount(big, { topicGrouping: 'per-specification', includePassingEntities: false }), 1);
   });
 
-  it('caps snapshot targets at the topic cap, dedups across specs and keeps model identity (N models)', () => {
-    const big: IDSReportInput = {
-      title: 'Big',
-      specificationResults: [
-        spec('A', 'fail', Array.from({ length: 3000 }, (_, i) => entity(i + 1, i % 2 === 0 ? 'A' : 'B', 1))),
-        spec('B', 'fail', [entity(1, 'A', 1)]),
-      ],
-    };
-    const targets = idsBcfSnapshotTargets(big, false);
-    assert.equal(targets.length, IDS_BCF_MAX_TOPICS);
-    assert.equal(new Set(targets.map((t) => t.boundsKey)).size, targets.length);
-    assert.deepEqual(targets.slice(0, 2).map((t) => t.boundsKey), ['A:1', 'B:2']);
-    // Same model-A entity in two specs is one snapshot; passing ones only on request.
-    assert.deepEqual(idsBcfSnapshotTargets(REPORT, false).map((t) => t.boundsKey), ['A:1', 'A:2', 'B:1']);
-    assert.equal(idsBcfSnapshotTargets(REPORT, true).length, 6);
-  });
 });

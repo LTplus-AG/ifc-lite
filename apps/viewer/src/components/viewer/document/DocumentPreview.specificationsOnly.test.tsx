@@ -86,7 +86,7 @@ it('preserves specifications-only, captured locale and block scale in canonical 
         page: { size: 'A4', orientation: 'portrait' }, blocks: [{ ...report, specificationsOnly }] };
       const input = { document, labels, bindings: { models: [], activeModelId: null, today: new Date('2026-10-02T12:00:00Z') },
         aggregations: new Map(), chartMessages: new Map(), topics: new Map(), tables: new Map(), snapshotIds: () => [] };
-      const ui = render(<DocumentPreview {...input} selectedBlockId={null} onSelectBlock={() => {}} />);
+      const ui = render(<DocumentPreview {...input} onSelectBlock={() => {}} />);
       await documentPreviewReady();
       const glyphs = Array.from(ui.querySelectorAll('[data-preview-block="report"] span'), node => node.textContent?.trim() ?? '');
       assert.ok(ui.querySelector('[data-validation-benchmark] img'), 'the actual composed benchmark ring remains visible');

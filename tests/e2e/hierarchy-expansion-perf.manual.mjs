@@ -18,7 +18,7 @@ if (!existsSync(first) || (second && !existsSync(second))) throw new Error('Fixt
 const browser = await chromium.launch({
   channel: 'chrome',
   headless: true,
-  args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader',
+  args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader', '--use-angle=swiftshader',
     '--disable-vulkan-surface', '--ignore-gpu-blocklist', '--enable-gpu'],
 });
 try {

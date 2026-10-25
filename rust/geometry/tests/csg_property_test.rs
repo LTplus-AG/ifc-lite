@@ -556,6 +556,31 @@ fn box_difference_thin_notch_seam_is_watertight_4439() {
     );
 }
 
+/// #8047: exact minimized boxes from main's failed CSG feature lane.
+#[test]
+fn box_difference_thin_floor_is_watertight_8047() {
+    let (a_min, a_size) = quantized(
+        [-8.68571626363443, -6.408187754704774, -3.4812969546765014],
+        [1.2189531809273544, 3.735440451911921, 1.326755257819986],
+    );
+    let (b_min, b_size) = quantized(
+        [-10.179294614250146, -4.686592242221465, -3.4810893784472334],
+        [3.2296299479453636, 5.322463937444525, 0.1],
+    );
+    let a = box_mesh(a_min, a_size);
+    let b = box_mesh(b_min, b_size);
+    let raw = ifc_lite_geometry::kernel::mesh_bridge::subtract(&a, &b);
+    assert_eq!(exact_open_edges(&raw), 0, "raw kernel boundary");
+    assert_eq!(watertight_violation(&raw), None, "raw kernel topology");
+    let GroupCut::Cut(result) = ClippingProcessor::new().subtract_mesh(&a, &b) else {
+        panic!("the #8047 cutter must cut the host");
+    };
+    assert_eq!(watertight_violation(&result), None, "consolidated topology");
+    let expected = a_size.iter().product::<f64>()
+        - aabb_intersection_volume(a_min, a_size, b_min, b_size);
+    assert!((mesh_volume(&result) - expected).abs() < 1e-3, "analytic volume");
+}
+
 // ---------------------------------------------------------------------------
 // Property 2: star-shaped polygon extrusion
 // ---------------------------------------------------------------------------

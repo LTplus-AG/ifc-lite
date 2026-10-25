@@ -26,9 +26,20 @@ pub(crate) enum CacheAdmission {
 
 impl GeometryRouter {
     /// The router's execution owner identity: instance plus configuration
-    /// generation, bumped by every setter that changes item geometry.
-    pub(crate) fn execution_identity(&self) -> ifc_lite_core::execution_owner::ExecutionIdentity {
+    /// generation, bumped by every setter that changes item geometry. Scoped
+    /// triangle order and ordinary cache population leave it unchanged.
+    pub fn execution_identity(&self) -> ifc_lite_core::execution_owner::ExecutionIdentity {
         self.execution_owner.identity()
+    }
+
+    /// Reserve this router for one product until the owned lease drops. Nested
+    /// geometry calls within that product stay legal; the lease holds no
+    /// `RefCell` borrow, processor or cache lock.
+    pub fn try_execution_lease(
+        &self,
+    ) -> Result<ifc_lite_core::execution_owner::ExecutionLease, ifc_lite_core::execution_owner::ExecutionLeaseError>
+    {
+        self.execution_owner.try_lease()
     }
 
     /// Look the item up in the content-dedup cache. A hit clones the cached
@@ -197,3 +208,7 @@ fn stamp_direct_instance(mut mesh: Mesh, rep: Option<u128>) -> Mesh {
     }
     mesh
 }
+
+#[cfg(test)]
+#[path = "execution_owner_tests.rs"]
+mod execution_owner_tests;

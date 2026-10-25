@@ -14,11 +14,12 @@ mod brep_signatures;
 mod content_hash;
 mod diagnostics;
 mod diagnostics_recording;
+mod diagnostics_checked;
 pub(crate) mod frame_parts;
 pub(crate) mod instancing;
 pub(crate) mod item_cache_program;
 mod item_dedup_cache;
-mod layers;
+pub(crate) mod layers;
 mod mapped_cache_ownership;
 pub(crate) mod mapped_item;
 pub(crate) mod processing;
@@ -52,6 +53,7 @@ mod tests;
 
 use crate::material_layer_index::MaterialLayerIndex;
 use crate::processors::{BooleanClippingProcessor, CsgSolidProcessor};
+use diagnostics_checked::CsgScopeState;
 mod processor_registry;
 mod construction;
 mod registration;
@@ -174,6 +176,9 @@ pub struct GeometryRouter {
     /// kernel falls back to the un-cut host. Drainable via
     /// [`Self::take_csg_failures`].
     csg_failures: RefCell<FxHashMap<u32, Vec<BoolFailure>>>,
+    /// Stopped-product evidence, available only to an explicit diagnostic drain.
+    stopped_csg_failures: RefCell<FxHashMap<u32, Vec<BoolFailure>>>,
+    csg_scope: CsgScopeState,
     /// Cumulative counters for opening classification (T1.1 / classifier fix
     /// diagnostic). Tracks how many openings went through each branch of
     /// `program::openings::classify` so a maintainer can verify the fix is firing on
@@ -197,9 +202,9 @@ pub struct GeometryRouter {
     /// the wasm layer per batch and logged to the browser console (the geometry
     /// crate can't `web_sys`). Drainable via [`Self::take_layer_slice_diag`].
     layer_slice_diag: RefCell<Vec<(u32, &'static str)>>,
-    /// Host product express IDs that a void subtraction fully CONSUMED — an
-    /// opening whose real solid contains the whole host, so the correct result
-    /// is an empty mesh. Without this flag the empty mesh reads as a failed cut
+    /// Host product express IDs that a void subtraction fully CONSUMED — its
+    /// openings together cover the whole host, so the correct result is an
+    /// empty mesh. Without this flag the empty mesh reads as a failed cut
     /// and the element pipeline falls back to the un-cut host, re-rendering a
     /// spurious solid. Queried via [`Self::host_consumed_by_void`].
     voids_consumed_hosts: RefCell<FxHashSet<u32>>,
@@ -281,6 +286,8 @@ impl GeometryRouter {
             local_frame_enabled: None,
             material_layer_index: None,
             csg_failures: RefCell::new(FxHashMap::default()),
+            stopped_csg_failures: RefCell::new(FxHashMap::default()),
+            csg_scope: CsgScopeState::default(),
             classification_stats: RefCell::new(ClassificationStats::default()),
             host_opening_diagnostics: RefCell::new(FxHashMap::default()),
             rect_fast_stats: RefCell::new(crate::rect_fast::RectFastStats::default()),

@@ -1,5 +1,11 @@
 # create-ifc-lite
 
+## 1.16.0
+
+### Minor Changes
+
+- [#7660](https://github.com/LTplus-AG/ifc-lite/pull/7660) [`6825102`](https://github.com/LTplus-AG/ifc-lite/commit/6825102be1ef80b843a672f7e6dfbcce7104db24) Thanks [@louistrue](https://github.com/louistrue)! - Pin inspected IFClite releases and reject missing transitive dependencies or worker assets; configure browser templates for module workers. Resolve each scaffold's complete dependency set with npm peer checks and write package-lock.json without running installation scripts. Recommend npm ci for reproducible installation; retain ordinary npm install for adding optional packages. Reuse the scaffold CI matrix after successful package publication and exercise the generated basic project on a real IFC reference model.
+
 ## 1.15.1
 
 ### Patch Changes

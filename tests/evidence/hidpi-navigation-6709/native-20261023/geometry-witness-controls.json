@@ -1,0 +1,1 @@
+{"ok":true,"invariants":["UV-byte mutation changes flat source digest","instance-only triangle mutation changes placed digest","placement mutation changes coordinate and combined digests","semantic owner ordering is canonical","signed-zero array bits preserved"],"scope":"Evidence algorithm diagnostic only; not a native GPU/model acceptance run"}

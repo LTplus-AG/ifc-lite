@@ -1,0 +1,6 @@
+{
+  "candidate": "4f90b5f332454b94e499032f212f05cb3b4a105e",
+  "control": "62dd5cd2d64dad6beb4e355a98efce42e72bf318",
+  "scope": "Synchronous capture and asynchronous-reader refusal shared by both arms; only navigation maxPixelRatio expression differs. Prior source-pair and cancelled preparations retained in diagnostics/pre-async-*",
+  "diff": "diff --git a/apps/viewer/src/components/viewer/viewport-render-options.ts b/apps/viewer/src/components/viewer/viewport-render-options.ts\nindex 8bb15d68e7..044861f4f5 100644\n--- a/apps/viewer/src/components/viewer/viewport-render-options.ts\n+++ b/apps/viewer/src/components/viewer/viewport-render-options.ts\n@@ -33,7 +33,7 @@ export function viewportRenderOptions(\n     visualEnhancement: p.visualEnhancementRef.current,\n     environment: p.environmentRef.current,\n     sunShadows: p.sunShadowsRef.current ?? undefined,\n-    isInteracting: continuous, maxPixelRatio: continuous ? 1 : undefined,\n+    isInteracting: continuous, maxPixelRatio: undefined,\n     interactionFrameIntervalMs: throttleMs || undefined, contributionCull, lod,\n     buildingRotation: p.coordinateInfoRef.current?.buildingRotation,\n     ...sectionRenderClip(state.sceneState.section.visible, p.sectionPlaneRef.current, p.sectionRangeRef.current, state.activeTool, state.inactiveSectionPlanes, p.sectionBoundsRef?.current),\n"
+}

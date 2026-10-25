@@ -9,8 +9,8 @@
  * `DiffCounts` — and every headline built from it (the panel's counts grid,
  * the exported report's summary, the run telemetry) — totals BOTH populations
  * together, because the engine compares them together (`compareScope.ts`:
- * type objects reach the diff through the geometry pass, products through
- * `comparableProductIds`). For a certification exercise the expected answer
+ * products and type objects reach the diff even without meshes through
+ * `comparableObjectIds`). For a certification exercise the expected answer
  * counts products only, so a user reading the combined "30 modified" gets a
  * number that does not match the products they are grading — this exact
  * confusion has happened twice.

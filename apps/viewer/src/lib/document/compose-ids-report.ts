@@ -25,7 +25,7 @@ import type { RingDrawnItem } from './compose-manual-report.js';
 import { passRateBand } from '@ifc-lite/ids';
 import { reportStamp } from './report-provenance.js';
 import { layoutReportProvenance, REPORT_PROVENANCE_LINE_HEIGHT, wrappedReportProvenance } from './compose-report-provenance.js';
-import { reportBlockSourceKind, type IdsReportBlock, type IdsReportCardinality, type IdsReportCheckSummary } from './ids-report-types.js';
+import { notCheckedIdsSpecifications, reportBlockSourceKind, type IdsReportBlock, type IdsReportCardinality, type IdsReportCheckSummary } from './ids-report-types.js';
 import type { LayoutCursor } from './compose-table.js';
 
 export const IDS_REPORT_TITLE_HEIGHT = 18;
@@ -150,6 +150,11 @@ export function layoutIdsReport(block: IdsReportLayoutBlock, cursor: LayoutCurso
   const ringSize = 44;
   const summaryWidth = block.benchmarks ? contentW - ringSize - 12 : contentW;
   const summaryLines = block.benchmarks && wrap ? wrap(summaryLine(block.summary, t), summaryWidth, 9, false) : [cursor.truncate(summaryLine(block.summary, t), summaryWidth, 9, false)];
+  const notChecked = block.benchmarks ? notCheckedIdsSpecifications(block) : 0;
+  if (notChecked > 0) {
+    const label = `${t('manualValidation.verdict.unanswered')}: ${t('idsPanel.specifications', { count: notChecked, countDisplay: fmt(t, notChecked) })}`;
+    summaryLines.push(...(wrap ? wrap(label, summaryWidth, 9, false) : [cursor.truncate(label, summaryWidth, 9, false)]));
+  }
   const summaryHeight = block.benchmarks ? Math.max(ringSize + 6, summaryLines.length * 12 + 2) : SUMMARY_HEIGHT;
   const titleHeight = IDS_REPORT_TITLE_HEIGHT + blockTitleStyle(block).extra;
   const lead = titleHeight + summaryHeight + stampHeight + scopeLines.length * REPORT_PROVENANCE_LINE_HEIGHT + keepAfter;

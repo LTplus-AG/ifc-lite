@@ -1,0 +1,12 @@
+--- a/rust/diff/src/sidecar_value.rs
++++ b/rust/diff/src/sidecar_value.rs
+@@ -17,7 +17,8 @@
+ }
+ impl JsString {
+     pub fn from_units(units: Vec<u16>) -> Self {
+-        Self::from(String::from_utf16_lossy(&units))
++        let scalar = String::from_utf16(&units).ok();
++        Self { units, scalar }
+     }
+     pub fn units(&self) -> &[u16] { &self.units }
+     pub fn surround(prefix: &str, value: &Self, suffix: &str) -> Self {

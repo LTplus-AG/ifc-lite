@@ -80,11 +80,11 @@ fn styled_cuts_keep_geometry_ids_and_an_empty_host_captures_nothing() {
     let router = GeometryRouter::new();
     let host = decoder.decode_by_id(10).unwrap();
     let ids = [21];
-    let cut = GeometryProgram::voided_styled(&host, &ids, None).drain_styled(&router, &mut decoder).unwrap();
+    let cut = GeometryProgram::voided_hosts(&host, &ids, None).drain_styled(&router, &mut decoder).unwrap();
     let geometry: Vec<u32> = cut.sub_meshes.iter().map(|sub| sub.geometry_id).collect();
     assert_eq!(geometry, [7]);
     let _ = router.take_classification_stats();
-    let empty = GeometryProgram::voided_styled(&host, &ids, Some(SubMeshCollection::new()))
+    let empty = GeometryProgram::voided_hosts(&host, &ids, Some(SubMeshCollection::new()))
         .drain_styled(&router, &mut decoder)
         .unwrap();
     assert!(empty.is_empty());

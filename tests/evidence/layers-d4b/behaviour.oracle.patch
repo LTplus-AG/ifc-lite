@@ -1,0 +1,36 @@
+diff --git a/rust/geometry/src/program/layers.rs b/rust/geometry/src/program/layers.rs
+--- a/rust/geometry/src/program/layers.rs
++++ b/rust/geometry/src/program/layers.rs
+@@ -86,9 +86,9 @@ impl<'a> LayerControl<'a> {
+ 
+     pub(super) fn stage(&self) -> std::result::Result<Option<ProgramStage>, ProgramError> {
+         Ok(match &self.state {
+-            State::Eligibility | State::Frame(_) | State::Planes(_) => Some(ProgramStage::Source),
++            State::Eligibility | State::Frame(_) => Some(ProgramStage::Source),
+             State::Host(_, host) => return host.stage(),
+-            State::Slice(_) | State::Clean(_) => Some(ProgramStage::Numerical),
++            State::Planes(_) | State::Slice(_) | State::Clean(_) => Some(ProgramStage::Numerical),
+             State::Complete(_) => None,
+             State::Taken => return Err(ProgramError::Outstanding),
+         })
+@@ -187,7 +187,7 @@ impl<'a> LayerControl<'a> {
+         });
+         let host = match (host, self.mode) {
+             (Ok(host), _) => host,
+-            (Err(stop), Mode::Buildup(_)) => {
++            (Err(stop @ Error::ProgramStopped(_)), _) | (Err(stop), Mode::Buildup(_)) => {
+                 return State::Complete(Err(stop))
+             }
+             (Err(_), Mode::Index) => {
+diff --git a/rust/geometry/src/program/styled.rs b/rust/geometry/src/program/styled.rs
+--- a/rust/geometry/src/program/styled.rs
++++ b/rust/geometry/src/program/styled.rs
+@@ -144,7 +144,7 @@ impl<'a> StyledControl<'a> {
+                 Phase::Walk(ProductControl::styled(element, allow_instancing, textures, hygiene))
+             }
+             (Ok(None), Next::Uncut) if ids.is_empty() => Phase::Complete(Ok(SubMeshCollection::new())),
+-            (Ok(None), Next::Uncut) => Phase::Voids(VoidControl::styled(element, ids, None)),
++            (Ok(None), Next::Uncut) => Phase::Layers(LayerControl::index(element, &[]), Next::Cut),
+             (Ok(None), Next::Cut) => Phase::Voids(VoidControl::styled(element, ids, None)),
+         }
+     }

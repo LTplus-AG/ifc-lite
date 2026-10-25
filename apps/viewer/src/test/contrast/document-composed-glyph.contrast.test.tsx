@@ -45,7 +45,7 @@ const sampleDocument: DocumentSpec = {
 
 async function completed(spec = sampleDocument): Promise<string> {
   const ui = render(<DocumentPreview document={spec} bindings={bindings} aggregations={new Map()}
-    chartMessages={chartMessages} topics={new Map()} selectedBlockId={null} onSelectBlock={() => {}} />);
+    chartMessages={chartMessages} topics={new Map()} onSelectBlock={() => {}} />);
   await waitFor(() => ui.querySelector('[data-preview-section]') !== null, 'completed compositor glyphs are mounted');
   assert.equal(ui.querySelectorAll('[data-preview-section]').length, 1);
   assert.equal(ui.querySelector('[aria-busy="true"]'), null, 'do not measure the pending SSR placeholder');

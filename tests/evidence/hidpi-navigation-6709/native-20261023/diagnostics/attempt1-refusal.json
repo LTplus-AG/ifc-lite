@@ -1,0 +1,8 @@
+{
+  "job": "b931bc81-0c4c-451e-b07e-9fd04212bc5a",
+  "stage": "Before browser startup",
+  "reason": "Public demo asset SHA256 ea6f04ea differs from catalogued FZK d42ab0de; fixture guard refused as required.",
+  "nativeIFCSamples": 0,
+  "artifactFreeze": "966 artifacts per side; identical fresh source-matched IFC WASM a16f7503...420a31; source remained clean.",
+  "correctiveAction": "Fetch canonical manifest fixture under fleet admission, retain refusal, run deliberate new smoke and cohort in separate attempt directory."
+}

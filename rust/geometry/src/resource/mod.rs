@@ -109,6 +109,13 @@ pub(crate) fn source_step() -> crate::Result<()> {
     #[cfg(not(feature = "retained-runtime"))]
     { check_current().map_err(Into::into) }
 }
+
+pub(crate) fn inspection_active() -> bool {
+    #[cfg(feature = "retained-runtime")]
+    { current_account().is_some_and(|account| account.1.is_some()) }
+    #[cfg(not(feature = "retained-runtime"))]
+    { false }
+}
 pub fn charge(cost: Cost) -> Result<Reservation, ProgramStop> {
     check_current()?;
     match current_account() {

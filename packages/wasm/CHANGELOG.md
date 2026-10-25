@@ -1,5 +1,15 @@
 # @ifc-lite/wasm
 
+## 10.6.1
+
+### Patch Changes
+
+- [#8120](https://github.com/LTplus-AG/ifc-lite/pull/8120) [`cf892ea`](https://github.com/LTplus-AG/ifc-lite/commit/cf892ea4cfefb06b6f864dbe2c72899da27b0553) Thanks [@louistrue](https://github.com/louistrue)! - Rust-only presentation and glTF export additions ([#7955](https://github.com/LTplus-AG/ifc-lite/issues/7955)). The native exporter can emit canonical UVs and PNG-backed textures when requested; the default browser engine keeps the texture encoder out. New public `MeshData` and `ExportError` members require Rust major 23, recorded in `rust-major-offset.json`. The npm-facing WASM API is unchanged.
+
+- [#8125](https://github.com/LTplus-AG/ifc-lite/pull/8125) [`60a505e`](https://github.com/LTplus-AG/ifc-lite/commit/60a505e9141f6f028ba47a65505275169fc84b5a) Thanks [@louistrue](https://github.com/louistrue)! - An element whose openings together cover it now renders nothing. When those openings could not be merged into one cutter, the cut came back empty but the element was then drawn uncut. In `ifc-lite-geometry`, a cut that empties a host with triangles now marks the host consumed, whichever cut path produced it.
+
+- [#8105](https://github.com/LTplus-AG/ifc-lite/pull/8105) [`f5d871f`](https://github.com/LTplus-AG/ifc-lite/commit/f5d871ffc1a349e7d06e1102dbb42c6605c7ae58) Thanks [@louistrue](https://github.com/louistrue)! - Preserve JavaScript UTF-16 code units in raw diff fingerprint inputs, component keys, and sidecar JSON text without changing the public diff facade.
+
 ## 10.6.0
 
 ### Minor Changes

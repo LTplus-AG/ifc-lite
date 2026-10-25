@@ -148,7 +148,7 @@ fn issue_7955_nonrigid_classifier_and_retryable_owner_checks_never_latch() {
         assert!(failure.origin().is_none());
         let (reply, operations) = program.admit(ticket, &router, &mut decoder).unwrap();
         affine += operations.iter().filter(|op| matches!(op.kind(), RetainedOperationKind::Affine { .. })).count();
-        let rejected = program.accept(reply, &foreign_router).err().expect("wrong owner keeps reply");
+        let rejected = program.accept(reply, &foreign_router).expect_err("wrong owner keeps reply");
         assert_eq!(rejected.error, RetainedProgramError::WrongOwner);
         program.accept(rejected.reply, &router).unwrap_or_else(|e| panic!("{:?}", e.error));
     }

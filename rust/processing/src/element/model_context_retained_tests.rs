@@ -15,11 +15,11 @@ fn s3_binding_rejects_equal_bytes_foreign_factory_and_borrowed_decoder() {
     let foreign = SourceBundle::new(SOURCE.to_vec());
     let mut foreign_decoder = foreign.decoder();
     assert_eq!(foreign_decoder.decode_by_id(1).unwrap().id, 1);
-    assert_eq!(snapshot.validate_decoder(&foreign_decoder), Err(RetainedContextError::MismatchedSource));
+    assert_eq!(snapshot.validate_decoder(&foreign_decoder), Err(RetainedContextError::Mismatched));
     let borrowed = EntityDecoder::new(SOURCE);
-    assert_eq!(snapshot.validate_decoder(&borrowed), Err(RetainedContextError::MismatchedSource));
+    assert_eq!(snapshot.validate_decoder(&borrowed), Err(RetainedContextError::Mismatched));
     let unbound = ProductionModel::new().snapshot(OwnedMeshProductionData::default());
-    assert_eq!(unbound.validate_decoder(&genuine), Err(RetainedContextError::MissingSource));
+    assert_eq!(unbound.validate_decoder(&genuine), Err(RetainedContextError::Missing));
     assert_eq!(unbound.validate_source(), Ok(()), "borrowed compatibility keeps its own contract");
 }
 
@@ -41,13 +41,13 @@ fn s3_snapshot_and_lifecycle_cross_threads_but_expire_only_on_source_invalidatio
         assert_eq!(first.validate_decoder(&decoder), Ok(()));
         assert_eq!(lifecycle.validate(), Ok(()));
         controller.invalidate_source();
-        assert_eq!(first.validate_decoder(&decoder), Err(RetainedContextError::StaleSource));
-        assert_eq!(second.validate_decoder(&decoder), Err(RetainedContextError::StaleSource));
-        assert_eq!(lifecycle.validate(), Err(RetainedContextError::StaleSource));
+        assert_eq!(first.validate_decoder(&decoder), Err(RetainedContextError::Stale));
+        assert_eq!(second.validate_decoder(&decoder), Err(RetainedContextError::Stale));
+        assert_eq!(lifecycle.validate(), Err(RetainedContextError::Stale));
     }).join().unwrap());
     drop((controller, first, second));
     assert!(weak.upgrade().is_none(), "lifecycle grants no source or decoder lease");
-    assert_eq!(lifecycle.validate(), Err(RetainedContextError::StaleSource));
+    assert_eq!(lifecycle.validate(), Err(RetainedContextError::Stale));
 }
 
 #[path = "model_context_snapshot_only_tests.rs"]

@@ -4,9 +4,9 @@ use super::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum RetainedContextError {
-    StaleSource,
-    MissingSource,
-    MismatchedSource,
+    Stale,
+    Missing,
+    Mismatched,
 }
 
 impl ProductionModel {
@@ -20,10 +20,10 @@ impl OwnedMeshProductionContext {
         &self,
         decoder: &ifc_lite_core::EntityDecoder<'_>,
     ) -> Result<(), RetainedContextError> {
-        self.validate_source().map_err(|_| RetainedContextError::StaleSource)?;
-        let source = self.source.as_ref().ok_or(RetainedContextError::MissingSource)?;
+        self.validate_source().map_err(|_| RetainedContextError::Stale)?;
+        let source = self.source.as_ref().ok_or(RetainedContextError::Missing)?;
         if !source.owns_decoder(decoder) {
-            return Err(RetainedContextError::MismatchedSource);
+            return Err(RetainedContextError::Mismatched);
         }
         Ok(())
     }
@@ -41,7 +41,7 @@ pub(super) struct ProductionLifecycle {
 impl ProductionLifecycle {
     pub(super) fn validate(&self) -> Result<(), RetainedContextError> {
         if self.id.source_epoch != self.state.source_epoch.load(Ordering::Acquire) {
-            return Err(RetainedContextError::StaleSource);
+            return Err(RetainedContextError::Stale);
         }
         Ok(())
     }

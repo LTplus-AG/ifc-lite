@@ -73,7 +73,7 @@ fn h2c_sdk_empty_definition_reaches_later_operands_and_final_witness() {
                 }
                 execution.accept(completed, decoder, router).unwrap_or_else(|error| panic!("{}", error.reason));
                 for (logical, receipt) in &execution.ledger {
-                    assert_eq!(logical.as_ref().evaluated_empty(), Some(receipt.is_empty()));
+                    assert_eq!(logical.as_ref().evaluated_empty(), Some(receipt.is_empty()), "M5_ACCEPTED_OUTCOME_LEDGER");
                 }
             }
             assert_eq!(empties, 1, "self-difference must return a certified empty operand");
@@ -102,7 +102,8 @@ fn h2c_sdk_mapped_boolean_operand_scale_changes_the_authored_cut_volume() {
     with_case(None, &bytes, |execution, decoder, router, worker, _, _| {
         while let Some(issued) = execution.issue_next(decoder, router, worker).unwrap() {
             let completed = issued.execute(worker, 0.001, 15., MeshLimits::default()).unwrap();
-            execution.accept(completed, decoder, router).unwrap_or_else(|error| panic!("{}", error.reason));
+            execution.accept(completed, decoder, router).unwrap_or_else(|error|
+                panic!("M5_ORDERED_INVOCATION_ACCEPTANCE {:?}", error.reason));
         }
         assert_eq!(execution.discharged_count(), 6);
         execution.validate_witness().unwrap();
@@ -111,5 +112,47 @@ fn h2c_sdk_mapped_boolean_operand_scale_changes_the_authored_cut_volume() {
         let actual = worker.volume(receipt.solid(), 1e-8).unwrap();
         assert!((actual - 8.).abs() <= 1e-7, "mapped source volume: {actual}");
         assert_eq!(plan.values().next().unwrap().evaluated_empty(), Some(false));
+    });
+}
+
+// #7955 M4: place an ALREADY COMPUTED Boolean, whose original frame is nonidentity.
+#[test]
+fn issue_7955_mapped_boolean_result_replaces_its_old_frame_exactly_once() {
+    let bytes = SOURCE.replace("#13=IFCEXTRUDEDAREASOLID", "#13=IFCBOOLEANRESULT(.DIFFERENCE.,#113,#314);#113=IFCEXTRUDEDAREASOLID")
+        .replace("ENDSEC;END-ISO", "#213=IFCBOOLEANRESULT(.UNION.,#114,#115);#114=IFCEXTRUDEDAREASOLID(#14,#507,#15,1.);#115=IFCEXTRUDEDAREASOLID(#14,#507,#15,2.);#506=IFCCARTESIANPOINT((5.,0.,0.));#507=IFCAXIS2PLACEMENT3D(#506,$,$);#314=IFCMAPPEDITEM(#315,#316);#315=IFCREPRESENTATIONMAP(#507,#318);#316=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#319,#320,#317,1.,#15);#317=IFCCARTESIANPOINT((2.,0.,0.));#318=IFCSHAPEREPRESENTATION(#2,'Body','CSG',(#213));#319=IFCDIRECTION((0.,1.,0.));#320=IFCDIRECTION((-1.,0.,0.));ENDSEC;END-ISO");
+    with_case(None, &bytes, |execution, decoder, router, worker, _, _| {
+        let mut placed_results = 0;
+        while let Some(issued) = execution.issue_next(decoder, router, worker).unwrap() {
+            let is_final_cut = issued.operations.iter().any(|operation| {
+                if let IssuedRetainedOperation::Boolean { inputs, operation, .. } = operation {
+                    if *operation == ifc_lite_geometry::BoolOp::Difference {
+                        let RealizationKind::Boolean(previous) = &inputs[1].realization.kind
+                            else { panic!("the mapped operand must be an actual Boolean result"); };
+                        assert!((previous.world_from_evaluation()[12] - 5.).abs() <= 1e-12);
+                        assert_ne!(previous.world_from_evaluation(), &inputs[1].frame,
+                            "the source fixture must relocate a nonidentity result frame");
+                        placed_results += 1;
+                        return true;
+                    }
+                }
+                false
+            });
+            let completed = issued.execute(worker, 0.001, 15., MeshLimits::default()).unwrap();
+            if is_final_cut {
+                // Inner union: x=[4,6], y=[-2,2], z=[0,2], old frame T(5,0,0).
+                // Map origin cancels T(5,0,0); target Rz(90)+T(2,0,0) gives
+                // x=[0,4], y=[-1,1], z=[0,2]. Host is [-1,1]x[-2,2]x[0,3].
+                // Intersection is 1*2*2=4, so 24-4=20 m3 remain. Reusing the
+                // old frame or composing it again yields a disjoint cut (24).
+                // Check physical geometry BEFORE acceptance can reject bad metadata.
+                let actual = worker.volume(completed.realizations()[0].solid(), 1e-8).unwrap();
+                assert!((actual - 20.).abs() <= 1e-7,
+                    "M4_PLACED_RESULT_VOLUME actual={actual} expected=20");
+            }
+            execution.accept(completed, decoder, router).unwrap_or_else(|error| panic!("{}", error.reason));
+        }
+        assert_eq!(placed_results, 1);
+        execution.validate_witness().unwrap();
+        assert_eq!(execution.traversal_plan().unwrap().values().len(), 1);
     });
 }

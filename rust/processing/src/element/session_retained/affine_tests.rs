@@ -162,3 +162,62 @@ fn issue_7955_native_nonuniform_and_reflected_copies_match_authored_bounds_and_v
         });
     }
 }
+
+// #7955 M4: a centered box cannot observe reflection. Move its profile away
+// from both mirror axes, then check absolute bounds and OUTWARD signed volume.
+#[test]
+fn issue_7955_reflected_off_origin_profile_has_anchored_outward_geometry() {
+    let bytes = mapped().replace("'SweptSolid',(#113,#114)", "'SweptSolid',(#113)")
+        .replace("OPERATOR3D($,$,#84,2.,$)", "OPERATOR3D(#201,#202,#84,1.,#203)")
+        .replace("#14=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,2.,4.)",
+            "#14=IFCRECTANGLEPROFILEDEF(.AREA.,$,#204,2.,4.)")
+        .replace("ENDSEC;END-ISO", "#201=IFCDIRECTION((1.,0.,0.));#202=IFCDIRECTION((0.,-1.,0.));#203=IFCDIRECTION((0.,0.,1.));#204=IFCAXIS2PLACEMENT2D(#205,$);#205=IFCCARTESIANPOINT((3.,5.));ENDSEC;END-ISO");
+    with_case(None, &bytes, |execution, decoder, router, worker, _, _| {
+        let mut copies = 0;
+        while let Some(issued) = execution.issue_next(decoder, router, worker).unwrap() {
+            let completed = issued.execute(worker, 0.001, 15., MeshLimits::default()).unwrap();
+            for receipt in completed.realizations() {
+                if let RealizationKind::Affine(_) = &receipt.kind {
+                    copies += 1;
+                    let mesh = worker.tessellate(receipt.solid(), 0.001, 15., MeshLimits::default()).unwrap();
+                    // Authored x=[2,4], y=[3,7], z=[0,3]. Mirror Y, then
+                    // translate (2,4,6): x=[4,6], y=[-3,1], z=[6,9].
+                    // These bounds precede the product's separate rigid placement.
+                    assert_anchored_outward_box(&mesh, [4., -3., 6.], [6., 1., 9.], 24.);
+                }
+            }
+            execution.accept(completed, decoder, router).unwrap_or_else(|error| panic!("{}", error.reason));
+        }
+        assert_eq!(copies, 1);
+        execution.validate_witness().unwrap();
+    });
+}
+
+fn assert_anchored_outward_box(mesh: &ifc_lite_geometry_runtime::TessellatedMesh,
+    low: [f64; 3], high: [f64; 3], volume: f64) {
+    assert!(!mesh.indices.is_empty());
+    for axis in 0..3 {
+        let actual_low = mesh.positions.chunks_exact(3).map(|p| p[axis]).fold(f64::INFINITY, f64::min);
+        let actual_high = mesh.positions.chunks_exact(3).map(|p| p[axis]).fold(f64::NEG_INFINITY, f64::max);
+        assert!((actual_low - low[axis]).abs() <= 1e-8,
+            "M4_REFLECT_ANCHORED_LOW axis={axis} actual={actual_low} expected={}", low[axis]);
+        assert!((actual_high - high[axis]).abs() <= 1e-8,
+            "M4_REFLECT_ANCHORED_HIGH axis={axis} actual={actual_high} expected={}", high[axis]);
+    }
+    let point = |index: u32| {
+        let i = index as usize * 3;
+        std::array::from_fn::<_, 3, _>(|axis| mesh.positions[i + axis] - low[axis])
+    };
+    let mut six_volume = 0.;
+    for triangle in mesh.indices.chunks_exact(3) {
+        let [a, b, c] = [point(triangle[0]), point(triangle[1]), point(triangle[2])];
+        six_volume += a[0] * (b[1] * c[2] - b[2] * c[1])
+            + a[1] * (b[2] * c[0] - b[0] * c[2]) + a[2] * (b[0] * c[1] - b[1] * c[0]);
+    }
+    // No abs(): reversing triangle winding must be independently observable.
+    assert!((six_volume / 6. - volume).abs() <= 1e-7,
+        "M4_REFLECT_OUTWARD_VOLUME actual={} expected={volume}", six_volume / 6.);
+}
+
+#[path = "oracle_cause_tests.rs"]
+mod oracle_cause_tests;

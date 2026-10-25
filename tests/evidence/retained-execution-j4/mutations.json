@@ -2,35 +2,128 @@
   {
     "id": "source-admission",
     "patch": "tests/evidence/retained-execution-j4/cut-d-source-admission.oracle.patch",
-    "test": "element::session_retained::adversarial_tests::common_retained_wrong_original_admission_rejects_before_consumption_then_duplicate_rejects",
-    "intendedFailure": "Behavioral assertion in the named real SDK test; compile failure or skip is not evidence.",
-    "historicalPatch": "tests/evidence/retained-execution-j4/source-admission.oracle.patch"
+    "test": "element::session_retained::affine_tests::oracle_cause_tests::issue_7955_source_admission_action_has_its_own_cause",
+    "intendedFailure": "Only the preregistered assertion/cause; no SDK numerical or release acceptance.",
+    "historicalPatch": "tests/evidence/retained-execution-j4/source-admission.oracle.patch",
+    "expectedFailure": {
+      "file": "rust/processing/src/element/session_retained/oracle_cause_tests.rs",
+      "line": 20,
+      "fragments": [
+        "M5_SOURCE_ADMISSION_GUARD accepted foreign source admission"
+      ]
+    }
   },
   {
     "id": "ordered-invocation",
     "patch": "tests/evidence/retained-execution-j4/cut-d-ordered-invocation.oracle.patch",
     "test": "element::session_retained::boolean_tests::h2c_sdk_mapped_boolean_operand_scale_changes_the_authored_cut_volume",
-    "intendedFailure": "Behavioral assertion in the named real SDK test; compile failure or skip is not evidence.",
-    "historicalPatch": "tests/evidence/retained-execution-j4/ordered-invocation.oracle.patch"
+    "intendedFailure": "Only the preregistered assertion/cause; no SDK numerical or release acceptance.",
+    "historicalPatch": "tests/evidence/retained-execution-j4/ordered-invocation.oracle.patch",
+    "expectedFailure": {
+      "file": "rust/processing/src/element/session_retained/boolean_tests.rs",
+      "line": 106,
+      "fragments": [
+        "M5_ORDERED_INVOCATION_ACCEPTANCE Receipt(ForeignBooleanOperationOrOrderedInputs)"
+      ]
+    }
   },
   {
     "id": "accepted-outcome",
     "patch": "tests/evidence/retained-execution-j4/cut-d-accepted-outcome.oracle.patch",
     "test": "element::session_retained::boolean_tests::h2c_sdk_empty_definition_reaches_later_operands_and_final_witness",
-    "intendedFailure": "Behavioral assertion in the named real SDK test; compile failure or skip is not evidence.",
-    "historicalPatch": "tests/evidence/retained-execution-j4/accepted-outcome.oracle.patch"
+    "intendedFailure": "Only the preregistered assertion/cause; no SDK numerical or release acceptance.",
+    "historicalPatch": "tests/evidence/retained-execution-j4/accepted-outcome.oracle.patch",
+    "expectedFailure": {
+      "file": "rust/processing/src/element/session_retained/boolean_tests.rs",
+      "line": 76,
+      "fragments": [
+        "M5_ACCEPTED_OUTCOME_LEDGER",
+        "left: Some(true)",
+        "right: Some(false)"
+      ]
+    }
   },
   {
     "id": "post-await-stop",
     "patch": "tests/evidence/retained-execution-j4/cut-d-post-await-stop.oracle.patch",
     "test": "element::session_retained::async_tests::j4_original_stop_after_await_refuses_delivery_and_retires_only_captured_domain",
-    "intendedFailure": "Behavioral assertion in the named real SDK test; compile failure or skip is not evidence.",
-    "historicalPatch": "tests/evidence/retained-execution-j4/post-await-stop.oracle.patch"
+    "intendedFailure": "Only the preregistered assertion/cause; no SDK numerical or release acceptance.",
+    "historicalPatch": "tests/evidence/retained-execution-j4/post-await-stop.oracle.patch",
+    "expectedFailure": {
+      "file": "rust/processing/src/element/session_retained/async_tests.rs",
+      "line": 105,
+      "fragments": [
+        "M5_POST_AWAIT_NO_SEAL",
+        "left: 1",
+        "right: 0"
+      ]
+    }
   },
   {
     "id": "receipt-report",
     "patch": "tests/evidence/retained-execution-j4/cut-d-receipt-report.oracle.patch",
-    "test": "element::session_retained::contract_tests::source_admission_report_is_independent_of_the_refusal_action",
-    "intendedFailure": "Typed diagnostic code equality; the source-admission refusal and intact packet remain active."
+    "test": "element::session_retained::affine_tests::oracle_cause_tests::issue_7955_source_admission_report_has_its_own_cause",
+    "intendedFailure": "Only the preregistered assertion/cause; no SDK numerical or release acceptance.",
+    "expectedFailure": {
+      "file": "rust/processing/src/element/session_retained/oracle_cause_tests.rs",
+      "line": 24,
+      "fragments": [
+        "M5_SOURCE_ADMISSION_REPORT",
+        "left: RuntimeFailed",
+        "right: ReceiptInvalid"
+      ]
+    }
+  },
+  {
+    "id": "affine-transform-omission",
+    "patch": "tests/evidence/retained-execution-j4/m4-affine-transform-omission.oracle.patch",
+    "test": "element::session_retained::affine_tests::issue_7955_reflected_off_origin_profile_has_anchored_outward_geometry",
+    "intendedFailure": "Physical geometry assertion before acceptance; not receipt-metadata rejection.",
+    "expectedFailure": {
+      "file": "rust/processing/src/element/session_retained/affine_tests.rs",
+      "line": 202,
+      "fragments": [
+        "M4_REFLECT_ANCHORED_LOW axis=0",
+        "expected=4"
+      ]
+    }
+  },
+  {
+    "id": "placed-result-old-frame",
+    "patch": "tests/evidence/retained-execution-j4/m4-placed-result-old-frame.oracle.patch",
+    "test": "element::session_retained::boolean_tests::issue_7955_mapped_boolean_result_replaces_its_old_frame_exactly_once",
+    "intendedFailure": "Physical geometry assertion before acceptance; not receipt-metadata rejection.",
+    "expectedFailure": {
+      "file": "rust/processing/src/element/session_retained/boolean_tests.rs",
+      "line": 149,
+      "fragments": [
+        "M4_PLACED_RESULT_VOLUME",
+        "expected=20"
+      ],
+      "measurement": {
+        "pattern": "M4_PLACED_RESULT_VOLUME actual=(?P<actual>[^ ]+) expected=20",
+        "value": 24.0,
+        "tolerance": 1e-07
+      }
+    }
+  },
+  {
+    "id": "placed-result-double-frame",
+    "patch": "tests/evidence/retained-execution-j4/m4-placed-result-double-frame.oracle.patch",
+    "test": "element::session_retained::boolean_tests::issue_7955_mapped_boolean_result_replaces_its_old_frame_exactly_once",
+    "intendedFailure": "Physical geometry assertion before acceptance; not receipt-metadata rejection.",
+    "expectedFailure": {
+      "file": "rust/processing/src/element/session_retained/boolean_tests.rs",
+      "line": 149,
+      "fragments": [
+        "M4_PLACED_RESULT_VOLUME",
+        "expected=20"
+      ],
+      "measurement": {
+        "pattern": "M4_PLACED_RESULT_VOLUME actual=(?P<actual>[^ ]+) expected=20",
+        "value": 24.0,
+        "tolerance": 1e-07
+      }
+    }
   }
 ]

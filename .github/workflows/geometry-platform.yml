@@ -93,7 +93,8 @@ jobs:
           cargo clippy --workspace --all-targets --features ifc-lite-processing/retained-native -- -D warnings
           cargo test --locked -p ifc-lite-processing --features retained-native --lib session_retained -- --nocapture 2>&1 | tee "$RUNNER_TEMP/native-transactions.log"
           if grep -q SKIP "$RUNNER_TEMP/native-transactions.log"; then exit 1; fi
-          for oracle in source-admission ordered-invocation accepted-outcome post-await-stop receipt-report; do
+          python3 -m unittest discover -s tests/evidence/retained-execution-j4 -p '*_tests.py'
+          for oracle in source-admission ordered-invocation accepted-outcome post-await-stop receipt-report affine-transform-omission placed-result-old-frame placed-result-double-frame; do
             python3 tests/evidence/retained-execution-j4/feature-oracle.py \
               --oracle "$oracle" --evidence-dir "$RUNNER_TEMP/cut-d-$oracle"
           done

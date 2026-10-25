@@ -103,7 +103,7 @@ fn j4_original_stop_after_await_refuses_delivery_and_retires_only_captured_domai
         assert!(matches!(rejected.reason, RetainedExecutionError::Stopped(ProgramStop::Cancelled)));
         assert!(rejected.issued.is_none(), "no retry after dispatch");
         assert_eq!(seal::attempts(), before_seal,
-            "post-await stop must prevent sealing, independently of later backing refusal");
+            "M5_POST_AWAIT_NO_SEAL: post-await stop must prevent sealing, independently of later backing refusal");
         drop(future);
         assert!(owner.incarnation().is_none());
         assert!(other.retained_owner().incarnation().is_some());

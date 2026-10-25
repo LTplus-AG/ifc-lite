@@ -169,24 +169,40 @@ same IFC graph is the duplication the anti-cruft rule exists to prevent.
 
 ### 6.2 What "reuse git's implementation" can mean here
 
-Reusing the real thing is attractive and mostly not possible:
+Two separate questions, which an earlier draft of this section ran together.
 
-- **git is GPL-2.0.** Its source cannot enter an MPL-2.0 tree.
-- **libgit2 is GPL-2.0 with a linking exception.** The exception permits linking,
-  not copying source in.
-- **`gitoxide` (`gix-*`) is MIT OR Apache-2.0** and is the only
-  license-compatible route to reusing git implementation code. But
-  `gix-hash::ObjectId` is SHA-1 (SHA-256 planned), so under §6.1's proposal its
-  object, ref and pack plumbing cannot be used as-is.
+**Licence, which constrains copying source:**
 
-**Proposed position**, to be written into `07-storage.md`:
+- **git is GPL-2.0**, so its source cannot be copied into an MPL-2.0 tree.
+- **libgit2 is GPL-2.0 with a linking exception.** The exception addresses
+  linking, not copying source in.
+- **`gitoxide` (`gix-*`) is MIT OR Apache-2.0**, so copying from it is
+  permitted with attribution. That makes it a licence-compatible source; the
+  earlier claim that it is the *only* compatible route was an overstatement, and
+  nothing here establishes a blanket conclusion about every git-adjacent
+  implementation.
 
-- Reuse git's **designs**, which are not copyrightable: the loose-object plus
-  packfile two-tier store, ref updates via lockfiles, the reflog, the
-  index/staging model, and compare-and-swap against an expected parent.
-- Depend on `gix-*` only for **hash-agnostic utilities** that pull their weight,
-  evaluated per crate.
-- **Never copy from git or libgit2.**
+**Object format, which constrains reuse regardless of licence.** An earlier
+draft said `gix-hash::ObjectId` is SHA-1 with SHA-256 planned. That is wrong:
+`gix-hash` 0.25.1 exposes **both `Sha1` and `Sha256`**, feature-gated. The
+limitation is narrower and different — BLAKE3 is not among its object kinds, and
+sharing SHA-256's 32-byte width does not make it substitutable, because an
+object format carries the algorithm in its own identity and in the embedded
+references between objects (§2.5). So under §6.1's BLAKE3 proposal gix's object,
+ref and pack plumbing is unusable for a *format* reason, not a licence one, and
+not for want of a 256-bit hash.
+
+**Position, to be written into `07-storage.md`:**
+
+- Reuse git's **designs**, which are not themselves copyrightable expression:
+  the loose-object plus packfile two-tier store, ref updates via lockfiles, the
+  reflog, the index/staging model, compare-and-swap against an expected parent.
+- Treat `gix-*` as a genuine option for hash-agnostic pieces, evaluated per
+  crate and attributed where used.
+- **Do not copy from git or libgit2**, on the licence ground above.
+
+If §6.1 lands on SHA-256 rather than BLAKE3, the format objection to gix
+disappears and this section needs revisiting rather than reapplying.
 
 ## 7. Research
 

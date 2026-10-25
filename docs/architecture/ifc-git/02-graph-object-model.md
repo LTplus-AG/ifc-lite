@@ -130,30 +130,55 @@ for the decision still open: author v1 there, or define the encoding in
 
 ## 2.5 Canonical encoding
 
-Rules, inherited from v0 §3 because they are already right and already pinned:
+**Retained from v0 §3 exactly**, because these rules are already right and
+already pinned by golden vectors:
 
-- **A fixed header per node**: magic, kind tag, format version. A new magic byte
-  is how a v1 announces itself.
-- **Sets are sorted, lists are not.** Where a field is semantically a set — a
-  property set's members, a relationship role's targets — it is sorted so input
-  order cannot reach the hash. Where order is content, it is preserved.
-- **Sort by code unit, never by locale.** A collation differs between machines;
-  `localeCompare` without an explicit locale uses the runtime default, and the
-  orders genuinely disagree. The hash exists to be identical across machines.
-- **Counts are encoded before members**, so a truncated stream cannot be
-  mistaken for a shorter valid one.
-- **No non-finite numbers reach the encoder.** `NaN` and the infinities become
-  distinct string tokens first, because JSON maps them to `null` — the same
-  token an absent value produces, and an equal hash is treated as content
-  identity downstream.
+- **A fixed header per node**: 4-byte ASCII magic, 1-byte kind tag, 1-byte
+  format version. A new magic is how a successor announces itself, which is what
+  v0's own change policy requires.
+- **Little-endian integers**, and every **count precedes the members it
+  introduces**, so a truncated stream cannot be mistaken for a shorter valid one.
+- **Strings are NFC-normalized by the hasher**, then written as a `u32`
+  length prefix and UTF-8 bytes.
+- **Sets are sorted, sequences are not.** Where a field is semantically a set —
+  a property set's members, a relationship role's targets — it is sorted so
+  input order cannot reach the hash. Where order is content, it is preserved.
+- **Sorting compares the same NFC-normalized UTF-8 bytes the encoder writes.**
+  Not the raw spelling, and never a locale collation. v0 states the reason, and
+  it is not a nicety: sorting raw while encoding normalized lets the producer's
+  *spelling* pick the order. `Pset_Béton` with a precomposed `é` and with a
+  decomposed one is one string canonically and two byte sequences rawly, so
+  against a neighbour like `Pset_Bzton` the two sort opposite ways — one
+  canonical input, two hashes. v0 calls that worse than a collision for a
+  verifier, because recompute-and-compare then fails on honest data.
 - **IFC names are exact EXPRESS PascalCase** (`IfcWallStandardCase`), never
-  normalised.
+  normalised as identifiers. (Unicode normalization above is a byte-level
+  canonicalisation of the string; it does not rewrite an EXPRESS name.)
 
-The Rust implementation of the string and number rules already exists and is
-pinned byte-for-byte against the TypeScript engine, in `rust/diff`
-(`js_json.rs`, `utf16.rs`, `fingerprint.rs`, landed under #8043). A v1 encoder
-reuses it rather than restating it; the UTF-16 reading in particular was costly
-to get right and should not be re-derived.
+### Where this departs from v0, and what that costs
+
+An earlier draft of this document claimed to inherit v0's rules while
+describing UTF-16 code-unit ordering. That was wrong twice over: v0 sorts
+normalized UTF-8 bytes, and the two orders **disagree above the BMP** (a
+surrogate pair's code units sort below `U+E000`, its UTF-8 bytes above). The
+UTF-16 contract belongs to `rust/diff`, which is a different compatibility
+format — it exists to reproduce V8's `JSON.stringify` byte for byte and has no
+bearing here. `rust/git` now follows v0.
+
+One departure remains, and it is deliberate rather than inherited:
+
+- **A child-hash reference is encoded as raw digest bytes, not as v0's tagged
+  hash string.** v0 embeds `"sha256:…"` so a parent need not know which
+  algorithm produced a child's hash. With one algorithm throughout (§6.1) that
+  indirection buys nothing and costs ~38 bytes per reference on an object whose
+  whole content is references. **This is a v1 change and needs its own magic,
+  version and golden vectors** — it is not compatible with `NHV0`, and nothing
+  here should be read as claiming otherwise.
+
+The string and number rules have a Rust implementation already pinned
+byte-for-byte against the TypeScript engine, in `rust/diff` (`js_json.rs`,
+`utf16.rs`, `fingerprint.rs`, landed under #8043). A v1 encoder reuses what
+applies and must *not* reuse the UTF-16 ordering, for the reason above.
 
 ## 2.6 Trees
 

@@ -140,7 +140,10 @@ fn issue_7955_c3_public_constructor_source_capture_cannot_hide_a_large_curve_loo
     clock::scope(|clock| {
         let report = run(SourceBundle::new(disk.clone().into_bytes()), &options).unwrap();
         let value: serde_json::Value = serde_json::from_slice(report.bytes().unwrap()).unwrap();
-        assert_eq!(value["outcome"]["kind"], "requires_numerical_evaluation");
+        // The existing constructor explicitly refuses multi-segment disks.
+        // This control must reach that real diagnostic before testing expiry.
+        assert_eq!(value["outcome"]["kind"], "refused");
+        assert_eq!(value["outcome"]["refusal"]["code"], "OPERATION_UNSUPPORTED");
         // Structural admission has only one item; checkpoint 100 is inside
         // constructor source capture, not the outer request/list walk.
         clock.expire_at("source_step", 100, 10000);

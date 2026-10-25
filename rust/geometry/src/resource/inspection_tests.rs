@@ -117,6 +117,7 @@ fn issue_7955_c2_later_actual_source_stop_still_precedes_account_under_entry_all
             let context = OwnedResourceContext::capture_current();
             source.resource_stop_handle().stop(expected);
             original.cancel();
+            assert_eq!(original.check(), Err(ProgramStop::Cancelled));
             (charge(Cost { work: 1, ..Default::default() }).unwrap_err(), context)
         })
     });

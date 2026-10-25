@@ -5,6 +5,29 @@
 // #6881: passive timing/allocation tap; never appends oracle GPU work.
 import { mountedRenderer } from './pick-depth-6881-observer.mjs';
 
+// FederatedModel.loadState is optional: the completed non-streaming add
+// publishes a parsed store without that field (as the viewer's Flow loader does).
+const completeModel = model => !!model.ifcDataStore && !!model.geometryResult && !model.loadError
+  && (model.loadState === undefined || model.loadState === 'complete');
+
+/** Actual publication plus resident batches for these public mesh fixtures. */
+export function capturePublication(expectedModels) {
+  const state = globalThis.__ifc_lite_viewer_store__?.getState();
+  const canvas = document.querySelector('canvas[data-viewport="main"]');
+  if (!state || !canvas || state.models.size !== expectedModels) return { ready: false, modelCount: state?.models.size };
+  const renderer = mountedRenderer(canvas), scene = renderer.getScene();
+  const frame = renderer.getFrameStats();
+  const modelIndices = [...new Set(scene.getBatchedMeshes().filter(batch => batch.indexCount > 0)
+    .flatMap(batch => batch.modelIndices ?? [0]).map(index => index ?? 0))];
+  const observation = { modelCount: state.models.size, metadataComplete: [...state.models.values()].every(completeModel),
+    loading: state.loading, streaming: state.geometryStreamingActive, error: state.error,
+    queuedMeshes: scene.hasQueuedMeshes(), modelIndices, drawCalls: frame.drawCalls, batchesNotResident: frame.batchesNotResident,
+    canvas: { width: canvas.width, height: canvas.height } };
+  return { ...observation, ready: observation.metadataComplete && !observation.loading && !observation.streaming && !observation.error
+    && !observation.queuedMeshes && modelIndices.length === expectedModels && observation.drawCalls > 0
+    && observation.batchesNotResident === 0 && canvas.width > 0 && canvas.height > 0 && !!renderer.getGPUDevice() };
+}
+
 export async function geometryWitness() {
   const state = globalThis.__ifc_lite_viewer_store__.getState();
   if (state.loading || state.geometryStreamingActive || !state.models.size) throw Error('Incomplete publication');
@@ -30,7 +53,7 @@ export async function geometryWitness() {
   };
   const results = [];
   for (const model of state.models.values()) {
-    if (model.loadState !== 'complete' || model.loadError || !model.geometryResult) throw Error('Incomplete model');
+    if (!completeModel(model)) throw Error('Incomplete model');
     const result = model.geometryResult;
     const normalized = await normalize(result);
     // Worker completion can reorder publication. Preserve every mesh field

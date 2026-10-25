@@ -48,7 +48,7 @@
   ],
   "node": "v24.22.0",
   "sources": {
-    "pick-depth-6881-hover.mjs": "863e4eaa05c213b58d0837b654abf071cc142104ba4fb88e224b539aa992a909",
-    "pick-depth-6881-controls.mjs": "c7824be939be348056e02ed552baa1c409ea11c393e306b54525496f10ded96a"
+    "pick-depth-6881-hover.mjs": "94bb1888eb05369f1800dde05b19fd9924da4c01e16bc6c64576df6edb7fa6d7",
+    "pick-depth-6881-controls.mjs": "af3cdbe13b0784edf06c6419362896fc052acf1f6913012cfa595990b024080d"
   }
 }

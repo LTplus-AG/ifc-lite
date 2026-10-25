@@ -14,7 +14,7 @@ export async function runGeometryControls(geometryWitness) {
   totalTriangles: 1, totalVertices: 3, coordinateInfo: { origin: [0, 0, 0] },
   instancedGeometryHashes: new Map([[10, 123n], [11, 456n]]) };
   let result = structuredClone(fixture);
-  const model = { loadState: 'complete', idOffset: 0, get geometryResult() { return result; } };
+  const model = { loadState: 'complete', ifcDataStore: { entities: { expressId: new Uint32Array([7]) } }, idOffset: 0, get geometryResult() { return result; } };
   const state = { loading: false, geometryStreamingActive: false, models: new Map([['triangle', model]]) };
   globalThis.__ifc_lite_viewer_store__ = { getState: () => state };
   const capture = async () => JSON.stringify(await geometryWitness());
@@ -47,6 +47,9 @@ export async function runGeometryControls(geometryWitness) {
     result = structuredClone(fixture); state.loading = true;
     await assert.rejects(capture, /Incomplete publication/); state.loading = false;
     model.loadState = 'failed'; await assert.rejects(capture, /Incomplete model/); model.loadState = 'complete';
+    model.loadState = undefined; assert.equal(await capture(), original);
+    const metadata = model.ifcDataStore; delete model.ifcDataStore;
+    await assert.rejects(capture, /Incomplete model/); model.ifcDataStore = metadata;
     state.models.clear(); await assert.rejects(capture, /Incomplete publication/);
     controls.push({ name: 'loading-failed-and-empty-publications-refused', passed: true });
     return { scope: 'Fingerprint algorithm invariants on a stated triangle fixture; not native GPU qualification', controls };

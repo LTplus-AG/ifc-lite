@@ -121,8 +121,11 @@ try {
         if (hash(readFileSync(fixture.path)) !== fixture.sha256) throw Error('Fixture bytes changed');
         await page.locator(index ? '#file-input-add' : '#file-input-open').setInputFiles(fixture.path);
         await waitForMetadataRenderReadiness({ trace: () => probeMetadataRenderTrace(page), logs: () => logs,
-          canvasReady: () => page.evaluate(`(() => {const s=globalThis.__ifc_lite_viewer_store__?.getState();return s?.models.size===${index + 1} && !s.loading && !s.geometryStreamingActive && !!globalThis.__ifc_lite_render_stats__?.().frame?.drawCalls;})()`),
+          completionMode: index ? 'load-root' : 'metadata-render',
+          canvasReady: async () => (await page.evaluate(async count => (await import('/__6881/hover.js')).capturePublication(count), index + 1)).ready,
           now: () => performance.now(), pause: () => sleep(50), timeoutMs: 90000 });
+        const completion = await probeMetadataRenderTrace(page);
+        if (!completion?.ended || completion.failed.length || !completion.done.includes('parser.complete') || !completion.done.includes('geometry.streamComplete')) throw Error('Authoritative metadata/geometry completion missing');
         const trace = await page.evaluate('globalThis.__IFC_LITE_LOAD_TRACE__.latest()');
         // cacheTier describes the write policy, not a hit/miss enum. Each
         // sample owns a fresh browser/profile, and the loader must use WASM.

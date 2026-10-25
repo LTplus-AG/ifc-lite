@@ -78,6 +78,7 @@ const report = { head, buildReceipt: receipt.id, command: process.argv, fixtureP
   scope: 'Native same-render functional comparisons; no hover performance acceptance', runs: [], accepted: false };
 let browser;
 let activeRun;
+let activePage;
 const stderr = process.stderr.write.bind(process.stderr);
 process.stderr.write = function(chunk, ...args) {
   const line = String(chunk);
@@ -96,6 +97,7 @@ try {
     browser = await launchNativeChrome(chromium);
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: dpr });
     const page = await context.newPage();
+    activePage = page;
     boundEvaluations(page);
     page.setDefaultTimeout(30000);
     page.on('pageerror', error => run.errors.push(String(error)));
@@ -122,10 +124,14 @@ try {
       await waitForMetadataRenderReadiness({ trace: async () => {
         const probe = await probeMetadataRenderTrace(page); attempt.lastProbe = probe; return probe;
       }, logs: () => logs,
-        canvasReady: () => page.evaluate(`(() => {const s=globalThis.__ifc_lite_viewer_store__?.getState();return s?.models.size===${count} && !s.loading && !s.geometryStreamingActive && !!globalThis.__ifc_lite_render_stats__?.().frame?.drawCalls;})()`),
+        canvasReady: async () => {
+          attempt.publication = await page.evaluate(async count => (await import('/__6881/hover.js')).capturePublication(count), count);
+          return attempt.publication.ready;
+        },
+        completionMode: count === 1 ? 'metadata-render' : 'load-root',
         now: () => performance.now(), pause: () => sleep(50), timeoutMs: 90000 });
       const trace = await probeMetadataRenderTrace(page);
-      if (!trace.ended || trace.failed.length) throw Error('Authoritative load incomplete');
+      if (!trace.ended || trace.failed.length || !trace.done.includes('parser.complete') || !trace.done.includes('geometry.streamComplete')) throw Error('Authoritative load incomplete');
       return trace;
       } catch (error) {
         try {
@@ -240,6 +246,17 @@ try {
   report.accepted = true;
 } catch (error) {
   report.error = String(error);
+  if (activePage && !activePage.isClosed()) {
+    try {
+      activeRun.lastObservation = await activePage.evaluate(() => ({
+        oracleSamples: globalThis.__6881?.samples,
+        adapters: globalThis.__6881Devices,
+        trace: globalThis.__IFC_LITE_LOAD_TRACE__?.latest(),
+        stats: globalThis.__ifc_lite_render_stats__?.(),
+      }));
+      await activePage.screenshot({ path: `${output}/failure.png`, timeout: 10000 });
+    } catch (diagnosticError) { report.diagnosticError = String(diagnosticError); }
+  }
   process.exitCode = 1;
 } finally {
   if (browser?.isConnected()) report.cleanupError = await closeBrowserWithTimeout(browser, 15000);

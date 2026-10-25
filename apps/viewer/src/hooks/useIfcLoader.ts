@@ -50,7 +50,7 @@ import { prepareResourceRetry, warmEngineForLoad } from '../lib/engine-warmup.js
 import { publishLoadTrace } from '../lib/perf/activeLoadTrace.js';
 import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuffer.js';
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
-import { forwardEntityIndexTo, createSourceFingerprintCell, type EntityIndexSink } from './entityIndexHandoff.js';
+import { forwardEntityIndexTo, createSourceFingerprintCell, createParserSharedSource, type EntityIndexSink } from './entityIndexHandoff.js';
 import { computeSourceFingerprint, computeSourceFingerprintFromBlob, type GeometryData } from '@ifc-lite/cache';
 import { SERVER_URL, USE_SERVER, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, CACHE_MESH_ONLY_MAX_SIZE, getDynamicBatchConfig } from '../utils/ifcConfig.js';
 import {
@@ -1354,15 +1354,7 @@ export function useIfcLoader() {
       const useParserWorker = WorkerParser.isSupported();
       let sharedSource: SharedArrayBuffer | null = null;
       if (useParserWorker) {
-        if (acquired.isShared && acquired.buffer instanceof SharedArrayBuffer) {
-          // acquireFileBuffer already streamed bytes into a SAB. Reuse it.
-          sharedSource = acquired.buffer;
-        } else {
-          // Smaller files (or non-COI) took the `await file.arrayBuffer()`
-          // branch — make a SAB copy so the parser worker can read it.
-          sharedSource = new SharedArrayBuffer(buffer.byteLength);
-          new Uint8Array(sharedSource).set(countCopy('source.sharedSource', new Uint8Array(buffer)));
-        }
+        sharedSource = createParserSharedSource(acquired, buffer);
         memoryAccounting.setSourceBytes(buffer.byteLength);
       }
 

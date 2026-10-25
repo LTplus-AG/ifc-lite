@@ -22,7 +22,26 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { GeometryProcessor } from '@ifc-lite/geometry';
 import type { WorkerParser } from '@ifc-lite/parser/browser';
-import { forwardEntityIndexTo, type EntityIndexSink } from './entityIndexHandoff.js';
+import { createParserSharedSource, forwardEntityIndexTo, type EntityIndexSink } from './entityIndexHandoff.js';
+
+describe('parser shared source (#7036 current-main integration)', () => {
+  it('shares streamed bytes without allocating a second full source', () => {
+    const buffer = new SharedArrayBuffer(3);
+    const view = new Uint8Array(buffer);
+    view.set([73, 70, 67]);
+    const source = createParserSharedSource({ buffer, view, isShared: true }, buffer);
+    assert.equal(source, buffer);
+    assert.deepEqual([...new Uint8Array(source)], [73, 70, 67]);
+  });
+
+  it('copies acquired source bytes into independent shared storage', () => {
+    const view = Uint8Array.from([73, 70, 67]);
+    const source = createParserSharedSource({ buffer: view.buffer, view, isShared: false }, view.buffer);
+    view.fill(0);
+    assert.ok(source instanceof SharedArrayBuffer);
+    assert.deepEqual([...new Uint8Array(source)], [73, 70, 67]);
+  });
+});
 
 /** The slot `useIfcLoader` assigns this callback to, read off `processAdaptive`
  *  itself so it cannot drift from what geometry actually accepts. */

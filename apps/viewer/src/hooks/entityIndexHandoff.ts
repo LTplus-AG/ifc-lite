@@ -20,6 +20,9 @@
  * and this hop is the part the viewer owns.
  */
 
+import { countCopy } from '@ifc-lite/load-trace';
+import type { AcquiredBuffer } from '../utils/acquireFileBuffer.js';
+
 /** The slice of `WorkerParser` this handoff needs (it may not exist yet). */
 export interface EntityIndexSink {
   setEntityIndex(
@@ -86,4 +89,12 @@ export function createSourceFingerprintCell(source: SharedArrayBuffer | null | u
   words[0] = source.byteLength >>> 0;
   words[1] = Math.floor(source.byteLength / 0x100000000);
   return cell;
+}
+
+/** Reuse streamed SAB input; otherwise share the acquired source with parser and geometry workers. */
+export function createParserSharedSource(acquired: AcquiredBuffer, buffer: ArrayBuffer | SharedArrayBuffer): SharedArrayBuffer {
+  if (acquired.isShared && acquired.buffer instanceof SharedArrayBuffer) return acquired.buffer;
+  const sharedSource = new SharedArrayBuffer(buffer.byteLength);
+  new Uint8Array(sharedSource).set(countCopy('source.sharedSource', new Uint8Array(buffer)));
+  return sharedSource;
 }

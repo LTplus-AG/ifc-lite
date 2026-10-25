@@ -44,10 +44,17 @@ Preparation receipts:
   [repack controller](../../e2e/pick-depth-6881-common-runtime.py) verifies those
   inputs and reuses the PC producer's exact generated runtime before rebuilding
   the production viewer through root Turbo.
-- Exclusive qualification `df597d9b-e93a-499d-a2ba-3375e5ab4650`: queued after
-  that prerequisite. It runs functional controls first and launches timing only
-  after those pass. The original request and output must be reconciled after an
-  interruption; this is not a retryable sample identifier.
+- Exclusive qualification `df597d9b-e93a-499d-a2ba-3375e5ab4650`: admission timed
+  out after an hour awaiting existing work. The project command never started:
+  no process exit code, output log, controller directory, GPU samples or timing
+  samples exist. The [original refusal](admission-refusal.json) is retained;
+  it is not a hardware failure or a performance result.
+- Untimed functional service `69d1b1cd-6b9d-49cc-aa23-8fedbef86e4d`: submitted
+  separately with the same source-matched production runtime and fixed native
+  protocol. It uses ordinary service admission and produces no timing verdict.
+  Inspect this original receipt and `functional-service-1/result.json` before
+  considering another timing request. A timed cohort still needs an exclusive
+  slot; no replacement timing samples have been submitted.
 
 [Preparation receipts](preparation.json) retain command/source identities,
 original outcomes and log hashes. GPU and hover acceptance remain pending.

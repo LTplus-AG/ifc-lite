@@ -602,6 +602,13 @@ match the original renderer, and device destruction retires pending picks. The c
 Four complete interleaved fresh-document public-model viewer pairs retain unchanged geometry and hit provenance, reduced mapped bytes, and mixed interaction timings. One pair has unresolved world-coordinate differences without camera/frame receipts; a fifth attempt lost the native browser. Cold-load provenance remains unverified. Real federated viewer qualification is outstanding. No speedup or shipping verdict is accepted. Lesson: a bounded readback and exact
 GPU sample establish neither complete picking parity nor interaction throughput.
 
+The [resumed qualification](../../tests/evidence/point-depth-6881-20261025/README.md)
+retains successful source-matched builds and a common geometry engine for the
+full-copy inverse and production viewer. The exclusive request expired awaiting
+existing work before its controller started, yielding no new GPU or timing
+samples. Untimed functional checks are separately submitted under service
+admission; the native correctness and interaction verdicts remain held.
+
 Independent Linux qualification adopted the existing readback cleanup repair;
 inverse fault controls demonstrate the ownership defects and the repaired paths
 release their buffers. Source-matched base/candidate viewer runtimes were built

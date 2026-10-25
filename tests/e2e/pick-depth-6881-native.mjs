@@ -212,6 +212,7 @@ try {
     const cleanupError = await closeBrowserWithTimeout(browser, 15000);
     if (cleanupError) throw Error(`Owned browser cleanup failed: ${cleanupError}`);
     browser = null;
+    if (run.errors.length || run.gpuErrors.length) throw Error('Late page/GPU driver errors during native teardown');
     run.ok = true;
     activeRun = null;
   }

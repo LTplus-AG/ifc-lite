@@ -44,7 +44,8 @@ pub(super) fn capture(
     let world_from_source = crate::math::mat4::col_major_array(
         &nalgebra::Matrix4::new_nonuniform_scaling(&nalgebra::Vector3::repeat(scale)),
     );
-    let object_frame = compose_frame(&world_from_source, &payload.source_from_evaluation)?;
+    let object_frame = compose_frame(&world_from_source, &payload.source_from_evaluation)
+        .map_err(|reason| reason.into_common(failure, FailureSite::Constructor, Some(item.id)))?;
     let slot = next_slot(program)?;
     let value = LogicalRetainedValue {
         definition: LogicalRetainedDefinition::Source {

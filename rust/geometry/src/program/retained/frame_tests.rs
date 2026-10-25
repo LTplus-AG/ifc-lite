@@ -284,3 +284,6 @@ fn s2_r2_extreme_valid_matrix_is_conservatively_refused_without_mutation() {
         RetainedPlacementStage::Mapping { source_id: 61 }).is_err());
     assert_eq!(value, before);
 }
+
+#[path = "frame_origin_tests.rs"]
+mod origins;

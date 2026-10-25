@@ -10,6 +10,10 @@ mod cache;
 mod presentation;
 mod affine;
 mod identity;
+mod frame;
+pub(in crate::program) mod value_error;
+use frame::compose_frame;
+pub(in crate::program) use frame::{validate_affine, proper_rigid};
 mod outcome;
 pub(in crate::program) mod boolean;
 pub(crate) use presentation::RetainedPresentation;
@@ -106,52 +110,6 @@ impl LogicalRetainedValue {
             .then_some(&self.world_from_source)
     }
 
-    pub(in crate::program) fn place_in_place(
-        &mut self,
-        transform: &nalgebra::Matrix4<f64>,
-        program: u64,
-        stage: RetainedPlacementStage,
-    ) -> crate::Result<()> {
-        self.validate_identity()?;
-        if program != self.slot.program {
-            return Err(crate::Error::geometry("foreign retained placement domain"));
-        }
-        validate_affine(transform)?;
-        if matches!(stage, RetainedPlacementStage::Product { .. }) { proper_rigid(transform)?; }
-        let matrix = crate::math::mat4::col_major_array(transform);
-        // Finite inputs need not compose to a finite frame. Compute both
-        // candidates before changing the occurrence or its placement lineage.
-        let (world_from_source, object_frame) =
-            if matches!(self.definition, LogicalRetainedDefinition::Source { .. }) {
-                let world = compose_frame(&matrix, &self.world_from_source)?;
-                let object = compose_frame(&world, &self.source_from_evaluation)?;
-                (world, object)
-            } else {
-                (self.world_from_source, compose_frame(&matrix, &self.object_frame)?)
-            };
-        validate_affine(&nalgebra::Matrix4::from_column_slice(&object_frame))?;
-        crate::resource::charge(crate::resource::Cost {
-            work: 1,
-            occurrences: 1,
-            ..Default::default()
-        })?
-        .retain();
-        crate::resource::reserve_headers(&mut self.placements, 1)?.retain();
-        let input = self.slot;
-        let output = next_slot(program)?;
-        self.world_from_source = world_from_source;
-        self.object_frame = object_frame;
-        self.slot = output;
-        self.placements.push(RetainedPlacement {
-            input,
-            output: self.slot,
-            stage,
-            matrix,
-        });
-        self.product_placed |= matches!(stage, RetainedPlacementStage::Product { .. });
-        Ok(())
-    }
-
     pub(crate) fn object_frame(&self) -> &[f64; 16] {
         &self.object_frame
     }
@@ -192,15 +150,6 @@ pub(crate) enum RetainedOperationKind {
     Boolean { inputs: Box<[LogicalRetainedValue; 2]>, operation: crate::BoolOp },
     Affine { input: LogicalRetainedValue, matrix: [f64; 16] },
 }
-// Transpose the existing row-major primitive to column-major operands. This
-// preserves its ordered f64 accumulation and avoids inverse-frame round trips.
-fn compose_frame(a: &[f64; 16], b: &[f64; 16]) -> crate::Result<[f64; 16]> {
-    let composed = crate::math::mat4::mul(b, a);
-    if composed.iter().any(|value| !value.is_finite()) {
-        return Err(crate::Error::geometry("retained composed frame is non-finite"));
-    }
-    Ok(composed)
-}
 pub(super) fn next_slot(program: u64) -> crate::Result<LogicalRetainedSlot> {
     use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT: AtomicU64 = AtomicU64::new(1);
@@ -213,29 +162,6 @@ pub(super) fn next_slot(program: u64) -> crate::Result<LogicalRetainedSlot> {
         program,
         occurrence,
     })
-}
-pub(super) fn validate_affine(matrix: &nalgebra::Matrix4<f64>) -> crate::Result<()> {
-    // Fail closed if f64 cannot establish nonsingularity. This intentionally
-    // refuses extreme valid matrices whose determinant overflows; no epsilon
-    // or relaxed finite-frame contract is introduced.
-    let determinant = matrix.fixed_view::<3, 3>(0, 0).determinant();
-    if matrix.iter().any(|x| !x.is_finite())
-        || matrix
-            .row(3)
-            .iter()
-            .zip([0., 0., 0., 1.])
-            .any(|(a, b)| *a != b)
-        || !determinant.is_finite()
-        || determinant == 0.
-    {
-        return Err(crate::Error::geometry(
-            crate::document::RetainedRefusal::UnsupportedSource(
-                "retained placement requires finite nonsingular affine matrix".into(),
-            )
-            .to_string(),
-        ));
-    }
-    Ok(())
 }
 /// Traversal completion is explicitly NOT final-net or runtime completion.
 #[derive(Debug)]
@@ -252,34 +178,6 @@ pub(crate) enum RetainedRequirement {
     MaterialLayers,
     IfcAppearance,
     PersistentFaces,
-}
-
-/// Typed refusal until affine BRep and display frame semantics are qualified.
-/// A logical occurrence never silently invokes mesh evaluation.
-pub(super) fn proper_rigid(matrix: &nalgebra::Matrix4<f64>) -> crate::Result<()> {
-    let linear = matrix.fixed_view::<3, 3>(0, 0);
-    // Both residuals are dimensionless. The Frobenius norm bounds the WHOLE
-    // Gram-matrix error (stricter than testing each dot product separately);
-    // the determinant residual additionally excludes orthogonal reflections.
-    // Reuse the retained source-placement rounding budget, not a length epsilon.
-    let rounding = crate::math::tol::RETAINED_RIGID_DOT_EPS;
-    if matrix.iter().any(|v| !v.is_finite())
-        || matrix
-            .row(3)
-            .iter()
-            .zip([0., 0., 0., 1.])
-            .any(|(a, b)| *a != b)
-        || (linear.transpose() * linear - nalgebra::Matrix3::identity()).norm() > rounding
-        || (linear.determinant() - 1.).abs() > rounding
-    {
-        return Err(crate::Error::geometry(
-            crate::document::RetainedRefusal::UnsupportedSource(
-                "retained nonrigid placement requires qualified affine capability".into(),
-            )
-            .to_string(),
-        ));
-    }
-    Ok(())
 }
 
 /// A bounded copy of logical references; no runtime receipt or object is cloned.

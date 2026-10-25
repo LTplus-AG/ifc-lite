@@ -140,7 +140,9 @@ impl<'a> ProductControl<'a> {
                 RetainedPlacementStage::Product {
                     product_id: self.element.id,
                 },
-            )?;
+            ).map_err(|error| error.into_common(&selection.failure_handle(),
+                crate::program::retained::failure::FailureSite::ProductPlacement,
+                Some(self.element.id)))?;
         }
         Ok(ProductOutput::Retained(values, selection))
     }

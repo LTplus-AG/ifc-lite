@@ -14,6 +14,8 @@ pub(in crate::program) enum FailureSite {
     MappingSource, MappingTarget, MappingOrigin, MappedRepresentation,
     MappingItems, MappingScale, MappingDirection,
     BooleanSource, BooleanOperator, BooleanFirstOperand, BooleanSecondOperand,
+    ProductPlacement, MappingPlacement, TypeMapPlacement,
+    MappingAffine, TypeMapAffine,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::program) enum StructuralReason {
@@ -44,6 +46,7 @@ pub(in crate::program) enum OriginCause {
     Structure(StructuralReason),
     Mapping(MappingReason),
     Boolean(BooleanReason),
+    Value(super::value_error::ValueReason),
     Processor(Option<crate::router::ProcessorOrigin>),
     /// The common helper has not been converted. Its text is never classified.
     Opaque(crate::Error),

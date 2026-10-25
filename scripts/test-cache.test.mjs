@@ -106,8 +106,8 @@ test('selective cache hashes actual Turbo inputs and fails closed without runtim
       ['TZ', 'Etc/UTC'], ['CACHE_PROOF_FAILURE', '1'],
     ]) assert.notEqual(dry(root, { ...env, [name]: value }).hash, initial.hash, name);
     const selected = dry(root, { ...env, TEST_PATTERN: 'needle', TEST_SHARD: '1', TEST_SHARDS: '4' });
-    assert.deepEqual(selected.environmentVariables.specified.env,
-      ['TEST_PATTERN', 'TEST_SHARD', 'TEST_SHARDS', 'IFC_LITE_TEST_CACHE_IDENTITY']);
+    assert.deepEqual([...selected.environmentVariables.specified.env].sort(),
+      ['IFC_LITE_TEST_CACHE_IDENTITY', 'TEST_PATTERN', 'TEST_SHARD', 'TEST_SHARDS']);
     assert.equal(selected.environmentVariables.configured.length, 4);
     for (const path of [
       'packages/embed-protocol/src/input.txt', 'packages/embed-protocol/test/invariant.test.mjs',

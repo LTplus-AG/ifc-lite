@@ -114,7 +114,10 @@ perfTally('render.mergeGeometry', vertices, 'vertices');              // render.
 - In a worker, `createWorkerTraceHost` switches the worker's registry on with
   tracing and posts its increments after every handler; `host.flush()` posts
   them early when the main thread is about to terminate the worker. Pass the
-  completed span name when its handler has not yet returned.
+  completed span name when its handler has not yet returned. A pooled worker
+  calls `host.reset()` after its completed handler unwinds, before admitting
+  another load. Reset disables counters and clears the previous recorder and
+  first-message state; the next trace-enable message begins a new epoch.
 - Both worker trace factories accept `endpoint: () => self` to count the
   worker's outgoing messages as `msg.worker.out.*` in its per-thread
   `workerCounters`. Transfer bytes come from the actual transfer list before

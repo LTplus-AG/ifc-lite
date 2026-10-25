@@ -138,7 +138,7 @@ export interface ProcessParallelOptions {
   /**
    * Lease the workers a host prewarmed for this load from this pool (#7036)
    * instead of spawning them; any it lacks are spawned. Every worker still
-   * serves only this load and is terminated by it. Omitted, every worker is
+   * serves one load at a time and returns only after a successful bounded reset. Omitted, every worker is
    * spawned here, as before.
    */
   workerPool?: GeometryWorkerPool;

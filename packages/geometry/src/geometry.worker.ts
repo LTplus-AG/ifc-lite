@@ -36,6 +36,8 @@ import {
 } from './batch-sizing.js';
 import { takeWasmPanicStash } from './wasm-panic-forward.js';
 import { traceGeometryWorkerMessage, meterTypedArrayArgs, countCopy, postPrepassEvent } from './worker-trace.js'; // #6956 spans, #6957 counters
+import type { GeometryWorkerResetMessage } from './worker-pool-reset.js';
+import { readWorkerWasmHeap } from './worker-heap.js';
 import { isColumnLengthRefusal } from './wasm-column-refusal.js';
 
 export interface GeometryWorkerInitMessage {
@@ -261,6 +263,7 @@ export interface GeometryWorkerSetSkipSmallCutsMessage {
 }
 
 export type GeometryWorkerRequest =
+  | GeometryWorkerResetMessage
   | GeometryWorkerInitMessage
   | GeometryWorkerStreamStartMessage
   | GeometryWorkerStreamChunkMessage
@@ -1313,15 +1316,7 @@ async function processSliceStreaming(session: ProcessingSession, jobsFlat: Uint3
 
 function emitSessionEnd(session: ProcessingSession): void {
   flushPending(session); // safety net for tail meshes
-  let wasmHeapBytes = 0;
-  try {
-    const wasmMemory = api?.getMemory() as { buffer?: ArrayBuffer } | undefined;
-    wasmHeapBytes = wasmMemory?.buffer?.byteLength ?? 0;
-  } catch (err) {
-    // Memory accounting only — the session still ends normally, it just reports
-    // a zero heap. Once per session end, so one line per worker per load.
-    console.warn('[Worker] wasm heap accounting unavailable; reporting 0 bytes:', err);
-  }
+  const wasmHeapBytes = readWorkerWasmHeap(api);
   (self as unknown as Worker).postMessage(
     { type: 'memory', meshBytes: session.cumulativeMeshBytes, wasmHeapBytes } as GeometryWorkerMemoryMessage,
   );
@@ -1366,8 +1361,31 @@ self.onmessage = (rawEvent: MessageEvent<GeometryWorkerRequest>) => {
   });
 };
 
+/** Drop JavaScript references and recovery replay state from the previous model. */
+function clearLoadState(): void {
+  activeSession = null;
+  cachedEntityIndex = null; entityIndexApplied = false;
+  cachedPrepassColumns = null; prepassColumnsApplied = false;
+  cachedSourceBytes = null; sourceBytesApplied = false;
+  sourcePreparedForStream = false; installedSourceSessionId = undefined;
+}
+
 async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<void> {
   try {
+    if (e.data.type === 'pool-reset') {
+      // FIFO dispatch admits this only after the pre-pass callback and stream-end unwind.
+      const wasmHeapBytes = readWorkerWasmHeap(api);
+      try { api?.clearPrePassCache(); } finally {
+        try { api?.free(); } finally { api = null; clearLoadState(); }
+      }
+      mergeLayersFlag = false; mergeLayersApplied = false; instancingEnabled = true;
+      geometryHashTolerance = null; geometryHashApplied = false;
+      tessellationQuality = null; tessellationQualityApplied = false;
+      skipSmallCuts = false; skipSmallCutsApplied = false;
+      traceGeometryWorkerMessage.flush(); traceGeometryWorkerMessage.reset();
+      (self as unknown as Worker).postMessage({ type: 'pool-reset-done', token: e.data.token, wasmHeapBytes });
+      return;
+    }
     if (e.data.type === 'resolve-styles-shard') {
       // Sharded pre-pass: resolve this worker's styled-item slice against the
       // entity index installed by the preceding set-entity-index (FIFO).
@@ -1592,7 +1610,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       } else {
         await ensureInit();
       }
-      (self as unknown as Worker).postMessage({ type: 'ready' });
+      (self as unknown as Worker).postMessage({ type: 'ready', wasmHeapBytes: readWorkerWasmHeap(api) });
       return;
     }
 
@@ -1736,26 +1754,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       }
       emitSessionEnd(activeSession);
       activeSession = null;
-      // Release the per-load entity index and drop the applied flag. Workers
-      // are normally terminated after a load, but a reused worker must not
-      // retain the (large) index buffers across loads, nor replay a stale
-      // index on a recovery re-init before the next load's set-entity-index
-      // arrives. The next load re-populates via its own set-entity-index.
-      cachedEntityIndex = null;
-      entityIndexApplied = false;
-      // Same rationale for the per-content pre-pass columns: drop them so a
-      // reused worker cannot replay a previous load's referenced-repmaps /
-      // material-layer index. The next load re-populates via set-prepass-columns.
-      cachedPrepassColumns = null;
-      prepassColumnsApplied = false;
-      // Release this worker's reference to the session source bytes and drop the
-      // applied flag. The wasm-side copy is reclaimed on worker termination (the
-      // pool is per-load) or overwritten by the next load's setSourceBytes on a
-      // reused instance; mirrors the entity index.
-      cachedSourceBytes = null;
-      sourceBytesApplied = false;
-      sourcePreparedForStream = false;
-      installedSourceSessionId = undefined;
+      clearLoadState();
       return;
     }
   } catch (err) {

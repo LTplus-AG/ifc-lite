@@ -14,6 +14,7 @@ export function postGeometryWorkerInit(
   worker: Worker,
   options: ProcessParallelOptions | undefined,
   sharedWasmModule: WebAssembly.Module | null,
+  initialized = false,
 ): void {
   // Instantiate WASM. When the host compiled the module once (`compileSharedWasmModule`), each
   // worker `initSync`s it (cheap); otherwise it falls back to compiling from
@@ -24,7 +25,7 @@ export function postGeometryWorkerInit(
   // no shared module is available — undefined leaves the worker on
   // wasm-bindgen's default `import.meta.url`-based resolution (Vite + webpack).
   const wasmUrlForWorker = options?.wasmUrls?.wasm;
-  worker.postMessage(
+  if (!initialized) worker.postMessage(
     {
       type: 'init',
       ...(sharedWasmModule

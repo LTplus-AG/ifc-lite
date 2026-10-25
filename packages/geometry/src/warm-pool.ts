@@ -20,7 +20,8 @@ let shared: GeometryWorkerPool | null = null;
 /** The shared pool, or null when the flag is off or the realm has no workers. */
 export function getWarmGeometryWorkerPool(): GeometryWorkerPool | null {
   if (typeof Worker === 'undefined' || !readWarmPoolFlag()) return null;
-  return (shared ??= new GeometryWorkerPool());
+  installIdleReleaseHooks();
+  return (shared ??= new GeometryWorkerPool({ canRetain: () => readWarmPoolFlag() && (typeof document === 'undefined' || !document.hidden) }));
 }
 
 /**
@@ -32,19 +33,31 @@ export function getWarmGeometryWorkerPool(): GeometryWorkerPool | null {
  * could not be compiled: the load then spawns as before).
  */
 export async function prewarmGeometryWorkers(
-  options: { fileSizeMB?: number; workerCountOverride?: number; wasmUrl?: string } = {},
+  options: { fileSizeMB?: number; workerCountOverride?: number; wasmUrl?: string; generation?: number } = {},
 ): Promise<number> {
   const pool = getWarmGeometryWorkerPool();
   if (!pool) return 0;
+  const generation = options.generation ?? pool.prewarmGeneration();
   const module = await compileSharedWasmModule(options.wasmUrl);
   if (!module) return 0;
   const { count } = planLoadWorkerCount(options.fileSizeMB ?? 8, options.workerCountOverride);
-  return pool.prewarm(count + 1, options.wasmUrl ?? '', (worker) => postGeometryWorkerInit(worker, undefined, module));
+  return pool.prewarm(count + 1, options.wasmUrl ?? '', (worker) => postGeometryWorkerInit(worker, undefined, module), generation);
 }
 
 /** Terminate every idle prewarmed worker (memory pressure, a hidden tab, a resource-limit retry). */
 export function releaseWarmGeometryWorkers(reason = 'release'): number {
   return shared?.drain(reason) ?? 0;
+}
+
+let idleReleaseHooksInstalled = false;
+function installIdleReleaseHooks(): void {
+  if (idleReleaseHooksInstalled || typeof document === 'undefined') return;
+  idleReleaseHooksInstalled = true;
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) releaseWarmGeometryWorkers('hidden');
+  });
+  // Hosts with a memory-pressure signal can also call the exported drain directly.
+  globalThis.addEventListener?.('memorypressure', () => releaseWarmGeometryWorkers('memory-pressure'));
 }
 
 /** Idle-pool counters for `?perfMem=1` and the benchmark guards; null before the pool exists. */

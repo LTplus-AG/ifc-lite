@@ -58,7 +58,7 @@ export { type StallPhase, type StallPhaseHandle } from './stall-phase.js';
 // opened so the download overlaps think time instead of blocking first
 // geometry. The host app decides when (idle / intent) and affordability.
 export { prewarmSharedWasmModule } from './wasm-shared-module.js';
-export { prewarmGeometryWorkers, releaseWarmGeometryWorkers, warmGeometryWorkerPoolStats } from './warm-pool.js'; // #7036
+export { getWarmGeometryWorkerPool, prewarmGeometryWorkers, releaseWarmGeometryWorkers, warmGeometryWorkerPoolStats } from './warm-pool.js'; // #7036
 export { prewarmMainThreadEngine } from './main-engine-init.js';
 export type { GeometryWorkerPoolStats } from './geometry-worker-pool.js';
 // `__IFC_LITE_*` flag bindings the host reads; the viewer registry spreads these (#6962).

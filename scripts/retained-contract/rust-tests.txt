@@ -52,3 +52,41 @@ fn issue_7955_constructed_semantics_remain_checked() {
         assert!(validate_model(&report, &binding).is_err(), "R4 constructed {name}");
     }
 }
+
+// #7955 W2: changing only the logical enumeration fact must be rejected even
+// when no geometry/removal is present. Keep cause validation independent of R4.
+#[test]
+fn issue_7955_enumeration_failure_flag_constructed() {
+    let case = case_named("failed_enumeration");
+    let mut binding = decode_binding(case.binding_wire.as_deref().unwrap()).unwrap();
+    let mut report = decode_model_report(&case.input_wire, &binding).unwrap();
+    assert!(validate_model(&report, &binding).is_ok(), "W2 valid incomplete enumeration");
+    let ModelReport::Failed(inner) = &mut report else { panic!("failed witness"); };
+    assert!(inner.partition.geometry.is_empty() && inner.partition.removed.is_empty());
+    inner.partition.enumeration_complete = true; binding.enumeration_complete = true;
+    assert!(validate_model(&report, &binding).is_err(), "W2 cause/flag constructed rejection");
+}
+#[test]
+fn issue_7955_enumeration_failure_flag_wire() {
+    let case = case_named("enumeration_failed_claims_complete_without_successes");
+    let binding = decode_binding(case.binding_wire.as_deref().unwrap()).unwrap();
+    assert!(decode_model_report(&case.input_wire, &binding).is_err(), "W2 cause/flag wire rejection");
+}
+#[test]
+fn issue_7955_enumeration_failure_success_contradictions() {
+    let enumeration = case_named("failed_enumeration");
+    let enumeration_binding = decode_binding(enumeration.binding_wire.as_deref().unwrap()).unwrap();
+    let ModelReport::Failed(enumeration) = decode_model_report(&enumeration.input_wire, &enumeration_binding).unwrap()
+        else { panic!("enumeration witness"); };
+    for name in ["failed_after_enumeration_with_geometry", "failed_after_enumeration_with_removed",
+        "cancelled_after_enumeration_with_geometry", "cancelled_after_enumeration_with_removed"] {
+        let case = case_named(name);
+        let binding = decode_binding(case.binding_wire.as_deref().unwrap()).unwrap();
+        let mut report = decode_model_report(&case.input_wire, &binding).unwrap();
+        assert!(validate_model(&report, &binding).is_ok(), "post-enumeration interruption: {name}");
+        if let ModelReport::Failed(inner) = &mut report {
+            inner.error = enumeration.error.clone();
+            assert!(validate_model(&report, &binding).is_err(), "W2 success contradiction: {name}");
+        }
+    }
+}

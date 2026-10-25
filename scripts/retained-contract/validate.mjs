@@ -130,6 +130,7 @@ function model(report, binding) {
     demand((p.refused.length === 0) === (report.status === 'complete'), 'complete/incomplete refusal partition');
   } else {
     refusalContext(report.error, binding);
+    demand(report.error.code !== 'ENUMERATION_FAILED' || !p.enumerationComplete, 'enumeration failure flag');
     demand((report.error.code === 'CANCELLED') === (report.status === 'cancelled'), 'terminal cause');
   }
 }

@@ -17,3 +17,11 @@ for (const item of wireCases) test(`#7955 raw ${item.name}`, () => {
   if (item.valid) assert.doesNotThrow(run);
   else assert.throws(run, /Retained contract:/u);
 });
+
+for (const item of wireCases.filter((entry) => entry.expectedBits)) {
+  test(`#7955 W1 exact binary64 ${item.name}`, () => {
+    const result = decode('Options', wireText(item));
+    const bytes = Buffer.alloc(8); bytes.writeDoubleBE(result.chordToleranceMetres);
+    assert.equal(bytes.toString('hex'), item.expectedBits, `decoded exact value: ${item.name}`);
+  });
+}

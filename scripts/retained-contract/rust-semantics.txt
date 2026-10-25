@@ -84,6 +84,7 @@ fn validate_model(report: &ModelReport, binding: &Binding) -> Result<(), &'stati
         ModelReport::Incomplete(_) => require(partition.enumeration_complete && !partition.refused.is_empty()),
         ModelReport::Failed(report) | ModelReport::Cancelled(report) => {
             refusal_context(&report.error, binding, None)?;
+            require(report.error.code != Code::EnumerationFailed || !partition.enumeration_complete)?;
             Ok(())
         }
     }?;

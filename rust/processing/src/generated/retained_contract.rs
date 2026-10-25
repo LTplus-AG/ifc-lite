@@ -495,6 +495,7 @@ fn validate_model(report: &ModelReport, binding: &Binding) -> Result<(), &'stati
         ModelReport::Incomplete(_) => require(partition.enumeration_complete && !partition.refused.is_empty()),
         ModelReport::Failed(report) | ModelReport::Cancelled(report) => {
             refusal_context(&report.error, binding, None)?;
+            require(report.error.code != Code::EnumerationFailed || !partition.enumeration_complete)?;
             Ok(())
         }
     }?;
@@ -635,6 +636,10 @@ impl<'de> serde::de::Visitor<'de> for WireSeed {
 fn wire_field(fields: WireFields, key: &str) -> Option<&'static str> {
     fields.iter().find_map(|(name, ty)| if *name == key { Some(*ty) } else { None })
 }
+// Both parsing passes require serde_json/float_roundtrip, explicitly selected by
+// EACH consuming crate's dev-dependency. JSON decimals round once to binary64
+// (nearest, ties to even), like JS JSON.parse; default Serde parsing is insufficient.
+// Keep this streaming duplicate/shape/bounds pass before typed construction.
 fn preflight_wire(name: Option<&'static str>, json: &str) -> Result<(), String> {
     use serde::de::DeserializeSeed;
     if json.len() > MAX_WIRE_BYTES { return Err("wire bytes".into()); }

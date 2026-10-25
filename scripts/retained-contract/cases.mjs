@@ -193,3 +193,14 @@ for (const status of ['failed', 'cancelled']) for (const outcome of ['geometry',
     input.partition.enumerationComplete = false; item.binding.enumerationComplete = false;
   });
 }
+
+// #7955 W2: isolate the cause/flag relation with ZERO geometry/removal successes.
+mutant('enumeration_failed_claims_complete_without_successes', 'failed_enumeration', (input, item) => {
+  input.partition.enumerationComplete = true; item.binding.enumerationComplete = true;
+});
+// Success-count contradictions change only the terminal cause, not the manifest.
+for (const outcome of ['geometry', 'removed']) {
+  mutant(`enumeration_failed_claims_complete_with_${outcome}`, `failed_after_enumeration_with_${outcome}`, (input) => {
+    input.error = structuredClone(topError);
+  });
+}

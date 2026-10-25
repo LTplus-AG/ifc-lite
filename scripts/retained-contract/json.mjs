@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 // JSON.parse alone loses duplicate members. Preflight the bounded wire text
 // before parsing so escaped duplicate keys and extreme nesting fail closed too.
+// JSON.parse supplies correctly rounded binary64 decimals (nearest, ties to even);
+// both private Rust parsing passes request serde_json/float_roundtrip to match.
 export function parseWire(json, maxBytes, maxDepth) {
   const invalid = () => { throw new Error('Retained contract: invalid JSON envelope'); };
   if (typeof json !== 'string' || Buffer.byteLength(json) > maxBytes) invalid();

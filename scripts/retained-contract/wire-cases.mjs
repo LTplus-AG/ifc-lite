@@ -58,3 +58,21 @@ export function wireText(item) {
     + (item.suffix ?? '').repeat(item.suffixCount ?? 0);
   return item.padBytes === undefined ? text : ' '.repeat(item.padBytes - Buffer.byteLength(text)) + text;
 }
+
+// #7955 W1: authored raw tokens and exact IEEE-754 bits, never reserialized from
+// parsed numbers or inferred from validator acceptance. These include decimals
+// that default Serde parsing double-rounds, rejects as overflow, or rounds to zero.
+for (const [name, token, expectedBits] of [
+  ['ordinary_rounding', '0.12345678901234567', '3fbf9add3746f65e'],
+  ['ordinary_tenth', '0.1', '3fb999999999999a'],
+  ['finite_extreme_rounding', '1.7976931348623158e308', '7fefffffffffffff'],
+  ['subnormal_rounding', '2.4703282292062328e-324', '0000000000000001'],
+  ['smallest_normal_rounding', '2.2250738585072014e-308', '0010000000000000'],
+  ['halfway_ties_to_even', '1.00000000000000011102230246251565404236316680908203125', '3ff0000000000000'],
+]) wireCases.push({ name, root: 'Options', valid: true, expectedBits,
+  text: json.replace('"chordToleranceMetres":0.0001', '"chordToleranceMetres":' + token) });
+for (const [name, token] of [
+  ['overflow_rounding', '1.7976931348623159e308'],
+  ['underflow_rounding', '2.4703282292062327e-324'],
+]) wireCases.push({ name, root: 'Options', valid: false,
+  text: json.replace('"chordToleranceMetres":0.0001', '"chordToleranceMetres":' + token) });

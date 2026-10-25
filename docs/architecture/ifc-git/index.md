@@ -2,10 +2,13 @@
 
 **Spec set: Draft v0.1, for discussion. Owner: Bruno Adam. Tracking: [#8038](https://github.com/LTplus-AG/ifc-lite/issues/8038).**
 
-> **Status: skeleton.** No code exists, and none of the specs in the reading map
-> below are written. This document states the direction and names the decisions
-> that have to be made before anything is built. Read §6 first if you are short
-> of time: it is the part that needs an answer.
+> **Status: skeleton.** None of the specs in the reading map below are written
+> yet. This document states the direction and names the decisions that still
+> have to be made. Read §6 first if you are short of time: it is the part that
+> needs an answer.
+>
+> One foundation is already built rather than proposed: the Rust diff engine
+> landed under #8042 while this was in draft (§8). Nothing else here exists.
 
 ## 1. North star
 
@@ -193,23 +196,37 @@ On incremental storage:
 
 One PR per row, each well inside the ~1,500-line limit.
 
-| # | PR | Depends on |
-| --- | --- | --- |
-| 1 | **This docs skeleton** (`index.md` + mkdocs nav) | none |
-| 2 | Rust crate scaffold | 1 |
-| 3 | **Port the diff engine to Rust**, faithfully: byte-exact parity against the TypeScript engine on real fixtures, `@ifc-lite/diff` keeping its public API | 2 |
-| 4 | `01-concepts.md`, `02-graph-object-model.md`, `03-diff.md` | 1, §6.1 answered |
-| 5 | Graph node model in Rust: GUID-agnostic node identity, with the existing content-match tiers as its reconciliation fallback | 3, 4 |
-| 6 | Authorship extraction across the four schemas | 5 |
-| 7 | Object store and refs: commit, branch, compare-and-swap on the head | 5, §6.2 answered |
-| 8 | The verb surface: `status`, `commit`, `branch`, `diff <a> <b>`, `log` | 7 |
-| 9 | `pull` / `push` against a remote | 8 |
-| 10 | Source-control view in the viewer | 8 |
+**The Rust diff engine is already done.** It landed under
+[#8042](https://github.com/LTplus-AG/ifc-lite/issues/8042) while this document
+was in draft, as ten stacked PRs: the byte-exact fingerprint foundation
+(#8043), keyed comparison (#8063), content matching (#8064), split and merge
+detection (#8068), successor matching (#8069), identity claims and lineage
+(#8070), the sidecar wire formats and the composed engine (#8071), independent
+WASM bindings and adapters (#8081), UTF-16-preserving document serde (#8104),
+and lossless typed fingerprint projections (#8105). `@ifc-lite/diff` now
+depends on `@ifc-lite/wasm` for that staged backend.
 
-PR 3 is the first substantial one, and is deliberately a **faithful port rather
-than an algorithm change**: parity is testable, so the risk stays bounded. The
-GUID-agnostic identity of §2.2 arrives in PR 5, on top of a port whose behaviour
-is already pinned.
+So `03-diff.md` documents what shipped rather than proposing it, and the
+GUID-agnostic identity of §2.2 builds on an engine whose behaviour is already
+pinned by parity fixtures.
+
+| # | PR | Status |
+| --- | --- | --- |
+| 1 | **This docs skeleton** (`index.md` + mkdocs nav) | this PR |
+| 2 | Rust diff engine, ported byte-exact under #8042 | **done** (#8043 → #8105) |
+| 3 | `01-concepts.md`, `02-graph-object-model.md`, `03-diff.md` | next; needs §6.1 answered |
+| 4 | Graph node model in Rust: GUID-agnostic node identity, with the shipped content-match tiers as its reconciliation fallback | after 3 |
+| 5 | Authorship extraction across the four schemas | after 4 |
+| 6 | Object store and refs: commit, branch, compare-and-swap on the head | after 4; needs §6.2 answered |
+| 7 | The verb surface: `status`, `commit`, `branch`, `diff <a> <b>`, `log` | after 6 |
+| 8 | `pull` / `push` against a remote | after 7 |
+| 9 | Source-control view in the viewer | after 7 |
+
+Two defects found while scoping this spec set were filed separately and are
+both now closed: a viewer Compare scope gap that hid any change confined to a
+geometry-less type object (#8040), and header-author stamping on the
+layer-apply path contradicting the rule against fabricated attribution
+(#8041).
 
 ## 9. Out of scope for v1
 

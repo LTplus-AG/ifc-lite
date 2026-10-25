@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // JSON.parse alone loses duplicate members. Preflight the bounded wire text
 // before parsing so escaped duplicate keys and extreme nesting fail closed too.
-export function parseWire(json, maxBytes) {
+export function parseWire(json, maxBytes, maxDepth) {
   const invalid = () => { throw new Error('Retained contract: invalid JSON envelope'); };
   if (typeof json !== 'string' || Buffer.byteLength(json) > maxBytes) invalid();
   const tokens = /\s*("(?:[^"\\\u0000-\u001f]|\\[^\r\n])*"|-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?|true|false|null|[{}\[\]:,])/uy;
@@ -16,7 +16,7 @@ export function parseWire(json, maxBytes) {
     const token = match[1];
     const top = stack.at(-1);
     if (token === '{' || token === '[') {
-      if (stack.length >= 32) invalid();
+      if (stack.length >= maxDepth) invalid();
       stack.push({ object: token === '{', key: true, keys: new Set() });
     } else if (token === '}' || token === ']') {
       if (!top || top.object !== (token === '}')) invalid();

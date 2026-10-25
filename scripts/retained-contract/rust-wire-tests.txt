@@ -1,0 +1,35 @@
+// SPDX-License-Identifier: MPL-2.0
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WireCase {
+    name: String, root: String, valid: bool, text: String, binding_wire: Option<String>,
+    pad_bytes: Option<usize>, prefix: Option<String>, prefix_count: Option<usize>,
+    suffix: Option<String>, suffix_count: Option<usize>, middle: Option<String>,
+    list_item: Option<String>, list_count: Option<usize>,
+}
+impl WireCase {
+    fn json(&self) -> String {
+        if let Some(item) = &self.list_item {
+            return format!("[{}]", vec![item.as_str(); self.list_count.unwrap()].join(","));
+        }
+        let text = format!("{}{}{}", self.prefix.as_deref().unwrap_or("").repeat(self.prefix_count.unwrap_or(0)),
+            self.middle.as_deref().unwrap_or(&self.text),
+            self.suffix.as_deref().unwrap_or("").repeat(self.suffix_count.unwrap_or(0)));
+        if let Some(bytes) = self.pad_bytes { format!("{}{text}", " ".repeat(bytes - text.len())) } else { text }
+    }
+}
+#[test]
+fn issue_7955_bounded_raw_wire_vectors() {
+    let cases: Vec<WireCase> = serde_json::from_str(WIRE_CASES).expect("raw vectors");
+    assert!(cases.len() >= 30, "nonzero raw vector discovery");
+    for case in cases {
+        let json = case.json();
+        let result = match case.root.as_str() {
+            "Envelope" => preflight_wire(None, &json),
+            "Shape:Products" => preflight_wire(Some("Products"), &json),
+            "Shape:Requirements" => preflight_wire(Some("Requirements"), &json),
+            root => validate_case(root, &json, case.binding_wire.as_deref()),
+        };
+        assert_eq!(result.is_ok(), case.valid, "raw {}: {:?}", case.name, result);
+    }
+}

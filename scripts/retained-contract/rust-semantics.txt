@@ -60,6 +60,9 @@ fn validate_model(report: &ModelReport, binding: &Binding) -> Result<(), &'stati
     };
     require(partition.identity == binding.identity)?;
     require(partition.enumeration_complete == binding.enumeration_complete)?;
+    if !partition.enumeration_complete {
+        require(partition.geometry.is_empty() && partition.removed.is_empty())?;
+    }
     let requested = product_map(&binding.requested)?;
     let non_geometric = product_map(&binding.non_geometric)?;
     let mut seen = std::collections::BTreeSet::new();

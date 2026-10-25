@@ -52,6 +52,18 @@ test('#7955 counts derive from the validated partition, never caller totals', ()
   assert.throws(() => validate('ModelReport', complete));
   assert.throws(() => counts(inspection, binding));
 });
+test('#7955 R4 incomplete enumeration settles known entries without successful counts', () => {
+  for (const name of ['failed_enumeration', 'cancelled_partial_enumeration']) {
+    const item = cases.find((entry) => entry.name === name);
+    assert.deepEqual(counts(item.input, item.binding), { geometry: 0, removed: 0, refused: 2, nonGeometric: 1 });
+  }
+  for (const status of ['failed', 'cancelled']) for (const outcome of ['geometry', 'removed']) {
+    const item = cases.find((entry) => entry.name === `${status}_after_enumeration_with_${outcome}`);
+    assert.deepEqual(counts(item.input, item.binding), {
+      geometry: outcome === 'geometry' ? 1 : 0, removed: outcome === 'removed' ? 1 : 0, refused: 1, nonGeometric: 1,
+    });
+  }
+});
 test('#7955 wire preflight rejects duplicate escaped keys and excessive nesting', () => {
   const valid = JSON.stringify(options);
   const duplicate = valid.replace('"schemaVersion":1', '"schemaVersion":2,"schemaVersion":1');

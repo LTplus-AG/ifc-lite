@@ -1,0 +1,125 @@
+// SPDX-License-Identifier: MPL-2.0
+// Streaming shape/duplicate preflight runs before typed allocation. No Value
+// intermediary can discard duplicate keys. Bounds describe this private wire
+// envelope only; they are not a runtime allocation permit or authentication.
+type WireFields = &'static [(&'static str, &'static str)];
+type WireVariants = &'static [(&'static str, WireFields)];
+#[derive(Clone, Copy)]
+enum WireShape {
+    Record(WireFields), Union(&'static str, WireVariants),
+    List(&'static str, usize, usize), Text, Number, Boolean,
+}
+struct WireSeed { shape: Option<WireShape>, depth: usize }
+impl<'de> serde::de::DeserializeSeed<'de> for WireSeed {
+    type Value = ();
+    fn deserialize<D: serde::Deserializer<'de>>(self, de: D) -> Result<(), D::Error> {
+        de.deserialize_any(self)
+    }
+}
+impl WireSeed {
+    fn scalar<E: serde::de::Error>(&self, accepts: bool) -> Result<(), E> {
+        if accepts || self.shape.is_none() { Ok(()) } else { Err(E::custom("wire scalar shape")) }
+    }
+    fn container<E: serde::de::Error>(&self) -> Result<(), E> {
+        if self.depth < MAX_WIRE_DEPTH { Ok(()) } else { Err(E::custom("wire depth")) }
+    }
+    fn child(&self, name: Option<&'static str>) -> WireSeed {
+        WireSeed { shape: name.map(wire_shape), depth: self.depth + 1 }
+    }
+}
+impl<'de> serde::de::Visitor<'de> for WireSeed {
+    type Value = ();
+    fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("bounded retained JSON shape")
+    }
+    fn visit_bool<E: serde::de::Error>(self, _: bool) -> Result<(), E> {
+        self.scalar(matches!(self.shape, Some(WireShape::Boolean)))
+    }
+    fn visit_str<E: serde::de::Error>(self, _: &str) -> Result<(), E> {
+        self.scalar(matches!(self.shape, Some(WireShape::Text)))
+    }
+    fn visit_i64<E: serde::de::Error>(self, _: i64) -> Result<(), E> {
+        self.scalar(matches!(self.shape, Some(WireShape::Number)))
+    }
+    fn visit_u64<E: serde::de::Error>(self, _: u64) -> Result<(), E> {
+        self.scalar(matches!(self.shape, Some(WireShape::Number)))
+    }
+    fn visit_f64<E: serde::de::Error>(self, _: f64) -> Result<(), E> {
+        self.scalar(matches!(self.shape, Some(WireShape::Number)))
+    }
+    fn visit_unit<E: serde::de::Error>(self) -> Result<(), E> { self.scalar(false) }
+    fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut seq: A) -> Result<(), A::Error> {
+        use serde::de::Error;
+        self.container()?;
+        let (item, min, max) = match self.shape {
+            Some(WireShape::List(item, min, max)) => (Some(item), min, max),
+            None => (None, 0, usize::MAX),
+            _ => return Err(A::Error::custom("wire array shape")),
+        };
+        let mut count = 0;
+        while seq.next_element_seed(self.child(item))?.is_some() {
+            count += 1;
+            if count > max { return Err(A::Error::custom("wire list maximum")); }
+        }
+        if count < min { return Err(A::Error::custom("wire list minimum")); }
+        Ok(())
+    }
+    fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
+        use serde::de::Error;
+        self.container()?;
+        if !matches!(self.shape, None | Some(WireShape::Record(_) | WireShape::Union(_, _))) {
+            return Err(A::Error::custom("wire object shape"));
+        }
+        let mut seen = std::collections::BTreeSet::new();
+        let mut tag_value = None;
+        while let Some(key) = map.next_key::<String>()? {
+            if seen.contains(&key) { return Err(A::Error::custom("duplicate wire member")); }
+            let field = match self.shape {
+                Some(WireShape::Record(fields)) => wire_field(fields, &key),
+                Some(WireShape::Union(tag, variants)) => {
+                    if key == tag {
+                        let value = map.next_value::<String>()?;
+                        if !variants.iter().any(|(name, _)| *name == value) {
+                            return Err(A::Error::custom("wire union tag"));
+                        }
+                        tag_value = Some(value);
+                        seen.insert(key);
+                        continue;
+                    }
+                    variants.iter().find_map(|(_, fields)| wire_field(fields, &key))
+                }
+                _ => None,
+            };
+            if self.shape.is_some() && field.is_none() { return Err(A::Error::custom("unknown wire field")); }
+            map.next_value_seed(self.child(field))?;
+            seen.insert(key);
+        }
+        let (fields, extra) = match self.shape {
+            Some(WireShape::Record(fields)) => (fields, 0),
+            Some(WireShape::Union(_, variants)) => {
+                let fields = variants.iter().find(|(name, _)| Some(*name) == tag_value.as_deref())
+                    .ok_or_else(|| A::Error::custom("missing wire tag"))?.1;
+                (fields, 1)
+            }
+            _ => return Ok(()),
+        };
+        if seen.len() != fields.len() + extra || fields.iter().any(|(key, _)| !seen.contains(*key)) {
+            return Err(A::Error::custom("wire record fields"));
+        }
+        Ok(())
+    }
+}
+fn wire_field(fields: WireFields, key: &str) -> Option<&'static str> {
+    fields.iter().find_map(|(name, ty)| if *name == key { Some(*ty) } else { None })
+}
+fn preflight_wire(name: Option<&'static str>, json: &str) -> Result<(), String> {
+    use serde::de::DeserializeSeed;
+    if json.len() > MAX_WIRE_BYTES { return Err("wire bytes".into()); }
+    let mut de = serde_json::Deserializer::from_str(json);
+    WireSeed { shape: name.map(wire_shape), depth: 0 }.deserialize(&mut de).map_err(|e| e.to_string())?;
+    de.end().map_err(|e| e.to_string())
+}
+fn read_wire<T: serde::de::DeserializeOwned>(name: &'static str, json: &str) -> Result<T, String> {
+    preflight_wire(Some(name), json)?;
+    serde_json::from_str(json).map_err(|e| e.to_string())
+}

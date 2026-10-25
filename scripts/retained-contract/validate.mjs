@@ -17,7 +17,7 @@ function object(value) {
 // Reconstruct from data properties only, then freeze. No getter, mutable alias,
 // symbol, non-enumerable field or inherited payload can bypass validation.
 export function validateShape(name, value, depth = 0) {
-  demand(depth < 32, 'depth');
+  demand(depth < schema.maxWireDepth, 'depth');
   const type = schema.types[name];
   demand(type, 'known type');
   const child = (ref, item) => validateShape(ref, item, depth + 1);
@@ -51,6 +51,10 @@ export function validateShape(name, value, depth = 0) {
       })));
       if (name === 'Refusal') {
         demand(causes[result.family].includes(result.code), 'cause family');
+        const rule = schema.refusalRules[result.code];
+        demand(result.detail.reason === rule.reason, 'cause reason');
+        demand(rule.contexts.some(([stage, requirement]) => stage === result.stage
+          && requirement === result.requirement), 'cause context');
         if (result.source.kind === 'unbound') demand(result.family === 'configuration'
           && result.stage === 'configuration' && result.target.kind === 'model', 'unbound configuration only');
       }
@@ -103,6 +107,7 @@ function model(report, binding) {
   const p = report.partition;
   demand(equal(p.identity, binding.identity), 'report identity');
   demand(p.enumerationComplete === binding.enumerationComplete, 'enumeration binding');
+  if (!p.enumerationComplete) demand(p.geometry.length === 0 && p.removed.length === 0, 'enumeration before products');
   const requested = productMap(binding.requested);
   const nonGeometric = productMap(binding.nonGeometric);
   const seen = new Set();
@@ -150,7 +155,7 @@ export function validate(root, input, context) {
   return value;
 }
 export function decode(root, json, binding) {
-  return validate(root, parseWire(json, schema.maxWireBytes), binding);
+  return validate(root, parseWire(json, schema.maxWireBytes, schema.maxWireDepth), binding);
 }
 export function counts(report, binding) {
   const { partition: p } = validate('ModelReport', report, binding);

@@ -33,6 +33,12 @@ test('#7955 generator rejects unknown schema machinery instead of weakening it',
     (s) => { s.types.Options.fields.cycle = 'Options'; }, (s) => { s.types.Bool.kind = 'any'; },
     (s) => { s.types.Positive.max = Infinity; }, (s) => { s.types.Products.max = 1e9; },
     (s) => { s.types.Options.additionalProperties = true; }, (s) => { s.types.Code.values.push('ACCEPT'); },
+    (s) => { s.maxWireDepth = 0; }, (s) => { s.maxWireBytes = Infinity; },
+    (s) => { delete s.refusalRules.CANCELLED; },
+    (s) => { s.refusalRules.CANCELLED.reason = 'success'; },
+    (s) => { s.refusalRules.CANCELLED.contexts = [['unknown', 'textures']]; },
+    (s) => { s.refusalRules.INVALID_OPTIONS.contexts.push(['configuration', 'configuration']); },
+    (s) => { s.types.Interrupted.fields.partition = 'Options'; },
   ]) {
     const changed = structuredClone(schema); mutate(changed);
     assert.throws(() => validateSchema(changed));

@@ -20,9 +20,60 @@ export const causes = {
   consumer: ['CONSUMER_UNSUPPORTED', 'MIXED_ENGINE_EXPORT_UNSUPPORTED', 'EXPORT_FAILED'],
 };
 
+// Context pairs, not independent stage/requirement sets: a transport failure may
+// interrupt numerical work, but a numerical stage cannot claim a texture check.
+const contexts = {
+  configuration: ['configuration'], enumeration: ['enumeration'], source: ['source_authentication'],
+  representation: ['representation', 'instancing'], ownership: ['ownership'],
+  numerical: ['numerical_evaluation'], opening: ['openings'], layer: ['layers', 'interfaces'],
+  appearance: ['textures', 'palettes', 'normals'], identity: ['face_identity'],
+  publication: ['final_geometry', 'protected_removal', 'publication'],
+  transport: ['source_authentication', 'enumeration', 'ownership', 'representation', 'numerical_evaluation',
+    'openings', 'layers', 'interfaces', 'textures', 'palettes', 'normals', 'face_identity', 'instancing',
+    'final_geometry', 'protected_removal', 'publication', 'consumer'],
+  consumer: ['consumer'],
+};
+const pairs = (...stages) => stages.flatMap((stage) => contexts[stage].map((requirement) => [stage, requirement]));
+const rule = (reason, allowed) => ({ reason, contexts: allowed });
+const allContexts = pairs(...Object.keys(contexts));
+// Private staged semantics, not an origin mapping or a resource-accounting grant.
+const refusalRules = {
+  FEATURE_UNAVAILABLE: rule('unavailable', allContexts),
+  RETAINED_DISABLED: rule('unavailable', pairs('configuration')),
+  INVALID_OPTIONS: rule('invalid', pairs('configuration')),
+  CAPABILITY_MISSING: rule('unavailable', allContexts),
+  SOURCE_INVALID: rule('invalid', pairs('source', 'enumeration', 'representation')),
+  SOURCE_MISSING: rule('unavailable', pairs('source', 'enumeration', 'representation')),
+  SOURCE_MISMATCH: rule('mismatch', allContexts), SOURCE_STALE: rule('stale', allContexts),
+  ENUMERATION_FAILED: rule('invalid', pairs('enumeration')),
+  OWNER_MISMATCH: rule('mismatch', pairs('ownership')),
+  OWNER_RETIRED: rule('stale', pairs('ownership')),
+  RECEIPT_INVALID: rule('invalid', pairs('ownership', 'numerical', 'publication')),
+  OPERATION_UNSUPPORTED: rule('unsupported', pairs('representation', 'numerical', 'opening', 'layer')),
+  GEOMETRY_INVALID: rule('invalid', [['numerical', 'numerical_evaluation'], ['publication', 'final_geometry']]),
+  OPENING_INVALID: rule('invalid', pairs('opening')),
+  LAYER_CUT_FAILED: rule('invalid', [['layer', 'layers']]),
+  INTERFACE_UNPROVEN: rule('unproven', [['layer', 'interfaces']]),
+  APPEARANCE_INVALID: rule('invalid', pairs('appearance')),
+  TEXTURE_UNAVAILABLE: rule('unavailable', [['appearance', 'textures']]),
+  PALETTE_INVALID: rule('invalid', [['appearance', 'palettes']]),
+  NORMAL_UNPROVEN: rule('unproven', [['appearance', 'normals']]),
+  IDENTITY_UNPROVEN: rule('unproven', pairs('identity')),
+  REMOVAL_POLICY_UNPROVEN: rule('unproven', [['publication', 'protected_removal']]),
+  PUBLICATION_FAILED: rule('backend_failure', pairs('publication')),
+  RESOURCE_EXHAUSTED: rule('exhausted', allContexts), DEADLINE_EXCEEDED: rule('deadline', allContexts),
+  RUNTIME_FAILED: rule('backend_failure', allContexts), WORKER_RETIRED: rule('stale', allContexts),
+  DEVICE_LOST: rule('unavailable', allContexts), CANCELLED: rule('cancelled', allContexts),
+  CONSUMER_UNSUPPORTED: rule('unsupported', pairs('consumer')),
+  MIXED_ENGINE_EXPORT_UNSUPPORTED: rule('unsupported', pairs('consumer')),
+  EXPORT_FAILED: rule('backend_failure', pairs('consumer')),
+};
+
 export const schema = {
   version: 1,
   maxWireBytes: 4 * 1024 * 1024,
+  maxWireDepth: 32,
+  refusalRules,
   types: {
     Version: literal(1), Retained: literal('retained'), False: literal(false), Bool: { kind: 'bool' },
     Hash: { kind: 'text', format: 'hash' }, Commit: { kind: 'text', format: 'commit' },

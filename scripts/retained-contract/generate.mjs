@@ -6,7 +6,9 @@ import { fileURLToPath } from 'node:url';
 import { schema, causes } from './schema.mjs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { cases } from './cases.mjs';
+import { wireCases } from './wire-cases.mjs';
 import { demand } from './validate.mjs';
+import { rustWire } from './rust-wire-generate.mjs';
 
 export const roots = ['Options', 'Refusal', 'ModelReport', 'InspectionReport'];
 const directory = fileURLToPath(new URL('.', import.meta.url));
@@ -17,8 +19,8 @@ const variant = (text) => text.toLowerCase().split('_').map((part) => part[0].to
 const keys = (value, allowed) => demand(Object.keys(value).every((key) => allowed.includes(key)), 'schema keys');
 
 export function validateSchema(input) {
-  keys(input, ['version', 'maxWireBytes', 'types']);
-  demand(input.version === 1 && input.maxWireBytes === 4194304, 'schema version/bound');
+  keys(input, ['version', 'maxWireBytes', 'maxWireDepth', 'refusalRules', 'types']);
+  demand(input.version === 1 && input.maxWireBytes === 4194304 && input.maxWireDepth === 32, 'schema version/bound');
   const entries = Object.entries(input.types);
   demand(entries.length > 0, 'schema types');
   const visit = (name, path = []) => {
@@ -69,6 +71,26 @@ export function validateSchema(input) {
   }
   demand(JSON.stringify(input.types.Family.values) === JSON.stringify(Object.keys(causes)), 'single family taxonomy');
   demand(JSON.stringify(input.types.Code.values) === JSON.stringify(Object.values(causes).flat()), 'single cause taxonomy');
+  demand(JSON.stringify(Object.keys(input.refusalRules).sort()) === JSON.stringify([...input.types.Code.values].sort()), 'cause rules exhaustive');
+  for (const rule of Object.values(input.refusalRules)) {
+    keys(rule, ['reason', 'contexts']);
+    demand(input.types.DetailReason.values.includes(rule.reason), 'cause reason');
+    demand(Array.isArray(rule.contexts) && rule.contexts.length > 0, 'cause contexts');
+    const seen = new Set();
+    for (const pair of rule.contexts) {
+      demand(Array.isArray(pair) && pair.length === 2 && input.types.Stage.values.includes(pair[0])
+        && input.types.Requirement.values.includes(pair[1]), 'cause context pair');
+      demand(!seen.has(JSON.stringify(pair)), 'duplicate cause context'); seen.add(JSON.stringify(pair));
+    }
+  }
+  // A tag may occur last on the wire. Preflight can inspect its fields first
+  // only if the union's common field names always refer to the same shape.
+  for (const node of Object.values(input.types).filter((node) => node.kind === 'union')) {
+    const fields = new Map();
+    for (const ref of Object.values(node.variants)) for (const [field, type] of Object.entries(input.types[ref].fields)) {
+      demand(!fields.has(field) || fields.get(field) === type, 'union field shape conflict'); fields.set(field, type);
+    }
+  }
   for (const root of [...roots, 'Binding']) demand(Object.hasOwn(input.types, root), 'schema root');
 }
 function rustType(node) {
@@ -80,6 +102,9 @@ function rustType(node) {
   return 'String';
 }
 function rustDefinition(name, node) {
+  // Derives are a private construction detail. All JSON ingress must use the
+  // generated decode_* functions: schema preflight precedes these derives and
+  // rejects Serde's extra positional/object-enum forms without a Value buffer.
   const derive = '#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]\n';
   if (node.kind === 'record') return `${derive}#[serde(deny_unknown_fields)]\nstruct ${name} {\n${Object.entries(node.fields).map(([key, ref]) => `    #[serde(rename = ${quote(key)})] ${snake(key)}: ${ref},`).join('\n')}\n}\n`;
   if (node.kind === 'union') return `${derive}#[serde(tag = ${quote(node.tag)}, deny_unknown_fields)]\nenum ${name} {\n${Object.entries(node.variants).map(([tag, ref]) => `    #[serde(rename = ${quote(tag)})] ${variant(tag)}(Box<${ref}>),`).join('\n')}\n}\n`;
@@ -91,14 +116,15 @@ function rustCheck(name, node) {
   switch (node.kind) {
     case 'record': body = Object.entries(node.fields).map(([key, ref]) => `check_${snake(ref)}(&value.${snake(key)})?;`).join(' ') + ' Ok(())'; break;
     case 'union': body = `match value { ${Object.entries(node.variants).map(([tag, ref]) => `${name}::${variant(tag)}(inner) => check_${snake(ref)}(inner),`).join(' ')} }`; break;
-    case 'list': body = `require(${node.min ? `value.len() >= ${node.min} && ` : ""}value.len() <= ${node.max})?; for item in value { check_${snake(node.item)}(item)?; } Ok(())`; break;
+    case 'list': body = `require(${node.min === 1 ? '!value.is_empty() && ' : node.min ? `value.len() >= ${node.min} && ` : ''}value.len() <= ${node.max})?; for item in value { check_${snake(node.item)}(item)?; } Ok(())`; break;
     case 'enum': case 'bool': body = 'let _ = value; Ok(())'; break;
-    case 'literal': body = `require(${typeof node.value === 'string' ? 'value' : '*value'} == ${typeof node.value === 'number' ? node.value.toExponential() : quote(node.value)})`; break;
+    case 'literal': body = typeof node.value === 'boolean' ? `require(${node.value ? '*value' : '!*value'})`
+      : `require(${typeof node.value === 'string' ? 'value' : '*value'} == ${typeof node.value === 'number' ? node.value.toExponential() : quote(node.value)})`; break;
     case 'number': body = `require(value.is_finite() && *value > ${node.minExclusive.toExponential()} && *value <= ${node.max.toExponential()})`; break;
     case 'text': body = `text_format(value, ${quote(node.format)})`; break;
     default: throw new Error('Unknown schema kind');
   }
-  if (name === 'Refusal') body = body.replace(' Ok(())', ' require(cause_family(&value.code) == value.family)?; unbound_refusal(value)');
+  if (name === 'Refusal') body = body.replace(' Ok(())', ' require(cause_family(&value.code) == value.family)?; require(refusal_combination(value))?; unbound_refusal(value)');
   const borrowed = node.kind === 'list' ? `[${node.item}]` : rustType(node) === 'String' && !['record', 'union', 'enum'].includes(node.kind) ? 'str' : name;
   return `fn check_${snake(name)}(value: &${borrowed}) -> Result<(), &'static str> { let _ = value; ${body} }\n`;
 }
@@ -123,16 +149,21 @@ export async function projections(input = schema) {
   const header = `// SPDX-License-Identifier: MPL-2.0\n// @generated by scripts/retained-contract/generate.mjs; schema SHA256 ${fingerprint}\n// Private descriptive data only. No geometry, removal or publication authority.\n`;
   const entries = Object.entries(input.types);
   const semantics = await readFile(resolve(directory, 'rust-semantics.txt'), 'utf8');
+  const wire = await readFile(resolve(directory, 'rust-wire.txt'), 'utf8');
   const rust = header + entries.map(([n, t]) => rustDefinition(n, t)).join('') + '\n'
     + entries.map(([n, t]) => rustCheck(n, t)).join('')
     + `fn cause_family(code: &Code) -> Family { match code { ${Object.entries(causes).flatMap(([family, codes]) => codes.map((code) => `Code::${variant(code)} => Family::${variant(family)},`)).join(' ')} } }\n`
-    + '\n' + semantics;
+    + `fn refusal_combination(value: &Refusal) -> bool { match value.code {\n${Object.entries(input.refusalRules).map(([code, rule]) =>
+      `    Code::${variant(code)} => value.detail.reason == DetailReason::${variant(rule.reason)} && matches!((&value.stage, &value.requirement), ${rule.contexts.map(([stage, requirement]) => `(Stage::${variant(stage)}, Requirement::${variant(requirement)})`).join(' | ')}),`).join('\n')}\n} }\n`
+    + '\n' + semantics + '\n' + wire + '\n' + rustWire(input, roots);
   const rustTests = await readFile(resolve(directory, 'rust-tests.txt'), 'utf8');
+  const wireTests = await readFile(resolve(directory, 'rust-wire-tests.txt'), 'utf8');
   const outputs = new Map();
   for (const crate of ['geometry', 'processing']) {
     outputs.set(`rust/${crate}/src/generated/retained_contract.rs`, rust + '\n#[cfg(test)]\n#[path = "retained_contract_tests.rs"]\nmod tests;\n');
-    outputs.set(`rust/${crate}/src/generated/retained_contract_tests.rs`, header + rustTests
-      + `\nconst CASES: &str = r###"${JSON.stringify(cases)}"###;\n`);
+    outputs.set(`rust/${crate}/src/generated/retained_contract_tests.rs`, header + rustTests + '\n' + wireTests
+      + `\nconst CASES: &str = r###"${JSON.stringify(cases.map(({ input, binding, ...item }) => ({ ...item, inputWire: JSON.stringify(input), ...(binding ? { bindingWire: JSON.stringify(binding) } : {}) })))}"###;\n`
+      + `\nconst WIRE_CASES: &str = r###"${JSON.stringify(wireCases.map(({ binding, ...item }) => ({ ...item, ...(binding ? { bindingWire: JSON.stringify(binding) } : {}) })))}"###;\n`);
   }
   outputs.set('scripts/retained-contract/generated/contract.ts', header
     + "import { validate } from '../validate.mjs';\n" + entries.map(([n, t]) => tsDefinition(n, t)).join('')

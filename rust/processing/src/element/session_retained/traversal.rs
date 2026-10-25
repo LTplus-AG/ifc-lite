@@ -55,6 +55,8 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
                 }
             })
         })).map_err(protocol).and_then(|(result,_)|result);
+        self.resources.check().map_err(RetainedExecutionError::Stopped)?;
+        self.context.validate_decoder(decoder).map_err(RetainedExecutionError::Source)?;
         let program = match prepared {
             Ok(program) => program,
             Err(error) => { self.failed = true; return Err(error); }

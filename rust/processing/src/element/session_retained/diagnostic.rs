@@ -82,7 +82,13 @@ pub async fn diagnose_retained_native(source: Arc<SourceBundle>, product_id: u32
     let limits = runtime::NumericalLimits { chord_metres, angle_degrees, max_bytes };
     while let Some(issued) = execution.issue_next(&mut decoder, &router, &worker)? {
         let completed = issued.execute_async(&mut worker, limits).await.map_err(|e| NativeDiagnosticError(e.reason))?;
-        execution.accept(completed, &mut decoder, &router).map_err(|e| NativeDiagnosticError(e.reason))?;
+        execution.accept(completed, &mut decoder, &router).map_err(|rejected| {
+            let RuntimeRejectedCompletion { reason, work } = *rejected;
+            // This diagnostic ends the attempt; the private controller API
+            // returned the intact packet for callers that correct their fault.
+            drop(work);
+            NativeDiagnosticError(reason)
+        })?;
     }
     let witness = execution.into_witness()?;
     // Refusal is the contract even after every numerical operation succeeded.

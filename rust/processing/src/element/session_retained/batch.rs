@@ -73,10 +73,12 @@ impl<R: NumericalReceipt> RuntimeIssued<R> {
         self.lifecycle
             .validate()
             .map_err(RetainedExecutionError::Source)?;
-        if self.cancellation.stage.load(Ordering::Acquire) != EXECUTING
-            || self.cancellation.owner.incarnation().is_none()
-        {
-            return Err(protocol(ReceiptFailure::RetainedTransactionCancelled));
+        let stage = self.cancellation.stage.load(Ordering::Acquire);
+        if stage != EXECUTING {
+            return Err(RetainedExecutionError::Transition(stage));
+        }
+        if self.cancellation.owner.incarnation().is_none() {
+            return Err(RetainedExecutionError::DomainRetired);
         }
         Ok(())
     }

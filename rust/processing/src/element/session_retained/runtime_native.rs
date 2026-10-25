@@ -54,7 +54,7 @@ impl RetainedExecutor for SmlibWorker {
                 left.native_dependency()?, right.native_dependency()?, boolean_operation(operation)?,
                 limits.chord_metres, limits.angle_degrees, mesh)
                 .map(|value| RealizationKind::Boolean(Box::new(value))),
-        }.map_err(|error| RetainedExecutionError::Runtime(error))
+        }.map_err(RetainedExecutionError::Runtime)
     }
 }
 

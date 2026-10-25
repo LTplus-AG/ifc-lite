@@ -45,6 +45,8 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             return Err(protocol(ReceiptFailure::RetainedBatchLengthMismatch));
         }
         for (index, (operation, receipt)) in pending.operations.iter().zip(&work.realizations).enumerate() {
+            resource::charge(resource::Cost { work: index as u64 + 1, ..Default::default() })
+                .map_err(RetainedExecutionError::Stopped)?.retain();
             if pending.operations[..index].iter().any(|other|
                 other.expected().value().slot() == operation.expected().value().slot()) {
                 return Err(protocol(ReceiptFailure::DuplicateRetainedOutputSlot));
@@ -63,11 +65,9 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             .and_then(|()| self.permits.reserve(&self.resources, &mut self.ledger, work.realizations.len()))
             .and_then(|()| self.resources.check().map_err(RetainedExecutionError::Stopped));
         if let Err(reason) = validation {
-            // A foreign envelope never retires the legitimate sender's domain.
-            if reason.terminal() && self.pending.as_ref().is_some_and(|pending|
-                Arc::ptr_eq(&pending.cancellation.stage, &work.cancellation.stage)) {
-                self.cancel();
-            }
+            // Retire only this controller's captured domain on its terminal
+            // fault. Never cancel the supplied (possibly foreign) envelope.
+            if reason.terminal() { self.cancel(); }
             return Err(Box::new(RuntimeRejectedCompletion { reason, work }));
         }
         if work
@@ -118,10 +118,16 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             pending.cancellation.cancel();
             return Err(Box::new(RuntimeRejectedCompletion { reason, work }));
         }
-        pending
-            .cancellation
-            .stage
-            .store(ACCEPTED, Ordering::Release);
+        // Never overwrite a cancellation which raced the synchronous consume.
+        if pending.cancellation.stage.load(Ordering::Acquire) != ACCEPTED
+            || pending.cancellation.owner.incarnation().is_none()
+        {
+            self.failed = true;
+            pending.cancellation.cancel();
+            return Err(Box::new(RuntimeRejectedCompletion {
+                reason: protocol(ReceiptFailure::CancelledDelivery), work,
+            }));
+        }
         // Move the authenticated logical values; no clone/allocation after consumption.
         self.ledger.extend(pending.operations.into_iter()
             .map(|operation| operation.into_value()).zip(work.realizations));

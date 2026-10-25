@@ -36,10 +36,7 @@ pub(super) enum ReceiptFailure {
     OutstandingConstruction,
     RetainedBatchLengthMismatch,
     RetainedFrameMismatch,
-    RetainedIssuedTransactionCancelledOrRetired,
     RetainedManifestOutcomeMismatch,
-    RetainedTransactionCancelled,
-    RetiredRuntime,
     UndischargedDefinition,
     UndischargedRetainedInput,
     UnfinishedProduct,
@@ -59,7 +56,7 @@ pub(super) enum RetainedExecutionError {
     Common(TransactionError), Receipt(ReceiptFailure),
     Recipe(ifc_lite_geometry::document::RetainedRefusal),
     Geometry(ifc_lite_geometry::Error), Runtime(WorkerError),
-    Transition(u8), Unsupported(Unsupported), Stopped(ProgramStop),
+    Transition(u8), DomainRetired, Unsupported(Unsupported), Stopped(ProgramStop),
 }
 impl std::fmt::Display for RetainedExecutionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "{self:?}") }
@@ -92,7 +89,9 @@ impl From<u8> for RetainedExecutionError {
 
 impl RetainedExecutionError {
     pub(super) fn terminal(&self) -> bool {
-        matches!(self, Self::Stopped(_) | Self::Source(_) | Self::Core(_) | Self::Runtime(_)
+        matches!(self, Self::Stopped(_) | Self::Source(_) | Self::Core(_) | Self::Runtime(_) | Self::DomainRetired
+            | Self::Recipe(_) | Self::Geometry(_) | Self::Unsupported(_)
+            | Self::Transition(CANCELLED)
             | Self::Owner(WorkError::StaleSource | WorkError::Aborted))
             || matches!(self, Self::Common(error) if matches!(error.kind(),
                 ifc_lite_geometry::program::transactions::TransactionFailureKind::Source
@@ -141,6 +140,7 @@ impl RetainedExecutionError {
             Self::Receipt(ReceiptFailure::ForeignSourceAdmission) => Code::ReceiptInvalid,
             Self::Receipt(reason) => { let _ = reason; Code::ReceiptInvalid }
             Self::Transition(stage) => { let _ = stage; Code::Cancelled }
+            Self::DomainRetired => Code::WorkerRetired,
             Self::Geometry(error) => { let _ = error; Code::RuntimeFailed }
             Self::Owner(_) => Code::RuntimeFailed,
         }

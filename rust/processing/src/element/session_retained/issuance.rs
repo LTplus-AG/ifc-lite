@@ -3,7 +3,7 @@
 use super::*;
 pub(super) enum PendingRetainedOperation<R: NumericalReceipt> {
     Boolean { expected: Box<RetainedPlanOperation>, inputs: Box<[BooleanInput<R>; 2]>, operation: ifc_lite_geometry::BoolOp },
-    Construction { expected: Box<RetainedPlanOperation>, document: GeometryDocument, request: RetainedRequest },
+    Construction { expected: Box<RetainedPlanOperation>, document: GeometryDocument, request: RetainedRequest, backing: Arc<Storage> },
     Affine { expected: Box<RetainedPlanOperation>, input: Arc<RuntimeRealization<R>>, matrix: [f64; 16] },
 }
 impl<R: NumericalReceipt> PendingRetainedOperation<R> {
@@ -17,7 +17,7 @@ impl<R: NumericalReceipt> PendingRetainedOperation<R> {
 }
 pub(super) enum IssuedRetainedOperation<R: NumericalReceipt> {
     Boolean { inputs: Box<[BooleanInput<R>; 2]>, operation: ifc_lite_geometry::BoolOp, definition: LogicalRetainedDefinition },
-    Construction { request: RetainedRequest, definition: LogicalRetainedDefinition },
+    Construction { request: RetainedRequest, definition: LogicalRetainedDefinition, backing: Arc<Storage> },
     Affine { input: Arc<RuntimeRealization<R>>, matrix: [f64; 16], definition: LogicalRetainedDefinition },
 }
 impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
@@ -42,6 +42,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             let expected = Box::new(expected);
             let operation = match expected.kind() {
                 RetainedOperationKind::Construction(recipe) => {
+                    let backing = construction_storage::reserve(&self.resources, recipe)?;
                     let mut document = GeometryDocument::new();
                     let definition = match recipe {
                         RetainedRecipe::Extrusion(recipe) => document.add_retained_extrusion(recipe.clone()),
@@ -49,7 +50,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                         _ => return Err(RetainedExecutionError::Unsupported(Unsupported::ConstructionRecipe)),
                     }.map_err(protocol)?;
                     let request = document.prepare_retained(definition, worker.incarnation()).map_err(protocol)?;
-                    PendingRetainedOperation::Construction { expected, document, request }
+                    PendingRetainedOperation::Construction { expected, document, request, backing }
                 }
                 RetainedOperationKind::Boolean { inputs, operation } => {
                     let operation = boolean_input::operation(operation)?;
@@ -88,7 +89,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             issued.push(match operation {
                 PendingRetainedOperation::Boolean { expected, inputs, operation } => IssuedRetainedOperation::Boolean {
                     inputs: inputs.clone(), operation: *operation, definition: expected.value().definition().clone() },
-                PendingRetainedOperation::Construction { expected, request, .. } => IssuedRetainedOperation::Construction { request: request.clone(), definition: expected.value().definition().clone() },
+                PendingRetainedOperation::Construction { expected, request, backing, .. } => IssuedRetainedOperation::Construction { request: request.clone(), definition: expected.value().definition().clone(), backing: backing.clone() },
                 PendingRetainedOperation::Affine { expected, input, matrix } => IssuedRetainedOperation::Affine { input: input.clone(), matrix: *matrix, definition: expected.value().definition().clone() },
             });
         }

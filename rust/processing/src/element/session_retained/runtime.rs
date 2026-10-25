@@ -62,6 +62,8 @@ pub(super) trait NumericalReceipt {
     type Domain: ReceiptDomain;
     type Error: std::fmt::Display + std::fmt::Debug + Into<RetainedExecutionError>;
     fn heap_bytes() -> u64;
+    /// Actual returned buffer capacities; SDK object memory is opaque.
+    fn buffer_bytes(&self) -> Result<u64, RetainedExecutionError>;
     fn object(&self) -> Self::Object;
     fn evidence(&self) -> ReceiptEvidence<'_, Self::Object>;
     fn domain(&self) -> &Self::Domain;

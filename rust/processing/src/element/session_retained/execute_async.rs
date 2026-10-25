@@ -31,7 +31,7 @@ impl<R: NumericalReceipt> RuntimeIssued<R> {
             let permit = self.reserve_receipt()?;
             let result = worker.invoke(operation.invocation(), limits).await;
             self.checkpoint()?;
-            realizations.push(operation.seal(result?, permit)?);
+            realizations.push(operation.seal(result?, permit, &self.resources)?);
         }
         self.finish(realizations, storage)
     }

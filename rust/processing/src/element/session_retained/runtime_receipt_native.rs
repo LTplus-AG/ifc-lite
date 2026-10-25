@@ -19,6 +19,25 @@ impl NumericalReceipt for RealizationKind {
             .max(std::mem::size_of::<ifc_lite_geometry_runtime::RetainedAffineCopy>())
             .max(std::mem::size_of::<ifc_lite_geometry_runtime::RetainedDependencyResult>()) as u64
     }
+    fn buffer_bytes(&self) -> Result<u64, super::RetainedExecutionError> {
+        let capacities = match self {
+            Self::Construction(value) => {
+                let mesh = &value.completion().tessellation;
+                [mesh.positions.capacity(), mesh.flat_corner_normals.capacity(),
+                    mesh.indices.capacity(), mesh.revision_local_faces.capacity()]
+            }
+            Self::Boolean(value) => {
+                let mesh = value.mesh();
+                [mesh.positions.capacity(), mesh.corner_normals.capacity(),
+                    mesh.indices.capacity(), mesh.source_faces.capacity()]
+            }
+            Self::Affine(_) => [0; 4],
+        };
+        capacities.into_iter().zip([8u64, 8, 4, 4]).try_fold(0u64, |sum, (n, size)| {
+            (n as u64).checked_mul(size).and_then(|bytes| sum.checked_add(bytes))
+                .ok_or_else(|| super::RetainedExecutionError::Stopped(super::resource::overflow()))
+        })
+    }
     fn domain(&self) -> &Self::Domain {
         match self {
             Self::Construction(value) => value.owner(),

@@ -1,6 +1,6 @@
 --- a/rust/processing/src/element/session_retained/issuance.rs
 +++ b/rust/processing/src/element/session_retained/issuance.rs
-@@ -106,7 +106,7 @@
+@@ -107,7 +107,7 @@
      pub(super) fn invocation(&self) -> runtime::Invocation<'_, R> {
          match self {
              Self::Boolean { inputs, operation, .. } => runtime::Invocation::Boolean {

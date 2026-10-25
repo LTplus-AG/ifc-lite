@@ -25,7 +25,7 @@ impl IssuedCommonConstruction {
             let permit = self.reserve_receipt()?;
             let result = self.resources.with_scope(|| worker.invoke(operation.invocation(), NumericalLimits { chord_metres: chord, angle_degrees: angle, max_bytes: limits.max_bytes }));
             self.checkpoint()?;
-            realizations.push(operation.seal(result?, permit)?);
+            realizations.push(operation.seal(result?, permit, &self.resources)?);
         }
         self.finish(realizations, storage)
     }

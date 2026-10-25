@@ -87,3 +87,69 @@ fn source_admission_report_is_independent_of_the_refusal_action() {
         assert!(execution.pending.is_some());
     });
 }
+
+#[test]
+fn reached_construction_backing_is_admitted_before_clone_and_owned_until_last_reference() {
+    use ifc_lite_geometry::{analytic, document::RetainedExtrusion};
+    let source = ifc_lite_core::SourceBundle::new(SOURCE.as_bytes().to_vec());
+    let mut decoder = source.decoder();
+    let _router = super::tests::router(&mut decoder);
+    let solid = decoder.decode_by_id(13).unwrap();
+    let recipe = RetainedRecipe::Extrusion(RetainedExtrusion {
+        source: analytic::with_source_capture(|| analytic::extract_analytic_extrusion(&solid, &mut decoder)),
+        length_unit_scale: 1.,
+    });
+    let denied = resource::ExecutionAccount::new(resource::ExecutionPolicy::Bounded(resource::ResourceLimits {
+        live_bytes: Some(0), ..Default::default()
+    }));
+    let resources = denied.scope(OwnedResourceContext::capture_current);
+    let error = construction_storage::reserve(&resources, &recipe).err().expect("zero backing refuses");
+    assert!(matches!(error, RetainedExecutionError::Stopped(ProgramStop::ResourceRefused(failure))
+        if failure.dimension == resource::Dimension::LiveBytes));
+    assert_eq!(denied.usage().live_bytes, 0);
+    let original = resource::ExecutionAccount::new(resource::ExecutionPolicy::Bounded(Default::default()));
+    let resources = original.scope(OwnedResourceContext::capture_current);
+    let backing = construction_storage::reserve(&resources, &recipe).unwrap();
+    let retained = backing.clone();
+    let live = original.usage().live_bytes;
+    assert!(live > 4096, "actual reached profile/source storage counted");
+    drop(backing);
+    assert_eq!(original.usage().live_bytes, live);
+    drop(retained);
+    assert_eq!(original.usage().live_bytes, 0);
+}
+
+#[test]
+fn batch_length_and_stage_tampering_leave_the_original_reply_unconsumed() {
+    super::adversarial_tests::with_case(None, SOURCE, |execution, decoder, router, worker, _, _| {
+        let issued = execution.issue_next(decoder, router, worker).unwrap().unwrap();
+        let mut work = issued.execute(worker, 0.001, 15., MeshLimits::default()).unwrap();
+        let actual = work.realizations.pop().unwrap();
+        let mut rejected = execution.accept(work, decoder, router).expect_err("short batch");
+        assert!(matches!(rejected.reason, RetainedExecutionError::Receipt(ReceiptFailure::RetainedBatchLengthMismatch)));
+        assert_eq!(execution.discharged_count(), 0);
+        rejected.work.realizations.push(actual);
+        rejected.work.cancellation.stage.store(ISSUED, Ordering::Release);
+        let rejected = execution.accept(rejected.work, decoder, router).expect_err("wrong stage");
+        assert_eq!(execution.discharged_count(), 0);
+        assert!(execution.pending.is_some());
+        rejected.work.cancellation.stage.store(DELIVERED, Ordering::Release);
+        execution.accept(rejected.work, decoder, router).unwrap_or_else(|error| panic!("{}", error.reason));
+        assert_eq!(execution.discharged_count(), 1);
+    });
+}
+
+#[test]
+fn dead_original_worker_precedes_caller_fault_and_never_returns_a_retry_packet() {
+    super::adversarial_tests::with_case(None, SOURCE, |execution, decoder, router, worker, _, _| {
+        let issued = execution.issue_next(decoder, router, worker).unwrap().unwrap();
+        worker.retained_owner().retire();
+        let rejected = issued.execute(worker, f64::NAN, -1., MeshLimits { max_bytes: 0 }).err().unwrap();
+        assert!(matches!(rejected.reason, RetainedExecutionError::DomainRetired));
+        assert_eq!(rejected.reason.code(), Code::WorkerRetired);
+        assert!(rejected.issued.is_none());
+        assert_eq!(execution.discharged_count(), 0);
+        assert!(execution.issue_next(decoder, router, worker).is_err());
+        assert!(execution.failed);
+    });
+}

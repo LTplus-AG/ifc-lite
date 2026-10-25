@@ -36,10 +36,12 @@ impl<R: NumericalReceipt> RuntimeIssued<R> {
         // consults the unrelated ambient execution scope.
         self.resources.check().map_err(RetainedExecutionError::Stopped)?;
         self.lifecycle.validate().map_err(RetainedExecutionError::Source)?;
-        if self.cancellation.stage.load(Ordering::Acquire) != ISSUED
-            || self.cancellation.owner.incarnation().is_none()
-        {
-            return Err(protocol(ReceiptFailure::RetainedIssuedTransactionCancelledOrRetired));
+        let stage = self.cancellation.stage.load(Ordering::Acquire);
+        if stage != ISSUED {
+            return Err(RetainedExecutionError::Transition(stage));
+        }
+        if self.cancellation.owner.incarnation().is_none() {
+            return Err(RetainedExecutionError::DomainRetired);
         }
         Ok(())
     }

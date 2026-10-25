@@ -9,6 +9,11 @@ pub(super) struct RuntimeRealization<R: NumericalReceipt> {
     pub(super) definition: LogicalRetainedDefinition,
     pub(super) empty: bool,
     pub(super) _permit: Reservation,
+    pub(super) _buffers: Reservation,
+    // Runtime lineage retains authored requests. Keep their charges alive even
+    // if a detached later result outlives the controller and its input ledger.
+    pub(super) _source: Option<Arc<Storage>>,
+    pub(super) _inputs: [Option<Arc<Self>>; 2],
 }
 impl<R: NumericalReceipt> RuntimeRealization<R> {
     pub(super) fn is_empty(&self) -> bool { self.empty }

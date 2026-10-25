@@ -56,22 +56,29 @@ pub enum Requirement { ProductPlacement, OpeningClosure, MaterialLayers, IfcAppe
 pub struct Plan {
     pub(super) inner: logical::RetainedProductPlan,
     _storage: Option<crate::resource::Reservation>,
+    _requirements_storage: Option<crate::resource::Reservation>,
 }
 impl Plan {
-    pub(super) fn new(inner: logical::RetainedProductPlan) -> Self { Self { inner, _storage: None } }
+    pub(super) fn new(inner: logical::RetainedProductPlan) -> Self {
+        Self { inner, _storage: None, _requirements_storage: None }
+    }
     pub fn type_maps(plans: Vec<Self>) -> Result<Self, super::TransactionError> {
         let resources = super::Resources::capture_current();
         let count = plans.iter().try_fold(0usize, |n, plan| n.checked_add(plan.inner.values.len()))
             .ok_or_else(crate::resource::overflow)?;
         let mut values = Vec::new();
         let storage = resources.reserve_headers(&mut values, count)?;
-        for plan in plans { values.extend(plan.inner.values); }
-        resources.check()?;
-        Ok(Self { inner: logical::RetainedProductPlan { values, remaining: vec![
+        let mut remaining = Vec::new();
+        let requirements_storage = resources.reserve_headers(&mut remaining, 5)?;
+        remaining.extend([
             logical::RetainedRequirement::ProductPlacement, logical::RetainedRequirement::OpeningClosure,
             logical::RetainedRequirement::MaterialLayers, logical::RetainedRequirement::IfcAppearance,
             logical::RetainedRequirement::PersistentFaces,
-        ] }, _storage: Some(storage) })
+        ]);
+        for plan in plans { values.extend(plan.inner.values); }
+        resources.check()?;
+        Ok(Self { inner: logical::RetainedProductPlan { values, remaining },
+            _storage: Some(storage), _requirements_storage: Some(requirements_storage) })
     }
 }
 impl Plan {

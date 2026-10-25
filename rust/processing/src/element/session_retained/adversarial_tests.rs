@@ -305,11 +305,18 @@ fn actual_sealed_acceptance_charges_ledger_backing_to_original_account_after_cal
         let receipt = complete(e, d, r, w);
         assert_eq!(e.ledger.capacity(), 0);
         let before = original.usage();
+        let retained = receipt.realizations[0].clone();
         let foreign = account();
         foreign.scope(|| accept(e, receipt, d, r));
-        assert!(original.usage().live_bytes > before.live_bytes);
+        assert!(original.usage().work > before.work);
         assert_eq!(foreign.usage(), resource::Usage::default());
         assert!(e.ledger.capacity() >= 1);
+        let ledger_bytes = (e.ledger.capacity() * std::mem::size_of::<(LogicalRetainedValue, Arc<CommonRetainedRealization>)>()) as u64;
+        let live = original.usage().live_bytes;
+        drop((std::mem::take(&mut e.ledger), std::mem::take(&mut e.permits)));
+        assert!(live - original.usage().live_bytes >= ledger_bytes,
+            "ledger backing releases independently of the retained real receipt");
+        assert!(retained.validate_live().is_ok());
     });
 }
 #[test]
@@ -341,10 +348,10 @@ fn actual_pending_and_accepted_geometry_retain_original_resident_permit_until_ow
     let original = account();
     with_case(Some(&original), SOURCE, |e, d, r, w, _, _| {
         let receipt = complete(e, d, r, w);
-        let bytes = original.usage().live_bytes;
         let retained = receipt.realizations[0].clone();
+        let buffers = retained.kind.buffer_bytes().unwrap();
         accept(e, receipt, d, r);
-        assert!(original.usage().live_bytes >= bytes);
+        assert!(original.usage().live_bytes >= buffers);
         let permit = std::mem::take(&mut e.permits);
         let ledger = std::mem::take(&mut e.ledger);
         drop((permit, ledger));

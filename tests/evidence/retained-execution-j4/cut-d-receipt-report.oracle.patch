@@ -8,4 +8,4 @@
 +            Self::Receipt(ReceiptFailure::ForeignSourceAdmission) => Code::ReceiptInvalid,
              Self::Receipt(reason) => { let _ = reason; Code::ReceiptInvalid }
              Self::Transition(stage) => { let _ = stage; Code::Cancelled }
-             Self::Geometry(error) => { let _ = error; Code::RuntimeFailed }
+             Self::DomainRetired => Code::WorkerRetired,

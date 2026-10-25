@@ -13,7 +13,10 @@ pub enum TransactionFailureKind {
 pub struct TransactionError(RetainedFailure);
 impl TransactionError {
     pub fn original_stop(&self) -> Option<ProgramStop> {
-        match &self.0 { RetainedFailure::Stopped(stop) => Some(*stop), _ => None }
+        match &self.0 {
+            RetainedFailure::Stopped(stop) | RetainedFailure::Protocol(RetainedProgramError::Stopped(stop)) => Some(*stop),
+            _ => None,
+        }
     }
     pub fn kind(&self) -> TransactionFailureKind {
         use TransactionFailureKind as Kind;

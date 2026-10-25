@@ -17,11 +17,11 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             return Err(protocol(ReceiptFailure::ConflictingRetainedNumericalOutcome));
         }
         match (operation, receipt.kind.evidence()) {
-            (PendingRetainedOperation::Construction { expected, document, request }, ReceiptEvidence::Construction(completion)) => {
+            (PendingRetainedOperation::Construction { expected, document, request, .. }, ReceiptEvidence::Construction(completion)) => {
                 if receipt.is_empty() { return Err(protocol(ReceiptFailure::EmptyConstructionResult)); }
                 if !ifc_lite_geometry::program::transactions::same_admission(request, completion.request()) { return Err(protocol(ReceiptFailure::ForeignSourceAdmission)); }
                 document.validate_retained_completion(completion,
-                    owner.incarnation().ok_or_else(|| protocol(ReceiptFailure::RetiredRuntime))?).map_err(protocol)?;
+                    owner.incarnation().ok_or(RetainedExecutionError::DomainRetired)?).map_err(protocol)?;
                 if !same_frame(expected.value().source_from_evaluation(), &completion.source_from_evaluation)
                     || !same_frame(expected.value().evaluation_from_source(), &completion.evaluation_from_source) {
                     return Err(protocol(ReceiptFailure::RetainedFrameMismatch));

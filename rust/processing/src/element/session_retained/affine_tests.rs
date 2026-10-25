@@ -8,6 +8,31 @@ fn mapped() -> String {
         .replace("ENDSEC;END-ISO", "#81=IFCREPRESENTATIONMAP(#5,#83);#82=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#84,2.,$);#83=IFCSHAPEREPRESENTATION(#2,'Body','SweptSolid',(#113,#114));#84=IFCCARTESIANPOINT((2.,4.,6.));#114=IFCEXTRUDEDAREASOLID(#14,#5,#15,1.);ENDSEC;END-ISO")
 }
 #[test]
+fn affine_frame_authentication_distinguishes_signed_zero_before_consumption() {
+    with_case(None, &mapped(), |execution, decoder, router, worker, _, _| {
+        for _ in 0..2 {
+            let issued = execution.issue_next(decoder, router, worker).unwrap().unwrap();
+            let receipt = issued.execute(worker, 0.001, 15., MeshLimits::default()).unwrap();
+            execution.accept(receipt, decoder, router).unwrap_or_else(|e| panic!("{}", e.reason));
+        }
+        let issued = execution.issue_next(decoder, router, worker).unwrap().unwrap();
+        let receipt = issued.execute(worker, 0.001, 15., MeshLimits::default()).unwrap();
+        let PendingRetainedOperation::Affine { matrix, .. } = &mut execution.pending.as_mut().unwrap().operations[1]
+            else { panic!("affine output") };
+        let original = matrix[3];
+        assert_eq!(original, 0.);
+        matrix[3] = f64::from_bits(original.to_bits() ^ (1u64 << 63));
+        let rejected = execution.accept(receipt, decoder, router).expect_err("bit-exact frame required");
+        assert!(matches!(rejected.reason, RetainedExecutionError::Receipt(ReceiptFailure::ForeignAffineOperationOrOrderedInput)));
+        assert_eq!(execution.discharged_count(), 2, "neither affine output was accepted");
+        let PendingRetainedOperation::Affine { matrix, .. } = &mut execution.pending.as_mut().unwrap().operations[1]
+            else { panic!("affine output") };
+        matrix[3] = original;
+        execution.accept(rejected.work, decoder, router).unwrap_or_else(|e| panic!("{}", e.reason));
+        assert_eq!(execution.discharged_count(), 4);
+    });
+}
+#[test]
 fn h2b_sdk_swapped_batch_outputs_reject_before_any_common_acceptance() {
     with_case(None, &mapped(), |execution, decoder, router, worker, _, _| {
         for _ in 0..2 {

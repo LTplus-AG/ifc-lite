@@ -73,6 +73,7 @@ mod error;
 use error::{RetainedExecutionError, ReceiptFailure, Unsupported, protocol, geometry, common};
 pub(super) mod diagnostic;
 mod storage;
+mod construction_storage;
 use storage::Storage;
 const ISSUED: u8 = 0;
 const EXECUTING: u8 = 1;
@@ -121,6 +122,9 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             .map_err(RetainedExecutionError::Source)?;
         if self.failed {
             return Err(protocol(ReceiptFailure::CancelledRetainedProduct));
+        }
+        if self.runtime_domain.as_ref().is_some_and(|owner| owner.incarnation().is_none()) {
+            return Err(RetainedExecutionError::DomainRetired);
         }
         self.owner.validate(decoder, router).map_err(protocol)
     }
@@ -203,6 +207,8 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                 stage: Arc::new(batch::StageState::new(&resources)?),
                 owner: worker.domain(),
             };
+            // Recheck after every preparation scope has restored its TLS.
+            self.validate(decoder, router)?;
             let issued = RuntimeIssued {
                 operations: issued_operations,
                 _storage: issued_storage,
@@ -254,7 +260,18 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
         self.validate_manifest(plan)
     }
     fn validate_manifest(&self, plan: &RetainedProductPlan) -> Result<(), RetainedExecutionError> {
+        let result = self.resources.with_scope(|| self.validate_manifest_in_scope(plan));
+        self.resources.check().map_err(RetainedExecutionError::Stopped)?;
+        self.context.lifecycle().validate().map_err(RetainedExecutionError::Source)?;
+        result
+    }
+    fn validate_manifest_in_scope(&self, plan: &RetainedProductPlan) -> Result<(), RetainedExecutionError> {
         for (index, value) in plan.values().enumerate() {
+            let work = (index as u64).checked_add(self.ledger.len() as u64)
+                .and_then(|work| work.checked_add(1))
+                .ok_or_else(|| RetainedExecutionError::Stopped(resource::overflow()))?;
+            resource::charge(resource::Cost { work, ..Default::default() })
+                .map_err(RetainedExecutionError::Stopped)?.retain();
             if plan.values().take(index)
                 .any(|other| other.slot() == value.slot())
             {

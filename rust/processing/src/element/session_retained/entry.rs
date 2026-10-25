@@ -9,7 +9,7 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
         router: &GeometryRouter,
     ) -> Result<Self, RetainedExecutionError> {
         if context.source().is_none() {
-            return Err(RetainedExecutionError::Source(RetainedContextError::Mismatched));
+            return Err(RetainedExecutionError::Source(RetainedContextError::Missing));
         }
         context
             .validate_decoder(decoder)

@@ -97,10 +97,13 @@ fn j4_original_stop_after_await_refuses_delivery_and_retires_only_captured_domai
         let mut cx = Context::from_waker(Waker::noop());
         assert!(future.as_mut().poll(&mut cx).is_pending());
         original.cancel();
+        let before_seal = seal::attempts();
         let Poll::Ready(result) = future.as_mut().poll(&mut cx) else { panic!("SDK must settle") };
         let rejected = result.err().expect("original cancellation after await must refuse delivery");
         assert!(matches!(rejected.reason, RetainedExecutionError::Stopped(ProgramStop::Cancelled)));
         assert!(rejected.issued.is_none(), "no retry after dispatch");
+        assert_eq!(seal::attempts(), before_seal,
+            "post-await stop must prevent sealing, independently of later backing refusal");
         drop(future);
         assert!(owner.incarnation().is_none());
         assert!(other.retained_owner().incarnation().is_some());

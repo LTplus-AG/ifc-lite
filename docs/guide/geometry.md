@@ -1036,6 +1036,13 @@ type-map witnesses also retain product-placement obligations. The Rust
 `require_final_product()` refuses. Source, resource and runtime failures end the
 attempt. There is no automatic fallback or retry.
 
+The captured account admits recipe-clone/lowering envelopes before construction
+and actual returned buffer capacities before delivery and common acceptance.
+Those charges follow retained source/receipt storage, including detached results.
+Ledger growth is admitted before common reply consumption. This accounts audited
+Rust backing; allocator overhead, opaque SDK object memory and the transport's
+temporary allocation peak are not a strict RSS guarantee.
+
 The processing controller, receipt traits and native receipt adapter stay
 private. Geometry's feature-gated `program::transactions` bridge exposes only
 opaque program/ticket/reply, immutable operation/value/plan views, typed opaque

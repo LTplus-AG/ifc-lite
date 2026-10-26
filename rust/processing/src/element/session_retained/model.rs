@@ -56,6 +56,8 @@ pub enum ProductOutcome {
 pub struct ModelSummary {
     pub candidates: usize,
     pub published: usize,
+    /// Replacement acquisition attempts after the initial worker slot, including
+    /// failed qualification attempts; capped at three per model.
     pub restarts: u8,
     pub product_ms: f64,
     pub acquire_ms: f64,

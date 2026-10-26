@@ -260,3 +260,101 @@ fn exhausted_restart_budget_preserves_source_refusals() {
         ]
     );
 }
+
+fn six_authored_box_products() -> std::sync::Arc<SourceBundle> {
+    let mut text = BOX.to_string();
+    for id in 100..105 {
+        text = text.replace("ENDSEC;\nEND-ISO", &format!("#{id}=IFCBUILDINGELEMENTPROXY('p{id}',$,$,$,$,#24,#26,$,.NOTDEFINED.);\nENDSEC;\nEND-ISO"));
+    }
+    SourceBundle::new(text.into_bytes())
+}
+
+// #7955 / #8183: failed qualification spends an acquisition slot too. Later
+// worker-dependent products must not invoke acquire or inflate restart counts.
+#[test]
+fn failed_qualification_consumes_the_bounded_restart_attempts() {
+    for (max_restarts, allowed_acquisitions) in [(0, 1usize), (1, 2), (3, 4), (255, 4)] {
+        let acquired = Cell::new(0);
+        let mut refusals = Vec::new();
+        let summary = block_on(run_model::<Peer>(
+            six_authored_box_products(),
+            &ModelOptions {
+                max_restarts,
+                ..Default::default()
+            },
+            || {
+                acquired.set(acquired.get() + 1);
+                Err(RuntimeFault::unqualified("inert qualification failure"))
+            },
+            |outcome| match outcome {
+                ProductOutcome::Refused {
+                    product_id,
+                    refusal,
+                    ..
+                } => refusals.push((product_id, refusal)),
+                _ => panic!("failed acquisition cannot publish"),
+            },
+        ))
+        .unwrap();
+        assert_eq!(acquired.get(), allowed_acquisitions);
+        assert_eq!(usize::from(summary.restarts), allowed_acquisitions - 1);
+        assert_eq!(summary.candidates, 6);
+        for (index, (id, refusal)) in refusals.iter().enumerate() {
+            assert_eq!(*id, [27, 100, 101, 102, 103, 104][index]);
+            assert_eq!(
+                *refusal,
+                if index < allowed_acquisitions {
+                    RetainedProductRefusal::FamilyUnqualified
+                } else {
+                    RetainedProductRefusal::WorkerFault
+                }
+            );
+        }
+        assert_eq!(refusals.len(), 6);
+    }
+}
+
+// #7955 / #8183: even an Ok acquisition must pass the executor's domain checks.
+#[test]
+fn acquired_retired_worker_never_invokes_and_still_spends_restart_budget() {
+    let acquired = Cell::new(0);
+    let mut invocation_counts = Vec::new();
+    let mut worker = None;
+    let mut refusals = Vec::new();
+    let summary = block_on(run_model_with_worker(
+        six_authored_box_products(),
+        &ModelOptions::default(),
+        &mut worker,
+        || {
+            acquired.set(acquired.get() + 1);
+            let transport = peer();
+            invocation_counts.push(transport.calls.clone());
+            transport.domain.retire();
+            Ok(transport)
+        },
+        |outcome, _| match outcome {
+            ProductOutcome::Refused {
+                product_id,
+                refusal,
+                ..
+            } => refusals.push((product_id, refusal)),
+            _ => panic!("retired acquisition cannot publish"),
+        },
+    ))
+    .unwrap();
+    assert_eq!(acquired.get(), 4);
+    assert_eq!(summary.restarts, 3);
+    assert!(worker.is_none());
+    assert!(invocation_counts.iter().all(|calls| calls.get() == 0));
+    assert_eq!(
+        refusals,
+        vec![
+            (27, RetainedProductRefusal::WorkerRetired),
+            (100, RetainedProductRefusal::WorkerRetired),
+            (101, RetainedProductRefusal::WorkerRetired),
+            (102, RetainedProductRefusal::WorkerRetired),
+            (103, RetainedProductRefusal::WorkerFault),
+            (104, RetainedProductRefusal::WorkerFault),
+        ]
+    );
+}

@@ -94,6 +94,11 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
         )?;
         remaining.extend(self.plan.requirements());
         let obligations = PresentationObligationsUnmet(remaining);
+        // M1 plan completion always retains opening/layer/appearance/face
+        // obligations; the public plan exposes no way to discharge them. This
+        // guards the shape-only invariant, not a supported fully discharged
+        // path: final-product publication needs separate authority, and
+        // require_final_product deliberately still refuses (M1 spec section 3).
         if obligations.0.is_empty() {
             return Err(incomplete());
         }

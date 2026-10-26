@@ -3,8 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import assert from 'node:assert/strict';
 import { setImmediate as turn } from 'node:timers/promises';
+import { retainDeletedFilterThenRelease } from './retained-deleted-filter-cycle.mjs';
 
-export const retainedCallbackSeams = ['filter', 'every-rekey', 'every-validate', 'every-create'];
+export const retainedCallbackSeams = ['filter', 'every-rekey', 'every-validate', 'every-create', 'deleted-filter'];
 const split = shares => ({ base: ['source'], head: ['a', 'b'], relation: 'split', reason: 'split:verified', shares });
 const sidecar = entry => ({ format: 'ifc-lite/lineage', version: 1,
   base: { hash: 'old' }, head: { hash: 'new' }, entries: [entry], deleted: [] });
@@ -183,6 +184,7 @@ function retainedGraph(wasm, seam, throws, tracked, label) {
 }
 
 async function retainThenRelease(wasm, seam, throws, tracked, label) {
+  if (seam === 'deleted-filter') return retainDeletedFilterThenRelease(wasm, throws, tracked, label, gcTurn);
   let graph = retainedGraph(wasm, seam, throws, tracked, label);
   for (let i = 0; i < 3; i++) await gcTurn();
   tracked.assertRetained(label);

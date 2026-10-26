@@ -81,7 +81,6 @@ fn unknown_keywords_use_fallbacks_without_growing_the_catalog_cache() {
     assert_eq!(classifications().len(), before);
 }
 
-
 /// Regression test for #5180: retiring the legacy IFC type table
 /// (`rust/core/src/legacy_entities.rs`, removed by #5073) re-resolved every
 /// legacy STEP keyword through the generated per-schema registry instead of
@@ -182,7 +181,10 @@ fn legacy_keyword_geometry_predicates_match_pre_retirement_intent_5180() {
     // retirement flipped both to `true` (eager first-frame batch) with no
     // decision behind it. The pre-retirement value `false` (deferred, like
     // IfcBuildingElementProxy and IfcDistributionElement) is the intended one.
-    assert!(!is_simple_geometry_type("IFCPROXY"), "IFCPROXY: is_simple_geometry_type");
+    assert!(
+        !is_simple_geometry_type("IFCPROXY"),
+        "IFCPROXY: is_simple_geometry_type"
+    );
     assert!(
         !is_simple_geometry_type("IFCEQUIPMENTELEMENT"),
         "IFCEQUIPMENTELEMENT: is_simple_geometry_type"
@@ -207,7 +209,14 @@ fn every_generated_registry_resolves_its_own_keywords() {
         declared: fn(&T) -> bool,
     }
     fn check<T: Eq + std::hash::Hash + std::fmt::Debug>(registry: Registry<T>) {
-        let Registry { all, supplemental, arms, name, parse, declared } = registry;
+        let Registry {
+            all,
+            supplemental,
+            arms,
+            name,
+            parse,
+            declared,
+        } = registry;
         assert!(all.iter().all(declared) && !supplemental.iter().any(declared));
         let universe: Vec<&T> = all.iter().chain(supplemental).collect();
         let distinct: std::collections::HashSet<&T> = universe.iter().copied().collect();
@@ -218,7 +227,10 @@ fn every_generated_registry_resolves_its_own_keywords() {
             assert_eq!(&parse(keyword), ifc_type, "{keyword}");
             assert_eq!(&parse(&keyword.to_ascii_lowercase()), ifc_type, "{keyword}");
             // Near misses resolve only if they are themselves schema names.
-            for near in [format!("{keyword}X"), keyword[..keyword.len() - 1].to_owned()] {
+            for near in [
+                format!("{keyword}X"),
+                keyword[..keyword.len() - 1].to_owned(),
+            ] {
                 if !names.contains(near.as_str()) {
                     assert!(!distinct.contains(&parse(&near)), "{near}");
                 }
@@ -269,11 +281,20 @@ fn a_foreign_keyword_on_an_occupied_slot_is_not_that_type() {
         too_long.as_str(),
     ] {
         let parsed = IfcType::from_str(foreign);
-        assert!(matches!(parsed, IfcType::Unknown(_)), "{foreign:?} parsed as {parsed:?}");
+        assert!(
+            matches!(parsed, IfcType::Unknown(_)),
+            "{foreign:?} parsed as {parsed:?}"
+        );
         assert_eq!(parsed.as_str(), foreign);
-        assert!(matches!(IfcType::from_str(&foreign.to_ascii_lowercase()), IfcType::Unknown(_)));
+        assert!(matches!(
+            IfcType::from_str(&foreign.to_ascii_lowercase()),
+            IfcType::Unknown(_)
+        ));
     }
-    assert_eq!(IfcType::from_str(longest), IfcType::IfcCartesianTransformationOperator3DnonUniform);
+    assert_eq!(
+        IfcType::from_str(longest),
+        IfcType::IfcCartesianTransformationOperator3DnonUniform
+    );
     // Non-ASCII bytes hash like any others and are rejected by the compare.
     let accented = IfcType::from_str("IFCWÄLL");
     assert!(matches!(accented, IfcType::Unknown(_)), "{accented:?}");

@@ -18,7 +18,8 @@ const WALL: &str = "#1=IFCCARTESIANPOINT((0.,0.,0.));#2=IFCAXIS2PLACEMENT3D(#1,$
     #9=IFCWALL('wall',$,$,$,$,#3,#8,$,$);#30=IFCCARTESIANPOINT((-0.5,-1.,0.5));\
     #31=IFCAXIS2PLACEMENT3D(#30,$,$);#32=IFCBLOCK(#31,1.,2.,1.);\
     #33=IFCSHAPEREPRESENTATION($,'Body','CSG',(#32));#34=IFCPRODUCTDEFINITIONSHAPE($,$,(#33));\
-    #21=IFCOPENINGELEMENT('block',$,$,$,$,$,#34,$);";
+    #21=IFCOPENINGELEMENT('block',$,$,$,$,$,#34,$);\
+    #35=IFCDIRECTION((0.,1.,0.));#36=IFCAXIS2PLACEMENT3D(#1,$,#35);";
 
 /// Two 0.15 layers across the wall's thickness.
 fn router() -> GeometryRouter {
@@ -81,12 +82,12 @@ fn the_voided_entry_slices_the_cut_host_through_the_canonical_void_child() {
     assert_eq!(sliced.sub_meshes.len(), 2);
     assert!(triangles(&sliced) > triangles(&uncut), "the slices carry the opening's cut");
 
-    let shifted = WALL.replace("#6=IFCEXTRUDEDAREASOLID(#4,#2,#5,3.)", "#6=IFCEXTRUDEDAREASOLID(#4,#31,#5,3.)");
-    let mut decoder = EntityDecoder::new(&shifted);
+    let rotated = WALL.replace("#6=IFCEXTRUDEDAREASOLID(#4,#2,#5,3.)", "#6=IFCEXTRUDEDAREASOLID(#4,#36,#5,3.)");
+    let mut decoder = EntityDecoder::new(&rotated);
     let wall = decoder.decode_by_id(9).unwrap();
     let none = router.process_element_with_submeshes_and_voids(&wall, &mut decoder, &FxHashMap::default()).unwrap();
     assert!(none.is_empty());
-    assert_eq!(router.take_layer_slice_diag(), [(9, "skip:not-single-unshifted-item")]);
+    assert_eq!(router.take_layer_slice_diag(), [(9, "skip:not-single-unrotated-item")]);
 }
 
 /// Both voided attempts run, in order, each recording its own diagnostic:
@@ -105,12 +106,12 @@ fn the_voided_entry_keeps_both_layer_attempts_in_order() {
     assert_eq!(router.take_layer_slice_diag(), [(9, "skip:empty-base-mesh"), (9, "ok:sliced")]);
 
     // An ineligible voided element is refused by each attempt.
-    let shifted = WALL.replace("#6=IFCEXTRUDEDAREASOLID(#4,#2,#5,3.)", "#6=IFCEXTRUDEDAREASOLID(#4,#31,#5,3.)");
-    let mut decoder = EntityDecoder::new(&shifted);
+    let rotated = WALL.replace("#6=IFCEXTRUDEDAREASOLID(#4,#2,#5,3.)", "#6=IFCEXTRUDEDAREASOLID(#4,#36,#5,3.)");
+    let mut decoder = EntityDecoder::new(&rotated);
     let wall = decoder.decode_by_id(9).unwrap();
     let cut = router.process_element_with_submeshes_and_voids(&wall, &mut decoder, &voids()).unwrap();
     assert_eq!(cut.sub_meshes.iter().map(|sub| sub.geometry_id).collect::<Vec<_>>(), [6]);
-    let skip = (9, "skip:not-single-unshifted-item");
+    let skip = (9, "skip:not-single-unrotated-item");
     assert_eq!(router.take_layer_slice_diag(), [skip, skip]);
 }
 

@@ -18,6 +18,7 @@ pub enum TransactionFailureKind {
     Source,
     Incomplete,
     OperationUnsupported,
+    DeadlineExceeded,
 }
 #[derive(Debug)]
 pub struct TransactionError(RetainedFailure);
@@ -81,6 +82,7 @@ impl TransactionError {
         use TransactionFailureKind as Kind;
         match &self.0 {
             RetainedFailure::Stopped(_) => Kind::Stopped,
+            RetainedFailure::DeadlineExceeded => Kind::DeadlineExceeded,
             RetainedFailure::Origin(handle) => {
                 use super::logical::failure::{OriginCause, StructuralReason};
                 let origin = handle.origin();

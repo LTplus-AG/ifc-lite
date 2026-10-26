@@ -1,8 +1,20 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Explicit admission for audited allocations. This is not an allocator or RSS bound.
 mod account;
+#[cfg(feature = "retained-runtime")]
+mod budget;
+#[cfg(all(feature = "retained-runtime", test))]
+pub use budget::test_clock as budget_test_clock;
+#[cfg(feature = "retained-runtime")]
+pub use budget::{budget_checkpoint, budget_deadline_fired, BudgetStart, ProductBudget};
 // Refs #7955: private dormant resource owner.
-#[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+#[cfg(any(
+    all(
+        test,
+        any(not(target_arch = "wasm32"), feature = "wasm_source_capture")
+    ),
+    feature = "retained-runtime"
+))]
 #[cfg_attr(not(test), allow(dead_code))]
 mod owned;
 #[cfg(feature = "retained-runtime")]
@@ -89,8 +101,21 @@ pub fn check_current() -> Result<(), ProgramStop> {
     if let Some(error) = TERMINAL.with(|slot| slot.get().flatten()) {
         return Err(error);
     }
+    #[cfg(feature = "retained-runtime")]
+    if let Some(account) = current_account() {
+        account.check_allowance().map_err(stop)?;
+    }
     Ok(())
 }
+
+/// Check controlled source iterations under the opt-in retained budget.
+/// Default builds keep their existing loops unchanged: this is a no-op there,
+/// with no stop, thread-local or account check added.
+#[cfg(feature = "retained-runtime")]
+pub(crate) fn source_step() -> crate::Result<()> {
+    budget::source_step()
+}
+
 pub fn charge(cost: Cost) -> Result<Reservation, ProgramStop> {
     check_current()?;
     match current_account() {
@@ -99,6 +124,12 @@ pub fn charge(cost: Cost) -> Result<Reservation, ProgramStop> {
     }
 }
 pub fn stop(error: ProgramStop) -> ProgramStop {
+    // A deadline is local to the product. Do not poison source, account, owned
+    // or lexical terminal channels when a callback echoes its Cancelled value.
+    #[cfg(feature = "retained-runtime")]
+    if error == ProgramStop::Cancelled && budget_deadline_fired() {
+        return error;
+    }
     let prior_source = SOURCE_STOP.with(|slot| {
         slot.borrow()
             .as_ref()
@@ -108,7 +139,13 @@ pub fn stop(error: ProgramStop) -> ProgramStop {
     let error = current_account().map_or(error, |account| account.stop(error));
     let source = SOURCE_STOP.with(|slot| slot.borrow().as_ref().map(|source| source.stop(error)));
     let error = source.unwrap_or(error);
-    #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+    #[cfg(any(
+        all(
+            test,
+            any(not(target_arch = "wasm32"), feature = "wasm_source_capture")
+        ),
+        feature = "retained-runtime"
+    ))]
     let error = owned::record_stop(error);
     TERMINAL.with(|slot| match (source, slot.get()) {
         // A validated source chain is authoritative for this lexical domain;
@@ -156,7 +193,9 @@ mod tests;
 /// Translate the typed legacy callback error at the first audited boundary.
 /// Source faults (including identical diagnostic text) retain ordinary recovery.
 pub(crate) fn observe<T>(result: crate::Result<T>) -> crate::Result<T> {
-    if let Err(crate::Error::ProgramStopped(error)) = &result { stop(*error); }
+    if let Err(crate::Error::ProgramStopped(error)) = &result {
+        stop(*error);
+    }
     check_current()?;
     result
 }
@@ -198,7 +237,13 @@ pub fn detached<T>(operation: impl FnOnce() -> T) -> T {
         account: Option<ExecutionAccount>,
         source: Option<ifc_lite_core::execution_owner::SourceStopHandle>,
         terminal: Option<Option<ProgramStop>>,
-        #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+        #[cfg(any(
+            all(
+                test,
+                any(not(target_arch = "wasm32"), feature = "wasm_source_capture")
+            ),
+            feature = "retained-runtime"
+        ))]
         owned: Option<owned::OwnedResourceContext>,
     }
     impl Drop for Restore {
@@ -206,7 +251,13 @@ pub fn detached<T>(operation: impl FnOnce() -> T) -> T {
             CURRENT.with(|slot| *slot.borrow_mut() = self.account.take());
             SOURCE_STOP.with(|slot| *slot.borrow_mut() = self.source.take());
             TERMINAL.with(|slot| slot.set(self.terminal));
-            #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+            #[cfg(any(
+                all(
+                    test,
+                    any(not(target_arch = "wasm32"), feature = "wasm_source_capture")
+                ),
+                feature = "retained-runtime"
+            ))]
             owned::OWNED.with(|slot| *slot.borrow_mut() = self.owned.take());
         }
     }
@@ -214,7 +265,13 @@ pub fn detached<T>(operation: impl FnOnce() -> T) -> T {
         account: CURRENT.with(|slot| slot.borrow_mut().take()),
         source: SOURCE_STOP.with(|slot| slot.borrow_mut().take()),
         terminal: TERMINAL.with(Cell::take),
-        #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+        #[cfg(any(
+            all(
+                test,
+                any(not(target_arch = "wasm32"), feature = "wasm_source_capture")
+            ),
+            feature = "retained-runtime"
+        ))]
         owned: owned::OWNED.with(|slot| slot.borrow_mut().take()),
     };
     operation()

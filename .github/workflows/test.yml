@@ -918,6 +918,9 @@ jobs:
           # disable only placement/fill checks and require assertion failures.
           if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/section-export-7711/metadata.oracle.patch | grep -Fxq 'tests/evidence/section-export-7711/metadata.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/section-export-7711/metadata.oracle.patch)
+          # #7955 M1 B: retain budget APIs; lose the expired-deadline cause.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/resource/budget.rs | grep -Fxq 'rust/geometry/src/resource/budget.rs'; then
+            oracle_args+=(--mutation tests/evidence/m1-b-product-budget/behaviour.oracle.patch)
           # #7955 M1 A: preserve added controller types; break one unmet obligation.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/retained/completion.rs | grep -Fxq 'rust/geometry/src/program/retained/completion.rs'; then
             oracle_args+=(--mutation tests/evidence/m1-a-controller-core/behaviour.oracle.patch)

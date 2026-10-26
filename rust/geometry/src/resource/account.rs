@@ -30,7 +30,10 @@ struct Inner {
 /// Clone shares one deterministic request allowance, including reentered calls.
 /// Holding an account retains all storage transferred with Reservation::retain.
 #[derive(Debug, Clone, Default)]
-pub struct ExecutionAccount(Option<Arc<Inner>>);
+pub struct ExecutionAccount(
+    Option<Arc<Inner>>,
+    #[cfg(feature = "retained-runtime")] pub(super) Option<Arc<super::budget::Allowance>>,
+);
 impl ExecutionAccount {
     pub fn new(policy: ExecutionPolicy) -> Self {
         match policy {
@@ -54,11 +57,15 @@ impl ExecutionAccount {
             state: Mutex::new(State::default()),
             cancelled: AtomicBool::new(false),
             _model: model,
-        })))
+        })), #[cfg(feature = "retained-runtime")] None)
     }
     pub(super) fn source_context(
         &self,
     ) -> Option<ifc_lite_core::execution_owner::SourceResourceContext> {
+        #[cfg(feature = "retained-runtime")]
+        if self.1.is_some() {
+            return Some(ifc_lite_core::execution_owner::SourceResourceContext::new(Arc::new(self.clone())));
+        }
         self.0.as_ref().map(|inner| {
             ifc_lite_core::execution_owner::SourceResourceContext::new(Arc::clone(inner))
         })
@@ -66,7 +73,9 @@ impl ExecutionAccount {
     pub(super) fn from_source_context(
         context: &ifc_lite_core::execution_owner::SourceResourceContext,
     ) -> Option<Self> {
-        context.downcast::<Inner>().map(|inner| Self(Some(inner)))
+        #[cfg(feature = "retained-runtime")]
+        if let Some(account) = context.downcast::<Self>() { return Some((*account).clone()); }
+        context.downcast::<Inner>().map(|inner| Self(Some(inner), #[cfg(feature = "retained-runtime")] None))
     }
     pub fn usage(&self) -> Usage {
         self.0.as_ref().map_or(Usage::default(), |inner| {
@@ -87,6 +96,8 @@ impl ExecutionAccount {
         state.terminal.map_or(Ok(()), Err)
     }
     pub fn stop(&self, error: ProgramStop) -> ProgramStop {
+        #[cfg(feature = "retained-runtime")]
+        if let Some(local) = self.overlay_stop() { return local; }
         let Some(inner) = &self.0 else { return error };
         let mut state = inner.state.lock().unwrap_or_else(|e| e.into_inner());
         *state.terminal.get_or_insert(error)
@@ -133,8 +144,13 @@ impl ExecutionAccount {
     pub fn prepare(&self, cost: Cost) -> Result<Reservation, ProgramStop> {
         self.prepare_inner(cost).map_err(super::stop)
     }
-    fn prepare_inner(&self, cost: Cost) -> Result<Reservation, ProgramStop> {
+    pub(super) fn prepare_inner(&self, cost: Cost) -> Result<Reservation, ProgramStop> {
         self.check()?;
+        // The local allowance admits BEFORE either original accounting or growth.
+        // This is an overlay on the same original Arc/pool, never a new owner.
+        #[cfg(feature = "retained-runtime")]
+        let allowance = self.1.as_ref().map(|allowance| allowance.account.prepare_inner(cost))
+            .transpose()?.map(Box::new);
         let Some(inner) = &self.0 else {
             return Ok(Reservation::empty());
         };
@@ -198,6 +214,8 @@ impl ExecutionAccount {
         Ok(Reservation {
             account: self.clone(),
             bytes: cost.live_bytes,
+            #[cfg(feature = "retained-runtime")]
+            allowance,
         })
     }
 }
@@ -207,18 +225,24 @@ impl ExecutionAccount {
 pub struct Reservation {
     account: ExecutionAccount,
     bytes: u64,
+    #[cfg(feature = "retained-runtime")]
+    allowance: Option<Box<Reservation>>,
 }
 impl Reservation {
     pub(super) fn empty() -> Self {
         Self {
             account: ExecutionAccount::default(),
             bytes: 0,
+            #[cfg(feature = "retained-runtime")]
+            allowance: None,
         }
     }
     /// Transfer storage to the account's output/cache lifetime. The storage owner
     /// MUST keep an account clone until that payload is destroyed.
     pub fn retain(mut self) {
         self.bytes = 0;
+        #[cfg(feature = "retained-runtime")]
+        if let Some(allowance) = self.allowance.take() { allowance.retain(); }
     }
 }
 impl Drop for Reservation {

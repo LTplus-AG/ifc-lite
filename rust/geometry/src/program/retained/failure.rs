@@ -278,6 +278,19 @@ impl FailureHandle {
         error: crate::Error,
     ) -> RetainedFailure {
         match error {
+            #[cfg(feature = "retained-runtime")]
+            crate::Error::ProgramStopped(ProgramStop::Cancelled)
+                if resource::budget_deadline_fired() =>
+            {
+                // An expired deadline is reported as Cancelled; its cause is
+                // internal. Reporting it must not allocate a source cause or
+                // create a new stop. Independently existing stops (which make
+                // `budget_deadline_fired` false) still take priority.
+                match self.check() {
+                    Err(stop) => RetainedFailure::Stopped(self.remember_stop(stop)),
+                    Ok(()) => RetainedFailure::DeadlineExceeded,
+                }
+            }
             crate::Error::ProgramStopped(stop) => {
                 RetainedFailure::Stopped(self.remember_stop(stop))
             }
@@ -316,6 +329,8 @@ pub(in crate::program) enum CompletionReason {
 #[derive(Debug)]
 pub(in crate::program) enum RetainedFailure {
     Stopped(ProgramStop),
+    #[cfg(feature = "retained-runtime")]
+    DeadlineExceeded,
     Protocol(crate::program::inner::retained_program::RetainedProgramError),
     Origin(FailureHandle),
     Completion(CompletionReason),
@@ -345,3 +360,7 @@ impl std::fmt::Display for RetainedFailure {
         }
     }
 }
+
+#[cfg(all(test, feature = "retained-runtime"))]
+#[path = "failure_deadline_tests.rs"]
+mod deadline_tests;

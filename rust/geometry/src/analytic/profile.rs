@@ -4,6 +4,7 @@
 
 //! Exact profile boundaries before extrusion, in IFC file-length units.
 
+use super::walk_error::WalkError;
 use super::{curve::CurveWalk, AnalyticCurveSegment, AnalyticPoint, AnalyticStatus};
 use crate::placement::Axis2Placement;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
@@ -18,7 +19,10 @@ const DEFAULT_TOPOLOGY_CLEARANCE: f64 = 1e-9;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum ProfileLoopKind { Outer, Inner }
+pub enum ProfileLoopKind {
+    Outer,
+    Inner,
+}
 
 /// One ordered, closed source boundary. Signed area preserves the authored
 /// traversal direction: positive is counterclockwise in the profile XY plane.
@@ -55,19 +59,59 @@ pub struct AnalyticProfile {
 
 /// Read supported exact profile loops, preserving an unsupported reason on
 /// the source record rather than publishing a partial or tessellated contour.
-pub fn extract_analytic_profile(profile: &DecodedEntity, decoder: &mut EntityDecoder) -> AnalyticProfile {
+pub fn extract_analytic_profile(
+    profile: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+) -> AnalyticProfile {
+    let (mut result, parsed) = extract_profile(profile, decoder);
+    if let Err(reason) = parsed {
+        result.loops.clear();
+        result.status = AnalyticStatus::Unsupported(reason.to_string());
+    }
+    result
+}
+
+pub(super) fn try_extract_analytic_profile(
+    profile: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+) -> Result<AnalyticProfile, WalkError> {
+    let (mut result, parsed) = extract_profile(profile, decoder);
+    match parsed {
+        Ok(()) => {}
+        Err(WalkError::Unsupported(reason)) => {
+            result.loops.clear();
+            result.status = AnalyticStatus::Unsupported(reason);
+        }
+        #[cfg(feature = "retained-runtime")]
+        Err(stop @ WalkError::Stopped(_)) => return Err(stop),
+    }
+    Ok(result)
+}
+
+fn extract_profile(
+    profile: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+) -> (AnalyticProfile, Result<(), WalkError>) {
     let mut result = AnalyticProfile {
-        profile_id: profile.id, ifc_type_name: profile.ifc_type.name().to_string(),
-        profile_type: profile.get(0).and_then(|value| value.as_enum()).map(str::to_owned),
-        position_id: None, profile_position: None,
-        loops: Vec::new(), status: AnalyticStatus::Complete,
+        profile_id: profile.id,
+        ifc_type_name: profile.ifc_type.name().to_string(),
+        profile_type: profile
+            .get(0)
+            .and_then(|value| value.as_enum())
+            .map(str::to_owned),
+        position_id: None,
+        profile_position: None,
+        loops: Vec::new(),
+        status: AnalyticStatus::Complete,
     };
     let parsed = parse_profile(profile, decoder, &mut result);
     let validated = parsed.and_then(|()| {
-        if matches!(profile.ifc_type,
-            IfcType::IfcArbitraryClosedProfileDef | IfcType::IfcArbitraryProfileDefWithVoids)
-        {
-            let declared = decoder.geometric_context_precision_range()
+        if matches!(
+            profile.ifc_type,
+            IfcType::IfcArbitraryClosedProfileDef | IfcType::IfcArbitraryProfileDefWithVoids
+        ) {
+            let declared = decoder
+                .geometric_context_precision_range()
                 .map_err(|error| format!("profile topology Precision: {error}"))?;
             let clearance = declared.map_or(DEFAULT_TOPOLOGY_CLEARANCE, |(_, max)| {
                 max.max(DEFAULT_TOPOLOGY_CLEARANCE)
@@ -80,89 +124,121 @@ pub fn extract_analytic_profile(profile: &DecodedEntity, decoder: &mut EntityDec
             Ok(())
         }
     });
-    if let Err(reason) = validated {
-        result.loops.clear();
-        result.status = AnalyticStatus::Unsupported(reason);
-    }
-    result
+    (result, validated)
 }
 
 fn parse_profile(
-    profile: &DecodedEntity, decoder: &mut EntityDecoder, result: &mut AnalyticProfile,
-) -> Result<(), String> {
+    profile: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+    result: &mut AnalyticProfile,
+) -> Result<(), WalkError> {
     result.loops = match profile.ifc_type {
         IfcType::IfcRectangleProfileDef => {
             parse_profile_position(profile, decoder, result)?;
             let x = positive(profile.get_float(3), "XDim")? / 2.0;
             let y = positive(profile.get_float(4), "YDim")? / 2.0;
             let points = [[-x, -y, 0.0], [x, -y, 0.0], [x, y, 0.0], [-x, y, 0.0]];
-            vec![loop_from_segments(ProfileLoopKind::Outer, (0..4).map(|i| {
-                AnalyticCurveSegment::Line { start: points[i], end: points[(i + 1) % 4] }
-            }).collect())?]
+            vec![loop_from_segments(
+                ProfileLoopKind::Outer,
+                (0..4)
+                    .map(|i| AnalyticCurveSegment::Line {
+                        start: points[i],
+                        end: points[(i + 1) % 4],
+                    })
+                    .collect(),
+            )?]
         }
         IfcType::IfcCircleProfileDef => {
             parse_profile_position(profile, decoder, result)?;
             let radius = positive(profile.get_float(3), "Radius")?;
-            vec![loop_from_segments(ProfileLoopKind::Outer, vec![AnalyticCurveSegment::Arc {
-                center: [0.0; 3], normal: [0.0, 0.0, 1.0], x_axis: [1.0, 0.0, 0.0],
-                radius, start_angle: 0.0, sweep_angle: TAU,
-            }])?]
+            vec![loop_from_segments(
+                ProfileLoopKind::Outer,
+                vec![AnalyticCurveSegment::Arc {
+                    center: [0.0; 3],
+                    normal: [0.0, 0.0, 1.0],
+                    x_axis: [1.0, 0.0, 0.0],
+                    radius,
+                    start_angle: 0.0,
+                    sweep_angle: TAU,
+                }],
+            )?]
         }
         IfcType::IfcArbitraryClosedProfileDef | IfcType::IfcArbitraryProfileDefWithVoids => {
             arbitrary_loops(profile, decoder)?
         }
-        _ => return Err(format!("unsupported profile {}", profile.ifc_type.name())),
+        _ => return Err(format!("unsupported profile {}", profile.ifc_type.name()).into()),
     };
     if super::source::requested()
-        && matches!(profile.ifc_type, IfcType::IfcRectangleProfileDef | IfcType::IfcCircleProfileDef)
+        && matches!(
+            profile.ifc_type,
+            IfcType::IfcRectangleProfileDef | IfcType::IfcCircleProfileDef
+        )
     {
         let mut capture = super::source::SourceCapture::enabled();
-        capture.record(profile, decoder);
+        capture.record(profile, decoder)?;
         result.loops[0].source = Some(capture.finish(profile.id, decoder.plane_angle_to_radians()));
     }
     Ok(())
 }
 
 fn positive(value: Option<f64>, attribute: &str) -> Result<f64, String> {
-    value.filter(|value| value.is_finite() && *value > 0.0)
+    value
+        .filter(|value| value.is_finite() && *value > 0.0)
         .ok_or_else(|| format!("invalid or missing {attribute}"))
 }
 
 fn parse_profile_position(
-    profile: &DecodedEntity, decoder: &mut EntityDecoder, result: &mut AnalyticProfile,
-) -> Result<(), String> {
-    let Some(position) = profile.get(2).filter(|value| !value.is_null()) else { return Ok(()) };
-    let id = position.as_entity_ref().ok_or("invalid profile Position reference")?;
+    profile: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+    result: &mut AnalyticProfile,
+) -> Result<(), WalkError> {
+    let Some(position) = profile.get(2).filter(|value| !value.is_null()) else {
+        return Ok(());
+    };
+    let id = position
+        .as_entity_ref()
+        .ok_or("invalid profile Position reference")?;
     result.position_id = Some(id);
-    let entity = decoder.decode_by_id(id).map_err(|error| format!("Position #{id}: {error}"))?;
+    let entity = decoder
+        .decode_by_id(id)
+        .map_err(|error| format!("Position #{id}: {error}"))?;
     if entity.ifc_type != IfcType::IfcAxis2Placement2D {
-        return Err(format!("Position #{id} is not IfcAxis2Placement2D"));
+        return Err(format!("Position #{id} is not IfcAxis2Placement2D").into());
     }
     let matrix = Axis2Placement::read_2d(&entity, decoder)
         .map(|placement| placement.matrix())
         .map_err(|error| format!("Position #{id}: {error}"))?;
     if matrix.iter().any(|value| !value.is_finite()) {
-        return Err(format!("Position #{id} has non-finite coordinates"));
+        return Err(format!("Position #{id} has non-finite coordinates").into());
     }
     result.profile_position = Some(crate::math::mat4::col_major_array(&matrix));
     Ok(())
 }
 
 fn arbitrary_loops(
-    profile: &DecodedEntity, decoder: &mut EntityDecoder,
-) -> Result<Vec<AnalyticProfileLoop>, String> {
+    profile: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+) -> Result<Vec<AnalyticProfileLoop>, WalkError> {
     let outer = profile.get_ref(2).ok_or("missing OuterCurve")?;
     let mut loops = vec![curve_loop(outer, ProfileLoopKind::Outer, decoder)?];
     let mut emitted_segments = loops[0].segments.len();
     if profile.ifc_type == IfcType::IfcArbitraryProfileDefWithVoids {
-        let references = profile.get(3).and_then(|value| value.as_list())
+        let references = profile
+            .get(3)
+            .and_then(|value| value.as_list())
             .ok_or("missing or malformed InnerCurves")?;
-        if references.len() > MAX_LOOPS { return Err("InnerCurves exceed work budget".into()); }
+        if references.len() > MAX_LOOPS {
+            return Err("InnerCurves exceed work budget".into());
+        }
         for reference in references {
+            #[cfg(feature = "retained-runtime")]
+            crate::resource::source_step()?;
             if emitted_segments >= MAX_LOOPS {
                 return Err("profile segments exceed aggregate work budget".into());
             }
-            let id = reference.as_entity_ref().ok_or("invalid InnerCurves reference")?;
+            let id = reference
+                .as_entity_ref()
+                .ok_or("invalid InnerCurves reference")?;
             let loop_data = curve_loop(id, ProfileLoopKind::Inner, decoder)?;
             if loop_data.segments.len() > MAX_LOOPS.saturating_sub(emitted_segments) {
                 return Err("profile segments exceed aggregate work budget".into());
@@ -175,16 +251,25 @@ fn arbitrary_loops(
 }
 
 fn curve_loop(
-    id: u32, kind: ProfileLoopKind, decoder: &mut EntityDecoder,
-) -> Result<AnalyticProfileLoop, String> {
-    let curve = decoder.decode_by_id(id).map_err(|error| format!("curve #{id}: {error}"))?;
+    id: u32,
+    kind: ProfileLoopKind,
+    decoder: &mut EntityDecoder,
+) -> Result<AnalyticProfileLoop, WalkError> {
+    let curve = decoder
+        .decode_by_id(id)
+        .map_err(|error| format!("curve #{id}: {error}"))?;
     let capture = super::source::requested();
-    let mut walk = if capture { CurveWalk::with_source() } else { CurveWalk::default() };
-    let segments = walk.extract(&curve, decoder)
-        .map_err(|error| format!("curve #{id}: {error}"))?
+    let mut walk = if capture {
+        CurveWalk::with_source()
+    } else {
+        CurveWalk::default()
+    };
+    let segments = walk
+        .extract(&curve, decoder)
+        .map_err(|error| WalkError::from(error).context(format!("curve #{id}")))?
         .ok_or_else(|| format!("curve #{id} is not exact line/arc geometry"))?;
     let mut boundary = loop_from_segments(kind, segments)
-        .map_err(|reason| format!("curve #{id}: {reason}"))?;
+        .map_err(|reason| reason.context(format!("curve #{id}")))?;
     if capture {
         boundary.source = Some(walk.source.finish(id, decoder.plane_angle_to_radians()));
     }
@@ -192,22 +277,35 @@ fn curve_loop(
 }
 
 fn loop_from_segments(
-    kind: ProfileLoopKind, segments: Vec<AnalyticCurveSegment>,
-) -> Result<AnalyticProfileLoop, String> {
+    kind: ProfileLoopKind,
+    segments: Vec<AnalyticCurveSegment>,
+) -> Result<AnalyticProfileLoop, WalkError> {
     if segments.is_empty() || segments.len() > MAX_LOOPS {
         return Err("profile loop is empty or exceeds work budget".into());
     }
-    let frames: Vec<_> = segments.iter().map(|segment| segment.endpoint_frame()
-        .ok_or("profile loop has invalid segment geometry")).collect::<Result<_, _>>()?;
+    let frames: Vec<_> = segments
+        .iter()
+        .map(|segment| {
+            segment
+                .endpoint_frame()
+                .ok_or("profile loop has invalid segment geometry")
+        })
+        .collect::<Result<_, _>>()?;
     let origin = frames[0].start;
     let mut area = 0.0;
     let mut perimeter = 0.0;
     for (index, segment) in segments.iter().enumerate() {
+        #[cfg(feature = "retained-runtime")]
+        crate::resource::source_step()?;
         let frame = &frames[index];
         let next = &frames[(index + 1) % frames.len()];
         let tolerance = 1e-9_f64.max(relative_extent(frame.start, frame.end) * 1e-9);
-        if frame.end.distance_to(next.start).is_none_or(|gap| gap > tolerance) {
-            return Err(format!("profile loop has a gap after segment {index}"));
+        if frame
+            .end
+            .distance_to(next.start)
+            .is_none_or(|gap| gap > tolerance)
+        {
+            return Err(format!("profile loop has a gap after segment {index}").into());
         }
         for point in [frame.start, frame.end] {
             if (point.origin[2] + point.offset[2]).abs() > 1e-9 {
@@ -215,12 +313,20 @@ fn loop_from_segments(
             }
         }
         area += segment_area(segment, origin)?;
-        perimeter += segment.length().ok_or("profile segment has invalid length")?;
+        perimeter += segment
+            .length()
+            .ok_or("profile segment has invalid length")?;
     }
     if !area.is_finite() || area == 0.0 || !perimeter.is_finite() || perimeter <= 0.0 {
         return Err("profile loop has zero or invalid enclosed area".into());
     }
-    Ok(AnalyticProfileLoop { kind, segments, signed_area: area, perimeter, source: None })
+    Ok(AnalyticProfileLoop {
+        kind,
+        segments,
+        signed_area: area,
+        perimeter,
+        source: None,
+    })
 }
 
 fn relative_extent(a: AnalyticPoint, b: AnalyticPoint) -> f64 {
@@ -230,22 +336,36 @@ fn relative_extent(a: AnalyticPoint, b: AnalyticPoint) -> f64 {
 fn segment_area(segment: &AnalyticCurveSegment, origin: AnalyticPoint) -> Result<f64, String> {
     let frame = segment.endpoint_frame().ok_or("invalid segment frame")?;
     let relative = |point: AnalyticPoint| -> [f64; 3] {
-        std::array::from_fn(|axis| (point.origin[axis] - origin.origin[axis])
-            + (point.offset[axis] - origin.offset[axis]))
+        std::array::from_fn(|axis| {
+            (point.origin[axis] - origin.origin[axis]) + (point.offset[axis] - origin.offset[axis])
+        })
     };
     let a = relative(frame.start);
     let b = relative(frame.end);
     match segment {
         AnalyticCurveSegment::Line { .. } => Ok((a[0] * b[1] - b[0] * a[1]) * 0.5),
-        AnalyticCurveSegment::Arc { center, normal, x_axis, radius, sweep_angle, .. } => {
-            if normal[0].abs() > 1e-9 || normal[1].abs() > 1e-9
-                || (normal[2].abs() - 1.0).abs() > 1e-9 || x_axis[2].abs() > 1e-9 {
+        AnalyticCurveSegment::Arc {
+            center,
+            normal,
+            x_axis,
+            radius,
+            sweep_angle,
+            ..
+        } => {
+            if normal[0].abs() > 1e-9
+                || normal[1].abs() > 1e-9
+                || (normal[2].abs() - 1.0).abs() > 1e-9
+                || x_axis[2].abs() > 1e-9
+            {
                 return Err("profile arc is not planar in XY".into());
             }
-            let c = [center[0] - origin.origin[0] - origin.offset[0],
-                center[1] - origin.origin[1] - origin.offset[1]];
+            let c = [
+                center[0] - origin.origin[0] - origin.offset[0],
+                center[1] - origin.origin[1] - origin.offset[1],
+            ];
             Ok((c[0] * (b[1] - a[1]) - c[1] * (b[0] - a[0])
-                + normal[2] * radius * radius * sweep_angle) * 0.5)
+                + normal[2] * radius * radius * sweep_angle)
+                * 0.5)
         }
     }
 }

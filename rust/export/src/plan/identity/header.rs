@@ -40,8 +40,8 @@ impl Identity {
     /// (`Software Company Name - Application Name - Application Version`, no
     /// dash inside the names, and the agreement's version form: numbers and
     /// dots with an optional lowercase `-alpha`, `-beta` or `-rc` suffix, a
-    /// subset of PEP 440). Written exactly as given
-    /// all the same: the caller's names are not rewritten.
+    /// subset of PEP 440). The fields are written exactly as given all the
+    /// same: the caller's names are not rewritten.
     pub(crate) fn header_note(&self) -> Option<String> {
         let dash = |c: char| matches!(c, '-' | '\u{00AD}' | '\u{2010}'..='\u{2015}' | '\u{2043}' | '\u{2212}' | '\u{FE58}' | '\u{FE63}' | '\u{FF0D}');
         let name_ok = |n: &str| !n.is_empty() && n.trim() == n && !n.contains(dash);
@@ -59,7 +59,7 @@ impl Identity {
         });
         (!(name_ok(&self.app.developer) && name_ok(&self.app.full_name) && number_ok && suffix_ok)).then(|| {
             format!(
-                "originating_system '{}' does not follow buildingSMART's header agreement (Software Company Name - Application Name - Application Version: no dash inside the names, a numeric version with an optional -alpha, -beta or -rc suffix)",
+                "originating_system '{}' does not follow buildingSMART's header agreement (Software Company Name - Application Name - Application Version: no dash inside the names, a numeric version with an optional lowercase -alpha, -beta or -rc suffix)",
                 self.originating_system()
             )
         })

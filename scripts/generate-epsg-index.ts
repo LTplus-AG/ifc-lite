@@ -198,6 +198,7 @@ async function fetchProj4Definitions(entries: EpsgIndexEntry[], concurrency: num
         }
       }
     }
+    console.warn(`EPSG:${code}: proj4 lookup failed after ${attempts} attempts`, lastError);
     return null;
   }
 

@@ -220,7 +220,7 @@ pub(crate) fn georeferencing_candidate_type(type_name: &str) -> Option<IfcType> 
     candidates
         .iter()
         .find(|(keyword, _)| keyword_eq(type_name, keyword))
-        .map(|(_, ifc_type)| *ifc_type)
+        .map(|(_, ifc_type)| ifc_type.clone())
 }
 
 /// Reuse candidates from the geometry scan, avoiding the remaining whole-file

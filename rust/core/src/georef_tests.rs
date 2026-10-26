@@ -640,21 +640,17 @@ fn rigid_operation_details_preserve_compatible_zero_translation() {
 
 /// PR #8170: WKT declares a CRS without adding fields to GeoReference.
 #[test]
-fn wkt_only_details_preserve_presence_without_inventing_a_source() {
+fn wkt_only_crs_without_an_operation_declares_nothing() {
+    // A CRS defined only by IfcWellKnownText is claimed through a parsed
+    // coordinate operation; on its own it places nothing, so the fallbacks run
+    // and no nameless, sourceless identity record is returned (#8170 review).
     let content = ifc4x3_with_conversion(
         "#12=IFCPROJECTEDCRS($,$,$,$,$,$,$);\n\
          #13=IFCWELLKNOWNTEXT(' PROJCRS[\"local\"] ',#12);",
     );
     let types = [(12, IfcType::IfcProjectedCRS), (13, IfcType::IfcWellKnownText)];
-    let (geo, details) = GeoRefExtractor::extract_with_details(
-        &mut EntityDecoder::new(&content), &types,
-    ).unwrap().expect("WKT alone declares a CRS");
-    assert_eq!(geo.crs_name, None);
-    assert_eq!(geo.source, None);
-    assert!(!geo.has_map_conversion);
-    assert_eq!(details.operation, None);
-    assert_eq!(details.source_label(geo.source), None);
-    assert_eq!(details.well_known_text.as_deref(), Some("PROJCRS[\"local\"]"));
-    assert!(GeoRefExtractor::extract(&mut EntityDecoder::new(&content), &types)
-        .unwrap().is_some(), "the original entry point still discovers WKT-only CRSs");
+    assert!(GeoRefExtractor::extract_with_details(&mut EntityDecoder::new(&content), &types)
+        .unwrap()
+        .is_none());
+    assert!(GeoRefExtractor::extract(&mut EntityDecoder::new(&content), &types).unwrap().is_none());
 }

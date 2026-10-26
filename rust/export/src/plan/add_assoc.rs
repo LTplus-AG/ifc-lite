@@ -44,7 +44,7 @@ pub(super) enum CheckedClassification {
     New { system: Target<NewClassification>, identification: Option<String>, name: Option<String>, location: Option<String> },
 }
 
-impl AddState<'_> {
+impl AddState<'_, '_> {
     /// The id of `r`, which must be a `class` record.
     fn existing_of(&self, r: &ObjectRef, class: &str, what: &str) -> Result<u32, String> {
         let (id, c) = self.lookup(r)?;

@@ -21,7 +21,7 @@ pub(super) type NewSi = (Option<String>, String, &'static str);
 /// Per set, per property: the unit its value carries, if any.
 pub(super) type CheckedUnits = Vec<Vec<Option<Target<NewSi>>>>;
 
-impl AddState<'_> {
+impl AddState<'_, '_> {
     /// The unit of every value in `psets`, refusing one the value cannot
     /// carry: a unit on a value that is not a measure, a unit of the wrong
     /// kind for the measure, or a quantity's unit that is not a named unit.

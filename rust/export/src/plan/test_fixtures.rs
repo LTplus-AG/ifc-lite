@@ -16,11 +16,13 @@ pub(super) fn gid(n: u32) -> String {
 }
 
 /// Build one record generically from the schema's own attribute order:
-/// named fields go in their slot, everything else is `$`.
+/// named fields go in their slot, everything else is `$`, except an IFC2X3
+/// `OwnerHistory`, which that schema requires: it names the preamble's `#5`.
 fn entity_line(schema: &str, id: u32, entity_type: &str, fields: &[(&str, &str)]) -> String {
     let names = ifc_lite_core::attribute_names_for_schema(schema, entity_type)
         .unwrap_or_else(|| panic!("{schema} does not declare {entity_type}"));
-    let mut slots = vec!["$".to_string(); names.len()];
+    let unset = |name: &str| if name == "OwnerHistory" && schema == "IFC2X3" { "#5" } else { "$" };
+    let mut slots: Vec<String> = names.iter().map(|n| unset(n).to_string()).collect();
     for (i, n) in names.iter().enumerate() {
         if let Some(&(_, v)) = fields.iter().find(|(name, _)| name == n) {
             slots[i] = v.to_string();
@@ -43,6 +45,14 @@ fn preamble(schema: &str) -> String {
         "IFCPROJECT",
         &[("GlobalId", &quoted(&gid(1))), ("Name", "'Project'"), ("RepresentationContexts", "(#100)"), ("UnitsInContext", "#50")],
     );
+    if schema == "IFC2X3" {
+        // The owner history IFC2X3 requires of every rooted record.
+        s += &entity_line(schema, 5, "IFCOWNERHISTORY", &[("OwningUser", "#6"), ("OwningApplication", "#7"), ("ChangeAction", ".NOCHANGE."), ("CreationDate", "0")]);
+        s += &entity_line(schema, 6, "IFCPERSONANDORGANIZATION", &[("ThePerson", "#8"), ("TheOrganization", "#9")]);
+        s += &entity_line(schema, 7, "IFCAPPLICATION", &[("ApplicationDeveloper", "#9"), ("Version", "'1'"), ("ApplicationFullName", "'Fixture'"), ("ApplicationIdentifier", "'fixture'")]);
+        s += &entity_line(schema, 8, "IFCPERSON", &[("Id", "'fixture'"), ("FamilyName", "'Fixture'")]);
+        s += &entity_line(schema, 9, "IFCORGANIZATION", &[("Name", "'Fixture'")]);
+    }
     s += "#50=IFCUNITASSIGNMENT((#51));\n";
     s += "#51=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n";
     s += "#100=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#101,$);\n";

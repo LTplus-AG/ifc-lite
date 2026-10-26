@@ -25,11 +25,12 @@ use super::add_props::build_sets;
 use super::add_rels::{RelAccumulator, RelKind, RelRequest};
 use super::add_types::{AddItem, NewObject, Representation, TypeLink};
 use super::attrs::unset_required;
+use super::attribution::{Histories, Snapshot};
 use super::index::FileIndex;
 use super::placement::fmt;
 use super::props_synth::{defines_by_properties_record, ref_or_unset};
 use super::tessellation::{find_body_context, Emit};
-use super::types::{ObjectRef, PlanContext, Refusal};
+use super::types::{ObjectRef, Refusal, ValidationFinding};
 
 use assoc::{associate, Shared, SharedKey};
 use mapped::{build_map, mapped_shape, MapPlan, MapRef, TypeMaps};
@@ -42,12 +43,11 @@ struct Added {
     class: String,
 }
 
-pub(crate) struct AddState<'a> {
+pub(crate) struct AddState<'a, 'h> {
     index: &'a FileIndex<'a>,
     schema: &'a str,
     removed: &'a HashSet<u32>,
-    context: &'a PlanContext,
-    owner_history: Option<u32>,
+    history: &'a mut Histories<'h>,
     added: HashMap<String, Added>,
     /// Each added object's placement, by id, for children placed under it.
     placement_of_added: HashMap<u32, Option<u32>>,
@@ -60,12 +60,18 @@ pub(crate) struct AddState<'a> {
     /// The `Body` maps of each type an occurrence named or this plan added,
     /// once looked up.
     type_maps: RefCell<HashMap<u32, TypeMaps>>,
+    /// Things a built Add did not do that its caller may expect, for the
+    /// report's findings. Dropped with the Adds when their relationships fail.
+    notes: Vec<ValidationFinding>,
+    /// Types an occurrence of this plan is typed by, which settles a note
+    /// about a type with nothing tying it to the file.
+    typed: HashSet<u32>,
 }
 
-impl<'a> AddState<'a> {
-    /// `owner_history` is the one the source (or a patch) already provides;
-    /// when there is none, the first Add that builds synthesizes it, so a
-    /// plan whose Adds are all refused writes nothing at all.
+impl<'a, 'h> AddState<'a, 'h> {
+    /// `history` is where new records' owner history comes from: the one the
+    /// source (or a patch) already provides, else one the first Add that
+    /// builds makes, so a plan whose Adds are all refused writes nothing.
     /// `body_context` is the one this plan's geometry patches already wrote
     /// into, if any; otherwise the file's own is looked up, and one is
     /// synthesized only when there is none.
@@ -73,16 +79,14 @@ impl<'a> AddState<'a> {
         index: &'a FileIndex<'a>,
         schema: &'a str,
         removed: &'a HashSet<u32>,
-        context: &'a PlanContext,
-        owner_history: Option<u32>,
+        history: &'a mut Histories<'h>,
         body_context: Option<u32>,
     ) -> Self {
         Self {
             index,
             schema,
             removed,
-            context,
-            owner_history,
+            history,
             added: HashMap::new(),
             placement_of_added: HashMap::new(),
             body_context: body_context.or_else(|| find_body_context(index, schema, removed)),
@@ -90,6 +94,8 @@ impl<'a> AddState<'a> {
             records: Vec::new(),
             shared: HashMap::new(),
             type_maps: RefCell::new(HashMap::new()),
+            notes: Vec::new(),
+            typed: HashSet::new(),
         }
     }
 
@@ -97,13 +103,14 @@ impl<'a> AddState<'a> {
     fn add(&mut self, key: &ObjectRef, obj: &NewObject, ids: &mut IdAllocator) -> Result<(), String> {
         let checked = self.check(key, obj)?;
         let mut out = Vec::new();
-        let owner_history = self.owner_history_for(ids, &mut out)?;
+        let owner = self.owner_history_for(ids, &mut out)?;
         let mut requests = Vec::new();
         let mut emit = Emit { schema: self.schema, ids, out: &mut out };
-        let built = self.build(&mut emit, obj, &checked, owner_history, &mut requests)?;
+        let built = self.build(&mut emit, obj, &checked, owner.id, &mut requests)?;
         let new_context = self.owned_context(built.new_context)?;
 
-        self.commit(owner_history, out, built.shared);
+        self.typed.extend(checked.existing_type);
+        self.commit(owner, out, built.shared);
         for req in requests {
             self.rels.relate(self.schema, req);
         }
@@ -123,7 +130,8 @@ impl<'a> AddState<'a> {
     /// every Add are written together, all or nothing: when `finish` fails (the
     /// id space runs out, or a list it extends does not scan), it discards every
     /// built object's records along with them (see its doc comment), so each Add
-    /// that had built is refused too.
+    /// that had built is refused too, and `history` goes back to what it had
+    /// committed before the Adds.
     pub(crate) fn build_all(
         mut self,
         adds: &[(&ObjectRef, AddItem)],
@@ -131,7 +139,9 @@ impl<'a> AddState<'a> {
         edits_by_id: &mut HashMap<u32, BTreeMap<usize, String>>,
         appended: &mut Vec<(u32, String)>,
         refusals: &mut Vec<Refusal>,
+        findings: &mut Vec<ValidationFinding>,
     ) -> usize {
+        let snapshot = self.history.snapshot();
         let mut built = Vec::new();
         for &(key, item) in adds {
             // A refused Add gives back the ids it took, so it changes no
@@ -149,9 +159,13 @@ impl<'a> AddState<'a> {
                 }
             }
         }
-        match self.finish(ids, edits_by_id) {
+        let typed = std::mem::take(&mut self.typed);
+        let mut notes = std::mem::take(&mut self.notes);
+        notes.retain(|n| n.express_id.is_none_or(|id| !typed.contains(&id)));
+        match self.finish(ids, edits_by_id, snapshot) {
             Ok(records) => {
                 appended.extend(records);
+                findings.append(&mut notes);
                 built.len()
             }
             Err(reason) => {
@@ -164,15 +178,26 @@ impl<'a> AddState<'a> {
         }
     }
 
-    /// Every record and list edit the Adds produced, relationships last.
+    /// Every record and list edit the Adds produced, relationships last. On
+    /// failure nothing they took from `history` stays committed.
     fn finish(
         self,
         ids: &mut IdAllocator,
         edits_by_id: &mut HashMap<u32, BTreeMap<usize, String>>,
+        snapshot: Snapshot,
     ) -> Result<Vec<(u32, String)>, String> {
+        let owner_history = self.settled_history();
         let mut records = self.records;
-        records.extend(self.rels.finish(self.schema, ids, self.owner_history, edits_by_id)?);
-        Ok(records)
+        match self.rels.finish(self.schema, ids, owner_history, edits_by_id) {
+            Ok(rels) => {
+                records.extend(rels);
+                Ok(records)
+            }
+            Err(reason) => {
+                self.history.restore(snapshot);
+                Err(reason)
+            }
+        }
     }
 
     fn build(

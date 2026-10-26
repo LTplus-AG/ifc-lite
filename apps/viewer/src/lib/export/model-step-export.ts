@@ -31,12 +31,20 @@ export async function exportModelStep(input: {
     hiddenEntityIds: portable ? portable.toSourceIds(options.hiddenEntityIds) ?? undefined : options.hiddenEntityIds,
     isolatedEntityIds: portable ? portable.toSourceIds(options.isolatedEntityIds) : options.isolatedEntityIds,
   });
+  // Crop first: its visible-only closure keeps only what products and relationships
+  // reference, so a schedule spliced earlier would lose its unattached tasks.
+  let exported: { content: string | Uint8Array } = result;
+  if (input.section) {
+    const bytes = typeof result.content === 'string' ? new TextEncoder().encode(result.content) : result.content;
+    const { exportSectionedStep } = await import('@ifc-lite/export');
+    exported = await exportSectionedStep(bytes, input.section);
+  }
   const spliced = input.scheduleState
-    ? spliceScheduleIntoExport(result, modelId, dataStore, input.scheduleState)
-    : result;
-  if (!input.section) return { content: spliced.content, stats: result.stats, resources: serialized.resources };
-  const bytes = typeof spliced.content === 'string' ? new TextEncoder().encode(spliced.content) : spliced.content;
-  const { exportSectionedStep } = await import('@ifc-lite/export');
-  const cropped = await exportSectionedStep(bytes, input.section);
-  return { content: cropped.content, stats: { ...result.stats, entityCount: countStepEntities(cropped.content) }, resources: serialized.resources };
+    ? spliceScheduleIntoExport(exported, modelId, dataStore, input.scheduleState)
+    : exported;
+  return {
+    content: spliced.content,
+    stats: input.section ? { ...result.stats, entityCount: countStepEntities(typeof spliced.content === 'string' ? new TextEncoder().encode(spliced.content) : spliced.content) } : result.stats,
+    resources: serialized.resources,
+  };
 }

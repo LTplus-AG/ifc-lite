@@ -30,6 +30,7 @@ fn shared_pset_write(id: u32) -> (ObjectRef, Disposition) {
         unit: None,
         kind: PsetKind::Property,
         scope: PropScope::Occurrence,
+        target: None,
     };
     (ObjectRef::Id(id), Disposition::Patch(Patch { psets: vec![write], ..Default::default() }))
 }
@@ -56,7 +57,7 @@ fn an_ordinary_plan_settles_in_two_passes_and_collects_a_plan_sized_set() {
     dispositions.push(shared_pset_write(layout.wall(1_501)));
     dispositions.push((ObjectRef::Id(layout.wall(1_000)), Disposition::Delete));
     dispositions.push((ObjectRef::Id(layout.wall(2_107)), Disposition::Delete));
-    let plan = ExportPlan { dispositions, context: PlanContext::default() };
+    let plan = ExportPlan { dispositions, context: PlanContext::attributed() };
 
     let index = resolved(&content, &plan);
     assert_eq!(index.referrers.passes(), 2);
@@ -72,7 +73,7 @@ fn a_chain_of_scalar_dependants_costs_one_pass_per_level() {
     let (layout, content) = model(200);
     let plan = ExportPlan {
         dispositions: vec![(ObjectRef::Id(layout.storey_placement(0)), Disposition::Delete)],
-        context: PlanContext::default(),
+        context: PlanContext::attributed(),
     };
     let index = resolved(&content, &plan);
     assert!(index.referrers.passes() > 2, "{}", index.referrers.passes());

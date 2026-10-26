@@ -21,14 +21,16 @@
 //! renamed `Description` to `Specification` there — see `attrs.rs`'s tests)
 //! is handled the same way a same-order schema is.
 
+use ifc_lite_core::SchemaFamily;
+
 use crate::step_ids::IdAllocator;
 
 use super::attrs::attribute_index;
 use super::index::FileIndex;
-use super::props_lookup::{
-    container_names, find_member, find_set, leaf_is_shared, list_attr, occurrence_rels, pset_owners, pset_reaches_only, scalar_attr, type_rel,
-};
+use super::props_lookup::{container_names, leaf_is_shared, list_attr, pset_owners, pset_reaches_only, set_members};
 use super::props_synth;
+use super::attribution::{Settles, Taken};
+use super::props_target::{ResolvedWrite, WriteTarget};
 use super::types::{PropScope, PropWrite, PsetKind};
 
 /// How a resolved existing value should be changed, or how a new one should
@@ -92,10 +94,11 @@ pub(crate) enum PropOutcome {
 
 /// The text an in-place edit writes into a value slot. See
 /// `props_synth::build_value_record` for why a quantity's value is bare.
-fn in_place_value(write: &PropWrite) -> String {
+fn in_place_value(family: Option<SchemaFamily>, write: &PropWrite) -> String {
+    let literal = crate::step_log::canonical_literal(family, &write.measure_type, &write.literal);
     match write.kind {
-        PsetKind::Property => format!("{}({})", write.measure_type, write.literal),
-        PsetKind::Quantity => write.literal.clone(),
+        PsetKind::Property => format!("{}({literal})", write.measure_type),
+        PsetKind::Quantity => literal.into_owned(),
     }
 }
 
@@ -111,41 +114,13 @@ fn other_kind(index: &FileIndex, write: &PropWrite, old: u32) -> Result<(), Stri
     }
 }
 
-/// `write`, carrying the unit of the value record it replaces when the caller
-/// named none: a copy keeps the unit the original had, as an in-place edit
-/// keeps its slot. Only from a value of the same measure (the same quantity entity, or
-/// a property of the same measure type), so a length never takes an area's
-/// unit.
-fn keeping_old_unit(index: &FileIndex, schema: &str, write: &PropWrite, old: Option<u32>) -> PropWrite {
-    let mut write = write.clone();
-    if write.unit.is_none() {
-        write.unit = old.and_then(|old| {
-            let entity = index.type_of(old)?;
-            (props_synth::value_entity(&write).ok()? == entity).then_some(())?;
-            if write.kind == PsetKind::Property {
-                let nominal = attribute_index(schema, &entity, "NominalValue")?;
-                let value = crate::step_text::attribute_of(&index.raw_line(old)?, nominal)?;
-                // An unset value contradicts nothing; a typed one must name
-                // the write's measure.
-                let bytes = value.as_bytes();
-                let start = ifc_lite_core::parser::skip_step_trivia(bytes, 0)?;
-                let name_len = bytes[start..].iter().take_while(|b| b.is_ascii_alphanumeric() || **b == b'_').count();
-                let name = &value[start..start + name_len];
-                (bytes.get(start) == Some(&b'$') || name.eq_ignore_ascii_case(&write.measure_type)).then_some(())?;
-            }
-            let idx = attribute_index(schema, &entity, "Unit")?;
-            index.attrs(old)?.into_iter().nth(idx)?.scalar.map(|unit| format!("#{unit}"))
-        });
-    }
-    write
-}
-
 /// The slot edits that overwrite an existing, unshared value record: its
 /// value, and its unit when the caller named one.
 /// Refused when the record has no such value slot (an enumerated, list or
 /// bounded property value), rather than reporting a write that changed
 /// nothing.
-fn in_place_edits(index: &FileIndex, schema: &str, member_id: u32, write: &PropWrite) -> Result<Vec<(u32, usize, String)>, String> {
+fn in_place_edits(target: &WriteTarget<'_>, member_id: u32, write: &PropWrite) -> Result<Vec<(u32, usize, String)>, String> {
+    let (index, schema) = (target.index, target.schema);
     let value_type = index.type_of(member_id).unwrap_or_default();
     if write.kind == PsetKind::Quantity {
         let wanted = props_synth::value_entity(write)?;
@@ -159,7 +134,7 @@ fn in_place_edits(index: &FileIndex, schema: &str, member_id: u32, write: &PropW
     };
     let i = attribute_index(schema, &value_type, value_slot)
         .ok_or_else(|| format!("existing value #{member_id} is {value_type}, which has no {value_slot} to write"))?;
-    let mut edits = vec![(member_id, i, in_place_value(write))];
+    let mut edits = vec![(member_id, i, in_place_value(target.family, write))];
     if let Some(unit) = &write.unit {
         if let Some(i) = attribute_index(schema, &value_type, "Unit") {
             edits.push((member_id, i, unit.clone()));
@@ -174,6 +149,23 @@ fn in_place_edits(index: &FileIndex, schema: &str, member_id: u32, write: &PropW
 pub(crate) struct SetWrites<'w> {
     pub(crate) outcomes: Vec<PropOutcome>,
     pub(crate) refused: Vec<(&'w PropWrite, String)>,
+    /// The owner history a written set and relationship took, for the
+    /// caller to commit.
+    pub(crate) history: Option<Settles>,
+}
+
+impl SetWrites<'_> {
+    /// A written set or clone, carrying the records of the history it took
+    /// ahead of its own.
+    fn push_with_history(&mut self, mut outcome: PropOutcome, taken: Option<Taken>) {
+        if let Some(taken) = taken {
+            if let PropOutcome::Append { new_records } | PropOutcome::CopyOnWrite { new_records, .. } = &mut outcome {
+                new_records.splice(0..0, taken.records);
+            }
+            self.history = Some(taken.settles);
+        }
+        self.outcomes.push(outcome);
+    }
 }
 
 /// Resolve one [`PropWrite`] against `object_id`.
@@ -186,62 +178,58 @@ pub(crate) fn resolve_prop_write(
     ids: &mut IdAllocator,
     owner_history: Option<u32>,
 ) -> Result<PropOutcome, String> {
-    let mut result = resolve_set_writes(index, schema, object_id, &[write], ids, owner_history);
+    let target = WriteTarget::read(index, schema, object_id);
+    let resolved = super::props_target::resolve_write(&target, write)?;
+    let taken = |_: &mut IdAllocator| owner_history.map(Taken::existing);
+    let mut result = resolve_set_writes(&target, &[resolved], ids, &taken);
     match result.refused.pop() {
         Some((_, reason)) => Err(reason),
         None => Ok(result.outcomes.pop().expect("one write resolves to one outcome")),
     }
 }
 
-/// Resolve every write one patch makes to one set (same `pset`, `kind` and
-/// `scope`) against `object_id` together, so the set is cloned, folded into
-/// or created once with all of them, rather than once per write with each
-/// result missing the others. A later write to the same property wins.
+/// Resolve every write one patch makes to one set (one resolved `set`, or
+/// with none, one `pset`, `kind` and `scope`) against `target` together, so
+/// the set is cloned, folded into or created once with all of them, rather
+/// than once per write with each result missing the others. A later write
+/// with the same [`ResolvedWrite::dedupe_key`] wins. `history` takes the
+/// owner history a new set and relationship name, only when one is written;
+/// the written set carries the records it brings, and
+/// [`SetWrites::history`] what the caller commits.
 pub(crate) fn resolve_set_writes<'w>(
-    index: &FileIndex,
-    schema: &str,
-    object_id: u32,
-    writes: &[&'w PropWrite],
+    target: &WriteTarget<'_>,
+    writes: &[ResolvedWrite<'w>],
     ids: &mut IdAllocator,
-    owner_history: Option<u32>,
+    history: &dyn Fn(&mut IdAllocator) -> Option<Taken>,
 ) -> SetWrites<'w> {
+    let (index, schema, object_id) = (target.index, target.schema, target.object_id);
     let mut result = SetWrites::default();
-    // Last write per property, in the order the properties were first named.
-    let mut group: Vec<&'w PropWrite> = Vec::new();
+    // Last write per record it reaches, in the order first reached.
+    let mut group: Vec<ResolvedWrite<'w>> = Vec::new();
     for &write in writes {
-        match group.iter_mut().find(|w| w.prop == write.prop) {
+        match group.iter_mut().find(|w| w.dedupe_key() == write.dedupe_key()) {
             Some(slot) => *slot = write,
             None => group.push(write),
         }
     }
-    group.retain(|&write| match props_synth::value_entity(write) {
+    group.retain(|w| match props_synth::check_value(target.family, w.write) {
         Ok(_) => true,
         Err(reason) => {
-            result.refused.push((write, reason));
+            result.refused.push((w.write, reason));
             false
         }
     });
-    let Some(&first) = group.first() else { return result };
+    let Some(first) = group.first().copied() else { return result };
     let refuse_all = |result: &mut SetWrites<'w>, reason: &str| {
-        result.refused.extend(group.iter().map(|&w| (w, reason.to_string())));
+        result.refused.extend(group.iter().map(|w| (w.write, reason.to_string())));
     };
-    let (container_type, member_attr) = container_names(first.kind);
+    let (container_type, member_attr) = container_names(first.write.kind);
+    let set = first.set.and_then(|set| Some((set, set_members(index, schema, set, first.write.kind)?)));
 
-    // 1. Occurrence-owned sets this object is directly related to. Only for
-    // PropScope::Occurrence: a Type-scoped write must never even LOOK at an
-    // occurrence override, or it would find one before ever reaching the
-    // type's own set below.
-    if matches!(first.scope, PropScope::Occurrence) {
-        let rels = occurrence_rels(index, schema, object_id);
-        let occurrence_psets: Vec<u32> = rels
-            .iter()
-            .filter_map(|&rel| scalar_attr(index, schema, rel, "IFCRELDEFINESBYPROPERTIES", "RelatingPropertyDefinition"))
-            .collect();
-        if let Some((pset_id, member_idx, members)) = find_set(index, schema, occurrence_psets.iter(), first.kind, &first.pset) {
-            let owning_rel = rels
-                .iter()
-                .copied()
-                .find(|&rel| scalar_attr(index, schema, rel, "IFCRELDEFINESBYPROPERTIES", "RelatingPropertyDefinition") == Some(pset_id));
+    match (first.write.scope, set) {
+        // 1. A set this object owns. Edited in place unless it is shared.
+        (PropScope::Occurrence, Some((pset_id, (member_idx, members)))) => {
+            let owning_rel = target.sets.own.iter().find(|&&(_, set)| set == pset_id).map(|&(rel, _)| rel);
             let rel_fanout = owning_rel
                 .and_then(|rel| list_attr(index, schema, rel, "IFCRELDEFINESBYPROPERTIES", "RelatedObjects"))
                 .map(|v| v.len())
@@ -250,7 +238,7 @@ pub(crate) fn resolve_set_writes<'w>(
             // editing it in place would change every occurrence of the type.
             let shared = rel_fanout > 1 || pset_owners(index, schema, pset_id).len() > 1;
             if !shared {
-                write_unshared_set(index, schema, &group, (pset_id, member_idx, &members), ids, &mut result);
+                write_unshared_set(target, &group, (pset_id, member_idx), ids, &mut result);
                 return result;
             }
 
@@ -267,65 +255,68 @@ pub(crate) fn resolve_set_writes<'w>(
                 refuse_all(&mut result, "shared occurrence set has no owning IfcRelDefinesByProperties to detach from");
                 return result;
             };
-            let replaced: Vec<Option<u32>> = group.iter().map(|w| find_member(index, schema, &members, &w.prop)).collect();
+            let replaced: Vec<Option<u32>> = group.iter().map(|w| w.record).collect();
             // A copy replaces a member only with one of its own kind, as an
             // in-place edit would refuse to rewrite an enumerated, list or
             // bounded value.
-            let mismatch = group.iter().zip(&replaced).find_map(|(w, old)| other_kind(index, w, (*old)?).err());
+            let mismatch = group.iter().find_map(|w| other_kind(index, w.write, w.record?).err());
             if let Some(reason) = mismatch {
                 refuse_all(&mut result, &reason);
                 return result;
             }
-            let writes: Vec<PropWrite> = group.iter().zip(&replaced).map(|(w, old)| keeping_old_unit(index, schema, w, *old)).collect();
-            let writes: Vec<&PropWrite> = writes.iter().collect();
-            match props_synth::copy_on_write_occurrence_set(
+            let writes: Vec<_> = group.iter().map(|w| w.for_new_record(target)).collect();
+            let writes: Vec<&PropWrite> = writes.iter().map(|w| &**w).collect();
+            let taken = history(ids);
+            let written = props_synth::copy_on_write_occurrence_set(
                 schema,
                 container_type,
                 member_attr,
                 object_id,
                 &writes,
                 ids,
-                owner_history,
+                taken.as_ref().map(|t| t.settles.id),
                 &members,
                 &replaced,
                 owning_rel,
-            ) {
-                Ok(outcome) => result.outcomes.push(outcome),
+            );
+            match written {
+                Ok(outcome) => result.push_with_history(outcome, taken),
                 Err(reason) => refuse_all(&mut result, &reason),
             }
-            return result;
         }
-    }
-
-    // 2. Type-owned: only for PropScope::Type writes. An occurrence write
-    // NEVER edits the type; it always appends an occurrence-only override
-    // below.
-    if matches!(first.scope, PropScope::Type) {
-        let Some((_, type_id)) = type_rel(index, schema, object_id) else {
-            refuse_all(&mut result, "object has no related type to patch");
-            return result;
-        };
-        let type_psets = list_attr(index, schema, type_id, &index.type_of(type_id).unwrap_or_default(), "HasPropertySets").unwrap_or_default();
-        match find_set(index, schema, type_psets.iter(), first.kind, &first.pset) {
-            // A set another type lists, or that a relationship relates to
-            // anything but this type, is not the type's alone: editing it
-            // would reach those objects too.
-            Some((pset_id, member_idx, members)) if pset_reaches_only(index, schema, pset_id, type_id) => {
-                write_unshared_set(index, schema, &group, (pset_id, member_idx, &members), ids, &mut result);
+        // 2. A set the related type lists: only for PropScope::Type writes.
+        // An occurrence write NEVER edits the type; it appends an
+        // occurrence-only override below.
+        (PropScope::Type, set) => {
+            let Some(type_id) = target.sets.type_id else {
+                refuse_all(&mut result, "object has no related type to patch");
+                return result;
+            };
+            match set {
+                // A set another type lists, or that a relationship relates to
+                // anything but this type, is not the type's alone: editing it
+                // would reach those objects too.
+                Some((pset_id, (member_idx, _))) if pset_reaches_only(index, schema, pset_id, type_id) => {
+                    write_unshared_set(target, &group, (pset_id, member_idx), ids, &mut result);
+                }
+                Some(_) => refuse_all(&mut result, "type-scoped property write would need to touch a set shared with another type or object; refusing"),
+                None => refuse_all(&mut result, "the related type has no set of this name; a type-scoped write never creates one"),
             }
-            Some(_) => refuse_all(&mut result, "type-scoped property write would need to touch a set shared with another type or object; refusing"),
-            None => refuse_all(&mut result, "the related type has no set of this name; a type-scoped write never creates one"),
         }
-        return result;
-    }
-
-    // 3. Nothing usable found: append a brand-new occurrence-only set
-    // carrying these values, with its own IfcRelDefinesByProperties naming
-    // only this object. Also the landing spot for a value the related TYPE
-    // owns (never edited directly).
-    match props_synth::append_new_occurrence_set(schema, container_type, member_attr, object_id, &group, ids, owner_history) {
-        Ok(outcome) => result.outcomes.push(outcome),
-        Err(reason) => refuse_all(&mut result, &reason),
+        // 3. No set of this name on the object: append a brand-new
+        // occurrence-only set carrying these values, with its own
+        // IfcRelDefinesByProperties naming only this object. Also the
+        // landing spot for a value the related TYPE owns (never edited
+        // directly).
+        (PropScope::Occurrence, None) => {
+            let inherited: Vec<_> = group.iter().map(|w| w.for_new_record(target)).collect();
+            let inherited: Vec<&PropWrite> = inherited.iter().map(|w| &**w).collect();
+            let taken = history(ids);
+            match props_synth::append_new_occurrence_set(schema, container_type, member_attr, object_id, &inherited, ids, taken.as_ref().map(|t| t.settles.id)) {
+                Ok(outcome) => result.push_with_history(outcome, taken),
+                Err(reason) => refuse_all(&mut result, &reason),
+            }
+        }
     }
     result
 }
@@ -334,22 +325,23 @@ pub(crate) fn resolve_set_writes<'w>(
 /// existing value is edited in place (or, when another set also names that
 /// value record, replaced by a fresh one), and a missing one is folded in.
 fn write_unshared_set<'w>(
-    index: &FileIndex,
-    schema: &str,
-    group: &[&'w PropWrite],
-    (pset_id, member_idx, members): (u32, usize, &[Option<u32>]),
+    target: &WriteTarget<'_>,
+    group: &[ResolvedWrite<'w>],
+    (pset_id, member_idx): (u32, usize),
     ids: &mut IdAllocator,
     result: &mut SetWrites<'w>,
 ) {
-    for &write in group {
+    let (index, schema) = (target.index, target.schema);
+    for resolved in group {
+        let write = resolved.write;
         let (container_type, _) = container_names(write.kind);
-        let outcome = match find_member(index, schema, members, &write.prop) {
+        let outcome = match resolved.record {
             Some(member_id) if leaf_is_shared(index, container_type, member_idx, member_id, pset_id) => {
-                let write = keeping_old_unit(index, schema, write, Some(member_id));
+                let write = resolved.for_new_record(target);
                 other_kind(index, &write, member_id).and_then(|()| props_synth::leaf_copy_on_write(schema, &write, ids, pset_id, member_idx, member_id))
             }
-            Some(member_id) => in_place_edits(index, schema, member_id, write).map(PropOutcome::InPlace),
-            None => props_synth::fold_new_value(schema, write, ids, pset_id, member_idx),
+            Some(member_id) => in_place_edits(target, member_id, write).map(PropOutcome::InPlace),
+            None => props_synth::fold_new_value(schema, &resolved.for_new_record(target), ids, pset_id, member_idx),
         };
         match outcome {
             Ok(outcome) => result.outcomes.push(outcome),

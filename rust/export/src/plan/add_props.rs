@@ -10,6 +10,9 @@
 
 use std::collections::HashSet;
 
+use ifc_lite_core::SchemaFamily;
+
+use crate::step_log::MeasureNumber;
 use crate::step_text::escape;
 
 use super::tessellation::Emit;
@@ -22,6 +25,7 @@ use super::types::PsetKind;
 /// a quantity with no `IfcQuantity*` entity for its measure, a
 /// non-finite number, a measure `schema` does not declare as a number.
 pub(crate) fn validate_psets(schema: &str, psets: &[NewPropertySet]) -> Result<(), String> {
+    let family = SchemaFamily::of_file_schema(schema);
     let mut names = HashSet::new();
     for set in psets {
         if !names.insert(set.name.as_str()) {
@@ -35,13 +39,7 @@ pub(crate) fn validate_psets(schema: &str, psets: &[NewPropertySet]) -> Result<(
             if !props.insert(p.name.as_str()) {
                 return Err(format!("'{}' appears twice in '{}'", p.name, set.name));
             }
-            let (measure, _) = lower(&p.value)?;
-            if let PropertyValue::Measure { measure_type, value } = &p.value {
-                // A quantity writes its value bare into an IfcQuantity*, whose
-                // own rule (not negative) is checked below.
-                crate::step_log::check_real_measure(schema, measure_type, *value, set.kind == PsetKind::Property)
-                    .map_err(|reason| format!("{}.{}: {reason}", set.name, p.name))?;
-            }
+            let (measure, _) = lower(family, set.kind, &p.value).map_err(|reason| format!("{}.{}: {reason}", set.name, p.name))?;
             if set.kind == PsetKind::Quantity {
                 if quantity_entity_for_measure(&measure).is_none() {
                     return Err(format!("{}.{}: no IfcQuantity* entity for {measure}", set.name, p.name));
@@ -61,18 +59,31 @@ pub(crate) fn validate_psets(schema: &str, psets: &[NewPropertySet]) -> Result<(
     Ok(())
 }
 
-/// `(UPPERCASE measure type, STEP literal)` for a value.
-fn lower(value: &PropertyValue) -> Result<(String, String), String> {
-    let finite = |v: f64| if v.is_finite() { Ok(super::placement::fmt(v)) } else { Err(format!("{v} is not finite")) };
+/// `(UPPERCASE measure type, STEP literal)` for a value of a set of `kind`.
+/// A measure is checked against its type in `family`: numeric there, within
+/// its WHERE rule for a property (a quantity writes its value bare into an
+/// IfcQuantity*, whose own rule, not negative, [`validate_psets`] checks),
+/// and written as an INTEGER where its base is one.
+fn lower(family: Option<SchemaFamily>, kind: PsetKind, value: &PropertyValue) -> Result<(String, String), String> {
+    let finite = |v: f64| if v.is_finite() { Ok(v) } else { Err(format!("{v} is not finite")) };
     Ok(match value {
         PropertyValue::Label(s) => ("IFCLABEL".into(), format!("'{}'", escape(s))),
         PropertyValue::Text(s) => ("IFCTEXT".into(), format!("'{}'", escape(s))),
         PropertyValue::Identifier(s) => ("IFCIDENTIFIER".into(), format!("'{}'", escape(s))),
         PropertyValue::Boolean(b) => ("IFCBOOLEAN".into(), if *b { ".T." } else { ".F." }.into()),
         PropertyValue::Integer(i) => ("IFCINTEGER".into(), i.to_string()),
-        PropertyValue::Real(v) => ("IFCREAL".into(), finite(*v)?),
+        PropertyValue::Real(v) => ("IFCREAL".into(), super::placement::fmt(finite(*v)?)),
         PropertyValue::Measure { measure_type, value } => {
-            (measure_type.to_ascii_uppercase(), finite(*value)?)
+            // Written as given, so it must be a type name exactly.
+            if !crate::step_log::is_entity_name(measure_type) {
+                return Err(format!("measure type {measure_type:?} is not a type name"));
+            }
+            let value = finite(*value)?;
+            let literal = match crate::step_log::check_real_measure(family, measure_type, value, kind == PsetKind::Property)? {
+                MeasureNumber::Real => super::placement::fmt(value),
+                MeasureNumber::Integer(i) => i.to_string(),
+            };
+            (measure_type.to_ascii_uppercase(), literal)
         }
     })
 }
@@ -92,6 +103,7 @@ pub(crate) fn build_sets(
     // `check_units` built `units` from these sets, one entry per value.
     debug_assert!(units.len() == psets.len() && psets.iter().zip(units).all(|(s, u)| s.properties.len() == u.len()));
     let mut set_ids = Vec::with_capacity(psets.len());
+    let family = SchemaFamily::of_file_schema(emit.schema);
     for (set, units) in psets.iter().zip(units) {
         let (container, member_attr) = match set.kind {
             PsetKind::Property => ("IFCPROPERTYSET", "HasProperties"),
@@ -99,7 +111,7 @@ pub(crate) fn build_sets(
         };
         let mut members = Vec::with_capacity(set.properties.len());
         for (p, unit) in set.properties.iter().zip(units) {
-            let (measure, literal) = lower(&p.value)?;
+            let (measure, literal) = lower(family, set.kind, &p.value)?;
             let entity = match set.kind {
                 PsetKind::Property => "IFCPROPERTYSINGLEVALUE",
                 PsetKind::Quantity => quantity_entity_for_measure(&measure).ok_or("no quantity entity")?,

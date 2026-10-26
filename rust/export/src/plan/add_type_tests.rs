@@ -5,7 +5,7 @@
 
 use crate::plan::add_test_support::*;
 use crate::plan::add_types::*;
-use crate::plan::attrs::{attribute_index, build_record, unset_required};
+use crate::plan::attrs::{build_record, unset_required};
 use crate::plan::index::FileIndex;
 use crate::plan::test_fixtures::{gid as fixture_gid, storey_with_typed_wall};
 use crate::plan::types::*;
@@ -16,13 +16,6 @@ fn wall_type(n: u128) -> NewType {
 
 fn add_type(t: NewType) -> (ObjectRef, Disposition) {
     (ObjectRef::Guid(t.global_id.unwrap().encode()), Disposition::AddType(Box::new(t)))
-}
-
-fn attr(out: &[u8], schema: &str, id: u32, attr: &str) -> String {
-    let index = FileIndex::scan(out, &Default::default());
-    let entity = index.type_of(id).unwrap_or_default();
-    let idx = attribute_index(schema, &entity, attr).unwrap_or_else(|| panic!("{entity} has no {attr}"));
-    crate::step_text::attribute_of(&index.raw_line(id).unwrap(), idx).unwrap()
 }
 
 fn assert_valid(out: &[u8], report: &WriteReport, schema: &str) {
@@ -72,7 +65,12 @@ fn a_projects_existing_declaration_is_extended() {
 fn an_ifc2x3_type_is_written_on_its_own() {
     let source = storey_with_typed_wall("IFC2X3");
     let (out, report) = run(&source, vec![add_type(wall_type(4))]);
-    assert_valid(&out, &report, "IFC2X3");
+    // Written on its own, and the report says so rather than staying silent.
+    let id = id_in(&out, gid(4));
+    assert_eq!(report.findings.len(), 1, "{:?}", report.findings);
+    assert_eq!(report.findings[0].express_id, Some(id));
+    assert!(report.findings[0].message.contains("no IfcRelDeclares"), "{}", report.findings[0].message);
+    assert!(crate::plan::validate::validate(&out, "IFC2X3").is_empty());
     assert_eq!(report.added, 1);
     assert_eq!(type_in(&out, id_in(&out, gid(4))), "IFCWALLTYPE");
     assert!(!String::from_utf8(out).unwrap().contains("IFCRELDECLARES"));

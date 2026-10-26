@@ -43,6 +43,14 @@ test('#7711 exported planes keep the same side as the screen, including a six-fa
   assert.equal(sectionExportOptions(useViewerStore.getState(), 'trim', 'm')?.planes.length, 7);
 });
 
+test('#7711 an authored plane distance is normalised with its normal, so offset differs from distance', () => {
+  // Viewer (3,4,0) is IFC (0.6,0,0.8) after normalisation; the plane 3x+4y=10 sits 2 m from the origin.
+  enablePlane([3,4,0], 10);
+  const [plane] = sectionExportOptions(useViewerStore.getState(), 'trim', 'm')!.planes;
+  assert.ok(Math.abs(plane.normal[0]-0.6)<1e-12 && Math.abs(plane.normal[1])<1e-12 && Math.abs(plane.normal[2]-0.8)<1e-12);
+  assert.ok(Math.abs(plane.offset-2)<1e-12, `offset ${plane.offset} must be distance/|normal|, not the authored distance`);
+});
+
 test('#7711 one shared federation frame maps the crop into each source model despite offsets and workspace moves', () => {
   enablePlane([1,0,0], 2);
   const state = useViewerStore.getState();

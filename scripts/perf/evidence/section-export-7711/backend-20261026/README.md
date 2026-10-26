@@ -10,7 +10,7 @@ path only; it is not a WASM, viewer or GPU measurement.
 
 | cohort | fixtures | outcome |
 | --- | --- | --- |
-| [v3-qualified](v3-qualified) | AC20-FZK-Haus, dental_clinic, ISSUE_053 Holter Tower | **Qualified.** Identity matched; no phase moved beyond the noise floor (TOTAL -0.4% to +1.7%, all within noise); no fingerprint drift, no noise rejection, no inconclusive flag. |
+| [v3-qualified](v3-qualified) | AC20-FZK-Haus, dental_clinic, ISSUE_053 Holter Tower | **Qualified.** Identity matched; no phase moved beyond the noise floor (TOTAL -1.3% to +1.7%, all within noise); no fingerprint drift, no noise rejection, no inconclusive flag. |
 | [v2-inconclusive](v2-inconclusive) | AC20-FZK-Haus, ISSUE_129, ISSUE_053 Holter Tower | **Not qualified, retained.** Identity matched and totals were within noise (-0.4% to +1.6%), but ISSUE_129 `lookup/styles` was 0.0 ms on both sides, below timer resolution, so the protocol refuses to certify. One 3% entity-scan *improvement* on that fixture was flagged. |
 
 v3 is a distinct follow-up, not a retry: v2's outcome was known and complete,

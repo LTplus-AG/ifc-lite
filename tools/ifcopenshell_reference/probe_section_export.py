@@ -15,6 +15,37 @@ from pathlib import Path
 import ifcopenshell
 import ifcopenshell.geom
 import ifcopenshell.util.element
+import ifcopenshell.util.placement
+
+
+
+def check_placement(old, new):
+    """#7908: unchanged EXPRESS ids do not imply unchanged placement values."""
+    before = old.ObjectPlacement
+    after = new.ObjectPlacement
+    assert (before is None) == (after is None), (old.id(), "placement presence changed")
+    if before is None:
+        return
+    assert before.id() == after.id(), (old.id(), "placement identity changed")
+    a = ifcopenshell.util.placement.get_local_placement(before)
+    b = ifcopenshell.util.placement.get_local_placement(after)
+    assert all(math.isfinite(x) and math.isfinite(y) and math.isclose(x, y, rel_tol=0, abs_tol=1e-9)
+               for x, y in zip(a.flat, b.flat)), (old.id(), "placement transform changed")
+
+
+def check_fill_links(source, output, retained_ids):
+    """#7908: derive required links from source, including missing output rows."""
+    expected = {r.id() for r in source.by_type("IfcRelFillsElement")
+                if r.RelatingOpeningElement.id() in retained_ids
+                and r.RelatedBuildingElement.id() in retained_ids}
+    actual = {r.id() for r in output.by_type("IfcRelFillsElement")}
+    assert actual == expected, ("fill links changed", sorted(expected - actual), sorted(actual - expected))
+    for relation in output.by_type("IfcRelFillsElement"):
+        previous = source.by_id(relation.id())
+        assert relation.GlobalId == previous.GlobalId, relation.id()
+        for attribute in ["RelatingOpeningElement", "RelatedBuildingElement"]:
+            current = getattr(relation, attribute).id()
+            assert current in retained_ids and current == getattr(previous, attribute).id(), relation.id()
 
 
 def probe(source_path, evidence_dir):
@@ -54,9 +85,7 @@ def probe(source_path, evidence_dir):
         new = output.by_id(entity_id)
         assert old.is_a() == new.is_a(), entity_id
         assert old.GlobalId == new.GlobalId, entity_id
-        before_placement = old.ObjectPlacement.id() if old.ObjectPlacement else None
-        after_placement = new.ObjectPlacement.id() if new.ObjectPlacement else None
-        assert before_placement == after_placement, entity_id
+        check_placement(old, new)
         assert ifcopenshell.util.element.get_psets(old) == ifcopenshell.util.element.get_psets(new), entity_id
         for attribute in ["HasAssociations", "ContainedInStructure", "IsTypedBy"]:
             previous = sorted(r.id() for r in getattr(old, attribute, []))
@@ -77,12 +106,7 @@ def probe(source_path, evidence_dir):
         old = source.by_id(opening.id())
         assert opening.GlobalId == old.GlobalId and opening.is_a() == old.is_a(), opening.id()
         opening_links += 1
-    for relation in output.by_type("IfcRelFillsElement"):
-        previous = source.by_id(relation.id())
-        assert relation.GlobalId == previous.GlobalId, relation.id()
-        for attribute in ["RelatingOpeningElement", "RelatedBuildingElement"]:
-            current = getattr(relation, attribute).id()
-            assert current in retained_ids and current == getattr(previous, attribute).id(), relation.id()
+    check_fill_links(source, output, retained_ids)
     for entity_id in retained_ids.intersection(receipt["outside"]):
         container = output.by_id(entity_id)
         assert container.is_a("IfcSpatialElement") and container.Representation is None, (entity_id, "outside body retained")

@@ -20,8 +20,7 @@ import {
   collectStoreys,
   mergedSectionBounds,
   sectionAxisRange,
-  storeyCutElevation,
-  worldToPercent,
+  storeyCutPosition,
   type SectionStorey,
 } from '@/lib/section/section-distance';
 
@@ -43,10 +42,11 @@ export function useFloorplanView() {
   const activateFloorplan = useCallback((storey: SectionStorey) => {
     // The plan cut sits 1.2 m above the floor (standard architectural
     // practice), expressed as a percentage of the merged Y bounds — the
-    // same conversion the Section bar's distance field uses.
+    // same helper the Section bar's storey menu uses. Above the model top
+    // it stays at floor + 1.2 m (past 100 %) when the floor is in range (#8162).
     const range = sectionAxisRange(mergedSectionBounds(models, geometryResult), 'down');
     // Fallback bounds if no coordinate info available
-    const percentage = range ? worldToPercent(storeyCutElevation(storey), range) : 50;
+    const percentage = range ? storeyCutPosition(storey, range) : 50;
 
     // 2. Set section plane: axis=down (Y), position=calculated, enabled
     setSectionPlaneAxis('down');

@@ -31,6 +31,13 @@ with `z = 0`, and count malformed-input refusals. For an already decoded
 direction when no decoder is available, `EntityDecoder::direction3_of` returns
 `Option<[f64; 3]>` and cannot count refusals.
 
+`placement::PlacementError::is_admission_refusal()` identifies malformed point,
+direction or real input and missing mandatory attributes. It returns false for
+dangling references, wrong record types, cycles and terminal execution stops;
+callers must propagate `PlacementError::ProgramStopped` separately. Symbolic
+extraction uses this distinction to drop refused input while retaining its
+established unresolved-placement behavior.
+
 The geometry crate's former `parse_axis2_placement_3d`,
 `parse_axis2_placement_3d_from_id`, `parse_cartesian_point`,
 `parse_cartesian_point_from_id`, `parse_direction`, and `parse_direction_from_id`

@@ -266,6 +266,7 @@ jobs:
           filters: |
             rust:
               - 'rust/**'
+              - 'scripts/retained-browser-runtime-tests.mjs'
               - 'apps/server/**'
               - 'Cargo.toml'
               - 'Cargo.lock'

@@ -55,7 +55,8 @@ impl PatchOutput<'_, '_> {
 }
 
 /// Apply `patch` to `object_id`, returning whether it wrote anything: a
-/// patch whose every part is refused leaves the object unmodified.
+/// patch whose every part is refused leaves the object unmodified, and one
+/// that asks for nothing is refused as such rather than dropped silently.
 pub(super) fn apply_patch(
     index: &FileIndex,
     schema: &str,
@@ -64,9 +65,12 @@ pub(super) fn apply_patch(
     ids: &mut IdAllocator,
     out: &mut PatchOutput<'_, '_>,
 ) -> bool {
-    let before = (out.appended.len(), out.edited.len(), out.detach_requests.len());
-    write_patch(index, schema, object_id, patch, ids, out);
-    (out.appended.len(), out.edited.len(), out.detach_requests.len()) != before
+    let refused_before = out.refusals.len();
+    let wrote = write_patch(index, schema, object_id, patch, ids, out);
+    if !wrote && out.refusals.len() == refused_before {
+        out.refusals.push(Refusal { object: ObjectRef::Id(object_id), reason: "patch changes nothing".into() });
+    }
+    wrote
 }
 
 fn write_patch(
@@ -76,11 +80,15 @@ fn write_patch(
     patch: &Patch,
     ids: &mut IdAllocator,
     out: &mut PatchOutput<'_, '_>,
-) {
+) -> bool {
+    let mut wrote = false;
     if let Some(name) = &patch.name {
         let entity_type = index.type_of(object_id).unwrap_or_default();
         match attrs::attribute_index(schema, &entity_type, "Name") {
-            Some(idx) => out.edit(vec![(object_id, idx, format!("'{}'", escape(name)))]),
+            Some(idx) => {
+                out.edit(vec![(object_id, idx, format!("'{}'", escape(name)))]);
+                wrote = true;
+            }
             None => out.refusals.push(Refusal {
                 object: ObjectRef::Id(object_id),
                 reason: format!("{entity_type} has no Name attribute in {schema}"),
@@ -118,7 +126,7 @@ fn write_patch(
             }
         }
         for group in &groups {
-            apply_set_writes(&target, group, ids, out);
+            wrote |= apply_set_writes(&target, group, ids, out);
         }
     }
 
@@ -134,6 +142,7 @@ fn write_patch(
                 out.edit(vec![repoint]);
                 out.removed.extend(orphaned);
                 out.moved.insert(object_id);
+                wrote = true;
             }
             Err(reason) => out.refusals.push(Refusal { object: ObjectRef::Id(object_id), reason }),
         }
@@ -147,6 +156,7 @@ fn write_patch(
         };
         match result {
             Ok(geometry::GeometryWrite { new_records, repoint, old_shape, dropped }) => {
+                wrote = true;
                 out.reshaped.insert(object_id);
                 out.appended.extend(new_records);
                 out.edit(vec![repoint]);
@@ -158,20 +168,23 @@ fn write_patch(
             Err(reason) => out.refusals.push(Refusal { object: ObjectRef::Id(object_id), reason: format!("geometry: {reason}") }),
         }
     }
+    wrote
 }
 
-/// The outcomes of resolving one set's writes, recorded on `out`.
+/// The outcomes of resolving one set's writes, recorded on `out`; whether
+/// any write produced one.
 fn apply_set_writes(
     target: &props_target::WriteTarget<'_>,
     group: &[props_target::ResolvedWrite<'_>],
     ids: &mut IdAllocator,
     out: &mut PatchOutput<'_, '_>,
-) {
+) -> bool {
     let (history, removed) = (&*out.history, &*out.removed);
     let result = props::resolve_set_writes(target, group, ids, &|ids: &mut IdAllocator| history.take(ids, removed));
     if let Some(settles) = result.history {
         out.history.commit(settles);
     }
+    let wrote = !result.outcomes.is_empty();
     for outcome in result.outcomes {
         match outcome {
             props::PropOutcome::InPlace(edits) => out.edit(edits),
@@ -197,4 +210,5 @@ fn apply_set_writes(
     for (write, reason) in result.refused {
         out.refusals.push(Refusal { object: ObjectRef::Id(target.object_id), reason: format!("{}.{}: {reason}", write.pset, write.prop) });
     }
+    wrote
 }

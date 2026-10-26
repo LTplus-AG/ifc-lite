@@ -158,11 +158,20 @@ fn existing_user(index: &FileIndex, removed: &HashSet<u32>, schema: &str, org: u
 /// all the same, since UR1 allows one application per identifier.
 pub(crate) fn reuse_note(index: &FileIndex, schema: &str, application: u32, identity: &Identity) -> Option<String> {
     let read = |attr: &str| index.string_attr(schema, application, "IFCAPPLICATION", attr).unwrap_or_default();
-    let (version, full_name) = (read("Version"), read("ApplicationFullName"));
-    (version != identity.app.version || full_name != identity.app.full_name).then(|| {
+    let (identifier, version, full_name) = (read("ApplicationIdentifier"), read("Version"), read("ApplicationFullName"));
+    let app = &identity.app;
+    if identifier != app.identifier {
+        // Reused by name and version (UR2): consumers look the exporter up by
+        // identifier, and the file names it by another.
+        return Some(format!(
+            "the file already has application #{application} '{full_name}' version '{version}' with identifier '{identifier}'; it is reused (an application's name and version are unique) though the exporting application's identifier is '{}'",
+            app.identifier
+        ));
+    }
+    (version != app.version || full_name != app.full_name).then(|| {
         format!(
-            "the file already has application #{application} with identifier '{}' ('{full_name}' version '{version}'); it is reused for '{}' version '{}', since an identifier names one application",
-            identity.app.identifier, identity.app.full_name, identity.app.version
+            "the file already has application #{application} with identifier '{identifier}' ('{full_name}' version '{version}'); it is reused for '{}' version '{}', since an identifier names one application",
+            app.full_name, app.version
         )
     })
 }

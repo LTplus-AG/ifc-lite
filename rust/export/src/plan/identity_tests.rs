@@ -973,7 +973,9 @@ fn an_application_with_the_same_name_and_version_is_reused() {
         ),
     ];
     let src = src.replace("ENDSEC;\nEND-ISO", &format!("{}\nENDSEC;\nEND-ISO", ours.join("\n"))).into_bytes();
-    let (out, _) = export(&src, vec![rename(10)], context());
+    let (out, report) = export(&src, vec![rename(10)], context());
+    // Consumers look the exporter up by identifier: the mismatch is said.
+    assert!(report.findings.iter().any(|f| f.message.contains("'other-id'") && f.message.contains("'example-app'")), "{:?}", report.findings);
     let all = lines(&out);
     assert_eq!(all.values().filter(|l| l.contains("=IFCAPPLICATION(") && l.contains("'ExampleApp'")).count(), 1);
     let history = target(schema, &all, &all[&10], "IFCWALL", "OwnerHistory");
@@ -1015,4 +1017,29 @@ fn a_delete_only_plan_without_an_application_says_so() {
     let src = owned(&crate::plan::test_fixtures::three_walls_sharing_a_pset("IFC4"), "IFC4");
     let (_, report) = export(&src, vec![(ObjectRef::Id(12), Disposition::Delete)], PlanContext::new());
     assert!(report.findings.iter().any(|f| f.message.contains("no ExportingApplication")), "{:?}", report.findings);
+}
+
+/// Two patches that each write: both count, though the second rewrites what
+/// the first did (a second rename; a second write to one shared value,
+/// whose copy replaces the first's) (owner-history PR).
+#[test]
+fn a_repeated_write_still_counts_as_a_patch() {
+    for schema in SCHEMAS {
+        let (_, report) = export(&source(schema, false), vec![rename(10), rename(10)], context());
+        assert_eq!(report.patched, 2, "{schema}: {report:?}");
+        let src = crate::plan::test_fixtures::two_walls_separate_sets_sharing_a_leaf(schema);
+        let rating = |v: &str| patch(10, vec![write("Pset_WallCommon", "FireRating", v, PropScope::Occurrence)]);
+        let (_, report) = export(&src, vec![rating("'A'"), rating("'B'")], context());
+        assert!(report.refusals.is_empty(), "{schema}: {report:?}");
+        assert_eq!(report.patched, 2, "{schema}: {report:?}");
+    }
+}
+
+/// A patch that asks for nothing is reported, not dropped silently
+/// (owner-history PR).
+#[test]
+fn an_empty_patch_is_refused() {
+    let (_, report) = export(&source("IFC4", false), vec![(ObjectRef::Id(10), Disposition::Patch(Patch::new()))], context());
+    assert_eq!(report.patched, 0, "{report:?}");
+    assert!(report.refusals.iter().any(|r| r.object == ObjectRef::Id(10) && r.reason.contains("patch changes nothing")), "{report:?}");
 }

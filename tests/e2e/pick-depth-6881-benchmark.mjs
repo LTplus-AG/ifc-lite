@@ -12,7 +12,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { sameSampleIdentity } from './pick-depth-6881-identity.mjs';
-import { readForeignHostAdmission } from './pick-depth-6881-host.mjs';
+import { awaitQuietHost } from './pick-depth-6881-host.mjs';
 
 const [configuration, output] = process.argv.slice(2);
 if (!configuration || !output) throw Error('Arguments: frozen cohort configuration, new output directory');
@@ -105,7 +105,7 @@ try {
     const record = { scenario: scenario.name, ...sample, ok: false, rows: [], errors: [], driverErrors: [] };
     active = record; records.push(record);
     try {
-      record.hostBefore = await readForeignHostAdmission(readHostAdmission); record.sessionBefore = readPhysicalSession();
+      record.hostBefore = await awaitQuietHost(readHostAdmission); record.sessionBefore = readPhysicalSession();
       if (!record.hostBefore.quiet || !isPhysicalConsole(record.sessionBefore)) throw Error('Idle/physical host admission refused');
       current = config.arms[sample.side].buildRoot;
       browser = await launchNativeChrome(chromium);
@@ -192,7 +192,7 @@ try {
       record.retirement = await page.evaluate('globalThis.__6881Hover.retire()');
       record.geometryAfter = await page.evaluate(async () => (await import('/__6881/hover.js')).geometryWitness());
       if (JSON.stringify(record.geometryBefore) !== JSON.stringify(record.geometryAfter)) throw Error('Hover changed geometry publication');
-      record.hostAfter = await readForeignHostAdmission(readHostAdmission); record.sessionAfter = readPhysicalSession();
+      record.hostAfter = await awaitQuietHost(readHostAdmission); record.sessionAfter = readPhysicalSession();
       record.health = await page.evaluate('({...globalThis.__6881Health, visibility:document.visibilityState, focused:document.hasFocus(), dpr:devicePixelRatio})');
       if (!record.hostAfter.quiet || !isPhysicalConsole(record.sessionAfter) || Math.abs(record.health.dpr - 1) > 1e-6
         || record.health.visibility !== 'visible' || !record.health.focused || record.health.interruptions

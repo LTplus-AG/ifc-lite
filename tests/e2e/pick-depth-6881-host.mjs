@@ -64,3 +64,20 @@ export async function readForeignHostAdmission(readHostAdmission, root = process
   return { ...host, sharedWindowCpuPercent: host.cpuPercent, cpuPercent: window.busyCpuPercent, rawQuiet: host.quiet, quiet,
     ownCpuPercent: window.ownCpuPercent, foreignCpuPercent: window.foreignCpuPercent, windowMs: window.durationMs };
 }
+
+// Brief host spikes (observed 11.3% for one window right after a sample's
+// browser closed) refused whole cohorts on a single reading. Admission now
+// repeats the one-second reading until one is quiet or the budget runs out, so
+// sustained foreign work (builds, other benchmarks) is still refused while a
+// transient spike only delays the sample. Only host readings are retried; no
+// timing measurement is ever repeated or discarded. Every reading is kept.
+export const QUIET_WAIT_BUDGET_MS = 60_000;
+
+export async function awaitQuietHost(readHostAdmission, root = process.pid, budgetMs = QUIET_WAIT_BUDGET_MS) {
+  const startedAt = Date.now(), attempts = [];
+  for (;;) {
+    const reading = await readForeignHostAdmission(readHostAdmission, root);
+    attempts.push({ at: reading.capturedAt, quiet: reading.quiet, foreignCpuPercent: reading.foreignCpuPercent });
+    if (reading.quiet || Date.now() - startedAt >= budgetMs) return { ...reading, attempts, waitedMs: Date.now() - startedAt };
+  }
+}

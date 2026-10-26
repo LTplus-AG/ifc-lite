@@ -114,7 +114,7 @@ Preparation receipts:
   an id change, a hit-to-miss change and a 1e-9 camera change. Same-render depth and world equality
   between candidate and full-copy stays exact in the 140 functional comparisons; this tolerance
   applies only between different cohort samples. This change is not blinded: it follows observing
-  the refused sample, and the final verdict must say so.
+  the refused sample, and is reported as such alongside any verdict.
 - Further protocol changes before the final cohort, each after observing earlier attempts and not blinded:
   Federation uses nine stable pick positions chosen from 48 valid dense-grid probe samples
   ([`federation-position-stability.json`](federation-position-stability.json),
@@ -128,9 +128,9 @@ Preparation receipts:
   and a `probe` flag recorded in every report.
 - An eighth attempt (`hover-9`) completed nine FZK samples and was refused before the tenth at 11.2%
   foreign CPU. See [`hover-attempt-8.json`](hover-attempt-8.json) and [raw samples](hover-9-runs.jsonl.gz).
-- The final cohort (`hover-8`) completed all five pairs for FZK and for Building-Architecture with
+- The cohort then intended as final (`hover-8`) completed all five pairs for FZK and for Building-Architecture with
   every gate satisfied, then aborted in Federation pair 1 (branch): one pick resolved a different
-  entity at the same texel, at a world position within 0.15 mm of the reference hit, consistent with
+  entity at the same texel, at a world position within 0.22 mm on z (about 0.29 mm Euclidean) of the reference hit, consistent with
   coplanar surfaces z-fighting. Federation is therefore incomplete (one pair), the frozen cohort is
   not accepted, and no formal verdict exists. A post hoc table from the valid samples, clearly marked
   partial, is in [`hover-attempt-7.json`](hover-attempt-7.json); raw samples are in
@@ -138,6 +138,22 @@ Preparation receipts:
   maps 256 bytes instead of the full aligned depth copy per pick, GPU picker time is lower in every
   pair, and hover latency is lower in nine of ten pairs. Nothing here replaces the required Federation
   comparison or the frozen protocol; it is retained as non-conclusive evidence.
+- Attempts 9 and 10 (`hover-10`, `hover-11`) never started: the first was cancelled while queued and
+  the second hit the fleet's fixed one-hour admission limit behind another session's Pop job.
+  Attempt 11 (`hover-12`) was refused in its second sample because the operator moved the physical
+  mouse on the Pop display, injecting 15 extra pointer events that the input/pick pairing gate
+  rejected. Attempt 12 (`hover-13`) was refused before its second sample by a single one-second
+  reading of 11.35% foreign CPU, about one second after the first sample's browser closed, with no
+  foreign build processes; Pop measured about 1.3% busy two minutes later. See
+  [`hover-attempts-9-12.json`](hover-attempts-9-12.json), [`hover-12-runs.jsonl.gz`](hover-12-runs.jsonl.gz)
+  and [`hover-13-runs.jsonl.gz`](hover-13-runs.jsonl.gz).
+- Protocol change after observing attempt 12, not blinded: the pre-sample and post-sample host gates
+  (`awaitQuietHost` in `pick-depth-6881-host.mjs`) repeat the same one-second foreign-CPU reading
+  until one is quiet, for at most 60 seconds, and refuse only if none is. The 10% limit, the build,
+  memory and AC conditions and the physical-console check are unchanged, and every reading is kept
+  in the record. Only host readings are repeated; no timing sample is repeated, discarded or chosen.
+  Sustained foreign work still refuses, while a transient spike now only delays the sample. The
+  operator keeps the Pop mouse and keyboard untouched for the cohort.
 
 [Preparation receipts](preparation.json) retain command/source identities,
 original outcomes and log hashes. Failed functional reports and compact summaries

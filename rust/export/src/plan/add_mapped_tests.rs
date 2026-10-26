@@ -44,12 +44,6 @@ fn type_with_maps(schema: &str) -> Vec<u8> {
     text.replacen("ENDSEC;\nEND-ISO", &format!("{records}ENDSEC;\nEND-ISO"), 1).into_bytes()
 }
 
-fn translated(x: f64) -> [[f64; 4]; 4] {
-    let mut m = IDENTITY;
-    m[0][3] = x;
-    m
-}
-
 fn mapped_wall(n: u128, type_link: TypeLink, transform: [[f64; 4]; 4]) -> NewObject {
     let mut w = object(IfcClass::Wall, gid(n), Some(ObjectRef::Id(70)), Representation::Mapped(MappedBody::new(transform)));
     w.type_link = Some(type_link);

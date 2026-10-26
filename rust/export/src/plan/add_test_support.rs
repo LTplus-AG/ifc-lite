@@ -99,3 +99,10 @@ pub(super) fn bounds(result: &ifc_lite_processing::ProcessingResult, id: u32) ->
     }
     b
 }
+
+/// A placement `x` along the x axis.
+pub(super) fn translated(x: f64) -> [[f64; 4]; 4] {
+    let mut m = IDENTITY;
+    m[0][3] = x;
+    m
+}

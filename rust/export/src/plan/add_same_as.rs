@@ -1,18 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Reused geometry for [`super::super::Disposition::Add`]: a new product with
-//! every representation of a product already in the source, not only its
-//! body. A child of `add`, which builds through it. Openings that void the
-//! source, its projections and the layer assignments of its representations
-//! are not carried; an Add that needs openings declares its own.
-//!
-//! The new product gets its own `IfcProductDefinitionShape` and its own
-//! representations, one per representation of the source product, in the
-//! same context with the same identifier and type, listing the source's own
-//! items, so anything attached to an item, such as a style or an item-level
-//! layer, applies to both. Items are positioned relative to the object
-//! placement, so at its own placement the new product shows the same
-//! geometry. The shape itself is not shared: IFC2X3's inverse
-//! `ShapeOfProduct` allows one product per shape.
+//! Reused geometry for [`super::super::Disposition::Add`]: the checks and
+//! records behind [`Representation::SameAs`], whose doc states what is and is
+//! not carried. A child of `add`, which builds through it. The shape itself
+//! is not shared: IFC2X3's inverse `ShapeOfProduct` allows one product per
+//! shape.
 
 use crate::plan::add_types::{NewObject, Representation};
 use crate::plan::attrs::attribute_index;
@@ -64,7 +55,9 @@ impl AddState<'_, '_> {
         for rep in reps {
             let at = || format!("representation source {source}: representation #{rep}");
             let e = entity(rep);
-            let Some(context) = scalar_attr(index, schema, rep, &e, "ContextOfItems").filter(|c| index.contains(*c)) else {
+            let attrs = index.attrs(rep).unwrap_or_default();
+            let slot = |name| attrs.get(attribute_index(schema, &e, name)?);
+            let Some(context) = slot("ContextOfItems").and_then(|a| a.scalar).filter(|c| index.contains(*c)) else {
                 return Err(format!("{} has no readable context", at()));
             };
             if self.removed.contains(&context) {
@@ -73,12 +66,16 @@ impl AddState<'_, '_> {
             if self.removed.contains(&rep) {
                 return Err(format!("{} is removed by this plan", at()));
             }
-            let items = list_attr(index, schema, rep, &e, "Items").unwrap_or_default();
+            let items: Vec<u32> = slot("Items").and_then(|a| a.list.as_ref()).map(|l| l.iter().flatten().copied().collect()).unwrap_or_default();
             if items.is_empty() {
                 return Err(format!("{} has no items", at()));
             }
-            if let Some(item) = items.iter().find(|i| !index.contains(**i) || self.removed.contains(i)) {
-                let why = if index.contains(*item) { "is removed by this plan" } else { "is not in the source" };
+            let lost = |&i: &u32| match (index.contains(i), self.removed.contains(&i)) {
+                (false, _) => Some((i, "is not in the source")),
+                (true, true) => Some((i, "is removed by this plan")),
+                (true, false) => None,
+            };
+            if let Some((item, why)) = items.iter().find_map(lost) {
                 return Err(format!("{}: item #{item} {why}", at()));
             }
             let line = index.raw_line(rep).unwrap_or_default();

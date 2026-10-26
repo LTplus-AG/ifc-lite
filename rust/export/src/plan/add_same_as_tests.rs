@@ -5,7 +5,7 @@
 
 use crate::plan::add_test_support::*;
 use crate::plan::add_types::*;
-use crate::plan::attrs::build_record;
+use crate::plan::attrs::{build_record, unset_required};
 use crate::plan::index::FileIndex;
 use crate::plan::test_fixtures::{products_with_geometry, storey_with_typed_wall};
 use crate::plan::types::*;
@@ -48,12 +48,6 @@ fn door_scene(schema: &str, extra: &[Record]) -> Vec<u8> {
     text.replacen("ENDSEC;\nEND-ISO", &format!("{records}ENDSEC;\nEND-ISO"), 1).into_bytes()
 }
 
-fn translated(x: f64) -> [[f64; 4]; 4] {
-    let mut m = IDENTITY;
-    m[0][3] = x;
-    m
-}
-
 /// A copy of `source` at `x` along, in `container` when given.
 fn copy(n: u128, class: IfcClass, source: ObjectRef, container: Option<ObjectRef>, x: f64) -> NewObject {
     let mut obj = object(class, gid(n), container, Representation::SameAs(source));
@@ -66,12 +60,22 @@ fn refs_of(index: &FileIndex, id: u32) -> Vec<u32> {
     index.attrs(id).unwrap().iter().flat_map(|a| a.refs().collect::<Vec<_>>()).collect()
 }
 
-/// Validates, and every reference names a record of the output.
+/// `b` is `a` moved by `shift`, within 0.1 mm on every axis.
+fn assert_shifted(a: [(f64, f64); 3], b: [(f64, f64); 3], shift: [f64; 3], schema: &str) {
+    for axis in 0..3 {
+        assert!((b[axis].0 - a[axis].0 - shift[axis]).abs() < 1e-4 && (b[axis].1 - a[axis].1 - shift[axis]).abs() < 1e-4, "{schema}: {a:?} vs {b:?}");
+    }
+}
+
+/// Validates, sets every required attribute, and every reference names a
+/// record of the output.
 fn assert_valid(out: &[u8], schema: &str) {
     let findings = crate::plan::validate::validate(out, schema);
     assert!(findings.is_empty(), "{schema}: {findings:?}");
     let index = FileIndex::scan(out, &Default::default());
     for (id, ..) in index.records() {
+        let line = index.raw_line(id).unwrap();
+        assert!(unset_required(schema, &line).is_empty(), "{schema}: #{id} leaves {:?} unset", unset_required(schema, &line));
         for r in refs_of(&index, id) {
             assert!(index.contains(r), "{schema}: #{id} names missing #{r}");
         }
@@ -117,9 +121,7 @@ fn a_copy_lists_its_source_doors_extruded_solid_in_its_own_shape() {
         // The engine meshes the copy as the door, three metres further along.
         let result = ifc_lite_processing::process_geometry(&out);
         let (a, b) = (bounds(&result, 200), bounds(&result, id_in(&out, gid(1))));
-        for (axis, shift) in [3.0, 0.0, 0.0].into_iter().enumerate() {
-            assert!((b[axis].0 - a[axis].0 - shift).abs() < 1e-4 && (b[axis].1 - a[axis].1 - shift).abs() < 1e-4, "{schema}: {a:?} vs {b:?}");
-        }
+        assert_shifted(a, b, [3.0, 0.0, 0.0], schema);
         assert!((a[2].1 - a[2].0 - 2.1).abs() < 1e-4, "{schema}: {a:?}");
     }
 }
@@ -160,9 +162,7 @@ fn a_mapped_item_is_shared_not_copied() {
         // Wall #12 sits at x = 12; the copy at 20.
         let result = ifc_lite_processing::process_geometry(&out);
         let (a, b) = (bounds(&result, 12), bounds(&result, id_in(&out, gid(1))));
-        for (axis, shift) in [8.0, 0.0, 0.0].into_iter().enumerate() {
-            assert!((b[axis].0 - a[axis].0 - shift).abs() < 1e-4 && (b[axis].1 - a[axis].1 - shift).abs() < 1e-4, "{schema}: {a:?} vs {b:?}");
-        }
+        assert_shifted(a, b, [8.0, 0.0, 0.0], schema);
     }
 }
 

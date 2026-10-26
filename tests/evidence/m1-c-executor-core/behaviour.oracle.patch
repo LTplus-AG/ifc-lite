@@ -1,0 +1,12 @@
+diff --git a/rust/processing/src/element/session_retained/traversal.rs b/rust/processing/src/element/session_retained/traversal.rs
+--- a/rust/processing/src/element/session_retained/traversal.rs
++++ b/rust/processing/src/element/session_retained/traversal.rs
+@@ -33,7 +33,7 @@
+         };
+         if matches!(kind, WorkKind::Primary { layer_class, .. } if layer_class != 0) {
+             self.failed = true;
+-            return Err(RetainedExecutionError::Unsupported(Unsupported::RetainedOpeningStrategy));
++            return Err(RetainedExecutionError::Unsupported(Unsupported::RetainedMaterialLayerStrategy));
+         }
+         if !matches!(kind, WorkKind::Primary { strategy: super::super::plan::PrimaryStrategy::TexturedSubmeshes, layer_class: 0 }
+             | WorkKind::PlainParts | WorkKind::TypeMap { .. }) {

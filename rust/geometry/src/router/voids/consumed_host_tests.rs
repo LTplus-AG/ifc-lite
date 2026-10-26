@@ -155,7 +155,7 @@ fn raw_tris(gap: f64) -> usize {
 
 #[test]
 fn thin_residual_between_rect_openings_stays_closed() {
-    for gap in [0.00002, 0.00005] {
+    for gap in [0.00001, 0.00002] {
         let ctx = context(web_openings(gap), None);
         assert_eq!(ctx.merged_openings.len(), 2, "the authored gap must survive the merge");
         let router = GeometryRouter::new();
@@ -169,7 +169,7 @@ fn thin_residual_between_rect_openings_stays_closed() {
 
 #[test]
 fn thin_residual_between_param_openings_is_rejected_and_stays_closed() {
-    for gap in [0.00002, 0.00005] {
+    for gap in [0.00001, 0.00002] {
         let hx = (2.0 - gap) / 2.0;
         let param = ParamRectCut {
             host: param_box([0.0, 0.0, 1.5], [3.0, 1.5, 0.1]),

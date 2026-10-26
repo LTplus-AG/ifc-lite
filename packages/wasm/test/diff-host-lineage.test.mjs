@@ -187,3 +187,36 @@ test('raw live WASM every callbacks survive return, throw, GC and reentry (#8042
     }
   }
 });
+
+// #8042 review 4377878942 (on 71ae09364e): the raw binding must not introduce a
+// guard that rejects an unrecognized policy. Current-main TS falls through to an
+// orphaned split, without reading `shares` or `head`, for any string that is
+// not exactly 'copy-to-all' or 'largest-share'; non-split entries are unaffected.
+test('raw live WASM treats an unknown rekey policy as orphan-on-split like current-main TS (#8042, review 4377878942)', async context => {
+  const wasm = await engine(context); if (!wasm) return;
+  const oracle = await currentMainOracle(context); if (!oracle) return;
+  const make = (relation = 'split') => trace => ({
+    entry: { base: ['source'], relation, get shares() { trace.push('entry:shares'); return [0.4, 0.6]; },
+      get head() { trace.push('entry:head'); return ['a', 'b']; } },
+  });
+  const controls = [['copy-to-all', ['a', 'b']], ['largest-share', ['b']], ['orphan-on-split', []]];
+  for (const [policy, successors] of controls) {
+    assert.deepEqual(rekey(wasm, split([0.4, 0.6]), ['source'], policy), row(successors), policy);
+    const expected = observe(make(), input => oracle.rekeyByLineage(['source'], [input.entry], policy));
+    const actual = observe(make(), input => rekey(wasm, input.entry, ['source'], policy));
+    sameObservation(expected, actual);
+  }
+  for (const policy of ['largest_share', '', 'unknown-policy']) {
+    const name = JSON.stringify(policy);
+    assert.deepEqual(rekey(wasm, split([0.4, 0.6]), ['source'], policy), row([]), `${name}: orphaned split`);
+    assert.deepEqual(oracle.rekeyByLineage(['source'], [split([0.4, 0.6])], policy), row([]), `${name}: oracle`);
+    const expected = observe(make(), input => oracle.rekeyByLineage(['source'], [input.entry], policy));
+    const actual = observe(make(), input => rekey(wasm, input.entry, ['source'], policy));
+    sameObservation(expected, actual);
+    assert.deepEqual(actual.trace, [], `${name}: reads neither shares nor head`);
+    // Only splits depend on the policy; an identity entry keeps its heads.
+    const identity = { base: ['source'], head: ['h'], relation: 'identity', reason: 'same' };
+    assert.deepEqual(rekey(wasm, identity, ['source'], policy),
+      [{ key: 'source', successors: ['h'], relation: 'identity', orphan: false }], `${name}: identity`);
+  }
+});

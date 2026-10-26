@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import {
-  createViewpoint, perspectiveToCamera, orthogonalToCamera,
+  createViewpoint, fillMissingSnapshots, perspectiveToCamera, orthogonalToCamera,
   type BCFProject, type BCFViewpoint, type EntityBoundsInput, type IDSReportInput,
 } from '@ifc-lite/bcf';
 import { isSpatialStructureTypeName } from '@ifc-lite/data';
@@ -23,10 +23,10 @@ export async function completeIdsBcfViewpoints(
   renderer: Renderer | null | undefined,
   toViewerGlobalId: (modelId: string, expressId: number) => number | undefined,
   resolveHighlightIds: ((ids: number[]) => number[]) | undefined,
-  settings: { includeCamera: boolean; includeSnapshots: boolean },
+  settings: { includeCamera: boolean; snapshots: 'required' | 'best-effort' | 'off' },
   progress: (value: IDSExportProgress) => void,
 ): Promise<void> {
-  if (settings.includeSnapshots && !renderer) {
+  if (settings.snapshots === 'required' && !renderer) {
     throw new Error('Cannot capture IDS BCF snapshots: open the model in the 3D viewer and retry.');
   }
   const entitiesByGuid = new Map<string, { id: number | undefined; bounds: EntityBoundsInput | undefined; spatial: boolean }[]>();
@@ -100,22 +100,28 @@ export async function completeIdsBcfViewpoints(
       }
     }
 
-    if (settings.includeSnapshots && renderer) {
+    if (settings.snapshots !== 'off' && renderer) {
       progress({ phase: 'snapshots', current: ++current, total: project.topics.size,
         message: `Capturing snapshot ${current}/${project.topics.size}...` });
       // Camera-disabled exports may still frame their screenshot without persisting a camera.
       const snapshotViewpoint = viewpoint ?? { guid: '' };
       const snapshot = await captureTopic(renderer, snapshotViewpoint, ids,
         knownBounds.length > 0 && !viewpoint?.components?.visibility?.defaultVisibility);
-      if (!snapshot) throw new Error(`Could not capture the IDS BCF snapshot for "${topic.title}". Keep the model open in the 3D viewer and retry.`);
-      if (!viewpoint) { viewpoint = { guid: createViewpoint({ camera: readCamera(renderer) }).guid }; topic.viewpoints.push(viewpoint); }
-      viewpoint.snapshot = snapshot;
+      if (!snapshot && settings.snapshots === 'required') throw new Error(`Could not capture the IDS BCF snapshot for "${topic.title}". Keep the model open in the 3D viewer and retry.`);
+      // A best-effort miss keeps the placeholder that fillMissingSnapshots supplies.
+      if (snapshot) {
+        if (!viewpoint) { viewpoint = { guid: createViewpoint({ camera: readCamera(renderer) }).guid }; topic.viewpoints.push(viewpoint); }
+        viewpoint.snapshot = snapshot;
+        delete viewpoint.snapshotData; // the reporter's placeholder would otherwise win in writeBCF
+      }
     }
     if (!settings.includeCamera && viewpoint) {
       delete viewpoint.perspectiveCamera;
       delete viewpoint.orthogonalCamera;
     }
   }
+  // Fallback viewpoints created above have no image yet (#7974).
+  fillMissingSnapshots(project);
 }
 
 function readCamera(renderer: Renderer) {

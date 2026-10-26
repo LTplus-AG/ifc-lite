@@ -84,3 +84,25 @@ pub(super) fn count(out: &[u8], entity: &str) -> usize {
 pub(super) fn type_in(out: &[u8], id: u32) -> String {
     FileIndex::scan(out, &Default::default()).type_of(id).unwrap_or_default()
 }
+
+/// `(min, max)` of every axis of the meshes the engine made for `id`.
+pub(super) fn bounds(result: &ifc_lite_processing::ProcessingResult, id: u32) -> [(f64, f64); 3] {
+    let meshes: Vec<_> = result.meshes.iter().filter(|m| m.express_id == id).collect();
+    assert!(!meshes.is_empty(), "#{id} not meshed");
+    let mut b = [(f64::INFINITY, f64::NEG_INFINITY); 3];
+    for m in meshes {
+        for v in m.positions.chunks_exact(3) {
+            for axis in 0..3 {
+                b[axis] = (b[axis].0.min(f64::from(v[axis])), b[axis].1.max(f64::from(v[axis])));
+            }
+        }
+    }
+    b
+}
+
+/// A placement `x` along the x axis.
+pub(super) fn translated(x: f64) -> [[f64; 4]; 4] {
+    let mut m = IDENTITY;
+    m[0][3] = x;
+    m
+}

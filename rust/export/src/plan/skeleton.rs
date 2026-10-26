@@ -121,22 +121,14 @@ fn length_unit(emit: &mut Emit, name: &str, metres: f64, metre: u32) -> Result<u
     )
 }
 
-/// The skeleton's bytes.
+/// The skeleton's bytes, and what it reports: an application it could not
+/// attribute the skeleton to (its change time unusable) is a finding, and
+/// the skeleton is written unattributed rather than refused.
 ///
 /// # Errors
 /// A number is not finite, a direction is zero length, the three roots do
 /// not have distinct GlobalIds, or `crs_name` is empty.
-pub fn skeleton(s: &Skeleton) -> Result<Vec<u8>, String> {
-    skeleton_with_findings(s).map(|(bytes, _)| bytes)
-}
-
-/// [`skeleton`], with what it reports: an application it could not attribute
-/// the skeleton to (its change time unusable) is a finding, and the skeleton
-/// is written unattributed rather than refused.
-///
-/// # Errors
-/// As [`skeleton`].
-pub fn skeleton_with_findings(s: &Skeleton) -> Result<(Vec<u8>, Vec<ValidationFinding>), String> {
+pub fn skeleton(s: &Skeleton) -> Result<(Vec<u8>, Vec<ValidationFinding>), String> {
     check(s)?;
     let mut findings = Vec::new();
     let mut ids = IdAllocator::after(0);

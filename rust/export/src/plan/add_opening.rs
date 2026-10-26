@@ -9,7 +9,7 @@ use crate::plan::tessellation::Emit;
 
 use super::AddState;
 
-impl AddState<'_> {
+impl AddState<'_, '_> {
     /// An `IfcOpeningElement` cut into `host` at `op`, in the new object's
     /// frame, voiding the host and, for a door or window, filled by it.
     #[allow(clippy::too_many_arguments)]

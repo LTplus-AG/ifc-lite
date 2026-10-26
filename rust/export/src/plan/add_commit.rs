@@ -20,7 +20,7 @@ use super::{Added, AddState};
 /// `RepresentationContexts` slot.
 pub(super) type ContextOwner = (u32, usize);
 
-impl AddState<'_> {
+impl AddState<'_, '_> {
     /// The owner history new records name ([`Histories`]). What it has to
     /// write goes into `out`, which the caller commits only if its Add
     /// builds, so a plan whose Adds are all refused writes nothing.

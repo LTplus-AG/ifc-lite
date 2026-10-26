@@ -219,7 +219,8 @@ fn an_unreadable_change_time_is_reported_and_attribution_stays() {
 #[test]
 fn a_skeleton_is_owned_and_headed_by_the_exporting_application() {
     let root = |n: u128| SkeletonRoot::new(GlobalId(n));
-    let bytes = skeleton(&Skeleton::new(root(1), root(2), root(3)).with_application(app()).with_file_name("new.ifc")).unwrap();
+    let (bytes, findings) = skeleton(&Skeleton::new(root(1), root(2), root(3)).with_application(app()).with_file_name("new.ifc")).unwrap();
+    assert!(findings.is_empty(), "{findings:?}");
     let all = lines(&bytes);
     let added = histories(&all, ".ADDED.");
     assert_eq!(added.len(), 1);
@@ -599,7 +600,7 @@ fn a_change_time_outside_32_bits_is_refused_and_named() {
         assert_eq!(report.findings[0].message.contains("milliseconds"), millis, "{stamp}: {:?}", report.findings);
         assert_eq!(attr("IFC4", &lines(&out)[&10], "IFCWALL", "OwnerHistory"), "#164", "{stamp}");
         let root = |n: u128| SkeletonRoot::new(GlobalId(n));
-        let (bytes, findings) = skeleton_with_findings(&Skeleton::new(root(1), root(2), root(3)).with_application(app)).unwrap();
+        let (bytes, findings) = skeleton(&Skeleton::new(root(1), root(2), root(3)).with_application(app)).unwrap();
         assert!(histories(&lines(&bytes), ".ADDED.").is_empty(), "{stamp}: unattributed");
         assert_eq!(findings.len(), 1, "{stamp}: {findings:?}");
     }
@@ -639,29 +640,6 @@ fn a_removed_history_is_not_settled() {
     assert_eq!(history.settled(&std::collections::HashSet::new()), Some(164));
 }
 
-/// An application whose developer the plan deletes goes with it (the
-/// cascade): a fresh chain is written, and the identifier stays unique.
-#[test]
-fn an_application_whose_developer_is_deleted_is_not_reused() {
-    let schema = "IFC4";
-    let src = String::from_utf8(source(schema, false)).unwrap();
-    let ours = [
-        build_record(schema, 171, "IFCORGANIZATION", &[("Name", "'ExampleOrg'".into())]),
-        build_record(
-            schema,
-            173,
-            "IFCAPPLICATION",
-            &[("ApplicationDeveloper", "#171".into()), ("Version", "'2.1'".into()), ("ApplicationFullName", "'ExampleApp'".into()), ("ApplicationIdentifier", "'example-app'".into())],
-        ),
-    ];
-    let src = src.replace("ENDSEC;\nEND-ISO", &format!("{}\nENDSEC;\nEND-ISO", ours.join("\n"))).into_bytes();
-    let (out, _) = export(&src, vec![(ObjectRef::Id(171), Disposition::Delete), rename(10)], context());
-    assert_no_dangling(&out, schema);
-    let all = lines(&out);
-    assert_eq!(all.values().filter(|l| l.contains("'example-app'")).count(), 1, "one application with the identifier");
-    let history = target(schema, &all, &all[&10], "IFCWALL", "OwnerHistory");
-    assert_ne!(attr(schema, &history, "IFCOWNERHISTORY", "LastModifyingApplication"), "#173");
-}
 
 /// A plan that deletes the file's owner history does not name it for the
 /// records its patches add.
@@ -734,32 +712,70 @@ fn the_header_time_is_utc() {
     assert!(String::from_utf8(out).unwrap().contains("'2026-10-23T10:00:00Z'"));
 }
 
-/// When the Adds' relationships fail, the ledger forgets the chain and
-/// history the discarded Adds had taken, so nothing later names them.
+/// When the Adds' relationships fail, the ledger keeps nothing the
+/// discarded Adds had taken, so nothing later names it.
 #[test]
-fn a_failed_add_phase_rolls_the_ledger_back() {
-    use crate::plan::add::AddState;
+fn a_failed_add_phase_leaves_the_ledger_untouched() {
+    use crate::plan::add_attributed::{run, AddSetting, Produced};
     use crate::plan::add_types::AddItem;
-    use crate::plan::attribution::{Histories, Ledger};
+    use crate::plan::attribution::Ledger;
     let mut checked = false;
     for headroom in 5..40 {
         let src = crate::plan::test_fixtures::storey_with_headroom("IFC4", headroom);
         let index = crate::plan::index::FileIndex::complete(&src);
         let plan = ExportPlan { dispositions: Vec::new(), context: context() };
-        let ledger = Ledger::for_plan(&plan, &mut Vec::new()).unwrap();
+        let mut ledger = Ledger::for_plan(&plan, &mut Vec::new()).unwrap();
         let wall = object(IfcClass::Wall, new_gid(90), Some(ObjectRef::Id(70)), Representation::None);
         let key = ObjectRef::Guid(wall.global_id.encode());
         let adds = [(&key, AddItem::Object(&wall))];
         let removed = std::collections::HashSet::new();
-        let history = Histories::new(&index, "IFC4", Some(&ledger), None, &plan.context);
-        let state = AddState::new(&index, "IFC4", &removed, history, None);
+        let setting = AddSetting { index: &index, schema: "IFC4", context: &plan.context, removed: &removed, owner_history: None, body_context: None };
         let mut ids = crate::step_ids::IdAllocator::after(index.max_id);
-        let mut refusals = Vec::new();
-        let (built, made) = state.build_all(&adds, &mut ids, &mut HashMap::new(), &mut Vec::new(), &mut refusals, &mut Vec::new());
+        let (mut appended, mut edits, mut refusals, mut findings) = (Vec::new(), HashMap::new(), Vec::new(), Vec::new());
+        let mut produced = Produced { ids: &mut ids, appended: &mut appended, edits_by_id: &mut edits, refusals: &mut refusals, findings: &mut findings };
+        let built = run(&setting, &adds, Some(&mut ledger), &mut produced);
         if built == 0 && refusals.iter().any(|r| r.reason.contains("relationships for added objects not written")) {
             checked = true;
-            assert!(made.is_none(), "headroom {headroom}: nothing the discarded Adds took reaches the ledger");
+            assert_eq!(ledger.made.added(), None, "headroom {headroom}: no ADDED history committed");
+            assert_eq!(ledger.made.application(), None, "headroom {headroom}: no chain committed");
         }
     }
     assert!(checked, "some headroom fails the relationships after the Add built");
+}
+
+/// Deleting an organization's address rewrites the organization, which owns
+/// nothing rooted: no IfcRoot is marked modified.
+#[test]
+fn an_address_delete_marks_nothing_rooted() {
+    for schema in SCHEMAS {
+        let src = String::from_utf8(owned(&crate::plan::test_fixtures::wall_with_own_pset(schema), schema)).unwrap();
+        let src = src.replace("#902=IFCORGANIZATION($,'OCo',$,$,$);", "#902=IFCORGANIZATION($,'OCo',$,$,(#905));").replace(
+            "ENDSEC;\nEND-ISO",
+            &format!("{}\nENDSEC;\nEND-ISO", build_record(schema, 905, "IFCPOSTALADDRESS", &[("Town", "'Zug'".into())])),
+        );
+        assert!(src.contains("(#905));"), "{schema}: the organization lists the address");
+        let (out, report) = export(src.as_bytes(), vec![(ObjectRef::Id(905), Disposition::Delete)], context());
+        assert!(report.refusals.is_empty(), "{schema}: {report:?}");
+        assert!(assert_modified_exactly_the_rewritten(schema, src.as_bytes(), &out).is_empty(), "{schema}");
+    }
+}
+
+/// A kept application whose developer reference dangles is reused as it is:
+/// one application per identifier, the user with an organization of its own.
+#[test]
+fn an_application_with_a_dangling_developer_is_reused() {
+    let schema = "IFC4";
+    let src = String::from_utf8(source(schema, false)).unwrap();
+    let app = build_record(
+        schema,
+        173,
+        "IFCAPPLICATION",
+        &[("ApplicationDeveloper", "#999".into()), ("Version", "'2.1'".into()), ("ApplicationFullName", "'ExampleApp'".into()), ("ApplicationIdentifier", "'example-app'".into())],
+    );
+    let src = src.replace("ENDSEC;\nEND-ISO", &format!("{app}\nENDSEC;\nEND-ISO")).into_bytes();
+    let (out, _) = export(&src, vec![rename(10)], context());
+    let all = lines(&out);
+    assert_eq!(all.values().filter(|l| l.contains("'example-app'")).count(), 1);
+    let history = target(schema, &all, &all[&10], "IFCWALL", "OwnerHistory");
+    assert_eq!(attr(schema, &history, "IFCOWNERHISTORY", "LastModifyingApplication"), "#173");
 }

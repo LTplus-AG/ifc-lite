@@ -26,7 +26,6 @@ use super::add_rels::{RelAccumulator, RelKind, RelRequest};
 use super::add_types::{AddItem, NewObject, Representation, TypeLink};
 use super::attrs::unset_required;
 use super::attribution::Histories;
-use super::identity::Made;
 use super::index::FileIndex;
 use super::placement::fmt;
 use super::props_synth::{defines_by_properties_record, ref_or_unset};
@@ -44,11 +43,11 @@ struct Added {
     class: String,
 }
 
-pub(crate) struct AddState<'a> {
+pub(crate) struct AddState<'a, 'h> {
     index: &'a FileIndex<'a>,
     schema: &'a str,
     removed: &'a HashSet<u32>,
-    history: Histories<'a>,
+    history: &'a mut Histories<'h>,
     added: HashMap<String, Added>,
     /// Each added object's placement, by id, for children placed under it.
     placement_of_added: HashMap<u32, Option<u32>>,
@@ -69,7 +68,7 @@ pub(crate) struct AddState<'a> {
     typed: HashSet<u32>,
 }
 
-impl<'a> AddState<'a> {
+impl<'a, 'h> AddState<'a, 'h> {
     /// `history` is where new records' owner history comes from: the one the
     /// source (or a patch) already provides, else one the first Add that
     /// builds makes, so a plan whose Adds are all refused writes nothing.
@@ -80,7 +79,7 @@ impl<'a> AddState<'a> {
         index: &'a FileIndex<'a>,
         schema: &'a str,
         removed: &'a HashSet<u32>,
-        history: Histories<'a>,
+        history: &'a mut Histories<'h>,
         body_context: Option<u32>,
     ) -> Self {
         Self {
@@ -127,8 +126,8 @@ impl<'a> AddState<'a> {
         Ok(())
     }
 
-    /// Build every Add, returning how many were written and, when they all
-    /// were, the exporting application's records they settled. The relationships of
+    /// Build every Add, returning how many were written and whether all of
+    /// them were: only then is what they committed to `history` theirs. The relationships of
     /// every Add are written together, all or nothing: when `finish` fails (the
     /// id space runs out, or a list it extends does not scan), it discards every
     /// built object's records along with them (see its doc comment), so each Add
@@ -141,7 +140,7 @@ impl<'a> AddState<'a> {
         appended: &mut Vec<(u32, String)>,
         refusals: &mut Vec<Refusal>,
         findings: &mut Vec<ValidationFinding>,
-    ) -> (usize, Option<Made>) {
+    ) -> (usize, bool) {
         let mut built = Vec::new();
         for &(key, item) in adds {
             // A refused Add gives back the ids it took, so it changes no
@@ -162,21 +161,18 @@ impl<'a> AddState<'a> {
         let typed = std::mem::take(&mut self.typed);
         let mut notes = std::mem::take(&mut self.notes);
         notes.retain(|n| n.express_id.is_none_or(|id| !typed.contains(&id)));
-        // What the Adds committed reaches the ledger only if all of them are
-        // written: a failure here discards every one.
-        let made = self.history.made();
         match self.finish(ids, edits_by_id) {
             Ok(records) => {
                 appended.extend(records);
                 findings.append(&mut notes);
-                (built.len(), Some(made))
+                (built.len(), true)
             }
             Err(reason) => {
                 refusals.extend(built.into_iter().map(|key| Refusal {
                     object: key.clone(),
                     reason: format!("relationships for added objects not written: {reason}"),
                 }));
-                (0, None)
+                (0, false)
             }
         }
     }

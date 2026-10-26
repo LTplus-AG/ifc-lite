@@ -114,26 +114,24 @@ pub(crate) fn chain(schema: &str, ids: &mut IdAllocator, spec: &ChainSpec, sourc
 }
 
 /// `(application, its developer)` for the source's application named
-/// `identifier`, the first in file order that the output keeps, reused only
-/// if its developer survives too: a developer the plan removes takes the
-/// application with it (the cascade), so a fresh chain is written. An unset
-/// (`$`) developer is reused as it is; the user then gets an organization
-/// of its own.
+/// `identifier` that the output keeps, preferring one whose developer it
+/// keeps too. An application is reused even when its developer is unset or
+/// does not resolve (UR1: one application per identifier, so a second is
+/// never written); the user then gets an organization of its own. A
+/// developer the plan removes takes its application with it (the cascade),
+/// which is then not kept.
 fn existing_application(index: &FileIndex, removed: &HashSet<u32>, schema: &str, identifier: &str) -> Option<(u32, Option<u32>)> {
-    let id = index
+    let developer = |id: u32| scalar_attr(index, schema, id, "IFCAPPLICATION", "ApplicationDeveloper").filter(|d| index.contains(*d) && !removed.contains(d));
+    let mut candidates = index
         .applications
         .iter()
         .copied()
         .filter(|id| !removed.contains(id))
-        .find(|&id| index.string_attr(schema, id, "IFCAPPLICATION", "ApplicationIdentifier").as_deref() == Some(identifier))?;
-    let slot = attribute_index(schema, "IFCAPPLICATION", "ApplicationDeveloper")
-        .and_then(|i| crate::step_text::attribute_of(&index.raw_line(id)?, i))
-        .unwrap_or_default();
-    if slot.trim() == "$" {
-        return Some((id, None));
-    }
-    let developer = ifc_lite_core::parser::parse_ref(slot.trim().as_bytes()).filter(|d| index.contains(*d) && !removed.contains(d))?;
-    Some((id, Some(developer)))
+        .filter(|&id| index.string_attr(schema, id, "IFCAPPLICATION", "ApplicationIdentifier").as_deref() == Some(identifier))
+        .map(|id| (id, developer(id)))
+        .peekable();
+    let first = *candidates.peek()?;
+    Some(candidates.find(|(_, d)| d.is_some()).unwrap_or(first))
 }
 
 /// A source user of `org`, kept by the output, whose person (kept too) is

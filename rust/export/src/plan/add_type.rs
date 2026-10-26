@@ -28,7 +28,7 @@ use super::mapped::{build_map, MapRef};
 use super::units::build_units;
 use super::{require_filled, AddState};
 
-impl AddState<'_> {
+impl AddState<'_, '_> {
     /// Build a type on its own, or refuse it whole.
     pub(super) fn add_type(&mut self, key: &ObjectRef, t: &NewType, ids: &mut IdAllocator) -> Result<(), String> {
         let gid = t.global_id.ok_or("a type added on its own needs its own GlobalId")?;

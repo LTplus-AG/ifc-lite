@@ -39,11 +39,13 @@ pub(super) fn run(setting: &AddSetting, adds: &[(&ObjectRef, AddItem)], ledger: 
     if adds.is_empty() {
         return 0;
     }
-    let history = Histories::new(setting.index, setting.schema, ledger.as_deref(), setting.owner_history, setting.context);
-    let state = AddState::new(setting.index, setting.schema, setting.removed, history, setting.body_context);
-    let (built, made) = state.build_all(adds, produced.ids, produced.edits_by_id, produced.appended, produced.refusals, produced.findings);
-    // The ledger learns what the Adds made only once all of them are written.
-    if let (Some(ledger), Some(made)) = (ledger, made) {
+    let mut history = Histories::new(setting.index, setting.schema, ledger.as_deref(), setting.owner_history, setting.context);
+    let state = AddState::new(setting.index, setting.schema, setting.removed, &mut history, setting.body_context);
+    let (built, all_written) = state.build_all(adds, produced.ids, produced.edits_by_id, produced.appended, produced.refusals, produced.findings);
+    // The ledger learns what the Adds made only once all of them are written:
+    // a failure discards every one, and what they took with it.
+    let made = history.made();
+    if let (Some(ledger), true) = (ledger, all_written) {
         ledger.made = made;
     }
     built

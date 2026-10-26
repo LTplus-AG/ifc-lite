@@ -36,7 +36,7 @@ pub(super) enum MapPlan {
     NewType,
 }
 
-impl AddState<'_> {
+impl AddState<'_, '_> {
     /// Refuse a mapped body this Add cannot build: a transform that is not
     /// a rotation and a translation, an own colour, or a type without a
     /// `Body` map.

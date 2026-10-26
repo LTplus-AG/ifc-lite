@@ -563,7 +563,7 @@ fn a_chain_the_plan_deletes_is_not_reused() {
 
 /// A patch whose every write is refused wrote nothing: its object is not
 /// modified or counted as patched, and nothing of the application's chain
-/// is written (owner-history PR).
+/// is written (#8154).
 #[test]
 fn a_fully_refused_patch_marks_and_writes_nothing() {
     for schema in SCHEMAS {
@@ -611,7 +611,7 @@ fn a_change_time_outside_32_bits_is_refused_and_named() {
 
 /// An IfcMaterialList member deleted: the list, which carries no owner
 /// history, is the one record rewritten, and nothing is marked
-/// (owner-history PR).
+/// (#8154).
 #[test]
 fn a_material_list_member_delete_marks_nothing() {
     for schema in SCHEMAS {
@@ -680,7 +680,7 @@ fn an_application_without_a_readable_developer_is_reused_not_duplicated() {
 
 /// A shape a type's representation map holds loses an item: the shape,
 /// which carries no owner history, is the one record rewritten, and nothing
-/// is marked (owner-history PR).
+/// is marked (#8154).
 #[test]
 fn a_rewritten_mapped_shape_marks_nothing() {
     for schema in SCHEMAS {
@@ -809,7 +809,7 @@ fn wall_with_brep(schema: &str) -> Vec<u8> {
 
 
 /// A material in a layer set renamed: the material carries no owner
-/// history, and nothing is marked (owner-history PR).
+/// history, and nothing is marked (#8154).
 #[test]
 fn a_layered_material_rename_marks_nothing() {
     for schema in SCHEMAS {
@@ -833,7 +833,7 @@ fn a_layered_material_rename_marks_nothing() {
 }
 
 /// A classification reference renamed: it carries no owner history, and
-/// nothing is marked (owner-history PR).
+/// nothing is marked (#8154).
 #[test]
 fn a_classification_reference_rename_marks_nothing() {
     for schema in SCHEMAS {
@@ -892,7 +892,7 @@ fn rec(schema: &str, id: u32, entity: &str, fields: &[(&str, &str)]) -> String {
 }
 
 /// A classification two references name is renamed: it carries no owner
-/// history, and nothing is marked or reported (owner-history PR).
+/// history, and nothing is marked or reported (#8154).
 #[test]
 fn a_shared_classification_rename_marks_nothing() {
     for schema in SCHEMAS {
@@ -917,7 +917,7 @@ fn a_shared_classification_rename_marks_nothing() {
 
 
 /// A storey's placement patched, with the wall's placement relative to it:
-/// the storey is modified, and the wall is not (owner-history PR).
+/// the storey is modified, and the wall is not (#8154).
 #[test]
 fn a_storey_placement_patch_modifies_the_storey() {
     let moved = Patch::new().with_placement(PlacementPatch::new([[1.0, 0.0, 0.0, 5.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 3.0], [0.0, 0.0, 0.0, 1.0]]));
@@ -931,7 +931,7 @@ fn a_storey_placement_patch_modifies_the_storey() {
 }
 
 /// A geometry patch on a wall whose brep is styled and whose material is
-/// layered modifies the wall (owner-history PR).
+/// layered modifies the wall (#8154).
 #[test]
 fn a_geometry_patch_on_a_styled_layered_brep_wall_modifies_the_wall() {
     let mesh = TriangleMesh::new(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], vec![[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]]);
@@ -958,7 +958,7 @@ fn a_geometry_patch_on_a_styled_layered_brep_wall_modifies_the_wall() {
 
 /// UR2: the source's application with this full name and version is
 /// reused even under another identifier; a second would repeat the pair
-/// (owner-history PR).
+/// (#8154).
 #[test]
 fn an_application_with_the_same_name_and_version_is_reused() {
     let schema = "IFC4";
@@ -984,7 +984,7 @@ fn an_application_with_the_same_name_and_version_is_reused() {
 
 /// Without an application, the placeholder history reuses the source's
 /// placeholder application rather than writing its identifier twice
-/// (owner-history PR).
+/// (#8154).
 #[test]
 fn the_placeholder_history_reuses_the_sources_placeholder_application() {
     let schema = "IFC4";
@@ -1011,7 +1011,7 @@ fn the_placeholder_history_reuses_the_sources_placeholder_application() {
 
 /// A delete-only plan that rewrites a relationship carrying an owner
 /// history, with no application, says it credits the change to the
-/// previous author (owner-history PR).
+/// previous author (#8154).
 #[test]
 fn a_delete_only_plan_without_an_application_says_so() {
     let src = owned(&crate::plan::test_fixtures::three_walls_sharing_a_pset("IFC4"), "IFC4");
@@ -1021,7 +1021,7 @@ fn a_delete_only_plan_without_an_application_says_so() {
 
 /// Two patches that each write: both count, though the second rewrites what
 /// the first did (a second rename; a second write to one shared value,
-/// whose copy replaces the first's) (owner-history PR).
+/// whose copy replaces the first's) (#8154).
 #[test]
 fn a_repeated_write_still_counts_as_a_patch() {
     for schema in SCHEMAS {
@@ -1036,7 +1036,7 @@ fn a_repeated_write_still_counts_as_a_patch() {
 }
 
 /// A patch that asks for nothing is reported, not dropped silently
-/// (owner-history PR).
+/// (#8154).
 #[test]
 fn an_empty_patch_is_refused() {
     let (_, report) = export(&source("IFC4", false), vec![(ObjectRef::Id(10), Disposition::Patch(Patch::new()))], context());
@@ -1046,7 +1046,7 @@ fn an_empty_patch_is_refused() {
 
 
 /// An application reused by name and version that has no identifier is
-/// said to have none (owner-history PR).
+/// said to have none (#8154).
 #[test]
 fn a_reused_application_without_an_identifier_is_said_to_have_none() {
     let schema = "IFC4";
@@ -1061,7 +1061,7 @@ fn a_reused_application_without_an_identifier_is_said_to_have_none() {
 }
 
 /// A quantity edited in place marks the element quantity listing it, and
-/// the object patched (owner-history PR).
+/// the object patched (#8154).
 #[test]
 fn a_quantity_edited_in_place_marks_its_element_quantity() {
     for schema in SCHEMAS {

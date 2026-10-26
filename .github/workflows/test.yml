@@ -912,7 +912,11 @@ jobs:
           # #7955 J5: preserve the new provenance and export APIs while
           # mutating palette, UV, normal, texture and URI behaviour. A whole
           # production revert removes types imported by the changed tests.
-          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/j5-presentation/behaviour.oracle.patch | grep -Fxq 'tests/evidence/j5-presentation/behaviour.oracle.patch'; then
+          # #7711: preserve the new independent probe module so its tests load;
+          # disable only placement/fill checks and require assertion failures.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/section-export-7711/metadata.oracle.patch | grep -Fxq 'tests/evidence/section-export-7711/metadata.oracle.patch'; then
+            oracle_args+=(--mutation tests/evidence/section-export-7711/metadata.oracle.patch)
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/j5-presentation/behaviour.oracle.patch | grep -Fxq 'tests/evidence/j5-presentation/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/j5-presentation/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/e3b-followups/behaviour.oracle.patch | grep -Fxq 'tests/evidence/e3b-followups/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/e3b-followups/behaviour.oracle.patch)

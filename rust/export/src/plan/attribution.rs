@@ -35,7 +35,12 @@ impl Ledger {
     /// unusable one (reported in `findings`; the source's attribution stays).
     pub(crate) fn for_plan(plan: &ExportPlan, findings: &mut Vec<ValidationFinding>) -> Option<Self> {
         match Identity::new(plan.context.application.as_ref()?) {
-            Ok(identity) => Some(Self { identity, made: Made::default(), modified: HashMap::new() }),
+            Ok(identity) => {
+                if let Some(message) = identity.header_note() {
+                    findings.push(ValidationFinding { express_id: None, message });
+                }
+                Some(Self { identity, made: Made::default(), modified: HashMap::new() })
+            }
             Err(message) => {
                 findings.push(ValidationFinding { express_id: None, message });
                 None

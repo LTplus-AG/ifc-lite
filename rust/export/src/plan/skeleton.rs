@@ -293,7 +293,11 @@ pub fn skeleton_with_findings(s: &Skeleton) -> Result<(Vec<u8>, Vec<ValidationFi
 /// usable; else a finding, and the skeleton is written unattributed.
 fn identity_of(s: &Skeleton, findings: &mut Vec<ValidationFinding>) -> Option<Identity> {
     let app = s.application.as_ref()?;
-    Identity::new(app).map_err(|message| findings.push(ValidationFinding { express_id: None, message })).ok()
+    let identity = Identity::new(app).map_err(|message| findings.push(ValidationFinding { express_id: None, message })).ok()?;
+    if let Some(message) = identity.header_note() {
+        findings.push(ValidationFinding { express_id: None, message });
+    }
+    Some(identity)
 }
 
 /// The `OwnerHistory` slot of everything the skeleton creates: the

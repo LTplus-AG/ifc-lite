@@ -225,11 +225,30 @@ impl Identity {
 
     /// `FILE_NAME.originating_system`: the application and its version.
     fn originating_system(&self) -> String {
-        if self.app.version.is_empty() {
-            self.app.full_name.clone()
-        } else {
-            format!("{} {}", self.app.full_name, self.app.version)
-        }
+        format!("{} - {} - {}", self.app.developer, self.app.full_name, self.app.version)
+    }
+
+    /// A finding when the application's fields don't make a valid
+    /// `originating_system` under buildingSMART's header agreement
+    /// (`Software Company Name - Application Name - Application Version`, no
+    /// dash inside the names, a PEP 440 version of numbers and dots with an
+    /// optional `-alpha`, `-beta` or `-rc` suffix). Written as given all the
+    /// same: the caller's names are not rewritten.
+    pub(crate) fn header_note(&self) -> Option<String> {
+        let name_ok = |n: &str| !n.trim().is_empty() && !n.contains('-');
+        let version_ok = {
+            let (number, suffix) = self.app.version.split_once('-').unwrap_or((&self.app.version, ""));
+            let number_ok = !number.is_empty() && number.split('.').all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()));
+            let suffix_ok = suffix.is_empty()
+                || ["alpha", "beta", "rc"].iter().any(|tag| suffix.strip_prefix(tag).is_some_and(|rest| rest.trim_start_matches('.').bytes().all(|b| b.is_ascii_digit())));
+            number_ok && suffix_ok
+        };
+        (!(name_ok(&self.app.developer) && name_ok(&self.app.full_name) && version_ok)).then(|| {
+            format!(
+                "originating_system '{}' does not follow buildingSMART's header agreement (Software Company Name - Application Name - Application Version: no dash inside the names, a numeric version with an optional -alpha, -beta or -rc suffix)",
+                self.originating_system()
+            )
+        })
     }
 
     /// `FILE_NAME.time_stamp`: the change time as UTC ISO 8601, marked `Z`.

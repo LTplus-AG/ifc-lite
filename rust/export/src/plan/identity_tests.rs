@@ -181,7 +181,7 @@ fn the_header_names_the_application_the_toolkit_and_the_change() {
     let src = source("IFC4", false);
     let (out, _) = export(&src, vec![rename(10)], context());
     let text = String::from_utf8(out).unwrap();
-    let expected = format!("FILE_NAME('out.ifc','{CHANGED_AT}Z',(''),(''),'ifc-lite {}','ExampleApp 2.1','');", env!("CARGO_PKG_VERSION"));
+    let expected = format!("FILE_NAME('out.ifc','{CHANGED_AT}Z',(''),(''),'ifc-lite {}','ExampleOrg - ExampleApp - 2.1','');", env!("CARGO_PKG_VERSION"));
     assert!(text.contains(&expected), "{text}");
 }
 
@@ -228,7 +228,7 @@ fn a_skeleton_is_owned_and_headed_by_the_exporting_application() {
         assert_eq!(attr("IFC4", line, entity, "OwnerHistory"), format!("#{}", added[0]), "{entity}");
     }
     let text = String::from_utf8(bytes.clone()).unwrap();
-    assert!(text.contains(&format!("FILE_NAME('new.ifc','{CHANGED_AT}Z',(''),(''),'ifc-lite {}','ExampleApp 2.1','');", env!("CARGO_PKG_VERSION"))));
+    assert!(text.contains(&format!("FILE_NAME('new.ifc','{CHANGED_AT}Z',(''),(''),'ifc-lite {}','ExampleOrg - ExampleApp - 2.1','');", env!("CARGO_PKG_VERSION"))));
     // A plan on top of it validates.
     let (_, report) = export(&bytes, vec![], context());
     assert!(report.findings.is_empty(), "{:?}", report.findings);
@@ -1101,4 +1101,21 @@ fn a_delete_of_a_standalone_record_without_an_application_is_not_reported() {
     let (out, report) = export(src.as_bytes(), vec![(ObjectRef::Id(990), Disposition::Delete)], PlanContext::new());
     assert!(!lines(&out).contains_key(&990));
     assert!(!report.findings.iter().any(|f| f.message.contains("no ExportingApplication")), "{:?}", report.findings);
+}
+
+/// The header names the application as buildingSMART's header agreement asks
+/// (`Company - Application - Version`), and a name or version that can't be
+/// read that way is reported, not rewritten (#8154).
+#[test]
+fn originating_system_follows_the_header_agreement() {
+    let ok = super::identity::Identity::new(&app()).unwrap();
+    assert_eq!(ok.header_note(), None);
+    for (dev, name, version) in [("Example-Org", "ExampleApp", "2.1"), ("ExampleOrg", "Example-App", "2.1"), ("ExampleOrg", "ExampleApp", "v2.1"), ("ExampleOrg", "ExampleApp", ""), ("", "ExampleApp", "2.1")] {
+        let id = super::identity::Identity::new(&ExportingApplication::new(dev, name, "example-app", version, CHANGED_AT)).unwrap();
+        assert!(id.header_note().is_some(), "{dev}/{name}/{version}");
+    }
+    for version in ["2.1-alpha", "2.1-beta.2", "2.1-rc1", "26.0.0.0"] {
+        let id = super::identity::Identity::new(&ExportingApplication::new("ExampleOrg", "ExampleApp", "example-app", version, CHANGED_AT)).unwrap();
+        assert_eq!(id.header_note(), None, "{version}");
+    }
 }

@@ -950,6 +950,13 @@ jobs:
             oracle_args+=(--mutation tests/evidence/e3b-followups/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/issue-7943/coplanarity.oracle.patch | grep -Fxq 'tests/evidence/issue-7943/coplanarity.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/issue-7943/coplanarity.oracle.patch)
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- packages/diff/test/oracle/index.ts | grep -Fxq 'packages/diff/test/oracle/index.ts'; then
+            # #8042/#8111: pin the relocated TS oracle while observing the
+            # changed public dispatch. A full-source scope includes production
+            # -> test renames which cannot be reverted with tests pinned.
+            # Scope only the changed entrypoint; every changed test still runs.
+            # The API-preserving mutant swaps diffModels base/head inputs.
+            oracle_args+=(--only packages/diff/src/index.ts --mutation tests/evidence/diff-8042/public-dispatch.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- packages/diff/src/wasm-projections.ts | grep -Fxq 'packages/diff/src/wasm-projections.ts'; then
             # #8042/#8109: a whole-change revert deletes wasm-projections.ts,
             # which diff-lineage-parity.test.mjs imports (REVERT-BROKE-BUILD).

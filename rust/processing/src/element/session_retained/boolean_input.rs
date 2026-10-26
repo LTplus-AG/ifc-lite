@@ -18,12 +18,6 @@ impl<R: NumericalReceipt> BooleanInput<R> {
         }
         Ok(Self { realization, frame: *value.object_frame(), source_frame })
     }
-    /// The frame this operand is dispatched with, which the runtime echoes in
-    /// its Boolean evidence: the source frame for a construction, else the
-    /// object frame.
-    pub(super) fn sent_frame(&self) -> &[f64; 16] {
-        self.source_frame.as_ref().unwrap_or(&self.frame)
-    }
     pub(super) fn operand(&self) -> Operand<'_, R> {
         match self.source_frame {
             Some(world_from_source) => Operand::Source { receipt: &self.realization.kind, world_from_source },

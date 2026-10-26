@@ -27,6 +27,10 @@ use georef_operation::{
     project_plane_angle_unit_to_degrees, well_known_text_for, RigidTarget,
 };
 
+#[path = "georef_details.rs"]
+mod georef_details;
+pub use georef_details::{CoordinateOperationKind, GeoReferenceDetails};
+
 /// Where the georeferencing data was authored in the file.
 ///
 /// Single discriminator shared (string-for-string) with the TS parser's
@@ -36,8 +40,6 @@ use georef_operation::{
 pub enum GeoRefSource {
     /// IFC4 `IfcMapConversion` (+ optional `IfcProjectedCRS`).
     MapConversion,
-    /// IFC4X3 `IfcRigidOperation`: a pure translation into the target CRS.
-    RigidOperation,
     /// IFC2x3 `ePSet_MapConversion` property-set fallback.
     EPSetMapConversion,
     /// Legacy `IfcSite.RefLatitude`/`RefLongitude` (WGS84 degrees).
@@ -49,7 +51,6 @@ impl GeoRefSource {
     pub fn label(self) -> &'static str {
         match self {
             Self::MapConversion => "mapConversion",
-            Self::RigidOperation => "rigidOperation",
             Self::EPSetMapConversion => "ePSetMapConversion",
             Self::SiteLocation => "siteLocation",
         }
@@ -78,10 +79,6 @@ pub struct GeoReference {
     /// Scale factor converting MapConversion values to metres, derived from
     /// `MapUnit` (0.001 for millimetres). `None` when no MapUnit is authored.
     pub map_unit_scale: Option<f64>,
-    /// `IfcWellKnownText.WellKnownText` (WKT1 or WKT2) attached to the chosen
-    /// CRS, trimmed. When present it is the authoritative CRS definition and
-    /// `crs_name` may be absent (WHERE NameOrWKT).
-    pub well_known_text: Option<String>,
     /// Where the data was authored (`IfcMapConversion`, ePSet fallback, or
     /// legacy `IfcSite` lat/long). `None` when only a named
     /// `IfcProjectedCRS` was found: no conversion was authored, or the one
@@ -126,7 +123,6 @@ impl Default for GeoReference {
             map_zone: None,
             map_unit: None,
             map_unit_scale: None,
-            well_known_text: None,
             source: None,
             eastings: 0.0,
             northings: 0.0,
@@ -153,14 +149,14 @@ impl GeoReference {
     /// A parsed `IfcMapConversion` is presence on its own: the value test
     /// alone dropped a rotation-only conversion (zero offsets, 30 degrees to
     /// grid north) as "no georeferencing" while the browser reported one.
-    /// A read `IfcRigidOperation` is presence the same way, and so is a CRS
-    /// defined only by its `IfcWellKnownText` (WHERE NameOrWKT).
+    /// A parsed `IfcRigidOperation` uses the same placement source, even
+    /// when its translation is zero. WKT-only presence is carried separately
+    /// by [`GeoReferenceDetails`].
     #[inline]
     pub fn has_georef(&self) -> bool {
         self.has_map_conversion
-            || self.source == Some(GeoRefSource::RigidOperation)
+            || self.source == Some(GeoRefSource::MapConversion)
             || self.crs_name.is_some()
-            || self.well_known_text.is_some()
             || self.eastings != 0.0
             || self.northings != 0.0
             || self.orthogonal_height != 0.0
@@ -393,12 +389,27 @@ impl GeoRefExtractor {
         decoder: &mut EntityDecoder,
         entity_types: &[(u32, IfcType)],
     ) -> Result<Option<GeoReference>> {
+        Self::extract_with_details(decoder, entity_types)
+            .map(|result| result.map(|(georef, _)| georef))
+    }
+
+    /// Extract placement together with coordinate-operation provenance and WKT.
+    ///
+    /// Rigid operations use [`GeoRefSource::MapConversion`] in the compatible
+    /// placement record, while `details.operation` identifies their actual kind.
+    /// A WKT-only CRS can return a record even when `GeoReference::has_georef`
+    /// is false; its declaration is carried by `details.well_known_text`.
+    pub fn extract_with_details(
+        decoder: &mut EntityDecoder,
+        entity_types: &[(u32, IfcType)],
+    ) -> Result<Option<(GeoReference, GeoReferenceDetails)>> {
         // FIRST of each kind wins (same pick as the TS parser, which reads
         // `mapConversionIds[0]`) — last-wins silently flipped the served
         // conversion on files with several authored conversions (alignment
         // audit).
         let candidates = GeoRefCandidates::collect(entity_types);
         let mut georef = GeoReference::new();
+        let mut details = GeoReferenceDetails::default();
 
         // Parse IfcMapConversion
         // Attributes: SourceCRS, TargetCRS, Eastings, Northings, OrthogonalHeight,
@@ -411,6 +422,7 @@ impl GeoRefExtractor {
             let conversion = decoder.decode_by_id_lossless(id)?;
             Self::parse_map_conversion(&conversion, &mut georef);
             operation = georef.has_map_conversion.then_some(conversion);
+            details.operation = georef.has_map_conversion.then_some(CoordinateOperationKind::MapConversion);
         }
         // IFC4X3 IfcRigidOperation, when no map conversion was read. Its
         // plane-angle form needs the geographic target's angle unit, so the
@@ -438,27 +450,30 @@ impl GeoRefExtractor {
             } else {
                 Self::parse_projected_crs(entity, decoder, &mut georef);
             }
-            georef.well_known_text = well_known_text_for(decoder, entity.id, &candidates.well_known_texts);
+            details.well_known_text = well_known_text_for(decoder, entity.id, &candidates.well_known_texts);
         }
 
         if let Some(rigid) = &rigid {
             let target = Self::rigid_target(decoder, crs.as_ref(), candidates.project);
-            parse_rigid_operation(rigid, &target, &mut georef);
+            if parse_rigid_operation(rigid, &target, &mut georef) {
+                details.operation = Some(CoordinateOperationKind::RigidOperation);
+            }
         }
 
         // Neither a parsed operation nor a declared CRS: try the IFC2X3
         // property set fallback, then the legacy IfcSite lat/long fallback
         // (TS parity, #4695). A refused operation left `georef` untouched, so
         // it counts as no operation here.
-        if !georef.has_georef() {
+        if !georef.has_georef() && details.well_known_text.is_none() {
             if let Some(georef) = Self::extract_from_pset(decoder, entity_types)? {
-                return Ok(Some(georef));
+                return Ok(Some((georef, details)));
             }
-            return Self::extract_from_site(decoder, entity_types);
+            return Self::extract_from_site(decoder, entity_types)
+                .map(|result| result.map(|georef| (georef, details)));
         }
 
         georef.sanitize_transform();
-        Ok(Some(georef))
+        Ok(Some((georef, details)))
     }
 
     /// The operation's TargetCRS when it is a CRS this reader understands,

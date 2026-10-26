@@ -111,14 +111,15 @@ export function extractWktCrsIdentifiers(wkt: string): WktCrsIdentifiers {
 
 /**
  * The horizontal CRS a WKT describes, as WKT text: a COMPOUNDCRS/COMPD_CS's
- * PROJCRS/GEOGCRS child (or an adjacent top-level one), else the root itself.
+ * BOUNDCRS/PROJCRS/GEOGCRS child (or an adjacent top-level one), else the root itself.
  * Lets a projection library that reads only single CRSs take a compound one.
  */
 export function extractWktHorizontalCrs(wkt: string): string | undefined {
   const document = root(wkt);
   if (!document) return undefined;
   const compound = ['COMPOUNDCRS', 'COMPD_CS'].includes(document.name) ? document : undefined;
-  const horizontal = direct(compound?.body ?? wkt, ['PROJCRS', 'PROJCS', 'GEOGCRS', 'GEOGCS', 'PROJECTEDCRS', 'GEODCRS']);
+  // A BOUNDCRS is kept whole: its ABRIDGEDTRANSFORMATION is the datum shift.
+  const horizontal = direct(compound?.body ?? wkt, ['BOUNDCRS', 'PROJCRS', 'PROJCS', 'GEOGCRS', 'GEOGCS', 'PROJECTEDCRS', 'GEODCRS']);
   return horizontal ? `${horizontal.name}[${horizontal.body}]` : undefined;
 }
 

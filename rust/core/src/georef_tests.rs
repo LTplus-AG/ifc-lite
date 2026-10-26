@@ -605,10 +605,56 @@ fn rigid_operation_with_cyclic_angle_unit_is_refused() {
     );
     let mut decoder = EntityDecoder::new(&content);
     let types = [(11u32, IfcType::IfcRigidOperation), (12, IfcType::IfcGeographicCRS)];
-    let geo = GeoRefExtractor::extract(&mut decoder, &types)
+    let (geo, details) = GeoRefExtractor::extract_with_details(&mut decoder, &types)
         .expect("decode ok")
         .expect("the named geographic CRS still claims georeferencing");
     assert_eq!(geo.source, None);
+    assert_eq!(details.operation, None);
+    assert_eq!(details.source_label(geo.source), None);
     assert_eq!(geo.crs_name.as_deref(), Some("EPSG:4326"));
     assert_eq!((geo.eastings, geo.northings), (0.0, 0.0));
+}
+
+
+/// PR #8170: preserve the old placement API while retaining exact provenance.
+#[test]
+fn rigid_operation_details_preserve_compatible_zero_translation() {
+    let content = ifc4x3_with_conversion(
+        "#11=IFCRIGIDOPERATION(#2,$,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(0.),$);",
+    );
+    let types = [(11, IfcType::IfcRigidOperation)];
+    let (geo, details) = GeoRefExtractor::extract_with_details(
+        &mut EntityDecoder::new(&content), &types,
+    ).unwrap().unwrap();
+    assert_eq!(geo.source, Some(GeoRefSource::MapConversion));
+    assert!(!geo.has_map_conversion, "exporters must not treat a rigid operation as IfcMapConversion");
+    assert!(geo.has_georef(), "a zero translation still places the model");
+    assert_eq!(details.operation, Some(CoordinateOperationKind::RigidOperation));
+    assert_eq!(details.source_label(geo.source), Some("rigidOperation"));
+    let legacy = GeoRefExtractor::extract(&mut EntityDecoder::new(&content), &types)
+        .unwrap().unwrap();
+    assert_eq!(legacy.source, geo.source);
+    assert_eq!(legacy.to_matrix(), geo.to_matrix());
+    assert!(!legacy.has_map_conversion);
+}
+
+/// PR #8170: WKT declares a CRS without adding fields to GeoReference.
+#[test]
+fn wkt_only_details_preserve_presence_without_inventing_a_source() {
+    let content = ifc4x3_with_conversion(
+        "#12=IFCPROJECTEDCRS($,$,$,$,$,$,$);\n\
+         #13=IFCWELLKNOWNTEXT(' PROJCRS[\"local\"] ',#12);",
+    );
+    let types = [(12, IfcType::IfcProjectedCRS), (13, IfcType::IfcWellKnownText)];
+    let (geo, details) = GeoRefExtractor::extract_with_details(
+        &mut EntityDecoder::new(&content), &types,
+    ).unwrap().expect("WKT alone declares a CRS");
+    assert_eq!(geo.crs_name, None);
+    assert_eq!(geo.source, None);
+    assert!(!geo.has_map_conversion);
+    assert_eq!(details.operation, None);
+    assert_eq!(details.source_label(geo.source), None);
+    assert_eq!(details.well_known_text.as_deref(), Some("PROJCRS[\"local\"]"));
+    assert!(GeoRefExtractor::extract(&mut EntityDecoder::new(&content), &types)
+        .unwrap().is_some(), "the original entry point still discovers WKT-only CRSs");
 }

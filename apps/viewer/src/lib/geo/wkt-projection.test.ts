@@ -88,6 +88,24 @@ describe('IfcWellKnownText projections', () => {
     }
   });
 
+  it('uses the datum shift a WKT states over the EPSG default it names (#8170)', async () => {
+    // AUTHORITY EPSG:3388 (registry shift 25,-141,-78.5,...) but the WKT states a zero
+    // shift. Expected: PROJ with that projection and +towgs84=0,0,0,0,0,0,0.
+    const wkt = 'PROJCS["Pulkovo 1942 / Caspian Sea Mercator",GEOGCS["Pulkovo 1942",DATUM["Pulkovo_1942",SPHEROID["Krassowsky 1940",6378245,298.3],TOWGS84[0,0,0,0,0,0,0]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]],PROJECTION["Mercator_2SP"],PARAMETER["standard_parallel_1",42],PARAMETER["central_meridian",51],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1],AUTHORITY["EPSG","3388"]]';
+    const result = await reprojectPointToLatLon(10000, 15000, crs(wkt, 'EPSG:2589'));
+    assert.ok(result);
+    const offset = offsetMetres(result, { lon: 51.12069693307537, lat: 0.18226522217002955 });
+    assert.ok(offset < 0.05, `lands ${offset.toFixed(3)} m off`);
+  });
+
+  it('reads a WKT2 BOUNDCRS with its ABRIDGEDTRANSFORMATION', async () => {
+    const wkt = 'BOUNDCRS[SOURCECRS[PROJCRS["unknown",BASEGEOGCRS["unknown",DATUM["Unknown based on Bessel 1841 ellipsoid using towgs84=598.1,73.7,418.2,0.202,0.045,-2.455,6.7",ELLIPSOID["Bessel 1841",6377397.155,299.1528128,LENGTHUNIT["metre",1,ID["EPSG",9001]]]],PRIMEM["Greenwich",0,ANGLEUNIT["degree",0.0174532925199433],ID["EPSG",8901]]],CONVERSION["unknown",METHOD["Transverse Mercator",ID["EPSG",9807]],PARAMETER["Latitude of natural origin",0,ANGLEUNIT["degree",0.0174532925199433],ID["EPSG",8801]],PARAMETER["Longitude of natural origin",12,ANGLEUNIT["degree",0.0174532925199433],ID["EPSG",8802]],PARAMETER["Scale factor at natural origin",1,SCALEUNIT["unity",1],ID["EPSG",8805]],PARAMETER["False easting",4500000,LENGTHUNIT["metre",1],ID["EPSG",8806]],PARAMETER["False northing",0,LENGTHUNIT["metre",1],ID["EPSG",8807]]],CS[Cartesian,2],AXIS["(E)",east,ORDER[1],LENGTHUNIT["metre",1,ID["EPSG",9001]]],AXIS["(N)",north,ORDER[2],LENGTHUNIT["metre",1,ID["EPSG",9001]]]]],TARGETCRS[GEOGCRS["WGS 84",DATUM["World Geodetic System 1984",ELLIPSOID["WGS 84",6378137,298.257223563,LENGTHUNIT["metre",1]]],PRIMEM["Greenwich",0,ANGLEUNIT["degree",0.0174532925199433]],CS[ellipsoidal,2],AXIS["latitude",north,ORDER[1],ANGLEUNIT["degree",0.0174532925199433]],AXIS["longitude",east,ORDER[2],ANGLEUNIT["degree",0.0174532925199433]],ID["EPSG",4326]]],ABRIDGEDTRANSFORMATION["Transformation from unknown to WGS84",METHOD["Position Vector transformation (geog2D domain)",ID["EPSG",9606]],PARAMETER["X-axis translation",598.1,ID["EPSG",8605]],PARAMETER["Y-axis translation",73.7,ID["EPSG",8606]],PARAMETER["Z-axis translation",418.2,ID["EPSG",8607]],PARAMETER["X-axis rotation",0.202,ID["EPSG",8608]],PARAMETER["Y-axis rotation",0.045,ID["EPSG",8609]],PARAMETER["Z-axis rotation",-2.455,ID["EPSG",8610]],PARAMETER["Scale difference",1.0000067,ID["EPSG",8611]]]]';
+    const result = await reprojectPointToLatLon(4468005, 5334600, crs(wkt));
+    assert.ok(result);
+    const offset = offsetMetres(result, { lon: 11.568574165831743, lat: 48.14861356163453 });
+    assert.ok(offset < 0.05, `lands ${offset.toFixed(3)} m off`);
+  });
+
   it('treats a geographic WKT as geographic', async () => {
     const definition = await resolveProjection(crs('GEOGCRS["WGS 84",DATUM["World Geodetic System 1984",ELLIPSOID["WGS 84",6378137,298.257223563]],CS[ellipsoidal,2],AXIS["latitude",north],AXIS["longitude",east],ANGLEUNIT["degree",0.0174532925199433]]'));
     assert.ok(definition);

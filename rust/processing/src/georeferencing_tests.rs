@@ -694,10 +694,10 @@ fn lowercase_step_keywords(source: &str) -> String {
 
 /// End-to-end through the candidate scan: an angular `IfcRigidOperation`
 /// against an `IfcGeographicCRS` resolves its angles through the project's
-/// plane-angle unit (so `IFCPROJECT` must be a candidate), and the CRS's
-/// `IfcWellKnownText` reaches the payload.
+/// plane-angle unit (so `IFCPROJECT` must be a candidate), preserving the
+/// precise source label even though the compatible core source is MapConversion.
 #[test]
-fn rigid_operation_with_project_angle_unit_and_wkt_reaches_the_payload() {
+fn rigid_operation_with_project_angle_unit_reaches_the_payload() {
     let ifc = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4X3_ADD2'));\nENDSEC;\nDATA;\n\
         #1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n\
         #20=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);\n\
@@ -713,7 +713,6 @@ fn rigid_operation_with_project_angle_unit_and_wkt_reaches_the_payload() {
     assert_eq!(geo.source.as_deref(), Some("rigidOperation"));
     assert_eq!(geo.crs_name.as_deref(), Some("EPSG:4326"));
     assert_eq!(geo.map_unit.as_deref(), Some("DEGREE"));
-    assert_eq!(geo.well_known_text.as_deref(), Some("GEOGCRS[\"WGS 84\"]"));
     assert!((geo.eastings - 13.3).abs() < 1e-9, "eastings {}", geo.eastings);
     assert!((geo.northings - 52.4).abs() < 1e-9, "northings {}", geo.northings);
     assert_eq!(geo.orthogonal_height, 7.0);

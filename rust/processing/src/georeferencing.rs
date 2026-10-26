@@ -81,10 +81,6 @@ pub struct Georeferencing {
     /// parser's `GeoreferenceInfo.source`.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub source: Option<String>,
-    /// `IfcWellKnownText.WellKnownText` (WKT1 or WKT2) attached to the CRS;
-    /// when present it is the authoritative CRS definition.
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub well_known_text: Option<String>,
 }
 
 const fn default_axis_factor() -> f64 {
@@ -114,13 +110,12 @@ impl Default for Georeferencing {
             map_unit: None,
             map_unit_scale: None,
             source: None,
-            well_known_text: None,
         }
     }
 }
 
 impl Georeferencing {
-    fn from_core(geo: &ifc_lite_core::GeoReference) -> Self {
+    fn from_core(geo: &ifc_lite_core::GeoReference, details: &ifc_lite_core::GeoReferenceDetails) -> Self {
         Self {
             crs_name: geo.crs_name.clone(),
             geodetic_datum: geo.geodetic_datum.clone(),
@@ -141,8 +136,7 @@ impl Georeferencing {
             map_zone: geo.map_zone.clone(),
             map_unit: geo.map_unit.clone(),
             map_unit_scale: geo.map_unit_scale,
-            source: geo.source.map(|s| s.label().to_string()),
-            well_known_text: geo.well_known_text.clone(),
+            source: details.source_label(geo.source).map(str::to_string),
         }
     }
 }
@@ -247,8 +241,8 @@ pub(crate) fn extract_georeferencing_from_candidates(
         return None;
     }
 
-    match GeoRefExtractor::extract(decoder, entity_types) {
-        Ok(Some(geo)) => Some(Georeferencing::from_core(&geo)),
+    match GeoRefExtractor::extract_with_details(decoder, entity_types) {
+        Ok(Some((geo, details))) => Some(Georeferencing::from_core(&geo, &details)),
         Ok(None) => None,
         Err(e) => {
             tracing::debug!(error = %e, "Georeferencing extraction failed");

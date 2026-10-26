@@ -209,7 +209,7 @@ pub(super) fn parse_rigid_operation(
         "IFCLENGTHMEASURE" => {}
         _ => return refuse("uses a measure other than IFCLENGTHMEASURE or IFCPLANEANGLEMEASURE"),
     }
-    georef.source = Some(GeoRefSource::RigidOperation);
+    georef.source = Some(GeoRefSource::MapConversion);
     georef.eastings = eastings;
     georef.northings = northings;
     georef.orthogonal_height = height.unwrap_or(0.0);

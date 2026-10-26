@@ -42,7 +42,8 @@ interface ParsedWktDefinition {
 }
 
 export type WktProjection =
-  | { kind: 'epsg'; code: string }
+  /** `towgs84`: a datum shift the WKT states itself, to replace the EPSG default. */
+  | { kind: 'epsg'; code: string; towgs84?: string }
   | { kind: 'definition'; definition: string };
 
 const resolved = new Map<string, WktProjection | null>();
@@ -82,8 +83,12 @@ export function wktDefinitionInMetres(definition: string): string {
  *
  * Returns `{ kind: 'epsg' }` when the horizontal CRS carries an EPSG
  * identifier, so the registered definition (with its precision grids and
- * datum handling) wins over re-deriving it; otherwise registers the parsed
- * WKT with proj4. `null` when it cannot be read.
+ * datum handling) wins over re-deriving it. A TOWGS84 the WKT states is
+ * returned with it: it is the author's datum shift and replaces the registry
+ * default. Otherwise registers the parsed WKT with proj4 (a BOUNDCRS keeps
+ * its ABRIDGEDTRANSFORMATION there). The registry projection is preferred
+ * because proj4's WKT1 reader mishandles some methods (Mercator_2SP reads
+ * standard_parallel_1 as the latitude of origin). `null` when it cannot be read.
  */
 export function resolveWktProjection(wkt: string): WktProjection | null {
   const text = wkt.trim();
@@ -100,7 +105,15 @@ function resolveUncached(wkt: string): WktProjection | null {
     return null;
   }
   const epsg = extractWktSpatialMetadata(horizontal).horizontalId?.match(/^EPSG:(\d+)$/)?.[1];
-  if (epsg) return { kind: 'epsg', code: epsg };
+  if (epsg) {
+    // The projection comes from the registry; a TOWGS84 the WKT states is the
+    // author's datum shift and replaces the registry default.
+    const towgs84 = /\bTOWGS84\s*\[([^\]]*)\]/i.exec(horizontal)?.[1]
+      ?.split(',').map((value) => Number(value.trim()));
+    return towgs84 && (towgs84.length === 3 || towgs84.length === 7) && towgs84.every(Number.isFinite)
+      ? { kind: 'epsg', code: epsg, towgs84: towgs84.join(',') }
+      : { kind: 'epsg', code: epsg };
+  }
 
   let parsed: ParsedWktDefinition;
   try {

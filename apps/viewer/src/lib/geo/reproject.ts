@@ -238,7 +238,10 @@ export async function resolveProjection(crs: ProjectedCRS): Promise<string | nul
     const wkt = resolveWktProjection(crs.wellKnownText);
     if (wkt?.kind === 'definition') return wkt.definition;
     const named: ProjectedCRS = { ...crs, wellKnownText: undefined };
-    return resolveProjection(wkt?.kind === 'epsg' ? { ...named, name: `EPSG:${wkt.code}` } : named);
+    const definition = await resolveProjection(wkt?.kind === 'epsg' ? { ...named, name: `EPSG:${wkt.code}` } : named);
+    return definition && wkt?.kind === 'epsg' && wkt.towgs84
+      ? `${definition.replace(/\s\+(?:towgs84|nadgrids)=\S+/g, '')} +towgs84=${wkt.towgs84}`
+      : definition;
   }
   const explicitCode = extractEpsgCode(crs);
   const aliasCode = explicitCode ? undefined : wellKnownCrsCode(crs.name ?? '');

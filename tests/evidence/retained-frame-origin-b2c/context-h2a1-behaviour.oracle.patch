@@ -2,7 +2,7 @@
 # B2c source-context replacement; apply in reverse to mutate. Execution UNRUN.
 --- a/rust/geometry/src/program/inner.rs
 +++ b/rust/geometry/src/program/inner.rs
-@@ -178,7 +178,7 @@
+@@ -178,7 +178,7 @@ impl<'a> GeometryProgram<'a> {
          // Owners are validated before the recipe is taken: a refused call
          // leaves the request executable by its actual router and decoder.
          self.validate_owner(router, Some(decoder))?;
@@ -11,9 +11,40 @@
              return Err(ProgramError::UnsupportedRetained);
          }
          if matches!(&self.control, Control::Mapping(c) if c.retained_ready()) { return Err(ProgramError::UnsupportedRetained); }
+--- a/rust/geometry/src/program/product/retained.rs
++++ b/rust/geometry/src/program/product/retained.rs
+@@ -23,7 +23,7 @@ impl<'a> ProductControl<'a> {
+             let mut control = Self::merged(element, SourceHygiene::IndexOnly);
+             control.retained = Some(selection.clone());
+             control.body = Body::Sink(Sink::Retained(Vec::new(), selection.clone()));
+-            if false && !element.ifc_type.is_subtype_of(IfcType::IfcProduct) {
++            if !element.ifc_type.is_subtype_of(IfcType::IfcProduct) {
+                 selection.failure_handle().record(FailureSite::ProductRoot, Some(element.id),
+                     OriginCause::Structure(StructuralReason::NotProduct));
+                 control.action = Action::Complete(Err(crate::Error::geometry(
+--- a/rust/geometry/src/program/product/retained_structure.rs
++++ b/rust/geometry/src/program/product/retained_structure.rs
+@@ -43,7 +43,7 @@ pub(super) fn validated_product_shape(
+     let shape = ProductShape::from_representations(shape.id, representations);
+     for rep in shape.representations() {
+         step()?;
+-        if false && !matches!(
++        if !matches!(
+             rep.ifc_type,
+             IfcType::IfcShapeRepresentation | IfcType::IfcTopologyRepresentation
+         ) {
+@@ -75,7 +75,7 @@ fn reference_members<'a>(
+         })?;
+     for member in members {
+         step()?;
+-        if false && member.as_entity_ref().is_none() {
++        if member.as_entity_ref().is_none() {
+             return Err(refused(list_site(name), entity.id, StructuralReason::NonReferenceMember, format!(
+                 "retained {name} on #{} contains a non-reference member",
+                 entity.id
 --- a/rust/geometry/src/program/retained/capture.rs
 +++ b/rust/geometry/src/program/retained/capture.rs
-@@ -22,7 +22,7 @@
+@@ -23,7 +23,7 @@ pub(super) fn capture(
              length_unit_scale: scale,
          })),
          IfcType::IfcSweptDiskSolid => Ok(RetainedRecipe::SweptDisk(RetainedSweptDisk {
@@ -22,7 +53,7 @@
              source: crate::analytic::extract_swept_disk(item, decoder).map_err(|error| {
                  if let crate::Error::ProgramStopped(_) = error { return error; }
                  let diagnostic = crate::Error::geometry(error.to_string());
-@@ -51,7 +51,7 @@
+@@ -55,7 +55,7 @@ pub(super) fn capture(
              slot,
              source_epoch: contract.source_epoch,
              source_revision: contract.source_revision,
@@ -33,7 +64,7 @@
          presentation: Vec::new(),
 --- a/rust/geometry/src/program/retained/completion.rs
 +++ b/rust/geometry/src/program/retained/completion.rs
-@@ -16,7 +16,8 @@
+@@ -16,7 +16,8 @@ impl RetainedProgram<'_> {
                  Ok(RetainedProductPlan {
                      values,
                      // Construction/placement discharge none of these obligations.
@@ -43,40 +74,9 @@
                          RetainedRequirement::PersistentFaces],
                  })
              }
---- a/rust/geometry/src/program/product/retained_structure.rs
-+++ b/rust/geometry/src/program/product/retained_structure.rs
-@@ -43,7 +43,7 @@
-     if let Some(shape) = &shape {
-         for rep in shape.representations() {
-             crate::resource::check_current()?;
--            if false && !matches!(
-+            if !matches!(
-                 rep.ifc_type,
-                 IfcType::IfcShapeRepresentation | IfcType::IfcTopologyRepresentation
-             ) {
-@@ -76,7 +76,7 @@
-         })?;
-     for member in members {
-         crate::resource::check_current()?;
--        if false && member.as_entity_ref().is_none() {
-+        if member.as_entity_ref().is_none() {
-             return Err(refused(list_site(name), entity.id, StructuralReason::NonReferenceMember, format!(
-                 "retained {name} on #{} contains a non-reference member",
-                 entity.id
---- a/rust/geometry/src/program/product/retained.rs
-+++ b/rust/geometry/src/program/product/retained.rs
-@@ -23,7 +23,7 @@
-             let mut control = Self::merged(element, SourceHygiene::IndexOnly);
-             control.retained = Some(selection.clone());
-             control.body = Body::Sink(Sink::Retained(Vec::new(), selection.clone()));
--            if false && !element.ifc_type.is_subtype_of(IfcType::IfcProduct) {
-+            if !element.ifc_type.is_subtype_of(IfcType::IfcProduct) {
-                 selection.failure_handle().record(FailureSite::ProductRoot, Some(element.id),
-                     OriginCause::Structure(StructuralReason::NotProduct));
-                 control.action = Action::Complete(Err(crate::Error::geometry(
 --- a/rust/geometry/src/program/retained/frame.rs
 +++ b/rust/geometry/src/program/retained/frame.rs
-@@ -16,9 +16,6 @@
+@@ -16,9 +16,6 @@ impl LogicalRetainedValue {
          }
          validate_affine(transform)?;
          if matches!(stage, RetainedPlacementStage::Product { .. }) { proper_rigid(transform)?; }
@@ -86,7 +86,7 @@
          let matrix = crate::math::mat4::col_major_array(transform);
          // Finite inputs need not compose to a finite frame. Compute both
          // candidates before changing the occurrence or its placement lineage.
-@@ -38,8 +35,11 @@
+@@ -38,8 +35,11 @@ impl LogicalRetainedValue {
          })?
          .retain();
          crate::resource::reserve_headers(&mut self.placements, 1)?.retain();
@@ -98,7 +98,7 @@
          self.placements.push(RetainedPlacement {
              input,
              output: self.slot,
-@@ -56,7 +56,7 @@
+@@ -56,7 +56,7 @@ impl LogicalRetainedValue {
  // preserves its ordered f64 accumulation and avoids inverse-frame round trips.
  pub(super) fn compose_frame(a: &[f64; 16], b: &[f64; 16]) -> Result<[f64; 16], ValueReason> {
      let composed = crate::math::mat4::mul(b, a);

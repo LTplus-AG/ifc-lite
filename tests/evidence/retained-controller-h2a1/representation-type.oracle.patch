@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: MPL-2.0
 --- a/rust/geometry/src/program/product/retained_structure.rs
 +++ b/rust/geometry/src/program/product/retained_structure.rs
-@@ -38,7 +38,7 @@
-     if let Some(shape) = &shape {
-         for rep in shape.representations() {
-             crate::resource::check_current()?;
--            if false && !matches!(
-+            if !matches!(
-                 rep.ifc_type,
-                 IfcType::IfcShapeRepresentation | IfcType::IfcTopologyRepresentation
-             ) {
+@@ -43,7 +43,7 @@ pub(super) fn validated_product_shape(
+     let shape = ProductShape::from_representations(shape.id, representations);
+     for rep in shape.representations() {
+         step()?;
+-        if false && !matches!(
++        if !matches!(
+             rep.ifc_type,
+             IfcType::IfcShapeRepresentation | IfcType::IfcTopologyRepresentation
+         ) {

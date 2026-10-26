@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: MPL-2.0
 --- a/rust/geometry/src/resource/owned.rs
 +++ b/rust/geometry/src/resource/owned.rs
-@@ -90,7 +90,7 @@
+@@ -104,7 +104,7 @@ fn check_channels(
      let prior_account = account.and_then(|account| account.check().err());
      let cached = *terminal.lock().unwrap_or_else(|e| e.into_inner());
      match prior_source.or(prior_account).or(cached) {
 -        Some(stop) => { remember_channels(account, source, terminal, stop); Ok(()) },
 +        Some(stop) => Err(remember_channels(account, source, terminal, stop)),
-         None => Ok(()),
-     }
- }
+         None => {
+             #[cfg(feature = "retained-runtime")]
+             if let Some(account) = account {

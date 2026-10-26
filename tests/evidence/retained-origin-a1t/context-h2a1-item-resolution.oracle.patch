@@ -2,16 +2,16 @@
 # Prepared against bf6022ecaa51954df16758f3378d13ad6a4e3aca; runtime UNRUN. Apply in reverse to mutate.
 --- a/rust/geometry/src/program/product/retained_structure.rs
 +++ b/rust/geometry/src/program/product/retained_structure.rs
-@@ -91,10 +91,8 @@
+@@ -90,10 +90,8 @@ fn item_targets(members: &[AttributeValue], decoder: &mut EntityDecoder) -> Resu
      // none can disappear here. Keep the exact reader's leniency out of S1.
      for id in members.iter().filter_map(AttributeValue::as_entity_ref) {
-         crate::resource::check_current()?;
+         step()?;
 -        let item = match decoder.decode_by_id(id) {
 -            Ok(item) => item,
 -            Err(_) => continue,
 -        };
 +        let item = decoder.decode_by_id(id)
 +            .map_err(|error| core_error(FailureSite::RepresentationItems, id, error))?;
+         step()?;
          // The generated supported-schema hierarchy includes geometric,
          // topological, styled and mapped items, including legacy subclasses.
-         // Category membership does not admit a new retained constructor.

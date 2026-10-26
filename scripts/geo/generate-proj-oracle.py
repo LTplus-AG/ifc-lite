@@ -29,6 +29,9 @@ Per point the fixture records, at the grid point (E, N):
                    WGS84/GRS80 without a datum shift; documented, not asserted,
                    otherwise.
 
+`warp` holds per-vertex vectors (E, N, H -> lon, lat, h, ECEF) along a 20 km
+line for the GeoWarp tests; `warpGeoid` is the stated geoid plane they use.
+
 Each case's `edges` start at its first point and list grid offsets (metres)
 with PROJ's WGS84 lon/lat of the offset point: the ground truth an anchor
 placement of a grid-coordinate model is measured against.
@@ -133,6 +136,58 @@ def point_vector(case, fwd, inv, proj, lon, lat):
     }
 
 
+# Per-vertex warp vectors: a 20 km diagonal line through the anchor, every
+# 500 m, at two orthometric heights. The geoid is a stated test plane (metres,
+# degrees from the anchor) so the oracle and the viewer use the same N; the
+# viewer's own EGM96 grid is not under test here.
+WARP_CASES = [
+    ("UTM 32N (WGS84)", 9.0, 50.0),
+    ("UTM 32N (WGS84)", 11.9, 50.0),
+    ("DHDN / 3-degree Gauss-Krueger zone 4 (Bessel, 7-parameter shift)", 10.6, 52.4),
+    ("RGF93 / Lambert-93 (GRS80)", 2.35, 48.85),
+]
+WARP_HALF_M = 10_000.0
+WARP_STEP_M = 500.0
+WARP_HEIGHTS = [100.0, 150.0]
+ANCHOR_H = 120.0
+GEOID = {"n0": 47.0, "perDegLat": 0.8, "perDegLon": -0.5}
+TO_ECEF = Transformer.from_crs("EPSG:4979", "EPSG:4978", always_xy=True)
+
+
+def test_geoid(lon, lat, lon0, lat0):
+    return GEOD_N0 + GEOID["perDegLat"] * (lat - lat0) + GEOID["perDegLon"] * (lon - lon0)
+
+
+GEOD_N0 = GEOID["n0"]
+
+
+def warp_case(name, lon0, lat0):
+    case = next(c for c in CASES if c["name"] == name)
+    crs = CRS.from_proj4(case["proj4"])
+    fwd = Transformer.from_crs(WGS84, crs, always_xy=True)
+    inv = Transformer.from_crs(crs, WGS84, always_xy=True)
+    e0, n0 = fwd.transform(lon0, lat0)
+    alon, alat = inv.transform(e0, n0)
+    anchor_h = ANCHOR_H + test_geoid(alon, alat, alon, alat)
+    points = []
+    steps = int(round(2 * WARP_HALF_M / WARP_STEP_M))
+    for i in range(steps + 1):
+        s = -WARP_HALF_M + i * WARP_STEP_M
+        de, dn = s / math.sqrt(2.0), s / math.sqrt(2.0)
+        lon, lat = inv.transform(e0 + de, n0 + dn)
+        for big_h in WARP_HEIGHTS:
+            h = big_h + test_geoid(lon, lat, alon, alat)
+            x, y, z = TO_ECEF.transform(lon, lat, h)
+            points.append({"dE": de, "dN": dn, "H": big_h, "lon": lon, "lat": lat, "h": h, "ecef": [x, y, z]})
+    ax, ay, az = TO_ECEF.transform(alon, alat, anchor_h)
+    return {
+        "case": name,
+        "proj4": case["proj4"],
+        "anchor": {"E": e0, "N": n0, "H": ANCHOR_H, "lon": alon, "lat": alat, "h": anchor_h, "ecef": [ax, ay, az]},
+        "points": points,
+    }
+
+
 def main():
     out_cases = []
     for case in CASES:
@@ -158,6 +213,8 @@ def main():
         "proj": pyproj.proj_version_str,
         "pyproj": pyproj.__version__,
         "cases": out_cases,
+        "warpGeoid": GEOID,
+        "warp": [warp_case(*c) for c in WARP_CASES],
     }
     here = os.path.dirname(os.path.abspath(__file__))
     target = os.path.join(here, "..", "..", "apps", "viewer", "src", "lib", "geo", "__fixtures__", "proj-oracle.json")

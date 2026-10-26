@@ -7,6 +7,8 @@ import { isEntityVisible, DEFAULT_GHOST_ALPHA, DEFAULT_MIN_CAST_ALPHA } from '@i
 import { getGlobalRenderer } from '../../hooks/useBCF.js';
 import { withInstancedMeshes } from '../../utils/instancedExport.js';
 import { buildMergedGLB } from './cesium-glb.js';
+import { bakeGlobeTiles } from './globe-glb.js';
+import type { GeoMapping } from './geo-warp.js';
 import { displayedTranslation, type PlacementState } from '../model-placement/state';
 
 /** Locks, anchor picks and no-op previews do not alter the world-view GLB. */
@@ -64,9 +66,9 @@ export interface CesiumModelGLBInput {
  *  - Hiding or isolating changes which meshes belong in the GLB while every
  *    count above holds still. `visibilityVersion` catches that one.
  */
-export function cesiumModelGLBKey(input: CesiumModelGLBInput): string {
+export function cesiumModelGLBKey(input: CesiumModelGLBInput, globe?: CesiumGlobeBake | null): string {
   const instancedEntities = getGlobalRenderer()?.getScene()?.getInstancedEntityCount() ?? 0;
-  return [
+  const key = [
     input.geometryContentVersion,
     input.placementKey ?? '[]',
     input.geometryResult.meshes.length,
@@ -74,6 +76,9 @@ export function cesiumModelGLBKey(input: CesiumModelGLBInput): string {
     input.visibilityVersion,
     input.ghostVersion,
   ].join(':');
+  // An Exact GLB is baked from the georeference, so a georeference change
+  // rebuilds it; an Anchor GLB keeps its key and only its matrix moves.
+  return globe ? `${key}:${globe.key}` : key;
 }
 
 /**
@@ -110,13 +115,19 @@ export interface CesiumModelGLBPart {
   castsShadows: boolean;
 }
 
+/** An Exact-placement bake: the mapping and the plan key that identifies it. */
+export interface CesiumGlobeBake {
+  mapping: GeoMapping;
+  key: string;
+}
+
 /**
  * Split by the same MATERIAL-alpha policy as the WebGPU shadow pass (#7562).
  * Classify before ghost styling: X-Ray must not erase opaque wall shadows.
  * Each canonical visible mesh belongs to exactly one part, including instanced
  * occurrences and federated meshes; opaque window frames stay in the caster.
  */
-export function buildCesiumModelGLBParts(input: CesiumModelGLBInput): {
+export function buildCesiumModelGLBParts(input: CesiumModelGLBInput, globe?: CesiumGlobeBake | null): {
   parts: CesiumModelGLBPart[];
   key: string;
 } {
@@ -129,12 +140,18 @@ export function buildCesiumModelGLBParts(input: CesiumModelGLBInput): {
   }
   const parts: CesiumModelGLBPart[] = [];
   for (const [meshes, castsShadows] of [[casting, true], [receiving, false]] as const) {
-    if (meshes.length) parts.push({
-      glb: buildMergedGLB(applyGhostAlpha(meshes, input.ghostExceptIds, input.selectedIds)),
-      castsShadows,
-    });
+    if (!meshes.length) continue;
+    const styled = applyGhostAlpha(meshes, input.ghostExceptIds, input.selectedIds);
+    if (!globe) {
+      parts.push({ glb: buildMergedGLB(styled), castsShadows });
+      continue;
+    }
+    // Exact placement: one GLB per tile, positions in anchor ENU relative to the tile centre.
+    const tiles = bakeGlobeTiles(styled, globe.mapping);
+    if (!tiles) throw new Error('globe placement: the model could not be projected point by point');
+    for (const tile of tiles) parts.push({ glb: buildMergedGLB(tile.meshes, tile.translation), castsShadows });
   }
-  return { parts, key: cesiumModelGLBKey(input) };
+  return { parts, key: cesiumModelGLBKey(input, globe) };
 }
 
 function prepareVisibleMeshes(input: CesiumModelGLBInput): MeshData[] {

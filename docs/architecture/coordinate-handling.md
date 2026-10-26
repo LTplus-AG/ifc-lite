@@ -12,7 +12,7 @@ Building corner at: (487234.567, 5234891.234, 0.0)
 
 **Important**: Large coordinates do NOT mean a model is georeferenced! Proper georeferencing in IFC is done via `IfcMapConversion` and `IfcProjectedCRS`, which store transformation parameters separately while keeping geometry in a local coordinate system with small values.
 
-IFC4X3 adds `IfcRigidOperation`, a pure translation (no rotation or scale) whose source coordinates already are target-CRS coordinates, often with large values like the example above. ifc-lite reads it like a map conversion with an identity axis (`source: 'rigidOperation'`). The target CRS may be an `IfcProjectedCRS` or an `IfcGeographicCRS`, and either can carry an `IfcWellKnownText` definition (WKT1 or WKT2) in place of an EPSG code. The viewer reads that WKT through proj4's parser, prefers an EPSG identifier the WKT names, and refuses a position outside the WKT's declared `BBOX`. On the globe the model is placed by one anchor point and its local east/north/up frame, not by reprojecting every vertex. Earth curvature and the change of projection scale across the model's extent are therefore not applied.
+IFC4X3 adds `IfcRigidOperation`, a pure translation (no rotation or scale) whose source coordinates already are target-CRS coordinates, often with large values like the example above. ifc-lite reads it like a map conversion with an identity axis (`source: 'rigidOperation'`). The target CRS may be an `IfcProjectedCRS` or an `IfcGeographicCRS`, and either can carry an `IfcWellKnownText` definition (WKT1 or WKT2) in place of an EPSG code. The viewer reads that WKT through proj4's parser, prefers an EPSG identifier the WKT names, and refuses a position outside the WKT's declared `BBOX`. On the globe the model is placed by one anchor point and its local east/north/up frame by default. Earth curvature and the change of projection scale across the model's extent are then not applied; the Exact globe placement below applies them.
 
 ### Globe anchor: grid north and grid scale
 
@@ -32,6 +32,19 @@ Whether to divide by k_c depends on what the model's coordinates are:
 | any operation into an `IfcGeographicCRS` | ENU metres around the anchor | 1 |
 
 Before this, such a conversion was drawn at Scale·Factor, the size of the model on the map grid, and rigid-operation and map-absolute models were drawn at grid size. Treating a unit-scale `IfcMapConversion` as true length is a reading of practice, not of the equations alone: the spec's formula would make its output map coordinates too. In practice Scale = 1 means the model is in ground lengths, and dividing by k_c would shrink a correctly drawn model.
+
+### Globe placement: Auto / Anchor / Exact
+
+One anchor cannot represent Earth curvature (r²/2R: 1 cm at 500 m, 1 m at 5 km), the parallel plumb lines of a tall model (dH·r/R), geoid slope, or the change of projection scale across a grid-coordinate model. **Exact** placement (`apps/viewer/src/lib/geo/geo-warp.ts`) instead takes every world-view vertex through the chain viewer → IFC → map (E, N, H) → proj4 (including registered WKT definitions and loaded `+nadgrids`) → (lon, lat), h = H + N_geoid → ECEF → anchor ENU.
+
+- **Map coordinates** follow the table above. Grid-coordinate sources project their authored map coordinates. True-length geometry projects E_a + k_c·(E − E_a) about the anchor, so it keeps its true length there.
+- **Speed.** A lattice of 100 m cells with two height levels is sampled once over the visible meshes and interpolated per vertex. The warp is exactly linear in height, and the bilinear residual is about c²/(8R). Against PROJ along a 20 km line this measures 0.38 mm.
+- **Baking.** The warp is baked into the Cesium GLB (`globe-glb.ts`), and the model matrix becomes `eastNorthUpToFixedFrame(anchor)`. Meshes are grouped into 2 km tiles whose centre travels as the glTF node translation, so float32 positions stay at about 0.1 mm. Normals are rotated by the cofactor of the local Jacobian.
+- **Camera.** In Exact mode the camera frame is the warp linearised at the camera target. It is re-linearised after the target moves 250 m, and agrees with the model to d²/2R (5 mm at 250 m).
+- **Terrain clip.** The flat viewer-space clip plane is off in Exact mode.
+- **Unchanged.** The WebGPU viewport, picking and measurement stay in Cartesian viewer space. The KMZ export still places by one anchor.
+
+**Auto** (the default) picks Exact when the estimated anchor error exceeds 1 cm (`globe-placement.ts`). The estimate is the sum of curvature, plumb, geoid slope and, for grid-coordinate sources, scale variation, all at the model's farthest corner. The Georeferencing panel shows the estimate and which placement was used. An Anchor-mode GLB is byte-identical to the one built before Exact existed.
 
 Large coordinates in geometry are a **bad practice** that has unfortunately become common. They cause rendering issues:
 

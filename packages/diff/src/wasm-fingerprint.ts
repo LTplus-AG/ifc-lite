@@ -31,13 +31,21 @@ function projectInput(input: DataFingerprintInput, components: boolean): DataFin
   const attributes = () => ({ ifcType: input.ifcType, name: input.name, description: input.description,
     objectType: input.objectType, predefinedType: input.predefinedType, tag: input.tag });
   const entries = (values: PropertyEntryInput[]) => values.map(entry => ({ name: entry.name, value: normalizeValue(entry.value) }));
-  const collections = () => ({
-    propertySets: (input.propertySets ?? []).map(set => ({ name: set.name, properties: entries(set.properties) })),
-    quantitySets: (input.quantitySets ?? []).map(set => ({ name: set.name, quantities: entries(set.quantities) })),
-    typeAssignments: (input.typeAssignments ?? []).map(type => ({ name: type.name, type: type.type })),
-    materials: (input.materials ?? []).filter(value => typeof value === 'string' && value.length > 0),
-    classifications: (input.classifications ?? []).filter(value => typeof value === 'string' && value.length > 0),
-  });
+  const collections = () => {
+    const propertySets = (input.propertySets ?? []).map(set => ({ name: set.name, properties: entries(set.properties) }));
+    // The oracle's component for-of visits holes AFTER map has observed all
+    // present records, and BEFORE it reads the next collection (#8042).
+    // These are fresh plain DTOs: reading name only recreates the host error.
+    if (components) for (const set of propertySets) void set.name;
+    const quantitySets = (input.quantitySets ?? []).map(set => ({ name: set.name, quantities: entries(set.quantities) }));
+    if (components) for (const set of quantitySets) void set.name;
+    return {
+      propertySets, quantitySets,
+      typeAssignments: (input.typeAssignments ?? []).map(type => ({ name: type.name, type: type.type })),
+      materials: (input.materials ?? []).filter(value => typeof value === 'string' && value.length > 0),
+      classifications: (input.classifications ?? []).filter(value => typeof value === 'string' && value.length > 0),
+    };
+  };
   // The original component path reads attributes before collection values;
   // the full fingerprint path reads collection values first.
   return components ? { ...attributes(), ...collections() } : { ...collections(), ...attributes() };

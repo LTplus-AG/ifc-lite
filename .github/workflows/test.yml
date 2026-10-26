@@ -688,6 +688,12 @@ jobs:
           fi
           echo "✅ committed wasm types match the Rust source"
 
+      # A separate feature bundle exposes only the test ownership probe.
+      # Do not overwrite pkg-diff or its committed production declarations.
+      - name: Fingerprint getter ownership (actual WASM, no skips)
+        if: needs.changes.outputs.wasm_prebuilt != 'true'
+        run: pnpm test:diff-decode-leaks
+
       # The generated IFCX imported-geometry kernel must match the Rust crate it
       # is built from. Regenerates into a temp dir and diffs; not a build gate for
       # packages (their --verify is Rust-free). Needs cargo, so 'Setup WASM build toolchain'

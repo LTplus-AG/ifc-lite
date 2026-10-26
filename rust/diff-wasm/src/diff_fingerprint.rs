@@ -11,14 +11,14 @@ pub fn diff_stable_hash(units: &[u16]) -> String { stable_hash_units(units.iter(
 /// Hash adapter data directly in Rust without a JSON text round trip.
 #[wasm_bindgen(js_name = diffBuildDataFingerprint)]
 pub fn diff_build_data_fingerprint(input: JsValue) -> Result<String, JsValue> {
-    let input = super::diff_fingerprint_input::decode(input)?;
+    let input = super::diff_fingerprint_input::decode(input, false)?;
     Ok(build_data_fingerprint(&input))
 }
 
 /// Component hashes share the canonical Rust attribute projection.
 #[wasm_bindgen(js_name = diffBuildComponentFingerprints)]
 pub fn diff_build_component_fingerprints(input: JsValue) -> Result<JsValue, JsValue> {
-    let input = super::diff_fingerprint_input::decode(input)?;
+    let input = super::diff_fingerprint_input::decode(input, true)?;
     crate::diff_transport::host_value(&ifc_lite_diff::DocumentValue::Object(
         build_component_fingerprint_entries(&input).into_iter()
             .map(|(key, hash)| (key, ifc_lite_diff::DocumentValue::String(hash.into()))).collect()))

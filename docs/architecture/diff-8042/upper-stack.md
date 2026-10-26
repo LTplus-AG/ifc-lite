@@ -100,3 +100,112 @@ layer 4, then root pnpm/turbo build dependencies/typecheck/test and actual WASM
 adapter/runtime tests on this exact layer. Never substitute package-local
 checks that bypass dependency builds. Additional differential tests using the
 private oracle arrive with the coherent public cutover in layer 7.
+
+## Layer 6: sparse fingerprint collections
+
+`stack/8042-v3-sparse-fingerprints` depends on runtime adapters. Preserve the
+exact native sparse collection representation, raw decoder and JS input
+projection. The real-WASM outer-hole regression uses the public TS oracle
+before cutover, preserving host TypeError and reuse of the same instance.
+The isolated helper and all 90 facade comparisons arrive with their private
+oracle at layer 7. Their bytes are retained from the integrated prototype.
+The public index and collab manifest/lock dependency remain unchanged here.
+No sparse or deep regression has been executed in this preparation.
+
+Holes are only constructed by the raw host decoder, which reads one `length`
+then inspects each array index (HasProperty, then Get only if present). This
+does not claim full `Array.map` observation parity: live `map` and `constructor`
+lookups remain outside the raw decoder contract. A present `null`/`undefined`
+element is never a hole: it throws the oracle's `TypeError` at all five
+collections (#8114). Serialized forms (JSON, document DTOs) cannot express
+holes, so the native decoder is dense and rejects `null` records.
+
+The bounded #8114 correction carries caught host exceptions out of band with
+their original identity; no error-message marker is interpreted. Decode mode
+and error state are scoped across nested calls. Every typed field Get (and
+the missing-field HasProperty after undefined) is caught at its individual
+host import, before an exception could abandon an owning serde/Rust frame.
+Component decoding finishes each
+whole property/quantity-set projection, checks that collection's outer holes,
+then observes the next collection. Thus a null in the same array wins over a
+hole, while a component outer hole wins over a later collection's error.
+Array slots grow incrementally instead of reserving the supplied length, so
+an invalid first record of an enormous sparse array can reject immediately.
+Nested record-name schema errors retain the original single `Error:` prefix.
+
+New actual-WASM regressions cover exact Error/Symbol identity (including
+element getters, HasProperty traps and record getters), cross-collection error
+precedence and reads, one length read and HasProperty/Get ordering, huge-array
+early rejection, caught length/Array.isArray failures, reentrant mode/error
+restoration and same-instance recovery. These tests and the corrected Rust
+have NOT been compiled or executed in this source-only preparation. Parent
+qualification must rebuild the exact final diff payload and run the actual
+WASM tests without skips, native tests, strict Clippy and root pnpm/Turbo gates.
+The decoder is used by the facade and remains part of final performance
+qualification. No pre-existing primitive type-assignment/iterable-facade
+normalization behavior or #8088 collision handling is changed here.
+
+### Getter ownership correction on d7 (#8042/#8114)
+
+The callback-wide catch in `d7cde23b633c6121bb2743ddd8bc4686dd0c0884`
+restored the outer DecodeScope but could not drop partially decoded Rust
+allocations after serde's uncaught imports threw through them. It is removed.
+The private fingerprint deserializer preserves the typed field declaration
+order, missing/default distinction, and ignored-field projection. Its caught
+imports also cover nested dynamic array length/index reads, Object.entries,
+iterability checks, iterator creation/next/done/value and Map pair members.
+Object.entries still observes one object's members before decoding their
+values, preserving the previous observation order. Invalid-type diagnostic
+observations are caught too. Native dense JSON decoding is untouched.
+The adapter retains the pinned binding's non-throwing instanceof probes and
+i32 bool-return coercion rather than changing iterable interpretation. These
+were compared with the [0.2.126 import and diagnostic generator](https://github.com/wasm-bindgen/wasm-bindgen/blob/0.2.126/crates/cli-support/src/js/mod.rs)
+and its [bool-return conversion](https://github.com/wasm-bindgen/wasm-bindgen/blob/0.2.126/crates/cli-support/src/js/binding.rs).
+
+`decode-leak-test` is a disabled-by-default Cargo feature. It adds only
+`diffTestExternrefLiveCount`, backed by
+`wasm_bindgen::externref_heap_live_count()`, to a separate test bundle.
+The harness warms caches, repeatedly rejects getters after records with
+substantial strings have decoded, and checks the exact live-owned-handle
+baseline after every rejection and valid same-module reuse. It covers typed
+fields, nested members and iterator steps; Error/Symbol/number/marker/object
+exception identity; and typed field read count/order with ignored fields.
+This checks owned externref release, not every Rust allocator byte directly.
+
+Run from the repository root, on the exact committed candidate, through the
+parent's managed task (all commands share its storage task):
+
+```sh
+~/build-workers/ifc-fleet run --cwd /absolute/isolated/checkout --storage-task TASK -- pnpm test:diff-decode-leaks
+```
+
+The root command executes `bash scripts/test-diff-decode-leaks.sh`: pinned
+nightly wasm-pack release build of `rust/diff-wasm` with
+`CARGO_UNSTABLE_BUILD_STD=std,panic_abort`, `--features decode-leak-test`,
+`--target web`, and output `packages/wasm/pkg-diff-decode-test`; then
+`node --test rust/diff-wasm/tests/decode-leak.test.mjs`. Neither missing
+runtime/probe nor build failure can skip coverage or fall back to another
+bundle. CI's build job calls the same root command after production type-sync
+verification. The package publish allowlist excludes the test bundle; default
+production ABI and committed declarations are unchanged. No declarations were
+hand-edited or generated during this preparation.
+
+This correction is source-only preparation: no Rust compilation, real WASM
+execution, native suite, Clippy, root pnpm/Turbo checks or performance run was
+performed. Parent qualification must run the new harness, rebuild the default
+payload via `CI=1 bash scripts/build-wasm.sh`, verify declaration sync, and run
+existing sparse/null/precedence/reentrancy/differential tests plus required
+native/root checks. The P1 leak and ABI compatibility remain unverified until
+those commands actually execute. Future end-to-end performance qualification
+is still required; no performance verdict is claimed here.
+
+The bounded follow-up on `dfbffe9706dc642da321ef481da008acbed0e5c5`
+restores js-sys 0.3.103's three typed-array length reads/u32 coercions, with
+fresh-copy allocation between reads one and two. Second/third-read getter
+and coercion exceptions join the repeated identity/handle/reuse matrix; a
+stable getter pins all three observations. Inconsistent observed lengths
+now reject explicitly with a TypeError: no parity is claimed for inputs
+violating the original unsafe allocation/slice assumptions, including a
+reported length inconsistent with the underlying typed-array storage.
+Actual WASM qualification remains pending; Node-only execution of the inline
+host helper does not establish Rust ownership cleanup or compiled parity.

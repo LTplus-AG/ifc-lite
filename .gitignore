@@ -66,6 +66,8 @@ packages/wasm/pkg/ifc-lite.js
 
 # Threaded WASM bundle (build-wasm.sh BUILD_THREADED=1) — build artifact, like pkg/.
 packages/wasm/pkg-threaded/
+# Separate feature-gated fingerprint ownership test bundle; never published.
+packages/wasm/pkg-diff-decode-test/
 
 # csg-thread-bench: rung-2 measurement artifacts (wasm-pack output, copied IFC
 # fixtures, generated corpus blobs). Source (Cargo.toml, src/, web/index.html,

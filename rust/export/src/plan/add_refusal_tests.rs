@@ -281,6 +281,7 @@ fn an_add_keeps_the_owner_history_a_delete_would_take() {
         // which the delete would otherwise take.
         let (out, report) = run_with(source.as_bytes(), plan(), PlanContext::new());
         assert!(report.refusals.is_empty(), "{schema}: {report:?}");
+        assert!(matches!(&report.findings[..], [only] if only.message.starts_with("no ExportingApplication")), "{schema}: {:?}", report.findings);
         assert_eq!(type_in(&out, 5), "IFCOWNERHISTORY", "{schema}: the file's owner history stays");
         assert_eq!(history(&out), "#5", "{schema}: the new wall names it");
         // With one the wall names its own ADDED history, which is in the
@@ -289,7 +290,8 @@ fn an_add_keeps_the_owner_history_a_delete_would_take() {
         assert_clean(&report, schema);
         let named = history(&out);
         let named: u32 = named.trim_start_matches('#').parse().unwrap_or_else(|_| panic!("{schema}: owner history ref {named}"));
-        assert_eq!(type_in(&out, named), "IFCOWNERHISTORY", "{schema}: the new wall names a live history");
+        assert_ne!(named, 5, "{schema}: not the source's history");
+        assert_eq!(attr(&out, schema, named, "ChangeAction"), ".ADDED.", "{schema}: the new wall names a live ADDED history");
     }
 }
 

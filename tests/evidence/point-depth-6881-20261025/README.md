@@ -101,6 +101,11 @@ Preparation receipts:
   one valid sample and was aborted on the second by the post-sample host gate at 10.9% CPU
   while other sessions ran local Rust and WASM work. No verdict exists. See
   [`hover-attempt-5.json`](hover-attempt-5.json).
+- A sixth attempt (`hover-7`, unchanged protocol, host quiet throughout) completed seven valid
+  FZK samples and was aborted by the cross-sample identity gate on the eighth: two of nine picks in
+  the full-copy control arm differed by about 1e-4 m in world position at identical IDs, items,
+  texels and camera, consistent with a one-ULP depth difference. No verdict exists. See
+  [`hover-attempt-6.json`](hover-attempt-6.json) and [raw samples](hover-7-runs.jsonl.gz).
 
 [Preparation receipts](preparation.json) retain command/source identities,
 original outcomes and log hashes. Failed functional reports and compact summaries

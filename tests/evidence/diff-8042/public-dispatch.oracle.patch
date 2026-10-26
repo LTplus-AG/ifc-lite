@@ -1,0 +1,12 @@
+--- a/packages/diff/src/index.ts
++++ b/packages/diff/src/index.ts
+@@ -12,8 +12,7 @@
+  * (`MeshCollection.geometryHashValues`).
+  */
+ 
+-import { compareWithWasm } from './wasm-diff.js';
+-export const diffModels: typeof compareWithWasm = (base, head, options) => compareWithWasm(head, base, options);
++export { compareWithWasm as diffModels } from './wasm-diff.js';
+ export { initDiff, initDiffSync } from './wasm-runtime.js';
+ export {
+   buildComponentFingerprints,

@@ -158,6 +158,8 @@ impl SourceCapture {
         let mut visited = std::collections::HashSet::new();
         let mut work = 0;
         while let Some(entity) = pending.pop() {
+            #[cfg(feature = "retained-runtime")]
+            crate::resource::source_step()?;
             work += 1;
             if work > 1_000_000 {
                 return Err(invalid("source coefficient work budget exceeded"));
@@ -292,6 +294,8 @@ impl SourceCapture {
         if let Some(slot) = points {
             if let Some(points) = entity.get_list(slot) {
                 for point in points {
+                    #[cfg(feature = "retained-runtime")]
+                    crate::resource::source_step()?;
                     if let Some(id) = point.as_entity_ref() {
                         dependencies.push(Self::coefficient(id, &[IfcCartesianPoint], decoder)?);
                     }
@@ -302,6 +306,8 @@ impl SourceCapture {
             for slot in [1, 2] {
                 if let Some(selectors) = entity.get_list(slot) {
                     for selector in selectors {
+                        #[cfg(feature = "retained-runtime")]
+                        crate::resource::source_step()?;
                         if let Some(id) = selector.as_entity_ref() {
                             dependencies.push(Self::coefficient(
                                 id,
@@ -331,6 +337,8 @@ impl SourceCapture {
     }
 
     fn value(&mut self, value: &AttributeValue, depth: usize) -> Result<SourceValue> {
+        #[cfg(feature = "retained-runtime")]
+        crate::resource::source_step()?;
         self.values += 1;
         if depth >= MAX_SOURCE_VALUE_DEPTH || self.values > MAX_SOURCE_VALUES {
             return Err(invalid("source values exceed work budget"));

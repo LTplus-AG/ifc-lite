@@ -11,6 +11,8 @@ pub(super) fn capture(
     program: u64,
     failure: &FailureHandle,
 ) -> crate::Result<RetainedPlanOperation> {
+    #[cfg(feature = "retained-runtime")]
+    crate::resource::source_step()?;
     crate::resource::charge(crate::resource::Cost {
         work: 1,
         ..Default::default()
@@ -37,7 +39,10 @@ pub(super) fn capture(
         })),
         _ => Err(recipe_error(failure, item.id,
             crate::document::RetainedRefusal::UnsupportedSource(format!("{}", item.ifc_type)))),
-    })?;
+    });
+    #[cfg(feature = "retained-runtime")]
+    crate::resource::source_step()?;
+    let recipe = recipe?;
     let payload = recipe
         .lower()
         .map_err(|refusal| recipe_error(failure, item.id, refusal))?;

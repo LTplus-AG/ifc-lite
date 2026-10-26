@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Explicit admission for audited allocations. This is not an allocator or RSS bound.
 mod account;
+#[cfg(feature = "retained-runtime")]
+mod budget;
+#[cfg(feature = "retained-runtime")]
+pub use budget::{budget_checkpoint, budget_deadline_fired, ProductBudget, BudgetStart};
+#[cfg(all(feature = "retained-runtime", test))]
+pub use budget::test_clock as budget_test_clock;
 // Refs #7955: private dormant resource owner.
 #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
 #[cfg_attr(not(test), allow(dead_code))]
@@ -89,8 +95,21 @@ pub fn check_current() -> Result<(), ProgramStop> {
     if let Some(error) = TERMINAL.with(|slot| slot.get().flatten()) {
         return Err(error);
     }
+    #[cfg(feature = "retained-runtime")]
+    if let Some(account) = current_account() {
+        account.check_allowance().map_err(stop)?;
+    }
     Ok(())
 }
+
+/// Check controlled source iterations under the opt-in retained budget.
+/// Default builds keep their existing loops unchanged: this is a no-op there,
+/// with no stop, thread-local or account check added.
+#[cfg(feature = "retained-runtime")]
+pub(crate) fn source_step() -> crate::Result<()> {
+    budget::source_step()
+}
+
 pub fn charge(cost: Cost) -> Result<Reservation, ProgramStop> {
     check_current()?;
     match current_account() {

@@ -1290,6 +1290,9 @@ importers:
         specifier: workspace:*
         version: link:../wasm
     devDependencies:
+      '@types/node':
+        specifier: ^26.6.4
+        version: 26.6.5
       typescript:
         specifier: ^6.0.3
         version: 6.0.3

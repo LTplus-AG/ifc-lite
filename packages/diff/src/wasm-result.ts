@@ -17,32 +17,49 @@ export type IndexedDiff = Omit<ModelDiff, 'entries' | 'byKey' | 'appliedKeyAlias
 
 /** Reuse the original entity objects, including opaque refs, in every result. */
 export function restoreDiffReferences<TRef>(raw: IndexedDiff, base: readonly EntityFingerprint<TRef>[], head: readonly EntityFingerprint<TRef>[]): ModelDiff<TRef> {
-  const entries: DiffEntry<TRef>[] = raw.entries.map(({ base: b, head: h, ...entry }) => ({
-    ...entry,
-    ...(b === undefined ? {} : { base: base[b] }),
-    ...(h === undefined ? {} : { head: head[h] }),
+  const entries: DiffEntry<TRef>[] = raw.entries.map(entry => ({
+    key: entry.key, state: entry.state, changeKinds: entry.changeKinds,
+    ...(entry.base === undefined ? {} : { base: base[entry.base] }),
+    ...(entry.head === undefined ? {} : { head: head[entry.head] }),
+    ...(entry.changedComponents === undefined ? {} : { changedComponents: entry.changedComponents }),
   }));
   return {
     scope: raw.scope,
     excludedTypes: raw.excludedTypes,
     entries,
-    counts: raw.counts,
     byKey: new Map(entries.map(entry => [entry.key, entry])),
-    ...(raw.appliedKeyAliases === undefined ? {} : { appliedKeyAliases: new Map(raw.appliedKeyAliases) }),
+    counts: raw.counts,
     ...(raw.contentMatches === undefined ? {} : {
-      contentMatches: raw.contentMatches.map(({ base: b, head: h, ...match }) => ({
-        ...match, base: b.map(index => base[index]), head: h.map(index => head[index]),
+      contentMatches: raw.contentMatches.map(match => ({
+        kind: match.kind, tier: match.tier, dataHash: match.dataHash,
+        ...(match.geometryHash === undefined ? {} : { geometryHash: match.geometryHash }),
+        base: match.base.map(index => base[index]), head: match.head.map(index => head[index]),
+        ...(match.changedComponents === undefined ? {} : { changedComponents: match.changedComponents }),
+        ...(match.distance === undefined ? {} : { distance: match.distance }),
       })),
     }),
+    ...(raw.appliedKeyAliases === undefined ? {} : { appliedKeyAliases: new Map(raw.appliedKeyAliases) }),
     ...(raw.splitMerges === undefined ? {} : {
-      splitMerges: raw.splitMerges.map(({ whole, pieces, excluded, ...claim }) => {
+      splitMerges: raw.splitMerges.map(claim => {
         const [wholeSide, pieceSide] = claim.kind === 'split' ? [base, head] : [head, base];
-        return { ...claim, whole: wholeSide[whole], pieces: pieces.map(index => pieceSide[index]),
-          ...(excluded === undefined ? {} : { excluded: pieceSide[excluded] }) };
+        return {
+          kind: claim.kind, confidence: claim.confidence, whole: wholeSide[claim.whole],
+          pieces: claim.pieces.map(index => pieceSide[index]),
+          ...(claim.wholeVolume === undefined ? {} : { wholeVolume: claim.wholeVolume }),
+          ...(claim.piecesVolume === undefined ? {} : { piecesVolume: claim.piecesVolume }),
+          ...(claim.volumeResidual === undefined ? {} : { volumeResidual: claim.volumeResidual }),
+          ...(claim.excluded === undefined ? {} : { excluded: pieceSide[claim.excluded] }),
+          ...(claim.crossClass === undefined ? {} : { crossClass: claim.crossClass }),
+        };
       }),
     }),
     ...(raw.successors === undefined ? {} : {
-      successors: raw.successors.map(({ base: b, head: h, ...claim }) => ({ ...claim, base: base[b], head: head[h] })),
+      successors: raw.successors.map(claim => ({
+        confidence: claim.confidence, base: base[claim.base], head: head[claim.head],
+        overlap: claim.overlap, distance: claim.distance,
+        ...(claim.agreeingComponents === undefined ? {} : { agreeingComponents: claim.agreeingComponents }),
+        ...(claim.crossClass === undefined ? {} : { crossClass: claim.crossClass }),
+      })),
     }),
   };
 }

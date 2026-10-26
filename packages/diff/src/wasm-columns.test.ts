@@ -5,7 +5,7 @@ import { expect, test } from 'vitest';
 import { fingerprintColumns } from './wasm-columns.js';
 import type { EntityFingerprint } from './types.js';
 
-test('column transport refuses lone UTF-16 units without conflating identities (#8042, #8081)', () => {
+test('column transport retains every UTF-16 string without conflating identities (#8042, #8081)', () => {
   const entity: EntityFingerprint<null> = { key: '😀', ifcType: 'IfcWall', dataHash: 'd', ref: null };
   expect(fingerprintColumns([entity]).strings[0]).toBe('😀');
   for (const text of ['\ud800', '\udc00', 'a\ud800b', '\ud800\ud800', '\udc00\udc00']) {
@@ -15,7 +15,7 @@ test('column transport refuses lone UTF-16 units without conflating identities (
       { ...entity, container: text }, { ...entity, components: { [text]: 'd' } },
       { ...entity, components: { propertySets: text } },
     ];
-    for (const variant of variants) expect(() => fingerprintColumns([variant])).toThrow(/well-formed UTF-16/);
+    for (const variant of variants) expect(fingerprintColumns([variant]).strings).toContain(text);
   }
   const scalar = { ...entity, key: '�', components: { propertySets: 'literal\\ud800' } };
   expect(fingerprintColumns([scalar]).strings).toContain('literal\\ud800');

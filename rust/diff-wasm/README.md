@@ -16,8 +16,9 @@ These tests require the fresh independent WASM payload and root-built TS
 oracle; missing prerequisites are explicit skips, never qualification.
 
 The public TypeScript engine remains in place through the lower layers.
-The JS column adapter scalar guard stays until the runtime adapter layer;
-the separate lineage scalar guard stays until the host observer layer.
+The host observer layer replaced the separate lineage scalar guard. The
+runtime adapter layer now removes the JS column scalar guard and extends the
+positive parity tests to lossless rows through `compareWithWasm` too.
 Raw JSON syntax validation is retained throughout. Fingerprint typed transport
 became lossless at layer 2. Later public cutover relocates the TS oracle privately.
 

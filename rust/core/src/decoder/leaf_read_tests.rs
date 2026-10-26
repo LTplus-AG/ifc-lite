@@ -158,13 +158,19 @@ fn issue_7779_decoded_point_matches_id_read_after_decode() {
             reused = reused.with_strict_reals();
         }
         for id in (1..=23).chain([1, 6, 22, 999]) {
-            let expected = reference.decode_by_id(id).and_then(|_| reference.point3(id));
-            let actual = reused.decode_by_id(id).and_then(|point| reused.point3_decoded(&point));
+            let expected = reference
+                .decode_by_id(id)
+                .and_then(|_| reference.point3(id));
+            let actual = reused
+                .decode_by_id(id)
+                .and_then(|point| reused.point3_decoded(&point));
             match (expected, actual) {
                 (Ok(expected), Ok(actual)) => {
                     assert_eq!(expected.map(f64::to_bits), actual.map(f64::to_bits));
                 }
-                (Err(expected), Err(actual)) => assert_eq!(expected.to_string(), actual.to_string()),
+                (Err(expected), Err(actual)) => {
+                    assert_eq!(expected.to_string(), actual.to_string())
+                }
                 (expected, actual) => panic!("#{id}: {expected:?} != {actual:?}"),
             }
             let mut expected = reference.refused_record_ids();

@@ -128,12 +128,7 @@ fn length_unit(emit: &mut Emit, name: &str, metres: f64, metre: u32) -> Result<u
 /// not have distinct GlobalIds, `crs_name` is empty, or an
 /// [`ExportingApplication`] is given whose change time cannot be attributed.
 pub fn skeleton(s: &Skeleton) -> Result<Vec<u8>, String> {
-    // An application whose change time can't be attributed is refused
-    // first, with its own reason; anything else is a finding.
-    if let Some(app) = &s.application {
-        Identity::new(app)?;
-    }
-    build(s).map(|(bytes, _)| bytes)
+    build(s, true).map(|(bytes, _)| bytes)
 }
 
 /// [`skeleton`], reporting rather than refusing an application it cannot
@@ -143,11 +138,13 @@ pub fn skeleton(s: &Skeleton) -> Result<Vec<u8>, String> {
 /// # Errors
 /// As [`skeleton`], but for the application.
 pub fn skeleton_with_findings(s: &Skeleton) -> Result<(Vec<u8>, Vec<ValidationFinding>), String> {
-    build(s)
+    build(s, false)
 }
 
-/// The skeleton and its findings, for both entry points.
-fn build(s: &Skeleton) -> Result<(Vec<u8>, Vec<ValidationFinding>), String> {
+/// The skeleton and its findings, for both entry points: an application
+/// whose change time can't be attributed refuses when `strict`, else is a
+/// finding and the skeleton is written unattributed.
+fn build(s: &Skeleton, strict: bool) -> Result<(Vec<u8>, Vec<ValidationFinding>), String> {
     check(s)?;
     let mut findings = Vec::new();
     let mut ids = IdAllocator::after(0);
@@ -158,7 +155,14 @@ fn build(s: &Skeleton) -> Result<(Vec<u8>, Vec<ValidationFinding>), String> {
         out: &mut out,
     };
     // The exporting application owns what the skeleton creates.
-    let identity = identity_of(s, &mut findings);
+    let identity = match s.application.as_ref().map(|app| Identity::resolve(app, &mut findings)) {
+        Some(Err(message)) if strict => return Err(message),
+        Some(Err(message)) => {
+            findings.push(ValidationFinding::new(None, message));
+            None
+        }
+        resolved => resolved.and_then(Result::ok),
+    };
     let history = owner_slot(identity.as_ref(), &mut emit)?;
     let quoted = |v: &str| format!("'{}'", escape(v));
     let name = |root: &SkeletonRoot| root.name.as_deref().map_or("$".to_string(), quoted);
@@ -294,12 +298,6 @@ fn build(s: &Skeleton) -> Result<(Vec<u8>, Vec<ValidationFinding>), String> {
     }
 
     Ok((step_text(s.file_name.as_deref(), identity.as_ref(), &out)?, findings))
-}
-
-/// The application the skeleton is attributed to, if its change time is
-/// usable; else a finding, and the skeleton is written unattributed.
-fn identity_of(s: &Skeleton, findings: &mut Vec<ValidationFinding>) -> Option<Identity> {
-    Identity::resolve(s.application.as_ref()?, findings)
 }
 
 /// The `OwnerHistory` slot of everything the skeleton creates: the

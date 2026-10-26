@@ -183,7 +183,7 @@ The root command executes `bash scripts/test-diff-decode-leaks.sh`: pinned
 nightly wasm-pack release build of `rust/diff-wasm` with
 `CARGO_UNSTABLE_BUILD_STD=std,panic_abort`, `--features decode-leak-test`,
 `--target web`, and output `packages/wasm/pkg-diff-decode-test`; then
-`node --test rust/diff-wasm/tests/decode-leak.test.mjs`. Neither missing
+`node --expose-gc --test rust/diff-wasm/tests/decode-leak.test.mjs`. Neither missing
 runtime/probe nor build failure can skip coverage or fall back to another
 bundle. CI's build job calls the same root command after production type-sync
 verification. The package publish allowlist excludes the test bundle; default

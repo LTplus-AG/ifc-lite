@@ -70,7 +70,14 @@ it('offers an off-by-default explicit IFC choice and uses a click to place geome
 
 it('distinguishes missing and unresolved assumption notices and omits them for failures (#8042/R58-F2)', () => {
   for (const marker of [true, 'unresolved'] as const) {
-    const assumed = { ...fixtureModel('revision'), ifcSharedVerticalDatumAssumed: marker, federationAlignmentStatus: 'identity' as const };
+    const assumed = {
+      ...fixtureModel('revision'),
+      // This synthetic model has no source bytes; metadata rendering needs a valid load timestamp.
+      fileSize: 0,
+      loadedAt: 0,
+      ifcSharedVerticalDatumAssumed: marker,
+      federationAlignmentStatus: 'identity' as const,
+    };
     act(() => useViewerStore.setState({ ...fixtureModels(assumed) }));
     const ui = render(<ModelMetadataPanel model={assumed} />);
     assert.match(ui.textContent ?? '', /Assumed height system/);

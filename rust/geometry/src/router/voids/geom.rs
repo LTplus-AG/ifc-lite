@@ -421,10 +421,10 @@ pub(super) fn opening_redundant_with_host(host: &Mesh, opening: &Mesh, axis: &Ve
 /// "inside" need to tell that apart from "inside", because a torn shell answers
 /// this question differently depending on where the ray goes.
 ///
-/// Deliberately not a topology check: pairing edges reads a
-/// closed solid whose faces carry T-junctions (an annulus around a hole, which
-/// is how IFC breps and pre-cut wall layers are built) reads as open when it is
-/// not. This asks about the point, not the topology.
+/// Deliberately not a topology check: an edge-pairing test reads a closed
+/// solid whose faces carry T-junctions (an annulus around a hole, which is
+/// how IFC breps and pre-cut wall layers are built) as open. This asks about
+/// the point, not the topology.
 pub(super) fn point_inside_mesh_agreed(mesh: &Mesh, point: Point3<f64>) -> Option<bool> {
     let a = parity_along(mesh, point, PARITY_DIR_A);
     let b = parity_along(mesh, point, PARITY_DIR_B);

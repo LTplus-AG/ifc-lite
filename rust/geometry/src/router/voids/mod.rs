@@ -479,7 +479,7 @@ impl Execution {
         hygiene::clean_void_output(&mut out);
 
         // Self-check: never emit a non-watertight cut; defer to the exact kernel.
-        if !crate::exact_topology::strict_closed_mesh(&out) {  // strict_closed_mesh false negative: unsplit collinear T-junctions left by clean_degenerate
+        if !crate::exact_topology::strict_closed_mesh(&out) {
             return None;
         }
         self.record_rect_fast(&stats);

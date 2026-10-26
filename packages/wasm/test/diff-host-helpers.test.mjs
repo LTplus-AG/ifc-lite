@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { test } from 'node:test';
+import { pathToFileURL } from 'node:url';
 import { currentMainOracle } from './diff-host-helpers.mjs';
 
 const variable = 'IFC_LITE_CURRENT_MAIN_DIFF_ORACLE';
@@ -44,11 +45,21 @@ test('an explicitly requested current-main oracle that is missing fails instead 
   }
 });
 
-test('an unset oracle variable still skips when the local staging build is absent',
-  { skip: existsSync(new URL('../../diff/dist/index.js', import.meta.url)) && 'local staging oracle is built' },
-  async () => {
+test('an unset oracle variable skips when no local staging build exists next to the helper', async () => {
+  // The helper resolves ../../diff/dist/index.js relative to itself. Run an
+  // unmodified copy in a package/wasm/test layout with no package/diff/dist, so
+  // the absent-build path runs whether or not this checkout has built dist.
+  const directory = mkdtempSync(join(tmpdir(), 'ifc-lite-unbuilt-oracle-'));
+  try {
+    const target = join(directory, 'packages', 'wasm', 'test', 'diff-host-helpers.mjs');
+    mkdirSync(dirname(target), { recursive: true });
+    copyFileSync(new URL('./diff-host-helpers.mjs', import.meta.url), target);
+    const { currentMainOracle: isolated } = await import(pathToFileURL(target).href);
     const context = spyContext();
-    const api = await withOracleEnv(undefined, () => currentMainOracle(context));
+    const api = await withOracleEnv(undefined, () => isolated(context));
     assert.equal(api, undefined);
     assert.equal(context.skips.length, 1);
-  });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

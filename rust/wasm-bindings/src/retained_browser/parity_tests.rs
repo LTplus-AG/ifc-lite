@@ -26,12 +26,13 @@ struct NativeReference {
 async fn retained_browser_m1_native_wasm_receipt_parity_scaffold() {
     let value = match native_reference().await {
         Ok(value) if !value.is_null() => value,
-        result => {
+        Ok(value) => {
             web_sys::console::log_1(&JsValue::from_str(&format!(
-                "SKIP M1 native/wasm parity: real SMLib wasm engine or D native reference absent ({result:?}); no parity verdict"
+                "SKIP M1 native/wasm parity: real SMLib wasm engine or D native reference absent ({value:?}); no parity verdict"
             )));
             return;
         }
+        Err(error) => panic!("M1 native parity reference could not be read: {error:?}"),
     };
     let native: NativeReference = serde_wasm_bindgen::from_value(value).unwrap();
     assert_eq!(native.fixture, "unit-rectangle-1m");

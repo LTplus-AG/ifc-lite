@@ -48,7 +48,12 @@ run node scripts/add-license-headers.mjs --check
 baseline_source=$(mktemp -d)
 trap 'rm -rf "$baseline_source"' EXIT
 git archive m1/c-executor-core | tar -x -C "$baseline_source"
+# A shared target can otherwise reuse a workspace artifact after git archive
+# restores older source mtimes. Force both measured sides through rustc without
+# deleting or changing any shared-cache entry or source content.
+find "$baseline_source/rust" -name '*.rs' -exec touch {} +
 run env CI=1 bash "$baseline_source/scripts/build-wasm.sh"
+find rust -name '*.rs' -exec touch {} +
 run env CI=1 bash scripts/build-wasm.sh
 run node --input-type=module - "$baseline_source/packages/wasm/pkg/ifc-lite_bg.wasm" <<'JS'
 import {readFileSync} from 'node:fs';

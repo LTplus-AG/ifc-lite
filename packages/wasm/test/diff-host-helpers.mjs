@@ -25,6 +25,9 @@ export async function currentMainOracle(context) {
   const path = process.env.IFC_LITE_CURRENT_MAIN_DIFF_ORACLE;
   const url = path ? pathToFileURL(path) : new URL('../../diff/dist/index.js', import.meta.url);
   if (!existsSync(url)) {
+    // An explicitly requested oracle that is absent is a broken CI setup, not
+    // optional coverage: skipping would report the parity checks as passing.
+    if (path) throw new Error(`IFC_LITE_CURRENT_MAIN_DIFF_ORACLE is set but does not exist: ${path}`);
     context.skip('TS production oracle missing; independently build main 97d8add20710 and set IFC_LITE_CURRENT_MAIN_DIFF_ORACLE to its dist/index.js');
     return;
   }

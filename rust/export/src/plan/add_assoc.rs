@@ -21,7 +21,7 @@ use crate::plan::attrs::attribute_index;
 use crate::plan::placement::fmt;
 use crate::plan::props_synth::{ref_list, ref_or_unset};
 use crate::plan::tessellation::Emit;
-use crate::step_text::escape;
+use crate::step_text::quoted;
 
 use super::units::NewSi;
 use super::AddState;
@@ -185,10 +185,6 @@ pub(super) fn new_record(emit: &mut Emit, entity: &str, fields: &[(&str, String)
     let id = emit.record(entity, fields)?;
     super::require_filled(emit, id)?;
     Ok(id)
-}
-
-fn quoted(s: &str) -> String {
-    format!("'{}'", escape(s))
 }
 
 fn optional(s: &Option<String>) -> String {

@@ -81,7 +81,10 @@ const validPositions = positions => Array.isArray(positions) && positions.length
   && new Set(positions.map(position => position.join(','))).size === positions.length;
 for (const scenario of config.scenarios) if (scenario.positions !== undefined && !validPositions(scenario.positions)) throw Error(`Invalid hover positions for ${scenario.name}`);
 const defaultPositions = [0.3, 0.5, 0.7].flatMap(y => [0.3, 0.5, 0.7].map(x => [x, y]));
-const p95 = values => values.slice().sort((a, b) => a - b)[Math.ceil(values.length * 0.95) - 1];
+const p95 = values => {
+  if (!values.length) throw Error('p95 of an empty sample');
+  return values.slice().sort((a, b) => a - b)[Math.ceil(values.length * 0.95) - 1];
+};
 let browser, active;
 const restoreStderr = tapDriverErrors(() => active, 'driverErrors');
 try {

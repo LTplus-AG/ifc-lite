@@ -3285,8 +3285,11 @@ jobs:
 
       # #6537 diagnostic work must be tested with its opt-in counters present.
       # Default workspace tests only exercise the unchanged ring geometry.
+      # #8156 added `kernel::abutting`, whose refusal counters are the only way
+      # to tell "the prepass never fired" from "it fired and was refused"; both
+      # filters are passed to the harness, which ORs them.
       - name: Rust tests (opening work counters)
-        run: cargo test -p ifc-lite-geometry --features opening-perf-trace --lib csg::consolidate::ring_ops::tests
+        run: cargo test -p ifc-lite-geometry --features opening-perf-trace --lib -- csg::consolidate::ring_ops::tests kernel::abutting::tests
 
       - name: Rust tests (opening work diagnostic output guard)
         run: cargo test -p ifc-lite-processing --features opening-perf-trace --example opening_work_probe

@@ -1,0 +1,140 @@
+{
+ "attempts": [
+  {
+   "attempt": 9,
+   "output": "hover-10",
+   "job": "9841e0ac",
+   "state": "failed",
+   "error": "cancelled while queued",
+   "validSamples": [],
+   "cause": "Queued behind other sessions' Pop jobs; the fleet cancelled the waiting job before admission. No sample ran."
+  },
+  {
+   "attempt": 10,
+   "output": "hover-11",
+   "job": "bd1479f3",
+   "state": "failed",
+   "error": "admission timed out; use status to inspect blockers",
+   "validSamples": [],
+   "cause": "Waited the fleet's fixed one-hour admission limit behind a foreign ordinary job (#8042 qualification) and never started. No sample ran."
+  },
+  {
+   "attempt": 11,
+   "output": "hover-12",
+   "state": "failed",
+   "exitCode": 1,
+   "accepted": false,
+   "error": "Error: Declared hover inputs did not each reach the actual GPU picker",
+   "validSamples": [
+    [
+     "FZK",
+     0,
+     "base"
+    ]
+   ],
+   "refusedSample": [
+    "FZK",
+    0,
+    "branch"
+   ],
+   "runsSha256": "6d02bd1fe9c304a07afe4267b81da1ffeda0005375425554e0d23069440757ba",
+   "resultSha256": "4eb3e964f2857355b68b79afbe86c0e7e04352ef78c838a72457cb7b052e789c",
+   "inputs": 24,
+   "picks": 13,
+   "declaredPositions": 9,
+   "cause": "15 extra pointer events at off-grid positions (957,687 to 967,527, 15-20 ms apart) arrived between grid points 5 and 6: the operator moved the physical mouse on the Pop display, which the headed browser receives. The input/pick pairing gate refused the sample. No timing sample is used."
+  },
+  {
+   "attempt": 12,
+   "output": "hover-13",
+   "state": "failed",
+   "exitCode": 1,
+   "accepted": false,
+   "error": "Error: Idle/physical host admission refused",
+   "validSamples": [
+    [
+     "FZK",
+     0,
+     "base"
+    ]
+   ],
+   "refusedSample": [
+    "FZK",
+    0,
+    "branch"
+   ],
+   "runsSha256": "22a51e742414c60acd11985023d880595c03a696660bb3b28cb71f4390715e84",
+   "resultSha256": "472296c80b32d5a71f792b14110c9c94763c0ac7be7ee8f72e9f8af54b54a982",
+   "foreignCpuPercent": 11.35,
+   "ownCpuPercent": 0.06,
+   "refusedAt": "2026-10-26T11:58:30.613Z",
+   "cause": "A single one-second pre-sample reading measured 11.35% foreign CPU about one second after the previous sample's browser closed, with no foreign build graphs; Pop measured about 1.3% busy two minutes later. Treated as a transient spike (likely compositor/display-server teardown attributed outside the cohort tree). This led to the bounded quiet wait below."
+  },
+  {
+   "attempt": 13,
+   "output": "hover-14",
+   "state": "failed",
+   "exitCode": 1,
+   "accepted": false,
+   "error": "Error: Geometry/camera/texel/ID/item/world identity differs between samples",
+   "validSamples": [
+    [
+     "FZK",
+     0,
+     "base"
+    ],
+    [
+     "FZK",
+     0,
+     "branch"
+    ],
+    [
+     "FZK",
+     1,
+     "branch"
+    ],
+    [
+     "FZK",
+     1,
+     "base"
+    ],
+    [
+     "FZK",
+     2,
+     "base"
+    ],
+    [
+     "FZK",
+     2,
+     "branch"
+    ]
+   ],
+   "refusedSample": [
+    "FZK",
+    3,
+    "branch"
+   ],
+   "hostReadingsPerGate": "every gate quiet on its first reading",
+   "idDifferences": [
+    {
+     "pick": 5,
+     "position": [
+      0.7,
+      0.5
+     ],
+     "reference": {
+      "expressId": 37026,
+      "geometryItemId": 35135
+     },
+     "observed": {
+      "expressId": 59553,
+      "geometryItemId": 59529
+     }
+    }
+   ],
+   "cause": "FZK 3 x 3 point (0.7, 0.5) lies on coplanar entities 37026 and 59553 at the 743 px canvas; the winner changes between sessions in both arms (base 5 of 26, branch 3 of 22 across all retained samples), the same pair that stopped hover-8 in Federation. Not attributable to either arm.",
+   "runsSha256": "27154090516cf10eaad5bac775d3a2a195319e51f0a49ab20753e0f4ff8c1383",
+   "resultSha256": "5a12e3da884497751a71916df9091eb0249dfc1e513e24156c1cc9724a3d27c8"
+  }
+ ]
+}

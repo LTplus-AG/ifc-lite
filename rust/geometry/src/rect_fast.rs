@@ -337,6 +337,23 @@ pub fn subtract_rect_openings(
     Some(cut)
 }
 
+/// Coplanar-merge an analytic cut, but never trade an exactly closed cut for an
+/// open one. Consolidation's size rules (needle, ring noise) drop the rim faces
+/// of a thin residual web, such as the ~40 um left between two openings an
+/// author kept apart (#7942), and tear the mesh open.
+pub(crate) fn consolidate_keeping_closed(cut: Mesh) -> Mesh {
+    use crate::exact_topology::strict_closed_mesh;
+    if !strict_closed_mesh(&cut) {
+        return crate::csg::ClippingProcessor::consolidate_coplanar(cut);
+    }
+    let merged = crate::csg::ClippingProcessor::consolidate_coplanar(cut.clone());
+    if strict_closed_mesh(&merged) {
+        merged
+    } else {
+        cut
+    }
+}
+
 /// Sort + dedup grid lines on one axis; `None` if two DISTINCT lines are at most
 /// `near_eps` apart (an f32-collapse risk → defer). Identical snapped values
 /// (e.g. a door edge coinciding with the host edge) collapse to one line.

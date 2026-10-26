@@ -6,7 +6,7 @@
 use crate::plan::add_assoc_types::*;
 use crate::plan::add_test_support::*;
 use crate::plan::add_types::*;
-use crate::plan::attrs::{attribute_index, build_record, unset_required};
+use crate::plan::attrs::{build_record, unset_required};
 use crate::plan::index::FileIndex;
 use crate::plan::test_fixtures::storey_with_typed_wall;
 use crate::plan::types::*;
@@ -15,7 +15,11 @@ use crate::plan::types::*;
 /// reference and their relationships, plus a kilopascal and a derived unit.
 fn associated_wall(schema: &str) -> Vec<u8> {
     let r = |id, entity, fields: &[(&str, &str)]| {
-        let fields: Vec<(&str, String)> = fields.iter().map(|&(n, v)| (n, v.to_string())).collect();
+        let mut fields: Vec<(&str, String)> = fields.iter().map(|&(n, v)| (n, v.to_string())).collect();
+        // IFC2X3 requires an owner history: the fixture preamble's.
+        if schema == "IFC2X3" {
+            fields.push(("OwnerHistory", "#5".into()));
+        }
         build_record(schema, id, entity, &fields) + "\n"
     };
     let ident = if schema == "IFC2X3" { "ItemReference" } else { "Identification" };
@@ -62,14 +66,6 @@ fn measure(name: &str, measure_type: &str, value: f64, unit: Option<ValueUnit>) 
 
 fn set(name: &str, kind: PsetKind, properties: Vec<NewProperty>) -> NewPropertySet {
     NewPropertySet { name: name.into(), kind, properties }
-}
-
-/// Attribute `attr` of output record `id`, as STEP text.
-fn attr(out: &[u8], schema: &str, id: u32, attr: &str) -> String {
-    let index = FileIndex::scan(out, &Default::default());
-    let entity = index.type_of(id).unwrap_or_default();
-    let idx = attribute_index(schema, &entity, attr).unwrap_or_else(|| panic!("{entity} has no {attr}"));
-    crate::step_text::attribute_of(&index.raw_line(id).unwrap(), idx).unwrap()
 }
 
 /// The checks every output here gets: no refusal, no finding from the

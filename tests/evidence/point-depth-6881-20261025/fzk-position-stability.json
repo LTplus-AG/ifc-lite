@@ -1,0 +1,490 @@
+{
+ "purpose": "Stability of hover pick positions in the FZK scenario after its 3 x 3 point (0.7, 0.5) resolved coplanar entities 37026/59553 differently between sessions in both arms (base 5 of 26, branch 3 of 22 across retained samples). Untimed probe; no performance claim.",
+ "method": "Dense 7 x 7 grid (0.2..0.8), fresh native Chrome per sample, both arms interleaved, probe mode (identity abort off, per-sample integrity gates on).",
+ "run": "probe-8",
+ "validSamples": 10,
+ "unstable": 0,
+ "note": "(0.7, 0.5) was stable within this probe (37026 in 10 of 10) yet flipped across sessions in cohorts, so dense-probe stability is necessary but not sufficient; the known flipping point is excluded.",
+ "frozenFzkPositions": [
+  [
+   0.5,
+   0.5
+  ],
+  [
+   0.5,
+   0.7
+  ],
+  [
+   0.7,
+   0.7
+  ],
+  [
+   0.3,
+   0.6
+  ],
+  [
+   0.4,
+   0.6
+  ],
+  [
+   0.6,
+   0.6
+  ],
+  [
+   0.7,
+   0.6
+  ],
+  [
+   0.5,
+   0.4
+  ],
+  [
+   0.6,
+   0.8
+  ]
+ ],
+ "positions": [
+  {
+   "pos": [
+    0.2,
+    0.2
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.3,
+    0.2
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.4,
+    0.2
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.5,
+    0.2
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.6,
+    0.2
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.7,
+    0.2
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.8,
+    0.2
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.2,
+    0.3
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.3,
+    0.3
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.4,
+    0.3
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.5,
+    0.3
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.6,
+    0.3
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.7,
+    0.3
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.8,
+    0.3
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.2,
+    0.4
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.3,
+    0.4
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.4,
+    0.4
+   ],
+   "ids": {
+    "59753": 10
+   }
+  },
+  {
+   "pos": [
+    0.5,
+    0.4
+   ],
+   "ids": {
+    "59753": 10
+   }
+  },
+  {
+   "pos": [
+    0.6,
+    0.4
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.7,
+    0.4
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.8,
+    0.4
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.2,
+    0.5
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.3,
+    0.5
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.4,
+    0.5
+   ],
+   "ids": {
+    "59753": 10
+   }
+  },
+  {
+   "pos": [
+    0.5,
+    0.5
+   ],
+   "ids": {
+    "59753": 10
+   }
+  },
+  {
+   "pos": [
+    0.6,
+    0.5
+   ],
+   "ids": {
+    "59753": 10
+   }
+  },
+  {
+   "pos": [
+    0.7,
+    0.5
+   ],
+   "ids": {
+    "37026": 10
+   }
+  },
+  {
+   "pos": [
+    0.8,
+    0.5
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.2,
+    0.6
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.3,
+    0.6
+   ],
+   "ids": {
+    "389": 10
+   }
+  },
+  {
+   "pos": [
+    0.4,
+    0.6
+   ],
+   "ids": {
+    "31079": 10
+   }
+  },
+  {
+   "pos": [
+    0.5,
+    0.6
+   ],
+   "ids": {
+    "59753": 10
+   }
+  },
+  {
+   "pos": [
+    0.6,
+    0.6
+   ],
+   "ids": {
+    "31470": 10
+   }
+  },
+  {
+   "pos": [
+    0.7,
+    0.6
+   ],
+   "ids": {
+    "389": 10
+   }
+  },
+  {
+   "pos": [
+    0.8,
+    0.6
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.2,
+    0.7
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.3,
+    0.7
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.4,
+    0.7
+   ],
+   "ids": {
+    "389": 10
+   }
+  },
+  {
+   "pos": [
+    0.5,
+    0.7
+   ],
+   "ids": {
+    "27421": 10
+   }
+  },
+  {
+   "pos": [
+    0.6,
+    0.7
+   ],
+   "ids": {
+    "389": 10
+   }
+  },
+  {
+   "pos": [
+    0.7,
+    0.7
+   ],
+   "ids": {
+    "389": 10
+   }
+  },
+  {
+   "pos": [
+    0.8,
+    0.7
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.2,
+    0.8
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.3,
+    0.8
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.4,
+    0.8
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.5,
+    0.8
+   ],
+   "ids": {
+    "389": 10
+   }
+  },
+  {
+   "pos": [
+    0.6,
+    0.8
+   ],
+   "ids": {
+    "389": 10
+   }
+  },
+  {
+   "pos": [
+    0.7,
+    0.8
+   ],
+   "ids": {
+    "None": 10
+   }
+  },
+  {
+   "pos": [
+    0.8,
+    0.8
+   ],
+   "ids": {
+    "None": 10
+   }
+  }
+ ],
+ "runsSha256": "69278d7494eb4748260e7f1c0b52b1943765f6b360d8275f129d4b6b12e45e46"
+}

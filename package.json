@@ -1,6 +1,6 @@
 {
   "name": "ifc-lite",
-  "version": "10.6.0",
+  "version": "10.6.2",
   "description": "High-performance browser IFC parser & renderer",
   "private": true,
   "type": "module",
@@ -25,7 +25,7 @@
     "fixtures:list-missing": "node scripts/fixtures/fetch-fixtures.mjs --list",
     "fixtures:manifest": "node scripts/fixtures/build-manifest.mjs",
     "fixtures:upload": "node scripts/fixtures/upload-fixtures.mjs",
-    "test": "turbo test",
+    "test": "node scripts/test-cache.mjs",
     "test:revert-oracle-selfcheck": "node scripts/revert-oracle-selfcheck.mjs",
     "test:collab": "pnpm --filter @ifc-lite/collab --filter @ifc-lite/collab-server test",
     "test:e2e": "playwright test --project=viewer-e2e",

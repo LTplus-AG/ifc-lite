@@ -180,10 +180,7 @@ let jobCount = 0;
 
 function recordGate(gate, globs, site) {
   const prev = gates.get(gate);
-  if (!prev) {
-    gates.set(gate, { globs, sites: [site] });
-    return;
-  }
+  if (!prev) return void gates.set(gate, { globs, sites: [site] });
   prev.sites.push(site);
   // A gate reachable from ANY job with no path filter is fully reachable.
   if (prev.globs === null || globs === null) prev.globs = null;
@@ -250,7 +247,10 @@ for (const file of workflowFiles) {
       globs = prPaths;
     }
 
-    for (const m of job.text.matchAll(/\bnode\s+(?:--test\s+)?((?:scripts\/[\w./-]+\.mjs\s*)+)/g)) {
+    // Only this literal printf/sort wrapper preserves its arguments as filenames.
+    const commands = job.text.replace(/\\\r?\n/g, ' ').replace(
+      /\bnode[ \t]+--test[ \t]+\$\([ \t]*printf[ \t]+'%s\\n'[ \t]+((?:scripts\/[\w./*-]+\.test\.mjs[ \t]+)+)\|[ \t]*(?:LC_ALL=C[ \t]+)?sort[ \t]+-u[ \t]*\)/g, (_, args) => `node --test ${args}`);
+    for (const m of commands.matchAll(/\bnode\s+(?:--test\s+)?((?:scripts\/[\w./-]+\.mjs\s*)+)/g)) {
       for (const script of m[1].trim().split(/\s+/)) {
         recordGate(script, globs, `${rel}:${job.id}`);
       }

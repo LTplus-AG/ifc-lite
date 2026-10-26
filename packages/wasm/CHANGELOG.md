@@ -1,5 +1,27 @@
 # @ifc-lite/wasm
 
+## 10.6.2
+
+### Patch Changes
+
+- [#8106](https://github.com/LTplus-AG/ifc-lite/pull/8106) [`8e2778c`](https://github.com/LTplus-AG/ifc-lite/commit/8e2778ca041f027ab95d59532ce43d18bb42dab6) Thanks [@louistrue](https://github.com/louistrue)! - Match the JavaScript runtime's Unicode class normalization in raw DiffModel comparisons, including Node 22's older tables, while retaining lossless UTF-16 and original host exception identity. Native Rust normalization and published JavaScript signatures are unchanged.
+
+- [#8131](https://github.com/LTplus-AG/ifc-lite/pull/8131) [`14b0c89`](https://github.com/LTplus-AG/ifc-lite/commit/14b0c894b28e7d7a6f089fadb6a990f3e6cf43ac) Thanks [@louistrue](https://github.com/louistrue)! - Orphan largest-share split migrations with non-finite, negative, missing or mismatched share evidence instead of selecting an arbitrary successor. Match TypeScript and Rust validation; tied maxima also orphan without throwing.
+
+- [#8142](https://github.com/LTplus-AG/ifc-lite/pull/8142) [`bc9cc44`](https://github.com/LTplus-AG/ifc-lite/commit/bc9cc44ca449a43b66ea125644f17d362e4b19b2) Thanks [@louistrue](https://github.com/louistrue)! - Export plans keep non-UTF-8 source records byte-identical, give an occurrence override the unit of the type record it replaces and leave an edited record's own unit alone, refuse Adds that break the spatial tree or IFC4 door/window typing, check property values against their measure type (binary literals included; aggregate types are refused), and report elements orphaned by a deleted storey and IFC2X3 types written without a relationship.
+
+- [#8106](https://github.com/LTplus-AG/ifc-lite/pull/8106) [`8e2778c`](https://github.com/LTplus-AG/ifc-lite/commit/8e2778ca041f027ab95d59532ce43d18bb42dab6) Thanks [@louistrue](https://github.com/louistrue)! - Preserve arbitrary UTF-16 code units in raw DiffModel columns, comparison options, and result records. Retain the staged lineage binding's scalar rejection and existing signatures until its lossless observation layer lands.
+
+## 10.6.1
+
+### Patch Changes
+
+- [#8120](https://github.com/LTplus-AG/ifc-lite/pull/8120) [`cf892ea`](https://github.com/LTplus-AG/ifc-lite/commit/cf892ea4cfefb06b6f864dbe2c72899da27b0553) Thanks [@louistrue](https://github.com/louistrue)! - Rust-only presentation and glTF export additions ([#7955](https://github.com/LTplus-AG/ifc-lite/issues/7955)). The native exporter can emit canonical UVs and PNG-backed textures when requested; the default browser engine keeps the texture encoder out. New public `MeshData` and `ExportError` members require Rust major 23, recorded in `rust-major-offset.json`. The npm-facing WASM API is unchanged.
+
+- [#8125](https://github.com/LTplus-AG/ifc-lite/pull/8125) [`60a505e`](https://github.com/LTplus-AG/ifc-lite/commit/60a505e9141f6f028ba47a65505275169fc84b5a) Thanks [@louistrue](https://github.com/louistrue)! - An element whose openings together cover it now renders nothing. When those openings could not be merged into one cutter, the cut came back empty but the element was then drawn uncut. In `ifc-lite-geometry`, a cut that empties a host with triangles now marks the host consumed, whichever cut path produced it.
+
+- [#8105](https://github.com/LTplus-AG/ifc-lite/pull/8105) [`f5d871f`](https://github.com/LTplus-AG/ifc-lite/commit/f5d871ffc1a349e7d06e1102dbb42c6605c7ae58) Thanks [@louistrue](https://github.com/louistrue)! - Preserve JavaScript UTF-16 code units in raw diff fingerprint inputs, component keys, and sidecar JSON text without changing the public diff facade.
+
 ## 10.6.0
 
 ### Minor Changes

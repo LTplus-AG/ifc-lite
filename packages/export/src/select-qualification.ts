@@ -26,21 +26,40 @@
  */
 
 import { SCHEMA_REGISTRY, getAllAttributesForEntity } from '@ifc-lite/parser';
-import type { IfcAttributeValue } from '@ifc-lite/parser';
+import type { IfcAttributeValue, SchemaRegistry } from '@ifc-lite/parser';
 import { resolveExpressBase, serializeTypedMarker } from './step-serialization.js';
 
-function isSelectType(type: string): boolean {
-  return Object.prototype.hasOwnProperty.call(SCHEMA_REGISTRY.selects, type);
+function isSelectType(type: string, registry: SchemaRegistry = SCHEMA_REGISTRY): boolean {
+  return Object.prototype.hasOwnProperty.call(registry.selects, type);
 }
 
-function isDefinedType(type: string): boolean {
-  return Object.prototype.hasOwnProperty.call(SCHEMA_REGISTRY.types, type);
+function isDefinedType(type: string, registry: SchemaRegistry = SCHEMA_REGISTRY): boolean {
+  return Object.prototype.hasOwnProperty.call(registry.types, type);
 }
 
-// Memoized `selectName` → Map<memberTypeName, expressBase> over the select's
-// DEFINED-TYPE leaves (recursing nested selects; entity members are skipped —
-// they serialize as `#ref`, never qualified).
-const selectLeafCache = new Map<string, Map<string, string>>();
+/**
+ * Every member of `selectName` that is not itself a select (nested selects
+ * flattened), in `registry`'s order: defined types and entities alike.
+ */
+export function getSelectMembers(selectName: string, registry: SchemaRegistry = SCHEMA_REGISTRY): string[] {
+  const members: string[] = [];
+  const seen = new Set<string>();
+  const walk = (sel: string): void => {
+    if (seen.has(sel)) return;
+    seen.add(sel);
+    for (const member of registry.selects[sel] ?? []) {
+      if (isSelectType(member, registry)) walk(member);
+      else members.push(member);
+    }
+  };
+  walk(selectName);
+  return members;
+}
+
+// Memoized, per registry, `selectName` → Map<memberTypeName, expressBase> over
+// the select's DEFINED-TYPE leaves (recursing nested selects; entity members
+// are skipped — they serialize as `#ref`, never qualified).
+const selectLeafCache = new WeakMap<SchemaRegistry, Map<string, Map<string, string>>>();
 
 /**
  * `selectName` → its DEFINED-TYPE leaves, mapped to the EXPRESS primitive each
@@ -53,26 +72,19 @@ const selectLeafCache = new Map<string, Map<string, string>>();
  * imply" but "is this token a member at all, and does it agree with the value".
  * One walk, one cache, one definition of what a qualifiable member is.
  */
-export function getSelectDefinedLeaves(selectName: string): Map<string, string> {
-  const cached = selectLeafCache.get(selectName);
+export function getSelectDefinedLeaves(selectName: string, registry: SchemaRegistry = SCHEMA_REGISTRY): Map<string, string> {
+  let cache = selectLeafCache.get(registry);
+  if (!cache) selectLeafCache.set(registry, (cache = new Map()));
+  const cached = cache.get(selectName);
   if (cached) return cached;
   const leaves = new Map<string, string>();
-  const seen = new Set<string>();
-  const walk = (sel: string): void => {
-    if (seen.has(sel)) return;
-    seen.add(sel);
-    for (const member of SCHEMA_REGISTRY.selects[sel] ?? []) {
-      if (isSelectType(member)) {
-        walk(member);
-      } else if (isDefinedType(member)) {
-        const base = resolveExpressBase(member);
-        if (base) leaves.set(member, base);
-      }
-      // else: an entity member — not qualifiable, ignore.
-    }
-  };
-  walk(selectName);
-  selectLeafCache.set(selectName, leaves);
+  for (const member of getSelectMembers(selectName, registry)) {
+    // An entity member is not qualifiable; an aggregate-typed one has no base.
+    if (!isDefinedType(member, registry)) continue;
+    const base = resolveExpressBase(member, registry);
+    if (base) leaves.set(member, base);
+  }
+  cache.set(selectName, leaves);
   return leaves;
 }
 

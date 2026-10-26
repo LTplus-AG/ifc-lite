@@ -1,0 +1,76 @@
+{
+  "status": "proposal-only; unmeasured; workflow owned by parent",
+  "source_commit": "60a505e9141f6f028ba47a65505275169fc84b5a",
+  "baseline": {
+    "run_id": "40177473226",
+    "log": "/tmp/ifc-testing-audit-rust.log",
+    "dependency_cache_exact_hit": true,
+    "dependency_cache_bytes": 616162079,
+    "cache_workspace_crates": false,
+    "cargo_incremental": 0,
+    "nextest_compile_seconds": 504,
+    "nextest_execution_seconds": 164.067,
+    "tests_passed": 6780,
+    "tests_skipped": 41,
+    "test_binaries": 403,
+    "clippy_seconds": 52.39,
+    "doctest_build_seconds": 0.6
+  },
+  "pin": {
+    "action": "mozilla-actions/sccache-action",
+    "version": "v0.0.11",
+    "annotated_tag_object": "fd02668681acd5f960e1372061bee5e3e987195c",
+    "dereferenced_commit": "fc920bf0ec8de6ee65d409111f7ec508035751ba",
+    "sccache_version": "v0.16.0",
+    "verified_with": [
+      "git ls-remote (tag and peeled tag)",
+      "GitHub git/tags API",
+      "pinned action.yml, README, src/setup.ts, src/show_stats.ts"
+    ]
+  },
+  "proposal_yaml": "# Insert immediately after Install cargo-nextest, before Rust tests.\n      - name: Setup Rust compiler cache (hosted trial)\n        if: runner.environment == 'github-hosted'\n        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11\n        with:\n          version: v0.16.0\n      - name: Enable Rust compiler cache (hosted trial)\n        if: runner.environment == 'github-hosted'\n        env:\n          CACHE_MODE: ${{ (github.ref == 'refs/heads/main' || github.event_name == 'merge_group') && 'READ_WRITE' || 'READ_ONLY' }}\n        run: |\n          echo \"RUSTC_WRAPPER=sccache\" >> \"$GITHUB_ENV\"\n          echo \"SCCACHE_GHA_ENABLED=true\" >> \"$GITHUB_ENV\"\n          echo \"SCCACHE_GHA_VERSION=ifc-rust-tests-v1\" >> \"$GITHUB_ENV\"\n          echo \"SCCACHE_GHA_RW_MODE=$CACHE_MODE\" >> \"$GITHUB_ENV\"\n",
+  "scope": [
+    "rust-tests only; initial GitHub-hosted trial; self-hosted unchanged",
+    "Install after Clippy and rust-cache restore so Clippy and existing dependency-cache key are unchanged",
+    "Keep nextest, doctests, fixture verification, feature/event lanes, opt-levels, debug info, lld, assertions and overflow checks unchanged",
+    "Keep rust-cache workspace stripping; no whole-target upload",
+    "Main/merge-group seed content cache; PR reads only; PR trial needs seed from accessible base scope or it measures misses",
+    "Action exports ACTIONS_RESULTS_URL/ACTIONS_RUNTIME_TOKEN and sets v2 cache service; no extra credentials step or permissions expansion",
+    "Action post step reports human and JSON stats automatically"
+  ],
+  "cacheability": {
+    "eligible": "Normal non-incremental rlib/staticlib invocations with supported emit/arguments; core, geometry, processing and other pure library invocations are candidates. Hash includes compiler, arguments, dep-info-discovered input contents and extern contents; source mtimes alone do not determine reuse.",
+    "ineligible": "Unit/integration test executable compile+link invocations, binaries, proc-macro crates, dylib/cdylib. Cache cannot reuse only the frontend/codegen part of a rejected invocation. All 403 nextest binaries still need test-mode compile/link work when not Cargo-fresh.",
+    "mixed_crate_types": "Pinned parser rejects an invocation if ANY crate type is outside lib/rlib/staticlib: combined cdylib+rlib invocations (wasm-bindings, diff-wasm, imported-geometry) are not cacheable as a whole. ffi cdylib is ineligible. Inspect actual rustc invocations; do not count manifest rlib entries as assured hits.",
+    "clippy": "Intentionally outside trial; metadata checking must not be presented as saved nextest codegen. Pinned source supports some metadata-only invocations although Rust.md still says emit link is required.",
+    "limits": "No measured eligible fraction of 504s. A high hit count cannot prove large wall-time savings; test-mode compilation/linking may dominate.",
+    "correctness_caveat": "Upstream warns procedural macros that read external files may not be tracked correctly. Audit relevant macros/generated inputs and validate invalidation before claiming no capability loss. Standard derives exist; this research did not establish a complete macro-input audit."
+  },
+  "storage": {
+    "bounded_alternative": "Per-invocation content entries in GitHub Actions managed cache, rather than retaining a whole workspace target. Main/merge-only writes limit PR churn. Namespace permits invalidation. Repository cache quota/eviction still applies; no hard per-job byte bound is established by this patch. SCCACHE_CACHE_SIZE would limit local disk backend, not GHA backend.",
+    "qualification": "Record entry count/bytes and eviction effects on existing dependency/fixture caches. Do not archive Cargo targets or executables as evidence."
+  },
+  "qualification": [
+    "Parent applies trial and seeds from main or an accessible base scope; preserve baseline workflow and fixture inventory. No runs were submitted here.",
+    "Measure cold fill and at least three independent fresh-runner warm/control pairs on same source/toolchain/runner class; controls use original commands. Include action install, remote lookups, cache writes/post cleanup and full job wall time, not just compile timers. Avoid same-target in-job repeats that are merely Cargo-fresh.",
+    "Collect per-phase elapsed time, complete sccache JSON/non-cacheable reasons and representative verbose rustc commands; attribute hits to workspace rlibs and establish how much of compile time is actually reusable.",
+    "Compare discovered test names, pass/skip reasons and doctest inventory, not just totals; for baseline source require 6780 passes and same 41 intentional skips. Fixture check remains mandatory; no new skip or missing binary is acceptable.",
+    "Warm-cache invalidation checks must change a real library source and a tracked included/generated input and show appropriate misses plus unchanged unaffected hits; inspect macro file reads. Keep compiler/profile/feature invalidation enabled; do not add path or timestamp hacks.",
+    "Retain only if repeated total job savings exceed observed runner variation with no correctness/inventory regression, cache errors, or harmful quota churn. No speedup claimed until measured. Qualify self-hosted separately for daemon ownership/env/collision and runtime Node24 support before extending trial."
+  ],
+  "rollback": [
+    "Remove the two inserted steps; no source/config/test rollback needed.",
+    "On stale-input evidence, inventory drift, wrapper failures, or absent net warm-job benefit, disable trial immediately.",
+    "To invalidate remote trial entries, bump SCCACHE_GHA_VERSION or delete only matching trial cache entries; never clear unrelated caches."
+  ],
+  "rejected": "Do not enable cache-workspace-crates broadly without Cargo fingerprint/source-mtime evidence across fresh checkouts. Exact dependency cache hit is not evidence that test compilation should have been fresh.",
+  "validation_performed": "Read policies, fleet status (Pop/PC reachable with active jobs, Mac disabled), live workflow/profile/manifests, required main checks, baseline log, and upstream pinned docs/action/parser sources. No builds/tests/workflow edits or agents.",
+  "sources": [
+    "https://github.com/mozilla-actions/sccache-action/tree/fc920bf0ec8de6ee65d409111f7ec508035751ba",
+    "https://api.github.com/repos/mozilla-actions/sccache-action/git/tags/fd02668681acd5f960e1372061bee5e3e987195c",
+    "https://github.com/mozilla/sccache/blob/v0.16.0/docs/Rust.md",
+    "https://github.com/mozilla/sccache/blob/v0.16.0/src/compiler/rust.rs#L1126-L1134",
+    "https://github.com/mozilla/sccache/blob/v0.16.0/docs/GHA.md",
+    "https://github.com/Swatinem/rust-cache/tree/6323deb102c322ba6fcbdcafc7e3dddab59af2b6"
+  ]
+}

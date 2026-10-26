@@ -126,3 +126,66 @@ fn a_host_its_openings_miss_is_not_consumed() {
         assert!(!consumed);
     }
 }
+
+// A thin web between two through-openings (#7942 stopped merging them) must
+// survive the analytic cut closed: consolidation's size rules used to drop its
+// rim faces and open the mesh. Both cellular-cut paths are exercised.
+
+/// Half-gaps of 1, 2 and 3 snap-grid steps: `subtract_rect_openings` snaps
+/// opening edges to `SNAP_GRID`, so only whole steps give distinct webs. The
+/// webs are 2, 4 and 6 steps (about 31, 61 and 92 um), all under the old
+/// 0.1 mm weld.
+const WEB_GAPS: [f64; 3] = [crate::kernel::mesh_bridge::SNAP_GRID, 2.0 * crate::kernel::mesh_bridge::SNAP_GRID, 3.0 * crate::kernel::mesh_bridge::SNAP_GRID];
+
+/// Wall of `WALL_M3`'s family, 6 x 0.2 x 3 m, cut by two full-height openings
+/// `gap` either side of x = 0, so a web of 2 * `gap` remains.
+fn web_wall() -> Mesh {
+    GeometryRouter::make_box_mesh(Point3::new(-3.0, -0.1, 0.0), Point3::new(3.0, 0.1, 3.0))
+}
+
+fn web_boxes(gap: f64) -> Vec<([f64; 3], [f64; 3])> {
+    vec![([-2.0, -0.3, -0.5], [-gap, 0.3, 3.5]), ([gap, -0.3, -0.5], [2.0, 0.3, 3.5])]
+}
+
+fn web_openings(gap: f64) -> Vec<OpeningType> {
+    web_boxes(gap).into_iter().map(|(a, b)| rect(a, b)).collect()
+}
+
+#[test]
+fn thin_residual_between_rect_openings_stays_closed() {
+    for gap in WEB_GAPS {
+        let ctx = context(web_openings(gap), None);
+        assert_eq!(ctx.merged_openings.len(), 2, "the authored gap must survive the merge");
+        let router = GeometryRouter::new();
+        let out = router.apply_void_context(web_wall(), &ctx, 1);
+        assert_eq!(router.take_rect_fast_stats().fired, 1, "gap {gap}: must come from rect_fast");
+        let tris = out.indices.len() / 3;
+        assert!(crate::exact_topology::strict_closed_mesh(&out), "gap {gap}: open cut ({tris} tris)");
+    }
+}
+
+#[test]
+fn thin_residual_between_param_openings_is_rejected_and_stays_closed() {
+    for gap in WEB_GAPS {
+        let hx = (2.0 - gap) / 2.0;
+        let param = ParamRectCut {
+            host: param_box([0.0, 0.0, 1.5], [3.0, 1.5, 0.1]),
+            openings: vec![
+                param_box([-(gap + hx), 0.0, 1.5], [hx, 1.5, 0.1]),
+                param_box([gap + hx, 0.0, 1.5], [hx, 1.5, 0.1]),
+            ],
+        };
+        let ctx = context(web_openings(gap), Some(param));
+        // The parametric attempt is called directly, so IFC_LITE_RECT_PARAM and
+        // IFC_LITE_RECT_FAST cannot skip it. Its torn cut fails the exact closure
+        // self-check (the old 0.1 mm weld could not see it) and it defers.
+        let router = GeometryRouter::new();
+        assert!(router.try_param_rect_cut(&web_wall(), &ctx).is_none(), "gap {gap}: torn param cut emitted");
+        assert_eq!(router.take_rect_fast_stats().fired, 0, "a rejected cut is not counted");
+        // With rect_fast on, the pipeline falls back to it, which keeps the closed cut.
+        let out = router.apply_void_context(web_wall(), &ctx, 1);
+        assert_eq!(router.take_rect_fast_stats().fired, 1, "gap {gap}: fallback must come from rect_fast");
+        let tris = out.indices.len() / 3;
+        assert!(crate::exact_topology::strict_closed_mesh(&out), "gap {gap}: open cut ({tris} tris)");
+    }
+}

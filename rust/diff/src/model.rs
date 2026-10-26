@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Store-independent comparison inputs and key-pass results (#8042).
+use crate::JsString;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -15,14 +16,14 @@ pub struct EntityAabb {
 /// to decimal strings, without interpreting string hashes as numbers.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EntityFingerprint<R = ()> {
-    pub key: String,
-    pub ifc_type: String,
-    pub data_hash: String,
-    pub geometry_hash: Option<String>,
+    pub key: JsString,
+    pub ifc_type: JsString,
+    pub data_hash: JsString,
+    pub geometry_hash: Option<JsString>,
     pub aabb: Option<EntityAabb>,
     pub volume: Option<f64>,
-    pub components: Option<HashMap<String, String>>,
-    pub container: Option<String>,
+    pub components: Option<HashMap<JsString, JsString>>,
+    pub container: Option<JsString>,
     pub reference: R,
 }
 
@@ -51,31 +52,31 @@ pub struct DiffCounts {
 /// Borrows the caller's entities; opaque adapter handles are never cloned or read.
 #[derive(Debug)]
 pub struct DiffEntry<'a, R> {
-    pub key: String,
+    pub key: JsString,
     pub state: DiffState,
     pub change_kinds: Vec<DiffChangeKind>,
     pub base: Option<&'a EntityFingerprint<R>>,
     pub head: Option<&'a EntityFingerprint<R>>,
-    pub changed_components: Option<Vec<String>>,
+    pub changed_components: Option<Vec<JsString>>,
 }
 
 #[derive(Debug, Default)]
 pub struct KeyDiffOptions {
     pub scope: DiffScope,
-    pub exclude_types: Vec<String>,
+    pub exclude_types: Vec<JsString>,
     /// Absence differs from an explicitly supplied empty alias map.
-    pub key_aliases: Option<HashMap<String, String>>,
+    pub key_aliases: Option<HashMap<JsString, JsString>>,
 }
 
 #[derive(Debug)]
 pub struct KeyDiff<'a, R> {
     pub scope: DiffScope,
-    pub excluded_types: Vec<String>,
+    pub excluded_types: Vec<JsString>,
     pub entries: Vec<DiffEntry<'a, R>>,
     /// Entry indices avoid cloning entities or requiring Clone on adapter handles.
-    pub by_key: HashMap<String, usize>,
+    pub by_key: HashMap<JsString, usize>,
     pub counts: DiffCounts,
-    pub applied_key_aliases: Option<Vec<(String, String)>>,
+    pub applied_key_aliases: Option<Vec<(JsString, JsString)>>,
     /// Resolved once for the content-matching stages too.
     pub use_geometry: bool,
 }

@@ -20,10 +20,10 @@ test('actual WASM lineage helpers preserve TypeScript corpus and invalid-share s
       assert.deepEqual(wasm.diffRekeyByLineage(vector.keys, entries, deleted, policy), expected.rekey[policy], `${vector.name}: ${policy}`);
     }
   }
-  // The faithful port preserves the existing TS behavior; #8084 tracks the policy fix.
+  // #8084: non-finite share evidence orphans the split across the real WASM boundary.
   const entry = { base: ['source'], head: ['a', 'b'], relation: 'split', reason: 'split:verified', shares: [NaN, 0.6] };
   assert.deepEqual(wasm.diffRekeyByLineage(['source', 'gone', 'same'], [entry], ['gone'], 'largest-share'), [
-    { key: 'source', successors: ['a'], relation: 'split', orphan: false },
+    { key: 'source', successors: [], relation: 'split', orphan: true },
     { key: 'gone', successors: [], orphan: true },
     { key: 'same', successors: ['same'], relation: 'unchanged', orphan: false },
   ]);

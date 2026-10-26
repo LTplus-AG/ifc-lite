@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 //! Independently loaded diff engine; no geometry or parser dependencies.
 mod diff;
-mod diff_input;
+mod diff_class_normalization;
 mod diff_fingerprint;
 mod diff_fingerprint_input;
 mod diff_sidecar;

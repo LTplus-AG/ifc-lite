@@ -434,6 +434,37 @@ test('a one-line @unwired-by-design prints the reason without the comment termin
  * 2b: scripts/ test files.                                           *
  * ---------------------------------------------------------------- */
 
+test('continued once-only invocation reaches future one-level suites but never nested suites', () => {
+  withTree({}, root => {
+    const workflow = String.raw`jobs:
+  node-tests:
+    steps:
+      - run: node scripts/check-wired.mjs
+      - run: |
+          node --test $(printf '%s\n' \
+            scripts/check-wired.test.mjs \
+            scripts/*.test.mjs \
+            scripts/docs/*.test.mjs \
+            | sort -u)
+`;
+    write(root, '.github/workflows/test.yml', workflow);
+    write(root, 'scripts/docs/future.test.mjs', '// newly discovered by the continued glob\n');
+    const covered = run(root);
+    assert.equal(covered.status, 0, covered.out);
+    write(root, 'scripts/docs/deep/unreached.test.mjs', '// a shallow glob cannot reach this\n');
+    const nested = run(root);
+    assert.equal(nested.status, 1, nested.out);
+    assert.match(nested.out, /scripts\/docs\/deep\/unreached\.test\.mjs/);
+    // The same shell continuation is accepted in CRLF workflow checkouts.
+    write(root, '.github/workflows/test.yml', workflow.replace(/\n/g, '\r\n'));
+    const crlf = run(root);
+    assert.equal(crlf.status, 1, crlf.out);
+    assert.match(crlf.out, /scripts\/docs\/deep\/unreached\.test\.mjs/);
+    assert.doesNotMatch(crlf.out, /scripts\/docs\/future\.test\.mjs/);
+    assert.doesNotMatch(crlf.out, /scripts\/check-wired\.test\.mjs/);
+  });
+});
+
 test('a scripts/ test in a subdirectory the single-level glob cannot reach is flagged', () => {
   withTree({}, (root) => {
     write(root, 'scripts/docs/check-doc-samples.test.mjs', '// unreachable by scripts/*.test.mjs\n');

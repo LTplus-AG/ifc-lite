@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 //! Additive replacement-in-place claims, after content and split/merge (#8042).
+use crate::JsString;
 use std::collections::{HashMap, HashSet};
 use crate::class_families::{ClassFamilies, normalize_class};
 use crate::geometry_compare::{GeometryTolerances, centre, centre_distance, positive_or, usable_aabb};
@@ -19,7 +20,7 @@ pub struct SuccessorClaim<'a, R> {
     pub head: &'a EntityFingerprint<R>,
     pub overlap: f64,
     pub distance: f64,
-    pub agreeing_components: Option<Vec<String>>,
+    pub agreeing_components: Option<Vec<JsString>>,
     pub cross_class: bool,
 }
 #[derive(Debug, Clone, Copy)]
@@ -107,12 +108,12 @@ type Bucket<'a, R> = Vec<&'a EntityFingerprint<R>>;
 /// `bound` contains the participants of accepted split/merge claims; identity is
 /// reference identity, never equality of GlobalIds or fingerprint values.
 pub fn detect_successors<'a, R>(entries: &[DiffEntry<'a, R>], use_geometry: bool, bound: &[&EntityFingerprint<R>],
-    settings: SuccessorSettings, tolerances: GeometryTolerances, families: Option<&[Vec<String>]>) -> Option<Vec<SuccessorClaim<'a, R>>> {
+    settings: SuccessorSettings, tolerances: GeometryTolerances, families: Option<&[Vec<JsString>]>) -> Option<Vec<SuccessorClaim<'a, R>>> {
     if !use_geometry { return None; }
     let bound: HashSet<_> = bound.iter().map(|p| *p as *const _).collect();
     let resolver = ClassFamilies::new(families);
-    let mut added: HashMap<String, Bucket<'a, R>> = HashMap::new();
-    let mut deleted: HashMap<String, Bucket<'a, R>> = HashMap::new();
+    let mut added: HashMap<JsString, Bucket<'a, R>> = HashMap::new();
+    let mut deleted: HashMap<JsString, Bucket<'a, R>> = HashMap::new();
     for entry in entries {
         let e = match entry.state { DiffState::Added => entry.head, DiffState::Deleted => entry.base, _ => None };
         let Some(e) = e else { continue; };
@@ -126,14 +127,14 @@ pub fn detect_successors<'a, R>(entries: &[DiffEntry<'a, R>], use_geometry: bool
         if bases.len() > 1024 || heads.len() > 1024 { continue; }
         let (first, paired_base, paired_head) = footprint(&bases, heads, settings, tolerances);
         claims.extend(first);
-        let mut containers: HashMap<&str, (Bucket<'a, R>, Bucket<'a, R>)> = HashMap::new();
+        let mut containers: HashMap<&JsString, (Bucket<'a, R>, Bucket<'a, R>)> = HashMap::new();
         for (i, &e) in bases.iter().enumerate() {
             if paired_base.contains(&i) { continue; }
-            if let Some(c) = e.container.as_deref().filter(|c| !c.is_empty()) { containers.entry(c).or_default().0.push(e); }
+            if let Some(c) = e.container.as_ref().filter(|c| !c.is_empty()) { containers.entry(c).or_default().0.push(e); }
         }
         for (i, &e) in heads.iter().enumerate() {
             if paired_head.contains(&i) { continue; }
-            if let Some(c) = e.container.as_deref().filter(|c| !c.is_empty()) { containers.entry(c).or_default().1.push(e); }
+            if let Some(c) = e.container.as_ref().filter(|c| !c.is_empty()) { containers.entry(c).or_default().1.push(e); }
         }
         for (bases, heads) in containers.into_values() {
             if !bases.is_empty() && !heads.is_empty() { claims.extend(position(&bases, &heads, settings, tolerances)); }

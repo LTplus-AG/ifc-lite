@@ -629,8 +629,11 @@ fn parse_horizontal(
         })?;
         let [sx, sy, _] = decoder.point3(sp_id)?;
         // Canonical admission counts malformed leaves before the stricter 2D policy.
-        if strict && decoder.decode_by_id(sp_id)?.get_list(0).is_some_and(|coords| coords.len() != 2) {
-            return Err(Error::geometry("Horizontal StartPoint must contain two CartesianPoint coordinates"));
+        let start = decoder.decode_by_id(sp_id)?;
+        if strict && start.get_list(0).is_some_and(|coords| coords.len() != 2) {
+            return Err(Error::geometry(
+                "Horizontal StartPoint must contain two CartesianPoint coordinates",
+            ));
         }
         let heading_raw = curve.get_float(1).ok_or_else(|| {
             Error::geometry(format!(

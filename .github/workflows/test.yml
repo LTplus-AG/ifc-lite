@@ -918,6 +918,9 @@ jobs:
           # disable only placement/fill checks and require assertion failures.
           if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/section-export-7711/metadata.oracle.patch | grep -Fxq 'tests/evidence/section-export-7711/metadata.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/section-export-7711/metadata.oracle.patch)
+          # #7955 M1 C: retain executor types; misreport the real layer refusal.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/element/session_retained/traversal.rs | grep -Fxq 'rust/processing/src/element/session_retained/traversal.rs'; then
+            oracle_args+=(--mutation tests/evidence/m1-c-executor-core/behaviour.oracle.patch)
           # #7955 M1 B: retain budget APIs; lose the expired-deadline cause.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/resource/budget.rs | grep -Fxq 'rust/geometry/src/resource/budget.rs'; then
             oracle_args+=(--mutation tests/evidence/m1-b-product-budget/behaviour.oracle.patch)
@@ -3117,13 +3120,15 @@ jobs:
           CARGO_PROFILE_TEST_DEBUG: line-tables-only
         run: cargo test --workspace --doc
 
-      - name: Rust tests and Clippy (retained controller)
+      - name: Rust tests and Clippy (retained controller and executor)
         # #7955 M1: the opt-in `retained-runtime` feature is outside the
         # default workspace build, so the PR job compiles, lints and tests it.
         run: |
           cargo test -p ifc-lite-geometry --features retained-runtime
           cargo clippy -p ifc-lite-geometry --features retained-runtime --all-targets -- -D warnings
           cargo clippy -p ifc-lite-processing --features retained-runtime --all-targets -- -D warnings
+          cargo test -p ifc-lite-processing --features retained-runtime --lib element::session_retained
+          cargo test -p ifc-lite-processing --features retained-runtime --test m1_executor
 
       # The feature legs (parquet-bos, csg_manifold_gate, csg_capture, the
       # all-features clippy) run in `rust-full` below -- OFF the PR lane,

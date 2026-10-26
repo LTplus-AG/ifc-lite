@@ -187,11 +187,15 @@ pub(crate) fn attribute_changes(index: &FileIndex, schema: &str, plan: &ExportPl
                 out.findings.push(ValidationFinding { express_id: reused, message });
             }
         }
-        None if plan.context.application.is_none() && (changed || !modified_records(index, schema, patched, out.edits_by_id, removed).is_empty()) => out.findings.push(ValidationFinding {
-            express_id: None,
-            message: "no ExportingApplication supplied: added objects are attributed to the source's first owner history (or a placeholder one), and modified objects keep their original owner history, so the file credits this export's changes to their previous author".into(),
-        }),
-        None => {}
+        None => {
+            let unattributed = changed || !modified_records(index, schema, patched, out.edits_by_id, removed).is_empty();
+            if plan.context.application.is_none() && unattributed {
+                out.findings.push(ValidationFinding {
+                    express_id: None,
+                    message: "no ExportingApplication supplied: added objects are attributed to the source's first owner history (or a placeholder one), and modified objects keep their original owner history, so the file credits this export's changes to their previous author".into(),
+                });
+            }
+        }
     }
 }
 

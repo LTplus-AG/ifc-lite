@@ -32,7 +32,8 @@ pub(crate) fn write_output<W: Write>(
     let mut header_opts = StepOptions {
         author: plan.context.author.clone(),
         organization: plan.context.organization.clone(),
-        // The application's change time replaces the context's.
+        // Without an application; `stamp_header` replaces it with the
+        // application's change time when there is one.
         time_stamp: plan.context.time_stamp.clone(),
         filename: plan.context.file_name.clone(),
         ..Default::default()

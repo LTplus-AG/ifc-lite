@@ -42,7 +42,7 @@ impl Identity {
     /// dots with an optional lowercase `-alpha`, `-beta` or `-rc` suffix, a
     /// subset of PEP 440). The fields are written exactly as given all the
     /// same: the caller's names are not rewritten.
-    pub(crate) fn header_note(&self) -> Option<String> {
+    fn header_note(&self) -> Option<String> {
         let dash = |c: char| matches!(c, '-' | '\u{00AD}' | '\u{2010}'..='\u{2015}' | '\u{2043}' | '\u{2212}' | '\u{FE58}' | '\u{FE63}' | '\u{FF0D}');
         let name_ok = |n: &str| !n.is_empty() && n.trim() == n && !n.contains(dash);
         let digits = |t: &str| !t.is_empty() && t.bytes().all(|b| b.is_ascii_digit());

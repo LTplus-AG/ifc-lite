@@ -1108,8 +1108,12 @@ fn a_delete_of_a_standalone_record_without_an_application_is_not_reported() {
 /// read that way is reported, not rewritten (#8154).
 #[test]
 fn originating_system_follows_the_header_agreement() {
-    let ok = super::identity::Identity::new(&app()).unwrap();
-    assert_eq!(ok.header_note(), None);
+    let noted = |app: &ExportingApplication| {
+        let mut findings = Vec::new();
+        super::identity::Identity::resolve(app, &mut findings).unwrap();
+        !findings.is_empty()
+    };
+    assert!(!noted(&app()));
     for (dev, name, version) in [
         ("Example-Org", "ExampleApp", "2.1"),
         ("ExampleOrg", "Example\u{2013}App", "2.1"),
@@ -1123,12 +1127,10 @@ fn originating_system_follows_the_header_agreement() {
         ("ExampleOrg", "ExampleApp", "2.1-rc."),
         ("ExampleOrg", "ExampleApp", "2.1-beta..3"),
     ] {
-        let id = super::identity::Identity::new(&ExportingApplication::new(dev, name, "example-app", version, CHANGED_AT)).unwrap();
-        assert!(id.header_note().is_some(), "{dev}/{name}/{version}");
+        assert!(noted(&ExportingApplication::new(dev, name, "example-app", version, CHANGED_AT)), "{dev}/{name}/{version}");
     }
     for version in ["2.1-alpha", "2.1-beta.2", "2.1-rc1", "26.0.0.0"] {
-        let id = super::identity::Identity::new(&ExportingApplication::new("ExampleOrg", "ExampleApp", "example-app", version, CHANGED_AT)).unwrap();
-        assert_eq!(id.header_note(), None, "{version}");
+        assert!(!noted(&ExportingApplication::new("ExampleOrg", "ExampleApp", "example-app", version, CHANGED_AT)), "{version}");
     }
 }
 

@@ -34,9 +34,13 @@ impl Ledger {
     /// The plan's ledger, or none when it names no application or an
     /// unusable one (reported in `findings`; the source's attribution stays).
     pub(crate) fn for_plan(plan: &ExportPlan, findings: &mut Vec<ValidationFinding>) -> Option<Self> {
-        let identity = Identity::resolve(plan.context.application.as_ref()?, findings)
-            .map_err(|message| findings.push(ValidationFinding::new(None, message)))
-            .ok()?;
+        let identity = match Identity::resolve(plan.context.application.as_ref()?, findings) {
+            Ok(identity) => identity,
+            Err(message) => {
+                findings.push(ValidationFinding::new(None, message));
+                return None;
+            }
+        };
         Some(Self { identity, made: Made::default(), modified: HashMap::new() })
     }
 

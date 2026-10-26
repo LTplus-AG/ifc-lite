@@ -37,7 +37,14 @@ impl PropWrite {
         kind: PsetKind,
         scope: PropScope,
     ) -> Self {
-        Self { pset: pset.into(), prop: prop.into(), measure_type: measure_type.into(), literal: literal.into(), unit: None, kind, scope }
+        Self { pset: pset.into(), prop: prop.into(), measure_type: measure_type.into(), literal: literal.into(), unit: None, kind, scope, target: None }
+    }
+
+    /// Write exactly the value record `express_id`, not the first property
+    /// of this name in the first set of this name. See [`PropWrite::target`].
+    pub fn with_target(mut self, express_id: u32) -> Self {
+        self.target = Some(express_id);
+        self
     }
 
     /// The STEP text of the unit to write (`"#55"`, or `"$"` for none).

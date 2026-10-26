@@ -91,3 +91,15 @@ fn every_registry_label_has_the_family_of_its_version() {
         }
     }
 }
+
+/// (#8142) The registry selector's family, with IFC5 named by its label.
+#[test]
+fn of_file_schema_is_the_registry_family_plus_ifc5() {
+    assert_eq!(SchemaFamily::of_file_schema("IFC4X1"), Some(Ifc4));
+    assert_eq!(SchemaFamily::of_file_schema("IFC4X2"), Some(Ifc4));
+    assert_eq!(SchemaFamily::of_file_schema("IFC4X3_ADD2"), Some(Ifc4x3));
+    assert_eq!(SchemaFamily::of_file_schema("IFC2X3"), Some(Ifc2x3));
+    assert_eq!(SchemaFamily::of_file_schema(" ifc5 "), Some(Ifc5));
+    assert_eq!(SchemaFamily::of_file_schema("IFC4FOO"), None);
+    assert_eq!(SchemaFamily::of_file_schema("IFCX"), None);
+}

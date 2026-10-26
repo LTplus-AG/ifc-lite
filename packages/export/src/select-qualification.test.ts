@@ -15,7 +15,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { serializeQualifiedSelectSlot } from './select-qualification.js';
+import { getSchemaRegistryForVersion } from '@ifc-lite/parser';
+import { getSelectDefinedLeaves, getSelectMembers, serializeQualifiedSelectSlot } from './select-qualification.js';
 
 describe('serializeQualifiedSelectSlot — unambiguous members', () => {
   it('qualifies a bare boolean as IfcBoolean, not IfcLogical', () => {
@@ -75,5 +76,22 @@ describe('serializeQualifiedSelectSlot — slots that are not SELECTs', () => {
 
   it('declines an out-of-range slot index', () => {
     expect(serializeQualifiedSelectSlot('IFCCURVESTYLE', 99, 'thick')).toBeNull();
+  });
+});
+
+// (#8142) The step-log table generator walks IFC4X3's `IfcValue` through
+// IFC4X3's own registry, not the IFC4 pin.
+describe('getSelectDefinedLeaves with a registry', () => {
+  it('resolves members and bases against the registry it is given', () => {
+    const ifc4x3 = getSchemaRegistryForVersion('IFC4X3');
+    expect(getSelectDefinedLeaves('IfcValue').get('IfcCountMeasure')).toBe('NUMBER');
+    expect(getSelectDefinedLeaves('IfcValue', ifc4x3).get('IfcCountMeasure')).toBe('INTEGER');
+    expect(getSelectDefinedLeaves('IfcValue', ifc4x3).get('IfcURIReference')).toBe('STRING');
+    expect(getSelectDefinedLeaves('IfcValue').has('IfcURIReference')).toBe(false);
+  });
+
+  it('lists aggregate members, which have no base, among the select members', () => {
+    expect(getSelectMembers('IfcValue')).toContain('IfcComplexNumber');
+    expect(getSelectDefinedLeaves('IfcValue').has('IfcComplexNumber')).toBe(false);
   });
 });

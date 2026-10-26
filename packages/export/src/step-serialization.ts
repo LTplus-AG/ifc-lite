@@ -21,7 +21,7 @@
  *     generic STEP token, and worth reading on its own.
  */
 
-import { serializeValue, SCHEMA_REGISTRY, type IfcAttributeValue } from '@ifc-lite/parser';
+import { serializeValue, SCHEMA_REGISTRY, type IfcAttributeValue, type SchemaRegistry } from '@ifc-lite/parser';
 import { QuantityType, formatStepReal, escapeStepString, isCompleteStepNumericLiteral } from '@ifc-lite/data';
 
 /**
@@ -42,8 +42,9 @@ const EXPRESS_PRIMITIVES = new Set(['BOOLEAN', 'LOGICAL', 'INTEGER', 'REAL', 'NU
  * `IfcBoolean`, …) to its underlying EXPRESS primitive (`REAL`, `BOOLEAN`, …)
  * by walking the schema registry's `types` alias chain. Returns `null` for a
  * type the registry doesn't know or one that bottoms out in an entity/select.
+ * `registry` defaults to the parser's IFC4 pin.
  */
-export function resolveExpressBase(typeName: string): string | null {
+export function resolveExpressBase(typeName: string, registry: SchemaRegistry = SCHEMA_REGISTRY): string | null {
   let cursor: string | undefined = typeName;
   const seen = new Set<string>();
   while (cursor && !seen.has(cursor)) {
@@ -54,8 +55,8 @@ export function resolveExpressBase(typeName: string): string | null {
     // check below passes it through and `.replace()` on the next line throws
     // `TypeError: underlying.replace is not a function` from a function whose
     // contract is to return null for a type it does not know. Sibling of #3063.
-    const underlying: string | undefined = Object.prototype.hasOwnProperty.call(SCHEMA_REGISTRY.types, cursor)
-      ? SCHEMA_REGISTRY.types[cursor]
+    const underlying: string | undefined = Object.prototype.hasOwnProperty.call(registry.types, cursor)
+      ? registry.types[cursor]
       : undefined;
     if (!underlying) return null;
     // Strip width qualifiers like `STRING(255)` before the primitive test.

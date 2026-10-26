@@ -83,6 +83,11 @@ different placements move into the anchor's frame. An **Assumed height system**
 notice in the model's metadata identifies placements that needed this choice.
 No vertical CRS is added to the source or exported IFC. Different declared
 vertical datums, invalid transforms, and unavailable reprojections still fail.
+Unrecognized datum names remain authored identifiers, without an invented EPSG
+code. Two different explicit declarations that cannot be reconciled are refused
+even with the setting enabled; they may require corrected source metadata.
+Equal unresolved names still need your explicit choice, and the notice says an
+authored datum could not be resolved rather than claiming it is missing.
 A wrong assumption can place a model too high or too low by the difference
 between the height systems; verify survey control before enabling it.
 

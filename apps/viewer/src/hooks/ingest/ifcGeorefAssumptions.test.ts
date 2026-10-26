@@ -7,10 +7,11 @@ import { readFile } from 'node:fs/promises';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { localViewerToProjected, type GeometryResult, type ModelSpatialReference } from '@ifc-lite/geometry';
+import { parseSpatialIfc } from '@/test/ifc-spatial-fixture.js';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast.js';
-import { extractModelSpatialPlacement } from './federationAlign.js';
+import { extractModelSpatialPlacement, findReferenceSpatialModel } from './federationAlign.js';
 import { finalizeFederatedSpatialPlacement } from './federatedSpatialFinalize.js';
 import { realignFederationModels, type RealignableModel } from './federationRealign.js';
 
@@ -57,9 +58,18 @@ function reference(overrides: Partial<ModelSpatialReference> = {}): ModelSpatial
   };
 }
 
-function installAnchor(spatialReference: ModelSpatialReference, dataStore: IfcDataStore | null = null) {
-  const anchor = { ...fixtureModel('anchor'), geometryResult: geometry(), ifcDataStore: dataStore, spatialReference };
+async function installAnchor(spatialReference: ModelSpatialReference, dataStore?: IfcDataStore) {
+  const operation = spatialReference.localToProjected!;
+  const store = dataStore ?? await parseSpatialIfc({
+    verticalDatum: spatialReference.vertical?.id, horizontalId: spatialReference.horizontal?.id,
+    eastings: operation.eastings, northings: operation.northings, orthogonalHeight: operation.orthogonalHeight,
+  });
+  const anchor = { ...fixtureModel('anchor'), geometryResult: geometry(), ifcDataStore: store, spatialReference };
   useViewerStore.setState({ models: new Map([[anchor.id, anchor]]) });
+  const selected = findReferenceSpatialModel();
+  assert.equal(selected?.modelId, anchor.id, 'canonical selection must reach the parsed anchor (#8042/R58-F1)');
+  assert.deepEqual(selected?.placement.spatialReference.localToProjected, spatialReference.localToProjected);
+  assert.equal(selected?.placement.spatialReference.vertical?.id, spatialReference.vertical?.id);
   return anchor;
 }
 
@@ -93,7 +103,7 @@ describe('explicit IFC shared height system (#8042)', () => {
     assert.equal(revisionPlacement.spatialReference.horizontal?.id, 'EPSG:32760');
     assert.equal(revisionPlacement.spatialReference.sourceMetadata?.mapUnitToMetres, 0.001);
     assert.deepEqual(revisionPlacement.spatialReference.localToProjected, anchorPlacement.spatialReference.localToProjected);
-    installAnchor(anchorPlacement.spatialReference, base);
+    await installAnchor(anchorPlacement.spatialReference, base);
     const result = geometry();
     const before = structuredClone(result);
     const run = () => finalizeFederatedSpatialPlacement({
@@ -115,7 +125,7 @@ describe('explicit IFC shared height system (#8042)', () => {
 
   it('uses the full rotation, scale, height and RTC transform and preserves projected world coordinates', async () => {
     const target = reference();
-    installAnchor(target);
+    await installAnchor(target);
     const source = reference({
       localToProjected: {
         kind: 'local-projected-affine', eastings: 110, northings: 220, orthogonalHeight: 15,
@@ -137,7 +147,7 @@ describe('explicit IFC shared height system (#8042)', () => {
   });
 
   it('does not infer a shared datum from identical complete map operations or different offsets', async () => {
-    installAnchor(reference());
+    await installAnchor(reference());
     for (const source of [reference(), reference({ localToProjected: { ...reference().localToProjected!, orthogonalHeight: 25 } })]) {
       const result = geometry();
       const before = structuredClone(result);
@@ -149,7 +159,7 @@ describe('explicit IFC shared height system (#8042)', () => {
   it('keeps declared mismatches, missing horizontal CRS, invalid transforms and other formats fail-closed', async () => {
     useViewerStore.setState({ ifcSharedVerticalDatum: true });
     const target = reference({ vertical: { id: 'EPSG:5703' } });
-    installAnchor(target);
+    await installAnchor(target);
     const cases = [
       reference({ vertical: { id: 'EPSG:5709' } }),
       reference({ horizontal: undefined }),
@@ -172,7 +182,7 @@ describe('explicit IFC shared height system (#8042)', () => {
   it('records no assumption for equal declared datums, even while the setting is on', async () => {
     useViewerStore.setState({ ifcSharedVerticalDatum: true });
     const declared = reference({ vertical: { id: 'EPSG:5703' } });
-    installAnchor(declared);
+    await installAnchor(declared);
     const placed = await finalize(declared);
     assert.equal(placed?.federationAlignmentStatus, 'identity');
     assert.equal(placed?.ifcSharedVerticalDatumAssumed, undefined);
@@ -180,7 +190,7 @@ describe('explicit IFC shared height system (#8042)', () => {
 
   it('restores all geometry after a bad later vertex with the assumption enabled', async () => {
     useViewerStore.setState({ ifcSharedVerticalDatum: true });
-    installAnchor(reference());
+    await installAnchor(reference());
     const result = geometry();
     result.meshes.push({ ...structuredClone(result.meshes[0]), expressId: 2, positions: new Float32Array([Number.NaN, 0, 0]) });
     const before = structuredClone(result);

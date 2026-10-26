@@ -15,7 +15,8 @@ export function FederationAssumptionsNotice({ model }: { model: FederatedModel }
     {aligned && model.ifcSharedVerticalDatumAssumed && (
       <section className="border-b border-amber-500/30 bg-amber-500/10 p-3 text-xs space-y-1">
         <h4 className="font-semibold">{t('settings.ifcFederation.assumed')}</h4>
-        <p>{t('settings.ifcFederation.applied')}</p>
+        <p>{t(model.ifcSharedVerticalDatumAssumed === 'unresolved'
+          ? 'settings.ifcFederation.appliedUnresolved' : 'settings.ifcFederation.applied')}</p>
       </section>
     )}
     <LandXmlAssumptionsNoticeSlot model={model} />

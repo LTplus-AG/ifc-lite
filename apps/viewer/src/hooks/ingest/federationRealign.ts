@@ -62,7 +62,7 @@ export interface RealignableModel {
   spatialReference?: ModelSpatialReference;
   landXmlDocument?: LandXmlTinDocument;
   landXmlAssumptionsApplied?: FederatedModel['landXmlAssumptionsApplied'];
-  ifcSharedVerticalDatumAssumed?: true;
+  ifcSharedVerticalDatumAssumed?: FederatedModel['ifcSharedVerticalDatumAssumed'];
 }
 
 /** How each model fared, for the caller's summary toast. */
@@ -343,7 +343,7 @@ async function realignFederationModelsTransaction<M extends RealignableModel>(
       // choice on its record; re-aligning it must not silently drop it.
       const assumeIfc = !model.landXmlDocument && params.assumeIfcSharedVerticalDatum === true;
       const unknownVertical = model.landXmlAssumptionsApplied?.includes('sharedVerticalDatum') ? 'assume-compatible'
-        : ifcUnknownVerticalPolicy(georef.spatialReference, assumeIfc);
+        : ifcUnknownVerticalPolicy(georef.spatialReference, anchorGeoref.spatialReference, assumeIfc);
       const status = await alignGeometryToReference(geometry, georef, anchorGeoref, {
         allowEmptyGeometry: model.landXmlDocument !== undefined,
         unknownVertical,

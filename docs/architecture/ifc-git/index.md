@@ -80,12 +80,37 @@ changes to their previous author". Where a modified record has no owner history
 at all, the export reports that "the modification is not recorded on it" rather
 than inventing one — a guard that both acts and reports.
 
-The mapping onto ifc-git is close to exact: the **preserved original owner is
-the author** (responsible for the content) and the **exporting application is
-the committer** (performed the write). So `ChangeAction` is now meaningfully
-*written* in this repo, even though it is still not *read* into the model —
-which is the gap `04-authorship.md` has to close, and it should close it toward
-these semantics.
+**The mapping onto ifc-git is not a field rename, and an earlier draft of this
+section got it wrong.** It said the preserved original owner is the commit
+author. That credits one party's changed content to another: `modified_history`
+writes `OwningUser`/`OwningApplication` from the *original* and
+`LastModifyingUser`/`LastModifyingApplication` from the *exporting* chain
+(`rust/export/src/plan/identity.rs:254-269`). So where A owns an object and B
+modifies it, A stays the owner and B is recorded as the modifier — and calling A
+the author of B's change inverts the one distinction #8154 took care to make.
+
+The two field pairs carry two different kinds of evidence, and
+`04-authorship.md` should read them as such:
+
+| Fields | Evidence |
+| --- | --- |
+| `OwningUser`, `OwningApplication`, `CreationDate` | **ownership and origin** — where the object came from, preserved across modification |
+| `LastModifyingUser`, `LastModifyingApplication`, `LastModifiedDate` | **modification** — who performed the most recent change |
+
+Neither is a commit author on its own. Modification evidence is the closer
+match, because a commit's author is answerable for *changed content* — but it is
+lossy in a way a commit is not: owner history records only the **last** modifier,
+so an object changed by B and then by C retains no trace of B. And one commit
+spans many objects, whose evidence may be absent on some, mixed across others,
+or unanimous.
+
+So commit-level author and committer are a **policy over this evidence**, not a
+projection of it, and that policy is `04-authorship.md`'s subject. What the write
+side settles is narrower and still worth having: `ChangeAction` is now
+meaningfully *written* in this repo, the field semantics above are fixed rather
+than open, and the anti-fabrication rule binds the read side exactly as it binds
+the write side — where evidence is missing or mixed, the policy says so and does
+not invent an author.
 
 ## 4. Relationship to the spec sets that already exist
 

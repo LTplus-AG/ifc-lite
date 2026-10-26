@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Private provenance, not a wire taxonomy. No source/decoder/TLS lease is held.
-// TODO(remove-by: Cut C, owner: sessionf778e361, #7955): private report consumer.
+// Refs #7955: private report consumer.
 #![cfg_attr(
     any(not(test), not(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))),
     allow(dead_code)

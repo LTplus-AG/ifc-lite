@@ -3102,6 +3102,14 @@ jobs:
           CARGO_PROFILE_TEST_DEBUG: line-tables-only
         run: cargo test --workspace --doc
 
+      - name: Rust tests and Clippy (retained controller)
+        # #7955 M1: the opt-in `retained-runtime` feature is outside the
+        # default workspace build, so the PR job compiles, lints and tests it.
+        run: |
+          cargo test -p ifc-lite-geometry --features retained-runtime
+          cargo clippy -p ifc-lite-geometry --features retained-runtime --all-targets -- -D warnings
+          cargo clippy -p ifc-lite-processing --features retained-runtime --all-targets -- -D warnings
+
       # The feature legs (parquet-bos, csg_manifold_gate, csg_capture, the
       # all-features clippy) run in `rust-full` below -- OFF the PR lane,
       # ON push to main and in the merge queue, where the aggregate judges
@@ -3172,11 +3180,6 @@ jobs:
         env:
           IFC_LITE_REQUIRE_FIXTURES: "1"
         run: cargo test -p ifc-lite-export --features parquet-bos
-
-      - name: Rust tests and Clippy (retained controller)
-        run: |
-          cargo test -p ifc-lite-geometry --features retained-runtime
-          cargo clippy -p ifc-lite-geometry --features retained-runtime --all-targets -- -D warnings
 
       # #7955 H1: the opt-in `retained-browser` feature of ifc-lite-wasm keeps
       # the retained executor out of the default engine bundle, so the

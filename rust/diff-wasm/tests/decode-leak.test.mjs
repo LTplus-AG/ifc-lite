@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { checkRetainedCallbacks, retainedCallbackSeams } from './retained-callback-cycles.mjs';
 
 // Dedicated harness: a missing/stale production bundle cannot turn this into
 // skipped ownership coverage. The root command always builds this feature.
@@ -231,3 +232,11 @@ test('byte-array copy observes three stable lengths with their u32 coercions (#8
     assert.equal(wasm.diffTestExternrefLiveCount(), baseline);
   }
 });
+
+// Survival while retained and reclamation after release are separate phases.
+// These are required tests of the fresh feature bundle, never optional GC skips.
+for (const seam of retainedCallbackSeams) {
+  test(`retained ${seam} callbacks survive and cyclic contexts reclaim (#8042, R134/R135)`, async context => {
+    await checkRetainedCallbacks(wasm, seam, detail => context.diagnostic(JSON.stringify(detail)));
+  });
+}

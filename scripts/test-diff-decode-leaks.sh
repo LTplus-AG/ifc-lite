@@ -14,4 +14,4 @@ rustup run nightly-2025-11-15 wasm-pack build rust/diff-wasm \
   --out-name ifc-lite-diff \
   --release \
   --features decode-leak-test
-node --test rust/diff-wasm/tests/decode-leak.test.mjs
+node --expose-gc --test rust/diff-wasm/tests/decode-leak.test.mjs

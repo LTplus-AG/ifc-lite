@@ -40,6 +40,8 @@ test('raw live/text WASM retains accepted structural claims and conflicts (#8042
       : { base: key, here: `next:${key}`, reason: key });
     entries.push({ ...entries[0], get reason() { throw new Error('duplicate reason must not be read'); } });
     const result = wasm.diffCreateSidecarValue(init(entries), lineage);
+    // Retain the existing expected-order fixture while qualifying observable iteration (#8042).
+    // eslint-disable-next-line unicorn/no-useless-spread
     const ordered = [...entries.slice(0, -1)].sort((a, b) => {
       const left = lineage ? a.base[0] : a.base;
       const right = lineage ? b.base[0] : b.base;
@@ -171,6 +173,8 @@ test('raw live WASM closes entries and preserves thrown identity with recovery (
           if (stage === 'base') { trace.push('throw:base'); throw sentinel; }
           return liveBase;
         }, head: ['h'], reason: 'first' };
+        // This fixture must throw on its first next() before producing a value (#8042).
+        // eslint-disable-next-line require-yield
         if (stage === 'iterator') liveBase[Symbol.iterator] = function* () {
           try { trace.push('inner:next'); throw sentinel; } finally { trace.push('inner:close'); }
         };

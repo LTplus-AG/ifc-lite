@@ -14,6 +14,8 @@ test('raw live WASM largest-share accepts exactly current-main evidence (#8042, 
     ['negative', [-0.1, 0.6], []], ['tie', [0.5, 0.5], []], ['zero tie', [0, -0], []],
     ['valid', [0.4, 0.6], ['b']], ['unnormalized', [2, 6], ['b']],
     ['zero', [-0, 1], ['b']], ['first', [1, 0], ['a']],
+    // These literal holes distinguish missing shares from explicit undefined (#8042).
+    // eslint-disable-next-line no-sparse-arrays
     ['first hole', [, 0.6], ['a']], ['last hole', [0.4, ,], ['a']],
     ['all holes', new Array(2), ['a']],
   ];
@@ -22,6 +24,8 @@ test('raw live WASM largest-share accepts exactly current-main evidence (#8042, 
   for (const value of ['0.4', true, null, undefined, 0n, Symbol('share'), new Number(0.4), boxed]) {
     cases.push([`non-number ${typeof value}`, [value, 0.6], []]);
   }
+  // The inherited index must start as a genuine own-property hole (#8042).
+  // eslint-disable-next-line no-sparse-arrays
   const inherited = [, 0.6];
   Object.setPrototypeOf(inherited, Object.create(Array.prototype, { 0: { value: 0.4 } }));
   cases.push(['inherited index', inherited, ['b']]);
@@ -48,6 +52,8 @@ test('raw live WASM share reads and custom every follow built current-main TS (#
   for (const mode of ['normal', 'changing', 'every-falsy', 'every-truthy', 'empty', 'mismatch', 'sparse', 'inherited']) {
     const make = trace => {
       let reads = 0;
+      // The sparse branch exercises native every() hole skipping (#8042).
+      // eslint-disable-next-line no-sparse-arrays
       const values = mode === 'sparse' ? [, 0.6] : mode === 'empty' ? [] : mode === 'mismatch' ? [0.4] : [0.4, 0.6];
       if (mode === 'inherited') {
         delete values[0];

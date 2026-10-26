@@ -37,11 +37,24 @@ import {
 } from './attribute-helpers.js';
 import { extractMapConversion } from './georef-map-conversion.js';
 import { extractEPSetMapConversion } from './georef-epset.js';
+import {
+  extractGeographicCRS,
+  extractRigidOperation,
+  planeAngleUnitToDegrees,
+  projectPlaneAngleUnitToDegrees,
+  wellKnownTextFor,
+} from './georef-coordinate-operation.js';
 import { CONVERSION_BASED_UNIT_FACTORS, SI_PREFIX_MULTIPLIERS } from './unit-extractor.js';
 import { getAttributeNames } from './ifc-schema.js';
 
 export interface MapConversion {
   id: number;
+  /**
+   * Set when read from an `IfcRigidOperation` (a pure translation: the source
+   * coordinates already are target-CRS coordinates, offset). Absent for
+   * `IfcMapConversion` and its subtypes.
+   */
+  operation?: 'rigidOperation';
   sourceCRS: number;  // GeometricRepresentationContext ID
   targetCRS: number;  // ProjectedCRS ID
   eastings: number;   // False easting (X offset)
@@ -73,6 +86,9 @@ export function computeAngleToGridNorth(
 
 export interface ProjectedCRS {
   id: number;
+  /** `'geographic'` when read from an `IfcGeographicCRS` (lon/lat degrees). */
+  kind?: 'geographic';
+  /** Name is mandatory for `IfcProjectedCRS` but may be blank when `wellKnownText` defines the CRS. */
   name: string;
   description?: string;
   geodeticDatum?: string;     // e.g., "WGS84", "NAD83"
@@ -86,13 +102,19 @@ export interface ProjectedCRS {
    * If undefined, the project's length unit applies (IFC spec default).
    */
   mapUnitScale?: number;
+  /**
+   * `IfcWellKnownText.WellKnownText` attached to this CRS (WKT1 or WKT2,
+   * ISO 19125-1 / ISO 19162). When present it is the authoritative definition;
+   * `name` may then be a placeholder (WHERE NameOrWKT).
+   */
+  wellKnownText?: string;
 }
 
 export interface GeoreferenceInfo {
   hasGeoreference: boolean;
   mapConversion?: MapConversion;
   projectedCRS?: ProjectedCRS;
-  source?: 'mapConversion' | 'ePSetMapConversion' | 'siteLocation';
+  source?: 'mapConversion' | 'rigidOperation' | 'ePSetMapConversion' | 'siteLocation';
   // Computed transformation matrix (4x4) from local to world coordinates
   transformMatrix?: number[];
 }
@@ -127,7 +149,9 @@ export function withGeoreferenceFallbacks(
 }
 
 /**
- * IfcMapConversion and IfcProjectedCRS only. `hasGeoreference: false` is the one
+ * IFC4+ entities only: IfcMapConversion (else IFC4X3 IfcRigidOperation), its
+ * TargetCRS (IfcProjectedCRS or IfcGeographicCRS, with any IfcWellKnownText
+ * definition). `hasGeoreference: false` is the one
  * rule for "the fallbacks run": a loader supplying fallback entities asks this (#4695).
  */
 export function extractIfc4Georeferencing(entities: Map<number, IfcEntity>, entitiesByType: Map<string, number[]>): GeoreferenceInfo {
@@ -160,24 +184,66 @@ export function extractIfc4Georeferencing(entities: Map<number, IfcEntity>, enti
     }
   }
 
-  // Extract IfcProjectedCRS
-  const projectedCRSIds = entitiesByType.get('IfcProjectedCRS') || [];
-  if (projectedCRSIds.length > 0) {
-    const entity = entities.get(projectedCRSIds[0]);
-    if (entity) {
-      info.projectedCRS = extractProjectedCRS(entity, (id) => entities.get(id));
-      // A CRS whose mandatory Name is unset or blank declares none: it still scales
-      // a parsed conversion, but neither claims presence nor holds back the fallbacks (#4695).
-      if (info.projectedCRS.name.trim() !== '') info.hasGeoreference = true;
+  // IFC4X3 IfcRigidOperation, when no map conversion was read. Its plane-angle
+  // form needs the geographic target's angle unit before it can be read, so
+  // the target CRS is resolved first.
+  const resolve = (id: number) => entities.get(id);
+  let rigidOperationId: number | undefined;
+  if (!info.mapConversion) {
+    rigidOperationId = (entitiesByType.get('IfcRigidOperation') ?? [])[0];
+  }
+  const operationEntity = info.mapConversion
+    ? entities.get(info.mapConversion.id)
+    : rigidOperationId === undefined ? undefined : entities.get(rigidOperationId);
+
+  // The operation's own TargetCRS, else the file's first IfcProjectedCRS, else
+  // its first IfcGeographicCRS.
+  const targetId = getReference(operationEntity?.attributes?.[1]);
+  const target = targetId === undefined ? undefined : entities.get(targetId);
+  const crsEntity = isCrsEntity(target, 'IfcProjectedCRS') || isCrsEntity(target, 'IfcGeographicCRS')
+    ? target
+    : entities.get((entitiesByType.get('IfcProjectedCRS') ?? [])[0] as number)
+      ?? entities.get((entitiesByType.get('IfcGeographicCRS') ?? [])[0] as number);
+  if (crsEntity) {
+    const crs = isCrsEntity(crsEntity, 'IfcGeographicCRS')
+      ? extractGeographicCRS(crsEntity)
+      : extractProjectedCRS(crsEntity, resolve);
+    const wellKnownText = wellKnownTextFor(crsEntity.expressId, entitiesByType.get('IfcWellKnownText') ?? [], resolve);
+    if (wellKnownText) crs.wellKnownText = wellKnownText;
+    info.projectedCRS = crs;
+    // A CRS with neither a non-blank Name nor a WKT definition declares none:
+    // it still scales a parsed conversion, but neither claims presence nor
+    // holds back the fallbacks (#4695).
+    if (crs.name.trim() !== '' || wellKnownText) info.hasGeoreference = true;
+  }
+
+  if (rigidOperationId !== undefined && operationEntity) {
+    const geographic = info.projectedCRS?.kind === 'geographic';
+    const rigid = extractRigidOperation(operationEntity, {
+      geographic,
+      angleUnitToDegrees: geographic && crsEntity
+        ? planeAngleUnitToDegrees(crsEntity.attributes?.[4], resolve)
+          ?? (getReference(crsEntity.attributes?.[4]) === undefined
+            ? projectPlaneAngleUnitToDegrees(entitiesByType.get('IfcProject') ?? [], resolve)
+            : undefined)
+        : undefined,
+    });
+    if (rigid) {
+      info.mapConversion = rigid;
+      info.hasGeoreference = true;
     }
   }
 
   // Compute transformation matrix if we have map conversion
   if (info.mapConversion) {
-    info.source = 'mapConversion';
+    info.source = info.mapConversion.operation ?? 'mapConversion';
     info.transformMatrix = computeTransformMatrix(info.mapConversion);
   }
   return info;
+}
+
+function isCrsEntity(entity: IfcEntity | undefined, typeName: string): entity is IfcEntity {
+  return (entity?.type ?? '').toUpperCase() === typeName.toUpperCase();
 }
 
 function getAttributeValueByName(entity: IfcEntity, attributeName: string): unknown {

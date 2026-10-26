@@ -76,11 +76,15 @@ pub struct Georeferencing {
     /// millimetres); absent when no MapUnit is authored.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub map_unit_scale: Option<f64>,
-    /// Provenance: `"mapConversion"`, `"ePSetMapConversion"`, or
-    /// `"siteLocation"` — same labels as the TS parser's
-    /// `GeoreferenceInfo.source`.
+    /// Provenance: `"mapConversion"`, `"rigidOperation"`,
+    /// `"ePSetMapConversion"`, or `"siteLocation"` — same labels as the TS
+    /// parser's `GeoreferenceInfo.source`.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub source: Option<String>,
+    /// `IfcWellKnownText.WellKnownText` (WKT1 or WKT2) attached to the CRS;
+    /// when present it is the authoritative CRS definition.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub well_known_text: Option<String>,
 }
 
 const fn default_axis_factor() -> f64 {
@@ -110,6 +114,7 @@ impl Default for Georeferencing {
             map_unit: None,
             map_unit_scale: None,
             source: None,
+            well_known_text: None,
         }
     }
 }
@@ -137,17 +142,21 @@ impl Georeferencing {
             map_unit: geo.map_unit.clone(),
             map_unit_scale: geo.map_unit_scale,
             source: geo.source.map(|s| s.label().to_string()),
+            well_known_text: geo.well_known_text.clone(),
         }
     }
 }
 
 /// Extract georeferencing from an IFC file, returning `None` when the model
-/// carries no `IfcMapConversion`, named `IfcProjectedCRS`,
+/// carries no `IfcMapConversion`, `IfcRigidOperation`, declared CRS,
 /// `ePSet_MapConversion` or `IfcSite` lat/long data.
 ///
 /// Only the entity types the extractor needs (`IfcMapConversion`,
-/// `IfcProjectedCRS`, and `IfcPropertySet` for the IFC2x3 `ePSet_MapConversion`
-/// fallback) are collected from the scan — their `IfcType` is known from the
+/// `IfcRigidOperation`, `IfcProjectedCRS`, `IfcGeographicCRS`,
+/// `IfcWellKnownText`, `IfcProject` for the plane-angle unit, and
+/// `IfcPropertySet` for the IFC2x3 `ePSet_MapConversion` fallback) are
+/// collected from the scan; everything else the extractor reads (units,
+/// referenced CRSs) it resolves by reference — their `IfcType` is known from the
 /// entity name, so no decoding happens while building the candidate list.
 pub fn extract_georeferencing<T>(content: &T) -> Option<Georeferencing>
 where
@@ -204,6 +213,19 @@ pub(crate) fn georeferencing_candidate_type(type_name: &str) -> Option<IfcType> 
     }
     if keyword_eq(type_name, "IFCPROJECTEDCRS") {
         return Some(IfcType::IfcProjectedCRS);
+    }
+    if keyword_eq(type_name, "IFCRIGIDOPERATION") {
+        return Some(IfcType::IfcRigidOperation);
+    }
+    if keyword_eq(type_name, "IFCGEOGRAPHICCRS") {
+        return Some(IfcType::IfcGeographicCRS);
+    }
+    if keyword_eq(type_name, "IFCWELLKNOWNTEXT") {
+        return Some(IfcType::IfcWellKnownText);
+    }
+    // The project's plane-angle unit sizes an angular IfcRigidOperation.
+    if keyword_eq(type_name, "IFCPROJECT") {
+        return Some(IfcType::IfcProject);
     }
     if keyword_eq(type_name, "IFCPROPERTYSET") {
         return Some(IfcType::IfcPropertySet);

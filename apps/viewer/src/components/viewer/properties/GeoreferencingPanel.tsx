@@ -99,6 +99,11 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
 
   const mutations = modelId ? georefMutations?.get(modelId) : undefined;
   const isLegacySiteGeoreference = georef?.source === 'siteLocation';
+  // The exporter writes IfcProjectedCRS/IfcMapConversion edits only: an edit
+  // beside an IfcRigidOperation would author a second coordinate operation on
+  // the same context, and a renamed CRS would keep its IfcWellKnownText.
+  const isReadOnlyCoordinateOperation = georef?.source === 'rigidOperation'
+    || Boolean(georef?.projectedCRS?.wellKnownText);
   const canUseStandardGeoreferencing = supportsStandardGeoreferencing(schemaVersion, georef);
 
   const mergedCRS = useMemo((): ProjectedCRS | undefined => {
@@ -339,7 +344,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
   }, [modelId, setGeorefFields, mergedCRS, mergedConversion, mutations, initializeMapConversionDefaults, requestAlignmentReload]);
 
   const hasData = mergedCRS || mergedConversion;
-  const editable = enableEditing && !!modelId && canUseStandardGeoreferencing;
+  const editable = enableEditing && !!modelId && canUseStandardGeoreferencing && !isReadOnlyCoordinateOperation;
 
   // When no georef data exists, show "Add Georeferencing" in edit mode
   if (!hasData && !georef?.hasGeoreference) {
@@ -400,6 +405,12 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
               ? t('properties.georef.legacySiteNotice')
               : t('properties.georef.unsupportedSchemaNotice')}
           </span>
+        </div>
+      )}
+      {isReadOnlyCoordinateOperation && (
+        <div className="px-3 py-1.5 flex items-center gap-2 border-b border-zinc-100 dark:border-zinc-900">
+          <Globe className="h-3 w-3 text-zinc-400 shrink-0" />
+          <span className="text-xs text-zinc-500 dark:text-zinc-400">{t('properties.georef.coordinateOperationReadOnlyNotice')}</span>
         </div>
       )}
       {/* Federation alignment badge + anchor / re-align controls.
@@ -486,6 +497,12 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
               <GeorefRow label="MapProjection" value={mergedCRS.mapProjection} editable={editable} isMutated={isMutated('projectedCRS', 'mapProjection')} fieldEntity="projectedCRS" fieldName="mapProjection" onSave={v => handleSave('projectedCRS', 'mapProjection', v)} />
               <GeorefRow label="MapZone" value={mergedCRS.mapZone} editable={editable} isMutated={isMutated('projectedCRS', 'mapZone')} fieldEntity="projectedCRS" fieldName="mapZone" onSave={v => handleSave('projectedCRS', 'mapZone', v)} />
               <GeorefRow label="MapUnit" value={mergedCRS.mapUnit} editable={editable} isMutated={isMutated('projectedCRS', 'mapUnit')} fieldEntity="projectedCRS" fieldName="mapUnit" onSave={v => handleSave('projectedCRS', 'mapUnit', v)} />
+              {mergedCRS.wellKnownText && (
+                <GeorefRow
+                  label="WellKnownText"
+                  value={mergedCRS.wellKnownText.length > 96 ? `${mergedCRS.wellKnownText.slice(0, 96)}…` : mergedCRS.wellKnownText}
+                />
+              )}
             </div>
           )}
         </div>
@@ -537,7 +554,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
           </button>
           {conversionOpen && (
             <div className="divide-y divide-zinc-100 dark:divide-zinc-900">
-              <GeorefRow label="Type" value="IfcMapConversion" />
+              <GeorefRow label="Type" value={mergedConversion.operation === 'rigidOperation' ? 'IfcRigidOperation' : 'IfcMapConversion'} />
               <GeorefRow label="Eastings" value={mergedConversion.eastings} suffix={mapUnitSuffix} isNumber editable={editable} isMutated={isMutated('mapConversion', 'eastings')} fieldEntity="mapConversion" fieldName="eastings" onSave={v => handleSave('mapConversion', 'eastings', v)} />
               <GeorefRow label="Northings" value={mergedConversion.northings} suffix={mapUnitSuffix} isNumber editable={editable} isMutated={isMutated('mapConversion', 'northings')} fieldEntity="mapConversion" fieldName="northings" onSave={v => handleSave('mapConversion', 'northings', v)} />
               <GeorefRow label="OrthogonalHeight" value={mergedConversion.orthogonalHeight} suffix={mapUnitSuffix} isNumber editable={editable} isMutated={isMutated('mapConversion', 'orthogonalHeight')} fieldEntity="mapConversion" fieldName="orthogonalHeight" onSave={v => handleSave('mapConversion', 'orthogonalHeight', v)}>

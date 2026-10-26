@@ -35,7 +35,7 @@ pub(super) struct Checked {
     pub(super) units: CheckedUnits,
     /// Where a mapped body's maps come from.
     pub(super) mapped: Option<MapPlan>,
-    /// The source representations a reused body repeats.
+    /// The source representations reused geometry repeats.
     pub(super) same_as: Option<Vec<ReusedRepresentation>>,
 }
 

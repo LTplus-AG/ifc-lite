@@ -373,7 +373,7 @@ impl NewObject {
             ObjectRef::Id(_) => None,
         }));
         // Not one of `references`: those are kept from the delete cascade,
-        // and a reused body is read from what the deletes leave.
+        // and reused geometry is read from what the deletes leave.
         if let Representation::SameAs(ObjectRef::Guid(g)) = &self.representation {
             out.push(g.clone());
         }

@@ -229,8 +229,8 @@ impl<'a, 'h> AddState<'a, 'h> {
             _ => None,
         };
         let type_rep = new_type.map(|t| &t.representation).filter(|r| !matches!(r, Representation::None));
-        // A mapped body of an existing type is in its maps' contexts, a
-        // reused body in its source's.
+        // A mapped body of an existing type is in its maps' contexts,
+        // reused geometry in its source's.
         let own_geometry = !matches!(obj.representation, Representation::None | Representation::Mapped(_) | Representation::SameAs(_));
         let needs_context = own_geometry || c.host.is_some() || type_rep.is_some();
         let (context, new_context) = match needs_context {
@@ -252,7 +252,7 @@ impl<'a, 'h> AddState<'a, 'h> {
                 };
                 Some(mapped_shape(emit, &mut shared, maps, &m.transform)?)
             }
-            (Representation::SameAs(_), _) => Some(reused_shape(emit, c.same_as.as_deref().ok_or("a reused body was not checked")?)?),
+            (Representation::SameAs(_), _) => Some(reused_shape(emit, c.same_as.as_deref().ok_or("reused geometry was not checked")?)?),
             (rep, Some(ctx)) => product_shape(emit, ctx, rep, obj.style.as_ref())?,
             (_, None) => None,
         };

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Reused bodies: an Add with the body of a product in the source,
-//! through new representations that list the source's own items, and what
-//! is refused. Synthetic fixtures only.
+//! Reused geometry: an Add that repeats every representation of a product
+//! in the source, through new representations that list the source's own
+//! items, and what is refused. Synthetic fixtures only.
 
 use crate::plan::add_test_support::*;
 use crate::plan::add_types::*;
@@ -255,6 +255,31 @@ fn a_reshaped_body_is_not_reused_while_another_product_keeps_the_old_one() {
         let (_, reps) = shape_of(&out, schema, id_in(&out, gid(1)));
         assert_eq!(reps.len(), 1, "{schema}");
         assert_eq!(reps[0].1[3], "(#206)", "{schema}");
+    }
+}
+
+#[test]
+fn a_reshaped_source_is_refused_even_when_its_old_shape_survives_the_patch() {
+    // IFC2X3's `ShapeOfProduct` is SET [1:1], so only IFC4 on can share a shape.
+    for schema in ["IFC4", "IFC4X3"] {
+        // Door `#220` shares the door's shape `#203`, so the patch's sweep keeps
+        // `#203`, `#204` and `#206`.
+        let twin: &[Record] = &[
+            (220, "IFCDOOR", &[("GlobalId", "'0000000000000000000220'"), ("Name", "'Twin'"), ("ObjectPlacement", "#223"), ("Representation", "#203")]),
+            (223, "IFCLOCALPLACEMENT", &[("PlacementRelTo", "#73"), ("RelativePlacement", "#202")]),
+        ];
+        let source = door_scene(schema, twin);
+        assert_valid(&source, schema);
+        let (alone, report) = run(&source, reshape_door());
+        assert_clean(&report, schema);
+        assert_valid(&alone, schema);
+        assert_ne!(attr(&alone, schema, 200, "Representation"), "#203", "{schema}: the door gets a new shape");
+        assert_eq!(attr(&alone, schema, 220, "Representation"), "#203", "{schema}");
+        assert_eq!(attr(&alone, schema, 204, "Items"), "(#206)", "{schema}: the old representation stays");
+
+        let door = copy(1, IfcClass::Door, ObjectRef::Guid(DOOR.into()), Some(ObjectRef::Id(70)), 5.0);
+        let reason = refusal(&source, reshape_door(), door);
+        assert!(reason.contains(&format!("{DOOR} gets new geometry from a patch in this plan")), "{schema}: {reason}");
     }
 }
 

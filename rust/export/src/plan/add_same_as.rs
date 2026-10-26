@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Reused bodies for [`super::super::Disposition::Add`]: a new product with
+//! Reused geometry for [`super::super::Disposition::Add`]: a new product with
 //! every representation of a product already in the source, not only its
 //! body. A child of `add`, which builds through it. Openings that void the
-//! source, its projections and the layer assignments of its representations
-//! are not carried; an Add that needs openings declares its own.
+//! source and its projections are not carried; an Add that needs openings
+//! declares its own.
 //!
 //! The new product gets its own `IfcProductDefinitionShape` and its own
 //! representations, one per representation of the source product, in the
 //! same context with the same identifier and type, listing the source's own
-//! items. Items are positioned relative to the object placement, so at its
-//! own placement the new product shows the same geometry, and a style or a
-//! layer assignment on an item applies to both. The shape itself is not
-//! shared: IFC2X3's inverse `ShapeOfProduct` allows one product per shape.
+//! items, so anything attached to an item, such as a style or an item-level
+//! layer, applies to both. Items are positioned relative to the object
+//! placement, so at its own placement the new product shows the same
+//! geometry. The shape itself is not shared: IFC2X3's inverse
+//! `ShapeOfProduct` allows one product per shape.
 
 use crate::plan::add_types::{NewObject, Representation};
 use crate::plan::attrs::attribute_index;

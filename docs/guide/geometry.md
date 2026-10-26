@@ -898,7 +898,7 @@ The meshes come back in the same frame and units as the load, so they can replac
 ## Initialization overlap experiment removed
 
 The opt-in `perf.warmPool` experiment was removed after its recorded-build
-comparison failed the acceptance rule in [the performance ledger](../../scripts/perf/README.md#worker-warm-up-candidate-removed-7036).
+comparison failed the acceptance rule in [the performance ledger](https://github.com/LTplus-AG/ifc-lite/blob/main/scripts/perf/README.md#worker-warm-up-candidate-removed-7036).
 Normal loads create their own geometry and prepass workers and terminate them
 when the load ends. Idle compilation of the shared WASM module remains available
 through `prewarmSharedWasmModule()`.

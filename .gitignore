@@ -181,3 +181,6 @@ __pycache__/
 apps/viewer/public/smlib/
 rust/*/smlib/
 rust/wasm-bindings/retained-test/
+
+# Task-owned native SDK qualification scratch and comparison outputs.
+/.m1-native/

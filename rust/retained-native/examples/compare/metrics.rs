@@ -52,7 +52,7 @@ fn key(p: [f64; 3]) -> [u64; 3] {
 }
 impl Metrics {
     pub fn add_mesh(&mut self, points: &[[f64; 3]], indices: &[u32]) -> Result<(), String> {
-        if points.iter().flatten().any(|x| !x.is_finite()) || indices.len() % 3 != 0 {
+        if points.iter().flatten().any(|x| !x.is_finite()) || !indices.len().is_multiple_of(3) {
             return Err("nonfinite positions or incomplete triangle".into());
         }
         let Some(origin) = points.first() else {

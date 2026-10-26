@@ -20,6 +20,9 @@ run cargo clippy --workspace --all-targets --features retained-runtime -- -D war
 run cargo test -p ifc-lite-geometry -p ifc-lite-processing -p ifc-lite-retained-native
 retained_ready=0
 run cargo test -p ifc-lite-geometry -p ifc-lite-processing -p ifc-lite-retained-native --features retained-runtime && retained_ready=1
+if [[ $retained_ready != 1 ]]; then
+  run cargo test -p ifc-lite-retained-native --features retained-runtime && retained_ready=1
+fi
 run node scripts/check-test-revert-oracle.mjs --base m1/c-executor-core --mutation tests/evidence/m1-d-native-driver/behaviour.oracle.patch --ci
 run node scripts/check-module-size.mjs
 run node scripts/check-refwalk-guards.mjs
@@ -37,4 +40,9 @@ run cargo test -p ifc-lite-retained-native --features retained-runtime -- --noca
 run cargo run -p ifc-lite-retained-native --features retained-runtime --example retained_compare -- \
   --worker "$IFCLITE_SMLIB_WORKER" --out "$PWD/.m1-native/committed" --committed
 if [[ -f .m1-native/committed/summary.json ]]; then cat .m1-native/committed/summary.json; fi
+# First downloaded-model corpus; the harness checkpoints completed models.
+run pnpm fixtures
+run cargo run --profile server-release -p ifc-lite-retained-native --features retained-runtime --example retained_compare -- \
+  --worker "$IFCLITE_SMLIB_WORKER" --out "$PWD/.m1-native/corpus" --manifest tests/models/manifest.json
+if [[ -f .m1-native/corpus/summary.json ]]; then cat .m1-native/corpus/summary.json; fi
 exit "$failure"

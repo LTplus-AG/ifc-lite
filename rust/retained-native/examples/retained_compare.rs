@@ -34,6 +34,7 @@ fn main() -> Result<(), Error> {
             continue;
         }
         compare(path, &options, &tolerances, &mut report)?;
+        write_report(&options, &mut report, false)?;
     }
     report.rows.sort();
     report.coverage.sort();
@@ -59,12 +60,7 @@ fn main() -> Result<(), Error> {
             .violations
             .push("coverage or refusal histogram differs from committed manifest".into());
     }
-    std::fs::create_dir_all(&options.out)?;
-    std::fs::write(options.out.join("products.tsv"),format!("model\tid\ttype\tstatus\tcode\torigin_cause\tcurved\tsrc_vol_rel\texact_vol_rel\texact_area_rel\tbbox_dev_m\tclosed\tms\tvolume_m3\tobligationsUnmet\n{}\n",report.rows.join("\n")))?;
-    std::fs::write(
-        options.out.join("summary.json"),
-        serde_json::to_vec_pretty(&report.summary())?,
-    )?;
+    write_report(&options, &mut report, true)?;
     if options.gate
         && (!report.violations.is_empty()
             || !report.universe_mismatch.is_empty()
@@ -72,6 +68,24 @@ fn main() -> Result<(), Error> {
     {
         return Err("native comparison gate failed; see summary.json".into());
     }
+    Ok(())
+}
+// Checkpoint completed models so a corpus interruption preserves honest partial evidence.
+fn write_report(
+    options: &options::Options,
+    report: &mut report::Report,
+    complete: bool,
+) -> Result<(), Error> {
+    report.rows.sort();
+    std::fs::create_dir_all(&options.out)?;
+    std::fs::write(options.out.join("products.tsv"),format!("model\tid\ttype\tstatus\tcode\torigin_cause\tcurved\tsrc_vol_rel\texact_vol_rel\texact_area_rel\tbbox_dev_m\tclosed\tms\tvolume_m3\tobligationsUnmet\n{}\n",report.rows.join("\n")))?;
+    let mut summary = report.summary();
+    summary["complete"] = json!(complete);
+    summary["modelsRequested"] = json!(options.models.len());
+    std::fs::write(
+        options.out.join("summary.json"),
+        serde_json::to_vec_pretty(&summary)?,
+    )?;
     Ok(())
 }
 fn compare(

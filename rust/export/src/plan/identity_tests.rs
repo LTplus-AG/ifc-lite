@@ -1072,3 +1072,32 @@ fn a_quantity_edited_in_place_marks_its_element_quantity() {
         assert_eq!(assert_modified_exactly_the_rewritten(schema, &src, &out, &[10]), vec![10, 42], "{schema}");
     }
 }
+
+/// When the Adds' relationships fail, the output carries nothing they took:
+/// no ADDED history, no chain (#8154).
+#[test]
+fn a_failed_add_phase_leaves_no_attribution_records_in_the_output() {
+    let mut checked = false;
+    for headroom in 5..40 {
+        let src = crate::plan::test_fixtures::storey_with_headroom("IFC4", headroom);
+        let wall = add(object(IfcClass::Wall, new_gid(90), Some(ObjectRef::Id(70)), Representation::None));
+        let (out, report) = export(&src, vec![wall], context());
+        if report.refusals.iter().any(|r| r.reason.contains("relationships for added objects not written")) {
+            checked = true;
+            let text = String::from_utf8_lossy(&out);
+            assert!(!text.contains("IFCOWNERHISTORY(") && !text.contains("'ExampleApp'"), "headroom {headroom}: {text}");
+            assert_eq!(lines(&out).len(), lines(&src).len(), "headroom {headroom}: nothing appended");
+        }
+    }
+    assert!(checked, "some headroom fails the relationships after the Add built");
+}
+
+/// With no application, a plan that only removes a record still changes
+/// the output, and says the changes are not attributed (#8154).
+#[test]
+fn a_delete_of_a_standalone_record_without_an_application_says_so() {
+    let src = String::from_utf8(source("IFC4", false)).unwrap().replace("ENDSEC;\nEND-ISO", "#990=IFCCARTESIANPOINT((9.,9.,9.));\nENDSEC;\nEND-ISO");
+    let (out, report) = export(src.as_bytes(), vec![(ObjectRef::Id(990), Disposition::Delete)], PlanContext::new());
+    assert!(!lines(&out).contains_key(&990));
+    assert!(report.findings.iter().any(|f| f.message.contains("no ExportingApplication")), "{:?}", report.findings);
+}

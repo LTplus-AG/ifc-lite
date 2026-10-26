@@ -174,10 +174,10 @@ impl<'l> Histories<'l> {
 }
 
 /// Attribute the plan's settled rewrites: to the exporting application when
-/// there is one ([`mark_modified`]); without one, a plan that `changed`
-/// something is reported, since the file then credits its changes to their
-/// previous author. A plan that named an application `Ledger::for_plan`
-/// could not use has been reported already.
+/// there is one ([`mark_modified`]); without one, a plan that `changed` the
+/// output at all (patched, added, rewrote or removed) is reported, since the
+/// file then credits its changes to their previous author. A plan that named
+/// an application `Ledger::for_plan` could not use has been reported already.
 pub(crate) fn attribute_changes(index: &FileIndex, schema: &str, plan: &ExportPlan, ledger: Option<&mut Ledger>, (patched, removed): (&[u32], &HashSet<u32>), changed: bool, mut out: Rewrites) {
     match ledger {
         Some(ledger) => {

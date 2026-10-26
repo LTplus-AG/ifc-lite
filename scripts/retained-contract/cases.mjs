@@ -15,7 +15,7 @@ export const binding = { identity, enumerationComplete: true, requested: [one, t
 export const refusal = {
   schemaVersion: 1, family: 'geometry', code: 'OPERATION_UNSUPPORTED', stage: 'representation', source: { kind: 'known', value: source },
   target: { kind: 'product', product: two }, requirement: 'representation',
-  detail: { reason: 'unsupported', observed: '0', limit: '0' }, exactRetry: 'explicit_new_exact_request',
+  detail: { reason: 'unsupported', measurement: { kind: 'not_applicable' } }, exactRetry: 'explicit_new_exact_request',
 };
 const forProduct = (product) => ({ ...structuredClone(refusal), target: { kind: 'product', product } });
 export const complete = { status: 'complete', partition: { identity, enumerationComplete: true,
@@ -28,9 +28,9 @@ export const inspection = {
   unchecked: ['numerical_evaluation', 'final_geometry', 'protected_removal', 'publication'],
 };
 const topError = { ...refusal, family: 'source', code: 'ENUMERATION_FAILED', stage: 'enumeration',
-  requirement: 'enumeration', detail: { reason: 'invalid', observed: '0', limit: '0' }, target: { kind: 'model' } };
+  requirement: 'enumeration', detail: { reason: 'invalid', measurement: { kind: 'not_applicable' } }, target: { kind: 'model' } };
 const cancelledError = { ...topError, family: 'runtime', code: 'CANCELLED',
-  detail: { reason: 'cancelled', observed: '0', limit: '0' } };
+  detail: { reason: 'cancelled', measurement: { kind: 'not_applicable' } } };
 const failed = { status: 'failed', partition: { ...incomplete.partition, enumerationComplete: false,
   geometry: [], refused: [one, two].map((product) => ({ ...topError, target: { kind: 'product', product } })) }, error: topError };
 const interruptedBinding = { ...binding, enumerationComplete: false };
@@ -126,12 +126,12 @@ for (const [code, family, stage, requirement, reason] of [
   ['RUNTIME_FAILED', 'runtime', 'transport', 'numerical_evaluation', 'backend_failure'],
 ]) cases.push({ name: `staged_${code.toLowerCase()}`, root: 'Refusal', valid: true,
   input: { ...structuredClone(refusal), code, family, stage, requirement,
-    detail: { reason, observed: '0', limit: '0' } } });
+    detail: { reason, measurement: { kind: 'not_applicable' } } } });
 
 cases.push({ name: 'invalid_options_before_source_binding', root: 'Refusal', valid: true,
   input: { ...structuredClone(refusal), code: 'INVALID_OPTIONS', family: 'configuration', stage: 'configuration',
     source: { kind: 'unbound' }, target: { kind: 'model' }, requirement: 'configuration',
-    detail: { reason: 'invalid', observed: '0', limit: '0' } } });
+    detail: { reason: 'invalid', measurement: { kind: 'not_applicable' } } } });
 mutant('unbound_geometry_refusal', 'typed_refusal', (input) => { input.source = { kind: 'unbound' }; });
 mutant('unbound_report_error', 'failed_enumeration', (input) => {
   input.error = { ...structuredClone(cases.find((item) => item.name === 'invalid_options_before_source_binding').input) };
@@ -172,7 +172,10 @@ for (const [code, family, reason] of [
 ]) {
   const name = `${code.toLowerCase()}_at_${stage}`;
   cases.push({ name, root: 'Refusal', valid: true, input: { ...structuredClone(refusal), code, family, stage,
-    requirement, detail: { reason, observed: '0', limit: '0' } } });
+    requirement, detail: { reason, measurement: code === 'RESOURCE_EXHAUSTED'
+      ? { kind: 'measured', observed: '17', limit: '16' }
+      : code === 'DEADLINE_EXCEEDED' ? { kind: 'measured', observed: '30', limit: '30' }
+        : { kind: 'not_applicable' } } } });
   mutant(`${name}_wrong_reason`, name, (input) => { input.detail.reason = 'unsupported'; });
 }
 mutant('cancelled_wrong_requirement', 'cancelled_at_numerical', (input) => { input.requirement = 'textures'; });
@@ -204,3 +207,43 @@ for (const outcome of ['geometry', 'removed']) {
     input.error = structuredClone(topError);
   });
 }
+
+// #7955 C4/C5: explicit nonnumeric facts and independently expected measured relations.
+cases.push({ name: 'owner_busy', root: 'Refusal', valid: true, input: {
+  ...structuredClone(refusal), code: 'OWNER_BUSY', family: 'ownership', stage: 'ownership',
+  requirement: 'ownership', detail: { reason: 'busy', measurement: { kind: 'not_applicable' } },
+} });
+mutant('busy_is_not_mismatch', 'owner_busy', (input) => { input.code = 'OWNER_MISMATCH'; });
+mutant('busy_is_not_retired', 'owner_busy', (input) => { input.code = 'OWNER_RETIRED'; });
+mutant('nonnumeric_has_no_sentinel', 'typed_refusal', (input) => {
+  input.detail.measurement = { kind: 'not_applicable', observed: '0', limit: '0' };
+});
+mutant('unsupported_is_not_measurement', 'typed_refusal', (input) => {
+  input.detail.measurement = { kind: 'measured', observed: '1', limit: '0' };
+});
+mutant('legacy_sentinel_detail', 'typed_refusal', (input) => {
+  input.detail = { reason: 'unsupported', observed: '0', limit: '0' };
+});
+mutant('resource_measurement_required', 'resource_exhausted_at_source', (input) => {
+  input.detail.measurement = { kind: 'not_applicable' };
+});
+mutant('resource_equal_is_not_exhausted', 'resource_exhausted_at_source', (input) => {
+  input.detail.measurement.observed = input.detail.measurement.limit;
+});
+mutant('deadline_below_limit', 'deadline_exceeded_at_source', (input) => {
+  input.detail.measurement.observed = '29';
+});
+mutant('measurement_unknown_field', 'resource_exhausted_at_source', (input) => {
+  input.detail.measurement.unit = 'unknown';
+});
+mutant('measurement_missing_limit', 'resource_exhausted_at_source', (input) => {
+  delete input.detail.measurement.limit;
+});
+mutant('measurement_overflow', 'resource_exhausted_at_source', (input) => {
+  input.detail.measurement.observed = '18446744073709551616';
+});
+cases.push({ name: 'measured_u64_preserved', root: 'Refusal', valid: true, input: {
+  ...structuredClone(cases.find((item) => item.name === 'resource_exhausted_at_source').input),
+  detail: { reason: 'exhausted', measurement: { kind: 'measured',
+    observed: '18446744073709551615', limit: '9007199254740993' } },
+} });

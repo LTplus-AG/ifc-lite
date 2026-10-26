@@ -82,7 +82,10 @@ function selectedOracleArgs(cwd, helper = dispatchHelper) {
 const b2aObserver = 'rust/geometry/src/program/retained/mapping_origin_tests.rs';
 const b2bObserver = 'rust/geometry/src/program/retained/boolean_origin_tests.rs';
 const b2cObserver = 'rust/geometry/src/program/retained/frame_origin_tests.rs';
+const cutCObserver = 'rust/processing/tests/retained_inspection_busy.rs';
 for (const [boundary, files, observer = b2aObserver] of [
+  ['Cut-C-only', [cutCObserver], cutCObserver],
+  ['Cut-C+origins', [cutCObserver, b2aObserver, b2bObserver, b2cObserver], cutCObserver],
   ['B2c-only', [b2cObserver], b2cObserver],
   ['B2a+B2c', [b2aObserver, b2cObserver], b2cObserver],
   ['B2b+B2c', [b2bObserver, b2cObserver], b2cObserver],
@@ -112,9 +115,12 @@ for (const [boundary, files, observer = b2aObserver] of [
       git('add', '.');
       git('-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'slice');
       const expected = [
-        '--base', observer === b2aObserver ? '54e0c22a7df946b8c5d8d6a0b08d8b64f6edef71'
+        '--base', observer === cutCObserver ? 'a83992f426811f3e5ac3998bc74b8971f0b1cb55'
+          : observer === b2aObserver ? '54e0c22a7df946b8c5d8d6a0b08d8b64f6edef71'
           : 'e8667c3e91b5e77b536ecdfaa51af9a4d863ee96', '--ci', '--json',
-        '--mutation', observer === b2bObserver
+        '--mutation', observer === cutCObserver
+          ? 'tests/evidence/retained-source-inspection-c/busy-report.oracle.patch'
+          : observer === b2bObserver
           ? 'tests/evidence/retained-boolean-origin-b2b/predicate-report.oracle.patch'
           : observer === b2cObserver ? 'tests/evidence/retained-frame-origin-b2c/value-report.oracle.patch'
           : 'tests/evidence/retained-mapping-origin-b2a/occurrence-report.oracle.patch',
@@ -124,7 +130,7 @@ for (const [boundary, files, observer = b2aObserver] of [
 
       // Disable each unique terminal branch in its own temporary helper.
       // The same behavioral assertion must reject both independent mutants.
-      if (boundary === 'B2b-only') {
+      if (boundary === 'Cut-C-only' || boundary === 'B2b-only') {
         const mutant = join(cwd, 'mutated-dispatch.sh');
         copyFileSync(dispatchHelper, mutant);
         execFileSync('sed', ['-i',
@@ -219,4 +225,16 @@ test('#7955: unknown cfg, undeclared feature, and ambiguous identity owners rema
       assert.match(unassigned[0].reason, /conditional or ambiguous/);
     });
   }
+});
+
+// #7955 Cut C: the actual planner must enable the default-off consumer.
+test('#7955: inspection refusal observer runs with retained-runtime enabled', () => {
+  const { plans, unassigned, support } = planRuns([cutCObserver], root);
+  assert.deepEqual(unassigned, []);
+  assert.deepEqual(support, []);
+  assert.equal(plans.length, 1);
+  assert.equal(plans[0].runner.family, 'cargo');
+  assert.ok(plans[0].runner.args.includes('retained-runtime'));
+  assert.ok(plans[0].runner.args.includes('--test'));
+  assert.ok(plans[0].runner.args.includes('retained_inspection_busy'));
 });

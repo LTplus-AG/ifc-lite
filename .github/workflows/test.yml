@@ -993,8 +993,9 @@ jobs:
           # preserve the new private types and remove only occurrence reporting.
           # The prerequisite is the enum-only rename, not a harvested baseline.
           # #7955 B2c: preserve private types while reversing only value reporting.
+          # #7955 Cut C: preserve consumer APIs while mutating busy reporting.
           if source scripts/lib/revert-oracle-initial-dispatch.sh; then
-            : # The shared helper selected a B2 observer.
+            : # The shared helper selected Cut C or a B2 observer.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/j5-presentation/behaviour.oracle.patch | grep -Fxq 'tests/evidence/j5-presentation/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/j5-presentation/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/e3b-followups/behaviour.oracle.patch | grep -Fxq 'tests/evidence/e3b-followups/behaviour.oracle.patch'; then
@@ -2354,6 +2355,16 @@ jobs:
               after_oracle "$oracle_index" cargo test --locked -p ifc-lite-geometry --lib program::inner::retained_program::tests::origins::completion::
             done
           fi
+          # #7955 Cut C: observe work, backing and deadline action independently.
+          # The initial invocation above already observes busy-code reporting.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/tests/retained_inspection_busy.rs | grep -Fxq 'rust/processing/tests/retained_inspection_busy.rs'; then
+            for mutation in work-action bytes-action deadline-action; do
+              run_oracle --base a83992f426811f3e5ac3998bc74b8971f0b1cb55 --ci --json \
+                --mutation "tests/evidence/retained-source-inspection-c/$mutation.oracle.patch" \
+                --test rust/processing/tests/retained_inspection_busy.rs
+              after_oracle "$oracle_index" cargo test --locked -p ifc-lite-processing --features retained-runtime --test retained_inspection_busy
+            done
+          fi
           # #7955 B2a: action, occurrence reporting, direct-map reporting and
           # late-origin reporting must each fail independently.
           if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/retained/mapping_origin_tests.rs | grep -Fxq 'rust/geometry/src/program/retained/mapping_origin_tests.rs'; then
@@ -3522,10 +3533,11 @@ jobs:
       # That wasm32 leg runs on its own schedule in determinism.yml.
       - name: Clippy (lint gate)
         run: cargo clippy --workspace --all-targets -- -D warnings
-      # `cargo test` builds examples but runs none of their unit tests; the
-      # retained coverage census keeps its classification tests there (#7955).
-      - name: Retained coverage census example tests
-        run: cargo test --locked -p ifc-lite-processing --example retained_census
+      - name: Retained source inspection (private controller and census consumer)
+        run: |
+          cargo test --locked -p ifc-lite-processing --features retained-runtime --lib retained_inspection
+          cargo test --locked -p ifc-lite-processing --features retained-runtime --example retained_census
+          cargo clippy --locked -p ifc-lite-processing --features retained-runtime --all-targets -- -D warnings
       # G6 (#7672): a dependency a member declares but its sources never name is
       # compile time and supply-chain surface for nothing (XCUT-17 found seven).
       # cargo-machete is a text scan, so it needs no build and runs in seconds.

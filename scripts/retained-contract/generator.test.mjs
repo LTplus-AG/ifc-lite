@@ -10,7 +10,7 @@ import { schema } from './schema.mjs';
 test('#7955 generator determinism and each missing/altered projection fail drift', async () => {
   const outputs = await projections();
   assert.deepEqual(await projections(), outputs);
-  assert.equal(outputs.size, 6);
+  assert.equal(outputs.size, 8);
   const root = await mkdtemp(join(tmpdir(), 'retained-contract-'));
   try {
     await writeOutputs(root, outputs);
@@ -36,6 +36,7 @@ test('#7955 generator rejects unknown schema machinery instead of weakening it',
     (s) => { s.maxWireDepth = 0; }, (s) => { s.maxWireBytes = Infinity; },
     (s) => { delete s.refusalRules.CANCELLED; },
     (s) => { s.refusalRules.CANCELLED.reason = 'success'; },
+    (s) => { s.refusalRules.RESOURCE_EXHAUSTED.measurement = 'anything'; },
     (s) => { s.refusalRules.CANCELLED.contexts = [['unknown', 'textures']]; },
     (s) => { s.refusalRules.INVALID_OPTIONS.contexts.push(['configuration', 'configuration']); },
     (s) => { s.types.Interrupted.fields.partition = 'Options'; },

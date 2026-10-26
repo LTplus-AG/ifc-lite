@@ -3,20 +3,20 @@
 use super::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum RetainedContextError {
+pub(in crate::element) enum RetainedContextError {
     Stale,
     Missing,
     Mismatched,
 }
 
 impl ProductionModel {
-    pub(super) fn from_source(source: Arc<ifc_lite_core::SourceBundle>) -> Self {
+    pub(in crate::element) fn from_source(source: Arc<ifc_lite_core::SourceBundle>) -> Self {
         Self { source: Some(source), ..Self::new() }
     }
 }
 
 impl OwnedMeshProductionContext {
-    pub(super) fn validate_decoder(
+    pub(in crate::element) fn validate_decoder(
         &self,
         decoder: &ifc_lite_core::EntityDecoder<'_>,
     ) -> Result<(), RetainedContextError> {
@@ -28,24 +28,24 @@ impl OwnedMeshProductionContext {
         Ok(())
     }
 
-    pub(super) fn lifecycle(&self) -> ProductionLifecycle {
+    pub(in crate::element) fn lifecycle(&self) -> ProductionLifecycle {
         ProductionLifecycle { id: self.id, state: self.state.clone() }
     }
 }
 
 #[derive(Clone)]
-pub(super) struct ProductionLifecycle {
+pub(in crate::element) struct ProductionLifecycle {
     id: ProductionContextId,
     state: Arc<ModelState>,
 }
 impl ProductionLifecycle {
-    pub(super) fn validate(&self) -> Result<(), RetainedContextError> {
+    pub(in crate::element) fn validate(&self) -> Result<(), RetainedContextError> {
         if self.id.source_epoch != self.state.source_epoch.load(Ordering::Acquire) {
             return Err(RetainedContextError::Stale);
         }
         Ok(())
     }
-    pub(super) fn epoch_revision(&self) -> (u64, u64) {
+    pub(in crate::element) fn epoch_revision(&self) -> (u64, u64) {
         (self.id.source_epoch, self.id.revision)
     }
 }

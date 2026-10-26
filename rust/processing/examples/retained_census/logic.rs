@@ -72,6 +72,8 @@ impl Counts {
 
 #[derive(Serialize)]
 pub struct Product {
+    #[cfg(feature = "retained-runtime")]
+    controller: Option<controller::Column>,
     pub ifc_type: String,
     #[serde(rename = "GlobalId")]
     pub global_id: Option<String>,
@@ -105,6 +107,10 @@ pub struct Fixture {
 
 #[derive(Serialize)]
 pub struct Report {
+    #[cfg(feature = "retained-runtime")]
+    pub controller_executable_sha256: Option<String>,
+    #[cfg(feature = "retained-runtime")]
+    pub controller_provenance: controller::provenance::Provenance,
     pub schema: &'static str,
     pub enumeration_complete: bool,
     pub note: &'static str,
@@ -117,6 +123,10 @@ pub struct Report {
 
 pub fn census_paths(paths: Vec<(String, PathBuf)>) -> Result<Report, Box<dyn std::error::Error>> {
     let mut report = Report {
+        #[cfg(feature = "retained-runtime")]
+        controller_executable_sha256: controller::executable_sha256(),
+        #[cfg(feature = "retained-runtime")]
+        controller_provenance: controller::provenance::current(),
         schema: "retained-coverage-census/v2",
         enumeration_complete: !paths.is_empty(),
         note: "Source-only potential: admitted sources are not complete product geometry; openings, booleans, layers and appearance are not evaluated. Openings count IfcRelVoidsElement links to each host. Enumeration completeness describes only the bounded source inventory, never final geometry. Unknown/failed/bounded enumeration is not full coverage. Non-Body is an overlapping count; products = source_only_candidates + refused_products + no_representation_products. sha256 hashes inspected STEP bytes (the decompressed member for IFCZIP).",
@@ -245,6 +255,8 @@ fn census_bytes_bounded(content: &[u8], record_limit: usize) -> Fixture {
                 .insert("enumeration:incomplete_source".into());
         }
     }
+    #[cfg(feature = "retained-runtime")]
+    controller::inspect(content, &mut products);
     for product in products.values_mut() {
         classify(product);
         fixture.counts.add(&product.counts);
@@ -344,3 +356,7 @@ fn refusal_name(refusal: &RetainedSourceRefusal) -> String {
 #[cfg(test)]
 #[path = "logic_tests.rs"]
 mod tests;
+
+#[cfg(feature = "retained-runtime")]
+#[path = "controller.rs"]
+mod controller;

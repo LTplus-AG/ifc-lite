@@ -48,3 +48,6 @@ impl OwnedConstructor {
 
 #[cfg(test)]
 mod constructor_tests;
+
+#[cfg(feature = "retained-runtime")]
+pub use inner::retained_program::inspection::{inspect_retained_program_source, SourceInspectionReport, SourceInspectionError};

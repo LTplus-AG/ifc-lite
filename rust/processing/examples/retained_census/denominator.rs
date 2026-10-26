@@ -101,6 +101,8 @@ pub(super) fn inventory(content: &[u8], limit: usize) -> Inventory {
 
 pub(super) fn product(ifc_type: &str) -> Product {
     Product {
+        #[cfg(feature = "retained-runtime")]
+        controller: None,
         ifc_type: ifc_type.to_owned(),
         global_id: None,
         representation_state: "unresolved",

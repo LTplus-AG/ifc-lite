@@ -192,3 +192,8 @@ mod session_publication_tests;
 
 #[cfg(test)]
 mod session_steal_tests;
+
+#[cfg(feature = "retained-runtime")]
+mod retained_inspection;
+#[cfg(feature = "retained-runtime")]
+pub use retained_inspection::{inspect_retained_source, RetainedSourceInspection, RetainedInspectionError};

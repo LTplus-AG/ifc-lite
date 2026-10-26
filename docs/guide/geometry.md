@@ -2,6 +2,126 @@
 
 Guide to geometry extraction and processing in IFClite.
 
+## Development source inspection (#7955)
+
+The default-off Rust `retained-runtime` feature supplies a bounded diagnostic
+consumer for the existing `rust/processing/examples/retained_census` example.
+Its controller needs an externally supplied **compile-time** source pin. From a
+clean committed checkout, the installed fleet launcher pins that same revision
+in its original request and verifies the execution checkout. Supply the full
+revision as an explicit Cargo configuration argument, so the receipt records it:
+
+```sh
+test -z "$(git status --porcelain --untracked-files=normal)" || exit 1
+inspection_commit=$(git rev-parse --verify HEAD)
+~/build-workers/ifc-fleet run --cwd "$PWD" -- cargo build --locked \
+  -p ifc-lite-processing --features retained-runtime --example retained_census \
+  --config "env.IFC_RETAINED_BUILD_COMMIT.value=\"$inspection_commit\"" \
+  --config "env.IFC_RETAINED_BUILD_COMMIT.force=true"
+```
+
+Before using the resulting binary, reconcile the original request/receipt:
+its source commit must equal the explicit compile pin, execution must have
+succeeded with clean unchanged source, and the executable SHA256 must identify
+that build's binary. If the checkout changes between resolving the pin and
+submission, discard that association; do not label it verified. The stamp is a
+trusted build input, not a self-authenticating signature. Do not set it from an
+arbitrary runtime environment or supply an unverified caller HEAD.
+
+To build and execute against the committed sample in one source-pinned admitted
+job, use the same pin (resolve it again if intentionally selecting another source):
+
+```sh
+~/build-workers/ifc-fleet run --route fleet --cwd "$PWD" -- cargo run --locked \
+  -p ifc-lite-processing --features retained-runtime --example retained_census \
+  --config "env.IFC_RETAINED_BUILD_COMMIT.value=\"$inspection_commit\"" \
+  --config "env.IFC_RETAINED_BUILD_COMMIT.force=true" \
+  -- apps/viewer/public/samples/building-architecture.ifc
+```
+
+A retained built `retained_census <model.ifc>` binary also runs through ordinary
+worker admission with its original artifact identity. Do not use an unstamped
+`cargo run`, which can rebuild it without the pin. Cargo tracks the
+`option_env!` value in compiler dependencies: changing/removing the build input
+requires a rebuild. Plain builds intentionally leave the controller uninspected.
+The same two explicit `--config` arguments on the root `cargo test --locked -p
+ifc-lite-processing --features retained-runtime --example retained_census`
+command exercises the compiled provenance and runtime-checkout A/B metadata
+witness under admission. That fixture tests identity behavior; it does not
+qualify geometry or attest a build independently of its fleet receipt.
+Its original extractor column and denominator keep their existing meanings.
+The additional `controller` column drives the private retained controller through
+source replies until its first **nonempty** numerical batch. It drops that batch
+without accepting numerical results. Later operands and products remain unknown.
+An exhausted source traversal is `traversal_only`; it is never a completed product
+or permission to remove one. Unsupported and malformed products remain in the
+inventory. An incomplete inventory stays incomplete.
+
+The development Rust edge is deliberately small:
+
+- `ifc_lite_processing::element::inspect_retained_source` authenticates the actual
+  `SourceBundle`, decoder origin, snapshot and supplied root allocation. Its
+  `RetainedSourceInspection::bytes` checks the original source and stop again.
+  `RetainedInspectionError` exposes only a staged diagnostic code and any original
+  `ProgramStop`; it retains private source/owner causes internally.
+- `ifc_lite_geometry::program::inspect_retained_program_source` is the processing
+  adapter's cross-crate consumer seam. `SourceInspectionReport` owns charged
+  serialized bytes and original-stop validation; `SourceInspectionError` reports
+  inability to produce that diagnostic. Direct callers still owe source/owner
+  authentication. No controller, ticket, recipe, frame or schema type is exported.
+
+Both crates use generated strict inspection projections. The full model-result
+projection remains test-only. Reports have `diagnostic_only` authority and retain
+unchecked numerical, representation, opening, layer, interface, appearance,
+identity, instancing and finality obligations. Absent GlobalIds are explicit;
+invalid ones refuse entry. Source and result digests derive from immutable source
+bytes and options, independently of product metadata. The census separately
+records the compile-time implementation commit, runtime checkout commit/cleanliness,
+and actual executable SHA256. Running an A binary in clean checkout B keeps A as
+`implementationCommit`; B is only runtime metadata. Missing or malformed compile
+identity produces `uninspected` with `implementation_unbound`, even if runtime
+HEAD is clean or the environment supplies a commit.
+
+A competing decoder lease reports `OWNER_BUSY` and can be retried after release.
+Other protocol errors without proof of ownership mismatch report `RUNTIME_FAILED`
+while retaining the actual private typed cause. Refusal detail distinguishes
+`measurement.kind = not_applicable` from `measured`: source/unsupported refusals
+carry no invented counters. Measured resource exhaustion requires observed
+greater than limit; deadline requires observed at least limit. Original typed
+`ProgramStop` requested/remaining payloads remain separate and unchanged.
+
+This additive feature-gated Rust surface needs the normal Rust release's additive
+API disposition; it does not change an npm export, public WASM binding, CLI flag or
+viewer mode. No version is edited here. It introduces no numerical executor,
+runtime dependency, exact fallback, publication or removal path. Source archives
+contain the generated inspection projections; the census remains excluded tooling.
+The inspection composes its `maxWork` and `maxBytes` allowance with the original
+account and pool, admitting covered work and requested live backing before growth,
+including report serialization. Original cumulative usage is never reset. Captured
+source contexts carry the local allowance; unrelated detached work does not.
+The report's permit refunds its backing on drop. Inherited retained helpers still
+conservatively retain some temporary charges for the original account lifetime.
+This covers requested backing, not allocator overhead, global RSS, all core decoder
+allocations or SDK costs; it is not an aggregate census-memory limit.
+
+`deadlineMs` starts at the bounded public entry, before unit resolution, root
+reading and source hashing. One captured monotonic domain spans source inspection,
+serialization, strict decode and later `bytes()` delivery. Cancellation is
+cooperative: hash chunks are at most 64 KiB, retained reference-list members are
+checked individually, analytic coefficient/value/curve loops and topology budget
+steps check the same clock, and unit resolution, individual decoder calls, controller
+admission and bounded serialization/strict decode are checked after completion.
+Those indivisible calls are not preempted. Deadline expiry is `DEADLINE_EXCEEDED`,
+not a fabricated cancellation or numeric resource payload; existing original
+source/account/terminal stops keep precedence. The clock injection used by tests
+is restricted to the existing test-support build.
+A stored census diagnostic can expire while later products are inspected. Its
+controller column then becomes `delivery_refused` with the actual typed code;
+the original extractor row, inventories and counts remain in the serialized census.
+Expired bytes never become an inspected-success column.
+
+Performance, geometry equivalence and release qualification are separate gates.
+
 ## Overview
 
 All geometry is produced by a single Rust pipeline (`produce_element_meshes`

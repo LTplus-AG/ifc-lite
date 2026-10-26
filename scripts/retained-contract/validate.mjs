@@ -53,6 +53,13 @@ export function validateShape(name, value, depth = 0) {
         demand(causes[result.family].includes(result.code), 'cause family');
         const rule = schema.refusalRules[result.code];
         demand(result.detail.reason === rule.reason, 'cause reason');
+        const measurement = result.detail.measurement;
+        demand(measurement.kind === (rule.measurement === 'not_applicable' ? 'not_applicable' : 'measured'),
+          'cause measurement');
+        if (measurement.kind === 'measured') {
+          const observed = BigInt(measurement.observed), limit = BigInt(measurement.limit);
+          demand(rule.measurement === 'exceeds' ? observed > limit : observed >= limit, 'measurement relation');
+        }
         demand(rule.contexts.some(([stage, requirement]) => stage === result.stage
           && requirement === result.requirement), 'cause context');
         if (result.source.kind === 'unbound') demand(result.family === 'configuration'

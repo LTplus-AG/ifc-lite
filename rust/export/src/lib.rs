@@ -26,6 +26,8 @@ mod dfjson;
 mod error;
 mod file_schema;
 mod frame;
+mod section_clip;
+pub use section_clip::{plan_section_export, SectionExportPlane, SectionExportPlan, SectionExportElement, SectionExportPart};
 #[cfg(test)]
 mod frame_fixtures;
 mod generated;

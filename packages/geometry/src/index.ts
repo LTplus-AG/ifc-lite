@@ -97,7 +97,7 @@ export * from './spatial-reference.js';
 import { IfcLiteBridge } from './ifc-lite-bridge.js';
 import type { ExtrusionDefinitions, SweptDiskDescriptions } from './analytic-descriptions.js';
 import { notifyIfWasmAssetUnavailable } from './wasm-asset-error.js';
-import { exportMerged, planMapConversionNormalization } from './map-normalization-capability.js';
+import { exportMerged, planMapConversionNormalization, planSectionExport } from './map-normalization-capability.js';
 import { BufferBuilder } from './buffer-builder.js';
 import { CoordinateHandler } from './coordinate-handler.js';
 import { GEOM_CLASS_OCCURRENCE, geometryClassOf } from './geometry-class.js';
@@ -1181,8 +1181,8 @@ export class GeometryProcessor {
     if (!this.bridge?.isInitialized()) return null;
     return this.bridge.exportJsonld(buffer, context, includeProperties, includeQuantities, pretty, included);
   }
-
-  /** Canonical Rust plan; unsupported platforms refuse explicitly. */
+  /** Canonical Rust export plans; unsupported platforms refuse explicitly. */
+  planSectionExport(buffer: Uint8Array, planes: string, trim: boolean): string { return planSectionExport(this.bridge, this.platformBridge, buffer, planes, trim); }
   planMapConversionNormalization(buffer: Uint8Array): string { return planMapConversionNormalization(this.bridge, this.platformBridge, buffer); }
   exportStep(
     buffer: Uint8Array,

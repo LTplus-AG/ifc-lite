@@ -5330,6 +5330,8 @@
     "identityMapFromContentMatches: function",
     "identityMapFromSuccessors: function",
     "identityMapSidecarMismatches: function",
+    "initDiff: function",
+    "initDiffSync: function",
     "keyAliasesFromLineage: function",
     "keyAliasesFromSidecar: function",
     "lineageConflicts: function",

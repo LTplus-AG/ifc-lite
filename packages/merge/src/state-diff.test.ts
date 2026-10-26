@@ -9,11 +9,15 @@
  * the review UI. A change here is a breaking change for all three.
  */
 
-import { describe, expect, it } from 'vitest';
+import { initDiff } from '@ifc-lite/diff';
+import { beforeAll, describe, expect, it } from 'vitest';
 import type { IfcxFile, IfcxNode } from '@ifc-lite/ifcx';
 import { IFCLITE_ATTR } from '@ifc-lite/ifcx';
 import { diffLayerStacks, diffStackStates } from './state-diff.js';
 import type { EntityState, StackState } from './component-state.js';
+
+// #8042: these tests call synchronous hashing/merge APIs directly.
+beforeAll(async () => { await initDiff(); });
 
 /** Minimal alive (non-deleted) entity for path-ordering tests below —
  *  no components, no children, so only presence/absence drives the diff. */

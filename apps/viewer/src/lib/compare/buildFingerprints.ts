@@ -53,6 +53,7 @@
 import {
   buildComponentFingerprints,
   buildDataFingerprint,
+  initDiff,
   type EntityFingerprint,
 } from '@ifc-lite/diff';
 import { extractProjectUnits, spatialContainerPath, type IfcDataStore } from '@ifc-lite/parser';
@@ -177,6 +178,7 @@ export interface BuildFingerprintsModel {
 export async function buildEntityFingerprints(
   model: BuildFingerprintsModel,
 ): Promise<EntityFingerprint<CompareRef>[]> {
+  await initDiff();
   const {
     store,
     meshes,

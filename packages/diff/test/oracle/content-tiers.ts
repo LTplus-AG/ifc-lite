@@ -275,4 +275,3 @@ export function pairByPosition<TRef>(
     leftoverHead: heads.filter((_, index) => !pairedHead.has(index)),
   };
 }
-

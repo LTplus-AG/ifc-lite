@@ -368,9 +368,13 @@ and shares need not sum to one. The live path follows the TypeScript length
 checks and `shares.every(share => Number.isFinite(share) && share >= 0)` before
 ranking, including custom methods, sparse arrays and repeated getters.
 
-The public `@ifc-lite/diff` entry points still use the TypeScript engine in
-this stage of #8042. Raw module initialization above applies to direct
-`@ifc-lite/wasm/diff` callers; existing public comparison callers retain their
-current initialization contract until the facade cutover.
+The public `@ifc-lite/diff` entry points use this Rust module. Call
+`await initDiff()` or `initDiffSync(...)` once at application startup, then use
+the existing comparison, fingerprint, lineage and sidecar operations
+synchronously. The shared runtime centralizes Node asset loading and browser
+initialization, with no top-level await or silent TypeScript engine fallback.
+Operations called before initialization throw; initialization failures propagate.
+The public fingerprint facade normalizes live property and quantity values
+before passing their typed projections to the raw fingerprint bindings.
 
 The real IFC parity runner (`node scripts/diff-real-fixture-parity.mjs`) reports executed/total pairs. Missing fixtures are skipped with a `pnpm fixtures` hint; zero executed pairs exits with status 2 (incomplete), rather than claiming parity.

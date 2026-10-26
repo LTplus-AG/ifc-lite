@@ -4,7 +4,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -14,12 +14,14 @@ import { spawnSync } from 'node:child_process';
 test('parity --check detects engine/corpus drift without rewriting expectations (#8042)', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'diff-parity-check-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  for (const dir of ['scripts', 'packages/diff/dist', 'rust/diff/tests']) {
+  for (const dir of ['scripts/lib', 'packages/diff/test/oracle', 'rust/diff/tests']) {
     mkdirSync(join(root, dir), { recursive: true });
   }
   writeFileSync(join(root, 'package.json'), '{"type":"module"}');
   copyFileSync(new URL('./diff-parity-vectors.mjs', import.meta.url), join(root, 'scripts/diff-parity-vectors.mjs'));
-  const engine = join(root, 'packages/diff/dist/fingerprint.js');
+  copyFileSync(new URL('./lib/diff-oracle.mjs', import.meta.url), join(root, 'scripts/lib/diff-oracle.mjs'));
+  symlinkSync(new URL('../node_modules', import.meta.url), join(root, 'node_modules'), 'dir');
+  const engine = join(root, 'packages/diff/test/oracle/fingerprint.ts');
   const installEngine = (hash) => writeFileSync(engine, `
     export const stableHash = () => '${hash}';
     export const buildDataFingerprint = () => '${hash}';
@@ -38,7 +40,7 @@ test('parity --check detects engine/corpus drift without rewriting expectations 
   installEngine('changed');
   const drift = run('--check');
   assert.equal(drift.status, 1, drift.stderr);
-  assert.match(drift.stderr, /differ from the built TypeScript engine/);
+  assert.match(drift.stderr, /differ from the test-only TypeScript oracle/);
   assert.equal(readFileSync(corpus, 'utf8'), original, 'check must preserve the committed oracle');
 
   installEngine('initial');

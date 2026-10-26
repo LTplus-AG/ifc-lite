@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { existsSync, readFileSync } from 'node:fs';
 import { test, expect } from 'vitest';
-import { diffModels } from './diff.js';
+import { diffModels } from '../test/oracle/diff.js';
 import type { DiffOptions, EntityFingerprint } from './types.js';
 
 const binary = new URL('../../wasm/pkg-diff/ifc-lite-diff_bg.wasm', import.meta.url);
@@ -28,9 +28,17 @@ test.skipIf(!existsSync(binary) || !existsSync(new URL('../../wasm/pkg-diff/ifc-
     { matchUnpairedByContent: true, moveTolerance: NaN, reshapeTolerance: Infinity, maxMoveDistance: -Infinity },
     { detectSplitMerge: true, detectSuccessors: true, classFamilies: [] },
   ];
+  function* once(rows: typeof base) { yield* rows; }
   for (const option of options) {
-    const actual = compareWithWasm(base, head, option);
-    expect(actual).toEqual(diffModels(base, head, option));
+    const ignored: Record<string, unknown> = {}; ignored.self = ignored;
+    const extended = { ...option, ignored };
+    const actual = compareWithWasm(once(base), head.values(), extended);
+    const expected = diffModels(base, head, option);
+    expect(actual).toEqual(expected);
+    expect(Object.keys(actual)).toEqual(Object.keys(expected));
+    const json = (value: unknown) => JSON.stringify(value, (_key, item: unknown) => typeof item === 'bigint' ? item.toString() : item);
+    expect(json(actual)).toBe(json(expected));
+    expect(actual.entries.map(Object.keys)).toEqual(expected.entries.map(Object.keys));
     for (const entry of actual.entries) {
       expect(actual.byKey.get(entry.key)).toBe(entry);
       if (entry.base) expect(base.includes(entry.base)).toBe(true);

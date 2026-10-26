@@ -107,29 +107,35 @@ async function meshes(bytes: Uint8Array) {
 
 // #7908: volume about the origin cannot detect missing caps on zero planes.
 // The fixture's two cut faces have independently known areas: 4*2 and 5*2.
-function expectCutFaces(mesh: Awaited<ReturnType<typeof meshes>>['meshes'][number]) {
-  const areas = [0, 0];
-  const point = (i: number) => [0,1,2].map(axis => mesh.positions[i*3+axis]+(mesh.origin?.[axis] ?? 0));
+function cutFaceArea(mesh: Awaited<ReturnType<typeof meshes>>['meshes'][number], axis: number, offset: number) {
+  let total = 0;
+  const point = (i: number) => [0,1,2].map(a => mesh.positions[i*3+a]+(mesh.origin?.[a] ?? 0));
   for (let i=0;i<mesh.indices.length;i+=3) {
     const [a,b,c] = [point(mesh.indices[i]),point(mesh.indices[i+1]),point(mesh.indices[i+2])];
-    const u = b.map((v,axis) => v-a[axis]), v = c.map((value,axis) => value-a[axis]);
-    const area = Math.hypot(u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0])/2;
-    for (const [slot,axis] of [[0,0],[1,2]]) {
-      if ([a,b,c].every(p => Math.abs(p[axis])<1e-5)) areas[slot]+=area;
-    }
+    if (![a,b,c].every(p => Math.abs(p[axis]-offset)<1e-5)) continue;
+    const ab = b.map((v,index) => v-a[index]), ac = c.map((v,index) => v-a[index]);
+    total += Math.hypot(ab[1]*ac[2]-ab[2]*ac[1],ab[2]*ac[0]-ab[0]*ac[2],ab[0]*ac[1]-ab[1]*ac[0])/2;
   }
-  expect(areas[0]).toBeCloseTo(8,4);
-  expect(areas[1]).toBeCloseTo(10,4);
+  return total;
 }
 
-function meshVolume(mesh: Awaited<ReturnType<typeof meshes>>['meshes'][number]) {
-  const p = (i: number) => Array.from(mesh.positions.slice(i*3,i*3+3));
+function expectCutFaces(mesh: Awaited<ReturnType<typeof meshes>>['meshes'][number]) {
+  expect(cutFaceArea(mesh,0,0)).toBeCloseTo(8,4);
+  expect(cutFaceArea(mesh,2,0)).toBeCloseTo(10,4);
+}
+
+function signedMeshVolume(mesh: Awaited<ReturnType<typeof meshes>>['meshes'][number]) {
+  const p = (i: number) => Array.from(mesh.positions.slice(i*3,i*3+3), (v,axis) => v+(mesh.origin?.[axis] ?? 0));
   let volume6 = 0;
   for (let i = 0; i < mesh.indices.length; i += 3) {
     const [a,b,c] = [p(mesh.indices[i]),p(mesh.indices[i+1]),p(mesh.indices[i+2])];
     volume6 += a[0]*(b[1]*c[2]-b[2]*c[1])+a[1]*(b[2]*c[0]-b[0]*c[2])+a[2]*(b[0]*c[1]-b[1]*c[0]);
   }
-  return Math.abs(volume6)/6;
+  return volume6/6;
+}
+
+function meshVolume(mesh: Awaited<ReturnType<typeof meshes>>['meshes'][number]) {
+  return Math.abs(signedMeshVolume(mesh));
 }
 
 const runtime = existsSync(fileURLToPath(new URL('../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url)));
@@ -166,6 +172,11 @@ ENDSEC;\nEND-ISO`));
     expect(store.entityIndex.byType.get('IFCINDEXEDCOLOURMAP')).toHaveLength(1);
     const reopened = await meshes(result.content);
     expect(reopened.meshes).toHaveLength(2);
+    // #7908: the unit cube cut at x=0.5 retains 0.5 m³ and a 1 m² cap.
+    // Colour submeshes are open surface partitions: sum signed contributions first.
+    expect(Math.abs(reopened.meshes.reduce((sum,mesh) => sum+signedMeshVolume(mesh),0))).toBeCloseTo(0.5,4);
+    const cutX = 0.5-renderFrameWorldOffset(reopened.coordinateInfo).x;
+    expect(reopened.meshes.reduce((sum,mesh) => sum+cutFaceArea(mesh,0,cutX),0)).toBeCloseTo(1,4);
     expect(reopened.meshes.some(mesh => mesh.color[0]>0.89 && mesh.color[1]<0.11)).toBe(true);
     expect(reopened.meshes.some(mesh => mesh.color[1]>0.89 && mesh.color[0]<0.11)).toBe(true);
   });
@@ -301,6 +312,9 @@ ENDSEC;\nEND-ISO`));
     expect(new Set(reopened.meshes.map(mesh => mesh.expressId)).size).toBe(6);
     const shift = renderFrameWorldOffset(reopened.coordinateInfo).x;
     for (const mesh of reopened.meshes) {
+      // #7908: a zero-plane bound alone cannot detect a 1000x scale error.
+      expect(mesh.positions.length).toBeGreaterThan(0);
+      expect(meshVolume(mesh)).toBeCloseTo(40,3);
       const maximum = Math.max(...mesh.positions.filter((_, i) => i % 3 === 0));
       expect(maximum+(mesh.origin?.[0] ?? 0)+shift).toBeLessThanOrEqual(1e-5);
     }

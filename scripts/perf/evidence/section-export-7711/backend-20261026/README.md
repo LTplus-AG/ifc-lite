@@ -24,3 +24,25 @@ This supersedes the never-executed `issue7711-checksum-v1` cohort (admission
 timed out before it started) for the current backend head. The qualification
 does not replace mesh byte-identity qualification, and the identity check
 excludes text metadata, materials, UVs, textures and instancing.
+
+## Recompute the v3 report
+
+The v3 packet now retains its own [original receipt](v3-qualified/receipt.json),
+[30 raw per-side/per-fixture samples](v3-qualified/measurement/runs.jsonl),
+[exact measurement shell command](v3-qualified/measurement/measure.sh.txt), and
+[cohort entry point](v3-qualified/cohort.py.txt). The `.txt` suffix marks archived
+command text, not a new executable. [SHA-256 values](v3-qualified/reproduction-hashes.json)
+verify these bytes. The receipt hash matches the original value above; its
+artifact inventory independently pins the raw samples and cohort entry point.
+These files belong to v3 job `ffb60111-ae27-4e3e-b8ed-d6ccc3247e4a`, not the
+older aggregate archive in the parent directory.
+
+From the repository root, recompute the numerical report without a benchmark:
+
+```sh
+node scripts/perf/ab-report.mjs scripts/perf/evidence/section-export-7711/backend-20261026/v3-qualified/measurement/runs.jsonl --base 8e2778ca041f027ab95d59532ce43d18bb42dab6 --branch 9597ecb45ea648c3f3e2c6cb077dcb7fcfcca7f6 --json /tmp/section-export-v3-report.json
+```
+
+Use the reporter revision hash pinned in `v3-qualified/plan.json`. Recomputing
+samples checks the numerical verdict; it does not recreate historical host
+conditions or replace the original qualification receipt.

@@ -29,7 +29,7 @@ pub fn assert_lineage(vector: &Value, core: &KeyDiff<'_, Value>, matches: &[Cont
         }
         out
     }).collect();
-    let keys: Vec<String> = serde_json::from_value(vector["keys"].clone()).unwrap();
+    let keys: Vec<ifc_lite_diff::JsString> = serde_json::from_value(vector["keys"].clone()).unwrap();
     let mut rekey = json!({});
     for (name, policy) in [("copy-to-all",RekeyPolicy::CopyToAll),("largest-share",RekeyPolicy::LargestShare),("orphan-on-split",RekeyPolicy::OrphanOnSplit)] {
         rekey[name] = json!(rekey_by_lineage(&keys, &lineage, policy).iter().map(|r| {

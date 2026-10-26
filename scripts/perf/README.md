@@ -4542,6 +4542,45 @@ explicitly, retain the current build policy and automatic lowering, and require
 a new measurement and maintainer decision for any later increase. Source-matched
 performance acceptance and transfer-size acceptance remain separate decisions.
 
+## Section-clipped IFC export (#7711)
+
+Section clipping is an opt-in export operation after the normal mutation-resolved
+STEP serialization. It reuses canonical meshing and the exact intersection kernel;
+ordinary loading and ordinary STEP export do not invoke it. The WASM and geometry
+bridge changes expose that operation without changing the load pipeline.
+Palette fragments are rejoined by source representation item and f64 origin
+before choosing solid clipping; appearance partitioning cannot decide whether a
+cut is capped, and a repeated leaf cannot collapse distant occurrences into one
+f32 clip frame. Strict export additionally requests per-product processing
+receipts and validates source references. Ordinary processing sinks do not
+request or allocate those receipts. These export-only integrity checks and the
+conservative diagnostic/texture refusals require separately attributed load-cost
+and real-model qualification, recorded below.
+Retained face colours use bounded BVH attribution after the exact topology cut.
+
+The [historical export cohort](evidence/section-export-7711/README.md) retains
+its original source attribution and operation timings. Its identical native
+controls do not qualify changed native code; the fresh comparison below does.
+
+The recovered backend `de3c774` was measured against authenticated main
+`141285f` in a fresh native worker-pool cohort. Six untimed full-payload calls
+preserve ordered mesh output, raw float bits, frames/metadata/instances and all
+diagnostic bytes on Haus, ISSUE_129 and heavy Holter. All timed counts and
+fingerprints match. The stock phase report identifies no real change but remains
+inconclusive; complete-load observations include small adverse changes. No speed
+or neutrality claim follows.
+
+Disposition: accept the disclosed ordinary native cost for the section-export
+capability demonstrated by the separate fresh Haus real-WASM crop and external
+IfcOpenShell/OCC witness. Ordinary sinks allocate no audit receipts, but the
+changed diagnostic drain order and unsupported-map key cloning therefore required this
+full-load measurement. The [retained native evidence](evidence/section-export-7711/recovery-native-load/README.md)
+separates that cost from the requested crop operation. It establishes no browser,
+GPU, crop-throughput or opt-in-audit throughput verdict. Existing native-instruction,
+bundle, parity and required CI gates remain binding; no baseline or ceiling was
+changed. Lesson: measure the default path even when its new consumer is opt-in,
+and keep actual crop behavior proof separate from load-cost acceptance.
+
 ## Standalone placement refusal reconciliation (#7877)
 
 The standalone native comparison preserves ordered mesh payloads, exact float/frame/metadata identity and complete diagnostic bytes on the catalog corpus. The stock reporter remains inconclusive; all-sample block summaries are retained beside the stock selected-row report, including the adverse parse observations and geometry offsets. The maintainer accepts the observed native cost for consistently refusing unreadable authored local, linear and grid placements while retaining absent-placement identity and readable degenerate-direction repair. This is a correctness tradeoff, not a speedup or statistical-neutrality claim. This is a maintainer judgment, not a statistical test result. The evidence does not waive browser/WASM qualification, WASM size budgets or required gates, and the later combined placement/memo measurements must not be relabelled as this standalone result.
@@ -4821,3 +4860,12 @@ Lesson: a successful measurement process is not a no-regression verdict, and
 low instruction overhead cannot waive an elapsed-time regression. Report the
 complete paired observations and the accepted correctness tradeoff instead of
 replacing samples until the headline turns green.
+## Section-export measured engine budget decision
+
+The human approved retaining the section-export stack at its measured local
+engine budget, with the inherited tolerance and viewer budgets unchanged.
+The [decision evidence](../../docs/architecture/evidence/section-export-budget/README.md)
+binds the source, runtime custody, original size failure and completed consumer
+proof. Accepting this budget does not establish isolated feature cost or browser
+runtime cost. Preserve the original failures and unknown consumer attempt;
+hosted/parity and current performance remain holds, and merge is not approved.

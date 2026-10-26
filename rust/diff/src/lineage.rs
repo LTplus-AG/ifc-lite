@@ -1,6 +1,7 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
+use crate::JsString;
 use std::collections::{HashMap, HashSet};
 use crate::content_types::ContentMatch;
 use crate::identity_map::{identity_map_from_content_matches, identity_map_from_successors};
@@ -13,15 +14,15 @@ use crate::utf16::cmp_code_units;
 pub enum LineageRelation { Identity, Split, Merge, Replaced }
 #[derive(Debug, Clone, PartialEq)]
 pub struct LineageEntry {
-    pub base: Vec<String>, pub head: Vec<String>, pub relation: LineageRelation,
-    pub reason: String, pub shares: Option<Vec<f64>>,
+    pub base: Vec<JsString>, pub head: Vec<JsString>, pub relation: LineageRelation,
+    pub reason: JsString, pub shares: Option<Vec<f64>>,
 }
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct Lineage { pub entries: Vec<LineageEntry>, pub deleted: Vec<String> }
+pub struct Lineage { pub entries: Vec<LineageEntry>, pub deleted: Vec<JsString> }
 #[derive(Default)]
 pub struct AliasProvenance {
-    pub reasons: HashMap<String, String>,
-    pub relations: HashMap<String, LineageRelation>,
+    pub reasons: HashMap<JsString, JsString>,
+    pub relations: HashMap<JsString, LineageRelation>,
 }
 pub fn lineage_of_diff<R>(diff: &KeyDiff<'_, R>, matches: &[ContentMatch<'_, R>], splits: &[SplitMergeClaim<'_, R>],
     accepted: &[SuccessorClaim<'_, R>], provenance: &AliasProvenance) -> Lineage {
@@ -46,19 +47,19 @@ pub fn lineage_of_diff<R>(diff: &KeyDiff<'_, R>, matches: &[ContentMatch<'_, R>]
             SplitMergeKind::Split => (vec![claim.whole.key.clone()], pieces, LineageRelation::Split, "split"),
             SplitMergeKind::Merge => (pieces, vec![claim.whole.key.clone()], LineageRelation::Merge, "merge"),
         };
-        entries.push(LineageEntry { base, head, relation, reason: format!("{kind}:{confidence}"), shares });
+        entries.push(LineageEntry { base, head, relation, reason: format!("{kind}:{confidence}").into(), shares });
     }
     for e in identity_map_from_successors(accepted) {
         entries.push(LineageEntry { base: vec![e.base], head: vec![e.here], relation: LineageRelation::Replaced, reason: e.reason, shares: None });
     }
-    entries.sort_by(|a, b| cmp_code_units(a.base.first().map(String::as_str).unwrap_or(""), b.base.first().map(String::as_str).unwrap_or(""))
-        .then_with(|| cmp_code_units(a.head.first().map(String::as_str).unwrap_or(""), b.head.first().map(String::as_str).unwrap_or(""))));
+    entries.sort_by(|a, b| a.base.first().map(|s| s.units()).unwrap_or(&[]).cmp(b.base.first().map(|s| s.units()).unwrap_or(&[]))
+        .then_with(|| a.head.first().map(|s| s.units()).unwrap_or(&[]).cmp(b.head.first().map(|s| s.units()).unwrap_or(&[]))));
     let accounted: HashSet<_> = entries.iter().flat_map(|e| e.base.iter()).collect();
     let mut deleted: Vec<_> = diff.entries.iter().filter(|e| e.state == DiffState::Deleted && !accounted.contains(&e.key)).map(|e| e.key.clone()).collect();
     deleted.sort_by(cmp_code_units);
     Lineage { entries, deleted }
 }
-pub fn lineage_conflicts(entries: &[LineageEntry]) -> Vec<String> {
+pub fn lineage_conflicts(entries: &[LineageEntry]) -> Vec<JsString> {
     let mut problems = vec![];
     for side in ["base", "head"] {
         let mut seen = HashSet::new();
@@ -70,22 +71,22 @@ pub fn lineage_conflicts(entries: &[LineageEntry]) -> Vec<String> {
         }
         let mut repeated: Vec<_> = repeated.into_iter().collect();
         repeated.sort_by(cmp_code_units);
-        for key in repeated { problems.push(format!("{side} key \"{key}\" appears in more than one lineage entry")); }
+        for key in repeated { problems.push(JsString::surround(&format!("{side} key \""), key, "\" appears in more than one lineage entry")); }
     }
     problems
 }
 /// Ordered pairs preserve the JavaScript Map iteration contract.
-pub fn key_aliases_from_lineage(entries: &[LineageEntry]) -> Vec<(String, String)> {
-    let mut claims: Vec<(String, String)> = vec![];
-    let mut by_head: HashMap<&str, usize> = HashMap::new();
+pub fn key_aliases_from_lineage(entries: &[LineageEntry]) -> Vec<(JsString, JsString)> {
+    let mut claims: Vec<(JsString, JsString)> = vec![];
+    let mut by_head: HashMap<&JsString, usize> = HashMap::new();
     let mut conflicted = HashSet::new();
     for entry in entries {
         if !matches!(entry.relation, LineageRelation::Identity | LineageRelation::Replaced) || entry.base.len() != 1 || entry.head.len() != 1 { continue; }
         let here = &entry.head[0]; let base = &entry.base[0];
-        if let Some(&index) = by_head.get(here.as_str()) {
+        if let Some(&index) = by_head.get(here) {
             if &claims[index].1 != base { conflicted.insert(here.clone()); }
         } else {
-            by_head.insert(here.as_str(), claims.len());
+            by_head.insert(here, claims.len());
             claims.push((here.clone(), base.clone()));
         }
     }
@@ -96,8 +97,10 @@ pub enum RekeyPolicy { CopyToAll, LargestShare, OrphanOnSplit }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RekeyRelation { Changed(LineageRelation), Unchanged }
 #[derive(Debug, PartialEq)]
-pub struct RekeyResult { pub key: String, pub successors: Vec<String>, pub relation: Option<RekeyRelation>, pub orphan: bool }
-pub fn rekey_by_lineage(keys: &[String], lineage: &Lineage, policy: RekeyPolicy) -> Vec<RekeyResult> {
+pub struct RekeyResult { pub key: JsString, pub successors: Vec<JsString>, pub relation: Option<RekeyRelation>, pub orphan: bool }
+/// LargestShare orphans splits unless shares are complete, nonempty, finite and
+/// nonnegative with a unique maximum. Zero is valid; no normalization is required.
+pub fn rekey_by_lineage(keys: &[JsString], lineage: &Lineage, policy: RekeyPolicy) -> Vec<RekeyResult> {
     let deleted: HashSet<_> = lineage.deleted.iter().collect();
     let mut by_base = HashMap::new();
     for entry in &lineage.entries { for key in &entry.base { by_base.entry(key).or_insert(entry); } }
@@ -110,7 +113,8 @@ pub fn rekey_by_lineage(keys: &[String], lineage: &Lineage, policy: RekeyPolicy)
         let successors = if entry.relation != LineageRelation::Split || matches!(policy, RekeyPolicy::CopyToAll) { entry.head.clone() }
         else if matches!(policy, RekeyPolicy::LargestShare) {
             match &entry.shares {
-                Some(shares) if shares.len() == entry.head.len() && !shares.is_empty() => {
+                Some(shares) if shares.len() == entry.head.len() && !shares.is_empty()
+                    && shares.iter().all(|s| s.is_finite() && *s >= 0.0) => {
                     let mut best = 0;
                     for i in 1..shares.len() { if shares[i] > shares[best] { best = i; } }
                     if shares.iter().filter(|&&s| s == shares[best]).count() > 1 { vec![] } else { vec![entry.head[best].clone()] }

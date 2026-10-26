@@ -7,28 +7,32 @@ use std::collections::HashMap;
 
 use crate::plan::add_types::GlobalId;
 use crate::plan::attrs::attribute_index;
-use crate::plan::owner_history;
 use crate::plan::tessellation::{synthesize_context, Emit};
 use crate::step_ids::IdAllocator;
 
 use super::assoc::SharedKey;
 use super::mapped::MapRef;
+use crate::plan::attribution::Settles;
+
 use super::{Added, AddState};
 
 /// The project a synthesized context is listed by, and its
 /// `RepresentationContexts` slot.
 pub(super) type ContextOwner = (u32, usize);
 
-impl AddState<'_> {
-    /// The owner history new records name: the plan's, else one synthesized
-    /// into `out`, which the caller commits only if its Add builds.
-    pub(super) fn owner_history_for(&self, ids: &mut IdAllocator, out: &mut Vec<(u32, String)>) -> Result<u32, String> {
-        if let Some(id) = self.owner_history {
-            return Ok(id);
-        }
-        let (records, id) = owner_history::synthesize(self.schema, ids, self.context).ok_or("id space exhausted")?;
-        out.extend(records);
-        Ok(id)
+impl AddState<'_, '_> {
+    /// The owner history new records name ([`Histories`]). What it has to
+    /// write goes into `out`, which the caller commits only if its Add
+    /// builds, so a plan whose Adds are all refused writes nothing.
+    pub(super) fn owner_history_for(&self, ids: &mut IdAllocator, out: &mut Vec<(u32, String)>) -> Result<Settles, String> {
+        let taken = self.history.take(ids, self.removed).ok_or("id space exhausted")?;
+        out.extend(taken.records);
+        Ok(taken.settles)
+    }
+
+    /// The owner history the built Adds name, if one is settled yet.
+    pub(super) fn settled_history(&self) -> Option<u32> {
+        self.history.settled(self.removed)
     }
 
     /// The context new geometry goes into: the plan's, else one synthesized
@@ -69,8 +73,8 @@ impl AddState<'_> {
 
     /// Keep what an Add built: its records, the owner history they name, and
     /// the shared records later Adds may reuse.
-    pub(super) fn commit(&mut self, owner_history: u32, out: Vec<(u32, String)>, shared: HashMap<SharedKey, u32>) {
-        self.owner_history = Some(owner_history);
+    pub(super) fn commit(&mut self, owner: Settles, out: Vec<(u32, String)>, shared: HashMap<SharedKey, u32>) {
+        self.history.commit(owner);
         self.records.extend(out);
         self.shared.extend(shared);
     }

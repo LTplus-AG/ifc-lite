@@ -156,6 +156,60 @@ test('a tree with no holes passes', () => {
   });
 });
 
+// CI dedup preserves the original literal census; catch-all suites stay outside it.
+const UNIQUE_TEST_STEP = String.raw`      - run: |
+          node --test $(printf '%s\n' \
+            scripts/retained.test.mjs \
+            scripts/retained.test.mjs \
+            scripts/*.test.mjs \
+            scripts/lib/*.test.mjs \
+            | sort -u)`;
+
+test('once-only printf/sort invocation still audits literal test inputs without expanding globs', () => {
+  for (const step of [UNIQUE_TEST_STEP, UNIQUE_TEST_STEP.replace('sort -u', 'LC_ALL=C sort -u')]) {
+    withTree({ steps: DEFAULT_STEPS + '\n' + step }, root => {
+      mkdirSync(join(root, 'unfiltered'));
+      writeFileSync(join(root, 'unfiltered/literal.json'), '{}');
+      writeFileSync(join(root, 'unfiltered/glob.json'), '{}');
+      writeFileSync(join(root, 'scripts/retained.test.mjs'), "const input = 'unfiltered/literal.json';\n");
+      writeFileSync(join(root, 'scripts/future.test.mjs'), "const input = 'unfiltered/glob.json';\n");
+      const missing = run(root);
+      assert.equal(missing.status, 1, missing.out);
+      assert.match(missing.out, /scripts\/retained\.test\.mjs/);
+      assert.match(missing.out, /unfiltered\/literal\.json/);
+      assert.doesNotMatch(missing.out, /unfiltered\/glob\.json|scripts\/future\.test\.mjs/);
+      writeFileSync(join(root, '.github/workflows/test.yml'), WORKFLOW(
+        DEFAULT_FILTERS + "\n              - 'unfiltered/literal.json'",
+        DEFAULT_STEPS + '\n' + step,
+      ));
+      const covered = run(root);
+      assert.equal(covered.status, 0, covered.out);
+    });
+  }
+});
+
+test('only the strict printf/sort form can establish literal test reachability', () => {
+  for (const unsupported of [
+    UNIQUE_TEST_STEP.replace('sort -u', 'sort -r'),
+    UNIQUE_TEST_STEP.replace("'%s\\n'", "'%s '"),
+    UNIQUE_TEST_STEP.replace('scripts/lib/*.test.mjs', '$(other-command)'),
+  ]) {
+    withTree({ steps: DEFAULT_STEPS + '\n' + UNIQUE_TEST_STEP }, root => {
+      mkdirSync(join(root, 'unfiltered'));
+      writeFileSync(join(root, 'unfiltered/literal.json'), '{}');
+      writeFileSync(join(root, 'scripts/retained.test.mjs'), "const input = 'unfiltered/literal.json';\n");
+      // An unfiltered job would falsely cover the input if an arbitrary wrapper
+      // were mistaken for an execution of these exact filenames.
+      const workflow = join(root, '.github/workflows/test.yml');
+      writeFileSync(workflow, readFileSync(workflow, 'utf8') +
+        '\n  unrestricted:\n    runs-on: ubuntu-latest\n    steps:\n' + unsupported + '\n');
+      const result = run(root);
+      assert.equal(result.status, 1, result.out);
+      assert.match(result.out, /unfiltered\/literal\.json/);
+    });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // It FIRES: the synthetic twin of the four real holes.
 // ---------------------------------------------------------------------------

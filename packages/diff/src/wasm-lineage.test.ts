@@ -20,6 +20,16 @@ test.skipIf(!existsSync(binary) || !existsSync(new URL('../../wasm/pkg-diff/ifc-
   ], deleted: ['gone'] };
   expect(facade.lineageConflicts(lineage.entries)).toEqual(oracle.lineageConflicts(lineage.entries));
   expect([...facade.keyAliasesFromLineage(lineage.entries)]).toEqual([...oracle.keyAliasesFromLineage(lineage.entries)]);
+  // #8084: compare both engines on caller-supplied numeric evidence.
+  for (const shares of [undefined, [], [0.6], [0.2, 0.6, 0.2],
+    [NaN, 0.6], [0.6, NaN], [Infinity, 0.6], [0.6, Infinity],
+    [-Infinity, 0.6], [0.6, -Infinity], [-0.1, 0.6], [0.6, -0.1],
+    [0.5, 0.5], [0, 0], [0, 1], [2, 6], [0.4, 0.6]]) {
+    const entries: Lineage['entries'] = [{ base: ['source'], head: ['a', 'b'], relation: 'split', reason: 'split:verified', shares }];
+    for (const policy of ['copy-to-all', 'largest-share', 'orphan-on-split'] satisfies RekeyPolicy[]) {
+      expect(facade.rekeyByLineage(['source'], entries, policy)).toEqual(oracle.rekeyByLineage(['source'], entries, policy));
+    }
+  }
   const keys = ['old-z', 'old-a', 'split', 'gone', 'unchanged'];
   for (const policy of ['copy-to-all', 'largest-share', 'orphan-on-split'] satisfies RekeyPolicy[]) {
     expect(facade.rekeyByLineage(new Set(keys), lineage, policy)).toEqual(oracle.rekeyByLineage(keys, lineage, policy));

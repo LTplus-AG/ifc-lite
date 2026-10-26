@@ -214,7 +214,7 @@ fn a_new_building_can_be_aggregated_into_the_project() {
 #[test]
 fn a_storey_cannot_be_aggregated_into_the_project() {
     let storey = object(IfcClass::BuildingStorey, gid(20), Some(ObjectRef::Id(1)), Representation::None);
-    refused(&storey_with_typed_wall("IFC4"), storey, "not a spatial element");
+    refused(&storey_with_typed_wall("IFC4"), storey, "cannot aggregate");
 }
 
 /// A new type is paired with its occurrence's class like an existing one.
@@ -265,17 +265,33 @@ fn a_property_measure_must_be_a_declared_number() {
 fn an_add_keeps_the_owner_history_a_delete_would_take() {
     for schema in SCHEMAS {
         let source = String::from_utf8(storey_with_typed_wall(schema)).unwrap();
-        let wall_head = format!("#10=IFCWALL('{}',$,", fixture_gid(10));
-        assert!(source.contains(&wall_head), "{schema}: fixture wall");
-        let source = source
-            .replace(&wall_head, &format!("#10=IFCWALL('{}',#5,", fixture_gid(10)))
-            .replace("ENDSEC;\nEND-ISO", "#5=IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);\nENDSEC;\nEND-ISO");
-        let wall = object(IfcClass::Wall, gid(26), storey(), Representation::None);
-        let (out, report) = run(source.as_bytes(), vec![(ObjectRef::Id(10), Disposition::Delete), add(wall)]);
-        assert_clean(&report, schema);
+        // IFC2X3 fixtures already name the preamble's `#5` everywhere.
+        let source = if schema == "IFC2X3" {
+            source
+        } else {
+            let wall_head = format!("#10=IFCWALL('{}',$,", fixture_gid(10));
+            assert!(source.contains(&wall_head), "{schema}: fixture wall");
+            source
+                .replace(&wall_head, &format!("#10=IFCWALL('{}',#5,", fixture_gid(10)))
+                .replace("ENDSEC;\nEND-ISO", "#5=IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);\nENDSEC;\nEND-ISO")
+        };
+        let plan = || vec![(ObjectRef::Id(10), Disposition::Delete), add(object(IfcClass::Wall, gid(26), storey(), Representation::None))];
+        let history = |out: &[u8]| attr(out, schema, id_in(out, gid(26)), "OwnerHistory");
+        // Without an application the new wall reuses the source's history,
+        // which the delete would otherwise take.
+        let (out, report) = run_with(source.as_bytes(), plan(), PlanContext::new());
+        assert!(report.refusals.is_empty(), "{schema}: {report:?}");
+        assert!(matches!(&report.findings[..], [only] if only.message.starts_with("no ExportingApplication")), "{schema}: {:?}", report.findings);
+        assert_eq!(type_in(&out, 10), "", "{schema}: the delete took #10");
         assert_eq!(type_in(&out, 5), "IFCOWNERHISTORY", "{schema}: the file's owner history stays");
-        let line = String::from_utf8_lossy(&out).lines().find(|l| l.starts_with(&format!("#{}=", id_in(&out, gid(26))))).unwrap().to_string();
-        assert!(line.contains(",#5,"), "{schema}: the new wall names it: {line}");
+        assert_eq!(history(&out), "#5", "{schema}: the new wall names it");
+        // With one the wall names its own ADDED history, which is in the
+        // output too.
+        let (out, report) = run(source.as_bytes(), plan());
+        assert_clean(&report, schema);
+        let named = history(&out);
+        let named: u32 = named.trim_start_matches('#').parse().unwrap_or_else(|_| panic!("{schema}: owner history ref {named}"));
+        assert_eq!(attr(&out, schema, named, "ChangeAction"), ".ADDED.", "{schema}: the new wall names a live ADDED history");
     }
 }
 
@@ -314,4 +330,175 @@ fn a_later_add_names_a_type_an_earlier_add_created() {
         assert_eq!(report.added, 2, "{schema}");
         assert_eq!(type_in(&out, id_in(&out, type_id)), "IFCWALLTYPE", "{schema}: one new type");
     }
+}
+
+/// A new spatial element with no container would be written outside the
+/// spatial tree, with no IfcRelAggregates.
+/// (#8142)
+#[test]
+fn a_new_spatial_element_without_a_container_is_refused() {
+    for schema in SCHEMAS {
+        for class in [IfcClass::BuildingStorey, IfcClass::Space, IfcClass::Named("IfcSite".into())] {
+            refused(&storey_with_typed_wall(schema), object(class, gid(30), None, Representation::None), "needs a container");
+        }
+    }
+}
+
+/// A spatial element goes under a parent the schema allows for it.
+/// (#8142)
+#[test]
+fn a_spatial_element_under_a_wrong_parent_is_refused() {
+    for schema in SCHEMAS {
+        let source = storey_with_typed_wall(schema);
+        // A building under a storey; a site under a building. (A storey under
+        // a storey is a partial storey, and valid.)
+        let building = object(IfcClass::Named("IfcBuilding".into()), gid(31), storey(), Representation::None);
+        refused(&source, building, "cannot aggregate");
+        let site = object(IfcClass::Named("IfcSite".into()), gid(32), Some(ObjectRef::Id(60)), Representation::None);
+        refused(&source, site, "cannot aggregate");
+        // A space in a storey is fine.
+        let (_, report) = run(&source, vec![add(object(IfcClass::Space, gid(33), storey(), Representation::None))]);
+        assert_clean(&report, schema);
+    }
+}
+
+/// IFC4 deprecates IfcDoorStyle / IfcWindowStyle; CorrectStyleAssigned
+/// wants the Type classes. IFC2X3 has only the styles.
+/// (#8142)
+#[test]
+fn a_door_or_window_typed_by_a_style_is_refused_in_ifc4() {
+    for (class, style, wanted) in [(IfcClass::Door, "IfcDoorStyle", "IFCDOORTYPE"), (IfcClass::Window, "IfcWindowStyle", "IFCWINDOWTYPE")] {
+        let mut obj = object(class, gid(35), storey(), Representation::None);
+        obj.type_link = Some(new_type(style, None));
+        refused(&storey_with_typed_wall("IFC4"), obj, &format!("typed by an {wanted}"));
+    }
+}
+
+/// Every spatial class under every parent class the schema declares: allowed
+/// exactly where the spatial hierarchy allows it (IFC4X3 adds facilities).
+/// (#8142)
+#[test]
+fn a_spatial_class_is_accepted_only_under_its_own_parents() {
+    use ifc_lite_core::entity_info_for_schema;
+    let children: [(&str, &[&str]); 4] = [
+        ("IFCSITE", &["IFCPROJECT", "IFCSITE"]),
+        ("IFCBUILDING", &["IFCPROJECT", "IFCSITE", "IFCBUILDING", "IFCFACILITY", "IFCFACILITYPART"]),
+        ("IFCBUILDINGSTOREY", &["IFCBUILDING", "IFCBUILDINGSTOREY"]),
+        ("IFCSPACE", &["IFCBUILDINGSTOREY", "IFCBUILDING", "IFCSITE", "IFCSPACE", "IFCFACILITY", "IFCFACILITYPART"]),
+    ];
+    let parents = ["IFCPROJECT", "IFCSITE", "IFCBUILDING", "IFCBUILDINGSTOREY", "IFCSPACE", "IFCFACILITY", "IFCFACILITYPART"];
+    for schema in SCHEMAS {
+        for (child, allowed) in children {
+            for parent in parents {
+                if entity_info_for_schema(schema, parent).is_none() {
+                    continue;
+                }
+                let base = String::from_utf8(storey_with_typed_wall(schema)).unwrap();
+                let source = base.replacen("ENDSEC;\nEND-ISO", &format!("#90={parent}($);\nENDSEC;\nEND-ISO"), 1);
+                let obj = object(IfcClass::Named(child.into()), gid(40), Some(ObjectRef::Id(90)), Representation::None);
+                let (_, report) = run(source.as_bytes(), vec![add(obj)]);
+                let accepted = report.added == 1;
+                assert_eq!(accepted, allowed.contains(&parent), "{schema}: {child} under {parent}: {:?}", report.refusals);
+            }
+        }
+    }
+}
+
+/// IFC4.3 Spatial Decomposition: a facility may be part of a facility part
+/// (a section of a larger facility holding smaller functional facilities).
+/// (#8142)
+#[test]
+fn a_facility_is_accepted_under_a_facility_part_in_ifc4x3() {
+    let base = String::from_utf8(storey_with_typed_wall("IFC4X3")).unwrap();
+    let source = base.replacen("ENDSEC;\nEND-ISO", "#90=IFCFACILITYPART($);\nENDSEC;\nEND-ISO", 1);
+    let obj = object(IfcClass::Named("IFCBRIDGE".into()), gid(41), Some(ObjectRef::Id(90)), Representation::None);
+    let (_, report) = run(source.as_bytes(), vec![add(obj)]);
+    assert_eq!(report.added, 1, "{:?}", report.refusals);
+}
+
+/// IFC4.3 Spatial Decomposition: a zone is contained in a spatial structure
+/// element, may be composed under another zone, and goes nowhere else; an
+/// external spatial element is contained. Neither needs a container.
+/// (#8142)
+#[test]
+fn zones_and_external_spatial_elements_follow_the_spatial_decomposition_rules() {
+    use ifc_lite_core::entity_info_for_schema;
+    for schema in ["IFC4", "IFC4X3"] {
+        let base = String::from_utf8(storey_with_typed_wall(schema)).unwrap();
+        let source = base.replacen("ENDSEC;\nEND-ISO", "#90=IFCSPATIALZONE($);\nENDSEC;\nEND-ISO", 1);
+        let rel_of = |out: &[u8], g| {
+            let id = id_in(out, g);
+            String::from_utf8_lossy(out).lines().find(|l| refs(l).contains(&id) && (l.contains("IFCRELCONTAINEDINSPATIALSTRUCTURE") || l.contains("IFCRELAGGREGATES("))).unwrap_or("").to_string()
+        };
+        let classes: &[&str] = if entity_info_for_schema(schema, "IFCEXTERNALSPATIALELEMENT").is_some() { &["IfcSpatialZone", "IfcExternalSpatialElement"] } else { &["IfcSpatialZone"] };
+        for class in classes {
+            let mk = |n, parent: Option<u32>| object(IfcClass::Named((*class).into()), gid(n), parent.map(ObjectRef::Id), Representation::None);
+            let (_, report) = run(&source.clone().into_bytes(), vec![add(mk(41, None))]);
+            assert_eq!(report.added, 1, "{schema} {class} alone: {:?}", report.refusals);
+            let (out, report) = run(source.as_bytes(), vec![add(mk(42, Some(70)))]);
+            assert_eq!(report.added, 1, "{schema} {class} in a storey: {:?}", report.refusals);
+            assert!(rel_of(&out, gid(42)).contains("IFCRELCONTAINEDINSPATIALSTRUCTURE"), "{schema} {class}: contained");
+            refused(source.as_bytes(), mk(43, Some(1)), "cannot hold");
+            refused(source.as_bytes(), mk(44, Some(10)), "cannot hold");
+        }
+        // A zone under a zone is aggregated; an external element is not composed under one.
+        let zone = object(IfcClass::Named("IfcSpatialZone".into()), gid(45), Some(ObjectRef::Id(90)), Representation::None);
+        let (out, report) = run(source.as_bytes(), vec![add(zone)]);
+        assert_eq!(report.added, 1, "{schema}: {:?}", report.refusals);
+        assert!(rel_of(&out, gid(45)).contains("IFCRELAGGREGATES("), "{schema}: aggregated under the zone");
+        if classes.len() > 1 {
+            refused(source.as_bytes(), object(IfcClass::Named("IfcExternalSpatialElement".into()), gid(46), Some(ObjectRef::Id(90)), Representation::None), "cannot hold");
+        }
+    }
+}
+
+/// (#8142) IfcRelContainedInSpatialStructure.RelatingStructure is an
+/// IfcSpatialElement: an element may be contained in an external spatial
+/// element or a spatial zone, as on main.
+#[test]
+fn an_element_may_be_contained_in_an_external_spatial_element_or_a_zone_8142() {
+    let base = String::from_utf8(storey_with_typed_wall("IFC4")).unwrap();
+    let source = base.replacen("ENDSEC;\nEND-ISO", "#90=IFCEXTERNALSPATIALELEMENT($);\n#91=IFCSPATIALZONE($);\nENDSEC;\nEND-ISO", 1);
+    let wall = object(IfcClass::Wall, gid(47), Some(ObjectRef::Id(90)), Representation::None);
+    let (out, report) = run(source.as_bytes(), vec![add(wall)]);
+    assert_eq!(report.added, 1, "{:?}", report.refusals);
+    let wall_id = id_in(&out, gid(47));
+    let text = String::from_utf8_lossy(&out);
+    let rel = text.lines().find(|l| l.contains("IFCRELCONTAINEDINSPATIALSTRUCTURE") && refs(l).contains(&wall_id)).expect("the wall is contained");
+    assert!(refs(rel).contains(&90), "the relationship names the external element: {rel}");
+    let (out, report) = run(source.as_bytes(), vec![add(object(IfcClass::Wall, gid(48), Some(ObjectRef::Id(91)), Representation::None))]);
+    assert_eq!(report.added, 1, "{:?}", report.refusals);
+    let wall_id = id_in(&out, gid(48));
+    let text = String::from_utf8_lossy(&out);
+    let rel = text.lines().find(|l| l.contains("IFCRELCONTAINEDINSPATIALSTRUCTURE") && refs(l).contains(&wall_id)).expect("the wall is contained");
+    assert!(refs(rel).contains(&91), "the relationship names the zone: {rel}");
+}
+
+/// The ids a STEP line references.
+fn refs(line: &str) -> Vec<u32> {
+    let mut ids = Vec::new();
+    crate::step_text::refs_in_line(line.as_bytes(), &mut ids);
+    ids
+}
+
+/// (#8142) A measure over INTEGER takes a whole number, written as an
+/// integer (`IfcPositiveInteger`), and its name must be a type name exactly.
+#[test]
+fn an_integer_measure_is_written_as_an_integer_8142() {
+    let measured = |measure_type: &str, value: f64| {
+        let mut wall = object(IfcClass::Wall, gid(28), storey(), Representation::None);
+        wall.psets = vec![NewPropertySet {
+            name: "Pset_Test".into(),
+            kind: PsetKind::Property,
+            properties: vec![NewProperty { name: "N".into(), value: PropertyValue::Measure { measure_type: measure_type.into(), value }, unit: None }],
+        }];
+        wall
+    };
+    for schema in ["IFC4", "IFC4X3"] {
+        let (out, report) = run(&storey_with_typed_wall(schema), vec![add(measured("IfcPositiveInteger", 3.0))]);
+        assert_clean(&report, schema);
+        assert!(String::from_utf8_lossy(&out).contains("IFCPOSITIVEINTEGER(3),"), "{schema}");
+    }
+    refused(&storey_with_typed_wall("IFC4"), measured("IfcPositiveInteger", 3.5), "IfcPositiveInteger takes a whole number in IFC4");
+    refused(&storey_with_typed_wall("IFC4"), measured(" IfcPositiveInteger", 3.0), "is not a type name");
 }

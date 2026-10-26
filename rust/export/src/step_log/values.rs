@@ -13,7 +13,7 @@
 use serde_json::Value;
 
 use crate::generated::step_log_tables::{DEFINED_TYPE_BASES, SELECT_LEAVES, SELECT_SLOTS};
-use crate::step_text::escape;
+use crate::step_text::quoted;
 
 use super::attrs::is_real_slot;
 use super::jsval::{integral_token, js_number_to_string, js_to_number, json_number, json_to_js_string, step_integer, to_step_real};
@@ -60,13 +60,13 @@ pub(crate) fn typed_marker(type_name: &str, value: &Value) -> Result<String, Unw
             Some(false) => ".F.".to_string(),
             None => ".U.".to_string(),
         },
-        Some("STRING") | Some("BINARY") => format!("'{}'", escape(&json_to_js_string(value))),
+        Some("STRING") | Some("BINARY") => quoted(&json_to_js_string(value)),
         _ => match value {
             Value::Bool(b) => if *b { ".T." } else { ".F." }.to_string(),
             _ => match json_number(value) {
                 Some(n) if n.is_finite() && n.fract() == 0.0 => integral_token(n),
                 Some(n) => to_step_real(n)?,
-                None => format!("'{}'", escape(&json_to_js_string(value))),
+                None => quoted(&json_to_js_string(value)),
             },
         },
     };
@@ -149,7 +149,7 @@ fn step_value_at(value: &Value, force_real: bool, in_list: bool, top: bool) -> R
     {
         return Ok(trimmed.to_uppercase());
     }
-    Ok(format!("'{}'", escape(&text)))
+    Ok(quoted(&text))
 }
 
 /// `serializeQualifiedSelectSlot`: a scalar in a SELECT slot written as the

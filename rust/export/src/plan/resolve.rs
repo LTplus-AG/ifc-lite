@@ -11,8 +11,11 @@ use super::index::FileIndex;
 use super::add_types::AddItem;
 use super::patch::{apply_patch, PatchOutput};
 use super::removal::RemovalReason;
-use super::types::{Disposition, DroppedRepresentation, ExportPlan, ObjectRef, Refusal};
-use super::{add, attrs, delete, geometry, owner_history};
+use super::types::{Disposition, DroppedRepresentation, ExportPlan, ObjectRef, Refusal, ValidationFinding};
+use super::add::AddState;
+use super::attribution::{attribute_changes, Histories, Ledger, Rewrites};
+use super::identity::Identity;
+use super::{attrs, delete, geometry};
 
 pub(crate) struct Resolution {
     pub(crate) appended: Vec<(u32, String)>,
@@ -28,14 +31,18 @@ pub(crate) struct Resolution {
     /// property-set check, which is the defect a patch can introduce.
     pub(crate) patched_objects: Vec<u32>,
     pub(crate) dropped_representations: Vec<DroppedRepresentation>,
+    /// The exporting application the plan was attributed to, if usable.
+    pub(crate) identity: Option<Identity>,
+    /// What the Adds report beyond refusals (see `AddState::notes`).
+    pub(crate) findings: Vec<ValidationFinding>,
 }
 
 pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Resolution {
     let mut ids = IdAllocator::after(index.max_id);
-
     let mut appended: Vec<(u32, String)> = Vec::new();
-    let owner_history_ref = patch_owner_history(index, schema, plan, &mut ids, &mut appended);
-
+    let mut findings = Vec::new();
+    let mut ledger = Ledger::for_plan(plan, &mut findings);
+    let mut history = Histories::new(index, schema, ledger.as_mut(), &plan.context);
     let mut refusals: Vec<Refusal> = Vec::new();
     let mut edits_by_id: HashMap<u32, BTreeMap<usize, String>> = HashMap::new();
     let mut requested_deletes: HashSet<u32> = HashSet::new();
@@ -98,8 +105,6 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
                     refusals.push(Refusal { object: ObjectRef::Id(id), reason: reason.into() });
                     continue;
                 }
-                patched += 1;
-                patched_objects.push(id);
                 // The duplicate-set check reads these after the write; asked
                 // for here so they are collected before resolution settles.
                 index.referrers(id);
@@ -113,12 +118,17 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
                     moved: &mut moved,
                     edited: &mut edited,
                     object: id,
+                    history: &mut history,
                     reshaped: &mut reshaped,
                     geometry_cuts: &mut geometry_cuts,
                     body_context: &mut body_context,
                     dropped_representations: &mut dropped_representations,
                 };
-                apply_patch(index, schema, id, patch, &mut ids, owner_history_ref, &mut out);
+                // Only a patch that wrote something patched its object.
+                if apply_patch(index, schema, id, patch, &mut ids, &mut out) {
+                    patched += 1;
+                    patched_objects.push(id);
+                }
             }
         }
     }
@@ -162,16 +172,17 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     // list edits, so none of them extends a relationship or names a record
     // that is going away, and their list appends start from the rewritten
     // lists.
-    let added = if adds.is_empty() {
-        0
-    } else {
-        // An owner history the plan deletes is not one an Add can name.
-        let owner_history = owner_history_ref.filter(|id| !removed.contains(id));
-        let state = add::AddState::new(index, schema, &removed, &plan.context, owner_history, body_context.chosen());
-        state.build_all(&adds, &mut ids, &mut edits_by_id, &mut appended, &mut refusals)
-    };
+    findings.extend(super::orphans::unplaced_by_removed_structure(index, schema, &removed, &reasons));
+    // The Adds name the history the patches settled on, or take one.
+    let adding = AddState::new(index, schema, &removed, &mut history, body_context.chosen());
+    let added = adding.build_all(&adds, &mut ids, &mut edits_by_id, &mut appended, &mut refusals, &mut findings);
 
-    Resolution { appended, edits_by_id, removed, reasons, refusals, patched, added, patched_objects, dropped_representations }
+    // Every rewrite has settled: what the plan modified is read off them.
+    let out = Rewrites { ids: &mut ids, appended: &mut appended, edits_by_id: &mut edits_by_id, findings: &mut findings };
+    attribute_changes(index, schema, plan, ledger.as_mut(), (&patched_objects, &removed), patched + added > 0, out);
+
+    let identity = ledger.map(|ledger| ledger.identity);
+    Resolution { appended, edits_by_id, removed, reasons, refusals, patched, added, patched_objects, dropped_representations, identity, findings }
 }
 
 /// The cascade's reasons with what the patches removed themselves marked
@@ -220,32 +231,6 @@ fn sweep_old_shapes(
     let swept: HashSet<u32> = sweep.delete.into_iter().collect();
     requested_deletes.extend(swept.iter().copied());
     swept
-}
-
-/// The owner history a patch's new records name: the file's first, else one
-/// synthesized into `appended`. Synthesized only when a patch actually needs
-/// to point a NEW record's OwnerHistory somewhere: a plan that never writes a
-/// property/quantity set must not grow the file by five records it has no use
-/// for. Adds synthesize their own on first success (see `add::AddState::new`).
-fn patch_owner_history(
-    index: &FileIndex,
-    schema: &str,
-    plan: &ExportPlan,
-    ids: &mut IdAllocator,
-    appended: &mut Vec<(u32, String)>,
-) -> Option<u32> {
-    let needs_owner_history = index.first_owner_history.is_none()
-        && plan
-            .dispositions
-            .iter()
-            .any(|(_, d)| matches!(d, Disposition::Patch(p) if !p.psets.is_empty()));
-    if !needs_owner_history {
-        return index.first_owner_history;
-    }
-    owner_history::synthesize(schema, ids, &plan.context).map(|(records, id)| {
-        appended.extend(records);
-        id
-    })
 }
 
 /// Every disposition but an Add resolved to its id in the file (refused when

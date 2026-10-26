@@ -1,0 +1,52 @@
+set -euo pipefail
+ROOT=/home/louistrue/build-workers/worker-state/storage-tasks/prepared-issue7711-backend-v3/measurement/runtime
+TMP_ROOT=/home/louistrue/build-workers/worker-state/storage-tasks/prepared-issue7711-backend-v3/measurement
+ITERS=5
+BASE_BIN=/home/louistrue/build-workers/worker-state/storage-tasks/prepared-issue7711-backend-v3/bundle/base
+BRANCH_BIN=/home/louistrue/build-workers/worker-state/storage-tasks/prepared-issue7711-backend-v3/bundle/branch
+BASE_SHA=8e2778ca041f027ab95d59532ce43d18bb42dab6
+BRANCH_DESC=9597ecb45ea648c3f3e2c6cb077dcb7fcfcca7f6
+JSON_OUT=/home/louistrue/build-workers/worker-state/storage-tasks/prepared-issue7711-backend-v3/measurement/report.json
+ABS_FIXTURES=(/home/louistrue/build-workers/worker-state/storage-tasks/prepared-issue7711-backend-v3/bundle/fixture-0.ifc /home/louistrue/build-workers/worker-state/storage-tasks/prepared-issue7711-backend-v3/bundle/fixture-1.ifc /home/louistrue/build-workers/worker-state/storage-tasks/prepared-issue7711-backend-v3/bundle/fixture-2.ifc)
+# --- Interleaved runs -----------------------------------------------------
+# One --iters=1 probe run per side per round, alternating, so a machine that
+# slows down over the course of the whole run does not favour one side.
+#
+# Interleaving alone does not cancel a penalty tied to POSITION within a
+# round (thermal ramp, a cache state left by the preceding process, a
+# frequency step on the first process after idle) — whichever side always
+# runs first pays that every round, and it survives the median like a real
+# regression would (#4221). ab-order.mjs decides, per invocation, which side
+# runs first each round: balanced across rounds (as close to half base-first
+# / half branch-first as ITERS allows) and randomly assigned to specific
+# rounds, so a fixed positional penalty lands on both sides roughly equally
+# often and cancels out instead of accumulating on one.
+ORDER_FILE="$TMP_ROOT/order.txt"
+node "$ROOT/scripts/perf/ab-order.mjs" "$ITERS" > "$ORDER_FILE"
+# A vacuous run must fail loudly, not print a "within noise" verdict over zero
+# measurements (#4439: the order generator's CLI guard never fired on Windows).
+if [ "$(wc -l < "$ORDER_FILE")" -ne "$ITERS" ]; then
+  echo "ab.sh: ab-order.mjs produced $(wc -l < "$ORDER_FILE") round(s) for --iters $ITERS — refusing to report" >&2
+  exit 1
+fi
+RUNS_JSONL="$TMP_ROOT/runs.jsonl"
+: > "$RUNS_JSONL"
+i=0
+while IFS=' ' read -r first second; do
+  i=$((i + 1))
+  echo "ab.sh: round $i/$ITERS ($first first)" >&2
+  for side in "$first" "$second"; do
+    bin="$BASE_BIN"; [ "$side" = branch ] && bin="$BRANCH_BIN"
+    # Run from ROOT so relative fixture handling and on-disk fixtures resolve.
+    out="$("$bin" "${ABS_FIXTURES[@]}" --iters 1 --json 2>/dev/null)"
+    node -e '
+      const [side, out] = [process.argv[1], process.argv[2]];
+      for (const p of JSON.parse(out)) console.log(JSON.stringify({ side, ...p }));
+    ' "$side" "$out" >> "$RUNS_JSONL"
+  done
+done < "$ORDER_FILE"
+
+# --- Report ---------------------------------------------------------------
+REPORT_ARGS=("$RUNS_JSONL" "--base" "$BASE_SHA" "--branch" "$BRANCH_DESC")
+[ -n "$JSON_OUT" ] && REPORT_ARGS+=("--json" "$JSON_OUT")
+node "$ROOT/scripts/perf/ab-report.mjs" "${REPORT_ARGS[@]}"

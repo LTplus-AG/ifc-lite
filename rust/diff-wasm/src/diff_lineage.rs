@@ -49,8 +49,9 @@ struct Entry {
 }
 impl From<Entry> for LineageEntry {
     fn from(value: Entry) -> Self {
-        Self { base: value.base, head: value.head, relation: value.relation,
-            reason: value.reason, shares: value.shares }
+        Self { base: value.base.into_iter().map(Into::into).collect(),
+            head: value.head.into_iter().map(Into::into).collect(), relation: value.relation,
+            reason: value.reason.into(), shares: value.shares }
     }
 }
 fn entries(value: JsValue) -> Result<Vec<LineageEntry>, JsValue> {
@@ -59,13 +60,16 @@ fn entries(value: JsValue) -> Result<Vec<LineageEntry>, JsValue> {
 }
 fn error(error: impl std::fmt::Display) -> JsValue { JsValue::from_str(&error.to_string()) }
 fn output(value: impl Serialize) -> Result<JsValue, JsValue> {
-    value.serialize(&serde_wasm_bindgen::Serializer::json_compatible()).map_err(error)
+    crate::diff_transport::to_value(value)
 }
 
 /// Return ordered conflict diagnostics for caller-supplied lineage entries.
 #[wasm_bindgen(js_name = diffLineageConflicts)]
 pub fn diff_lineage_conflicts(value: JsValue) -> Result<Vec<String>, JsValue> {
-    Ok(lineage::lineage_conflicts(&entries(value)?))
+    // Staged scalar inputs imply scalar diagnostics; keep the existing ABI
+    // until the operation-specific lossless observer replaces this guard (#8042).
+    lineage::lineage_conflicts(&entries(value)?).into_iter().map(|value|
+        value.as_str().map(str::to_owned).ok_or_else(|| JsValue::from_str(NON_SCALAR))).collect()
 }
 
 /// Return head/base pairs in JavaScript Map insertion order.
@@ -76,7 +80,7 @@ pub fn diff_key_aliases_from_lineage(value: JsValue) -> Result<JsValue, JsValue>
 
 #[derive(Serialize)]
 struct RekeyRow {
-    key: String, successors: Vec<String>, orphan: bool,
+    key: ifc_lite_diff::JsString, successors: Vec<ifc_lite_diff::JsString>, orphan: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     relation: Option<&'static str>,
 }
@@ -101,6 +105,8 @@ pub fn diff_rekey_by_lineage(keys: Vec<JsString>, value: JsValue, deleted: Vec<J
         "orphan-on-split" => RekeyPolicy::OrphanOnSplit,
         _ => return Err(JsValue::from_str("Unknown rekey policy")),
     };
+    let keys = keys.into_iter().map(Into::into).collect::<Vec<_>>();
+    let deleted = deleted.into_iter().map(Into::into).collect();
     let lineage = Lineage { entries: entries(value)?, deleted };
     output(lineage::rekey_by_lineage(&keys, &lineage, policy).into_iter().map(|row| RekeyRow {
         key: row.key, successors: row.successors, orphan: row.orphan, relation: row.relation.map(relation),

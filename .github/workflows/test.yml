@@ -950,6 +950,17 @@ jobs:
             oracle_args+=(--mutation tests/evidence/e3b-followups/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/issue-7943/coplanarity.oracle.patch | grep -Fxq 'tests/evidence/issue-7943/coplanarity.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/issue-7943/coplanarity.oracle.patch)
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- packages/diff/src/wasm-projections.ts | grep -Fxq 'packages/diff/src/wasm-projections.ts'; then
+            # #8042/#8109: a whole-change revert deletes wasm-projections.ts,
+            # which diff-lineage-parity.test.mjs imports (REVERT-BROKE-BUILD).
+            # Keep the module and its exports; swap the content-match and
+            # successor sides and drop split pieces, so the parity corpus
+            # must fail its identity/lineage assertions. This observes the
+            # TypeScript projection layer through the prebuilt WASM only:
+            # pkg-diff is not rebuilt here, so the Rust host bindings are
+            # proven out of band. Once wasm-projections.ts is on main,
+            # whole-change reverts resume automatically.
+            oracle_args+=(--mutation tests/evidence/diff-8042/host-projections.oracle.patch)
           elif git diff --unified=0 --diff-filter=M origin/main...HEAD -- rust/diff/src/transport_result.rs | grep -Fxq "+pub fn result_to_document(diff: &ModelDiff<'_,usize>) -> Value {"; then
             # #8042/#8106: keep the lossless model, options and result APIs.
             # Lose only unpaired UTF-16 units in native result entry keys;

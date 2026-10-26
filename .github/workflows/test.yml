@@ -3433,6 +3433,15 @@ jobs:
       # notices if that ever stops being true.
       - name: Cargo.lock is in sync with the manifests
         run: cargo metadata --locked --format-version 1 > /dev/null
+      # #7955 W1: the exact binary64 wire tests can only fail when nothing else
+      # unifies serde_json/float_roundtrip into the crate, so run each crate
+      # alone, and refuse a filter that matched no test.
+      - name: Retained wire exact binary64 (per crate)
+        run: |
+          for crate in ifc-lite-geometry ifc-lite-processing; do
+            cargo test --locked -p "$crate" --lib -- --exact retained_contract::tests::issue_7955_numeric_wire_exact_values 2>&1 | tee "$RUNNER_TEMP/wire-$crate.txt"
+            grep -q 'test result: ok. 1 passed' "$RUNNER_TEMP/wire-$crate.txt"
+          done
       # ifc-lite-wasm is included: its only wasm32-only test file,
       # tests/mesh_determinism.rs, self-gates with `#![cfg(target_arch =
       # "wasm32")]` and compiles to an empty test binary on the native host

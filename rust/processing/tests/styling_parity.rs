@@ -222,8 +222,9 @@ fn exactly_four_types_change_per_table() {
 /// empty directory and over a directory that does not exist alike.
 ///
 /// MEASURED, not guessed: set at roughly two thirds of what the walk over
-/// `rust/` + `apps/` reached in the merged 2026-10-17 tree (1777 files;
-/// about 1280 in late September; 659 at #3200). A wrong scan root or failing `read_dir`
+/// `rust/` + `apps/` reached on hosted CI for the 2026-10-26 F3b leaves lane
+/// (2373 files; 1777 on 2026-10-17; about 1280 in late September; 659 at
+/// #3200). A wrong scan root or failing `read_dir`
 /// takes the count to zero or a handful. Losing a large subtree takes it to a
 /// fraction, and the floor catches a loss of about a third of the tree. It
 /// does not catch losing `apps/` alone (under a tenth of the files).
@@ -234,7 +235,7 @@ fn exactly_four_types_change_per_table() {
 /// walk that reaches more than TWICE the floor: that failure is not a defect
 /// in the code under test, it is the signal to re-measure and raise this
 /// constant.
-const SCANNED_FLOOR: usize = 1184;
+const SCANNED_FLOOR: usize = 1582;
 
 /// Anti-vacuity (#3200) in BOTH directions: `scanned` must reach
 /// [`SCANNED_FLOOR`] (the walk is alive), and [`SCANNED_FLOOR`] must still be

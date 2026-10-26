@@ -55,7 +55,7 @@ pub(crate) type Reusable<'s> = Option<(&'s FileIndex<'s>, &'s HashSet<u32>)>;
 /// stays in the output; only what is missing is written.
 pub(crate) fn chain(schema: &str, ids: &mut IdAllocator, spec: &ChainSpec, source: Reusable) -> Option<(Vec<(u32, String)>, Chain)> {
     let existing_app = source.and_then(|(index, removed)| existing_application(index, removed, schema, spec.identifier));
-    let mut org = existing_app.map(|(_, developer)| developer);
+    let mut org = existing_app.and_then(|(_, developer)| developer);
     let existing_user = source.zip(org).and_then(|((index, removed), org)| existing_user(index, removed, schema, org, spec));
     let mut records = Vec::new();
     let user = match existing_user {
@@ -114,17 +114,18 @@ pub(crate) fn chain(schema: &str, ids: &mut IdAllocator, spec: &ChainSpec, sourc
 }
 
 /// `(application, its developer)` for the source's application named
-/// `identifier`, the first in file order that the output keeps, with its
-/// developer only if that is kept too.
-fn existing_application(index: &FileIndex, removed: &HashSet<u32>, schema: &str, identifier: &str) -> Option<(u32, u32)> {
+/// `identifier`, the first in file order that the output keeps. Its
+/// developer only if readable and kept: without one the application is
+/// still reused (UR1: one application per identifier), and the user gets an
+/// organization of its own.
+fn existing_application(index: &FileIndex, removed: &HashSet<u32>, schema: &str, identifier: &str) -> Option<(u32, Option<u32>)> {
     let id = index
         .applications
         .iter()
         .copied()
         .filter(|id| !removed.contains(id))
         .find(|&id| index.string_attr(schema, id, "IFCAPPLICATION", "ApplicationIdentifier").as_deref() == Some(identifier))?;
-    // An application whose developer goes cannot be reused.
-    let developer = scalar_attr(index, schema, id, "IFCAPPLICATION", "ApplicationDeveloper").filter(|d| !removed.contains(d))?;
+    let developer = scalar_attr(index, schema, id, "IFCAPPLICATION", "ApplicationDeveloper").filter(|d| !removed.contains(d) && index.contains(*d));
     Some((id, developer))
 }
 
@@ -175,11 +176,10 @@ impl Identity {
         let keeps = "the export keeps the source's attribution";
         let seconds = epoch_seconds(stamp)
             .ok_or_else(|| format!("ExportingApplication.changed_at {stamp:?} is neither Unix seconds nor an ISO 8601 timestamp; {keeps}"))?;
-        // IfcTimeStamp is a 32-bit count of seconds since the epoch.
-        if i32::try_from(seconds).is_err() {
-            let milliseconds = stamp.trim().parse::<i64>().is_ok_and(|v| i32::try_from(v / 1000).is_ok());
-            let hint = if milliseconds { " (it looks like milliseconds; give seconds)" } else { "" };
-            return Err(format!("ExportingApplication.changed_at {stamp:?} is outside the IfcTimeStamp range{hint}; {keeps}"));
+        // IfcTimeStamp is an INTEGER with no upper bound; a count past what
+        // seconds plausibly reach (year 5138) is a millisecond epoch.
+        if seconds > 100_000_000_000 {
+            return Err(format!("ExportingApplication.changed_at {stamp:?} looks like milliseconds since the epoch, not seconds; {keeps}"));
         }
         Ok(Self { app: app.clone(), seconds })
     }

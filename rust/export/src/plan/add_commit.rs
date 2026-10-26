@@ -12,7 +12,9 @@ use crate::step_ids::IdAllocator;
 
 use super::assoc::SharedKey;
 use super::mapped::MapRef;
-use super::{Added, AddState, Owner};
+use crate::plan::attribution::Settles;
+
+use super::{Added, AddState};
 
 /// The project a synthesized context is listed by, and its
 /// `RepresentationContexts` slot.
@@ -22,12 +24,10 @@ impl AddState<'_> {
     /// The owner history new records name ([`Histories`]). What it has to
     /// write goes into `out`, which the caller commits only if its Add
     /// builds, so a plan whose Adds are all refused writes nothing.
-    pub(super) fn owner_history_for(&self, ids: &mut IdAllocator, out: &mut Vec<(u32, String)>) -> Result<Owner, String> {
+    pub(super) fn owner_history_for(&self, ids: &mut IdAllocator, out: &mut Vec<(u32, String)>) -> Result<Settles, String> {
         let taken = self.history.take(ids, self.removed).ok_or("id space exhausted")?;
-        let id = taken.id;
-        let (records, settles) = taken.into_parts();
-        out.extend(records);
-        Ok(Owner { id, settles })
+        out.extend(taken.records);
+        Ok(taken.settles)
     }
 
     /// The owner history the built Adds name, if one is settled yet.
@@ -73,8 +73,8 @@ impl AddState<'_> {
 
     /// Keep what an Add built: its records, the owner history they name, and
     /// the shared records later Adds may reuse.
-    pub(super) fn commit(&mut self, owner: Owner, out: Vec<(u32, String)>, shared: HashMap<SharedKey, u32>) {
-        self.history.commit(owner.settles);
+    pub(super) fn commit(&mut self, owner: Settles, out: Vec<(u32, String)>, shared: HashMap<SharedKey, u32>) {
+        self.history.commit(owner);
         self.records.extend(out);
         self.shared.extend(shared);
     }

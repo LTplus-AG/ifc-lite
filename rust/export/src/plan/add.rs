@@ -25,7 +25,7 @@ use super::add_props::build_sets;
 use super::add_rels::{RelAccumulator, RelKind, RelRequest};
 use super::add_types::{AddItem, NewObject, Representation, TypeLink};
 use super::attrs::unset_required;
-use super::attribution::{Histories, Settles};
+use super::attribution::Histories;
 use super::index::FileIndex;
 use super::placement::fmt;
 use super::props_synth::{defines_by_properties_record, ref_or_unset};
@@ -41,12 +41,6 @@ use check::Checked;
 struct Added {
     id: u32,
     class: String,
-}
-
-/// The owner history one Add names, and what it settles if the Add builds.
-pub(crate) struct Owner {
-    id: u32,
-    settles: Settles,
 }
 
 pub(crate) struct AddState<'a> {
@@ -112,7 +106,7 @@ impl<'a> AddState<'a> {
         let owner = self.owner_history_for(ids, &mut out)?;
         let mut requests = Vec::new();
         let mut emit = Emit { schema: self.schema, ids, out: &mut out };
-        let built = self.build(&mut emit, obj, &checked, owner.id, &mut requests)?;
+        let built = self.build(&mut emit, obj, &checked, owner.id(), &mut requests)?;
         let new_context = self.owned_context(built.new_context)?;
 
         self.typed.extend(checked.existing_type);
@@ -173,6 +167,8 @@ impl<'a> AddState<'a> {
                 built.len()
             }
             Err(reason) => {
+                // Every Add is discarded, and with it what they settled.
+                self.history.rollback();
                 refusals.extend(built.into_iter().map(|key| Refusal {
                     object: key.clone(),
                     reason: format!("relationships for added objects not written: {reason}"),
@@ -184,13 +180,14 @@ impl<'a> AddState<'a> {
 
     /// Every record and list edit the Adds produced, relationships last.
     fn finish(
-        self,
+        &mut self,
         ids: &mut IdAllocator,
         edits_by_id: &mut HashMap<u32, BTreeMap<usize, String>>,
     ) -> Result<Vec<(u32, String)>, String> {
         let history = self.settled_history();
-        let mut records = self.records;
-        records.extend(self.rels.finish(self.schema, ids, history, edits_by_id)?);
+        let rels = std::mem::replace(&mut self.rels, RelAccumulator::new(self.index, self.removed));
+        let mut records = std::mem::take(&mut self.records);
+        records.extend(rels.finish(self.schema, ids, history, edits_by_id)?);
         Ok(records)
     }
 

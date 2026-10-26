@@ -159,11 +159,10 @@ impl SetWrites<'_> {
     /// ahead of its own.
     fn push_with_history(&mut self, mut outcome: PropOutcome, taken: Option<Taken>) {
         if let Some(taken) = taken {
-            let (records, settles) = taken.into_parts();
             if let PropOutcome::Append { new_records } | PropOutcome::CopyOnWrite { new_records, .. } = &mut outcome {
-                new_records.splice(0..0, records);
+                new_records.splice(0..0, taken.records);
             }
-            self.history = Some(settles);
+            self.history = Some(taken.settles);
         }
         self.outcomes.push(outcome);
     }
@@ -275,7 +274,7 @@ pub(crate) fn resolve_set_writes<'w>(
                 object_id,
                 &writes,
                 ids,
-                taken.as_ref().map(|t| t.id),
+                taken.as_ref().map(|t| t.settles.id()),
                 &members,
                 &replaced,
                 owning_rel,
@@ -313,7 +312,7 @@ pub(crate) fn resolve_set_writes<'w>(
             let inherited: Vec<_> = group.iter().map(|w| w.for_new_record(target)).collect();
             let inherited: Vec<&PropWrite> = inherited.iter().map(|w| &**w).collect();
             let taken = history(ids);
-            match props_synth::append_new_occurrence_set(schema, container_type, member_attr, object_id, &inherited, ids, taken.as_ref().map(|t| t.id)) {
+            match props_synth::append_new_occurrence_set(schema, container_type, member_attr, object_id, &inherited, ids, taken.as_ref().map(|t| t.settles.id())) {
                 Ok(outcome) => result.push_with_history(outcome, taken),
                 Err(reason) => refuse_all(&mut result, &reason),
             }

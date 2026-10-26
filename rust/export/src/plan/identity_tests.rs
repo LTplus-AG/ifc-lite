@@ -585,15 +585,83 @@ fn an_unreadable_change_time_is_one_finding() {
     assert_eq!(report.findings.len(), 1, "{:?}", report.findings);
 }
 
-/// `IfcTimeStamp` is a 32-bit count of seconds: a value outside it is
-/// refused, and one that reads as milliseconds says so.
+/// `IfcTimeStamp` is an INTEGER count of seconds with no upper bound, so a
+/// date far ahead is accepted, in a plan and a skeleton. Only a value that
+/// reads as milliseconds is refused, and says so.
 #[test]
-fn a_change_time_outside_the_timestamp_range_is_refused() {
-    for (stamp, says) in [("1792749600000", "milliseconds"), ("99999999999", "IfcTimeStamp"), ("2100-01-01T00:00:00", "IfcTimeStamp")] {
-        let app = ExportingApplication::new("O", "A", "a", "1", stamp);
-        let (out, report) = export(&source("IFC4", false), vec![rename(10)], PlanContext::new().with_application(app));
-        assert!(report.findings.iter().any(|f| f.message.contains(says)), "{stamp}: {:?}", report.findings);
-        assert_eq!(attr("IFC4", &lines(&out)[&10], "IFCWALL", "OwnerHistory"), "#164", "{stamp}");
+fn a_far_future_change_time_is_accepted_and_milliseconds_are_refused() {
+    let future = ExportingApplication::new("O", "A", "a", "1", "2040-01-01T00:00:00");
+    let (out, report) = export(&source("IFC4", false), vec![rename(10)], PlanContext::new().with_application(future.clone()));
+    assert!(report.findings.is_empty(), "{:?}", report.findings);
+    let history = target("IFC4", &lines(&out), &lines(&out)[&10], "IFCWALL", "OwnerHistory");
+    assert_eq!(attr("IFC4", &history, "IFCOWNERHISTORY", "LastModifiedDate"), "2208988800");
+    let root = |n: u128| SkeletonRoot::new(GlobalId(n));
+    assert!(skeleton(&Skeleton::new(root(1), root(2), root(3)).with_application(future)).is_ok());
+    let millis = ExportingApplication::new("O", "A", "a", "1", "1792749600000");
+    let (out, report) = export(&source("IFC4", false), vec![rename(10)], PlanContext::new().with_application(millis));
+    assert!(report.findings.iter().any(|f| f.message.contains("milliseconds")), "{:?}", report.findings);
+    assert_eq!(attr("IFC4", &lines(&out)[&10], "IFCWALL", "OwnerHistory"), "#164");
+}
+
+/// A plan that deletes the file's owner history does not name it for the
+/// records its patches add.
+#[test]
+fn a_deleted_owner_history_is_not_named_by_new_records() {
+    let src = source("IFC4", false);
+    let (out, report) = export(&src, vec![(ObjectRef::Id(164), Disposition::Delete), patch(70, vec![write("Pset_New", "P", "'x'", PropScope::Occurrence)])], PlanContext::new());
+    assert!(report.refusals.is_empty(), "{report:?}");
+    assert_no_dangling(&out, "IFC4");
+}
+
+/// The source's application of this identifier is reused even when its
+/// developer cannot be read: one application per identifier (UR1), and the
+/// user is given an organization of its own.
+#[test]
+fn an_application_without_a_readable_developer_is_reused_not_duplicated() {
+    let schema = "IFC4";
+    let src = String::from_utf8(source(schema, false)).unwrap();
+    let app = build_record(
+        schema,
+        173,
+        "IFCAPPLICATION",
+        &[("ApplicationDeveloper", "$".into()), ("Version", "'2.1'".into()), ("ApplicationFullName", "'ExampleApp'".into()), ("ApplicationIdentifier", "'example-app'".into())],
+    );
+    let src = src.replace("ENDSEC;\nEND-ISO", &format!("{app}\nENDSEC;\nEND-ISO")).into_bytes();
+    let (out, _) = export(&src, vec![rename(10)], context());
+    let all = lines(&out);
+    assert_eq!(all.values().filter(|l| l.contains("'example-app'")).count(), 1);
+    let history = target(schema, &all, &all[&10], "IFCWALL", "OwnerHistory");
+    assert_eq!(attr(schema, &history, "IFCOWNERHISTORY", "LastModifyingApplication"), "#173");
+    assert_no_dangling(&out, schema);
+}
+
+/// A shape a type's representation map holds is rewritten: the type and
+/// every occurrence that instances the map are modified.
+#[test]
+fn a_rewritten_mapped_shape_modifies_the_type_and_its_occurrences() {
+    for schema in SCHEMAS {
+        let r = |id, entity, fields: &[(&str, &str)]| {
+            let fields: Vec<(&str, String)> = fields.iter().map(|&(n, v)| (n, v.to_string())).collect();
+            build_record(schema, id, entity, &fields)
+        };
+        let records = [
+            r(400, "IFCWALLTYPE", &[("GlobalId", "'0000000000000000000400'"), ("Name", "'Mapped'"), ("RepresentationMaps", "(#401)"), ("PredefinedType", ".NOTDEFINED.")]),
+            r(401, "IFCREPRESENTATIONMAP", &[("MappingOrigin", "#101"), ("MappedRepresentation", "#402")]),
+            r(402, "IFCSHAPEREPRESENTATION", &[("ContextOfItems", "#100"), ("RepresentationIdentifier", "'Body'"), ("RepresentationType", "'SweptSolid'"), ("Items", "(#403,#404)")]),
+            r(403, "IFCCARTESIANPOINT", &[("Coordinates", "(0.,0.,0.)")]),
+            r(404, "IFCCARTESIANPOINT", &[("Coordinates", "(1.,0.,0.)")]),
+            r(410, "IFCWALL", &[("GlobalId", "'0000000000000000000410'"), ("Name", "'Instance'"), ("Representation", "#420")]),
+            r(420, "IFCPRODUCTDEFINITIONSHAPE", &[("Representations", "(#421)")]),
+            r(421, "IFCSHAPEREPRESENTATION", &[("ContextOfItems", "#100"), ("RepresentationIdentifier", "'Body'"), ("RepresentationType", "'MappedRepresentation'"), ("Items", "(#422)")]),
+            r(422, "IFCMAPPEDITEM", &[("MappingSource", "#401"), ("MappingTarget", "#423")]),
+            r(423, "IFCCARTESIANTRANSFORMATIONOPERATOR3D", &[("LocalOrigin", "#102")]),
+        ];
+        let text = String::from_utf8(storey_with_typed_wall(schema)).unwrap().replace("ENDSEC;\nEND-ISO", &format!("{}\nENDSEC;\nEND-ISO", records.join("\n")));
+        let src = owned(text.as_bytes(), schema);
+        let (out, report) = export(&src, vec![(ObjectRef::Id(404), Disposition::Delete)], context());
+        assert!(report.refusals.is_empty(), "{schema}: {report:?}");
+        let marked = assert_modified_exactly_the_rewritten(schema, &src, &out);
+        assert!(marked.contains(&400) && marked.contains(&410), "{schema}: {marked:?}");
     }
 }
 
@@ -604,4 +672,35 @@ fn the_header_time_is_utc() {
     let app = ExportingApplication::new("ExampleOrg", "ExampleApp", "example-app", "2.1", "2026-10-23T12:00:00+02:00");
     let (out, _) = export(&source("IFC4", false), vec![rename(10)], PlanContext::new().with_application(app));
     assert!(String::from_utf8(out).unwrap().contains("'2026-10-23T10:00:00Z'"));
+}
+
+/// When the Adds' relationships fail, the ledger forgets the chain and
+/// history the discarded Adds had taken, so nothing later names them.
+#[test]
+fn a_failed_add_phase_rolls_the_ledger_back() {
+    use crate::plan::add::AddState;
+    use crate::plan::add_types::AddItem;
+    use crate::plan::attribution::{Histories, Ledger};
+    let mut checked = false;
+    for headroom in 5..40 {
+        let src = crate::plan::test_fixtures::storey_with_headroom("IFC4", headroom);
+        let index = crate::plan::index::FileIndex::complete(&src);
+        let plan = ExportPlan { dispositions: Vec::new(), context: context() };
+        let mut ledger = Ledger::for_plan(&plan, &mut Vec::new()).unwrap();
+        let wall = object(IfcClass::Wall, new_gid(90), Some(ObjectRef::Id(70)), Representation::None);
+        let key = ObjectRef::Guid(wall.global_id.encode());
+        let adds = [(&key, AddItem::Object(&wall))];
+        let removed = std::collections::HashSet::new();
+        let history = Histories::new(&index, "IFC4", Some(&mut ledger), None, &plan.context);
+        let state = AddState::new(&index, "IFC4", &removed, history, None);
+        let mut ids = crate::step_ids::IdAllocator::after(index.max_id);
+        let mut refusals = Vec::new();
+        let built = state.build_all(&adds, &mut ids, &mut HashMap::new(), &mut Vec::new(), &mut refusals, &mut Vec::new());
+        if built == 0 && refusals.iter().any(|r| r.reason.contains("relationships for added objects not written")) {
+            checked = true;
+            assert_eq!(ledger.made.added(), None, "headroom {headroom}");
+            assert_eq!(ledger.made.application(), None, "headroom {headroom}");
+        }
+    }
+    assert!(checked, "some headroom fails the relationships after the Add built");
 }

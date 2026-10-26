@@ -39,9 +39,7 @@ pub(super) fn run(setting: &AddSetting, adds: &[(&ObjectRef, AddItem)], ledger: 
     if adds.is_empty() {
         return 0;
     }
-    // An owner history the plan deletes is not one an Add can name.
-    let existing = setting.owner_history.filter(|id| !setting.removed.contains(id));
-    let history = Histories::new(setting.index, setting.schema, ledger, existing, setting.context);
+    let history = Histories::new(setting.index, setting.schema, ledger, setting.owner_history, setting.context);
     let state = AddState::new(setting.index, setting.schema, setting.removed, history, setting.body_context);
     state.build_all(adds, produced.ids, produced.edits_by_id, produced.appended, produced.refusals, produced.findings)
 }

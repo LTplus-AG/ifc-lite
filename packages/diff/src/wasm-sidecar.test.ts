@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { existsSync, readFileSync } from 'node:fs';
-import { expect, test } from 'vitest';
+import { beforeEach, expect, test } from 'vitest';
 import * as identityOracle from '../test/oracle/identity-sidecar.js';
 import * as lineageOracle from '../test/oracle/lineage-sidecar.js';
 import type { IdentityMapSidecar, IdentityMapSidecarInit } from './identity-sidecar.js';
@@ -10,7 +10,12 @@ import type { LineageSidecar, LineageSidecarInit } from './lineage-sidecar.js';
 
 const binary = new URL('../../wasm/pkg-diff/ifc-lite-diff_bg.wasm', import.meta.url);
 const available = existsSync(binary) && existsSync(new URL('../../wasm/pkg-diff/ifc-lite-diff.js', import.meta.url));
-const wasmTest = test.skipIf(!available);
+const wasmTest = test;
+beforeEach((context) => {
+  if (!available) {
+    context.skip('Optional diff WASM glue/binary missing; run pnpm build:wasm, then root pnpm test --filter=@ifc-lite/diff');
+  }
+});
 async function adapters() {
   const { initDiffSync } = await import('./wasm-runtime.js');
   initDiffSync({ module: readFileSync(binary) });
@@ -123,7 +128,7 @@ wasmTest('serialization is exactly host JSON.stringify including unsupported val
     }
   }
 });
-wasmTest('creation retains UTF-16 sort/dedup, diagnostics, field projection and #8088 separator collisions (#8042)', async () => {
+wasmTest('creation retains UTF-16 sort/dedup, diagnostics and projection; exposes separator conflicts (#8042, #8130)', async () => {
   const { identity, lineage } = await adapters();
   const extras = { ignored: 1n, toJSON() { throw new Error('ignored toJSON'); } };
   const entries = [
@@ -141,7 +146,10 @@ wasmTest('creation retains UTF-16 sort/dedup, diagnostics, field projection and 
     {base:['a\u0001b'],head:['C'],relation:'merge' as const,reason:'first'},
     {base:['a','b'],head:['C'],relation:'merge' as const,reason:'collision'},
   ]};
-  expect(lineage.createLineageSidecar(l)).toEqual(lineageOracle.createLineageSidecar(l));
+  // Accepted #8130 retains both claims; R124's collision-success assertion is historical.
+  for (const create of [lineage.createLineageSidecar, lineageOracle.createLineageSidecar]) {
+    expect(() => create(l)).toThrow('head key "C" appears in more than one lineage entry');
+  }
   for (const created of ['2026-10-24', 'January 1, 2000', 'no date', '\ud800']) {
     const input = {...identityInit(),created};
     expect(outcome(() => identity.createIdentityMapSidecar(input))).toEqual(outcome(() => identityOracle.createIdentityMapSidecar(input)));

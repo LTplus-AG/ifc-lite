@@ -68,7 +68,9 @@ export interface LineageFromDiffOptions<TRef> {
  *
  * - `copy-to-all` — every piece inherits the row.
  * - `largest-share` — only the piece with the largest volume share inherits
- *   it; without `shares` the row is orphaned rather than guessed.
+ *   it; missing, empty, mismatched, non-finite or negative `shares`, or a
+ *   tied maximum, orphan the row rather than guessing. Zero is valid; shares
+ *   need not sum to one.
  * - `orphan-on-split` — the row is orphaned; only 1:1 relations rekey.
  *
  * A `merge` always maps every base row onto the one head key, whatever the

@@ -2,12 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { existsSync, readFileSync } from 'node:fs';
-import { expect, test } from 'vitest';
+import { beforeEach, expect, test } from 'vitest';
 import * as oracle from '../test/oracle/lineage.js';
 import type { Lineage, LineageEntry, RekeyPolicy, RekeyResult } from './lineage.js';
 
 const binary = new URL('../../wasm/pkg-diff/ifc-lite-diff_bg.wasm', import.meta.url);
-const wasmTest = test.skipIf(!existsSync(binary) || !existsSync(new URL('../../wasm/pkg-diff/ifc-lite-diff.js', import.meta.url)));
+const wasmTest = test;
+beforeEach((context) => {
+  if (!existsSync(binary) || !existsSync(new URL('../../wasm/pkg-diff/ifc-lite-diff.js', import.meta.url))) {
+    context.skip('Optional diff WASM glue/binary missing; run pnpm build:wasm, then root pnpm test --filter=@ifc-lite/diff');
+  }
+});
 const policies: RekeyPolicy[] = ['copy-to-all', 'largest-share', 'orphan-on-split'];
 async function adapter() {
   const { initDiffSync } = await import('./wasm-runtime.js');
@@ -112,8 +117,10 @@ wasmTest('rekey indexes first wins before consuming one-shot keys and reads sele
   }
 });
 
-wasmTest('largest-share retains invalid-share behavior, sparse filter observations and changing getters (#8042, #8084)', async () => {
+wasmTest('largest-share follows accepted invalid-share guards, sparse observations and changing getters (#8042, #8084, #8131)', async () => {
   const facade = await adapter();
+  // #8131 supersedes R124's invalid-share outcomes and adds .every observations.
+  // Keep the same sparse and changing-getter inputs against the corrected TS expression.
   const sharesCases = [[NaN, 0.8], [Infinity, 1], [-1, -2], [0.5, 0.5], [], [0.8], [0.2, 0.8], Array<number>(2)];
   for (const shares of sharesCases) {
     for (const policy of policies) {

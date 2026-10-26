@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { fingerprintColumns } from '../../diff/src/wasm-columns.ts';
 import { restoreDiffReferences } from '../../diff/src/wasm-result.ts';
@@ -1001,6 +1001,110 @@ test('actual raw WASM applies Array.map ToLength and ArrayCreate bounds to spars
         assert.deepEqual(wasm[rawName](valid), oracle[oracleName](valid), `${id}: same-instance recovery`);
       }
     }
+  }
+});
+
+function fingerprintOutcome(call) {
+  try {
+    const value = call();
+    return { value: typeof value === 'object' ? Object.entries(value) : value };
+  } catch (error) {
+    return { error: error instanceof Error ? [error.constructor.name, error.message] : ['thrown', String(error)] };
+  }
+}
+
+test('actual raw WASM hashes real 1e3 and 1e5 hole arrays like the oracle in constant WASM memory (#8114)', async context => {
+  const wasm = await engine(context); if (!wasm) return;
+  const oraclePath = new URL('../../diff/dist/fingerprint.js', import.meta.url);
+  if (!existsSync(oraclePath)) { context.skip('@ifc-lite/diff not built; run pnpm build'); return; }
+  const oracle = await import(oraclePath.href);
+  // initSync returns the live instance's exports once initialized.
+  const { memory } = wasm.initSync({ module: readFileSync(binary) });
+  const pairs = [['diffBuildDataFingerprint', 'buildDataFingerprint'],
+    ['diffBuildComponentFingerprints', 'buildComponentFingerprints']];
+  const record = { name: 'D', value: '\ud800', properties: [], quantities: [], type: 'T' };
+  const holes = (count, before = [], after = []) => {
+    const values = before.slice();
+    values.length += count;
+    values.push(...after);
+    return values;
+  };
+  const shapes = [count => holes(count), count => holes(count, [record]), count => holes(count, [], [record])];
+  function compareAll(count) {
+    let comparisons = 0;
+    const compare = (id, fields) => {
+      for (const [rawName, oracleName] of pairs) {
+        const input = { ifcType: 'IfcWall', name: '\udc00', ...fields };
+        assert.deepEqual(fingerprintOutcome(() => wasm[rawName](input)),
+          fingerprintOutcome(() => oracle[oracleName](input)), `${id}/${count}/${rawName}`);
+        comparisons++;
+      }
+    };
+    for (const [location] of sparseLocations([])) {
+      for (const [shape, make] of shapes.entries()) {
+        compare(`${location}/${shape}`, sparseLocations(make(count)).find(([name]) => name === location)[1]);
+      }
+    }
+    // Same-named sets reach the oracle's stableSerialize tiebreak with hole runs.
+    for (const [field, members] of [['propertySets', 'properties'], ['quantitySets', 'quantities']]) {
+      compare(`${field}/tiebreak`, { [field]: [{ name: 'D', [members]: holes(count, [record]) },
+        { name: 'D', [members]: holes(count) }, { name: 'D', [members]: holes(count - 1, [], [record]) }] });
+    }
+    return comparisons;
+  }
+  assert.equal(compareAll(1_000), 34);
+  // Identical shapes repeat the same O(present) allocations, so a hundredfold
+  // hole count must not grow linear memory. Before #8114 every hole held a
+  // decoder slot and a JSON value (tens of bytes each).
+  const before = memory.buffer.byteLength;
+  assert.equal(compareAll(100_000), 34);
+  assert.equal(memory.buffer.byteLength, before, 'no per-hole WASM memory');
+});
+
+test('actual raw WASM engine-length probe matches this engine without observing String.prototype (#8114)', async context => {
+  const snippets = new URL('../pkg-diff/snippets/', import.meta.url);
+  if (!existsSync(snippets)) { context.skip('WASM bundle missing; run pnpm build:wasm'); return; }
+  let fits;
+  for (const directory of readdirSync(snippets)) {
+    for (const file of readdirSync(new URL(`${directory}/`, snippets))) {
+      const namespace = await import(new URL(`${directory}/${file}`, snippets).href);
+      if (typeof namespace.fpStringFits === 'function') fits = namespace.fpStringFits;
+    }
+  }
+  assert.equal(typeof fits, 'function', 'the built glue ships the length probe');
+  // This engine's own maximum: bisect the lengths String.prototype.repeat
+  // accepts (rope construction, no materialized text).
+  let fitting = 0;
+  let failing = 2 ** 53;
+  while (failing - fitting > 1) {
+    const middle = Math.floor((fitting + failing) / 2);
+    if (thrown(() => ' '.repeat(middle)) === undefined) fitting = middle; else failing = middle;
+  }
+  const observed = [];
+  const hooks = ['repeat', 'concat', 'padEnd', 'padStart', 'toString', 'valueOf', Symbol.toPrimitive, Symbol.iterator];
+  const originals = new Map(hooks.map(key => [key, Object.getOwnPropertyDescriptor(String.prototype, key)]));
+  for (const key of hooks) {
+    Object.defineProperty(String.prototype, key, { configurable: true,
+      get() { observed.push(String(key)); return originals.get(key)?.value; } });
+  }
+  let atMaximum, overMaximum, unrepresentable;
+  try {
+    atMaximum = thrown(() => fits(fitting));
+    overMaximum = thrown(() => fits(failing));
+    unrepresentable = thrown(() => fits(2 ** 64));
+  } finally {
+    for (const [key, descriptor] of originals) {
+      if (descriptor) Object.defineProperty(String.prototype, key, descriptor); else delete String.prototype[key];
+    }
+  }
+  assert.deepEqual(observed, [], 'no mutable String.prototype lookup');
+  assert.equal(atMaximum, undefined, 'the longest buildable string fits');
+  // The oracle's stableSerialize join over holes overflows with exactly this error.
+  const oracleOverflow = thrown(() => new Array(failing + 1).join(' '));
+  assert.ok(oracleOverflow instanceof RangeError);
+  for (const actual of [overMaximum, unrepresentable]) {
+    assert.ok(actual instanceof RangeError);
+    assert.equal(actual.message, oracleOverflow.message);
   }
 });
 

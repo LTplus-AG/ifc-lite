@@ -145,7 +145,7 @@ Preparation receipts:
   rejected. Attempt 12 (`hover-13`) was refused before its second sample by a single one-second
   reading of 11.35% foreign CPU, about one second after the first sample's browser closed, with no
   foreign build processes; Pop measured about 1.3% busy two minutes later. See
-  [`hover-attempts-9-12.json`](hover-attempts-9-12.json), [`hover-12-runs.jsonl.gz`](hover-12-runs.jsonl.gz)
+  [`hover-attempts-9-13.json`](hover-attempts-9-13.json), [`hover-12-runs.jsonl.gz`](hover-12-runs.jsonl.gz)
   and [`hover-13-runs.jsonl.gz`](hover-13-runs.jsonl.gz).
 - Protocol change after observing attempt 12, not blinded: the pre-sample and post-sample host gates
   (`awaitQuietHost` in `pick-depth-6881-host.mjs`) repeat the same one-second foreign-CPU reading
@@ -154,6 +154,17 @@ Preparation receipts:
   in the record. Only host readings are repeated; no timing sample is repeated, discarded or chosen.
   Sustained foreign work still refuses, while a transient spike now only delays the sample. The
   operator keeps the Pop mouse and keyboard untouched for the cohort.
+- Attempt 13 (`hover-14`, with the bounded quiet wait; every host gate was quiet on its first
+  reading) completed six FZK samples and was refused on the seventh by the identity gate: FZK grid
+  point (0.7, 0.5) resolved coplanar entity 59553 instead of 37026, the same pair that stopped
+  `hover-8` in Federation. Across all retained samples that point flips in both arms (base 5 of 26,
+  branch 3 of 22), so it is a property of the model and canvas, not of either arm. See
+  [`hover-14-runs.jsonl.gz`](hover-14-runs.jsonl.gz).
+- Protocol change after observing attempt 13, not blinded: FZK uses the nine frozen Federation
+  positions instead of the 3 x 3 grid ([`hover-configuration-3.json`](hover-configuration-3.json);
+  Building-Architecture keeps the grid, stable in every retained sample). A dense 7 x 7 FZK probe
+  (`probe-8`, 10 of 10 valid samples, no unstable position) confirms all nine are stable in FZK; see
+  [`fzk-position-stability.json`](fzk-position-stability.json) and [raw samples](probe-8-runs.jsonl.gz).
 
 [Preparation receipts](preparation.json) retain command/source identities,
 original outcomes and log hashes. Failed functional reports and compact summaries

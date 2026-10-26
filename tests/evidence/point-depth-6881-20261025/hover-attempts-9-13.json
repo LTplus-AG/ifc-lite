@@ -69,6 +69,72 @@
    "ownCpuPercent": 0.06,
    "refusedAt": "2026-10-26T11:58:30.613Z",
    "cause": "A single one-second pre-sample reading measured 11.35% foreign CPU about one second after the previous sample's browser closed, with no foreign build graphs; Pop measured about 1.3% busy two minutes later. Treated as a transient spike (likely compositor/display-server teardown attributed outside the cohort tree). This led to the bounded quiet wait below."
+  },
+  {
+   "attempt": 13,
+   "output": "hover-14",
+   "state": "failed",
+   "exitCode": 1,
+   "accepted": false,
+   "error": "Error: Geometry/camera/texel/ID/item/world identity differs between samples",
+   "validSamples": [
+    [
+     "FZK",
+     0,
+     "base"
+    ],
+    [
+     "FZK",
+     0,
+     "branch"
+    ],
+    [
+     "FZK",
+     1,
+     "branch"
+    ],
+    [
+     "FZK",
+     1,
+     "base"
+    ],
+    [
+     "FZK",
+     2,
+     "base"
+    ],
+    [
+     "FZK",
+     2,
+     "branch"
+    ]
+   ],
+   "refusedSample": [
+    "FZK",
+    3,
+    "branch"
+   ],
+   "hostReadingsPerGate": "every gate quiet on its first reading",
+   "idDifferences": [
+    {
+     "pick": 5,
+     "position": [
+      0.7,
+      0.5
+     ],
+     "reference": {
+      "expressId": 37026,
+      "geometryItemId": 35135
+     },
+     "observed": {
+      "expressId": 59553,
+      "geometryItemId": 59529
+     }
+    }
+   ],
+   "cause": "FZK 3 x 3 point (0.7, 0.5) lies on coplanar entities 37026 and 59553 at the 743 px canvas; the winner changes between sessions in both arms (base 5 of 26, branch 3 of 22 across all retained samples), the same pair that stopped hover-8 in Federation. Not attributable to either arm.",
+   "runsSha256": "27154090516cf10eaad5bac775d3a2a195319e51f0a49ab20753e0f4ff8c1383",
+   "resultSha256": "5a12e3da884497751a71916df9091eb0249dfc1e513e24156c1cc9724a3d27c8"
   }
  ]
 }

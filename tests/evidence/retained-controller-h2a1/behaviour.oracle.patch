@@ -1,15 +1,26 @@
 # SPDX-License-Identifier: MPL-2.0
 --- a/rust/geometry/src/program/inner.rs
 +++ b/rust/geometry/src/program/inner.rs
-@@ -178,7 +178,7 @@
-         // Owners are validated before the recipe is taken: a refused call
-         // leaves the request executable by its actual router and decoder.
+@@ -181,7 +181,7 @@
          self.validate_owner(router, Some(decoder))?;
+         self.expected_router = Some(router.execution_identity());
+         self.expected_decoder = Some(decoder.execution_identity());
 -        if false && matches!(&self.control, Control::Product(c) if c.retained_ready()) {
 +        if matches!(&self.control, Control::Product(c) if c.retained_ready()) {
              return Err(ProgramError::UnsupportedRetained);
          }
-         self.expected_router = Some(router.execution_identity());
+         let decoder_before = decoder.execution_identity();
+--- a/rust/geometry/src/program/retained/capture.rs
++++ b/rust/geometry/src/program/retained/capture.rs
+@@ -41,7 +41,7 @@
+             slot,
+             source_epoch: contract.source_epoch,
+             source_revision: contract.source_revision,
+-            source_id: 0,
++            source_id: item.id,
+         },
+         length_unit_scale: scale,
+         placements: Vec::new(),
 --- a/rust/geometry/src/program/retained/capture.rs
 +++ b/rust/geometry/src/program/retained/capture.rs
 @@ -20,7 +20,7 @@
@@ -21,18 +32,9 @@
              source: crate::analytic::extract_swept_disk(item, decoder)?,
              length_unit_scale: scale,
          })),
-@@ -42,7 +42,7 @@
-             slot,
-             source_epoch: contract.source_epoch,
-             source_revision: contract.source_revision,
--            source_id: 0,
-+            source_id: item.id,
-         },
-         placements: Vec::new(),
-         product_placed: false,
 --- a/rust/geometry/src/program/retained/program.rs
 +++ b/rust/geometry/src/program/retained/program.rs
-@@ -175,6 +175,8 @@
+@@ -170,6 +170,8 @@
                      // Construction and placement do not inspect or discharge
                      // relationships, appearance, or persistent face identity.
                      remaining: vec![
@@ -43,16 +45,7 @@
                      ],
 --- a/rust/geometry/src/program/product/retained_structure.rs
 +++ b/rust/geometry/src/program/product/retained_structure.rs
-@@ -38,7 +38,7 @@
-     if let Some(shape) = &shape {
-         for rep in shape.representations() {
-             crate::resource::check_current()?;
--            if false && !matches!(
-+            if !matches!(
-                 rep.ifc_type,
-                 IfcType::IfcShapeRepresentation | IfcType::IfcTopologyRepresentation
-             ) {
-@@ -70,7 +70,7 @@
+@@ -59,7 +59,7 @@
          })?;
      for member in members {
          crate::resource::check_current()?;
@@ -61,9 +54,20 @@
              return Err(Error::geometry(format!(
                  "retained {name} on #{} contains a non-reference member",
                  entity.id
+--- a/rust/geometry/src/program/product/retained_structure.rs
++++ b/rust/geometry/src/program/product/retained_structure.rs
+@@ -32,7 +32,7 @@
+     if let Some(shape) = &shape {
+         for rep in shape.representations() {
+             crate::resource::check_current()?;
+-            if false && !matches!(
++            if !matches!(
+                 rep.ifc_type,
+                 IfcType::IfcShapeRepresentation | IfcType::IfcTopologyRepresentation
+             ) {
 --- a/rust/geometry/src/program/product/retained.rs
 +++ b/rust/geometry/src/program/product/retained.rs
-@@ -19,7 +19,7 @@
+@@ -16,7 +16,7 @@
              let mut control = Self::merged(element, SourceHygiene::IndexOnly);
              control.retained = Some(selection.clone());
              control.body = Body::Sink(Sink::Retained(Vec::new(), selection));
@@ -74,7 +78,18 @@
                  )));
 --- a/rust/geometry/src/program/retained/mod.rs
 +++ b/rust/geometry/src/program/retained/mod.rs
-@@ -88,9 +88,6 @@
+@@ -170,7 +170,7 @@
+ // preserves its ordered f64 accumulation and avoids inverse-frame round trips.
+ fn compose_frame(a: &[f64; 16], b: &[f64; 16]) -> crate::Result<[f64; 16]> {
+     let composed = crate::math::mat4::mul(b, a);
+-    if false && composed.iter().any(|value| !value.is_finite()) {
++    if composed.iter().any(|value| !value.is_finite()) {
+         return Err(crate::Error::geometry("retained composed frame is non-finite"));
+     }
+     Ok(composed)
+--- a/rust/geometry/src/program/retained/mod.rs
++++ b/rust/geometry/src/program/retained/mod.rs
+@@ -96,9 +96,6 @@
      ) -> crate::Result<()> {
          validate_affine(transform)?;
          proper_rigid(transform)?;
@@ -84,7 +99,7 @@
          let matrix = crate::math::mat4::col_major_array(transform);
          // Finite inputs need not compose to a finite frame. Compute both
          // candidates before changing the occurrence or its placement lineage.
-@@ -103,8 +100,11 @@
+@@ -117,8 +114,11 @@
          })?
          .retain();
          crate::resource::reserve_headers(&mut self.placements, 1)?.retain();
@@ -96,12 +111,3 @@
          self.placements.push(RetainedPlacement {
              input,
              output: self.slot,
-@@ -146,7 +146,7 @@
- // preserves its ordered f64 accumulation and avoids inverse-frame round trips.
- fn compose_frame(a: &[f64; 16], b: &[f64; 16]) -> crate::Result<[f64; 16]> {
-     let composed = crate::math::mat4::mul(b, a);
--    if false && composed.iter().any(|value| !value.is_finite()) {
-+    if composed.iter().any(|value| !value.is_finite()) {
-         return Err(crate::Error::geometry("retained composed frame is non-finite"));
-     }
-     Ok(composed)

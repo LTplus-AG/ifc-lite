@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 use super::*;
-use crate::program::inner::retained_program::RetainedProgramError;
 use crate::program::retained::{RetainedPlacementStage, RetainedPlanOperation};
 impl<'a> ProductControl<'a> {
-    // TODO(remove-by: S4a, owner: sessionf778e361): first cross-crate consumer.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(in crate::program) fn retained(
         element: &'a DecodedEntity,
         selection: RetainedSelection,
@@ -58,9 +55,9 @@ impl<'a> ProductControl<'a> {
     }
     pub(in crate::program) fn admit_retained(
         &mut self,
-    ) -> std::result::Result<(ProductReply, RetainedPlanOperation), RetainedProgramError> {
+    ) -> std::result::Result<(ProductReply, RetainedPlanOperation), ProgramError> {
         let Action::Item { control, .. } = &mut self.action else {
-            return Err(RetainedProgramError::StaleRequest);
+            return Err(ProgramError::StaleRequest);
         };
         control
             .admit_retained()

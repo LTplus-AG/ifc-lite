@@ -36,7 +36,7 @@ fn assert_disk_source(operation: &RetainedPlanOperation) {
             ..
         }
     ));
-    let RetainedRecipe::SweptDisk(recipe) = operation.construction() else {
+    let Some(RetainedRecipe::SweptDisk(recipe)) = operation.construction() else {
         panic!("the authored disk must reach the disk construction path");
     };
     assert_eq!(recipe.solid_id, 90);
@@ -111,7 +111,7 @@ fn swept_disk_preserves_source_directrix_repeated_occurrences_and_scaled_frames(
         assert_eq!(placement.input, operation.value().slot());
         assert_eq!(placement.output, value.slot());
         let world_from_source =
-            nalgebra::Matrix4::from_column_slice(value.world_from_source());
+            nalgebra::Matrix4::from_column_slice(value.world_from_source().unwrap());
         for (raw, local, expected) in [
             (
                 [1000., 2000., 3000., 1.],

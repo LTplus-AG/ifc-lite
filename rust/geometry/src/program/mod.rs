@@ -6,10 +6,9 @@ pub(crate) mod constructor;
 mod boolean;
 mod execute;
 mod inner;
-// TODO(remove-by: S4a, owner: sessionf778e361): first cross-crate consumer.
-// Keep the construction-only surface private until that consumer is reviewed.
-#[cfg_attr(not(test), allow(dead_code))]
 mod retained;
+pub use retained::*;
+pub use inner::retained_program::{RetainedProgram, RetainedTicket, RetainedReply, RejectedRetainedReply, RetainedProgramError};
 mod inner_cache;
 mod item;
 mod layers;

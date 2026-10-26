@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 --- a/rust/geometry/src/program/product/retained.rs
 +++ b/rust/geometry/src/program/product/retained.rs
-@@ -19,7 +19,7 @@
+@@ -16,7 +16,7 @@
              let mut control = Self::merged(element, SourceHygiene::IndexOnly);
              control.retained = Some(selection.clone());
              control.body = Body::Sink(Sink::Retained(Vec::new(), selection));

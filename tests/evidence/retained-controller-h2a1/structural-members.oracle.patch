@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 --- a/rust/geometry/src/program/product/retained_structure.rs
 +++ b/rust/geometry/src/program/product/retained_structure.rs
-@@ -70,7 +70,7 @@
+@@ -59,7 +59,7 @@
          })?;
      for member in members {
          crate::resource::check_current()?;

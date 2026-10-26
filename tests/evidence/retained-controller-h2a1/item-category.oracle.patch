@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 --- a/rust/geometry/src/program/product/retained_structure.rs
 +++ b/rust/geometry/src/program/product/retained_structure.rs
-@@ -89,7 +89,7 @@
+@@ -83,7 +83,7 @@
          // The generated supported-schema hierarchy includes geometric,
          // topological, styled and mapped items, including legacy subclasses.
          // Category membership does not admit a new retained constructor.

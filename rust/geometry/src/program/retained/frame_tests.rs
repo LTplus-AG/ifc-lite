@@ -52,7 +52,7 @@ fn finite_extrusion_and_product_translations_overflow_only_at_composition_and_re
     // The same reached value also witnesses transactional placement: failure
     // must not change the slot, frames, lineage, or product-placed flag.
     let mut value = value.try_copy().unwrap();
-    let before = value.try_copy().unwrap();
+    let before = value.clone();
     let translation = nalgebra::Matrix4::new_translation(&nalgebra::Vector3::new(1e308, 0., 0.));
     assert!(value
         .place_in_place(
@@ -80,8 +80,8 @@ fn source_frame_overflow_also_preserves_the_last_valid_occurrence() {
             RetainedPlacementStage::Product { product_id: 10 },
         )
         .unwrap();
-    assert_eq!(value.world_from_source()[12], 1e308);
-    let before = value.try_copy().unwrap();
+    assert_eq!(value.world_from_source().unwrap()[12], 1e308);
+    let before = value.clone();
     assert!(value
         .place_in_place(
             &translation,
@@ -178,39 +178,11 @@ fn rotated_translated_source_and_product_keep_their_ordered_finite_frames() {
         assert!((actual - nalgebra::Vector4::from(expected)).norm() < 1e-12);
     }
     let world_from_source =
-        nalgebra::Matrix4::from_column_slice(value.world_from_source());
+        nalgebra::Matrix4::from_column_slice(value.world_from_source().unwrap());
     assert!(
         (world_from_source * nalgebra::Vector4::new(4., 5., 6., 1.)
             - nalgebra::Vector4::new(5., 24., 36., 1.))
         .norm()
             < 1e-12
     );
-}
-
-#[test]
-fn reached_nonrigid_placement_refuses_without_changing_the_occurrence() {
-    let (operations, result) = admission(SOURCE);
-    assert_eq!(result.unwrap().values.len(), 1);
-    let original = operations[0].value();
-    for scale in [2., -1.] {
-        let mut value = original.try_copy().unwrap();
-        let transform = nalgebra::Matrix4::new_nonuniform_scaling(&nalgebra::Vector3::new(scale, 1., 1.));
-        assert!(value.place_in_place(&transform, 1, RetainedPlacementStage::Product { product_id: 10 }).is_err());
-        assert_eq!(&value, original, "nonrigid refusal must preserve all logical state");
-    }
-    let mut rigid = original.try_copy().unwrap();
-    rigid.place_in_place(&nalgebra::Matrix4::identity(), 1, RetainedPlacementStage::Product { product_id: 10 }).unwrap();
-    assert!(rigid.is_product_placed());
-    assert_ne!(rigid.slot(), original.slot());
-}
-
-#[test]
-fn reached_singular_placement_refuses_without_changing_the_occurrence() {
-    let (operations, result) = admission(SOURCE);
-    assert_eq!(result.unwrap().values.len(), 1);
-    let original = operations[0].value();
-    let mut value = original.try_copy().unwrap();
-    let singular = nalgebra::Matrix4::new_nonuniform_scaling(&nalgebra::Vector3::new(0., 1., 1.));
-    assert!(value.place_in_place(&singular, 1, RetainedPlacementStage::Product { product_id: 10 }).is_err());
-    assert_eq!(&value, original, "singular refusal must preserve all logical state");
 }

@@ -1114,6 +1114,8 @@ fn originating_system_follows_the_header_agreement() {
         ("Example-Org", "ExampleApp", "2.1"),
         ("ExampleOrg", "Example\u{2013}App", "2.1"),
         ("ExampleOrg", "Example\u{FF0D}App", "2.1"),
+        ("ExampleOrg ", "ExampleApp", "2.1"),
+        ("ExampleOrg", "ExampleApp", "2.1-RC1"),
         ("ExampleOrg", "ExampleApp", "v2.1"),
         ("ExampleOrg", "ExampleApp", ""),
         ("", "ExampleApp", "2.1"),
@@ -1124,14 +1126,14 @@ fn originating_system_follows_the_header_agreement() {
         let id = super::identity::Identity::new(&ExportingApplication::new(dev, name, "example-app", version, CHANGED_AT)).unwrap();
         assert!(id.header_note().is_some(), "{dev}/{name}/{version}");
     }
-    for version in ["2.1-alpha", "2.1-beta.2", "2.1-rc1", "2.1-RC1", "26.0.0.0"] {
+    for version in ["2.1-alpha", "2.1-beta.2", "2.1-rc1", "26.0.0.0"] {
         let id = super::identity::Identity::new(&ExportingApplication::new("ExampleOrg", "ExampleApp", "example-app", version, CHANGED_AT)).unwrap();
         assert_eq!(id.header_note(), None, "{version}");
     }
 }
 
 /// A header that doesn't follow the agreement is reported, never a reason to
-/// refuse the skeleton; its parts are written trimmed, each in its place
+/// refuse the skeleton; the names are written as given, each in its place
 /// (#8154).
 #[test]
 fn a_nonconforming_application_name_still_writes_the_skeleton() {
@@ -1139,5 +1141,5 @@ fn a_nonconforming_application_name_still_writes_the_skeleton() {
     let s = Skeleton::new(root(1), root(2), root(3)).with_application(ExportingApplication::new("LTplus ", "ifc-lite", "ifc-lite", "", CHANGED_AT));
     let bytes = skeleton(&s).expect("written");
     let text = String::from_utf8(bytes).unwrap();
-    assert!(text.contains("'LTplus - ifc-lite - '"), "{text}");
+    assert!(text.contains("'LTplus  - ifc-lite - '"), "{text}");
 }

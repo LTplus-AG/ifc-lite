@@ -13,20 +13,17 @@ impl Identity {
     /// and the returned `originating_system` (the application), which the
     /// caller passes to `write_header_originating`. The one place both the
     /// plan writer and the skeleton take them from.
-    pub(crate) fn stamp_header(&self, opts: &mut crate::StepOptions) -> Option<String> {
+    pub(crate) fn stamp_header(&self, opts: &mut crate::StepOptions) -> String {
         opts.time_stamp = Some(self.header_time_stamp());
         opts.application = Some(concat!("ifc-lite ", env!("CARGO_PKG_VERSION")).to_string());
         self.originating_system()
     }
 
-    /// `FILE_NAME.originating_system`: `Company - Application - Version`,
-    /// each part in its place even when empty, so a reader splitting on
-    /// ` - ` never reads one part as another; `None` when all three are empty
-    /// (the header then names the source's system or this toolkit).
-    fn originating_system(&self) -> Option<String> {
-        let app = &self.app;
-        let parts = [app.developer.as_str(), app.full_name.as_str(), app.version.as_str()];
-        (!parts.iter().all(|p| p.is_empty())).then(|| parts.join(" - "))
+    /// `FILE_NAME.originating_system`: `Company - Application - Version`
+    /// from the application's fields exactly as given, each in its place.
+    /// [`Self::header_note`] reports a form the agreement doesn't accept.
+    fn originating_system(&self) -> String {
+        format!("{} - {} - {}", self.app.developer, self.app.full_name, self.app.version)
     }
 
     /// `Identity::new`, with what it refuses and how the header reads
@@ -48,10 +45,9 @@ impl Identity {
     /// all the same: the caller's names are not rewritten.
     pub(crate) fn header_note(&self) -> Option<String> {
         let dash = |c: char| matches!(c, '-' | '\u{00AD}' | '\u{2010}'..='\u{2015}' | '\u{2043}' | '\u{2212}' | '\u{FE58}' | '\u{FE63}' | '\u{FF0D}');
-        let name_ok = |n: &str| !n.trim().is_empty() && !n.contains(dash);
+        let name_ok = |n: &str| !n.is_empty() && n.trim() == n && !n.contains(dash);
         let digits = |t: &str| !t.is_empty() && t.bytes().all(|b| b.is_ascii_digit());
-        let version = self.app.version.to_ascii_lowercase();
-        let version = version.as_str();
+        let version = self.app.version.as_str();
         let (number, suffix) = match version.split_once('-') {
             Some((number, suffix)) => (number, Some(suffix)),
             None => (version, None),
@@ -65,7 +61,7 @@ impl Identity {
         (!(name_ok(&self.app.developer) && name_ok(&self.app.full_name) && number_ok && suffix_ok)).then(|| {
             format!(
                 "originating_system '{}' does not follow buildingSMART's header agreement (Software Company Name - Application Name - Application Version: no dash inside the names, a numeric version with an optional -alpha, -beta or -rc suffix)",
-                self.originating_system().unwrap_or_default()
+                self.originating_system()
             )
         })
     }

@@ -128,11 +128,12 @@ fn length_unit(emit: &mut Emit, name: &str, metres: f64, metre: u32) -> Result<u
 /// not have distinct GlobalIds, `crs_name` is empty, or an
 /// [`ExportingApplication`] is given whose change time cannot be attributed.
 pub fn skeleton(s: &Skeleton) -> Result<Vec<u8>, String> {
-    let (bytes, findings, attributed) = build(s)?;
-    match s.application {
-        Some(_) if !attributed => Err(findings.into_iter().map(|f| f.message).collect::<Vec<_>>().join("; ")),
-        _ => Ok(bytes),
+    // An application whose change time can't be attributed is refused
+    // first, with its own reason; anything else is a finding.
+    if let Some(app) = &s.application {
+        Identity::new(app)?;
     }
+    build(s).map(|(bytes, _)| bytes)
 }
 
 /// [`skeleton`], reporting rather than refusing an application it cannot
@@ -142,12 +143,11 @@ pub fn skeleton(s: &Skeleton) -> Result<Vec<u8>, String> {
 /// # Errors
 /// As [`skeleton`], but for the application.
 pub fn skeleton_with_findings(s: &Skeleton) -> Result<(Vec<u8>, Vec<ValidationFinding>), String> {
-    build(s).map(|(bytes, findings, _)| (bytes, findings))
+    build(s)
 }
 
-/// The skeleton, its findings, and whether the exporting application (if
-/// any) could be attributed: one resolution for both entry points.
-fn build(s: &Skeleton) -> Result<(Vec<u8>, Vec<ValidationFinding>, bool), String> {
+/// The skeleton and its findings, for both entry points.
+fn build(s: &Skeleton) -> Result<(Vec<u8>, Vec<ValidationFinding>), String> {
     check(s)?;
     let mut findings = Vec::new();
     let mut ids = IdAllocator::after(0);
@@ -293,8 +293,7 @@ fn build(s: &Skeleton) -> Result<(Vec<u8>, Vec<ValidationFinding>, bool), String
         )?;
     }
 
-    let attributed = identity.is_some();
-    Ok((step_text(s.file_name.as_deref(), identity.as_ref(), &out)?, findings, attributed))
+    Ok((step_text(s.file_name.as_deref(), identity.as_ref(), &out)?, findings))
 }
 
 /// The application the skeleton is attributed to, if its change time is
@@ -324,7 +323,7 @@ fn step_text(file_name: Option<&str>, identity: Option<&Identity>, out: &[(u32, 
         application: empty(),
         ..Default::default()
     };
-    let originating = identity.and_then(|identity| identity.stamp_header(&mut opts));
+    let originating = identity.map(|identity| identity.stamp_header(&mut opts));
     let mut text = Vec::new();
     crate::step_header::write_header_originating(&mut text, &opts, None, SKELETON_SCHEMA, originating.as_deref()).map_err(|e| e.to_string())?;
     for (_, record) in out {

@@ -212,50 +212,6 @@ impl Identity {
         Ok(Self { app: app.clone(), seconds })
     }
 
-    /// The header fields the exporting application settles: the change time
-    /// as `time_stamp` and this toolkit as `preprocessor_version` in `opts`,
-    /// and the returned `originating_system` (the application), which the
-    /// caller passes to `write_header_originating`. The one place both the
-    /// plan writer and the skeleton take them from.
-    pub(crate) fn stamp_header(&self, opts: &mut crate::StepOptions) -> String {
-        opts.time_stamp = Some(self.header_time_stamp());
-        opts.application = Some(concat!("ifc-lite ", env!("CARGO_PKG_VERSION")).to_string());
-        self.originating_system()
-    }
-
-    /// `FILE_NAME.originating_system`: the application and its version.
-    fn originating_system(&self) -> String {
-        format!("{} - {} - {}", self.app.developer, self.app.full_name, self.app.version)
-    }
-
-    /// A finding when the application's fields don't make a valid
-    /// `originating_system` under buildingSMART's header agreement
-    /// (`Software Company Name - Application Name - Application Version`, no
-    /// dash inside the names, a PEP 440 version of numbers and dots with an
-    /// optional `-alpha`, `-beta` or `-rc` suffix). Written as given all the
-    /// same: the caller's names are not rewritten.
-    pub(crate) fn header_note(&self) -> Option<String> {
-        let name_ok = |n: &str| !n.trim().is_empty() && !n.contains('-');
-        let version_ok = {
-            let (number, suffix) = self.app.version.split_once('-').unwrap_or((&self.app.version, ""));
-            let number_ok = !number.is_empty() && number.split('.').all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()));
-            let suffix_ok = suffix.is_empty()
-                || ["alpha", "beta", "rc"].iter().any(|tag| suffix.strip_prefix(tag).is_some_and(|rest| rest.trim_start_matches('.').bytes().all(|b| b.is_ascii_digit())));
-            number_ok && suffix_ok
-        };
-        (!(name_ok(&self.app.developer) && name_ok(&self.app.full_name) && version_ok)).then(|| {
-            format!(
-                "originating_system '{}' does not follow buildingSMART's header agreement (Software Company Name - Application Name - Application Version: no dash inside the names, a numeric version with an optional -alpha, -beta or -rc suffix)",
-                self.originating_system()
-            )
-        })
-    }
-
-    /// `FILE_NAME.time_stamp`: the change time as UTC ISO 8601, marked `Z`.
-    fn header_time_stamp(&self) -> String {
-        format!("{}Z", iso_from_epoch(self.seconds))
-    }
-
     /// The chain this application's histories name.
     pub(crate) fn spec(&self) -> ChainSpec<'_> {
         let app = &self.app;
@@ -365,31 +321,4 @@ pub(crate) struct Original {
     pub(crate) creation_date: String,
 }
 
-/// `YYYY-MM-DDTHH:MM:SS` (UTC) for Unix seconds, the inverse of
-/// `epoch_seconds` (Howard Hinnant's `civil_from_days`).
-fn iso_from_epoch(seconds: i64) -> String {
-    let days = seconds.div_euclid(86_400);
-    let rem = seconds.rem_euclid(86_400);
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let day = doy - (153 * mp + 2) / 5 + 1;
-    let month = if mp < 10 { mp + 3 } else { mp - 9 };
-    let year = yoe + era * 400 + i64::from(month <= 2);
-    format!("{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}", rem / 3600, rem % 3600 / 60, rem % 60)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn header_time_round_trips_epoch_seconds() {
-        for stamp in ["1970-01-01T00:00:00", "2000-02-29T23:59:59", "2026-10-23T10:00:00", "1969-12-31T23:59:59"] {
-            assert_eq!(iso_from_epoch(epoch_seconds(stamp).unwrap()), stamp);
-        }
-    }
-}
+mod header;

@@ -1110,7 +1110,16 @@ fn a_delete_of_a_standalone_record_without_an_application_is_not_reported() {
 fn originating_system_follows_the_header_agreement() {
     let ok = super::identity::Identity::new(&app()).unwrap();
     assert_eq!(ok.header_note(), None);
-    for (dev, name, version) in [("Example-Org", "ExampleApp", "2.1"), ("ExampleOrg", "Example-App", "2.1"), ("ExampleOrg", "ExampleApp", "v2.1"), ("ExampleOrg", "ExampleApp", ""), ("", "ExampleApp", "2.1")] {
+    for (dev, name, version) in [
+        ("Example-Org", "ExampleApp", "2.1"),
+        ("ExampleOrg", "Example\u{2013}App", "2.1"),
+        ("ExampleOrg", "ExampleApp", "v2.1"),
+        ("ExampleOrg", "ExampleApp", ""),
+        ("", "ExampleApp", "2.1"),
+        ("ExampleOrg", "ExampleApp", "2.1-"),
+        ("ExampleOrg", "ExampleApp", "2.1-rc."),
+        ("ExampleOrg", "ExampleApp", "2.1-beta..3"),
+    ] {
         let id = super::identity::Identity::new(&ExportingApplication::new(dev, name, "example-app", version, CHANGED_AT)).unwrap();
         assert!(id.header_note().is_some(), "{dev}/{name}/{version}");
     }
@@ -1118,4 +1127,16 @@ fn originating_system_follows_the_header_agreement() {
         let id = super::identity::Identity::new(&ExportingApplication::new("ExampleOrg", "ExampleApp", "example-app", version, CHANGED_AT)).unwrap();
         assert_eq!(id.header_note(), None, "{version}");
     }
+}
+
+/// A header that doesn't follow the agreement is reported, never a reason to
+/// refuse the skeleton; its parts are written trimmed and an empty one is left
+/// out rather than leaving a dangling separator (#8154).
+#[test]
+fn a_nonconforming_application_name_still_writes_the_skeleton() {
+    let root = |n: u128| SkeletonRoot::new(GlobalId(n));
+    let s = Skeleton::new(root(1), root(2), root(3)).with_application(ExportingApplication::new("LTplus ", "ifc-lite", "ifc-lite", "", CHANGED_AT));
+    let bytes = skeleton(&s).expect("written");
+    let text = String::from_utf8(bytes).unwrap();
+    assert!(text.contains("'LTplus - ifc-lite'"), "{text}");
 }

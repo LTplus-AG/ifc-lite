@@ -128,10 +128,10 @@ fn length_unit(emit: &mut Emit, name: &str, metres: f64, metre: u32) -> Result<u
 /// not have distinct GlobalIds, `crs_name` is empty, or an
 /// [`ExportingApplication`] is given whose change time cannot be attributed.
 pub fn skeleton(s: &Skeleton) -> Result<Vec<u8>, String> {
-    match skeleton_with_findings(s)? {
-        (bytes, findings) if findings.is_empty() => Ok(bytes),
-        (_, findings) => Err(findings.into_iter().map(|f| f.message).collect::<Vec<_>>().join("; ")),
+    if let Some(app) = &s.application {
+        Identity::new(app)?;
     }
+    skeleton_with_findings(s).map(|(bytes, _)| bytes)
 }
 
 /// [`skeleton`], reporting rather than refusing an application it cannot
@@ -292,12 +292,7 @@ pub fn skeleton_with_findings(s: &Skeleton) -> Result<(Vec<u8>, Vec<ValidationFi
 /// The application the skeleton is attributed to, if its change time is
 /// usable; else a finding, and the skeleton is written unattributed.
 fn identity_of(s: &Skeleton, findings: &mut Vec<ValidationFinding>) -> Option<Identity> {
-    let app = s.application.as_ref()?;
-    let identity = Identity::new(app).map_err(|message| findings.push(ValidationFinding { express_id: None, message })).ok()?;
-    if let Some(message) = identity.header_note() {
-        findings.push(ValidationFinding { express_id: None, message });
-    }
-    Some(identity)
+    Identity::resolve(s.application.as_ref()?, findings)
 }
 
 /// The `OwnerHistory` slot of everything the skeleton creates: the

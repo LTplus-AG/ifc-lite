@@ -131,6 +131,13 @@ pub enum Representation {
     /// maps, or a new type with a `representation`. The colour is the
     /// type's.
     Mapped(MappedBody),
+    /// The same geometry as a product in the source: the object gets its
+    /// own `IfcProductDefinitionShape` and one representation per
+    /// representation of that product (same context, identifier and type)
+    /// listing the product's own items, so their styles carry over. Items are
+    /// positioned relative to the object placement, so the object shows the
+    /// same body at its own placement. The colour is the product's.
+    SameAs(ObjectRef),
 }
 
 /// How an object places its type's mapped representation: `transform`
@@ -151,7 +158,7 @@ impl Representation {
         match self {
             Representation::Extrusion(e) => std::slice::from_ref(e),
             Representation::Extrusions(es) => es,
-            Representation::None | Representation::Mesh(_) | Representation::Mapped(_) => &[],
+            Representation::None | Representation::Mesh(_) | Representation::Mapped(_) | Representation::SameAs(_) => &[],
         }
     }
 }
@@ -361,6 +368,11 @@ impl NewObject {
             ObjectRef::Guid(g) => Some(g.clone()),
             ObjectRef::Id(_) => None,
         }));
+        // Not one of `references`: those are kept from the delete cascade,
+        // and a reused body is read from what the deletes leave.
+        if let Representation::SameAs(ObjectRef::Guid(g)) = &self.representation {
+            out.push(g.clone());
+        }
         out
     }
 }

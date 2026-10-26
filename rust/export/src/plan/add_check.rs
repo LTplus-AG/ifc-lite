@@ -14,6 +14,7 @@ use crate::plan::attrs::attribute_index;
 use crate::plan::types::{ObjectRef, SurfaceColour};
 use super::assoc::{CheckedClassification, CheckedMaterial};
 use super::mapped::MapPlan;
+use super::same_as::ReusedRepresentation;
 use super::units::CheckedUnits;
 use super::AddState;
 
@@ -34,6 +35,8 @@ pub(super) struct Checked {
     pub(super) units: CheckedUnits,
     /// Where a mapped body's maps come from.
     pub(super) mapped: Option<MapPlan>,
+    /// The source representations a reused body repeats.
+    pub(super) same_as: Option<Vec<ReusedRepresentation>>,
 }
 
 impl AddState<'_, '_> {
@@ -197,6 +200,9 @@ impl AddState<'_, '_> {
         if matches!(t.representation, Representation::Mapped(_)) {
             return Err("a type's representation cannot itself be mapped".into());
         }
+        if matches!(t.representation, Representation::SameAs(_)) {
+            return Err("a type's representation cannot reuse a product's".into());
+        }
         check_representation(&t.representation, t.style.as_ref()).map_err(|e| format!("type: {e}"))?;
         Ok((class, predefined, self.check_units(&t.psets)?))
     }
@@ -311,6 +317,7 @@ impl AddState<'_, '_> {
         let classifications = self.check_classifications(&obj.classifications)?;
         check_representation(&obj.representation, obj.style.as_ref())?;
         let mapped = self.check_mapped(obj, existing_type)?;
+        let same_as = self.check_same_as(obj)?;
 
         let host = match &obj.opening {
             None => None,
@@ -339,15 +346,17 @@ impl AddState<'_, '_> {
             classifications,
             units,
             mapped,
+            same_as,
         })
     }
 }
 
 /// Refuse geometry that cannot be written validly, and a colour with
-/// nothing to apply to. A mapped body's own rules are `check_mapped`'s.
+/// nothing to apply to. A mapped body's own rules are `check_mapped`'s, a
+/// reused one's `check_same_as`'s.
 fn check_representation(rep: &Representation, style: Option<&SurfaceColour>) -> Result<(), String> {
     match rep {
-        Representation::None | Representation::Mapped(_) => {}
+        Representation::None | Representation::Mapped(_) | Representation::SameAs(_) => {}
         Representation::Extrusion(e) => validate_extrusion(e)?,
         Representation::Extrusions(es) => {
             if es.is_empty() {

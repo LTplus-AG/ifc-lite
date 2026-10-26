@@ -34,6 +34,7 @@ use super::types::{ObjectRef, Refusal, ValidationFinding};
 
 use assoc::{associate, Shared, SharedKey};
 use mapped::{build_map, mapped_shape, MapPlan, MapRef, TypeMaps};
+use same_as::reused_shape;
 use units::build_units;
 use check::Checked;
 
@@ -223,8 +224,9 @@ impl<'a, 'h> AddState<'a, 'h> {
             _ => None,
         };
         let type_rep = new_type.map(|t| &t.representation).filter(|r| !matches!(r, Representation::None));
-        // A mapped body of an existing type is in its maps' contexts.
-        let own_geometry = !matches!(obj.representation, Representation::None | Representation::Mapped(_));
+        // A mapped body of an existing type is in its maps' contexts, a
+        // reused body in its source's.
+        let own_geometry = !matches!(obj.representation, Representation::None | Representation::Mapped(_) | Representation::SameAs(_));
         let needs_context = own_geometry || c.host.is_some() || type_rep.is_some();
         let (context, new_context) = match needs_context {
             false => (None, None),
@@ -245,6 +247,7 @@ impl<'a, 'h> AddState<'a, 'h> {
                 };
                 Some(mapped_shape(emit, &mut shared, maps, &m.transform)?)
             }
+            (Representation::SameAs(_), _) => Some(reused_shape(emit, c.same_as.as_deref().ok_or("a reused body was not checked")?)?),
             (rep, Some(ctx)) => product_shape(emit, ctx, rep, obj.style.as_ref())?,
             (_, None) => None,
         };
@@ -346,6 +349,9 @@ mod opening;
 
 #[path = "add_mapped.rs"]
 mod mapped;
+
+#[path = "add_same_as.rs"]
+mod same_as;
 
 #[path = "add_type.rs"]
 mod standalone_type;

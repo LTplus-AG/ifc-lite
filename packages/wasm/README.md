@@ -325,6 +325,12 @@ comparisons before freeing it.
 `diffBuildComponentFingerprints` accept typed IFC adapter projections. They read
 only known fields, preserving lone surrogates in names and nested property keys
 and values; ignored extras, including assigned-type `globalId`, are not observed.
+`diffCheckFingerprintCollections(collection, components)` is the facade's
+ordering helper, not a fingerprint: given one freshly projected sparse
+`propertySets`, `quantitySets` or `typeAssignments` collection, it raises the
+host engine's string-length `RangeError` where the TypeScript oracle would
+while sorting or hashing that collection, before the facade reads the next
+field. It leaves the outer-hole `TypeError` to the caller's own read.
 `diffNormalizeValue` handles live host values before typed fingerprint projection:
 it preserves scalar values, represents non-finite numbers as strings, and
 serializes composite values with stable object-key ordering and observable host

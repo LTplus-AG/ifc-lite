@@ -81,6 +81,12 @@ pub enum ReceiptEvidence<'a, K> {
     },
 }
 
+/// Borrowed object-local metre mesh from a sealed numerical receipt.
+pub struct ReceiptMesh<'a> {
+    pub positions: &'a [f64],
+    pub indices: &'a [u32],
+}
+
 pub trait NumericalReceipt {
     type Object: PartialEq;
     type Domain: ReceiptDomain;
@@ -88,6 +94,10 @@ pub trait NumericalReceipt {
     fn heap_bytes() -> u64;
     /// Actual returned buffer capacities; SDK object memory is opaque.
     fn buffer_bytes(&self) -> Result<u64, Self::Error>;
+    /// Affine-only receipts deliberately have no mesh in M1.
+    fn mesh(&self) -> Option<ReceiptMesh<'_>> {
+        None
+    }
     fn object(&self) -> Self::Object;
     fn evidence(&self) -> ReceiptEvidence<'_, Self::Object>;
     fn domain(&self) -> &Self::Domain;

@@ -40,6 +40,11 @@ mod sink;
 pub use sink::ClosureSink;
 pub use sink::{FrameEvent, OnBatch, ProcessingSink};
 pub(crate) mod instancing;
+#[cfg(feature = "retained-runtime")]
+mod retained_jobs;
+#[cfg(feature = "retained-runtime")]
+#[doc(hidden)]
+pub use retained_jobs::canonical_element_jobs;
 mod jobs;
 mod run_snapshot;
 mod opening_filter;

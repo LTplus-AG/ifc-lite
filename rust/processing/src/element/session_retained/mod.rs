@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Shared runtime consumer of the borrowed common geometry program.
-// TODO(remove-by: M1 PR D, owner: maintainer, #7955): wire the whole-model driver.
 use super::model_context::retained::{ProductionLifecycle, RetainedContextError};
 use super::session::{plan_in_scope, ProductState};
 use super::session_owner::{OwnerStamp, ProductOwner};
@@ -20,7 +19,10 @@ use std::sync::{
     atomic::{AtomicU8, Ordering},
     Arc,
 };
-mod witness;
+pub(super) mod witness;
+pub(super) mod publication;
+pub(super) mod model;
+mod drive;
 mod acceptance;
 mod validation;
 mod batch;

@@ -1,0 +1,30 @@
+// SPDX-License-Identifier: MPL-2.0
+//! #7955: source refusals remain typed at the native model boundary.
+use super::support::*;
+#[test]
+fn opening_and_layer_refusals_do_not_acquire_the_worker() {
+    for (text, id, code) in [
+        (
+            include_str!("../../../../tests/fixtures/cli-retained/layered-wall.ifc"),
+            27,
+            "material_layer_strategy",
+        ),
+        (
+            include_str!("../../../../tests/fixtures/synthetic-retained/f-a-curved.ifc"),
+            55,
+            "opening_strategy",
+        ),
+    ] {
+        let (_, outcomes) = inert(text, &Default::default());
+        assert_eq!(refusal(&outcomes, id).code(), code);
+    }
+}
+#[test]
+fn source_refused_family_is_not_replaced_by_exact() {
+    let text = include_str!("../../../../tests/fixtures/synthetic-retained/f-c-brep.ifc");
+    let (_, outcomes) = inert(text, &Default::default());
+    assert!(!outcomes.is_empty());
+    for outcome in outcomes {
+        assert!(matches!(outcome,ifc_lite_retained_native::ProductOutcome::Refused { refusal: ifc_lite_processing::element::retained_runtime::RetainedProductRefusal::OperationUnsupported,.. }));
+    }
+}

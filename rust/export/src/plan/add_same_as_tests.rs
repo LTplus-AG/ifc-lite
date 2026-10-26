@@ -145,7 +145,7 @@ fn a_source_with_a_body_and_an_axis_gives_the_copy_both() {
 }
 
 #[test]
-fn a_mapped_body_is_shared_not_copied() {
+fn a_mapped_item_is_shared_not_copied() {
     for schema in SCHEMAS {
         let source = products_with_geometry(schema);
         let (out, report) = run(&source, vec![add(copy(1, IfcClass::Wall, ObjectRef::Id(12), None, 20.0))]);
@@ -179,7 +179,7 @@ fn refusal(source: &[u8], before: Vec<(ObjectRef, Disposition)>, obj: NewObject)
 }
 
 #[test]
-fn a_reused_body_is_refused_when_its_source_cannot_lend_one() {
+fn reused_geometry_is_refused_when_its_source_cannot_lend_it() {
     for schema in SCHEMAS {
         let source = products_with_geometry(schema);
         let wall = |r| copy(1, IfcClass::Wall, r, None, 0.0);
@@ -212,17 +212,7 @@ fn reshape_door() -> Vec<(ObjectRef, Disposition)> {
 }
 
 #[test]
-fn a_body_a_patch_replaces_is_not_reused() {
-    for schema in SCHEMAS {
-        let source = door_scene(schema, &[]);
-        let door = copy(1, IfcClass::Door, ObjectRef::Guid(DOOR.into()), Some(ObjectRef::Id(70)), 5.0);
-        let reason = refusal(&source, reshape_door(), door);
-        assert!(reason.contains(&format!("{DOOR} gets new geometry from a patch in this plan")), "{schema}: {reason}");
-    }
-}
-
-#[test]
-fn a_reshaped_body_is_not_reused_while_another_product_keeps_the_old_one() {
+fn reshaped_geometry_is_not_reused_while_another_product_keeps_the_old_one() {
     for schema in SCHEMAS {
         // Door `#220` has its own shape `#221` and placement `#223`, and lists
         // the door's solid `#206`, so the patch's sweep leaves `#206` in place.
@@ -284,7 +274,7 @@ fn a_reshaped_source_is_refused_even_when_its_old_shape_survives_the_patch() {
 }
 
 #[test]
-fn a_mapped_body_outlives_its_deleted_type_and_goes_with_its_map() {
+fn a_mapped_item_outlives_its_deleted_type_and_goes_with_its_map() {
     for schema in SCHEMAS {
         let source = products_with_geometry(schema);
         let wall = || copy(1, IfcClass::Wall, ObjectRef::Id(12), None, 20.0);
@@ -306,7 +296,9 @@ fn a_mapped_body_outlives_its_deleted_type_and_goes_with_its_map() {
         }
 
         // Deleting solid `#116` below the map leaves `#112`: the copy mirrors
-        // the source as the plan leaves it.
+        // the source as the plan leaves it. The map's representation `#115`
+        // is left with no items for the source too; that is the delete
+        // cascade's, not the reuse's.
         let (out, report) = run(&source, vec![(ObjectRef::Id(116), Disposition::Delete), add(wall())]);
         assert!(report.refusals.is_empty(), "{schema}: {:?}", report.refusals);
         assert_eq!(attr(&out, schema, 111, "Items"), "(#112)", "{schema}");
@@ -316,7 +308,7 @@ fn a_mapped_body_outlives_its_deleted_type_and_goes_with_its_map() {
 }
 
 #[test]
-fn a_body_added_by_the_same_plan_is_not_reused() {
+fn geometry_added_by_the_same_plan_is_not_reused() {
     let source = products_with_geometry("IFC4");
     let first = object(IfcClass::Wall, gid(1), None, Representation::Extrusion(block(1.0, 1.0, 1.0)));
     let second = copy(2, IfcClass::Wall, ObjectRef::Guid(gid(1).encode()), None, 5.0);
@@ -326,7 +318,7 @@ fn a_body_added_by_the_same_plan_is_not_reused() {
 }
 
 #[test]
-fn a_type_cannot_reuse_a_products_body() {
+fn a_type_cannot_reuse_a_products_geometry() {
     let source = products_with_geometry("IFC4");
     let mut t = NewType::new(IfcClass::Named("IfcWallType".into())).with_name("Copied");
     t.representation = Representation::SameAs(ObjectRef::Id(10));

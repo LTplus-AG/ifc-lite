@@ -2,8 +2,8 @@
 //! Reused geometry for [`super::super::Disposition::Add`]: a new product with
 //! every representation of a product already in the source, not only its
 //! body. A child of `add`, which builds through it. Openings that void the
-//! source and its projections are not carried; an Add that needs openings
-//! declares its own.
+//! source, its projections and the layer assignments of its representations
+//! are not carried; an Add that needs openings declares its own.
 //!
 //! The new product gets its own `IfcProductDefinitionShape` and its own
 //! representations, one per representation of the source product, in the

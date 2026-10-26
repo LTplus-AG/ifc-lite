@@ -9,13 +9,33 @@ use ifc_lite_processing::element::retained_runtime::{
 };
 
 #[wasm_bindgen(inline_js = "export async function m1RuntimePeer() {\n\
-  const { peers } = await import('/smlib/peer.mjs');\n\
+  const { peers } = await import('/retained-test/peer.mjs');\n\
   if (!peers.length) throw new Error('inert runtime peer was not constructed');\n\
   return peers.at(-1);\n\
+}\n\
+export async function m1RuntimeDriver() {\n\
+  const { RetainedDriver } = await import('/retained-test/retained-driver.mjs');\n\
+  return new RetainedDriver();\n\
 }")]
 extern "C" {
     #[wasm_bindgen(catch, js_name = m1RuntimePeer)]
     async fn runtime_peer() -> Result<JsValue, JsValue>;
+    #[wasm_bindgen(catch, js_name = m1RuntimeDriver)]
+    async fn runtime_driver() -> Result<JsValue, JsValue>;
+}
+
+// Test-only construction: production BrowserWorker::new always owns the real
+// SDK driver. Never add a caller-supplied transport to the published runtime.
+async fn inert_worker() -> BrowserWorker {
+    BrowserWorker {
+        owner: Arc::new(Owner {
+            identity: next_identity().unwrap(),
+            live: AtomicBool::new(true),
+            driver: runtime_driver().await.unwrap().unchecked_into(),
+        }),
+        regions_qualified: false,
+        disks_qualified: false,
+    }
 }
 const IDENTITY: [f64; 16] = [
     1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.,
@@ -50,7 +70,7 @@ async fn construction(worker: &mut BrowserWorker) -> BrowserReceipt {
 // #7955: this executes runtime.rs and receipt.rs, not only the JS driver.
 #[wasm_bindgen_test(async)]
 async fn retained_browser_smlib_free_runtime_lifetimes_limits_and_capabilities() {
-    let mut worker = BrowserWorker::new().unwrap();
+    let mut worker = inert_worker().await;
     let source = construction(&mut worker).await;
     let peer = runtime_peer().await.unwrap();
     assert!(matches!(
@@ -207,7 +227,7 @@ async fn retained_browser_smlib_free_runtime_lifetimes_limits_and_capabilities()
     assert_eq!(commands(&peer), before);
     chain.validate_live().unwrap();
 
-    let mut foreign = BrowserWorker::new().unwrap();
+    let mut foreign = inert_worker().await;
     let foreign_source = construction(&mut foreign).await;
     let foreign_peer = runtime_peer().await.unwrap();
     let before = commands(&foreign_peer);

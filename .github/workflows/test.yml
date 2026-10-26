@@ -267,6 +267,8 @@ jobs:
             rust:
               - 'rust/**'
               - 'scripts/retained-browser-runtime-tests.mjs'
+              - 'scripts/stage-retained-runtime-peer.mjs'
+              - 'scripts/lib/__fixtures__/retained-driver/**'
               - 'apps/server/**'
               - 'Cargo.toml'
               - 'Cargo.lock'

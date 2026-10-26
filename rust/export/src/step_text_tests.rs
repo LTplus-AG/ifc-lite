@@ -476,5 +476,5 @@ fn quoted_wraps_the_escaped_text_in_single_quotes() {
     assert_eq!(quoted("Wall"), "'Wall'");
     assert_eq!(quoted("it's"), "'it''s'");
     assert_eq!(quoted(r"a\b"), r"'a\\b'");
-    assert_eq!(quoted("Höhe"), format!("'{}'", escape("Höhe")));
+    assert_eq!(quoted("Höhe"), r"'H\X2\00F6\X0\he'");
 }

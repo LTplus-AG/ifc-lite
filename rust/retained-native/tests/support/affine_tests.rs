@@ -22,3 +22,33 @@ fn later_affine_part_keeps_earlier_construction_private() {
     };
     assert_eq!(refusal(&outcomes, 10).code(), "incomplete");
 }
+
+#[test]
+fn issue_7955_native_nonuniform_and_reflected_copies_match_authored_bounds_and_volume() {
+    for reflected in [false, true] {
+        let bytes = mapped()
+            .replace("'SweptSolid',(#113,#114)", "'SweptSolid',(#113)")
+            .replace(
+                "#13=IFCMAPPEDITEM",
+                "#13=IFCBOOLEANRESULT(.UNION.,#813,#813);#813=IFCMAPPEDITEM",
+            );
+        let bytes = if reflected {
+            bytes.replace("OPERATOR3D($,$,#84,2.,$)", "OPERATOR3D(#201,#202,#84,1.,#203)")
+                .replace("ENDSEC;END-ISO", "#201=IFCDIRECTION((1.,0.,0.));#202=IFCDIRECTION((0.,-1.,0.));#203=IFCDIRECTION((0.,0.,1.));ENDSEC;END-ISO")
+        } else {
+            bytes.replace(
+                "OPERATOR3D($,$,#84,2.,$)",
+                "OPERATOR3DNONUNIFORM($,$,#84,2.,$,3.,4.)",
+            )
+        };
+        let Some(outcomes) = native(&bytes) else {
+            return;
+        };
+        let (volume, bounds) = if reflected {
+            (24., [11., 22., 36., 13., 26., 39.])
+        } else {
+            (576., [10., 18., 36., 14., 30., 48.])
+        };
+        super::geometry_assertions::assert_geometry(shape(&outcomes, 10), volume, Some(bounds));
+    }
+}

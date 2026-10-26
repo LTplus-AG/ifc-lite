@@ -18,6 +18,7 @@ pub struct Report {
     pub rows: Vec<String>,
     pub coverage: Vec<String>,
     pub models: Vec<Value>,
+    pub exact_only_type_products: Vec<Value>,
 }
 impl Report {
     // One comparison row combines both independently measured sides and source expectations.
@@ -93,7 +94,7 @@ impl Report {
         }
         let format = |v: Option<f64>| v.map(|v| v.to_string()).unwrap_or_default();
         self.rows.push(format!(
-            "{model}\t{}\t{}\tpublished\t\t\t{curved}\t{}\t{}\t{}\t{}\t{}\t{ms}\t{}\t{:?}",
+            "{model}\t{}\t{}\tpublished\t\t\t{curved}\t{}\t{}\t{}\t{}\t{}\t{ms}\t{}\t{:?}\tM1",
             shape.product_id,
             shape.ifc_type.name(),
             format(source_rel),
@@ -113,7 +114,7 @@ impl Report {
             "byCode":self.histogram, "maximumDeviations":{"sourceVolumeRelative":finite(self.maxima[0]),
                 "exactVolumeRelative":finite(self.maxima[1]),"exactAreaRelative":finite(self.maxima[2]),"bboxMetres":finite(self.maxima[3])},
             "violations":self.violations,"universeMismatch":self.universe_mismatch,"skipped":self.skipped,
-            "exact":{"milliseconds":self.exact_ms},"retained":{"milliseconds":self.retained_ms},"models":self.models})
+            "exact":{"milliseconds":self.exact_ms},"retained":{"milliseconds":self.retained_ms},"models":self.models, "exact_only_type_products":self.exact_only_type_products.len(), "exact_only_type_product_ids":self.exact_only_type_products})
     }
 }
 fn finite(v: f64) -> Value {

@@ -50,17 +50,88 @@ fn m1_d_native_driver_caps_restarts_and_never_retries_the_failed_product() {
     assert_eq!(ids, vec![27, 100, 101, 102, 103, 104]);
 }
 
-// Refs #7955: scheduling retained jobs cannot modify exact output or its frame.
+// #7955: independently compare exact output IDs and physical file ordering.
 #[test]
-fn canonical_jobs_leave_exact_mesh_bytes_identical() {
-    let bytes = BOX.as_bytes();
-    let before = ifc_lite_processing::process_geometry(bytes);
-    let jobs = canonical_element_jobs(&SourceBundle::new(bytes.to_vec()));
-    assert_eq!(jobs.iter().map(|(id, _)| *id).collect::<Vec<_>>(), vec![27]);
-    let after = ifc_lite_processing::process_geometry(bytes);
-    assert_eq!(
-        serde_json::to_vec(&before.meshes).unwrap(),
-        serde_json::to_vec(&after.meshes).unwrap()
+fn canonical_jobs_cover_exact_outputs_in_file_order() {
+    use std::collections::BTreeSet;
+    for text in [
+        SOURCE,
+        include_str!("../../geometry/tests/fixtures/mapped_instances_synthetic.ifc"),
+        include_str!("../../geometry/tests/fixtures/mapped_instances_multi_item.ifc"),
+        include_str!("../../geometry/tests/fixtures/mapped_instances_site_rotated.ifc"),
+        include_str!("../../../tests/fixtures/synthetic-retained/f-b-mapped.ifc"),
+    ] {
+        let bytes = text.as_bytes();
+        let source = SourceBundle::new(bytes.to_vec());
+        let jobs = canonical_element_jobs(&source);
+        let ids: Vec<_> = jobs.iter().map(|(id, _)| *id).collect();
+        let candidates: BTreeSet<_> = ids.iter().copied().collect();
+        let exact = ifc_lite_processing::process_geometry(bytes);
+        let mut decoder = source.decoder();
+        let exact_ids: BTreeSet<_> = exact
+            .meshes
+            .iter()
+            .map(|m| m.express_id)
+            .filter(|id| {
+                !decoder
+                    .decode_by_id(*id)
+                    .unwrap()
+                    .ifc_type
+                    .is_subtype_of(ifc_lite_core::IfcType::IfcTypeProduct)
+            })
+            .collect();
+        assert!(
+            exact_ids.is_subset(&candidates),
+            "exact-only IDs: {:?}",
+            exact_ids.difference(&candidates).collect::<Vec<_>>()
+        );
+        let mut scanner = ifc_lite_core::EntityScanner::new(bytes);
+        let mut file_order = Vec::new();
+        while let Some((id, _, _, _)) = scanner.next_entity() {
+            if candidates.contains(&id) {
+                file_order.push(id);
+            }
+        }
+        assert_eq!(ids, file_order);
+    }
+}
+
+// #7955: completed contract refusals do not spend the replacement-worker budget.
+#[test]
+fn contract_fault_keeps_one_worker_for_the_next_product() {
+    let mut transport = peer();
+    transport.contract = true;
+    let domain = transport.domain.clone();
+    let calls = transport.calls.clone();
+    let mut transport = Some(transport);
+    let acquired = Cell::new(0);
+    let options = ModelOptions {
+        ids: Some([10, 20].into_iter().collect()),
+        ..Default::default()
+    };
+    let summary = block_on(run_model(
+        SourceBundle::new(SOURCE.as_bytes().to_vec()),
+        &options,
+        || {
+            acquired.set(acquired.get() + 1);
+            Ok(transport.take().expect("worker must not be replaced"))
+        },
+        |outcome| {
+            assert!(matches!(
+                outcome,
+                ProductOutcome::Refused {
+                    refusal: RetainedProductRefusal::ContractBreach,
+                    ..
+                }
+            ))
+        },
+    ))
+    .unwrap();
+    assert_eq!(acquired.get(), 1);
+    assert_eq!(calls.get(), 2);
+    assert_eq!(summary.restarts, 0);
+    assert!(
+        domain.0.get(),
+        "product cleanup must not retire a completed contract fault"
     );
-    assert_eq!(before.frame.world_matrix(), after.frame.world_matrix());
 }

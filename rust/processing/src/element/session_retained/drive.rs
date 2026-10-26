@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! One attempt per product, with no lexical source/resource scope across await.
-use super::runtime::{AsyncRetainedExecutor, NumericalLimits, RuntimeFault};
+use super::runtime::{AsyncRetainedExecutor, NumericalLimits, RuntimeFault, RuntimeFaultKind};
 use super::*;
 
 pub(super) async fn drive<W: AsyncRetainedExecutor>(
@@ -19,10 +19,23 @@ pub(super) async fn drive<W: AsyncRetainedExecutor>(
         let issued = execution
             .issue_next(decoder, router, worker)?
             .ok_or_else(|| protocol(ReceiptFailure::MissingAdmission))?;
-        let completed = issued
-            .execute_async(worker, limits)
-            .await
-            .map_err(|error| error.reason)?;
+        let completed = match issued.execute_async(worker, limits).await {
+            Ok(completed) => completed,
+            Err(error) => {
+                if matches!(&error.reason, RetainedExecutionError::Runtime(fault) if fault.kind == RuntimeFaultKind::Contract)
+                {
+                    // invoke settled and its packet is disarmed. Abandon this
+                    // product without retiring the healthy numerical domain.
+                    execution.pending = None;
+                    execution.runtime_domain = None;
+                    execution.failed = true;
+                    if let Some(program) = &mut execution.program {
+                        program.cancel();
+                    }
+                }
+                return Err(error.reason);
+            }
+        };
         execution
             .accept(completed, decoder, router)
             .map_err(|rejected| rejected.reason)?;

@@ -13,6 +13,7 @@ pub(crate) fn fault(error: WorkerError) -> RuntimeFault {
     let message = error.to_string();
     match error {
         WorkerError::Kernel { status, .. } => RuntimeFault::kernel(status, message),
+        WorkerError::InvalidArgument(_) => RuntimeFault::contract(message),
         WorkerError::WrongWorker => RuntimeFault::retired(message),
         WorkerError::ResourceLimit(_) => RuntimeFault::resource_limit(message),
         WorkerError::Unqualified(_) => RuntimeFault::unqualified(message),
@@ -34,7 +35,7 @@ fn boolean_operation(
         ifc_lite_geometry::BoolOp::Union => Ok(BooleanOperation::Union),
         ifc_lite_geometry::BoolOp::Intersection => Ok(BooleanOperation::Intersection),
         ifc_lite_geometry::BoolOp::Difference => Ok(BooleanOperation::Difference),
-        _ => Err(RuntimeFault::transport(
+        _ => Err(RuntimeFault::contract(
             "unsupported retained Boolean operator",
         )),
     }
@@ -49,7 +50,7 @@ fn dependency(operand: Operand<'_, NativeReceipt>) -> Result<RetainedDependency<
                 realization,
                 world_from_source,
             }),
-            _ => Err(RuntimeFault::transport("source operand receipt mismatch")),
+            _ => Err(RuntimeFault::contract("source operand receipt mismatch")),
         },
         Operand::Placed {
             receipt,
@@ -63,7 +64,7 @@ fn dependency(operand: Operand<'_, NativeReceipt>) -> Result<RetainedDependency<
                 result,
                 world_from_result: world_from_object,
             }),
-            _ => Err(RuntimeFault::transport("placed operand receipt mismatch")),
+            _ => Err(RuntimeFault::contract("placed operand receipt mismatch")),
         },
     }
 }
@@ -130,5 +131,16 @@ impl AsyncRetainedExecutor for NativeWorker {
             kind,
             domain: self.domain(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn invalid_arguments_are_contract_faults_not_transport_failures() {
+        let error = WorkerError::InvalidArgument("bad frame");
+        let expected = RuntimeFault::contract(error.to_string());
+        assert_eq!(fault(error), expected);
     }
 }

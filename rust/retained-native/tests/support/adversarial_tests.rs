@@ -81,7 +81,7 @@ impl AsyncRetainedExecutor for CorruptWorker {
 }
 #[test]
 fn wrong_real_operation_receipts_cannot_publish_any_part() {
-    let Some(path) = std::env::var_os("IFCLITE_SMLIB_WORKER") else {
+    let Some(path) = worker_path() else {
         eprintln!("SKIP: set IFCLITE_SMLIB_WORKER");
         return;
     };

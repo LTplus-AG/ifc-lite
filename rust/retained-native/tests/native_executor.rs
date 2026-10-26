@@ -20,3 +20,6 @@ mod support;
 mod tests;
 #[path = "support/type_map_tests.rs"]
 mod type_map_tests;
+
+#[path = "support/geometry_assertions.rs"]
+mod geometry_assertions;

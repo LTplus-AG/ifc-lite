@@ -16,8 +16,26 @@ fn opening_and_layer_refusals_do_not_acquire_the_worker() {
             "opening_strategy",
         ),
     ] {
-        let (_, outcomes) = inert(text, &Default::default());
+        let acquired = std::cell::Cell::new(0);
+        let mut outcomes = Vec::new();
+        let options = ifc_lite_retained_native::ModelOptions {
+            ids: Some([id].into_iter().collect()),
+            ..Default::default()
+        };
+        ifc_lite_retained_native::block_on(
+            ifc_lite_processing::element::retained_runtime::run_model(
+                ifc_lite_core::SourceBundle::new(text.as_bytes().to_vec()),
+                &options,
+                || {
+                    acquired.set(acquired.get() + 1);
+                    Ok(peer())
+                },
+                |outcome| outcomes.push(outcome),
+            ),
+        )
+        .unwrap();
         assert_eq!(refusal(&outcomes, id).code(), code);
+        assert_eq!(acquired.get(), 0, "source refusal must precede acquisition");
     }
 }
 #[test]

@@ -30,7 +30,10 @@ cargo run -p ifc-lite-retained-native --features retained-runtime \
 Machine admission policy also applies to these commands. The comparison writes
 `summary.json` and `products.tsv`. It reads the preregistered tolerance file;
 there is no command-line tolerance override. `--manifest tests/models/manifest.json`
-selects downloaded fixtures. Missing files are reported explicitly and fail a
+selects downloaded fixtures. Engine startup/qualification must succeed before any
+coverage is reported. Exact-only orphan type products are listed separately as
+“out of M1 scope”; they never enter the coverage numerator or denominator.
+Missing files are reported explicitly and fail a
 gated run. `--bless` updates the committed coverage manifest only after a clean
 committed-fixture comparison and is forbidden whenever `CI` is set.
 
@@ -39,5 +42,7 @@ per-phase allocations. Timings include worker startup and qualification. These
 ordinary qualification runs are not an exclusive-host performance verdict.
 
 Without `IFCLITE_SMLIB_WORKER`, native geometry witnesses print a skip message.
+Setting `IFCLITE_REQUIRE_SMLIB` makes that absence a test failure; the
+geometry-platform native lane sets it.
 The inert transport, restart budget, async cancellation, admission, and oracle
 witnesses require no SDK. Inert peers cannot construct geometry receipts.

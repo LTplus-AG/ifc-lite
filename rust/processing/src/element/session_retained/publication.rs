@@ -38,6 +38,7 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
         result
     }
     fn shape_in_scope(&self) -> Result<ShapeOnlyProduct, RetainedExecutionError> {
+        require_placement(self.plan.requirements())?;
         let mut parts = Vec::new();
         let mut storage = Storage::default();
         storage.reserve(&self.resources, &mut parts, self.plan.values().len())?;
@@ -120,5 +121,28 @@ fn curved_recipe(recipe: &RetainedRecipe) -> bool {
                 })
         }),
         _ => true,
+    }
+}
+
+fn require_placement(
+    mut requirements: impl Iterator<Item = Requirement>,
+) -> Result<(), RetainedExecutionError> {
+    if requirements.any(|r| r == Requirement::ProductPlacement) {
+        return Err(incomplete());
+    }
+    Ok(())
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    // #7955: a type-map plan has geometry but no product placement authority.
+    #[test]
+    fn publication_refuses_outstanding_product_placement() {
+        let error = require_placement(
+            [Requirement::IfcAppearance, Requirement::ProductPlacement].into_iter(),
+        )
+        .unwrap_err();
+        assert_eq!(error.refusal().0.code(), "incomplete");
+        assert!(require_placement([Requirement::IfcAppearance].into_iter()).is_ok());
     }
 }

@@ -11,6 +11,9 @@ on:
       - 'rust/geometry-runtime/**'
       - 'rust/retained-native/**'
       - 'rust/processing/src/processor/**'
+      - 'rust/processing/src/element/session_retained/**'
+      - 'rust/processing/src/element.rs'
+      - 'rust/processing/Cargo.toml'
       - 'tests/fixtures/cli-retained/**'
       - 'tests/fixtures/synthetic-retained/**'
       - 'tests/manifests/cli-retained-coverage.tsv'
@@ -96,6 +99,7 @@ jobs:
         id: native-compare
         continue-on-error: true
         run: |
+          export IFCLITE_REQUIRE_SMLIB=1
           export IFCLITE_SMLIB_WORKER="$RUNNER_TEMP/smlib-native/ifclite_smlib_worker"
           cargo test --locked -p ifc-lite-retained-native --features retained-runtime
           cargo run --locked -p ifc-lite-retained-native --features retained-runtime --example retained_compare -- \

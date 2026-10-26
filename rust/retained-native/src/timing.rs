@@ -9,6 +9,7 @@ use std::{cell::Cell, rc::Rc, time::Instant};
 pub struct NativeTimings {
     pub startup_and_qualification_ms: f64,
     pub construction_ms: f64,
+    pub construction_count: usize,
     pub affine_ms: f64,
     pub boolean_ms: f64,
     pub controller_and_publication_ms: f64,
@@ -43,7 +44,10 @@ impl AsyncRetainedExecutor for MeasuredWorker {
         let elapsed = start.elapsed().as_secs_f64() * 1000.;
         let mut timing = self.timing.get();
         match operation {
-            0 => timing.construction_ms += elapsed,
+            0 => {
+                timing.construction_ms += elapsed;
+                timing.construction_count += 1;
+            }
             1 => timing.affine_ms += elapsed,
             _ => timing.boolean_ms += elapsed,
         }

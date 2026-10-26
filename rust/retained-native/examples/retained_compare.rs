@@ -25,6 +25,10 @@ fn main() -> Result<(), Error> {
     let tolerances: serde_json::Value = serde_json::from_slice(&std::fs::read(
         "tests/fixtures/cli-retained/tolerances.json",
     )?)?;
+    // Fail before reporting coverage if no qualified numerical engine exists.
+    let qualified = ifc_lite_retained_native::NativeWorker::spawn(&options.worker)
+        .map_err(|error| format!("native engine startup/qualification failed: {error}"))?;
+    drop(qualified);
     let mut report = report::Report::default();
     for path in &options.models {
         if !path.exists() {
@@ -78,7 +82,7 @@ fn write_report(
 ) -> Result<(), Error> {
     report.rows.sort();
     std::fs::create_dir_all(&options.out)?;
-    std::fs::write(options.out.join("products.tsv"),format!("model\tid\ttype\tstatus\tcode\torigin_cause\tcurved\tsrc_vol_rel\texact_vol_rel\texact_area_rel\tbbox_dev_m\tclosed\tms\tvolume_m3\tobligationsUnmet\n{}\n",report.rows.join("\n")))?;
+    std::fs::write(options.out.join("products.tsv"),format!("model\tid\ttype\tstatus\tcode\torigin_cause\tcurved\tsrc_vol_rel\texact_vol_rel\texact_area_rel\tbbox_dev_m\tclosed\tms\tvolume_m3\tobligationsUnmet\tscope\n{}\n",report.rows.join("\n")))?;
     let mut summary = report.summary();
     summary["complete"] = json!(complete);
     summary["modelsRequested"] = json!(options.models.len());
@@ -107,9 +111,11 @@ fn compare(
             .positions
             .chunks_exact(3)
             .map(|p| {
-                exact
-                    .frame
-                    .to_world([p[0] as f64, p[1] as f64, p[2] as f64])
+                exact.frame.to_world([
+                    mesh.origin[0] + p[0] as f64,
+                    mesh.origin[1] + p[1] as f64,
+                    mesh.origin[2] + p[2] as f64,
+                ])
             })
             .collect();
         let measurement = exact_metrics.entry(mesh.express_id).or_default();
@@ -126,6 +132,24 @@ fn compare(
         .into_iter()
         .map(|(id, _)| id)
         .collect();
+    let mut decoder = source.decoder();
+    for (&id, metrics) in &exact_metrics {
+        let entity = decoder.decode_by_id(id)?;
+        if entity
+            .ifc_type
+            .is_subtype_of(ifc_lite_core::IfcType::IfcTypeProduct)
+        {
+            report
+                .exact_only_type_products
+                .push(json!({"model":model,"id":id,"scope":"out of M1 scope"}));
+            report.rows.push(format!("{model}\t{id}\t{}\texact_only_type_product\t\t\t\t\t\t\t\t\t\t{}\t\tout of M1 scope", entity.ifc_type.name(), metrics.volume));
+        } else if !candidates.contains(&id) {
+            report.universe_mismatch.push(format!(
+                "{model}:{id}: exact mesh omitted from canonical candidates"
+            ));
+        }
+    }
+    drop(decoder);
     let sources = ifc_lite_processing::extract_analytic_quantity_sources(&bytes, None);
     let mut seen = BTreeSet::new();
     let mut last = Instant::now();
@@ -182,7 +206,7 @@ fn compare(
                             .push(format!("{model}:{id}: contract_breach"));
                     }
                     report.rows.push(format!(
-                        "{model}\t{id}\t{}\trefused\t{code}\t{}\t\t\t\t\t\t\t{ms}\t\t",
+                        "{model}\t{id}\t{}\trefused\t{code}\t{}\t\t\t\t\t\t\t{ms}\t\t\tM1",
                         ifc_type.name(),
                         origin.map_or("", |o| o.cause)
                     ));

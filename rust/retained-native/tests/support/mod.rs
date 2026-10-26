@@ -65,6 +65,7 @@ impl NumericalReceipt for Never {
 pub struct Peer {
     pub domain: Domain,
     pub suspend: bool,
+    pub contract: bool,
     pub calls: Rc<Cell<usize>>,
 }
 impl RetainedRuntime for Peer {
@@ -91,6 +92,9 @@ impl AsyncRetainedExecutor for Peer {
         if self.suspend {
             std::future::pending::<()>().await;
         }
+        if self.contract {
+            return Err(RuntimeFault::contract("inert contract refusal"));
+        }
         Err(RuntimeFault::transport("inert peer closed"))
     }
 }
@@ -98,6 +102,7 @@ pub fn peer() -> Peer {
     Peer {
         domain: Domain(Rc::new(Cell::new(true))),
         suspend: false,
+        contract: false,
         calls: Rc::new(Cell::new(0)),
     }
 }
@@ -113,10 +118,7 @@ pub fn inert(text: &str, options: &ModelOptions) -> (ModelSummary, Vec<ProductOu
     (summary, outcomes)
 }
 pub fn native(text: &str) -> Option<Vec<ProductOutcome>> {
-    let Some(worker) = std::env::var_os("IFCLITE_SMLIB_WORKER") else {
-        eprintln!("SKIP real retained executor: set IFCLITE_SMLIB_WORKER");
-        return None;
-    };
+    let worker = worker_path()?;
     let mut outcomes = Vec::new();
     run_model_native(
         SourceBundle::new(text.as_bytes().to_vec()),
@@ -148,4 +150,16 @@ pub fn refusal(outcomes: &[ProductOutcome], id: u32) -> RetainedProductRefusal {
             _ => None,
         })
         .unwrap_or_else(|| panic!("missing refusal {id}: {outcomes:?}"))
+}
+
+pub fn worker_path() -> Option<std::ffi::OsString> {
+    let path = std::env::var_os("IFCLITE_SMLIB_WORKER");
+    if path.is_none() {
+        assert!(
+            std::env::var_os("IFCLITE_REQUIRE_SMLIB").is_none(),
+            "real SMLib is required but IFCLITE_SMLIB_WORKER is unset"
+        );
+        eprintln!("SKIP real retained executor: set IFCLITE_SMLIB_WORKER");
+    }
+    path
 }

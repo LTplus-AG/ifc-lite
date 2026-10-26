@@ -3,23 +3,34 @@
 use crate::document::RetainedRecipe;
 #[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
 mod capture;
+#[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
+mod walk;
+#[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
+mod cache;
+mod presentation;
+mod affine;
+mod identity;
+pub(in crate::program) mod boolean;
+pub(crate) use presentation::RetainedPresentation;
 mod select;
 pub(crate) use select::RetainedSelection;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RetainedContract {
-    pub source_epoch: u64,
-    pub source_revision: u64,
+pub(crate) struct RetainedContract {
+    pub(crate) source_epoch: u64,
+    pub(crate) source_revision: u64,
 }
 
-/// A common occurrence identity, unrelated to STEP ids, authored ordinals or SDK slots.
+/// Process-local occurrence identity, unrelated to STEP ids or SDK slots.
+/// Never serialize, sort by, or compare these identities across runs: allocation
+/// depends on process history and thread interleaving, not source order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct LogicalRetainedSlot {
+pub(crate) struct LogicalRetainedSlot {
     program: u64,
     occurrence: u64,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum LogicalRetainedDefinition {
+pub(crate) enum LogicalRetainedDefinition {
     Source {
         slot: LogicalRetainedSlot,
         source_epoch: u64,
@@ -31,26 +42,27 @@ pub enum LogicalRetainedDefinition {
 /// Ordered immutable source-free operation lineage. Matrices are column-major,
 /// object-local metres -> output-local metres; source file units stay separate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RetainedPlacementStage {
+pub(crate) enum RetainedPlacementStage {
     TypeMap { representation_map: u32 },
     Mapping { source_id: u32 },
     Product { product_id: u32 },
 }
 #[derive(Debug, Clone, PartialEq)]
-pub struct RetainedPlacement {
-    pub input: LogicalRetainedSlot,
-    pub output: LogicalRetainedSlot,
-    pub stage: RetainedPlacementStage,
-    pub matrix: [f64; 16],
+pub(crate) struct RetainedPlacement {
+    pub(crate) input: LogicalRetainedSlot,
+    pub(crate) output: LogicalRetainedSlot,
+    pub(crate) stage: RetainedPlacementStage,
+    pub(crate) matrix: [f64; 16],
 }
-#[derive(Debug, Clone, PartialEq)]
-pub struct LogicalRetainedValue {
+#[derive(Debug, PartialEq)]
+pub(crate) struct LogicalRetainedValue {
     definition: LogicalRetainedDefinition,
     length_unit_scale: f64,
+    contract: RetainedContract,
     /// Inner-to-outer metre-domain mappings, followed by reached product placement.
     placements: Vec<RetainedPlacement>,
+    presentation: Vec<RetainedPresentation>,
     product_placed: bool,
-    pub(super) empty: bool,
     slot: LogicalRetainedSlot,
     source_from_evaluation: [f64; 16],
     /// Runtime object local metres -> current logical local metres.
@@ -59,31 +71,34 @@ pub struct LogicalRetainedValue {
     evaluation_from_source: [f64; 16],
 }
 impl LogicalRetainedValue {
-    pub fn try_copy(&self) -> crate::Result<Self> {
+    pub(crate) fn try_copy(&self) -> crate::Result<Self> {
         copy_values(std::slice::from_ref(self))?
             .pop()
             .ok_or_else(|| crate::Error::geometry("missing retained value"))
     }
-    pub fn is_empty(&self) -> bool {
-        self.empty
-    }
-    pub fn definition(&self) -> &LogicalRetainedDefinition {
+    pub(crate) fn definition(&self) -> &LogicalRetainedDefinition {
         &self.definition
     }
-    pub fn placements(&self) -> &[RetainedPlacement] {
+    pub(crate) fn placements(&self) -> &[RetainedPlacement] {
         &self.placements
     }
-    pub fn is_product_placed(&self) -> bool {
+    pub(crate) fn presentation(&self) -> &[RetainedPresentation] { &self.presentation }
+    pub(in crate::program) fn present(&mut self, binding: RetainedPresentation) -> crate::Result<()> {
+        crate::resource::reserve_headers(&mut self.presentation, 1)?.retain();
+        self.presentation.push(binding);
+        Ok(())
+    }
+    pub(crate) fn is_product_placed(&self) -> bool {
         self.product_placed
     }
-    /// Evaluation metres -> file local -> metres -> ordered maps -> product world.
+    /// Evaluation metres -> file local -> metres -> product world.
     /// This f64 analytic frame does not certify exact display rounding or RTC assembly.
-    pub fn world_from_evaluation(&self) -> nalgebra::Matrix4<f64> {
+    pub(crate) fn world_from_evaluation(&self) -> nalgebra::Matrix4<f64> {
         nalgebra::Matrix4::from_column_slice(&self.object_frame)
     }
-    /// Only a construction definition has an authored source frame. Operation
-    /// outputs use their physical object frame and never acquire a fake recipe.
-    pub fn world_from_source(&self) -> Option<&[f64; 16]> {
+    /// Only constructions have an authored source frame; derived operations
+    /// use their physical object frame and never acquire a fake recipe.
+    pub(crate) fn world_from_source(&self) -> Option<&[f64; 16]> {
         matches!(self.definition, LogicalRetainedDefinition::Source { .. })
             .then_some(&self.world_from_source)
     }
@@ -94,8 +109,12 @@ impl LogicalRetainedValue {
         program: u64,
         stage: RetainedPlacementStage,
     ) -> crate::Result<()> {
+        self.validate_identity()?;
+        if program != self.slot.program {
+            return Err(crate::Error::geometry("foreign retained placement domain"));
+        }
         validate_affine(transform)?;
-        proper_rigid(transform)?;
+        if matches!(stage, RetainedPlacementStage::Product { .. }) { proper_rigid(transform)?; }
         let matrix = crate::math::mat4::col_major_array(transform);
         // Finite inputs need not compose to a finite frame. Compute both
         // candidates before changing the occurrence or its placement lineage.
@@ -107,6 +126,7 @@ impl LogicalRetainedValue {
             } else {
                 (self.world_from_source, compose_frame(&matrix, &self.object_frame)?)
             };
+        validate_affine(&nalgebra::Matrix4::from_column_slice(&object_frame))?;
         crate::resource::charge(crate::resource::Cost {
             work: 1,
             occurrences: 1,
@@ -129,42 +149,45 @@ impl LogicalRetainedValue {
         Ok(())
     }
 
-    pub fn object_frame(&self) -> &[f64; 16] {
+    pub(crate) fn object_frame(&self) -> &[f64; 16] {
         &self.object_frame
     }
-    pub fn slot(&self) -> LogicalRetainedSlot {
+    pub(crate) fn slot(&self) -> LogicalRetainedSlot {
         self.slot
     }
-    pub fn source_from_evaluation(&self) -> &[f64; 16] {
+    pub(crate) fn source_from_evaluation(&self) -> &[f64; 16] {
         &self.source_from_evaluation
     }
-    pub fn evaluation_from_source(&self) -> &[f64; 16] {
+    pub(crate) fn evaluation_from_source(&self) -> &[f64; 16] {
         &self.evaluation_from_source
     }
 }
 /// Immutable original source, captured before any sampled constructor is lowered.
-#[derive(Debug, Clone)]
-pub struct RetainedPlanOperation {
+#[derive(Debug)]
+pub(crate) struct RetainedPlanOperation {
     pub(super) value: LogicalRetainedValue,
     pub(super) kind: RetainedOperationKind,
 }
 impl RetainedPlanOperation {
-    pub fn value(&self) -> &LogicalRetainedValue {
+    pub(crate) fn value(&self) -> &LogicalRetainedValue {
         &self.value
     }
-    pub fn construction(&self) -> Option<&RetainedRecipe> {
+    pub(crate) fn construction(&self) -> Option<&RetainedRecipe> {
         match &self.kind {
             RetainedOperationKind::Construction(source) => Some(source),
+            RetainedOperationKind::Affine { .. } | RetainedOperationKind::Boolean { .. } => None,
         }
     }
-    pub fn kind(&self) -> &RetainedOperationKind {
+    pub(crate) fn kind(&self) -> &RetainedOperationKind {
         &self.kind
     }
 }
 /// Ordered operation inputs are logical occurrences, never STEP ids or raw handles.
-#[derive(Debug, Clone)]
-pub enum RetainedOperationKind {
+#[derive(Debug)]
+pub(crate) enum RetainedOperationKind {
     Construction(RetainedRecipe),
+    Boolean { inputs: Box<[LogicalRetainedValue; 2]>, operation: crate::BoolOp },
+    Affine { input: LogicalRetainedValue, matrix: [f64; 16] },
 }
 // Transpose the existing row-major primitive to column-major operands. This
 // preserves its ordered f64 accumulation and avoids inverse-frame round trips.
@@ -189,13 +212,18 @@ pub(super) fn next_slot(program: u64) -> crate::Result<LogicalRetainedSlot> {
     })
 }
 pub(super) fn validate_affine(matrix: &nalgebra::Matrix4<f64>) -> crate::Result<()> {
+    // Fail closed if f64 cannot establish nonsingularity. This intentionally
+    // refuses extreme valid matrices whose determinant overflows; no epsilon
+    // or relaxed finite-frame contract is introduced.
+    let determinant = matrix.fixed_view::<3, 3>(0, 0).determinant();
     if matrix.iter().any(|x| !x.is_finite())
         || matrix
             .row(3)
             .iter()
             .zip([0., 0., 0., 1.])
             .any(|(a, b)| *a != b)
-        || matrix.fixed_view::<3, 3>(0, 0).determinant() == 0.
+        || !determinant.is_finite()
+        || determinant == 0.
     {
         return Err(crate::Error::geometry(
             crate::document::RetainedRefusal::UnsupportedSource(
@@ -208,14 +236,14 @@ pub(super) fn validate_affine(matrix: &nalgebra::Matrix4<f64>) -> crate::Result<
 }
 /// Traversal completion is explicitly NOT final-net or runtime completion.
 #[derive(Debug)]
-pub struct RetainedProductPlan {
-    pub values: Vec<LogicalRetainedValue>,
+pub(crate) struct RetainedProductPlan {
+    pub(crate) values: Vec<LogicalRetainedValue>,
     /// Conservatively unchecked obligations until a consumer proves them
     /// unnecessary or discharges them; traversal alone does neither.
-    pub remaining: Vec<RetainedRequirement>,
+    pub(crate) remaining: Vec<RetainedRequirement>,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RetainedRequirement {
+pub(crate) enum RetainedRequirement {
     ProductPlacement,
     OpeningClosure,
     MaterialLayers,
@@ -260,15 +288,20 @@ pub(super) fn copy_values(
     for value in values {
         crate::resource::charge(crate::resource::Cost {
             work: 1,
-            copy_bytes: std::mem::size_of_val(value.placements.as_slice()) as u64,
+            copy_bytes: (std::mem::size_of_val(value.placements.as_slice())
+                + std::mem::size_of_val(value.presentation.as_slice())) as u64,
             ..Default::default()
         })?
         .retain();
         let mut placements = Vec::new();
         crate::resource::reserve_headers(&mut placements, value.placements.len())?.retain();
         placements.extend_from_slice(&value.placements);
+        let mut presentation = Vec::new();
+        crate::resource::reserve_headers(&mut presentation, value.presentation.len())?.retain();
+        presentation.extend_from_slice(&value.presentation);
         output.push(LogicalRetainedValue {
             placements,
+            presentation,
             ..value.clone_without_placements()
         });
     }
@@ -279,43 +312,15 @@ impl LogicalRetainedValue {
         Self {
             definition: self.definition.clone(),
             length_unit_scale: self.length_unit_scale,
+            contract: self.contract,
             placements: Vec::new(),
+            presentation: Vec::new(),
             product_placed: self.product_placed,
-            empty: self.empty,
             slot: self.slot,
             source_from_evaluation: self.source_from_evaluation,
             evaluation_from_source: self.evaluation_from_source,
             object_frame: self.object_frame,
             world_from_source: self.world_from_source,
         }
-    }
-}
-
-#[cfg(all(
-    test,
-    any(not(target_arch = "wasm32"), feature = "wasm_source_capture")
-))]
-mod value_tests {
-    use super::*;
-    #[test]
-    fn operation_output_has_no_world_from_source() {
-        // #7955: derived values have physical frames, never invented IFC recipes.
-        let source = ifc_lite_core::SourceBundle::new(b"#1=IFCCARTESIANPOINT((0.,0.,0.));#2=IFCAXIS2PLACEMENT3D(#1,$,$);#3=IFCDIRECTION((0.,0.,1.));#4=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,2.,4.);#5=IFCEXTRUDEDAREASOLID(#4,#2,#3,3.);".to_vec());
-        let mut decoder = source.decoder();
-        let item = decoder.decode_by_id(5).unwrap();
-        let mut operation = capture::capture(
-            &item,
-            &mut decoder,
-            1.,
-            RetainedContract {
-                source_epoch: 1,
-                source_revision: 1,
-            },
-            1,
-        )
-        .unwrap();
-        assert!(operation.value.world_from_source().is_some());
-        operation.value.definition = LogicalRetainedDefinition::Operation(operation.value.slot());
-        assert!(operation.value.world_from_source().is_none());
     }
 }

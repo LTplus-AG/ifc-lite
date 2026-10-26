@@ -44,15 +44,16 @@ pub(super) fn capture(
             source_revision: contract.source_revision,
             source_id: item.id,
         },
-        length_unit_scale: scale,
         placements: Vec::new(),
+        presentation: Vec::new(),
         product_placed: false,
-        empty: false,
         slot,
         source_from_evaluation: payload.source_from_evaluation,
         evaluation_from_source: payload.evaluation_from_source,
         object_frame,
         world_from_source,
+        contract,
+        length_unit_scale: scale,
     };
     Ok(RetainedPlanOperation {
         value,

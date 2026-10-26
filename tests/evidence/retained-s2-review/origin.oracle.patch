@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/mapping_retained.rs
++++ b/rust/geometry/src/program/mapping_retained.rs
+@@ -250,5 +250,5 @@
+             return Err(crate::Error::geometry("retained MappingSource requires IfcRepresentationMap"));
+         }
+-        if false { Self::validate_retained_origin(&source, decoder)?; }
++        Self::validate_retained_origin(&source, decoder)?;
+         Self::validate_retained_target(item, decoder)?;
+         Self::validate_retained_map(&source, decoder)

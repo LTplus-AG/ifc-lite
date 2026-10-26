@@ -2,7 +2,7 @@
 //! #7955: facade lifecycle errors preserve the outstanding logical operation.
 use super::*;
 
-fn numerical_reply(
+pub(super) fn numerical_reply(
     program: &mut RetainedProgram,
     router: &GeometryRouter,
     decoder: &mut EntityDecoder,

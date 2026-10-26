@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/mapping_directions.rs
++++ b/rust/geometry/src/program/mapping_directions.rs
+@@ -100,7 +100,7 @@
+                 Some(x) => (z, x),
+                 None => {
+                     // First retain the rank of the two authored directions.
+-                    if false { admit_pair(z, y)?; }
++                    admit_pair(z, y)?;
+                     // Omission follows the canonical normalization AND projection
+                     // branches, including tiny-Z and near-X fallback. A synthetic
+                     // exact-parallel default does not describe that frame (#7955).

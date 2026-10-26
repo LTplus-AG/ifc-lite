@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/retained/cache.rs
++++ b/rust/geometry/src/program/retained/cache.rs
+@@ -30,7 +30,7 @@
+         self.validate_owner(decoder,router)?;
+         let state = self.values.lock().unwrap_or_else(|e| e.into_inner());
+         state.get(&source).map(|values| {
+-            let _ = walk;
++            walk.charge(values.len() as u64)?;
+             copy_values(values)
+         }).transpose()
+     }
+@@ -38,7 +38,7 @@
+         walk: &super::walk::RetainedWalk) -> crate::Result<()> {
+         // Copy and admit storage before publication; refusal never installs a
+         // partial cache entry. Earlier completed sources remain available.
+-        let _ = walk;
++        walk.charge(values.len() as u64)?;
+         let copied = copy_values(values)?;
+         let mut state = self.values.lock().unwrap_or_else(|e| e.into_inner());
+         crate::resource::charge(crate::resource::Cost {

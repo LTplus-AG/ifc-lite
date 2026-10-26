@@ -107,6 +107,9 @@ fn exact_execute_refuses_retained_numerical_step_without_taking_it() {
                 program.inner.execute(ticket.0, &router, &mut decoder).err(),
                 Some(ProgramError::UnsupportedRetained)
             );
+            assert_eq!(program.validate_ticket(ticket), Ok(()));
+            assert_eq!(program.inner.pending, Some((ticket.0, false)));
+            assert!(matches!(&program.inner.control, Control::Product(c) if c.retained_ready()));
             refused += 1;
         }
         let (reply, _) = program.admit(ticket, &router, &mut decoder).unwrap();
@@ -329,9 +332,17 @@ fn retained_mapped_cycle_is_refused_without_following_the_cycle() {
     let router = GeometryRouter::with_units(&text, &mut decoder);
     let entity = decoder.decode_by_id(10).unwrap();
     let mut program = RetainedProgram::product_parts(&entity, contract());
-    assert!(drive(&mut program, &router, &mut decoder).is_empty());
+    let first = mapping_tests::stop(&mut program, &router, &mut decoder);
+    assert!(matches!(first, RetainedProgramError::Stopped(crate::resource::ProgramStop::ResourceRefused(f))
+        if f.dimension == crate::resource::Dimension::Representation && f.requested == 2));
+    assert_eq!(program.request().err(), Some(first));
     assert!(program.finish().is_err());
 }
+
+#[path = "mapping_tests.rs"]
+mod mapping_tests;
+#[path = "type_map_tests.rs"]
+mod type_map_tests;
 
 #[path = "obligations_tests.rs"]
 mod obligations;
@@ -343,3 +354,24 @@ mod protocol;
 mod structure;
 #[path = "frame_tests.rs"]
 mod frames;
+#[path = "admission_tests.rs"]
+mod admission;
+
+#[path = "mapping_contract_tests.rs"]
+mod mapping_contract;
+
+#[path = "mapping_input_tests.rs"]
+mod mapping_inputs;
+#[path = "affine_tests.rs"]
+mod affine_tests;
+#[path = "boolean_tests.rs"]
+mod boolean_tests;
+
+#[path = "operation_contract_tests.rs"]
+mod operation_contract;
+
+#[path = "accept_stop_tests.rs"]
+mod accept_stop_tests;
+
+#[path = "finalization_stop_tests.rs"]
+mod finalization_stop_tests;

@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/retained/program.rs
++++ b/rust/geometry/src/program/retained/program.rs
+@@ -86,7 +86,6 @@
+             let reply = self.inner.execute(ticket.0, router, decoder)?;
+             // Keep the reply even if source work stopped. accept rechecks the
+             // stop and returns that reply intact; no executed step is lost.
+-            self.check()?;
+             return Ok((RetainedReply(reply), Vec::new()));
+         }
+         self.inner.validate_owner(router, Some(decoder))?;

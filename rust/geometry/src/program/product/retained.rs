@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 use super::*;
+use crate::program::inner::retained_program::RetainedProgramError;
 use crate::program::retained::{RetainedPlacementStage, RetainedPlanOperation};
 impl<'a> ProductControl<'a> {
+    pub(in crate::program) fn select_retained_styled(&mut self, allow_instancing: bool, textures: Textures<'a>) {
+        self.styled = Some(Styled { allow_instancing, textures });
+    }
+    pub(in crate::program) fn retained_selection(&self) -> Option<&RetainedSelection> { self.retained.as_ref() }
     pub(in crate::program) fn retained(
         element: &'a DecodedEntity,
         selection: RetainedSelection,
@@ -31,7 +36,7 @@ impl<'a> ProductControl<'a> {
             control
         }
     }
-    pub(super) fn retained_item(&self, item: DecodedEntity) -> Action {
+    pub(super) fn retained_item(&mut self, item: DecodedEntity) -> Action {
         let Some(selection) = &self.retained else {
             return Action::Taken;
         };
@@ -42,6 +47,15 @@ impl<'a> ProductControl<'a> {
         }
         #[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
         {
+            if item.ifc_type == IfcType::IfcMappedItem {
+                let mut control = MappingControl::retained_occurrence(
+                    super::super::mapping::Reached::Nested(item), selection.clone());
+                if let Some(styled) = self.styled {
+                    control.select_retained_styled(styled.allow_instancing, styled.textures);
+                }
+                self.child = Child::Mapping(Box::new(control));
+                return Action::Mapping { role: Role::Parts };
+            }
             let mut control = ItemControl::new((0., 0., 0.));
             control.retained = Some(selection.clone());
             Action::Item {
@@ -51,27 +65,39 @@ impl<'a> ProductControl<'a> {
         }
     }
     pub(in crate::program) fn retained_ready(&self) -> bool {
-        matches!(&self.action, Action::Item { control, .. } if control.retained_ready())
+        match (&self.action, &self.child) {
+            (Action::Item { control, .. }, _) => control.retained_ready(),
+            (Action::Mapping { .. }, Child::Mapping(control)) => control.retained_ready(),
+            _ => false,
+        }
     }
     pub(in crate::program) fn admit_retained(
         &mut self,
-    ) -> std::result::Result<(ProductReply, RetainedPlanOperation), ProgramError> {
+    ) -> std::result::Result<(ProductReply, Vec<RetainedPlanOperation>), RetainedProgramError> {
+        if let (Action::Mapping { .. }, Child::Mapping(control)) = (&self.action, &mut self.child) {
+            return control.admit_retained().map(|(reply, operation)| (ProductReply::Mapping(reply), operation));
+        }
         let Action::Item { control, .. } = &mut self.action else {
-            return Err(ProgramError::StaleRequest);
+            return Err(RetainedProgramError::StaleRequest);
         };
         control
             .admit_retained()
             .map(|(reply, operation)| (ProductReply::Item(reply), operation))
     }
     pub(super) fn accept_retained_item(&mut self, reply: ItemStep, router: &GeometryRouter) {
-        let Action::Item { control, .. } = &mut self.action else {
+        let Action::Item { item, control } = &mut self.action else {
             return;
         };
+        let id = item.id;
         control.accept(reply, router);
         let Some(result) = control.take_retained() else {
             return;
         };
-        let result = result.and_then(|value| {
+        let result = result.and_then(|mut value| {
+            if let Some(styled) = self.styled {
+                value.present(crate::program::retained::RetainedPresentation::item(id, router,
+                    styled.textures.and_then(|textures| textures.get(&id)))?)?;
+            }
             let Body::Sink(Sink::Retained(values, _)) = &mut self.body else {
                 return Err(crate::Error::geometry("missing retained accumulator"));
             };
@@ -83,6 +109,17 @@ impl<'a> ProductControl<'a> {
             Ok(()) => self.advance(),
             Err(error) => Action::Complete(Err(error)),
         };
+    }
+    pub(super) fn accept_retained_mapping(&mut self, values: Vec<LogicalRetainedValue>) -> Action {
+        let result = (|| {
+            let Body::Sink(Sink::Retained(output, _)) = &mut self.body else {
+                return Err(crate::Error::geometry("missing retained product accumulator"));
+            };
+            crate::resource::reserve_headers(output, values.len())?.retain();
+            output.extend(values);
+            Ok(())
+        })();
+        match result { Ok(()) => self.advance(), Err(error) => Action::Complete(Err(error)) }
     }
     pub(super) fn place_retained(&mut self, placement: &ObjectPlacement) -> Result<ProductOutput> {
         let Body::Sink(Sink::Retained(mut values, selection)) =

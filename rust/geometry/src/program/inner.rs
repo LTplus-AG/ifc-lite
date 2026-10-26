@@ -68,9 +68,6 @@ pub(crate) enum ProgramStage {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ProgramError {
     UnsupportedRetained,
-    // Produced only by retained admission, which is unavailable on default wasm.
-    #[cfg_attr(all(target_arch = "wasm32", not(feature = "wasm_source_capture")), allow(dead_code))]
-    TraversalStopped(crate::resource::ProgramStop),
     WrongPayload,
     WrongOwner,
     Outstanding,
@@ -181,11 +178,12 @@ impl<'a> GeometryProgram<'a> {
         // Owners are validated before the recipe is taken: a refused call
         // leaves the request executable by its actual router and decoder.
         self.validate_owner(router, Some(decoder))?;
-        self.expected_router = Some(router.execution_identity());
-        self.expected_decoder = Some(decoder.execution_identity());
         if matches!(&self.control, Control::Product(c) if c.retained_ready()) {
             return Err(ProgramError::UnsupportedRetained);
         }
+        if matches!(&self.control, Control::Mapping(c) if c.retained_ready()) { return Err(ProgramError::UnsupportedRetained); }
+        self.expected_router = Some(router.execution_identity());
+        self.expected_decoder = Some(decoder.execution_identity());
         let decoder_before = decoder.execution_identity();
         // Consume admission before any callback can unwind. A copied ticket
         // cannot replay work after its recipe was moved into a lexical call.

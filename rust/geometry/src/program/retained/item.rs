@@ -1,14 +1,24 @@
 // SPDX-License-Identifier: MPL-2.0
 use super::*;
+use crate::program::inner::retained_program::RetainedProgramError;
 impl ItemControl {
     pub(in crate::program) fn retained_ready(&self) -> bool {
         matches!(self.step, Some(ItemStep::RetainedReady(..)))
+            || matches!(&self.step, Some(ItemStep::Boolean { machine, .. }) if machine.retained_ready())
     }
     pub(in crate::program) fn admit_retained(
         &mut self,
-    ) -> std::result::Result<(ItemStep, RetainedPlanOperation), ProgramError> {
+    ) -> std::result::Result<(ItemStep, Vec<RetainedPlanOperation>), RetainedProgramError> {
+        if let Some(ItemStep::Boolean { machine, .. }) = &mut self.step {
+            let operation = machine.admit_retained().map_err(|error| match error {
+                Error::ProgramStopped(stop) => RetainedProgramError::Stopped(stop),
+                _ => RetainedProgramError::Unsupported,
+            })?;
+            let step = self.step.take().ok_or(RetainedProgramError::StaleRequest)?;
+            return Ok((step, operation));
+        }
         let Some(ItemStep::RetainedReady(operation, selection)) = self.step.as_ref() else {
-            return Err(ProgramError::StaleRequest);
+            return Err(RetainedProgramError::StaleRequest);
         };
         #[cfg(all(target_arch = "wasm32", not(feature = "wasm_source_capture")))]
         {
@@ -17,17 +27,22 @@ impl ItemControl {
         }
         #[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
         {
+            let mut operations = Vec::new();
+            crate::resource::reserve_headers(&mut operations, 1).map_err(RetainedProgramError::Stopped)?.retain();
             let value = operation.value().try_copy().map_err(|error| match error {
-                crate::Error::ProgramStopped(stop) => ProgramError::TraversalStopped(stop),
-                _ => ProgramError::UnsupportedRetained,
+                crate::Error::ProgramStopped(stop) => RetainedProgramError::Stopped(stop),
+                _ => RetainedProgramError::Unsupported,
             })?;
+            // Last fallible check precedes taking the reached operation.
+            crate::resource::check_current().map_err(RetainedProgramError::Stopped)?;
             let selection = selection.clone();
             let Some(ItemStep::RetainedReady(operation, _)) = self.step.take() else {
-                return Err(ProgramError::StaleRequest);
+                return Err(RetainedProgramError::StaleRequest);
             };
+            operations.push(*operation);
             Ok((
                 ItemStep::RetainedComplete(Ok(Box::new(value)), selection),
-                *operation,
+                operations,
             ))
         }
     }
@@ -42,5 +57,26 @@ impl ItemControl {
                 None
             }
         }
+    }
+}
+
+
+pub(super) fn execute_boolean(item: &DecodedEntity, mut machine: Box<BooleanMachine>,
+    reports: ConstructionReports, router: &GeometryRouter, decoder: &mut EntityDecoder) -> ItemStep {
+    let Some(selection) = machine.retained_selection().cloned() else {
+        return ItemStep::Complete(ItemResult { result: Err(Error::geometry("missing retained selection")), reports });
+    };
+    let result = (|| {
+        crate::resource::check_current()?;
+        let recorder = router.processor_for(&item.ifc_type).and_then(|processor| processor.boolean_recorder())
+            .ok_or_else(|| Error::geometry("selected Boolean processor unavailable"))?;
+        machine.retained_source(recorder, router, decoder)?;
+        if machine.stage().is_none() { machine.finish_retained().map(|value| Some(Box::new(value))) }
+        else { Ok(None) }
+    })();
+    match result {
+        Ok(None) => ItemStep::Boolean { machine, reports },
+        Ok(Some(value)) => ItemStep::RetainedComplete(Ok(value), selection),
+        Err(error) => ItemStep::RetainedComplete(Err(error), selection),
     }
 }

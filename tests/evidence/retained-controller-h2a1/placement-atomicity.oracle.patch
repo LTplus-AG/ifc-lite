@@ -1,17 +1,17 @@
 # SPDX-License-Identifier: MPL-2.0
 --- a/rust/geometry/src/program/retained/mod.rs
 +++ b/rust/geometry/src/program/retained/mod.rs
-@@ -96,9 +96,6 @@
-     ) -> crate::Result<()> {
+@@ -115,9 +115,6 @@
+         }
          validate_affine(transform)?;
-         proper_rigid(transform)?;
+         if matches!(stage, RetainedPlacementStage::Product { .. }) { proper_rigid(transform)?; }
 -        let input = self.slot;
 -        let output = next_slot(program)?;
 -        self.slot = output;
          let matrix = crate::math::mat4::col_major_array(transform);
          // Finite inputs need not compose to a finite frame. Compute both
          // candidates before changing the occurrence or its placement lineage.
-@@ -117,8 +114,11 @@
+@@ -137,8 +134,11 @@
          })?
          .retain();
          crate::resource::reserve_headers(&mut self.placements, 1)?.retain();

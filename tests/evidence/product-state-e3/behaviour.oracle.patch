@@ -1,6 +1,7 @@
+# SPDX-License-Identifier: MPL-2.0
 --- a/rust/processing/src/element/session_canonical.rs
 +++ b/rust/processing/src/element/session_canonical.rs
-@@ -53,7 +53,7 @@ fn inherited_half(identity: ExecutionIdentity, router: bool) -> Result<Option<Ex
+@@ -53,7 +53,7 @@
          // Fully independent canonical children must not hide still-live
          // ancestor owners from a later synchronous grandchild. Search each
          // actual supplied half independently, preferring the innermost frame.
@@ -11,7 +12,7 @@
                  Ok(lease) => return Ok(Some(lease)),
 --- a/rust/processing/src/element/session_protocol.rs
 +++ b/rust/processing/src/element/session_protocol.rs
-@@ -142,7 +142,8 @@ impl Protocol {
+@@ -142,7 +142,8 @@
              return Err(WorkError::WrongContext);
          }
          match self.pending {
@@ -23,7 +24,7 @@
      }
 --- a/rust/processing/src/element/session_run.rs
 +++ b/rust/processing/src/element/session_run.rs
-@@ -70,7 +70,7 @@ impl ProductState<'_> {
+@@ -106,7 +106,7 @@
          // Final hooks run here, in the epoch, so a hook that produces a nested
          // child on this router inherits this product's owners. Draining on
          // every return path leaves a warm router clean for the next element.
@@ -34,7 +35,7 @@
                  Ok(None)
 --- a/rust/processing/src/element/session_state.rs
 +++ b/rust/processing/src/element/session_state.rs
-@@ -33,8 +33,8 @@ impl Scopes {
+@@ -33,8 +33,8 @@
      /// Every scope restores the caller's counters and reports on return and
      /// on unwind.
      pub fn with_scope<R>(&mut self, work: impl FnOnce() -> R) -> R {
@@ -47,15 +48,15 @@
  
 --- a/rust/geometry/src/program/inner.rs
 +++ b/rust/geometry/src/program/inner.rs
-@@ -179,6 +179,7 @@
-         self.validate_owner(router, Some(decoder))?;
+@@ -184,6 +184,7 @@
+         if matches!(&self.control, Control::Mapping(c) if c.retained_ready()) { return Err(ProgramError::UnsupportedRetained); }
          self.expected_router = Some(router.execution_identity());
          self.expected_decoder = Some(decoder.execution_identity());
 +        let decoder_before = decoder.execution_identity();
          // Consume admission before any callback can unwind. A copied ticket
          // cannot replay work after its recipe was moved into a lexical call.
          self.pending = Some((request, true));
-@@ -193,6 +194,9 @@
+@@ -198,6 +199,9 @@
          };
          // Maintenance may change the generation, but replacing the decoder
          // changes the source owner and must refuse before accepting any output.

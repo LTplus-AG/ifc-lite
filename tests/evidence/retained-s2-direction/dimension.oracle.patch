@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/mapping_directions.rs
++++ b/rust/geometry/src/program/mapping_directions.rs
+@@ -24,7 +24,7 @@
+     }
+     let ratios = leaf.get(slot::IfcDirection::DIRECTION_RATIOS.index())
+         .and_then(AttributeValue::as_list).ok_or_else(refused)?;
+-    if false && ratios.len() != dimension {
++    if ratios.len() != dimension {
+         return Err(refused());
+     }
+     let raw = decoder.direction3(id)?;

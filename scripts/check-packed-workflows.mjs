@@ -29,7 +29,7 @@ try {
   const outside = relative(realpathSync(root), realpathSync(consumer));
   assert.ok(outside === '..' || outside.startsWith('..' + sep) || isAbsolute(outside), 'Consumer must live outside the repository');
   const { dependencies, versions } = packClosure(root, tarballs,
-    ['@ifc-lite/sdk', '@ifc-lite/parser', '@ifc-lite/geometry', '@ifc-lite/ids']);
+    ['@ifc-lite/sdk', '@ifc-lite/parser', '@ifc-lite/geometry', '@ifc-lite/ids', '@ifc-lite/cli']);
   const rootManifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
   writeFileSync(join(consumer, 'package.json'), JSON.stringify({ private: true, type: 'module', dependencies,
     overrides: dependencies, devDependencies: { typescript: rootManifest.devDependencies.typescript,
@@ -45,18 +45,26 @@ try {
         `${name} still has workspace protocols in ${field}`);
     }
   }
-  for (const file of ['packed-workflow.mjs', 'packed-types.mts', 'packed-browser.mjs']) {
+  // Loaded here, after the required-fixture refusal above: this helper needs the
+  // TypeScript compiler, which a bare copy of this command (PR #7648 fixture) lacks.
+  const { assertDevelopmentExcluded } = await import('./consumer/development-exclusion.mjs');
+  const exclusionDeclarations = assertDevelopmentExcluded(root, consumer, tarballs, versions);
+  for (const file of ['packed-workflow.mjs', 'packed-types.mts', 'packed-browser.mjs',
+    'development-exclusion-types.mts', 'development-exclusion-runtime.mjs']) {
     copyFileSync(join(root, 'scripts', 'consumer', file), join(consumer, file));
   }
   writeFileSync(join(consumer, 'tsconfig.json'), JSON.stringify({ compilerOptions: { target: 'ES2022', module: 'NodeNext',
-    moduleResolution: 'NodeNext', strict: true, noEmit: true, skipLibCheck: false, types: ['node'] }, files: ['packed-types.mts'] }));
+    moduleResolution: 'NodeNext', strict: true, noEmit: true, skipLibCheck: false, noUncheckedSideEffectImports: true,
+    types: ['node'] }, files: ['packed-types.mts', 'development-exclusion-types.mts', ...exclusionDeclarations] }));
   run(process.execPath, [join(consumer, 'node_modules/typescript/bin/tsc'), '--project', 'tsconfig.json'], consumer);
   const browser = JSON.parse(run(process.execPath, ['packed-browser.mjs'], consumer));
+  const developmentExclusion = JSON.parse(run(process.execPath, ['development-exclusion-runtime.mjs'], consumer));
   const receipts = [];
   for (const { path, type, count } of fixtures) {
     const fixture = join(root, path);
     const receipt = JSON.parse(run(process.execPath, ['packed-workflow.mjs', fixture, type, String(count)], consumer));
     receipts.push({ fixture: path, sha256: createHash('sha256').update(readFileSync(fixture)).digest('hex'), ...receipt });
   }
-  process.stdout.write(JSON.stringify({ packageVersions: versions, declarationsChecked: true, browser, receipts }, null, 2) + '\n');
+  process.stdout.write(JSON.stringify({ packageVersions: versions, declarationsChecked: true, browser,
+    developmentExclusion, receipts }, null, 2) + '\n');
 } finally { rmSync(scratch, { recursive: true, force: true }); }

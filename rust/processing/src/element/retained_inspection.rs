@@ -36,6 +36,32 @@ pub fn inspect_retained_source(
     decoder: &mut EntityDecoder, options_json: &str, implementation_commit: &str,
 ) -> Result<RetainedSourceInspection, RetainedInspectionError> {
     let start = InspectionStart::now();
+    let (options, budget) = prepare_options(start, options_json, implementation_commit)?;
+    inspect_with_options(source, product_id, supplied_root, decoder, &options, implementation_commit, &budget)
+}
+
+/// Raw-byte adapter for the development WASM consumer. Its caller captures the
+/// original start immediately on Rust entry, before even validating the JS ID.
+/// Canonical source construction and all nested work share that same allowance.
+pub fn inspect_retained_bytes(
+    start: InspectionStart, bytes: &[u8], product_id: u32, options_json: &str, implementation_commit: &str,
+) -> Result<RetainedSourceInspection, RetainedInspectionError> {
+    let (options, budget) = prepare_options(start, options_json, implementation_commit)?;
+    budget.scope(|| {
+        // Refuse invalid/unavailable clocks before source-sized allocations or
+        // the canonical scanner. Factory work is checked on return, not a new
+        // IFC walker or a claim of per-record interruption inside the factory.
+        checkpoint("source_prepare")?;
+        let source = SourceBundle::new(bytes.to_vec());
+        checkpoint("source_prepared")?;
+        let mut decoder = source.decoder();
+        checkpoint("source_decoder")?;
+        inspect_with_options(source.clone(), product_id, None, &mut decoder, &options, implementation_commit, &budget)
+    })
+}
+
+fn prepare_options(start: InspectionStart, options_json: &str, implementation_commit: &str)
+    -> Result<(wire::Options, InspectionBudget), RetainedInspectionError> {
     if options_json.len() > 4096 || wire::text_format(implementation_commit, "commit").is_err() {
         return Err(RetainedInspectionError::invalid_options());
     }
@@ -45,6 +71,13 @@ pub fn inspect_retained_source(
     let max_bytes = options.max_bytes.parse().map_err(|_| RetainedInspectionError::invalid_options())?;
     let deadline_ms = options.deadline_ms.parse().map_err(|_| RetainedInspectionError::invalid_options())?;
     let budget = InspectionBudget::new(start, max_work, max_bytes, deadline_ms);
+    Ok((options, budget))
+}
+
+fn inspect_with_options(
+    source: Arc<SourceBundle>, product_id: u32, supplied_root: Option<&DecodedEntity>,
+    decoder: &mut EntityDecoder, options: &wire::Options, implementation_commit: &str, budget: &InspectionBudget,
+) -> Result<RetainedSourceInspection, RetainedInspectionError> {
     let result = budget.scope(|| {
         checkpoint("options")?;
         let model = ProductionModel::from_source(source.clone());
@@ -56,7 +89,7 @@ pub fn inspect_retained_source(
             .map_err(RetainedInspectionError::stopped)?;
         let router = router_for_source(source.bytes(), decoder);
         checkpoint("units")?;
-        inspect_bound(&source, snapshot, product_id, supplied_root, &options, implementation_commit, decoder, &router?)
+        inspect_bound(&source, snapshot, product_id, supplied_root, options, implementation_commit, decoder, &router?)
     });
     let report = result?;
     report.report.validate_delivery().map_err(RetainedInspectionError::geometry)?;
@@ -161,6 +194,10 @@ fn checkpoint(_stage: &str) -> Result<(), RetainedInspectionError> {
         _ => RetainedInspectionError::invalid_report(),
     })
 }
+
+#[cfg(test)]
+#[path = "retained_inspection_bytes_tests.rs"]
+mod bytes_tests;
 
 #[cfg(test)]
 #[path = "retained_inspection_bounds_tests.rs"]

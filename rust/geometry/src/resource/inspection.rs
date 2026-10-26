@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Opt-in local limits layered onto the original account and pool identity.
 use super::*;
-use std::{sync::{atomic::{AtomicBool, Ordering}, Arc}, time::{Duration, Instant}};
+use std::{sync::{atomic::{AtomicBool, Ordering}, Arc}, time::Duration};
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+use std::time::Instant;
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[path = "inspection_monotonic.rs"]
+mod monotonic;
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+use monotonic::Instant;
 
 /// Captured once at the public bounded entry, before option/source work.
 #[derive(Clone, Debug)]
@@ -23,12 +30,15 @@ impl InspectionStart {
             clock: test_clock::capture(),
         }
     }
-    fn elapsed(&self) -> Duration {
+    fn elapsed(&self) -> Option<Duration> {
         #[cfg(any(test, feature = "test-support"))]
         if let Some((clock, start)) = &self.clock {
-            return Duration::from_millis(clock.elapsed().saturating_sub(*start));
+            return Some(Duration::from_millis(clock.elapsed().saturating_sub(*start)));
         }
-        self.instant.elapsed()
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+        { self.instant.elapsed() }
+        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+        { Some(self.instant.elapsed()) }
     }
 }
 
@@ -51,7 +61,9 @@ impl Allowance {
     }
     fn deadline(&self) -> crate::Result<()> {
         if let Some(parent) = &self.account.1 { parent.deadline()?; }
-        if self.start.elapsed() >= self.duration {
+        // Missing, throwing, nonfinite, or regressing host clocks fail closed.
+        // The captured start is still shared by every nested/resumed allowance.
+        if self.start.elapsed().is_none_or(|elapsed| elapsed >= self.duration) {
             self.fired.store(true, Ordering::Release);
             return Err(crate::Error::ProgramStopped(ProgramStop::Cancelled));
         }

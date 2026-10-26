@@ -43,6 +43,8 @@ mod parsing;
 // Opt-in retained-geometry host contract over the private module-Worker executor.
 #[cfg(all(feature = "retained-browser", target_arch = "wasm32"))]
 mod retained_browser;
+#[cfg(all(feature = "development-inspection", target_arch = "wasm32"))]
+mod development_inspection;
 mod pipeline_diagnostics;
 mod simplify;
 mod swept_disk_descriptions;

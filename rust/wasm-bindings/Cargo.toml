@@ -42,6 +42,9 @@ console-tracing = ["dep:tracing", "ifc-lite-processing/observability"]
 # authored-source capture it needs. Built as the separate pkg-retained bundle
 # with `BUILD_RETAINED=1 scripts/build-wasm.sh`.
 retained-browser = ["dep:wasm-bindgen-futures", "ifc-lite-geometry/wasm_source_capture"]
+# Development-only synchronous source inspection; never part of either shipped
+# engine. scripts/build-wasm.sh writes this feature to .retained-dev/wasm/.
+development-inspection = ["ifc-lite-processing/retained-runtime", "ifc-lite-geometry/wasm_source_capture"]
 
 [dependencies]
 serde_json.workspace = true

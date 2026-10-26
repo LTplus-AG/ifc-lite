@@ -12,7 +12,7 @@ readme = "../../README.md"
 
 [features]
 # Private source-inspection consumer and dormant resource ownership; no numerical activation (#7955).
-retained-runtime = ["dep:serde_json"]
+retained-runtime = ["dep:serde_json", "dep:wasm-bindgen"]
 # Opt-in #6516 route-work diagnostic; absent from shipping builds.
 opening-perf-trace = []
 # CSG runs on the in-tree pure-Rust exact mesh-arrangement kernel
@@ -142,6 +142,11 @@ geometry-predicates.workspace = true
 num-rational = { version = "0.4", default-features = false, features = ["num-bigint"] }
 num-traits = { version = "0.2", default-features = false }
 bnum = { version = "0.14.4", features = ["numtraits"] }
+
+# Only the opt-in inspection deadline needs a JS monotonic clock. Native builds
+# keep std::time::Instant; default WASM never links this dependency here.
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+wasm-bindgen = { version = "=0.2.126", optional = true }
 
 [dev-dependencies]
 # Test-only (publish = false). Path-only: cargo strips it when packaging.

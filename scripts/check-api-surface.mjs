@@ -35,10 +35,12 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 import { collectEntryPoints } from './lib/public-entrypoints.mjs';
+import { publishedWasmMembers } from './lib/wasm-member-surface.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SNAPSHOT_PATH = join(ROOT, 'scripts', 'api-surface.json');
 const UPDATE = process.argv.includes('--update');
+const WASM_ONLY = process.argv.includes('--wasm-only');
 
 /** Follow an alias export to its target symbol (best effort). */
 function resolveAlias(checker, symbol) {
@@ -135,7 +137,8 @@ function diffLists(before = [], after = []) {
   };
 }
 
-const { entries, missing, packageCount } = collectEntryPoints(ROOT);
+const { entries, missing, packageCount } = WASM_ONLY
+  ? { entries: new Map(), missing: [], packageCount: 1 } : collectEntryPoints(ROOT);
 if (missing.length > 0) {
   console.error('❌ Published packages whose declaration entry is missing:\n');
   for (const { name, entry } of missing) console.error(`   ${name}  (${entry})`);
@@ -143,11 +146,13 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
-const surface = extractSurface(entries);
+const surface = { ...extractSurface(entries), ...publishedWasmMembers(ROOT) };
 const serialized = `${JSON.stringify(surface, null, 2)}\n`;
 
 if (UPDATE) {
-  writeFileSync(SNAPSHOT_PATH, serialized);
+  writeFileSync(SNAPSHOT_PATH, WASM_ONLY
+    ? `${JSON.stringify({ ...JSON.parse(readFileSync(SNAPSHOT_PATH, 'utf8')), ...surface }, null, 2)}\n`
+    : serialized);
   const total = Object.values(surface).reduce((n, list) => n + list.length, 0);
   console.log(
     `✅ Wrote scripts/api-surface.json (${packageCount} packages, ${Object.keys(surface).length} export surfaces, ${total} exports).`,
@@ -160,7 +165,8 @@ if (!existsSync(SNAPSHOT_PATH)) {
   process.exit(1);
 }
 
-const snapshot = JSON.parse(readFileSync(SNAPSHOT_PATH, 'utf-8'));
+const recorded = JSON.parse(readFileSync(SNAPSHOT_PATH, 'utf-8'));
+const snapshot = WASM_ONLY ? Object.fromEntries(Object.entries(recorded).filter(([key]) => key.endsWith('#members'))) : recorded;
 const pkgNames = [...new Set([...Object.keys(snapshot), ...Object.keys(surface)])].sort();
 let dirty = false;
 

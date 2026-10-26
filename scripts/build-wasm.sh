@@ -51,6 +51,10 @@ if ! command -v wasm-pack &> /dev/null; then
     WASM_PACK="$CARGO_BIN"
     echo "   Using wasm-pack from cargo bin: $WASM_PACK"
   else
+    if [ "${BUILD_RETAINED_DEV:-}" = "1" ]; then
+      echo "Development inspection requires wasm-pack; UNRUN (no fallback)." >&2
+      exit 1
+    fi
     # No wasm-pack. Don't hard-fail the turbo `^build` graph that `typecheck`
     # depends on: succeed when a previously built runtime OR the committed type
     # surface is already on disk. Type-checking works either way; running or
@@ -73,6 +77,29 @@ if ! command -v wasm-pack &> /dev/null; then
     echo "   Install with: cargo install wasm-pack"
     exit 1
   fi
+fi
+
+# The explicit development mode is exclusive: it never rewrites pkg or
+# pkg-retained, and missing tools/build failures cannot soft-skip this proof.
+if [ "${BUILD_RETAINED_DEV:-}" = "1" ]; then
+  if [ "${BUILD_RETAINED:-0}${BUILD_THREADED:-0}${BUILD_WIDE:-0}${DEBUG_GEOMETRY:-0}" != "0000" ]; then
+    echo "Development inspection must be built separately from release variants." >&2
+    exit 1
+  fi
+  if [[ ! "${IFC_RETAINED_BUILD_COMMIT:-}" =~ ^[a-f0-9]{40}$ ]] || \
+     [ "$IFC_RETAINED_BUILD_COMMIT" != "$(git rev-parse HEAD)" ] || \
+     [ -n "$(git status --porcelain --untracked-files=normal)" ]; then
+    echo "Set IFC_RETAINED_BUILD_COMMIT from the original request; a matching clean checkout is required." >&2
+    exit 1
+  fi
+  rustup run nightly-2025-11-15 "$WASM_PACK" build rust/wasm-bindings \
+    --target web --out-dir ../../.retained-dev/wasm --out-name ifc-lite \
+    --release --features development-inspection
+  DEV_DTS=".retained-dev/wasm/ifc-lite.d.ts"
+  grep -v '__wasm_bindgen_func_elem_' "$DEV_DTS" > "$DEV_DTS.tmp" && mv "$DEV_DTS.tmp" "$DEV_DTS"
+  node scripts/development-inspection-output.mjs
+  echo "Development inspection built in .retained-dev/wasm (unpublished)."
+  exit 0
 fi
 
 # Check if debug_geometry feature should be enabled
@@ -287,17 +314,25 @@ fi
 # above never contains it, so ordinary loads pay nothing for it.
 if [ "${BUILD_RETAINED:-}" = "1" ]; then
   RETAINED_OUT="../../packages/wasm/pkg-retained"
+  RETAINED_REL="$(echo "$RETAINED_OUT" | sed 's|^../../||')"
   RETAINED_FEATURES="retained-browser"
   if [ "${DEBUG_GEOMETRY:-}" = "1" ]; then RETAINED_FEATURES="$RETAINED_FEATURES,debug_geometry"; fi
   echo ""
   echo "🧱 Building retained browser bundle → $RETAINED_OUT (--features retained-browser)"
-  rustup run nightly-2025-11-15 "$WASM_PACK" build rust/wasm-bindings \
-    --target web \
-    --out-dir "$RETAINED_OUT" \
-    --out-name ifc-lite \
-    --release \
-    --features "$RETAINED_FEATURES"
-  RETAINED_REL="$(echo "$RETAINED_OUT" | sed 's|^../../||')"
+  (
+    # wasm-pack overwrites this tracked input with `*`. Preserve the caller's
+    # exact declaration-baseline rules on success AND failure, without checking
+    # out a Git version or changing any generated binding/declaration bytes.
+    retained_ignore=$(mktemp)
+    cp "$RETAINED_REL/.gitignore" "$retained_ignore"
+    trap 'cp "$retained_ignore" "$RETAINED_REL/.gitignore"; rm -f "$retained_ignore"' EXIT
+    rustup run nightly-2025-11-15 "$WASM_PACK" build rust/wasm-bindings \
+      --target web \
+      --out-dir "$RETAINED_OUT" \
+      --out-name ifc-lite \
+      --release \
+      --features "$RETAINED_FEATURES"
+  )
   printf '\n' > "$RETAINED_REL/.npmignore"
   RETAINED_DTS="$RETAINED_REL/ifc-lite.d.ts"
   if [ -f "$RETAINED_DTS" ]; then

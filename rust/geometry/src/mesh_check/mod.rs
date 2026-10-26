@@ -48,9 +48,11 @@ mod legacy_tests;
 // the manifold gate are opt-in).
 #[allow(unused_imports)]
 pub use closure::{
-    closed_enough_to_emit, closed_or_hairline, directed_closed, directed_closed_exact,
+    closed_enough_to_emit, directed_closed, directed_closed_exact,
     edge_multiplicity_defects, is_watertight, strictly_paired_at, undirected_defect_count,
     ClosureVerdict, EdgeMultiplicityDefects,
 };
+#[cfg(any(test, feature = "test-support"))]
+pub use closure::closed_or_hairline;
 pub use ledger::{Degenerate, EdgeLedger, Key3, VertexKey};
 pub use volume::{signed_volume, signed_volume_about, volume_reference};

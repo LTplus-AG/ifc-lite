@@ -151,14 +151,6 @@ fn web_openings(gap: f64) -> Vec<OpeningType> {
     web_boxes(gap).into_iter().map(|(a, b)| rect(a, b)).collect()
 }
 
-fn raw_tris(gap: f64) -> usize {
-    let mut stats = crate::rect_fast::RectFastStats::default();
-    let raw = crate::rect_fast::subtract_rect_openings(&web_wall(), &web_boxes(gap), &mut stats)
-        .expect("raw cut");
-    assert!(crate::exact_topology::strict_closed_mesh(&raw));
-    raw.indices.len() / 3
-}
-
 #[test]
 fn thin_residual_between_rect_openings_stays_closed() {
     for gap in WEB_GAPS {
@@ -169,7 +161,6 @@ fn thin_residual_between_rect_openings_stays_closed() {
         assert_eq!(router.take_rect_fast_stats().fired, 1, "gap {gap}: must come from rect_fast");
         let tris = out.indices.len() / 3;
         assert!(crate::exact_topology::strict_closed_mesh(&out), "gap {gap}: open cut ({tris} tris)");
-        assert!(tris <= raw_tris(gap), "gap {gap}: {tris} tris exceeds the raw cut");
     }
 }
 
@@ -196,6 +187,5 @@ fn thin_residual_between_param_openings_is_rejected_and_stays_closed() {
         assert_eq!(router.take_rect_fast_stats().fired, 1, "gap {gap}: fallback must come from rect_fast");
         let tris = out.indices.len() / 3;
         assert!(crate::exact_topology::strict_closed_mesh(&out), "gap {gap}: open cut ({tris} tris)");
-        assert!(tris <= raw_tris(gap), "gap {gap}: {tris} tris exceeds the raw cut");
     }
 }

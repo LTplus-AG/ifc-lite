@@ -691,9 +691,8 @@ function thrown(call) {
 
 test('actual raw WASM rejects present null/undefined records like the TS oracle, never as holes (#8042, #8114)', async context => {
   const wasm = await engine(context); if (!wasm) return;
-  const oraclePath = new URL('../../diff/dist/fingerprint.js', import.meta.url);
-  if (!existsSync(oraclePath)) { context.skip('@ifc-lite/diff not built; run pnpm build'); return; }
-  const oracle = await import(oraclePath.href);
+  const { loadDiffOracle } = await import('../../../scripts/lib/diff-oracle.mjs');
+  const oracle = await loadDiffOracle('fingerprint');
   const valid = { ifcType: 'IfcWall', name: '\ud800',
     // The literal property-member hole tests sparse recovery (#8042, #8114).
     // eslint-disable-next-line no-sparse-arrays
@@ -729,9 +728,8 @@ test('actual raw WASM rejects present null/undefined records like the TS oracle,
 
 test('actual raw WASM keeps absent, empty, hole and null distinct and matches TS where TS accepts (#8042, #8114)', async context => {
   const wasm = await engine(context); if (!wasm) return;
-  const oraclePath = new URL('../../diff/dist/fingerprint.js', import.meta.url);
-  if (!existsSync(oraclePath)) { context.skip('@ifc-lite/diff not built; run pnpm build'); return; }
-  const oracle = await import(oraclePath.href);
+  const { loadDiffOracle } = await import('../../../scripts/lib/diff-oracle.mjs');
+  const oracle = await loadDiffOracle('fingerprint');
   // One record valid in every location: set, entry and type assignment.
   const entry = { name: 'E', value: 1, properties: [], quantities: [], type: 'IfcWallType' };
   const shapes = {
@@ -804,9 +802,8 @@ test('actual raw WASM preserves thrown values at all five fingerprint locations 
 
 test('actual raw WASM checks component holes between whole collection projections (#8114)', async context => {
   const wasm = await engine(context); if (!wasm) return;
-  const oraclePath = new URL('../../diff/dist/fingerprint.js', import.meta.url);
-  if (!existsSync(oraclePath)) { context.skip('@ifc-lite/diff not built; run pnpm build'); return; }
-  const oracle = await import(oraclePath.href);
+  const { loadDiffOracle } = await import('../../../scripts/lib/diff-oracle.mjs');
+  const oracle = await loadDiffOracle('fingerprint');
   const valid = { ifcType: 'IfcWall', propertySets: [{ name: 'P', properties: new Array(1) }], typeAssignments: new Array(2) };
   const pairs = [['diffBuildDataFingerprint', 'buildDataFingerprint'],
     ['diffBuildComponentFingerprints', 'buildComponentFingerprints']];

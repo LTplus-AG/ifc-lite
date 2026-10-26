@@ -241,7 +241,7 @@ test('#7711 merged dialog download preserves authored placement in reopened worl
   assert.ok(first !== undefined && peer !== undefined && first !== peer, 'merge remaps colliding express IDs and preserves exact product identities');
   const primary = replacementPoints(reopened, first), secondary = replacementPoints(reopened, peer);
   const extent = (points: number[][], axis: number) => [Math.min(...points.map(p => p[axis])), Math.max(...points.map(p => p[axis]))];
-  const close = (actual: number[], expected: number[]) => actual.forEach((v, i) => assert.ok(Math.abs(v-expected[i])<1e-6, `${actual} vs ${expected}`));
+  const close = (actual: number[], expected: number[]) => { assert.equal(actual.length, expected.length, `${actual} vs ${expected}`); actual.forEach((v, i) => assert.ok(Math.abs(v-expected[i])<1e-6, `${actual} vs ${expected}`)); };
   // Replacement points are in each product's authored frame, now in metres.
   // The inverse authored placement must be applied when writing replacement
   // vertices, then applied ONCE by the independent reopen mesh pass.

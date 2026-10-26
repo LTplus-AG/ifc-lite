@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/resource/mod.rs
++++ b/rust/geometry/src/resource/mod.rs
+@@ -213,7 +213,7 @@
+         source: SOURCE_STOP.with(|slot| slot.borrow_mut().take()),
+         terminal: TERMINAL.with(Cell::take),
+         #[cfg(any(test, feature = "retained-runtime"))]
+-        owned: owned::OWNED.with(|slot| slot.borrow().clone()),
++        owned: owned::OWNED.with(|slot| slot.borrow_mut().take()),
+     };
+     operation()
+ }

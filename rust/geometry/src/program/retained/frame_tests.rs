@@ -260,7 +260,7 @@ fn s2_r2_nan_determinant_placement_refuses_atomically_in_original_domain() {
     assert_eq!(result.unwrap().values.len(), 1);
     let mut value = operations[0].value().try_copy().unwrap();
     let before = value.try_copy().unwrap();
-    let transform = nalgebra::Matrix4::new_nonuniform_scaling(&nalgebra::Vector3::new(0., 1e200, 1e200));
+    let transform = nalgebra::Matrix4::<f64>::new_nonuniform_scaling(&nalgebra::Vector3::new(0., 1e200, 1e200));
     assert!(transform.iter().all(|entry| entry.is_finite()));
     assert!(transform.fixed_view::<3, 3>(0, 0).determinant().is_nan());
     assert!((transform * value.world_from_evaluation()).iter().all(|entry| entry.is_finite()));
@@ -277,7 +277,7 @@ fn s2_r2_extreme_valid_matrix_is_conservatively_refused_without_mutation() {
     assert_eq!(result.unwrap().values.len(), 1);
     let mut value = operations[0].value().try_copy().unwrap();
     let before = value.try_copy().unwrap();
-    let transform = nalgebra::Matrix4::new_nonuniform_scaling(&nalgebra::Vector3::new(1., 1e200, 1e200));
+    let transform = nalgebra::Matrix4::<f64>::new_nonuniform_scaling(&nalgebra::Vector3::new(1., 1e200, 1e200));
     assert!(transform.iter().all(|entry| entry.is_finite()));
     assert!(transform.fixed_view::<3, 3>(0, 0).determinant().is_infinite());
     assert!(value.place_in_place(&transform, domain,

@@ -2237,6 +2237,25 @@ jobs:
               --mutation tests/evidence/retained-receipt-resource-s3/snapshot-expiration.oracle.patch \
               --test rust/processing/src/element/model_context_retained_tests.rs
           fi
+          # #7955 S3 R1: detachment isolation and restoration are independent faults.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/resource/owned_detach_tests.rs | grep -Fxq 'rust/geometry/src/resource/owned_detach_tests.rs'; then
+            node scripts/check-test-revert-oracle.mjs --base 285eb32a269efa69d2e2d938bccfe1b663eb62ce --ci --json \
+              --mutation tests/evidence/retained-receipt-resource-s3/detach-owned-clear.oracle.patch \
+              --test rust/geometry/src/resource/owned_detach_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base 285eb32a269efa69d2e2d938bccfe1b663eb62ce --ci --json \
+              --mutation tests/evidence/retained-receipt-resource-s3/detach-owned-restore.oracle.patch \
+              --test rust/geometry/src/resource/owned_detach_tests.rs
+          fi
+          # #7955 S3 Q1: select only the snapshot-only ownership witness.
+          # Use the S3 production base: the Q1 correction itself is test-only.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/element/model_context_snapshot_only_tests.rs | grep -Fxq 'rust/processing/src/element/model_context_snapshot_only_tests.rs'; then
+            node scripts/check-test-revert-oracle.mjs --base b0dc9d3026ab3ba2176cd617291b835ac7b53b2d --ci --json \
+              --mutation tests/evidence/retained-receipt-resource-s3/snapshot-source-retention.oracle.patch \
+              --test rust/processing/src/element/model_context_snapshot_only_tests.rs
+            # Clean restoration alone is not a restored GREEN execution.
+            cargo test --locked -p ifc-lite-processing --lib \
+              element::model_context::retained::tests::snapshot_only::s3_snapshot_alone_retains_source_for_cross_thread_decode_then_releases_it -- --exact
+          fi
           if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/decoder/precision_certificate.rs | grep -Fxq 'rust/core/src/decoder/precision_certificate.rs'; then
             # The oracle restored the source; also execute the positive side
             # after mutation rather than treating clean status as a test run.
@@ -2567,6 +2586,29 @@ jobs:
         run: node scripts/ai-eval/check-ai-eval-manifest.mjs
       - name: Check AI evaluation release invariants
         run: node scripts/ai-eval/check-ai-eval-invariants.mjs
+      - name: Check private retained contract generation
+        run: node scripts/retained-contract/generate.mjs --check
+      - name: Test private retained contract validation and generation
+        run: node --test scripts/retained-contract/*.test.mjs
+      # Executable proof the wiring gate cannot pass vacuously — the failure
+      # mode it exists to catch is exactly the one it could have itself. Its
+      # first fixture reconstructs #3062's pre-wiring state (a gate script and
+      # its test committed with no workflow step and no package.json entry),
+      # which the earlier checker could not see at all because `scripts/` was
+      # outside its `packages`/`apps` scan. The rest pin the two directions
+      # that matter: a package.json entry nobody invokes is NOT wiring, and
+      # the glob catch-all below reaching a gate's TEST does not excuse the
+      # gate SCRIPT never executing.
+      - name: Check test-wiring gate regressions
+        run: node --test scripts/check-test-wiring.test.mjs
+      # typecheck-tests.mjs writes the `extends` of every generated test
+      # program. A bare (non-`./`-prefixed) value is resolved by tsc as a NODE
+      # MODULE, so the base config is not found and the `noEmit` it carries
+      # silently stops applying -- a repo-root run then scattered 9,609
+      # untracked .js/.d.ts/.map files through the source tree (#2664 review).
+      # Nothing about that is visible in normal use, so it is pinned here.
+      - name: Check typecheck-tests extends resolution
+        run: node --test scripts/typecheck-tests.test.mjs
       # A test that reads its subject's SOURCE and asserts on the text passes
       # while the behaviour is broken -- SearchModal.filter's stayed 5/5 green
       # with the row handler unwired (#2396 verbatim). The harness that made

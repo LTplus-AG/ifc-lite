@@ -8,7 +8,7 @@ use std::{
 };
 
 thread_local! {
-    static OWNED: RefCell<Option<OwnedResourceContext>> = const { RefCell::new(None) };
+    pub(super) static OWNED: RefCell<Option<OwnedResourceContext>> = const { RefCell::new(None) };
 }
 
 /// Captured account, actual source stop ancestry and persistent first fault.

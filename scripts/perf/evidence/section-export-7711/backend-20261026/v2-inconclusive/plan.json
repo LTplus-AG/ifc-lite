@@ -1,0 +1,20 @@
+{
+  "source": "9597ecb45ea648c3f3e2c6cb077dcb7fcfcca7f6",
+  "base": "8e2778ca041f027ab95d59532ce43d18bb42dab6",
+  "fixtures": {
+    "/home/louistrue/build-workers/ifc-lite/tests/models/ara3d/AC20-FZK-Haus.ifc": "d42ab0dee01173106c16cd823b4614efe188fa15dd65195d95b9879bec59acc5",
+    "/home/louistrue/build-workers/ifc-lite/tests/models/ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc": "ffdfa9a91ac6a6c301d7da0d7861dfbc3958ceb55098c143a560468702642131",
+    "/home/louistrue/build-workers/ifc-lite/tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8"
+  },
+  "iters": 5,
+  "task": "prepared-issue7711-backend-v2",
+  "preparation": "Explicit env CARGO_UNSTABLE_CHECKSUM_FRESHNESS=true; original _prepare helper",
+  "measurement": "Original immutable _measure helper and reviewed ab.sh tail",
+  "protocol": {
+    "scripts/perf/ab.sh": "e7298a689b5c30af51e00648ce4697f1830beb20611ff330f65524a5b1282bb6",
+    "scripts/perf/ab-order.mjs": "f668a6c30ff1ae948f9575fe013173f170de7beff53eaa0be294ab3b2573ee95",
+    "scripts/perf/ab-report.mjs": "d7d36f307e99b5b7544b1a36ae76474710039e82f31ad1f5b1a1bf7f9f380f3b",
+    "scripts/lib/is-main-entry.mjs": "d3356d7cea1ad770dbd5afdc592eb494907a7e9567bb35c3bcc0f62bd5693977"
+  },
+  "controllerSha256": "adbd542ce53d62425be4ff86ad2dd9c09b82b9ba3c6785b1c54536d9fdb48b7f"
+}

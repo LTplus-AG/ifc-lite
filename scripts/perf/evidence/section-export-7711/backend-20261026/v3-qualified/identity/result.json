@@ -1,0 +1,76 @@
+{
+  "scope": "Ordered geometry payload FNV, counts and aggregate diagnostic counts. Excludes text metadata, material definitions, UVs, textures and instancing. Not a timing qualification.",
+  "rows": {
+    "base": [
+      {
+        "entities": 44249,
+        "meshes": 285,
+        "vertices": 35940,
+        "triangles": 20322,
+        "meshFingerprintsFnv1a64": [
+          "7377db33331a3523"
+        ],
+        "csgFailures": 0,
+        "degenerateDropped": 0
+      },
+      {
+        "entities": 209259,
+        "meshes": 4111,
+        "vertices": 389733,
+        "triangles": 196959,
+        "meshFingerprintsFnv1a64": [
+          "f2f492c19f44555d"
+        ],
+        "csgFailures": 0,
+        "degenerateDropped": 0
+      },
+      {
+        "entities": 2807815,
+        "meshes": 109514,
+        "vertices": 4515161,
+        "triangles": 2895362,
+        "meshFingerprintsFnv1a64": [
+          "500e89efcdd091fa"
+        ],
+        "csgFailures": 0,
+        "degenerateDropped": 0
+      }
+    ],
+    "branch": [
+      {
+        "entities": 44249,
+        "meshes": 285,
+        "vertices": 35940,
+        "triangles": 20322,
+        "meshFingerprintsFnv1a64": [
+          "7377db33331a3523"
+        ],
+        "csgFailures": 0,
+        "degenerateDropped": 0
+      },
+      {
+        "entities": 209259,
+        "meshes": 4111,
+        "vertices": 389733,
+        "triangles": 196959,
+        "meshFingerprintsFnv1a64": [
+          "f2f492c19f44555d"
+        ],
+        "csgFailures": 0,
+        "degenerateDropped": 0
+      },
+      {
+        "entities": 2807815,
+        "meshes": 109514,
+        "vertices": 4515161,
+        "triangles": 2895362,
+        "meshFingerprintsFnv1a64": [
+          "500e89efcdd091fa"
+        ],
+        "csgFailures": 0,
+        "degenerateDropped": 0
+      }
+    ]
+  },
+  "match": true
+}

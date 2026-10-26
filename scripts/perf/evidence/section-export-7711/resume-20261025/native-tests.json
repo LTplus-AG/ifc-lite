@@ -1,0 +1,67 @@
+{
+  "receiptSha256": "1b678019738e8160fca4e2fe0a6882b5db6b791104a55776c6891f33ae30e92d",
+  "state": "completed",
+  "exitCode": 0,
+  "sourceUnchanged": true,
+  "totals": {
+    "passed": 6805,
+    "failed": 0,
+    "ignored": 46,
+    "measured": 0,
+    "filteredOut": 0
+  },
+  "testBinariesAndDoctestSummaries": 417,
+  "checksumFreshnessObserved": true,
+  "outputSha256": "af02fbcf1dc927351082da7e2ccfb1df8b6ed8e8cc582586978bb560e0636a97",
+  "sourceBefore": {
+    "commit": "b32d4593123d517de9c2f14bbc84e60a94c191bf",
+    "tree": "56c7a3e0606c14ee4d5b6defac9cbc1ed43a23d9",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "08bb5b1b14b77527a8a45d4985d4571143f1d23496a1da4411defa5589fc2f75",
+      "pnpm-lock.yaml": "ba8548409585afd4a88e821a0bd016128c8278c0d3fc32ad4ea71bb9bd5f480e",
+      "package.json": "e01ad00b7ffb74bb0ea87bb3e325514b76ffa3d5f30c6025659b3623148b2986"
+    }
+  },
+  "sourceAfter": {
+    "commit": "b32d4593123d517de9c2f14bbc84e60a94c191bf",
+    "tree": "56c7a3e0606c14ee4d5b6defac9cbc1ed43a23d9",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "08bb5b1b14b77527a8a45d4985d4571143f1d23496a1da4411defa5589fc2f75",
+      "pnpm-lock.yaml": "ba8548409585afd4a88e821a0bd016128c8278c0d3fc32ad4ea71bb9bd5f480e",
+      "package.json": "e01ad00b7ffb74bb0ea87bb3e325514b76ffa3d5f30c6025659b3623148b2986"
+    }
+  },
+  "tools": {
+    "git": {
+      "path": "/usr/bin/git",
+      "exitCode": 0,
+      "version": "git version 2.43.0"
+    },
+    "rustc": {
+      "path": "/home/louistrue/build-workers/toolchains/cargo/bin/rustc",
+      "exitCode": 0,
+      "version": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)"
+    },
+    "cargo": {
+      "path": "/home/louistrue/build-workers/toolchains/cargo/bin/cargo",
+      "exitCode": 0,
+      "version": "cargo 1.93.0-nightly (2d4fa1395 2025-11-12)"
+    },
+    "node": {
+      "path": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/node",
+      "exitCode": 0,
+      "version": "v24.22.0"
+    },
+    "pnpm": {
+      "path": "/home/louistrue/build-workers/toolchains/node-v24.22.0-linux-x64/bin/pnpm",
+      "exitCode": 0,
+      "version": "10.8.1"
+    }
+  }
+}

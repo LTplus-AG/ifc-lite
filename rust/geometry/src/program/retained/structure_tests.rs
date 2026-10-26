@@ -2,7 +2,7 @@
 //! #7955 S1 review: authored structural members cannot disappear at admission.
 use super::*;
 
-fn retained_result(bytes: &str, root: u32) -> Result<RetainedProductPlan> {
+fn retained_result(bytes: &str, root: u32) -> std::result::Result<RetainedProductPlan, RetainedFailure> {
     let source = SourceBundle::new(bytes.as_bytes().to_vec());
     let mut decoder = source.decoder();
     let router = GeometryRouter::with_units(bytes, &mut decoder);
@@ -12,7 +12,7 @@ fn retained_result(bytes: &str, root: u32) -> Result<RetainedProductPlan> {
     program.finish()
 }
 
-fn exact_parts(bytes: &str) -> Vec<Mesh> {
+pub(super) fn exact_parts(bytes: &str) -> Vec<Mesh> {
     let source = SourceBundle::new(bytes.as_bytes().to_vec());
     let mut decoder = source.decoder();
     let router = GeometryRouter::with_units(bytes, &mut decoder);
@@ -28,7 +28,7 @@ fn exact_parts(bytes: &str) -> Vec<Mesh> {
     program.finish_parts().unwrap()
 }
 
-fn assert_exact_unchanged(bytes: &str, expected: &[Mesh]) {
+pub(super) fn assert_exact_unchanged(bytes: &str, expected: &[Mesh]) {
     let actual = exact_parts(bytes);
     assert_eq!(actual.len(), expected.len());
     for (actual, expected) in actual.iter().zip(expected) {

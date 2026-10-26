@@ -14,6 +14,7 @@ mod outcome;
 pub(in crate::program) mod boolean;
 pub(crate) use presentation::RetainedPresentation;
 mod select;
+pub(in crate::program) mod failure;
 pub(crate) use select::RetainedSelection;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

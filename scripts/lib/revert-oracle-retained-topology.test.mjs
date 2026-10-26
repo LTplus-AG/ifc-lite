@@ -16,6 +16,8 @@ test('#7955: retained witnesses resolve through the facade path to exact library
   const modules = [
     ['admission_tests', '::admission'],
     ['outcome_tests', '::outcome_tests'],
+    ['origin_tests', '::origins'],
+    ['origin_completion_tests', '::origins::completion'],
     ['accept_stop_tests', '::accept_stop_tests'],
     ['affine_tests', '::affine_tests'],
     ['boolean_tests', '::boolean_tests'],

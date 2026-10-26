@@ -20,7 +20,7 @@ ENDSEC;END-ISO-10303-21;"
         )
 }
 
-fn admission(bytes: &str) -> (Vec<RetainedPlanOperation>, Result<RetainedProductPlan>, u64) {
+fn admission(bytes: &str) -> (Vec<RetainedPlanOperation>, std::result::Result<RetainedProductPlan, RetainedFailure>, u64) {
     let source = SourceBundle::new(bytes.as_bytes().to_vec());
     let mut decoder = source.decoder();
     let router = GeometryRouter::with_units(bytes, &mut decoder);

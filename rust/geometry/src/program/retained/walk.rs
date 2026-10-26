@@ -3,14 +3,15 @@
 use crate::resource::{Dimension, ProgramStop, RefusalReason, ResourceFailure};
 use std::sync::Mutex;
 
-pub(super) struct RetainedWalk(Mutex<Budget>);
+pub(super) struct RetainedWalk(Mutex<Budget>, pub(super) super::failure::FailureSlot);
 struct Budget { spent: u64, limit: u64, terminal: Option<ProgramStop> }
 impl RetainedWalk {
     pub(super) fn new() -> Self {
+        let (failure, terminal) = super::failure::FailureSlot::new();
         Self(Mutex::new(Budget { spent: 0,
             limit: crate::processors::boolean::MAX_OPERAND_VISITS as u64
                 * ifc_lite_core::MAX_MAPPED_ITEM_DEPTH as u64,
-            terminal: None }))
+            terminal }), failure)
     }
     pub(super) fn check(&self) -> Result<(), ProgramStop> {
         match self.0.lock().unwrap_or_else(|e| e.into_inner()).terminal {

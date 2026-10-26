@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared against bf6022ecaa51954df16758f3378d13ad6a4e3aca; runtime UNRUN. Apply in reverse to mutate.
+--- a/rust/geometry/src/program/retained/failure.rs
++++ b/rust/geometry/src/program/retained/failure.rs
+@@ -68,8 +68,6 @@
+             live_bytes: bytes + (std::mem::size_of::<OriginFailure>() + 2 * std::mem::size_of::<usize>()) as u64,
+             ..Default::default()
+         })?;
+-        storage.retain();
+-        let storage = resource::charge(Cost::default())?;
+         let origin = Arc::new(OriginFailure { site, entity, cause, _storage: storage });
+         let discarded = {
+             let mut slot = self.origin.lock().unwrap_or_else(|e| e.into_inner());

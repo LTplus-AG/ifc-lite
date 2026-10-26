@@ -184,7 +184,7 @@ fn h2c_resource_refusal_survives_the_account_scope_and_other_roots() {
     assert_eq!(existing_sibling.request().err(),Some(stop));
     let mut sibling = traversal.product_parts(&entity);
     assert_eq!(sibling.request().err(),Some(stop));
-    assert!(matches!(program.finish(), Err(Error::ProgramStopped(failure))
+    assert!(matches!(program.finish(), Err(RetainedFailure::Stopped(failure))
         if RetainedProgramError::Stopped(failure) == stop));
 }
 

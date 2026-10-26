@@ -26,7 +26,7 @@ fn alongside_body(records: &str) -> String {
     )
 }
 
-fn admission(bytes: &str) -> (Vec<RetainedPlanOperation>, Result<RetainedProductPlan>) {
+fn admission(bytes: &str) -> (Vec<RetainedPlanOperation>, std::result::Result<RetainedProductPlan, RetainedFailure>) {
     let source = SourceBundle::new(bytes.as_bytes().to_vec());
     let mut decoder = source.decoder();
     let router = GeometryRouter::with_units(bytes, &mut decoder);

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! #7955 S3 Q1: snapshot ownership without a surviving model controller.
 use super::*;
-use ifc_lite_core::{ExecutionLeaseError, IfcType};
+use ifc_lite_core::{execution_owner::ExecutionLeaseError, IfcType};
 
 #[test]
 fn s3_snapshot_alone_retains_source_for_cross_thread_decode_then_releases_it() {

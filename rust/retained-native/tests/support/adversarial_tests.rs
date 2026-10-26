@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+#![cfg(feature = "retained-runtime")]
 //! #7955: source faults remain product-atomic and do not become exact retries.
 use super::support::*;
 #[test]

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+#![cfg(feature = "retained-runtime")]
 //! #7955: lifted affine source; M1 deliberately refuses final affine-only values.
 use super::support::*;
 fn mapped() -> String {

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+#![cfg(feature = "retained-runtime")]
 //! #7955: native stack construction witness adapted to whole-model publication.
 use super::{metrics::Metrics, support::*};
 #[test]

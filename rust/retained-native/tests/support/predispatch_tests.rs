@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+#![cfg(feature = "retained-runtime")]
 //! #7955: invalid limits are refused before acquiring any numerical worker.
 use super::support::*;
 use ifc_lite_processing::element::retained_runtime::*;

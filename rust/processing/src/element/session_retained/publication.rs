@@ -10,6 +10,7 @@ pub struct ShapeOnlyProduct {
     pub ifc_type: IfcType,
     pub parts: Vec<ShapePart>,
     pub obligations: PresentationObligationsUnmet,
+    _storage: Storage,
 }
 #[derive(Debug)]
 pub struct ShapePart {
@@ -38,11 +39,8 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
     }
     fn shape_in_scope(&self) -> Result<ShapeOnlyProduct, RetainedExecutionError> {
         let mut parts = Vec::new();
-        let _headers = self
-            .resources
-            .reserve_headers(&mut parts, self.plan.values().len())
-            .map_err(RetainedExecutionError::Stopped)?;
-        let mut permits = Vec::new();
+        let mut storage = Storage::default();
+        storage.reserve(&self.resources, &mut parts, self.plan.values().len())?;
         for value in self.plan.values() {
             let (_, realization) = self
                 .ledger
@@ -71,16 +69,8 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
             }
             let mut copied_positions = Vec::new();
             let mut copied_indices = Vec::new();
-            permits.push(
-                self.resources
-                    .reserve_headers(&mut copied_positions, positions.len())
-                    .map_err(RetainedExecutionError::Stopped)?,
-            );
-            permits.push(
-                self.resources
-                    .reserve_headers(&mut copied_indices, indices.len())
-                    .map_err(RetainedExecutionError::Stopped)?,
-            );
+            storage.reserve(&self.resources, &mut copied_positions, positions.len())?;
+            storage.reserve(&self.resources, &mut copied_indices, indices.len())?;
             copied_positions.extend_from_slice(positions);
             copied_indices.extend_from_slice(indices);
             parts.push(ShapePart {
@@ -95,7 +85,14 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
         if parts.is_empty() {
             return Err(incomplete());
         }
-        let obligations = PresentationObligationsUnmet(self.plan.requirements().collect());
+        let mut remaining = Vec::new();
+        storage.reserve(
+            &self.resources,
+            &mut remaining,
+            self.plan.requirements().count(),
+        )?;
+        remaining.extend(self.plan.requirements());
+        let obligations = PresentationObligationsUnmet(remaining);
         if obligations.0.is_empty() {
             return Err(incomplete());
         }
@@ -104,6 +101,7 @@ impl<R: NumericalReceipt> witness::RuntimeProductWitness<R> {
             ifc_type: self.ifc_type.clone(),
             parts,
             obligations,
+            _storage: storage,
         })
     }
 }

@@ -84,7 +84,7 @@ pub async fn run_model<W: AsyncRetainedExecutor>(
     router.set_material_layer_index(Arc::new(
         ifc_lite_geometry::MaterialLayerIndex::from_content(source.bytes(), &mut decoder),
     ));
-    let jobs = crate::processor::canonical_element_jobs(&source);
+    let jobs = crate::processor::entry_points::canonical_element_jobs(&source);
     let mut worker: Option<W> = None;
     let mut attempts = 0usize;
     let max_attempts = usize::from(options.max_restarts.min(3)) + 1;

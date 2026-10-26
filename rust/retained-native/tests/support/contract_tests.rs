@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+#![cfg(feature = "retained-runtime")]
 //! #7955: source refusals remain typed at the native model boundary.
 use super::support::*;
 #[test]

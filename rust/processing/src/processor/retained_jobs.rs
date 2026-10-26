@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Retained candidates from the exact full-pass scheduler; no second classifier.
-use super::{entity_index::IndexBuilder, scan, ProcessingRequest};
+use super::super::{entity_index::IndexBuilder, scan, ProcessingRequest};
 use ifc_lite_core::{IfcType, SourceBundle};
 
 /// Exact full-pass order, excluding type products and representationless jobs.

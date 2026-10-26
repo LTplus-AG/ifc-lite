@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+#![cfg(feature = "retained-runtime")]
 //! #7955: dropped async work retires the captured domain and publishes nothing.
 use super::support::*;
 use ifc_lite_processing::element::retained_runtime::*;

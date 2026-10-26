@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+#![cfg(feature = "retained-runtime")]
 //! #7955: lifted nested Boolean source, executed through C's public seam.
 use super::{metrics::Metrics, support::*};
 fn nested() -> String {

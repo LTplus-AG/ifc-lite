@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+#![cfg(feature = "retained-runtime")]
 //! #7955: type products are intentionally excluded by the whole-model contract.
 use super::support::*;
 #[test]

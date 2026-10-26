@@ -209,6 +209,6 @@ pub mod retained_runtime {
     pub use super::session_retained::publication::{ShapeOnlyProduct, ShapePart, PresentationObligationsUnmet};
     pub use super::session_retained::witness::RuntimeProductWitness;
     pub use super::session_retained::model::{run_model, ModelOptions, ModelSummary, ProductOutcome, ProductBudgetSpec};
-    pub use crate::processor::canonical_element_jobs;
+    pub use crate::processor::entry_points::canonical_element_jobs;
     pub use super::session_retained::admission::{admit_product, RetainedAdmissionError};
 }

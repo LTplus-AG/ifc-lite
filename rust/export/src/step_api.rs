@@ -98,9 +98,6 @@ pub struct StepOptions {
     /// `FILE_NAME` preprocessor_version — the tool writing this file.
     /// `None` ⇒ `ifc-lite`.
     pub application: Option<String>,
-    /// `FILE_NAME` originating_system — the application the data came from.
-    /// `None` ⇒ the source file's, else `application`.
-    pub originating_system: Option<String>,
     /// `FILE_NAME` name. `None` ⇒ `export.ifc`.
     pub filename: Option<String>,
     /// `FILE_NAME` time_stamp. `None` ⇒ the source file's stamp. There is no

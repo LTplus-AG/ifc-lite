@@ -42,7 +42,8 @@ pub(crate) fn write_output<W: Write>(
         identity.stamp_header(&mut header_opts);
     }
     let source_header = crate::source_header::parse_source_header(source);
-    crate::step_header::write_header(&mut out, &header_opts, source_header.as_ref(), schema)?;
+    let originating = resolution.identity.as_ref().map(|identity| identity.originating_system());
+    crate::step_header::write_header_originating(&mut out, &header_opts, source_header.as_ref(), schema, originating.as_deref())?;
 
     let Resolution { appended, edits_by_id, removed, reasons, refusals, patched, added, patched_objects, dropped_representations, findings, .. } =
         resolution;

@@ -209,7 +209,13 @@ impl Identity {
                 "ExportingApplication.changed_at {stamp:?} is {seconds} seconds, outside the 0..=2147483647 an IfcTimeStamp holds for 32-bit readers{hint}; {keeps}"
             ));
         }
-        Ok(Self { app: app.clone(), seconds })
+        // One normalized copy: the header and the IfcApplication record read
+        // the same trimmed names.
+        let mut app = app.clone();
+        for field in [&mut app.developer, &mut app.full_name, &mut app.identifier, &mut app.version] {
+            *field = field.trim().to_string();
+        }
+        Ok(Self { app, seconds })
     }
 
     /// The chain this application's histories name.

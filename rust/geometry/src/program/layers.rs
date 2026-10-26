@@ -230,6 +230,7 @@ impl<'a> LayerControl<'a> {
         let host = host.and_then(|host| match host {
             ProductOutput::Parts(parts) => single_frame(self.element.id, parts),
             ProductOutput::Styled(_) => Err(Error::geometry("layer host completed as sub-meshes")),
+            ProductOutput::Retained(..) => Err(Error::geometry("retained presentation unsupported")),
         });
         let host = match (host, self.mode) {
             (Ok(host), _) => host,

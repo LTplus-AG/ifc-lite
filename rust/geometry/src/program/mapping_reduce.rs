@@ -18,7 +18,13 @@ impl MappingControl<'_> {
     #[allow(clippy::too_many_arguments)] // one level's admitted parts
     pub(super) fn enter_source(&mut self, item_id: u32, source_id: u32, transform: Option<Matrix4<f64>>,
         representation: &DecodedEntity, items: Vec<DecodedEntity>, sink: Sink, router: &GeometryRouter) {
-        let policy = router.claim_unsupported_source(source_id, representation);
+        let policy = if self.retained.is_some() {
+            if let Err(error) = self.open_retained_level() {
+                self.action = Action::Complete(Err(error));
+                return;
+            }
+            false
+        } else { router.claim_unsupported_source(source_id, representation) };
         self.levels.push(Level {
             item_id,
             source_id,
@@ -129,6 +135,10 @@ impl MappingControl<'_> {
                     Some(event) => event,
                     None => return,
                 },
+                Event::Deliver { value: Err(error), .. } if self.retained.is_some() => {
+                    self.action = Action::Complete(Err(error));
+                    return;
+                }
                 Event::Deliver { item_id, truncated, value } => {
                     match self.deliver(item_id, truncated, value, router) {
                         Some(event) => event,
@@ -157,6 +167,17 @@ impl MappingControl<'_> {
             };
             return None;
         };
+        if self.retained.is_some() {
+            if item.ifc_type == IfcType::IfcMappedItem {
+                if let Err(error) = self.check_retained_path(item.id) {
+                    self.action = Action::Complete(Err(error));
+                    return None;
+                }
+                self.action = Action::Enter(Reached::Nested(item));
+                return None;
+            }
+            return self.select_plain(Reached::Nested(item), router);
+        }
         match level.sink {
             Sink::Styled { .. } => return self.next_styled(item, router),
             Sink::TypeMap if item.ifc_type != IfcType::IfcMappedItem

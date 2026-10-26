@@ -48,7 +48,7 @@ export type ViewSectionAxis = 'down' | 'front' | 'side';
 /** The part of the store's `sectionPlane` the clip actually needs. */
 export interface ViewSectionPlaneState {
   axis: ViewSectionAxis;
-  /** Slider position, 0-100 percent of the range along the cut normal. */
+  /** Percent of the range along the cut normal; 0-100 spans it, values outside are beyond it (#8162). */
   position: number;
   /** Which half survives. See the module docblock. */
   flipped: boolean;

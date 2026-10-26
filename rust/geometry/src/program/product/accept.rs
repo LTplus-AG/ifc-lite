@@ -15,6 +15,7 @@ impl<'a> ProductControl<'a> {
     /// which completes in place; every other reply consumes its action.
     pub(in crate::program) fn accept(&mut self, reply: ProductReply, router: &GeometryRouter) {
         let next = match reply {
+            ProductReply::Item(reply) => { self.accept_retained_item(reply, router); return; }
             ProductReply::Cache(reply) => {
                 let Child::Cache(control) = &mut self.child else { return };
                 match &self.action {
@@ -125,6 +126,7 @@ impl<'a> ProductControl<'a> {
     /// The resolved shape: its first item, or an empty product.
     pub(super) fn shape_done(&mut self, shape: Option<ProductShape>) -> Action {
         let Some(shape) = shape else {
+            if self.retained.is_some() { return Action::Placement; }
             // No geometry: the merged walk is one empty part, the styled walk
             // an empty collection; neither is placed.
             return Action::Complete(Ok(match self.styled {
@@ -152,6 +154,7 @@ impl<'a> ProductControl<'a> {
     pub(super) fn advance(&mut self) -> Action {
         let is_annotation = self.element.ifc_type == IfcType::IfcAnnotation;
         for item in self.items.by_ref() {
+            if self.retained.is_some() { return self.retained_item(item); }
             if is_annotation && item.ifc_type == IfcType::IfcAnnotationFillArea {
                 return Action::Annotation(item);
             }
@@ -259,6 +262,7 @@ impl<'a> ProductControl<'a> {
 
     fn mapping_done(&mut self, result: Result<MappingOutput>, role: Role) -> Action {
         match (role, result) {
+            (_, Ok(MappingOutput::Retained(values))) if self.retained.is_some() => self.accept_retained_mapping(values),
             (Role::Parts, Ok(MappingOutput::Parts(parts))) => match &self.body {
                 Body::Sink(Sink::Merged(_)) => Action::Merge(parts),
                 _ => Action::Complete(Err(protocol("merged accumulator"))),

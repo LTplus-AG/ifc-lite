@@ -68,6 +68,7 @@ impl<'a> MappingControl<'a> {
     /// Close the innermost source: into frame parts, or, styled, bake its
     /// mapping into its items' sub-meshes and re-tag a don't-bake template.
     pub(super) fn finish(&mut self, router: &GeometryRouter) -> Step {
+        if self.retained.is_some() { return self.finish_retained_level(); }
         let level = self.levels.last_mut().ok_or(ProgramError::StaleRequest)?;
         let Sink::Styled { start, template } = &level.sink else {
             return Ok(MappingReply::Finished(std::mem::take(&mut level.parts).into_parts()));
@@ -87,6 +88,7 @@ impl<'a> MappingControl<'a> {
     pub(super) fn place(place: Place, router: &GeometryRouter) -> MappingReply {
         let Place { parts, item_id, source_id, transform, truncated } = place;
         let value = match parts {
+            Placing::Retained(values) => return Self::place_retained_mapping(item_id, source_id, transform, *values),
             Placing::Cached(mesh) => router.clone_cached_mesh(&mesh).map(|mesh| vec![mesh]),
             Placing::Walked(parts) => Ok(parts),
         };
@@ -109,6 +111,7 @@ impl<'a> MappingControl<'a> {
     }
 
     pub(in crate::program) fn accept(&mut self, reply: MappingReply, router: &GeometryRouter) {
+        if self.accept_retained_reply(&reply) { self.accept_retained(reply, router); return; }
         // A child step drives its control in place: the action, which holds
         // the child's whole state, moves only once the child completes.
         let reply = match (&mut self.action, reply) {
@@ -199,7 +202,7 @@ impl<'a> MappingControl<'a> {
                 self.action = Action::Complete(Ok(MappingOutput::Styled(meshes)));
                 return;
             }
-            (Action::Taken, MappingReply::TypeMapEntered(value)) => match (value, self.rep_map) {
+            (Action::Taken, MappingReply::TypeMapEntered(value)) => match (value, self.rep_map.as_ref().map(Reached::item)) {
                 (Ok((representation, items)), Some(rep_map)) => {
                     // Whether a dropped item here is a real content gap, or this
                     // router declining a 2D map it was never meant to mesh: the
@@ -262,6 +265,14 @@ impl<'a> MappingControl<'a> {
     /// The selected plain item of the innermost source: through the cache
     /// controller on a styled source, else its processor, if it has one.
     pub(super) fn select_plain(&mut self, item: Reached<'a>, router: &GeometryRouter) -> Option<Event> {
+        // Statically unreachable on the default wasm engine (no retained state).
+        #[cfg_attr(not(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime")), allow(unreachable_code, unused_variables, unused_mut))]
+        if let Some(state) = &self.retained {
+            let mut control = super::ItemControl::new((0., 0., 0.));
+            control.retained = Some(state.selection.clone());
+            self.action = Action::Child(item, ChildControl::Item(control));
+            return None;
+        }
         let styled = match self.levels.last() {
             Some(level) => matches!(level.sink, Sink::Styled { .. }),
             None => self.walk == Walk::Styled,

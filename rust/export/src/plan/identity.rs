@@ -54,7 +54,7 @@ pub(crate) type Reusable<'s> = Option<(&'s FileIndex<'s>, &'s HashSet<u32>)>;
 /// user of that developer whose person matches `spec`, each only if it
 /// stays in the output; only what is missing is written.
 pub(crate) fn chain(schema: &str, ids: &mut IdAllocator, spec: &ChainSpec, source: Reusable) -> Option<(Vec<(u32, String)>, Chain)> {
-    let existing_app = source.and_then(|(index, removed)| existing_application(index, removed, schema, spec.identifier));
+    let existing_app = source.and_then(|(index, removed)| existing_application(index, removed, schema, spec));
     let mut org = existing_app.and_then(|(_, developer)| developer);
     let existing_user = source.zip(org).and_then(|((index, removed), org)| existing_user(index, removed, schema, org, spec));
     let mut records = Vec::new();
@@ -113,25 +113,25 @@ pub(crate) fn chain(schema: &str, ids: &mut IdAllocator, spec: &ChainSpec, sourc
     Some((records, Chain { user, application }))
 }
 
-/// `(application, its developer)` for the source's application named
-/// `identifier` that the output keeps, preferring one whose developer it
-/// keeps too. An application is reused even when its developer is unset or
-/// does not resolve (UR1: one application per identifier, so a second is
-/// never written); the user then gets an organization of its own. A
-/// developer the plan removes takes its application with it (the cascade),
-/// which is then not kept.
-fn existing_application(index: &FileIndex, removed: &HashSet<u32>, schema: &str, identifier: &str) -> Option<(u32, Option<u32>)> {
+/// `(application, its developer)` for the source's application the chain
+/// reuses: one the output keeps that `spec` names by `ApplicationIdentifier`
+/// (UR1), else by `ApplicationFullName` and `Version` (UR2), since a second
+/// application repeating either would break the rule. Among several, one
+/// whose developer the output keeps is preferred. An application is reused
+/// even when its developer is unset or does not resolve; the user then gets
+/// an organization of its own. A developer the plan removes takes its
+/// application with it (the cascade), which is then not kept.
+fn existing_application(index: &FileIndex, removed: &HashSet<u32>, schema: &str, spec: &ChainSpec) -> Option<(u32, Option<u32>)> {
+    let read = |id: u32, attr: &str| index.string_attr(schema, id, "IFCAPPLICATION", attr);
     let developer = |id: u32| scalar_attr(index, schema, id, "IFCAPPLICATION", "ApplicationDeveloper").filter(|d| index.contains(*d) && !removed.contains(d));
-    let mut candidates = index
-        .applications
-        .iter()
-        .copied()
-        .filter(|id| !removed.contains(id))
-        .filter(|&id| index.string_attr(schema, id, "IFCAPPLICATION", "ApplicationIdentifier").as_deref() == Some(identifier))
-        .map(|id| (id, developer(id)))
-        .peekable();
-    let first = *candidates.peek()?;
-    Some(candidates.find(|(_, d)| d.is_some()).unwrap_or(first))
+    let kept = || index.applications.iter().copied().filter(|id| !removed.contains(id));
+    let by_identifier = |id: &u32| read(*id, "ApplicationIdentifier").as_deref() == Some(spec.identifier);
+    let by_name = |id: &u32| read(*id, "ApplicationFullName").as_deref() == Some(spec.full_name) && read(*id, "Version").as_deref() == Some(spec.version);
+    let pick = |matches: &dyn Fn(&u32) -> bool| {
+        let candidates: Vec<(u32, Option<u32>)> = kept().filter(|id| matches(id)).map(|id| (id, developer(id))).collect();
+        candidates.iter().copied().find(|(_, d)| d.is_some()).or_else(|| candidates.first().copied())
+    };
+    pick(&by_identifier).or_else(|| pick(&by_name))
 }
 
 /// A source user of `org`, kept by the output, whose person (kept too) is
@@ -193,13 +193,18 @@ impl Identity {
         Ok(Self { app: app.clone(), seconds })
     }
 
-    /// `FILE_NAME.preprocessor_version`: this toolkit, which wrote the file.
-    pub(crate) fn preprocessor() -> String {
-        concat!("ifc-lite ", env!("CARGO_PKG_VERSION")).to_string()
+    /// The header fields the exporting application settles in `opts`: the
+    /// change time as `time_stamp`, this toolkit as `preprocessor_version`,
+    /// and the application as `originating_system`. One place for both the
+    /// plan writer and the skeleton.
+    pub(crate) fn stamp_header(&self, opts: &mut crate::StepOptions) {
+        opts.time_stamp = Some(self.header_time_stamp());
+        opts.application = Some(concat!("ifc-lite ", env!("CARGO_PKG_VERSION")).to_string());
+        opts.originating_system = Some(self.originating_system());
     }
 
     /// `FILE_NAME.originating_system`: the application and its version.
-    pub(crate) fn originating_system(&self) -> String {
+    fn originating_system(&self) -> String {
         if self.app.version.is_empty() {
             self.app.full_name.clone()
         } else {
@@ -208,7 +213,7 @@ impl Identity {
     }
 
     /// `FILE_NAME.time_stamp`: the change time as UTC ISO 8601, marked `Z`.
-    pub(crate) fn header_time_stamp(&self) -> String {
+    fn header_time_stamp(&self) -> String {
         format!("{}Z", iso_from_epoch(self.seconds))
     }
 

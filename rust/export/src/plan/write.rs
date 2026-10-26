@@ -10,7 +10,6 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::StepOptions;
 
-use super::identity::Identity;
 use super::index::FileIndex;
 use super::source_text;
 use super::resolve::Resolution;
@@ -30,18 +29,17 @@ pub(crate) fn write_output<W: Write>(
     // The exporting application is the originating system, this crate the
     // toolkit that wrote the exchange structure, and the change time the
     // file's time stamp.
-    let identity = resolution.identity.as_ref();
-    let header_opts = StepOptions {
+    let mut header_opts = StepOptions {
         author: plan.context.author.clone(),
         organization: plan.context.organization.clone(),
-        // The change time is the histories' time; the context's applies only
-        // without an application.
-        time_stamp: identity.map(Identity::header_time_stamp).or_else(|| plan.context.time_stamp.clone()),
+        // The application's change time replaces the context's.
+        time_stamp: plan.context.time_stamp.clone(),
         filename: plan.context.file_name.clone(),
-        application: identity.map(|_| Identity::preprocessor()),
-        originating_system: identity.map(Identity::originating_system),
         ..Default::default()
     };
+    if let Some(identity) = &resolution.identity {
+        identity.stamp_header(&mut header_opts);
+    }
     let source_header = crate::source_header::parse_source_header(source);
     crate::step_header::write_header(&mut out, &header_opts, source_header.as_ref(), schema)?;
 

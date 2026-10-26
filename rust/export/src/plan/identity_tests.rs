@@ -561,19 +561,20 @@ fn a_chain_the_plan_deletes_is_not_reused() {
     }
 }
 
-/// A write that is refused takes no history: nothing of the application's
-/// chain is left behind.
+/// A patch whose every write is refused wrote nothing: its object is not
+/// modified or counted as patched, and nothing of the application's chain
+/// is written (owner-history PR).
 #[test]
-fn a_refused_write_leaves_no_attribution_records() {
-    let schema = "IFC4";
-    // Ids for the chain and its history, but not for the set the write needs.
-    let src = String::from_utf8(crate::plan::test_fixtures::wall_with_own_pset(schema)).unwrap().replace(
-        "ENDSEC;\nEND-ISO",
-        &format!("#{}=IFCCARTESIANPOINT((0.,0.,0.));\nENDSEC;\nEND-ISO", u32::MAX - 6),
-    );
-    let (out, report) = export(src.as_bytes(), vec![patch(10, vec![write("Pset_New", "P", "'x'", PropScope::Occurrence)])], context());
-    assert_eq!(report.refusals.len(), 1, "{report:?}");
-    assert!(!String::from_utf8_lossy(&out).contains("'ExampleApp'"), "no chain for a refused write");
+fn a_fully_refused_patch_marks_and_writes_nothing() {
+    for schema in SCHEMAS {
+        let src = owned(&crate::plan::test_fixtures::wall_with_own_pset(schema), schema);
+        let bad = PropWrite::new("Pset_New", "L", "IFCLENGTHMEASURE", "'abc'", PsetKind::Property, PropScope::Occurrence);
+        let (out, report) = export(&src, vec![patch(10, vec![bad])], context());
+        assert_eq!(report.refusals.len(), 1, "{schema}: {report:?}");
+        assert_eq!(report.patched, 0, "{schema}: {report:?}");
+        assert_eq!(lines(&out)[&10], lines(&src)[&10], "{schema}: the wall is untouched");
+        assert!(!String::from_utf8_lossy(&out).contains("'ExampleApp'"), "{schema}: no chain");
+    }
 }
 
 /// An unreadable change time is one finding, not two.
@@ -638,7 +639,8 @@ fn a_removed_history_is_not_settled() {
     let src = source("IFC4", false);
     let index = crate::plan::index::FileIndex::complete(&src);
     let context = PlanContext::new();
-    let history = crate::plan::attribution::Histories::new(&index, "IFC4", None, Some(164), &context);
+    // The source's first owner history is #164.
+    let history = crate::plan::attribution::Histories::new(&index, "IFC4", None, &context);
     assert_eq!(history.settled(&std::collections::HashSet::from([164])), None);
     assert_eq!(history.settled(&std::collections::HashSet::new()), Some(164));
 }
@@ -719,9 +721,9 @@ fn the_header_time_is_utc() {
 /// discarded Adds had taken, so nothing later names it.
 #[test]
 fn a_failed_add_phase_leaves_the_ledger_untouched() {
-    use crate::plan::add_attributed::{run, AddSetting, Produced};
+    use crate::plan::add::AddState;
     use crate::plan::add_types::AddItem;
-    use crate::plan::attribution::Ledger;
+    use crate::plan::attribution::{Histories, Ledger};
     let mut checked = false;
     for headroom in 5..40 {
         let src = crate::plan::test_fixtures::storey_with_headroom("IFC4", headroom);
@@ -732,11 +734,10 @@ fn a_failed_add_phase_leaves_the_ledger_untouched() {
         let key = ObjectRef::Guid(wall.global_id.encode());
         let adds = [(&key, AddItem::Object(&wall))];
         let removed = std::collections::HashSet::new();
-        let setting = AddSetting { index: &index, schema: "IFC4", context: &plan.context, removed: &removed, owner_history: None, body_context: None };
         let mut ids = crate::step_ids::IdAllocator::after(index.max_id);
-        let (mut appended, mut edits, mut refusals, mut findings) = (Vec::new(), HashMap::new(), Vec::new(), Vec::new());
-        let mut produced = Produced { ids: &mut ids, appended: &mut appended, edits_by_id: &mut edits, refusals: &mut refusals, findings: &mut findings };
-        let built = run(&setting, &adds, Some(&mut ledger), &mut produced);
+        let mut refusals = Vec::new();
+        let mut history = Histories::new(&index, "IFC4", Some(&mut ledger), &plan.context);
+        let built = AddState::new(&index, "IFC4", &removed, &mut history, None).build_all(&adds, &mut ids, &mut HashMap::new(), &mut Vec::new(), &mut refusals, &mut Vec::new());
         if built == 0 && refusals.iter().any(|r| r.reason.contains("relationships for added objects not written")) {
             checked = true;
             assert_eq!(ledger.made.added(), None, "headroom {headroom}: no ADDED history committed");
@@ -953,4 +954,65 @@ fn a_geometry_patch_on_a_styled_layered_brep_wall_modifies_the_wall() {
         assert!(report.refusals.is_empty(), "{schema}: {report:?}");
         assert!(assert_modified_exactly_the_rewritten(schema, &src, &out, &[600]).contains(&600), "{schema}: the wall");
     }
+}
+
+/// UR2: the source's application with this full name and version is
+/// reused even under another identifier; a second would repeat the pair
+/// (owner-history PR).
+#[test]
+fn an_application_with_the_same_name_and_version_is_reused() {
+    let schema = "IFC4";
+    let src = String::from_utf8(source(schema, false)).unwrap();
+    let ours = [
+        build_record(schema, 171, "IFCORGANIZATION", &[("Name", "'ExampleOrg'".into())]),
+        build_record(
+            schema,
+            173,
+            "IFCAPPLICATION",
+            &[("ApplicationDeveloper", "#171".into()), ("Version", "'2.1'".into()), ("ApplicationFullName", "'ExampleApp'".into()), ("ApplicationIdentifier", "'other-id'".into())],
+        ),
+    ];
+    let src = src.replace("ENDSEC;\nEND-ISO", &format!("{}\nENDSEC;\nEND-ISO", ours.join("\n"))).into_bytes();
+    let (out, _) = export(&src, vec![rename(10)], context());
+    let all = lines(&out);
+    assert_eq!(all.values().filter(|l| l.contains("=IFCAPPLICATION(") && l.contains("'ExampleApp'")).count(), 1);
+    let history = target(schema, &all, &all[&10], "IFCWALL", "OwnerHistory");
+    assert_eq!(attr(schema, &history, "IFCOWNERHISTORY", "LastModifyingApplication"), "#173");
+}
+
+/// Without an application, the placeholder history reuses the source's
+/// placeholder application rather than writing its identifier twice
+/// (owner-history PR).
+#[test]
+fn the_placeholder_history_reuses_the_sources_placeholder_application() {
+    let schema = "IFC4";
+    let src = String::from_utf8(crate::plan::test_fixtures::wall_with_own_pset(schema)).unwrap();
+    let ours = [
+        build_record(schema, 171, "IFCORGANIZATION", &[("Name", "'ifc-lite'".into())]),
+        build_record(
+            schema,
+            173,
+            "IFCAPPLICATION",
+            &[
+                ("ApplicationDeveloper", "#171".into()),
+                ("Version", "'1.0'".into()),
+                ("ApplicationFullName", "'ifc-lite export-plan executor'".into()),
+                ("ApplicationIdentifier", "'ifc-lite-export-plan'".into()),
+            ],
+        ),
+    ];
+    let src = src.replace("ENDSEC;\nEND-ISO", &format!("{}\nENDSEC;\nEND-ISO", ours.join("\n"))).into_bytes();
+    let (out, _) = export(&src, vec![patch(10, vec![write("Pset_New", "P", "'x'", PropScope::Occurrence)])], PlanContext::new());
+    assert_eq!(String::from_utf8_lossy(&out).matches("'ifc-lite-export-plan'").count(), 1);
+    assert_no_dangling(&out, schema);
+}
+
+/// A delete-only plan that rewrites a relationship carrying an owner
+/// history, with no application, says it credits the change to the
+/// previous author (owner-history PR).
+#[test]
+fn a_delete_only_plan_without_an_application_says_so() {
+    let src = owned(&crate::plan::test_fixtures::three_walls_sharing_a_pset("IFC4"), "IFC4");
+    let (_, report) = export(&src, vec![(ObjectRef::Id(12), Disposition::Delete)], PlanContext::new());
+    assert!(report.findings.iter().any(|f| f.message.contains("no ExportingApplication")), "{:?}", report.findings);
 }

@@ -19,7 +19,8 @@ use crate::step_text::attribute_of;
 use super::attrs::attribute_index;
 use super::identity::{Identity, Made, Original};
 use super::index::FileIndex;
-use super::types::{ExportPlan, PlanContext, ValidationFinding};
+use super::props_lookup::container_names;
+use super::types::{ExportPlan, PlanContext, PsetKind, ValidationFinding};
 
 /// The exporting application and the records the plan has written for it.
 pub(crate) struct Ledger {
@@ -54,26 +55,25 @@ impl Ledger {
     }
 }
 
-/// Where the owner history of a record the plan adds comes from, shared by
-/// the patches and the Adds: the exporting application's `ADDED` history,
-/// else the file's (or one settled earlier) if the plan keeps it, else one
-/// synthesized (see [`super::owner_history::synthesize`]). Taking one is not
-/// yet using it: only a write that succeeds [`Self::commit`]s what it took,
-/// so a refused write leaves nothing behind and a plan that adds nothing
-/// writes none. What was committed reaches the [`Ledger`] only when the
-/// caller hands back [`Self::made`].
+/// Where the owner history of a record the plan adds comes from, one for
+/// the patches and the Adds alike: the exporting application's `ADDED`
+/// history, else the file's (or one settled earlier) if the plan keeps it,
+/// else one synthesized (see [`super::owner_history::synthesize`]). Taking
+/// one is not yet using it: only a write that succeeds [`Self::commit`]s
+/// what it took, so a refused write leaves nothing behind and a plan that
+/// adds nothing writes none. A batch of writes discarded together goes
+/// back to a [`Self::snapshot`].
 pub(crate) struct Histories<'l> {
     index: &'l FileIndex<'l>,
     schema: &'l str,
     kind: HistoryKind<'l>,
-    /// The exporting application's records committed so far.
-    made: Made,
     /// The history committed so far.
     id: Option<u32>,
 }
 
 enum HistoryKind<'l> {
-    Attributed(&'l Identity),
+    /// Commits land in the ledger's [`Made`].
+    Attributed(&'l mut Ledger),
     Source(&'l PlanContext),
 }
 
@@ -92,6 +92,13 @@ pub(crate) struct Settles {
     made: Made,
 }
 
+/// What [`Histories`] had committed at one point, to go back to.
+#[derive(Clone, Copy)]
+pub(crate) struct Snapshot {
+    id: Option<u32>,
+    made: Option<Made>,
+}
+
 impl Taken {
     /// A history that already exists: nothing to write.
     #[cfg(test)]
@@ -101,49 +108,67 @@ impl Taken {
 }
 
 impl<'l> Histories<'l> {
-    /// With `ledger`, the exporting application's; else `existing` (the
-    /// file's or one settled earlier), or one synthesized from `context`.
-    pub(crate) fn new(index: &'l FileIndex<'l>, schema: &'l str, ledger: Option<&'l Ledger>, existing: Option<u32>, context: &'l PlanContext) -> Self {
-        let (kind, made, id) = match ledger {
-            Some(ledger) => (HistoryKind::Attributed(&ledger.identity), ledger.made, ledger.made.added()),
-            None => (HistoryKind::Source(context), Made::default(), existing),
+    /// With `ledger`, the exporting application's; else the file's first
+    /// owner history, or one synthesized from `context`.
+    pub(crate) fn new(index: &'l FileIndex<'l>, schema: &'l str, ledger: Option<&'l mut Ledger>, context: &'l PlanContext) -> Self {
+        let (kind, id) = match ledger {
+            Some(ledger) => {
+                let id = ledger.made.added();
+                (HistoryKind::Attributed(ledger), id)
+            }
+            None => (HistoryKind::Source(context), index.first_owner_history),
         };
-        Self { index, schema, kind, made, id }
+        Self { index, schema, kind, id }
     }
 
     /// The history one write names, and the records it must write with it.
     /// Records `removed` holds are neither named nor reused.
     pub(crate) fn take(&self, ids: &mut IdAllocator, removed: &HashSet<u32>) -> Option<Taken> {
-        let mut made = self.made;
-        let mut records = Vec::new();
-        let id = match self.kind {
-            HistoryKind::Attributed(identity) => identity.added_in(self.schema, ids, Some((self.index, removed)), &mut made, &mut records)?,
-            HistoryKind::Source(context) => match self.settled(removed) {
-                Some(id) => id,
-                None => {
-                    let (synthesized, id) = super::owner_history::synthesize(self.schema, ids, context)?;
-                    records = synthesized;
-                    id
-                }
-            },
-        };
-        Some(Taken { records, settles: Settles { id, made } })
+        let source = Some((self.index, removed));
+        match &self.kind {
+            HistoryKind::Attributed(ledger) => {
+                let (mut made, mut records) = (ledger.made, Vec::new());
+                let id = ledger.identity.added_in(self.schema, ids, source, &mut made, &mut records)?;
+                Some(Taken { records, settles: Settles { id, made } })
+            }
+            HistoryKind::Source(context) => {
+                let (records, id) = match self.settled(removed) {
+                    Some(id) => (Vec::new(), id),
+                    None => super::owner_history::synthesize(self.schema, ids, context, source)?,
+                };
+                Some(Taken { records, settles: Settles { id, made: Made::default() } })
+            }
+        }
     }
 
     /// A write that took `settles` succeeded: what it took is the plan's.
     pub(crate) fn commit(&mut self, settles: Settles) {
-        self.made = settles.made;
+        if let HistoryKind::Attributed(ledger) = &mut self.kind {
+            ledger.made = settles.made;
+        }
         self.id = Some(settles.id);
+    }
+
+    /// What is committed now.
+    pub(crate) fn snapshot(&self) -> Snapshot {
+        let made = match &self.kind {
+            HistoryKind::Attributed(ledger) => Some(ledger.made),
+            HistoryKind::Source(_) => None,
+        };
+        Snapshot { id: self.id, made }
+    }
+
+    /// Forget what was committed since `snapshot`.
+    pub(crate) fn restore(&mut self, snapshot: Snapshot) {
+        if let (HistoryKind::Attributed(ledger), Some(made)) = (&mut self.kind, snapshot.made) {
+            ledger.made = made;
+        }
+        self.id = snapshot.id;
     }
 
     /// The history committed so far, unless the plan removes it.
     pub(crate) fn settled(&self, removed: &HashSet<u32>) -> Option<u32> {
         self.id.filter(|id| !removed.contains(id))
-    }
-
-    /// The exporting application's records committed, for the ledger.
-    pub(crate) fn made(&self) -> Made {
-        self.made
     }
 }
 
@@ -161,7 +186,7 @@ pub(crate) fn attribute_changes(index: &FileIndex, schema: &str, plan: &ExportPl
                 out.findings.push(ValidationFinding { express_id: reused, message });
             }
         }
-        None if changed && plan.context.application.is_none() => out.findings.push(ValidationFinding {
+        None if plan.context.application.is_none() && (changed || !modified_records(index, schema, patched, out.edits_by_id, removed).is_empty()) => out.findings.push(ValidationFinding {
             express_id: None,
             message: "no ExportingApplication supplied: added objects are attributed to the source's first owner history (or a placeholder one), and modified objects keep their original owner history, so the file credits this export's changes to their previous author".into(),
         }),
@@ -180,15 +205,18 @@ fn modified_records(index: &FileIndex, schema: &str, patched: &[u32], edits_by_i
     let live = |id: &u32| index.contains(*id) && !removed.contains(id);
     let carries = |id: &u32| index.type_of(*id).is_some_and(|ty| attribute_index(schema, &ty, "OwnerHistory").is_some());
     let mut modified: BTreeSet<u32> = patched.iter().copied().filter(|id| live(id) && carries(id)).collect();
+    // The set or element quantity whose member list names a value.
+    let lists = |set: u32, slot: usize| {
+        [PsetKind::Property, PsetKind::Quantity].into_iter().any(|kind| {
+            let (container, members) = container_names(kind);
+            index.type_of(set).as_deref() == Some(container) && attribute_index(schema, container, members) == Some(slot)
+        })
+    };
     for id in edits_by_id.keys().filter(|id| live(id)) {
         if carries(id) {
             modified.insert(*id);
-            continue;
-        }
-        let is_value = index.type_of(*id).is_some_and(|ty| ty == "IFCPROPERTYSINGLEVALUE" || ty.starts_with("IFCQUANTITY"));
-        if is_value {
-            let sets = index.referrers(*id).iter().map(|&(set, _)| set);
-            modified.extend(sets.filter(|set| live(set) && index.type_of(*set).is_some_and(|ty| ty == "IFCPROPERTYSET" || ty == "IFCELEMENTQUANTITY")));
+        } else {
+            modified.extend(index.referrers(*id).iter().filter(|&&(set, slot)| live(&set) && lists(set, slot)).map(|&(set, _)| set));
         }
     }
     modified
@@ -207,6 +235,7 @@ pub(crate) struct Rewrites<'a> {
 /// after every patch, delete and Add has settled its edits.
 fn mark_modified(index: &FileIndex, schema: &str, ledger: &mut Ledger, patched: &[u32], removed: &HashSet<u32>, out: &mut Rewrites) {
     let required = SchemaFamily::of_file_schema(schema) == Some(SchemaFamily::Ifc2x3);
+    let mut originals: HashMap<u32, Option<Original>> = HashMap::new();
     for id in modified_records(index, schema, patched, out.edits_by_id, removed) {
         let Some(ty) = index.type_of(id) else { continue };
         let Some(slot_idx) = attribute_index(schema, &ty, "OwnerHistory") else { continue };
@@ -221,7 +250,8 @@ fn mark_modified(index: &FileIndex, schema: &str, ledger: &mut Ledger, patched: 
             }
             continue;
         };
-        let Some(original) = original_of(index, schema, original_id) else {
+        // One parse per original history, however many records name it.
+        let Some(original) = originals.entry(original_id).or_insert_with(|| original_of(index, schema, original_id)) else {
             out.findings.push(report(format!("modified {ty} names #{original_id}, which is not an IfcOwnerHistory; the modification is not recorded on it")));
             continue;
         };
@@ -231,7 +261,7 @@ fn mark_modified(index: &FileIndex, schema: &str, ledger: &mut Ledger, patched: 
                 original.state
             )));
         }
-        let Some(new) = ledger.modified((index, removed), schema, out.ids, out.appended, original_id, &original) else {
+        let Some(new) = ledger.modified((index, removed), schema, out.ids, out.appended, original_id, original) else {
             out.findings.push(report("id space exhausted: the modification is not recorded".into()));
             continue;
         };

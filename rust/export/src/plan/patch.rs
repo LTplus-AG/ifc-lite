@@ -54,7 +54,22 @@ impl PatchOutput<'_, '_> {
     }
 }
 
+/// Apply `patch` to `object_id`, returning whether it wrote anything: a
+/// patch whose every part is refused leaves the object unmodified.
 pub(super) fn apply_patch(
+    index: &FileIndex,
+    schema: &str,
+    object_id: u32,
+    patch: &Patch,
+    ids: &mut IdAllocator,
+    out: &mut PatchOutput<'_, '_>,
+) -> bool {
+    let before = (out.appended.len(), out.edited.len(), out.detach_requests.len());
+    write_patch(index, schema, object_id, patch, ids, out);
+    (out.appended.len(), out.edited.len(), out.detach_requests.len()) != before
+}
+
+fn write_patch(
     index: &FileIndex,
     schema: &str,
     object_id: u32,

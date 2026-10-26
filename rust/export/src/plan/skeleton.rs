@@ -307,15 +307,19 @@ fn owner_slot(identity: Option<&Identity>, emit: &mut Emit) -> Result<String, St
 /// The file: the header (naming the application, toolkit and change time
 /// when there is an application, empty fields otherwise), then the records.
 fn step_text(file_name: Option<&str>, identity: Option<&Identity>, out: &[(u32, String)]) -> Result<Vec<u8>, String> {
+    // Without an application every field is empty, as the skeleton always
+    // wrote it.
     let empty = || Some(String::new());
-    let opts = crate::StepOptions {
+    let mut opts = crate::StepOptions {
         description: empty(),
         filename: Some(file_name.unwrap_or("").to_string()),
-        time_stamp: identity.map_or_else(empty, |i| Some(i.header_time_stamp())),
-        application: identity.map_or_else(empty, |_| Some(Identity::preprocessor())),
-        originating_system: identity.map(Identity::originating_system),
+        time_stamp: empty(),
+        application: empty(),
         ..Default::default()
     };
+    if let Some(identity) = identity {
+        identity.stamp_header(&mut opts);
+    }
     let mut text = Vec::new();
     crate::step_header::write_header_counted(&mut text, &opts, None, SKELETON_SCHEMA, 0).map_err(|e| e.to_string())?;
     for (_, record) in out {

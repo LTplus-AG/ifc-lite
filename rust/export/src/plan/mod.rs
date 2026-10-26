@@ -38,7 +38,6 @@
 
 mod add;
 mod add_assoc_types;
-mod add_attributed;
 mod add_builders;
 mod add_geometry;
 mod add_profile;

@@ -11,8 +11,10 @@
 //! The digests below were recorded from the whole-file-index executor, and
 //! re-recorded since: once when the quirks block's doubly declared point
 //! moved to its last declaration's position and began to be reported as a
-//! finding (output length unchanged), and once when delete stopped pruning
-//! objects the plan did not name (the comments below say which moved). Any implementation change that alters
+//! finding (output length unchanged), once when delete stopped pruning
+//! objects the plan did not name (the comments below say which moved), and
+//! once when a patch whose every part is refused stopped counting as patched
+//! (quirks: two refused placements; output bytes unchanged). Any implementation change that alters
 //! a single output byte, a count, a refusal or a finding fails here.
 //!
 //! To re-record after an intended output change:
@@ -93,7 +95,7 @@ const PINNED: &[(&str, &str)] = &[
     // already exists. It is refused and writes nothing, so the output bytes
     // are unchanged; only the report moved (a refusal, `added` 0).
     ("IFC2X3/delete_wins_and_unknowns", "c285ce7a2ab0f818:122990"),
-    ("IFC2X3/quirks", "fba5a217eefd61fa:124395"),
+    ("IFC2X3/quirks", "2bb19458dc72f530:124395"),
     // `benchmark` deletes a wall from a shared-pset group and patches
     // another wall of the SAME group in one plan. The delete's own list
     // rewrite and the patch's copy-on-write detach used to be resolved
@@ -120,7 +122,7 @@ const PINNED: &[(&str, &str)] = &[
     ("IFC4/delete_whole_group", "f262523aaedc86ba:75316"),
     ("IFC4/delete_type", "cc3eda45c1ac0247:124345"),
     ("IFC4/delete_wins_and_unknowns", "3b9736287ed34429:123498"),
-    ("IFC4/quirks", "fbca61a00ac4c43b:124907"),
+    ("IFC4/quirks", "3088e24e98413835:124907"),
     // Same fix, same scenario, IFC4: see the IFC2X3 comment above.
     ("IFC4/benchmark", "0ac47b1862130c3a:129644"),
     ("IFC4/geometry", "6b055df60c996be8:125923"),

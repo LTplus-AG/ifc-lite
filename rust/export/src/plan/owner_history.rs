@@ -20,14 +20,15 @@ use crate::step_text::escape;
 use crate::step_ids::IdAllocator;
 
 use super::attrs::build_record;
-use super::identity::ChainSpec;
+use super::identity::{ChainSpec, Reusable};
 use super::types::PlanContext;
 
 /// A minimal valid `IfcPerson`/`IfcOrganization`/`IfcPersonAndOrganization`/
 /// `IfcApplication`/`IfcOwnerHistory` chain naming the plan's own context,
-/// built by [`super::identity::chain`] like the exporting application's, and
+/// built by [`super::identity::chain`] like the exporting application's (so
+/// a placeholder application the `source` already has is reused), and
 /// generic over the schema's own attribute order.
-pub(crate) fn synthesize(schema: &str, ids: &mut IdAllocator, context: &PlanContext) -> Option<(Vec<(u32, String)>, u32)> {
+pub(crate) fn synthesize(schema: &str, ids: &mut IdAllocator, context: &PlanContext, source: Reusable) -> Option<(Vec<(u32, String)>, u32)> {
     let spec = ChainSpec {
         identification: "ifc-lite",
         family_name: "ifc-lite",
@@ -37,7 +38,7 @@ pub(crate) fn synthesize(schema: &str, ids: &mut IdAllocator, context: &PlanCont
         identifier: "ifc-lite-export-plan",
     };
     let time_stamp = context.time_stamp.as_deref().and_then(epoch_seconds).unwrap_or(0);
-    let (mut records, chain) = super::identity::chain(schema, ids, &spec, None)?;
+    let (mut records, chain) = super::identity::chain(schema, ids, &spec, source)?;
     let owner_history_id = ids.allocate()?;
     records.push((
         owner_history_id,
@@ -154,9 +155,9 @@ mod tests {
     fn synthesizes_a_valid_chain_and_is_deterministic() {
         let ctx = PlanContext::default();
         let mut a = IdAllocator::after(10);
-        let (records_a, owh_a) = synthesize("IFC4", &mut a, &ctx).unwrap();
+        let (records_a, owh_a) = synthesize("IFC4", &mut a, &ctx, None).unwrap();
         let mut b = IdAllocator::after(10);
-        let (records_b, owh_b) = synthesize("IFC4", &mut b, &ctx).unwrap();
+        let (records_b, owh_b) = synthesize("IFC4", &mut b, &ctx, None).unwrap();
         assert_eq!(records_a, records_b);
         assert_eq!(owh_a, owh_b);
         assert_eq!(records_a.len(), 5);
@@ -167,7 +168,7 @@ mod tests {
     fn the_person_has_a_name_and_the_owner_history_a_change_action_in_each_schema() {
         for schema in ["IFC2X3", "IFC4"] {
             let mut ids = IdAllocator::after(10);
-            let (records, _) = synthesize(schema, &mut ids, &PlanContext::default()).unwrap();
+            let (records, _) = synthesize(schema, &mut ids, &PlanContext::default(), None).unwrap();
             let person = &records[0].1;
             assert!(person.starts_with("#11=IFCPERSON('ifc-lite','ifc-lite',"), "{schema}: {person}");
             let owner_history = &records.last().unwrap().1;
@@ -179,7 +180,7 @@ mod tests {
     fn ifc2x3_owner_history_still_scans_into_the_declared_attribute_count() {
         let ctx = PlanContext::default();
         let mut a = IdAllocator::after(10);
-        let (records, _) = synthesize("IFC2X3", &mut a, &ctx).unwrap();
+        let (records, _) = synthesize("IFC2X3", &mut a, &ctx, None).unwrap();
         for (id, text) in &records {
             let entity_type = text.split('=').nth(1).unwrap().split('(').next().unwrap();
             let names = ifc_lite_core::attribute_names_for_schema("IFC2X3", entity_type).unwrap();

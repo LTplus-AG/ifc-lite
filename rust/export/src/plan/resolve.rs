@@ -12,7 +12,7 @@ use super::add_types::AddItem;
 use super::patch::{apply_patch, PatchOutput};
 use super::removal::RemovalReason;
 use super::types::{Disposition, DroppedRepresentation, ExportPlan, ObjectRef, Refusal, ValidationFinding};
-use super::add_attributed::{self, AddSetting, Produced};
+use super::add::AddState;
 use super::attribution::{attribute_changes, Histories, Ledger, Rewrites};
 use super::identity::Identity;
 use super::{attrs, delete, geometry};
@@ -42,7 +42,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     let mut appended: Vec<(u32, String)> = Vec::new();
     let mut findings = Vec::new();
     let mut ledger = Ledger::for_plan(plan, &mut findings);
-    let mut history = Histories::new(index, schema, ledger.as_ref(), index.first_owner_history, &plan.context);
+    let mut history = Histories::new(index, schema, ledger.as_mut(), &plan.context);
     let mut refusals: Vec<Refusal> = Vec::new();
     let mut edits_by_id: HashMap<u32, BTreeMap<usize, String>> = HashMap::new();
     let mut requested_deletes: HashSet<u32> = HashSet::new();
@@ -105,8 +105,6 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
                     refusals.push(Refusal { object: ObjectRef::Id(id), reason: reason.into() });
                     continue;
                 }
-                patched += 1;
-                patched_objects.push(id);
                 // The duplicate-set check reads these after the write; asked
                 // for here so they are collected before resolution settles.
                 index.referrers(id);
@@ -126,14 +124,14 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
                     body_context: &mut body_context,
                     dropped_representations: &mut dropped_representations,
                 };
-                apply_patch(index, schema, id, patch, &mut ids, &mut out);
+                // Only a patch that wrote something patched its object.
+                if apply_patch(index, schema, id, patch, &mut ids, &mut out) {
+                    patched += 1;
+                    patched_objects.push(id);
+                }
             }
         }
     }
-
-    let owner_history_ref = history.settled(&removed);
-    let made = history.made();
-    ledger.iter_mut().for_each(|ledger| ledger.made = made);
 
     if let Some(context) = body_context.synthesized {
         attach_context_to_project(index, schema, context, &removed, &mut list_edits);
@@ -175,9 +173,9 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     // that is going away, and their list appends start from the rewritten
     // lists.
     findings.extend(super::orphans::unplaced_by_removed_structure(index, schema, &removed, &reasons));
-    let setting = AddSetting { index, schema, context: &plan.context, removed: &removed, owner_history: owner_history_ref, body_context: body_context.chosen() };
-    let mut produced = Produced { ids: &mut ids, appended: &mut appended, edits_by_id: &mut edits_by_id, refusals: &mut refusals, findings: &mut findings };
-    let added = add_attributed::run(&setting, &adds, ledger.as_mut(), &mut produced);
+    // The Adds name the history the patches settled on, or take one.
+    let adding = AddState::new(index, schema, &removed, &mut history, body_context.chosen());
+    let added = adding.build_all(&adds, &mut ids, &mut edits_by_id, &mut appended, &mut refusals, &mut findings);
 
     // Every rewrite has settled: what the plan modified is read off them.
     let out = Rewrites { ids: &mut ids, appended: &mut appended, edits_by_id: &mut edits_by_id, findings: &mut findings };

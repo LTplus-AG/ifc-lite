@@ -25,7 +25,7 @@ use super::add_props::build_sets;
 use super::add_rels::{RelAccumulator, RelKind, RelRequest};
 use super::add_types::{AddItem, NewObject, Representation, TypeLink};
 use super::attrs::unset_required;
-use super::attribution::Histories;
+use super::attribution::{Histories, Snapshot};
 use super::index::FileIndex;
 use super::placement::fmt;
 use super::props_synth::{defines_by_properties_record, ref_or_unset};
@@ -126,12 +126,12 @@ impl<'a, 'h> AddState<'a, 'h> {
         Ok(())
     }
 
-    /// Build every Add, returning how many were written and whether all of
-    /// them were: only then is what they committed to `history` theirs. The relationships of
+    /// Build every Add, returning how many were written. The relationships of
     /// every Add are written together, all or nothing: when `finish` fails (the
     /// id space runs out, or a list it extends does not scan), it discards every
     /// built object's records along with them (see its doc comment), so each Add
-    /// that had built is refused too.
+    /// that had built is refused too, and `history` goes back to what it had
+    /// committed before the Adds.
     pub(crate) fn build_all(
         mut self,
         adds: &[(&ObjectRef, AddItem)],
@@ -140,7 +140,8 @@ impl<'a, 'h> AddState<'a, 'h> {
         appended: &mut Vec<(u32, String)>,
         refusals: &mut Vec<Refusal>,
         findings: &mut Vec<ValidationFinding>,
-    ) -> (usize, bool) {
+    ) -> usize {
+        let snapshot = self.history.snapshot();
         let mut built = Vec::new();
         for &(key, item) in adds {
             // A refused Add gives back the ids it took, so it changes no
@@ -161,32 +162,42 @@ impl<'a, 'h> AddState<'a, 'h> {
         let typed = std::mem::take(&mut self.typed);
         let mut notes = std::mem::take(&mut self.notes);
         notes.retain(|n| n.express_id.is_none_or(|id| !typed.contains(&id)));
-        match self.finish(ids, edits_by_id) {
+        match self.finish(ids, edits_by_id, snapshot) {
             Ok(records) => {
                 appended.extend(records);
                 findings.append(&mut notes);
-                (built.len(), true)
+                built.len()
             }
             Err(reason) => {
                 refusals.extend(built.into_iter().map(|key| Refusal {
                     object: key.clone(),
                     reason: format!("relationships for added objects not written: {reason}"),
                 }));
-                (0, false)
+                0
             }
         }
     }
 
-    /// Every record and list edit the Adds produced, relationships last.
+    /// Every record and list edit the Adds produced, relationships last. On
+    /// failure nothing they took from `history` stays committed.
     fn finish(
         self,
         ids: &mut IdAllocator,
         edits_by_id: &mut HashMap<u32, BTreeMap<usize, String>>,
+        snapshot: Snapshot,
     ) -> Result<Vec<(u32, String)>, String> {
-        let history = self.settled_history();
+        let owner_history = self.settled_history();
         let mut records = self.records;
-        records.extend(self.rels.finish(self.schema, ids, history, edits_by_id)?);
-        Ok(records)
+        match self.rels.finish(self.schema, ids, owner_history, edits_by_id) {
+            Ok(rels) => {
+                records.extend(rels);
+                Ok(records)
+            }
+            Err(reason) => {
+                self.history.restore(snapshot);
+                Err(reason)
+            }
+        }
     }
 
     fn build(

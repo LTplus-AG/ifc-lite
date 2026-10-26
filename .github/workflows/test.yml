@@ -3542,6 +3542,13 @@ jobs:
           cargo test --locked -p ifc-lite-processing --features retained-runtime --test retained_inspection_busy
           cargo test --locked -p ifc-lite-processing --features retained-runtime --example retained_census
           cargo clippy --locked -p ifc-lite-processing --features retained-runtime --all-targets -- -D warnings
+      # #7955: the opt-in `retained-native` diagnostic (and its runtime-crate
+      # edge) is otherwise compiled only by geometry-platform.yml, which is
+      # optional and path-filtered away from most processing edits. Clippy
+      # needs no SDK: the worker is located at test time, never at build time.
+      # Its numerical oracles still require the SDK and stay there.
+      - name: Clippy (ifc-lite-processing retained-native feature)
+        run: cargo clippy --locked -p ifc-lite-processing --features retained-native --all-targets -- -D warnings
       # G6 (#7672): a dependency a member declares but its sources never name is
       # compile time and supply-chain surface for nothing (XCUT-17 found seven).
       # cargo-machete is a text scan, so it needs no build and runs in seconds.

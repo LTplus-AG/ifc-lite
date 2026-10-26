@@ -4,6 +4,11 @@
 
 import type { ProcessParallelOptions } from './geometry-parallel-options.js';
 
+/** The geometry worker bundle, freshly instantiated for each load. */
+export function spawnGeometryWorker(): Worker {
+  return new Worker(new URL('./geometry.worker.ts', import.meta.url), { type: 'module' });
+}
+
 /**
  * The per-load configuration every process worker receives before any stream
  * message: wasm init plus the load-time toggles. Shared by the initial pool and

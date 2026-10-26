@@ -14,6 +14,7 @@ pub struct NativeTimings {
     pub boolean_ms: f64,
     pub controller_and_publication_ms: f64,
     pub total_ms: f64,
+    pub product_ms: f64,
 }
 pub(crate) struct MeasuredWorker {
     pub worker: NativeWorker,

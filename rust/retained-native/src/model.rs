@@ -3,11 +3,11 @@
 use crate::NativeWorker;
 use ifc_lite_core::SourceBundle;
 use ifc_lite_processing::element::retained_runtime::{
-    run_model, ModelOptions, ModelSummary, ProductOutcome, RetainedExecutionError,
+    run_model_with_worker, ModelOptions, ModelSummary, ProductOutcome, RetainedExecutionError,
 };
 use std::{
     future::Future,
-    path::Path,
+    path::{Path, PathBuf},
     sync::Arc,
     task::{Context, Poll, Wake, Waker},
 };
@@ -49,38 +49,75 @@ pub fn run_model_native_timed(
     options: &ModelOptions,
     mut sink: impl FnMut(ProductOutcome),
 ) -> Result<(ModelSummary, crate::NativeTimings), RetainedExecutionError> {
-    use crate::timing::MeasuredWorker;
-    use std::{cell::Cell, rc::Rc, time::Instant};
-    let timing = Rc::new(Cell::new(crate::NativeTimings::default()));
-    let sink_ms = Cell::new(0.);
-    let start = Instant::now();
-    let summary = block_on(run_model(
-        source,
-        options,
-        || {
-            let start = Instant::now();
-            let result = NativeWorker::spawn(worker_path.as_ref());
-            let mut observed = timing.get();
-            observed.startup_and_qualification_ms += start.elapsed().as_secs_f64() * 1000.;
-            timing.set(observed);
-            result.map(|worker| MeasuredWorker {
-                worker,
-                timing: timing.clone(),
-            })
-        },
-        |outcome| {
-            let start = Instant::now();
-            sink(outcome);
-            sink_ms.set(sink_ms.get() + start.elapsed().as_secs_f64() * 1000.);
-        },
-    ))?;
-    let mut observed = timing.get();
-    observed.total_ms = (start.elapsed().as_secs_f64() * 1000. - sink_ms.get()).max(0.);
-    observed.controller_and_publication_ms = (observed.total_ms
-        - observed.startup_and_qualification_ms
-        - observed.construction_ms
-        - observed.affine_ms
-        - observed.boolean_ms)
-        .max(0.);
-    Ok((summary, observed))
+    NativeModelDriver::new(worker_path).run_model(source, options, |outcome, _| sink(outcome))
+}
+
+/// Owns one numerical peer for a corpus; source state remains model-local.
+pub struct NativeModelDriver {
+    path: PathBuf,
+    worker: Option<crate::timing::MeasuredWorker>,
+    timing: std::rc::Rc<std::cell::Cell<crate::NativeTimings>>,
+}
+impl NativeModelDriver {
+    pub fn new(path: impl AsRef<Path>) -> Self {
+        Self {
+            path: path.as_ref().to_path_buf(),
+            worker: None,
+            timing: Default::default(),
+        }
+    }
+    pub fn with_worker(path: impl AsRef<Path>, worker: NativeWorker) -> Self {
+        let mut driver = Self::new(path);
+        driver.worker = Some(crate::timing::MeasuredWorker {
+            worker,
+            timing: driver.timing.clone(),
+        });
+        driver
+    }
+    pub fn run_model(
+        &mut self,
+        source: Arc<SourceBundle>,
+        options: &ModelOptions,
+        mut sink: impl FnMut(ProductOutcome, f64),
+    ) -> Result<(ModelSummary, crate::NativeTimings), RetainedExecutionError> {
+        use crate::timing::MeasuredWorker;
+        use std::{cell::Cell, time::Instant};
+        self.timing.set(Default::default());
+        let timing = &self.timing;
+        let path = &self.path;
+        let sink_ms = Cell::new(0.);
+        let start = Instant::now();
+        let result = block_on(run_model_with_worker(
+            source,
+            options,
+            &mut self.worker,
+            || {
+                let start = Instant::now();
+                let result = NativeWorker::spawn(path);
+                let mut observed = timing.get();
+                observed.startup_and_qualification_ms += start.elapsed().as_secs_f64() * 1000.;
+                timing.set(observed);
+                result.map(|worker| MeasuredWorker {
+                    worker,
+                    timing: timing.clone(),
+                })
+            },
+            |outcome, ms| {
+                let start = Instant::now();
+                sink(outcome, ms);
+                sink_ms.set(sink_ms.get() + start.elapsed().as_secs_f64() * 1000.);
+            },
+        ));
+        let summary = result?;
+        let mut observed = timing.get();
+        observed.total_ms = (start.elapsed().as_secs_f64() * 1000. - sink_ms.get()).max(0.);
+        observed.product_ms = summary.product_ms;
+        observed.controller_and_publication_ms = (observed.total_ms
+            - observed.startup_and_qualification_ms
+            - observed.construction_ms
+            - observed.affine_ms
+            - observed.boolean_ms)
+            .max(0.);
+        Ok((summary, observed))
+    }
 }

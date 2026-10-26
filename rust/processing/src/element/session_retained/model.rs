@@ -49,6 +49,7 @@ pub enum ProductOutcome {
         ifc_type: IfcType,
         refusal: RetainedProductRefusal,
         origin: Option<RefusalOrigin>,
+        message: String,
     },
 }
 #[derive(Debug, Default)]
@@ -56,14 +57,31 @@ pub struct ModelSummary {
     pub candidates: usize,
     pub published: usize,
     pub restarts: u8,
+    pub product_ms: f64,
+    pub acquire_ms: f64,
     pub by_code: std::collections::BTreeMap<&'static str, usize>,
 }
 
 pub async fn run_model<W: AsyncRetainedExecutor>(
     source: Arc<SourceBundle>,
     options: &ModelOptions,
-    mut acquire: impl FnMut() -> Result<W, RuntimeFault>,
+    acquire: impl FnMut() -> Result<W, RuntimeFault>,
     mut sink: impl FnMut(ProductOutcome),
+) -> Result<ModelSummary, RetainedExecutionError> {
+    run_model_with_worker(source, options, &mut None, acquire, |outcome, _| {
+        sink(outcome)
+    })
+    .await
+}
+
+/// Reuse a qualified peer across model boundaries. Each model has its own
+/// replacement budget. Sink milliseconds exclude acquisition and sink work.
+pub async fn run_model_with_worker<W: AsyncRetainedExecutor>(
+    source: Arc<SourceBundle>,
+    options: &ModelOptions,
+    worker: &mut Option<W>,
+    mut acquire: impl FnMut() -> Result<W, RuntimeFault>,
+    mut sink: impl FnMut(ProductOutcome, f64),
 ) -> Result<ModelSummary, RetainedExecutionError> {
     options.limits.validate()?;
     let mut decoder = source.decoder();
@@ -85,8 +103,13 @@ pub async fn run_model<W: AsyncRetainedExecutor>(
         ifc_lite_geometry::MaterialLayerIndex::from_content(source.bytes(), &mut decoder),
     ));
     let jobs = crate::processor::entry_points::canonical_element_jobs(&source);
-    let mut worker: Option<W> = None;
-    let mut attempts = 0usize;
+    let mut attempts = usize::from(worker.is_some());
+    if worker
+        .as_ref()
+        .is_some_and(|w| w.domain().incarnation().is_none())
+    {
+        *worker = None;
+    }
     let max_attempts = usize::from(options.max_restarts.min(3)) + 1;
     let mut summary = ModelSummary::default();
     for (product_id, ifc_type) in jobs {
@@ -99,12 +122,17 @@ pub async fn run_model<W: AsyncRetainedExecutor>(
         }
         summary.candidates += 1;
         let exhausted = worker.is_none() && attempts >= max_attempts;
+        let product_start = std::time::Instant::now();
+        let mut acquire_ms = 0.;
         let mut bounded_acquire = || {
             if attempts >= max_attempts {
                 return Err(RuntimeFault::transport("worker restart budget exhausted"));
             }
             attempts += 1;
-            acquire()
+            let start = std::time::Instant::now();
+            let result = acquire();
+            acquire_ms += start.elapsed().as_secs_f64() * 1000.;
+            result
         };
         let outcome = if exhausted {
             Err(RetainedExecutionError::Runtime(RuntimeFault::transport(
@@ -117,23 +145,26 @@ pub async fn run_model<W: AsyncRetainedExecutor>(
                 &snapshot,
                 product_id,
                 options,
-                &mut worker,
+                worker,
                 &mut bounded_acquire,
             )
             .await
         };
+        let ms = (product_start.elapsed().as_secs_f64() * 1000. - acquire_ms).max(0.);
+        summary.product_ms += ms;
+        summary.acquire_ms += acquire_ms;
         // The executor may retire a domain for resource/source cancellation too.
         // Never keep a dead domain merely because its refusal is not transport.
         if worker
             .as_ref()
             .is_some_and(|w| w.domain().incarnation().is_none())
         {
-            worker = None;
+            *worker = None;
         }
         match outcome {
             Ok(shape) => {
                 summary.published += 1;
-                sink(ProductOutcome::Published(shape));
+                sink(ProductOutcome::Published(shape), ms);
             }
             Err(error) => {
                 let (refusal, origin) = error.refusal();
@@ -141,15 +172,19 @@ pub async fn run_model<W: AsyncRetainedExecutor>(
                     refusal,
                     RetainedProductRefusal::WorkerFault | RetainedProductRefusal::WorkerRetired
                 ) {
-                    worker = None;
+                    *worker = None;
                 }
                 *summary.by_code.entry(refusal.code()).or_default() += 1;
-                sink(ProductOutcome::Refused {
-                    product_id,
-                    ifc_type,
-                    refusal,
-                    origin,
-                });
+                sink(
+                    ProductOutcome::Refused {
+                        product_id,
+                        ifc_type,
+                        refusal,
+                        origin,
+                        message: error.to_string(),
+                    },
+                    ms,
+                );
             }
         }
     }

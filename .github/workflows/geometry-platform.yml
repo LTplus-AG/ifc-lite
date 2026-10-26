@@ -102,7 +102,7 @@ jobs:
           export IFCLITE_REQUIRE_SMLIB=1
           export IFCLITE_SMLIB_WORKER="$RUNNER_TEMP/smlib-native/ifclite_smlib_worker"
           cargo test --locked -p ifc-lite-retained-native --features retained-runtime
-          cargo run --locked -p ifc-lite-retained-native --features retained-runtime --example retained_compare -- \
+          cargo run --release --locked -p ifc-lite-retained-native --features retained-runtime --example retained_compare -- \
             --worker "$IFCLITE_SMLIB_WORKER" --out "$RUNNER_TEMP/native-compare" --committed --gate
       - name: Download optional corpus
         if: inputs.corpus == true
@@ -110,7 +110,7 @@ jobs:
       - name: Optional retained native corpus
         if: inputs.corpus == true
         run: |
-          cargo run --locked -p ifc-lite-retained-native --features retained-runtime --example retained_compare -- \
+          cargo run --release --locked -p ifc-lite-retained-native --features retained-runtime --example retained_compare -- \
             --worker "$RUNNER_TEMP/smlib-native/ifclite_smlib_worker" --out "$RUNNER_TEMP/native-corpus" --manifest tests/models/manifest.json
       - name: Upload native comparison evidence
         if: always()

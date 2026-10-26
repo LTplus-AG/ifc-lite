@@ -3159,6 +3159,7 @@ jobs:
           # mesh-check oracles through the existing test-support feature.
           cargo clippy --target wasm32-unknown-unknown -p ifc-lite-wasm --all-targets --features retained-browser -- -D warnings
           cargo test -p ifc-lite-retained-native --features retained-runtime
+          cargo test -p ifc-lite-retained-native --features retained-runtime --example retained_compare
           cargo clippy -p ifc-lite-retained-native --features retained-runtime --all-targets -- -D warnings
 
       # The feature legs (parquet-bos, csg_manifold_gate, csg_capture, the

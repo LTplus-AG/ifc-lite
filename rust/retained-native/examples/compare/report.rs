@@ -15,6 +15,8 @@ pub struct Report {
     pub maxima: [f64; 4],
     pub exact_ms: f64,
     pub retained_ms: f64,
+    pub startup_ms: f64,
+    pub product_ms: f64,
     pub rows: Vec<String>,
     pub coverage: Vec<String>,
     pub models: Vec<Value>,
@@ -28,6 +30,7 @@ impl Report {
         model: &str,
         shape: &ShapeOnlyProduct,
         actual: &Metrics,
+        rounded: Option<&Metrics>,
         exact: Option<&Metrics>,
         source: Option<(f64, Option<[f64; 6]>)>,
         tolerances: &Value,
@@ -36,9 +39,17 @@ impl Report {
         self.published += 1;
         let curved = shape.parts.iter().any(|p| p.curved);
         let source_rel = source.as_ref().map(|(v, _)| relative(actual.volume, *v));
-        let vol = exact.map(|e| relative(actual.volume, e.volume));
-        let area = exact.map(|e| relative(actual.area, e.area));
-        let bbox = exact.map(|e| bbox_deviation(&actual.bbox, &e.bbox));
+        let vol = exact
+            .zip(rounded)
+            .map(|(e, a)| relative(a.volume, e.volume));
+        let area = exact.zip(rounded).map(|(e, a)| relative(a.area, e.area));
+        let bbox = exact
+            .zip(rounded)
+            .map(|(e, a)| bbox_deviation(&a.bbox, &e.bbox));
+        let source_bbox = source
+            .as_ref()
+            .and_then(|(_, b)| b.as_ref())
+            .map(|b| bbox_deviation(&actual.bbox, b));
         let label = format!("{model}:{}", shape.product_id);
         for (i, value) in [source_rel, vol, area, bbox].into_iter().enumerate() {
             if let Some(value) = value {
@@ -94,7 +105,7 @@ impl Report {
         }
         let format = |v: Option<f64>| v.map(|v| v.to_string()).unwrap_or_default();
         self.rows.push(format!(
-            "{model}\t{}\t{}\tpublished\t\t\t{curved}\t{}\t{}\t{}\t{}\t{}\t{ms}\t{}\t{:?}\tM1",
+            "{model}\t{}\t{}\tpublished\t\t\t{curved}\t{}\t{}\t{}\t{}\t{}\t{ms}\t{}\t{:?}\tM1\t{}\t\t\t\t",
             shape.product_id,
             shape.ifc_type.name(),
             format(source_rel),
@@ -103,7 +114,8 @@ impl Report {
             format(bbox),
             actual.defects == 0,
             actual.volume,
-            shape.obligations.0
+            shape.obligations.0,
+            format(source_bbox)
         ));
         self.coverage
             .push(format!("{model}\t{}\tpublished\t", shape.product_id));
@@ -114,7 +126,7 @@ impl Report {
             "byCode":self.histogram, "maximumDeviations":{"sourceVolumeRelative":finite(self.maxima[0]),
                 "exactVolumeRelative":finite(self.maxima[1]),"exactAreaRelative":finite(self.maxima[2]),"bboxMetres":finite(self.maxima[3])},
             "violations":self.violations,"universeMismatch":self.universe_mismatch,"skipped":self.skipped,
-            "exact":{"milliseconds":self.exact_ms},"retained":{"milliseconds":self.retained_ms},"models":self.models, "exact_only_type_products":self.exact_only_type_products.len(), "exact_only_type_product_ids":self.exact_only_type_products})
+            "exact":{"milliseconds":self.exact_ms},"retained":{"milliseconds":self.retained_ms,"startupAndQualificationMilliseconds":self.startup_ms,"productMilliseconds":self.product_ms,"exactComparisonPrecision":"retained world -> exact storage frame minus mesh origin -> f32 -> world; source checks remain f64"},"models":self.models, "exact_only_type_products":self.exact_only_type_products.len(), "exact_only_type_product_ids":self.exact_only_type_products})
     }
 }
 fn finite(v: f64) -> Value {

@@ -135,3 +135,76 @@ fn contract_fault_keeps_one_worker_for_the_next_product() {
         "product cleanup must not retire a completed contract fault"
     );
 }
+
+// #7955: model boundaries do not reacquire a healthy preflight peer. A final
+// affine refuses before the first invocation and spends no replacement budget.
+#[test]
+fn affine_predispatch_and_model_boundaries_keep_the_preflight_worker() {
+    let mut transport = peer();
+    transport.contract = true;
+    let domain = transport.domain.clone();
+    let calls = transport.calls.clone();
+    let mut worker = Some(transport);
+    let acquired = Cell::new(0);
+    for (text, id, expected) in [
+        (
+            include_str!("../../geometry/tests/fixtures/issue_1985_scaled_kinds.ifc"),
+            74,
+            "incomplete",
+        ),
+        (SOURCE, 10, "contract_breach"),
+        (SOURCE, 20, "contract_breach"),
+    ] {
+        let summary = block_on(run_model_with_worker(
+            SourceBundle::new(text.as_bytes().to_vec()),
+            &ModelOptions {
+                ids: Some([id].into_iter().collect()),
+                ..Default::default()
+            },
+            &mut worker,
+            || {
+                acquired.set(acquired.get() + 1);
+                Ok(peer())
+            },
+            |outcome, ms| {
+                assert!(ms >= 0.);
+                assert_eq!(refusal(&[outcome], id).code(), expected);
+            },
+        ))
+        .unwrap();
+        assert_eq!(summary.restarts, 0);
+        assert_eq!(summary.acquire_ms, 0.);
+        assert!(domain.0.get());
+        if id == 74 {
+            assert_eq!(calls.get(), 0);
+        }
+    }
+    assert_eq!(acquired.get(), 0);
+    assert_eq!(calls.get(), 2);
+}
+
+#[test]
+fn reused_retired_domain_is_discarded_and_replacements_are_bounded_per_model() {
+    let transport = peer();
+    transport.domain.0.set(false);
+    let mut worker = Some(transport);
+    let acquired = Cell::new(0);
+    let mut text = BOX.to_string();
+    for id in 100..105 {
+        text = text.replace("ENDSEC;\nEND-ISO", &format!("#{id}=IFCBUILDINGELEMENTPROXY('p{id}',$,$,$,$,#24,#26,$,.NOTDEFINED.);\nENDSEC;\nEND-ISO"));
+    }
+    let summary = block_on(run_model_with_worker(
+        SourceBundle::new(text.into_bytes()),
+        &ModelOptions::default(),
+        &mut worker,
+        || {
+            acquired.set(acquired.get() + 1);
+            Ok(peer())
+        },
+        |_, _| {},
+    ))
+    .unwrap();
+    assert_eq!(summary.restarts, 3);
+    assert_eq!(acquired.get(), 3);
+    assert!(worker.is_none());
+}

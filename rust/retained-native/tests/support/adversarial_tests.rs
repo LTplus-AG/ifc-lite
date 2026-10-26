@@ -89,7 +89,7 @@ fn wrong_real_operation_receipts_cannot_publish_any_part() {
         "#13=IFCEXTRUDEDAREASOLID",
         "#13=IFCBOOLEANRESULT(.UNION.,#113,#23);#113=IFCEXTRUDEDAREASOLID",
     );
-    let affine = SOURCE.replace("#13=IFCEXTRUDEDAREASOLID", "#13=IFCMAPPEDITEM(#81,#82);#113=IFCEXTRUDEDAREASOLID")
+    let affine = SOURCE.replace("#13=IFCEXTRUDEDAREASOLID", "#13=IFCBOOLEANRESULT(.UNION.,#813,#23);#813=IFCMAPPEDITEM(#81,#82);#113=IFCEXTRUDEDAREASOLID")
         .replace("ENDSEC;END-ISO", "#81=IFCREPRESENTATIONMAP(#5,#83);#82=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#4,2.,$);#83=IFCSHAPEREPRESENTATION(#2,'Body','SweptSolid',(#113));ENDSEC;END-ISO");
     for (text, corruption) in [
         (boolean, Corruption::BooleanOperator),

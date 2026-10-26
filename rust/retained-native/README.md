@@ -22,7 +22,7 @@ repository root:
 ```sh
 IFCLITE_SMLIB_WORKER=/path/to/ifclite_smlib_worker \
   cargo test -p ifc-lite-retained-native --features retained-runtime
-cargo run -p ifc-lite-retained-native --features retained-runtime \
+cargo run --release -p ifc-lite-retained-native --features retained-runtime \
   --example retained_compare -- --worker /path/to/ifclite_smlib_worker \
   --out /path/to/results --committed --gate
 ```
@@ -46,3 +46,16 @@ Setting `IFCLITE_REQUIRE_SMLIB` makes that absence a test failure; the
 geometry-platform native lane sets it.
 The inert transport, restart budget, async cancellation, admission, and oracle
 witnesses require no SDK. Inert peers cannot construct geometry receipts.
+
+The comparison keeps one qualified worker across the corpus. Initial qualification
+and later acquisitions are reported separately from product milliseconds; use
+`--release` for reported timings. Exact comparison rounds retained world points
+in exact's own storage frame (RTC, rotation and per-mesh origin) to f32 before
+measuring. Source volume and bbox checks still measure full-f64 retained geometry
+at the unchanged preregistered tolerances. Refusal rows retain kernel status,
+origin site/entity/cause, and the original error message.
+
+Committed expectations: `issue_1985_scaled_kinds` #74 is `incomplete`; #81, #88,
+#109 are `operation_unsupported`; #99 publishes. For `issue_098_wall_W`, only wall
+#928204 is `opening_strategy`; its seven windows publish and its seven opening
+elements are `operation_unsupported`.

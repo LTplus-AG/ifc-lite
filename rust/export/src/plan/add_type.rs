@@ -91,6 +91,7 @@ pub(super) fn build_new_type(
     if let Some(name) = &t.name {
         fields.push(("Name", quoted(name)));
     }
+    fields.extend(t.string_attributes().map(|(attr, value)| (attr, quoted(value))));
     if !type_sets.is_empty() {
         fields.push(("HasPropertySets", ref_list(&type_sets)));
     }

@@ -1,0 +1,20 @@
+--- a/rust/export/src/plan/add_types.rs
++++ b/rust/export/src/plan/add_types.rs
+@@ -229,7 +229,7 @@
+ 
+     /// The optional string attributes that are set, by EXPRESS name.
+     pub(crate) fn string_attributes(&self) -> impl Iterator<Item = (&'static str, &str)> + '_ {
+-        [("Tag", &self.tag), ("ElementType", &self.element_type)].into_iter().filter_map(|(a, v)| Some((a, v.as_deref()?))).filter(|_| false)
++        [("Tag", &self.tag), ("ElementType", &self.element_type)].into_iter().filter_map(|(a, v)| Some((a, v.as_deref()?)))
+     }
+ 
+     /// The GlobalId this type is written with when `occurrence` creates it.
+@@ -307,7 +307,7 @@
+ impl NewObject {
+     /// The optional string attributes that are set, by EXPRESS name.
+     pub(crate) fn string_attributes(&self) -> impl Iterator<Item = (&'static str, &str)> + '_ {
+-        [("LongName", &self.long_name), ("Tag", &self.tag), ("ObjectType", &self.object_type)].into_iter().filter_map(|(a, v)| Some((a, v.as_deref()?))).filter(|_| false)
++        [("LongName", &self.long_name), ("Tag", &self.tag), ("ObjectType", &self.object_type)].into_iter().filter_map(|(a, v)| Some((a, v.as_deref()?)))
+     }
+ 
+     /// Every existing object this Add names: its container, placement parent,

@@ -2,6 +2,7 @@
 //! Async numerical transport over the same immutable packet and receipt ledger.
 use super::runtime::{AsyncRetainedExecutor, NumericalLimits, RuntimeFaultKind};
 use super::*;
+use std::sync::atomic::Ordering;
 
 impl<R: NumericalReceipt> RuntimeIssued<R> {
     // Refs #7955: D's whole-model driver consumes this executor entry.
@@ -55,6 +56,7 @@ impl<R: NumericalReceipt> RuntimeIssued<R> {
                     // invoke settled without an outstanding numerical operation.
                     // A cancelled/checkpoint-failed invocation remains armed above.
                     self.armed = false;
+                    self.cancellation.stage.store(SETTLED_FAULT, Ordering::Release);
                     return Err(fault.into());
                 }
                 result => result,

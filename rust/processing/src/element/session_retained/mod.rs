@@ -60,6 +60,9 @@ const EXECUTING: u8 = 1;
 const DELIVERED: u8 = 2;
 const ACCEPTED: u8 = 3;
 const CANCELLED: u8 = 4;
+/// The runtime settled a contract fault: nothing is outstanding on the worker,
+/// so dropping the refused product must not retire its healthy domain.
+const SETTLED_FAULT: u8 = 5;
 struct PendingRetainedTransaction<R: NumericalReceipt> {
     outer: WorkRequest,
     common: RetainedTicket,
@@ -163,9 +166,13 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
     }
     fn cancel(&mut self) {
         self.failed = true;
-        if let Some(owner) = &self.runtime_domain { owner.retire(); }
-        if let Some(pending) = &self.pending {
-            pending.cancellation.cancel();
+        let settled = self.pending.as_ref().is_some_and(|pending|
+            pending.cancellation.stage.load(Ordering::Acquire) == SETTLED_FAULT);
+        if !settled {
+            if let Some(owner) = &self.runtime_domain { owner.retire(); }
+            if let Some(pending) = &self.pending {
+                pending.cancellation.cancel();
+            }
         }
         if let Some(program) = &mut self.program {
             program.cancel();

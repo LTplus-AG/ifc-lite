@@ -103,13 +103,13 @@ fn limits() -> NumericalLimits {
         max_bytes: 16 * 1024 * 1024,
     }
 }
-fn with_execution(
+fn with_execution<T>(
     run: impl FnOnce(
         &mut RuntimeProductExecution<'_, InertReceipt>,
         &mut EntityDecoder<'_>,
         &GeometryRouter,
-    ),
-) {
+    ) -> T,
+) -> T {
     let source = ifc_lite_core::SourceBundle::new(SOURCE.as_bytes().to_vec());
     let mut decoder = source.decoder();
     let router = GeometryRouter::with_units(SOURCE, &mut decoder);
@@ -119,7 +119,7 @@ fn with_execution(
     let job = job(&entity, &metadata);
     let mut execution =
         RuntimeProductExecution::begin(&job, &context, &options(), &mut decoder, &router).unwrap();
-    run(&mut execution, &mut decoder, &router);
+    run(&mut execution, &mut decoder, &router)
 }
 
 #[test]
@@ -274,7 +274,7 @@ fn issue_7955_real_opening_job_refuses_before_numerical_admission() {
 #[test]
 fn completed_contract_fault_keeps_worker_live_but_midflight_drop_retires_it() {
     for suspend in [false, true] {
-        with_execution(|execution, decoder, router| {
+        let domain = with_execution(|execution, decoder, router| {
             let mut peer = InertPeer::new(suspend);
             peer.fault = RuntimeFaultKind::Contract;
             let domain = peer.domain();
@@ -299,6 +299,10 @@ fn completed_contract_fault_keeps_worker_live_but_midflight_drop_retires_it() {
             assert_eq!(domain.incarnation().is_some(), !suspend);
             assert_eq!(execution.discharged_count(), 0);
             assert!(execution.validate_witness().is_err());
+            domain
         });
+        // Dropping the refused product execution itself must not retire a
+        // domain whose contract fault already settled.
+        assert_eq!(domain.incarnation().is_some(), !suspend, "after the execution drops");
     }
 }

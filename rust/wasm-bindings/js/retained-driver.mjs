@@ -226,7 +226,12 @@ export class RetainedDriver {
     this.#solid(object);
     await this.#acquire();
     try { return await this.#tessellateSolid(this.#solid(object), chord, angle, maxBytes); }
-    catch (error) { this.retire(); throw error; }
+    catch (error) {
+      // The helper releases its temporary mesh on known refusals; the input
+      // remains owned by its lease. Unknown outcomes retire the whole worker.
+      if (!knownRefusal(error)) this.retire();
+      throw error;
+    }
     finally { this.#releaseBusy(); }
   }
   async affine(object, columnMajor) {

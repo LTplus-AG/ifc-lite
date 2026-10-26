@@ -58,9 +58,12 @@ fn m1_affine_certificate_enforces_both_class_budgets_and_versions() {
         bytes[offset..offset + 4].copy_from_slice(&100_000u32.to_le_bytes());
         assert!(AffineCertificate::decode(&bytes).is_ok());
     }
-    bytes[4] = 2;
-    assert!(AffineCertificate::decode(&bytes).is_err());
-    for len in 0..56 {
+    // Refs #7955: truncate a valid certificate so version rejection cannot
+    // mask a missing length guard. Start with the otherwise complete payload.
+    assert!(AffineCertificate::decode(&bytes).is_ok());
+    for len in (0..56).rev() {
         assert!(AffineCertificate::decode(&bytes[..len]).is_err());
     }
+    bytes[4] = 2;
+    assert!(AffineCertificate::decode(&bytes).is_err());
 }

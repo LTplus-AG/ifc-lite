@@ -218,8 +218,36 @@ test('#7955 E foreign leases and invalid limits submit no frames', async () => {
 test('#7955 E oversized buffers retain a resource refusal distinct from malformed wire', async () => {
   const driver = new RetainedDriver();
   const source = await evaluate(driver);
+  const peer = peers.at(-1), start = peer.commands.length;
   await assert.rejects(driver.tessellate(source.object, 0.001, 5, 8), error => error.resourceLimit === true && error.kernelStatus === undefined);
-  assert.equal(driver.live(), false, 'failed transfer retires all allocations');
+  assert.equal(driver.live(), true);
+  assert.equal(driver.objectLive(source.object), true);
+  assert.equal(peer.objects.size, 1, 'only the input remains');
+  assert.deepEqual(opcodes(peer).slice(start), [19, 9, 10, 8]);
+  driver.retire();
+});
+
+test('#7955 E tessellation kernel refusals preserve the input and release any temporary mesh', async () => {
+  for (const opcode of [19, 9, 10, 11]) {
+    for (const status of [1, 2, 3, 4, 5, 6, 7, 8, 99]) {
+      const driver = new RetainedDriver();
+      const source = await evaluate(driver), peer = peers.at(-1);
+      const start = peer.commands.length;
+      peer.failOpcode = opcode; peer.kernelStatus = status;
+      await assert.rejects(driver.tessellate(source.object, 0.001, 5, 4096), error => error.kernelStatus === status);
+      const recoverable = status <= 7;
+      assert.equal(driver.live(), recoverable);
+      assert.equal(driver.objectLive(source.object), recoverable);
+      if (recoverable) {
+        assert.equal(peer.objects.size, 1, 'only the input remains');
+        assert.equal(opcodes(peer).slice(start).includes(8), opcode === 10 || opcode === 11);
+        peer.failOpcode = undefined;
+        await driver.tessellate(source.object, 0.001, 5, 4096);
+        assert.equal(peer.objects.size, 1, 'the input can still be tessellated');
+      } else assert.equal(peer.retired, true);
+      driver.retire();
+    }
+  }
 });
 
 // #7955 E: transactional refusal releases every intermediate without losing inputs.

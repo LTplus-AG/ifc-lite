@@ -98,6 +98,7 @@ impl RetainedExecutionError {
                 RuntimeFaultKind::Retired => Refusal::WorkerRetired,
                 RuntimeFaultKind::ResourceLimit => Refusal::ResourceExhausted,
                 RuntimeFaultKind::Transport => Refusal::WorkerFault,
+                RuntimeFaultKind::Contract => Refusal::ContractBreach,
             },
             // The sole Geometry producer is a conflicting logical outcome at acceptance.
             Self::Geometry(_) => Refusal::ContractBreach,

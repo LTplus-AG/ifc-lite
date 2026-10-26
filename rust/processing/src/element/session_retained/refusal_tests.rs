@@ -137,10 +137,18 @@ fn issue_7955_worker_fault() {
         Refusal::WorkerFault,
         "worker_fault",
     );
+}
+#[test]
+fn issue_7955_contract_breach_runtime_and_logical() {
     check(
         RetainedExecutionError::Geometry(ifc_lite_geometry::Error::geometry(
             "conflicting retained numerical outcome",
         )),
+        Refusal::ContractBreach,
+        "contract_breach",
+    );
+    check(
+        fault(RuntimeFaultKind::Contract),
         Refusal::ContractBreach,
         "contract_breach",
     );

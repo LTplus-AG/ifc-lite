@@ -116,6 +116,9 @@ pub(super) enum RuntimeFaultKind {
     Retired,
     ResourceLimit,
     Transport,
+    /// The runtime itself is healthy, but the request or its reply broke the
+    /// executor contract (bad argument, unsupported operator, receipt mismatch).
+    Contract,
 }
 impl RuntimeFault {
     pub fn kernel(status: i32, message: impl Into<String>) -> Self {
@@ -145,6 +148,13 @@ impl RuntimeFault {
     pub fn transport(message: impl Into<String>) -> Self {
         Self {
             kind: RuntimeFaultKind::Transport,
+            message: message.into(),
+        }
+    }
+    /// A contract breach the runtime detected; the worker stays usable.
+    pub fn contract(message: impl Into<String>) -> Self {
+        Self {
+            kind: RuntimeFaultKind::Contract,
             message: message.into(),
         }
     }

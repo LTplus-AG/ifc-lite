@@ -52,7 +52,15 @@ runs:
     - name: Setup Rust pinned by rust-toolchain.toml
       if: ${{ inputs.rust == 'true' }}
       shell: bash
-      run: rustup show
+      # A hosted image can carry a partial pinned toolchain. `rustup show`
+      # then "recovers" it and exits 0, and the first cargo run fails on an
+      # orphaned bin/cargo-clippy (seen on a revert-oracle shard, #7955).
+      # Start from a clean install, as docs.yml does (#6808).
+      run: |
+        toolchain=$(python3 -c 'import tomllib; print(tomllib.load(open("rust-toolchain.toml", "rb"))["toolchain"]["channel"])')
+        rustup toolchain uninstall "$toolchain"
+        rustup toolchain install --no-self-update
+        rustup show active-toolchain
 
     # #7231: every oracle runner can consume real IFC fixtures, including
     # Node-only witnesses. Reuse the viewer-e2e cache/fetch/verify contract.

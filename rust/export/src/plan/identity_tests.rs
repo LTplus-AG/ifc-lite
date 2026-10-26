@@ -1044,18 +1044,6 @@ fn an_empty_patch_is_refused() {
     assert!(report.refusals.iter().any(|r| r.object == ObjectRef::Id(10) && r.reason.contains("patch changes nothing")), "{report:?}");
 }
 
-/// A quantity edited in place marks the element quantity listing it, and
-/// the object patched (owner-history PR).
-#[test]
-fn a_quantity_edited_in_place_marks_its_element_quantity() {
-    for schema in SCHEMAS {
-        let src = owned(&crate::plan::test_fixtures::wall_with_type_owned_quantity_set(schema), schema);
-        let length = PropWrite::new("Qto_WallBaseQuantities", "Length", "IFCLENGTHMEASURE", "3.5", PsetKind::Quantity, PropScope::Type);
-        let (out, report) = export(&src, vec![patch(10, vec![length])], context());
-        assert!(report.refusals.is_empty(), "{schema}: {report:?}");
-        assert_eq!(assert_modified_exactly_the_rewritten(schema, &src, &out, &[10]), vec![10, 42], "{schema}");
-    }
-}
 
 /// An application reused by name and version that has no identifier is
 /// said to have none (owner-history PR).

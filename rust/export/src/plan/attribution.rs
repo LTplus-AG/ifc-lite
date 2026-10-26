@@ -216,7 +216,7 @@ fn modified_records(index: &FileIndex, schema: &str, patched: &[u32], edits_by_i
     // Only a property or quantity value is looked up: its referrers are
     // collected already (an in-place edit checks the value is not shared), so
     // this costs no pass over the file.
-    let is_value = |id: &u32| index.type_of(*id).is_some_and(|ty| props_synth::VALUE_ENTITIES.contains(&ty.as_str()));
+    let is_value = |id: &u32| index.type_of(*id).is_some_and(|ty| props_synth::is_value_entity(&ty));
     for id in edits_by_id.keys().filter(|id| live(id)) {
         if carries(id) {
             modified.insert(*id);

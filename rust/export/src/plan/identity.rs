@@ -164,7 +164,14 @@ pub(crate) fn reuse_note(index: &FileIndex, schema: &str, application: u32, iden
     if identifier.as_deref() != Some(app.identifier.as_str()) {
         // Reused by name and version (UR2): consumers look the exporter up by
         // identifier, and the file names it by another, or by none.
-        let named = identifier.map_or_else(|| "no identifier".to_string(), |id| format!("identifier '{id}'"));
+        let unset = attribute_index(schema, "IFCAPPLICATION", "ApplicationIdentifier")
+            .and_then(|i| crate::step_text::attribute_of(&index.raw_line(application)?, i))
+            .is_some_and(|slot| slot.trim() == "$");
+        let named = match identifier {
+            Some(id) => format!("identifier '{id}'"),
+            None if unset => "no identifier".to_string(),
+            None => "an unreadable identifier".to_string(),
+        };
         return Some(format!(
             "the file already has application #{application} '{full_name}' version '{version}' with {named}; it is reused (an application's name and version are unique) though the exporting application's identifier is '{}'",
             app.identifier

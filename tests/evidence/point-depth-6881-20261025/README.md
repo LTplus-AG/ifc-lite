@@ -115,6 +115,19 @@ Preparation receipts:
   between candidate and full-copy stays exact in the 140 functional comparisons; this tolerance
   applies only between different cohort samples. This change is not blinded: it follows observing
   the refused sample, and the final verdict must say so.
+- Further protocol changes before the final cohort, each after observing earlier attempts and not blinded:
+  Federation uses nine stable pick positions chosen from 48 valid dense-grid probe samples
+  ([`federation-position-stability.json`](federation-position-stability.json),
+  [`hover-configuration-2.json`](hover-configuration-2.json)); FZK and Building-Architecture keep the
+  3 x 3 grid. The host gate measures foreign CPU as whole-host busy minus the cohort's own process
+  tree over one shared window, still limited to 10%, and foreign build processes still refuse. An
+  independent review of these changes found two blocking defects, both fixed before the final run:
+  the own-CPU subtraction used a different window than the host reading, and the cross-sample
+  reference advanced every sample so the world tolerance could compound (it now stays anchored to the
+  first sample). The review also led to finite-number checks on world positions, position validation
+  and a `probe` flag recorded in every report.
+- An eighth attempt (`hover-9`) completed nine FZK samples and was refused before the tenth at 11.2%
+  foreign CPU. See [`hover-attempt-8.json`](hover-attempt-8.json) and [raw samples](hover-9-runs.jsonl.gz).
 - The final cohort (`hover-8`) completed all five pairs for FZK and for Building-Architecture with
   every gate satisfied, then aborted in Federation pair 1 (branch): one pick resolved a different
   entity at the same texel, at a world position within 0.15 mm of the reference hit, consistent with

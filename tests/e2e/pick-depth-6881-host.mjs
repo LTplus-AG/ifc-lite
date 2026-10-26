@@ -5,14 +5,20 @@
 // Host-quiet admission for the #6881 cohort that excludes the cohort's own
 // process tree. The shared whole-host reading counts the benchmark's Chrome,
 // GPU and viewer workers as interference, so the run could trip its own 10%
-// limit (observed 10.2% and 10.7% with no foreign work). This subtracts the CPU
-// that the cohort's process tree used over the same window and keeps every other
-// admission condition (foreign build graphs, memory, AC power) unchanged.
+// limit (observed 10.2% and 10.7% with no foreign work). Whole-host busy CPU and
+// the CPU used by the cohort's process tree are both measured here over one
+// shared one-second window, so they subtract coherently. The shared admission
+// reading still supplies every other condition (foreign build graphs, memory, AC
+// power); its own CPU figure is kept for the record but is not used.
+//
+// Own CPU can be under-counted when a child exits mid-window, which can only
+// reject a quiet host, never admit a busy one.
 import { readFileSync, readdirSync } from 'node:fs';
+import { setTimeout as sleep } from 'node:timers/promises';
 
 export const MAXIMUM_FOREIGN_CPU_PERCENT = 10;
 
-const totalTicks = () => readFileSync('/proc/stat', 'utf8').split('\n')[0].trim().split(/\s+/).slice(1, 9).map(Number).reduce((a, b) => a + b, 0);
+const cpuTimes = () => readFileSync('/proc/stat', 'utf8').split('\n')[0].trim().split(/\s+/).slice(1, 9).map(Number);
 
 function processTable() {
   const table = new Map();
@@ -38,15 +44,23 @@ export function treeTicks(root, table = processTable()) {
   return new Map([...members].filter(([, row]) => row).map(([pid, row]) => [pid, row.ticks]));
 }
 
-export async function readForeignHostAdmission(readHostAdmission, root = process.pid) {
-  const totalBefore = totalTicks(), ownBefore = treeTicks(root);
-  const host = await readHostAdmission();
-  const totalAfter = totalTicks(), ownAfter = treeTicks(root);
+// Busy and own CPU over the same window: [busy] is 100 * (total - idle - iowait) / total.
+export async function measureCpuWindow(root = process.pid, milliseconds = 1000) {
+  const cpuBefore = cpuTimes(), ownBefore = treeTicks(root), startedAt = performance.now();
+  await sleep(milliseconds);
+  const cpuAfter = cpuTimes(), ownAfter = treeTicks(root), durationMs = performance.now() - startedAt;
+  const delta = cpuAfter.map((value, index) => value - cpuBefore[index]);
+  const total = delta.reduce((a, b) => a + b, 0);
   let own = 0;
   for (const [pid, ticks] of ownAfter) own += ticks - (ownBefore.get(pid) ?? 0);
-  const ownCpuPercent = 100 * Math.max(0, own) / (totalAfter - totalBefore);
-  const foreignCpuPercent = Math.max(0, host.cpuPercent - ownCpuPercent);
-  const quiet = Number.isFinite(foreignCpuPercent) && foreignCpuPercent <= MAXIMUM_FOREIGN_CPU_PERCENT
+  const busyCpuPercent = 100 * (total - delta[3] - delta[4]) / total, ownCpuPercent = 100 * Math.max(0, own) / total;
+  return { busyCpuPercent, ownCpuPercent, foreignCpuPercent: Math.max(0, busyCpuPercent - ownCpuPercent), durationMs };
+}
+
+export async function readForeignHostAdmission(readHostAdmission, root = process.pid) {
+  const [window, host] = await Promise.all([measureCpuWindow(root), readHostAdmission()]);
+  const quiet = Number.isFinite(window.foreignCpuPercent) && window.foreignCpuPercent <= MAXIMUM_FOREIGN_CPU_PERCENT
     && host.MemAvailableKiB >= host.policy.minimumMemoryKiB && host.graphsBefore.length === 0 && host.graphsAfter.length === 0 && host.ac;
-  return { ...host, rawQuiet: host.quiet, quiet, ownCpuPercent, foreignCpuPercent };
+  return { ...host, sharedWindowCpuPercent: host.cpuPercent, cpuPercent: window.busyCpuPercent, rawQuiet: host.quiet, quiet,
+    ownCpuPercent: window.ownCpuPercent, foreignCpuPercent: window.foreignCpuPercent, windowMs: window.durationMs };
 }

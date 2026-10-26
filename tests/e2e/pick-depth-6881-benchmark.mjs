@@ -75,7 +75,7 @@ const origin = `http://127.0.0.1:${server.address().port}`;
 const records = [], references = new Map();
 const report = { configSha256: hash(readFileSync(configuration)), scope: 'Mounted viewer hover, 5 interleaved pairs per public-model scenario at DPR1; no loading-speed claim',
   harness: Object.fromEntries(['pick-depth-6881-benchmark.mjs', 'pick-depth-6881-hover.mjs', 'pick-depth-6881-observer.mjs', 'pick-depth-6881-identity.mjs', 'pick-depth-6881-host.mjs'].map(name => [name, hash(readFileSync(resolve(here, name)))])),
-  accepted: false, records, summary: [] };
+  accepted: false, probe: config.probe === true, records, summary: [] };
 const median = values => {
   const sorted = values.slice().sort((a, b) => a - b), middle = sorted.length >> 1;
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
@@ -85,6 +85,10 @@ const median = values => {
 // per-sample integrity, so the stability of candidate positions can be measured
 // before a cohort freezes them. It is never an accepted cohort.
 const probe = config.probe === true;
+const validPositions = positions => Array.isArray(positions) && positions.length > 0 && positions.every(position => Array.isArray(position)
+  && position.length === 2 && position.every(value => Number.isFinite(value) && value > 0 && value < 1))
+  && new Set(positions.map(position => position.join(','))).size === positions.length;
+for (const scenario of config.scenarios) if (scenario.positions !== undefined && !validPositions(scenario.positions)) throw Error(`Invalid hover positions for ${scenario.name}`);
 const defaultPositions = [0.3, 0.5, 0.7].flatMap(y => [0.3, 0.5, 0.7].map(x => [x, y]));
 const p95 = values => values.slice().sort((a, b) => a - b)[Math.ceil(values.length * 0.95) - 1];
 let browser, active;
@@ -184,7 +188,7 @@ try {
         picks: record.hover.picks.map(pick => ({ result: pick.result, matrix: pick.matrix, cameraWorld: pick.cameraWorld, texelInput: pick.texelInput })) };
       const reference = references.get(scenario.name);
       if (!probe && reference && !sameSampleIdentity(reference, signature)) throw Error('Geometry/camera/texel/ID/item/world identity differs between samples');
-      references.set(scenario.name, signature);
+      if (!reference) references.set(scenario.name, signature); // First sample only: the world tolerance does not compose.
       record.retirement = await page.evaluate('globalThis.__6881Hover.retire()');
       record.geometryAfter = await page.evaluate(async () => (await import('/__6881/hover.js')).geometryWitness());
       if (JSON.stringify(record.geometryBefore) !== JSON.stringify(record.geometryAfter)) throw Error('Hover changed geometry publication');
@@ -211,8 +215,7 @@ try {
     if (!record.ok) throw Error('Sample teardown/driver health failed');
   }
   verify();
-  if (probe) report.probe = true;
-  else {
+  if (!probe) {
     report.summary = summarizeSamples(records);
     if (records.length !== config.scenarios.length * 10 || report.summary.some(row => row.pairs !== 5)) throw Error('Incomplete paired cohort');
     report.accepted = true;

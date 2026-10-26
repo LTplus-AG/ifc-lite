@@ -39,7 +39,7 @@ pub(crate) struct BooleanMachine {
     quality: TessellationQuality,
     frames: Vec<Frame>,
     value: Option<Value>,
-    retained: Option<Box<retained::RetainedState>>,
+    retained: crate::program::retained::RetainedSlot<retained::RetainedState>,
 }
 
 impl BooleanMachine {

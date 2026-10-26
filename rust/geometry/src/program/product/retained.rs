@@ -65,6 +65,7 @@ impl<'a> ProductControl<'a> {
         }
     }
     pub(in crate::program) fn retained_ready(&self) -> bool {
+        if !crate::program::retained::ENABLED { return false; }
         match (&self.action, &self.child) {
             (Action::Item { control, .. }, _) => control.retained_ready(),
             (Action::Mapping { .. }, Child::Mapping(control)) => control.retained_ready(),

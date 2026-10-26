@@ -19,6 +19,35 @@ struct SelectionInner {
 #[cfg(all(target_arch = "wasm32", not(feature = "wasm_source_capture")))]
 #[derive(Clone)]
 pub(crate) enum RetainedSelection {}
+/// A controller's retained state, boxed out of the controller's inline layout.
+/// On the default wasm engine no retained state can exist (`RetainedSelection`
+/// is uninhabited), so the slot holds the zero-sized uninhabited [`Absent`]:
+/// it is a constant `None`, and the optimizer drops every retained branch from
+/// the shipped bundle instead of carrying it as dead weight.
+#[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
+pub(crate) type RetainedSlot<T> = Option<Box<T>>;
+#[cfg(all(target_arch = "wasm32", not(feature = "wasm_source_capture")))]
+pub(crate) type RetainedSlot<T> = Option<Absent<T>>;
+/// Uninhabited and zero-sized for any `T`, unlike a struct holding a
+/// `RetainedSelection` beside sized fields (which stays a live enum variant).
+#[cfg(all(target_arch = "wasm32", not(feature = "wasm_source_capture")))]
+pub(crate) enum Absent<T> {
+    #[allow(dead_code)] // never constructed: that is the point
+    Never(std::convert::Infallible, std::marker::PhantomData<T>),
+}
+#[cfg(all(target_arch = "wasm32", not(feature = "wasm_source_capture")))]
+impl<T> std::ops::Deref for Absent<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        match self { Self::Never(never, _) => match *never {} }
+    }
+}
+#[cfg(all(target_arch = "wasm32", not(feature = "wasm_source_capture")))]
+impl<T> std::ops::DerefMut for Absent<T> {
+    fn deref_mut(&mut self) -> &mut T {
+        match self { Self::Never(never, _) => match *never {} }
+    }
+}
 impl RetainedSelection {
     pub(in crate::program) fn new(contract: RetainedContract, program: u64) -> Option<Self> {
         #[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]

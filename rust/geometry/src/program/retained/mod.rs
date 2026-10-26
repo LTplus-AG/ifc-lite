@@ -14,7 +14,11 @@ mod outcome;
 pub(in crate::program) mod boolean;
 pub(crate) use presentation::RetainedPresentation;
 mod select;
-pub(crate) use select::RetainedSelection;
+pub(crate) use select::{RetainedSelection, RetainedSlot};
+/// Whether retained state can exist in this build. False on the default wasm
+/// engine: the hooks the common walks call fold to their default answer, so
+/// no retained branch ships in that bundle (#7955).
+pub(crate) const ENABLED: bool = cfg!(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"));
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RetainedContract {

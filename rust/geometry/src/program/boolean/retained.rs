@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Retained values follow the common Boolean spine and ordered operand walk.
+// On the default wasm engine every retained state is uninhabited, so the
+// bodies below are statically unreachable there; they stay compiled, not shipped.
+#![cfg_attr(all(target_arch = "wasm32", not(feature = "wasm_source_capture")),
+    allow(unreachable_code, unused_variables, unused_mut))]
 use super::*;
 use ifc_lite_core::slot;
 use super::state::Steps;
@@ -23,14 +27,17 @@ impl BooleanMachine {
         crate::resource::charge(crate::resource::Cost { live_bytes: std::mem::size_of::<Frame>() as u64,
             ..Default::default() })?.retain();
         let mut machine = Self::new(item, quality);
-        machine.retained = Some(boxed(RetainedState { selection, value: None })?);
+        #[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
+        { machine.retained = Some(boxed(RetainedState { selection, value: None })?); }
+        #[cfg(all(target_arch = "wasm32", not(feature = "wasm_source_capture")))]
+        { let _ = machine; match selection {} }
         boxed(machine)
     }
     pub(in crate::program) fn retained_selection(&self) -> Option<&RetainedSelection> {
         self.retained.as_ref().map(|state| &state.selection)
     }
     pub(in crate::program) fn retained_ready(&self) -> bool {
-        matches!(self.frames.last(), Some(Frame::RetainedReady { .. }))
+        crate::program::retained::ENABLED && matches!(self.frames.last(), Some(Frame::RetainedReady { .. }))
             || matches!(self.frames.last(), Some(Frame::RetainedMapping(control)) if control.retained_ready())
     }
     pub(in crate::program) fn retained_source(&mut self, recorder: &BooleanClippingProcessor,
@@ -134,7 +141,8 @@ fn mapped_error(error: crate::program::inner::retained_program::RetainedProgramE
 impl BooleanMachine {
     /// Mapping effects commit only when the enclosing item reply is accepted.
     pub(in crate::program) fn accept_retained_mapping(&mut self, router: &crate::GeometryRouter) -> Result<()> {
-        if !matches!(self.frames.last(), Some(Frame::RetainedMappingReply { .. })) { return Ok(()); }
+        if !crate::program::retained::ENABLED
+            || !matches!(self.frames.last(), Some(Frame::RetainedMappingReply { .. })) { return Ok(()); }
         let Some(Frame::RetainedMappingReply { mut control, reply }) = self.frames.pop() else { return Err(stale()) };
         control.accept(*reply, router);
         if let Some(result) = control.take_result() {

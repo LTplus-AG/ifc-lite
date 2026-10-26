@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Retained values use the common mapping walk; no mesh cache or mesh fallback.
+// On the default wasm engine every retained state is uninhabited, so the
+// bodies below are statically unreachable there; they stay compiled, not shipped.
+#![cfg_attr(all(target_arch = "wasm32", not(feature = "wasm_source_capture")),
+    allow(unreachable_code, unused_variables, unused_mut))]
 use super::*;
 use crate::program::inner::retained_program::RetainedProgramError;
 #[path = "mapping_directions.rs"]
@@ -43,6 +47,7 @@ impl<'a> MappingControl<'a> {
     }
     pub(super) fn open_retained_level(&mut self) -> Result<()> {
         if let Some(state) = &mut self.retained {
+            let state = &mut **state; // disjoint field borrows through the slot
             crate::resource::reserve_headers(&mut self.levels, 1)?.retain();
             crate::resource::reserve_headers(&mut state.levels, 1)?.retain();
             crate::resource::reserve_headers(&mut state.bindings, 1)?.retain();
@@ -52,7 +57,7 @@ impl<'a> MappingControl<'a> {
         Ok(())
     }
     pub(in crate::program) fn retained_ready(&self) -> bool {
-        matches!(&self.action, Action::Child(_, ChildControl::Item(c)) if c.retained_ready())
+        crate::program::retained::ENABLED && matches!(&self.action, Action::Child(_, ChildControl::Item(c)) if c.retained_ready())
             || (self.retained.is_some() && matches!(&self.action, Action::Place(Place { parts: Placing::Retained(_), .. }) | Action::TypeFinish(_)))
     }
     pub(in crate::program) fn admit_retained(&mut self)
@@ -203,8 +208,11 @@ impl<'a> MappingControl<'a> {
         selection: RetainedSelection) -> Self {
         let mut control = Self::new(Walk::TypeMap, Action::EnterTypeMap);
         control.rep_map = Some(Reached::Nested(rep_map));
-        control.retained = Some(Box::new(State { selection, levels: Vec::new(), styled: true,
-            pending_binding: None, bindings: Vec::new() }));
+        #[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
+        { control.retained = Some(Box::new(State { selection, levels: Vec::new(), styled: true,
+            pending_binding: None, bindings: Vec::new() })); }
+        #[cfg(all(target_arch = "wasm32", not(feature = "wasm_source_capture")))]
+        { let _ = &mut control; match selection {} }
         control.textures = textures;
         control
     }
@@ -231,7 +239,7 @@ impl<'a> MappingControl<'a> {
     pub(super) fn finish_retained_type_map(&mut self, origin: Option<Matrix4<f64>>)
         -> std::result::Result<MappingReply, ProgramError> {
         let id = self.representation_map_id().ok_or(ProgramError::StaleRequest)?;
-        let state = self.retained.as_mut().ok_or(ProgramError::StaleRequest)?;
+        let state = &mut **self.retained.as_mut().ok_or(ProgramError::StaleRequest)?;
         let output = state.levels.last_mut().ok_or(ProgramError::StaleRequest)?;
         let value = (|| {
             let origin = origin.unwrap_or_else(Matrix4::identity);

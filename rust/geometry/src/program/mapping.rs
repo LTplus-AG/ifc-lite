@@ -255,7 +255,7 @@ enum Event {
 }
 
 pub(super) struct MappingControl<'a> {
-    retained: Option<Box<retained_impl::State>>,
+    retained: super::retained::RetainedSlot<retained_impl::State>,
     walk: Walk,
     textures: Textures<'a>,
     /// The type map's `IfcRepresentationMap`.

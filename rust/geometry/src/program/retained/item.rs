@@ -3,7 +3,7 @@ use super::*;
 use crate::program::inner::retained_program::RetainedProgramError;
 impl ItemControl {
     pub(in crate::program) fn retained_ready(&self) -> bool {
-        matches!(self.step, Some(ItemStep::RetainedReady(..)))
+        crate::program::retained::ENABLED && matches!(self.step, Some(ItemStep::RetainedReady(..)))
             || matches!(&self.step, Some(ItemStep::Boolean { machine, .. }) if machine.retained_ready())
     }
     pub(in crate::program) fn admit_retained(

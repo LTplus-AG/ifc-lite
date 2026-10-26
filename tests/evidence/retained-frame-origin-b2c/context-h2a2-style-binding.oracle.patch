@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MPL-2.0
+# B2c source-context replacement; apply in reverse to mutate. Execution UNRUN.
+--- a/rust/geometry/src/program/mapping_retained.rs
++++ b/rust/geometry/src/program/mapping_retained.rs
+@@ -121,7 +121,7 @@
+             for value in &mut values {
+                 value.place_in_place(&transform, selection.program(), RetainedPlacementStage::Mapping { source_id })
+                     .map_err(|error| error.into_common(&selection.failure_handle(), FailureSite::MappingPlacement, Some(item_id)))?;
+-                if let Some(binding) = &binding { let _ = binding; }
++                if let Some(binding) = &binding { value.present(binding.clone())?; }
+             }
+             Ok(values)
+         })();

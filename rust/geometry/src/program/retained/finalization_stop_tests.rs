@@ -23,7 +23,7 @@ fn finish_stop(existing_type_map: bool) {
     let expected = account.scope(|| {
         assert_eq!(account.check(), Ok(()), "entry is not already stopped");
         let error = program.finish_type_map(60, 1, [1.; 4]).unwrap_err();
-        let Error::ProgramStopped(stop) = error else { panic!("expected finalization resource stop: {error}") };
+        let RetainedFailure::Stopped(stop) = error else { panic!("expected finalization resource stop: {error}") };
         assert!(matches!(stop, ProgramStop::ResourceRefused(f) if f.dimension == Dimension::Work));
         assert_eq!(account.check(), Err(stop));
         // No facade call inside the scope can latch the stop on our behalf.
@@ -36,8 +36,8 @@ fn finish_stop(existing_type_map: bool) {
         assert_eq!(root.request().err(), Some(RetainedProgramError::Stopped(expected)),
             "finalization stop survives on both existing and new roots after scope exit");
     }
-    assert!(matches!(new_product.finish(), Err(Error::ProgramStopped(stop)) if stop == expected));
-    assert!(matches!(new_map.finish_type_map(60, 1, [1.; 4]), Err(Error::ProgramStopped(stop)) if stop == expected));
+    assert!(matches!(new_product.finish(), Err(RetainedFailure::Stopped(stop)) if stop == expected));
+    assert!(matches!(new_map.finish_type_map(60, 1, [1.; 4]), Err(RetainedFailure::Stopped(stop)) if stop == expected));
 }
 
 #[test]

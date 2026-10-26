@@ -53,7 +53,7 @@ fn s2_omitted_x_projection_threshold_pairs_reach_cache_after_prior_work() {
                     positive(&omitted_target(&z, &y, nonuniform), orientation, nonuniform);
                     // Same reached source/cache observer, direction-specific
                     // whole-plan refusal, even though exact raw Y/Z rank is 2.
-                    refuse(&omitted_target(&z, &degenerate, nonuniform), DIAGNOSTIC);
+                    rank_refusal(&omitted_target(&z, &degenerate, nonuniform), MappingReason::DependentTriple);
                 }
             }
         }
@@ -81,7 +81,7 @@ fn s2_omitted_x_tiny_z_normalization_threshold_pairs_keep_canonical_span() {
                     };
                     positive(&omitted_target(&z, &y, nonuniform),
                         if mirror { -1.0 } else { 1.0 }, nonuniform);
-                    refuse(&omitted_target(&z, &degenerate, nonuniform), DIAGNOSTIC);
+                    rank_refusal(&omitted_target(&z, &degenerate, nonuniform), MappingReason::DependentTriple);
                 }
             }
         }
@@ -94,7 +94,7 @@ fn s2_omitted_x_recovery_cannot_replace_actual_authored_pair_rank() {
     // that dependence. Omission does not authorize altering authored rank.
     for nonuniform in [false, true] {
         for y in ["(0.,1.,0.)", "(0.,-1.,0.)"] {
-            refuse(&omitted_target("(0.,1.E-10,0.)", y, nonuniform), DIAGNOSTIC);
+            rank_refusal(&omitted_target("(0.,1.E-10,0.)", y, nonuniform), MappingReason::DependentPair);
         }
     }
 }
@@ -105,6 +105,6 @@ fn s2_omitted_x_unreliable_derived_frame_refuses_before_canonical_matrix() {
     // zero Z. Refuse explicitly before a derived nonfinite cross product can
     // reach rational arithmetic or the later R2 matrix guard.
     for nonuniform in [false, true] {
-        refuse(&omitted_target("(1.E300,0.,0.)", "(0.,1.,0.)", nonuniform), DIAGNOSTIC);
+        rank_refusal(&omitted_target("(1.E300,0.,0.)", "(0.,1.,0.)", nonuniform), MappingReason::DependentPair);
     }
 }

@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared against bf6022ecaa51954df16758f3378d13ad6a4e3aca; runtime UNRUN. Apply in reverse to mutate.
+--- a/rust/geometry/src/program/retained/capture.rs
++++ b/rust/geometry/src/program/retained/capture.rs
+@@ -74,5 +74,5 @@
+ fn recipe_error(failure: &FailureHandle, id: u32, refusal: crate::document::RetainedRefusal) -> crate::Error {
+     let diagnostic = crate::Error::geometry(refusal.to_string());
+-    let _ = (failure, id, refusal);
++    failure.record(FailureSite::Constructor, Some(id), OriginCause::Recipe(refusal));
+     diagnostic
+ }

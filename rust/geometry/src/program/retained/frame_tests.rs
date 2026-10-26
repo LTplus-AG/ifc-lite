@@ -20,7 +20,7 @@ ENDSEC;END-ISO-10303-21;"
         )
 }
 
-fn admission(bytes: &str) -> (Vec<RetainedPlanOperation>, Result<RetainedProductPlan>, u64) {
+fn admission(bytes: &str) -> (Vec<RetainedPlanOperation>, std::result::Result<RetainedProductPlan, RetainedFailure>, u64) {
     let source = SourceBundle::new(bytes.as_bytes().to_vec());
     let mut decoder = source.decoder();
     let router = GeometryRouter::with_units(bytes, &mut decoder);
@@ -98,12 +98,8 @@ fn source_frame_overflow_also_preserves_the_last_valid_occurrence() {
     );
 }
 
-#[test]
-fn source_unit_composition_overflow_refuses_before_admitting_a_construction() {
-    // A 45-degree source rotation keeps each inverse-frame translation at
-    // about 1.414e308, while the unrotated unit-scaled X would be 2e308.
-    // Thus the source lowerer's finite inverse does not imply finite composition.
-    let bytes = positioned_source("2.E305", "0.")
+fn unit_overflow_source() -> String {
+    positioned_source("2.E305", "0.")
         .replace("$,.METRE.", ".KILO.,.METRE.")
         .replace("#90,#15,3.)", "#90,#15,0.003)")
         .replace("$,$,2.,4.)", "$,$,0.002,0.004)")
@@ -114,7 +110,15 @@ fn source_unit_composition_overflow_refuses_before_admitting_a_construction() {
         .replace(
             "ENDSEC;END-ISO-10303-21;",
             "#92=IFCDIRECTION((1.,1.,0.));ENDSEC;END-ISO-10303-21;",
-        );
+        )
+}
+
+#[test]
+fn source_unit_composition_overflow_refuses_before_admitting_a_construction() {
+    // A 45-degree source rotation keeps each inverse-frame translation at
+    // about 1.414e308, while the unrotated unit-scaled X would be 2e308.
+    // Thus the source lowerer's finite inverse does not imply finite composition.
+    let bytes = unit_overflow_source();
     // Prove the reached source lowerer succeeds with finite frames; refusal
     // must be caused by unit composition, not an unrelated source error.
     let source = SourceBundle::new(bytes.as_bytes().to_vec());
@@ -284,3 +288,6 @@ fn s2_r2_extreme_valid_matrix_is_conservatively_refused_without_mutation() {
         RetainedPlacementStage::Mapping { source_id: 61 }).is_err());
     assert_eq!(value, before);
 }
+
+#[path = "frame_origin_tests.rs"]
+mod origins;

@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared against bf6022ecaa51954df16758f3378d13ad6a4e3aca; runtime UNRUN. Apply in reverse to mutate.
+--- a/rust/geometry/src/program/retained/capture.rs
++++ b/rust/geometry/src/program/retained/capture.rs
+@@ -22,7 +22,7 @@
+             length_unit_scale: scale,
+         })),
+         IfcType::IfcSweptDiskSolid => Ok(RetainedRecipe::SweptDisk(RetainedSweptDisk {
+-            solid_id: 0,
++            solid_id: item.id,
+             source: crate::analytic::extract_swept_disk(item, decoder).map_err(|error| {
+                 if let crate::Error::ProgramStopped(_) = error { return error; }
+                 let diagnostic = crate::Error::geometry(error.to_string());

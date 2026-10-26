@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared against bf6022ecaa51954df16758f3378d13ad6a4e3aca; runtime UNRUN. Apply in reverse to mutate.
+--- a/rust/geometry/src/program/product/retained_structure.rs
++++ b/rust/geometry/src/program/product/retained_structure.rs
+@@ -119,7 +119,7 @@
+         match self {
+             Self::Stop(stop) => Error::ProgramStopped(stop),
+             Self::Origin { site, entity, cause, diagnostic } => {
+-                let _ = (selection, site, entity, cause);
++                selection.failure_handle().record(site, Some(entity), cause);
+                 Error::geometry(diagnostic)
+             }
+         }

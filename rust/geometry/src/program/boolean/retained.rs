@@ -8,6 +8,7 @@ use super::*;
 use ifc_lite_core::slot;
 use super::state::Steps;
 use crate::program::retained::{LogicalRetainedValue, RetainedPlanOperation, RetainedSelection};
+use crate::program::retained::failure::{BooleanReason, FailureSite, OriginCause};
 
 pub(super) struct RetainedState {
     pub selection: RetainedSelection,
@@ -100,6 +101,31 @@ impl BooleanMachine {
     pub(super) fn take_retained_value(&mut self) -> Result<LogicalRetainedValue> {
         self.retained.as_mut().and_then(|state| state.value.take()).ok_or_else(stale)
     }
+    pub(super) fn retained_first_operand(&self, node: &DecodedEntity, decoder: &mut EntityDecoder)
+        -> Result<DecodedEntity> {
+        let site = FailureSite::BooleanFirstOperand;
+        let attr = node.get(slot::IfcBooleanResult::FIRST_OPERAND.index())
+            .ok_or_else(|| self.source_refusal(site, node.id, BooleanReason::OperandAttributeMissing,
+                "BooleanResult missing FirstOperand"))?;
+        decoder.resolve_ref(attr)
+            .map_err(|error| self.source_core(site, attr.as_entity_ref().unwrap_or(node.id), error))?
+            .ok_or_else(|| self.source_refusal(site, node.id, BooleanReason::OperandReferenceRequired,
+                "Failed to resolve FirstOperand"))
+    }
+    fn source_refusal(&self, site: FailureSite, entity: u32, reason: BooleanReason,
+        diagnostic: &'static str) -> Error {
+        if let Some(selection) = self.retained_selection() {
+            selection.failure_handle().record(site, Some(entity), OriginCause::Boolean(reason));
+        }
+        Error::geometry(diagnostic)
+    }
+    fn source_core(&self, site: FailureSite, entity: u32, error: ifc_lite_core::Error) -> Error {
+        let diagnostic = Error::geometry(format!("Core parser error: {error}"));
+        if let Some(selection) = self.retained_selection() {
+            selection.failure_handle().record(site, Some(entity), OriginCause::Core(error));
+        }
+        diagnostic
+    }
     pub(super) fn retained_steps(&mut self, mut steps: Steps, recorder: &BooleanClippingProcessor,
         decoder: &mut EntityDecoder) -> Result<()> {
         let host = steps.retained.take().ok_or_else(stale)?;
@@ -110,15 +136,23 @@ impl BooleanMachine {
         // Exact display permits omitted clipping operators; retained plans
         // require the authored operation and never infer a subtraction.
         let keyword = node.get(slot::IfcBooleanResult::OPERATOR.index()).and_then(|value| value.as_enum())
-            .ok_or_else(|| Error::geometry("missing retained Boolean operator"))?;
+            .ok_or_else(|| self.source_refusal(FailureSite::BooleanOperator, node.id,
+                BooleanReason::OperatorRequired, "missing retained Boolean operator"))?;
         if node.ifc_type == IfcType::IfcBooleanClippingResult && keyword.trim_matches('.') != "DIFFERENCE" {
-            return Err(Error::geometry("invalid retained clipping operator"));
+            return Err(self.source_refusal(FailureSite::BooleanOperator, node.id,
+                BooleanReason::InvalidClippingOperator, "invalid retained clipping operator"));
         }
         let operator = crate::processors::boolean::boolean_operator(&node)
-            .map_err(|_| Error::geometry("unknown retained Boolean operator"))?;
-        let second = recorder.second_operand_or_record(operator, &node, decoder);
+            .map_err(|_| self.source_refusal(FailureSite::BooleanOperator, node.id,
+                BooleanReason::UnknownOperator, "unknown retained Boolean operator"))?;
+        let second = recorder.second_operand_result_or_record(operator, &node, decoder);
         crate::resource::check_current()?;
-        let second = second.ok_or_else(|| Error::geometry("missing retained Boolean operand"))?;
+        let attr = node.get(slot::IfcBooleanResult::SECOND_OPERAND.index());
+        let second = second.map_err(|error| self.source_core(FailureSite::BooleanSecondOperand,
+            attr.and_then(|value| value.as_entity_ref()).unwrap_or(node.id), error))?
+            .ok_or_else(|| self.source_refusal(FailureSite::BooleanSecondOperand, node.id,
+                if attr.is_none() { BooleanReason::OperandAttributeMissing }
+                else { BooleanReason::OperandReferenceRequired }, "missing retained Boolean operand"))?;
         let depth = steps.depth;
         self.frames.push(Frame::RetainedAfterStep { steps: boxed(steps)?, operator, host });
         self.frames.push(Frame::Operand { entity: second, operator, depth });

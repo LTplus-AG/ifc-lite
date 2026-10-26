@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MPL-2.0
+# B2c source-context replacement; apply in reverse to mutate. Execution UNRUN.
+--- a/rust/geometry/src/program/retained/frame.rs
++++ b/rust/geometry/src/program/retained/frame.rs
+@@ -56,7 +56,7 @@
+ // preserves its ordered f64 accumulation and avoids inverse-frame round trips.
+ pub(super) fn compose_frame(a: &[f64; 16], b: &[f64; 16]) -> Result<[f64; 16], ValueReason> {
+     let composed = crate::math::mat4::mul(b, a);
+-    if false && composed.iter().any(|value| !value.is_finite()) {
++    if composed.iter().any(|value| !value.is_finite()) {
+         return Err(ValueReason::NonfiniteComposition);
+     }
+     Ok(composed)

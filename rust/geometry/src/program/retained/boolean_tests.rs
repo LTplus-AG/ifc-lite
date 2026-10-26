@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //! #7955 H2c: retained Boolean operations follow the common reached spine.
 use super::*;
+#[path = "boolean_origin_tests.rs"]
+mod origins;
 pub(super) fn nested() -> String {
     SOURCE.replace("#13=IFCEXTRUDEDAREASOLID", "#13=IFCBOOLEANRESULT(.DIFFERENCE.,#113,#213);#113=IFCEXTRUDEDAREASOLID")
         .replace("ENDSEC;END-ISO", "#213=IFCBOOLEANRESULT(.UNION.,#114,#115);#114=IFCEXTRUDEDAREASOLID(#14,#5,#15,1.);#115=IFCEXTRUDEDAREASOLID(#14,#5,#15,2.);ENDSEC;END-ISO")

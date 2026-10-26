@@ -313,7 +313,10 @@ fn custom_processor_for_extrusion_refuses_retained_capture() {
     let entity = decoder.decode_by_id(10).unwrap();
     let mut program = RetainedProgram::product_parts(&entity, contract());
     assert!(drive(&mut program, &router, &mut decoder).is_empty());
-    assert!(program.finish().is_err());
+    let failure = program.finish().unwrap_err();
+    let RetainedFailure::Origin(handle) = failure else { panic!("expected custom origin") };
+    assert!(matches!(handle.origin().unwrap().cause,
+        crate::program::retained::failure::OriginCause::Processor(Some(crate::router::ProcessorOrigin::Custom))));
     assert_eq!(calls.get(), 0);
     let solid = decoder.decode_by_id(13).unwrap();
     let mesh = router
@@ -378,3 +381,6 @@ mod finalization_stop_tests;
 
 #[path = "outcome_tests.rs"]
 mod outcome_tests;
+
+#[path = "origin_tests.rs"]
+mod origins;

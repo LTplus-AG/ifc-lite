@@ -49,6 +49,12 @@ impl<T> std::ops::DerefMut for Absent<T> {
     }
 }
 impl RetainedSelection {
+    pub(in crate::program) fn failure_handle(&self) -> super::failure::FailureHandle {
+        #[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
+        { super::failure::FailureHandle::new(self.0.walk.clone()) }
+        #[cfg(all(target_arch = "wasm32", not(feature = "wasm_source_capture")))]
+        { match *self {} }
+    }
     pub(in crate::program) fn new(contract: RetainedContract, program: u64) -> Option<Self> {
         #[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
         {
@@ -135,8 +141,11 @@ impl RetainedSelection {
         router: &GeometryRouter,
         decoder: &mut EntityDecoder,
     ) -> Result<RetainedPlanOperation> {
-        if router.processor_origin(&item.ifc_type) != Some(crate::router::ProcessorOrigin::Builtin)
+        let processor = router.processor_origin(&item.ifc_type);
+        if processor != Some(crate::router::ProcessorOrigin::Builtin)
         {
+            self.failure_handle().record(super::failure::FailureSite::Constructor, Some(item.id),
+                super::failure::OriginCause::Processor(processor));
             return Err(crate::Error::geometry(
                 "retained custom processor unsupported",
             ));
@@ -147,6 +156,7 @@ impl RetainedSelection {
             router.unit_scale(),
             self.0.contract,
             self.0.program,
+            &self.failure_handle(),
         )
     }
 }

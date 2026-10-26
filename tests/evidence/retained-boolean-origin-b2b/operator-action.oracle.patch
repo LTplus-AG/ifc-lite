@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: MPL-2.0
+# Apply in reverse to mutate; execution remains UNRUN.
+diff --git a/rust/geometry/src/program/boolean/retained.rs b/rust/geometry/src/program/boolean/retained.rs
+--- a/rust/geometry/src/program/boolean/retained.rs
++++ b/rust/geometry/src/program/boolean/retained.rs
+@@ -131,7 +131,10 @@
+         let keyword = node.get(slot::IfcBooleanResult::OPERATOR.index()).and_then(|value| value.as_enum())
+             .ok_or_else(|| self.source_refusal(FailureSite::BooleanOperator, node.id,
+                 BooleanReason::OperatorRequired, "missing retained Boolean operator"))?;
++        if node.ifc_type == IfcType::IfcBooleanClippingResult && keyword.trim_matches('.') != "DIFFERENCE" {
++            return Err(self.source_refusal(FailureSite::BooleanOperator, node.id,
++                BooleanReason::InvalidClippingOperator, "invalid retained clipping operator"));
++        }
+-        let _ = keyword; // Mutant: accept the invalid retained clipping operator.
+         let operator = crate::processors::boolean::boolean_operator(&node)
+             .map_err(|_| self.source_refusal(FailureSite::BooleanOperator, node.id,
+                 BooleanReason::UnknownOperator, "unknown retained Boolean operator"))?;

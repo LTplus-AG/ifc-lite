@@ -54,13 +54,17 @@ impl BooleanMachine {
     }
 
     pub(super) fn next_first(&mut self, mut walk: Walk, decoder: &mut EntityDecoder) -> Result<()> {
-        let attr = walk
-            .current
-            .get(slot::IfcBooleanResult::FIRST_OPERAND.index())
-            .ok_or_else(|| Error::geometry("BooleanResult missing FirstOperand".to_string()))?;
-        let first = decoder
-            .resolve_ref(attr)?
-            .ok_or_else(|| Error::geometry("Failed to resolve FirstOperand".to_string()))?;
+        let first = if self.retained.is_some() {
+            self.retained_first_operand(&walk.current, decoder)?
+        } else {
+            let attr = walk
+                .current
+                .get(slot::IfcBooleanResult::FIRST_OPERAND.index())
+                .ok_or_else(|| Error::geometry("BooleanResult missing FirstOperand".to_string()))?;
+            decoder
+                .resolve_ref(attr)?
+                .ok_or_else(|| Error::geometry("Failed to resolve FirstOperand".to_string()))?
+        };
         if self.retained.is_some() { crate::resource::reserve_headers(&mut walk.spine, 1)?.retain(); }
         walk.spine.push(walk.current);
         walk.current = first;

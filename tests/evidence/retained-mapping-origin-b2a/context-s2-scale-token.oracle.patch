@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared at 82d137b85c17f9dc0521d0ad8120bd218eedaeb2; apply in reverse; Rust execution UNRUN.
+# Historical input (unchanged): tests/evidence/retained-s2-review/scale-token.oracle.patch; SHA256 c1607096312f1ffe0b73ec04651b31df2a33760e90124c479726ba47788a67b3
+--- a/rust/geometry/src/program/mapping_validation.rs
++++ b/rust/geometry/src/program/mapping_validation.rs
+@@ -89,7 +89,9 @@
+     match target.get(index) {
+         None | Some(AttributeValue::Null | AttributeValue::Integer(_)) => Ok(()),
+         Some(AttributeValue::Float(value)) if value.is_finite() => Ok(()),
+-        _ => Ok(()),
++        _ => Err(MappingFailure::refused(FailureSite::MappingScale, target.id,
++            MappingReason::FiniteScale { attribute: index },
++            "retained MappingTarget Scale requires a finite number or absence")),
+     }
+ }
+ 

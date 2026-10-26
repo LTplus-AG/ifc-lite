@@ -327,8 +327,8 @@ impl<'a> MappingControl<'a> {
             }
             Action::EnterTypeMap => {
                 let rep_map = self.rep_map.as_ref().map(Reached::item).ok_or(ProgramError::StaleRequest)?;
-                let value = if self.retained.is_some() {
-                    Self::validate_retained_map(rep_map, decoder)
+                let value = if let Some(state) = &self.retained {
+                    Self::validate_retained_map(rep_map, decoder, &state.selection)
                         .and_then(|()| router.admit_type_map(rep_map, decoder))
                 } else { router.admit_type_map(rep_map, decoder) };
                 MappingReply::TypeMapEntered(value)

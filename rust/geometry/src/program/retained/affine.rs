@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 //! A physical nonrigid occurrence owns a new operation definition.
 use super::*;
+use super::value_error::ValueError;
 impl LogicalRetainedValue {
-    pub(in crate::program) fn bake(&mut self) -> crate::Result<Option<RetainedPlanOperation>> {
+    pub(in crate::program) fn bake(&mut self) -> Result<Option<RetainedPlanOperation>, ValueError> {
         self.validate_identity()?;
         let matrix = nalgebra::Matrix4::from_column_slice(&self.object_frame);
         validate_affine(&matrix)?;

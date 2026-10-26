@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared at 82d137b85c17f9dc0521d0ad8120bd218eedaeb2; apply in reverse; Rust execution UNRUN.
+# Historical input (unchanged): tests/evidence/retained-s2-direction/target.oracle.patch; SHA256 00ce621485292f459d11f7b6217982c9d261962cbd3e7464e985b435cce3a5b7
+--- a/rust/geometry/src/program/mapping_validation.rs
++++ b/rust/geometry/src/program/mapping_validation.rs
+@@ -68,7 +68,7 @@
+         return Err(MappingFailure::refused(FailureSite::MappingTarget, target.id,
+             MappingReason::Category, "retained MappingTarget requires a supported transformation operator"));
+     }
+-    if false { super::directions::target(&target, decoder)?; }
++    super::directions::target(&target, decoder)?;
+     scale(&target, slot::IfcCartesianTransformationOperator::SCALE.index())?;
+     match target.ifc_type {
+         IfcType::IfcCartesianTransformationOperator2DnonUniform => {

@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MPL-2.0
+# Apply in reverse to mutate; execution remains UNRUN.
+diff --git a/rust/geometry/src/program/boolean/retained.rs b/rust/geometry/src/program/boolean/retained.rs
+--- a/rust/geometry/src/program/boolean/retained.rs
++++ b/rust/geometry/src/program/boolean/retained.rs
+@@ -115,7 +115,7 @@
+     fn source_core(&self, site: FailureSite, entity: u32, error: ifc_lite_core::Error) -> Error {
+         let diagnostic = Error::geometry(format!("Core parser error: {error}"));
+         if let Some(selection) = self.retained_selection() {
++            selection.failure_handle().record(site, Some(entity), OriginCause::Core(error));
+-            let _ = (selection, site, entity, error); // Mutant: discard the real decoder payload.
+         }
+         diagnostic
+     }

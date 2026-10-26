@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 use super::*;
 use crate::program::inner::retained_program::RetainedProgramError;
+use crate::program::retained::failure;
 impl ItemControl {
     pub(in crate::program) fn retained_ready(&self) -> bool {
         crate::program::retained::ENABLED && matches!(self.step, Some(ItemStep::RetainedReady(..)))
@@ -77,6 +78,23 @@ pub(super) fn execute_boolean(item: &DecodedEntity, mut machine: Box<BooleanMach
     match result {
         Ok(None) => ItemStep::Boolean { machine, reports },
         Ok(Some(value)) => ItemStep::RetainedComplete(Ok(value), selection),
-        Err(error) => ItemStep::RetainedComplete(Err(error), selection),
+        Err(error) => {
+            // Keep the owned error reply consumable. Specific Boolean/recipe
+            // origins already recorded below this adapter always win; a helper
+            // not yet converted is preserved as opaque at this known source.
+            let error = match error {
+                Error::ProgramStopped(_) => error,
+                error => {
+                    let diagnostic = Error::geometry(error.to_string());
+                    let cause = match error {
+                        Error::CoreError(core) => failure::OriginCause::Core(core),
+                        other => failure::OriginCause::Opaque(other),
+                    };
+                    selection.failure_handle().record(failure::FailureSite::BooleanSource, Some(item.id), cause);
+                    diagnostic
+                }
+            };
+            ItemStep::RetainedComplete(Err(error), selection)
+        }
     }
 }

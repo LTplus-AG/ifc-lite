@@ -5,9 +5,12 @@
 #![cfg_attr(all(target_arch = "wasm32", not(feature = "wasm_source_capture")),
     allow(unreachable_code, unused_variables, unused_mut))]
 use super::*;
+use crate::program::retained::failure::FailureSite;
 use crate::program::inner::retained_program::RetainedProgramError;
 #[path = "mapping_directions.rs"]
 mod directions;
+#[path = "mapping_validation.rs"]
+mod validation;
 use crate::program::retained::{LogicalRetainedValue, RetainedPlacementStage, RetainedPlanOperation, RetainedSelection, RetainedPresentation};
 
 pub(super) struct State {
@@ -23,7 +26,7 @@ impl<'a> MappingControl<'a> {
     pub(in crate::program) fn admit_target_directions_for_test(
         entity: &DecodedEntity, decoder: &mut EntityDecoder,
     ) -> Result<()> {
-        directions::target(entity, decoder)
+        directions::target(entity, decoder).map_err(|error| crate::Error::geometry(error.diagnostic()))
     }
 
     #[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
@@ -74,14 +77,15 @@ impl<'a> MappingControl<'a> {
         };
         let admitted = (|| {
             if self.levels.is_empty() { state.selection.enter(item.id, &[])?; }
-            Self::validate_retained_occurrence(item, decoder)?;
+            validation::occurrence(item, decoder)
+                .map_err(|error| error.into_common(&state.selection))?;
             // Reuse source and transform admission, explicitly disabling the
             // exact instancing/cache paths. Validate every target even on hits.
             let source = router.admit_styled_occurrence(item,
                 state.styled && self.allow_instancing && self.levels.is_empty(), self.textures, decoder)?;
             if let Some(transform) = &source.transform {
-                super::super::retained::validate_affine(transform)?;
-
+                super::super::retained::validate_affine(transform).map_err(|reason|
+                    reason.into_common(&state.selection.failure_handle(), FailureSite::MappingPlacement, Some(item.id)))?;
             }
             let cached = state.selection.cached(decoder, router, source.source_id)?;
             Ok::<_, crate::Error>((source, cached))
@@ -120,7 +124,8 @@ impl<'a> MappingControl<'a> {
         let value = (|| {
             let transform = transform.unwrap_or_else(Matrix4::identity);
             for value in &mut values {
-                value.place_in_place(&transform, selection.program(), RetainedPlacementStage::Mapping { source_id })?;
+                value.place_in_place(&transform, selection.program(), RetainedPlacementStage::Mapping { source_id })
+                    .map_err(|error| error.into_common(&selection.failure_handle(), FailureSite::MappingPlacement, Some(item_id)))?;
                 if let Some(binding) = &binding { value.present(binding.clone())?; }
             }
             Ok(values)
@@ -226,12 +231,10 @@ impl<'a> MappingControl<'a> {
         let value = (|| {
             let map = self.rep_map.as_ref().map(Reached::item)
                 .ok_or_else(|| crate::Error::geometry("retained type-map root missing"))?;
-            let attribute = map.get(ifc_lite_core::slot::IfcRepresentationMap::MAPPING_ORIGIN.index())
-                .ok_or_else(|| crate::Error::geometry("retained type-map MappingOrigin missing"))?;
-            let origin = decoder.resolve_ref(attribute)?.filter(|entity|
-                entity.ifc_type == ifc_lite_core::IfcType::IfcAxis2Placement3D)
-                .ok_or_else(|| crate::Error::geometry("retained type-map requires a readable 3D MappingOrigin"))?;
-            directions::origin(&origin, decoder)?;
+            let selection = self.retained_selection()
+                .ok_or_else(|| crate::Error::geometry("missing retained selection"))?;
+            validation::late_origin(map, decoder)
+                .map_err(|error| error.into_common(selection))?;
             router.type_map_origin(map,decoder)
         })();
         MappingReply::Origin(value)
@@ -243,12 +246,15 @@ impl<'a> MappingControl<'a> {
         let output = state.levels.last_mut().ok_or(ProgramError::StaleRequest)?;
         let value = (|| {
             let origin = origin.unwrap_or_else(Matrix4::identity);
-            super::super::retained::validate_affine(&origin)?;
-            super::super::retained::proper_rigid(&origin)?;
+            super::super::retained::validate_affine(&origin).map_err(|reason|
+                reason.into_common(&state.selection.failure_handle(), FailureSite::TypeMapPlacement, Some(id)))?;
+            super::super::retained::proper_rigid(&origin).map_err(|reason|
+                reason.into_common(&state.selection.failure_handle(), FailureSite::TypeMapPlacement, Some(id)))?;
             let mut values = std::mem::take(output);
             for value in &mut values {
                 value.place_in_place(&origin,state.selection.program(),
-                    RetainedPlacementStage::TypeMap { representation_map: id })?;
+                    RetainedPlacementStage::TypeMap { representation_map: id })
+                    .map_err(|error| error.into_common(&state.selection.failure_handle(), FailureSite::TypeMapPlacement, Some(id)))?;
             }
             Ok(values)
         })();
@@ -257,99 +263,8 @@ impl<'a> MappingControl<'a> {
 }
 
 impl MappingControl<'_> {
-    // Retained admission must not inherit exact-display recovery of malformed
-    // required attributes. Keep all numerical transform work in the router.
-    fn validate_retained_occurrence(item: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<()> {
-        use ifc_lite_core::{slot, IfcType};
-        let source = item.get(slot::IfcMappedItem::MAPPING_SOURCE.index())
-            .and_then(|value| value.as_entity_ref())
-            .ok_or_else(|| crate::Error::geometry("retained MappingSource requires a reference"))?;
-        let source = decoder.decode_by_id(source)?;
-        if source.ifc_type != IfcType::IfcRepresentationMap {
-            return Err(crate::Error::geometry("retained MappingSource requires IfcRepresentationMap"));
-        }
-        Self::validate_retained_origin(&source, decoder)?;
-        Self::validate_retained_target(item, decoder)?;
-        Self::validate_retained_map(&source, decoder)
-    }
-
-    fn validate_retained_target(item: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<()> {
-        use ifc_lite_core::{slot, IfcType};
-        let target = item.get(slot::IfcMappedItem::MAPPING_TARGET.index())
-            .and_then(|value| value.as_entity_ref())
-            .ok_or_else(|| crate::Error::geometry("retained MappingTarget requires a reference"))?;
-        let target = decoder.decode_by_id(target)?;
-        if !matches!(target.ifc_type, IfcType::IfcCartesianTransformationOperator2D
-            | IfcType::IfcCartesianTransformationOperator2DnonUniform
-            | IfcType::IfcCartesianTransformationOperator3D
-            | IfcType::IfcCartesianTransformationOperator3DnonUniform) {
-            return Err(crate::Error::geometry("retained MappingTarget requires a supported transformation operator"));
-        }
-        directions::target(&target, decoder)?;
-        Self::validate_retained_scale(&target, slot::IfcCartesianTransformationOperator::SCALE.index())?;
-        match target.ifc_type {
-            IfcType::IfcCartesianTransformationOperator2DnonUniform => {
-                Self::validate_retained_scale(&target, slot::IfcCartesianTransformationOperator2DnonUniform::SCALE2.index())?;
-            }
-            IfcType::IfcCartesianTransformationOperator3DnonUniform => {
-                Self::validate_retained_scale(&target, slot::IfcCartesianTransformationOperator3DnonUniform::SCALE2.index())?;
-                Self::validate_retained_scale(&target, slot::IfcCartesianTransformationOperator3DnonUniform::SCALE3.index())?;
-            }
-            _ => {}
-        }
-        Ok(())
-    }
-
-    fn validate_retained_scale(target: &DecodedEntity, index: usize) -> Result<()> {
-        use ifc_lite_core::AttributeValue;
-        // Optional omission keeps the canonical default. An authored token
-        // must be a finite number; exact-display recovery is not admission.
-        match target.get(index) {
-            None | Some(AttributeValue::Null | AttributeValue::Integer(_)) => Ok(()),
-            Some(AttributeValue::Float(value)) if value.is_finite() => Ok(()),
-            _ => Err(crate::Error::geometry("retained MappingTarget Scale requires a finite number or absence")),
-        }
-    }
-
-    fn validate_retained_origin(map: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<()> {
-        use ifc_lite_core::{slot, IfcType};
-        let origin = map.get(slot::IfcRepresentationMap::MAPPING_ORIGIN.index())
-            .and_then(|value| value.as_entity_ref())
-            .ok_or_else(|| crate::Error::geometry("retained MappingOrigin requires a reference"))?;
-        let origin = decoder.decode_by_id(origin)?;
-        if !matches!(origin.ifc_type, IfcType::IfcAxis2Placement2D | IfcType::IfcAxis2Placement3D) {
-            return Err(crate::Error::geometry("retained MappingOrigin requires a supported placement"));
-        }
-        // Type roots invoke this semantic admission at their late-origin stage.
-        directions::origin(&origin, decoder)
-    }
-
-    pub(super) fn validate_retained_map(map: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<()> {
-        use ifc_lite_core::{slot, IfcType};
-        if map.ifc_type != IfcType::IfcRepresentationMap {
-            return Err(crate::Error::geometry("retained MappingSource requires IfcRepresentationMap"));
-        }
-        let representation = map.get(slot::IfcRepresentationMap::MAPPED_REPRESENTATION.index())
-            .and_then(|value| value.as_entity_ref())
-            .ok_or_else(|| crate::Error::geometry("retained MappedRepresentation requires a reference"))?;
-        let representation = decoder.decode_by_id(representation)?;
-        if !matches!(representation.ifc_type, IfcType::IfcShapeRepresentation | IfcType::IfcTopologyRepresentation) {
-            return Err(crate::Error::geometry("retained MappedRepresentation requires a supported representation"));
-        }
-        Self::validate_retained_items(&representation, decoder)
-    }
-
-    fn validate_retained_items(representation: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<()> {
-        let items = representation.get(ifc_lite_core::slot::IfcRepresentation::ITEMS.index())
-            .and_then(|value| value.as_list())
-            .ok_or_else(|| crate::Error::geometry("retained representation Items requires a readable list"))?;
-        // Explicit () is an empty source contribution; absent/null Items and
-        // non-reference members are not empty geometry. Validate even on hits.
-        for item in items {
-            let id = item.as_entity_ref()
-                .ok_or_else(|| crate::Error::geometry("retained representation Items requires references"))?;
-            decoder.decode_by_id(id)?;
-        }
-        Ok(())
+    pub(super) fn validate_retained_map(map: &DecodedEntity, decoder: &mut EntityDecoder,
+        selection: &RetainedSelection) -> Result<()> {
+        validation::map(map, decoder).map_err(|error| error.into_common(selection))
     }
 }

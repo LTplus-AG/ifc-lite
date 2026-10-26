@@ -76,7 +76,7 @@ fn admission_budget_stop_preserves_original_stop_ticket_and_reached_operation() 
         assert_eq!(operations.len(), 1);
         assert!(matches!(operations[0].value().definition(),
             LogicalRetainedDefinition::Source { source_id: 13, .. }));
-        assert!(matches!(program.finish(), Err(Error::ProgramStopped(stop)) if stop == expected));
+        assert!(matches!(program.finish(), Err(RetainedFailure::Stopped(stop)) if stop == expected));
     }
 }
 
@@ -123,7 +123,7 @@ fn source_step_stop_returns_its_reply_for_intact_rejection() {
     assert_eq!(rejected.reply.0.request, ticket.0);
     assert_eq!(existing_sibling.request().err(), Some(RetainedProgramError::Stopped(stop)));
     assert_eq!(traversal.product_parts(&entity).request().err(), Some(RetainedProgramError::Stopped(stop)));
-    assert!(matches!(program.finish(), Err(Error::ProgramStopped(actual)) if actual == stop));
+    assert!(matches!(program.finish(), Err(RetainedFailure::Stopped(actual)) if actual == stop));
 }
 
 #[test]

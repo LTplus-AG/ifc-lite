@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared against bf6022ecaa51954df16758f3378d13ad6a4e3aca; runtime UNRUN. Apply in reverse to mutate.
+--- a/rust/geometry/src/program/retained/completion.rs
++++ b/rust/geometry/src/program/retained/completion.rs
+@@ -71,10 +71,7 @@
+             _ => return Err(RetainedFailure::Completion(CompletionReason::WrongOutputKind)),
+         }.map_err(|error| RetainedFailure::Protocol(error.into()))?;
+         if stage.is_some() { return Err(RetainedFailure::Completion(CompletionReason::Incomplete)); }
+-        let output = self.inner.finish_output().map_err(|error| {
+-            let _ = (site, error);
+-            RetainedFailure::Completion(CompletionReason::Incomplete)
+-        })?;
++        let output = self.inner.finish_output().map_err(|error| failure.common(site, error))?;
+         // A later completed sibling cannot erase an earlier traversal refusal.
+         if let Some(error) = failure.reported() { return Err(error); }
+         Ok(output)

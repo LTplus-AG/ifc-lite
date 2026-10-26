@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared at 82d137b85c17f9dc0521d0ad8120bd218eedaeb2; apply in reverse; Rust execution UNRUN.
+# Historical input (unchanged): tests/evidence/retained-s2-direction/omission-authored-pair.oracle.patch; SHA256 3bbb23ec1b8e7cdaaa297da63750cb500d4f1128f686bc8ca724db059d864495
+--- a/rust/geometry/src/program/mapping_directions.rs
++++ b/rust/geometry/src/program/mapping_directions.rs
+@@ -106,7 +106,7 @@
+                 Some(x) => (z, x),
+                 None => {
+                     // First retain the rank of the two authored directions.
+-                    if false { admit_pair(entity.id, z, y)?; }
++                    admit_pair(entity.id, z, y)?;
+                     // Omission follows the canonical normalization AND projection
+                     // branches, including tiny-Z and near-X fallback. A synthetic
+                     // exact-parallel default does not describe that frame (#7955).

@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared at 82d137b85c17f9dc0521d0ad8120bd218eedaeb2; apply in reverse; Rust execution UNRUN.
+# Historical input (unchanged): tests/evidence/retained-s2-direction/omission-projection.oracle.patch; SHA256 7bd7f8b52e0a4b7a482a84ef26dbd525efb31612defe20b53285c1142ce80aa8
+--- a/rust/geometry/src/program/mapping_directions.rs
++++ b/rust/geometry/src/program/mapping_directions.rs
+@@ -112,9 +112,6 @@
+                     // exact-parallel default does not describe that frame (#7955).
+                     let [derived_x, derived_z] =
+                         crate::axis_projection::operator_xz_axes(z, Vector3::x());
+-                    let derived_x = if independent(derived_z, Vector3::x()) {
+-                        Vector3::x()
+-                    } else { derived_x };
+                     if !derived_x.iter().chain(derived_z.iter()).all(|v| v.is_finite()) {
+                         return Err(refused(entity.id, MappingReason::NonfiniteDerivedFrame));
+                     }

@@ -13,7 +13,7 @@
 use std::io::Write;
 
 use crate::source_header::SourceHeader;
-use crate::step_text::escape;
+use crate::step_text::{escape, quoted};
 use crate::StepOptions;
 
 /// Write one quoted, escaped list: `('a','b')`, or `()` for an empty one.
@@ -33,7 +33,7 @@ fn quote_list(items: Option<&[String]>) -> String {
     if items.is_empty() {
         return "()".to_string();
     }
-    let inner: Vec<String> = items.iter().map(|s| format!("'{}'", escape(s))).collect();
+    let inner: Vec<String> = items.iter().map(|s| quoted(s)).collect();
     format!("({})", inner.join(","))
 }
 

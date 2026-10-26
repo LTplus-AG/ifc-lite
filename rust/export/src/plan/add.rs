@@ -17,7 +17,7 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use crate::step_text::escape;
+use crate::step_text::quoted;
 use crate::step_ids::IdAllocator;
 
 use super::add_geometry::product_shape;
@@ -255,7 +255,7 @@ impl<'a, 'h> AddState<'a, 'h> {
             ("ObjectPlacement", format!("#{placement}")),
         ];
         if let Some(name) = &obj.name {
-            fields.push(("Name", format!("'{}'", escape(name))));
+            fields.push(("Name", quoted(name)));
         }
         if let Some(shape) = shape {
             fields.push(("Representation", format!("#{shape}")));

@@ -11,7 +11,7 @@
 use crate::generated::step_log_tables::{SlotRow, NAME_LISTS, NONE, SLOT_ROWS};
 use super::lines::split_args;
 use crate::step_record_frame::{opens_record, record_frame, RecordFrame};
-use crate::step_text::escape;
+use crate::step_text::quoted;
 
 use super::jsval::{format_step_real, integral_token, to_step_real};
 
@@ -117,7 +117,7 @@ pub(crate) fn string_slot(value: &str) -> String {
     if value == "$" || value == "*" {
         value.to_string()
     } else {
-        format!("'{}'", escape(value))
+        quoted(value)
     }
 }
 
@@ -167,7 +167,7 @@ fn attribute_value(value: &str, current_token: &str) -> String {
     let trimmed = value.trim();
     let current = current_token.trim();
     if current.len() >= 2 && current.starts_with('\'') && current.ends_with('\'') {
-        return if value.is_empty() { "$".to_string() } else { format!("'{}'", escape(value)) };
+        return if value.is_empty() { "$".to_string() } else { quoted(value) };
     }
     if value.is_empty() {
         return "$".to_string();
@@ -193,7 +193,7 @@ fn attribute_value(value: &str, current_token: &str) -> String {
         let real_slot = current.contains('.') || current.contains(['e', 'E']);
         return if !real_slot && n.fract() == 0.0 { integral_token(n) } else { format_step_real(n) };
     }
-    format!("'{}'", escape(value))
+    quoted(value)
 }
 
 /// `serializeNamedAttribute`. `None` is a refusal: a REAL slot handed text

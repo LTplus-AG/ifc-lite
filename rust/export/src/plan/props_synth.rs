@@ -9,7 +9,7 @@
 
 use ifc_lite_core::SchemaFamily;
 
-use crate::step_text::escape;
+use crate::step_text::quoted;
 use crate::step_ids::IdAllocator;
 use crate::step_slot::is_step_value;
 
@@ -60,7 +60,7 @@ pub(crate) fn build_value_record(schema: &str, id: u32, entity_type: &str, name:
     let mut slots = vec!["$".to_string(); names.len()];
     for (i, n) in names.iter().enumerate() {
         match *n {
-            "Name" => slots[i] = format!("'{}'", escape(name)),
+            "Name" => slots[i] = quoted(name),
             "NominalValue" => slots[i] = format!("{measure_type}({literal})"),
             "Unit" => slots[i] = unit.unwrap_or("$").to_string(),
             n if n.ends_with("Value") => slots[i] = literal.to_string(),
@@ -167,7 +167,7 @@ pub(crate) fn set_record(
         &[
             ("GlobalId", format!("'{global_id}'")),
             ("OwnerHistory", ref_or_unset(owner_history)),
-            ("Name", format!("'{}'", escape(name))),
+            ("Name", quoted(name)),
             (member_attr, ref_list(member_ids)),
         ],
     )

@@ -17,7 +17,7 @@ use crate::step_ids::IdAllocator;
 
 use super::add_types::GlobalId;
 use super::identity::{Identity, Made};
-use super::owner_history::quoted;
+use crate::step_text::quoted;
 use super::types::{ExportingApplication, ValidationFinding};
 use super::placement::fmt;
 use super::props_synth::ref_list;

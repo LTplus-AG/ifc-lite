@@ -4,8 +4,10 @@
 //! adds, made on first use, and one `MODIFIED` history per distinct original
 //! history (not per object) for everything it rewrites.
 //!
-//! What counts as modified is derived once, from what the plan actually
-//! rewrites ([`changed_records`]), not tracked at the sites that rewrite.
+//! What counts as modified is the plan's own scope, read once after every
+//! rewrite has settled ([`modified_records`]): the objects it patches, the
+//! rewritten records that carry an owner history, and the set of a value
+//! edited in place.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
@@ -150,10 +152,10 @@ impl<'l> Histories<'l> {
 /// something is reported, since the file then credits its changes to their
 /// previous author. A plan that named an application `Ledger::for_plan`
 /// could not use has been reported already.
-pub(crate) fn attribute_changes(index: &FileIndex, schema: &str, plan: &ExportPlan, ledger: Option<&mut Ledger>, removed: &HashSet<u32>, changed: bool, mut out: Rewrites) {
+pub(crate) fn attribute_changes(index: &FileIndex, schema: &str, plan: &ExportPlan, ledger: Option<&mut Ledger>, (patched, removed): (&[u32], &HashSet<u32>), changed: bool, mut out: Rewrites) {
     match ledger {
         Some(ledger) => {
-            mark_modified(index, schema, ledger, removed, &mut out);
+            mark_modified(index, schema, ledger, patched, removed, &mut out);
             let reused = ledger.made.application().filter(|&app| index.contains(app));
             if let Some(message) = reused.and_then(|app| super::identity::reuse_note(index, schema, app, &ledger.identity)) {
                 out.findings.push(ValidationFinding { express_id: reused, message });
@@ -167,53 +169,29 @@ pub(crate) fn attribute_changes(index: &FileIndex, schema: &str, plan: &ExportPl
     }
 }
 
-/// Records never climbed into: the owner history and representation
-/// contexts, shared by every rooted record or shape by definition.
-const NEVER_OWNERS: [&str; 4] = ["IFCOWNERHISTORY", "IFCREPRESENTATIONCONTEXT", "IFCGEOMETRICREPRESENTATIONCONTEXT", "IFCGEOMETRICREPRESENTATIONSUBCONTEXT"];
-
-/// What the plan's rewrites change: the records whose owner history records
-/// it, and the shared records whose change is attributed to none.
-struct Changed {
-    roots: BTreeSet<u32>,
-    shared: BTreeSet<u32>,
-}
-
-/// One structural rule. A rewritten source record that carries an
-/// `OwnerHistory` is changed itself. One that carries none belongs to its
-/// referrer when it has exactly one (counting the records that name it and
-/// stay): the climb goes there, and on until a record carrying an
-/// `OwnerHistory`, which is changed (a face's wall, a set's values, a
-/// single-use material's association, an actor's organization). A record
-/// named by two or more is a shared resource (a classification, a style, a
-/// representation map, an organization): the climb stops there and the
-/// change is reported, attributed to no object. The climb never enters an
-/// owner history or a representation context. Each level asks for the
-/// referrers of records it has not climbed through yet, which the resolution
-/// collects in one more pass over the file.
-fn changed_records(index: &FileIndex, schema: &str, edits_by_id: &HashMap<u32, BTreeMap<usize, String>>, removed: &HashSet<u32>) -> Changed {
+/// The records a plan modified, by its own scope: every object it patches,
+/// every source record it rewrites that carries an `OwnerHistory` (a
+/// relationship, a property or quantity set, a type), and the property or
+/// quantity set listing a value it edits in place, one level up and no
+/// further. Nothing else is attributed: a rewrite of a record that is
+/// neither (a material, a shape, a placement record) is the patched
+/// object's change or nobody's. Records going away are not among them.
+fn modified_records(index: &FileIndex, schema: &str, patched: &[u32], edits_by_id: &HashMap<u32, BTreeMap<usize, String>>, removed: &HashSet<u32>) -> BTreeSet<u32> {
     let live = |id: &u32| index.contains(*id) && !removed.contains(id);
-    let carries = |id: u32| index.type_of(id).is_some_and(|ty| attribute_index(schema, &ty, "OwnerHistory").is_some());
-    let mut changed = Changed { roots: BTreeSet::new(), shared: BTreeSet::new() };
-    let mut seen = HashSet::new();
-    let mut pending: Vec<u32> = edits_by_id.keys().copied().filter(|id| live(id)).collect();
-    while let Some(record) = pending.pop() {
-        if !seen.insert(record) || index.type_of(record).is_some_and(|ty| NEVER_OWNERS.contains(&ty.as_str())) {
+    let carries = |id: &u32| index.type_of(*id).is_some_and(|ty| attribute_index(schema, &ty, "OwnerHistory").is_some());
+    let mut modified: BTreeSet<u32> = patched.iter().copied().filter(|id| live(id) && carries(id)).collect();
+    for id in edits_by_id.keys().filter(|id| live(id)) {
+        if carries(id) {
+            modified.insert(*id);
             continue;
         }
-        if carries(record) {
-            changed.roots.insert(record);
-            continue;
-        }
-        let owners: BTreeSet<u32> = index.referrers(record).iter().map(|&(owner, _)| owner).filter(|owner| live(owner)).collect();
-        match owners.len() {
-            0 => {}
-            1 => pending.extend(owners),
-            _ => {
-                changed.shared.insert(record);
-            }
+        let is_value = index.type_of(*id).is_some_and(|ty| ty == "IFCPROPERTYSINGLEVALUE" || ty.starts_with("IFCQUANTITY"));
+        if is_value {
+            let sets = index.referrers(*id).iter().map(|&(set, _)| set);
+            modified.extend(sets.filter(|set| live(set) && index.type_of(*set).is_some_and(|ty| ty == "IFCPROPERTYSET" || ty == "IFCELEMENTQUANTITY")));
         }
     }
-    changed
+    modified
 }
 
 /// The edits and records resolution has produced, which marking adds to.
@@ -224,19 +202,12 @@ pub(crate) struct Rewrites<'a> {
     pub(crate) findings: &'a mut Vec<ValidationFinding>,
 }
 
-/// Point every record the plan rewrote ([`changed_records`]) at a `MODIFIED`
+/// Point every record the plan modified ([`modified_records`]) at a `MODIFIED`
 /// history keeping its original owner, state and creation date. Run once,
 /// after every patch, delete and Add has settled its edits.
-fn mark_modified(index: &FileIndex, schema: &str, ledger: &mut Ledger, removed: &HashSet<u32>, out: &mut Rewrites) {
+fn mark_modified(index: &FileIndex, schema: &str, ledger: &mut Ledger, patched: &[u32], removed: &HashSet<u32>, out: &mut Rewrites) {
     let required = SchemaFamily::of_file_schema(schema) == Some(SchemaFamily::Ifc2x3);
-    let changed = changed_records(index, schema, out.edits_by_id, removed);
-    for &id in &changed.shared {
-        out.findings.push(ValidationFinding {
-            express_id: Some(id),
-            message: format!("shared resource #{id} changed; not attributed to any object"),
-        });
-    }
-    for id in changed.roots {
+    for id in modified_records(index, schema, patched, out.edits_by_id, removed) {
         let Some(ty) = index.type_of(id) else { continue };
         let Some(slot_idx) = attribute_index(schema, &ty, "OwnerHistory") else { continue };
         let Some(line) = index.raw_line(id) else { continue };

@@ -127,9 +127,15 @@ fn a_host_its_openings_miss_is_not_consumed() {
     }
 }
 
-// A 20-40 um web between two through-openings (#7942 stopped merging them) must
+// A thin web between two through-openings (#7942 stopped merging them) must
 // survive the analytic cut closed: consolidation's size rules used to drop its
 // rim faces and open the mesh. Both cellular-cut paths are exercised.
+
+/// Half-gaps of 1, 2 and 3 snap-grid steps: `subtract_rect_openings` snaps
+/// opening edges to `SNAP_GRID`, so only whole steps give distinct webs. The
+/// webs are 2, 4 and 6 steps (about 31, 61 and 92 um), all under the old
+/// 0.1 mm weld.
+const WEB_GAPS: [f64; 3] = [crate::kernel::mesh_bridge::SNAP_GRID, 2.0 * crate::kernel::mesh_bridge::SNAP_GRID, 3.0 * crate::kernel::mesh_bridge::SNAP_GRID];
 
 /// Wall of `WALL_M3`'s family, 6 x 0.2 x 3 m, cut by two full-height openings
 /// `gap` either side of x = 0, so a web of 2 * `gap` remains.
@@ -155,7 +161,7 @@ fn raw_tris(gap: f64) -> usize {
 
 #[test]
 fn thin_residual_between_rect_openings_stays_closed() {
-    for gap in [0.00001, 0.00002] {
+    for gap in WEB_GAPS {
         let ctx = context(web_openings(gap), None);
         assert_eq!(ctx.merged_openings.len(), 2, "the authored gap must survive the merge");
         let router = GeometryRouter::new();
@@ -169,7 +175,7 @@ fn thin_residual_between_rect_openings_stays_closed() {
 
 #[test]
 fn thin_residual_between_param_openings_is_rejected_and_stays_closed() {
-    for gap in [0.00001, 0.00002] {
+    for gap in WEB_GAPS {
         let hx = (2.0 - gap) / 2.0;
         let param = ParamRectCut {
             host: param_box([0.0, 0.0, 1.5], [3.0, 1.5, 0.1]),

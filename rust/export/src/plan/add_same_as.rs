@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Reused bodies for [`super::super::Disposition::Add`]: a new product with
-//! the body representations of a product already in the source. A child of
-//! `add`, which builds through it. Openings that void the source, its
-//! projections and its layer assignments are not carried; an Add that needs
-//! openings declares its own.
+//! every representation of a product already in the source, not only its
+//! body. A child of `add`, which builds through it. Openings that void the
+//! source, its projections and the layer assignments of its representations
+//! are not carried; an Add that needs openings declares its own.
 //!
 //! The new product gets its own `IfcProductDefinitionShape` and its own
 //! representations, one per representation of the source product, in the
 //! same context with the same identifier and type, listing the source's own
 //! items. Items are positioned relative to the object placement, so at its
-//! own placement the new product shows the same geometry, and a style on an
-//! item styles both. The shape itself is not shared: IFC2X3's inverse
-//! `ShapeOfProduct` allows one product per shape.
+//! own placement the new product shows the same geometry, and a style or a
+//! layer assignment on an item applies to both. The shape itself is not
+//! shared: IFC2X3's inverse `ShapeOfProduct` allows one product per shape.
 
 use crate::plan::add_types::{NewObject, Representation};
 use crate::plan::attrs::attribute_index;
@@ -61,29 +61,29 @@ impl AddState<'_, '_> {
         }
         let mut out = Vec::with_capacity(reps.len());
         for rep in reps {
-            let at = format!("representation source {source}: representation #{rep}");
+            let at = || format!("representation source {source}: representation #{rep}");
             let e = entity(rep);
             let Some(context) = scalar_attr(index, schema, rep, &e, "ContextOfItems").filter(|c| index.contains(*c)) else {
-                return Err(format!("{at} has no readable context"));
+                return Err(format!("{} has no readable context", at()));
             };
             if self.removed.contains(&context) {
-                return Err(format!("{at} is in a context this plan removes"));
+                return Err(format!("{} is in a context this plan removes", at()));
             }
             if self.removed.contains(&rep) {
-                return Err(format!("{at} is removed by this plan"));
+                return Err(format!("{} is removed by this plan", at()));
             }
             let items = list_attr(index, schema, rep, &e, "Items").unwrap_or_default();
             if items.is_empty() {
-                return Err(format!("{at} has no items"));
+                return Err(format!("{} has no items", at()));
             }
             if let Some(item) = items.iter().find(|i| !index.contains(**i) || self.removed.contains(i)) {
                 let why = if index.contains(*item) { "is removed by this plan" } else { "is not in the source" };
-                return Err(format!("{at}: item #{item} {why}"));
+                return Err(format!("{}: item #{item} {why}", at()));
             }
             let line = index.raw_line(rep).unwrap_or_default();
             let raw = |attr| crate::step_text::attribute_of(&line, attribute_index(schema, &e, attr)?);
             let (Some(identifier), Some(rep_type)) = (raw("RepresentationIdentifier"), raw("RepresentationType")) else {
-                return Err(format!("{at} does not scan"));
+                return Err(format!("{} does not scan", at()));
             };
             out.push(ReusedRepresentation { entity: e, context, identifier, rep_type, items });
         }

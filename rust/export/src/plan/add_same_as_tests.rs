@@ -213,6 +213,52 @@ fn a_body_a_patch_replaces_is_not_reused() {
 }
 
 #[test]
+fn a_reshaped_body_is_not_reused_while_another_product_keeps_the_old_one() {
+    for schema in SCHEMAS {
+        // Door `#220` shares the door's shape `#203`, so the patch's sweep
+        // leaves `#203`, `#204` and `#206` in place.
+        let mut fields: Vec<(&str, String)> = [("GlobalId", "'0000000000000000000220'"), ("Name", "'Twin'"), ("ObjectPlacement", "#201"), ("Representation", "#203")]
+            .map(|(n, v)| (n, v.to_string()))
+            .to_vec();
+        if schema == "IFC2X3" {
+            fields.push(("OwnerHistory", "#5".into()));
+        }
+        let twin = build_record(schema, 220, "IFCDOOR", &fields) + "\n";
+        let source = String::from_utf8(door_scene(schema)).unwrap().replacen("ENDSEC;\nEND-ISO", &format!("{twin}ENDSEC;\nEND-ISO"), 1).into_bytes();
+        let mesh = TriangleMesh::new(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], vec![[0, 2, 1], [0, 1, 3], [1, 2, 3], [0, 3, 2]]);
+        let reshape = vec![(ObjectRef::Id(200), Disposition::Patch(Patch::new().with_geometry(GeometryPatch::new(mesh))))];
+        let (alone, _) = run(&source, reshape.clone());
+        assert!(alone.windows(5).any(|w| w == b"#206="), "{schema}: the old body survives the sweep");
+        let door = copy(1, IfcClass::Door, ObjectRef::Guid(DOOR.into()), Some(ObjectRef::Id(70)), 5.0);
+        let reason = refusal(&source, reshape, door);
+        assert!(reason.contains(&format!("{DOOR} gets a new body from a patch in this plan")), "{schema}: {reason}");
+    }
+}
+
+#[test]
+fn a_mapped_body_outlives_its_deleted_type_and_goes_with_its_map() {
+    for schema in SCHEMAS {
+        let source = products_with_geometry(schema);
+        let wall = || copy(1, IfcClass::Wall, ObjectRef::Id(12), None, 20.0);
+
+        // Deleting type `#120` keeps map `#113`: mapped items `#112` and `#132` still name it.
+        let (out, report) = run(&source, vec![(ObjectRef::Id(120), Disposition::Delete), add(wall())]);
+        assert_clean(&report, schema);
+        assert_valid(&out, schema);
+        assert!(!FileIndex::scan(&out, &Default::default()).contains(120), "{schema}: the type goes");
+        assert_eq!(type_in(&out, 113), "IFCREPRESENTATIONMAP", "{schema}: its map stays");
+        let (_, reps) = shape_of(&out, schema, id_in(&out, gid(1)));
+        assert_eq!(reps[0].1[3], "(#112)", "{schema}");
+
+        // A record below an item goes only with the item that names it.
+        for below in [113, 115, 117] {
+            let reason = refusal(&source, vec![(ObjectRef::Id(below), Disposition::Delete)], wall());
+            assert!(reason.contains("representation #111: item #112 is removed by this plan"), "{schema}: #{below}: {reason}");
+        }
+    }
+}
+
+#[test]
 fn a_body_added_by_the_same_plan_is_not_reused() {
     let source = products_with_geometry("IFC4");
     let first = object(IfcClass::Wall, gid(1), None, Representation::Extrusion(block(1.0, 1.0, 1.0)));

@@ -131,14 +131,16 @@ pub enum Representation {
     /// maps, or a new type with a `representation`. The colour is the
     /// type's.
     Mapped(MappedBody),
-    /// The body representations of a product in the source: the object gets
-    /// its own `IfcProductDefinitionShape` and one representation per
-    /// representation of that product (same context, identifier and type)
-    /// listing the product's own items, so their styles carry over. Items are
-    /// positioned relative to the object placement, so the object shows the
-    /// same body at its own placement. The colour is the product's. Openings
-    /// that void the product, its projections and its layer assignments are
-    /// not carried; an object that needs openings declares its own.
+    /// Every representation of a product in the source (`Body`, `Axis`,
+    /// `FootPrint`, `Box`, ...): the object gets its own
+    /// `IfcProductDefinitionShape` and one representation per representation
+    /// of that product (same context, identifier and type) listing the
+    /// product's own items, so their styles and item-level layer assignments
+    /// carry over. Items are positioned relative to the object placement, so
+    /// the object shows the same geometry at its own placement. The colour is
+    /// the product's. Openings that void the product, its projections and the
+    /// layer assignments of its representations are not carried; an object
+    /// that needs openings declares its own.
     SameAs(ObjectRef),
 }
 

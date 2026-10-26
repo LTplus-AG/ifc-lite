@@ -2749,11 +2749,35 @@ jobs:
       - name: Package tests (shard ${{ matrix.shard }}/4)
         env:
           SHARD: ${{ matrix.shard }}
+          IFC_LITE_SECTION_EVIDENCE_DIR: ${{ runner.temp }}/section-export-7711-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           filters_txt=$(node scripts/ci-node-test-shards.mjs --shard "$SHARD")
           mapfile -t filters <<<"$filters_txt"
           echo "turbo filters: ${filters[*]}"
           pnpm exec turbo test --only --concurrency=1 "${filters[@]}"
+      # Export is pinned to shard 3 by scripts/ci-node-test-shards.mjs.
+      # Its real-WASM tests above generate a fresh Haus crop; missing fixture,
+      # runtime, or evidence must fail the probe rather than count as coverage.
+      - name: Setup independent section-export oracle
+        if: matrix.shard == 3
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Reopen current Haus crop with IfcOpenShell
+        if: matrix.shard == 3
+        env:
+          IFC_LITE_SECTION_EVIDENCE_DIR: ${{ runner.temp }}/section-export-7711-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          pip install -r tools/ifcopenshell_reference/requirements.lock
+          python tools/ifcopenshell_reference/probe_section_export.py tests/models/ara3d/AC20-FZK-Haus.ifc "$IFC_LITE_SECTION_EVIDENCE_DIR"
+      - name: Upload section-export oracle receipts
+        if: always() && matrix.shard == 3
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: section-export-7711-oracle
+          path: ${{ runner.temp }}/section-export-7711-${{ github.run_id }}-${{ github.run_attempt }}/*.json
+          if-no-files-found: error
+          retention-days: 14
       # The root-level suites below are not turbo packages, so the package
       # split above cannot reach them. They run once, on the catch-all shard.
       - name: Integration tests (parse → quantities → export)

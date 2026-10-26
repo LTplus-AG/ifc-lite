@@ -107,7 +107,8 @@
       "env": [
         "TEST_PATTERN",
         "TEST_SHARD",
-        "TEST_SHARDS"
+        "TEST_SHARDS",
+        "IFC_LITE_SECTION_EVIDENCE_DIR"
       ]
     },
     "lint": {

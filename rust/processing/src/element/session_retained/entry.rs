@@ -86,7 +86,7 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
             };
             execution.init_type_maps()?;
             execution.start_next_program(decoder, router)?;
-            execution.refuse_final_affines(decoder, router)?;
+            execution.refuse_incomplete_shape(decoder, router)?;
             Ok(execution)
         })
     }

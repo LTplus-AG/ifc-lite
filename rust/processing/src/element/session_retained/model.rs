@@ -121,7 +121,6 @@ pub async fn run_model_with_worker<W: AsyncRetainedExecutor>(
             continue;
         }
         summary.candidates += 1;
-        let exhausted = worker.is_none() && attempts >= max_attempts;
         let product_start = std::time::Instant::now();
         let mut acquire_ms = 0.;
         let mut bounded_acquire = || {
@@ -134,22 +133,16 @@ pub async fn run_model_with_worker<W: AsyncRetainedExecutor>(
             acquire_ms += start.elapsed().as_secs_f64() * 1000.;
             result
         };
-        let outcome = if exhausted {
-            Err(RetainedExecutionError::Runtime(RuntimeFault::transport(
-                "worker restart budget exhausted",
-            )))
-        } else {
-            product(
-                &mut decoder,
-                &router,
-                &snapshot,
-                product_id,
-                options,
-                worker,
-                &mut bounded_acquire,
-            )
-            .await
-        };
+        let outcome = product(
+            &mut decoder,
+            &router,
+            &snapshot,
+            product_id,
+            options,
+            worker,
+            &mut bounded_acquire,
+        )
+        .await;
         let ms = (product_start.elapsed().as_secs_f64() * 1000. - acquire_ms).max(0.);
         summary.product_ms += ms;
         summary.acquire_ms += acquire_ms;

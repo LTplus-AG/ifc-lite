@@ -208,3 +208,55 @@ fn reused_retired_domain_is_discarded_and_replacements_are_bounded_per_model() {
     assert_eq!(acquired.get(), 3);
     assert!(worker.is_none());
 }
+
+// #7955 / #8183: exhaustion is checked only when a product needs a worker.
+#[test]
+fn exhausted_restart_budget_preserves_source_refusals() {
+    let mut text =
+        include_str!("../../../tests/fixtures/cli-retained/layered-wall.ifc").to_string();
+    let mut first_products = String::new();
+    for id in 100..104 {
+        first_products.push_str(&format!(
+            "#{id}=IFCBUILDINGELEMENTPROXY('p{id}',$,$,$,$,#24,#26,$,.NOTDEFINED.);\n"
+        ));
+    }
+    text = text.replace("#27=IFCWALL", &(first_products + "#27=IFCWALL"));
+    text = text.replace(
+        "ENDSEC;\nEND-ISO",
+        "#104=IFCBUILDINGELEMENTPROXY('last',$,$,$,$,#24,#26,$,.NOTDEFINED.);\nENDSEC;\nEND-ISO",
+    );
+    let acquired = Cell::new(0);
+    let mut outcomes = Vec::new();
+    let summary = block_on(run_model(
+        SourceBundle::new(text.into_bytes()),
+        &ModelOptions::default(),
+        || {
+            acquired.set(acquired.get() + 1);
+            Ok(peer())
+        },
+        |outcome| match outcome {
+            ProductOutcome::Refused {
+                product_id,
+                refusal,
+                ..
+            } => {
+                outcomes.push((product_id, refusal.code()));
+            }
+            _ => panic!("inert peer cannot publish"),
+        },
+    ))
+    .unwrap();
+    assert_eq!(acquired.get(), 4);
+    assert_eq!(summary.restarts, 3);
+    assert_eq!(
+        outcomes,
+        vec![
+            (100, "worker_fault"),
+            (101, "worker_fault"),
+            (102, "worker_fault"),
+            (103, "worker_fault"),
+            (27, "material_layer_strategy"),
+            (104, "worker_fault"),
+        ]
+    );
+}

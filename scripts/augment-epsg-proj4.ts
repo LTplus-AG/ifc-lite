@@ -37,7 +37,7 @@ function parseArgs(argv: string[]): { concurrency: number; compoundCodes: string
   for (const arg of argv) {
     if (arg === '--compound-codes') throw new Error('Expected --compound-codes=CODE[,CODE...]');
     if (arg.startsWith('--compound-codes=')) {
-      compoundCodes = arg.slice('--compound-codes='.length).split(',');
+      compoundCodes = [...new Set(arg.slice('--compound-codes='.length).split(','))];
       if (!compoundCodes.every(code => /^\d+$/.test(code))) throw new Error('Expected numeric compound codes');
     }
     if (arg.startsWith('--concurrency=')) {

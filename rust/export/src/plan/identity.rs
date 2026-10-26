@@ -195,7 +195,7 @@ pub(crate) struct Identity {
 }
 
 impl Identity {
-    pub(crate) fn new(app: &ExportingApplication) -> Result<Self, String> {
+    fn new(app: &ExportingApplication) -> Result<Self, String> {
         let stamp = &app.changed_at;
         let keeps = "the export keeps the source's attribution";
         let seconds = epoch_seconds(stamp)

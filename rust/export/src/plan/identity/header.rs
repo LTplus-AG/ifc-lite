@@ -25,10 +25,11 @@ impl Identity {
         format!("{} - {} - {}", self.app.developer, self.app.full_name, self.app.version)
     }
 
-    /// `Identity::new`, with how the header reads reported in `findings`:
-    /// the one place both the plan and the skeleton resolve the exporting
-    /// application. The error is the change time it can't attribute; each
-    /// caller decides whether that refuses or is reported.
+    /// The exporting application as the export's identity, with a header
+    /// that doesn't follow the agreement reported in `findings`: the one
+    /// place both the plan and the skeleton resolve it. The error is a change
+    /// time it can't attribute; each caller decides whether that refuses or
+    /// is reported.
     pub(crate) fn resolve(app: &ExportingApplication, findings: &mut Vec<ValidationFinding>) -> Result<Self, String> {
         let identity = Self::new(app)?;
         findings.extend(identity.header_note().map(|message| ValidationFinding::new(None, message)));

@@ -26,7 +26,16 @@ extern "C" {
     pub(super) fn affine(this: &Driver, object: &JsValue, matrix: &[f64]) -> js_sys::Promise;
     #[wasm_bindgen(method, js_name = boolean)]
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn boolean_call(this: &Driver, left: &JsValue, right: &JsValue, matrix: &[f64], op: u32, chord: f64, angle: f64, max_bytes: u32) -> js_sys::Promise;
+    pub(super) fn boolean_call(
+        this: &Driver,
+        left: &JsValue,
+        right: &JsValue,
+        matrix: &[f64],
+        op: u32,
+        chord: f64,
+        angle: f64,
+        max_bytes: u32,
+    ) -> js_sys::Promise;
     #[wasm_bindgen(method)]
     fn qualify(this: &Driver) -> js_sys::Promise;
     #[wasm_bindgen(method)]
@@ -67,8 +76,14 @@ pub(super) fn driver_error(error: JsValue) -> BrowserError {
         .or_else(|| error.as_string())
         .unwrap_or_else(|| "unknown driver failure".into());
     if let Ok(status) = js_sys::Reflect::get(&error, &JsValue::from_str("kernelStatus")) {
-        if let Some(status) = status.as_f64().filter(|s| s.fract() == 0. && *s >= i32::MIN as f64 && *s <= i32::MAX as f64) {
-            return BrowserError::Kernel { status: status as i32, message };
+        if let Some(status) = status
+            .as_f64()
+            .filter(|s| s.fract() == 0. && *s >= i32::MIN as f64 && *s <= i32::MAX as f64)
+        {
+            return BrowserError::Kernel {
+                status: status as i32,
+                message,
+            };
         }
     }
     BrowserError::Driver(message)
@@ -118,7 +133,8 @@ impl BrowserWorker {
             .map_err(driver_error)?
             .as_f64()
             .filter(|bits| bits.fract() == 0. && (0. ..=f64::from(u32::MAX)).contains(bits))
-            .ok_or_else(|| BrowserError::Driver("invalid capability bits".into()))? as u32;
+            .ok_or_else(|| BrowserError::Driver("invalid capability bits".into()))?
+            as u32;
         self.owner.validate()?;
         flight.disarm();
         Ok(BrowserCapabilities::select(
@@ -171,8 +187,10 @@ impl BrowserWorker {
         .await
         .map_err(driver_error)?;
         self.owner.validate()?;
-        let object = js_sys::Reflect::get(&value, &JsValue::from_str("object")).map_err(driver_error)?;
-        let mesh = js_sys::Reflect::get(&value, &JsValue::from_str("mesh")).map_err(driver_error)?;
+        let object =
+            js_sys::Reflect::get(&value, &JsValue::from_str("object")).map_err(driver_error)?;
+        let mesh =
+            js_sys::Reflect::get(&value, &JsValue::from_str("mesh")).map_err(driver_error)?;
         let mesh: Mesh = serde_wasm_bindgen::from_value(mesh)
             .map_err(|error| BrowserError::Driver(error.to_string()))?;
         let (source_from_evaluation, evaluation_from_source) = (

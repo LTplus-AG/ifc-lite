@@ -47,20 +47,41 @@ impl MeshInfo {
             return Err("invalid retained mesh info length");
         }
         let word = |i| u32::from_le_bytes([bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]);
-        Ok(Self { vertices: word(0), triangles: word(4), faces: word(8),
-            boundary: word(12), spine: word(16), failures: word(20) })
+        Ok(Self {
+            vertices: word(0),
+            triangles: word(4),
+            faces: word(8),
+            boundary: word(12),
+            spine: word(16),
+            failures: word(20),
+        })
     }
     pub fn is_zero(&self) -> bool {
-        *self == Self { vertices: 0, triangles: 0, faces: 0, boundary: 0, spine: 0, failures: 0 }
+        *self
+            == Self {
+                vertices: 0,
+                triangles: 0,
+                faces: 0,
+                boundary: 0,
+                spine: 0,
+                failures: 0,
+            }
     }
     pub fn buffer_bytes(&self, max_bytes: u64) -> Result<u64, &'static str> {
-        if self.vertices == 0 || self.triangles == 0 || self.faces == 0 ||
-            self.boundary != 0 || self.spine != 0 || self.failures != 0 {
+        if self.vertices == 0
+            || self.triangles == 0
+            || self.faces == 0
+            || self.boundary != 0
+            || self.spine != 0
+            || self.failures != 0
+        {
             return Err("partial tessellation returned as success");
         }
         // u32 counts widened before arithmetic: cannot overflow u64.
         let bytes = u64::from(self.vertices) * 24 + u64::from(self.triangles) * 88;
-        if bytes > max_bytes { return Err("mesh exceeds max_bytes"); }
+        if bytes > max_bytes {
+            return Err("mesh exceeds max_bytes");
+        }
         Ok(bytes)
     }
 }

@@ -140,3 +140,6 @@ async fn retained_browser_invalid_limits_preserve_actual_worker_and_existing_lea
     assert_eq!(worker.incarnation(), 0);
     assert!(original.validate_live().is_err());
 }
+
+#[path = "parity_tests.rs"]
+mod parity_tests;

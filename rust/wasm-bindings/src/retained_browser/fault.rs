@@ -13,3 +13,29 @@ impl From<BrowserError> for RuntimeFault {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    // Refs #7955: status is evidence, not text parsed by the product controller.
+    #[test]
+    fn retained_browser_kernel_fault_preserves_status_without_executor_variants() {
+        let fault: RuntimeFault = BrowserError::Kernel {
+            status: 8,
+            message: "copy started".into(),
+        }
+        .into();
+        assert_eq!(
+            fault,
+            RuntimeFault::kernel(8, "browser kernel 8: copy started")
+        );
+        assert_ne!(
+            fault,
+            RuntimeFault::transport("browser kernel 8: copy started")
+        );
+        assert_eq!(
+            RuntimeFault::from(BrowserError::WrongWorker),
+            RuntimeFault::retired("browser worker retired or foreign")
+        );
+    }
+}

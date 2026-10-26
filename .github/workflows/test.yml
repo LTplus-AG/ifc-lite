@@ -3131,6 +3131,10 @@ jobs:
           cargo clippy -p ifc-lite-processing --features retained-runtime --all-targets -- -D warnings
           cargo test -p ifc-lite-processing --features retained-runtime --lib element::session_retained
           cargo test -p ifc-lite-processing --features retained-runtime --test m1_executor
+          cargo test -p ifc-lite-wasm --lib --features retained-browser retained_browser
+          cargo clippy -p ifc-lite-wasm --features retained-browser --all-targets -- -D warnings
+          cargo clippy --target wasm32-unknown-unknown -p ifc-lite-geometry -p ifc-lite-processing -p ifc-lite-wasm -- -D warnings
+          cargo clippy --target wasm32-unknown-unknown -p ifc-lite-geometry -p ifc-lite-processing -p ifc-lite-wasm --features ifc-lite-wasm/retained-browser -- -D warnings
 
       # The feature legs (parquet-bos, csg_manifold_gate, csg_capture, the
       # all-features clippy) run in `rust-full` below -- OFF the PR lane,

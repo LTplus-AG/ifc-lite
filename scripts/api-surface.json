@@ -10428,6 +10428,7 @@
     "default: function",
     "diffBuildComponentFingerprints: function",
     "diffBuildDataFingerprint: function",
+    "diffCheckFingerprintCollections: function",
     "diffCreateSidecar: function",
     "diffCreateSidecarValue: function",
     "diffIdentityMapFromContentMatches: function",

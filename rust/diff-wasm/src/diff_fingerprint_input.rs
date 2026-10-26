@@ -5,8 +5,9 @@
 //! units while observing only the typed projection, never ignored record fields.
 use ifc_lite_diff::input::{DataFingerprintInput, PropertyEntryInput, PropertySetInput,
     QuantitySetInput, TypeAssignmentInput, PropertyValue};
+use ifc_lite_diff::fingerprint::{check_property_sets, check_quantity_sets, check_type_assignments};
 use ifc_lite_diff::JsString as NativeJsString;
-use ifc_lite_diff::sparse_collection::{Slot, SparseCollection};
+use ifc_lite_diff::sparse_collection::SparseCollection;
 use serde::{Deserialize, Deserializer, de::{DeserializeOwned, Error as _, Visitor, SeqAccess, MapAccess}};
 use wasm_bindgen::prelude::*;
 use std::{cell::RefCell, fmt};
@@ -59,9 +60,10 @@ where D: Deserializer<'de>, T: Deserialize<'de> {
 
 /// An absent index (hole) is skipped and kept as a hole, but a PRESENT `null` or
 /// `undefined` element throws when the record's `name` is read. serde cannot
-/// tell a hole from `undefined`, so read one `length`, then HasProperty/Get
-/// per index in order (#8042, #8114). This is not full Array.map observation
-/// parity: the raw decoder does not read the live `map` or `constructor`.
+/// tell a hole from `undefined`, so read one `length` with Array.map's ToLength
+/// and RangeError bound, then HasProperty/Get per index in order (#8042, #8114).
+/// This is not full Array.map observation parity: the raw decoder does not read
+/// the live `map` or `constructor` (the oracle reads it before its RangeError).
 struct Sparse<T>(SparseCollection<T>);
 impl<'de, T: DeserializeOwned> Deserialize<'de> for Sparse<T> {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
@@ -71,36 +73,63 @@ impl<'de, T: DeserializeOwned> Deserialize<'de> for Sparse<T> {
             return Vec::<T>::deserialize(super::diff_fingerprint_de::Deserializer(original))
                 .map(|values| Self(values.into())).map_err(nested_error::<D::Error>);
         }
-        let length = super::diff_fingerprint_host::array_length(&original).map_err(raise::<D::Error>)?;
-        // Do not reserve a file-supplied length: an early invalid slot must
-        // throw before a huge sparse array can exhaust WASM memory.
-        let mut slots = Vec::new();
+        let length = super::diff_fingerprint_host::sparse_array_length(&original).map_err(raise::<D::Error>)?;
+        // Never reserve a file-supplied length, and COUNT holes: a valid
+        // 2^32 - 1 slot array costs O(present) memory. CPU stays one host
+        // HasProperty per index, as in the oracle's own map walk.
+        let mut slots = SparseCollection::default();
         for index in 0..length {
             let key = JsValue::from_f64(f64::from(index));
-            if !js_sys::Reflect::has(&original, &key).map_err(raise::<D::Error>)? { slots.push(Slot::Hole); continue; }
+            if !js_sys::Reflect::has(&original, &key).map_err(raise::<D::Error>)? { slots.push_holes(1); continue; }
             let element = js_sys::Reflect::get(&original, &key).map_err(raise::<D::Error>)?;
             if element.is_null() || element.is_undefined() {
                 return Err(null_record(element.is_null()));
             }
-            slots.push(Slot::Present(super::diff_fingerprint_de::from_value(element).map_err(nested_error::<D::Error>)?));
+            slots.push(super::diff_fingerprint_de::from_value(element).map_err(nested_error::<D::Error>)?);
         }
-        Ok(Self(SparseCollection(slots)))
+        Ok(Self(slots))
     }
 }
 fn optional_sparse<'de, D, T>(deserializer: D) -> Result<SparseCollection<T>, D::Error>
 where D: Deserializer<'de>, T: DeserializeOwned {
     Option::<Sparse<T>>::deserialize(deserializer).map(|slots| slots.map_or_else(Default::default, |slots| slots.0))
 }
-fn component_sets<'de, D, T>(deserializer: D) -> Result<SparseCollection<T>, D::Error>
-where D: Deserializer<'de>, T: DeserializeOwned {
-    let sets: SparseCollection<T> = optional_sparse(deserializer)?;
-    // The oracle maps the WHOLE current collection, then iterates it before
-    // observing the next collection. A present null in this array wins over
-    // its holes, but its holes win over errors in a later array (#8114).
-    if DECODE_STATE.with(|state| state.borrow().components) && sets.holes() > 0 {
-        return Err(null_record(false));
-    }
-    Ok(sets)
+fn components() -> bool { DECODE_STATE.with(|state| state.borrow().components) }
+/// Ask the host engine whether it can build a string this long (#8114).
+fn fits<E: serde::de::Error>(length: u64) -> Result<(), E> {
+    super::diff_fingerprint_host::string_fits(length as f64).map_err(raise::<E>)
+}
+// The oracle maps the WHOLE current collection, sorts it (stableSerialize
+// tiebreaks) and, for components, hashes every set's members and then iterates
+// its holes, all before observing the next collection. A present null in this
+// array wins over its string lengths; a length over the engine maximum wins
+// over its holes; both win over errors in a later array (#8114).
+fn outer_holes<E: serde::de::Error>(components: bool, holes: usize) -> Result<(), E> {
+    if components && holes > 0 { Err(null_record(false)) } else { Ok(()) }
+}
+fn checked_property_sets<'de, D: Deserializer<'de>>(deserializer: D) -> Result<SparseCollection<PropertySetInput>, D::Error> {
+    let sets = optional_sparse::<D, PropertySet>(deserializer)?
+        .map(|set| PropertySetInput { name: set.name.0, properties: set.properties.0.map(entry) });
+    check_property_sets(&sets, components(), &mut fits::<D::Error>).map(|()| sets)
+}
+fn checked_quantity_sets<'de, D: Deserializer<'de>>(deserializer: D) -> Result<SparseCollection<QuantitySetInput>, D::Error> {
+    let sets = optional_sparse::<D, QuantitySet>(deserializer)?
+        .map(|set| QuantitySetInput { name: set.name.0, quantities: set.quantities.0.map(entry) });
+    check_quantity_sets(&sets, components(), &mut fits::<D::Error>).map(|()| sets)
+}
+fn property_sets<'de, D: Deserializer<'de>>(deserializer: D) -> Result<SparseCollection<PropertySetInput>, D::Error> {
+    let sets = checked_property_sets(deserializer)?;
+    outer_holes(components(), sets.holes()).map(|()| sets)
+}
+fn quantity_sets<'de, D: Deserializer<'de>>(deserializer: D) -> Result<SparseCollection<QuantitySetInput>, D::Error> {
+    let sets = checked_quantity_sets(deserializer)?;
+    outer_holes(components(), sets.holes()).map(|()| sets)
+}
+fn type_assignments<'de, D: Deserializer<'de>>(deserializer: D) -> Result<SparseCollection<TypeAssignmentInput>, D::Error> {
+    let types = optional_sparse::<D, TypeAssignment>(deserializer)?.map(|value| TypeAssignmentInput {
+        name: value.name.map(|value| value.0), type_name: value.type_name.map(|value| value.0),
+    });
+    check_type_assignments(&types, components(), &mut fits::<D::Error>).map(|()| types)
 }
 
 // Match input.rs defaults and field names, but deserialize every typed string
@@ -115,12 +144,12 @@ struct Input {
     object_type: Option<LosslessString>,
     predefined_type: Option<LosslessString>,
     tag: Option<LosslessString>,
-    #[serde(deserialize_with = "component_sets")]
-    property_sets: SparseCollection<PropertySet>,
-    #[serde(deserialize_with = "component_sets")]
-    quantity_sets: SparseCollection<QuantitySet>,
-    #[serde(deserialize_with = "optional_sparse")]
-    type_assignments: SparseCollection<TypeAssignment>,
+    #[serde(deserialize_with = "property_sets")]
+    property_sets: SparseCollection<PropertySetInput>,
+    #[serde(deserialize_with = "quantity_sets")]
+    quantity_sets: SparseCollection<QuantitySetInput>,
+    #[serde(deserialize_with = "type_assignments")]
+    type_assignments: SparseCollection<TypeAssignmentInput>,
     #[serde(deserialize_with = "optional_values")]
     materials: Vec<LosslessString>,
     #[serde(deserialize_with = "optional_values")]
@@ -184,13 +213,36 @@ impl<'de> Deserialize<'de> for Value {
 fn entry(value: Entry) -> PropertyEntryInput {
     PropertyEntryInput { name: value.name.0, value: value.value.0 }
 }
+/// The original host exception, else the first serde diagnostic.
+fn take_raised(error: serde_wasm_bindgen::Error) -> JsValue {
+    DECODE_STATE.with(|state| state.borrow_mut().raised.take())
+        .unwrap_or_else(|| JsValue::from_str(&error.to_string()))
+}
+
+/// One collection the facade has just projected into a fresh DTO (#8114).
+/// Only its engine string-length checks run: the facade's own host read raises
+/// the outer-hole TypeError, and the final data text is checked by the builder.
+#[derive(Default, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+#[allow(dead_code)] // Decoded only for the checks its field decoders run.
+struct Collections {
+    #[serde(deserialize_with = "checked_property_sets")]
+    property_sets: SparseCollection<PropertySetInput>,
+    #[serde(deserialize_with = "checked_quantity_sets")]
+    quantity_sets: SparseCollection<QuantitySetInput>,
+    #[serde(deserialize_with = "type_assignments")]
+    type_assignments: SparseCollection<TypeAssignmentInput>,
+}
+pub(super) fn check_collections(value: JsValue, components: bool) -> Result<(), JsValue> {
+    let _scope = DecodeScope::enter(components);
+    super::diff_fingerprint_de::from_value::<Collections>(value).map(drop).map_err(take_raised)
+}
+
 pub(super) fn decode(value: JsValue, components: bool) -> Result<DataFingerprintInput, JsValue> {
     let _scope = DecodeScope::enter(components);
     // Each host observation returns a Result before crossing an owning Rust
     // frame. An outer JS catch cannot run the destructors of abandoned frames.
-    let input = super::diff_fingerprint_de::from_value::<Input>(value)
-        .map_err(|error| DECODE_STATE.with(|state| state.borrow_mut().raised.take())
-            .unwrap_or_else(|| JsValue::from_str(&error.to_string())))?;
+    let input = super::diff_fingerprint_de::from_value::<Input>(value).map_err(take_raised)?;
     Ok(DataFingerprintInput {
         ifc_type: input.ifc_type.0,
         name: input.name.map(|value| value.0),
@@ -198,15 +250,9 @@ pub(super) fn decode(value: JsValue, components: bool) -> Result<DataFingerprint
         object_type: input.object_type.map(|value| value.0),
         predefined_type: input.predefined_type.map(|value| value.0),
         tag: input.tag.map(|value| value.0),
-        property_sets: input.property_sets.map(|set| PropertySetInput {
-            name: set.name.0, properties: set.properties.0.map(entry),
-        }),
-        quantity_sets: input.quantity_sets.map(|set| QuantitySetInput {
-            name: set.name.0, quantities: set.quantities.0.map(entry),
-        }),
-        type_assignments: input.type_assignments.map(|value| TypeAssignmentInput {
-            name: value.name.map(|value| value.0), type_name: value.type_name.map(|value| value.0),
-        }),
+        property_sets: input.property_sets,
+        quantity_sets: input.quantity_sets,
+        type_assignments: input.type_assignments,
         materials: input.materials.into_iter().map(|value| value.0).collect(),
         classifications: input.classifications.into_iter().map(|value| value.0).collect(),
     })

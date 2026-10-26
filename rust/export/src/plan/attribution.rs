@@ -174,12 +174,13 @@ impl<'l> Histories<'l> {
 }
 
 /// Attribute the plan's settled rewrites: to the exporting application when
-/// there is one ([`mark_modified`]); without one, a plan that added objects
-/// or modified records an application would attribute ([`modified_records`])
+/// there is one ([`mark_modified`]); without one, a plan that patched or
+/// added objects, or modified records an application would attribute
+/// ([`modified_records`], which includes a relationship a delete rewrites),
 /// is reported, since the file then credits those changes to their previous
-/// author. Deletions are attributed to no one either way. A plan that named
+/// author. A removed record itself is attributed to no one either way. A plan that named
 /// an application `Ledger::for_plan` could not use has been reported already.
-pub(crate) fn attribute_changes(index: &FileIndex, schema: &str, plan: &ExportPlan, ledger: Option<&mut Ledger>, (patched, removed): (&[u32], &HashSet<u32>), added: usize, mut out: Rewrites) {
+pub(crate) fn attribute_changes(index: &FileIndex, schema: &str, plan: &ExportPlan, ledger: Option<&mut Ledger>, (patched, removed): (&[u32], &HashSet<u32>), changed: bool, mut out: Rewrites) {
     match ledger {
         Some(ledger) => {
             mark_modified(index, schema, ledger, patched, removed, &mut out);
@@ -189,8 +190,8 @@ pub(crate) fn attribute_changes(index: &FileIndex, schema: &str, plan: &ExportPl
             }
         }
         None => {
-            let unattributed = added > 0 || !modified_records(index, schema, patched, out.edits_by_id, removed).is_empty();
-            if plan.context.application.is_none() && unattributed {
+            let unattributed = || changed || !modified_records(index, schema, patched, out.edits_by_id, removed).is_empty();
+            if plan.context.application.is_none() && unattributed() {
                 out.findings.push(ValidationFinding {
                     express_id: None,
                     message: "no ExportingApplication supplied: added objects are attributed to the source's first owner history (or a placeholder one), and modified objects keep their original owner history, so the file credits this export's changes to their previous author".into(),

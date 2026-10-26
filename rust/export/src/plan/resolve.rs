@@ -179,7 +179,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
 
     // Every rewrite has settled: what the plan modified is read off them.
     let out = Rewrites { ids: &mut ids, appended: &mut appended, edits_by_id: &mut edits_by_id, findings: &mut findings };
-    attribute_changes(index, schema, plan, ledger.as_mut(), (&patched_objects, &removed), added, out);
+    attribute_changes(index, schema, plan, ledger.as_mut(), (&patched_objects, &removed), patched + added > 0, out);
 
     let identity = ledger.map(|ledger| ledger.identity);
     Resolution { appended, edits_by_id, removed, reasons, refusals, patched, added, patched_objects, dropped_representations, identity, findings }

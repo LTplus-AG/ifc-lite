@@ -37,6 +37,12 @@ export class SmlibWorkerTransport {
       let bytes = new Uint8Array();
       if (op === 1) { bytes = new Uint8Array(8); new DataView(bytes.buffer).setBigUint64(0, this.session, true); }
       else if (op === 8) { if (!this.objects.delete(view.getUint32(28, true))) throw new Error('fixture: unknown release'); }
+      else if (op === 5 || op === 17) bytes = this.allocate();
+      else if (op === 18) {
+        bytes = new Uint8Array(72); bytes.set(this.allocate());
+        const cert = new DataView(bytes.buffer); cert.setUint32(16, 1, true); cert.setUint32(20, 1, true);
+      }
+      else if (op === 19) { bytes = new Uint8Array(4); new DataView(bytes.buffer).setUint32(0, this.empty ? 1 : 0, true); }
       else if (op === 9) bytes = this.allocate();
       else if (op === 10) { bytes = new Uint8Array(24); this.meshInfo.forEach((n, i) => new DataView(bytes.buffer).setUint32(i * 4, n, true)); }
       else if (op === 11) {
@@ -46,6 +52,7 @@ export class SmlibWorkerTransport {
       const response = new Uint8Array(12 + bytes.length), envelope = new DataView(response.buffer);
       envelope.setUint32(0, 1, true);
       envelope.setUint32(4, this.wrongReply ? 0 : view.getUint32(4, true), true);
+      if (op === this.failOpcode) envelope.setInt32(8, this.kernelStatus, true);
       response.set(bytes, 12);
       return response.buffer;
     });

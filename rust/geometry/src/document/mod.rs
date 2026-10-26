@@ -23,6 +23,9 @@
 //! Operations over definitions land with their first caller.
 
 mod retained;
+#[doc(hidden)]
+#[cfg(feature = "retained-runtime")]
+pub mod retained_wire;
 // Refs #7955: qualify the private receipt consumer.
 #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
 #[cfg_attr(not(test), allow(dead_code))]

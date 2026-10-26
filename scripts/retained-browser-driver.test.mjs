@@ -160,3 +160,57 @@ test('#8048 delayed startup injects the fault into its own transport', async () 
   assert.equal(peer.retired, true);
   assert.equal(driver.live(), false);
 });
+
+const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+test('#7955 E Boolean copies/releases its temporary before certifying and reading the result', async () => {
+  const driver = new RetainedDriver();
+  const a = await evaluate(driver), b = await evaluate(driver), peer = peers.at(-1);
+  const start = peer.commands.length;
+  const result = await driver.boolean(a.object, b.object, identity, 3, 0.001, 5, 4096);
+  assert.deepEqual(opcodes(peer).slice(start), [17, 5, 8, 19, 9, 10, 11, 11, 11, 11, 8]);
+  assert.equal(peer.objects.size, 3, 'two inputs and an independently owned result');
+  driver.releaseObject(a.object); driver.releaseObject(b.object); await flush();
+  assert.ok(driver.objectLive(result.object));
+  assert.equal(peer.objects.size, 1);
+  driver.retire();
+});
+test('#7955 E certified empty Boolean allocates no mesh and keeps an independent lease', async () => {
+  const driver = new RetainedDriver(); const a = await evaluate(driver), peer = peers.at(-1);
+  peer.empty = true; const start = peer.commands.length;
+  const result = await driver.boolean(a.object, a.object, identity, 3, 0.001, 5, 4096);
+  assert.equal(result.empty, true); assert.equal(result.mesh, null);
+  assert.deepEqual(opcodes(peer).slice(start), [17, 5, 8, 19]);
+  assert.equal(peer.objects.size, 2);
+  driver.retire();
+});
+test('#7955 E affine failures preserve typed status and retire only after copy starts', async () => {
+  for (const status of [1, 8]) {
+    const driver = new RetainedDriver(); const a = await evaluate(driver), peer = peers.at(-1);
+    peer.failOpcode = 18; peer.kernelStatus = status;
+    await assert.rejects(driver.affine(a.object, identity), error => error.kernelStatus === status);
+    assert.equal(driver.live(), status !== 8);
+    assert.equal(driver.objectLive(a.object), status !== 8);
+    driver.retire();
+  }
+});
+test('#7955 E affine copy and tessellation preserve input and output leases', async () => {
+  const driver = new RetainedDriver(); const a = await evaluate(driver), peer = peers.at(-1);
+  const start = peer.commands.length;
+  const copy = await driver.affine(a.object, identity);
+  assert.deepEqual(opcodes(peer).slice(start), [18]);
+  const before = peer.objects.size;
+  await driver.tessellate(copy.object, 0.001, 5, 4096);
+  assert.equal(peer.objects.size, before, 'temporary mesh released');
+  driver.releaseObject(a.object); await flush();
+  assert.ok(driver.objectLive(copy.object));
+  driver.retire();
+});
+test('#7955 E foreign leases and invalid limits submit no frames', async () => {
+  const a = new RetainedDriver(), b = new RetainedDriver();
+  const source = await evaluate(a); await evaluate(b); const peer = peers.at(-1);
+  const count = peer.commands.length;
+  await assert.rejects(b.affine(source.object, identity), /foreign/);
+  await assert.rejects(b.tessellate(source.object, 0, 5, 4096), /limits/);
+  assert.equal(peer.commands.length, count);
+  a.retire(); b.retire();
+});

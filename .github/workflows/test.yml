@@ -919,6 +919,8 @@ jobs:
           if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/section-export-7711/metadata.oracle.patch | grep -Fxq 'tests/evidence/section-export-7711/metadata.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/section-export-7711/metadata.oracle.patch)
           # #7955 M1 C: retain executor types; misreport the real layer refusal.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/document/retained_wire.rs | grep -Fxq 'rust/geometry/src/document/retained_wire.rs'; then
+            oracle_args+=(--mutation tests/evidence/m1-e-wasm-runtime/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/element/session_retained/traversal.rs | grep -Fxq 'rust/processing/src/element/session_retained/traversal.rs'; then
             oracle_args+=(--mutation tests/evidence/m1-c-executor-core/behaviour.oracle.patch)
           # #7955 M1 B: retain budget APIs; lose the expired-deadline cause.

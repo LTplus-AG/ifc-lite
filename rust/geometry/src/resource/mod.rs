@@ -3,6 +3,8 @@
 mod account;
 #[cfg(feature = "retained-runtime")]
 mod budget;
+#[cfg(all(feature = "retained-runtime", target_arch = "wasm32"))]
+mod budget_monotonic;
 #[cfg(all(feature = "retained-runtime", test))]
 pub use budget::test_clock as budget_test_clock;
 #[cfg(feature = "retained-runtime")]

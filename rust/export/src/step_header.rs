@@ -13,7 +13,7 @@
 use std::io::Write;
 
 use crate::source_header::SourceHeader;
-use crate::step_text::{escape, quoted};
+use crate::step_text::quoted;
 use crate::StepOptions;
 
 /// Write one quoted, escaped list: `('a','b')`, or `()` for an empty one.
@@ -156,21 +156,21 @@ fn write_header_inner<W: Write>(
     out.write_all(b"ISO-10303-21;\nHEADER;\n")?;
     writeln!(
         out,
-        "FILE_DESCRIPTION({},'{}');",
+        "FILE_DESCRIPTION({},{});",
         quote_list(Some(&description)),
-        escape(implementation_level)
+        quoted(implementation_level)
     )?;
     writeln!(
         out,
-        "FILE_NAME('{}','{}',{},{},'{}','{}','{}');",
-        escape(filename),
-        escape(time_stamp),
+        "FILE_NAME({},{},{},{},{},{},{});",
+        quoted(filename),
+        quoted(time_stamp),
         quote_list(author.as_deref()),
         quote_list(organization.as_deref()),
-        escape(application),
-        escape(originating_system),
-        escape(authorization),
+        quoted(application),
+        quoted(originating_system),
+        quoted(authorization),
     )?;
-    writeln!(out, "FILE_SCHEMA(('{}'));", escape(schema))?;
+    writeln!(out, "FILE_SCHEMA(({}));", quoted(schema))?;
     out.write_all(b"ENDSEC;\nDATA;\n")
 }

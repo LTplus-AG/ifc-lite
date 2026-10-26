@@ -37,9 +37,10 @@ export function tapDriverErrors(current, field) {
 // the result is written as not accepted with the reason and the run exits cleanly.
 export function skipWhenFixturesMissing(output, paths) {
   const missing = paths.filter(path => !existsSync(path));
-  if (!missing.length) return;
+  if (!missing.length) return Promise.resolve();
   const reason = `SKIPPED (not a pass): fixture not found: ${missing.join(', ')}. Run \`pnpm fixtures\` and retry.`;
   writeFileSync(`${output}/result.json`, JSON.stringify({ accepted: false, skipped: true, reason, missing }, null, 2) + '\n');
-  console.log(reason);
-  process.exit(0);
+  // Callers `await` this. When fixtures are missing it never settles: the process exits only once the
+  // message is flushed (process.exit can drop pending pipe output), and no later code may run first.
+  return new Promise(() => process.stdout.write(`${reason}\n`, () => process.exit(0)));
 }

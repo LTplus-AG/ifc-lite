@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 import tarfile
@@ -56,7 +57,9 @@ archive_path = root / 'transfer.tar'
 with archive_path.open('xb') as output:
     result = subprocess.run(['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
                              '-o', 'ConnectTimeout=10', '-o', 'ForwardAgent=no',
-                             host, 'python3', '-', job, jobs_root], input=remote.encode(),
+                             # ssh joins these arguments and a remote shell splits them again, so the
+                             # jobs root is shell-quoted and '--' stops a host from being read as an option.
+                             '--', host, 'python3', '-', job, shlex.quote(jobs_root)], input=remote.encode(),
                             stdout=output, check=True, timeout=900)
 with tarfile.open(archive_path) as archive:
     proof = json.load(archive.extractfile('build-proof.json'))

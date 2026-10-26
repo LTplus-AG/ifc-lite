@@ -56,7 +56,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const { launchNativeChrome, readPhysicalSession, isPhysicalConsole, readHostAdmission } = await import(
   resolve(here, '../evidence/hidpi-navigation-6709/native-20261023/native-platform.mts'));
 mkdirSync(output);
-skipWhenFixturesMissing(output, config.scenarios.flatMap(scenario => scenario.fixtures.map(fixture => fixture.path)));
+await skipWhenFixturesMissing(output, config.scenarios.flatMap(scenario => scenario.fixtures.map(fixture => fixture.path)));
 const tap = `${output}/hover.js`;
 await build({ entryPoints: [resolve(here, 'pick-depth-6881-hover.mjs')], bundle: true, format: 'esm', outfile: tap });
 let current = config.arms.base.buildRoot;

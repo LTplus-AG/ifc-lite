@@ -54,7 +54,7 @@ for (const [entry, outfile] of [['pick-depth-6881-observer.mjs', observer], ['pi
 const fixtures = ['ara3d/AC20-FZK-Haus.ifc', 'buildingsmart/Building-Architecture.ifc'];
 const manifest = JSON.parse(readFileSync(`${root}/tests/models/manifest.json`, 'utf8'));
 const fixtureRoot = process.env.IFC_6881_FIXTURE_ROOT ?? `${root}/tests/models`;
-skipWhenFixturesMissing(output, fixtures.map(name => `${fixtureRoot}/${name}`));
+await skipWhenFixturesMissing(output, fixtures.map(name => `${fixtureRoot}/${name}`));
 const models = fixtures.map(name => {
   const expected = manifest.files.find(row => row.path === name);
   const path = `${fixtureRoot}/${name}`, bytes = readFileSync(path);

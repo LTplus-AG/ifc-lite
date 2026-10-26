@@ -1732,6 +1732,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ifc-lite-retained-native"
+version = "23.6.2"
+dependencies = [
+ "ifc-lite-core",
+ "ifc-lite-geometry",
+ "ifc-lite-geometry-runtime",
+ "ifc-lite-processing",
+ "libc",
+ "serde_json",
+]
+
+[[package]]
 name = "ifc-lite-testkit"
 version = "24.6.2"
 dependencies = [

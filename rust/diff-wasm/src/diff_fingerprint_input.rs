@@ -59,9 +59,10 @@ where D: Deserializer<'de>, T: Deserialize<'de> {
 
 /// An absent index (hole) is skipped and kept as a hole, but a PRESENT `null` or
 /// `undefined` element throws when the record's `name` is read. serde cannot
-/// tell a hole from `undefined`, so read one `length`, then HasProperty/Get
-/// per index in order (#8042, #8114). This is not full Array.map observation
-/// parity: the raw decoder does not read the live `map` or `constructor`.
+/// tell a hole from `undefined`, so read one `length` with Array.map's ToLength
+/// and RangeError bound, then HasProperty/Get per index in order (#8042, #8114).
+/// This is not full Array.map observation parity: the raw decoder does not read
+/// the live `map` or `constructor` (the oracle reads it before its RangeError).
 struct Sparse<T>(SparseCollection<T>);
 impl<'de, T: DeserializeOwned> Deserialize<'de> for Sparse<T> {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
@@ -71,7 +72,7 @@ impl<'de, T: DeserializeOwned> Deserialize<'de> for Sparse<T> {
             return Vec::<T>::deserialize(super::diff_fingerprint_de::Deserializer(original))
                 .map(|values| Self(values.into())).map_err(nested_error::<D::Error>);
         }
-        let length = super::diff_fingerprint_host::array_length(&original).map_err(raise::<D::Error>)?;
+        let length = super::diff_fingerprint_host::sparse_array_length(&original).map_err(raise::<D::Error>)?;
         // Do not reserve a file-supplied length: an early invalid slot must
         // throw before a huge sparse array can exhaust WASM memory.
         let mut slots = Vec::new();

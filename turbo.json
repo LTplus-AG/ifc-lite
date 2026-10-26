@@ -107,9 +107,14 @@
       "env": [
         "TEST_PATTERN",
         "TEST_SHARD",
-        "TEST_SHARDS",
-        "IFC_LITE_SECTION_EVIDENCE_DIR"
+        "TEST_SHARDS"
       ]
+    },
+    "@ifc-lite/export#test": {
+      "dependsOn": ["build"],
+      "cache": false,
+      "env": ["TEST_PATTERN", "TEST_SHARD", "TEST_SHARDS"],
+      "passThroughEnv": ["IFC_LITE_SECTION_EVIDENCE_DIR"]
     },
     "lint": {
       "dependsOn": ["build"],

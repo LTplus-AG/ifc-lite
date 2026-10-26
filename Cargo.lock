@@ -1692,6 +1692,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tracing",
+ "zip",
 ]
 
 [[package]]

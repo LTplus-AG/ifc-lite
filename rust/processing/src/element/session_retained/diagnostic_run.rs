@@ -82,6 +82,11 @@ async fn drive<W: AsyncRetainedExecutor>(mut execution: RuntimeProductExecution<
         })?;
     }
     let witness = execution.into_witness()?;
-    witness.require_final_product().expect_err("intermediate evidence cannot grant final authority");
+    // Intermediate evidence cannot grant final authority. Today the gate always
+    // refuses; should it ever admit, refuse here with its typed cause instead.
+    if witness.require_final_product().is_ok() {
+        return Err(RetainedExecutionError::Unsupported(
+            Unsupported::RetainedFinalPublicationRequiresOpeningLayerAppearanceFaceProofs));
+    }
     Ok((witness, worker))
 }

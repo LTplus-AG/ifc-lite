@@ -10,23 +10,25 @@ run() {
   printf 'M1-E RESULT %s %s\n' "$status" "$*"
   if [ "$status" -ne 0 ]; then result=1; fi
 }
-# Fleet clones transfer committed objects, not local branch names.
+# Pop worktrees share branch refs with other M1 agents. Isolate validation refs
+# before pinning C for the oracle; never move the shared upstream branch.
 expected_base=fb81254cb735f2f426981223f3fd92316ad784ea
-if ! git rev-parse --verify m1/c-executor-core >/dev/null 2>&1; then
-  git branch m1/c-executor-core "$expected_base" || exit 1
-fi
-if [ "$(git rev-parse m1/c-executor-core)" != "$expected_base" ]; then
-  printf 'Refusing mismatched C base\n'; exit 1
-fi
+validation_head=$(git rev-parse HEAD)
+validation_root=$(mktemp -d)
+trap 'rm -rf "$validation_root"' EXIT
+git clone --shared --no-checkout --single-branch "$PWD" "$validation_root/checkout" || exit 1
+git -C "$validation_root/checkout" checkout --detach "$validation_head" || exit 1
+cd "$validation_root/checkout" || exit 1
+git branch m1/c-executor-core "$expected_base" || exit 1
 git rev-parse HEAD m1/c-executor-core
 rustc --version
 node --version
 run pnpm install --frozen-lockfile --prefer-offline
 # Confirm the production-only wasm warning on both unmodified ancestors.
 # The fixture stays under the same pinned toolchain as the checkout.
-comparison_root=$(mktemp -d)
+comparison_root="$validation_root/comparison"
 comparison_source="$comparison_root/source"
-trap 'rm -rf "$comparison_root"' EXIT
+mkdir -p "$comparison_root"
 archive_at_comparison_path() {
   rm -rf "$comparison_source"
   mkdir -p "$comparison_source"

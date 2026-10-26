@@ -59,8 +59,23 @@ pub(crate) fn build_value_record(schema: &str, id: u32, entity_type: &str, name:
     format!("#{id}={entity_type}({});", slots.join(","))
 }
 
+/// The value records a property or quantity set lists and an in-place
+/// write edits: the single property value and every simple quantity
+/// (IFC4X3's `IfcQuantityNumber` included).
+pub(crate) const VALUE_ENTITIES: [&str; 8] = [
+    "IFCPROPERTYSINGLEVALUE",
+    "IFCQUANTITYLENGTH",
+    "IFCQUANTITYAREA",
+    "IFCQUANTITYVOLUME",
+    "IFCQUANTITYCOUNT",
+    "IFCQUANTITYTIME",
+    "IFCQUANTITYWEIGHT",
+    "IFCQUANTITYNUMBER",
+];
+
 pub(crate) fn value_slot_name(value_type: &str) -> &'static str {
     match value_type {
+        "IFCQUANTITYNUMBER" => "NumberValue",
         "IFCQUANTITYLENGTH" => "LengthValue",
         "IFCQUANTITYAREA" => "AreaValue",
         "IFCQUANTITYVOLUME" => "VolumeValue",

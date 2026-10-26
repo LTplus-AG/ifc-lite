@@ -157,17 +157,20 @@ fn existing_user(index: &FileIndex, removed: &HashSet<u32>, schema: &str, org: u
 /// application, names another version or full name than it does: reused
 /// all the same, since UR1 allows one application per identifier.
 pub(crate) fn reuse_note(index: &FileIndex, schema: &str, application: u32, identity: &Identity) -> Option<String> {
-    let read = |attr: &str| index.string_attr(schema, application, "IFCAPPLICATION", attr).unwrap_or_default();
-    let (identifier, version, full_name) = (read("ApplicationIdentifier"), read("Version"), read("ApplicationFullName"));
+    let read = |attr: &str| index.string_attr(schema, application, "IFCAPPLICATION", attr);
+    let (version, full_name) = (read("Version").unwrap_or_default(), read("ApplicationFullName").unwrap_or_default());
+    let identifier = read("ApplicationIdentifier");
     let app = &identity.app;
-    if identifier != app.identifier {
+    if identifier.as_deref() != Some(app.identifier.as_str()) {
         // Reused by name and version (UR2): consumers look the exporter up by
-        // identifier, and the file names it by another.
+        // identifier, and the file names it by another, or by none.
+        let named = identifier.map_or_else(|| "no identifier".to_string(), |id| format!("identifier '{id}'"));
         return Some(format!(
-            "the file already has application #{application} '{full_name}' version '{version}' with identifier '{identifier}'; it is reused (an application's name and version are unique) though the exporting application's identifier is '{}'",
+            "the file already has application #{application} '{full_name}' version '{version}' with {named}; it is reused (an application's name and version are unique) though the exporting application's identifier is '{}'",
             app.identifier
         ));
     }
+    let identifier = identifier.unwrap_or_default();
     (version != app.version || full_name != app.full_name).then(|| {
         format!(
             "the file already has application #{application} with identifier '{identifier}' ('{full_name}' version '{version}'); it is reused for '{}' version '{}', since an identifier names one application",

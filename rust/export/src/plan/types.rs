@@ -305,6 +305,9 @@ pub struct WriteReport {
     pub total: usize,
     pub written: usize,
     pub deleted: usize,
+    /// Patch dispositions that wrote something (not distinct objects: two
+    /// patches of one object count twice; a patch refused whole, or asking
+    /// for nothing, counts not at all).
     pub patched: usize,
     /// Add dispositions that were built. A refused Add is in `refusals`.
     pub added: usize,

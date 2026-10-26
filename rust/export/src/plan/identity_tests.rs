@@ -1043,3 +1043,31 @@ fn an_empty_patch_is_refused() {
     assert_eq!(report.patched, 0, "{report:?}");
     assert!(report.refusals.iter().any(|r| r.object == ObjectRef::Id(10) && r.reason.contains("patch changes nothing")), "{report:?}");
 }
+
+/// A quantity edited in place marks the element quantity listing it, and
+/// the object patched (owner-history PR).
+#[test]
+fn a_quantity_edited_in_place_marks_its_element_quantity() {
+    for schema in SCHEMAS {
+        let src = owned(&crate::plan::test_fixtures::wall_with_type_owned_quantity_set(schema), schema);
+        let length = PropWrite::new("Qto_WallBaseQuantities", "Length", "IFCLENGTHMEASURE", "3.5", PsetKind::Quantity, PropScope::Type);
+        let (out, report) = export(&src, vec![patch(10, vec![length])], context());
+        assert!(report.refusals.is_empty(), "{schema}: {report:?}");
+        assert_eq!(assert_modified_exactly_the_rewritten(schema, &src, &out, &[10]), vec![10, 42], "{schema}");
+    }
+}
+
+/// An application reused by name and version that has no identifier is
+/// said to have none (owner-history PR).
+#[test]
+fn a_reused_application_without_an_identifier_is_said_to_have_none() {
+    let schema = "IFC4";
+    let src = String::from_utf8(source(schema, false)).unwrap();
+    let ours = [
+        build_record(schema, 171, "IFCORGANIZATION", &[("Name", "'ExampleOrg'".into())]),
+        build_record(schema, 173, "IFCAPPLICATION", &[("ApplicationDeveloper", "#171".into()), ("Version", "'2.1'".into()), ("ApplicationFullName", "'ExampleApp'".into())]),
+    ];
+    let src = src.replace("ENDSEC;\nEND-ISO", &format!("{}\nENDSEC;\nEND-ISO", ours.join("\n"))).into_bytes();
+    let (_, report) = export(&src, vec![rename(10)], context());
+    assert!(report.findings.iter().any(|f| f.message.contains("with no identifier")), "{:?}", report.findings);
+}

@@ -14,10 +14,10 @@
 //! [`Skeleton`] always produces the same bytes.
 
 use crate::step_ids::IdAllocator;
-use crate::step_text::escape;
 
 use super::add_types::GlobalId;
 use super::identity::{Identity, Made};
+use super::owner_history::quoted;
 use super::types::{ExportingApplication, ValidationFinding};
 use super::placement::fmt;
 use super::props_synth::ref_list;
@@ -157,7 +157,6 @@ fn build(s: &Skeleton, strict: bool) -> Result<(Vec<u8>, Vec<ValidationFinding>)
     // The exporting application owns what the skeleton creates.
     let identity = identity_of(s, strict, &mut findings)?;
     let history = owner_slot(identity.as_ref(), &mut emit)?;
-    let quoted = |v: &str| format!("'{}'", escape(v));
     let name = |root: &SkeletonRoot| root.name.as_deref().map_or("$".to_string(), quoted);
     let gid = |root: &SkeletonRoot| format!("'{}'", root.global_id.encode());
 
@@ -283,7 +282,7 @@ fn map_conversion(m: &MapConversion, context: u32, metre: u32, emit: &mut Emit) 
         MapUnit::Foot => length_unit(emit, "FOOT", 0.3048, metre)?,
         MapUnit::UsSurveyFoot => length_unit(emit, "US SURVEY FOOT", ifc_lite_core::US_SURVEY_FOOT_M, metre)?,
     };
-    let crs = emit.record("IFCPROJECTEDCRS", &[("Name", format!("'{}'", escape(&m.crs_name))), ("MapUnit", format!("#{map_unit}"))])?;
+    let crs = emit.record("IFCPROJECTEDCRS", &[("Name", quoted(&m.crs_name)), ("MapUnit", format!("#{map_unit}"))])?;
     emit.record(
         "IFCMAPCONVERSION",
         &[

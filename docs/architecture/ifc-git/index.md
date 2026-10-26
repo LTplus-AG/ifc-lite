@@ -196,12 +196,24 @@ substantive one:
    `computeStackHash` in `packages/ifcx/src/canonical.ts`, so choosing it leaves
    one algorithm in the tree rather than adding a third.
 
-   **Not measured: wasm32.** BLAKE3 1.x ships SSE/AVX and NEON backends but no
-   `simd128` one, so the browser path runs its portable implementation while
-   `.cargo/config.toml` enables `simd128` for everything else. The ordering is
-   not in doubt — BLAKE3's compression function is cheaper per byte than
-   SHA-256's, and neither gets hardware help in wasm — but the ratio is, so
-   measure before a browser-diff performance claim rests on it.
+   **The wasm backend is opt-in, and now enabled.** An earlier draft of this
+   section said BLAKE3 1.x ships no `simd128` backend. That was wrong, and the
+   error mattered: 1.8.7 ships `src/wasm32_simd.rs` behind a `wasm32_simd`
+   feature that is **off by default**, so the limitation was our configuration
+   rather than the crate. Left off, the browser path would have run the portable
+   implementation while `.cargo/config.toml` enables `+simd128` for every other
+   wasm32 build in the repo.
+
+   `rust/git` now enables it, verified in both directions rather than assumed:
+   the `wasm32-unknown-unknown` build emits
+   `cargo::rustc-cfg=blake3_wasm32_simd` and the host build emits only
+   `blake3_neon`. The feature is inert off wasm32, because blake3's build script
+   guards it with `if is_wasm32() && is_wasm32_simd()`.
+
+   **Still not measured: the wasm ratio itself.** Only the native numbers above
+   are measured. The ordering is not in doubt — BLAKE3's compression function is
+   cheaper per byte than SHA-256's — but the ratio is, so measure before a
+   browser-diff performance claim rests on it.
 2. **Move `key` out of the element hash and into the tree.** The node address
    becomes content-only; the commit's tree maps `key → node address`. This is
    exactly git's arrangement — a blob is content, a tree maps names to blobs,

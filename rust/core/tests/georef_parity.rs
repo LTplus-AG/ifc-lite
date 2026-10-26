@@ -80,6 +80,7 @@ fn check_case(name: &str, expect: &serde_json::Value, georef: Option<&GeoReferen
         ("mapProjection", &g.map_projection),
         ("mapZone", &g.map_zone),
         ("mapUnit", &g.map_unit),
+        ("wellKnownText", &g.well_known_text),
     ] {
         if let Some(want) = opt_str(expect, key) {
             assert_eq!(

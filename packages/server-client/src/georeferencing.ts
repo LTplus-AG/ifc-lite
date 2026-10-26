@@ -49,6 +49,11 @@ export interface Georeferencing {
   map_unit?: string;
   /** Scale converting MapConversion values to metres (0.001 for mm). */
   map_unit_scale?: number;
-  /** Provenance: "mapConversion" | "ePSetMapConversion" | "siteLocation". */
+  /** Provenance: "mapConversion" | "rigidOperation" | "ePSetMapConversion" | "siteLocation". */
   source?: string;
+  /**
+   * `IfcWellKnownText.WellKnownText` (WKT1 or WKT2) attached to the CRS. When
+   * present it is the authoritative CRS definition and `crs_name` may be absent.
+   */
+  well_known_text?: string;
 }

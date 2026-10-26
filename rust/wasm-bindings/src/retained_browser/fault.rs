@@ -8,7 +8,9 @@ impl From<BrowserError> for RuntimeFault {
             BrowserError::Kernel { status, .. } => Self::kernel(status, message),
             BrowserError::WrongWorker => Self::retired(message),
             BrowserError::Unqualified(_) => Self::unqualified(message),
-            BrowserError::Exhausted => Self::resource_limit(message),
+            BrowserError::Exhausted | BrowserError::ResourceLimit(_) => {
+                Self::resource_limit(message)
+            }
             BrowserError::InvalidLimits | BrowserError::Driver(_) => Self::transport(message),
         }
     }
@@ -28,6 +30,10 @@ mod tests {
         assert_eq!(
             fault,
             RuntimeFault::kernel(8, "browser kernel 8: copy started")
+        );
+        assert_eq!(
+            RuntimeFault::from(BrowserError::ResourceLimit("mesh budget".into())),
+            RuntimeFault::resource_limit("browser resource limit: mesh budget")
         );
         assert_ne!(
             fault,

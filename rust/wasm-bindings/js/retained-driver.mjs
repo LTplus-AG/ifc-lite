@@ -240,7 +240,7 @@ export class RetainedDriver {
     } catch (error) {
       // Status 8 means copying started; its allocations have an unknown outcome.
       // Other kernel refusals are pre-copy and preserve the input leases.
-      if (!Number.isInteger(error.kernelStatus) || error.kernelStatus === 8) this.retire();
+      if (!Number.isInteger(error.kernelStatus) || error.kernelStatus < 1 || error.kernelStatus > 7) this.retire();
       throw error;
     } finally { this.#releaseBusy(); }
   }
@@ -268,8 +268,9 @@ export class RetainedDriver {
     const view = new DataView(info.buffer);
     const [vertices, triangles, faces, boundary, spine, failures] = Array.from({ length: 6 }, (_, i) => view.getUint32(i * 4, true));
     const bytes = vertices * 3 * 8 + triangles * (3 * 4 + 9 * 8 + 4);
-    if (!vertices || !triangles || !faces || boundary || spine || failures || !Number.isSafeInteger(bytes) || bytes > maxBytes ||
+    if (!vertices || !triangles || !faces || boundary || spine || failures || !Number.isSafeInteger(bytes) ||
         vertices * 3 > 0xffffffff || triangles * 9 > 0xffffffff) throw new Error('invalid or oversized retained mesh');
+    if (bytes > maxBytes) throw Object.assign(new Error('oversized retained mesh'), { resourceLimit: true });
     const read = async (stream, count, width) => {
       const values = width === 8 ? new Float64Array(count) : new Uint32Array(count);
       for (let offset = 0; offset < count; offset += 480) {

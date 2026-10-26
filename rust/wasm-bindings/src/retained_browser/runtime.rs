@@ -100,7 +100,8 @@ impl BrowserWorker {
             Err(error) => {
                 let error = driver_error(error);
                 // Known pre-copy kernel refusal leaves the source domain live.
-                if matches!(&error, BrowserError::Kernel { status, .. } if *status != 8) {
+                if matches!(&error, BrowserError::Kernel { status, .. } if (1..=7).contains(status))
+                {
                     flight.disarm();
                 }
                 return Err(error.into());

@@ -184,12 +184,12 @@ test('#7955 E certified empty Boolean allocates no mesh and keeps an independent
   driver.retire();
 });
 test('#7955 E affine failures preserve typed status and retire only after copy starts', async () => {
-  for (const status of [1, 8]) {
+  for (const status of [1, 8, 99]) {
     const driver = new RetainedDriver(); const a = await evaluate(driver), peer = peers.at(-1);
     peer.failOpcode = 18; peer.kernelStatus = status;
     await assert.rejects(driver.affine(a.object, identity), error => error.kernelStatus === status);
-    assert.equal(driver.live(), status !== 8);
-    assert.equal(driver.objectLive(a.object), status !== 8);
+    assert.equal(driver.live(), status === 1);
+    assert.equal(driver.objectLive(a.object), status === 1);
     driver.retire();
   }
 });
@@ -213,4 +213,11 @@ test('#7955 E foreign leases and invalid limits submit no frames', async () => {
   await assert.rejects(b.tessellate(source.object, 0, 5, 4096), /limits/);
   assert.equal(peer.commands.length, count);
   a.retire(); b.retire();
+});
+
+test('#7955 E oversized buffers retain a resource refusal distinct from malformed wire', async () => {
+  const driver = new RetainedDriver();
+  const source = await evaluate(driver);
+  await assert.rejects(driver.tessellate(source.object, 0.001, 5, 8), error => error.resourceLimit === true && error.kernelStatus === undefined);
+  assert.equal(driver.live(), false, 'failed transfer retires all allocations');
 });

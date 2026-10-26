@@ -86,6 +86,13 @@ pub(super) fn driver_error(error: JsValue) -> BrowserError {
             };
         }
     }
+    if js_sys::Reflect::get(&error, &JsValue::from_str("resourceLimit"))
+        .ok()
+        .and_then(|value| value.as_bool())
+        == Some(true)
+    {
+        return BrowserError::ResourceLimit(message);
+    }
     BrowserError::Driver(message)
 }
 

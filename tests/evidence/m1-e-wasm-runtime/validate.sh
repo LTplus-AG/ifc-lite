@@ -22,10 +22,15 @@ fi
 git rev-parse HEAD m1/c-executor-core
 rustc --version
 node --version
+run pnpm install --frozen-lockfile --prefer-offline
 run cargo clippy --workspace --all-targets -- -D warnings
 run cargo clippy --target wasm32-unknown-unknown -p ifc-lite-geometry -p ifc-lite-processing -p ifc-lite-wasm -- -D warnings
 run cargo clippy --target wasm32-unknown-unknown -p ifc-lite-geometry -p ifc-lite-processing -p ifc-lite-wasm --features ifc-lite-wasm/retained-browser -- -D warnings
 run cargo clippy -p ifc-lite-wasm --all-targets --features retained-browser -- -D warnings
+# Diagnostic coverage past the inherited private mesh-check dead-code error.
+# This is additional coverage, never a substitute for the strict legs above.
+run cargo clippy --target wasm32-unknown-unknown -p ifc-lite-geometry -p ifc-lite-processing -p ifc-lite-wasm --features ifc-lite-wasm/retained-browser,ifc-lite-geometry/test-support -- -D warnings
+run cargo clippy --target wasm32-unknown-unknown -p ifc-lite-wasm --all-targets --features retained-browser -- -D warnings
 run cargo test -p ifc-lite-geometry --features retained-runtime --lib
 run cargo test -p ifc-lite-geometry --features retained-runtime --test m1_wasm_wire
 run cargo test -p ifc-lite-processing --features retained-runtime --lib element::session_retained

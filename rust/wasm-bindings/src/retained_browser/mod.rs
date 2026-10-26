@@ -44,6 +44,8 @@ pub enum BrowserError {
     Unqualified(&'static str),
     /// Browser incarnation identities are exhausted.
     Exhausted,
+    /// Copied result buffers exceed the admitted byte budget.
+    ResourceLimit(String),
     /// The driver, transport or SDK refused or failed (message preserved).
     Driver(String),
     /// Typed SDK status, preserved across the executor boundary.
@@ -56,6 +58,7 @@ impl std::fmt::Display for BrowserError {
             Self::WrongWorker => write!(f, "browser worker retired or foreign"),
             Self::InvalidLimits => write!(f, "invalid retained evaluation limits"),
             Self::Unqualified(message) => write!(f, "unqualified retained request: {message}"),
+            Self::ResourceLimit(message) => write!(f, "browser resource limit: {message}"),
             Self::Exhausted => write!(f, "browser incarnation exhausted"),
             Self::Kernel { status, message } => write!(f, "browser kernel {status}: {message}"),
             Self::Driver(message) => write!(f, "browser worker driver: {message}"),

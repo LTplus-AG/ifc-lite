@@ -143,3 +143,39 @@ async fn retained_browser_invalid_limits_preserve_actual_worker_and_existing_lea
 
 #[path = "parity_tests.rs"]
 mod parity_tests;
+
+// Refs #7955 E: this runs without an SDK; the old std::time::Instant entry
+// traps on wasm32 before reaching the checkpoint.
+#[wasm_bindgen_test]
+fn retained_browser_budget_start_uses_host_monotonic_clock() {
+    use ifc_lite_geometry::resource::{
+        budget_checkpoint, budget_deadline_fired, BudgetStart, ProductBudget,
+    };
+    let budget = ProductBudget::new(BudgetStart::now(), 100, 4096, 0);
+    budget.scope(|| {
+        assert!(budget_checkpoint().is_err());
+        assert!(budget_deadline_fired());
+    });
+    assert!(!budget_deadline_fired());
+}
+
+#[wasm_bindgen_test]
+fn retained_browser_driver_fault_preserves_typed_kernel_and_resource_evidence() {
+    let error = js_sys::Error::new("copy started");
+    js_sys::Reflect::set(
+        &error,
+        &JsValue::from_str("kernelStatus"),
+        &JsValue::from_f64(8.),
+    )
+    .unwrap();
+    assert!(matches!(
+        driver_error(error.into()),
+        BrowserError::Kernel { status: 8, .. }
+    ));
+    let error = js_sys::Error::new("mesh budget");
+    js_sys::Reflect::set(&error, &JsValue::from_str("resourceLimit"), &JsValue::TRUE).unwrap();
+    assert!(matches!(
+        driver_error(error.into()),
+        BrowserError::ResourceLimit(_)
+    ));
+}

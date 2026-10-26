@@ -41,8 +41,17 @@ export function isPlaceholderSnapshot(viewpoint: Pick<BCFViewpoint, 'snapshot' |
   return viewpoint.snapshot?.split(',')[1] === PLACEHOLDER_SNAPSHOT_BASE64;
 }
 
+/** Whether writeBCF would emit a non-empty image for this viewpoint. */
 function hasSnapshot(viewpoint: BCFViewpoint): boolean {
-  return viewpoint.snapshotData !== undefined || !!viewpoint.snapshot?.startsWith('data:');
+  // writeBCF prefers snapshotData even when empty, so an empty array is no image.
+  if (viewpoint.snapshotData) return viewpoint.snapshotData.length > 0;
+  const base64 = viewpoint.snapshot?.startsWith('data:') ? viewpoint.snapshot.split(',')[1] : undefined;
+  if (!base64) return false;
+  try {
+    return atob(base64).length > 0;
+  } catch {
+    return false; // writeBCF drops a malformed data URL
+  }
 }
 
 /**

@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { createBCFFromIDSReport } from './ids-reporter.js';
 import type { IDSReportInput, EntityBoundsInput } from './ids-reporter.js';
 import { FRAMING_PADDING } from './ids-camera.js';
-import { isPlaceholderSnapshot, placeholderSnapshotPng } from './placeholder-snapshot.js';
+import { fillMissingSnapshots, isPlaceholderSnapshot, placeholderSnapshotPng } from './placeholder-snapshot.js';
 import { writeBCF } from './writer.js';
 import { readBCF } from './reader.js';
 
@@ -798,6 +798,22 @@ describe('IDS BCF Reporter', () => {
       expect(vp.perspectiveCamera).toBeDefined();
       expect(vp.snapshot).toBe('data:image/png;base64,BBBB');
     });
+  });
+
+  it('replaces empty or unusable snapshots with the placeholder (#7974)', () => {
+    const unusable = [
+      { snapshotData: new Uint8Array() },
+      { snapshot: 'data:image/png;base64,' },
+      { snapshot: 'data:image/png;base64,%%%' },
+    ];
+    for (const image of unusable) {
+      const project = createBCFFromIDSReport(createMockReport(), { topicGrouping: 'per-specification' });
+      const viewpoint = [...project.topics.values()][0].viewpoints[0];
+      delete viewpoint.snapshotData;
+      Object.assign(viewpoint, image);
+      expect(fillMissingSnapshots(project)).toBe(1);
+      expect(viewpoint.snapshotData).toEqual(placeholderSnapshotPng());
+    }
   });
 
   // BIMcollab Zoom (Windows) reports "no viewpoint to zoom to" for any

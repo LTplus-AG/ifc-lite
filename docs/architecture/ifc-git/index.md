@@ -7,9 +7,19 @@
 > the direction and names the decisions that still have to be made. Read §6
 > first if you are short of time: it is the part that needs an answer.
 >
-> One foundation is already built rather than proposed: the Rust diff engine
-> landed under #8042 while this was in draft (§8). Nothing else here is
-> implemented.
+> **In-tree:** the Rust diff engine, landed under #8042 while this was in draft
+> (§8). That is the only part of this spec set implemented on `main`.
+>
+> **Not in this tree, and cited by revision rather than claimed:** a `rust/git`
+> crate exists on an external branch —
+> [`bruadam/ifc-lite@65b5982b7`](https://github.com/bruadam/ifc-lite/commit/65b5982b77c0794df588734c59cdd22c8e950c58),
+> branch `feat/rust-git-object-model`, not proposed upstream yet. Every
+> statement here about node encoding, chunk boundaries, the `wasm32_simd` build
+> or a measured count refers to **that revision** and **cannot be verified from
+> this PR**, whose tree contains no `rust/git`. Where such a claim appears it
+> names the file it came from. No runtime, browser or external-branch benchmark
+> is claimed: the §6.1 figures are a native micro-benchmark on one machine,
+> reported as such.
 
 ## 1. North star
 
@@ -208,7 +218,8 @@ substantive one:
    figures, because those describe one long stream and this workload is the
    opposite: one hash per node, a few hundred bytes each, hundreds of thousands
    of them. Measured against a hardware-accelerated SHA-256 (`sha2` 0.10.9 with
-   its runtime feature detection, aarch64):
+   its runtime feature detection, aarch64), on `bruadam/ifc-lite@65b5982b7` and so
+   not reproducible from this PR's tree:
 
    | Input | BLAKE3 | SHA-256 | Ratio |
    | --- | --- | --- | --- |
@@ -229,10 +240,11 @@ substantive one:
    implementation while `.cargo/config.toml` enables `+simd128` for every other
    wasm32 build in the repo.
 
-   `rust/git` now enables it, verified in both directions rather than assumed:
-   the `wasm32-unknown-unknown` build emits
+   `rust/git` enables it as of `65b5982b7`, verified in both directions rather
+   than assumed: the `wasm32-unknown-unknown` build emits
    `cargo::rustc-cfg=blake3_wasm32_simd` and the host build emits only
-   `blake3_neon`. The feature is inert off wasm32, because blake3's build script
+   `blake3_neon`. Both observations are from that external revision, not from
+   this tree. The feature is inert off wasm32, because blake3's build script
    guards it with `if is_wasm32() && is_wasm32_simd()`.
 
    **Still not measured: the wasm ratio itself.** Only the native numbers above

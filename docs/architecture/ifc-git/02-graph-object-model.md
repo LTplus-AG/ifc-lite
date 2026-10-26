@@ -264,9 +264,11 @@ Two rules:
   limit.** A `relationship` node names its endpoints by node address, which is
   what keeps it content-only. A review raised the consequence: where §2.4
   collapses two distinct elements to one address, a relationship naming one
-  names both. Measured in `rust/git/tests/dedup_boundary.rs` (on the crate
-  branch, not this docs change), the boundary is narrower than it reads, and
-  entry cardinality survives:
+  names both. Measured in `rust/git/tests/dedup_boundary.rs` at
+  [`bruadam/ifc-lite@65b5982b7`](https://github.com/bruadam/ifc-lite/commit/65b5982b77c0794df588734c59cdd22c8e950c58)
+  — an external branch, not this docs change, so the measurement is not
+  reviewable from this PR — the boundary is narrower than it reads, and entry
+  cardinality survives:
 
     - Two occurrences differing **only in placement** do not deduplicate, so
       the ordinary case — two openings in one wall — has no ambiguity at all.

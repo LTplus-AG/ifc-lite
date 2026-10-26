@@ -1,0 +1,92 @@
+// SPDX-License-Identifier: MPL-2.0
+use super::*;
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Case { name: String, root: String, valid: bool, input_wire: String, binding_wire: Option<String> }
+fn cases() -> Vec<Case> { serde_json::from_str(CASES).expect("contract vectors") }
+fn case_named(name: &str) -> Case { cases().into_iter().find(|case| case.name == name).expect("named witness") }
+fn validate_case(root: &str, json: &str, binding: Option<&str>) -> Result<(), String> {
+    let context = || decode_binding(binding.ok_or("binding required")?);
+    match root {
+        "Options" => decode_options(json).map(|_| ()),
+        "Refusal" => decode_refusal(json).map(|_| ()),
+        "ModelReport" => decode_model_report(json, &context()?).map(|_| ()),
+        "InspectionReport" => decode_inspection_report(json, &context()?).map(|_| ()),
+        "Binding" => decode_binding(json).map(|_| ()),
+        _ => Err("unknown root".into()),
+    }
+}
+#[test]
+fn issue_7955_private_contract_vectors() {
+    let cases = cases();
+    assert!(cases.len() >= 160, "nonzero independent vector discovery");
+    for case in cases {
+        let result = validate_case(&case.root, &case.input_wire, case.binding_wire.as_deref());
+        assert_eq!(result.is_ok(), case.valid, "{}: {:?}", case.name, result);
+    }
+}
+#[test]
+fn issue_7955_constructed_semantics_remain_checked() {
+    let mut options = decode_options(&case_named("frozen_options").input_wire).unwrap();
+    for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -0.0] {
+        options.chord_tolerance_metres = value;
+        assert!(check_options(&options).is_err());
+    }
+    assert!(check_false(&false).is_ok());
+    assert!(check_false(&true).is_err());
+    assert!(check_requirements(&[]).is_err());
+    assert!(check_requirements(&[Requirement::Publication]).is_ok());
+    let original = decode_refusal(&case_named("staged_removal_policy_unproven").input_wire).unwrap();
+    let mut wrong = original.clone(); wrong.stage = Stage::Configuration;
+    assert!(check_refusal(&wrong).is_err(), "R3 constructed stage");
+    let mut wrong = original.clone(); wrong.requirement = Requirement::Textures;
+    assert!(check_refusal(&wrong).is_err(), "R3 constructed requirement");
+    let mut wrong = original; wrong.detail.reason = DetailReason::Cancelled;
+    assert!(check_refusal(&wrong).is_err(), "R3 constructed reason");
+    for name in ["failed_after_enumeration_with_geometry", "failed_after_enumeration_with_removed"] {
+        let case = case_named(name);
+        let mut binding = decode_binding(case.binding_wire.as_deref().unwrap()).unwrap();
+        let mut report = decode_model_report(&case.input_wire, &binding).unwrap();
+        let ModelReport::Failed(inner) = &mut report else { panic!("failed witness"); };
+        inner.partition.enumeration_complete = false; binding.enumeration_complete = false;
+        assert!(validate_model(&report, &binding).is_err(), "R4 constructed {name}");
+    }
+}
+
+// #7955 W2: changing only the logical enumeration fact must be rejected even
+// when no geometry/removal is present. Keep cause validation independent of R4.
+#[test]
+fn issue_7955_enumeration_failure_flag_constructed() {
+    let case = case_named("failed_enumeration");
+    let mut binding = decode_binding(case.binding_wire.as_deref().unwrap()).unwrap();
+    let mut report = decode_model_report(&case.input_wire, &binding).unwrap();
+    assert!(validate_model(&report, &binding).is_ok(), "W2 valid incomplete enumeration");
+    let ModelReport::Failed(inner) = &mut report else { panic!("failed witness"); };
+    assert!(inner.partition.geometry.is_empty() && inner.partition.removed.is_empty());
+    inner.partition.enumeration_complete = true; binding.enumeration_complete = true;
+    assert!(validate_model(&report, &binding).is_err(), "W2 cause/flag constructed rejection");
+}
+#[test]
+fn issue_7955_enumeration_failure_flag_wire() {
+    let case = case_named("enumeration_failed_claims_complete_without_successes");
+    let binding = decode_binding(case.binding_wire.as_deref().unwrap()).unwrap();
+    assert!(decode_model_report(&case.input_wire, &binding).is_err(), "W2 cause/flag wire rejection");
+}
+#[test]
+fn issue_7955_enumeration_failure_success_contradictions() {
+    let enumeration = case_named("failed_enumeration");
+    let enumeration_binding = decode_binding(enumeration.binding_wire.as_deref().unwrap()).unwrap();
+    let ModelReport::Failed(enumeration) = decode_model_report(&enumeration.input_wire, &enumeration_binding).unwrap()
+        else { panic!("enumeration witness"); };
+    for name in ["failed_after_enumeration_with_geometry", "failed_after_enumeration_with_removed",
+        "cancelled_after_enumeration_with_geometry", "cancelled_after_enumeration_with_removed"] {
+        let case = case_named(name);
+        let binding = decode_binding(case.binding_wire.as_deref().unwrap()).unwrap();
+        let mut report = decode_model_report(&case.input_wire, &binding).unwrap();
+        assert!(validate_model(&report, &binding).is_ok(), "post-enumeration interruption: {name}");
+        if let ModelReport::Failed(inner) = &mut report {
+            inner.error = enumeration.error.clone();
+            assert!(validate_model(&report, &binding).is_err(), "W2 success contradiction: {name}");
+        }
+    }
+}

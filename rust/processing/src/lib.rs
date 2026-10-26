@@ -139,3 +139,9 @@ pub use types::response::{
     QuickMetadataBootstrap, QuickMetadataEntitySummary, QuickMetadataPrunedEdge,
     QuickMetadataPrunedEdgeKind, QuickMetadataSpatialNode,
 };
+
+// #7955 A1s: compile the private schema validator in tests only. Typed origin
+// consumers are a later cut; no default/retained runtime path is activated here.
+#[cfg(test)]
+#[path = "generated/retained_contract.rs"]
+mod retained_contract;

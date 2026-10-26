@@ -155,7 +155,9 @@ approx = "0.5"
 ifc-lite-clash.workspace = true
 # JSON serialization for the GeometryDiagnostics camelCase-contract test (asserts
 # the serde rename_all keys match the @ifc-lite/geometry TS interface).
-serde_json.workspace = true
+# #7955 private cfg(test) wire preflight AND typed decode require correctly
+# rounded binary64, independently of unrelated workspace feature unification.
+serde_json = { workspace = true, features = ["float_roundtrip"] }
 # Property-based testing for the CSG kernel invariants
 # (tests/csg_property_test.rs): volume bounds, NaN-freedom, watertightness
 # over bounded randomized inputs. Case counts are set explicitly per

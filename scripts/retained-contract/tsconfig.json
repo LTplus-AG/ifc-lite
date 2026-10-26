@@ -1,0 +1,7 @@
+{
+  "compilerOptions": {
+    "target": "ES2022", "module": "NodeNext", "moduleResolution": "NodeNext",
+    "strict": true, "noEmit": true, "skipLibCheck": false, "types": []
+  },
+  "files": ["generated/contract.ts", "validate.d.mts", "projection-types.ts"]
+}

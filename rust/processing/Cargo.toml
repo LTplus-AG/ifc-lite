@@ -56,6 +56,9 @@ sha2.workspace = true
 nalgebra.workspace = true
 
 [dev-dependencies]
+# #7955 private cfg(test) wire preflight AND typed decode require correctly
+# rounded binary64. Keep the normal dependency above unchanged (resolver = "2").
+serde_json = { workspace = true, features = ["float_roundtrip"] }
 # Test-only (publish = false). Path-only: cargo strips it when packaging.
 ifc-lite-testkit = { path = "../testkit" }
 # `test_support::recv_or_diagnose` only - the shared worker watchdog, so the

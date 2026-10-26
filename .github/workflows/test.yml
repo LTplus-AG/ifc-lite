@@ -2694,6 +2694,10 @@ jobs:
         run: node scripts/ai-eval/check-ai-eval-manifest.mjs
       - name: Check AI evaluation release invariants
         run: node scripts/ai-eval/check-ai-eval-invariants.mjs
+      - name: Check private retained contract generation
+        run: node scripts/retained-contract/generate.mjs --check
+      - name: Test private retained contract validation and generation
+        run: node --test scripts/retained-contract/*.test.mjs
       # A test that reads its subject's SOURCE and asserts on the text passes
       # while the behaviour is broken -- SearchModal.filter's stayed 5/5 green
       # with the row handler unwired (#2396 verbatim). The harness that made

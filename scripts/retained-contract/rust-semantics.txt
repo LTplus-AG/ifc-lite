@@ -1,0 +1,112 @@
+// SPDX-License-Identifier: MPL-2.0
+// Template copied into each crate archive. Descriptive validation only.
+fn require(ok: bool) -> Result<(), &'static str> {
+    if ok { Ok(()) } else { Err("invalid retained contract") }
+}
+fn text_format(value: &str, format: &str) -> Result<(), &'static str> {
+    let hex = |size| value.len() == size && value.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c));
+    require(match format {
+        "hash" => hex(64), "commit" => hex(40),
+        "u64" | "positive_u64" => {
+            let canonical = value == "0" || (!value.starts_with('0') && !value.is_empty());
+            canonical && value.bytes().all(|c| c.is_ascii_digit())
+                && value.parse::<u64>().is_ok() && (format == "u64" || value != "0")
+        }
+        "global_id" => value.len() == 22 && matches!(value.as_bytes().first(), Some(b'0'..=b'3'))
+            && value.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'$'),
+        _ => false,
+    })
+}
+fn product_map(products: &[ProductKey]) -> Result<std::collections::BTreeMap<&str, &ProductKey>, &'static str> {
+    let mut map = std::collections::BTreeMap::new();
+    for product in products { require(map.insert(product.product_id.as_str(), product).is_none())?; }
+    Ok(map)
+}
+fn binding_context(binding: &Binding) -> Result<(), &'static str> {
+    check_binding(binding)?;
+    let requested = product_map(&binding.requested)?;
+    let non_geometric = product_map(&binding.non_geometric)?;
+    require(requested.keys().all(|id| !non_geometric.contains_key(id)))?;
+    let mut global_ids = std::collections::BTreeSet::new();
+    for product in binding.requested.iter().chain(&binding.non_geometric) {
+        if let GlobalIdentity::Known(global) = &product.global_id {
+            require(global_ids.insert(&global.value))?;
+        }
+    }
+    Ok(())
+}
+fn unbound_refusal(refusal: &Refusal) -> Result<(), &'static str> {
+    if matches!(refusal.source, RefusalSource::Unbound(_)) {
+        require(refusal.family == Family::Configuration && refusal.stage == Stage::Configuration
+            && matches!(refusal.target, Target::Model(_)))?;
+    }
+    Ok(())
+}
+fn refusal_context(refusal: &Refusal, binding: &Binding, product: Option<&ProductKey>) -> Result<(), &'static str> {
+    let RefusalSource::Known(source) = &refusal.source else { return Err("bound source required"); };
+    require(source.value == binding.identity.source)?;
+    require(match (&refusal.target, product) {
+        (Target::Model(_), None) => true,
+        (Target::Product(target), Some(product)) => target.product == *product,
+        _ => false,
+    })
+}
+fn validate_model(report: &ModelReport, binding: &Binding) -> Result<(), &'static str> {
+    check_model_report(report)?;
+    binding_context(binding)?;
+    let partition = match report {
+        ModelReport::Complete(report) | ModelReport::Incomplete(report) => &report.partition,
+        ModelReport::Failed(report) | ModelReport::Cancelled(report) => &report.partition,
+    };
+    require(partition.identity == binding.identity)?;
+    require(partition.enumeration_complete == binding.enumeration_complete)?;
+    if !partition.enumeration_complete {
+        require(partition.geometry.is_empty() && partition.removed.is_empty())?;
+    }
+    let requested = product_map(&binding.requested)?;
+    let non_geometric = product_map(&binding.non_geometric)?;
+    let mut seen = std::collections::BTreeSet::new();
+    let mut consume = |product: &ProductKey, geometric: bool| -> Result<(), &'static str> {
+        let domain = if geometric { &requested } else { &non_geometric };
+        require(domain.get(product.product_id.as_str()).copied() == Some(product))?;
+        require(seen.insert(product.product_id.clone()))
+    };
+    for product in partition.geometry.iter().chain(&partition.removed) { consume(product, true)?; }
+    for refusal in &partition.refused {
+        let Target::Product(target) = &refusal.target else { return Err("product target required"); };
+        refusal_context(refusal, binding, Some(&target.product))?;
+        consume(&target.product, true)?;
+    }
+    for product in &partition.non_geometric { consume(product, false)?; }
+    require(seen.len() == requested.len() + non_geometric.len())?;
+    match report {
+        ModelReport::Complete(_) => require(partition.enumeration_complete && partition.refused.is_empty()),
+        ModelReport::Incomplete(_) => require(partition.enumeration_complete && !partition.refused.is_empty()),
+        ModelReport::Failed(report) | ModelReport::Cancelled(report) => {
+            refusal_context(&report.error, binding, None)?;
+            require(report.error.code != Code::EnumerationFailed || !partition.enumeration_complete)?;
+            Ok(())
+        }
+    }?;
+    match report {
+        ModelReport::Failed(value) => require(value.error.code != Code::Cancelled),
+        ModelReport::Cancelled(value) => require(value.error.code == Code::Cancelled),
+        _ => Ok(()),
+    }
+}
+fn validate_inspection(report: &InspectionReport, binding: &Binding) -> Result<(), &'static str> {
+    check_inspection_report(report)?;
+    binding_context(binding)?;
+    require(report.identity == binding.identity)?;
+    require(product_map(&binding.requested)?.get(report.product.product_id.as_str()).copied() == Some(&report.product))?;
+    for (index, requirement) in report.unchecked.iter().enumerate() {
+        require(!report.unchecked[..index].contains(requirement))?;
+    }
+    for required in [Requirement::NumericalEvaluation, Requirement::FinalGeometry, Requirement::ProtectedRemoval, Requirement::Publication] {
+        require(report.unchecked.contains(&required))?;
+    }
+    if let InspectionOutcome::Refused(value) = &report.outcome {
+        refusal_context(&value.refusal, binding, Some(&report.product))?;
+    }
+    Ok(())
+}

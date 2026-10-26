@@ -264,8 +264,9 @@ Two rules:
   limit.** A `relationship` node names its endpoints by node address, which is
   what keeps it content-only. A review raised the consequence: where §2.4
   collapses two distinct elements to one address, a relationship naming one
-  names both. Measured in `rust/git/tests/dedup_boundary.rs`, the boundary is
-  narrower than it reads, and cardinality survives:
+  names both. Measured in `rust/git/tests/dedup_boundary.rs` (on the crate
+  branch, not this docs change), the boundary is narrower than it reads, and
+  entry cardinality survives:
 
     - Two occurrences differing **only in placement** do not deduplicate, so
       the ordinary case — two openings in one wall — has no ambiguity at all.
@@ -276,7 +277,10 @@ Two rules:
       node.
     - **The tree still names both.** Four keys over two distinct nodes, exactly
       as two identical files in git are two tree entries pointing at one blob.
-      Cardinality lives in the tree, which is the layer §2.4 claims it at.
+      Entry cardinality lives in the tree, which is the layer §2.4 claims it
+      at. This preserves *how many* occurrences there are; it does not recover
+      *which* of them a collapsed relationship named, and the two are not the
+      same guarantee.
     - The residual question — which of two indistinguishable coincident
       openings a given void targets — has no observable answer, because the two
       differ in nothing a model records.

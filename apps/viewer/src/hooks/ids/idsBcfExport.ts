@@ -64,11 +64,16 @@ export async function runIdsBcfExport({
     includeSnapshots,
     loadIntoBcfPanel,
   } = settings;
+  // BCF tools such as BIMcollab ignore viewpoints without a snapshot (#7974).
+  // Grouped topics are few, so they always try a real capture; if it can't be
+  // taken, the reporter's placeholder image still keeps the viewpoint usable.
+  const snapshots = includeSnapshots ? 'required'
+    : topicGrouping === 'per-specification' && getGlobalRenderer() ? 'best-effort' : 'off';
 
   // Phase 1: Collect entity bounds (needed for both camera and snapshots)
   let entityBounds: Map<string, EntityBoundsInput> | undefined;
 
-  if (includeCamera || includeSnapshots) {
+  if (includeCamera || snapshots !== 'off') {
     setBcfExportProgress({ phase: 'building', current: 0, total: 1, message: 'Computing entity bounds...' });
 
     const scene = getGlobalRenderer()?.getScene();
@@ -123,7 +128,7 @@ export async function runIdsBcfExport({
   await completeIdsBcfViewpoints(
     bcfProject, report, entityBounds, getGlobalRenderer(), toViewerGlobalId,
     useViewerStore.getState().cameraCallbacks.resolveHighlightIds,
-    { includeCamera, includeSnapshots }, setBcfExportProgress,
+    { includeCamera, snapshots }, setBcfExportProgress,
   );
   // Entity bounds (and so the framing cameras) are in the render frame; BCF is world (#4806).
   projectViewpointsToWorld(bcfProject, bcfWorldOffset(models, legacyGeometryResult));

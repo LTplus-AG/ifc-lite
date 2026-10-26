@@ -10,6 +10,9 @@ pub struct RuntimeOwner {
 }
 
 impl RuntimeOwner {
+    /// Identity of the captured process authority, including after retirement.
+    /// Never compare numeric PIDs or caller-supplied incarnation values.
+    pub fn same_domain(&self, other: &Self) -> bool { self.control.same_domain(&other.control) }
     pub(crate) fn new(control: ProcessControl, incarnation: u64) -> Self {
         Self {
             control,

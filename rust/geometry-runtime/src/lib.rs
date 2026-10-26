@@ -23,6 +23,6 @@ pub use runtime_owner::RuntimeOwner;
 #[cfg(not(target_arch = "wasm32"))]
 pub use worker::{
     AffineCertificate, AffineCopyIdentity, BrepHandle, MeshLimits, NumericalOutcome, RegionQualificationReport, RetainedDependency,
-    RetainedAffineCopy, RetainedDependencyResult, RetainedLineage, RetainedRealization,
+    RetainedAffineCopy, RetainedBooleanIdentity, RetainedDependencyResult, RetainedLineage, RetainedRealization,
     RetainedTransformInput, SmlibWorker, TessellatedMesh, WorkerError,
 };

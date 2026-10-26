@@ -1,0 +1,11 @@
+--- a/rust/processing/src/element/session_retained/validation.rs
++++ b/rust/processing/src/element/session_retained/validation.rs
+@@ -19,7 +19,7 @@
+         match (operation, receipt.kind.evidence()) {
+             (PendingRetainedOperation::Construction { expected, document, request, .. }, ReceiptEvidence::Construction(completion)) => {
+                 if receipt.is_empty() { return Err(protocol(ReceiptFailure::EmptyConstructionResult)); }
+-                // MUTATION: original source admission check omitted
++                if !ifc_lite_geometry::program::transactions::same_admission(request, completion.request()) { return Err(protocol(ReceiptFailure::ForeignSourceAdmission)); }
+                 document.validate_retained_completion(completion,
+                     owner.incarnation().ok_or(RetainedExecutionError::DomainRetired)?).map_err(protocol)?;
+                 if !same_frame(expected.value().source_from_evaluation(), &completion.source_from_evaluation)

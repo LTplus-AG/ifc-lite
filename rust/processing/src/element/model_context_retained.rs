@@ -16,6 +16,8 @@ impl ProductionModel {
 }
 
 impl OwnedMeshProductionContext {
+    #[cfg(all(feature = "retained-native", not(target_arch = "wasm32")))]
+    pub(in crate::element) fn source(&self) -> Option<&Arc<ifc_lite_core::SourceBundle>> { self.source.as_ref() }
     pub(in crate::element) fn validate_decoder(
         &self,
         decoder: &ifc_lite_core::EntityDecoder<'_>,

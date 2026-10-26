@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+# Reverse application changes only the named action; historical patches preserved.
+--- a/rust/processing/src/element/session_retained/error.rs
++++ b/rust/processing/src/element/session_retained/error.rs
+@@ -104,6 +104,7 @@
+         if matches!(self, Self::Runtime(_)) { return true; }
+         matches!(self, Self::Stopped(_) | Self::Source(_) | Self::Core(_) | Self::DomainRetired
+             | Self::Recipe(_) | Self::Geometry(_) | Self::DeadlineExceeded | Self::Unsupported(_) | Self::InvalidTypeSource
++            | Self::Receipt(ReceiptFailure::ConflictingRetainedNumericalOutcome)
+             | Self::Transition(CANCELLED)
+             | Self::Owner(WorkError::StaleSource | WorkError::Aborted))
+             || matches!(self, Self::Common(error) if matches!(error.kind(),

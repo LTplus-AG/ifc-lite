@@ -1,0 +1,11 @@
+--- a/rust/processing/src/element/session_retained/error.rs
++++ b/rust/processing/src/element/session_retained/error.rs
+@@ -136,7 +136,7 @@
+                 _ => Code::OperationUnsupported,
+             },
+             Self::Receipt(ReceiptFailure::InvalidRetainedNumericalLimits) => Code::InvalidOptions,
+-            Self::Receipt(ReceiptFailure::ForeignSourceAdmission) => Code::RuntimeFailed,
++            Self::Receipt(ReceiptFailure::ForeignSourceAdmission) => Code::ReceiptInvalid,
+             Self::Receipt(reason) => { let _ = reason; Code::ReceiptInvalid }
+             Self::Transition(stage) => { let _ = stage; Code::Cancelled }
+             Self::DomainRetired => Code::WorkerRetired,

@@ -1,0 +1,161 @@
+[
+  {
+    "id": "source-admission",
+    "patch": "tests/evidence/retained-execution-j4/cut-d-source-admission.oracle.patch",
+    "test": "element::session_retained::affine_tests::oracle_cause_tests::issue_7955_source_admission_action_has_its_own_cause",
+    "intendedFailure": "Only the preregistered assertion/cause; no SDK numerical or release acceptance.",
+    "historicalPatch": "tests/evidence/retained-execution-j4/source-admission.oracle.patch",
+    "expectedFailure": {
+      "file": "rust/processing/src/element/session_retained/oracle_cause_tests.rs",
+      "line": 20,
+      "fragments": [
+        "M5_SOURCE_ADMISSION_GUARD accepted foreign source admission"
+      ]
+    }
+  },
+  {
+    "id": "ordered-invocation",
+    "patch": "tests/evidence/retained-execution-j4/cut-d-ordered-invocation.oracle.patch",
+    "test": "element::session_retained::boolean_tests::h2c_sdk_mapped_boolean_operand_scale_changes_the_authored_cut_volume",
+    "intendedFailure": "Only the preregistered assertion/cause; no SDK numerical or release acceptance.",
+    "historicalPatch": "tests/evidence/retained-execution-j4/ordered-invocation.oracle.patch",
+    "expectedFailure": {
+      "file": "rust/processing/src/element/session_retained/boolean_tests.rs",
+      "line": 106,
+      "fragments": [
+        "M5_ORDERED_INVOCATION_ACCEPTANCE Receipt(ForeignBooleanOperationOrOrderedInputs)"
+      ]
+    }
+  },
+  {
+    "id": "accepted-outcome",
+    "patch": "tests/evidence/retained-execution-j4/cut-d-accepted-outcome.oracle.patch",
+    "test": "element::session_retained::boolean_tests::h2c_sdk_empty_definition_reaches_later_operands_and_final_witness",
+    "intendedFailure": "Only the preregistered assertion/cause; no SDK numerical or release acceptance.",
+    "historicalPatch": "tests/evidence/retained-execution-j4/accepted-outcome.oracle.patch",
+    "expectedFailure": {
+      "file": "rust/processing/src/element/session_retained/boolean_tests.rs",
+      "line": 76,
+      "fragments": [
+        "M5_ACCEPTED_OUTCOME_LEDGER",
+        "left: Some(true)",
+        "right: Some(false)"
+      ]
+    }
+  },
+  {
+    "id": "post-await-stop",
+    "patch": "tests/evidence/retained-execution-j4/backend-prep-post-await-stop.oracle.patch",
+    "test": "element::session_retained::async_tests::j4_original_stop_after_await_refuses_delivery_and_retires_only_captured_domain",
+    "intendedFailure": "Only the preregistered assertion/cause; no SDK numerical or release acceptance.",
+    "historicalPatch": "tests/evidence/retained-execution-j4/post-await-stop.oracle.patch",
+    "expectedFailure": {
+      "file": "rust/processing/src/element/session_retained/async_tests.rs",
+      "line": 105,
+      "fragments": [
+        "M5_POST_AWAIT_NO_SEAL",
+        "left: 1",
+        "right: 0"
+      ]
+    },
+    "priorCutDPatch": "tests/evidence/retained-execution-j4/cut-d-post-await-stop.oracle.patch",
+    "priorBackendPreparationPatch": "tests/evidence/retained-execution-j4/fused-post-await-stop.oracle.patch"
+  },
+  {
+    "id": "receipt-report",
+    "patch": "tests/evidence/retained-execution-j4/cut-d-receipt-report.oracle.patch",
+    "test": "element::session_retained::affine_tests::oracle_cause_tests::issue_7955_source_admission_report_has_its_own_cause",
+    "intendedFailure": "Only the preregistered assertion/cause; no SDK numerical or release acceptance.",
+    "expectedFailure": {
+      "file": "rust/processing/src/element/session_retained/oracle_cause_tests.rs",
+      "line": 24,
+      "fragments": [
+        "M5_SOURCE_ADMISSION_REPORT",
+        "left: RuntimeFailed",
+        "right: ReceiptInvalid"
+      ]
+    }
+  },
+  {
+    "id": "affine-transform-omission",
+    "patch": "tests/evidence/retained-execution-j4/m4-affine-transform-omission.oracle.patch",
+    "test": "element::session_retained::affine_tests::issue_7955_reflected_off_origin_profile_has_anchored_outward_geometry",
+    "intendedFailure": "Physical geometry assertion before acceptance; not receipt-metadata rejection.",
+    "expectedFailure": {
+      "file": "rust/processing/src/element/session_retained/affine_tests.rs",
+      "line": 202,
+      "fragments": [
+        "M4_REFLECT_ANCHORED_LOW axis=0",
+        "expected=4"
+      ]
+    }
+  },
+  {
+    "id": "placed-result-old-frame",
+    "patch": "tests/evidence/retained-execution-j4/m4-placed-result-old-frame.oracle.patch",
+    "test": "element::session_retained::boolean_tests::issue_7955_mapped_boolean_result_replaces_its_old_frame_exactly_once",
+    "intendedFailure": "Physical geometry assertion before acceptance; not receipt-metadata rejection.",
+    "expectedFailure": {
+      "file": "rust/processing/src/element/session_retained/boolean_tests.rs",
+      "line": 149,
+      "fragments": [
+        "M4_PLACED_RESULT_VOLUME",
+        "expected=20"
+      ],
+      "measurement": {
+        "pattern": "M4_PLACED_RESULT_VOLUME actual=(?P<actual>[^ ]+) expected=20",
+        "value": 24.0,
+        "tolerance": 1e-07
+      }
+    }
+  },
+  {
+    "id": "placed-result-double-frame",
+    "patch": "tests/evidence/retained-execution-j4/m4-placed-result-double-frame.oracle.patch",
+    "test": "element::session_retained::boolean_tests::issue_7955_mapped_boolean_result_replaces_its_old_frame_exactly_once",
+    "intendedFailure": "Physical geometry assertion before acceptance; not receipt-metadata rejection.",
+    "expectedFailure": {
+      "file": "rust/processing/src/element/session_retained/boolean_tests.rs",
+      "line": 149,
+      "fragments": [
+        "M4_PLACED_RESULT_VOLUME",
+        "expected=20"
+      ],
+      "measurement": {
+        "pattern": "M4_PLACED_RESULT_VOLUME actual=(?P<actual>[^ ]+) expected=20",
+        "value": 24.0,
+        "tolerance": 1e-07
+      }
+    }
+  },
+  {
+    "id": "m2-unsupported-report",
+    "patch": "tests/evidence/retained-execution-j4/m2-unsupported-report.oracle.patch",
+    "test": "element::session_retained::diagnostic::tests::issue_7955_native_source_m2_parsed_unsupported_block_and_malformed_items_are_distinct_before_worker_spawn",
+    "intendedFailure": "Only the preregistered typed report or terminal action assertion; no final-product acceptance.",
+    "expectedFailure": {
+      "file": "rust/processing/src/element/session_retained/diagnostic_tests.rs",
+      "line": 50,
+      "fragments": [
+        "M2_KNOWN_ORIGIN_REPORT",
+        "left: SourceInvalid",
+        "right: OperationUnsupported"
+      ]
+    },
+    "requiresSdk": false
+  },
+  {
+    "id": "m3-conflict-terminal",
+    "patch": "tests/evidence/retained-execution-j4/backend-prep-m3-conflict-terminal.oracle.patch",
+    "test": "element::session_retained::contract_tests::issue_7955_m3_conflicting_outcome_poisons_only_its_domain_and_preserves_rejected_buffers",
+    "intendedFailure": "Only the preregistered typed report or terminal action assertion; no final-product acceptance.",
+    "expectedFailure": {
+      "file": "rust/processing/src/element/session_retained/contract_tests.rs",
+      "line": 174,
+      "fragments": [
+        "M3_CONFLICT_MUST_POISON_ATTEMPT"
+      ]
+    },
+    "priorBackendPreparationPatch": "tests/evidence/retained-execution-j4/m3-conflict-terminal.oracle.patch"
+  }
+]

@@ -1038,3 +1038,75 @@ count; it does not cancel an active load. Unused workers expire after sixty
 seconds. `warmGeometryWorkerPoolStats()` returns `GeometryWorkerPoolStats`, or
 null before a pool exists. `idleBytes` is booked memory using an estimate per
 fresh worker, rather than a measurement of actual process memory.
+
+
+## Private native transaction diagnostic
+
+The default-off Rust `ifc-lite-processing/retained-native` feature has a local
+`retained_product` example. It consumes the shared retained controller through
+an existing private SMLib executable. Run it only through your admitted project
+launcher:
+
+```bash
+cargo run --locked -p ifc-lite-processing --features retained-native \
+  --example retained_product -- MODEL.ifc EXPRESS_ID /absolute/existing/ifclite_smlib_worker OPTIONS.json IMPLEMENTATION_COMMIT
+```
+
+The generated `native_transaction_diagnostic` report binds immutable source
+hash/revision, product identity, the complete options, and the supplied 40-digit
+implementation commit. Its outcome is `intermediate` or `refused`, with validated
+stage/requirement context and explicit-only exact retry on refusal. The native
+schema extends the shared private contract without changing source inspection.
+Raw resource stops retain dimension/requested/remaining/reason; they are not
+presented as observed/limit measurements. Intermediate reports contain operation
+counts and unchecked obligations. `finalProductAvailable` is always
+false. No mesh, definition, occurrence, removal or consumed-host effect is
+returned. Opening, layer, appearance and persistent-face obligations remain;
+type-map witnesses also retain product-placement obligations. The options file contains the strict retained options contract,
+including numerical tolerances, work/byte/deadline limits and
+`typeGeometryMode` (`suppress_instanced` or `emit_tagged`). The actual parsed root selects a
+product or type-product job. Type jobs derive map membership, mapped occurrences
+and type instantiation from the source and use the canonical mode/class planner;
+referenced maps are excluded in both modes. Each admitted map retains its actual
+MappingOrigin. Source-only refusal and suppressed type jobs need no SDK process. The Rust
+`element::diagnose_retained_native` entry returns an opaque diagnostic owner;
+`bytes()` checks its original source/resource/runtime lifetime, and
+`require_final_product()` refuses. Source, resource and runtime failures end the
+attempt. There is no automatic fallback or retry. `NativeDiagnosticError::report_bytes()`
+returns the generated bound refusal when authenticated context and reserved report
+storage exist. Failures before that point remain ordinary typed errors without a
+wire report; Display text is not a machine contract. There is no bare-code JSON
+success path. Regenerate the native projection with
+`node scripts/retained-native-contract/generate.mjs`; the root Node test sweep
+checks drift. SDK-positive behavior still requires an admitted real worker run.
+
+The captured account admits recipe-clone/lowering envelopes before construction
+and actual returned buffer capacities before delivery and common acceptance.
+Those charges follow retained source/receipt storage, including detached results.
+Ledger growth is admitted before common reply consumption. This accounts audited
+Rust backing; allocator overhead, opaque SDK object memory and the transport's
+temporary allocation peak are not a strict RSS guarantee.
+
+The processing controller, receipt traits and native receipt adapter stay
+private. Geometry's feature-gated `program::transactions` bridge exposes only
+opaque program/ticket/reply, immutable operation/value/plan views, typed opaque
+errors and a captured resource context. Runtime additions expose read-only
+Boolean invocation identity, captured process-domain equality and explicit
+placement of an existing sealed Boolean result. These are consumed by the
+native diagnostic, not final geometry authority or browser bindings.
+
+This checkout uses a target-gated optional **local path plus exact 23.6.1
+version** dependency on `ifc-lite-geometry-runtime`. The runtime remains
+`publish = false` here. The separately approved source-only 22.6.0 bootstrap
+has not been published and does not satisfy this graph. Registry resolution,
+actual archive verification, publication order, affected excluded consumers,
+SDK redistribution and release qualification remain pending; packaging this
+checkout is not qualified. No SDK assets are linked or shipped by this feature.
+The example is not a production viewer or CLI mode.
+
+Numerical mutation qualification uses
+`tests/evidence/retained-execution-j4/feature-oracle.py`; the original four
+patches are preserved alongside their adapted contexts and the independent
+receipt-report mutant. A skipped SDK test never qualifies this lane. Exact
+output identity and base/branch performance qualification remain required
+before integration; this diagnostic does not establish a performance verdict.

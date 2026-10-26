@@ -121,12 +121,16 @@ function makeTree(overrides = {}) {
   if (overrides.gate !== null) {
     writeFileSync(join(root, 'scripts/gate.mjs'), overrides.gate ?? "const dir = 'src/covered';\n");
   }
-  // The check reads its own source and its own lib out of the tree it is
-  // pointed at, so the fixture must carry both for self-coverage to resolve.
+  // The check reads its own source and helpers out of the tree it is pointed
+  // at, so the fixture carries all three for self-coverage to resolve.
   writeFileSync(join(root, 'scripts/check-ci-path-coverage.mjs'), readFileSync(CHECK, 'utf8'));
   writeFileSync(
     join(root, 'scripts/lib/ci-path-coverage.mjs'),
     readFileSync(join(HERE, 'lib/ci-path-coverage.mjs'), 'utf8'),
+  );
+  writeFileSync(
+    join(root, 'scripts/lib/ci-path-candidates.mjs'),
+    readFileSync(join(HERE, 'lib/ci-path-candidates.mjs'), 'utf8'),
   );
   writeFileSync(
     join(root, 'scripts/ci-path-coverage-allowlist.txt'),
@@ -739,4 +743,29 @@ test('the checker NAMES the workflow it could not parse, rather than throwing a 
   assert.match(r.out, /written inline/);
   assert.doesNotMatch(r.out, /at parseWorkflowPrPaths/, 'not an uncaught stack trace');
   rmSync(root, { recursive: true, force: true });
+});
+
+// #7955 Cut D: a new oracle trigger must not change a temp-directory exemption.
+test('an exact inferred-input exemption survives partial trigger coverage', () => {
+  const filters = `${DEFAULT_FILTERS}\n              - 'tests/covered/**'`;
+  withTree({ filters, gate: "const stagingDirectory = 'tests';\n",
+    allowlist: 'scripts/gate.mjs tests # temporary staging directory, not a repository input\n' }, root => {
+    mkdirSync(join(root, 'tests/covered'), { recursive: true });
+    mkdirSync(join(root, 'tests/uncovered'), { recursive: true });
+    writeFileSync(join(root, 'tests/covered/case.json'), '{}');
+    writeFileSync(join(root, 'tests/uncovered/case.json'), '{}');
+    const allowed = run(root);
+    assert.equal(allowed.status, 0, allowed.out);
+    writeFileSync(join(root, 'scripts/ci-path-coverage-allowlist.txt'), '# none\n');
+    const missing = run(root);
+    assert.equal(missing.status, 1, missing.out);
+    assert.match(missing.out, /tests\/uncovered/);
+    writeFileSync(join(root, 'scripts/ci-path-coverage-allowlist.txt'),
+      'scripts/gate.mjs tests # temporary staging directory, not a repository input\n');
+    writeFileSync(join(root, '.github/workflows/test.yml'),
+      WORKFLOW(`${DEFAULT_FILTERS}\n              - 'tests/**'`, DEFAULT_STEPS));
+    const stale = run(root);
+    assert.equal(stale.status, 1, stale.out);
+    assert.match(stale.out, /stale exemption/);
+  });
 });

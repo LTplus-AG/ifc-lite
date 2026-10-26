@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MPL-2.0
+# Reverse application changes only the named action; historical patches preserved.
+--- a/rust/processing/src/element/session_retained/batch.rs
++++ b/rust/processing/src/element/session_retained/batch.rs
+@@ -59,7 +59,7 @@
+         runtime::NumericalLimits { chord_metres: chord, angle_degrees: angle, max_bytes }.validate()
+     }
+     pub(super) fn checkpoint(&self) -> Result<(), RetainedExecutionError> {
+-        let _ = check_resources(&self.resources);
++        check_resources(&self.resources)?;
+         self.lifecycle
+             .validate()
+             .map_err(RetainedExecutionError::Source)?;

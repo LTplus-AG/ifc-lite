@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 # Opt-in qualification of the isolated NVIDIA SMLib native adapter, its Rust
-# worker client and its browser module-Worker build. Nothing in core/geometry/processing/wasm depends on either, so
-# this workflow is path-filtered to them and is intentionally NOT a required check.
+# worker client, private processing diagnostic and browser module-Worker build.
+# Default processing remains runtime-free; opt-in native consumers are qualified here.
 name: Geometry platform (native adapter)
 
 on:
@@ -18,6 +18,10 @@ on:
       - 'scripts/smlib-browser-worker-probe.mjs'
       - 'scripts/wasm-test-mime-driver.mjs'
       # The browser executor lives in the published wasm crate.
+      - 'rust/processing/src/element/session_retained/**'
+      - 'rust/processing/examples/retained_product.rs'
+      - 'rust/processing/Cargo.toml'
+      - 'tests/evidence/retained-execution-j4/**'
       - 'rust/wasm-bindings/src/retained_browser/**'
       - 'rust/wasm-bindings/js/**'
       # Feature wiring for the retained-browser build (the wasm32 path
@@ -78,6 +82,22 @@ jobs:
           test -x "$IFCLITE_SMLIB_PATH"
           IFCLITE_SMLIB_WORKER="$IFCLITE_SMLIB_PATH" \
             cargo test --locked -p ifc-lite-geometry-runtime --all-targets --no-fail-fast
+      - name: Private retained native controller and numerical oracles
+        id: native-transactions
+        continue-on-error: true
+        env:
+          IFCLITE_SMLIB_WORKER: ${{ runner.temp }}/smlib-native/ifclite_smlib_worker
+        run: |
+          set -euo pipefail
+          test -x "$IFCLITE_SMLIB_WORKER"
+          cargo clippy --workspace --all-targets --features ifc-lite-processing/retained-native -- -D warnings
+          cargo test --locked -p ifc-lite-processing --features retained-native --lib session_retained -- --nocapture 2>&1 | tee "$RUNNER_TEMP/native-transactions.log"
+          if grep -q SKIP "$RUNNER_TEMP/native-transactions.log"; then exit 1; fi
+          python3 -m unittest discover -s tests/evidence/retained-execution-j4 -p '*_tests.py'
+          for oracle in source-admission ordered-invocation accepted-outcome post-await-stop receipt-report affine-transform-omission placed-result-old-frame placed-result-double-frame m2-unsupported-report m3-conflict-terminal; do
+            python3 tests/evidence/retained-execution-j4/feature-oracle.py \
+              --oracle "$oracle" --evidence-dir "$RUNNER_TEMP/cut-d-$oracle"
+          done
       - name: Checkout pinned Emscripten SDK
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
@@ -156,6 +176,7 @@ jobs:
         env:
           NATIVE_CTEST: ${{ steps.native-ctest.outcome }}
           NATIVE_CONSUMERS: ${{ steps.native-consumers.outcome }}
+          NATIVE_TRANSACTIONS: ${{ steps.native-transactions.outcome }}
           WASM_CTEST: ${{ steps.wasm-ctest.outcome }}
           BROWSER_WORKERS: ${{ steps.browser-workers.outcome }}
           BROWSER_RUNTIME: ${{ steps.browser-runtime.outcome }}
@@ -165,7 +186,7 @@ jobs:
           RETAINED_CLIPPY: ${{ steps.retained-clippy.outcome }}
         run: |
           failed=0
-          for lane in NATIVE_CTEST NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY; do
+          for lane in NATIVE_CTEST NATIVE_CONSUMERS NATIVE_TRANSACTIONS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY; do
             printf '%s=%s\n' "$lane" "${!lane}"
             if [[ "${!lane}" != success ]]; then failed=1; fi
           done

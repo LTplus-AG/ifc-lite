@@ -1683,6 +1683,7 @@ version = "23.6.2"
 dependencies = [
  "ifc-lite-core",
  "ifc-lite-geometry",
+ "ifc-lite-geometry-runtime",
  "ifc-lite-testkit",
  "nalgebra",
  "png",

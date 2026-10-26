@@ -197,3 +197,8 @@ mod session_steal_tests;
 mod retained_inspection;
 #[cfg(feature = "retained-runtime")]
 pub use retained_inspection::{inspect_retained_source, RetainedSourceInspection, RetainedInspectionError};
+
+#[cfg(all(feature = "retained-native", not(target_arch = "wasm32")))]
+mod session_retained;
+#[cfg(all(feature = "retained-native", not(target_arch = "wasm32")))]
+pub use session_retained::diagnostic::{diagnose_retained_native, NativeDiagnosticError, NativeTransactionDiagnostic};

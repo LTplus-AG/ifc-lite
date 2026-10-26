@@ -51,3 +51,7 @@ mod constructor_tests;
 
 #[cfg(feature = "retained-runtime")]
 pub use inner::retained_program::inspection::{inspect_retained_program_source, SourceInspectionReport, SourceInspectionError};
+
+/// Opaque bridge used by the disabled processing native diagnostic.
+#[cfg(feature = "retained-runtime")]
+pub mod transactions;

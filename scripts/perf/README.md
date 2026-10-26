@@ -612,24 +612,30 @@ authored geometry families and stale camera/resize/device-loss controls, with
 unchanged geometry. Harness readiness and screenshot-lifetime failures remain
 in the evidence alongside the accepted run.
 
-Verdict: the interaction cohort was not accepted, so there is no hover speedup
-claim and the issue's end-to-end acceptance stays open. Seven attempts ended in
-admission, host-quiet, health and identity gates; each refusal is retained and no
-failed sample was replaced. The final run completed all five pairs for two of the
-three scenarios with every gate satisfied, then aborted in the federation
-scenario when one pick resolved a different entity at the same texel, at a world
-position within a fraction of a millimetre, consistent with coplanar surfaces
-z-fighting. The evidence README carries the post hoc, explicitly partial table
-for the two completed scenarios; it supports the bounded mapping and a lower
-picker time but does not replace the required federation comparison.
+Verdict: accepted improvement. The exclusive hover cohort (`hover-15`) completed
+five interleaved pairs for FZK, Building-Architecture and Federation with every
+gate satisfied. The candidate maps 256 bytes per pick instead of 3,233,792, and
+lowers median pointer-to-hover latency in 15 of 15 pairs (paired ratio
+0.72-0.76) and median GPU picker time in 15 of 15 pairs (0.63-0.85). The p95,
+the slowest of nine hovers per sample, is lower in 12 of 15 pairs and is not
+claimed. No loading-speed claim. Thirteen earlier attempts ended in admission,
+host-quiet, operator-input, health and identity gates; each refusal is retained
+and no failed sample was replaced. Tolerances, the own-process CPU subtraction,
+a bounded quiet-host wait and the probed pick positions were added after
+observing those attempts and are disclosed as not blinded.
 
 Lessons: choose cohort pick positions away from coplanar or duplicate surfaces
-and verify them with repeated renders before freezing a protocol; a cross-session
-identity gate must tolerate depth-ULP world drift but never an entity change;
-a whole-host CPU gate of 10% leaves almost no margin on a shared machine, so
-reserve a dedicated quiet window for the full run and keep other agents off the
-host; check every health gate against recorded samples before a long exclusive
-wait, because a strict equality on a float DPR cost an hour of queue time.
+and verify them with repeated renders before freezing a protocol, and exclude any
+point seen to flip across sessions even if a probe calls it stable, because a
+one-pixel canvas change can move a texel onto a coplanar boundary; a
+cross-session identity gate must tolerate depth-ULP world drift but never an
+entity change; measure host CPU excluding the cohort's own process tree, and
+wait boundedly for a quiet reading rather than refusing on one sample, since
+browser teardown alone produced an 11% spike; a headed browser on a desktop host
+receives the operator's real mouse, so keep hands off for the run; the fleet's
+fixed one-hour admission limit means submitting only once the host has drained;
+check every health gate against recorded samples before a long exclusive wait,
+because a strict equality on a float DPR cost an hour of queue time.
 
 Independent Linux qualification adopted the existing readback cleanup repair;
 inverse fault controls demonstrate the ownership defects and the repaired paths

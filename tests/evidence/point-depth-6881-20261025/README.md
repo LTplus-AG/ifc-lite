@@ -1,7 +1,9 @@
 # Point-depth qualification resumed (#6881)
 
-Native functional qualification passed. Hover-performance acceptance is pending
-the separately admitted exclusive cohort; no speedup is claimed.
+Native functional qualification passed, and the exclusive hover cohort
+(`hover-15`) was accepted: the candidate maps 256 bytes per pick instead of the
+full aligned depth copy and lowers median hover latency and GPU picker time in
+every pair of all three scenarios. See [Hover verdict](#hover-verdict).
 
 The bounded sampler and ownership repair already shipped in #7389. The subsequent
 device-loss fix and 28 real-model same-render comparisons shipped in #7506; see
@@ -165,6 +167,36 @@ Preparation receipts:
   Building-Architecture keeps the grid, stable in every retained sample). A dense 7 x 7 FZK probe
   (`probe-8`, 10 of 10 valid samples, no unstable position) confirms all nine are stable in FZK; see
   [`fzk-position-stability.json`](fzk-position-stability.json) and [raw samples](probe-8-runs.jsonl.gz).
+
+## Hover verdict
+
+Attempt 14 (`hover-15`, job `ef6524fb`, head `0a20f3c693`, configuration 3) completed all 30
+samples (five interleaved base/branch pairs for each of FZK, Building-Architecture and Federation)
+with every host, health, pairing, allocation and identity gate satisfied. Every host gate was quiet
+on its first reading (largest foreign reading 8.39%), so the bounded quiet wait never engaged. Base
+is the full-copy control; branch is the candidate.
+
+| Scenario | Metric | Base median | Branch median | Paired ratio | Branch lower |
+|---|---|---:|---:|---:|---:|
+| FZK | pointer-to-hover median (ms) | 22.07 | 16.36 | 0.72 | 5 / 5 |
+| FZK | pointer-to-hover p95 (ms) | 29.15 | 28.79 | 0.95 | 4 / 5 |
+| FZK | GPU picker median (ms) | 19.28 | 12.41 | 0.63 | 5 / 5 |
+| Building-Architecture | pointer-to-hover median (ms) | 19.07 | 13.93 | 0.73 | 5 / 5 |
+| Building-Architecture | pointer-to-hover p95 (ms) | 22.85 | 15.91 | 0.74 | 5 / 5 |
+| Building-Architecture | GPU picker median (ms) | 13.92 | 11.12 | 0.85 | 5 / 5 |
+| Federation | pointer-to-hover median (ms) | 22.53 | 17.14 | 0.76 | 5 / 5 |
+| Federation | pointer-to-hover p95 (ms) | 33.28 | 33.08 | 0.86 | 3 / 5 |
+| Federation | GPU picker median (ms) | 20.16 | 14.30 | 0.71 | 5 / 5 |
+| all three | mapped bytes per pick | 3,233,792 | 256 | 0 | 15 / 15 |
+
+Verdict: accepted improvement in hover latency and GPU picker time on public models, with a
+bounded 256-byte mapping per pick. With nine hovers per sample the p95 is the slowest hover, so it
+is reported but not claimed. No loading-speed claim is made. The DPR tolerance, world tolerance and
+its anchoring, own-process CPU subtraction, bounded quiet wait and probed pick positions were each
+introduced after observing earlier attempts and are not blinded; every earlier refusal above is
+retained and no sample was replaced. Per-pair values: [`hover-verdict.json`](hover-verdict.json);
+raw samples and report: [`hover-15-runs.jsonl.gz`](hover-15-runs.jsonl.gz),
+[`hover-15-result.json.gz`](hover-15-result.json.gz).
 
 [Preparation receipts](preparation.json) retain command/source identities,
 original outcomes and log hashes. Failed functional reports and compact summaries

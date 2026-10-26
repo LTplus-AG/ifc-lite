@@ -23,14 +23,9 @@
 
 import type { BCFProject, BCFTopic, BCFComment, BCFViewpoint } from './types.js';
 import { generateUuid } from '@ifc-lite/encoding';
-import {
-  DEFAULT_ASPECT_RATIO,
-  computeCameraFromBounds,
-  requireAspectRatioOption,
-  requireCamerasForVersion,
-  unionBoundsForEveryKey,
-} from './ids-camera.js';
+import { DEFAULT_ASPECT_RATIO, computeCameraFromBounds, requireAspectRatioOption, requireCamerasForVersion, unionBoundsForEveryKey } from './ids-camera.js';
 import type { EntityBoundsInput } from './ids-camera.js';
+import { fillMissingSnapshots } from './placeholder-snapshot.js';
 
 export type { EntityBoundsInput } from './ids-camera.js';
 
@@ -197,7 +192,7 @@ export interface IDSBCFExportOptions {
   /**
    * Entity snapshot map for attaching screenshots to viewpoints.
    * Key: "modelId:expressId", Value: data URL (PNG).
-   * When provided, viewpoints will include the snapshot image.
+   * When provided, viewpoints will include the snapshot image; the rest get a placeholder PNG (#7974).
    */
   entitySnapshots?: Map<string, string>;
 }
@@ -301,6 +296,7 @@ export function createBCFFromIDSReport(
   // Refuse an unwritable 3.0 project here, where the caller can still see
   // which option produced it, rather than leaving it to writeBCF (#3849).
   requireCamerasForVersion(project);
+  fillMissingSnapshots(project); // BIMcollab and others ignore snapshot-less viewpoints (#7974)
 
   return project;
 }

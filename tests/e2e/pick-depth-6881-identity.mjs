@@ -4,7 +4,7 @@
 
 // Cross-sample identity for the #6881 hover cohort. Everything except the
 // unprojected world position must match exactly. Separate browser sessions can
-// rasterize a texel one depth ULP apart (observed: 1.7e-4 m at about 11 m, with
+// rasterize a texel one depth ULP apart (observed: up to 2.1e-4 m at about 11 m, with
 // identical ids, items, texels and camera), so world position may drift by at
 // most WORLD_TOLERANCE_METRES per component. The tolerance is not transitive, so
 // callers must compare every sample against the first (never the previous one). Same-render depth/world equality

@@ -177,6 +177,77 @@ test('getter rejection releases owned handles after decoded strings, then reuses
   }
 });
 
+// diffCheckFingerprintCollections, the facade's sparse length check (#8114),
+// enters the same DecodeScope over only the three sparse collections. A
+// collection-only copy of each case must reject exactly as the full decoder
+// does on the same fields, and release every owned handle when it does.
+const collectionCheck = input => wasm.diffCheckFingerprintCollections(input, true);
+const collectionFields = ['propertySets', 'quantitySets', 'typeAssignments'];
+function collectionsOnly(input) {
+  const copy = {};
+  for (const field of collectionFields) {
+    const descriptor = Object.getOwnPropertyDescriptor(input, field);
+    if (descriptor) Object.defineProperty(copy, field, descriptor);
+  }
+  return copy;
+}
+function rejection(run) {
+  try { run(); } catch (error) { return { error }; }
+  return undefined;
+}
+
+test('collection length check releases owned handles on rejection, then reuses the module (#8114)', () => {
+  let rejecting = 0;
+  for (const raised of [new Error('original getter error'), Symbol('original getter error'), 37,
+    '\u0001host-type-error:spoofed', { toString() { throw new Error('do not stringify me'); } }]) {
+    for (const [location, input] of cases(raised)) {
+      const collections = collectionsOnly(input);
+      // Copy descriptors, never spread: a spread would run a throwing
+      // collection getter in JS before the full decoder sees it.
+      const decoded = rejection(() => wasm.diffBuildComponentFingerprints(
+        Object.defineProperties({ ifcType: 'IfcWall' }, Object.getOwnPropertyDescriptors(collectionsOnly(input)))));
+      const checked = rejection(() => collectionCheck(collections));
+      assert.deepEqual(checked, decoded, `${location}: the same fields reject identically`);
+      if (!checked) continue;
+      assert.strictEqual(checked.error, raised, `${location}: original thrown value`);
+      rejecting++;
+      for (let i = 0; i < 4; i++) {
+        throwsIdentically(() => collectionCheck(collections), raised, `${location}: warm`);
+        assert.equal(collectionCheck(valid), undefined);
+      }
+      const baseline = wasm.diffTestExternrefLiveCount();
+      for (let iteration = 0; iteration < 64; iteration++) {
+        throwsIdentically(() => collectionCheck(collections), raised, `check/${location}`);
+        assert.equal(wasm.diffTestExternrefLiveCount(), baseline,
+          `${location}/${iteration}: rejection must release all owned externrefs`);
+        assert.equal(collectionCheck(valid), undefined, `${location}: same-module reuse`);
+        assert.equal(wasm.diffTestExternrefLiveCount(), baseline,
+          `${location}/${iteration}: valid reuse must release all owned externrefs`);
+      }
+    }
+  }
+  assert.ok(rejecting > 0, 'collection cases reach the check');
+});
+
+test('collection length check reads only the sparse collections, once each, in order (#8114)', () => {
+  const reads = [];
+  const track = (name, value) => new Proxy(value, {
+    get(target, key, receiver) {
+      reads.push(`${name}.${String(key)}`);
+      return Reflect.get(target, key, receiver);
+    },
+    ownKeys() { throw new Error('typed records must not be enumerated'); },
+  });
+  collectionCheck(track('Input', { ifcType: 'IfcWall', name: 'Wall', materials: ['M'],
+    propertySets: [track('PropertySet', { name: 'P', properties: [track('Entry', { name: 'a', value: 1 })] })],
+    quantitySets: [track('QuantitySet', { name: 'Q', quantities: [track('QuantityEntry', { name: 'a', value: 2 })] })],
+    typeAssignments: [track('TypeAssignment', { name: 'WT', type: 'IfcWallType', globalId: 'ignored' })],
+  }));
+  assert.deepEqual(reads, ['Input.propertySets', 'PropertySet.name', 'PropertySet.properties', 'Entry.name',
+    'Entry.value', 'Input.quantitySets', 'QuantitySet.name', 'QuantitySet.quantities', 'QuantityEntry.name',
+    'QuantityEntry.value', 'Input.typeAssignments', 'TypeAssignment.name', 'TypeAssignment.type']);
+});
+
 test('typed projection preserves field read order/count and ignores other record fields (#8114)', () => {
   for (const method of methods) {
     const reads = [];

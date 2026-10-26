@@ -28,6 +28,13 @@ export function diffBuildComponentFingerprints(input: any): any;
 export function diffBuildDataFingerprint(input: any): string;
 
 /**
+ * Facade ordering (#8114): the engine string-length checks of collections the
+ * facade has just projected, run where the oracle sorts and hashes them and so
+ * before the facade reads the adapter's next field. Never a fingerprint.
+ */
+export function diffCheckFingerprintCollections(input: any, components: boolean): void;
+
+/**
  * Normalize, deduplicate and validate an identity or lineage sidecar.
  */
 export function diffCreateSidecar(text: string, lineage: boolean): string;
@@ -103,6 +110,7 @@ export interface InitOutput {
     readonly __wbg_diffmodel_free: (a: number, b: number) => void;
     readonly diffBuildComponentFingerprints: (a: number, b: number) => void;
     readonly diffBuildDataFingerprint: (a: number, b: number) => void;
+    readonly diffCheckFingerprintCollections: (a: number, b: number, c: number) => void;
     readonly diffCreateSidecar: (a: number, b: number, c: number) => void;
     readonly diffCreateSidecarValue: (a: number, b: number, c: number) => void;
     readonly diffIdentityMapFromContentMatches: (a: number, b: number) => void;

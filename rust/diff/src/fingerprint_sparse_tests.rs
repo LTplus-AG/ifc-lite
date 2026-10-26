@@ -3,10 +3,13 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 use super::*;
 use crate::input::{PropertySetInput, QuantitySetInput, TypeAssignmentInput};
+use crate::js_json::stringify;
 use crate::sparse_collection::{Slot, SparseCollection};
 
 fn holes<T>(count: usize) -> SparseCollection<T> {
-    SparseCollection((0..count).map(|_| Slot::Hole).collect())
+    let mut collection = SparseCollection::default();
+    collection.push_holes(count);
+    collection
 }
 
 #[test]
@@ -25,11 +28,15 @@ fn issue_8042_sorted_entries_keep_every_hole_and_duplicate() {
     let entry = |name: &str| Slot::Present(PropertyEntryInput {
         name: name.into(), value: PropertyValue::Number(f64::INFINITY),
     });
-    let input = SparseCollection(vec![Slot::Hole, entry("B"), Slot::Hole, entry("A"), entry("A")]);
-    let reordered = SparseCollection(vec![entry("A"), entry("B"), entry("A"), Slot::Hole, Slot::Hole]);
+    let input: SparseCollection<_> = vec![Slot::Hole, entry("B"), Slot::Hole, entry("A"), entry("A")].into_iter().collect();
+    let reordered: SparseCollection<_> = vec![entry("A"), entry("B"), entry("A"), Slot::Hole, Slot::Hole].into_iter().collect();
     let json = stringify(&JsonValue::Array(sorted_entries(&input)));
     assert_eq!(json, "[{\"name\":\"A\",\"value\":\"Infinity\"},{\"name\":\"A\",\"value\":\"Infinity\"},{\"name\":\"B\",\"value\":\"Infinity\"},null,null]");
     assert_eq!(sorted_entries(&input), sorted_entries(&reordered));
+    // Hole positions are not content: the oracle's stable sort moves them last.
+    let moved: SparseCollection<_> = vec![entry("B"), entry("A"), entry("A"), Slot::Hole, Slot::Hole].into_iter().collect();
+    assert_eq!(input, moved);
+    assert_ne!(input, reordered);
 }
 
 #[test]
@@ -113,10 +120,10 @@ fn issue_8114_serialized_absent_null_and_empty_collections_stay_equivalent_and_d
         from_document(Value::Object(fields)).unwrap()
     };
     for input in [decode(None), decode(Some(Value::Null)), decode(Some(Value::Array(vec![])))] {
-        assert_eq!(input.property_sets.0.len(), 0);
+        assert_eq!(input.property_sets.present().count(), 0);
     }
     let present = decode(Some(Value::Array(vec![Value::Object(vec![
         ("name".into(), Value::String("S".into())), ("properties".into(), Value::Array(vec![])),
     ])])));
-    assert_eq!((present.property_sets.0.len(), present.property_sets.holes()), (1, 0));
+    assert_eq!((present.property_sets.present().count(), present.property_sets.holes()), (1, 0));
 }

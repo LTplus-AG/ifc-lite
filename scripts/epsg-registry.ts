@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { EpsgIndexEntry as BundledEpsgIndexEntry } from '../packages/data/src/epsg-types.js';
+import { PROJ4_OVERRIDES } from './epsg-proj4-overrides.js';
 
 type RegistryLink = {
   rel?: string;
@@ -135,11 +136,16 @@ export function summarizeEntry(summary: RegistrySummary, detail: RegistryDetail)
   };
 }
 
-/** Inherit horizontal XY operations before consulting a lossy compound proj4 export. */
+/**
+ * Inherit horizontal XY operations before consulting a lossy compound proj4
+ * export. Codes in PROJ4_OVERRIDES keep their pinned definition: the override
+ * table is the verified one, and inheriting over it would undo it on the next
+ * full regeneration.
+ */
 export function inheritCompoundProj4(entries: EpsgIndexEntry[], source = entries): void {
   const byCode = new Map(source.map(entry => [entry.code, entry]));
   for (const entry of entries) {
-    if (entry.kind === 'Compound' && entry.horizontalCode) {
+    if (entry.kind === 'Compound' && entry.horizontalCode && !PROJ4_OVERRIDES.has(entry.code)) {
       entry.proj4 = byCode.get(entry.horizontalCode)?.proj4 ?? entry.proj4;
     }
   }

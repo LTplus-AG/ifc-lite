@@ -80,3 +80,17 @@ for (const existing of [undefined, '+proj=tmerc +lat_0=0 +lon_0=12 +k=1 +x_0=450
     expect(lat).toBeCloseTo(48.148613762260, 6);
   });
 }
+
+// A full regeneration inherits every compound's horizontal proj4. Codes the
+// override table pins (the DB_REF2003/2016 compounds) must keep the pinned
+// string, or the next refresh silently drops their +vunits (#8185 review).
+it('compound inheritance leaves PROJ4_OVERRIDES codes pinned', () => {
+  const [code, pinned] = [...PROJ4_OVERRIDES].find(([key]) => key === '9930')!;
+  const compound = summarizeEntry({ Code: 9930, Name: 'DB_REF2003 GK4 + DHHN2016' }, {
+    Code: 9930, Name: 'DB_REF2003 GK4 + DHHN2016', Kind: 'compound', HorizontalCrs: { Code: 5684 },
+  });
+  compound.proj4 = pinned;
+  inheritCompoundProj4([compound], [{ ...compound, code: '5684', kind: 'Projected', proj4: '+proj=tmerc +other' }]);
+  expect(compound.code).toBe(code);
+  expect(compound.proj4).toBe(pinned);
+});

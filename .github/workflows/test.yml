@@ -2338,8 +2338,8 @@ jobs:
               --test rust/geometry/src/resource/owned_detach_tests.rs
           fi
           # #7955 B1: independent action/report/lifetime/overwrite/consumed faults.
-          # Historical context replacements above preserve their original files;
-          # see tests/evidence/retained-origin-a1t/REVIEW.txt (all runtime UNRUN at preparation).
+          # The context-* patches selected above re-apply earlier mutations to the
+          # code this slice moves; the patches they supersede are deleted.
           if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/retained/origin_tests.rs | grep -Fxq 'rust/geometry/src/program/retained/origin_tests.rs'; then
             for mutation in structural-action structural-report recipe-report handle-lifetime first-overwrite consumed-finish-report; do
               run_oracle --base 80df8dd209e8c229385df9cd78281242b923c840 --ci --json \
@@ -2355,8 +2355,7 @@ jobs:
             done
           fi
           # #7955 B2a: action, occurrence reporting, direct-map reporting and
-          # late-origin reporting must each fail independently. Historical
-          # patches remain immutable; replacement hashes are in mutations.json.
+          # late-origin reporting must each fail independently.
           if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/retained/mapping_origin_tests.rs | grep -Fxq 'rust/geometry/src/program/retained/mapping_origin_tests.rs'; then
             for mutation in occurrence-report target-action type-entry-report late-origin-report; do
               run_oracle --base 54e0c22a7df946b8c5d8d6a0b08d8b64f6edef71 --ci --json \
@@ -2366,7 +2365,7 @@ jobs:
             done
           fi
           # #7955 B2b: independently remove operator refusal, predicate reporting
-          # and Core reporting. Keep historical mutation inputs unchanged.
+          # and Core reporting.
           if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/retained/boolean_origin_tests.rs | grep -Fxq 'rust/geometry/src/program/retained/boolean_origin_tests.rs'; then
             for mutation in operator-action predicate-report core-report; do
               run_oracle --base e8667c3e91b5e77b536ecdfaa51af9a4d863ee96 --ci --json \
@@ -2376,8 +2375,8 @@ jobs:
             done
           fi
           # #7955 B2c: independently remove composition action and value reporting.
-          # Existing input patches stay byte-identical; moved helpers use the
-          # source-context replacements under retained-frame-origin-b2c.
+          # Earlier mutations of the moved helpers are re-targeted by the
+          # context-* patches under retained-frame-origin-b2c.
           if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/retained/frame_origin_tests.rs | grep -Fxq 'rust/geometry/src/program/retained/frame_origin_tests.rs'; then
             for mutation in composition-action value-report; do
               run_oracle --base e8667c3e91b5e77b536ecdfaa51af9a4d863ee96 --ci --json \

@@ -30,22 +30,22 @@ pub(crate) fn write_output<W: Write>(
     // The exporting application is the originating system, this crate the
     // toolkit that wrote the exchange structure, and the change time the
     // file's time stamp.
-    let identity = plan.context.application.as_ref().and_then(|app| Identity::new(app).ok());
+    let identity = resolution.identity.as_ref();
     let header_opts = StepOptions {
         author: plan.context.author.clone(),
         organization: plan.context.organization.clone(),
         // The change time is the histories' time; the context's applies only
         // without an application.
-        time_stamp: identity.as_ref().map(Identity::header_time_stamp).or_else(|| plan.context.time_stamp.clone()),
+        time_stamp: identity.map(Identity::header_time_stamp).or_else(|| plan.context.time_stamp.clone()),
         filename: plan.context.file_name.clone(),
-        application: identity.as_ref().map(|_| Identity::preprocessor()),
-        originating_system: identity.as_ref().map(Identity::originating_system),
+        application: identity.map(|_| Identity::preprocessor()),
+        originating_system: identity.map(Identity::originating_system),
         ..Default::default()
     };
     let source_header = crate::source_header::parse_source_header(source);
     crate::step_header::write_header(&mut out, &header_opts, source_header.as_ref(), schema)?;
 
-    let Resolution { appended, edits_by_id, removed, reasons, refusals, patched, added, patched_objects, dropped_representations, findings } =
+    let Resolution { appended, edits_by_id, removed, reasons, refusals, patched, added, patched_objects, dropped_representations, findings, .. } =
         resolution;
     let defined = DefinedIds::new(index, &removed, &appended);
     let mut validator = StreamValidator::new(schema);

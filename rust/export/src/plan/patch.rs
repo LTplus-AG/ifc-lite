@@ -8,9 +8,9 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use crate::step_ids::IdAllocator;
 use crate::step_text::escape;
 
+use super::attribution::Histories;
 use super::index::FileIndex;
 use super::types::{DroppedRepresentation, ObjectRef, Patch, Refusal};
-use super::attribution::PatchHistory;
 use super::{attrs, geometry, placement, props, props_target};
 
 pub(super) struct PatchOutput<'a, 'h> {
@@ -29,7 +29,7 @@ pub(super) struct PatchOutput<'a, 'h> {
     pub(super) edited: &'a mut HashSet<(u32, u32)>,
     pub(super) object: u32,
     /// Where the owner history of a record a patch adds comes from.
-    pub(super) history: &'a mut PatchHistory<'h>,
+    pub(super) history: &'a mut Histories<'h>,
     /// Objects a patch has already given a new body, for the same reason:
     /// a second body would leave the first one's records unreferenced.
     pub(super) reshaped: &'a mut HashSet<u32>,
@@ -152,8 +152,11 @@ fn apply_set_writes(
     ids: &mut IdAllocator,
     out: &mut PatchOutput<'_, '_>,
 ) {
-    let (history, appended) = (&mut *out.history, &mut *out.appended);
-    let result = props::resolve_set_writes(target, group, ids, &mut |ids: &mut IdAllocator| history.get(ids, appended));
+    let (history, removed) = (&*out.history, &*out.removed);
+    let result = props::resolve_set_writes(target, group, ids, &|ids: &mut IdAllocator| history.take(ids, removed));
+    if let Some(settles) = result.history {
+        out.history.commit(settles);
+    }
     for outcome in result.outcomes {
         match outcome {
             props::PropOutcome::InPlace(edits) => out.edit(edits),

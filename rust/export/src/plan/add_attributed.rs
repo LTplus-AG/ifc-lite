@@ -5,9 +5,9 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::step_ids::IdAllocator;
 
-use super::add::{AddHistory, AddState};
+use super::add::AddState;
 use super::add_types::AddItem;
-use super::attribution::Ledger;
+use super::attribution::{Histories, Ledger};
 use super::index::FileIndex;
 use super::types::{ObjectRef, PlanContext, Refusal, ValidationFinding};
 
@@ -39,11 +39,9 @@ pub(super) fn run(setting: &AddSetting, adds: &[(&ObjectRef, AddItem)], ledger: 
     if adds.is_empty() {
         return 0;
     }
-    let history = match ledger {
-        Some(ledger) => AddHistory::Attributed { identity: &ledger.identity, made: &mut ledger.made },
-        // An owner history the plan deletes is not one an Add can name.
-        None => AddHistory::Source(setting.owner_history.filter(|id| !setting.removed.contains(id))),
-    };
-    let state = AddState::new(setting.index, setting.schema, setting.removed, setting.context, history, setting.body_context);
+    // An owner history the plan deletes is not one an Add can name.
+    let existing = setting.owner_history.filter(|id| !setting.removed.contains(id));
+    let history = Histories::new(setting.index, setting.schema, ledger, existing, setting.context);
+    let state = AddState::new(setting.index, setting.schema, setting.removed, history, setting.body_context);
     state.build_all(adds, produced.ids, produced.edits_by_id, produced.appended, produced.refusals, produced.findings)
 }

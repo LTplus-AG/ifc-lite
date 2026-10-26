@@ -40,11 +40,11 @@ impl Ledger {
     }
 
     /// The `MODIFIED` history standing in for `original`, one per original.
-    fn modified(&mut self, index: &FileIndex, schema: &str, ids: &mut IdAllocator, appended: &mut Vec<(u32, String)>, original_id: u32, original: &Original) -> Option<u32> {
+    fn modified(&mut self, source: (&FileIndex, &HashSet<u32>), schema: &str, ids: &mut IdAllocator, appended: &mut Vec<(u32, String)>, original_id: u32, original: &Original) -> Option<u32> {
         if let Some(&id) = self.modified.get(&original_id) {
             return Some(id);
         }
-        let chain = self.identity.chain_in(schema, ids, Some(index), &mut self.made, appended)?;
+        let chain = self.identity.chain_in(schema, ids, Some(source), &mut self.made, appended)?;
         let id = ids.allocate()?;
         appended.push((id, self.identity.modified_history(schema, id, chain, original)));
         self.modified.insert(original_id, id);
@@ -52,50 +52,94 @@ impl Ledger {
     }
 }
 
-/// Where a patch's new records' owner history comes from, made on first use
-/// so a plan whose patches add no record writes none: the exporting
-/// application's `ADDED` history, else the file's first, else one
-/// synthesized (see [`super::owner_history::synthesize`]).
-pub(crate) struct PatchHistory<'l> {
+/// Where the owner history of a record the plan adds comes from, shared by
+/// the patches and the Adds: the exporting application's `ADDED` history,
+/// else the file's (or one settled earlier), else one synthesized (see
+/// [`super::owner_history::synthesize`]). Taking one is not yet using it:
+/// only a write that succeeds [`Self::commit`]s what it took, so a refused
+/// write leaves nothing behind and a plan that adds nothing writes none.
+pub(crate) struct Histories<'l> {
     index: &'l FileIndex<'l>,
     schema: &'l str,
     source: HistorySource<'l>,
 }
 
 enum HistorySource<'l> {
-    Attributed(&'l mut Ledger),
-    Source { existing: Option<u32>, context: &'l PlanContext },
+    Attributed { identity: &'l Identity, made: &'l mut Made },
+    Source { id: Option<u32>, context: &'l PlanContext },
 }
 
-impl<'l> PatchHistory<'l> {
-    pub(crate) fn new(index: &'l FileIndex<'l>, schema: &'l str, ledger: Option<&'l mut Ledger>, context: &'l PlanContext) -> Self {
+/// A history taken for one write: its id, the records to write with the
+/// write if it has none yet, and what committing it settles.
+pub(crate) struct Taken {
+    pub(crate) id: u32,
+    pub(crate) records: Vec<(u32, String)>,
+    settles: Settles,
+}
+
+/// What a committed [`Taken`] settles.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Settles {
+    id: u32,
+    made: Option<Made>,
+}
+
+impl Taken {
+    /// A history that already exists: nothing to write, nothing to settle
+    /// but its id.
+    #[cfg(test)]
+    pub(crate) fn existing(id: u32) -> Self {
+        Self { id, records: Vec::new(), settles: Settles { id, made: None } }
+    }
+
+    /// Hand the records to the write, keeping what committing settles.
+    pub(crate) fn into_parts(self) -> (Vec<(u32, String)>, Settles) {
+        (self.records, self.settles)
+    }
+}
+
+impl<'l> Histories<'l> {
+    /// With `ledger`, the exporting application's; else `existing` (the
+    /// file's or one settled earlier), or one synthesized from `context`.
+    pub(crate) fn new(index: &'l FileIndex<'l>, schema: &'l str, ledger: Option<&'l mut Ledger>, existing: Option<u32>, context: &'l PlanContext) -> Self {
         let source = match ledger {
-            Some(ledger) => HistorySource::Attributed(ledger),
-            None => HistorySource::Source { existing: index.first_owner_history, context },
+            Some(ledger) => HistorySource::Attributed { identity: &ledger.identity, made: &mut ledger.made },
+            None => HistorySource::Source { id: existing, context },
         };
         Self { index, schema, source }
     }
 
-    /// The history, written to `appended` the first time it is asked for.
-    pub(crate) fn get(&mut self, ids: &mut IdAllocator, appended: &mut Vec<(u32, String)>) -> Option<u32> {
-        match &mut self.source {
-            HistorySource::Attributed(ledger) => ledger.identity.added_in(self.schema, ids, Some(self.index), &mut ledger.made, appended),
-            HistorySource::Source { existing: Some(id), .. } => Some(*id),
-            HistorySource::Source { existing, context } => {
+    /// The history one write names, and the records it must write with it.
+    /// Records `removed` holds are not reused.
+    pub(crate) fn take(&self, ids: &mut IdAllocator, removed: &HashSet<u32>) -> Option<Taken> {
+        match &self.source {
+            HistorySource::Attributed { identity, made } => {
+                let (mut made, mut records) = (**made, Vec::new());
+                let id = identity.added_in(self.schema, ids, Some((self.index, removed)), &mut made, &mut records)?;
+                Some(Taken { id, records, settles: Settles { id, made: Some(made) } })
+            }
+            HistorySource::Source { id: Some(id), .. } => Some(Taken { id: *id, records: Vec::new(), settles: Settles { id: *id, made: None } }),
+            HistorySource::Source { id: None, context } => {
                 let (records, id) = super::owner_history::synthesize(self.schema, ids, context)?;
-                appended.extend(records);
-                *existing = Some(id);
-                Some(id)
+                Some(Taken { id, records, settles: Settles { id, made: None } })
             }
         }
     }
 
-    /// Without an application, the history the patches settled on (the
-    /// file's, or one they synthesized), for the Adds to name.
+    /// A write that took `settles` succeeded: what it took is the plan's.
+    pub(crate) fn commit(&mut self, settles: Settles) {
+        match (&mut self.source, settles.made) {
+            (HistorySource::Attributed { made, .. }, Some(now)) => **made = now,
+            (HistorySource::Source { id, .. }, _) => *id = Some(settles.id),
+            (HistorySource::Attributed { .. }, None) => {}
+        }
+    }
+
+    /// The history committed so far, if any.
     pub(crate) fn settled(&self) -> Option<u32> {
         match &self.source {
-            HistorySource::Attributed(_) => None,
-            HistorySource::Source { existing, .. } => *existing,
+            HistorySource::Attributed { made, .. } => made.added(),
+            HistorySource::Source { id, .. } => *id,
         }
     }
 }
@@ -103,11 +147,18 @@ impl<'l> PatchHistory<'l> {
 /// Attribute the plan's settled rewrites: to the exporting application when
 /// there is one ([`mark_modified`]); without one, a plan that `changed`
 /// something is reported, since the file then credits its changes to their
-/// previous author.
-pub(crate) fn attribute_changes(index: &FileIndex, schema: &str, ledger: Option<&mut Ledger>, removed: &HashSet<u32>, changed: bool, out: Rewrites) {
+/// previous author. A plan that named an application `Ledger::for_plan`
+/// could not use has been reported already.
+pub(crate) fn attribute_changes(index: &FileIndex, schema: &str, plan: &ExportPlan, ledger: Option<&mut Ledger>, removed: &HashSet<u32>, changed: bool, mut out: Rewrites) {
     match ledger {
-        Some(ledger) => mark_modified(index, schema, ledger, removed, out),
-        None if changed => out.findings.push(ValidationFinding {
+        Some(ledger) => {
+            mark_modified(index, schema, ledger, removed, &mut out);
+            let reused = ledger.made.application().filter(|&app| index.contains(app));
+            if let Some(message) = reused.and_then(|app| super::identity::reuse_note(index, schema, app, &ledger.identity)) {
+                out.findings.push(ValidationFinding { express_id: reused, message });
+            }
+        }
+        None if changed && plan.context.application.is_none() => out.findings.push(ValidationFinding {
             express_id: None,
             message: "no ExportingApplication supplied: added objects are attributed to the source's first owner history (or a placeholder one), and modified objects keep their original owner history, so the file credits this export's changes to their previous author".into(),
         }),
@@ -115,24 +166,42 @@ pub(crate) fn attribute_changes(index: &FileIndex, schema: &str, ledger: Option<
     }
 }
 
+/// How far up from a rewritten record without an `OwnerHistory` the records
+/// that own it are looked for (a value's set, a placement's product).
+const OWNER_DEPTH: usize = 3;
+
 /// The records whose owner history records what the plan rewrote: every
 /// source record it rewrites that carries an `OwnerHistory`, and for one
-/// that carries none (a property or quantity value edited in place) the
-/// sets that list it. Records going away are not among them.
+/// that carries none, the nearest records above it that do (the set that
+/// lists a value, the product whose `ObjectPlacement` is a placement). A
+/// placement's `PlacementRelTo` is not ownership: the placements and
+/// products placed relative to it are not modified by it. Records going
+/// away are not among them.
 fn rewritten_roots(index: &FileIndex, schema: &str, edits_by_id: &HashMap<u32, BTreeMap<usize, String>>, removed: &HashSet<u32>) -> BTreeSet<u32> {
     let live = |id: &u32| index.contains(*id) && !removed.contains(id);
     let carries = |id: u32| index.type_of(id).is_some_and(|ty| attribute_index(schema, &ty, "OwnerHistory").is_some());
+    let owns = |owner: u32, slot: usize| {
+        let ty = index.type_of(owner).unwrap_or_default();
+        ifc_lite_core::attribute_names_for_schema(schema, &ty).and_then(|names| names.get(slot).copied()) != Some("PlacementRelTo")
+    };
     let mut roots = BTreeSet::new();
     for &id in edits_by_id.keys().filter(|id| live(id)) {
-        if carries(id) {
-            roots.insert(id);
-            continue;
-        }
-        for &(set, _) in index.referrers(id) {
-            let is_set = index.type_of(set).is_some_and(|ty| ty == "IFCPROPERTYSET" || ty == "IFCELEMENTQUANTITY");
-            if is_set && live(&set) {
-                roots.insert(set);
+        let mut level = vec![id];
+        let mut seen = HashSet::from([id]);
+        for _ in 0..=OWNER_DEPTH {
+            let mut next = Vec::new();
+            for record in level {
+                if carries(record) {
+                    roots.insert(record);
+                    continue;
+                }
+                for &(owner, slot) in index.referrers(record) {
+                    if live(&owner) && owns(owner, slot) && seen.insert(owner) {
+                        next.push(owner);
+                    }
+                }
             }
+            level = next;
         }
     }
     roots
@@ -149,7 +218,7 @@ pub(crate) struct Rewrites<'a> {
 /// Point every record the plan rewrote ([`rewritten_roots`]) at a `MODIFIED`
 /// history keeping its original owner, state and creation date. Run once,
 /// after every patch, delete and Add has settled its edits.
-fn mark_modified(index: &FileIndex, schema: &str, ledger: &mut Ledger, removed: &HashSet<u32>, out: Rewrites) {
+fn mark_modified(index: &FileIndex, schema: &str, ledger: &mut Ledger, removed: &HashSet<u32>, out: &mut Rewrites) {
     let required = SchemaFamily::of_file_schema(schema) == Some(SchemaFamily::Ifc2x3);
     for id in rewritten_roots(index, schema, out.edits_by_id, removed) {
         let Some(ty) = index.type_of(id) else { continue };
@@ -175,7 +244,7 @@ fn mark_modified(index: &FileIndex, schema: &str, ledger: &mut Ledger, removed: 
                 original.state
             )));
         }
-        let Some(new) = ledger.modified(index, schema, out.ids, out.appended, original_id, &original) else {
+        let Some(new) = ledger.modified((index, removed), schema, out.ids, out.appended, original_id, &original) else {
             out.findings.push(report("id space exhausted: the modification is not recorded".into()));
             continue;
         };

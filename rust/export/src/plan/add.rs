@@ -25,12 +25,12 @@ use super::add_props::build_sets;
 use super::add_rels::{RelAccumulator, RelKind, RelRequest};
 use super::add_types::{AddItem, NewObject, Representation, TypeLink};
 use super::attrs::unset_required;
-use super::identity::{Identity, Made};
+use super::attribution::{Histories, Settles};
 use super::index::FileIndex;
 use super::placement::fmt;
 use super::props_synth::{defines_by_properties_record, ref_or_unset};
 use super::tessellation::{find_body_context, Emit};
-use super::types::{ObjectRef, PlanContext, Refusal, ValidationFinding};
+use super::types::{ObjectRef, Refusal, ValidationFinding};
 
 use assoc::{associate, Shared, SharedKey};
 use mapped::{build_map, mapped_shape, MapPlan, MapRef, TypeMaps};
@@ -43,29 +43,17 @@ struct Added {
     class: String,
 }
 
-/// Where the Adds' owner history comes from.
-pub(crate) enum AddHistory<'a> {
-    /// The file's (or a patch's), or none yet: the first Add that builds
-    /// synthesizes one.
-    Source(Option<u32>),
-    /// The exporting application's `ADDED` history, made by the first Add
-    /// that builds into `made`.
-    Attributed { identity: &'a Identity, made: &'a mut Made },
-}
-
-/// The owner history one Add names, and what the exporting application has
-/// then made, kept if the Add builds.
+/// The owner history one Add names, and what it settles if the Add builds.
 pub(crate) struct Owner {
     id: u32,
-    made: Option<Made>,
+    settles: Settles,
 }
 
 pub(crate) struct AddState<'a> {
     index: &'a FileIndex<'a>,
     schema: &'a str,
     removed: &'a HashSet<u32>,
-    context: &'a PlanContext,
-    history: AddHistory<'a>,
+    history: Histories<'a>,
     added: HashMap<String, Added>,
     /// Each added object's placement, by id, for children placed under it.
     placement_of_added: HashMap<u32, Option<u32>>,
@@ -97,15 +85,13 @@ impl<'a> AddState<'a> {
         index: &'a FileIndex<'a>,
         schema: &'a str,
         removed: &'a HashSet<u32>,
-        context: &'a PlanContext,
-        history: AddHistory<'a>,
+        history: Histories<'a>,
         body_context: Option<u32>,
     ) -> Self {
         Self {
             index,
             schema,
             removed,
-            context,
             history,
             added: HashMap::new(),
             placement_of_added: HashMap::new(),

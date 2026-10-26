@@ -13,10 +13,13 @@
 //! application and for the placeholder history [`super::owner_history`]
 //! synthesizes when a plan names no application.
 
+use std::collections::HashSet;
+
 use crate::step_ids::IdAllocator;
 
-use super::attrs::build_record;
+use super::attrs::{attribute_index, build_record};
 use super::index::FileIndex;
+use super::props_lookup::scalar_attr;
 use super::owner_history::{epoch_seconds, quoted};
 use super::types::ExportingApplication;
 
@@ -35,20 +38,25 @@ pub(crate) struct ChainSpec<'s> {
 }
 
 /// The ids of the user and application records a history names.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct Chain {
     pub(crate) user: u32,
     pub(crate) application: u32,
 }
 
-/// The chain `spec` describes, as `(records to write, ids)`. With a `source`,
-/// an application it already names by `spec.identifier` is reused (UR1/UR2
-/// make the identifier unique), with its developer, and so is a user of that
-/// developer whose person matches `spec`; only what is missing is written.
-pub(crate) fn chain(schema: &str, ids: &mut IdAllocator, spec: &ChainSpec, source: Option<&FileIndex>) -> Option<(Vec<(u32, String)>, Chain)> {
-    let existing_app = source.and_then(|index| existing_application(index, schema, spec.identifier));
-    let mut org = existing_app.and_then(|(_, developer)| developer);
-    let existing_user = source.zip(org).and_then(|(index, org)| existing_user(index, schema, org, spec));
+/// The source a chain may reuse records of: the file, and the records the
+/// plan takes out of it, which are not reused.
+pub(crate) type Reusable<'s> = Option<(&'s FileIndex<'s>, &'s HashSet<u32>)>;
+
+/// The chain `spec` describes, as `(records to write, ids)`. From a
+/// `source`, an application it already names by `spec.identifier` is reused
+/// (UR1/UR2 make the identifier unique), with its developer, and so is a
+/// user of that developer whose person matches `spec`, each only if it
+/// stays in the output; only what is missing is written.
+pub(crate) fn chain(schema: &str, ids: &mut IdAllocator, spec: &ChainSpec, source: Reusable) -> Option<(Vec<(u32, String)>, Chain)> {
+    let existing_app = source.and_then(|(index, removed)| existing_application(index, removed, schema, spec.identifier));
+    let mut org = existing_app.map(|(_, developer)| developer);
+    let existing_user = source.zip(org).and_then(|((index, removed), org)| existing_user(index, removed, schema, org, spec));
     let mut records = Vec::new();
     let user = match existing_user {
         Some(user) => user,
@@ -105,41 +113,57 @@ pub(crate) fn chain(schema: &str, ids: &mut IdAllocator, spec: &ChainSpec, sourc
     Some((records, Chain { user, application }))
 }
 
-fn scalar(index: &FileIndex, schema: &str, id: u32, entity: &str, attr: &str) -> Option<u32> {
-    let i = super::attrs::attribute_index(schema, entity, attr)?;
-    index.attrs(id)?.get(i)?.scalar
-}
-
 /// `(application, its developer)` for the source's application named
-/// `identifier`, the first in file order.
-fn existing_application(index: &FileIndex, schema: &str, identifier: &str) -> Option<(u32, Option<u32>)> {
+/// `identifier`, the first in file order that the output keeps, with its
+/// developer only if that is kept too.
+fn existing_application(index: &FileIndex, removed: &HashSet<u32>, schema: &str, identifier: &str) -> Option<(u32, u32)> {
     let id = index
         .applications
         .iter()
         .copied()
+        .filter(|id| !removed.contains(id))
         .find(|&id| index.string_attr(schema, id, "IFCAPPLICATION", "ApplicationIdentifier").as_deref() == Some(identifier))?;
-    Some((id, scalar(index, schema, id, "IFCAPPLICATION", "ApplicationDeveloper")))
+    // An application whose developer goes cannot be reused.
+    let developer = scalar_attr(index, schema, id, "IFCAPPLICATION", "ApplicationDeveloper").filter(|d| !removed.contains(d))?;
+    Some((id, developer))
 }
 
-/// A source user of `org` whose person is the one `spec` names.
-fn existing_user(index: &FileIndex, schema: &str, org: u32, spec: &ChainSpec) -> Option<u32> {
-    let slot = super::attrs::attribute_index(schema, "IFCPERSONANDORGANIZATION", "TheOrganization")?;
+/// A source user of `org`, kept by the output, whose person (kept too) is
+/// the one `spec` names.
+fn existing_user(index: &FileIndex, removed: &HashSet<u32>, schema: &str, org: u32, spec: &ChainSpec) -> Option<u32> {
+    let slot = attribute_index(schema, "IFCPERSONANDORGANIZATION", "TheOrganization")?;
     let person_matches = |person: u32| {
-        index.type_of(person).as_deref() == Some("IFCPERSON")
+        !removed.contains(&person)
+            && index.type_of(person).as_deref() == Some("IFCPERSON")
             && ["Identification", "Id"].iter().any(|a| index.string_attr(schema, person, "IFCPERSON", a).as_deref() == Some(spec.identification))
             && index.string_attr(schema, person, "IFCPERSON", "FamilyName").as_deref() == Some(spec.family_name)
     };
     index.referrers(org).iter().find_map(|&(user, i)| {
-        (i == slot && index.type_of(user).as_deref() == Some("IFCPERSONANDORGANIZATION"))
-            .then(|| scalar(index, schema, user, "IFCPERSONANDORGANIZATION", "ThePerson"))
+        (i == slot && !removed.contains(&user) && index.type_of(user).as_deref() == Some("IFCPERSONANDORGANIZATION"))
+            .then(|| scalar_attr(index, schema, user, "IFCPERSONANDORGANIZATION", "ThePerson"))
             .flatten()
             .filter(|&p| person_matches(p))
             .map(|_| user)
     })
 }
 
+/// A finding when `application`, a source record reused for the exporting
+/// application, names another version or full name than it does: reused
+/// all the same, since UR1 allows one application per identifier.
+pub(crate) fn reuse_note(index: &FileIndex, schema: &str, application: u32, identity: &Identity) -> Option<String> {
+    let read = |attr: &str| index.string_attr(schema, application, "IFCAPPLICATION", attr).unwrap_or_default();
+    let (version, full_name) = (read("Version"), read("ApplicationFullName"));
+    (version != identity.app.version || full_name != identity.app.full_name).then(|| {
+        format!(
+            "the file already has application #{application} with identifier '{}' ('{full_name}' version '{version}'); it is reused for '{}' version '{}', since an identifier names one application",
+            identity.app.identifier, identity.app.full_name, identity.app.version
+        )
+    })
+}
+
 /// A validated [`ExportingApplication`]: its change time read as seconds.
-#[derive(Clone, Debug)]
+/// Owned rather than borrowed from the plan, so the ledger that holds it
+/// carries no lifetime of the plan's.
 pub(crate) struct Identity {
     app: ExportingApplication,
     seconds: i64,
@@ -147,9 +171,16 @@ pub(crate) struct Identity {
 
 impl Identity {
     pub(crate) fn new(app: &ExportingApplication) -> Result<Self, String> {
-        let seconds = epoch_seconds(&app.changed_at).ok_or_else(|| {
-            format!("ExportingApplication.changed_at {:?} is neither Unix seconds nor an ISO 8601 timestamp; the export keeps the source's attribution", app.changed_at)
-        })?;
+        let stamp = &app.changed_at;
+        let keeps = "the export keeps the source's attribution";
+        let seconds = epoch_seconds(stamp)
+            .ok_or_else(|| format!("ExportingApplication.changed_at {stamp:?} is neither Unix seconds nor an ISO 8601 timestamp; {keeps}"))?;
+        // IfcTimeStamp is a 32-bit count of seconds since the epoch.
+        if i32::try_from(seconds).is_err() {
+            let milliseconds = stamp.trim().parse::<i64>().is_ok_and(|v| i32::try_from(v / 1000).is_ok());
+            let hint = if milliseconds { " (it looks like milliseconds; give seconds)" } else { "" };
+            return Err(format!("ExportingApplication.changed_at {stamp:?} is outside the IfcTimeStamp range{hint}; {keeps}"));
+        }
         Ok(Self { app: app.clone(), seconds })
     }
 
@@ -167,9 +198,9 @@ impl Identity {
         }
     }
 
-    /// `FILE_NAME.time_stamp`: the change time as UTC ISO 8601.
+    /// `FILE_NAME.time_stamp`: the change time as UTC ISO 8601, marked `Z`.
     pub(crate) fn header_time_stamp(&self) -> String {
-        iso_from_epoch(self.seconds)
+        format!("{}Z", iso_from_epoch(self.seconds))
     }
 
     /// The chain this application's histories name.
@@ -232,7 +263,7 @@ impl Identity {
 
     /// The `ADDED` history, made on first use: whatever `made` lacks is
     /// written to `out` and recorded in `made`.
-    pub(crate) fn added_in(&self, schema: &str, ids: &mut IdAllocator, source: Option<&FileIndex>, made: &mut Made, out: &mut Vec<(u32, String)>) -> Option<u32> {
+    pub(crate) fn added_in(&self, schema: &str, ids: &mut IdAllocator, source: Reusable, made: &mut Made, out: &mut Vec<(u32, String)>) -> Option<u32> {
         if let Some(id) = made.added {
             return Some(id);
         }
@@ -244,7 +275,7 @@ impl Identity {
     }
 
     /// The chain, made on first use as [`Self::added_in`] makes its history.
-    pub(crate) fn chain_in(&self, schema: &str, ids: &mut IdAllocator, source: Option<&FileIndex>, made: &mut Made, out: &mut Vec<(u32, String)>) -> Option<Chain> {
+    pub(crate) fn chain_in(&self, schema: &str, ids: &mut IdAllocator, source: Reusable, made: &mut Made, out: &mut Vec<(u32, String)>) -> Option<Chain> {
         if made.chain.is_none() {
             let (records, made_chain) = chain(schema, ids, &self.spec(), source)?;
             out.extend(records);
@@ -265,6 +296,11 @@ impl Made {
     /// The `ADDED` history, once written.
     pub(crate) fn added(&self) -> Option<u32> {
         self.added
+    }
+
+    /// The application record the histories name, once settled.
+    pub(crate) fn application(&self) -> Option<u32> {
+        self.chain.map(|c| c.application)
     }
 }
 

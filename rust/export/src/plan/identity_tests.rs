@@ -181,7 +181,7 @@ fn the_header_names_the_application_the_toolkit_and_the_change() {
     let src = source("IFC4", false);
     let (out, _) = export(&src, vec![rename(10)], context());
     let text = String::from_utf8(out).unwrap();
-    let expected = format!("FILE_NAME('out.ifc','{CHANGED_AT}',(''),(''),'ifc-lite {}','ExampleApp 2.1','');", env!("CARGO_PKG_VERSION"));
+    let expected = format!("FILE_NAME('out.ifc','{CHANGED_AT}Z',(''),(''),'ifc-lite {}','ExampleApp 2.1','');", env!("CARGO_PKG_VERSION"));
     assert!(text.contains(&expected), "{text}");
 }
 
@@ -228,7 +228,7 @@ fn a_skeleton_is_owned_and_headed_by_the_exporting_application() {
         assert_eq!(attr("IFC4", line, entity, "OwnerHistory"), format!("#{}", added[0]), "{entity}");
     }
     let text = String::from_utf8(bytes.clone()).unwrap();
-    assert!(text.contains(&format!("FILE_NAME('new.ifc','{CHANGED_AT}',(''),(''),'ifc-lite {}','ExampleApp 2.1','');", env!("CARGO_PKG_VERSION"))));
+    assert!(text.contains(&format!("FILE_NAME('new.ifc','{CHANGED_AT}Z',(''),(''),'ifc-lite {}','ExampleApp 2.1','');", env!("CARGO_PKG_VERSION"))));
     // A plan on top of it validates.
     let (_, report) = export(&bytes, vec![], context());
     assert!(report.findings.is_empty(), "{:?}", report.findings);
@@ -329,8 +329,11 @@ fn assert_modified_exactly_the_rewritten(schema: &str, src: &[u8], out: &[u8]) -
             crate::step_text::apply_attr_mutations_counted(l, &edit, &mut 0)
         };
         if masked(old) == masked(new) {
-            let members = crate::plan::index::parse_attrs(old).unwrap().into_iter().flat_map(|a| a.list.unwrap_or_default()).flatten();
-            assert!(members.into_iter().any(|m| changed_leaf(&m)), "{schema}: #{id} is marked modified but nothing of it was rewritten: {new}");
+            // Only its history changed: something it owns directly was
+            // rewritten (a value of a set, a product's placement).
+            let mut owned = Vec::new();
+            crate::step_text::refs_in_line(old.as_bytes(), &mut owned);
+            assert!(owned.iter().any(changed_leaf), "{schema}: #{id} is marked modified but nothing of it was rewritten: {new}");
         }
         marked.push(*id);
     }
@@ -429,7 +432,9 @@ fn an_application_the_source_already_names_is_reused() {
         ];
         let src = src.replace("ENDSEC;\nEND-ISO", &format!("{}\nENDSEC;\nEND-ISO", ours.join("\n"))).into_bytes();
         let (out, report) = export(&src, vec![rename(10)], context());
-        assert!(report.findings.is_empty(), "{schema}: {:?}", report.findings);
+        // Reused, though the source's is another version: UR1 allows one.
+        assert_eq!(report.findings.len(), 1, "{schema}: {:?}", report.findings);
+        assert!(report.findings[0].message.contains("'2.0'") && report.findings[0].message.contains("'2.1'"), "{schema}: {:?}", report.findings);
         let all = lines(&out);
         assert_eq!(all.values().filter(|l| l.contains("'example-app'")).count(), 1, "{schema}: one application with the identifier");
         let history = target(schema, &all, &all[&10], "IFCWALL", "OwnerHistory");
@@ -493,7 +498,110 @@ fn the_header_time_is_the_change_time_with_an_application() {
     let src = source("IFC4", false);
     let (out, _) = export(&src, vec![rename(10)], context().with_time_stamp("1999-01-01T00:00:00"));
     let text = String::from_utf8(out).unwrap();
-    assert!(text.contains(&format!("FILE_NAME('out.ifc','{CHANGED_AT}',")), "{text}");
+    assert!(text.contains(&format!("FILE_NAME('out.ifc','{CHANGED_AT}Z',")), "{text}");
     let (out, _) = export(&src, vec![rename(10)], PlanContext::new().with_time_stamp("1999-01-01T00:00:00"));
     assert!(String::from_utf8(out).unwrap().contains("'1999-01-01T00:00:00'"));
+}
+
+/// Every `#id` a line of `content` names is a record of it.
+fn assert_no_dangling(content: &[u8], what: &str) {
+    let all = lines(content);
+    for line in all.values() {
+        let mut refs = Vec::new();
+        crate::step_text::refs_in_line(line.as_bytes(), &mut refs);
+        for r in refs {
+            assert!(all.contains_key(&r), "{what}: {line} names #{r}, which is not in the file");
+        }
+    }
+}
+
+/// A placement or geometry patch rewrites the product's placement or its
+/// representation slot: the product is modified.
+#[test]
+fn a_placement_or_geometry_patch_modifies_the_product() {
+    let moved = Patch::new().with_placement(PlacementPatch::new([[1.0, 0.0, 0.0, 5.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]));
+    let mesh = TriangleMesh::new(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], vec![[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]]);
+    let reshaped = Patch::new().with_geometry(GeometryPatch::new(mesh));
+    for schema in SCHEMAS {
+        let src = owned(&crate::plan::test_fixtures::wall_with_own_pset(schema), schema);
+        for patch in [moved.clone(), reshaped.clone()] {
+            let (out, report) = export(&src, vec![(ObjectRef::Id(10), Disposition::Patch(patch))], context());
+            assert!(report.refusals.is_empty(), "{schema}: {report:?}");
+            assert!(assert_modified_exactly_the_rewritten(schema, &src, &out).contains(&10), "{schema}: the wall");
+        }
+    }
+}
+
+/// An application chain the plan's deletes take is not reused: a fresh one
+/// is written, and nothing names a removed record.
+#[test]
+fn a_chain_the_plan_deletes_is_not_reused() {
+    for schema in SCHEMAS {
+        let src = String::from_utf8(source(schema, false)).unwrap();
+        let ours = [
+            build_record(schema, 170, "IFCPERSON", &[("Identification", "'jdoe'".into()), ("Id", "'jdoe'".into()), ("FamilyName", "'Jane Doe'".into())]),
+            build_record(schema, 171, "IFCORGANIZATION", &[("Name", "'ExampleOrg'".into())]),
+            build_record(schema, 172, "IFCPERSONANDORGANIZATION", &[("ThePerson", "#170".into()), ("TheOrganization", "#171".into())]),
+            build_record(
+                schema,
+                173,
+                "IFCAPPLICATION",
+                &[("ApplicationDeveloper", "#171".into()), ("Version", "'2.1'".into()), ("ApplicationFullName", "'ExampleApp'".into()), ("ApplicationIdentifier", "'example-app'".into())],
+            ),
+            build_record(schema, 174, "IFCOWNERHISTORY", &[("OwningUser", "#172".into()), ("OwningApplication", "#173".into()), ("ChangeAction", ".ADDED.".into()), ("CreationDate", "1".into())]),
+            build_record(schema, 175, "IFCWALL", &[("GlobalId", format!("'{}'", gid(175))), ("OwnerHistory", "#174".into()), ("Name", "'Doomed'".into())]),
+        ];
+        let src = src.replace("ENDSEC;\nEND-ISO", &format!("{}\nENDSEC;\nEND-ISO", ours.join("\n"))).into_bytes();
+        let (out, report) = export(&src, vec![(ObjectRef::Id(175), Disposition::Delete), rename(10)], context());
+        assert!(report.refusals.is_empty(), "{schema}: {report:?}");
+        assert_no_dangling(&out, schema);
+        let all = lines(&out);
+        let history = target(schema, &all, &all[&10], "IFCWALL", "OwnerHistory");
+        let application = target(schema, &all, &history, "IFCOWNERHISTORY", "LastModifyingApplication");
+        assert!(application.contains("'example-app'"), "{schema}: {application}");
+    }
+}
+
+/// A write that is refused takes no history: nothing of the application's
+/// chain is left behind.
+#[test]
+fn a_refused_write_leaves_no_attribution_records() {
+    let schema = "IFC4";
+    // Ids for the chain and its history, but not for the set the write needs.
+    let src = String::from_utf8(crate::plan::test_fixtures::wall_with_own_pset(schema)).unwrap().replace(
+        "ENDSEC;\nEND-ISO",
+        &format!("#{}=IFCCARTESIANPOINT((0.,0.,0.));\nENDSEC;\nEND-ISO", u32::MAX - 6),
+    );
+    let (out, report) = export(src.as_bytes(), vec![patch(10, vec![write("Pset_New", "P", "'x'", PropScope::Occurrence)])], context());
+    assert_eq!(report.refusals.len(), 1, "{report:?}");
+    assert!(!String::from_utf8_lossy(&out).contains("'ExampleApp'"), "no chain for a refused write");
+}
+
+/// An unreadable change time is one finding, not two.
+#[test]
+fn an_unreadable_change_time_is_one_finding() {
+    let bad = ExportingApplication::new("O", "A", "a", "1", "yesterday");
+    let (_, report) = export(&source("IFC4", false), vec![rename(10)], PlanContext::new().with_application(bad));
+    assert_eq!(report.findings.len(), 1, "{:?}", report.findings);
+}
+
+/// `IfcTimeStamp` is a 32-bit count of seconds: a value outside it is
+/// refused, and one that reads as milliseconds says so.
+#[test]
+fn a_change_time_outside_the_timestamp_range_is_refused() {
+    for (stamp, says) in [("1792749600000", "milliseconds"), ("99999999999", "IfcTimeStamp"), ("2100-01-01T00:00:00", "IfcTimeStamp")] {
+        let app = ExportingApplication::new("O", "A", "a", "1", stamp);
+        let (out, report) = export(&source("IFC4", false), vec![rename(10)], PlanContext::new().with_application(app));
+        assert!(report.findings.iter().any(|f| f.message.contains(says)), "{stamp}: {:?}", report.findings);
+        assert_eq!(attr("IFC4", &lines(&out)[&10], "IFCWALL", "OwnerHistory"), "#164", "{stamp}");
+    }
+}
+
+/// The header's time is UTC and says so, whatever offset the change time
+/// was given in.
+#[test]
+fn the_header_time_is_utc() {
+    let app = ExportingApplication::new("ExampleOrg", "ExampleApp", "example-app", "2.1", "2026-10-23T12:00:00+02:00");
+    let (out, _) = export(&source("IFC4", false), vec![rename(10)], PlanContext::new().with_application(app));
+    assert!(String::from_utf8(out).unwrap().contains("'2026-10-23T10:00:00Z'"));
 }

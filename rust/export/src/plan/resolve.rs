@@ -13,7 +13,8 @@ use super::patch::{apply_patch, PatchOutput};
 use super::removal::RemovalReason;
 use super::types::{Disposition, DroppedRepresentation, ExportPlan, ObjectRef, Refusal, ValidationFinding};
 use super::add_attributed::{self, AddSetting, Produced};
-use super::attribution::{attribute_changes, Ledger, PatchHistory, Rewrites};
+use super::attribution::{attribute_changes, Histories, Ledger, Rewrites};
+use super::identity::Identity;
 use super::{attrs, delete, geometry};
 
 pub(crate) struct Resolution {
@@ -30,6 +31,8 @@ pub(crate) struct Resolution {
     /// property-set check, which is the defect a patch can introduce.
     pub(crate) patched_objects: Vec<u32>,
     pub(crate) dropped_representations: Vec<DroppedRepresentation>,
+    /// The exporting application the plan was attributed to, if usable.
+    pub(crate) identity: Option<Identity>,
     /// What the Adds report beyond refusals (see `AddState::notes`).
     pub(crate) findings: Vec<ValidationFinding>,
 }
@@ -39,7 +42,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     let mut appended: Vec<(u32, String)> = Vec::new();
     let mut findings = Vec::new();
     let mut ledger = Ledger::for_plan(plan, &mut findings);
-    let mut history = PatchHistory::new(index, schema, ledger.as_mut(), &plan.context);
+    let mut history = Histories::new(index, schema, ledger.as_mut(), index.first_owner_history, &plan.context);
     let mut refusals: Vec<Refusal> = Vec::new();
     let mut edits_by_id: HashMap<u32, BTreeMap<usize, String>> = HashMap::new();
     let mut requested_deletes: HashSet<u32> = HashSet::new();
@@ -176,9 +179,10 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
 
     // Every rewrite has settled: what the plan modified is read off them.
     let out = Rewrites { ids: &mut ids, appended: &mut appended, edits_by_id: &mut edits_by_id, findings: &mut findings };
-    attribute_changes(index, schema, ledger.as_mut(), &removed, patched + added > 0, out);
+    attribute_changes(index, schema, plan, ledger.as_mut(), &removed, patched + added > 0, out);
 
-    Resolution { appended, edits_by_id, removed, reasons, refusals, patched, added, patched_objects, dropped_representations, findings }
+    let identity = ledger.map(|ledger| ledger.identity);
+    Resolution { appended, edits_by_id, removed, reasons, refusals, patched, added, patched_objects, dropped_representations, identity, findings }
 }
 
 /// The cascade's reasons with what the patches removed themselves marked

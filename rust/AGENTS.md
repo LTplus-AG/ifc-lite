@@ -15,3 +15,7 @@ Supplements the root [AGENTS.md](../AGENTS.md) Geometry & WASM and Build/CI sect
 - **No `build.rs`; pure Rust.** The C++ kernel is gone (M9); ignore the dead cmake comment in `determinism.yml`.
 - **The pinned toolchain is repo-root `/rust-toolchain.toml`** (`channel = "nightly-2025-11-15"`, components `rust-src` + `clippy`, target `wasm32-unknown-unknown`), the one CI uses and the ONLY toolchain file in the tree. Never add a `rust/rust-toolchain.toml`: the old one (deleted in #2834) shadowed the pin under `rust/` and disagreed with the gate's lints.
 - **Kernel boolean entry points** are `subtract` / `subtract_many` / `union` / `union_many` / `intersection` (`geometry/src/kernel/mesh_bridge.rs`). Group cuts go through `ClippingProcessor::subtract_mesh_many` (`geometry/src/csg/group_cut.rs`).
+
+## F3b copied-leaf spelling guard (#7779)
+
+`node scripts/check-leaf-reader-copies.mjs` checks the charter G3 spelling in production Rust sources. It masks comments, literals, test files and simple `cfg(test)` blocks; only the canonical decoder leaf reader is exempt. It rejects remaining copies without a grandfather list. This narrow lexical gate does not establish semantic canonicalization or native/WASM/server parity. Compound cfg predicates are conservatively scanned; they are not silently treated as test-only. Its synthetic controls run through the existing scripts test workflow.

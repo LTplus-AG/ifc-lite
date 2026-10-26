@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Crate-private construction facade over the same borrowed geometry program.
-// TODO(remove-by: S4a, owner: sessionf778e361): first cross-crate consumer.
+// Refs #7955: first cross-crate consumer.
 // Keep this lint inside the module so oracle ownership follows the explicit path.
 #![cfg_attr(not(test), allow(dead_code))]
 use super::*;
@@ -271,7 +271,7 @@ impl RetainedTraversal {
     }
  }
 
-#[cfg(all(test, target_arch = "wasm32", not(feature = "wasm_source_capture")))]
+#[cfg(all(test, target_arch = "wasm32", not(any(feature = "wasm_source_capture", feature = "retained-runtime"))))]
 mod unavailable_tests {
     use super::*;
 

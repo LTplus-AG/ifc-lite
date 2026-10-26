@@ -262,6 +262,6 @@ pub const RETAINED_RIGID_DOT_EPS: f64 = 1e-10;
 /// retained dependency boundary. Unit: dimensionless. Matches the adapter's
 /// existing proper-rigid admission at 1e-12; this is stricter than the authored
 /// source-placement tolerance and does not change the native/browser policy.
-#[cfg(any(test, feature = "retained-runtime"))]
+#[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) const RETAINED_DEPENDENCY_RIGID_EPS: f64 = 1e-12;

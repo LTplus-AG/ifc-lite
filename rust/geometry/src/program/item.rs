@@ -34,11 +34,11 @@ pub(super) enum ItemStep {
     /// step moves with every reply, and the continuation owns a mesh and stacks.
     Boolean { machine: Box<BooleanMachine>, reports: ConstructionReports },
     // RetainedSelection is uninhabited on default wasm; keep the shared reply match.
-    #[cfg_attr(not(any(test, feature = "retained-runtime")), allow(dead_code))]
+    #[cfg_attr(not(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime")), allow(dead_code))]
     RetainedReady(Box<RetainedPlanOperation>, RetainedSelection),
     // Keep retained frames out of the inline exact reply/controller layout.
     // Like RetainedReady, this carrier cannot be constructed on default wasm.
-    #[cfg_attr(not(any(test, feature = "retained-runtime")), allow(dead_code))]
+    #[cfg_attr(not(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime")), allow(dead_code))]
     RetainedComplete(Result<Box<LogicalRetainedValue>>, RetainedSelection),
     Complete(ItemResult),
 }

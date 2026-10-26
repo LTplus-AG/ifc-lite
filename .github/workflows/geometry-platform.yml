@@ -16,8 +16,6 @@ on:
       - 'rust/geometry/src/resource/**'
       - 'rust/processing/src/element/**'
       - 'rust/processing/Cargo.toml'
-      - 'tests/fixtures/cli-retained/**'
-      - 'tests/evidence/m1-*/**'
       # Browser module-Worker staging and its actual-Worker probe.
       - 'scripts/stage-retained-browser-assets.mjs'
       - 'scripts/smlib-browser-worker-probe.mjs'

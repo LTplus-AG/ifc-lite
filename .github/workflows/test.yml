@@ -281,6 +281,7 @@ jobs:
               # #7955: committed synthetic IFC/oracle/sidecar changes must run
               # their Rust consumers and the Node path-coverage mirror.
               - 'tests/fixtures/synthetic-retained/**'
+              - 'tests/fixtures/cli-retained/**'
               - '.github/workflows/test.yml'
             # AGENTS.md is the instruction file every agent reads, and
             # scripts/check-agents-md-size.mjs gates its size and line length.
@@ -534,6 +535,7 @@ jobs:
               - 'scripts/perf/instructions-report.mjs'
               - '.github/workflows/test.yml'
             docs:
+              - 'tests/fixtures/cli-retained/**'
               - 'docs/**'
               - 'mkdocs.yml'
               - 'requirements-docs.txt'
@@ -3170,6 +3172,11 @@ jobs:
         env:
           IFC_LITE_REQUIRE_FIXTURES: "1"
         run: cargo test -p ifc-lite-export --features parquet-bos
+
+      - name: Rust tests and Clippy (retained controller)
+        run: |
+          cargo test -p ifc-lite-geometry --features retained-runtime
+          cargo clippy -p ifc-lite-geometry --features retained-runtime --all-targets -- -D warnings
 
       # #7955 H1: the opt-in `retained-browser` feature of ifc-lite-wasm keeps
       # the retained executor out of the default engine bundle, so the

@@ -40,7 +40,7 @@ enum Sink {
     Merged(Box<Merged>),
     Styled(SubMeshCollection),
     // RetainedSelection is uninhabited on default wasm; the common walk stays shared.
-    #[cfg_attr(not(any(test, feature = "retained-runtime")), allow(dead_code))]
+    #[cfg_attr(not(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime")), allow(dead_code))]
     Retained(Vec<LogicalRetainedValue>, RetainedSelection),
 }
 
@@ -74,7 +74,7 @@ enum Role {
 
 enum Action {
     // Only retained admission constructs this action; default wasm cannot admit it.
-    #[cfg_attr(not(any(test, feature = "retained-runtime")), allow(dead_code))]
+    #[cfg_attr(not(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime")), allow(dead_code))]
     Item { item: DecodedEntity, control: Box<ItemControl> },
     /// Read an `IfcAlignment`'s axis through the alignment processor.
     Alignment,

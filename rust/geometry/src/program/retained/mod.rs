@@ -135,6 +135,8 @@ pub(crate) struct RetainedPlanOperation {
     pub(super) kind: RetainedOperationKind,
 }
 impl RetainedPlanOperation {
+    #[cfg(feature = "retained-runtime")]
+    pub(crate) fn into_value(self) -> LogicalRetainedValue { self.value }
     pub(crate) fn value(&self) -> &LogicalRetainedValue {
         &self.value
     }

@@ -6,7 +6,7 @@ pub(crate) mod constructor;
 mod boolean;
 mod execute;
 mod inner;
-// TODO(remove-by: S4a, owner: sessionf778e361): first cross-crate consumer.
+// Refs #7955: first cross-crate consumer.
 // Keep the construction-only surface private until that consumer is reviewed.
 #[cfg_attr(not(test), allow(dead_code))]
 mod retained;
@@ -48,3 +48,8 @@ impl OwnedConstructor {
 
 #[cfg(test)]
 mod constructor_tests;
+
+/// Opaque bridge for the off-by-default retained processing executor.
+#[doc(hidden)]
+#[cfg(feature = "retained-runtime")]
+pub mod transactions;

@@ -42,7 +42,7 @@ pub enum RetainedRecipe {
 }
 
 impl RetainedRecipe {
-    #[cfg(any(test, feature = "retained-runtime"))]
+    #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
     pub(crate) fn lower(&self) -> Result<SweepPayload, RetainedRefusal> {
         match self {
             Self::Extrusion(recipe) => retained_sweep::lower(recipe),
@@ -133,8 +133,8 @@ pub struct RetainedRequest {
 
 impl RetainedRequest {
     /// Same immutable admission, including the original source allocation.
-    // TODO(remove-by: S4a, owner: sessionf778e361, #7955): private receipt comparison.
-    #[cfg(any(test, feature = "retained-runtime"))]
+    // Refs #7955: private receipt comparison.
+    #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
     #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn same_admission(&self, other: &Self) -> bool {
         self.document == other.document && self.revision == other.revision

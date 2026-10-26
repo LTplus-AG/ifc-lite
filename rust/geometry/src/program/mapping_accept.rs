@@ -266,7 +266,7 @@ impl<'a> MappingControl<'a> {
     /// controller on a styled source, else its processor, if it has one.
     pub(super) fn select_plain(&mut self, item: Reached<'a>, router: &GeometryRouter) -> Option<Event> {
         // Statically unreachable on the default wasm engine (no retained state).
-        #[cfg_attr(not(any(test, feature = "retained-runtime")), allow(unreachable_code, unused_variables, unused_mut))]
+        #[cfg_attr(not(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime")), allow(unreachable_code, unused_variables, unused_mut))]
         if let Some(state) = &self.retained {
             let mut control = super::ItemControl::new((0., 0., 0.));
             control.retained = Some(state.selection.clone());

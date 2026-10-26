@@ -23,12 +23,12 @@
 //! Operations over definitions land with their first caller.
 
 mod retained;
-// TODO(remove-by: S4a, owner: sessionf778e361, #7955): qualify the private receipt consumer.
-#[cfg(any(test, feature = "retained-runtime"))]
+// Refs #7955: qualify the private receipt consumer.
+#[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) mod retained_frames;
-// TODO(remove-by: S4a, owner: sessionf778e361, #7955): qualify the private receipt consumer.
-#[cfg(any(test, feature = "retained-runtime"))]
+// Refs #7955: qualify the private receipt consumer.
+#[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) mod retained_affine;
 mod retained_disk;

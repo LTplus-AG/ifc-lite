@@ -136,7 +136,7 @@ enum Merging {
 }
 
 enum Placing {
-    #[cfg_attr(not(any(test, feature = "retained-runtime")), allow(dead_code))]
+    #[cfg_attr(not(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime")), allow(dead_code))]
     Retained(Box<(Vec<super::retained::LogicalRetainedValue>, super::retained::RetainedSelection,
         Option<super::retained::RetainedPresentation>)>),
     Cached(Arc<Mesh>),

@@ -1,0 +1,17 @@
+{
+ "jobId": "d48bcdb1-ac4f-4236-a414-93f43d8e2a97",
+ "accepted": true,
+ "head": "97d8add207104d5801c0c8d62e40fa7066e848f8",
+ "harnessCommit": "9a971685991fb99ebd9542625298de66337fd6fa",
+ "reportSha256": "7612283c0b2cee0ea22c57de5c7f7fd8bc2c0abb1082ba424fccc5ba55cde5bf",
+ "reportBytes": 436293,
+ "harness": {
+  "pick-depth-6881-native.mjs": "8dddf765298e9ce36466380e5a374363cd3d023bd625412b6cbd493729321ea3",
+  "pick-depth-6881-observer.mjs": "4325ce9034d1293a32d4b4aa34dd206e17e1d77f07066f8606b6c4496887be0d",
+  "pick-depth-6881-hover.mjs": "2f861fe52c121537d56735d0b9f60cf97b00b7bf08f47e080c11e969d4007b8e",
+  "pick-depth-6881-families.mjs": "3e16f1654fc7fd49df166e8d169b66991f0f26c282d592a095b82dcf7284af44",
+  "pick-depth-6881-controls.mjs": "af3cdbe13b0784edf06c6419362896fc052acf1f6913012cfa595990b024080d"
+ },
+ "note": "Rerun of the native functional qualification on the harness committed in this PR (observer 4325ce90), after review found the accepted functional run (functional-summary.json) used the earlier observer d14ac6c6. Same build, fixtures and controls.",
+ "comparisons": 140
+}

@@ -33,24 +33,24 @@ pub(super) struct ReusedRepresentation {
 }
 
 impl AddState<'_, '_> {
-    /// The representations a [`Representation::SameAs`] body repeats, or why
-    /// it cannot: the source is not a live product of the source file, has no
-    /// representation, gets a new body from a patch, or loses part of one to
-    /// this plan's deletes.
+    /// The representations a [`Representation::SameAs`] object repeats, or
+    /// why it cannot: the source is not a live product of the source file,
+    /// has no representation, gets new geometry from a patch, or loses part
+    /// of a representation to this plan's deletes.
     pub(super) fn check_same_as(&self, obj: &NewObject) -> Result<Option<Vec<ReusedRepresentation>>, String> {
         let Representation::SameAs(source) = &obj.representation else { return Ok(None) };
         if obj.style.is_some() {
-            return Err("a reused body keeps its source's colour, not its own".into());
+            return Err("reused geometry keeps its source's colour, not its own".into());
         }
         let (id, class) = self.lookup(source).map_err(|e| format!("representation source: {e}"))?;
         if !self.index.contains(id) {
-            return Err(format!("representation source {source} is added by this plan; only a product in the source can lend its body"));
+            return Err(format!("representation source {source} is added by this plan; only a product in the source can lend its geometry"));
         }
         if !self.is_a(&class, "IFCPRODUCT") {
             return Err(format!("representation source {source} is {class}, not a product"));
         }
         if self.reshaped.contains(&id) {
-            return Err(format!("representation source {source} gets a new body from a patch in this plan; reuse its mesh instead"));
+            return Err(format!("representation source {source} gets new geometry from a patch in this plan; reuse its mesh instead"));
         }
         let (index, schema) = (self.index, self.schema);
         let entity = |r: u32| index.type_of(r).unwrap_or_default();

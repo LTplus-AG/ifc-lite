@@ -13,9 +13,13 @@ use crate::plan::types::*;
 /// GlobalId of door `#200` in [`door_scene`].
 const DOOR: &str = "0000000000000000000200";
 
+/// A record as `build_record` takes it: id, entity, fields.
+type Record<'a> = (u32, &'a str, &'a [(&'a str, &'a str)]);
+
 /// `storey_with_typed_wall` with door `#200` in storey `#70`, two metres
 /// along: its body `#204` is one 0.9 x 0.05 x 2.1 extruded rectangle `#206`.
-fn door_scene(schema: &str) -> Vec<u8> {
+/// `extra` records follow the door's.
+fn door_scene(schema: &str, extra: &[Record]) -> Vec<u8> {
     let r = |id, entity, fields: &[(&str, &str)]| {
         let mut fields: Vec<(&str, String)> = fields.iter().map(|&(n, v)| (n, v.to_string())).collect();
         if schema == "IFC2X3" && entity == "IFCDOOR" {
@@ -38,7 +42,8 @@ fn door_scene(schema: &str) -> Vec<u8> {
         r(210, "IFCAXIS2PLACEMENT2D", &[("Location", "#211")]),
         r(211, "IFCCARTESIANPOINT", &[("Coordinates", "(0.45,0.025)")]),
     ]
-    .concat();
+    .concat()
+        + &extra.iter().map(|&(id, entity, fields)| r(id, entity, fields)).collect::<String>();
     let text = String::from_utf8(storey_with_typed_wall(schema)).unwrap();
     text.replacen("ENDSEC;\nEND-ISO", &format!("{records}ENDSEC;\nEND-ISO"), 1).into_bytes()
 }
@@ -93,7 +98,7 @@ fn shape_of(out: &[u8], schema: &str, product: u32) -> (u32, Vec<(u32, [String; 
 #[test]
 fn a_copy_lists_its_source_doors_extruded_solid_in_its_own_shape() {
     for schema in SCHEMAS {
-        let source = door_scene(schema);
+        let source = door_scene(schema, &[]);
         let door = copy(1, IfcClass::Door, ObjectRef::Guid(DOOR.into()), Some(ObjectRef::Id(70)), 5.0);
         let (out, report) = run(&source, vec![add(door)]);
         assert_clean(&report, schema);
@@ -188,7 +193,7 @@ fn a_reused_body_is_refused_when_its_source_cannot_lend_one() {
             (delete(76), wall(ObjectRef::Id(10)), "representation #61: item #76 is removed by this plan"),
             (delete(61), wall(ObjectRef::Id(10)), "representation #61 is removed by this plan"),
             (Vec::new(), wall(ObjectRef::Id(120)), "IFCWALLTYPE, not a product"),
-            (Vec::new(), wall(ObjectRef::Id(10)).with_style(SurfaceColour { rgb: [1.0, 0.0, 0.0], transparency: 0.0 }), "keeps its source's colour"),
+            (Vec::new(), wall(ObjectRef::Id(10)).with_style(SurfaceColour { rgb: [1.0, 0.0, 0.0], transparency: 0.0 }), "reused geometry keeps its source's colour"),
         ];
         for (before, obj, want) in cases {
             let reason = refusal(&source, before, obj);
@@ -200,38 +205,56 @@ fn a_reused_body_is_refused_when_its_source_cannot_lend_one() {
     }
 }
 
+/// A patch giving door `#200` a tetrahedron for its body.
+fn reshape_door() -> Vec<(ObjectRef, Disposition)> {
+    let mesh = TriangleMesh::new(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], vec![[0, 2, 1], [0, 1, 3], [1, 2, 3], [0, 3, 2]]);
+    vec![(ObjectRef::Id(200), Disposition::Patch(Patch::new().with_geometry(GeometryPatch::new(mesh))))]
+}
+
 #[test]
 fn a_body_a_patch_replaces_is_not_reused() {
     for schema in SCHEMAS {
-        let source = door_scene(schema);
-        let mesh = TriangleMesh::new(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], vec![[0, 2, 1], [0, 1, 3], [1, 2, 3], [0, 3, 2]]);
-        let reshape = vec![(ObjectRef::Id(200), Disposition::Patch(Patch::new().with_geometry(GeometryPatch::new(mesh))))];
+        let source = door_scene(schema, &[]);
         let door = copy(1, IfcClass::Door, ObjectRef::Guid(DOOR.into()), Some(ObjectRef::Id(70)), 5.0);
-        let reason = refusal(&source, reshape, door);
-        assert!(reason.contains(&format!("{DOOR} gets a new body from a patch in this plan")), "{schema}: {reason}");
+        let reason = refusal(&source, reshape_door(), door);
+        assert!(reason.contains(&format!("{DOOR} gets new geometry from a patch in this plan")), "{schema}: {reason}");
     }
 }
 
 #[test]
 fn a_reshaped_body_is_not_reused_while_another_product_keeps_the_old_one() {
     for schema in SCHEMAS {
-        // Door `#220` shares the door's shape `#203`, so the patch's sweep
-        // leaves `#203`, `#204` and `#206` in place.
-        let mut fields: Vec<(&str, String)> = [("GlobalId", "'0000000000000000000220'"), ("Name", "'Twin'"), ("ObjectPlacement", "#201"), ("Representation", "#203")]
-            .map(|(n, v)| (n, v.to_string()))
-            .to_vec();
-        if schema == "IFC2X3" {
-            fields.push(("OwnerHistory", "#5".into()));
-        }
-        let twin = build_record(schema, 220, "IFCDOOR", &fields) + "\n";
-        let source = String::from_utf8(door_scene(schema)).unwrap().replacen("ENDSEC;\nEND-ISO", &format!("{twin}ENDSEC;\nEND-ISO"), 1).into_bytes();
-        let mesh = TriangleMesh::new(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], vec![[0, 2, 1], [0, 1, 3], [1, 2, 3], [0, 3, 2]]);
-        let reshape = vec![(ObjectRef::Id(200), Disposition::Patch(Patch::new().with_geometry(GeometryPatch::new(mesh))))];
-        let (alone, _) = run(&source, reshape.clone());
-        assert!(alone.windows(5).any(|w| w == b"#206="), "{schema}: the old body survives the sweep");
+        // Door `#220` has its own shape `#221` and placement `#223`, and lists
+        // the door's solid `#206`, so the patch's sweep leaves `#206` in place.
+        let twin: &[Record] = &[
+            (220, "IFCDOOR", &[("GlobalId", "'0000000000000000000220'"), ("Name", "'Twin'"), ("ObjectPlacement", "#223"), ("Representation", "#221")]),
+            (223, "IFCLOCALPLACEMENT", &[("PlacementRelTo", "#73"), ("RelativePlacement", "#202")]),
+            (221, "IFCPRODUCTDEFINITIONSHAPE", &[("Representations", "(#222)")]),
+            (222, "IFCSHAPEREPRESENTATION", &[("ContextOfItems", "#100"), ("RepresentationIdentifier", "'Body'"), ("RepresentationType", "'SweptSolid'"), ("Items", "(#206)")]),
+        ];
+        let source = door_scene(schema, twin);
+        assert_valid(&source, schema);
+        let (alone, report) = run(&source, reshape_door());
+        assert_clean(&report, schema);
+        assert_valid(&alone, schema);
+        assert_eq!(attr(&alone, schema, 220, "Representation"), "#221", "{schema}");
+        assert_eq!(attr(&alone, schema, 222, "Items"), "(#206)", "{schema}: the twin keeps the old solid");
+        assert_eq!(type_in(&alone, 206), "IFCEXTRUDEDAREASOLID", "{schema}");
+        assert!(!FileIndex::scan(&alone, &Default::default()).contains(204), "{schema}: the door's old representation goes");
+
         let door = copy(1, IfcClass::Door, ObjectRef::Guid(DOOR.into()), Some(ObjectRef::Id(70)), 5.0);
-        let reason = refusal(&source, reshape, door);
-        assert!(reason.contains(&format!("{DOOR} gets a new body from a patch in this plan")), "{schema}: {reason}");
+        let reason = refusal(&source, reshape_door(), door);
+        assert!(reason.contains(&format!("{DOOR} gets new geometry from a patch in this plan")), "{schema}: {reason}");
+
+        // The twin is not reshaped, so it lends the old solid.
+        let mut plan = reshape_door();
+        plan.push(add(copy(1, IfcClass::Door, ObjectRef::Id(220), Some(ObjectRef::Id(70)), 5.0)));
+        let (out, report) = run(&source, plan);
+        assert_clean(&report, schema);
+        assert_valid(&out, schema);
+        let (_, reps) = shape_of(&out, schema, id_in(&out, gid(1)));
+        assert_eq!(reps.len(), 1, "{schema}");
+        assert_eq!(reps[0].1[3], "(#206)", "{schema}");
     }
 }
 
@@ -250,11 +273,20 @@ fn a_mapped_body_outlives_its_deleted_type_and_goes_with_its_map() {
         let (_, reps) = shape_of(&out, schema, id_in(&out, gid(1)));
         assert_eq!(reps[0].1[3], "(#112)", "{schema}");
 
-        // A record below an item goes only with the item that names it.
+        // Deleting the map, its representation or its transform takes mapped
+        // item `#112` with it, so the copy is refused.
         for below in [113, 115, 117] {
             let reason = refusal(&source, vec![(ObjectRef::Id(below), Disposition::Delete)], wall());
             assert!(reason.contains("representation #111: item #112 is removed by this plan"), "{schema}: #{below}: {reason}");
         }
+
+        // Deleting solid `#116` below the map leaves `#112`: the copy mirrors
+        // the source as the plan leaves it.
+        let (out, report) = run(&source, vec![(ObjectRef::Id(116), Disposition::Delete), add(wall())]);
+        assert!(report.refusals.is_empty(), "{schema}: {:?}", report.refusals);
+        assert_eq!(attr(&out, schema, 111, "Items"), "(#112)", "{schema}");
+        let (_, reps) = shape_of(&out, schema, id_in(&out, gid(1)));
+        assert_eq!(reps[0].1[3], "(#112)", "{schema}");
     }
 }
 

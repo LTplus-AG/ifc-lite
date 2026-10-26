@@ -135,12 +135,12 @@ pub enum Representation {
     /// `FootPrint`, `Box`, ...): the object gets its own
     /// `IfcProductDefinitionShape` and one representation per representation
     /// of that product (same context, identifier and type) listing the
-    /// product's own items, so their styles and item-level layer assignments
-    /// carry over. Items are positioned relative to the object placement, so
-    /// the object shows the same geometry at its own placement. The colour is
-    /// the product's. Openings that void the product, its projections and the
-    /// layer assignments of its representations are not carried; an object
-    /// that needs openings declares its own.
+    /// product's own items, so anything attached to an item, such as a style
+    /// or an item-level layer, applies to both. Items are positioned relative
+    /// to the object placement, so the object shows the same geometry at its
+    /// own placement. The colour is the product's. Openings that void the
+    /// product and its projections are not carried; an object that needs
+    /// openings declares its own.
     SameAs(ObjectRef),
 }
 

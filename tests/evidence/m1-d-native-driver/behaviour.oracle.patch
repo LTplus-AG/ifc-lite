@@ -1,7 +1,7 @@
 --- a/rust/processing/src/element/session_retained/model.rs
 +++ b/rust/processing/src/element/session_retained/model.rs
 @@ -87,7 +87,7 @@
-     let jobs = crate::processor::canonical_element_jobs(&source);
+     let jobs = crate::processor::entry_points::canonical_element_jobs(&source);
      let mut worker: Option<W> = None;
      let mut attempts = 0usize;
 -    let max_attempts = usize::from(options.max_restarts.min(0)) + 1;

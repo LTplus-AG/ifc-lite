@@ -39,10 +39,48 @@ pub fn run_model_native(
     options: &ModelOptions,
     sink: impl FnMut(ProductOutcome),
 ) -> Result<ModelSummary, RetainedExecutionError> {
-    block_on(run_model(
+    run_model_native_timed(source, worker_path, options, sink).map(|(summary, _)| summary)
+}
+
+/// Same native entry, with diagnostic phase observations excluding sink time.
+pub fn run_model_native_timed(
+    source: Arc<SourceBundle>,
+    worker_path: impl AsRef<Path>,
+    options: &ModelOptions,
+    mut sink: impl FnMut(ProductOutcome),
+) -> Result<(ModelSummary, crate::NativeTimings), RetainedExecutionError> {
+    use crate::timing::MeasuredWorker;
+    use std::{cell::Cell, rc::Rc, time::Instant};
+    let timing = Rc::new(Cell::new(crate::NativeTimings::default()));
+    let sink_ms = Cell::new(0.);
+    let start = Instant::now();
+    let summary = block_on(run_model(
         source,
         options,
-        || NativeWorker::spawn(worker_path.as_ref()),
-        sink,
-    ))
+        || {
+            let start = Instant::now();
+            let result = NativeWorker::spawn(worker_path.as_ref());
+            let mut observed = timing.get();
+            observed.startup_and_qualification_ms += start.elapsed().as_secs_f64() * 1000.;
+            timing.set(observed);
+            result.map(|worker| MeasuredWorker {
+                worker,
+                timing: timing.clone(),
+            })
+        },
+        |outcome| {
+            let start = Instant::now();
+            sink(outcome);
+            sink_ms.set(sink_ms.get() + start.elapsed().as_secs_f64() * 1000.);
+        },
+    ))?;
+    let mut observed = timing.get();
+    observed.total_ms = (start.elapsed().as_secs_f64() * 1000. - sink_ms.get()).max(0.);
+    observed.controller_and_publication_ms = (observed.total_ms
+        - observed.startup_and_qualification_ms
+        - observed.construction_ms
+        - observed.affine_ms
+        - observed.boolean_ms)
+        .max(0.);
+    Ok((summary, observed))
 }

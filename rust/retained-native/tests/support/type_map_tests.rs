@@ -10,7 +10,7 @@ fn canonical_jobs_skip_type_products_and_empty_jobs_in_exact_order() {
             .into_iter()
             .map(|(id, _)| id)
             .collect();
-    assert_eq!(ids, vec![10, 20]);
+    assert_eq!(ids, vec![10, 20, 50]);
 }
 #[test]
 fn repeated_mapped_occurrences_publish_separate_placements() {

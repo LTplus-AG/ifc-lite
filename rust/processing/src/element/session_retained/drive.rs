@@ -12,7 +12,7 @@ pub(super) async fn drive<W: AsyncRetainedExecutor>(
     limits: NumericalLimits,
 ) -> Result<witness::RuntimeProductWitness<W::Receipt>, RetainedExecutionError> {
     while execution.advance_source(decoder, router)? {
-        let worker = match worker {
+        let worker = match &mut *worker {
             Some(worker) => worker,
             slot @ None => slot.insert(acquire()?),
         };

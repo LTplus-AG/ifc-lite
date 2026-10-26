@@ -49,3 +49,18 @@ fn m1_d_native_driver_caps_restarts_and_never_retries_the_failed_product() {
         .collect();
     assert_eq!(ids, vec![27, 100, 101, 102, 103, 104]);
 }
+
+// Refs #7955: scheduling retained jobs cannot modify exact output or its frame.
+#[test]
+fn canonical_jobs_leave_exact_mesh_bytes_identical() {
+    let bytes = BOX.as_bytes();
+    let before = ifc_lite_processing::process_geometry(bytes);
+    let jobs = canonical_element_jobs(&SourceBundle::new(bytes.to_vec()));
+    assert_eq!(jobs.iter().map(|(id, _)| *id).collect::<Vec<_>>(), vec![27]);
+    let after = ifc_lite_processing::process_geometry(bytes);
+    assert_eq!(
+        serde_json::to_vec(&before.meshes).unwrap(),
+        serde_json::to_vec(&after.meshes).unwrap()
+    );
+    assert_eq!(before.frame.world_matrix(), after.frame.world_matrix());
+}

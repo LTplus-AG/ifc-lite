@@ -6,7 +6,7 @@ use ifc_lite_core::{IfcType, SourceBundle};
 /// Exact full-pass order, excluding type products and representationless jobs.
 /// Selection filters apply later so source dependencies remain available.
 #[doc(hidden)]
-pub fn canonical_element_jobs(source: &SourceBundle) -> Vec<(u32, IfcType)> {
+pub fn canonical_element_jobs(source: &std::sync::Arc<SourceBundle>) -> Vec<(u32, IfcType)> {
     let mut decoder = source.decoder();
     let mut unused_index = IndexBuilder::new(source.bytes().len(), false);
     scan::scan_entities(
@@ -21,7 +21,11 @@ pub fn canonical_element_jobs(source: &SourceBundle) -> Vec<(u32, IfcType)> {
     .filter(|job| {
         job.representation_map_id.is_none()
             && !job.ifc_type.is_subtype_of(IfcType::IfcTypeProduct)
-            && ifc_lite_core::nth_attribute_is_present(&source.bytes()[job.start..job.end], 6)
+            && (job.ifc_type == IfcType::IfcAlignment
+                || ifc_lite_core::nth_attribute_is_present(
+                    &source.bytes()[job.start..job.end],
+                    ifc_lite_core::slot::IfcProduct::REPRESENTATION.index(),
+                ))
     })
     .map(|job| (job.id, job.ifc_type))
     .collect()

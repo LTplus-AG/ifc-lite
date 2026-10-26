@@ -285,6 +285,7 @@ jobs:
               # their Rust consumers and the Node path-coverage mirror.
               - 'tests/fixtures/synthetic-retained/**'
               - 'tests/fixtures/cli-retained/**'
+              - 'tests/manifests/**'
               - '.github/workflows/test.yml'
             # AGENTS.md is the instruction file every agent reads, and
             # scripts/check-agents-md-size.mjs gates its size and line length.
@@ -539,6 +540,7 @@ jobs:
               - '.github/workflows/test.yml'
             docs:
               - 'tests/fixtures/cli-retained/**'
+              - 'tests/manifests/**'
               - 'docs/**'
               - 'mkdocs.yml'
               - 'requirements-docs.txt'

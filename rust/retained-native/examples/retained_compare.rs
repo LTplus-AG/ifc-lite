@@ -10,7 +10,7 @@ mod report;
 mod source;
 use ifc_lite_core::SourceBundle;
 use ifc_lite_processing::element::retained_runtime::canonical_element_jobs;
-use ifc_lite_retained_native::{run_model_native, ModelOptions, ProductOutcome};
+use ifc_lite_retained_native::{run_model_native_timed, ModelOptions, ProductOutcome};
 use metrics::{transform, Metrics};
 use serde_json::json;
 use std::{
@@ -98,10 +98,14 @@ fn compare(
                     .to_world([p[0] as f64, p[1] as f64, p[2] as f64])
             })
             .collect();
-        exact_metrics
-            .entry(mesh.express_id)
-            .or_default()
-            .add_mesh(&points, &mesh.indices)?;
+        let measurement = exact_metrics.entry(mesh.express_id).or_default();
+        let mut kernel_mesh = ifc_lite_geometry::Mesh::new();
+        kernel_mesh.positions.clone_from(&mesh.positions);
+        kernel_mesh.indices.clone_from(&mesh.indices);
+        let volume =
+            measurement.volume + ifc_lite_geometry::mesh_check::signed_volume(&kernel_mesh).abs();
+        measurement.add_mesh(&points, &mesh.indices)?;
+        measurement.volume = volume;
     }
     let source = SourceBundle::new(bytes.clone());
     let candidates: BTreeSet<_> = canonical_element_jobs(&source)
@@ -111,14 +115,12 @@ fn compare(
     let sources = ifc_lite_processing::extract_analytic_quantity_sources(&bytes, None);
     let mut seen = BTreeSet::new();
     let mut last = Instant::now();
-    let start = last;
-    let summary = run_model_native(
+    let (summary, timings) = run_model_native_timed(
         source,
         &options.worker,
         &ModelOptions::default(),
         |outcome| {
             let ms = last.elapsed().as_secs_f64() * 1000.;
-            last = Instant::now();
             let id = match &outcome {
                 ProductOutcome::Published(s) => s.product_id,
                 ProductOutcome::Refused { product_id, .. } => *product_id,
@@ -175,17 +177,18 @@ fn compare(
                         .push(format!("{model}\t{id}\trefused\t{code}"));
                 }
             }
+            last = Instant::now();
         },
     )?;
-    let retained_ms = start.elapsed().as_secs_f64() * 1000.;
+    let retained_ms = timings.total_ms;
     report.retained_ms += retained_ms;
     if candidates != seen {
         report
             .universe_mismatch
             .push(format!("{model}: scheduler/outcome universe differs"));
     }
-    report.models.push(json!({"model":model,"exact":{"milliseconds":exact_ms,"processMaxRssKiB":exact_rss},
-        "retained":{"milliseconds":retained_ms,"processMaxRssKiB":report::rss(false)?,"childrenMaxRssKiB":report::rss(true)?,"restarts":summary.restarts},
+    report.models.push(json!({"model":model,"exact":{"milliseconds":exact_ms,"processMaxRssKiB":exact_rss,"phases":exact.stats},
+        "retained":{"milliseconds":retained_ms,"phasesMs":{"startupAndQualification":timings.startup_and_qualification_ms,"construction":timings.construction_ms,"affine":timings.affine_ms,"boolean":timings.boolean_ms,"controllerAndPublication":timings.controller_and_publication_ms},"processMaxRssKiB":report::rss(false)?,"childrenMaxRssKiB":report::rss(true)?,"restarts":summary.restarts},
         "memorySemantics":"getrusage process lifetime high-water marks; children includes reaped workers"}));
     Ok(())
 }

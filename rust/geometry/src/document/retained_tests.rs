@@ -272,6 +272,7 @@ fn invalid_tessellations_are_refused_and_kept() {
     assert_eq!(document.revision(), 1);
 }
 
+#[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
 #[test]
 fn s3_admission_identity_requires_source_allocation_revision_definition_and_worker() {
     // #7955: actual extracted source plus independently substituted identity axes.

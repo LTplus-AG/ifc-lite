@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/document/retained_affine.rs
++++ b/rust/geometry/src/document/retained_affine.rs
+@@ -32,7 +32,7 @@
+         let source_classes: [u32; 12] = std::array::from_fn(|i| word(8 + 4 * i));
+         let total = |classes: &[u32]| classes.iter().map(|&n| u64::from(n)).sum::<u64>();
+         if total(&source_classes[..6]) > MAX_CLASS_OBJECTS
+-            || total(&source_classes[6..]) > u64::MAX
++            || total(&source_classes[6..]) > MAX_CLASS_OBJECTS
+         {
+             return Err("affine certificate exceeds class budget");
+         }

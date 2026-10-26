@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/mapping_directions.rs
++++ b/rust/geometry/src/program/mapping_directions.rs
+@@ -115,7 +115,7 @@
+                     (derived_z, derived_x)
+                 }
+             };
+-            if false && !independent_triple(z, x, y) { return Err(refused()); }
++            if !independent_triple(z, x, y) { return Err(refused()); }
+         }
+     }
+     Ok(())

@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/retained/mod.rs
++++ b/rust/geometry/src/program/retained/mod.rs
+@@ -225,4 +225,5 @@
+             .zip([0., 0., 0., 1.])
+             .any(|(a, b)| *a != b)
++        || !determinant.is_finite()
+         || determinant == 0.
+     {

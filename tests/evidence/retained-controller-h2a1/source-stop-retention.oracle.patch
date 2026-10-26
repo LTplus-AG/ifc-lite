@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/retained/program.rs
++++ b/rust/geometry/src/program/retained/program.rs
+@@ -89,6 +89,13 @@
+         let result = self.admit_checked(ticket, router, decoder);
+         if let Err(RetainedProgramError::Stopped(stop)) = &result {
+             if let Some(selection) = self.selection() { selection.remember_stop(*stop); }
++        }
++        // Source/placement work can return an owned reply containing a stop.
++        // Latch it before scope exit without discarding that reply or its ticket.
++        if result.is_ok() {
++            if let Err(stop) = crate::resource::check_current() {
++                if let Some(selection) = self.selection() { selection.remember_stop(stop); }
++            }
+         }
+         result
+     }

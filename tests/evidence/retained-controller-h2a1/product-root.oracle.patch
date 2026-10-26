@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/product/retained.rs
++++ b/rust/geometry/src/program/product/retained.rs
+@@ -19,7 +19,7 @@
+             let mut control = Self::merged(element, SourceHygiene::IndexOnly);
+             control.retained = Some(selection.clone());
+             control.body = Body::Sink(Sink::Retained(Vec::new(), selection));
+-            if false && !element.ifc_type.is_subtype_of(IfcType::IfcProduct) {
++            if !element.ifc_type.is_subtype_of(IfcType::IfcProduct) {
+                 control.action = Action::Complete(Err(crate::Error::geometry(
+                     "retained product_parts requires an IfcProduct root",
+                 )));

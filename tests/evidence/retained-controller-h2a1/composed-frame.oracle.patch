@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/retained/mod.rs
++++ b/rust/geometry/src/program/retained/mod.rs
+@@ -146,7 +146,7 @@
+ // preserves its ordered f64 accumulation and avoids inverse-frame round trips.
+ fn compose_frame(a: &[f64; 16], b: &[f64; 16]) -> crate::Result<[f64; 16]> {
+     let composed = crate::math::mat4::mul(b, a);
+-    if false && composed.iter().any(|value| !value.is_finite()) {
++    if composed.iter().any(|value| !value.is_finite()) {
+         return Err(crate::Error::geometry("retained composed frame is non-finite"));
+     }
+     Ok(composed)

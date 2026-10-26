@@ -1,0 +1,107 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/inner.rs
++++ b/rust/geometry/src/program/inner.rs
+@@ -178,7 +178,7 @@
+         // Owners are validated before the recipe is taken: a refused call
+         // leaves the request executable by its actual router and decoder.
+         self.validate_owner(router, Some(decoder))?;
+-        if false && matches!(&self.control, Control::Product(c) if c.retained_ready()) {
++        if matches!(&self.control, Control::Product(c) if c.retained_ready()) {
+             return Err(ProgramError::UnsupportedRetained);
+         }
+         if matches!(&self.control, Control::Mapping(c) if c.retained_ready()) { return Err(ProgramError::UnsupportedRetained); }
+--- a/rust/geometry/src/program/retained/capture.rs
++++ b/rust/geometry/src/program/retained/capture.rs
+@@ -20,7 +20,7 @@
+             length_unit_scale: scale,
+         })),
+         IfcType::IfcSweptDiskSolid => Ok(RetainedRecipe::SweptDisk(RetainedSweptDisk {
+-            solid_id: 0,
++            solid_id: item.id,
+             source: crate::analytic::extract_swept_disk(item, decoder)?,
+             length_unit_scale: scale,
+         })),
+@@ -42,7 +42,7 @@
+             slot,
+             source_epoch: contract.source_epoch,
+             source_revision: contract.source_revision,
+-            source_id: 0,
++            source_id: item.id,
+         },
+         placements: Vec::new(),
+         presentation: Vec::new(),
+--- a/rust/geometry/src/program/retained/program.rs
++++ b/rust/geometry/src/program/retained/program.rs
+@@ -266,6 +266,8 @@
+                     // Construction and placement do not inspect or discharge
+                     // relationships, appearance, or persistent face identity.
+                     remaining: vec![
++                        RetainedRequirement::OpeningClosure,
++                        RetainedRequirement::MaterialLayers,
+                         RetainedRequirement::IfcAppearance,
+                         RetainedRequirement::PersistentFaces,
+                     ],
+--- a/rust/geometry/src/program/product/retained_structure.rs
++++ b/rust/geometry/src/program/product/retained_structure.rs
+@@ -38,7 +38,7 @@
+     if let Some(shape) = &shape {
+         for rep in shape.representations() {
+             crate::resource::check_current()?;
+-            if false && !matches!(
++            if !matches!(
+                 rep.ifc_type,
+                 IfcType::IfcShapeRepresentation | IfcType::IfcTopologyRepresentation
+             ) {
+@@ -70,7 +70,7 @@
+         })?;
+     for member in members {
+         crate::resource::check_current()?;
+-        if false && member.as_entity_ref().is_none() {
++        if member.as_entity_ref().is_none() {
+             return Err(Error::geometry(format!(
+                 "retained {name} on #{} contains a non-reference member",
+                 entity.id
+--- a/rust/geometry/src/program/product/retained.rs
++++ b/rust/geometry/src/program/product/retained.rs
+@@ -21,7 +21,7 @@
+             let mut control = Self::merged(element, SourceHygiene::IndexOnly);
+             control.retained = Some(selection.clone());
+             control.body = Body::Sink(Sink::Retained(Vec::new(), selection));
+-            if false && !element.ifc_type.is_subtype_of(IfcType::IfcProduct) {
++            if !element.ifc_type.is_subtype_of(IfcType::IfcProduct) {
+                 control.action = Action::Complete(Err(crate::Error::geometry(
+                     "retained product_parts requires an IfcProduct root",
+                 )));
+--- a/rust/geometry/src/program/retained/mod.rs
++++ b/rust/geometry/src/program/retained/mod.rs
+@@ -115,9 +115,6 @@
+         }
+         validate_affine(transform)?;
+         if matches!(stage, RetainedPlacementStage::Product { .. }) { proper_rigid(transform)?; }
+-        let input = self.slot;
+-        let output = next_slot(program)?;
+-        self.slot = output;
+         let matrix = crate::math::mat4::col_major_array(transform);
+         // Finite inputs need not compose to a finite frame. Compute both
+         // candidates before changing the occurrence or its placement lineage.
+@@ -137,8 +134,11 @@
+         })?
+         .retain();
+         crate::resource::reserve_headers(&mut self.placements, 1)?.retain();
++        let input = self.slot;
++        let output = next_slot(program)?;
+         self.world_from_source = world_from_source;
+         self.object_frame = object_frame;
++        self.slot = output;
+         self.placements.push(RetainedPlacement {
+             input,
+             output: self.slot,
+@@ -193,7 +193,7 @@
+ // preserves its ordered f64 accumulation and avoids inverse-frame round trips.
+ fn compose_frame(a: &[f64; 16], b: &[f64; 16]) -> crate::Result<[f64; 16]> {
+     let composed = crate::math::mat4::mul(b, a);
+-    if false && composed.iter().any(|value| !value.is_finite()) {
++    if composed.iter().any(|value| !value.is_finite()) {
+         return Err(crate::Error::geometry("retained composed frame is non-finite"));
+     }
+     Ok(composed)

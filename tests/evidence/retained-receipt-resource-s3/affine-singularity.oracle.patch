@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/document/retained_frames.rs
++++ b/rust/geometry/src/document/retained_frames.rs
+@@ -69,7 +69,7 @@
+     }
+     let det = m[0] * (m[5] * m[10] - m[9] * m[6]) - m[4] * (m[1] * m[10] - m[9] * m[2])
+         + m[8] * (m[1] * m[6] - m[5] * m[2]);
+-    if !det.is_finite() {
++    if det == 0. {
+         return Err("singular affine matrix");
+     }
+     Ok(())

@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/document/retained_frames.rs
++++ b/rust/geometry/src/document/retained_frames.rs
+@@ -23,7 +23,7 @@
+         m[2] * m[4] - m[0] * m[6],
+         m[0] * m[5] - m[1] * m[4],
+     ];
+-    if valid && (0..3).all(|i| (cross[i] - cross[i]).abs() <= RETAINED_DEPENDENCY_RIGID_EPS) {
++    if valid && (0..3).all(|i| (cross[i] - m[8 + i]).abs() <= RETAINED_DEPENDENCY_RIGID_EPS) {
+         Ok(())
+     } else {
+         Err("transform must be a proper rigid metre frame")

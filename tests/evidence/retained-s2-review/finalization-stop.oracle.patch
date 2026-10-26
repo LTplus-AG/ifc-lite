@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/retained/program.rs
++++ b/rust/geometry/src/program/retained/program.rs
+@@ -203,5 +203,5 @@
+         let result = self.finish_type_map_checked(type_product, class, color);
+         if let Err(Error::ProgramStopped(stop)) = &result {
+-            if let Some(selection) = selection { let _ = (selection, stop); }
++            if let Some(selection) = selection { selection.remember_stop(*stop); }
+         }
+         result

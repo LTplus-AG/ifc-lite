@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/processing/src/element/model_context_retained.rs
++++ b/rust/processing/src/element/model_context_retained.rs
+@@ -22,7 +22,7 @@
+     ) -> Result<(), RetainedContextError> {
+         self.validate_source().map_err(|_| RetainedContextError::StaleSource)?;
+         let source = self.source.as_ref().ok_or(RetainedContextError::MissingSource)?;
+-        if false && !source.owns_decoder(decoder) {
++        if !source.owns_decoder(decoder) {
+             return Err(RetainedContextError::MismatchedSource);
+         }
+         Ok(())

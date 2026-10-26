@@ -29,6 +29,8 @@
 //! writers escape them.
 
 use crate::JsString;
+use sink::JsonSink;
+pub(crate) use sink::{cmp_sorted, stable_hash_json, utf16_length};
 
 /// A JSON value in the shape the fingerprint projections build.
 ///
@@ -37,8 +39,11 @@ use crate::JsString;
 /// would silently sort.
 #[derive(Debug, Clone, PartialEq)]
 pub enum JsonValue {
-    /// Sparse array slot: JSON null, but an empty stableSerialize map/join token.
-    Hole,
+    /// A run of sparse array slots, only ever an array's LAST item (#8114):
+    /// each slot is JSON `null`, but an empty stableSerialize map/join token.
+    /// One count instead of one value per hole keeps every serialization pass
+    /// O(present) in memory except a materializing [`String`] sink.
+    Holes(usize),
     Null,
     Bool(bool),
     Number(f64),
@@ -67,26 +72,30 @@ pub fn stringify_sorted(value: &JsonValue) -> String {
     out
 }
 
-fn write_value(value: &JsonValue, sort_keys: bool, out: &mut String) {
+fn write_value<S: JsonSink>(value: &JsonValue, sort_keys: bool, out: &mut S) {
     match value {
-        JsonValue::Hole => { if !sort_keys { out.push_str("null"); } }
+        JsonValue::Holes(count) => write_holes(*count, true, sort_keys, out),
         JsonValue::Null => out.push_str("null"),
         JsonValue::Bool(true) => out.push_str("true"),
         JsonValue::Bool(false) => out.push_str("false"),
         JsonValue::Number(n) => out.push_str(&number_to_json(*n)),
-        JsonValue::String(s) => write_string(s, out),
+        JsonValue::String(s) => out.push_json_string(s),
         JsonValue::Array(items) => {
-            out.push('[');
+            out.push_str("[");
             for (index, item) in items.iter().enumerate() {
+                if let JsonValue::Holes(count) = item {
+                    write_holes(*count, index == 0, sort_keys, out);
+                    continue;
+                }
                 if index > 0 {
-                    out.push(',');
+                    out.push_str(",");
                 }
                 write_value(item, sort_keys, out);
             }
-            out.push(']');
+            out.push_str("]");
         }
         JsonValue::Object(entries) => {
-            out.push('{');
+            out.push_str("{");
             if sort_keys {
                 let mut order: Vec<&(JsString, JsonValue)> = entries.iter().collect();
                 order.sort_by(|a, b| a.0.cmp(&b.0));
@@ -94,21 +103,35 @@ fn write_value(value: &JsonValue, sort_keys: bool, out: &mut String) {
             } else {
                 write_entries(entries.iter(), sort_keys, out);
             }
-            out.push('}');
+            out.push_str("}");
         }
     }
 }
 
-fn write_entries<'a, I>(entries: I, sort_keys: bool, out: &mut String)
+/// `count` slots: `null` (JSON.stringify) or nothing (stableSerialize's
+/// map/join), each after a separator unless it is the array's first item.
+fn write_holes<S: JsonSink>(count: usize, first: bool, sort_keys: bool, out: &mut S) {
+    if count == 0 { return; }
+    let (token, separated) = if sort_keys { ("", ",") } else { ("null", ",null") };
+    let mut rest = count as u64;
+    if first {
+        out.push_str(token);
+        rest -= 1;
+    }
+    out.push_repeat(separated, rest);
+}
+
+fn write_entries<'a, I, S>(entries: I, sort_keys: bool, out: &mut S)
 where
     I: Iterator<Item = &'a (JsString, JsonValue)>,
+    S: JsonSink,
 {
     for (index, (key, item)) in entries.enumerate() {
         if index > 0 {
-            out.push(',');
+            out.push_str(",");
         }
-        write_string(key, out);
-        out.push(':');
+        out.push_json_string(key);
+        out.push_str(":");
         write_value(item, sort_keys, out);
     }
 }
@@ -142,8 +165,8 @@ pub fn non_finite_token(value: f64) -> &'static str {
     }
 }
 
-/// Well-formed JSON.stringify escapes unpaired surrogate code units.
-fn write_string(value: &JsString, out: &mut String) { value.write_json(out); }
+#[path = "js_json_sink.rs"]
+mod sink;
 
 #[cfg(test)]
 #[path = "js_json_tests.rs"]

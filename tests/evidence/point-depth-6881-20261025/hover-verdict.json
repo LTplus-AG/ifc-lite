@@ -1,0 +1,511 @@
+{
+ "attempt": 14,
+ "output": "hover-15",
+ "job": "ef6524fb-c141-4730-a827-85d1d147b624",
+ "head": "0a20f3c6932ca889c38a2aadbddb38f5cbb8f928",
+ "configuration": "hover-configuration-3.json",
+ "configSha256": "46a0b5fb2e05a6cf97f99c6ea0b25f94a313eb1a475599164ef31a47e655a204",
+ "harness": {
+  "pick-depth-6881-benchmark.mjs": "14dd3b3ce2e0fd2415781542a6f57d84208939a65f9ac87806d1dcbe5b743bee",
+  "pick-depth-6881-hover.mjs": "2f861fe52c121537d56735d0b9f60cf97b00b7bf08f47e080c11e969d4007b8e",
+  "pick-depth-6881-observer.mjs": "4325ce9034d1293a32d4b4aa34dd206e17e1d77f07066f8606b6c4496887be0d",
+  "pick-depth-6881-identity.mjs": "7d830ae3c556d0b4660e69cc97cc57a31c95a16070ebe55bcff0f9bc3ec02934",
+  "pick-depth-6881-host.mjs": "5ebe88b9188f85588602c0d5611a11d9667b71928fb3ab3c422ca6cafa20cad4"
+ },
+ "scope": "Mounted viewer hover, 5 interleaved pairs per public-model scenario at DPR1; no loading-speed claim",
+ "accepted": true,
+ "samples": 30,
+ "everySampleOk": true,
+ "hostGate": {
+  "readingsPerGate": {
+   "1": 60
+  },
+  "maxForeignCpuPercent": 8.39
+ },
+ "verdict": "Accepted improvement. Across FZK, Building-Architecture and Federation, the candidate maps 256 bytes per pick instead of 3,233,792, lowers median pointer-to-hover latency in 15 of 15 pairs (paired ratio 0.72-0.76) and median GPU picker time in 15 of 15 pairs (0.63-0.85). Pointer-to-hover p95 is lower in 12 of 15 pairs; with nine hovers per sample p95 is the slowest hover, so it is reported but not claimed. No loading-speed claim.",
+ "disclosure": "Protocol changes made after observing earlier attempts and not blinded: DPR tolerance, 1 mm world tolerance anchored to the first sample, own-process-tree CPU subtraction over one shared window, bounded 60 s quiet-host wait (never needed in this run: every gate was quiet on its first reading), and probed stable pick positions for Federation and FZK.",
+ "summary": [
+  {
+   "scenario": "FZK",
+   "metric": "pointer-to-hover-median-ms",
+   "baseMedian": 22.06500005722046,
+   "branchMedian": 16.355000019073486,
+   "pairedRatio": 0.722,
+   "branchLowerInPairs": 5,
+   "pairs": [
+    {
+     "pair": 0,
+     "base": 20.865000009536743,
+     "branch": 16.740000009536743,
+     "ratio": 0.802
+    },
+    {
+     "pair": 1,
+     "base": 22.27500009536743,
+     "branch": 14.274999976158142,
+     "ratio": 0.641
+    },
+    {
+     "pair": 2,
+     "base": 22.93499994277954,
+     "branch": 16.570000052452087,
+     "ratio": 0.722
+    },
+    {
+     "pair": 3,
+     "base": 22.06500005722046,
+     "branch": 14.589999914169312,
+     "ratio": 0.661
+    },
+    {
+     "pair": 4,
+     "base": 21.269999980926514,
+     "branch": 16.355000019073486,
+     "ratio": 0.769
+    }
+   ]
+  },
+  {
+   "scenario": "FZK",
+   "metric": "pointer-to-hover-p95-ms",
+   "baseMedian": 29.15499997138977,
+   "branchMedian": 28.78500008583069,
+   "pairedRatio": 0.946,
+   "branchLowerInPairs": 4,
+   "pairs": [
+    {
+     "pair": 0,
+     "base": 39.75999999046326,
+     "branch": 38.50499999523163,
+     "ratio": 0.968
+    },
+    {
+     "pair": 1,
+     "base": 27.69000005722046,
+     "branch": 25.444999933242798,
+     "ratio": 0.919
+    },
+    {
+     "pair": 2,
+     "base": 36.860000014305115,
+     "branch": 28.78500008583069,
+     "ratio": 0.781
+    },
+    {
+     "pair": 3,
+     "base": 29.15499997138977,
+     "branch": 32.044999957084656,
+     "ratio": 1.099
+    },
+    {
+     "pair": 4,
+     "base": 28.084999918937683,
+     "branch": 26.555000066757202,
+     "ratio": 0.946
+    }
+   ]
+  },
+  {
+   "scenario": "FZK",
+   "metric": "GPU-picker-median-ms",
+   "baseMedian": 19.27999997138977,
+   "branchMedian": 12.414999961853027,
+   "pairedRatio": 0.626,
+   "branchLowerInPairs": 5,
+   "pairs": [
+    {
+     "pair": 0,
+     "base": 19.27999997138977,
+     "branch": 14.480000019073486,
+     "ratio": 0.751
+    },
+    {
+     "pair": 1,
+     "base": 19.429999947547913,
+     "branch": 11.309999942779541,
+     "ratio": 0.582
+    },
+    {
+     "pair": 2,
+     "base": 19.830000042915344,
+     "branch": 12.414999961853027,
+     "ratio": 0.626
+    },
+    {
+     "pair": 3,
+     "base": 19.139999985694885,
+     "branch": 11.870000004768372,
+     "ratio": 0.62
+    },
+    {
+     "pair": 4,
+     "base": 14.340000033378601,
+     "branch": 13.424999952316284,
+     "ratio": 0.936
+    }
+   ]
+  },
+  {
+   "scenario": "FZK",
+   "metric": "mapped-bytes-per-pick",
+   "baseMedian": 3233792,
+   "branchMedian": 256,
+   "pairedRatio": 0,
+   "branchLowerInPairs": 5,
+   "pairs": [
+    {
+     "pair": 0,
+     "base": 3233792,
+     "branch": 256,
+     "ratio": 0.0
+    },
+    {
+     "pair": 1,
+     "base": 3233792,
+     "branch": 256,
+     "ratio": 0.0
+    },
+    {
+     "pair": 2,
+     "base": 3233792,
+     "branch": 256,
+     "ratio": 0.0
+    },
+    {
+     "pair": 3,
+     "base": 3233792,
+     "branch": 256,
+     "ratio": 0.0
+    },
+    {
+     "pair": 4,
+     "base": 3233792,
+     "branch": 256,
+     "ratio": 0.0
+    }
+   ]
+  },
+  {
+   "scenario": "Building-Architecture",
+   "metric": "pointer-to-hover-median-ms",
+   "baseMedian": 19.069999992847443,
+   "branchMedian": 13.930000066757202,
+   "pairedRatio": 0.73,
+   "branchLowerInPairs": 5,
+   "pairs": [
+    {
+     "pair": 0,
+     "base": 22.039999961853027,
+     "branch": 14.302500009536743,
+     "ratio": 0.649
+    },
+    {
+     "pair": 1,
+     "base": 15.537499964237213,
+     "branch": 13.572499990463257,
+     "ratio": 0.874
+    },
+    {
+     "pair": 2,
+     "base": 18.75,
+     "branch": 13.862500011920929,
+     "ratio": 0.739
+    },
+    {
+     "pair": 3,
+     "base": 21.86250001192093,
+     "branch": 15.954999923706055,
+     "ratio": 0.73
+    },
+    {
+     "pair": 4,
+     "base": 19.069999992847443,
+     "branch": 13.930000066757202,
+     "ratio": 0.73
+    }
+   ]
+  },
+  {
+   "scenario": "Building-Architecture",
+   "metric": "pointer-to-hover-p95-ms",
+   "baseMedian": 22.84500002861023,
+   "branchMedian": 15.909999966621399,
+   "pairedRatio": 0.74,
+   "branchLowerInPairs": 5,
+   "pairs": [
+    {
+     "pair": 0,
+     "base": 22.274999976158142,
+     "branch": 15.139999985694885,
+     "ratio": 0.68
+    },
+    {
+     "pair": 1,
+     "base": 23.06000006198883,
+     "branch": 17.165000081062317,
+     "ratio": 0.744
+    },
+    {
+     "pair": 2,
+     "base": 23.580000042915344,
+     "branch": 14.909999966621399,
+     "ratio": 0.632
+    },
+    {
+     "pair": 3,
+     "base": 22.84500002861023,
+     "branch": 16.90499997138977,
+     "ratio": 0.74
+    },
+    {
+     "pair": 4,
+     "base": 20.96999990940094,
+     "branch": 15.909999966621399,
+     "ratio": 0.759
+    }
+   ]
+  },
+  {
+   "scenario": "Building-Architecture",
+   "metric": "GPU-picker-median-ms",
+   "baseMedian": 13.920000076293945,
+   "branchMedian": 11.120000004768372,
+   "pairedRatio": 0.846,
+   "branchLowerInPairs": 5,
+   "pairs": [
+    {
+     "pair": 0,
+     "base": 14.674999952316284,
+     "branch": 11.120000004768372,
+     "ratio": 0.758
+    },
+    {
+     "pair": 1,
+     "base": 11.384999990463257,
+     "branch": 10.695000052452087,
+     "ratio": 0.939
+    },
+    {
+     "pair": 2,
+     "base": 13.940000057220459,
+     "branch": 11.789999961853027,
+     "ratio": 0.846
+    },
+    {
+     "pair": 3,
+     "base": 13.920000076293945,
+     "branch": 13.349999904632568,
+     "ratio": 0.959
+    },
+    {
+     "pair": 4,
+     "base": 13.100000023841858,
+     "branch": 9.059999942779541,
+     "ratio": 0.692
+    }
+   ]
+  },
+  {
+   "scenario": "Building-Architecture",
+   "metric": "mapped-bytes-per-pick",
+   "baseMedian": 3233792,
+   "branchMedian": 256,
+   "pairedRatio": 0,
+   "branchLowerInPairs": 5,
+   "pairs": [
+    {
+     "pair": 0,
+     "base": 3233792,
+     "branch": 256,
+     "ratio": 0.0
+    },
+    {
+     "pair": 1,
+     "base": 3233792,
+     "branch": 256,
+     "ratio": 0.0
+    },
+    {
+     "pair": 2,
+     "base": 3233792,
+     "branch": 256,
+     "ratio": 0.0
+    },
+    {
+     "pair": 3,
+     "base": 3233792,
+     "branch": 256,
+     "ratio": 0.0
+    },
+    {
+     "pair": 4,
+     "base": 3233792,
+     "branch": 256,
+     "ratio": 0.0
+    }
+   ]
+  },
+  {
+   "scenario": "Federation",
+   "metric": "pointer-to-hover-median-ms",
+   "baseMedian": 22.52999997138977,
+   "branchMedian": 17.139999985694885,
+   "pairedRatio": 0.757,
+   "branchLowerInPairs": 5,
+   "pairs": [
+    {
+     "pair": 0,
+     "base": 22.360000014305115,
+     "branch": 17.834999918937683,
+     "ratio": 0.798
+    },
+    {
+     "pair": 1,
+     "base": 22.514999985694885,
+     "branch": 21.8400000333786,
+     "ratio": 0.97
+    },
+    {
+     "pair": 2,
+     "base": 24.820000052452087,
+     "branch": 16.65499997138977,
+     "ratio": 0.671
+    },
+    {
+     "pair": 3,
+     "base": 22.52999997138977,
+     "branch": 16.399999976158142,
+     "ratio": 0.728
+    },
+    {
+     "pair": 4,
+     "base": 22.62999999523163,
+     "branch": 17.139999985694885,
+     "ratio": 0.757
+    }
+   ]
+  },
+  {
+   "scenario": "Federation",
+   "metric": "pointer-to-hover-p95-ms",
+   "baseMedian": 33.2849999666214,
+   "branchMedian": 33.080000042915344,
+   "pairedRatio": 0.864,
+   "branchLowerInPairs": 3,
+   "pairs": [
+    {
+     "pair": 0,
+     "base": 33.2849999666214,
+     "branch": 27.43499994277954,
+     "ratio": 0.824
+    },
+    {
+     "pair": 1,
+     "base": 29.705000042915344,
+     "branch": 38.88499999046326,
+     "ratio": 1.309
+    },
+    {
+     "pair": 2,
+     "base": 32.77499997615814,
+     "branch": 27.5,
+     "ratio": 0.839
+    },
+    {
+     "pair": 3,
+     "base": 38.269999980926514,
+     "branch": 33.080000042915344,
+     "ratio": 0.864
+    },
+    {
+     "pair": 4,
+     "base": 37.97000002861023,
+     "branch": 39.32000005245209,
+     "ratio": 1.036
+    }
+   ]
+  },
+  {
+   "scenario": "Federation",
+   "metric": "GPU-picker-median-ms",
+   "baseMedian": 20.1599999666214,
+   "branchMedian": 14.304999947547913,
+   "pairedRatio": 0.705,
+   "branchLowerInPairs": 5,
+   "pairs": [
+    {
+     "pair": 0,
+     "base": 19.859999895095825,
+     "branch": 12.875,
+     "ratio": 0.648
+    },
+    {
+     "pair": 1,
+     "base": 20.02500009536743,
+     "branch": 19.485000014305115,
+     "ratio": 0.973
+    },
+    {
+     "pair": 2,
+     "base": 21.945000052452087,
+     "branch": 14.034999966621399,
+     "ratio": 0.64
+    },
+    {
+     "pair": 3,
+     "base": 20.290000081062317,
+     "branch": 14.304999947547913,
+     "ratio": 0.705
+    },
+    {
+     "pair": 4,
+     "base": 20.1599999666214,
+     "branch": 14.965000033378601,
+     "ratio": 0.742
+    }
+   ]
+  },
+  {
+   "scenario": "Federation",
+   "metric": "mapped-bytes-per-pick",
+   "baseMedian": 3233792,
+   "branchMedian": 256,
+   "pairedRatio": 0,
+   "branchLowerInPairs": 5,
+   "pairs": [
+    {
+     "pair": 0,
+     "base": 3233792,
+     "branch": 256,
+     "ratio": 0.0
+    },
+    {
+     "pair": 1,
+     "base": 3233792,
+     "branch": 256,
+     "ratio": 0.0
+    },
+    {
+     "pair": 2,
+     "base": 3233792,
+     "branch": 256,
+     "ratio": 0.0
+    },
+    {
+     "pair": 3,
+     "base": 3233792,
+     "branch": 256,
+     "ratio": 0.0
+    },
+    {
+     "pair": 4,
+     "base": 3233792,
+     "branch": 256,
+     "ratio": 0.0
+    }
+   ]
+  }
+ ],
+ "runsSha256": "2d9d758c5514c3e081deb1e86696d5b4674044c5f89de39005a64b74f50d85c0",
+ "resultSha256": "2e254eb0106f432c4ed3ae52e1b389f538f1e595cc89841e3a765a87bf03abae"
+}

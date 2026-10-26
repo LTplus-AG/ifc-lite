@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use super::source::item_has_identity_position;
+use super::source::item_has_unrotated_position;
 use ifc_lite_core::EntityDecoder;
 
 fn wrap(data: &str) -> String {
@@ -13,19 +13,19 @@ FILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n{data}ENDSEC;\nEND-ISO-10303-21;\n"
     )
 }
 
-/// Run `item_has_identity_position` on a worker thread with a timeout.
+/// Run `item_has_unrotated_position` on a worker thread with a timeout.
 ///
 /// The walk is iterative, so a regression that drops the visited set does not
 /// crash -- it spins forever. Called directly that HANGS THE WHOLE SUITE,
 /// which reads as "still running", not as a failure. On a worker it reads as
 /// a failed assert with a name attached.
-fn identity_of(data: &str, id: u32) -> bool {
+fn unrotated_of(data: &str, id: u32) -> bool {
     let content = wrap(data);
     let (tx, rx) = std::sync::mpsc::channel();
     let handle = std::thread::spawn(move || {
         let mut decoder = EntityDecoder::new(&content);
         let item = decoder.decode_by_id(id).expect("decode item");
-        let _ = tx.send(item_has_identity_position(item, &mut decoder));
+        let _ = tx.send(item_has_unrotated_position(item, &mut decoder));
     });
     // Match the variant rather than `is_ok()`: `recv_timeout` returns Err for
     // Disconnected as well as Timeout, so a PANIC in the worker drops `tx` and
@@ -34,10 +34,10 @@ fn identity_of(data: &str, id: u32) -> bool {
     let value = match rx.recv_timeout(std::time::Duration::from_secs(30)) {
         Ok(v) => v,
         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-            panic!("item_has_identity_position did not terminate within 30s")
+            panic!("item_has_unrotated_position did not terminate within 30s")
         }
         Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-            panic!("item_has_identity_position's worker PANICKED (not a hang); \
+            panic!("item_has_unrotated_position's worker PANICKED (not a hang); \
                     its panic is printed above")
         }
     };
@@ -48,7 +48,7 @@ fn identity_of(data: &str, id: u32) -> bool {
 /// One self-referential entity: `#10`'s FirstOperand is `#10` (#2866).
 #[test]
 fn self_referential_first_operand_terminates() {
-    assert!(!identity_of(
+    assert!(!unrotated_of(
         "#10=IFCBOOLEANRESULT(.DIFFERENCE.,#10,#20);\n#20=IFCBLOCK($,1.,1.,1.);\n",
         10
     ));
@@ -58,7 +58,7 @@ fn self_referential_first_operand_terminates() {
 /// `inner.id == item.id` check; this is not, so it pins a real visited set.
 #[test]
 fn two_node_first_operand_cycle_terminates() {
-    assert!(!identity_of(
+    assert!(!unrotated_of(
         "#10=IFCBOOLEANRESULT(.DIFFERENCE.,#11,#20);\n\
          #11=IFCBOOLEANRESULT(.DIFFERENCE.,#10,#20);\n\
          #20=IFCBLOCK($,1.,1.,1.);\n",
@@ -73,7 +73,7 @@ fn two_node_first_operand_cycle_terminates() {
 /// terminating without breaking the common case is.
 #[test]
 fn boolean_over_identity_extrusion_still_reports_identity() {
-    assert!(identity_of(
+    assert!(unrotated_of(
         "#10=IFCBOOLEANRESULT(.DIFFERENCE.,#11,#20);\n\
          #11=IFCEXTRUDEDAREASOLID(#12,#13,#16,3000.);\n\
          #12=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,200.,4000.);\n\
@@ -85,17 +85,34 @@ fn boolean_over_identity_extrusion_still_reports_identity() {
     ));
 }
 
-/// And the negative control on the same axis: a NON-identity placement must
-/// still report `false`, so the test above cannot be satisfied by a function
-/// that returns `true` unconditionally.
+/// A Position that only TRANSLATES keeps the element's axes, so the layer
+/// planes (measured in the element's object frame) still apply (#8168).
 #[test]
-fn boolean_over_translated_extrusion_reports_non_identity() {
-    assert!(!identity_of(
+fn boolean_over_translated_extrusion_reports_unrotated() {
+    assert!(unrotated_of(
         "#10=IFCBOOLEANRESULT(.DIFFERENCE.,#11,#20);\n\
          #11=IFCEXTRUDEDAREASOLID(#12,#13,#16,3000.);\n\
          #12=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,200.,4000.);\n\
          #13=IFCAXIS2PLACEMENT3D(#14,$,$);\n\
          #14=IFCCARTESIANPOINT((500.,0.,0.));\n\
+         #16=IFCDIRECTION((0.,0.,1.));\n\
+         #20=IFCBLOCK($,1.,1.,1.);\n",
+        10
+    ));
+}
+
+/// And the negative control on the same axis: a ROTATED placement must still
+/// report `false`, so the tests above cannot be satisfied by a function that
+/// returns `true` unconditionally.
+#[test]
+fn boolean_over_rotated_extrusion_reports_rotated() {
+    assert!(!unrotated_of(
+        "#10=IFCBOOLEANRESULT(.DIFFERENCE.,#11,#20);\n\
+         #11=IFCEXTRUDEDAREASOLID(#12,#13,#16,3000.);\n\
+         #12=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,200.,4000.);\n\
+         #13=IFCAXIS2PLACEMENT3D(#14,$,#15);\n\
+         #14=IFCCARTESIANPOINT((0.,0.,0.));\n\
+         #15=IFCDIRECTION((0.,1.,0.));\n\
          #16=IFCDIRECTION((0.,0.,1.));\n\
          #20=IFCBLOCK($,1.,1.,1.);\n",
         10
@@ -133,7 +150,7 @@ fn a_long_acyclic_operand_chain_walks_all_the_way_down() {
     data.push_str("#90003=IFCCARTESIANPOINT((0.,0.,0.));\n");
     data.push_str("#90004=IFCDIRECTION((0.,0.,1.));\n");
     assert!(
-        identity_of(&data, 1),
+        unrotated_of(&data, 1),
         "a {n}-deep acyclic chain over an identity extrusion must report identity"
     );
 }

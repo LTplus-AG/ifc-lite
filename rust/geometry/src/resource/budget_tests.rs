@@ -272,3 +272,60 @@ fn issue_7955_exhausted_overlay_leaves_original_account_usable() {
     assert_eq!(original.check(), Ok(()));
     assert_eq!(original.usage().work, 6);
 }
+
+#[test]
+fn issue_7955_observed_deadline_stays_local_after_scope_and_source_capture() {
+    use ifc_lite_core::execution_owner::ExecutionOwner;
+    let original = generous();
+    original.scope(|| {
+        let owner = ExecutionOwner::default();
+        let mut lease = owner.try_lease().unwrap();
+        let work = lease.begin_synchronous_work(owner.identity()).unwrap();
+        let source = work.source_borrow_scope();
+        let source_stop = source.resource_stop_handle();
+        with_source_stop(source_stop.clone(), || {
+            let budget = ProductBudget::new(BudgetStart::now(), 100, 4096, 0);
+            let context = budget.scope(|| {
+                let context = OwnedResourceContext::capture_current();
+                context.with_scope(|| {
+                    let result = observe(budget_checkpoint());
+                    assert!(matches!(
+                        result,
+                        Err(crate::Error::ProgramStopped(ProgramStop::Cancelled))
+                    ));
+                    assert!(budget_deadline_fired());
+                    assert_eq!(
+                        current_account().unwrap().stop(ProgramStop::Cancelled),
+                        ProgramStop::Cancelled
+                    );
+                    assert!(budget_deadline_fired());
+                });
+                context
+            });
+            assert!(original.check().is_ok());
+            assert!(source_stop.check().is_ok());
+            assert!(check_current().is_ok());
+            charge(Cost {
+                work: 7,
+                ..Default::default()
+            })
+            .unwrap();
+            assert!(
+                !budget_deadline_fired(),
+                "the caller is outside the product"
+            );
+            assert!(
+                budget.deadline_fired(),
+                "the product retains the deadline after scope exit"
+            );
+            context.with_scope(|| assert!(budget_deadline_fired()));
+            budget.scope(|| {
+                assert!(matches!(
+                    budget_checkpoint(),
+                    Err(crate::Error::ProgramStopped(ProgramStop::Cancelled))
+                ))
+            });
+            assert_eq!(original.usage().work, 7);
+        });
+    });
+}

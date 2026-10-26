@@ -98,6 +98,10 @@ impl ProductBudget {
             resources: OwnedResourceContext::with_account(account),
         }
     }
+    /// Inspect this product after its lexical scope has returned.
+    pub fn deadline_fired(&self) -> bool {
+        self.scope(budget_deadline_fired)
+    }
     pub fn scope<T>(&self, run: impl FnOnce() -> T) -> T {
         self.resources.with_allowance_scope(run)
     }
@@ -112,13 +116,19 @@ impl ExecutionAccount {
     /// A refusal of the local allowance is already recorded on that allowance
     /// (see `prepare_inner`). While the original account itself is not
     /// terminal, later stops in the overlay domain return that first local
-    /// refusal and leave the caller's original account usable.
+    /// refusal and leave the caller's original account usable. Deadlines are
+    /// recorded on the allowance too, never on the shared original account.
     pub(super) fn overlay_stop(&self) -> Option<ProgramStop> {
         self.1.as_ref()?;
         if self.check().is_err() {
             return None;
         }
-        self.check_allowance().err()
+        self.check_allowance().err().or_else(|| {
+            self.1
+                .as_ref()
+                .filter(|allowance| allowance.fired())
+                .map(|_| ProgramStop::Cancelled)
+        })
     }
 }
 
@@ -147,7 +157,11 @@ pub fn budget_checkpoint() -> crate::Result<()> {
 #[doc(hidden)]
 pub fn budget_deadline_fired() -> bool {
     current_account().is_some_and(|account| account.1.as_ref().is_some_and(|a| a.fired()))
-        && check_current().is_ok()
+        // Inspect independent channels without `check_current`: that helper
+        // records stops and would recurse through `stop`'s deadline check.
+        && SOURCE_STOP.with(|slot| slot.borrow().as_ref().is_none_or(|source| source.check().is_ok()))
+        && current_account().is_none_or(|account| account.check().is_ok() && account.check_allowance().is_ok())
+        && TERMINAL.with(|slot| slot.get().flatten().is_none())
 }
 
 /// Source iteration is additional work only for this opt-in budget path.

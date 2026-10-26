@@ -141,10 +141,18 @@ impl SourceCapture {
         }
     }
 
-    pub fn record(&mut self, entity: &DecodedEntity, decoder: &mut EntityDecoder) {
-        if let Err(error) = self.try_record(entity, decoder) {
-            self.fail(error.to_string());
+    pub fn record(&mut self, entity: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<()> {
+        self.try_record(entity, decoder)
+            .or_else(|error| self.fail_error(error))
+    }
+
+    pub fn fail_error(&mut self, error: Error) -> Result<()> {
+        #[cfg(feature = "retained-runtime")]
+        if matches!(error, Error::ProgramStopped(_)) {
+            return Err(error);
         }
+        self.fail(error.to_string());
+        Ok(())
     }
 
     /// Called by the existing curve interpreter when it reaches each record.
@@ -200,9 +208,13 @@ impl SourceCapture {
             IfcType::IfcExtrudedAreaSolid => {
                 &["SweptArea", "Position", "ExtrudedDirection", "Depth"]
             }
-            IfcType::IfcSweptDiskSolid => {
-                &["Directrix", "Radius", "InnerRadius", "StartParam", "EndParam"]
-            }
+            IfcType::IfcSweptDiskSolid => &[
+                "Directrix",
+                "Radius",
+                "InnerRadius",
+                "StartParam",
+                "EndParam",
+            ],
             IfcType::IfcBSplineCurveWithKnots => &[
                 "Degree",
                 "ControlPointsList",

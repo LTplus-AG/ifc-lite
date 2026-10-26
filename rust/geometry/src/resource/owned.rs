@@ -28,7 +28,10 @@ enum OwnedTerminal {
 impl OwnedResourceContext {
     #[cfg(feature = "retained-runtime")]
     pub(super) fn with_account(account: ExecutionAccount) -> Self {
-        Self { account: Some(account), ..Self::capture_current() }
+        Self {
+            account: Some(account),
+            ..Self::capture_current()
+        }
     }
     pub(crate) fn capture_current() -> Self {
         Self {
@@ -108,10 +111,12 @@ fn check_channels(
         None => {
             #[cfg(feature = "retained-runtime")]
             if let Some(account) = account {
-                account.check_allowance().map_err(|stop| remember_channels(Some(account), source, terminal, stop))?;
+                account
+                    .check_allowance()
+                    .map_err(|stop| remember_channels(Some(account), source, terminal, stop))?;
             }
             Ok(())
-        },
+        }
     }
 }
 fn remember_channels(
@@ -127,6 +132,16 @@ fn remember_channels(
         .and_then(|source| source.check().err())
         .or_else(|| account.and_then(|account| account.check().err()));
     let first = prior.or(snapshot).unwrap_or(stop);
+    #[cfg(feature = "retained-runtime")]
+    if prior.is_none()
+        && snapshot.is_none()
+        && first == ProgramStop::Cancelled
+        && account.is_some_and(|account| account.overlay_stop() == Some(first))
+    {
+        // The allowance owns the deadline; retain its cause without writing a
+        // cancel into the captured source or original account.
+        return first;
+    }
     let source = source.map(|source| source.stop(first));
     let account = account.map_or(first, |account| account.stop(source.unwrap_or(first)));
     let mut terminal = terminal.lock().unwrap_or_else(|e| e.into_inner());

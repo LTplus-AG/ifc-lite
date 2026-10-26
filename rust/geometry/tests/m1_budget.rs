@@ -24,4 +24,5 @@ fn zero_duration_records_deadline_without_leaking_the_budget_scope() {
         "the budget scope must restore the caller"
     );
     assert!(budget_checkpoint().is_ok());
+    assert!(budget.deadline_fired(), "product cause survives its scope");
 }

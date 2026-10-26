@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
-use super::*;
 use super::failure::{FailureHandle, FailureSite, OriginCause};
+use super::*;
 use crate::document::{RetainedExtrusion, RetainedSweptDisk};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 pub(super) fn capture(
@@ -20,13 +20,18 @@ pub(super) fn capture(
     .retain();
     let recipe = crate::analytic::with_source_capture(|| match item.ifc_type {
         IfcType::IfcExtrudedAreaSolid => Ok(RetainedRecipe::Extrusion(RetainedExtrusion {
+            #[cfg(feature = "retained-runtime")]
+            source: crate::analytic::try_extract_analytic_extrusion(item, decoder)?,
+            #[cfg(not(feature = "retained-runtime"))]
             source: crate::analytic::extract_analytic_extrusion(item, decoder),
             length_unit_scale: scale,
         })),
         IfcType::IfcSweptDiskSolid => Ok(RetainedRecipe::SweptDisk(RetainedSweptDisk {
             solid_id: item.id,
             source: crate::analytic::extract_swept_disk(item, decoder).map_err(|error| {
-                if let crate::Error::ProgramStopped(_) = error { return error; }
+                if let crate::Error::ProgramStopped(_) = error {
+                    return error;
+                }
                 let diagnostic = crate::Error::geometry(error.to_string());
                 let cause = match error {
                     crate::Error::CoreError(core) => OriginCause::Core(core),
@@ -37,8 +42,11 @@ pub(super) fn capture(
             })?,
             length_unit_scale: scale,
         })),
-        _ => Err(recipe_error(failure, item.id,
-            crate::document::RetainedRefusal::UnsupportedSource(format!("{}", item.ifc_type)))),
+        _ => Err(recipe_error(
+            failure,
+            item.id,
+            crate::document::RetainedRefusal::UnsupportedSource(format!("{}", item.ifc_type)),
+        )),
     });
     #[cfg(feature = "retained-runtime")]
     crate::resource::source_step()?;
@@ -77,8 +85,16 @@ pub(super) fn capture(
     })
 }
 
-fn recipe_error(failure: &FailureHandle, id: u32, refusal: crate::document::RetainedRefusal) -> crate::Error {
+fn recipe_error(
+    failure: &FailureHandle,
+    id: u32,
+    refusal: crate::document::RetainedRefusal,
+) -> crate::Error {
     let diagnostic = crate::Error::geometry(refusal.to_string());
-    failure.record(FailureSite::Constructor, Some(id), OriginCause::Recipe(refusal));
+    failure.record(
+        FailureSite::Constructor,
+        Some(id),
+        OriginCause::Recipe(refusal),
+    );
     diagnostic
 }

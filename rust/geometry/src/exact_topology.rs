@@ -31,6 +31,8 @@ pub(crate) fn strict_closed(tris:impl IntoIterator<Item=[[f64;3];3]>)->bool{
 }
 
 /// Actual indexed local f32 positions; placement/origin never enter the keys.
+/// Known false negative: a closed solid whose neighbours meet at an unsplit
+/// collinear T-junction (e.g. after `clean_degenerate`) reads as open.
 pub(crate) fn strict_closed_mesh(mesh:&crate::mesh::Mesh)->bool{
     if !mesh.positions.len().is_multiple_of(3) || !mesh.indices.len().is_multiple_of(3) { return false; }
     let count=mesh.positions.len()/3;

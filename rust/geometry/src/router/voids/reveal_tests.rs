@@ -903,6 +903,6 @@
             .fold(0.0f32, |m, &v| m.max(v.abs()));
         assert!(max_abs < 10.0, "local-frame positions must stay small (got {max_abs})");
 
-        assert!(param_cut_watertight(&out1), "cut must be watertight");
+        assert!(crate::exact_topology::strict_closed_mesh(&out1), "cut must be watertight");
         assert!(out1.triangle_count() > 12, "the opening must add faces");
     }

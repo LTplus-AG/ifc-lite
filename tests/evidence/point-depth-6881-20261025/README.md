@@ -115,6 +115,16 @@ Preparation receipts:
   between candidate and full-copy stays exact in the 140 functional comparisons; this tolerance
   applies only between different cohort samples. This change is not blinded: it follows observing
   the refused sample, and the final verdict must say so.
+- The final cohort (`hover-8`) completed all five pairs for FZK and for Building-Architecture with
+  every gate satisfied, then aborted in Federation pair 1 (branch): one pick resolved a different
+  entity at the same texel, at a world position within 0.15 mm of the reference hit, consistent with
+  coplanar surfaces z-fighting. Federation is therefore incomplete (one pair), the frozen cohort is
+  not accepted, and no formal verdict exists. A post hoc table from the valid samples, clearly marked
+  partial, is in [`hover-attempt-7.json`](hover-attempt-7.json); raw samples are in
+  [`hover-8-runs.jsonl.gz`](hover-8-runs.jsonl.gz). Across the two completed scenarios the candidate
+  maps 256 bytes instead of the full aligned depth copy per pick, GPU picker time is lower in every
+  pair, and hover latency is lower in nine of ten pairs. Nothing here replaces the required Federation
+  comparison or the frozen protocol; it is retained as non-conclusive evidence.
 
 [Preparation receipts](preparation.json) retain command/source identities,
 original outcomes and log hashes. Failed functional reports and compact summaries

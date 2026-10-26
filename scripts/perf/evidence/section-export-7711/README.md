@@ -1,9 +1,21 @@
 # Section-plane export evidence (#7711)
 
-This packet records a completed measurement and current functional qualification;
-it does **not** assert merge readiness. Implementation is PR #7900; this evidence
-is in its qualification stack, PR #7908. The parent owns monitoring and ordered
-landing. No issue closure or merge is requested.
+This is a **historical evidence packet**, scoped to the source and receipts below.
+At capture time it did not establish merge readiness or request issue closure.
+Its original outcomes and archived failures remain unchanged.
+
+As of 2026-10-26, the runtime implementation has landed in backend
+[PR #8006](https://github.com/LTplus-AG/ifc-lite/pull/8006)
+(commit `14bcd0ce9dffb32b9de7a60044394d258a4d2f9d`) and viewer
+[PR #7900](https://github.com/LTplus-AG/ifc-lite/pull/7900)
+(commit `ed3c6cb49bb3f7f2bd70ae2aa76d54cccf285057`).
+[PR #7908](https://github.com/LTplus-AG/ifc-lite/pull/7908) is the final regression
+and evidence layer and requests closure of #7711 when it lands. Its closure claim
+covers the completed stack, not a runtime implementation in this evidence diff.
+Current readiness depends on that PR's current-head checks and review.
+Later source-bound results are in [resume-20261025](resume-20261025/README.md)
+and [backend-20261026](backend-20261026/README.md); those do not change the
+historical results below.
 
 The measured aggregate commit is `4bf77c6566a9aca84acd1d67c28273525de2f2e9`,
 tree `cd5e29e2c8ddbb2a4dc529b6096510f0b66b7cd4`; its base is
@@ -63,7 +75,7 @@ not a product viewport or GPU performance cohort. IFC fixtures remain in the
 normal fetched fixture catalog; the generated browser IFC remains in the retained
 local evidence, identified by its receipt hash.
 
-## Qualification still held
+## Qualification holds at capture time
 
 `qualification/hosted-current-blockers.json` and the original hosted logs retain
 all observed blockers: causal witness `REVERT-BROKE-BUILD`, stale generated

@@ -448,20 +448,55 @@ fn h_eval_zero_length_transition_is_its_start() {
     assert_eq!((x, y, h), (1.0, 2.0, 0.3));
 }
 
-// #7779: both strict and compatibility entry points reject fabricated coordinates.
+// #7779 / #8045: admission must count refusals before consumer policy checks.
 #[test]
-fn issue_7779_alignment_point_admission() {
-    for record in ["IFCDIRECTION((1.,2.))", "IFCCARTESIANPOINT((1.,2.,'bad'))",
-        "IFCCARTESIANPOINT((1.,2.,1.E400))", "IFCCARTESIANPOINT((1.))",
-        "IFCCARTESIANPOINT((1.,2.,3.,4.))"] {
+fn issue_7779_alignment_point_admission_counts_once() {
+    for record in [
+        "IFCDIRECTION((1.,2.))",
+        "IFCCARTESIANPOINT((1.,2.,'bad'))",
+        "IFCCARTESIANPOINT((1.,2.,1.E400))",
+        "IFCCARTESIANPOINT((1.))",
+        "IFCCARTESIANPOINT((1.,2.,3.,4.))",
+        "IFCCARTESIANPOINT()",
+        "IFCCARTESIANPOINT($)",
+        "IFCCARTESIANPOINT(1.)",
+    ] {
         let source = format!("#1={record};#2=IFCCARTESIANPOINT((10.,0.));#3=IFCPOLYLINE((#1,#2));#11=IFCLINESEGMENT2D(#1,0.,10.);#12=IFCALIGNMENT2DHORIZONTALSEGMENT($,$,$,#11);#13=IFCALIGNMENT2DHORIZONTAL(0.,(#12));");
-        for strict in [false, true] {
-            let mut decoder = EntityDecoder::new(&source);
-            let curve = decoder.decode_by_id(3).unwrap();
-            assert!(AlignmentCurve::from_polyline(&curve, &mut decoder, strict).is_err(), "{record}");
-            assert!(parse_horizontal(13, &mut decoder, 1., strict).is_err(), "{record}");
+        for strict_reals in [false, true] {
+            for strict in [false, true] {
+                for horizontal in [false, true] {
+                    // Each consumer must count on its own, including on a cached reread.
+                    let mut decoder = EntityDecoder::new(&source);
+                    if strict_reals {
+                        decoder = decoder.with_strict_reals();
+                    }
+                    let curve = decoder.decode_by_id(3).unwrap();
+                    for _ in 0..2 {
+                        let result = if horizontal {
+                            parse_horizontal(13, &mut decoder, 1., strict).map(|_| ())
+                        } else {
+                            AlignmentCurve::from_polyline(&curve, &mut decoder, strict).map(|_| ())
+                        };
+                        let expected_unrepresentable = strict_reals && record.contains("1.E400");
+                        assert!(
+                            if expected_unrepresentable {
+                                matches!(result, Err(Error::CoreError(ifc_lite_core::Error::UnrepresentableReal(1))))
+                            } else {
+                                matches!(result, Err(Error::CoreError(ifc_lite_core::Error::MalformedRecord(1))))
+                            },
+                            "{record}, strict={strict}, strict_reals={strict_reals}, horizontal={horizontal}: {result:?}"
+                        );
+                        assert_eq!(decoder.refused_record_ids(), vec![1], "{record}");
+                        assert_eq!(decoder.refused_records(), 1, "{record}");
+                    }
+                }
+            }
         }
     }
+}
+
+#[test]
+fn issue_7779_alignment_valid_points_are_not_refused() {
     for point in ["IFCCARTESIANPOINT((0.,0.))", "IFCCARTESIANPOINT((0.,0.,0.))"] {
         let source = format!("#1={point};#2=IFCCARTESIANPOINT((10.,0.,5.));#3=IFCPOLYLINE((#1,#2));");
         for strict in [false, true] {
@@ -470,6 +505,30 @@ fn issue_7779_alignment_point_admission() {
             let curve = AlignmentCurve::from_polyline(&entity, &mut decoder, strict).unwrap();
             let frame = curve.evaluate(5.);
             assert_eq!(frame.origin, Point3::new(5.,0.,2.5));
+            assert!(decoder.refused_record_ids().is_empty());
+            assert_eq!(decoder.refused_records(), 0);
+        }
+    }
+}
+
+// #8045: a valid 3D point fails only strict horizontal policy, not leaf admission.
+#[test]
+fn issue_8045_horizontal_2d_policy_is_not_a_malformed_leaf() {
+    for coordinates in ["(1.,2.)", "(1.,2.,3.)"] {
+        let source = format!("#1=IFCCARTESIANPOINT({coordinates});#11=IFCLINESEGMENT2D(#1,0.,10.);#12=IFCALIGNMENT2DHORIZONTALSEGMENT($,$,$,#11);#13=IFCALIGNMENT2DHORIZONTAL(0.,(#12));");
+        for strict in [false, true] {
+            let mut decoder = EntityDecoder::new(&source);
+            for _ in 0..2 {
+                let result = parse_horizontal(13, &mut decoder, 1., strict);
+                if strict && coordinates == "(1.,2.,3.)" {
+                    assert!(matches!(result, Err(Error::GeometryError(_))));
+                } else {
+                    let (segments, _) = result.unwrap();
+                    assert_eq!(h_eval(&segments[0], 5.), (6., 2., 0.));
+                }
+                assert!(decoder.refused_record_ids().is_empty());
+                assert_eq!(decoder.refused_records(), 0);
+            }
         }
     }
 }

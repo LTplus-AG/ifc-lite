@@ -24,7 +24,7 @@
 1 rust/export/src/step_log/pass.rs
 11 rust/export/src/step_log/property_value.rs
 5 rust/export/src/step_log/units.rs
-29 rust/geometry/src/alignment.rs
+25 rust/geometry/src/alignment.rs
 2 rust/geometry/src/alignment_sampling.rs
 8 rust/geometry/src/alignment_sampling_curve.rs
 1 rust/geometry/src/alignment_sampling_placement.rs

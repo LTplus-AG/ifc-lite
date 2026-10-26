@@ -343,16 +343,6 @@ impl AlignmentCurve {
             let pid = r
                 .as_entity_ref()
                 .ok_or_else(|| Error::geometry("Polyline point is not an entity ref".to_string()))?;
-            let p = decoder.decode_by_id(pid)?;
-            if strict && p.ifc_type != IfcType::IfcCartesianPoint {
-                return Err(Error::geometry(format!("Polyline point #{} is not IfcCartesianPoint", pid)));
-            }
-            let coords = p
-                .get_list(0)
-                .ok_or_else(|| Error::geometry("CartesianPoint missing Coordinates".to_string()))?;
-            if strict && (!(2..=3).contains(&coords.len()) || coords.iter().any(|v| v.as_float().is_none_or(|n| !n.is_finite()))) {
-                return Err(Error::geometry(format!("Malformed CartesianPoint #{}", pid)));
-            }
             let [x, y, z] = decoder.point3(pid)?;
             pts.push((x, y, z));
         }
@@ -637,14 +627,11 @@ fn parse_horizontal(
         let sp_id = curve.get_ref(0).ok_or_else(|| {
             Error::geometry(format!("CurveSegment #{} missing StartPoint", curve_id))
         })?;
-        let sp = decoder.decode_by_id(sp_id)?;
-        let coords = sp
-            .get_list(0)
-            .ok_or_else(|| Error::geometry("StartPoint missing Coordinates".to_string()))?;
-        if strict && (sp.ifc_type != IfcType::IfcCartesianPoint || coords.len() != 2 || coords.iter().any(|v| v.as_float().is_none_or(|n| !n.is_finite()))) {
-            return Err(Error::geometry("Horizontal StartPoint must contain two finite CartesianPoint coordinates"));
-        }
         let [sx, sy, _] = decoder.point3(sp_id)?;
+        // Canonical admission counts malformed leaves before the stricter 2D policy.
+        if strict && decoder.decode_by_id(sp_id)?.get_list(0).is_some_and(|coords| coords.len() != 2) {
+            return Err(Error::geometry("Horizontal StartPoint must contain two CartesianPoint coordinates"));
+        }
         let heading_raw = curve.get_float(1).ok_or_else(|| {
             Error::geometry(format!(
                 "CurveSegment #{} missing StartDirection",

@@ -65,10 +65,8 @@ impl AddState<'_, '_> {
             if !live(&rep) || items.is_empty() || !items.iter().all(live) {
                 return Err(format!("representation source {source}: representation #{rep} has items this plan deletes, or none"));
             }
-            let raw = |attr| {
-                let line = index.raw_line(rep)?;
-                crate::step_text::attribute_of(&line, attribute_index(schema, &e, attr)?)
-            };
+            let line = index.raw_line(rep).unwrap_or_default();
+            let raw = |attr| crate::step_text::attribute_of(&line, attribute_index(schema, &e, attr)?);
             let (Some(identifier), Some(rep_type)) = (raw("RepresentationIdentifier"), raw("RepresentationType")) else {
                 return Err(format!("representation source {source}: representation #{rep} does not scan"));
             };

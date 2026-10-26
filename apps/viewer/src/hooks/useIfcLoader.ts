@@ -577,7 +577,7 @@ export function useIfcLoader() {
             isCurrent: () => isCurrent(), setProgress,
           });
           if (!spatialFinalize) return;
-          const { preAlignment, federationAlignmentStatus, landXmlAssumptionsApplied } = spatialFinalize;
+          const { preAlignment, federationAlignmentStatus, landXmlAssumptionsApplied, ifcSharedVerticalDatumAssumed } = spatialFinalize;
 
           // Federation registry: transform expressIds to globally-unique ids.
           const maxExpressId = getMaxExpressId(dataStore, geometryResult.meshes, geometryResult.pointClouds);
@@ -634,7 +634,7 @@ export function useIfcLoader() {
             pointCloudHandleId: patch?.pointCloudHandleId,
             ...(patch?.spatialReference ? { spatialReference: patch.spatialReference } : {}),
             preAlignment,
-            federationAlignmentStatus, ...(landXmlAssumptionsApplied ? { landXmlAssumptionsApplied } : {}),
+            federationAlignmentStatus, ifcSharedVerticalDatumAssumed, ...(landXmlAssumptionsApplied ? { landXmlAssumptionsApplied } : {}),
             ...buildModelLoadReportPatch(loadDiagnostics, format, patch),
           };
           useViewerStore.getState().addModel(federatedModel);

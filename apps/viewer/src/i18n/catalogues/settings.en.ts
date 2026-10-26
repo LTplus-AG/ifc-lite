@@ -28,6 +28,12 @@ export const settingsEn = {
   'settings.general.hoverTooltips': 'Hover tooltips',
   'settings.general.hoverTooltipsHint': 'Show an element’s name and class under the pointer.',
 
+  'settings.ifcFederation.title': 'IFC federation',
+  'settings.ifcFederation.sharedVertical': 'Assume IFC models share a height system',
+  'settings.ifcFederation.hint': 'Off by default. Only enable this when you know the IFC models and anchor use the same height system. When either vertical datum is missing, heights are placed as authored. A wrong assumption places models too high or too low. Different declared datums are still refused. Reload or re-align the federation to apply changes.',
+  'settings.ifcFederation.assumed': 'Assumed height system',
+  'settings.ifcFederation.applied': 'IFC heights assumed to share the anchor model’s height system by your setting. A vertical datum is missing; the source declarations are unchanged.',
+
   'settings.display.navigationTitle': 'Navigation',
   'settings.display.navigationPreset': 'Pointer and wheel controls',
   'settings.display.preset.default': 'Default',

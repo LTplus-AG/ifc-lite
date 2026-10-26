@@ -32,7 +32,7 @@ export const RUST_MEMBER_DIRS = ['core', 'geometry', 'processing', 'clash', 'exp
 /** The internal crate names that carry a `version = "…"` requirement. It must
  * name every crate in the root `[workspace.dependencies]` table: a crate left
  * out is a literal neither the writer nor the checker reads. */
-const INTERNAL_CRATE = '(?:core|diff|geometry|processing|clash|export|wasm|landxml)';
+const INTERNAL_CRATE = '(?:core|diff|geometry-runtime|geometry|processing|clash|export|wasm|landxml)';
 
 /** A fresh `/g` regex each call — a shared one carries `lastIndex` between
  * callers and silently skips matches.

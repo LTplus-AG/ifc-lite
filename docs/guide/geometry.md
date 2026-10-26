@@ -1095,14 +1095,19 @@ Boolean invocation identity, captured process-domain equality and explicit
 placement of an existing sealed Boolean result. These are consumed by the
 native diagnostic, not final geometry authority or browser bindings.
 
-This checkout uses a target-gated optional **local path plus exact 23.6.1
-version** dependency on `ifc-lite-geometry-runtime`. The runtime remains
-`publish = false` here. The separately approved source-only 22.6.0 bootstrap
-has not been published and does not satisfy this graph. Registry resolution,
-actual archive verification, publication order, affected excluded consumers,
-SDK redistribution and release qualification remain pending; packaging this
-checkout is not qualified. No SDK assets are linked or shipped by this feature.
-The example is not a production viewer or CLI mode.
+Processing reaches `ifc-lite-geometry-runtime` through a target-gated optional
+workspace dependency: the root `[workspace.dependencies]` entry carries the path
+and the workspace version, and `scripts/sync-versions.js` moves it with every
+other internal crate. The runtime is a published, source-only crate
+(`publish = ["crates-io"]`): its archive holds the Rust client, tests and Cargo
+metadata, and it is in the release crate list ahead of processing, which pins it
+by version. It has not been published yet. Its first upload is a manual
+bootstrap followed by Trusted Publisher setup; until then
+`check-rust-semver.mjs` reports it as `BOOTSTRAP_PENDING` on pull requests, and
+the release-time run refuses it with `NO_BASELINE` before any crate is
+published. SDK redistribution and retained-execution qualification remain
+pending. No SDK assets are linked or shipped by this feature. The example is not
+a production viewer or CLI mode.
 
 Numerical mutation qualification uses
 `tests/evidence/retained-execution-j4/feature-oracle.py`; every patch in that

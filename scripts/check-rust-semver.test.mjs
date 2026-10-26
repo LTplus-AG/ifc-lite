@@ -52,6 +52,7 @@ const {
   vcsInfoMismatches,
 } = rustSemver;
 import { CRATES } from './lib/crates-io.mjs';
+import { BOOTSTRAP_PENDING } from './lib/crate-bootstrap.mjs';
 
 const SCRIPTS = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(SCRIPTS, '..');
@@ -247,6 +248,44 @@ test('VACUITY: a crate with no crates.io baseline fails with NO_BASELINE', () =>
   assert.equal(result.ok, false);
   assert.equal(result.failures.length, 1);
   assert.match(result.failures[0], /^NO_BASELINE: ifc-lite-ffi /);
+});
+
+test('a never-published crate listed as bootstrap pending is reported, not failed, not compared', () => {
+  const pending = 'ifc-lite-ffi';
+  const result = run({
+    latestPublished: (crate) => (crate === pending ? null : '6.0.1'),
+    bootstrapPending: [pending],
+  });
+  assert.equal(result.ok, true, result.failures.join('\n'));
+  assert.equal(result.compared, SEVEN.length - 1);
+  const notice = result.checked.find((line) => line.startsWith(pending));
+  assert.match(notice, /BOOTSTRAP_PENDING: no crates\.io release yet, so no API was compared/);
+});
+
+test('release mode (no bootstrap list) still refuses a never-published crate with NO_BASELINE', () => {
+  // main() passes an empty list under --release, which is what release-all.mjs
+  // runs, so the crates half refuses before publishing anything.
+  const result = run({
+    latestPublished: (crate) => (crate === BOOTSTRAP_PENDING[0] ? null : '6.0.1'),
+    bootstrapPending: [],
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.failures[0], new RegExp(`^NO_BASELINE: ${BOOTSTRAP_PENDING[0]} `));
+});
+
+test('a bootstrap-pending entry never hides a crate that IS published: it is compared', () => {
+  const pending = 'ifc-lite-ffi';
+  const result = run({
+    bootstrapPending: [pending],
+    runSemverChecks: (crate) => (crate === pending ? NEEDS_MAJOR : COMPATIBLE),
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.compared, SEVEN.length);
+  assert.match(result.failures[0], /^ifc-lite-ffi: its public API change requires a MAJOR bump/);
+});
+
+test('every bootstrap-pending crate is one the release publishes', () => {
+  for (const crate of BOOTSTRAP_PENDING) assert.ok(CRATES.includes(crate), `${crate} is not in CRATES`);
 });
 
 test('VACUITY: a registry lookup that fails for EVERY crate is not a pass', () => {
@@ -676,6 +715,8 @@ test('the gate is wired as the crates.io half’s precondition, and only that ha
   const crates = steps.find((s) => s.includes("name: 'crates.io'"));
   assert.ok(crates, 'release-all.mjs no longer has a crates.io step');
   assert.match(crates, /precondition: 'check:rust-semver'/);
+  // --release drops the PR-time bootstrap-pending allowance (NO_BASELINE again).
+  assert.match(crates, /preconditionArgs: \['--release'\]/);
 
   const npm = steps.find((s) => s.includes("name: 'npm'"));
   assert.ok(npm, 'release-all.mjs no longer has an npm step');

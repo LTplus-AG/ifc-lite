@@ -49,7 +49,7 @@ const STEPS = [
   // wrong, and making npm a hostage of the Rust half is the exact defect this
   // file exists to remove — read the header. So a semver violation strands the
   // crates half on purpose, with a named reason, and npm goes out as versioned.
-  { name: 'crates.io', script: 'release:crates', precondition: 'check:rust-semver' },
+  { name: 'crates.io', script: 'release:crates', precondition: 'check:rust-semver', preconditionArgs: ['--release'] },
 ];
 
 const failed = [];
@@ -57,7 +57,7 @@ const failed = [];
 for (const step of STEPS) {
   if (step.precondition) {
     console.log(`\n🔎 release: ${step.name} precondition (pnpm ${step.precondition})`);
-    const gate = spawnSync('pnpm', [step.precondition], {
+    const gate = spawnSync('pnpm', [step.precondition, ...(step.preconditionArgs ?? [])], {
       cwd: rootDir,
       stdio: 'inherit',
       shell: process.platform === 'win32',

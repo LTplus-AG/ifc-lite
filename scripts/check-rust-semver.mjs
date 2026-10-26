@@ -53,10 +53,11 @@
  * VACUITY. Every way this gate could report success over nothing is an
  * explicit failure with a named reason (#3194/#3200): an empty crate list, a
  * crate list that shrank below CRATE_FLOOR, a crate with no release on
- * crates.io to compare against, a missing `cargo-semver-checks` binary, an
+ * crates.io to compare against (on PR runs only, a never-published crate in
+ * `BOOTSTRAP_PENDING` is reported instead), a missing cargo-semver-checks, an
  * unreadable workspace version, a run that produced no verdict line, and a run
  * whose verdict was reached over ZERO executed lints (#4786). None of those is
- * a skip. Invoking cargo-semver-checks and reading one run's output is
+ * a silent skip. Invoking cargo-semver-checks and reading one run's output is
  * `scripts/lib/cargo-semver-checks.mjs`; this file is the release policy that
  * decides what to do with the verdict it returns.
  * A published baseline that no longer resolves on crates.io (#7737) is not a
@@ -71,6 +72,7 @@ import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CRATES, fetchLatestPublishedVersion, readWorkspaceVersion } from './lib/crates-io.mjs';
+import { BOOTSTRAP_PENDING, bootstrapPendingNotice } from './lib/crate-bootstrap.mjs';
 import {
   SEMVER_RELEASE_TYPE,
   SEMVER_TOOLCHAIN,
@@ -93,14 +95,11 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
  * which `release-crates.mjs` and `verify-crates-publish.js` already share
  * (#3181). A second copy here would go stale exactly when a crate is added,
  * which is the moment this gate is most needed.
- */
-
-/**
- * Floor on the crate count. Importing the list rather than re-typing it rules
- * out one drift, not all of them: a filter, a conditional entry, or a partial
- * edit still yields a short list, and a gate that checked two crates prints
- * the same success line as one that checked all eight. If a crate is genuinely
- * dropped from the release, lower this in the same commit.
+ *
+ * CRATE_FLOOR floors that count. Importing the list rules out one drift, not
+ * all: a filter, a conditional entry or a partial edit still yields a short
+ * list, and a gate that checked two crates prints the success line of one that
+ * checked them all. If a crate is genuinely dropped, lower this in that commit.
  */
 export const CRATE_FLOOR = 9;
 
@@ -166,9 +165,10 @@ const RANK = { none: 0, patch: 1, minor: 2, major: 3 };
  * @param {(crate: string, baseline: string) => {status: number, output: string}} deps.runSemverChecks
  * @param {(crate: string, baseline: string) => {status: number, output: string, via: string}} [deps.runTagBaseline]
  *   the same run against the baseline rebuilt from its release tag, for an unresolvable one (#7737)
+ * @param {string[]} [deps.bootstrapPending]  never-published crates reported, not failed (PR runs only)
  * @returns {{ok: boolean, failures: string[], checked: string[]}}
  */
-export function checkRustSemver({ crates, workspaceVersion, latestPublished, runSemverChecks, runTagBaseline }) {
+export function checkRustSemver({ crates, workspaceVersion, latestPublished, runSemverChecks, runTagBaseline, bootstrapPending = [] }) {
   const failures = [];
   const checked = [];
   // Crates the release would NOT republish (their version is already live).
@@ -214,6 +214,8 @@ export function checkRustSemver({ crates, workspaceVersion, latestPublished, run
 
   for (const crate of crates) {
     const baseline = latestPublished(crate);
+    const pending = bootstrapPendingNotice(crate, baseline, bootstrapPending);
+    if (pending) { checked.push(pending); skipped += 1; continue; }
     if (!baseline) {
       failures.push(
         `NO_BASELINE: ${crate} has no release on crates.io to compare against, so its semver ` +
@@ -367,6 +369,7 @@ async function main() {
     latestPublished: (crate) => baselines.get(crate),
     runSemverChecks: realRunSemverChecks,
     runTagBaseline: runAgainstTagBaseline,
+    bootstrapPending: process.argv.includes('--release') ? [] : BOOTSTRAP_PENDING,
   });
 
   for (const line of result.checked) console.log(`   ${line}`);
@@ -378,7 +381,7 @@ async function main() {
   if (result.compared === 0) {
     console.log(
       `✅ nothing to gate: all ${result.checked.length} crate(s) are already on crates.io at ` +
-        `${readVersionOrNull(REPO_ROOT)}, so this release republishes none of them. ` +
+        `${readVersionOrNull(REPO_ROOT)} or await bootstrap, so none was compared here. ` +
         'No API was compared — do not read this as a compatibility result.'
     );
     return;

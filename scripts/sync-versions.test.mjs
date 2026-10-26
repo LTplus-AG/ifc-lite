@@ -217,3 +217,21 @@ test('a workspace scan below the floor stops the release rather than syncing to 
   // package's version off a scan that found nothing.
   assert.match(readFileSync(join(root, 'Cargo.toml'), 'utf8'), /version = "6\.0\.1"/);
 });
+
+test('a hyphenated internal crate (ifc-lite-geometry-runtime) moves with the rest (#7955)', (t) => {
+  // `ifc-lite-geometry` is a prefix of it: a scan that stopped at the shorter
+  // name left the runtime's literal on the previous release, and every
+  // workspace build then failed its version/path check after the bump.
+  const root = makeTree(t, { offsetFile: JSON.stringify({ majorOffset: 0 }) });
+  const cargoPath = join(root, 'Cargo.toml');
+  writeFileSync(
+    cargoPath,
+    `${readFileSync(cargoPath, 'utf8')}ifc-lite-geometry-runtime = { version = "6.0.1", path = "rust/geometry-runtime" }\n`
+  );
+  const { code, out } = run(SYNC, root);
+  assert.equal(code, 0, out);
+  assert.match(
+    readFileSync(cargoPath, 'utf8'),
+    /^ifc-lite-geometry-runtime = \{ version = "6\.1\.0", path = "rust\/geometry-runtime" \}$/m
+  );
+});

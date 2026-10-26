@@ -39,8 +39,9 @@ export const CRATES = [
   // front.
   'ifc-lite-clash',
   'ifc-lite-geometry',
-  // The first source-only runtime publish is a separate reviewed bootstrap.
-  // Later releases need its version in the registry before processing.
+  // processing pins the runtime by version (optional `retained-native`
+  // dependency), so it must reach the registry before processing in every
+  // release. Its FIRST publish is manual: see ./crate-bootstrap.mjs.
   'ifc-lite-geometry-runtime',
   'ifc-lite-processing',
   // ifc-lite-landxml depends on geometry and must precede wasm, which pins it

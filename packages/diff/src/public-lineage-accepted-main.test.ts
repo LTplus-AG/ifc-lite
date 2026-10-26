@@ -63,6 +63,8 @@ for (const entry of ['source', 'built'] as const) {
     api.initDiffSync({ module: readFileSync(binary) });
     const keys = ['\ud800', '\ufffd', 'literal\\ud800'];
     for (const key of keys) {
+      // Each generated lineage must capture this iteration's invalid key (#8042).
+      // eslint-disable-next-line no-inner-declarations
       function lineage() {
         return { entries: [split([NaN, 0.6], key), split([0, 1], key)], deleted: ['gone'] };
       }

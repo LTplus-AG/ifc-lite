@@ -107,16 +107,22 @@ fn fits<E: serde::de::Error>(length: u64) -> Result<(), E> {
 fn outer_holes<E: serde::de::Error>(components: bool, holes: usize) -> Result<(), E> {
     if components && holes > 0 { Err(null_record(false)) } else { Ok(()) }
 }
-fn property_sets<'de, D: Deserializer<'de>>(deserializer: D) -> Result<SparseCollection<PropertySetInput>, D::Error> {
+fn checked_property_sets<'de, D: Deserializer<'de>>(deserializer: D) -> Result<SparseCollection<PropertySetInput>, D::Error> {
     let sets = optional_sparse::<D, PropertySet>(deserializer)?
         .map(|set| PropertySetInput { name: set.name.0, properties: set.properties.0.map(entry) });
-    check_property_sets(&sets, components(), &mut fits::<D::Error>)?;
+    check_property_sets(&sets, components(), &mut fits::<D::Error>).map(|()| sets)
+}
+fn checked_quantity_sets<'de, D: Deserializer<'de>>(deserializer: D) -> Result<SparseCollection<QuantitySetInput>, D::Error> {
+    let sets = optional_sparse::<D, QuantitySet>(deserializer)?
+        .map(|set| QuantitySetInput { name: set.name.0, quantities: set.quantities.0.map(entry) });
+    check_quantity_sets(&sets, components(), &mut fits::<D::Error>).map(|()| sets)
+}
+fn property_sets<'de, D: Deserializer<'de>>(deserializer: D) -> Result<SparseCollection<PropertySetInput>, D::Error> {
+    let sets = checked_property_sets(deserializer)?;
     outer_holes(components(), sets.holes()).map(|()| sets)
 }
 fn quantity_sets<'de, D: Deserializer<'de>>(deserializer: D) -> Result<SparseCollection<QuantitySetInput>, D::Error> {
-    let sets = optional_sparse::<D, QuantitySet>(deserializer)?
-        .map(|set| QuantitySetInput { name: set.name.0, quantities: set.quantities.0.map(entry) });
-    check_quantity_sets(&sets, components(), &mut fits::<D::Error>)?;
+    let sets = checked_quantity_sets(deserializer)?;
     outer_holes(components(), sets.holes()).map(|()| sets)
 }
 fn type_assignments<'de, D: Deserializer<'de>>(deserializer: D) -> Result<SparseCollection<TypeAssignmentInput>, D::Error> {
@@ -207,13 +213,36 @@ impl<'de> Deserialize<'de> for Value {
 fn entry(value: Entry) -> PropertyEntryInput {
     PropertyEntryInput { name: value.name.0, value: value.value.0 }
 }
+/// The original host exception, else the first serde diagnostic.
+fn take_raised(error: serde_wasm_bindgen::Error) -> JsValue {
+    DECODE_STATE.with(|state| state.borrow_mut().raised.take())
+        .unwrap_or_else(|| JsValue::from_str(&error.to_string()))
+}
+
+/// One collection the facade has just projected into a fresh DTO (#8114).
+/// Only its engine string-length checks run: the facade's own host read raises
+/// the outer-hole TypeError, and the final data text is checked by the builder.
+#[derive(Default, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+#[allow(dead_code)] // Decoded only for the checks its field decoders run.
+struct Collections {
+    #[serde(deserialize_with = "checked_property_sets")]
+    property_sets: SparseCollection<PropertySetInput>,
+    #[serde(deserialize_with = "checked_quantity_sets")]
+    quantity_sets: SparseCollection<QuantitySetInput>,
+    #[serde(deserialize_with = "type_assignments")]
+    type_assignments: SparseCollection<TypeAssignmentInput>,
+}
+pub(super) fn check_collections(value: JsValue, components: bool) -> Result<(), JsValue> {
+    let _scope = DecodeScope::enter(components);
+    super::diff_fingerprint_de::from_value::<Collections>(value).map(drop).map_err(take_raised)
+}
+
 pub(super) fn decode(value: JsValue, components: bool) -> Result<DataFingerprintInput, JsValue> {
     let _scope = DecodeScope::enter(components);
     // Each host observation returns a Result before crossing an owning Rust
     // frame. An outer JS catch cannot run the destructors of abandoned frames.
-    let input = super::diff_fingerprint_de::from_value::<Input>(value)
-        .map_err(|error| DECODE_STATE.with(|state| state.borrow_mut().raised.take())
-            .unwrap_or_else(|| JsValue::from_str(&error.to_string())))?;
+    let input = super::diff_fingerprint_de::from_value::<Input>(value).map_err(take_raised)?;
     Ok(DataFingerprintInput {
         ifc_type: input.ifc_type.0,
         name: input.name.map(|value| value.0),

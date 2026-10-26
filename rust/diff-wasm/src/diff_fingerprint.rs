@@ -20,6 +20,14 @@ pub fn diff_build_data_fingerprint(input: JsValue) -> Result<String, JsValue> {
     build_data_fingerprint_checked(&input, fits)
 }
 
+/// Facade ordering (#8114): the engine string-length checks of collections the
+/// facade has just projected, run where the oracle sorts and hashes them and so
+/// before the facade reads the adapter's next field. Never a fingerprint.
+#[wasm_bindgen(js_name = diffCheckFingerprintCollections)]
+pub fn diff_check_fingerprint_collections(input: JsValue, components: bool) -> Result<(), JsValue> {
+    super::diff_fingerprint_input::check_collections(input, components)
+}
+
 /// Component hashes share the canonical Rust attribute projection.
 #[wasm_bindgen(js_name = diffBuildComponentFingerprints)]
 pub fn diff_build_component_fingerprints(input: JsValue) -> Result<JsValue, JsValue> {

@@ -885,6 +885,32 @@ jobs:
       - name: Provision report integration witnesses
         if: steps.report-integration.outputs.needed == 'true'
         uses: ./.github/actions/setup-report-integration
+      - name: Stage independent current-main TS diff oracle (#8042)
+        run: |
+          set -euo pipefail
+          oracle="$RUNNER_TEMP/diff-main-oracle"
+          git worktree add --detach "$oracle" 97d8add207104d5801c0c8d62e40fa7066e848f8
+          (
+            cd "$oracle"
+            test "$(git rev-parse HEAD)" = 97d8add207104d5801c0c8d62e40fa7066e848f8
+            pnpm install --frozen-lockfile
+            # This independent TS graph needs only its committed WASM declarations.
+            pnpm --filter '@ifc-lite/diff' build
+            git diff --exit-code HEAD --
+          )
+          entry="$oracle/packages/diff/dist/index.js"
+          node --input-type=module - "$entry" <<'ORACLE_PROOF'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          import { createHash } from 'node:crypto';
+          import { pathToFileURL } from 'node:url';
+          const entry = process.argv[2];
+          const api = await import(pathToFileURL(entry).href);
+          assert.equal(api.initDiff, undefined, 'independent production TS required');
+          for (const name of ['createIdentityMapSidecar', 'createLineageSidecar', 'validateLineageSidecar', 'rekeyByLineage']) assert.equal(typeof api[name], 'function', name);
+          console.log(JSON.stringify({ oracle: 'current-main-production-TS', sourceCommit: '97d8add207104d5801c0c8d62e40fa7066e848f8', entry, sha256: createHash('sha256').update(readFileSync(entry)).digest('hex'), node: process.version }));
+          ORACLE_PROOF
+          echo "IFC_LITE_CURRENT_MAIN_DIFF_ORACLE=$entry" >> "$GITHUB_ENV"
       - name: Prove the changed tests observe the production change
         # `&&` binds tighter than `||`: python is tested first so a PR that
         # changes both keeps the wheel builds' 85 minutes (which also covers
@@ -2748,6 +2774,33 @@ jobs:
       # scripts/ci-node-test-shards.test.mjs, which proves the four shards
       # partition the real workspace). Assigned, not piped, so a refusal
       # fails this step under `bash -e` instead of running turbo unfiltered.
+      - name: Stage independent current-main TS diff oracle (#8042)
+        if: matrix.shard == 4
+        run: |
+          set -euo pipefail
+          oracle="$RUNNER_TEMP/diff-main-oracle"
+          git worktree add --detach "$oracle" 97d8add207104d5801c0c8d62e40fa7066e848f8
+          (
+            cd "$oracle"
+            test "$(git rev-parse HEAD)" = 97d8add207104d5801c0c8d62e40fa7066e848f8
+            pnpm install --frozen-lockfile
+            # This independent TS graph needs only its committed WASM declarations.
+            pnpm --filter '@ifc-lite/diff' build
+            git diff --exit-code HEAD --
+          )
+          entry="$oracle/packages/diff/dist/index.js"
+          node --input-type=module - "$entry" <<'ORACLE_PROOF'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          import { createHash } from 'node:crypto';
+          import { pathToFileURL } from 'node:url';
+          const entry = process.argv[2];
+          const api = await import(pathToFileURL(entry).href);
+          assert.equal(api.initDiff, undefined, 'independent production TS required');
+          for (const name of ['createIdentityMapSidecar', 'createLineageSidecar', 'validateLineageSidecar', 'rekeyByLineage']) assert.equal(typeof api[name], 'function', name);
+          console.log(JSON.stringify({ oracle: 'current-main-production-TS', sourceCommit: '97d8add207104d5801c0c8d62e40fa7066e848f8', entry, sha256: createHash('sha256').update(readFileSync(entry)).digest('hex'), node: process.version }));
+          ORACLE_PROOF
+          echo "IFC_LITE_CURRENT_MAIN_DIFF_ORACLE=$entry" >> "$GITHUB_ENV"
       - name: Package tests (shard ${{ matrix.shard }}/4)
         env:
           SHARD: ${{ matrix.shard }}

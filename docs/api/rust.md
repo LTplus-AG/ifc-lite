@@ -26,6 +26,9 @@ Use `ifc_lite_geometry::placement::Axis2Placement::{read_3d, read_2d, read_id}`
 and call `.matrix()` on the returned placement for a frame in file units.
 `EntityDecoder::{point3, direction3}` read point coordinates or raw direction
 ratios by id; `point3_at` and `direction3_at` read a referenced attribute.
+`point3_decoded` applies the same counted point rule to a record already
+decoded by that decoder from the same immutable source; propagate decode
+errors before calling it. It avoids parsing coordinates a second time.
 These leaf readers accept two or three finite numbers, promote two dimensions
 with `z = 0`, and count malformed-input refusals. For an already decoded
 direction when no decoder is available, `EntityDecoder::direction3_of` returns

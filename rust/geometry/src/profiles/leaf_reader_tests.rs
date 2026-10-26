@@ -108,3 +108,31 @@ fn issue_7779_profile_conic_preserves_absent_bound_recovery() {
         assert!((points[0] - Point3::new(1., 0., 0.)).norm() < 1e-12);
     }
 }
+
+/// #7779 / #8045: eager list decoding must still see a later decode refusal
+/// before leaf validation of an earlier malformed point. A one-pass rewrite
+/// would refuse #1 instead of #2 in strict mode, changing the census.
+#[test]
+fn issue_7779_polyline_reuse_preserves_eager_refusal_order() {
+    let source = "#1=IFCCARTESIANPOINT((1.));\n\
+                  #2=IFCCARTESIANPOINT((1.E400,0.));\n\
+                  #3=IFCPOLYLINE((#1,#2));";
+    for strict in [false, true] {
+        for spatial in [false, true] {
+            let mut decoder = EntityDecoder::new(source);
+            if strict {
+                decoder = decoder.with_strict_reals();
+            }
+            let curve = decoder.decode_by_id(3).unwrap();
+            let processor = ProfileProcessor::new(IfcSchema::new());
+            let failed = if spatial {
+                processor.process_polyline_3d(&curve, &mut decoder).is_err()
+            } else {
+                processor.process_polyline(&curve, &mut decoder).is_err()
+            };
+            assert!(failed);
+            assert_eq!(decoder.refused_record_ids(), [if strict { 2 } else { 1 }]);
+            assert_eq!(decoder.refused_records(), 1);
+        }
+    }
+}

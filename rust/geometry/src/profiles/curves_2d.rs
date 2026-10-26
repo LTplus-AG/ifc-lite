@@ -250,7 +250,7 @@ impl ProfileProcessor {
 
         let mut points = Vec::with_capacity(point_entities.len());
         for point_entity in point_entities {
-            let [x, y, _] = decoder.point3(point_entity.id)?;
+            let [x, y, _] = decoder.point3_decoded(&point_entity)?;
 
             points.push(Point2::new(x, y));
         }

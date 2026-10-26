@@ -304,7 +304,7 @@ impl ProfileProcessor {
         let mut result = Vec::with_capacity(points.len());
 
         for point in points {
-            let [x, y, z] = decoder.point3(point.id)?;
+            let [x, y, z] = decoder.point3_decoded(&point)?;
 
             result.push(Point3::new(x, y, z));
         }

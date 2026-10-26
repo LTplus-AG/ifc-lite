@@ -5018,3 +5018,22 @@ binds the source, runtime custody, original size failure and completed consumer
 proof. Accepting this budget does not establish isolated feature cost or browser
 runtime cost. Preserve the original failures and unknown consumer attempt;
 hosted/parity and current performance remain holds, and merge is not approved.
+
+### F3b leaf-reader instruction diagnosis (#7779, #8045)
+
+A local Callgrind comparison on louistrue-pc of R2a `1cd8066df9` and leaves
+`f4015a55b6` attributes Haus's regression to parsing profile points again
+after eager reference-list decoding. Reusing those decoded records through the
+same counted leaf rule repairs Haus, but alone leaves duplex over the ceiling:
+its BREP loops also pay for the stricter byte reader. Exact uppercase keyword
+comparison before case folding, inlined coordinate reads, and removing duplicate
+trivia/finite checks repair that path without changing numeric admission or
+fallback refusals. The shared number reader already admits finite REALs; its
+unrepresentable variant still falls through to the counted decoder.
+
+The combined change meets the unchanged per-phase instruction ceiling on Haus,
+ISSUE_129 and duplex. Preserve eager list decoding: interleaving decode and leaf
+validation changes which malformed record is counted when a later decode fails.
+These are single-run instruction diagnostics, not elapsed-time or browser
+worker-pool speedup evidence. The local diagnosis packet is
+`f3b-leaves-ir-diagnosis-r1.json`; earlier unsuccessful candidates remain in it.

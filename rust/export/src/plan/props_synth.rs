@@ -17,21 +17,32 @@ use super::attrs::{attribute_index, build_record};
 use super::props::PropOutcome;
 use super::types::{PropWrite, PsetKind};
 
+/// The value records a property or quantity set lists and a write edits or
+/// writes: `(entity, value slot, measures it carries)`. The one table
+/// [`quantity_entity_for_measure`], [`value_slot_name`] and
+/// [`is_value_entity`] read, so they cannot drift. Quantities are typed by
+/// their CONTAINING entity (`IfcQuantityLength` carries an
+/// `IfcLengthMeasure`); a property stays `IfcPropertySingleValue` whatever
+/// its measure, so its row names none.
+const VALUE_RECORDS: [(&str, &str, &[&str]); 7] = [
+    ("IFCPROPERTYSINGLEVALUE", "NominalValue", &[]),
+    ("IFCQUANTITYLENGTH", "LengthValue", &["IFCLENGTHMEASURE", "IFCPOSITIVELENGTHMEASURE"]),
+    ("IFCQUANTITYAREA", "AreaValue", &["IFCAREAMEASURE"]),
+    ("IFCQUANTITYVOLUME", "VolumeValue", &["IFCVOLUMEMEASURE"]),
+    ("IFCQUANTITYCOUNT", "CountValue", &["IFCCOUNTMEASURE"]),
+    ("IFCQUANTITYTIME", "TimeValue", &["IFCTIMEMEASURE"]),
+    ("IFCQUANTITYWEIGHT", "WeightValue", &["IFCMASSMEASURE"]),
+];
+
 /// The `IfcQuantity*` entity for a measure type, when this executor knows
-/// one. Quantities are typed by their CONTAINING entity (`IfcQuantityLength`
-/// carries an `IfcLengthMeasure`), unlike properties, which stay
-/// `IfcPropertySingleValue` regardless of the value's measure — so this map
-/// exists only for quantities.
+/// one ([`VALUE_RECORDS`]).
 pub(crate) fn quantity_entity_for_measure(measure_type: &str) -> Option<&'static str> {
-    Some(match measure_type {
-        "IFCLENGTHMEASURE" | "IFCPOSITIVELENGTHMEASURE" => "IFCQUANTITYLENGTH",
-        "IFCAREAMEASURE" => "IFCQUANTITYAREA",
-        "IFCVOLUMEMEASURE" => "IFCQUANTITYVOLUME",
-        "IFCCOUNTMEASURE" => "IFCQUANTITYCOUNT",
-        "IFCTIMEMEASURE" => "IFCQUANTITYTIME",
-        "IFCMASSMEASURE" => "IFCQUANTITYWEIGHT",
-        _ => return None,
-    })
+    VALUE_RECORDS.iter().find(|(_, _, measures)| measures.contains(&measure_type)).map(|&(entity, _, _)| entity)
+}
+
+/// Whether `entity` is a value record a set lists ([`VALUE_RECORDS`]).
+pub(crate) fn is_value_entity(entity: &str) -> bool {
+    VALUE_RECORDS.iter().any(|&(e, _, _)| e == entity)
 }
 
 /// Build a fresh property/quantity value record generically from the
@@ -59,16 +70,10 @@ pub(crate) fn build_value_record(schema: &str, id: u32, entity_type: &str, name:
     format!("#{id}={entity_type}({});", slots.join(","))
 }
 
+/// The slot a value record carries its value in ([`VALUE_RECORDS`]);
+/// `NominalValue` for anything else.
 pub(crate) fn value_slot_name(value_type: &str) -> &'static str {
-    match value_type {
-        "IFCQUANTITYLENGTH" => "LengthValue",
-        "IFCQUANTITYAREA" => "AreaValue",
-        "IFCQUANTITYVOLUME" => "VolumeValue",
-        "IFCQUANTITYCOUNT" => "CountValue",
-        "IFCQUANTITYTIME" => "TimeValue",
-        "IFCQUANTITYWEIGHT" => "WeightValue",
-        _ => "NominalValue",
-    }
+    VALUE_RECORDS.iter().find(|&&(entity, _, _)| entity == value_type).map_or("NominalValue", |&(_, slot, _)| slot)
 }
 
 pub(crate) fn value_entity(write: &PropWrite) -> Result<&'static str, String> {
@@ -294,4 +299,18 @@ pub(crate) fn copy_on_write_occurrence_set(
         .ok_or("IFCRELDEFINESBYPROPERTIES has no RelatedObjects attribute in this schema")?;
 
     Ok(PropOutcome::CopyOnWrite { new_records, detach: (owning_rel, related_idx, object_id) })
+}
+
+#[cfg(test)]
+mod value_records_tests {
+    /// A measure names one quantity entity: the table lookup takes the first match.
+    #[test]
+    fn each_measure_maps_to_one_quantity_entity() {
+        let mut seen = std::collections::HashSet::new();
+        for (_, _, measures) in super::VALUE_RECORDS {
+            for measure in measures {
+                assert!(seen.insert(*measure), "{measure} maps to more than one quantity entity");
+            }
+        }
+    }
 }

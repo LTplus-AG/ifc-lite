@@ -36,7 +36,7 @@ pub(super) struct Checked {
     pub(super) mapped: Option<MapPlan>,
 }
 
-impl AddState<'_> {
+impl AddState<'_, '_> {
     pub(super) fn is_a(&self, class: &str, parent: &str) -> bool {
         is_subtype_of_for_schema(self.schema, class, parent)
     }

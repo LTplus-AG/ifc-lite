@@ -20,60 +20,25 @@ use crate::step_text::escape;
 use crate::step_ids::IdAllocator;
 
 use super::attrs::build_record;
+use super::identity::{ChainSpec, Reusable};
 use super::types::PlanContext;
 
 /// A minimal valid `IfcPerson`/`IfcOrganization`/`IfcPersonAndOrganization`/
-/// `IfcApplication`/`IfcOwnerHistory` chain, generic over the schema's own
-/// attribute order the same way [`super::props`] builds a property record.
-pub(crate) fn synthesize(schema: &str, ids: &mut IdAllocator, context: &PlanContext) -> Option<(Vec<(u32, String)>, u32)> {
-    let organization_name = context.organization.as_deref().unwrap_or("ifc-lite");
-    let application_name = context.author.as_deref().unwrap_or("ifc-lite export-plan executor");
+/// `IfcApplication`/`IfcOwnerHistory` chain naming the plan's own context,
+/// built by [`super::identity::chain`] like the exporting application's (so
+/// a placeholder application the `source` already has is reused), and
+/// generic over the schema's own attribute order.
+pub(crate) fn synthesize(schema: &str, ids: &mut IdAllocator, context: &PlanContext, source: Reusable) -> Option<(Vec<(u32, String)>, u32)> {
+    let spec = ChainSpec {
+        identification: "ifc-lite",
+        family_name: "ifc-lite",
+        developer: context.organization.as_deref().unwrap_or("ifc-lite"),
+        version: "1.0",
+        full_name: context.author.as_deref().unwrap_or("ifc-lite export-plan executor"),
+        identifier: "ifc-lite-export-plan",
+    };
     let time_stamp = context.time_stamp.as_deref().and_then(epoch_seconds).unwrap_or(0);
-
-    let mut records = Vec::new();
-    let person_id = ids.allocate()?;
-    records.push((
-        person_id,
-        build_record(
-            schema,
-            person_id,
-            "IFCPERSON",
-            // `Identification` in IFC4, `Id` in IFC2X3; a family name meets
-            // the rule that a person carries some name in both.
-            &[("Identification", quoted("ifc-lite")), ("Id", quoted("ifc-lite")), ("FamilyName", quoted("ifc-lite"))],
-        ),
-    ));
-
-    let org_id = ids.allocate()?;
-    records.push((org_id, build_record(schema, org_id, "IFCORGANIZATION", &[("Name", quoted(organization_name))])));
-
-    let person_and_org_id = ids.allocate()?;
-    records.push((
-        person_and_org_id,
-        build_record(
-            schema,
-            person_and_org_id,
-            "IFCPERSONANDORGANIZATION",
-            &[("ThePerson", format!("#{person_id}")), ("TheOrganization", format!("#{org_id}"))],
-        ),
-    ));
-
-    let application_id = ids.allocate()?;
-    records.push((
-        application_id,
-        build_record(
-            schema,
-            application_id,
-            "IFCAPPLICATION",
-            &[
-                ("ApplicationDeveloper", format!("#{org_id}")),
-                ("Version", quoted("1.0")),
-                ("ApplicationFullName", quoted(application_name)),
-                ("ApplicationIdentifier", quoted("ifc-lite-export-plan")),
-            ],
-        ),
-    ));
-
+    let (mut records, chain) = super::identity::chain(schema, ids, &spec, source)?;
     let owner_history_id = ids.allocate()?;
     records.push((
         owner_history_id,
@@ -82,8 +47,8 @@ pub(crate) fn synthesize(schema: &str, ids: &mut IdAllocator, context: &PlanCont
             owner_history_id,
             "IFCOWNERHISTORY",
             &[
-                ("OwningUser", format!("#{person_and_org_id}")),
-                ("OwningApplication", format!("#{application_id}")),
+                ("OwningUser", format!("#{}", chain.user)),
+                ("OwningApplication", format!("#{}", chain.application)),
                 // Mandatory in IFC2X3. NOCHANGE is the one value both
                 // schemas accept without a LastModifiedDate.
                 ("ChangeAction", ".NOCHANGE.".to_string()),
@@ -91,11 +56,10 @@ pub(crate) fn synthesize(schema: &str, ids: &mut IdAllocator, context: &PlanCont
             ],
         ),
     ));
-
     Some((records, owner_history_id))
 }
 
-fn quoted(s: &str) -> String {
+pub(super) fn quoted(s: &str) -> String {
     format!("'{}'", escape(s))
 }
 
@@ -103,7 +67,7 @@ fn quoted(s: &str) -> String {
 /// ISO 8601 (the form the header's `FILE_NAME` takes): a date, optionally
 /// followed by `T` and `hh:mm:ss`, read as UTC unless it ends in `Z` or a
 /// `+hh`, `+hhmm` or `+hh:mm` offset. Anything else is `None`.
-fn epoch_seconds(stamp: &str) -> Option<i64> {
+pub(super) fn epoch_seconds(stamp: &str) -> Option<i64> {
     let stamp = stamp.trim();
     if let Ok(seconds) = stamp.parse::<i64>() {
         return Some(seconds);
@@ -163,9 +127,33 @@ fn epoch_seconds(stamp: &str) -> Option<i64> {
     Some(days * 86_400 + hour * 3600 + minute * 60 + second - offset)
 }
 
+/// `YYYY-MM-DDTHH:MM:SS` (UTC) for Unix seconds, the inverse of
+/// [`epoch_seconds`] (Howard Hinnant's `civil_from_days`).
+pub(super) fn iso_from_epoch(seconds: i64) -> String {
+    let days = seconds.div_euclid(86_400);
+    let rem = seconds.rem_euclid(86_400);
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    format!("{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}", rem / 3600, rem % 3600 / 60, rem % 60)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn header_time_round_trips_epoch_seconds() {
+        for stamp in ["1970-01-01T00:00:00", "2000-02-29T23:59:59", "2026-10-23T10:00:00", "1969-12-31T23:59:59"] {
+            assert_eq!(iso_from_epoch(epoch_seconds(stamp).unwrap()), stamp);
+        }
+    }
 
     #[test]
     fn creation_date_reads_unix_seconds_or_an_iso_stamp() {
@@ -191,9 +179,9 @@ mod tests {
     fn synthesizes_a_valid_chain_and_is_deterministic() {
         let ctx = PlanContext::default();
         let mut a = IdAllocator::after(10);
-        let (records_a, owh_a) = synthesize("IFC4", &mut a, &ctx).unwrap();
+        let (records_a, owh_a) = synthesize("IFC4", &mut a, &ctx, None).unwrap();
         let mut b = IdAllocator::after(10);
-        let (records_b, owh_b) = synthesize("IFC4", &mut b, &ctx).unwrap();
+        let (records_b, owh_b) = synthesize("IFC4", &mut b, &ctx, None).unwrap();
         assert_eq!(records_a, records_b);
         assert_eq!(owh_a, owh_b);
         assert_eq!(records_a.len(), 5);
@@ -204,7 +192,7 @@ mod tests {
     fn the_person_has_a_name_and_the_owner_history_a_change_action_in_each_schema() {
         for schema in ["IFC2X3", "IFC4"] {
             let mut ids = IdAllocator::after(10);
-            let (records, _) = synthesize(schema, &mut ids, &PlanContext::default()).unwrap();
+            let (records, _) = synthesize(schema, &mut ids, &PlanContext::default(), None).unwrap();
             let person = &records[0].1;
             assert!(person.starts_with("#11=IFCPERSON('ifc-lite','ifc-lite',"), "{schema}: {person}");
             let owner_history = &records.last().unwrap().1;
@@ -216,7 +204,7 @@ mod tests {
     fn ifc2x3_owner_history_still_scans_into_the_declared_attribute_count() {
         let ctx = PlanContext::default();
         let mut a = IdAllocator::after(10);
-        let (records, _) = synthesize("IFC2X3", &mut a, &ctx).unwrap();
+        let (records, _) = synthesize("IFC2X3", &mut a, &ctx, None).unwrap();
         for (id, text) in &records {
             let entity_type = text.split('=').nth(1).unwrap().split('(').next().unwrap();
             let names = ifc_lite_core::attribute_names_for_schema("IFC2X3", entity_type).unwrap();

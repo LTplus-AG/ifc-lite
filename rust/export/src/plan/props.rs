@@ -29,6 +29,7 @@ use super::attrs::attribute_index;
 use super::index::FileIndex;
 use super::props_lookup::{container_names, leaf_is_shared, list_attr, pset_owners, pset_reaches_only, set_members};
 use super::props_synth;
+use super::attribution::{Settles, Taken};
 use super::props_target::{ResolvedWrite, WriteTarget};
 use super::types::{PropScope, PropWrite, PsetKind};
 
@@ -148,6 +149,23 @@ fn in_place_edits(target: &WriteTarget<'_>, member_id: u32, write: &PropWrite) -
 pub(crate) struct SetWrites<'w> {
     pub(crate) outcomes: Vec<PropOutcome>,
     pub(crate) refused: Vec<(&'w PropWrite, String)>,
+    /// The owner history a written set and relationship took, for the
+    /// caller to commit.
+    pub(crate) history: Option<Settles>,
+}
+
+impl SetWrites<'_> {
+    /// A written set or clone, carrying the records of the history it took
+    /// ahead of its own.
+    fn push_with_history(&mut self, mut outcome: PropOutcome, taken: Option<Taken>) {
+        if let Some(taken) = taken {
+            if let PropOutcome::Append { new_records } | PropOutcome::CopyOnWrite { new_records, .. } = &mut outcome {
+                new_records.splice(0..0, taken.records);
+            }
+            self.history = Some(taken.settles);
+        }
+        self.outcomes.push(outcome);
+    }
 }
 
 /// Resolve one [`PropWrite`] against `object_id`.
@@ -162,7 +180,8 @@ pub(crate) fn resolve_prop_write(
 ) -> Result<PropOutcome, String> {
     let target = WriteTarget::read(index, schema, object_id);
     let resolved = super::props_target::resolve_write(&target, write)?;
-    let mut result = resolve_set_writes(&target, &[resolved], ids, owner_history);
+    let taken = |_: &mut IdAllocator| owner_history.map(Taken::existing);
+    let mut result = resolve_set_writes(&target, &[resolved], ids, &taken);
     match result.refused.pop() {
         Some((_, reason)) => Err(reason),
         None => Ok(result.outcomes.pop().expect("one write resolves to one outcome")),
@@ -173,12 +192,15 @@ pub(crate) fn resolve_prop_write(
 /// with none, one `pset`, `kind` and `scope`) against `target` together, so
 /// the set is cloned, folded into or created once with all of them, rather
 /// than once per write with each result missing the others. A later write
-/// with the same [`ResolvedWrite::dedupe_key`] wins.
+/// with the same [`ResolvedWrite::dedupe_key`] wins. `history` takes the
+/// owner history a new set and relationship name, only when one is written;
+/// the written set carries the records it brings, and
+/// [`SetWrites::history`] what the caller commits.
 pub(crate) fn resolve_set_writes<'w>(
     target: &WriteTarget<'_>,
     writes: &[ResolvedWrite<'w>],
     ids: &mut IdAllocator,
-    owner_history: Option<u32>,
+    history: &dyn Fn(&mut IdAllocator) -> Option<Taken>,
 ) -> SetWrites<'w> {
     let (index, schema, object_id) = (target.index, target.schema, target.object_id);
     let mut result = SetWrites::default();
@@ -244,19 +266,21 @@ pub(crate) fn resolve_set_writes<'w>(
             }
             let writes: Vec<_> = group.iter().map(|w| w.for_new_record(target)).collect();
             let writes: Vec<&PropWrite> = writes.iter().map(|w| &**w).collect();
-            match props_synth::copy_on_write_occurrence_set(
+            let taken = history(ids);
+            let written = props_synth::copy_on_write_occurrence_set(
                 schema,
                 container_type,
                 member_attr,
                 object_id,
                 &writes,
                 ids,
-                owner_history,
+                taken.as_ref().map(|t| t.settles.id),
                 &members,
                 &replaced,
                 owning_rel,
-            ) {
-                Ok(outcome) => result.outcomes.push(outcome),
+            );
+            match written {
+                Ok(outcome) => result.push_with_history(outcome, taken),
                 Err(reason) => refuse_all(&mut result, &reason),
             }
         }
@@ -287,8 +311,9 @@ pub(crate) fn resolve_set_writes<'w>(
         (PropScope::Occurrence, None) => {
             let inherited: Vec<_> = group.iter().map(|w| w.for_new_record(target)).collect();
             let inherited: Vec<&PropWrite> = inherited.iter().map(|w| &**w).collect();
-            match props_synth::append_new_occurrence_set(schema, container_type, member_attr, object_id, &inherited, ids, owner_history) {
-                Ok(outcome) => result.outcomes.push(outcome),
+            let taken = history(ids);
+            match props_synth::append_new_occurrence_set(schema, container_type, member_attr, object_id, &inherited, ids, taken.as_ref().map(|t| t.settles.id)) {
+                Ok(outcome) => result.push_with_history(outcome, taken),
                 Err(reason) => refuse_all(&mut result, &reason),
             }
         }

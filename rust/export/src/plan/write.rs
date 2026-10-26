@@ -26,16 +26,23 @@ pub(crate) fn write_output<W: Write>(
 ) -> Result<WriteReport, PlanError> {
     let source = index.content();
     let mut out = std::io::BufWriter::with_capacity(1 << 20, out);
-    let header_opts = StepOptions {
+    // The exporting application is the originating system, this crate the
+    // toolkit that wrote the exchange structure, and the change time the
+    // file's time stamp.
+    let mut header_opts = StepOptions {
         author: plan.context.author.clone(),
         organization: plan.context.organization.clone(),
+        // Without an application; `stamp_header` replaces it with the
+        // application's change time when there is one.
         time_stamp: plan.context.time_stamp.clone(),
+        filename: plan.context.file_name.clone(),
         ..Default::default()
     };
+    let originating = resolution.identity.as_ref().map(|identity| identity.stamp_header(&mut header_opts));
     let source_header = crate::source_header::parse_source_header(source);
-    crate::step_header::write_header(&mut out, &header_opts, source_header.as_ref(), schema)?;
+    crate::step_header::write_header_originating(&mut out, &header_opts, source_header.as_ref(), schema, originating.as_deref())?;
 
-    let Resolution { appended, edits_by_id, removed, reasons, refusals, patched, added, patched_objects, dropped_representations, findings } =
+    let Resolution { appended, edits_by_id, removed, reasons, refusals, patched, added, patched_objects, dropped_representations, findings, .. } =
         resolution;
     let defined = DefinedIds::new(index, &removed, &appended);
     let mut validator = StreamValidator::new(schema);

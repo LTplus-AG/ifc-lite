@@ -16,7 +16,11 @@ use crate::plan::types::*;
 /// map, as a file from another tool could carry them.
 fn type_with_maps(schema: &str) -> Vec<u8> {
     let r = |id, entity, fields: &[(&str, &str)]| {
-        let fields: Vec<(&str, String)> = fields.iter().map(|&(n, v)| (n, v.to_string())).collect();
+        let mut fields: Vec<(&str, String)> = fields.iter().map(|&(n, v)| (n, v.to_string())).collect();
+        // IFC2X3 requires an owner history: the fixture preamble's.
+        if schema == "IFC2X3" {
+            fields.push(("OwnerHistory", "#5".into()));
+        }
         build_record(schema, id, entity, &fields) + "\n"
     };
     let records = [
@@ -264,7 +268,11 @@ fn copies_at_the_same_transform_share_one_operator() {
 /// `#330`, listed first, as a type keeping one body per level of detail does.
 fn type_with_two_bodies(schema: &str) -> Vec<u8> {
     let r = |id, entity, fields: &[(&str, &str)]| {
-        let fields: Vec<(&str, String)> = fields.iter().map(|&(n, v)| (n, v.to_string())).collect();
+        let mut fields: Vec<(&str, String)> = fields.iter().map(|&(n, v)| (n, v.to_string())).collect();
+        // IFC2X3 requires an owner history: the fixture preamble's.
+        if schema == "IFC2X3" {
+            fields.push(("OwnerHistory", "#5".into()));
+        }
         build_record(schema, id, entity, &fields) + "\n"
     };
     let extra = [

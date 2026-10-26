@@ -67,6 +67,19 @@ pub(crate) fn write_header<W: Write>(
     write_header_counted(out, opts, source, schema, 0)
 }
 
+/// [`write_header`] with an explicit `FILE_NAME.originating_system` (the
+/// exporting application of an attributed export plan), kept off the public
+/// [`StepOptions`] so that struct stays constructible as before.
+pub(crate) fn write_header_originating<W: Write>(
+    out: &mut W,
+    opts: &StepOptions,
+    source: Option<&SourceHeader>,
+    schema: &str,
+    originating_system: Option<&str>,
+) -> std::io::Result<()> {
+    write_header_inner(out, opts, source, schema, 0, originating_system)
+}
+
 /// [`write_header`], appending the twin's `Re-exported by ifc-lite, N
 /// modification(s)` description item when `modifications` is non-zero. The
 /// mutation-log writer (`crate::step_log`) is the caller that has a count; the
@@ -78,6 +91,17 @@ pub(crate) fn write_header_counted<W: Write>(
     source: Option<&SourceHeader>,
     schema: &str,
     modifications: usize,
+) -> std::io::Result<()> {
+    write_header_inner(out, opts, source, schema, modifications, None)
+}
+
+fn write_header_inner<W: Write>(
+    out: &mut W,
+    opts: &StepOptions,
+    source: Option<&SourceHeader>,
+    schema: &str,
+    modifications: usize,
+    originating_override: Option<&str>,
 ) -> std::io::Result<()> {
     // FILE_DESCRIPTION items: an explicit option wins, else the source items
     // verbatim, else the generic default.
@@ -123,9 +147,8 @@ pub(crate) fn write_header_counted<W: Write>(
     // preprocessor_version = the tool that WROTE this file (ifc-lite);
     // originating_system keeps the source authoring tool so it isn't erased.
     let application = opts.application.as_deref().unwrap_or("ifc-lite");
-    let originating_system = source
-        .and_then(|s| s.originating_system.as_deref())
-        .filter(|s| !s.is_empty())
+    let originating_system = originating_override
+        .or_else(|| source.and_then(|s| s.originating_system.as_deref()).filter(|s| !s.is_empty()))
         .unwrap_or(application);
     let authorization =
         source.and_then(|s| s.authorization.as_deref()).unwrap_or("");

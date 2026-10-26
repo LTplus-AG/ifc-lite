@@ -14,9 +14,11 @@
 //! [`Skeleton`] always produces the same bytes.
 
 use crate::step_ids::IdAllocator;
-use crate::step_text::escape;
 
 use super::add_types::GlobalId;
+use super::identity::{Identity, Made};
+use super::owner_history::quoted;
+use super::types::{ExportingApplication, ValidationFinding};
 use super::placement::fmt;
 use super::props_synth::ref_list;
 use super::tessellation::Emit;
@@ -82,6 +84,12 @@ pub struct Skeleton {
     /// as +Y.
     pub true_north: Option<[f64; 2]>,
     pub map_conversion: Option<MapConversion>,
+    /// The application writing the file. Present, it owns the project, site,
+    /// building and their aggregations (`ADDED`) and the header names it, the
+    /// same way [`super::PlanContext::application`] does for a plan.
+    pub application: Option<ExportingApplication>,
+    /// The header's `FILE_NAME` name. `None` writes an empty one.
+    pub file_name: Option<String>,
 }
 
 /// An `IfcConversionBasedUnit` length unit of `metres` metres.
@@ -113,13 +121,32 @@ fn length_unit(emit: &mut Emit, name: &str, metres: f64, metre: u32) -> Result<u
     )
 }
 
-/// The skeleton's bytes.
+/// The skeleton's bytes. A header that doesn't follow buildingSMART's
+/// agreement is not reported here; [`skeleton_with_findings`] reports it.
 ///
 /// # Errors
 /// A number is not finite, a direction is zero length, the three roots do
-/// not have distinct GlobalIds, or `crs_name` is empty.
+/// not have distinct GlobalIds, `crs_name` is empty, or an
+/// [`ExportingApplication`] is given whose change time cannot be attributed.
 pub fn skeleton(s: &Skeleton) -> Result<Vec<u8>, String> {
+    build(s, true).map(|(bytes, _)| bytes)
+}
+
+/// [`skeleton`], reporting rather than refusing an application it cannot
+/// attribute the skeleton to: the skeleton is then written unattributed, and
+/// a finding says why. A header that doesn't follow buildingSMART's
+/// agreement is a finding too.
+///
+/// # Errors
+/// As [`skeleton`], but for the application.
+pub fn skeleton_with_findings(s: &Skeleton) -> Result<(Vec<u8>, Vec<ValidationFinding>), String> {
+    build(s, false)
+}
+
+/// The skeleton and its findings, for both entry points.
+fn build(s: &Skeleton, strict: bool) -> Result<(Vec<u8>, Vec<ValidationFinding>), String> {
     check(s)?;
+    let mut findings = Vec::new();
     let mut ids = IdAllocator::after(0);
     let mut out = Vec::new();
     let mut emit = Emit {
@@ -127,7 +154,9 @@ pub fn skeleton(s: &Skeleton) -> Result<Vec<u8>, String> {
         ids: &mut ids,
         out: &mut out,
     };
-    let quoted = |v: &str| format!("'{}'", escape(v));
+    // The exporting application owns what the skeleton creates.
+    let identity = identity_of(s, strict, &mut findings)?;
+    let history = owner_slot(identity.as_ref(), &mut emit)?;
     let name = |root: &SkeletonRoot| root.name.as_deref().map_or("$".to_string(), quoted);
     let gid = |root: &SkeletonRoot| format!("'{}'", root.global_id.encode());
 
@@ -180,31 +209,14 @@ pub fn skeleton(s: &Skeleton) -> Result<Vec<u8>, String> {
         ],
     )?;
     if let Some(m) = &s.map_conversion {
-        let map_unit = match m.map_unit {
-            MapUnit::Metre => units[0],
-            MapUnit::Foot => length_unit(&mut emit, "FOOT", 0.3048, units[0])?,
-            MapUnit::UsSurveyFoot => length_unit(&mut emit, "US SURVEY FOOT", ifc_lite_core::US_SURVEY_FOOT_M, units[0])?,
-        };
-        let crs = emit.record("IFCPROJECTEDCRS", &[("Name", quoted(&m.crs_name)), ("MapUnit", format!("#{map_unit}"))])?;
-        emit.record(
-            "IFCMAPCONVERSION",
-            &[
-                ("SourceCRS", format!("#{context}")),
-                ("TargetCRS", format!("#{crs}")),
-                ("Eastings", fmt(m.eastings)),
-                ("Northings", fmt(m.northings)),
-                ("OrthogonalHeight", fmt(m.orthogonal_height)),
-                ("XAxisAbscissa", fmt(m.x_axis_abscissa)),
-                ("XAxisOrdinate", fmt(m.x_axis_ordinate)),
-                ("Scale", m.scale.map_or("$".to_string(), fmt)),
-            ],
-        )?;
+        map_conversion(m, context, units[0], &mut emit)?;
     }
 
     let project = emit.record(
         "IFCPROJECT",
         &[
             ("GlobalId", gid(&s.project)),
+            ("OwnerHistory", history.clone()),
             ("Name", name(&s.project)),
             ("RepresentationContexts", format!("(#{context})")),
             ("UnitsInContext", format!("#{unit_assignment}")),
@@ -220,6 +232,7 @@ pub fn skeleton(s: &Skeleton) -> Result<Vec<u8>, String> {
         "IFCSITE",
         &[
             ("GlobalId", gid(&s.site)),
+            ("OwnerHistory", history.clone()),
             ("Name", name(&s.site)),
             ("ObjectPlacement", format!("#{site_placement}")),
             ("CompositionType", ".ELEMENT.".into()),
@@ -237,6 +250,7 @@ pub fn skeleton(s: &Skeleton) -> Result<Vec<u8>, String> {
         "IFCBUILDING",
         &[
             ("GlobalId", gid(&s.building)),
+            ("OwnerHistory", history.clone()),
             ("Name", name(&s.building)),
             ("ObjectPlacement", format!("#{building_placement}")),
             ("CompositionType", ".ELEMENT.".into()),
@@ -250,22 +264,85 @@ pub fn skeleton(s: &Skeleton) -> Result<Vec<u8>, String> {
                     "GlobalId",
                     format!("'{}'", root.global_id.derive("rel/aggregates").encode()),
                 ),
+                ("OwnerHistory", history.clone()),
                 ("RelatingObject", format!("#{relating}")),
                 ("RelatedObjects", format!("(#{related})")),
             ],
         )?;
     }
 
-    let mut text = format!(
-        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\n\
-         FILE_SCHEMA(('{SKELETON_SCHEMA}'));\nENDSEC;\nDATA;\n"
-    );
-    for (_, record) in &out {
-        text.push_str(record);
-        text.push('\n');
+    Ok((step_text(s.file_name.as_deref(), identity.as_ref(), &out)?, findings))
+}
+
+/// The map conversion from the model `context` to its projected CRS, with
+/// the CRS's length unit (`metre` when it is metres).
+fn map_conversion(m: &MapConversion, context: u32, metre: u32, emit: &mut Emit) -> Result<(), String> {
+    let map_unit = match m.map_unit {
+        MapUnit::Metre => metre,
+        MapUnit::Foot => length_unit(emit, "FOOT", 0.3048, metre)?,
+        MapUnit::UsSurveyFoot => length_unit(emit, "US SURVEY FOOT", ifc_lite_core::US_SURVEY_FOOT_M, metre)?,
+    };
+    let crs = emit.record("IFCPROJECTEDCRS", &[("Name", quoted(&m.crs_name)), ("MapUnit", format!("#{map_unit}"))])?;
+    emit.record(
+        "IFCMAPCONVERSION",
+        &[
+            ("SourceCRS", format!("#{context}")),
+            ("TargetCRS", format!("#{crs}")),
+            ("Eastings", fmt(m.eastings)),
+            ("Northings", fmt(m.northings)),
+            ("OrthogonalHeight", fmt(m.orthogonal_height)),
+            ("XAxisAbscissa", fmt(m.x_axis_abscissa)),
+            ("XAxisOrdinate", fmt(m.x_axis_ordinate)),
+            ("Scale", m.scale.map_or("$".to_string(), fmt)),
+        ],
+    )?;
+    Ok(())
+}
+
+/// The skeleton's exporting identity. An application whose change time
+/// can't be attributed refuses when `strict`; otherwise it is a finding and
+/// the skeleton is written unattributed.
+fn identity_of(s: &Skeleton, strict: bool, findings: &mut Vec<ValidationFinding>) -> Result<Option<Identity>, String> {
+    match s.application.as_ref().map(|app| Identity::resolve(app, findings)).transpose() {
+        Err(message) if strict => Err(message),
+        Err(message) => {
+            findings.push(ValidationFinding::new(None, message));
+            Ok(None)
+        }
+        Ok(identity) => Ok(identity),
     }
-    text.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
-    Ok(text.into_bytes())
+}
+
+/// The `OwnerHistory` slot of everything the skeleton creates: the
+/// exporting application's `ADDED` history, written first, else unset.
+fn owner_slot(identity: Option<&Identity>, emit: &mut Emit) -> Result<String, String> {
+    let Some(identity) = identity else { return Ok("$".to_string()) };
+    let id = identity.added_in(SKELETON_SCHEMA, emit.ids, None, &mut Made::default(), emit.out).ok_or("id space exhausted")?;
+    Ok(format!("#{id}"))
+}
+
+/// The file: the header (naming the application, toolkit and change time
+/// when there is an application, empty fields otherwise), then the records.
+fn step_text(file_name: Option<&str>, identity: Option<&Identity>, out: &[(u32, String)]) -> Result<Vec<u8>, String> {
+    // Without an application every field is empty, as the skeleton always
+    // wrote it.
+    let empty = || Some(String::new());
+    let mut opts = crate::StepOptions {
+        description: empty(),
+        filename: Some(file_name.unwrap_or("").to_string()),
+        time_stamp: empty(),
+        application: empty(),
+        ..Default::default()
+    };
+    let originating = identity.map(|identity| identity.stamp_header(&mut opts));
+    let mut text = Vec::new();
+    crate::step_header::write_header_originating(&mut text, &opts, None, SKELETON_SCHEMA, originating.as_deref()).map_err(|e| e.to_string())?;
+    for (_, record) in out {
+        text.extend_from_slice(record.as_bytes());
+        text.push(b'\n');
+    }
+    text.extend_from_slice(b"ENDSEC;\nEND-ISO-10303-21;\n");
+    Ok(text)
 }
 
 fn check(s: &Skeleton) -> Result<(), String> {

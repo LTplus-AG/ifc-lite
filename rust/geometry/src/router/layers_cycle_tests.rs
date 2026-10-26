@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use super::source::item_has_unrotated_position;
+use super::source::item_has_identity_position;
 use ifc_lite_core::EntityDecoder;
 
 fn wrap(data: &str) -> String {
@@ -13,7 +13,7 @@ FILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n{data}ENDSEC;\nEND-ISO-10303-21;\n"
     )
 }
 
-/// Run `item_has_unrotated_position` on a worker thread with a timeout.
+/// Run `item_has_identity_position` on a worker thread with a timeout.
 ///
 /// The walk is iterative, so a regression that drops the visited set does not
 /// crash -- it spins forever. Called directly that HANGS THE WHOLE SUITE,
@@ -25,7 +25,7 @@ fn unrotated_of(data: &str, id: u32) -> bool {
     let handle = std::thread::spawn(move || {
         let mut decoder = EntityDecoder::new(&content);
         let item = decoder.decode_by_id(id).expect("decode item");
-        let _ = tx.send(item_has_unrotated_position(item, &mut decoder));
+        let _ = tx.send(item_has_identity_position(item, &mut decoder));
     });
     // Match the variant rather than `is_ok()`: `recv_timeout` returns Err for
     // Disconnected as well as Timeout, so a PANIC in the worker drops `tx` and
@@ -34,10 +34,10 @@ fn unrotated_of(data: &str, id: u32) -> bool {
     let value = match rx.recv_timeout(std::time::Duration::from_secs(30)) {
         Ok(v) => v,
         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-            panic!("item_has_unrotated_position did not terminate within 30s")
+            panic!("item_has_identity_position did not terminate within 30s")
         }
         Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-            panic!("item_has_unrotated_position's worker PANICKED (not a hang); \
+            panic!("item_has_identity_position's worker PANICKED (not a hang); \
                     its panic is printed above")
         }
     };

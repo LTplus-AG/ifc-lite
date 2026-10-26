@@ -54,7 +54,7 @@ pub(super) fn element_is_single_unrotated_item(
     // axis/curve/footprint don't. `Select::Body` is the single canonical
     // body-geometry predicate, so this stays in lockstep with the meshing path
     // (a mapped/surface item disqualifies slicing below regardless, via
-    // item_has_unrotated_position).
+    // item_has_identity_position).
     if let Some(shape_rep) = shape.select(element, Select::Body).next() {
         // attr 3 = Items.
         let items = match shape_rep
@@ -76,7 +76,7 @@ pub(super) fn element_is_single_unrotated_item(
             Err(_) => return false,
         };
 
-        return item_has_unrotated_position(item, decoder);
+        return item_has_identity_position(item, decoder);
     }
 
     // No body-style representation found — nothing to slice.
@@ -84,12 +84,12 @@ pub(super) fn element_is_single_unrotated_item(
 }
 
 /// True when the representation item carries no Position transform, or a
-/// Position that only translates (see [`element_is_single_unrotated_item`]
-/// for why a translation is admissible). Supports the item types that actually show
+/// Position whose ROTATION is the identity; the translation is free (see
+/// [`element_is_single_unrotated_item`] for why). Supports the item types that actually show
 /// up with IfcMaterialLayerSetUsage in practice (extrusions, revolved /
 /// advanced swept solids, boolean clipping on top of those). Anything
 /// exotic returns false so we bail safely.
-pub(super) fn item_has_unrotated_position(
+pub(super) fn item_has_identity_position(
     mut cur: DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> bool {
@@ -138,7 +138,7 @@ pub(super) fn item_has_unrotated_position(
     }
 }
 
-/// The non-boolean leaf of the [`item_has_unrotated_position`] walk: does THIS
+/// The non-boolean leaf of the [`item_has_identity_position`] walk: does THIS
 /// one item's Position keep the element's axes?
 fn item_position_is_unrotated(item: &DecodedEntity, decoder: &mut EntityDecoder) -> bool {
     match item.ifc_type {

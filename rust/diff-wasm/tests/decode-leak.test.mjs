@@ -202,7 +202,10 @@ test('collection length check releases owned handles on rejection, then reuses t
     '\u0001host-type-error:spoofed', { toString() { throw new Error('do not stringify me'); } }]) {
     for (const [location, input] of cases(raised)) {
       const collections = collectionsOnly(input);
-      const decoded = rejection(() => wasm.diffBuildComponentFingerprints({ ifcType: 'IfcWall', ...collectionsOnly(input) }));
+      // Copy descriptors, never spread: a spread would run a throwing
+      // collection getter in JS before the full decoder sees it.
+      const decoded = rejection(() => wasm.diffBuildComponentFingerprints(
+        Object.defineProperties({ ifcType: 'IfcWall' }, Object.getOwnPropertyDescriptors(collectionsOnly(input)))));
       const checked = rejection(() => collectionCheck(collections));
       assert.deepEqual(checked, decoded, `${location}: the same fields reject identically`);
       if (!checked) continue;

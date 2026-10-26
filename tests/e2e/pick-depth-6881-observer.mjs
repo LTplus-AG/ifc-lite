@@ -135,10 +135,11 @@ export function installOracle({ depthBitXor = 0, renderer: suppliedRenderer } = 
       if (picker.pick === pick) picker.pick = originalPick;
       if (picker.depthSample.encode === encode) picker.depthSample.encode = originalEncode;
       if (device.createTexture === create) device.createTexture = originalCreate;
+      const oracleBuffersDestroyed = owned.size;
       for (const buffer of owned) buffer.destroy();
       owned.clear();
       if (globalThis.__6881 === api) delete globalThis.__6881;
-      return { pending: pending.size, oracleBuffers: owned.size };
+      return { pending: pending.size, oracleBuffersDestroyed };
     },
   };
   globalThis.__6881 = api;

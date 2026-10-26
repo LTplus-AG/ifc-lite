@@ -75,7 +75,16 @@ const records = [], references = new Map();
 const report = { configSha256: hash(readFileSync(configuration)), scope: 'Mounted viewer hover, 5 interleaved pairs per public-model scenario at DPR1; no loading-speed claim',
   harness: Object.fromEntries(['pick-depth-6881-benchmark.mjs', 'pick-depth-6881-hover.mjs', 'pick-depth-6881-observer.mjs', 'pick-depth-6881-identity.mjs'].map(name => [name, hash(readFileSync(resolve(here, name)))])),
   accepted: false, records, summary: [] };
-const median = values => values.slice().sort((a, b) => a - b)[Math.floor(values.length / 2)];
+const median = values => {
+  const sorted = values.slice().sort((a, b) => a - b), middle = sorted.length >> 1;
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+};
+// A scenario may declare its own pointer positions as fractions of the canvas;
+// the default is the 3 x 3 grid. A probe run records every sample and gates only
+// per-sample integrity, so the stability of candidate positions can be measured
+// before a cohort freezes them. It is never an accepted cohort.
+const probe = config.probe === true;
+const defaultPositions = [0.3, 0.5, 0.7].flatMap(y => [0.3, 0.5, 0.7].map(x => [x, y]));
 const p95 = values => values.slice().sort((a, b) => a - b)[Math.ceil(values.length * 0.95) - 1];
 let browser, active;
 const stderr = process.stderr.write.bind(process.stderr);
@@ -149,13 +158,14 @@ try {
         if (document.visibilityState !== 'visible' || !document.hasFocus()) throw Error('Foreground missing');
         globalThis.__6881Health.measuring = true;
       });
-      for (const y of [0.3, 0.5, 0.7]) for (const x of [0.3, 0.5, 0.7]) {
+      const positions = scenario.positions ?? defaultPositions;
+      for (const [x, y] of positions) {
         await page.mouse.move(rect.x + rect.width * x, rect.y + rect.height * y); await sleep(300);
       }
       record.hover = await page.evaluate('globalThis.__6881Hover.take()');
-      if (record.hover.inputs.length !== 9 || record.hover.picks.length !== 9) throw Error('Declared hover inputs did not each reach the actual GPU picker');
+      if (record.hover.inputs.length !== positions.length || record.hover.picks.length !== positions.length) throw Error('Declared hover inputs did not each reach the actual GPU picker');
       const commits = [];
-      for (let index = 0; index < 9; index++) {
+      for (let index = 0; index < positions.length; index++) {
         const pick = record.hover.picks[index], input = record.hover.inputs[index];
         if (pick.input !== index || pick.error || !Number.isFinite(pick.ms) || pick.ms <= 0) throw Error('Hover/pick pairing failed');
         const [,, width, height] = pick.texelInput;
@@ -172,7 +182,7 @@ try {
       const signature = { geometry: record.geometryBefore, viewport: rect,
         picks: record.hover.picks.map(pick => ({ result: pick.result, matrix: pick.matrix, cameraWorld: pick.cameraWorld, texelInput: pick.texelInput })) };
       const reference = references.get(scenario.name);
-      if (reference && !sameSampleIdentity(reference, signature)) throw Error('Geometry/camera/texel/ID/item/world identity differs between samples');
+      if (!probe && reference && !sameSampleIdentity(reference, signature)) throw Error('Geometry/camera/texel/ID/item/world identity differs between samples');
       references.set(scenario.name, signature);
       record.retirement = await page.evaluate('globalThis.__6881Hover.retire()');
       record.geometryAfter = await page.evaluate(async () => (await import('/__6881/hover.js')).geometryWitness());
@@ -200,9 +210,12 @@ try {
     if (!record.ok) throw Error('Sample teardown/driver health failed');
   }
   verify();
-  report.summary = summarizeSamples(records);
-  if (records.length !== config.scenarios.length * 10 || report.summary.some(row => row.pairs !== 5)) throw Error('Incomplete paired cohort');
-  report.accepted = true;
+  if (probe) report.probe = true;
+  else {
+    report.summary = summarizeSamples(records);
+    if (records.length !== config.scenarios.length * 10 || report.summary.some(row => row.pairs !== 5)) throw Error('Incomplete paired cohort');
+    report.accepted = true;
+  }
 } catch (error) { report.error = String(error); process.exitCode = 1; }
 finally {
   process.stderr.write = stderr;

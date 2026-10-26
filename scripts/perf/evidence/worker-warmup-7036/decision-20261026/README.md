@@ -22,10 +22,17 @@ span trees, worker observations, frame attribution, health and logged phase
 memory. Its decompressed SHA256 is in `decision.json`. To reproduce the report,
 decompress the rows to a scratch file and run
 `node scripts/perf/browser-ab-report.mjs ROWS --base base --branch candidate`.
-The preserved `cohort-driver.mts` and `worker-observer.mjs` identify the exact
-manual measurement source; run only with the recorded helper checkout and
-source-pinned production distributions, under exclusive fleet admission.
-The executable path is the original measurement host's Chromium installation.
+`recorded-cohort-driver.mts.gz` preserves the exact measured driver verbatim;
+its decompressed SHA256 is `driverSha256` in `protocol.json`. The observer source
+is unchanged. `cohort-driver.mts` is the executable reproducer with an error-path
+repair: primary and cleanup failures are aggregated outside `finally` rather
+than allowing cleanup to overwrite the original error. All accepted samples
+had no errors and clean cleanup; this repair changes no recorded observation
+and no timing campaign was repeated. The reproducer has its own SHA256.
+
+Run a reproduction only with the recorded helper checkout and source-pinned
+production distributions, under exclusive fleet admission. The executable path
+is the original measurement host's Chromium installation.
 
 The source-built engine binary is identical on both arms. Each sample used a
 fresh browser/profile, and the target model was its first load; OS file cache

@@ -59,6 +59,7 @@ assert(address && typeof address !== 'string');
 const origin = `http://127.0.0.1:${address.port}`;
 const args = ['--enable-gpu', '--enable-webgpu', '--enable-unsafe-webgpu', '--enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan',
   '--use-angle=vulkan', '--ignore-gpu-blocklist'];
+const cohortErrors: unknown[] = [];
 try {
   for (const planned of schedule) {
     const admission = await readLinuxHostObservation();
@@ -69,6 +70,7 @@ try {
     const row: Record<string, unknown> = { ...planned, round: planned.pair, source: manifest[planned.side].source, admission, ok: false };
     rows.push(row);
     let browser;
+    const sampleErrors: unknown[] = [];
     try {
       console.log(JSON.stringify({ sample: rows.length, ...planned }));
       browser = await chromium.launch({ executablePath: '/home/louistrue/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome',
@@ -131,17 +133,25 @@ try {
       if (planned.pair === 1) await page.screenshot({ path: join(output, `sample-${rows.length}.png`) });
     } catch (error) {
       row.error = String(error);
-      throw error;
+      sampleErrors.push(error);
     } finally {
       row.cleanupError = await closeBrowserWithTimeout(browser, 30_000);
       appendFileSync(join(output, 'rows.jsonl'), JSON.stringify(row) + '\n');
-      if (row.cleanupError) throw new Error(`Browser cleanup uncertain: ${row.cleanupError}`);
     }
+    if (row.cleanupError) sampleErrors.push(new Error(`Browser cleanup uncertain: ${row.cleanupError}`));
+    if (sampleErrors.length > 0) throw new AggregateError(sampleErrors, `Sample ${rows.length} failed`);
   }
   writeFileSync(join(output, 'completion.json'), JSON.stringify({ complete: rows.length === schedule.length,
     samples: rows.length, allSucceeded: rows.every(row => row.ok), served: [...served],
     claims: 'Fresh-process cold timing with a hardware adapter; separate output-identity and resident-memory cohorts remain required.' }, null, 2));
+} catch (error) {
+  cohortErrors.push(error);
 } finally {
-  await raceWithTimeout(new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())),
-    30_000, 'static server close');
+  try {
+    await raceWithTimeout(new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())),
+      30_000, 'static server close');
+  } catch (error) {
+    cohortErrors.push(error);
+  }
 }
+if (cohortErrors.length > 0) throw new AggregateError(cohortErrors, 'Recorded-cohort reproduction failed');

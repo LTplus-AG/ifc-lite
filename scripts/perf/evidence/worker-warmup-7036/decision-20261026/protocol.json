@@ -13,5 +13,9 @@
   "canvasPreflight": "Passed real compute and canvas green readbacks; NVIDIA lovelace; nonfallback; zero errors/loss",
   "cachePolicy": "Fresh browser process/profile each sample; OS file cache uncontrolled; fixture/model first load in each browser",
   "scope": "Historical recorded source, not a benchmark of the removal PR",
-  "sourceHelperCheckout": "e47ea729ece91b1655b8753c53d9ab1662bb1aba"
+  "sourceHelperCheckout": "e47ea729ece91b1655b8753c53d9ab1662bb1aba",
+  "recordedDriverFile": "recorded-cohort-driver.mts.gz",
+  "reproducerDriverFile": "cohort-driver.mts",
+  "reproducerDriverSha256": "9628dccc3f88a3a6d4935c72c49616feb56da3c51942d0bd92d20074e51eb20f",
+  "reproducerChange": "The executable reproducer aggregates sample and cohort errors outside finally, retaining both primary and cleanup failures. The measured driver is archived verbatim; all accepted samples had no errors and cleanupError=null. No new timing samples were run."
 }

@@ -59,9 +59,11 @@ test('public structural signatures observe toJSON and close iterators on its ori
     const base = ['b'];
     Object.defineProperty(base, 'join', { value() { throw new Error('obsolete join'); } });
     Object.defineProperty(base, 'toJSON', { value(key: string) { log.push(`toJSON:${key}`); throw sentinel; } });
+    // This iterator closes over the current API call's sentinel and observation log (#8042).
+    // eslint-disable-next-line no-inner-declarations
     function* entries(): Generator<LineageEntry> {
       try {
-        yield { get relation() { log.push('relation'); return 'identity'; },
+        yield { get relation(): LineageEntry['relation'] { log.push('relation'); return 'identity'; },
           get base() { log.push('base'); return base; },
           get head() { log.push('head'); return ['h']; }, reason: '' };
       } finally { log.push('closed'); }

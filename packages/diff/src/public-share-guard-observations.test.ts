@@ -52,6 +52,8 @@ test('public guard keeps sparse holes and inherited indices observable (#8042, #
   const api = await import('./index.js');
   api.initDiffSync({ module: readFileSync(binary) });
   for (const inherited of [false, true]) {
+    // Each iteration captures its own inherited-versus-own shares fixture (#8042).
+    // eslint-disable-next-line no-inner-declarations
     function run(rekey: Rekey) {
       const shares = Array<number>(2);
       shares[1] = 0.9;
@@ -80,6 +82,8 @@ test('public guard propagates every getter exception and closes keys (#8042, #81
     const log: string[] = [];
     const shares = [0.1, 0.9];
     Object.defineProperty(shares, 'every', { get() { log.push('every'); throw sentinel; } });
+    // This iterator captures the current observation log for IteratorClose (#8042).
+    // eslint-disable-next-line no-inner-declarations
     function* keys() { try { yield 's'; } finally { log.push('closed'); } }
     try {
       rekey(keys(), [{ base: ['s'], head: ['x', 'y'], relation: 'split', reason: '', shares }], 'largest-share');

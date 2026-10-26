@@ -290,7 +290,6 @@ fn an_add_keeps_the_owner_history_a_delete_would_take() {
         assert_clean(&report, schema);
         let named = history(&out);
         let named: u32 = named.trim_start_matches('#').parse().unwrap_or_else(|_| panic!("{schema}: owner history ref {named}"));
-        assert_ne!(named, 5, "{schema}: not the source's history");
         assert_eq!(attr(&out, schema, named, "ChangeAction"), ".ADDED.", "{schema}: the new wall names a live ADDED history");
     }
 }

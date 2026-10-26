@@ -68,6 +68,7 @@ export async function uploadSweep(transport, session, recipe, declaration, incar
   imports.push('sweep');
   const peer = peers.find((candidate) => candidate.incarnation === incarnation);
   if (!peer || transport.incarnation !== incarnation) throw new Error('fixture: stale upload');
+  if (peer.uploadStatus !== undefined) throw Object.assign(new Error('fixture: sweep refusal'), { domainStatus: peer.uploadStatus });
   peer.uploads = [...(peer.uploads ?? []), { session, declaration, bytes: Array.from(recipe) }];
   return { bytes: peer.allocate().buffer };
 }

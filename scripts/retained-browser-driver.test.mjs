@@ -86,8 +86,8 @@ test('a replaced transport incarnation retires the driver and every lease', asyn
   await assert.rejects(evaluate(driver), /unavailable/);
 });
 
-test('#8048 response identity, oversize mesh and release failures retire the captured Worker', async () => {
-  for (const fault of ['wrongReply', 'oversize', 'release']) {
+test('#8048 response identity and release failures retire the captured Worker', async () => {
+  for (const fault of ['wrongReply', 'release']) {
     const constructed = nextPeer();
     const driver = new RetainedDriver();
     const peer = await constructed;
@@ -101,7 +101,7 @@ test('#8048 response identity, oversize mesh and release failures retire the cap
       continue;
     }
     if (fault === 'wrongReply') peer.wrongReply = true;
-    await assert.rejects(evaluate(driver, 0, fault === 'oversize' ? 8 : 4096), fault === 'wrongReply' ? /identity/ : /oversized/);
+    await assert.rejects(evaluate(driver), /identity/);
     assert.equal(driver.live(), false, fault);
     assert.equal(peer.retired, true);
   }
@@ -162,6 +162,43 @@ test('#8048 delayed startup injects the fault into its own transport', async () 
 });
 
 const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+// #7955 / review 4383542900: construction must match native refusal cleanup.
+test('#8184 construction known refusals release unpublished handles and preserve existing leases', async () => {
+  for (const fault of ['resource', 'upload', 9, 10, 11]) {
+    const driver = new RetainedDriver();
+    const source = await evaluate(driver), peer = peers.at(-1);
+    const before = new Set(peer.objects), start = peer.commands.length;
+    if (fault === 'upload') peer.uploadStatus = 4;
+    else if (fault !== 'resource') { peer.failOpcode = fault; peer.kernelStatus = 4; }
+    await assert.rejects(evaluate(driver, 0, fault === 'resource' ? 8 : 4096),
+      error => fault === 'resource' ? error.resourceLimit === true : error.kernelStatus === 4);
+    assert.equal(driver.live(), true, `${fault}: synchronized refusal preserves worker`);
+    assert.equal(driver.objectLive(source.object), true);
+    assert.deepEqual(peer.objects, before, 'unpublished solid and temporary mesh released');
+    assert.equal(opcodes(peer).slice(start).filter(op => op === 8).length, fault === 'upload' ? 0 : fault === 9 ? 1 : 2);
+    peer.failOpcode = undefined;
+    peer.uploadStatus = undefined;
+    const next = await evaluate(driver);
+    assert.equal(driver.objectLive(next.object), true, 'busy guard released; worker reusable');
+    driver.retire();
+  }
+});
+
+test('#8184 construction uncertain statuses and cleanup failures still retire the worker', async () => {
+  for (const fault of ['upload', 'tessellate', 'cleanup']) {
+    const driver = new RetainedDriver();
+    const source = await evaluate(driver), peer = peers.at(-1), start = peer.commands.length;
+    if (fault === 'upload') peer.uploadStatus = 8;
+    else { peer.failOpcode = fault === 'cleanup' ? 8 : 9; peer.kernelStatus = fault === 'cleanup' ? 4 : 8; }
+    await assert.rejects(evaluate(driver, 0, fault === 'cleanup' ? 8 : 4096),
+      error => fault === 'cleanup' ? error.resourceLimit === true : error.kernelStatus === 8);
+    assert.equal(driver.live(), false);
+    assert.equal(driver.objectLive(source.object), false);
+    assert.equal(peer.retired, true);
+    if (fault === 'cleanup') assert.equal(opcodes(peer).slice(start).filter(op => op === 8).length, 1, 'failed release is never retried');
+  }
+});
+
 test('#7955 E Boolean copies/releases its temporary before certifying and reading the result', async () => {
   const driver = new RetainedDriver();
   const a = await evaluate(driver), b = await evaluate(driver), peer = peers.at(-1);

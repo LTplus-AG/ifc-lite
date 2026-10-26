@@ -162,6 +162,7 @@ export class RetainedDriver {
       this.#releaseBusy();
       throw new Error('UnqualifiedRegion: execute same-incarnation numerical witnesses first');
     }
+    let solid, meshHandle;
     try {
       const { uploadSweep } = await loadSdkModule('/smlib/sweep.mjs');
       if (!this.#session) {
@@ -172,21 +173,32 @@ export class RetainedDriver {
       const sessionId = new DataView(this.#session.buffer).getBigUint64(0, true);
       const handle = await uploadSweep(this.#observedTransport(), sessionId, recipe, { format, loops, segments }, this.#incarnation);
       if (!this.live()) throw new Error('retained upload worker expired');
-      const solid = new Uint8Array(handle.bytes);
+      solid = new Uint8Array(handle.bytes);
       validateHandle(solid, sessionId);
-      const meshHandle = await this.#call(9, this.#session, solid, f64(chord), f64(angle));
+      meshHandle = await this.#call(9, this.#session, solid, f64(chord), f64(angle));
       validateHandle(meshHandle, sessionId);
       const mesh = await this.#readMesh(meshHandle, maxBytes);
       // Release the temporary mesh before sealing its independent copied arrays.
-      await this.#call(8, this.#session, meshHandle);
+      const released = meshHandle;
+      meshHandle = undefined;
+      await this.#releaseHandle(released);
       if (!this.live()) throw new Error('retained object owner expired');
       const object = Object.freeze({}); // Lease identity, never caller-visible wire bytes.
       this.#objects.set(object, solid);
       return Object.freeze({ object, mesh });
     } catch (error) {
-      // Unknown outcomes are never retried; the captured Worker owns all of its
-      // session allocations, including a solid whose response was lost.
-      this.retire();
+      // The staged uploader names synchronized ABI refusals domainStatus.
+      // Preserve that status at the runtime boundary as for direct commands.
+      if (Number.isInteger(error.domainStatus)) error.kernelStatus = error.domainStatus;
+      if (knownRefusal(error) && this.live()) {
+        try {
+          if (meshHandle) await this.#releaseHandle(meshHandle);
+          if (solid) await this.#releaseHandle(solid);
+        } catch (cleanupError) {
+          this.retire();
+          console.error('retained construction cleanup retired worker', cleanupError);
+        }
+      } else this.retire(); // Unknown outcomes, including lost handles, are never retried.
       throw error;
     } finally { this.#releaseBusy(); }
   }

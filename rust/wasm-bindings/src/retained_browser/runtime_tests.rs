@@ -67,6 +67,50 @@ async fn construction(worker: &mut BrowserWorker) -> BrowserReceipt {
         .unwrap()
 }
 
+// #7955 / review 4383542900: JS cleanup alone is insufficient if Rust's
+// in-flight guard retires the domain when the settled refusal is returned.
+#[wasm_bindgen_test(async)]
+async fn retained_browser_smlib_free_construction_refusals_preserve_live_inputs() {
+    for opcode in [0, 9, 10, 11, 15] {
+        let mut worker = inert_worker().await;
+        let source = construction(&mut worker).await;
+        let incarnation = worker.incarnation();
+        let peer = runtime_peer().await.unwrap();
+        if opcode == 15 {
+            set(&peer, "uploadStatus", 4.);
+        } else if opcode != 0 {
+            set(&peer, "failOpcode", f64::from(opcode));
+            set(&peer, "kernelStatus", 4.);
+        }
+        let recipe = request(RECTANGLE, &worker);
+        assert!(worker
+            .invoke(
+                Invocation::Construction(&recipe),
+                limits(if opcode == 0 { 8 } else { 4096 }),
+            )
+            .await
+            .is_err());
+        assert_eq!(worker.incarnation(), incarnation);
+        source.validate_live().unwrap();
+        let objects = js_sys::Reflect::get(&peer, &"objects".into()).unwrap();
+        assert_eq!(
+            js_sys::Reflect::get(&objects, &"size".into())
+                .unwrap()
+                .as_f64(),
+            Some(1.),
+            "only the previously sealed input remains"
+        );
+        set(&peer, "failOpcode", 0.);
+        js_sys::Reflect::delete_property(
+            &js_sys::Object::from(peer.clone()),
+            &"uploadStatus".into(),
+        )
+        .unwrap();
+        construction(&mut worker).await.validate_live().unwrap();
+        source.validate_live().unwrap();
+    }
+}
+
 // #7955: this executes runtime.rs and receipt.rs, not only the JS driver.
 #[wasm_bindgen_test(async)]
 async fn retained_browser_smlib_free_runtime_lifetimes_limits_and_capabilities() {

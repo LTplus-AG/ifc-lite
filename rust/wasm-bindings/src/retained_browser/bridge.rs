@@ -181,7 +181,7 @@ impl BrowserWorker {
             ));
         }
         let mut flight = InFlight::new(&self.owner);
-        let value = JsFuture::from(self.owner.driver.evaluate(
+        let response = JsFuture::from(self.owner.driver.evaluate(
             &payload.bytes,
             payload.format,
             payload.loops,
@@ -191,8 +191,22 @@ impl BrowserWorker {
             angle_degrees,
             max_bytes,
         ))
-        .await
-        .map_err(driver_error)?;
+        .await;
+        let value = match response {
+            Ok(value) => value,
+            Err(error) => {
+                let error = driver_error(error);
+                // The driver released every unpublished handle on a known
+                // refusal. Cleanup failure or uncertain delivery still retires.
+                if (matches!(&error, BrowserError::Kernel { status, .. } if (1..=7).contains(status))
+                    || matches!(&error, BrowserError::ResourceLimit(_)))
+                    && self.owner.validate().is_ok()
+                {
+                    flight.disarm();
+                }
+                return Err(error);
+            }
+        };
         self.owner.validate()?;
         let object =
             js_sys::Reflect::get(&value, &JsValue::from_str("object")).map_err(driver_error)?;

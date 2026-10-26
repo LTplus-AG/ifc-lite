@@ -135,10 +135,10 @@ async fn retained_browser_invalid_limits_preserve_actual_worker_and_existing_lea
         original.validate_live().unwrap();
         assert_eq!(worker.incarnation(), incarnation);
     }
-    // An oversized copy is an SDK-side refusal: unknown state retires the Worker.
+    // A bounded copy refusal releases unpublished handles and preserves this Worker.
     assert!(worker.evaluate_retained(request(RECTANGLE, &worker), 0.001, 5., 64).await.is_err());
-    assert_eq!(worker.incarnation(), 0);
-    assert!(original.validate_live().is_err());
+    assert_eq!(worker.incarnation(), incarnation);
+    original.validate_live().unwrap();
 }
 
 #[path = "parity_tests.rs"]

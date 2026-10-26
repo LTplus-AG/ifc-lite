@@ -252,3 +252,18 @@ geometry and are not authored split/merge ground truth. Preserve zero-execution
 incomplete status and never treat missing-fixture coverage as acceptance.
 Run packed acceptance inside parent admission, retain original receipts and
 publish compact evidence outside generated workspaces before releasing them.
+
+## Layer 9: end-to-end and large-revision performance qualification tools
+
+`stack/8042-v3-performance-harness` depends on acceptance harnesses.
+Exact integrated end-to-end protocol, receipts, isolated samplers/resolution
+proofs and large-revision preparation/child tools arrive with their tests and
+protocol docs. No protocol is relaxed and no benchmark is run. These are
+qualification tools, not measured performance evidence for #8042 or this stack.
+
+The parent owns all fleet admission, exclusive idle-window checks, paired
+base-versus-branch measurements, source/build/runtime receipts, fixture and
+output-identity evidence, compact evidence publication and generated workspace
+release. Recover unknown outcomes by the original receipt. Performance verdict
+and lesson remain pending until actual end-to-end measurements exist; do not
+record a fabricated win in the performance ledger.

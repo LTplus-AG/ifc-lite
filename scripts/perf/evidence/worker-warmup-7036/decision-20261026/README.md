@@ -2,7 +2,8 @@
 
 The combined persistent-worker and parser-memo proposal failed its recorded
 acceptance rule. Earlier first geometry on the small model coexisted with a
-regression in full metadata/render readiness on the large model. The comparison
+regression in full metadata/render readiness on the large model. Full readiness
+also improved on the structural model; the result is mixed across fixtures. The comparison
 does not isolate the responsible layer. The proposals are declined and the
 held main experiment is removed under its existing removal condition.
 
@@ -10,7 +11,10 @@ held main experiment is removed under its existing removal condition.
 fixture hashes, memory-accounting limits and M2 frame observations.
 `comparison.json` is the unchanged repository reporter output.
 `acceptance-rule.json` was recorded while the measurement request was queued,
-before any results existed. The successful request used that same frozen
+before any results existed. Its term "total-load" did not name a field: during
+result review this was mapped to the reporter's existing full METADATA+RENDER
+readiness boundary. That field mapping was not separately preregistered; the
+legacy app-summary total remains a distinct measurement. The successful request used that same frozen
 protocol after the preceding requests ended before execution.
 
 `measurements.jsonl.gz` losslessly preserves all original sample rows, including

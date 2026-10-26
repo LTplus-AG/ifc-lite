@@ -405,5 +405,7 @@
     "Earlier queue, AC/disk admission and invalid-GPU attempts produced no accepted replacement samples.",
     "First-visible and legacy app-summary timings remain separate from full observed metadata/render readiness.",
     "No attribution cohort or repeat-until-win campaign was run."
-  ]
+  ],
+  "readinessMetricInterpretation": "The rule recorded before measurement used total-load without naming a field. During result review it was mapped to the reporter's pre-existing METADATA + RENDER (observed) full-readiness boundary. That mapping was not separately preregistered by field name. The reporter already labels totalWallClockMs as a legacy app summary, not full readiness; it is preserved separately and was not substituted to avoid the regression.",
+  "mixedResults": "FZK first-batch/first-visible geometry and Snowdon full readiness improved beyond the reporter noise thresholds. BWK full readiness and spatial readiness regressed beyond those thresholds. These mixed results fail the no-regression adoption gate; no causal effect is attributed to either implementation layer."
 }

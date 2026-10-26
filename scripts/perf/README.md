@@ -687,9 +687,9 @@ open.
 **Rejected by the recorded-build acceptance rule; experiment removed.** The
 [preserved real-GPU comparison](evidence/worker-warmup-7036/decision-20261026/README.md)
 uses interleaved fresh-browser production builds and the same source-built WASM
-binary. First geometry improved on the small house, but full metadata/render
-readiness regressed beyond the unchanged reporter's noise threshold on the
-large architectural model. The predeclared rule forbids that regression; the
+binary. First geometry improved on the small house, and full readiness improved
+on the structural model, but full metadata/render readiness regressed beyond
+the unchanged reporter's noise threshold on the large architectural model. The predeclared rule forbids that regression; the
 legacy app-summary total cannot substitute for full readiness. Counts match on
 every paired sample, and all samples completed without GPU errors or recovery.
 Source pins, worker receipt, per-fixture measurements, phase memory and M2 frame

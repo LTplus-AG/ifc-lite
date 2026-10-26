@@ -1,0 +1,667 @@
+{
+  "license": "MPL-2.0",
+  "issue": 7955,
+  "productionHead": "82d137b85c17f9dc0521d0ad8120bd218eedaeb2",
+  "prerequisite": "08769566858267aff3028f3f7c0e2870345ff73a",
+  "status": "PREPARED_UNRUN",
+  "inputs": [
+    {
+      "name": "occurrence-report",
+      "path": "tests/evidence/retained-mapping-origin-b2a/occurrence-report.oracle.patch",
+      "sha256": "2beb450ae6a756dea2f93b89bbfb617956f498afba736b45e1b96e2d68791ec0",
+      "original": null,
+      "originalSha256": null,
+      "disposition": "Independent reporting fault: refusal unchanged, occurrence caller drops origin.",
+      "targets": [
+        {
+          "path": "rust/geometry/src/program/mapping_retained.rs",
+          "healthySha256": "3bc0a95025f3efc70754bd49f0a11b579172b6bcd7915e83eba84a1e7789af0d",
+          "mutantSha256": "74dbd226e259ab1f876920fc1dc2e2accc40cd5f41840863539924472c8e65ff"
+        }
+      ],
+      "status": "UNRUN",
+      "observer": {
+        "crate": "ifc-lite-geometry",
+        "file": "rust/geometry/src/program/retained/mapping_origin_tests.rs",
+        "selector": "program::inner::retained_program::tests::mapping_inputs::origins::issue_7955_b2a_cached_target_report_preserves_reached_origin",
+        "expectedAssertion": "B2a cached target must preserve ReferenceRequired",
+        "expectationStatus": "SOURCE_DERIVED_UNRUN"
+      }
+    },
+    {
+      "name": "target-action",
+      "path": "tests/evidence/retained-mapping-origin-b2a/target-action.oracle.patch",
+      "sha256": "e10ffc4ba25d8441f1d879667976496dbd3e16204c25ebb65fc38bc46552bbf6",
+      "original": null,
+      "originalSha256": null,
+      "disposition": "Independent action fault: bypass mandatory target admission even after cached earlier contribution.",
+      "targets": [
+        {
+          "path": "rust/geometry/src/program/mapping_validation.rs",
+          "healthySha256": "11557c5551b3e3123bf5ad3d261b2c1a7d3ab1ec1cbebd4fbdc04deb0a0ae0ae",
+          "mutantSha256": "e817a7a36297d0ed7c3b4870c279584003cb5c5f2ad7138bd24b7da3650c330f"
+        }
+      ],
+      "status": "UNRUN",
+      "observer": {
+        "crate": "ifc-lite-geometry",
+        "file": "rust/geometry/src/program/retained/mapping_origin_tests.rs",
+        "selector": "program::inner::retained_program::tests::mapping_inputs::origins::issue_7955_b2a_cached_target_action_refuses_whole_plan",
+        "expectedAssertion": "B2a mandatory target must refuse whole plan",
+        "expectationStatus": "SOURCE_DERIVED_UNRUN"
+      }
+    },
+    {
+      "name": "type-entry-report",
+      "path": "tests/evidence/retained-mapping-origin-b2a/type-entry-report.oracle.patch",
+      "sha256": "3c65d0c4ddec4b142e2804dd6c62eb436064115a227ba0369dbc8ae12ccaa090",
+      "original": null,
+      "originalSha256": null,
+      "disposition": "Independent direct type-map reporting fault, rejection intact.",
+      "targets": [
+        {
+          "path": "rust/geometry/src/program/mapping_retained.rs",
+          "healthySha256": "3bc0a95025f3efc70754bd49f0a11b579172b6bcd7915e83eba84a1e7789af0d",
+          "mutantSha256": "d893a55cc562dd209a7ac0df146b15a1334bc6d5687d9db990773f8cc2577684"
+        }
+      ],
+      "status": "UNRUN",
+      "observer": {
+        "crate": "ifc-lite-geometry",
+        "file": "rust/geometry/src/program/retained/mapping_origin_tests.rs",
+        "selector": "program::inner::retained_program::tests::mapping_inputs::origins::issue_7955_b2a_direct_type_map_entry_records_before_construction",
+        "expectedAssertion": "direct entry records origin",
+        "expectationStatus": "SOURCE_DERIVED_UNRUN"
+      }
+    },
+    {
+      "name": "late-origin-report",
+      "path": "tests/evidence/retained-mapping-origin-b2a/late-origin-report.oracle.patch",
+      "sha256": "7c55f70f96a2131f094b543804984b6a1c9255d72d2cc1490839d51b4c9b7a75",
+      "original": null,
+      "originalSha256": null,
+      "disposition": "Independent late type-map caller reporting fault, rejection and lateness intact.",
+      "targets": [
+        {
+          "path": "rust/geometry/src/program/mapping_retained.rs",
+          "healthySha256": "3bc0a95025f3efc70754bd49f0a11b579172b6bcd7915e83eba84a1e7789af0d",
+          "mutantSha256": "fa99cb3e615a918ca9e534a9d20d0bf2b922aa6abc4c9fffec35fe334d8cc5d7"
+        }
+      ],
+      "status": "UNRUN",
+      "observer": {
+        "crate": "ifc-lite-geometry",
+        "file": "rust/geometry/src/program/retained/mapping_origin_tests.rs",
+        "selector": "program::inner::retained_program::tests::mapping_inputs::origins::issue_7955_b2a_late_type_origin_reports_after_construction",
+        "expectedAssertion": "B2a late type origin must preserve site",
+        "expectationStatus": "SOURCE_DERIVED_UNRUN"
+      }
+    },
+    {
+      "name": "context-h2a2-required-target",
+      "path": "tests/evidence/retained-mapping-origin-b2a/context-h2a2-required-target.oracle.patch",
+      "sha256": "d09868d9b9ed1dc65d9750095bc3aa86b1412a3ae1157bf157f1d7f54470ceaa",
+      "original": "tests/evidence/retained-mapped-controller-h2a2/required-target.oracle.patch",
+      "originalSha256": "3bd81553d4a8c391525935ce46fe0225f74893cc8def1a16bc70552dba696b5d",
+      "disposition": "Same mandatory-target action as target-action; duplicate mechanism, NOT an additional independent kill.",
+      "targets": [
+        {
+          "path": "rust/geometry/src/program/mapping_validation.rs",
+          "healthySha256": "11557c5551b3e3123bf5ad3d261b2c1a7d3ab1ec1cbebd4fbdc04deb0a0ae0ae",
+          "mutantSha256": "e817a7a36297d0ed7c3b4870c279584003cb5c5f2ad7138bd24b7da3650c330f"
+        }
+      ],
+      "status": "UNRUN",
+      "observer": {
+        "crate": "ifc-lite-geometry",
+        "file": "rust/geometry/src/program/retained/mapping_input_tests.rs",
+        "selector": "program::inner::retained_program::tests::mapping_inputs::h2_r1_cached_source_requires_each_mapping_target",
+        "expectationStatus": "PROPOSED_SOURCE_DERIVED_UNRUN; must confirm intended assertion, never accept compile failure"
+      }
+    },
+    {
+      "name": "context-h2a2-required-items",
+      "path": "tests/evidence/retained-mapping-origin-b2a/context-h2a2-required-items.oracle.patch",
+      "sha256": "415e1e5081764f030e9c36b8c8652f68ebfe392f6ab15224ea43465924c9429a",
+      "original": "tests/evidence/retained-mapped-controller-h2a2/required-items.oracle.patch",
+      "originalSha256": "1ff31e72b3bd7fbbe74bf0daf19028084fe9be749778f4b22eba74ce8868edc1",
+      "disposition": "Same predicate, new source context; qualification UNRUN.",
+      "targets": [
+        {
+          "path": "rust/geometry/src/program/mapping_validation.rs",
+          "healthySha256": "11557c5551b3e3123bf5ad3d261b2c1a7d3ab1ec1cbebd4fbdc04deb0a0ae0ae",
+          "mutantSha256": "be5f4c4c10de910d93f299d6f445c0d28ed8e9e3b6fd3d5ef2d0e5894b4f6154"
+        }
+      ],
+      "status": "UNRUN",
+      "observer": {
+        "crate": "ifc-lite-geometry",
+        "file": "rust/geometry/src/program/retained/mapping_input_tests.rs",
+        "selector": "program::inner::retained_program::tests::mapping_inputs::h2_r1_later_mapped_items_must_be_a_readable_reference_list",
+        "expectationStatus": "PROPOSED_SOURCE_DERIVED_UNRUN; must confirm intended assertion, never accept compile failure"
+      }
+    },
+    {
+      "name": "context-s2-origin",
+      "path": "tests/evidence/retained-mapping-origin-b2a/context-s2-origin.oracle.patch",
+      "sha256": "b157c492e0b6b23810078b968eb133f74e39844eb2df931e630c383ce7857c28",
+      "original": "tests/evidence/retained-s2-review/origin.oracle.patch",
+      "originalSha256": "98551d0cb9bb2380b4ea204cfa3147d86a4b8d3369bff96f41c46b8a8eaf13b5",
+      "disposition": "Same predicate, new source context; qualification UNRUN.",
+      "targets": [
+        {
+          "path": "rust/geometry/src/program/mapping_validation.rs",
+          "healthySha256": "11557c5551b3e3123bf5ad3d261b2c1a7d3ab1ec1cbebd4fbdc04deb0a0ae0ae",
+          "mutantSha256": "bef3873d91bc6bbae5e6f1728445460564149e55b475834639498e5278bca327"
+        }
+      ],
+      "status": "UNRUN",
+      "observer": {
+        "crate": "ifc-lite-geometry",
+        "file": "rust/geometry/src/program/retained/mapping_input_tests.rs",
+        "selector": "program::inner::retained_program::tests::mapping_inputs::s2_r1_later_mapping_origin_is_required_before_exact_recovery",
+        "expectationStatus": "PROPOSED_SOURCE_DERIVED_UNRUN; must confirm intended assertion, never accept compile failure"
+      }
+    },
+    {
+      "name": "context-s2-representation",
+      "path": "tests/evidence/retained-mapping-origin-b2a/context-s2-representation.oracle.patch",
+      "sha256": "c082713459a571da63c811d8f64edcc37a80743614b0d385f356d404e31ead49",
+      "original": "tests/evidence/retained-s2-review/representation.oracle.patch",
+      "originalSha256": "e1db9f67ee4c8e29f1d9155b2d8bbef224161db1d84a612c5215bdc27c60db7d",
+      "disposition": "Same predicate, new source context; qualification UNRUN.",
+      "targets": [
+        {
+          "path": "rust/geometry/src/program/mapping_validation.rs",
+          "healthySha256": "11557c5551b3e3123bf5ad3d261b2c1a7d3ab1ec1cbebd4fbdc04deb0a0ae0ae",
+          "mutantSha256": "2b4551682a8bb3b9579c3ac1dc977cf4347b4545ed18ed06ea7e8942fb7afcb4"
+        }
+      ],
+      "status": "UNRUN",
+      "observer": {
+        "crate": "ifc-lite-geometry",
+        "file": "rust/geometry/src/program/retained/mapping_input_tests.rs",
+        "selector": "program::inner::retained_program::tests::mapping_inputs::s2_r1_later_mapped_representation_category_precedes_items_access",
+        "expectationStatus": "PROPOSED_SOURCE_DERIVED_UNRUN; must confirm intended assertion, never accept compile failure"
+      }
+    },
+    {
+      "name": "context-s2-scale-finite",
+      "path": "tests/evidence/retained-mapping-origin-b2a/context-s2-scale-finite.oracle.patch",
+      "sha256": "2a3f4d46522dc9526d3a03b8f7e7455d13b4ad6acce1b1648a0240eafa7527f0",
+      "original": "tests/evidence/retained-s2-review/scale-finite.oracle.patch",
+      "originalSha256": "e6b3cab53b86d3fa9c258aa560c756fdf78366b3eab9b90e200039d531e09c5e",
+      "disposition": "Same predicate, new source context; qualification UNRUN.",
+      "targets": [
+        {
+          "path": "rust/geometry/src/program/mapping_validation.rs",
+          "healthySha256": "11557c5551b3e3123bf5ad3d261b2c1a7d3ab1ec1cbebd4fbdc04deb0a0ae0ae",
+          "mutantSha256": "9499c0de26f76c70bca2f25f37cfdc8e8eb3631964be688e9d6bfcbf4700afcf"
+        }
+      ],
+      "status": "UNRUN",
+      "observer": {
+        "crate": "ifc-lite-geometry",
+        "file": "rust/geometry/src/program/retained/mapping_input_tests.rs",
+        "selector": "program::inner::retained_program::tests::mapping_inputs::s2_r1_later_explicit_scale_tokens_cannot_default_even_on_cache_hits",
+        "expectationStatus": "PROPOSED_SOURCE_DERIVED_UNRUN; must confirm intended assertion, never accept compile failure"
+      }
+    },
+    {
+      "name": "context-s2-scale-token",
+      "path": "tests/evidence/retained-mapping-origin-b2a/context-s2-scale-token.oracle.patch",
+      "sha256": "14824fc38ec597c9d5a55c3f88fb5a21a18bae0c699e7bd3ed7ee63cc85a28fc",
+      "original": "tests/evidence/retained-s2-review/scale-token.oracle.patch",
+      "originalSha256": "c1607096312f1ffe0b73ec04651b31df2a33760e90124c479726ba47788a67b3",
+      "disposition": "Same predicate, new source context; qualification UNRUN.",
+      "targets": [
+        {
+          "path": "rust/geometry/src/program/mapping_validation.rs",
+          "healthySha256": "11557c5551b3e3123bf5ad3d261b2c1a7d3ab1ec1cbebd4fbdc04deb0a0ae0ae",
+          "mutantSha256": "912cec26760e59261d19f00def687354cd89f8c878754586d00389a625f260e9"
+        }
+      ],
+      "status": "UNRUN",
+      "observer": {
+        "crate": "ifc-lite-geometry",
+        "file": "rust/geometry/src/program/retained/mapping_input_tests.rs",
+        "selector": "program::inner::retained_program::tests::mapping_inputs::s2_r1_later_explicit_scale_tokens_cannot_default_even_on_cache_hits",
+        "expectationStatus": "PROPOSED_SOURCE_DERIVED_UNRUN; must confirm intended assertion, never accept compile failure"
+      }
+    },
+    {
+      "name": "context-direction-authored-values",
+      "path": "tests/evidence/retained-mapping-origin-b2a/context-direction-authored-values.oracle.patch",
+      "sha256": "4f75a4f90893697bd3889bbe438e1c6be2172847a16574dd96ce61c15447cb3f",
+      "original": "tests/evidence/retained-s2-direction/authored-values.oracle.patch",
+      "originalSha256": "8128156c70818b233c8b15c0db66215b91fc0d898edbd7a7aac5c809ef4b3c51",
+      "disposition": "Same predicate, new source context; qualification UNRUN.",
+      "targets": [
+        {
+          "path": "rust/geometry/src/program/mapping_directions.rs",
+          "healthySha256": "79d7291baaf75ecf0836fd4321345c2a340155ef5bb0b6e412eb19c57bb8dc70",
+          "mutantSha256": "72a3f3cd76af7878bdbef4e7398afdd22703940bcfffcd44b0f635b51c683f5e"
+        }
+      ],
+      "status": "UNRUN",
+      "observer": {
+        "crate": "ifc-lite-geometry",
+        "file": "rust/geometry/src/program/retained/mapping_certified_direction_tests.rs",
+        "selector": "program::inner::retained_program::tests::mapping_inputs::directions::certified::s2_certified_oblique_coplanar_axes_refuse_whole_plan_on_cache_hit",
+        "expectationStatus": "PROPOSED_SOURCE_DERIVED_UNRUN; must confirm intended assertion, never accept compile failure"
+      }
+    },
+    {
+      "name": "context-direction-certified-pair",
+      "path": "tests/evidence/retained-mapping-origin-b2a/context-direction-certified-pair.oracle.patch",
+      "sha256": "0e0a175f798e89a25eb84128f02ca707e217bb9a06aa2ce2e5af41477aaff487",
+      "original": "tests/evidence/retained-s2-direction/certified-pair.oracle.patch",
+      "originalSha256": "44bbb0ca35d907f07d3bd0096c36f467d06c7e58ffeca9c420255ce33592c94f",
+      "disposition": "Same predicate, new source context; qualification UNRUN.",
+      "targets": [
+        {
+          "path": "rust/geometry/src/program/mapping_directions.rs",
+          "healthySha256": "79d7291baaf75ecf0836fd4321345c2a340155ef5bb0b6e412eb19c57bb8dc70",
+          "mutantSha256": "77f5d7487b6fbb00660c2fe1afd328c285020215288b015c053191495896556d"
+        }
+      ],
+      "status": "UNRUN",
+      "observer": {
+        "crate": "ifc-lite-geometry",
+        "file": "rust/geometry/src/program/retained/mapping_certified_direction_tests.rs",
+        "selector": "program::inner::retained_program::tests::mapping_inputs::directions::certified::s2_certified_pair_admission_preserves_small_exact_nonzero_minors",
+        "expectationStatus": "PROPOSED_SOURCE_DERIVED_UNRUN; must confirm intended assertion, never accept compile failure"
+      }
+    },
+    {
+      "name": "context-direction-certified-triple",
+      "path": "tests/evidence/retained-mapping-origin-b2a/context-direction-certified-triple.oracle.patch",
+      "sha256": "f3c440a28cb17cc39346b3e7b1da89250466d483edac5459855d7f400f8d043d",
+      "original": "tests/evidence/retained-s2-direction/certified-triple.oracle.patch",
+      "originalSha256": "030a590706d5218ba0cb348ade193f7de893923ea5f641e6e4d93dce60a823b3",
+      "disposition": "Same predicate, new source context; qualification UNRUN.",
+      "targets": [
+        {
+          "path": "rust/geometry/src/program/mapping_directions.rs",
+          "healthySha256": "79d7291baaf75ecf0836fd4321345c2a340155ef5bb0b6e412eb19c57bb8dc70",
+          "mutantSha256": "af5d6e6774ede711d46f832326875c9ffca2843ddc13e67b64e60aa5dfef392a"
+        }
+      ],
+      "status": "UNRUN",
+      "observer": {
+        "crate": "ifc-lite-geometry",
+        "file": "rust/geometry/src/program/retained/mapping_certified_direction_tests.rs",
+        "selector": "program::inner::retained_program::tests::mapping_inputs::directions::certified::s2_certified_oblique_coplanar_axes_refuse_whole_plan_on_cache_hit",
+        "expectationStatus": "PROPOSED_SOURCE_DERIVED_UNRUN; must confirm intended assertion, never accept compile failure"
+      }
+    },
+    {
+      "name": "context-direction-dimension",
+      "path": "tests/evidence/retained-mapping-origin-b2a/context-direction-dimension.oracle.patch",
+      "sha256": "05af08a77976f5a315040fe73b3bcd9fa4329a73432e6472782d96daa68992b1",
+      "original": "tests/evidence/retained-s2-direction/dimension.oracle.patch",
+      "originalSha256": "fb4d6ed03d4f9da5072c7f6f050e8bef55cf1dac784e5f18bcd7bf55b60c3119",
+      "disposition": "Same predicate, new source context; qualification UNRUN.",
+      "targets": [
+        {
+          "path": "rust/geometry/src/program/mapping_directions.rs",
+          "healthySha256": "79d7291baaf75ecf0836fd4321345c2a340155ef5bb0b6e412eb19c57bb8dc70",
+          "mutantSha256": "e13d73ead42ecc9cc418cb534defac1fc61cf11c1b21ee0ff6c860247da6b768"
+        }
+      ],
+      "status": "UNRUN",
+      "observer": {
+        "crate": "ifc-lite-geometry",
+        "file": "rust/geometry/src/program/retained/mapping_direction_tests.rs",
+        "selector": "program::inner::retained_program::tests::mapping_inputs::directions::s2_r1_direction_leaves_require_finite_numeric_components_and_matching_dimensions",
+        "expectationStatus": "PROPOSED_SOURCE_DERIVED_UNRUN; must confirm intended assertion, never accept compile failure"
+      }
+    },
+    {
+      "name": "context-direction-late-origin",
+      "path": "tests/evidence/retained-mapping-origin-b2a/context-direction-late-origin.oracle.patch",
+      "sha256": "52d057d2f456db4d82c66879e2ed16537c2a4978a119344d98c82d4d98ade35b",
+      "original": "tests/evidence/retained-s2-direction/late-origin.oracle.patch",
+      "originalSha256": "77bc9a74948fd04cfcf9fe1e3262cea8e9163a492351828ef5b3cb07a0fec2e4",
+      "disposition": "Same predicate, new source context; qualification UNRUN.",
+      "targets": [
+        {
+          "path": "rust/geometry/src/program/mapping_validation.rs",
+          "healthySha256": "11557c5551b3e3123bf5ad3d261b2c1a7d3ab1ec1cbebd4fbdc04deb0a0ae0ae",
+          "mutantSha256": "b9a3abf33a545a96ff776e39f156c8baa8a17c814a586390f23d590d88d10359"
+        }
+      ],
+      "status": "UNRUN",
+      "observer": {
+        "crate": "ifc-lite-geometry",
+        "file": "rust/geometry/src/program/retained/mapping_direction_tests.rs",
+        "selector": "program::inner::retained_program::tests::mapping_inputs::directions::s2_r1_direct_type_map_direction_refusal_stays_after_source_construction",
+        "expectationStatus": "PROPOSED_SOURCE_DERIVED_UNRUN; must confirm intended assertion, never accept compile failure"
+      }
+    },
+    {
+      "name": "context-direction-occurrence-origin",
+      "path": "tests/evidence/retained-mapping-origin-b2a/context-direction-occurrence-origin.oracle.patch",
+      "sha256": "3cb94566d60dfc4a5b5356b8fc29699795a11aec972dbf85553e6ccded6b714e",
+      "original": "tests/evidence/retained-s2-direction/occurrence-origin.oracle.patch",
+      "originalSha256": "2b405f781fc83afd6325f46742307ee60a246d29199250c93797f7b3e05abb19",
+      "disposition": "Same predicate, new source context; qualification UNRUN.",
+      "targets": [
+        {
+          "path": "rust/geometry/src/program/mapping_validation.rs",
+          "healthySha256": "11557c5551b3e3123bf5ad3d261b2c1a7d3ab1ec1cbebd4fbdc04deb0a0ae0ae",
+          "mutantSha256": "30e737162ec4b5f21bda0bff507e36a164e363b8f8850f09757d27fc835b4271"
+        }
+      ],
+      "status": "UNRUN",
+      "observer": {
+        "crate": "ifc-lite-geometry",
+        "file": "rust/geometry/src/program/retained/mapping_direction_tests.rs",
+        "selector": "program::inner::retained_program::tests::mapping_inputs::directions::s2_r1_explicit_direction_tokens_refuse_after_contribution_in_every_slot",
+        "expectationStatus": "PROPOSED_SOURCE_DERIVED_UNRUN; must confirm intended assertion, never accept compile failure"
+      }
+    },
+    {
+      "name": "context-direction-omission-authored-pair",
+      "path": "tests/evidence/retained-mapping-origin-b2a/context-direction-omission-authored-pair.oracle.patch",
+      "sha256": "2bae9491d86e7f5f17fd8b511b55acfb322db7009a7cca0af034a91ef211f4bc",
+      "original": "tests/evidence/retained-s2-direction/omission-authored-pair.oracle.patch",
+      "originalSha256": "3bbb23ec1b8e7cdaaa297da63750cb500d4f1128f686bc8ca724db059d864495",
+      "disposition": "Same predicate, new source context; qualification UNRUN.",
+      "targets": [
+        {
+          "path": "rust/geometry/src/program/mapping_directions.rs",
+          "healthySha256": "79d7291baaf75ecf0836fd4321345c2a340155ef5bb0b6e412eb19c57bb8dc70",
+          "mutantSha256": "0f0ffd7052c9ef32193a985cdaa111ae0159875f95ba58dc8c29329647f7d713"
+        }
+      ],
+      "status": "UNRUN",
+      "observer": {
+        "crate": "ifc-lite-geometry",
+        "file": "rust/geometry/src/program/retained/mapping_omission_direction_tests.rs",
+        "selector": "program::inner::retained_program::tests::mapping_inputs::directions::omission::s2_omitted_x_recovery_cannot_replace_actual_authored_pair_rank",
+        "expectationStatus": "PROPOSED_SOURCE_DERIVED_UNRUN; must confirm intended assertion, never accept compile failure"
+      }
+    },
+    {
+      "name": "context-direction-omission-normalization",
+      "path": "tests/evidence/retained-mapping-origin-b2a/context-direction-omission-normalization.oracle.patch",
+      "sha256": "03b9b19f6a13cf9af13ecd27eac169b5a9b73efb0e0f86711f16110dcf321262",
+      "original": "tests/evidence/retained-s2-direction/omission-normalization.oracle.patch",
+      "originalSha256": "38033ac4620d2a9c34725633bd3a9d69c6a5cf1b4be9cd9d777ec18a4d3c39b7",
+      "disposition": "Same predicate, new source context; qualification UNRUN.",
+      "targets": [
+        {
+          "path": "rust/geometry/src/program/mapping_directions.rs",
+          "healthySha256": "79d7291baaf75ecf0836fd4321345c2a340155ef5bb0b6e412eb19c57bb8dc70",
+          "mutantSha256": "28f27c85568bac83e93f83abe3d5d3d5ff38c73601186622fd5bdafa9092d8f8"
+        }
+      ],
+      "status": "UNRUN",
+      "observer": {
+        "crate": "ifc-lite-geometry",
+        "file": "rust/geometry/src/program/retained/mapping_omission_direction_tests.rs",
+        "selector": "program::inner::retained_program::tests::mapping_inputs::directions::omission::s2_omitted_x_tiny_z_normalization_threshold_pairs_keep_canonical_span",
+        "expectationStatus": "PROPOSED_SOURCE_DERIVED_UNRUN; must confirm intended assertion, never accept compile failure"
+      }
+    },
+    {
+      "name": "context-direction-omission-projection",
+      "path": "tests/evidence/retained-mapping-origin-b2a/context-direction-omission-projection.oracle.patch",
+      "sha256": "4c5febb214eb8a05f616a70c6d6c9ed671b95653a28132843ea41820fc2e2243",
+      "original": "tests/evidence/retained-s2-direction/omission-projection.oracle.patch",
+      "originalSha256": "7bd7f8b52e0a4b7a482a84ef26dbd525efb31612defe20b53285c1142ce80aa8",
+      "disposition": "Same predicate, new source context; qualification UNRUN.",
+      "targets": [
+        {
+          "path": "rust/geometry/src/program/mapping_directions.rs",
+          "healthySha256": "79d7291baaf75ecf0836fd4321345c2a340155ef5bb0b6e412eb19c57bb8dc70",
+          "mutantSha256": "2a85d6ea83b4ab4131e664df14d99f5a1970e8393358f7094356d466535ace1e"
+        }
+      ],
+      "status": "UNRUN",
+      "observer": {
+        "crate": "ifc-lite-geometry",
+        "file": "rust/geometry/src/program/retained/mapping_omission_direction_tests.rs",
+        "selector": "program::inner::retained_program::tests::mapping_inputs::directions::omission::s2_omitted_x_projection_threshold_pairs_reach_cache_after_prior_work",
+        "expectationStatus": "PROPOSED_SOURCE_DERIVED_UNRUN; must confirm intended assertion, never accept compile failure"
+      }
+    },
+    {
+      "name": "context-direction-pair",
+      "path": "tests/evidence/retained-mapping-origin-b2a/context-direction-pair.oracle.patch",
+      "sha256": "aa8455b0d4135564443f59d6e7760cf897f60a80c21ba84e0cf90f3bf5dbb489",
+      "original": "tests/evidence/retained-s2-direction/pair.oracle.patch",
+      "originalSha256": "1e4884a8ea28a888571595a8f840a635bae277d07f1090428c33241c6210f250",
+      "disposition": "Same predicate, new source context; qualification UNRUN.",
+      "targets": [
+        {
+          "path": "rust/geometry/src/program/mapping_directions.rs",
+          "healthySha256": "79d7291baaf75ecf0836fd4321345c2a340155ef5bb0b6e412eb19c57bb8dc70",
+          "mutantSha256": "cef843879b812062ec938c4c4f8551d0debd48fd49b58700e761a18e08dba66d"
+        }
+      ],
+      "status": "UNRUN",
+      "observer": {
+        "crate": "ifc-lite-geometry",
+        "file": "rust/geometry/src/program/retained/mapping_direction_tests.rs",
+        "selector": "program::inner::retained_program::tests::mapping_inputs::directions::s2_r1_parallel_and_coplanar_authored_axes_refuse_after_contribution",
+        "expectationStatus": "PROPOSED_SOURCE_DERIVED_UNRUN; must confirm intended assertion, never accept compile failure"
+      }
+    },
+    {
+      "name": "direction-typed-report",
+      "path": "tests/evidence/retained-mapping-origin-b2a/direction-typed-report.oracle.patch",
+      "sha256": "aa74087701847526eb50beb609b8217c75f22412c9cc8882def4b915cd1d2ced",
+      "original": "tests/evidence/retained-s2-direction/report.oracle.patch",
+      "originalSha256": "11a3d412b7eb839f9d63c002c331074aaf6441af2117697a96d76ffc75007621",
+      "disposition": "NEW SEMANTIC OBSERVER, not a context-equivalent kill: old diagnostic wording is no longer the contract. Preserve refusal but erase the typed direction reason. Original prose-only mutation remains immutable/unqualified.",
+      "targets": [
+        {
+          "path": "rust/geometry/src/program/mapping_directions.rs",
+          "healthySha256": "79d7291baaf75ecf0836fd4321345c2a340155ef5bb0b6e412eb19c57bb8dc70",
+          "mutantSha256": "cfc9b15877afe75d2ccf783cb20dcd36762c1d9f7ee1c8582591173e7225729f"
+        }
+      ],
+      "status": "UNRUN",
+      "observer": {
+        "crate": "ifc-lite-geometry",
+        "file": "rust/geometry/src/program/retained/mapping_direction_tests.rs",
+        "selector": "program::inner::retained_program::tests::mapping_inputs::directions::s2_r1_explicit_direction_tokens_refuse_after_contribution_in_every_slot",
+        "expectedAssertion": "B2a predicate cause:",
+        "expectationStatus": "SOURCE_DERIVED_UNRUN"
+      }
+    },
+    {
+      "name": "context-direction-target",
+      "path": "tests/evidence/retained-mapping-origin-b2a/context-direction-target.oracle.patch",
+      "sha256": "89e0ebb57d40845a00bba31d8c20939af7f06af96b26c51c83b86778cf96113e",
+      "original": "tests/evidence/retained-s2-direction/target.oracle.patch",
+      "originalSha256": "00ce621485292f459d11f7b6217982c9d261962cbd3e7464e985b435cce3a5b7",
+      "disposition": "Same predicate, new source context; qualification UNRUN.",
+      "targets": [
+        {
+          "path": "rust/geometry/src/program/mapping_validation.rs",
+          "healthySha256": "11557c5551b3e3123bf5ad3d261b2c1a7d3ab1ec1cbebd4fbdc04deb0a0ae0ae",
+          "mutantSha256": "62f5e6d8c2ea9bbc328c6870eb6b45c10ae2be418c1763087cace4fd92f38ef9"
+        }
+      ],
+      "status": "UNRUN",
+      "observer": {
+        "crate": "ifc-lite-geometry",
+        "file": "rust/geometry/src/program/retained/mapping_direction_tests.rs",
+        "selector": "program::inner::retained_program::tests::mapping_inputs::directions::s2_r1_explicit_direction_tokens_refuse_after_contribution_in_every_slot",
+        "expectationStatus": "PROPOSED_SOURCE_DERIVED_UNRUN; must confirm intended assertion, never accept compile failure"
+      }
+    },
+    {
+      "name": "context-direction-token",
+      "path": "tests/evidence/retained-mapping-origin-b2a/context-direction-token.oracle.patch",
+      "sha256": "383170c9d857c0b4966cb85638d474456e02b555864c0e1bf06f83e17c6c5c84",
+      "original": "tests/evidence/retained-s2-direction/token.oracle.patch",
+      "originalSha256": "b0043d5926a0a4ad00ac0342945912354579d6d6ff3916a06ef2d6fccbdfe08a",
+      "disposition": "Same predicate, new source context; qualification UNRUN.",
+      "targets": [
+        {
+          "path": "rust/geometry/src/program/mapping_directions.rs",
+          "healthySha256": "79d7291baaf75ecf0836fd4321345c2a340155ef5bb0b6e412eb19c57bb8dc70",
+          "mutantSha256": "76a72578f4fb7f54aa30fb42b2758c0df02ee9b3fa2ba8990ceae0637c9dcb0f"
+        }
+      ],
+      "status": "UNRUN",
+      "observer": {
+        "crate": "ifc-lite-geometry",
+        "file": "rust/geometry/src/program/retained/mapping_direction_tests.rs",
+        "selector": "program::inner::retained_program::tests::mapping_inputs::directions::s2_r1_explicit_direction_tokens_refuse_after_contribution_in_every_slot",
+        "expectationStatus": "PROPOSED_SOURCE_DERIVED_UNRUN; must confirm intended assertion, never accept compile failure"
+      }
+    },
+    {
+      "name": "context-direction-triple",
+      "path": "tests/evidence/retained-mapping-origin-b2a/context-direction-triple.oracle.patch",
+      "sha256": "81338a8e117d172bacb9e0a56ae590c2f3a525ae24c80b7d5a429da3c2a12746",
+      "original": "tests/evidence/retained-s2-direction/triple.oracle.patch",
+      "originalSha256": "b51bbbdb8e1acf0a43b02bb53e352c70bdb3243dcfaf2a07ddd2ccad901b486a",
+      "disposition": "Same predicate, new source context; qualification UNRUN.",
+      "targets": [
+        {
+          "path": "rust/geometry/src/program/mapping_directions.rs",
+          "healthySha256": "79d7291baaf75ecf0836fd4321345c2a340155ef5bb0b6e412eb19c57bb8dc70",
+          "mutantSha256": "ed1aec04e81ff021a4015dc92b44e159726e10dcd0ec4cc55c3726e64c9d35ea"
+        }
+      ],
+      "status": "UNRUN",
+      "observer": {
+        "crate": "ifc-lite-geometry",
+        "file": "rust/geometry/src/program/retained/mapping_direction_tests.rs",
+        "selector": "program::inner::retained_program::tests::mapping_inputs::directions::s2_r1_parallel_and_coplanar_authored_axes_refuse_after_contribution",
+        "expectationStatus": "PROPOSED_SOURCE_DERIVED_UNRUN; must confirm intended assertion, never accept compile failure"
+      }
+    },
+    {
+      "name": "context-direction-zero",
+      "path": "tests/evidence/retained-mapping-origin-b2a/context-direction-zero.oracle.patch",
+      "sha256": "0d8df5e7dc129df4ac97fcbd33bf5b350caada8020a84fc223314b683a2b582f",
+      "original": "tests/evidence/retained-s2-direction/zero.oracle.patch",
+      "originalSha256": "02639f4ff0d3ba19589151a5b17dec2b1257fb7fb2de979b098bfa0b2619efb3",
+      "disposition": "Same predicate, new source context; qualification UNRUN.",
+      "targets": [
+        {
+          "path": "rust/geometry/src/program/mapping_directions.rs",
+          "healthySha256": "79d7291baaf75ecf0836fd4321345c2a340155ef5bb0b6e412eb19c57bb8dc70",
+          "mutantSha256": "689c645461c2913c18d10d252ea2877abb248e70bd7691f67c8374b1d43a557f"
+        }
+      ],
+      "status": "UNRUN",
+      "observer": {
+        "crate": "ifc-lite-geometry",
+        "file": "rust/geometry/src/program/retained/mapping_direction_tests.rs",
+        "selector": "program::inner::retained_program::tests::mapping_inputs::directions::s2_r1_zero_directions_refuse_after_contribution_in_every_slot",
+        "expectationStatus": "PROPOSED_SOURCE_DERIVED_UNRUN; must confirm intended assertion, never accept compile failure"
+      }
+    },
+    {
+      "name": "context-enum-lifecycle-expiration",
+      "path": "tests/evidence/retained-mapping-origin-b2a/context-enum-lifecycle-expiration.oracle.patch",
+      "sha256": "47c68a9202d5866726d8a291ff179b83eb4345302506be813aca5631e2581d51",
+      "original": "tests/evidence/retained-receipt-resource-s3/lifecycle-expiration.oracle.patch",
+      "originalSha256": "20e526716c18ce30170983ddac915ff2cb5b63d6ebf7e207760a062ab9e62339",
+      "disposition": "Prerequisite-only private enum spelling replacement. Original predicates unchanged; no 8934 evidence transfers.",
+      "targets": [
+        {
+          "path": "rust/processing/src/element/model_context_retained.rs",
+          "healthySha256": "3addc8b9307f8f863db6a55e9730af22a3b80b269b126c4a61a44e0ef38c769b",
+          "mutantSha256": "f67ac491191ace01009770cd04e4b05ab34d4c02f16f20c8c8e9196708daa6b3"
+        }
+      ],
+      "status": "UNRUN",
+      "observer": {
+        "crate": "ifc-lite-processing",
+        "file": "rust/processing/src/element/model_context_retained_tests.rs",
+        "selector": "element::model_context::retained::tests::s3_snapshot_and_lifecycle_cross_threads_but_expire_only_on_source_invalidation",
+        "expectationStatus": "RENAMED_CONTEXT_UNRUN; no prerequisite evidence transfer"
+      }
+    },
+    {
+      "name": "context-enum-missing-source",
+      "path": "tests/evidence/retained-mapping-origin-b2a/context-enum-missing-source.oracle.patch",
+      "sha256": "5907dc0232500918db29b642bd088a8ffbde9ebf4edc65ad4d84769ca54c87cf",
+      "original": "tests/evidence/retained-receipt-resource-s3/missing-source.oracle.patch",
+      "originalSha256": "9ea946b34e5c351a52b1c45c8cb8b8de09bb0ef2a50535668ff2709ea590556e",
+      "disposition": "Prerequisite-only private enum spelling replacement. Original predicates unchanged; no 8934 evidence transfers.",
+      "targets": [
+        {
+          "path": "rust/processing/src/element/model_context_retained.rs",
+          "healthySha256": "3addc8b9307f8f863db6a55e9730af22a3b80b269b126c4a61a44e0ef38c769b",
+          "mutantSha256": "7120ecd8bf7d3e91a0935b060373c2c66c48a8f58ff3096f36c305fcbe4748fa"
+        }
+      ],
+      "status": "UNRUN",
+      "observer": {
+        "crate": "ifc-lite-processing",
+        "file": "rust/processing/src/element/model_context_retained_tests.rs",
+        "selector": "element::model_context::retained::tests::s3_binding_rejects_equal_bytes_foreign_factory_and_borrowed_decoder",
+        "expectationStatus": "RENAMED_CONTEXT_UNRUN; no prerequisite evidence transfer"
+      }
+    },
+    {
+      "name": "context-enum-snapshot-expiration",
+      "path": "tests/evidence/retained-mapping-origin-b2a/context-enum-snapshot-expiration.oracle.patch",
+      "sha256": "99dbdc4ca481c895eadba3794241d6bea9afe81b497436d0f6104df48728cee1",
+      "original": "tests/evidence/retained-receipt-resource-s3/snapshot-expiration.oracle.patch",
+      "originalSha256": "c847e3c92e6af8687be3c191c3f24f8c1e3e742584c1f7698e7c7dcdf8ba1f35",
+      "disposition": "Prerequisite-only private enum spelling replacement. Original predicates unchanged; no 8934 evidence transfers.",
+      "targets": [
+        {
+          "path": "rust/processing/src/element/model_context_retained.rs",
+          "healthySha256": "3addc8b9307f8f863db6a55e9730af22a3b80b269b126c4a61a44e0ef38c769b",
+          "mutantSha256": "629ca3d159ab442c7e8329940cda8b7ffa21beb0ae4ffedc8eff3c2eca0e0a29"
+        }
+      ],
+      "status": "UNRUN",
+      "observer": {
+        "crate": "ifc-lite-processing",
+        "file": "rust/processing/src/element/model_context_retained_tests.rs",
+        "selector": "element::model_context::retained::tests::s3_snapshot_and_lifecycle_cross_threads_but_expire_only_on_source_invalidation",
+        "expectationStatus": "RENAMED_CONTEXT_UNRUN; no prerequisite evidence transfer"
+      }
+    },
+    {
+      "name": "context-enum-source-binding",
+      "path": "tests/evidence/retained-mapping-origin-b2a/context-enum-source-binding.oracle.patch",
+      "sha256": "e94a3ee568d96afffb053dbe92619e1fd83eaf0ec6111c68140e4f6e64e34e95",
+      "original": "tests/evidence/retained-receipt-resource-s3/source-binding.oracle.patch",
+      "originalSha256": "fbacae57671e7787d3b622fa54522e9e85b03f9f201da696cf930301d2d8d373",
+      "disposition": "Prerequisite-only private enum spelling replacement. Original predicates unchanged; no 8934 evidence transfers.",
+      "targets": [
+        {
+          "path": "rust/processing/src/element/model_context_retained.rs",
+          "healthySha256": "3addc8b9307f8f863db6a55e9730af22a3b80b269b126c4a61a44e0ef38c769b",
+          "mutantSha256": "52e0400c58f532bb2b84709a42ae5cb38fceef98ecda680f01b3150ce2664edf"
+        }
+      ],
+      "status": "UNRUN",
+      "observer": {
+        "crate": "ifc-lite-processing",
+        "file": "rust/processing/src/element/model_context_retained_tests.rs",
+        "selector": "element::model_context::retained::tests::s3_binding_rejects_equal_bytes_foreign_factory_and_borrowed_decoder",
+        "expectationStatus": "RENAMED_CONTEXT_UNRUN; no prerequisite evidence transfer"
+      }
+    }
+  ],
+  "qualification": {
+    "features": [
+      "default",
+      "retained-runtime"
+    ],
+    "required": "Exact nonzero compiled discovery, baseline GREEN, intended assertion RED, hash-verified restoration, same-selector restored GREEN. No prior results transfer.",
+    "freshFaults": [
+      "occurrence-report",
+      "target-action",
+      "type-entry-report",
+      "late-origin-report"
+    ],
+    "newSemanticReplacement": "direction-typed-report replaces prose-only report observation; not an equivalent historical kill",
+    "duplicateMechanism": "context-h2a2-required-target duplicates target-action and is not another independent kill"
+  }
+}

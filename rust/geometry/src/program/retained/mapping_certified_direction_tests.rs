@@ -19,7 +19,7 @@ fn s2_certified_oblique_coplanar_axes_refuse_whole_plan_on_cache_hit() {
     for target in OBLIQUE_TARGETS {
         // All three roots: real #113 contribution, live #81 cache, then a
         // direction-specific whole-plan failure, not an incidental early stop.
-        refuse(&later_target(target, &oblique_axes("9.")), DIAGNOSTIC);
+        rank_refusal(&later_target(target, &oblique_axes("9.")), MappingReason::DependentTriple);
     }
 }
 
@@ -68,6 +68,6 @@ fn s2_certified_pair_admission_rejects_parallel_extreme_finite_axes() {
             &format!("#99=IFCDIRECTION({z});#97=IFCDIRECTION({x});"));
         // Same full-plan refusal observer, after real earlier work. No numeric
         // operation on these extreme axes is needed to decide their dependence.
-        refuse(&bytes, DIAGNOSTIC);
+        rank_refusal(&bytes, MappingReason::DependentPair);
     }
 }

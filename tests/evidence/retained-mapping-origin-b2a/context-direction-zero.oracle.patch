@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared at 82d137b85c17f9dc0521d0ad8120bd218eedaeb2; apply in reverse; Rust execution UNRUN.
+# Historical input (unchanged): tests/evidence/retained-s2-direction/zero.oracle.patch; SHA256 02639f4ff0d3ba19589151a5b17dec2b1257fb7fb2de979b098bfa0b2619efb3
+--- a/rust/geometry/src/program/mapping_directions.rs
++++ b/rust/geometry/src/program/mapping_directions.rs
+@@ -37,7 +37,7 @@
+     let raw = decoder.direction3(id)
+         .map_err(|error| MappingFailure::core(FailureSite::MappingDirection, id, error))?;
+     let scale = raw.iter().fold(0.0_f64, |largest, v| largest.max(v.abs()));
+-    if false && scale == 0.0 {
++    if scale == 0.0 {
+         return Err(refused(id, MappingReason::ZeroDirection));
+     }
+     Ok(Some(Vector3::from(raw)))

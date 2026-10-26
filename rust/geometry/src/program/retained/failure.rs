@@ -11,11 +11,23 @@ use std::sync::{Arc, Mutex};
 pub(in crate::program) enum FailureSite {
     ProductRoot, ProductShape, RepresentationItems, Constructor,
     ProductCompletion, TypeMapCompletion, TypeBinding,
+    MappingSource, MappingTarget, MappingOrigin, MappedRepresentation,
+    MappingItems, MappingScale, MappingDirection,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::program) enum StructuralReason {
     NotProduct, UnsupportedProduct, RepresentationReference,
     NonemptyReferenceList, NonReferenceMember, RepresentationCategory, ItemCategory,
+}
+/// Facts established by retained mapped-input admission, before router recovery.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::program) enum MappingReason {
+    ReferenceRequired, Category, ListRequired, NonReferenceMember,
+    FiniteScale { attribute: usize },
+    OptionalDirectionReference { attribute: usize },
+    DirectionCategory, DirectionRatiosList,
+    DirectionDimension { expected: usize, actual: usize },
+    ZeroDirection, DependentPair, DependentTriple, NonfiniteDerivedFrame,
 }
 #[derive(Debug)]
 pub(in crate::program) enum OriginCause {
@@ -23,6 +35,7 @@ pub(in crate::program) enum OriginCause {
     Shape(ShapeError),
     Core(ifc_lite_core::Error),
     Structure(StructuralReason),
+    Mapping(MappingReason),
     Processor(Option<crate::router::ProcessorOrigin>),
     /// The common helper has not been converted. Its text is never classified.
     Opaque(crate::Error),

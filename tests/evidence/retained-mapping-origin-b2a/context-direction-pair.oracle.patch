@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared at 82d137b85c17f9dc0521d0ad8120bd218eedaeb2; apply in reverse; Rust execution UNRUN.
+# Historical input (unchanged): tests/evidence/retained-s2-direction/pair.oracle.patch; SHA256 1e4884a8ea28a888571595a8f840a635bae277d07f1090428c33241c6210f250
+--- a/rust/geometry/src/program/mapping_directions.rs
++++ b/rust/geometry/src/program/mapping_directions.rs
+@@ -61,7 +61,7 @@
+ }
+ 
+ fn admit_pair(entity: u32, a: Vector3<f64>, b: Vector3<f64>) -> Result<()> {
+-    if false && !independent(a, b) { return Err(refused(entity, MappingReason::DependentPair)); }
++    if !independent(a, b) { return Err(refused(entity, MappingReason::DependentPair)); }
+     Ok(())
+ }
+ 

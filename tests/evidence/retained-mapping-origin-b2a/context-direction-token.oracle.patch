@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared at 82d137b85c17f9dc0521d0ad8120bd218eedaeb2; apply in reverse; Rust execution UNRUN.
+# Historical input (unchanged): tests/evidence/retained-s2-direction/token.oracle.patch; SHA256 b0043d5926a0a4ad00ac0342945912354579d6d6ff3916a06ef2d6fccbdfe08a
+--- a/rust/geometry/src/program/mapping_directions.rs
++++ b/rust/geometry/src/program/mapping_directions.rs
+@@ -20,7 +20,6 @@
+     decoder: &mut EntityDecoder) -> Result<Option<Vector3<f64>>> {
+     let id = match entity.get(index) {
+         None | Some(AttributeValue::Null) => return Ok(None),
+-        Some(AttributeValue::Derived) => return Ok(None),
+         Some(AttributeValue::EntityRef(id)) => *id,
+         _ => return Err(refused(entity.id, MappingReason::OptionalDirectionReference { attribute: index })),
+     };

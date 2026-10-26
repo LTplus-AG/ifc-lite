@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared at 82d137b85c17f9dc0521d0ad8120bd218eedaeb2; apply in reverse; Rust execution UNRUN.
+--- a/rust/geometry/src/program/mapping_retained.rs
++++ b/rust/geometry/src/program/mapping_retained.rs
+@@ -252,6 +252,6 @@
+ impl MappingControl<'_> {
+     pub(super) fn validate_retained_map(map: &DecodedEntity, decoder: &mut EntityDecoder,
+         selection: &RetainedSelection) -> Result<()> {
+-        validation::map(map, decoder).map_err(|error| { let _ = selection; crate::Error::geometry(error.diagnostic()) })
+-    }
+-}
++        validation::map(map, decoder).map_err(|error| error.into_common(selection))
++    }
++}

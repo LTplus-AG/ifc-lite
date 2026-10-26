@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared at 82d137b85c17f9dc0521d0ad8120bd218eedaeb2; apply in reverse; Rust execution UNRUN.
+# Historical input (unchanged): tests/evidence/retained-s2-review/scale-finite.oracle.patch; SHA256 e6b3cab53b86d3fa9c258aa560c756fdf78366b3eab9b90e200039d531e09c5e
+--- a/rust/geometry/src/program/mapping_validation.rs
++++ b/rust/geometry/src/program/mapping_validation.rs
+@@ -88,7 +88,7 @@
+     // be a finite number; exact-display recovery is not admission.
+     match target.get(index) {
+         None | Some(AttributeValue::Null | AttributeValue::Integer(_)) => Ok(()),
+-        Some(AttributeValue::Float(value)) if value.is_finite() || true => Ok(()),
++        Some(AttributeValue::Float(value)) if value.is_finite() => Ok(()),
+         _ => Err(MappingFailure::refused(FailureSite::MappingScale, target.id,
+             MappingReason::FiniteScale { attribute: index },
+             "retained MappingTarget Scale requires a finite number or absence")),

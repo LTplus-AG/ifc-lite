@@ -4,6 +4,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { planRuns } from './revert-oracle-plan-runs.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
@@ -25,6 +29,8 @@ test('#7955: retained witnesses resolve through the facade path to exact library
     ['mapping_tests', '::mapping_tests'],
     ['mapping_contract_tests', '::mapping_contract'],
     ['mapping_input_tests', '::mapping_inputs'],
+    ['mapping_origin_tests', '::mapping_inputs::origins'],
+    ['mapping_origin_lifetime_tests', '::mapping_inputs::origins::lifetime'],
     ['mapping_direction_tests', '::mapping_inputs::directions'],
     ['mapping_direction_controls_tests', '::mapping_inputs::directions::controls'],
     ['mapping_certified_direction_tests', '::mapping_inputs::directions::certified'],
@@ -57,6 +63,52 @@ test('#7955: retained witnesses resolve through the facade path to exact library
       };
     }));
 });
+
+// Execute the actual initial workflow dispatch on tiny Git histories. Reading
+// the shell program is setup, not an assertion on its text: the observed result
+// is its selected argv after real git diff calls, without invoking an oracle,
+// Cargo, or a build. Both new-file boundaries must select the B2a observer.
+const b2aObserver = 'rust/geometry/src/program/retained/mapping_origin_tests.rs';
+for (const [boundary, files] of [
+  ['B2a-only', [b2aObserver]],
+  ['stack', [b2aObserver,
+    'rust/geometry/src/program/retained/origin_tests.rs',
+    'rust/geometry/src/program/retained/mod.rs',
+    'rust/geometry/src/program/mapping_retained.rs',
+    'tests/evidence/j5-presentation/behaviour.oracle.patch']],
+]) {
+  test(`#7955 B2a: initial workflow dispatch selects mapped reporting at ${boundary} boundary`, () => {
+    const workflow = readFileSync(join(root, '.github/workflows/test.yml'), 'utf8');
+    const start = workflow.indexOf('          oracle_args=(--base origin/main --ci --json)');
+    const end = workflow.indexOf('          node scripts/check-test-revert-oracle.mjs "${oracle_args[@]}"', start);
+    if (start < 0 || end < 0) throw new Error('Cannot extract initial oracle dispatch');
+    const selection = workflow.slice(start, end).replace(/^          /gm, '');
+    const cwd = mkdtempSync(join(tmpdir(), 'ifc-b2a-dispatch-'));
+    const git = (...args) => execFileSync('git', args, { cwd, stdio: 'pipe', timeout: 10_000 });
+    try {
+      git('init', '--quiet');
+      git('config', 'user.name', 'Dispatch Fixture');
+      git('config', 'user.email', 'dispatch@example.invalid');
+      git('-c', 'commit.gpgsign=false', 'commit', '--quiet', '--allow-empty', '-m', 'base');
+      git('update-ref', 'refs/remotes/origin/main', 'HEAD');
+      for (const file of files) {
+        mkdirSync(dirname(join(cwd, file)), { recursive: true });
+        writeFileSync(join(cwd, file), '// dispatch fixture\n');
+      }
+      git('add', '.');
+      git('-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'slice');
+      const selected = execFileSync('bash', ['-e', '-o', 'pipefail', '-c',
+        `${selection}\nprintf '%s\\0' "\${oracle_args[@]}"`], { cwd, encoding: 'utf8', timeout: 10_000 });
+      assert.deepEqual(selected.split('\0').filter(Boolean), [
+        '--base', '08769566858267aff3028f3f7c0e2870345ff73a', '--ci', '--json',
+        '--mutation', 'tests/evidence/retained-mapping-origin-b2a/occurrence-report.oracle.patch',
+        '--test', b2aObserver,
+      ]);
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+}
 
 // #7955 S3: default-off modules remain present in library unit tests.
 test('#7955: private S3 receipt/resource witnesses have exact library owners', () => {

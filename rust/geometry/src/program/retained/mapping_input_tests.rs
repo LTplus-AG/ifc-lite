@@ -1,6 +1,34 @@
 // SPDX-License-Identifier: MPL-2.0
 //! #7955 R1: malformed required mapping inputs refuse the entire retained plan.
 use super::*;
+use crate::program::retained::failure::{MappingReason, OriginCause, OriginFailure};
+use std::sync::Arc;
+
+#[derive(Clone, Copy)]
+enum ExpectedCause { Mapping(MappingReason), Missing(u32), Malformed(u32), Unrepresentable(u32) }
+
+fn origin(error: RetainedFailure) -> Arc<OriginFailure> {
+    let RetainedFailure::Origin(handle) = error else { panic!("B2a typed origin required: {error:?}") };
+    handle.origin().expect("B2a owned origin survives completion")
+}
+
+fn assert_origin(failure: &OriginFailure, site: FailureSite, entity: u32, expected: ExpectedCause) {
+    assert_eq!(failure.site, site, "B2a mapped input site");
+    assert_eq!(failure.entity, Some(entity), "B2a reached input identity");
+    match expected {
+        ExpectedCause::Mapping(reason) => assert!(matches!(failure.cause,
+            OriginCause::Mapping(actual) if actual == reason), "B2a predicate cause: {:?}", failure.cause),
+        ExpectedCause::Missing(id) => assert!(matches!(&failure.cause,
+            OriginCause::Core(ifc_lite_core::Error::ParseError { position: 0, message })
+            if message == &format!("Entity #{id} not found")), "B2a actual missing-index payload: {:?}", failure.cause),
+        ExpectedCause::Unrepresentable(id) => assert!(matches!(failure.cause,
+            OriginCause::Core(ifc_lite_core::Error::UnrepresentableReal(actual)) if actual == id),
+            "B2a actual strict decoder payload: {:?}", failure.cause),
+        ExpectedCause::Malformed(id) => assert!(matches!(failure.cause,
+            OriginCause::Core(ifc_lite_core::Error::MalformedRecord(actual)) if actual == id),
+            "B2a actual leaf payload: {:?}", failure.cause),
+    }
+}
 
 fn two_occurrences(later: &str, extra: &str) -> String {
     mapping_tests::mapped()
@@ -8,7 +36,7 @@ fn two_occurrences(later: &str, extra: &str) -> String {
         .replace("ENDSEC;END-ISO", &format!("#93=IFCMAPPEDITEM({later});{extra}ENDSEC;END-ISO"))
 }
 
-fn assert_late_refusal(bytes: &str, diagnostic: &str) {
+fn assert_late_refusal(bytes: &str, site: FailureSite, entity_id: u32, cause: ExpectedCause) {
     // The type-map root contains the same two nested mapped occurrences.
     for mode in 0..3 {
         let source = SourceBundle::new(bytes.as_bytes().to_vec());
@@ -20,29 +48,43 @@ fn assert_late_refusal(bytes: &str, diagnostic: &str) {
             1 => RetainedProgram::product_submeshes(&entity, true, None, contract()),
             _ => RetainedProgram::type_map(decoder.decode_by_id(61).unwrap(), None, contract()),
         };
+        let selection = program.selection().unwrap().clone();
         let operations = drive(&mut program, &router, &mut decoder);
         assert_eq!(operations.len(), 1, "first source was admitted before late refusal, mode {mode}");
         assert!(matches!(operations[0].value().definition(),
             LogicalRetainedDefinition::Source { source_id: 113, .. }));
+        let cached = selection.cached(&decoder, &router, 81).unwrap().unwrap();
+        assert_eq!(cached.len(), 1, "earlier source really is cached");
+        assert_eq!(cached[0].definition(), operations[0].value().definition());
+        let recorded = selection.failure_handle().origin().expect("origin before completion");
         let error = if mode == 2 {
             program.finish_type_map(60, 1, [1.; 4]).unwrap_err()
         } else { program.finish().unwrap_err() };
-        assert!(error.to_string().contains(diagnostic), "mode {mode}: {error}");
+        let failure = origin(error);
+        assert!(Arc::ptr_eq(&recorded, &failure));
+        assert_origin(&failure, site, entity_id, cause);
     }
 }
 
 #[test]
 fn h2_r1_cached_source_requires_each_mapping_target() {
     for target in ["$", "1.0", "#4"] {
-        assert_late_refusal(&two_occurrences(&format!("#81,{target}"), ""), "MappingTarget");
+        let (id, reason) = if target == "#4" { (4, MappingReason::Category) }
+            else { (93, MappingReason::ReferenceRequired) };
+        assert_late_refusal(&two_occurrences(&format!("#81,{target}"), ""),
+            FailureSite::MappingTarget, id, ExpectedCause::Mapping(reason));
     }
-    assert_late_refusal(&two_occurrences("#81", ""), "MappingTarget");
+    assert_late_refusal(&two_occurrences("#81", ""), FailureSite::MappingTarget, 93,
+        ExpectedCause::Mapping(MappingReason::ReferenceRequired));
 }
 
 #[test]
 fn h2_r1_mapping_source_must_be_a_representation_map_reference() {
     for source in ["$", "1.0", "#82"] {
-        assert_late_refusal(&two_occurrences(&format!("{source},#82"), ""), "MappingSource");
+        let (id, reason) = if source == "#82" { (82, MappingReason::Category) }
+            else { (93, MappingReason::ReferenceRequired) };
+        assert_late_refusal(&two_occurrences(&format!("{source},#82"), ""),
+            FailureSite::MappingSource, id, ExpectedCause::Mapping(reason));
     }
 }
 
@@ -50,7 +92,10 @@ fn h2_r1_mapping_source_must_be_a_representation_map_reference() {
 fn h2_r1_later_mapped_items_must_be_a_readable_reference_list() {
     for items in ["", ",$", ",1.0", ",(#113,$)", ",(#113,1.0)"] {
         let extra = format!("#94=IFCREPRESENTATIONMAP(#5,#95);#95=IFCSHAPEREPRESENTATION(#2,'Body','SweptSolid'{items});");
-        assert_late_refusal(&two_occurrences("#94,#82", &extra), "Items");
+        let reason = if items.starts_with(",(") { MappingReason::NonReferenceMember }
+            else { MappingReason::ListRequired };
+        assert_late_refusal(&two_occurrences("#94,#82", &extra), FailureSite::MappingItems, 95,
+            ExpectedCause::Mapping(reason));
     }
 }
 
@@ -86,7 +131,10 @@ fn h2_r1_identity_target_and_explicit_empty_source_are_admitted() {
 fn s2_r1_later_mapping_origin_is_required_before_exact_recovery() {
     for origin in ["$", "*", "1.", "#4"] {
         let extra = format!("#94=IFCREPRESENTATIONMAP({origin},#95);#95=IFCSHAPEREPRESENTATION(#2,'Body','SweptSolid',(#113));");
-        assert_late_refusal(&two_occurrences("#94,#82", &extra), "MappingOrigin");
+        let (id, reason) = if origin == "#4" { (4, MappingReason::Category) }
+            else { (94, MappingReason::ReferenceRequired) };
+        assert_late_refusal(&two_occurrences("#94,#82", &extra), FailureSite::MappingOrigin, id,
+            ExpectedCause::Mapping(reason));
     }
 }
 
@@ -94,7 +142,8 @@ fn s2_r1_later_mapping_origin_is_required_before_exact_recovery() {
 fn s2_r1_later_mapped_representation_category_precedes_items_access() {
     for category in ["IFCWALL", "UNKNOWNREPRESENTATION"] {
         let extra = format!("#94=IFCREPRESENTATIONMAP(#5,#95);#95={category}(#2,'Body','SweptSolid',(#113));");
-        assert_late_refusal(&two_occurrences("#94,#82", &extra), "MappedRepresentation");
+        assert_late_refusal(&two_occurrences("#94,#82", &extra), FailureSite::MappedRepresentation, 95,
+            ExpectedCause::Mapping(MappingReason::Category));
     }
 }
 
@@ -102,14 +151,15 @@ fn s2_r1_later_mapped_representation_category_precedes_items_access() {
 fn s2_r1_later_explicit_scale_tokens_cannot_default_even_on_cache_hits() {
     // Each slot is independently reached; earlier #81 is already cached.
     for token in ["'bad'", "#4", "*", "(1.)", "1.E999", "-1.E999"] {
-        for target in [
-            format!("IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#84,{token},$)"),
-            format!("IFCCARTESIANTRANSFORMATIONOPERATOR2D($,$,#84,{token})"),
-            format!("IFCCARTESIANTRANSFORMATIONOPERATOR2DNONUNIFORM($,$,#84,1.,{token})"),
-            format!("IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM($,$,#84,1.,$,{token},1.)"),
-            format!("IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM($,$,#84,1.,$,1.,{token})"),
+        for (attribute, target) in [
+            (3, format!("IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#84,{token},$)")),
+            (3, format!("IFCCARTESIANTRANSFORMATIONOPERATOR2D($,$,#84,{token})")),
+            (4, format!("IFCCARTESIANTRANSFORMATIONOPERATOR2DNONUNIFORM($,$,#84,1.,{token})")),
+            (5, format!("IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM($,$,#84,1.,$,{token},1.)")),
+            (6, format!("IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM($,$,#84,1.,$,1.,{token})")),
         ] {
-            assert_late_refusal(&two_occurrences("#81,#96", &format!("#96={target};")), "Scale");
+            assert_late_refusal(&two_occurrences("#81,#96", &format!("#96={target};")),
+                FailureSite::MappingScale, 96, ExpectedCause::Mapping(MappingReason::FiniteScale { attribute }));
         }
     }
 }
@@ -155,3 +205,6 @@ fn s2_r1_optional_scales_keep_canonical_defaults_and_supported_origins() {
 
 #[path = "mapping_direction_tests.rs"]
 mod directions;
+
+#[path = "mapping_origin_tests.rs"]
+mod origins;

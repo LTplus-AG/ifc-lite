@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MPL-2.0
+# Prepared at 82d137b85c17f9dc0521d0ad8120bd218eedaeb2; apply in reverse; Rust execution UNRUN.
+--- a/rust/geometry/src/program/mapping_validation.rs
++++ b/rust/geometry/src/program/mapping_validation.rs
+@@ -50,7 +50,7 @@
+             MappingReason::Category, "retained MappingSource requires IfcRepresentationMap"));
+     }
+     validate_origin(&source, decoder)?;
+-    if false { validate_target(item, decoder)?; }
++    validate_target(item, decoder)?;
+     map(&source, decoder)
+ }
+ 

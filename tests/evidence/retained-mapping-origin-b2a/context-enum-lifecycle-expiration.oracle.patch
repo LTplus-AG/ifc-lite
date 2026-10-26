@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MPL-2.0
+# Context only at 82d137b85c17f9dc0521d0ad8120bd218eedaeb2; original SHA256 20e526716c18ce30170983ddac915ff2cb5b63d6ebf7e207760a062ab9e62339; Rust UNRUN.
+--- a/rust/processing/src/element/model_context_retained.rs
++++ b/rust/processing/src/element/model_context_retained.rs
+@@ -40,7 +40,7 @@
+ }
+ impl ProductionLifecycle {
+     pub(super) fn validate(&self) -> Result<(), RetainedContextError> {
+-        if false && self.id.source_epoch != self.state.source_epoch.load(Ordering::Acquire) {
++        if self.id.source_epoch != self.state.source_epoch.load(Ordering::Acquire) {
+             return Err(RetainedContextError::Stale);
+         }
+         Ok(())

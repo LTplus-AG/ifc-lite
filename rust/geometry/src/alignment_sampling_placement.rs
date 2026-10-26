@@ -10,7 +10,12 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
 /// Alignment sampling accepts local links with exactly-3D, non-degenerate,
 /// non-parallel frames; the walk is the shared one (no depth cap, D27).
-const POLICY: ChainPolicy = ChainPolicy { grid: false, linear: false, planar_relative: false, strict_spatial: true };
+const POLICY: ChainPolicy = ChainPolicy {
+    grid: false,
+    linear: false,
+    planar_relative: false,
+    strict_spatial: true,
+};
 
 pub(super) fn validate_placement(
     entity: &DecodedEntity,

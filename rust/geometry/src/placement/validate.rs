@@ -44,15 +44,31 @@ pub fn validate_chain(
     check_frames(&climbed.frames, decoder, policy)
 }
 
-pub(super) fn check_frames(frames: &[Frame], decoder: &mut EntityDecoder, policy: &ChainPolicy) -> PlacementResult<()> {
+pub(super) fn check_frames(
+    frames: &[Frame],
+    decoder: &mut EntityDecoder,
+    policy: &ChainPolicy,
+) -> PlacementResult<()> {
     for frame in frames {
         let at = frame.entity.id;
         match frame.kind {
             LinkKind::Local => check_relative(frame, decoder, policy)?,
-            LinkKind::Linear if policy.linear => super::linear::validate_source(&frame.entity, decoder)?,
+            LinkKind::Linear if policy.linear => {
+                super::linear::validate_source(&frame.entity, decoder)?
+            }
             LinkKind::Grid if policy.grid => check_grid(frame, decoder)?,
-            LinkKind::Linear => return Err(PlacementError::Policy { at, rule: "IfcLinearPlacement is not accepted" }),
-            LinkKind::Grid => return Err(PlacementError::Policy { at, rule: "IfcGridPlacement is not accepted" }),
+            LinkKind::Linear => {
+                return Err(PlacementError::Policy {
+                    at,
+                    rule: "IfcLinearPlacement is not accepted",
+                })
+            }
+            LinkKind::Grid => {
+                return Err(PlacementError::Policy {
+                    at,
+                    rule: "IfcGridPlacement is not accepted",
+                })
+            }
         }
     }
     Ok(())
@@ -61,9 +77,11 @@ pub(super) fn check_frames(frames: &[Frame], decoder: &mut EntityDecoder, policy
 // Admission is independent of the climb's optional owner lookup: a missing
 // or wrong-type location must never become a cached validation proof (#7779).
 fn check_grid(frame: &Frame, decoder: &mut EntityDecoder) -> PlacementResult<()> {
-    let location_slot = super::grid_frame::GridPlacementLayout::of(decoder).location
+    let location_slot = super::grid_frame::GridPlacementLayout::of(decoder)
+        .location
         .ok_or_else(|| missing(decoder, frame.entity.id, "PlacementLocation"))?;
-    let location = decoder.resolve_optional(&frame.entity, location_slot)?
+    let location = decoder
+        .resolve_optional(&frame.entity, location_slot)?
         .ok_or_else(|| missing(decoder, frame.entity.id, "PlacementLocation"))?;
     if location.ifc_type != IfcType::IfcVirtualGridIntersection {
         return Err(unsupported(decoder, location.id, location.ifc_type));
@@ -71,7 +89,11 @@ fn check_grid(frame: &Frame, decoder: &mut EntityDecoder) -> PlacementResult<()>
     Ok(())
 }
 
-fn check_relative(frame: &Frame, decoder: &mut EntityDecoder, policy: &ChainPolicy) -> PlacementResult<()> {
+fn check_relative(
+    frame: &Frame,
+    decoder: &mut EntityDecoder,
+    policy: &ChainPolicy,
+) -> PlacementResult<()> {
     let at = frame.entity.id;
     let attr = frame
         .entity
@@ -82,14 +104,19 @@ fn check_relative(frame: &Frame, decoder: &mut EntityDecoder, policy: &ChainPoli
         .resolve_ref(attr)?
         .ok_or_else(|| missing(decoder, at, "RelativePlacement"))?;
     match rel.ifc_type {
-        IfcType::IfcAxis2Placement3D if policy.strict_spatial => validate_spatial_frame(&rel, decoder),
+        IfcType::IfcAxis2Placement3D if policy.strict_spatial => {
+            validate_spatial_frame(&rel, decoder)
+        }
         // Readable under the leaf rule too, so a validator refuses exactly
         // what `resolve_chain` would (malformed leaves are counted).
         IfcType::IfcAxis2Placement3D => Axis2Placement::read_3d(&rel, decoder).map(drop),
-        IfcType::IfcAxis2Placement2D if policy.planar_relative => Axis2Placement::read_2d(&rel, decoder).map(drop),
-        IfcType::IfcAxis2Placement2D => {
-            Err(PlacementError::Policy { at: rel.id, rule: "IfcAxis2Placement2D is not accepted" })
+        IfcType::IfcAxis2Placement2D if policy.planar_relative => {
+            Axis2Placement::read_2d(&rel, decoder).map(drop)
         }
+        IfcType::IfcAxis2Placement2D => Err(PlacementError::Policy {
+            at: rel.id,
+            rule: "IfcAxis2Placement2D is not accepted",
+        }),
         found => Err(unsupported(decoder, rel.id, found)),
     }
 }
@@ -99,12 +126,18 @@ fn check_relative(frame: &Frame, decoder: &mut EntityDecoder, policy: &ChainPoli
 /// Strict consumers add arity/degeneracy constraints AFTER the canonical
 /// typed leaf read. Do not bypass that read: unreadable input is refused and
 /// counted even when its attr0 happens to look like three coordinates (#7779).
-pub fn validate_spatial_frame(rel: &DecodedEntity, decoder: &mut EntityDecoder) -> PlacementResult<()> {
+pub fn validate_spatial_frame(
+    rel: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+) -> PlacementResult<()> {
     let frame = Axis2Placement::read_3d(rel, decoder)?;
     for slot in 0..3 {
         if let Some(record) = decoder.resolve_optional(rel, slot)? {
             if record.get_list(0).is_none_or(|list| list.len() != 3) {
-                return Err(PlacementError::Policy { at: rel.id, rule: "placement point or direction must have exactly 3 components" });
+                return Err(PlacementError::Policy {
+                    at: rel.id,
+                    rule: "placement point or direction must have exactly 3 components",
+                });
             }
         }
     }
@@ -112,7 +145,10 @@ pub fn validate_spatial_frame(rel: &DecodedEntity, decoder: &mut EntityDecoder) 
         let v = nalgebra::Vector3::from(v);
         let norm = v.norm();
         if !norm.is_finite() || norm == 0.0 {
-            return Err(PlacementError::Policy { at: rel.id, rule: "placement direction is zero or unbounded" });
+            return Err(PlacementError::Policy {
+                at: rel.id,
+                rule: "placement direction is zero or unbounded",
+            });
         }
         Ok(v / norm)
     };
@@ -121,7 +157,10 @@ pub fn validate_spatial_frame(rel: &DecodedEntity, decoder: &mut EntityDecoder) 
     let axis = unit(frame.axis.unwrap_or(super::Z))?;
     let reference = unit(frame.ref_direction.unwrap_or(super::X))?;
     if axis.cross(&reference).norm() <= 1e-12 {
-        return Err(PlacementError::Policy { at: rel.id, rule: "Axis is parallel to RefDirection" });
+        return Err(PlacementError::Policy {
+            at: rel.id,
+            rule: "Axis is parallel to RefDirection",
+        });
     }
     Ok(())
 }

@@ -21,8 +21,13 @@ pub(super) fn plan(
 ) -> Result<MapConversionNormalizationPlan, String> {
     preflight::context_frame(context, decoder)?;
     preflight::rigid_frame(affine, map.id)?;
-    let PlacementConsumers { roots, placements, representations, shapes, products } =
-        placement_consumers(records, decoder)?;
+    let PlacementConsumers {
+        roots,
+        placements,
+        representations,
+        shapes,
+        products,
+    } = placement_consumers(records, decoder)?;
     if roots.is_empty() {
         return Err("no represented placement roots to normalize".into());
     }
@@ -141,7 +146,10 @@ struct PlacementConsumers {
 }
 
 /// Discover and verify the source's consumers once under a fixed policy.
-fn placement_consumers(records: &[Record<'_>], decoder: &mut EntityDecoder) -> Result<PlacementConsumers, String> {
+fn placement_consumers(
+    records: &[Record<'_>],
+    decoder: &mut EntityDecoder,
+) -> Result<PlacementConsumers, String> {
     let mut consumers = PlacementConsumers::default();
     let mut validator = ChainValidator::new(decoder, preflight::CHAIN_POLICY);
     for record in records {
@@ -160,16 +168,25 @@ fn placement_consumers(records: &[Record<'_>], decoder: &mut EntityDecoder) -> R
         if !record.kind.is_subtype_of(IfcType::IfcProduct) {
             continue;
         }
-        let product = validator.decoder()
+        let product = validator
+            .decoder()
             .decode_by_id(record.id)
             .map_err(|error| error.to_string())?;
-        let shape = product.attr(slot::IfcProduct::REPRESENTATION).filter(|attr| !attr.is_null());
-        let placement = product.attr(slot::IfcProduct::OBJECT_PLACEMENT).filter(|attr| !attr.is_null());
+        let shape = product
+            .attr(slot::IfcProduct::REPRESENTATION)
+            .filter(|attr| !attr.is_null());
+        let placement = product
+            .attr(slot::IfcProduct::OBJECT_PLACEMENT)
+            .filter(|attr| !attr.is_null());
         if let Some(attr) = placement {
             let id = attr
                 .as_entity_ref()
                 .ok_or("ObjectPlacement is not a reference")?;
-            consumers.roots.insert(placement_root(id, &mut consumers.placements, &mut validator)?);
+            consumers.roots.insert(placement_root(
+                id,
+                &mut consumers.placements,
+                &mut validator,
+            )?);
             consumers.products.insert(product.id);
         } else if shape.is_some() {
             return Err(format!(
@@ -182,7 +199,8 @@ fn placement_consumers(records: &[Record<'_>], decoder: &mut EntityDecoder) -> R
                 .as_entity_ref()
                 .ok_or("product Representation is not a reference")?;
             consumers.shapes.insert(id);
-            let shape = validator.decoder()
+            let shape = validator
+                .decoder()
                 .decode_by_id(id)
                 .map_err(|error| error.to_string())?;
             if shape.ifc_type != IfcType::IfcProductDefinitionShape {
@@ -218,8 +236,14 @@ fn placement_root(
     // the same parent. Without a parent the basis curve is read in the
     // untransformed world frame, which a root edit cannot carry.
     for link in links.iter().filter(|link| link.kind == LinkKind::Linear) {
-        let placement = validator.decoder().decode_by_id(link.id).map_err(|error| error.to_string())?;
-        if placement.attr(slot::IfcObjectPlacement::PLACEMENT_REL_TO).is_none_or(|attr| attr.is_null()) {
+        let placement = validator
+            .decoder()
+            .decode_by_id(link.id)
+            .map_err(|error| error.to_string())?;
+        if placement
+            .attr(slot::IfcObjectPlacement::PLACEMENT_REL_TO)
+            .is_none_or(|attr| attr.is_null())
+        {
             return Err(format!(
                 "IfcLinearPlacement #{} has no PlacementRelTo to carry its basis curve",
                 link.id

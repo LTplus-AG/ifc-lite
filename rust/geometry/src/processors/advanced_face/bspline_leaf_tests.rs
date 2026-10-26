@@ -5,8 +5,11 @@ use super::*;
 #[test]
 fn issue_7779_surface_control_points_use_canonical_admission() {
     for (record, expected) in [
-        ("IFCCARTESIANPOINT((1.,2.))", Some(Point3::new(1.,2.,0.))),
-        ("IFCCARTESIANPOINT((1.,2.,3.))", Some(Point3::new(1.,2.,3.))),
+        ("IFCCARTESIANPOINT((1.,2.))", Some(Point3::new(1., 2., 0.))),
+        (
+            "IFCCARTESIANPOINT((1.,2.,3.))",
+            Some(Point3::new(1., 2., 3.)),
+        ),
         ("IFCDIRECTION((1.,2.,3.))", None),
         ("IFCCARTESIANPOINT((1.,2.,'bad'))", None),
         ("IFCCARTESIANPOINT((1.,2.,1.E400))", None),
@@ -19,11 +22,20 @@ fn issue_7779_surface_control_points_use_canonical_admission() {
         match expected {
             Some(point) => {
                 let grid = parse_control_points(&surface, &mut decoder).unwrap();
-                assert_eq!(grid, [vec![Point3::new(0.,0.,0.), point], vec![point, Point3::new(0.,0.,0.)]]);
+                assert_eq!(
+                    grid,
+                    [
+                        vec![Point3::new(0., 0., 0.), point],
+                        vec![point, Point3::new(0., 0., 0.)]
+                    ]
+                );
                 assert_eq!(decoder.refused_records(), 0);
             }
             None => {
-                assert!(parse_control_points(&surface, &mut decoder).is_err(), "{record}");
+                assert!(
+                    parse_control_points(&surface, &mut decoder).is_err(),
+                    "{record}"
+                );
                 assert_eq!(decoder.refused_record_ids(), [2]);
             }
         }

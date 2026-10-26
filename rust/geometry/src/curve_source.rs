@@ -31,7 +31,9 @@ pub(crate) fn admit_f32_range(values: impl IntoIterator<Item = f64>) -> Result<(
     if values.into_iter().all(|v| (v as f32).is_finite()) {
         Ok(())
     } else {
-        Err(invalid("curve coordinate is non-finite or beyond f32 range"))
+        Err(invalid(
+            "curve coordinate is non-finite or beyond f32 range",
+        ))
     }
 }
 
@@ -76,7 +78,9 @@ fn trim_cartesian_point(
     policy: CartesianTrimRead,
 ) -> Result<Option<[f64; 3]>> {
     if matches!(policy, CartesianTrimRead::CanonicalLeaf) {
-        let id = value.as_entity_ref().ok_or_else(|| invalid("Trim point is not a reference"))?;
+        let id = value
+            .as_entity_ref()
+            .ok_or_else(|| invalid("Trim point is not a reference"))?;
         let point = decoder.point3(id)?;
         admit_f32_range(point)?;
         return Ok(Some(point));
@@ -171,9 +175,18 @@ pub(crate) fn mesh_line_basis(
         .and_then(|d| {
             let coords = d.get(0).and_then(AttributeValue::as_list)?;
             Some(Vector3::new(
-                coords.first().and_then(AttributeValue::as_float).unwrap_or(0.0),
-                coords.get(1).and_then(AttributeValue::as_float).unwrap_or(0.0),
-                coords.get(2).and_then(AttributeValue::as_float).unwrap_or(0.0),
+                coords
+                    .first()
+                    .and_then(AttributeValue::as_float)
+                    .unwrap_or(0.0),
+                coords
+                    .get(1)
+                    .and_then(AttributeValue::as_float)
+                    .unwrap_or(0.0),
+                coords
+                    .get(2)
+                    .and_then(AttributeValue::as_float)
+                    .unwrap_or(0.0),
             ))
         })
         .and_then(|v| v.try_normalize(tol::DIRECTION_MIN_LEN))

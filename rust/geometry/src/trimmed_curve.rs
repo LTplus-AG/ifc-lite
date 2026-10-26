@@ -5,7 +5,9 @@
 //! IFC interpretation of trimmed lines and circles, shared by analytic source
 //! descriptions and sampled mesh directrices. Sampling remains consumer-owned.
 
-use crate::curve_source::{circle_basis, line_basis, mesh_line_basis, trim_angle, trim_point, CartesianTrimRead};
+use crate::curve_source::{
+    circle_basis, line_basis, mesh_line_basis, trim_angle, trim_point, CartesianTrimRead,
+};
 use crate::Result;
 use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 use std::f64::consts::TAU;
@@ -58,7 +60,9 @@ pub(crate) fn decode_trimmed_primitive(
         IfcType::IfcLine => {
             let (origin, direction) = match recovery {
                 TrimRecovery::RequireBoth => line_basis(basis, decoder)?,
-                TrimRecovery::BasisDefaults | TrimRecovery::BasisDefaultsStrictPoints => mesh_line_basis(basis, decoder)?,
+                TrimRecovery::BasisDefaults | TrimRecovery::BasisDefaultsStrictPoints => {
+                    mesh_line_basis(basis, decoder)?
+                }
             };
             let first = trim_point(
                 trimmed.get(1),
@@ -117,7 +121,9 @@ pub(crate) fn decode_trimmed_primitive(
                     };
                     (start, end)
                 }
-                TrimRecovery::BasisDefaults | TrimRecovery::BasisDefaultsStrictPoints => (first.unwrap_or(0.0), second.unwrap_or(TAU)),
+                TrimRecovery::BasisDefaults | TrimRecovery::BasisDefaultsStrictPoints => {
+                    (first.unwrap_or(0.0), second.unwrap_or(TAU))
+                }
             };
             let sweep_angle = match recovery {
                 TrimRecovery::RequireBoth => {

@@ -6,14 +6,17 @@ use ifc_lite_core::{execution_owner::SourceStopHandle, EntityDecoder};
 fn with_handle(run: impl FnOnce(SourceStopHandle)) {
     let decoder = EntityDecoder::new("#1=IFCWALL();\n");
     let mut lease = decoder.try_execution_lease().unwrap();
-    let work = lease.begin_synchronous_work(decoder.execution_identity()).unwrap();
+    let work = lease
+        .begin_synchronous_work(decoder.execution_identity())
+        .unwrap();
     let scope = work.source_borrow_scope();
     run(scope.resource_stop_handle());
 }
 
 fn bounded(work: Option<u64>) -> ExecutionAccount {
     ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits {
-        work, ..ResourceLimits::default()
+        work,
+        ..ResourceLimits::default()
     }))
 }
 
@@ -74,7 +77,10 @@ fn issue_7914_boolean_account_poll_reconciles_into_surviving_terminal_domain() {
             // before the independent terminal-only observation below.
         });
         assert!(!is_active());
-        assert!(is_stopped(), "boolean polling must durably reconcile the stop");
+        assert!(
+            is_stopped(),
+            "boolean polling must durably reconcile the stop"
+        );
         assert_eq!(check_current(), Err(ProgramStop::Cancelled));
         Ok(())
     });
@@ -118,7 +124,9 @@ fn issue_7914_boolean_nested_authorities_restore_on_return_and_unwind() {
                                     inner.cancel();
                                     assert!(is_stopped());
                                     assert_eq!(inner_handle.check(), Err(ProgramStop::Cancelled));
-                                    if unwind { panic!("test boolean authority restoration"); }
+                                    if unwind {
+                                        panic!("test boolean authority restoration");
+                                    }
                                 });
                             });
                         });
@@ -126,7 +134,12 @@ fn issue_7914_boolean_nested_authorities_restore_on_return_and_unwind() {
                     assert_eq!(result.is_err(), unwind);
                     assert!(!is_stopped());
                     assert_eq!(outer_handle.check(), Ok(()));
-                    charge(Cost { work: 1, ..Cost::default() }).unwrap().retain();
+                    charge(Cost {
+                        work: 1,
+                        ..Cost::default()
+                    })
+                    .unwrap()
+                    .retain();
                     assert_eq!(outer.usage().work, 1);
                     assert_eq!(inner.check(), Err(ProgramStop::Cancelled));
                     outer_handle.stop(refusal());
@@ -153,7 +166,9 @@ fn issue_7914_boolean_source_override_restores_refused_ambient_terminal() {
                             actual.cancel();
                             assert!(is_stopped());
                             assert_eq!(handle.check(), Err(ProgramStop::Cancelled));
-                            if unwind { panic!("test boolean terminal restoration"); }
+                            if unwind {
+                                panic!("test boolean terminal restoration");
+                            }
                         });
                     });
                 });
@@ -174,11 +189,17 @@ fn issue_7914_fresh_empty_poll_observes_later_source_installation() {
     with_handle(|handle| {
         let result = with_terminal_scope(|| {
             assert!(!is_active());
-            assert!(!is_stopped(), "healthy empty domain before source installation");
+            assert!(
+                !is_stopped(),
+                "healthy empty domain before source installation"
+            );
             with_source_stop(handle.clone(), || {
                 assert!(!is_stopped(), "new source starts healthy");
                 handle.stop(refusal());
-                assert!(is_stopped(), "fresh source presence must defeat cached absence");
+                assert!(
+                    is_stopped(),
+                    "fresh source presence must defeat cached absence"
+                );
                 assert_eq!(handle.check(), Err(refusal()));
             });
             Ok(())
@@ -193,14 +214,23 @@ fn issue_7914_fresh_empty_poll_observes_later_account_installation() {
     let account = bounded(None);
     let result = with_terminal_scope(|| {
         assert!(!is_active());
-        assert!(!is_stopped(), "healthy empty domain before account installation");
+        assert!(
+            !is_stopped(),
+            "healthy empty domain before account installation"
+        );
         account.scope(|| {
             assert!(!is_stopped(), "new account starts healthy");
             account.cancel();
-            assert!(is_stopped(), "fresh account presence must defeat cached absence");
+            assert!(
+                is_stopped(),
+                "fresh account presence must defeat cached absence"
+            );
         });
         assert!(!is_active());
-        assert!(is_stopped(), "account stop must survive in the terminal domain");
+        assert!(
+            is_stopped(),
+            "account stop must survive in the terminal domain"
+        );
         assert_eq!(check_current(), Err(ProgramStop::Cancelled));
         Ok(())
     });

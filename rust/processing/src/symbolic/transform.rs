@@ -84,7 +84,10 @@ impl Transform2D {
     /// `tz: NaN` = unresolved (vs. `identity()`'s legitimate zero); NaN
     /// propagates additively so consumers test `is_finite()` (#2256).
     pub(super) fn unresolved() -> Self {
-        Self { tz: f64::NAN, ..Self::identity() }
+        Self {
+            tz: f64::NAN,
+            ..Self::identity()
+        }
     }
 
     /// A placement refused by input admission (#7678, D15): it holds a REAL
@@ -93,14 +96,23 @@ impl Transform2D {
     /// to before did. Not [`Self::unresolved`]: #2256's keep-at-the-origin
     /// rule is for a placement that is genuinely missing, not one refused.
     pub(super) fn refused() -> Self {
-        Self { tx: f64::NAN, ty: f64::NAN, tz: f64::NAN, ..Self::identity() }
+        Self {
+            tx: f64::NAN,
+            ty: f64::NAN,
+            tz: f64::NAN,
+            ..Self::identity()
+        }
     }
 
     /// The transform for a placement record that failed to decode:
     /// [`Self::refused`] when input admission refused it, otherwise
     /// [`Self::unresolved`] (#2256).
     pub(super) fn undecodable(error: &ifc_lite_core::Error) -> Self {
-        if is_refused(error) { Self::refused() } else { Self::unresolved() }
+        if is_refused(error) {
+            Self::refused()
+        } else {
+            Self::unresolved()
+        }
     }
 
     /// Scale factor carried by the linear block, as `sqrt(|det|)`. For the
@@ -249,7 +261,7 @@ pub(super) fn parse_axis2_placement_2d(
                 (raw_x * unit_scale, raw_y * unit_scale, raw_z * unit_scale)
             }
             Err(e) => return Transform2D::undecodable(&e), // refused, or dangling (#2355)
-            _ => return Transform2D::unresolved(), // wrong type: mandatory Location (#2355)
+            _ => return Transform2D::unresolved(),         // wrong type: mandatory Location (#2355)
         },
         None => return Transform2D::unresolved(), // mandatory Location absent (#2355)
     };
@@ -331,10 +343,14 @@ pub(super) fn resolve_representation_transform(
     // one inline, so it alone stays `identity()`.
     // Named fixed slots preserve the existing malformed-reference recovery;
     // this extraction does not add a typed accessor's debug owner assertion.
-    let context_transform = match shape_rep.get_ref(slot::IfcRepresentation::CONTEXT_OF_ITEMS.index()) {
+    let context_transform = match shape_rep
+        .get_ref(slot::IfcRepresentation::CONTEXT_OF_ITEMS.index())
+    {
         Some(context_ref) => match decoder.decode_by_id(context_ref) {
             Ok(context) if context.ifc_type == IfcType::IfcGeometricRepresentationContext => {
-                match context.get_ref(slot::IfcGeometricRepresentationContext::WORLD_COORDINATE_SYSTEM.index()) {
+                match context.get_ref(
+                    slot::IfcGeometricRepresentationContext::WORLD_COORDINATE_SYSTEM.index(),
+                ) {
                     Some(wcs_ref) => match decoder.decode_by_id(wcs_ref) {
                         Ok(wcs) => parse_axis2_placement_2d(&wcs, decoder, unit_scale),
                         Err(_) => Transform2D::unresolved(),

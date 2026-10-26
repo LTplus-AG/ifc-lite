@@ -206,10 +206,14 @@ fn ifc4_second_element_on_the_grid_reuses_the_grid_frame() {
 
 #[test]
 fn issue_7779_warm_grid_owner_cannot_bypass_planar_validation_policy() {
-    use ifc_lite_geometry::placement::{resolve_chain, validate_chain, ChainPolicy, ChainValidator, PlacementError};
+    use ifc_lite_geometry::placement::{
+        resolve_chain, validate_chain, ChainPolicy, ChainValidator, PlacementError,
+    };
     for schema in ["IFC2X3", "IFC4"] {
-        let content = column_on_grid(schema, RefDir::Null)
-            .replace("IFCAXIS2PLACEMENT3D(#21,#24,#22)", "IFCAXIS2PLACEMENT2D(#21,#22)");
+        let content = column_on_grid(schema, RefDir::Null).replace(
+            "IFCAXIS2PLACEMENT3D(#21,#24,#22)",
+            "IFCAXIS2PLACEMENT2D(#21,#22)",
+        );
         for warm in [false, true] {
             let mut decoder = EntityDecoder::new(&content);
             let placement = decoder.decode_by_id(70).unwrap();
@@ -217,11 +221,23 @@ fn issue_7779_warm_grid_owner_cannot_bypass_planar_validation_policy() {
                 resolve_chain(&placement, &mut decoder).unwrap();
                 assert!(decoder.get_placement_transform_cached(33).is_some());
             }
-            let policy = ChainPolicy { grid: true, planar_relative: false, ..ChainPolicy::default() };
-            assert!(matches!(validate_chain(&placement, &mut decoder, &policy),
-                Err(PlacementError::Policy { at: 23, .. })), "{schema}, warm={warm}");
+            let policy = ChainPolicy {
+                grid: true,
+                planar_relative: false,
+                ..ChainPolicy::default()
+            };
+            assert!(
+                matches!(
+                    validate_chain(&placement, &mut decoder, &policy),
+                    Err(PlacementError::Policy { at: 23, .. })
+                ),
+                "{schema}, warm={warm}"
+            );
             let mut validator = ChainValidator::new(&mut decoder, policy);
-            assert!(matches!(validator.validate(70), Err(PlacementError::Policy { at: 23, .. })));
+            assert!(matches!(
+                validator.validate(70),
+                Err(PlacementError::Policy { at: 23, .. })
+            ));
         }
     }
 }
@@ -237,14 +253,33 @@ fn issue_7779_warm_grid_owner_keeps_the_true_validation_root_and_links() {
             resolve_chain(&placement, &mut decoder).unwrap();
             assert!(decoder.get_placement_transform_cached(33).is_some());
         }
-        assert_eq!(chain(&placement, &mut decoder).unwrap().iter().map(|link| link.id).collect::<Vec<_>>(), [70, 20]);
-        let mut validator = ChainValidator::new(&mut decoder, ChainPolicy { grid: true, ..ChainPolicy::default() });
+        assert_eq!(
+            chain(&placement, &mut decoder)
+                .unwrap()
+                .iter()
+                .map(|link| link.id)
+                .collect::<Vec<_>>(),
+            [70, 20]
+        );
+        let mut validator = ChainValidator::new(
+            &mut decoder,
+            ChainPolicy {
+                grid: true,
+                ..ChainPolicy::default()
+            },
+        );
         let (root, links) = validator.validate(70).unwrap();
         assert_eq!(root, 20, "warm={warm}");
-        assert_eq!(links.iter().map(|link| link.id).collect::<Vec<_>>(), [70, 20]);
+        assert_eq!(
+            links.iter().map(|link| link.id).collect::<Vec<_>>(),
+            [70, 20]
+        );
         let (root, links) = validator.validate(70).unwrap();
         assert_eq!(root, 20);
-        assert!(links.is_empty(), "the validation session still reuses its own proof");
+        assert!(
+            links.is_empty(),
+            "the validation session still reuses its own proof"
+        );
     }
 }
 
@@ -253,12 +288,18 @@ fn issue_7779_grid_validation_never_proves_missing_or_wrong_type_locations() {
     use ifc_lite_geometry::placement::{validate_chain, ChainPolicy, ChainValidator};
     for schema in ["IFC2X3", "IFC4", "IFC4X3_ADD2"] {
         for location in ["$", "#21"] {
-            let content = column_on_grid(schema, RefDir::Null)
-                .replace("#60,$)", &format!("{location},$)"));
+            let content =
+                column_on_grid(schema, RefDir::Null).replace("#60,$)", &format!("{location},$)"));
             let mut decoder = EntityDecoder::new(&content);
             let placement = decoder.decode_by_id(70).unwrap();
-            let policy = ChainPolicy { grid: true, ..ChainPolicy::default() };
-            assert!(validate_chain(&placement, &mut decoder, &policy).is_err(), "{schema}: {location}");
+            let policy = ChainPolicy {
+                grid: true,
+                ..ChainPolicy::default()
+            };
+            assert!(
+                validate_chain(&placement, &mut decoder, &policy).is_err(),
+                "{schema}: {location}"
+            );
             let mut validator = ChainValidator::new(&mut decoder, policy);
             // Rejection must not publish a suffix proof for the next call.
             for _ in 0..2 {

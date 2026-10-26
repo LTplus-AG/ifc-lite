@@ -141,7 +141,11 @@ fn hostile_dag_with_leaf(annotations: usize, leaf_points: usize) -> String {
                         q
                     })
                     .collect();
-                let refs = pts.iter().map(|q| format!("#{q}")).collect::<Vec<_>>().join(",");
+                let refs = pts
+                    .iter()
+                    .map(|q| format!("#{q}"))
+                    .collect::<Vec<_>>()
+                    .join(",");
                 s.push_str(&format!("#{pl}=IFCPOLYLINE(({refs}));\n"));
                 for (k, q) in pts.iter().enumerate() {
                     s.push_str(&format!("#{q}=IFCCARTESIANPOINT(({k}.,{k}.));\n"));
@@ -152,7 +156,9 @@ fn hostile_dag_with_leaf(annotations: usize, leaf_points: usize) -> String {
                 id += 1;
                 let b = id;
                 id += 1;
-                s.push_str(&format!("#{r}=IFCSHAPEREPRESENTATION($,$,$,(#{a},#{b}));\n"));
+                s.push_str(&format!(
+                    "#{r}=IFCSHAPEREPRESENTATION($,$,$,(#{a},#{b}));\n"
+                ));
                 s.push_str(&format!("#{a}=IFCMAPPEDITEM(#{next},$);\n"));
                 s.push_str(&format!("#{b}=IFCMAPPEDITEM(#{next},$);\n"));
             }
@@ -164,7 +170,11 @@ fn hostile_dag_with_leaf(annotations: usize, leaf_points: usize) -> String {
         s.push_str(&format!("#{top}=IFCMAPPEDITEM(#{next},$);\n"));
         tops.push(top);
     }
-    let list = tops.iter().map(|t| format!("#{t}")).collect::<Vec<_>>().join(",");
+    let list = tops
+        .iter()
+        .map(|t| format!("#{t}"))
+        .collect::<Vec<_>>()
+        .join(",");
     let prod = id;
     let shp = id + 1;
     let rep = id + 2;
@@ -232,7 +242,10 @@ fn truncation_survives_the_wire_and_absence_still_deserializes() {
     let mut acc = SymbolicAccumulator::with_limit(1);
     super::extract_symbolic_data_into(&hostile_dag(1).into_bytes(), &mut acc);
     let truncated = acc.into_data().expect("symbolic extraction must complete");
-    assert!(truncated.truncated.is_some(), "fixture must actually truncate");
+    assert!(
+        truncated.truncated.is_some(),
+        "fixture must actually truncate"
+    );
 
     let json = serde_json::to_string(&truncated).expect("serializes");
     let back: SymbolicData = serde_json::from_str(&json).expect("round-trips");
@@ -244,9 +257,10 @@ fn truncation_survives_the_wire_and_absence_still_deserializes() {
         !clean_json.contains("truncated"),
         "an untruncated result must not gain a field on the wire: {clean_json}"
     );
-    let old_shape: SymbolicData =
-        serde_json::from_str(r#"{"grid_axes":[],"polylines":[],"circles":[],"texts":[],"fills":[]}"#)
-            .expect("JSON cached before this field existed must still deserialize");
+    let old_shape: SymbolicData = serde_json::from_str(
+        r#"{"grid_axes":[],"polylines":[],"circles":[],"texts":[],"fills":[]}"#,
+    )
+    .expect("JSON cached before this field existed must still deserialize");
     assert!(old_shape.truncated.is_none());
 }
 
@@ -327,7 +341,9 @@ fn hostile_text_dag(content_len: usize, alignment_len: usize) -> String {
             id += 1;
             let b = id;
             id += 1;
-            s.push_str(&format!("#{r}=IFCSHAPEREPRESENTATION($,$,$,(#{a},#{b}));\n"));
+            s.push_str(&format!(
+                "#{r}=IFCSHAPEREPRESENTATION($,$,$,(#{a},#{b}));\n"
+            ));
             s.push_str(&format!("#{a}=IFCMAPPEDITEM(#{next},$);\n"));
             s.push_str(&format!("#{b}=IFCMAPPEDITEM(#{next},$);\n"));
         }
@@ -385,8 +401,11 @@ fn every_variable_length_field_is_charged_not_just_the_obvious_one() {
             "the BYTE bound must fire for a {which}-heavy file; ElementCount here \
              means {which} bytes are going uncharged"
         );
-        let charged: usize =
-            out.texts.iter().map(|t| t.content.len() + t.alignment.len()).sum();
+        let charged: usize = out
+            .texts
+            .iter()
+            .map(|t| t.content.len() + t.alignment.len())
+            .sum();
         assert!(
             charged * 8 <= 8192 + 4096 * 8,
             "{which}-heavy payload must respect the byte budget; got {charged}"
@@ -492,7 +511,10 @@ fn deep_chain_then(rest: &str, start: u32) -> String {
         "#{prod}=IFCANNOTATION('deep',$,$,$,$,$,#{});\n\
          #{}=IFCPRODUCTDEFINITIONSHAPE($,$,(#{}));\n\
          #{}=IFCSHAPEREPRESENTATION($,'Annotation','Annotation',(#{top}));\n",
-        prod + 1, prod + 1, prod + 2, prod + 2
+        prod + 1,
+        prod + 1,
+        prod + 2,
+        prod + 2
     ));
     format!("{s}{rest}")
 }
@@ -568,7 +590,8 @@ fn a_per_item_reason_omits_limit_on_the_wire_rather_than_sending_null() {
     // bound still has to put its number on the wire.
     let mut acc = SymbolicAccumulator::with_limits(200, 64 * 1024 * 1024);
     super::extract_symbolic_data_into(&hostile_dag(2).into_bytes(), &mut acc);
-    let json = serde_json::to_value(acc.into_data().expect("symbolic extraction must complete")).expect("serializes");
+    let json = serde_json::to_value(acc.into_data().expect("symbolic extraction must complete"))
+        .expect("serializes");
     assert_eq!(json["truncated"]["reason"], "element-count");
     assert_eq!(json["truncated"]["limit"], 200);
 }
@@ -605,11 +628,18 @@ fn shared_map_multi_placement(placements: usize, leaves: usize) -> String {
         s.push_str(&format!("#{p2}=IFCCARTESIANPOINT((1.,1.));\n"));
         elems.push(pl);
     }
-    let refs = elems.iter().map(|q| format!("#{q}")).collect::<Vec<_>>().join(",");
+    let refs = elems
+        .iter()
+        .map(|q| format!("#{q}"))
+        .collect::<Vec<_>>()
+        .join(",");
     s.push_str(&format!("#{set}=IFCGEOMETRICCURVESET(({refs}));\n"));
 
     // The SAME set id, repeated -- N placements of one block.
-    let list = (0..placements).map(|_| format!("#{set}")).collect::<Vec<_>>().join(",");
+    let list = (0..placements)
+        .map(|_| format!("#{set}"))
+        .collect::<Vec<_>>()
+        .join(",");
     let prod = id;
     let shp = id + 1;
     let rep = id + 2;
@@ -642,11 +672,19 @@ fn flat_multi_item_dag(top_items: usize, leaves: usize) -> String {
             s.push_str(&format!("#{p2}=IFCCARTESIANPOINT((1.,1.));\n"));
             elems.push(pl);
         }
-        let refs = elems.iter().map(|q| format!("#{q}")).collect::<Vec<_>>().join(",");
+        let refs = elems
+            .iter()
+            .map(|q| format!("#{q}"))
+            .collect::<Vec<_>>()
+            .join(",");
         s.push_str(&format!("#{set}=IFCGEOMETRICCURVESET(({refs}));\n"));
         tops.push(set);
     }
-    let list = tops.iter().map(|t| format!("#{t}")).collect::<Vec<_>>().join(",");
+    let list = tops
+        .iter()
+        .map(|t| format!("#{t}"))
+        .collect::<Vec<_>>()
+        .join(",");
     let prod = id;
     let shp = id + 1;
     let rep = id + 2;
@@ -787,10 +825,7 @@ fn the_shared_revisit_budget_does_not_charge_legitimate_first_visits_across_item
     const LEAVES: usize = 200;
 
     let mut acc = SymbolicAccumulator::with_revisit_budget(BUDGET);
-    super::extract_symbolic_data_into(
-        &flat_multi_item_dag(2, LEAVES).into_bytes(),
-        &mut acc,
-    );
+    super::extract_symbolic_data_into(&flat_multi_item_dag(2, LEAVES).into_bytes(), &mut acc);
     let out = acc.into_data().expect("symbolic extraction must complete");
 
     assert_eq!(

@@ -23,7 +23,12 @@ pub struct ChainValidator<'decoder, 'source> {
 impl<'decoder, 'source> ChainValidator<'decoder, 'source> {
     pub fn new(decoder: &'decoder mut EntityDecoder<'source>, policy: ChainPolicy) -> Self {
         let identity = decoder.execution_identity();
-        Self { decoder, policy, identity, verified: FxHashMap::default() }
+        Self {
+            decoder,
+            policy,
+            identity,
+            verified: FxHashMap::default(),
+        }
     }
 
     /// Access the same decoder for consumer-specific checks and output work.
@@ -48,15 +53,35 @@ impl<'decoder, 'source> ChainValidator<'decoder, 'source> {
         }
         let start = self.decoder.decode_by_id(id)?;
         let mut climbed = Climb::new();
-        climb(&mut climbed, &start, self.decoder, false, false, Some(&self.verified))?;
+        climb(
+            &mut climbed,
+            &start,
+            self.decoder,
+            false,
+            false,
+            Some(&self.verified),
+        )?;
         if let Some((at, found)) = climbed.stopped_at {
             return Err(unsupported(self.decoder, at, found));
         }
         check_frames(&climbed.frames, self.decoder, &self.policy)?;
         // A fresh start either contributes a frame or encounters a verified id.
-        let root = climbed.verified_root.unwrap_or_else(|| climbed.frames.last().expect("nonempty placement chain").entity.id);
-        let links: SmallVec<[Link; 8]> = climbed.frames.iter()
-            .map(|frame| Link { id: frame.entity.id, kind: frame.kind }).collect();
+        let root = climbed.verified_root.unwrap_or_else(|| {
+            climbed
+                .frames
+                .last()
+                .expect("nonempty placement chain")
+                .entity
+                .id
+        });
+        let links: SmallVec<[Link; 8]> = climbed
+            .frames
+            .iter()
+            .map(|frame| Link {
+                id: frame.entity.id,
+                kind: frame.kind,
+            })
+            .collect();
         for link in &links {
             self.verified.insert(link.id, root);
         }

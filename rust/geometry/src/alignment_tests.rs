@@ -38,8 +38,17 @@ fn dense_horizontal_lookup_preserves_boundary_and_extrapolation() {
             cum_start: i as f64,
         })
         .collect();
-    let curve = AlignmentCurve { horizontal, vertical: vec![], gradient: None };
-    for (station, expected) in [(0.0, 0.0), (1.0, 1.0), (4_095.5, 4_095.5), (4_100.0, 4_100.0)] {
+    let curve = AlignmentCurve {
+        horizontal,
+        vertical: vec![],
+        gradient: None,
+    };
+    for (station, expected) in [
+        (0.0, 0.0),
+        (1.0, 1.0),
+        (4_095.5, 4_095.5),
+        (4_100.0, 4_100.0),
+    ] {
         assert!((curve.evaluate(station).origin.x - expected).abs() < 1e-9);
     }
     assert!(curve.evaluate(f64::NAN).origin.x.is_nan());
@@ -236,13 +245,25 @@ END-ISO-10303-21;
 
     // Station 0 (physical start): x = 0, z = start height 50.
     let f0 = curve.evaluate(0.0);
-    assert!((f0.origin.x - 0.0).abs() < 1e-6, "start x = {}", f0.origin.x);
-    assert!((f0.origin.z - 50.0).abs() < 1e-6, "start z = {}", f0.origin.z);
+    assert!(
+        (f0.origin.x - 0.0).abs() < 1e-6,
+        "start x = {}",
+        f0.origin.x
+    );
+    assert!(
+        (f0.origin.z - 50.0).abs() < 1e-6,
+        "start z = {}",
+        f0.origin.z
+    );
 
     // Station 50 (halfway): horizontal x = 50, so elevation must be
     // 50 + 0.1·50 = 55. On main this returns 50 (clamped) and fails.
     let f_mid = curve.evaluate(50.0);
-    assert!((f_mid.origin.x - 50.0).abs() < 1e-6, "mid x = {}", f_mid.origin.x);
+    assert!(
+        (f_mid.origin.x - 50.0).abs() < 1e-6,
+        "mid x = {}",
+        f_mid.origin.x
+    );
     assert!(
         (f_mid.origin.z - 55.0).abs() < 1e-6,
         "mid z = {} (expected 55; main desyncs vertical and returns ~50)",
@@ -251,8 +272,16 @@ END-ISO-10303-21;
 
     // Station 100 (physical end): x = 100, z = 60.
     let f_end = curve.evaluate(100.0);
-    assert!((f_end.origin.x - 100.0).abs() < 1e-6, "end x = {}", f_end.origin.x);
-    assert!((f_end.origin.z - 60.0).abs() < 1e-6, "end z = {}", f_end.origin.z);
+    assert!(
+        (f_end.origin.x - 100.0).abs() < 1e-6,
+        "end x = {}",
+        f_end.origin.x
+    );
+    assert!(
+        (f_end.origin.z - 60.0).abs() < 1e-6,
+        "end z = {}",
+        f_end.origin.z
+    );
 }
 
 /// A negative SegmentLength drives (station - cum).min(length) negative and
@@ -374,11 +403,19 @@ fn station_in_a_vertical_gap_uses_the_nearer_bracketing_segment() {
     };
     // 50 past the first exit, 150 before the second entry: first wins.
     let near_first = curve.evaluate(150.0);
-    assert!((near_first.origin.z - 15.0).abs() < 1e-9, "z = {}", near_first.origin.z);
+    assert!(
+        (near_first.origin.z - 15.0).abs() < 1e-9,
+        "z = {}",
+        near_first.origin.z
+    );
     assert!((near_first.tangent.z - 0.1 / (1.0f64 + 0.01).sqrt()).abs() < 1e-9);
     // 180 past the first exit, 20 before the second entry: second wins.
     let near_second = curve.evaluate(280.0);
-    assert!((near_second.origin.z - 50.0).abs() < 1e-9, "z = {}", near_second.origin.z);
+    assert!(
+        (near_second.origin.z - 50.0).abs() < 1e-9,
+        "z = {}",
+        near_second.origin.z
+    );
     assert!(near_second.tangent.z.abs() < 1e-9);
 }
 
@@ -497,14 +534,18 @@ fn issue_7779_alignment_point_admission_counts_once() {
 
 #[test]
 fn issue_7779_alignment_valid_points_are_not_refused() {
-    for point in ["IFCCARTESIANPOINT((0.,0.))", "IFCCARTESIANPOINT((0.,0.,0.))"] {
-        let source = format!("#1={point};#2=IFCCARTESIANPOINT((10.,0.,5.));#3=IFCPOLYLINE((#1,#2));");
+    for point in [
+        "IFCCARTESIANPOINT((0.,0.))",
+        "IFCCARTESIANPOINT((0.,0.,0.))",
+    ] {
+        let source =
+            format!("#1={point};#2=IFCCARTESIANPOINT((10.,0.,5.));#3=IFCPOLYLINE((#1,#2));");
         for strict in [false, true] {
             let mut decoder = EntityDecoder::new(&source);
             let entity = decoder.decode_by_id(3).unwrap();
             let curve = AlignmentCurve::from_polyline(&entity, &mut decoder, strict).unwrap();
             let frame = curve.evaluate(5.);
-            assert_eq!(frame.origin, Point3::new(5.,0.,2.5));
+            assert_eq!(frame.origin, Point3::new(5., 0., 2.5));
             assert!(decoder.refused_record_ids().is_empty());
             assert_eq!(decoder.refused_records(), 0);
         }

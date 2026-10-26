@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: MPL-2.0
 //! #7779 E1: strict validation and actual canonical-climb work invariants.
-use super::*;
 use super::chain_walk::VALIDATION_WORK;
+use super::*;
 use ifc_lite_core::{EntityDecoder, Error};
 
 fn ladder(n: u32) -> String {
     let mut source = String::from("ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;\n#1=IFCCARTESIANPOINT((1.,0.,0.));#2=IFCAXIS2PLACEMENT3D(#1,$,$);\n");
-    for id in 10..10+n {
-        let parent = if id == 10 { "$".into() } else { format!("#{}", id-1) };
+    for id in 10..10 + n {
+        let parent = if id == 10 {
+            "$".into()
+        } else {
+            format!("#{}", id - 1)
+        };
         source.push_str(&format!("#{id}=IFCLOCALPLACEMENT({parent},#2);\n"));
     }
     source.push_str("ENDSEC;END-ISO-10303-21;");
@@ -21,36 +25,57 @@ fn issue_7779_verified_suffix_reuse_visits_each_new_ladder_link_once() {
         let mut decoder = EntityDecoder::new(&source);
         VALIDATION_WORK.with(|count| count.set(0));
         let mut validator = ChainValidator::new(&mut decoder, ChainPolicy::default());
-        for id in 10..10+n {
+        for id in 10..10 + n {
             let (root, links) = validator.validate(id).unwrap();
             assert_eq!(root, 10);
             assert_eq!(links.iter().map(|link| link.id).collect::<Vec<_>>(), [id]);
         }
-        assert_eq!(VALIDATION_WORK.with(|count| count.get()), n as usize,
-            "actual climb visits; full-prefix traversal would cost n*(n+1)/2");
-        assert!(validator.validate(9+n).unwrap().1.is_empty());
+        assert_eq!(
+            VALIDATION_WORK.with(|count| count.get()),
+            n as usize,
+            "actual climb visits; full-prefix traversal would cost n*(n+1)/2"
+        );
+        assert!(validator.validate(9 + n).unwrap().1.is_empty());
         assert_eq!(VALIDATION_WORK.with(|count| count.get()), n as usize);
     }
 }
 
 #[test]
 fn issue_7779_verified_session_is_policy_local_and_failures_are_never_cached() {
-    let source = ladder(320).replace("#1=IFCCARTESIANPOINT((1.,0.,0.))", "#1=IFCCARTESIANPOINT((1.,0.))");
+    let source = ladder(320).replace(
+        "#1=IFCCARTESIANPOINT((1.,0.,0.))",
+        "#1=IFCCARTESIANPOINT((1.,0.))",
+    );
     let mut decoder = EntityDecoder::new(&source);
     let mut lenient = ChainValidator::new(&mut decoder, ChainPolicy::default());
     assert_eq!(lenient.validate(329).unwrap().0, 10);
     drop(lenient);
-    let mut strict = ChainValidator::new(&mut decoder, ChainPolicy { strict_spatial: true, ..ChainPolicy::default() });
+    let mut strict = ChainValidator::new(
+        &mut decoder,
+        ChainPolicy {
+            strict_spatial: true,
+            ..ChainPolicy::default()
+        },
+    );
     for _ in 0..2 {
-        assert!(matches!(strict.validate(329), Err(PlacementError::Policy { .. })));
+        assert!(matches!(
+            strict.validate(329),
+            Err(PlacementError::Policy { .. })
+        ));
     }
     drop(strict);
     // A new session cannot reuse same numeric ids from a different source.
-    let cyclic = ladder(320).replace("#10=IFCLOCALPLACEMENT($,#2)", "#10=IFCLOCALPLACEMENT(#329,#2)");
+    let cyclic = ladder(320).replace(
+        "#10=IFCLOCALPLACEMENT($,#2)",
+        "#10=IFCLOCALPLACEMENT(#329,#2)",
+    );
     let mut decoder = EntityDecoder::new(&cyclic);
     let mut validator = ChainValidator::new(&mut decoder, ChainPolicy::default());
     for _ in 0..2 {
-        assert!(matches!(validator.validate(329), Err(PlacementError::Cyclic { .. })));
+        assert!(matches!(
+            validator.validate(329),
+            Err(PlacementError::Cyclic { .. })
+        ));
     }
     assert_eq!(validator.decoder().refused_records(), 1);
 }
@@ -84,7 +109,10 @@ fn issue_7779_strict_policy_preserves_canonical_typed_refusal_and_default_axis_w
 
 #[test]
 fn issue_7779_linear_source_admission_uses_declared_positions_and_counted_typed_leaves() {
-    let policy = ChainPolicy { linear: true, ..ChainPolicy::default() };
+    let policy = ChainPolicy {
+        linear: true,
+        ..ChainPolicy::default()
+    };
     for (schema, linear) in [
         ("IFC4X1", "IFCLINEARPLACEMENT($,$,$,#23)"),
         ("IFC4X2", "IFCLINEARPLACEMENT($,$,$,$,#23)"),
@@ -97,33 +125,58 @@ fn issue_7779_linear_source_admission_uses_declared_positions_and_counted_typed_
         let placement = decoder.decode_by_id(70).unwrap();
         validate_chain(&placement, &mut decoder, &policy).unwrap();
         assert_eq!(decoder.refused_records(), 0);
-        for malformed in [source.replace(",#23)", ",$)"), source.replace("IFCCARTESIANPOINT((4.,5.,6.))", "IFCDIRECTION((4.,5.,6.))")] {
+        for malformed in [
+            source.replace(",#23)", ",$)"),
+            source.replace("IFCCARTESIANPOINT((4.,5.,6.))", "IFCDIRECTION((4.,5.,6.))"),
+        ] {
             let mut decoder = EntityDecoder::new(&malformed);
             let placement = decoder.decode_by_id(70).unwrap();
-            assert!(validate_chain(&placement, &mut decoder, &policy).is_err(), "{schema}: {malformed}");
-            assert_eq!(decoder.refused_records(), 1, "canonical source refusal: {schema}");
+            assert!(
+                validate_chain(&placement, &mut decoder, &policy).is_err(),
+                "{schema}: {malformed}"
+            );
+            assert_eq!(
+                decoder.refused_records(),
+                1,
+                "canonical source refusal: {schema}"
+            );
         }
     }
     let source = "ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4X2'));ENDSEC;DATA;#21=IFCCARTESIANPOINT((4.,5.,6.));#23=IFCAXIS2PLACEMENT3D(#21,$,$);#70=IFCLINEARPLACEMENT($,$,#23,$,$);ENDSEC;END-ISO-10303-21;";
     let mut decoder = EntityDecoder::new(source);
     let placement = decoder.decode_by_id(70).unwrap();
-    assert!(matches!(validate_chain(&placement, &mut decoder, &policy), Err(PlacementError::Missing { .. })), "Distance slot is not CartesianPosition");
+    assert!(
+        matches!(
+            validate_chain(&placement, &mut decoder, &policy),
+            Err(PlacementError::Missing { .. })
+        ),
+        "Distance slot is not CartesianPosition"
+    );
     assert_eq!(decoder.refused_records(), 1);
 }
 
 #[test]
 fn issue_7779_verified_suffixes_do_not_survive_decoder_replacement() {
     let valid = ladder(3);
-    let cyclic = valid.replace("#10=IFCLOCALPLACEMENT($,#2)", "#10=IFCLOCALPLACEMENT(#12,#2)");
+    let cyclic = valid.replace(
+        "#10=IFCLOCALPLACEMENT($,#2)",
+        "#10=IFCLOCALPLACEMENT(#12,#2)",
+    );
     let mut decoder = EntityDecoder::new(&valid);
     let mut validator = ChainValidator::new(&mut decoder, ChainPolicy::default());
     assert_eq!(validator.validate(12).unwrap().0, 10);
-    assert!(validator.validate(12).unwrap().1.is_empty(), "unchanged source reuses the suffix");
+    assert!(
+        validator.validate(12).unwrap().1.is_empty(),
+        "unchanged source reuses the suffix"
+    );
     // Mutable decoder access permits replacing its owner, even while the
     // validator's policy stays fixed. The same ids now describe a cycle.
     *validator.decoder() = EntityDecoder::new(&cyclic);
     for _ in 0..2 {
-        assert!(matches!(validator.validate(12), Err(PlacementError::Cyclic { .. })));
+        assert!(matches!(
+            validator.validate(12),
+            Err(PlacementError::Cyclic { .. })
+        ));
     }
     assert_eq!(validator.decoder().refused_records(), 1);
 }

@@ -233,7 +233,9 @@ impl SymbolicAccumulator {
         F: FnOnce(&mut SymbolicData),
     {
         // Execution stops are source-owned, not malformed input or truncation.
-        if ifc_lite_geometry::resource::check_current().is_err() { return; }
+        if ifc_lite_geometry::resource::check_current().is_err() {
+            return;
+        }
         if valid {
             if let Some(reason) = self.exceeded_by(payload) {
                 self.record(reason);
@@ -306,30 +308,39 @@ impl SymbolicAccumulator {
 
     pub(super) fn push_fill_with_provenance(&mut self, fill: SymbolicFillArea, item: Option<u32>) {
         let before = self.data.fills.len();
-        let payload = std::mem::size_of::<Option<u32>>() + fill.points.len()
+        let payload = std::mem::size_of::<Option<u32>>()
+            + fill.points.len()
             + fill.holes_offsets.len()
             + fill.ifc_type.len()
             + fill.representation.len();
         self.try_push(payload, all_finite(&fill.points), |data| {
             data.fills.push(fill)
         });
-        if self.data.fills.len() > before { self.fill_items.push(item); }
+        if self.data.fills.len() > before {
+            self.fill_items.push(item);
+        }
     }
 
-    pub(super) fn into_provenance(self) -> Result<super::SymbolicDataWithProvenance, ifc_lite_core::resource_stop::ProgramStop> {
+    pub(super) fn into_provenance(
+        self,
+    ) -> Result<super::SymbolicDataWithProvenance, ifc_lite_core::resource_stop::ProgramStop> {
         let (data, items) = self.finish()?;
         Ok(super::SymbolicDataWithProvenance::new(data, items))
     }
 
     /// Finish, stamping the diagnostics field iff an append was ever refused.
     #[cfg(test)]
-    pub(super) fn into_data(self) -> Result<SymbolicData, ifc_lite_core::resource_stop::ProgramStop> {
+    pub(super) fn into_data(
+        self,
+    ) -> Result<SymbolicData, ifc_lite_core::resource_stop::ProgramStop> {
         self.finish().map(|(data, _)| data)
     }
 
     // Publish data and provenance together. A terminal source owns the error;
     // neither an earlier prefix nor fallback-origin geometry may escape (#7914).
-    fn finish(mut self) -> Result<(SymbolicData, Vec<Option<u32>>), ifc_lite_core::resource_stop::ProgramStop> {
+    fn finish(
+        mut self,
+    ) -> Result<(SymbolicData, Vec<Option<u32>>), ifc_lite_core::resource_stop::ProgramStop> {
         ifc_lite_geometry::resource::check_current()?;
         if let Some(reason) = self.reason {
             let emitted = self.data.len();

@@ -17,14 +17,23 @@ trait SymbolicOutcome {
     fn into_outcome(self) -> Result<SymbolicData, ProgramStop>;
 }
 impl SymbolicOutcome for SymbolicData {
-    fn into_outcome(self) -> Result<SymbolicData, ProgramStop> { Ok(self) }
+    fn into_outcome(self) -> Result<SymbolicData, ProgramStop> {
+        Ok(self)
+    }
 }
 impl SymbolicOutcome for Result<SymbolicData, ProgramStop> {
-    fn into_outcome(self) -> Result<SymbolicData, ProgramStop> { self }
+    fn into_outcome(self) -> Result<SymbolicData, ProgramStop> {
+        self
+    }
 }
 
 #[derive(Clone, Copy)]
-enum Authority { None, Account, Source, Both }
+enum Authority {
+    None,
+    Account,
+    Source,
+    Both,
+}
 impl Authority {
     fn parse(value: &str) -> ProbeResult<Self> {
         match value {
@@ -42,9 +51,13 @@ fn with_authority<T>(
     source: &[u8],
     operation: impl FnOnce() -> ProbeResult<T>,
 ) -> ProbeResult<T> {
-    if matches!(mode, Authority::None) { return operation(); }
+    if matches!(mode, Authority::None) {
+        return operation();
+    }
     let account = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
-    if matches!(mode, Authority::Account) { return account.scope(operation); }
+    if matches!(mode, Authority::Account) {
+        return account.scope(operation);
+    }
     // A live validated lexical source handle, over the same input bytes.
     // This measures ambient terminal polling, not source-borrow/cache transport.
     let decoder = EntityDecoder::new(source);
@@ -52,8 +65,11 @@ fn with_authority<T>(
     let work = lease.begin_synchronous_work(decoder.execution_identity())?;
     let scope = work.source_borrow_scope();
     with_source_stop(scope.resource_stop_handle(), || {
-        if matches!(mode, Authority::Both) { account.source_scope(operation) }
-        else { operation() }
+        if matches!(mode, Authority::Both) {
+            account.source_scope(operation)
+        } else {
+            operation()
+        }
     })
 }
 
@@ -68,7 +84,9 @@ fn timed_extract(source: &[u8]) -> ProbeResult<(SymbolicData, u128)> {
 
 fn main() -> ProbeResult<()> {
     let mut args = std::env::args().skip(1);
-    let path = args.next().ok_or("usage: symbolic_probe model.ifc [iterations] [authority]")?;
+    let path = args
+        .next()
+        .ok_or("usage: symbolic_probe model.ifc [iterations] [authority]")?;
     let iterations: usize = args.next().unwrap_or_else(|| "5".to_owned()).parse()?;
     let authority_name = args.next().unwrap_or_else(|| "none".to_owned());
     let authority = Authority::parse(&authority_name)?;
@@ -82,28 +100,35 @@ fn main() -> ProbeResult<()> {
     let source = std::fs::read(path)?;
     for iteration in 0..iterations {
         let (data, elapsed_ns) = with_authority(authority, &source, || {
-            assert_eq!(ifc_lite_geometry::resource::is_active(),
-                matches!(authority, Authority::Account | Authority::Both));
+            assert_eq!(
+                ifc_lite_geometry::resource::is_active(),
+                matches!(authority, Authority::Account | Authority::Both)
+            );
             timed_extract(&source)
         })?;
         let payload = serde_json::to_vec(&data)?;
         let hash = payload.iter().fold(0xcbf29ce484222325_u64, |hash, byte| {
             (hash ^ u64::from(*byte)).wrapping_mul(0x100000001b3)
         });
-        if let Some(path) = &capture { std::fs::write(path, &payload)?; }
-        println!("{}", serde_json::json!({
-            "iteration": iteration,
-            "authority": authority_name,
-            "elapsedNs": elapsed_ns,
-            "inputBytes": source.len(),
-            "polylineCount": data.polylines.len(),
-            "circleCount": data.circles.len(),
-            "fillCount": data.fills.len(),
-            "textCount": data.texts.len(),
-            "gridCount": data.grid_axes.len(),
-            "symbolicJsonBytes": payload.len(),
-            "symbolicJsonFnv1a64": format!("{hash:016x}"),
-        }));
+        if let Some(path) = &capture {
+            std::fs::write(path, &payload)?;
+        }
+        println!(
+            "{}",
+            serde_json::json!({
+                "iteration": iteration,
+                "authority": authority_name,
+                "elapsedNs": elapsed_ns,
+                "inputBytes": source.len(),
+                "polylineCount": data.polylines.len(),
+                "circleCount": data.circles.len(),
+                "fillCount": data.fills.len(),
+                "textCount": data.texts.len(),
+                "gridCount": data.grid_axes.len(),
+                "symbolicJsonBytes": payload.len(),
+                "symbolicJsonFnv1a64": format!("{hash:016x}"),
+            })
+        );
     }
     Ok(())
 }

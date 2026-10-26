@@ -61,7 +61,9 @@ fn terminal_scope() -> Option<TerminalScope> {
 /// Keep terminal stops visible for a complete consumer operation, including
 /// compatibility callers without an execution account. Nested calls share the
 /// existing terminal domain; a fresh domain is restored on return or unwind.
-pub fn with_terminal_scope<T>(operation: impl FnOnce() -> Result<T, ProgramStop>) -> Result<T, ProgramStop> {
+pub fn with_terminal_scope<T>(
+    operation: impl FnOnce() -> Result<T, ProgramStop>,
+) -> Result<T, ProgramStop> {
     let _terminal = terminal_scope();
     check_current()?;
     let result = operation();
@@ -176,14 +178,16 @@ pub fn allocation_failure() -> ProgramStop {
 }
 
 #[cfg(test)]
-mod tests;
-#[cfg(test)]
 mod boolean_tests;
+#[cfg(test)]
+mod tests;
 
 /// Translate the typed legacy callback error at the first audited boundary.
 /// Source faults (including identical diagnostic text) retain ordinary recovery.
 pub(crate) fn observe<T>(result: crate::Result<T>) -> crate::Result<T> {
-    if let Err(crate::Error::ProgramStopped(error)) = &result { stop(*error); }
+    if let Err(crate::Error::ProgramStopped(error)) = &result {
+        stop(*error);
+    }
     check_current()?;
     result
 }

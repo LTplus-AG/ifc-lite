@@ -129,20 +129,36 @@ impl ProfileProcessor {
             // The source description rejects malformed circle bases; keep the
             // mesh sampler's prior recovery for those files (notably #5566).
             let decoded = match decode_trimmed_primitive(
-                trimmed, basis, decoder, TrimRecovery::BasisDefaultsStrictPoints,
+                trimmed,
+                basis,
+                decoder,
+                TrimRecovery::BasisDefaultsStrictPoints,
             ) {
                 Ok(decoded) => decoded,
                 Err(_) => return self.process_trimmed_ellipse_3d(trimmed, basis, decoder),
             };
             let Some(TrimmedPrimitive::Circle {
-                center, normal: _, x_axis, y_axis, radius, start_angle, sweep_angle,
+                center,
+                normal: _,
+                x_axis,
+                y_axis,
+                radius,
+                start_angle,
+                sweep_angle,
             }) = decoded
             else {
                 return Err(Error::geometry("Expected trimmed circle".to_string()));
             };
             return Ok(self.sample_conic_arc_3d(
-                (Point3::from(center), Vector3::from(x_axis), Vector3::from(y_axis)),
-                (radius, radius), start_angle, start_angle + sweep_angle, decoder,
+                (
+                    Point3::from(center),
+                    Vector3::from(x_axis),
+                    Vector3::from(y_axis),
+                ),
+                (radius, radius),
+                start_angle,
+                start_angle + sweep_angle,
+                decoder,
             ));
         }
         self.process_trimmed_ellipse_3d(trimmed, basis, decoder)
@@ -239,7 +255,9 @@ impl ProfileProcessor {
         angle_scale: f64,
         decoder: &mut EntityDecoder,
     ) -> Result<Option<f64>> {
-        let Some(list) = attr.and_then(|a| a.as_list()) else { return Ok(None) };
+        let Some(list) = attr.and_then(|a| a.as_list()) else {
+            return Ok(None);
+        };
         let mut param: Option<f64> = None;
         let mut point: Option<Point3<f64>> = None;
 
@@ -354,13 +372,22 @@ impl ProfileProcessor {
         let dimension = match points_list.ifc_type.as_str() {
             "IFCCARTESIANPOINTLIST2D" => 2,
             "IFCCARTESIANPOINTLIST3D" => 3,
-            _ => return Err(Error::geometry("Expected CartesianPointList2D or CartesianPointList3D")),
+            _ => {
+                return Err(Error::geometry(
+                    "Expected CartesianPointList2D or CartesianPointList3D",
+                ))
+            }
         };
-        let all_points: Vec<Point3<f64>> = coord_list.iter().map(|coord| {
-            let row = coord.as_list().filter(|row| row.len() == dimension)
-                .ok_or_else(|| Error::geometry("Invalid CartesianPointList row dimensions"))?;
-            crate::curve_source::point_values(row).map(Point3::from)
-        }).collect::<Result<_>>()?;
+        let all_points: Vec<Point3<f64>> = coord_list
+            .iter()
+            .map(|coord| {
+                let row = coord
+                    .as_list()
+                    .filter(|row| row.len() == dimension)
+                    .ok_or_else(|| Error::geometry("Invalid CartesianPointList row dimensions"))?;
+                crate::curve_source::point_values(row).map(Point3::from)
+            })
+            .collect::<Result<_>>()?;
         let segments_attr = curve.get(1);
         if segments_attr.is_none() || segments_attr.map(|a| a.is_null()).unwrap_or(true) {
             return Ok(all_points);
@@ -398,11 +425,12 @@ impl ProfileProcessor {
                     // mid-deviation, same heuristic as the 2D path.
                     let chord = end - start;
                     let chord_len = chord.norm();
-                    let mid_offset = mid - Point3::new(
-                        0.5 * (start.x + end.x),
-                        0.5 * (start.y + end.y),
-                        0.5 * (start.z + end.z),
-                    );
+                    let mid_offset = mid
+                        - Point3::new(
+                            0.5 * (start.x + end.x),
+                            0.5 * (start.y + end.y),
+                            0.5 * (start.z + end.z),
+                        );
                     let mid_dev = mid_offset.norm();
                     // Sweep angle phi = 4*atan(2s/c) (s = sagitta, c = chord);
                     // the old 2*acos(s/c) was inverted. Same fix as the 2D path.

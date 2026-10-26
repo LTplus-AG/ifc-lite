@@ -217,7 +217,8 @@ fn issue_7914_terminal_consumer_scope_reports_stops_and_restores_after_unwind() 
             stop(ProgramStop::Cancelled);
             panic!("test terminal scope unwind");
         });
-    }).is_err());
+    })
+    .is_err());
     assert_eq!(with_terminal_scope(|| Ok(42)), Ok(42));
 }
 
@@ -238,24 +239,38 @@ fn explicit_typed_stop_in_compatibility_scope_is_terminal_without_counter_alloca
 #[test]
 fn observe_surfaces_a_sticky_stop_behind_an_ordinary_error_and_passes_others() {
     let plain: crate::Result<u8> = Err(crate::Error::geometry("unsupported"));
-    assert!(matches!(observe(plain), Err(crate::Error::GeometryError(_))));
+    assert!(matches!(
+        observe(plain),
+        Err(crate::Error::GeometryError(_))
+    ));
     assert!(matches!(observe(Ok(3u8)), Ok(3)));
     let account = bounded(ResourceLimits {
         work: Some(0),
         ..ResourceLimits::default()
     });
     account.scope(|| {
-        assert!(charge(Cost { work: 1, ..Cost::default() }).is_err());
+        assert!(charge(Cost {
+            work: 1,
+            ..Cost::default()
+        })
+        .is_err());
         let flattened: crate::Result<u8> = Err(crate::Error::geometry("refused"));
-        assert!(matches!(observe(flattened), Err(crate::Error::ProgramStopped(_))));
+        assert!(matches!(
+            observe(flattened),
+            Err(crate::Error::ProgramStopped(_))
+        ));
     });
 }
 
 /// A source-owned stop domain on this thread, as a product work epoch has.
-fn with_stoppable_source<T>(run: impl FnOnce(&ifc_lite_core::execution_owner::SourceStopHandle) -> T) -> T {
+fn with_stoppable_source<T>(
+    run: impl FnOnce(&ifc_lite_core::execution_owner::SourceStopHandle) -> T,
+) -> T {
     let decoder = ifc_lite_core::EntityDecoder::new("");
     let mut lease = decoder.try_execution_lease().unwrap();
-    let work = lease.begin_synchronous_work(decoder.execution_identity()).unwrap();
+    let work = lease
+        .begin_synchronous_work(decoder.execution_identity())
+        .unwrap();
     let scope = work.source_borrow_scope_with_resources(None);
     let handle = scope.resource_stop_handle();
     with_source_stop(handle.clone(), || run(&handle))
@@ -271,30 +286,55 @@ fn observed() -> (bool, bool) {
 fn detached_wait_hides_a_stopped_product_from_a_job_it_runs() {
     for detach in [false, true] {
         let seen = std::sync::Mutex::new(None);
-        let pool = rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap();
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(1)
+            .build()
+            .unwrap();
         pool.install(|| {
             let account = bounded(ResourceLimits::default());
-            account.scope(|| with_stoppable_source(|_| {
-                stop(ProgramStop::Cancelled);
-                rayon::join(
-                    || {
-                        let wait = || assert!(matches!(rayon::yield_local(), Some(rayon::Yield::Executed)));
-                        if detach { detached(wait) } else { wait() }
-                        // The waiting product keeps its own stop and account.
-                        assert_eq!(check_current(), Err(ProgramStop::Cancelled));
-                        assert!(is_active());
-                    },
-                    || *seen.lock().unwrap() = Some(observed()),
-                );
-            }));
+            account.scope(|| {
+                with_stoppable_source(|_| {
+                    stop(ProgramStop::Cancelled);
+                    rayon::join(
+                        || {
+                            let wait = || {
+                                assert!(matches!(
+                                    rayon::yield_local(),
+                                    Some(rayon::Yield::Executed)
+                                ))
+                            };
+                            if detach {
+                                detached(wait)
+                            } else {
+                                wait()
+                            }
+                            // The waiting product keeps its own stop and account.
+                            assert_eq!(check_current(), Err(ProgramStop::Cancelled));
+                            assert!(is_active());
+                        },
+                        || *seen.lock().unwrap() = Some(observed()),
+                    );
+                })
+            });
             assert_eq!(account.check(), Err(ProgramStop::Cancelled));
         });
-        let seen = seen.into_inner().unwrap().expect("the queued job ran during the wait");
+        let seen = seen
+            .into_inner()
+            .unwrap()
+            .expect("the queued job ran during the wait");
         if detach {
-            assert_eq!(seen, (false, false), "the unrelated job starts from a pristine worker's state");
+            assert_eq!(
+                seen,
+                (false, false),
+                "the unrelated job starts from a pristine worker's state"
+            );
         } else {
             // Anti-vacuity: without detaching, the same schedule leaks.
-            assert_eq!(seen, (true, true), "control: an undetached wait exposes the product's state");
+            assert_eq!(
+                seen,
+                (true, true),
+                "control: an undetached wait exposes the product's state"
+            );
         }
     }
 }
@@ -302,23 +342,44 @@ fn detached_wait_hides_a_stopped_product_from_a_job_it_runs() {
 #[test]
 fn detached_wait_keeps_a_queued_jobs_stop_out_of_the_waiting_product() {
     for detach in [false, true] {
-        let pool = rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap();
-        let waiting = pool.install(|| with_stoppable_source(|handle| {
-            rayon::join(
-                || {
-                    let wait = || assert!(matches!(rayon::yield_local(), Some(rayon::Yield::Executed)));
-                    if detach { detached(wait) } else { wait() }
-                },
-                // An unrelated element stopped itself and reported the stop
-                // to its caller's domain on the way out.
-                || { stop(ProgramStop::Cancelled); },
-            );
-            (check_current(), handle.check())
-        }));
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(1)
+            .build()
+            .unwrap();
+        let waiting = pool.install(|| {
+            with_stoppable_source(|handle| {
+                rayon::join(
+                    || {
+                        let wait = || {
+                            assert!(matches!(rayon::yield_local(), Some(rayon::Yield::Executed)))
+                        };
+                        if detach {
+                            detached(wait)
+                        } else {
+                            wait()
+                        }
+                    },
+                    // An unrelated element stopped itself and reported the stop
+                    // to its caller's domain on the way out.
+                    || {
+                        stop(ProgramStop::Cancelled);
+                    },
+                );
+                (check_current(), handle.check())
+            })
+        });
         if detach {
-            assert_eq!(waiting, (Ok(()), Ok(())), "the waiting product was not stopped by another element");
+            assert_eq!(
+                waiting,
+                (Ok(()), Ok(())),
+                "the waiting product was not stopped by another element"
+            );
         } else {
-            assert_eq!(waiting.1, Err(ProgramStop::Cancelled), "control: an undetached wait leaks the stop");
+            assert_eq!(
+                waiting.1,
+                Err(ProgramStop::Cancelled),
+                "control: an undetached wait leaks the stop"
+            );
         }
     }
 }
@@ -326,14 +387,18 @@ fn detached_wait_keeps_a_queued_jobs_stop_out_of_the_waiting_product() {
 #[test]
 fn detached_restores_the_callers_resource_state_on_unwind() {
     let account = bounded(ResourceLimits::default());
-    account.scope(|| with_stoppable_source(|_| {
-        stop(ProgramStop::Cancelled);
-        let unwound = std::panic::catch_unwind(|| detached(|| {
-            assert_eq!(observed(), (false, false));
-            panic!("detached operation unwinds");
-        }));
-        assert!(unwound.is_err());
-        assert_eq!(check_current(), Err(ProgramStop::Cancelled));
-        assert!(is_active());
-    }));
+    account.scope(|| {
+        with_stoppable_source(|_| {
+            stop(ProgramStop::Cancelled);
+            let unwound = std::panic::catch_unwind(|| {
+                detached(|| {
+                    assert_eq!(observed(), (false, false));
+                    panic!("detached operation unwinds");
+                })
+            });
+            assert!(unwound.is_err());
+            assert_eq!(check_current(), Err(ProgramStop::Cancelled));
+            assert!(is_active());
+        })
+    });
 }

@@ -11,6 +11,8 @@ categories = ["graphics", "parsing"]
 readme = "../../README.md"
 
 [features]
+# Off-by-default retained product controller (#7955).
+retained-runtime = ["wasm_source_capture"]
 # Opt-in #6516 route-work diagnostic; absent from shipping builds.
 opening-perf-trace = []
 # CSG runs on the in-tree pure-Rust exact mesh-arrangement kernel

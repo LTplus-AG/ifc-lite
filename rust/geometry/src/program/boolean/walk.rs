@@ -14,7 +14,15 @@ use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType};
 impl BooleanMachine {
     pub(super) fn walk(&mut self, mut walk: Walk, recorder: &BooleanClippingProcessor,
         decoder: &mut EntityDecoder) -> Result<()> {
+        if self.retained.is_some() {
+            crate::resource::charge(crate::resource::Cost { work: 1,
+                live_bytes: std::mem::size_of::<u32>() as u64, ..Default::default() })?.retain();
+            walk.seen.try_reserve(1).map_err(|_| crate::resource::allocation_failure())?;
+        }
         if !walk.seen.insert(walk.current.id) {
+            if let Some(selection) = self.retained_selection() {
+                return Err(selection.refuse_bound(walk.seen.len() as u64 + 1).into());
+            }
             // Cyclic FirstOperand chain (malformed input): fail with a reason
             // that names the actual problem.
             return Err(Error::geometry(format!("cyclic boolean FirstOperand chain at #{}", walk.current.id)));
@@ -27,7 +35,7 @@ impl BooleanMachine {
             self.frames.push(Frame::Operand { entity, operator: BoolOp::Unknown, depth });
             return Ok(());
         }
-        if boolean_operator(&walk.current) == Ok(BoolOp::Difference) {
+        if self.retained.is_none() && boolean_operator(&walk.current) == Ok(BoolOp::Difference) {
             // The batched attempt meshes the base provisionally and can be
             // retried at every spine level it defers on. Those are real node
             // entries and remain charged: refunding them would let nested
@@ -46,13 +54,18 @@ impl BooleanMachine {
     }
 
     pub(super) fn next_first(&mut self, mut walk: Walk, decoder: &mut EntityDecoder) -> Result<()> {
-        let attr = walk
-            .current
-            .get(slot::IfcBooleanResult::FIRST_OPERAND.index())
-            .ok_or_else(|| Error::geometry("BooleanResult missing FirstOperand".to_string()))?;
-        let first = decoder
-            .resolve_ref(attr)?
-            .ok_or_else(|| Error::geometry("Failed to resolve FirstOperand".to_string()))?;
+        let first = if self.retained.is_some() {
+            self.retained_first_operand(&walk.current, decoder)?
+        } else {
+            let attr = walk
+                .current
+                .get(slot::IfcBooleanResult::FIRST_OPERAND.index())
+                .ok_or_else(|| Error::geometry("BooleanResult missing FirstOperand".to_string()))?;
+            decoder
+                .resolve_ref(attr)?
+                .ok_or_else(|| Error::geometry("Failed to resolve FirstOperand".to_string()))?
+        };
+        if self.retained.is_some() { crate::resource::reserve_headers(&mut walk.spine, 1)?.retain(); }
         walk.spine.push(walk.current);
         walk.current = first;
         self.frames.push(Frame::Walk(walk));

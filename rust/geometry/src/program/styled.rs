@@ -183,5 +183,6 @@ fn styled(result: Result<ProductOutput>) -> Result<SubMeshCollection> {
     match result? {
         ProductOutput::Styled(meshes) => Ok(meshes),
         ProductOutput::Parts(_) => Err(Error::geometry("styled entry completed as frame parts")),
+        ProductOutput::Retained(..) => Err(Error::geometry("retained presentation unsupported")),
     }
 }

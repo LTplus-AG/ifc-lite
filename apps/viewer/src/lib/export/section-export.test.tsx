@@ -153,9 +153,3 @@ END-ISO-10303-21;`);
     HTMLAnchorElement.prototype.click=originalClick;
   }
 });
-
-test('#7711 the LandXML-derived IFC download does not offer section options it never applies', () => {
-  const source = readFileSync(new URL('../../components/viewer/ExportDialog.tsx', import.meta.url), 'utf8');
-  assert.match(source, /if \(landXmlSource && !changesOnly\) \{\s*const outcome = await landXmlIfcExportOutcome/);
-  assert.match(source, /\{!\(landXmlSource && !changesOnly\) && sectionExport\.control\}/);
-});

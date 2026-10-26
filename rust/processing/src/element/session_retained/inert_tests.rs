@@ -54,6 +54,7 @@ struct InertPeer {
     domain: Domain,
     suspend: bool,
     fault: RuntimeFaultKind,
+    invocations: usize,
 }
 impl InertPeer {
     fn new(suspend: bool) -> Self {
@@ -61,6 +62,7 @@ impl InertPeer {
             domain: Domain(Rc::new(Cell::new(true))),
             suspend,
             fault: RuntimeFaultKind::Transport,
+            invocations: 0,
         }
     }
 }
@@ -79,6 +81,7 @@ impl AsyncRetainedExecutor for InertPeer {
         call: Invocation<'_, InertReceipt>,
         _: NumericalLimits,
     ) -> Result<InertReceipt, RuntimeFault> {
+        self.invocations += 1;
         assert!(
             matches!(call, Invocation::Construction(_)),
             "real extrusion admission"
@@ -305,4 +308,48 @@ fn completed_contract_fault_keeps_worker_live_but_midflight_drop_retires_it() {
         // domain whose contract fault already settled.
         assert_eq!(domain.incarnation().is_some(), !suspend, "after the execution drops");
     }
+}
+
+// #7955: a final affine has no mesh publication operation in M1. Even an
+// earlier construction in this product must not reach the numerical peer.
+#[test]
+fn final_affine_refuses_before_invocation_and_preserves_the_existing_worker() {
+    let text = include_str!("../../../../geometry/tests/fixtures/issue_1985_scaled_kinds.ifc");
+    let source = ifc_lite_core::SourceBundle::new(text.as_bytes().to_vec());
+    let mut decoder = source.decoder();
+    let router = GeometryRouter::with_units(text, &mut decoder);
+    let context = ProductionModel::from_source(source.clone()).snapshot(Default::default());
+    let entity = decoder.decode_by_id(74).unwrap();
+    let metadata = metadata(74);
+    let job = job(&entity, &metadata);
+    let mut peer = InertPeer::new(false);
+    let domain = peer.domain();
+    let result = RuntimeProductExecution::<InertReceipt>::begin(
+        &job,
+        &context,
+        &options(),
+        &mut decoder,
+        &router,
+    );
+    let error = match result {
+        Err(error) => error,
+        Ok(mut execution) => {
+            let issued = execution
+                .issue_next(&mut decoder, &router, &peer)
+                .unwrap()
+                .unwrap();
+            let mut future = Box::pin(issued.execute_async(&mut peer, limits()));
+            let _ = future
+                .as_mut()
+                .poll(&mut Context::from_waker(Waker::noop()));
+            panic!("affine final value reached dispatch");
+        }
+    };
+    assert_eq!(error.refusal().0.code(), "incomplete");
+    assert_eq!(peer.invocations, 0);
+    assert!(peer.domain().same_domain(&domain));
+    assert!(
+        domain.incarnation().is_some(),
+        "no retirement or restart needed"
+    );
 }

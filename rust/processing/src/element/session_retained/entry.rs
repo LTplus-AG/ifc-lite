@@ -9,7 +9,9 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
         router: &GeometryRouter,
     ) -> Result<Self, RetainedExecutionError> {
         if context.source().is_none() {
-            return Err(RetainedExecutionError::Source(RetainedContextError::Missing));
+            return Err(RetainedExecutionError::Source(
+                RetainedContextError::Missing,
+            ));
         }
         context
             .validate_decoder(decoder)
@@ -38,7 +40,9 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
                         || actual.ifc_type != job.entity.ifc_type
                         || !Arc::ptr_eq(&actual.attributes, &job.entity.attributes)
                     {
-                        return Err(RetainedExecutionError::Source(RetainedContextError::Mismatched));
+                        return Err(RetainedExecutionError::Source(
+                            RetainedContextError::Mismatched,
+                        ));
                     }
                     let (planned, terminal) = scopes
                         .with_scope(|| plan_in_scope(job, &context.borrowed(), options, d, r));
@@ -58,7 +62,8 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
                 return Err(RetainedExecutionError::Stopped(stop));
             }
             let (source_epoch, source_revision) = context.lifecycle().epoch_revision();
-            let traversal = resources.with_scope(|| RetainedTraversal::new(source_epoch, source_revision));
+            let traversal =
+                resources.with_scope(|| RetainedTraversal::new(source_epoch, source_revision));
             let mut execution = Self {
                 state,
                 context,
@@ -80,7 +85,8 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
                 runtime_domain: None,
             };
             execution.init_type_maps()?;
-            execution.start_next_program(decoder,router)?;
+            execution.start_next_program(decoder, router)?;
+            execution.refuse_final_affines(decoder, router)?;
             Ok(execution)
         })
     }

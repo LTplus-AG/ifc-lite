@@ -3,7 +3,7 @@
 //! shapes, and a run-and-report helper. Synthetic, like every fixture here.
 
 use super::add_types::*;
-use super::attrs::attribute_index;
+use super::attrs::{attribute_index, unset_required};
 use super::execute;
 use super::index::FileIndex;
 use super::types::*;
@@ -39,6 +39,10 @@ pub(super) fn add(obj: NewObject) -> (ObjectRef, Disposition) {
     (ObjectRef::Guid(obj.global_id.encode()), Disposition::Add(Box::new(obj)))
 }
 
+pub(super) fn add_type(t: NewType) -> (ObjectRef, Disposition) {
+    (ObjectRef::Guid(t.global_id.unwrap().encode()), Disposition::AddType(Box::new(t)))
+}
+
 pub(super) fn run(source: &[u8], dispositions: Vec<(ObjectRef, Disposition)>) -> (Vec<u8>, WriteReport) {
     run_with(source, dispositions, PlanContext::attributed())
 }
@@ -61,6 +65,17 @@ pub(super) fn attr(out: &[u8], schema: &str, id: u32, name: &str) -> String {
 pub(super) fn assert_clean(report: &WriteReport, what: &str) {
     assert!(report.refusals.is_empty(), "{what}: refusals {:?}", report.refusals);
     assert!(report.findings.is_empty(), "{what}: findings {:?}", report.findings);
+}
+
+/// Clean, schema-valid, and no record leaves a required attribute unset.
+pub(super) fn assert_valid(out: &[u8], report: &WriteReport, schema: &str) {
+    assert_clean(report, schema);
+    assert!(super::validate::validate(out, schema).is_empty(), "{schema}: {:?}", super::validate::validate(out, schema));
+    let index = FileIndex::scan(out, &Default::default());
+    for (id, _, _, _) in index.records() {
+        let line = index.raw_line(id).unwrap();
+        assert!(unset_required(schema, &line).is_empty(), "{schema}: #{id} leaves {:?} unset", unset_required(schema, &line));
+    }
 }
 
 /// The express id the output gave the object with GlobalId `g`.

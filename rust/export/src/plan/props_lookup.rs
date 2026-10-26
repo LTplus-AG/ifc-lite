@@ -18,6 +18,17 @@ pub(super) fn occurrence_rels(index: &FileIndex, schema: &str, object_id: u32) -
         .collect()
 }
 
+/// The property definition `rel` (an `IfcRelDefinesByProperties`) attaches.
+pub(super) fn occurrence_set_of(index: &FileIndex, schema: &str, rel: u32) -> Option<u32> {
+    scalar_attr(index, schema, rel, "IFCRELDEFINESBYPROPERTIES", "RelatingPropertyDefinition")
+}
+
+/// The sets a type lists in `HasPropertySets`.
+pub(super) fn type_sets(index: &FileIndex, schema: &str, type_id: u32) -> Vec<u32> {
+    let entity = index.type_of(type_id).unwrap_or_default();
+    list_attr(index, schema, type_id, &entity, "HasPropertySets").unwrap_or_default()
+}
+
 /// The last `IfcRelDefinesByType` in file order relating `object_id`, with
 /// its `RelatingType`.
 pub(super) fn type_rel(index: &FileIndex, schema: &str, object_id: u32) -> Option<(u32, u32)> {
@@ -112,30 +123,57 @@ pub(super) fn leaf_is_shared(index: &FileIndex, container_type: &str, member_idx
     index.referrers(leaf).iter().any(|&(r, idx)| r != owner && idx == member_idx && index.type_of(r).as_deref() == Some(container_type))
 }
 
-/// The first set in `pset_ids` (in order) of the right kind named
-/// `pset_name`: `(set, member-list attribute index, its members)`.
+/// The set in `pset_ids` that a write lands on: `(set, member-list attribute
+/// index, its members)`. With an exact `target`, the set that lists it,
+/// preferring one named `pset_name` over an earlier one with another name
+/// (two sets may list a shared value record). Without one, the first set
+/// named `pset_name`.
 pub(super) fn find_set<'a>(
     index: &FileIndex,
     schema: &str,
     pset_ids: impl Iterator<Item = &'a u32>,
     kind: PsetKind,
     pset_name: &str,
+    target: Option<u32>,
 ) -> Option<(u32, usize, Vec<Option<u32>>)> {
-    let (container_type, member_attr) = container_names(kind);
-    let idx = attribute_index(schema, container_type, member_attr)?;
-    pset_ids.copied().find_map(|pset_id| {
-        if index.type_of(pset_id).as_deref() != Some(container_type)
-            || decoded_name(index, schema, pset_id, container_type).as_deref() != Some(pset_name)
-        {
-            return None;
+    let (container_type, _) = container_names(kind);
+    let named = |pset_id: u32| decoded_name(index, schema, pset_id, container_type).as_deref() == Some(pset_name);
+    let listing = |pset_id: u32| -> Option<(usize, Vec<Option<u32>>)> {
+        let (idx, members) = set_members(index, schema, pset_id, kind)?;
+        target.is_none_or(|t| members.contains(&Some(t))).then_some((idx, members))
+    };
+    let mut fallback = None;
+    for pset_id in pset_ids.copied() {
+        // Without a target the name is the whole question: check it first.
+        if target.is_none() && !named(pset_id) {
+            continue;
         }
-        let members = index.attrs(pset_id)?.into_iter().nth(idx)?.list?;
-        Some((pset_id, idx, members))
-    })
+        let Some((idx, members)) = listing(pset_id) else { continue };
+        if target.is_none() || named(pset_id) {
+            return Some((pset_id, idx, members));
+        }
+        fallback.get_or_insert((pset_id, idx, members));
+    }
+    fallback
 }
 
-/// The member of `members` named `prop_name`, if any.
-pub(super) fn find_member(index: &FileIndex, schema: &str, members: &[Option<u32>], prop_name: &str) -> Option<u32> {
+/// `(member-list attribute index, members)` of `set`, when it is a set of
+/// `kind`'s container type.
+pub(super) fn set_members(index: &FileIndex, schema: &str, set: u32, kind: PsetKind) -> Option<(usize, Vec<Option<u32>>)> {
+    let (container_type, member_attr) = container_names(kind);
+    if index.type_of(set).as_deref() != Some(container_type) {
+        return None;
+    }
+    let idx = attribute_index(schema, container_type, member_attr)?;
+    Some((idx, index.attrs(set)?.into_iter().nth(idx)?.list?))
+}
+
+/// The member of `members` a write lands on: its exact `target` when it has
+/// one and the set lists it, else the first named `prop_name`.
+pub(super) fn find_member(index: &FileIndex, schema: &str, members: &[Option<u32>], prop_name: &str, target: Option<u32>) -> Option<u32> {
+    if let Some(target) = target {
+        return members.contains(&Some(target)).then_some(target);
+    }
     members.iter().flatten().copied().find(|&member| {
         let member_type = index.type_of(member).unwrap_or_default();
         decoded_name(index, schema, member, &member_type).as_deref() == Some(prop_name)

@@ -29,7 +29,7 @@ use super::index::FileIndex;
 use super::placement::fmt;
 use super::props_synth::{defines_by_properties_record, ref_or_unset};
 use super::tessellation::{find_body_context, Emit};
-use super::types::{ObjectRef, PlanContext, Refusal};
+use super::types::{ObjectRef, PlanContext, Refusal, ValidationFinding};
 
 use assoc::{associate, Shared, SharedKey};
 use mapped::{build_map, mapped_shape, MapPlan, MapRef, TypeMaps};
@@ -60,6 +60,12 @@ pub(crate) struct AddState<'a> {
     /// The `Body` maps of each type an occurrence named or this plan added,
     /// once looked up.
     type_maps: RefCell<HashMap<u32, TypeMaps>>,
+    /// Things a built Add did not do that its caller may expect, for the
+    /// report's findings. Dropped with the Adds when their relationships fail.
+    notes: Vec<ValidationFinding>,
+    /// Types an occurrence of this plan is typed by, which settles a note
+    /// about a type with nothing tying it to the file.
+    typed: HashSet<u32>,
 }
 
 impl<'a> AddState<'a> {
@@ -90,6 +96,8 @@ impl<'a> AddState<'a> {
             records: Vec::new(),
             shared: HashMap::new(),
             type_maps: RefCell::new(HashMap::new()),
+            notes: Vec::new(),
+            typed: HashSet::new(),
         }
     }
 
@@ -103,6 +111,7 @@ impl<'a> AddState<'a> {
         let built = self.build(&mut emit, obj, &checked, owner_history, &mut requests)?;
         let new_context = self.owned_context(built.new_context)?;
 
+        self.typed.extend(checked.existing_type);
         self.commit(owner_history, out, built.shared);
         for req in requests {
             self.rels.relate(self.schema, req);
@@ -131,6 +140,7 @@ impl<'a> AddState<'a> {
         edits_by_id: &mut HashMap<u32, BTreeMap<usize, String>>,
         appended: &mut Vec<(u32, String)>,
         refusals: &mut Vec<Refusal>,
+        findings: &mut Vec<ValidationFinding>,
     ) -> usize {
         let mut built = Vec::new();
         for &(key, item) in adds {
@@ -149,9 +159,13 @@ impl<'a> AddState<'a> {
                 }
             }
         }
+        let typed = std::mem::take(&mut self.typed);
+        let mut notes = std::mem::take(&mut self.notes);
+        notes.retain(|n| n.express_id.is_none_or(|id| !typed.contains(&id)));
         match self.finish(ids, edits_by_id) {
             Ok(records) => {
                 appended.extend(records);
+                findings.append(&mut notes);
                 built.len()
             }
             Err(reason) => {

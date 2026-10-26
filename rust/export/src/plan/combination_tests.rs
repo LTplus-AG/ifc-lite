@@ -32,6 +32,7 @@ fn prop(pset: &str, prop: &str, measure: &str, literal: &str) -> PropWrite {
         unit: None,
         kind: PsetKind::Property,
         scope: PropScope::Occurrence,
+        target: None,
     }
 }
 

@@ -9,7 +9,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { SpatialAnchor } from './anchor.js';
 import { addColumnToStore, type ColumnBuildResult, type ColumnInStoreParams, type ProfiledColumnInStoreParams } from './column.js';
-import { readAxisEnds } from './extract-grids.js';
+import { readGridAxisEnds } from './extract-grids.js';
 import { gridIntersectionPlacement, type GridPlacementResult } from './grid.js';
 import { assertGridIntersectionOwner } from './grid-intersection-read.js';
 import { AnchorEntityReader } from './resolve-anchor.js';
@@ -49,8 +49,8 @@ export function addColumnOnGridToStore(
       throw new Error(`${op}: the grid must have a readable horizontal placement in the storey frame`);
     }
     const curves = binding.IntersectingAxes.map((id) => {
-      const curve = refId(reader.entity(id)?.attributes[1]);
-      return curve === null ? null : readAxisEnds((entityId) => reader.entity(entityId), curve);
+      const axis = reader.entity(id);
+      return axis ? readGridAxisEnds((entityId) => reader.entity(entityId), axis) : null;
     });
     const [p, q] = curves;
     if (!p || !q) throw new Error(`${op}: linear snapping requires readable straight grid curves`);

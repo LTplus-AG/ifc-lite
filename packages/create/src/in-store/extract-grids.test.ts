@@ -312,3 +312,27 @@ describe('grid placement orientation refuses unreadable frames (#6511 / #6232)',
     expect(extractGridAxesForStorey(store, 50, view).axes).toEqual(before);
   });
 });
+
+describe('extractGridAxesForStorey: IfcGridAxis.SameSense (#8159)', () => {
+  // Grid placed at (500,0) and turned 90 degrees, storey at (1000,2000) mm:
+  // axis '1' is (0.5,0)->(-7.5,0) and axis 'A' (-2.5,0)->(-2.5,6) as authored.
+  const ends = async (text: string) => {
+    const axes = extractGridAxesForStorey(await parse(text), 50).axes;
+    return Object.fromEntries(axes.map((axis) => [axis.AxisTag, [round(axis.a), round(axis.b)]]));
+  };
+  it('swaps the ends of a polyline axis whose SameSense is .F., and not its neighbour', async () => {
+    const result = await ends(FILE_GRID.replace("#73=IFCGRIDAXIS('1',#72,.T.);", "#73=IFCGRIDAXIS('1',#72,.F.);"));
+    expect(result['1']).toEqual([[-7.5, 0], [0.5, 0]]);
+    expect(result.A).toEqual([[-2.5, 0], [-2.5, 6]]);
+  });
+  it('leaves .T. axes unchanged', async () => {
+    const result = await ends(FILE_GRID);
+    expect(result['1']).toEqual([[0.5, 0], [-7.5, 0]]);
+    expect(result.A).toEqual([[-2.5, 0], [-2.5, 6]]);
+  });
+  it('swaps a trimmed-line axis whose SameSense is .F.', async () => {
+    const result = await ends(FILE_GRID.replace("#79=IFCGRIDAXIS('A',#78,.T.);", "#79=IFCGRIDAXIS('A',#78,.F.);"));
+    expect(result.A).toEqual([[-2.5, 6], [-2.5, 0]]);
+    expect(result['1']).toEqual([[0.5, 0], [-7.5, 0]]);
+  });
+});

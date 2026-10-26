@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MPL-2.0
 # Run only inside an admitted fleet job, on committed E1 source.
-set -u
+set -uo pipefail
 result=0
 run() {
   printf '\nM1-E CHECK %s\n' "$*"
@@ -16,19 +16,44 @@ if ! git rev-parse --verify m1/c-executor-core >/dev/null 2>&1; then
   git branch m1/c-executor-core "$expected_base" || exit 1
 fi
 if [ "$(git rev-parse m1/c-executor-core)" != "$expected_base" ]; then
-  printf 'Refusing mismatched C base
-'; exit 1
+  printf 'Refusing mismatched C base\n'; exit 1
 fi
 git rev-parse HEAD m1/c-executor-core
 rustc --version
 node --version
 run pnpm install --frozen-lockfile --prefer-offline
+# Confirm the production-only wasm warning on both unmodified ancestors.
+# The fixture stays under the same pinned toolchain as the checkout.
+comparison_root=$(mktemp -d)
+comparison_source="$comparison_root/source"
+trap 'rm -rf "$comparison_root"' EXIT
+archive_at_comparison_path() {
+  rm -rf "$comparison_source"
+  mkdir -p "$comparison_source"
+  git archive "$1" | tar -x -C "$comparison_source" || return 1
+  find "$comparison_source/rust" -name '*.rs' -exec touch {} +
+}
+inherited_wasm_lint() {
+  local revision=$1
+  archive_at_comparison_path "$revision" || return 1
+  printf 'M1-E ancestor %s\n' "$(git rev-parse "$revision")"
+  (cd "$comparison_source" && rustc --version && cargo clippy --target wasm32-unknown-unknown -p ifc-lite-geometry -p ifc-lite-processing -p ifc-lite-wasm -- -D warnings) > "$comparison_root/lint.log" 2>&1
+  local status=$?
+  cat "$comparison_root/lint.log"
+  if [ "$status" -eq 101 ] && grep -q 'function `closed_or_hairline` is never used' "$comparison_root/lint.log"; then
+    printf 'CONFIRMED inherited closed_or_hairline warning on %s\n' "$revision"
+  else
+    printf 'Unexpected ancestor lint outcome: %s\n' "$status"
+    return 1
+  fi
+}
+run inherited_wasm_lint eaf210fe63
+run inherited_wasm_lint m1/c-executor-core
 run cargo clippy --workspace --all-targets -- -D warnings
 run cargo clippy --target wasm32-unknown-unknown -p ifc-lite-geometry -p ifc-lite-processing -p ifc-lite-wasm -- -D warnings
 run cargo clippy --target wasm32-unknown-unknown -p ifc-lite-geometry -p ifc-lite-processing -p ifc-lite-wasm --features ifc-lite-wasm/retained-browser -- -D warnings
 run cargo clippy -p ifc-lite-wasm --all-targets --features retained-browser -- -D warnings
-# Diagnostic coverage past the inherited private mesh-check dead-code error.
-# This is additional coverage, never a substitute for the strict legs above.
+# Also cover the test-support feature union used by geometry CI.
 run cargo clippy --target wasm32-unknown-unknown -p ifc-lite-geometry -p ifc-lite-processing -p ifc-lite-wasm --features ifc-lite-wasm/retained-browser,ifc-lite-geometry/test-support -- -D warnings
 run cargo clippy --target wasm32-unknown-unknown -p ifc-lite-wasm --all-targets --features retained-browser -- -D warnings
 run cargo test -p ifc-lite-geometry --features retained-runtime --lib
@@ -43,24 +68,21 @@ for guard in check-refwalk-guards check-float-sort-comparators check-module-size
   run node "scripts/$guard.mjs"
 done
 run node scripts/add-license-headers.mjs --check
-# Both builds use the managed Cargo target. Keep only hashes/counts, not a
-# second persistent build tree. The archive is the exact committed base.
-baseline_source=$(mktemp -d)
-trap 'rm -rf "$baseline_source"' EXIT
-git archive m1/c-executor-core | tar -x -C "$baseline_source"
-# A shared target can otherwise reuse a workspace artifact after git archive
-# restores older source mtimes. Force both measured sides through rustc without
-# deleting or changing any shared-cache entry or source content.
-find "$baseline_source/rust" -name '*.rs' -exec touch {} +
-run env CI=1 bash "$baseline_source/scripts/build-wasm.sh"
-find rust -name '*.rs' -exec touch {} +
-run env CI=1 bash scripts/build-wasm.sh
-run node --input-type=module - "$baseline_source/packages/wasm/pkg/ifc-lite_bg.wasm" <<'JS'
+# Recompile both snapshots at exactly the same source path. Rust embeds some
+# absolute panic-location paths, so different archive/checkout roots create a
+# false binary-size delta even when every function has the same size.
+# Touch each snapshot to defeat stale shared-target reuse; never clean caches.
+run archive_at_comparison_path m1/c-executor-core
+run env CI=1 bash "$comparison_source/scripts/build-wasm.sh"
+run cp "$comparison_source/packages/wasm/pkg/ifc-lite_bg.wasm" "$comparison_root/base.wasm"
+run archive_at_comparison_path HEAD
+run env CI=1 bash "$comparison_source/scripts/build-wasm.sh"
+run node --input-type=module - "$comparison_root/base.wasm" "$comparison_source/packages/wasm/pkg/ifc-lite_bg.wasm" <<'JS'
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {brotliSize} from './scripts/perf-ratchet/measure-bundle.mjs';
 const before = readFileSync(process.argv[2]);
-const after = readFileSync('packages/wasm/pkg/ifc-lite_bg.wasm');
+const after = readFileSync(process.argv[3]);
 const measure = bytes => ({raw:bytes.length, brotli:brotliSize(bytes), sha256:createHash('sha256').update(bytes).digest('hex')});
 const baseline = measure(before), branch = measure(after);
 const ratchet = JSON.parse(readFileSync('tests/perf-ratchets/bundle.json')).entries.find(e=>e.id==='engine-wasm-brotli');

@@ -22,9 +22,11 @@
         "api/*.ts",
         "scripts/dev-chat-api.ts",
         "scripts/add-license-headers.mjs",
+        "scripts/perf/evidence/worker-warmup-7036/decision-20261026/cohort-driver.mts",
         "docs/architecture/evidence/pdf-annotation-ui/browser-proof.mjs",
         "docs/architecture/evidence/pdf-fidelity-report/browser-proof.mjs"
-      ]
+      ],
+      "ignoreUnresolved": ["^/__perf/frames\\.js$"]
     },
     "packages/ids": {
       "ignoreDependencies": ["@xmldom/xmldom"]

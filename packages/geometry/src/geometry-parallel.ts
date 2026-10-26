@@ -25,7 +25,7 @@
  */
 
 import type { ProcessParallelOptions } from './geometry-parallel-options.js';
-import { postGeometryWorkerInit } from './geometry-worker-init.js';
+import { postGeometryWorkerInit, spawnGeometryWorker } from './geometry-worker-init.js';
 import type { CoordinateHandler } from './coordinate-handler.js';
 import type { MeshData } from './types.js';
 import type { ByteStreamingPrePassResult } from './byte-streaming-prepass-result.js';
@@ -41,8 +41,6 @@ import { mergeShardStyleSlices, type MergedShardStyles, type StylesSlice } from 
 // (and vice versa) instead of fetching the same binary a second time.
 import { compileSharedWasmModule } from './wasm-shared-module.js';
 import { stitchShards, type ShardColumns } from './shard-stitch.js';
-import { spawnGeometryWorker } from './geometry-worker-pool.js';
-export { GeometryWorkerPool, DEFAULT_POOL_LIMITS, FRESH_WORKER_HEAP_BYTES } from './geometry-worker-pool.js';
 import { NOOP_LOAD_TRACE, accountWorkerMessages, countCopy, enableWorkerTrace, isTraceSpansMessage } from '@ifc-lite/load-trace';
 import { resolveRtcFrame } from './rtc-frame.js';
 import {
@@ -120,8 +118,6 @@ interface PrepassMeta extends Pick<ByteStreamingPrePassResult, 'unitRefused'> {
 export type { ProcessParallelOptions } from './geometry-parallel-options.js';
 
 let nextSourceSessionId = 0;
-/** A load above this size terminates the prewarmed workers it did not lease (#7036). */
-const LARGE_LOAD_POOL_DRAIN_MB = 64;
 
 export async function* processParallel(
   buffer: Uint8Array,
@@ -165,12 +161,8 @@ export async function* processParallel(
   // N independent WASM-instance workers, each running
   // `geometry.worker.ts` (one `@ifc-lite/wasm` instance per worker).
   // #6957: `accountWorkerMessages` counts each pool's messages per direction (identity when counters are off).
-  // #7036: lease the workers a host prewarmed when this load was requested
-  // (spawned beside the file read); spawn the rest. Either way a worker serves
-  // this load only and is terminated by it, exactly as before.
-  const pool = options?.workerPool ?? null, poolKey = options?.wasmUrls?.wasm ?? '';
   const acquireWorker = (role: 'geometry' | 'prepass', thread: string): Worker => enableWorkerTrace(
-    pool ? pool.acquire(role, poolKey).worker : accountWorkerMessages(spawnGeometryWorker(), role), trace, thread);
+    accountWorkerMessages(spawnGeometryWorker(), role), trace, thread);
   const makeGeometryWorker = () => acquireWorker('geometry', `geom-${tracedWorkers++}`);
   const makePrepassWorker = () => acquireWorker('prepass', 'prepass');
 
@@ -1060,8 +1052,6 @@ export async function* processParallel(
   }
 
   const prepassWorker = makePrepassWorker();
-  // #7036: idle workers this large load did not lease would only add to its peak.
-  if (pool && fileSizeMB > LARGE_LOAD_POOL_DRAIN_MB) pool.drain('large-load');
 
   // Wrap the rest of the pipeline so worker teardown runs not only on
   // normal completion / error / zero-jobs branches, but also when the

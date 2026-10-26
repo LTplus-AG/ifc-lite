@@ -682,22 +682,39 @@ by the terminal event; a drain alone cannot preserve an open span. Other M2b
 transfer, interaction, deterministic-upload and device-loss obligations remain
 open.
 
-## Worker warm-up candidate held (#7036)
+## Worker warm-up candidate removed (#7036)
 
-The resumed [cold-load captures](evidence/worker-warmup-7036/README.md) show
-earlier worker readiness but mixed first-visible and total-load results. No
-end-to-end speedup is accepted. The candidate creates fresh workers beside the
-file read and still terminates them after each load; it does not satisfy the
-original persistent-reuse requirement. Geometry counts match, but an ordered
-geometry hash was not collected. Repeat/federation measurements during takeover
-overlapped validation builds and need an idle-machine repeat. Lesson: moving
-worker initialization earlier is an opportunity screen, not a performance
-verdict. Keep the measurement and memory constraints before changing the rollout.
+**Rejected by the recorded-build acceptance rule; experiment removed.** The
+[preserved real-GPU comparison](evidence/worker-warmup-7036/decision-20261026/README.md)
+uses interleaved fresh-browser production builds and the same source-built WASM
+binary. First geometry improved on the small house, and full readiness improved
+on the structural model, but full metadata/render readiness regressed beyond
+the unchanged reporter's noise threshold on the large architectural model. The predeclared rule forbids that regression; the
+legacy app-summary total cannot substitute for full readiness. Counts match on
+every paired sample, and all samples completed without GPU errors or recovery.
+Source pins, worker receipt, per-fixture measurements, phase memory and M2 frame
+observations are in the linked evidence, separate from the CI numeric baseline.
 
-The experiment defaults off on both the viewer and worker paths. Repeated cache
-hits cannot extend an unused worker's expiry, and memory-pressure retries drain
-the pool without refilling it. These are lifecycle corrections, not an accepted
-performance win; the end-to-end verdict above remains held.
+The measured candidate combines persistent reset workers and parser-module memo
+sharing. The comparison does not attribute the regression to either layer, and
+neither proposal is admitted. A parser-only proposal would need evidence for its
+own unflagged configuration. The existing main warm-up candidate and its public
+experimental APIs are removed under the flag's committed removal condition.
+Normal per-load worker construction, shared-module idle compilation, error
+recovery and the lower-detail retry notice remain.
+
+Logged WASM/JS phase peaks are not process RSS or idle-pool memory acceptance.
+The separate repeat/federation request was refused by the worker guard before
+execution. Those outstanding acceptance campaigns are not claimed or repeated
+for a candidate that will not ship. Earlier queue/admission and invalid-GPU
+attempts are retained as failures, not substituted timing samples.
+
+Lesson: earlier worker readiness and a small-fixture first-paint improvement do
+not establish an acceptable end-to-end tradeoff for large-model readiness.
+Keep the full-readiness boundary and a decision rule recorded before results;
+remove an unsuccessful experiment rather than carrying it indefinitely behind
+a disabled flag. The historical [fresh-worker captures](evidence/worker-warmup-7036/README.md)
+remain historical evidence, without a performance or reuse acceptance claim.
 
 ## Single-model appends cost O(new meshes) in the viewport (#7021)
 

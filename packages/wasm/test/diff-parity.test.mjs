@@ -926,9 +926,8 @@ test('actual raw WASM catches length and revoked-array errors without poisoning 
 
 test('actual raw WASM applies Array.map ToLength and ArrayCreate bounds to sparse lengths (#8114)', async context => {
   const wasm = await engine(context); if (!wasm) return;
-  const oraclePath = new URL('../../diff/dist/fingerprint.js', import.meta.url);
-  if (!existsSync(oraclePath)) { context.skip('@ifc-lite/diff not built; run pnpm build'); return; }
-  const oracle = await import(oraclePath.href);
+  const { loadDiffOracle } = await import('../../../scripts/lib/diff-oracle.mjs');
+  const oracle = await loadDiffOracle('fingerprint');
   const pairs = [['diffBuildDataFingerprint', 'buildDataFingerprint'],
     ['diffBuildComponentFingerprints', 'buildComponentFingerprints']];
   const valid = { ifcType: 'IfcWall', propertySets: [{ name: 'P', properties: [] }] };
@@ -1007,9 +1006,8 @@ function fingerprintOutcome(call) {
 
 test('actual raw WASM hashes real 1e3 and 1e5 hole arrays like the oracle in constant WASM memory (#8114)', async context => {
   const wasm = await engine(context); if (!wasm) return;
-  const oraclePath = new URL('../../diff/dist/fingerprint.js', import.meta.url);
-  if (!existsSync(oraclePath)) { context.skip('@ifc-lite/diff not built; run pnpm build'); return; }
-  const oracle = await import(oraclePath.href);
+  const { loadDiffOracle } = await import('../../../scripts/lib/diff-oracle.mjs');
+  const oracle = await loadDiffOracle('fingerprint');
   // initSync returns the live instance's exports once initialized.
   const { memory } = wasm.initSync({ module: readFileSync(binary) });
   const pairs = [['diffBuildDataFingerprint', 'buildDataFingerprint'],

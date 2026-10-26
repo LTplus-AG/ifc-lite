@@ -113,6 +113,19 @@ export function countEffectiveEntityTypes(
   return counts;
 }
 
+/**
+ * Rows a reader added to, or reclassified in, a source's entity table that the SOURCE FILE does not state: the
+ * IFCX reader derives an `IfcWindowType` from a node the file calls `IfcWindow`, and an `IfcMaterial` from a
+ * class-less node. Consumers read the table as derived; an exporter must write what the file said, so it takes
+ * the original class from `retyped` and writes nothing for `added`.
+ */
+export interface DerivedEntities {
+  /** Express id to the class the source file gives it (the table says something else). */
+  readonly retyped: ReadonlyMap<number, string>;
+  /** Express ids of table rows with no source node of their own class. */
+  readonly added: ReadonlySet<number>;
+}
+
 /** The parser's source index shape, without a parser dependency. */
 export interface EffectiveEntitySource {
   readonly entityIndex: {
@@ -122,8 +135,13 @@ export interface EffectiveEntitySource {
   };
   /** Property atoms may live outside the primary ID index after parsing. */
   readonly deferredEntityIndex?: { get(id: number): { type: string } | undefined };
-  /** Optional type fallback for a caller-supplied columnar source domain. */
-  readonly entities?: { getTypeName(id: number): string };
+  /**
+   * Optional type fallback for a caller-supplied columnar source domain. `expressId` lists the table's
+   * rows: with `schemaVersion` 'IFC5' it is also the source domain when the caller supplies none.
+   */
+  readonly entities?: { getTypeName(id: number): string; readonly expressId?: Iterable<number> & ArrayLike<number> };
+  /** The model's schema. An 'IFC5' (IFCX) store has no STEP type index, so its entity table is the source. */
+  readonly schemaVersion?: string;
 }
 
 export interface EffectiveEntity {
@@ -171,6 +189,16 @@ export function* iterateEffectiveEntities(
     : undefined;
   const created = byClass ? Array.from(byClass) : overlay?.getNewEntities() ?? [];
 
+  // An IFCX store has no STEP records, so its `entityIndex` is empty and every walk of the buckets above finds
+  // nothing: no space, no material, no wall, whoever asks. The entity table is its source then, and is walked
+  // here, once, for every caller, instead of each caller knowing to pass it.
+  // The table is walked once per model, into buckets by class; a filtered call takes its buckets, not the table
+  // (a per-element loop asking for one class would otherwise rescan the whole table per element). A queued
+  // retype can move a row INTO a wanted class, so with retypes the whole table is the domain.
+  if (!sourceIds && byType.size === 0 && source.schemaVersion === 'IFC5' && source.entities?.expressId) {
+    sourceIds = wanted && !retypes?.size ? idsOfClasses(source.entities, wanted) : source.entities.expressId;
+  }
+
   if (sourceIds) {
     for (const expressId of sourceIds) {
       if (expressId === 0 || isCreated(expressId) || overlay?.isDeleted(expressId)) continue;
@@ -217,4 +245,28 @@ export function* iterateEffectiveEntities(
       yield { expressId: entity.expressId, type, overlayCreated: true };
     }
   }
+}
+
+const BUCKETS = new WeakMap<object, { count: number; byClass: Map<string, number[]> }>();
+
+/** The rows of `classes` (upper case) in an entity table, from buckets built once per table and rebuilt if its row count changes. */
+function idsOfClasses(
+  table: NonNullable<EffectiveEntitySource['entities']>,
+  classes: ReadonlySet<string>,
+): number[] {
+  const rows = table.expressId ?? [];
+  let held = BUCKETS.get(table);
+  if (!held || held.count !== rows.length) {
+    held = { count: rows.length, byClass: new Map() };
+    for (const id of rows) {
+      const key = table.getTypeName(id).toUpperCase();
+      const list = held.byClass.get(key);
+      if (list) list.push(id);
+      else held.byClass.set(key, [id]);
+    }
+    BUCKETS.set(table, held);
+  }
+  const out: number[] = [];
+  for (const key of classes) out.push(...(held.byClass.get(key) ?? []));
+  return out;
 }

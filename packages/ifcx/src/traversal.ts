@@ -80,6 +80,24 @@ export function collectIncomingEdgeNames(composed: Map<string, ComposedNode>): M
   return incomingNames;
 }
 
+/**
+ * For each node, the edge names of every sibling under every parent that holds it (its own included). A
+ * generator that must keep sibling edge names unique appends `_001` to the second `Window`; this is what lets
+ * the name reader tell that suffix from a name that really ends in digits.
+ */
+export function collectSiblingEdgeNames(composed: Map<string, ComposedNode>): Map<string, Set<string>> {
+  const siblings = new Map<string, Set<string>>();
+  for (const node of composed.values()) {
+    const names = new Set(node.children.keys());
+    for (const child of node.children.values()) {
+      const set = siblings.get(child.path) ?? new Set<string>();
+      for (const name of names) set.add(name);
+      siblings.set(child.path, set);
+    }
+  }
+  return siblings;
+}
+
 export function buildReachableAttributeIndex(
   composed: Map<string, ComposedNode>,
   attributeKey: string

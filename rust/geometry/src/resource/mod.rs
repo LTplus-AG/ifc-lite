@@ -303,5 +303,5 @@ pub fn with_source_stop<T>(
     operation()
 }
 
-#[cfg(all(feature = "retained-runtime", target_arch = "wasm32"))]
+#[cfg(all(feature = "retained-runtime", any(target_arch = "wasm32", test)))]
 mod budget_monotonic;

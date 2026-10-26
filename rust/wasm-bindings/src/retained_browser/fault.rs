@@ -11,6 +11,7 @@ impl From<BrowserError> for RuntimeFault {
             BrowserError::Exhausted | BrowserError::ResourceLimit(_) => {
                 Self::resource_limit(message)
             }
+            // InvalidLimits is unreachable after C's numerical-limit admission.
             BrowserError::InvalidLimits | BrowserError::Driver(_) => Self::transport(message),
         }
     }

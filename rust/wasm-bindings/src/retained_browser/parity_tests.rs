@@ -28,7 +28,7 @@ async fn retained_browser_m1_native_wasm_receipt_parity_scaffold() {
         Ok(value) if !value.is_null() => value,
         Ok(value) => {
             web_sys::console::log_1(&JsValue::from_str(&format!(
-                "SKIP M1 native/wasm parity: real SMLib wasm engine or D native reference absent ({value:?}); no parity verdict"
+                "SKIP M1 native/wasm parity: real SMLib wasm engine or D native reference absent ({value:?}); SKIP is not parity evidence"
             )));
             return;
         }

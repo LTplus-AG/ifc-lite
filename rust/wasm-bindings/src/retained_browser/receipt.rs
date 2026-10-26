@@ -28,6 +28,7 @@ pub enum BrowserReceipt {
 pub struct Lease {
     pub(super) domain: BrowserCancellation,
     pub(super) object: JsValue,
+    pub(super) operations: usize,
 }
 impl Drop for Lease {
     fn drop(&mut self) {
@@ -47,6 +48,13 @@ impl ReceiptDomain for BrowserCancellation {
 }
 
 impl BrowserReceipt {
+    pub(super) fn operations(&self) -> usize {
+        match self {
+            Self::Construction(_) => 0,
+            Self::Affine { lease, .. } | Self::Boolean { lease, .. } => lease.operations,
+        }
+    }
+
     pub(super) fn mesh(&self) -> Option<&RetainedTessellation> {
         match self {
             Self::Construction(value) => Some(&value.completion.tessellation),

@@ -1,14 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Target-neutral executor seam over the one private wasm32 Worker driver.
 use super::{
-    bridge::{driver_error, Mesh},
+    bridge::driver_error,
     receipt::{BrowserReceipt, Lease},
     *,
 };
-use ifc_lite_geometry::{
-    document::{retained_wire as wire, RetainedTessellation},
-    BoolOp,
-};
+use ifc_lite_geometry::{document::retained_wire as wire, BoolOp};
 use ifc_lite_processing::element::retained_runtime::{
     AsyncRetainedExecutor, Invocation, NumericalLimits, NumericalReceipt, Operand, RetainedRuntime,
     RuntimeFault,
@@ -61,7 +58,7 @@ impl AsyncRetainedExecutor for BrowserWorker {
     }
 }
 
-fn field(value: &JsValue, name: &str) -> Result<JsValue, BrowserError> {
+pub(super) fn field(value: &JsValue, name: &str) -> Result<JsValue, BrowserError> {
     js_sys::Reflect::get(value, &JsValue::from_str(name)).map_err(driver_error)
 }
 fn invalid(message: &'static str) -> RuntimeFault {
@@ -75,7 +72,15 @@ impl BrowserWorker {
         }
         Ok(())
     }
-    fn seal(&self, value: &JsValue) -> Result<Lease, BrowserError> {
+    async fn require_capability(&mut self, bit: u32) -> Result<(), RuntimeFault> {
+        if self.capabilities().await?.sdk_bits & bit == 0 {
+            return Err(RuntimeFault::unqualified(
+                "retained adapter extension unavailable",
+            ));
+        }
+        Ok(())
+    }
+    fn seal(&self, value: &JsValue, operations: usize) -> Result<Lease, BrowserError> {
         let object = field(value, "object")?;
         self.owner.validate()?;
         if !self.owner.driver.object_live(&object) {
@@ -84,6 +89,7 @@ impl BrowserWorker {
         Ok(Lease {
             domain: self.cancellation(),
             object,
+            operations,
         })
     }
     async fn affine(
@@ -93,6 +99,8 @@ impl BrowserWorker {
     ) -> Result<BrowserReceipt, RuntimeFault> {
         self.validate_input(input)?;
         wire::validate_affine(&matrix).map_err(invalid)?;
+        let operations = operation_count(input.operations(), 0)?;
+        self.require_capability(16).await?; // AFFINE_COPY
         let mut flight = InFlight::new(&self.owner);
         let response = JsFuture::from(self.owner.driver.affine(&input.object(), &matrix)).await;
         let value = match response {
@@ -109,7 +117,7 @@ impl BrowserWorker {
         };
         let certificate = js_sys::Uint8Array::new(&field(&value, "certificate")?).to_vec();
         wire::AffineCertificate::decode(&certificate).map_err(invalid)?;
-        let lease = self.seal(&value)?;
+        let lease = self.seal(&value, operations)?;
         flight.disarm();
         Ok(BrowserReceipt::Affine {
             lease,
@@ -129,6 +137,7 @@ impl BrowserWorker {
         let (right, world_right) = operand(right)?;
         self.validate_input(left)?;
         self.validate_input(right)?;
+        let operations = operation_count(left.operations(), right.operations())?;
         let relative = wire::relative(world_left, world_right).map_err(invalid)?;
         let opcode = match operation {
             BoolOp::Union => 1,
@@ -136,8 +145,9 @@ impl BrowserWorker {
             BoolOp::Difference => 3,
             BoolOp::Unknown => return Err(invalid("unknown Boolean operation")),
         };
+        self.require_capability(32).await?; // SEMANTIC_EMPTY
         let mut flight = InFlight::new(&self.owner);
-        let value = JsFuture::from(self.owner.driver.boolean_call(
+        let response = JsFuture::from(self.owner.driver.boolean_call(
             &left.object(),
             &right.object(),
             &relative,
@@ -146,8 +156,19 @@ impl BrowserWorker {
             limits.angle_degrees,
             max_bytes,
         ))
-        .await
-        .map_err(driver_error)?;
+        .await;
+        let value = match response {
+            Ok(value) => value,
+            Err(error) => {
+                let error = driver_error(error);
+                if matches!(&error, BrowserError::Kernel { status, .. } if (1..=7).contains(status))
+                    || matches!(&error, BrowserError::ResourceLimit(_))
+                {
+                    flight.disarm();
+                }
+                return Err(error.into());
+            }
+        };
         let empty = field(&value, "empty")?
             .as_bool()
             .ok_or_else(|| invalid("invalid empty certificate"))?;
@@ -158,19 +179,18 @@ impl BrowserWorker {
             }
             None
         } else {
-            let mesh: Mesh = serde_wasm_bindgen::from_value(mesh)
-                .map_err(|e| RuntimeFault::transport(e.to_string()))?;
-            Some(RetainedTessellation {
-                positions: mesh.positions,
-                indices: mesh.indices,
-                flat_corner_normals: mesh.flat_corner_normals,
-                revision_local_faces: mesh.revision_local_faces,
-                source_face_count: mesh.source_face_count,
-                boundary_edges: mesh.boundary_edges,
-                spine_edges: mesh.spine_edges,
-            })
+            match super::runtime_mesh::decode(mesh, max_bytes) {
+                Ok(mesh) => Some(mesh),
+                Err(error) => {
+                    if matches!(&error, BrowserError::ResourceLimit(_)) {
+                        self.owner.driver.release_object(&field(&value, "object")?);
+                        flight.disarm();
+                    }
+                    return Err(error.into());
+                }
+            }
         };
-        let lease = self.seal(&value)?;
+        let lease = self.seal(&value, operations)?;
         flight.disarm();
         Ok(BrowserReceipt::Boolean {
             lease,
@@ -208,4 +228,13 @@ fn operand(
     };
     wire::rigid(frame).map_err(invalid)?;
     Ok((receipt, frame))
+}
+
+// Match the native retained operation bound, including both Boolean lineages.
+fn operation_count(left: usize, right: usize) -> Result<usize, RuntimeFault> {
+    const MAX_OPERATIONS: usize = 128;
+    left.checked_add(right)
+        .and_then(|n| n.checked_add(1))
+        .filter(|&n| n <= MAX_OPERATIONS)
+        .ok_or_else(|| RuntimeFault::resource_limit("retained operation depth"))
 }

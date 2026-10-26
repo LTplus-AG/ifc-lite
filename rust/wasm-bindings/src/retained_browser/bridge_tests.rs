@@ -147,7 +147,7 @@ mod parity_tests;
 // Refs #7955 E: this runs without an SDK; the old std::time::Instant entry
 // traps on wasm32 before reaching the checkpoint.
 #[wasm_bindgen_test]
-fn retained_browser_budget_start_uses_host_monotonic_clock() {
+fn retained_browser_smlib_free_budget_start_uses_host_monotonic_clock() {
     use ifc_lite_geometry::resource::{
         budget_checkpoint, budget_deadline_fired, BudgetStart, ProductBudget,
     };
@@ -157,10 +157,15 @@ fn retained_browser_budget_start_uses_host_monotonic_clock() {
         assert!(budget_deadline_fired());
     });
     assert!(!budget_deadline_fired());
+    let budget = ProductBudget::new(BudgetStart::now(), 100, 4096, 60_000);
+    budget.scope(|| {
+        assert!(budget_checkpoint().is_ok());
+        assert!(!budget_deadline_fired());
+    });
 }
 
 #[wasm_bindgen_test]
-fn retained_browser_driver_fault_preserves_typed_kernel_and_resource_evidence() {
+fn retained_browser_smlib_free_driver_fault_preserves_typed_kernel_and_resource_evidence() {
     let error = js_sys::Error::new("copy started");
     js_sys::Reflect::set(
         &error,
@@ -179,3 +184,6 @@ fn retained_browser_driver_fault_preserves_typed_kernel_and_resource_evidence() 
         BrowserError::ResourceLimit(_)
     ));
 }
+
+#[path = "runtime_tests.rs"]
+mod runtime_tests;

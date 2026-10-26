@@ -24,6 +24,7 @@ export class SmlibWorkerTransport {
   slot = 0;
   session = 42n;
   meshInfo = [3, 1, 1, 0, 0, 0];
+  capabilities = 1 | 16 | 32;
   constructor(options) { this.options = options; peers.push(this); imports.push('client'); constructors.shift()?.(this); }
   allocate() { const slot = ++this.slot; this.objects.add(slot); return handle(this.session, slot); }
   retire(token) { if (token === this.incarnation) { this.retired = true; this.incarnation = undefined; } }
@@ -37,6 +38,10 @@ export class SmlibWorkerTransport {
       let bytes = new Uint8Array();
       if (op === this.failOpcode) { /* Typed kernel refusal has no success payload. */ }
       else if (op === 1) { bytes = new Uint8Array(8); new DataView(bytes.buffer).setBigUint64(0, this.session, true); }
+      else if (op === 12) {
+        bytes = new Uint8Array(8); const capabilities = new DataView(bytes.buffer);
+        capabilities.setUint32(0, 1, true); capabilities.setUint32(4, this.capabilities, true);
+      }
       else if (op === 8) { if (!this.objects.delete(view.getUint32(28, true))) throw new Error('fixture: unknown release'); }
       else if (op === 5 || op === 17) bytes = this.allocate();
       else if (op === 18) {

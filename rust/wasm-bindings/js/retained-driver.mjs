@@ -208,9 +208,18 @@ export class RetainedDriver {
     if (value === 1) return { empty: true, mesh: null };
     const handle = await this.#call(9, this.#session, solid, f64(chord), f64(angle));
     validateHandle(handle, new DataView(this.#session.buffer).getBigUint64(0, true));
-    const mesh = await this.#readMesh(handle, maxBytes);
-    await this.#call(8, this.#session, handle);
+    let mesh;
+    try { mesh = await this.#readMesh(handle, maxBytes); }
+    catch (error) {
+      if (knownRefusal(error)) await this.#releaseHandle(handle);
+      throw error;
+    }
+    await this.#releaseHandle(handle);
     return { empty: false, mesh };
+  }
+  async #releaseHandle(handle) {
+    try { await this.#call(8, this.#session, handle); }
+    catch (error) { this.retire(); throw error; }
   }
   async tessellate(object, chord, angle, maxBytes) {
     limits(chord, angle, maxBytes);
@@ -250,16 +259,30 @@ export class RetainedDriver {
     if (![1, 2, 3].includes(op)) throw new Error('invalid retained Boolean operation');
     this.#solid(left); this.#solid(right);
     await this.#acquire();
+    let temporary, solid;
     try {
       const a = this.#solid(left), b = this.#solid(right);
-      const temporary = await this.#call(17, this.#session, b, matrix);
+      temporary = await this.#call(17, this.#session, b, matrix);
       validateHandle(temporary, new DataView(this.#session.buffer).getBigUint64(0, true));
-      const solid = await this.#call(5, this.#session, a, temporary, u32(op));
-      await this.#call(8, this.#session, temporary);
+      solid = await this.#call(5, this.#session, a, temporary, u32(op));
+      const released = temporary;
+      temporary = undefined;
+      await this.#releaseHandle(released);
       validateHandle(solid, new DataView(this.#session.buffer).getBigUint64(0, true));
       const result = await this.#tessellateSolid(solid, chord, angle, maxBytes);
       return { object: this.#seal(solid), ...result };
-    } catch (error) { this.retire(); throw error; }
+    } catch (error) {
+      if (knownRefusal(error)) {
+        try {
+          if (temporary) await this.#releaseHandle(temporary);
+          if (solid) await this.#releaseHandle(solid);
+        } catch (cleanupError) {
+          this.retire();
+          console.error('retained Boolean cleanup retired worker', cleanupError);
+        }
+      } else this.retire();
+      throw error;
+    }
     finally { this.#releaseBusy(); }
   }
   async #readMesh(handle, maxBytes) {
@@ -291,7 +314,7 @@ export class RetainedDriver {
     const revision_local_faces = await read(3, triangles, 4);
     const flat_corner_normals = await read(4, triangles * 9, 8);
     if (indices.some(i => i >= vertices) || revision_local_faces.some(i => i >= faces)) throw new Error('retained mesh index bound');
-    return { positions, indices, flat_corner_normals, revision_local_faces,
+    return { positions, indices, flat_corner_normals, revision_local_faces, wire_info: info,
       source_face_count: faces, boundary_edges: boundary, spine_edges: spine };
   }
 }
@@ -313,4 +336,9 @@ function matrixBytes(values) {
   const bytes = new Uint8Array(128), view = new DataView(bytes.buffer);
   for (let i = 0; i < 16; i++) view.setFloat64(i * 8, values[i], true);
   return bytes;
+}
+
+function knownRefusal(error) {
+  return error.resourceLimit === true ||
+    (Number.isInteger(error.kernelStatus) && error.kernelStatus >= 1 && error.kernelStatus <= 7);
 }

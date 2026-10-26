@@ -221,3 +221,21 @@ test('#7955 E oversized buffers retain a resource refusal distinct from malforme
   await assert.rejects(driver.tessellate(source.object, 0.001, 5, 8), error => error.resourceLimit === true && error.kernelStatus === undefined);
   assert.equal(driver.live(), false, 'failed transfer retires all allocations');
 });
+
+// #7955 E: transactional refusal releases every intermediate without losing inputs.
+test('#7955 E Boolean known refusals keep the worker and release temporary handles', async () => {
+  for (const fault of ['kernel', 'resource', 'empty-status']) {
+    const driver = new RetainedDriver();
+    const a = await evaluate(driver), peer = peers.at(-1);
+    const start = peer.commands.length;
+    if (fault !== 'resource') { peer.failOpcode = fault === 'kernel' ? 5 : 19; peer.kernelStatus = 4; }
+    await assert.rejects(driver.boolean(a.object, a.object, identity, 3, 0.001, 5, fault === 'resource' ? 8 : 4096),
+      error => fault === 'resource' ? error.resourceLimit === true : error.kernelStatus === 4);
+    assert.equal(driver.live(), true);
+    assert.equal(driver.objectLive(a.object), true);
+    assert.equal(peer.objects.size, 1, 'only the input remains, including after tessellation refusal');
+    assert.ok(opcodes(peer).slice(start).includes(8), 'temporary released');
+    if (fault === 'kernel') assert.deepEqual(opcodes(peer).slice(start), [17, 5, 8]);
+    driver.retire();
+  }
+});

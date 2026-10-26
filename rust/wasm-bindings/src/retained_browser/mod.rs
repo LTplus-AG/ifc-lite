@@ -28,6 +28,8 @@ mod bridge;
 #[cfg(target_arch = "wasm32")]
 mod runtime;
 #[cfg(target_arch = "wasm32")]
+mod runtime_mesh;
+#[cfg(target_arch = "wasm32")]
 mod receipt;
 mod fault;
 

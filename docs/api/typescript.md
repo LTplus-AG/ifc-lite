@@ -1153,7 +1153,7 @@ application references in JavaScript.
 The raw exports cover UTF-16 fingerprints and live host normalization,
 identity-claim derivation, lineage assembly, and JSON-text/live-value sidecars.
 Host Date/JSON observations are preserved. See the
-[`@ifc-lite/wasm` low-level guide](../../packages/wasm/README.md#rust-diff-bindings)
+[`@ifc-lite/wasm` low-level guide](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/wasm/README.md#rust-diff-bindings)
 for helper groups, transport and lifetime requirements.
 
 The public `@ifc-lite/diff` entry points use this Rust module. Call

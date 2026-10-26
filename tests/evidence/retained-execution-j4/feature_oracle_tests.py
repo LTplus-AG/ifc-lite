@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 """#7955 M5: synthetic classifier controls, never SDK execution evidence."""
 import importlib.util
+import json
 from pathlib import Path
 import unittest
 
@@ -63,6 +64,15 @@ class IntendedCauseTests(unittest.TestCase):
             with self.subTest(value=value):
                 with self.assertRaises(RuntimeError):
                     verify(output.replace('actual=24 ', f'actual={value} '), 101, row, True)
+
+
+class EvidenceInventoryTests(unittest.TestCase):
+    def test_every_committed_patch_is_an_executed_row(self):
+        here = Path(__file__).parent
+        rows = json.loads(here.joinpath('mutations.json').read_text())
+        executed = {Path(row['patch']).name for row in rows}
+        self.assertEqual(len(executed), len(rows))
+        self.assertEqual({p.name for p in here.glob('*.patch')}, executed)
 
 
 if __name__ == '__main__':

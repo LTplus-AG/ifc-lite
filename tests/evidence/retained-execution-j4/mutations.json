@@ -4,7 +4,6 @@
     "patch": "tests/evidence/retained-execution-j4/cut-d-source-admission.oracle.patch",
     "test": "element::session_retained::affine_tests::oracle_cause_tests::issue_7955_source_admission_action_has_its_own_cause",
     "intendedFailure": "Only the preregistered assertion/cause; no SDK numerical or release acceptance.",
-    "historicalPatch": "tests/evidence/retained-execution-j4/source-admission.oracle.patch",
     "expectedFailure": {
       "file": "rust/processing/src/element/session_retained/oracle_cause_tests.rs",
       "line": 20,
@@ -18,7 +17,6 @@
     "patch": "tests/evidence/retained-execution-j4/cut-d-ordered-invocation.oracle.patch",
     "test": "element::session_retained::boolean_tests::h2c_sdk_mapped_boolean_operand_scale_changes_the_authored_cut_volume",
     "intendedFailure": "Only the preregistered assertion/cause; no SDK numerical or release acceptance.",
-    "historicalPatch": "tests/evidence/retained-execution-j4/ordered-invocation.oracle.patch",
     "expectedFailure": {
       "file": "rust/processing/src/element/session_retained/boolean_tests.rs",
       "line": 106,
@@ -32,7 +30,6 @@
     "patch": "tests/evidence/retained-execution-j4/cut-d-accepted-outcome.oracle.patch",
     "test": "element::session_retained::boolean_tests::h2c_sdk_empty_definition_reaches_later_operands_and_final_witness",
     "intendedFailure": "Only the preregistered assertion/cause; no SDK numerical or release acceptance.",
-    "historicalPatch": "tests/evidence/retained-execution-j4/accepted-outcome.oracle.patch",
     "expectedFailure": {
       "file": "rust/processing/src/element/session_retained/boolean_tests.rs",
       "line": 76,
@@ -48,7 +45,6 @@
     "patch": "tests/evidence/retained-execution-j4/backend-prep-post-await-stop.oracle.patch",
     "test": "element::session_retained::async_tests::j4_original_stop_after_await_refuses_delivery_and_retires_only_captured_domain",
     "intendedFailure": "Only the preregistered assertion/cause; no SDK numerical or release acceptance.",
-    "historicalPatch": "tests/evidence/retained-execution-j4/post-await-stop.oracle.patch",
     "expectedFailure": {
       "file": "rust/processing/src/element/session_retained/async_tests.rs",
       "line": 105,
@@ -57,9 +53,7 @@
         "left: 1",
         "right: 0"
       ]
-    },
-    "priorCutDPatch": "tests/evidence/retained-execution-j4/cut-d-post-await-stop.oracle.patch",
-    "priorBackendPreparationPatch": "tests/evidence/retained-execution-j4/fused-post-await-stop.oracle.patch"
+    }
   },
   {
     "id": "receipt-report",
@@ -155,7 +149,6 @@
       "fragments": [
         "M3_CONFLICT_MUST_POISON_ATTEMPT"
       ]
-    },
-    "priorBackendPreparationPatch": "tests/evidence/retained-execution-j4/m3-conflict-terminal.oracle.patch"
+    }
   }
 ]

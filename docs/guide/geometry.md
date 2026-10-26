@@ -1105,8 +1105,8 @@ checkout is not qualified. No SDK assets are linked or shipped by this feature.
 The example is not a production viewer or CLI mode.
 
 Numerical mutation qualification uses
-`tests/evidence/retained-execution-j4/feature-oracle.py`; the original four
-patches are preserved alongside their adapted contexts and the independent
-receipt-report mutant. A skipped SDK test never qualifies this lane. Exact
+`tests/evidence/retained-execution-j4/feature-oracle.py`; every patch in that
+directory is a row of its `mutations.json` that the oracle reverses against the
+current tree, and superseded contexts are not kept. A skipped SDK test never qualifies this lane. Exact
 output identity and base/branch performance qualification remain required
 before integration; this diagnostic does not establish a performance verdict.

@@ -22,7 +22,7 @@ pub(super) struct State {
 }
 impl<'a> MappingControl<'a> {
     // Admission-only numerical observer; absent from every production build.
-    #[cfg(test)]
+    #[cfg(all(test, any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime")))]
     pub(in crate::program) fn admit_target_directions_for_test(
         entity: &DecodedEntity, decoder: &mut EntityDecoder,
     ) -> Result<()> {

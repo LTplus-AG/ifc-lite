@@ -8,7 +8,7 @@ mod execute;
 mod inner;
 // Refs #7955: first cross-crate consumer.
 // Keep the construction-only surface private until that consumer is reviewed.
-#[cfg_attr(not(test), allow(dead_code))]
+#[cfg_attr(any(not(test), not(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))), allow(dead_code))]
 mod retained;
 mod inner_cache;
 mod item;

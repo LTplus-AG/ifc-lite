@@ -2,7 +2,7 @@
 //! Crate-private construction facade over the same borrowed geometry program.
 // Refs #7955: first cross-crate consumer.
 // Keep this lint inside the module so oracle ownership follows the explicit path.
-#![cfg_attr(not(test), allow(dead_code))]
+#![cfg_attr(any(not(test), not(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))), allow(dead_code))]
 use super::*;
 use crate::program::retained::*;
 use crate::program::retained::failure::{CompletionReason, FailureHandle, FailureSite, RetainedFailure};

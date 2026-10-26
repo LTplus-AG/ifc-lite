@@ -676,10 +676,12 @@ fn an_application_without_a_readable_developer_is_reused_not_duplicated() {
     assert_no_dangling(&out, schema);
 }
 
-/// A shape a type's representation map holds is rewritten: the type and
-/// every occurrence that instances the map are modified.
+/// A shape a type's representation map holds is rewritten: the map is named
+/// by the type and by the item instancing it, so it is shared; the change is
+/// reported, not attributed. Regression test, export owner-history
+/// attribution PR.
 #[test]
-fn a_rewritten_mapped_shape_modifies_the_type_and_its_occurrences() {
+fn a_rewritten_mapped_shape_is_a_shared_change() {
     for schema in SCHEMAS {
         let r = |id, entity, fields: &[(&str, &str)]| {
             let fields: Vec<(&str, String)> = fields.iter().map(|&(n, v)| (n, v.to_string())).collect();
@@ -701,8 +703,10 @@ fn a_rewritten_mapped_shape_modifies_the_type_and_its_occurrences() {
         let src = owned(text.as_bytes(), schema);
         let (out, report) = export(&src, vec![(ObjectRef::Id(404), Disposition::Delete)], context());
         assert!(report.refusals.is_empty(), "{schema}: {report:?}");
-        let marked = assert_modified_exactly_the_rewritten(schema, &src, &out);
-        assert!(marked.contains(&400) && marked.contains(&410), "{schema}: {marked:?}");
+        // The map is shared by the type and the instancing item: what it
+        // holds is a shared resource, reported, not attributed.
+        assert!(assert_modified_exactly_the_rewritten(schema, &src, &out).is_empty(), "{schema}");
+        assert_shared(&report, 401, schema);
     }
 }
 
@@ -814,7 +818,7 @@ fn a_deleted_brep_face_modifies_the_wall() {
         let src = wall_with_brep(schema);
         let (out, report) = export(&src, vec![(ObjectRef::Id(606), Disposition::Delete)], context());
         assert!(report.refusals.is_empty(), "{schema}: {report:?}");
-        assert!(assert_modified_exactly_the_rewritten(schema, &src, &out).contains(&600), "{schema}");
+        assert_eq!(assert_modified_exactly_the_rewritten(schema, &src, &out), vec![600], "{schema}: the wall alone");
     }
 }
 
@@ -884,4 +888,114 @@ fn an_application_whose_developer_is_deleted_is_not_reused() {
     assert_no_dangling(&out, schema);
     let all = lines(&out);
     assert_eq!(all.values().filter(|l| l.contains("'example-app'")).count(), 1, "one application with the identifier");
+    let history = target(schema, &all, &all[&10], "IFCWALL", "OwnerHistory");
+    assert_ne!(attr(schema, &history, "IFCOWNERHISTORY", "LastModifyingApplication"), "#173", "the application is not reused");
+}
+
+/// The one finding a shared record's change gets.
+fn assert_shared(report: &WriteReport, id: u32, what: &str) {
+    let shared: Vec<_> = report.findings.iter().filter(|f| f.message.contains("shared resource")).collect();
+    assert_eq!(shared.len(), 1, "{what}: {:?}", report.findings);
+    assert_eq!(shared[0].express_id, Some(id), "{what}: {:?}", report.findings);
+}
+
+/// `storey_with_typed_wall` with `records` added and every unset owner
+/// history naming `#900`.
+fn with_records(schema: &str, records: &[String]) -> Vec<u8> {
+    let text = String::from_utf8(storey_with_typed_wall(schema)).unwrap().replace("ENDSEC;\nEND-ISO", &format!("{}\nENDSEC;\nEND-ISO", records.join("\n")));
+    owned(text.as_bytes(), schema)
+}
+
+fn rec(schema: &str, id: u32, entity: &str, fields: &[(&str, &str)]) -> String {
+    let fields: Vec<(&str, String)> = fields.iter().map(|&(n, v)| (n, v.to_string())).collect();
+    build_record(schema, id, entity, &fields)
+}
+
+/// A classification two references name is renamed: shared, so reported
+/// once and attributed to no association. Regression test, export
+/// owner-history attribution PR.
+#[test]
+fn a_shared_classification_rename_is_reported_not_attributed() {
+    for schema in SCHEMAS {
+        let r = |id, entity, fields: &[(&str, &str)]| rec(schema, id, entity, fields);
+        let src = with_records(
+            schema,
+            &[
+                r(850, "IFCCLASSIFICATION", &[("Source", "'x'"), ("Edition", "'1'"), ("Name", "'Uniclass'")]),
+                r(851, "IFCCLASSIFICATIONREFERENCE", &[("Location", "'a'"), ("ItemReference", "'a'"), ("Identification", "'a'"), ("Name", "'A'"), ("ReferencedSource", "#850")]),
+                r(852, "IFCCLASSIFICATIONREFERENCE", &[("Location", "'b'"), ("ItemReference", "'b'"), ("Identification", "'b'"), ("Name", "'B'"), ("ReferencedSource", "#850")]),
+                r(853, "IFCRELASSOCIATESCLASSIFICATION", &[("GlobalId", "'0000000000000000000853'"), ("RelatedObjects", "(#10)"), ("RelatingClassification", "#851")]),
+                r(854, "IFCRELASSOCIATESCLASSIFICATION", &[("GlobalId", "'0000000000000000000854'"), ("RelatedObjects", "(#60)"), ("RelatingClassification", "#852")]),
+            ],
+        );
+        let (out, report) = export(&src, vec![rename(850)], context());
+        assert!(assert_modified_exactly_the_rewritten(schema, &src, &out).is_empty(), "{schema}");
+        assert_shared(&report, 850, schema);
+    }
+}
+
+/// A style two styled items share is renamed: reported, not attributed.
+/// Regression test, export owner-history attribution PR.
+#[test]
+fn a_shared_style_rename_is_reported_not_attributed() {
+    for schema in SCHEMAS {
+        let r = |id, entity, fields: &[(&str, &str)]| rec(schema, id, entity, fields);
+        let src = with_records(
+            schema,
+            &[
+                r(860, "IFCSURFACESTYLE", &[("Name", "'Red'"), ("Side", ".BOTH."), ("Styles", "(#864)")]),
+                r(864, "IFCSURFACESTYLESHADING", &[("SurfaceColour", "#865")]),
+                r(865, "IFCCOLOURRGB", &[("Red", "1."), ("Green", "0."), ("Blue", "0.")]),
+                // IFC4X3 has no style assignment: its items name the style.
+                if schema == "IFC4X3" { String::new() } else { r(861, "IFCPRESENTATIONSTYLEASSIGNMENT", &[("Styles", "(#860)")]) },
+                r(862, "IFCSTYLEDITEM", &[("Styles", if schema == "IFC4X3" { "(#860)" } else { "(#861)" })]),
+                r(863, "IFCSTYLEDITEM", &[("Styles", if schema == "IFC4X3" { "(#860)" } else { "(#861)" })]),
+            ],
+        );
+        let (out, report) = export(&src, vec![rename(860)], context());
+        assert!(assert_modified_exactly_the_rewritten(schema, &src, &out).is_empty(), "{schema}");
+        assert_shared(&report, if schema == "IFC4X3" { 860 } else { 861 }, schema);
+    }
+}
+
+/// An organization two libraries name as publisher loses its address:
+/// reported, not attributed. Regression test, export owner-history
+/// attribution PR.
+#[test]
+fn a_shared_publisher_change_is_reported_not_attributed() {
+    for schema in SCHEMAS {
+        let r = |id, entity, fields: &[(&str, &str)]| rec(schema, id, entity, fields);
+        let src = with_records(
+            schema,
+            &[
+                r(871, "IFCPOSTALADDRESS", &[("Town", "'Zug'")]),
+                r(870, "IFCORGANIZATION", &[("Name", "'Pub'"), ("Addresses", "(#871)")]),
+                r(872, "IFCLIBRARYINFORMATION", &[("Name", "'L1'"), ("Publisher", "#870")]),
+                r(873, "IFCLIBRARYINFORMATION", &[("Name", "'L2'"), ("Publisher", "#870")]),
+            ],
+        );
+        let (out, report) = export(&src, vec![(ObjectRef::Id(871), Disposition::Delete)], context());
+        assert!(assert_modified_exactly_the_rewritten(schema, &src, &out).is_empty(), "{schema}");
+        assert_shared(&report, 870, schema);
+    }
+}
+
+/// An actor whose organization (named by it alone) loses its address is
+/// modified. Regression test, export owner-history attribution PR.
+#[test]
+fn an_actors_own_organization_change_modifies_the_actor() {
+    for schema in SCHEMAS {
+        let r = |id, entity, fields: &[(&str, &str)]| rec(schema, id, entity, fields);
+        let src = with_records(
+            schema,
+            &[
+                r(881, "IFCPOSTALADDRESS", &[("Town", "'Zug'")]),
+                r(880, "IFCORGANIZATION", &[("Name", "'Contractor'"), ("Addresses", "(#881)")]),
+                r(882, "IFCACTOR", &[("GlobalId", "'0000000000000000000882'"), ("Name", "'Builder'"), ("TheActor", "#880")]),
+            ],
+        );
+        let (out, report) = export(&src, vec![(ObjectRef::Id(881), Disposition::Delete)], context());
+        assert!(report.refusals.is_empty(), "{schema}: {report:?}");
+        assert_eq!(assert_modified_exactly_the_rewritten(schema, &src, &out), vec![882], "{schema}");
+    }
 }

@@ -5,7 +5,7 @@
 //! history (not per object) for everything it rewrites.
 //!
 //! What counts as modified is derived once, from what the plan actually
-//! rewrites ([`rewritten_roots`]), not tracked at the sites that rewrite.
+//! rewrites ([`changed_records`]), not tracked at the sites that rewrite.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
@@ -167,65 +167,53 @@ pub(crate) fn attribute_changes(index: &FileIndex, schema: &str, plan: &ExportPl
     }
 }
 
-/// Attributes that name a shared resource rather than something the naming
-/// record owns: the attribution chain (owner histories, users,
-/// applications, their actors, addresses and roles), representation
-/// contexts, units, and a placement's `PlacementRelTo` (what is placed
-/// relative to a placement is not changed by it). Everything else an object
-/// references, it owns.
-const NOT_OWNING: [&str; 15] = [
-    "OwnerHistory",
-    "OwningUser",
-    "OwningApplication",
-    "LastModifyingUser",
-    "LastModifyingApplication",
-    "ApplicationDeveloper",
-    "TheOrganization",
-    "TheActor",
-    "Addresses",
-    "Roles",
-    "ContextOfItems",
-    "ParentContext",
-    "Unit",
-    "Units",
-    "PlacementRelTo",
-];
+/// Records never climbed into: the owner history and representation
+/// contexts, shared by every rooted record or shape by definition.
+const NEVER_OWNERS: [&str; 4] = ["IFCOWNERHISTORY", "IFCREPRESENTATIONCONTEXT", "IFCGEOMETRICREPRESENTATIONCONTEXT", "IFCGEOMETRICREPRESENTATIONSUBCONTEXT"];
 
-/// Records never climbed into, whatever names them through: the owner
-/// history and representation contexts, which every rooted record or shape
-/// shares.
-const SHARED_RECORDS: [&str; 4] = ["IFCOWNERHISTORY", "IFCREPRESENTATIONCONTEXT", "IFCGEOMETRICREPRESENTATIONCONTEXT", "IFCGEOMETRICREPRESENTATIONSUBCONTEXT"];
+/// What the plan's rewrites change: the records whose owner history records
+/// it, and the shared records whose change is attributed to none.
+struct Changed {
+    roots: BTreeSet<u32>,
+    shared: BTreeSet<u32>,
+}
 
-/// The records whose owner history records what the plan rewrote: every
-/// source record it rewrites that carries an `OwnerHistory`, and for one
-/// that carries none, the nearest records above it that do. An object owns
-/// what it references except shared resources ([`NOT_OWNING`],
-/// [`SHARED_RECORDS`]), so the climb follows every other referrer and stops
-/// at the first records carrying an `OwnerHistory`: a face's wall, a
-/// material layer's association, a mapped shape's type and every occurrence
-/// instancing the map. Records going away are not among them.
-fn rewritten_roots(index: &FileIndex, schema: &str, edits_by_id: &HashMap<u32, BTreeMap<usize, String>>, removed: &HashSet<u32>) -> BTreeSet<u32> {
+/// One structural rule. A rewritten source record that carries an
+/// `OwnerHistory` is changed itself. One that carries none belongs to its
+/// referrer when it has exactly one (counting the records that name it and
+/// stay): the climb goes there, and on until a record carrying an
+/// `OwnerHistory`, which is changed (a face's wall, a set's values, a
+/// single-use material's association, an actor's organization). A record
+/// named by two or more is a shared resource (a classification, a style, a
+/// representation map, an organization): the climb stops there and the
+/// change is reported, attributed to no object. The climb never enters an
+/// owner history or a representation context. Each level asks for the
+/// referrers of records it has not climbed through yet, which the resolution
+/// collects in one more pass over the file.
+fn changed_records(index: &FileIndex, schema: &str, edits_by_id: &HashMap<u32, BTreeMap<usize, String>>, removed: &HashSet<u32>) -> Changed {
     let live = |id: &u32| index.contains(*id) && !removed.contains(id);
     let carries = |id: u32| index.type_of(id).is_some_and(|ty| attribute_index(schema, &ty, "OwnerHistory").is_some());
-    let owns = |owner: u32, slot: usize| {
-        let Some(ty) = index.type_of(owner) else { return false };
-        let attribute = ifc_lite_core::attribute_names_for_schema(schema, &ty).and_then(|names| names.get(slot).copied());
-        !SHARED_RECORDS.contains(&ty.as_str()) && attribute.is_some_and(|name| !NOT_OWNING.contains(&name))
-    };
-    let mut roots = BTreeSet::new();
+    let mut changed = Changed { roots: BTreeSet::new(), shared: BTreeSet::new() };
     let mut seen = HashSet::new();
     let mut pending: Vec<u32> = edits_by_id.keys().copied().filter(|id| live(id)).collect();
     while let Some(record) = pending.pop() {
-        if !seen.insert(record) {
+        if !seen.insert(record) || index.type_of(record).is_some_and(|ty| NEVER_OWNERS.contains(&ty.as_str())) {
             continue;
         }
         if carries(record) {
-            roots.insert(record);
+            changed.roots.insert(record);
             continue;
         }
-        pending.extend(index.referrers(record).iter().filter(|&&(owner, slot)| live(&owner) && owns(owner, slot)).map(|&(owner, _)| owner));
+        let owners: BTreeSet<u32> = index.referrers(record).iter().map(|&(owner, _)| owner).filter(|owner| live(owner)).collect();
+        match owners.len() {
+            0 => {}
+            1 => pending.extend(owners),
+            _ => {
+                changed.shared.insert(record);
+            }
+        }
     }
-    roots
+    changed
 }
 
 /// The edits and records resolution has produced, which marking adds to.
@@ -236,12 +224,19 @@ pub(crate) struct Rewrites<'a> {
     pub(crate) findings: &'a mut Vec<ValidationFinding>,
 }
 
-/// Point every record the plan rewrote ([`rewritten_roots`]) at a `MODIFIED`
+/// Point every record the plan rewrote ([`changed_records`]) at a `MODIFIED`
 /// history keeping its original owner, state and creation date. Run once,
 /// after every patch, delete and Add has settled its edits.
 fn mark_modified(index: &FileIndex, schema: &str, ledger: &mut Ledger, removed: &HashSet<u32>, out: &mut Rewrites) {
     let required = SchemaFamily::of_file_schema(schema) == Some(SchemaFamily::Ifc2x3);
-    for id in rewritten_roots(index, schema, out.edits_by_id, removed) {
+    let changed = changed_records(index, schema, out.edits_by_id, removed);
+    for &id in &changed.shared {
+        out.findings.push(ValidationFinding {
+            express_id: Some(id),
+            message: format!("shared resource #{id} changed; not attributed to any object"),
+        });
+    }
+    for id in changed.roots {
         let Some(ty) = index.type_of(id) else { continue };
         let Some(slot_idx) = attribute_index(schema, &ty, "OwnerHistory") else { continue };
         let Some(line) = index.raw_line(id) else { continue };

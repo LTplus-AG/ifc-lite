@@ -85,6 +85,15 @@ impl ExecutionAccount {
     pub(super) fn check_allowance(&self) -> Result<(), ProgramStop> {
         self.1.as_ref().map_or(Ok(()), |allowance| allowance.check())
     }
+    /// A refusal of the local allowance is already recorded on that allowance
+    /// (see `prepare_inner`). While the original account itself is not
+    /// terminal, later stops in the overlay domain return that first local
+    /// refusal and leave the caller's original account usable.
+    pub(super) fn overlay_stop(&self) -> Option<ProgramStop> {
+        self.1.as_ref()?;
+        if self.check().is_err() { return None; }
+        self.check_allowance().err()
+    }
 }
 
 /// Cooperative checkpoint. Stop precedence stays source -> original account ->

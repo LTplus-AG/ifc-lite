@@ -26,7 +26,8 @@ fn issue_7955_c2_public_work_limit_covers_serialization_under_generous_ambient()
         run(source(), &options)
     }).err().unwrap();
     assert_eq!(error.original_stop(), standalone.original_stop());
-    assert_eq!(ambient.check().err(), error.original_stop());
+    // The local inspection allowance refused; the ambient account stays usable.
+    assert_eq!(ambient.check(), Ok(()));
     assert!(ambient.usage().work >= 37 && ambient.usage().work <= 37 + limit);
     assert!(matches!(error.original_stop(), Some(ProgramStop::ResourceRefused(ResourceFailure {
         dimension: Dimension::Work, reason: RefusalReason::Limit, ..
@@ -54,7 +55,8 @@ fn issue_7955_c2_public_byte_limit_refuses_report_backing_before_growth() {
     // Independent original-account invariant: every covered allocation must be
     // charged before growth. The old after-allocation check exceeds this peak.
     assert!(ambient.usage().peak_live_bytes <= limit);
-    assert_eq!(ambient.check().err(), error.original_stop());
+    // The local inspection allowance refused; the ambient account stays usable.
+    assert_eq!(ambient.check(), Ok(()));
 }
 
 #[test]

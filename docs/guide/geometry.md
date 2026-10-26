@@ -99,7 +99,10 @@ The inspection composes its `maxWork` and `maxBytes` allowance with the original
 account and pool, admitting covered work and requested live backing before growth,
 including report serialization. Original cumulative usage is never reset. Captured
 source contexts carry the local allowance; unrelated detached work does not.
-The report's permit refunds its backing on drop. Inherited retained helpers still
+Exhausting the local allowance stops only that inspection: the refusal is recorded
+on the allowance, and the caller's original account stays usable.
+The report's permit refunds its backing on drop, and decoded member lists keep
+their backing permit with the list. Inherited retained helpers still
 conservatively retain some temporary charges for the original account lifetime.
 This covers requested backing, not allocator overhead, global RSS, all core decoder
 allocations or SDK costs; it is not an aggregate census-memory limit.
@@ -109,16 +112,17 @@ reading and source hashing. One captured monotonic domain spans source inspectio
 serialization, strict decode and later `bytes()` delivery. Cancellation is
 cooperative: hash chunks are at most 64 KiB, retained reference-list members are
 checked individually, analytic coefficient/value/curve loops and topology budget
-steps check the same clock, and unit resolution, individual decoder calls, controller
+steps check the same clock (these source steps are no-ops on default builds), and unit resolution, individual decoder calls, controller
 admission and bounded serialization/strict decode are checked after completion.
 Those indivisible calls are not preempted. Deadline expiry is `DEADLINE_EXCEEDED`,
 not a fabricated cancellation or numeric resource payload; existing original
 source/account/terminal stops keep precedence. The clock injection used by tests
 is restricted to the existing test-support build.
-A stored census diagnostic can expire while later products are inspected. Its
-controller column then becomes `delivery_refused` with the actual typed code;
-the original extractor row, inventories and counts remain in the serialized census.
-Expired bytes never become an inspected-success column.
+The census delivers each diagnostic immediately after its own inspection, so the
+deadline judges that inspection, not later products or final output. A diagnostic
+refused at that delivery becomes a `delivery_refused` controller column with the
+actual typed code; the original extractor row, inventories and counts remain in
+the serialized census. Expired bytes never become an inspected-success column.
 
 Performance, geometry equivalence and release qualification are separate gates.
 

@@ -17,23 +17,23 @@ pub(super) const OPTIONS: &str = r#"{"schemaVersion":1,"chordToleranceMetres":0.
 "openings":"all","layers":"preserve","skipSmallCuts":false,"mergeLayers":false}"#;
 
 pub(super) enum Column {
-    Inspected(RetainedSourceInspection),
+    // Materialized immediately after its own inspection: the per-report
+    // deadline judges that inspection, not how long later rows take.
+    Inspected(Vec<u8>),
+    DeliveryRefused(String),
     EntryRefused(String),
     Uninspected,
 }
 impl Serialize for Column {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let value = match self {
-            Self::Inspected(report) => match report.bytes() {
-                Ok(bytes) => serde_json::from_slice::<serde_json::Value>(bytes)
-                    .map_err(serde::ser::Error::custom)?,
-                // A captured report can expire while later rows are inspected.
-                // Keep this row and the extractor inventory, without exposing
-                // its stale success bytes or aborting the complete census.
-                Err(error) => serde_json::json!({"kind":"delivery_refused", "code":
-                    serde_json::from_str::<serde_json::Value>(&error.diagnostic_code_json())
-                        .map_err(serde::ser::Error::custom)?, "authority":"diagnostic_only"}),
-            },
+            Self::Inspected(bytes) => serde_json::from_slice::<serde_json::Value>(bytes)
+                .map_err(serde::ser::Error::custom)?,
+            // Delivery refused at inspection time. Keep this row and the
+            // extractor inventory, without aborting the complete census.
+            Self::DeliveryRefused(code) => serde_json::json!({"kind":"delivery_refused", "code":
+                serde_json::from_str::<serde_json::Value>(code).map_err(serde::ser::Error::custom)?,
+                "authority":"diagnostic_only"}),
             Self::EntryRefused(code) => serde_json::json!({"kind":"entry_refused", "code":
                 serde_json::from_str::<serde_json::Value>(code).map_err(serde::ser::Error::custom)?,
                 "authority":"diagnostic_only"}),
@@ -59,9 +59,16 @@ fn inspect_at(content: &[u8], products: &mut BTreeMap<u32, Product>, commit: &st
         let mut decoder = source.decoder();
         let root = decoder.decode_by_id(id).ok();
         product.controller = Some(match inspect_retained_source(source.clone(), id, root.as_ref(), &mut decoder, OPTIONS, commit) {
-            Ok(report) => Column::Inspected(report),
+            Ok(report) => delivered(&report),
             Err(error) => Column::EntryRefused(error.diagnostic_code_json()),
         });
+    }
+}
+
+fn delivered(report: &RetainedSourceInspection) -> Column {
+    match report.bytes() {
+        Ok(bytes) => Column::Inspected(bytes.to_vec()),
+        Err(error) => Column::DeliveryRefused(error.diagnostic_code_json()),
     }
 }
 

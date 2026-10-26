@@ -97,7 +97,8 @@ fn issue_7955_c2_budget_resumption_excludes_foreign_terminal_and_restores_it() {
     });
     assert_eq!(foreign.usage(), Usage::default());
     assert_eq!(original.usage().work, 1);
-    assert!(matches!(original.check(), Err(ProgramStop::ResourceRefused(_))));
+    // The local refusal stays on the overlay; the original account is usable.
+    assert_eq!(original.check(), Ok(()));
 }
 
 #[test]
@@ -173,4 +174,29 @@ fn issue_7955_geometry_error_enum_has_no_deadline_variant() {
             | crate::Error::CoreError(_) => {}
         }
     }
+}
+
+#[test]
+fn issue_7955_exhausted_overlay_leaves_original_account_usable() {
+    let original = generous();
+    original.scope(|| {
+        let budget = InspectionBudget::new(InspectionStart::now(), 1, 8, 10000);
+        let refused = budget.scope(|| {
+            charge(Cost { work: 1, ..Default::default() }).unwrap();
+            let error = charge(Cost { work: 1, ..Default::default() }).unwrap_err();
+            // The overlay domain itself stays terminal with its first refusal.
+            assert_eq!(check_current(), Err(error));
+            let mut values = Vec::<u64>::new();
+            assert_eq!(reserve_headers(&mut values, 1).unwrap_err(), error);
+            stop(ProgramStop::Cancelled);
+            error
+        });
+        assert!(matches!(refused, ProgramStop::ResourceRefused(ResourceFailure {
+            dimension: Dimension::Work, remaining: 0, reason: RefusalReason::Limit, .. })));
+        assert_eq!(original.check(), Ok(()));
+        assert_eq!(check_current(), Ok(()));
+        charge(Cost { work: 5, ..Default::default() }).unwrap();
+    });
+    assert_eq!(original.check(), Ok(()));
+    assert_eq!(original.usage().work, 6);
 }

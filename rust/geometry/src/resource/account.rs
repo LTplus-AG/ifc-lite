@@ -96,6 +96,8 @@ impl ExecutionAccount {
         state.terminal.map_or(Ok(()), Err)
     }
     pub fn stop(&self, error: ProgramStop) -> ProgramStop {
+        #[cfg(feature = "retained-runtime")]
+        if let Some(local) = self.overlay_stop() { return local; }
         let Some(inner) = &self.0 else { return error };
         let mut state = inner.state.lock().unwrap_or_else(|e| e.into_inner());
         *state.terminal.get_or_insert(error)

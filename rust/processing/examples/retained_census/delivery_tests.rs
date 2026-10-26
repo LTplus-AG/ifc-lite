@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
-//! #7955 R3: one aged controller diagnostic cannot discard the census inventory.
+//! #7955 R3: a controller diagnostic is judged by its own inspection deadline,
+//! not by how long later rows or the final census serialization take.
 use super::*;
 use ifc_lite_geometry::resource::inspection_test_clock;
 
 #[test]
-fn issue_7955_expired_controller_delivery_preserves_actual_census_rows_and_counts() {
+fn issue_7955_controller_rows_inspected_in_time_survive_later_census_delay() {
     inspection_test_clock::scope(|clock| {
         let text = super::super::tests::model("#90=IFCWALL('0000000000000000000090',$,$,$,$,$,$,$);");
         let mut fixture = super::super::census_bytes(text.as_bytes());
@@ -17,28 +18,30 @@ fn issue_7955_expired_controller_delivery_preserves_actual_census_rows_and_count
         let before = serde_json::to_value(&report).unwrap();
         assert_eq!(before["fixtures"]["inline.ifc"]["products"]["13"]["controller"]["outcome"]["kind"],
             "requires_numerical_evaluation");
+        // Every row finished inside its own deadline. Output delayed past the
+        // per-report deadline must not turn those rows into delivery refusals.
         clock.advance(10000);
-        let after = serde_json::to_value(&report).expect("expired row must preserve complete census serialization");
-        assert_eq!(after["aggregate"], before["aggregate"]);
-        assert_eq!(after["present"], before["present"]);
-        assert_eq!(after["missing"], before["missing"]);
-        let prior = before["fixtures"]["inline.ifc"].as_object().unwrap();
-        let current = after["fixtures"]["inline.ifc"].as_object().unwrap();
-        for (key, value) in prior {
-            if key != "products" { assert_eq!(&current[key], value, "fixture inventory {key}"); }
-        }
-        let prior = prior["products"].as_object().unwrap();
-        let current = current["products"].as_object().unwrap();
-        assert_eq!(prior.keys().collect::<Vec<_>>(), current.keys().collect::<Vec<_>>());
-        for (id, product) in prior {
-            for (key, value) in product.as_object().unwrap() {
-                if key != "controller" { assert_eq!(&current[id][key], value, "product {id}: {key}"); }
-            }
-        }
-        assert_eq!(current["13"]["controller"], serde_json::json!({
-            "kind":"delivery_refused", "code":"DEADLINE_EXCEEDED", "authority":"diagnostic_only",
-        }));
-        assert!(current["13"]["controller"].get("outcome").is_none());
-        assert_eq!(current["90"]["controller"]["kind"], "delivery_refused");
+        let after = serde_json::to_value(&report).expect("delayed output must preserve complete census serialization");
+        assert_eq!(after, before);
+        let current = after["fixtures"]["inline.ifc"]["products"].as_object().unwrap();
+        assert_eq!(current["13"]["controller"]["outcome"]["kind"], "requires_numerical_evaluation");
+        assert_eq!(current["90"]["controller"]["outcome"]["kind"], "traversal_only");
+        assert!(current.values().all(|product| product["controller"]["kind"] != "delivery_refused"));
+    });
+}
+
+#[test]
+fn issue_7955_controller_deadline_judges_each_row_inspection_only() {
+    inspection_test_clock::scope(|clock| {
+        let text = super::super::tests::model("#90=IFCWALL('0000000000000000000090',$,$,$,$,$,$,$);");
+        let mut fixture = super::super::census_bytes(text.as_bytes());
+        // The first row (#13) expires inside its own inspection; #90 starts later.
+        clock.expire_at("report_write", 1, 10000);
+        inspect_at(text.as_bytes(), &mut fixture.products, "0000000000000000000000000000000000000000");
+        let expired = serde_json::to_value(&fixture.products[&13].controller).unwrap();
+        assert_eq!(expired["code"], "DEADLINE_EXCEEDED");
+        assert!(expired.get("outcome").is_none());
+        let later = serde_json::to_value(&fixture.products[&90].controller).unwrap();
+        assert_eq!(later["outcome"]["kind"], "traversal_only");
     });
 }

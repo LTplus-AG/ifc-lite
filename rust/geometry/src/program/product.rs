@@ -178,6 +178,10 @@ pub(super) struct ProductControl<'a> {
     /// The next representation index the cursor examines.
     next_rep: usize,
     items: std::vec::IntoIter<DecodedEntity>,
+    /// Inspection backing that moves with `shape` and `items` (always `None`
+    /// outside the opt-in retained inspection).
+    shape_storage: retained_structure::Storage,
+    items_storage: retained_structure::Storage,
     fill_only: bool,
     body: Body,
     child: Child<'a>,
@@ -208,6 +212,8 @@ impl<'a> ProductControl<'a> {
             direct: false,
             next_rep: 0,
             items: Vec::new().into_iter(),
+            shape_storage: None,
+            items_storage: None,
             fill_only: false,
             body: Body::Sink(sink),
             child: Child::None,
@@ -258,6 +264,7 @@ impl<'a> ProductControl<'a> {
             Action::Shape => {
                 if let Some(selection) = &self.retained {
                     return Ok(ProductReply::Shape(retained_structure::validated_product_shape(element, decoder)
+                        .map(|(shape, storage)| { self.shape_storage = storage; shape })
                         .map_err(|error| error.into_common(selection))));
                 }
                 return Ok(ProductReply::Shape(product_shape(element, decoder).map_err(Into::into)));
@@ -266,7 +273,8 @@ impl<'a> ProductControl<'a> {
                 let rep = self.shape.as_ref().and_then(|shape| shape.representations().get(*index));
                 let rep = rep.ok_or(ProgramError::StaleRequest)?;
                 return Ok(ProductReply::Items(match &self.retained {
-                    Some(selection) => retained_structure::retained_items(rep, decoder, selection),
+                    Some(selection) => retained_structure::retained_items(rep, decoder, selection)
+                        .map(|(items, storage)| { self.items_storage = storage; items }),
                     None => rep_items(rep, decoder).map_err(Into::into),
                 }));
             }

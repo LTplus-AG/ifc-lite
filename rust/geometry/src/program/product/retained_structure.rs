@@ -5,12 +5,15 @@ use crate::Error;
 use crate::program::retained::failure::{FailureSite, OriginCause, StructuralReason};
 use crate::program::retained::RetainedSelection;
 type Result<T> = std::result::Result<T, StructureError>;
+/// Inspection backing of a returned decoded Vec. Its holder keeps it for as
+/// long as it keeps that Vec, so dropping the Vec refunds the allowance.
+pub(super) type Storage = Option<crate::resource::Reservation>;
 use ifc_lite_core::{slot, AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 
 pub(super) fn validated_product_shape(
     element: &DecodedEntity,
     decoder: &mut EntityDecoder,
-) -> Result<Option<ProductShape>> {
+) -> Result<(Option<ProductShape>, Storage)> {
     let attr = element
         .get(slot::IfcProduct::REPRESENTATION.index())
         .ok_or_else(|| shape_error(element.id, ShapeError::NoRepresentationAttribute {
@@ -19,7 +22,7 @@ pub(super) fn validated_product_shape(
     // Only an authored absent Representation is an empty product. In
     // particular, `*` is not a derived attribute at this IfcProduct slot.
     if matches!(attr, AttributeValue::Null) {
-        return Ok(None);
+        return Ok((None, None));
     }
     let id = attr
         .as_entity_ref()
@@ -36,10 +39,10 @@ pub(super) fn validated_product_shape(
     )?;
     // Read individually so a large authored list cannot hide a whole decode
     // loop between inspection checkpoints. No numerical path is invoked.
-    let representations = decode_members(members, decoder, FailureSite::ProductShape)?;
+    let (representations, storage) = decode_members(members, decoder, FailureSite::ProductShape)?;
     let shape = ProductShape::from_representations(shape.id, representations);
     for rep in shape.representations() {
-        crate::resource::source_step().map_err(StructureError::Checkpoint)?;
+        step()?;
         if !matches!(
             rep.ifc_type,
             IfcType::IfcShapeRepresentation | IfcType::IfcTopologyRepresentation
@@ -54,7 +57,7 @@ pub(super) fn validated_product_shape(
         let members = reference_members(rep, slot::IfcRepresentation::ITEMS.index(), "Items")?;
         item_targets(members, decoder)?;
     }
-    Ok(Some(shape))
+    Ok((Some(shape), storage))
 }
 
 fn reference_members<'a>(
@@ -71,7 +74,7 @@ fn reference_members<'a>(
                 format!("retained {name} must be a nonempty reference list"))
         })?;
     for member in members {
-        crate::resource::source_step().map_err(StructureError::Checkpoint)?;
+        step()?;
         if member.as_entity_ref().is_none() {
             return Err(refused(list_site(name), entity.id, StructuralReason::NonReferenceMember, format!(
                 "retained {name} on #{} contains a non-reference member",
@@ -86,10 +89,10 @@ fn item_targets(members: &[AttributeValue], decoder: &mut EntityDecoder) -> Resu
     // reference_members has checked every token before this conversion, so
     // none can disappear here. Keep the exact reader's leniency out of S1.
     for id in members.iter().filter_map(AttributeValue::as_entity_ref) {
-        crate::resource::source_step().map_err(StructureError::Checkpoint)?;
+        step()?;
         let item = decoder.decode_by_id(id)
             .map_err(|error| core_error(FailureSite::RepresentationItems, id, error))?;
-        crate::resource::source_step().map_err(StructureError::Checkpoint)?;
+        step()?;
         // The generated supported-schema hierarchy includes geometric,
         // topological, styled and mapped items, including legacy subclasses.
         // Category membership does not admit a new retained constructor.
@@ -148,8 +151,15 @@ fn shape_error(entity: u32, error: ShapeError) -> StructureError {
     StructureError::Origin { site: FailureSite::ProductShape, entity, cause: OriginCause::Shape(error), diagnostic }
 }
 
+// Every build keeps the retained stop boundary; only the opt-in inspection
+// runtime adds its source-step accounting (a no-op on default builds).
+fn step() -> Result<()> {
+    crate::resource::check_current()?;
+    crate::resource::source_step().map_err(StructureError::Checkpoint)
+}
+
 fn decode_members(members: &[AttributeValue], decoder: &mut EntityDecoder, site: FailureSite)
-    -> Result<Vec<DecodedEntity>> {
+    -> Result<(Vec<DecodedEntity>, Storage)> {
     // Added backing accounting belongs only to the opted-in inspection. Keep
     // ordinary retained source replies at their existing stop/cost boundary.
     let inspecting = crate::resource::inspection_active();
@@ -158,17 +168,16 @@ fn decode_members(members: &[AttributeValue], decoder: &mut EntityDecoder, site:
         Some(crate::resource::reserve_headers(&mut values, members.len())?)
     } else { None };
     for id in members.iter().filter_map(AttributeValue::as_entity_ref) {
-        crate::resource::source_step().map_err(StructureError::Checkpoint)?;
+        step()?;
         let decoded = decoder.decode_by_id(id);
-        crate::resource::source_step().map_err(StructureError::Checkpoint)?;
+        step()?;
         values.push(decoded.map_err(|error| core_error(site, id, error))?);
     }
-    if let Some(permit) = permit { permit.retain(); }
-    Ok(values)
+    Ok((values, permit))
 }
 
 pub(super) fn retained_items(rep: &DecodedEntity, decoder: &mut EntityDecoder,
-    selection: &RetainedSelection) -> crate::Result<Vec<DecodedEntity>> {
+    selection: &RetainedSelection) -> crate::Result<(Vec<DecodedEntity>, Storage)> {
     let members = reference_members(rep, slot::IfcRepresentation::ITEMS.index(), "Items")
         .map_err(|error| error.into_common(selection))?;
     decode_members(members, decoder, FailureSite::RepresentationItems)

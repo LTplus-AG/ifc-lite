@@ -59,7 +59,9 @@ fn issue_7955_public_inspection_local_caps_act_before_covered_growth() {
         let original = ExecutionAccount::new(ExecutionPolicy::Bounded(ResourceLimits::default()));
         let Err(error) = original.scope(|| inspect(&options)) else { panic!("local cap must refuse"); };
         assert_eq!(error.diagnostic_code_json(), "\"RESOURCE_EXHAUSTED\"");
-        assert_eq!(error.original_stop(), original.check().err());
+        assert!(error.original_stop().is_some());
+        // A local cap refuses on its own allowance; the original stays usable.
+        assert_eq!(original.check(), Ok(()));
         if let Some(limit) = byte_limit { assert!(original.usage().peak_live_bytes <= limit); }
     }
 }

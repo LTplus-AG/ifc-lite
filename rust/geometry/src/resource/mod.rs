@@ -102,12 +102,14 @@ pub fn check_current() -> Result<(), ProgramStop> {
     Ok(())
 }
 
-/// Check controlled source iterations without changing default numeric work.
+/// Check controlled source iterations under the opt-in retained inspection.
+/// Default builds keep their existing loops unchanged: this is a no-op there,
+/// with no stop, thread-local or account check added.
 pub(crate) fn source_step() -> crate::Result<()> {
     #[cfg(feature = "retained-runtime")]
     { inspection::source_step() }
     #[cfg(not(feature = "retained-runtime"))]
-    { check_current().map_err(Into::into) }
+    { Ok(()) }
 }
 
 pub(crate) fn inspection_active() -> bool {

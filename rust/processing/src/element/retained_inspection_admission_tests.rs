@@ -33,10 +33,12 @@ fn direct(options: &str, ambient: Option<&ExecutionAccount>, edit: impl FnOnce(&
 #[test]
 fn issue_7955_r1_direct_geometry_refuses_before_owned_binding_decode() {
     let tiny = OPTIONS.replace("16777216", "1");
-    for (options, ambient) in [
-        (tiny.as_str(), None),
-        (tiny.as_str(), Some(account(Default::default()))),
-        (OPTIONS, Some(account(ResourceLimits { live_bytes: Some(0), ..Default::default() }))),
+    // `local`: the refusal is the inspection's own allowance, which must leave
+    // the caller's original account usable; otherwise the original refused.
+    for (options, ambient, local) in [
+        (tiny.as_str(), None, true),
+        (tiny.as_str(), Some(account(Default::default())), true),
+        (OPTIONS, Some(account(ResourceLimits { live_bytes: Some(0), ..Default::default() })), false),
     ] {
         clock::scope(|clock| {
             // This independent clock observer does not share the account that
@@ -52,7 +54,8 @@ fn issue_7955_r1_direct_geometry_refuses_before_owned_binding_decode() {
             assert!(observer.scope(resource::inspection_checkpoint).is_ok(), "owned decode ran before admission");
             if let Some(ambient) = ambient {
                 assert_eq!(ambient.usage().peak_live_bytes, 0);
-                assert_eq!(ambient.check().err().map(SourceInspectionError::Stopped), Some(error));
+                let expected = if local { None } else { Some(error) };
+                assert_eq!(ambient.check().err().map(SourceInspectionError::Stopped), expected);
             }
         });
     }

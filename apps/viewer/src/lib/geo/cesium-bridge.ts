@@ -26,11 +26,13 @@
  */
 
 import proj4 from 'proj4';
-import { computeGridConvergence, isGeographicProj4, projectedDefinitionInMetres } from './proj4-utils';
+import { computeGridFrame, isGeographicProj4, projectedDefinitionInMetres } from './proj4-utils';
 export { computeGridConvergence } from './proj4-utils';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry, reprojectPointToLatLon, resolveProjection } from './reproject';
+import { isMapAbsoluteGeometry } from './map-absolute';
+import { combinedScaleFactor, gridCoordinateSource, type GridCoordinateSource } from './ground-scale';
 import {
   resolveTerrainElevationDetailed,
   type ResolveTerrainElevationOptions,
@@ -119,6 +121,17 @@ export interface CesiumModelOriginInfo extends GeodesicPosition {
    * and the WebGPU sun all read the same value. See #1408.
    */
   gamma: number;
+  /** Combined grid-to-ground scale factor k_c = k·R/(R+h) at this origin (1 for a geographic CRS). */
+  combinedScaleFactor: number;
+  /** Why the geometry is read as grid coordinates, or null for true-length geometry (`ground-scale.ts`). */
+  gridSource: GridCoordinateSource | null;
+  /**
+   * Multiplier from map (grid) lengths to the ENU ground lengths Cesium draws:
+   * 1/k_c for a grid-coordinate source, else exactly 1. Applied to the
+   * horizontal rows of the viewer-to-ENU rotation only; heights are
+   * orthometric and unaffected.
+   */
+  groundScale: number;
 }
 
 export async function computeCesiumModelOrigin(
@@ -142,6 +155,7 @@ export async function computeCesiumModelOrigin(
   const mapScale = resolveMapUnitToMetreScale(projectedCRS.mapUnitScale, lengthUnitScale);
   // Map-absolute geometry (#2526): neutralise a conversion the geometry
   // already carries, or the offsets/rotation get applied twice.
+  const mapAbsolute = !geographic && isMapAbsoluteGeometry(mapConversion, mapScale, coordinateInfo);
   if (!geographic) mapConversion = effectiveMapConversionForGeometry(mapConversion, mapScale, coordinateInfo);
   const axis = resolveMapAxisDirection(mapConversion.xAxisAbscissa, mapConversion.xAxisOrdinate);
   if (!axis) return null;
@@ -170,6 +184,9 @@ export async function computeCesiumModelOrigin(
     const geoidUndulation = shouldApplyGeoidUndulation(heightsAreEllipsoidal)
       ? egm96Undulation(lat, lon)
       : 0;
+    const frame = computeGridFrame(projDef, easting, northing, lat);
+    const kc = geographic ? 1 : combinedScaleFactor(frame.pointScale, lat, height + geoidUndulation);
+    const gridSource = geographic ? null : gridCoordinateSource(mapConversion, { x: scaleX, y: scaleY }, mapAbsolute, kc);
     return {
       longitude: lon,
       latitude: lat,
@@ -181,7 +198,10 @@ export async function computeCesiumModelOrigin(
       scaleX,
       scaleY,
       scaleZ,
-      gamma: computeGridConvergence(projDef, easting, northing, lon, lat),
+      gamma: frame.gamma,
+      combinedScaleFactor: kc,
+      gridSource,
+      groundScale: gridSource ? 1 / kc : 1,
     };
   } catch (error) {
     console.warn('[cesium] model origin transformation failed', error);
@@ -253,7 +273,11 @@ export async function createCesiumBridge(
   // R(gamma) into true-north ENU; `viewerToEnuRotation` composes all three
   // (up = vy). The model-placement matrix reuses the very same `rot` via
   // `bridge.viewerRotation` so the two never drift. Viewer deltas are metres.
-  const rot = viewerToEnuRotation(originScaleX, absc, ordi, origin.gamma, originScaleY);
+  // Grid-coordinate sources are drawn at ground length (`groundScale` = 1/k_c);
+  // `viewerToGeodetic` keeps the unscaled map formula, which is exact for them.
+  const rot = viewerToEnuRotation(
+    originScaleX * origin.groundScale, absc, ordi, origin.gamma, originScaleY * origin.groundScale,
+  );
   // ── Cache for ECEF objects ──
   let viewerToEcefMatrix: InstanceType<typeof import('cesium').Matrix4> | null = null;
   let cachedClampUp: number | null = null;

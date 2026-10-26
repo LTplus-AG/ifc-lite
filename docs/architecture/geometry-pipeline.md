@@ -400,7 +400,12 @@ sampling and map-normalization preflight use the same iterative walk with a
 `RelativePlacement`, a record that is not a placement (as `PlacementRelTo` or as
 `RelativePlacement`) and a linear or grid frame that cannot be sampled are each
 refused and counted (`EntityDecoder::refused_records`), so the element is lost
-visibly instead of drawn at its parent's origin. A 2D `RelativePlacement` is
+visibly instead of drawn at its parent's origin. Symbolic extraction is the one
+exception: it drops symbols only for admission refusals (malformed point,
+direction or real input and missing mandatory attributes, see
+`PlacementError::is_admission_refusal`) and keeps its established unresolved
+policy for dangling references, wrong record types and cycles, which place the
+symbol at the origin with unknown elevation. A 2D `RelativePlacement` is
 honoured. An absent, `$` or `*` `ObjectPlacement` remains identity ("genuinely
 missing"); a present value of the wrong kind is refused. An authored linear
 `CartesianPosition` is authoritative: an unreadable authored frame does not

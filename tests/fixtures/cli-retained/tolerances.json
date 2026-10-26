@@ -1,0 +1,11 @@
+{
+  "status": "preregistered; never widen on failure",
+  "sourceVolumeRelative": { "linear": 1e-6, "curved": 2e-3 },
+  "sourceWorldBboxMetres": { "absolute": 1e-5, "extentFactor": 2.4e-7 },
+  "exactLinear": { "volumeRelative": 1e-5, "areaRelative": 1e-5, "bboxMetres": 1e-4 },
+  "exactCurved": "report only",
+  "closureUndirectedEdgeDefects": 0,
+  "nativeWasmVolumeRelative": 1e-9,
+  "booleanSourceExpectation": null,
+  "booleanExactComparison": "curved"
+}

@@ -278,6 +278,7 @@ fn context_ready<'a>(output: Result<OpeningOutput>, hosts: ProductOutput) -> Pha
         Err(error) => return Phase::Complete(Err(error)),
     };
     let parts = match hosts {
+        ProductOutput::Retained(..) => return Phase::Complete(Err(protocol("retained opening requires J2"))),
         ProductOutput::Parts(parts) => Parts::Merged { parts, next: 0 },
         // INHERIT the discriminator rather than assuming rep-item ids: a
         // layered producer must never relabel material ids as items (#3199).

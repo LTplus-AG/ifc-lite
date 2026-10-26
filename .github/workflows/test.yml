@@ -281,6 +281,7 @@ jobs:
               # #7955: committed synthetic IFC/oracle/sidecar changes must run
               # their Rust consumers and the Node path-coverage mirror.
               - 'tests/fixtures/synthetic-retained/**'
+              - 'tests/fixtures/cli-retained/**'
               - '.github/workflows/test.yml'
             # AGENTS.md is the instruction file every agent reads, and
             # scripts/check-agents-md-size.mjs gates its size and line length.
@@ -534,6 +535,7 @@ jobs:
               - 'scripts/perf/instructions-report.mjs'
               - '.github/workflows/test.yml'
             docs:
+              - 'tests/fixtures/cli-retained/**'
               - 'docs/**'
               - 'mkdocs.yml'
               - 'requirements-docs.txt'
@@ -916,6 +918,9 @@ jobs:
           # disable only placement/fill checks and require assertion failures.
           if git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/section-export-7711/metadata.oracle.patch | grep -Fxq 'tests/evidence/section-export-7711/metadata.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/section-export-7711/metadata.oracle.patch)
+          # #7955 M1 A: preserve added controller types; break one unmet obligation.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/program/retained/completion.rs | grep -Fxq 'rust/geometry/src/program/retained/completion.rs'; then
+            oracle_args+=(--mutation tests/evidence/m1-a-controller-core/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/j5-presentation/behaviour.oracle.patch | grep -Fxq 'tests/evidence/j5-presentation/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/j5-presentation/behaviour.oracle.patch)
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/e3b-followups/behaviour.oracle.patch | grep -Fxq 'tests/evidence/e3b-followups/behaviour.oracle.patch'; then
@@ -3103,6 +3108,14 @@ jobs:
           CARGO_PROFILE_DEV_DEBUG: line-tables-only
           CARGO_PROFILE_TEST_DEBUG: line-tables-only
         run: cargo test --workspace --doc
+
+      - name: Rust tests and Clippy (retained controller)
+        # #7955 M1: the opt-in `retained-runtime` feature is outside the
+        # default workspace build, so the PR job compiles, lints and tests it.
+        run: |
+          cargo test -p ifc-lite-geometry --features retained-runtime
+          cargo clippy -p ifc-lite-geometry --features retained-runtime --all-targets -- -D warnings
+          cargo clippy -p ifc-lite-processing --features retained-runtime --all-targets -- -D warnings
 
       # The feature legs (parquet-bos, csg_manifold_gate, csg_capture, the
       # all-features clippy) run in `rust-full` below -- OFF the PR lane,

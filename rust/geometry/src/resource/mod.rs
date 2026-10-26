@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Explicit admission for audited allocations. This is not an allocator or RSS bound.
 mod account;
+// Refs #7955: private dormant resource owner.
+#[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+#[cfg_attr(not(test), allow(dead_code))]
+mod owned;
+#[cfg(feature = "retained-runtime")]
+pub(crate) use owned::OwnedResourceContext;
 mod pool;
 mod storage;
 pub(crate) use storage::reserve_headers;
@@ -102,6 +108,8 @@ pub fn stop(error: ProgramStop) -> ProgramStop {
     let error = current_account().map_or(error, |account| account.stop(error));
     let source = SOURCE_STOP.with(|slot| slot.borrow().as_ref().map(|source| source.stop(error)));
     let error = source.unwrap_or(error);
+    #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+    let error = owned::record_stop(error);
     TERMINAL.with(|slot| match (source, slot.get()) {
         // A validated source chain is authoritative for this lexical domain;
         // unrelated ambient terminal state is restored by with_source_stop.
@@ -172,7 +180,7 @@ pub fn account_from_source_context(
 }
 
 /// Run `operation` with none of this thread's lexical resource state: no
-/// account, source stop or terminal.
+/// account, source stop, terminal or owned stop observer.
 ///
 /// A rayon wait (`join`, `par_iter`) may run an unrelated queued job on the
 /// waiting thread before it returns, such as another element's whole product.
@@ -182,7 +190,7 @@ pub fn account_from_source_context(
 /// caller's state is restored on return and on unwind. `operation` itself
 /// must not need the caller's resource state.
 ///
-/// This hides RESOURCE state only (account, source stop, terminal). Other
+/// This hides RESOURCE state only (including the owned stop observer). Other
 /// per-thread diagnostic capture, such as geometry telemetry transactions and
 /// the CSG census sink, is not scoped by it.
 pub fn detached<T>(operation: impl FnOnce() -> T) -> T {
@@ -190,18 +198,24 @@ pub fn detached<T>(operation: impl FnOnce() -> T) -> T {
         account: Option<ExecutionAccount>,
         source: Option<ifc_lite_core::execution_owner::SourceStopHandle>,
         terminal: Option<Option<ProgramStop>>,
+        #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+        owned: Option<owned::OwnedResourceContext>,
     }
     impl Drop for Restore {
         fn drop(&mut self) {
             CURRENT.with(|slot| *slot.borrow_mut() = self.account.take());
             SOURCE_STOP.with(|slot| *slot.borrow_mut() = self.source.take());
             TERMINAL.with(|slot| slot.set(self.terminal));
+            #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+            owned::OWNED.with(|slot| *slot.borrow_mut() = self.owned.take());
         }
     }
     let _restore = Restore {
         account: CURRENT.with(|slot| slot.borrow_mut().take()),
         source: SOURCE_STOP.with(|slot| slot.borrow_mut().take()),
         terminal: TERMINAL.with(Cell::take),
+        #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+        owned: owned::OWNED.with(|slot| slot.borrow_mut().take()),
     };
     operation()
 }

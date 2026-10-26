@@ -22,7 +22,7 @@ use nalgebra::Matrix4;
 /// source. `placed` is false for the identity fallback, which stamps no
 /// instance transform.
 pub(crate) struct ObjectPlacement {
-    transform: Matrix4<f64>,
+    pub(crate) transform: Matrix4<f64>,
     placed: bool,
 }
 
@@ -211,5 +211,12 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
     ) -> Result<[f64; 16]> {
         placement::linear::local_strict(placement, decoder)
+    }
+}
+
+// Logical source metadata only; this does not resolve retained face appearance.
+impl GeometryRouter {
+    pub(crate) fn retained_indexed_colour_pending(&self, id: u32) -> bool {
+        self.is_indexed_colour_split_source(id)
     }
 }

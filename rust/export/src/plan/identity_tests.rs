@@ -470,7 +470,7 @@ fn a_modified_ifc2x3_object_without_an_owner_history_is_reported() {
 /// it was edited, keeps its State, and is reported.
 #[test]
 fn a_modified_read_only_object_is_reported_and_keeps_its_state() {
-    for state in [".READONLY.", ".READONLYLOCKED.", ".LOCKED."] {
+    for state in [".READONLY.", ".READONLYLOCKED.", ".LOCKED.", ".READWRITELOCKED."] {
         let schema = "IFC4";
         let src = String::from_utf8(source(schema, false)).unwrap();
         let original = lines(src.as_bytes())[&164].clone();

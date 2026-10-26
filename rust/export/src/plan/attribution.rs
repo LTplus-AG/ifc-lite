@@ -264,7 +264,7 @@ fn mark_modified(index: &FileIndex, schema: &str, ledger: &mut Ledger, patched: 
             out.findings.push(report(format!("modified {ty} names #{original_id}, which is not an IfcOwnerHistory; the modification is not recorded on it")));
             continue;
         };
-        if matches!(original.state.as_str(), ".READONLY." | ".READONLYLOCKED." | ".LOCKED.") {
+        if matches!(original.state.as_str(), ".READONLY." | ".READONLYLOCKED." | ".LOCKED." | ".READWRITELOCKED.") {
             out.findings.push(report(format!(
                 "modified {ty} is marked {} by its owner history; it is written as edited and keeps that state",
                 original.state

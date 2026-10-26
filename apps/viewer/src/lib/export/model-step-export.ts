@@ -44,7 +44,7 @@ export async function exportModelStep(input: {
     : exported;
   return {
     content: spliced.content,
-    stats: input.section ? { ...result.stats, entityCount: countStepEntities(spliced.content) } : result.stats,
+    stats: input.section ? { ...result.stats, entityCount: countStepEntities(typeof spliced.content === 'string' ? new TextEncoder().encode(spliced.content) : spliced.content) } : result.stats,
     resources: serialized.resources,
   };
 }

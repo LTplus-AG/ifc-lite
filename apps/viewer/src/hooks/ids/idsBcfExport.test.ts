@@ -211,8 +211,10 @@ describe('#7974 actual viewer IDS BCF export', () => {
     assert.notDeepEqual(bytes, placeholderSnapshotPng(), 'a renderer was available, so the image must be real');
   });
 
-  it('falls back to the placeholder when an unrequested grouped capture fails', async () => {
-    const run = setup(true);
+  it('falls back to the placeholder when a grouped capture fails, whatever the hidden switch says', async () => {
+    // The switch is shown locked on for grouped exports, so a value left over
+    // from per-entity must not turn a capture miss into an export error.
+    const run = setup(true, true);
     dispose?.(); dispose = undefined;
     await runIdsBcfExport(run.params);
     const { zip, topic, markup } = await archive(run.exported());
@@ -245,6 +247,7 @@ describe('#7974 actual viewer IDS BCF export', () => {
 
   it('reports a failed requested snapshot instead of silently downloading an incomplete archive', async () => {
     const run = setup(true, true);
+    run.params.settings.topicGrouping = 'per-entity';
     dispose?.(); dispose = undefined;
     await assert.rejects(runIdsBcfExport(run.params), /snapshot/i);
   });

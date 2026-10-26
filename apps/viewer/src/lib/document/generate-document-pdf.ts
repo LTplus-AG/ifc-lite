@@ -14,7 +14,7 @@ import { drawChartSourceMessage } from '../export/report/render-source-message.j
 import { tableHeaderStyle } from '../table-header-style';
 import { comparisonSummary } from '../compare/savedComparisonSchema';
 import type { Aggregation } from '@ifc-lite/charts';
-import type { BCFTopic } from '@ifc-lite/bcf';
+import { isPlaceholderSnapshot, type BCFTopic } from '@ifc-lite/bcf';
 import type { ReportDoc, ReportPdfSeams } from '../export/report/generate-report-pdf.js';
 import { dataUrlToBytes } from '../export/download.js';
 import { localIsoDate, renderTemplate, type BindingContext } from './bindings.js';
@@ -96,6 +96,8 @@ export const topicLines = (topic: BCFTopic): string[] => {
 /** The first viewpoint snapshot as a data URL, or null. */
 export function topicSnapshotDataUrl(topic: BCFTopic): string | null {
   for (const vp of topic.viewpoints ?? []) {
+    // The blank interop placeholder (#7974) is not worth a page image.
+    if (isPlaceholderSnapshot(vp)) continue;
     if (vp.snapshot?.startsWith('data:image/')) return vp.snapshot;
     if (vp.snapshotData && vp.snapshotData.length > 0) {
       let binary = '';

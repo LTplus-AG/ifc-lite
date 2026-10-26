@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { createBCFFromIDSReport } from './ids-reporter.js';
 import type { IDSReportInput, EntityBoundsInput } from './ids-reporter.js';
 import { FRAMING_PADDING } from './ids-camera.js';
-import { placeholderSnapshotPng } from './placeholder-snapshot.js';
+import { isPlaceholderSnapshot, placeholderSnapshotPng } from './placeholder-snapshot.js';
 import { writeBCF } from './writer.js';
 import { readBCF } from './reader.js';
 
@@ -780,6 +780,8 @@ describe('IDS BCF Reporter', () => {
       expect(topics[0].viewpoints[0].snapshotData).toBeUndefined();
       expect(topics[1].viewpoints[0].snapshot).toBeUndefined();
       expect(topics[1].viewpoints[0].snapshotData).toEqual(placeholderSnapshotPng());
+      expect(isPlaceholderSnapshot(topics[0].viewpoints[0])).toBe(false);
+      expect(isPlaceholderSnapshot(topics[1].viewpoints[0])).toBe(true);
     });
 
     it('should support both bounds and snapshots together', () => {
@@ -809,6 +811,7 @@ describe('IDS BCF Reporter', () => {
         expect(viewpoints.length).toBeGreaterThan(0);
         for (const viewpoint of viewpoints) {
           expect(viewpoint.snapshotData?.slice(0, 4)).toEqual(new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
+          expect(isPlaceholderSnapshot(viewpoint)).toBe(true);
         }
       });
     }

@@ -27,6 +27,20 @@ export function placeholderSnapshotPng(): Uint8Array {
   return bytes;
 }
 
+/**
+ * Whether a viewpoint's image is the placeholder, from either a fresh
+ * project (`snapshotData`) or a re-read archive (`snapshot` data URL). Use it
+ * to keep the blank image out of previews and reports.
+ */
+export function isPlaceholderSnapshot(viewpoint: Pick<BCFViewpoint, 'snapshot' | 'snapshotData'>): boolean {
+  if (viewpoint.snapshotData) {
+    const placeholder = placeholderSnapshotPng();
+    return viewpoint.snapshotData.length === placeholder.length
+      && viewpoint.snapshotData.every((byte, i) => byte === placeholder[i]);
+  }
+  return viewpoint.snapshot?.split(',')[1] === PLACEHOLDER_SNAPSHOT_BASE64;
+}
+
 function hasSnapshot(viewpoint: BCFViewpoint): boolean {
   return viewpoint.snapshotData !== undefined || !!viewpoint.snapshot?.startsWith('data:');
 }

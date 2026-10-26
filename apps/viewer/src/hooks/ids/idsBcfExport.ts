@@ -65,10 +65,12 @@ export async function runIdsBcfExport({
     loadIntoBcfPanel,
   } = settings;
   // BCF tools such as BIMcollab ignore viewpoints without a snapshot (#7974).
-  // Grouped topics are few, so they always try a real capture; if it can't be
-  // taken, the reporter's placeholder image still keeps the viewpoint usable.
-  const snapshots = includeSnapshots ? 'required'
-    : topicGrouping === 'per-specification' && getGlobalRenderer() ? 'best-effort' : 'off';
+  // Grouped topics are few, so they always try a real capture regardless of the
+  // (hidden) switch; if one can't be taken, the reporter's placeholder image
+  // keeps the viewpoint usable.
+  const snapshots = topicGrouping === 'per-specification'
+    ? (getGlobalRenderer() ? 'best-effort' : 'off')
+    : includeSnapshots ? 'required' : 'off';
 
   // Phase 1: Collect entity bounds (needed for both camera and snapshots)
   let entityBounds: Map<string, EntityBoundsInput> | undefined;

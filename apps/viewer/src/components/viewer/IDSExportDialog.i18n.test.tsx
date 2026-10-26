@@ -64,7 +64,7 @@ describe('IDSExportDialog localization (#4918)', () => {
     assert.match(text, /Frame each topic’s elements; use the current view if complete bounds are unavailable/);
     assert.match(text, /Capture Snapshots/);
     // Grouped topics always carry snapshots: BIMcollab ignores viewpoints without one (#7974).
-    assert.match(text, /Always on when grouping by specification: BCF tools such as BIMcollab only open viewpoints that have a snapshot/);
+    assert.match(text, /Always on when grouping by specification: BCF tools such as BIMcollab only open viewpoints that have a snapshot\. Without the 3D view, a plain placeholder image is used/);
     const snapshots = document.getElementById('include-snapshots');
     assert.equal(snapshots?.getAttribute('aria-checked'), 'true');
     assert.equal(snapshots?.hasAttribute('disabled'), true);

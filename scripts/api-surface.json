@@ -111,6 +111,7 @@
     "generateIfcGuid: function",
     "generateUuid: function",
     "ifcGuidToUuid: function",
+    "isPlaceholderSnapshot: function",
     "isValidIfcGuid: function",
     "isValidUuid: function",
     "orthogonalToCamera: function",

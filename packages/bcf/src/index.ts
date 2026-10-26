@@ -94,7 +94,7 @@ export type {
   EntityBoundsInput,
 } from './ids-reporter.js';
 export { createBCFFromIDSReport } from './ids-reporter.js';
-export { fillMissingSnapshots, placeholderSnapshotPng } from './placeholder-snapshot.js';
+export { fillMissingSnapshots, isPlaceholderSnapshot, placeholderSnapshotPng } from './placeholder-snapshot.js';
 
 // ============================================================================
 // Convenience functions

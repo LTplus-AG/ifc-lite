@@ -12,7 +12,26 @@ Building corner at: (487234.567, 5234891.234, 0.0)
 
 **Important**: Large coordinates do NOT mean a model is georeferenced! Proper georeferencing in IFC is done via `IfcMapConversion` and `IfcProjectedCRS`, which store transformation parameters separately while keeping geometry in a local coordinate system with small values.
 
-IFC4X3 adds `IfcRigidOperation`, a pure translation (no rotation or scale) whose source coordinates already are target-CRS coordinates, often with large values like the example above. ifc-lite reads it like a map conversion with an identity axis (`source: 'rigidOperation'`). The target CRS may be an `IfcProjectedCRS` or an `IfcGeographicCRS`, and either can carry an `IfcWellKnownText` definition (WKT1 or WKT2) in place of an EPSG code. The viewer reads that WKT through proj4's parser, prefers an EPSG identifier the WKT names, and refuses a position outside the WKT's declared `BBOX`. On the globe the model is placed by one anchor point and its local east/north/up frame, not by reprojecting every vertex. Earth curvature and the projection's scale distortion across the model's extent are therefore not applied.
+IFC4X3 adds `IfcRigidOperation`, a pure translation (no rotation or scale) whose source coordinates already are target-CRS coordinates, often with large values like the example above. ifc-lite reads it like a map conversion with an identity axis (`source: 'rigidOperation'`). The target CRS may be an `IfcProjectedCRS` or an `IfcGeographicCRS`, and either can carry an `IfcWellKnownText` definition (WKT1 or WKT2) in place of an EPSG code. The viewer reads that WKT through proj4's parser, prefers an EPSG identifier the WKT names, and refuses a position outside the WKT's declared `BBOX`. On the globe the model is placed by one anchor point and its local east/north/up frame, not by reprojecting every vertex. Earth curvature and the change of projection scale across the model's extent are therefore not applied.
+
+### Globe anchor: grid north and grid scale
+
+The anchor frame corrects two properties of the projected CRS at the anchor, both measured through proj4 on the WGS84 ellipsoid (`computeGridPointFactors` in `apps/viewer/src/lib/geo/proj4-utils.ts`, checked against PROJ in `__fixtures__/proj-oracle.json`, which `scripts/geo/generate-proj-oracle.py` writes):
+
+- **Meridian convergence** rotates grid north onto true north.
+- **The combined scale factor** k_c = k · R/(R+h) relates grid lengths to ground lengths (`ground-scale.ts`). Here k is the projection's point scale and R/(R+h) the height reduction. Map (grid) coordinates are k_c times ground lengths: 0.9996 on a UTM central meridian, which is 40 mm per 100 m.
+
+Whether to divide by k_c depends on what the model's coordinates are:
+
+| Source | Model coordinates | Drawn at |
+|---|---|---|
+| `IfcRigidOperation` into a projected CRS | map coordinates ("an offset in the CRS … not any conversion or distortion") | 1/k_c |
+| Map-absolute geometry (#2526) | map coordinates | 1/k_c |
+| A conversion whose effective horizontal scale (Scale·Factor, unit-bridged) is within 1e-3 of k_c and not 1: `IfcMapConversionScaled` factors, or an IFC4 Scale such as the buildingSMART bridge-deck sample's 0.9996 | ground lengths; Scale·Factor·x is the map delta (IFC4.3 equations; IfcOpenShell `xyz2enh`: "the combined scale factor … to convert from local coordinates to map coordinates") | Scale·Factor/k_c ≈ 1 |
+| A conversion with effective scale 1 (Scale = 1 or a unit bridge), or any other scale | true lengths: Scale converts units | Scale·Factor (unchanged) |
+| any operation into an `IfcGeographicCRS` | ENU metres around the anchor | 1 |
+
+Before this, such a conversion was drawn at Scale·Factor, the size of the model on the map grid, and rigid-operation and map-absolute models were drawn at grid size. Treating a unit-scale `IfcMapConversion` as true length is a reading of practice, not of the equations alone: the spec's formula would make its output map coordinates too. In practice Scale = 1 means the model is in ground lengths, and dividing by k_c would shrink a correctly drawn model.
 
 Large coordinates in geometry are a **bad practice** that has unfortunately become common. They cause rendering issues:
 

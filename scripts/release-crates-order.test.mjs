@@ -36,6 +36,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { versionedIfcDeps } from './lib/release-crate-deps.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -53,40 +54,19 @@ function publishOrder() {
 
 /**
  * Every `ifc-lite-*` dependency of `crateDir` that carries a VERSION, from
- * `[dependencies]`, `[dev-dependencies]` and `[build-dependencies]` alike.
+ * normal, dev, and build dependency tables, including target-specific tables.
  *
- * `foo.workspace = true` counts: it inherits the root's
- * `{ version = "...", path = "..." }`, version included. A bare
- * `{ path = "..." }` does not count — cargo strips it when packaging.
+ * `foo.workspace = true` counts when the workspace entry carries a version.
+ * A bare `{ path = "..." }` dev dependency does not count: Cargo strips it
+ * when packaging.
  */
-function versionedIfcDeps(crateDir) {
+function crateVersionedDeps(crateDir) {
   const manifest = join(ROOT, 'rust', crateDir, 'Cargo.toml');
   if (!existsSync(manifest)) return [];
-  const out = new Set();
-  let inDeps = false;
-  for (const raw of readFileSync(manifest, 'utf8').split('\n')) {
-    const line = raw.trim();
-    if (line.startsWith('[')) {
-      inDeps = /^\[(dev-|build-)?dependencies\]$/.test(line);
-      continue;
-    }
-    if (!inDeps || line.startsWith('#') || !line.startsWith('ifc-lite-')) continue;
-    const name = line.match(/^(ifc-lite-[a-z0-9-]+)/)?.[1];
-    if (!name) continue;
-    // Inherits the workspace entry, which carries a version. BOTH spellings
-    // must be recognised, and the repo uses both: `rust/geometry` writes the
-    // dotted `ifc-lite-clash.workspace = true`, while `rust/export` writes the
-    // inline-table `ifc-lite-core = { workspace = true }`. Matching only the
-    // dotted form left every one of export's three versioned dependencies
-    // invisible here, so this gate would have passed an order that publishes
-    // export before core, geometry and processing -- exactly the failure it
-    // exists to prevent.
-    if (/(^|[.{,\s])workspace\s*=\s*true/.test(line)) out.add(name);
-    // Or states one inline.
-    else if (/version\s*=/.test(line)) out.add(name);
-    // Otherwise path-only: stripped at publish time, no ordering constraint.
-  }
-  return [...out];
+  return versionedIfcDeps(
+    readFileSync(manifest, 'utf8'),
+    readFileSync(join(ROOT, 'Cargo.toml'), 'utf8')
+  );
 }
 
 /** crate name (`ifc-lite-core`) -> directory under rust/ (`core`). */
@@ -110,7 +90,7 @@ test('every published crate comes after the crates it pins by version, and those
   for (const [i, crate] of order.entries()) {
     const dir = dirs.get(crate);
     assert.ok(dir, `${crate} is in CRATES but has no rust/*/Cargo.toml`);
-    for (const dep of versionedIfcDeps(dir)) {
+    for (const dep of crateVersionedDeps(dir)) {
       if (!position.has(dep)) {
         // ifc-lite-landxml went unpublished this way and failed the release after #5078.
         violations.push(`  ${crate} (position ${i}) pins ${dep} by version, but ${dep} is not in CRATES`);
@@ -141,7 +121,7 @@ test('the ordering check can actually see a violation', () => {
   // Guards the guard: if `versionedIfcDeps` silently stopped parsing, the test
   // above would pass on any order at all and report nothing. This pins that the
   // real manifest of the real regression is still readable and still counted.
-  const deps = versionedIfcDeps('geometry');
+  const deps = crateVersionedDeps('geometry');
   assert.ok(
     deps.includes('ifc-lite-clash'),
     `rust/geometry should still show a versioned ifc-lite-clash dependency (the #2574 dev-dep). ` +

@@ -102,7 +102,7 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
  * the same success line as one that checked all eight. If a crate is genuinely
  * dropped from the release, lower this in the same commit.
  */
-export const CRATE_FLOOR = 8;
+export const CRATE_FLOOR = 9;
 
 /**
  * The version this release would publish, or null.

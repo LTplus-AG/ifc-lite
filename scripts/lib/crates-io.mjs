@@ -15,8 +15,9 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 
 // Dependency order: geometry depends on core; clash is dependency-free;
-// processing depends on core+geometry; ffi (cdylib C bindings) depends on
-// processing; landxml depends on geometry; wasm depends on
+// the native geometry runtime depends on geometry (and core for tests);
+// processing depends on core+geometry and optionally on that runtime;
+// ffi (cdylib C bindings) depends on processing; landxml depends on geometry; wasm depends on
 // core+geometry+clash+processing+landxml.
 export const CRATES = [
   'ifc-lite-core',
@@ -38,6 +39,9 @@ export const CRATES = [
   // front.
   'ifc-lite-clash',
   'ifc-lite-geometry',
+  // The first source-only runtime publish is a separate reviewed bootstrap.
+  // Later releases need its version in the registry before processing.
+  'ifc-lite-geometry-runtime',
   'ifc-lite-processing',
   // ifc-lite-landxml depends on geometry and must precede wasm, which pins it
   // by version. It was missing from this list, so the release after #5078

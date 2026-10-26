@@ -1,0 +1,25 @@
+{
+  "jobId": "69d1b1cd-6b9d-49cc-aa23-8fedbef86e4d",
+  "head": "97d8add207104d5801c0c8d62e40fa7066e848f8",
+  "accepted": false,
+  "error": "Error: Timed out awaiting metadata, geometry, renderer finalize and allocated canvas; sample incomplete",
+  "adapter": [
+    {
+      "vendor": "nvidia",
+      "architecture": "lovelace",
+      "fallback": false,
+      "errors": []
+    }
+  ],
+  "dpr": 1,
+  "completedCase": "Single public FZK model",
+  "sameRenderSamples": 26,
+  "allMatched": true,
+  "positiveHits": 10,
+  "sourceGeometryUnchanged": true,
+  "failedPhase": "Federated-add readiness",
+  "diagnosticLimit": "Last failed-load trace, UI state and console log were not retained by this first harness revision.",
+  "cleanupError": null,
+  "rawReportSha256": "ae8ca1948e9d45ae58d0b0829aaa5a00104c4f8d4e1893fc0047f0a8629b82d4",
+  "scope": "Partial DPR1 single-model proof only; federation, DPR2, family/lifecycle and hover acceptance remain unqualified"
+}

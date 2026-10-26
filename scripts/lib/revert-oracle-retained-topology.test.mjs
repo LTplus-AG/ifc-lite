@@ -15,6 +15,7 @@ test('#7955: retained witnesses resolve through the facade path to exact library
   // or a hand-built runner that could silently bypass ownership checks.
   const modules = [
     ['admission_tests', '::admission'],
+    ['outcome_tests', '::outcome_tests'],
     ['accept_stop_tests', '::accept_stop_tests'],
     ['affine_tests', '::affine_tests'],
     ['boolean_tests', '::boolean_tests'],
@@ -53,4 +54,21 @@ test('#7955: retained witnesses resolve through the facade path to exact library
         },
       };
     }));
+});
+
+// #7955 S3: default-off modules remain present in library unit tests.
+test('#7955: private S3 receipt/resource witnesses have exact library owners', () => {
+  const inputs = [
+    ['rust/geometry/src/document/retained_affine_tests.rs', 'ifc-lite-geometry', 'document::retained_affine::tests'],
+    ['rust/geometry/src/document/retained_frames_tests.rs', 'ifc-lite-geometry', 'document::retained_frames::tests'],
+    ['rust/geometry/src/program/retained/outcome_allocation_tests.rs', 'ifc-lite-geometry', 'program::retained::outcome::tests'],
+    ['rust/geometry/src/resource/owned_tests.rs', 'ifc-lite-geometry', 'resource::owned::tests'],
+    ['rust/processing/src/element/model_context_retained_tests.rs', 'ifc-lite-processing', 'element::model_context::retained::tests'],
+  ];
+  const { plans, unassigned, support } = planRuns(inputs.map(([file]) => file), root);
+  assert.deepEqual(unassigned, []);
+  assert.deepEqual(support, []);
+  assert.deepEqual(plans.map(({ file, crate, moduleFilter, runner }) => [file, crate, moduleFilter, runner.args]),
+    inputs.map(([file, crate, module]) => [file, crate, module,
+      ['test', '--no-fail-fast', '-p', crate, '--lib', '--', `${module}::`]]));
 });

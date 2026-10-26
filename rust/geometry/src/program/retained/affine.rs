@@ -9,7 +9,9 @@ impl LogicalRetainedValue {
         if proper_rigid(&matrix).is_ok() { return Ok(None); }
         crate::resource::charge(crate::resource::Cost { work: 1, occurrences: 1, ..Default::default() })?.retain();
         let input = self.try_copy()?;
+        let outcome = outcome::new()?;
         self.slot = next_slot(self.slot.program)?;
+        self.outcome = outcome;
         self.definition = LogicalRetainedDefinition::Operation(self.slot);
         self.object_frame = crate::math::mat4::col_major_array(&nalgebra::Matrix4::identity());
         Ok(Some(RetainedPlanOperation { value: self.try_copy()?,

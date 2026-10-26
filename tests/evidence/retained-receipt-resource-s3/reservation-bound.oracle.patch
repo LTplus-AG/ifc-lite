@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/resource/owned.rs
++++ b/rust/geometry/src/resource/owned.rs
+@@ -71,7 +71,7 @@
+     ) -> Result<Reservation, ProgramStop> {
+         self.with_scope(|| {
+             self.check()?;
+-            if true {
++            if !super::is_active() {
+                 values
+                     .try_reserve_exact(additional)
+                     .map_err(|_| super::allocation_failure())?;

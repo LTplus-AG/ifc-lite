@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/retained/mod.rs
++++ b/rust/geometry/src/program/retained/mod.rs
+@@ -318,7 +318,7 @@
+             placements: Vec::new(),
+             presentation: Vec::new(),
+             product_placed: self.product_placed,
+-            outcome: std::sync::Arc::new(std::sync::OnceLock::new()),
++            outcome: self.outcome.clone(),
+             slot: self.slot,
+             source_from_evaluation: self.source_from_evaluation,
+             evaluation_from_source: self.evaluation_from_source,

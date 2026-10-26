@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/processing/src/element/model_context_retained.rs
++++ b/rust/processing/src/element/model_context_retained.rs
+@@ -40,7 +40,7 @@
+ }
+ impl ProductionLifecycle {
+     pub(super) fn validate(&self) -> Result<(), RetainedContextError> {
+-        if false && self.id.source_epoch != self.state.source_epoch.load(Ordering::Acquire) {
++        if self.id.source_epoch != self.state.source_epoch.load(Ordering::Acquire) {
+             return Err(RetainedContextError::StaleSource);
+         }
+         Ok(())

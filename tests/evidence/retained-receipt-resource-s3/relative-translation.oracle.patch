@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/document/retained_frames.rs
++++ b/rust/geometry/src/document/retained_frames.rs
+@@ -49,7 +49,7 @@
+     }
+     for row in 0..3 {
+         out[12 + row] = (0..3)
+-            .map(|k| a[row * 4 + k] * (a[12 + k] - b[12 + k]))
++            .map(|k| a[row * 4 + k] * (b[12 + k] - a[12 + k]))
+             .sum();
+     }
+     rigid(out)?;

@@ -19,7 +19,7 @@ pub(in crate::program) fn boolean_operation(inputs: [LogicalRetainedValue; 2], o
         length_unit_scale: inputs[0].length_unit_scale, contract: inputs[0].contract,
         object_frame: inputs[0].object_frame,
         source_from_evaluation: identity, evaluation_from_source: identity, world_from_source: identity,
-        placements: Vec::new(), presentation: Vec::new(), product_placed: false,
+        placements: Vec::new(), presentation: Vec::new(), product_placed: false, outcome: outcome::new()?,
     };
     Ok(RetainedPlanOperation { value, kind: RetainedOperationKind::Boolean { inputs: Box::new(inputs), operation } })
 }

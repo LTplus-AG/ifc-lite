@@ -132,6 +132,16 @@ pub struct RetainedRequest {
 }
 
 impl RetainedRequest {
+    /// Same immutable admission, including the original source allocation.
+    // TODO(remove-by: S4a, owner: sessionf778e361, #7955): private receipt comparison.
+    #[cfg(any(test, feature = "retained-runtime"))]
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn same_admission(&self, other: &Self) -> bool {
+        self.document == other.document && self.revision == other.revision
+            && self.definition == other.definition && self.worker_incarnation == other.worker_incarnation
+            && Arc::ptr_eq(&self.entry, &other.entry)
+    }
+
     pub fn definition(&self) -> RetainedDefinitionHandle {
         self.definition
     }

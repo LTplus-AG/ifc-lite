@@ -2165,6 +2165,78 @@ jobs:
               --mutation tests/evidence/retained-controller-h2a1/source-stop-retention.oracle.patch \
               --test rust/geometry/src/program/retained/admission_tests.rs
           fi
+          # #7955 S3: independent receipt/resource guards, all source-only until CI executes.
+          if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/resource/owned.rs | grep -Fxq 'rust/geometry/src/resource/owned.rs'; then
+            node scripts/check-test-revert-oracle.mjs --base b0dc9d3026ab3ba2176cd617291b835ac7b53b2d --ci --json \
+              --mutation tests/evidence/retained-receipt-resource-s3/original-account.oracle.patch \
+              --test rust/geometry/src/resource/owned_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base b0dc9d3026ab3ba2176cd617291b835ac7b53b2d --ci --json \
+              --mutation tests/evidence/retained-receipt-resource-s3/source-ancestry.oracle.patch \
+              --test rust/geometry/src/resource/owned_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base b0dc9d3026ab3ba2176cd617291b835ac7b53b2d --ci --json \
+              --mutation tests/evidence/retained-receipt-resource-s3/stop-report.oracle.patch \
+              --test rust/geometry/src/resource/owned_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base b0dc9d3026ab3ba2176cd617291b835ac7b53b2d --ci --json \
+              --mutation tests/evidence/retained-receipt-resource-s3/scope-restore.oracle.patch \
+              --test rust/geometry/src/resource/owned_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base b0dc9d3026ab3ba2176cd617291b835ac7b53b2d --ci --json \
+              --mutation tests/evidence/retained-receipt-resource-s3/nested-stop-observer.oracle.patch \
+              --test rust/geometry/src/resource/owned_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base b0dc9d3026ab3ba2176cd617291b835ac7b53b2d --ci --json \
+              --mutation tests/evidence/retained-receipt-resource-s3/reservation-bound.oracle.patch \
+              --test rust/geometry/src/resource/owned_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base b0dc9d3026ab3ba2176cd617291b835ac7b53b2d --ci --json \
+              --mutation tests/evidence/retained-receipt-resource-s3/permit-cleanup.oracle.patch \
+              --test rust/geometry/src/resource/owned_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base b0dc9d3026ab3ba2176cd617291b835ac7b53b2d --ci --json \
+              --mutation tests/evidence/retained-receipt-resource-s3/admission-allocation.oracle.patch \
+              --test rust/geometry/src/document/retained_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base b0dc9d3026ab3ba2176cd617291b835ac7b53b2d --ci --json \
+              --mutation tests/evidence/retained-receipt-resource-s3/admission-revision.oracle.patch \
+              --test rust/geometry/src/document/retained_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base b0dc9d3026ab3ba2176cd617291b835ac7b53b2d --ci --json \
+              --mutation tests/evidence/retained-receipt-resource-s3/relative-translation.oracle.patch \
+              --test rust/geometry/src/document/retained_frames_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base b0dc9d3026ab3ba2176cd617291b835ac7b53b2d --ci --json \
+              --mutation tests/evidence/retained-receipt-resource-s3/rigid-handedness.oracle.patch \
+              --test rust/geometry/src/document/retained_frames_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base b0dc9d3026ab3ba2176cd617291b835ac7b53b2d --ci --json \
+              --mutation tests/evidence/retained-receipt-resource-s3/affine-singularity.oracle.patch \
+              --test rust/geometry/src/document/retained_frames_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base b0dc9d3026ab3ba2176cd617291b835ac7b53b2d --ci --json \
+              --mutation tests/evidence/retained-receipt-resource-s3/certificate-version.oracle.patch \
+              --test rust/geometry/src/document/retained_affine_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base b0dc9d3026ab3ba2176cd617291b835ac7b53b2d --ci --json \
+              --mutation tests/evidence/retained-receipt-resource-s3/certificate-budget.oracle.patch \
+              --test rust/geometry/src/document/retained_affine_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base b0dc9d3026ab3ba2176cd617291b835ac7b53b2d --ci --json \
+              --mutation tests/evidence/retained-receipt-resource-s3/outcome-copy.oracle.patch \
+              --test rust/geometry/src/program/retained/outcome_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base b0dc9d3026ab3ba2176cd617291b835ac7b53b2d --ci --json \
+              --mutation tests/evidence/retained-receipt-resource-s3/outcome-conflict.oracle.patch \
+              --test rust/geometry/src/program/retained/outcome_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base b0dc9d3026ab3ba2176cd617291b835ac7b53b2d --ci --json \
+              --mutation tests/evidence/retained-receipt-resource-s3/affine-outcome-isolation.oracle.patch \
+              --test rust/geometry/src/program/retained/outcome_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base b0dc9d3026ab3ba2176cd617291b835ac7b53b2d --ci --json \
+              --mutation tests/evidence/retained-receipt-resource-s3/outcome-allocation-bound.oracle.patch \
+              --test rust/geometry/src/program/retained/outcome_allocation_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base b0dc9d3026ab3ba2176cd617291b835ac7b53b2d --ci --json \
+              --mutation tests/evidence/retained-receipt-resource-s3/source-binding.oracle.patch \
+              --test rust/processing/src/element/model_context_retained_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base b0dc9d3026ab3ba2176cd617291b835ac7b53b2d --ci --json \
+              --mutation tests/evidence/retained-receipt-resource-s3/missing-source.oracle.patch \
+              --test rust/processing/src/element/model_context_retained_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base b0dc9d3026ab3ba2176cd617291b835ac7b53b2d --ci --json \
+              --mutation tests/evidence/retained-receipt-resource-s3/lifecycle-expiration.oracle.patch \
+              --test rust/processing/src/element/model_context_retained_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base b0dc9d3026ab3ba2176cd617291b835ac7b53b2d --ci --json \
+              --mutation tests/evidence/retained-receipt-resource-s3/boolean-outcome-isolation.oracle.patch \
+              --test rust/geometry/src/program/retained/outcome_tests.rs
+            node scripts/check-test-revert-oracle.mjs --base b0dc9d3026ab3ba2176cd617291b835ac7b53b2d --ci --json \
+              --mutation tests/evidence/retained-receipt-resource-s3/snapshot-expiration.oracle.patch \
+              --test rust/processing/src/element/model_context_retained_tests.rs
+          fi
           if git diff --name-only --diff-filter=A origin/main...HEAD -- rust/core/src/decoder/precision_certificate.rs | grep -Fxq 'rust/core/src/decoder/precision_certificate.rs'; then
             # The oracle restored the source; also execute the positive side
             # after mutation rather than treating clean status as a test run.

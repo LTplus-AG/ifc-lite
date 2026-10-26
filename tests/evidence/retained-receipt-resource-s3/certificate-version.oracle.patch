@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/document/retained_affine.rs
++++ b/rust/geometry/src/document/retained_affine.rs
+@@ -26,7 +26,7 @@
+     pub(crate) fn decode(bytes: &[u8]) -> Result<Self, &'static str> {
+         let word =
+             |i: usize| u32::from_le_bytes([bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]);
+-        if bytes.len() != 56 || word(0) == 0 || word(4) != 1 {
++        if bytes.len() != 56 || word(0) != 1 || word(4) != 1 {
+             return Err("invalid affine conversion certificate");
+         }
+         let source_classes: [u32; 12] = std::array::from_fn(|i| word(8 + 4 * i));

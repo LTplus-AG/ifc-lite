@@ -47,6 +47,7 @@ pub(super) fn capture(
         placements: Vec::new(),
         presentation: Vec::new(),
         product_placed: false,
+        outcome: outcome::new()?,
         slot,
         source_from_evaluation: payload.source_from_evaluation,
         evaluation_from_source: payload.evaluation_from_source,

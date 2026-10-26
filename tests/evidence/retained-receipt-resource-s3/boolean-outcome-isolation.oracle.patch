@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/retained/boolean.rs
++++ b/rust/geometry/src/program/retained/boolean.rs
+@@ -19,7 +19,7 @@
+         length_unit_scale: inputs[0].length_unit_scale, contract: inputs[0].contract,
+         object_frame: inputs[0].object_frame,
+         source_from_evaluation: identity, evaluation_from_source: identity, world_from_source: identity,
+-        placements: Vec::new(), presentation: Vec::new(), product_placed: false, outcome: inputs[0].outcome.clone(),
++        placements: Vec::new(), presentation: Vec::new(), product_placed: false, outcome: outcome::new()?,
+     };
+     Ok(RetainedPlanOperation { value, kind: RetainedOperationKind::Boolean { inputs: Box::new(inputs), operation } })
+ }

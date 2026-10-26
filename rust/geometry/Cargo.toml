@@ -11,6 +11,8 @@ categories = ["graphics", "parsing"]
 readme = "../../README.md"
 
 [features]
+# Private S3 receipt/resource preparation; no production consumer or activation (#7955).
+retained-runtime = []
 # Opt-in #6516 route-work diagnostic; absent from shipping builds.
 opening-perf-trace = []
 # CSG runs on the in-tree pure-Rust exact mesh-arrangement kernel

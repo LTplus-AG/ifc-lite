@@ -609,7 +609,8 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
         modifiedCount={modifiedCount}
       />
 
-      {sectionExport.control}
+      {/* The LandXML-derived IFC download never consumes section options, so it must not offer them. */}
+      {!(landXmlSource && !changesOnly) && sectionExport.control}
       {/* Export Progress */}
       {isExporting && exportProgress && (
         <div className="space-y-2">

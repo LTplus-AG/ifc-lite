@@ -176,11 +176,7 @@ fn parse_profile(
     {
         let mut capture = super::source::SourceCapture::enabled();
         capture.record(profile, decoder)?;
-        result.loops[0].source = Some(
-            capture
-                .finish(profile.id, decoder.plane_angle_to_radians())
-                .into(),
-        );
+        result.loops[0].source = Some(capture.finish(profile.id, decoder.plane_angle_to_radians()));
     }
     Ok(())
 }

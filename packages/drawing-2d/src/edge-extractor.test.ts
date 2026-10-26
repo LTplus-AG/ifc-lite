@@ -427,4 +427,66 @@ describe('EdgeExtractor adjacency by position (issue #8161)', () => {
     };
     expect(typeCounts(new EdgeExtractor().extractEdges(mesh))).toEqual({ boundary: 4 });
   });
+
+  function rawMesh(positions: number[], indices: number[]): MeshData {
+    const pos = new Float32Array(positions);
+    return {
+      expressId: 3,
+      ifcType: 'IfcSlab',
+      modelIndex: 0,
+      positions: pos,
+      normals: new Float32Array(pos.length),
+      indices: new Uint32Array(indices),
+      color: [1, 1, 1, 1],
+    };
+  }
+
+  it('reports a non-manifold edge shared by three faces once, classified from its first two faces', () => {
+    // Three fins on the segment (0,0,0)-(1,0,0): +Y, +Z and -Y, each with
+    // its own (unshared) vertices. Fins 0 and 1 are perpendicular.
+    const mesh = rawMesh(
+      [0, 0, 0, 1, 0, 0, 0.5, 1, 0, 0, 0, 0, 1, 0, 0, 0.5, 0, 1, 0, 0, 0, 1, 0, 0, 0.5, -1, 0],
+      [0, 1, 2, 3, 4, 5, 6, 7, 8],
+    );
+    const edges = new EdgeExtractor(30).extractEdges(mesh);
+    const shared = edges.filter((e) => e.v0.y === 0 && e.v0.z === 0 && e.v1.y === 0 && e.v1.z === 0);
+    expect(shared).toHaveLength(1);
+    expect(shared[0].type).toBe('crease');
+    // 1 shared + 2 free sides per fin.
+    expect(edges).toHaveLength(7);
+  });
+
+  it('does not report a coincident duplicate triangle as boundary edges', () => {
+    // The same triangle twice, with separate vertices: both faces have the
+    // same normal, so every edge is a smooth edge between two faces.
+    const tri = [0, 0, 0, 2, 0, 0, 0, 0, 2];
+    const mesh = rawMesh([...tri, ...tri], [0, 1, 2, 3, 4, 5]);
+    expect(new EdgeExtractor(30).extractEdges(mesh)).toEqual([]);
+  });
+
+  it('treats an opposite-wound coincident triangle as a fold: every edge is a crease', () => {
+    const mesh = rawMesh([0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 2, 2, 0, 0], [0, 1, 2, 3, 4, 5]);
+    expect(typeCounts(new EdgeExtractor(30).extractEdges(mesh))).toEqual({ crease: 3 });
+  });
+
+  it('ignores a triangle that collapses to a segment under the weld', () => {
+    // Quad plus a triangle whose first two corners differ by 1e-7 m at 2 m
+    // magnitude (weld tolerance 4.8e-7 m), so it welds down to a segment and
+    // has no face; the quad keeps its 4 boundary edges and gains nothing.
+    const mesh = rawMesh(
+      [0, 0, 0, 2, 0, 0, 2, 0, 2, 0, 0, 2, 1, 0, 1, 1 + 1e-7, 0, 1, 1.5, 0, 1.5],
+      [0, 1, 2, 0, 2, 3, 4, 5, 6],
+    );
+    expect(typeCounts(new EdgeExtractor().extractEdges(mesh))).toEqual({ boundary: 4 });
+  });
+
+  it('ignores a near-collinear sliver whose height is below the weld tolerance', () => {
+    // Quad plus a triangle on its diagonal with a 1e-8 m height (non-zero
+    // area, but under the 4.8e-7 m tolerance at 2 m magnitude).
+    const mesh = rawMesh(
+      [0, 0, 0, 2, 0, 0, 2, 0, 2, 0, 0, 2, 0, 0, 0, 2, 0, 2, 1, 1e-8, 1],
+      [0, 1, 2, 0, 2, 3, 4, 5, 6],
+    );
+    expect(typeCounts(new EdgeExtractor().extractEdges(mesh))).toEqual({ boundary: 4 });
+  });
 });

@@ -39,7 +39,10 @@ pub(super) struct RuntimeCompleted<R: NumericalReceipt> {
     pub(super) _storage: Storage,
 }
 pub(super) struct RuntimeRejectedCompletion<R: NumericalReceipt> {
+    // Refs #7955: D's driver reports the refusal and retains the rejected packet.
+    #[allow(dead_code)]
     pub reason: RetainedExecutionError,
+    #[allow(dead_code)]
     pub work: RuntimeCompleted<R>,
 }
 impl<R: NumericalReceipt> RuntimeIssued<R> {

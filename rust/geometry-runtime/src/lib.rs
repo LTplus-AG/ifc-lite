@@ -26,6 +26,3 @@ pub use worker::{
     RetainedAffineCopy, RetainedDependencyResult, RetainedLineage, RetainedRealization,
     RetainedTransformInput, SmlibWorker, TessellatedMesh, WorkerError,
 };
-
-#[cfg(all(feature = "retained-runtime", not(target_arch = "wasm32")))]
-pub use worker::RetainedBooleanIdentity;

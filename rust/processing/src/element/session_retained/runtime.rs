@@ -33,7 +33,7 @@ pub struct NumericalLimits {
     pub max_bytes: usize,
 }
 impl NumericalLimits {
-    pub fn validate(self) -> Result<(), RetainedExecutionError> {
+    pub(super) fn validate(self) -> Result<(), RetainedExecutionError> {
         if !self.chord_metres.is_finite()
             || self.chord_metres <= 0.
             || !self.angle_degrees.is_finite()
@@ -53,21 +53,13 @@ pub trait RetainedRuntime {
     fn incarnation(&self) -> u64;
 }
 
-pub trait RetainedExecutor: RetainedRuntime {
-    fn invoke(
-        &mut self,
-        call: Invocation<'_, Self::Receipt>,
-        limits: NumericalLimits,
-    ) -> Result<Self::Receipt, RetainedExecutionError>;
-}
-
 /// An executor borrowing one live Worker; no Send bound is needed on wasm32.
 pub trait AsyncRetainedExecutor: RetainedRuntime {
     fn invoke(
         &mut self,
         call: Invocation<'_, Self::Receipt>,
         limits: NumericalLimits,
-    ) -> impl std::future::Future<Output = Result<Self::Receipt, RetainedExecutionError>>;
+    ) -> impl std::future::Future<Output = Result<Self::Receipt, RuntimeFault>>;
 }
 
 /// Read-only evidence from a sealed runtime receipt. These fields cannot create
@@ -92,10 +84,10 @@ pub enum ReceiptEvidence<'a, K> {
 pub trait NumericalReceipt {
     type Object: PartialEq;
     type Domain: ReceiptDomain;
-    type Error: std::fmt::Display + std::fmt::Debug + Into<RetainedExecutionError>;
+    type Error: std::fmt::Display + std::fmt::Debug + Into<RuntimeFault>;
     fn heap_bytes() -> u64;
     /// Actual returned buffer capacities; SDK object memory is opaque.
-    fn buffer_bytes(&self) -> Result<u64, RetainedExecutionError>;
+    fn buffer_bytes(&self) -> Result<u64, Self::Error>;
     fn object(&self) -> Self::Object;
     fn evidence(&self) -> ReceiptEvidence<'_, Self::Object>;
     fn domain(&self) -> &Self::Domain;
@@ -111,19 +103,51 @@ pub trait ReceiptDomain: Clone {
     fn same_domain(&self, other: &Self) -> bool;
 }
 
-/// Target-neutral runtime fault; external executors wrap this through `From`.
+/// Target-neutral fault returned by external executors and numerical receipts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeFault {
-    pub kind: RuntimeFaultKind,
-    pub message: String,
+    pub(super) kind: RuntimeFaultKind,
+    pub(super) message: String,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RuntimeFaultKind {
+pub(super) enum RuntimeFaultKind {
     Kernel { status: i32 },
     Unqualified,
     Retired,
     ResourceLimit,
     Transport,
+}
+impl RuntimeFault {
+    pub fn kernel(status: i32, message: impl Into<String>) -> Self {
+        Self {
+            kind: RuntimeFaultKind::Kernel { status },
+            message: message.into(),
+        }
+    }
+    pub fn unqualified(message: impl Into<String>) -> Self {
+        Self {
+            kind: RuntimeFaultKind::Unqualified,
+            message: message.into(),
+        }
+    }
+    pub fn retired(message: impl Into<String>) -> Self {
+        Self {
+            kind: RuntimeFaultKind::Retired,
+            message: message.into(),
+        }
+    }
+    pub fn resource_limit(message: impl Into<String>) -> Self {
+        Self {
+            kind: RuntimeFaultKind::ResourceLimit,
+            message: message.into(),
+        }
+    }
+    pub fn transport(message: impl Into<String>) -> Self {
+        Self {
+            kind: RuntimeFaultKind::Transport,
+            message: message.into(),
+        }
+    }
 }
 impl std::fmt::Display for RuntimeFault {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

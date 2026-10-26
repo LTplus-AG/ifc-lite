@@ -4,6 +4,8 @@ use super::*;
 use super::runtime::{AsyncRetainedExecutor, NumericalLimits};
 
 impl<R: NumericalReceipt> RuntimeIssued<R> {
+    // Refs #7955: D's whole-model driver consumes this executor entry.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) async fn execute_async(mut self, worker: &mut impl AsyncRetainedExecutor<Receipt = R>, limits: NumericalLimits)
         -> Result<RuntimeCompleted<R>, Box<RuntimeRejectedExecution<R>>> {
         self.validate_predispatch_state().map_err(RuntimeRejectedExecution::terminal)?;

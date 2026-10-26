@@ -9,7 +9,7 @@ impl<R: NumericalReceipt> IssuedRetainedOperation<R> {
         // The transport bounded allocation before reading. Admit actual owned
         // buffer capacities to the captured account before delivery/acceptance.
         let buffers = resources.with_scope(|| resource::charge(resource::Cost {
-            live_bytes: kind.buffer_bytes()?, ..Default::default()
+            live_bytes: kind.buffer_bytes().map_err(runtime_fault)?, ..Default::default()
         }).map_err(RetainedExecutionError::Stopped))?;
         let empty = match (kind.evidence(), self) {
             // Both runtimes reject empty source constructions.
@@ -27,7 +27,7 @@ impl<R: NumericalReceipt> IssuedRetainedOperation<R> {
                 Self::Boolean { inputs, .. } => [Some(inputs[0].realization.clone()), Some(inputs[1].realization.clone())],
             },
         };
-        value.validate_live().map_err(protocol)?;
+        value.validate_live().map_err(runtime_fault)?;
         Ok(Arc::new(value))
     }
 }

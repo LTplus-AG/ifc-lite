@@ -6,7 +6,6 @@ use super::*;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReceiptFailure {
     BooleanInputDefinitionReceiptKindMismatch,
-    BooleanOperandFormReceiptKindMismatch,
     CancelledDelivery,
     CancelledRetainedProduct,
     ConflictingRetainedNumericalOutcome,
@@ -65,6 +64,8 @@ pub enum RetainedExecutionError {
     DomainRetired,
     Unsupported(Unsupported),
     Stopped(ProgramStop),
+    // Refs #7955: D's model driver validates type-product source before admission.
+    #[cfg_attr(not(test), allow(dead_code))]
     InvalidTypeSource,
 }
 impl std::fmt::Display for RetainedExecutionError {
@@ -72,11 +73,23 @@ impl std::fmt::Display for RetainedExecutionError {
         write!(f, "{self:?}")
     }
 }
-impl std::error::Error for RetainedExecutionError {}
+impl std::error::Error for RetainedExecutionError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Core(error) => Some(error),
+            Self::Geometry(error) => Some(error),
+            Self::Runtime(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+pub(super) fn runtime_fault(error: impl Into<RuntimeFault>) -> RetainedExecutionError {
+    RetainedExecutionError::Runtime(error.into())
+}
 pub(super) fn protocol(error: impl Into<RetainedExecutionError>) -> RetainedExecutionError {
     error.into()
 }
-/// Inspection checkpoint with the true cause restored. Geometry reports an
+/// Budget checkpoint with the true cause restored. Geometry reports an
 /// expired deadline as `ProgramStop::Cancelled`; the cause is read here, at the
 /// checkpoint, while the allowance scope is still current.
 pub(super) fn budget_checkpoint() -> Result<(), RetainedExecutionError> {

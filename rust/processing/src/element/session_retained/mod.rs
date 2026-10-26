@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Shared runtime consumer of the borrowed common geometry program.
-#![allow(dead_code)]
 // TODO(remove-by: M1 PR D, owner: maintainer, #7955): wire the whole-model driver.
 use super::model_context::retained::{ProductionLifecycle, RetainedContextError};
 use super::session::{plan_in_scope, ProductState};
@@ -38,6 +37,7 @@ use value::RuntimeRealization;
 mod predispatch;
 use predispatch::RuntimeRejectedExecution;
 mod entry;
+pub(super) mod admission;
 mod traversal;
 mod source_admission;
 use source_admission::SourceAdmission;
@@ -51,7 +51,7 @@ pub(super) mod refusal;
 mod inert_tests;
 #[cfg(test)]
 mod refusal_tests;
-use error::{RetainedExecutionError, ReceiptFailure, Unsupported, protocol, geometry, common, check_resources};
+use error::{RetainedExecutionError, ReceiptFailure, Unsupported, protocol, runtime_fault, geometry, common, check_resources};
 mod storage;
 mod construction_storage;
 use storage::Storage;
@@ -107,6 +107,8 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
         }
         self.owner.validate(decoder, router).map_err(protocol)
     }
+    // Refs #7955: D's whole-model driver consumes this executor entry.
+    #[cfg_attr(not(test), allow(dead_code))]
     fn issue_next(&mut self, decoder: &mut EntityDecoder, router: &GeometryRouter,
         worker: &impl RetainedRuntime<Receipt = R>) -> Result<Option<RuntimeIssued<R>>, RetainedExecutionError> {
         let result = self.issue_next_checked(decoder, router, worker);
@@ -210,7 +212,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                 .iter()
                 .find(|(v, _)| v.as_ref().definition() == value.definition())
                 .ok_or_else(|| protocol(ReceiptFailure::UndischargedDefinition))?;
-            receipt.validate_live().map_err(protocol)?;
+            receipt.validate_live().map_err(runtime_fault)?;
             if receipt.definition != value.definition() { return Err(protocol(ReceiptFailure::ForeignRetainedManifestDefinition)); }
             if value.evaluated_empty() != Some(receipt.is_empty()) { return Err(protocol(ReceiptFailure::RetainedManifestOutcomeMismatch)); }
         }

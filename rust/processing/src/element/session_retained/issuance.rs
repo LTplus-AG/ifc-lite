@@ -25,7 +25,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
         for (definition, receipt) in &self.ledger {
             resource::charge(resource::Cost { work: 1, ..Default::default() }).map_err(RetainedExecutionError::Stopped)?.retain();
             if definition.as_ref().definition() == value.definition() {
-                receipt.validate_live().map_err(protocol)?;
+                receipt.validate_live().map_err(runtime_fault)?;
                 return Ok(receipt.clone());
             }
         }

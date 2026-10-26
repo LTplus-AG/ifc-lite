@@ -200,12 +200,10 @@ mod session_retained;
 #[cfg(feature = "retained-runtime")]
 pub mod retained_runtime {
     pub use super::session_retained::runtime::{
-        RetainedRuntime, RetainedExecutor, AsyncRetainedExecutor, NumericalReceipt,
+        RetainedRuntime, AsyncRetainedExecutor, NumericalReceipt,
         ReceiptDomain, ReceiptEvidence, Invocation, Operand, NumericalLimits,
-        RuntimeFault, RuntimeFaultKind,
+        RuntimeFault,
     };
-    pub use super::session_retained::error::{RetainedExecutionError, ReceiptFailure, Unsupported};
-    pub use super::session_retained::refusal::{RetainedProductRefusal, RefusalOrigin};
-    pub use super::model_context::retained::RetainedContextError;
-    pub use super::session_protocol::WorkError;
+    pub use super::session_retained::refusal::RetainedProductRefusal;
+    pub use super::session_retained::admission::{admit_product, RetainedAdmissionError};
 }

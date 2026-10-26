@@ -8,7 +8,7 @@ fn same_frame(left: &[f64; 16], right: &[f64; 16]) -> bool {
 impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
     pub(super) fn validate_operation(&self, operation: &PendingRetainedOperation<R>,
         receipt: &RuntimeRealization<R>, owner: &R::Domain) -> Result<(), RetainedExecutionError> {
-        receipt.validate_live().map_err(protocol)?;
+        receipt.validate_live().map_err(runtime_fault)?;
         if receipt.definition != operation.expected().value().definition() {
             return Err(protocol(ReceiptFailure::ForeignRetainedOutputDefinition));
         }
@@ -28,7 +28,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                 }
             }
             (PendingRetainedOperation::Affine { input, matrix, .. }, ReceiptEvidence::Affine { input: identity_input, column_major }) => {
-                input.validate_live().map_err(protocol)?;
+                input.validate_live().map_err(runtime_fault)?;
                 if !input.kind.belongs_to_domain(owner) { return Err(protocol(ReceiptFailure::ForeignAffineInput)); }
                 if receipt.is_empty() != input.is_empty() || identity_input != input.kind.object() || !same_frame(column_major, matrix) {
                     return Err(protocol(ReceiptFailure::ForeignAffineOperationOrOrderedInput));
@@ -36,7 +36,7 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
             }
             (PendingRetainedOperation::Boolean { inputs, operation, expected }, ReceiptEvidence::Boolean { operation: actual_operation, left, right, world_from_left, world_from_right, world_from_evaluation, empty }) => {
                 for input in inputs.iter() {
-                    input.realization.validate_live().map_err(protocol)?;
+                    input.realization.validate_live().map_err(runtime_fault)?;
                     if !input.realization.kind.belongs_to_domain(owner) { return Err(protocol(ReceiptFailure::ForeignBooleanInput)); }
                 }
                 if receipt.is_empty() != empty || actual_operation != *operation

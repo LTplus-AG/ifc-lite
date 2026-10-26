@@ -34,7 +34,7 @@ impl NumericalReceipt for InertReceipt {
     fn heap_bytes() -> u64 {
         0
     }
-    fn buffer_bytes(&self) -> Result<u64, RetainedExecutionError> {
+    fn buffer_bytes(&self) -> Result<u64, RuntimeFault> {
         match *self {}
     }
     fn object(&self) {
@@ -76,7 +76,7 @@ impl AsyncRetainedExecutor for InertPeer {
         &mut self,
         call: Invocation<'_, InertReceipt>,
         _: NumericalLimits,
-    ) -> Result<InertReceipt, RetainedExecutionError> {
+    ) -> Result<InertReceipt, RuntimeFault> {
         assert!(
             matches!(call, Invocation::Construction(_)),
             "real extrusion admission"
@@ -91,8 +91,7 @@ impl AsyncRetainedExecutor for InertPeer {
         Err(RuntimeFault {
             kind: RuntimeFaultKind::Transport,
             message: "inert peer closed".into(),
-        }
-        .into())
+        })
     }
 }
 fn limits() -> NumericalLimits {

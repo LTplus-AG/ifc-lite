@@ -53,6 +53,8 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
         }
         Ok(())
     }
+    // Refs #7955: D's whole-model driver consumes this executor entry.
+    #[allow(dead_code)]
     pub(super) fn accept(
         &mut self,
         work: RuntimeCompleted<R>,

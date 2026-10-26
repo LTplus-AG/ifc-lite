@@ -78,18 +78,7 @@ impl RetainedExecutionError {
                         entity,
                         cause,
                     });
-                match error.kind() {
-                    Kind::OperationUnsupported => Refusal::OperationUnsupported,
-                    Kind::Source | Kind::Unsupported => Refusal::SourceInvalid,
-                    Kind::Incomplete => Refusal::Incomplete,
-                    Kind::DeadlineExceeded => Refusal::DeadlineExceeded,
-                    Kind::Cancelled => Refusal::Cancelled,
-                    Kind::Stopped => match error.original_stop() {
-                        Some(ProgramStop::Cancelled) => Refusal::Cancelled,
-                        _ => Refusal::ResourceExhausted,
-                    },
-                    _ => Refusal::ContractBreach,
-                }
+                common_kind_refusal(error.kind(), error.original_stop())
             }
             Self::Recipe(ifc_lite_geometry::document::RetainedRefusal::UnsupportedSource(_)) => {
                 Refusal::OperationUnsupported
@@ -110,7 +99,8 @@ impl RetainedExecutionError {
                 RuntimeFaultKind::ResourceLimit => Refusal::ResourceExhausted,
                 RuntimeFaultKind::Transport => Refusal::WorkerFault,
             },
-            Self::Geometry(_) => Refusal::WorkerFault,
+            // The sole Geometry producer is a conflicting logical outcome at acceptance.
+            Self::Geometry(_) => Refusal::ContractBreach,
             Self::DomainRetired => Refusal::WorkerRetired,
             Self::Stopped(ProgramStop::ResourceRefused(_)) => Refusal::ResourceExhausted,
             Self::DeadlineExceeded => Refusal::DeadlineExceeded,
@@ -120,5 +110,22 @@ impl RetainedExecutionError {
             Self::Owner(_) | Self::Transition(_) => Refusal::ContractBreach,
         };
         (refusal, origin)
+    }
+}
+
+// Classification is total over the controller taxonomy; origin extraction stays above.
+pub(super) fn common_kind_refusal(kind: Kind, stop: Option<ProgramStop>) -> RetainedProductRefusal {
+    use RetainedProductRefusal as Refusal;
+    match kind {
+        Kind::OperationUnsupported => Refusal::OperationUnsupported,
+        Kind::Source | Kind::Unsupported => Refusal::SourceInvalid,
+        Kind::Incomplete => Refusal::Incomplete,
+        Kind::DeadlineExceeded => Refusal::DeadlineExceeded,
+        Kind::Cancelled => Refusal::Cancelled,
+        Kind::Stopped => match stop {
+            Some(ProgramStop::Cancelled) => Refusal::Cancelled,
+            _ => Refusal::ResourceExhausted,
+        },
+        _ => Refusal::ContractBreach,
     }
 }

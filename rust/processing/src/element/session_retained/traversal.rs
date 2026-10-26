@@ -31,14 +31,14 @@ impl<'a, R: NumericalReceipt> RuntimeProductExecution<'a, R> {
             self.outer = None;
             return Ok(());
         };
-        if matches!(kind, WorkKind::Primary { layer_class, .. } if layer_class != 0) {
-            self.failed = true;
-            return Err(RetainedExecutionError::Unsupported(Unsupported::RetainedMaterialLayerStrategy));
-        }
-        if !matches!(kind, WorkKind::Primary { strategy: super::super::plan::PrimaryStrategy::TexturedSubmeshes, layer_class: 0 }
+        if !matches!(kind, WorkKind::Primary { strategy: super::super::plan::PrimaryStrategy::TexturedSubmeshes, .. }
             | WorkKind::PlainParts | WorkKind::TypeMap { .. }) {
             self.failed = true;
             return Err(RetainedExecutionError::Unsupported(Unsupported::RetainedOpeningStrategy));
+        }
+        if matches!(kind, WorkKind::Primary { layer_class, .. } if layer_class != 0) {
+            self.failed = true;
+            return Err(RetainedExecutionError::Unsupported(Unsupported::RetainedMaterialLayerStrategy));
         }
         let resources = self.resources.clone();
         let prepared = resources.with_scope(|| self.owner.work(decoder,router,|decoder,_| {

@@ -15,23 +15,31 @@ impl<R: NumericalReceipt> RuntimeProductWitness<R> {
             .validate()
             .map_err(RetainedExecutionError::Source)?;
         for (_, realization) in &self.ledger {
-            realization.validate_live().map_err(protocol)?;
+            realization.validate_live().map_err(runtime_fault)?;
         }
         Ok(())
     }
     /// Intermediate evidence never grants final-product publication authority.
+    // Refs #7955: D's whole-model driver consumes this executor entry.
+    #[allow(dead_code)]
     pub(super) fn require_final_product(&self) -> Result<(), RetainedExecutionError> {
         self.validate()?;
         Err(RetainedExecutionError::Unsupported(Unsupported::RetainedFinalPublicationRequiresOpeningLayerAppearanceFaceProofs))
     }
+    // Refs #7955: D's whole-model driver consumes this executor entry.
+    #[allow(dead_code)]
     pub(super) fn plan(&self) -> &RetainedProductPlan {
         &self.plan
     }
+    // Refs #7955: D's whole-model driver consumes this executor entry.
+    #[allow(dead_code)]
     pub(super) fn discharged_count(&self) -> usize {
         self.ledger.len()
     }
 }
 impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
+    // Refs #7955: D's whole-model driver consumes this executor entry.
+    #[allow(dead_code)]
     pub(super) fn into_witness(mut self) -> Result<RuntimeProductWitness<R>, RetainedExecutionError> {
         self.validate_witness()?;
         let plan = self

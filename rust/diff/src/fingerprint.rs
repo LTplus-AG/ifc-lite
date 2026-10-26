@@ -28,14 +28,19 @@
 //!   `attr:core` sub-hash is a collision *guard* on the whole-blob hash, and
 //!   that only holds while the two project identically.
 
-use std::collections::BTreeMap;
 use crate::JsString;
 use crate::sparse_collection::SparseCollection;
 
-use crate::input::{DataFingerprintInput, PropertyEntryInput, PropertyValue};
-use crate::js_json::{non_finite_token, stringify, stringify_sorted, JsonValue};
-use crate::projections::sorted_string_list;
-use crate::utf16::{cmp_code_units, stable_hash};
+use crate::input::{DataFingerprintInput, PropertyEntryInput, PropertyValue, TypeAssignmentInput};
+use crate::js_json::{cmp_sorted, non_finite_token, stringify_sorted, JsonValue};
+
+#[path = "fingerprint_checked.rs"]
+mod checked;
+pub use checked::{
+    build_component_fingerprint_entries, build_component_fingerprint_entries_checked,
+    build_component_fingerprints, build_data_fingerprint, build_data_fingerprint_checked,
+    check_property_sets, check_quantity_sets, check_type_assignments,
+};
 
 /// A normalized scalar: what a property value collapses to before hashing.
 #[derive(Debug, Clone, PartialEq)]
@@ -129,9 +134,9 @@ impl NamedEntry {
 /// one name is a normal IFC arrangement. Tiebreaking on serialized content
 /// makes the order total and content-derived.
 fn cmp_name_then_content(a: (&JsString, &JsonValue), b: (&JsString, &JsonValue)) -> std::cmp::Ordering {
-    a.0.cmp(b.0).then_with(|| {
-        cmp_code_units(&stringify_sorted(a.1), &stringify_sorted(b.1))
-    })
+    // Code-unit order of the two stableSerialize texts, hole runs compared
+    // without materializing them (#8114).
+    a.0.cmp(b.0).then_with(|| cmp_sorted(a.1, b.1))
 }
 
 fn sorted_entries(entries: &SparseCollection<PropertyEntryInput>) -> Vec<JsonValue> {
@@ -210,9 +215,8 @@ fn sorted_quantity_sets(input: &DataFingerprintInput) -> Vec<(JsString, JsonValu
 /// Duplicates are kept rather than collapsed: cardinality is content, and IFC
 /// allows an occurrence at most one `IfcRelDefinesByType`, so two assignments
 /// are an anomaly a diff should surface rather than normalize away.
-fn sorted_type_assignments(input: &DataFingerprintInput) -> Vec<JsonValue> {
-    let mut projected: Vec<(JsString, JsString)> = input
-        .type_assignments
+fn sorted_type_assignments(types: &SparseCollection<TypeAssignmentInput>) -> Vec<JsonValue> {
+    let mut projected: Vec<(JsString, JsString)> = types
         .present()
         .map(|assignment| {
             (
@@ -231,144 +235,17 @@ fn sorted_type_assignments(input: &DataFingerprintInput) -> Vec<JsonValue> {
             ])
         })
         .collect();
-    with_holes(values, input.type_assignments.holes())
+    with_holes(values, types.holes())
 }
 
+/// Sorting moves holes after the records; keep them as ONE trailing run.
 fn with_holes(mut values: Vec<JsonValue>, holes: usize) -> Vec<JsonValue> {
-    values.extend(std::iter::repeat_n(JsonValue::Hole, holes));
+    if holes > 0 { values.push(JsonValue::Holes(holes)); }
     values
 }
 
 fn string_array(values: &[JsString]) -> JsonValue {
     JsonValue::Array(values.iter().cloned().map(JsonValue::String).collect())
-}
-
-/// Build the canonical data fingerprint for one entity.
-///
-/// Key order in the hashed object is part of the format: `Type`, `Name`,
-/// `Description`, `ObjectType`, `PredefinedType`, `Tag`, `TypeAssignments`,
-/// `PropertySets`, `QuantitySets`, then `Materials` and `Classifications`
-/// **only when non-empty**.
-pub fn build_data_fingerprint(input: &DataFingerprintInput) -> String {
-    let mut object = core_attributes(input);
-
-    object.push((
-        "TypeAssignments".into(),
-        JsonValue::Array(sorted_type_assignments(input)),
-    ));
-    object.push((
-        "PropertySets".into(),
-        JsonValue::Array(with_holes(sorted_property_sets(input).into_iter().map(|(_, v)| v).collect(), input.property_sets.holes())),
-    ));
-    object.push((
-        "QuantitySets".into(),
-        JsonValue::Array(with_holes(sorted_quantity_sets(input).into_iter().map(|(_, v)| v).collect(), input.quantity_sets.holes())),
-    ));
-
-    let materials = sorted_string_list(&input.materials);
-    if !materials.is_empty() {
-        object.push(("Materials".into(), string_array(&materials)));
-    }
-    let classifications = sorted_string_list(&input.classifications);
-    if !classifications.is_empty() {
-        object.push(("Classifications".into(), string_array(&classifications)));
-    }
-
-    stable_hash(&stringify(&JsonValue::Object(object)))
-}
-
-/// Per-component sub-hashes, making the conflict unit `(entity, componentKey)`.
-///
-/// Keys match the layer op vocabulary so diff keys and op keys share one
-/// spelling: `attr:core`, `pset:<Name>`, `qset:<Name>`, `type-assignment`,
-/// `material`, `classification`.
-///
-/// Only components the entity actually carries get a key, so adding or
-/// removing one is visible as key presence rather than as an "empty" hash.
-///
-/// Every sub-hash is computed over the same projection
-/// [`build_data_fingerprint`] hashes, the `GlobalId`-free type assignment
-/// included. That is a requirement: the content pass uses these as a collision
-/// guard, retiring an added/deleted pair only once they agree, on the grounds
-/// that a component hashes a slice of what the whole hash covers. Projecting
-/// differently here would turn that guard into a re-export filter, vetoing the
-/// very matches the engine exists to find.
-pub fn build_component_fingerprints(input: &DataFingerprintInput) -> BTreeMap<JsString, String> {
-    build_component_fingerprint_entries(input).into_iter().collect()
-}
-
-/// JavaScript Map insertion order, including first-position/last-value updates
-/// for duplicate component keys. The WASM object boundary consumes this form.
-///
-/// Panics for outer property/quantity-set holes: component iteration requires
-/// a set name. The public JS facade raises its original host TypeError before
-/// crossing this boundary, while native callers must supply named outer sets.
-pub fn build_component_fingerprint_entries(input: &DataFingerprintInput) -> Vec<(JsString, String)> {
-    assert_eq!(input.property_sets.holes(), 0, "component property sets require present records");
-    assert_eq!(input.quantity_sets.holes(), 0, "component quantity sets require present records");
-    let mut components = OrderedComponents(Vec::new());
-
-    components.insert(
-        "attr:core".into(),
-        stable_hash(&stringify(&JsonValue::Object(core_attributes(input)))),
-    );
-
-    for (name, set) in sorted_property_sets(input) {
-        let members = member_array(&set, "properties");
-        components.insert(JsString::surround("pset:", &name, ""), stable_hash(&stringify(&members)));
-    }
-    for (name, set) in sorted_quantity_sets(input) {
-        let members = member_array(&set, "quantities");
-        components.insert(JsString::surround("qset:", &name, ""), stable_hash(&stringify(&members)));
-    }
-
-    let type_assignments = sorted_type_assignments(input);
-    if !type_assignments.is_empty() {
-        components.insert(
-            "type-assignment".into(),
-            stable_hash(&stringify(&JsonValue::Array(type_assignments))),
-        );
-    }
-
-    let materials = sorted_string_list(&input.materials);
-    if !materials.is_empty() {
-        components.insert(
-            "material".into(),
-            stable_hash(&stringify(&string_array(&materials))),
-        );
-    }
-    let classifications = sorted_string_list(&input.classifications);
-    if !classifications.is_empty() {
-        components.insert(
-            "classification".into(),
-            stable_hash(&stringify(&string_array(&classifications))),
-        );
-    }
-
-    components.0
-}
-
-struct OrderedComponents(Vec<(JsString, String)>);
-impl OrderedComponents {
-    fn insert(&mut self, key: JsString, value: String) {
-        if let Some((_, old)) = self.0.iter_mut().find(|(name, _)| *name == key) { *old = value; }
-        else { self.0.push((key, value)); }
-    }
-}
-
-/// Pull a set's member array back out of its canonical object form.
-///
-/// The component hash covers only the members, not the wrapping `name`, which
-/// is already carried by the component key itself.
-fn member_array(set: &JsonValue, members_key: &str) -> JsonValue {
-    if let JsonValue::Object(entries) = set {
-        for (key, value) in entries {
-            if key == members_key {
-                return value.clone();
-            }
-        }
-    }
-    JsonValue::Array(Vec::new())
 }
 
 #[cfg(test)]

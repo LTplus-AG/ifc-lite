@@ -8,28 +8,42 @@ use serde::{Deserialize, Deserializer};
 #[derive(Debug, Clone, PartialEq)]
 pub enum Slot<T> { Hole, Present(T) }
 
-/// Retains cardinality while canonical sorting moves holes after records.
+/// Present records in input order plus a hole COUNT (#8042, #8114).
+///
+/// Canonical sorting moves every hole after the records, and the stable sort
+/// keeps the present records' relative order whatever the hole positions, so
+/// positions are not content: equality ignores them. Counting instead of
+/// storing keeps memory O(present) for any array length, including a valid
+/// 2^32 - 1 slot array, while cardinality stays exact.
 #[derive(Debug, Clone, PartialEq)]
-pub struct SparseCollection<T>(pub Vec<Slot<T>>);
+pub struct SparseCollection<T> { present: Vec<T>, holes: usize }
 impl<T> Default for SparseCollection<T> {
-    fn default() -> Self { Self(Vec::new()) }
+    fn default() -> Self { Self { present: Vec::new(), holes: 0 } }
 }
 impl<T> SparseCollection<T> {
-    pub fn present(&self) -> impl Iterator<Item = &T> {
-        self.0.iter().filter_map(|slot| match slot { Slot::Present(value) => Some(value), Slot::Hole => None })
+    pub fn present(&self) -> impl Iterator<Item = &T> { self.present.iter() }
+    pub fn holes(&self) -> usize { self.holes }
+    pub fn push(&mut self, value: T) { self.present.push(value); }
+    /// Add `count` holes in O(1).
+    pub fn push_holes(&mut self, count: usize) {
+        self.holes = self.holes.checked_add(count).expect("sparse hole count exceeds usize");
     }
-    pub fn holes(&self) -> usize {
-        self.0.iter().filter(|slot| matches!(slot, Slot::Hole)).count()
-    }
-    pub fn map<U>(self, mut project: impl FnMut(T) -> U) -> SparseCollection<U> {
-        SparseCollection(self.0.into_iter().map(|slot| match slot {
-            Slot::Hole => Slot::Hole, Slot::Present(value) => Slot::Present(project(value)),
-        }).collect())
+    pub fn map<U>(self, project: impl FnMut(T) -> U) -> SparseCollection<U> {
+        SparseCollection { present: self.present.into_iter().map(project).collect(), holes: self.holes }
     }
 }
 impl<T> FromIterator<T> for SparseCollection<T> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
-        Self(iter.into_iter().map(Slot::Present).collect())
+        Self { present: iter.into_iter().collect(), holes: 0 }
+    }
+}
+impl<T> FromIterator<Slot<T>> for SparseCollection<T> {
+    fn from_iter<I: IntoIterator<Item = Slot<T>>>(iter: I) -> Self {
+        let mut collection = Self::default();
+        for slot in iter {
+            match slot { Slot::Hole => collection.push_holes(1), Slot::Present(value) => collection.push(value) }
+        }
+        collection
     }
 }
 impl<T> From<Vec<T>> for SparseCollection<T> {

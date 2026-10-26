@@ -18,6 +18,18 @@ export function fpSparseLength(value) {
     if (number >= 4294967296) [].length = number;
     return number - number % 1;
 }
+// Whether this engine can build a string of `length` UTF-16 units (#8114).
+// The oracle's JSON.stringify and stableSerialize join throw a RangeError past
+// the engine's maximum, which `+` enforces too. Binary doubling builds rope
+// strings in O(log length) time and memory, and performs no property lookup
+// (unlike String.prototype.repeat), so it observes nothing mutable.
+export function fpStringFits(length) {
+    let unit = ' ', text = '';
+    for (let rest = length; rest > 0; rest = (rest - rest % 2) / 2) {
+        if (rest % 2 === 1) text += unit;
+        if (rest > 1) unit += unit;
+    }
+}
 export function fpIterable(value) { return Symbol.iterator in value; }
 // Keep wasm-bindgen 0.2.126's non-throwing instanceof cast probes. Unlike
 // member observations, a failed cast probe has always meant false here.
@@ -97,6 +109,8 @@ extern "C" {
     pub fn array_length(value: &JsValue) -> Result<u32, JsValue>;
     #[wasm_bindgen(catch, js_name = fpSparseLength)]
     pub fn sparse_array_length(value: &JsValue) -> Result<u32, JsValue>;
+    #[wasm_bindgen(catch, js_name = fpStringFits)]
+    pub fn string_fits(length: f64) -> Result<(), JsValue>;
     #[wasm_bindgen(catch, js_name = fpIterable)]
     pub fn iterable(value: &JsValue) -> Result<bool, JsValue>;
     #[wasm_bindgen(catch, js_name = fpMap)]

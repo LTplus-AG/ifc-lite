@@ -6441,7 +6441,6 @@
     "GeometryProcessor: class",
     "GeometryProcessorOptions: interface",
     "GeometryResult: interface",
-    "GeometryWorkerPoolStats: interface",
     "GridAxis: interface",
     "HbjsonStats: interface",
     "IPlatformBridge: interface",
@@ -6514,14 +6513,10 @@
     "localViewerToProjected: function",
     "mergeGeometryDiagnostics: function",
     "pickWorkerCount: function",
-    "prewarmGeometryWorkers: function",
-    "prewarmMainThreadEngine: function",
     "prewarmSharedWasmModule: function",
     "projectedToLocalViewer: function",
-    "releaseWarmGeometryWorkers: function",
     "resolveSpatialPlacement: function",
-    "terrainRefusalReason: function",
-    "warmGeometryWorkerPoolStats: function"
+    "terrainRefusalReason: function"
   ],
   "@ifc-lite/geometry/geometry-class": [
     "GEOM_CLASS_INSTANCED_TYPE: const",

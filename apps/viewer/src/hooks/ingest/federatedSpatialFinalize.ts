@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { ifcUnknownVerticalPolicy, ifcSharedVerticalDatumApplied } from './ifcGeorefAssumptions.js';
+import { ifcUnknownVerticalPolicy, ifcSharedVerticalDatumApplied, ifcVerticalAssumptionHint, type IfcVerticalAssumptionApplied } from './ifcGeorefAssumptions.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { type GeometryResult, type ModelSpatialReference } from '@ifc-lite/geometry';
 import { federationFrameInfo } from '@ifc-lite/geometry/world-frame';
@@ -20,7 +20,7 @@ import { landXmlAssumptionsApplied } from './sourceSpatialReference';
 
 export interface FederatedSpatialFinalizeResult {
   preAlignment?: PreAlignmentSnapshot;
-  ifcSharedVerticalDatumAssumed?: true;
+  ifcSharedVerticalDatumAssumed?: IfcVerticalAssumptionApplied;
   federationAlignmentStatus: FederatedModel['federationAlignmentStatus'];
   /** LandXML only, and only when non-empty: the assumptions the placement actually rests on. */
   landXmlAssumptionsApplied?: readonly LandXmlGeorefAssumption[];
@@ -81,15 +81,13 @@ function reportFederationAlignmentOutcome(
   fileName: string,
   source: ModelSpatialPlacement,
   reference: ModelSpatialPlacement,
+  heightHint = '',
 ): void {
   const sourceCrs = source.spatialReference.horizontal?.id ?? 'unknown CRS';
   const targetCrs = reference.spatialReference.horizontal?.id ?? 'unknown CRS';
   if (status === 'reprojected') {
     toast.info(`Reprojected "${fileName}" from ${sourceCrs} to ${targetCrs} for federation alignment.`);
   } else if (status === 'failed') {
-    const heightHint = source.spatialReference.sourceMetadata?.format === 'ifc'
-      && (!source.spatialReference.vertical || !reference.spatialReference.vertical)
-      ? ' A vertical datum is missing. If you know these models share a height system, enable the IFC federation assumption in Settings → General, then reload or re-align.' : '';
     toast.error(`Could not align "${fileName}" with the federation anchor — ${sourceCrs} → ${targetCrs} reprojection failed. The model is shown in its own local frame and may appear at the wrong real-world position.${heightHint}`);
   }
 }
@@ -157,7 +155,7 @@ export async function finalizeFederatedSpatialPlacement(options: {
   let federationAlignmentStatus: FederatedModel['federationAlignmentStatus'] = 'none';
   const assumeIfcSharedVertical = useViewerStore.getState().ifcSharedVerticalDatum;
   const unknownVertical = options.landXmlDocument ? unknownVerticalPolicy(options.landXmlAssumptions)
-    : parsed ? ifcUnknownVerticalPolicy(parsed.spatialReference, assumeIfcSharedVertical) : 'refuse';
+    : parsed && reference ? ifcUnknownVerticalPolicy(parsed.spatialReference, reference.spatialReference, assumeIfcSharedVertical) : 'refuse';
   if (reference && parsed) {
     options.setProgress({ phase: 'Aligning georeferenced model', percent: 90 });
     preAlignment = capturePreAlignment(options.geometry);
@@ -182,7 +180,9 @@ export async function finalizeFederatedSpatialPlacement(options: {
       if (!options.isCurrent()) return null;
       applyLandXmlRenderedLineUpdates(renderedLines);
     }
-    reportFederationAlignmentOutcome(status, options.fileName, parsed, reference);
+    reportFederationAlignmentOutcome(status, options.fileName, parsed, reference,
+      status === 'failed' && !options.landXmlDocument
+        ? ifcVerticalAssumptionHint(parsed.spatialReference, reference.spatialReference, assumeIfcSharedVertical) : '');
   } else if (parsed) {
     federationAlignmentStatus = 'anchor';
   }

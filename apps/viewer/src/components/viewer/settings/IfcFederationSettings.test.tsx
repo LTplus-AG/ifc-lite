@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { afterEach, it } from 'node:test';
 import { act } from 'react';
 import { cleanup, click, render } from '@/test/render.js';
+import { parseSpatialIfc } from '@/test/ifc-spatial-fixture.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { openSettings } from '@/lib/settings/open-settings';
 import { useViewerStore } from '@/store';
@@ -14,7 +15,8 @@ import { SettingsDialogHost } from './SettingsDialog.js';
 import { ModelMetadataPanel } from '../properties/ModelMetadataPanel.js';
 import { loadIfcSharedVerticalDatum, IFC_SHARED_VERTICAL_DATUM_STORAGE_KEY as KEY } from '@/store/slices/ifcGeorefAssumptionSettings.js';
 import { finalizeFederatedSpatialPlacement } from '@/hooks/ingest/federatedSpatialFinalize.js';
-import type { ModelSpatialReference, GeometryResult } from '@ifc-lite/geometry';
+import { extractModelSpatialPlacement, findReferenceSpatialModel } from '@/hooks/ingest/federationAlign.js';
+import type { GeometryResult } from '@ifc-lite/geometry';
 
 const initialState = useViewerStore.getState();
 afterEach(() => {
@@ -41,12 +43,7 @@ it('offers an off-by-default explicit IFC choice and uses a click to place geome
 
   // Invoke the real finalizer after the UI choice; ignored onCheckedChange or
   // ignored settings at the ingest boundary must break this assertion.
-  const spatialReference: ModelSpatialReference = {
-    source: { axes: ['east', 'up', 'south'], horizontalUnitToMetres: 1, verticalUnitToMetres: 1 },
-    horizontal: { id: 'EPSG:32760' }, confidence: 'declared', sourceMetadata: { format: 'ifc' },
-    localToProjected: { kind: 'local-projected-affine', eastings: 0, northings: 0, orthogonalHeight: 0,
-      xAxisAbscissa: 1, xAxisOrdinate: 0, scaleX: 1, scaleY: 1, scaleZ: 1 },
-  };
+  const dataStore = await parseSpatialIfc({ eastings: 0, northings: 0, orthogonalHeight: 0 });
   const geometry: GeometryResult = {
     meshes: [{ expressId: 1, positions: new Float32Array([2, 3, 4]), normals: new Float32Array([0, 1, 0]),
       indices: new Uint32Array(), color: [1, 1, 1, 1] }], totalVertices: 1, totalTriangles: 0,
@@ -54,11 +51,14 @@ it('offers an off-by-default explicit IFC choice and uses a click to place geome
       originalBounds: { min: { x: 2, y: 3, z: 4 }, max: { x: 2, y: 3, z: 4 } },
       shiftedBounds: { min: { x: 2, y: 3, z: 4 }, max: { x: 2, y: 3, z: 4 } } },
   };
-  const anchor = { ...fixtureModel('anchor'), spatialReference, geometryResult: structuredClone(geometry) };
+  const placement = extractModelSpatialPlacement(dataStore, geometry.coordinateInfo);
+  assert.ok(placement);
+  assert.equal(placement.spatialReference.vertical, undefined);
+  const anchor = { ...fixtureModel('anchor'), ifcDataStore: dataStore, geometryResult: structuredClone(geometry) };
   act(() => useViewerStore.setState({ ...fixtureModels(anchor) }));
+  assert.equal(findReferenceSpatialModel()?.modelId, anchor.id, 'the real parsed anchor is selected');
   const placed = await finalizeFederatedSpatialPlacement({
-    dataStore: fixtureModel('revision').ifcDataStore!, geometry,
-    modelId: 'revision', fileName: 'revision.ifc', spatialReference,
+    dataStore, geometry, modelId: 'revision', fileName: 'revision.ifc',
     isCurrent: () => true, setProgress: () => undefined,
   });
   assert.equal(placed?.federationAlignmentStatus, 'identity');
@@ -68,17 +68,26 @@ it('offers an off-by-default explicit IFC choice and uses a click to place geome
   assert.equal(loadIfcSharedVerticalDatum(), false, 'the UI can revoke the standing choice');
 });
 
-it('labels actual assumed placements in model metadata and omits the notice for failures (#8042)', () => {
-  const assumed = { ...fixtureModel('revision'), ifcSharedVerticalDatumAssumed: true as const, federationAlignmentStatus: 'identity' as const };
-  act(() => useViewerStore.setState({ ...fixtureModels(assumed) }));
-  const ui = render(<ModelMetadataPanel model={assumed} />);
-  assert.match(ui.textContent ?? '', /Assumed height system/);
-  assert.match(ui.textContent ?? '', /source declarations are unchanged/);
-  cleanup();
-  const failed = { ...assumed, federationAlignmentStatus: 'failed' as const };
-  act(() => useViewerStore.setState({ ...fixtureModels(failed) }));
-  const failureUi = render(<ModelMetadataPanel model={failed} />);
-  assert.doesNotMatch(failureUi.textContent ?? '', /Assumed height system/);
+it('distinguishes missing and unresolved assumption notices and omits them for failures (#8042/R58-F2)', () => {
+  for (const marker of [true, 'unresolved'] as const) {
+    const assumed = { ...fixtureModel('revision'), ifcSharedVerticalDatumAssumed: marker, federationAlignmentStatus: 'identity' as const };
+    act(() => useViewerStore.setState({ ...fixtureModels(assumed) }));
+    const ui = render(<ModelMetadataPanel model={assumed} />);
+    assert.match(ui.textContent ?? '', /Assumed height system/);
+    assert.match(ui.textContent ?? '', /source declarations are unchanged/);
+    if (marker === 'unresolved') {
+      assert.match(ui.textContent ?? '', /authored vertical datum could not be resolved/);
+      assert.doesNotMatch(ui.textContent ?? '', /datum is missing/);
+    } else {
+      assert.match(ui.textContent ?? '', /datum is missing/);
+    }
+    cleanup();
+    const failed = { ...assumed, federationAlignmentStatus: 'failed' as const };
+    act(() => useViewerStore.setState({ ...fixtureModels(failed) }));
+    const failureUi = render(<ModelMetadataPanel model={failed} />);
+    assert.doesNotMatch(failureUi.textContent ?? '', /Assumed height system/);
+    cleanup();
+  }
 });
 
 it('keeps malformed saved values off and the explicit choice across model resets (#8042)', () => {

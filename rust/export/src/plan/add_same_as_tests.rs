@@ -67,18 +67,16 @@ fn assert_shifted(a: [(f64, f64); 3], b: [(f64, f64); 3], shift: [f64; 3], schem
     }
 }
 
-/// Validates, sets every required attribute, and every reference names a
-/// record of the output.
+/// Validates (every reference resolves) and leaves no required attribute
+/// the slot tables cover unset.
 fn assert_valid(out: &[u8], schema: &str) {
     let findings = crate::plan::validate::validate(out, schema);
     assert!(findings.is_empty(), "{schema}: {findings:?}");
     let index = FileIndex::scan(out, &Default::default());
     for (id, ..) in index.records() {
         let line = index.raw_line(id).unwrap();
-        assert!(unset_required(schema, &line).is_empty(), "{schema}: #{id} leaves {:?} unset", unset_required(schema, &line));
-        for r in refs_of(&index, id) {
-            assert!(index.contains(r), "{schema}: #{id} names missing #{r}");
-        }
+        let unset = unset_required(schema, &line);
+        assert!(unset.is_empty(), "{schema}: #{id} leaves {unset:?} unset");
     }
 }
 

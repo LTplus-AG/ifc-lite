@@ -55,9 +55,7 @@ impl AddState<'_, '_> {
         for rep in reps {
             let at = || format!("representation source {source}: representation #{rep}");
             let e = entity(rep);
-            let attrs = index.attrs(rep).unwrap_or_default();
-            let slot = |name| attrs.get(attribute_index(schema, &e, name)?);
-            let Some(context) = slot("ContextOfItems").and_then(|a| a.scalar).filter(|c| index.contains(*c)) else {
+            let Some(context) = scalar_attr(index, schema, rep, &e, "ContextOfItems").filter(|c| index.contains(*c)) else {
                 return Err(format!("{} has no readable context", at()));
             };
             if self.removed.contains(&context) {
@@ -66,7 +64,7 @@ impl AddState<'_, '_> {
             if self.removed.contains(&rep) {
                 return Err(format!("{} is removed by this plan", at()));
             }
-            let items: Vec<u32> = slot("Items").and_then(|a| a.list.as_ref()).map(|l| l.iter().flatten().copied().collect()).unwrap_or_default();
+            let items = list_attr(index, schema, rep, &e, "Items").unwrap_or_default();
             if items.is_empty() {
                 return Err(format!("{} has no items", at()));
             }

@@ -18,6 +18,7 @@ import { boundEvaluations, tapDriverErrors, skipWhenFixturesMissing } from './pi
 const [configuration, output] = process.argv.slice(2);
 if (!configuration || !output) throw Error('Arguments: frozen cohort configuration, new output directory');
 const config = JSON.parse(readFileSync(configuration, 'utf8'));
+if (!Array.isArray(config.scenarios) || !config.scenarios.length) throw Error('Frozen configuration declares no scenarios');
 const hash = value => createHash('sha256').update(value).digest('hex');
 const inventory = (directory, prefix = '') => readdirSync(directory).flatMap(name => {
   const path = `${directory}/${name}`, relative = `${prefix}${name}`, stat = lstatSync(path);

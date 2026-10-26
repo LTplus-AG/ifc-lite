@@ -1,0 +1,22 @@
+--- a/rust/export/src/plan/add.rs
++++ b/rust/export/src/plan/add.rs
+@@ -252,7 +252,7 @@
+                 };
+                 Some(mapped_shape(emit, &mut shared, maps, &m.transform)?)
+             }
+-            (Representation::SameAs(_), _) => None,
++            (Representation::SameAs(_), _) => Some(reused_shape(emit, c.same_as.as_deref().ok_or("reused geometry was not checked")?)?),
+             (rep, Some(ctx)) => product_shape(emit, ctx, rep, obj.style.as_ref())?,
+             (_, None) => None,
+         };
+--- a/rust/export/src/plan/add_same_as.rs
++++ b/rust/export/src/plan/add_same_as.rs
+@@ -41,7 +41,7 @@
+         if !self.is_a(&class, "IFCPRODUCT") {
+             return Err(format!("representation source {source} is {class}, not a product"));
+         }
+-        if false && self.reshaped.contains(&id) {
++        if self.reshaped.contains(&id) {
+             return Err(format!("representation source {source} gets new geometry from a patch in this plan; reuse its mesh instead"));
+         }
+         let (index, schema) = (self.index, self.schema);

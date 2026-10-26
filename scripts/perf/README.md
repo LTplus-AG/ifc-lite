@@ -614,14 +614,49 @@ call sites and `useViewerStore` subscriptions on the viewport, properties,
 hierarchy and streaming paths statically (minified component names make a
 runtime fiber census unattributable, and mounted counts move with UI state).
 
-## GPU point-pick depth candidate held (#6881)
+## GPU point-pick depth readback qualification (#6881)
 
 The [same-submission GPU oracles](evidence/bounded-depth-readback-6881/README.md)
 qualify single-texel extraction against a full-depth copy on hardware, including
 concurrent maps and target replacement. Production family, ID/item/model and georeferenced world-coordinate controls
 match the original renderer, and device destruction retires pending picks. The candidate shares ID/depth staging and keeps per-pick inputs immutable.
-Four complete interleaved fresh-document public-model viewer pairs retain unchanged geometry and hit provenance, reduced mapped bytes, and mixed interaction timings. One pair has unresolved world-coordinate differences without camera/frame receipts; a fifth attempt lost the native browser. Cold-load provenance remains unverified. Real federated viewer qualification is outstanding. No speedup or shipping verdict is accepted. Lesson: a bounded readback and exact
+Four complete interleaved fresh-document public-model viewer pairs retain unchanged geometry and hit provenance, reduced mapped bytes, and mixed interaction timings. One pair has unresolved world-coordinate differences without camera/frame receipts; a fifth attempt lost the native browser. Cold-load provenance remains unverified. At that stage real federated viewer qualification was outstanding and no speedup or shipping verdict was accepted. Lesson: a bounded readback and exact
 GPU sample establish neither complete picking parity nor interaction throughput.
+
+The [resumed qualification](../../tests/evidence/point-depth-6881-20261025/README.md)
+retains successful source-matched builds and a common geometry engine for the
+full-copy inverse and production viewer. The exclusive request expired awaiting
+existing work before its controller started, yielding no new GPU or timing
+samples. The subsequent untimed NVIDIA qualification passes same-render
+depth/ID/item/world comparisons across both DPRs, real-model federation,
+authored geometry families and stale camera/resize/device-loss controls, with
+unchanged geometry. Harness readiness and screenshot-lifetime failures remain
+in the evidence alongside the accepted run.
+
+Verdict: accepted improvement. The exclusive hover cohort (`hover-15`) completed
+five interleaved pairs for FZK, Building-Architecture and Federation with every
+gate satisfied. The candidate maps 256 bytes per pick instead of 3,233,792, and
+lowers median pointer-to-hover latency in 15 of 15 pairs (paired ratio
+0.72-0.76) and median GPU picker time in 15 of 15 pairs (0.63-0.85). The p95,
+the slowest of nine hovers per sample, is lower in 12 of 15 pairs and is not
+claimed. No loading-speed claim. Thirteen earlier attempts ended in admission,
+host-quiet, operator-input, health and identity gates; each refusal is retained
+and no failed sample was replaced. Tolerances, the own-process CPU subtraction,
+a bounded quiet-host wait and the probed pick positions were added after
+observing those attempts and are disclosed as not blinded.
+
+Lessons: choose cohort pick positions away from coplanar or duplicate surfaces
+and verify them with repeated renders before freezing a protocol, and exclude any
+point seen to flip across sessions even if a probe calls it stable, because a
+one-pixel canvas change can move a texel onto a coplanar boundary; a
+cross-session identity gate must tolerate depth-ULP world drift but never an
+entity change; measure host CPU excluding the cohort's own process tree, and
+wait boundedly for a quiet reading rather than refusing on one sample, since
+browser teardown alone produced an 11% spike; a headed browser on a desktop host
+receives the operator's real mouse, so keep hands off for the run; the fleet's
+fixed one-hour admission limit means submitting only once the host has drained;
+check every health gate against recorded samples before a long exclusive wait,
+because a strict equality on a float DPR cost an hour of queue time.
 
 Independent Linux qualification adopted the existing readback cleanup repair;
 inverse fault controls demonstrate the ownership defects and the repaired paths
@@ -630,7 +665,7 @@ and pinned. T3 navigation refused before the declared model phase, with the
 earlier RAF refusal preserved. The subsequent current-main integration passed
 root renderer tests, full serial root typecheck with both postchecks, lint and
 source gates. Current real-model comparisons, federation and focused physical
-performance remain held; CPU integration and cleanup qualification do not
+performance remained held at that point; CPU integration and cleanup qualification do not
 replace them. No browser or GPU cohort ran for the integration update.
 
 A subsequent normal main integration includes merged #7361 without copying its
@@ -641,7 +676,7 @@ corrected root tests, full serial typecheck and source gates pass. Diagnostic
 method retirement also preserves later owners. These are lifecycle invariants,
 not native GPU acceptance. The current app/observer pair must be rebuilt and
 frozen before the separate T3 correctness session. Original coordinates,
-deadlines, refusals and the focused-performance hold remain.
+deadlines and refusals remain recorded; the focused-performance hold stood until the accepted cohort above.
 
 Mounted base and original-draft hover controls also reproduce stale hits and
 misses after newer input, pointer exit/cancel, unmount and ownership changes.

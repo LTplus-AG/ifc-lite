@@ -56,7 +56,9 @@ test('#7974 actual validation exports cameras and snapshots for physical and spa
   const dialog = page.getByRole('dialog');
   await expect(dialog.locator('#grouping')).toContainText(/specification/i);
   await expect(dialog.locator('#include-camera')).toBeChecked();
-  await dialog.locator('#include-snapshots').click();
+  // Grouped topics always carry a snapshot; BIMcollab ignores viewpoints without one (#7974).
+  await expect(dialog.locator('#include-snapshots')).toBeChecked();
+  await expect(dialog.locator('#include-snapshots')).toBeDisabled();
   const [download] = await gpu.raceLoss('capture grouped IDS BCF snapshots', () => Promise.all([
     page.waitForEvent('download', { timeout: 120000 }),
     dialog.getByRole('button', { name: 'Export BCF', exact: true }).click(),

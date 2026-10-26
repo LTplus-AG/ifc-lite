@@ -947,7 +947,9 @@ export class IfcAPI {
      * `renderer.setLineOverlay('alignment', ...)`.
      *
      * Returns an empty array when the file has no alignments (or none with a
-     * resolvable Axis curve), so the caller can clear the overlay cheaply.
+     * resolvable Axis curve and placement), so the caller can clear the
+     * overlay cheaply. An alignment whose authored placement cannot be
+     * resolved is omitted (#7779).
      */
     parseAlignmentLines(content: string): Float32Array;
     /**
@@ -971,7 +973,8 @@ export class IfcAPI {
      * straight to a line pipeline (e.g. `renderer.setLineOverlay('grid', …)`).
      *
      * Returns an empty array when the file has no grids, so the caller can
-     * clear the overlay cheaply.
+     * clear the overlay cheaply. An axis with a malformed endpoint, or a grid
+     * whose authored placement cannot be resolved, is omitted (#7779).
      */
     parseGridLines(content: string): Float32Array;
     /**

@@ -1849,6 +1849,13 @@ jobs:
           # patch; once it is on main, this clause can go.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/export-plan-patched-opening/behaviour.oracle.patch | grep -Fxq 'tests/evidence/export-plan-patched-opening/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/export-plan-patched-opening/behaviour.oracle.patch)
+          # Export plan reused geometry: the new plan/add_same_as.rs and its
+          # tests compile only together. Keep them and write no shape for a
+          # reused body, and skip the reshaped-source refusal: the reuse and
+          # reshape tests must turn RED. Once plan/add_same_as.rs is on main,
+          # this clause can go.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/export/src/plan/add_same_as.rs | grep -Fxq 'rust/export/src/plan/add_same_as.rs'; then
+            oracle_args+=(--mutation tests/evidence/export-plan-same-as/behaviour.oracle.patch)
           # Export plan mapped bodies: the new plan/add_mapped.rs and its
           # tests compile only together. Keep them, drop the transform's
           # translation and instance every context's Body maps: the placement

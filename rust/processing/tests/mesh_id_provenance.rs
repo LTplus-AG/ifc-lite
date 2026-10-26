@@ -33,7 +33,7 @@ use std::sync::Arc;
 /// #200/#201/#200) whose body representation holds `items`.
 ///
 /// One item slices; two items do not — the layer control requires a
-/// single unshifted item, because the layer planes are built from the element
+/// single unrotated item, because the layer planes are built from the element
 /// placement alone and would otherwise sit in a different frame than the mesh.
 /// Everything else about the two files is identical, so the two tests below
 /// differ in exactly the thing under test.
@@ -222,7 +222,7 @@ fn layered_wall_slices_name_their_material_not_a_representation_item() {
 /// `is_material_layer_sliceable` lookup while the slicer bails at runtime.
 ///
 /// Same wall, same layer set, one extra body item — which
-/// `element_is_single_unshifted_item` refuses, so the element falls through to
+/// `element_is_single_unrotated_item` refuses, so the element falls through to
 /// the ordinary sub-mesh path and emits #40 and #48.
 ///
 /// This is the test that catches deriving the item-vs-layer answer from

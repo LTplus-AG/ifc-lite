@@ -27,9 +27,13 @@ fn rectangle_uses_four_exact_centered_edges_and_keeps_position_separate() {
     assert_eq!(profile.loops[0].signed_area, 1.0);
     assert_eq!(profile.loops[0].perimeter, 4.0);
     assert_eq!(profile.loops[0].segments.len(), 4);
-    assert_eq!(profile.loops[0].segments[0], AnalyticCurveSegment::Line {
-        start: [-0.5, -0.5, 0.0], end: [0.5, -0.5, 0.0],
-    });
+    assert_eq!(
+        profile.loops[0].segments[0],
+        AnalyticCurveSegment::Line {
+            start: [-0.5, -0.5, 0.0],
+            end: [0.5, -0.5, 0.0],
+        }
+    );
 }
 
 #[test]
@@ -39,7 +43,10 @@ fn circle_is_one_exact_full_arc_with_unsampled_area() {
     assert_eq!(profile.status, AnalyticStatus::Complete);
     assert_eq!(profile.loops.len(), 1);
     assert_eq!(profile.loops[0].segments.len(), 1);
-    assert!(matches!(profile.loops[0].segments[0], AnalyticCurveSegment::Arc { .. }));
+    assert!(matches!(
+        profile.loops[0].segments[0],
+        AnalyticCurveSegment::Arc { .. }
+    ));
     assert!((profile.loops[0].signed_area - std::f64::consts::PI * 0.05_f64.powi(2)).abs() < 1e-14);
     assert!((profile.loops[0].perimeter - std::f64::consts::TAU * 0.05).abs() < 1e-14);
 }
@@ -59,24 +66,75 @@ fn real_revit_profile_preserves_outer_and_inner_winding() {
 
 #[test]
 fn malformed_circle_is_unsupported_with_no_partial_loop() {
-    let source = String::from_utf8(include_bytes!("../../tests/fixtures/issue_1985_scaled_kinds.ifc").to_vec()).unwrap();
-    let broken = source.replace("#8=IFCCIRCLEPROFILEDEF(.AREA.,'P',#7,0.05);",
-        "#8=IFCCIRCLEPROFILEDEF(.AREA.,'P',#7,-0.05);");
+    let source = String::from_utf8(
+        include_bytes!("../../tests/fixtures/issue_1985_scaled_kinds.ifc").to_vec(),
+    )
+    .unwrap();
+    let broken = source.replace(
+        "#8=IFCCIRCLEPROFILEDEF(.AREA.,'P',#7,0.05);",
+        "#8=IFCCIRCLEPROFILEDEF(.AREA.,'P',#7,-0.05);",
+    );
     let profile = read(broken.as_bytes(), 8);
-    assert!(matches!(profile.status, AnalyticStatus::Unsupported(ref reason) if reason.contains("Radius")));
+    assert!(
+        matches!(profile.status, AnalyticStatus::Unsupported(ref reason) if reason.contains("Radius"))
+    );
     assert!(profile.loops.is_empty());
 }
 
 #[test]
 fn indexed_arc_and_line_form_an_exact_closed_semicircle() {
-    let source = String::from_utf8(include_bytes!("../../tests/fixtures/mapped_instances_synthetic.ifc").to_vec()).unwrap();
+    let source = String::from_utf8(
+        include_bytes!("../../tests/fixtures/mapped_instances_synthetic.ifc").to_vec(),
+    )
+    .unwrap();
     let source = source.replace("ENDSEC;\nEND-ISO-10303-21;",
         "#100=IFCCARTESIANPOINTLIST2D(((1.,0.),(0.,1.),(-1.,0.)));\n#101=IFCINDEXEDPOLYCURVE(#100,(IFCARCINDEX((1,2,3)),IFCLINEINDEX((3,1))),.F.);\n#102=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#101);\nENDSEC;\nEND-ISO-10303-21;");
     let profile = read(source.as_bytes(), 102);
     assert_eq!(profile.status, AnalyticStatus::Complete);
     assert_eq!(profile.loops[0].segments.len(), 2);
-    assert!(matches!(profile.loops[0].segments[0], AnalyticCurveSegment::Arc { sweep_angle, .. }
-        if sweep_angle > 0.0));
+    assert!(
+        matches!(profile.loops[0].segments[0], AnalyticCurveSegment::Arc { sweep_angle, .. }
+        if sweep_angle > 0.0)
+    );
     assert!((profile.loops[0].signed_area - std::f64::consts::FRAC_PI_2).abs() < 1e-10);
     assert!((profile.loops[0].perimeter - (std::f64::consts::PI + 2.0)).abs() < 1e-10);
+}
+
+#[cfg(feature = "retained-runtime")]
+#[test]
+fn issue_7955_inner_curves_deadline_and_work_stop_propagate_as_typed_stops() {
+    use crate::resource::{self, BudgetStart, ProductBudget, ProgramStop};
+    // A circle outer loop takes three source steps without provenance capture:
+    // enter curve, interpret curve, integrate its single arc. Step four is
+    // the first InnerCurves iteration, before the inner curve is decoded.
+    let data = b"#1=IFCCARTESIANPOINT((0.,0.));
+#2=IFCAXIS2PLACEMENT2D(#1,$);
+#3=IFCCIRCLE(#2,10.);
+#4=IFCCIRCLE(#2,1.);
+#5=IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,$,#3,(#4));";
+    let extract = || {
+        let mut decoder = EntityDecoder::with_index(data, build_entity_index(data));
+        let profile = decoder.decode_by_id(5).unwrap();
+        super::try_extract_analytic_profile(&profile, &mut decoder)
+    };
+    resource::budget_test_clock::scope(|clock| {
+        let budget = ProductBudget::new(BudgetStart::now(), 1000, 10000, 10);
+        clock.expire_at("source_step", 4, 10);
+        budget.scope(|| {
+            assert!(matches!(
+                extract(),
+                Err(super::WalkError::Stopped(ProgramStop::Cancelled))
+            ));
+            assert!(resource::budget_deadline_fired());
+        });
+        assert!(budget.deadline_fired());
+    });
+    let budget = ProductBudget::new(BudgetStart::now(), 3, 10000, 10000);
+    budget.scope(|| {
+        assert!(matches!(
+            extract(),
+            Err(super::WalkError::Stopped(ProgramStop::ResourceRefused(_)))
+        ));
+        assert!(!resource::budget_deadline_fired());
+    });
 }

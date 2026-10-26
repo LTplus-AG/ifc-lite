@@ -4,7 +4,8 @@
 
 //! Authored `IfcExtrudedAreaSolid` parameters before occurrence placement.
 
-use super::{extract_analytic_profile, AnalyticProfile, AnalyticStatus};
+use super::walk_error::WalkError;
+use super::{AnalyticProfile, AnalyticStatus};
 use crate::placement::Axis2Placement;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use serde::Serialize;
@@ -43,84 +44,134 @@ pub struct AnalyticExtrusion {
 /// Return a complete exact source or an explicit unsupported reason. Even a
 /// malformed required attribute keeps its solid STEP ID in the result.
 pub fn extract_analytic_extrusion(
-    solid: &DecodedEntity, decoder: &mut EntityDecoder,
+    solid: &DecodedEntity,
+    decoder: &mut EntityDecoder,
 ) -> AnalyticExtrusion {
-    let mut result = AnalyticExtrusion {
-        solid_id: solid.id, source: None, swept_area_id: solid.get_ref(0), profile: None,
-        position_id: solid.get_ref(1), position_matrix: None,
-        extruded_direction_id: solid.get_ref(2), direction_ratios: None,
-        axis_unit_vector: None, depth: None, status: AnalyticStatus::Complete,
-    };
-    if super::source::requested() {
-        let mut capture = super::source::SourceCapture::enabled();
-        capture.record(solid, decoder);
-        result.source = Some(capture.finish(solid.id, decoder.plane_angle_to_radians()));
-    }
-    let parsed = parse_extrusion(solid, decoder, &mut result);
+    let (mut result, parsed) = extract_extrusion(solid, decoder);
     if let Err(reason) = parsed {
-        result.status = AnalyticStatus::Unsupported(reason);
+        result.status = AnalyticStatus::Unsupported(reason.to_string());
     }
     result
 }
 
+#[cfg(feature = "retained-runtime")]
+pub(crate) fn try_extract_analytic_extrusion(
+    solid: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+) -> crate::Result<AnalyticExtrusion> {
+    let (mut result, parsed) = extract_extrusion(solid, decoder);
+    match parsed {
+        Ok(()) => {}
+        Err(WalkError::Unsupported(reason)) => {
+            result.status = AnalyticStatus::Unsupported(reason);
+        }
+        #[cfg(feature = "retained-runtime")]
+        Err(stop @ WalkError::Stopped(_)) => return Err(stop.into()),
+    }
+    Ok(result)
+}
+
+fn extract_extrusion(
+    solid: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+) -> (AnalyticExtrusion, Result<(), WalkError>) {
+    let mut result = AnalyticExtrusion {
+        solid_id: solid.id,
+        source: None,
+        swept_area_id: solid.get_ref(0),
+        profile: None,
+        position_id: solid.get_ref(1),
+        position_matrix: None,
+        extruded_direction_id: solid.get_ref(2),
+        direction_ratios: None,
+        axis_unit_vector: None,
+        depth: None,
+        status: AnalyticStatus::Complete,
+    };
+    let parsed = parse_extrusion(solid, decoder, &mut result);
+    (result, parsed)
+}
+
 fn parse_extrusion(
-    solid: &DecodedEntity, decoder: &mut EntityDecoder, result: &mut AnalyticExtrusion,
-) -> Result<(), String> {
+    solid: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+    result: &mut AnalyticExtrusion,
+) -> Result<(), WalkError> {
+    if super::source::requested() {
+        let mut capture = super::source::SourceCapture::enabled();
+        capture.record(solid, decoder)?;
+        result.source = Some(capture.finish(solid.id, decoder.plane_angle_to_radians()));
+    }
     match solid.ifc_type {
         IfcType::IfcExtrudedAreaSolid => {}
-        IfcType::IfcExtrudedAreaSolidTapered =>
-            return Err("tapered extrusion has distinct start and end profiles".into()),
-        _ => return Err(format!("{} is not IfcExtrudedAreaSolid", solid.ifc_type.name())),
+        IfcType::IfcExtrudedAreaSolidTapered => {
+            return Err("tapered extrusion has distinct start and end profiles".into())
+        }
+        _ => return Err(format!("{} is not IfcExtrudedAreaSolid", solid.ifc_type.name()).into()),
     }
     let area_id = result.swept_area_id.ok_or("missing SweptArea")?;
-    let area = decoder.decode_by_id(area_id)
+    let area = decoder
+        .decode_by_id(area_id)
         .map_err(|error| format!("SweptArea #{area_id}: {error}"))?;
     if !area.ifc_type.is_subtype_of(IfcType::IfcProfileDef) {
-        return Err(format!("SweptArea #{area_id} is not IfcProfileDef"));
+        return Err(format!("SweptArea #{area_id} is not IfcProfileDef").into());
     }
-    let profile = extract_analytic_profile(&area, decoder);
+    let profile = super::profile::try_extract_analytic_profile(&area, decoder)?;
     if profile.profile_type.as_deref() != Some("AREA") {
-        let profile_type = profile.profile_type.clone().unwrap_or_else(|| "missing".into());
+        let profile_type = profile
+            .profile_type
+            .clone()
+            .unwrap_or_else(|| "missing".into());
         result.profile = Some(profile);
-        return Err(format!("SweptArea #{area_id} has ProfileType {profile_type}, expected AREA"));
+        return Err(
+            format!("SweptArea #{area_id} has ProfileType {profile_type}, expected AREA").into(),
+        );
     }
     if let AnalyticStatus::Unsupported(reason) = &profile.status {
         let reason = format!("SweptArea #{area_id}: {reason}");
         result.profile = Some(profile);
-        return Err(reason);
+        return Err(reason.into());
     }
     result.profile = Some(profile);
 
     if let Some(position_attr) = solid.get(1).filter(|attribute| !attribute.is_null()) {
-        let id = position_attr.as_entity_ref().ok_or("invalid Position reference")?;
+        let id = position_attr
+            .as_entity_ref()
+            .ok_or("invalid Position reference")?;
         result.position_id = Some(id);
-        let position = decoder.decode_by_id(id)
+        let position = decoder
+            .decode_by_id(id)
             .map_err(|error| format!("Position #{id}: {error}"))?;
         if position.ifc_type != IfcType::IfcAxis2Placement3D {
-            return Err(format!("Position #{id} is not IfcAxis2Placement3D"));
+            return Err(format!("Position #{id} is not IfcAxis2Placement3D").into());
         }
         let matrix = Axis2Placement::read_3d(&position, decoder)
             .map(|placement| placement.matrix())
             .map_err(|error| format!("Position #{id}: {error}"))?;
         if matrix.iter().any(|value| !value.is_finite()) {
-            return Err(format!("Position #{id} has non-finite coordinates"));
+            return Err(format!("Position #{id} has non-finite coordinates").into());
         }
         result.position_matrix = Some(crate::math::mat4::col_major_array(&matrix));
     }
 
     let direction_id = solid.get_ref(2).ok_or("missing ExtrudedDirection")?;
-    let direction = decoder.decode_by_id(direction_id)
+    let direction = decoder
+        .decode_by_id(direction_id)
         .map_err(|error| format!("ExtrudedDirection #{direction_id}: {error}"))?;
     if direction.ifc_type != IfcType::IfcDirection {
-        return Err(format!("ExtrudedDirection #{direction_id} is not IfcDirection"));
+        return Err(format!("ExtrudedDirection #{direction_id} is not IfcDirection").into());
     }
-    let ratios = direction.get_list(0).ok_or("ExtrudedDirection has no DirectionRatios")?;
+    let ratios = direction
+        .get_list(0)
+        .ok_or("ExtrudedDirection has no DirectionRatios")?;
     if ratios.len() < 2 || ratios.len() > 3 {
         return Err("ExtrudedDirection has invalid coordinate count".into());
     }
     let mut vector = [0.0; 3];
     for (index, ratio) in ratios.iter().enumerate() {
-        vector[index] = ratio.as_float().ok_or("ExtrudedDirection has invalid ratio")?;
+        vector[index] = ratio
+            .as_float()
+            .ok_or("ExtrudedDirection has invalid ratio")?;
     }
     result.direction_ratios = Some(vector);
     // Finite ratios whose length overflows (`(1.7E308,0.,1.7E308)`) are

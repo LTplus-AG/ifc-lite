@@ -1,0 +1,48 @@
+{
+  "jobId": "df597d9b-e93a-499d-a2ba-3375e5ab4650",
+  "host": "pop-os",
+  "state": "failed",
+  "error": "admission timed out; use status to inspect blockers",
+  "exitCode": 1,
+  "processExitCode": null,
+  "requestedAt": 1792932014.2931306,
+  "finishedAt": 1792935614.3196046,
+  "sourceBefore": {
+    "commit": "97d8add207104d5801c0c8d62e40fa7066e848f8",
+    "tree": "9afc9bbc7d6a0b336bf2b7e6a3ba25742a59ae30",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "08bb5b1b14b77527a8a45d4985d4571143f1d23496a1da4411defa5589fc2f75",
+      "pnpm-lock.yaml": "ba8548409585afd4a88e821a0bd016128c8278c0d3fc32ad4ea71bb9bd5f480e",
+      "package.json": "e01ad00b7ffb74bb0ea87bb3e325514b76ffa3d5f30c6025659b3623148b2986"
+    }
+  },
+  "sourceAfter": {
+    "commit": "97d8add207104d5801c0c8d62e40fa7066e848f8",
+    "tree": "9afc9bbc7d6a0b336bf2b7e6a3ba25742a59ae30",
+    "clean": true,
+    "worktreeDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "toolchainInputs": {
+      "rust-toolchain.toml": "c2836f98a79a38903e78036882c16c530da1e7e45f365af8a7abcc170ef36daf",
+      "Cargo.lock": "08bb5b1b14b77527a8a45d4985d4571143f1d23496a1da4411defa5589fc2f75",
+      "pnpm-lock.yaml": "ba8548409585afd4a88e821a0bd016128c8278c0d3fc32ad4ea71bb9bd5f480e",
+      "package.json": "e01ad00b7ffb74bb0ea87bb3e325514b76ffa3d5f30c6025659b3623148b2986"
+    }
+  },
+  "sourceUnchanged": true,
+  "receiptSha256": "602530bfa452330b66ee0bcf570e74dccbf14a97c3c11c380bd01bcf3999a7bd",
+  "finalization": {
+    "state": "published",
+    "projectCommandRetried": false,
+    "captureAttempts": 1,
+    "descendantsExited": true,
+    "receiptSha256": "602530bfa452330b66ee0bcf570e74dccbf14a97c3c11c380bd01bcf3999a7bd"
+  },
+  "controllerStarted": false,
+  "outputDirectoryExists": false,
+  "gpuSamples": 0,
+  "timingSamples": 0,
+  "scope": "Admission refusal before execution, not native correctness or performance evidence"
+}

@@ -55,6 +55,8 @@ fn values_are_the_shipped_literals() {
         ("RETAINED_ARC_INTERVAL_EPS_RAD", RETAINED_ARC_INTERVAL_EPS_RAD, 1e-12),
         ("RETAINED_CIRCLE_BASIS_EPS", RETAINED_CIRCLE_BASIS_EPS, 1e-12),
         ("RETAINED_RIGID_DOT_EPS", RETAINED_RIGID_DOT_EPS, 1e-10),
+        #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
+        ("RETAINED_DEPENDENCY_RIGID_EPS", RETAINED_DEPENDENCY_RIGID_EPS, 1e-12),
     ];
     for (name, got, want) in pins {
         assert_eq!(got.to_bits(), want.to_bits(), "{name} moved: {got:e} != {want:e}");

@@ -733,11 +733,11 @@ fn a_failed_add_phase_leaves_the_ledger_untouched() {
         let wall = object(IfcClass::Wall, new_gid(90), Some(ObjectRef::Id(70)), Representation::None);
         let key = ObjectRef::Guid(wall.global_id.encode());
         let adds = [(&key, AddItem::Object(&wall))];
-        let removed = std::collections::HashSet::new();
+        let (removed, reshaped) = (std::collections::HashSet::new(), std::collections::HashSet::new());
         let mut ids = crate::step_ids::IdAllocator::after(index.max_id);
         let mut refusals = Vec::new();
         let mut history = Histories::new(&index, "IFC4", Some(&mut ledger), &plan.context);
-        let built = AddState::new(&index, "IFC4", &removed, &mut history, None).build_all(&adds, &mut ids, &mut HashMap::new(), &mut Vec::new(), &mut refusals, &mut Vec::new());
+        let built = AddState::new(&index, "IFC4", &removed, &reshaped, &mut history, None).build_all(&adds, &mut ids, &mut HashMap::new(), &mut Vec::new(), &mut refusals, &mut Vec::new());
         if built == 0 && refusals.iter().any(|r| r.reason.contains("relationships for added objects not written")) {
             checked = true;
             assert_eq!(ledger.made.added(), None, "headroom {headroom}: no ADDED history committed");

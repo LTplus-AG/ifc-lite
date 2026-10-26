@@ -117,6 +117,21 @@ ${DEGREE_UNIT}
     expect(inRadians?.mapConversion?.northings).toBeCloseTo(0.5 * 180 / Math.PI, 12);
   });
 
+  it('refuses a cyclic conversion-based angle unit instead of overflowing the stack', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const georef = await georefOf(`${CONTEXT}
+#20=IFCMEASUREWITHUNIT(IFCPLANEANGLEMEASURE(1.),#21);
+#21=IFCCONVERSIONBASEDUNIT(*,.PLANEANGLEUNIT.,'LOOP',#20);
+#2=IFCGEOGRAPHICCRS('EPSG:4326',$,$,$,#21,$);
+#3=IFCRIGIDOPERATION(#1,#2,IFCPLANEANGLEMEASURE(13.3),IFCPLANEANGLEMEASURE(52.4),$);`);
+      expect(georef?.mapConversion).toBeUndefined();
+      expect(georef?.projectedCRS?.name).toBe('EPSG:4326');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it.each([
     ['mixed measure types', `#2=IFCPROJECTEDCRS('EPSG:25833',$,$,$,$,$,$);
 #3=IFCRIGIDOPERATION(#1,#2,IFCLENGTHMEASURE(1.),IFCPLANEANGLEMEASURE(2.),$);`],
@@ -139,6 +154,16 @@ ${DEGREE_UNIT}
 });
 
 describe('IfcWellKnownText', () => {
+  it('does not let a WKT-only CRS without an operation hold back the IfcSite fallback', async () => {
+    const georef = await georefOf(`${CONTEXT}
+#2=IFCPROJECTEDCRS('',$,$,$,$,$,$);
+#4=IFCWELLKNOWNTEXT('PROJCRS["x"]',#2);
+#6=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,(#1),$);
+#9=IFCLOCALPLACEMENT($,$);
+#10=IFCSITE('2YvctVUKr0kugbFTf53O9L',$,'S',$,$,#9,$,$,.ELEMENT.,(47,22,0,0),(8,32,0,0),400.,$,$);`);
+    expect(georef?.source).toBe('siteLocation');
+  });
+
   it('lets a CRS with a blank Name claim georeferencing through its WKT (WHERE NameOrWKT)', async () => {
     const georef = await georefOf(`${CONTEXT}
 #2=IFCPROJECTEDCRS('',$,$,$,$,$,$);

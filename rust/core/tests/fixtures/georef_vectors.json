@@ -114,7 +114,8 @@
     "rigid_operation_mixed_measure_types_refused_keeps_crs",
     "rigid_operation_lengths_against_geographic_crs_refused",
     "rigid_operation_crs_defined_only_by_well_known_text",
-    "well_known_text_attaches_only_to_its_crs"
+    "well_known_text_attaches_only_to_its_crs",
+    "well_known_text_only_crs_without_operation_falls_back_to_site"
   ],
   "cases": [
     {
@@ -1215,6 +1216,17 @@
         "source": "mapConversion",
         "crsName": "EPSG:25833",
         "wellKnownText": null
+      }
+    },
+    {
+      "name": "well_known_text_only_crs_without_operation_falls_back_to_site",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4X3_ADD2'));\nENDSEC;\nDATA;\n#1=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,$,$);\n#2=IFCPROJECTEDCRS('',$,$,$,$,$,$);\n#4=IFCWELLKNOWNTEXT('PROJCRS[\"x\"]',#2);\n#9=IFCLOCALPLACEMENT($,$);\n#10=IFCSITE('2YvctVUKr0kugbFTf53O9L',$,'S',$,$,#9,$,$,.ELEMENT.,(47,22,0,0),(8,32,0,0),400.,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "expect": {
+        "hasGeoreference": true,
+        "source": "siteLocation",
+        "northings": 47.36666666666667,
+        "eastings": 8.533333333333333,
+        "orthogonalHeight": 400.0
       }
     }
   ]

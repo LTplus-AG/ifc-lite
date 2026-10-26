@@ -199,35 +199,28 @@ pub fn extract_georeferencing_with_index(
 /// nothing an allocated canonical form would be reused for — the same shape
 /// `processor::quick_metadata::is_quick_spatial_type_ci` uses.
 pub(crate) fn georeferencing_candidate_type(type_name: &str) -> Option<IfcType> {
-    // Scaled's first eight attributes have the base conversion layout.
-    if keyword_eq(type_name, "IFCMAPCONVERSION")
-        || keyword_eq(type_name, "IFCMAPCONVERSIONSCALED")
-    {
-        return Some(IfcType::IfcMapConversion);
-    }
-    if keyword_eq(type_name, "IFCPROJECTEDCRS") {
-        return Some(IfcType::IfcProjectedCRS);
-    }
-    if keyword_eq(type_name, "IFCRIGIDOPERATION") {
-        return Some(IfcType::IfcRigidOperation);
-    }
-    if keyword_eq(type_name, "IFCGEOGRAPHICCRS") {
-        return Some(IfcType::IfcGeographicCRS);
-    }
-    if keyword_eq(type_name, "IFCWELLKNOWNTEXT") {
-        return Some(IfcType::IfcWellKnownText);
-    }
-    // The project's plane-angle unit sizes an angular IfcRigidOperation.
-    if keyword_eq(type_name, "IFCPROJECT") {
-        return Some(IfcType::IfcProject);
-    }
-    if keyword_eq(type_name, "IFCPROPERTYSET") {
-        return Some(IfcType::IfcPropertySet);
-    }
-    if keyword_eq(type_name, "IFCSITE") {
-        return Some(IfcType::IfcSite);
-    }
-    None
+    // Dispatch on length first: this runs for every scanned entity, and a
+    // non-candidate then costs one length match and at most three
+    // case-folded comparisons (no more than before IFC4X3 support).
+    let candidates: &[(&str, IfcType)] = match type_name.len() {
+        7 => &[("IFCSITE", IfcType::IfcSite)],
+        10 => &[("IFCPROJECT", IfcType::IfcProject)],
+        14 => &[("IFCPROPERTYSET", IfcType::IfcPropertySet)],
+        15 => &[("IFCPROJECTEDCRS", IfcType::IfcProjectedCRS)],
+        // Scaled's first eight attributes have the base conversion layout.
+        16 => &[
+            ("IFCMAPCONVERSION", IfcType::IfcMapConversion),
+            ("IFCGEOGRAPHICCRS", IfcType::IfcGeographicCRS),
+            ("IFCWELLKNOWNTEXT", IfcType::IfcWellKnownText),
+        ],
+        17 => &[("IFCRIGIDOPERATION", IfcType::IfcRigidOperation)],
+        22 => &[("IFCMAPCONVERSIONSCALED", IfcType::IfcMapConversion)],
+        _ => return None,
+    };
+    candidates
+        .iter()
+        .find(|(keyword, _)| keyword_eq(type_name, keyword))
+        .map(|(_, ifc_type)| *ifc_type)
 }
 
 /// Reuse candidates from the geometry scan, avoiding the remaining whole-file

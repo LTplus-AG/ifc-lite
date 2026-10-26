@@ -397,8 +397,9 @@ impl GeoRefExtractor {
     ///
     /// Rigid operations use [`GeoRefSource::MapConversion`] in the compatible
     /// placement record, while `details.operation` identifies their actual kind.
-    /// A WKT-only CRS can return a record even when `GeoReference::has_georef`
-    /// is false; its declaration is carried by `details.well_known_text`.
+    /// A CRS defined only by `IfcWellKnownText` (no Name) declares itself
+    /// through a parsed coordinate operation: on its own it places nothing,
+    /// and the fallbacks run, as they did before IFC4X3 WKT support.
     pub fn extract_with_details(
         decoder: &mut EntityDecoder,
         entity_types: &[(u32, IfcType)],
@@ -464,7 +465,7 @@ impl GeoRefExtractor {
         // property set fallback, then the legacy IfcSite lat/long fallback
         // (TS parity, #4695). A refused operation left `georef` untouched, so
         // it counts as no operation here.
-        if !georef.has_georef() && details.well_known_text.is_none() {
+        if !georef.has_georef() {
             if let Some(georef) = Self::extract_from_pset(decoder, entity_types)? {
                 return Ok(Some((georef, details)));
             }

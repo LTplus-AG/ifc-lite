@@ -210,10 +210,10 @@ export function extractIfc4Georeferencing(entities: Map<number, IfcEntity>, enti
     const wellKnownText = wellKnownTextFor(crsEntity.expressId, entitiesByType.get('IfcWellKnownText') ?? [], resolve);
     if (wellKnownText) crs.wellKnownText = wellKnownText;
     info.projectedCRS = crs;
-    // A CRS with neither a non-blank Name nor a WKT definition declares none:
-    // it still scales a parsed conversion, but neither claims presence nor
-    // holds back the fallbacks (#4695).
-    if (crs.name.trim() !== '' || wellKnownText) info.hasGeoreference = true;
+    // A CRS without a non-blank Name declares none on its own: it still scales
+    // a parsed operation, but neither claims presence nor holds back the
+    // fallbacks (#4695). A WKT-only CRS is claimed by its parsed operation.
+    if (crs.name.trim() !== '') info.hasGeoreference = true;
   }
 
   if (rigidOperationId !== undefined && operationEntity) {

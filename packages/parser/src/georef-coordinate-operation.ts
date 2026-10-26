@@ -25,6 +25,7 @@ import { SI_PREFIX_MULTIPLIERS } from './unit-extractor.js';
 export type EntityResolver = (id: number) => IfcEntity | undefined;
 
 const DEGREES_PER_RADIAN = 180 / Math.PI;
+const MAX_UNIT_DEPTH = 8;
 
 const isType = (entity: IfcEntity | undefined, upper: string): boolean =>
   (entity?.type ?? '').toUpperCase() === upper;
@@ -44,7 +45,10 @@ function typedMeasure(raw: unknown): { type: string; value: number } | 'unrepres
  * in a radian-based SI unit), so `DEGREE`, `GRAD` and any other spelling read
  * the same way without a name table.
  */
-export function planeAngleUnitToDegrees(unitRef: unknown, resolve: EntityResolver): number | undefined {
+export function planeAngleUnitToDegrees(unitRef: unknown, resolve: EntityResolver, depth = 0): number | undefined {
+  // A conversion-based unit may reference another; a cycle must not recurse
+  // forever (the Rust twin's MAX_UNIT_DEPTH). Real files nest one level.
+  if (depth > MAX_UNIT_DEPTH) return undefined;
   const id = getReference(unitRef);
   const unit = id === undefined ? undefined : resolve(id);
   if (!unit || getString(unit.attributes?.[1])?.replace(/\./g, '').toUpperCase() !== 'PLANEANGLEUNIT') return undefined;
@@ -61,7 +65,7 @@ export function planeAngleUnitToDegrees(unitRef: unknown, resolve: EntityResolve
     const measure = measureId === undefined ? undefined : resolve(measureId);
     const raw = measure?.attributes?.[0];
     const value = Array.isArray(raw) ? getNumber(raw[1]) : getNumber(raw);
-    const componentDegrees = planeAngleUnitToDegrees(measure?.attributes?.[1], resolve);
+    const componentDegrees = planeAngleUnitToDegrees(measure?.attributes?.[1], resolve, depth + 1);
     if (value === undefined || !(value > 0) || componentDegrees === undefined) return undefined;
     return value * componentDegrees;
   }

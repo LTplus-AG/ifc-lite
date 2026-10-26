@@ -71,17 +71,15 @@ describe('IfcWellKnownText projections', () => {
 
   it('prefers the EPSG identifier a WKT names over re-deriving it, and the WKT over the name', async () => {
     const identified = await resolveProjection(crs('PROJCRS["ETRS89 / UTM zone 33N",ID["EPSG",25833]]', 'EPSG:25832'));
-    assert.equal(identified, await resolveProjection({ id: 2, name: 'EPSG:25833' }));
+    // Pinned, not compared to another resolveProjection call: both sides null would pass.
+    assert.match(identified ?? '', /\+proj=utm \+zone=33\b/);
   });
 
   it('falls back to the name when the WKT cannot be read', async () => {
     const warn = console.warn;
     console.warn = () => {};
     try {
-      assert.equal(
-        await resolveProjection(crs('VERTCRS["height only"]', 'EPSG:25832')),
-        await resolveProjection({ id: 2, name: 'EPSG:25832' }),
-      );
+      assert.match(await resolveProjection(crs('VERTCRS["height only"]', 'EPSG:25832')) ?? '', /\+proj=utm \+zone=32\b/);
       assert.equal(await resolveProjection(crs('not wkt at all', 'WKT')), null);
     } finally {
       console.warn = warn;

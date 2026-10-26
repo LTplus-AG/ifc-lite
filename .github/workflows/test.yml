@@ -1861,6 +1861,13 @@ jobs:
           # patch; once it is on main, this clause can go.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- tests/evidence/export-plan-patched-opening/behaviour.oracle.patch | grep -Fxq 'tests/evidence/export-plan-patched-opening/behaviour.oracle.patch'; then
             oracle_args+=(--mutation tests/evidence/export-plan-patched-opening/behaviour.oracle.patch)
+          # Export plan string attributes: the new add_string_attrs_tests.rs
+          # names the new NewObject and NewType fields, so a whole-change
+          # revert cannot compile it. Keep the fields and write none of them:
+          # the write, refusal and USERDEFINED-kind tests must turn RED. Once
+          # the test file is on main, this clause can go.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/export/src/plan/add_string_attrs_tests.rs | grep -Fxq 'rust/export/src/plan/add_string_attrs_tests.rs'; then
+            oracle_args+=(--mutation tests/evidence/export-plan-string-attributes/behaviour.oracle.patch)
           # Export plan reused geometry: the new plan/add_same_as.rs and its
           # tests compile only together. Keep them and write no shape for a
           # reused body, and skip the reshaped-source refusal: the reuse and

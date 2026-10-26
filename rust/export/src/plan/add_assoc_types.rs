@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Public vocabulary for what a [`super::NewObject`] is associated with: its
-//! material, its classification references, and the unit a property or
-//! quantity value is measured in.
+//! material, its classification references, its property and quantity
+//! values, and the unit each value is measured in.
 //!
-//! Each one names a record already in the source ([`ObjectRef::Id`]: these
-//! records carry no GlobalId) or describes a new one. Naming the source's
-//! record is how a copy keeps exactly its source's material, classification
-//! and units: nothing is duplicated, and the copy joins the relationship that
-//! already associates that record when there is one. A new record described
-//! the same way by several Adds of one plan is written once and shared.
+//! A material, classification or unit names a record already in the source
+//! ([`ObjectRef::Id`]: these records carry no GlobalId) or describes a new
+//! one. Naming the source's record is how a copy keeps exactly its source's
+//! material, classification and units: nothing is duplicated, and the copy
+//! joins the relationship that already associates that record when there is
+//! one. A new record described the same way by several Adds of one plan is
+//! written once and shared.
 
-use super::types::ObjectRef;
+use super::types::{ObjectRef, PsetKind};
 
 /// The material a new object is associated with through
 /// `IfcRelAssociatesMaterial`.
@@ -115,4 +116,41 @@ pub enum ValueUnit {
     /// not the project's.
     #[non_exhaustive]
     Si { prefix: Option<String>, name: String },
+}
+
+/// A property value, typed the way IFC types it.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub enum PropertyValue {
+    Label(String),
+    Text(String),
+    Identifier(String),
+    Boolean(bool),
+    Integer(i64),
+    Real(f64),
+    /// A numeric measure by its IFC defined-type name, e.g. `IfcLengthMeasure`.
+    /// Values are in the file's project units.
+    #[non_exhaustive]
+    Measure { measure_type: String, value: f64 },
+}
+
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct NewProperty {
+    pub name: String,
+    pub value: PropertyValue,
+    /// The unit a [`PropertyValue::Measure`] is in, when it is not the
+    /// project's unit for that measure. The value is then in this unit.
+    pub unit: Option<ValueUnit>,
+}
+
+/// A property set (`kind: Property`) or quantity set (`kind: Quantity`,
+/// every value a [`PropertyValue::Measure`] with a quantity entity) to
+/// attach. Properties are written in the order given.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct NewPropertySet {
+    pub name: String,
+    pub kind: PsetKind,
+    pub properties: Vec<NewProperty>,
 }

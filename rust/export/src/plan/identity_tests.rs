@@ -1092,12 +1092,13 @@ fn a_failed_add_phase_leaves_no_attribution_records_in_the_output() {
     assert!(checked, "some headroom fails the relationships after the Add built");
 }
 
-/// With no application, a plan that only removes a record still changes
-/// the output, and says the changes are not attributed (#8154).
+/// Deletions are attributed to no one, with or without an application, so
+/// a plan that only removes a standalone record has nothing an application
+/// would record and gets no missing-application finding (#8154).
 #[test]
-fn a_delete_of_a_standalone_record_without_an_application_says_so() {
+fn a_delete_of_a_standalone_record_without_an_application_is_not_reported() {
     let src = String::from_utf8(source("IFC4", false)).unwrap().replace("ENDSEC;\nEND-ISO", "#990=IFCCARTESIANPOINT((9.,9.,9.));\nENDSEC;\nEND-ISO");
     let (out, report) = export(src.as_bytes(), vec![(ObjectRef::Id(990), Disposition::Delete)], PlanContext::new());
     assert!(!lines(&out).contains_key(&990));
-    assert!(report.findings.iter().any(|f| f.message.contains("no ExportingApplication")), "{:?}", report.findings);
+    assert!(!report.findings.iter().any(|f| f.message.contains("no ExportingApplication")), "{:?}", report.findings);
 }

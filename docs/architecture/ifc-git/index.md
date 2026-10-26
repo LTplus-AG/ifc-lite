@@ -60,6 +60,33 @@ change plus N markers, rather than N independent element changes.
 - **Granularity:** element level, with the change localised to the node that
   carries it.
 
+### Owner-history semantics already exist on the write side
+
+`04-authorship.md` should align with #8154 rather than re-derive it. That change
+made the exporter attribute what it writes, and its rules are the ones ifc-git
+wants:
+
+- one `ADDED` owner history for everything an export adds, owned by the
+  **exporting application**;
+- one `MODIFIED` history **per distinct original**, keeping the original owner
+  and creation date;
+- and where no identity is available, the source's attribution is left alone and
+  a finding is reported — never replaced with the exporter's own.
+
+That last rule is the anti-fabrication principle this spec set states for the
+read side, arrived at independently on the write side. The finding text says it
+plainly: without an exporting application, "the file credits this export's
+changes to their previous author". Where a modified record has no owner history
+at all, the export reports that "the modification is not recorded on it" rather
+than inventing one — a guard that both acts and reports.
+
+The mapping onto ifc-git is close to exact: the **preserved original owner is
+the author** (responsible for the content) and the **exporting application is
+the committer** (performed the write). So `ChangeAction` is now meaningfully
+*written* in this repo, even though it is still not *read* into the model —
+which is the gap `04-authorship.md` has to close, and it should close it toward
+these semantics.
+
 ## 4. Relationship to the spec sets that already exist
 
 This is the section worth disagreeing with early.

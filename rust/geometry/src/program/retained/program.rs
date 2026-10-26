@@ -212,6 +212,12 @@ impl<'a> RetainedProgram<'a> {
     pub(crate) fn cancel(&mut self) {
         self.cancelled = true;
     }
+    /// Latch a stop the caller hit after a successful admit (its own
+    /// allocation or check), so request and finish report it, not an
+    /// unaccepted reply, after the account scope ends.
+    pub(crate) fn remember_stop(&self, stop: crate::resource::ProgramStop) {
+        if let Some(selection) = self.selection() { selection.remember_stop(stop); }
+    }
 
 }
 

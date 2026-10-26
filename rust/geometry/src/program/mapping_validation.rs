@@ -151,8 +151,13 @@ fn items(representation: &DecodedEntity, decoder: &mut EntityDecoder) -> Result<
         .and_then(AttributeValue::as_list)
         .ok_or_else(|| MappingFailure::refused(FailureSite::MappingItems, representation.id,
             MappingReason::ListRequired, "retained representation Items requires a readable list"))?;
-    // Explicit () is an empty contribution; absence or non-reference members
-    // are not empty geometry. Validate every member even on source cache hits.
+    // `Items` is SET [1:?]: an explicit () is malformed here exactly as it is
+    // for a representation the product references directly. Validate every
+    // member even on source cache hits.
+    if items.is_empty() {
+        return Err(MappingFailure::refused(FailureSite::MappingItems, representation.id,
+            MappingReason::ListRequired, "retained representation Items must be a nonempty list"));
+    }
     for item in items {
         let id = item.as_entity_ref()
             .ok_or_else(|| MappingFailure::refused(FailureSite::MappingItems, representation.id,

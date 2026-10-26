@@ -90,9 +90,9 @@ fn h2_r1_mapping_source_must_be_a_representation_map_reference() {
 
 #[test]
 fn h2_r1_later_mapped_items_must_be_a_readable_reference_list() {
-    for items in ["", ",$", ",1.0", ",(#113,$)", ",(#113,1.0)"] {
+    for items in ["", ",$", ",1.0", ",()", ",(#113,$)", ",(#113,1.0)"] {
         let extra = format!("#94=IFCREPRESENTATIONMAP(#5,#95);#95=IFCSHAPEREPRESENTATION(#2,'Body','SweptSolid'{items});");
-        let reason = if items.starts_with(",(") { MappingReason::NonReferenceMember }
+        let reason = if items.starts_with(",(") && items != ",()" { MappingReason::NonReferenceMember }
             else { MappingReason::ListRequired };
         assert_late_refusal(&two_occurrences("#94,#82", &extra), FailureSite::MappingItems, 95,
             ExpectedCause::Mapping(reason));
@@ -100,29 +100,15 @@ fn h2_r1_later_mapped_items_must_be_a_readable_reference_list() {
 }
 
 #[test]
-fn h2_r1_identity_target_and_explicit_empty_source_are_admitted() {
-    // An authored empty source is an empty contribution, not authenticated
-    // whole-product subtraction. It must not discard the earlier solid.
+fn h2_r1_explicit_empty_mapped_source_refuses_like_a_direct_one() {
+    // `Items` is SET [1:?]. An explicit () under an IfcMappedItem refuses the
+    // plan, as the same list does on a representation the product references
+    // directly, and does not discard or publish the earlier admitted solid.
     let bytes = two_occurrences("#94,#82",
         "#94=IFCREPRESENTATIONMAP(#5,#95);#95=IFCSHAPEREPRESENTATION(#2,'Body','SweptSolid',());")
         .replace("#84,1.,$", "#4,1.,$");
-    for mode in 0..3 {
-        let source = SourceBundle::new(bytes.as_bytes().to_vec());
-        let mut decoder = source.decoder();
-        let router = GeometryRouter::with_units(&bytes, &mut decoder);
-        let entity = decoder.decode_by_id(10).unwrap();
-        let mut program = match mode {
-            0 => RetainedProgram::product_parts(&entity, contract()),
-            1 => RetainedProgram::product_submeshes(&entity, true, None, contract()),
-            _ => RetainedProgram::type_map(decoder.decode_by_id(61).unwrap(), None, contract()),
-        };
-        assert_eq!(drive(&mut program, &router, &mut decoder).len(), 1);
-        let plan = if mode == 2 { program.finish_type_map(60, 1, [1.; 4]).unwrap() }
-            else { program.finish().unwrap() };
-        assert_eq!(plan.values.len(), 1);
-        let world = plan.values[0].world_from_source().unwrap();
-        assert_eq!([world[12], world[13], world[14]], [10., 20., 30.]);
-    }
+    assert_late_refusal(&bytes, FailureSite::MappingItems, 95,
+        ExpectedCause::Mapping(MappingReason::ListRequired));
 }
 
 // #7955 S2 review R1: a selected later map cannot recover malformed authored

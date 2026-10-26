@@ -62,13 +62,17 @@ impl Program<'_> {
         -> Result<(Reply, Vec<Operation>, Reservation), TransactionError> {
         let (reply, operations) = self.0.admit(ticket.0, router, decoder)?;
         // Do not charge the wrapper Vec permanently to an ambient account.
-        // A stop here drops the admitted reply: stops are terminal for the
-        // product, so nothing is left to resubmit it to.
+        // A stop here drops the admitted reply. Stops are terminal for the
+        // product, so latch it: later requests and finish report the stop.
         let resources = Resources::capture_current();
         let mut wrapped = Vec::new();
-        let storage = resources.reserve_headers(&mut wrapped, operations.len()).map_err(TransactionError::stopped)?;
+        let latch = |program: &Self, stop: ProgramStop| {
+            program.0.remember_stop(stop);
+            TransactionError::stopped(stop)
+        };
+        let storage = resources.reserve_headers(&mut wrapped, operations.len()).map_err(|stop| latch(self, stop))?;
         wrapped.extend(operations.into_iter().map(Operation));
-        resources.check().map_err(TransactionError::stopped)?;
+        resources.check().map_err(|stop| latch(self, stop))?;
         Ok((Reply(reply), wrapped, storage))
     }
     pub fn validate_ticket(&self, ticket: Ticket) -> Result<(), TransactionError> {

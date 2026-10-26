@@ -265,11 +265,16 @@ fn a_property_measure_must_be_a_declared_number() {
 fn an_add_keeps_the_owner_history_a_delete_would_take() {
     for schema in SCHEMAS {
         let source = String::from_utf8(storey_with_typed_wall(schema)).unwrap();
-        let wall_head = format!("#10=IFCWALL('{}',$,", fixture_gid(10));
-        assert!(source.contains(&wall_head), "{schema}: fixture wall");
-        let source = source
-            .replace(&wall_head, &format!("#10=IFCWALL('{}',#5,", fixture_gid(10)))
-            .replace("ENDSEC;\nEND-ISO", "#5=IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);\nENDSEC;\nEND-ISO");
+        // IFC2X3 fixtures already name the preamble's `#5` everywhere.
+        let source = if schema == "IFC2X3" {
+            source
+        } else {
+            let wall_head = format!("#10=IFCWALL('{}',$,", fixture_gid(10));
+            assert!(source.contains(&wall_head), "{schema}: fixture wall");
+            source
+                .replace(&wall_head, &format!("#10=IFCWALL('{}',#5,", fixture_gid(10)))
+                .replace("ENDSEC;\nEND-ISO", "#5=IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);\nENDSEC;\nEND-ISO")
+        };
         let wall = object(IfcClass::Wall, gid(26), storey(), Representation::None);
         let (out, report) = run(source.as_bytes(), vec![(ObjectRef::Id(10), Disposition::Delete), add(wall)]);
         assert_clean(&report, schema);

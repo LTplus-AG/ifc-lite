@@ -25,6 +25,7 @@ use super::add_props::build_sets;
 use super::add_rels::{RelAccumulator, RelKind, RelRequest};
 use super::add_types::{AddItem, NewObject, Representation, TypeLink};
 use super::attrs::unset_required;
+use super::identity::{Identity, Made};
 use super::index::FileIndex;
 use super::placement::fmt;
 use super::props_synth::{defines_by_properties_record, ref_or_unset};
@@ -42,12 +43,29 @@ struct Added {
     class: String,
 }
 
+/// Where the Adds' owner history comes from.
+pub(crate) enum AddHistory<'a> {
+    /// The file's (or a patch's), or none yet: the first Add that builds
+    /// synthesizes one.
+    Source(Option<u32>),
+    /// The exporting application's `ADDED` history, made by the first Add
+    /// that builds into `made`.
+    Attributed { identity: &'a Identity, made: &'a mut Made },
+}
+
+/// The owner history one Add names, and what the exporting application has
+/// then made, kept if the Add builds.
+pub(crate) struct Owner {
+    id: u32,
+    made: Option<Made>,
+}
+
 pub(crate) struct AddState<'a> {
     index: &'a FileIndex<'a>,
     schema: &'a str,
     removed: &'a HashSet<u32>,
     context: &'a PlanContext,
-    owner_history: Option<u32>,
+    history: AddHistory<'a>,
     added: HashMap<String, Added>,
     /// Each added object's placement, by id, for children placed under it.
     placement_of_added: HashMap<u32, Option<u32>>,
@@ -69,9 +87,9 @@ pub(crate) struct AddState<'a> {
 }
 
 impl<'a> AddState<'a> {
-    /// `owner_history` is the one the source (or a patch) already provides;
-    /// when there is none, the first Add that builds synthesizes it, so a
-    /// plan whose Adds are all refused writes nothing at all.
+    /// `history` is where new records' owner history comes from: the one the
+    /// source (or a patch) already provides, else one the first Add that
+    /// builds makes, so a plan whose Adds are all refused writes nothing.
     /// `body_context` is the one this plan's geometry patches already wrote
     /// into, if any; otherwise the file's own is looked up, and one is
     /// synthesized only when there is none.
@@ -80,7 +98,7 @@ impl<'a> AddState<'a> {
         schema: &'a str,
         removed: &'a HashSet<u32>,
         context: &'a PlanContext,
-        owner_history: Option<u32>,
+        history: AddHistory<'a>,
         body_context: Option<u32>,
     ) -> Self {
         Self {
@@ -88,7 +106,7 @@ impl<'a> AddState<'a> {
             schema,
             removed,
             context,
-            owner_history,
+            history,
             added: HashMap::new(),
             placement_of_added: HashMap::new(),
             body_context: body_context.or_else(|| find_body_context(index, schema, removed)),
@@ -105,14 +123,14 @@ impl<'a> AddState<'a> {
     fn add(&mut self, key: &ObjectRef, obj: &NewObject, ids: &mut IdAllocator) -> Result<(), String> {
         let checked = self.check(key, obj)?;
         let mut out = Vec::new();
-        let owner_history = self.owner_history_for(ids, &mut out)?;
+        let owner = self.owner_history_for(ids, &mut out)?;
         let mut requests = Vec::new();
         let mut emit = Emit { schema: self.schema, ids, out: &mut out };
-        let built = self.build(&mut emit, obj, &checked, owner_history, &mut requests)?;
+        let built = self.build(&mut emit, obj, &checked, owner.id, &mut requests)?;
         let new_context = self.owned_context(built.new_context)?;
 
         self.typed.extend(checked.existing_type);
-        self.commit(owner_history, out, built.shared);
+        self.commit(owner, out, built.shared);
         for req in requests {
             self.rels.relate(self.schema, req);
         }
@@ -184,8 +202,9 @@ impl<'a> AddState<'a> {
         ids: &mut IdAllocator,
         edits_by_id: &mut HashMap<u32, BTreeMap<usize, String>>,
     ) -> Result<Vec<(u32, String)>, String> {
+        let history = self.settled_history();
         let mut records = self.records;
-        records.extend(self.rels.finish(self.schema, ids, self.owner_history, edits_by_id)?);
+        records.extend(self.rels.finish(self.schema, ids, history, edits_by_id)?);
         Ok(records)
     }
 

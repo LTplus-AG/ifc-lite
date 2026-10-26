@@ -20,60 +20,24 @@ use crate::step_text::escape;
 use crate::step_ids::IdAllocator;
 
 use super::attrs::build_record;
+use super::identity::ChainSpec;
 use super::types::PlanContext;
 
 /// A minimal valid `IfcPerson`/`IfcOrganization`/`IfcPersonAndOrganization`/
-/// `IfcApplication`/`IfcOwnerHistory` chain, generic over the schema's own
-/// attribute order the same way [`super::props`] builds a property record.
+/// `IfcApplication`/`IfcOwnerHistory` chain naming the plan's own context,
+/// built by [`super::identity::chain`] like the exporting application's, and
+/// generic over the schema's own attribute order.
 pub(crate) fn synthesize(schema: &str, ids: &mut IdAllocator, context: &PlanContext) -> Option<(Vec<(u32, String)>, u32)> {
-    let organization_name = context.organization.as_deref().unwrap_or("ifc-lite");
-    let application_name = context.author.as_deref().unwrap_or("ifc-lite export-plan executor");
+    let spec = ChainSpec {
+        identification: "ifc-lite",
+        family_name: "ifc-lite",
+        developer: context.organization.as_deref().unwrap_or("ifc-lite"),
+        version: "1.0",
+        full_name: context.author.as_deref().unwrap_or("ifc-lite export-plan executor"),
+        identifier: "ifc-lite-export-plan",
+    };
     let time_stamp = context.time_stamp.as_deref().and_then(epoch_seconds).unwrap_or(0);
-
-    let mut records = Vec::new();
-    let person_id = ids.allocate()?;
-    records.push((
-        person_id,
-        build_record(
-            schema,
-            person_id,
-            "IFCPERSON",
-            // `Identification` in IFC4, `Id` in IFC2X3; a family name meets
-            // the rule that a person carries some name in both.
-            &[("Identification", quoted("ifc-lite")), ("Id", quoted("ifc-lite")), ("FamilyName", quoted("ifc-lite"))],
-        ),
-    ));
-
-    let org_id = ids.allocate()?;
-    records.push((org_id, build_record(schema, org_id, "IFCORGANIZATION", &[("Name", quoted(organization_name))])));
-
-    let person_and_org_id = ids.allocate()?;
-    records.push((
-        person_and_org_id,
-        build_record(
-            schema,
-            person_and_org_id,
-            "IFCPERSONANDORGANIZATION",
-            &[("ThePerson", format!("#{person_id}")), ("TheOrganization", format!("#{org_id}"))],
-        ),
-    ));
-
-    let application_id = ids.allocate()?;
-    records.push((
-        application_id,
-        build_record(
-            schema,
-            application_id,
-            "IFCAPPLICATION",
-            &[
-                ("ApplicationDeveloper", format!("#{org_id}")),
-                ("Version", quoted("1.0")),
-                ("ApplicationFullName", quoted(application_name)),
-                ("ApplicationIdentifier", quoted("ifc-lite-export-plan")),
-            ],
-        ),
-    ));
-
+    let (mut records, chain) = super::identity::chain(schema, ids, &spec, None)?;
     let owner_history_id = ids.allocate()?;
     records.push((
         owner_history_id,
@@ -82,8 +46,8 @@ pub(crate) fn synthesize(schema: &str, ids: &mut IdAllocator, context: &PlanCont
             owner_history_id,
             "IFCOWNERHISTORY",
             &[
-                ("OwningUser", format!("#{person_and_org_id}")),
-                ("OwningApplication", format!("#{application_id}")),
+                ("OwningUser", format!("#{}", chain.user)),
+                ("OwningApplication", format!("#{}", chain.application)),
                 // Mandatory in IFC2X3. NOCHANGE is the one value both
                 // schemas accept without a LastModifiedDate.
                 ("ChangeAction", ".NOCHANGE.".to_string()),
@@ -91,37 +55,7 @@ pub(crate) fn synthesize(schema: &str, ids: &mut IdAllocator, context: &PlanCont
             ],
         ),
     ));
-
     Some((records, owner_history_id))
-}
-
-/// The owner history a patch's new records name: the exporting application's
-/// `ADDED` one when the plan names it, else the file's first, else one
-/// synthesized into `appended`. Synthesized only when a patch actually needs
-/// to point a NEW record's OwnerHistory somewhere: a plan that never writes a
-/// property/quantity set must not grow the file by five records it has no use
-/// for. Adds synthesize their own on first success (see `add::AddState::new`).
-pub(super) fn for_patches(
-    index: &super::index::FileIndex,
-    schema: &str,
-    plan: &super::types::ExportPlan,
-    ledger: Option<&mut super::identity::Ledger>,
-    ids: &mut IdAllocator,
-    appended: &mut Vec<(u32, String)>,
-) -> Option<u32> {
-    let writes_psets = plan.dispositions.iter().any(|(_, d)| matches!(d, super::types::Disposition::Patch(p) if !p.psets.is_empty()));
-    // The exporting application owns every record a patch adds.
-    if let Some(ledger) = ledger {
-        return if writes_psets { ledger.added(schema, ids, appended) } else { None };
-    }
-    let needs_owner_history = index.first_owner_history.is_none() && writes_psets;
-    if !needs_owner_history {
-        return index.first_owner_history;
-    }
-    synthesize(schema, ids, &plan.context).map(|(records, id)| {
-        appended.extend(records);
-        id
-    })
 }
 
 pub(super) fn quoted(s: &str) -> String {

@@ -17,7 +17,7 @@ use crate::step_ids::IdAllocator;
 use crate::step_text::escape;
 
 use super::add_types::GlobalId;
-use super::identity::Identity;
+use super::identity::{Identity, Made};
 use super::types::ExportingApplication;
 use super::placement::fmt;
 use super::props_synth::ref_list;
@@ -137,7 +137,7 @@ pub fn skeleton(s: &Skeleton) -> Result<Vec<u8>, String> {
     };
     // The exporting application owns what the skeleton creates.
     let identity = s.application.as_ref().map(Identity::new).transpose()?;
-    let history = owner_slot(identity, &mut emit)?;
+    let history = owner_slot(identity.as_ref(), &mut emit)?;
     let quoted = |v: &str| format!("'{}'", escape(v));
     let name = |root: &SkeletonRoot| root.name.as_deref().map_or("$".to_string(), quoted);
     let gid = |root: &SkeletonRoot| format!("'{}'", root.global_id.encode());
@@ -271,41 +271,37 @@ pub fn skeleton(s: &Skeleton) -> Result<Vec<u8>, String> {
         )?;
     }
 
-    Ok(step_text(s.file_name.as_deref(), identity, &out).into_bytes())
+    step_text(s.file_name.as_deref(), identity.as_ref(), &out)
 }
 
 /// The `OwnerHistory` slot of everything the skeleton creates: the
 /// exporting application's `ADDED` history, written first, else unset.
-fn owner_slot(identity: Option<Identity>, emit: &mut Emit) -> Result<String, String> {
+fn owner_slot(identity: Option<&Identity>, emit: &mut Emit) -> Result<String, String> {
     let Some(identity) = identity else { return Ok("$".to_string()) };
-    let (records, chain) = identity.chain(SKELETON_SCHEMA, emit.ids).ok_or("id space exhausted")?;
-    let (id, record) = identity.added_history(SKELETON_SCHEMA, emit.ids, chain).ok_or("id space exhausted")?;
-    emit.out.extend(records);
-    emit.out.push((id, record));
+    let id = identity.added_in(SKELETON_SCHEMA, emit.ids, None, &mut Made::default(), emit.out).ok_or("id space exhausted")?;
     Ok(format!("#{id}"))
 }
 
-/// The file: header (naming the application, toolkit and change time when
-/// there is an application), then the records.
-fn step_text(file_name: Option<&str>, identity: Option<Identity>, out: &[(u32, String)]) -> String {
-    let (time_stamp, preprocessor, originating) = match identity {
-        Some(i) => (i.header_time_stamp(), concat!("ifc-lite ", env!("CARGO_PKG_VERSION")).to_string(), i.originating_system()),
-        None => Default::default(),
+/// The file: the header (naming the application, toolkit and change time
+/// when there is an application, empty fields otherwise), then the records.
+fn step_text(file_name: Option<&str>, identity: Option<&Identity>, out: &[(u32, String)]) -> Result<Vec<u8>, String> {
+    let empty = || Some(String::new());
+    let opts = crate::StepOptions {
+        description: empty(),
+        filename: Some(file_name.unwrap_or("").to_string()),
+        time_stamp: identity.map_or_else(empty, |i| Some(i.header_time_stamp())),
+        application: identity.map_or_else(empty, |_| Some(Identity::preprocessor())),
+        originating_system: identity.map(Identity::originating_system),
+        ..Default::default()
     };
-    let mut text = format!(
-        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('{}','{}',(''),(''),'{}','{}','');\n\
-         FILE_SCHEMA(('{SKELETON_SCHEMA}'));\nENDSEC;\nDATA;\n",
-        escape(file_name.unwrap_or("")),
-        escape(&time_stamp),
-        escape(&preprocessor),
-        escape(&originating),
-    );
+    let mut text = Vec::new();
+    crate::step_header::write_header_counted(&mut text, &opts, None, SKELETON_SCHEMA, 0).map_err(|e| e.to_string())?;
     for (_, record) in out {
-        text.push_str(record);
-        text.push('\n');
+        text.extend_from_slice(record.as_bytes());
+        text.push(b'\n');
     }
-    text.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
-    text
+    text.extend_from_slice(b"ENDSEC;\nEND-ISO-10303-21;\n");
+    Ok(text)
 }
 
 fn check(s: &Skeleton) -> Result<(), String> {

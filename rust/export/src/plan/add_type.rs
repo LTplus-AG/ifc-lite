@@ -39,7 +39,7 @@ impl AddState<'_> {
             .transpose()?;
 
         let mut out = Vec::new();
-        let owner_history = self.owner_history_for(ids, &mut out)?;
+        let owner = self.owner_history_for(ids, &mut out)?;
         let mut shared = Shared { committed: &self.shared, pending: HashMap::new() };
         let mut emit = Emit { schema: self.schema, ids, out: &mut out };
         let units = build_units(&mut emit, &mut shared, &units)?;
@@ -50,11 +50,11 @@ impl AddState<'_> {
                 (build_map(&mut emit, context, &t.representation, t.style.as_ref())?, new_context)
             }
         };
-        let id = build_new_type(&mut emit, t, gid, (&class, &predefined), &units, &maps, Some(owner_history))?;
+        let id = build_new_type(&mut emit, t, gid, (&class, &predefined), &units, &maps, Some(owner.id))?;
         let pending = shared.pending;
         let new_context = self.owned_context(new_context)?;
 
-        self.commit(owner_history, out, pending);
+        self.commit(owner, out, pending);
         if let Some((context, owner)) = new_context {
             self.adopt_context(context, owner);
         }

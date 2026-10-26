@@ -10,9 +10,10 @@ use crate::step_text::escape;
 
 use super::index::FileIndex;
 use super::types::{DroppedRepresentation, ObjectRef, Patch, Refusal};
+use super::attribution::PatchHistory;
 use super::{attrs, geometry, placement, props, props_target};
 
-pub(super) struct PatchOutput<'a> {
+pub(super) struct PatchOutput<'a, 'h> {
     pub(super) edits_by_id: &'a mut HashMap<u32, BTreeMap<usize, String>>,
     pub(super) appended: &'a mut Vec<(u32, String)>,
     pub(super) refusals: &'a mut Vec<Refusal>,
@@ -27,8 +28,8 @@ pub(super) struct PatchOutput<'a> {
     /// member change, checked once the deletes settle.
     pub(super) edited: &'a mut HashSet<(u32, u32)>,
     pub(super) object: u32,
-    /// Records a patch touched, whose owner history records the change.
-    pub(super) modified: &'a mut HashSet<u32>,
+    /// Where the owner history of a record a patch adds comes from.
+    pub(super) history: &'a mut PatchHistory<'h>,
     /// Objects a patch has already given a new body, for the same reason:
     /// a second body would leave the first one's records unreferenced.
     pub(super) reshaped: &'a mut HashSet<u32>,
@@ -37,11 +38,9 @@ pub(super) struct PatchOutput<'a> {
     pub(super) dropped_representations: &'a mut Vec<DroppedRepresentation>,
 }
 
-impl PatchOutput<'_> {
+impl PatchOutput<'_, '_> {
     fn edit(&mut self, edits: Vec<(u32, usize, String)>) {
         for (id, idx, value) in edits {
-            self.modified.insert(id);
-            self.modified.insert(self.object);
             self.edits_by_id.entry(id).or_default().insert(idx, value);
             self.edited.insert((id, self.object));
         }
@@ -51,8 +50,6 @@ impl PatchOutput<'_> {
     /// write of the patched object.
     fn list_edit(&mut self, set: u32, idx: usize) -> &mut attrs::ListEdit {
         self.edited.insert((set, self.object));
-        self.modified.insert(set);
-        self.modified.insert(self.object);
         self.list_edits.entry((set, idx)).or_default()
     }
 }
@@ -63,8 +60,7 @@ pub(super) fn apply_patch(
     object_id: u32,
     patch: &Patch,
     ids: &mut IdAllocator,
-    owner_history: Option<u32>,
-    out: &mut PatchOutput<'_>,
+    out: &mut PatchOutput<'_, '_>,
 ) {
     if let Some(name) = &patch.name {
         let entity_type = index.type_of(object_id).unwrap_or_default();
@@ -107,7 +103,7 @@ pub(super) fn apply_patch(
             }
         }
         for group in &groups {
-            apply_set_writes(&target, group, ids, owner_history, out);
+            apply_set_writes(&target, group, ids, out);
         }
     }
 
@@ -154,12 +150,11 @@ fn apply_set_writes(
     target: &props_target::WriteTarget<'_>,
     group: &[props_target::ResolvedWrite<'_>],
     ids: &mut IdAllocator,
-    owner_history: Option<u32>,
-    out: &mut PatchOutput<'_>,
+    out: &mut PatchOutput<'_, '_>,
 ) {
-    let result = props::resolve_set_writes(target, group, ids, owner_history);
+    let (history, appended) = (&mut *out.history, &mut *out.appended);
+    let result = props::resolve_set_writes(target, group, ids, &mut |ids: &mut IdAllocator| history.get(ids, appended));
     for outcome in result.outcomes {
-        out.modified.insert(out.object);
         match outcome {
             props::PropOutcome::InPlace(edits) => out.edit(edits),
             props::PropOutcome::Append { new_records } => out.appended.extend(new_records),

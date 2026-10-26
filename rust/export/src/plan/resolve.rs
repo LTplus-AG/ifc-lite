@@ -12,9 +12,9 @@ use super::add_types::AddItem;
 use super::patch::{apply_patch, PatchOutput};
 use super::removal::RemovalReason;
 use super::types::{Disposition, DroppedRepresentation, ExportPlan, ObjectRef, Refusal, ValidationFinding};
-use super::identity::{mark_modified, missing_application, Ledger};
 use super::add_attributed::{self, AddSetting, Produced};
-use super::{attrs, delete, geometry, owner_history};
+use super::attribution::{attribute_changes, Ledger, PatchHistory, Rewrites};
+use super::{attrs, delete, geometry};
 
 pub(crate) struct Resolution {
     pub(crate) appended: Vec<(u32, String)>,
@@ -39,8 +39,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     let mut appended: Vec<(u32, String)> = Vec::new();
     let mut findings = Vec::new();
     let mut ledger = Ledger::for_plan(plan, &mut findings);
-    let owner_history_ref = owner_history::for_patches(index, schema, plan, ledger.as_mut(), &mut ids, &mut appended);
-    let mut modified: HashSet<u32> = HashSet::new();
+    let mut history = PatchHistory::new(index, schema, ledger.as_mut(), &plan.context);
     let mut refusals: Vec<Refusal> = Vec::new();
     let mut edits_by_id: HashMap<u32, BTreeMap<usize, String>> = HashMap::new();
     let mut requested_deletes: HashSet<u32> = HashSet::new();
@@ -118,16 +117,18 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
                     moved: &mut moved,
                     edited: &mut edited,
                     object: id,
-                    modified: &mut modified,
+                    history: &mut history,
                     reshaped: &mut reshaped,
                     geometry_cuts: &mut geometry_cuts,
                     body_context: &mut body_context,
                     dropped_representations: &mut dropped_representations,
                 };
-                apply_patch(index, schema, id, patch, &mut ids, owner_history_ref, &mut out);
+                apply_patch(index, schema, id, patch, &mut ids, &mut out);
             }
         }
     }
+
+    let owner_history_ref = history.settled();
 
     if let Some(context) = body_context.synthesized {
         attach_context_to_project(index, schema, context, &removed, &mut list_edits);
@@ -164,10 +165,6 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
 
     attrs::render_list_edits(index, list_edits, &removed, &mut edits_by_id);
 
-    if let Some(ledger) = ledger.as_mut() {
-        mark_modified(index, schema, ledger, &modified, &removed, &mut ids, &mut appended, &mut edits_by_id, &mut findings);
-    }
-
     // Adds run after every delete and patch has settled `removed` and the
     // list edits, so none of them extends a relationship or names a record
     // that is going away, and their list appends start from the rewritten
@@ -177,9 +174,9 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     let mut produced = Produced { ids: &mut ids, appended: &mut appended, edits_by_id: &mut edits_by_id, refusals: &mut refusals, findings: &mut findings };
     let added = add_attributed::run(&setting, &adds, ledger.as_mut(), &mut produced);
 
-    if plan.context.application.is_none() && patched + added > 0 {
-        findings.push(missing_application());
-    }
+    // Every rewrite has settled: what the plan modified is read off them.
+    let out = Rewrites { ids: &mut ids, appended: &mut appended, edits_by_id: &mut edits_by_id, findings: &mut findings };
+    attribute_changes(index, schema, ledger.as_mut(), &removed, patched + added > 0, out);
 
     Resolution { appended, edits_by_id, removed, reasons, refusals, patched, added, patched_objects, dropped_representations, findings }
 }

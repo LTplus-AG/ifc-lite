@@ -13,22 +13,39 @@ use crate::step_ids::IdAllocator;
 
 use super::assoc::SharedKey;
 use super::mapped::MapRef;
-use super::{Added, AddState};
+use super::{AddHistory, Added, AddState, Owner};
 
 /// The project a synthesized context is listed by, and its
 /// `RepresentationContexts` slot.
 pub(super) type ContextOwner = (u32, usize);
 
 impl AddState<'_> {
-    /// The owner history new records name: the plan's, else one synthesized
-    /// into `out`, which the caller commits only if its Add builds.
-    pub(super) fn owner_history_for(&self, ids: &mut IdAllocator, out: &mut Vec<(u32, String)>) -> Result<u32, String> {
-        if let Some(id) = self.owner_history {
-            return Ok(id);
+    /// The owner history new records name: the plan's, else the exporting
+    /// application's `ADDED` one, else one synthesized. What it has to make
+    /// goes into `out`, which the caller commits only if its Add builds, so
+    /// a plan whose Adds are all refused writes nothing.
+    pub(super) fn owner_history_for(&self, ids: &mut IdAllocator, out: &mut Vec<(u32, String)>) -> Result<Owner, String> {
+        match &self.history {
+            AddHistory::Source(Some(id)) => Ok(Owner { id: *id, made: None }),
+            AddHistory::Source(None) => {
+                let (records, id) = owner_history::synthesize(self.schema, ids, self.context).ok_or("id space exhausted")?;
+                out.extend(records);
+                Ok(Owner { id, made: None })
+            }
+            AddHistory::Attributed { identity, made } => {
+                let mut made = **made;
+                let id = identity.added_in(self.schema, ids, Some(self.index), &mut made, out).ok_or("id space exhausted")?;
+                Ok(Owner { id, made: Some(made) })
+            }
         }
-        let (records, id) = owner_history::synthesize(self.schema, ids, self.context).ok_or("id space exhausted")?;
-        out.extend(records);
-        Ok(id)
+    }
+
+    /// The owner history the built Adds name, if one is settled yet.
+    pub(super) fn settled_history(&self) -> Option<u32> {
+        match &self.history {
+            AddHistory::Source(id) => *id,
+            AddHistory::Attributed { made, .. } => made.added(),
+        }
     }
 
     /// The context new geometry goes into: the plan's, else one synthesized
@@ -69,8 +86,11 @@ impl AddState<'_> {
 
     /// Keep what an Add built: its records, the owner history they name, and
     /// the shared records later Adds may reuse.
-    pub(super) fn commit(&mut self, owner_history: u32, out: Vec<(u32, String)>, shared: HashMap<SharedKey, u32>) {
-        self.owner_history = Some(owner_history);
+    pub(super) fn commit(&mut self, owner: Owner, out: Vec<(u32, String)>, shared: HashMap<SharedKey, u32>) {
+        match (&mut self.history, owner.made) {
+            (AddHistory::Attributed { made, .. }, Some(now)) => **made = now,
+            (history, _) => *history = AddHistory::Source(Some(owner.id)),
+        }
         self.records.extend(out);
         self.shared.extend(shared);
     }

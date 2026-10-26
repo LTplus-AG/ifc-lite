@@ -45,6 +45,7 @@ mod add_profile;
 mod add_props;
 mod add_rels;
 mod add_types;
+mod attribution;
 mod attrs;
 mod builders;
 mod delete;

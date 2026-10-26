@@ -15,7 +15,11 @@ use crate::plan::types::*;
 /// reference and their relationships, plus a kilopascal and a derived unit.
 fn associated_wall(schema: &str) -> Vec<u8> {
     let r = |id, entity, fields: &[(&str, &str)]| {
-        let fields: Vec<(&str, String)> = fields.iter().map(|&(n, v)| (n, v.to_string())).collect();
+        let mut fields: Vec<(&str, String)> = fields.iter().map(|&(n, v)| (n, v.to_string())).collect();
+        // IFC2X3 requires an owner history: the fixture preamble's.
+        if schema == "IFC2X3" {
+            fields.push(("OwnerHistory", "#5".into()));
+        }
         build_record(schema, id, entity, &fields) + "\n"
     };
     let ident = if schema == "IFC2X3" { "ItemReference" } else { "Identification" };

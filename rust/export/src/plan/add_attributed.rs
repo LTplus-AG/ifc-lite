@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Running a plan's Adds under the exporting application's identity.
+//! Running a plan's Adds under the owner history they name.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::step_ids::IdAllocator;
 
-use super::add::AddState;
+use super::add::{AddHistory, AddState};
 use super::add_types::AddItem;
-use super::identity::{mark_modified, Ledger};
+use super::attribution::Ledger;
 use super::index::FileIndex;
 use super::types::{ObjectRef, PlanContext, Refusal, ValidationFinding};
 
@@ -31,36 +31,19 @@ pub(super) struct AddSetting<'a> {
     pub(super) body_context: Option<u32>,
 }
 
-/// Build the Adds and return how many were written.
-///
-/// With an exporting application every Add names its one `ADDED` history,
-/// made before the Adds and given back when none builds. A relationship an
-/// Add extends is modified, so it gets a `MODIFIED` history too.
-pub(super) fn run(
-    setting: &AddSetting,
-    adds: &[(&ObjectRef, AddItem)],
-    mut ledger: Option<&mut Ledger>,
-    produced: &mut Produced,
-) -> usize {
+/// Build the Adds and return how many were written. With an exporting
+/// application every Add names its one `ADDED` history, made by the first
+/// Add that builds; a relationship an Add extends is a rewrite like any
+/// other, which [`super::attribution::mark_modified`] finds afterwards.
+pub(super) fn run(setting: &AddSetting, adds: &[(&ObjectRef, AddItem)], ledger: Option<&mut Ledger>, produced: &mut Produced) -> usize {
     if adds.is_empty() {
         return 0;
     }
-    let appended_before = produced.appended.len();
-    let owner_history = match ledger.as_deref_mut() {
-        Some(ledger) => ledger.added(setting.schema, produced.ids, produced.appended),
+    let history = match ledger {
+        Some(ledger) => AddHistory::Attributed { identity: &ledger.identity, made: &mut ledger.made },
         // An owner history the plan deletes is not one an Add can name.
-        None => setting.owner_history.filter(|id| !setting.removed.contains(id)),
+        None => AddHistory::Source(setting.owner_history.filter(|id| !setting.removed.contains(id))),
     };
-    let edits_before = ledger.is_some().then(|| produced.edits_by_id.clone());
-    let state = AddState::new(setting.index, setting.schema, setting.removed, setting.context, owner_history, setting.body_context);
-    let built = state.build_all(adds, produced.ids, produced.edits_by_id, produced.appended, produced.refusals, produced.findings);
-    if let (Some(ledger), Some(before)) = (ledger, edits_before) {
-        if built == 0 {
-            produced.appended.truncate(appended_before);
-        } else {
-            let extended: HashSet<u32> = produced.edits_by_id.iter().filter(|(id, e)| before.get(id) != Some(*e)).map(|(&id, _)| id).collect();
-            mark_modified(setting.index, setting.schema, ledger, &extended, setting.removed, produced.ids, produced.appended, produced.edits_by_id, produced.findings);
-        }
-    }
-    built
+    let state = AddState::new(setting.index, setting.schema, setting.removed, setting.context, history, setting.body_context);
+    state.build_all(adds, produced.ids, produced.edits_by_id, produced.appended, produced.refusals, produced.findings)
 }

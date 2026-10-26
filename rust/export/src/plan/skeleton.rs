@@ -143,9 +143,8 @@ pub fn skeleton_with_findings(s: &Skeleton) -> Result<(Vec<u8>, Vec<ValidationFi
     build(s, false)
 }
 
-/// The skeleton and its findings, for both entry points: an application
-/// whose change time can't be attributed refuses when `strict`, else is a
-/// finding and the skeleton is written unattributed.
+/// The skeleton and its findings, for both entry points; `strict` is
+/// [`identity_of`]'s.
 fn build(s: &Skeleton, strict: bool) -> Result<(Vec<u8>, Vec<ValidationFinding>), String> {
     check(s)?;
     let mut findings = Vec::new();
@@ -157,14 +156,7 @@ fn build(s: &Skeleton, strict: bool) -> Result<(Vec<u8>, Vec<ValidationFinding>)
         out: &mut out,
     };
     // The exporting application owns what the skeleton creates.
-    let identity = match s.application.as_ref().map(|app| Identity::resolve(app, &mut findings)).transpose() {
-        Err(message) if strict => return Err(message),
-        Err(message) => {
-            findings.push(ValidationFinding::new(None, message));
-            None
-        }
-        Ok(identity) => identity,
-    };
+    let identity = identity_of(s, strict, &mut findings)?;
     let history = owner_slot(identity.as_ref(), &mut emit)?;
     let quoted = |v: &str| format!("'{}'", escape(v));
     let name = |root: &SkeletonRoot| root.name.as_deref().map_or("$".to_string(), quoted);
@@ -300,6 +292,20 @@ fn build(s: &Skeleton, strict: bool) -> Result<(Vec<u8>, Vec<ValidationFinding>)
     }
 
     Ok((step_text(s.file_name.as_deref(), identity.as_ref(), &out)?, findings))
+}
+
+/// The application the skeleton is attributed to: one whose change time
+/// can't be attributed refuses when `strict`, else is a finding and the
+/// skeleton is written unattributed.
+fn identity_of(s: &Skeleton, strict: bool, findings: &mut Vec<ValidationFinding>) -> Result<Option<Identity>, String> {
+    match s.application.as_ref().map(|app| Identity::resolve(app, findings)).transpose() {
+        Err(message) if strict => Err(message),
+        Err(message) => {
+            findings.push(ValidationFinding::new(None, message));
+            Ok(None)
+        }
+        Ok(identity) => Ok(identity),
+    }
 }
 
 /// The `OwnerHistory` slot of everything the skeleton creates: the

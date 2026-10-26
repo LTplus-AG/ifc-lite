@@ -282,6 +282,7 @@ fn an_add_keeps_the_owner_history_a_delete_would_take() {
         let (out, report) = run_with(source.as_bytes(), plan(), PlanContext::new());
         assert!(report.refusals.is_empty(), "{schema}: {report:?}");
         assert!(matches!(&report.findings[..], [only] if only.message.starts_with("no ExportingApplication")), "{schema}: {:?}", report.findings);
+        assert_eq!(type_in(&out, 10), "", "{schema}: the delete took the only other user of #5");
         assert_eq!(type_in(&out, 5), "IFCOWNERHISTORY", "{schema}: the file's owner history stays");
         assert_eq!(history(&out), "#5", "{schema}: the new wall names it");
         // With one the wall names its own ADDED history, which is in the

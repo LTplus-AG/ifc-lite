@@ -53,7 +53,7 @@ pub(super) fn run_with(source: &[u8], dispositions: Vec<(ObjectRef, Disposition)
 /// Attribute `name` of output record `id`, as STEP text.
 pub(super) fn attr(out: &[u8], schema: &str, id: u32, name: &str) -> String {
     let index = FileIndex::scan(out, &Default::default());
-    let entity = index.type_of(id).unwrap_or_default();
+    let entity = index.type_of(id).unwrap_or_else(|| panic!("#{id} is not in the output ({schema})"));
     let idx = attribute_index(schema, &entity, name).unwrap_or_else(|| panic!("{entity} has no {name}"));
     crate::step_text::attribute_of(&index.raw_line(id).unwrap(), idx).unwrap()
 }

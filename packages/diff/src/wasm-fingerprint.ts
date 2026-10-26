@@ -33,14 +33,20 @@ function projectInput(input: DataFingerprintInput, components: boolean): DataFin
     objectType: input.objectType, predefinedType: input.predefinedType, tag: input.tag });
   // map calls back only for present slots, so fewer calls than the fresh
   // result's length means a collection or member array has holes, with no
-  // extra adapter read; that length Get is where the oracle's sort reads it.
+  // extra adapter read; that one length Get is where the oracle's sort reads
+  // it. A result without a numeric length (e.g. a lazy iterator map) is never
+  // offered: the check would consume it before the final decode (#8114).
   // Each map call keeps its expression, and so its host TypeError text.
   let sparse = false;
   const counted = <T, U>(one: (value: T) => U) => {
     let calls = 0;
     return {
       each: (value: T) => { calls++; return one(value); },
-      settle: (result: U[]) => { if (calls !== result.length) sparse = true; return result; },
+      settle: (result: U[]) => {
+        const length: unknown = result.length;
+        if (typeof length === 'number' && calls !== length) sparse = true;
+        return result;
+      },
     };
   };
   const entries = (values: PropertyEntryInput[]) => {

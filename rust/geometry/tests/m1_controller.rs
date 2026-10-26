@@ -59,3 +59,26 @@ fn product_completion_keeps_presentation_obligations() {
         ]
     );
 }
+
+// Refs #7955: a reply refused for the wrong owner is resubmitted intact.
+#[test]
+fn rejected_reply_is_resubmitted_to_its_owner() {
+    let source = SourceBundle::new(SOURCE.as_bytes().to_vec());
+    let mut decoder = source.decoder();
+    let router = GeometryRouter::with_units(SOURCE, &mut decoder);
+    let foreign_router = GeometryRouter::new();
+    let entity = decoder.decode_by_id(10).unwrap();
+    let traversal = Traversal::new(7, 9);
+    let mut program = traversal.product_parts(&entity);
+    while let Some(ticket) = program.request().unwrap() {
+        let (reply, _operations, _storage) = program.admit(ticket, &router, &mut decoder).unwrap();
+        let rejected = match program.accept(reply, &foreign_router) {
+            Err(rejected) => rejected,
+            Ok(()) => panic!("a foreign router must not accept the reply"),
+        };
+        program
+            .accept(rejected.into_reply(), &router)
+            .unwrap_or_else(|e| panic!("{:?}", e.error));
+    }
+    assert_eq!(program.finish().unwrap().values().len(), 1);
+}

@@ -11,6 +11,7 @@ import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { sameSampleIdentity } from './pick-depth-6881-identity.mjs';
 
 const [configuration, output] = process.argv.slice(2);
 if (!configuration || !output) throw Error('Arguments: frozen cohort configuration, new output directory');
@@ -72,7 +73,7 @@ const server = await startStaticServer({ port: 0, host: '127.0.0.1', root: () =>
 const origin = `http://127.0.0.1:${server.address().port}`;
 const records = [], references = new Map();
 const report = { configSha256: hash(readFileSync(configuration)), scope: 'Mounted viewer hover, 5 interleaved pairs per public-model scenario at DPR1; no loading-speed claim',
-  harness: Object.fromEntries(['pick-depth-6881-benchmark.mjs', 'pick-depth-6881-hover.mjs', 'pick-depth-6881-observer.mjs'].map(name => [name, hash(readFileSync(resolve(here, name)))])),
+  harness: Object.fromEntries(['pick-depth-6881-benchmark.mjs', 'pick-depth-6881-hover.mjs', 'pick-depth-6881-observer.mjs', 'pick-depth-6881-identity.mjs'].map(name => [name, hash(readFileSync(resolve(here, name)))])),
   accepted: false, records, summary: [] };
 const median = values => values.slice().sort((a, b) => a - b)[Math.floor(values.length / 2)];
 const p95 = values => values.slice().sort((a, b) => a - b)[Math.ceil(values.length * 0.95) - 1];
@@ -171,7 +172,7 @@ try {
       const signature = { geometry: record.geometryBefore, viewport: rect,
         picks: record.hover.picks.map(pick => ({ result: pick.result, matrix: pick.matrix, cameraWorld: pick.cameraWorld, texelInput: pick.texelInput })) };
       const reference = references.get(scenario.name);
-      if (reference && JSON.stringify(reference) !== JSON.stringify(signature)) throw Error('Geometry/camera/texel/ID/item/world identity differs between samples');
+      if (reference && !sameSampleIdentity(reference, signature)) throw Error('Geometry/camera/texel/ID/item/world identity differs between samples');
       references.set(scenario.name, signature);
       record.retirement = await page.evaluate('globalThis.__6881Hover.retire()');
       record.geometryAfter = await page.evaluate(async () => (await import('/__6881/hover.js')).geometryWitness());

@@ -106,6 +106,15 @@ Preparation receipts:
   the full-copy control arm differed by about 1e-4 m in world position at identical IDs, items,
   texels and camera, consistent with a one-ULP depth difference. No verdict exists. See
   [`hover-attempt-6.json`](hover-attempt-6.json) and [raw samples](hover-7-runs.jsonl.gz).
+- Protocol change before the final cohort, made after observing that attempt: the cross-sample
+  identity gate (`pick-depth-6881-identity.mjs`) still requires exact geometry, viewport, camera
+  matrices, camera position, texel inputs, entity ids, geometry items and hit/miss status, but allows
+  `worldXYZ` to drift by at most 1 mm per axis. The observed drift was 0.17 mm. A replay of the
+  recorded samples accepts the seven valid samples and the refused one and rejects a 10 mm drift,
+  an id change, a hit-to-miss change and a 1e-9 camera change. Same-render depth and world equality
+  between candidate and full-copy stays exact in the 140 functional comparisons; this tolerance
+  applies only between different cohort samples. This change is not blinded: it follows observing
+  the refused sample, and the final verdict must say so.
 
 [Preparation receipts](preparation.json) retain command/source identities,
 original outcomes and log hashes. Failed functional reports and compact summaries

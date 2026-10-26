@@ -242,6 +242,28 @@ describe('extractGridAxesForStorey: an authored grid (#6232 D3)', () => {
     editor.removeEntity(grid.gridId);
     expect(extractGridAxesForStorey(store, 42, view).axes).toEqual([]);
   });
+
+  it('honours an overlay SameSense edit: a .F. axis returns its ends swapped, a .T. one is unchanged (#8159)', async () => {
+    const { store, view, editor, anchor } = await session();
+    const grid = addGridToStore(editor, anchor, {
+      Position: [2, 3, 0],
+      ...rectangularGridAxes({ UOffsets: [0, 6], VOffsets: [0, 4], Overhang: 1 }),
+    });
+    const ends = () => Object.fromEntries(
+      extractGridAxesForStorey(store, 42, view).axes.map((a) => [`${a.family}${a.AxisTag}`, [round(a.a), round(a.b)]]),
+    );
+    const before = ends();
+    expect(before.U2).toEqual([[8, 2], [8, 8]]);
+    editor.setPositionalAttribute(grid.uAxisIds[1], 2, false);
+    editor.setPositionalAttribute(grid.vAxisIds[0], 2, false);
+    const after = ends();
+    expect(after.U2).toEqual([before.U2[1], before.U2[0]]);
+    expect(after.VA).toEqual([before.VA[1], before.VA[0]]);
+    expect(after.U1).toEqual(before.U1);
+    expect(after.VB).toEqual(before.VB);
+    editor.setPositionalAttribute(grid.uAxisIds[1], 2, true);
+    expect(ends().U2).toEqual(before.U2);
+  });
 });
 
 

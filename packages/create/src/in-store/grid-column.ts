@@ -13,7 +13,7 @@ import { readGridAxisEnds } from './extract-grids.js';
 import { gridIntersectionPlacement, type GridPlacementResult } from './grid.js';
 import { assertGridIntersectionOwner } from './grid-intersection-read.js';
 import { AnchorEntityReader } from './resolve-anchor.js';
-import { applyFrame, placementRelativeTo, refId } from './host-geometry-frame.js';
+import { applyFrame, placementRelativeTo } from './host-geometry-frame.js';
 
 export interface GridColumnBinding {
   /** Model-local IfcGrid expressId. */

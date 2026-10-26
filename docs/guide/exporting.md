@@ -1293,6 +1293,14 @@ New type-owned scalar quantity members with explicit unit intent must resolve a 
 
 ### Export a section crop
 
+In the viewer's IFC export dialog, enable **Export Visible Only** while sections
+are enabled. **Trim geometry at sections** cuts crossing elements at all enabled
+planes, including the six faces of a section box. Turn trimming off to keep
+crossing elements whole. Elements entirely outside the combined crop are omitted
+in either mode. Spatial containers retain their metadata without excluded bodies.
+The option applies to STEP IFC exports with geometry, for both a
+single model and a merged federation.
+
 The export works on a temporary copy after applying the selected edits and
 visibility filters. Fully inside elements keep their original representations.
 Trimmed products keep their exact IFC type, GlobalId, property sets, material and
@@ -1355,6 +1363,6 @@ console.log(cropped.trimmed, cropped.outside);
 ```
 
 Crop each federation source before merging when sources use different project
-length units. Section export needs
+length units. The viewer follows this order automatically. Section export needs
 the built WASM runtime; it is deliberately opt-in and does not run during normal
 model loading or ordinary IFC export.

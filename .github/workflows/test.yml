@@ -1687,6 +1687,13 @@ jobs:
           # file). Keep the module and make a second type overwrite the first.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/data_model/type_assignments.rs | grep -Fxq 'rust/processing/src/data_model/type_assignments.rs'; then
             oracle_args+=(--mutation tests/evidence/type-assignments-7783/behaviour.oracle.patch)
+          # Export plan reused geometry: the new plan/add_same_as.rs and its
+          # tests compile only together. Keep them and write no shape for a
+          # reused body, and skip the reshaped-source refusal: the reuse and
+          # reshape tests must turn RED. Once plan/add_same_as.rs is on main,
+          # this clause can go.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/export/src/plan/add_same_as.rs | grep -Fxq 'rust/export/src/plan/add_same_as.rs'; then
+            oracle_args+=(--mutation tests/evidence/export-plan-same-as/behaviour.oracle.patch)
           # #7783: C6-10 adds data_model/spatial_walk.rs, which the changed
           # export tests import through the CSV and IFCX writers. Keep the
           # module and reverse its sibling order.

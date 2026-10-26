@@ -593,7 +593,7 @@ call sites and `useViewerStore` subscriptions on the viewport, properties,
 hierarchy and streaming paths statically (minified component names make a
 runtime fiber census unattributable, and mounted counts move with UI state).
 
-## GPU point-pick depth candidate held (#6881)
+## GPU point-pick depth readback qualification (#6881)
 
 The [same-submission GPU oracles](evidence/bounded-depth-readback-6881/README.md)
 qualify single-texel extraction against a full-depth copy on hardware, including
@@ -610,9 +610,26 @@ samples. The subsequent untimed NVIDIA qualification passes same-render
 depth/ID/item/world comparisons across both DPRs, real-model federation,
 authored geometry families and stale camera/resize/device-loss controls, with
 unchanged geometry. Harness readiness and screenshot-lifetime failures remain
-in the evidence alongside the accepted run. The separate exclusive hover
-request also expired before execution. Host contention and I/O admission hold
-the interaction verdict; no timing sample or speedup claim follows.
+in the evidence alongside the accepted run.
+
+Verdict: the interaction cohort was not accepted, so there is no hover speedup
+claim and the issue's end-to-end acceptance stays open. Seven attempts ended in
+admission, host-quiet, health and identity gates; each refusal is retained and no
+failed sample was replaced. The final run completed all five pairs for two of the
+three scenarios with every gate satisfied, then aborted in the federation
+scenario when one pick resolved a different entity at the same texel, at a world
+position within a fraction of a millimetre, consistent with coplanar surfaces
+z-fighting. The evidence README carries the post hoc, explicitly partial table
+for the two completed scenarios; it supports the bounded mapping and a lower
+picker time but does not replace the required federation comparison.
+
+Lessons: choose cohort pick positions away from coplanar or duplicate surfaces
+and verify them with repeated renders before freezing a protocol; a cross-session
+identity gate must tolerate depth-ULP world drift but never an entity change;
+a whole-host CPU gate of 10% leaves almost no margin on a shared machine, so
+reserve a dedicated quiet window for the full run and keep other agents off the
+host; check every health gate against recorded samples before a long exclusive
+wait, because a strict equality on a float DPR cost an hour of queue time.
 
 Independent Linux qualification adopted the existing readback cleanup repair;
 inverse fault controls demonstrate the ownership defects and the repaired paths

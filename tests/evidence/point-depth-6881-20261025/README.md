@@ -97,6 +97,10 @@ Preparation receipts:
   cohort is incomplete, no verdict exists and none is claimed; the raw samples and
   the cause are retained in [`hover-attempts-3-4.json`](hover-attempts-3-4.json) and
   [`hover-attempt-5-runs.jsonl.gz`](hover-attempt-5-runs.jsonl.gz).
+- A fifth attempt (`hover-6`, unchanged protocol, other sessions asked to pause) completed
+  one valid sample and was aborted on the second by the post-sample host gate at 10.9% CPU
+  while other sessions ran local Rust and WASM work. No verdict exists. See
+  [`hover-attempt-5.json`](hover-attempt-5.json).
 
 [Preparation receipts](preparation.json) retain command/source identities,
 original outcomes and log hashes. Failed functional reports and compact summaries

@@ -15,10 +15,10 @@ import { readFileSync } from 'node:fs';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { RemeshRequest, RemeshResult, StyleWire } from '@ifc-lite/geometry/remesh';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
-import { MutablePropertyView } from '@ifc-lite/mutations';
-import { useViewerStore, type FederatedModel } from '@/store';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
+import type { FederatedModel } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
-import { setRemeshClientFactory, type RemeshClientLike } from '@/lib/remesh/remesh-service';
+import type { RemeshClientLike } from '@/lib/remesh/remesh-service';
 
 export const SAMPLE_MODEL = 'arch';
 /** `00 groundfloor`. */
@@ -52,6 +52,12 @@ export async function parseIfc(bytes: Uint8Array): Promise<IfcDataStore> {
 }
 
 export async function seedAuthoringSample(options: { editEnabled?: boolean } = {}): Promise<{ dataStore: IfcDataStore; view: MutablePropertyView }> {
+  // Parser/reference-only consumers need neither the singleton store nor its
+  // remesh graph. Keep the placement reader boot above eager: existing tests
+  // also rely on that registration without calling this seeder.
+  const { MutablePropertyView } = await import('@ifc-lite/mutations');
+  const { useViewerStore } = await import('@/store');
+  const { setRemeshClientFactory } = await import('@/lib/remesh/remesh-service');
   const dataStore = await parseIfc(readFileSync(sample));
   const geometry = {
     meshes: [], totalTriangles: 0, totalVertices: 0,

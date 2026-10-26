@@ -84,6 +84,16 @@ impl SchemaFamily {
         })
     }
 
+    /// The family of a `FILE_SCHEMA` label by the registry selector: the
+    /// family of [`SchemaVersion::from_file_schema`]'s version, and `IFC5`
+    /// (which has no bundled registry) for the label `IFC5`. Stricter than
+    /// [`Self::from_label`]: `IFC4FOO` names no family here.
+    pub fn of_file_schema(label: &str) -> Option<Self> {
+        SchemaVersion::from_file_schema(label)
+            .map(Self::of)
+            .or_else(|| label.trim().eq_ignore_ascii_case("IFC5").then_some(Self::Ifc5))
+    }
+
     /// The family of a bundled registry version (`Ifc4x1`, `Ifc4x2` are IFC4).
     pub const fn of(version: SchemaVersion) -> Self {
         match version {

@@ -3,6 +3,7 @@
 //! shapes, and a run-and-report helper. Synthetic, like every fixture here.
 
 use super::add_types::*;
+use super::attrs::attribute_index;
 use super::execute;
 use super::index::FileIndex;
 use super::types::*;
@@ -39,10 +40,22 @@ pub(super) fn add(obj: NewObject) -> (ObjectRef, Disposition) {
 }
 
 pub(super) fn run(source: &[u8], dispositions: Vec<(ObjectRef, Disposition)>) -> (Vec<u8>, WriteReport) {
-    let plan = ExportPlan { dispositions, context: PlanContext::default() };
+    run_with(source, dispositions, PlanContext::attributed())
+}
+
+pub(super) fn run_with(source: &[u8], dispositions: Vec<(ObjectRef, Disposition)>, context: PlanContext) -> (Vec<u8>, WriteReport) {
+    let plan = ExportPlan { dispositions, context };
     let mut out = Vec::new();
     let report = execute(source, &plan, &mut out).expect("execute");
     (out, report)
+}
+
+/// Attribute `name` of output record `id`, as STEP text.
+pub(super) fn attr(out: &[u8], schema: &str, id: u32, name: &str) -> String {
+    let index = FileIndex::scan(out, &Default::default());
+    let entity = index.type_of(id).unwrap_or_else(|| panic!("#{id} is not in the output ({schema})"));
+    let idx = attribute_index(schema, &entity, name).unwrap_or_else(|| panic!("{entity} has no {name}"));
+    crate::step_text::attribute_of(&index.raw_line(id).unwrap(), idx).unwrap()
 }
 
 pub(super) fn assert_clean(report: &WriteReport, what: &str) {

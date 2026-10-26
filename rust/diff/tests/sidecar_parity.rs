@@ -3,8 +3,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 use ifc_lite_diff::{sidecar::*, identity_map::IdentityMapEntry, lineage::{LineageEntry,LineageRelation}};
 use serde_json::Value;
-fn text(v: &Value, key: &str) -> String { v[key].as_str().unwrap().into() }
-fn optional(v: &Value, key: &str) -> Option<String> { v[key].as_str().map(str::to_owned) }
+fn text(v: &Value, key: &str) -> ifc_lite_diff::JsString { v[key].as_str().unwrap().into() }
+fn optional(v: &Value, key: &str) -> Option<ifc_lite_diff::JsString> { v[key].as_str().map(Into::into) }
 fn model(v: &Value) -> ModelIdentity { ModelIdentity { hash: text(v,"hash"),path:optional(v,"path") } }
 #[test]
 fn sidecar_wire_is_byte_identical_to_typescript_issue_8042() {

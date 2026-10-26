@@ -20,7 +20,7 @@
 use super::add_types::GlobalId;
 use super::skeleton::{MapConversion, MapUnit, Skeleton, SkeletonRoot};
 use super::types::{
-    Disposition, DroppedRepresentation, ExportPlan, GeometryPatch, ObjectRef, Patch, PlacementPatch, PlanContext, PropScope,
+    Disposition, DroppedRepresentation, ExportPlan, ExportingApplication, ExportingPerson, GeometryPatch, ObjectRef, Patch, PlacementPatch, PlanContext, PropScope,
     PropWrite, PsetKind, Refusal, SurfaceColour, TriangleMesh, ValidationFinding,
 };
 
@@ -37,7 +37,14 @@ impl PropWrite {
         kind: PsetKind,
         scope: PropScope,
     ) -> Self {
-        Self { pset: pset.into(), prop: prop.into(), measure_type: measure_type.into(), literal: literal.into(), unit: None, kind, scope }
+        Self { pset: pset.into(), prop: prop.into(), measure_type: measure_type.into(), literal: literal.into(), unit: None, kind, scope, target: None }
+    }
+
+    /// Write exactly the value record `express_id`, not the first property
+    /// of this name in the first set of this name. See [`PropWrite::target`].
+    pub fn with_target(mut self, express_id: u32) -> Self {
+        self.target = Some(express_id);
+        self
     }
 
     /// The STEP text of the unit to write (`"#55"`, or `"$"` for none).
@@ -108,6 +115,13 @@ impl PlanContext {
         Self::default()
     }
 
+    /// A context with an exporting application, so a test of anything but
+    /// attribution runs the way a real export does.
+    #[cfg(test)]
+    pub(crate) fn attributed() -> Self {
+        Self::new().with_application(ExportingApplication::new("TestOrg", "TestApp", "test-app", "1.0", "2026-01-01T00:00:00"))
+    }
+
     pub fn with_author(mut self, author: impl Into<String>) -> Self {
         self.author = Some(author.into());
         self
@@ -120,6 +134,46 @@ impl PlanContext {
 
     pub fn with_time_stamp(mut self, time_stamp: impl Into<String>) -> Self {
         self.time_stamp = Some(time_stamp.into());
+        self
+    }
+
+    pub fn with_application(mut self, application: ExportingApplication) -> Self {
+        self.application = Some(application);
+        self
+    }
+
+    pub fn with_file_name(mut self, file_name: impl Into<String>) -> Self {
+        self.file_name = Some(file_name.into());
+        self
+    }
+}
+
+impl ExportingPerson {
+    pub fn new(identification: impl Into<String>, name: impl Into<String>) -> Self {
+        Self { identification: identification.into(), name: name.into() }
+    }
+}
+
+impl ExportingApplication {
+    pub fn new(
+        developer: impl Into<String>,
+        full_name: impl Into<String>,
+        identifier: impl Into<String>,
+        version: impl Into<String>,
+        changed_at: impl Into<String>,
+    ) -> Self {
+        Self {
+            developer: developer.into(),
+            full_name: full_name.into(),
+            identifier: identifier.into(),
+            version: version.into(),
+            person: None,
+            changed_at: changed_at.into(),
+        }
+    }
+
+    pub fn with_person(mut self, person: ExportingPerson) -> Self {
+        self.person = Some(person);
         self
     }
 }
@@ -201,7 +255,17 @@ impl MapConversion {
 
 impl Skeleton {
     pub fn new(project: SkeletonRoot, site: SkeletonRoot, building: SkeletonRoot) -> Self {
-        Self { project, site, building, true_north: None, map_conversion: None }
+        Self { project, site, building, true_north: None, map_conversion: None, application: None, file_name: None }
+    }
+
+    pub fn with_application(mut self, application: ExportingApplication) -> Self {
+        self.application = Some(application);
+        self
+    }
+
+    pub fn with_file_name(mut self, file_name: impl Into<String>) -> Self {
+        self.file_name = Some(file_name.into());
+        self
     }
 
     pub fn with_true_north(mut self, true_north: [f64; 2]) -> Self {

@@ -307,23 +307,6 @@ pub(super) fn rotate_mesh_from_frame(mesh: &Mesh, r: &Matrix3<f64>, center: &Poi
     instance_meta: None, local_bounds: None, local_to_world: None, welded_in_object_frame: false, plane_tags: None }
 }
 
-/// Closed-2-manifold self-check (0.1 mm weld): every undirected edge shared by exactly
-/// two non-degenerate triangles. The parametric path refuses to emit a cut that fails
-/// this, deferring to the exact kernel instead.
-/// NOT a closure test, despite the name reading like one. It pairs DIRECTED
-/// edges, so a genuinely closed solid whose faces carry T-junctions reads as
-/// open: an annulus face around a hole produces exactly that, which is how IFC
-/// breps and pre-cut wall layers are commonly built. The `pre_cut_wall` fixture
-/// self-checks to a signed volume of +5.6, the exact box minus its hole, and
-/// still fails this predicate.
-///
-/// So do not gate "is this mesh closed" on it. For "can I trust a ray parity
-/// here", ask [`point_inside_mesh_agreed`], which asks about the point rather
-/// than the topology and is tolerant of T-junctions.
-pub(super) fn param_cut_watertight(mesh: &Mesh) -> bool {
-    topology_defect_count(mesh) == 0
-}
-
 #[inline]
 pub(super) fn mesh_point(mesh: &Mesh, index: u32) -> Option<Point3<f64>> {
     let base = index as usize * 3;
@@ -438,10 +421,10 @@ pub(super) fn opening_redundant_with_host(host: &Mesh, opening: &Mesh, axis: &Ve
 /// "inside" need to tell that apart from "inside", because a torn shell answers
 /// this question differently depending on where the ray goes.
 ///
-/// Deliberately not `param_cut_watertight`: that pairs directed edges, so a
-/// closed solid whose faces carry T-junctions (an annulus around a hole, which
-/// is how IFC breps and pre-cut wall layers are built) reads as open when it is
-/// not. This asks about the point, not the topology.
+/// Deliberately not a topology check: an edge-pairing test reads a closed
+/// solid whose faces carry T-junctions (an annulus around a hole, which is
+/// how IFC breps and pre-cut wall layers are built) as open. This asks about
+/// the point, not the topology.
 pub(super) fn point_inside_mesh_agreed(mesh: &Mesh, point: Point3<f64>) -> Option<bool> {
     let a = parity_along(mesh, point, PARITY_DIR_A);
     let b = parity_along(mesh, point, PARITY_DIR_B);

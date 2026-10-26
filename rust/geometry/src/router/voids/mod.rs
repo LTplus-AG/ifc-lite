@@ -471,7 +471,6 @@ impl Execution {
 
         let mut stats = crate::rect_fast::RectFastStats::default();
         let cut_f = crate::rect_fast::subtract_rect_openings(&host_f, &boxes, &mut stats)?;
-        self.record_rect_fast(&stats);
         let merged = crate::csg::ClippingProcessor::consolidate_coplanar(cut_f);
         // Emit as a local-frame mesh (small positions + origin), then run the SAME
         // hygiene the production output applies — in the small frame, where it is
@@ -480,9 +479,10 @@ impl Execution {
         hygiene::clean_void_output(&mut out);
 
         // Self-check: never emit a non-watertight cut; defer to the exact kernel.
-        if !param_cut_watertight(&out) {
+        if !crate::exact_topology::strict_closed_mesh(&out) {
             return None;
         }
+        self.record_rect_fast(&stats);
         crate::rect_fast::param_record_fire();
         Some(out)
     }
@@ -620,8 +620,8 @@ impl Execution {
         // adjacent cells share edges → watertight), which over-fragments faces an
         // opening doesn't reach. Run the result through the SAME coplanar merge
         // the exact path uses (i_overlay union per plane) to collapse those back
-        // to minimal triangles — keeps it watertight and un-bloated.
-        out.map(crate::csg::ClippingProcessor::consolidate_coplanar)
+        // to minimal triangles; a merge that would tear a closed cut keeps the raw one.
+        out.map(crate::rect_fast::consolidate_keeping_closed)
     }
 
     /// Cut a plan-rotated wall's openings in the wall's own axis-aligned,
@@ -1370,10 +1370,8 @@ impl Execution {
                             && covers(open_min_f32.z, open_max_f32.z, result_min.z, result_max.z)
                     };
                     if aabb_engulfs && opening_engulfs_host_solid(&result, opening_mesh) {
-                        // Mark the host consumed so the element pipeline keeps
-                        // the empty result instead of falling back to the un-cut
-                        // host.
-                        self.record_void_consumed_host(element_id);
+                        // The empty result marks the host consumed
+                        // (`program::openings::execute`).
                         result = Mesh::default();
                         host_mutated = true;
                         break;
@@ -1687,5 +1685,7 @@ mod batch_cutter_tests;
 mod cut_effect_count_tests;
 #[cfg(test)]
 mod single_cut_outcome_tests;
+#[cfg(test)]
+mod consumed_host_tests;
 #[cfg(test)]
 mod program_tests;

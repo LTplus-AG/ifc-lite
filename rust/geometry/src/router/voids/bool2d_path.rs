@@ -40,7 +40,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
 
-use super::geom::{mesh_signed_volume, param_cut_watertight};
+use super::geom::mesh_signed_volume;
 use super::{world_host_bounds, VoidContext};
 use crate::bool2d::{subtract_multiple_2d_counted, subtract_staged_2d_counted};
 use crate::extrusion::{apply_transform, extrude_profile, extrude_profile_watertight};
@@ -163,7 +163,7 @@ impl Execution {
         apply_transform(&mut out, &wt);
         out.origin = origin;
         out.clean_degenerate();
-        if !param_cut_watertight(&out) {
+        if !crate::exact_topology::strict_closed_mesh(&out) {
             return None;
         }
 

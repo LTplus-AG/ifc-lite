@@ -507,6 +507,9 @@ export class IfcLiteBridge {
     );
   }
 
+  planSectionExport(content: Uint8Array, planes: string, trim: boolean): string {
+    return this.runExport('planSectionExport', content, api => api.planSectionExport(content, planes, trim));
+  }
   /** Plan coordinate compatibility patches; all domain math remains in Rust. */
   planMapConversionNormalization(content: Uint8Array): string {
     return this.runExport('planMapConversionNormalization', content, api => api.planMapConversionNormalization(content));

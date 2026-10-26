@@ -1,0 +1,8 @@
+{
+  "status": "qualified",
+  "source": "9597ecb45ea648c3f3e2c6cb077dcb7fcfcca7f6",
+  "base": "8e2778ca041f027ab95d59532ce43d18bb42dab6",
+  "manifestSha256": "8ff32a3ac6341a67cc3604b75badbb8201e16210505863171d9059bf4c5f278e",
+  "controllerSha256": "84e8f11e6f31103d6521b3941161c67eae038ebece67f4cfac804cee7e22aa0d",
+  "scope": "Ordered geometry FNV verification before the unchanged original five-round timing helper. All original host/noise/thermal/throttle/identity guards remain binding."
+}

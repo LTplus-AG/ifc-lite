@@ -1,0 +1,11 @@
+--- a/rust/diff/src/transport_result.rs
++++ b/rust/diff/src/transport_result.rs
+@@ -16,7 +16,7 @@
+     let entries:Vec<_>=core.entries.iter().map(|e|{
+         let state=match e.state {DiffState::Added=>"added",DiffState::Deleted=>"deleted",DiffState::Modified=>"modified",DiffState::Unchanged=>"unchanged"};
+         let kinds:Vec<_>=e.change_kinds.iter().map(|k|match k {DiffChangeKind::Data=>"data",DiffChangeKind::Geometry=>"geometry",DiffChangeKind::Container=>"container"}).collect();
+-        let mut v=json!({"key":String::from_utf16_lossy(e.key.units()),"state":state,"changeKinds":kinds});
++        let mut v=json!({"key":e.key,"state":state,"changeKinds":kinds});
+         if let Some(base)=e.base {v["base"]=json!(base.reference);}
+         if let Some(head)=e.head {v["head"]=json!(head.reference);}
+         if let Some(keys)=&e.changed_components {v["changedComponents"]=json!(keys);}

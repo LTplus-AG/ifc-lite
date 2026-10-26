@@ -573,7 +573,7 @@ Each entry is `{ base: string[], head: string[], relation, reason, shares? }` wi
 
 A lineage records *changes*. A key it does not mention was either matched by key (unchanged) or deleted with nothing to carry it forward, and only the sidecar's `deleted` list can tell the two apart: `lineageOfDiff` returns both, `rekeyByLineage` passes an unmentioned key through as `unchanged` unless the list names it, and a lineage handed over without the list loses no row.
 
-`rekeyByLineage` is pure and table-agnostic. Merges and replacements rekey under any policy; a split follows the policy: `copy-to-all` (every piece inherits the row), `largest-share` (the piece with the largest share inherits it — without `shares`, or on a tie, the row is orphaned rather than guessed), or `orphan-on-split`. `keyAliasesFromLineage` turns the 1:1 entries into `keyAliases` for the next diff, on exactly the rules `keyAliasesFromSidecar` applies.
+`rekeyByLineage` is pure and table-agnostic. Merges and replacements rekey under any policy; a split follows the policy: `copy-to-all` (every piece inherits the row), `largest-share` (the piece with the largest share inherits it — missing, empty, mismatched, non-finite or negative shares, or a tied maximum, orphan the row without throwing; zero is valid and shares need not sum to one), or `orphan-on-split`. `keyAliasesFromLineage` turns the 1:1 entries into `keyAliases` for the next diff, on exactly the rules `keyAliasesFromSidecar` applies.
 
 ### The lineage sidecar
 

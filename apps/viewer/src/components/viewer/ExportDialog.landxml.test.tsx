@@ -13,6 +13,8 @@ import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import { render, cleanup, click } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
+import { clearGlobalRefs, setGlobalRendererRef } from '@/hooks/useBCF';
+import type { Renderer } from '@ifc-lite/renderer';
 import { ExportDialog } from './ExportDialog.js';
 import type { TerrainImageryDrape } from '@/lib/terrain-imagery/drape-state.js';
 
@@ -256,6 +258,27 @@ describe('ExportDialog LandXML→IFC conversion (#4937)', () => {
     } as never;
     return model;
   }
+
+  it('does not offer section trimming for a download that never applies it (#7711)', () => {
+    const { sectionPlane } = useViewerStore.getState();
+    setGlobalRendererRef({ current: { getCamera: () => ({ getSceneBounds: () => ({ min: { x: -5, y: -4, z: -3 }, max: { x: 5, y: 4, z: 3 } }) }) } as unknown as Renderer });
+    try {
+      useViewerStore.setState({
+        ...fixtureModels(terrainWithDocument('survey.xml')), dirtyModels: new Set(),
+        sectionPlane: { ...sectionPlane, enabled: true, flipped: false, custom: { normal: [1, 0, 0], distance: 0, pickedAt: [0, 0, 0], tangent: [0, 1, 0], bitangent: [0, 0, 1] } },
+      });
+      render(<ExportDialog surface="ribbon" />);
+      openDialog();
+      const visible = [...document.querySelectorAll('label')].find((label) => label.textContent === 'Export Visible Only');
+      const toggle = visible?.parentElement?.parentElement?.querySelector('[role="switch"]');
+      assert.ok(toggle, 'Export Visible Only is offered beside the LandXML conversion');
+      click(toggle);
+      assert.match(document.body.textContent ?? '', /LandXML will be converted to IFC4X3/);
+      assert.equal(document.getElementById('trim-section-export'), null, 'the LandXML download ignores section options, so none are offered');
+    } finally {
+      clearGlobalRefs();
+    }
+  });
 
   it('records one completed IFC download with the initiating surface (#5844)', async () => {
     useViewerStore.setState({

@@ -1143,3 +1143,20 @@ fn a_nonconforming_application_name_still_writes_the_skeleton() {
     let text = String::from_utf8(bytes).unwrap();
     assert!(text.contains("'LTplus  - ifc-lite - '"), "{text}");
 }
+
+/// The header note reaches the caller on both paths, and a conforming
+/// application adds none (#8154).
+#[test]
+fn the_header_note_is_reported_by_the_plan_and_the_skeleton() {
+    let dashed = || ExportingApplication::new("Example-Org", "ExampleApp", "example-app", "2.1", CHANGED_AT);
+    let note = |findings: &[ValidationFinding]| findings.iter().filter(|f| f.message.contains("header agreement")).count();
+    let (_, report) = export(&source("IFC4", false), vec![rename(10)], PlanContext::new().with_application(dashed()));
+    assert_eq!(note(&report.findings), 1, "{:?}", report.findings);
+    let (_, report) = export(&source("IFC4", false), vec![rename(10)], context());
+    assert_eq!(note(&report.findings), 0, "{:?}", report.findings);
+    let root = |n: u128| SkeletonRoot::new(GlobalId(n));
+    let (_, findings) = skeleton_with_findings(&Skeleton::new(root(1), root(2), root(3)).with_application(dashed())).unwrap();
+    assert_eq!(note(&findings), 1, "{findings:?}");
+    let (_, findings) = skeleton_with_findings(&Skeleton::new(root(1), root(2), root(3)).with_application(app())).unwrap();
+    assert!(findings.is_empty(), "{findings:?}");
+}

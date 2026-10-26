@@ -121,7 +121,8 @@ fn length_unit(emit: &mut Emit, name: &str, metres: f64, metre: u32) -> Result<u
     )
 }
 
-/// The skeleton's bytes.
+/// The skeleton's bytes. A header that doesn't follow buildingSMART's
+/// agreement is not reported here; [`skeleton_with_findings`] reports it.
 ///
 /// # Errors
 /// A number is not finite, a direction is zero length, the three roots do
@@ -133,7 +134,8 @@ pub fn skeleton(s: &Skeleton) -> Result<Vec<u8>, String> {
 
 /// [`skeleton`], reporting rather than refusing an application it cannot
 /// attribute the skeleton to: the skeleton is then written unattributed, and
-/// a finding says why.
+/// a finding says why. A header that doesn't follow buildingSMART's
+/// agreement is a finding too.
 ///
 /// # Errors
 /// As [`skeleton`], but for the application.
@@ -155,13 +157,13 @@ fn build(s: &Skeleton, strict: bool) -> Result<(Vec<u8>, Vec<ValidationFinding>)
         out: &mut out,
     };
     // The exporting application owns what the skeleton creates.
-    let identity = match s.application.as_ref().map(|app| Identity::resolve(app, &mut findings)) {
-        Some(Err(message)) if strict => return Err(message),
-        Some(Err(message)) => {
+    let identity = match s.application.as_ref().map(|app| Identity::resolve(app, &mut findings)).transpose() {
+        Err(message) if strict => return Err(message),
+        Err(message) => {
             findings.push(ValidationFinding::new(None, message));
             None
         }
-        resolved => resolved.and_then(Result::ok),
+        Ok(identity) => identity,
     };
     let history = owner_slot(identity.as_ref(), &mut emit)?;
     let quoted = |v: &str| format!("'{}'", escape(v));

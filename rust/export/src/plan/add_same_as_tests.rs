@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Reused bodies: an Add with the same geometry as a product in the source,
+//! Reused bodies: an Add with the body of a product in the source,
 //! through new representations that list the source's own items, and what
 //! is refused. Synthetic fixtures only.
 
@@ -184,7 +184,9 @@ fn a_reused_body_is_refused_when_its_source_cannot_lend_one() {
             (Vec::new(), wall(ObjectRef::Guid("0000000000000000009999".into())), "not found"),
             (Vec::new(), wall(ObjectRef::Id(14)), "has no representation"),
             (delete(10), wall(ObjectRef::Id(10)), "deleted by this plan"),
-            (delete(104), wall(ObjectRef::Id(10)), "representation #62 is in a context the output does not have"),
+            (delete(104), wall(ObjectRef::Id(10)), "representation #62 is in a context this plan removes"),
+            (delete(76), wall(ObjectRef::Id(10)), "representation #61: item #76 is removed by this plan"),
+            (delete(61), wall(ObjectRef::Id(10)), "representation #61 is removed by this plan"),
             (Vec::new(), wall(ObjectRef::Id(120)), "IFCWALLTYPE, not a product"),
             (Vec::new(), wall(ObjectRef::Id(10)).with_style(SurfaceColour { rgb: [1.0, 0.0, 0.0], transparency: 0.0 }), "keeps its source's colour"),
         ];
@@ -192,6 +194,21 @@ fn a_reused_body_is_refused_when_its_source_cannot_lend_one() {
             let reason = refusal(&source, before, obj);
             assert!(reason.contains(want), "{schema}: {reason}");
         }
+        let empty = String::from_utf8(source).unwrap().replace("'Curve2D',(#73)", "'Curve2D',()");
+        let reason = refusal(empty.as_bytes(), Vec::new(), wall(ObjectRef::Id(10)));
+        assert!(reason.contains("representation #62 has no items"), "{schema}: {reason}");
+    }
+}
+
+#[test]
+fn a_body_a_patch_replaces_is_not_reused() {
+    for schema in SCHEMAS {
+        let source = door_scene(schema);
+        let mesh = TriangleMesh::new(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], vec![[0, 2, 1], [0, 1, 3], [1, 2, 3], [0, 3, 2]]);
+        let reshape = vec![(ObjectRef::Id(200), Disposition::Patch(Patch::new().with_geometry(GeometryPatch::new(mesh))))];
+        let door = copy(1, IfcClass::Door, ObjectRef::Guid(DOOR.into()), Some(ObjectRef::Id(70)), 5.0);
+        let reason = refusal(&source, reshape, door);
+        assert!(reason.contains(&format!("{DOOR} gets a new body from a patch in this plan")), "{schema}: {reason}");
     }
 }
 

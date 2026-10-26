@@ -48,6 +48,8 @@ pub(crate) struct AddState<'a, 'h> {
     index: &'a FileIndex<'a>,
     schema: &'a str,
     removed: &'a HashSet<u32>,
+    /// Objects a geometry patch of this plan gives a new body.
+    reshaped: &'a HashSet<u32>,
     history: &'a mut Histories<'h>,
     added: HashMap<String, Added>,
     /// Each added object's placement, by id, for children placed under it.
@@ -75,11 +77,13 @@ impl<'a, 'h> AddState<'a, 'h> {
     /// builds makes, so a plan whose Adds are all refused writes nothing.
     /// `body_context` is the one this plan's geometry patches already wrote
     /// into, if any; otherwise the file's own is looked up, and one is
-    /// synthesized only when there is none.
+    /// synthesized only when there is none. `reshaped` is the objects this
+    /// plan's geometry patches give a new body.
     pub(crate) fn new(
         index: &'a FileIndex<'a>,
         schema: &'a str,
         removed: &'a HashSet<u32>,
+        reshaped: &'a HashSet<u32>,
         history: &'a mut Histories<'h>,
         body_context: Option<u32>,
     ) -> Self {
@@ -87,6 +91,7 @@ impl<'a, 'h> AddState<'a, 'h> {
             index,
             schema,
             removed,
+            reshaped,
             history,
             added: HashMap::new(),
             placement_of_added: HashMap::new(),

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Reused bodies for [`super::super::Disposition::Add`]: a new product with
-//! the same geometry as a product already in the source. A child of `add`,
-//! which builds through it.
+//! the body representations of a product already in the source. A child of
+//! `add`, which builds through it. Openings that void the source, its
+//! projections and its layer assignments are not carried; an Add that needs
+//! openings declares its own.
 //!
 //! The new product gets its own `IfcProductDefinitionShape` and its own
 //! representations, one per representation of the source product, in the
@@ -33,7 +35,8 @@ pub(super) struct ReusedRepresentation {
 impl AddState<'_, '_> {
     /// The representations a [`Representation::SameAs`] body repeats, or why
     /// it cannot: the source is not a live product of the source file, has no
-    /// representation, or loses part of one to this plan's deletes.
+    /// representation, gets a new body from a patch, or loses part of one to
+    /// this plan's deletes.
     pub(super) fn check_same_as(&self, obj: &NewObject) -> Result<Option<Vec<ReusedRepresentation>>, String> {
         let Representation::SameAs(source) = &obj.representation else { return Ok(None) };
         if obj.style.is_some() {
@@ -46,6 +49,9 @@ impl AddState<'_, '_> {
         if !self.is_a(&class, "IFCPRODUCT") {
             return Err(format!("representation source {source} is {class}, not a product"));
         }
+        if self.reshaped.contains(&id) {
+            return Err(format!("representation source {source} gets a new body from a patch in this plan; reuse its mesh instead"));
+        }
         let (index, schema) = (self.index, self.schema);
         let entity = |r: u32| index.type_of(r).unwrap_or_default();
         let shape = scalar_attr(index, schema, id, &class, "Representation");
@@ -53,22 +59,31 @@ impl AddState<'_, '_> {
         if reps.is_empty() {
             return Err(format!("representation source {source} has no representation"));
         }
-        let live = |r: &u32| index.contains(*r) && !self.removed.contains(r);
         let mut out = Vec::with_capacity(reps.len());
         for rep in reps {
+            let at = format!("representation source {source}: representation #{rep}");
             let e = entity(rep);
-            let context = scalar_attr(index, schema, rep, &e, "ContextOfItems");
-            let Some(context) = context.filter(live) else {
-                return Err(format!("representation source {source}: representation #{rep} is in a context the output does not have"));
+            let Some(context) = scalar_attr(index, schema, rep, &e, "ContextOfItems").filter(|c| index.contains(*c)) else {
+                return Err(format!("{at} has no readable context"));
             };
+            if self.removed.contains(&context) {
+                return Err(format!("{at} is in a context this plan removes"));
+            }
+            if self.removed.contains(&rep) {
+                return Err(format!("{at} is removed by this plan"));
+            }
             let items = list_attr(index, schema, rep, &e, "Items").unwrap_or_default();
-            if !live(&rep) || items.is_empty() || !items.iter().all(live) {
-                return Err(format!("representation source {source}: representation #{rep} has items this plan deletes, or none"));
+            if items.is_empty() {
+                return Err(format!("{at} has no items"));
+            }
+            if let Some(item) = items.iter().find(|i| !index.contains(**i) || self.removed.contains(i)) {
+                let why = if index.contains(*item) { "is removed by this plan" } else { "is not in the source" };
+                return Err(format!("{at}: item #{item} {why}"));
             }
             let line = index.raw_line(rep).unwrap_or_default();
             let raw = |attr| crate::step_text::attribute_of(&line, attribute_index(schema, &e, attr)?);
             let (Some(identifier), Some(rep_type)) = (raw("RepresentationIdentifier"), raw("RepresentationType")) else {
-                return Err(format!("representation source {source}: representation #{rep} does not scan"));
+                return Err(format!("{at} does not scan"));
             };
             out.push(ReusedRepresentation { entity: e, context, identifier, rep_type, items });
         }

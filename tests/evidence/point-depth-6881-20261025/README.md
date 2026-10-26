@@ -111,7 +111,7 @@ Preparation receipts:
 - Protocol change before the final cohort, made after observing that attempt: the cross-sample
   identity gate (`pick-depth-6881-identity.mjs`) still requires exact geometry, viewport, camera
   matrices, camera position, texel inputs, entity ids, geometry items and hit/miss status, but allows
-  `worldXYZ` to drift by at most 1 mm per axis. The observed drift was 0.17 mm. A replay of the
+  `worldXYZ` to drift by at most 1 mm per axis. The largest observed drift was 0.21 mm (y). A replay of the
   recorded samples accepts the seven valid samples and the refused one and rejects a 10 mm drift,
   an id change, a hit-to-miss change and a 1e-9 camera change. Same-render depth and world equality
   between candidate and full-copy stays exact in the 140 functional comparisons; this tolerance
@@ -212,6 +212,13 @@ and ID copies from the same submitted render exactly, including decoded model,
 item and world position. Nine authored-family comparisons at each DPR also
 matched, for 140 successful comparisons in total. The corrupted-depth inverse
 rejected at both DPRs.
+
+That accepted run used an earlier revision of `pick-depth-6881-observer.mjs` (`d14ac6c6`); the
+observer was later changed to count destroyed oracle buffers before clearing them (`4325ce90`).
+The qualification was rerun on the harness committed here (job `d48bcdb1`, same build, fixtures
+and controls) and again passed all 140 comparisons, with the inverse rejected at both DPRs; see
+[`functional-current-harness-summary.json`](functional-current-harness-summary.json) and
+[the report](functional-current-harness.json.gz).
 
 Both federated models supplied isolated flat-mesh ownership hits. Complete
 geometry fingerprints stayed identical before and after picking. Camera and

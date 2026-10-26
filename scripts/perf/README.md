@@ -599,7 +599,7 @@ The [same-submission GPU oracles](evidence/bounded-depth-readback-6881/README.md
 qualify single-texel extraction against a full-depth copy on hardware, including
 concurrent maps and target replacement. Production family, ID/item/model and georeferenced world-coordinate controls
 match the original renderer, and device destruction retires pending picks. The candidate shares ID/depth staging and keeps per-pick inputs immutable.
-Four complete interleaved fresh-document public-model viewer pairs retain unchanged geometry and hit provenance, reduced mapped bytes, and mixed interaction timings. One pair has unresolved world-coordinate differences without camera/frame receipts; a fifth attempt lost the native browser. Cold-load provenance remains unverified. Real federated viewer qualification is outstanding. No speedup or shipping verdict is accepted. Lesson: a bounded readback and exact
+Four complete interleaved fresh-document public-model viewer pairs retain unchanged geometry and hit provenance, reduced mapped bytes, and mixed interaction timings. One pair has unresolved world-coordinate differences without camera/frame receipts; a fifth attempt lost the native browser. Cold-load provenance remains unverified. At that stage real federated viewer qualification was outstanding and no speedup or shipping verdict was accepted. Lesson: a bounded readback and exact
 GPU sample establish neither complete picking parity nor interaction throughput.
 
 The [resumed qualification](../../tests/evidence/point-depth-6881-20261025/README.md)
@@ -644,7 +644,7 @@ and pinned. T3 navigation refused before the declared model phase, with the
 earlier RAF refusal preserved. The subsequent current-main integration passed
 root renderer tests, full serial root typecheck with both postchecks, lint and
 source gates. Current real-model comparisons, federation and focused physical
-performance remain held; CPU integration and cleanup qualification do not
+performance remained held at that point; CPU integration and cleanup qualification do not
 replace them. No browser or GPU cohort ran for the integration update.
 
 A subsequent normal main integration includes merged #7361 without copying its
@@ -655,7 +655,7 @@ corrected root tests, full serial typecheck and source gates pass. Diagnostic
 method retirement also preserves later owners. These are lifecycle invariants,
 not native GPU acceptance. The current app/observer pair must be rebuilt and
 frozen before the separate T3 correctness session. Original coordinates,
-deadlines, refusals and the focused-performance hold remain.
+deadlines and refusals remain recorded; the focused-performance hold stood until the accepted cohort above.
 
 Mounted base and original-draft hover controls also reproduce stale hits and
 misses after newer input, pointer exit/cancel, unmount and ownership changes.

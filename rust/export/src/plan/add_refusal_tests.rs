@@ -276,20 +276,20 @@ fn an_add_keeps_the_owner_history_a_delete_would_take() {
                 .replace("ENDSEC;\nEND-ISO", "#5=IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);\nENDSEC;\nEND-ISO")
         };
         let plan = || vec![(ObjectRef::Id(10), Disposition::Delete), add(object(IfcClass::Wall, gid(26), storey(), Representation::None))];
-        let wall_line = |out: &[u8]| String::from_utf8_lossy(out).lines().find(|l| l.starts_with(&format!("#{}=", id_in(out, gid(26))))).unwrap().to_string();
+        let history = |out: &[u8]| attr(out, schema, id_in(out, gid(26)), "OwnerHistory");
         // Without an application the new wall reuses the source's history,
         // which the delete would otherwise take.
         let (out, report) = run_with(source.as_bytes(), plan(), PlanContext::new());
         assert!(report.refusals.is_empty(), "{schema}: {report:?}");
         assert_eq!(type_in(&out, 5), "IFCOWNERHISTORY", "{schema}: the file's owner history stays");
-        assert!(wall_line(&out).contains(",#5,"), "{schema}: the new wall names it: {}", wall_line(&out));
+        assert_eq!(history(&out), "#5", "{schema}: the new wall names it");
         // With one the wall names its own ADDED history, which is in the
         // output too.
         let (out, report) = run(source.as_bytes(), plan());
         assert_clean(&report, schema);
-        let line = wall_line(&out);
-        let named: u32 = line.split("',#").nth(1).and_then(|r| r.split(',').next()).and_then(|n| n.parse().ok()).expect("owner history ref");
-        assert_eq!(type_in(&out, named), "IFCOWNERHISTORY", "{schema}: the new wall names a live history: {line}");
+        let named = history(&out);
+        let named: u32 = named.trim_start_matches('#').parse().unwrap_or_else(|_| panic!("{schema}: owner history ref {named}"));
+        assert_eq!(type_in(&out, named), "IFCOWNERHISTORY", "{schema}: the new wall names a live history");
     }
 }
 

@@ -49,6 +49,14 @@ pub(super) fn run_with(source: &[u8], dispositions: Vec<(ObjectRef, Disposition)
     (out, report)
 }
 
+/// Attribute `attr` of output record `id`, as STEP text.
+pub(super) fn attr(out: &[u8], schema: &str, id: u32, attr: &str) -> String {
+    let index = FileIndex::scan(out, &Default::default());
+    let entity = index.type_of(id).unwrap_or_default();
+    let idx = super::attrs::attribute_index(schema, &entity, attr).unwrap_or_else(|| panic!("{entity} has no {attr}"));
+    crate::step_text::attribute_of(&index.raw_line(id).unwrap(), idx).unwrap()
+}
+
 pub(super) fn assert_clean(report: &WriteReport, what: &str) {
     assert!(report.refusals.is_empty(), "{what}: refusals {:?}", report.refusals);
     assert!(report.findings.is_empty(), "{what}: findings {:?}", report.findings);

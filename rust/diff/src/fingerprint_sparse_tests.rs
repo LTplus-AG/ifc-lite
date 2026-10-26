@@ -33,6 +33,10 @@ fn issue_8042_sorted_entries_keep_every_hole_and_duplicate() {
     let json = stringify(&JsonValue::Array(sorted_entries(&input)));
     assert_eq!(json, "[{\"name\":\"A\",\"value\":\"Infinity\"},{\"name\":\"A\",\"value\":\"Infinity\"},{\"name\":\"B\",\"value\":\"Infinity\"},null,null]");
     assert_eq!(sorted_entries(&input), sorted_entries(&reordered));
+    // Hole positions are not content: the oracle's stable sort moves them last.
+    let moved: SparseCollection<_> = vec![entry("B"), entry("A"), entry("A"), Slot::Hole, Slot::Hole].into_iter().collect();
+    assert_eq!(input, moved);
+    assert_ne!(input, reordered);
 }
 
 #[test]

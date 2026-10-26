@@ -251,3 +251,7 @@ fn string_array(values: &[JsString]) -> JsonValue {
 #[cfg(test)]
 #[path = "fingerprint_sparse_tests.rs"]
 mod sparse_tests;
+
+#[cfg(test)]
+#[path = "fingerprint_counted_tests.rs"]
+mod counted_tests;

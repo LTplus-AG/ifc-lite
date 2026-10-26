@@ -23,7 +23,7 @@ test.skipIf(!existsSync(binary) || !existsSync(glue))('sync-first initialization
   syncBuiltinESMExports();
   try {
     await Promise.all([initDiff(), initDiff({ module_or_path: new Uint8Array([0]) })]);
-    expect(reads.mock.calls.filter(([path]) => String(path).endsWith('ifc-lite-diff_bg.wasm'))).toHaveLength(0);
+    expect(reads).not.toHaveBeenCalled();
     expect(instantiations).not.toHaveBeenCalled();
     expect(() => diffModelConstructor()).not.toThrow();
   } finally {

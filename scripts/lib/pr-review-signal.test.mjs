@@ -95,6 +95,10 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
     'Detect changes',
     'Build packages + WASM',
     'Changed tests observe production',
+    // #7955: the oracle lane is planned, then fanned out over a fixed 32-shard
+    // matrix; the verdict above keeps the original check name.
+    'Changed tests observe production (plan)',
+    ...Array.from({ length: 32 }, (_, index) => `Changed tests observe production (shard ${index + 1}/32)`),
     'Typecheck',
     'Lint',
     // Package suites in four shards, so the 19.5 min single lane stops being
@@ -132,7 +136,7 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
   ]) {
     assert.ok(names.includes(observed), `derived set is missing the observed lane "${observed}"`);
   }
-  assert.equal(names.length, 48);
+  assert.equal(names.length, 81);
 });
 
 test('FAIL CLOSED: an empty workflow file is NO_WORKFLOW_TEXT, not an empty lane set', () => {
@@ -280,7 +284,9 @@ test('the REAL test.yml maps every viewer shard to the template the REAL rollup 
   }
   const observed = PR3581_ROLLUP.map((c) => c.name);
   assert.ok(
-    observed.includes([...new Set(aliases.values())][0]),
+    // The viewer alias specifically: other matrix jobs (the #7955 oracle shards)
+    // derive their own templates, so the map holds more than one value.
+    observed.includes(aliases.get('Viewer tests (shard 0)')),
     'the derived template must be a string PR #3581 actually published',
   );
 });

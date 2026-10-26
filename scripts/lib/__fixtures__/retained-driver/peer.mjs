@@ -35,7 +35,8 @@ export class SmlibWorkerTransport {
       const view = new DataView(frame), op = view.getUint32(8, true);
       this.commands.push({ op, slot: frame.byteLength >= 32 ? view.getUint32(28, true) : undefined });
       let bytes = new Uint8Array();
-      if (op === 1) { bytes = new Uint8Array(8); new DataView(bytes.buffer).setBigUint64(0, this.session, true); }
+      if (op === this.failOpcode) { /* Typed kernel refusal has no success payload. */ }
+      else if (op === 1) { bytes = new Uint8Array(8); new DataView(bytes.buffer).setBigUint64(0, this.session, true); }
       else if (op === 8) { if (!this.objects.delete(view.getUint32(28, true))) throw new Error('fixture: unknown release'); }
       else if (op === 5 || op === 17) bytes = this.allocate();
       else if (op === 18) {

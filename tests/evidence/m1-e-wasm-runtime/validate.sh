@@ -10,7 +10,16 @@ run() {
   printf 'M1-E RESULT %s %s\n' "$status" "$*"
   if [ "$status" -ne 0 ]; then result=1; fi
 }
-git rev-parse HEAD
+# Fleet clones transfer committed objects, not local branch names.
+expected_base=fb81254cb735f2f426981223f3fd92316ad784ea
+if ! git rev-parse --verify m1/c-executor-core >/dev/null 2>&1; then
+  git branch m1/c-executor-core "$expected_base" || exit 1
+fi
+if [ "$(git rev-parse m1/c-executor-core)" != "$expected_base" ]; then
+  printf 'Refusing mismatched C base
+'; exit 1
+fi
+git rev-parse HEAD m1/c-executor-core
 rustc --version
 node --version
 run cargo clippy --workspace --all-targets -- -D warnings

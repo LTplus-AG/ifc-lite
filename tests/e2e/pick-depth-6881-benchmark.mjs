@@ -13,22 +13,12 @@ import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { sameSampleIdentity } from './pick-depth-6881-identity.mjs';
 import { awaitQuietHost } from './pick-depth-6881-host.mjs';
+import { boundEvaluations, tapDriverErrors, skipWhenFixturesMissing } from './pick-depth-6881-common.mjs';
 
 const [configuration, output] = process.argv.slice(2);
 if (!configuration || !output) throw Error('Arguments: frozen cohort configuration, new output directory');
 const config = JSON.parse(readFileSync(configuration, 'utf8'));
 const hash = value => createHash('sha256').update(value).digest('hex');
-function boundEvaluations(page) {
-  const evaluate = page.evaluate.bind(page);
-  page.evaluate = async (...args) => {
-    let timer;
-    try {
-      return await Promise.race([evaluate(...args), new Promise((_, reject) => {
-        timer = setTimeout(() => reject(Error('Hover page phase exceeded its fixed 30-second deadline')), 30000);
-      })]);
-    } finally { clearTimeout(timer); }
-  };
-}
 const inventory = (directory, prefix = '') => readdirSync(directory).flatMap(name => {
   const path = `${directory}/${name}`, relative = `${prefix}${name}`, stat = lstatSync(path);
   if (stat.isSymbolicLink()) throw Error('Frozen distribution contains a symlink');
@@ -66,6 +56,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const { launchNativeChrome, readPhysicalSession, isPhysicalConsole, readHostAdmission } = await import(
   resolve(here, '../evidence/hidpi-navigation-6709/native-20261023/native-platform.mts'));
 mkdirSync(output);
+skipWhenFixturesMissing(output, config.scenarios.flatMap(scenario => scenario.fixtures.map(fixture => fixture.path)));
 const tap = `${output}/hover.js`;
 await build({ entryPoints: [resolve(here, 'pick-depth-6881-hover.mjs')], bundle: true, format: 'esm', outfile: tap });
 let current = config.arms.base.buildRoot;
@@ -74,7 +65,7 @@ const server = await startStaticServer({ port: 0, host: '127.0.0.1', root: () =>
 const origin = `http://127.0.0.1:${server.address().port}`;
 const records = [], references = new Map();
 const report = { configSha256: hash(readFileSync(configuration)), scope: 'Mounted viewer hover, 5 interleaved pairs per public-model scenario at DPR1; no loading-speed claim',
-  harness: Object.fromEntries(['pick-depth-6881-benchmark.mjs', 'pick-depth-6881-hover.mjs', 'pick-depth-6881-observer.mjs', 'pick-depth-6881-identity.mjs', 'pick-depth-6881-host.mjs'].map(name => [name, hash(readFileSync(resolve(here, name)))])),
+  harness: Object.fromEntries(['pick-depth-6881-benchmark.mjs', 'pick-depth-6881-hover.mjs', 'pick-depth-6881-observer.mjs', 'pick-depth-6881-identity.mjs', 'pick-depth-6881-host.mjs', 'pick-depth-6881-common.mjs'].map(name => [name, hash(readFileSync(resolve(here, name)))])),
   accepted: false, probe: config.probe === true, records, summary: [] };
 const median = values => {
   const sorted = values.slice().sort((a, b) => a - b), middle = sorted.length >> 1;
@@ -92,12 +83,7 @@ for (const scenario of config.scenarios) if (scenario.positions !== undefined &&
 const defaultPositions = [0.3, 0.5, 0.7].flatMap(y => [0.3, 0.5, 0.7].map(x => [x, y]));
 const p95 = values => values.slice().sort((a, b) => a - b)[Math.ceil(values.length * 0.95) - 1];
 let browser, active;
-const stderr = process.stderr.write.bind(process.stderr);
-process.stderr.write = function(chunk, ...args) {
-  const line = String(chunk);
-  if (active && /ERROR:gpu\/|GL_INVALID_|uninitialized SharedImage|GPU process.*crash/i.test(line)) active.driverErrors.push(line.trim());
-  return stderr(chunk, ...args);
-};
+const restoreStderr = tapDriverErrors(() => active, 'driverErrors');
 try {
   const deadline = Date.now() + 25 * 60 * 1000;
   for (const scenario of config.scenarios) for (const sample of interleavedSchedule(5, true)) {
@@ -111,7 +97,7 @@ try {
       browser = await launchNativeChrome(chromium);
       const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
       const page = await context.newPage(); page.setDefaultTimeout(30000);
-      boundEvaluations(page);
+      boundEvaluations(page, 'Hover page phase');
       page.on('pageerror', error => record.errors.push(String(error)));
       const logs = []; page.on('console', message => logs.push(message.text()));
       await context.addInitScript(() => {
@@ -222,7 +208,7 @@ try {
   }
 } catch (error) { report.error = String(error); process.exitCode = 1; }
 finally {
-  process.stderr.write = stderr;
+  restoreStderr();
   server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
   writeFileSync(`${output}/result.json`, JSON.stringify(report, null, 2) + '\n');
   console.log(JSON.stringify({ accepted: report.accepted, error: report.error, output, summary: report.summary }));

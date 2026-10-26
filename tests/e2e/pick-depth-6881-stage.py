@@ -9,12 +9,16 @@ An interrupted destination is inspected, never overwritten by another attempt.
 """
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
 import tarfile
 
 job, checkout, destination = sys.argv[1:]
+# The producer host (an ssh alias) and its worker jobs directory are environment-specific.
+host = os.environ.get('IFC_6881_PRODUCER_HOST', 'ifc-pc-worker')
+jobs_root = os.environ.get('IFC_6881_PRODUCER_JOBS_ROOT', '/home/louistrue/build-workers/worker-state/jobs')
 if not all(c in '0123456789abcdef-' for c in job) or len(job) != 36:
     raise ValueError('Expected original worker job UUID')
 source = Path(checkout).resolve()
@@ -25,7 +29,7 @@ root.mkdir(parents=True)
 remote = r'''
 import hashlib, io, json, subprocess, sys, tarfile
 from pathlib import Path
-p = Path('/home/louistrue/build-workers/worker-state/jobs') / sys.argv[1] / 'receipt.json'
+p = Path(sys.argv[2]) / sys.argv[1] / 'receipt.json'
 r = json.loads(p.read_text())
 assert r['state'] == 'completed' and r['exitCode'] == 0 and r['sourceUnchanged']
 assert r['sourceBefore'] == r['sourceAfter']
@@ -52,7 +56,7 @@ archive_path = root / 'transfer.tar'
 with archive_path.open('xb') as output:
     result = subprocess.run(['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
                              '-o', 'ConnectTimeout=10', '-o', 'ForwardAgent=no',
-                             'ifc-pc-worker', 'python3', '-', job], input=remote.encode(),
+                             host, 'python3', '-', job, jobs_root], input=remote.encode(),
                             stdout=output, check=True, timeout=900)
 with tarfile.open(archive_path) as archive:
     proof = json.load(archive.extractfile('build-proof.json'))

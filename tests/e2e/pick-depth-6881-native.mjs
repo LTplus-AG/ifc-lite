@@ -11,6 +11,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { boundEvaluations, tapDriverErrors, skipWhenFixturesMissing } from './pick-depth-6881-common.mjs';
 
 const [root, output, receiptPath] = process.argv.slice(2);
 if (!root || !output || !receiptPath) throw Error('Arguments: built checkout, new output directory, original build receipt');
@@ -22,17 +23,6 @@ const head = git('rev-parse', 'HEAD');
 if (head !== receipt.sourceAfter.commit || git('status', '--porcelain')) throw Error('Source pin/cleanliness changed');
 mkdirSync(output); // Never reuse an earlier attempt's evidence directory.
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
-function boundEvaluations(page) {
-  const evaluate = page.evaluate.bind(page);
-  page.evaluate = async (...args) => {
-    let timer;
-    try {
-      return await Promise.race([evaluate(...args), new Promise((_, reject) => {
-        timer = setTimeout(() => reject(Error('Native page phase exceeded its fixed 30-second deadline')), 30000);
-      })]);
-    } finally { clearTimeout(timer); }
-  };
-}
 const require = createRequire(`${root}/package.json`);
 process.env.DEBUG = [process.env.DEBUG, 'pw:browser'].filter(Boolean).join(',');
 const { chromium } = require('@playwright/test');
@@ -63,9 +53,11 @@ for (const [entry, outfile] of [['pick-depth-6881-observer.mjs', observer], ['pi
 }
 const fixtures = ['ara3d/AC20-FZK-Haus.ifc', 'buildingsmart/Building-Architecture.ifc'];
 const manifest = JSON.parse(readFileSync(`${root}/tests/models/manifest.json`, 'utf8'));
+const fixtureRoot = process.env.IFC_6881_FIXTURE_ROOT ?? `${root}/tests/models`;
+skipWhenFixturesMissing(output, fixtures.map(name => `${fixtureRoot}/${name}`));
 const models = fixtures.map(name => {
   const expected = manifest.files.find(row => row.path === name);
-  const path = `${process.env.IFC_6881_FIXTURE_ROOT ?? `${root}/tests/models`}/${name}`, bytes = readFileSync(path);
+  const path = `${fixtureRoot}/${name}`, bytes = readFileSync(path);
   if (hash(bytes) !== expected?.sha256) throw Error(`Public fixture identity mismatch: ${name}`);
   return { name, path, bytes: bytes.length, sha256: expected.sha256 };
 });
@@ -74,17 +66,12 @@ const server = await startStaticServer({ port: 0, host: '127.0.0.1', root: () =>
   extra: new Map([['/__6881/oracle.js', observer], ['/__6881/hover.js', hover], ['/__6881/families.js', families], ['/__6881/families.html', familyPagePath]]),
   onServe: (url, path) => served.set(url, { sha256: hash(readFileSync(path)), path }) });
 const report = { head, buildReceipt: receipt.id, command: process.argv, fixturePins: models, sourceInputs,
-  harness: Object.fromEntries(['pick-depth-6881-native.mjs', 'pick-depth-6881-observer.mjs', 'pick-depth-6881-hover.mjs', 'pick-depth-6881-families.mjs', 'pick-depth-6881-controls.mjs'].map(name => [name, hash(readFileSync(resolve(here, name)))])),
+  harness: Object.fromEntries(['pick-depth-6881-native.mjs', 'pick-depth-6881-observer.mjs', 'pick-depth-6881-hover.mjs', 'pick-depth-6881-families.mjs', 'pick-depth-6881-controls.mjs', 'pick-depth-6881-common.mjs'].map(name => [name, hash(readFileSync(resolve(here, name)))])),
   scope: 'Native same-render functional comparisons; no hover performance acceptance', runs: [], accepted: false };
 let browser;
 let activeRun;
 let activePage;
-const stderr = process.stderr.write.bind(process.stderr);
-process.stderr.write = function(chunk, ...args) {
-  const line = String(chunk);
-  if (activeRun && /ERROR:gpu\/|GL_INVALID_|uninitialized SharedImage|GPU process.*crash/i.test(line)) activeRun.gpuErrors.push(line.trim());
-  return stderr(chunk, ...args);
-};
+const restoreStderr = tapDriverErrors(() => activeRun, 'gpuErrors');
 try {
   const { runGeometryControls } = await import(resolve(here, 'pick-depth-6881-controls.mjs'));
   report.fingerprintControls = await runGeometryControls((await import(pathToFileURL(hover).href)).geometryWitness);
@@ -98,7 +85,7 @@ try {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: dpr });
     const page = await context.newPage();
     activePage = page;
-    boundEvaluations(page);
+    boundEvaluations(page, 'Native page phase');
     page.setDefaultTimeout(30000);
     page.on('pageerror', error => run.errors.push(String(error)));
     const logs = []; run.console = logs; run.loads = [];
@@ -227,7 +214,7 @@ try {
     run.sessionAfter = readPhysicalSession();
     if (!isPhysicalConsole(run.sessionAfter)) throw Error('Physical session changed');
     const familyPage = await context.newPage();
-    boundEvaluations(familyPage);
+    boundEvaluations(familyPage, 'Native page phase');
     familyPage.on('pageerror', error => run.errors.push(String(error)));
     await familyPage.goto(`http://127.0.0.1:${server.address().port}/__6881/families.html`);
     await familyPage.bringToFront();
@@ -260,7 +247,7 @@ try {
   process.exitCode = 1;
 } finally {
   if (browser?.isConnected()) report.cleanupError = await closeBrowserWithTimeout(browser, 15000);
-  process.stderr.write = stderr;
+  restoreStderr();
   server.closeAllConnections();
   await new Promise(resolve => server.close(resolve));
   report.served = [...served.entries()];

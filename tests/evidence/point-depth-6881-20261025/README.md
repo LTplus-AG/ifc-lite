@@ -91,6 +91,12 @@ Preparation receipts:
   gate before any sample: foreign `cargo test`/`rustc` processes were running on
   Pop. They were not interrupted. See [`hover-host-busy-refusal.json`](hover-host-busy-refusal.json).
   No page load, hover or timing sample exists; performance acceptance remains pending.
+- A third attempt (`hover-4`) was refused before any sample at 10.35% whole-host
+  CPU. A fourth (`ccf3adcb`, `hover-5`) completed eight valid samples (FZK pairs 0-3)
+  and was aborted by the post-sample host gate at 11.85% CPU on the ninth. The
+  cohort is incomplete, no verdict exists and none is claimed; the raw samples and
+  the cause are retained in [`hover-attempts-3-4.json`](hover-attempts-3-4.json) and
+  [`hover-attempt-5-runs.jsonl.gz`](hover-attempt-5-runs.jsonl.gz).
 
 [Preparation receipts](preparation.json) retain command/source identities,
 original outcomes and log hashes. Failed functional reports and compact summaries

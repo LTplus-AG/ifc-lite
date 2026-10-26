@@ -317,11 +317,8 @@ fn step_text(file_name: Option<&str>, identity: Option<&Identity>, out: &[(u32, 
         application: empty(),
         ..Default::default()
     };
-    if let Some(identity) = identity {
-        identity.stamp_header(&mut opts);
-    }
+    let originating = identity.map(|identity| identity.stamp_header(&mut opts));
     let mut text = Vec::new();
-    let originating = identity.map(|identity| identity.originating_system());
     crate::step_header::write_header_originating(&mut text, &opts, None, SKELETON_SCHEMA, originating.as_deref()).map_err(|e| e.to_string())?;
     for (_, record) in out {
         text.extend_from_slice(record.as_bytes());

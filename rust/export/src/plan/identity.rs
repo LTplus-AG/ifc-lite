@@ -212,18 +212,19 @@ impl Identity {
         Ok(Self { app: app.clone(), seconds })
     }
 
-    /// The header fields the exporting application settles in `opts`: the
-    /// change time as `time_stamp`, this toolkit as `preprocessor_version`,
-    /// and (through [`Self::originating_system`]) the application as
-    /// `originating_system`. One place for both the plan writer and the
-    /// skeleton.
-    pub(crate) fn stamp_header(&self, opts: &mut crate::StepOptions) {
+    /// The header fields the exporting application settles: the change time
+    /// as `time_stamp` and this toolkit as `preprocessor_version` in `opts`,
+    /// and the returned `originating_system` (the application), which the
+    /// caller passes to `write_header_originating`. The one place both the
+    /// plan writer and the skeleton take them from.
+    pub(crate) fn stamp_header(&self, opts: &mut crate::StepOptions) -> String {
         opts.time_stamp = Some(self.header_time_stamp());
         opts.application = Some(concat!("ifc-lite ", env!("CARGO_PKG_VERSION")).to_string());
+        self.originating_system()
     }
 
     /// `FILE_NAME.originating_system`: the application and its version.
-    pub(crate) fn originating_system(&self) -> String {
+    fn originating_system(&self) -> String {
         if self.app.version.is_empty() {
             self.app.full_name.clone()
         } else {

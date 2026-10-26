@@ -38,6 +38,8 @@ export const exportDialogEn = {
   'exportDialog.outputLabel': 'Output',
   'exportDialog.visibleOnlyLabel': 'Export Visible Only',
   'exportDialog.visibleOnlyHint': 'Only include entities currently visible in the 3D view',
+  'exportDialog.trimSectionLabel': 'Trim geometry at sections',
+  'exportDialog.trimSectionHint': 'Cut crossing elements at every enabled section. Turn off to keep whole elements.',
   'exportDialog.includeGeometryLabel': 'Include Geometry',
   'exportDialog.applyMutationsLabel': 'Apply Property Changes',
   'exportDialog.changesOnlyLabel.default': 'Changes only (JSON delta)',

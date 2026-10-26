@@ -491,8 +491,8 @@ fn omy_span(lo: f32, hi: f32) -> f64 {
 /// triangles — the SAME acceptance the disjoint batching applies to its
 /// `subtract_mesh_many` output (the watertightness of the cut is guaranteed
 /// upstream: each cutter is `mesh_is_closed_exact`, and the kernel's conformity
-/// gate rejects a non-conforming arrangement). A blanket `param_cut_watertight`
-/// scan here is far too slow on the hot path. Whether the cut CHANGED the host
+/// gate rejects a non-conforming arrangement). A blanket closure scan
+/// here is far too slow on the hot path. Whether the cut CHANGED the host
 /// is the caller's: [`mesh_to_keep`] reads it from the subtract's outcome.
 ///
 /// `max_removed` is an OVER-CUT guard: the cut is rejected if it removed more host

@@ -1,5 +1,26 @@
 # @ifc-lite/diff
 
+## 0.11.0
+
+### Minor Changes
+
+- [#8130](https://github.com/LTplus-AG/ifc-lite/pull/8130) [`97d8add`](https://github.com/LTplus-AG/ifc-lite/commit/97d8add207104d5801c0c8d62e40fa7066e848f8) Thanks [@louistrue](https://github.com/louistrue)! - Preserve distinct identity and lineage sidecar claims containing NUL or U+0001 key code units, and reject conflicts previously hidden by deduplication ([#8088](https://github.com/LTplus-AG/ifc-lite/issues/8088)).
+  
+  Conflicting claims that delimiter collisions previously hid now reach validation and throw.
+
+### Patch Changes
+
+- [#8131](https://github.com/LTplus-AG/ifc-lite/pull/8131) [`14b0c89`](https://github.com/LTplus-AG/ifc-lite/commit/14b0c894b28e7d7a6f089fadb6a990f3e6cf43ac) Thanks [@louistrue](https://github.com/louistrue)! - Orphan largest-share split migrations with non-finite, negative, missing or mismatched share evidence instead of selecting an arbitrary successor. Match TypeScript and Rust validation; tied maxima also orphan without throwing.
+- Updated dependencies [[`8e2778c`](https://github.com/LTplus-AG/ifc-lite/commit/8e2778ca041f027ab95d59532ce43d18bb42dab6), [`14b0c89`](https://github.com/LTplus-AG/ifc-lite/commit/14b0c894b28e7d7a6f089fadb6a990f3e6cf43ac), [`bc9cc44`](https://github.com/LTplus-AG/ifc-lite/commit/bc9cc44ca449a43b66ea125644f17d362e4b19b2), [`8e2778c`](https://github.com/LTplus-AG/ifc-lite/commit/8e2778ca041f027ab95d59532ce43d18bb42dab6)]:
+  - @ifc-lite/wasm@10.6.2
+
+## 0.10.2
+
+### Patch Changes
+
+- Updated dependencies [[`cf892ea`](https://github.com/LTplus-AG/ifc-lite/commit/cf892ea4cfefb06b6f864dbe2c72899da27b0553), [`60a505e`](https://github.com/LTplus-AG/ifc-lite/commit/60a505e9141f6f028ba47a65505275169fc84b5a), [`f5d871f`](https://github.com/LTplus-AG/ifc-lite/commit/f5d871ffc1a349e7d06e1102dbb42c6605c7ae58)]:
+  - @ifc-lite/wasm@10.6.1
+
 ## 0.10.1
 
 ### Patch Changes

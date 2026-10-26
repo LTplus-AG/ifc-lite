@@ -1,0 +1,11 @@
+{
+  "source": "b32d4593123d517de9c2f14bbc84e60a94c191bf",
+  "job": "2bae620a-3917-4cd8-9edb-acb01b09755b",
+  "outcome": "failed before tests; stale Cargo WASM lacks section planner",
+  "sha256": {
+    "packages/wasm/pkg/ifc-lite_bg.wasm": "66426eacaf12ce0aed296703b556e551d0d3a0488009b25e3d1ff9813909b3ef",
+    "packages/wasm/pkg/ifc-lite.js": "941031903a209b8ece2bee739ff5b73f4340d001f068c5efeb5c46863cedda23",
+    "packages/wasm/pkg/ifc-lite.d.ts": "4b2799a5c8670c65620afb3b368bbab57da0bfbd53621c2ecf10b86d5c0bc7c9"
+  },
+  "declarationPatchSha256": "0ac5a2104ebb0ce702095c40003a710ad7481517eeb4bcdcb9fd109ddc864c52"
+}

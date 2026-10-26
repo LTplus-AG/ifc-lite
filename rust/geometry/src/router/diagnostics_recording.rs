@@ -231,17 +231,18 @@ impl GeometryRouter {
             .map(|v| v.len()).sum()
     }
 
-    /// Internal: mark a host product as fully consumed by a containing void, so
+    /// Internal: mark a host product as fully consumed by its openings, so
     /// the element pipeline does NOT fall back to the un-cut host when the void
     /// subtraction yields an empty mesh. See [`Self::host_consumed_by_void`].
     pub(crate) fn record_void_consumed_host(&self, product_id: u32) {
         self.voids_consumed_hosts.borrow_mut().insert(product_id);
     }
 
-    /// Whether a host product was fully consumed by a containing void (its
-    /// opening's real solid engulfs the host). An empty void-cut result for
-    /// such a host is CORRECT — the element should render nothing — and must
-    /// not trigger the un-cut fallback.
+    /// Whether a host product was fully consumed by its openings: a cut of a
+    /// host with triangles came back empty (one engulfing opening, or several
+    /// whose union covers it). An empty void-cut result for such a host is
+    /// CORRECT — the element should render nothing — and must not trigger the
+    /// un-cut fallback.
     pub fn host_consumed_by_void(&self, product_id: u32) -> bool {
         self.voids_consumed_hosts.borrow().contains(&product_id)
     }

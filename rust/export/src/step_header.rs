@@ -13,7 +13,7 @@
 use std::io::Write;
 
 use crate::source_header::SourceHeader;
-use crate::step_text::escape;
+use crate::step_text::quoted;
 use crate::StepOptions;
 
 /// Write one quoted, escaped list: `('a','b')`, or `()` for an empty one.
@@ -33,7 +33,7 @@ fn quote_list(items: Option<&[String]>) -> String {
     if items.is_empty() {
         return "()".to_string();
     }
-    let inner: Vec<String> = items.iter().map(|s| format!("'{}'", escape(s))).collect();
+    let inner: Vec<String> = items.iter().map(|s| quoted(s)).collect();
     format!("({})", inner.join(","))
 }
 
@@ -67,6 +67,19 @@ pub(crate) fn write_header<W: Write>(
     write_header_counted(out, opts, source, schema, 0)
 }
 
+/// [`write_header`] with an explicit `FILE_NAME.originating_system` (the
+/// exporting application of an attributed export plan), kept off the public
+/// [`StepOptions`] so that struct stays constructible as before.
+pub(crate) fn write_header_originating<W: Write>(
+    out: &mut W,
+    opts: &StepOptions,
+    source: Option<&SourceHeader>,
+    schema: &str,
+    originating_system: Option<&str>,
+) -> std::io::Result<()> {
+    write_header_inner(out, opts, source, schema, 0, originating_system)
+}
+
 /// [`write_header`], appending the twin's `Re-exported by ifc-lite, N
 /// modification(s)` description item when `modifications` is non-zero. The
 /// mutation-log writer (`crate::step_log`) is the caller that has a count; the
@@ -78,6 +91,17 @@ pub(crate) fn write_header_counted<W: Write>(
     source: Option<&SourceHeader>,
     schema: &str,
     modifications: usize,
+) -> std::io::Result<()> {
+    write_header_inner(out, opts, source, schema, modifications, None)
+}
+
+fn write_header_inner<W: Write>(
+    out: &mut W,
+    opts: &StepOptions,
+    source: Option<&SourceHeader>,
+    schema: &str,
+    modifications: usize,
+    originating_override: Option<&str>,
 ) -> std::io::Result<()> {
     // FILE_DESCRIPTION items: an explicit option wins, else the source items
     // verbatim, else the generic default.
@@ -123,9 +147,8 @@ pub(crate) fn write_header_counted<W: Write>(
     // preprocessor_version = the tool that WROTE this file (ifc-lite);
     // originating_system keeps the source authoring tool so it isn't erased.
     let application = opts.application.as_deref().unwrap_or("ifc-lite");
-    let originating_system = source
-        .and_then(|s| s.originating_system.as_deref())
-        .filter(|s| !s.is_empty())
+    let originating_system = originating_override
+        .or_else(|| source.and_then(|s| s.originating_system.as_deref()).filter(|s| !s.is_empty()))
         .unwrap_or(application);
     let authorization =
         source.and_then(|s| s.authorization.as_deref()).unwrap_or("");
@@ -133,21 +156,21 @@ pub(crate) fn write_header_counted<W: Write>(
     out.write_all(b"ISO-10303-21;\nHEADER;\n")?;
     writeln!(
         out,
-        "FILE_DESCRIPTION({},'{}');",
+        "FILE_DESCRIPTION({},{});",
         quote_list(Some(&description)),
-        escape(implementation_level)
+        quoted(implementation_level)
     )?;
     writeln!(
         out,
-        "FILE_NAME('{}','{}',{},{},'{}','{}','{}');",
-        escape(filename),
-        escape(time_stamp),
+        "FILE_NAME({},{},{},{},{},{},{});",
+        quoted(filename),
+        quoted(time_stamp),
         quote_list(author.as_deref()),
         quote_list(organization.as_deref()),
-        escape(application),
-        escape(originating_system),
-        escape(authorization),
+        quoted(application),
+        quoted(originating_system),
+        quoted(authorization),
     )?;
-    writeln!(out, "FILE_SCHEMA(('{}'));", escape(schema))?;
+    writeln!(out, "FILE_SCHEMA(({}));", quoted(schema))?;
     out.write_all(b"ENDSEC;\nDATA;\n")
 }

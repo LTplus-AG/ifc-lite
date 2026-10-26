@@ -63,7 +63,7 @@ const { getRealTypedSlots } = await src('packages/export/src/attribute-real-slot
 const { declaredNominalValueType, CONSTRAINED_IFC_VALUE_MEMBERS } = await src(
   'packages/export/src/declared-property-type.ts',
 );
-const { getSelectDefinedLeaves } = await src('packages/export/src/select-qualification.ts');
+const { getSelectDefinedLeaves, getSelectMembers } = await src('packages/export/src/select-qualification.ts');
 const { isTypeClass } = await src('packages/export/src/type-owned-psets.ts');
 const { readRelationshipSlotLowerBound } = await src('packages/export/src/relationship-slot-bounds.ts');
 const { NONREL_REF_LIST_TYPES, NONREL_REF_LIST_REGISTRY_NAMES } = await src('packages/export/src/nonrel-ref-list-types.ts');
@@ -168,19 +168,15 @@ for (const upper of [...universe.keys()].sort()) {
   );
 }
 
-// `IfcValue` leaves, with the member a value outside a constrained leaf's
-// domain relaxes to. -1 violates every constrained member's WHERE rule.
-const leaves = [];
-for (const [name, base] of getSelectDefinedLeaves('IfcValue')) {
-  const constrained = CONSTRAINED_IFC_VALUE_MEMBERS.includes(name);
-  let relaxed = '';
-  if (constrained) {
-    const shape = base === 'INTEGER' ? PropertyValueType.Integer : PropertyValueType.Real;
-    relaxed = declaredNominalValueType(-1, shape, name.toUpperCase()) ?? '';
-  }
-  leaves.push([name.toUpperCase(), name, base, constrained, relaxed]);
-}
-leaves.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+const { ifcValueMemberRows } = await import(pathToFileURL(join(ROOT, 'scripts/lib/ifc-value-members.mjs')).href);
+const leaves = ifcValueMemberRows({
+  getSchemaRegistryForVersion,
+  getSelectDefinedLeaves,
+  getSelectMembers,
+  CONSTRAINED_IFC_VALUE_MEMBERS,
+  declaredNominalValueType,
+  PropertyValueType,
+});
 
 // Record types `isTypeClass` answers yes for: the owners of `HasPropertySets`,
 // whose property sets the exporter repoints rather than relates.
@@ -322,11 +318,48 @@ pub static TYPE_OBJECT_CLASSES: &[&str] = &[
 ${typeObjects.map((t) => `    ${JSON.stringify(t)},`).join('\n')}
 ];
 
-/// \`(UPPERCASE token, schema-cased name, EXPRESS base, constrained,
-/// relaxed member or "")\` for every defined-type leaf of \`IfcValue\`,
-/// sorted by token.
-pub static NOMINAL_VALUE_LEAVES: &[(&str, &str, &str, bool, &str)] = &[
-${leaves.map((l) => `    (${JSON.stringify(l[0])}, ${JSON.stringify(l[1])}, ${JSON.stringify(l[2])}, ${l[3]}, ${JSON.stringify(l[4])}),`).join('\n')}
+/// An \`IfcValue\` leaf's EXPRESS base.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BaseKind {
+    String,
+    Real,
+    Number,
+    Integer,
+    Boolean,
+    Logical,
+    Binary,
+}
+
+/// What an \`IfcValue\` member is in one schema.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ValueType {
+    /// A defined type over one EXPRESS base.
+    Leaf(BaseKind),
+    /// A defined type over an aggregate (\`IfcComplexNumber\`): no single value.
+    Aggregate,
+}
+
+/// One \`IfcValue\` member of any schema.
+#[derive(Debug)]
+pub struct ValueMember {
+    /// The UPPERCASE STEP token.
+    pub token: &'static str,
+    /// The schema-cased name.
+    pub name: &'static str,
+    /// Whether a WHERE rule constrains it (\`CONSTRAINED_IFC_VALUE_MEMBERS\`).
+    pub constrained: bool,
+    /// The member a value outside a constrained leaf's domain relaxes to, or "".
+    pub relaxed: &'static str,
+    /// Its type: IFC4's where IFC4 has the member, else the schemas' that do.
+    pub ty: ValueType,
+    /// Whether the \`IfcValue\` of IFC2X3, IFC4 and IFC4X3 has it.
+    pub in_schemas: [bool; 3],
+}
+
+/// Every \`IfcValue\` member of IFC2X3, IFC4 and IFC4X3, each walked through
+/// its own registry, sorted by token.
+pub static IFC_VALUE_MEMBERS: &[ValueMember] = &[
+${leaves.join('\n')}
 ];
 `;
 
@@ -342,8 +375,8 @@ if (process.argv.includes('--check')) {
     console.error(`${OUT_REL} is stale; run: node scripts/generate-step-log-tables.mjs`);
     process.exit(1);
   }
-  console.log(`${OUT_REL} is up to date (${rows.length} types, ${lists.size} name lists, ${leaves.length} IfcValue leaves).`);
+  console.log(`${OUT_REL} is up to date (${rows.length} types, ${lists.size} name lists, ${leaves.length} IfcValue members).`);
 } else {
   writeFileSync(outPath, text);
-  console.log(`wrote ${OUT_REL} (${rows.length} types, ${lists.size} name lists, ${leaves.length} IfcValue leaves)`);
+  console.log(`wrote ${OUT_REL} (${rows.length} types, ${lists.size} name lists, ${leaves.length} IfcValue members)`);
 }

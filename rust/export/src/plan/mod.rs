@@ -44,21 +44,26 @@ mod add_profile;
 mod add_props;
 mod add_rels;
 mod add_types;
+mod attribution;
 mod attrs;
 mod builders;
 mod delete;
 mod geometry;
+mod identity;
 mod index;
+mod orphans;
 mod owner_history;
 mod placement;
 mod patch;
 mod props;
 mod props_lookup;
 mod props_synth;
+mod props_target;
 mod referrers;
 mod removal;
 mod resolve;
 mod skeleton;
+mod source_text;
 mod tessellation;
 #[cfg(test)]
 mod add_test_support;
@@ -78,9 +83,9 @@ pub use add_types::{
 };
 pub use placement::IDENTITY;
 pub use removal::{Removal, RemovalReason};
-pub use skeleton::{skeleton, MapConversion, MapUnit, Skeleton, SkeletonRoot, SKELETON_SCHEMA};
+pub use skeleton::{skeleton, skeleton_with_findings, MapConversion, MapUnit, Skeleton, SkeletonRoot, SKELETON_SCHEMA};
 pub use types::{
-    Disposition, DroppedRepresentation, ExportPlan, GeometryPatch, ObjectRef, Patch, PlacementPatch, PlanContext, PlanError,
+    Disposition, DroppedRepresentation, ExportPlan, ExportingApplication, ExportingPerson, GeometryPatch, ObjectRef, Patch, PlacementPatch, PlanContext, PlanError,
     PropScope, PropWrite, PsetKind, Refusal, SurfaceColour, TriangleMesh, ValidationFinding, WriteReport,
 };
 
@@ -132,3 +137,6 @@ mod exec_tests;
 #[cfg(test)]
 #[path = "combination_tests.rs"]
 mod combination_tests;
+#[cfg(test)]
+#[path = "identity_tests.rs"]
+mod identity_tests;

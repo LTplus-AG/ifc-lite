@@ -32,3 +32,12 @@ export function planMapConversionNormalization(
   if (!bridge?.isInitialized()) throw new Error('GeometryProcessor is not initialized.');
   return bridge.planMapConversionNormalization(content);
 }
+
+/** Export-only section planner; an unsupported platform must never return an uncut model. */
+export function planSectionExport(
+  bridge: IfcLiteBridge | null, platform: IPlatformBridge | null,
+  content: Uint8Array, planes: string, trim: boolean,
+): string {
+  if (platform || !bridge?.isInitialized()) throw new Error('Section export requires an initialized WASM geometry processor.');
+  return bridge.planSectionExport(content, planes, trim);
+}

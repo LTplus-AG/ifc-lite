@@ -50,6 +50,8 @@ pub mod split_evidence;
 pub mod split_geometry;
 pub mod split_grid;
 pub mod class_families;
+#[doc(hidden)]
+pub mod class_normalization;
 pub mod split_types;
 mod split_lanes;
 pub mod split_merge;
@@ -70,7 +72,7 @@ mod js_json;
 mod projections;
 mod utf16;
 
-pub use fingerprint::{build_component_fingerprints, build_data_fingerprint};
+pub use fingerprint::{build_component_fingerprint_entries, build_component_fingerprints, build_data_fingerprint};
 pub use input::{
     DataFingerprintInput, PropertyEntryInput, PropertySetInput, PropertyValue, QuantitySetInput,
     TypeAssignmentInput,

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
+import { settleReportWork as settle } from '@/test/error-report-timing.js';
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, startTransition, Suspense, useState } from 'react';
@@ -22,15 +23,11 @@ function response() {
   releases.add(release);
   return { promise, resolve(value: Response) { releases.delete(release); resolve(value); } };
 }
-async function settle() {
-  await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
-}
 afterEach(async () => {
   cleanup();
   await act(async () => {
     for (const release of releases) release();
     releases.clear();
-    await new Promise(resolve => setTimeout(resolve, 10));
   });
 });
 function button(text: string) {
@@ -71,7 +68,6 @@ function mount(client: ReportClient) {
       const before = suspendedRenders;
       await act(async () => {
         startTransition(() => update({ receipt: next, blocked: true }));
-        await new Promise(resolve => setTimeout(resolve, 10));
       });
       assert.ok(suspendedRenders > before, 'The speculative receipt render reached its suspending sibling');
       assert.ok(document.querySelector('[data-committed-report]'), 'Original committed UI remains mounted');

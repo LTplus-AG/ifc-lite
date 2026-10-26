@@ -1,0 +1,404 @@
+{
+  "sourceCommit": "da1389f8887788b9a752346764207ce0e92102e4",
+  "baseCommit": "60a505e9141f6f028ba47a65505275169fc84b5a",
+  "scope": "Testing execution/setup only; no product Rust/geometry runtime change or runtime speedup claim.",
+  "fullTypecheck": {
+    "result": "passed",
+    "command": "pnpm typecheck",
+    "packageTestFilesAudited": 4280,
+    "packages": 67,
+    "receipt": {
+      "request": "auto-e632455c332149b1bb9d9acb88994142",
+      "job": "b8ed588e-0817-41e6-902b-14234b87608e",
+      "host": "pop-os",
+      "state": "completed",
+      "sourceCommit": "4fa117daa4709826e9efe88a618fe3f5c641febe",
+      "sourceUnchanged": true,
+      "exitCode": 0,
+      "outputSha256": "bee0df16cfa48c05e48d43e7a987c648f4fc10279723ff7ddbd19a04fad0e68b",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/b8ed588e-0817-41e6-902b-14234b87608e/receipt.json",
+      "evidenceState": "published"
+    },
+    "codeChangesAfterTypecheck": [
+      "scripts/test-cache.test.mjs: environment-key order assertion only"
+    ]
+  },
+  "orchestrationRegressionTests": {
+    "passed": 103,
+    "failed": 0,
+    "skipped": 0,
+    "includes": [
+      "cache input invalidation",
+      "cold/warm/failure re-execution",
+      "PID-directed cancellation and no surviving task",
+      "path coverage and test wiring"
+    ],
+    "receipt": {
+      "request": "auto-46e3f06df94d43a58daf58a389d54cb3",
+      "job": "52fca84e-c8c9-4e47-bf75-c10d476270a3",
+      "host": "pop-os",
+      "state": "failed",
+      "sourceCommit": "da1389f8887788b9a752346764207ce0e92102e4",
+      "sourceUnchanged": true,
+      "exitCode": 134,
+      "outputSha256": "b3369c85b7c298aa91d3a974d17fcbc15adcfdf802cce39a4d7de2002291a55a",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/52fca84e-c8c9-4e47-bf75-c10d476270a3/receipt.json",
+      "evidenceState": "published"
+    },
+    "result": "passed test phase; enclosing multi-phase job failed later",
+    "command": "node --test --test-concurrency=2 scripts/test-cache.test.mjs scripts/check-ci-path-coverage.test.mjs scripts/check-test-wiring.test.mjs",
+    "phaseOrder": [
+      "dependency installation passed",
+      "orchestration regression tests: 103 passed, 0 failed, 0 skipped",
+      "root viewer test dependency build: Node heap exhausted, exit 134; viewer tests not reached",
+      "cache rounds and mutation qualification not reached in this job"
+    ],
+    "outputProof": {
+      "sha256": "b3369c85b7c298aa91d3a974d17fcbc15adcfdf802cce39a4d7de2002291a55a",
+      "summaryLines": "157-164: tests 103, pass 103, fail 0, skipped 0",
+      "laterFailureLines": "797: Node heap exhaustion; 825: @ifc-lite/viewer#build; 827: exit 134",
+      "verification": "Original worker output retrieved and SHA-256 verified; no project command rerun."
+    }
+  },
+  "viewerSelection": {
+    "files": 9,
+    "passed": 49,
+    "failed": 0,
+    "skipped": 1,
+    "skip": "Unchanged REPORT_TEST_PUBLIC_UI opt-in real HTTP/PG/S3 test; required external environment not enabled."
+  },
+  "canonicalSuites": [
+    {
+      "path": "packages/wasm-lifecycle/src/wasm-init-retry.test.ts",
+      "baseSha256": "435d39c41d0a649b1ce1637058cb0e03b58abe768bac8b170c2767adfb54ed0c",
+      "finalSha256": "435d39c41d0a649b1ce1637058cb0e03b58abe768bac8b170c2767adfb54ed0c",
+      "unchanged": true
+    },
+    {
+      "path": "packages/wasm-lifecycle/src/wasm-panic-forward.test.ts",
+      "baseSha256": "1f151ade1603fd4cfb5bd843dd7dea8f446e3da593da8446fd485c9344689208",
+      "finalSha256": "1f151ade1603fd4cfb5bd843dd7dea8f446e3da593da8446fd485c9344689208",
+      "unchanged": true
+    }
+  ],
+  "wasmCases": {
+    "before": 69,
+    "after": 33,
+    "canonical": 23,
+    "consumerForwarding": 10,
+    "passed": 33,
+    "skipped": 0
+  },
+  "cacheReuse": {
+    "suites": [
+      "@ifc-lite/embed-protocol",
+      "@ifc-lite/report-contract",
+      "@ifc-lite/wasm-lifecycle"
+    ],
+    "coldMisses": 3,
+    "warmHits": 3,
+    "otherSuites": "uncached by default",
+    "unknownRuntimeOrOptions": "uncached fallback"
+  },
+  "timingObservation": {
+    "kind": "Functional observation on the same admitted shared host; not an idle-host benchmark or overall CI speedup claim.",
+    "original": {
+      "elapsedMs": 17550,
+      "passed": 19
+    },
+    "optimized": {
+      "elapsedMs": 4857,
+      "passed": 21
+    },
+    "fixedWaitsRemoved": 4,
+    "fixedWaitMillisecondsRemoved": 12400
+  },
+  "mutationQualification": {
+    "result": "passed",
+    "mutationsObserved": 10,
+    "sourceRestored": true,
+    "command": "node scripts/qualify-testing-optimization.mjs",
+    "receipt": {
+      "request": "auto-710c2b34c5da4675b68714d18124de38",
+      "job": "a9e14cc3-827e-42b0-8c58-8a4957b1933d",
+      "host": "pop-os",
+      "state": "completed",
+      "sourceCommit": "da1389f8887788b9a752346764207ce0e92102e4",
+      "sourceUnchanged": true,
+      "exitCode": 0,
+      "outputSha256": "d233414c7866716dbeb3e3dae460e5bf7ac82f104b85bba5bbc2c4e757425601",
+      "receipt": "/home/louistrue/build-workers/worker-state/jobs/a9e14cc3-827e-42b0-8c58-8a4957b1933d/receipt.json",
+      "evidenceState": "published"
+    },
+    "mutations": [
+      {
+        "name": "poll-interval-2999",
+        "path": "apps/viewer/src/components/error-report/ErrorReportDialog.tsx",
+        "originalSha256": "f60adf8a06fc0547affb0e88c61f9f86c1f38c52a7b077cd5aa0badc3f9c93a7",
+        "mutatedSha256": "ad0e8036dc44d89945ecb36360cb5f8d9d9809673347e8d92b05eaf5ca1126a7",
+        "result": {
+          "kind": "assertion-failure",
+          "passed": 20,
+          "failed": 2,
+          "total": 22,
+          "evidence": []
+        },
+        "outputSha256": "bcdf42d71e88d39e00c1622dab3160c52dce9fd65ff8db02ebd3c3608847fb99",
+        "representativeFailure": [
+          "    code: 'ERR_ASSERTION',",
+          "    actual: 3,",
+          "    expected: 2,"
+        ]
+      },
+      {
+        "name": "poll-interval-3001",
+        "path": "apps/viewer/src/components/error-report/ErrorReportDialog.tsx",
+        "originalSha256": "f60adf8a06fc0547affb0e88c61f9f86c1f38c52a7b077cd5aa0badc3f9c93a7",
+        "mutatedSha256": "f050b68a8c8516b3e163d11900c3651237d786529a0502bfa1244419da2f166f",
+        "result": {
+          "kind": "assertion-failure",
+          "passed": 18,
+          "failed": 4,
+          "total": 22,
+          "evidence": []
+        },
+        "outputSha256": "dfe71bf12d98ccc2006575835dc51b6f851871449011a1a3e3a5d0c8dc150df1",
+        "representativeFailure": [
+          "    code: 'ERR_ASSERTION',",
+          "    actual: false,",
+          "    expected: true,"
+        ]
+      },
+      {
+        "name": "scheduled-poll-cleanup",
+        "path": "apps/viewer/src/components/error-report/ErrorReportDialog.tsx",
+        "originalSha256": "f60adf8a06fc0547affb0e88c61f9f86c1f38c52a7b077cd5aa0badc3f9c93a7",
+        "mutatedSha256": "e2c035ae38bb29b18d44302521afdcd24ee1196b55175557c4e93461fca3f493",
+        "result": {
+          "kind": "assertion-failure",
+          "passed": 21,
+          "failed": 1,
+          "total": 22,
+          "evidence": []
+        },
+        "outputSha256": "2b2d1e53db6453a28a2387a45aeac58d5bb4851a56881b18f0be00fa0c7a7b9b",
+        "representativeFailure": [
+          "    code: 'ERR_ASSERTION',",
+          "    actual: 2,",
+          "    expected: 1,"
+        ]
+      },
+      {
+        "name": "in-flight-poll-abort",
+        "path": "apps/viewer/src/components/error-report/ErrorReportDialog.tsx",
+        "originalSha256": "f60adf8a06fc0547affb0e88c61f9f86c1f38c52a7b077cd5aa0badc3f9c93a7",
+        "mutatedSha256": "2f97565af27211fddb2388397920d27c0cfcd83cb08a50c00698955f76b04aa3",
+        "result": {
+          "kind": "assertion-failure",
+          "passed": 21,
+          "failed": 1,
+          "total": 22,
+          "evidence": []
+        },
+        "outputSha256": "a14e27cf2a62a731452b3ecf42e25bd175e16d6351451fcd50867a0ee6ed16f3",
+        "representativeFailure": [
+          "    code: 'ERR_ASSERTION',",
+          "    actual: false,",
+          "    expected: true,"
+        ]
+      },
+      {
+        "name": "late-response-guard",
+        "path": "apps/viewer/src/components/error-report/ErrorReportDialog.tsx",
+        "originalSha256": "f60adf8a06fc0547affb0e88c61f9f86c1f38c52a7b077cd5aa0badc3f9c93a7",
+        "mutatedSha256": "21f3f16cc1f357c964f1590b8e84b2e1ffff7e32bf94983c8457c5eddd85ac02",
+        "result": {
+          "kind": "assertion-failure",
+          "passed": 21,
+          "failed": 1,
+          "total": 22,
+          "evidence": []
+        },
+        "outputSha256": "b28e4180682b7f58d1600e39cdaed89854f92d7c2d0a8b4b8e5f908fc279efe7",
+        "representativeFailure": [
+          "    code: 'ERR_ASSERTION',",
+          "    actual: undefined,",
+          "    expected: 'polling-report',"
+        ]
+      },
+      {
+        "name": "eager-viewer-fixture-import",
+        "path": "apps/viewer/src/test/authoring-sample-fixture.ts",
+        "originalSha256": "17c5eb9f43788a98aac192650eb46b18eae4f46be83217f9931d14a7347e6753",
+        "mutatedSha256": "e642095d6d712804163e28199851ab06b8ae58fa53b41953dcc4a9bb3be99467",
+        "result": {
+          "kind": "assertion-failure",
+          "passed": 21,
+          "failed": 1,
+          "total": 22,
+          "evidence": []
+        },
+        "outputSha256": "76ff8f30b97b80253483ba33ffb84b04372143c9c8491b760b51fa76b8dd18b4",
+        "representativeFailure": [
+          "\u2716 failing tests:",
+          "\u2716 authoring fixture parses the real SketchUp sample without viewer state or DOM setup (88.957692ms)",
+          "  Error: Parser-only fixture loaded viewer state: file:///home/louistrue/build-workers/worker-state/checkouts/da1389f8887788b9a752346764207ce0e92102e4/apps/viewer/src/store/index.ts"
+        ]
+      },
+      {
+        "name": "parser-retry-forwarding",
+        "path": "packages/parser/src/wasm-init-retry.ts",
+        "originalSha256": "4183d3959807557488f4f85635ab553787dffb24175cc8e33d50f729afa2c004",
+        "mutatedSha256": "6862400023dca0b3450b6cd4c28809935d8f319859fe481ce8ea26a2c6f840bf",
+        "result": {
+          "kind": "assertion-failure",
+          "passed": 2,
+          "failed": 3,
+          "total": 5,
+          "evidence": []
+        },
+        "outputSha256": "90481362ae7e0549d7161f4012682e21ec443985c0b0308cdc32ccbe3ce6be1f",
+        "representativeFailure": [
+          "AssertionError: expected \"vi.fn()\" to be called 2 times, but got 0 times",
+          " FAIL  src/wasm-init-retry.test.ts > WASM retry forwarding > propagates the exact terminal failure instead of swallowing or wrapping it",
+          "AssertionError: promise resolved \"undefined\" instead of rejecting"
+        ]
+      },
+      {
+        "name": "parser-panic-forwarding",
+        "path": "packages/parser/src/wasm-panic-forward.ts",
+        "originalSha256": "ad5988a3eeb09041eb27e5c2a5d09952ce4da6d4e3cc55074d2ef2b629926475",
+        "mutatedSha256": "e352ff290d46fc345f806b6f5c3438d34bc0a7410d126ebb974d237b414e9158",
+        "result": {
+          "kind": "assertion-failure",
+          "passed": 3,
+          "failed": 2,
+          "total": 5,
+          "evidence": []
+        },
+        "outputSha256": "7e59e0368f11a22c0f67ff6c734cf4ca50ba24a842f497c7725b9addc965190f",
+        "representativeFailure": [
+          "AssertionError: expected 'incorrect-stash-key' to be '__ifclite_wasm_panic' // Object.is equality",
+          " FAIL  src/wasm-panic-forward.test.ts > WASM panic forwarding > consumes a worker stash and forwards it only with a trap-shaped error",
+          "AssertionError: expected undefined to deeply equal { \u2026(2) }"
+        ]
+      },
+      {
+        "name": "geometry-retry-forwarding",
+        "path": "packages/geometry/src/wasm-init-retry.ts",
+        "originalSha256": "4183d3959807557488f4f85635ab553787dffb24175cc8e33d50f729afa2c004",
+        "mutatedSha256": "6862400023dca0b3450b6cd4c28809935d8f319859fe481ce8ea26a2c6f840bf",
+        "result": {
+          "kind": "assertion-failure",
+          "passed": 2,
+          "failed": 3,
+          "total": 5,
+          "evidence": []
+        },
+        "outputSha256": "582a0764d01e6a9184803faa35876485724fb4f03064d34f476119831e560372",
+        "representativeFailure": [
+          "AssertionError: expected \"vi.fn()\" to be called 2 times, but got 0 times",
+          " FAIL  src/wasm-init-retry.test.ts > WASM retry forwarding > propagates the exact terminal failure instead of swallowing or wrapping it",
+          "AssertionError: promise resolved \"undefined\" instead of rejecting"
+        ]
+      },
+      {
+        "name": "geometry-panic-forwarding",
+        "path": "packages/geometry/src/wasm-panic-forward.ts",
+        "originalSha256": "ad5988a3eeb09041eb27e5c2a5d09952ce4da6d4e3cc55074d2ef2b629926475",
+        "mutatedSha256": "e352ff290d46fc345f806b6f5c3438d34bc0a7410d126ebb974d237b414e9158",
+        "result": {
+          "kind": "assertion-failure",
+          "passed": 3,
+          "failed": 2,
+          "total": 5,
+          "evidence": []
+        },
+        "outputSha256": "eb91463d6b2baed32ddeefed8654515e341647bb809d8c6b6bfa5b68617b4b78",
+        "representativeFailure": [
+          "AssertionError: expected 'incorrect-stash-key' to be '__ifclite_wasm_panic' // Object.is equality",
+          " FAIL  src/wasm-panic-forward.test.ts > WASM panic forwarding > consumes a worker stash and forwards it only with a trap-shaped error",
+          "AssertionError: expected undefined to deeply equal { \u2026(2) }"
+        ]
+      }
+    ],
+    "restoredControls": [
+      {
+        "name": "viewer-restored",
+        "result": {
+          "kind": "pass",
+          "passed": 22,
+          "failed": 0,
+          "total": 22,
+          "evidence": []
+        },
+        "outputSha256": "9711b174e689444f0c591560060cb6cc9be0dc78eeaecf532833b1e69834b43b"
+      },
+      {
+        "name": "parser-restored",
+        "result": {
+          "kind": "pass",
+          "passed": 5,
+          "failed": 0,
+          "total": 5,
+          "evidence": []
+        },
+        "outputSha256": "334c176c8b2157bb1556bd0aa07dab20397a95ca83d55ed030099ae2eff4e601"
+      },
+      {
+        "name": "geometry-restored",
+        "result": {
+          "kind": "pass",
+          "passed": 5,
+          "failed": 0,
+          "total": 5,
+          "evidence": []
+        },
+        "outputSha256": "baa8d93cef218f76e6a01cadb51d2c146c11768eca9c669e2e0bbe3b0159b7f4"
+      },
+      {
+        "name": "wasm-lifecycle-restored",
+        "result": {
+          "kind": "pass",
+          "passed": 23,
+          "failed": 0,
+          "total": 23,
+          "evidence": []
+        },
+        "outputSha256": "21f3fd7a97a62fe47cae1046a4be09d8b0f1cb56908deb9d46a0a3d901cce1d1"
+      }
+    ]
+  },
+  "validationResourceAdjustment": {
+    "firstViewerBuild": "Node heap limit reached while bundling, job exited134; original receipt preserved.",
+    "successfulViewerBuild": "NODE_OPTIONS=--max-old-space-size=8192; admitted4CPU/16GiB; same assertions and build graph.",
+    "crashOutput": "No core files found in owned checkout root or apps/viewer; diagnostic stack preserved in original worker log.",
+    "failedJob": "52fca84e-c8c9-4e47-bf75-c10d476270a3",
+    "failedOutputSha256": "b3369c85b7c298aa91d3a974d17fcbc15adcfdf802cce39a4d7de2002291a55a",
+    "phase": "Viewer dependency build after the successful orchestration phase in orchestrationRegressionTests.receipt."
+  },
+  "review": {
+    "rounds": 2,
+    "finalFindings": 0,
+    "round1Finding": "PID-directed SIGINT propagation fixed and behavioral proof passed."
+  },
+  "limits": [
+    "The full monorepo runtime suite was not rerun; selected changed behavior, real fixtures, full typecheck and mutation proofs were run.",
+    "Existing opt-in external integration remained skipped.",
+    "sccache rollout was not enabled without input correctness and net-benefit qualification; duplicated feature compilation was removed."
+  ],
+  "publication": {
+    "manifest": "pop-os-a9e14cc3-827e-42b0-8c58-8a4957b1933d-bab81f043eb8",
+    "manifestSha256": "bac0d3e2953ca7a51ef8c98609de916f840386b64ecd8b12e49dd2aea8334bb1",
+    "canonicalBlobSha256": "af0442d3622de114168c1aa812dfc3769e520fe01fd6d111c2a8e5f3574b1f53",
+    "decodedHashVerifiedOn": [
+      "pop-os",
+      "pc-wsl"
+    ],
+    "recovery": "Original immutable capture republished; no project command rerun and original receipt unchanged.",
+    "recoveryReceipts": [
+      "Pop:~/cleanup/all-machines-20261025/test-opt-original-publication-recovery-r1.json",
+      "PC:~/cleanup/all-machines-20261025/test-opt-pc-publication-and-viewer-reconciliation-r2.json"
+    ]
+  }
+}

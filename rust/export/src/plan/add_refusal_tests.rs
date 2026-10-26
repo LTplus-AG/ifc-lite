@@ -275,13 +275,19 @@ fn an_add_keeps_the_owner_history_a_delete_would_take() {
                 .replace(&wall_head, &format!("#10=IFCWALL('{}',#5,", fixture_gid(10)))
                 .replace("ENDSEC;\nEND-ISO", "#5=IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);\nENDSEC;\nEND-ISO")
         };
-        let wall = object(IfcClass::Wall, gid(26), storey(), Representation::None);
-        let (out, report) = run(source.as_bytes(), vec![(ObjectRef::Id(10), Disposition::Delete), add(wall)]);
-        assert_clean(&report, schema);
+        let plan = || vec![(ObjectRef::Id(10), Disposition::Delete), add(object(IfcClass::Wall, gid(26), storey(), Representation::None))];
+        let wall_line = |out: &[u8]| String::from_utf8_lossy(out).lines().find(|l| l.starts_with(&format!("#{}=", id_in(out, gid(26))))).unwrap().to_string();
+        // Without an application the new wall reuses the source's history,
+        // which the delete would otherwise take.
+        let (out, report) = run_with(source.as_bytes(), plan(), PlanContext::new());
+        assert!(report.refusals.is_empty(), "{schema}: {report:?}");
         assert_eq!(type_in(&out, 5), "IFCOWNERHISTORY", "{schema}: the file's owner history stays");
-        let line = String::from_utf8_lossy(&out).lines().find(|l| l.starts_with(&format!("#{}=", id_in(&out, gid(26))))).unwrap().to_string();
-        // The plan names an exporting application, so the wall names its
-        // own history; either way the record it names is in the output.
+        assert!(wall_line(&out).contains(",#5,"), "{schema}: the new wall names it: {}", wall_line(&out));
+        // With one the wall names its own ADDED history, which is in the
+        // output too.
+        let (out, report) = run(source.as_bytes(), plan());
+        assert_clean(&report, schema);
+        let line = wall_line(&out);
         let named: u32 = line.split("',#").nth(1).and_then(|r| r.split(',').next()).and_then(|n| n.parse().ok()).expect("owner history ref");
         assert_eq!(type_in(&out, named), "IFCOWNERHISTORY", "{schema}: the new wall names a live history: {line}");
     }

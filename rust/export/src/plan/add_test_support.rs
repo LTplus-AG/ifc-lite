@@ -39,7 +39,11 @@ pub(super) fn add(obj: NewObject) -> (ObjectRef, Disposition) {
 }
 
 pub(super) fn run(source: &[u8], dispositions: Vec<(ObjectRef, Disposition)>) -> (Vec<u8>, WriteReport) {
-    let plan = ExportPlan { dispositions, context: PlanContext::attributed() };
+    run_with(source, dispositions, PlanContext::attributed())
+}
+
+pub(super) fn run_with(source: &[u8], dispositions: Vec<(ObjectRef, Disposition)>, context: PlanContext) -> (Vec<u8>, WriteReport) {
+    let plan = ExportPlan { dispositions, context };
     let mut out = Vec::new();
     let report = execute(source, &plan, &mut out).expect("execute");
     (out, report)

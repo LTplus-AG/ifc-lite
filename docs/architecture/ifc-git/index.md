@@ -136,7 +136,15 @@ planned, and land one per PR in roughly this order.
 **These are maintainer calls. This spec set records them as open rather than
 assuming an answer, and neither blocks the documents written so far.**
 
-### 6.1 node-hash v0, or a v1?
+§6.1 is **decided** as of 2026-10-26 and kept here with its reasoning rather
+than deleted, because the argument is what a later reader needs. §6.2 is open.
+
+### 6.1 The digest, and where the encoding lives — DECIDED
+
+**Decided 2026-10-26: BLAKE3, and the encoding is specified and implemented in
+`rust/git` rather than as a `node-hash-v1.md` under `@ifc-lite/provenance`.
+Node-hash v0 stays frozen and untouched.** The reasoning that led there follows,
+including the part of it that changed.
 
 `packages/provenance/SPEC.md` already specifies most of the primitive ifc-git
 needs. Node-hash v0 is a Merkle DAG over the IFC graph: `property-set` is "a
@@ -163,12 +171,37 @@ change; the problem is confined to `element`.
 So a v1 is **not** a digest swap. Two changes are wanted, and the second is the
 substantive one:
 
-1. **One digest throughout.** v0 uses SHA-256 for composites and FNV-1a-64 for
-   `geometry-mesh` leaves. BLAKE3 is proposed: faster than SHA-256, still
-   collision-resistant (a content address must be — an attacker-supplied IFC
-   must not be able to forge a node id), and already this repo's content-address
-   algorithm via `computeLayerId` / `computeStackHash` in
-   `packages/ifcx/src/canonical.ts`.
+1. **One digest throughout — BLAKE3.** v0 uses SHA-256 for composites and
+   FNV-1a-64 for `geometry-mesh` leaves. Two algorithms is already one too many,
+   and one of them is not a cryptographic hash: FNV is excellent for hash tables
+   and trivially collidable on purpose, which is acceptable for a cache key and
+   not for an identity an approval can rest on. A content address must be
+   collision-resistant, because an attacker-supplied IFC must not be able to
+   forge a node id.
+
+   BLAKE3 was chosen on a measurement rather than on published throughput
+   figures, because those describe one long stream and this workload is the
+   opposite: one hash per node, a few hundred bytes each, hundreds of thousands
+   of them. Measured against a hardware-accelerated SHA-256 (`sha2` 0.10.9 with
+   its runtime feature detection, aarch64):
+
+   | Input | BLAKE3 | SHA-256 | Ratio |
+   | --- | --- | --- | --- |
+   | 200 B, a typical component node | 84 ms | 179 ms | 2.1x |
+   | 600 B, an element node | 196 ms | 446 ms | 2.3x |
+   | 32 KB, a tree chunk | 72 ms | 272 ms | 3.8x |
+
+   400k iterations at the two small sizes, 5k at chunk size. BLAKE3 is also
+   already this repo's content-address algorithm via `computeLayerId` /
+   `computeStackHash` in `packages/ifcx/src/canonical.ts`, so choosing it leaves
+   one algorithm in the tree rather than adding a third.
+
+   **Not measured: wasm32.** BLAKE3 1.x ships SSE/AVX and NEON backends but no
+   `simd128` one, so the browser path runs its portable implementation while
+   `.cargo/config.toml` enables `simd128` for everything else. The ordering is
+   not in doubt — BLAKE3's compression function is cheaper per byte than
+   SHA-256's, and neither gets hardware help in wasm — but the ratio is, so
+   measure before a browser-diff performance claim rests on it.
 2. **Move `key` out of the element hash and into the tree.** The node address
    becomes content-only; the commit's tree maps `key → node address`. This is
    exactly git's arrangement — a blob is content, a tree maps names to blobs,
@@ -186,13 +219,38 @@ unfreezing — v0's bytes, golden vectors and `NHV0` magic stay untouched and ke
 serving the determinism-certificate work they were built for. v0 also has no
 consumers outside its own package today, so the major bump costs nothing.
 
-**What needs deciding** is therefore narrower than "unfreeze or not": whether
+**What needed deciding** was therefore narrower than "unfreeze or not": whether
 ifc-git should author `node-hash-v1.md` under `@ifc-lite/provenance` as the
-spec's change policy directs, or define its own node encoding in `rust/git` and
-leave `@ifc-lite/provenance` alone entirely. The first keeps one Merkle format
-in the repo; the second avoids a major bump on a package ifc-git does not
-otherwise use. Recommendation: the first, because two Merkle encodings over the
-same IFC graph is the duplication the anti-cruft rule exists to prevent.
+spec's change policy directs, or define its node encoding in `rust/git` and
+leave `@ifc-lite/provenance` alone entirely.
+
+An earlier draft of this section recommended the first, on the ground that two
+Merkle encodings over one IFC graph is the duplication the anti-cruft rule
+exists to prevent. **That ground is sound and the conclusion drawn from it was
+wrong**, for a reason the draft did not weigh: the rule targets two *live
+encodings*, not a spec file's directory. v0 stays frozen and keeps serving the
+determinism certificates either way, so neither option removes it; and ifc-git's
+encoding is not v0 with a different digest. It changes what a node *means* —
+the element node carries no `key` at all, which is the whole GUID-agnostic
+mechanism, and child references are raw digest bytes rather than v0's tagged
+hash strings (§2.5). Authoring that as "v1" of v0 would imply it supersedes v0
+for provenance's own purposes, which it does not.
+
+It would also put the normative spec in a TypeScript package with no runtime
+dependencies, for a format implemented only in Rust, and charge that package a
+major version bump for the privilege.
+
+**Decided: one format, specified where it is implemented.** `rust/git` owns the
+encoding, with its own magic bytes and version byte (`IGN1`, `IGT1`, version 0)
+so it can evolve on its own clock, and the normative description lives in this
+spec set beside the reasoning for it. `packages/provenance/SPEC.md` should gain
+a pointer to it, so that nobody writes a third encoding for want of knowing this
+one exists.
+
+**Still open, and genuinely a maintainer call:** whether `@ifc-lite/provenance`
+should later *adopt* this encoding and retire v0. That is a migration of a frozen
+published format with golden vectors in CI, it is Louis's to make, and nothing
+in ifc-git forces it.
 
 ### 6.2 What "reuse git's implementation" can mean here
 
@@ -215,7 +273,7 @@ draft said `gix-hash::ObjectId` is SHA-1 with SHA-256 planned. That is wrong:
 limitation is narrower and different — BLAKE3 is not among its object kinds, and
 sharing SHA-256's 32-byte width does not make it substitutable, because an
 object format carries the algorithm in its own identity and in the embedded
-references between objects (§2.5). So under §6.1's BLAKE3 proposal gix's object,
+references between objects (§2.5). So under §6.1's BLAKE3 decision gix's object,
 ref and pack plumbing is unusable for a *format* reason, not a licence one, and
 not for want of a 256-bit hash.
 
@@ -228,8 +286,9 @@ not for want of a 256-bit hash.
   crate and attributed where used.
 - **Do not copy from git or libgit2**, on the licence ground above.
 
-If §6.1 lands on SHA-256 rather than BLAKE3, the format objection to gix
-disappears and this section needs revisiting rather than reapplying.
+§6.1 landed on BLAKE3, so the format objection stands and this position holds.
+Had it landed on SHA-256 the objection would have disappeared, and this section
+would have needed revisiting rather than reapplying.
 
 ## 7. Research
 
@@ -286,7 +345,7 @@ pinned by parity fixtures.
 | 2 | Rust diff engine, ported byte-exact under #8042 | **done** (#8043 → #8105) |
 | 3 | `01-concepts.md`, `02-graph-object-model.md` | this PR |
 | 4 | `03-diff.md`, documenting the engine that landed in 2 | next |
-| 5 | Graph node model in Rust: GUID-agnostic node identity, with the shipped content-match tiers as its reconciliation fallback | after 4; needs §6.1 answered |
+| 5 | Graph node model in Rust: GUID-agnostic node identity, with the shipped content-match tiers as its reconciliation fallback | after 4; §6.1 answered |
 | 6 | Authorship extraction across the four schemas | after 5 |
 | 7 | Object store and refs: commit, branch, compare-and-swap on the head | after 5; needs §6.2 answered |
 | 8 | The verb surface: `status`, `commit`, `branch`, `diff <a> <b>`, `log` | after 7 |

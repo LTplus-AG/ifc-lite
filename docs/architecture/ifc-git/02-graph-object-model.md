@@ -1,7 +1,8 @@
 # 02: Graph Object Model
 
 Status: draft, for discussion. Part of the [ifc-git spec set](index.md).
-Depends on the decision in index §6.1.
+The digest and the encoding's home are decided in index §6.1: BLAKE3, specified
+and implemented in `rust/git`.
 
 ## 2.1 Four object kinds
 
@@ -116,17 +117,18 @@ wanted:
 - Two genuinely distinct elements with byte-identical content collapse to one
   node address. That is correct — it is what deduplication means — and nothing
   is lost at the tree layer, because the tree still carries both keys pointing
-  at it. Cardinality and identity live in the tree, where they belong. What that
-  costs a `relationship` node, whose endpoints are node addresses rather than
-  keys, is an open point in §2.8.
+  at it. Entry cardinality lives in the tree, where it belongs. What that costs
+  a `relationship` node, whose endpoints are node addresses rather than keys, is
+  resolved in §2.8 by measurement, with one limit stated there.
 - `GlobalId` becomes **evidence used for pairing**, never identity. It makes
   pairing fast when it is stable and costs nothing when it is not.
 
-Per v0's own change policy this lands as a new `node-hash-v1.md` with a new
-magic byte and a major bump of `@ifc-lite/provenance`, leaving `NHV0`, its
-golden vectors and the determinism-certificate work untouched. See index §6.1
-for the decision still open: author v1 there, or define the encoding in
-`rust/git`.
+This is not v0 with a different digest — the element node carries no `key` at
+all — so it is not authored as a `node-hash-v1.md` under
+`@ifc-lite/provenance`. `rust/git` owns the encoding, under its own magic bytes
+and version byte, and `NHV0` stays frozen with its golden vectors and the
+determinism-certificate work it was built for. Index §6.1 records the decision
+and the argument that changed on the way to it.
 
 ## 2.5 Canonical encoding
 
@@ -169,7 +171,8 @@ One departure remains, and it is deliberate rather than inherited:
 
 - **A child-hash reference is encoded as raw digest bytes, not as v0's tagged
   hash string.** v0 embeds `"sha256:…"` so a parent need not know which
-  algorithm produced a child's hash. With one algorithm throughout (§6.1) that
+  algorithm produced a child's hash. With one algorithm throughout — BLAKE3,
+  index §6.1 — that
   indirection buys nothing and costs ~38 bytes per reference on an object whose
   whole content is references. **This is a v1 change and needs its own magic,
   version and golden vectors** — it is not compatible with `NHV0`, and nothing
@@ -251,9 +254,6 @@ Two rules:
 
 ## 2.8 What this does not address
 
-- **The digest.** Open in index §6.1.
-- **Where the encoding lives** — `node-hash-v1.md` under
-  `@ifc-lite/provenance`, or `rust/git`. Also index §6.1.
 - **Storage layout.** Loose and packed tiers, on-disk format: `07-storage.md`
   (planned, index §5).
 - **Geometry node granularity.** `geometry:<tier>` is a component key here, but

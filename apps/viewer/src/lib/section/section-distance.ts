@@ -6,7 +6,8 @@
  * The Section bar's distance arithmetic (#5499, charter #5478 §6).
  *
  * The store keeps a cardinal cut as a PERCENTAGE of the model bounds along
- * its axis (`SectionPlane.position`, 0..100), which is what every reader
+ * its axis (`SectionPlane.position`; 0..100 spans the bounds, and any finite
+ * value outside it is a cut beyond them, #8162), which is what every reader
  * (renderer, drawing generation, BCF, export) resolves against the merged
  * `shiftedBounds`. The bar shows the same cut in world METRES — "+1.20 m",
  * not "37.5 %" — because a distance is what a user reasons about, and a
@@ -103,15 +104,32 @@ export function sectionAxisRange(bounds: AxisBounds | null, axis: SectionPlaneAx
   return Number.isFinite(min) && Number.isFinite(max) && max > min ? { min, max } : null;
 }
 
-/** `position` (0..100 of `range`) as a world coordinate along the axis. */
+/** `position` (a percentage of `range`; outside 0..100 is beyond it) as a world coordinate along the axis. */
 export function percentToWorld(position: number, range: AxisRange): number {
   return range.min + (position / 100) * (range.max - range.min);
 }
 
-/** A world coordinate along the axis as the clamped 0..100 `position`. */
+/**
+ * A world coordinate along the axis as an UNCLAMPED `position`: the exact
+ * inverse of {@link percentToWorld}, so a cut above the model top reads
+ * above 100 (#8162). The store accepts any finite position.
+ */
+export function worldToPosition(world: number, range: AxisRange): number {
+  return ((world - range.min) / (range.max - range.min)) * 100;
+}
+
+/**
+ * A percentage held to the bounded 0..100 contract of the percent control and
+ * the SDK / embed section commands. A non-finite input keeps the coercion
+ * those inputs always had (`NaN` and `-Infinity` read 0, `Infinity` reads 100).
+ */
+export function clampSectionPercent(position: number): number {
+  return Math.min(100, Math.max(0, Number(position) || 0));
+}
+
+/** A world coordinate along the axis as the clamped 0..100 `position` (the distance control's variant). */
 export function worldToPercent(world: number, range: AxisRange): number {
-  const pct = ((world - range.min) / (range.max - range.min)) * 100;
-  return Math.min(100, Math.max(0, pct));
+  return clampSectionPercent(worldToPosition(world, range));
 }
 
 /**
@@ -150,4 +168,47 @@ export function collectStoreys(
 /** Where a plan cut through `storey` sits: its floor plus the plan-cut height. */
 export function storeyCutElevation(storey: Pick<SectionStorey, 'elevation'>): number {
   return storey.elevation + PLAN_CUT_HEIGHT_M;
+}
+
+/**
+ * How far (metres) a storey's floor may sit outside the cut range and still
+ * count as inside it. Storey elevations are nominal authored values, while
+ * the range comes from f32 mesh positions, so a floor that coincides with the
+ * model's lowest or highest face can read a fraction of a millimetre outside.
+ * 1 mm covers that rounding and no more, so a frame mismatch between raw
+ * elevations and shifted / placed bounds that puts the floor outside the
+ * range still takes the clamped fallback.
+ */
+export const STOREY_IN_RANGE_TOLERANCE_M = 1e-3;
+
+/**
+ * The store `position` of a plan cut through `storey` (#8162): its floor plus
+ * `PLAN_CUT_HEIGHT_M`, resolved against `range`.
+ *
+ * When the floor itself lies within the range (within
+ * `STOREY_IN_RANGE_TOLERANCE_M`), the cut may extrapolate past the bounds, so
+ * a top storey whose floor + 1.2 m clears the model top keeps its real cut
+ * height instead of landing on the top face. Otherwise the result is clamped
+ * to 0..100 as before: storey elevations are raw model-frame values and the
+ * range is in the shifted / placed render frame, so a floor outside the range
+ * may mean the two frames disagree, and extrapolating through that mismatch
+ * would move the cut further from where it belongs.
+ */
+export function storeyCutPosition(storey: Pick<SectionStorey, 'elevation'>, range: AxisRange): number {
+  const floor = storey.elevation;
+  const cut = storeyCutElevation(storey);
+  const inRange = floor >= range.min - STOREY_IN_RANGE_TOLERANCE_M && floor <= range.max + STOREY_IN_RANGE_TOLERANCE_M;
+  return inRange ? worldToPosition(cut, range) : worldToPercent(cut, range);
+}
+
+/**
+ * The store `position` for a saved world-space cut coordinate restored
+ * against `[axisMin, axisMax]` (a persisted drawing's `SectionConfig`). A
+ * cut outside the bounds stays outside (#8162); a degenerate span or a
+ * non-finite result falls back to the centre, 50.
+ */
+export function restoredCutPosition(world: number, axisMin: number, axisMax: number): number {
+  if (!(axisMax - axisMin > 1e-9)) return 50;
+  const position = worldToPosition(world, { min: axisMin, max: axisMax });
+  return Number.isFinite(position) ? position : 50;
 }

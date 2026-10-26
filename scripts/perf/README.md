@@ -4840,14 +4840,14 @@ performance verdict for this recovered source, plus source-matched behavioral
 and oracle evidence and applicable gates. External Rust consumer qualification
 includes export's `step_map_rigid`, geometry tests/examples, PyO3 and the
 separate csg-thread-bench crate; the latter two are not covered by workspace
-checks. The six removed exports ride the pending Rust break #13 and have a
-matching API migration guide. Direct cargo-semver-checks 0.50.0 against the
-published 22.6.0 measured exactly six expected `function_missing` findings
-and no others with cargo-semver-checks 0.50.0 (receipt `295e65a4`). The
-eight-crate repository semver gate passed on `5db3809a`; the eight crate
-subtrees, `Cargo.toml` and `Cargo.lock` are byte-identical at `86184f2e`, so
-that verdict applies by source identity. This semver evidence does not qualify
-runtime, oracle, performance or the other exact-head gates; they remain
+checks. The six removed exports need Rust-only break #14 (Cargo 24.6.2 with
+npm 10.6.2): break #13 (#7955/#8120) shipped in 23.6.1, and the current
+published baseline is 23.6.2. The migration guide is in `docs/api/rust.md`.
+The earlier cargo-semver-checks 0.50.0 comparison against 22.6.0 (receipt
+`295e65a4`, six expected `function_missing` findings) and the eight-crate gate
+on `5db3809a` / `86184f2e` are historical and bind those sources only; the
+comparison against 23.6.2 for this head, and runtime, oracle and performance
+gates, remain
 pending. No additional waiver is introduced.
 
 This restack is source-only. Historical native observations above, private
@@ -4870,10 +4870,11 @@ not bind this source. Historical results above remain bound to their original
 commits. The adjacent-layer comparison, complete output identity, external
 consumer checks, oracle qualification and independent review remain pending.
 
-The review-fix integration merges main `cf892ea4c`, including its pending
-Rust break #13 for #7955/#8120, without raising the offset again. The R2a six
-public-reader removals are appended to that pending account; archived break
-#12 remains unchanged. New exact-head qualification compares with this merged
+The review-fix integration merged main `cf892ea4c`, whose break #13
+(#7955/#8120) has since shipped in 23.6.1. The landing head merges main
+`15efd4ff5c` and records the six public-reader removals as their own break
+#14; archived break #12 remains unchanged.
+New exact-head qualification compares with this merged
 main base, not the historical cohorts.
 
 R2a closes only its assigned reader deletions. The remaining hand-rolled

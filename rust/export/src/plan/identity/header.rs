@@ -41,7 +41,7 @@ impl Identity {
     /// `originating_system` under buildingSMART's header agreement
     /// (`Software Company Name - Application Name - Application Version`, no
     /// dash inside the names, a PEP 440 version of numbers and dots with an
-    /// optional `-alpha`, `-beta` or `-rc` suffix). Written as given (trimmed)
+    /// optional `-alpha`, `-beta` or `-rc` suffix). Written exactly as given
     /// all the same: the caller's names are not rewritten.
     pub(crate) fn header_note(&self) -> Option<String> {
         let dash = |c: char| matches!(c, '-' | '\u{00AD}' | '\u{2010}'..='\u{2015}' | '\u{2043}' | '\u{2212}' | '\u{FE58}' | '\u{FE63}' | '\u{FF0D}');

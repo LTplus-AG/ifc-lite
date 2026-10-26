@@ -300,3 +300,17 @@ pub(crate) fn copy_on_write_occurrence_set(
 
     Ok(PropOutcome::CopyOnWrite { new_records, detach: (owning_rel, related_idx, object_id) })
 }
+
+#[cfg(test)]
+mod value_records_tests {
+    /// A measure names one quantity entity: the table lookup takes the first match.
+    #[test]
+    fn each_measure_maps_to_one_quantity_entity() {
+        let mut seen = std::collections::HashSet::new();
+        for (_, _, measures) in super::VALUE_RECORDS {
+            for measure in measures {
+                assert!(seen.insert(*measure), "{measure} maps to more than one quantity entity");
+            }
+        }
+    }
+}

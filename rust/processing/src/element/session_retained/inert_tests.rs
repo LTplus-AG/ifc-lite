@@ -53,12 +53,14 @@ impl NumericalReceipt for InertReceipt {
 struct InertPeer {
     domain: Domain,
     suspend: bool,
+    fault: RuntimeFaultKind,
 }
 impl InertPeer {
     fn new(suspend: bool) -> Self {
         Self {
             domain: Domain(Rc::new(Cell::new(true))),
             suspend,
+            fault: RuntimeFaultKind::Transport,
         }
     }
 }
@@ -89,7 +91,7 @@ impl AsyncRetainedExecutor for InertPeer {
             std::future::pending::<()>().await;
         }
         Err(RuntimeFault {
-            kind: RuntimeFaultKind::Transport,
+            kind: self.fault,
             message: "inert peer closed".into(),
         })
     }
@@ -266,4 +268,37 @@ fn issue_7955_real_opening_job_refuses_before_numerical_admission() {
     .err()
     .expect("openings require a separate retained strategy");
     assert_eq!(error.refusal().0.code(), "opening_strategy");
+}
+
+// #7955: only a settled contract fault disarms a numerical packet.
+#[test]
+fn completed_contract_fault_keeps_worker_live_but_midflight_drop_retires_it() {
+    for suspend in [false, true] {
+        with_execution(|execution, decoder, router| {
+            let mut peer = InertPeer::new(suspend);
+            peer.fault = RuntimeFaultKind::Contract;
+            let domain = peer.domain();
+            let issued = execution
+                .issue_next(decoder, router, &peer)
+                .unwrap()
+                .unwrap();
+            let mut future = Box::pin(issued.execute_async(&mut peer, limits()));
+            let result = future
+                .as_mut()
+                .poll(&mut Context::from_waker(Waker::noop()));
+            if suspend {
+                assert!(result.is_pending());
+            } else {
+                let Poll::Ready(Err(rejected)) = result else {
+                    panic!("contract fault must settle");
+                };
+                assert_eq!(rejected.reason.refusal().0.code(), "contract_breach");
+                assert!(rejected.issued.is_none());
+            }
+            drop(future);
+            assert_eq!(domain.incarnation().is_some(), !suspend);
+            assert_eq!(execution.discharged_count(), 0);
+            assert!(execution.validate_witness().is_err());
+        });
+    }
 }

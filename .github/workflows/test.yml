@@ -672,17 +672,6 @@ jobs:
           BUILD_RETAINED: '1'
         run: bash scripts/build-wasm.sh
 
-      # A0p: actual source-inspection WASM, separate from both shipped surfaces.
-      # GITHUB_SHA is the workflow's original source identity, not runtime HEAD.
-      - name: Development inspection WASM and Node consumer
-        if: needs.changes.outputs.wasm_prebuilt != 'true'
-        env:
-          IFC_RETAINED_BUILD_COMMIT: ${{ github.sha }}
-        run: |
-          pnpm build:wasm:development-inspection
-          pnpm test:wasm-development-inspection
-          cargo clippy --locked -p ifc-lite-wasm --target wasm32-unknown-unknown --features development-inspection -- -D warnings
-
       # Guard the wasm-free typecheck lane (#952): the committed
       # packages/wasm/pkg/ifc-lite.d.ts must stay in sync with the Rust source.
       # The build above just regenerated it (and stripped the platform-variant
@@ -700,6 +689,17 @@ jobs:
             exit 1
           fi
           echo "✅ committed wasm types match the Rust source"
+
+      # A0p: actual source-inspection WASM, separate from both shipped surfaces.
+      # GITHUB_SHA is the workflow's original source identity, not runtime HEAD.
+      - name: Development inspection WASM and Node consumer
+        if: needs.changes.outputs.wasm_prebuilt != 'true'
+        env:
+          IFC_RETAINED_BUILD_COMMIT: ${{ github.sha }}
+        run: |
+          pnpm build:wasm:development-inspection
+          pnpm test:wasm-development-inspection
+          cargo clippy --locked -p ifc-lite-wasm --target wasm32-unknown-unknown --features development-inspection -- -D warnings
 
       # The generated IFCX imported-geometry kernel must match the Rust crate it
       # is built from. Regenerates into a temp dir and diffs; not a build gate for

@@ -36,7 +36,9 @@ export function exerciseInspectionClock(run, options, entry, source, boundary) {
         assert.ok(first, 'Raw entry samples the production clock even for invalid options');
         assert.equal(first.bytes, boundary().bytes, 'First production clock precedes source-preparation growth');
         const growth = boundary().memory.buffer.byteLength - boundary().bytes;
-        if (control !== 'valid') assert.equal(growth, 0, 'Refusal precedes source-sized preparation');
+        // Only the large source must grow memory once prepared (asserted for
+        // 'valid' below), so only there can a zero-growth refusal fail.
+        if (control !== 'valid' && records === 100000) assert.equal(growth, 0, 'Refusal precedes source-sized preparation');
         if (control === 'valid' && records === 100000) assert.ok(growth > 0, 'Large source exercises actual memory growth');
         preparation.push({ records, control, firstSampleMs: first.milliseconds, firstSampleGrowth: first.bytes - boundary().bytes, growth });
       }

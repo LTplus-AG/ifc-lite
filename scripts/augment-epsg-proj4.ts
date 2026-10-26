@@ -35,6 +35,7 @@ function parseArgs(argv: string[]): { concurrency: number; compoundCodes: string
   let concurrency = DEFAULT_CONCURRENCY;
   let compoundCodes: string[] = [];
   for (const arg of argv) {
+    if (arg === '--compound-codes') throw new Error('Expected --compound-codes=CODE[,CODE...]');
     if (arg.startsWith('--compound-codes=')) {
       compoundCodes = arg.slice('--compound-codes='.length).split(',');
       if (!compoundCodes.every(code => /^\d+$/.test(code))) throw new Error('Expected numeric compound codes');
@@ -183,6 +184,8 @@ async function main(): Promise<void> {
     // from epsg.io when its horizontal component is already bundled (#7658).
     console.error(applyProj4Overrides(entries));
     inheritCompoundProj4(refreshed, entries);
+    // Override codes skip inheritance and take their pinned definition here.
+    console.error(applyProj4Overrides(refreshed));
     for (const entry of refreshed) {
       if (!entry.proj4) throw new Error(`EPSG:${entry.code}: horizontal EPSG:${entry.horizontalCode} has no bundled proj4`);
     }

@@ -2,7 +2,7 @@
 --- a/rust/geometry/src/program/mapping_retained.rs
 +++ b/rust/geometry/src/program/mapping_retained.rs
 @@ -219,7 +219,7 @@
-         let state = self.retained.as_mut().ok_or(ProgramError::StaleRequest)?;
+         let state = &mut **self.retained.as_mut().ok_or(ProgramError::StaleRequest)?;
          let output = state.levels.last_mut().ok_or(ProgramError::StaleRequest)?;
          let value = (|| {
 -            let origin = { let _ = origin; Matrix4::identity() };

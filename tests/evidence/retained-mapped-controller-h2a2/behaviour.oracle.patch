@@ -97,7 +97,7 @@
              Ok(values)
          })();
 @@ -234,7 +234,7 @@
-         let state = self.retained.as_mut().ok_or(ProgramError::StaleRequest)?;
+         let state = &mut **self.retained.as_mut().ok_or(ProgramError::StaleRequest)?;
          let output = state.levels.last_mut().ok_or(ProgramError::StaleRequest)?;
          let value = (|| {
 -            let origin = { let _ = origin; Matrix4::identity() };

@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/retained/program.rs
++++ b/rust/geometry/src/program/retained/program.rs
+@@ -175,6 +175,8 @@
+                     // Construction and placement do not inspect or discharge
+                     // relationships, appearance, or persistent face identity.
+                     remaining: vec![
++                        RetainedRequirement::OpeningClosure,
++                        RetainedRequirement::MaterialLayers,
+                         RetainedRequirement::IfcAppearance,
+                         RetainedRequirement::PersistentFaces,
+                     ],

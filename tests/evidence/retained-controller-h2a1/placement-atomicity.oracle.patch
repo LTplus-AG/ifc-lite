@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/retained/mod.rs
++++ b/rust/geometry/src/program/retained/mod.rs
+@@ -88,9 +88,6 @@
+     ) -> crate::Result<()> {
+         validate_affine(transform)?;
+         proper_rigid(transform)?;
+-        let input = self.slot;
+-        let output = next_slot(program)?;
+-        self.slot = output;
+         let matrix = crate::math::mat4::col_major_array(transform);
+         // Finite inputs need not compose to a finite frame. Compute both
+         // candidates before changing the occurrence or its placement lineage.
+@@ -103,8 +100,11 @@
+         })?
+         .retain();
+         crate::resource::reserve_headers(&mut self.placements, 1)?.retain();
++        let input = self.slot;
++        let output = next_slot(program)?;
+         self.world_from_source = world_from_source;
+         self.object_frame = object_frame;
++        self.slot = output;
+         self.placements.push(RetainedPlacement {
+             input,
+             output: self.slot,

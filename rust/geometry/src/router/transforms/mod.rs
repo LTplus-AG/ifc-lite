@@ -22,7 +22,7 @@ use nalgebra::Matrix4;
 /// source. `placed` is false for the identity fallback, which stamps no
 /// instance transform.
 pub(crate) struct ObjectPlacement {
-    transform: Matrix4<f64>,
+    pub(crate) transform: Matrix4<f64>,
     placed: bool,
 }
 

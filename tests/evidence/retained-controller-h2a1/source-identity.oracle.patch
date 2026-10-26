@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MPL-2.0
+--- a/rust/geometry/src/program/retained/capture.rs
++++ b/rust/geometry/src/program/retained/capture.rs
+@@ -42,7 +42,7 @@
+             slot,
+             source_epoch: contract.source_epoch,
+             source_revision: contract.source_revision,
+-            source_id: 0,
++            source_id: item.id,
+         },
+         placements: Vec::new(),
+         product_placed: false,

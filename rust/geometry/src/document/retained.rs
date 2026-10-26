@@ -42,6 +42,14 @@ pub enum RetainedRecipe {
 }
 
 impl RetainedRecipe {
+    #[cfg(any(not(target_arch = "wasm32"), feature = "wasm_source_capture"))]
+    pub(crate) fn lower(&self) -> Result<SweepPayload, RetainedRefusal> {
+        match self {
+            Self::Extrusion(recipe) => retained_sweep::lower(recipe),
+            Self::SweptDisk(recipe) => retained_disk::lower(recipe),
+        }
+    }
+
     /// STEP id of the authored solid; a published display is attributed to it.
     pub fn solid_id(&self) -> u32 {
         match self {

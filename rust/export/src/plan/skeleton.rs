@@ -143,8 +143,7 @@ pub fn skeleton_with_findings(s: &Skeleton) -> Result<(Vec<u8>, Vec<ValidationFi
     build(s, false)
 }
 
-/// The skeleton and its findings, for both entry points; `strict` is
-/// [`identity_of`]'s.
+/// The skeleton and its findings, for both entry points.
 fn build(s: &Skeleton, strict: bool) -> Result<(Vec<u8>, Vec<ValidationFinding>), String> {
     check(s)?;
     let mut findings = Vec::new();
@@ -211,25 +210,7 @@ fn build(s: &Skeleton, strict: bool) -> Result<(Vec<u8>, Vec<ValidationFinding>)
         ],
     )?;
     if let Some(m) = &s.map_conversion {
-        let map_unit = match m.map_unit {
-            MapUnit::Metre => units[0],
-            MapUnit::Foot => length_unit(&mut emit, "FOOT", 0.3048, units[0])?,
-            MapUnit::UsSurveyFoot => length_unit(&mut emit, "US SURVEY FOOT", ifc_lite_core::US_SURVEY_FOOT_M, units[0])?,
-        };
-        let crs = emit.record("IFCPROJECTEDCRS", &[("Name", quoted(&m.crs_name)), ("MapUnit", format!("#{map_unit}"))])?;
-        emit.record(
-            "IFCMAPCONVERSION",
-            &[
-                ("SourceCRS", format!("#{context}")),
-                ("TargetCRS", format!("#{crs}")),
-                ("Eastings", fmt(m.eastings)),
-                ("Northings", fmt(m.northings)),
-                ("OrthogonalHeight", fmt(m.orthogonal_height)),
-                ("XAxisAbscissa", fmt(m.x_axis_abscissa)),
-                ("XAxisOrdinate", fmt(m.x_axis_ordinate)),
-                ("Scale", m.scale.map_or("$".to_string(), fmt)),
-            ],
-        )?;
+        map_conversion(m, context, units[0], &mut emit)?;
     }
 
     let project = emit.record(
@@ -294,9 +275,34 @@ fn build(s: &Skeleton, strict: bool) -> Result<(Vec<u8>, Vec<ValidationFinding>)
     Ok((step_text(s.file_name.as_deref(), identity.as_ref(), &out)?, findings))
 }
 
-/// The application the skeleton is attributed to: one whose change time
-/// can't be attributed refuses when `strict`, else is a finding and the
-/// skeleton is written unattributed.
+/// The map conversion from the model `context` to its projected CRS, with
+/// the CRS's length unit (`metre` when it is metres).
+fn map_conversion(m: &MapConversion, context: u32, metre: u32, emit: &mut Emit) -> Result<(), String> {
+    let map_unit = match m.map_unit {
+        MapUnit::Metre => metre,
+        MapUnit::Foot => length_unit(emit, "FOOT", 0.3048, metre)?,
+        MapUnit::UsSurveyFoot => length_unit(emit, "US SURVEY FOOT", ifc_lite_core::US_SURVEY_FOOT_M, metre)?,
+    };
+    let crs = emit.record("IFCPROJECTEDCRS", &[("Name", format!("'{}'", escape(&m.crs_name))), ("MapUnit", format!("#{map_unit}"))])?;
+    emit.record(
+        "IFCMAPCONVERSION",
+        &[
+            ("SourceCRS", format!("#{context}")),
+            ("TargetCRS", format!("#{crs}")),
+            ("Eastings", fmt(m.eastings)),
+            ("Northings", fmt(m.northings)),
+            ("OrthogonalHeight", fmt(m.orthogonal_height)),
+            ("XAxisAbscissa", fmt(m.x_axis_abscissa)),
+            ("XAxisOrdinate", fmt(m.x_axis_ordinate)),
+            ("Scale", m.scale.map_or("$".to_string(), fmt)),
+        ],
+    )?;
+    Ok(())
+}
+
+/// The skeleton's exporting identity. An application whose change time
+/// can't be attributed refuses when `strict`; otherwise it is a finding and
+/// the skeleton is written unattributed.
 fn identity_of(s: &Skeleton, strict: bool, findings: &mut Vec<ValidationFinding>) -> Result<Option<Identity>, String> {
     match s.application.as_ref().map(|app| Identity::resolve(app, findings)).transpose() {
         Err(message) if strict => Err(message),

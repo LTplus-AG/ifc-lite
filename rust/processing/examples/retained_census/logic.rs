@@ -142,9 +142,15 @@ pub fn census_paths(paths: Vec<(String, PathBuf)>) -> Result<Report, Box<dyn std
                     let bytes = std::fs::read(&path)?;
                     (census_bytes(&bytes), &mut report.present)
                 }
-                Some("ifczip") => match read_ifczip(&path)? {
-                    Some(bytes) => (census_bytes(&bytes), &mut report.present),
-                    None => (empty("unsupported_format"), &mut report.unsupported_format),
+                Some("ifczip") => match read_ifczip(&path) {
+                    Ok(Some(bytes)) => (census_bytes(&bytes), &mut report.present),
+                    Ok(None) => (empty("unsupported_format"), &mut report.unsupported_format),
+                    // One unreadable archive is that fixture's outcome, not the census's.
+                    Err(error) => {
+                        let mut fixture = empty("unsupported_format");
+                        fixture.diagnostics.push(format!("archive:{error}"));
+                        (fixture, &mut report.unsupported_format)
+                    }
                 },
                 _ => (empty("unsupported_format"), &mut report.unsupported_format),
             }
@@ -175,12 +181,17 @@ fn read_ifczip(path: &PathBuf) -> Result<Option<Vec<u8>>, Box<dyn std::error::Er
     let Some(index) = ifc_entry else {
         return Ok(None);
     };
-    let mut entry = archive.by_index(index)?;
-    if entry.size() > 512 * 1024 * 1024 {
+    let entry = archive.by_index(index)?;
+    // The declared size is untrusted: bound what is actually inflated.
+    let limit = denominator::MAX_BYTES as u64;
+    if entry.size() > limit {
         return Ok(None);
     }
-    let mut content = Vec::with_capacity(entry.size() as usize);
-    entry.read_to_end(&mut content)?;
+    let mut content = Vec::new();
+    entry.take(limit + 1).read_to_end(&mut content)?;
+    if content.len() as u64 > limit {
+        return Ok(None);
+    }
     Ok(Some(content))
 }
 

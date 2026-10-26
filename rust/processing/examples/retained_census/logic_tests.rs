@@ -294,3 +294,21 @@ fn issue_7955_malformed_representation_envelope_is_incomplete() {
         assert_partition(&fixture);
     }
 }
+
+#[test]
+fn issue_7955_unreadable_ifczip_is_its_fixture_outcome_not_a_census_abort() {
+    let dir = std::env::temp_dir().join(format!("retained-census-zip-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let broken = dir.join("broken.ifczip");
+    let plain = dir.join("plain.ifc");
+    std::fs::write(&broken, b"PK\x03\x04 not a zip archive").unwrap();
+    std::fs::write(&plain, model("")).unwrap();
+    let report = super::census_paths(vec![("broken".into(), broken), ("plain".into(), plain)]);
+    std::fs::remove_dir_all(&dir).unwrap();
+    let report = report.expect("one unreadable archive must not abort the census");
+    assert_eq!(report.unsupported_format, vec!["broken".to_string()]);
+    assert_eq!(report.present, vec!["plain".to_string()]);
+    let broken = &report.fixtures["broken"];
+    assert_eq!(broken.status, "unsupported_format");
+    assert!(broken.diagnostics.iter().any(|d| d.starts_with("archive:")), "{:?}", broken.diagnostics);
+}

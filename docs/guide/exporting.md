@@ -1290,3 +1290,71 @@ Default-history `MutablePropertyView.setQuantity` edits on an `IfcTypeObject` su
 Type-owned quantity edits preserve an existing explicit native unit when no replacement or removal is requested. A change of quantity dimension refuses export when that retained unit is incompatible with the new IFC measure type. Explicit unit removal remains intentional; compatible same-dimension edits preserve the native unit.
 
 New type-owned scalar quantity members with explicit unit intent must resolve a native unit reference before export. The new-member resolver currently supports assigned Length units; an unassigned requested Length unit or an explicit unit of another quantity dimension refuses instead of saving the value in implicit project units. This applies both to new type-owned sets and members copied into existing type-owned sets; ordinary occurrence serialization retains its existing contract. Adding the first scalar member to a native complex-only set is associated with that set through its source GlobalId, and its opaque members remain unchanged. Like every edited type-owned quantity set, the saved copy receives a fresh GlobalId, so look up the edited set on the type's `HasPropertySets` rather than by the source GlobalId. An edited native definition without a readable GlobalId is unavailable to the current reader and refuses export; an unchanged source definition is not made unreadable merely by lacking export identity.
+
+### Export a section crop
+
+The export works on a temporary copy after applying the selected edits and
+visibility filters. Fully inside elements keep their original representations.
+Trimmed products keep their exact IFC type, GlobalId, property sets, material and
+classification associations, and spatial containment. Type identities remain;
+unused representation-map templates are omitted from cropped files. Geometry is reconstructed
+from the canonical mesher, including existing openings. Logical void and fill
+relationships remain; superseded cutter representations are detached to avoid
+applying baked opening cuts twice.
+Opening records referenced by fills keep their identity and metadata; their
+superseded cutter geometry is omitted after the host cut is baked.
+Closed solids receive cut faces; source surface models remain surfaces. IFC2X3
+uses faceted boundary representations rather than IFC4-only tessellations.
+Palette fragments share the source solid's cut topology. Retained faces keep
+their colours; new cut faces use the source representation item's first colour.
+A failed geometry intersection refuses the export instead of handing over an
+uncut product. Before classifying even a fully inside product, section export
+requires a completed per-product processing receipt, readable body/placement
+references, and no recorded item loss, input refusal, CSG diagnostic/fallback,
+or degenerate-triangle drop. Model-wide diagnostics also refuse the operation:
+shared geometry caches do not yet retain enough provenance to attribute every
+loss to every affected product. A partially meshed product is never treated as
+a complete body just because one of its items produced a mesh.
+
+Trimming axis-based `IfcAlignment` geometry is unsupported: writing a replacement
+Body cannot safely replace the authored Axis used by readers. A crossing Axis
+fails explicitly; use whole-element mode to retain it. Fully inside alignments
+remain unchanged and fully outside alignments can be excluded.
+
+Trimming textured products is currently unsupported. If a textured product
+needs replacement geometry, the operation reports an error and produces no
+download; it never substitutes plain colour or uncut geometry. Fully inside
+products and crossing products in whole-element mode retain their authored
+texture and UV attachments. Entirely excluded textured products can be omitted.
+These rules also cover source texture attachments whose image or UV data could
+not be decoded. Schema conversion retains its existing conversion limitations.
+
+Rust callers needing processing receipts can return a request-local
+`ProductGeometryAudit` from `ProcessingSink::product_geometry_audit` when calling
+`process`. `require_complete(product_id)` refuses missing receipts and recorded
+loss/refusal/CSG diagnostics. This receipt is a diagnostic contract, not a source
+integrity or shared-cache provenance proof; section export additionally checks
+those conditions before accepting a crop.
+
+Programs can crop an already exported, mutation-resolved STEP buffer with the
+same Rust implementation. Planes are IFC world coordinates (Z-up), in metres;
+the kept side satisfies `normal · world <= offset`:
+
+```typescript
+import { exportSectionedStep } from '@ifc-lite/export';
+
+const bytes = new Uint8Array(await file.arrayBuffer());
+const cropped = await exportSectionedStep(bytes, {
+  planes: [
+    { normal: [1, 0, 0], offset: 20 },
+    { normal: [-1, 0, 0], offset: -10 },
+  ],
+  mode: 'trim', // 'whole' keeps crossing elements complete
+});
+console.log(cropped.trimmed, cropped.outside);
+```
+
+Crop each federation source before merging when sources use different project
+length units. Section export needs
+the built WASM runtime; it is deliberately opt-in and does not run during normal
+model loading or ordinary IFC export.

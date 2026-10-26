@@ -6,13 +6,13 @@ import { refGroupFromArg } from './reference-collector.js';
 import { readEntityArgs, type EntityByteRangeIndex } from './subset-entity-reader.js';
 import type { EffectiveEntityIndex } from './effective-index.js';
 
-export const TEXTURE_MAP_TYPES = ['IFCINDEXEDTRIANGLETEXTUREMAP', 'IFCINDEXEDPOLYGONALTEXTUREMAP', 'IFCTEXTUREMAP'] as const;
+export const PRESENTATION_MAP_TYPES = ['IFCINDEXEDTRIANGLETEXTUREMAP', 'IFCINDEXEDPOLYGONALTEXTUREMAP', 'IFCTEXTUREMAP', 'IFCINDEXEDCOLOURMAP'] as const;
 
-/** #4243: rescue by MappedTo geometry, never by a shared image or UV resource.
+/** #4243/#7711: rescue by MappedTo geometry, never by a shared image, UV or colour resource.
  * Effective reference groups replace overridden targets; refsOf intentionally
  * unions original and edited refs and would resurrect a hidden map after retargeting.
  */
-export function textureMapTarget(
+export function presentationMapTarget(
   source: Uint8Array | IfcSourceBytes,
   index: EntityByteRangeIndex & Pick<EffectiveEntityIndex, 'refGroupsOf'>,
   expressId: number,
@@ -23,6 +23,6 @@ export function textureMapTarget(
   // Maps and Vertices (IfcTextureMap). Do not narrow its IfcFace target by
   // concrete type: IfcFaceSurface and IfcAdvancedFace are valid targets too.
   const type = index.get(expressId)?.type?.toUpperCase();
-  const target = groups[type === 'IFCTEXTUREMAP' ? 2 : 1];
+  const target = groups[type === 'IFCINDEXEDCOLOURMAP' ? 0 : type === 'IFCTEXTUREMAP' ? 2 : 1];
   return typeof target === 'number' ? target : undefined;
 }

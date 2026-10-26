@@ -35,7 +35,7 @@ mod created;
 mod effective;
 mod entities;
 pub(crate) use entities::is_entity_name;
-pub(crate) use nominal::check_real_measure;
+pub(crate) use nominal::{canonical_literal, check_literal_measure, check_real_measure, MeasureNumber};
 pub(crate) use retype::predefined_type_members;
 mod extract;
 mod generate;

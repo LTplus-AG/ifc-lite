@@ -30,6 +30,7 @@ fn shared_pset_write(id: u32) -> (ObjectRef, Disposition) {
         unit: None,
         kind: PsetKind::Property,
         scope: PropScope::Occurrence,
+        target: None,
     };
     (ObjectRef::Id(id), Disposition::Patch(Patch { psets: vec![write], ..Default::default() }))
 }

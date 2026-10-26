@@ -22,7 +22,7 @@ use crate::plan::add_rels::{RelKind, RelRequest};
 use crate::plan::add_types::{GlobalId, NewType, Representation};
 use crate::plan::props_synth::{ref_list, ref_or_unset};
 use crate::plan::tessellation::Emit;
-use crate::plan::types::ObjectRef;
+use crate::plan::types::{ObjectRef, ValidationFinding};
 use super::assoc::Shared;
 use super::mapped::{build_map, MapRef};
 use super::units::build_units;
@@ -58,8 +58,12 @@ impl AddState<'_> {
         if let Some((context, owner)) = new_context {
             self.adopt_context(context, owner);
         }
-        if let Some(project) = project {
-            self.rels.relate(self.schema, RelRequest { kind: RelKind::Declares, relating: project, related: id, seed: gid });
+        match project {
+            Some(project) => self.rels.relate(self.schema, RelRequest { kind: RelKind::Declares, relating: project, related: id, seed: gid }),
+            None => self.notes.push(ValidationFinding {
+                express_id: Some(id),
+                message: format!("{} has no IfcRelDeclares in {}: the type is written on its own until an occurrence is typed by it", t.global_id_for(gid).encode(), self.schema),
+            }),
         }
         self.register_type(id, gid, class, maps);
         Ok(())

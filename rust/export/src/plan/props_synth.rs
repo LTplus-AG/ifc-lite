@@ -7,6 +7,8 @@
 //! file's SHARING state (that is `resolve_set_writes`'s job), it only
 //! writes new records from values already decided on.
 
+use ifc_lite_core::SchemaFamily;
+
 use crate::step_text::escape;
 use crate::step_ids::IdAllocator;
 use crate::step_slot::is_step_value;
@@ -76,6 +78,20 @@ pub(crate) fn value_entity(write: &PropWrite) -> Result<&'static str, String> {
         PsetKind::Quantity => quantity_entity_for_measure(&write.measure_type)
             .ok_or_else(|| format!("no IfcQuantity* entity known for measure {}", write.measure_type)),
     }
+}
+
+/// The one check of a write's value against its measure type, run before any
+/// record is built: the value must be a literal of that type in `schema`
+/// (`'abc'` is not an `IfcLengthMeasure`), within its WHERE rule, and a
+/// quantity must not be negative. Also the shape rules of
+/// [`check_caller_text`]. Every property and quantity write passes through it.
+pub(crate) fn check_value(family: Option<SchemaFamily>, write: &PropWrite) -> Result<&'static str, String> {
+    let entity = value_entity(write)?;
+    crate::step_log::check_literal_measure(family, &write.measure_type, &write.literal, write.kind == PsetKind::Property)?;
+    if write.kind == PsetKind::Quantity && write.literal.trim_start().starts_with('-') {
+        return Err("a quantity cannot be negative".to_string());
+    }
+    Ok(entity)
 }
 
 /// A write's measure type, value and unit are STEP text the caller
@@ -184,7 +200,8 @@ pub(crate) fn ref_list(ids: &[u32]) -> String {
     format!("({})", ids.iter().map(|id| format!("#{id}")).collect::<Vec<_>>().join(","))
 }
 
-/// A fresh value record carrying `write`, as `(id, STEP text)`.
+/// A fresh value record carrying `write` (its literal already canonical:
+/// [`super::props_target::ResolvedWrite::for_new_record`]), as `(id, STEP text)`.
 fn new_value(schema: &str, write: &PropWrite, ids: &mut IdAllocator) -> Result<(u32, String), String> {
     let value_type = value_entity(write)?;
     let value_id = ids.allocate().ok_or("id space exhausted")?;

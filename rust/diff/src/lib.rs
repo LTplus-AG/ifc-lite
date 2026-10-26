@@ -50,6 +50,8 @@ pub mod split_evidence;
 pub mod split_geometry;
 pub mod split_grid;
 pub mod class_families;
+#[doc(hidden)]
+pub mod class_normalization;
 pub mod split_types;
 mod split_lanes;
 pub mod split_merge;

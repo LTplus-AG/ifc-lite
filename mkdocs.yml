@@ -281,6 +281,7 @@ nav:
     - Federation: architecture/federation.md
     - Collaboration: architecture/collaboration.md
     - Clash Detection: architecture/clash-detection.md
+    - Diff Consumer Initialization: architecture/diff-consumer-initialization.md
     - Element Splitting: architecture/element-splitting.md
     - Spatial Zone Emission: architecture/spatial-zone-emission.md
     - Mesh Determinism: architecture/mesh-determinism.md

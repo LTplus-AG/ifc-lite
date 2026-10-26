@@ -42,7 +42,7 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
     let mut appended: Vec<(u32, String)> = Vec::new();
     let mut findings = Vec::new();
     let mut ledger = Ledger::for_plan(plan, &mut findings);
-    let mut history = Histories::new(index, schema, ledger.as_mut(), index.first_owner_history, &plan.context);
+    let mut history = Histories::new(index, schema, ledger.as_ref(), index.first_owner_history, &plan.context);
     let mut refusals: Vec<Refusal> = Vec::new();
     let mut edits_by_id: HashMap<u32, BTreeMap<usize, String>> = HashMap::new();
     let mut requested_deletes: HashSet<u32> = HashSet::new();
@@ -131,7 +131,9 @@ pub(crate) fn resolve(index: &FileIndex, schema: &str, plan: &ExportPlan) -> Res
         }
     }
 
-    let owner_history_ref = history.settled();
+    let owner_history_ref = history.settled(&removed);
+    let made = history.made();
+    ledger.iter_mut().for_each(|ledger| ledger.made = made);
 
     if let Some(context) = body_context.synthesized {
         attach_context_to_project(index, schema, context, &removed, &mut list_edits);

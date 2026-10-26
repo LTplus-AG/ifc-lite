@@ -585,22 +585,82 @@ fn an_unreadable_change_time_is_one_finding() {
     assert_eq!(report.findings.len(), 1, "{:?}", report.findings);
 }
 
-/// `IfcTimeStamp` is an INTEGER count of seconds with no upper bound, so a
-/// date far ahead is accepted, in a plan and a skeleton. Only a value that
-/// reads as milliseconds is refused, and says so.
+/// Attribution needs a change time 32-bit readers can hold: seconds in
+/// `[0, i32::MAX]`. Outside it the plan keeps the source's attribution and
+/// a finding names the value; a bare integer past plausible seconds is
+/// named as milliseconds. A skeleton is still written, unattributed.
 #[test]
-fn a_far_future_change_time_is_accepted_and_milliseconds_are_refused() {
-    let future = ExportingApplication::new("O", "A", "a", "1", "2040-01-01T00:00:00");
-    let (out, report) = export(&source("IFC4", false), vec![rename(10)], PlanContext::new().with_application(future.clone()));
-    assert!(report.findings.is_empty(), "{:?}", report.findings);
-    let history = target("IFC4", &lines(&out), &lines(&out)[&10], "IFCWALL", "OwnerHistory");
-    assert_eq!(attr("IFC4", &history, "IFCOWNERHISTORY", "LastModifiedDate"), "2208988800");
-    let root = |n: u128| SkeletonRoot::new(GlobalId(n));
-    assert!(skeleton(&Skeleton::new(root(1), root(2), root(3)).with_application(future)).is_ok());
-    let millis = ExportingApplication::new("O", "A", "a", "1", "1792749600000");
-    let (out, report) = export(&source("IFC4", false), vec![rename(10)], PlanContext::new().with_application(millis));
-    assert!(report.findings.iter().any(|f| f.message.contains("milliseconds")), "{:?}", report.findings);
-    assert_eq!(attr("IFC4", &lines(&out)[&10], "IFCWALL", "OwnerHistory"), "#164");
+fn a_change_time_outside_32_bits_is_refused_and_named() {
+    for (stamp, millis) in [("2040-01-01T00:00:00", false), ("-1", false), ("1792749600000", true), ("6000-01-01T00:00:00", false)] {
+        let app = ExportingApplication::new("O", "A", "a", "1", stamp);
+        let (out, report) = export(&source("IFC4", false), vec![rename(10)], PlanContext::new().with_application(app.clone()));
+        assert_eq!(report.findings.len(), 1, "{stamp}: {:?}", report.findings);
+        assert!(report.findings[0].message.contains(stamp), "{stamp}: {:?}", report.findings);
+        assert_eq!(report.findings[0].message.contains("milliseconds"), millis, "{stamp}: {:?}", report.findings);
+        assert_eq!(attr("IFC4", &lines(&out)[&10], "IFCWALL", "OwnerHistory"), "#164", "{stamp}");
+        let root = |n: u128| SkeletonRoot::new(GlobalId(n));
+        let (bytes, findings) = skeleton_with_findings(&Skeleton::new(root(1), root(2), root(3)).with_application(app)).unwrap();
+        assert!(histories(&lines(&bytes), ".ADDED.").is_empty(), "{stamp}: unattributed");
+        assert_eq!(findings.len(), 1, "{stamp}: {findings:?}");
+    }
+}
+
+/// An IfcMaterialList member deleted: the list is rewritten, and the
+/// relationship that associates it is modified.
+#[test]
+fn a_material_list_member_delete_modifies_its_association() {
+    for schema in SCHEMAS {
+        let r = |id, entity, fields: &[(&str, &str)]| {
+            let fields: Vec<(&str, String)> = fields.iter().map(|&(n, v)| (n, v.to_string())).collect();
+            build_record(schema, id, entity, &fields)
+        };
+        let records = [
+            r(500, "IFCMATERIAL", &[("Name", "'Brick'")]),
+            r(501, "IFCMATERIAL", &[("Name", "'Mortar'")]),
+            r(502, "IFCMATERIALLIST", &[("Materials", "(#500,#501)")]),
+            r(503, "IFCRELASSOCIATESMATERIAL", &[("GlobalId", "'0000000000000000000503'"), ("RelatedObjects", "(#10)"), ("RelatingMaterial", "#502")]),
+        ];
+        let text = String::from_utf8(storey_with_typed_wall(schema)).unwrap().replace("ENDSEC;\nEND-ISO", &format!("{}\nENDSEC;\nEND-ISO", records.join("\n")));
+        let src = owned(text.as_bytes(), schema);
+        let (out, report) = export(&src, vec![(ObjectRef::Id(501), Disposition::Delete)], context());
+        assert!(report.refusals.is_empty(), "{schema}: {report:?}");
+        assert_eq!(assert_modified_exactly_the_rewritten(schema, &src, &out), vec![503], "{schema}");
+    }
+}
+
+/// The history a source supplies and the plan deletes is never settled on.
+#[test]
+fn a_removed_history_is_not_settled() {
+    let src = source("IFC4", false);
+    let index = crate::plan::index::FileIndex::complete(&src);
+    let context = PlanContext::new();
+    let history = crate::plan::attribution::Histories::new(&index, "IFC4", None, Some(164), &context);
+    assert_eq!(history.settled(&std::collections::HashSet::from([164])), None);
+    assert_eq!(history.settled(&std::collections::HashSet::new()), Some(164));
+}
+
+/// An application whose developer the plan deletes goes with it (the
+/// cascade): a fresh chain is written, and the identifier stays unique.
+#[test]
+fn an_application_whose_developer_is_deleted_is_not_reused() {
+    let schema = "IFC4";
+    let src = String::from_utf8(source(schema, false)).unwrap();
+    let ours = [
+        build_record(schema, 171, "IFCORGANIZATION", &[("Name", "'ExampleOrg'".into())]),
+        build_record(
+            schema,
+            173,
+            "IFCAPPLICATION",
+            &[("ApplicationDeveloper", "#171".into()), ("Version", "'2.1'".into()), ("ApplicationFullName", "'ExampleApp'".into()), ("ApplicationIdentifier", "'example-app'".into())],
+        ),
+    ];
+    let src = src.replace("ENDSEC;\nEND-ISO", &format!("{}\nENDSEC;\nEND-ISO", ours.join("\n"))).into_bytes();
+    let (out, _) = export(&src, vec![(ObjectRef::Id(171), Disposition::Delete), rename(10)], context());
+    assert_no_dangling(&out, schema);
+    let all = lines(&out);
+    assert_eq!(all.values().filter(|l| l.contains("'example-app'")).count(), 1, "one application with the identifier");
+    let history = target(schema, &all, &all[&10], "IFCWALL", "OwnerHistory");
+    assert_ne!(attr(schema, &history, "IFCOWNERHISTORY", "LastModifyingApplication"), "#173");
 }
 
 /// A plan that deletes the file's owner history does not name it for the
@@ -686,20 +746,19 @@ fn a_failed_add_phase_rolls_the_ledger_back() {
         let src = crate::plan::test_fixtures::storey_with_headroom("IFC4", headroom);
         let index = crate::plan::index::FileIndex::complete(&src);
         let plan = ExportPlan { dispositions: Vec::new(), context: context() };
-        let mut ledger = Ledger::for_plan(&plan, &mut Vec::new()).unwrap();
+        let ledger = Ledger::for_plan(&plan, &mut Vec::new()).unwrap();
         let wall = object(IfcClass::Wall, new_gid(90), Some(ObjectRef::Id(70)), Representation::None);
         let key = ObjectRef::Guid(wall.global_id.encode());
         let adds = [(&key, AddItem::Object(&wall))];
         let removed = std::collections::HashSet::new();
-        let history = Histories::new(&index, "IFC4", Some(&mut ledger), None, &plan.context);
+        let history = Histories::new(&index, "IFC4", Some(&ledger), None, &plan.context);
         let state = AddState::new(&index, "IFC4", &removed, history, None);
         let mut ids = crate::step_ids::IdAllocator::after(index.max_id);
         let mut refusals = Vec::new();
-        let built = state.build_all(&adds, &mut ids, &mut HashMap::new(), &mut Vec::new(), &mut refusals, &mut Vec::new());
+        let (built, made) = state.build_all(&adds, &mut ids, &mut HashMap::new(), &mut Vec::new(), &mut refusals, &mut Vec::new());
         if built == 0 && refusals.iter().any(|r| r.reason.contains("relationships for added objects not written")) {
             checked = true;
-            assert_eq!(ledger.made.added(), None, "headroom {headroom}");
-            assert_eq!(ledger.made.application(), None, "headroom {headroom}");
+            assert!(made.is_none(), "headroom {headroom}: nothing the discarded Adds took reaches the ledger");
         }
     }
     assert!(checked, "some headroom fails the relationships after the Add built");

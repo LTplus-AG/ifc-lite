@@ -50,7 +50,7 @@ impl AddState<'_> {
                 (build_map(&mut emit, context, &t.representation, t.style.as_ref())?, new_context)
             }
         };
-        let id = build_new_type(&mut emit, t, gid, (&class, &predefined), &units, &maps, Some(owner.id()))?;
+        let id = build_new_type(&mut emit, t, gid, (&class, &predefined), &units, &maps, Some(owner.id))?;
         let pending = shared.pending;
         let new_context = self.owned_context(new_context)?;
 

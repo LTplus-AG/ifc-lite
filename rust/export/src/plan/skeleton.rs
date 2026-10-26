@@ -18,7 +18,7 @@ use crate::step_text::escape;
 
 use super::add_types::GlobalId;
 use super::identity::{Identity, Made};
-use super::types::ExportingApplication;
+use super::types::{ExportingApplication, ValidationFinding};
 use super::placement::fmt;
 use super::props_synth::ref_list;
 use super::tessellation::Emit;
@@ -127,7 +127,18 @@ fn length_unit(emit: &mut Emit, name: &str, metres: f64, metre: u32) -> Result<u
 /// A number is not finite, a direction is zero length, the three roots do
 /// not have distinct GlobalIds, or `crs_name` is empty.
 pub fn skeleton(s: &Skeleton) -> Result<Vec<u8>, String> {
+    skeleton_with_findings(s).map(|(bytes, _)| bytes)
+}
+
+/// [`skeleton`], with what it reports: an application it could not attribute
+/// the skeleton to (its change time unusable) is a finding, and the skeleton
+/// is written unattributed rather than refused.
+///
+/// # Errors
+/// As [`skeleton`].
+pub fn skeleton_with_findings(s: &Skeleton) -> Result<(Vec<u8>, Vec<ValidationFinding>), String> {
     check(s)?;
+    let mut findings = Vec::new();
     let mut ids = IdAllocator::after(0);
     let mut out = Vec::new();
     let mut emit = Emit {
@@ -136,7 +147,7 @@ pub fn skeleton(s: &Skeleton) -> Result<Vec<u8>, String> {
         out: &mut out,
     };
     // The exporting application owns what the skeleton creates.
-    let identity = s.application.as_ref().map(Identity::new).transpose()?;
+    let identity = identity_of(s, &mut findings);
     let history = owner_slot(identity.as_ref(), &mut emit)?;
     let quoted = |v: &str| format!("'{}'", escape(v));
     let name = |root: &SkeletonRoot| root.name.as_deref().map_or("$".to_string(), quoted);
@@ -271,7 +282,14 @@ pub fn skeleton(s: &Skeleton) -> Result<Vec<u8>, String> {
         )?;
     }
 
-    step_text(s.file_name.as_deref(), identity.as_ref(), &out)
+    Ok((step_text(s.file_name.as_deref(), identity.as_ref(), &out)?, findings))
+}
+
+/// The application the skeleton is attributed to, if its change time is
+/// usable; else a finding, and the skeleton is written unattributed.
+fn identity_of(s: &Skeleton, findings: &mut Vec<ValidationFinding>) -> Option<Identity> {
+    let app = s.application.as_ref()?;
+    Identity::new(app).map_err(|message| findings.push(ValidationFinding { express_id: None, message })).ok()
 }
 
 /// The `OwnerHistory` slot of everything the skeleton creates: the

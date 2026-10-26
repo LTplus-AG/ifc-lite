@@ -274,7 +274,7 @@ pub(crate) fn resolve_set_writes<'w>(
                 object_id,
                 &writes,
                 ids,
-                taken.as_ref().map(|t| t.settles.id()),
+                taken.as_ref().map(|t| t.settles.id),
                 &members,
                 &replaced,
                 owning_rel,
@@ -312,7 +312,7 @@ pub(crate) fn resolve_set_writes<'w>(
             let inherited: Vec<_> = group.iter().map(|w| w.for_new_record(target)).collect();
             let inherited: Vec<&PropWrite> = inherited.iter().map(|w| &**w).collect();
             let taken = history(ids);
-            match props_synth::append_new_occurrence_set(schema, container_type, member_attr, object_id, &inherited, ids, taken.as_ref().map(|t| t.settles.id())) {
+            match props_synth::append_new_occurrence_set(schema, container_type, member_attr, object_id, &inherited, ids, taken.as_ref().map(|t| t.settles.id)) {
                 Ok(outcome) => result.push_with_history(outcome, taken),
                 Err(reason) => refuse_all(&mut result, &reason),
             }

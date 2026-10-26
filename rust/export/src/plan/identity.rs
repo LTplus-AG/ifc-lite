@@ -114,10 +114,11 @@ pub(crate) fn chain(schema: &str, ids: &mut IdAllocator, spec: &ChainSpec, sourc
 }
 
 /// `(application, its developer)` for the source's application named
-/// `identifier`, the first in file order that the output keeps. Its
-/// developer only if readable and kept: without one the application is
-/// still reused (UR1: one application per identifier), and the user gets an
-/// organization of its own.
+/// `identifier`, the first in file order that the output keeps, reused only
+/// if its developer survives too: a developer the plan removes takes the
+/// application with it (the cascade), so a fresh chain is written. An unset
+/// (`$`) developer is reused as it is; the user then gets an organization
+/// of its own.
 fn existing_application(index: &FileIndex, removed: &HashSet<u32>, schema: &str, identifier: &str) -> Option<(u32, Option<u32>)> {
     let id = index
         .applications
@@ -125,8 +126,14 @@ fn existing_application(index: &FileIndex, removed: &HashSet<u32>, schema: &str,
         .copied()
         .filter(|id| !removed.contains(id))
         .find(|&id| index.string_attr(schema, id, "IFCAPPLICATION", "ApplicationIdentifier").as_deref() == Some(identifier))?;
-    let developer = scalar_attr(index, schema, id, "IFCAPPLICATION", "ApplicationDeveloper").filter(|d| !removed.contains(d) && index.contains(*d));
-    Some((id, developer))
+    let slot = attribute_index(schema, "IFCAPPLICATION", "ApplicationDeveloper")
+        .and_then(|i| crate::step_text::attribute_of(&index.raw_line(id)?, i))
+        .unwrap_or_default();
+    if slot.trim() == "$" {
+        return Some((id, None));
+    }
+    let developer = ifc_lite_core::parser::parse_ref(slot.trim().as_bytes()).filter(|d| index.contains(*d) && !removed.contains(d))?;
+    Some((id, Some(developer)))
 }
 
 /// A source user of `org`, kept by the output, whose person (kept too) is
@@ -176,10 +183,14 @@ impl Identity {
         let keeps = "the export keeps the source's attribution";
         let seconds = epoch_seconds(stamp)
             .ok_or_else(|| format!("ExportingApplication.changed_at {stamp:?} is neither Unix seconds nor an ISO 8601 timestamp; {keeps}"))?;
-        // IfcTimeStamp is an INTEGER with no upper bound; a count past what
-        // seconds plausibly reach (year 5138) is a millisecond epoch.
-        if seconds > 100_000_000_000 {
-            return Err(format!("ExportingApplication.changed_at {stamp:?} looks like milliseconds since the epoch, not seconds; {keeps}"));
+        // IfcTimeStamp is an EXPRESS INTEGER, which 32-bit readers
+        // (IfcOpenShell among them) hold as an int: attribute only within it.
+        if !(0..=i64::from(i32::MAX)).contains(&seconds) {
+            let bare = stamp.trim().parse::<i64>().is_ok_and(|v| v > 100_000_000_000);
+            let hint = if bare { " (it looks like milliseconds since the epoch, not seconds)" } else { "" };
+            return Err(format!(
+                "ExportingApplication.changed_at {stamp:?} is {seconds} seconds, outside the 0..=2147483647 an IfcTimeStamp holds for 32-bit readers{hint}; {keeps}"
+            ));
         }
         Ok(Self { app: app.clone(), seconds })
     }

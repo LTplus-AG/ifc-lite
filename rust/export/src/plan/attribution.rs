@@ -58,16 +58,21 @@ impl Ledger {
 /// synthesized (see [`super::owner_history::synthesize`]). Taking one is not
 /// yet using it: only a write that succeeds [`Self::commit`]s what it took,
 /// so a refused write leaves nothing behind and a plan that adds nothing
-/// writes none. A batch of writes that fails as a whole [`Self::rollback`]s.
+/// writes none. What was committed reaches the [`Ledger`] only when the
+/// caller hands back [`Self::made`].
 pub(crate) struct Histories<'l> {
     index: &'l FileIndex<'l>,
     schema: &'l str,
-    source: HistorySource<'l>,
+    kind: HistoryKind<'l>,
+    /// The exporting application's records committed so far.
+    made: Made,
+    /// The history committed so far.
+    id: Option<u32>,
 }
 
-enum HistorySource<'l> {
-    Attributed { identity: &'l Identity, made: &'l mut Made, initial: Made },
-    Source { id: Option<u32>, initial: Option<u32>, context: &'l PlanContext },
+enum HistoryKind<'l> {
+    Attributed(&'l Identity),
+    Source(&'l PlanContext),
 }
 
 /// A history taken for one write: the records to write with the write if
@@ -77,85 +82,66 @@ pub(crate) struct Taken {
     pub(crate) settles: Settles,
 }
 
-/// What a committed [`Taken`] settles, by the source it was taken from.
+/// What a committed [`Taken`] settles: the history the write names, and
+/// the exporting application's records then written.
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum Settles {
-    /// The exporting application's records then written.
-    Attributed(Made),
-    /// The file's history, or one synthesized.
-    Source(u32),
-}
-
-impl Settles {
-    /// The history the write names.
-    pub(crate) fn id(&self) -> u32 {
-        match self {
-            Self::Attributed(made) => made.added().expect("a taken attributed history is written"),
-            Self::Source(id) => *id,
-        }
-    }
+pub(crate) struct Settles {
+    pub(crate) id: u32,
+    made: Made,
 }
 
 impl Taken {
     /// A history that already exists: nothing to write.
     #[cfg(test)]
     pub(crate) fn existing(id: u32) -> Self {
-        Self { records: Vec::new(), settles: Settles::Source(id) }
+        Self { records: Vec::new(), settles: Settles { id, made: Made::default() } }
     }
 }
 
 impl<'l> Histories<'l> {
     /// With `ledger`, the exporting application's; else `existing` (the
     /// file's or one settled earlier), or one synthesized from `context`.
-    pub(crate) fn new(index: &'l FileIndex<'l>, schema: &'l str, ledger: Option<&'l mut Ledger>, existing: Option<u32>, context: &'l PlanContext) -> Self {
-        let source = match ledger {
-            Some(ledger) => HistorySource::Attributed { identity: &ledger.identity, initial: ledger.made, made: &mut ledger.made },
-            None => HistorySource::Source { id: existing, initial: existing, context },
+    pub(crate) fn new(index: &'l FileIndex<'l>, schema: &'l str, ledger: Option<&'l Ledger>, existing: Option<u32>, context: &'l PlanContext) -> Self {
+        let (kind, made, id) = match ledger {
+            Some(ledger) => (HistoryKind::Attributed(&ledger.identity), ledger.made, ledger.made.added()),
+            None => (HistoryKind::Source(context), Made::default(), existing),
         };
-        Self { index, schema, source }
+        Self { index, schema, kind, made, id }
     }
 
     /// The history one write names, and the records it must write with it.
     /// Records `removed` holds are neither named nor reused.
     pub(crate) fn take(&self, ids: &mut IdAllocator, removed: &HashSet<u32>) -> Option<Taken> {
-        match &self.source {
-            HistorySource::Attributed { identity, made, .. } => {
-                let (mut made, mut records) = (**made, Vec::new());
-                identity.added_in(self.schema, ids, Some((self.index, removed)), &mut made, &mut records)?;
-                Some(Taken { records, settles: Settles::Attributed(made) })
-            }
-            HistorySource::Source { id: Some(id), .. } if !removed.contains(id) => Some(Taken { records: Vec::new(), settles: Settles::Source(*id) }),
-            HistorySource::Source { context, .. } => {
-                let (records, id) = super::owner_history::synthesize(self.schema, ids, context)?;
-                Some(Taken { records, settles: Settles::Source(id) })
-            }
-        }
+        let mut made = self.made;
+        let mut records = Vec::new();
+        let id = match self.kind {
+            HistoryKind::Attributed(identity) => identity.added_in(self.schema, ids, Some((self.index, removed)), &mut made, &mut records)?,
+            HistoryKind::Source(context) => match self.settled(removed) {
+                Some(id) => id,
+                None => {
+                    let (synthesized, id) = super::owner_history::synthesize(self.schema, ids, context)?;
+                    records = synthesized;
+                    id
+                }
+            },
+        };
+        Some(Taken { records, settles: Settles { id, made } })
     }
 
     /// A write that took `settles` succeeded: what it took is the plan's.
     pub(crate) fn commit(&mut self, settles: Settles) {
-        match (&mut self.source, settles) {
-            (HistorySource::Attributed { made, .. }, Settles::Attributed(now)) => **made = now,
-            (HistorySource::Source { id: slot, .. }, Settles::Source(id)) => *slot = Some(id),
-            _ => unreachable!("a history is committed to the source it was taken from"),
-        }
+        self.made = settles.made;
+        self.id = Some(settles.id);
     }
 
-    /// Writes committed since [`Self::new`] were discarded together: forget
-    /// what they settled.
-    pub(crate) fn rollback(&mut self) {
-        match &mut self.source {
-            HistorySource::Attributed { made, initial, .. } => **made = *initial,
-            HistorySource::Source { id, initial, .. } => *id = *initial,
-        }
+    /// The history committed so far, unless the plan removes it.
+    pub(crate) fn settled(&self, removed: &HashSet<u32>) -> Option<u32> {
+        self.id.filter(|id| !removed.contains(id))
     }
 
-    /// The history committed so far, if any.
-    pub(crate) fn settled(&self) -> Option<u32> {
-        match &self.source {
-            HistorySource::Attributed { made, .. } => made.added(),
-            HistorySource::Source { id, .. } => *id,
-        }
+    /// The exporting application's records committed, for the ledger.
+    pub(crate) fn made(&self) -> Made {
+        self.made
     }
 }
 
@@ -181,35 +167,20 @@ pub(crate) fn attribute_changes(index: &FileIndex, schema: &str, plan: &ExportPl
     }
 }
 
-/// The attributes through which a record owns another for attribution: a
-/// product its placement and shape, a shape its representations and their
-/// items, a type its representation maps, a map its representation, a
-/// mapped item the map it instances, a set its values. A rewrite of the
-/// owned record is a change to the owner.
-const OWNING_ATTRIBUTES: [&str; 9] = [
-    "ObjectPlacement",
-    "Representation",
-    "Representations",
-    "Items",
-    "RepresentationMaps",
-    "MappedRepresentation",
-    "MappingSource",
-    "HasProperties",
-    "Quantities",
-];
-
 /// The records whose owner history records what the plan rewrote: every
 /// source record it rewrites that carries an `OwnerHistory`, and for one
-/// that carries none, the nearest records that own it through
-/// [`OWNING_ATTRIBUTES`] and carry one (a value's set, a placement's
-/// product, a mapped shape's type and every occurrence instancing the map).
-/// Records going away are not among them.
+/// that carries none, the nearest records above it that do, found by
+/// following every record that names it (a value's set, a material list's
+/// association, a placement's product, a mapped shape's type and every
+/// occurrence instancing the map). `PlacementRelTo` is not followed: what
+/// is placed relative to a placement is not changed by it. Records going
+/// away are not among them.
 fn rewritten_roots(index: &FileIndex, schema: &str, edits_by_id: &HashMap<u32, BTreeMap<usize, String>>, removed: &HashSet<u32>) -> BTreeSet<u32> {
     let live = |id: &u32| index.contains(*id) && !removed.contains(id);
     let carries = |id: u32| index.type_of(id).is_some_and(|ty| attribute_index(schema, &ty, "OwnerHistory").is_some());
-    let owns = |owner: u32, slot: usize| {
+    let relative = |owner: u32, slot: usize| {
         let ty = index.type_of(owner).unwrap_or_default();
-        ifc_lite_core::attribute_names_for_schema(schema, &ty).and_then(|names| names.get(slot)).is_some_and(|name| OWNING_ATTRIBUTES.contains(name))
+        ifc_lite_core::attribute_names_for_schema(schema, &ty).and_then(|names| names.get(slot).copied()) == Some("PlacementRelTo")
     };
     let mut roots = BTreeSet::new();
     let mut seen = HashSet::new();
@@ -222,7 +193,7 @@ fn rewritten_roots(index: &FileIndex, schema: &str, edits_by_id: &HashMap<u32, B
             roots.insert(record);
             continue;
         }
-        pending.extend(index.referrers(record).iter().filter(|&&(owner, slot)| live(&owner) && owns(owner, slot)).map(|&(owner, _)| owner));
+        pending.extend(index.referrers(record).iter().filter(|&&(owner, slot)| live(&owner) && !relative(owner, slot)).map(|&(owner, _)| owner));
     }
     roots
 }

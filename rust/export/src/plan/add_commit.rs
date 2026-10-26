@@ -32,7 +32,7 @@ impl AddState<'_> {
 
     /// The owner history the built Adds name, if one is settled yet.
     pub(super) fn settled_history(&self) -> Option<u32> {
-        self.history.settled()
+        self.history.settled(self.removed)
     }
 
     /// The context new geometry goes into: the plan's, else one synthesized

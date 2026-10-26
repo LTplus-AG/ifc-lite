@@ -26,6 +26,7 @@ use super::add_rels::{RelAccumulator, RelKind, RelRequest};
 use super::add_types::{AddItem, NewObject, Representation, TypeLink};
 use super::attrs::unset_required;
 use super::attribution::Histories;
+use super::identity::Made;
 use super::index::FileIndex;
 use super::placement::fmt;
 use super::props_synth::{defines_by_properties_record, ref_or_unset};
@@ -106,7 +107,7 @@ impl<'a> AddState<'a> {
         let owner = self.owner_history_for(ids, &mut out)?;
         let mut requests = Vec::new();
         let mut emit = Emit { schema: self.schema, ids, out: &mut out };
-        let built = self.build(&mut emit, obj, &checked, owner.id(), &mut requests)?;
+        let built = self.build(&mut emit, obj, &checked, owner.id, &mut requests)?;
         let new_context = self.owned_context(built.new_context)?;
 
         self.typed.extend(checked.existing_type);
@@ -126,7 +127,8 @@ impl<'a> AddState<'a> {
         Ok(())
     }
 
-    /// Build every Add, returning how many were written. The relationships of
+    /// Build every Add, returning how many were written and, when they all
+    /// were, the exporting application's records they settled. The relationships of
     /// every Add are written together, all or nothing: when `finish` fails (the
     /// id space runs out, or a list it extends does not scan), it discards every
     /// built object's records along with them (see its doc comment), so each Add
@@ -139,7 +141,7 @@ impl<'a> AddState<'a> {
         appended: &mut Vec<(u32, String)>,
         refusals: &mut Vec<Refusal>,
         findings: &mut Vec<ValidationFinding>,
-    ) -> usize {
+    ) -> (usize, Option<Made>) {
         let mut built = Vec::new();
         for &(key, item) in adds {
             // A refused Add gives back the ids it took, so it changes no
@@ -160,34 +162,34 @@ impl<'a> AddState<'a> {
         let typed = std::mem::take(&mut self.typed);
         let mut notes = std::mem::take(&mut self.notes);
         notes.retain(|n| n.express_id.is_none_or(|id| !typed.contains(&id)));
+        // What the Adds committed reaches the ledger only if all of them are
+        // written: a failure here discards every one.
+        let made = self.history.made();
         match self.finish(ids, edits_by_id) {
             Ok(records) => {
                 appended.extend(records);
                 findings.append(&mut notes);
-                built.len()
+                (built.len(), Some(made))
             }
             Err(reason) => {
-                // Every Add is discarded, and with it what they settled.
-                self.history.rollback();
                 refusals.extend(built.into_iter().map(|key| Refusal {
                     object: key.clone(),
                     reason: format!("relationships for added objects not written: {reason}"),
                 }));
-                0
+                (0, None)
             }
         }
     }
 
     /// Every record and list edit the Adds produced, relationships last.
     fn finish(
-        &mut self,
+        self,
         ids: &mut IdAllocator,
         edits_by_id: &mut HashMap<u32, BTreeMap<usize, String>>,
     ) -> Result<Vec<(u32, String)>, String> {
         let history = self.settled_history();
-        let rels = std::mem::replace(&mut self.rels, RelAccumulator::new(self.index, self.removed));
-        let mut records = std::mem::take(&mut self.records);
-        records.extend(rels.finish(self.schema, ids, history, edits_by_id)?);
+        let mut records = self.records;
+        records.extend(self.rels.finish(self.schema, ids, history, edits_by_id)?);
         Ok(records)
     }
 

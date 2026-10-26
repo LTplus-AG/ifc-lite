@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MPL-2.0
+# B2c source-context replacement; apply in reverse to mutate. Execution UNRUN.
+--- a/rust/geometry/src/program/retained/frame.rs
++++ b/rust/geometry/src/program/retained/frame.rs
+@@ -27,7 +27,7 @@
+             } else {
+                 (self.world_from_source, compose_frame(&matrix, &self.object_frame)?)
+             };
+-        // Mutant: accept singular composed frames despite valid inputs.
++        validate_affine(&nalgebra::Matrix4::from_column_slice(&object_frame))?;
+         crate::resource::charge(crate::resource::Cost {
+             work: 1,
+             occurrences: 1,

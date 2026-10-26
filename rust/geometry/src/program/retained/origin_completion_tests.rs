@@ -31,7 +31,7 @@ fn issue_7955_completion_preserves_pending_protocol_and_root_reasons() {
 }
 
 #[test]
-fn issue_7955_unconverted_mapping_completion_is_honestly_opaque() {
+fn issue_7955_mapping_completion_preserves_reached_singular_frame_cause() {
     let bytes = mapping_tests::mapped().replace("#84,1.,$", "#84,0.,$");
     let source = SourceBundle::new(bytes.as_bytes().to_vec());
     let mut decoder = source.decoder();
@@ -39,9 +39,10 @@ fn issue_7955_unconverted_mapping_completion_is_honestly_opaque() {
     let mut program = RetainedProgram::type_map(decoder.decode_by_id(61).unwrap(), None, contract());
     assert!(drive(&mut program, &router, &mut decoder).is_empty());
     let failure = origin(program.finish_type_map(60, 1, [1.; 4]).unwrap_err());
-    assert_eq!(failure.site, FailureSite::TypeMapCompletion);
-    assert_eq!(failure.entity, None, "completion has no invented source leaf");
-    assert!(matches!(failure.cause, OriginCause::Opaque(crate::Error::GeometryError(_))));
+    assert_eq!(failure.site, FailureSite::MappingPlacement);
+    assert_eq!(failure.entity, Some(13), "the nested occurrence rejected its transform");
+    assert!(matches!(failure.cause, OriginCause::Value(
+        crate::program::retained::value_error::ValueReason::SingularFrame)));
 }
 
 #[test]

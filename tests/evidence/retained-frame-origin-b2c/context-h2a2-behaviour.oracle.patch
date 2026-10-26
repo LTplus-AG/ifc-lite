@@ -1,0 +1,109 @@
+# SPDX-License-Identifier: MPL-2.0
+# B2c source-context replacement; apply in reverse to mutate. Execution UNRUN.
+--- a/rust/geometry/src/program/inner.rs
++++ b/rust/geometry/src/program/inner.rs
+@@ -178,10 +178,10 @@
+         // Owners are validated before the recipe is taken: a refused call
+         // leaves the request executable by its actual router and decoder.
+         self.validate_owner(router, Some(decoder))?;
+-        if false && matches!(&self.control, Control::Product(c) if c.retained_ready()) {
++        if matches!(&self.control, Control::Product(c) if c.retained_ready()) {
+             return Err(ProgramError::UnsupportedRetained);
+         }
+-        if false && matches!(&self.control, Control::Mapping(c) if c.retained_ready()) { return Err(ProgramError::UnsupportedRetained); }
++        if matches!(&self.control, Control::Mapping(c) if c.retained_ready()) { return Err(ProgramError::UnsupportedRetained); }
+         self.expected_router = Some(router.execution_identity());
+         self.expected_decoder = Some(decoder.execution_identity());
+         let decoder_before = decoder.execution_identity();
+--- a/rust/geometry/src/program/retained/capture.rs
++++ b/rust/geometry/src/program/retained/capture.rs
+@@ -22,7 +22,7 @@
+             length_unit_scale: scale,
+         })),
+         IfcType::IfcSweptDiskSolid => Ok(RetainedRecipe::SweptDisk(RetainedSweptDisk {
+-            solid_id: 0,
++            solid_id: item.id,
+             source: crate::analytic::extract_swept_disk(item, decoder).map_err(|error| {
+                 if let crate::Error::ProgramStopped(_) = error { return error; }
+                 let diagnostic = crate::Error::geometry(error.to_string());
+@@ -51,7 +51,7 @@
+             slot,
+             source_epoch: contract.source_epoch,
+             source_revision: contract.source_revision,
+-            source_id: 0,
++            source_id: item.id,
+         },
+         placements: Vec::new(),
+         presentation: Vec::new(),
+--- a/rust/geometry/src/program/retained/completion.rs
++++ b/rust/geometry/src/program/retained/completion.rs
+@@ -16,7 +16,8 @@
+                 Ok(RetainedProductPlan {
+                     values,
+                     // Construction/placement discharge none of these obligations.
+-                    remaining: vec![RetainedRequirement::IfcAppearance,
++                    remaining: vec![RetainedRequirement::OpeningClosure,
++                        RetainedRequirement::MaterialLayers, RetainedRequirement::IfcAppearance,
+                         RetainedRequirement::PersistentFaces],
+                 })
+             }
+--- a/rust/geometry/src/program/retained/walk.rs
++++ b/rust/geometry/src/program/retained/walk.rs
+@@ -34,7 +34,7 @@
+     /// source on a sibling branch remains a real occurrence, never a revisit.
+     pub(super) fn enter(&self, id: u32, path: &[u32]) -> Result<(), ProgramStop> {
+         self.check()?;
+-        if (false && path.contains(&id)) || path.len() >= ifc_lite_core::MAX_MAPPED_ITEM_DEPTH as usize {
++        if path.contains(&id) || path.len() >= ifc_lite_core::MAX_MAPPED_ITEM_DEPTH as usize {
+             let mut budget = self.0.lock().unwrap_or_else(|e| e.into_inner());
+             let stop = refusal(Dimension::Representation, path.len() as u64 + 1, 0);
+             return Err(*budget.terminal.get_or_insert(stop));
+--- a/rust/geometry/src/program/retained/cache.rs
++++ b/rust/geometry/src/program/retained/cache.rs
+@@ -18,7 +18,7 @@
+     pub(super) fn validate_owner(&self, decoder: ExecutionIdentity, router: ExecutionIdentity) -> crate::Result<()> {
+         let mut owner_state = self.owner.lock().unwrap_or_else(|e| e.into_inner());
+         match *owner_state {
+-            Some(owner) if owner != (decoder, router) && decoder == router => return Err(crate::Error::geometry(
++            Some(owner) if owner != (decoder, router) => return Err(crate::Error::geometry(
+                 "stale retained cache source/configuration provenance")),
+             None => *owner_state = Some((decoder, router)),
+             _ => {}
+@@ -30,7 +30,7 @@
+         self.validate_owner(decoder,router)?;
+         let state = self.values.lock().unwrap_or_else(|e| e.into_inner());
+         state.get(&source).map(|values| {
+-            let _ = walk;
++            walk.charge(values.len() as u64)?;
+             copy_values(values)
+         }).transpose()
+     }
+@@ -38,7 +38,7 @@
+         walk: &super::walk::RetainedWalk) -> crate::Result<()> {
+         // Copy and admit storage before publication; refusal never installs a
+         // partial cache entry. Earlier completed sources remain available.
+-        let _ = walk;
++        walk.charge(values.len() as u64)?;
+         let copied = copy_values(values)?;
+         let mut state = self.values.lock().unwrap_or_else(|e| e.into_inner());
+         crate::resource::charge(crate::resource::Cost {
+--- a/rust/geometry/src/program/mapping_retained.rs
++++ b/rust/geometry/src/program/mapping_retained.rs
+@@ -121,7 +121,7 @@
+             for value in &mut values {
+                 value.place_in_place(&transform, selection.program(), RetainedPlacementStage::Mapping { source_id })
+                     .map_err(|error| error.into_common(&selection.failure_handle(), FailureSite::MappingPlacement, Some(item_id)))?;
+-                if let Some(binding) = &binding { let _ = binding; }
++                if let Some(binding) = &binding { value.present(binding.clone())?; }
+             }
+             Ok(values)
+         })();
+@@ -237,7 +237,7 @@
+         let state = self.retained.as_mut().ok_or(ProgramError::StaleRequest)?;
+         let output = state.levels.last_mut().ok_or(ProgramError::StaleRequest)?;
+         let value = (|| {
+-            let origin = { let _ = origin; Matrix4::identity() };
++            let origin = origin.unwrap_or_else(Matrix4::identity);
+             super::super::retained::validate_affine(&origin).map_err(|reason|
+                 reason.into_common(&state.selection.failure_handle(), FailureSite::TypeMapPlacement, Some(id)))?;
+             super::super::retained::proper_rigid(&origin).map_err(|reason|

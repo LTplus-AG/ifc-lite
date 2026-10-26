@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MPL-2.0
+# B2c source-context replacement; apply in reverse to mutate. Execution UNRUN.
+--- a/rust/geometry/src/program/mapping_retained.rs
++++ b/rust/geometry/src/program/mapping_retained.rs
+@@ -237,7 +237,7 @@
+         let state = self.retained.as_mut().ok_or(ProgramError::StaleRequest)?;
+         let output = state.levels.last_mut().ok_or(ProgramError::StaleRequest)?;
+         let value = (|| {
+-            let origin = { let _ = origin; Matrix4::identity() };
++            let origin = origin.unwrap_or_else(Matrix4::identity);
+             super::super::retained::validate_affine(&origin).map_err(|reason|
+                 reason.into_common(&state.selection.failure_handle(), FailureSite::TypeMapPlacement, Some(id)))?;
+             super::super::retained::proper_rigid(&origin).map_err(|reason|

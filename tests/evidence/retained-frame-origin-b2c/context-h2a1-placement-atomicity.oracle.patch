@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: MPL-2.0
+# B2c source-context replacement; apply in reverse to mutate. Execution UNRUN.
+--- a/rust/geometry/src/program/retained/frame.rs
++++ b/rust/geometry/src/program/retained/frame.rs
+@@ -16,9 +16,6 @@
+         }
+         validate_affine(transform)?;
+         if matches!(stage, RetainedPlacementStage::Product { .. }) { proper_rigid(transform)?; }
+-        let input = self.slot;
+-        let output = next_slot(program)?;
+-        self.slot = output;
+         let matrix = crate::math::mat4::col_major_array(transform);
+         // Finite inputs need not compose to a finite frame. Compute both
+         // candidates before changing the occurrence or its placement lineage.
+@@ -38,8 +35,11 @@
+         })?
+         .retain();
+         crate::resource::reserve_headers(&mut self.placements, 1)?.retain();
++        let input = self.slot;
++        let output = next_slot(program)?;
+         self.world_from_source = world_from_source;
+         self.object_frame = object_frame;
++        self.slot = output;
+         self.placements.push(RetainedPlacement {
+             input,
+             output: self.slot,

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Retained values use the common mapping walk; no mesh cache or mesh fallback.
 use super::*;
+use crate::program::retained::failure::FailureSite;
 use crate::program::inner::retained_program::RetainedProgramError;
 #[path = "mapping_directions.rs"]
 mod directions;
@@ -78,8 +79,8 @@ impl<'a> MappingControl<'a> {
             let source = router.admit_styled_occurrence(item,
                 state.styled && self.allow_instancing && self.levels.is_empty(), self.textures, decoder)?;
             if let Some(transform) = &source.transform {
-                super::super::retained::validate_affine(transform)?;
-
+                super::super::retained::validate_affine(transform).map_err(|reason|
+                    reason.into_common(&state.selection.failure_handle(), FailureSite::MappingPlacement, Some(item.id)))?;
             }
             let cached = state.selection.cached(decoder, router, source.source_id)?;
             Ok::<_, crate::Error>((source, cached))
@@ -118,7 +119,8 @@ impl<'a> MappingControl<'a> {
         let value = (|| {
             let transform = transform.unwrap_or_else(Matrix4::identity);
             for value in &mut values {
-                value.place_in_place(&transform, selection.program(), RetainedPlacementStage::Mapping { source_id })?;
+                value.place_in_place(&transform, selection.program(), RetainedPlacementStage::Mapping { source_id })
+                    .map_err(|error| error.into_common(&selection.failure_handle(), FailureSite::MappingPlacement, Some(item_id)))?;
                 if let Some(binding) = &binding { value.present(binding.clone())?; }
             }
             Ok(values)
@@ -236,12 +238,15 @@ impl<'a> MappingControl<'a> {
         let output = state.levels.last_mut().ok_or(ProgramError::StaleRequest)?;
         let value = (|| {
             let origin = origin.unwrap_or_else(Matrix4::identity);
-            super::super::retained::validate_affine(&origin)?;
-            super::super::retained::proper_rigid(&origin)?;
+            super::super::retained::validate_affine(&origin).map_err(|reason|
+                reason.into_common(&state.selection.failure_handle(), FailureSite::TypeMapPlacement, Some(id)))?;
+            super::super::retained::proper_rigid(&origin).map_err(|reason|
+                reason.into_common(&state.selection.failure_handle(), FailureSite::TypeMapPlacement, Some(id)))?;
             let mut values = std::mem::take(output);
             for value in &mut values {
                 value.place_in_place(&origin,state.selection.program(),
-                    RetainedPlacementStage::TypeMap { representation_map: id })?;
+                    RetainedPlacementStage::TypeMap { representation_map: id })
+                    .map_err(|error| error.into_common(&state.selection.failure_handle(), FailureSite::TypeMapPlacement, Some(id)))?;
             }
             Ok(values)
         })();

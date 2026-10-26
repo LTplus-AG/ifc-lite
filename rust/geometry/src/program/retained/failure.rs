@@ -13,6 +13,9 @@ pub(in crate::program) enum FailureSite {
     ProductCompletion, TypeMapCompletion, TypeBinding,
     MappingSource, MappingTarget, MappingOrigin, MappedRepresentation,
     MappingItems, MappingScale, MappingDirection,
+    BooleanSource, BooleanOperator, BooleanFirstOperand, BooleanSecondOperand,
+    ProductPlacement, MappingPlacement, TypeMapPlacement,
+    MappingAffine, TypeMapAffine,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::program) enum StructuralReason {
@@ -29,6 +32,12 @@ pub(in crate::program) enum MappingReason {
     DirectionDimension { expected: usize, actual: usize },
     ZeroDirection, DependentPair, DependentTriple, NonfiniteDerivedFrame,
 }
+/// Facts established at the reached Boolean source predicate, not decoder guesses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::program) enum BooleanReason {
+    OperatorRequired, InvalidClippingOperator, UnknownOperator,
+    OperandAttributeMissing, OperandReferenceRequired,
+}
 #[derive(Debug)]
 pub(in crate::program) enum OriginCause {
     Recipe(RetainedRefusal),
@@ -36,6 +45,8 @@ pub(in crate::program) enum OriginCause {
     Core(ifc_lite_core::Error),
     Structure(StructuralReason),
     Mapping(MappingReason),
+    Boolean(BooleanReason),
+    Value(super::value_error::ValueReason),
     Processor(Option<crate::router::ProcessorOrigin>),
     /// The common helper has not been converted. Its text is never classified.
     Opaque(crate::Error),
@@ -201,6 +212,7 @@ impl std::fmt::Display for RetainedFailure {
                 Some(OriginCause::Opaque(error)) => write!(f, "{error}"),
                 Some(OriginCause::Recipe(error)) => write!(f, "{error}"),
                 Some(OriginCause::Core(error)) => write!(f, "Core parser error: {error}"),
+                Some(OriginCause::Value(reason)) => write!(f, "{}", crate::Error::from(*reason)),
                 other => write!(f, "retained origin: {other:?}"),
             },
             other => write!(f, "{other:?}"),

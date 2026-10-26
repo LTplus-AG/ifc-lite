@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MPL-2.0
+# Apply in reverse to mutate; execution remains UNRUN.
+diff --git a/rust/geometry/src/program/boolean/retained.rs b/rust/geometry/src/program/boolean/retained.rs
+--- a/rust/geometry/src/program/boolean/retained.rs
++++ b/rust/geometry/src/program/boolean/retained.rs
+@@ -108,7 +108,7 @@
+     fn source_refusal(&self, site: FailureSite, entity: u32, reason: BooleanReason,
+         diagnostic: &'static str) -> Error {
+         if let Some(selection) = self.retained_selection() {
++            selection.failure_handle().record(site, Some(entity), OriginCause::Boolean(reason));
+-            let _ = (selection, site, entity, reason); // Mutant: refusal without its predicate origin.
+         }
+         Error::geometry(diagnostic)
+     }

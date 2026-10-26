@@ -42,8 +42,8 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                 if receipt.is_empty() != empty || actual_operation != *operation
                     || left != inputs[0].realization.kind.object()
                     || right != inputs[1].realization.kind.object()
-                    || !same_frame(world_from_left, &inputs[0].frame)
-                    || !same_frame(world_from_right, &inputs[1].frame)
+                    || !same_frame(world_from_left, inputs[0].sent_frame())
+                    || !same_frame(world_from_right, inputs[1].sent_frame())
                     || !same_frame(world_from_evaluation, expected.value().object_frame()) {
                     return Err(protocol(ReceiptFailure::ForeignBooleanOperationOrOrderedInputs));
                 }

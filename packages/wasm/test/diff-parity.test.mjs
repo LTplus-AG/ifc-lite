@@ -932,6 +932,78 @@ test('actual raw WASM catches length and revoked-array errors without poisoning 
   }
 });
 
+test('actual raw WASM applies Array.map ToLength and ArrayCreate bounds to sparse lengths (#8114)', async context => {
+  const wasm = await engine(context); if (!wasm) return;
+  const oraclePath = new URL('../../diff/dist/fingerprint.js', import.meta.url);
+  if (!existsSync(oraclePath)) { context.skip('@ifc-lite/diff not built; run pnpm build'); return; }
+  const oracle = await import(oraclePath.href);
+  const pairs = [['diffBuildDataFingerprint', 'buildDataFingerprint'],
+    ['diffBuildComponentFingerprints', 'buildComponentFingerprints']];
+  const valid = { ifcType: 'IfcWall', propertySets: [{ name: 'P', properties: [] }] };
+  const record = { name: 'E', value: 1, properties: [], quantities: [], type: 'T' };
+  // Every proxy throws SENTINEL on its fourth index probe, so a uint32-wrapped
+  // length stops after three holes in either implementation, never a full walk.
+  const SENTINEL = Object.freeze({ sentinel: 'fourth index probe' });
+  const cases = [ // [label, reported length, target slots, expected outcome, index probes]
+    ['-1', () => -1, [], 'empty', 0],
+    ['-1.5', () => -1.5, [], 'empty', 0],
+    ['coercible -1', counts => ({ valueOf() { counts.valueOf++; return -1; } }), [], 'empty', 0],
+    ['-0.5', () => -0.5, [], 'empty', 0],
+    ['NaN', () => NaN, [], 'empty', 0],
+    ['-Infinity', () => -Infinity, [], 'empty', 0],
+    ['2^32', () => 2 ** 32, [], 'range', 0],
+    ['2^32+1', () => 2 ** 32 + 1, [], 'range', 0],
+    ['Infinity', () => Infinity, [], 'range', 0],
+    ['2^32-1', () => 2 ** 32 - 1, [], 'sentinel', 4],
+    ['1.5', () => 1.5, [record], 'parity', 2],
+    ["'3'", () => '3', [], 'parity', 3],
+  ];
+  function outcome(call) {
+    try {
+      const value = call();
+      return { value: typeof value === 'object' ? Object.entries(value) : value };
+    } catch (error) {
+      if (error === SENTINEL) return { error: 'SENTINEL' };
+      return { error: error instanceof Error ? [error.constructor.name, error.message] : ['thrown', String(error)] };
+    }
+  }
+  function observe(call, length, target) {
+    const counts = { probes: 0, valueOf: 0 };
+    const reported = length(counts);
+    // Canonical numeric keys round-trip through Number, covering every array index.
+    const index = key => typeof key === 'string' && String(Number(key)) === key;
+    const probe = () => { if (++counts.probes > 3) throw SENTINEL; };
+    const slots = new Proxy(target.slice(), {
+      get(object, key, receiver) {
+        if (key === 'length') return reported;
+        if (index(key)) probe();
+        return Reflect.get(object, key, receiver);
+      },
+      has(object, key) { if (index(key)) probe(); return Reflect.has(object, key); },
+    });
+    return { outcome: outcome(() => call(slots)), ...counts };
+  }
+  for (const [location] of sparseLocations([])) {
+    const fields = slots => sparseLocations(slots).find(([name]) => name === location)[1];
+    for (const [rawName, oracleName] of pairs) {
+      const empty = outcome(() => wasm[rawName]({ ifcType: 'IfcWall', ...fields([]) }));
+      for (const [label, length, target, kind, probes] of cases) {
+        const id = `${rawName}/${location}/${label}`;
+        const actual = observe(slots => wasm[rawName]({ ifcType: 'IfcWall', ...fields(slots) }), length, target);
+        const expected = observe(slots => oracle[oracleName]({ ifcType: 'IfcWall', ...fields(slots) }), length, target);
+        // The oracle's map also reads `constructor`; that documented non-parity is not counted.
+        assert.deepEqual(actual, expected, id);
+        assert.equal(actual.probes, probes, `${id}: index probes`);
+        assert.equal(actual.valueOf, label === 'coercible -1' ? 1 : 0, `${id}: one length coercion`);
+        if (kind === 'empty') assert.deepEqual(actual.outcome, empty, `${id}: same as an empty collection`);
+        if (kind === 'range') assert.deepEqual(actual.outcome, { error: ['RangeError', 'Invalid array length'] }, id);
+        if (kind === 'sentinel') assert.deepEqual(actual.outcome, { error: 'SENTINEL' }, `${id}: bounded walk parity`);
+        assert.deepEqual(wasm[rawName](valid), oracle[oracleName](valid), `${id}: same-instance recovery`);
+      }
+    }
+  }
+});
+
 test('actual raw WASM restores mode and exceptions around reentrant fingerprint calls (#8114)', async context => {
   const wasm = await engine(context); if (!wasm) return;
   const methods = ['diffBuildDataFingerprint', 'diffBuildComponentFingerprints'];

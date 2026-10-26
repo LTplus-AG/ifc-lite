@@ -1,12 +1,11 @@
 diff --git a/rust/geometry/src/resource/budget.rs b/rust/geometry/src/resource/budget.rs
 --- a/rust/geometry/src/resource/budget.rs
 +++ b/rust/geometry/src/resource/budget.rs
-@@ -62,7 +62,7 @@
-         if let Some(parent) = &self.account.1 {
-             parent.deadline()?;
+@@ -64,6 +64,6 @@
          }
--        if self.start.elapsed() > self.duration {
-+        if self.start.elapsed() >= self.duration {
-             self.fired.store(true, Ordering::Release);
+         if self.start.elapsed() >= self.duration {
+-            self.fired.store(false, Ordering::Release);
++            self.fired.store(true, Ordering::Release);
              return Err(crate::Error::ProgramStopped(ProgramStop::Cancelled));
          }
+         Ok(())

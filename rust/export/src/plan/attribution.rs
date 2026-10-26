@@ -167,50 +167,50 @@ pub(crate) fn attribute_changes(index: &FileIndex, schema: &str, plan: &ExportPl
     }
 }
 
-/// The attributes through which a record owns another for attribution, so
-/// that rewriting the owned record changes the owner: a product its
-/// placement and shape; a shape its representations and their items; a type
-/// its representation maps, a map its representation, a mapped item the map
-/// it instances; a set, complex property or complex quantity its members, an
-/// enumerated value its enumeration; a material association its material,
-/// and a material list or set (or set usage) its members; a space boundary
-/// its geometry. Nothing else is followed: an owner history, a context, a
-/// unit or an address names records it does not own, and following it would
-/// mark half the file.
-const OWNING_ATTRIBUTES: [&str; 19] = [
-    "ObjectPlacement",
-    "Representation",
-    "Representations",
-    "Items",
-    "RepresentationMaps",
-    "MappedRepresentation",
-    "MappingSource",
-    "HasProperties",
-    "Quantities",
-    "HasQuantities",
-    "EnumerationReference",
-    "RelatingMaterial",
-    "Materials",
-    "MaterialLayers",
-    "ForLayerSet",
-    "MaterialConstituents",
-    "MaterialProfiles",
-    "ForProfileSet",
-    "ConnectionGeometry",
+/// Attributes that name a shared resource rather than something the naming
+/// record owns: the attribution chain (owner histories, users,
+/// applications, their actors, addresses and roles), representation
+/// contexts, units, and a placement's `PlacementRelTo` (what is placed
+/// relative to a placement is not changed by it). Everything else an object
+/// references, it owns.
+const NOT_OWNING: [&str; 15] = [
+    "OwnerHistory",
+    "OwningUser",
+    "OwningApplication",
+    "LastModifyingUser",
+    "LastModifyingApplication",
+    "ApplicationDeveloper",
+    "TheOrganization",
+    "TheActor",
+    "Addresses",
+    "Roles",
+    "ContextOfItems",
+    "ParentContext",
+    "Unit",
+    "Units",
+    "PlacementRelTo",
 ];
+
+/// Records never climbed into, whatever names them through: the owner
+/// history and representation contexts, which every rooted record or shape
+/// shares.
+const SHARED_RECORDS: [&str; 4] = ["IFCOWNERHISTORY", "IFCREPRESENTATIONCONTEXT", "IFCGEOMETRICREPRESENTATIONCONTEXT", "IFCGEOMETRICREPRESENTATIONSUBCONTEXT"];
 
 /// The records whose owner history records what the plan rewrote: every
 /// source record it rewrites that carries an `OwnerHistory`, and for one
-/// that carries none, the nearest records owning it through
-/// [`OWNING_ATTRIBUTES`] that carry one (a value's set, a material list's
-/// association, a placement's product, a mapped shape's type and every
-/// occurrence instancing the map). Records going away are not among them.
+/// that carries none, the nearest records above it that do. An object owns
+/// what it references except shared resources ([`NOT_OWNING`],
+/// [`SHARED_RECORDS`]), so the climb follows every other referrer and stops
+/// at the first records carrying an `OwnerHistory`: a face's wall, a
+/// material layer's association, a mapped shape's type and every occurrence
+/// instancing the map. Records going away are not among them.
 fn rewritten_roots(index: &FileIndex, schema: &str, edits_by_id: &HashMap<u32, BTreeMap<usize, String>>, removed: &HashSet<u32>) -> BTreeSet<u32> {
     let live = |id: &u32| index.contains(*id) && !removed.contains(id);
     let carries = |id: u32| index.type_of(id).is_some_and(|ty| attribute_index(schema, &ty, "OwnerHistory").is_some());
     let owns = |owner: u32, slot: usize| {
-        let ty = index.type_of(owner).unwrap_or_default();
-        ifc_lite_core::attribute_names_for_schema(schema, &ty).and_then(|names| names.get(slot)).is_some_and(|name| OWNING_ATTRIBUTES.contains(name))
+        let Some(ty) = index.type_of(owner) else { return false };
+        let attribute = ifc_lite_core::attribute_names_for_schema(schema, &ty).and_then(|names| names.get(slot).copied());
+        !SHARED_RECORDS.contains(&ty.as_str()) && attribute.is_some_and(|name| !NOT_OWNING.contains(&name))
     };
     let mut roots = BTreeSet::new();
     let mut seen = HashSet::new();

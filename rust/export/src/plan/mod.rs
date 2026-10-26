@@ -84,7 +84,7 @@ pub use add_types::{
 };
 pub use placement::IDENTITY;
 pub use removal::{Removal, RemovalReason};
-pub use skeleton::{skeleton, MapConversion, MapUnit, Skeleton, SkeletonRoot, SKELETON_SCHEMA};
+pub use skeleton::{skeleton, skeleton_with_findings, MapConversion, MapUnit, Skeleton, SkeletonRoot, SKELETON_SCHEMA};
 pub use types::{
     Disposition, DroppedRepresentation, ExportPlan, ExportingApplication, ExportingPerson, GeometryPatch, ObjectRef, Patch, PlacementPatch, PlanContext, PlanError,
     PropScope, PropWrite, PsetKind, Refusal, SurfaceColour, TriangleMesh, ValidationFinding, WriteReport,

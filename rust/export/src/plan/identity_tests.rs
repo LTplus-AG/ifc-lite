@@ -219,8 +219,7 @@ fn an_unreadable_change_time_is_reported_and_attribution_stays() {
 #[test]
 fn a_skeleton_is_owned_and_headed_by_the_exporting_application() {
     let root = |n: u128| SkeletonRoot::new(GlobalId(n));
-    let (bytes, findings) = skeleton(&Skeleton::new(root(1), root(2), root(3)).with_application(app()).with_file_name("new.ifc")).unwrap();
-    assert!(findings.is_empty(), "{findings:?}");
+    let bytes = skeleton(&Skeleton::new(root(1), root(2), root(3)).with_application(app()).with_file_name("new.ifc")).unwrap();
     let all = lines(&bytes);
     let added = histories(&all, ".ADDED.");
     assert_eq!(added.len(), 1);
@@ -600,7 +599,11 @@ fn a_change_time_outside_32_bits_is_refused_and_named() {
         assert_eq!(report.findings[0].message.contains("milliseconds"), millis, "{stamp}: {:?}", report.findings);
         assert_eq!(attr("IFC4", &lines(&out)[&10], "IFCWALL", "OwnerHistory"), "#164", "{stamp}");
         let root = |n: u128| SkeletonRoot::new(GlobalId(n));
-        let (bytes, findings) = skeleton(&Skeleton::new(root(1), root(2), root(3)).with_application(app)).unwrap();
+        let unattributed = Skeleton::new(root(1), root(2), root(3)).with_application(app);
+        // The plain skeleton refuses an application it cannot attribute to,
+        // as before; the reporting one writes it unattributed and says so.
+        assert!(skeleton(&unattributed).is_err(), "{stamp}");
+        let (bytes, findings) = skeleton_with_findings(&unattributed).unwrap();
         assert!(histories(&lines(&bytes), ".ADDED.").is_empty(), "{stamp}: unattributed");
         assert_eq!(findings.len(), 1, "{stamp}: {findings:?}");
     }
@@ -778,4 +781,107 @@ fn an_application_with_a_dangling_developer_is_reused() {
     assert_eq!(all.values().filter(|l| l.contains("'example-app'")).count(), 1);
     let history = target(schema, &all, &all[&10], "IFCWALL", "OwnerHistory");
     assert_eq!(attr(schema, &history, "IFCOWNERHISTORY", "LastModifyingApplication"), "#173");
+}
+
+/// A source whose wall carries a faceted brep, for the geometry-tree test.
+fn wall_with_brep(schema: &str) -> Vec<u8> {
+    let r = |id, entity, fields: &[(&str, &str)]| {
+        let fields: Vec<(&str, String)> = fields.iter().map(|&(n, v)| (n, v.to_string())).collect();
+        build_record(schema, id, entity, &fields)
+    };
+    let records = [
+        r(600, "IFCWALL", &[("GlobalId", "'0000000000000000000600'"), ("Name", "'Brep wall'"), ("Representation", "#601")]),
+        r(601, "IFCPRODUCTDEFINITIONSHAPE", &[("Representations", "(#602)")]),
+        r(602, "IFCSHAPEREPRESENTATION", &[("ContextOfItems", "#100"), ("RepresentationIdentifier", "'Body'"), ("RepresentationType", "'Brep'"), ("Items", "(#603)")]),
+        r(603, "IFCFACETEDBREP", &[("Outer", "#604")]),
+        r(604, "IFCCLOSEDSHELL", &[("CfsFaces", "(#605,#606)")]),
+        r(605, "IFCFACE", &[("Bounds", "(#607)")]),
+        r(606, "IFCFACE", &[("Bounds", "(#607)")]),
+        r(607, "IFCFACEOUTERBOUND", &[("Bound", "#608"), ("Orientation", ".T.")]),
+        r(608, "IFCPOLYLOOP", &[("Polygon", "(#102,#609,#610)")]),
+        r(609, "IFCCARTESIANPOINT", &[("Coordinates", "(1.,0.,0.)")]),
+        r(610, "IFCCARTESIANPOINT", &[("Coordinates", "(0.,1.,0.)")]),
+    ];
+    let text = String::from_utf8(storey_with_typed_wall(schema)).unwrap().replace("ENDSEC;\nEND-ISO", &format!("{}\nENDSEC;\nEND-ISO", records.join("\n")));
+    owned(text.as_bytes(), schema)
+}
+
+/// A face deleted from a wall's brep rewrites the shell: the wall, which
+/// owns its geometry tree, is modified.
+#[test]
+fn a_deleted_brep_face_modifies_the_wall() {
+    for schema in SCHEMAS {
+        let src = wall_with_brep(schema);
+        let (out, report) = export(&src, vec![(ObjectRef::Id(606), Disposition::Delete)], context());
+        assert!(report.refusals.is_empty(), "{schema}: {report:?}");
+        assert!(assert_modified_exactly_the_rewritten(schema, &src, &out).contains(&600), "{schema}");
+    }
+}
+
+/// A material in a layer set renamed: the association using the set's
+/// usage is modified.
+#[test]
+fn a_layered_material_rename_modifies_its_association() {
+    for schema in SCHEMAS {
+        let r = |id, entity, fields: &[(&str, &str)]| {
+            let fields: Vec<(&str, String)> = fields.iter().map(|&(n, v)| (n, v.to_string())).collect();
+            build_record(schema, id, entity, &fields)
+        };
+        let records = [
+            r(700, "IFCMATERIAL", &[("Name", "'Brick'")]),
+            r(701, "IFCMATERIALLAYER", &[("Material", "#700"), ("LayerThickness", "0.2")]),
+            r(702, "IFCMATERIALLAYERSET", &[("MaterialLayers", "(#701)"), ("LayerSetName", "'Wall'")]),
+            r(703, "IFCMATERIALLAYERSETUSAGE", &[("ForLayerSet", "#702"), ("LayerSetDirection", ".AXIS2."), ("DirectionSense", ".POSITIVE."), ("OffsetFromReferenceLine", "0.")]),
+            r(704, "IFCRELASSOCIATESMATERIAL", &[("GlobalId", "'0000000000000000000704'"), ("RelatedObjects", "(#10)"), ("RelatingMaterial", "#703")]),
+        ];
+        let text = String::from_utf8(storey_with_typed_wall(schema)).unwrap().replace("ENDSEC;\nEND-ISO", &format!("{}\nENDSEC;\nEND-ISO", records.join("\n")));
+        let src = owned(text.as_bytes(), schema);
+        let (out, report) = export(&src, vec![rename(700)], context());
+        assert!(report.refusals.is_empty(), "{schema}: {report:?}");
+        assert_eq!(assert_modified_exactly_the_rewritten(schema, &src, &out), vec![704], "{schema}");
+    }
+}
+
+/// A classification reference renamed: the association naming it is
+/// modified.
+#[test]
+fn a_classification_reference_rename_modifies_its_association() {
+    for schema in SCHEMAS {
+        let r = |id, entity, fields: &[(&str, &str)]| {
+            let fields: Vec<(&str, String)> = fields.iter().map(|&(n, v)| (n, v.to_string())).collect();
+            build_record(schema, id, entity, &fields)
+        };
+        let records = [
+            r(800, "IFCCLASSIFICATIONREFERENCE", &[("Location", "'x'"), ("Name", "'Walls'")]),
+            r(801, "IFCRELASSOCIATESCLASSIFICATION", &[("GlobalId", "'0000000000000000000801'"), ("RelatedObjects", "(#10)"), ("RelatingClassification", "#800")]),
+        ];
+        let text = String::from_utf8(storey_with_typed_wall(schema)).unwrap().replace("ENDSEC;\nEND-ISO", &format!("{}\nENDSEC;\nEND-ISO", records.join("\n")));
+        let src = owned(text.as_bytes(), schema);
+        let (out, report) = export(&src, vec![rename(800)], context());
+        assert!(report.refusals.is_empty(), "{schema}: {report:?}");
+        assert_eq!(assert_modified_exactly_the_rewritten(schema, &src, &out), vec![801], "{schema}");
+    }
+}
+
+/// An application whose developer the plan deletes goes with it (the
+/// cascade): it is not reused, nothing names the removed developer, and the
+/// identifier stays unique.
+#[test]
+fn an_application_whose_developer_is_deleted_is_not_reused() {
+    let schema = "IFC4";
+    let src = String::from_utf8(source(schema, false)).unwrap();
+    let ours = [
+        build_record(schema, 171, "IFCORGANIZATION", &[("Name", "'ExampleOrg'".into())]),
+        build_record(
+            schema,
+            173,
+            "IFCAPPLICATION",
+            &[("ApplicationDeveloper", "#171".into()), ("Version", "'2.1'".into()), ("ApplicationFullName", "'ExampleApp'".into()), ("ApplicationIdentifier", "'example-app'".into())],
+        ),
+    ];
+    let src = src.replace("ENDSEC;\nEND-ISO", &format!("{}\nENDSEC;\nEND-ISO", ours.join("\n"))).into_bytes();
+    let (out, _) = export(&src, vec![(ObjectRef::Id(171), Disposition::Delete), rename(10)], context());
+    assert_no_dangling(&out, schema);
+    let all = lines(&out);
+    assert_eq!(all.values().filter(|l| l.contains("'example-app'")).count(), 1, "one application with the identifier");
 }

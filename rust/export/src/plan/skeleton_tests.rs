@@ -50,7 +50,7 @@ fn object(
 #[test]
 fn a_skeleton_takes_a_storey_and_a_wall_and_validates() {
     for map in [None, Some(a_map())] {
-        let source = skeleton(&a_skeleton(map.clone())).expect("skeleton").0;
+        let source = skeleton(&a_skeleton(map.clone())).expect("skeleton");
         let building = ObjectRef::Guid(root(3, "").global_id.encode());
         let storey = object(
             IfcClass::BuildingStorey,
@@ -86,12 +86,12 @@ fn a_skeleton_takes_a_storey_and_a_wall_and_validates() {
 #[test]
 fn the_same_skeleton_is_the_same_bytes() {
     let s = a_skeleton(Some(a_map()));
-    assert_eq!(skeleton(&s).expect("first").0, skeleton(&s).expect("second").0);
+    assert_eq!(skeleton(&s).expect("first"), skeleton(&s).expect("second"));
 }
 
 #[test]
 fn the_body_subcontext_is_the_one_new_geometry_goes_into() {
-    let source = skeleton(&a_skeleton(None)).expect("skeleton").0;
+    let source = skeleton(&a_skeleton(None)).expect("skeleton");
     let wall = object(
         IfcClass::Wall,
         2,
@@ -155,7 +155,7 @@ fn a_projected_crs_names_its_map_unit() {
         let mut map = a_map();
         map.crs_name = "EPSG:2263".into();
         map.map_unit = unit;
-        let source = skeleton(&a_skeleton(Some(map))).expect("skeleton").0;
+        let source = skeleton(&a_skeleton(Some(map))).expect("skeleton");
         let text = String::from_utf8(source.clone()).expect("utf8");
         let unit_line = text.lines().find(|l| l.contains("IFCCONVERSIONBASEDUNIT(")).expect("a conversion-based unit");
         assert!(unit_line.contains(name) && unit_line.contains(".LENGTHUNIT."), "{unit_line}");
@@ -167,7 +167,7 @@ fn a_projected_crs_names_its_map_unit() {
         let (_, report) = run(&source, Vec::new());
         assert_clean(&report, "feet skeleton");
     }
-    let metre = String::from_utf8(skeleton(&a_skeleton(Some(a_map()))).unwrap().0).unwrap();
+    let metre = String::from_utf8(skeleton(&a_skeleton(Some(a_map()))).unwrap()).unwrap();
     let crs = metre.lines().find(|l| l.contains("IFCPROJECTEDCRS(")).unwrap();
     let metre_id = metre.lines().find(|l| l.contains(".METRE.")).unwrap().split('=').next().unwrap().to_string();
     assert!(crs.contains(&format!(",{metre_id});")), "a metre CRS names the project's metre: {crs}");

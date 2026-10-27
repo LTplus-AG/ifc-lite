@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { SectionPlaneConfig } from './types.js';
 import { EdgeExtractor } from './edge-extractor.js';
+import { weldVertices } from './edge-weld.js';
 import { SectionCutter } from './section-cutter.js';
 import { getViewDirectionForPlane, projectPointForPlane } from './projection-bands.js';
 
@@ -488,5 +489,15 @@ describe('EdgeExtractor adjacency by position (issue #8161)', () => {
       [0, 1, 2, 0, 2, 3, 4, 5, 6],
     );
     expect(typeCounts(new EdgeExtractor().extractEdges(mesh))).toEqual({ boundary: 4 });
+  });
+
+  it('welds a vertex within tolerance of two representatives to the earlier one, across cells', () => {
+    // maxAbs 1 gives tolerance 2^-22; the first two vertices sit 1.8 tolerances
+    // apart (separate representatives, in adjacent cells) and the third lies
+    // within tolerance of both, in the same cell as the SECOND.
+    const t = 2 ** -22;
+    expect(weldVertices(new Float32Array([0, -0.9 * t, 1, 0, 0.9 * t, 1, 0, 0, 1])).rep).toEqual(
+      new Uint32Array([0, 1, 0]),
+    );
   });
 });

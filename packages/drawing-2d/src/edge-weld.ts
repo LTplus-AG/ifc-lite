@@ -45,12 +45,12 @@ const WELD_RELATIVE_TOLERANCE = 2 ** -22;
  * are always a real vertex position, never an average.
  *
  * Vertices are bucketed on a grid of cell size `tolerance`. Two positions
- * within tolerance can straddle a cell boundary, so a vertex that finds no
- * representative in its own cell also searches the 26 neighbouring cells,
- * which together cover every position within tolerance of it. Cells are
+ * within tolerance can straddle a cell boundary, so every vertex searches its
+ * own cell and the 26 neighbouring cells, which together cover every position
+ * within tolerance of it, and takes the lowest index found. Cells are
  * keyed by an integer hash and every candidate is distance-checked, so a
  * hash collision costs a comparison, never a wrong weld. Linear in the
- * vertex count; the common exact-duplicate case is one lookup.
+ * vertex count (27 bucket lookups per vertex).
  */
 export function weldVertices(positions: Float32Array): { rep: Uint32Array; tolerance: number } {
   const vertexCount = Math.floor(positions.length / 3);
@@ -68,20 +68,32 @@ export function weldVertices(positions: Float32Array): { rep: Uint32Array; toler
   const buckets = new Map<number, number[]>();
   const hash = (ix: number, iy: number, iz: number): number =>
     Math.imul(ix | 0, 73856093) ^ Math.imul(iy | 0, 19349663) ^ Math.imul(iz | 0, 83492791);
-  const find = (ix: number, iy: number, iz: number, x: number, y: number, z: number): number => {
-    const bucket = buckets.get(hash(ix, iy, iz));
-    if (!bucket) return -1;
-    for (const r of bucket) {
-      const b = r * 3;
-      if (
-        Math.abs(positions[b] - x) <= tolerance &&
-        Math.abs(positions[b + 1] - y) <= tolerance &&
-        Math.abs(positions[b + 2] - z) <= tolerance
-      ) {
-        return r;
+  // The lowest-index representative within tolerance, across the vertex's own
+  // cell and all 26 neighbours. Stopping at the first hit would let a later
+  // representative in the vertex's own cell win over an earlier one next door.
+  const findFirst = (ix: number, iy: number, iz: number, x: number, y: number, z: number): number => {
+    let best = -1;
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dz = -1; dz <= 1; dz++) {
+          const bucket = buckets.get(hash(ix + dx, iy + dy, iz + dz));
+          if (!bucket) continue;
+          for (const r of bucket) {
+            if (best >= 0 && r >= best) break; // buckets are ascending
+            const b = r * 3;
+            if (
+              Math.abs(positions[b] - x) <= tolerance &&
+              Math.abs(positions[b + 1] - y) <= tolerance &&
+              Math.abs(positions[b + 2] - z) <= tolerance
+            ) {
+              best = r;
+              break;
+            }
+          }
+        }
       }
     }
-    return -1;
+    return best;
   };
 
   for (let i = 0; i < vertexCount; i++) {
@@ -92,15 +104,7 @@ export function weldVertices(positions: Float32Array): { rep: Uint32Array; toler
     const iy = Math.floor(y / cell);
     const iz = Math.floor(z / cell);
 
-    let found = find(ix, iy, iz, x, y, z);
-    for (let dx = -1; dx <= 1 && found < 0; dx++) {
-      for (let dy = -1; dy <= 1 && found < 0; dy++) {
-        for (let dz = -1; dz <= 1 && found < 0; dz++) {
-          if (dx === 0 && dy === 0 && dz === 0) continue;
-          found = find(ix + dx, iy + dy, iz + dz, x, y, z);
-        }
-      }
-    }
+    const found = findFirst(ix, iy, iz, x, y, z);
 
     if (found >= 0) {
       rep[i] = found;

@@ -285,6 +285,7 @@ jobs:
               # their Rust consumers and the Node path-coverage mirror.
               - 'tests/fixtures/synthetic-retained/**'
               - 'tests/fixtures/cli-retained/**'
+              - 'tests/manifests/**'
               - '.github/workflows/test.yml'
             # AGENTS.md is the instruction file every agent reads, and
             # scripts/check-agents-md-size.mjs gates its size and line length.
@@ -539,6 +540,7 @@ jobs:
               - '.github/workflows/test.yml'
             docs:
               - 'tests/fixtures/cli-retained/**'
+              - 'tests/manifests/**'
               - 'docs/**'
               - 'mkdocs.yml'
               - 'requirements-docs.txt'
@@ -924,6 +926,9 @@ jobs:
           # #7955 M1 E: retain wire APIs; relax the production mesh byte bound.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/geometry/src/document/retained_wire.rs | grep -Fxq 'rust/geometry/src/document/retained_wire.rs'; then
             oracle_args+=(--mutation tests/evidence/m1-e-wasm-runtime/behaviour.oracle.patch)
+          # #7955 M1 D: retain APIs; remove the permitted worker restarts.
+          elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/element/session_retained/model.rs | grep -Fxq 'rust/processing/src/element/session_retained/model.rs'; then
+            oracle_args+=(--mutation tests/evidence/m1-d-native-driver/behaviour.oracle.patch)
           # #7955 M1 C: retain executor types; misreport the real layer refusal.
           elif git diff --name-only --diff-filter=A origin/main...HEAD -- rust/processing/src/element/session_retained/traversal.rs | grep -Fxq 'rust/processing/src/element/session_retained/traversal.rs'; then
             oracle_args+=(--mutation tests/evidence/m1-c-executor-core/behaviour.oracle.patch)
@@ -3157,6 +3162,9 @@ jobs:
           # Match geometry-platform's wasm test target: testkit exposes the
           # mesh-check oracles through the existing test-support feature.
           cargo clippy --target wasm32-unknown-unknown -p ifc-lite-wasm --all-targets --features retained-browser -- -D warnings
+          cargo test -p ifc-lite-retained-native --features retained-runtime
+          cargo test -p ifc-lite-retained-native --features retained-runtime --example retained_compare
+          cargo clippy -p ifc-lite-retained-native --features retained-runtime --all-targets -- -D warnings
 
       # The feature legs (parquet-bos, csg_manifold_gate, csg_capture, the
       # all-features clippy) run in `rust-full` below -- OFF the PR lane,

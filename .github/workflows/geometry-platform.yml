@@ -9,6 +9,17 @@ on:
     paths:
       - 'native/**'
       - 'rust/geometry-runtime/**'
+      - 'rust/retained-native/**'
+      - 'rust/processing/src/processor/**'
+      - 'rust/processing/src/element/session_retained/**'
+      - 'rust/processing/src/element.rs'
+      - 'rust/processing/Cargo.toml'
+      - 'tests/fixtures/cli-retained/**'
+      - 'tests/fixtures/synthetic-retained/**'
+      - 'tests/manifests/cli-retained-coverage.tsv'
+      - 'tests/models/manifest.json'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
       # Retained requests the worker executes are lowered here.
       - 'rust/geometry/src/document/**'
       - 'rust/geometry/src/analytic/**'
@@ -37,6 +48,11 @@ on:
       - 'packages/wasm/test/retained-browser.test.mjs'
       - '.github/workflows/geometry-platform.yml'
   workflow_dispatch:
+    inputs:
+      corpus:
+        type: boolean
+        default: false
+        description: Run the downloaded model corpus as well as committed fixtures
 
 permissions:
   contents: read
@@ -79,6 +95,34 @@ jobs:
           test -x "$IFCLITE_SMLIB_PATH"
           IFCLITE_SMLIB_WORKER="$IFCLITE_SMLIB_PATH" \
             cargo test --locked -p ifc-lite-geometry-runtime --all-targets --no-fail-fast
+      - name: Retained native comparison and real executor tests
+        id: native-compare
+        continue-on-error: true
+        run: |
+          export IFCLITE_REQUIRE_SMLIB=1
+          export IFCLITE_SMLIB_WORKER="$RUNNER_TEMP/smlib-native/ifclite_smlib_worker"
+          cargo test --locked -p ifc-lite-retained-native --features retained-runtime
+          cargo run --release --locked -p ifc-lite-retained-native --features retained-runtime --example retained_compare -- \
+            --worker "$IFCLITE_SMLIB_WORKER" --out "$RUNNER_TEMP/native-compare" --committed --gate
+      - name: Download optional corpus
+        if: inputs.corpus == true
+        run: corepack enable && pnpm fixtures
+      - name: Optional retained native corpus
+        if: inputs.corpus == true
+        run: |
+          cargo run --release --locked -p ifc-lite-retained-native --features retained-runtime --example retained_compare -- \
+            --worker "$RUNNER_TEMP/smlib-native/ifclite_smlib_worker" --out "$RUNNER_TEMP/native-corpus" --manifest tests/models/manifest.json
+      - name: Upload native comparison evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: retained-native-comparison
+          path: |
+            ${{ runner.temp }}/native-compare/*.json
+            ${{ runner.temp }}/native-compare/*.tsv
+            ${{ runner.temp }}/native-corpus/*.json
+            ${{ runner.temp }}/native-corpus/*.tsv
+          if-no-files-found: error
       - name: Checkout pinned Emscripten SDK
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
@@ -158,6 +202,7 @@ jobs:
       - name: Require every independent result
         if: always()
         env:
+          NATIVE_COMPARE: ${{ steps.native-compare.outcome }}
           NATIVE_CTEST: ${{ steps.native-ctest.outcome }}
           NATIVE_CONSUMERS: ${{ steps.native-consumers.outcome }}
           WASM_CTEST: ${{ steps.wasm-ctest.outcome }}
@@ -169,7 +214,7 @@ jobs:
           RETAINED_CLIPPY: ${{ steps.retained-clippy.outcome }}
         run: |
           failed=0
-          for lane in NATIVE_CTEST NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY; do
+          for lane in NATIVE_COMPARE NATIVE_CTEST NATIVE_CONSUMERS WASM_CTEST BROWSER_WORKERS BROWSER_RUNTIME BROWSER_API GENERATED_TYPES PACKAGE_BOUNDARY RETAINED_CLIPPY; do
             printf '%s=%s\n' "$lane" "${!lane}"
             if [[ "${!lane}" != success ]]; then failed=1; fi
           done

@@ -49,7 +49,13 @@ impl<R: NumericalReceipt> RuntimeProductExecution<'_, R> {
                         RetainedRecipe::SweptDisk(recipe) => document.add_retained_swept_disk(recipe.clone()),
                         _ => return Err(RetainedExecutionError::Unsupported(Unsupported::ConstructionRecipe)),
                     }.map_err(protocol)?;
-                    let request = document.prepare_retained(definition, worker.incarnation()).map_err(protocol)?;
+                    // Classify zero incarnation as retirement before recipe preparation.
+                    // Capture once; domain revalidation catches subsequent retirement.
+                    let incarnation = worker.incarnation();
+                    if incarnation == 0 {
+                        return Err(RetainedExecutionError::DomainRetired);
+                    }
+                    let request = document.prepare_retained(definition, incarnation).map_err(protocol)?;
                     PendingRetainedOperation::Construction { expected, document, request, backing }
                 }
                 RetainedOperationKind::Boolean { inputs, operation } => {

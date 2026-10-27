@@ -306,7 +306,11 @@ fn completed_contract_fault_keeps_worker_live_but_midflight_drop_retires_it() {
         });
         // Dropping the refused product execution itself must not retire a
         // domain whose contract fault already settled.
-        assert_eq!(domain.incarnation().is_some(), !suspend, "after the execution drops");
+        assert_eq!(
+            domain.incarnation().is_some(),
+            !suspend,
+            "after the execution drops"
+        );
     }
 }
 
@@ -352,4 +356,53 @@ fn final_affine_refuses_before_invocation_and_preserves_the_existing_worker() {
         domain.incarnation().is_some(),
         "no retirement or restart needed"
     );
+}
+
+// #7955 / #8183: type-map geometry has no product placement authority.
+#[test]
+fn unplaced_type_map_refuses_before_invocation_without_restarting_worker() {
+    let source = ifc_lite_core::SourceBundle::new(SOURCE.as_bytes().to_vec());
+    let mut decoder = source.decoder();
+    let router = GeometryRouter::with_units(SOURCE, &mut decoder);
+    let context = ProductionModel::from_source(source.clone()).snapshot(Default::default());
+    let job = super::super::session_tests::type_job(&mut decoder, &[61, 71]);
+    let peer = InertPeer::new(false);
+    let domain = peer.domain();
+    let mut worker = Some(peer);
+    let acquired = Cell::new(0);
+    let mut acquire = || {
+        acquired.set(acquired.get() + 1);
+        Ok(InertPeer::new(false))
+    };
+    let mut future = Box::pin(async {
+        let execution = RuntimeProductExecution::<InertReceipt>::begin(
+            job,
+            &context,
+            &options(),
+            &mut decoder,
+            &router,
+        )?;
+        super::drive::drive(
+            execution,
+            &mut decoder,
+            &router,
+            &mut worker,
+            &mut acquire,
+            limits(),
+        )
+        .await
+    });
+    let Poll::Ready(Err(error)) = future
+        .as_mut()
+        .poll(&mut Context::from_waker(Waker::noop()))
+    else {
+        panic!("unplaced type geometry must refuse synchronously");
+    };
+    assert_eq!(error.refusal().0.code(), "incomplete");
+    drop(future);
+    let peer = worker.as_ref().expect("healthy worker stays available");
+    assert_eq!(peer.invocations, 0);
+    assert_eq!(acquired.get(), 0, "no restart");
+    assert!(peer.domain().same_domain(&domain));
+    assert!(domain.incarnation().is_some());
 }

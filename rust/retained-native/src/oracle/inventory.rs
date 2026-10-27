@@ -7,11 +7,16 @@ pub struct OpeningInventory {
     pub supported_extrusions: Vec<u32>,
     pub no_analytic_quantities: Vec<u32>,
 }
+/// `IfcOpeningElement` and its IFC4 subtype `IfcOpeningStandardCase`.
+pub fn is_opening(entity: &str) -> bool {
+    entity.eq_ignore_ascii_case("IFCOPENINGELEMENT")
+        || entity.eq_ignore_ascii_case("IFCOPENINGSTANDARDCASE")
+}
 pub fn opening_inventory(bytes: &[u8], sources: &AnalyticQuantitySources) -> OpeningInventory {
     let mut result = OpeningInventory::default();
     let mut scanner = EntityScanner::new(bytes);
     while let Some((id, name, _, _)) = scanner.next_entity() {
-        if !name.eq_ignore_ascii_case("IFCOPENINGELEMENT") {
+        if !is_opening(name) {
             continue;
         }
         let has_quantities = sources

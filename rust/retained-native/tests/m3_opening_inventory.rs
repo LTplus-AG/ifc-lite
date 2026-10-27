@@ -4,7 +4,7 @@
 #[path = "../examples/compare/options.rs"]
 mod options;
 use ifc_lite_processing::extract_analytic_quantity_sources;
-use ifc_lite_retained_native::oracle::inventory::opening_inventory;
+use ifc_lite_retained_native::oracle::inventory::{is_opening, opening_inventory};
 
 // #7955 M3-0: supported opening membership, not merely a host-only assertion.
 // The complete universe is pinned: adding a fixture requires an explicit count.
@@ -56,7 +56,7 @@ fn every_committed_opening_has_an_explicit_quantity_classification() {
         let mut scanner = ifc_lite_core::EntityScanner::new(&bytes);
         let mut all = std::collections::BTreeSet::new();
         while let Some((id, name, _, _)) = scanner.next_entity() {
-            if name.eq_ignore_ascii_case("IFCOPENINGELEMENT") {
+            if is_opening(name) {
                 all.insert(id);
             }
         }
@@ -75,4 +75,27 @@ fn every_committed_opening_has_an_explicit_quantity_classification() {
             eprintln!("{path}: opening #{id}: no analytic quantities");
         }
     }
+}
+
+// The IFC4 subtype is an opening too; it must be classified, never skipped.
+#[test]
+fn opening_standard_case_is_inventoried() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../rust/processing/tests/fixtures/issue_2019_wall_two_overlapping_openings.ifc");
+    let text = std::fs::read_to_string(path).expect("committed fixture missing");
+    assert_eq!(text.matches("IFCOPENINGELEMENT(").count(), 3);
+    let bytes = text
+        .replace("FILE_SCHEMA(('IFC2X3'))", "FILE_SCHEMA(('IFC4'))")
+        .replace("IFCOPENINGELEMENT(", "IFCOPENINGSTANDARDCASE(")
+        .into_bytes();
+    let sources = extract_analytic_quantity_sources(&bytes, None);
+    let inventory = opening_inventory(&bytes, &sources);
+    let mut all: Vec<_> = inventory
+        .supported_extrusions
+        .iter()
+        .chain(&inventory.no_analytic_quantities)
+        .copied()
+        .collect();
+    all.sort_unstable();
+    assert_eq!(all, vec![50, 70, 100]);
 }

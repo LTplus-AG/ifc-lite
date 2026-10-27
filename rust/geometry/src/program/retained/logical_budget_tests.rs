@@ -6,14 +6,28 @@ use crate::program::mapping::{MappingControl, MappingOutput, Reached};
 fn product<'a>(entity: &'a DecodedEntity, limit: u32) -> RetainedProgram<'a> {
     let mut program = RetainedProgram::product_parts(entity, contract());
     let selection = program.selection().unwrap().clone();
-    program.inner.control =
+    geometry(&mut program).control =
         Control::Product(ProductControl::retained(entity, selection).with_logical_limit(limit));
     program
 }
 
+fn geometry<'p, 'a>(program: &'p mut RetainedProgram<'a>) -> &'p mut GeometryProgram<'a> {
+    let RetainedInner::Geometry(inner) = &mut program.inner else {
+        panic!("geometry program")
+    };
+    inner
+}
+
+fn finish(program: RetainedProgram<'_>) -> crate::Result<Output> {
+    let RetainedInner::Geometry(inner) = program.inner else {
+        panic!("geometry program")
+    };
+    inner.finish_output()
+}
+
 fn type_map(map: DecodedEntity, limit: u32) -> RetainedProgram<'static> {
     let mut program = RetainedProgram::type_map(map, None, contract());
-    let Control::Mapping(control) = &mut program.inner.control else {
+    let Control::Mapping(control) = &mut geometry(&mut program).control else {
         panic!("type map")
     };
     control.set_logical_limit(limit);
@@ -28,7 +42,7 @@ fn occurrence<'a>(
     let mut control = MappingControl::retained_occurrence(Reached::Root(item), selection);
     control.set_logical_limit(limit);
     RetainedProgram {
-        inner: GeometryProgram::with_control(Control::Mapping(control)),
+        inner: RetainedInner::Geometry(GeometryProgram::with_control(Control::Mapping(control))),
         cancelled: false,
         unsupported: false,
     }
@@ -195,11 +209,7 @@ fn issue_7781_retained_cached_mapping_guards_members_even_with_a_populated_sourc
         assert!(selection.cached(&decoder, &router, 81).unwrap().is_some());
         let mut program = occurrence(&item, selection, 1);
         assert!(drive(&mut program, &router, &mut decoder).is_empty());
-        let error = program
-            .inner
-            .finish_output()
-            .err()
-            .expect("complete refusal");
+        let error = finish(program).err().expect("complete refusal");
         assert!(error.to_string().contains("work budget"));
         assert!(decoder.get_cached(113).is_none());
         assert!(router.take_unsupported_items().is_empty());
@@ -237,9 +247,7 @@ fn issue_7781_retained_source_reply_debit_survives_foreign_rejection_without_dou
             .accept(rejected.reply, &router)
             .unwrap_or_else(|e| panic!("{:?}", e.error));
         assert_eq!(drive(&mut program, &router, &mut decoder).len(), 1);
-        let Output::Mapping(MappingOutput::Retained(values)) =
-            program.inner.finish_output().unwrap()
-        else {
+        let Output::Mapping(MappingOutput::Retained(values)) = finish(program).unwrap() else {
             panic!("retained output")
         };
         assert_eq!(values.len(), 1);
